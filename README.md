@@ -155,7 +155,8 @@ treg call hunter.people.email.find --query domain=reddit.com --query full_name="
 **How a catalogued call is served** — the credential ladder, in order:
 
 1. your team registered its own tool for that provider → that tool, that key;
-2. your team stored a secret for the provider → injected through a virtual tool;
+2. your team stored a secret for the provider → injected through a virtual tool (never for a keyless
+   public API, which has nothing to connect);
 3. neither, and the endpoint has a verified public route → **no provider key**, free;
 4. otherwise → **treg's own key**, billed to the team's prepaid balance.
 
@@ -282,7 +283,8 @@ treg oauth connect gsc --client-secret client_secret.json \
 
 Full options for every command: [`USAGE.md`](USAGE.md).
 
-The CLI and its installer send anonymous usage to PostHog when using treg.to (no arguments or credentials).
+The CLI and its installer send anonymous usage to PostHog when using treg.to (which command ran and
+how it ended, never request content or credentials).
 Disable with `TREG_TELEMETRY=0` or `DO_NOT_TRACK=1`.
 See [analytics details](USAGE.md#anonymous-usage-analytics).
 

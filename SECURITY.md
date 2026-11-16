@@ -41,7 +41,8 @@ provider account and bypass this platform ownership table.
   archived results and shared-provider async ownership; foreign and untagged records return 404.
   These scopes do not partition a team's BYOK account or authenticate public media URLs.
 - **SSRF guard.** A tool's upstream host is re-resolved at call time and internal/metadata addresses are
-  refused (defeats DNS-rebinding).
+  refused (defeats DNS-rebinding). Health probes, owner webhooks and OAuth token requests are checked
+  the same way before they are sent.
 - **Local runs are sandboxed.** `treg run` on a member's machine executes the CLI as a locked-down
   `treg-run` user, with an egress allow-list and an optional filesystem jail, so a shared key can't be
   read, exfiltrated over the network, or written to a member-readable file.

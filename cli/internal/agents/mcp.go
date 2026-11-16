@@ -54,12 +54,14 @@ func onPath(bin string) bool {
 }
 
 // MCP configs live at fixed home-relative paths whatever CLAUDE_CONFIG_DIR or CODEX_HOME say: the
-// clients read their server lists from there.
+// clients read their server lists from there. GitHub Copilot is the exception: COPILOT_HOME
+// replaces ~/.copilot, and the one user file in it serves both Copilot CLI and Copilot in VS Code.
 func mcpAgents() []mcpAgent {
 	h := home()
 	cursor := filepath.Join(h, ".cursor", "mcp.json")
 	codex := filepath.Join(h, ".codex", "config.toml")
 	opencode := filepath.Join(configHome(), "opencode", "opencode.json")
+	copilot := filepath.Join(copilotHome(), "mcp-config.json")
 	return []mcpAgent{
 		{"Claude Code", func() bool { return exists(filepath.Join(h, ".claude")) || onPath("claude") }, writeClaude},
 		{"Cursor", func() bool { return exists(filepath.Join(h, ".cursor")) }, func(name, url, token string, oauth bool) (string, string) {
@@ -72,8 +74,17 @@ func mcpAgents() []mcpAgent {
 			entry := ojson.Ordered("type", "remote", "url", url, "enabled", true, "headers", bearer(token))
 			return writeJSONAgent(opencode, "mcp", name, entry, oauth)
 		}},
+		{CopilotDisplay, func() bool { return exists(copilotHome()) || onPath("copilot") }, func(name, url, token string, oauth bool) (string, string) {
+			entry := ojson.Ordered("type", "http", "url", url, "headers", bearer(token), "tools", []any{"*"})
+			return writeJSONAgent(copilot, "mcpServers", name, entry, oauth)
+		}},
 	}
 }
+
+// CopilotDisplay names GitHub Copilot in `mcp install` results.
+const CopilotDisplay = "GitHub Copilot"
+
+func copilotHome() string { return envDir("COPILOT_HOME", filepath.Join(home(), ".copilot")) }
 
 func bearer(token string) *ojson.Object {
 	return ojson.Ordered("Authorization", "Bearer "+token)

@@ -53,12 +53,22 @@ def _unmappable(adapter: Adapter, key: str, identity: dict[str, Any]) -> bool:
     every one of them yields nothing for this value."""
     if key in adapter.in_map:
         return False
-    unary = re.compile(rf"^(?:\w+\()+{re.escape(key)}\)+$")
     exprs = [e.replace(" ", "") for e in (adapter.in_expr or {}).values() if re.search(rf"\b{re.escape(key)}\b", e)]
-    if not exprs or not all(unary.match(e) for e in exprs):
+    chains = []  # each place `key` appears, as the `f(g(key))` call chain wrapping it there
+    for e in exprs:
+        for m in re.finditer(rf"\b{re.escape(key)}\b", e):
+            if e[:m.start()].count("'") % 2:  # a string literal ('country' as a field name), not the key
+                continue
+            start, end, depth = m.start(), m.end(), 0
+            while (call := re.search(r"\w+\($", e[:start])) is not None:
+                start, depth = call.start(), depth + 1
+            if depth == 0 or e[end:end + depth] != ")" * depth:
+                return False  # sent as given somewhere (`obj('x', key)`, `choose(key, …)`)
+            chains.append(e[start:end + depth])
+    if not chains:
         return False
-    try:
-        return all(P.evaluate(e, identity) in (None, "", []) for e in exprs)
+    try:  # a chain nested in a larger value (`list(obj('country', country_name(country)))`) counts too
+        return all(P.evaluate(c, identity) in (None, "", []) for c in chains)
     except Exception:  # noqa: BLE001 - ranking must never crash on an expression
         return False
 
@@ -129,6 +139,11 @@ def unscoped(adapter: Adapter, contract: Contract, identity: dict[str, Any]) -> 
             used.add(k)
         else:
             used.discard(k)
+    # Any other scoping key is asked by a key the contract says carries it (a company's domain by
+    # its name): the matched variant sending that key answers the same question.
+    for k, by in contract.carried_by.items():
+        if k not in stand_in and variant & set(by):
+            used.add(k)
     return tuple(k for k in contract.scoping if identity.get(k) not in (None, "") and k not in used)
 
 
@@ -219,6 +234,10 @@ class Candidate:
     # What one miss costs (`miss_charge_micro`, or an overflow route's price). None: the full
     # price when the child's cost bills a miss, else 0.
     miss_micro: int | None = None
+    p95_ms: int | None = None
+    # The short-window verdict (`routing.health`): `slow` asks it after the others of its tier,
+    # `failing` is kept only as a probe or when nothing else is left; `ok` changes nothing.
+    health: str = "ok"
 
     @property
     def expected_cost_per_hit(self) -> float:
@@ -246,6 +265,7 @@ class Candidate:
                 "expected_cost_per_hit_micro": (None if self.expected_cost_per_hit == float("inf") else int(self.expected_cost_per_hit)),
                 "hit_rate": self.hit_rate, "ok_rate": self.ok_rate, "p50_ms": self.p50_ms,
                 "confidence": self.confidence, "exhausted": self.exhausted, **({"note": self.note} if self.note else {}),
+                **({"health": self.health} if self.health != "ok" else {}),
                 **({"ignored_filters": list(self.ignored)} if self.ignored else {})}
 
 
@@ -258,10 +278,12 @@ class Plan:
     dropped: list[dict] = field(default_factory=list)            # {endpoint_id, why}
     route_rule: dict[str, str] | None = None   # what ordered it (`route_order`, published rule), for the event
     orders: dict[str, list[str]] = field(default_factory=dict)  # endpoint ids by `default` / `rule` order
+    health: dict[str, str] = field(default_factory=dict)  # endpoint id -> short-window verdict, when not ok
 
     def view(self) -> dict:
         return {"capability": self.contract.capability, "identity_variant": list(self.variant),
-                "plan": [c.view() for c in self.candidates], "dropped": self.dropped}
+                "plan": [c.view() for c in self.candidates], "dropped": self.dropped,
+                **({"health": self.health} if self.health else {})}
 
 
 def sampled_provider_allowed(provider: str, percentages: dict[str, int], *, org_id: int | None,
@@ -279,7 +301,7 @@ def sampled_provider_allowed(provider: str, percentages: dict[str, int], *, org_
 
 def rank(candidates: list[Candidate], *, prefer: list[str] | None = None, exclude: list[str] | None = None,
          given: set[str] | frozenset[str] | None = None, derive: dict[str, str] | None = None,
-         one_subject: bool = False) -> list[Candidate]:
+         one_subject: bool = False, caller_prefer: bool = False) -> list[Candidate]:
     """`given` = the identity keys the CALLER actually sent; `derive` = the contract's derive rules.
     `one_subject` (the contract's flag): every variant names the same person, so expected cost per
     hit leads and specificity only breaks ties. Specificity first sent `{linkedin_url, full_name,
@@ -319,7 +341,17 @@ def rank(candidates: list[Candidate], *, prefer: list[str] | None = None, exclud
         # price alone. It stays reachable, just last among equals.
         cost = c.expected_cost_per_hit
         lead = (len(c.ignored), cost, specificity) if one_subject else (specificity, len(c.ignored), cost)
-        return (tier, pref, *lead,
+        # A child failing or slow right now is asked after the healthy ones of its tier, whatever
+        # order a contract default or a published rule gives it. Only the caller's own prefer
+        # (`caller_prefer`) outranks health, and a team's own key is never asked later for it.
+        unwell = 0 if c.health == "ok" else 1 if c.health == "slow" else 2
+        # A contract default or a published rule orders only children that ask the whole question:
+        # one that ignores a sent filter loses its place in it, so it never answers a looser question
+        # ahead of one that asks the real one. The caller's own prefer still places it.
+        if c.ignored and not caller_prefer:
+            pref = len(prefer)
+        order = (pref, unwell) if caller_prefer else (unwell, pref)
+        return (tier, *order, *lead,
                 c.p50_ms if c.p50_ms is not None else 10**9,
                 c.last_ok_days if c.last_ok_days is not None else 10**6, c.endpoint["id"])
     return sorted(keep, key=key)

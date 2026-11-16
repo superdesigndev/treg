@@ -36,7 +36,7 @@
    }
   ],
   "gaps": [
-   "treg.json secret file missing: .secret/k",
+   "treg.json secret file missing or outside the skill folder: .secret/k",
    "needs env var MISSING_ENV - not found in the env",
    "ships multiple credentials that all map to one header (x-a) - add a treg.json mapping each credential to its own header (e.g. Authorization + developer-token)"
   ],

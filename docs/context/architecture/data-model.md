@@ -192,6 +192,13 @@ Rollups and analytics tables are optional read models: they never determine a mo
   raw requests, responses, contacts or credentials. `RankingsSnapshot` holds no team, key or money,
   so team deletion has nothing to remove.
 
+- **`AgentPayer` / `AgentPayment`**: the payer team of one agent-payments wallet address, and each
+  payment proof it presented (`proof_id` UNIQUE, status `credit|settling|settled|failed`). `asset`,
+  `pay_to` and `expires_at` let the reconciler find the transfer on chain; `stripe_payment_intent` is
+  set once a payment settled to Stripe is recorded there. `governance.teams.make_payer_team` stages
+  `AgentPayer`; `application.agent_payments` is the only writer of `AgentPayment`. Team deletion
+  removes both ([agent payments](agent-payments.md)).
+
 ## Org flow control configuration storage
 
 `OrgFlowControlVersion` is keyed by `(org_id, version)`; the schema enforces positive versions and
@@ -311,7 +318,8 @@ explicitly and the FK cascades as a backstop, so token revocation never 500s on 
 
 ## Caller tags (`X-Treg-Meta`)
 
-`TagSpend` is written only by `domain/money` inside the money transaction; `TagBudget` rows are
+`TagSpend` and `MemberSpend` (one row per metered call of a member whose daily spend limit applies)
+are written only by `domain/money` inside the money transaction; `TagBudget` rows are
 auto-created on first sighting and bound tag cardinality. `RunRecord`, `AsyncTaskRecord`,
 `AsyncResourceRecord` and `CallTask` carry nullable `tags` snapshots; no historical ownership is inferred, so NULL
 snapshots are invisible to pinned readers. The reserve entry's `LedgerEntry.meta.tags` freezes

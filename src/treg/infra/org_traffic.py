@@ -114,6 +114,16 @@ def _emit(event: str, fields: dict) -> None:
         pass
 
 
+def child_attempt(*, org_id: int | None, call_ref: str, parent_ref: str, step: str | None,
+                  endpoint_id: str, provider: str | None, credential_tier: str | None,
+                  status: int, upstream_ms: int | None, duration_ms: int | None) -> None:
+    """One `call_child` line per child attempt the caller chose to record; never a root."""
+    _emit("call_child", {"org_id": org_id, "call_ref": call_ref, "parent_ref": parent_ref,
+                         "step": step, "endpoint_id": endpoint_id, "provider": provider,
+                         "credential_tier": credential_tier, "status": status,
+                         "upstream_ms": upstream_ms, "duration_ms": duration_ms})
+
+
 def emit_snapshot() -> None:
     try:
         _emit("org_traffic_top", {**counters.snapshot(), "window_end_unix_s": time.time()})

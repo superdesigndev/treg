@@ -54,6 +54,23 @@ SHEETS_CLIENT_ID = "treg-sheets"
 SHEETS_SCOPE = "treg:table"
 
 
+# "treg for Microsoft 365 Copilot" (treg's declarative agent, docs/context/architecture/mcp-oauth.md):
+# a first-party CONFIDENTIAL client of the team MCP. Microsoft's token store sends every plugin's
+# code to one shared redirect URI, so that URI cannot tell treg's agent from anyone else's; the
+# client secret is what does.
+M365_CLIENT_ID = "treg-m365-copilot"
+M365_REDIRECT_URI = "https://teams.microsoft.com/api/platform/v1.0/oAuthRedirect"
+
+
+def client_secret_matches(client_id: str, presented: str) -> bool | None:
+    """None when `client_id` is a public client (PKCE alone binds its code); otherwise whether the
+    presented secret is that confidential client's."""
+    if client_id != M365_CLIENT_ID:
+        return None
+    expected = get_settings().m365_client_secret
+    return bool(expected) and hmac.compare_digest(presented.encode(), expected.encode())
+
+
 def sheets_resource_url() -> str:
     return get_settings().public_url.rstrip("/") + "/table"
 
@@ -68,6 +85,28 @@ def scopes_for_resource(version: str = "v1") -> list[str]:
     if version == "v2":
         return [*BASE_SCOPES, DIRECTORY_SCOPE]
     raise ValueError(f"unknown MCP resource version {version!r}")
+
+CATALOG_SCOPE, CALL_SCOPE, READ_SCOPE = BASE_SCOPES
+
+
+def granted_mcp_scope(requested: str, version: str = "v1") -> str:
+    """The scope string an MCP grant records: the supported scopes the client asked for, in canonical
+    order. A request naming none of the permission scopes (no `scope`, or only names treg does not
+    issue) is a request for treg's whole access, which is what MCP clients that omit `scope` expect."""
+    supported = scopes_for_resource(version)
+    asked = set((requested or "").split())
+    granted = [s for s in supported if s in asked]
+    if not any(s in BASE_SCOPES for s in granted):
+        granted = [s for s in supported if s in BASE_SCOPES or s in asked]
+    return " ".join(granted)
+
+
+def mcp_permissions(scope: str) -> frozenset[str]:
+    """The permission scopes an MCP token carries. A grant recorded before scopes were normalized
+    may hold an empty or foreign string; it was consented as full access and keeps it."""
+    held = frozenset(s for s in (scope or "").split() if s in BASE_SCOPES)
+    return held or frozenset(BASE_SCOPES)
+
 
 # Session cookies and identity tokens share this HMAC construction; the marker keeps them apart.
 _TOKEN_TYPE = "treg-mcp-at"

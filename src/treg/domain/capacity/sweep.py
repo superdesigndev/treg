@@ -32,6 +32,7 @@ STATE_TTL_S = 24 * 3600  # a published state outlives many sweeps; `latest_state
 log = logging.getLogger("treg.capacity")
 
 _FORBIDDEN_IN_NOTE = ("key", "token", "secret", "bearer", "sk_", "password")
+_CREDENTIAL_IN_URL = ("api_key=", "apikey=", "token=")
 
 
 def state_key(provider: str) -> str:
@@ -60,6 +61,10 @@ def snapshot_from(provider: str, row: dict, observed_at=None) -> CapacitySnapsho
             note = ""
     if any(word in note.lower() for word in _FORBIDDEN_IN_NOTE):
         note = "(note withheld: looked like a credential)"
+    lowered = error.lower()
+    if (any(mark in lowered for mark in _CREDENTIAL_IN_URL)
+            or any(value in error for value in collectors.credential_values(provider))):
+        error = "collector failed (detail withheld: looked like a credential)"
     value = row.get("value")
     return CapacitySnapshot(
         provider=provider, observed_at=observed_at or utcnow_naive(),

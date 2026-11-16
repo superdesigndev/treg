@@ -1,16 +1,15 @@
 name: PR Slack notice
 
-# Posts a pull request to Slack when it needs a reviewer: when its author requests a review, or
-# when it opens from someone outside the team, who cannot request one. Outside authors are flagged.
-# The team is everyone with write access to this repository. Org membership here is private,
-# so `author_association` can report a member as CONTRIBUTOR.
-# `pull_request_target` lets fork PRs reach the webhook secret; this job never checks out PR code.
+# `pull_request_target` gives fork pull requests the Slack token and never checks out their code.
+# `pull_request_review` on a fork gets no secrets; its message catches up on the next event.
 on:
   pull_request_target:
-    types: [opened, review_requested]
+    types: [opened, reopened, review_requested, review_request_removed, ready_for_review,
+      converted_to_draft, edited, synchronize, closed]
+  pull_request_review:
+    types: [submitted, dismissed]
 
-# Requesting several reviewers fires one event each; the wait below lets the last one cancel the
-# others, so the burst posts one message that lists every reviewer.
+# Requesting several reviewers fires one event each; the wait in the job lets the last one win.
 concurrency:
   group: pr-slack-${{ github.event.pull_request.number }}
   cancel-in-progress: true
@@ -24,47 +23,33 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:
-      - name: Post to Slack
+      - name: Check the Slack settings
+        id: settings
+        env:
+          SLACK_BOT_TOKEN: ${{ secrets.SLACK_PR_BOT_TOKEN }}
+          SLACK_CHANNEL: ${{ vars.SLACK_PR_CHANNEL }}
+        run: |
+          if [ -z "$SLACK_BOT_TOKEN" ] || [ -z "$SLACK_CHANNEL" ]; then
+            echo "::warning::No SLACK_PR_BOT_TOKEN secret or SLACK_PR_CHANNEL variable (a review on a fork pull request gets no secrets); no Slack notice sent"
+            exit 0
+          fi
+          echo "ready=true" >> "$GITHUB_OUTPUT"
+      - uses: actions/checkout@v4
+        if: steps.settings.outputs.ready
+        with:
+          ref: ${{ github.event.repository.default_branch }}
+          sparse-checkout: .github/scripts
+          persist-credentials: false
+      - name: Update the Slack message
+        if: steps.settings.outputs.ready
         env:
           GH_TOKEN: ${{ github.token }}
-          SLACK_WEBHOOK_URL: ${{ secrets.SLACK_PR_WEBHOOK_URL }}
+          # Bot scopes: chat:write, and channels:history (groups:history for a private channel).
+          SLACK_BOT_TOKEN: ${{ secrets.SLACK_PR_BOT_TOKEN }}
+          SLACK_CHANNEL: ${{ vars.SLACK_PR_CHANNEL }}
+          EVENT: ${{ github.event_name }}
           ACTION: ${{ github.event.action }}
           NUMBER: ${{ github.event.pull_request.number }}
         run: |
-          if [ -z "$SLACK_WEBHOOK_URL" ]; then
-            echo "::warning::SLACK_PR_WEBHOOK_URL is not set; no Slack notice sent"
-            exit 0
-          fi
-          if [ "$ACTION" = review_requested ]; then sleep 15; fi
-          pr=$(gh api "repos/$GITHUB_REPOSITORY/pulls/$NUMBER")
-          author=$(jq -r .user.login <<< "$pr")
-          if [ "$(jq -r .user.type <<< "$pr")" = Bot ]; then
-            who=bot
-          else
-            permission=$(gh api "repos/$GITHUB_REPOSITORY/collaborators/$author/permission" --jq .permission)
-            case "$permission" in admin | write) who=team ;; *) who=external ;; esac
-          fi
-          if [ "$ACTION" = opened ] && [ "$who" = team ]; then
-            echo "A team member's PR waits for its author to request a review"
-            exit 0
-          fi
-          jq --arg action "$ACTION" --arg who "$who" --arg repo "$GITHUB_REPOSITORY" '
-            def esc: gsub("&"; "&amp;") | gsub("<"; "&lt;") | gsub(">"; "&gt;");
-            (.author_association | IN("FIRST_TIME_CONTRIBUTOR", "FIRST_TIMER")) as $first
-            | {
-                team: "",
-                bot: ":robot_face: *Bot*",
-                external: ":warning: *External contributor\(if $first then ", first PR" else "" end)*"
-              }[$who] as $tag
-            | ([.requested_reviewers[].login] + [.requested_teams[] | "@" + .slug] | join(", ")) as $reviewers
-            | (
-                (if $action == "review_requested" then ":eyes: *Review requested*" else $tag end)
-                + " · <\(.html_url)|#\(.number) \(.title | esc)>\n"
-                + "by <\(.user.html_url)|\(.user.login)>"
-                + (if $action == "review_requested" and $tag != "" then " (\($tag))" else "" end)
-                + (if $reviewers != "" then " → \($reviewers)" else "" end)
-                + " · \($repo) · +\(.additions) -\(.deletions) in \(.changed_files) file\(if .changed_files == 1 then "" else "s" end)"
-                + (if .draft then " · draft" else "" end)
-              ) as $text
-            | {text: $text, unfurl_links: false}
-          ' <<< "$pr" | curl --fail-with-body -sS -X POST -H 'Content-Type: application/json' --data @- "$SLACK_WEBHOOK_URL"
+          sleep 15
+          .github/scripts/pr-slack.sh

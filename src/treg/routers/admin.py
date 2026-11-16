@@ -20,7 +20,7 @@ from .. import reconcile
 from ..application import enterprise_sso, evidence_retention, referrals as referral_app
 from ..config import get_settings
 from ..infra import kv
-from ..infra.db import get_admin_read_session, get_admin_session
+from ..infra.db import get_admin_read_session, get_admin_report_session, get_admin_session
 from ..domain import money, referrals as referral_domain
 from ..models import ArchiveEndpointStat, ArchiveSnapshot, Bundle, CallRecord, EndpointDayStat, LedgerEntry, Membership, Org, Referral, Secret, Tool, User
 from ..timeutil import utcnow_naive as _utcnow_naive
@@ -470,7 +470,7 @@ reports_router = app
 @app.get("/admin/reconcile/drift")
 async def admin_reconcile_drift(
     since_days: int = 30, min_calls: int = 3,
-    _: str = Depends(require_superadmin), db: AsyncSession = Depends(get_admin_session),
+    _: str = Depends(require_superadmin), db: AsyncSession = Depends(get_admin_report_session),
 ) -> dict:
     """Endpoints whose observed cost has wandered from the catalog's estimate. Only the providers that
     report their own charge in-band appear (see `reconcile.price_drift`)."""
@@ -483,7 +483,7 @@ async def admin_reconcile_drift(
 
 @app.get("/admin/reconcile/spend")
 async def admin_reconcile_spend(
-    since_days: int = 30, _: str = Depends(require_superadmin), db: AsyncSession = Depends(get_admin_session),
+    since_days: int = 30, _: str = Depends(require_superadmin), db: AsyncSession = Depends(get_admin_report_session),
 ) -> dict:
     """Settled platform spend per provider — the number to hold next to the provider's own invoice."""
     since = reconcile.window_start(since_days)
@@ -494,7 +494,7 @@ async def admin_reconcile_spend(
 @app.get("/admin/reconcile/repeats")
 async def admin_reconcile_repeats(
     since_days: int = 30, top: int = 10,
-    _: str = Depends(require_superadmin), db: AsyncSession = Depends(get_admin_session),
+    _: str = Depends(require_superadmin), db: AsyncSession = Depends(get_admin_report_session),
 ) -> dict:
     """How much of the bill was the same query twice — the cache-worthiness measurement."""
     since = reconcile.window_start(since_days)
@@ -505,7 +505,7 @@ async def admin_reconcile_repeats(
 @app.get("/admin/reconcile/asynctasks")
 async def admin_reconcile_asynctasks(
     since_days: int = 30,
-    _: str = Depends(require_superadmin), db: AsyncSession = Depends(get_admin_session),
+    _: str = Depends(require_superadmin), db: AsyncSession = Depends(get_admin_report_session),
 ) -> dict:
     """Deferred holds, absorbed timeouts, usage overruns (team paid more than reserved), block
     shortfalls (platform absorbed), and provider task outcomes."""
@@ -521,7 +521,7 @@ _archive_report_cache: dict = {}
 @app.get("/admin/archive")
 async def admin_archive(
     top: int = 50,
-    _: str = Depends(require_superadmin), db: AsyncSession = Depends(get_admin_session),
+    _: str = Depends(require_superadmin), db: AsyncSession = Depends(get_admin_report_session),
 ) -> dict:
     """Phase 0's read-out, served from the recorder-maintained running totals
     (ArchiveEndpointStat): ~50 tiny rows instead of walking every key and snapshot — the old

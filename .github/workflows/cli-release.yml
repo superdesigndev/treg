@@ -5,7 +5,8 @@ name: CLI release
 # SHA256SUMS with the release key and checks it against the key the binaries carry before it
 # publishes. Publishing moves no registry: /cli/latest answers what TREG_CLI_STABLE_VERSION /
 # TREG_CLI_BETA_VERSION name, so a registry operator decides when a release reaches users. The
-# repository's 0.x tags are the registry's own releases and never run this.
+# published files are then copied to the download mirror (cli-mirror.yml). The repository's 0.x
+# tags are the registry's own releases and never run this.
 on:
   push:
     tags: ["v[1-9]*"]
@@ -50,3 +51,9 @@ jobs:
       - name: Forget the key
         if: always()
         run: rm -f "$RUNNER_TEMP/minisign.key"
+
+  mirror:
+    needs: release
+    uses: ./.github/workflows/cli-mirror.yml
+    with:
+      tag: ${{ github.ref_name }}

@@ -1,0 +1,58 @@
+{
+  "code": 200,
+  "code_desc": false,
+  "success": true,
+  "message": false,
+  "parameters": {
+    "query": "Katz's Delicatessen",
+    "near": "New York, NY"
+  },
+  "data": {
+    "count": 2,
+    "suggestions": [
+      {
+        "platform": "google",
+        "place_id": "ChIJCar0f49ZwokR6ozLV-dHNTE",
+        "lat": 40.722232999999996,
+        "lng": -73.98742899999999,
+        "name": "Katz's Delicatessen",
+        "address": "205 E Houston St, New York, NY 10002",
+        "sab": false,
+        "rating": "4.500",
+        "rating_pct": 0.9,
+        "reviews": 56751,
+        "categories": {
+          "deli": "Deli",
+          "american_restaurant": "American restaurant",
+          "jewish_restaurant": "Jewish restaurant",
+          "restaurant": "Restaurant",
+          "sandwich_shop": "Sandwich shop"
+        },
+        "phone": "(212) 254-2246",
+        "url": "https://katzsdelicatessen.com/",
+        "display_url": "katzsdelicatessen.com",
+        "map_link": "https://www.google.com/maps/search/?api=1&query=Katz%27s+Delicatessen&query_place_id=ChIJCar0f49ZwokR6ozLV-dHNTE"
+      },
+      {
+        "platform": "google",
+        "place_id": "ChIJv00VskxawokRVuxJjyUvOy0",
+        "lat": 40.6913317,
+        "lng": -73.98256119999999,
+        "name": "A Taste of Katz's",
+        "address": "1 Dekalb Ave, Brooklyn, NY 11201",
+        "sab": false,
+        "rating": "3.800",
+        "rating_pct": 0.76,
+        "reviews": 805,
+        "categories": {
+          "sandwich_shop": "Sandwich shop"
+        },
+        "phone": "(212) 254-2246",
+        "url": "https://www.katzsdelicatessen.com/brooklyn",
+        "display_url": "katzsdelicatessen.com",
+        "map_link": "https://www.google.com/maps/search/?api=1&query=A+Taste+of+Katz%27s&query_place_id=ChIJv00VskxawokRVuxJjyUvOy0"
+      }
+    ],
+    "ttr": 2
+  }
+}

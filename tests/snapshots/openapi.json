@@ -106,6 +106,17 @@
             "title": "Daily Call Cap",
             "type": "integer"
           },
+          "daily_spend_cap_micro": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Daily Spend Cap Micro"
+          },
           "local_run_enabled": {
             "default": true,
             "title": "Local Run Enabled",
@@ -937,6 +948,17 @@
             ],
             "title": "Daily Cap Micro"
           },
+          "member_daily_spend_cap_micro": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Member Daily Spend Cap Micro"
+          },
           "platform_overflow": {
             "anyOf": [
               {
@@ -1481,6 +1503,23 @@
           "base_url"
         ],
         "title": "SkillToolIn",
+        "type": "object"
+      },
+      "SpendCapIn": {
+        "properties": {
+          "daily_spend_cap_micro": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Daily Spend Cap Micro"
+          }
+        },
+        "title": "SpendCapIn",
         "type": "object"
       },
       "TagBudgetIn": {
@@ -12821,6 +12860,97 @@
         "summary": "Set Member Cap"
       }
     },
+    "/orgs/{org_id}/members/{user_id}/spend-cap": {
+      "patch": {
+        "description": "Set one member's daily spend limit on treg's keys (admin/owner), in micro-USD. `null` follows\nthe team default, `-1` is no limit, 0 or more is this member's own limit.",
+        "operationId": "set_member_spend_cap_orgs__org_id__members__user_id__spend_cap_patch",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "org_id",
+            "required": true,
+            "schema": {
+              "title": "Org Id",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "path",
+            "name": "user_id",
+            "required": true,
+            "schema": {
+              "title": "User Id",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "header",
+            "name": "x-treg-token",
+            "required": false,
+            "schema": {
+              "default": "",
+              "title": "X-Treg-Token",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "x-treg-org",
+            "required": false,
+            "schema": {
+              "default": "",
+              "title": "X-Treg-Org",
+              "type": "string"
+            }
+          },
+          {
+            "in": "cookie",
+            "name": "treg_session",
+            "required": false,
+            "schema": {
+              "default": "",
+              "title": "Treg Session",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SpendCapIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response Set Member Spend Cap Orgs  Org Id  Members  User Id  Spend Cap Patch",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Set Member Spend Cap"
+      }
+    },
     "/orgs/{org_id}/pins": {
       "delete": {
         "description": "Remove a pin (admin+) — the capability goes back to the caller's choice.\n\nThe capability is a QUERY parameter, not a path segment, and that is a safety decision rather\nthan a style one. As `/orgs/{id}/pins/{capability}` it was one keystroke from a catastrophe:\nevery normalizing HTTP client (httpx included) rewrites `/orgs/1/pins/..` to `/orgs/1` BEFORE\nsending it — which is DELETE /orgs/{id}, the delete-the-team route. `treg org unpin ..` really\ndid destroy an org in testing. Server-side validation cannot defend against it, because the\nrewrite happens in the client; taking the value out of the path removes the class entirely.",
@@ -14152,6 +14282,78 @@
           }
         },
         "summary": "Sso Checkout"
+      }
+    },
+    "/orgs/{org_id}/sso/domains": {
+      "get": {
+        "description": "Read WorkOS's verification state without making the billing card depend on WorkOS.",
+        "operationId": "sso_domains_orgs__org_id__sso_domains_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "org_id",
+            "required": true,
+            "schema": {
+              "title": "Org Id",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "header",
+            "name": "x-treg-token",
+            "required": false,
+            "schema": {
+              "default": "",
+              "title": "X-Treg-Token",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "x-treg-org",
+            "required": false,
+            "schema": {
+              "default": "",
+              "title": "X-Treg-Org",
+              "type": "string"
+            }
+          },
+          {
+            "in": "cookie",
+            "name": "treg_session",
+            "required": false,
+            "schema": {
+              "default": "",
+              "title": "Treg Session",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response Sso Domains Orgs  Org Id  Sso Domains Get",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Sso Domains"
       }
     },
     "/orgs/{org_id}/sso/enforce": {

@@ -23,12 +23,14 @@ related:
 
 # Route rules - a published provider order per segment of a routed capability
 
-A routed call's default provider order comes from its contract (`prefer`, `prefer_when`,
-`prefer_by_domain_suffix` in [catalog.md](catalog.md)). Route rules add one more source an
+A routed call's default provider order comes from its contract (`prefer`,
+`prefer_by_domain_suffix` in [catalog.md](catalog.md)); an order for one kind of request is a route
+rule, since contracts no longer carry `prefer_when`. Route rules add one more source an
 operator changes without a deploy: a rule set published to the shared Redis store, read by every
 worker. A rule says which providers a routed capability asks first for one segment of its calls.
 It only reorders: every other candidate still follows in the contract's order, and the waterfall
-falls through to them as before.
+falls through to them as before. Like the contract's `prefer`, it never lifts a provider that cannot
+express a filter the caller sent ([catalog.md](catalog.md), ranking).
 
 ## Where it applies
 
@@ -36,6 +38,10 @@ falls through to them as before.
 `X-Treg-Route-Prefer`; the header still replaces everything. The rule's `order` goes first, then
 the contract's own default order without the providers already named. Credential tier still
 sorts before any order: a team's own key is asked first whatever a rule says.
+
+A rule orders; it does not keep a failing provider in the plan. Short-window child health
+([catalog.md](catalog.md), "Child guards") still drops a treg-key child failing right now, and asks
+a slow one after the healthy ones of its tier, whatever position a rule gave it.
 
 The segment is what the call event records for the call, computed by the same function
 (`call_events.segment`): `input_type` (the identity variant, `domain+full_name`), and the

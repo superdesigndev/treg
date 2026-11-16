@@ -311,6 +311,9 @@ def people_search(identity: dict) -> dict[str, str]:
         "q_lang": lang(q),
         "q_has_place": has_place(q),
         "name_given": _given(identity.get("full_name")),
+        # Whether the search is scoped to one company: a route rule can then tell `{q, title}`
+        # from `{q, title, company_domain}`, which records the same `input_type` (`q`).
+        "company_given": _given(identity.get("company_domain")),
         "has_keywords": _given(identity.get("keywords")),
     }
     if (code := iso2(country)) is not None:
@@ -404,7 +407,8 @@ def people_search_answer(asked: dict, output: dict) -> dict[str, str]:
 
 
 PEOPLE_SEARCH = Segmenter(
-    version="1",
+    # 2 (2026-11-13): `company_given`.
+    version="2",
     vocab={
         "title_class": TITLE_CLASSES, "title_function": FUNCTIONS, "title_seniority": SENIORITIES,
         "title_lang": LANGS, "title_words": TITLE_WORDS, "has_country": TRUE_FALSE,
@@ -414,6 +418,7 @@ PEOPLE_SEARCH = Segmenter(
         "location_kind": frozenset({"city", "region", "country_name", "unknown", "none"}),
         "limit_bucket": LIMIT_BUCKETS, "q_words": Q_WORDS, "q_lang": LANGS,
         "q_has_place": TRUE_FALSE | {"none"}, "name_given": TRUE_FALSE, "has_keywords": TRUE_FALSE,
+        "company_given": TRUE_FALSE,
     },
     compute=people_search,
     answer=people_search_answer,

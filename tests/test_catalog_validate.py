@@ -594,6 +594,25 @@ def _flat_usage_cost() -> dict:
             "checked": "2026-09-23", "confidence": "documented"}
 
 
+@pytest.mark.parametrize(("mutate", "error", "warned"), [
+    ({}, None, True),
+    ({"worst_case": 0.01}, None, False),
+    ({"worst_case": 0.0001}, "below the hold it raises", False),
+    ({"worst_case": -1}, "must be a positive number", False),
+    ({"worst_case": 0.01, "settle": None, "usage": None, "fallback": None,
+      "reported_charge": {"path": "cost", "unit": "usd"}}, None, False),
+    ({"worst_case": 0.01, "settle": None, "usage": None, "fallback": None},
+     "belongs beside settle: usage or reported_charge", False),
+])
+def test_a_usage_row_declares_the_worst_case_its_hold_covers(mutate, error, warned):
+    cost = {k: v for k, v in (_flat_usage_cost() | mutate).items() if v is not None}
+    errors: list[str] = []
+    warnings: list[str] = []
+    validator.check_cost(cost, "x", errors, warnings, provider="openrouter")
+    assert (error is None and errors == []) or any(error in e for e in errors)
+    assert any("worst_case" in w for w in warnings) is warned
+
+
 def test_flat_price_usage_settlement_is_accepted():
     """A synchronous per-call price may settle the reply's own charge (`_platform_settle` hands
     the buffered body to the usage basis), so no async descriptor or table is required."""
@@ -1501,3 +1520,14 @@ def test_a_respelt_row_fails_unless_the_migration_label_allows_it(tmp_path, monk
         in capsys.readouterr().out.splitlines()
     assert validator.main(["--base", "main", "--allow-respelling", "tikhub"]) == 0
     assert f"WARN {line} (catalog-migration)" in capsys.readouterr().out.splitlines()
+
+
+def test_a_public_providers_every_row_is_anonymous():
+    from types import SimpleNamespace
+    public, key = SimpleNamespace(auth_kind="public"), SimpleNamespace(auth_kind="key")
+    errors = []
+    validator.check_public_provider_row({"platform_auth": "anonymous"}, public, "ok", errors)
+    validator.check_public_provider_row({}, key, "keyed", errors)
+    assert errors == []
+    validator.check_public_provider_row({}, public, "bad", errors)
+    assert errors == ["bad: a public provider's every row must be platform_auth: anonymous"]

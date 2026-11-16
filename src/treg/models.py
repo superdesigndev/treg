@@ -79,7 +79,7 @@ class Org(SQLModel, table=True):
     autotopup_enabled: bool = Field(default=False)
     autotopup_threshold_micro: int = Field(default=0, sa_type=BigInteger)   # 0 = "use the configured default"
     autotopup_amount_micro: int = Field(default=0, sa_type=BigInteger)      # 0 = "use the configured default"
-    autotopup_monthly_cap_micro: int = Field(default=0)  # 0 = the default, `billing.TOPUP_MAX_USD`
+    autotopup_monthly_cap_micro: int = Field(default=0, sa_type=BigInteger)  # 0 = the default, `billing.TOPUP_MAX_USD`
     # How many automatic charges may run in one hour after a SUCCESSFUL one (0 = the configured
     # default). Part of the mandate the team agreed to, so it is stored next to the amounts.
     autotopup_max_per_hour: int = Field(default=0)
@@ -112,6 +112,9 @@ class Org(SQLModel, table=True):
     # raising it past the ceiling is refused — which makes that a conversation with us rather than an
     # env-var edit that lifts the blast-radius rail for every team at once.
     daily_cap_micro: int = Field(default=0, sa_type=BigInteger)
+    # The daily spend limit every member and agent gets unless their own row sets one. NULL = none.
+    # Owners and admins never inherit it (governance/budgets.member_daily_spend_cap).
+    member_daily_spend_cap_micro: int | None = Field(default=None, sa_type=BigInteger)
 
     # Google Ads attribution (see adsconv.py).
     # The click that produced this team, captured as a first-party cookie on landing and persisted
@@ -322,6 +325,9 @@ class Membership(SQLModel, table=True):
     # capped members are counted; the roster's `used_today` still reads the journal.
     calls_today: int = Field(default=0, sa_column=Column("calls_today", Integer, nullable=False, server_default="0"))
     calls_today_day: date | None = Field(default=None)
+    # This member's daily spend limit on treg's keys, in micro-USD. NULL = follow the team default
+    # (`Org.member_daily_spend_cap_micro`), -1 = no limit, 0 or more = this limit.
+    daily_spend_cap_micro: int | None = Field(default=None, sa_type=BigInteger)
     # Per-member tool ACL: NULL = ALL tools in the org (the default — no restriction, no regression); a
     # JSON list of tool NAMES = the ONLY tools this member may call or run. See
     # governance.access._require_tool_access.
@@ -1011,6 +1017,44 @@ class CreditBlock(SQLModel, table=True):
     created_at: NaiveUTC = Field(default_factory=_now)
 
 
+class AgentPayer(SQLModel, table=True):
+    """The payer team of one wallet address that pays per call with no treg account
+    (docs/context/architecture/agent-payments.md). Its membership has no token: only a verified
+    payment from `address` acts for it. Staged only by `governance.teams.make_payer_team`."""
+
+    address: str = Field(primary_key=True)  # lowercase 0x hex, 20 bytes
+    org_id: int = Field(unique=True)
+    created_at: NaiveUTC = Field(default_factory=_now)
+
+
+class AgentPayment(SQLModel, table=True):
+    """One payment proof presented by an agent payer, used at most once (`proof_id` UNIQUE).
+    `credit` = proved key control and drew existing credit, never settled; `settling` = chain
+    settlement started; `settled` = confirmed and topped up under `agentpay:<proof_id>`;
+    `failed` = settlement refused or expired unsettled; `expired` = a `credit` proof that expired
+    and was never settled. `treg-worker agentpay reconcile` resolves a `settling` row from the
+    chain and looks each expired `credit` row up once. Written only by `application/agent_payments.py`."""
+
+    id: int | None = Field(default=None, primary_key=True)
+    proof_id: str = Field(sa_column_kwargs={"unique": True}, index=True)
+    protocol: str          # mpp | x402
+    network: str           # e.g. tempo:42431, eip155:84532
+    payer_address: str = Field(index=True)
+    org_id: int = Field(index=True)
+    amount_micro: int = Field(sa_column=Column("amount_micro", BigInteger, nullable=False))
+    # treg's fee kept from `amount_micro`; the payer team is credited the rest.
+    fee_micro: int = Field(default=0, sa_column=Column("fee_micro", BigInteger, nullable=False))
+    status: str = Field(index=True)
+    asset: str             # the token contract the transfer moves
+    pay_to: str            # the address the transfer credits
+    expires_at: NaiveUTC   # after this the authorization can no longer be settled
+    reference: str | None = Field(default=None)  # the settlement transaction
+    stripe_payment_intent: str | None = Field(default=None)  # settlement `stripe`: the record
+    error: str | None = Field(default=None)
+    created_at: NaiveUTC = Field(default_factory=_now)
+    updated_at: NaiveUTC = Field(default_factory=_now)
+
+
 class LedgerEntry(SQLModel, table=True):
     """APPEND-ONLY money journal: every balance/block movement writes exactly one row, in the same
     transaction as the movement itself. Nothing edits or deletes a row — a correction is a new
@@ -1182,6 +1226,29 @@ class ProviderResource(SQLModel, table=True):
     updated_at: datetime = Field(default_factory=_now)
     deleted_at: datetime | None = Field(default=None, index=True)
     key_slot: str | None = Field(default=None)  # config.PlatformSlot label; NULL = primary
+
+
+class MemberSpend(SQLModel, table=True):
+    """What one metered call cost, attributed to the member who made it. Written by `domain/money`
+    only, in the transaction that moves the money, and only for a member whose daily spend limit
+    applies: the limit is checked against these rows, so an unlimited member writes none.
+
+    Follows its hold like `TagSpend`: the estimate while in flight, the consumed figure (restamped
+    to settle time) once settled, deleted on release.
+    """
+
+    __table_args__ = (Index("ix_memberspend_membership_created", "membership_id", "created_at"),
+                      Index("ix_memberspend_org_created", "org_id", "created_at"))
+
+    id: int | None = Field(default=None, primary_key=True)
+    # No foreign keys (AGENTS.md): team deletion clears these rows (ORG_SCOPED_MODELS), and removing
+    # a member leaves today's rows for the ledger to reconcile against.
+    org_id: int
+    membership_id: int
+    hold_id: str = Field(index=True)
+    settled: bool = Field(default=False)
+    amount_micro: int = Field(default=0, sa_type=BigInteger)
+    created_at: NaiveUTC = Field(default_factory=_now)
 
 
 class TagSpend(SQLModel, table=True):

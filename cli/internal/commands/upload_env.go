@@ -120,10 +120,14 @@ func (e *Env) uploadEnv(f uploadFlags, envPath string) error {
 					continue
 				}
 			}
-			if id, exists := tools[a.ToolName]; exists {
+			found := a.ToolName
+			if _, ok := tools[found]; !ok {
+				found = providers.LegacySlug(a.Detection.Provider)
+			}
+			if id, exists := tools[found]; exists {
 				if !f.replace {
-					outf("  · %s: already registered (use --replace)\n", a.ToolName)
-					outf("    ↗ %s\n", e.detailURL("tool", a.ToolName))
+					outf("  · %s: already registered (use --replace)\n", found)
+					outf("    ↗ %s\n", e.detailURL("tool", found))
 					continue
 				}
 				if err := e.remove(c, idPath("/tools/", id)); err != nil {

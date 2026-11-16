@@ -151,7 +151,10 @@ URL does not establish replication; operators provision a compatible schema and 
 
 `/admin/errors` reads evidence from this datasource with a 3-second statement limit (it shares the
 read pool with dashboard reports); authorization stays on the admin pool and releases its connection
-first, and with no read URL it keeps using the admin pool. Further callers must tolerate replica lag
+first, and with no read URL it keeps using the admin pool. `/admin/archive` and
+`/admin/reconcile/*` read the same datasource through `get_admin_report_session`: one report per
+process, a 60-second statement limit, the same fallback to the admin pool (where that limit is
+what protects the primary). Further callers must tolerate replica lag
 and keep writes, cursor advancement and concurrency control on the primary. `connection_budget()`
 covers only primary pools: budget the read pool against its own target, and add both when they share
 a server. Schema upgrades, startup verification and test resets target the primary.
@@ -189,8 +192,10 @@ meaning is not obvious from the field:
 Credentials stay in the deployment secret store.
 
 **Public host aliases.** `TREG_PUBLIC_HOST_ALIASES` is the complete JSON list of extra hostnames
-accepted for social-login callbacks, MCP hosts, origins and token audiences, and the hub self-relay
-guard; setting it replaces the list. It does not change `TREG_PUBLIC_URL`, canonical links or
+accepted for social-login callbacks, MCP hosts, origins and token audiences, the hub self-relay
+guard, and the host of invite-email links and Stripe return URLs; setting it replaces the list.
+Those links never take any other `Host`: `routers/auth_helpers.trusted_public_base` falls back to
+`TREG_PUBLIC_URL`, so a forged header cannot send an invite token elsewhere. It does not change `TREG_PUBLIC_URL`, canonical links or
 provider-connect callbacks. Register each alias's `/auth/google/callback` and
 `/auth/github/callback` with the OAuth clients first, and list it in Turnstile's widget hostnames
 (a non-empty `TREG_TURNSTILE_HOSTNAMES` overrides the server-side fallback and must list every
@@ -212,6 +217,22 @@ secret stable: changing it breaks every join across the change.
 `TREG_CLIENT_ID_SECRET` is set on the processes that relay calls. Turn it on after the provider is
 ready to read the header, and keep the secret stable: changing it gives every team a new code at
 every provider.
+
+**Agent payments.** `TREG_AGENT_PAYMENTS_ENABLED` lets a caller with no treg credential pay a
+catalog call with MPP or x402. It needs `TREG_AGENT_PAYMENTS_SECRET` (32+ characters), at least one
+of `TREG_AGENT_PAYMENTS_MPP_ENABLED` / `TREG_AGENT_PAYMENTS_X402_ENABLED`, and each enabled rail's
+recipient address; the defaults are testnets, and startup names every missing setting in one error.
+On mainnet the x402 facilitator is Coinbase's
+(`TREG_AGENT_PAYMENTS_X402_FACILITATOR_URL=https://api.cdp.coinbase.com/platform/v2/x402`) and needs
+`TREG_AGENT_PAYMENTS_X402_CDP_API_KEY_ID` and `_SECRET`, plus Base mainnet USDC as
+`TREG_AGENT_PAYMENTS_X402_ASSET` with `TREG_AGENT_PAYMENTS_X402_ASSET_NAME="USD Coin"`.
+`TREG_AGENT_PAYMENTS_SETTLEMENT` is `wallet` (the recipients are treg's own wallet) or `stripe` (they
+are Stripe deposit addresses from `treg-worker agentpay stripe-address`; needs
+`TREG_AGENT_PAYMENTS_STRIPE_SECRET_KEY`, the key of the Stripe account with stablecoins enabled, or
+`TREG_STRIPE_SECRET_KEY` when that is the same account, and an explicit
+`TREG_AGENT_PAYMENTS_TEMPO_CURRENCY`). Tempo's hosted RPC takes `TREG_AGENT_PAYMENTS_TEMPO_RPC_URL`
+with `TREG_AGENT_PAYMENTS_TEMPO_RPC_API_KEY`. See
+[agent payments](../architecture/agent-payments.md).
 
 ## Optional money admission
 
@@ -297,7 +318,11 @@ unencrypted `minisign -G -W` key) and the `TREG_UPDATE_KEY` variable (its public
 channel whose version the operator names (`TREG_CLI_BETA_VERSION` for beta,
 `TREG_CLI_STABLE_VERSION` for stable) moves only when the operator moves it; one
 left empty, or at a 0.x value, follows the newest GitHub release
-([cli-binary](../interface/cli-binary.md)).
+([cli-binary](../interface/cli-binary.md)). A download mirror needs the `cli-mirror` environment
+(variables `R2_ENDPOINT` and `R2_BUCKET`, secrets `R2_ACCESS_KEY_ID` and `R2_SECRET_ACCESS_KEY` for
+an S3-compatible bucket served publicly) and `TREG_CLI_MIRROR_BASE_URL` naming where that bucket's
+`cli/v{version}` is served; copy any release published before with the `CLI mirror` workflow, and
+name a version on a channel only once its copy is there.
 
 ## Audit, archive and spool back-pressure
 
@@ -364,3 +389,9 @@ job's credentials. `treg-worker --help` lists them; what follows is what a sched
   (spending the maker's balance); health is derived from the last three runs.
 - **`jev xboost`** needs `TREG_JEV_TREG_TOKEN` (a member token, so its spend is an ordinary bill) and
   `TREG_AI_GATEWAY_API_KEY`, also set on the web service for the visitor judge endpoint.
+- **`agentpay reconcile`** resolves agent payments whose settlement went unanswered (older than
+  `TREG_AGENT_PAYMENTS_RECONCILE_MIN_AGE_S`, default 300) from the chain, and with settlement
+  `stripe` records settled payments to Stripe. Run it every few minutes when agent payments are on;
+  it exits at once when they are off. **`agentpay stripe-address --network tempo|base`** creates one
+  reusable Stripe crypto deposit address and prints it (setup for settlement `stripe`; run once per
+  network).

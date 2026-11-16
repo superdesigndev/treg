@@ -134,6 +134,13 @@ func (e *Env) uploadLLM(c *api.Client, unknowns []providers.Detection, envText s
 					return err
 				}
 			}
+			if legacy := providers.LegacySlug(cmp.Or(row.String("provider"), v)); legacy != toolName {
+				if id, ok := tools[legacy]; ok && ojson.Truthy(id) {
+					if err := e.remove(c, idPath("/tools/", id)); err != nil {
+						return err
+					}
+				}
+			}
 			if err := e.remove(c, idPath("/secrets/", sid)); err != nil {
 				return err
 			}

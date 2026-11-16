@@ -3,27 +3,48 @@ package app
 import (
 	"bytes"
 	"encoding/json/v2"
+	"fmt"
 	"io"
+	"net/http"
+	"net/http/httptest"
 	"os"
 	"path/filepath"
 	"reflect"
+	"runtime"
 	"strings"
 	"testing"
+
+	"github.com/superdesigndev/treg/cli/internal/buildinfo"
+	"github.com/superdesigndev/treg/cli/internal/update"
 )
 
-// lastEvent runs one invocation in a fresh config directory and returns the properties of the
-// usage event it queued.
+// lastEvent runs one invocation that ends in a usage error, in a fresh config directory, and
+// returns the properties of the usage event it queued.
 func lastEvent(t *testing.T, argv ...string) map[string]any {
 	t.Helper()
+	_, p := queuedEvent(t, "http://127.0.0.1:9", usageError, argv...)
+	if p["command"] != "usage_error" {
+		t.Fatalf("%v recorded %v", argv, p["command"])
+	}
+	return p
+}
+
+// queuedEvent runs one invocation against registry in a fresh config directory, and returns the
+// name and properties of the last usage event it queued.
+func queuedEvent(t *testing.T, registry string, wantCode int, argv ...string) (string, map[string]any) {
+	t.Helper()
+	flush := startFlush
+	startFlush = func(string, http.RoundTripper) {}
+	t.Cleanup(func() { startFlush = flush })
 	dir := t.TempDir()
 	t.Setenv("TREG_CONFIG", filepath.Join(dir, "config.json"))
-	t.Setenv("TREG_URL", "http://127.0.0.1:9")
+	t.Setenv("TREG_URL", registry)
 	t.Setenv("TREG_TELEMETRY", "")
 	t.Setenv("DO_NOT_TRACK", "")
 	t.Setenv("TREG_NO_AUTO_UPDATE", "1")
 	t.Setenv("TREG_SESSION_ID", "task-1")
-	if code := Main(argv, io.Discard); code != usageError {
-		t.Fatalf("%v exited %d, want %d", argv, code, usageError)
+	if code := Main(argv, io.Discard); code != wantCode {
+		t.Fatalf("%v exited %d, want %d", argv, code, wantCode)
 	}
 	raw, err := os.ReadFile(filepath.Join(dir, "telemetry-queue.jsonl"))
 	if err != nil {
@@ -37,39 +58,93 @@ func lastEvent(t *testing.T, argv ...string) map[string]any {
 	if err := json.Unmarshal(lines[len(lines)-1], &event); err != nil {
 		t.Fatal(err)
 	}
-	if event.Properties["command"] != "usage_error" {
-		t.Fatalf("%v recorded %v", argv, event.Properties["command"])
-	}
-	return event.Properties
+	return event.Event, event.Properties
 }
 
-func TestAUsageErrorNamesOnlyKnownCommands(t *testing.T) {
+func TestABackgroundUpdateRecordsHowItEnded(t *testing.T) {
+	defer func(v string) { buildinfo.Version = v }(buildinfo.Version)
 	for _, c := range []struct {
-		argv        []string
-		in, missing string
-		options     string
+		build, answer string
+		code          int
+		want          map[string]any
 	}{
-		{[]string{"with", "--", "ls"}, "", "with", ""},
-		{[]string{"claude"}, "", "with", ""},
-		{[]string{"hub", "ls"}, "", "hub", ""},
-		{[]string{"frobnicate"}, "", "", ""},
-		{[]string{"org", "budgets"}, "org", "org_budgets", ""},
-		{[]string{"org", "frobnicate"}, "org", "", ""},
-		{[]string{"org", "ls", "--bogus"}, "org_ls", "", "--bogus"},
-		{[]string{"org", "join"}, "org_join", "", ""},
+		{"1.0.0", "502", 1, map[string]any{"outcome": "check_failed", "detail": "http_502", "from_version": "1.0.0"}},
+		{"9.0.0", "1.2.3", 0, map[string]any{"outcome": "up_to_date", "to_version": "1.2.3"}},
+		{"1.0.0", "1.2.3", 1, map[string]any{"outcome": "failed", "reason": "no_key", "to_version": "1.2.3"}},
+	} {
+		buildinfo.Version = c.build
+		registry := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			if c.answer == "502" {
+				w.WriteHeader(502)
+				return
+			}
+			archive := update.ArchiveName(c.answer, runtime.GOOS, runtime.GOARCH)
+			fmt.Fprintf(w, `{"version":%q,"archive":%q,"url":"http://x.invalid/%s"}`, c.answer, archive, archive)
+		}))
+		name, p := queuedEvent(t, registry.URL, c.code, "__update")
+		registry.Close()
+		if name != "cli_update_completed" {
+			t.Fatalf("%s: queued %s", c.answer, name)
+		}
+		for k, v := range c.want {
+			if p[k] != v {
+				t.Errorf("%s on %s: %s = %v, want %v (event %v)", c.answer, c.build, k, p[k], v, p)
+			}
+		}
+	}
+}
+
+func TestACallThatGotNoAnswerSaysWhy(t *testing.T) {
+	for _, c := range []struct {
+		argv []string
+		want string
+	}{
+		{[]string{"call", "tikhub.tiktok.user.profile", "--query", "no-equals-sign"}, "bad_input"},
+		{[]string{"call", "tikhub.tiktok.user.profile", "--data", "@/nonexistent/body.json"}, "bad_input"},
+		{[]string{"call", "tikhub.tiktok.user.profile"}, "connection_refused"},
+	} {
+		_, p := queuedEvent(t, "http://127.0.0.1:9", 1, c.argv...)
+		if p["command"] != "call" || p["error"] != c.want || p["status_class"] != nil {
+			t.Errorf("%v: command %v error %v status_class %v, want error %s",
+				c.argv, p["command"], p["error"], p["status_class"], c.want)
+		}
+	}
+}
+
+func TestAUsageErrorNamesOnlyCommandWords(t *testing.T) {
+	for _, c := range []struct {
+		argv                 []string
+		in, missing, unknown string
+		options              string
+	}{
+		{[]string{"with", "--", "ls"}, "", "with", "", ""},
+		{[]string{"claude"}, "", "with", "", ""},
+		{[]string{"hub", "ls"}, "", "hub", "", ""},
+		{[]string{"frobnicate"}, "", "", "frobnicate", ""},
+		{[]string{"org", "budgets"}, "org", "org_budgets", "", ""},
+		{[]string{"org", "frobnicate"}, "org", "", "frobnicate", ""},
+		{[]string{"skill", "frob"}, "skill", "", "frob", ""},
+		{[]string{"org", "ls", "--bogus"}, "org_ls", "", "", "--bogus"},
+		{[]string{"org", "join"}, "org_join", "", "", ""},
+		{[]string{"whoami", "acme-corp"}, "whoami", "", "", ""},
+		{[]string{"sk-live-4f9a"}, "", "", "", ""},
+		{[]string{"Search"}, "", "", "", ""},
+		{[]string{"/tmp/notes"}, "", "", "", ""},
+		{[]string{"abcdefghijklmnopqrstuvwxy"}, "", "", "", ""},
 	} {
 		p := lastEvent(t, c.argv...)
 		in, _ := p["in_command"].(string)
 		missing, _ := p["missing_command"].(string)
+		unknown, _ := p["unknown_command"].(string)
 		var options []string
 		if list, ok := p["options"].([]any); ok {
 			for _, o := range list {
 				options = append(options, o.(string))
 			}
 		}
-		if in != c.in || missing != c.missing || strings.Join(options, ",") != c.options {
-			t.Errorf("%v: in_command %q missing_command %q options %v, want %q %q %q",
-				c.argv, in, missing, options, c.in, c.missing, c.options)
+		if in != c.in || missing != c.missing || unknown != c.unknown || strings.Join(options, ",") != c.options {
+			t.Errorf("%v: in_command %q missing_command %q unknown_command %q options %v, want %q %q %q %q",
+				c.argv, in, missing, unknown, options, c.in, c.missing, c.unknown, c.options)
 		}
 	}
 }

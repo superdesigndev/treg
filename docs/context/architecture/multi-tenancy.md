@@ -48,6 +48,7 @@ sources:
   - frontend/tests/captcha.test.ts
   - src/treg/routers/orgs.py
   - src/treg/routers/resources.py
+  - src/treg/application/connect.py
   - src/treg/domain/tools/bundles.py
   - src/treg/infra/db.py
   - src/treg/alembic/versions/0017_async_task_record.py
@@ -73,8 +74,8 @@ host passthrough to the org ([proxy-model](proxy-model.md)). Health runs take an
 - **`Org.public_demo`** marks a team whose member token is published: non-admin members are locked to
   `/call` plus reads and may never act as a user (`require_member` / `require_identity`).
 - **`ApiKey`** resolves a credential to a membership; the membership stays the only source of role,
-  tool and project access, local-run permission, daily cap and billing identity, so more keys never
-  mean more quota. A known disabled or revoked key never falls back to `Membership.token_hash`
+  tool and project access, local-run permission, daily call cap, daily spend limit and billing
+  identity, so more keys never mean more quota. A known disabled or revoked key never falls back to `Membership.token_hash`
   (legacy, left empty for new memberships). A signed Default token carries the row's team-local
   generation; rotation increments it, invalidating the prior token without touching other teams.
   After membership removal the detached, revoked Default row keeps the old token unauthorized.
@@ -86,7 +87,8 @@ host passthrough to the org ([proxy-model](proxy-model.md)). Health runs take an
   `email_token_hash` is the second secret in the emailed link; `/auth/invite-signin` resolves it
   to the invitee's address and redirects to the login with it prefilled, never a session, because
   an emailed secret is only as private as every system the mail passes through and any team admin
-  can make one be sent to any address. The invite carries the access (`tool_access`, `project_access`, `local_run_enabled`)
+  can make one be sent to any address. The link's host is `public_url` or a configured alias, never
+the request's raw `Host`. The invite carries the access (`tool_access`, `project_access`, `local_run_enabled`)
   copied onto the membership at both accept doors.
 - **`Project`** is an optional label and ACL scope, not a namespace: `Tool.name` stays unique per
   `(org_id, name)`, `Tool.project_id` NULL means org-wide, and secrets stay org-level because one
@@ -121,7 +123,10 @@ dependency commits; it never extends the auth transaction.
 
 - **Roles.** Admin and owner manage any resource in the org; a member only what it created
   (`resource.owner == caller.email`). Another org's resource is 404, a failed role gate 403. A viewer
-  may call and list only (`_require_can_register`).
+  may call and list only (`_require_can_register`). A tool name containing a dot is the shape of a
+  catalog or hub id, and an own tool of that name answers every call to the id in the team, so
+  choosing one needs admin or owner (`_require_admin_for_dotted_names`, on `POST /tools` and skill
+  registration); an OAuth connection name, like a rename, must pass `_valid_tool_name`.
 - **The roster is admin-only** (`list_members`); any member may read the team's human owners and
   admins (`list_admins`, email and role only) so a member out of credit knows whom to ask.
 - **Two ACL axes, ANDed** (`_tool_usable` = `_tool_allowed` and `_project_allowed`). Both are
@@ -232,6 +237,16 @@ name, so nothing gates on it. Scoping a detected agent means minting it a token.
   or a catalog provider or platform (a hub tool id is `<team slug>.<name>`), matching how text reads
   (NFKC, lookalike letters, leetspeak, separators stripped). Checked at `create_org` and `rename_org`; a superadmin may bypass.
 - **Uniqueness races** on membership or slug return 409, never 500.
+
+## Agent payer teams
+
+`governance.teams.make_payer_team` creates the team of one agent-payments wallet address: a
+machine user `<address>@payers.treg.local` (`identity.access.PAYER_DOMAIN`, counted by
+`_is_machine_email` and `api_keys.is_machine_email`, so no sign-in door and no signup credit), one
+`member` membership with an empty `token_hash`, and the `AgentPayer` row. No token or session can
+reach it; `routers.call._paid_call` acts for it only after a verified payment from that address
+([agent payments](agent-payments.md)). `AgentPayer` and `AgentPayment` are in
+`ORG_SCOPED_MODELS`, so a deleted payer team takes them with it.
 
 ## Enterprise SSO
 

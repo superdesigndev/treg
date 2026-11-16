@@ -349,6 +349,14 @@ def test_a_fallback_beside_its_equal_value_folds_its_note_into_the_price():
         codemod.rewrite({"id": "demo.x", "cost": {**cost, "value": 0.001}}, provider="demo", check_branches=False)
 
 
+def test_a_worst_case_moves_beside_its_settle_form():
+    cost = {"type": "per_call", "value": 0.0005, "settle": "usage", "worst_case": 0.01,
+            "usage": {"path": "usage.cost", "unit": "usd"}, "source": "docs",
+            "source_url": "https://example.com", "checked": "2026-09-23", "confidence": "verified"}
+    change = codemod.rewrite({"id": "demo.x", "cost": cost}, provider="demo", check_branches=False)
+    assert change.keys["settle"] == {"usage": {"unit": "usd", "path": "response.usage.cost"}, "worst_case": "0.01"}
+
+
 @pytest.mark.parametrize("provider", ["hunter", "tikhub"])
 def test_the_codemod_runs_on_the_real_catalog(provider, capsys):
     assert codemod.main(["--provider", provider]) == 0

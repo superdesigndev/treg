@@ -64,7 +64,7 @@ treg login --email you@example.com        # emailed 6-digit code (register-or-lo
 
 | Command | What it does |
 |---|---|
-| `treg mcp install` | writes the logged-in team's key as an `Authorization` header into every supported agent (Claude Code, Cursor, Codex, opencode). Needs a valid login; restart the agent afterward. |
+| `treg mcp install` | writes the logged-in team's key as an `Authorization` header into every supported agent (Claude Code, Cursor, Codex, opencode, and with the binary CLI GitHub Copilot). Needs a valid login; restart the agent afterward. |
 | `treg mcp install --oauth` | repairs a dead saved key: rewrites those entries to the URL only so each client can authorize itself. Needs no login; restart each agent, then authorize treg in it. |
 
 ## Teams / orgs
@@ -191,10 +191,12 @@ supported generation, prosody, output-format, bitrate, sample-rate, latency, and
 **How a catalogued call is served — the credential ladder, in order:**
 
 1. the team registered its own tool for that provider → that tool, that key;
-2. the team stored a secret for the provider → injected through a virtual tool;
-3. neither → **treg's own key**, metered against the team's prepaid balance.
+2. the team stored a secret for the provider → injected through a virtual tool (never for a keyless
+   public API, which has nothing to connect);
+3. neither, and the endpoint has a verified public route → **no provider key**, free;
+4. otherwise → **treg's own key**, metered against the team's prepaid balance.
 
-Rung 3 only applies where treg has both a key and a published price for that endpoint; anything
+Rung 4 only applies where treg has both a key and a published price for that endpoint; anything
 unpriced is refused rather than served, and you are told to connect your own key. Your own key is
 never billed to the balance.
 
@@ -219,7 +221,7 @@ See `treg feedback --help` and your registry's `/feedback.md` for details.
 
 ## Balance & top-up
 
-Only calls on **treg's key** (rung 3 above) cost balance. Everything else — your own keys, your own
+Only calls on **treg's key** (rung 4 above) cost balance. Everything else — your own keys, your own
 tools, vendor CLIs — is free of it.
 
 | Command | Options | What it does |
@@ -629,10 +631,12 @@ runs.
 ## Anonymous usage analytics
 
 When using treg.to, the CLI sends basic usage through PostHog: command name, success/exit code,
-duration, CLI version and OS, linked to a random local installation ID. It does not send command
-arguments, credentials, request/response content, email or team identifiers. Help and argument
-parsing errors are not tracked. Analytics adds at most 1 second of waiting at command exit;
-slow or offline delivery may be dropped.
+duration, CLI version and OS, linked to a random local installation ID. A call adds the endpoint id
+it named and its HTTP status class. A usage error adds the option names it refused, never their
+values, and, from the binary CLI, a word it refused as a command when that word is only lowercase
+letters and hyphens. It does not send other arguments, credentials, request/response content, email
+or team identifiers. Analytics adds at most 1 second of waiting at command exit; slow or offline
+delivery may be dropped.
 
 Disable it with `export TREG_TELEMETRY=0` (or `DO_NOT_TRACK=1`). Self-hosted registries default to
 no analytics; set `TREG_CLI_POSTHOG_KEY` and optionally `TREG_CLI_POSTHOG_HOST` to use your own
@@ -640,4 +644,7 @@ PostHog project. The random ID is stored in `analytics-id` beside the CLI config
 
 The `install.sh` installer reports the same way: each run sends whether it started, installed or
 failed (with a fixed reason), the installer it used (uv, pipx or pip3), the CLI version before and
-after, OS and architecture, under the same installation ID. The same two variables turn it off.
+after, OS and architecture, under the same installation ID. The binary CLI's installers also send
+whether the download came from the release or its mirror and, when one failed, a fixed error kind
+(curl's exit code, the HTTP status or the network error's name) and how many seconds it took. The
+same two variables turn it off.
