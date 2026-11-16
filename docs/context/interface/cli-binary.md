@@ -143,7 +143,9 @@ of new installs (no working `treg` on the machine) to the binary instead, bucket
   suite compares the parsed values. `call --data` is sent as written, so its archive key does not
   depend on either CLI. A text file the CLI reads (`secret add --file`, `--env-file`, a skill's
   secret file) loses a byte-order mark and is converted from UTF-16 behind one, as Windows
-  PowerShell 5.1 writes them; any other text that is not UTF-8 is refused. A JSON argument that does not parse is refused in the decoder's words. A number argument is what Go's
+  PowerShell 5.1 writes them; any other text that is not UTF-8 is refused. A skill's `treg.json`
+  secret `file:` must stay inside the skill folder after symlinks resolve, as in the Python CLI
+  (`skillscan.ResolveSecretPath`, `ErrSecretPath`); a path outside is a gap and is never read. A JSON argument that does not parse is refused in the decoder's words. A number argument is what Go's
   `strconv` reads: no surrounding spaces, no underscores in an integer, no negative count, where the
   Python CLI took whatever `int()` and `float()` take. A path is named as it was given, not
   normalized.
