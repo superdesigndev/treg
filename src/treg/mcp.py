@@ -208,6 +208,55 @@ class _UnknownCallArguments:
                               structured_content=refusal, is_error=True)
 
 
+class _OAuthScopeGate:
+    """Refuse a tool call whose OAuth access token does not carry the scope that tool needs.
+
+    The scope is the permission the person granted at consent; a token reaches the internal API as
+    a full identity, so this is the only place it can be held to it. Per-org and identity tokens
+    carry no OAuth scope and pass. A tool missing from `required` is refused to OAuth tokens."""
+
+    def __init__(self, required: dict[str, str]) -> None:
+        self._required = required  # tool name -> the scope it needs
+
+    async def __call__(
+        self, ctx: ServerRequestContext[Any, Any], call_next: CallNext
+    ) -> HandlerResult:
+        if ctx.method != "tools/call":
+            return await call_next(ctx)
+        headers = getattr(getattr(ctx, "request", None), "headers", None) or {}
+        raw = headers.get("authorization") or headers.get("Authorization") or ""
+        claims = _oauth_claims(raw.removeprefix("Bearer ").removeprefix("bearer ").strip())
+        if claims is None:
+            return await call_next(ctx)
+        from .domain.identity import mcp_oauth
+        name = (ctx.params or {}).get("name")
+        needed = self._required.get(name)
+        if needed is not None and needed in mcp_oauth.mcp_permissions(claims.get("scope", "")):
+            return await call_next(ctx)
+        base = get_settings().public_url.rstrip("/")
+        refusal = {
+            "error": "insufficient_scope",
+            "detail": (f"{name} needs the {needed or 'a treg'} scope, which this grant does not carry; "
+                       f"nothing was sent. Re-authorize at {base}/oauth/authorize asking for it."),
+            "required_scope": needed,
+        }
+        return CallToolResult(content=[TextContent(type="text", text=json.dumps(refusal))],
+                              structured_content=refusal, is_error=True)
+
+
+_V1_TOOL_SCOPES = {
+    "catalog_search": "treg:catalog", "catalog_get": "treg:catalog", "catalog_request": "treg:catalog",
+    "feedback": "treg:catalog", "review": "treg:catalog",
+    "call": "treg:call", "call_media": "treg:call", "hub_create": "treg:call", "hub_update": "treg:call",
+    "balance": "treg:read", "my_tools": "treg:read", "resources_list": "treg:read", "hub_mine": "treg:read",
+}
+_V2_TOOL_SCOPES = {
+    "catalog_search": "treg:catalog", "catalog_get": "treg:catalog", "catalog_request": "treg:catalog",
+    "catalog_call_read": "treg:call", "catalog_call_write": "treg:call",
+    "balance": "treg:read",
+}
+
+
 _HUB_TOOL_NAMES = frozenset({"hub_create", "hub_update", "hub_mine"})
 
 # OpenAI's clients: ChatGPT and its plugin reviewer send `openai-mcp/...`, Codex `codex-mcp-client/...`.
@@ -331,7 +380,7 @@ mcp = MCPServer(
         "Wan) and voice), plus your team's own tools."
     ),
     instructions=f"{_BASE_INSTRUCTIONS} {_REVIEW_INSTRUCTION}",
-    middleware=[_StaticSurfaceCapabilities(),
+    middleware=[_StaticSurfaceCapabilities(), _OAuthScopeGate(_V1_TOOL_SCOPES),
                 _UnknownCallArguments({"call": "call", "call_media": "call_media"}),
                 _HubToolsGate(), _OpenAIClientGate()],
 )
@@ -1930,7 +1979,7 @@ directory_mcp = MCPServer(
         "several providers cover one job, catalog_get ranks them by measured success, speed and "
         "price; you pick."
     ),
-    middleware=[_StaticSurfaceCapabilities(), _UnknownCallArguments({
+    middleware=[_StaticSurfaceCapabilities(), _OAuthScopeGate(_V2_TOOL_SCOPES), _UnknownCallArguments({
         "catalog_call_read": "directory_catalog_call_read",
         "catalog_call_write": "directory_catalog_call_write",
     })],

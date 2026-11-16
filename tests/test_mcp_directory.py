@@ -766,3 +766,14 @@ async def test_v2_does_not_list_describe_or_call_generation_endpoints(clients):
         assert v2_search["hint"] == mcp._DIRECTORY_HIDDEN_NOTE
     assert mcp._DIRECTORY_HIDDEN_NOTE in v2_get["error"]
     assert mcp._DIRECTORY_HIDDEN_NOTE in v2_call["error"] and "status" not in v2_call
+
+
+async def test_v2_holds_an_oauth_token_to_its_granted_scope():
+    from treg.domain.identity import mcp_oauth
+    token = mcp_oauth.make_access_token(user_id=1, org_id=1, audience=mcp_oauth.mcp_resource_url("v2"),
+                                        scope="treg:catalog treg:directory")
+    async with directory_session() as client:
+        for name, args in (("catalog_call_read", {"endpoint_id": "exa.search"}),
+                           ("catalog_call_write", {"endpoint_id": "exa.search"}), ("balance", {})):
+            out = await _call_tool(client, name, args, token)
+            assert out.get("error") == "insufficient_scope", (name, out)

@@ -322,6 +322,19 @@ registered itself, because DCR is open to any name. It carries the team picker w
 balance: a person in several teams is asked, not guessed at, and showing the balance prevents picking
 an empty team.
 
+### Scopes are what was consented, and every tool call is held to them
+
+`treg:catalog` (search, read prices, feedback), `treg:call` (spend the balance, use the team's keys,
+publish hub tools) and `treg:read` (balance, the team's own tools, its provider resources) are the
+permission scopes. `mcp_oauth.granted_mcp_scope` records the supported scopes a client asked for;
+a request naming none of them is a request for all three, which is what clients that omit `scope`
+expect. The consent page lists only the granted lines, and the token response returns the granted
+string. A token reaches the internal API as a full identity, so `mcp._OAuthScopeGate` refuses a
+`tools/call` on either surface whose token lacks the tool's scope (`_V1_TOOL_SCOPES`,
+`_V2_TOOL_SCOPES`; a tool missing from the map is refused to OAuth tokens). A grant recorded before
+normalization with an empty or foreign scope was consented as full access and keeps it
+(`mcp_permissions`). Per-org and identity tokens carry no OAuth scope and are not gated.
+
 Approval is a same-origin POST (a GET that granted access could be triggered by any navigating page),
 and the page inherits `X-Frame-Options: DENY`. `Origin: null` is accepted only when `Sec-Fetch-Site`
 corroborates it: browsers report an opaque origin after some redirect chains, such as a sign-in

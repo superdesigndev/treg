@@ -593,7 +593,7 @@ async def test_the_consent_page_cannot_be_framed(clients):
 
 # ---- the token has to WORK, not merely validate ---------------------------------------------
 
-async def _grant(clients, email):
+async def _grant(clients, email, scope=None):
     """Run the whole flow and return the access token, plus the team it was granted for."""
     client_id = await _register(clients)
     cookie, org_id = await _signed_in(clients, email)
@@ -601,6 +601,8 @@ async def _grant(clients, email):
     params = {"client_id": client_id, "redirect_uri": "https://client.test/cb",
               "response_type": "code", "code_challenge": challenge,
               "code_challenge_method": "S256", "resource": mcp_oauth.mcp_resource_url()}
+    if scope is not None:
+        params["scope"] = scope
     r = await clients.post("/oauth/authorize", data={**params, "org_id": org_id, "decision": "allow"},
                            follow_redirects=False)
     code = r.headers["location"].split("code=")[1].split("&")[0]
@@ -1349,3 +1351,79 @@ async def test_a_moved_grant_keeps_retired_token_team_provenance(clients, monkey
         "client_id": client_id})
     assert replay.status_code == 400 and "already used" in replay.json()["error_description"]
     assert recorded["org_id"] == original_org_id
+
+
+# ---- scope: a grant does only what it was granted ------------------------------------------
+
+def test_the_granted_scope_is_what_was_asked_for_and_nothing_unknown():
+    full = "treg:catalog treg:call treg:read"
+    assert mcp_oauth.granted_mcp_scope("treg:catalog") == "treg:catalog"
+    assert mcp_oauth.granted_mcp_scope("treg:read treg:catalog openid") == "treg:catalog treg:read"
+    assert mcp_oauth.granted_mcp_scope("") == full, "a client that names no scope asks for the whole access"
+    assert mcp_oauth.granted_mcp_scope("openid profile") == full
+    assert mcp_oauth.granted_mcp_scope("treg:directory", "v1") == full, "the v2 marker is not a v1 scope"
+    assert mcp_oauth.granted_mcp_scope("treg:directory", "v2") == full + " treg:directory"
+    assert mcp_oauth.granted_mcp_scope("treg:catalog treg:directory", "v2") == "treg:catalog treg:directory"
+    # a grant recorded before normalization was consented as full access
+    assert mcp_oauth.mcp_permissions("") == frozenset(mcp_oauth.BASE_SCOPES)
+    assert mcp_oauth.mcp_permissions("treg:catalog") == {"treg:catalog"}
+
+
+async def test_a_catalog_only_grant_cannot_spend_or_read_the_team(clients):
+    access, _ = await _grant(clients, "catalog-only@superdesign.dev", scope="treg:catalog")
+    assert mcp._oauth_claims(access)["scope"] == "treg:catalog"
+    async with mcp_session(clients) as c:
+        for name, args in (("call", {"endpoint_id": "exa.search", "params": {"query": "x"}}),
+                           ("call_media", {"endpoint_id": "exa.search"}),
+                           ("balance", {}), ("my_tools", {}), ("resources_list", {})):
+            out = await _call_tool(c, name, args, token=access)
+            assert out.get("error") == "insufficient_scope", (name, out)
+        searched = await _call_tool(c, "catalog_search", {"query": "web search"}, token=access)
+    assert searched.get("error") != "insufficient_scope", searched
+
+
+async def test_a_grant_that_names_no_scope_keeps_the_whole_access(clients):
+    access, _ = await _grant(clients, "no-scope@superdesign.dev", scope="")
+    assert mcp._oauth_claims(access)["scope"] == "treg:catalog treg:call treg:read"
+    async with mcp_session(clients) as c:
+        out = await _call_tool(c, "balance", {}, token=access)
+    assert "balance_usd" in out, out
+
+
+async def test_the_token_response_reports_the_scope_actually_granted(clients):
+    client_id = await _register(clients)
+    _, org_id = await _signed_in(clients, "granted@superdesign.dev")
+    verifier, challenge = _pkce()
+    params = {"client_id": client_id, "redirect_uri": "https://client.test/cb",
+              "response_type": "code", "code_challenge": challenge, "code_challenge_method": "S256",
+              "resource": mcp_oauth.mcp_resource_url(), "scope": "treg:read admin:everything"}
+    shown = await clients.get("/oauth/authorize", params=params, headers={"Accept": "application/json"})
+    assert shown.json()["scope"] == "treg:read"
+    r = await clients.post("/oauth/authorize", data={**params, "org_id": org_id, "decision": "allow"},
+                           follow_redirects=False)
+    code = r.headers["location"].split("code=")[1].split("&")[0]
+    tok = await clients.post("/oauth/token", data={
+        "grant_type": "authorization_code", "code": code, "redirect_uri": "https://client.test/cb",
+        "client_id": client_id, "code_verifier": verifier})
+    assert tok.json()["scope"] == "treg:read"
+
+
+async def test_the_consent_page_lists_only_what_the_scope_grants(clients):
+    client_id = await _register(clients)
+    await _signed_in(clients, "narrow-consent@superdesign.dev")
+    _, challenge = _pkce()
+    page = (await clients.get("/oauth/authorize", params={
+        "client_id": client_id, "redirect_uri": "https://client.test/cb", "response_type": "code",
+        "code_challenge": challenge, "code_challenge_method": "S256", "scope": "treg:catalog"})).text
+    assert "Search the catalog and read prices" in page
+    assert "spends the team's balance" not in page
+    assert "without seeing them" not in page
+    assert "Read the team's balance" not in page
+
+
+def test_every_mcp_tool_names_the_scope_it_needs():
+    import asyncio
+    for server, required in ((mcp.mcp, mcp._V1_TOOL_SCOPES), (mcp.directory_mcp, mcp._V2_TOOL_SCOPES)):
+        names = {t.name for t in asyncio.run(server.list_tools())}
+        assert names == set(required), sorted(names ^ set(required))
+        assert set(required.values()) <= set(mcp_oauth.BASE_SCOPES)
