@@ -933,6 +933,28 @@ def _sheets_client() -> OAuthClient | None:
                        redirect_uris=uris, scope=mcp_oauth.SHEETS_SCOPE)
 
 
+def _m365_client() -> OAuthClient | None:
+    """"Microsoft 365 Copilot", the first-party confidential client of treg's declarative agent.
+    Not a table row: its one redirect URI is Microsoft's, and it exists only while
+    `m365_client_secret` is set."""
+    if not get_settings().m365_client_secret:
+        return None
+    return OAuthClient(client_id=mcp_oauth.M365_CLIENT_ID, kind="first_party",
+                       client_name=_FIRST_PARTY_NAMES[mcp_oauth.M365_CLIENT_ID], client_uri="",
+                       logo_uri="", redirect_uris=[mcp_oauth.M365_REDIRECT_URI], scope="")
+
+
+_FIRST_PARTY_NAMES = {mcp_oauth.SHEETS_CLIENT_ID: "treg for Sheets",
+                      mcp_oauth.M365_CLIENT_ID: "Microsoft 365 Copilot"}
+
+
+def _authenticate_client(issued_to: str, client_secret: str) -> None:
+    """A confidential client proves itself with its secret on every token request; a public client
+    has none, its code is bound by PKCE, and a secret it sends is ignored."""
+    if mcp_oauth.client_secret_matches(issued_to, client_secret) is False:
+        raise OAuthServerError("invalid_client", "client authentication failed", status=401)
+
+
 async def _resolve_oauth_client(client_id: str, db: AsyncSession) -> OAuthClient | None:
     """One client row, whichever door it came through.
 
@@ -942,6 +964,8 @@ async def _resolve_oauth_client(client_id: str, db: AsyncSession) -> OAuthClient
     """
     if client_id == mcp_oauth.SHEETS_CLIENT_ID:
         return _sheets_client()
+    if client_id == mcp_oauth.M365_CLIENT_ID:
+        return _m365_client()
     row = (await db.execute(select(OAuthClient).where(OAuthClient.client_id == client_id))
            ).scalar_one_or_none()
     fresh_enough = row is not None and (
@@ -1191,7 +1215,8 @@ async def approve_oauth_authorization(
         return code.code
 
 
-async def _refresh_grant(*, refresh_token: str, client_id: str, resource: str) -> dict:
+async def _refresh_grant(*, refresh_token: str, client_id: str, resource: str,
+                         client_secret: str) -> dict:
     """Exchange a refresh token for a new access token, ROTATING the refresh token as we go.
 
     The retired row is kept, not deleted. That is what makes a replay recognisable: a deleted token
@@ -1205,6 +1230,8 @@ async def _refresh_grant(*, refresh_token: str, client_id: str, resource: str) -
             OAuthRefresh.token_hash == crypto.hash_token(refresh_token)))).scalar_one_or_none()
         if row is None:
             raise OAuthServerError("invalid_grant", "unknown refresh token")
+        # Before the replay check: without the secret, a copied refresh token cannot even revoke.
+        _authenticate_client(row.client_id, client_secret)
 
         if row.retired_at is not None:
             # Already spent. Either a client retried after a dropped response, or someone else has a
@@ -1293,11 +1320,12 @@ async def _refresh_grant(*, refresh_token: str, client_id: str, resource: str) -
 
 async def exchange_oauth_token(
     *, grant_type: str, code: str, redirect_uri: str, client_id: str, code_verifier: str,
-    resource: str, refresh_token: str,
+    resource: str, refresh_token: str, client_secret: str = "",
 ) -> dict:
     if grant_type == "refresh_token":
         return await _refresh_grant(
             refresh_token=refresh_token, client_id=client_id, resource=resource,
+            client_secret=client_secret,
         )
     if grant_type != "authorization_code":
         raise OAuthServerError(
@@ -1319,6 +1347,7 @@ async def exchange_oauth_token(
             raise OAuthServerError("invalid_grant", "code expired")
         if client_id and client_id != row.client_id:
             raise OAuthServerError("invalid_grant", "code was issued to a different client")
+        _authenticate_client(row.client_id, client_secret)
         if redirect_uri != row.redirect_uri:
             raise OAuthServerError(
                 "invalid_grant", "redirect_uri does not match the one the code was issued for",
@@ -1387,7 +1416,7 @@ async def list_oauth_grants(user_id: int) -> list[dict]:
             out.append({
                 "grant": row.family_id,
                 "client": (client.client_name if client else "")
-                          or ("treg for Sheets" if row.client_id == mcp_oauth.SHEETS_CLIENT_ID else row.client_id),
+                          or _FIRST_PARTY_NAMES.get(row.client_id, row.client_id),
                 "team": org.slug if org else None,
                 "team_name": org.name if org else None,
                 "granted": grant.granted_at.isoformat(timespec="seconds") if grant else None,
