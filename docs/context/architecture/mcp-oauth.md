@@ -417,7 +417,8 @@ OAuth is the click-to-connect path. The headless path, and the installer's defau
 key as an `Authorization: Bearer` header. `treg mcp install` (`mcp_install.py`) registers the server
 into each supported agent with that header: Claude Code via `claude mcp add --scope user` (user-global;
 it owns its format and redacts the token), Cursor and opencode via their documented JSON, Codex as one
-`[mcp_servers.treg]` table in `~/.codex/config.toml`. The stdlib has no TOML writer, so
+`[mcp_servers.treg]` table in `~/.codex/config.toml`, and (binary CLI only) GitHub Copilot as an
+`mcpServers` entry in its user `mcp-config.json` ([cli-binary](../interface/cli-binary.md)). The stdlib has no TOML writer, so
 `_write_toml_agent` cuts out any previous table as text, appends a fresh one, and writes only when
 `tomllib` parses it back to exactly that entry. Hermes (YAML, a server-only dependency) and OpenClaw
 are reported with the exact manual step, never written.
