@@ -349,3 +349,21 @@ def test_the_minimax_plugin_is_skills_only():
     assert manifest["skills"] == ["skills/treg/SKILL.md"]
     assert not list(MINIMAX_PLUGIN_DIR.glob("*.mcp.json"))
     assert frontmatter(MINIMAX_SKILL)["name"] == "treg" == MINIMAX_SKILL.parent.name
+
+
+# --------------------------------------------------------------------------------------------
+# The official MCP Registry entry (`server.json`), which GitHub's MCP Registry and VS Code's MCP
+# gallery read. `.github/workflows/mcp-registry.yml` publishes it on each 0.x tag.
+# --------------------------------------------------------------------------------------------
+
+def test_the_registry_entry_tracks_the_package_and_the_plugins_endpoint():
+    """A registry version is published once and never edited, so a stale `version` blocks the next
+    release's publication, and a `headers` entry makes VS Code ask for a token before its own OAuth
+    sign-in could run. Same endpoint, URL only, as the plugins."""
+    entry = json.loads((ROOT / "server.json").read_text(encoding="utf-8"))
+    assert entry["name"] == "io.github.superdesigndev/treg", "renaming forks the listing"
+    assert entry["version"] == package_version()
+    assert entry["description"].startswith(POSITIONING)
+    assert len(entry["description"]) <= 100, "the registry refuses a longer description"
+    plugin_url = json.loads((PLUGIN_DIR / "mcp.json").read_text(encoding="utf-8"))["mcpServers"]["treg"]["url"]
+    assert entry["remotes"] == [{"type": "streamable-http", "url": plugin_url}]
