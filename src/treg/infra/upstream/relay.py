@@ -294,7 +294,15 @@ async def relay(
         await before_outbound()
     if (on_send := ON_SEND.get()) is not None:
         on_send()
-    upstream_resp = await client.send(upstream_req, stream=True)
+    try:
+        upstream_resp = await client.send(upstream_req, stream=True)
+    except httpx.ConnectError as exc:
+        from .pinned import is_refusal
+        if is_refusal(exc):
+            raise GatewayFailed(
+                "ssrf_refused", status_code=502,
+                detail="upstream host resolves to a non-public address") from exc
+        raise
 
     # Response drop set: hop-by-hop + whatever the upstream marked hop-by-hop via its Connection
     # header. Keep upstream Content-Length on a bodyless reply (HEAD/204/304) — that's the whole

@@ -42,6 +42,12 @@ def main() -> None:
     import asyncio
     import uvicorn
 
+    from .config import get_settings
+
+    if get_settings().ssrf_check_missing:
+        sys.exit("refusing to serve: TREG_PROXY_SSRF_CHECK is off on a non-sqlite database. "
+                 "The call-time SSRF guard may be off only for a local sqlite registry.")
+
     asyncio.run(_prepare_serve())
 
     # Honor $PORT (hosting platforms set it and route/health-check that port) - a hard-coded port

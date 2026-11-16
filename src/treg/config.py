@@ -1347,6 +1347,13 @@ class Settings(BaseSettings):
                 "and starts to work again when it is resumed. No action is needed from you.")
 
     @property
+    def ssrf_check_missing(self) -> bool:
+        """The call-time SSRF guard is off on a real (non-sqlite) deploy, which `python -m treg`
+        refuses to serve: a tool's `base_url` is member input, and without the guard a name that
+        resolves inside the deploy's network reaches it with the response relayed back."""
+        return not self.proxy_ssrf_check and "sqlite" not in self.database_url
+
+    @property
     def expose_dev_code(self) -> bool:
         """Dev login codes may be returned in the response ONLY on a local sqlite database — never on a
         real (Postgres) deploy. So even a stray TREG_EMAIL_DEV_MODE=true in production can't leak codes."""

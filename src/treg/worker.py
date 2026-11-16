@@ -299,7 +299,6 @@ async def _hub_check(args) -> int:
     """The scheduled health check (docs/context/architecture/hub.md): every
     live tool's newest version runs its check.json once as its maker. The verdict lands on the
     row; health is derived from the last three runs. Cron it every 6 hours."""
-    import httpx
     from sqlalchemy import select
     from .application.hub import enabled as hub_enabled
     from .application.hub.health import check_as_maker
@@ -312,7 +311,8 @@ async def _hub_check(args) -> int:
         print("hub is off (TREG_HUB_ENABLED); nothing to check")
         return 0
     out = []
-    async with httpx.AsyncClient(timeout=200.0) as upstream:
+    from .infra.upstream.pinned import upstream_client
+    async with upstream_client(timeout=200.0) as upstream:
         async with session_maker() as db:
             q = select(HubTool).where(HubTool.status == "live").order_by(HubTool.tool_id, HubTool.version.desc())
             if args.only:

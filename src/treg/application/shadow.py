@@ -21,6 +21,7 @@ from sqlalchemy import delete, func, select
 from ..config import get_settings
 from ..domain.catalog import shadow as rules, store
 from ..infra.db import session_maker
+from ..infra.upstream.pinned import upstream_client
 from ..models import CallRecord, ShadowCursor, ShadowPair
 from ..timeutil import utcnow_naive as now
 from .arena_insights import _evidence
@@ -106,7 +107,7 @@ async def collect(*, max_seconds: float = 110.0, session_factory=session_maker,
     cat = store.load()
     deadline = time.monotonic() + max_seconds
     own_client = client is None
-    client = client or httpx.AsyncClient(timeout=s.shadow_timeout_s)
+    client = client or upstream_client(timeout=s.shadow_timeout_s)
     gate = asyncio.Semaphore(max(1, s.shadow_concurrency))
     gap = 1.0 / max(0.1, s.shadow_per_second)
     totals = {"read": 0, "paired": 0, "not_mappable": 0, "skipped": 0}
