@@ -27,11 +27,12 @@ sees MCP, whose adapters reach these routes through an in-process HTTP client.
 
 ## Logging setup
 
-`structured_logging.get_logger` gives the named `treg.org_traffic`, `treg.org_flow_control` and
-`treg.capacity_events` loggers a plain stderr handler only when they have none, so MCP's root
-console formatter neither wraps nor duplicates them. Levels stay inherited and root logging is
-untouched, which means root handlers, filters and formatting do not apply to these streams:
-customize them on the named loggers, and keep each JSON record on one physical line.
+`structured_logging.get_logger` gives the named `treg.org_traffic`, `treg.org_flow_control`,
+`treg.capacity_events` and `treg.call_errors` ([call events](call-events.md#failed-calls))
+loggers a plain stderr handler only when they have none, so MCP's root console formatter neither
+wraps nor duplicates them. Levels stay inherited and root logging is untouched, which means root
+handlers, filters and formatting do not apply to these streams: customize them on the named
+loggers, and keep each JSON record on one physical line.
 
 ## What a request line may carry
 
@@ -50,6 +51,25 @@ bodies or exception text, and never add counter dimensions from these fields.
 request line and counter. Adapter preflight exits and eager MCP 401 challenges log a null org and
 are not aggregated. Children (routing, verification, overflow, hub steps) never count as roots;
 direct `/hub/run`, provider-resource, arena and background work are out of scope.
+
+## Failed child attempts
+
+A child attempt has no request line of its own, so a vendor failing only behind a route would be
+invisible to anything that reads these logs. `service._audit` therefore emits one `call_child`
+line for a catalog child (any `call_ref` with a step: `:rN`, `:v`, `:pN`, `:sN`, `:sN.M` for a
+`for_each` item) whose request left for the vendor and was not refused by treg, and that got 5xx,
+401, 402, 403, 418 or 429. "Left" is `CallContext.reached_provider`, set by the relay's `ON_SEND`,
+except after an `httpx.PoolTimeout`: `ON_SEND` fires before httpx takes a connection-pool slot,
+so a pool timeout never left. A failure before sending (an SSRF block, a failed injection or token
+refresh, an exhausted local pool) is treg's own and emits nothing. A timeout after sending is the
+vendor's and is logged; its `upstream_ms` is null, or only the part measured before the timeout
+(the headers, when the body read timed out), so the whole wait is `duration_ms`. Successes,
+misses and other 4xx emit nothing, which keeps the
+volume to the failures. The line carries `org_id`, `call_ref`, `parent_ref`, `step`,
+`endpoint_id`, `provider`, `credential_tier`, `status`, `upstream_ms` and `duration_ms`, all
+scalars `_audit` already holds, under the same never-add list as request lines.
+It adds nothing to the window counters and is not a root. Overflow children are not audited this
+way and emit none.
 
 ## Window semantics
 

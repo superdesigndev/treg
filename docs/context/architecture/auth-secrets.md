@@ -209,6 +209,13 @@ header, a query parameter or JSON fields (`token_*` fields), with `token_encode=
 `login:password` into a Basic blob; the injector's `ensure_base64` re-applies that at call time, so a
 raw pair stored by `treg secret add` (which never probes) renders the same header.
 
+A keyless public API registers with `auth_kind="public"`: nothing to paste or consent to, so it is
+left out of the Connect listing and both connect paths refuse it. Its catalog rows are all
+`platform_auth: anonymous` ([catalog](catalog.md)). Resolution and the router skip the credential
+tier for it, so a team secret that only shares its name never stands in for a credential; a team's own registered tool still wins.
+Its refusal names the true reason (`_anonymous_refusal`): "not enabled" only while the provider is off
+the allow-list; a demo or sandbox team, or a row that is not a verified free anonymous one, says so.
+
 The connect probe hits `base_url` + `probe_path` or an absolute `probe_url`, and is free unless
 declared otherwise. Many upstreams answer 200 to a bad key, so validity comes from declarative
 metadata, never provider branches: HTTP status, `token_verify_field`, `token_ok_field` /
@@ -276,7 +283,8 @@ records, logs or archive evidence ([proxy model](proxy-model.md)).
   client secret and a replayable `state`.
 - `_notify()` posts invalid credentials to the owner's `webhook_url`, searching all the owner's
   memberships, then a current org owner's. `webhook_url` is user-set, so `safe_webhook_url` rejects
-  non-http(s) and non-globally-routable targets at set time and again before POST (blind-SSRF guard),
+  non-http(s) and non-globally-routable targets at set time and again before POST, and the host is
+  resolved before POST and refused when non-public (`url_host_is_public`, blind-SSRF guard),
   including CGNAT `100.64.0.0/10` and NAT64 prefixes mapping non-global IPv4; see
   [proxy target guards](proxy-model.md#resolution-and-relay-guards).
 
@@ -300,5 +308,8 @@ member call cannot read someone else's key.
 A tool's `base_url` is checked against the internal-address block-list (including numeric IP
 encodings) at registration, and the proxy re-resolves the host at call time
 (`infra.upstream.ssrf.host_is_public`, gated by `proxy_ssrf_check`), so DNS rebinding does not
-bypass it. `routers.resources._require_public_base_url` also rejects a `base_url` pointing back at
+bypass it. The health probe and the OAuth token endpoint (refresh and code exchange) get the same
+resolve check before sending; a token answer without `access_token` is reported without its body,
+naming only a standard OAuth error code (`invalid_grant`) when the answer carries one.
+`routers.resources._require_public_base_url` also rejects a `base_url` pointing back at
 treg itself, so a team uses treg's tools by id instead of proxying treg through treg.

@@ -3,6 +3,7 @@ title: The proxy - faithful credential-injecting relay + tool resolution
 status: shipped
 sources:
   - src/treg/infra/upstream/relay.py
+  - src/treg/infra/upstream/pathsegment.py
   - src/treg/jsontext.py
   - src/treg/infra/upstream/ssrf.py
   - src/treg/api.py
@@ -71,7 +72,8 @@ comparing hosts, so two providers sharing one API host (Facebook and Instagram o
 `graph.facebook.com`) resolve to different tools; the relay stays provider-agnostic.
 
 A live-verified free `GET` catalog row can declare `platform_auth: anonymous`. A team tool or team
-credential still wins. Otherwise `_anonymous_offer` requires the deployment's provider allow-list
+credential still wins, except that a public provider (`auth_kind="public"`) has no credential: a
+same-named team secret is never used for it, and only a team tool does. Otherwise `_anonymous_offer` requires the deployment's provider allow-list
 and creates an unmetered virtual tool with no bindings; `relay()` then injects nothing and strips or
 rewrites no caller header. The catalog price is free only when the caller supplies no provider
 credential header. No provider-specific anonymous path rules exist in the resolver or relay.
@@ -285,10 +287,14 @@ resolution is shared.
 ### Catalog targets
 
 A live catalog row enters `_resolve_marketplace_call` and its credential ladder.
-`_marketplace_upstream` percent-encodes placeholder values but preserves a value already containing
-a valid `%HH` escape (an encoded Search Console property id must not become `%253A`). Raw `@` stays
+`_marketplace_upstream` places every placeholder value as exactly one path segment
+(`infra/upstream/pathsegment.py`): a value containing a valid `%HH` escape is decoded first
+(`unquote_to_bytes`, so non-UTF-8 bytes survive) and then encoded once, so an encoded Search Console
+property id does not become `%253A` and an encoded `/`, `?` or `#` stays escaped. Raw `@` stays
 literal: it is legal in a path segment and some email-path APIs reject `%40`. Slashes, query and
-fragment delimiters and invalid `%` stay escaped. A catalog `host` on a provider that opted into
+fragment delimiters and invalid `%` are escaped. A value that decodes to `.` or `..` is refused
+with `catalog_parameter_invalid` (400) before any hold, since URL normalization would remove it as
+a dot segment. The overflow road fills Orthogonal's `path` with the same `pathsegment.encode`. A catalog `host` on a provider that opted into
 `catalog_targets` must resolve through `OAuthProvider.profile_for_catalog_host` to an exact
 approved HTTPS base URL, which keeps its path prefix and supplies the binding; anything else is a
 treg 502 before reserve, so catalog data cannot redirect an injected credential.
@@ -323,9 +329,14 @@ member and project are ANDed, each NULL-means-any. `_deny_match` is pure and mir
 
 Just before `send`, `relay()` re-resolves the upstream host (`host_is_public`, gated by
 `proxy_ssrf_check`) and refuses with `502` if any address is non-public: a `base_url` public at
-registration can later resolve to `169.254.169.254` or localhost. Registration
-(`ssrf.safe_webhook_url`) also normalizes numeric IP encodings (`2130706433`, `0x7f000001`,
-`127.1`) through `inet_aton` before the literal-IP block. Targets must be globally routable
+registration can later resolve to `169.254.169.254` or localhost. The other server-side roads to a
+user-chosen address make the same check (`ssrf.url_host_is_public`, resolved off the event loop,
+same switch) just before sending: the health probe (`health._probe`), the owner webhook
+(`health._notify`), and the OAuth token endpoint on refresh (`HTTPXOAuthRefreshPort.exchange`) and
+code exchange (`HTTPXOAuthExchangePort.exchange_code`). Registration
+(`ssrf.safe_webhook_url`) strips a trailing dot (`localhost.`; for a tool's `base_url` only while
+`proxy_ssrf_check` is on, so a local registry can still name a loopback upstream) and normalizes numeric IP encodings
+(`2130706433`, `0x7f000001`, `127.1`) through `inet_aton` before the literal-IP block. Targets must be globally routable
 unicast. CGNAT `100.64.0.0/10` is internal service space (Tailscale, WireGuard overlays, Fly.io,
 some Kubernetes pod CIDRs, Alibaba Cloud's metadata endpoint `100.100.100.200`). NAT64 prefixes
 mapping non-global IPv4 do not make a target public; `64:ff9b::/96` stays blocked. A narrow
@@ -338,8 +349,9 @@ Treg refusals carry `X-Treg-Error: 1`. Application failures map to
 contracts: [api](../interface/api.md).
 
 `_audit` records each attempt and mirrors it through `_tool_called_props` / `analytics.capture`
-(never params or bodies). `domain.catalog.results.classify` shares hit/miss rules between telemetry
-and cache admission and inspects only already-buffered bodies
+(never params or bodies); a failed one also writes a classified `call_error` line
+([call events](call-events.md#failed-calls)). `domain.catalog.results.classify` shares hit/miss
+rules between telemetry and cache admission and inspects only already-buffered bodies
 ([archive result admission](archive.md#result-admission)). Overflow keeps both attempt rows under
 one call reference but emits one product event (`defer_analytics`).
 
@@ -378,6 +390,17 @@ A crash before that leaves holds to the reaper, which releases in the caller's f
 `route.child_outcome` reads each child's answer and is shared with
 [replay](replay.md). The parent assembles `{output, raw, _treg}` and owns the idempotency label.
 A pending outcome (`202`, `X-Treg-Route-Outcome: pending`) sends no `X-Treg-Cost-Micro`.
+Paging is by cursor only. An adapter declaring `paging: {cursor: <upstream path>}` gets a treg cursor in
+`output.next_cursor` (`trg1.` + the serving endpoint, the provider's own `next_cursor` and a hash of
+the body); sent back as `cursor`, it pins the call to that endpoint with no waterfall, merge or fill,
+and puts the provider's token at that path. A cursor for another body is refused 422
+`route_cursor_invalid`; a list from an adapter without `paging` names the candidates that have it on
+`_treg.paging`. Page numbers are not supported: a provider whose order changes between calls repeats
+and skips rows. Any other body paging key (`page`, `offset`, ...) the contract does not declare is
+refused 422 `route_paging_unsupported`, never dropped, since a dropped one re-bills page one.
+A candidate whose v1 price table multiplies the field
+its adapter fills from `limit` is priced from that upstream request (`_table_price`), the same
+figure its child hold reserves, so `X-Treg-Route-Max-Cost` judges the size asked for.
 
 ## Several treg-owned accounts behind one provider
 

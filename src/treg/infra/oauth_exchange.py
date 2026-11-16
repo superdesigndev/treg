@@ -7,6 +7,7 @@ import time
 import httpx
 
 from .. import crypto
+from .oauth_refresh import no_access_token_error, require_public_token_uri
 
 
 class HTTPXOAuthExchangePort:
@@ -30,14 +31,13 @@ class HTTPXOAuthExchangePort:
             kwargs["auth"] = (pending.client_id, client_secret)
         else:
             data["client_secret"] = client_secret
+        await require_public_token_uri(pending.token_uri)
         response = await self.client.post(pending.token_uri, data=data, **kwargs)
         response.raise_for_status()
         token = response.json()
         access = token.get("access_token")
         if not access:
-            raise ValueError(
-                f"token endpoint returned no access_token: {token.get('error') or token}"
-            )
+            raise no_access_token_error(token)
         blob = {
             "access_token": access,
             "token": access,

@@ -114,6 +114,29 @@ func Command(command string, exitCode int, duration time.Duration, notes map[str
 		Timestamp: time.Now().UTC().Format(time.RFC3339Nano), Properties: props})
 }
 
+// Update records how one background update ended: its outcome, the versions, and the fields of
+// update.Download and update.Failure, empty strings left out.
+func Update(props map[string]any, channel string) {
+	if !Enabled() {
+		return
+	}
+	id := InstallationID()
+	if id == "" {
+		return
+	}
+	kept := map[string]any{"os": OSName(), "arch": runtime.GOARCH}
+	for k, v := range props {
+		if v != "" {
+			kept[k] = v
+		}
+	}
+	if channel != "" {
+		kept["channel"] = channel
+	}
+	record(Event{Event: "cli_update_completed", DistinctID: id, UUID: uuid.New().String(),
+		Timestamp: time.Now().UTC().Format(time.RFC3339Nano), Properties: kept})
+}
+
 func record(e Event) {
 	line, err := json.Marshal(e)
 	if err != nil {

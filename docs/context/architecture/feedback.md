@@ -127,6 +127,9 @@ writes; a fault can only lose the header. Sampling rates default to 0.
   never retain exception messages, keys, owner tokens or store URLs.
 - Org admission and quotas: [org-flow-control](org-flow-control.md),
   [org-endpoint-quota](org-endpoint-quota.md).
+- Routed child health (`note_route_health`, `read_route_health`, and a `take` for the probe turn):
+  best-effort time buckets that expire with their window; a fault loses a count or reads as no
+  evidence ([catalog](catalog.md), "Child guards").
 
 New tenants add narrow methods, never a generic get/set surface. `/admin/kv` reports `configured` and
 `reachable`.

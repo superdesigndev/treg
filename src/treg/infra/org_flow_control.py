@@ -44,7 +44,8 @@ class PauseRejected(Exception):
         self.detail = {"error": "org_traffic_paused",
                        "message": "organization new requests are temporarily paused",
                        "retry_after_s": retry_after_s, "config_version": version}
-        super().__init__(self.detail["error"])
+        self.kind = self.detail["error"]
+        super().__init__(self.kind)
 
 
 @dataclass(frozen=True)

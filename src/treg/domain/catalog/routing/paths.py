@@ -69,6 +69,14 @@ def split_last(name: Any) -> str | None:
     return parts[-1] if len(parts) > 1 else None
 
 
+def one_place(v: Any) -> str | None:
+    """`one_place('Dublin')` → 'Dublin'; None for a place in several parts ('London, United Kingdom',
+    'Oregon, United States'), which a provider's single city field cannot hold without changing it."""
+    if not isinstance(v, str) or "," in v:
+        return None
+    return v.strip() or None
+
+
 def join(*parts: Any) -> str | None:
     words = [str(p).strip() for p in parts if isinstance(p, str) and p.strip()]
     return " ".join(words) if words else None
@@ -82,10 +90,38 @@ def phrase(*parts: Any) -> str | None:
     for p in parts:
         if not (isinstance(p, str) and p.strip()):
             continue
-        said = re.search(rf"(?<!\w){re.escape(p.strip())}(?!\w)", " ".join(words), re.IGNORECASE)
-        if not said:
+        if not _says(" ".join(words), p.strip()):
             words.append(p.strip())
     return " ".join(words) if words else None
+
+
+def _says(text: str, part: str) -> bool:
+    """Whether `text` holds `part` as whole words, case-insensitive. A domain ('example.com') is
+    whole only as the entire host: 'example.com.au' and 'sub.example.com' do not say it."""
+    if re.fullmatch(r"[\w-]+(?:\.[\w-]+)+", part):
+        pattern = rf"(?<![\w.-]){re.escape(part)}(?![\w-]|\.[\w-])"
+    else:
+        pattern = rf"(?<!\w){re.escape(part)}(?!\w)"
+    return re.search(pattern, text, re.IGNORECASE) is not None
+
+
+def people_text(full_name: Any, title: Any, company_domain: Any, location: Any, country: Any) -> str | None:
+    """`people_text('Jane Doe', 'CTO', 'stripe.com', 'Dublin', 'Ireland')` → "Jane Doe, CTO at
+    stripe.com in Dublin, Ireland": who (the name, the title, both, or "people" when only the
+    company is known), at the company, in the place, as a profile search reads a brief. The country
+    follows the location unless the location already says it. A title listing several roles stays
+    as written. None when it names no person, role or company; a part not a string is left out."""
+    said = lambda v: v.strip() if isinstance(v, str) and v.strip() else None  # noqa: E731
+    name, role, domain = said(full_name), said(title), said(company_domain)
+    if not (name or role or domain):
+        return None
+    text = ", ".join(w for w in (name, role) if w) or "people"
+    if domain:
+        text += f" at {domain}"
+    where = said(location)
+    if (land := said(country)) and not (where and _says(where, land)):
+        where = f"{where}, {land}" if where else land
+    return f"{text} in {where}" if where else text
 
 
 def place(*parts: Any) -> str | None:
@@ -292,6 +328,16 @@ def _country_code(v: Any) -> str | None:
     return next((code for code, name in names.items() if name.lower() == key), None)
 
 
+def iso_country(v: Any) -> str | None:
+    """`TH`, `th`, `Thailand` or `uk` -> `th`/`gb`; None when the value names no ISO country."""
+    return _country_code(v)
+
+
+def country_names() -> frozenset[str]:
+    """Every ISO 3166 country's common name, lower-cased."""
+    return frozenset(n.lower() for n in _table("countries.json").values())
+
+
 def country_code(v: Any) -> Any:
     """`country_code('United Kingdom')` → 'gb': the ISO 3166 alpha-2 code, lowercase, for providers that
     take only a code. A value that names no ISO country passes through, so the provider still says why."""
@@ -464,6 +510,17 @@ def current_role(history: Any) -> dict | None:
     return max(pool, key=start)  # max keeps the first of equal starts
 
 
+def flagged(items: Any, *flags: Any) -> dict | None:
+    """`flagged(experiences, 'isMatched', 'isCurrent')` — the first object whose first flag is true;
+    when none has it, the first whose next flag is true, and so on. None when no flag is set."""
+    rows = [r for r in items if isinstance(r, dict)] if isinstance(items, list) else []
+    for flag in flags:
+        hit = next((r for r in rows if get_path(r, str(flag)) is True), None)
+        if hit is not None:
+            return hit
+    return None
+
+
 def past_titles(history: Any) -> list | None:
     """`past_titles(workHistory)` — the titles of the roles a person has left (items whose `dates`
     carry a `to`), latest ended first, each once, at most five: what a profile matched on when its
@@ -624,13 +681,13 @@ def starts_with(v: Any, prefix: Any) -> bool:
     return isinstance(v, str) and prefix is not None and v.startswith(str(prefix))
 
 
-TRANSFORMS = {"values": values, "get": get_path, "null_if": null_if, "choose": choose, "split_first": split_first, "split_last": split_last, "join": join, "phrase": phrase, "place": place, "texts": texts, "has_type": has_type, "len": length,
+TRANSFORMS = {"values": values, "get": get_path, "null_if": null_if, "choose": choose, "split_first": split_first, "split_last": split_last, "one_place": one_place, "join": join, "phrase": phrase, "people_text": people_text, "place": place, "texts": texts, "has_type": has_type, "len": length,
               "dfs_location": dfs_location, "seranking_source": seranking_source, "lower": lower, "upper": upper,
               "list": as_list, "at_least": at_least, "at_most": at_most, "ceil_to": ceil_to, "linkedin_handle": linkedin_handle, "linkedin_url": linkedin_url,
               "email_domain": email_domain, "host": host, "fmt": fmt, "obj": obj, "tca_filter": tca_filter, "csv": csv, "country_name": country_name, "country_code": country_code,
               "e164_digits": e164_digits, "key": key, "starts_with": starts_with, "http_error": http_error, "lost_path": lost_path, "no_result_on_site": no_result_on_site, "quoted_absent": quoted_absent, "with_country_code": with_country_code,
               "count_with": count_with, "role_seniority": role_seniority, "role_department": role_department,
-              "scalar": scalar, "instagram_handles": instagram_handles, "current_role": current_role, "past_titles": past_titles}
+              "scalar": scalar, "instagram_handles": instagram_handles, "current_role": current_role, "flagged": flagged, "past_titles": past_titles}
 
 _CALL = re.compile(r"^(\w+)\((.*)\)$")
 _DIV = re.compile(r"^(.+?)\s*/\s*(\d+(?:\.\d+)?)$")

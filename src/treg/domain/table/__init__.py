@@ -35,18 +35,18 @@ ENVELOPE_KEYS = frozenset({"summary", "tasks", "result", "results", "data", "res
 # Provider-native rows of a routed list job, mapped to fixed columns first. Each entry: the column,
 # then the item paths that may hold it, first match wins. Keyed by the contract's list field.
 _PEOPLE_MAP: tuple[tuple[str, tuple[str, ...]], ...] = (
-    ("name", ("name", "full_name", "fullName")),
+    ("name", ("name", "full_name", "fullName", "profile.full_name")),
     ("first_name", ("first_name", "firstname", "firstName", "profile.first_name")),
     ("last_name", ("last_name", "lastname", "lastName", "last_name_obfuscated", "profile.last_name")),
     # `headline` last: a profile tagline, used only when no job title field exists
     ("title", ("title", "job_title", "jobTitle", "jobTitle.title", "position", "profile.title",
                "basic_profile.current_title", "lastJobTitle", "headline")),
     ("company", ("company", "company_name", "companyName", "organization_name", "organization.name",
-                 "company.name", "job_company_name", "lastCompanyName")),
+                 "company.name", "company.summary.name", "job_company_name", "lastCompanyName")),
     ("linkedin_url", ("profile_url", "linkedin_url", "linkedinUrl", "profileUrl", "linkedin", "employee_linkedin",
                       "URLs.linkedin", "socials.linkedin_url", "link.linkedin", "socialLinks.linkedin")),
     ("location", ("location", "location_name", "basic_profile.location.full_location", "location.linkedinText",
-                  "location.address", "city", "location.city", "address")),
+                  "location.address", "location.default", "city", "location.city", "address")),
 )
 LIST_MAPS: dict[str, tuple[tuple[str, tuple[str, ...]], ...]] = {"people": _PEOPLE_MAP}
 

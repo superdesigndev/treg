@@ -209,23 +209,8 @@ class CurrentIdentity:
 
 
 @dataclass(frozen=True)
-class InviteEmailConfirmation:
-    email: str
-    org_name: str
-    invited_by: str
-    role: str
-    switch_email: str | None
-
-
-@dataclass(frozen=True)
 class InviteCodePrefill:
     email: str
-
-
-@dataclass(frozen=True)
-class InviteSigninProof:
-    destination: str
-    session_cookie: str
 
 
 @dataclass(frozen=True)
@@ -236,6 +221,7 @@ class OAuthAuthorizationView:
     client_kind: str
     user_email: str
     teams: list[dict]
+    scope: str = ""
 
 
 async def _check_browser(
@@ -328,19 +314,26 @@ async def verify_email_login(
     """Consume an email OTP and return both CLI and browser credentials for the proven identity."""
     email = _norm_email(email)
     async with database.session_maker() as db:
-        entry = await ratestore.kv_get(db, OTP_NS, email)
-        if entry is None:
+        # Like approve_cli_login: UPDATE serializes on PostgreSQL and SQLite (where FOR UPDATE is
+        # ignored). Keep the lock through the compare and the attempt decrement.
+        row = (await db.execute(update(Ephemeral).where(
+            Ephemeral.ns == OTP_NS, Ephemeral.k == email,
+        ).values(k=Ephemeral.k).returning(Ephemeral)
+          .execution_options(synchronize_session=False))).scalar_one_or_none()
+        if row is None or row.expires_at < _utcnow_naive():
+            if row is not None:
+                await db.delete(row)
             await db.commit()
             raise EmailAuthError("invalid_code")
+        entry = row.v
         if not hmac.compare_digest(entry["hash"], crypto.hash_token(code.strip())):
-            entry["attempts"] -= 1
-            if entry["attempts"] <= 0:
-                await ratestore.kv_pop(db, OTP_NS, email)
+            if entry["attempts"] <= 1:
+                await db.delete(row)
             else:
-                await ratestore.kv_put(db, OTP_NS, email, entry, ttl_s=None)
+                row.v = {**entry, "attempts": entry["attempts"] - 1}
             await db.commit()
             raise EmailAuthError("invalid_code")
-        await ratestore.kv_pop(db, OTP_NS, email)
+        await db.delete(row)
         created: set[int] = set()
         proven: set[int] = set()
         try:
@@ -880,28 +873,13 @@ async def _live_invite_by_email_token(db: AsyncSession, t: str) -> Invite | None
     return invite
 
 
-async def invite_signin_landing(
-    email_token: str, code: str, session_cookie: str,
-) -> InviteEmailConfirmation | InviteCodePrefill:
+async def invite_signin_landing(email_token: str, code: str) -> InviteCodePrefill:
     async with database.session_maker() as db:
         if email_token:
             invite = await _live_invite_by_email_token(db, email_token)
             if invite is None:
                 raise InviteSigninError("expired")
-            org = await db.get(Org, invite.org_id)
-            switch_email = None
-            uid = sess.read_session(session_cookie)
-            if uid is not None:
-                current = await db.get(User, uid)
-                if current is not None and current.email != invite.email:
-                    switch_email = current.email
-            return InviteEmailConfirmation(
-                email=invite.email,
-                org_name=org.name if org else "the team",
-                invited_by=invite.invited_by or "A teammate",
-                role=invite.role,
-                switch_email=switch_email,
-            )
+            return InviteCodePrefill(email=invite.email)
         code = (code or "").strip()
         invite = (await db.execute(select(Invite).where(Invite.code_hash == crypto.hash_token(code)))
                   ).scalar_one_or_none() if code else None
@@ -909,40 +887,6 @@ async def invite_signin_landing(
                 or (invite.expires_at is not None and _as_naive(invite.expires_at) < _utcnow_naive())):
             raise InviteSigninError("expired")
         return InviteCodePrefill(email=invite.email)
-
-
-async def confirm_invite_signin(email_token: str) -> InviteSigninProof:
-    async with database.session_maker() as db:
-        invite = await _live_invite_by_email_token(db, email_token)
-        if invite is None:  # consumed / expired / revoked / suspended org → the SPA's expired banner
-            raise InviteSigninError("expired")
-        proven: set[int] = set()
-        try:
-            user = await signup.find_or_create_user(
-                db, invite.email, door="invite_link", verified=True, proven=proven,
-            )  # only the inbox-only link proves the email
-        except signup.MachineIdentityError as exc:
-            raise InviteSigninError("machine_identity") from exc
-        except signup.BlockedEmailError as exc:  # an invite to a listed domain must not become a session
-            raise InviteSigninError("blocked_domain") from exc
-        if user is None or user.suspended:  # a banned account may hold the link but must not get a session
-            raise InviteSigninError("suspended")
-        invite.email_token_hash = None  # consume: one sign-in per emailed link
-        db.add(invite)
-        await db.commit()
-        if proven:
-            await signup.grant_signup_promo_on_proof(user.id)
-        # A share-born invite lands on the shared page itself (the SPA auto-accepts + switches org);
-        # a plain invite lands on the dashboard with the accept banner. `landing` was
-        # allowlist-validated at create time, so this can never redirect off-app.
-        destination = (
-            f"{invite.landing}?invite_org={invite.org_id}"
-            if invite.landing else f"/?invite_org={invite.org_id}"
-        )
-        return InviteSigninProof(
-            destination=destination,
-            session_cookie=sess.make_session(user.id, token_version=user.token_version),
-        )
 
 
 async def register_oauth_client(
@@ -1074,6 +1018,12 @@ def _client_resource(client: OAuthClient, resource: str, scope: str) -> str:
     return effective
 
 
+def _granted_scope(client: OAuthClient, resource: str, requested: str) -> str:
+    if client.client_id == mcp_oauth.SHEETS_CLIENT_ID:
+        return requested
+    return mcp_oauth.granted_mcp_scope(requested, mcp_oauth.mcp_resource_version(resource) or "v1")
+
+
 def _same_mcp_resource(a: str, b: str) -> bool:
     """Whether two `resource` values name this same MCP server. Exact match, slash-variant match,
     or BOTH normalize into the canonical+legacy audience set — the domain move renamed the
@@ -1131,7 +1081,7 @@ async def prepare_oauth_authorization(
             raise _redirect_refusal(
                 "invalid_request", "PKCE with code_challenge_method=S256 is required",
             )
-        _client_resource(client, resource, scope)
+        granted = _granted_scope(client, _client_resource(client, resource, scope), scope)
 
         user = await _user_from_session(session_cookie, db)
         if user is None:
@@ -1160,6 +1110,7 @@ async def prepare_oauth_authorization(
             client_kind=client.kind,
             user_email=user.email,
             teams=teams,
+            scope=granted,
         )
 
 
@@ -1207,7 +1158,7 @@ async def approve_oauth_authorization(
             code=_secrets.token_urlsafe(32), client_id=client.client_id, user_id=user.id, org_id=org_id,
             redirect_uri=redirect_uri, code_challenge=code_challenge,
             resource=effective_resource,
-            scope=scope,
+            scope=_granted_scope(client, effective_resource, scope),
             sso_org_id=sso_org_id,
             expires_at=datetime.now(timezone.utc).replace(tzinfo=None)
             + timedelta(seconds=AUTH_CODE_TTL_S))

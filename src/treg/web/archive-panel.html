@@ -189,7 +189,7 @@
 <div class="gate" id="gate">
   <div class="box">
     <h2>Archive panel</h2>
-    <p>This page shows no data until it can ask the server. Paste the admin token; it stays in this browser only.</p>
+    <p>This page shows no data until it can ask the server. Paste the admin token; it stays in this tab only and is forgotten when the tab closes.</p>
     <input id="tok" type="password" placeholder="TREG_ADMIN_TOKEN" autocomplete="off">
     <button id="go">Open the panel</button>
     <div class="err" id="gate-err"></div>
@@ -201,6 +201,7 @@
     <span class="wordmark">treg · <em>Archive</em></span>
     <span class="chip" data-tip="The panel re-reads the server every 5 seconds. Nothing on this page is ever older than that.">live · refreshes every 5s</span>
     <div class="mode"><span class="dot"></span><span data-tip="The archive's master switch on the server. off = feature dormant. shadow = watch and learn, serve nothing. serve = answer repeats from the store.">mode</span>&nbsp;<b id="h-mode">…</b>&nbsp;<span id="h-worker" style="color:var(--faint)"></span></div>
+    <span id="h-busy" style="color:var(--warn)" data-tip="The server runs one archive report at a time. Another one is running, so this refresh was refused; the panel keeps retrying."></span>
   </div>
 </header>
 
@@ -253,25 +254,29 @@
 (() => {
   const $ = id => document.getElementById(id);
   const TOK_KEY = "treg_admin_token";
-  let token = localStorage.getItem(TOK_KEY) || "";
+  localStorage.removeItem(TOK_KEY);
+  let token = sessionStorage.getItem(TOK_KEY) || "";
   let selected = null;
   let timer = null;
 
   const fmtBytes = n => n >= 1048576 ? (n/1048576).toFixed(1) + " MB" : n >= 1024 ? (n/1024).toFixed(1) + " KB" : n + " B";
   const fmtS = s => s == null ? "—" : s >= 3600 ? Math.floor(s/3600) + "h " + Math.floor(s%3600/60) + "m"
                     : s >= 60 ? Math.floor(s/60) + "m " + (s%60 ? s%60 + "s" : "") : s + "s";
+  const ESC = {"&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;"};
+  const esc = v => String(v ?? "").replace(/[&<>"']/g, c => ESC[c]);
   const ago = iso => { const s = Math.max(0, Math.floor((Date.now() - new Date(iso + "Z")) / 1000)); return fmtS(s) + " ago"; };
 
   async function api(path) {
     const r = await fetch(path, { headers: { "X-Treg-Token": token } });
     if (r.status === 401 || r.status === 403) throw new Error("auth");
+    if (r.status === 429) throw new Error("busy");
     if (!r.ok) throw new Error("http " + r.status);
     return r.json();
   }
 
   function policyPill(pol, judged) {
     if (pol === "transient" || pol === "archive")
-      return '<span class="pill p-transient" data-tip="The licence was read and allows storing. transient = short-lived cache; archive = long-term history too.">' + pol + '</span>';
+      return '<span class="pill p-transient" data-tip="The licence was read and allows storing. transient = short-lived cache; archive = long-term history too.">' + esc(pol) + '</span>';
     if (judged)
       return '<span class="pill p-never" data-tip="The licence was read and it forbids storing or sharing. Counted for statistics, never kept, never served.">forbidden (judged)</span>';
     return '<span class="pill p-forbidden" data-tip="Nobody has judged this provider\'s licence yet. Under the keep-all default these are still stored as transient; only a judged forbidden blocks storage.">forbidden (unjudged)</span>';
@@ -298,14 +303,14 @@
       const barCls = ratio == null ? "b-acc" : ratio < 0.15 ? "b-ok" : ratio < 0.5 ? "b-acc" : "b-warn";
       const judged = e.policy === "forbidden" ? null : true;
       const stored = (e.policy === "transient" || e.policy === "archive");
-      return '<tr data-ep="' + e.endpoint_id + '" tabindex="0"' + (e.endpoint_id === selected ? ' class="sel"' : '') + '>' +
-        '<td><div class="ep">' + e.endpoint_id + '</div><div class="prov">' + e.provider + '</div></td>' +
+      return '<tr data-ep="' + esc(e.endpoint_id) + '" tabindex="0"' + (e.endpoint_id === selected ? ' class="sel"' : '') + '>' +
+        '<td><div class="ep">' + esc(e.endpoint_id) + '</div><div class="prov">' + esc(e.provider) + '</div></td>' +
         '<td>' + policyPill(e.policy, false) + '</td>' +
-        '<td class="num" id="ttl-' + e.endpoint_id + '">…</td>' +
+        '<td class="num" id="ttl-' + esc(e.endpoint_id) + '">…</td>' +
         '<td><span class="bar ' + barCls + '"><i style="width:' + Math.round((ratio || 0) * 100) + '%"></i></span><span class="num">' + (ratio == null ? "—" : ratio.toFixed(2)) + '</span></td>' +
-        '<td class="num">' + e.keys + '</td><td class="num">' + e.refetches + '</td>' +
-        '<td class="num ' + (e.hits ? "hitrate" : "") + '">' + (stored ? e.hits : '<span style="color:var(--faint)">counted only</span>') + '</td>' +
-        '<td class="num">' + (e.kept_bytes ? fmtBytes(e.kept_bytes) : "0") + '</td></tr>';
+        '<td class="num">' + esc(e.keys) + '</td><td class="num">' + esc(e.refetches) + '</td>' +
+        '<td class="num ' + (e.hits ? "hitrate" : "") + '">' + (stored ? esc(e.hits) : '<span style="color:var(--faint)">counted only</span>') + '</td>' +
+        '<td class="num">' + (e.kept_bytes ? esc(fmtBytes(e.kept_bytes)) : "0") + '</td></tr>';
     }).join("");
     tb.querySelectorAll("tr[data-ep]").forEach(r => {
       r.addEventListener("click", () => select(r.dataset.ep));
@@ -326,13 +331,13 @@
     const pct = win > 0 ? Math.min(100, ageS / win * 100) : 0;
     $("i-title").textContent = d.endpoint_id + " · " + d.keys.length + " key(s), hottest shown";
     body.innerHTML =
-      '<div class="kv"><span data-tip="The stored question: method and vendor URL as sent, before the credential is added. The worker replays exactly this.">Question</span><span class="mono">' + (k.question || "—") + '</span></div>' +
+      '<div class="kv"><span data-tip="The stored question: method and vendor URL as sent, before the credential is added. The worker replays exactly this.">Question</span><span class="mono">' + esc(k.question || "—") + '</span></div>' +
       '<div class="freshness"><div class="lab"><span data-tip="How old the newest stored answer is.">AGE ' + fmtS(ageS) + '</span><span data-tip="This key\'s learned serving window. Inside it, repeats are answered from the store. -1 means the key marked itself never-cache.">' + winTxt + '</span></div>' +
       '<div class="track"><span class="fill" style="width:' + pct + '%"></span><span class="mark" data-tip="At 80% of the window the refresh worker may re-ask the vendor early — only if someone demanded this key since its last fetch."></span></div></div>' +
       '<div><div class="sec" data-tip="Every saved version of this key\'s answer, oldest left. Solid amber = bytes stored. Dashed = identical, stored by reference. Green = the worker fetched it, not a caller." style="margin-bottom:6px">Version history · newest right</div>' +
       '<div class="versions">' + k.versions.map(v =>
-        '<span class="v ' + (v.origin === "refresh" ? "refresh" : v.stored === "body" ? "full" : "ref") + '" role="button" tabindex="0" data-key="' + k.key_hash + '" data-ver="' + v.version + '" data-tip="v' + v.version + " · " + v.origin + " · " + fmtBytes(v.size_bytes) + " · " + VTIP[v.stored] + ' Click to view the stored answer.">' + v.version + '</span>').join("") + '</div></div>' +
-      '<div class="kv"><span data-tip="stable = re-asked and the answer had not changed (timer grows ×1.5). changed = it had (timer halves).">Stable / changed</span><span class="mono">' + k.stable + ' / ' + k.changed + '</span></div>' +
+        '<span class="v ' + (v.origin === "refresh" ? "refresh" : v.stored === "body" ? "full" : "ref") + '" role="button" tabindex="0" data-key="' + esc(k.key_hash) + '" data-ver="' + esc(v.version) + '" data-tip="v' + esc(v.version) + " · " + esc(v.origin) + " · " + esc(fmtBytes(v.size_bytes)) + " · " + VTIP[v.stored] + ' Click to view the stored answer.">' + esc(v.version) + '</span>').join("") + '</div></div>' +
+      '<div class="kv"><span data-tip="stable = re-asked and the answer had not changed (timer grows ×1.5). changed = it had (timer halves).">Stable / changed</span><span class="mono">' + esc(k.stable) + ' / ' + esc(k.changed) + '</span></div>' +
       '<div class="kv"><span data-tip="The last time a real caller asked this question. A key is refreshed early only if this is newer than its last fetch.">Last demanded</span><span class="mono">' + (k.last_requested_at ? ago(k.last_requested_at) : "never") + '</span></div>';
     body.querySelectorAll(".v[data-key]").forEach(ch => {
       const open = () => openBody(ch.dataset.key, ch.dataset.ver);
@@ -344,15 +349,15 @@
 
   async function openBody(keyHash, ver) {
     let d;
-    try { d = await api("/admin/archive/body?key_hash=" + keyHash + "&version=" + ver); }
+    try { d = await api("/admin/archive/body?key_hash=" + encodeURIComponent(keyHash) + "&version=" + encodeURIComponent(ver)); }
     catch (e) { return; }
     const overlay = document.createElement("div");
     overlay.className = "viewer";
     let text = d.body_text == null ? (d.note || "no bytes kept for this version") : d.body_text;
     if (d.body_text != null) { try { text = JSON.stringify(JSON.parse(d.body_text), null, 2); } catch (e) {} }
     const carried = d.carried_by_version ? " · bytes carried by v" + d.carried_by_version : "";
-    overlay.innerHTML = '<div class="vbox"><div class="vhead"><h2>Stored answer · v' + d.version + '</h2>' +
-      '<span class="n">' + d.origin + " · " + fmtBytes(d.size_bytes) + " · " + new Date(d.fetched_at + "Z").toLocaleString() + carried + '</span>' +
+    overlay.innerHTML = '<div class="vbox"><div class="vhead"><h2>Stored answer · v' + esc(d.version) + '</h2>' +
+      '<span class="n">' + esc(d.origin + " · " + fmtBytes(d.size_bytes) + " · " + new Date(d.fetched_at + "Z").toLocaleString() + carried) + '</span>' +
       '<button type="button">Close</button></div><pre></pre></div>';
     overlay.querySelector("pre").textContent = text;
     const close = () => overlay.remove();
@@ -371,7 +376,7 @@
                           : '<span class="tag g-live" data-tip="A real vendor call, observed and recorded.">LIVE</span>';
       const cost = e.charged_micro != null ? " · " + e.charged_micro.toLocaleString() + "µ$" : "";
       return '<li><span class="t">' + new Date(e.at + "Z").toTimeString().slice(0, 8) + '</span>' + tag +
-             '<span class="w">HTTP ' + e.status + cost + '</span></li>';
+             '<span class="w">HTTP ' + esc(e.status + cost) + '</span></li>';
     }).join("");
   }
 
@@ -389,12 +394,13 @@
         cell.dataset.learned = "1";
       }
     }
-    catch (e) { $("i-body").innerHTML = '<div class="empty">could not load keys: ' + e.message + '</div>'; }
+    catch (e) { $("i-body").innerHTML = '<div class="empty">could not load keys: ' + esc(e.message) + '</div>'; }
   }
 
   async function tick() {
     try {
       const d = await api("/admin/archive");
+      $("h-busy").textContent = "";
       renderReport(d);
       // Learned-TTL cells fill ONLY for the endpoint you click (from the inspector's own load).
       // The old behavior fired one keys request per row — 50 near-simultaneous heavy calls per
@@ -406,20 +412,28 @@
       if (selected) select(selected);
     } catch (e) {
       if (e.message === "auth") { stop(); openGate("That token was refused. Paste the current TREG_ADMIN_TOKEN."); }
+      else if (e.message === "busy") $("h-busy").textContent = "report busy · retrying";
     }
   }
-  function start() { $("gate").classList.add("hidden"); $("hdr").classList.remove("hidden"); $("main").classList.remove("hidden"); tick(); timer = setInterval(tick, 5000); }
-  function stop() { if (timer) clearInterval(timer); $("hdr").classList.add("hidden"); $("main").classList.add("hidden"); }
+  let polling = false;
+  async function poll() {
+    await tick();
+    if (polling) timer = setTimeout(poll, 5000);
+  }
+  function start() { $("gate").classList.add("hidden"); $("hdr").classList.remove("hidden"); $("main").classList.remove("hidden"); if (!polling) { polling = true; poll(); } }
+  function stop() { polling = false; if (timer) clearTimeout(timer); timer = null; $("hdr").classList.add("hidden"); $("main").classList.add("hidden"); }
   function openGate(msg) { $("gate").classList.remove("hidden"); $("gate-err").textContent = msg || ""; }
 
   $("go").addEventListener("click", async () => {
     token = $("tok").value.trim();
     if (!token) { $("gate-err").textContent = "The token is empty."; return; }
-    try { await api("/admin/archive"); localStorage.setItem(TOK_KEY, token); start(); }
-    catch (e) { $("gate-err").textContent = e.message === "auth" ? "The server refused this token." : "Could not reach the server: " + e.message; }
+    try { await api("/admin/archive"); sessionStorage.setItem(TOK_KEY, token); start(); }
+    catch (e) {
+      if (e.message === "busy") { sessionStorage.setItem(TOK_KEY, token); start(); return; }
+      $("gate-err").textContent = e.message === "auth" ? "The server refused this token." : "Could not reach the server: " + e.message; }
   });
   $("tok").addEventListener("keydown", e => { if (e.key === "Enter") $("go").click(); });
 
-  if (token) { api("/admin/archive").then(() => start()).catch(() => openGate()); }
+  if (token) { api("/admin/archive").then(() => start()).catch(e => e.message === "busy" ? start() : openGate()); }
 })();
 </script>

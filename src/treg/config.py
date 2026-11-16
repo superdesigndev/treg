@@ -374,6 +374,7 @@ class Settings(BaseSettings):
     platform_key_leadocean: str = ""  # x-api-key; usage is read through the free account API
     platform_key_blitzapi: str = ""  # x-api-key; monthly record allowance, free key-info balance
     platform_key_mobiusengine_jobs: str = ""  # x-api-key; prepaid USD balance, free GET /v1/balance
+    platform_key_hirebase: str = ""  # x-api-key; Growth plan: monthly job allowance then per-job overage
     platform_key_anyapi: str = ""  # X-API-Key; prepaid USD wallet, exact charge settles from costUsd
     platform_key_dropleads: str = ""  # X-API-Key; PAYG credits priced in fx.yaml
     platform_key_quickenrich: str = ""  # Bearer; monthly subscription credits, not auto-top-up
@@ -432,10 +433,11 @@ class Settings(BaseSettings):
     platform_key_influencersclub: str = ""  # Bearer key (dashboard JWT); creator discovery + enrichment, fx.yaml $0.598/credit
     platform_key_crustdata: str = ""  # Bearer key; every call also needs the pinned x-api-version header
     platform_key_theirstack: str = ""  # Bearer key; jobs and companies draw API credits
+    platform_key_jobspipe: str = ""   # Bearer key; Builder plan, 25,000 credits a month, one per new job
     platform_key_aviato: str = ""     # Bearer key; $10 auto-top-up buys 1,000 credits
     platform_key_enrichlayer: str = ""  # Bearer; pay-as-you-go credits
     platform_key_exa: str = ""        # x-api-key; dollar-metered ($7/1k searches, $1/1k pages); settles from costDollars.total
-    platform_key_tavily: str = ""     # Bearer; Search reports per-call usage, other tools settle returned successes
+    platform_key_tavily: str = ""     # Bearer; Search reports per-call usage, other tools settle returned results
     platform_key_search1api: str = ""  # Bearer; prepaid credits, free GET /usage balance check
     platform_key_octen: str = ""      # x-api-key; PAYG search and extraction usage settles per response
     platform_key_linkup: str = ""     # Bearer; prepaid USD balance, request-priced Search/Fetch/Research
@@ -445,6 +447,7 @@ class Settings(BaseSettings):
     platform_key_serper: str = ""     # X-API-KEY; prepaid Google search credits, exact charge in response.credits
     platform_key_bravesearch: str = ""  # X-Subscription-Token; prepaid Search requests
     platform_key_litescrape: str = ""  # Bearer; prepaid calls, free key status endpoint
+    platform_key_localfalcon: str = ""  # Bearer; On-Demand subscription, $0.0032 per request (scan per grid point), no usage meter
     platform_key_keenable: str = ""   # X-API-Key; $4/1,000-request package, 10 requests/s per organization
     platform_key_olostep: str = ""    # Bearer; prepaid credits, platform price $0.002/credit
     platform_key_crawl4ai: str = ""
@@ -503,6 +506,20 @@ class Settings(BaseSettings):
     # Optional percent of routed requests on which each shared-key provider may be considered.
     # Empty leaves routing unchanged; direct calls and own-key candidates are unaffected.
     route_provider_sample_pct: str = ""
+    # Routed child guards (application/call/route_health.py, docs catalog.md "Child guards").
+    # `on` skips a treg-key child failing now and asks a slow one after the others; `observe`
+    # records and reports the verdict without acting on it; `off` neither records nor reads.
+    route_health: Literal["on", "observe", "off"] = "on"
+    route_health_window_s: int = Field(default=120, ge=10, le=3600)
+    route_health_min_calls: int = Field(default=5, ge=1, le=10_000)
+    route_health_fail_pct: int = Field(default=50, ge=1, le=100)
+    route_health_slow_pct: int = Field(default=50, ge=1, le=100)
+    # While a child is failing, one routed call per this many seconds still asks it (fleet-wide
+    # through the key-value store), so it can show it is back before its failures age out.
+    route_health_probe_s: int = Field(default=15, ge=1, le=3600)
+    # How long one child of a routed call may take before the router moves on: this floor, or twice
+    # the child's measured p95 when longer, never past call_timeout_s. 0 turns the bound off.
+    route_child_timeout_s: float = Field(default=30.0, ge=0, le=600)
     # The discovery EXPERIMENT (application.search_experiment): a relevance judge (TypeSafe's Jev)
     # scores a widened lexical recall and the result is compared with the shipped ranker on
     # behaviour — did the caller go on to `call` something from the page. `off` (default) leaves
@@ -623,6 +640,7 @@ class Settings(BaseSettings):
     # Price keeps that plan out of Checkout; no per-checkout products are created.
     enterprise_sso_only_price_id: str = ""
     enterprise_sso_bundle_price_id: str = ""
+    enterprise_sso_promo_org_ids: str = ""
     # Optional deployment-specific checkout floors. Keep vendor costs and commercial policy out
     # of the portable defaults; hosted deployments set these alongside their Stripe Prices.
     enterprise_sso_only_min_price_usd: int = 0
@@ -834,6 +852,9 @@ class Settings(BaseSettings):
     cli_beta_version: str = ""
     cli_release_repo: str = "superdesigndev/treg"
     cli_download_base_url: str = "https://github.com/superdesigndev/treg/releases/download/v{version}"
+    # A second copy of each release's files (.github/workflows/cli-mirror.yml), `{version}` filled in
+    # the same way, which installers and `treg update` try when the first fails. Empty = no mirror.
+    cli_mirror_base_url: str = ""
     # The share of new installs `/install.sh` sends to the binary CLI (docs/context/interface/cli-binary.md).
     cli_binary_install_percent: int = Field(default=0, ge=0, le=100)
     # Call events (call_events.py, docs/context/architecture/call-events.md): one structured,

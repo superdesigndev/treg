@@ -9,25 +9,12 @@ credential server-side when one is required, and relays the answer verbatim. A c
 explicitly verified as public can instead relay with no injected credential. We never model an
 upstream API.
 
-## Paired treg.to checkout
+## Public repository
 
-For work on the hosted treg.to service, clone the public `treg` repository and private
-`treg-internal` repository as siblings with those exact directory names. When `../treg-internal`
-exists, treat both repositories as one operational workspace:
-
-- `treg` owns public product code, portable behavior and self-hosting documentation.
-- `treg-internal` owns live production configuration, operational runbooks, incident evidence and
-  private admin tools.
-- Read both repositories before changing production behavior, but never copy credentials, live
-  environment exports, customer data or raw logs between them.
-- Everything committed here is public, comments and commit messages included: describe treg.to
-  only by mechanism, never by its numbers, dates, hosts, instance counts or schedules. Those go to
-  `../treg-internal`.
-- Commit and open PRs separately. State the merge order whenever one PR links to or depends on the
-  other.
-
-Do not clone `treg-internal` inside this repository and do not make it a Git submodule. Start agents
-from the repository that owns the task; the sibling path supplies the other half of treg.to context.
+Everything committed here is public, comments and commit messages included. Describe the hosted
+treg.to service only by mechanism, never by its numbers, dates, hosts, instance counts or
+schedules. If a private checkout exists at `../treg-internal`, read its `AGENTS.md` before
+changing production behavior.
 
 ## Non-negotiables
 
@@ -70,7 +57,8 @@ Everything else in this file is guidance; these are the contract, and they win o
    `X-Treg-Keep-Reported-Charge: true` keeps the member.
    A live-verified free catalog endpoint may declare an anonymous fallback; its empty binding list
    omits credential injection but does not strip or rewrite caller headers.
-   Routed endpoints and overflow wrap the child's answer and say so; they never alter it. With
+   Routed endpoints and overflow wrap the child's answer and say so; they never alter it. A routed
+   call reads each child's answer up to the same 8 MiB; a larger one is that child's unbilled error. With
    `X-Treg-Route-Verify`, an email or phone find makes one more linked child call (the check), with its own
    hold and charge, and reports it in `_treg.verification`; the find's answer is not altered. With
    `X-Treg-Route-Confirm`, an email find keeps asking providers after a hit until another returns the
@@ -114,8 +102,6 @@ agents then built against a constitution that was wrong.
   source) and its hand-kept prose mirror `src/treg/web/tutorial.md`.
 - `README.md` is the overview and quickstart, `USAGE.md` the CLI reference, `CONTRIBUTING.md` the
   dev setup, `SECURITY.md` required reading before touching the proxy, runners, auth or secrets.
-- If available, `../treg-internal` holds private operational configuration and tools; read its
-  `README.md` before changing production settings. Public development does not depend on it.
 
 ## Architecture
 
@@ -317,3 +303,10 @@ site-wide `/media/og.png`. `docs/context/interface/seo.md` ("The social card") h
 **Do not document what is not built.** An agent that believes a feature exists fails in a way
 nobody can debug. Provider choice is the easiest thing to overstate: treg compares providers, and
 chooses only in the two disclosed cases of non-negotiable 4.
+
+## Code Review Rules
+
+- Look for security issues.
+- This repository is public: flag anything the Public repository section says must not be
+  committed.
+- Skip speculative edge cases: report a bug only with a concrete path real usage can hit.

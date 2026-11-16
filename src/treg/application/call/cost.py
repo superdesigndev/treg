@@ -118,15 +118,19 @@ def _rows(rule: dict, request: dict) -> int | None:
     return int(rule["default"]["value"]) if rule.get("default") else None
 
 
-def _whole(value: object, top: int) -> bool:
-    """A count parameter's value is a whole number from 1 to `top`: a JSON integer, or ASCII digits."""
+def _whole(value: object, top: int | None, low: int = 1) -> bool:
+    """A count parameter's value is a whole number from `low` to `top`, or of at least `low` when `top`
+    is None: a JSON integer, or ASCII digits."""
     if isinstance(value, str) and value.isascii() and value.isdigit():
-        return len(value.lstrip("0")) <= len(str(top)) and 1 <= int(value.lstrip("0") or "0") <= top
-    return isinstance(value, int) and not isinstance(value, bool) and 1 <= value <= top
+        digits = value.lstrip("0")
+        if len(digits) > len(str(low if top is None else top)):
+            return top is None
+        value = int(digits or "0")
+    return isinstance(value, int) and not isinstance(value, bool) and low <= value and (top is None or value <= top)
 
 
-def _invalid(ep: dict, parameter: str, message: str) -> ResolutionFailed:
-    return ResolutionFailed("catalog_parameter_invalid", status_code=400, detail={
+def _invalid(ep: dict, parameter: str, rule: str, message: str) -> ResolutionFailed:
+    return ResolutionFailed("catalog_parameter_invalid", status_code=400, rule=rule, detail={
         "error": "catalog_parameter_invalid", "endpoint_id": ep["id"], "parameter": parameter,
         "message": message})
 
@@ -142,12 +146,12 @@ def require_request(ep: dict, request_data: dict) -> None:
             spec = declared.get(name)
             if isinstance(value, list) and isinstance(spec, dict) and "array" not in str(spec.get("type")) \
                     and spec.get("type") != "list":
-                raise _invalid(ep, name, f"{ep['id']} takes {name} once")
+                raise _invalid(ep, name, "repeat", f"{ep['id']} takes {name} once")
     rule = (ep.get("reserve") or {}).get("rows")
     if rule and rule.get("param"):
         found = select(rule["param"], request_document(ep, request_data, defaults=False))
         if found and found[0] is not None and not _whole(found[0], int(rule["max"])):
-            raise _invalid(ep, rule["param"],
+            raise _invalid(ep, rule["param"], "range",
                            f"{ep['id']} needs {rule['param']}: a whole number from 1 to {rule['max']}")
 
 
@@ -156,7 +160,8 @@ def require_rows(ep: dict, request_data: dict) -> None:
     before anything is held."""
     rule = (ep.get("reserve") or {}).get("rows")
     if rule and _rows(rule, request_document(ep, request_data, defaults=False)) is None:
-        raise _invalid(ep, rule["param"], f"{ep['id']} needs {rule['param']}: a whole number from 1 to {rule['max']}")
+        raise _invalid(ep, rule["param"], "required",
+                       f"{ep['id']} needs {rule['param']}: a whole number from 1 to {rule['max']}")
 
 
 def require_rates(ep: dict, cat) -> None:
@@ -201,7 +206,7 @@ def require_entities(ep: dict, request_data: dict) -> None:
         return
     top = int(rule.get("max") or 10_000)
     if _entity_total(rule, request_document(ep, request_data, defaults=False)) > top:
-        raise ResolutionFailed("catalog_parameter_invalid", status_code=400, detail={
+        raise ResolutionFailed("catalog_parameter_invalid", status_code=400, rule="platform", detail={
             "error": "catalog_parameter_invalid", "endpoint_id": ep["id"], "parameter": rule["from"],
             "message": f"{ep['id']} takes at most {top} inputs per call on treg's key; split the "
                        "request or connect your own key"})
@@ -266,6 +271,15 @@ def price(ep: dict, cat, request_data: dict) -> tuple[int, int, int, dict]:
     credit_unit = (settlement_basis._micro(credit, 1_000_000)
                    if credit and "credit" in (price_.get("currency"), (reported or {}).get("unit")) else 0)
     return hold, unit, credit_unit, terms
+
+
+def worst_case_micro(ep: dict, cat) -> int:
+    """RAW micro-USD of a v2 row's `settle.worst_case` in its price's currency, 0 when it declares
+    none or the currency has no rate."""
+    worst = (ep.get("settle") or {}).get("worst_case")
+    price_ = ep.get("price") or {}
+    rate = currency_micro(cat, ep["provider"], price_.get("currency", "USD"), price_.get("unit"))
+    return 0 if worst is None or rate is None else _micro_up(Decimal(worst) * rate)
 
 
 def _reads_request(ep: dict) -> bool:

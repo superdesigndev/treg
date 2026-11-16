@@ -58,6 +58,11 @@ class Case:
     help: str = ""
 
 
+INVITES = json.dumps([{"id": 5, "org": "beta-team", "org_name": "Beta Team ü", "role": "member",
+                       "invited_by": "o@b.c"}]).encode()
+JOINED = Canned(200, {}, json.dumps({"org": "beta-team", "org_id": 9, "role": "member",
+                                     "token": "joined-key"}).encode())
+
 BASE_CONFIG = {"token": "tok-1", "active_org": "acme", "email": "a@b.c", "identity": False}
 
 CASES: dict[str, Case] = {
@@ -90,6 +95,33 @@ CASES: dict[str, Case] = {
         {"org": "new-team", "org_id": 12, "name": "New <Team>", "role": "owner", "token": "new-key"}).encode())]}),
     "org_create_refused": Case(["org", "create", "admin"], {"/orgs": [Canned(400, {"X-Treg-Error": "1"},
                                                                              b'{"detail": "that name is reserved"}')]}),
+    # invites addressed to you, and joining by code
+    "invites": Case(["invites"], {"/invites/mine": [Canned(200, {}, INVITES)]}),
+    "invites_json": Case(["--json", "invites"], {"/invites/mine": [Canned(200, {}, INVITES)]}),
+    "invites_refused": Case(["invites"], {"/invites/mine": [Canned(401, {"X-Treg-Error": "1"},
+                                                                    b'{"detail": "invalid token"}')]}),
+    "accept_by_slug": Case(["accept", "beta-team"], {"/invites/mine": [Canned(200, {}, INVITES)],
+                                                     "/invites/5/accept": [JOINED]}),
+    "accept_by_id": Case(["accept", "5"], {"/invites/mine": [Canned(200, {}, INVITES)],
+                                           "/invites/5/accept": [JOINED]}),
+    "accept_unknown": Case(["accept", "nope"], {"/invites/mine": [Canned(200, {}, INVITES)]}),
+    "accept_list_refused": Case(["accept", "beta-team"], {"/invites/mine": [Canned(401, {"X-Treg-Error": "1"},
+                                                                                    b'{"detail": "invalid token"}')]}),
+    "accept_expired": Case(["accept", "beta-team"], {"/invites/mine": [Canned(200, {}, INVITES)],
+                                                     "/invites/5/accept": [Canned(410, {"X-Treg-Error": "1"},
+                                                                                  b'{"detail": "invite expired"}')]}),
+    "accept_treg_token": Case(["accept", "beta-team"], {"/invites/mine": [Canned(200, {}, INVITES)],
+                                                        "/invites/5/accept": [JOINED]}, env={"TREG_TOKEN": "env-token"}),
+    "org_join": Case(["org", "join", "AB12CD"], {"/invites/accept": [JOINED]}),
+    "org_join_email": Case(["org", "join", "AB12CD", "--email", "a@b.c"], {"/invites/accept": [JOINED]}),
+    "org_join_other_email": Case(["org", "join", "AB12CD"], {"/invites/accept": [Canned(
+        403, {"X-Treg-Error": "1"}, b'{"detail": "this invite was sent to a different email"}')]}),
+    "org_join_bad_code": Case(["org", "join", "nope"], {"/invites/accept": [Canned(
+        404, {"X-Treg-Error": "1"}, b'{"detail": "no such invite"}')]}),
+    "org_join_signed_out": Case(["org", "join", "AB12CD"], config={"token": None}),
+    "org_join_treg_token": Case(["org", "join", "AB12CD"], {"/invites/accept": [JOINED]},
+                                config={"token": None}, env={"TREG_TOKEN": "env-token"}),
+    "org_join_no_code": Case(["org", "join"]),
     "org_members": Case(["org", "members"], {"/orgs": [Canned(200, {}, ORGS)],
                                              "/orgs/7/members": [Canned(200, {}, b'[{"user_id": 1, "role": "owner"}]')]}),
     "org_members_override": Case(["--org", "beta-team", "org", "members"], {
