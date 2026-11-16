@@ -361,6 +361,23 @@
     "methods": [
       "POST"
     ],
+    "name": "submit_mark",
+    "path": "/marks"
+  },
+  {
+    "kind": "APIRoute",
+    "methods": [
+      "GET",
+      "HEAD"
+    ],
+    "name": "admin_marks",
+    "path": "/admin/marks"
+  },
+  {
+    "kind": "APIRoute",
+    "methods": [
+      "POST"
+    ],
     "name": "cli_events",
     "path": "/cli/events"
   },

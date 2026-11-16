@@ -1813,6 +1813,41 @@ class CallReview(SQLModel, table=True):
     created_at: NaiveUTC = Field(default_factory=_now)
 
 
+class CallMark(SQLModel, table=True):
+    """What an agent found wrong (or confirmed right) in one call's answer, after checking it.
+
+    Append-only: a correction or withdrawal is a new row naming the one it `replaces`. `items`
+    holds what the caller claimed, per row `index` and `field`; an index is a position in the
+    answer the caller saw and is not attributed to a routed child. `checked` is how many rows the
+    caller looked at, never a denominator for an error rate. `note` is private: never published.
+    """
+
+    __table_args__ = (
+        Index("ix_callmark_endpoint_id_created_at", "endpoint_id", "created_at"),
+        Index("ix_callmark_org_id_content_hash", "org_id", "content_hash", unique=True),
+    )
+
+    id: int | None = Field(default=None, primary_key=True)
+    # No foreign keys (AGENTS.md): team deletion clears these rows (ORG_SCOPED_MODELS).
+    org_id: int = Field(index=True)
+    user_email: str
+    call_id: str = Field(index=True)
+    endpoint_id: str
+    provider: str | None = Field(default=None)
+    credential_tier: str | None = Field(default=None)
+    client: str = Field(default="")
+    basis: str
+    items: list[dict] = Field(default_factory=list, sa_column=Column(JSON, nullable=False))
+    checked: int | None = Field(default=None)
+    evidence_call_id: str | None = Field(default=None)
+    evidence_verified: bool = Field(default=False)
+    note: str | None = Field(default=None)
+    replaces: int | None = Field(default=None)
+    tags: dict | None = Field(default=None, sa_column=Column("tags", JSON, nullable=True))
+    content_hash: str
+    created_at: NaiveUTC = Field(default_factory=_now)
+
+
 class Media(SQLModel, table=True):
     """A reference file a member hosted for a vendor to fetch (`treg host`): the image, voice clip
     or video an AIGC endpoint takes as a public URL. The bytes live in the object store under

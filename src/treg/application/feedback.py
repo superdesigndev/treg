@@ -9,11 +9,11 @@ from sqlmodel import select
 
 from .. import hints, ratestore
 from ..domain import feedback
-from ..domain.feedback import reviews, verdicts
+from ..domain.feedback import marks, reviews, verdicts
 from ..domain.governance.access import pinned_tag_predicates
-from ..feedback_contract import FeedbackCategory, ReviewUsefulness
+from ..feedback_contract import FeedbackCategory, MarkBasis, ReviewUsefulness
 from ..infra.db import session_maker
-from ..models import CallRecord, LedgerEntry
+from ..models import CallMark, CallRecord, LedgerEntry
 from ..timeutil import utcnow_naive
 
 RATE_MAX = 30
@@ -70,30 +70,36 @@ class ReviewOwnTool(Exception):
     pass
 
 
+async def _attributable_call(db, *, org_id: int, call_id: str, pinned_tags: dict | None) -> CallRecord:
+    """The caller's own audit record of a catalog call, under the same read scope as `/calls`.
+
+    A pinned caller may only name a call carrying its pin, so a foreign reference is a 404 rather
+    than an oracle for another customer's calls."""
+    record = (await db.execute(select(CallRecord).where(
+        CallRecord.org_id == org_id, CallRecord.call_ref == call_id,
+        *pinned_tag_predicates(CallRecord.tags, pinned_tags),
+    ).order_by(CallRecord.id.asc()).limit(1))).scalar_one_or_none()
+    if record is None:
+        # The ledger can verify provenance while audit is delayed, but cannot establish
+        # status/provider/cache state. Wait for that evidence rather than inventing it.
+        raise ReviewCallNotFound
+    if not record.endpoint_id:
+        raise ReviewOwnTool
+    # A maker's word on its own hub tool is not a buyer's.
+    from ..models import HubTool
+    if (await db.execute(select(HubTool.id).where(
+            HubTool.tool_id == record.endpoint_id, HubTool.org_id == org_id).limit(1))).first() is not None:
+        raise ReviewOwnTool
+    return record
+
+
 async def submit_review(
     *, org_id: int, user_email: str, call_id: str, usefulness: ReviewUsefulness,
     reason: str | None = None, client: str = "", pinned_tags: dict | None = None,
 ) -> tuple[int, bool]:
-    """Return (review_id, inserted); attribution never comes from the caller.
-
-    A pinned caller may only review a call carrying its pin: the same read scope as `/calls`, so
-    a foreign reference is a 404 here too rather than an oracle for another customer's calls."""
+    """Return (review_id, inserted); attribution never comes from the caller."""
     async with session_maker() as db:
-        record = (await db.execute(select(CallRecord).where(
-            CallRecord.org_id == org_id, CallRecord.call_ref == call_id,
-            *pinned_tag_predicates(CallRecord.tags, pinned_tags),
-        ).order_by(CallRecord.id.asc()).limit(1))).scalar_one_or_none()
-        if record is None:
-            # The ledger can verify provenance while audit is delayed, but cannot establish
-            # status/provider/cache state. Wait for that evidence rather than inventing it.
-            raise ReviewCallNotFound
-        if not record.endpoint_id:
-            raise ReviewOwnTool
-        # A maker's review of its own hub tool is not a buyer's word.
-        from ..models import HubTool
-        if (await db.execute(select(HubTool.id).where(
-                HubTool.tool_id == record.endpoint_id, HubTool.org_id == org_id).limit(1))).first() is not None:
-            raise ReviewOwnTool
+        record = await _attributable_call(db, org_id=org_id, call_id=call_id, pinned_tags=pinned_tags)
         endpoint_id, provider, routed_via = record.endpoint_id, record.provider, None
         if record.credential_tier == "routed":
             routed_via = record.endpoint_id
@@ -130,6 +136,69 @@ async def submit_review(
         await db.commit()
         return review_id, True
 
+
+
+MARK_RATE_MAX = 300
+MARK_NAMESPACE = "mark"
+
+
+class MarkReplacesUnknown(Exception):
+    pass
+
+
+async def submit_mark(
+    *, org_id: int, user_email: str, call_id: str, basis: MarkBasis, items: list[dict],
+    checked: int | None = None, evidence_call_id: str | None = None, note: str | None = None,
+    replaces: int | None = None, client: str = "", pinned_tags: dict | None = None,
+) -> tuple[int, bool]:
+    """Return (mark_id, inserted). Append-only; an identical retry returns the original.
+
+    Attribution is the called endpoint as audited; row indexes stay the caller's claim and are
+    not resolved to a routed child here. A replaced mark must be this team's, on the same call."""
+    payload = {"basis": basis, "items": items, "checked": checked,
+               "evidence_call_id": evidence_call_id, "note": note, "replaces": replaces}
+    digest = marks.content_hash(call_id, payload)
+    async with session_maker() as db:
+        existing = await marks.by_hash(db, org_id, digest)
+        if existing is not None:
+            return existing.id, False
+        await ratestore.sweep(db, MARK_NAMESPACE)
+        if not await ratestore.rate_check(
+            db, MARK_NAMESPACE, [(str(org_id), MARK_RATE_MAX)], RATE_WINDOW_S,
+        ):
+            await db.commit()
+            raise FeedbackRateLimited
+        record = await _attributable_call(db, org_id=org_id, call_id=call_id, pinned_tags=pinned_tags)
+        if replaces is not None:
+            earlier = await marks.get(db, replaces, org_id,
+                                      *pinned_tag_predicates(CallMark.tags, pinned_tags))
+            if earlier is None or earlier.call_id != call_id:
+                raise MarkReplacesUnknown
+        evidence_verified = False
+        if evidence_call_id:
+            evidence_verified = (await db.execute(select(CallRecord.id).where(
+                CallRecord.org_id == org_id, CallRecord.call_ref == evidence_call_id,
+                *pinned_tag_predicates(CallRecord.tags, pinned_tags),
+            ).limit(1))).first() is not None
+        nested = await db.begin_nested()
+        try:
+            row = marks.add(
+                db, org_id=org_id, user_email=user_email, call_id=call_id,
+                endpoint_id=record.endpoint_id, provider=record.provider,
+                credential_tier=record.credential_tier, client=client,
+                evidence_verified=evidence_verified, content_hash=digest,
+                tags=dict(pinned_tags) if pinned_tags else None, **payload,
+            )
+            await db.flush()
+        except IntegrityError:
+            await nested.rollback()
+            existing = await marks.by_hash(db, org_id, digest)
+            if existing is None:
+                raise
+            return existing.id, False
+        mark_id = row.id
+        await db.commit()
+        return mark_id, True
 
 VERDICTS_TTL_S = 300
 _verdicts: tuple[float, dict[str, dict]] | None = None

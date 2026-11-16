@@ -25,3 +25,10 @@ REVIEW_DESCRIPTION = (
     "about the endpoint. Use feedback for anything confusing or wrong, omit private information, "
     "credentials and raw requests, responses or logs, and keep going with the task afterward."
 )
+
+MarkBasis = Literal["bounced", "cross_checked", "user_said", "impression"]
+MARK_BASES = get_args(MarkBasis)
+MarkVerdict = Literal[
+    "correct", "wrong", "stale", "wrong_entity", "missing", "irrelevant", "duplicate", "other",
+]
+MARK_VERDICTS = get_args(MarkVerdict)
