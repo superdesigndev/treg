@@ -1246,6 +1246,7 @@ def check_cost(cost: dict, where: str, errors: list[str], warnings: list[str],
             # the reserve, the reply's `usage.path` the charge (sync body or async terminal document).
             check_cost_fallback(cost, "cost.settle 'usage'", where, errors)
         check_usage_block(cost, settle, where, errors, provider)
+    check_cost_worst_case(cost, where, errors, warnings)
     modifiers = cost.get("modifiers")
     if modifiers is not None:
         if not isinstance(modifiers, dict) or not modifiers:
@@ -1319,6 +1320,28 @@ def check_cost(cost: dict, where: str, errors: list[str], warnings: list[str],
         fail(errors, where, f"cost.checked '{checked}' is not an ISO date (YYYY-MM-DD)")
     else:
         check_fresh(day, "cost.checked", where, warnings)
+
+
+def check_cost_worst_case(cost: dict, where: str, errors: list[str], warnings: list[str]) -> None:
+    """`cost.worst_case` raises the hold of a row whose provider-reported figure settles the call
+    (`settle: usage`, `reported_charge`) to the most one call can cost; without it the hold is the
+    estimate, and calls in flight together may settle above what the team holds."""
+    settle, worst = cost.get("settle"), cost.get("worst_case")
+    if worst is None:
+        if settle == "usage" and cost.get("type") != "free":
+            warnings.append(f"{where}: settle: usage without cost.worst_case holds only the estimate; "
+                            "declare the most one call can cost")
+        return
+    if settle != "usage" and "reported_charge" not in cost:
+        fail(errors, where, "cost.worst_case belongs beside settle: usage or reported_charge")
+        return
+    if not _finite_number(worst) or worst <= 0:
+        fail(errors, where, "cost.worst_case must be a positive number in the cost's currency")
+        return
+    bound = (cost.get("fallback") or {}).get("value") if ("table" in cost or settle == "usage") \
+        else cost.get("value")
+    if _finite_number(bound) and worst < bound:
+        fail(errors, where, f"cost.worst_case {worst} is below the hold it raises ({bound})")
 
 
 def check_fresh(day: dt.date, key: str, where: str, warnings: list[str]) -> None:
@@ -1540,6 +1563,10 @@ def check_v2_cost(row: schema.V2Row, ep: dict, provider: str, where: str, errors
                                               rule.unit):
             fail(errors, where, f"{name}.unit '{rule.unit}' is not usd, credit or an fx.yaml "
                                 f"unit_rates_usd meter of '{provider}'")
+    if settle is not None and settle.worst_case is not None and price is not None:
+        bound = price.value if price.value is not None else (price.fallback.value if price.fallback else None)
+        if bound is not None and settle.worst_case < bound:
+            fail(errors, where, f"settle.worst_case {settle.worst_case} is below the hold it raises ({bound})")
     if settle is not None and settle.usage is not None and settle.usage.terms and settle.usage.unit != "usd":
         fail(errors, where, "settle.usage.terms rates are USD per unit; its unit must be usd")
     if reserve is not None and reserve.rows is not None and reserve.rows.param is not None:
@@ -1714,6 +1741,9 @@ def main(argv: list[str]) -> int:
             if not legacy:
                 check_v2_row(ep, service, tier, adapter_rows, where, errors)
                 check_v2_cost(row, ep, service, where, errors)
+                if row.settle is not None and row.settle.usage is not None and row.settle.worst_case is None:
+                    warnings.append(f"{where}: settle.usage without settle.worst_case holds only the "
+                                    "estimate; declare the most one call can cost")
                 if row.provenance is not None and (day := _as_date(row.provenance.checked)) is not None:
                     check_fresh(day, "provenance.checked", where, warnings)
             if extended_file != (tier == "extended"):

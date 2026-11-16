@@ -273,6 +273,15 @@ def price(ep: dict, cat, request_data: dict) -> tuple[int, int, int, dict]:
     return hold, unit, credit_unit, terms
 
 
+def worst_case_micro(ep: dict, cat) -> int:
+    """RAW micro-USD of a v2 row's `settle.worst_case` in its price's currency, 0 when it declares
+    none or the currency has no rate."""
+    worst = (ep.get("settle") or {}).get("worst_case")
+    price_ = ep.get("price") or {}
+    rate = currency_micro(cat, ep["provider"], price_.get("currency", "USD"), price_.get("unit"))
+    return 0 if worst is None or rate is None else _micro_up(Decimal(worst) * rate)
+
+
 def _reads_request(ep: dict) -> bool:
     free_when = (ep.get("bill") or {}).get("free_when")
     named = [ep.get(key) or {} for key in ("reserve", "settle", "error", "miss")]

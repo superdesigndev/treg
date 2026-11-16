@@ -379,7 +379,8 @@ cost:
 - `fallback` is a hand-written global upper bound, checked against every row's maximum.
 - `settle: table` reserves and settles the matched row. `settle: usage` reserves the matched row as
   an estimate and settles the reply's `usage.path` figure, which may exceed the reserve; a flat
-  `value` may also declare `settle: usage` with its `fallback` as the reserve. `usage.unit` is `usd`,
+  `value` may also declare `settle: usage` with its `fallback` as the reserve. `worst_case`, the
+  most one call can cost, raises the hold to cover that figure ([catalog schema](catalog-schema.md)). `usage.unit` is `usd`,
   `credit` (when fx.yaml prices that provider's credit) or a native meter with a
   `unit_rates_usd[provider][unit]` entry. `usage.terms` (unit `usd`) sums several meters times
   positive USD rates; a term path may select a list item by key
@@ -558,9 +559,9 @@ Meta publishes its Graph reference only as HTML, with no machine-readable OpenAP
 Reviewed Instagram `input` and authorization contracts are therefore curated catalog data that
 ingestion carries forward instead of erasing on a later scrape.
 
-Path placeholders are percent-encoded by the marketplace caller; a value that already contains a
-valid `%HH` escape is kept verbatim so callers can reuse encoded resource names an upstream
-returned, while a literal `%` becomes `%25`. Where a provider's resource name is a hierarchy rather
+Path placeholders are percent-encoded by the marketplace caller as one segment each; a value that
+already contains a valid `%HH` escape is decoded and re-encoded once, so callers can reuse encoded
+resource names an upstream returned, while a literal `%` becomes `%25` and `.` or `..` is refused. Where a provider's resource name is a hierarchy rather
 than one opaque id (Google Tag Manager), the catalog exposes atomic placeholders
 (`catalog_ingest.google_flat_path_params` follows Discovery's `flatPath`) so no slash-delimited name
 passes through one placeholder and becomes `%2F`.

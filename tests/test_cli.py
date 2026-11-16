@@ -1518,7 +1518,7 @@ def test_login_forwards_the_install_links_ad_code(monkeypatch, tmp_path):
     cli.cmd_login(args, {"base_url": "https://treg.to", "token": None})
 
     assert opened and opened[0].startswith("https://treg.to/login?cli=" + "L" * 24)
-    assert "&ad=k7x2qp" in opened[0] and opened[0].endswith("#code=ABCD")
+    assert opened[0].endswith("&ad=k7x2qp") and "ABCD" not in opened[0]
     assert not (tmp_path / "ad-link").exists()
 
 

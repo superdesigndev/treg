@@ -108,10 +108,11 @@ is self-teaching. This fragment holds only what the code and help cannot say. Th
 - `_active_org` resolves `/orgs`, falling back to `/auth/me` when `/orgs` refuses an agent key.
   `strict=False` is for callers that only enrich output: `sys.exit` raises `SystemExit`, which
   `except Exception` does not catch, so a call-site try/except would not save the page.
-- **Browser login.** `POST /auth/cli/start` returns a `login_id` and a short pairing code; the
-  `/login?cli=<id>#code=<code>` page shows the code from the URL fragment (never sent to the server,
-  so never in request logs) so the user confirms it matches the terminal. The server still validates
-  the code at approve time: a login you did not start cannot be approved into a token.
+- **Browser login.** `POST /auth/cli/start` returns a `login_id` and a short pairing code; the CLI
+  opens `/login?cli=<id>` and prints the code, and the user types it on that page. The link never
+  carries the code, and the page never reads one from it (a `#code=` an older CLI still appends is
+  ignored), so the code is the proof that the person approving also sees the terminal. The server
+  validates it at approve time: a login you did not start cannot be approved into a token.
 - **Team Default key, not bootstrap.** An org-less login yields a signed `scp=bootstrap` credential
   that identifies the account for onboarding, expires after seven days and cannot call team
   resources. Selecting, creating, joining or accepting a team replaces the stored token with that
