@@ -57,6 +57,8 @@ async def test_released_cli_flows(clients, tmp_path, monkeypatch, capsys, versio
             trace.append((request.method, request.url.path, response.status_code))
             if request.url.path == '/auth/email/start' and response.status_code == 200:
                 otp['code'] = response.json()['dev_code']
+            if request.url.path == '/auth/cli/start' and response.status_code == 200:
+                otp['pair'] = response.json()['code']
             return httpx.Response(response.status_code, headers=response.headers,
                                   content=response.content, request=request)
 
@@ -92,9 +94,8 @@ async def test_released_cli_flows(clients, tmp_path, monkeypatch, capsys, versio
     def browser_open(url):
         parsed = urlsplit(url)
         lid = parse_qs(parsed.query)['cli'][0]
-        code = parse_qs(parsed.fragment)['code'][0]
         response = request('POST', 'http://test/auth/cli/approve',
-                           json={'login_id': lid, 'code': code, 'org': team},
+                           json={'login_id': lid, 'code': otp['pair'], 'org': team},
                            headers={'Cookie': f'treg_session={cookie}'})
         assert response.status_code == 200, response.text
         return True

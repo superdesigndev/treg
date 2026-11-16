@@ -323,6 +323,8 @@ async def start_oauth_connection(
     client_secret: str, auth_uri: str, token_uri: str, scopes: list[str],
     redirect_uri: str | None,
 ) -> dict:
+    if name:
+        name = _valid_tool_name(name)
     async with session_maker() as db:
         code_verifier, auth_params, auth_method = "", "", "client_secret_post"
         cid_param, scope_sep = "client_id", " "

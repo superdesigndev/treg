@@ -135,6 +135,12 @@ def test_slug_multiword_provider(tmp_path):
     assert a.tool_name == "google-ai"
 
 
+def test_slug_turns_a_dotted_provider_into_a_plain_tool_name():
+    assert prov._slug("You.com") == "you-com"
+    assert prov._slug("MobiusEngine.ai Jobs Data") == "mobiusengine-ai-jobs-data"
+    assert prov._legacy_slug("You.com") == "you.com"
+
+
 def test_oauth_pair_carries_connect_endpoints(tmp_path):
     env = _write_env(tmp_path, "GITHUB_CLIENT_ID=x\nGITHUB_CLIENT_SECRET=x\n")
     [d] = prov.scan_env(env)

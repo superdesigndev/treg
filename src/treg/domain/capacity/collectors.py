@@ -1262,6 +1262,27 @@ def all_platform_providers() -> list[str]:
                   and name.removeprefix("platform_key_") not in AUX_SLOTS)
 
 
+def credential_values(provider: str) -> tuple[str, ...]:
+    """Every value of treg's credential for `provider`, the second half of a pair included."""
+    setting = platform_setting_name(provider)
+    settings = get_settings()
+    aux = setting + "_secret"
+    pair = settings.platform_credential_values(aux) if aux.removeprefix("platform_key_") in AUX_SLOTS else ()
+    return settings.platform_credential_values(setting) + pair
+
+
+def _failure_note(provider: str, exc: Exception) -> str:
+    # httpx exception text carries the request URL, and several balance routes take the key in the query.
+    if isinstance(exc, httpx.HTTPStatusError):
+        return f"{type(exc).__name__}: {exc.response.status_code}"
+    if isinstance(exc, httpx.HTTPError | httpx.InvalidURL):
+        return type(exc).__name__
+    text = f"{type(exc).__name__}: {exc}"
+    for value in credential_values(provider):
+        text = text.replace(value, "***")
+    return text
+
+
 async def provider_balance(provider: str, client: httpx.AsyncClient | None = None) -> dict:
     """Ask one provider what it thinks our account has left. Never raises — a failure is a row.
 
@@ -1289,7 +1310,7 @@ async def provider_balance(provider: str, client: httpx.AsyncClient | None = Non
             row = await fetch(client, key)
     except Exception as exc:  # noqa: BLE001 — a sweep must report, not crash
         return {"provider": provider, "value": None, "unit": "",
-                "note": f"{type(exc).__name__}: {exc}"}
+                "note": _failure_note(provider, exc)}
     from .policy import EMPTY_BELOW  # policy imports this module
     value = row.get("value")
     if provider in OVERDRAFT_SERVED and isinstance(value, (int, float)) and value < EMPTY_BELOW:

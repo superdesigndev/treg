@@ -497,6 +497,8 @@ def test_orthogonal_build_wraps_the_vendor_request_unchanged():
                         "query": {"limit": "1", "domain": "stripe.com"}, "body": {"name": "Patrick"}}
     req2 = orthogonal.build(_route(agg_path="/api/v1/{id}/x"), "K", [], None, {"id": "42"})
     assert req2.json == {"api": "findymail", "path": "/api/v1/42/x"}
+    req3 = orthogonal.build(_route(agg_path="/api/v1/{id}/x"), "K", [], None, {"id": "a/../b?c#d"})
+    assert req3.json["path"] == "/api/v1/a%2F..%2Fb%3Fc%23d/x"
 
 
 def test_orthogonal_parse_success_price_upstream_error_and_contract():

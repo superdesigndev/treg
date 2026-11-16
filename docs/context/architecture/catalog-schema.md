@@ -143,6 +143,16 @@ field without a default: an equality on an absent field does not hold, so a late
 fallback prices that request. A
 `provenance.checked` older than 90 days warns, as `cost.checked` does.
 
+**The worst case a hold covers.** A row whose provider-reported figure settles the call may declare
+the most one call can cost: `cost.worst_case` (a number in the cost's currency, beside `settle:
+usage` or `reported_charge`) or `settle.worst_case` (money in the price's currency, beside
+`settle.usage` or `settle.reported`; the model refuses it elsewhere, since a count or plugin settle is
+already capped). The hold is the higher of the estimate and the worst case
+([money](money.md)); a missing figure still settles at the estimate. The validator refuses a worst
+case below the hold it raises (the fallback beside a usage settle or a table, else the value) and
+warns on a usage-settled row without one. A v2 row serves it as `cost.worst_case`, and the codemod
+moves `cost.worst_case` to `settle.worst_case`.
+
 ## Provider defaults and the one merge rule
 
 An endpoint file header may carry `defaults:`, any endpoint-level key its provider's rows inherit,

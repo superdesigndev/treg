@@ -71,7 +71,7 @@ or the CLI is enough, and having both is fine.
    no team, an empty balance) comes first in its `help` lines. Not signed in:
 
    ```bash
-   treg login                            # browser sign-in: GitHub, Google or an emailed code
+   treg login                            # browser sign-in; tell the human the short code it prints, to type on that page
    treg login --email you@company.com    # an emailed 6-digit code
    treg login --token <team-token>       # non-interactive, for agents and CI
    ```

@@ -3,6 +3,7 @@ title: The proxy - faithful credential-injecting relay + tool resolution
 status: shipped
 sources:
   - src/treg/infra/upstream/relay.py
+  - src/treg/infra/upstream/pathsegment.py
   - src/treg/jsontext.py
   - src/treg/infra/upstream/ssrf.py
   - src/treg/api.py
@@ -286,10 +287,14 @@ resolution is shared.
 ### Catalog targets
 
 A live catalog row enters `_resolve_marketplace_call` and its credential ladder.
-`_marketplace_upstream` percent-encodes placeholder values but preserves a value already containing
-a valid `%HH` escape (an encoded Search Console property id must not become `%253A`). Raw `@` stays
+`_marketplace_upstream` places every placeholder value as exactly one path segment
+(`infra/upstream/pathsegment.py`): a value containing a valid `%HH` escape is decoded first
+(`unquote_to_bytes`, so non-UTF-8 bytes survive) and then encoded once, so an encoded Search Console
+property id does not become `%253A` and an encoded `/`, `?` or `#` stays escaped. Raw `@` stays
 literal: it is legal in a path segment and some email-path APIs reject `%40`. Slashes, query and
-fragment delimiters and invalid `%` stay escaped. A catalog `host` on a provider that opted into
+fragment delimiters and invalid `%` are escaped. A value that decodes to `.` or `..` is refused
+with `catalog_parameter_invalid` (400) before any hold, since URL normalization would remove it as
+a dot segment. The overflow road fills Orthogonal's `path` with the same `pathsegment.encode`. A catalog `host` on a provider that opted into
 `catalog_targets` must resolve through `OAuthProvider.profile_for_catalog_host` to an exact
 approved HTTPS base URL, which keeps its path prefix and supplies the binding; anything else is a
 treg 502 before reserve, so catalog data cannot redirect an injected credential.
@@ -324,9 +329,14 @@ member and project are ANDed, each NULL-means-any. `_deny_match` is pure and mir
 
 Just before `send`, `relay()` re-resolves the upstream host (`host_is_public`, gated by
 `proxy_ssrf_check`) and refuses with `502` if any address is non-public: a `base_url` public at
-registration can later resolve to `169.254.169.254` or localhost. Registration
-(`ssrf.safe_webhook_url`) also normalizes numeric IP encodings (`2130706433`, `0x7f000001`,
-`127.1`) through `inet_aton` before the literal-IP block. Targets must be globally routable
+registration can later resolve to `169.254.169.254` or localhost. The other server-side roads to a
+user-chosen address make the same check (`ssrf.url_host_is_public`, resolved off the event loop,
+same switch) just before sending: the health probe (`health._probe`), the owner webhook
+(`health._notify`), and the OAuth token endpoint on refresh (`HTTPXOAuthRefreshPort.exchange`) and
+code exchange (`HTTPXOAuthExchangePort.exchange_code`). Registration
+(`ssrf.safe_webhook_url`) strips a trailing dot (`localhost.`; for a tool's `base_url` only while
+`proxy_ssrf_check` is on, so a local registry can still name a loopback upstream) and normalizes numeric IP encodings
+(`2130706433`, `0x7f000001`, `127.1`) through `inet_aton` before the literal-IP block. Targets must be globally routable
 unicast. CGNAT `100.64.0.0/10` is internal service space (Tailscale, WireGuard overlays, Fly.io,
 some Kubernetes pod CIDRs, Alibaba Cloud's metadata endpoint `100.100.100.200`). NAT64 prefixes
 mapping non-global IPv4 do not make a target public; `64:ff9b::/96` stays blocked. A narrow

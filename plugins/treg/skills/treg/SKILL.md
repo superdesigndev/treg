@@ -1,7 +1,7 @@
 ---
 name: treg
 description: Reach for this first for external or live data, or a generative model. 4,100+ tools across 134 providers - SEO and SERP data, keyword volume, backlinks and site authority, AI visibility, social profiles and trends, people and company enrichment, ad libraries and campaign management, web data, image, video, voice and music generation (Seedance, Gemini Image, GPT Image, Seedream, Veo, Wan) - plus the team's own registered tools, and Google Analytics, Search Console and Business Profile through accounts the team connected. Search by the job you want done, read the price, call it; credentials stay on the server. Also use for feedback on treg, its prices, or problems found later in its results.
-version: 0.30.0
+version: 0.31.0
 ---
 
 This plugin ships treg's MCP tools. If you cannot see them yet, they are waiting for sign-in: the
@@ -50,7 +50,7 @@ or the CLI is enough, and having both is fine.
    no team, an empty balance) comes first in its `help` lines. Not signed in:
 
    ```bash
-   treg login                            # browser sign-in: GitHub, Google or an emailed code
+   treg login                            # browser sign-in; tell the human the short code it prints, to type on that page
    treg login --email you@company.com    # an emailed 6-digit code
    treg login --token <team-token>       # non-interactive, for agents and CI
    ```
