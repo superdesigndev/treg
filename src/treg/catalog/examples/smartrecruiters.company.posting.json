@@ -1,0 +1,145 @@
+{
+  "id": "6000000001574098",
+  "name": "Staff Security Engineer-  AI Security (remote across Australia) ",
+  "uuid": "a028054e-f0ee-4afa-9fd7-f6f3ac67ee08",
+  "jobId": "f524159a-d627-40b2-8fb2-3a4226e800d1",
+  "jobAdId": "36ac26b1-ceb7-4cb1-a8bb-682ed5fb40c1",
+  "defaultJobAd": true,
+  "refNumber": "R102712",
+  "company": {
+    "name": "Canva",
+    "identifier": "Canva"
+  },
+  "location": {
+    "city": "Sydney",
+    "country": "au",
+    "remote": false,
+    "hybrid": false,
+    "fullLocation": "Sydney, , Australia"
+  },
+  "customField": [
+    {
+      "fieldId": "651ba508aac0da4b9cbd91cb",
+      "fieldLabel": "Worker type",
+      "valueId": "d588c41a446c11de98360015c5e6daf6",
+      "valueLabel": "Employee"
+    },
+    {
+      "fieldId": "67db425d21ec03315da962cb",
+      "fieldLabel": "Org",
+      "valueId": "d7055559fd68100169cce9e25c3d0000",
+      "valueLabel": "Security, Trust & IT"
+    },
+    {
+      "fieldId": "651b99e25ddc3c31d9224321",
+      "fieldLabel": "Group",
+      "valueId": "6076a7ba6b8a01966939b232ce001c03",
+      "valueLabel": "Security"
+    },
+    {
+      "fieldId": "651ba171eec5b66729429433",
+      "fieldLabel": "Subspecialty",
+      "valueId": "220b5c7e743d01c6441f02f4b700b712",
+      "valueLabel": "Security Engineering"
+    },
+    {
+      "fieldId": "651b8b8aaac0da4b9cbd91c9",
+      "fieldLabel": "Recruitment type",
+      "valueId": "2c2d396a-3d34-4286-8196-61a215221fd5",
+      "valueLabel": "Permanent"
+    },
+    {
+      "fieldId": "COUNTRY",
+      "fieldLabel": "Country/Region",
+      "valueId": "au",
+      "valueLabel": "Australia"
+    },
+    {
+      "fieldId": "6514d94a9c140e09b2e649f5",
+      "fieldLabel": "Brands",
+      "valueId": "default",
+      "valueLabel": "Canva"
+    },
+    {
+      "fieldId": "651ba0b93066d20abe11145b",
+      "fieldLabel": "Specialty",
+      "valueId": "220b5c7e743d0198d58fd8a7b8007b13",
+      "valueLabel": "Technology"
+    },
+    {
+      "fieldId": "651b8bc23066d20abe111459",
+      "fieldLabel": "Supergroup",
+      "valueId": "560e41ade9330100d7e173192cd60000",
+      "valueLabel": "Security & Trust"
+    },
+    {
+      "fieldId": "651b8a7b58759b40ab8abd45",
+      "fieldLabel": "Employment type",
+      "valueId": "01ca83be4eaa01d34208432ca5005301",
+      "valueLabel": "Permanent"
+    },
+    {
+      "fieldId": "651ba1c7aac0da4b9cbd91ca",
+      "fieldLabel": "Role level",
+      "valueId": "B4",
+      "valueLabel": "B4"
+    },
+    {
+      "fieldId": "651ba22058759b40ab8abd46",
+      "fieldLabel": "Time type",
+      "valueId": "2ca83e80de45013371c1658ff3029500",
+      "valueLabel": "Full time"
+    }
+  ],
+  "releasedDate": "2026-11-12T22:31:27.449Z",
+  "creator": {
+    "name": "",
+    "avatarUrl": ""
+  },
+  "postingUrl": "https://jobs.smartrecruiters.com/Canva/6000000001574098-staff-security-engineer-ai-security-remote-across-australia-",
+  "applyUrl": "https://jobs.smartrecruiters.com/Canva/6000000001574098-staff-security-engineer-ai-security-remote-across-australia-?oga=true",
+  "referralUrl": "https://jobs.smartrecruiters.com/external-referrals/company/Canva/publication/a028054e-f0ee-4afa-9fd7-f6f3ac67ee08?dcr_ci=Canva",
+  "jobAd": {
+    "sections": {
+      "companyDescription": {
+        "title": "Company Description",
+        "text": ""
+      },
+      "jobDescription": {
+        "title": "Job Description",
+        "text": "<p>Join the team redefining how the world experiences design.</p><p>Hey, g'day, mabuhay, kia ora, 你好, hallo, vítejte!</p><p>Thanks for stopping by. We know job hunting can be a little time consuming and you're probably keen to find out what's on offer, so we'll get straight to the point.</p><p><strong>Where and how you can work</strong></p><p>Our flagship campus is in Sydney. We also have a campus in Melbourne and co-working spaces in Brisbane, Perth and Adelaide. But you have choice in where and how you work, we trust our Canvanauts to choose the balance that empowers them and their team to achieve their goals.</p><p><strong>What you’d be doing in this role</strong></p><p>As Canva scales change continues to be part of our DNA. But we like to think that's all part of the fun. So this will give you the flavour of the type of things you'll be working on when you start, but this will likely evolve.</p><p>We’re building a specialized AI Security capability to address the unique challenges that come with deploying AI and machine learning at scale. As a Staff Security Engineer, you’ll operate at the intersection of security engineering and AI innovation - pioneering new approaches to eme…"
+      },
+      "qualifications": {
+        "title": "Qualifications",
+        "text": ""
+      },
+      "additionalInformation": {
+        "title": "Additional Information",
+        "text": ""
+      }
+    }
+  },
+  "active": true,
+  "visibility": "PUBLIC",
+  "industry": {
+    "id": "computer_software",
+    "label": "Computer Software"
+  },
+  "function": {
+    "id": "information_technology",
+    "label": "Information Technology"
+  },
+  "experienceLevel": {
+    "id": "mid_senior_level",
+    "label": "Mid-Senior Level"
+  },
+  "typeOfEmployment": {
+    "id": "permanent",
+    "label": "Full-time"
+  },
+  "language": {
+    "code": "en",
+    "label": "English",
+    "labelNative": "English (US)"
+  }
+}

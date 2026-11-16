@@ -1,0 +1,42 @@
+{
+  "code": 200,
+  "code_desc": false,
+  "success": true,
+  "message": false,
+  "parameters": {
+    "lat": "40.722233",
+    "lng": "-73.987429",
+    "keyword": "deli"
+  },
+  "data": {
+    "count": 20,
+    "results": [
+      {
+        "place_id": "ChIJCar0f49ZwokR6ozLV-dHNTE",
+        "business": "Katz's Delicatessen",
+        "address": "205 E Houston St, New York, NY 10002",
+        "url": "https://katzsdelicatessen.com/",
+        "display_url": false,
+        "rating": 4.5,
+        "reviews": 56751,
+        "lat": 40.722233,
+        "lng": -73.98742899999999,
+        "map_url": "https://www.google.com/maps/place/data=!3m1!4b1!4m2!3m1!1s0x89c2598f7ff4aa09:0x313547e757cb8cea"
+      },
+      {
+        "place_id": "ChIJvx_eR6dZwokRoXAIuQR4iZc",
+        "business": "NYC EXPRESS DELI",
+        "address": "18 1st Ave, New York, NY 10009",
+        "url": false,
+        "display_url": false,
+        "rating": 4.2,
+        "reviews": 66,
+        "lat": 40.7235056,
+        "lng": -73.98807719999999,
+        "map_url": "https://www.google.com/maps/place/data=!3m1!4b1!4m2!3m1!1s0x89c259a747de1fbf:0x97897804b90870a1"
+      },
+      "… 18 more item(s) truncated"
+    ],
+    "ttr": 2
+  }
+}

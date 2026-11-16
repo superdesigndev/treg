@@ -72,7 +72,8 @@ comparing hosts, so two providers sharing one API host (Facebook and Instagram o
 `graph.facebook.com`) resolve to different tools; the relay stays provider-agnostic.
 
 A live-verified free `GET` catalog row can declare `platform_auth: anonymous`. A team tool or team
-credential still wins. Otherwise `_anonymous_offer` requires the deployment's provider allow-list
+credential still wins, except that a public provider (`auth_kind="public"`) has no credential: a
+same-named team secret is never used for it, and only a team tool does. Otherwise `_anonymous_offer` requires the deployment's provider allow-list
 and creates an unmetered virtual tool with no bindings; `relay()` then injects nothing and strips or
 rewrites no caller header. The catalog price is free only when the caller supplies no provider
 credential header. No provider-specific anonymous path rules exist in the resolver or relay.
@@ -201,6 +202,11 @@ bodies on unmetered paths are kept for evidence only when `Content-Length` is de
 `evidence._ERROR_CALLER_BODY_MAX`; larger or chunked uploads keep streaming. Redaction order,
 access and retention: [data-model](data-model.md#audit-writer-auditpy).
 
+A keyless agent-payments call is the one case where treg removes a non-`x-treg-` header the caller
+sent: its payment credential (`Authorization: Payment …`, `PAYMENT-SIGNATURE`, `X-PAYMENT`), through
+`routers.call._paid_call` and `agent_payments.consumes`. A request with any treg credential relays
+those headers unchanged.
+
 ### The provider's reported charge
 
 `strip_reported_charge` (`TREG_STRIP_REPORTED_CHARGE`, off by default) removes the provider's own
@@ -236,6 +242,10 @@ from token-endpoint I/O. Holding the request transaction through relay deadlocks
 (each request holds a slot while its settlement waits for another);
 `tests/test_call_pool_discipline.py` checks occupancy at the network boundary. Pool sizing:
 [deploy](../ops/deploy.md).
+
+A keyless agent-payments call verifies and settles its payment with the chain or facilitator before
+the call starts and with no session open; the database work around it is short sessions of its own
+([agent payments](agent-payments.md)).
 
 ## Tool resolution (`application.call.resolve`)
 
@@ -326,6 +336,11 @@ member and project are ANDed, each NULL-means-any. `_deny_match` is pure and mir
 
 ### Call-time SSRF guard
 
+Every call-time lookup goes through `ssrf.host_is_public_async`: the blocking resolver runs on a small
+dedicated pool (`ssrf_lookup_threads`), so a slow or dead name server never stops the event loop, and at
+most one lookup per host is in flight (later callers await the same answer). No verdict is kept after it
+lands, so each new call resolves again.
+
 Just before `send`, `relay()` re-resolves the upstream host (`host_is_public`, gated by
 `proxy_ssrf_check`) and refuses with `502` if any address is non-public: a `base_url` public at
 registration can later resolve to `169.254.169.254` or localhost. The other server-side roads to a
@@ -389,6 +404,17 @@ A crash before that leaves holds to the reaper, which releases in the caller's f
 `route.child_outcome` reads each child's answer and is shared with
 [replay](replay.md). The parent assembles `{output, raw, _treg}` and owns the idempotency label.
 A pending outcome (`202`, `X-Treg-Route-Outcome: pending`) sends no `X-Treg-Cost-Micro`.
+Paging is by cursor only. An adapter declaring `paging: {cursor: <upstream path>}` gets a treg cursor in
+`output.next_cursor` (`trg1.` + the serving endpoint, the provider's own `next_cursor` and a hash of
+the body); sent back as `cursor`, it pins the call to that endpoint with no waterfall, merge or fill,
+and puts the provider's token at that path. A cursor for another body is refused 422
+`route_cursor_invalid`; a list from an adapter without `paging` names the candidates that have it on
+`_treg.paging`. Page numbers are not supported: a provider whose order changes between calls repeats
+and skips rows. Any other body paging key (`page`, `offset`, ...) the contract does not declare is
+refused 422 `route_paging_unsupported`, never dropped, since a dropped one re-bills page one.
+A candidate whose v1 price table multiplies the field
+its adapter fills from `limit` is priced from that upstream request (`_table_price`), the same
+figure its child hold reserves, so `X-Treg-Route-Max-Cost` judges the size asked for.
 
 ## Several treg-owned accounts behind one provider
 

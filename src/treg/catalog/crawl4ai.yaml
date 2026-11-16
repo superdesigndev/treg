@@ -1924,15 +1924,15 @@ endpoints:
           example: newest
     cost:
       type: per_success
-      value: 0.15
+      value: 0.14
       currency: credit
       per: 1
       unit: call
       source: observed
       source_url: https://api.crawl4ai.com/recipes
-      checked: '2026-10-31'
+      checked: '2026-11-16'
       confidence: verified
-      note: 'treg''s account price: 0.15 credits a call whatever pages the run fetched, second-source records included;
+      note: 'treg''s account price: 0.14 credits a call whatever pages the run fetched, second-source records included;
         a reply with no rows, a refused input and a failed run are free. The x-c4-cost header settles the actual charge.'
     docs_url: https://crawl4ai.com/llms.txt
     test_request:
@@ -2460,15 +2460,15 @@ endpoints:
           example: nasa
     cost:
       type: per_success
-      value: 0.9
+      value: 0.84
       currency: credit
       per: 1
       unit: call
       source: observed
       source_url: https://api.crawl4ai.com/recipes
-      checked: '2026-10-31'
+      checked: '2026-11-16'
       confidence: verified
-      note: 'treg''s account price: 0.9 credits a call whatever pages the run fetched, second-source records included;
+      note: 'treg''s account price: 0.84 credits a call whatever pages the run fetched, second-source records included;
         a reply with no rows, a refused input and a failed run are free. The x-c4-cost header settles the actual charge.'
     docs_url: https://crawl4ai.com/llms.txt
     test_request:
@@ -4504,15 +4504,15 @@ endpoints:
           example: nasa
     cost:
       type: per_success
-      value: 0.2
+      value: 0.19
       currency: credit
       per: 1
       unit: call
       source: observed
       source_url: https://api.crawl4ai.com/recipes
-      checked: '2026-10-31'
+      checked: '2026-11-16'
       confidence: verified
-      note: 'treg''s account price: 0.2 credits a call whatever pages the run fetched, second-source records included;
+      note: 'treg''s account price: 0.19 credits a call whatever pages the run fetched, second-source records included;
         a reply with no rows, a refused input and a failed run are free. The x-c4-cost header settles the actual charge.'
     docs_url: https://crawl4ai.com/llms.txt
     test_request:

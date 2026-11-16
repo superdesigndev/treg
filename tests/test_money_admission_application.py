@@ -693,6 +693,7 @@ def _enable_real_admission(monkeypatch, *, wait_s: float = 2.0, unavailable: boo
     monkeypatch.setattr(kv, "store", lambda: store)
     monkeypatch.setattr(money_admission, "_local_loop", None)
     monkeypatch.setattr(money_admission, "_windows", {})
+    monkeypatch.setattr(money_admission, "_store_down_until", 0.0)
     monkeypatch.setattr(money_admission, "_current", {})
     return store
 
@@ -1063,6 +1064,7 @@ async def test_kv_fallback_still_completes_reserve_and_release(money_db, monkeyp
     release_org = await _fund("fallback-release")
     await _reserve(release_org, "fallback-release")
     monkeypatch.setattr(money_admission, "_windows", {})
+    monkeypatch.setattr(money_admission, "_store_down_until", 0.0)
     monkeypatch.setattr(money_admission, "_current", {})
     store.unavailable = True
     charged, _observed = await call_settle._platform_settle(_call(release_org, "fallback-release"), 503)

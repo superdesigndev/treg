@@ -9,25 +9,12 @@ credential server-side when one is required, and relays the answer verbatim. A c
 explicitly verified as public can instead relay with no injected credential. We never model an
 upstream API.
 
-## Paired treg.to checkout
+## Public repository
 
-For work on the hosted treg.to service, clone the public `treg` repository and private
-`treg-internal` repository as siblings with those exact directory names. When `../treg-internal`
-exists, treat both repositories as one operational workspace:
-
-- `treg` owns public product code, portable behavior and self-hosting documentation.
-- `treg-internal` owns live production configuration, operational runbooks, incident evidence and
-  private admin tools.
-- Read both repositories before changing production behavior, but never copy credentials, live
-  environment exports, customer data or raw logs between them.
-- Everything committed here is public, comments and commit messages included: describe treg.to
-  only by mechanism, never by its numbers, dates, hosts, instance counts or schedules. Those go to
-  `../treg-internal`.
-- Commit and open PRs separately. State the merge order whenever one PR links to or depends on the
-  other.
-
-Do not clone `treg-internal` inside this repository and do not make it a Git submodule. Start agents
-from the repository that owns the task; the sibling path supplies the other half of treg.to context.
+Everything committed here is public, comments and commit messages included. Describe the hosted
+treg.to service only by mechanism, never by its numbers, dates, hosts, instance counts or
+schedules. If a private checkout exists at `../treg-internal`, read its `AGENTS.md` before
+changing production behavior.
 
 ## Non-negotiables
 
@@ -39,8 +26,9 @@ Everything else in this file is guidance; these are the contract, and they win o
    This temporary allowance permits calls when Redis state cannot be confirmed; it is not a durable cap.
 2. A hold (the balance `reserve` sets aside for one call) is settled or released exactly once, on
    every path: timeout, cancellation and exceptions included.
-3. A request holds zero database connections while upstream or object-storage I/O is in flight.
-   Keep `reserve` and `settle` separate; read archive pointers, close the session, then fetch bytes.
+3. A request holds zero database connections while upstream, object-storage or payment-rail
+   (chain or facilitator) I/O is in flight. Keep `reserve` and `settle` separate; read archive
+   pointers, close the session, then fetch bytes; verify or settle a payment, then open the session.
 4. Plain `/call/` is a faithful relay: the injected credential (on treg's shared key, one of treg's
    accounts for the provider, chosen per call and fixed for anything an account created; on a
    connection to treg's own Meta app it also carries `appsecret_proof`, the HMAC of the injected
@@ -70,7 +58,8 @@ Everything else in this file is guidance; these are the contract, and they win o
    `X-Treg-Keep-Reported-Charge: true` keeps the member.
    A live-verified free catalog endpoint may declare an anonymous fallback; its empty binding list
    omits credential injection but does not strip or rewrite caller headers.
-   Routed endpoints and overflow wrap the child's answer and say so; they never alter it. With
+   Routed endpoints and overflow wrap the child's answer and say so; they never alter it. A routed
+   call reads each child's answer up to the same 8 MiB; a larger one is that child's unbilled error. With
    `X-Treg-Route-Verify`, an email or phone find makes one more linked child call (the check), with its own
    hold and charge, and reports it in `_treg.verification`; the find's answer is not altered. With
    `X-Treg-Route-Confirm`, an email find keeps asking providers after a hit until another returns the
@@ -86,6 +75,10 @@ Everything else in this file is guidance; these are the contract, and they win o
    Authorized free final fetches needing no body evidence stream in full.
    `/table/` runs the same call through the same road and returns it as rows and columns; it never
    changes what `/call/` returns (docs/context/architecture/table.md).
+   A keyless agent-payments call (no treg credential of any kind) has its payment credential
+   (`Authorization: Payment …`, `PAYMENT-SIGNATURE`, `X-PAYMENT`) consumed
+   by treg and removed before the relay; nothing else it sent changes. A request carrying any treg
+   credential is never read for a payment (docs/context/architecture/agent-payments.md).
    A 2xx async answer is read whole (bounded) to record the task it names, then relayed byte for
    byte; one too large streams untouched and is not recorded. `/tasks/{call_id}` polls that task
    through the same road and reads the answer with the descriptor; it never changes what `/call/`
@@ -114,8 +107,6 @@ agents then built against a constitution that was wrong.
   source) and its hand-kept prose mirror `src/treg/web/tutorial.md`.
 - `README.md` is the overview and quickstart, `USAGE.md` the CLI reference, `CONTRIBUTING.md` the
   dev setup, `SECURITY.md` required reading before touching the proxy, runners, auth or secrets.
-- If available, `../treg-internal` holds private operational configuration and tools; read its
-  `README.md` before changing production settings. Public development does not depend on it.
 
 ## Architecture
 
@@ -196,6 +187,14 @@ agents then built against a constitution that was wrong.
   403 before any hold and before the provider is reached, `funds_required` for a team that never
   bought credit and `own_key_required` for one that did, naming the remedy and never the rule. A
   slow or failing extension allows the call, and a call on the team's own credential is never asked.
+- **Agent payments** (behind `TREG_AGENT_PAYMENTS_ENABLED`). A keyless caller's payment confirmed
+  on chain is an ordinary `topup` on its wallet's payer team (`governance.teams.make_payer_team`:
+  a machine user, a member with no token); the call then runs the normal road as that team. What
+  a call does not use stays as that team's credit. `application/agent_payments.py` is the only
+  writer of `AgentPayment`; the protocol SDKs live only in `infra/agent_payments/`. A payment whose
+  settlement went unanswered is resolved by `treg-worker agentpay reconcile` from the chain: the
+  same `topup`, under the same reference, only for a transfer that landed. See
+  `docs/context/architecture/agent-payments.md`.
 - **Money.** Everything is **integer micro-USD** - never floats, never cents. The Stripe SDK lives
   only in `infra/stripe.py`, orchestration in `application/billing.py`, and `reconcile.py` is
   read-only. See `docs/context/architecture/money.md`.
@@ -317,3 +316,10 @@ site-wide `/media/og.png`. `docs/context/interface/seo.md` ("The social card") h
 **Do not document what is not built.** An agent that believes a feature exists fails in a way
 nobody can debug. Provider choice is the easiest thing to overstate: treg compares providers, and
 chooses only in the two disclosed cases of non-negotiable 4.
+
+## Code Review Rules
+
+- Look for security issues.
+- This repository is public: flag anything the Public repository section says must not be
+  committed.
+- Skip speculative edge cases: report a bug only with a concrete path real usage can hit.

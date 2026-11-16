@@ -1,0 +1,17 @@
+{
+  "occupation_code": null,
+  "occupation_label": null,
+  "window_days": 90,
+  "country": "US",
+  "count": 5879,
+  "currency": "USD",
+  "percentiles": {
+    "p10": 102000,
+    "p25": 124400,
+    "p50": 148700,
+    "p75": 180000,
+    "p90": 209150
+  },
+  "confidence": "high",
+  "suppressed": false
+}

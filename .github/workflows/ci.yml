@@ -76,6 +76,9 @@ jobs:
       - name: Lint
         if: steps.docs.outputs.only != 'true'
         run: uv run --locked ruff check
+      - name: Lint CI shell scripts
+        if: steps.docs.outputs.only != 'true'
+        run: shellcheck .github/scripts/*.sh
       - name: Validate the catalog
         if: steps.docs.outputs.only != 'true'
         # The whole catalog, not the slices the tests exercise: a catalog data PR is gated here.

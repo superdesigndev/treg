@@ -40,6 +40,20 @@ _local_loop = None
 _clock = time.monotonic
 _metrics_lock = threading.Lock()
 _opened = _clock()
+# After a store failure, skip the store for this long so later operations fall back at once
+# instead of each waiting out the store timeout (same pattern as fair_share._STORE_DOWN_S).
+_STORE_DOWN_S = 5.0
+_store_down_until = 0.0
+_background: set[asyncio.Task] = set()
+
+
+def _store_down() -> bool:
+    return _clock() < _store_down_until
+
+
+def _mark_store_down() -> None:
+    global _store_down_until
+    _store_down_until = _clock() + _STORE_DOWN_S
 
 
 @dataclass
@@ -186,6 +200,8 @@ class _Gate:
                     self.local.append(lock)
                 if not kv.configured():
                     return "kv_not_configured"
+                if _store_down():
+                    return "kv_unavailable"
                 self.store = kv.store()
                 for org_id in ids:
                     key, token = f"money-admission:org:{org_id}", uuid.uuid4().hex
@@ -249,6 +265,11 @@ class _Gate:
             self.observation.lease_lost = 1
             self.lost = True
 
+    def release_local(self) -> None:
+        for lock in reversed(self.local):
+            lock.release()
+        self.local.clear()
+
     async def release(self) -> None:
         if self.renewer is not None:
             self.renewer.cancel()
@@ -270,9 +291,7 @@ class _Gate:
             self.attempted.clear()
             self.leases.clear()
             self.valid_until.clear()
-            for lock in reversed(self.local):
-                lock.release()
-            self.local.clear()
+            self.release_local()
 
 
 class AdmissionRefused(Exception):
@@ -363,7 +382,16 @@ async def admit(org_ids: Iterable[int | None], *, operation: str,
                     if not reject:
                         observation.reason = reason
                     mode = "fallback"
-                    await _release_safely(gate)
+                    if reason in ("kv_unavailable", "gate_error"):
+                        # Never queue the next operation behind the failing store's cleanup;
+                        # the lease TTL bounds a lease the cleanup does not remove.
+                        _mark_store_down()
+                        gate.release_local()
+                        task = asyncio.create_task(gate.release())
+                        _background.add(task)
+                        task.add_done_callback(_background.discard)
+                    else:
+                        await _release_safely(gate)
                     gate = None
                     if reject:
                         # Cleanup precedes rejection; never yield into a reserve DB session.

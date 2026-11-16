@@ -64,8 +64,10 @@ func (e *Env) Save() error {
 // Note records a fixed-vocabulary fact for this invocation's telemetry.
 func (e *Env) Note(key, value string) { e.Telemetry[key] = value }
 
-// unreachable turns a transport failure into the one-line refusal the CLI prints.
+// unreachable turns a transport failure into the one-line refusal the CLI prints, and notes its
+// kind for telemetry.
 func (e *Env) unreachable(err error) error {
+	e.Note("error", api.FailureKind(err))
 	return output.Fail("treg: could not reach %s: %s", e.Registry(), transportReason(err))
 }
 

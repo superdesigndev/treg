@@ -221,6 +221,7 @@ class OAuthAuthorizationView:
     client_kind: str
     user_email: str
     teams: list[dict]
+    scope: str = ""
 
 
 async def _check_browser(
@@ -1017,6 +1018,12 @@ def _client_resource(client: OAuthClient, resource: str, scope: str) -> str:
     return effective
 
 
+def _granted_scope(client: OAuthClient, resource: str, requested: str) -> str:
+    if client.client_id == mcp_oauth.SHEETS_CLIENT_ID:
+        return requested
+    return mcp_oauth.granted_mcp_scope(requested, mcp_oauth.mcp_resource_version(resource) or "v1")
+
+
 def _same_mcp_resource(a: str, b: str) -> bool:
     """Whether two `resource` values name this same MCP server. Exact match, slash-variant match,
     or BOTH normalize into the canonical+legacy audience set — the domain move renamed the
@@ -1074,7 +1081,7 @@ async def prepare_oauth_authorization(
             raise _redirect_refusal(
                 "invalid_request", "PKCE with code_challenge_method=S256 is required",
             )
-        _client_resource(client, resource, scope)
+        granted = _granted_scope(client, _client_resource(client, resource, scope), scope)
 
         user = await _user_from_session(session_cookie, db)
         if user is None:
@@ -1103,6 +1110,7 @@ async def prepare_oauth_authorization(
             client_kind=client.kind,
             user_email=user.email,
             teams=teams,
+            scope=granted,
         )
 
 
@@ -1150,7 +1158,7 @@ async def approve_oauth_authorization(
             code=_secrets.token_urlsafe(32), client_id=client.client_id, user_id=user.id, org_id=org_id,
             redirect_uri=redirect_uri, code_challenge=code_challenge,
             resource=effective_resource,
-            scope=scope,
+            scope=_granted_scope(client, effective_resource, scope),
             sso_org_id=sso_org_id,
             expires_at=datetime.now(timezone.utc).replace(tzinfo=None)
             + timedelta(seconds=AUTH_CODE_TTL_S))
