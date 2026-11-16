@@ -413,6 +413,14 @@ session; the query parameter is only a UI cue and carries no OAuth data. Every s
 the parked request. The cookie stores a relative path and honours only `/oauth/authorize`, so it
 cannot become a general post-login redirect.
 
+Resuming straight after sign-in means a new account reaches consent before the dashboard has made
+its first team. For an account that is not onboarded, has no membership and did not sign in through
+SSO, consent shows the name the first team will take (`first_run.team_names`) instead of the picker,
+and approval with `org_id=0` runs the dashboard's own first run (`first_run.first_team`, outside the
+consent session) before minting the code, so signup credit and attribution behave as in the
+dashboard. "treg for Sheets" is excluded. An onboarded account with no team (it left every team) is
+still refused.
+
 ## `/connect-demo`
 
 A page that plays a third-party app and runs the whole flow (register, consent popup, exchange, tool

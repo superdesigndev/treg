@@ -22,6 +22,7 @@ from sqlmodel import select
 
 from .. import audit, crypto, email as email_sender, ratestore
 from ..application.onboard import demo as demo_seed
+from ..application.onboard import first_run
 from ..infra import db as database
 from ..infra import turnstile
 from ..config import get_settings
@@ -222,6 +223,7 @@ class OAuthAuthorizationView:
     user_email: str
     teams: list[dict]
     scope: str = ""
+    new_team: str = ""   # a new account: the first team approving makes, by its likely name
 
 
 async def _check_browser(
@@ -1099,7 +1101,9 @@ async def prepare_oauth_authorization(
                 # that matters - "which of these can actually pay?" - invisible at the moment of choosing.
                 teams.append({"org_id": org.id, "slug": org.slug, "role": membership.role,
                               "balance_usd": round((org.balance_micro or 0) / 1_000_000, 4)})
-        if not teams:
+        new_team = (first_run.team_names(user.email)[0]
+                    if _first_team_due(client, user, memberships, sso_org_id) else "")
+        if not teams and not new_team:
             raise _redirect_refusal(
                 "access_denied", "this account is not a member of any team",
             )
@@ -1111,13 +1115,21 @@ async def prepare_oauth_authorization(
             user_email=user.email,
             teams=teams,
             scope=granted,
+            new_team=new_team,
         )
+
+
+def _first_team_due(client: OAuthClient, user: User, memberships: list, sso_org_id: int | None) -> bool:
+    """A brand-new account reaches consent before the dashboard has made its first team (the parked
+    authorization resumes straight after sign-in), so consent makes it, as the dashboard would."""
+    return (not memberships and not user.onboarded and sso_org_id is None
+            and client.client_id != mcp_oauth.SHEETS_CLIENT_ID)
 
 
 async def approve_oauth_authorization(
     *, decision: str, client_id: str, redirect_uri: str, response_type: str, scope: str,
     code_challenge: str, code_challenge_method: str, resource: str, org_id: int,
-    session_cookie: str,
+    session_cookie: str, ad_cookie: str = "", utm_cookie: str = "", referral_cookie: str = "",
 ) -> str:
     async with database.session_maker() as db:
         client = await _authorize_request(
@@ -1136,6 +1148,18 @@ async def approve_oauth_authorization(
         if user is None:
             raise OAuthServerError("access_denied", "not signed in", status=401)
         sso_org_id = (sess.read_session_claims(session_cookie) or {}).get("sso_org_id")
+        memberships = (await db.execute(
+            select(Membership).where(Membership.user_id == user.id))).scalars().all()
+        first_team_due = not org_id and _first_team_due(client, user, memberships, sso_org_id)
+    if first_team_due:
+        # Outside the session above: the first run opens and commits its own.
+        try:
+            made = await first_run.first_team(user, ad_cookie=ad_cookie, utm_cookie=utm_cookie,
+                                              referral_cookie=referral_cookie)
+        except signup.SignupError as exc:
+            raise _redirect_refusal("access_denied", f"could not create your team ({exc.kind})") from exc
+        org_id = made.get("org_id") or 0
+    async with database.session_maker() as db:
         if client.client_id == mcp_oauth.SHEETS_CLIENT_ID and not org_id:
             # A Sheets grant names no team at consent: each request picks one with X-Treg-Org. The
             # token still carries a DEFAULT team, the person's first, for a request that names none.
