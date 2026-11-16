@@ -186,6 +186,12 @@ whose `claude` records its arguments, and compares every file left in HOME, mode
   included, where the Python CLI wrote the configured base URL), never the binary's path. Files
   holding a token are replaced atomically and are `0600` from the first byte. Codex's table is cut
   and appended as text, as the Python CLI does, and must parse before it lands.
+- **GitHub Copilot** is an MCP target of the binary only. Its user file is
+  `$COPILOT_HOME/mcp-config.json` (`~/.copilot/mcp-config.json` when unset; `COPILOT_HOME` replaces
+  the directory), read by Copilot CLI and by Copilot in VS Code alike. The entry sits under
+  `mcpServers` as `type: "http"`, `url`, `headers` and `tools: ["*"]`, merged like Cursor's, the header
+  dropped under `--oauth`. It is written when that directory exists or `copilot` is on PATH. The
+  frozen Python CLI does not write it; `test_mcp_install_writes_github_copilot_go` holds the difference.
 - **`skill install <name>`** also installs one of the registry's public skills (its well-known
   index, what `skill bootstrap --skills` installs) when the team has no skill of that name; the
   Python CLI refused it as "no skill named ... in this org", which was most `skill install`
