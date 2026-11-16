@@ -64,8 +64,8 @@ treg login --email you@example.com        # emailed 6-digit code (register-or-lo
 
 | Command | What it does |
 |---|---|
-| `treg mcp install` | writes the logged-in team's key as an `Authorization` header into every supported agent (Claude Code, Cursor, Codex, opencode). Needs a valid login; restart the agent afterward. |
-| `treg mcp install --oauth` | repairs a dead saved key: rewrites those entries to the URL only so each client can authorize itself. Needs no login; restart each agent, then authorize treg in it. |
+| `treg mcp install` | writes the logged-in team's key as an `Authorization` header into every supported agent (Claude Code, Cursor, Codex, opencode). Needs a valid login; restart the agent afterward. Also the light repair when MCP's saved key is dead but the CLI still works: rewrites that header from the CLI login. |
+| `treg mcp install --oauth` | repairs a dead saved key when there is no valid CLI login: rewrites those entries to the URL only so each client can authorize itself. Needs no login; restart each agent, then authorize treg in it. |
 
 ## Teams / orgs
 

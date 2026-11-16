@@ -767,22 +767,26 @@ def _dead_mcp_key_problem() -> dict:
     """The saved MCP bearer is dead - CLI login does not refresh it. Name the cause and the repair.
 
     A static Authorization header written by `treg mcp install` survives `treg login` and session-
-    secret rotation. Agents that only see "not signed in" then re-login the CLI and get nowhere.
-    Point them at `treg mcp install --oauth`, which rewrites every managed client to URL-only so the
-    client can authorize itself (Claude Code `/mcp`, Codex `codex mcp login`, Cursor/opencode OAuth).
-    A key the user set by hand (dsh's `TREG_TOKEN`, a hand-written entry) is out of the installer's
-    reach, so the hint also says to replace it. This hint is the one place the repair is documented.
+    secret rotation. Agents that only see "not signed in" then re-login the CLI and get nowhere —
+    or, after the first repair hint, run the heavy `--oauth` path even when the CLI already holds a
+    valid token. Prefer the light repair when the CLI works: `treg mcp install` rewrites the saved
+    header from the live CLI login. Keep `--oauth` for when there is no valid login (URL-only so the
+    client can authorize itself). A key the user set by hand (dsh's `TREG_TOKEN`, a hand-written
+    entry) is out of the installer's reach, so the hint also says to replace it. This hint is the
+    one place the repair is documented.
     """
     return {
         "error": "not signed in, or this token is invalid or expired",
         "hint": (
             "This MCP server holds its own saved key, separate from the CLI login, and that key is "
-            "no longer valid. Run `treg update`, then `treg mcp install --oauth` (needs no login), "
-            "restart the agent, then authorize treg in the client (Claude Code: `/mcp`, then "
-            "Authenticate; Codex: `codex mcp login treg`; Cursor/opencode: follow the client's "
-            "sign-in prompt). If you set this key yourself (for example the `TREG_TOKEN` "
-            f"environment variable), replace it with a current team key from "
-            f"{get_settings().public_url.rstrip('/')} and restart the agent."
+            "no longer valid. If the `treg` CLI already works on this machine, run `treg mcp install` "
+            "then restart this agent (rewrites the saved MCP key from the CLI login — do not "
+            "reinstall or re-authorize). Otherwise run `treg update`, then "
+            "`treg mcp install --oauth` (needs no login), restart the agent, then authorize treg in "
+            "the client (Claude Code: `/mcp`, then Authenticate; Codex: `codex mcp login treg`; "
+            "Cursor/opencode: follow the client's sign-in prompt). If you set this key yourself "
+            "(for example the `TREG_TOKEN` environment variable), replace it with a current team "
+            f"key from {get_settings().public_url.rstrip('/')} and restart the agent."
         ),
     }
 
