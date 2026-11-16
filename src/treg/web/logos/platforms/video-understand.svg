@@ -1,0 +1,15 @@
+<svg viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="Video understanding">
+  <!-- Not a brand: understanding a video, drawn as a film frame with the AI sparkle (see image-gen.svg). -->
+  <rect x="1.6" y="4.2" width="16.2" height="15.6" rx="2.2" fill="#1F6F8B"/>
+  <g fill="#fff">
+    <rect x="3.1" y="5.8" width="1.5" height="2" rx=".4"/>
+    <rect x="3.1" y="9.2" width="1.5" height="2" rx=".4"/>
+    <rect x="3.1" y="12.6" width="1.5" height="2" rx=".4"/>
+    <rect x="3.1" y="16" width="1.5" height="2" rx=".4"/>
+    <rect x="14.8" y="5.8" width="1.5" height="2" rx=".4"/>
+    <rect x="14.8" y="9.2" width="1.5" height="2" rx=".4"/>
+    <rect x="14.8" y="12.6" width="1.5" height="2" rx=".4"/>
+    <rect x="14.8" y="16" width="1.5" height="2" rx=".4"/>
+  </g>
+  <path fill="#1F6F8B" opacity=".55" d="M19.6 1.6l.9 2.6 2.6.9-2.6.9-.9 2.6-.9-2.6-2.6-.9 2.6-.9z"/>
+</svg>

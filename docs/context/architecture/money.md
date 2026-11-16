@@ -326,8 +326,15 @@ stay in catalog YAML. `table_amount_micro` bounds a `times` multiplier by the fi
 - `settle: usage` reserves what the rate-card table says THIS request costs and settles the reported
   figure, which may exceed the reserve: the ledger takes the difference, the next reserve is the
   gate, and `reconcile.async_task_settlement` lists every `overrun` and every
-  `absorbed_shortfalls` settle (`block_shortfall_micro > 0`). A success with no usage figure settles
-  at the reserve with `reconcile_review` and an ERROR alert, never at the ceiling. The unit's
+  `absorbed_shortfalls` settle (`block_shortfall_micro > 0`). The next reserve gates only calls in
+  sequence; calls in flight together all passed the balance gate already. So a row whose reported
+  figure can exceed the estimate declares its worst case (`cost.worst_case`, `settle.worst_case` in
+  v2; `Pricing.worst_case_micro`, `MarketplaceCall.worst_case_micro`), and `_platform_reserve` holds
+  the higher of the estimate and the worst case, through the tag, member and daily-cap gates as
+  well. The settle is unchanged and the unused part of the hold goes back. The estimate stays the
+  basis's `reserve_micro`: a success with no usage figure settles
+  at the reserve with `reconcile_review` and an ERROR alert, never at the ceiling or the worst case.
+  The validator warns on a usage row with no worst case. The unit's
   micro-USD worth is frozen as `amount.unit_micro` at reserve, so a later rate edit never re-prices a
   task in flight; a non-USD basis without a frozen rate settles at the reserve.
 
@@ -835,7 +842,7 @@ row.
   maximum, not at the hold: `reserve.rows.max` or a declared `reserve.entities.max` units at the
   unit price, or a reserve plugin's `max`; capped at the hold when the row declares none (no
   `reserve`, or `reserve.entities` without `max`); its `usage` meters, which may exceed the
-  hold; or the hold when there is no `settle` or no evidence. A `count` path is unreadable, so the hold, when it does not select a list: for a path
+  estimate, and are held up to a declared `settle.worst_case`; or the hold when there is no `settle` or no evidence. A `count` path is unreadable, so the hold, when it does not select a list: for a path
   with `*` or a filter, when any list one of its `*` or filter steps iterates is missing or not a
   list (an empty one counts 0). An answer that would be billed is released when it carries a
   capacity signature.

@@ -1,0 +1,315 @@
+provider: jobspipe
+source:
+  docs: https://jobspipe.dev/docs
+  openapi: https://jobspipe.dev/openapi.json
+  curated: '2026-11-14'
+# One credit buys one job for the rest of the calendar month, per account: a job the account already
+# pulled this month comes back free, and an empty page costs nothing. Every job search reports the
+# charge in metadata.credits_charged (technologies included), so job rows hold limit x the per-job
+# price (two credits with include_technologies) and settle the reported figure. The companies list
+# reports its charge too. The salary benchmark and company technologies report no charge and are
+# priced at their observed flat charge. POST /v1/stack/scan is left out: its charge varies and is
+# not reported. GET /v1/account is free but its counters do not move on the one-time free grant;
+# the free POST /v1/jobs/export/estimate returns the spendable balance. A bad key answers 401.
+limits: "Builder plan: 10 requests a second and 100 results a call (Free: 2 a second, 25 a call; 500 a call from 300,000 credits a month). A larger limit is cut to the plan's page size, not refused. HTTP 402 when the credits run out"
+pricing_url: https://jobspipe.dev/pricing
+
+proposed_capabilities:
+  companies.jobs.new: "New job postings for a saved search since the last check"
+
+defaults:
+  provenance: {source: observed, source_url: 'https://jobspipe.dev/pricing', checked: '2026-11-14', confidence: verified}
+  docs_url: https://jobspipe.dev/docs
+
+endpoints:
+  - id: jobspipe.jobs.search
+    verified: '2026-11-14'
+    example_response: examples/jobspipe.jobs.search.json
+    added: '2026-11-14'
+    domain: jobs
+    capability: companies.jobs.search
+    platform: companies
+    scope: any_account
+    method: POST
+    path: /v1/jobs/search
+    name: Search job postings
+    summary: Search open job postings from job boards and employer applicant tracking systems by title, description words, place, remote, seniority, skills, salary, company or source. Each job has its full description, posted and estimated pay, dates, source links and the company.
+    input:
+      bodyType: json
+      body:
+        job_title_or: {type: 'array[string]', required: false, example: [data engineer]}
+        description_or: {type: 'array[string]', required: false, note: "every word of any one phrase, in any order"}
+        job_country_code_or: {type: 'array[string]', required: false, note: "ISO alpha-2 codes", example: [US]}
+        region_or: {type: 'array[string]', required: false, note: "US states and Canadian provinces as ISO 3166-2, e.g. US-TX"}
+        city_or: {type: 'array[string]', required: false}
+        remote: {type: boolean, required: false}
+        job_seniority_or: {type: 'array[string]', required: false}
+        skills_or: {type: 'array[string]', required: false, note: "skill slugs, e.g. python"}
+        min_salary_usd: {type: integer, required: false, note: "posted annual pay; jobs without posted pay never match"}
+        company_name_or: {type: 'array[string]', required: false, note: "matches every company whose name starts with the text; use company_key_or for one company"}
+        company_key_or: {type: 'array[string]', required: false, note: "keys from jobspipe.companies.suggest"}
+        source_or: {type: 'array[string]', required: false, note: "linkedin, indeed, cvlibrary, resumelibrary, ycombinator, arbeitnow, himalayas, jobicy, themuse, remoteok, workingnomads, landingjobs, remotive, rise, bayt, eures, jobtech, greenhouse, workday, ashby, lever, workable, recruitee, personio, smartrecruiters, breezy, paylocity, manatal, jobscore, teamtailor, pinpoint, hirehive. A value outside this list returns no jobs and no error.", example: [greenhouse]}
+        posted_at_max_age_days: {type: integer, required: false, max: 365, example: 7}
+        include_technologies: {type: boolean, required: false, default: false, note: "adds the technologies each job names, one more credit per job that names any"}
+        include_total_results: {type: boolean, required: false}
+        status: {type: string, required: false, enum: [active, closed, any], default: active}
+        limit: {type: integer, required: false, default: 25, min: 1, max: 500, note: "cut to the plan's page size: 100 on treg's key", example: 2}
+        cursor: {type: string, required: false, note: "metadata.next_cursor from the previous page"}
+      note: "The upstream accepts more filters (ISCO occupation, industry, company size and revenue, visa, benefits, language, posted and discovered dates); send them in the JSON body. Pass metadata.next_delta_cursor from the last page to jobspipe.jobs.new to poll for new postings."
+    test_request:
+      body: {job_title_or: [data engineer], job_country_code_or: [US], posted_at_max_age_days: 7, limit: 2}
+    price:
+      table:
+        - {when: [{path: body.include_technologies, op: equals, value: true}], value: '2'}
+        - {when: [{path: body.include_technologies, op: equals, value: false}], value: '1'}
+      fallback: {value: '2', note: "a job and its technologies"}
+      currency: credit
+      per: 1
+      unit: result
+      note: "One credit per job not already pulled this month; repeats and an empty page are free. include_technologies adds one credit per job that names a technology. The hold is limit jobs; the charge is the reported credits_charged."
+    reserve: {rows: {param: body.limit, default: {value: 25, source: docs}, max: 500}}
+    settle: {reported: {path: response.metadata.credits_charged, unit: credit}}
+    miss: {when: {any: [{path: response.data, op: absent}, {path: response.data, op: empty}]}}
+
+  - id: jobspipe.jobs.new
+    verified: '2026-11-14'
+    example_response: examples/jobspipe.jobs.new.json
+    added: '2026-11-14'
+    domain: jobs
+    capability: companies.jobs.new
+    platform: companies
+    scope: any_account
+    method: POST
+    path: /v1/jobs/search
+    name: New job postings since the last check
+    summary: Poll a saved job search for postings that became searchable since a delta cursor, and get a fresh cursor for the next poll.
+    input:
+      bodyType: json
+      body:
+        delta_cursor: {type: string, required: true, note: "metadata.next_delta_cursor from the last page of jobspipe.jobs.search, or from the previous poll"}
+        job_title_or: {type: 'array[string]', required: false, note: "send the same filters as the search that issued the cursor", example: [data engineer]}
+        job_country_code_or: {type: 'array[string]', required: false, example: [US]}
+        company_key_or: {type: 'array[string]', required: false}
+        source_or: {type: 'array[string]', required: false, note: "same values as jobspipe.jobs.search; an unknown value returns no jobs and no error"}
+        include_technologies: {type: boolean, required: false, default: false, note: "adds the technologies each job names, one more credit per job that names any"}
+        limit: {type: integer, required: false, default: 25, min: 1, max: 500, note: "cut to the plan's page size: 100 on treg's key", example: 2}
+      note: "Accepts every jobspipe.jobs.search filter. The next poll's cursor is metadata.next_delta_cursor; it is null until the last page of the current answer."
+    test_request:
+      body: {job_title_or: [machine learning engineer], job_country_code_or: [DE], posted_at_max_age_days: 7, limit: 2, delta_cursor: 'ZGMxOjIwMjYtMTEtMTMgMjM6MTY6NDR'}
+    price:
+      table:
+        - {when: [{path: body.include_technologies, op: equals, value: true}], value: '2'}
+        - {when: [{path: body.include_technologies, op: equals, value: false}], value: '1'}
+      fallback: {value: '2', note: "a job and its technologies"}
+      currency: credit
+      per: 1
+      unit: result
+      note: "One credit per new job not already pulled this month, two with include_technologies; a poll with nothing new is free. The hold is limit jobs; the charge is the reported credits_charged."
+    reserve: {rows: {param: body.limit, default: {value: 25, source: docs}, max: 500}}
+    settle: {reported: {path: response.metadata.credits_charged, unit: credit}}
+    miss: {when: {any: [{path: response.data, op: absent}, {path: response.data, op: empty}]}}
+
+  - id: jobspipe.jobs.detail
+    verified: '2026-11-14'
+    example_response: examples/jobspipe.jobs.detail.json
+    added: '2026-11-14'
+    domain: jobs
+    capability: companies.jobs.detail
+    platform: companies
+    scope: any_account
+    method: POST
+    path: /v1/jobs/search
+    name: Get job postings by ID
+    summary: Get job postings by their native board ID or JobsPipe ID, open or closed, with full description, pay, dates and status.
+    input:
+      bodyType: json
+      body:
+        job_id_or: {type: 'array[string]', required: true, note: "the id a search returned, the posting's native id on its board (Greenhouse number, Lever or Ashby UUID), or JobsPipe's 16-character id. job_ids is the same list and the two are merged", example: ['4489510612']}
+        status: {type: string, required: false, enum: [active, closed, any], default: active, note: "a closed posting is found only with closed or any", example: any}
+        include_technologies: {type: boolean, required: false, default: false, note: "adds the technologies each job names, one more credit per job that names any"}
+        limit: {type: integer, required: false, default: 25, min: 1, max: 500, note: "jobs to return, and the hold: send the number of ids you look up. Cut to the plan's page size: 100 on treg's key", example: 1}
+    test_request:
+      body: {job_id_or: ['4489510612'], status: any}
+    price:
+      table:
+        - {when: [{path: body.include_technologies, op: equals, value: true}], value: '2'}
+        - {when: [{path: body.include_technologies, op: equals, value: false}], value: '1'}
+      fallback: {value: '2', note: "a job and its technologies"}
+      currency: credit
+      per: 1
+      unit: result
+      note: "One credit per job not already pulled this month, two with include_technologies; an ID that matches nothing is free. The hold is limit jobs (25 when omitted), the most the answer can hold; the charge is the reported credits_charged."
+    reserve: {rows: {param: body.limit, default: {value: 25, source: docs}, max: 500}}
+    settle: {reported: {path: response.metadata.credits_charged, unit: credit}}
+    miss: {when: {any: [{path: response.data, op: absent}, {path: response.data, op: empty}]}}
+
+  - id: jobspipe.companies.jobs
+    verified: '2026-11-14'
+    example_response: examples/jobspipe.companies.jobs.json
+    added: '2026-11-14'
+    domain: jobs
+    capability: companies.jobs
+    platform: companies
+    scope: any_account
+    method: POST
+    path: /v1/jobs/search
+    name: A company's open job postings
+    summary: List one company's open job postings, newest first, with full descriptions, pay, dates and the board each came from.
+    input:
+      bodyType: json
+      body:
+        company_key_or: {type: 'array[string]', required: true, note: "the company's key from jobspipe.companies.suggest (free)", example: ['10154656179566200712']}
+        source_or: {type: 'array[string]', required: false, note: "same values as jobspipe.jobs.search, e.g. greenhouse; an unknown value returns no jobs and no error"}
+        status: {type: string, required: false, enum: [active, closed, any], default: active}
+        include_technologies: {type: boolean, required: false, default: false, note: "adds the technologies each job names, one more credit per job that names any"}
+        limit: {type: integer, required: false, default: 25, min: 1, max: 500, note: "cut to the plan's page size: 100 on treg's key", example: 2}
+        cursor: {type: string, required: false, note: "metadata.next_cursor from the previous page"}
+      note: "Accepts every jobspipe.jobs.search filter. include_total_results: true returns the company's total in metadata.total_results."
+    test_request:
+      body: {company_key_or: ['10154656179566200712'], limit: 2}
+    price:
+      table:
+        - {when: [{path: body.include_technologies, op: equals, value: true}], value: '2'}
+        - {when: [{path: body.include_technologies, op: equals, value: false}], value: '1'}
+      fallback: {value: '2', note: "a job and its technologies"}
+      currency: credit
+      per: 1
+      unit: result
+      note: "One credit per job not already pulled this month, two with include_technologies; repeats and an empty page are free. The hold is limit jobs; the charge is the reported credits_charged."
+    reserve: {rows: {param: body.limit, default: {value: 25, source: docs}, max: 500}}
+    settle: {reported: {path: response.metadata.credits_charged, unit: credit}}
+    miss: {when: {any: [{path: response.data, op: absent}, {path: response.data, op: empty}]}}
+
+  - id: jobspipe.jobs.search.count
+    verified: '2026-11-14'
+    example_response: examples/jobspipe.jobs.search.count.json
+    added: '2026-11-14'
+    domain: jobs
+    capability: companies.jobs.search.count
+    platform: companies
+    scope: any_account
+    method: POST
+    path: /v1/jobs/export/estimate
+    name: Count matching job postings
+    summary: Count the job postings a search matches, and the most credits pulling them would cost, before paying for rows.
+    input:
+      bodyType: json
+      body:
+        job_title_or: {type: 'array[string]', required: false, example: [data engineer]}
+        job_country_code_or: {type: 'array[string]', required: false, example: [US]}
+        company_key_or: {type: 'array[string]', required: false}
+        source_or: {type: 'array[string]', required: false}
+        posted_at_max_age_days: {type: integer, required: false, example: 7}
+      note: "Accepts every jobspipe.jobs.search filter. rows stops at 10,000, and rows_approximate is true when it comes from a short count. balance is the account's spendable credits."
+    test_request:
+      body: {job_title_or: [data engineer], job_country_code_or: [US], posted_at_max_age_days: 7}
+    price: {value: '0', currency: USD, unit: call, note: "Free."}
+
+  - id: jobspipe.companies.suggest
+    verified: '2026-11-14'
+    example_response: examples/jobspipe.companies.suggest.json
+    added: '2026-11-14'
+    kind: utility
+    domain: jobs
+    capability: companies.autocomplete
+    platform: companies
+    scope: any_account
+    method: GET
+    path: /v1/companies/suggest
+    name: Find a company's key by name
+    summary: Match the start of a company name to hiring companies, best first, with each one's key, domain and open job count.
+    input:
+      queryParams:
+        q: {type: string, required: true, note: "at least two characters", example: discord}
+        limit: {type: integer, required: false, example: 3}
+    test_request: {queryParams: {q: discord, limit: 3}}
+    price: {value: '0', currency: USD, unit: call, note: "Free."}
+
+  - id: jobspipe.companies.hiring
+    verified: '2026-11-14'
+    example_response: examples/jobspipe.companies.hiring.json
+    added: '2026-11-14'
+    domain: jobs
+    capability: companies.search
+    platform: companies
+    scope: any_account
+    method: POST
+    path: /v1/jobs/companies
+    name: Companies hiring for a job search
+    summary: List the companies behind the jobs a search matches, grouped by corporate parent, with each one's matching job count, domain, size, industry and headquarters.
+    input:
+      bodyType: json
+      body:
+        job_title_or: {type: 'array[string]', required: false, example: [data engineer]}
+        job_country_code_or: {type: 'array[string]', required: false, example: [US]}
+        posted_at_max_age_days: {type: integer, required: false, example: 7}
+        limit: {type: integer, required: false, default: 25, min: 1, max: 500, note: "cut to the plan's page size: 100 on treg's key", example: 1}
+        cursor: {type: string, required: false}
+      note: "Accepts every jobspipe.jobs.search filter. A row's key opens that company's jobs in jobspipe.companies.jobs."
+    test_request:
+      body: {job_title_or: [data engineer], job_country_code_or: [US], posted_at_max_age_days: 7, limit: 1}
+    price:
+      value: '3'
+      currency: credit
+      per: 1
+      unit: result
+      note: "Three credits per company not already pulled this month; an empty page is free. The charge is the reported credits_charged."
+    reserve: {rows: {param: body.limit, default: {value: 25, source: docs}, max: 500}}
+    settle: {reported: {path: response.metadata.credits_charged, unit: credit}}
+    miss: {when: {any: [{path: response.data, op: absent}, {path: response.data, op: empty}]}}
+
+  - id: jobspipe.jobs.salary.benchmark
+    verified: '2026-11-14'
+    example_response: examples/jobspipe.jobs.salary.benchmark.json
+    added: '2026-11-14'
+    domain: jobs
+    capability: jobs.salary.benchmark
+    platform: jobs
+    scope: any_account
+    method: POST
+    path: /v1/insights/salary/benchmark
+    name: Salary benchmark for a job title in a country
+    summary: Get posted-pay percentiles (p10 to p90, annual USD) for a job title or ISCO occupation in a country, with the sample size and a confidence tier.
+    input:
+      bodyType: json
+      body:
+        title: {type: string, required: false, note: "title substring; send title or occupation_code", example: data engineer}
+        occupation_code: {type: string, required: false, note: "ISCO-08 code, e.g. 2512"}
+        country: {type: string, required: false, note: "ISO alpha-2; omit for every country", example: US}
+        seniority: {type: string, required: false}
+        window_days: {type: integer, required: false, default: 90}
+      note: "Country is the finest place: there is no city or state filter, and an unknown key is a 400. Fewer than 30 postings with pay answer suppressed: true and no percentiles."
+    test_request:
+      body: {title: data engineer, country: US}
+    price:
+      value: '3'
+      currency: credit
+      unit: call
+      note: "Three credits per benchmark with percentiles; a suppressed answer and a 400 are free. The answer does not report the charge."
+    miss: {when: {path: response.percentiles, op: absent}}
+
+  - id: jobspipe.companies.technologies
+    verified: '2026-11-14'
+    example_response: examples/jobspipe.companies.technologies.json
+    added: '2026-11-14'
+    domain: jobs
+    capability: companies.tech_stack
+    platform: companies
+    scope: any_account
+    method: GET
+    path: /v1/companies/{key}/technologies
+    name: A company's technologies from its job postings
+    summary: List the technologies a company's job postings name, graded by evidence tier, with job counts and first and last dates.
+    input:
+      pathParams:
+        key: {type: string, required: true, note: "company domain or name", example: stripe.com}
+      queryParams:
+        tier_min: {type: string, required: false, enum: [confirmed, likely, mentioned]}
+        kind: {type: string, required: false, note: "comma-separated kinds, e.g. product"}
+    test_request: {pathParams: {key: stripe.com}, queryParams: {tier_min: confirmed}}
+    price:
+      value: '3'
+      currency: credit
+      unit: call
+      note: "Three credits per company with technologies, again on a repeat; a company with none (404) is free. The answer does not report the charge."
+    miss: {status: [404], means: "no_technologies_found: no company by that key, or none named in its postings"}

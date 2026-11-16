@@ -48,6 +48,7 @@ sources:
   - frontend/tests/captcha.test.ts
   - src/treg/routers/orgs.py
   - src/treg/routers/resources.py
+  - src/treg/application/connect.py
   - src/treg/domain/tools/bundles.py
   - src/treg/infra/db.py
   - src/treg/alembic/versions/0017_async_task_record.py
@@ -86,7 +87,8 @@ host passthrough to the org ([proxy-model](proxy-model.md)). Health runs take an
   `email_token_hash` is the second secret in the emailed link; `/auth/invite-signin` resolves it
   to the invitee's address and redirects to the login with it prefilled, never a session, because
   an emailed secret is only as private as every system the mail passes through and any team admin
-  can make one be sent to any address. The invite carries the access (`tool_access`, `project_access`, `local_run_enabled`)
+  can make one be sent to any address. The link's host is `public_url` or a configured alias, never
+the request's raw `Host`. The invite carries the access (`tool_access`, `project_access`, `local_run_enabled`)
   copied onto the membership at both accept doors.
 - **`Project`** is an optional label and ACL scope, not a namespace: `Tool.name` stays unique per
   `(org_id, name)`, `Tool.project_id` NULL means org-wide, and secrets stay org-level because one
@@ -121,7 +123,10 @@ dependency commits; it never extends the auth transaction.
 
 - **Roles.** Admin and owner manage any resource in the org; a member only what it created
   (`resource.owner == caller.email`). Another org's resource is 404, a failed role gate 403. A viewer
-  may call and list only (`_require_can_register`).
+  may call and list only (`_require_can_register`). A tool name containing a dot is the shape of a
+  catalog or hub id, and an own tool of that name answers every call to the id in the team, so
+  choosing one needs admin or owner (`_require_admin_for_dotted_names`, on `POST /tools` and skill
+  registration); an OAuth connection name, like a rename, must pass `_valid_tool_name`.
 - **The roster is admin-only** (`list_members`); any member may read the team's human owners and
   admins (`list_admins`, email and role only) so a member out of credit knows whom to ask.
 - **Two ACL axes, ANDed** (`_tool_usable` = `_tool_allowed` and `_project_allowed`). Both are

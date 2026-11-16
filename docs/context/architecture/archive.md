@@ -464,7 +464,9 @@ admission, learning, storage or serving, and is disabled by
 
 `GET /admin/archive` reports totals and per-endpoint rows from the running totals.
 `GET /admin/archive/panel` serves a data-free page shell, deliberately unauthenticated: every
-number arrives by fetch with the admin token the operator pastes. `/admin/archive/keys` reads
+number arrives by fetch with the admin token the operator pastes, kept in `sessionStorage` for that
+tab only. Every stored value it shows (the question, endpoint ids, versions) is escaped as text, never
+inserted as markup, since a question holds caller-chosen URL text. `/admin/archive/keys` reads
 versions in one columns-only query (`body IS NOT NULL`), never loading bodies.
 
 ## What the archive must never touch

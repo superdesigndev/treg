@@ -1,0 +1,110 @@
+provider: greenhouse
+source:
+  docs: https://docs.greenhouse.io/job-board.html
+  openapi: null
+  curated: '2026-11-14'
+limits: "Keyless and free. One board per call, named by its board token (the slug in job-boards.greenhouse.io/<token>). No search across boards, no filters and no paging: the list returns the whole board."
+pricing_url: https://docs.greenhouse.io/job-board.html
+proposed_capabilities:
+  companies.jobs.departments: "A company's job-board departments, each with its open jobs"
+  companies.jobs.offices: "A company's job-board offices, each with its open jobs"
+
+# The Job Board API answers every GET without authentication, so every row is served anonymously
+# (no credential injected) and the anonymous tier relays a 2xx as a stream: a large `content=true`
+# list is never buffered. An unknown board or id answers 404 with a
+# JSON `error` ("Job not found", "Job board not found", "Department not found", "Office not found").
+defaults:
+  provenance: {source: observed, source_url: 'https://docs.greenhouse.io/job-board.html', checked: '2026-11-14', confidence: verified}
+  price: {value: '0', currency: USD, unit: call, note: "Greenhouse's public Job Board API is free and keyless."}
+
+endpoints:
+  - id: greenhouse.companies.jobs
+    platform_auth: anonymous
+    domain: jobs
+    capability: companies.jobs
+    platform: companies
+    scope: any_account
+    method: GET
+    path: /boards/{board_token}/jobs
+    name: "Open jobs on a company's Greenhouse board"
+    summary: "List every open job on a company's Greenhouse job board: id, title, location, posting URL, first published and updated dates, requisition id and custom fields, with a total count."
+    input:
+      pathParams:
+        board_token: {type: string, required: true, example: discord, note: "the board's token, the slug in job-boards.greenhouse.io/<token>"}
+      queryParams:
+        content: {type: boolean, required: false, example: false, note: "true adds each job's HTML description, departments and offices; about 11 KB per job, so a large board answers 10 MB or more. For one job's description use greenhouse.companies.jobs.detail"}
+    test_request: {pathParams: {board_token: discord}}
+    miss: {status: [404], means: "No board with this token."}
+    verified: '2026-11-14'
+    added: '2026-11-14'
+    example_response: examples/greenhouse.companies.jobs.json
+    docs_url: https://docs.greenhouse.io/job-board.html#list-jobs
+
+  - id: greenhouse.companies.jobs.detail
+    platform_auth: anonymous
+    domain: jobs
+    capability: companies.jobs.detail
+    platform: companies
+    scope: any_account
+    method: GET
+    path: /boards/{board_token}/jobs/{job_id}
+    name: "One job on a Greenhouse board"
+    summary: "Get one job from a company's Greenhouse board with its HTML description, departments, offices and, on request, posted pay ranges and the application questions."
+    input:
+      pathParams:
+        board_token: {type: string, required: true, example: discord}
+        job_id: {type: integer, required: true, example: 8927168002, note: "the job's id from greenhouse.companies.jobs"}
+      queryParams:
+        pay_transparency: {type: boolean, required: false, example: true, note: "true adds pay_input_ranges (min_cents, max_cents, currency_type, title) when the employer publishes pay"}
+        questions: {type: boolean, required: false, example: false, note: "true adds the application, location, compliance and demographic questions"}
+    note: "content is entity-escaped HTML (&lt;p&gt;): unescape it once to get the HTML."
+    test_request: {pathParams: {board_token: discord, job_id: 8927168002}, queryParams: {pay_transparency: 'true'}}
+    miss: {status: [404], means: "No job with this id on this board, or no board with this token."}
+    verified: '2026-11-14'
+    added: '2026-11-14'
+    example_response: examples/greenhouse.companies.jobs.detail.json
+    docs_url: https://docs.greenhouse.io/job-board.html#retrieve-a-job
+
+  - id: greenhouse.companies.jobs.departments
+    platform_auth: anonymous
+    domain: jobs
+    capability: companies.jobs.departments
+    platform: companies
+    scope: any_account
+    method: GET
+    path: /boards/{board_token}/departments
+    name: "Departments on a Greenhouse board"
+    summary: "List a company's Greenhouse departments, each with its parent and child ids and its open jobs."
+    input:
+      pathParams:
+        board_token: {type: string, required: true, example: discord}
+      queryParams:
+        render_as: {type: string, required: false, enum: [list, tree], default: list, note: "tree nests child departments under their parents"}
+    test_request: {pathParams: {board_token: discord}}
+    miss: {status: [404], means: "No board with this token."}
+    verified: '2026-11-14'
+    added: '2026-11-14'
+    example_response: examples/greenhouse.companies.jobs.departments.json
+    docs_url: https://docs.greenhouse.io/job-board.html#list-departments
+
+  - id: greenhouse.companies.jobs.offices
+    platform_auth: anonymous
+    domain: jobs
+    capability: companies.jobs.offices
+    platform: companies
+    scope: any_account
+    method: GET
+    path: /boards/{board_token}/offices
+    name: "Offices on a Greenhouse board"
+    summary: "List a company's Greenhouse offices with their location, each with its departments and their open jobs."
+    input:
+      pathParams:
+        board_token: {type: string, required: true, example: discord}
+      queryParams:
+        render_as: {type: string, required: false, enum: [list, tree], default: list, note: "tree nests child offices under their parents"}
+    test_request: {pathParams: {board_token: discord}}
+    miss: {status: [404], means: "No board with this token."}
+    verified: '2026-11-14'
+    added: '2026-11-14'
+    example_response: examples/greenhouse.companies.jobs.offices.json
+    docs_url: https://docs.greenhouse.io/job-board.html#list-offices

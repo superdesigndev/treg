@@ -28,7 +28,9 @@ from ..domain.identity import mcp_oauth
 from ..domain.identity import session as sess
 from ..domain.identity.access import require_identity, require_person
 from ..models import User
-from .auth_helpers import _is_https, _remember_oauth_return, _same_origin, require_managed_cli
+from .auth_helpers import (
+    _is_https, _remember_oauth_return, _same_origin, require_managed_cli, trusted_public_base,
+)
 
 app = APIRouter()
 email_router = app
@@ -232,10 +234,7 @@ def _login_callback_base(request: Request) -> str:
     cutover deploy, with its state cookie and provider registration both on the old name) must
     keep building the OLD host's callback. Any recognized alias Host therefore wins — in BOTH
     directions, so a login minted on treg.to also survives a TREG_PUBLIC_URL rollback."""
-    host = request.headers.get("host", "").split(":")[0].rstrip(".").lower()
-    if host in get_settings().public_host_aliases:
-        return f"https://{host}"
-    return get_settings().public_url.rstrip("/")
+    return trusted_public_base(request)
 
 
 app = APIRouter()
@@ -596,15 +595,14 @@ def _login_page_html(login_id: str, *, session_email: str | None, github: bool, 
     is HTML-escaped (it's the only other interpolated value)."""
     # A pairing-code block sits above everything: whichever door the user takes, approve() won't complete
     # the CLI handshake until the code shown in their own terminal is echoed back (phishing guard — a
-    # login they didn't start has no matching code). A `treg login` link carries the code in the URL
-    # fragment, so the JS swaps this input for a read-only display the user just visually confirms;
-    # the typed input remains the fallback for links without one. #orgpick is ALWAYS present (filled by loadOrgs when a
+    # login they didn't start has no matching code). The user always types the code: the page never
+    # takes it from the link, so a link alone can never carry a login through. #orgpick is ALWAYS present (filled by loadOrgs when a
     # session exists at load, and after the email door signs in). #doors holds the sign-in options; the
     # divider only shows when a session pre-exists.
     parts: list[str] = [
         '<div id="pcbox" class="pair"><label class="pklabel" for="paircode">Enter the code shown in your terminal</label>'
         '<input id="paircode" autocomplete="off" autocapitalize="characters" spellcheck="false" '
-        'inputmode="latin" placeholder="7F3K" maxlength="9"></div>',
+        'inputmode="latin" placeholder="7F3K" maxlength="9" autofocus></div>',
         '<div id="orgpick"></div>',
     ]
     # With a live session the doors are noise — the user is one click from done. Collapse them behind
@@ -693,7 +691,7 @@ _LOGIN_CSS = (
     ".team.primary .tm{color:var(--inverse-ink);opacity:.7}"
     ".pair{align-items:center;padding:16px;border-radius:16px;background:var(--panel2);text-align:center}"
     ".pklabel{font-size:12.5px;color:var(--muted)}"
-    "#paircode-show,#paircode{font-family:var(--mono);font-size:28px;font-weight:500;line-height:1.2;"
+    "#paircode{font-family:var(--mono);font-size:28px;font-weight:500;line-height:1.2;"
     "letter-spacing:.24em;text-indent:.24em;text-align:center;color:var(--ink);font-variant-numeric:tabular-nums}"
     "#paircode{min-height:52px;text-transform:uppercase;background:var(--surface)}"
     "#paircode::placeholder{color:var(--muted2);opacity:.5}"
@@ -704,15 +702,7 @@ _LOGIN_CSS = (
 # done() builds DOM via textContent (the email came over JSON — never trust it into innerHTML).
 _LOGIN_JS = """
 const LID='__LOGIN_ID__';
-// `treg login` puts the pairing code in the URL FRAGMENT (#code=…) — it never reaches the server on
-// the GET. When present, show it read-only for a visual match against the terminal instead of making
-// the user type it; approve() still sends it for full server-side validation. No fragment (an old CLI,
-// or a link someone stripped it from) → the typed-input fallback below stays.
-const PAIR=(()=>{const m=/[#&]code=([A-Za-z0-9-]{1,16})/.exec(location.hash||'');return m?m[1].toUpperCase():''})();
-if(PAIR){const box=document.getElementById('pcbox');if(box){box.innerHTML='';
- const l=document.createElement('div');l.className='pklabel';l.textContent='Check this code matches your terminal';box.appendChild(l);
- const c=document.createElement('div');c.id='paircode-show';c.textContent=PAIR;box.appendChild(c);}}
-const pairCode=()=>PAIR||((document.getElementById('paircode')||{}).value||'');
+const pairCode=()=>((document.getElementById('paircode')||{}).value||'');
 // Signed-in users see the doors collapsed behind the "use a different account" divider.
 function toggleDoors(){const d=document.getElementById('doors');if(!d)return;
  const open=d.style.display==='none';d.style.display=open?'':'none';
@@ -954,7 +944,7 @@ _CONSENT_CSS = """
 
 
 def _consent_page(*, client_name: str, client_uri: str, user_email: str, teams: list,
-                  hidden: dict, unverified: bool) -> HTMLResponse:
+                  hidden: dict, unverified: bool, scope: str) -> HTMLResponse:
     """The one place a human sees what they are granting — so it says it in words, not scopes.
 
     Deliberately plain about the two things that cost money or leak data: this client will be able to
@@ -985,6 +975,13 @@ def _consent_page(*, client_name: str, client_uri: str, user_email: str, teams: 
     fields = "".join(
         f'<input type="hidden" name="{_h.escape(k)}" value="{_h.escape(str(v))}"/>'
         for k, v in hidden.items())
+    held = mcp_oauth.mcp_permissions(scope)
+    grants = "".join(f"<li>{line}</li>" for perm, line in (
+        (mcp_oauth.CATALOG_SCOPE, "Search the catalog and read prices"),
+        (mcp_oauth.CALL_SCOPE, "Call tools on your team's behalf — <b>this spends the team's balance</b>"),
+        (mcp_oauth.CALL_SCOPE, "Use the API keys and connections your team has registered, without seeing them"),
+        (mcp_oauth.READ_SCOPE, "Read the team's balance, its own tools and the provider resources it owns"),
+    ) if perm in held)
     who = _h.escape(client_name or "An application")
     where = (f' <span class="who">({_h.escape(client_uri)})</span>' if client_uri else "")
     warn = ("" if not unverified else
@@ -996,12 +993,7 @@ def _consent_page(*, client_name: str, client_uri: str, user_email: str, teams: 
         f'{_BRAND}'
         f"<h1>{who} wants to use treg</h1>{where}"
         f'<p class="who">Signed in as {_h.escape(user_email)}</p>'
-        f'<ul class="grants">'
-        f"<li>Search the catalog and read prices</li>"
-        f"<li>Call tools on your team's behalf — <b>this spends the team's balance</b></li>"
-        f"<li>Use the API keys and connections your team has registered, without seeing them</li>"
-        f"<li>Read the team's balance</li>"
-        f"</ul>"
+        f'<ul class="grants">{grants}</ul>'
         f'<form method="post" action="/oauth/authorize">{fields}'
         f'<label for="org_id">Which team?</label>'
         f'<select id="org_id" name="org_id" required>{opts}</select>'
@@ -1120,7 +1112,7 @@ async def oauth_authorize(
         return {
             "client": {"client_id": view.client_id, "name": view.client_name,
                        "uri": view.client_uri, "kind": view.client_kind},
-            "redirect_uri": redirect_uri, "scope": scope, "resource": resource,
+            "redirect_uri": redirect_uri, "scope": view.scope, "resource": resource,
             "user": view.user_email,
             # The team picker. A person may belong to several, and which one this client may spend
             # from is a decision for the human here — not something resolved per call later.
@@ -1131,7 +1123,7 @@ async def oauth_authorize(
         return _sheets_consent_page(user_email=view.user_email, teams=view.teams, hidden=hidden)
     return _consent_page(client_name=view.client_name, client_uri=view.client_uri,
                          user_email=view.user_email, teams=view.teams, hidden=hidden,
-                         unverified=(view.client_kind == "dcr"))
+                         unverified=(view.client_kind == "dcr"), scope=view.scope)
 
 
 @app.post("/oauth/authorize", include_in_schema=False)

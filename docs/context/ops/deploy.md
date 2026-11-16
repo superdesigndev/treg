@@ -192,8 +192,10 @@ meaning is not obvious from the field:
 Credentials stay in the deployment secret store.
 
 **Public host aliases.** `TREG_PUBLIC_HOST_ALIASES` is the complete JSON list of extra hostnames
-accepted for social-login callbacks, MCP hosts, origins and token audiences, and the hub self-relay
-guard; setting it replaces the list. It does not change `TREG_PUBLIC_URL`, canonical links or
+accepted for social-login callbacks, MCP hosts, origins and token audiences, the hub self-relay
+guard, and the host of invite-email links and Stripe return URLs; setting it replaces the list.
+Those links never take any other `Host`: `routers/auth_helpers.trusted_public_base` falls back to
+`TREG_PUBLIC_URL`, so a forged header cannot send an invite token elsewhere. It does not change `TREG_PUBLIC_URL`, canonical links or
 provider-connect callbacks. Register each alias's `/auth/google/callback` and
 `/auth/github/callback` with the OAuth clients first, and list it in Turnstile's widget hostnames
 (a non-empty `TREG_TURNSTILE_HOSTNAMES` overrides the server-side fallback and must list every
@@ -300,7 +302,11 @@ unencrypted `minisign -G -W` key) and the `TREG_UPDATE_KEY` variable (its public
 channel whose version the operator names (`TREG_CLI_BETA_VERSION` for beta,
 `TREG_CLI_STABLE_VERSION` for stable) moves only when the operator moves it; one
 left empty, or at a 0.x value, follows the newest GitHub release
-([cli-binary](../interface/cli-binary.md)).
+([cli-binary](../interface/cli-binary.md)). A download mirror needs the `cli-mirror` environment
+(variables `R2_ENDPOINT` and `R2_BUCKET`, secrets `R2_ACCESS_KEY_ID` and `R2_SECRET_ACCESS_KEY` for
+an S3-compatible bucket served publicly) and `TREG_CLI_MIRROR_BASE_URL` naming where that bucket's
+`cli/v{version}` is served; copy any release published before with the `CLI mirror` workflow, and
+name a version on a channel only once its copy is there.
 
 ## Audit, archive and spool back-pressure
 
