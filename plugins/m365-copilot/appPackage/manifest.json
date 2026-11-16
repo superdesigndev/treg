@@ -1,0 +1,39 @@
+{
+  "$schema": "https://developer.microsoft.com/json-schemas/teams/v1.30/MicrosoftTeams.schema.json",
+  "manifestVersion": "1.30",
+  "version": "1.0.0",
+  "id": "a1e35191-b813-409d-af2e-d27e8382e161",
+  "developer": {
+    "name": "superdesign",
+    "websiteUrl": "https://treg.to",
+    "privacyUrl": "https://treg.to/privacy",
+    "termsOfUseUrl": "https://treg.to/terms"
+  },
+  "icons": {
+    "color": "color.png",
+    "outline": "outline.png"
+  },
+  "name": {
+    "short": "treg",
+    "full": "treg for Microsoft 365 Copilot"
+  },
+  "description": {
+    "short": "Live people, company, SEO, ads and social data in Copilot.",
+    "full": "treg gives Copilot a catalog of live data tools: people and company enrichment, work emails, SEO and SERP data, keyword volume, backlinks, ad libraries, social profiles and trends, web data and generative models, plus the API keys and connections your team registered in treg. Copilot searches the catalog, tells you the price, and calls the tool; credentials stay on treg's servers. Catalog calls spend your treg team's prepaid balance."
+  },
+  "accentColor": "#000000",
+  "copilotAgents": {
+    "declarativeAgents": [
+      {
+        "id": "treg",
+        "file": "declarativeAgent.json"
+      }
+    ]
+  },
+  "permissions": [
+    "identity"
+  ],
+  "validDomains": [
+    "treg.to"
+  ]
+}

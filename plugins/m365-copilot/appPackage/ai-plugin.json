@@ -1,0 +1,26 @@
+{
+  "$schema": "https://developer.microsoft.com/json-schemas/copilot/plugin/v2.4/schema.json",
+  "schema_version": "v2.4",
+  "name_for_human": "treg",
+  "namespace": "treg",
+  "description_for_human": "Live data tools for Copilot, called through your treg team.",
+  "description_for_model": "treg is a catalog of external data tools and generative models, plus the team's own registered tools. Use it whenever the user needs live or external data: people and company enrichment, work emails and phone numbers, SEO and SERP results, keyword volume, backlinks, AI visibility, ad libraries, social profiles and posts, web pages, or image, video and voice generation. Flow: catalog_search with the job in plain words, catalog_get for the chosen id's parameters and price, then call. Catalog calls spend the team's prepaid balance.",
+  "logo_url": "https://treg.to/favicon.svg",
+  "contact_email": "jason@superdesign.dev",
+  "legal_info_url": "https://treg.to/terms",
+  "privacy_policy_url": "https://treg.to/privacy",
+  "functions": [],
+  "runtimes": [
+    {
+      "type": "RemoteMCPServer",
+      "spec": {
+        "url": "${MCP_URL}"
+      },
+      "run_for_functions": ["*"],
+      "auth": {
+        "type": "OAuthPluginVault",
+        "reference_id": "${AUTH_REFERENCE_ID}"
+      }
+    }
+  ]
+}
