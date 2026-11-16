@@ -390,6 +390,11 @@ A crash before that leaves holds to the reaper, which releases in the caller's f
 `route.child_outcome` reads each child's answer and is shared with
 [replay](replay.md). The parent assembles `{output, raw, _treg}` and owns the idempotency label.
 A pending outcome (`202`, `X-Treg-Route-Outcome: pending`) sends no `X-Treg-Cost-Micro`.
+A routed call answers one page: a body paging key (`page`, `offset`, `cursor`, ...) its contract
+does not declare is refused 422 `route_paging_unsupported` before planning, never dropped, since a
+dropped one returns and bills page one again. A candidate whose v1 price table multiplies the field
+its adapter fills from `limit` is priced from that upstream request (`_table_price`), the same
+figure its child hold reserves, so `X-Treg-Route-Max-Cost` judges the size asked for.
 
 ## Several treg-owned accounts behind one provider
 

@@ -74,6 +74,7 @@ from ...domain.capacity.marks import spends_balance
 from ...domain.capacity.signatures import classify as classify_capacity, is_exhausting
 from ...domain import plugins
 from ...domain import money as ledger
+from ...domain.money import settlement as settlement_basis
 from ...domain.catalog import outcome as catalog_outcome
 from ...domain.catalog import results as catalog_results
 from ...domain.catalog import stats as endpoint_stats
@@ -149,6 +150,8 @@ async def _observed_stats(endpoint_ids: list[str]) -> endpoint_stats.Observation
 
 WATERFALL_HEADER = "x-treg-route-waterfall"
 MAX_COST_HEADER = "x-treg-route-max-cost"
+# Body keys an agent sends to page; a routed call refuses them unless its contract declares one.
+_PAGING_KEYS = frozenset({"page", "offset", "cursor", "next_cursor", "page_token", "after", "skip", "start"})
 PREFER_HEADER = "x-treg-route-prefer"
 EXCLUDE_HEADER = "x-treg-route-exclude"
 MIN_RESULTS_HEADER = "x-treg-route-min-results"
@@ -594,6 +597,29 @@ def _merge_rows(field: str, answers: list[tuple], limit: int | None = None):
     return out
 
 
+def _table_price(cat, ep: dict, adapter, identity: dict, variant) -> int | None:
+    """What the child's hold will be for a v1 price table, priced from the upstream request this
+    adapter sends; the table's fallback ceiling would price every size alike. None for any other row."""
+    raw = ep.get("cost") or {}
+    if not isinstance(raw.get("table"), list) or is_v2(ep):
+        return None
+    # Only a table that multiplies the field this adapter fills from `limit`: the hold grows with
+    # the rows asked for. Other tables keep their ceiling price, and their routing order.
+    sized = {path for path, expr in (adapter.in_expr or {}).items() if re.search(r"\blimit\b", expr)}
+    sized |= {path for key, path in (adapter.in_map or {}).items() if key == "limit"}
+    if not any(isinstance(row, dict) and row.get("times") in sized for row in raw["table"]):
+        return None
+    try:
+        query, body = adapter.to_upstream(identity, variant)
+    except Exception:  # noqa: BLE001 - the walk records the adapter's failure; the price falls back
+        return None
+    unit = cat.cost_view({**raw, "value": 1, "per": 1}, ep["provider"]) or {}
+    if unit.get("usd") is None:
+        return None
+    return settlement_basis.table_amount_micro(raw, {"queryParams": query, "body": body},
+                                               ep.get("input") or {}, int(round(unit["usd"] * 1_000_000)))
+
+
 async def build_plan(ep: dict, identity_given: dict, caller, options: RouteOptions, *,
                      probe: bool = False) -> Plan:
     """Candidates for this org: adapters that accept the identity, own keys first, exhausted
@@ -684,7 +710,7 @@ async def build_plan(ep: dict, identity_given: dict, caller, options: RouteOptio
         if (direct_exhausted and get_settings().overflow_mode == "on"
                 and not getattr(caller.org, "platform_overflow_disabled", False)):
             overflow_route = next(iter(overflow_routes_view.for_endpoint(e["id"])), None)
-        price = 0 if tier != "platform" else cost_at(cv, identity, ad)
+        price = 0 if tier != "platform" else _table_price(cat, e, ad, identity, v) or cost_at(cv, identity, ad)
         miss = 0 if tier != "platform" else miss_charge_micro(cv, identity, ad, price)
         if overflow_route is not None:
             # The aggregator settles on its own envelope or its reserve, not on the direct row's
@@ -1082,6 +1108,14 @@ async def _run_routed(parent: CallContext, ep: dict, body_bytes: bytes, get_head
                                detail=f"{ep['id']} expects a JSON object body")
     parent.route_summary = {"identity": given, "size": len(body_bytes or b"")}
     contract = catalog_store.load().contracts.get(ep["capability"])
+    declared = set(contract.identity_types) | set(contract.filters or {}) if contract else set()
+    if paging := sorted(k for k in given if k in _PAGING_KEYS and k not in declared):
+        # Dropped silently, the next "page" is page one again and bills again.
+        raise ResolutionFailed("catalog_parameter_invalid", status_code=422, rule="unsupported", detail={
+            "error": "route_paging_unsupported", "endpoint_id": ep["id"], "fields": paging,
+            "message": f"{ep['id']} answers one page and cannot send {', '.join(paging)}; a repeat returns the same rows "
+                       "and bills again. For more rows raise `limit`, or call the provider named in X-Treg-Served-By "
+                       "directly with its own page or cursor field. Nothing was charged."})
     options = RouteOptions.from_headers(
         get_header, int(round(contract.default_max_cost_usd * 1_000_000)) if contract and contract.default_max_cost_usd else None)
     if (contract and options.waterfall and not get_header(MIN_RESULTS_HEADER) and not get_header(MERGE_HEADER)

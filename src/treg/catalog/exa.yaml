@@ -162,7 +162,7 @@ endpoints:
       body:
         query: {type: string, required: true, note: "describe the person in words — role, seniority, location, industry, anything a profile page would say. Free text, not filters: 'head of security at a fintech in berlin' works, so does 'ai safety researchers in greater phoenix'", example: "head of security at a fintech in berlin"}
         category: {type: string, required: true, note: "must be `people`", example: "people"}
-        numResults: {type: integer, required: false, note: "1-100, default 10; beyond 10 adds $0.001 each", example: 5}
+        numResults: {type: integer, required: false, min: 1, max: 100, default: 10, note: "1-100, default 10; beyond 10 adds $0.001 each", example: 5}
         includeDomains: {type: "array[string]", required: false, note: "e.g. [\"linkedin.com\"] to keep to one profile host"}
         contents: {type: object, required: false, note: "{highlights: true} returns the profile lines that matched the query"}
       note: "each result is a profile page: url (mostly linkedin.com/in/…), title (the person's name), publishedDate, and an `entities` block with the structured person record Exa extracted (name, current title, company, location). No contact data — pair with a people.enrich or people.email.find provider for that. Scored 72% R@1 / 94.5% R@10 on Exa's open people-search benchmark; the structured providers under this capability need role+location filters instead of free text."
@@ -173,9 +173,20 @@ endpoints:
     example_response: examples/exa.people.search.json
     cost:
       type: per_call
-      value: 7
+      # The hold must cover the rider, or X-Treg-Route-Max-Cost passes a $0.097 call on a $0.007 hold.
+      # $0.001 x numResults bounds base + rider from 7 results up; 1-6 hold the base.
+      table:
+        - {when: {body.numResults: 1}, value: 0.007}
+        - {when: {body.numResults: 2}, value: 0.007}
+        - {when: {body.numResults: 3}, value: 0.007}
+        - {when: {body.numResults: 4}, value: 0.007}
+        - {when: {body.numResults: 5}, value: 0.007}
+        - {when: {body.numResults: 6}, value: 0.007}
+        - {when: {body.category: people}, value: 0.001, times: body.numResults}
+      fallback: {value: 0.1, note: "100 results, the most one call returns"}
       currency: USD
-      per: 1000
+      settle: usage
+      usage: {path: costDollars.total, unit: usd}
       unit: call
       source: observed
       source_url: https://exa.ai/pricing

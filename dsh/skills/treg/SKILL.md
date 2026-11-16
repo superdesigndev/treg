@@ -146,6 +146,9 @@ How a routed call works:
 - A provider that fails or hangs on the way is skipped after a few seconds and does not spoil the
   others' answer: when they all missed, the call is a 200 miss with `_treg.incomplete: true` (and
   `X-Treg-Route-Incomplete: true`), billed only for the misses. Asking again later may find more.
+- A routed call returns one page. It refuses `page`, `offset` or `cursor` (unbilled 422) rather than
+  bill you for the same rows again: raise `limit`, or call the provider in `X-Treg-Served-By`
+  directly with its own page or cursor field.
 - A filter the serving provider could not apply is named in `X-Treg-Ignored-Filters` and
   `_treg.ignored_filters`: filter the rows yourself, or send `X-Treg-Route-Strict-Filters: 1` to be
   refused with an unbilled 422 instead.
