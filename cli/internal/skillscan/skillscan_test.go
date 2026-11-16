@@ -249,3 +249,32 @@ func TestSecretPathNeverLeavesTheSkillFolder(t *testing.T) {
 		}
 	}
 }
+
+func TestSecretLinkInsideTheSkillResolvesFromARelativeDir(t *testing.T) {
+	root := t.TempDir()
+	skill := filepath.Join(root, "skills", "ok")
+	if err := os.MkdirAll(filepath.Join(skill, ".secrets"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	real := filepath.Join(skill, ".secrets", "real")
+	if err := os.WriteFile(real, []byte("tok"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Symlink(real, filepath.Join(skill, ".secrets", "alias")); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(root, "outside.txt"), []byte("local file"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	t.Chdir(root)
+	rel := filepath.Join("skills", "ok")
+	if p, err := ResolveSecretPath(rel, ".secrets/alias"); err != nil || filepath.Base(p) != "alias" {
+		t.Errorf("an absolute link inside the skill, from a relative dir: got %q %v", p, err)
+	}
+	if !secretFilePresent(rel, ".secret/alias") {
+		t.Error("the .secret spelling should find the same link from a relative dir")
+	}
+	if _, err := ResolveSecretPath(rel, "../../outside.txt"); !errors.Is(err, ErrSecretPath) {
+		t.Errorf("a relative dir must still refuse an escape, got %v", err)
+	}
+}

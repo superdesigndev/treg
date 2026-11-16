@@ -496,7 +496,12 @@ func inside(base, p string) bool {
 }
 
 // evalExisting resolves the symlinks of p's longest existing prefix and keeps the rest as written.
+// It works on the absolute path, so a relative skill dir and an absolute link target compare.
 func evalExisting(p string) (string, bool) {
+	p, err := filepath.Abs(p)
+	if err != nil {
+		return "", false
+	}
 	tail := ""
 	for cur := p; ; {
 		if r, err := filepath.EvalSymlinks(cur); err == nil {
