@@ -18,6 +18,7 @@ each settled one there.
 from __future__ import annotations
 
 import asyncio
+import time
 import logging
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass, field, replace
@@ -425,6 +426,47 @@ async def _admit_proof(paid: PaidOffer, verified: Verified) -> PayerAdmission:
     if not await _claim_proof(verified):
         raise await challenge(paid, reason="payment_replayed", message="this proof was already used")
     return PayerAdmission(caller=await _caller(org_id), verified=verified, settlement=None)
+
+
+REPLAY_NS = "agentpay-mpp"
+REPLAY_KEEP_S = 7 * 24 * 3600
+
+
+class ReplayStore:
+    """pympp's replay store (`mpp.store.ExpiringStore`) on treg's `Ephemeral` table, shared by
+    every instance. pympp claims transaction hashes in it before it broadcasts or accepts them."""
+
+    async def get(self, key: str):
+        async with session_maker() as db:
+            value = await ratestore.kv_get(db, REPLAY_NS, key)
+            await db.commit()
+        return None if value is None else value.get("v")
+
+    async def put(self, key: str, value) -> None:
+        async with session_maker() as db:
+            await ratestore.kv_put(db, REPLAY_NS, key, {"v": value}, ttl_s=REPLAY_KEEP_S)
+            await db.commit()
+
+    async def delete(self, key: str) -> None:
+        async with session_maker() as db:
+            await ratestore.kv_pop(db, REPLAY_NS, key)
+            await db.commit()
+
+    async def put_if_absent(self, key: str, value) -> bool:
+        return await self._claim(key, value, REPLAY_KEEP_S)
+
+    async def put_if_absent_until(self, key: str, value, expires_at: float) -> bool:
+        ttl = expires_at - time.time()
+        if not ttl > 0:
+            raise ValueError("expires_at must be a finite future Unix timestamp")
+        return await self._claim(key, value, ttl)
+
+    async def _claim(self, key: str, value, ttl_s: float) -> bool:
+        async with session_maker() as db:
+            await ratestore.sweep(db, REPLAY_NS)
+            claimed = await ratestore.kv_claim(db, REPLAY_NS, key, ttl_s, v={"v": value})
+            await db.commit()
+        return claimed
 
 
 async def _claim_proof(verified: Verified) -> bool:

@@ -1464,6 +1464,38 @@ async def test_expired_proof_claims_and_address_limits_are_swept(wallet: AsyncCl
         assert await db.get(Ephemeral, (agent_payments.RATE_NS, "ip:old")) is None
 
 
+async def test_a_payment_challenge_is_logged_as_a_payment_step(anon: AsyncClient, payments_on,
+                                                                call_error_lines):
+    r = await anon.get(f"/call/{EP}?aweme_id=7")
+    assert r.status_code == 402
+    (line,) = call_error_lines()
+    assert (line["refused_by"], line["error_class"], line["caller_side"]) == (
+        "payment", "payment_required", True)
+
+
+def test_the_mpp_rail_starts_on_a_production_platform_with_treg_s_replay_store(monkeypatch):
+    monkeypatch.setenv("RENDER", "true")
+    with pytest.raises(RuntimeError, match="no store configured"):
+        MppTempoRail(secret="s" * 40, realm="registry.test", recipient=RECIPIENT, chain_id=42431)
+    store = agent_payments.ReplayStore()
+    rail = MppTempoRail(secret="s" * 40, realm="registry.test", recipient=RECIPIENT,
+                        chain_id=42431, store=store)
+    assert all(method._has_store() for method in rail._mpp.methods)
+
+
+async def test_the_replay_store_claims_a_key_once(clients):
+    store = agent_payments.ReplayStore()
+    assert await store.put_if_absent("mpp:charge:0xabc", "0xabc") is True
+    assert await store.put_if_absent("mpp:charge:0xabc", "0xabc") is False
+    assert await store.get("mpp:charge:0xabc") == "0xabc"
+    assert await store.put_if_absent_until("k2", "raw", time.time() + 60) is True
+    assert await store.put_if_absent_until("k2", "other", time.time() + 60) is False
+    await store.delete("mpp:charge:0xabc")
+    assert await store.get("mpp:charge:0xabc") is None
+    with pytest.raises(ValueError):
+        await store.put_if_absent_until("k3", "raw", time.time() - 1)
+
+
 # ---- x402 sign-in-with-x (SIWX) -----------------------------------------------------------------
 def _siwx_extension(challenge_response: httpx.Response):
     from mpp.x402 import decode_payment_required

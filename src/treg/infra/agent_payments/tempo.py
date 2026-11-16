@@ -31,7 +31,7 @@ class MppTempoRail:
 
     def __init__(self, *, secret: str, realm: str, recipient: str, chain_id: int,
                  rpc_url: str = "", rpc_api_key: str = "", currency: str = "",
-                 challenge_ttl_s: int = 120) -> None:
+                 challenge_ttl_s: int = 120, store=None) -> None:
         from mpp.methods.tempo import rpc_url_for_chain
         from mpp.methods.tempo import server as tempo
         from mpp.server import Mpp
@@ -47,7 +47,9 @@ class MppTempoRail:
         methods = tempo.charge(
             recipient=recipient, chain_id=chain_id, rpc_url=rpc_url or None, http_client=client,
             currencies=[currency] if currency else None, decimals=6)
-        self._mpp = Mpp(methods=methods, realm=realm, secret_key=secret)
+        # pympp refuses to start on a production or multi-instance platform without a shared
+        # replay store; `store` is one (`agent_payments.ReplayStore`), tests may omit it.
+        self._mpp = Mpp(methods=methods, realm=realm, secret_key=secret, store=store)
 
     def presented(self, headers: Mapping[str, str]) -> str | None:
         value = headers.get("authorization") or ""

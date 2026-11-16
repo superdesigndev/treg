@@ -327,7 +327,11 @@ rails (an import-linter contract keeps `mpp` there, and the `x402` SDK out of `t
 
 - `MppTempoRail` uses `pympp` (`mpp.server.Mpp`, `mpp.methods.tempo.server.charge`):
   `validate_credential` to verify without broadcasting, `broadcast_credential` to settle, both
-  bound to the request's route. Only public pympp interfaces are used; the dependency is still
+  bound to the request's route. pympp claims each transaction hash in a replay store, and refuses
+  to start without a shared one on a production or multi-instance platform (it reads `RENDER`,
+  `FLY_APP_NAME` and the like); `agent_payments.ReplayStore` is that store on the `Ephemeral` table
+  (`agentpay-mpp`, kept a week: every transfer expires within minutes, and `AgentPayment.proof_id`
+  refuses a second use for good). Only public pympp interfaces are used; the dependency is still
   pinned below the next minor version, as pympp is pre-1.0.
   Fees are not sponsored (`feePayer` off): the client pays its own fee in a USD TIP-20 token.
   With `..._tempo_rpc_api_key` (Tempo's hosted RPC), one `httpx.AsyncClient` carrying it in the
@@ -390,5 +394,7 @@ apply. The route answers 404 while the feature is off.
 - MPP sessions (payment channels with cumulative vouchers): `pympp` now ships a session server;
   treg does not use it yet.
 - x402 `upto` (pay up to a maximum): not in `pympp`.
+- Smart-contract wallet signatures (EIP-1271) for the x402 sign-in-with-x proof. Such a wallet can
+  still pay; to use its credit it signs a payment that treg only checks and never settles.
 - Using part of the credit toward a payment (a 402 that asks only for the missing part).
 - Withdrawing or expiring credit (there is no refund entry).
