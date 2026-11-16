@@ -2,10 +2,12 @@
 
 from __future__ import annotations
 
+import base64
+import binascii
 import hashlib
 import hmac
 import re
-from urllib.parse import parse_qsl, urlencode, urlsplit
+from urllib.parse import parse_qsl, unquote_plus, urlencode, urlsplit
 
 from cryptography.fernet import InvalidToken
 from fastapi import APIRouter, Cookie, Depends, Form, Header, HTTPException, Query, Request, Response
@@ -1186,18 +1188,38 @@ async def oauth_revoke(token: str = Form(default="")) -> JSONResponse:
     return JSONResponse({"ok": True})
 
 
+def _basic_client_credentials(authorization: str) -> tuple[str, str] | None:
+    """`client_secret_basic` (RFC 6749 2.3.1): both halves are form-urlencoded before base64."""
+    scheme, _, value = authorization.partition(" ")
+    if scheme.lower() != "basic" or not value.strip():
+        return None
+    try:
+        decoded = base64.b64decode(value.strip(), validate=True).decode()
+    except (binascii.Error, UnicodeDecodeError):
+        return None
+    client_id, sep, secret = decoded.partition(":")
+    return (unquote_plus(client_id), unquote_plus(secret)) if sep else None
+
+
 @app.post("/oauth/token", include_in_schema=False)
 async def oauth_token(
     grant_type: str = Form(default=""), code: str = Form(default=""),
     redirect_uri: str = Form(default=""), client_id: str = Form(default=""),
     code_verifier: str = Form(default=""), resource: str = Form(default=""),
-    refresh_token: str = Form(default=""),
+    refresh_token: str = Form(default=""), client_secret: str = Form(default=""),
+    authorization: str = Header(default=""),
 ):
     """Exchange a code for an access token.
 
     Errors here are JSON, not redirects: this is a back-channel call from the client itself, and
     there is no browser to send anywhere.
     """
+    basic = _basic_client_credentials(authorization)
+    if basic is not None:
+        if (client_id and client_id != basic[0]) or client_secret:
+            return _oauth_json_error(auth_use_cases.OAuthServerError(
+                "invalid_request", "use one client authentication method"))
+        client_id, client_secret = basic
     try:
         token = await auth_use_cases.exchange_oauth_token(
             grant_type=grant_type,
@@ -1207,9 +1229,13 @@ async def oauth_token(
             code_verifier=code_verifier,
             resource=resource,
             refresh_token=refresh_token,
+            client_secret=client_secret,
         )
     except auth_use_cases.OAuthServerError as exc:
-        return _oauth_json_error(exc)
+        response = _oauth_json_error(exc)
+        if exc.error == "invalid_client" and basic is not None:
+            response.headers["WWW-Authenticate"] = 'Basic realm="treg"'
+        return response
     return JSONResponse(token, headers={"Cache-Control": "no-store", "Pragma": "no-cache"})
 
 

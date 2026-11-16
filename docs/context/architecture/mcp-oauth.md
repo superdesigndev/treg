@@ -16,6 +16,7 @@ sources:
   - src/treg/web/connect-demo.html
   - tests/test_mcp.py
   - tests/test_mcp_oauth.py
+  - tests/test_m365_oauth.py
   - tests/test_mcp_directory.py
   - tests/test_marketplace_call.py
 related:
@@ -27,8 +28,8 @@ related:
 
 # MCP
 
-The doors an assistant comes through (ChatGPT, Claude, Claude Code, Cursor, anything speaking the
-Model Context Protocol). One deployment, database and enforcement layer serve both:
+The doors an assistant comes through (ChatGPT, Claude, Claude Code, Cursor, Microsoft 365 Copilot,
+anything speaking the Model Context Protocol). One deployment, database and enforcement layer serve both:
 
 - `/mcp/` is the team MCP surface: catalog, team tools and imported skills.
 - `/mcp/v2/` is the catalog-only Claude directory surface. It cannot list or call team-owned tools,
@@ -313,6 +314,29 @@ at connect time, bounded time and size, reusing `health.safe_webhook_url` and `h
 The document must claim its own URL, or a document hosted anywhere could assert someone else's
 `client_id` and inherit their consent. `redirect_uris` match exactly, never by prefix
 (`https://good.test/cb.evil` starts with the registered value).
+
+## A confidential client: Microsoft 365 Copilot
+
+Microsoft 365 Copilot reaches `/mcp/` through treg's declarative agent (`plugins/m365-copilot/`),
+and supports neither CIMD nor DCR without a client secret, nor an API key on an MCP action. Its token
+store sends every plugin's code to one shared redirect URI
+(`mcp_oauth.M365_REDIRECT_URI`), so that URI cannot tell treg's agent from a plugin anyone else
+registered with our authorize URL and a server of their own as its base URL. A public client
+there would hand a user's grant to whoever built the look-alike; the consent screen's
+self-registration warning is the only defence a DCR client has.
+
+So the agent is a first-party **confidential** client, `treg-m365-copilot`, built like
+"treg for Sheets" from settings rather than a row (`_m365_client`): it exists only while
+`m365_client_secret` is set, the same value entered in the publisher's Microsoft OAuth registration.
+The token endpoint authenticates it on both grants with `client_secret_basic` (Microsoft's default,
+both halves form-urlencoded) or `client_secret_post`, never both at once; a failure is
+`invalid_client` with 401 (and `WWW-Authenticate: Basic` after a Basic attempt). The refresh grant
+authenticates before the replay check, so a copied refresh token without the secret cannot even
+revoke its family. PKCE stays mandatory. Microsoft sends no `resource` on this path, so the grant
+takes the V1 default. Public clients are unchanged: PKCE binds their code, and a secret one sends is
+ignored. Because only treg's registration holds the secret, the consent screen names the client
+without the self-registration warning. `token_endpoint_auth_methods_supported` still advertises
+`none` alone: DCR issues only public clients, and the confidential one is configured out of band.
 
 ## The consent screen is the security boundary
 
