@@ -811,10 +811,13 @@ def _lifespan(role: AppRole):
             from .application.call import route_rules as route_rules_app
             await route_rules_app.warm()
 
-            limits = httpx.Limits(max_keepalive_connections=100, max_connections=200)
+            _s = get_settings()
+            limits = httpx.Limits(max_keepalive_connections=_s.upstream_max_keepalive_connections,
+                                  max_connections=_s.upstream_max_connections)
             app.state.http = httpx.AsyncClient(
                 limits=limits,
-                timeout=httpx.Timeout(float(get_settings().call_timeout_s)),
+                timeout=httpx.Timeout(float(_s.call_timeout_s), connect=_s.upstream_connect_timeout_s,
+                                      pool=_s.upstream_pool_timeout_s),
                 # what a provider sees when no caller header says otherwise, never python-httpx/x
                 headers={"User-Agent": TREG_USER_AGENT},
             )
