@@ -61,6 +61,14 @@ _COMMON = {
     "arch": _text(r"[A-Za-z0-9_]{1,16}"),
     "channel": _text(r"stable|beta"),
 }
+_VERSION_FIELD = _text(r"[A-Za-z0-9._+-]{0,40}")
+# Where a release's files came from, and why the first source failed when it did.
+_DOWNLOAD = {
+    "source": _text(r"primary|mirror"),
+    "detail": _text(r"[a-z0-9_]{1,40}"),
+    "mirror_detail": _text(r"[a-z0-9_]{1,40}"),
+    "seconds": _int(0, 3600),
+}
 _VOCABULARY: dict[str, dict[str, Any]] = {
     "cli_command_completed": _COMMON | {
         "command": _text(r"[a-z][a-z0-9_]{0,63}"),
@@ -78,15 +86,21 @@ _VOCABULARY: dict[str, dict[str, Any]] = {
         "tool": lambda v: v if isinstance(v, str) and len(v) <= 128 and _ENDPOINT_ID.fullmatch(v) else None,
         "options": _options,
     },
-    "cli_install_step": _COMMON | {
+    "cli_install_step": _COMMON | _DOWNLOAD | {
         "install_step": _text(r"started|installed|failed"),
         "reason": _text(r"[a-z_]{0,32}"),
         "method": _text(r"[a-z0-9_-]{0,32}"),
-        "prior_version": _text(r"[A-Za-z0-9._+-]{0,40}"),
-        "version": _text(r"[A-Za-z0-9._+-]{0,40}"),
+        "prior_version": _VERSION_FIELD,
+        "version": _VERSION_FIELD,
         "on_path": _bool,
         "ad_link": _bool,
         "with_token": _bool,
+    },
+    "cli_update_completed": _COMMON | _DOWNLOAD | {
+        "outcome": _text(r"updated|up_to_date|failed|no_release|check_failed"),
+        "reason": _text(r"[a-z_]{1,32}"),
+        "from_version": _VERSION_FIELD,
+        "to_version": _VERSION_FIELD,
     },
 }
 

@@ -204,20 +204,28 @@ whose `claude` records its arguments, and compares every file left in HOME, mode
   into each binary, is refused: it could never verify, and so never apply, an update. The
   repository's 0.x tags are the registry package's own releases; nothing here reads them, and
   versions compare as semantic versions (a pre-release before its release).
+- The release then calls `CLI mirror` (`.github/workflows/cli-mirror.yml`), which downloads the
+  published files, checks them against `SHA256SUMS` and copies them to an S3-compatible bucket under
+  `cli/<tag>/` (the `cli-mirror` environment holds the bucket; without one it uploads nothing). Run
+  by hand with a tag, it copies a release published before the mirror. The copy is a second source,
+  not a second authority: `SHA256SUMS.minisig` proves the files wherever they come from.
 - `GET /cli/latest?channel=&os=&arch=` (`routers/cli_client.py`, deciding in
   `application/cli_releases.py`, the GitHub lookup in `infra/github_releases.py`) names the release
   a CLI on that channel and platform runs: `TREG_CLI_STABLE_VERSION` for stable, `TREG_CLI_BETA_VERSION` for beta
   (beta falls back to stable; either may name a pre-release), else the newest GitHub release of `cli_release_repo` tagged
   `v<version>` from 1.0.0 up. A 0.x
   value names a Python CLI release and never an archive. Download URLs come from
-  `TREG_CLI_DOWNLOAD_BASE_URL`. On a channel the operator names, publishing a release moves no
+  `TREG_CLI_DOWNLOAD_BASE_URL`; when `TREG_CLI_MIRROR_BASE_URL` is set, the answer also names the
+  mirror's (`mirror_url`, `mirror_checksums_url`, `mirror_signature_url`), which a client tries
+  when the first source fails. On a channel the operator names, publishing a release moves no
   one and a bad release is held back without a new one; a channel left to GitHub moves with it. `GET /cli/latest/<os>-<arch>[?channel=beta]` is
   the same answer as a redirect to the archive, a download link that never changes.
 - `install-bin.sh` runs as `sh -c` with no arguments, because every older `treg update` runs the
   served installer that way. `install.sh` runs it with `--channel stable` and its own `--token` and
   `--skills` for a new install in the binary's share, falling back to the Python CLI when it does not
   finish, and when its Python install fails on a machine with no working `treg`. It reads `/cli/latest`, checks the archive against `SHA256SUMS` (a
-  shell has no signature tool; the binary verifies signatures on update), installs into
+  shell has no signature tool; the binary verifies signatures on update), gives up a transfer that
+  stalls and takes the mirror's copy when the first source fails or does not match, installs into
   `~/.local/bin` by same-directory copy and rename, installs the Windows binary from Git Bash, tells
   a stable-channel Homebrew user to `brew upgrade treg` instead of installing a second copy, prints
   the exact PATH line when the directory is not on PATH, records the channel, bootstraps the skill
@@ -272,4 +280,9 @@ and anything else is dropped, the caller's address is never forwarded (`$geoip_d
 address has an in-memory window, and a well-formed batch is always a 204. A registry without a
 PostHog key drops them, so a self-hosted CLI reports nowhere else. `install-bin.sh` and
 `install.ps1` send `cli_install_step` the same way (`started`, then `installed` or `failed` with a
-reason), under the same opt-outs.
+reason), under the same opt-outs. Each says where the archive came from (`source`: `primary` or
+`mirror`) and, when the first source failed, why (`detail`: curl's exit code as `curl_<n>`, the HTTP
+status as `http_<n>`, Windows PowerShell's WebException status or PowerShell 7's HttpRequestError in
+snake case, or for a mismatch what the file holds, such as `got_html`), after how many `seconds`, and
+the mirror's `mirror_detail` when it failed too; `reason` stays the first source's. A failure after
+the download has its own reason: `archive`, `install_dir`, `install_command`, `run`.

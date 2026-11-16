@@ -1,7 +1,8 @@
 # treg installer for Windows: irm {BASE}/install.ps1 | iex
 #
-# Downloads treg.exe for this machine from the release the registry names, checks it against the
-# release's SHA256SUMS, puts it in %USERPROFILE%\.local\bin (the folder the Git Bash installer
+# Downloads treg.exe for this machine from the release the registry names (from the release's
+# mirror when that fails), checks it against the release's SHA256SUMS, puts it in
+# %USERPROFILE%\.local\bin (the folder the Git Bash installer
 # uses; TREG_INSTALL_DIR to change), adds that folder to the user PATH and points treg at this
 # registry. TREG_TOKEN signs in non-interactively; TREG_CHANNEL picks stable or beta.
 $ErrorActionPreference = 'Stop'
@@ -36,17 +37,65 @@ if (Test-Path $Bin) { try { $Prior = ((& $Bin --version) -split ' ')[1] } catch 
 $Version = ''
 $OnPath = $false
 $Reason = ''
+$Source = ''
+$Detail = ''
+$MirrorDetail = ''
+$Seconds = $null
 function Send-Step([string]$Step) {
   if (-not $InstallId) { return }
   $Record = @{ event = 'cli_install_step'; distinct_id = $InstallId; uuid = [guid]::NewGuid().ToString()
     properties = @{ install_step = $Step; reason = $Reason; method = 'binary'; prior_version = "$Prior"
       version = "$Version"; on_path = $OnPath; os = 'Windows'; arch = "$($env:PROCESSOR_ARCHITECTURE)"
-      ad_link = $false; with_token = [bool]$env:TREG_TOKEN; channel = $Channel } }
+      ad_link = $false; with_token = [bool]$env:TREG_TOKEN; channel = $Channel
+      source = $Source; detail = $Detail; mirror_detail = $MirrorDetail; seconds = $Seconds } }
   try {
     Invoke-RestMethod -Method Post -Uri "$Base/cli/events" -ContentType 'application/json' -TimeoutSec 3 `
       -Body (ConvertTo-Json -Compress -Depth 4 @{ events = @($Record) }) | Out-Null
   } catch {}
 }
+# Why a request failed, in a few words: the HTTP status, Windows PowerShell's WebException status
+# (SecureChannelFailure -> secure_channel_failure) or PowerShell 7's HttpRequestError.
+function Get-FailureKind([System.Exception]$E) {
+  $Code = try { [int]$E.Response.StatusCode } catch { 0 }
+  if ($Code) { return "http_$Code" }
+  $Name = if ($E -is [System.Net.WebException]) { "$($E.Status)" }
+    elseif ($E.PSObject.Properties['HttpRequestError']) { "$($E.HttpRequestError)" }
+    elseif ($E -is [System.OperationCanceledException] -or $E -is [System.TimeoutException]) { 'Timeout' }
+    else { $E.GetType().Name -replace 'Exception$', '' }
+  return ($Name -creplace '(?<=[a-z0-9])([A-Z])', '_$1').ToLower()
+}
+# What a file that failed its checksum holds, by its first bytes: an archive, or a page some proxy
+# or filter answered with.
+function Get-FileKind([string]$Path) {
+  try {
+    $Stream = [System.IO.File]::OpenRead($Path)
+    try { $Head = New-Object byte[] 4; $Read = $Stream.Read($Head, 0, 4) } finally { $Stream.Close() }
+  } catch { return 'missing' }
+  if ($Read -eq 0) { return 'empty' }
+  if ($Head[0] -eq 0x50 -and $Head[1] -eq 0x4B) { return 'zip' }
+  if ($Head[0] -eq 0x1F -and $Head[1] -eq 0x8B) { return 'gzip' }
+  if ($Head[0] -eq 0x3C) { return 'html' }
+  return 'other'
+}
+# Saves the archive at $Url to $Zip and checks it against the SHA256SUMS at $SumsUrl: nothing when
+# it matches, else the step that failed and why. A transfer that stalls is given up so the mirror
+# gets its turn.
+function Get-Release([string]$Url, [string]$SumsUrl, [string]$Zip, [string]$Archive) {
+  try {
+    Invoke-WebRequest -UseBasicParsing -Uri $Url -OutFile $Zip -TimeoutSec 120
+    $Sums = (Invoke-WebRequest -UseBasicParsing -Uri $SumsUrl -TimeoutSec 60).Content
+  } catch {
+    return @('download', (Get-FailureKind $_.Exception))
+  }
+  if ($Sums -is [byte[]]) { $Sums = [System.Text.Encoding]::UTF8.GetString($Sums) }
+  $Want = ($Sums -split "`n" | Where-Object { $_ -match "\s\*?$([regex]::Escape($Archive))\s*$" } |
+    ForEach-Object { ($_ -split '\s+')[0] } | Select-Object -First 1)
+  if (-not $Want) { return @('checksum', 'sums_missing') }
+  if ($Want.ToLower() -ne (Get-FileHash -Algorithm SHA256 -Path $Zip).Hash.ToLower()) {
+    return @('checksum', "got_$(Get-FileKind $Zip)")
+  }
+}
+
 Send-Step 'started'
 try {
   $Reason = 'unsupported_arch'
@@ -65,14 +114,23 @@ try {
     Write-Host "Downloading treg $($Manifest.version) (windows/$Arch)..."
     $Zip = Join-Path $Tmp $Manifest.archive
     $Reason = 'download'
-    Invoke-WebRequest -UseBasicParsing -Uri $Manifest.url -OutFile $Zip
-    $Sums = (Invoke-WebRequest -UseBasicParsing -Uri $Manifest.checksums_url).Content
-    if ($Sums -is [byte[]]) { $Sums = [System.Text.Encoding]::UTF8.GetString($Sums) }
-    $Want = ($Sums -split "`n" | Where-Object { $_ -match "\s\*?$([regex]::Escape($Manifest.archive))\s*$" } |
-      ForEach-Object { ($_ -split '\s+')[0] } | Select-Object -First 1)
-    $Reason = 'checksum'
-    $Got = (Get-FileHash -Algorithm SHA256 -Path $Zip).Hash.ToLower()
-    if (-not $Want -or $Want.ToLower() -ne $Got) { throw "the download does not match the release's SHA256SUMS" }
+    $Watch = [System.Diagnostics.Stopwatch]::StartNew()
+    $Failed = Get-Release $Manifest.url $Manifest.checksums_url $Zip $Manifest.archive
+    if (-not $Failed) {
+      $Source = 'primary'
+    } else {
+      $Reason, $Detail = $Failed
+      $Seconds = [int]$Watch.Elapsed.TotalSeconds
+      if ($Manifest.mirror_url -and $Manifest.mirror_checksums_url) {
+        Write-Host "That failed ($Detail); trying the mirror..."
+        $MirrorFailed = Get-Release $Manifest.mirror_url $Manifest.mirror_checksums_url $Zip $Manifest.archive
+        if ($MirrorFailed) { $MirrorDetail = $MirrorFailed[1] } else { $Source = 'mirror' }
+      }
+      if (-not $Source) {
+        if ($Reason -eq 'checksum') { throw "the download does not match the release's SHA256SUMS" }
+        throw "could not download $($Manifest.url)$(if ($Manifest.mirror_url) { ' or its mirror' })"
+      }
+    }
 
     $Reason = 'archive'
     Expand-Archive -Path $Zip -DestinationPath (Join-Path $Tmp 'x') -Force
@@ -96,7 +154,10 @@ try {
   }
   $env:Path = "$Dir;$env:Path"
 
+  $Reason = 'run'
   & $Bin config --base-url $Base --channel $Channel | Out-Null
+  if ($LASTEXITCODE -ne 0) { throw "the installed $Bin does not run" }
+  $Reason = ''
   & $Bin skill bootstrap
   if ($env:TREG_TOKEN) {
     $Token = $env:TREG_TOKEN
