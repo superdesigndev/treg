@@ -145,7 +145,7 @@ async def limit_request(headers: Mapping[str, str], client_ip: str) -> None:
     async with session_maker() as db:
         await ratestore.sweep(db, RATE_NS)
         ok = await ratestore.rate_check(
-            db, RATE_NS, ratestore.ip_limit(client_ip, cap, key=key), RATE_WINDOW_S)
+            db, RATE_NS, ratestore.ip_limit(client_ip, cap, key=key), RATE_WINDOW_S, atomic=True)
         await db.commit()
     if not ok:
         raise RateLimited(message)
@@ -157,7 +157,7 @@ async def _limit_verification() -> None:
     async with session_maker() as db:
         ok = await ratestore.rate_check(
             db, RATE_NS, [("verify:all", get_settings().agent_payments_max_verifications_minute)],
-            RATE_WINDOW_S)
+            RATE_WINDOW_S, atomic=True)
         await db.commit()
     if not ok:
         log.warning("agent payments: the payment check cap was reached")

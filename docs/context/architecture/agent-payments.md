@@ -71,6 +71,10 @@ Three limits (`ratestore` under `agent_payments`), all answering 429 `rate_limit
   (`..._max_verifications_minute`, default 600), each of which may cost a Tempo RPC or facilitator
   call. Many addresses cannot get around it; reaching it is logged.
 
+These checks are atomic (`rate_check(..., atomic=True)`): one upsert creates or locks the key's row
+until the commit, so concurrent requests count every hit. Other `ratestore` callers keep the
+unlocked read.
+
 One kind of free endpoint is served: an async utility (`resolve.async_utility`: a poll or result
 fetch named by a catalog `async` descriptor, or one with `resource_ownership.requires`). Its quote
 is a **proof only** (`PaidOffer.proof_only`): the 402 (`reason: proof_required`) offers MPP's

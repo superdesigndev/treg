@@ -171,6 +171,8 @@ Rollups and analytics tables are optional read models: they never determine a mo
   same transaction as its terminal update, and the worker acknowledges only an unchanged revision.
 - **`Ephemeral`** is the DB home for state that must survive restarts and stay correct across
   instances (OTPs, rate windows, CLI pairing); see [api](../interface/api.md), "CLI pairing".
+  `rate_check` reads and rewrites a key's hit list without a lock unless called with `atomic=True`
+  (agent payments), which locks the row through an upsert until the commit.
   `_prune_handshakes` deletes at most 100 expired pairing rows per CLI start, so physical removal
   can lag while reads still enforce expiry.
 - **`AdConversion`**: unique `(org_id, action)` is the sole idempotency mechanism, not a
