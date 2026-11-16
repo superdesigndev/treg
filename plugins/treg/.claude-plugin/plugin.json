@@ -11,7 +11,7 @@
   },
   "homepage": "https://treg.to",
   "repository": "https://github.com/superdesigndev/treg",
-  "documentationUrl": "https://treg.to/connectors/claude",
+  "documentationUrl": "https://treg.to/plugins/claude",
   "supportUrl": "https://treg.to/support",
   "privacyPolicyUrl": "https://treg.to/privacy",
   "termsOfServiceUrl": "https://treg.to/terms",
