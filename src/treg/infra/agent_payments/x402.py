@@ -1,9 +1,11 @@
-"""x402 v2 `exact` (EIP-3009) through `pympp`'s x402 support and an HTTP facilitator."""
+"""x402 v2 `exact` (EIP-3009) through `pympp`'s x402 support and an HTTP facilitator, and the
+`sign-in-with-x` (SIWX) extension, with which a wallet proves its address and pays nothing."""
 
 from __future__ import annotations
 
 from collections.abc import Mapping
 from datetime import UTC, datetime, timedelta
+from urllib.parse import urlsplit
 
 from . import Lookup, Offer, PaymentRejected, Settlement, Unconfirmed, Verified
 from .evm import AUTHORIZATION_USED_TOPIC, Chain, ChainUnavailable, moved, topic_address
@@ -15,7 +17,10 @@ EXPIRY_GRACE = timedelta(seconds=60)
 
 SIGNATURE_HEADER = "payment-signature"
 LEGACY_HEADER = "x-payment"  # x402 v1; refused, but still consumed so it never reaches upstream
-CONSUMED_HEADERS = (SIGNATURE_HEADER, LEGACY_HEADER)
+SIWX_HEADER = "sign-in-with-x"
+CONSUMED_HEADERS = (SIGNATURE_HEADER, LEGACY_HEADER, SIWX_HEADER)
+# `presented` marks a SIWX proof so `verify` can tell it from a payment.
+SIWX_MARK = "siwx "
 
 
 class X402Rail:
@@ -26,8 +31,13 @@ class X402Rail:
     def __init__(self, *, pay_to: str, network: str, asset: str, asset_name: str,
                  asset_version: str, facilitator_url: str, max_timeout_s: int,
                  rpc_url: str = "", cdp_api_key_id: str = "", cdp_api_key_secret: str = "",
-                 facilitator=None, chain: Chain | None = None, block_tag: str = "finalized") -> None:
+                 facilitator=None, chain: Chain | None = None, block_tag: str = "finalized",
+                 origin: str = "") -> None:
         self.network = network
+        self._chain_id = int(network.split(":", 1)[1])
+        # SIWX proofs name the public origin, never the request's Host, which a caller controls.
+        self._origin = origin.rstrip("/")
+        self._domain = (urlsplit(self._origin).hostname or "") if self._origin else ""
         self._block_tag = block_tag
         self.pay_to = pay_to.lower()
         self.stripe_network = STRIPE_NETWORK.get(network)
@@ -51,28 +61,68 @@ class X402Rail:
     def presented(self, headers: Mapping[str, str]) -> str | None:
         if headers.get(LEGACY_HEADER) and not headers.get(SIGNATURE_HEADER):
             return LEGACY_HEADER
-        return headers.get(SIGNATURE_HEADER) or None
+        if payment := headers.get(SIGNATURE_HEADER):
+            return payment
+        proof = headers.get(SIWX_HEADER)
+        return SIWX_MARK + proof if proof else None
+
+    def proves(self, offer: Offer) -> bool:
+        # Clients sign SIWX only for the host they called (pympp's and mppx's SiwxTransport).
+        return bool(self._domain) and offer.host == self._domain
 
     def _requirements(self, offer: Offer) -> dict:
         return {"scheme": "exact", "network": self.network, "asset": self._asset,
                 "amount": str(offer.amount_micro), "payTo": self._pay_to,
                 "maxTimeoutSeconds": self._max_timeout_s, "extra": dict(self._extra)}
 
-    async def challenge(self, offer: Offer) -> list[tuple[str, str]]:
+    async def challenge(self, offer: Offer, *, pay: bool = True,
+                        prove: bool = False) -> list[tuple[str, str]]:
         from mpp.x402 import encode_payment_required
+        from mpp.x402.siwx import EXTENSION_KEY, create_extension
 
+        prove = prove and self.proves(offer)
+        if not (pay or prove):
+            return []
+        # x402 requires a non-empty `accepts`; a route that takes only a proof still lists it,
+        # and refuses the payment.
         required = {"x402Version": 2, "error": "payment required",
                     "resource": {"url": offer.resource_url, "description": offer.description},
                     "accepts": [self._requirements(offer)]}
+        if prove:
+            required["extensions"] = {EXTENSION_KEY: create_extension(
+                chain_id=self._chain_id, origin=self._origin, url=offer.resource_url)}
         return [("PAYMENT-REQUIRED", encode_payment_required(required))]
 
-    async def proof_challenge(self, offer: Offer) -> list[tuple[str, str]]:
-        # A wallet proof on x402 is SIWX (sign-in-with-x), which pympp does not offer yet.
-        return []
+    async def _verify_proof(self, value: str, offer: Offer) -> Verified:
+        from mpp.x402 import siwx
+
+        try:
+            payload = siwx.decode(value)
+            # The nonce is claimed by treg (`agent_payments._claim_proof`), not by pympp's store.
+            proven = await siwx.verify(chain_id=self._chain_id, origin=self._origin, store=None,
+                                       payload=payload, claim_nonce=False)
+        except siwx.InvalidProofError as exc:
+            raise PaymentRejected("verification_failed", f"the SIWX proof was refused ({exc.code})") from exc
+        except ValueError as exc:
+            raise PaymentRejected("malformed_credential", "the SIWX proof cannot be read") from exc
+        # SIWX binds only the origin; treg also binds the proof to this route and query, as an
+        # MPP proof is bound.
+        if payload["uri"] != offer.resource_url:
+            raise PaymentRejected("invalid_challenge", "this proof was not signed for this request")
+        issued = datetime.fromisoformat(payload["issuedAt"])   # `verify` has parsed it
+        issued = issued if issued.tzinfo else issued.replace(tzinfo=UTC)
+        expires = issued.astimezone(UTC) + timedelta(seconds=siwx.TTL_SECONDS) + EXPIRY_GRACE
+        payer = proven.address.lower()
+        return Verified(protocol=self.protocol, network=self.network,
+                        proof_id=f"x402:{self.network}:siwx:{payer}:{payload['nonce']}",
+                        payer=payer, amount_micro=0, asset="", pay_to="",
+                        expires_at=expires.replace(tzinfo=None), deferrable=False, kind="proof")
 
     async def verify(self, credential: str, offer: Offer) -> Verified:
         from mpp.x402 import X402FormatError, decode_payment_signature
 
+        if credential.startswith(SIWX_MARK):
+            return await self._verify_proof(credential[len(SIWX_MARK):], offer)
         if credential == LEGACY_HEADER:
             raise PaymentRejected("unsupported_version", "only x402 version 2 is accepted")
         try:

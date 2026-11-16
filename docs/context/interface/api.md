@@ -370,8 +370,9 @@ all, for a tool treg's own key serves, answers 402 `{"detail": {"error": "paymen
 "reason", "endpoint_id", "amount_micro", "estimated_cost_micro", "minimum_payment_micro",
 "protocols", "message"}}` with
 `X-Treg-Error: 1`, `Cache-Control: no-store`, `WWW-Authenticate: Payment ...` (MPP; on the MPP
-realm's host the zero-amount proof challenges come first) and `PAYMENT-REQUIRED` (x402). A wallet
-with credit answers the zero-amount challenge with a proof and pays nothing; a proof whose credit
+realm's host the zero-amount proof challenges come first) and `PAYMENT-REQUIRED` (x402; on the
+public host it carries the `sign-in-with-x` extension). A wallet with credit answers the
+zero-amount challenge, or the SIWX one in a `SIGN-IN-WITH-X` header, with a proof and pays nothing; a proof whose credit
 does not cover the call answers 402 `reason: credit_insufficient` with the payment challenges only.
 The request sent again with a payment credential is answered as a normal call, its body unchanged; every such answer carries `X-Treg-Payment: paid|credit`,
 `X-Treg-Credit-Micro` (the credit left) and, when it paid, `X-Treg-Paid-Micro` and
@@ -385,8 +386,8 @@ address (with or without a payment), or too many payment checks across all clien
 `payer_suspended` (`reason: org_suspended|account_suspended`) before any payment is taken. Every other keyless call
 is a 401 `{"detail": {"error": "not_authenticated", "reason", "message"}}`. A free poll or result fetch
 of an async tool is served to a wallet that already paid for a call on that network: its 402 has
-`reason: proof_required` and offers the MPP zero-amount proof, or an x402 payment that is checked
-and never settled. `GET /agentpay/credit` (404 while the feature is off) answers 402
+`reason: proof_required` and offers the MPP zero-amount proof, x402 SIWX, or an x402 payment that
+is checked and never settled. `GET /agentpay/credit` (404 while the feature is off) answers 402
 `proof_required` with the proof challenges, then, with a valid proof, `{"network", "address",
 "credit_micro", "recent": [{"at", "protocol", "amount_micro", "status", "reference"}]}`. While the feature is
 on, `/catalog/search` rows and `/catalog/endpoints/<id>` carry `wallet` (`payable`, and `reason`

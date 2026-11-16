@@ -29,7 +29,7 @@ class Offer:
 @dataclass(frozen=True)
 class Verified:
     """A credential that proved key control over `payer`. A `payment` authorizes `amount_micro`;
-    a `proof` (MPP's zero-amount charge) moves no money and only names the payer."""
+    a `proof` (MPP's zero-amount charge, x402's SIWX) moves no money and only names the payer."""
 
     protocol: str                # mpp | x402
     network: str
@@ -92,16 +92,19 @@ class PaymentRail(Protocol):
     # Lowercase request header names this rail reads; treg removes them before the relay.
     consumed_headers: tuple[str, ...]
     # True when a payment may be checked and left unsettled (to prove a wallet); False when every
-    # payment is settled and the wallet proves itself with `proof_challenge` instead.
+    # payment is settled and the wallet proves itself with a proof instead.
     deferrable_payments: bool
 
     def presented(self, headers: Mapping[str, str]) -> str | None: ...
 
-    async def challenge(self, offer: Offer) -> list[tuple[str, str]]: ...
+    # Whether this rail can ask for a wallet proof on this request (clients sign one only for the
+    # host they called).
+    def proves(self, offer: Offer) -> bool: ...
 
-    # The zero-amount challenge a returning payer answers with a proof; [] when the rail has none
-    # or cannot offer one for this request.
-    async def proof_challenge(self, offer: Offer) -> list[tuple[str, str]]: ...
+    # The 402 headers: a payment challenge when `pay`, and a wallet proof (first) when `prove` and
+    # `proves(offer)`; [] when neither.
+    async def challenge(self, offer: Offer, *, pay: bool = True,
+                        prove: bool = False) -> list[tuple[str, str]]: ...
 
     async def verify(self, credential: str, offer: Offer) -> Verified: ...
 

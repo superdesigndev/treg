@@ -159,7 +159,7 @@ def payments_on(monkeypatch, chain, facilitator):
         MppTempoRail(secret="s" * 40, realm="registry.test", recipient=RECIPIENT, chain_id=42431),
         X402Rail(pay_to=RECIPIENT, network="eip155:84532", asset=X402_ASSET, asset_name="USDC",
                  asset_version="2", facilitator_url="https://facilitator.invalid",
-                 max_timeout_s=120, facilitator=facilitator),
+                 max_timeout_s=120, facilitator=facilitator, origin="https://registry.test"),
     ])
     yield
     agent_payments.configure([])
@@ -1432,6 +1432,136 @@ async def test_the_credit_route_takes_no_payment(wallet: AsyncClient, payments_o
                          headers={"Authorization": _mpp_credential(payment, _signature())})
     assert r.status_code == 402 and challenge.status_code == 402
     assert chain.broadcasts == 0
+
+
+# ---- x402 sign-in-with-x (SIWX) -----------------------------------------------------------------
+def _siwx_extension(challenge_response: httpx.Response):
+    from mpp.x402 import decode_payment_required
+    from mpp.x402.siwx import from_payment_required
+
+    return from_payment_required(decode_payment_required(challenge_response.headers["payment-required"]))
+
+
+def _siwx_proof(challenge_response: httpx.Response, account, **override) -> str:
+    """A SIWX proof signed the way pympp's SiwxTransport signs it."""
+    from eth_account.messages import encode_defunct
+    from mpp.x402 import siwx
+
+    extension = _siwx_extension(challenge_response)
+    unsigned = {**extension["info"], "address": account.address,
+                "chainId": extension["supportedChains"][0]["chainId"], "type": "eip191", **override}
+    signature = account.sign_message(encode_defunct(text=siwx.to_message(unsigned))).signature.hex()
+    return siwx.encode({**unsigned, "signature": signature if signature.startswith("0x")
+                        else "0x" + signature})
+
+
+async def _x402_paid(client: AsyncClient, account) -> None:
+    challenge = await client.get(f"/call/{EP}?aweme_id=7")
+    credential, _ = _x402_credential(challenge, account)
+    r = await client.get(f"/call/{EP}?aweme_id=7", headers={"PAYMENT-SIGNATURE": credential})
+    assert r.status_code == 200, r.text
+
+
+@pytest.fixture
+async def siwx_agent(clients):
+    """An agent on pympp's own SIWX client, calling treg's public origin."""
+    from mpp.x402.siwx import SiwxTransport
+
+    account = Account.create()
+    transport = SiwxTransport(account=account, inner=ASGITransport(app=app))
+    async with AsyncClient(transport=transport, base_url="https://registry.test") as c:
+        c.account = account
+        yield c
+
+
+async def test_the_x402_402_offers_siwx_only_on_the_public_host(wallet: AsyncClient,
+                                                               anon: AsyncClient, payments_on):
+    extension = _siwx_extension(await wallet.get(f"/call/{EP}?aweme_id=7"))
+    assert extension["info"]["domain"] == "registry.test"
+    assert extension["info"]["uri"] == f"https://registry.test/call/{EP}?aweme_id=7"
+    assert extension["supportedChains"] == [{"chainId": "eip155:84532", "type": "eip191"}]
+    assert _siwx_extension(await anon.get(f"/call/{EP}?aweme_id=7")) is None
+
+
+async def test_a_siwx_agent_with_credit_pays_nothing(siwx_agent: AsyncClient, payments_on,
+                                                     facilitator):
+    await _x402_paid(siwx_agent, siwx_agent.account)
+    payer = siwx_agent.account.address.lower()
+    balance, settles, verifies = await _balance(payer), facilitator.settles, facilitator.verifies
+    r = await siwx_agent.get(f"/call/{EP}?aweme_id=7")   # SiwxTransport answers the 402 itself
+    assert r.status_code == 200, r.text
+    assert r.headers["X-Treg-Payment"] == "credit"
+    assert "sign-in-with-x" not in {k.lower() for k in r.json()["headers"]}
+    assert await _balance(payer) == balance - EP_MICRO
+    assert (facilitator.settles, facilitator.verifies) == (settles, verifies)
+
+
+async def test_a_new_wallet_proves_with_siwx_then_pays(siwx_agent: AsyncClient, payments_on,
+                                                       facilitator):
+    r = await siwx_agent.get(f"/call/{EP}?aweme_id=7")
+    assert r.status_code == 402 and r.json()["detail"]["reason"] == "credit_insufficient"
+    assert _siwx_extension(r) is None                  # the second 402 asks only for a payment
+    credential, payer = _x402_credential(r, siwx_agent.account)
+    paid = await siwx_agent.get(f"/call/{EP}?aweme_id=7", headers={"PAYMENT-SIGNATURE": credential})
+    assert paid.status_code == 200, paid.text
+    assert await _balance(payer) == FLOOR - EP_MICRO
+
+
+async def test_a_siwx_proof_is_used_once_and_only_for_its_request(wallet: AsyncClient, payments_on,
+                                                                  facilitator):
+    account = Account.create()
+    await _x402_paid(wallet, account)
+    challenge = await wallet.get(f"/call/{EP}?aweme_id=7")
+    proof = _siwx_proof(challenge, account)
+    assert (await wallet.get(f"/call/{EP}?aweme_id=7",
+                             headers={"SIGN-IN-WITH-X": proof})).status_code == 200
+    again = await wallet.get(f"/call/{EP}?aweme_id=7", headers={"SIGN-IN-WITH-X": proof})
+    assert again.status_code == 402 and again.json()["detail"]["reason"] == "payment_replayed"
+    other = await wallet.get(f"/call/{EP}?aweme_id=8",
+                             headers={"SIGN-IN-WITH-X": _siwx_proof(challenge, account)})
+    assert other.status_code == 402 and other.json()["detail"]["reason"] == "invalid_challenge"
+    forged = _siwx_proof(challenge, account, address=Account.create().address)
+    r = await wallet.get(f"/call/{EP}?aweme_id=7", headers={"SIGN-IN-WITH-X": forged})
+    assert r.status_code == 402 and r.json()["detail"]["reason"] == "verification_failed"
+
+
+async def test_a_tempo_credit_does_not_answer_a_siwx_proof(wallet: AsyncClient, payments_on, chain):
+    account = Account.create()
+    assert (await _mpp_paid(wallet, chain, account)).status_code == 200
+    challenge = await wallet.get(f"/call/{EP}?aweme_id=7")
+    r = await wallet.get(f"/call/{EP}?aweme_id=7",
+                         headers={"SIGN-IN-WITH-X": _siwx_proof(challenge, account)})
+    assert r.status_code == 402 and r.json()["detail"]["reason"] == "credit_insufficient"
+
+
+async def test_a_wallet_polls_with_siwx(wallet: AsyncClient, payments_on, facilitator):
+    account = Account.create()
+    await _x402_paid(wallet, account)
+    settles = facilitator.settles
+    challenge = await wallet.get(f"/call/{POLL}?id=someone-elses-task")
+    assert challenge.json()["detail"]["reason"] == "proof_required"
+    assert _siwx_extension(challenge) is not None
+    r = await wallet.get(f"/call/{POLL}?id=someone-elses-task",
+                         headers={"SIGN-IN-WITH-X": _siwx_proof(challenge, account)})
+    # The poll ran as the payer team, and treg's ownership check refused another team's task.
+    assert r.status_code == 403 and r.json()["detail"]["error"] == "async_resource_not_owned"
+    assert facilitator.settles == settles
+
+
+async def test_a_wallet_reads_its_credit_with_siwx(wallet: AsyncClient, payments_on, facilitator):
+    account = Account.create()
+    await _x402_paid(wallet, account)
+    challenge = await wallet.get("/agentpay/credit")
+    assert challenge.status_code == 402 and _siwx_extension(challenge) is not None
+    r = await wallet.get("/agentpay/credit",
+                         headers={"SIGN-IN-WITH-X": _siwx_proof(challenge, account)})
+    assert r.status_code == 200, r.text
+    view = r.json()
+    assert (view["network"], view["address"]) == ("eip155:84532", account.address.lower())
+    assert view["credit_micro"] == await _balance(account.address.lower())
+    payment, _ = _x402_credential(challenge, account)
+    refused = await wallet.get("/agentpay/credit", headers={"PAYMENT-SIGNATURE": payment})
+    assert refused.status_code == 402 and refused.json()["detail"]["reason"] == "proof_required"
 
 
 # ---- Base finality and mainnet settings ---------------------------------------------------------

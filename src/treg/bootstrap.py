@@ -772,7 +772,7 @@ def configure_agent_payments() -> None:
                 rpc_url=s.agent_payments_x402_rpc_url,
                 cdp_api_key_id=s.agent_payments_x402_cdp_api_key_id,
                 cdp_api_key_secret=s.agent_payments_x402_cdp_api_key_secret,
-                block_tag=s.agent_payments_x402_block_tag))
+                block_tag=s.agent_payments_x402_block_tag, origin=s.public_url))
     agent_payments.configure(rails)
 
 

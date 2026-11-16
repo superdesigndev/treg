@@ -59,15 +59,21 @@ class MppTempoRail:
         url = offer.path + (f"?{offer.query}" if offer.query else "")
         return Request(method=offer.method, url=f"https://payment.invalid{url}")
 
-    async def challenge(self, offer: Offer) -> list[tuple[str, str]]:
-        return await self._challenge(offer, micro_to_decimal(offer.amount_micro), offer.description)
-
-    async def proof_challenge(self, offer: Offer) -> list[tuple[str, str]]:
+    def proves(self, offer: Offer) -> bool:
         # Clients refuse to sign a proof whose realm is not the hostname they called (mppx throws
         # instead of choosing another challenge), so a request to any other host gets none.
-        if not offer.host or offer.host != self.realm:
-            return []
-        return await self._challenge(offer, "0", f"prove this wallet for {offer.description}")
+        return bool(offer.host) and offer.host == self.realm
+
+    async def challenge(self, offer: Offer, *, pay: bool = True,
+                        prove: bool = False) -> list[tuple[str, str]]:
+        # The zero-amount proof comes first: clients answer the first challenge they can pay.
+        headers = []
+        if prove and self.proves(offer):
+            headers += await self._challenge(offer, "0", f"prove this wallet for {offer.description}")
+        if pay:
+            headers += await self._challenge(offer, micro_to_decimal(offer.amount_micro),
+                                             offer.description)
+        return headers
 
     async def _challenge(self, offer: Offer, amount: str, description: str) -> list[tuple[str, str]]:
         handler = self._mpp["tempo/charge"](

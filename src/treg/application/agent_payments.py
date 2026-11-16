@@ -276,18 +276,22 @@ async def challenge(paid: PaidOffer, *, reason: str = "", message: str = "",
     answer the first challenge they can pay: a wallet whose credit covers the call then pays
     nothing, and one whose credit does not is asked again with `credit_insufficient`, without it.
     A free poll offers only what proves the wallet without settling."""
-    proofs = await _headers(_rails, lambda rail: rail.proof_challenge(paid.offer)) if offer_proof else []
     payers = [rail for rail in _rails if not paid.proof_only or rail.deferrable_payments]
-    headers = proofs + await _headers(payers, lambda rail: rail.challenge(paid.offer))
+    provers = [rail for rail in _rails if offer_proof and rail.proves(paid.offer)]
+    headers = await _headers(_rails, lambda rail: rail.challenge(
+        paid.offer, pay=rail in payers, prove=rail in provers))
     ways = " or ".join(_HOW_TO_PAY.get(rail.protocol, rail.protocol) for rail in payers)
+    proof_ways = _proof_ways(provers)
     settings = get_settings()
     minimum = settings.agent_payments_min_payment_micro
     amount, hold = paid.offer.amount_micro, paid.quote_micro
     if paid.proof_only:
         message_text = ("This call is free for the wallet that started the task. Prove that wallet "
-                        "and send the same request again: sign the zero-amount MPP challenge")
+                        "and send the same request again: ")
+        message_text += f"sign {proof_ways}" if proof_ways else ""
         if ways:
-            message_text += f", or sign a payment with {ways} that treg checks and never settles"
+            message_text += (", or " if proof_ways else "") + (
+                f"sign a payment with {ways} that treg checks and never settles")
         message_text += ". No money moves."
     else:
         pay = (f"${ledger.usd(amount):g} (the smallest payment)" if amount > with_fee(hold)
@@ -297,9 +301,9 @@ async def challenge(paid: PaidOffer, *, reason: str = "", message: str = "",
             "same request again. treg charges only the real price after the call (a failed call "
             "or one with no billable result costs nothing); the rest stays as this wallet's credit "
             "for its next calls. Credit is not paid back as money." + _fee_note())
-        if proofs:
-            message_text += (" A wallet that already has credit signs the zero-amount MPP "
-                             "challenge instead and pays nothing now.")
+        if proof_ways:
+            message_text += (f" A wallet that already has credit signs {proof_ways} instead and "
+                             "pays nothing now.")
         message_text += " Or sign in and use a treg key."
         if paid.is_async:
             message_text += (" This tool starts a task: the hold stays open until the task ends. "
@@ -318,6 +322,14 @@ async def challenge(paid: PaidOffer, *, reason: str = "", message: str = "",
     if reason:
         detail["message"] = f"{message or reason}. " + detail["message"]
     return PaymentChallenge(detail, headers)
+
+
+_PROOF_WAY = {"mpp": "the zero-amount MPP challenge",
+              "x402": "the x402 sign-in-with-x (SIWX) challenge"}
+
+
+def _proof_ways(rails) -> str:
+    return " or ".join(_PROOF_WAY.get(rail.protocol, rail.protocol) for rail in rails)
 
 
 async def credit_short(paid: PaidOffer, org_id: int | None) -> PaymentChallenge:
@@ -359,9 +371,10 @@ async def admit(paid: PaidOffer, headers: Mapping[str, str]) -> PayerAdmission:
                                   message="this wallet has started no task on treg")
         if not verified.deferrable:
             raise await challenge(paid, reason="signature_needed",
-                                  message="prove the wallet with the zero-amount MPP challenge, or "
-                                          "an x402 payment that treg can check without settling "
-                                          f"it, expiring within {max_life} seconds")
+                                  message="prove the wallet with the zero-amount MPP challenge or "
+                                          "x402 sign-in-with-x, or an x402 payment that treg can "
+                                          f"check without settling it, expiring within {max_life} "
+                                          "seconds")
     else:
         org_id = await _payer_org(verified.network, verified.payer)
     if reason := await _suspension(org_id):
@@ -605,23 +618,30 @@ class NotEnabled(Exception):
 
 
 async def credit_of(headers: Mapping[str, str]) -> dict:
-    """What a wallet holds on one network, after it proves the wallet with a zero-amount proof:
-    its credit and its last payments. Read only. Raises NotEnabled, RateLimited or
-    PaymentChallenge."""
-    proving = [rail for rail in _rails if not rail.deferrable_payments]
-    if not enabled() or not proving:
+    """What a wallet holds on one network, after it proves the wallet with a proof (MPP's
+    zero-amount charge or x402's SIWX): its credit and its last payments. Read only. Raises
+    NotEnabled, RateLimited or PaymentChallenge."""
+    if not enabled():
         raise NotEnabled
-    base = get_settings().public_url.rstrip("/")
-    offer = Offer(amount_micro=0, method="GET", path=CREDIT_PATH, query="",
-                  resource_url=f"{base}{CREDIT_PATH}", description="this wallet's credit",
-                  host=_hostname(headers.get("host", "")))
+    settings = get_settings()
+    base = settings.public_url.rstrip("/")
+    # x402 lists a payment beside its SIWX challenge (its format requires one); this route
+    # refuses it.
+    offer = Offer(amount_micro=max(settings.agent_payments_min_payment_micro, 1), method="GET",
+                  path=CREDIT_PATH, query="", resource_url=f"{base}{CREDIT_PATH}",
+                  description="this wallet's credit", host=_hostname(headers.get("host", "")))
+    provers = [rail for rail in _rails if rail.proves(offer)]
     asked = PaymentChallenge(
         {"error": "payment_required", "reason": "proof_required",
-         "message": "Prove the wallet: sign the zero-amount MPP challenge and send the same request "
-                    "again. No money moves."},
-        await _headers(proving, lambda rail: rail.proof_challenge(offer)))
-    presented = [(rail, cred) for rail in proving if (cred := rail.presented(headers))]
+         "message": (f"Prove the wallet: sign {_proof_ways(provers) or 'a wallet proof'} and send "
+                     "the same request again. No money moves.")},
+        await _headers(provers, lambda rail: rail.challenge(offer, pay=False, prove=True)))
+    presented = [(rail, cred) for rail in _rails if (cred := rail.presented(headers))]
     if not presented:
+        raise asked
+    if len(presented) > 1:
+        asked.detail.update(reason="ambiguous_payment",
+                            message="send one proof, not several. " + asked.detail["message"])
         raise asked
     rail, credential = presented[0]
     await _limit_verification()
@@ -630,7 +650,12 @@ async def credit_of(headers: Mapping[str, str]) -> dict:
     except PaymentRejected as exc:
         asked.detail.update(reason=exc.code, message=f"{exc.message}. {asked.detail['message']}")
         raise asked from exc
-    if verified.kind != "proof" or not await _claim_proof(verified):
+    if verified.kind != "proof":
+        asked.detail.update(reason="proof_required",
+                            message="this route takes a wallet proof, not a payment. "
+                                    + asked.detail["message"])
+        raise asked
+    if not await _claim_proof(verified):
         asked.detail.update(reason="payment_replayed",
                             message="this proof was already used. " + asked.detail["message"])
         raise asked

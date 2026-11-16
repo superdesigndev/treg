@@ -124,8 +124,8 @@ and USDC use 6 decimals, so one base unit is one micro-USD and the amount crosse
 integer (`infra.agent_payments.micro_to_decimal` for the SDK that takes a decimal string).
 
 **Credit first, MPP.** A wallet with credit proves itself with a **zero-amount proof** and pays
-nothing (`_admit_proof`). The 402 lists `MppTempoRail.proof_challenge` (a Tempo charge challenge
-with `amount: "0"`) before every payment challenge, because standard clients (pympp, mppx) answer
+nothing (`_admit_proof`). The 402 lists the rail's proof challenge (a Tempo charge challenge
+with `amount: "0"`) before its payment challenge, because standard clients (pympp, mppx) answer
 the first challenge they can pay. The client signs an EIP-712 `Proof(account, challengeId,
 realm)`; pympp's `validate` checks it (no chain call, unless the signer is an access key of the
 account) and names the payer. The proof's challenge is HMAC-bound to the method, path and query
@@ -142,7 +142,18 @@ hostname it called (it throws rather than choosing another challenge), so the pr
 offered only when the request's `Host` equals the rail's realm (`Offer.host`); any other host gets
 the payment challenges only.
 
-**Credit first, x402.** x402 has no proof in pympp yet (SIWX), so `agent_payments._claim` reads the
+**Credit first, x402 with SIWX.** The x402 402 carries the `sign-in-with-x` extension
+(`mpp.x402.siwx.create_extension`: domain and URI from `public_url`, a fresh nonce, five minutes,
+`eip155:<chain>` with `eip191` signatures). The client signs an EIP-4361 (Sign-In with Ethereum)
+message and sends it in `SIGN-IN-WITH-X`; `X402Rail` checks it with `siwx.verify` (domain, URI
+origin, times, chain, EOA signature recovery; no facilitator call) and then requires its `uri` to
+be this request's resource URL, so it binds the route and query as an MPP proof does. treg claims
+the proof once under `agentpay-proof`, keyed by network, address and nonce, and `_admit_proof`
+treats it as the MPP proof above. As with MPP, the extension is offered only when the request's
+`Host` is `public_url`'s host (clients sign only for the host they called), and the
+`credit_insufficient` 402 leaves it out. Smart-contract wallets (EIP-1271) are not verified.
+
+**Credit first, x402 without SIWX.** A client that sends a payment instead: `agent_payments._claim` reads the
 payer team's balance before anything is settled. When the balance already covers the quote, the
 presented payment is not settled: it only proves key control, is recorded as used (status `credit`)
 and expires unused. Otherwise it is settled and topped up. So a call at or above the floor pays
@@ -302,8 +313,8 @@ rows that can be resolved. They count in `stuck` until that rail is configured a
 
 ## Rails (`infra/agent_payments/`)
 
-`PaymentRail` is the seam: `presented`, `challenge`, `proof_challenge` (the zero-amount challenge,
-or none), `verify` (`Verified.kind` is `payment` or `proof`), `settle`, `find`,
+`PaymentRail` is the seam: `presented`, `proves` (whether this request can be asked for a wallet
+proof), `challenge(offer, pay=, prove=)` (the proof first, then the payment), `verify` (`Verified.kind` is `payment` or `proof`), `settle`, `find`,
 `consumed_headers`, `deferrable_payments` (False on MPP: every payment settles).
 `bootstrap.configure_agent_payments` builds the configured rails; tests install their own with
 `agent_payments.configure`. One SDK, `pympp`, serves both rails; it loads only inside the concrete
@@ -317,7 +328,8 @@ rails (an import-linter contract keeps `mpp` there, and the `x402` SDK out of `t
   With `..._tempo_rpc_api_key` (Tempo's hosted RPC), one `httpx.AsyncClient` carrying it in the
   `tempo-api-key` header serves both pympp (`http_client`) and the reconciler's `evm.Chain`.
 - `X402Rail` uses `pympp`'s x402 support (`mpp.x402`): the header codecs, which validate the
-  untrusted payload, and an `HttpFacilitator` for `verify` and `settle`; the facilitator pays gas.
+  untrusted payload, `mpp.x402.siwx` for the SIWX proof, and an `HttpFacilitator` for `verify` and
+  `settle`; the facilitator pays gas.
   treg's own checks stay in the rail: the accepted terms and resource URL against the offer, the
   verified payer against the signer, and the proof id. The public `x402.org` facilitator serves
   testnets only. On mainnet the facilitator is Coinbase's, which takes a Coinbase Developer
@@ -358,19 +370,20 @@ mainnet, or both testnets).
 
 ## Reading credit (`GET /agentpay/credit`)
 
-A keyless wallet reads its credit after the same zero-amount proof (`agent_payments.credit_of`,
-MPP only). The first request answers 402 `proof_required` with the proof challenges only; a request
+A keyless wallet reads its credit after the same proof, MPP's zero-amount proof or x402's SIWX
+(`agent_payments.credit_of`). The first request answers 402 `proof_required` with the proof
+challenges only (x402's format needs a payment in `accepts`, so it lists one, which the route
+refuses); a request
 with a valid, unused proof answers `{network, address, credit_micro, recent}` (the last 20
 `agentpayment` rows of that wallet's team on that network: `at`, `protocol`, `amount_micro`,
 `status`, `reference`), `Cache-Control: no-store`. A wallet treg has never seen reads 0 and no rows.
 A payment sent instead of a proof is refused (`proof_required`) and never settled. The same limits
-apply. The route answers 404 while the feature is off or no MPP rail is configured.
+apply. The route answers 404 while the feature is off.
 
 ## Not built
 
 - MPP sessions (payment channels with cumulative vouchers): `pympp` now ships a session server;
   treg does not use it yet.
-- A wallet proof on x402 (SIWX): waits for `pympp`. Until then an x402 credit draw signs an
-  unsettled payment, watched by the reconciler.
+- x402 `upto` (pay up to a maximum): not in `pympp`.
 - Using part of the credit toward a payment (a 402 that asks only for the missing part).
 - Withdrawing or expiring credit (there is no refund entry).
