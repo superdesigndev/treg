@@ -271,17 +271,31 @@ def _missing_access(
     capability = connection_authorization.connect_capability(
         registry_provider, endpoint, specification,
     )
-    connect = f"treg connections connect --provider {service}"
-    if capability:
-        connect += f" --capability {capability}"
-    hint = (
-        f"connect with: {connect}" if not provider.uses_pasted_secret else
-        f"connect with: {connect}, or treg secret add {service} …"
-    )
-    detail = (
-        f"the connected {service} authorization needs more access — reconnect with: {connect}"
-        if existing else f"no {service} credential in this org yet — {hint}"
-    )
+    # A provider this deployment cannot start (no OAuth client) must not advertise
+    # `connections connect`: that command returns HTTP 422 naming unset env vars.
+    offered = oauth_providers.is_configured(registry_provider)
+    if offered:
+        connect = f"treg connections connect --provider {service}"
+        if capability:
+            connect += f" --capability {capability}"
+        hint = (
+            f"connect with: {connect}" if not provider.uses_pasted_secret else
+            f"connect with: {connect}, or treg secret add {service} …"
+        )
+        detail = (
+            f"the connected {service} authorization needs more access — reconnect with: {connect}"
+            if existing else f"no {service} credential in this org yet — {hint}"
+        )
+    else:
+        connect = ""
+        capability = ""
+        detail = (
+            f"the connected {service} authorization needs more access, but "
+            f"{service} is not configured on this server"
+            if existing else
+            f"no {service} credential in this org yet — {service} is not configured "
+            f"on this server"
+        )
     return {
         "tier": "none",
         "authorization_method": methods[0] if methods else "",
@@ -289,7 +303,7 @@ def _missing_access(
         "connect_command": connect,
         "action_label": (
             connection_authorization.action_label(specification, capability)
-            if specification else ""
+            if specification and capability else ""
         ),
         "missing_message": specification.missing_message if specification else "",
         "detail": detail,

@@ -106,6 +106,65 @@ async def test_unconfigured_provider_is_a_clear_422(clients: AsyncClient, monkey
         get_settings.cache_clear()
 
 
+_UNCONFIGURED_OAUTH_ACCESS = (
+    ("microsoft-ads.query", "microsoft-ads"),
+    ("tiktok-ads.adgroups", "tiktok-ads"),
+    ("tiktok-ads.accounts", "tiktok-ads"),
+    ("tiktok-ads.query", "tiktok-ads"),
+    ("pinterest-ads.query", "pinterest-ads"),
+    ("snapchat-ads.query", "snapchat-ads"),
+)
+
+
+async def test_catalog_access_does_not_advertise_connect_when_oauth_app_is_unset(
+    clients: AsyncClient, monkeypatch,
+):
+    """catalog get uses /access. When this server cannot start the provider (configured:
+    false), access must not suggest `treg connections connect` — that command 422s."""
+    for key in (
+        "TREG_MICROSOFT_ADS_CLIENT_ID", "TREG_MICROSOFT_ADS_CLIENT_SECRET",
+        "TREG_TIKTOK_ADS_CLIENT_ID", "TREG_TIKTOK_ADS_CLIENT_SECRET",
+        "TREG_PINTEREST_CLIENT_ID", "TREG_PINTEREST_CLIENT_SECRET",
+        "TREG_SNAPCHAT_ADS_CLIENT_ID", "TREG_SNAPCHAT_ADS_CLIENT_SECRET",
+    ):
+        monkeypatch.setenv(key, "")
+    get_settings.cache_clear()
+    try:
+        listed = {p["service"]: p for p in (await clients.get("/oauth/providers")).json()}
+        for endpoint_id, service in _UNCONFIGURED_OAUTH_ACCESS:
+            assert listed[service]["configured"] is False, service
+            access = await clients.get(f"/catalog/endpoints/{endpoint_id}/access")
+            assert access.status_code == 200, access.text
+            body = access.json()
+            assert body["tier"] == "none"
+            assert not body.get("connect_command")
+            assert "connections connect" not in body["detail"]
+            assert f"{service} is not configured on this server" in body["detail"]
+    finally:
+        get_settings.cache_clear()
+
+
+async def test_catalog_access_advertises_connect_once_the_oauth_app_is_set(
+    clients: AsyncClient, monkeypatch,
+):
+    """The same row should advertise the connect command once this server can start it."""
+    monkeypatch.setenv("TREG_MICROSOFT_ADS_CLIENT_ID", "ms-cid")
+    monkeypatch.setenv("TREG_MICROSOFT_ADS_CLIENT_SECRET", "ms-csec")
+    get_settings.cache_clear()
+    try:
+        listed = {p["service"]: p for p in (await clients.get("/oauth/providers")).json()}
+        assert listed["microsoft-ads"]["configured"] is True
+        body = (await clients.get("/catalog/endpoints/microsoft-ads.query/access")).json()
+        assert body["tier"] == "none"
+        assert body["connect_command"] == (
+            "treg connections connect --provider microsoft-ads --capability manage"
+        )
+        assert "connect with: treg connections connect --provider microsoft-ads" in body["detail"]
+        assert "not configured on this server" not in body["detail"]
+    finally:
+        get_settings.cache_clear()
+
+
 def test_multi_method_provider_is_configured_when_any_method_is_available(monkeypatch):
     """The registry gives every client one correct provider-level availability value."""
     from treg import oauth_providers as P
