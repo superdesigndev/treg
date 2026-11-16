@@ -798,6 +798,10 @@ class Settings(BaseSettings):
     # and matched exactly: one per Apps Script project (`.../macros/d/<script id>/usercallback`). A new
     # script id is a setting, not a code change. Empty = the client does not exist.
     sheets_redirect_uris: str = ""
+    # The client secret of "treg for Microsoft 365 Copilot" (OAuth client `treg-m365-copilot`), the
+    # same value entered in that agent's Microsoft OAuth registration. Empty = the client does not
+    # exist.
+    m365_client_secret: str = ""
 
     # Agent payments (docs/context/architecture/agent-payments.md): a caller with no treg
     # credential pays a catalog call with MPP (Tempo charge) or x402 (`exact`). Off by default.

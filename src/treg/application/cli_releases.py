@@ -11,7 +11,7 @@ from __future__ import annotations
 import re
 
 from ..config import get_settings
-from ..infra import github_releases
+from ..infra import github_releases, release_checksums
 
 PLATFORMS = frozenset({("darwin", "amd64"), ("darwin", "arm64"), ("linux", "amd64"), ("linux", "arm64"),
                        ("windows", "amd64"), ("windows", "arm64")})
@@ -46,15 +46,19 @@ async def current(channel: str) -> str:
     return ""
 
 
-def manifest(version: str, channel: str, os: str, arch: str) -> dict:
+async def manifest(version: str, channel: str, os: str, arch: str) -> dict:
     """Where a CLI on `os`/`arch` fetches `version` and the files that verify it, and the mirror it
-    tries when those fail."""
+    tries when those fail. The mirror comes with the archive's `sha256`, read here from the release's
+    own SHA256SUMS: an installer, which cannot check a signature, then trusts no file the mirror
+    serves, so a changed mirror installs nothing. Without that sum there is no mirror."""
     settings = get_settings()
     archive = archive_name(version, os, arch)
     files = {"version": version, "channel": channel, "os": os, "arch": arch, "archive": archive,
              **_files("", settings.cli_download_base_url, version, archive)}
     if settings.cli_mirror_base_url:
-        files |= _files("mirror_", settings.cli_mirror_base_url, version, archive)
+        sha256 = (await release_checksums.checksums(files["checksums_url"])).get(archive)
+        if sha256:
+            files |= {"sha256": sha256} | _files("mirror_", settings.cli_mirror_base_url, version, archive)
     return files
 
 

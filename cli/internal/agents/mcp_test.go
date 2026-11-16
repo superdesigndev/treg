@@ -128,3 +128,93 @@ func TestWrapMatchesTextwrap(t *testing.T) {
 		t.Fatalf("got %q", got)
 	}
 }
+
+// GitHub Copilot's user MCP file: `mcpServers` with a Streamable HTTP entry, the shape
+// docs.github.com and VS Code document for $COPILOT_HOME/mcp-config.json (default ~/.copilot).
+func copilotHomes(t *testing.T) (string, string) {
+	t.Helper()
+	h := t.TempDir()
+	t.Setenv("HOME", h)
+	t.Setenv("USERPROFILE", h)
+	t.Setenv("PATH", t.TempDir())
+	t.Setenv("XDG_CONFIG_HOME", filepath.Join(h, ".config"))
+	t.Setenv("COPILOT_HOME", "")
+	return h, filepath.Join(h, ".copilot")
+}
+
+func copilotResult(t *testing.T, out Installed) Result {
+	t.Helper()
+	for _, r := range out.Results {
+		if r.Display == CopilotDisplay {
+			return r
+		}
+	}
+	t.Fatalf("no %s result in %+v", CopilotDisplay, out.Results)
+	return Result{}
+}
+
+func TestCopilotGetsAnHTTPEntryBesideItsOtherServers(t *testing.T) {
+	_, dir := copilotHomes(t)
+	if err := os.MkdirAll(dir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	cfg := filepath.Join(dir, "mcp-config.json")
+	if err := os.WriteFile(cfg, []byte(`{"mcpServers": {"gh": {"type": "local", "command": "x", "tools": ["*"]}}}`), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	out := InstallMCP("https://treg.to", "tok", "treg", false)
+	if r := copilotResult(t, out); r.Status != OK || r.Detail != cfg {
+		t.Fatalf("result %+v", r)
+	}
+	want := "{\n  \"mcpServers\": {\n    \"gh\": {\n      \"type\": \"local\",\n      \"command\": \"x\",\n      \"tools\": [\n        \"*\"\n      ]\n    },\n" +
+		"    \"treg\": {\n      \"type\": \"http\",\n      \"url\": \"https://treg.to/mcp/\",\n      \"headers\": {\n        \"Authorization\": \"Bearer tok\"\n      },\n" +
+		"      \"tools\": [\n        \"*\"\n      ]\n    }\n  }\n}\n"
+	if got := read(t, cfg); got != want {
+		t.Fatalf("got:\n%s", got)
+	}
+	if runtime.GOOS != "windows" {
+		if info, _ := os.Stat(cfg); info.Mode().Perm() != 0o600 {
+			t.Errorf("mode %v, want 0600", info.Mode().Perm())
+		}
+	}
+}
+
+func TestCopilotOAuthEntryCarriesTheURLOnly(t *testing.T) {
+	_, dir := copilotHomes(t)
+	if err := os.MkdirAll(dir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	InstallMCP("https://treg.to/", "", "treg", true)
+	got := read(t, filepath.Join(dir, "mcp-config.json"))
+	if strings.Contains(got, "headers") || !strings.Contains(got, `"url": "https://treg.to/mcp/"`) {
+		t.Fatalf("got:\n%s", got)
+	}
+}
+
+func TestCopilotHomeReplacesTheDefaultDirectory(t *testing.T) {
+	h, dir := copilotHomes(t)
+	custom := filepath.Join(h, "elsewhere")
+	if err := os.MkdirAll(custom, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("COPILOT_HOME", custom)
+	out := InstallMCP("https://treg.to", "tok", "treg", false)
+	if r := copilotResult(t, out); r.Status != OK || r.Detail != filepath.Join(custom, "mcp-config.json") {
+		t.Fatalf("result %+v", r)
+	}
+	if Exists(dir) {
+		t.Fatalf("%s was created although COPILOT_HOME is set", dir)
+	}
+}
+
+func TestCopilotIsLeftAloneWhenNotInstalled(t *testing.T) {
+	_, dir := copilotHomes(t)
+	for _, r := range InstallMCP("https://treg.to", "tok", "treg", false).Results {
+		if r.Display == CopilotDisplay {
+			t.Fatalf("unexpected result %+v", r)
+		}
+	}
+	if Exists(dir) {
+		t.Fatalf("%s was created", dir)
+	}
+}

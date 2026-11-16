@@ -185,7 +185,7 @@ async def cli_latest(
     version = await cli_releases.current(channel)
     if not version:
         raise HTTPException(status_code=404, detail=f"no treg release on the {channel} channel")
-    return cli_releases.manifest(version, channel, os, arch)
+    return await cli_releases.manifest(version, channel, os, arch)
 
 
 @app.get("/cli/latest/{platform}")

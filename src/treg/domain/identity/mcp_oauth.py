@@ -54,6 +54,23 @@ SHEETS_CLIENT_ID = "treg-sheets"
 SHEETS_SCOPE = "treg:table"
 
 
+# "treg for Microsoft 365 Copilot" (treg's declarative agent, docs/context/architecture/mcp-oauth.md):
+# a first-party CONFIDENTIAL client of the team MCP. Microsoft's token store sends every plugin's
+# code to one shared redirect URI, so that URI cannot tell treg's agent from anyone else's; the
+# client secret is what does.
+M365_CLIENT_ID = "treg-m365-copilot"
+M365_REDIRECT_URI = "https://teams.microsoft.com/api/platform/v1.0/oAuthRedirect"
+
+
+def client_secret_matches(client_id: str, presented: str) -> bool | None:
+    """None when `client_id` is a public client (PKCE alone binds its code); otherwise whether the
+    presented secret is that confidential client's."""
+    if client_id != M365_CLIENT_ID:
+        return None
+    expected = get_settings().m365_client_secret
+    return bool(expected) and hmac.compare_digest(presented.encode(), expected.encode())
+
+
 def sheets_resource_url() -> str:
     return get_settings().public_url.rstrip("/") + "/table"
 
