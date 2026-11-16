@@ -1375,9 +1375,9 @@ async def test_search_survives_missing_a_few_words_of_an_agent_sentence(clients)
     from treg.domain.catalog import store as cs
     cat = cs.load()
     # the two logged SearchMiss queries, verbatim
-    # Enrichlayer, then a Crawl4AI recipe, add relevant job-search results ahead of the older
+    # Enrichlayer, a Crawl4AI recipe and Bridgly add relevant job-search results ahead of the older
     # ninth-place match.
-    rows, total = cs.search("company job postings hiring open jobs linkedin", cat, 10)
+    rows, total = cs.search("company job postings hiring open jobs linkedin", cat, 11)
     assert total > 0
     assert {"apollo.companies.jobs", "apify.linkedin.search.jobs", "enrichlayer.jobs.search",
             "leadmagic.x.jobs-search-v3"} <= {ep["id"] for ep, _ in rows}

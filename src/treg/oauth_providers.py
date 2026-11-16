@@ -2262,6 +2262,38 @@ SCRAPECREATORS = OAuthProvider(
     token_verify_field="creditCount",
 )
 
+BRIDGLY = OAuthProvider(
+    service="bridgly",
+    display_name="Bridgly",
+    auth_kind="key",
+    token_label="API key",
+    token_placeholder="your Bridgly API key (bgly_...)",
+    token_header="Authorization",
+    token_format="Bearer {secret}",
+    setup_url="https://bridgly.app/sign-up",
+    setup_action_label="Get your Bridgly API key",
+    setup_steps=(
+        "Sign up at bridgly.app. A business email gets 100 free credits, no card.",
+        "Open API Keys in the dashboard and create a key.",
+        "Copy the key (bgly_...) and paste it here.",
+    ),
+    setup_note=(
+        "Most calls cost one credit; LinkedIn list and search tools cost one credit per result. "
+        "Errors, not-found answers and the balance check are free."
+    ),
+    auth_uri="", token_uri="",
+    scopes={},
+    client_id_setting="", client_secret_setting="",
+    category="Social media",
+    summary="Public profiles, posts, comments, reactions, jobs and search results from social platforms.",
+    base_url="https://api.bridgly.app",
+    docs_url="https://docs.bridgly.app",
+    # GET /billing is free. Checked 2026-11-15: a valid key gets 200 with the credit balance;
+    # an unknown "bgly_..." key gets 401 {"status":"error","message":"Invalid API key"}, and
+    # "garbage" or no key gets 401 "User not authenticated".
+    probe_path="/billing",
+)
+
 
 DATAFORSEO = OAuthProvider(
     service="dataforseo",
@@ -4287,7 +4319,7 @@ REGISTRY: dict[str, OAuthProvider] = {
         REPLICATE,
         REAPI, PIAPI, GOOGLE_AI, TINYFISH,
         TIKHUB, BRIGHTDATA, SEMRUSH, JUSTONEAPI,
-        SCRAPECREATORS,
+        SCRAPECREATORS, BRIDGLY,
         # SEO API-key providers
         DATAFORSEO, SERANKING, MOZ, MAJESTIC, SERPSTAT, EXA, SEARCH1API, TAVILY, OCTEN, LINKUP, PARALLEL, YOU, VALYU, KEENABLE, OLOSTEP, FIRECRAWL, CRAWL4AI, SPIDERCLOUD, PERPLEXITY,
         SCRAPEGRAPHAI, SERPER, BRAVESEARCH, LITESCRAPE, CLORO,

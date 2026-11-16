@@ -354,6 +354,7 @@ class Settings(BaseSettings):
     platform_key_tikhub: str = ""
     platform_key_dataforseo: str = ""
     platform_key_scrapecreators: str = ""
+    platform_key_bridgly: str = ""  # Bearer; prepaid credits that never expire, free GET /billing balance
     platform_key_brightdata: str = ""
     platform_key_justoneapi: str = ""
     platform_key_serpapi: str = ""

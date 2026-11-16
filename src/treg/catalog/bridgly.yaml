@@ -1,0 +1,321 @@
+provider: bridgly
+source:
+  docs: https://docs.bridgly.app
+  openapi: https://docs.bridgly.app/openapi.json
+  curated: '2026-11-15'
+limits: "Per account and per platform, both windows: 2/s and 30/min on free credits and top-ups under $50, 5/s and 200/min after one $50+ purchase, 25/s and 1,000/min after one $300+ purchase. Over a limit answers 429."
+pricing_url: https://bridgly.app/pricing
+
+# Every route is a POST with a JSON body, and every 200 answer is the envelope
+# {"timeMs", "creditsCost", "data"}: `creditsCost` is the exact charge of that call, zero for a
+# cached result. Only a 200 is billed; a 404 (nothing found), a 400 or 422 (bad input), a 402
+# (balance below one call's price) and a 5xx are free. An empty result is a 200 and is billed.
+#
+# Each operation's description in the OpenAPI spec states its price, and the docs page of every
+# endpoint repeats it. The LinkedIn list and search routes cost one credit per result returned,
+# with a minimum of one per call; every other route here costs one credit per call.
+#
+# Left out of this core file: the other operations in the spec (115 in all), each one credit per
+# call or per result like the rows below; and GET /billing, the free balance check used as the
+# registry probe.
+proposed_capabilities:
+  linkedin.user.experience: "List every position on a member's profile"
+defaults:
+  settle: {reported: {path: response.creditsCost, unit: credit}}
+  bill: {miss: charged}
+  provenance:
+    source: docs
+    source_url: https://docs.bridgly.app/openapi.json
+    checked: '2026-11-15'
+    confidence: documented
+
+endpoints:
+  # --- LinkedIn ---------------------------------------------------------------------------------
+  - id: bridgly.linkedin.user.profile
+    added: '2026-11-16'
+    capability: linkedin.user.profile
+    platform: linkedin
+    scope: any_account
+    method: POST
+    path: /linkedin/get-profile-from-url
+    name: "LinkedIn profile by URL — work history, education, skills"
+    summary: "Fetch a LinkedIn member's full profile from its URL or slug: headline, location, about, work history, education, skills, certifications, projects and courses"
+    input:
+      bodyType: json
+      body:
+        memberIdentity: {type: string, required: true, note: "the slug in linkedin.com/in/<slug>, or the profile link", example: "williamhgates"}
+    test_request: {body: {memberIdentity: "williamhgates"}}
+    price: {value: '1', currency: credit, per: 1, unit: call}
+    miss: {status: [404], means: "no LinkedIn member has this slug; free"}
+    docs_url: https://docs.bridgly.app/api-reference/linkedin/fetch-a-linkedin-profile-by-profile-slug
+
+  - id: bridgly.linkedin.company.profile
+    added: '2026-11-16'
+    capability: linkedin.company.profile
+    platform: linkedin
+    scope: any_account
+    method: POST
+    path: /linkedin/get-company-from-url
+    name: "LinkedIn company by URL — headcount, industry, funding"
+    summary: "Fetch a LinkedIn company page from its URL or slug: description, industry, headcount, headquarters, locations, website, followers, specialties, funding and similar companies"
+    input:
+      bodyType: json
+      body:
+        universalName: {type: string, required: true, note: "the slug in linkedin.com/company/<slug>, or the company, school or showcase page link", example: "openai"}
+    test_request: {body: {universalName: "openai"}}
+    price: {value: '1', currency: credit, per: 1, unit: call}
+    miss: {status: [404], means: "no LinkedIn page has this slug; free"}
+    docs_url: https://docs.bridgly.app/api-reference/linkedin/fetch-a-linkedin-company-by-company-slug
+
+  - id: bridgly.linkedin.user.posts
+    added: '2026-11-16'
+    capability: linkedin.user.posts
+    platform: linkedin
+    scope: any_account
+    method: POST
+    path: /linkedin/get-posts/from-profile
+    name: "LinkedIn member's posts by profile URL — text, engagement"
+    summary: "List a LinkedIn member's posts and reposts, newest first, with text, images, links, publish date and reaction, comment and share counts"
+    input:
+      bodyType: json
+      body:
+        publicId: {type: string, required: true, note: "the slug in linkedin.com/in/<slug>, or the profile link", example: "williamhgates"}
+        count: {type: integer, required: false, default: 10, min: 1, max: 100, note: "results to return; each one is charged", example: 1}
+        cursor: {type: string, required: false, note: "the previous answer's data.nextCursor, for the next page"}
+    test_request: {body: {publicId: "williamhgates", count: 1}}
+    price: {value: '1', currency: credit, per: 1, unit: result, note: "one credit per post returned, and one for an empty page"}
+    reserve: {rows: {param: body.count, default: {value: 10, source: docs}, max: 100}}
+    miss: {when: {path: response.data.posts, op: empty}}
+    docs_url: https://docs.bridgly.app/api-reference/linkedin/list-posts-published-by-a-linkedin-profile
+
+  - id: bridgly.linkedin.post.comments
+    added: '2026-11-16'
+    capability: linkedin.post.comments
+    platform: linkedin
+    scope: any_account
+    method: POST
+    path: /linkedin/get-activity-comments
+    name: "LinkedIn post comments by post URL — text, author, likes"
+    summary: "List the comments on a LinkedIn post, most relevant or newest first, with each comment's text, author, time and like and reply counts"
+    input:
+      bodyType: json
+      body:
+        activityUrn: {type: string, required: true, note: "the post's urn:li:activity:<id>, or the post link", example: "urn:li:activity:7527433167067193345"}
+        count: {type: integer, required: false, default: 10, min: 1, max: 100, note: "results to return; each one is charged", example: 1}
+        start: {type: integer, required: false, default: 0, min: 0, note: "results to skip, for the next page"}
+        sortOrder: {type: string, required: false, enum: [relevance, recent], note: "relevance (default) or recent for newest first"}
+    test_request: {body: {activityUrn: "urn:li:activity:7527433167067193345", count: 1}}
+    price: {value: '1', currency: credit, per: 1, unit: result, note: "one credit per comment returned, and one for an empty page"}
+    reserve: {rows: {param: body.count, default: {value: 10, source: docs}, max: 100}}
+    miss: {when: {path: response.data, op: empty}}
+    docs_url: https://docs.bridgly.app/api-reference/linkedin/fetch-the-comment-thread-on-a-linkedin-post
+
+  - id: bridgly.linkedin.post.reactions
+    added: '2026-11-16'
+    capability: linkedin.post.reactions
+    platform: linkedin
+    scope: any_account
+    method: POST
+    path: /linkedin/get-post-reactions
+    name: "LinkedIn post reactions by post URL — who reacted, type"
+    summary: "List the members who reacted to a LinkedIn post, with each person's name, headline, profile link, picture and reaction type"
+    input:
+      bodyType: json
+      body:
+        activityUrn: {type: string, required: true, note: "the post's urn:li:activity:<id>, or the post link", example: "urn:li:activity:7527433167067193345"}
+        count: {type: integer, required: false, default: 10, min: 1, max: 100, note: "results to return; each one is charged", example: 1}
+        start: {type: integer, required: false, default: 0, min: 0, note: "results to skip, for the next page"}
+    test_request: {body: {activityUrn: "urn:li:activity:7527433167067193345", count: 1}}
+    price: {value: '1', currency: credit, per: 1, unit: result, note: "one credit per reaction returned, and one for an empty page"}
+    reserve: {rows: {param: body.count, default: {value: 10, source: docs}, max: 100}}
+    miss: {when: {path: response.data, op: empty}}
+    docs_url: https://docs.bridgly.app/api-reference/linkedin/list-the-members-who-reacted-to-a-linkedin-post
+
+  - id: bridgly.linkedin.search.jobs
+    added: '2026-11-16'
+    capability: linkedin.search.jobs
+    platform: linkedin
+    scope: any_account
+    method: POST
+    path: /linkedin/search/jobs
+    name: "Search LinkedIn job postings by keyword, location, seniority"
+    summary: "Search LinkedIn job postings by keyword, filtered by location, workplace type, seniority, job type and date posted, with title, company, location, salary and posting date"
+    input:
+      bodyType: json
+      body:
+        keyword: {type: string, required: true, example: "software engineer"}
+        location: {type: string, required: false, example: "San Francisco Bay Area"}
+        workplaceType: {type: string, required: false, enum: [on-site, remote, hybrid]}
+        experienceLevel: {type: string, required: false, enum: [internship, entry-level, associate, mid-senior, director, executive]}
+        jobType: {type: string, required: false, enum: [full-time, part-time, contract, temporary, internship, volunteer, other]}
+        datePosted: {type: string, required: false, enum: [past-24h, past-week, past-month]}
+        count: {type: integer, required: false, default: 10, min: 1, max: 100, note: "results to return; each one is charged", example: 1}
+        start: {type: integer, required: false, default: 0, min: 0, note: "results to skip; the answer's data.nextStart is the next page"}
+    test_request: {body: {keyword: "software engineer", count: 1}}
+    price: {value: '1', currency: credit, per: 1, unit: result, note: "one credit per posting returned, and one for an empty page"}
+    reserve: {rows: {param: body.count, default: {value: 10, source: docs}, max: 100}}
+    miss: {when: {path: response.data.jobs, op: empty}}
+    docs_url: https://docs.bridgly.app/api-reference/linkedin/search-linkedin-jobs
+
+  - id: bridgly.linkedin.user.experience
+    added: '2026-11-16'
+    capability: linkedin.user.experience
+    platform: linkedin
+    scope: any_account
+    method: POST
+    path: /linkedin/get-profile-experience
+    name: "LinkedIn work experience by profile URL — every position"
+    summary: "List every position on a LinkedIn member's profile, grouped by company, with title, company link and logo, employment type, location, dates and description"
+    input:
+      bodyType: json
+      body:
+        publicId: {type: string, required: true, note: "the slug in linkedin.com/in/<slug>, or the profile link", example: "williamhgates"}
+        count: {type: integer, required: false, default: 100, min: 1, max: 100, note: "companies to return, each with every position held there; the price is per call", example: 1}
+        start: {type: integer, required: false, default: 0, min: 0, note: "companies to skip; the answer's data.nextStart is the next page"}
+    test_request: {body: {publicId: "williamhgates", count: 1}}
+    price: {value: '1', currency: credit, per: 1, unit: call}
+    docs_url: https://docs.bridgly.app/api-reference/linkedin/list-the-work-experience-of-a-linkedin-profile
+
+  # --- Instagram --------------------------------------------------------------------------------
+  - id: bridgly.instagram.user.profile
+    added: '2026-11-16'
+    capability: instagram.user.profile
+    platform: instagram
+    scope: any_account
+    method: POST
+    path: /instagram/user
+    name: "Instagram profile by username — bio, followers, post count"
+    summary: "Fetch a public Instagram profile by username: full name, bio, bio links, picture, follower, following and post counts, and private, verified and business flags"
+    input:
+      bodyType: json
+      body:
+        username: {type: string, required: true, note: "the username, or the profile link", example: "instagram"}
+    test_request: {body: {username: "instagram"}}
+    price: {value: '1', currency: credit, per: 1, unit: call}
+    miss: {status: [404], means: "no Instagram account has this username; free"}
+    docs_url: https://docs.bridgly.app/api-reference/instagram/get-user-profile-by-username
+
+  - id: bridgly.instagram.user.posts
+    added: '2026-11-16'
+    capability: instagram.user.posts
+    platform: instagram
+    scope: any_account
+    method: POST
+    path: /instagram/user-posts
+    name: "Instagram posts by username — captions, likes, comments"
+    summary: "List the posts on an Instagram profile with caption, image or video link, like and comment counts, timestamp and video views"
+    input:
+      bodyType: json
+      body:
+        username: {type: string, required: true, note: "the username, or the profile link", example: "instagram"}
+        count: {type: integer, required: false, default: 10, min: 1, max: 10, example: 1}
+        cursor: {type: string, required: false, note: "the previous answer's data.nextCursor, for the next page"}
+    test_request: {body: {username: "instagram", count: 1}}
+    price: {value: '1', currency: credit, per: 1, unit: call}
+    miss: {when: {path: response.data.posts, op: empty}}
+    docs_url: https://docs.bridgly.app/api-reference/instagram/get-paginated-user-posts
+
+  # --- TikTok -----------------------------------------------------------------------------------
+  - id: bridgly.tiktok.user.profile
+    added: '2026-11-16'
+    capability: tiktok.user.profile
+    platform: tiktok
+    scope: any_account
+    method: POST
+    path: /tiktok/get-user
+    name: "TikTok profile by username — bio, followers, likes"
+    summary: "Fetch a public TikTok profile by username: nickname, bio, avatar, follower, following, like and video counts, verification, privacy and secUid"
+    input:
+      bodyType: json
+      body:
+        uniqueId: {type: string, required: true, note: "the username, with or without @, or the profile link", example: "tiktok"}
+    test_request: {body: {uniqueId: "tiktok"}}
+    price: {value: '1', currency: credit, per: 1, unit: call}
+    miss: {status: [404], means: "no TikTok account has this username; free"}
+    docs_url: https://docs.bridgly.app/api-reference/tiktok/fetch-a-tiktok-user-by-username
+
+  - id: bridgly.tiktok.video.comments
+    added: '2026-11-16'
+    capability: tiktok.video.comments
+    platform: tiktok
+    scope: any_account
+    method: POST
+    path: /tiktok/get-video-comments
+    name: "TikTok video comments by video id — text, likes, replies"
+    summary: "List the top-level comments on a TikTok video with text, like and reply counts, author, and whether the creator liked or pinned each one"
+    input:
+      bodyType: json
+      body:
+        videoId: {type: string, required: true, note: "the number at the end of the video URL, or the video URL", example: "7698770783367171359"}
+        count: {type: integer, required: false, default: 20, min: 1, max: 20, example: 1}
+        cursor: {type: string, required: false, note: "the previous answer's data.nextCursor, for the next page"}
+    test_request: {body: {videoId: "7698770783367171359", count: 1}}
+    price: {value: '1', currency: credit, per: 1, unit: call}
+    miss: {when: {path: response.data.comments, op: empty}}
+    docs_url: https://docs.bridgly.app/api-reference/tiktok/get-the-comments-on-a-tiktok-video
+
+  # --- X ----------------------------------------------------------------------------------------
+  - id: bridgly.x.user.profile
+    added: '2026-11-16'
+    capability: x.user.profile
+    platform: x
+    scope: any_account
+    method: POST
+    path: /x/get-user
+    name: "X profile by handle — bio, followers, verification"
+    summary: "Fetch an X profile by handle: display name, bio, location, website, avatar, follower, following, post and like counts, verification, pinned post and join date"
+    input:
+      bodyType: json
+      body:
+        handle: {type: string, required: true, note: "the handle, with or without @, or the profile link", example: "openai"}
+    test_request: {body: {handle: "openai"}}
+    price: {value: '1', currency: credit, per: 1, unit: call}
+    miss: {status: [404], means: "no X account has this handle; free"}
+    docs_url: https://docs.bridgly.app/api-reference/x-twitter/fetch-an-x-user-profile-by-handle
+
+  - id: bridgly.x.search.posts
+    added: '2026-11-16'
+    capability: x.search.posts
+    platform: x
+    scope: any_account
+    method: POST
+    path: /x/search
+    name: "Search X posts with advanced operators — latest or top"
+    summary: "Search X posts with advanced-search operators such as from:, since:, min_faves: and lang:, newest or top first, with text, author, media, links and engagement counts"
+    input:
+      bodyType: json
+      body:
+        query: {type: string, required: true, note: "any X advanced-search query", example: "openai lang:en"}
+        sortOrder: {type: string, required: false, enum: [Latest, Top], note: "Latest (default) is newest first; Top is X's engagement ranking"}
+        withinHours: {type: number, required: false, note: "only posts newer than this many hours"}
+        lang: {type: string, required: false, note: "language code, e.g. en; adds lang:<code> to the query"}
+        count: {type: integer, required: false, default: 20, min: 1, max: 20, example: 1}
+        cursor: {type: string, required: false, note: "the previous answer's data.nextCursor, for the next page"}
+    test_request: {body: {query: "openai lang:en", count: 1}}
+    price: {value: '1', currency: credit, per: 1, unit: call}
+    miss: {when: {path: response.data.tweets, op: empty}}
+    docs_url: https://docs.bridgly.app/api-reference/x-twitter/search-tweets-with-x-advanced-search-operators
+
+  # --- Reddit -----------------------------------------------------------------------------------
+  - id: bridgly.reddit.search.posts
+    added: '2026-11-16'
+    capability: reddit.search.posts
+    platform: reddit
+    scope: any_account
+    method: POST
+    path: /reddit/search/posts
+    name: "Search Reddit posts by keyword — score, comments, subreddit"
+    summary: "Search Reddit posts across all of Reddit or one subreddit, by relevance, hot, top, new or comment count, with title, author, subreddit, score and comment count"
+    input:
+      bodyType: json
+      body:
+        query: {type: string, required: true, example: "openai"}
+        subreddit: {type: string, required: false, note: "limit the search to one subreddit, with or without r/"}
+        sort: {type: string, required: false, enum: [relevance, hot, top, new, comments], note: "relevance by default"}
+        time: {type: string, required: false, enum: [hour, day, week, month, year, all], note: "all by default"}
+        count: {type: integer, required: false, default: 10, min: 1, max: 10, example: 1}
+        cursor: {type: string, required: false, note: "the previous answer's data.nextCursor, for the next page"}
+    test_request: {body: {query: "openai", count: 1}}
+    price: {value: '1', currency: credit, per: 1, unit: call}
+    miss: {when: {path: response.data.posts, op: empty}}
+    docs_url: https://docs.bridgly.app/api-reference/reddit/search-reddit-posts
