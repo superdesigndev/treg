@@ -21,6 +21,8 @@ AGGREGATORS = ("orthogonal", "monid")
 _KNOWN: dict[str, tuple[str, str, str]] = {
     "orbisearch": ("credits", "manual", "api"),
     "theirstack": ("credits", "manual", "api"),
+    "jobspipe": ("monthly_quota", "quota_reset", "api"),
+    "hirebase": ("monthly_quota", "quota_reset", "api"),
     "enrichlayer": ("credits", "auto_recharge", "api"),
     "adyntel": ("credits", "manual", "manual"),
     "dropleads": ("credits", "manual", "api"),
@@ -131,6 +133,8 @@ _RATE_LIMITS: dict[str, dict] = {
     # headroom for account checks and manual use of the same key; BYOK bypasses this pace.
     "dropcontact": {"limit": 30, "window_s": 1, "source": "policy"},
     "theirstack": {"limit": 4, "window_s": 1, "source": "docs"},
+    "jobspipe": {"limit": 10, "window_s": 1, "source": "docs"},  # Builder plan; RateLimit-* headers on every call
+    "hirebase": {"limit": 100, "window_s": 60, "source": "docs"},  # per key; task reads have their own 600 per 60 s
     "enrichlayer": {"limit": 300, "window_s": 60, "source": "docs"},
     # Agent's entry-tier limit is one request per second. Shared-key smoothing is provider-wide,
     # so Search also uses this conservative pace even though its own allowance is higher.

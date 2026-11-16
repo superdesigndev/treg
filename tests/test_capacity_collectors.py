@@ -60,6 +60,22 @@ async def test_theirstack_balance_subtracts_used_api_credits():
     assert policy.default_policy("theirstack", has_key=True).rate_limit["limit"] == 4
 
 
+async def test_jobspipe_balance_reads_the_free_export_estimate():
+    def probe(request):
+        assert request.method == "POST"
+        assert str(request.url) == "https://api.jobspipe.dev/v1/jobs/export/estimate"
+        assert request.headers["authorization"] == "Bearer test-key"
+        return httpx.Response(200, json={"rows": 0, "balance": 571})
+
+    async with httpx.AsyncClient(transport=httpx.MockTransport(probe)) as client:
+        row = await collectors._jobspipe(client, "test-key")
+    assert row["value"] == 571 and row["unit"] == "credits"
+    async with httpx.AsyncClient(transport=httpx.MockTransport(
+            lambda _: httpx.Response(200, json={"balance": None}))) as client:
+        with pytest.raises(ValueError, match="no valid credit balance"):
+            await collectors._jobspipe(client, "test-key")
+
+
 @pytest.mark.parametrize("field,value", [
     ("api_credits", None), ("api_credits", True), ("api_credits", "5200"),
     ("api_credits", -1), ("api_credits", 10.5),
