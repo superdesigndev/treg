@@ -328,9 +328,14 @@ member and project are ANDed, each NULL-means-any. `_deny_match` is pure and mir
 
 Just before `send`, `relay()` re-resolves the upstream host (`host_is_public`, gated by
 `proxy_ssrf_check`) and refuses with `502` if any address is non-public: a `base_url` public at
-registration can later resolve to `169.254.169.254` or localhost. Registration
-(`ssrf.safe_webhook_url`) also normalizes numeric IP encodings (`2130706433`, `0x7f000001`,
-`127.1`) through `inet_aton` before the literal-IP block. Targets must be globally routable
+registration can later resolve to `169.254.169.254` or localhost. The other server-side roads to a
+user-chosen address make the same check (`ssrf.url_host_is_public`, resolved off the event loop,
+same switch) just before sending: the health probe (`health._probe`), the owner webhook
+(`health._notify`), and the OAuth token endpoint on refresh (`HTTPXOAuthRefreshPort.exchange`) and
+code exchange (`HTTPXOAuthExchangePort.exchange_code`). Registration
+(`ssrf.safe_webhook_url`) strips a trailing dot (`localhost.`; for a tool's `base_url` only while
+`proxy_ssrf_check` is on, so a local registry can still name a loopback upstream) and normalizes numeric IP encodings
+(`2130706433`, `0x7f000001`, `127.1`) through `inet_aton` before the literal-IP block. Targets must be globally routable
 unicast. CGNAT `100.64.0.0/10` is internal service space (Tailscale, WireGuard overlays, Fly.io,
 some Kubernetes pod CIDRs, Alibaba Cloud's metadata endpoint `100.100.100.200`). NAT64 prefixes
 mapping non-global IPv4 do not make a target public; `64:ff9b::/96` stays blocked. A narrow

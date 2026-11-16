@@ -16,8 +16,9 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlmodel import select
 
 from . import crypto, oauth, oauth_providers
+from .config import get_settings
 from .infra.upstream import injectors
-from .infra.upstream.ssrf import host_is_public as host_is_public, safe_webhook_url
+from .infra.upstream.ssrf import host_is_public as host_is_public, safe_webhook_url, url_host_is_public
 from .models import Invite, Membership, PendingOAuth, Secret, Tool, User
 from .timeutil import utcnow_naive
 
@@ -83,6 +84,8 @@ async def _probe(tool: Tool, smap: dict[int, Secret], client: httpx.AsyncClient)
         probe_url = httpx.URL(url)
         for k, v in params:
             probe_url = probe_url.copy_add_param(k, v)
+        if get_settings().proxy_ssrf_check and not await url_host_is_public(probe_url):
+            return "unknown", "probe refused: host resolves to a non-public address"
         r = await client.request(hc.get("method", "GET"), probe_url, headers=headers, timeout=15.0)
     except (ValueError, KeyError, IndexError, AttributeError) as exc:
         return "invalid", f"injection failed: {exc}"  # a bad binding IS a credential/config problem
@@ -249,6 +252,8 @@ async def _notify(invalid: list[Secret], db: AsyncSession, client: httpx.AsyncCl
         if webhook is None:
             continue
         try:
+            if get_settings().proxy_ssrf_check and not await url_host_is_public(webhook):
+                continue
             await client.post(webhook, json={"owner": owner, "invalid_credentials": items}, timeout=10.0)
         except Exception:  # noqa: BLE001 — an alert hiccup must never break the run
             pass
