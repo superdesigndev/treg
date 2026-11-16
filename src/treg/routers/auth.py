@@ -944,7 +944,7 @@ _CONSENT_CSS = """
 
 
 def _consent_page(*, client_name: str, client_uri: str, user_email: str, teams: list,
-                  hidden: dict, unverified: bool) -> HTMLResponse:
+                  hidden: dict, unverified: bool, scope: str) -> HTMLResponse:
     """The one place a human sees what they are granting — so it says it in words, not scopes.
 
     Deliberately plain about the two things that cost money or leak data: this client will be able to
@@ -975,6 +975,13 @@ def _consent_page(*, client_name: str, client_uri: str, user_email: str, teams: 
     fields = "".join(
         f'<input type="hidden" name="{_h.escape(k)}" value="{_h.escape(str(v))}"/>'
         for k, v in hidden.items())
+    held = mcp_oauth.mcp_permissions(scope)
+    grants = "".join(f"<li>{line}</li>" for perm, line in (
+        (mcp_oauth.CATALOG_SCOPE, "Search the catalog and read prices"),
+        (mcp_oauth.CALL_SCOPE, "Call tools on your team's behalf — <b>this spends the team's balance</b>"),
+        (mcp_oauth.CALL_SCOPE, "Use the API keys and connections your team has registered, without seeing them"),
+        (mcp_oauth.READ_SCOPE, "Read the team's balance, its own tools and the provider resources it owns"),
+    ) if perm in held)
     who = _h.escape(client_name or "An application")
     where = (f' <span class="who">({_h.escape(client_uri)})</span>' if client_uri else "")
     warn = ("" if not unverified else
@@ -986,12 +993,7 @@ def _consent_page(*, client_name: str, client_uri: str, user_email: str, teams: 
         f'{_BRAND}'
         f"<h1>{who} wants to use treg</h1>{where}"
         f'<p class="who">Signed in as {_h.escape(user_email)}</p>'
-        f'<ul class="grants">'
-        f"<li>Search the catalog and read prices</li>"
-        f"<li>Call tools on your team's behalf — <b>this spends the team's balance</b></li>"
-        f"<li>Use the API keys and connections your team has registered, without seeing them</li>"
-        f"<li>Read the team's balance</li>"
-        f"</ul>"
+        f'<ul class="grants">{grants}</ul>'
         f'<form method="post" action="/oauth/authorize">{fields}'
         f'<label for="org_id">Which team?</label>'
         f'<select id="org_id" name="org_id" required>{opts}</select>'
@@ -1110,7 +1112,7 @@ async def oauth_authorize(
         return {
             "client": {"client_id": view.client_id, "name": view.client_name,
                        "uri": view.client_uri, "kind": view.client_kind},
-            "redirect_uri": redirect_uri, "scope": scope, "resource": resource,
+            "redirect_uri": redirect_uri, "scope": view.scope, "resource": resource,
             "user": view.user_email,
             # The team picker. A person may belong to several, and which one this client may spend
             # from is a decision for the human here — not something resolved per call later.
@@ -1121,7 +1123,7 @@ async def oauth_authorize(
         return _sheets_consent_page(user_email=view.user_email, teams=view.teams, hidden=hidden)
     return _consent_page(client_name=view.client_name, client_uri=view.client_uri,
                          user_email=view.user_email, teams=view.teams, hidden=hidden,
-                         unverified=(view.client_kind == "dcr"))
+                         unverified=(view.client_kind == "dcr"), scope=view.scope)
 
 
 @app.post("/oauth/authorize", include_in_schema=False)
