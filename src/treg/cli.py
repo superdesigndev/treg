@@ -1915,11 +1915,13 @@ def _import_env(args, cfg, env_path: str) -> None:
                     val = values.get(a.secret_name)
                     if not val:
                         print(f"  ✗ {a.tool_name}: {a.secret_name} has no value in the env — skipped"); continue
-                if a.tool_name in existing_tools:               # already registered → skip (or replace) BEFORE writing a secret
+                legacy = prov._legacy_slug(a.detection.provider or "")
+                found = a.tool_name if a.tool_name in existing_tools else (legacy if legacy in existing_tools else None)
+                if found:                                       # already registered → skip (or replace) BEFORE writing a secret
                     if not args.replace:
-                        print(f"  · {a.tool_name}: already registered (use --replace)")
-                        print(f"    ↗ {_detail_url(cfg, 'tool', a.tool_name)}"); continue
-                    c.delete(f"/tools/{existing_tools[a.tool_name]}")
+                        print(f"  · {found}: already registered (use --replace)")
+                        print(f"    ↗ {_detail_url(cfg, 'tool', found)}"); continue
+                    c.delete(f"/tools/{existing_tools[found]}")
                     if a.secret_name in existing_secrets:
                         c.delete(f"/secrets/{existing_secrets[a.secret_name]}")
                 elif a.secret_name in existing_secrets:         # stale orphan secret from a prior failed run
@@ -2250,6 +2252,8 @@ def _import_llm(c, unknowns: list, env_path: str, args) -> None:
             tool_name = f"{prov._slug(e.get('provider') or var)}-{n}"; n += 1
         if args.replace and var in existing_secrets:      # replace: clear the old secret + tool first
             existing_tools.get(tool_name) and c.delete(f"/tools/{existing_tools[tool_name]}")
+            legacy = prov._legacy_slug(e.get("provider") or var)
+            legacy != tool_name and existing_tools.get(legacy) and c.delete(f"/tools/{existing_tools[legacy]}")
             c.delete(f"/secrets/{existing_secrets[var]}")
         elif var in existing_secrets:
             print(f"  · {var}: already registered (use --replace)"); continue
