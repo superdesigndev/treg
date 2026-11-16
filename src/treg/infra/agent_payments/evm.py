@@ -100,7 +100,7 @@ def topic_address(address: str) -> str:
 
 
 def moved(receipt: dict, *, asset: str, payer: str, pay_to: str, amount: int) -> bool:
-    """True when a successful receipt carries a transfer of exactly `amount` of `asset` from
+    """True when a successful receipt carries a transfer of at least `amount` of `asset` from
     `payer` to `pay_to` (a plain Transfer, or TIP-20's TransferWithMemo)."""
     if receipt.get("status") != "0x1":
         return False
@@ -113,6 +113,6 @@ def moved(receipt: dict, *, asset: str, payer: str, pay_to: str, amount: int) ->
         if topics[1] != topic_address(payer) or topics[2] != topic_address(pay_to):
             continue
         data = str(log.get("data") or "0x")
-        if len(data) >= 66 and int(data[2:66], 16) == amount:
+        if len(data) >= 66 and int(data[2:66], 16) >= amount:
             return True
     return False

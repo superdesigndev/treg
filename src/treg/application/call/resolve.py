@@ -2571,6 +2571,8 @@ def wallet_refusal(ep: dict, *, allow_free: bool = False) -> str:
         return "free"
     if cost.get("type") == "free" and not allow_free:
         return "free"
+    if "usage" in (ep.get("settle") or {}) or "usage" in (cost.get("settle") or {}):
+        return "usage_priced"
     if not cat.platform_eligible(ep) or not get_settings().platform_key_for(ep["provider"]):
         return "own_key_only"
     return ""

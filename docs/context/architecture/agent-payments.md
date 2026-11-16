@@ -50,11 +50,13 @@ the call relays; the router only maps its three refusals to 401, 402 and 503. Th
 401 (`NotServed`) unless `rest` is a catalog id that treg's own key serves to a caller holding no
 credential: `application.call.resolve.wallet_refusal` (pure, no session, the static part) and
 `platform_quote` (the estimate for this query) refuse routed `treg.*` ids, endpoints with a
-`status`, endpoints with OAuth authorization methods, paused providers, anonymous and free
+`status`, endpoints with OAuth authorization methods, paused providers, endpoints whose `settle`
+reads a usage meter (the real cost can exceed the hold, and a wallet has no account to owe the
+rest), anonymous and free
 endpoints, providers without a configured platform key, and a zero estimate. The 401 body is
 `{"detail": {"error": "not_authenticated", "reason", "message"}}`; `reason` is one of
 `not_a_catalog_tool`, `wrong_method`, `routed`, `unavailable`, `needs_connection`, `paused`,
-`free`, `own_key_only`, `invalid_request`, and the message says to sign in.
+`free`, `own_key_only`, `usage_priced`, `invalid_request`, and the message says to sign in.
 Own tools and URL passthrough need a team, so they never reach a payment.
 
 Requests that carry a payment credential are limited per client address
@@ -85,7 +87,8 @@ A payer is an EVM address (lowercase hex); one key controls it on Tempo and on B
 `governance.teams.make_payer_team` stages, once per address, a team made of a machine user on the
 unroutable `payers.treg.local` domain (`identity.access.PAYER_DOMAIN`, a machine email: it cannot
 sign in or receive signup credit), a `member` membership with **no token**, and the `AgentPayer`
-row binding the address to the team. Nobody can authenticate as that team; only a verified payment
+row binding the address to the team. A wallet whose team was deleted keeps its machine user, which
+the next payment joins to a new team. Nobody can authenticate as that team; only a verified payment
 from its address acts for it, and only on this path.
 
 No money entry is new. A payment confirmed on chain is an ordinary `money.topup` on the payer team
@@ -154,7 +157,8 @@ WebAuthn signatures only *name* their account and are authenticated by the chain
    and answers 503 `payment_outcome_unknown` with no call; the proof cannot be sent again; the
    reconciler resolves it later. Success tops up and marks the row `settled` in one transaction
    (`_credit`).
-5. The request headers minus the payment credential (`agent_payments.consumes`) go to the call as
+5. The request headers minus every payment credential header, whichever rails are on
+   (`agent_payments.consumes`), go to the call as
    the payer team. Every answer after this point, a refusal included, carries
    `X-Treg-Payment: paid|credit`, `X-Treg-Credit-Micro` (the payer's credit once the call has
    settled or released) and, when this payment settled, `X-Treg-Paid-Micro` and
@@ -178,7 +182,10 @@ credit that is not refunded, plus the fee when it is not 0. A first challenge ha
 `reason`: `payment_replayed`, `invalid_challenge` (another route, query or amount),
 `payment_expired`, `malformed_credential`, `expiry_required` (a Tempo transfer with no
 `valid_before`), `unsupported_version` (x402 v1 `X-PAYMENT`),
-`verification_failed`, `settlement_failed`, `ambiguous_payment`.
+`verification_failed`, `settlement_failed`, `ambiguous_payment`. A malformed x402 payload
+(`malformed_credential`, the payload's `validBefore` included) is refused before the facilitator is
+asked. A facilitator failure that names a transaction is `settlement_unknown`: the row stays
+`settling` and the reconciler asks the chain.
 
 It is told apart from treg's `insufficient_balance` and `route_max_cost` 402s (a signed-in
 caller's; a payer gets them as 503) by `detail.error` and the protocol headers, and from a provider's 402 by `X-Treg-Error`. A provider's 402 on a paid
@@ -195,7 +202,9 @@ headers (`X-Treg-Payment` among them) and no receipt.
 - The proof row is committed before any settlement, so two concurrent uses of one proof settle at
   most once.
 - `MppTempoRail` passes the request to pympp (`http_request=`), which requires the
-  HMAC-authenticated challenge's route scope (method, route, path, query) to match it; `X402Rail.verify` compares the accepted terms and the resource URL with the offer.
+  HMAC-authenticated challenge's route scope (method, route, path, query) to match it; `X402Rail.verify` compares the accepted terms and the required `resource.url` (the full request URL) with the offer.
+- Neither rail binds the request body. Every call priced under the floor asks the same amount, so a
+  copied, unused payment can pay once for another body of the same route and query, as its wallet.
 
 ## The reconciler (`treg-worker agentpay reconcile`)
 
@@ -218,7 +227,7 @@ JSON-RPC (`infra/agent_payments/evm.py`), no session open:
   prune old blocks and refuse wide log ranges, so `Chain.block_at` searches from the head and
   `Chain.logs` asks in spans of `LOG_SPAN` blocks.
 
-The answer is `landed` (a successful receipt with a transfer of exactly that amount of that asset
+The answer is `landed` (a successful receipt with a transfer of at least that amount of that asset
 from the payer to `pay_to`): `_credit` books the same `topup` under the same `agentpay:<proof id>`
 reference, so a request and the reconciler crediting together book it once. `absent` (expired
 unsettled, reverted, or a transaction that moved something else): the row becomes `failed`, only if

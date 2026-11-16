@@ -34,6 +34,8 @@ from ..domain.identity.access import Caller
 from ..infra import stripe as stripe_api
 from ..infra.agent_payments import (
     Offer, PaymentRail, PaymentRejected, Settlement, Unconfirmed, Verified)
+from ..infra.agent_payments.tempo import CONSUMED_HEADERS as MPP_HEADERS
+from ..infra.agent_payments.x402 import CONSUMED_HEADERS as X402_HEADERS
 from ..infra.db import session_maker
 from ..models import AgentPayer, AgentPayment, Membership, Org, User, _now
 from .call.resolve import (
@@ -68,6 +70,7 @@ CENT_MICRO = 10_000
 BPS = 10_000
 # The rails give the chain this long past `expires_at` before calling a payment absent.
 CREDIT_PROOF_GRACE = timedelta(seconds=90)
+PAYMENT_HEADERS = frozenset(MPP_HEADERS + X402_HEADERS)
 
 
 def enabled() -> bool:
@@ -138,11 +141,11 @@ class PaymentChallenge(Exception):
 
 
 def consumes(name: str, value: str) -> bool:
-    """True for a request header that carries a payment credential and must never be relayed."""
+    """True for a request header that carries a payment credential and must never be relayed,
+    whichever rails are switched on."""
     lowered = name.lower()
-    for rail in _rails:
-        if lowered in rail.consumed_headers:
-            return lowered != "authorization" or value[:8].lower() == "payment "
+    if lowered in PAYMENT_HEADERS:
+        return lowered != "authorization" or value[:8].lower() == "payment "
     return False
 
 
@@ -436,6 +439,7 @@ _NOT_SERVED = {
     "free": "this call is free, and free calls need a treg account",
     "own_key_only": "this tool runs only on a team's own key",
     "invalid_request": "treg cannot price this request; check the tool's parameters",
+    "usage_priced": "this tool's price is known only after the call, which needs a treg account",
 }
 
 

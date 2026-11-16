@@ -29,7 +29,7 @@ from treg.infra.agent_payments.evm import TRANSFER_TOPIC, Chain, topic_address
 from treg.infra.agent_payments.tempo import MppTempoRail
 from treg.infra.agent_payments.x402 import X402Rail
 from treg.infra.db import session_maker
-from treg.models import AgentPayer, AgentPayment, Hold, LedgerEntry
+from treg.models import AgentPayer, AgentPayment, Hold, LedgerEntry, Membership
 
 EP = "tikhub.tiktok.video.comments"   # $0.001 per call on treg's key
 EP_MICRO = 1_000
@@ -90,11 +90,14 @@ def tx_hash(signed: str) -> str:
 class FakeFacilitator:
     def __init__(self) -> None:
         self.settles = 0
+        self.verifies = 0
         self.fail = False
+        self.fail_transaction = ""
         self.unreachable = False
         self.gate: asyncio.Event | None = None
 
     async def verify(self, payload, requirements):
+        self.verifies += 1
         return {"isValid": True, "payer": payload["payload"]["authorization"]["from"]}
 
     async def settle(self, payload, requirements):
@@ -103,7 +106,8 @@ class FakeFacilitator:
         if self.unreachable:
             raise httpx.ReadTimeout("facilitator timed out after submitting")
         if self.fail:
-            return {"success": False, "errorReason": "insufficient_funds", "transaction": "",
+            return {"success": False, "errorReason": "insufficient_funds",
+                    "transaction": self.fail_transaction,
                     "network": requirements["network"]}
         self.settles += 1
         return {"success": True, "transaction": f"0x{self.settles:064x}",
@@ -1057,6 +1061,103 @@ async def test_payments_of_a_switched_off_rail_never_block_the_reconciler(anon: 
     result = await agent_payments.reconcile(limit=2)
     assert (result.failed, result.closed) == (1, 1)
     assert (await _status(stuck.id), await _status(credit.id)) == ("failed", "expired")
+
+
+async def test_an_x402_payment_must_name_this_request(anon: AsyncClient, payments_on, facilitator):
+    from mpp.x402 import decode_payment_signature, encode_payment_signature
+
+    challenge = await anon.get(f"/call/{EP}?aweme_id=7")
+    credential, _ = _x402_credential(challenge)
+    payload = decode_payment_signature(credential)
+    for resource in (None, {"url": "https://registry.test/call/tikhub.other?aweme_id=7"}):
+        if resource is None:
+            payload.pop("resource", None)
+        else:
+            payload["resource"] = resource
+        r = await anon.get(f"/call/{EP}?aweme_id=7",
+                           headers={"PAYMENT-SIGNATURE": encode_payment_signature(payload)})
+        assert r.status_code == 402 and r.json()["detail"]["reason"] == "invalid_challenge", r.text
+    assert (facilitator.verifies, facilitator.settles) == (0, 0)
+
+
+async def test_a_malformed_x402_payment_is_refused_before_the_facilitator(anon: AsyncClient,
+                                                                          payments_on, facilitator):
+    import base64
+    import json
+
+    from mpp.x402 import decode_payment_signature
+
+    challenge = await anon.get(f"/call/{EP}?aweme_id=7")
+    credential, _ = _x402_credential(challenge)
+    no_accepted = decode_payment_signature(credential)
+    no_accepted.pop("accepted")
+    no_expiry = decode_payment_signature(credential)
+    no_expiry["payload"]["authorization"].pop("validBefore")
+    for payload in (no_accepted, no_expiry):
+        header = base64.b64encode(json.dumps(payload).encode()).decode()
+        r = await anon.get(f"/call/{EP}?aweme_id=7", headers={"PAYMENT-SIGNATURE": header})
+        assert r.status_code == 402 and r.json()["detail"]["reason"] == "malformed_credential", r.text
+    assert facilitator.verifies == 0
+
+
+async def test_payment_headers_never_reach_upstream_whichever_rails_are_on(payments_on, facilitator):
+    agent_payments.configure([X402Rail(
+        pay_to=RECIPIENT, network="eip155:84532", asset=X402_ASSET, asset_name="USDC",
+        asset_version="2", facilitator_url="https://facilitator.invalid", max_timeout_s=120,
+        facilitator=facilitator)])
+    assert agent_payments.consumes("Authorization", "Payment id=1")
+    assert agent_payments.consumes("PAYMENT-SIGNATURE", "x") and agent_payments.consumes("X-Payment", "x")
+    assert not agent_payments.consumes("Authorization", "Bearer upstream-key")
+
+
+async def test_a_wallet_whose_team_was_deleted_gets_a_new_team(anon: AsyncClient, payments_on):
+    from sqlmodel import delete
+
+    account = Account.create()
+    challenge = await anon.get(f"/call/{EP}?aweme_id=7")
+    credential, payer = _x402_credential(challenge, account)
+    assert (await anon.get(f"/call/{EP}?aweme_id=7",
+                           headers={"PAYMENT-SIGNATURE": credential})).status_code == 200
+    old_org = await _payer_org(payer)
+    async with session_maker() as db:
+        await db.execute(delete(AgentPayer).where(AgentPayer.address == payer))
+        await db.execute(delete(Membership).where(Membership.org_id == old_org))
+        await db.commit()
+    credential, _ = _x402_credential(challenge, account)
+    r = await anon.get(f"/call/{EP}?aweme_id=7", headers={"PAYMENT-SIGNATURE": credential})
+    assert r.status_code == 200, r.text
+    assert await _payer_org(payer) != old_org
+
+
+async def test_the_reconciler_credits_a_transfer_larger_than_asked(anon: AsyncClient, facilitator,
+                                                                  evm):
+    row = await _stuck(anon, facilitator)
+    nonce = row.proof_id.rsplit(":", 1)[-1]
+    evm.authorizations[(topic_address(row.payer_address), nonce)] = "0xmore"
+    evm.pays("0xmore", asset=row.asset, payer=row.payer_address, to=row.pay_to, amount=FLOOR + 1)
+    assert (await agent_payments.reconcile()).landed == 1
+    assert await _balance(row.payer_address) == FLOOR
+
+
+async def test_a_failed_settlement_that_names_a_transaction_is_left_to_the_chain(
+        anon: AsyncClient, payments_on, facilitator):
+    facilitator.fail, facilitator.fail_transaction = True, "0x" + "ab" * 32
+    challenge = await anon.get(f"/call/{EP}?aweme_id=7")
+    credential, _ = _x402_credential(challenge)
+    r = await anon.get(f"/call/{EP}?aweme_id=7", headers={"PAYMENT-SIGNATURE": credential})
+    assert r.status_code == 503, r.text
+    assert (await _row()).status == "settling"
+
+
+def test_usage_priced_tools_are_not_payable_with_a_wallet():
+    from treg.application.call.resolve import wallet_refusal
+
+    cat = catalog_store.load()
+    usage = [ep for ep in cat.by_id.values()
+             if "usage" in (ep.get("settle") or {})
+             or "usage" in ((cat.cost_view(ep.get("cost"), ep["provider"]) or {}).get("settle") or {})]
+    assert usage and all(wallet_refusal(ep) for ep in usage)
+    assert any(wallet_refusal(ep) == "usage_priced" for ep in usage)
 
 
 # ---- the Coinbase facilitator's API key -----------------------------------------------------------

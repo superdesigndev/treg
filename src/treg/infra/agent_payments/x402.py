@@ -65,28 +65,35 @@ class X402Rail:
         return [("PAYMENT-REQUIRED", encode_payment_required(required))]
 
     async def verify(self, credential: str, offer: Offer) -> Verified:
-        from mpp.x402 import InvalidHeaderError, decode_payment_signature
+        from mpp.x402 import X402FormatError, decode_payment_signature
 
         if credential == LEGACY_HEADER:
             raise PaymentRejected("unsupported_version", "only x402 version 2 is accepted")
         try:
             payload = decode_payment_signature(credential)
-        except InvalidHeaderError as exc:
+        except X402FormatError as exc:  # also the parent of InvalidHeaderError
             raise PaymentRejected("malformed_credential", "PAYMENT-SIGNATURE cannot be decoded") from exc
         requirements = self._requirements(offer)
-        accepted = payload["accepted"]
-        if (accepted["scheme"], accepted["network"], accepted["asset"].lower(), accepted["amount"],
-                accepted["payTo"].lower()) != (requirements["scheme"], requirements["network"],
-                                               requirements["asset"].lower(), requirements["amount"],
-                                               requirements["payTo"].lower()):
+        try:
+            accepted = payload["accepted"]
+            offered = (accepted["scheme"], accepted["network"], str(accepted["asset"]).lower(),
+                       accepted["amount"], str(accepted["payTo"]).lower())
+            resource_url = (payload.get("resource") or {}).get("url")
+            authorization = payload["payload"].get("authorization") or {}
+        except (KeyError, TypeError, AttributeError) as exc:
+            raise PaymentRejected("malformed_credential", "PAYMENT-SIGNATURE is not an x402 v2 payment") from exc
+        if offered != (requirements["scheme"], requirements["network"], requirements["asset"].lower(),
+                       requirements["amount"], requirements["payTo"].lower()):
             raise PaymentRejected("invalid_challenge", "this payment does not match the offer")
-        resource = payload.get("resource")
-        if resource is not None and resource["url"] != offer.resource_url:
-            raise PaymentRejected("invalid_challenge", "this payment was issued for another request")
-        authorization = payload["payload"].get("authorization") or {}
+        if resource_url != offer.resource_url:
+            raise PaymentRejected("invalid_challenge", "this payment was not issued for this request")
         sender, nonce = str(authorization.get("from") or ""), str(authorization.get("nonce") or "")
         if not sender or not nonce:
             raise PaymentRejected("malformed_credential", "the authorization names no payer or nonce")
+        try:
+            valid_before = datetime.fromtimestamp(int(authorization.get("validBefore")), UTC)
+        except (TypeError, ValueError, OverflowError) as exc:
+            raise PaymentRejected("malformed_credential", "the authorization has no validBefore") from exc
         try:
             result = await self._facilitator.verify(payload, requirements)
         except Exception as exc:
@@ -97,10 +104,6 @@ class X402Rail:
         if payer != sender.lower():
             raise PaymentRejected("verification_failed", "the verified payer is not the signer")
         proof = f"x402:{self.network}:{self._asset.lower()}:{payer}:{nonce.lower()}"
-        try:
-            valid_before = datetime.fromtimestamp(int(authorization.get("validBefore")), UTC)
-        except (TypeError, ValueError, OverflowError) as exc:
-            raise PaymentRejected("malformed_credential", "the authorization has no validBefore") from exc
         return Verified(protocol=self.protocol, network=self.network, proof_id=proof, payer=payer,
                         amount_micro=offer.amount_micro, asset=self._asset.lower(),
                         pay_to=self._pay_to.lower(), expires_at=valid_before.replace(tzinfo=None),
@@ -118,6 +121,9 @@ class X402Rail:
         transaction = result.get("transaction") or ""
         if result.get("errorReason") == "settlement_pending" or (result["success"] and not transaction):
             raise PaymentRejected("settlement_unknown", "the settlement is still pending")
+        if not result["success"] and transaction:
+            # A failure that names a transaction may still have moved the money; the chain decides.
+            raise PaymentRejected("settlement_unknown", result.get("errorReason") or "settlement unclear")
         if not result["success"]:
             raise PaymentRejected("settlement_failed", result.get("errorReason") or "settlement failed")
         return Settlement(reference=transaction,
