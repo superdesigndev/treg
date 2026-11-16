@@ -2,10 +2,12 @@
 
 from __future__ import annotations
 
+import base64
+import binascii
 import hashlib
 import hmac
 import re
-from urllib.parse import parse_qsl, urlencode, urlsplit
+from urllib.parse import parse_qsl, unquote_plus, urlencode, urlsplit
 
 from cryptography.fernet import InvalidToken
 from fastapi import APIRouter, Cookie, Depends, Form, Header, HTTPException, Query, Request, Response
@@ -31,6 +33,7 @@ from ..models import User
 from .auth_helpers import (
     _is_https, _remember_oauth_return, _same_origin, require_managed_cli, trusted_public_base,
 )
+from .signup_cookies import REFERRAL_COOKIE
 
 app = APIRouter()
 email_router = app
@@ -931,6 +934,8 @@ _CONSENT_CSS = """
 .consent label{display:block;font-size:13px;font-weight:500;color:var(--ink);margin:0 0 6px}
 .consent select{width:100%;min-height:46px;padding:0 12px;border-radius:12px;font:14px var(--sans);
   background:var(--surface);color:var(--ink);border:1px solid var(--line2);margin-bottom:18px}
+.consent .newteam{min-height:46px;padding:12px;border-radius:12px;font-size:13.5px;line-height:1.45;
+  box-sizing:border-box;background:var(--surface);color:var(--ink);border:1px solid var(--line2);margin:0 0 18px}
 .consent .row{display:flex;gap:10px}
 .consent button{flex:1;min-height:46px;padding:0 18px;border-radius:999px;font:500 14px var(--sans);cursor:pointer;
   border:1px solid var(--line2);background:var(--surface);color:var(--ink);
@@ -944,7 +949,7 @@ _CONSENT_CSS = """
 
 
 def _consent_page(*, client_name: str, client_uri: str, user_email: str, teams: list,
-                  hidden: dict, unverified: bool, scope: str) -> HTMLResponse:
+                  hidden: dict, unverified: bool, scope: str, new_team: str = "") -> HTMLResponse:
     """The one place a human sees what they are granting — so it says it in words, not scopes.
 
     Deliberately plain about the two things that cost money or leak data: this client will be able to
@@ -982,6 +987,14 @@ def _consent_page(*, client_name: str, client_uri: str, user_email: str, teams: 
         (mcp_oauth.CALL_SCOPE, "Use the API keys and connections your team has registered, without seeing them"),
         (mcp_oauth.READ_SCOPE, "Read the team's balance, its own tools and the provider resources it owns"),
     ) if perm in held)
+    if teams:
+        picker = (f'<label for="org_id">Which team?</label>'
+                  f'<select id="org_id" name="org_id" required>{opts}</select>')
+    else:
+        picker = ('<label>Team</label>'
+                  f'<p class="newteam">Allowing creates your team, <b>{_h.escape(new_team)}</b>. '
+                  'You can rename it in the dashboard.</p>'
+                  '<input type="hidden" name="org_id" value="0"/>')
     who = _h.escape(client_name or "An application")
     where = (f' <span class="who">({_h.escape(client_uri)})</span>' if client_uri else "")
     warn = ("" if not unverified else
@@ -995,8 +1008,7 @@ def _consent_page(*, client_name: str, client_uri: str, user_email: str, teams: 
         f'<p class="who">Signed in as {_h.escape(user_email)}</p>'
         f'<ul class="grants">{grants}</ul>'
         f'<form method="post" action="/oauth/authorize">{fields}'
-        f'<label for="org_id">Which team?</label>'
-        f'<select id="org_id" name="org_id" required>{opts}</select>'
+        f"{picker}"
         f'<div class="row">'
         f'<button type="submit" name="decision" value="deny">Cancel</button>'
         f'<button type="submit" name="decision" value="allow" class="primary">Allow</button>'
@@ -1117,13 +1129,15 @@ async def oauth_authorize(
             # The team picker. A person may belong to several, and which one this client may spend
             # from is a decision for the human here — not something resolved per call later.
             "teams": view.teams,
+            "new_team": view.new_team or None,
             "approve_with": "POST /oauth/authorize with the same parameters plus org_id",
         }
     if view.client_id == mcp_oauth.SHEETS_CLIENT_ID:
         return _sheets_consent_page(user_email=view.user_email, teams=view.teams, hidden=hidden)
     return _consent_page(client_name=view.client_name, client_uri=view.client_uri,
                          user_email=view.user_email, teams=view.teams, hidden=hidden,
-                         unverified=(view.client_kind == "dcr"), scope=view.scope)
+                         unverified=(view.client_kind == "dcr"), scope=view.scope,
+                         new_team=view.new_team)
 
 
 @app.post("/oauth/authorize", include_in_schema=False)
@@ -1160,6 +1174,9 @@ async def oauth_authorize_approve(
             resource=resource,
             org_id=org_id,
             session_cookie=treg_session,
+            ad_cookie=request.cookies.get("treg_ad") or "",
+            utm_cookie=request.cookies.get("treg_utm") or "",
+            referral_cookie=request.cookies.get(REFERRAL_COOKIE) or "",
         )
     except auth_use_cases.OAuthServerError as exc:
         return _oauth_server_failure(exc, redirect_uri, state)
@@ -1188,18 +1205,38 @@ async def oauth_revoke(token: str = Form(default="")) -> JSONResponse:
     return JSONResponse({"ok": True})
 
 
+def _basic_client_credentials(authorization: str) -> tuple[str, str] | None:
+    """`client_secret_basic` (RFC 6749 2.3.1): both halves are form-urlencoded before base64."""
+    scheme, _, value = authorization.partition(" ")
+    if scheme.lower() != "basic" or not value.strip():
+        return None
+    try:
+        decoded = base64.b64decode(value.strip(), validate=True).decode()
+    except (binascii.Error, UnicodeDecodeError):
+        return None
+    client_id, sep, secret = decoded.partition(":")
+    return (unquote_plus(client_id), unquote_plus(secret)) if sep else None
+
+
 @app.post("/oauth/token", include_in_schema=False)
 async def oauth_token(
     grant_type: str = Form(default=""), code: str = Form(default=""),
     redirect_uri: str = Form(default=""), client_id: str = Form(default=""),
     code_verifier: str = Form(default=""), resource: str = Form(default=""),
-    refresh_token: str = Form(default=""),
+    refresh_token: str = Form(default=""), client_secret: str = Form(default=""),
+    authorization: str = Header(default=""),
 ):
     """Exchange a code for an access token.
 
     Errors here are JSON, not redirects: this is a back-channel call from the client itself, and
     there is no browser to send anywhere.
     """
+    basic = _basic_client_credentials(authorization)
+    if basic is not None:
+        if (client_id and client_id != basic[0]) or client_secret:
+            return _oauth_json_error(auth_use_cases.OAuthServerError(
+                "invalid_request", "use one client authentication method"))
+        client_id, client_secret = basic
     try:
         token = await auth_use_cases.exchange_oauth_token(
             grant_type=grant_type,
@@ -1209,9 +1246,13 @@ async def oauth_token(
             code_verifier=code_verifier,
             resource=resource,
             refresh_token=refresh_token,
+            client_secret=client_secret,
         )
     except auth_use_cases.OAuthServerError as exc:
-        return _oauth_json_error(exc)
+        response = _oauth_json_error(exc)
+        if exc.error == "invalid_client" and basic is not None:
+            response.headers["WWW-Authenticate"] = 'Basic realm="treg"'
+        return response
     return JSONResponse(token, headers={"Cache-Control": "no-store", "Pragma": "no-cache"})
 
 

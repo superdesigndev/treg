@@ -22,6 +22,7 @@ from sqlmodel import select
 
 from .. import audit, crypto, email as email_sender, ratestore
 from ..application.onboard import demo as demo_seed
+from ..application.onboard import first_run
 from ..infra import db as database
 from ..infra import turnstile
 from ..config import get_settings
@@ -222,6 +223,7 @@ class OAuthAuthorizationView:
     user_email: str
     teams: list[dict]
     scope: str = ""
+    new_team: str = ""   # a new account: the first team approving makes, by its likely name
 
 
 async def _check_browser(
@@ -931,6 +933,28 @@ def _sheets_client() -> OAuthClient | None:
                        redirect_uris=uris, scope=mcp_oauth.SHEETS_SCOPE)
 
 
+def _m365_client() -> OAuthClient | None:
+    """"Microsoft 365 Copilot", the first-party confidential client of treg's declarative agent.
+    Not a table row: its one redirect URI is Microsoft's, and it exists only while
+    `m365_client_secret` is set."""
+    if not get_settings().m365_client_secret:
+        return None
+    return OAuthClient(client_id=mcp_oauth.M365_CLIENT_ID, kind="first_party",
+                       client_name=_FIRST_PARTY_NAMES[mcp_oauth.M365_CLIENT_ID], client_uri="",
+                       logo_uri="", redirect_uris=[mcp_oauth.M365_REDIRECT_URI], scope="")
+
+
+_FIRST_PARTY_NAMES = {mcp_oauth.SHEETS_CLIENT_ID: "treg for Sheets",
+                      mcp_oauth.M365_CLIENT_ID: "Microsoft 365 Copilot"}
+
+
+def _authenticate_client(issued_to: str, client_secret: str) -> None:
+    """A confidential client proves itself with its secret on every token request; a public client
+    has none, its code is bound by PKCE, and a secret it sends is ignored."""
+    if mcp_oauth.client_secret_matches(issued_to, client_secret) is False:
+        raise OAuthServerError("invalid_client", "client authentication failed", status=401)
+
+
 async def _resolve_oauth_client(client_id: str, db: AsyncSession) -> OAuthClient | None:
     """One client row, whichever door it came through.
 
@@ -940,6 +964,8 @@ async def _resolve_oauth_client(client_id: str, db: AsyncSession) -> OAuthClient
     """
     if client_id == mcp_oauth.SHEETS_CLIENT_ID:
         return _sheets_client()
+    if client_id == mcp_oauth.M365_CLIENT_ID:
+        return _m365_client()
     row = (await db.execute(select(OAuthClient).where(OAuthClient.client_id == client_id))
            ).scalar_one_or_none()
     fresh_enough = row is not None and (
@@ -1099,7 +1125,9 @@ async def prepare_oauth_authorization(
                 # that matters - "which of these can actually pay?" - invisible at the moment of choosing.
                 teams.append({"org_id": org.id, "slug": org.slug, "role": membership.role,
                               "balance_usd": round((org.balance_micro or 0) / 1_000_000, 4)})
-        if not teams:
+        new_team = (first_run.team_names(user.email)[0]
+                    if _first_team_due(client, user, memberships, sso_org_id) else "")
+        if not teams and not new_team:
             raise _redirect_refusal(
                 "access_denied", "this account is not a member of any team",
             )
@@ -1111,13 +1139,21 @@ async def prepare_oauth_authorization(
             user_email=user.email,
             teams=teams,
             scope=granted,
+            new_team=new_team,
         )
+
+
+def _first_team_due(client: OAuthClient, user: User, memberships: list, sso_org_id: int | None) -> bool:
+    """A brand-new account reaches consent before the dashboard has made its first team (the parked
+    authorization resumes straight after sign-in), so consent makes it, as the dashboard would."""
+    return (not memberships and not user.onboarded and sso_org_id is None
+            and client.client_id != mcp_oauth.SHEETS_CLIENT_ID)
 
 
 async def approve_oauth_authorization(
     *, decision: str, client_id: str, redirect_uri: str, response_type: str, scope: str,
     code_challenge: str, code_challenge_method: str, resource: str, org_id: int,
-    session_cookie: str,
+    session_cookie: str, ad_cookie: str = "", utm_cookie: str = "", referral_cookie: str = "",
 ) -> str:
     async with database.session_maker() as db:
         client = await _authorize_request(
@@ -1136,6 +1172,18 @@ async def approve_oauth_authorization(
         if user is None:
             raise OAuthServerError("access_denied", "not signed in", status=401)
         sso_org_id = (sess.read_session_claims(session_cookie) or {}).get("sso_org_id")
+        memberships = (await db.execute(
+            select(Membership).where(Membership.user_id == user.id))).scalars().all()
+        first_team_due = not org_id and _first_team_due(client, user, memberships, sso_org_id)
+    if first_team_due:
+        # Outside the session above: the first run opens and commits its own.
+        try:
+            made = await first_run.first_team(user, ad_cookie=ad_cookie, utm_cookie=utm_cookie,
+                                              referral_cookie=referral_cookie)
+        except signup.SignupError as exc:
+            raise _redirect_refusal("access_denied", f"could not create your team ({exc.kind})") from exc
+        org_id = made.get("org_id") or 0
+    async with database.session_maker() as db:
         if client.client_id == mcp_oauth.SHEETS_CLIENT_ID and not org_id:
             # A Sheets grant names no team at consent: each request picks one with X-Treg-Org. The
             # token still carries a DEFAULT team, the person's first, for a request that names none.
@@ -1167,7 +1215,8 @@ async def approve_oauth_authorization(
         return code.code
 
 
-async def _refresh_grant(*, refresh_token: str, client_id: str, resource: str) -> dict:
+async def _refresh_grant(*, refresh_token: str, client_id: str, resource: str,
+                         client_secret: str) -> dict:
     """Exchange a refresh token for a new access token, ROTATING the refresh token as we go.
 
     The retired row is kept, not deleted. That is what makes a replay recognisable: a deleted token
@@ -1181,6 +1230,8 @@ async def _refresh_grant(*, refresh_token: str, client_id: str, resource: str) -
             OAuthRefresh.token_hash == crypto.hash_token(refresh_token)))).scalar_one_or_none()
         if row is None:
             raise OAuthServerError("invalid_grant", "unknown refresh token")
+        # Before the replay check: without the secret, a copied refresh token cannot even revoke.
+        _authenticate_client(row.client_id, client_secret)
 
         if row.retired_at is not None:
             # Already spent. Either a client retried after a dropped response, or someone else has a
@@ -1269,11 +1320,12 @@ async def _refresh_grant(*, refresh_token: str, client_id: str, resource: str) -
 
 async def exchange_oauth_token(
     *, grant_type: str, code: str, redirect_uri: str, client_id: str, code_verifier: str,
-    resource: str, refresh_token: str,
+    resource: str, refresh_token: str, client_secret: str = "",
 ) -> dict:
     if grant_type == "refresh_token":
         return await _refresh_grant(
             refresh_token=refresh_token, client_id=client_id, resource=resource,
+            client_secret=client_secret,
         )
     if grant_type != "authorization_code":
         raise OAuthServerError(
@@ -1295,6 +1347,7 @@ async def exchange_oauth_token(
             raise OAuthServerError("invalid_grant", "code expired")
         if client_id and client_id != row.client_id:
             raise OAuthServerError("invalid_grant", "code was issued to a different client")
+        _authenticate_client(row.client_id, client_secret)
         if redirect_uri != row.redirect_uri:
             raise OAuthServerError(
                 "invalid_grant", "redirect_uri does not match the one the code was issued for",
@@ -1363,7 +1416,7 @@ async def list_oauth_grants(user_id: int) -> list[dict]:
             out.append({
                 "grant": row.family_id,
                 "client": (client.client_name if client else "")
-                          or ("treg for Sheets" if row.client_id == mcp_oauth.SHEETS_CLIENT_ID else row.client_id),
+                          or _FIRST_PARTY_NAMES.get(row.client_id, row.client_id),
                 "team": org.slug if org else None,
                 "team_name": org.name if org else None,
                 "granted": grant.granted_at.isoformat(timespec="seconds") if grant else None,

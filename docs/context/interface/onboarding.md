@@ -30,6 +30,8 @@ account's one first run by flipping `User.onboarded`, so a second tab gets `crea
 makes nothing; a refused create hands the claim back so a retry can make it. The team goes through
 the ordinary signup door (`signup.create_org`), so signup credit, utm, ads attribution and referral
 behave as for a team the user named. Declining an invite on first run also goes through `autoTeam`.
+An MCP client's OAuth consent makes the same first team for a new account that signs in mid-authorization
+(architecture/mcp-oauth.md, "Sign-in mid-authorization").
 
 When `created: true`, the welcome dialog opens over the view the user landed on; Getting started
 carries the same agent picker and setup line for anyone who skipped it. A use-case landing's

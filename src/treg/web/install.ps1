@@ -129,17 +129,21 @@ function Get-FileKind([string]$Path) {
   if ($Head[0] -eq 0x3C) { return 'html' }
   return 'other'
 }
-# Saves the archive at $Url to $Zip and checks it against the SHA256SUMS at $SumsUrl: nothing when
-# it matches, else the step that failed and why.
-function Get-Release([string]$Url, [string]$SumsUrl, [string]$Zip, [string]$Archive) {
-  $SumsFile = "$Zip.sums"
+# Saves the archive at $Url to $Zip and checks it against $Want, the sum the registry named, or
+# without one the release's SHA256SUMS at $SumsUrl: nothing when it matches, else the step that
+# failed and why.
+function Get-Release([string]$Url, [string]$SumsUrl, [string]$Zip, [string]$Archive, [string]$Want) {
   $Kind = Save-Url $Url $Zip
-  if (-not $Kind) { $Kind = Save-Url $SumsUrl $SumsFile }
   if ($Kind) { return @('download', $Kind) }
-  $Want = ([System.IO.File]::ReadAllText($SumsFile) -split "`n" |
-    Where-Object { $_ -match "\s\*?$([regex]::Escape($Archive))\s*$" } |
-    ForEach-Object { ($_ -split '\s+')[0] } | Select-Object -First 1)
-  if (-not $Want) { return @('checksum', 'sums_missing') }
+  if (-not $Want) {
+    $SumsFile = "$Zip.sums"
+    $Kind = Save-Url $SumsUrl $SumsFile
+    if ($Kind) { return @('download', $Kind) }
+    $Want = ([System.IO.File]::ReadAllText($SumsFile) -split "`n" |
+      Where-Object { $_ -match "\s\*?$([regex]::Escape($Archive))\s*$" } |
+      ForEach-Object { ($_ -split '\s+')[0] } | Select-Object -First 1)
+    if (-not $Want) { return @('checksum', 'sums_missing') }
+  }
   if ($Want.ToLower() -ne (Get-Sha256 $Zip)) { return @('checksum', "got_$(Get-FileKind $Zip)") }
 }
 
@@ -162,15 +166,16 @@ try {
     $Zip = Join-Path $Tmp $Manifest.archive
     $Reason = 'download'
     $Watch = [System.Diagnostics.Stopwatch]::StartNew()
-    $Failed = Get-Release $Manifest.url $Manifest.checksums_url $Zip $Manifest.archive
+    $Failed = Get-Release $Manifest.url $Manifest.checksums_url $Zip $Manifest.archive "$($Manifest.sha256)"
     if (-not $Failed) {
       $Source = 'primary'
     } else {
       $Reason, $Detail = $Failed
       $Seconds = [int]$Watch.Elapsed.TotalSeconds
-      if ($Manifest.mirror_url -and $Manifest.mirror_checksums_url) {
+      # The mirror only with the registry's sum: nothing it serves is trusted on its own.
+      if ($Manifest.mirror_url -and $Manifest.sha256) {
         Write-Host "That failed ($Detail); trying the mirror..."
-        $MirrorFailed = Get-Release $Manifest.mirror_url $Manifest.mirror_checksums_url $Zip $Manifest.archive
+        $MirrorFailed = Get-Release $Manifest.mirror_url '' $Zip $Manifest.archive $Manifest.sha256
         if ($MirrorFailed) { $MirrorDetail = $MirrorFailed[1] } else { $Source = 'mirror' }
       }
       if (-not $Source) {
