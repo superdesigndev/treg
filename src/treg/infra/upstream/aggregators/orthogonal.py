@@ -16,6 +16,7 @@ import json
 import re
 
 from .... import jsontext
+from .. import pathsegment
 from . import AggregatorRequest, AggregatorResult
 
 BASE = "https://api.orthogonal.com/v1"
@@ -26,7 +27,7 @@ def build(route, key: str, query: list[tuple[str, str]] | dict, body: bytes | No
           path_params: dict | None = None) -> AggregatorRequest:
     path = route.agg_path
     for k, v in (path_params or {}).items():
-        path = path.replace("{" + k + "}", str(v))
+        path = path.replace("{" + k + "}", pathsegment.encode(v))
     payload: dict = {"api": route.agg_slug, "path": path}
     items = list(query.items()) if isinstance(query, dict) else list(query)
     if items:

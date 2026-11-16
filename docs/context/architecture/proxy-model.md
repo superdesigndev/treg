@@ -3,6 +3,7 @@ title: The proxy - faithful credential-injecting relay + tool resolution
 status: shipped
 sources:
   - src/treg/infra/upstream/relay.py
+  - src/treg/infra/upstream/pathsegment.py
   - src/treg/jsontext.py
   - src/treg/infra/upstream/ssrf.py
   - src/treg/api.py
@@ -285,10 +286,14 @@ resolution is shared.
 ### Catalog targets
 
 A live catalog row enters `_resolve_marketplace_call` and its credential ladder.
-`_marketplace_upstream` percent-encodes placeholder values but preserves a value already containing
-a valid `%HH` escape (an encoded Search Console property id must not become `%253A`). Raw `@` stays
+`_marketplace_upstream` places every placeholder value as exactly one path segment
+(`infra/upstream/pathsegment.py`): a value containing a valid `%HH` escape is decoded first
+(`unquote_to_bytes`, so non-UTF-8 bytes survive) and then encoded once, so an encoded Search Console
+property id does not become `%253A` and an encoded `/`, `?` or `#` stays escaped. Raw `@` stays
 literal: it is legal in a path segment and some email-path APIs reject `%40`. Slashes, query and
-fragment delimiters and invalid `%` stay escaped. A catalog `host` on a provider that opted into
+fragment delimiters and invalid `%` are escaped. A value that decodes to `.` or `..` is refused
+with `catalog_parameter_invalid` (400) before any hold, since URL normalization would remove it as
+a dot segment. The overflow road fills Orthogonal's `path` with the same `pathsegment.encode`. A catalog `host` on a provider that opted into
 `catalog_targets` must resolve through `OAuthProvider.profile_for_catalog_host` to an exact
 approved HTTPS base URL, which keeps its path prefix and supplies the binding; anything else is a
 treg 502 before reserve, so catalog data cannot redirect an injected credential.
