@@ -275,6 +275,15 @@ async def _scrapecreators(c, key):
     return {"value": d.get("creditCount"), "unit": "credits", "note": ""}
 
 
+async def _bridgly(c, key):
+    d = await _get(c, "https://api.bridgly.app/billing",
+                   headers={"Authorization": f"Bearer {key}"})
+    # Negative is real: a list that returns more results than asked is billed in full, and once the
+    # balance is below zero every call answers 402, so it exhausts like zero.
+    balance = _finite(d.get("credits")) if isinstance(d, dict) else None
+    return {"value": balance, "unit": "credits", "note": "prepaid credit balance"}
+
+
 async def _serpapi(c, key):
     d = await _get(c, "https://serpapi.com/account.json", params={"api_key": key})
     left = d.get("total_searches_left", d.get("plan_searches_left"))
@@ -1122,6 +1131,7 @@ BALANCE_ROUTES = {
     "spidercloud": _spidercloud,
     "scrapegraphai": _scrapegraphai,
     "scrapecreators": _scrapecreators,
+    "bridgly": _bridgly,
     "serpapi": _serpapi,
     "moz": _moz,
     "seranking": _seranking,

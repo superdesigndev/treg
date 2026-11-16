@@ -258,6 +258,44 @@ async def test_openmart_negative_balance_is_exact_and_exhausts():
     assert state.health == "exhausted" and state.exhausted_until is not None
 
 
+async def test_bridgly_balance_uses_free_billing_route():
+    def probe(request):
+        assert request.method == "GET"
+        assert request.url == "https://api.bridgly.app/billing"
+        assert request.headers["authorization"] == "Bearer test-key"
+        return httpx.Response(200, json={
+            "credits": 2500,
+            "rateLimit": {"requestsPerSecond": 2, "requestsPerMinute": 30, "creditsRemaining": 2500},
+            "hasPaymentMethod": False,
+            "autoTopUpEnabled": False,
+            "autoTopUpThreshold": 0,
+            "autoTopUpAmountUsd": 10,
+        })
+
+    async with httpx.AsyncClient(transport=httpx.MockTransport(probe)) as client:
+        row = await collectors._bridgly(client, "test-key")
+    assert row == {"value": 2500, "unit": "credits", "note": "prepaid credit balance"}
+
+
+async def test_bridgly_negative_balance_is_exact_and_exhausts():
+    # A list billed past its hold can take Bridgly below zero; every call then answers 402.
+    row = await _serve_json(collectors._bridgly, {"credits": -4})
+    assert row["value"] == -4 and not row.get("informational")
+    snap = sweep.snapshot_from("bridgly", row)
+    state = policy.latest_state(policy.default_policy("bridgly", has_key=True), snap)
+    assert state.health == "exhausted" and state.exhausted_until is not None
+
+
+@pytest.mark.parametrize("body", [
+    b'{}', b'{"credits": null}', b'{"credits": true}', b'{"credits": "2500"}', b'{"credits": NaN}',
+])
+async def test_bridgly_balance_is_unknown_for_invalid_values(body):
+    async with httpx.AsyncClient(transport=httpx.MockTransport(
+        lambda _request: httpx.Response(200, content=body)
+    )) as client:
+        row = await collectors._bridgly(client, "test-key")
+    assert row["value"] is None
+
 
 async def test_tavily_capacity_uses_key_credit_remainder():
     def probe(request):

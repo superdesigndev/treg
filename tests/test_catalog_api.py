@@ -352,12 +352,14 @@ async def test_search_finds_the_job_across_providers_best_first(clients: AsyncCl
 
     top = [e["id"] for e in rows[:6]]
     assert top[0] == "treg.tiktok.video.comments", "the routed endpoint for the job comes first"
-    assert set(top[1:]) == {
+    # Six providers sell this job; discovery shows MAX_ROUTED_CHILDREN of them under the routed row.
+    assert len(set(top[1:])) == 5 and set(top[1:]) <= {
         "crawl4ai.tiktok.video.comments",
         "anyapi.tiktok.video.comments",
         "justoneapi.tiktok.video.comments",
         "tikhub.tiktok.video.comments",
         "scrapecreators.tiktok.video.comments",
+        "bridgly.tiktok.video.comments",
     }
     # anyapi is the fourth seller of this job and ranks on price like the rest; it carries no
     # `verified` stamp yet because a vendor never stamps its own rows — the maintainers' own
