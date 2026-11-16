@@ -56,7 +56,7 @@ _DATAPLANE_DERIVED_WRITES = {
         (settle._record_first_call, "adsconv.queue"),
     ),
     "lazy_stale_hold_reap": (
-        (money.reserve_in_transaction, "reap_stale_holds"),
+        (money.reserve_returning_balance_in_transaction, "reap_stale_holds"),
         (money.reap_stale_holds, "release"),
         # A member spend refusal reaps first, so a crashed call's expired hold cannot block them.
         (reserve._enforce_member_spend_cap, "ledger.reap_stale_holds"),
@@ -128,7 +128,7 @@ _DATAPLANE_DERIVED_WRITES = {
     # A hold on a member with a daily spend limit is attributed to them in the SAME transaction
     # (revision 0102); settle and release move or drop that row with the hold.
     "member_spend_attribution": (
-        (money.reserve_in_transaction, "MemberSpend"),
+        (money.reserve_returning_balance_in_transaction, "MemberSpend"),
     ),
     # A platform call holds a renewed lease on the provider account's shared concurrency places
     # (Redis, after the DB phase ended) until its answer is read; expiry frees a crashed holder's.
@@ -315,7 +315,7 @@ _EXPECTED_DERIVED_WRITE_SITES = {
     ("application/call/service.py", "_execute_call", "return_daily_slot"),
     ("application/call/service.py", "_serve_overflow_instead", "return_daily_slot"),
     ("application/call/authorize.py", "return_daily_slot", "usage_policy.return_daily_slot"),
-    ("domain/money/__init__.py", "reserve_in_transaction", "MemberSpend"),
+    ("domain/money/__init__.py", "reserve_returning_balance_in_transaction", "MemberSpend"),
     ("application/call/reserve.py", "_platform_reserve",
      "billing.maybe_schedule_autotopup"),
     ("application/call/settle.py", "_record_first_call", "adsconv.queue"),
@@ -367,7 +367,8 @@ _EXPECTED_DERIVED_WRITE_SITES = {
     ("domain/governance/publicdemo.py", "enforce_public_demo_ip_cap", "ratestore.rate_check"),
     ("domain/governance/publicdemo.py", "enforce_public_demo_ip_cap", "ratestore.sweep"),
     ("domain/money/__init__.py", "reap_stale_holds", "release"),
-    ("domain/money/__init__.py", "reserve_in_transaction", "reap_stale_holds"),
+    ("domain/money/__init__.py", "reserve_returning_balance_in_transaction",
+     "reap_stale_holds"),
     ("application/call/reserve.py", "_enforce_member_spend_cap", "ledger.reap_stale_holds"),
 }
 
@@ -475,7 +476,7 @@ def test_dataplane_derived_write_allowlist_is_explicit_and_live() -> None:
 @pytest.mark.parametrize(
     "owner",
     [
-        money.reserve_in_transaction,
+        money.reserve_returning_balance_in_transaction,
         # The private bodies, not the public delegating wrappers: settle_in_transaction and
         # release_in_transaction are 3-line pass-throughs, so inspecting them proves nothing —
         # a commit injected into the real logic sailed past the wrapper-keyed version of this test.
@@ -503,6 +504,7 @@ def test_call_money_transaction_primitives_never_commit(owner) -> None:
 
 
 def test_lazy_reap_keeps_its_independent_committing_boundary() -> None:
-    assert "reap_stale_holds" in _call_names(inspect.getsource(money.reserve_in_transaction))
+    assert "reap_stale_holds" in _call_names(
+        inspect.getsource(money.reserve_returning_balance_in_transaction))
     assert "release" in _call_names(inspect.getsource(money.reap_stale_holds))
     assert "db.commit" in _call_names(inspect.getsource(money.release))

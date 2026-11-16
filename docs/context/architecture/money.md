@@ -42,6 +42,7 @@ sources:
   - tests/test_catalog_v2_runtime.py
   - src/treg/catalog/tomba.yaml
   - src/treg/application/asynctasks.py
+  - src/treg/application/hold_sweep.py
   - src/treg/alembic/versions/0017_async_task_record.py
   - src/treg/alembic/versions/0018_async_resource_ownership.py
   - src/treg/alembic/versions/0019_async_poll_failures.py
@@ -491,10 +492,22 @@ gate.
 **Margin is applied inside the module** (`with_margin`) at reserve and settle, and the rate in force
 is recorded on every entry, so a rate change cannot rewrite what a call cost.
 
-**The hold reaper is lazy**: at the top of reserve, scoped to the calling org. A crash between relay
-and settle would otherwise strand money; sweeping one org's stale holds is paid by the caller who
-benefits, and needs no scheduler or leader election. Each stale release commits independently before
-the new balance gate. Pending `AsyncTaskRecord` holds are excluded; their worker always closes them.
+**The hold reaper**: lazy at the top of reserve, scoped to the calling org, while
+`reserve_reaps_stale_holds` is on (the default). A crash between relay and settle would otherwise
+strand money. Each stale release commits independently before the new balance gate. Pending
+`AsyncTaskRecord` holds are excluded; their worker always closes them. The scan is one more statement
+inside every reserve's admitted session, the serialized part of a busy team's calls, so
+`treg-worker holds reap` (`application.hold_sweep`) does the same releases for every org on a
+schedule: it lists stale holds (`ledger.stale_holds`) and releases each in its own admitted
+`release` session. Both scans skip allowance holds, which only their own close releases. Schedule
+it every minute, then turn `reserve_reaps_stale_holds` off; the sweep and
+a lazy reap may race for one hold, and the claim closes it once. A member spend refusal still reaps
+its own team first (`_enforce_member_spend_cap`).
+
+**One statement per step.** The balance gate's UPDATE returns the new balance (`RETURNING`), so
+`_platform_reserve` hands it to `billing.maybe_schedule_autotopup` without reading the org row
+again (`reserve_returning_balance_in_transaction`; `reserve_in_transaction` returns only the id).
+The claim is one `DELETE ... RETURNING` that copies the hold's fields out (`_claim_hold`).
 
 ### Lock ordering
 
@@ -844,9 +857,8 @@ limit, and an idempotency key from the threshold crossing, so a burst of calls t
 low balance produces ONE charge.
 
 The call path asks for a refill after a reserve commits and after a refused one. Only for a team
-with auto top-up on, the committed path reloads the Org on its own session once the money lease is
-released and hands it to `maybe_schedule_autotopup`; a team without it pays no read, and a failed
-read is logged without failing the call.
+with auto top-up on, the committed path hands `maybe_schedule_autotopup` the balance the gate's
+UPDATE returned, once the money lease is released; it reads nothing.
 
 - The stamp is a compare-and-set on `autotopup_last_attempt_at`: `_lock` is per process, so only the
   first process to match the value it read proceeds and the rest return `cooldown` before any Stripe
