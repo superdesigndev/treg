@@ -1,0 +1,9 @@
+{
+  "rows": 1616,
+  "rows_approximate": true,
+  "new_jobs_credits": 571,
+  "new_jobs_credits_exact": false,
+  "stops_at_balance": true,
+  "balance": 25000,
+  "max_rows": 10000
+}

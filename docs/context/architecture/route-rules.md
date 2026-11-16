@@ -29,7 +29,8 @@ rule, since contracts no longer carry `prefer_when`. Route rules add one more so
 operator changes without a deploy: a rule set published to the shared Redis store, read by every
 worker. A rule says which providers a routed capability asks first for one segment of its calls.
 It only reorders: every other candidate still follows in the contract's order, and the waterfall
-falls through to them as before.
+falls through to them as before. Like the contract's `prefer`, it never lifts a provider that cannot
+express a filter the caller sent ([catalog.md](catalog.md), ranking).
 
 ## Where it applies
 

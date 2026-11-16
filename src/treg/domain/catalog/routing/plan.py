@@ -53,12 +53,22 @@ def _unmappable(adapter: Adapter, key: str, identity: dict[str, Any]) -> bool:
     every one of them yields nothing for this value."""
     if key in adapter.in_map:
         return False
-    unary = re.compile(rf"^(?:\w+\()+{re.escape(key)}\)+$")
     exprs = [e.replace(" ", "") for e in (adapter.in_expr or {}).values() if re.search(rf"\b{re.escape(key)}\b", e)]
-    if not exprs or not all(unary.match(e) for e in exprs):
+    chains = []  # each place `key` appears, as the `f(g(key))` call chain wrapping it there
+    for e in exprs:
+        for m in re.finditer(rf"\b{re.escape(key)}\b", e):
+            if e[:m.start()].count("'") % 2:  # a string literal ('country' as a field name), not the key
+                continue
+            start, end, depth = m.start(), m.end(), 0
+            while (call := re.search(r"\w+\($", e[:start])) is not None:
+                start, depth = call.start(), depth + 1
+            if depth == 0 or e[end:end + depth] != ")" * depth:
+                return False  # sent as given somewhere (`obj('x', key)`, `choose(key, …)`)
+            chains.append(e[start:end + depth])
+    if not chains:
         return False
-    try:
-        return all(P.evaluate(e, identity) in (None, "", []) for e in exprs)
+    try:  # a chain nested in a larger value (`list(obj('country', country_name(country)))`) counts too
+        return all(P.evaluate(c, identity) in (None, "", []) for c in chains)
     except Exception:  # noqa: BLE001 - ranking must never crash on an expression
         return False
 
@@ -129,6 +139,11 @@ def unscoped(adapter: Adapter, contract: Contract, identity: dict[str, Any]) -> 
             used.add(k)
         else:
             used.discard(k)
+    # Any other scoping key is asked by a key the contract says carries it (a company's domain by
+    # its name): the matched variant sending that key answers the same question.
+    for k, by in contract.carried_by.items():
+        if k not in stand_in and variant & set(by):
+            used.add(k)
     return tuple(k for k in contract.scoping if identity.get(k) not in (None, "") and k not in used)
 
 
@@ -330,6 +345,11 @@ def rank(candidates: list[Candidate], *, prefer: list[str] | None = None, exclud
         # order a contract default or a published rule gives it. Only the caller's own prefer
         # (`caller_prefer`) outranks health, and a team's own key is never asked later for it.
         unwell = 0 if c.health == "ok" else 1 if c.health == "slow" else 2
+        # A contract default or a published rule orders only children that ask the whole question:
+        # one that ignores a sent filter loses its place in it, so it never answers a looser question
+        # ahead of one that asks the real one. The caller's own prefer still places it.
+        if c.ignored and not caller_prefer:
+            pref = len(prefer)
         order = (pref, unwell) if caller_prefer else (unwell, pref)
         return (tier, *order, *lead,
                 c.p50_ms if c.p50_ms is not None else 10**9,

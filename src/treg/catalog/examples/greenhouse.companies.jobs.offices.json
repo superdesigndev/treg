@@ -1,0 +1,53 @@
+{
+  "offices": [
+    {
+      "id": 4120567002,
+      "name": "Amsterdam, Netherlands",
+      "location": "Amsterdam, North Holland, Netherlands",
+      "parent_id": null,
+      "child_ids": [],
+      "departments": [
+        {
+          "id": 4074069002,
+          "name": "Accounting",
+          "parent_id": 4094262002,
+          "child_ids": [],
+          "jobs": []
+        },
+        {
+          "id": 4074061002,
+          "name": "Activities Platform",
+          "parent_id": 4135582002,
+          "child_ids": [],
+          "jobs": []
+        },
+        "… 56 more item(s) truncated"
+      ]
+    },
+    {
+      "id": 4120568002,
+      "name": "Canada",
+      "location": null,
+      "parent_id": null,
+      "child_ids": [],
+      "departments": [
+        {
+          "id": 4074069002,
+          "name": "Accounting",
+          "parent_id": 4094262002,
+          "child_ids": [],
+          "jobs": []
+        },
+        {
+          "id": 4074061002,
+          "name": "Activities Platform",
+          "parent_id": 4135582002,
+          "child_ids": [],
+          "jobs": []
+        },
+        "… 56 more item(s) truncated"
+      ]
+    },
+    "… 12 more item(s) truncated"
+  ]
+}

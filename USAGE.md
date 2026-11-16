@@ -191,10 +191,12 @@ supported generation, prosody, output-format, bitrate, sample-rate, latency, and
 **How a catalogued call is served — the credential ladder, in order:**
 
 1. the team registered its own tool for that provider → that tool, that key;
-2. the team stored a secret for the provider → injected through a virtual tool;
-3. neither → **treg's own key**, metered against the team's prepaid balance.
+2. the team stored a secret for the provider → injected through a virtual tool (never for a keyless
+   public API, which has nothing to connect);
+3. neither, and the endpoint has a verified public route → **no provider key**, free;
+4. otherwise → **treg's own key**, metered against the team's prepaid balance.
 
-Rung 3 only applies where treg has both a key and a published price for that endpoint; anything
+Rung 4 only applies where treg has both a key and a published price for that endpoint; anything
 unpriced is refused rather than served, and you are told to connect your own key. Your own key is
 never billed to the balance.
 
@@ -219,7 +221,7 @@ See `treg feedback --help` and your registry's `/feedback.md` for details.
 
 ## Balance & top-up
 
-Only calls on **treg's key** (rung 3 above) cost balance. Everything else — your own keys, your own
+Only calls on **treg's key** (rung 4 above) cost balance. Everything else — your own keys, your own
 tools, vendor CLIs — is free of it.
 
 | Command | Options | What it does |

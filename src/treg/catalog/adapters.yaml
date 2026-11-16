@@ -1784,24 +1784,122 @@ adapters:
     out: {results: local_results}
     miss: "local_results == []"
 
+  # ---- companies.jobs.search / companies.jobs -------------------------------------------------
+  # A job index answers a title search, or one company's open jobs by name. Only an index that
+  # matches the whole company name takes a name, on either contract; one that takes a company
+  # also serves treg.companies.jobs (same filters) where its fixture names a company.
+  mobiusengine-jobs.jobs.search:
+    # Title searches only: its company filter is a substring ('ramp' also finds LiveRamp), so it
+    # never takes a company name; its company row is no routed child for the same reason.
+    accepts: [[title]]
+    in: {title: queryParams.title}
+    in_expr:
+      queryParams.countries: "upper(country)"
+      queryParams.locations: location
+      queryParams.work_mode: "choose(remote == true, 'Remote Solely', null)"
+      queryParams.posted_within_days: posted_within_days
+      queryParams.limit: limit
+    max: {limit: 100}
+    # Priced per 1,000 jobs, billed per job: the plan's block rounding would quote 1,000 jobs.
+    cost_units: "coalesce(limit, 1)"
+    out: {jobs: jobs, next_cursor: next_cursor}
+  jobspipe.jobs.search:
+    # Title searches only: company_name_or is a prefix match ('Nationwide' also finds Nationwide
+    # Legal), so it never takes a company name.
+    accepts: [[title]]
+    in: {title: body.job_title_or}
+    in_expr:
+      body.job_title_or: "list(title)"
+      body.job_country_code_or: "list(upper(country))"
+      body.job_location_or: "list(location)"
+      body.remote: "choose(remote == true, true, null)"
+      body.posted_at_max_age_days: posted_within_days
+      body.limit: limit
+    max: {limit: 100}
+    out: {jobs: data, count: metadata.total_results, next_cursor: metadata.next_cursor}
+  hirebase.jobs.search:
+    # A free-text place has no field here (geo_locations wants a city, region and country apart).
+    # company_name is an exact name, so it also answers one company's open jobs.
+    additional_capabilities: [companies.jobs]
+    accepts: [[title, name], [title], [name]]
+    in: {title: body.job_titles, name: body.company_name}
+    in_expr:
+      body.job_titles: "list(title)"
+      body.geo_locations: "list(obj('country', country_name(country)))"
+      body.location_types: "choose(remote == true, list('Remote'), null)"
+      body.days_ago: posted_within_days
+      body.limit: limit
+    max: {limit: 100}
+    out: {jobs: jobs, count: total_count}
   theirstack.jobs.search:
-    accepts: [[domain], [name]]
-    in: {domain: body.company_domain_or}
+    additional_capabilities: [companies.jobs]
+    accepts: [[title, domain], [title, name], [title], [domain], [name]]
+    in: {domain: body.company_domain_or, title: body.job_title_or}
     in_expr:
       body.company_domain_or: "list(domain)"
       body.company_name_or: "choose(domain, null, list(name))"
+      body.job_title_or: "list(title)"
+      body.job_country_code_or: "list(upper(country))"
+      body.workplace_types_or: "choose(remote == true, list('remote'), null)"
+      # No open/closed flag: a recent window keeps a company's old postings out.
+      body.posted_at_max_age_days: "coalesce(posted_within_days, 30)"
       body.limit: limit
     const: {body.page: 0}
     max: {limit: 100}
     out: {jobs: data}
     miss: "data == []"
   crustdata.companies.jobs.search:
+    # A name match is the company's whole posting history; newest first puts live roles on page one.
     accepts: [[name]]
     in:  {name: body.filters.value}
     in_expr: {body.filters: "obj('field', 'company.basic_info.name', 'type', '=', 'value', name)", body.limit: limit}
-    const: {body.fields: [job_details.title, job_details.url]}
+    const: {body.fields: [job_details.title, job_details.url], body.sorts: [{field: metadata.date_added, order: desc}]}
     out: {jobs: job_listings, count: total_count, next_cursor: next_cursor}
     miss: "job_listings == []"
+  # Free employer boards (treg.companies.jobs): each takes only the board the caller named on its
+  # own system (the contract derives `<ats>_board` from ats + board). Every row is anonymous and
+  # free; a list never asks for descriptions it can leave out (Greenhouse content, Workable details)
+  # and pages that take a size ask at most 100, so a board fits the routed 8 MiB read. Ashby has
+  # no size or paging: a board past 8 MiB is that attempt's error and the route moves on.
+  greenhouse.companies.jobs:
+    accepts: [[greenhouse_board]]
+    in: {greenhouse_board: pathParams.board_token}
+    test_identity: {ats: greenhouse, board: discord}
+    out: {jobs: jobs, count: meta.total}
+  lever.postings.list:
+    accepts: [[lever_board]]
+    in: {lever_board: pathParams.site}
+    in_expr: {queryParams.limit: "at_most(limit, 100)"}
+    const: {queryParams.mode: json}
+    test_identity: {ats: lever, board: spotify}
+    out: {jobs: "."}
+  lever.eu.postings.list:
+    accepts: [[lever_eu_board]]
+    in: {lever_eu_board: pathParams.site}
+    in_expr: {queryParams.limit: "at_most(limit, 100)"}
+    const: {queryParams.mode: json}
+    test_identity: {ats: lever_eu, board: leverdemo}
+    out: {jobs: "."}
+  ashby.companies.jobs:
+    accepts: [[ashby_board]]
+    in: {ashby_board: pathParams.board}
+    test_identity: {ats: ashby, board: ramp}
+    out: {jobs: jobs}
+  smartrecruiters.company.postings:
+    accepts: [[smartrecruiters_board]]
+    in: {smartrecruiters_board: pathParams.companyIdentifier}
+    in_expr:
+      queryParams.limit: "at_most(limit, 100)"
+      queryParams.country: "lower(country)"
+      queryParams.locationType: "choose(remote == true, 'REMOTE', null)"
+    test_identity: {ats: smartrecruiters, board: Canva}
+    out: {jobs: content, count: totalFound}
+  workable.account.jobs:
+    accepts: [[workable_board]]
+    in: {workable_board: pathParams.subdomain}
+    test_identity: {ats: workable, board: huggingface}
+    out: {jobs: jobs}
+
   leadmagic.x.jobs-search-v3:
     accepts: [[domain]]
     in:  {domain: body.companies.include}
@@ -2279,9 +2377,13 @@ adapters:
     miss: "[0] == null"
 
   predictleads.companies.job_openings:
+    # One flat price for up to 1,000 rows; at most 500 keeps a large board inside the 8 MiB buffer.
+    # active_only: not closed and seen in the last 5 days, not the company's posting history.
+    additional_capabilities: [companies.jobs]
     accepts: [[domain]]
     in:  {domain: pathParams.company_id_or_domain}
-    in_expr: {queryParams.limit: limit}
+    in_expr: {queryParams.limit: "at_most(limit, 500)", queryParams.location: "country_name(country)"}
+    const: {queryParams.active_only: "true"}
     out: {jobs: data}
     miss: "data == []"
   # threads.user.profile / post.detail, tiktok.music.videos, x.trending.topics, weibo.search.posts (tikhub alone;
@@ -3817,3 +3919,22 @@ adapters:
     in_expr: {queryParams.limit: "at_most(limit, 25)"}
     out: {companies: data, count: meta.total, next_cursor: meta.nextCursor}
     miss: "data == []"
+
+  # ---- jobs.salary.benchmark --------------------------------------------------------------------
+  # Both over a 90-day window of posted pay. JobsPipe stops at the country (USD); Hirebase also
+  # takes a city or region and answers in the place's currency.
+  jobspipe.jobs.salary.benchmark:
+    accepts: [[title]]
+    in: {title: body.title}
+    in_expr: {body.country: "upper(country)"}
+    out: {p50: percentiles.p50, p10: percentiles.p10, p25: percentiles.p25, p75: percentiles.p75,
+          p90: percentiles.p90, currency: currency, count: count}
+  hirebase.jobs.salary.insights:
+    accepts: [[title]]
+    in: {title: body.job_titles}
+    in_expr:
+      body.job_titles: "list(title)"
+      body.geo_locations: "list(obj('city', coalesce(city, one_place(location)), 'region', region, 'country', country_name(country)))"
+    const: {body.days_ago: 90}
+    out: {p50: salary.p50, p25: salary.p25, p75: salary.p75, p90: salary.p90, currency: salary.currency,
+          count: salary.count}
