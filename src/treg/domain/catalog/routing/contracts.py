@@ -216,6 +216,10 @@ class Adapter:
     filter_max: dict[str, int] = field(default_factory=dict)  # `max:` a filter this provider caps (`limit: 8`); a request above it skips the provider
     additional_capabilities: tuple[str, ...] = ()  # opt-in reuse of the same request/output mapping
     route: bool = True                        # False: hit/miss evidence only, never a router candidate
+    # `{cursor: <upstream path>}`: where the provider takes back the `next_cursor` its answer carried.
+    # Cursor only: a page number over a provider whose order changes between calls (Dropleads)
+    # repeats and skips rows.
+    paging: dict[str, str] = field(default_factory=dict)
     verified_capabilities: tuple[str, ...] = ()
     verified: bool = False
     verify_note: str = ""
@@ -383,7 +387,7 @@ def retired_contract_keys(doc: dict) -> list[str]:
 
 ADAPTER_KEYS = frozenset({
     "accepts", "in", "in_expr", "in_read", "body_array", "test_identity", "cost_units", "max",
-    "additional_capabilities", "route", "const", "out", "miss", "verdict", "verdicts", "row"})
+    "additional_capabilities", "route", "const", "out", "miss", "verdict", "verdicts", "row", "paging"})
 # The longest text a mapped row field keeps: a row is read by an agent, and one provider's
 # multi-page bio would otherwise cost more tokens than the rest of the answer.
 ROW_TEXT_MAX = 300
@@ -654,6 +658,18 @@ def _parse_verdict(cap: str, raw) -> dict:
             "verdict_decisive": decisive}
 
 
+def _paging(eid: str, raw, out: dict) -> dict[str, str]:
+    """`paging: {cursor: <body. or queryParams. path>}`, beside the `out.next_cursor` it pages with."""
+    if not raw:
+        return {}
+    if (not isinstance(raw, dict) or list(raw) != ["cursor"]
+            or not str(raw["cursor"]).startswith(("body.", "queryParams."))):
+        raise ValueError(f"adapter {eid}: paging is {{cursor: <body. or queryParams. path>}}")
+    if "next_cursor" not in out:
+        raise ValueError(f"adapter {eid}: paging.cursor needs out.next_cursor")
+    return {str(k): str(v) for k, v in raw.items()}
+
+
 def parse_adapters(doc: dict) -> dict[str, Adapter]:
     out = {}
     for eid, a in (doc.get("adapters") or {}).items():
@@ -670,6 +686,7 @@ def parse_adapters(doc: dict) -> dict[str, Adapter]:
             filter_max={str(k): int(v) for k, v in (a.get("max") or {}).items()},
             additional_capabilities=tuple(a.get("additional_capabilities") or ()),
             route=a.get("route", True) is not False,
+            paging=_paging(eid, a.get("paging"), a.get("out") or {}),
             const=dict(a.get("const") or {}), out_map=dict(a.get("out") or {}), miss=str(a.get("miss") or ""),
             row_map={str(k): str(v) for k, v in (a.get("row") or {}).items()},
             verdict=str(a.get("verdict") or ""),

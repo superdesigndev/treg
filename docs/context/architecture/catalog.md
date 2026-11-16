@@ -1098,7 +1098,9 @@ the contract's; `verdict` is an expression for a provider that reports the word 
 unmapped word is stored NULL and logged; `tests/test_call_verdict.py` holds every verifier's example
 to a mapped word. `cost_units` gives an upper bound in catalog-priced units, used by both the quote
 and the plan through `routing/plan.py::cost_at`. `max` (`{limit: 8}`) drops the child for a larger
-request (a number, or a string of ASCII digits) rather than letting it answer less than asked. A
+request (a number, or a string of ASCII digits) rather than letting it answer less than asked.
+`paging: {cursor: <body. or queryParams. path>}` (beside `out.next_cursor`) lets a routed answer
+continue on this child ([proxy-model](proxy-model.md) § Routed endpoints). A
 routed call's own filter that a remaining v2 child maps into its `reserve.rows` count must be a
 whole number from 1 to that child's max: otherwise the routed call is refused (400
 `catalog_parameter_invalid`, naming its own parameter, never the child) when the route is planned,

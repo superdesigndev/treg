@@ -2670,6 +2670,7 @@ adapters:
     in:  {company_domain: body.companyDomains.include}
     in_expr: {body.companyDomains.include: "list(company_domain)", body.limit: limit, body.keywords.include: "list(keywords)"}
     out: {people: leads, next_cursor: cursor}
+    paging: {cursor: queryParams.cursor}
     miss: "leads == []"
     row: {name: "join(firstName, lastName)", title: jobTitle, company_domain: company.domain, location: "place(location.city, location.state, location.country)"}
   findymail.search.employees:
@@ -2809,6 +2810,7 @@ adapters:
     out: {people: data, count: "len(data)", next_cursor: meta.next_cursor}
     miss: "coalesce(data, []) == []"
     row: {name: "join(first_name, last_name)", title: title, company: company_name, company_domain: "host(company_url)", location: "place(city, region_code, country_code)", profile_url: employee_linkedin}
+    paging: {cursor: body.cursor}
   quickenrich.companies.search:
     accepts: [[domain], [name], [industry]]
     in: {domain: body.company_url, name: body.company_name.include, industry: body.industry.include}
@@ -3843,6 +3845,7 @@ adapters:
               body.people.location.country_code: "list(country)",
               body.max_results: "at_most(limit, 50)"}
     out: {people: results, count: total_results, next_cursor: cursor}
+    paging: {cursor: body.cursor}
     miss: "results == []"
     row: {name: full_name, title: "coalesce(experiences[0].job_title, headline)", company: "experiences[0].company_name", company_domain: "experiences[0].company_domain", location: "place(location.city, location.country_code)", profile_url: linkedin_url, summary: headline}
   blitzapi.companies.search:
@@ -3903,6 +3906,7 @@ adapters:
     in_expr: {queryParams.limit: limit, queryParams.country: "upper(country_code(country))",
               queryParams.city: "one_place(location)"}
     out: {people: data, count: meta.total, next_cursor: meta.nextCursor}
+    paging: {cursor: queryParams.cursor}
     miss: "data == []"
     # The person sits under profile_data, the current job under contact_data: without name and url a
     # merge cannot tell a repeat from a new row, and without the rest it keeps only those two.
