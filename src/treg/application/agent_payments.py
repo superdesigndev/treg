@@ -143,6 +143,7 @@ async def limit_request(headers: Mapping[str, str], client_ip: str) -> None:
         key, cap = f"quote-ip:{client_ip}", settings.agent_payments_max_quotes_per_ip_minute
         message = "too many requests from this address; wait a minute and send it again"
     async with session_maker() as db:
+        await ratestore.sweep(db, RATE_NS)
         ok = await ratestore.rate_check(
             db, RATE_NS, ratestore.ip_limit(client_ip, cap, key=key), RATE_WINDOW_S)
         await db.commit()
@@ -430,6 +431,7 @@ async def _claim_proof(verified: Verified) -> bool:
     """A proof is single-use: its challenge id is claimed once, for as long as it could be valid."""
     ttl = max((verified.expires_at - _now()).total_seconds(), 0) + PROOF_CLAIM_GRACE_S
     async with session_maker() as db:
+        await ratestore.sweep(db, PROOF_NS)
         claimed = await ratestore.kv_claim(db, PROOF_NS, verified.proof_id, ttl)
         await db.commit()
     return claimed

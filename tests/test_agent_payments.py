@@ -1434,6 +1434,28 @@ async def test_the_credit_route_takes_no_payment(wallet: AsyncClient, payments_o
     assert chain.broadcasts == 0
 
 
+async def test_expired_proof_claims_and_address_limits_are_swept(wallet: AsyncClient, payments_on,
+                                                                 chain):
+    from treg import ratestore
+    from treg.models import Ephemeral
+
+    async with session_maker() as db:
+        for ns, k in ((agent_payments.PROOF_NS, "old-proof"), (agent_payments.RATE_NS, "ip:old")):
+            await ratestore.kv_put(db, ns, k, {}, ttl_s=60)
+            row = await db.get(Ephemeral, (ns, k))
+            row.expires_at = datetime.now(UTC).replace(tzinfo=None) - timedelta(seconds=1)
+        await db.commit()
+    challenge = await wallet.get("/agentpay/credit")
+    r = await wallet.get("/agentpay/credit",
+                         headers={"Authorization": await _mpp_proof(challenge, Account.create())})
+    assert r.status_code == 200, r.text
+    async with session_maker() as db:
+        assert await db.get(Ephemeral, (agent_payments.PROOF_NS, "old-proof")) is None
+    await wallet.get(f"/call/{EP}?aweme_id=7")
+    async with session_maker() as db:
+        assert await db.get(Ephemeral, (agent_payments.RATE_NS, "ip:old")) is None
+
+
 # ---- x402 sign-in-with-x (SIWX) -----------------------------------------------------------------
 def _siwx_extension(challenge_response: httpx.Response):
     from mpp.x402 import decode_payment_required

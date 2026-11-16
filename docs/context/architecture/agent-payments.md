@@ -130,7 +130,8 @@ the first challenge they can pay. The client signs an EIP-712 `Proof(account, ch
 realm)`; pympp's `validate` checks it (no chain call, unless the signer is an access key of the
 account) and names the payer. The proof's challenge is HMAC-bound to the method, path and query
 like any MPP challenge, and its id is claimed once (`ratestore.kv_claim` under `agentpay-proof`,
-kept past the challenge's expiry). If the wallet's payer team on that network holds at least the
+kept past the challenge's expiry; each claim first sweeps the namespace's expired rows, as each
+per-address limit sweeps its own, so neither grows without bound). If the wallet's payer team on that network holds at least the
 quote, the call runs on that credit: no row, no settlement, `X-Treg-Payment: credit`. Otherwise
 (including a wallet treg has never seen) the answer is 402 `credit_insufficient` with the payment
 challenges only, and the client pays. A brand-new wallet therefore takes one more round trip; the
