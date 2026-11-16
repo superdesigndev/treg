@@ -285,7 +285,8 @@ async def relay(
     # Call-time SSRF guard: resolve the upstream host NOW and refuse an internal target — defeats DNS
     # rebinding (base_url was public at registration, its DNS now points at 169.254.169.254 / localhost).
     from . import health
-    if get_settings().proxy_ssrf_check and not health.host_is_public(upstream_req.url.host):
+    if get_settings().proxy_ssrf_check and not await health.host_is_public_async(
+            upstream_req.url.host, health.host_is_public):
         raise GatewayFailed(
             "ssrf_refused", status_code=502,
             detail="upstream host resolves to a non-public address")

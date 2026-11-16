@@ -678,6 +678,8 @@ class Settings(BaseSettings):
     # Call-time SSRF guard on the proxy: resolve the upstream host and refuse an internal target. On by
     # default; the test suite disables it (its upstream is an in-process ASGI transport, not real DNS).
     proxy_ssrf_check: bool = True
+    # Threads for the call-time address lookup, which runs off the event loop; one lookup per host at a time.
+    ssrf_lookup_threads: int = 8
 
     # The archive's rollout switch (see treg/archive.py): "off" (default) | "shadow" (record +
     # learn from metered platform responses, serve nothing) | "serve" (shadow + answer eligible

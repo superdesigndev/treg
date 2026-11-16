@@ -336,6 +336,11 @@ member and project are ANDed, each NULL-means-any. `_deny_match` is pure and mir
 
 ### Call-time SSRF guard
 
+Every call-time lookup goes through `ssrf.host_is_public_async`: the blocking resolver runs on a small
+dedicated pool (`ssrf_lookup_threads`), so a slow or dead name server never stops the event loop, and at
+most one lookup per host is in flight (later callers await the same answer). No verdict is kept after it
+lands, so each new call resolves again.
+
 Just before `send`, `relay()` re-resolves the upstream host (`host_is_public`, gated by
 `proxy_ssrf_check`) and refuses with `502` if any address is non-public: a `base_url` public at
 registration can later resolve to `169.254.169.254` or localhost. The other server-side roads to a
