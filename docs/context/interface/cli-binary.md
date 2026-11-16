@@ -7,6 +7,9 @@ sources:
   - cli/internal/agents/agents.go
   - cli/internal/agents/mcp.go
   - cli/internal/api/client.go
+  - cli/internal/api/failure.go
+  - cli/internal/api/failure_unix.go
+  - cli/internal/api/failure_windows.go
   - cli/internal/api/proxy.go
   - cli/internal/api/proxy_darwin.go
   - cli/internal/api/proxy_other.go
@@ -204,20 +207,28 @@ whose `claude` records its arguments, and compares every file left in HOME, mode
   into each binary, is refused: it could never verify, and so never apply, an update. The
   repository's 0.x tags are the registry package's own releases; nothing here reads them, and
   versions compare as semantic versions (a pre-release before its release).
+- The release then calls `CLI mirror` (`.github/workflows/cli-mirror.yml`), which downloads the
+  published files, checks them against `SHA256SUMS` and copies them to an S3-compatible bucket under
+  `cli/<tag>/` (the `cli-mirror` environment holds the bucket; without one it uploads nothing). Run
+  by hand with a tag, it copies a release published before the mirror. The copy is a second source,
+  not a second authority: `SHA256SUMS.minisig` proves the files wherever they come from.
 - `GET /cli/latest?channel=&os=&arch=` (`routers/cli_client.py`, deciding in
   `application/cli_releases.py`, the GitHub lookup in `infra/github_releases.py`) names the release
   a CLI on that channel and platform runs: `TREG_CLI_STABLE_VERSION` for stable, `TREG_CLI_BETA_VERSION` for beta
   (beta falls back to stable; either may name a pre-release), else the newest GitHub release of `cli_release_repo` tagged
   `v<version>` from 1.0.0 up. A 0.x
   value names a Python CLI release and never an archive. Download URLs come from
-  `TREG_CLI_DOWNLOAD_BASE_URL`. On a channel the operator names, publishing a release moves no
+  `TREG_CLI_DOWNLOAD_BASE_URL`; when `TREG_CLI_MIRROR_BASE_URL` is set, the answer also names the
+  mirror's (`mirror_url`, `mirror_checksums_url`, `mirror_signature_url`), which a client tries
+  when the first source fails. On a channel the operator names, publishing a release moves no
   one and a bad release is held back without a new one; a channel left to GitHub moves with it. `GET /cli/latest/<os>-<arch>[?channel=beta]` is
   the same answer as a redirect to the archive, a download link that never changes.
 - `install-bin.sh` runs as `sh -c` with no arguments, because every older `treg update` runs the
   served installer that way. `install.sh` runs it with `--channel stable` and its own `--token` and
   `--skills` for a new install in the binary's share, falling back to the Python CLI when it does not
   finish, and when its Python install fails on a machine with no working `treg`. It reads `/cli/latest`, checks the archive against `SHA256SUMS` (a
-  shell has no signature tool; the binary verifies signatures on update), installs into
+  shell has no signature tool; the binary verifies signatures on update), gives up a transfer that
+  stalls and takes the mirror's copy when the first source fails or does not match, installs into
   `~/.local/bin` by same-directory copy and rename, installs the Windows binary from Git Bash, tells
   a stable-channel Homebrew user to `brew upgrade treg` instead of installing a second copy, prints
   the exact PATH line when the directory is not on PATH, records the channel, bootstraps the skill
@@ -233,7 +244,9 @@ archive named for the answer's version and this platform, fetches `SHA256SUMS` a
 verifies the signature with the key built into the binary (`internal/minisign`), checks the
 archive's sum, extracts the binary and renames it over the running one (Windows renames the
 running file to `.old`; the next run removes it). The signed `SHA256SUMS` names each archive by
-version and platform, so no answer can pass off an older release or another platform's. `treg
+version and platform, so no answer can pass off an older release or another platform's. When the
+first source fails to download (each file has five minutes) or verify, it does the same from the
+answer's mirror, if any. `treg
 update [--channel stable|beta]` does it in the foreground; a Homebrew or npm install is told its
 package manager's command. Switching channels installs that channel's release even when it is
 older, so leaving the beta returns to stable. A channel with no release yet (stable, during the
@@ -244,9 +257,12 @@ A release build the installer placed also updates itself: at most once a day a c
 detached `treg __update` and never waits for it. That process removes the Python CLI's uv or pipx
 package once, and only when the `treg` on PATH is this binary: their uninstallers delete the
 `treg` entry point, now this binary's path, so a copy is put back the moment it goes, while a
-binary run from anywhere else (an archive unpacked in Downloads) would leave no `treg` at all. It
+binary run from anywhere else (an archive unpacked in Downloads) would leave no `treg` at all.
+Until that removal has run, a command starts the process once a minute rather than once a day, so
+a burst of commands right after an install starts one. It
 then installs a newer release, re-runs `skill bootstrap` as re-running
-the installer did, and leaves its outcome in `update-state.json`. `TREG_NO_AUTO_UPDATE` or
+the installer did, leaves its outcome in `update-state.json` and records it as
+`cli_update_completed` (below). `TREG_NO_AUTO_UPDATE` or
 `"auto_update": false` turn the background update off.
 
 ## Usage events
@@ -259,17 +275,35 @@ a word it refused as a subcommand: a Python CLI command this binary lacks, or a 
 (`missing_command`); any other word only when it is lowercase letters and hyphens, at most 24
 (`unknown_command`), so a path, key or email is never sent. A command without subcommands refuses an
 extra argument with the same message, so its usage errors name no word. Option names count only
-where they stand alone, so a subcommand list such as `agent-new` is not read as `-n`. At the end of a command the event is appended to
-`telemetry-queue.jsonl` beside the config; a later command sends the queue to its registry's
-`/cli/events` on a goroutine while it works, through the command's own connection pool (one per
-process, `api.Transport`), so no command waits on analytics and none is lost to a process that
-exits first. A sender claims the queue by renaming it, requeues what it could not
-send, picks up a claim a killed process left after a minute, and drops events for a registry
-without the relay. Each event carries a uuid, so PostHog drops a resend.
+where they stand alone, so a subcommand list such as `agent-new` is not read as `-n`. A request
+that got no answer notes why in `error` (`api.FailureKind`: `timeout`, `dns`, `proxy`,
+`connection_refused`, `connection_reset`, `connection_closed`, `certificate`, `tls`, `other`),
+and a `call` that failed with neither an answer nor such a note stopped at its own arguments,
+`bad_input`.
+
+Each background update records `cli_update_completed`: its `outcome` (`updated`, `up_to_date`,
+`failed`, `no_release`, `check_failed`), `from_version` and `to_version`, for a failure the step
+(`reason`, an `update.Failure` step), and the download fields the installers send (`source`,
+`detail`, `mirror_detail`, `seconds`); a failed check's `detail` is its `FailureKind` or
+`http_<status>`. The process sends nothing itself: the event waits in the queue for the next
+command.
+
+At the end of a command the event is appended to `telemetry-queue.jsonl` beside the config; a later
+command sends the queue to its registry's `/cli/events` on a goroutine while it works, through the
+command's own connection pool (one per process, `api.Transport`), so no command waits on analytics
+and none is lost to a process that exits first. A sender claims the queue by renaming it, requeues
+what it could not send, picks up a claim a killed process left after a minute, and drops events for
+a registry without the relay. Each event carries a uuid, so PostHog drops a resend.
 
 `POST /cli/events` takes no token: each event's properties are checked against a fixed vocabulary
 and anything else is dropped, the caller's address is never forwarded (`$geoip_disable`), each
 address has an in-memory window, and a well-formed batch is always a 204. A registry without a
 PostHog key drops them, so a self-hosted CLI reports nowhere else. `install-bin.sh` and
 `install.ps1` send `cli_install_step` the same way (`started`, then `installed` or `failed` with a
-reason), under the same opt-outs.
+reason), under the same opt-outs. Each says where the archive came from (`source`: `primary` or
+`mirror`) and, when the first source failed, why (`detail`: curl's exit code as `curl_<n>`; in
+PowerShell the HTTP status as `http_<n>`, `stalled`, `timeout`, or in snake case the socket error,
+else Windows PowerShell's WebException status or PowerShell 7's HttpRequestError; for a mismatch
+what the file holds, such as `got_html`), after how many `seconds`, and
+the mirror's `mirror_detail` when it failed too; `reason` stays the first source's. A failure after
+the download has its own reason: `archive`, `install_dir`, `install_command`, `run`.

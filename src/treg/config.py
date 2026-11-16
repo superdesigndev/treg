@@ -848,6 +848,9 @@ class Settings(BaseSettings):
     cli_beta_version: str = ""
     cli_release_repo: str = "superdesigndev/treg"
     cli_download_base_url: str = "https://github.com/superdesigndev/treg/releases/download/v{version}"
+    # A second copy of each release's files (.github/workflows/cli-mirror.yml), `{version}` filled in
+    # the same way, which installers and `treg update` try when the first fails. Empty = no mirror.
+    cli_mirror_base_url: str = ""
     # The share of new installs `/install.sh` sends to the binary CLI (docs/context/interface/cli-binary.md).
     cli_binary_install_percent: int = Field(default=0, ge=0, le=100)
     # Call events (call_events.py, docs/context/architecture/call-events.md): one structured,

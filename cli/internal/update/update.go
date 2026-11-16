@@ -1,6 +1,7 @@
 // Package update replaces this binary with the release its channel names: the registry's
-// /cli/latest answer (GitHub's newest release when the registry has none), a download whose
-// SHA256SUMS carries a minisign signature from the key built into this binary, and an atomic swap.
+// /cli/latest answer (GitHub's newest release when the registry has none), a download (from the
+// release's mirror when the first source fails) whose SHA256SUMS carries a minisign signature from
+// the key built into this binary, and an atomic swap.
 package update
 
 import (
@@ -25,6 +26,7 @@ import (
 
 	"golang.org/x/mod/semver"
 
+	"github.com/superdesigndev/treg/cli/internal/api"
 	"github.com/superdesigndev/treg/cli/internal/buildinfo"
 	"github.com/superdesigndev/treg/cli/internal/minisign"
 )
@@ -36,13 +38,37 @@ const (
 )
 
 type Manifest struct {
-	Version      string `json:"version"`
-	Channel      string `json:"channel"`
-	Archive      string `json:"archive"`
-	URL          string `json:"url"`
-	ChecksumsURL string `json:"checksums_url"`
-	SignatureURL string `json:"signature_url"`
+	Version            string `json:"version"`
+	Channel            string `json:"channel"`
+	Archive            string `json:"archive"`
+	URL                string `json:"url"`
+	ChecksumsURL       string `json:"checksums_url"`
+	SignatureURL       string `json:"signature_url"`
+	MirrorURL          string `json:"mirror_url"`
+	MirrorChecksumsURL string `json:"mirror_checksums_url"`
+	MirrorSignatureURL string `json:"mirror_signature_url"`
 }
+
+// Download is where an update's files came from, in a usage event's words: the source that
+// worked ("primary" or "mirror"), why the first failed and after how long, and why the mirror did.
+type Download struct {
+	Source       string
+	Detail       string
+	MirrorDetail string
+	Seconds      int
+}
+
+// Failure is why an update did not install: the step that failed (no_key, mismatch, download,
+// signature, checksum, archive, replace) and, for a download or a check, why in a usage event's
+// words (a FailureKind, http_<status>, bad_signature, sums_missing, mismatch).
+type Failure struct {
+	Step   string
+	Detail string
+	Err    error
+}
+
+func (f *Failure) Error() string { return f.Err.Error() }
+func (f *Failure) Unwrap() error { return f.Err }
 
 var client = &http.Client{Timeout: fetchTimeout}
 
@@ -80,7 +106,17 @@ func Latest(ctx context.Context, registry, channel string) (*Manifest, error) {
 	case resp.StatusCode == http.StatusNotFound:
 		return nil, &NoRelease{Channel: channel}
 	}
-	return nil, fmt.Errorf("%s answered /cli/latest with HTTP %d", registry, resp.StatusCode)
+	return nil, &CheckStatus{Registry: registry, Code: resp.StatusCode}
+}
+
+// CheckStatus is a /cli/latest answer that names neither a release nor the lack of one.
+type CheckStatus struct {
+	Registry string
+	Code     int
+}
+
+func (e *CheckStatus) Error() string {
+	return fmt.Sprintf("%s answered /cli/latest with HTTP %d", e.Registry, e.Code)
 }
 
 func fromGitHub(ctx context.Context, channel string) (*Manifest, error) {
@@ -128,69 +164,112 @@ func ExeName() string {
 	return "treg"
 }
 
-// Install downloads, verifies and swaps in the manifest's release over exe.
-func Install(ctx context.Context, m *Manifest, exe string) error {
+type source struct{ name, archive, sums, signature string }
+
+// Install downloads, verifies and swaps in the manifest's release over exe, taking the mirror's
+// copy when the first source fails to download or verify. The error is a *Failure.
+func Install(ctx context.Context, m *Manifest, exe string) (Download, error) {
+	var d Download
 	key := strings.TrimSpace(buildinfo.UpdateKey)
 	if key == "" {
-		return errors.New("this build carries no release key, so it cannot verify an update; reinstall with the install command")
+		return d, &Failure{Step: "no_key", Err: errors.New("this build carries no release key, so it cannot verify an update; reinstall with the install command")}
 	}
 	if want := ArchiveName(m.Version, runtime.GOOS, runtime.GOARCH); m.Archive != want {
-		return fmt.Errorf("the release answer names %s, not %s", m.Archive, want)
+		return d, &Failure{Step: "mismatch", Err: fmt.Errorf("the release answer names %s, not %s", m.Archive, want)}
 	}
 	pk, err := minisign.ParsePublicKey(key)
 	if err != nil {
-		return fmt.Errorf("this build's release key is malformed: %w", err)
+		return d, &Failure{Step: "no_key", Err: fmt.Errorf("this build's release key is malformed: %w", err)}
 	}
-	sums, err := fetch(ctx, m.ChecksumsURL)
-	if err != nil {
-		return err
+	sources := []source{{"primary", m.URL, m.ChecksumsURL, m.SignatureURL}}
+	if m.MirrorURL != "" && m.MirrorChecksumsURL != "" && m.MirrorSignatureURL != "" {
+		sources = append(sources, source{"mirror", m.MirrorURL, m.MirrorChecksumsURL, m.MirrorSignatureURL})
 	}
-	sig, err := fetch(ctx, m.SignatureURL)
-	if err != nil {
-		return err
+	started := time.Now()
+	var archive []byte
+	var first *Failure
+	for _, s := range sources {
+		got, err := verified(ctx, pk, m, s)
+		if err == nil {
+			archive, d.Source = got, s.name
+			break
+		}
+		f, _ := errors.AsType[*Failure](err)
+		if first == nil {
+			first, d.Detail, d.Seconds = f, f.Detail, int(time.Since(started).Seconds())
+		} else {
+			d.MirrorDetail = f.Detail
+			first = &Failure{Step: first.Step, Detail: first.Detail, Err: fmt.Errorf("%w; from the mirror: %v", first.Err, f)}
+		}
 	}
-	if err := minisign.Verify(pk, sums, string(sig)); err != nil {
-		return fmt.Errorf("SHA256SUMS of treg %s is not signed by treg's release key: %w", m.Version, err)
-	}
-	want := checksumFor(sums, m.Archive)
-	if want == "" {
-		return fmt.Errorf("SHA256SUMS names no %s", m.Archive)
-	}
-	archive, err := fetch(ctx, m.URL)
-	if err != nil {
-		return err
-	}
-	got := sha256.Sum256(archive)
-	if hex.EncodeToString(got[:]) != want {
-		return fmt.Errorf("%s does not match its SHA256SUMS entry", m.Archive)
+	if archive == nil {
+		return d, first
 	}
 	binary, err := extract(m.Archive, archive)
 	if err != nil {
-		return err
+		return d, &Failure{Step: "archive", Err: err}
 	}
-	return replace(exe, binary)
+	if err := replace(exe, binary); err != nil {
+		return d, &Failure{Step: "replace", Err: err}
+	}
+	return d, nil
+}
+
+// verified is one source's archive, once the release key signed its SHA256SUMS and the archive
+// matches them.
+func verified(ctx context.Context, pk minisign.PublicKey, m *Manifest, s source) ([]byte, error) {
+	sums, err := fetch(ctx, s.sums)
+	if err != nil {
+		return nil, err
+	}
+	sig, err := fetch(ctx, s.signature)
+	if err != nil {
+		return nil, err
+	}
+	if err := minisign.Verify(pk, sums, string(sig)); err != nil {
+		return nil, &Failure{Step: "signature", Detail: "bad_signature",
+			Err: fmt.Errorf("SHA256SUMS of treg %s is not signed by treg's release key: %w", m.Version, err)}
+	}
+	want := checksumFor(sums, m.Archive)
+	if want == "" {
+		return nil, &Failure{Step: "checksum", Detail: "sums_missing", Err: fmt.Errorf("SHA256SUMS names no %s", m.Archive)}
+	}
+	archive, err := fetch(ctx, s.archive)
+	if err != nil {
+		return nil, err
+	}
+	got := sha256.Sum256(archive)
+	if hex.EncodeToString(got[:]) != want {
+		return nil, &Failure{Step: "checksum", Detail: "mismatch",
+			Err: fmt.Errorf("%s does not match its SHA256SUMS entry", m.Archive)}
+	}
+	return archive, nil
 }
 
 func fetch(ctx context.Context, u string) ([]byte, error) {
+	failed := func(err error) error {
+		return &Failure{Step: "download", Detail: api.FailureKind(err), Err: fmt.Errorf("could not download %s: %w", u, err)}
+	}
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, u, nil)
 	if err != nil {
-		return nil, err
+		return nil, &Failure{Step: "download", Detail: "bad_url", Err: err}
 	}
 	req.Header.Set("User-Agent", buildinfo.UserAgent())
 	resp, err := client.Do(req)
 	if err != nil {
-		return nil, fmt.Errorf("could not download %s: %w", u, err)
+		return nil, failed(err)
 	}
 	defer resp.Body.Close()
 	if resp.StatusCode != http.StatusOK {
-		return nil, fmt.Errorf("could not download %s: HTTP %d", u, resp.StatusCode)
+		return nil, &Failure{Step: "download", Detail: fmt.Sprintf("http_%d", resp.StatusCode),
+			Err: fmt.Errorf("could not download %s: HTTP %d", u, resp.StatusCode)}
 	}
 	data, err := io.ReadAll(io.LimitReader(resp.Body, maxDownload+1))
 	if err != nil {
-		return nil, fmt.Errorf("could not download %s: %w", u, err)
+		return nil, failed(err)
 	}
 	if len(data) > maxDownload {
-		return nil, fmt.Errorf("%s is larger than any treg release", u)
+		return nil, &Failure{Step: "download", Detail: "too_large", Err: fmt.Errorf("%s is larger than any treg release", u)}
 	}
 	return data, nil
 }

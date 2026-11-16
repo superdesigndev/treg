@@ -642,4 +642,7 @@ PostHog project. The random ID is stored in `analytics-id` beside the CLI config
 
 The `install.sh` installer reports the same way: each run sends whether it started, installed or
 failed (with a fixed reason), the installer it used (uv, pipx or pip3), the CLI version before and
-after, OS and architecture, under the same installation ID. The same two variables turn it off.
+after, OS and architecture, under the same installation ID. The binary CLI's installers also send
+whether the download came from the release or its mirror and, when one failed, a fixed error kind
+(curl's exit code, the HTTP status or the network error's name) and how many seconds it took. The
+same two variables turn it off.
