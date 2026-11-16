@@ -90,7 +90,10 @@ and invalid-marking skip it.
 `scan_skills` keys on `SKILL.md` (skips dot-dirs) and classifies each folder:
 
 - **contract**: a `treg.json` exists and is used verbatim; always wins. `convert.resolve_secret_path`
-  tolerates the `.secret`/`.secrets` spelling difference between machines.
+  tolerates the `.secret`/`.secrets` spelling difference between machines, and refuses
+  (`SecretPathError`) a `file:` that is absolute or resolves outside the skill folder, symlinks
+  followed: the contract is uploaded content on the server and a stranger's file in a downloaded
+  skill, and the file's bytes become a secret. Such a path is a gap, so the skill is not imported.
 - **catalog CLI**: a secret-less skill whose name matches a catalog `cli` entry becomes a runnable cli
   tool, its env credentials read from the machine or asked once.
 - **generated**: base URL from a catalog name match, else the script's `API="..."`, else a guess;
@@ -105,7 +108,9 @@ its filename, and OAuth app config (`client_secret.json`, `credentials.json`) sk
 folder's companion files, never `.secret*`.
 
 The dashboard importer (`POST /skills/analyze`, `POST /skills/import`) runs the same classifier and
-registers each skill in its own session, so one failure cannot poison the rest of the batch.
+registers each skill in its own session, so one failure cannot poison the rest of the batch. It
+reads secret files only through `resolve_secret_path`, so an uploaded contract can neither read a
+server file into a secret nor probe one through `present`.
 
 ## Guards
 

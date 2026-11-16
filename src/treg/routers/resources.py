@@ -679,7 +679,7 @@ async def analyze_skill_folder(
             for s in d.secrets:
                 if s.get("file"):
                     secs.append({"name": s["name"], "source": "file", "ref": s["file"],
-                                 "present": (Path(d.path) / s["file"]).is_file()})
+                                 "present": sk_mod.secret_file_present(Path(d.path), s["file"])})
                 elif s.get("env"):
                     secs.append({"name": s["name"], "source": "env", "ref": s["env"],
                                  "present": s["env"] in env_names})
