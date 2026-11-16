@@ -1,0 +1,6 @@
+<svg width="150" height="150" viewBox="0 0 150 150" fill="none" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="MailVeri">
+  <rect width="150" height="150" rx="24" fill="white"/>
+  <g transform="translate(18, 18) scale(0.22265625)">
+    <path fill="#7C3AED" fill-rule="evenodd" d="M 501,362 L 469,330 L 395,404 L 352,362 L 320,393 L 320,395 L 394,469 Z M 24,110 L 21,391 L 31,412 L 46,423 L 277,426 L 277,384 L 63,383 L 64,171 L 234,277 L 404,171 L 405,277 L 447,277 L 447,119 L 439,101 L 422,88 L 56,85 L 35,95 Z M 65,128 L 403,128 L 234,234 Z"/>
+  </g>
+</svg>

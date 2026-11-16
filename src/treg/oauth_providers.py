@@ -4273,6 +4273,39 @@ CORPOAPI = OAuthProvider(
     probe_path="/v1/usage",
 )
 
+MAILVERI = OAuthProvider(
+    service="mailveri",
+    display_name="MailVeri",
+    auth_kind="key",
+    token_label="API key",
+    token_placeholder="your MailVeri API key",
+    # Both `Authorization: Bearer <key>` and `Auth-Token: <key>` are accepted; Bearer is the primary
+    # documented header.
+    token_header="Authorization",
+    token_format="Bearer {secret}",
+    setup_url="https://app.mailveri.com/api-keys/",
+    setup_action_label="Get your MailVeri API key",
+    setup_steps=(
+        "Sign in to MailVeri at app.mailveri.com and open API Keys.",
+        "Create or copy an API key and paste it here.",
+    ),
+    setup_note=(
+        "Single email verification spends 1 credit per conclusive verdict; UNKNOWN results and "
+        "balance checks are free. Prepaid credits never expire."
+    ),
+    auth_uri="", token_uri="",
+    scopes={},
+    client_id_setting="", client_secret_setting="",
+    category="Enrichment",
+    summary="Verify email addresses in real time with catch-all, disposable, role-account, full-inbox and forwarding detection.",
+    base_url="https://api.mailveri.com",
+    docs_url="https://mailveri.com/docs/api",
+    # Free, unthrottled balance check: a valid key answers 200 {"error": 0, "balance": ...}; a bad
+    # or revoked key answers HTTP 403, and any non-zero `error` envelope is rejected too.
+    probe_path="/v1/get-balance/",
+    token_reject_field="error",
+)
+
 REGISTRY: dict[str, OAuthProvider] = {
     p.service: p
     for p in (
@@ -4293,7 +4326,7 @@ REGISTRY: dict[str, OAuthProvider] = {
         SCRAPEGRAPHAI, SERPER, BRAVESEARCH, LITESCRAPE, CLORO,
         # more Enrichment API-key providers
         LUSHA, CORESIGNAL, DIFFBOT, THECOMPANIESAPI, LEADMAGIC, ENRICHLAYER, FIBER_AI, CRUSTDATA, THEIRSTACK, AVIATO,
-        COMPANYENRICH, CORPOAPI, OCEANIO, ADYNTEL, TOMBA, TRESTLEIQ, HLRLOOKUP, PREDICTLEADS, FINDYMAIL, ANYMAILFINDER, ENROW, FILTRAT, FILTRAT_FINDER, DROPCONTACT, BRANDDEV, ICYPEAS, LEADSFORGE,
+        COMPANYENRICH, CORPOAPI, MAILVERI, OCEANIO, ADYNTEL, TOMBA, TRESTLEIQ, HLRLOOKUP, PREDICTLEADS, FINDYMAIL, ANYMAILFINDER, ENROW, FILTRAT, FILTRAT_FINDER, DROPCONTACT, BRANDDEV, ICYPEAS, LEADSFORGE,
         INFLUENCERSCLUB, VILLAGE,
         # Places: intent-scored local search
         ATLY,

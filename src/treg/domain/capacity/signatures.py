@@ -142,6 +142,10 @@ _TABLE: list[Signature] = [
     # HLR Lookup answers an empty account with a 200 whose `results[0].error` is
     # INSUFFICIENT_CREDIT (its docs; the catalog row's `expect` already keeps it unbilled).
     Signature("hlrlookup", 200, r'"error"\s*:\s*"insufficient_credit"', "balance"),
+    # MailVeri answers an empty credit pool with HTTP 200 {"error": 2, "message": "Insufficient
+    # credits to verify ...", "credits_used": 0}; `expect` already marks error != 0 unbilled.
+    Signature("mailveri", 200, r'"error"\s*:\s*2\b', "balance"),
+    Signature("mailveri", 429, r"", "burst"),
     # Tomba: a route's spent allowance is a 429 "You have reached your usage limit", with no Retry-After.
     Signature("tomba", 429, r"reached your usage limit", "quota", tripwire=True),
     # Fish Audio: too many requests in flight is a 429 "exceeded your current concurrency limit", no Retry-After.

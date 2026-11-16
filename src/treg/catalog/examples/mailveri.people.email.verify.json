@@ -1,0 +1,11 @@
+{
+  "error": 0,
+  "message": "Verified founder@acme-saas.io successfully",
+  "status": "VALID",
+  "mail": "founder@acme-saas.io",
+  "email": "founder@acme-saas.io",
+  "balance": 9999,
+  "credits_used": 1,
+  "quality_score": 98,
+  "is_forwarding": false
+}

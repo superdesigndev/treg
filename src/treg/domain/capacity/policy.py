@@ -42,6 +42,7 @@ _KNOWN: dict[str, tuple[str, str, str]] = {
     "enrow": ("credits", "manual", "api"),
     "filtrat": ("credits", "manual", "api"),
     "filtrat_finder": ("credits", "manual", "api"),
+    "mailveri": ("credits", "manual", "api"),
     "leadsforge": ("credits", "manual", "api"),
     "thecompaniesapi": ("credits", "manual", "api"),
     "tomba": ("monthly_quota", "quota_reset", "api"),
@@ -127,6 +128,7 @@ _RATE_LIMITS: dict[str, dict] = {
     "filtrat": {"limit": 600, "window_s": 60, "source": "docs"},
     # treg's finder key (its own Filtrat account) is limited to 110 searches a minute.
     "filtrat-finder": {"limit": 110, "window_s": 60, "source": "docs"},
+    "mailveri": {"limit": 10, "window_s": 1, "source": "docs"},
     # The published 60 requests/second is shared across enrichment and result polling. Leave
     # headroom for account checks and manual use of the same key; BYOK bypasses this pace.
     "dropcontact": {"limit": 30, "window_s": 1, "source": "policy"},
@@ -262,6 +264,8 @@ _CONCURRENCY: dict[str, int] = {
     # then 503 SERVER_BUSY), and 20 finder searches on treg's finder key.
     "filtrat": 10,
     "filtrat-finder": 20,
+    # MailVeri allows at most 5 single-email checks in flight per account (429 above that).
+    "mailveri": 5,
 }
 # An endpoint family whose in-progress allowance differs from its provider's has its own places
 # here, shared by every endpoint listed. They replace the provider's places for those endpoints and
