@@ -86,13 +86,43 @@ tasks. If `TREG_SECRET_KEY` is empty on a non-SQLite database, `verify_db()` rai
 - **Deploy schema first**, then application and worker code that expects the new revision. A
   platform whose scheduled workers update independently must sequence them accordingly.
 
+**Release order with scheduled workers.** Every `treg-worker` command refuses a database behind its
+build (`verify_db()`), so a scheduled service that redeploys on its own the moment a revision is
+merged fails every run until the web upgrade has applied it, and keeps failing if that upgrade
+refused. Turn automatic deploys off for scheduled services and redeploy them from the release
+script, only after the web pre-deploy upgrade passed:
+
+1. Merge; the web service builds and its pre-deploy step runs `python -m treg upgrade`.
+2. If the upgrade refused (lock timeout budget spent, or the long-lock-holder check), stop: the
+   database is unchanged or stamped part-way, and both the old web code and the old scheduled
+   workers keep running against it. Fix the cause and redeploy the web service.
+3. Once the upgrade passed and the new web code serves, redeploy each scheduled service.
+
 **PostgreSQL lock queueing.** While an `ALTER TABLE` waits for its `ACCESS EXCLUSIVE` lock, every
-later query on that table queues behind it. So migrations set a 5 s `lock_timeout`, the longest stall
-a deploy may inflict, and no revision may raise it for an `ALTER`. A deploy waits longer by retrying
-instead: `maintenance` re-runs `alembic upgrade head` up to `LOCK_RETRY_ATTEMPTS` times after a lock
-timeout with a jittered pause so short transactions drain, and `env.py` commits each revision on its
-own (`transaction_per_migration`) so a retry resumes at the revision that timed out. Any other error
-fails the deploy at once.
+later query on that table queues behind it. So migrations set `lock_timeout` to
+`TREG_MIGRATION_LOCK_TIMEOUT_S` (2 s, at most 5 s), the longest stall a deploy may inflict, and no
+revision may raise it for an `ALTER`. The value stays above PostgreSQL's default `deadlock_timeout`
+(1 s): that is when a waiting `ALTER` makes an ordinary autovacuum on the table give up its lock,
+and a wait of exactly 1 s can time out at that same instant. `env.py` sets the timeouts again after
+every revision (`on_version_apply`), so an index revision that restores fixed values does not
+lengthen the next revision's wait. A deploy waits longer by retrying instead: `maintenance` re-runs
+`alembic upgrade head` up to `TREG_MIGRATION_LOCK_RETRY_ATTEMPTS` times (30) after a lock timeout,
+pausing a random time between half and all of `TREG_MIGRATION_LOCK_RETRY_PAUSE_S` (2 s) so short
+transactions drain, and `env.py` commits each revision on its own (`transaction_per_migration`) so a
+retry resumes at the revision that timed out. Any other error fails the deploy at once.
+
+**Refusing behind a long lock holder.** Retrying helps only against holders that let go soon.
+PostgreSQL never cancels an anti-wraparound autovacuum for a waiting `ALTER`, and an open
+transaction keeps its locks until it ends; behind either, every attempt repeats the stall. So
+before it requests any lock, `maintenance._refuse_behind_long_lock_holder` reads `pg_locks` and
+`pg_stat_activity` (read-only, PostgreSQL only) for the tables the pending revisions name (string
+literals in their files, docstrings excluded), and refuses at once, naming the session, when an
+anti-wraparound autovacuum or a transaction older than `TREG_MIGRATION_LOCK_HOLDER_MAX_XACT_S`
+(30 s) holds a lock on one of them. Nothing ran; wait for the holder (never cancel an
+anti-wraparound vacuum) or end the transaction, then deploy again. A role without
+`pg_read_all_stats` cannot read an autovacuum's query, so the check logs a warning and continues;
+the lock wait still bounds that case. A holder that starts after the check is bounded the same way.
+`TREG_MIGRATION_LOCK_HOLDER_CHECK=false` turns the check off.
 
 - Hot-table ALTERs belong in their own revision, add only nullable columns without defaults
   (metadata-only in PostgreSQL), and leave backfills and `NOT NULL` to later steps.

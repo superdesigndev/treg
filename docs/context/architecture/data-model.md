@@ -383,8 +383,9 @@ All production schema execution goes through `maintenance._upgrade_schema`. An e
 database runs `alembic upgrade head`; a non-empty unstamped database is refused without inspection
 (it must pass through adoption release 0.14.x); an unknown newer revision is refused. Scripts ship
 inside the wheel; Alembic runs through `asyncio.to_thread` because `env.py` owns its own
-`asyncio.run`. On Postgres `env.py` sets `lock_timeout = 5s` and commits each revision separately,
-so `maintenance`'s bounded retry resumes at the revision that timed out.
+`asyncio.run`. On Postgres `env.py` sets `lock_timeout` from `TREG_MIGRATION_LOCK_TIMEOUT_S` (2 s) and
+commits each revision separately, so `maintenance`'s bounded retry resumes at the revision that
+timed out ([deploy](../ops/deploy.md), PostgreSQL lock queueing).
 
 - The drift guard upgrades to head, autogenerates against `SQLModel.metadata` and requires an
   empty diff (SQLite in the suite, Postgres in CI).

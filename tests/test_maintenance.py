@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import ast
+import asyncio
 import functools
 import os
 import socket
@@ -437,8 +439,9 @@ def test_app_lifespan_does_not_run_release_backfills(tmp_path, ads_enabled):
 
 
 # --- lock-timeout retry ---------------------------------------------------------------------
-# A hot-table ALTER waits at most 5 s for its lock (alembic/env.py) so that queued traffic stalls
-# for at most 5 s; the deploy waits longer by retrying, never by waiting longer on one attempt.
+# A hot-table ALTER waits at most `migration_lock_timeout_s` for its lock (alembic/env.py) so that
+# queued traffic stalls that long at most; the deploy waits longer by retrying, never by waiting
+# longer on one attempt.
 
 
 class _LockNotAvailableError(Exception):
@@ -460,9 +463,12 @@ def _other_database_error() -> Exception:
     return DBAPIError("ALTER TABLE callrecord", {}, RuntimeError("relation does not exist"))
 
 
-def _fake_upgrade(monkeypatch, outcomes: list[Exception | None]) -> list[str]:
-    """`alembic upgrade head` that raises each queued outcome in turn, then succeeds."""
+def _fake_upgrade(monkeypatch, outcomes: list[Exception | None], *,
+                  holders: list[str] | None = None) -> list[str]:
+    """`alembic upgrade head` that raises each queued outcome in turn, then succeeds. The calls
+    list records "preflight" when the lock-holder check runs, and `holders` makes it refuse."""
     from treg import maintenance
+    from treg.config import get_settings
 
     calls: list[str] = []
 
@@ -475,9 +481,15 @@ def _fake_upgrade(monkeypatch, outcomes: list[Exception | None]) -> list[str]:
     async def stamped():
         return {"alembic_version", "org"}
 
+    async def preflight(config, tables):
+        calls.append("preflight")
+        if holders:
+            raise RuntimeError("Refusing to upgrade: " + "; ".join(holders))
+
     monkeypatch.setattr(maintenance.command, "upgrade", upgrade)
     monkeypatch.setattr(maintenance, "_table_names", stamped)
-    monkeypatch.setattr(maintenance, "LOCK_RETRY_PAUSE_SECONDS", 0.0)
+    monkeypatch.setattr(maintenance, "_refuse_behind_long_lock_holder", preflight)
+    monkeypatch.setattr(get_settings(), "migration_lock_retry_pause_s", 0.0)
     return calls
 
 
@@ -489,10 +501,10 @@ async def test_upgrade_retries_a_lock_timeout_and_resumes(monkeypatch, caplog):
     with caplog.at_level("WARNING", logger="treg.maintenance"):
         await maintenance._upgrade_schema()
 
-    assert calls == ["head", "head", "head"]
+    assert calls == ["preflight", "head", "head", "head"]
     retries = [r for r in caplog.records if "migration lock timeout" in r.getMessage()]
     assert [r.getMessage()[:40] for r in retries] == [
-        "migration lock timeout on attempt 1/12; ", "migration lock timeout on attempt 2/12; ",
+        "migration lock timeout on attempt 1/30; ", "migration lock timeout on attempt 2/30; ",
     ]
 
 
@@ -501,13 +513,15 @@ async def test_upgrade_gives_up_after_the_retry_budget(monkeypatch):
 
     from treg import maintenance
 
-    monkeypatch.setattr(maintenance, "LOCK_RETRY_ATTEMPTS", 3)
+    from treg.config import get_settings
+
+    monkeypatch.setattr(get_settings(), "migration_lock_retry_attempts", 3)
     calls = _fake_upgrade(monkeypatch, [_lock_timeout()] * 5)
 
     with pytest.raises(DBAPIError, match="lock timeout"):
         await maintenance._upgrade_schema()
 
-    assert calls == ["head"] * 3
+    assert calls == ["preflight"] + ["head"] * 3
 
 
 async def test_upgrade_does_not_retry_other_database_errors(monkeypatch):
@@ -520,4 +534,112 @@ async def test_upgrade_does_not_retry_other_database_errors(monkeypatch):
     with pytest.raises(DBAPIError, match="does not exist"):
         await maintenance._upgrade_schema()
 
-    assert calls == ["head"]
+    assert calls == ["preflight", "head"]
+
+
+def test_lock_wait_defaults_stay_above_the_deadlock_timeout():
+    from pydantic import ValidationError
+
+    from treg.config import Settings
+
+    settings = Settings(_env_file=None)
+    assert settings.migration_lock_timeout_s == 2.0
+    assert settings.migration_lock_retry_attempts == 30
+    with pytest.raises(ValidationError):
+        Settings(_env_file=None, migration_lock_timeout_s=1.0)
+
+
+# --- refusing behind a long lock holder -----------------------------------------------------
+# PostgreSQL cancels an ordinary autovacuum that blocks a waiting ALTER, but never an
+# anti-wraparound one, and a long transaction keeps its locks until it ends: retrying behind
+# either only repeats the stall, so the upgrade refuses before it requests any lock.
+
+
+async def test_upgrade_refuses_behind_a_long_lock_holder_before_any_migration(monkeypatch):
+    from treg import maintenance
+
+    calls = _fake_upgrade(monkeypatch, [], holders=["pid 7 holds AccessShareLock on org"])
+
+    with pytest.raises(RuntimeError, match="pid 7 holds AccessShareLock on org"):
+        await maintenance._upgrade_schema()
+
+    assert calls == ["preflight"]
+
+
+def _activity(**row):
+    from types import SimpleNamespace
+
+    base = {"pid": 7, "relname": "ledgerentry", "mode": "ShareUpdateExclusiveLock",
+            "backend_type": "autovacuum worker", "query": "", "xact_s": 900.0}
+    return SimpleNamespace(**{**base, **row})
+
+
+def test_only_an_anti_wraparound_autovacuum_or_a_long_transaction_is_a_long_holder(caplog):
+    from treg.maintenance import _long_holder
+
+    wraparound = _activity(query="autovacuum: VACUUM public.ledgerentry (to prevent wraparound)")
+    assert "to prevent wraparound" in _long_holder(wraparound)
+    assert _long_holder(_activity(query="autovacuum: VACUUM ANALYZE public.ledgerentry")) is None
+    transaction = _activity(backend_type="client backend", mode="AccessShareLock", xact_s=45.2)
+    assert _long_holder(transaction) == (
+        "pid 7 (client backend, transaction open 45 s) holds AccessShareLock on ledgerentry")
+    with caplog.at_level("WARNING", logger="treg.maintenance"):
+        assert _long_holder(_activity(query="<insufficient privilege>")) is None
+    assert "pg_read_all_stats" in caplog.text
+
+
+def test_pending_tables_are_the_ones_the_pending_revisions_name(tmp_path):
+    env, _, _ = _env(tmp_path)
+    previous = _one_behind_head()
+    assert _alembic_upgrade(env, previous).returncode == 0
+    script = textwrap.dedent(
+        """
+        import asyncio
+
+        from treg import maintenance
+
+        async def main():
+            config = maintenance._alembic_config()
+            tables = await maintenance._table_names()
+            print(sorted(await maintenance._pending_revision_tables(config, tables)))
+
+        asyncio.run(main())
+        """
+    )
+    pending = _run(["-c", script], env)
+    assert pending.returncode == 0, pending.stderr
+    assert _upgrade(env).returncode == 0
+    at_head = _run(["-c", script], env)
+    assert at_head.returncode == 0, at_head.stderr
+
+    named = ast.literal_eval(pending.stdout.strip())
+    assert named and "alembic_version" not in named
+    assert at_head.stdout.strip() == "[]"
+
+
+async def test_postgres_preflight_refuses_a_transaction_holding_a_pending_table(monkeypatch):
+    from sqlalchemy import text
+
+    from treg import maintenance
+    from treg.config import get_settings
+    from treg.infra.db import _engine, reset_db
+
+    if _engine.dialect.name != "postgresql":
+        pytest.skip("pg_locks and pg_stat_activity are PostgreSQL's")
+    await reset_db()
+
+    async def pending(config, tables):
+        return {"org"}
+
+    monkeypatch.setattr(maintenance, "_pending_revision_tables", pending)
+    monkeypatch.setattr(get_settings(), "migration_lock_holder_max_xact_s", 0.5)
+    config = maintenance._alembic_config()
+    async with _engine.connect() as holder:
+        await holder.execute(text("LOCK TABLE org IN ACCESS SHARE MODE"))
+        await maintenance._refuse_behind_long_lock_holder(config, {"org"})  # still young
+        await asyncio.sleep(0.8)
+        with pytest.raises(RuntimeError, match=r"transaction open \d+ s\) holds AccessShareLock on org"):
+            await maintenance._refuse_behind_long_lock_holder(config, {"org"})
+        monkeypatch.setattr(get_settings(), "migration_lock_holder_check", False)
+        await maintenance._refuse_behind_long_lock_holder(config, {"org"})
+        await holder.rollback()
