@@ -79,6 +79,7 @@ from .resolve import (
     provider_paused,
     resolve_call_target,
     resolve_marketplace_target,
+    vendor_path_endpoint,
 )
 from . import overflow as overflow_cycle
 from . import route as routed
@@ -909,6 +910,12 @@ async def _execute_call(request: _ApplicationRequest, upstream_client: httpx.Asy
             # Not a tool → maybe a marketplace endpoint id (`treg call tikhub.tiktok.video.comments`).
             # Only the 404 falls through, so an org tool with the same name always wins.
             ep = _catalog_endpoint_for(rest) if exc.status_code == 404 else None
+            if ep is None and exc.status_code == 404 and (found := vendor_path_endpoint(
+                    rest, request.method, request.query_params)) is not None:
+                # `<provider>/<path>` with no own tool of that name: the catalog row on that
+                # path, run as `/call/<id>?<path params>` (the params are consumed, never relayed).
+                ep, path_params = found
+                request.query_params = QueryValues(request.query_params.items + path_params)
             if ep is None:
                 # Third and last: a hub tool (`<team-slug>.<name>`), only when nothing above
                 # claimed the id — an own tool or a catalog id always wins.

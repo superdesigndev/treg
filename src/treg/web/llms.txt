@@ -79,6 +79,10 @@ tools is `{BASE}/call/<tool-name>/<path>`, or its upstream URL behind the prefix
 `{BASE}/call/https://api.stripe.com/v1/charges`. A team token (an agent token or a dashboard API
 key) carries its team; with a personal sign-in token, also send `X-Treg-Org: <team-slug>`. Method,
 path, query and body reach the provider unchanged, and its answer comes back verbatim.
+A client already written against a provider can keep its paths: `{BASE}/call/<provider>/<path>`,
+with the path relative to the provider's base URL (`{BASE}/call/dataforseo/serp/google/organic/live/advanced`
+for `https://api.dataforseo.com/v3/serp/...`), runs the catalog tool on that path exactly as its id
+would; a path no catalog tool lists is a 404 with `X-Treg-Error: 1`, never relayed.
 
 The MCP server at `{BASE}/mcp/` takes a bearer header or OAuth, and offers `catalog_search`,
 `catalog_get`, `call`, `call_media` (audio), `resources_list`, `balance`, `my_tools`,
