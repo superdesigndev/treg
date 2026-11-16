@@ -1,0 +1,28 @@
+[
+  {
+    "id": "dd93e67d535d6906adfa664368f3304c",
+    "title": "Technical Solutions Engineer",
+    "company": "Stripe",
+    "companyDomain": "stripe.com",
+    "companyLogo": "https://www.google.com/s2/favicons?domain=stripe.com&sz=128",
+    "applyUrl": "https://himalayas.app/companies/stripe/jobs/technical-solutions-engineer-3351392851",
+    "category": "Software Engineering",
+    "subcategory": "General software",
+    "experienceLevel": "Mid-level",
+    "experienceMin": 4,
+    "workMode": "remote",
+    "isRemote": true,
+    "remoteScope": "country",
+    "location": "United States",
+    "locations": [
+      {
+        "country": "United States"
+      }
+    ],
+    "country": "United States",
+    "source": "himalayas",
+    "ats": "himalayas",
+    "postedAt": "2026-10-17",
+    "lastSeenAt": "2026-10-17T12:01:43.611Z"
+  }
+]
