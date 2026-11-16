@@ -14,7 +14,7 @@ from collections.abc import Callable
 from dataclasses import dataclass
 
 from sqlalchemy import update
-from sqlalchemy.exc import DBAPIError, TimeoutError as PoolTimeoutError
+from sqlalchemy.exc import DBAPIError
 
 from ... import adsconv, archive
 from ...config import get_settings
@@ -27,7 +27,7 @@ from ...domain import money as ledger
 from ...domain.asynctasks import json_path
 from ...domain.money import settlement as settlement_basis
 from ...domain.catalog import store as catalog_store
-from ...infra.db import session_maker
+from ...infra.db import DB_BUSY_ERRORS, is_db_busy, session_maker
 from ...infra import money_admission
 from ...infra.money_session import money_session
 from ...infra.money_timing import observe_money
@@ -1228,10 +1228,12 @@ async def _platform_settle(
     try:
         try:
             charged = await _close()
-        except (PoolTimeoutError, DBAPIError) as exc:
+        except (*DB_BUSY_ERRORS, DBAPIError) as exc:
             # asyncpg deadlocks arrive as SQLAlchemy DBAPIError with SQLSTATE on its orig wrapper.
-            # Retry only 40P01, never an error-message match or an arbitrary database failure.
-            if isinstance(exc, DBAPIError) and getattr(exc.orig, "sqlstate", None) != "40P01":
+            # Retry only 40P01 and a refused connection (raised before any statement ran), never
+            # an error-message match or an arbitrary database failure.
+            if (isinstance(exc, DBAPIError) and getattr(exc.orig, "sqlstate", None) != "40P01"
+                    and not is_db_busy(exc)):
                 raise
             # _close has exited its session, rolling back all staged money/overflow writes.
             # One fresh transaction gets the same bounded retry as a pool timeout; another failure

@@ -11,7 +11,6 @@ from types import SimpleNamespace
 from urllib.parse import parse_qsl, quote, urlencode, urlsplit
 
 import httpx
-from sqlalchemy.exc import TimeoutError as PoolTimeoutError
 
 from ... import analytics, archive, audit, jsontext, oauth, oauth_providers
 from ...application import hub as hub_app
@@ -28,7 +27,7 @@ from ...domain.catalog import schema, store as catalog_store
 from ...domain.money import with_margin
 from ...domain import provider_resources
 from ...infra import credential_cipher, money_admission, org_endpoint_quota
-from ...infra.db import session_maker
+from ...infra.db import is_db_busy, session_maker
 from ...models import Secret
 from ...sandbox_identity import visitor_name
 from ...domain.capacity import marks as capacity_marks
@@ -182,11 +181,11 @@ async def execute_call(context: CallContext, upstream_client: httpx.AsyncClient)
     except CallFailure as exc:
         _log_unaudited_child(request, exc.status_code, failure=exc)
         raise
-    except PoolTimeoutError:
-        _log_unaudited_child(request, 503, kind="db_pool")
-        raise
-    except Exception:
-        _log_unaudited_child(request, 500, kind="unexpected_exception")
+    except Exception as exc:
+        if is_db_busy(exc):
+            _log_unaudited_child(request, 503, kind="db_pool")
+        else:
+            _log_unaudited_child(request, 500, kind="unexpected_exception")
         raise
     finally:
         if request.lease is not None:

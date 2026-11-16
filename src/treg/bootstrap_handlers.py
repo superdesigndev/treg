@@ -7,7 +7,7 @@ from typing import Any
 from fastapi import Request
 from fastapi.exception_handlers import http_exception_handler
 from fastapi.responses import JSONResponse
-from sqlalchemy.exc import TimeoutError as PoolTimeoutError
+from sqlalchemy.exc import DBAPIError
 from starlette.exceptions import HTTPException as StarletteHTTPException
 
 from . import analytics
@@ -15,7 +15,7 @@ from .call_surface import split_call_path
 from .caller_metadata import _client_of
 from .client_identity import _norm_client, mcp_host
 from .config import get_settings
-from .infra.db import ReportBusy
+from .infra.db import ReportBusy, is_db_busy
 
 # The token refusals `domain/identity/access.py` raises; their bodies carry `hint` (interface/api.md).
 _TOKEN_REFUSALS = frozenset({"not authenticated", "invalid token", "revoked key", "disabled key"})
@@ -44,8 +44,17 @@ def _capture_call_intake_failure(request: Request, *, surface: str) -> None:
     analytics.capture("treg-server", "call_intake_failed", props)
 
 
-async def _pool_saturated(request: Request, exc: PoolTimeoutError) -> JSONResponse:
-    """The DB pool had no connection to give within `pool_timeout` (db.py). That is treg being
+async def _db_error(request: Request, exc: DBAPIError) -> JSONResponse:
+    """A SQLAlchemy-wrapped database error: busy when it carries a refused connection, otherwise
+    unchanged (the error continues to the server-error 500 as it did before)."""
+    if not is_db_busy(exc):
+        raise exc
+    return await _pool_saturated(request, exc)
+
+
+async def _pool_saturated(request: Request, exc: Exception) -> JSONResponse:
+    """The DB pool had no connection to give within `pool_timeout` (db.py), or the database refused a
+    new one (`DB_BUSY_ERRORS`). That is treg being
     saturated, not the caller's fault and not the provider's — so say so, typed, and fast. Before this
     handler the same condition escaped request handling and surfaced as a bare
     `500 Internal Server Error` after a 30 s wait, which an agent cannot tell from a provider bug.
@@ -107,4 +116,5 @@ async def _mark_treg_own_errors(request: Request, exc: StarletteHTTPException):
 
 
 _pool_saturated.__module__ = "treg.api"
+_db_error.__module__ = "treg.api"
 _mark_treg_own_errors.__module__ = "treg.api"

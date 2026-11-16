@@ -11,13 +11,13 @@ from datetime import datetime, timedelta, timezone
 from typing import TYPE_CHECKING
 
 from sqlalchemy import delete, func, or_, text, update
-from sqlalchemy.exc import IntegrityError, TimeoutError as PoolTimeoutError
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlmodel import select
 
 from ... import archive
 from ...config import get_settings
-from ...infra.db import session_maker
+from ...infra.db import is_db_busy, session_maker
 from ...domain.identity.access import Caller
 from ...models import AsyncTaskRecord, CallRecord, Hold, IdempotentCall, LedgerEntry
 from .types import IdempotencyFailed, IdempotentReplay
@@ -254,7 +254,9 @@ async def _with_pool_retry(work):
     pool is the usual reason bookkeeping fails, and a failed write here strands a claim."""
     try:
         return await work()
-    except PoolTimeoutError:
+    except Exception as exc:
+        if not is_db_busy(exc):
+            raise
         await asyncio.sleep(_POOL_RETRY_PAUSE_S)
         return await work()
 
