@@ -23,6 +23,10 @@ from pathlib import Path
 # Tests and their CLI subprocesses must never emit production analytics.
 os.environ["TREG_TELEMETRY"] = "0"
 
+# A deployment's Secrets Manager source outranks the environment, so a shell that names one would
+# hand the suite production credentials and its database URL. Tests that need it set it themselves.
+os.environ.pop("TREG_AWS_SECRET_ID", None)
+
 # Isolate the test DB from any .env / running dev server BEFORE importing treg (the engine is
 # built at import time). A real env var overrides the .env file in pydantic-settings.
 # TREG_TEST_DB_URL (not TREG_DATABASE_URL - a stray production URL in a shell must never become the
