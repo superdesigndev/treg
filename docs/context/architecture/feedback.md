@@ -102,8 +102,10 @@ the whole answer), optional `checked`, `evidence_call_id`, a private `note` and 
 
 - **Append-only.** A team may mark one call many times as it learns more. A correction or
   withdrawal (empty `items`) is a new row naming the earlier mark it `replaces`, which must be the
-  same team's, on the same call. An identical retry returns the original id with `already_received`;
-  a unique `(org_id, content_hash)` index arbitrates races.
+  same team's, on the same call. An identical retry returns the original id with `already_received`,
+  but only after the call is found in the caller's scope, and the hash includes the caller's pin, so
+  a receipt never discloses another pin's call or mark; a unique `(org_id, content_hash)` index
+  arbitrates races.
 - **Attribution.** The call is looked up exactly as for a review (team and pin scope, retryable 404,
   own tools and a maker's own hub tool refused). The mark keeps the called endpoint, provider and
   credential tier. A routed answer can merge several children's rows, so a row index is the

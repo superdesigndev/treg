@@ -157,8 +157,12 @@ async def submit_mark(
     not resolved to a routed child here. A replaced mark must be this team's, on the same call."""
     payload = {"basis": basis, "items": items, "checked": checked,
                "evidence_call_id": evidence_call_id, "note": note, "replaces": replaces}
-    digest = marks.content_hash(call_id, payload)
+    tags = dict(pinned_tags) if pinned_tags else None
+    # The pin is part of the identity: two pins' identical marks never collapse into one receipt.
+    digest = marks.content_hash(call_id, {**payload, "tags": tags})
     async with session_maker() as db:
+        # Scope first: a receipt for a call this caller cannot read would disclose that call.
+        record = await _attributable_call(db, org_id=org_id, call_id=call_id, pinned_tags=pinned_tags)
         existing = await marks.by_hash(db, org_id, digest)
         if existing is not None:
             return existing.id, False
@@ -168,7 +172,6 @@ async def submit_mark(
         ):
             await db.commit()
             raise FeedbackRateLimited
-        record = await _attributable_call(db, org_id=org_id, call_id=call_id, pinned_tags=pinned_tags)
         if replaces is not None:
             earlier = await marks.get(db, replaces, org_id,
                                       *pinned_tag_predicates(CallMark.tags, pinned_tags))
@@ -187,7 +190,7 @@ async def submit_mark(
                 endpoint_id=record.endpoint_id, provider=record.provider,
                 credential_tier=record.credential_tier, client=client,
                 evidence_verified=evidence_verified, content_hash=digest,
-                tags=dict(pinned_tags) if pinned_tags else None, **payload,
+                tags=tags, **payload,
             )
             await db.flush()
         except IntegrityError:
