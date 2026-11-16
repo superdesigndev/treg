@@ -119,11 +119,15 @@ def _revision_strings(path: str) -> list[str]:
 async def _pending_revision_tables(config: Config, tables: set[str]) -> set[str]:
     """Existing tables named in a revision `upgrade head` would apply. Empty when nothing is
     pending, or when the stamp is unknown (the upgrade itself then refuses with its message)."""
-    script = ScriptDirectory.from_config(config)
     async with _engine.connect() as connection:
         current = await connection.run_sync(
             lambda sync_connection: MigrationContext.configure(sync_connection).get_current_heads()
         )
+    return _tables_named_by_pending(ScriptDirectory.from_config(config), current, tables)
+
+
+def _tables_named_by_pending(script: ScriptDirectory, current: tuple[str, ...],
+                             tables: set[str]) -> set[str]:
     try:
         pending = list(script.iterate_revisions("heads", current or "base"))
     except (RevisionError, util.CommandError):

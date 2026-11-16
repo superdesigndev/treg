@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import ast
 import asyncio
 import functools
 import os
@@ -588,33 +587,53 @@ def test_only_an_anti_wraparound_autovacuum_or_a_long_transaction_is_a_long_hold
     assert "pg_read_all_stats" in caplog.text
 
 
-def test_pending_tables_are_the_ones_the_pending_revisions_name(tmp_path):
-    env, _, _ = _env(tmp_path)
-    previous = _one_behind_head()
-    assert _alembic_upgrade(env, previous).returncode == 0
-    script = textwrap.dedent(
-        """
-        import asyncio
+_FIXTURE_REVISIONS = {
+    "r1": (None, '''"""creates alpha; the prose names beta, which it does not touch"""
+from alembic import op
 
-        from treg import maintenance
 
-        async def main():
-            config = maintenance._alembic_config()
-            tables = await maintenance._table_names()
-            print(sorted(await maintenance._pending_revision_tables(config, tables)))
+def upgrade():
+    op.create_table("alpha")
+'''),
+    "r2": ("r1", '''"""alters alpha and creates gamma; beta appears only in prose"""
+from alembic import op
 
-        asyncio.run(main())
-        """
-    )
-    pending = _run(["-c", script], env)
-    assert pending.returncode == 0, pending.stderr
-    assert _upgrade(env).returncode == 0
-    at_head = _run(["-c", script], env)
-    assert at_head.returncode == 0, at_head.stderr
 
-    named = ast.literal_eval(pending.stdout.strip())
-    assert named and "alembic_version" not in named
-    assert at_head.stdout.strip() == "[]"
+def upgrade():
+    """beta is named here too, in a docstring"""
+    # and beta in a comment
+    op.execute("ALTER TABLE alpha ADD COLUMN note TEXT")
+    op.create_table("gamma")
+'''),
+}
+
+
+def _fixture_script(tmp_path: Path):
+    """A script directory of its own, so the expectation never depends on main's revisions."""
+    from alembic.config import Config
+    from alembic.script import ScriptDirectory
+
+    (tmp_path / "versions").mkdir()
+    for revision, (down, body) in _FIXTURE_REVISIONS.items():
+        (tmp_path / "versions" / f"{revision}.py").write_text(
+            body + f"\n\nrevision = {revision!r}\ndown_revision = {down!r}\n"
+            "branch_labels = None\ndepends_on = None\n")
+    config = Config()
+    config.set_main_option("script_location", str(tmp_path))
+    return ScriptDirectory.from_config(config)
+
+
+def test_pending_tables_are_the_existing_ones_the_pending_revisions_name(tmp_path):
+    from treg.maintenance import _tables_named_by_pending
+
+    script = _fixture_script(tmp_path)
+    existing = {"alpha", "beta", "alembic_version"}
+
+    assert _tables_named_by_pending(script, (), existing) == {"alpha"}
+    assert _tables_named_by_pending(script, ("r1",), existing) == {"alpha"}
+    assert _tables_named_by_pending(script, ("r1",), {"beta", "gamma"}) == {"gamma"}
+    assert _tables_named_by_pending(script, ("r2",), existing) == set()
+    assert _tables_named_by_pending(script, ("unknown",), existing) == set()
 
 
 async def test_postgres_preflight_refuses_a_transaction_holding_a_pending_table(monkeypatch):
