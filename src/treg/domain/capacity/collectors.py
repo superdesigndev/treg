@@ -234,6 +234,19 @@ async def _linkup(c, key):
     return {"value": float(raw), "unit": "USD", "note": "prepaid credit balance"}
 
 
+async def _specstream(c, key):
+    d = await _get(c, "https://api.specstream.ai/v1/capacity/balance",
+                   headers={"Authorization": f"Bearer {key}"})
+    data = d.get("data") if isinstance(d, dict) else None
+    raw = data.get("available_cents") if isinstance(data, dict) else None
+    if type(raw) is not int or raw < 0:
+        raise ValueError("SpecStream returned no valid account balance")
+    currency = data.get("currency")
+    unit = currency if isinstance(currency, str) and currency else "USD"
+    note = "payment hold active" if data.get("payment_hold") else "prepaid account balance"
+    return {"value": float(Decimal(raw) / 100), "unit": unit, "note": note}
+
+
 async def _you(c, key):
     d = await _get(c, "https://api.you.com/v1/billing/account_balance",
                    headers={"X-API-Key": key})
@@ -1142,6 +1155,7 @@ BALANCE_ROUTES = {
     "tavily": _tavily,
     "search1api": _search1api,
     "linkup": _linkup,
+    "specstream": _specstream,
     "you": _you,
     "serper": _serper,
     "litescrape": _litescrape,

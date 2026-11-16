@@ -1,0 +1,45 @@
+{
+  "data": {
+    "id": "ws_example_0001",
+    "request_id": "ws_example_0001",
+    "query": "What is example.com used for?",
+    "kind": "fact",
+    "columns": null,
+    "answer": {
+      "value": "Illustrative examples in documentation",
+      "page": "https://example.com/",
+      "seen_at": "2026-11-16T00:00:00Z",
+      "confirmed": true,
+      "sources": [
+        "https://example.com/",
+        "https://www.iana.org/help/example-domains"
+      ]
+    },
+    "rows": null,
+    "sources": [
+      {
+        "url": "https://example.com/",
+        "title": "Example Domain",
+        "site": "example.com",
+        "snippet": "This domain is for use in documentation examples without needing permission. Avoid use in operations.",
+        "cited": true,
+        "published": null,
+        "modified": null
+      },
+      {
+        "url": "https://www.iana.org/help/example-domains",
+        "title": "Example Domains",
+        "site": "iana.org",
+        "snippet": "As described in RFC 2606 and RFC 6761, a number of domains such as example.com and example.org are maintained for documentation purposes.",
+        "cited": true,
+        "published": null,
+        "modified": null
+      }
+    ],
+    "handoff": null,
+    "took_ms": 850,
+    "price_usd": 0.005,
+    "page": 1,
+    "next_page": null
+  }
+}

@@ -1,0 +1,98 @@
+provider: specstream
+source:
+  docs: https://specstream.ai/agents.md
+  openapi: https://api.specstream.ai/openapi.json
+  curated: '2026-11-16'
+pricing_url: https://specstream.ai/pricing
+limits: "API keys support per-key spending limits (spend_cap_cents) and scopes (finds:spend is required for Search and Extract). Rate-limited or busy calls return HTTP 503 with Retry-After and are not charged."
+
+defaults:
+  provenance: {source: docs, source_url: 'https://specstream.ai/agents.md', checked: '2026-11-16', confidence: documented}
+  error: {when: {path: response.error, op: present}}
+
+endpoints:
+  - id: specstream.web.search
+    added: '2026-11-16'
+    domain: search
+    capability: web.search
+    platform: web
+    scope: any_account
+    method: GET
+    path: /v1/web-search
+    strict_query: true
+    name: Search the live web
+    summary: Search the live web for ranked sources, optional page excerpts, and a direct sourced answer.
+    input:
+      queryParams:
+        q: {type: string, required: true, example: "What is example.com used for?", note: "Question or search terms in plain words, 1 to 2,000 characters. Supports site:, -site:, -word, filetype:, after:, before: and quoted phrases."}
+        speed: {type: string, required: false, default: default, enum: [default, fast], example: fast, note: "default reads sources for an answer ($0.005 up to 10 results); fast returns search results in about a second without an answer ($0.001 up to 10 results)."}
+        num: {type: integer, required: false, min: 1, max: 100, example: 5, note: "Results to return, 1 to 100. Up to 10 cost the base price ($0.005 default, $0.001 fast); each started block of 10 more adds $0.006 ($0.0012 fast)."}
+        page: {type: integer, required: false, min: 1, max: 10, note: "Result page, 1 to 10, num results per page. Answer and rows come on page 1 only."}
+        passages: {type: boolean, required: false, default: false, note: "Include matching page passages and an excerpt on each source."}
+        compact: {type: boolean, required: false, default: false, note: "Return compact sources with one matching snippet each and omit answer, rows and passages. Cannot be combined with passages or news."}
+        source_max_chars: {type: integer, required: false, min: 1, max: 10000, note: "With compact=true: max characters per source snippet (default 4,000)."}
+        news: {type: boolean, required: false, default: false, note: "Return recent news items instead of web results, billed at the fast tier ($0.001 up to 10). Cannot be combined with passages."}
+        language: {type: string, required: false, note: "Two-letter ISO 639-1 language code (e.g. de)."}
+        country: {type: string, required: false, note: "Two-letter ISO 3166-1 country code (e.g. DE)."}
+        safe: {type: string, required: false, enum: ["off", moderate, strict], note: "Safe search level."}
+        engines: {type: string, required: false, note: "Comma-separated engine names or denied two-letter country codes (e.g. -CN)."}
+        engines_asked: {type: boolean, required: false, default: false, note: "Include the list of engines queried in engines_asked."}
+        pages_wait_ms: {type: integer, required: false, min: 0, max: 3500, note: "With passages=true or compact=true: milliseconds to wait for page text."}
+      note: "Returns {data: {request_id, query, kind, answer, rows, sources, took_ms, price_usd}}. Calls returning no results cost nothing."
+    test_request:
+      queryParams: {q: "What is example.com used for?", num: 3}
+    price:
+      table:
+        - {when: [{path: query.speed, op: equals, value: fast}], value: '0.001'}
+        - {when: [{path: query.news, op: equals, value: true}], value: '0.001'}
+      fallback: {value: '0.005', note: "Default search of up to 10 results is $0.005; fast tier (speed=fast or news=true) is $0.001."}
+      currency: USD
+      unit: call
+      note: "Up to 10 results cost $0.005 default or $0.001 on the fast tier (speed=fast or news=true); each started block of 10 more adds $0.006 ($0.0012 fast). Calls with no results cost nothing; response data.price_usd settles the exact charge."
+    settle:
+      reported: {path: response.data.price_usd, unit: usd}
+      worst_case: '0.059'
+    miss:
+      when:
+        any:
+          - {path: response.data.sources, op: absent}
+          - {path: response.data.sources, op: empty}
+    docs_url: https://specstream.ai/docs/search-api
+    example_response: examples/specstream.web.search.json
+
+  - id: specstream.web.extract
+    added: '2026-11-16'
+    domain: extract
+    capability: web.extract
+    platform: web
+    scope: any_account
+    method: POST
+    path: /v1/extract
+    body_allowlist: true
+    name: Extract readable text from web pages
+    summary: Read up to 20 URLs or HTML pages live and return each page's main text, title, and dates.
+    input:
+      bodyType: json
+      body:
+        urls: {type: "array[string]", required: false, minItems: 1, maxItems: 20, example: ["https://example.com"], note: "1 to 20 public http or https URLs to read live. Duplicate URLs are read once."}
+        pages: {type: "array[object]", required: false, minItems: 1, maxItems: 20, item_required_all: [html], note: "HTML documents already held ({html, url?}), instead of or beside urls; 1 to 20 items total."}
+        format: {type: string, required: false, default: markdown, enum: [markdown, text, html], example: markdown, note: "Main text format: markdown (default), text, or html."}
+        include: {type: "array[string]", required: false, enum: [html, links, response, full_text], note: "Extra fields per result at the same price."}
+      note: "Returns {data: {request_id, results, took_ms, price_usd}}. Each result carries status (ok, blocked, not_found, empty, unsupported, invalid_url, failed), title, text, published and read_from. Pages with no text cost nothing."
+    test_request:
+      body: {urls: ["https://example.com"], format: markdown}
+    price:
+      value: '0.0008'
+      currency: USD
+      unit: page
+      note: "$0.0008 per page read ($0.80 per 1,000 pages). Pages with no text (blocked, not_found, empty, unsupported, failed) cost nothing; response data.price_usd settles the exact charge."
+    reserve:
+      entities: {from: [body.urls, body.pages], max: 20}
+    settle:
+      reported: {path: response.data.price_usd, unit: usd}
+    miss:
+      when:
+        path: response.data.results[status=ok]
+        op: absent
+    docs_url: https://specstream.ai/docs/extract-api
+    example_response: examples/specstream.web.extract.json
