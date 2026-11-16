@@ -260,6 +260,74 @@ endpoints:
   price: {value: '0.104', currency: USD, per: 1, unit: call}
   provenance: {source: observed, checked: '2026-07-28', confidence: verified}
   capability: ai-search.mentions.multi_target
+- id: dataforseo.x.ai-optimization-llm-mentions-cross-aggregated-metrics-live
+  verified: '2026-11-16'
+  example_response: examples/dataforseo.x.ai-optimization-llm-mentions-cross-aggregated-metrics-live.json
+  added: '2026-11-16'
+  platform: ai-search
+  method: POST
+  path: /ai_optimization/llm_mentions/cross_aggregated_metrics/live
+  name: "Compare LLM mention metrics across brands (older path)"
+  summary: 'Mention metrics for 2 to 10 target groups side by side, one result per `aggregation_key`. The older path of dataforseo.x.ai-optimization-llm-mentions-multi-target-metrics-live, which DataForSEO still serves with no end date; it takes the older request fields shown here.'
+  docs_url: https://docs.dataforseo.com/v3/ai_optimization/llm_mentions/cross_aggregated_metrics/live/
+  input:
+    bodyType: json
+    body:
+      targets:
+        type: array
+        required: true
+        note: 'up to 10 groups, each {"aggregation_key": "<label>", "target": [<entities as in the target field of the single-target routes>]}'
+        example:
+        - aggregation_key: hubspot
+          target:
+          - domain: hubspot.com
+        - aggregation_key: salesforce
+          target:
+          - domain: salesforce.com
+      location_code:
+        type: integer
+        required: false
+        note: default 2840 (United States); with platform chat_gpt only 2840 is valid (task status 40501 otherwise)
+        example: 2840
+      language_code:
+        type: string
+        required: false
+        note: default en; with platform chat_gpt only en is valid
+        example: en
+      platform:
+        type: string
+        required: false
+        note: google (AI Overviews, the default) or chat_gpt
+        example: google
+      initial_dataset_filters:
+        type: array
+        required: false
+      internal_list_limit:
+        type: integer
+        required: false
+        note: elements per internal array, 1-10, default 5
+        example: 3
+    note: the POST body is a JSON array holding exactly one task object with these fields; a live route rejects extra tasks with status 40000 "You can set only one task at a time"
+  test_request:
+    body:
+    - targets:
+      - aggregation_key: hubspot
+        target:
+        - domain: hubspot.com
+      - aggregation_key: salesforce
+        target:
+        - domain: salesforce.com
+      platform: google
+      location_code: 2840
+      language_code: en
+      internal_list_limit: 3
+    bodyType: json
+  price: {value: '0.1', currency: USD, per: 1, unit: call, note: '$0.1 per request + $0.001 per returned row, the same rate as dataforseo.x.ai-optimization-llm-mentions-multi-target-metrics-live; the response `cost` is the exact charge and settles the call'}
+  provenance:
+    source: rate_card_api
+    source_url: https://api.dataforseo.com/v3/appendix/user_data
+    checked: '2026-11-16'
+    confidence: verified
 - id: dataforseo.x.ai-optimization-llm-mentions-search-mentions-live
   platform: ai-search
   method: POST
@@ -361,6 +429,75 @@ endpoints:
   price: {value: '0.103', currency: USD, per: 1, unit: call}
   provenance: {source: observed, checked: '2026-07-28', confidence: verified}
   capability: ai-search.mentions.search
+- id: dataforseo.x.ai-optimization-llm-mentions-search-live
+  verified: '2026-11-16'
+  example_response: examples/dataforseo.x.ai-optimization-llm-mentions-search-live.json
+  added: '2026-11-16'
+  platform: ai-search
+  method: POST
+  path: /ai_optimization/llm_mentions/search/live
+  name: "Search LLM mentions of a keyword or domain (older path)"
+  summary: 'Mentions of a keyword or domain in AI answers, with their metrics. The older path of dataforseo.x.ai-optimization-llm-mentions-search-mentions-live, which DataForSEO still serves with no end date; it takes the older request fields shown here.'
+  docs_url: https://docs.dataforseo.com/v3/ai_optimization/llm_mentions/search/live/
+  input:
+    bodyType: json
+    body:
+      target:
+        type: array
+        required: true
+        note: 'up to 10 entities, each one domain ({"domain": "hubspot.com", "search_filter": "include|exclude", "search_scope": ["any|sources|search_results"], "include_subdomains": false}) or one keyword ({"keyword": "crm", "search_filter": "include|exclude", "search_scope": ["any|question|answer|brand_entities|fan_out_queries"], "match_type": "word_match|partial_match"}); all entities are AND-combined into one filter'
+        example:
+        - domain: hubspot.com
+      location_code:
+        type: integer
+        required: false
+        note: default 2840 (United States); with platform chat_gpt only 2840 is valid (task status 40501 otherwise)
+        example: 2840
+      language_code:
+        type: string
+        required: false
+        note: default en; with platform chat_gpt only en is valid
+        example: en
+      platform:
+        type: string
+        required: false
+        note: google (AI Overviews, the default) or chat_gpt
+        example: google
+      limit:
+        type: integer
+        required: false
+        note: rows returned, default 100, max 1000; each row costs $0.001
+        example: 3
+      offset:
+        type: integer
+        required: false
+      filters:
+        type: array
+        required: false
+      order_by:
+        type: array
+        required: false
+        example:
+        - ai_search_volume,desc
+      search_after_token:
+        type: string
+        required: false
+    note: the POST body is a JSON array holding exactly one task object with these fields; a live route rejects extra tasks with status 40000 "You can set only one task at a time"
+  test_request:
+    body:
+    - target:
+      - domain: hubspot.com
+      platform: google
+      location_code: 2840
+      language_code: en
+      limit: 3
+    bodyType: json
+  price: {value: '0.1', currency: USD, per: 1, unit: call, note: '$0.1 per request + $0.001 per returned row, the same rate as dataforseo.x.ai-optimization-llm-mentions-search-mentions-live; the response `cost` is the exact charge and settles the call'}
+  provenance:
+    source: rate_card_api
+    source_url: https://api.dataforseo.com/v3/appendix/user_data
+    checked: '2026-11-16'
+    confidence: verified
 - id: dataforseo.x.ai-optimization-llm-mentions-target-metrics-live
   platform: ai-search
   method: POST
@@ -444,6 +581,65 @@ endpoints:
   price: {value: '0.101', currency: USD, per: 1, unit: call}
   provenance: {source: observed, checked: '2026-07-28', confidence: verified}
   capability: ai-search.mentions.summary
+- id: dataforseo.x.ai-optimization-llm-mentions-aggregated-metrics-live
+  verified: '2026-11-16'
+  example_response: examples/dataforseo.x.ai-optimization-llm-mentions-aggregated-metrics-live.json
+  added: '2026-11-16'
+  platform: ai-search
+  method: POST
+  path: /ai_optimization/llm_mentions/aggregated_metrics/live
+  name: "LLM mention metrics for a keyword or domain (older path)"
+  summary: 'Aggregated mention metrics for the target, grouped by location, language, platform, sources and search-results domains. The older path of dataforseo.x.ai-optimization-llm-mentions-target-metrics-live, which DataForSEO still serves with no end date; it takes the older request fields shown here.'
+  docs_url: https://docs.dataforseo.com/v3/ai_optimization/llm_mentions/aggregated_metrics/live/
+  input:
+    bodyType: json
+    body:
+      target:
+        type: array
+        required: true
+        note: 'up to 10 entities, each one domain ({"domain": "hubspot.com", "search_filter": "include|exclude", "search_scope": ["any|sources|search_results"], "include_subdomains": false}) or one keyword ({"keyword": "crm", "search_filter": "include|exclude", "search_scope": ["any|question|answer|brand_entities|fan_out_queries"], "match_type": "word_match|partial_match"}); all entities are AND-combined into one filter'
+        example:
+        - domain: hubspot.com
+      location_code:
+        type: integer
+        required: false
+        note: default 2840 (United States); with platform chat_gpt only 2840 is valid (task status 40501 otherwise)
+        example: 2840
+      language_code:
+        type: string
+        required: false
+        note: default en; with platform chat_gpt only en is valid
+        example: en
+      platform:
+        type: string
+        required: false
+        note: google (AI Overviews, the default) or chat_gpt
+        example: google
+      initial_dataset_filters:
+        type: array
+        required: false
+        note: filters applied to the raw mentions before aggregation, up to 8
+      internal_list_limit:
+        type: integer
+        required: false
+        note: elements per internal array (sources_domain, search_results_domain), 1-20
+        example: 3
+    note: the POST body is a JSON array holding exactly one task object with these fields; a live route rejects extra tasks with status 40000 "You can set only one task at a time"
+  test_request:
+    body:
+    - target:
+      - domain: hubspot.com
+      platform: google
+      location_code: 2840
+      language_code: en
+      internal_list_limit: 3
+    bodyType: json
+  price: {value: '0.1', currency: USD, per: 1, unit: call, note: '$0.1 per request + $0.001 per returned row, the same rate as dataforseo.x.ai-optimization-llm-mentions-target-metrics-live; the response `cost` is the exact charge and settles the call'}
+  provenance:
+    source: rate_card_api
+    source_url: https://api.dataforseo.com/v3/appendix/user_data
+    checked: '2026-11-16'
+    confidence: verified
 - id: dataforseo.x.ai-optimization-llm-mentions-target-metrics-lite-live
   platform: ai-search
   method: POST
@@ -1510,6 +1706,74 @@ endpoints:
   price: {value: '0.103', currency: USD, per: 1, unit: call}
   provenance: {source: observed, checked: '2026-07-28', confidence: verified}
   capability: ai-search.mentions.top_pages
+- id: dataforseo.x.ai-optimization-llm-mentions-top-pages-live
+  verified: '2026-11-16'
+  example_response: examples/dataforseo.x.ai-optimization-llm-mentions-top-pages-live.json
+  added: '2026-11-16'
+  platform: ai-search
+  method: POST
+  path: /ai_optimization/llm_mentions/top_pages/live
+  name: "Pages most cited in LLM mentions (older path)"
+  summary: 'The pages AI answers cite most for the target, with mention metrics per page. The older path of dataforseo.x.ai-optimization-llm-mentions-top-mentioned-pages-live, which DataForSEO still serves with no end date; it takes the older request fields shown here.'
+  docs_url: https://docs.dataforseo.com/v3/ai_optimization/llm_mentions/top_pages/live/
+  input:
+    bodyType: json
+    body:
+      target:
+        type: array
+        required: true
+        note: 'up to 10 entities, each one domain ({"domain": "hubspot.com", "search_filter": "include|exclude", "search_scope": ["any|sources|search_results"], "include_subdomains": false}) or one keyword ({"keyword": "crm", "search_filter": "include|exclude", "search_scope": ["any|question|answer|brand_entities|fan_out_queries"], "match_type": "word_match|partial_match"}); all entities are AND-combined into one filter'
+        example:
+        - domain: hubspot.com
+      location_code:
+        type: integer
+        required: false
+        note: default 2840 (United States); with platform chat_gpt only 2840 is valid (task status 40501 otherwise)
+        example: 2840
+      language_code:
+        type: string
+        required: false
+        note: default en; with platform chat_gpt only en is valid
+        example: en
+      platform:
+        type: string
+        required: false
+        note: google (AI Overviews, the default) or chat_gpt
+        example: google
+      links_scope:
+        type: string
+        required: false
+        note: sources (default) or search_results
+      initial_dataset_filters:
+        type: array
+        required: false
+      items_list_limit:
+        type: integer
+        required: false
+        note: pages returned, 1-10, default 5; the newer path ignores this field and returns up to `limit` (default 100) rows instead
+        example: 3
+      internal_list_limit:
+        type: integer
+        required: false
+        note: elements per internal array, 1-10, default 5
+        example: 3
+    note: the POST body is a JSON array holding exactly one task object with these fields; a live route rejects extra tasks with status 40000 "You can set only one task at a time"
+  test_request:
+    body:
+    - target:
+      - domain: hubspot.com
+      platform: google
+      location_code: 2840
+      language_code: en
+      items_list_limit: 3
+      internal_list_limit: 3
+    bodyType: json
+  price: {value: '0.1', currency: USD, per: 1, unit: call, note: '$0.1 per request + $0.001 per returned row, the same rate as dataforseo.x.ai-optimization-llm-mentions-top-mentioned-pages-live; the response `cost` is the exact charge and settles the call'}
+  provenance:
+    source: rate_card_api
+    source_url: https://api.dataforseo.com/v3/appendix/user_data
+    checked: '2026-11-16'
+    confidence: verified
 - id: dataforseo.x.ai-optimization-llm-mentions-top-mentioned-pages-lite-live
   platform: ai-search
   method: POST
@@ -4164,6 +4428,24 @@ endpoints:
   price: {value: '0.0292488', currency: USD, per: 1, unit: call}
   provenance: {source: observed, checked: '2026-07-28', confidence: verified}
   capability: ai-search.chatgpt.answer
+- id: dataforseo.x.ai-optimization-chat-gpt-llm-responses-models
+  verified: '2026-11-16'
+  example_response: examples/dataforseo.x.ai-optimization-chat-gpt-llm-responses-models.json
+  added: '2026-11-16'
+  kind: utility
+  platform: ai-search
+  method: GET
+  path: /ai_optimization/chat_gpt/llm_responses/models
+  price:
+    value: '0'
+    currency: USD
+    unit: call
+    note: DataForSEO documents this route as free ("Your account will not be charged for using this API")
+  expect: null
+  name: "ChatGPT model names for LLM responses"
+  summary: The ChatGPT models dataforseo.x.ai-optimization-chat-gpt-llm-responses-live accepts in `model_name`, with whether each supports web search and reasoning.
+  docs_url: https://docs.dataforseo.com/v3/ai_optimization/chat_gpt/llm_responses/models/
+  test_request: {queryParams: {}}
 - id: dataforseo.x.ai-optimization-chat-gpt-llm-scraper-live-advanced
   platform: ai-search
   method: POST
@@ -4332,6 +4614,24 @@ endpoints:
     note: 'DataForSEO bills the model''s tokens, so the price moves with prompt and answer length: over the 14 days to 2026-10-02 real charges ran $0.0245 median, $0.056 at p90 and $0.29 at the top. Cap it with `max_output_tokens`. The response `cost` is the exact charge and settles the call.'
   provenance: {source: observed, checked: '2026-10-02', confidence: verified}
   capability: ai-search.claude.answer
+- id: dataforseo.x.ai-optimization-claude-llm-responses-models
+  verified: '2026-11-16'
+  example_response: examples/dataforseo.x.ai-optimization-claude-llm-responses-models.json
+  added: '2026-11-16'
+  kind: utility
+  platform: ai-search
+  method: GET
+  path: /ai_optimization/claude/llm_responses/models
+  price:
+    value: '0'
+    currency: USD
+    unit: call
+    note: DataForSEO documents this route as free ("Your account will not be charged for using this API")
+  expect: null
+  name: "Claude model names for LLM responses"
+  summary: The Claude models dataforseo.x.ai-optimization-claude-llm-responses-live accepts in `model_name`, with whether each supports web search and reasoning.
+  docs_url: https://docs.dataforseo.com/v3/ai_optimization/claude/llm_responses/models/
+  test_request: {queryParams: {}}
 - id: dataforseo.x.ai-optimization-gemini-llm-responses-live
   platform: ai-search
   method: POST
@@ -4415,6 +4715,24 @@ endpoints:
   price: {value: '0.036256', currency: USD, per: 1, unit: call}
   provenance: {source: observed, checked: '2026-07-28', confidence: verified}
   capability: ai-search.gemini.answer
+- id: dataforseo.x.ai-optimization-gemini-llm-responses-models
+  verified: '2026-11-16'
+  example_response: examples/dataforseo.x.ai-optimization-gemini-llm-responses-models.json
+  added: '2026-11-16'
+  kind: utility
+  platform: ai-search
+  method: GET
+  path: /ai_optimization/gemini/llm_responses/models
+  price:
+    value: '0'
+    currency: USD
+    unit: call
+    note: DataForSEO documents this route as free ("Your account will not be charged for using this API")
+  expect: null
+  name: "Gemini model names for LLM responses"
+  summary: The Gemini models dataforseo.x.ai-optimization-gemini-llm-responses-live accepts in `model_name`, with whether each supports web search and reasoning.
+  docs_url: https://docs.dataforseo.com/v3/ai_optimization/gemini/llm_responses/models/
+  test_request: {queryParams: {}}
 - id: dataforseo.x.ai-optimization-gemini-llm-scraper-live-advanced
   platform: ai-search
   method: POST
@@ -10914,6 +11232,24 @@ endpoints:
   error: {when: {any: [{path: response.error, op: present}, {path: response.errors, op: present}]}}
   miss: {when: {path: response.tasks.0.result.0.items.0.sections.0.text, op: absent}}
   capability: ai-search.perplexity.answer
+- id: dataforseo.x.ai-optimization-perplexity-llm-responses-models
+  verified: '2026-11-16'
+  example_response: examples/dataforseo.x.ai-optimization-perplexity-llm-responses-models.json
+  added: '2026-11-16'
+  kind: utility
+  platform: ai-search
+  method: GET
+  path: /ai_optimization/perplexity/llm_responses/models
+  price:
+    value: '0'
+    currency: USD
+    unit: call
+    note: DataForSEO documents this route as free ("Your account will not be charged for using this API")
+  expect: null
+  name: "Perplexity model names for LLM responses"
+  summary: The Perplexity models dataforseo.x.ai-optimization-perplexity-llm-responses-live accepts in `model_name`, with whether each supports web search and reasoning.
+  docs_url: https://docs.dataforseo.com/v3/ai_optimization/perplexity/llm_responses/models/
+  test_request: {queryParams: {}}
 - id: dataforseo.x.serp-seznam-locations-country
   added: '2026-07-28'
   kind: utility
@@ -12603,6 +12939,24 @@ endpoints:
   example_response: examples/dataforseo.x.backlinks-timeseries-summary-live.json
   price: {value: '0.024108', currency: USD, per: 1, unit: call}
   provenance: {source: observed, checked: '2026-07-28', confidence: verified}
+- id: dataforseo.x.business-data-business-listings-categories
+  verified: '2026-11-16'
+  example_response: examples/dataforseo.x.business-data-business-listings-categories.json
+  added: '2026-11-16'
+  kind: utility
+  platform: web
+  method: GET
+  path: /business_data/business_listings/categories
+  price:
+    value: '0'
+    currency: USD
+    unit: call
+    note: DataForSEO documents this route as free ("Your account will not be charged for using this API")
+  expect: null
+  name: "Business Listings categories"
+  summary: Every category the Business Listings API knows, with its business count; the values `categories` filters in dataforseo.x.business-data-business-listings-search-live accept.
+  docs_url: https://docs.dataforseo.com/v3/business_data/business_listings/categories/
+  test_request: {queryParams: {}}
 - id: dataforseo.x.business-data-business-listings-categories-aggregation-live
   platform: web
   method: POST
@@ -14431,8 +14785,15 @@ endpoints:
   docs_url: https://docs.dataforseo.com/v3/on_page/lighthouse/audits/
   untestable: the OpenAPI spec ships no example request body for this route, so no test request could be generated
 - id: dataforseo.x.on-page-lighthouse-live-json
+  verified: '2026-11-16'
+  example_response: examples/dataforseo.x.on-page-lighthouse-live-json.json
   added: '2026-07-28'
-  price: null
+  price: {value: '0.005', currency: USD, per: 1, unit: call, note: '$0.005 per audited page, Live and Standard alike; asking for fewer categories or audits does not lower it. The response `cost` is the exact charge and settles the call'}
+  provenance:
+    source: rate_card_api
+    source_url: https://api.dataforseo.com/v3/appendix/user_data
+    checked: '2026-11-16'
+    confidence: verified
   expect: null
   platform: web
   method: POST
@@ -14506,7 +14867,13 @@ endpoints:
         note: <em>user-defined task identifier</em><br>optional field<br><em>the character limit is 255</em><br>you can use this parameter to identify the task and match it with the result<br>you will find the specified <code>tag</code> value in the <code>data</code> object of the response
         example: some_string_123
     note: the POST body is a JSON array holding exactly one task object with these fields; a live route rejects extra tasks with status 40000 "You can set only one task at a time"
-  untestable: needs the id of a completed on_page crawl (task_post plus polling); the one-shot route of this family is verified via dataforseo.x.on-page-instant-pages
+  test_request:
+    body:
+    - url: https://dataforseo.com
+      for_mobile: false
+      categories:
+      - performance
+    bodyType: json
 - id: dataforseo.x.on-page-links
   added: '2026-07-28'
   platform: web
@@ -15811,3 +16178,34 @@ endpoints:
   example_response: examples/dataforseo.x.serp-youtube-video-subtitles-live-advanced.json
   price: {value: '0.006', currency: USD, per: 1, unit: call}
   provenance: {source: observed, checked: '2026-07-28', confidence: verified}
+- id: dataforseo.x.appendix-goto-url-converter
+  verified: '2026-11-16'
+  example_response: examples/dataforseo.x.appendix-goto-url-converter.json
+  added: '2026-11-16'
+  kind: utility
+  platform: google
+  method: POST
+  path: /appendix/goto_url_converter
+  price:
+    value: '0'
+    currency: USD
+    unit: call
+    note: free; the route is missing from DataForSEO's public docs, OpenAPI spec and rate card, so the response `cost` settles the call if that ever changes
+  expect: null
+  name: "Resolve Google goto redirect URLs"
+  summary: The real page behind each google.com/goto URL that Google SERP results carry, returned as `result[] = {goto, url}`; a URL it cannot resolve comes back with no `url`.
+  input:
+    bodyType: json
+    body:
+      goto_urls:
+        type: array
+        required: true
+        note: up to 100 google.com/goto URLs, taken as they appear in a SERP result; match the answer by `goto`, not by order (duplicates are answered once each)
+        example:
+        - https://www.google.com/goto?url=CAESABoA
+    note: the POST body is a JSON array holding one task object
+  test_request:
+    body:
+    - goto_urls:
+      - https://www.google.com/goto?url=CAESABoA
+    bodyType: json
