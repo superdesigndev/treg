@@ -4325,6 +4325,95 @@ CORPOAPI = OAuthProvider(
     probe_path="/v1/usage",
 )
 
+ASHBY = OAuthProvider(
+    service="ashby",
+    display_name="Ashby job boards",
+    auth_kind="public",
+    auth_uri="", token_uri="",
+    scopes={},
+    client_id_setting="", client_secret_setting="",
+    category="Jobs data",
+    summary="Every open job on a company's Ashby job board, with full descriptions and posted pay.",
+    base_url="https://api.ashbyhq.com",
+    docs_url="https://developers.ashbyhq.com/docs/public-job-posting-api",
+)
+
+
+WORKABLE = OAuthProvider(
+    service="workable",
+    display_name="Workable",
+    auth_kind="public",
+    auth_uri="", token_uri="",
+    scopes={},
+    client_id_setting="", client_secret_setting="",
+    category="Jobs data",
+    summary="List a company's open jobs from its Workable careers page, with descriptions. Free, no key.",
+    # Workable documents www.workable.com/api/accounts/{subdomain}; that answers 302 to this host,
+    # and the relay never follows redirects, so the catalog targets the redirect's host directly.
+    base_url="https://apply.workable.com",
+    docs_url="https://workable.readme.io/reference/jobs-1",
+)
+
+
+SMARTRECRUITERS = OAuthProvider(
+    service="smartrecruiters",
+    display_name="SmartRecruiters",
+    auth_kind="public",
+    auth_uri="", token_uri="",
+    scopes={},
+    client_id_setting="", client_secret_setting="",
+    category="Jobs data",
+    summary="Open job postings from employers hiring on SmartRecruiters: search one company's board and read full job ads. Free, no key.",
+    base_url="https://api.smartrecruiters.com",
+    docs_url="https://developers.smartrecruiters.com/docs/posting-api",
+)
+
+
+HIREBASE = OAuthProvider(
+    service="hirebase",
+    display_name="Hirebase",
+    auth_kind="key",
+    token_label="API key",
+    token_placeholder="hb_...",
+    # The key rides in x-api-key; the header keeps it out of logged URLs.
+    token_header="x-api-key",
+    token_format="{secret}",
+    setup_url="https://www.hirebase.org/signup",
+    setup_action_label="Get your Hirebase API key",
+    setup_steps=(
+        "Create an account at hirebase.org/signup.",
+        "Copy your key from Profile, then API Key (it starts with hb_).",
+        "The Free plan includes 500 jobs, 50 companies, 25 insights and 3 salary benchmarks a month; paid plans raise them.",
+    ),
+    setup_note="Billed per job or company returned from a monthly allowance; insights and salary benchmarks are counted per call. An empty job or company page is free; an insights call is counted even when it finds nothing.",
+    auth_uri="", token_uri="",
+    scopes={},
+    client_id_setting="", client_secret_setting="",
+    category="Jobs data",
+    summary="Search fresh job postings read from employers' own career pages, match jobs to a candidate profile, list a company's open jobs and get salary percentiles for a role and place.",
+    base_url="https://api.hirebase.org/v2",
+    docs_url="https://www.hirebase.org/docs",
+    probe_path="/billing/usage/summary",  # free; a bad key gets HTTP 401 {"detail": "Invalid API key"}
+)
+
+
+# Lever's Postings API serves every published posting without a key. The API key Lever documents
+# applies only to the application POST, which is not listed.
+LEVER = OAuthProvider(
+    service="lever",
+    display_name="Lever",
+    auth_kind="public",
+    auth_uri="", token_uri="",
+    scopes={},
+    client_id_setting="", client_secret_setting="",
+    category="Jobs data",
+    summary="List a company's open jobs on its Lever careers site, with full descriptions, or read one posting.",
+    base_url="https://api.lever.co",
+    catalog_targets=(CatalogTarget(host="api.eu.lever.co", base_url="https://api.eu.lever.co"),),
+    docs_url="https://github.com/lever/postings-api",
+)
+
+
 MAILDIGNITY = OAuthProvider(
     service="maildignity",
     display_name="MailDignity",
@@ -4370,8 +4459,8 @@ REGISTRY: dict[str, OAuthProvider] = {
         DATAFORSEO, SERANKING, MOZ, MAJESTIC, SERPSTAT, EXA, SEARCH1API, TAVILY, OCTEN, LINKUP, PARALLEL, YOU, VALYU, KEENABLE, OLOSTEP, FIRECRAWL, CRAWL4AI, SPIDERCLOUD, PERPLEXITY,
         SCRAPEGRAPHAI, SERPER, BRAVESEARCH, LITESCRAPE, CLORO, LOCALFALCON,
         # more Enrichment API-key providers
-        LUSHA, CORESIGNAL, DIFFBOT, THECOMPANIESAPI, LEADMAGIC, ENRICHLAYER, FIBER_AI, CRUSTDATA, THEIRSTACK, AVIATO,
-        COMPANYENRICH, CORPOAPI, OCEANIO, ADYNTEL, TOMBA, TRESTLEIQ, HLRLOOKUP, PREDICTLEADS, FINDYMAIL, ANYMAILFINDER, ENROW, FILTRAT, DROPCONTACT, BRANDDEV, ICYPEAS, LEADSFORGE,
+        LUSHA, CORESIGNAL, DIFFBOT, THECOMPANIESAPI, LEADMAGIC, ENRICHLAYER, FIBER_AI, CRUSTDATA, THEIRSTACK, JOBSPIPE, AVIATO,
+        COMPANYENRICH, CORPOAPI, OCEANIO, ADYNTEL, TOMBA, TRESTLEIQ, HLRLOOKUP, PREDICTLEADS, FINDYMAIL, ANYMAILFINDER, ENROW, FILTRAT, FILTRAT_FINDER, DROPCONTACT, BRANDDEV, ICYPEAS, LEADSFORGE,
         INFLUENCERSCLUB, VILLAGE, MAILDIGNITY,
         # Places: intent-scored local search
         ATLY,
