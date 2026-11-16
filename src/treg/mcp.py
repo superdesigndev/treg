@@ -46,7 +46,7 @@ import re
 from contextlib import asynccontextmanager
 from contextvars import ContextVar
 from dataclasses import asdict, dataclass, replace
-from typing import Annotated, Any, TypedDict
+from typing import Annotated, Any, Required, TypedDict
 from urllib.parse import parse_qsl, quote, unquote, urlencode, urlsplit
 
 import httpx
@@ -66,7 +66,10 @@ from .domain.catalog import store as catalog_store
 from .capacity_notice import account_out_notice, is_admission_refusal, is_balance_refusal
 from .client_identity import printable_ascii
 from .config import get_settings
-from .feedback_contract import FeedbackCategory, FEEDBACK_DESCRIPTION, ReviewUsefulness, REVIEW_DESCRIPTION
+from .feedback_contract import (
+    FEEDBACK_DESCRIPTION, MARK_DESCRIPTION, REVIEW_DESCRIPTION, FeedbackCategory, MarkBasis,
+    MarkVerdict, ReviewUsefulness,
+)
 from .domain.catalog.stats import EndpointObservationReader
 from .infra import org_traffic
 
@@ -247,7 +250,7 @@ class _OAuthScopeGate:
 
 _V1_TOOL_SCOPES = {
     "catalog_search": "treg:catalog", "catalog_get": "treg:catalog", "catalog_request": "treg:catalog",
-    "feedback": "treg:catalog", "review": "treg:catalog",
+    "feedback": "treg:catalog", "review": "treg:catalog", "mark": "treg:catalog",
     "call": "treg:call", "call_media": "treg:call", "hub_create": "treg:call", "hub_update": "treg:call",
     "balance": "treg:read", "my_tools": "treg:read", "resources_list": "treg:read", "hub_mine": "treg:read",
 }
@@ -266,6 +269,7 @@ _HUB_TOOL_NAMES = frozenset({"hub_create", "hub_update", "hub_mine"})
 # results, as collecting behavioral data for analytics. Those clients get neither; every other client
 # keeps both. `/call/` still decides and records an invitation, this surface just does not show it.
 _OPENAI_UA_PREFIXES = ("openai-mcp/", "codex-mcp-client/")
+_OPENAI_HIDDEN_TOOLS = frozenset({"review", "mark"})
 
 
 def _is_openai_client(headers: Any) -> bool:
@@ -275,7 +279,8 @@ def _is_openai_client(headers: Any) -> bool:
 
 
 class _OpenAIClientGate:
-    """For OpenAI's clients only: no `review` tool and no review sentence in the instructions."""
+    """For OpenAI's clients only: no `review` or `mark` tool and no sentence about them in the
+    instructions."""
 
     async def __call__(
         self, ctx: ServerRequestContext[Any, Any], call_next: CallNext
@@ -291,10 +296,10 @@ class _OpenAIClientGate:
         if isinstance(result, dict) and isinstance(result.get("tools"), list):
             return {**result, "tools": [t for t in result["tools"]
                                         if (t.get("name") if isinstance(t, dict) else getattr(t, "name", None))
-                                        != "review"]}
+                                        not in _OPENAI_HIDDEN_TOOLS]}
         tools = getattr(result, "tools", None)
         if isinstance(tools, list):
-            return result.model_copy(update={"tools": [t for t in tools if getattr(t, "name", None) != "review"]})
+            return result.model_copy(update={"tools": [t for t in tools if getattr(t, "name", None) not in _OPENAI_HIDDEN_TOOLS]})
         return result
 
 
@@ -369,7 +374,8 @@ _BASE_INSTRUCTIONS = (
 )
 _REVIEW_INSTRUCTION = (
     "If a call result invites a review, rate that one call with review(call_id, usefulness, "
-    "reason?) after using it, then continue."
+    "reason?) after using it, then continue. If you later learn a result was wrong (a bounce, "
+    "another source, the user's correction), mark(call_id, basis, items) says which rows."
 )
 
 mcp = MCPServer(
@@ -451,6 +457,18 @@ class ReviewOut(TypedDict, total=False):
     review_id: int | None
     status: str | None
     detail: Any
+
+
+class MarkOut(TypedDict, total=False):
+    mark_id: int | None
+    status: str | None
+    detail: Any
+
+
+class MarkItemIn(TypedDict, total=False):
+    verdict: Required[MarkVerdict]
+    index: int
+    field: str
 
 
 class FeedbackOut(TypedDict, total=False):
@@ -1209,6 +1227,26 @@ async def review(
     call_id: str, usefulness: ReviewUsefulness, ctx: Context, reason: str | None = None,
 ) -> ReviewOut:
     return await _review_impl(call_id, usefulness, ctx, reason, surface=_TEAM_SURFACE)
+
+
+@mcp.tool(
+    description=MARK_DESCRIPTION,
+    annotations=ToolAnnotations(read_only_hint=False, destructive_hint=False, open_world_hint=True,
+                                idempotent_hint=True),
+    structured_output=True,
+)
+async def mark(
+    call_id: str, basis: MarkBasis, items: list[MarkItemIn], ctx: Context,
+    checked: int | None = None, evidence_call_id: str | None = None, note: str | None = None,
+    replaces: int | None = None,
+) -> MarkOut:
+    body = {"call_id": call_id, "basis": basis, "items": items}
+    optional = {"checked": checked, "evidence_call_id": evidence_call_id, "note": note,
+                "replaces": replaces}
+    body.update({key: value for key, value in optional.items() if value is not None})
+    async with _api(_bearer(ctx)) as client:
+        response = await client.post("/marks", json=body)
+    return _body(response)
 
 
 async def _review_impl(

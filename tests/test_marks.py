@@ -166,3 +166,29 @@ async def test_public_demo_cannot_submit_marks(clients):
                                   json={'call_id': 'id', 'basis': 'bounced', 'items': WRONG})
     assert response.status_code == 403
     assert await rows() == []
+
+
+async def test_mcp_mark_relay(clients):
+    from test_mcp import _call_tool as team_call, mcp_session
+
+    org = await seed(clients)
+    async with mcp_session(clients) as client:
+        result = await team_call(client, 'mark', {'call_id': 'mark-call', 'basis': 'user_said',
+                                                  'items': [{'verdict': 'stale', 'index': 1}],
+                                                  'checked': 3}, token=org['token'])
+    row, = await rows()
+    assert result == {'mark_id': row.id, 'status': 'received'}
+    assert (row.basis, row.items, row.checked, row.note) == (
+        'user_said', [{'index': 1, 'verdict': 'stale'}], 3, None)
+
+
+async def test_mcp_mark_schema():
+    from treg.mcp import mcp, directory_mcp
+    from treg.feedback_contract import MARK_BASES, MARK_DESCRIPTION
+
+    tool = next(tool for tool in await mcp.list_tools() if tool.name == 'mark')
+    assert tool.description == MARK_DESCRIPTION
+    assert tool.input_schema['properties']['basis']['enum'] == list(MARK_BASES)
+    assert tool.input_schema['required'] == ['call_id', 'basis', 'items']
+    # the directory listing was submitted without it
+    assert 'mark' not in {tool.name for tool in await directory_mcp.list_tools()}

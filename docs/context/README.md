@@ -19,7 +19,7 @@ covers (frontmatter `sources:`). Regenerate this index with
 | [Endpoint catalog - what you can DO with a connected key, and which provider should do it](architecture/catalog.md) | shipped | __init__.py, store.py, stats.py, results.py, … |
 | [Application composition and deployment roles](architecture/composition.md) | shipped | bootstrap.py, bootstrap_handlers.py, bootstrap_http.py, worker.py, … |
 | [Data model — the registry tables, async DB, audit writer](architecture/data-model.md) | shipped | 0042_pinned_read_scope.py, alembic.ini, env.py, 0001_baseline_current_schema.py, … |
-| [Feedback - private intake for problems and suggestions](architecture/feedback.md) | shipped | feedback_contract.py, __init__.py, reports.py, reviews.py, … |
+| [Feedback - private intake for problems and suggestions](architecture/feedback.md) | shipped | feedback_contract.py, mark.go, __init__.py, reports.py, … |
 | [Find tools for a job - /catalog/find, the agent search experiment, recall by job and one judge request](architecture/find.md) | building | catalog_find.py, find_recall.py, find_index.py, embed.py, … |
 | [The tool hub - tools a maker publishes, made of other tools](architecture/hub.md) | shipped | __init__.py, manifest.py, refs.py, graph.py, … |
 | [Enforced import boundaries](architecture/import-boundaries.md) | shipped | pyproject.toml, __init__.py, ci.yml, __init__.py, … |

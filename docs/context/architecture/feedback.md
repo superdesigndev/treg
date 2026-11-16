@@ -3,6 +3,7 @@ title: Feedback - private intake for problems and suggestions
 status: shipped
 sources:
   - src/treg/feedback_contract.py
+  - cli/internal/commands/mark.go
   - src/treg/domain/feedback/__init__.py
   - src/treg/domain/feedback/reports.py
   - src/treg/domain/feedback/reviews.py
@@ -114,6 +115,9 @@ the whole answer), optional `checked`, `evidence_call_id`, a private `note` and 
   it did not mark carry no conclusion. Only rows marked with a verdict, `correct` included, do.
   `evidence_call_id` is checked against the team's own audit (`evidence_verified`) and never
   rejects a mark. `basis` is the caller's account of how it knows.
+- **Surfaces.** The binary CLI's `treg mark` (the frozen Python CLI has none; its users POST
+  `/marks`), the team `/mcp/` tool `mark` (relaying to the same intake; hidden from OpenAI's clients
+  with `review`, and absent from `/mcp/v2/`), `skill.md` and `{BASE}/feedback.md` ("Mark").
 - **Private.** Marks are never published, quoted or folded into verdicts. `GET /admin/marks` is
   superadmin-only and excluded from OpenAPI. The rate limit is per team per hour, separate from
   feedback reports. The sole writer is `domain.feedback.marks`; `CallMark` is in `ORG_SCOPED_MODELS`.

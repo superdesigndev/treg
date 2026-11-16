@@ -107,7 +107,8 @@ Gmail dots) share it.
 - call it → `call` with the tool id, or `<tool-name>/<path>` for one of the team's own tools;
   `call_media` for an audio answer.
 - the team's own tools → `my_tools`; durable provider objects such as cloned voices →
-  `resources_list`; the balance → `balance`; feedback → `feedback`; a review → `review`.
+  `resources_list`; the balance → `balance`; feedback → `feedback`; a review → `review`; a result
+  you later found wrong or confirmed → `mark`.
 
 ## Find a tool and call it
 
@@ -451,6 +452,13 @@ succeeded: `treg feedback submit <quality|pricing|friction|other> "message" --ca
 When a result invites a review, rate that call after using it: `treg review CALL_ID USEFULNESS
 [--reason "..."]` or MCP `review`, with `useful`, `partly`, `not_useful` or `not_sure`. A reason may
 be quoted on the tool's catalog page without naming your team, so write about the tool.
+
+When you learn a result was wrong, or confirm it was right, mark that call: an email bounced,
+another source disagreed, the user corrected it. `treg mark CALL_ID 2/email:wrong_entity 5:stale
+--basis bounced`, or MCP `mark`. Each item is `[INDEX][/FIELD]:VERDICT`, INDEX the 0-based row; a
+bare verdict is the whole result. `--basis` says how you know (`bounced`, `cross_checked`,
+`user_said`, `impression`). Mark only what you checked, once you know; marking several calls at
+the end of the task is fine. Marks are private and never change charges.
 
 ## Rules
 

@@ -57,6 +57,7 @@ func Root(env *Env) *cobra.Command {
 		auditCmd(env),
 		callsCmd(env),
 		reviewCmd(env),
+		markCmd(env),
 		feedbackCmd(env),
 		skillCmd(env),
 		mcpCmd(env),
