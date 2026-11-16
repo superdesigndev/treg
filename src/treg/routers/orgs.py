@@ -72,7 +72,7 @@ from ..models import (
 from ..timeutil import as_naive as _as_naive
 from ..timeutil import utcnow_naive as _utcnow_naive
 from . import view
-from .auth_helpers import _is_https, require_managed_cli
+from .auth_helpers import require_managed_cli, trusted_public_base
 from .signup_cookies import REFERRAL_COOKIE
 from .views import account as account_views
 from .views import toon
@@ -570,15 +570,13 @@ async def create_invite(
     await db.commit()
     org = await db.get(Org, org_id)  # for the invite email's team name
     if not email.endswith("@" + demo_seed.DEMO_DOMAIN):  # don't email the onboarding's fake teammate domain
-        scheme = "https" if _is_https(request) else request.url.scheme
-        host = request.headers.get("host", "")
         shared = ""  # share-born invite → the email leads with what was shared
         if body.landing:
             kind, _, name = body.landing.removeprefix("/app/").partition("/")
             shared = f'the {"skill" if kind == "skills" else "tool"} “{name}”'
         await email_sender.send_invite(  # best-effort; the code is also returned for out-of-band relay
             email, caller.email, (org.name if org else email), body.role, code, email_token,
-            expires_at.isoformat(), link_base=(f"{scheme}://{host}" if host else ""), shared=shared,
+            expires_at.isoformat(), link_base=trusted_public_base(request), shared=shared,
         )
     return {"code": code, "email": email, "role": body.role, "org_id": org_id,
             "expires_at": expires_at.isoformat()}  # email_token deliberately NOT returned (inbox-only)

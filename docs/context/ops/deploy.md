@@ -192,8 +192,10 @@ meaning is not obvious from the field:
 Credentials stay in the deployment secret store.
 
 **Public host aliases.** `TREG_PUBLIC_HOST_ALIASES` is the complete JSON list of extra hostnames
-accepted for social-login callbacks, MCP hosts, origins and token audiences, and the hub self-relay
-guard; setting it replaces the list. It does not change `TREG_PUBLIC_URL`, canonical links or
+accepted for social-login callbacks, MCP hosts, origins and token audiences, the hub self-relay
+guard, and the host of invite-email links and Stripe return URLs; setting it replaces the list.
+Those links never take any other `Host`: `routers/auth_helpers.trusted_public_base` falls back to
+`TREG_PUBLIC_URL`, so a forged header cannot send an invite token elsewhere. It does not change `TREG_PUBLIC_URL`, canonical links or
 provider-connect callbacks. Register each alias's `/auth/google/callback` and
 `/auth/github/callback` with the OAuth clients first, and list it in Turnstile's widget hostnames
 (a non-empty `TREG_TURNSTILE_HOSTNAMES` overrides the server-side fallback and must list every

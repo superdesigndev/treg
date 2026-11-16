@@ -28,7 +28,9 @@ from ..domain.identity import mcp_oauth
 from ..domain.identity import session as sess
 from ..domain.identity.access import require_identity, require_person
 from ..models import User
-from .auth_helpers import _is_https, _remember_oauth_return, _same_origin, require_managed_cli
+from .auth_helpers import (
+    _is_https, _remember_oauth_return, _same_origin, require_managed_cli, trusted_public_base,
+)
 
 app = APIRouter()
 email_router = app
@@ -232,10 +234,7 @@ def _login_callback_base(request: Request) -> str:
     cutover deploy, with its state cookie and provider registration both on the old name) must
     keep building the OLD host's callback. Any recognized alias Host therefore wins — in BOTH
     directions, so a login minted on treg.to also survives a TREG_PUBLIC_URL rollback."""
-    host = request.headers.get("host", "").split(":")[0].rstrip(".").lower()
-    if host in get_settings().public_host_aliases:
-        return f"https://{host}"
-    return get_settings().public_url.rstrip("/")
+    return trusted_public_base(request)
 
 
 app = APIRouter()
