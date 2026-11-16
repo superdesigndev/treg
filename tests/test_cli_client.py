@@ -9,7 +9,7 @@ import pytest
 from treg import analytics
 from treg.application import cli_releases
 from treg.config import get_settings
-from treg.infra import github_releases
+from treg.infra import github_releases, release_checksums
 from treg.routers import cli_client
 
 INSTALL_ID = "0b6f2b1e-7d1c-4c55-9a43-5d0c1f6a2b3c"
@@ -142,14 +142,45 @@ async def test_latest_answers_each_channel_from_settings(clients, release_settin
     assert beta["version"] == "1.3.0" and beta["archive"] == "treg_1.3.0_windows_amd64.zip"
 
 
-async def test_latest_names_the_mirror_when_one_is_set(clients, release_settings):
+def _published_sums(monkeypatch, status: int, body: str) -> list[str]:
+    """The release's SHA256SUMS as the registry reads it; returns the URLs it asked."""
+    asked: list[str] = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        asked.append(str(request.url))
+        return httpx.Response(status, text=body)
+
+    real = httpx.AsyncClient
+    monkeypatch.setattr(release_checksums.httpx, "AsyncClient",
+                        lambda **kw: real(transport=httpx.MockTransport(handler), **kw))
+    release_checksums._sums.clear()
+    release_checksums._failed.clear()
+    return asked
+
+
+async def test_latest_names_the_mirror_with_the_archives_sum(clients, release_settings, monkeypatch):
     release_settings.cli_stable_version = "1.2.0"
     release_settings.cli_mirror_base_url = "https://mirror.example/cli/v{version}/"
+    asked = _published_sums(monkeypatch, 200, "a" * 64 + "  treg_1.2.0_linux_arm64.tar.gz\n"
+                                              + "B" * 64 + " *treg_1.2.0_windows_amd64.zip\n")
     m = (await clients.get("/cli/latest", params={"os": "linux", "arch": "arm64"})).json()
-    assert m["url"] == "https://dl.example/v1.2.0/treg_1.2.0_linux_arm64.tar.gz"
+    assert m["url"] == "https://dl.example/v1.2.0/treg_1.2.0_linux_arm64.tar.gz" and m["sha256"] == "a" * 64
     assert (m["mirror_url"], m["mirror_checksums_url"], m["mirror_signature_url"]) == (
         "https://mirror.example/cli/v1.2.0/treg_1.2.0_linux_arm64.tar.gz",
         "https://mirror.example/cli/v1.2.0/SHA256SUMS", "https://mirror.example/cli/v1.2.0/SHA256SUMS.minisig")
+    w = (await clients.get("/cli/latest", params={"os": "windows", "arch": "amd64"})).json()
+    assert w["sha256"] == "b" * 64
+    assert asked == ["https://dl.example/v1.2.0/SHA256SUMS"]
+
+
+async def test_without_the_releases_sums_there_is_no_mirror(clients, release_settings, monkeypatch):
+    release_settings.cli_stable_version = "1.2.0"
+    release_settings.cli_mirror_base_url = "https://mirror.example/cli/v{version}/"
+    asked = _published_sums(monkeypatch, 503, "unavailable")
+    for _ in range(2):
+        m = (await clients.get("/cli/latest", params={"os": "linux", "arch": "arm64"})).json()
+        assert "sha256" not in m and "mirror_url" not in m and m["url"].startswith("https://dl.example/")
+    assert len(asked) == 1
 
 
 async def test_latest_falls_back_to_github_and_ignores_python_versions(clients, release_settings, monkeypatch):

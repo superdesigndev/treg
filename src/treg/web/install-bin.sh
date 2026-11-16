@@ -134,7 +134,7 @@ VERSION=$(clean "$(field version)")
 URL=$(field url)
 SUMS_URL=$(field checksums_url)
 MIRROR_URL=$(field mirror_url)
-MIRROR_SUMS_URL=$(field mirror_checksums_url)
+SHA256=$(field sha256)
 ARCHIVE=$(field archive)
 [ -n "$VERSION" ] && [ -n "$URL" ] && [ -n "$SUMS_URL" ] && [ -n "$ARCHIVE" ] || {
   REASON=bad_manifest; fail "the registry's release answer is incomplete"; }
@@ -158,17 +158,21 @@ kind() {
     *) printf other ;;
   esac
 }
-# fetch <archive url> <checksums url>: the archive in $TMP, matching the release's SHA256SUMS. A
-# transfer that stalls is given up so the mirror gets its turn. On failure REASON says which step
-# and DETAIL why: curl's exit code, or what the mismatching file holds.
+# fetch <archive url> [checksums url]: the archive in $TMP, matching the sum the registry named or,
+# without one, the release's SHA256SUMS. A transfer that stalls is given up so the mirror gets its
+# turn. On failure REASON says which step and DETAIL why: curl's exit code, or what the
+# mismatching file holds.
 fetch() {
   rm -f "$TMP/$ARCHIVE" "$TMP/SHA256SUMS"
   curl -fsSL --connect-timeout 15 --speed-limit 10240 --speed-time 30 -o "$TMP/$ARCHIVE" "$1" || {
     rc=$?; REASON=download; DETAIL="curl_$rc"; return 1; }
-  curl -fsSL --connect-timeout 15 --max-time 60 -o "$TMP/SHA256SUMS" "$2" || {
-    rc=$?; REASON=download; DETAIL="curl_$rc"; return 1; }
-  want=$(awk -v f="$ARCHIVE" '$2 == f || $2 == "*"f {print $1}' "$TMP/SHA256SUMS")
-  [ -n "$want" ] || { REASON=checksum; DETAIL=sums_missing; return 1; }
+  want=$SHA256
+  if [ -z "$want" ]; then
+    curl -fsSL --connect-timeout 15 --max-time 60 -o "$TMP/SHA256SUMS" "$2" || {
+      rc=$?; REASON=download; DETAIL="curl_$rc"; return 1; }
+    want=$(awk -v f="$ARCHIVE" '$2 == f || $2 == "*"f {print $1}' "$TMP/SHA256SUMS")
+    [ -n "$want" ] || { REASON=checksum; DETAIL=sums_missing; return 1; }
+  fi
   [ "$want" = "$(sha256 "$TMP/$ARCHIVE")" ] || { REASON=checksum; DETAIL="got_$(kind "$TMP/$ARCHIVE")"; return 1; }
 }
 download_failed() {
@@ -184,11 +188,12 @@ if fetch "$URL" "$SUMS_URL"; then
   SOURCE=primary
 else
   SECS=$(( $(date +%s) - started ))
-  [ -n "$MIRROR_URL" ] && [ -n "$MIRROR_SUMS_URL" ] || download_failed
+  # The mirror only with the registry's sum: nothing it serves is trusted on its own.
+  [ -n "$MIRROR_URL" ] && [ -n "$SHA256" ] || download_failed
   first_reason=$REASON
   first=$DETAIL
   say "That failed ($first); trying the mirror..."
-  if fetch "$MIRROR_URL" "$MIRROR_SUMS_URL"; then
+  if fetch "$MIRROR_URL"; then
     SOURCE=mirror
   else
     MIRROR_DETAIL=$DETAIL
