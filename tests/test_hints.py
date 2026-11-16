@@ -10,7 +10,8 @@ from treg import hints
 from treg.config import get_settings
 
 
-@pytest.mark.parametrize('kind,field', [('review', 'review_sample_rate'), ('feedback', 'feedback_hint_rate')])
+@pytest.mark.parametrize('kind,field', [('review', 'review_sample_rate'), ('feedback', 'feedback_hint_rate'),
+                                        ('mark', 'mark_hint_rate')])
 def test_sampling_boundaries_stability_and_salt(monkeypatch, kind, field):
     settings = get_settings()
     monkeypatch.setattr(settings, field, 0)
@@ -190,3 +191,70 @@ async def test_feedback_hint_rides_plain_http_on_any_successful_call(clients, mo
     response = await clients.get('/call/example.search')
     assert response.headers.get('X-Treg-Hint') == 'feedback'
     assert 'X-Treg-Review' not in response.headers
+
+
+def _mark_only(monkeypatch, **settings):
+    for field, value in {'review_sample_rate': 0, 'feedback_hint_rate': 0, 'mark_hint_rate': 1,
+                         'mark_hint_capabilities': [], 'mark_hint_texts': [], **settings}.items():
+        monkeypatch.setattr(get_settings(), field, value)
+
+
+async def test_mark_hint_carries_its_text_and_variant(clients, monkeypatch):
+    from treg import analytics
+
+    _platform_call(monkeypatch)
+    _mark_only(monkeypatch, mark_hint_texts=['A {call_id} \u2014 caf\u00e9', '  ', 'B {call_id}'])
+    events = []
+    monkeypatch.setattr(analytics, 'capture', lambda *args, **kw: events.append((args, kw)))
+    response = await clients.get('/call/example.search')
+    assert response.status_code == 200 and response.content == b'{}'
+    assert response.headers['X-Treg-Hint'] == 'mark'
+    assert 'X-Treg-Review' not in response.headers
+    sent, = [a[2] for a, _ in events if a[1] == 'hint_attached']
+    call_id = sent['call_id']
+    variant, text = hints.mark_hint(call_id)
+    # blank variants are skipped; non-ASCII is blanked so the text fits a header
+    assert text in (f'A {call_id}   caf', f'B {call_id}')
+    assert response.headers['X-Treg-Hint-Text'] == text
+    assert (sent['kind'], sent['variant']) == ('mark', variant)
+
+
+def test_mark_hint_default_text_and_stable_variant(monkeypatch):
+    monkeypatch.setattr(get_settings(), 'mark_hint_texts', [])
+    assert hints.mark_hint('c_1') == (0, hints.MARK_HINT.format(call_id='c_1'))
+    monkeypatch.setattr(get_settings(), 'mark_hint_texts', ['x {call_id}', 'y {call_id}'])
+    seen = {hints.mark_hint(str(i))[0] for i in range(50)}
+    assert seen == {0, 1}
+    assert all(hints.mark_hint(str(i)) == hints.mark_hint(str(i)) for i in range(50))
+
+
+@pytest.mark.parametrize('capabilities,expected', [
+    ([], 'mark'), (['search'], 'mark'), (['example.search'], 'mark'),
+    (['people.search'], None), (['arch'], None),
+])
+async def test_mark_hint_only_on_listed_capabilities(clients, monkeypatch, capabilities, expected):
+    _platform_call(monkeypatch)
+    _mark_only(monkeypatch, mark_hint_capabilities=capabilities)
+    assert (await clients.get('/call/example.search')).headers.get('X-Treg-Hint') == expected
+
+
+@pytest.mark.parametrize('tier', ['platform', 'credential', 'routed'])
+async def test_mark_hint_on_any_catalog_tier_never_on_own_tools(clients, monkeypatch, tier):
+    _platform_call(monkeypatch, tier=tier)
+    _mark_only(monkeypatch)
+    assert (await clients.get('/call/example.search')).headers.get('X-Treg-Hint') == 'mark'
+
+
+async def test_mark_hint_never_on_own_tools(clients, monkeypatch):
+    _platform_call(monkeypatch, own=True)
+    _mark_only(monkeypatch)
+    assert (await clients.get('/call/example.search')).headers.get('X-Treg-Hint') is None
+
+
+async def test_mark_hint_budget_then_review_wins(clients, monkeypatch):
+    _platform_call(monkeypatch)
+    _mark_only(monkeypatch, mark_hint_per_hour=1, feedback_hint_rate=1)
+    kinds = [(await clients.get('/call/example.search')).headers.get('X-Treg-Hint') for _ in range(3)]
+    assert kinds == ['mark', 'feedback', 'feedback']
+    monkeypatch.setattr(get_settings(), 'review_sample_rate', 1)
+    assert (await clients.get('/call/example.search')).headers.get('X-Treg-Hint') == 'review'

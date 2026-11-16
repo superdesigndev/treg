@@ -125,7 +125,8 @@ the whole answer), optional `checked`, `evidence_call_id`, a private `note` and 
 ## Review and feedback invitations
 
 `application.call.invite.invitation(context, status, replayed)` runs in `routers.call.call_tool`
-after the response is built and before it streams, and returns `review`, `feedback` or nothing. The
+after the response is built and before it streams, and returns `review`, `mark`, `feedback` or
+nothing, in that order of precedence. The
 router sends `X-Treg-Hint: review|feedback` (plus `X-Treg-Review: requested` on a review, read by CLI
 releases up to 0.18) and emits one `hint_attached` event per invitation sent. Surfaces only translate
 the header: the CLI prints a stderr line, the team `/mcp/` renders it into its single hint slot with
@@ -137,6 +138,14 @@ so for them `hint_attached` counts an invitation the agent never saw.
   `kv.store().take("review-budget:<org_id>", review_budget_per_hour, 3600)`. Per-call sampling scales
   with volume, so the budget caps how often a busy team is asked. There is deliberately no
   per-endpoint cooldown. An own tool never qualifies, even if its name matches a catalog endpoint.
+- **Mark**: a successful, non-replayed, non-cached catalog call on any credential tier (never an own
+  tool) whose endpoint id equals or ends in `.<capability>` for one of `mark_hint_capabilities`
+  (empty: every catalog call), sampled at `mark_hint_rate` and capped by
+  `take("mark-hint-budget:<org_id>", mark_hint_per_hour, 3600)`. It asks for later work, once the
+  agent knows. Its text travels in `X-Treg-Hint-Text`: one of `mark_hint_texts` (A/B variants,
+  `{call_id}` filled, printable ASCII), chosen deterministically per call, or `hints.MARK_HINT`;
+  `hint_attached` records the `variant`. The binary CLI prints the text and the team `/mcp/`
+  renders it, so copy changes need no release; the frozen Python CLI ignores the kind.
 - **Feedback**: any other successful, non-replayed, non-cached call that samples in at
   `feedback_hint_rate`, own tools included. It asks for nothing, so it has no budget.
 

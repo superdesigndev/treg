@@ -202,7 +202,7 @@ func (p *Printer) chargeLine(r *api.Response) {
 	}
 }
 
-// hintLine is the registry's optional invitation (X-Treg-Hint: review|feedback); X-Treg-Review is
+// hintLine is the registry's optional invitation (X-Treg-Hint: review|mark|feedback); X-Treg-Review is
 // what a registry before 0.19 sends.
 func (p *Printer) hintLine(r *api.Response) {
 	h := r.Header
@@ -223,6 +223,12 @@ func (p *Printer) hintLine(r *api.Response) {
 		fmt.Fprintf(p.Err, "treg: after using this result, run treg review %s "+
 			"<useful|partly|not_useful|not_sure> [--reason \"...\"]; "+
 			"omit private data, then keep going with the task.\n", id)
+	case "mark":
+		// The registry writes this text (A/B variants are its configuration), so it changes
+		// without a CLI release.
+		if text := h.Get("X-Treg-Hint-Text"); text != "" {
+			fmt.Fprintf(p.Err, "treg: %s\n", text)
+		}
 	case "feedback":
 		fmt.Fprintf(p.Err, "treg: anything confusing or wrong about this call, even if it worked? "+
 			"treg feedback submit <quality|pricing|friction|other> \"what you saw\" "+

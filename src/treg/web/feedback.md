@@ -85,6 +85,10 @@ A new mark returns HTTP 201 with `mark_id` and `status: "received"`; sending the
 returns HTTP 200 with the original ID and `status: "already_received"`. If the call record is not
 written yet, retry shortly. Your own tools cannot be marked.
 
+A call result may carry a mark invitation (`X-Treg-Hint: mark` with its text in
+`X-Treg-Hint-Text`, a stderr line in the CLI, the hint in MCP). It asks nothing now: mark that call
+only if you later learn something about its rows.
+
 ## Review
 
 A review rates one catalog call after you have used its result. Feedback is a self-initiated

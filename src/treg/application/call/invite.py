@@ -17,12 +17,24 @@ from ...config import get_settings
 from ...infra import kv
 from .types import CallContext
 
-Kind = Literal["review", "feedback"]
+Kind = Literal["review", "mark", "feedback"]
 BUDGET_WINDOW_S = 3600
 
 
 def budget_key(org_id: int) -> str:
     return f"review-budget:{org_id}"
+
+
+def mark_budget_key(org_id: int) -> str:
+    return f"mark-hint-budget:{org_id}"
+
+
+def _markable(endpoint_id: str | None) -> bool:
+    capabilities = get_settings().mark_hint_capabilities
+    if not endpoint_id:
+        return False
+    return not capabilities or any(endpoint_id == c or endpoint_id.endswith(f".{c}")
+                                   for c in capabilities)
 
 
 async def invitation(context: CallContext, status: int, *, replayed: bool) -> Kind | None:
@@ -36,6 +48,12 @@ async def invitation(context: CallContext, status: int, *, replayed: bool) -> Ki
         if await kv.store().take(budget_key(context.input.caller.org_id),
                                  get_settings().review_budget_per_hour, BUDGET_WINDOW_S):
             return "review"
+    # A mark asks for later work, only once the agent knows; capped per team like a review.
+    if (marketplace is not None and _markable(getattr(marketplace, "endpoint_id", None))
+            and hints.sampled("mark", context.call_ref)):
+        if await kv.store().take(mark_budget_key(context.input.caller.org_id),
+                                 get_settings().mark_hint_per_hour, BUDGET_WINDOW_S):
+            return "mark"
     if hints.sampled("feedback", context.call_ref):
         return "feedback"
     return None

@@ -1771,6 +1771,8 @@ async def _call_impl(endpoint_id: str, params: dict | list | None = None,
         kind = r.headers.get("X-Treg-Hint")
         if kind == "review" and out.get("call_id"):
             out["hint"] = hints.review_hint(out["call_id"])
+        elif kind == "mark" and r.headers.get("X-Treg-Hint-Text"):
+            out["hint"] = r.headers["X-Treg-Hint-Text"]
         elif kind == "feedback":
             out["hint"] = hints.HINT
     if routed := r.headers.get("X-Treg-Routed-Tool"):
