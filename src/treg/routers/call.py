@@ -342,6 +342,10 @@ async def _paid_call(rest: str, request: Request) -> Response:
     the payment path does not serve answers exactly as an unauthenticated call always has."""
     if reason := agent_payments.unserved(rest, request.method):
         raise HTTPException(status_code=401, detail=agent_payments.NotServed(reason).detail)
+    try:
+        await agent_payments.limit_request(request.headers, _client_ip(request))
+    except agent_payments.RateLimited as exc:
+        return await _payment_refusal(request, 429, exc.detail, [("Retry-After", "60")])
     body = await _capped_body(request) if _may_have_body(request) else b""
     raw_path = request.scope.get("raw_path")
     try:
@@ -349,8 +353,7 @@ async def _paid_call(rest: str, request: Request) -> Response:
             rest=rest, method=request.method,
             path=raw_path.decode("ascii", "replace") if raw_path else request.url.path,
             query=request.url.query or "", query_items=tuple(request.query_params.multi_items()),
-            body=body, headers=request.headers, raw_headers=request.headers.raw,
-            client_ip=_client_ip(request))
+            body=body, headers=request.headers, raw_headers=request.headers.raw)
     except agent_payments.NotServed as exc:
         raise HTTPException(status_code=401, detail=exc.detail) from None
     except agent_payments.RateLimited as exc:
@@ -365,6 +368,11 @@ async def _paid_call(rest: str, request: Request) -> Response:
         response = await run_call_surface(rest, request, paid.caller, prefix="/call/",
                                           finish=_relay_answer, headers=paid.headers)
     except HTTPException as exc:
+        if exc.status_code == 402 and paid.admission.settlement is None:
+            # The credit was spent by another call between the check and the hold: ask this
+            # wallet to pay, as a payment client expects of a 402.
+            challenge = await agent_payments.credit_short(paid.paid, int(paid.caller.org.id))
+            return await _payment_refusal(request, 402, challenge.detail, challenge.headers)
         if exc.status_code == 402:
             # A payment client answers every 402 with a payment; treg's own balance refusal is
             # not a payment challenge.
@@ -378,6 +386,31 @@ async def _paid_call(rest: str, request: Request) -> Response:
         response.headers.append(name, value)
     response.headers.setdefault("Cache-Control", "private")
     return response
+
+
+@app.get(agent_payments.CREDIT_PATH, include_in_schema=False)
+async def agent_payment_credit(request: Request) -> Response:
+    """A keyless wallet's credit on one network, after a zero-amount proof
+    (docs/context/architecture/agent-payments.md). Not found while the feature is off."""
+    try:
+        await agent_payments.limit_request(request.headers, _client_ip(request))
+        view = await agent_payments.credit_of(request.headers)
+    except agent_payments.NotEnabled:
+        raise HTTPException(status_code=404, detail="Not Found") from None
+    except agent_payments.RateLimited as exc:
+        return _credit_refusal(429, exc.detail, [("Retry-After", "60")])
+    except agent_payments.PaymentChallenge as exc:
+        return _credit_refusal(402, exc.detail, exc.headers)
+    return JSONResponse(view, headers={"Cache-Control": "no-store"})
+
+
+def _credit_refusal(status: int, detail: dict, headers: list[tuple[str, str]]) -> Response:
+    resp = JSONResponse({"detail": detail}, status_code=status)
+    for name, value in headers:
+        resp.headers.append(name, value)
+    resp.headers["Cache-Control"] = "no-store"
+    resp.headers["X-Treg-Error"] = "1"
+    return resp
 
 
 async def _capped_body(request: Request) -> bytes:

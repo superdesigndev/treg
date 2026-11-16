@@ -26,6 +26,7 @@ def _payment_scheme(value: str) -> bool:
 class MppTempoRail:
     protocol = "mpp"
     consumed_headers = CONSUMED_HEADERS
+    deferrable_payments = False
     stripe_network = "tempo"
 
     def __init__(self, *, secret: str, realm: str, recipient: str, chain_id: int,
@@ -37,6 +38,7 @@ class MppTempoRail:
 
         self.network = f"tempo:{chain_id}"
         self.pay_to = recipient.lower()
+        self.realm = realm.lower()
         self._challenge_ttl = timedelta(seconds=challenge_ttl_s)
         # Tempo's hosted RPC takes its console API key in this header, not in the URL.
         client = (httpx.AsyncClient(headers={"tempo-api-key": rpc_api_key}, timeout=RPC_TIMEOUT_S)
@@ -58,9 +60,18 @@ class MppTempoRail:
         return Request(method=offer.method, url=f"https://payment.invalid{url}")
 
     async def challenge(self, offer: Offer) -> list[tuple[str, str]]:
+        return await self._challenge(offer, micro_to_decimal(offer.amount_micro), offer.description)
+
+    async def proof_challenge(self, offer: Offer) -> list[tuple[str, str]]:
+        # Clients refuse to sign a proof whose realm is not the hostname they called (mppx throws
+        # instead of choosing another challenge), so a request to any other host gets none.
+        if not offer.host or offer.host != self.realm:
+            return []
+        return await self._challenge(offer, "0", f"prove this wallet for {offer.description}")
+
+    async def _challenge(self, offer: Offer, amount: str, description: str) -> list[tuple[str, str]]:
         handler = self._mpp["tempo/charge"](
-            amount=micro_to_decimal(offer.amount_micro), description=offer.description,
-            expires_in=self._challenge_ttl)
+            amount=amount, description=description, expires_in=self._challenge_ttl)
         result = await handler(self._request(offer))
         return [("WWW-Authenticate", value)
                 for value in result.challenge.headers.get_list("www-authenticate")]
@@ -74,15 +85,29 @@ class MppTempoRail:
         except Exception as exc:
             raise PaymentRejected("malformed_credential", "the Payment credential cannot be parsed") from exc
         echoed = _echoed_request(parsed)
+        proof = (parsed.payload or {}).get("type") == "proof"
+        if not proof and offer.amount_micro <= 0:
+            raise PaymentRejected("proof_required", "this request takes a zero-amount proof, not a payment")
+        amount = "0" if proof else micro_to_decimal(offer.amount_micro)
         try:
             validation = await self._mpp.validate_credential(
                 parsed, intent="charge", http_request=self._request(offer),
-                request={"amount": micro_to_decimal(offer.amount_micro)})
+                request={"amount": amount})
         except PaymentError as exc:
             raise PaymentRejected(_code(exc), str(exc) or exc.title) from exc
         if not validation.payer:
             raise PaymentRejected("verification_failed", "the payment names no payer")
         details = validation.details if isinstance(validation.details, dict) else {}
+        if proof:
+            if details.get("mode") != "proof":
+                raise PaymentRejected("malformed_credential", "the proof was not checked as a proof")
+            # The challenge is HMAC-bound to this route and query; its id is single-use (treg
+            # claims it), and the challenge expiry bounds how long the claim must last.
+            expires = _iso(parsed.challenge.expires) or datetime.now(UTC).replace(tzinfo=None)
+            return Verified(protocol=self.protocol, network=self.network,
+                            proof_id=f"mpp:{self.network}:proof:{parsed.challenge.id}",
+                            payer=validation.payer.lower(), amount_micro=0, asset="", pay_to="",
+                            expires_at=expires, deferrable=False, credential=parsed, kind="proof")
         tx_hash = str(details.get("transaction_hash") or "")
         if details.get("mode") not in ("push", "pull") or not tx_hash:
             raise PaymentRejected("malformed_credential", "send a signed or broadcast Tempo transfer")
@@ -91,9 +116,9 @@ class MppTempoRail:
             # The payer already broadcast the transfer, so it is settled, never drawn as credit.
             deferrable, expires_at = False, now
         else:
-            # Only a recovered secp256k1 sender is authenticated before broadcast; keychain,
-            # multisig, P256 and WebAuthn senders are authenticated by the chain at settlement.
-            deferrable = details.get("payer_verified") is True
+            # A returning payer proves its wallet with a zero-amount proof, so a real transfer is
+            # always settled: treg never holds an MPP transfer it did not send.
+            deferrable = False
             expires_at = _timestamp(details.get("valid_before"))
             if expires_at is None:
                 # A transfer with no `valid_before` stays valid until its nonce is used, so treg
@@ -130,6 +155,7 @@ class MppTempoRail:
 
     async def find(self, payment: Unconfirmed) -> Lookup:
         tx_hash = payment.proof_id.rsplit(":", 1)[-1]
+        # Tempo has no reorgs: a confirmed receipt is final.
         try:
             receipt = await self._chain.receipt(tx_hash)
             if receipt is None:
@@ -157,6 +183,13 @@ def _echoed_request(parsed) -> dict:
     if not isinstance(echoed, dict):
         raise PaymentRejected("malformed_credential", "the challenge request cannot be read")
     return echoed
+
+
+def _iso(stamp) -> datetime | None:
+    try:
+        return datetime.fromisoformat(str(stamp).replace("Z", "+00:00")).astimezone(UTC).replace(tzinfo=None)
+    except (TypeError, ValueError):
+        return None
 
 
 def _timestamp(stamp) -> datetime | None:

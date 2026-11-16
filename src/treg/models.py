@@ -1018,10 +1018,13 @@ class CreditBlock(SQLModel, table=True):
 
 
 class AgentPayer(SQLModel, table=True):
-    """The payer team of one wallet address that pays per call with no treg account
-    (docs/context/architecture/agent-payments.md). Its membership has no token: only a verified
-    payment from `address` acts for it. Staged only by `governance.teams.make_payer_team`."""
+    """The payer team of one wallet address on one network that pays per call with no treg
+    account (docs/context/architecture/agent-payments.md). Its membership has no token: only a
+    verified payment or proof from `address` on `network` acts for it. Credit on one network never
+    pays on another: one address can have a different owner per chain (a smart wallet). Staged only
+    by `governance.teams.make_payer_team`."""
 
+    network: str = Field(primary_key=True)  # e.g. tempo:4217, eip155:8453
     address: str = Field(primary_key=True)  # lowercase 0x hex, 20 bytes
     org_id: int = Field(unique=True)
     created_at: NaiveUTC = Field(default_factory=_now)

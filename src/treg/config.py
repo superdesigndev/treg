@@ -838,7 +838,9 @@ class Settings(BaseSettings):
     agent_payments_x402_asset_version: str = "2"
     agent_payments_x402_facilitator_url: str = "https://x402.org/facilitator"
     agent_payments_x402_max_timeout_s: int = Field(default=120, ge=10, le=3600)
-    agent_payments_x402_rpc_url: str = ""               # empty: the network's public RPC
+    agent_payments_x402_rpc_url: str = ""               # empty: the network's public RPC (testnet only)
+    # Which head the reconciler trusts a transfer at. `finalized`: no reorg can undo it.
+    agent_payments_x402_block_tag: Literal["latest", "safe", "finalized"] = "finalized"
     # A Coinbase Developer Platform API key, for its facilitator (mainnet). Both empty: no auth,
     # which the public testnet facilitator accepts. The secret is the Ed25519 key (base64) or a
     # legacy EC PEM key.
@@ -858,6 +860,10 @@ class Settings(BaseSettings):
     # Requests carrying a payment credential, per client IP per minute: each one costs a
     # signature check, and an x402 one a facilitator request.
     agent_payments_max_payments_per_ip_minute: int = Field(default=30, ge=1)
+    # Payment checks per minute across every client: each one may cost an RPC or facilitator call.
+    agent_payments_max_verifications_minute: int = Field(default=600, ge=1)
+    # Keyless requests with no payment, per client IP per minute: each one is priced.
+    agent_payments_max_quotes_per_ip_minute: int = Field(default=120, ge=1)
 
     @property
     def agent_payments_stripe_key(self) -> str:
@@ -903,6 +909,9 @@ class Settings(BaseSettings):
                 problems.append("TREG_AGENT_PAYMENTS_X402_PAY_TO")
             if x402_mainnet and not self.agent_payments_x402_cdp_api_key_id:
                 problems.append("TREG_AGENT_PAYMENTS_X402_CDP_API_KEY_ID and _SECRET (Base mainnet)")
+            if x402_mainnet and not self.agent_payments_x402_rpc_url:
+                # Money decisions read the chain; the public endpoint is rate-limited and unpinned.
+                problems.append("TREG_AGENT_PAYMENTS_X402_RPC_URL (a paid Base mainnet RPC)")
             if x402_mainnet and self.agent_payments_x402_asset.lower() != base_usdc:
                 problems.append(f"TREG_AGENT_PAYMENTS_X402_ASSET={base_usdc} (Base mainnet USDC)")
             if (self.agent_payments_x402_asset.lower() == base_usdc

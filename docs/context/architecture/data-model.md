@@ -192,8 +192,9 @@ Rollups and analytics tables are optional read models: they never determine a mo
   raw requests, responses, contacts or credentials. `RankingsSnapshot` holds no team, key or money,
   so team deletion has nothing to remove.
 
-- **`AgentPayer` / `AgentPayment`**: the payer team of one agent-payments wallet address, and each
-  payment proof it presented (`proof_id` UNIQUE, status `credit|settling|settled|failed`). `asset`,
+- **`AgentPayer` / `AgentPayment`**: the payer team of one agent-payments wallet address on one
+  network (primary key `(network, address)`), and each payment it presented (`proof_id` UNIQUE,
+  status `credit|settling|settled|failed|expired`; an MPP zero-amount proof leaves no row). `asset`,
   `pay_to` and `expires_at` let the reconciler find the transfer on chain; `stripe_payment_intent` is
   set once a payment settled to Stripe is recorded there. `governance.teams.make_payer_team` stages
   `AgentPayer`; `application.agent_payments` is the only writer of `AgentPayment`. Team deletion

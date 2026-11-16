@@ -23,11 +23,13 @@ class Offer:
     query: str                   # the raw query string
     resource_url: str
     description: str
+    host: str = ""               # the hostname the request was sent to, lowercase, no port
 
 
 @dataclass(frozen=True)
 class Verified:
-    """A credential that proved key control over `payer` and authorizes `amount_micro`."""
+    """A credential that proved key control over `payer`. A `payment` authorizes `amount_micro`;
+    a `proof` (MPP's zero-amount charge) moves no money and only names the payer."""
 
     protocol: str                # mpp | x402
     network: str
@@ -40,6 +42,7 @@ class Verified:
     # False: the payer already moved the money (MPP push mode); treg cannot decline to settle.
     deferrable: bool = True
     credential: Any = field(default=None, repr=False, compare=False)
+    kind: Literal["payment", "proof"] = "payment"
 
 
 @dataclass(frozen=True)
@@ -88,10 +91,17 @@ class PaymentRail(Protocol):
     stripe_network: str | None   # Stripe's name for the network, when Stripe takes it
     # Lowercase request header names this rail reads; treg removes them before the relay.
     consumed_headers: tuple[str, ...]
+    # True when a payment may be checked and left unsettled (to prove a wallet); False when every
+    # payment is settled and the wallet proves itself with `proof_challenge` instead.
+    deferrable_payments: bool
 
     def presented(self, headers: Mapping[str, str]) -> str | None: ...
 
     async def challenge(self, offer: Offer) -> list[tuple[str, str]]: ...
+
+    # The zero-amount challenge a returning payer answers with a proof; [] when the rail has none
+    # or cannot offer one for this request.
+    async def proof_challenge(self, offer: Offer) -> list[tuple[str, str]]: ...
 
     async def verify(self, credential: str, offer: Offer) -> Verified: ...
 

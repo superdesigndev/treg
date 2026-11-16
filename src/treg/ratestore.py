@@ -105,6 +105,19 @@ async def kv_take(db: AsyncSession, ns: str, k: str) -> dict | None:
     return row.v
 
 
+async def kv_claim(db: AsyncSession, ns: str, k: str, ttl_s: float) -> bool:
+    """Write (ns, k) only if no live row holds it: True for the one caller that claimed it. A
+    single-use token's claim; an expired row is swept first so its key can be claimed again."""
+    now = _utcnow_naive()
+    await db.execute(delete(Ephemeral).where(
+        Ephemeral.ns == ns, Ephemeral.k == k, Ephemeral.expires_at < now))
+    insert = postgresql.insert if db.get_bind().dialect.name == "postgresql" else sqlite.insert
+    stmt = insert(Ephemeral).values(
+        ns=ns, k=k, v={}, expires_at=now + timedelta(seconds=ttl_s)).on_conflict_do_nothing(
+        index_elements=[Ephemeral.ns, Ephemeral.k])
+    return (await db.execute(stmt)).rowcount == 1
+
+
 def ip_limit(ip: str, max_hits: int, key: str | None = None) -> list[tuple[str, int]]:
     """The per-address entry of a `rate_check` limits list, keyed by `key` (default: the address
     itself). Empty for an address the deployment exempts, so the other entries still decide."""

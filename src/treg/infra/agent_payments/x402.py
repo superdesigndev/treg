@@ -21,12 +21,14 @@ CONSUMED_HEADERS = (SIGNATURE_HEADER, LEGACY_HEADER)
 class X402Rail:
     protocol = "x402"
     consumed_headers = CONSUMED_HEADERS
+    deferrable_payments = True
 
     def __init__(self, *, pay_to: str, network: str, asset: str, asset_name: str,
                  asset_version: str, facilitator_url: str, max_timeout_s: int,
                  rpc_url: str = "", cdp_api_key_id: str = "", cdp_api_key_secret: str = "",
-                 facilitator=None, chain: Chain | None = None) -> None:
+                 facilitator=None, chain: Chain | None = None, block_tag: str = "finalized") -> None:
         self.network = network
+        self._block_tag = block_tag
         self.pay_to = pay_to.lower()
         self.stripe_network = STRIPE_NETWORK.get(network)
         url = rpc_url or PUBLIC_RPC.get(network, "")
@@ -63,6 +65,10 @@ class X402Rail:
                     "resource": {"url": offer.resource_url, "description": offer.description},
                     "accepts": [self._requirements(offer)]}
         return [("PAYMENT-REQUIRED", encode_payment_required(required))]
+
+    async def proof_challenge(self, offer: Offer) -> list[tuple[str, str]]:
+        # A wallet proof on x402 is SIWX (sign-in-with-x), which pympp does not offer yet.
+        return []
 
     async def verify(self, credential: str, offer: Offer) -> Verified:
         from mpp.x402 import X402FormatError, decode_payment_signature
@@ -137,7 +143,8 @@ class X402Rail:
             return Lookup("pending", reason="no_rpc_url")
         nonce = payment.proof_id.rsplit(":", 1)[-1]
         try:
-            head, head_time = await self._chain.head()
+            # Only blocks at or below this head count: on `finalized`, no reorg can undo them.
+            head, head_time = await self._chain.head(self._block_tag)
             start = await self._chain.block_at(payment.created_at - EXPIRY_GRACE)
             closed = head_time > payment.expires_at + EXPIRY_GRACE
             end = await self._chain.block_at(payment.expires_at + EXPIRY_GRACE) if closed else head

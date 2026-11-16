@@ -212,12 +212,13 @@ async def _make_org_membership(
     return org, token
 
 
-async def make_payer_team(db: AsyncSession, address: str) -> Org:
-    """Stage the team of one agent payer wallet (docs/context/architecture/agent-payments.md): a
-    machine user on the unroutable payer domain, a `member` membership with no token, and the
-    address binding. No signup credit. A wallet whose team was deleted keeps its machine user and
-    gets a new team. Caller commits; a concurrent create loses on the `AgentPayer` primary key."""
-    email = f"{address}@{PAYER_DOMAIN}"
+async def make_payer_team(db: AsyncSession, network: str, address: str) -> Org:
+    """Stage the team of one agent payer wallet on one network
+    (docs/context/architecture/agent-payments.md): a machine user on the unroutable payer domain, a
+    `member` membership with no token, and the (network, address) binding. No signup credit. A
+    wallet whose team was deleted keeps its machine user and gets a new team. Caller commits; a
+    concurrent create loses on the `AgentPayer` primary key."""
+    email = f"{address}.{re.sub(r'[^a-z0-9]+', '-', network.lower())}@{PAYER_DOMAIN}"
     user = (await db.execute(select(User).where(User.email == email))).scalar_one_or_none()
     if user is None:
         user = User(email=email, onboarded=True)
@@ -227,7 +228,7 @@ async def make_payer_team(db: AsyncSession, address: str) -> Org:
     db.add(org)
     await db.flush()
     db.add(Membership(user_id=user.id, org_id=org.id, role="member", token_hash=""))
-    db.add(AgentPayer(address=address, org_id=org.id))
+    db.add(AgentPayer(network=network, address=address, org_id=org.id))
     await db.flush()
     return org
 
