@@ -122,7 +122,7 @@ def _child(mk: MarketplaceCall, route) -> MarketplaceCall:
     agg = int(route.agg_price_micro or 0)
     # The child settles against ITS price: an aggregator that reports no cost settles at the
     # aggregator reserve, never at the parent's direct price or table ceiling.
-    return replace(mk, tier="platform-overflow", call_id=None, estimate_micro=agg,
+    return replace(mk, tier="platform-overflow", call_id=None, estimate_micro=agg, worst_case_micro=0,
                    holdless=False, overflow_hold_possible=False,
                    cost_type="per_call" if route.agg_unit == "call" else "per_result",
                    unit_micro=agg,

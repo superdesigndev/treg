@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 import ipaddress
 import socket
 from urllib.parse import urlsplit
@@ -13,7 +14,7 @@ def _is_public_ip(ip: ipaddress.IPv4Address | ipaddress.IPv6Address) -> bool:
     return ip.is_global and not ip.is_multicast and not ip.is_reserved
 
 
-def safe_webhook_url(url: str | None) -> bool:
+def safe_webhook_url(url: str | None, *, fold_trailing_dot: bool = True) -> bool:
     """Allow only globally routable unicast addresses for HTTP(S) webhook targets.
 
     DNS names are checked at call time; local names and non-public literals are refused here
@@ -28,6 +29,8 @@ def safe_webhook_url(url: str | None) -> bool:
     if u.scheme not in ("http", "https") or not u.hostname:
         return False
     host = u.hostname.lower()
+    if fold_trailing_dot:
+        host = host.rstrip(".")
     if host == "localhost" or host.endswith(".local") or host.endswith(".internal"):
         return False
     try:
@@ -61,3 +64,12 @@ def host_is_public(host: str) -> bool:
         if not _is_public_ip(ip):
             return False
     return True
+
+
+async def url_host_is_public(url: object) -> bool:
+    """host_is_public for a whole URL (a str or an httpx.URL), resolved off the event loop."""
+    try:
+        host = urlsplit(str(url)).hostname or ""
+    except ValueError:
+        return False
+    return await asyncio.to_thread(host_is_public, host)

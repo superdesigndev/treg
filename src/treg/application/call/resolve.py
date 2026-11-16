@@ -9,7 +9,7 @@ from email import policy
 from email.parser import BytesParser
 from collections.abc import Awaitable, Callable
 from dataclasses import dataclass, field
-from urllib.parse import quote, urlsplit
+from urllib.parse import urlsplit
 
 from sqlalchemy import or_
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -29,6 +29,7 @@ from ...domain.identity.access import Caller
 from ...domain.money import settlement as settlement_basis
 from ...domain import provider_resources
 from ...infra.db import session_maker
+from ...infra.upstream import pathsegment
 from ...domain.governance.access import pinned_tag_predicates
 from ...models import AsyncResourceRecord, AsyncTaskRecord, CapabilityPin, Org, Secret, Tool
 from ..connect import _host_of, _provider_bindings
@@ -304,6 +305,7 @@ class MarketplaceCall:
     tier: str                       # tool | credential | anonymous | platform | platform-overflow
     cost_type: str = ""             # cost.type — decides whether a 4xx is billable (per_call is)
     estimate_micro: int = 0         # RAW provider estimate; the ledger applies the margin
+    worst_case_micro: int = 0       # RAW declared worst case; the hold is never below it
     max_cost_micro: int | None = None  # remaining caller ceiling, inherited by overflow
     params_hash: str = ""
     call_id: str | None = None      # the ledger hold, once reserved (metered calls only)
@@ -1162,9 +1164,6 @@ def _platform_key_missing(ep: dict, provider) -> bool:
     return provider.uses_pasted_secret and not settings.platform_key_for(ep["provider"])
 
 
-_VALID_PERCENT_ESCAPE_RE = re.compile(r"%[0-9A-Fa-f]{2}")
-
-
 def _marketplace_upstream(
     ep: dict, provider, query_params, authorization_method: str = "",
 ) -> tuple[str, set[str]]:
@@ -1193,12 +1192,13 @@ def _marketplace_upstream(
                     f"{ep['id']} needs --query {name}=<value> "
                     f"(a path parameter of {ep['path']})"))
         # Agents often pass `siteUrl` straight from GSC's sites list, where it may already be
-        # encoded. Preserve a value containing a real %HH escape; otherwise encode it exactly once.
-        # A literal/invalid percent sequence has no valid escape and therefore becomes `%25`.
-        # @ is a legal character inside a path segment (RFC 3986 pchar), not a path/query
-        # delimiter. Email-path APIs may validate it before percent-decoding (Tomba does).
-        # Keep it literal; slashes, ?, # and other delimiters still need escaping.
-        rendered = value if _VALID_PERCENT_ESCAPE_RE.search(value) else quote(value, safe="@")
+        # encoded: a value with a real %HH escape is decoded first, then every value is encoded
+        # exactly once as one segment.
+        if pathsegment.is_dot_segment(value):
+            raise ResolutionFailed(
+                "catalog_parameter_invalid", status_code=400, parameter=f"pathParams.{name}",
+                rule="type", detail=f"{ep['id']} does not accept {name}={value!r} (a path segment)")
+        rendered = pathsegment.encode(value)
         path = path.replace("{%s}" % name, rendered)
         consumed.add(name)
     required = [k for k, v in (inp.get("queryParams") or {}).items()
@@ -2149,7 +2149,9 @@ def _preflight_authorization(ep: dict, secret: Secret, method: str, authorizatio
 @dataclass(frozen=True)
 class Pricing:
     """What a catalog call reserves and how its hold will settle, in RAW micro-USD. `terms` is a
-    v2 row's frozen cost terms (`call.cost`), None for a row in today's spelling."""
+    v2 row's frozen cost terms (`call.cost`), None for a row in today's spelling. `worst_case_micro`
+    is the row's declared worst case (`cost.worst_case`, `settle.worst_case`), 0 without one: the
+    hold covers it, while a missing figure still settles at the estimate."""
 
     estimate_micro: int
     unit_micro: int
@@ -2157,6 +2159,7 @@ class Pricing:
     settlement_basis: dict
     request_data: dict
     terms: dict | None = None
+    worst_case_micro: int = 0
 
 
 def price_call(ep: dict, query: QueryValues, body: bytes, consumed: set[str]) -> Pricing:
@@ -2171,7 +2174,8 @@ def price_call(ep: dict, query: QueryValues, body: bytes, consumed: set[str]) ->
         hold, unit, credit, terms = call_cost.price(ep, cat, request_data)
         return Pricing(estimate_micro=hold, unit_micro=unit, reported_charge_unit_micro=credit,
                        settlement_basis=call_cost.basis(cat, ep, hold, terminal=bool(ep.get("async"))),
-                       request_data=request_data, terms=terms)
+                       request_data=request_data, terms=terms,
+                       worst_case_micro=call_cost.worst_case_micro(ep, cat))
     raw_cost = ep.get("cost") or {}
     cv = cat.cost_view(raw_cost, service) if raw_cost else None
     info_est, info_unit = _marketplace_pricing(service, ep["id"], cv, query, body)
@@ -2218,10 +2222,13 @@ def price_call(ep: dict, query: QueryValues, body: bytes, consumed: set[str]) ->
             "enrichlayer_rule": raw_cost["enrichlayer"],
             "enrichlayer_unit_micro": info_unit,
         }
+    worst = raw_cost.get("worst_case")
     return Pricing(
         estimate_micro=info_est, unit_micro=info_unit,
         reported_charge_unit_micro=reported_charge_unit_micro,
         settlement_basis=basis, request_data=request_data,
+        worst_case_micro=settlement_basis._micro(float(worst), unit_micro)
+        if worst is not None and unit_micro > 0 else 0,
     )
 
 
@@ -2318,7 +2325,7 @@ async def _resolve_marketplace_call(
     common = dict(
         upstream=upstream, consumed=consumed, endpoint_id=ep["id"], provider=service,
         params_hash=phash, cost_type=str((ep.get("cost") or {}).get("type") or ""),
-        estimate_micro=pricing.estimate_micro,
+        estimate_micro=pricing.estimate_micro, worst_case_micro=pricing.worst_case_micro,
         # The per-ROW price, carried on every tier (settle only reads it on metered calls):
         # a `per_result` settle that can't count rows can only ever bill the estimate.
         unit_micro=pricing.unit_micro,

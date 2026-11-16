@@ -265,11 +265,17 @@ def _require_not_live_demo_tool(caller: Caller, tool: Tool) -> None:
             "the live stripe demo endpoint is part of the sandbox — add your own endpoints instead"))
 
 
+def _require_admin_for_dotted_names(caller: Caller, names) -> None:
+    if any("." in n for n in names) and not _role_at_least(caller.role, "admin"):
+        raise HTTPException(status_code=403, detail=(
+            "a tool name containing a dot needs the admin or owner role"))
+
+
 def _require_public_base_url(base_url: str) -> None:
     """A tool's base_url is fetched server-side by the proxy — reject internal / loopback / cloud-metadata
     targets so a member can't turn `treg call` into an SSRF (e.g. base_url=169.254.169.254). Reuses the
     same block-list the webhook path already uses. DNS names are allowed (best-effort)."""
-    if not health.safe_webhook_url(base_url):
+    if not health.safe_webhook_url(base_url, fold_trailing_dot=get_settings().proxy_ssrf_check):
         raise HTTPException(status_code=422, detail=(
             "base_url must be a public http(s) address — loopback, private, link-local, and cloud-"
             "metadata hosts are refused"))
@@ -336,6 +342,7 @@ async def create_tool(
     body: ToolIn, caller: Caller = Depends(require_member), db: AsyncSession = Depends(get_session)
 ) -> dict:
     _require_can_register(caller)
+    _require_admin_for_dotted_names(caller, [body.name])
     try:
         await sandbox_policy.enforce_sandbox_cap(
             sandbox=demo_sandbox.is_sandbox(caller.org), org_id=caller.org_id,
@@ -539,6 +546,7 @@ async def _register_skill_bundle(body: SkillIn, caller: Caller, db: AsyncSession
     _require_can_register(caller)
     if demo_sandbox.is_sandbox(caller.org):  # a skill import would create unlimited tools/secrets, past the cap
         raise HTTPException(status_code=403, detail="skill import is disabled in the sandbox")
+    _require_admin_for_dotted_names(caller, [t.name for t in body.tools])
     names = [s.local_name for s in body.secrets]  # bindings reference secrets by local_name
     dupes = sorted({n for n in names if names.count(n) > 1})
     if dupes:  # a duplicate would silently orphan the first secret (only the last id is kept)

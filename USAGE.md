@@ -629,10 +629,12 @@ runs.
 ## Anonymous usage analytics
 
 When using treg.to, the CLI sends basic usage through PostHog: command name, success/exit code,
-duration, CLI version and OS, linked to a random local installation ID. It does not send command
-arguments, credentials, request/response content, email or team identifiers. Help and argument
-parsing errors are not tracked. Analytics adds at most 1 second of waiting at command exit;
-slow or offline delivery may be dropped.
+duration, CLI version and OS, linked to a random local installation ID. A call adds the endpoint id
+it named and its HTTP status class. A usage error adds the option names it refused, never their
+values, and, from the binary CLI, a word it refused as a command when that word is only lowercase
+letters and hyphens. It does not send other arguments, credentials, request/response content, email
+or team identifiers. Analytics adds at most 1 second of waiting at command exit; slow or offline
+delivery may be dropped.
 
 Disable it with `export TREG_TELEMETRY=0` (or `DO_NOT_TRACK=1`). Self-hosted registries default to
 no analytics; set `TREG_CLI_POSTHOG_KEY` and optionally `TREG_CLI_POSTHOG_HOST` to use your own
