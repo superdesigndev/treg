@@ -880,14 +880,8 @@
   <div class="ctas">
     <a class="pill dark" href="/app?ref=jobs-api" id="ctaHero">Set up treg</a>
     <a class="pill" href="#pricing">Pricing: pay per call</a>
-    <button type="button" class="pill play" id="playLaunch"><span class="pi"><svg viewBox="0 0 10 12" aria-hidden="true"><path d="M0 0l10 6-10 6z"/></svg></span>Watch the launch <span class="dur">0:59</span></button>
   </div>
 </header>
-<dialog class="vbox" id="vbox" aria-label="Launch video">
-  <form method="dialog"><button class="x" aria-label="Close">×</button></form>
-  <video src="media/jobs/launch.mp4" poster="media/jobs/launch-poster.jpg" controls playsinline preload="none"></video>
-</dialog>
-<div class="film"><button type="button" id="playFilm" aria-label="Play the launch film" style="background-image:url(media/jobs/launch-poster.jpg)"><span class="jpb"><svg viewBox="0 0 10 12" aria-hidden="true"><path d="M0 0l10 6-10 6z"/></svg></span><span class="fl">Jev × treg · Jobs API · 0:59</span></button></div>
 
 <section class="section" id="seekers">
   <span class="who">if you're finding a job</span>
@@ -1274,15 +1268,5 @@
 <script src="/adtrack.js"></script>
 <script src="/gtag.js"></script>
 <script src="/media/signin-sso.js" defer></script>
-<script>
-(function () {
-  var box = document.getElementById('vbox'), v = box.querySelector('video');
-  ['playLaunch', 'playFilm'].forEach(function (id) {
-    document.getElementById(id).addEventListener('click', function () { box.showModal(); v.play().catch(function () {}); });
-  });
-  box.addEventListener('close', function () { v.pause(); });
-  box.addEventListener('click', function (e) { if (e.target === box) box.close(); });
-})();
-</script>
 </body>
 </html>
