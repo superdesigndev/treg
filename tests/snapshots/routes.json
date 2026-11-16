@@ -1200,6 +1200,15 @@
       "GET",
       "HEAD"
     ],
+    "name": "jobs_api_page",
+    "path": "/jobs-api"
+  },
+  {
+    "kind": "APIRoute",
+    "methods": [
+      "GET",
+      "HEAD"
+    ],
     "name": "recruit_page",
     "path": "/recruit"
   },

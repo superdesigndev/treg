@@ -3546,6 +3546,7 @@ _SITEMAP_PAGES: tuple[tuple[str, str, str], ...] = (
     ("/sheets", "sheets.html", "0.6"),
     ("/people-search", "people-search.html", "0.8"),
     ("/leads-signals", "leads-signals.html", "0.8"),
+    ("/jobs-api", "jobs-api.html", "0.8"),
     ("/recruit", "recruit.html", "0.8"),
     ("/web-access", "web-access.html", "0.8"),
     ("/grokbot", "grokbot.html", "0.8"),
@@ -4199,6 +4200,13 @@ async def leads_signals_page(request: Request):
     return _static_page("leads-signals.html", request)
 
 
+@app.get("/jobs-api", include_in_schema=False)
+async def jobs_api_page(request: Request):
+    """Landing page for the Jev × treg Jobs API launch ("One API to any job data"). Built from the
+    /leads-signals page and served the same way: canonical, in the sitemap, relative asset paths."""
+    return _static_page("jobs-api.html", request)
+
+
 @app.get("/recruit", include_in_schema=False)
 async def recruit_page(request: Request):
     """Landing page for the recruiter launch ("OpenSource LinkedIn Recruiter") — the destination the
@@ -4341,6 +4349,8 @@ _BLOG_LAUNCHES: list[tuple[str, str, str, str]] = [
      "Apps whose agents reach the outside world through treg, the people who made them, and their launch posts."),
     ("/gtm-engineering", "The GTM Engineering Playbook", "2026-09-30",
      "16 chapters from ICP to rollout: a prompt and a rule in each, and the data steps tested on recorded runs."),
+    ("/jobs-api", "Jev × treg Jobs API", "2026-11-16",
+     "One API to any job data: find and rank open roles, reach the hiring manager, and check real posted pay."),
     ("/leads-signals", "Claude for Monitor Leads Signal", "2026-09-28",
      "Your agent checks hiring, funding, job changes and social chatter on a schedule, and reports what's new."),
     ("/jev", "How to use Jev", "2026-09-20",
