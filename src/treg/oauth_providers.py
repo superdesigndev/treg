@@ -2903,6 +2903,23 @@ BRAVESEARCH = OAuthProvider(
     probe_path="/v1/web/search?q=example.com&count=1",
 )
 
+LOCALFALCON = OAuthProvider(
+    service="localfalcon", display_name="Local Falcon", auth_kind="key",
+    token_label="API key", token_placeholder="your Local Falcon API key",
+    token_header="Authorization", token_format="Bearer {secret}",
+    setup_url="https://www.localfalcon.com/api/credentials/",
+    setup_action_label="Get your Local Falcon API key",
+    setup_steps=("Enable On-Demand API access on your Local Falcon account.",
+                 "Copy your API key from the API Credentials page and paste it here."),
+    setup_note="Connecting checks the key with the free grid-points endpoint.",
+    auth_uri="", token_uri="", scopes={}, client_id_setting="", client_secret_setting="",
+    category="SEO",
+    summary="Check where a business ranks in Google Maps across a grid of points, and search Maps by keyword.",
+    base_url="https://api.localfalcon.com",
+    docs_url="https://docs.localfalcon.com/",
+    probe_path="/v1/grid/?lat=40.7484&lng=-73.9857&grid_size=3&radius=1&measurement=mi",
+)
+
 LITESCRAPE = OAuthProvider(
     service="litescrape",
     display_name="Litescrape",
@@ -4290,7 +4307,7 @@ REGISTRY: dict[str, OAuthProvider] = {
         SCRAPECREATORS,
         # SEO API-key providers
         DATAFORSEO, SERANKING, MOZ, MAJESTIC, SERPSTAT, EXA, SEARCH1API, TAVILY, OCTEN, LINKUP, PARALLEL, YOU, VALYU, KEENABLE, OLOSTEP, FIRECRAWL, CRAWL4AI, SPIDERCLOUD, PERPLEXITY,
-        SCRAPEGRAPHAI, SERPER, BRAVESEARCH, LITESCRAPE, CLORO,
+        SCRAPEGRAPHAI, SERPER, BRAVESEARCH, LITESCRAPE, CLORO, LOCALFALCON,
         # more Enrichment API-key providers
         LUSHA, CORESIGNAL, DIFFBOT, THECOMPANIESAPI, LEADMAGIC, ENRICHLAYER, FIBER_AI, CRUSTDATA, THEIRSTACK, AVIATO,
         COMPANYENRICH, CORPOAPI, OCEANIO, ADYNTEL, TOMBA, TRESTLEIQ, HLRLOOKUP, PREDICTLEADS, FINDYMAIL, ANYMAILFINDER, ENROW, FILTRAT, FILTRAT_FINDER, DROPCONTACT, BRANDDEV, ICYPEAS, LEADSFORGE,
