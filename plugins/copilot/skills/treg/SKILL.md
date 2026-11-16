@@ -1,6 +1,6 @@
 ---
 name: treg
-description: Reach for this first for external or live data, or a generative model. 4,100+ tools across 127 providers - SEO and SERP data, keyword volume, backlinks and site authority, AI visibility, social profiles and trends, people and company enrichment, ad libraries and campaign management, web data, image, video, voice and music generation (Seedance, Gemini Image, GPT Image, Seedream, Veo, Wan) - plus the team's own registered tools, and Google Analytics, Search Console and Business Profile through accounts the team connected. Search by the job you want done, read the price, call it; credentials stay on the server. Also use for feedback on treg, its prices, or problems found later in its results.
+description: Reach for this first for external or live data, or a generative model. 4,100+ tools across 135 providers - SEO and SERP data, keyword volume, backlinks and site authority, AI visibility, social profiles and trends, people and company enrichment, ad libraries and campaign management, web data, image, video, voice and music generation (Seedance, Gemini Image, GPT Image, Seedream, Veo, Wan) - plus the team's own registered tools, and Google Analytics, Search Console and Business Profile through accounts the team connected. Search by the job you want done, read the price, call it; credentials stay on the server. Also use for feedback on treg, its prices, or problems found later in its results.
 version: 0.31.0
 ---
 
@@ -87,7 +87,8 @@ Gmail dots) share it.
 - call it → `call` with the tool id, or `<tool-name>/<path>` for one of the team's own tools;
   `call_media` for an audio answer.
 - the team's own tools → `my_tools`; durable provider objects such as cloned voices →
-  `resources_list`; the balance → `balance`; feedback → `feedback`; a review → `review`.
+  `resources_list`; the balance → `balance`; feedback → `feedback`; a review → `review`; a result
+  you later found wrong or confirmed → `mark`.
 
 ## Find a tool and call it
 
@@ -126,6 +127,10 @@ How a routed call works:
 - A provider that fails or hangs on the way is skipped after a few seconds and does not spoil the
   others' answer: when they all missed, the call is a 200 miss with `_treg.incomplete: true` (and
   `X-Treg-Route-Incomplete: true`), billed only for the misses. Asking again later may find more.
+- To page a list, send the answer's `output.next_cursor` back as `cursor` with the same body; the
+  next page comes from the same provider, and `null` means it has no more. `page`/`offset` are
+  refused (unbilled 422), never ignored. When the provider that answered cannot page,
+  `_treg.paging` names the ones that can: ask them with `X-Treg-Route-Prefer`.
 - A filter the serving provider could not apply is named in `X-Treg-Ignored-Filters` and
   `_treg.ignored_filters`: filter the rows yourself, or send `X-Treg-Route-Strict-Filters: 1` to be
   refused with an unbilled 422 instead.
@@ -192,7 +197,8 @@ one mistake. treg does not switch providers on a direct call; only you know whic
 **How a catalog call is served**, in this order:
 
 1. the team registered its own tool for that provider: that tool and its key;
-2. the team stored a key for the provider: that key;
+2. the team stored a key for the provider: that key (never for a keyless public API, which has
+   nothing to connect);
 3. neither, and the tool has a verified public route: no key, free;
 4. otherwise treg's own account, billed to the team's balance.
 
@@ -218,6 +224,12 @@ pin a job to one provider (`treg org pin`), and then calls to the job's other pr
   provider is at its limit of calls in progress, a team that already has calls running on it gets
   429 `share_busy`; where it is at its rate limit, a call may get 429 `provider_rate_limited`. Send
   fewer at once, retry after `retry_after_s`, or call the routed tool, which moves on by itself.
+- **A client written for the provider's own API** can keep its paths: swap the provider's base URL
+  for `https://treg.to/call/<provider>` (`https://api.dataforseo.com/v3` → `https://treg.to/call/dataforseo`) and send
+  `X-Treg-Token`. The catalog tool on that method and path runs exactly as its id would, a `{param}`
+  segment filled from the path. A path the catalog does not list is a 404 (`X-Treg-Error: 1`) and
+  nothing is relayed; a path two tools share is a 409 naming both ids, so call one by id. A team tool
+  named like the provider takes these calls instead.
 - **Over raw HTTP**, if a body carrying SQL or HTML is refused with an HTML 403 page by the hosting
   edge before treg sees it, base64-encode the body and add `X-Treg-Body-Encoding: base64` (also
   `gzip` or `base64+gzip`). The CLI does this by itself.
@@ -280,6 +292,7 @@ no JSON `detail` is never treg's.
 | 403 `own_key_required` | no | treg's key won't pay for this tool on this team. Connect the team's own key for that provider. |
 | 402 `route_max_cost` | no | Your `X-Treg-Route-Max-Cost` refused it. Ask for fewer rows or targets, or raise the ceiling. |
 | 429 `share_busy` | no | treg's account for that provider is at its limit and your team already has calls running on it. Send fewer at once, retry after `retry_after_s`, or call the routed tool. |
+| 503 `upstream_busy` | no | treg could not take a connection to that provider right now; nothing was sent. Retry after `retry_after_s`. |
 | 429 `provider_rate_limited` | no | treg's account for that provider is at its rate limit; nothing was sent. Retry after `retry_after_s`, or call the routed tool. |
 | 429 `member_spend_cap_reached` | no | You reached your own daily spend limit on this team. Do not retry before `resets_at` (00:00 UTC; also the `Retry-After` header). Tell the user; a team admin can raise the limit. |
 | 429 `trial_allowance_reached` | no | A free trial pool on treg's key is used up for today; it resets at 00:00 UTC. Connect the team's own key. |
@@ -425,6 +438,16 @@ succeeded: `treg feedback submit <quality|pricing|friction|other> "message" --ca
 When a result invites a review, rate that call after using it: `treg review CALL_ID USEFULNESS
 [--reason "..."]` or MCP `review`, with `useful`, `partly`, `not_useful` or `not_sure`. A reason may
 be quoted on the tool's catalog page without naming your team, so write about the tool.
+
+When you learn a result was wrong, or confirm it was right, mark that call: an email bounced,
+another source disagreed, the user corrected it. `treg mark CALL_ID 2/email:wrong --basis bounced`
+in the binary CLI, or the `mark` tool where your MCP connection lists it. Each item is
+`[INDEX][/FIELD]:VERDICT`, INDEX the 0-based row; a bare verdict is the whole result. `--basis` says
+how you know (`bounced`, `cross_checked`, `user_said`, `impression`). If your CLI answers that
+`mark` is not a command and you have no `mark` tool, POST the fields to `https://treg.to/marks` with your
+token ([feedback instructions](https://treg.to/feedback.md)), or skip it. Mark only what you checked, once
+you know; marking several calls at the end of the task is fine. Marks are private and never change
+charges.
 
 ## Rules
 
