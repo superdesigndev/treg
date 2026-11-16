@@ -238,6 +238,7 @@ async def _stamp_call_exit(
     status_code: int,
     *,
     failure_kind: str | None = None,
+    refused_by: str | None = None,
 ) -> None:
     """Give one call-surface exit the three things every other exit gets: the id that joins the response
     to the audit row, the row itself, and the release of any idempotency label the request took.
@@ -255,10 +256,11 @@ async def _stamp_call_exit(
         key_id, key_name, key_prefix = getattr(request.state, "call_key", (None, None, None))
         context = getattr(request.state, "call_context", None)
         rest = _call_rest(request, context)
+        refused_by = refused_by or _refusal_kind(status_code)
         audit.record_call(
             org_id=org_id, user_email=email, tool_name=rest.split("/", 1)[0] or "—",
             method=request.method, path=request.url.path, status_code=status_code,
-            client=_client_of(request), refused_by=_refusal_kind(status_code),
+            client=_client_of(request), refused_by=refused_by,
             api_key_id=key_id, api_key_name=key_name, api_key_prefix=key_prefix,
             telemetry={"call_ref": call_ref, "tags": getattr(request.state, "call_pins", None)})
         failure = getattr(request.state, "call_failure", None)
@@ -269,7 +271,7 @@ async def _stamp_call_exit(
                   else "own_tool" if getattr(context, "target", None) is not None else "unresolved"),
             endpoint_id=getattr(marketplace, "endpoint_id", None),
             provider=getattr(marketplace, "provider", None),
-            tier=getattr(marketplace, "tier", None), refused_by=_refusal_kind(status_code),
+            tier=getattr(marketplace, "tier", None), refused_by=refused_by,
             failure=failure, kind=failure_kind,
             billed_oauth=bool(getattr(marketplace, "billed_oauth", False)), answered=False)
         if failure_kind:
@@ -440,7 +442,9 @@ async def _payment_refusal(request: Request, status: int, detail: dict,
         resp.headers.append(name, value)
     resp.headers["Cache-Control"] = "no-store"
     resp.headers["X-Treg-Error"] = "1"
-    await _stamp_call_exit(request, resp, status)
+    # A 402 here asks a keyless caller to pay or prove a wallet: a step of the payment, not a
+    # balance refusal.
+    await _stamp_call_exit(request, resp, status, refused_by="payment" if status == 402 else None)
     return resp
 
 

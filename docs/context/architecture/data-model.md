@@ -270,7 +270,8 @@ so (`ready: false`) instead of guessing. Team deletion clears a team's rollup ro
 
 - `kind`: `call`, `local_run`, or `async_poll` (an authorized free status read, excluded from
   `/calls` before pagination).
-- `refused_by`: a treg refusal's mechanism; null for an upstream answer. `endpoint_stats` excludes
+- `refused_by`: a treg refusal's mechanism; null for an upstream answer (`payment` is an
+  agent-payments 402 asking a keyless caller to pay or prove its wallet). `endpoint_stats` excludes
   refused rows.
 - `call_ref` is the `X-Treg-Call-Id` and the ledger's `call_id` on a metered call: one value joins
   audit, money and the builder's records.

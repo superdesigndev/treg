@@ -72,6 +72,7 @@ async def _answering(status: int, doc: dict) -> None:
     (422, {"refused_by": "request", "kind": "route_no_candidate"}, ("treg", "caller_input")),
     (503, {"kind": "route_no_candidate"}, ("treg", "treg_capacity")),
     (503, {"answered": False}, ("treg", "treg_error")),
+    (402, {"refused_by": "payment"}, ("treg", "payment_required")),
 ])
 def test_class_table(status, kw, expected):
     assert call_errors.classify(status, **{"tier": None, **kw}) == expected
