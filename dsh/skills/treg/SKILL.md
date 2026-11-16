@@ -300,6 +300,7 @@ no JSON `detail` is never treg's.
 | 403 `own_key_required` | no | treg's key won't pay for this tool on this team. Connect the team's own key for that provider. |
 | 402 `route_max_cost` | no | Your `X-Treg-Route-Max-Cost` refused it. Ask for fewer rows or targets, or raise the ceiling. |
 | 429 `share_busy` | no | treg's account for that provider is at its limit and your team already has calls running on it. Send fewer at once, retry after `retry_after_s`, or call the routed tool. |
+| 503 `upstream_busy` | no | treg could not take a connection to that provider right now; nothing was sent. Retry after `retry_after_s`. |
 | 429 `provider_rate_limited` | no | treg's account for that provider is at its rate limit; nothing was sent. Retry after `retry_after_s`, or call the routed tool. |
 | 429 `member_spend_cap_reached` | no | You reached your own daily spend limit on this team. Do not retry before `resets_at` (00:00 UTC; also the `Retry-After` header). Tell the user; a team admin can raise the limit. |
 | 429 `trial_allowance_reached` | no | A free trial pool on treg's key is used up for today; it resets at 00:00 UTC. Connect the team's own key. |
