@@ -346,7 +346,8 @@ async def private_archive_key_ids(db: AsyncSession, org_id: int, *, limit: int |
 async def archive_mark_hashes(db: AsyncSession, org_id: int, *, limit: int,
                               after: str = "") -> list[str]:
     """The question hashes the team's `ArchiveKeyOrg` marks name, ascending from `after`: one
-    page of `uq_archive_key_org`, so a large team's marks are read in bounded statements."""
+    page of the table's (org, key_hash) primary key, so a large team's marks are read in bounded
+    statements."""
     rows = await db.execute(
         select(ArchiveKeyOrg.key_hash)
         .where(ArchiveKeyOrg.org_id == org_id, ArchiveKeyOrg.key_hash > after)

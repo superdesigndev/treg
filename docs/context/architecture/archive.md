@@ -23,6 +23,9 @@ sources:
   - src/treg/application/call/service.py
   - src/treg/application/call/settle.py
   - src/treg/alembic/versions/0039_archive_own_key_and_repeat_pricing.py
+  - src/treg/alembic/versions/0111_archivekeyorg_natural_key_index.py
+  - src/treg/alembic/versions/0112_archivekeyorg_natural_primary_key.py
+  - tests/test_archivekeyorg_natural_key_migration.py
   - scripts/backfill_call_archive_links.py
   - src/treg/api.py
   - src/treg/bootstrap.py
@@ -243,12 +246,26 @@ live call (`Cache-Control: no-cache`) is billed and counts.
 The evidence is `ArchiveKeyOrg`, one row per (org, key_hash), written by
 `archive.note_org_use(s)_in_transaction` inside `_platform_settle` (the allowlisted write
 `archive_org_use_in_settle`), so the mark lands with the charge or not at all. It is an atomic
-upsert against the pair's unique constraint (the constraint, not any lookup, arbitrates
-concurrent counting); batches go in `(org_id, key_hash)` order and a write error propagates so
+upsert against the pair's primary key (the key, not any lookup, arbitrates concurrent counting); batches go in `(org_id, key_hash)` order and a write error propagates so
 charge and marks roll back together. Only a storable question is marked. `lookup` reports
 `repeat_for_org`; the settle scales the raw amount (floor division) before the ledger applies the
 margin. `tool_called` carries `cache_price` (`full` | `repeat` | `free`). 100 restores "a hit
 bills like a live call"; 0 makes repeats free.
+
+The mark is keyed by `(org_id, key_hash)` and nothing else, so writing one takes no number from
+a sequence: a counter that can run out would make every first-time settle roll back, and a routed
+call, which marks all its children in one transaction, would go unpaid whole. `id` is the retired
+serial key (revisions 0111 and 0112 moved the primary key without rewriting the table): it is
+nullable, has no default and is read by nothing; only code older than 0112 still assigns it, from
+its sequence, during a rolling deploy. Dropping the column and its sequence is a later contract
+revision.
+
+0112 attaches a unique index on `(org_id, key_hash)` that 0111 makes sure exists. 0111 builds it
+itself only on a small table (at most `BUILD_IN_MIGRATION_MAX_ROWS` rows, a bounded count); on a
+larger one it refuses at once and prints the `CREATE UNIQUE INDEX CONCURRENTLY` statements to run
+by hand before the deploy, because a concurrent build of a large table can outlast a deploy's
+time limit and leave an INVALID index for every later deploy to rebuild. A lock timeout during
+the small build is raised as a plain error, so `maintenance` does not retry a build from zero.
 
 ## Serving
 
