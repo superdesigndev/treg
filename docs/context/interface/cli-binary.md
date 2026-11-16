@@ -7,6 +7,9 @@ sources:
   - cli/internal/agents/agents.go
   - cli/internal/agents/mcp.go
   - cli/internal/api/client.go
+  - cli/internal/api/failure.go
+  - cli/internal/api/failure_unix.go
+  - cli/internal/api/failure_windows.go
   - cli/internal/api/proxy.go
   - cli/internal/api/proxy_darwin.go
   - cli/internal/api/proxy_other.go
@@ -241,7 +244,9 @@ archive named for the answer's version and this platform, fetches `SHA256SUMS` a
 verifies the signature with the key built into the binary (`internal/minisign`), checks the
 archive's sum, extracts the binary and renames it over the running one (Windows renames the
 running file to `.old`; the next run removes it). The signed `SHA256SUMS` names each archive by
-version and platform, so no answer can pass off an older release or another platform's. `treg
+version and platform, so no answer can pass off an older release or another platform's. When the
+first source fails to download (each file has five minutes) or verify, it does the same from the
+answer's mirror, if any. `treg
 update [--channel stable|beta]` does it in the foreground; a Homebrew or npm install is told its
 package manager's command. Switching channels installs that channel's release even when it is
 older, so leaving the beta returns to stable. A channel with no release yet (stable, during the
@@ -252,9 +257,12 @@ A release build the installer placed also updates itself: at most once a day a c
 detached `treg __update` and never waits for it. That process removes the Python CLI's uv or pipx
 package once, and only when the `treg` on PATH is this binary: their uninstallers delete the
 `treg` entry point, now this binary's path, so a copy is put back the moment it goes, while a
-binary run from anywhere else (an archive unpacked in Downloads) would leave no `treg` at all. It
+binary run from anywhere else (an archive unpacked in Downloads) would leave no `treg` at all.
+Until that removal has run, a command starts the process once a minute rather than once a day, so
+a burst of commands right after an install starts one. It
 then installs a newer release, re-runs `skill bootstrap` as re-running
-the installer did, and leaves its outcome in `update-state.json`. `TREG_NO_AUTO_UPDATE` or
+the installer did, leaves its outcome in `update-state.json` and records it as
+`cli_update_completed` (below). `TREG_NO_AUTO_UPDATE` or
 `"auto_update": false` turn the background update off.
 
 ## Usage events
@@ -267,13 +275,25 @@ a word it refused as a subcommand: a Python CLI command this binary lacks, or a 
 (`missing_command`); any other word only when it is lowercase letters and hyphens, at most 24
 (`unknown_command`), so a path, key or email is never sent. A command without subcommands refuses an
 extra argument with the same message, so its usage errors name no word. Option names count only
-where they stand alone, so a subcommand list such as `agent-new` is not read as `-n`. At the end of a command the event is appended to
-`telemetry-queue.jsonl` beside the config; a later command sends the queue to its registry's
-`/cli/events` on a goroutine while it works, through the command's own connection pool (one per
-process, `api.Transport`), so no command waits on analytics and none is lost to a process that
-exits first. A sender claims the queue by renaming it, requeues what it could not
-send, picks up a claim a killed process left after a minute, and drops events for a registry
-without the relay. Each event carries a uuid, so PostHog drops a resend.
+where they stand alone, so a subcommand list such as `agent-new` is not read as `-n`. A request
+that got no answer notes why in `error` (`api.FailureKind`: `timeout`, `dns`, `proxy`,
+`connection_refused`, `connection_reset`, `connection_closed`, `certificate`, `tls`, `other`),
+and a `call` that failed with neither an answer nor such a note stopped at its own arguments,
+`bad_input`.
+
+Each background update records `cli_update_completed`: its `outcome` (`updated`, `up_to_date`,
+`failed`, `no_release`, `check_failed`), `from_version` and `to_version`, for a failure the step
+(`reason`, an `update.Failure` step), and the download fields the installers send (`source`,
+`detail`, `mirror_detail`, `seconds`); a failed check's `detail` is its `FailureKind` or
+`http_<status>`. The process sends nothing itself: the event waits in the queue for the next
+command.
+
+At the end of a command the event is appended to `telemetry-queue.jsonl` beside the config; a later
+command sends the queue to its registry's `/cli/events` on a goroutine while it works, through the
+command's own connection pool (one per process, `api.Transport`), so no command waits on analytics
+and none is lost to a process that exits first. A sender claims the queue by renaming it, requeues
+what it could not send, picks up a claim a killed process left after a minute, and drops events for
+a registry without the relay. Each event carries a uuid, so PostHog drops a resend.
 
 `POST /cli/events` takes no token: each event's properties are checked against a fixed vocabulary
 and anything else is dropped, the caller's address is never forwarded (`$geoip_disable`), each
