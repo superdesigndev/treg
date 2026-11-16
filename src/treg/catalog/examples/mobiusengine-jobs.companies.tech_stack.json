@@ -1,0 +1,15 @@
+{
+  "skills": [
+    {
+      "skill": "Communication",
+      "jobs": 148
+    },
+    {
+      "skill": "Sales",
+      "jobs": 137
+    },
+    "… 8 more item(s) truncated"
+  ],
+  "jobs_with_skills": 823,
+  "basis": "Skills as the job postings name them, one count per job, case ignored."
+}

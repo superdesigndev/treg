@@ -1,0 +1,87 @@
+{
+  "slug": "stripe",
+  "name": "Stripe",
+  "domain": "stripe.com",
+  "website": "https://stripe.com",
+  "logo": "https://media.licdn.com/dms/image/v2/D560BAQE2ZfJyfn-VCg/company-logo_200_200/B56ZlyKwpUKIAI-/0/1758557047806/stripe_logo?e=2147483647&v=beta&t=En4Hm6NDGbDTYCoOQ0Ko5Ne2gylx0WRb0yL2GlOeXBQ",
+  "linkedin_url": "https://www.linkedin.com/company/stripe",
+  "industry": "Technology, Information and Internet",
+  "size": "5001-10000",
+  "headcount": 17172,
+  "headquarters": "South San Francisco, California",
+  "founded": "2010",
+  "type": "Privately Held",
+  "followers": 1667032,
+  "is_staffing_agency": false,
+  "revenue_usd": {
+    "min": 500000000,
+    "max": 1000000000
+  },
+  "funding_total_usd": null,
+  "sector": "SOFTWARE",
+  "company_kind": "OPERATING_COMPANY",
+  "customer": "B2B",
+  "ownership": "PRIVATE",
+  "visa_policy": "UNSTATED",
+  "pay_band": "180K_PLUS",
+  "publishes_pay": false,
+  "hires_remote": null,
+  "clearance_employer": false,
+  "role_families": [
+    "SALES",
+    "OPERATIONS"
+  ],
+  "hq_country": "US",
+  "hiring": {
+    "open_jobs": 784,
+    "newest_posting": "2026-11-13",
+    "top_locations": [
+      {
+        "value": "Singapore",
+        "jobs": 55
+      },
+      {
+        "value": "Dublin",
+        "jobs": 55
+      },
+      "… 3 more item(s) truncated"
+    ],
+    "top_countries": [
+      {
+        "value": "US",
+        "jobs": 345
+      },
+      {
+        "value": "IE",
+        "jobs": 79
+      },
+      "… 3 more item(s) truncated"
+    ],
+    "top_titles": [
+      {
+        "value": "Software Engineer, New Grad",
+        "jobs": 7
+      },
+      {
+        "value": "Staff Security Engineer, Abuse Control",
+        "jobs": 5
+      },
+      "… 3 more item(s) truncated"
+    ],
+    "by_experience": [
+      {
+        "value": "5-10",
+        "jobs": 362
+      },
+      {
+        "value": "10+",
+        "jobs": 184
+      },
+      "… 2 more item(s) truncated"
+    ],
+    "remote_friendly_jobs": 154,
+    "sources": [
+      "greenhouse"
+    ]
+  }
+}

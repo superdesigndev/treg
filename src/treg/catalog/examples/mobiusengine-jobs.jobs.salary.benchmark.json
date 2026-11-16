@@ -1,0 +1,19 @@
+{
+  "salaries": [
+    {
+      "annual": {
+        "p10": 96650,
+        "p25": 120000,
+        "p75": 182500,
+        "p90": 217188,
+        "median": 149800
+      },
+      "currency": "USD",
+      "confidence": "high",
+      "typical_low": 128396,
+      "typical_high": 170000,
+      "jobs_with_pay": 1796
+    }
+  ],
+  "basis": "Posted pay only: the pay each matching job states (or its salary fields), annualized. Estimates are never used. Percentiles are of each job's range midpoint; typical_low and typical_high are the median range floor and ceiling."
+}
