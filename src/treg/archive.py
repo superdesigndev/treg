@@ -686,7 +686,7 @@ async def _store(
     deduplicate: the new version row points at the row carrying the bytes (`body_of`) — and when
     an identical answer arrives at a key whose bytes were never kept (policy or cap changed), the
     bytes are stored now, so a policy upgrade heals the store forward without a backfill."""
-    from sqlalchemy.exc import IntegrityError
+    from sqlalchemy.exc import IntegrityError, NoResultFound
 
     observation = observation or archive_bodies.StorageReport()
     stored, reason = None, "record_failed"
@@ -729,7 +729,8 @@ async def _store(
                 # Wall time includes pool checkout, packing, SQL/commit and integrity retries.
                 with observation.measure("record_db"):
                     # Postgres row locking handles other processes. A retry also covers the narrow
-                    # first-key race and multi-process SQLite, where SELECT FOR UPDATE is ignored.
+                    # first-key race, multi-process SQLite, where SELECT FOR UPDATE is ignored, and
+                    # a key row retention deleted between the unlocked read and the lock.
                     for attempt in range(4):
                         try:
                             change = await _store_locked(
@@ -740,7 +741,7 @@ async def _store(
                                 initial_results=initial_results, origin_org_id=origin_org_id, scope=scope)
                             stored, reason = plan.storage, plan.reason
                             break
-                        except IntegrityError:
+                        except (IntegrityError, NoResultFound):
                             if attempt == 3:
                                 raise
                             await asyncio.sleep(0.01 * (attempt + 1))

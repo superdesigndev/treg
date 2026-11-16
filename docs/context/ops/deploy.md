@@ -594,6 +594,10 @@ job's credentials. `treg-worker --help` lists them; what follows is what a sched
 - **`idempotency prune`**: hourly. Deletes expired retry answers for every team and drops a live
   row's copy of an answer the archive holds (`--skip-trim` keeps copies). Exits nonzero on an
   incomplete run; run one instance at a time.
+- **`archive retain`**: does nothing until `TREG_ARCHIVE_RETENTION_ENABLED=true`; `--dry-run` counts
+  what it would delete either way. Each run stops at `TREG_ARCHIVE_RETENTION_MAX_SECONDS` and the
+  next resumes from its cursor; run one instance at a time, with the archive object-store settings
+  when R2 writes are on ([archive](../architecture/archive.md), "Row retention").
 - **`admin purge-evidence`** and **`admin purge-ad-clicks`**: daily. Without them expired rows stop
   being shown or read but stay in the database.
 - **`hub check`** runs each live [hub](../architecture/hub.md) tool's `check.json` as its maker

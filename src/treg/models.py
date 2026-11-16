@@ -1702,6 +1702,11 @@ class IdempotentCall(SQLModel, table=True):
         Index("ix_idempotentcall_archive_live", "expires_at",
               postgresql_where=text("archive_content_hash IS NOT NULL"),
               sqlite_where=text("archive_content_hash IS NOT NULL")),
+        # Only rows that dropped their copy: archive row retention's "a live retry replays from
+        # this key" check (Alembic 0114).
+        Index("ix_idempotentcall_archive_key_hash", "archive_key_hash",
+              postgresql_where=text("archive_content_hash IS NOT NULL"),
+              sqlite_where=text("archive_content_hash IS NOT NULL")),
     )
 
     id: int | None = Field(default=None, primary_key=True)
@@ -2481,6 +2486,17 @@ class ArenaEvaluation(SQLModel, table=True):
     kind: str
     payload: str  # encrypted selection, exposure snapshot, reasons and optional comment
     created_at: NaiveUTC = Field(default_factory=_now)
+
+
+class ArchiveRetentionCursor(SQLModel, table=True):
+    """Where `application.archive_retention` has got to in `archivekey`. One row
+    (`id = "archivekey"`): `after_id` is the last key id a run finished; a pass that reaches the
+    end of the table starts again from 0. Written only by `application.archive_retention`."""
+
+    id: str = Field(primary_key=True)
+    after_id: int = Field(default=0, sa_column=Column(BigInteger, nullable=False, server_default="0"))
+    passes: int = Field(default=0)               # completed walks over the whole table
+    updated_at: NaiveUTC = Field(default_factory=_now)
 
 
 class ArchiveEndpointStat(SQLModel, table=True):

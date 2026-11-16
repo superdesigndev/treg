@@ -4,6 +4,7 @@
     treg-worker overflow sync [--live]          # seed (+ live aggregator catalogs) → overflow_route
     treg-worker overflow verify [--all] [--max-usd 0.02]   # weekly re-verify of enabled routes
     treg-worker idempotency prune [--dry-run]       # expired completed replay answers
+    treg-worker archive retain [--dry-run]           # delete archive questions no one asked for in N days
     treg-worker asynctasks settle [--limit 50]       # complete deferred metered-call holds
     treg-worker agentpay reconcile [--limit 50]      # resolve agent payments whose settlement went unanswered
     treg-worker agentpay stripe-address --network tempo|base   # one-time setup for settlement `stripe`
@@ -634,6 +635,25 @@ async def _admin_rotate_fernet(args) -> int:
     return 1 if result.get("error") else 0
 
 
+async def _archive_retain(args) -> int:
+    """Delete archive questions no one asked for (application/archive_retention). Does nothing
+    unless TREG_ARCHIVE_RETENTION_ENABLED; `--dry-run` counts what would go either way."""
+    from . import bootstrap
+    from .application import archive_retention
+    from .infra.db import verify_db
+
+    await verify_db()
+    options = dict(dry_run=args.dry_run, days=args.days, batch=args.batch_size,
+                   pause_s=args.pause_seconds, max_seconds=args.max_seconds, after=args.after)
+    if args.dry_run:
+        result = await archive_retention.run(**options)
+    else:
+        async with bootstrap.archive_object_store():
+            result = await archive_retention.run(**options)
+    print(json.dumps(result, sort_keys=True))
+    return 1 if result["stopped"] in ("error", "failures") else 0
+
+
 async def _admin_revoke_refund(args) -> int:
     """Revoke a refunded top-up's unspent credit from the refunded total Stripe reports now: for a
     missed `charge.refunded` webhook, or a shortfall that calls in flight held at the time."""
@@ -1013,6 +1033,18 @@ def main(argv: list[str] | None = None) -> int:
     purge_audit = enterprisesub.add_parser("purge-audit", help="delete expired enterprise access evidence")
     purge_audit.add_argument("--days", type=_positive_int, default=400)
     purge_audit.set_defaults(fn=_enterprise_purge_audit)
+    arch = sub.add_parser("archive", help="archive row maintenance")
+    archsub = arch.add_subparsers(dest="cmd", required=True)
+    retain = archsub.add_parser("retain", help="delete archive questions no one asked for in N days")
+    retain.add_argument("--dry-run", action="store_true",
+                        help="count the keys, snapshots, marks and objects that would go; delete nothing")
+    retain.add_argument("--days", type=_positive_int, help="default TREG_ARCHIVE_RETENTION_DAYS (30)")
+    retain.add_argument("--batch-size", type=_positive_int,
+                        help="key ids per batch, at most 10000; default TREG_ARCHIVE_RETENTION_BATCH (5000)")
+    retain.add_argument("--pause-seconds", type=float, help="sleep between batches")
+    retain.add_argument("--max-seconds", type=float, help="time budget for this run")
+    retain.add_argument("--after", type=int, help="start after this key id instead of the saved cursor")
+    retain.set_defaults(fn=_archive_retain)
     idem = sub.add_parser("idempotency", help="expired replay-cache maintenance")
     idemsub = idem.add_subparsers(dest="cmd", required=True)
     prune = idemsub.add_parser("prune", help="delete completed answers past their 24-hour window")

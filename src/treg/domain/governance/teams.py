@@ -438,6 +438,19 @@ async def erase_archive_rows(db: AsyncSession, org_id: int, key_ids: list[int] |
     return await erase_archive_keys(db, key_ids)
 
 
+async def erase_archive_marks(db: AsyncSession, key_hashes: list[str], *,
+                              unpaid_since: datetime) -> int:
+    """Delete every team's `ArchiveKeyOrg` mark on the given questions not paid for since
+    `unpaid_since`, in `db` (no commit) -> marks deleted. Only for keys deleted in the same
+    transaction (archive row retention): a mark outliving its key would price a re-recorded
+    question as a repeat, except a mark a team paid for meanwhile, which that team did pay for."""
+    if not key_hashes:
+        return 0
+    result = await db.execute(delete(ArchiveKeyOrg).where(
+        ArchiveKeyOrg.key_hash.in_(key_hashes), ArchiveKeyOrg.last_call_at < unpaid_since))
+    return int(result.rowcount or 0)
+
+
 async def erase_archive_keys(db: AsyncSession, key_ids: list[int]) -> int:
     """Delete the given keys with their snapshots in `db` (no commit), moving the endpoint
     running totals by what the statements returned -> keys deleted. Marks are untouched."""

@@ -31,6 +31,7 @@ sources:
   - src/treg/alembic/versions/0053_idempotentcall_membership_expires_index.py
   - src/treg/alembic/versions/0099_idempotentcall_archive_link.py
   - src/treg/alembic/versions/0100_idempotentcall_archive_live_index.py
+  - src/treg/alembic/versions/0113_archive_retention_cursor.py
   - src/treg/alembic/versions/0054_callrecord_org_id_id.py
   - src/treg/alembic/versions/0061_remove_redundant_unique_indexes.py
   - src/treg/alembic/versions/0091_remove_prefix_covered_indexes.py
@@ -139,7 +140,8 @@ Single writers (AGENTS.md lists the money, audit and showcase ones):
 | `ArenaVerificationSnapshot` | `application.arena_verification_insights.publish_snapshot` |
 | `RankingsSnapshot` | `application.rankings.refresh`, replacing the row whole |
 | `AdClickStash` | `application.signup.stash_ad_click` |
-| `ArchiveKey`, `ArchiveSnapshot`, `ArchiveKeyOrg`, `ArchiveEndpointStat` | `archive.py` ([archive](archive.md)) |
+| `ArchiveKey`, `ArchiveSnapshot`, `ArchiveKeyOrg`, `ArchiveEndpointStat` | `archive.py`; deletes through `governance.teams` for erasure and row retention ([archive](archive.md)) |
+| `ArchiveRetentionCursor` | `application/archive_retention.py` (`treg-worker archive retain`) |
 | `Media` | `application.media` ([media](media.md)) |
 | `Feedback` | `domain.feedback` inserts, `application.feedback` commits ([feedback](feedback.md)) |
 | `FeedbackHandling`, `FeedbackHandlingEvent` | the private admin service only |

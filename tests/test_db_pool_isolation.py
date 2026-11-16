@@ -115,6 +115,7 @@ EXPECTED_MAKERS: dict[str, set[str]] = {
     # Request-shaped: the owner delete route and `treg-worker admin erase-archive`, in short
     # transactions with the connection released around object I/O (archive.md, "Opting out").
     "application/archive_erasure.py": {API},
+    "application/archive_retention.py": {API},
     "bootstrap.py": {BACKGROUND},
     # `lookup` is on the API pool inside a caller's /call/; every write here is background.
     "archive.py": {API, BACKGROUND},
