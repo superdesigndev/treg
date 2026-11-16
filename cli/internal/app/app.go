@@ -189,6 +189,11 @@ func record(env *commands.Env, ran *cobra.Command, err error, code int, took tim
 			}
 		}
 	}
+	// A call notes the status class of any answer and the kind of any transport failure, so one
+	// that failed with neither stopped at its own arguments before a request.
+	if name == "call" && code == 1 && notes["status_class"] == nil && notes["error"] == nil {
+		notes["error"] = "bad_input"
+	}
 	telemetry.Command(name, code, took, notes, env.Cfg.Channel)
 }
 

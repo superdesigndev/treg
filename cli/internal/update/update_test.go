@@ -120,7 +120,7 @@ func TestInstallsASignedRelease(t *testing.T) {
 	if err != nil || m.Version != "1.2.3" {
 		t.Fatalf("Latest = %+v, %v", m, err)
 	}
-	if err := Install(t.Context(), m, exe); err != nil {
+	if _, err := Install(t.Context(), m, exe); err != nil {
 		t.Fatal(err)
 	}
 	got, _ := os.ReadFile(exe)
@@ -151,7 +151,7 @@ func TestRefusesWhatTheKeyDidNotSign(t *testing.T) {
 			exe := filepath.Join(t.TempDir(), "treg")
 			os.WriteFile(exe, []byte("old binary"), 0o755)
 			m, _ := Latest(t.Context(), r.srv.URL, "stable")
-			if err := Install(t.Context(), m, exe); err == nil {
+			if _, err := Install(t.Context(), m, exe); err == nil {
 				t.Fatal("installed a release the key did not sign")
 			}
 			if got, _ := os.ReadFile(exe); string(got) != "old binary" {
@@ -163,7 +163,7 @@ func TestRefusesWhatTheKeyDidNotSign(t *testing.T) {
 
 func TestNoKeyNoUpdate(t *testing.T) {
 	withKey(t, "")
-	if err := Install(t.Context(), &Manifest{}, "/nonexistent"); err == nil || !strings.Contains(err.Error(), "release key") {
+	if _, err := Install(t.Context(), &Manifest{}, "/nonexistent"); err == nil || !strings.Contains(err.Error(), "release key") {
 		t.Fatalf("err = %v", err)
 	}
 }

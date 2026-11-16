@@ -1,0 +1,54 @@
+name: CLI mirror
+
+# Copies a binary CLI release's files from its GitHub release to the download mirror, the second
+# source the installers and `treg update` use when GitHub fails (/cli/latest names it as
+# `mirror_url` when TREG_CLI_MIRROR_BASE_URL is set). The files are checked against the release's
+# SHA256SUMS before upload, and SHA256SUMS.minisig still proves them wherever they are fetched.
+# CLI release calls it for each tag; run it by hand to copy a release published before the mirror.
+# The cli-mirror environment holds the S3-compatible bucket (vars R2_ENDPOINT, R2_BUCKET; secrets
+# R2_ACCESS_KEY_ID, R2_SECRET_ACCESS_KEY); without R2_BUCKET it uploads nothing.
+on:
+  workflow_call:
+    inputs:
+      tag:
+        required: true
+        type: string
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: Release tag to copy, e.g. v1.0.0-beta.2
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+jobs:
+  mirror:
+    runs-on: ubuntu-latest
+    environment: cli-mirror
+    steps:
+      - name: Download the release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ inputs.tag }}
+        run: |
+          case "$TAG" in v[1-9]*) ;; *) echo "not a binary CLI release: $TAG" >&2; exit 1 ;; esac
+          gh release download "$TAG" --repo "$GITHUB_REPOSITORY" --dir dist
+          cd dist && sha256sum --check --strict SHA256SUMS && test -s SHA256SUMS.minisig
+      - name: Upload
+        if: vars.R2_BUCKET != ''
+        env:
+          AWS_ACCESS_KEY_ID: ${{ secrets.R2_ACCESS_KEY_ID }}
+          AWS_SECRET_ACCESS_KEY: ${{ secrets.R2_SECRET_ACCESS_KEY }}
+          AWS_DEFAULT_REGION: auto
+          # Cloudflare's R2 setup for the AWS CLI sends checksums only where an operation needs one.
+          AWS_REQUEST_CHECKSUM_CALCULATION: when_required
+          AWS_RESPONSE_CHECKSUM_VALIDATION: when_required
+          ENDPOINT: ${{ vars.R2_ENDPOINT }}
+          BUCKET: ${{ vars.R2_BUCKET }}
+          TAG: ${{ inputs.tag }}
+        run: |
+          aws s3 cp dist "s3://$BUCKET/cli/$TAG/" --recursive --endpoint-url "$ENDPOINT" \
+            --cache-control "public, max-age=31536000, immutable"
+          aws s3 ls "s3://$BUCKET/cli/$TAG/" --endpoint-url "$ENDPOINT"

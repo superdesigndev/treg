@@ -67,10 +67,28 @@ async def test_install_step_vocabulary(clients, relay_on):
         "event": "cli_install_step", "distinct_id": INSTALL_ID,
         "properties": {"install_step": "installed", "reason": "", "method": "binary", "version": "1.0.0",
                        "prior_version": "0.30.0", "on_path": True, "os": "Linux", "arch": "x86_64",
-                       "ad_link": False, "with_token": True, "channel": "beta", "token": "secret"}}]})
+                       "ad_link": False, "with_token": True, "channel": "beta", "token": "secret",
+                       "source": "mirror", "detail": "curl_35", "mirror_detail": "could not reach x.example",
+                       "seconds": 4}}]})
     assert r.status_code == 204
     props = relay_on[0]["properties"]
     assert "token" not in props and props["channel"] == "beta" and props["on_path"] is True
+    assert (props["source"], props["detail"], props["seconds"]) == ("mirror", "curl_35", 4)
+    assert "mirror_detail" not in props
+
+
+async def test_update_result_vocabulary(clients, relay_on):
+    r = await clients.post("/cli/events", json={"events": [{
+        "event": "cli_update_completed", "distinct_id": INSTALL_ID,
+        "properties": {"outcome": "failed", "reason": "download", "from_version": "1.0.0-beta.2",
+                       "to_version": "1.0.0-beta.3", "source": "github", "detail": "timeout",
+                       "mirror_detail": "http_404", "seconds": 31, "os": "Windows", "arch": "amd64",
+                       "channel": "stable", "path": "C:\\Users\\a"}}]})
+    assert r.status_code == 204
+    props = relay_on[0]["properties"]
+    assert props["outcome"] == "failed" and props["to_version"] == "1.0.0-beta.3"
+    assert (props["detail"], props["mirror_detail"], props["seconds"]) == ("timeout", "http_404", 31)
+    assert "source" not in props and "path" not in props
 
 
 @pytest.mark.parametrize("body", [b"not json", b'{"events": "x"}', b"[]",
@@ -106,6 +124,7 @@ def release_settings(monkeypatch):
     monkeypatch.setattr(s, "cli_stable_version", "", raising=False)
     monkeypatch.setattr(s, "cli_beta_version", "", raising=False)
     monkeypatch.setattr(s, "cli_download_base_url", "https://dl.example/v{version}", raising=False)
+    monkeypatch.setattr(s, "cli_mirror_base_url", "", raising=False)
     github_releases._cache.clear()
     return s
 
@@ -121,6 +140,16 @@ async def test_latest_answers_each_channel_from_settings(clients, release_settin
                       "signature_url": "https://dl.example/v1.2.0/SHA256SUMS.minisig"}
     beta = (await clients.get("/cli/latest", params={"channel": "beta", "os": "windows", "arch": "amd64"})).json()
     assert beta["version"] == "1.3.0" and beta["archive"] == "treg_1.3.0_windows_amd64.zip"
+
+
+async def test_latest_names_the_mirror_when_one_is_set(clients, release_settings):
+    release_settings.cli_stable_version = "1.2.0"
+    release_settings.cli_mirror_base_url = "https://mirror.example/cli/v{version}/"
+    m = (await clients.get("/cli/latest", params={"os": "linux", "arch": "arm64"})).json()
+    assert m["url"] == "https://dl.example/v1.2.0/treg_1.2.0_linux_arm64.tar.gz"
+    assert (m["mirror_url"], m["mirror_checksums_url"], m["mirror_signature_url"]) == (
+        "https://mirror.example/cli/v1.2.0/treg_1.2.0_linux_arm64.tar.gz",
+        "https://mirror.example/cli/v1.2.0/SHA256SUMS", "https://mirror.example/cli/v1.2.0/SHA256SUMS.minisig")
 
 
 async def test_latest_falls_back_to_github_and_ignores_python_versions(clients, release_settings, monkeypatch):

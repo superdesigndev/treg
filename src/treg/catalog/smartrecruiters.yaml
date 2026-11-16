@@ -1,0 +1,73 @@
+provider: smartrecruiters
+source:
+  docs: https://developers.smartrecruiters.com/docs/posting-api
+  openapi: https://developers.smartrecruiters.com/reference/v1listpostings.md
+  curated: '2026-11-14'
+# The public Posting API: an employer's published SmartRecruiters job board. The spec's security
+# block allows no auth for public postings (x-smarttoken or OAuth is needed only for INTERNAL
+# postings), so both rows relay keylessly on the anonymous tier and cost nothing.
+pricing_url: https://developers.smartrecruiters.com/docs/posting-api
+limits: "100 postings per page; page with offset. No published rate limit for the public Posting API."
+
+defaults:
+  provenance: {source: observed, checked: '2026-11-14', confidence: verified}
+
+endpoints:
+  - id: smartrecruiters.company.postings
+    platform_auth: anonymous
+    capability: companies.jobs
+    platform: companies
+    domain: jobs
+    scope: any_account
+    method: GET
+    path: /v1/companies/{companyIdentifier}/postings
+    name: List a company's open jobs on SmartRecruiters
+    summary: "Search one employer's live SmartRecruiters job board by keyword, country, city, region, department or work type. Each posting has its title, location, department, function, employment type, seniority and release date, without the job ad text."
+    input:
+      pathParams:
+        companyIdentifier: {type: string, required: true, note: "the employer's SmartRecruiters id, as in careers.smartrecruiters.com/{companyIdentifier} or jobs.smartrecruiters.com/{companyIdentifier}/...; not case-sensitive", example: Canva}
+      queryParams:
+        q: {type: string, required: false, note: "full-text search on job title and location", example: engineer}
+        country: {type: string, required: false, note: "ISO-2 country code, lowercase", example: au}
+        region: {type: string, required: false}
+        city: {type: string, required: false, example: Sydney}
+        department: {type: string, required: false, note: "department id from a posting's department.id"}
+        locationType: {type: "array[string]", required: false, enum: [REMOTE, HYBRID, ONSITE, ANY]}
+        language: {type: string, required: false, note: "job ad language, ISO 639-1 codes separated by commas (en-GB, fr-CA, pt-BR, pt-PT, zh-TW, zh-CN also accepted)"}
+        releasedAfter: {type: string, required: false, note: "ISO 8601 date-time; only postings released after it", example: "2026-11-01T00:00:00.000Z"}
+        limit: {type: integer, required: false, min: 1, max: 100, default: 100, note: "a larger value is answered as 100", example: 1}
+        offset: {type: integer, required: false, min: 0, default: 0}
+      note: "totalFound is the full match count; page with offset. An unknown companyIdentifier answers 200 with totalFound 0, exactly like an employer with no open jobs, so confirm the id on careers.smartrecruiters.com/{companyIdentifier} when the board is empty."
+    test_request:
+      pathParams: {companyIdentifier: Canva}
+      queryParams: {limit: 1}
+    price: {value: '0', currency: USD, unit: call, note: "Public API, no key and no charge."}
+    # An unknown id and an employer with nothing open both answer 200 with no postings.
+    miss: {when: {any: [{path: response.content, op: absent}, {path: response.content, op: empty}]}}
+    verified: '2026-11-14'
+    added: '2026-11-14'
+    example_response: examples/smartrecruiters.company.postings.json
+    docs_url: https://developers.smartrecruiters.com/reference/v1listpostings
+
+  - id: smartrecruiters.company.posting
+    platform_auth: anonymous
+    capability: companies.jobs.detail
+    platform: companies
+    domain: jobs
+    scope: any_account
+    method: GET
+    path: /v1/companies/{companyIdentifier}/postings/{postingId}
+    name: Get one SmartRecruiters job posting
+    summary: "Get one job posting with its full job ad (company description, job description, qualifications, additional information), location, employment type, posting URL and apply URL."
+    input:
+      pathParams:
+        companyIdentifier: {type: string, required: true, note: "the employer's SmartRecruiters id", example: Canva}
+        postingId: {type: string, required: true, note: "id or uuid of a posting from smartrecruiters.company.postings", example: "6000000001574098"}
+    test_request:
+      pathParams: {companyIdentifier: Canva, postingId: "6000000001574098"}
+    price: {value: '0', currency: USD, unit: call, note: "Public API, no key and no charge."}
+    miss: {status: [404], when: {path: response.code, op: equals, value: RESOURCE_NOT_FOUND}, means: "No open public posting with this id at this company."}
+    verified: '2026-11-14'
+    added: '2026-11-14'
+    example_response: examples/smartrecruiters.company.posting.json
+    docs_url: https://developers.smartrecruiters.com/reference/v1getposting

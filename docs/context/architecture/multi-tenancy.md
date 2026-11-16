@@ -87,7 +87,8 @@ host passthrough to the org ([proxy-model](proxy-model.md)). Health runs take an
   `email_token_hash` is the second secret in the emailed link; `/auth/invite-signin` resolves it
   to the invitee's address and redirects to the login with it prefilled, never a session, because
   an emailed secret is only as private as every system the mail passes through and any team admin
-  can make one be sent to any address. The invite carries the access (`tool_access`, `project_access`, `local_run_enabled`)
+  can make one be sent to any address. The link's host is `public_url` or a configured alias, never
+the request's raw `Host`. The invite carries the access (`tool_access`, `project_access`, `local_run_enabled`)
   copied onto the membership at both accept doors.
 - **`Project`** is an optional label and ACL scope, not a namespace: `Tool.name` stays unique per
   `(org_id, name)`, `Tool.project_id` NULL means org-wide, and secrets stay org-level because one

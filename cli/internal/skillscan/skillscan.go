@@ -260,8 +260,8 @@ func classify(d string, catalog []providers.Entry, envNames map[string]bool) *De
 			}
 			det.Secrets = append(det.Secrets, src)
 			switch {
-			case providers.Truthy(s, "file") && !exists(ResolveSecretPath(d, s.String("file"))):
-				det.Gaps = append(det.Gaps, "treg.json secret file missing: "+s.String("file"))
+			case providers.Truthy(s, "file") && !secretFilePresent(d, s.String("file")):
+				det.Gaps = append(det.Gaps, "treg.json secret file missing or outside the skill folder: "+s.String("file"))
 			case providers.Truthy(s, "env") && !envNames[s.String("env")]:
 				det.Gaps = append(det.Gaps, "needs env var "+s.String("env")+" - not found in the env")
 			}
@@ -481,22 +481,75 @@ func flagHeaderCollisions(det *Detection) {
 	}
 }
 
-// ResolveSecretPath finds a contract's secret file, tolerating .secret for .secrets and back.
-func ResolveSecretPath(base, rel string) string {
+// ErrSecretPath is a contract secret file that is not inside the skill folder.
+var ErrSecretPath = errors.New("secret file must be a path inside the skill folder")
+
+// inside reports whether p, symlinks followed, stays under base.
+func inside(base, p string) bool {
+	root, rok := evalExisting(filepath.Clean(base))
+	target, tok := evalExisting(filepath.Clean(p))
+	if !rok || !tok {
+		return false
+	}
+	rel, err := filepath.Rel(root, target)
+	return err == nil && rel != ".." && !strings.HasPrefix(rel, ".."+string(filepath.Separator))
+}
+
+// evalExisting resolves the symlinks of p's longest existing prefix and keeps the rest as written.
+// It works on the absolute path, so a relative skill dir and an absolute link target compare.
+func evalExisting(p string) (string, bool) {
+	p, err := filepath.Abs(p)
+	if err != nil {
+		return "", false
+	}
+	tail := ""
+	for cur := p; ; {
+		if r, err := filepath.EvalSymlinks(cur); err == nil {
+			return filepath.Join(r, tail), true
+		} else if !errors.Is(err, os.ErrNotExist) {
+			return "", false
+		}
+		parent := filepath.Dir(cur)
+		if parent == cur {
+			return p, true
+		}
+		tail = filepath.Join(filepath.Base(cur), tail)
+		cur = parent
+	}
+}
+
+// ResolveSecretPath finds a contract's secret file, tolerating .secret for .secrets and back. The
+// path comes from a treg.json that may be a stranger's and its bytes become a secret, so an
+// absolute path, `..` out or a symlink out returns ErrSecretPath.
+func ResolveSecretPath(base, rel string) (string, error) {
+	slashed := filepath.ToSlash(rel)
+	if rel == "" || strings.ContainsRune(rel, 0) || filepath.IsAbs(rel) || filepath.VolumeName(rel) != "" ||
+		strings.HasPrefix(slashed, "/") {
+		return "", ErrSecretPath
+	}
 	exact := filepath.Join(base, rel)
+	if !inside(base, filepath.Join(base, filepath.Clean(rel))) || !inside(base, exact) {
+		return "", ErrSecretPath
+	}
 	if exists(exact) {
-		return exact
+		return exact, nil
 	}
 	parts := strings.Split(filepath.ToSlash(filepath.Clean(rel)), "/")
 	if len(parts) > 0 && slices.Contains(secretDirs, parts[0]) {
 		for _, sd := range secretDirs {
 			alt := filepath.Join(append([]string{base, sd}, parts[1:]...)...)
-			if exists(alt) {
-				return alt
+			if exists(alt) && inside(base, alt) {
+				return alt, nil
 			}
 		}
 	}
-	return exact
+	return exact, nil
+}
+
+// secretFilePresent is whether a contract secret file exists inside the skill folder.
+func secretFilePresent(base, rel string) bool {
+	p, err := ResolveSecretPath(base, rel)
+	return err == nil && isFile(p)
 }
 
 // SecretFiles is the files in the skill's .secret and .secrets folders.
@@ -784,7 +837,11 @@ func BuildPayload(det *Detection, values map[string]string) (*ojson.Object, erro
 		var val string
 		switch {
 		case providers.Truthy(s, "file"):
-			text, err := os.ReadFile(ResolveSecretPath(det.Path, s.String("file")))
+			path, err := ResolveSecretPath(det.Path, s.String("file"))
+			if err != nil {
+				return nil, err
+			}
+			text, err := os.ReadFile(path)
 			if err != nil {
 				return nil, err
 			}

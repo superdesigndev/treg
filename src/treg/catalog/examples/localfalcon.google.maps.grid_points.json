@@ -1,0 +1,24 @@
+{
+  "code": 200,
+  "code_desc": false,
+  "success": true,
+  "message": false,
+  "parameters": {
+    "lat": "40.7484",
+    "lng": "-73.9857",
+    "grid_size": "3",
+    "radius": "1",
+    "measurement": "mi"
+  },
+  "data": [
+    {
+      "lat": 40.733943052806545,
+      "lng": -74.00478298250725
+    },
+    {
+      "lat": 40.7484,
+      "lng": -74.00478298250725
+    },
+    "… 7 more item(s) truncated"
+  ]
+}

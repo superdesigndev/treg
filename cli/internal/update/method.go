@@ -12,7 +12,12 @@ import (
 	"github.com/superdesigndev/treg/cli/internal/config"
 )
 
-const checkEvery = 24 * time.Hour
+const (
+	checkEvery = 24 * time.Hour
+	// legacyRetry spaces the starts while the Python CLI's removal has not run yet: a burst of
+	// commands right after an install would otherwise start one update each.
+	legacyRetry = time.Minute
+)
 
 // Method is who keeps this binary current: "homebrew" and "npm" upgrade it themselves; "self" is
 // a binary the treg installer placed, which treg replaces.
@@ -84,16 +89,16 @@ func AutoEnabled(cfg *config.Config, exe string) bool {
 	return Method(exe) == "self"
 }
 
-// MaybeStartBackground starts a detached `treg __update` at most once a day, and on the first run
-// as the `treg` on PATH on a machine that still has the Python CLI's package installed. The
+// MaybeStartBackground starts a detached `treg __update` at most once a day, and once a minute on
+// the first runs as the `treg` on PATH, until one has looked for the Python CLI's package. The
 // command that triggered it never waits for it.
 func MaybeStartBackground(cfg *config.Config, exe string) {
 	if !AutoEnabled(cfg, exe) {
 		return
 	}
 	s := readState()
-	due := time.Since(time.Unix(s.CheckedAt, 0)) >= checkEvery
-	if !due && (legacyCleaned() || !isPathTreg(exe)) {
+	since := time.Since(time.Unix(s.CheckedAt, 0))
+	if since < checkEvery && (since < legacyRetry || legacyCleaned() || !isPathTreg(exe)) {
 		return
 	}
 	s.CheckedAt = time.Now().Unix()

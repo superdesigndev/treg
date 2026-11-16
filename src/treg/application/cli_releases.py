@@ -47,9 +47,18 @@ async def current(channel: str) -> str:
 
 
 def manifest(version: str, channel: str, os: str, arch: str) -> dict:
-    """Where a CLI on `os`/`arch` fetches `version` and the files that verify it."""
-    base = get_settings().cli_download_base_url.replace("{version}", version).rstrip("/")
+    """Where a CLI on `os`/`arch` fetches `version` and the files that verify it, and the mirror it
+    tries when those fail."""
+    settings = get_settings()
     archive = archive_name(version, os, arch)
-    return {"version": version, "channel": channel, "os": os, "arch": arch, "archive": archive,
-            "url": f"{base}/{archive}", "checksums_url": f"{base}/SHA256SUMS",
-            "signature_url": f"{base}/SHA256SUMS.minisig"}
+    files = {"version": version, "channel": channel, "os": os, "arch": arch, "archive": archive,
+             **_files("", settings.cli_download_base_url, version, archive)}
+    if settings.cli_mirror_base_url:
+        files |= _files("mirror_", settings.cli_mirror_base_url, version, archive)
+    return files
+
+
+def _files(prefix: str, base: str, version: str, archive: str) -> dict:
+    base = base.replace("{version}", version).rstrip("/")
+    return {f"{prefix}url": f"{base}/{archive}", f"{prefix}checksums_url": f"{base}/SHA256SUMS",
+            f"{prefix}signature_url": f"{base}/SHA256SUMS.minisig"}

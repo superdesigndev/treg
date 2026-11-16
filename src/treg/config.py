@@ -374,6 +374,7 @@ class Settings(BaseSettings):
     platform_key_leadocean: str = ""  # x-api-key; usage is read through the free account API
     platform_key_blitzapi: str = ""  # x-api-key; monthly record allowance, free key-info balance
     platform_key_mobiusengine_jobs: str = ""  # x-api-key; prepaid USD balance, free GET /v1/balance
+    platform_key_hirebase: str = ""  # x-api-key; Growth plan: monthly job allowance then per-job overage
     platform_key_anyapi: str = ""  # X-API-Key; prepaid USD wallet, exact charge settles from costUsd
     platform_key_dropleads: str = ""  # X-API-Key; PAYG credits priced in fx.yaml
     platform_key_quickenrich: str = ""  # Bearer; monthly subscription credits, not auto-top-up
@@ -432,6 +433,7 @@ class Settings(BaseSettings):
     platform_key_influencersclub: str = ""  # Bearer key (dashboard JWT); creator discovery + enrichment, fx.yaml $0.598/credit
     platform_key_crustdata: str = ""  # Bearer key; every call also needs the pinned x-api-version header
     platform_key_theirstack: str = ""  # Bearer key; jobs and companies draw API credits
+    platform_key_jobspipe: str = ""   # Bearer key; Builder plan, 25,000 credits a month, one per new job
     platform_key_aviato: str = ""     # Bearer key; $10 auto-top-up buys 1,000 credits
     platform_key_enrichlayer: str = ""  # Bearer; pay-as-you-go credits
     platform_key_exa: str = ""        # x-api-key; dollar-metered ($7/1k searches, $1/1k pages); settles from costDollars.total
@@ -445,6 +447,7 @@ class Settings(BaseSettings):
     platform_key_serper: str = ""     # X-API-KEY; prepaid Google search credits, exact charge in response.credits
     platform_key_bravesearch: str = ""  # X-Subscription-Token; prepaid Search requests
     platform_key_litescrape: str = ""  # Bearer; prepaid calls, free key status endpoint
+    platform_key_localfalcon: str = ""  # Bearer; On-Demand subscription, $0.0032 per request (scan per grid point), no usage meter
     platform_key_keenable: str = ""   # X-API-Key; $4/1,000-request package, 10 requests/s per organization
     platform_key_olostep: str = ""    # Bearer; prepaid credits, platform price $0.002/credit
     platform_key_crawl4ai: str = ""
@@ -961,6 +964,9 @@ class Settings(BaseSettings):
     cli_beta_version: str = ""
     cli_release_repo: str = "superdesigndev/treg"
     cli_download_base_url: str = "https://github.com/superdesigndev/treg/releases/download/v{version}"
+    # A second copy of each release's files (.github/workflows/cli-mirror.yml), `{version}` filled in
+    # the same way, which installers and `treg update` try when the first fails. Empty = no mirror.
+    cli_mirror_base_url: str = ""
     # The share of new installs `/install.sh` sends to the binary CLI (docs/context/interface/cli-binary.md).
     cli_binary_install_percent: int = Field(default=0, ge=0, le=100)
     # Call events (call_events.py, docs/context/architecture/call-events.md): one structured,

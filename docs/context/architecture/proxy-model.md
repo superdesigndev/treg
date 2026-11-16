@@ -72,7 +72,8 @@ comparing hosts, so two providers sharing one API host (Facebook and Instagram o
 `graph.facebook.com`) resolve to different tools; the relay stays provider-agnostic.
 
 A live-verified free `GET` catalog row can declare `platform_auth: anonymous`. A team tool or team
-credential still wins. Otherwise `_anonymous_offer` requires the deployment's provider allow-list
+credential still wins, except that a public provider (`auth_kind="public"`) has no credential: a
+same-named team secret is never used for it, and only a team tool does. Otherwise `_anonymous_offer` requires the deployment's provider allow-list
 and creates an unmetered virtual tool with no bindings; `relay()` then injects nothing and strips or
 rewrites no caller header. The catalog price is free only when the caller supplies no provider
 credential header. No provider-specific anonymous path rules exist in the resolver or relay.
@@ -398,6 +399,17 @@ A crash before that leaves holds to the reaper, which releases in the caller's f
 `route.child_outcome` reads each child's answer and is shared with
 [replay](replay.md). The parent assembles `{output, raw, _treg}` and owns the idempotency label.
 A pending outcome (`202`, `X-Treg-Route-Outcome: pending`) sends no `X-Treg-Cost-Micro`.
+Paging is by cursor only. An adapter declaring `paging: {cursor: <upstream path>}` gets a treg cursor in
+`output.next_cursor` (`trg1.` + the serving endpoint, the provider's own `next_cursor` and a hash of
+the body); sent back as `cursor`, it pins the call to that endpoint with no waterfall, merge or fill,
+and puts the provider's token at that path. A cursor for another body is refused 422
+`route_cursor_invalid`; a list from an adapter without `paging` names the candidates that have it on
+`_treg.paging`. Page numbers are not supported: a provider whose order changes between calls repeats
+and skips rows. Any other body paging key (`page`, `offset`, ...) the contract does not declare is
+refused 422 `route_paging_unsupported`, never dropped, since a dropped one re-bills page one.
+A candidate whose v1 price table multiplies the field
+its adapter fills from `limit` is priced from that upstream request (`_table_price`), the same
+figure its child hold reserves, so `X-Treg-Route-Max-Cost` judges the size asked for.
 
 ## Several treg-owned accounts behind one provider
 

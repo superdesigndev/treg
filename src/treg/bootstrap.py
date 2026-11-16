@@ -250,6 +250,7 @@ _CONTROL_ROUTE_KEYS: frozenset[RouteKey] = frozenset({
     ('/people-search', ('GET',), 'people_search_page'),
     ('/start', ('GET',), 'start_page'),
     ('/leads-signals', ('GET',), 'leads_signals_page'),
+    ('/jobs-api', ('GET',), 'jobs_api_page'),
     ('/recruit', ('GET',), 'recruit_page'),
     ('/web-access', ('GET',), 'web_access_page'),
     ('/gtm-engineering', ('GET',), 'gtm_engineering_page'),

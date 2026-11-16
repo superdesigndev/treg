@@ -1,9 +1,9 @@
 #!/bin/sh
 # treg installer for the binary CLI: curl -fsSL {BASE}/install.sh?channel=beta | sh
 #
-# Downloads one file for this machine from the release the registry names, checks it against the
-# release's SHA256SUMS, puts it in ~/.local/bin (TREG_INSTALL_DIR to change) and points it at this
-# registry. Every older treg (any Python version) runs `sh -c "<this script>"` with no arguments on
+# Downloads one file for this machine from the release the registry names (from the release's
+# mirror when that fails), checks it against the release's SHA256SUMS, puts it in ~/.local/bin
+# (TREG_INSTALL_DIR to change) and points it at this registry. Every older treg (any Python version) runs `sh -c "<this script>"` with no arguments on
 # `treg update`, so it must work that way too.
 #
 #   --token <t>    sign in non-interactively (also TREG_TOKEN) and register the MCP server
@@ -31,6 +31,8 @@ case "$CHANNEL" in stable|beta) ;; *) printf 'treg install: --channel is stable 
 
 say() { printf '%s\n' "$*"; }
 fail() { printf 'treg install: %s\n' "$*" >&2; report failed "$REASON"; exit 1; }
+# How a path reads to a person: ~/... under the home directory.
+shown() { case "$1" in "$HOME"/*) printf '~/%s' "${1#"$HOME"/}" ;; *) printf '%s' "$1" ;; esac; }
 
 # Anonymous install telemetry under the CLI's rules (docs/context/interface/cli.md), sent to this
 # registry, which forwards it without the address: TREG_TELEMETRY=0|false|off or DO_NOT_TRACK=1
@@ -72,6 +74,8 @@ report() {  # report <step> [reason]
   props="\"install_step\":\"$1\",\"reason\":\"${2:-}\",\"method\":\"binary\",\"prior_version\":\"$PRIOR_VERSION\""
   props="$props,\"version\":\"$VERSION\",\"on_path\":$ON_PATH,\"os\":\"$UNAME_S\",\"arch\":\"$UNAME_M\""
   props="$props,\"ad_link\":$AD,\"with_token\":$TOK,\"channel\":\"$CHANNEL\""
+  props="$props,\"source\":\"$SOURCE\",\"detail\":\"$DETAIL\",\"mirror_detail\":\"$MIRROR_DETAIL\""
+  [ -z "$SECS" ] || props="$props,\"seconds\":$SECS"
   curl -fsS --connect-timeout 2 --max-time 3 -H 'Content-Type: application/json' \
     -d "{\"events\":[{\"event\":\"cli_install_step\",\"distinct_id\":\"$INSTALL_ID\",\"uuid\":\"$(new_uuid)\",\"properties\":{$props}}]}" \
     "$BASE/cli/events" >/dev/null 2>&1 || true
@@ -79,6 +83,10 @@ report() {  # report <step> [reason]
 
 REASON=""
 VERSION=""
+SOURCE=""
+DETAIL=""
+MIRROR_DETAIL=""
+SECS=""
 ON_PATH=false
 UNAME_S=$(clean "$(uname -s 2>/dev/null)")
 UNAME_M=$(clean "$(uname -m 2>/dev/null)")
@@ -125,30 +133,76 @@ field() { printf '%s' "$manifest" | tr -d '\n' | sed -n "s/.*\"$1\": *\"\\([^\"]
 VERSION=$(clean "$(field version)")
 URL=$(field url)
 SUMS_URL=$(field checksums_url)
+MIRROR_URL=$(field mirror_url)
+MIRROR_SUMS_URL=$(field mirror_checksums_url)
 ARCHIVE=$(field archive)
 [ -n "$VERSION" ] && [ -n "$URL" ] && [ -n "$SUMS_URL" ] && [ -n "$ARCHIVE" ] || {
   REASON=bad_manifest; fail "the registry's release answer is incomplete"; }
-
-TMP=$(mktemp -d 2>/dev/null || mktemp -d -t treg)
-trap 'rm -rf "$TMP"' EXIT INT TERM
-say "Downloading treg $VERSION ($OS/$ARCH)..."
-curl -fsSL -o "$TMP/$ARCHIVE" "$URL" || { REASON=download; fail "could not download $URL"; }
-curl -fsSL -o "$TMP/SHA256SUMS" "$SUMS_URL" || { REASON=download; fail "could not download $SUMS_URL"; }
-want=$(awk -v f="$ARCHIVE" '$2 == f || $2 == "*"f {print $1}' "$TMP/SHA256SUMS")
 if command -v sha256sum >/dev/null 2>&1; then
-  got=$(sha256sum "$TMP/$ARCHIVE" | awk '{print $1}')
+  sha256() { sha256sum "$1" | awk '{print $1}'; }
 elif command -v shasum >/dev/null 2>&1; then
-  got=$(shasum -a 256 "$TMP/$ARCHIVE" | awk '{print $1}')
+  sha256() { shasum -a 256 "$1" | awk '{print $1}'; }
 else
   REASON=no_sha256; fail "sha256sum or shasum is required to verify the download"
 fi
-[ -n "$want" ] && [ "$want" = "$got" ] || { REASON=checksum; fail "the download does not match the release's SHA256SUMS"; }
+
+# What a file that failed its checksum holds, by its first bytes: an archive, or a page some proxy
+# or filter answered with.
+kind() {
+  head=$(head -c 4 "$1" 2>/dev/null | od -An -tx1 | tr -d ' \n')
+  case "$head" in
+    "") printf empty ;;
+    1f8b*) printf gzip ;;
+    504b*) printf zip ;;
+    3c*) printf html ;;
+    *) printf other ;;
+  esac
+}
+# fetch <archive url> <checksums url>: the archive in $TMP, matching the release's SHA256SUMS. A
+# transfer that stalls is given up so the mirror gets its turn. On failure REASON says which step
+# and DETAIL why: curl's exit code, or what the mismatching file holds.
+fetch() {
+  rm -f "$TMP/$ARCHIVE" "$TMP/SHA256SUMS"
+  curl -fsSL --connect-timeout 15 --speed-limit 10240 --speed-time 30 -o "$TMP/$ARCHIVE" "$1" || {
+    rc=$?; REASON=download; DETAIL="curl_$rc"; return 1; }
+  curl -fsSL --connect-timeout 15 --max-time 60 -o "$TMP/SHA256SUMS" "$2" || {
+    rc=$?; REASON=download; DETAIL="curl_$rc"; return 1; }
+  want=$(awk -v f="$ARCHIVE" '$2 == f || $2 == "*"f {print $1}' "$TMP/SHA256SUMS")
+  [ -n "$want" ] || { REASON=checksum; DETAIL=sums_missing; return 1; }
+  [ "$want" = "$(sha256 "$TMP/$ARCHIVE")" ] || { REASON=checksum; DETAIL="got_$(kind "$TMP/$ARCHIVE")"; return 1; }
+}
+download_failed() {
+  if [ "$REASON" = checksum ]; then fail "the download does not match the release's SHA256SUMS"; fi
+  fail "could not download $URL${MIRROR_URL:+ or its mirror}"
+}
+
+TMP=$(mktemp -d 2>/dev/null || mktemp -d -t treg) || { REASON=temp_dir; fail "cannot create a temporary directory"; }
+trap 'rm -rf "$TMP"' EXIT INT TERM
+say "Downloading treg $VERSION ($OS/$ARCH)..."
+started=$(date +%s)
+if fetch "$URL" "$SUMS_URL"; then
+  SOURCE=primary
+else
+  SECS=$(( $(date +%s) - started ))
+  [ -n "$MIRROR_URL" ] && [ -n "$MIRROR_SUMS_URL" ] || download_failed
+  first_reason=$REASON
+  first=$DETAIL
+  say "That failed ($first); trying the mirror..."
+  if fetch "$MIRROR_URL" "$MIRROR_SUMS_URL"; then
+    SOURCE=mirror
+  else
+    MIRROR_DETAIL=$DETAIL
+    REASON=$first_reason
+  fi
+  DETAIL=$first
+  [ "$SOURCE" = mirror ] || download_failed
+fi
 
 mkdir -p "$TMP/x"
 case "$ARCHIVE" in
   *.zip) (cd "$TMP/x" && { unzip -q "../$ARCHIVE" 2>/dev/null || tar -xf "../$ARCHIVE"; }) ;;
   *) tar -xzf "$TMP/$ARCHIVE" -C "$TMP/x" ;;
-esac
+esac || { REASON=archive; fail "cannot unpack $ARCHIVE"; }
 [ -f "$TMP/x/$EXE" ] || { REASON=archive; fail "the archive holds no $EXE"; }
 mkdir -p "$DIR" || { REASON=install_dir; fail "cannot create $DIR"; }
 # Same-directory copy, then rename: an interrupted install never leaves a half-written treg, and
@@ -159,7 +213,8 @@ cp "$TMP/x/$EXE" "$DIR/.$EXE.new" && chmod 755 "$DIR/.$EXE.new" && mv -f "$DIR/.
 if [ "$(command -v treg 2>/dev/null || true)" = "$BIN" ]; then
   ON_PATH=true
 fi
-"$BIN" config --base-url "$BASE" --channel "$CHANNEL" >/dev/null
+"$BIN" config --base-url "$BASE" --channel "$CHANNEL" >/dev/null || {
+  REASON=run; fail "the installed $(shown "$BIN") does not run"; }
 if [ -n "$AD_LINK" ]; then
   dir=$(config_dir)
   mkdir -p "$dir" && printf '%s' "$AD_LINK" > "$dir/ad-link" || true
@@ -174,8 +229,6 @@ if [ -n "$TOKEN" ]; then
 fi
 report installed
 
-# How a path reads to a person: ~/... under the home directory.
-shown() { case "$1" in "$HOME"/*) printf '~/%s' "${1#"$HOME"/}" ;; *) printf '%s' "$1" ;; esac; }
 say ""
 say "Installed treg $VERSION to $(shown "$BIN")"
 if [ "$ON_PATH" = true ]; then

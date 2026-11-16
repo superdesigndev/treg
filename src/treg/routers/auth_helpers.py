@@ -1,5 +1,7 @@
 """HTTP cookie helpers shared by authentication routes."""
 
+from urllib.parse import urlsplit
+
 from fastapi import HTTPException, Request
 
 from ..config import get_settings
@@ -8,6 +10,22 @@ from ..config import get_settings
 def _is_https(request: Request) -> bool:
     # behind a reverse proxy, TLS is terminated upstream and forwarded as http + X-Forwarded-Proto.
     return request.headers.get("x-forwarded-proto", "").lower() == "https" or request.url.scheme == "https"
+
+
+def trusted_public_base(request: Request) -> str:
+    """The base URL for a link treg hands to someone else (an email, a provider callback, a payment
+    return). `Host` is client-controlled, so it is honoured only when it names this deployment's
+    `public_url` host or a configured alias; anything else yields `public_url`."""
+    settings = get_settings()
+    public_url = settings.public_url.rstrip("/")
+    host = request.headers.get("host", "").split(":")[0].rstrip(".").lower()
+    if host and host in settings.public_host_aliases and host != _hostname(public_url):
+        return f"https://{host}"
+    return public_url
+
+
+def _hostname(url: str) -> str:
+    return (urlsplit(url).hostname or "").rstrip(".").lower()
 
 
 OAUTH_RETURN_COOKIE = "treg_oauth_return"

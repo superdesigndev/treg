@@ -109,7 +109,8 @@ def sent_invites(monkeypatch):
 
     async def _capture(email, inviter, org_name, role, code, email_token, expires_at="", link_base="",
                        shared=""):
-        sent.append({"email": email, "code": code, "email_token": email_token, "shared": shared})
+        sent.append({"email": email, "code": code, "email_token": email_token, "shared": shared,
+                     "link_base": link_base})
         return True
 
     monkeypatch.setattr(email_mod, "send_invite", _capture)
@@ -128,6 +129,19 @@ async def test_email_token_not_in_create_response_and_differs_from_code(client, 
     assert "email_token" not in r  # the admin must never see the inbox-only secret
     assert len(sent_invites) == 1
     assert sent_invites[0]["email_token"] and sent_invites[0]["email_token"] != r["code"]
+
+
+async def test_email_link_ignores_a_forged_host_header(client, sent_invites, monkeypatch):
+    from treg.config import get_settings
+    monkeypatch.setattr(get_settings(), "public_host_aliases", ("alias.example",))
+    tok = await _otp(client, "tom@sd.io")
+    org = (await client.post("/orgs", json={"name": "Superdesign"}, headers=_h(tok))).json()
+    for host in ("attacker.example", "alias.example"):
+        r = await client.post(f"/orgs/{org['org_id']}/invites", json={"email": "bob@x.io", "role": "member"},
+                              headers={**_h(org["token"]), "host": host})
+        assert r.status_code == 200
+    public = get_settings().public_url.rstrip("/")
+    assert [s["link_base"] for s in sent_invites] == [public, "https://alias.example"]
 
 
 async def test_email_link_get_prefills_login_and_never_mints_a_session(client, sent_invites):

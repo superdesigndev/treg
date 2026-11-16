@@ -1,0 +1,211 @@
+{
+  "jobs": [
+    {
+      "_id": "66b393081444af562c634559",
+      "company_name": "Palantir Technologies",
+      "job_title": "Senior Front End Software Engineer - Application Development",
+      "description": "<p>Palantir Foundry is an end-to-end platform for data-driven decision-making. As a Senior Front End Software Engineer, you will be responsible for crafting tools used by thousands of users to build sophisticated applications. You will work on high-scale data-intensive APIs, developing interactive workflow UIs, and creating low-code/no-code WYSIWYG tools.</p><h2>Requirements</h2><ul><li>4+ years of frontend software engineering experience</li><li>Experience crafting complex user experiences (UX)… [1168 chars total]",
+      "application_link": "https://jobs.lever.co/palantir/4e7d0732-f477-4c7a-aac9-abd62f8c9987",
+      "location_raw": "London, United Kingdom",
+      "job_categories": [
+        "Software Engineer Jobs"
+      ],
+      "job_type": "Full Time",
+      "location_type": "Hybrid",
+      "yoe_range": {
+        "min": 4,
+        "max": 4
+      },
+      "salary_range": null,
+      "date_posted": "2024-08-07",
+      "company_link": "https://jobs.lever.co/palantir",
+      "company_logo": "https://lever-client-logos.s3.us-west-2.amazonaws.com/b8300af6-ed1c-4d0b-8956-cee7839555b9-1599675095718.png",
+      "job_board": "lever",
+      "job_board_link": "https://jobs.lever.co/palantir",
+      "requirements_summary": "4+ years of frontend experience, UX expertise, and familiarity with design systems and technical tools",
+      "visa_sponsored": false,
+      "company_data": {
+        "description_summary": "Palantir offers data integration software aiding institutions in solving critical issues.",
+        "linkedin_link": "https://www.linkedin.com/company/palantir-technologies",
+        "size_range": {
+          "min": 1001,
+          "max": 5000
+        },
+        "industries": [
+          "Tech, Software & IT Services"
+        ],
+        "subindustries": [
+          "Enterprise Software & Solutions"
+        ]
+      },
+      "company_slug": "palantir-technologies",
+      "job_slug": "senior-front-end-software-engineer-application-development-1",
+      "expired": false,
+      "locations": [
+        {
+          "city": "London",
+          "region": "England",
+          "country": "United Kingdom",
+          "coordinates": {
+            "type": "Point",
+            "coordinates": [
+              -0.1277653,
+              51.5074456
+            ]
+          },
+          "bbox": [
+            51.2867601,
+            51.6918741,
+            "… 2 more item(s) truncated"
+          ],
+          "address": "London, Greater London, England, United Kingdom"
+        }
+      ],
+      "date_posted_epoch": 1722988800.0,
+      "meta_completeness": false,
+      "meta_targetability": 0.4666666666666667,
+      "first_ingested": "2024-08-07T15:30:16",
+      "md5_hash": "78edf6a6ad18e8864e814157be41579a",
+      "platform_job_id": "4e7d0732-f477-4c7a-aac9-abd62f8c9987",
+      "_techkb": {
+        "experiment_rank": 5,
+        "cluster_id": "senior-front-end-software-engineer-application-development-1",
+        "task_id": "f32b31cb-ec66-40d8-90f0-cfe7fa979995",
+        "tracked_at": "2026-11-05T12:37:24.277000"
+      },
+      "technologies_tracked": [
+        {
+          "technology_id": "6adb014b4a893310d48c1765",
+          "technology_slug": "palantir-foundry",
+          "surface": "Palantir Foundry",
+          "start": 0,
+          "end": 16,
+          "in_title": false,
+          "section": "body",
+          "confidence": 0.891,
+          "self_mention": false
+        },
+        {
+          "technology_id": "6adb014b4a893310d48c0c33",
+          "technology_slug": "material-ui",
+          "surface": "Material-UI",
+          "start": 583,
+          "end": 594,
+          "in_title": false,
+          "section": "requirements",
+          "confidence": 0.9817,
+          "self_mention": false
+        },
+        "… 2 more item(s) truncated"
+      ],
+      "updated_at": 1793882244277
+    },
+    {
+      "_id": "66b393081444af562c634558",
+      "company_name": "Palantir Technologies",
+      "job_title": "Senior Front End Software Engineer - Application Development",
+      "description": "<p>As a Senior Front End Software Engineer at Palantir, you will be responsible for crafting tools used by thousands of users to build sophisticated applications that power their businesses. You will architect and develop interfaces, state management, and access patterns for data-intensive workflows.</p><h2>Requirements</h2><ul><li>4+ years of frontend software engineering experience</li><li>Experience crafting complex user experiences (UX) with a strong intuition for good design and usability</… [1286 chars total]",
+      "application_link": "https://jobs.lever.co/palantir/d2a87a1d-63f4-4dcd-b0d0-f6be91fed4d3",
+      "location_raw": "New York, NY",
+      "job_categories": [
+        "Software Engineer Jobs",
+        "Engineering Jobs"
+      ],
+      "job_type": "Full Time",
+      "location_type": "Hybrid",
+      "yoe_range": {
+        "min": 4,
+        "max": 4
+      },
+      "salary_range": {
+        "min": 135000,
+        "max": 200000,
+        "currency": "USD",
+        "period": "year"
+      },
+      "date_posted": "2024-08-06",
+      "company_link": "https://jobs.lever.co/palantir",
+      "company_logo": "https://lever-client-logos.s3.us-west-2.amazonaws.com/b8300af6-ed1c-4d0b-8956-cee7839555b9-1599675095718.png",
+      "job_board": "lever",
+      "job_board_link": "https://jobs.lever.co/palantir",
+      "requirements_summary": "4+ years of frontend software engineering experience, creativity, and excellent communication skills are required. Experience with design systems, data structures, and frontend frameworks is also necessary",
+      "visa_sponsored": false,
+      "company_data": {
+        "description_summary": "Palantir offers data integration software aiding institutions in solving critical issues.",
+        "linkedin_link": "https://www.linkedin.com/company/palantir-technologies",
+        "size_range": {
+          "min": 1001,
+          "max": 5000
+        },
+        "industries": [
+          "Tech, Software & IT Services"
+        ],
+        "subindustries": [
+          "Enterprise Software & Solutions"
+        ]
+      },
+      "company_slug": "palantir-technologies",
+      "job_slug": "senior-front-end-software-engineer-application-development",
+      "expired": false,
+      "locations": [
+        {
+          "city": "New York",
+          "region": "New York",
+          "country": "United States",
+          "coordinates": {
+            "type": "Point",
+            "coordinates": [
+              -74.0060152,
+              40.7127281
+            ]
+          },
+          "bbox": [
+            40.476578,
+            40.91763,
+            "… 2 more item(s) truncated"
+          ],
+          "address": "New York, United States"
+        }
+      ],
+      "date_posted_epoch": 1722902400.0,
+      "meta_completeness": false,
+      "meta_targetability": 0.7111111111111111,
+      "first_ingested": "2024-08-07T15:30:16",
+      "md5_hash": "ddc6bc78610297706dd6fb13c7feba36",
+      "platform_job_id": "d2a87a1d-63f4-4dcd-b0d0-f6be91fed4d3",
+      "_techkb": {
+        "experiment_rank": 5,
+        "cluster_id": "senior-front-end-software-engineer-application-development",
+        "task_id": "f32b31cb-ec66-40d8-90f0-cfe7fa979995",
+        "tracked_at": "2026-11-05T12:37:24.277000"
+      },
+      "technologies_tracked": [
+        {
+          "technology_id": "6adb014b4a893310d48c0c33",
+          "technology_slug": "material-ui",
+          "surface": "Material-UI",
+          "start": 527,
+          "end": 538,
+          "in_title": false,
+          "section": "requirements",
+          "confidence": 0.9527,
+          "self_mention": false
+        }
+      ],
+      "updated_at": 1793882244277
+    }
+  ],
+  "job_categories": [
+    {
+      "category": "Other"
+    },
+    {
+      "category": "IT Support Jobs"
+    },
+    "… 20 more item(s) truncated"
+  ],
+  "total_count": 307,
+  "page": 1,
+  "limit": 2,
+  "total_pages": 154
+}
