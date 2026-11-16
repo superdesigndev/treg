@@ -1395,7 +1395,15 @@ async def test_unpaid_requests_are_limited_per_address(anon: AsyncClient, paymen
 
 # ---- the credit route ---------------------------------------------------------------------------
 async def test_the_credit_route_does_not_exist_while_payments_are_off(anon: AsyncClient):
-    assert (await anon.get("/agentpay/credit")).status_code == 404
+    from treg.models import Ephemeral
+
+    limit = get_settings().agent_payments_max_quotes_per_ip_minute
+    for _ in range(limit + 10):
+        assert (await anon.get("/agentpay/credit")).status_code == 404
+    async with session_maker() as db:
+        rows = (await db.execute(select(Ephemeral).where(
+            Ephemeral.ns == agent_payments.RATE_NS))).scalars().all()
+    assert rows == []
 
 
 async def test_a_wallet_reads_its_credit_with_a_proof(wallet: AsyncClient, payments_on, chain):

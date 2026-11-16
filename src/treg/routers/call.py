@@ -392,6 +392,8 @@ async def _paid_call(rest: str, request: Request) -> Response:
 async def agent_payment_credit(request: Request) -> Response:
     """A keyless wallet's credit on one network, after a zero-amount proof
     (docs/context/architecture/agent-payments.md). Not found while the feature is off."""
+    if not agent_payments.enabled():
+        raise HTTPException(status_code=404, detail="Not Found")
     try:
         await agent_payments.limit_request(request.headers, _client_ip(request))
         view = await agent_payments.credit_of(request.headers)
