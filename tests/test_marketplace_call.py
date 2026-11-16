@@ -288,6 +288,48 @@ async def test_litescrape_platform_and_own_key_ladder(clients, monkeypatch):
         get_settings.cache_clear()
 
 
+async def test_localfalcon_scan_is_priced_by_grid_size_and_cannot_be_reshaped(clients, monkeypatch):
+    """The scan's price reads query.grid_size, so treg's key must refuse every request whose
+    upstream grid could differ from the priced one: a POST (a form body overrides the query), a
+    body on the GET, or a repeated grid_size (Local Falcon takes the last)."""
+    cat = catalog_store.load()
+    rows = [ep for ep in cat.endpoints if ep["provider"] == "localfalcon"]
+    assert len(rows) == 5 and all(cat.platform_eligible(ep) for ep in rows)
+    monkeypatch.setenv("TREG_PLATFORM_KEY_LOCALFALCON", "PLATFORM-LF")
+    monkeypatch.setenv("TREG_PLATFORM_PROVIDERS", "localfalcon")
+    get_settings.cache_clear()
+    seen = []
+
+    def upstream(request):
+        seen.append((request.method, request.headers["authorization"], request.url.params["grid_size"]))
+        n = int(request.url.params["grid_size"]) ** 2
+        return _dropleads_response(200, {"success": True, "data": {"points": n, "results": [{}] * n}})
+
+    scan = {"place_id": "p", "keyword": "deli", "lat": "40.7", "lng": "-73.9", "radius": "1", "measurement": "mi"}
+    try:
+        async with AsyncClient(transport=httpx.MockTransport(upstream)) as vendor:
+            monkeypatch.setattr(A.app.state, "http", vendor)
+            for size, micro in (("3", 28_800), ("5", 80_000)):
+                before = await _balance(clients)
+                ok = await clients.get("/call/localfalcon.google.maps.rank_grid", params={**scan, "grid_size": size})
+                assert ok.status_code == 200, ok.text
+                assert before - await _balance(clients) == micro
+            assert seen == [("GET", "Bearer PLATFORM-LF", "3"), ("GET", "Bearer PLATFORM-LF", "5")]
+
+            post = await clients.post("/call/localfalcon.google.maps.rank_grid", params={**scan, "grid_size": "3"},
+                                      content=b"grid_size=15",
+                                      headers={"content-type": "application/x-www-form-urlencoded"})
+            body = await clients.request("GET", "/call/localfalcon.google.maps.rank_grid",
+                                         params={**scan, "grid_size": "3"}, content=b"grid_size=15",
+                                         headers={"content-type": "application/x-www-form-urlencoded"})
+            repeated = await clients.get("/call/localfalcon.google.maps.rank_grid",
+                                         params=[*scan.items(), ("grid_size", "3"), ("grid_size", "15")])
+            assert (post.status_code, body.status_code, repeated.status_code) == (400, 400, 400)
+            assert len(seen) == 2
+    finally:
+        get_settings.cache_clear()
+
+
 async def test_firecrawl_platform_scrape_bills_a_returned_404_and_byok_wins(
     clients: AsyncClient, monkeypatch, firecrawl_platform_on,
 ):

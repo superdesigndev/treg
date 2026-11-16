@@ -447,6 +447,7 @@ class Settings(BaseSettings):
     platform_key_serper: str = ""     # X-API-KEY; prepaid Google search credits, exact charge in response.credits
     platform_key_bravesearch: str = ""  # X-Subscription-Token; prepaid Search requests
     platform_key_litescrape: str = ""  # Bearer; prepaid calls, free key status endpoint
+    platform_key_localfalcon: str = ""  # Bearer; On-Demand subscription, $0.0032 per request (scan per grid point), no usage meter
     platform_key_keenable: str = ""   # X-API-Key; $4/1,000-request package, 10 requests/s per organization
     platform_key_olostep: str = ""    # Bearer; prepaid credits, platform price $0.002/credit
     platform_key_crawl4ai: str = ""

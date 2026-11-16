@@ -1190,6 +1190,7 @@ NO_BALANCE_API = {
     "corpoapi": "GET /v1/usage returns usage totals; the published docs name no remaining-balance "
                 "field; the prepaid USD balance is visible in the Corpo API dashboard",
     "bravesearch": "no API-key-readable balance or usage endpoint in Brave's Search API; prepaid credits and usage are visible in its dashboard",
+    "localfalcon": "no API-key-readable On-Demand usage or balance endpoint; /v2/account does not change with On-Demand spend, which is billed on the monthly invoice",
     "quickenrich": "no balance endpoint, and no response carries the allowance any more: a free "
                    "Contact Finder miss or hit and a billed employee search all return a meta without "
                    "remaining_credits (or no meta), despite the published docs; the subscription "
