@@ -305,6 +305,7 @@ class MarketplaceCall:
     tier: str                       # tool | credential | anonymous | platform | platform-overflow
     cost_type: str = ""             # cost.type — decides whether a 4xx is billable (per_call is)
     estimate_micro: int = 0         # RAW provider estimate; the ledger applies the margin
+    worst_case_micro: int = 0       # RAW declared worst case; the hold is never below it
     max_cost_micro: int | None = None  # remaining caller ceiling, inherited by overflow
     params_hash: str = ""
     call_id: str | None = None      # the ledger hold, once reserved (metered calls only)
@@ -2148,7 +2149,9 @@ def _preflight_authorization(ep: dict, secret: Secret, method: str, authorizatio
 @dataclass(frozen=True)
 class Pricing:
     """What a catalog call reserves and how its hold will settle, in RAW micro-USD. `terms` is a
-    v2 row's frozen cost terms (`call.cost`), None for a row in today's spelling."""
+    v2 row's frozen cost terms (`call.cost`), None for a row in today's spelling. `worst_case_micro`
+    is the row's declared worst case (`cost.worst_case`, `settle.worst_case`), 0 without one: the
+    hold covers it, while a missing figure still settles at the estimate."""
 
     estimate_micro: int
     unit_micro: int
@@ -2156,6 +2159,7 @@ class Pricing:
     settlement_basis: dict
     request_data: dict
     terms: dict | None = None
+    worst_case_micro: int = 0
 
 
 def price_call(ep: dict, query: QueryValues, body: bytes, consumed: set[str]) -> Pricing:
@@ -2170,7 +2174,8 @@ def price_call(ep: dict, query: QueryValues, body: bytes, consumed: set[str]) ->
         hold, unit, credit, terms = call_cost.price(ep, cat, request_data)
         return Pricing(estimate_micro=hold, unit_micro=unit, reported_charge_unit_micro=credit,
                        settlement_basis=call_cost.basis(cat, ep, hold, terminal=bool(ep.get("async"))),
-                       request_data=request_data, terms=terms)
+                       request_data=request_data, terms=terms,
+                       worst_case_micro=call_cost.worst_case_micro(ep, cat))
     raw_cost = ep.get("cost") or {}
     cv = cat.cost_view(raw_cost, service) if raw_cost else None
     info_est, info_unit = _marketplace_pricing(service, ep["id"], cv, query, body)
@@ -2217,10 +2222,13 @@ def price_call(ep: dict, query: QueryValues, body: bytes, consumed: set[str]) ->
             "enrichlayer_rule": raw_cost["enrichlayer"],
             "enrichlayer_unit_micro": info_unit,
         }
+    worst = raw_cost.get("worst_case")
     return Pricing(
         estimate_micro=info_est, unit_micro=info_unit,
         reported_charge_unit_micro=reported_charge_unit_micro,
         settlement_basis=basis, request_data=request_data,
+        worst_case_micro=settlement_basis._micro(float(worst), unit_micro)
+        if worst is not None and unit_micro > 0 else 0,
     )
 
 
@@ -2317,7 +2325,7 @@ async def _resolve_marketplace_call(
     common = dict(
         upstream=upstream, consumed=consumed, endpoint_id=ep["id"], provider=service,
         params_hash=phash, cost_type=str((ep.get("cost") or {}).get("type") or ""),
-        estimate_micro=pricing.estimate_micro,
+        estimate_micro=pricing.estimate_micro, worst_case_micro=pricing.worst_case_micro,
         # The per-ROW price, carried on every tier (settle only reads it on metered calls):
         # a `per_result` settle that can't count rows can only ever bill the estimate.
         unit_micro=pricing.unit_micro,

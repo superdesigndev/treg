@@ -146,8 +146,8 @@ def derive_basis(
         if cost.get("settle") == "usage":
             # Reserve what the rate card says THIS request costs, not the matrix ceiling. The
             # provider's reported cost settles and may exceed the reserve; the ledger takes the
-            # difference from the balance, and the next reserve is the gate. reconcile lists every
-            # overrun (`async_task_settlement`).
+            # difference from the balance. The call's hold covers a declared `worst_case`
+            # (`_platform_reserve`), and reconcile lists every overrun (`async_task_settlement`).
             amount = {"kind": "usage", **dict(cost["usage"])}
             if amount.get("unit") == "usd":
                 amount["unit_micro"] = 1_000_000
