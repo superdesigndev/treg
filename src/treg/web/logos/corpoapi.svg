@@ -1,3 +1,17 @@
-<svg width="150" height="150" viewBox="0 0 150 150" fill="none" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="Corpo API">
-<text x="75" y="108" text-anchor="middle" font-family="Helvetica, Arial, sans-serif" font-size="96" font-weight="700" letter-spacing="-4" fill="#3C4043">C</text>
+<!-- Official vendor icon: https://corpoapi.com/favicon.svg ; retrieved 2026-11-05 -->
+<svg xmlns="http://www.w3.org/2000/svg" width="512" height="512" viewBox="0 0 512 512" role="img" aria-label="Corpo API">
+  <rect width="512" height="512" fill="#0c677e"/>
+  <g>
+  <rect x="98" y="112" width="79" height="79" fill="#ffffff"/>
+  <rect x="256" y="112" width="79" height="79" fill="#9ec2cb"/>
+  <rect x="177" y="191" width="79" height="79" fill="#9ec2cb"/>
+  <rect x="256" y="191" width="79" height="79" fill="#79abb8"/>
+  <rect x="335" y="191" width="79" height="79" fill="#5595a5"/>
+  <rect x="98" y="270" width="79" height="79" fill="#9ec2cb"/>
+  <rect x="177" y="270" width="79" height="79" fill="#79abb8"/>
+  <rect x="256" y="270" width="79" height="79" fill="#5595a5"/>
+  <rect x="335" y="270" width="79" height="79" fill="#307e91"/>
+  <rect x="177" y="349" width="79" height="79" fill="#5595a5"/>
+  <rect x="256" y="349" width="79" height="79" fill="#307e91"/>
+  </g>
 </svg>
