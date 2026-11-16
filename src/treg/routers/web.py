@@ -3543,6 +3543,7 @@ _SITEMAP_PAGES: tuple[tuple[str, str, str], ...] = (
     ("/vendor-listing", "vendor-listing.md", "0.5"),
     ("/support", "support.html", "0.4"),
     ("/connectors/claude", "claude-connector.html", "0.6"),
+    ("/plugins/claude", "claude-plugin.html", "0.6"),
     ("/sheets", "sheets.html", "0.6"),
     ("/people-search", "people-search.html", "0.8"),
     ("/leads-signals", "leads-signals.html", "0.8"),
@@ -3988,6 +3989,13 @@ async def privacy_page(request: Request):
 async def claude_connector_page(request: Request):
     """Setup, scope, billing, privacy, and removal instructions for the Claude connector."""
     return _static_page("claude-connector.html", request)
+
+
+@app.get("/plugins/claude", include_in_schema=False)
+async def claude_plugin_page(request: Request):
+    """Install, scope, billing, privacy, and removal instructions for the Claude plugin. The plugin
+    manifest's documentationUrl points here, so the Claude directory listing links to this path."""
+    return _static_page("claude-plugin.html", request)
 
 
 @app.get("/sheets", include_in_schema=False)

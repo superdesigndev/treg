@@ -197,6 +197,7 @@ _CONTROL_ROUTE_KEYS: frozenset[RouteKey] = frozenset({
     ('/privacy', ('GET',), 'privacy_page'),
     ('/sheets', ('GET',), 'sheets_page'),
     ('/connectors/claude', ('GET',), 'claude_connector_page'),
+    ('/plugins/claude', ('GET',), 'claude_plugin_page'),
     ('/adtrack.js', ('GET',), 'adtrack_js'),
     ('/captcha.js', ('GET',), 'captcha_js'),
     ('/agent-setup.js', ('GET',), 'agent_setup_js'),

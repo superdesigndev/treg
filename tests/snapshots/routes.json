@@ -1020,6 +1020,15 @@
       "GET",
       "HEAD"
     ],
+    "name": "claude_plugin_page",
+    "path": "/plugins/claude"
+  },
+  {
+    "kind": "APIRoute",
+    "methods": [
+      "GET",
+      "HEAD"
+    ],
     "name": "sheets_page",
     "path": "/sheets"
   },
