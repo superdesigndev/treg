@@ -7616,7 +7616,7 @@ endpoints:
       country:
         type: string
         required: true
-        note: "ISO 3166-1 alpha-2 country code, lowercase (e.g. de). The list for a large country can be longer than treg's 8 MiB response limit; that call is refused with 502 response_buffer_limit and not charged. Most data routes also accept location_name (e.g. \"Germany\") instead of a code."
+        note: "ISO 3166-1 alpha-2 country code, lowercase (e.g. de). The list for a large country runs to several MiB and is relayed whole. Most data routes also accept location_name (e.g. \"Germany\") instead of a code."
         example: de
   untestable: the OpenAPI spec ships no example request body for this route, so no test request could be generated
 - id: dataforseo.x.keywords-data-google-trends-explore-live
@@ -9456,7 +9456,7 @@ endpoints:
       country:
         type: string
         required: true
-        note: "ISO 3166-1 alpha-2 country code, lowercase (e.g. de). The list for a large country can be longer than treg's 8 MiB response limit; that call is refused with 502 response_buffer_limit and not charged. Most data routes also accept location_name (e.g. \"Germany\") instead of a code."
+        note: "ISO 3166-1 alpha-2 country code, lowercase (e.g. de). The list for a large country runs to several MiB and is relayed whole. Most data routes also accept location_name (e.g. \"Germany\") instead of a code."
         example: de
   untestable: the OpenAPI spec ships no example request body for this route, so no test request could be generated
 - id: dataforseo.x.serp-google-maps-live-advanced

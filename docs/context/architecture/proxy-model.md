@@ -623,6 +623,9 @@ zero estimate, a required fetch ownership rule and no submission, owned poll or 
 evidence. Their successful GETs bypass `_buffer_response` (ownership is still checked before relay)
 and stream in full with headers (including Range) through the router's close-once lifecycle. Audit
 size is unknown, not zero; nothing is archived or kept for replay, and the claim is released.
+A free `kind: utility` row with no ownership rule or managed resource (a provider's reference
+list, such as DataForSEO's per-country location codes) qualifies the same way: it has nothing to
+settle or learn, and a large country's list outgrows the buffer.
 
 Other responses needing settlement or ownership evidence have a hard 8 MiB complete-body budget:
 `_buffer_response` raises `GatewayFailed(response_buffer_limit)` on the first overflowing chunk,

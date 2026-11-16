@@ -327,6 +327,21 @@ async def test_large_json_is_never_charged_from_missing_evidence(wire, large):
     assert row.cost_charged_micro == (0 if large else 1)
 
 
+async def test_free_reference_list_over_the_buffer_relays_whole(wire):
+    client, state = wire
+    state['type'] = 'application/json'
+    state['body'] = JSON_BODY
+    response = await client.get('/call/dataforseo.x.serp-google-locations-country',
+                                params={'country': 'us'})
+    assert response.status_code == 200
+    assert hashlib.sha256(response.content).digest() == hashlib.sha256(JSON_BODY).digest()
+    await audit.drain()
+    async with session_maker() as db:
+        row = (await db.execute(select(CallRecord).where(
+            CallRecord.call_ref == response.headers['x-treg-call-id']))).scalar_one()
+    assert row.cost_charged_micro == 0
+
+
 @pytest.mark.parametrize('overrides', [
     {'tier': 'platform-overflow'}, {'tier': 'own'}, {'cost_type': 'per_call'},
     {'estimate_micro': 1}, {'billed_oauth': True},
@@ -346,6 +361,12 @@ def test_only_final_free_fetches_can_skip_evidence(overrides):
                   cost_type='free', resource_ownership={'requires': {'kind': 'fetch:synthetic'}})
     assert MarketplaceCall(**fields).streamable_free_result
     assert not MarketplaceCall(**(fields | overrides)).streamable_free_result
+    utility = fields | {'resource_ownership': None, 'kind': 'utility'}
+    assert MarketplaceCall(**utility).streamable_free_result
+    if 'resource_ownership' not in overrides:
+        assert not MarketplaceCall(**(utility | overrides)).streamable_free_result
+    assert not MarketplaceCall(**(utility | {'kind': 'data'})).streamable_free_result
+    assert not MarketplaceCall(**(utility | {'managed_resource': {'kind': 'x'}})).streamable_free_result
 
 
 GEMINI = 'google-ai.image-gen.gemini-3-pro-image'

@@ -327,6 +327,7 @@ class MarketplaceCall:
     async_descriptor: dict | None = None
     resource_ownership: dict | None = None
     managed_resource: dict | None = None
+    kind: str = ""                  # the row's `kind`; a free `utility` list streams (streamable_free_result)
     public_resource_ids: tuple[str, ...] = ()
     # On an endpoint declaring `spooled_response`: the response paths its settlement reads (the
     # usage meters, the `expect` success rule). A metered 2xx goes to disk; only these are kept.
@@ -358,14 +359,17 @@ class MarketplaceCall:
 
     @property
     def streamable_free_result(self) -> bool:
-        """An authorized final fetch with no body evidence to settle or learn."""
+        """A free answer with no body evidence to settle or learn: an authorized final fetch, or a
+        free reference list (`kind: utility`) with no ownership rule, which can outgrow the 8 MiB
+        settlement buffer (DataForSEO's US location list)."""
         ownership = self.resource_ownership or {}
         required = ownership.get("requires") or {}
         return (self.tier == "platform" and self.cost_type == "free"
                 and self.estimate_micro == 0 and not self.billed_oauth
                 and self.async_owner_call_id is None and not self.async_descriptor
                 and not ownership.get("produces")
-                and str(required.get("kind", "")).startswith("fetch:"))
+                and (str(required.get("kind", "")).startswith("fetch:")
+                     or (self.kind == "utility" and not ownership and not self.managed_resource)))
 
     @property
     def holdless_eligible(self) -> bool:
@@ -2366,6 +2370,7 @@ async def _resolve_marketplace_call(
         reported_charge_unit_micro=pricing.reported_charge_unit_micro,
         settlement_basis=pricing.settlement_basis, request_data=pricing.request_data,
         cost_terms=pricing.terms,
+        kind=str(ep.get("kind") or ""),
         async_descriptor=ep.get("async"), resource_ownership=ep.get("resource_ownership"),
         managed_resource=ep.get("managed_resource"),
         spooled_evidence=_spool_evidence_paths(ep, ep.get("cost") or {}),
