@@ -83,6 +83,7 @@ sources:
   - cli/scripts/sign-release.sh
   - src/treg/application/cli_releases.py
   - src/treg/infra/github_releases.py
+  - src/treg/infra/release_checksums.py
   - src/treg/routers/cli_client.py
   - src/treg/web/install-bin.sh
   - src/treg/web/install.ps1
@@ -220,17 +221,21 @@ whose `claude` records its arguments, and compares every file left in HOME, mode
   (beta falls back to stable; either may name a pre-release), else the newest GitHub release of `cli_release_repo` tagged
   `v<version>` from 1.0.0 up. A 0.x
   value names a Python CLI release and never an archive. Download URLs come from
-  `TREG_CLI_DOWNLOAD_BASE_URL`; when `TREG_CLI_MIRROR_BASE_URL` is set, the answer also names the
-  mirror's (`mirror_url`, `mirror_checksums_url`, `mirror_signature_url`), which a client tries
-  when the first source fails. On a channel the operator names, publishing a release moves no
+  `TREG_CLI_DOWNLOAD_BASE_URL`; when `TREG_CLI_MIRROR_BASE_URL` is set and the registry can read the
+  release's own `SHA256SUMS` (`infra/release_checksums.py`, kept for the process, a failure retried
+  after a minute), the answer also names the archive's `sha256` and the mirror's files
+  (`mirror_url`, `mirror_checksums_url`, `mirror_signature_url`), which a client tries when the
+  first source fails. Without that sum there is no mirror: an installer cannot check a signature,
+  so it takes nothing from the mirror on the mirror's word. On a channel the operator names, publishing a release moves no
   one and a bad release is held back without a new one; a channel left to GitHub moves with it. `GET /cli/latest/<os>-<arch>[?channel=beta]` is
   the same answer as a redirect to the archive, a download link that never changes.
 - `install-bin.sh` runs as `sh -c` with no arguments, because every older `treg update` runs the
   served installer that way. `install.sh` runs it with `--channel stable` and its own `--token` and
   `--skills` for a new install in the binary's share, falling back to the Python CLI when it does not
-  finish, and when its Python install fails on a machine with no working `treg`. It reads `/cli/latest`, checks the archive against `SHA256SUMS` (a
-  shell has no signature tool; the binary verifies signatures on update), gives up a transfer that
-  stalls and takes the mirror's copy when the first source fails or does not match, installs into
+  finish, and when its Python install fails on a machine with no working `treg`. It reads `/cli/latest`, checks the archive against the answer's `sha256`, or
+  without one the release's `SHA256SUMS` (a shell has no signature tool; the binary verifies
+  signatures on update), gives up a transfer that stalls, and when the first source fails or does
+  not match takes only the mirror's archive, checked against that `sha256`, installs into
   `~/.local/bin` by same-directory copy and rename, installs the Windows binary from Git Bash, tells
   a stable-channel Homebrew user to `brew upgrade treg` instead of installing a second copy, prints
   the exact PATH line when the directory is not on PATH, records the channel, bootstraps the skill
