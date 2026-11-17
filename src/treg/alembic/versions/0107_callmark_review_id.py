@@ -1,7 +1,7 @@
 """call marks: the review a mark's rows came from
 
-Revision ID: 0106
-Revises: 0105
+Revision ID: 0107
+Revises: 0106
 Create Date: 2026-11-17
 
 Additive: one nullable column on callmark, no index, no foreign key (AGENTS.md). Set when a
@@ -13,8 +13,8 @@ from alembic import op
 import sqlalchemy as sa
 
 
-revision: str = "0106"
-down_revision: str | Sequence[str] | None = "0105"
+revision: str = "0107"
+down_revision: str | Sequence[str] | None = "0106"
 branch_labels: str | Sequence[str] | None = None
 depends_on: str | Sequence[str] | None = None
 
