@@ -550,6 +550,8 @@ is distinct from `cache: forbidden`. The latter prevents archive storage and rep
 suppresses response bodies in call events, failure evidence, idempotency bodies, routed parent
 output and Web Arena records. Idempotency keeps a body-free 410 receipt so the same key cannot call
 the provider again. `/call/` still returns the body to the active caller.
+A deployment sets both for every endpoint of the providers named in `TREG_NO_CACHE_PROVIDERS`
+(read at catalog load), whatever their rows declare ([archive](archive.md)).
 
 ## Authorization metadata and paths
 
