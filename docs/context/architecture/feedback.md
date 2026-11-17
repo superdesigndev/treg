@@ -6,6 +6,7 @@ sources:
   - src/treg/domain/feedback/__init__.py
   - src/treg/domain/feedback/reports.py
   - src/treg/domain/feedback/reviews.py
+  - src/treg/domain/feedback/marks.py
   - src/treg/domain/feedback/verdicts.py
   - src/treg/hints.py
   - src/treg/config.py
@@ -17,10 +18,12 @@ sources:
   - src/treg/alembic/versions/0025_feedback.py
   - src/treg/alembic/versions/0026_callreview.py
   - src/treg/alembic/versions/0030_feedback_handling.py
+  - src/treg/alembic/versions/0105_callmark.py
   - tests/test_feedback_handling_schema.py
   - src/treg/web/feedback.md
   - tests/test_feedback.py
   - tests/test_reviews.py
+  - tests/test_marks.py
   - tests/test_endpoint_verdicts.py
   - tests/test_hints.py
   - tests/test_kv.py
@@ -88,6 +91,32 @@ return the original id with `already_reviewed`; a unique index arbitrates races,
 stays open until the application commit (SQLite deferred BEGIN). The sole writer is
 `domain.feedback.reviews`. `GET /admin/reviews` is superadmin-only and excluded from OpenAPI; there
 is no team read route.
+
+## Call marks
+
+A review is one opinion per call, often given before the answer is used. A mark is evidence: what
+the caller found wrong, or confirmed right, after checking the answer. `POST /marks` takes
+`call_id`, `basis` (`bounced`, `cross_checked`, `user_said`, `impression`), `items` (each a
+`verdict` from `MARK_VERDICTS`, with an optional 0-based row `index` and `field`; no index means
+the whole answer), optional `checked`, `evidence_call_id`, a private `note` and `replaces`.
+
+- **Append-only.** A team may mark one call many times as it learns more. A correction or
+  withdrawal (empty `items`) is a new row naming the earlier mark it `replaces`, which must be the
+  same team's, on the same call. An identical retry returns the original id with `already_received`,
+  but only after the call is found in the caller's scope, and the hash includes the caller's pin, so
+  a receipt never discloses another pin's call or mark; a unique `(org_id, content_hash)` index
+  arbitrates races.
+- **Attribution.** The call is looked up exactly as for a review (team and pin scope, retryable 404,
+  own tools and a maker's own hub tool refused). The mark keeps the called endpoint, provider and
+  credential tier. A routed answer can merge several children's rows, so a row index is the
+  caller's view of the merged answer and is never credited to a child here.
+- **What it can claim.** `checked` is how many rows the caller looked at, not a denominator: rows
+  it did not mark carry no conclusion. Only rows marked with a verdict, `correct` included, do.
+  `evidence_call_id` is checked against the team's own audit (`evidence_verified`) and never
+  rejects a mark. `basis` is the caller's account of how it knows.
+- **Private.** Marks are never published, quoted or folded into verdicts. `GET /admin/marks` is
+  superadmin-only and excluded from OpenAPI. The rate limit is per team per hour, separate from
+  feedback reports. The sole writer is `domain.feedback.marks`; `CallMark` is in `ORG_SCOPED_MODELS`.
 
 ## Review and feedback invitations
 
