@@ -704,6 +704,7 @@ def _stop_listening(engine, checkout) -> None:
 
 async def test_reserve_waits_before_checkout_and_reaps_without_a_second_admit(money_db, monkeypatch):
     org_id, caller = await _payer("reserve-reap")
+    monkeypatch.setattr(get_settings(), "hold_reap_interval_s", 0)  # the sweep under test must run
     await _reserve(org_id, "stale-hold", 50)
     async with session_maker() as db:
         hold = await db.get(Hold, "stale-hold")

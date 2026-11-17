@@ -199,6 +199,10 @@ is recorded on every entry, so a rate change cannot rewrite what a call cost.
 and settle would otherwise strand money; sweeping one org's stale holds is paid by the caller who
 benefits, and needs no scheduler or leader election. Each stale release commits independently before
 the new balance gate. Pending `AsyncTaskRecord` holds are excluded; their worker always closes them.
+A process sweeps one org at most once per `hold_reap_interval_s` (`0` = every reserve): the scan is
+a round trip inside the team's money lease, and a hold only turns stale minutes after its call
+began. A reserve that skipped the sweep and found the balance or the purchased credit short sweeps
+then, and asks again once if that released anything, so the interval never turns into a false 402.
 
 ### Lock ordering
 

@@ -703,6 +703,30 @@ async def test_reserve_reaps_stale_holds_first(c: AsyncClient):
     assert await _assert_invariant(org_id) == promo - 1_000
 
 
+async def test_a_sweep_is_not_repeated_within_its_interval_while_the_balance_covers(
+        c: AsyncClient, monkeypatch):
+    """The sweep is one scan per org per interval in a process; the stranded hold waits for the
+    next due sweep, and a zero interval sweeps on every reserve."""
+    from datetime import timedelta
+
+    org_id, _ = await _org(c)
+    promo = get_settings().promo_grant_micro
+    async with session_maker() as db:
+        stranded = await ledger.reserve(db, org_id, "e.crashed", 1_000)  # this reserve swept
+        row = await db.get(Hold, stranded)
+        row.created_at = row.created_at - timedelta(seconds=ledger.hold_ttl_s() + 5)
+        db.add(row)
+        await db.commit()
+    async with session_maker() as db:
+        first = await ledger.reserve(db, org_id, "e.next", 1_000)
+        assert {h.id for h in await ledger.open_holds_of(db, org_id)} == {stranded, first}
+    monkeypatch.setattr(get_settings(), "hold_reap_interval_s", 0)
+    async with session_maker() as db:
+        second = await ledger.reserve(db, org_id, "e.next", 1_000)
+        assert {h.id for h in await ledger.open_holds_of(db, org_id)} == {first, second}
+    assert await _assert_invariant(org_id) == promo - 2_000
+
+
 async def test_reaped_refund_survives_a_following_application_owned_402(c: AsyncClient):
     """Lazy reap is its own committed phase, not part of the new reservation transaction."""
     from datetime import timedelta
