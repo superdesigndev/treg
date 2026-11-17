@@ -24,6 +24,8 @@ from urllib.parse import urlsplit
 from uuid import uuid4
 
 ESTIMATE_MICRO = 100
+LOOPBACK = {"127.0.0.1", "localhost", "::1"}
+DATABASE_PREFIX = "treg_admission_test"
 ACTUAL_MICRO = 70
 
 
@@ -43,14 +45,17 @@ def _arguments():
         parser.error("all numeric arguments must be positive")
     for key in ("TREG_TEST_DB_URL", "TREG_TEST_KV_URL"):
         parsed = urlsplit(os.environ.get(key, ""))
-        if parsed.hostname not in {"127.0.0.1", "localhost", "::1"}:
+        if parsed.hostname not in LOOPBACK:
             parser.error(f"{key} must explicitly name a disposable loopback service")
-    if not urlsplit(os.environ["TREG_TEST_DB_URL"]).path.lstrip("/").startswith("treg_admission_test"):
-        parser.error("test database name must start with treg_admission_test")
+    if not urlsplit(os.environ["TREG_TEST_DB_URL"]).path.lstrip("/").startswith(DATABASE_PREFIX):
+        parser.error(f"test database name must start with {DATABASE_PREFIX}")
     return args
 
 
 def _environment() -> None:
+    # A configured secret source outranks environment variables in Settings, so it could point
+    # the registry at a database other than the one validated above.
+    os.environ.pop("TREG_AWS_SECRET_ID", None)
     os.environ.update(
         TREG_DATABASE_URL=os.environ["TREG_TEST_DB_URL"], TREG_READ_DATABASE_URL="",
         TREG_KV_URL=os.environ["TREG_TEST_KV_URL"], TREG_TELEMETRY="0", TREG_POSTHOG_KEY="",
@@ -63,6 +68,11 @@ async def _fund(org_count: int, calls: int) -> list[int]:
     from treg.infra.db import reset_db, session_maker
     from treg.models import Org
 
+    # The address the registry resolved, not the one asked for: reset_db() below deletes its rows.
+    bound = session_maker.kw["bind"].url
+    if bound.host not in LOOPBACK or not (bound.database or "").startswith(DATABASE_PREFIX):
+        raise SystemExit("the registry resolved a database other than the disposable test one; "
+                         "refusing to reset it")
     store = kv.RedisStore(os.environ["TREG_TEST_KV_URL"])
     try:
         if not await store.ping():
