@@ -127,8 +127,8 @@ return {1, 0}
 """
 
 # A team's allowance counter: a hash of what is still available and the `epoch` of the database
-# hold that backs it. The epoch is checked on every write, so a counter built for an earlier
-# hold never receives money that belongs to this one.
+# hold that backs it. Epochs only grow, and every write checks the one stored: a give-back
+# reaches only its own counter, and a writer holding an older epoch never replaces a newer one.
 _ALLOWANCE_TAKE = """
 local avail = tonumber(redis.call('HGET', KEYS[1], 'avail'))
 if not avail or avail < tonumber(ARGV[1]) then return 0 end
@@ -141,7 +141,9 @@ redis.call('HINCRBY', KEYS[1], 'avail', ARGV[2])
 return 1
 """
 _ALLOWANCE_ADD = """
-if redis.call('HGET', KEYS[1], 'epoch') ~= ARGV[1] then
+local stored = redis.call('HGET', KEYS[1], 'epoch')
+if stored and tonumber(stored) > tonumber(ARGV[1]) then return -1 end
+if stored ~= ARGV[1] then
     redis.call('DEL', KEYS[1])
     redis.call('HSET', KEYS[1], 'epoch', ARGV[1], 'avail', '0')
 end
@@ -149,10 +151,23 @@ local avail = redis.call('HINCRBY', KEYS[1], 'avail', ARGV[2])
 redis.call('PEXPIRE', KEYS[1], ARGV[3])
 return avail
 """
+# The hash stays, emptied, so its epoch keeps fencing writers that arrive later.
 _ALLOWANCE_DROP = """
 local avail = redis.call('HGET', KEYS[1], 'avail')
+if not avail then return 0 end
+redis.call('HSET', KEYS[1], 'avail', '0')
+return tonumber(avail)
+"""
+# ARGV[2] is the next epoch, computed by the caller: a script cannot print one exactly.
+_ALLOWANCE_RETIRE = """
+local stored = redis.call('HGET', KEYS[1], 'epoch')
+if stored and tonumber(stored) > tonumber(ARGV[1]) then return 0 end
+local avail = 0
+if stored == ARGV[1] then avail = tonumber(redis.call('HGET', KEYS[1], 'avail')) or 0 end
 redis.call('DEL', KEYS[1])
-return tonumber(avail) or 0
+redis.call('HSET', KEYS[1], 'epoch', ARGV[2], 'avail', '0')
+redis.call('PEXPIRE', KEYS[1], ARGV[3])
+return avail
 """
 
 # One persistent bucket identity across published versions. Rate and optional slot admission
@@ -309,15 +324,21 @@ class Store(Protocol):
         store cannot answer."""
 
     async def allowance_add(self, org_id: int, epoch: int, amount_micro: int,
-                            ttl_ms: int) -> int | None:
+                            ttl_ms: int) -> int | Literal["stale"] | None:
         """Add to a team's counter after the same amount was committed to its hold, and restart
-        the counter's expiry. A counter of another epoch is replaced, not added to. Returns what
-        is now available; None when the store cannot answer."""
+        the counter's expiry. A counter of an older epoch is replaced, not added to. "stale" when
+        the stored epoch is newer: this writer's hold has been closed since, and nothing is
+        added. Otherwise what is now available; None when the store cannot answer."""
 
     async def allowance_drop(self, org_id: int) -> int | None:
-        """Delete a team's counter and return what it still held (0 when absent), in one atomic
-        step, so no take can succeed after the returned figure was read. None when the store
-        cannot answer."""
+        """Empty a team's counter and return what it held (0 when absent), in one atomic step, so
+        no take can succeed on money the returned figure already counts. The epoch stays, for a
+        hold that stays. None when the store cannot answer."""
+
+    async def allowance_retire(self, org_id: int, epoch: int, ttl_ms: int) -> int | None:
+        """End the counter of a hold that is being deleted: return what it held and leave the
+        next epoch behind for `ttl_ms`, so a late add or give-back for `epoch` is refused. 0 and
+        no change when a newer epoch is already stored. None when the store cannot answer."""
 
     async def note_route_health(self, endpoint_id: str, bucket: int, *, failed: bool, slow: bool,
                                 ttl_s: int) -> None:
@@ -429,10 +450,13 @@ class LocalStore:
         return None
 
     async def allowance_add(self, org_id: int, epoch: int, amount_micro: int,
-                            ttl_ms: int) -> int | None:
+                            ttl_ms: int) -> int | Literal["stale"] | None:
         return None
 
     async def allowance_drop(self, org_id: int) -> int | None:
+        return None
+
+    async def allowance_retire(self, org_id: int, epoch: int, ttl_ms: int) -> int | None:
         return None
 
 
@@ -558,11 +582,15 @@ class RedisStore:
         return None if result is None else bool(result)
 
     async def allowance_add(self, org_id: int, epoch: int, amount_micro: int,
-                            ttl_ms: int) -> int | None:
-        return await self._allowance_eval(_ALLOWANCE_ADD, org_id, epoch, amount_micro, ttl_ms)
+                            ttl_ms: int) -> int | Literal["stale"] | None:
+        result = await self._allowance_eval(_ALLOWANCE_ADD, org_id, epoch, amount_micro, ttl_ms)
+        return "stale" if result == -1 else result
 
     async def allowance_drop(self, org_id: int) -> int | None:
         return await self._allowance_eval(_ALLOWANCE_DROP, org_id)
+
+    async def allowance_retire(self, org_id: int, epoch: int, ttl_ms: int) -> int | None:
+        return await self._allowance_eval(_ALLOWANCE_RETIRE, org_id, epoch, epoch + 1, ttl_ms)
 
     async def note_route_health(self, endpoint_id: str, bucket: int, *, failed: bool, slow: bool,
                                 ttl_s: int) -> None:

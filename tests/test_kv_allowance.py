@@ -62,15 +62,48 @@ async def test_a_give_back_reaches_only_the_counter_it_was_taken_from(counter):
 
 
 @real_redis
-async def test_dropping_returns_what_was_left_and_ends_takes_and_give_backs(counter):
+async def test_dropping_empties_the_counter_and_keeps_its_epoch(counter):
     store, org_id = counter
     assert await store.allowance_drop(org_id) == 0
     await store.allowance_add(org_id, 7, 100, 60_000)
     assert await store.allowance_take(org_id, 40) == 7
     assert await store.allowance_drop(org_id) == 60
+    assert await store.allowance_drop(org_id) == 0
     assert await store.allowance_take(org_id, 1) == 0
-    assert await store.allowance_give_back(org_id, 7, 40) is False
-    assert await store.allowance_add(org_id, 7, 0, 60_000) == 0
+    assert await store.allowance_give_back(org_id, 7, 40) is True
+    assert await store.allowance_add(org_id, 7, 10, 60_000) == 50
+
+
+@real_redis
+async def test_a_writer_with_an_older_epoch_never_replaces_a_newer_counter(counter):
+    store, org_id = counter
+    await store.allowance_add(org_id, 9, 500, 60_000)
+    assert await store.allowance_add(org_id, 7, 100, 60_000) == 'stale'
+    assert await store.allowance_give_back(org_id, 7, 100) is False
+    assert await store.allowance_retire(org_id, 7, 60_000) == 0
+    assert await store.allowance_take(org_id, 500) == 9
+
+
+@real_redis
+async def test_retiring_a_counter_refuses_its_late_writers_and_admits_the_next_hold(counter):
+    store, org_id = counter
+    epoch = 1_800_000_000_000_007  # the size of a real one: past what a script prints exactly
+    await store.allowance_add(org_id, epoch, 100, 60_000)
+    assert await store.allowance_take(org_id, 40) == epoch
+    assert await store.allowance_retire(org_id, epoch, 60_000) == 60
+    assert await store.allowance_add(org_id, epoch, 100, 60_000) == 'stale'
+    assert await store.allowance_give_back(org_id, epoch, 40) is False
+    assert await store.allowance_take(org_id, 1) == 0
+    assert 0 < await store._client.pttl(kv._allowance_key(org_id)) <= 60_000
+    assert await store.allowance_add(org_id, epoch + 1, 30, 60_000) == 30
+    assert await store.allowance_take(org_id, 30) == epoch + 1
+
+
+@real_redis
+async def test_retiring_with_no_counter_still_leaves_the_fence(counter):
+    store, org_id = counter
+    assert await store.allowance_retire(org_id, 7, 60_000) == 0
+    assert await store.allowance_add(org_id, 7, 100, 60_000) == 'stale'
 
 
 async def test_a_store_fault_reads_as_unavailable_and_takes_nothing(monkeypatch):
@@ -86,7 +119,8 @@ async def test_a_store_fault_reads_as_unavailable_and_takes_nothing(monkeypatch)
     assert await store.allowance_give_back(5, 7, 100) is None
     assert await store.allowance_add(5, 7, 100, 1000) is None
     assert await store.allowance_drop(5) is None
-    assert len(faults) == 4
+    assert await store.allowance_retire(5, 7, 1000) is None
+    assert len(faults) == 5
 
 
 async def test_arguments_that_are_not_plain_amounts_never_reach_the_script():
@@ -114,3 +148,4 @@ async def test_a_local_store_never_claims_to_be_the_shared_counter():
     assert await store.allowance_give_back(5, 7, 100) is None
     assert await store.allowance_add(5, 7, 100, 1000) is None
     assert await store.allowance_drop(5) is None
+    assert await store.allowance_retire(5, 7, 1000) is None

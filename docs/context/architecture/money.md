@@ -150,17 +150,23 @@ marked `allowance`. `heartbeat_at` is stamped by each refill; nothing reads it y
 path uses any of these functions yet.
 
 The hold is the authority; the shared store (`infra/kv.py`) only mirrors what of it is still
-unspent, as one hash per team holding `avail` and the hold's `epoch`. Four atomic operations:
+unspent, as one hash per team holding `avail` and the hold's `epoch`. Five atomic operations:
 `allowance_take` subtracts an amount when the counter holds at least that much and returns the
 epoch; `allowance_give_back` returns part of a take, only to a counter of the same epoch;
-`allowance_add` adds what a refill just committed to the hold and restarts the counter's expiry,
-replacing a counter of another epoch; `allowance_drop` deletes the counter and returns what it
-held, so that figure can be released from the hold while calls already admitted keep theirs. Each
-returns `None` when the store cannot answer, and the in-process store always does: a per-process
-figure cannot be the one every process spends from. Add to the counter only after the refill's
-commit. In that order a failure between the two leaves money in the hold that no counter
-offers, which a close returns; the other order would offer money the hold does not have. The same
-is true of a counter that expired or was lost: its unspent part stays in the hold until a close.
+`allowance_add` adds what a refill just committed to the hold and restarts the counter's expiry;
+`allowance_drop` empties the counter and returns what it held, keeping the epoch, so that figure
+can be released from a hold that stays while calls already admitted keep theirs;
+`allowance_retire` ends the counter of a hold being deleted, returning what it held and leaving
+the next epoch behind for a given time. Epochs only grow (a later hold has a later `created_at`),
+and that is the fence: an add replaces a counter of an older epoch, and is refused as `"stale"`
+when the stored epoch is newer, so a refill whose add arrives after its hold was closed and
+another opened cannot put the closed hold's money back on offer. The fence lasts as long as the
+hash; a writer later than the retired hash's expiry is not caught by it. Each operation returns
+`None` when the store cannot answer, and the in-process store always does: a per-process figure
+cannot be the one every process spends from. Add to the counter only after the refill's commit. In
+that order a failure between the two leaves money in the hold that no counter offers, which a
+close returns; the other order would offer money the hold does not have. The same is true of a
+counter that expired or was lost: its unspent part stays in the hold until a close.
 
     balance_micro == sum(block.remaining_micro) - sum(open hold.amount_micro)
 
