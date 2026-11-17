@@ -216,6 +216,10 @@ class Adapter:
     filter_max: dict[str, int] = field(default_factory=dict)  # `max:` a filter this provider caps (`limit: 8`); a request above it skips the provider
     additional_capabilities: tuple[str, ...] = ()  # opt-in reuse of the same request/output mapping
     route: bool = True                        # False: hit/miss evidence only, never a router candidate
+    # Caller keys the provider takes only as a hint (a place folded into a semantic query, a domain
+    # list its index does not enforce): the request carries them, the rows need not match them.
+    # `soft:` here, plus every key whose mapped parameter the endpoint row marks `applied: soft`.
+    soft: tuple[str, ...] = ()
     # `{cursor: <upstream path>}`: where the provider takes back the `next_cursor` its answer carried.
     # Cursor only: a page number over a provider whose order changes between calls (Dropleads)
     # repeats and skips rows.
@@ -393,7 +397,7 @@ def retired_contract_keys(doc: dict) -> list[str]:
 ADAPTER_KEYS = frozenset({
     "accepts", "in", "in_expr", "in_read", "body_array", "test_identity", "cost_units", "max",
     "additional_capabilities", "route", "const", "out", "miss", "verdict", "verdicts", "row", "paging",
-    "position"})
+    "position", "soft"})
 # The longest text a mapped row field keeps: a row is read by an agent, and one provider's
 # multi-page bio would otherwise cost more tokens than the rest of the answer.
 ROW_TEXT_MAX = 300
@@ -704,6 +708,7 @@ def parse_adapters(doc: dict) -> dict[str, Adapter]:
             filter_max={str(k): int(v) for k, v in (a.get("max") or {}).items()},
             additional_capabilities=tuple(a.get("additional_capabilities") or ()),
             route=a.get("route", True) is not False,
+            soft=tuple(str(k) for k in a.get("soft") or ()),
             paging=_paging(eid, a.get("paging"), a.get("out") or {}),
             position=_position(eid, a.get("position")),
             const=dict(a.get("const") or {}), out_map=dict(a.get("out") or {}), miss=str(a.get("miss") or ""),
@@ -961,6 +966,31 @@ def verify(adapter: Adapter, contract: Contract, endpoint: dict, example: Any) -
     return True, ""
 
 
+def _soft_targets(endpoint: dict) -> set[str]:
+    """The provider parameters (`queryParams.location`, `body.include_domains`) the endpoint row
+    marks `applied: soft`."""
+    inp = endpoint.get("input") or {}
+    body = inp.get("body") if isinstance(inp.get("body"), dict) else {}
+    if isinstance(body.get("properties"), dict):
+        body = body["properties"]
+    return {f"{where}.{name}" for where, params in (("queryParams", inp.get("queryParams")), ("body", body))
+            if isinstance(params, dict)
+            for name, spec in params.items() if isinstance(spec, dict) and spec.get("applied") == "soft"}
+
+
+def _soft_keys(adapter: Adapter, endpoint: dict) -> tuple[str, ...]:
+    """The adapter's own `soft:` keys plus each key it sends into a parameter marked soft."""
+    targets = _soft_targets(endpoint)
+    keys = list(adapter.soft)
+    for k, target in adapter.in_map.items():
+        if target in targets:
+            keys.append(k)
+    for target, expr in (adapter.in_expr or {}).items():
+        if target in targets:
+            keys += re.findall(r"[A-Za-z_]\w*", expr)
+    return tuple(dict.fromkeys(keys))
+
+
 def load_routing(directory: Path, endpoints_by_id: dict[str, dict], read_yaml, read_example) -> tuple[dict[str, Contract], dict[str, Adapter]]:
     """Parse both files and verify every adapter against its endpoint's fixtures."""
     contracts = parse_contracts(read_yaml(directory / "contracts.yaml") or {})
@@ -991,5 +1021,5 @@ def load_routing(directory: Path, endpoints_by_id: dict[str, dict], read_yaml, r
                 if extra_ok:
                     additional.append(capability)
         verified[eid] = Adapter(**{**ad.__dict__, "verified": ok, "verify_note": note,
-                                   "verified_capabilities": tuple(additional)})
+                                   "verified_capabilities": tuple(additional), "soft": _soft_keys(ad, ep)})
     return contracts, verified

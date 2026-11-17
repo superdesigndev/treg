@@ -392,12 +392,13 @@ def test_stand_in_carries_names_only_keys_its_expression_reads():
 
 
 def test_a_stand_in_carries_the_country_so_it_is_not_an_ignored_filter():
-    """parallel has no country field of its own; the stand-in sentence says the country, so it
+    """A provider with no country field of its own, whose stand-in sentence says the country,
     answers the question asked. A `q` the caller wrote gets no stand-in, so there it is ignored."""
+    import dataclasses
     from treg.domain.catalog.routing.plan import ignored_filters
     cat = catalog_store.load()
     contract = cat.contracts["people.search"]
-    parallel = cat.adapters["parallel.people.search"]
+    parallel = dataclasses.replace(cat.adapters["parallel.people.search"], soft=())
     built, _ = canonical_identity(contract, {"company_domain": "stripe.com", "title": "CTO", "country": "ie"})
     assert ignored_filters(parallel, contract, built, {"company_domain", "title", "country"}) == ()
     written, _ = canonical_identity(contract, {"q": "CTO at stripe.com", "country": "ie"})
@@ -413,13 +414,43 @@ def test_a_stand_in_carries_the_country_so_it_is_not_an_ignored_filter():
         "a country the location already says is still said"
 
 
+def test_a_filter_the_provider_takes_only_as_a_hint_is_an_ignored_filter():
+    """parallel and exa read the place and the company as words in a semantic query, so rows from
+    elsewhere still come back: the request carries them, and they are named as not applied."""
+    from treg.domain.catalog.routing.plan import ignored_filters
+    cat = catalog_store.load()
+    contract = cat.contracts["people.search"]
+    named, _ = canonical_identity(contract, {"title": "CTO", "location": "Dublin, Ireland", "country": "ie",
+                                             "company_domain": "stripe.com"})
+    sent = {"title", "location", "country", "company_domain"}
+    for eid in ("parallel.people.search", "exa.people.search"):
+        ad = cat.adapters[eid]
+        assert "Dublin, Ireland" in str(ad.to_upstream(named, ("q",))[1]), "the hint still reaches the provider"
+        assert ignored_filters(ad, contract, named, sent) == ("country", "location", "company_domain")
+    unsent, _ = canonical_identity(contract, {"title": "CTO"})
+    assert ignored_filters(cat.adapters["exa.people.search"], contract, unsent, {"title"}) == ()
+
+
+def test_a_parameter_the_row_marks_soft_makes_the_keys_mapped_into_it_soft():
+    from treg.domain.catalog.routing import contracts as C
+    ad = C.parse_adapters({"adapters": {"x.web.search": {
+        "accepts": [["q"]], "in": {"q": "queryParams.query", "country": "queryParams.location"},
+        "in_expr": {"queryParams.sites": "csv(domains)"}, "soft": ["language"],
+        "out": {"results": "results"}, "miss": "results == []"}}})["x.web.search"]
+    row = {"input": {"queryParams": {"query": {"type": "string"},
+                                     "location": {"type": "string", "applied": "soft"},
+                                     "sites": {"type": "string", "applied": "soft"}}}}
+    assert C._soft_keys(ad, row) == ("language", "country", "csv", "domains")
+    assert C._soft_keys(ad, {"input": {}}) == ("language",)
+
+
 @pytest.mark.parametrize("identity, kept", [
-    ({"title": "CTO", "location": "Dublin, Ireland", "country": "ie"}, True),
-    ({"title": "CTO", "location": "Cambridge", "country": "us"}, True),
-    ({"title": "CTO", "location": "Dublin, Ireland"}, True),
+    ({"title": "CTO", "location": "Dublin, Ireland", "country": "ie"}, False),
+    ({"title": "CTO", "location": "Dublin, Ireland"}, False),
     ({"title": "CTO", "country": "zz"}, False),
+    ({"title": "CTO"}, True),
 ])
-async def test_strict_filters_keep_a_stand_in_provider_whose_text_says_the_filters(
+async def test_strict_filters_skip_a_stand_in_provider_that_takes_the_place_only_as_a_hint(
         clients, all_people_search_on, identity, kept):
     cat = catalog_store.load()
     options = call_route.RouteOptions.from_headers(
@@ -428,6 +459,9 @@ async def test_strict_filters_keep_a_stand_in_provider_whose_text_says_the_filte
     caller = SimpleNamespace(org_id=1, org=SimpleNamespace(id=1, platform_overflow_disabled=False))
     plan = await call_route.build_plan(cat.by_id["treg.people.search"], identity, caller, options)
     assert ("parallel.people.search" in [c.endpoint["id"] for c in plan.candidates]) is kept
+    if "location" in identity:
+        why = next(d["why"] for d in plan.dropped if d["endpoint_id"] == "parallel.people.search")
+        assert why.startswith("applies ") and "location only as a hint" in why
 
 
 def test_a_domain_is_said_only_as_the_whole_host():
@@ -477,7 +511,8 @@ async def test_a_company_scoped_request_offers_the_free_text_providers_last(
     q_only = ["parallel.people.search", "exa.people.search"]
     assert order[-2:] == q_only and "exa.people.search" not in {d["endpoint_id"] for d in plan.dropped}
     exa = next(c for c in plan.candidates if c.endpoint["id"] == "exa.people.search")
-    assert exa.variant == ("q",) and exa.ignored == ()
+    assert exa.variant == ("q",) and exa.ignored == tuple(k for k in ("country", "company_domain") if k in identity)
+    assert exa.hinted == exa.ignored, "a hint is named, never ranked down"
     _, body = exa.adapter.to_upstream(plan.identity, exa.variant)
     assert body["query"].startswith(identity.get("title", "people") + " at example.com")
     preferred = await call_route.build_plan(ep, identity, caller, call_route.RouteOptions.from_headers(

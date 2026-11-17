@@ -1286,6 +1286,15 @@ an invalid extra never disables the primary.
   `X-Treg-Route-Strict-Filters: 1` drops candidates that cannot express a sent filter
   (`strict: true` in `dropped`) and answers 422 `route_no_candidate`, unbilled, when none is left; a
   503 stays reserved for capacity/key drops.
+- **A filter applied only as a hint is named too**: an adapter's `soft:` list names caller keys its
+  provider receives but does not enforce (exa and parallel people.search read the place and the
+  company as words), and an endpoint parameter marked `applied: soft` makes every key the adapter
+  maps into it soft (`Adapter.soft`, set at load by `_soft_keys`). `ignored_filters()` counts a soft
+  key the caller sent as not applied, a scoping key included, so the answer names it and strict
+  filters drop the child ("applies … only as a hint"). Ranking reads `ignored_filters(soft=False)`
+  (`Candidate.hinted` is the difference): a declaration discloses, it never reorders a plan or
+  takes a published rule's place away. On a direct call `treg catalog get` opens the parameter's
+  note with "a hint, not a filter" (`params_view`); the answer is relayed as sent.
 - **Who a no-candidate refusal is on** (`_no_candidate_refusal`): 503 when capacity or a missing
   key took a candidate (treg's side); 422 for strict-filter and scope drops (the caller's). When
   treg's demo policy alone took every candidate that could take the identity (a child dropped as

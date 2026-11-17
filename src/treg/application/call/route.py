@@ -761,13 +761,15 @@ async def build_plan(ep: dict, identity_given: dict, caller, options: RouteOptio
             # reports no rows and charges nothing for it.
             price = overflow_route.agg_price_micro
             miss = price if getattr(overflow_route, "agg_unit", "call") == "call" else 0
+        ignored = ignored_filters(ad, contract, identity, given)
+        hard = ignored_filters(ad, contract, identity, given, soft=False)
         c = Candidate(endpoint=e, adapter=ad, variant=v, tier=tier, price_micro=price, hit_rate=st.get("hit_rate"),
                       ok_rate=st.get("ok_rate"), p50_ms=st.get("p50_ms"), last_ok_days=st.get("last_ok_days"),
                       p95_ms=st.get("p95_ms"),
                       exhausted=direct_exhausted and overflow_route is None,
                       note=(f"direct account exhausted; overflow via {overflow_route.aggregator}"
                             if overflow_route is not None else ""),
-                      ignored=ignored_filters(ad, contract, identity, given), miss_micro=miss)
+                      ignored=ignored, hinted=tuple(k for k in ignored if k not in hard), miss_micro=miss)
         if catalog_store.paused(e):
             dropped.append({"endpoint_id": e["id"], "why": f"{e['provider']} is paused on this deployment"})
             continue
@@ -804,8 +806,11 @@ async def build_plan(ep: dict, identity_given: dict, caller, options: RouteOptio
         for c in cands:
             if c.ignored:
                 wants = " | ".join("{" + ", ".join(a) + "}" for a in c.adapter.accepts)
+                hard = [k for k in c.ignored if k not in c.hinted]
+                why = "; ".join(([f"cannot express {', '.join(hard)}"] if hard else [])
+                                + ([f"applies {', '.join(c.hinted)} only as a hint"] if c.hinted else []))
                 dropped.append({"endpoint_id": c.endpoint["id"], "strict": True,
-                                "why": f"cannot express {', '.join(c.ignored)} (X-Treg-Route-Strict-Filters); it takes {wants}"})
+                                "why": f"{why} (X-Treg-Route-Strict-Filters); it takes {wants}"})
             else:
                 kept.append(c)
         cands = kept
