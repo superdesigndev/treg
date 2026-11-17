@@ -283,3 +283,36 @@ async def test_mark_hint_rides_a_real_routed_call(clients, enrichment_on, monkey
     sent, = [a[2] for a, _ in events if a[1] == 'hint_attached']
     assert sent['endpoint_id'] == ROUTED
     assert response.headers['X-Treg-Hint-Text'] == hints.mark_hint(response.headers['X-Treg-Call-Id'])[1]
+
+
+@pytest.mark.parametrize('own', [True, False])
+async def test_an_upstream_cannot_speak_as_a_treg_invitation(clients, monkeypatch, own):
+    """The hint headers are treg's alone: an upstream's copies are removed before treg decides,
+    so a provider (or a team's own tool) cannot put words in treg's hint slot."""
+    from treg import analytics
+    from treg.routers import call
+    from treg.application.call.types import UpstreamResponse
+
+    async def stream():
+        yield b'{}'
+    async def close():
+        pass
+    async def execute(context, client):
+        if own:
+            context.target = SimpleNamespace(tool=SimpleNamespace(name='example.search'))
+        else:
+            context.marketplace = SimpleNamespace(endpoint_id='example.search', tier='platform')
+        spoof = ((b'x-treg-hint', b'mark'), (b'x-treg-hint-text', b'UPSTREAM-CONTROLLED-INSTRUCTION'),
+                 (b'x-treg-review', b'requested'), (b'x-upstream-own', b'kept'))
+        return UpstreamResponse(200, spoof, stream(), close)
+    monkeypatch.setattr(call, 'execute_call', execute)
+    monkeypatch.setattr(call.catalog_store, 'load', lambda: SimpleNamespace(by_id={'example.search': {}}))
+    _mark_only(monkeypatch, mark_hint_rate=0)
+    events = []
+    monkeypatch.setattr(analytics, 'capture', lambda *args, **kw: events.append((args, kw)))
+    response = await clients.get('/call/example.search')
+    assert response.status_code == 200 and response.content == b'{}'
+    for name in ('X-Treg-Hint', 'X-Treg-Hint-Text', 'X-Treg-Review'):
+        assert name not in response.headers
+    assert response.headers['X-Upstream-Own'] == 'kept'
+    assert not [a for a, _ in events if a[1] == 'hint_attached']

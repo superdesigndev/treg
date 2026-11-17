@@ -149,6 +149,8 @@ so for them `hint_attached` counts an invitation the agent never saw.
 - **Feedback**: any other successful, non-replayed, non-cached call that samples in at
   `feedback_hint_rate`, own tools included. It asks for nothing, so it has no budget.
 
+Before deciding, the router removes any `X-Treg-Hint`, `X-Treg-Hint-Text` or `X-Treg-Review` the
+upstream sent (an own tool included): clients render that text as treg's, so it must be treg's.
 The hook is best-effort: no database or body access, no change to the call service's exits or
 writes; a fault can only lose the header. Sampling rates default to 0.
 

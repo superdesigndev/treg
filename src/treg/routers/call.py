@@ -296,6 +296,9 @@ async def catalog_endpoint_access(
     except CallFailure as exc:
         raise _translate_call_failure(exc) from exc
 
+_INVITATION_HEADERS = ("X-Treg-Hint", "X-Treg-Hint-Text", "X-Treg-Review")
+
+
 def _capture_hint(request: Request, context, kind: str, variant: int | None = None) -> None:
     """One event per invitation actually sent, on every surface: the response-rate denominator.
     Attachment is not display; the surface's `X-Treg-Client` says who was asked."""
@@ -414,6 +417,10 @@ async def _relay_answer(request: Request, context, upstream: UpstreamResponse, r
     """`/call/`'s ending: the provider's answer, streamed unchanged, with the optional invitation."""
     _attach_async_descriptor(upstream, context, rest)
     response = _http_upstream_response(upstream)
+    # The invitation headers are treg's alone. An upstream (or a team's own tool) sending them
+    # would put its words in the slot clients show as treg's (AGENTS.md, non-negotiable 4).
+    for name in _INVITATION_HEADERS:
+        del response.headers[name]
     try:
         # Optional invitation, decided before the body streams (application/call/invite.py).
         kind = await invitation(context, response.status_code,

@@ -121,6 +121,11 @@ func envelope(r *api.Response, ctype string) callEnvelope {
 	}
 	if v := h.Get("X-Treg-Hint"); v != "" {
 		m.Set("hint", v)
+		// A mark invitation's words are the registry's (its A/B copy); a script reading
+		// --json gets them here, since nothing goes to stderr in this mode.
+		if t := h.Get("X-Treg-Hint-Text"); t != "" {
+			m.Set("hint_text", t)
+		}
 	}
 	if v := h.Get("X-Treg-Routed-Tool"); v != "" {
 		m.Set("routed_tool", v)

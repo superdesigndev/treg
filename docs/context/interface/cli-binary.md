@@ -160,7 +160,7 @@ of new installs (no working `treg` on the machine) to the binary instead, bucket
   no command reads an agent's idle pipe.
 - **Commands only the binary has.** `treg mark` ([feedback](../architecture/feedback.md), "Call
   marks"), and the stderr line for a `mark` invitation, which prints the registry's
-  `X-Treg-Hint-Text`. The Python CLI is frozen and ignores that hint kind.
+  `X-Treg-Hint-Text` (under `--json`, `_treg.hint_text`). The Python CLI is frozen and ignores that hint kind.
 - **Crashes.** Where the Python CLI dies with a traceback (a `--file` that does not exist), the
   binary prints the exception's last line and exits 1.
 - **Parity suite.** `tests/cli_go` runs both CLIs against a fake registry (canned status, headers
