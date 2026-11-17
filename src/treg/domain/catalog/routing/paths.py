@@ -677,6 +677,46 @@ def http_error(v: Any) -> bool:
         return False
 
 
+def x_post_id(v: Any) -> str | None:
+    """`https://x.com/jack/status/20` (or twitter.com, `/i/web/status/`) → `20`; bare digits pass."""
+    if isinstance(v, int) and not isinstance(v, bool):
+        return str(v)
+    if not isinstance(v, str) or not v.strip():
+        return None
+    v = v.strip()
+    if v.isdigit():
+        return v
+    m = re.search(r"(?:x|twitter)\.com/(?:[^/?#]+|i/web)/status(?:es)?/(\d+)", v, re.I)
+    return m.group(1) if m else None
+
+
+def linkedin_job_id(v: Any) -> str | None:
+    """`linkedin.com/jobs/view/software-engineer-at-pave-4310512612/`, `.../jobs/view/4442669023`
+    or a `currentJobId=` search link → the numeric job id; bare digits pass."""
+    if isinstance(v, int) and not isinstance(v, bool):
+        return str(v)
+    if not isinstance(v, str) or not v.strip():
+        return None
+    v = v.strip()
+    if v.isdigit():
+        return v
+    if not re.search(r"linkedin\.com/", v, re.I):
+        return None
+    m = re.search(r"[?&]currentJobId=(\d+)", v) or re.search(r"/jobs/view/(?:[^/?#]*-)?(\d+)(?:[/?#]|$)", v)
+    return m.group(1) if m else None
+
+
+def reddit_post_id(v: Any) -> str | None:
+    """`reddit.com/r/rust/comments/1w38wm2/...`, `redd.it/1w38wm2`, `1w38wm2` or `t3_1w38wm2` →
+    `t3_1w38wm2`, the post's fullname."""
+    if not isinstance(v, str) or not v.strip():
+        return None
+    v = v.strip()
+    m = (re.search(r"reddit\.com/(?:r/[^/]+/)?comments/([a-z0-9]+)", v, re.I)
+         or re.search(r"redd\.it/([a-z0-9]+)", v, re.I) or re.fullmatch(r"(?:t3_)?([a-z0-9]{4,12})", v, re.I))
+    return f"t3_{m.group(1).lower()}" if m else None
+
+
 def starts_with(v: Any, prefix: Any) -> bool:
     return isinstance(v, str) and prefix is not None and v.startswith(str(prefix))
 
@@ -684,6 +724,7 @@ def starts_with(v: Any, prefix: Any) -> bool:
 TRANSFORMS = {"values": values, "get": get_path, "null_if": null_if, "choose": choose, "split_first": split_first, "split_last": split_last, "one_place": one_place, "join": join, "phrase": phrase, "people_text": people_text, "place": place, "texts": texts, "has_type": has_type, "len": length,
               "dfs_location": dfs_location, "seranking_source": seranking_source, "lower": lower, "upper": upper,
               "list": as_list, "at_least": at_least, "at_most": at_most, "ceil_to": ceil_to, "linkedin_handle": linkedin_handle, "linkedin_url": linkedin_url,
+              "x_post_id": x_post_id, "linkedin_job_id": linkedin_job_id, "reddit_post_id": reddit_post_id,
               "email_domain": email_domain, "host": host, "fmt": fmt, "obj": obj, "tca_filter": tca_filter, "csv": csv, "country_name": country_name, "country_code": country_code,
               "e164_digits": e164_digits, "key": key, "starts_with": starts_with, "http_error": http_error, "lost_path": lost_path, "no_result_on_site": no_result_on_site, "quoted_absent": quoted_absent, "with_country_code": with_country_code,
               "count_with": count_with, "role_seniority": role_seniority, "role_department": role_department,

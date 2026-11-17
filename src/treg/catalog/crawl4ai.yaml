@@ -125,7 +125,8 @@ endpoints:
         proxy: {type: string, required: false, enum: [none, isp, residential], default: none, note: "Costs more: isp 0.30 credits, residential 0.60 (plain page 0.15). Use only for a site that blocked a plain request, and try isp before residential."}
         country: {type: string, required: false, note: "Two-letter exit country for isp or residential, e.g. us, gb. A country without isp addresses is served through residential at 0.60."}
         parse: {type: object, required: false, note: "true for all, or pick {links, media, metadata, tables}"}
-      note: "Most pages answer in 1-2 s; a page that needs a real browser takes 10-30 s, and a failed page ends within about 55 s. A PDF URL returns the PDF's text as Markdown. Images and other binary files answer 422 binary-body within about a second, free. Blocked (403), unreachable (502) and fleet-busy (503) answers are free; retry a 503 after a few seconds."
+        timeout: {type: number, required: false, min: 5, max: 120, example: 25, note: "Seconds, 5 to 120: answer within this time. Send a little less than your client's limit (25 for a 30 s client): the answer is the page, 403 blocked or 504 timeout, never a dropped call. Neither failure is charged."}
+      note: "Most pages answer in 1-2 s; a page that needs a real browser takes 10-30 s. Without timeout a hard page can take up to 90 s; with it the answer comes within that time. A PDF URL returns the PDF's text as Markdown. Images and other binary files answer 422 binary-body within about a second, free. Blocked (403), unreachable (502) and fleet-busy (503) answers are free; retry a 503 after a few seconds."
     test_request: {body: {url: "https://example.com", format: md}}
     cost:
       type: per_success
@@ -5170,8 +5171,8 @@ endpoints:
       (`where.person.title`: words in any order, VP = Vice President, Head = Director), by department or seniority
       (department: marketing, sales, engineering,
       product, finance, hr, operations, legal, it, design, executive; seniority: owner_founder, c_level, vp, director,
-      manager; decision_role for decision makers), by a person''s name (`where.person.name`), by company country,
-      city or industry, or by a free-text brief (`q`). `limit` is how many people (default 10, up to 100), each
+      manager; decision_role for decision makers), by a person''s name (`where.person.name`), by where the
+      person is (`where.person.country`, `city`), by company country, city or industry, or by a free-text brief (`q`). `limit` is how many people (default 10, up to 100), each
       person returned priced. An empty answer is free. About 0.2 s.'
     body_allowlist: true
     input:
@@ -5181,7 +5182,7 @@ endpoints:
           type: object
           required: false
           example: {company: {domain: stripe.com}, person: {department: [engineering]}}
-          note: "company: domain, country (two-letter code: gb, us, de), city, industry; person: title, name, seniority (one of owner_founder, c_level, vp, director, manager, senior, individual, intern, unknown), department, decision_role"
+          note: "company: domain, country (two-letter code: gb, us, de), city, industry; person: country (two-letter code), city, title, name, seniority (one of owner_founder, c_level, vp, director, manager, senior, individual, intern, unknown), department, decision_role"
         q:
           type: string
           required: false

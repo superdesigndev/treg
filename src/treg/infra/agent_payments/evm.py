@@ -45,11 +45,12 @@ class Chain:
         result = await self.call("eth_getTransactionReceipt", [tx_hash])
         return result if isinstance(result, dict) else None
 
-    async def head(self) -> tuple[int, datetime]:
-        return await self.block(None)
+    async def head(self, tag: str = "latest") -> tuple[int, datetime]:
+        """The newest block with this tag: `latest`, or `safe` / `finalized` (no reorg past it)."""
+        return await self.block(None, tag=tag)
 
-    async def block(self, number: int | None) -> tuple[int, datetime]:
-        tag = "latest" if number is None else hex(number)
+    async def block(self, number: int | None, *, tag: str = "latest") -> tuple[int, datetime]:
+        tag = tag if number is None else hex(number)
         result = await self.call("eth_getBlockByNumber", [tag, False])
         if not isinstance(result, dict):
             raise ChainUnavailable(f"block {tag} not found")

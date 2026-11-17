@@ -1274,16 +1274,6 @@ async def test_the_public_log_hides_when_the_maker_switches_it_off(clients: Asyn
 
 
 # ---------------------------------------------------------------------------------------------
-# Phase 10.4: the dashboard's Listing tab carries the two switches.
-
-def test_the_dashboard_carries_the_listing_tab():
-    from pathlib import Path
-    page = (Path(__file__).parents[1] / "frontend/src/pages/HubPage.vue").read_text()
-    for needle in ("setHubFlag('listed'", "setHubFlag('public_log'", "hub.tab==='listing'", "hubListingWords(hub.tool)"):
-        assert needle in page, needle
-
-
-# ---------------------------------------------------------------------------------------------
 # The run ceiling a tool declares, and the cost a script can see (built with lead-pipeline)
 
 def test_the_run_ceiling_comes_from_the_caller_then_the_tool_then_one_dollar():

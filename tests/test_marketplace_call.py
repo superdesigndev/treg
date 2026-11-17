@@ -523,7 +523,7 @@ async def test_provider_name_404_points_at_the_marketplace(clients: AsyncClient)
     """`treg call tikhub /path` (no such tool) keeps failing, but no longer dead-ends."""
     r = await clients.get("/call/tikhub/api/v1/foo")
     assert r.status_code == 404
-    assert "marketplace provider" in r.json()["detail"]
+    assert "'tikhub' is a catalog provider" in r.json()["detail"]["hint"]
 
 
 async def test_unknown_dotted_name_stays_a_plain_404(clients: AsyncClient):

@@ -1,0 +1,48 @@
+{
+  "version": "0.1.20261103",
+  "status_code": 20000,
+  "status_message": "Ok.",
+  "time": "1.1761 sec.",
+  "cost": 0.103,
+  "tasks_count": 1,
+  "tasks_error": 0,
+  "tasks": [
+    {
+      "id": "11162217-2171-0634-0000-abce2caa8f1a",
+      "status_code": 20000,
+      "status_message": "Ok.",
+      "time": "1.1400 sec.",
+      "cost": 0.103,
+      "result_count": 1,
+      "path": [
+        "v3",
+        "… 4 more item(s) truncated"
+      ],
+      "data": {
+        "api": "ai_optimization",
+        "function": "search",
+        "target": [
+          {
+            "domain": "hubspot.com"
+          }
+        ],
+        "platform": "google",
+        "location_code": 2840,
+        "language_code": "en",
+        "limit": 3
+      },
+      "result": [
+        {
+          "total_count": 14645,
+          "current_offset": 0,
+          "search_after_token": "eyJDdXJyZW50T2Zmc2V0IjozLCJSYXdSZXF1ZXN0Ijp7InRhcmdldCI6W3sidHlwZSI6ImRvbWFpbiIsImRvbWFpbiI6Imh1YnNwb3QuY29tIiwic2VhcmNoX3Njb3BlIjpbImFueSJdLCJzZWFyY2hfdHlwZSI6ImluY2x1ZGUiLCJpbmNsdWRlX3N1YmRvbWFpbnMi… [596 chars]",
+          "items_count": 3,
+          "items": [
+            "… {14 field(s) truncated}",
+            "… 2 more item(s) truncated"
+          ]
+        }
+      ]
+    }
+  ]
+}

@@ -24,10 +24,12 @@ from .cli_go_harness import ROOT
 ADMIN_TOKEN = "admin-" + secrets.token_hex(8)
 
 
-def _free_port() -> int:
-    with socket.socket() as s:
-        s.bind(("127.0.0.1", 0))
-        return s.getsockname()[1]
+def _listener() -> socket.socket:
+    sock = socket.socket()
+    sock.bind(("127.0.0.1", 0))
+    sock.listen(128)
+    sock.set_inheritable(True)
+    return sock
 
 
 class EchoUpstream:
@@ -94,7 +96,8 @@ _addresses = itertools.count()
 class LiveRegistry:
     def __init__(self, tmp: Path, extra_env: dict[str, str] | None = None,
                  catalog_patch: dict | None = None) -> None:
-        self.port = _free_port()
+        listener = _listener()
+        self.port = listener.getsockname()[1]
         self.url = f"http://localhost:{self.port}"
         key = subprocess.run([sys.executable, "-m", "treg", "keygen"], cwd=ROOT, capture_output=True,
                              text=True, check=True).stdout.strip()
@@ -112,13 +115,14 @@ class LiveRegistry:
             # window on email codes counts the CLIs' requests, not the fixtures'.
             "TREG_CLIENT_IP_HEADER": "x-test-client-ip",
         } | (extra_env or {})
-        command = [sys.executable, "-m", "treg"]
+        env["TREG_TEST_LISTEN_FD"] = str(listener.fileno())
         if catalog_patch is not None:
             env["TREG_TEST_CATALOG_PATCH"] = json.dumps(catalog_patch)
-            command = [sys.executable, str(Path(__file__).with_name("cli_go_boot.py"))]
+        command = [sys.executable, str(Path(__file__).with_name("cli_go_boot.py"))]
         self.log = (tmp / "registry.log").open("wb")
-        self.proc = subprocess.Popen(command, cwd=ROOT, env=env,
+        self.proc = subprocess.Popen(command, cwd=ROOT, env=env, pass_fds=(listener.fileno(),),
                                      stdout=self.log, stderr=subprocess.STDOUT)
+        listener.close()
         deadline = time.monotonic() + 120
         while time.monotonic() < deadline:
             if self.proc.poll() is not None:

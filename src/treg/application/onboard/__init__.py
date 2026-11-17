@@ -10,6 +10,7 @@ from ... import crypto as _crypto
 from ... import models as _models
 from ... import ratestore
 from ...config import get_settings
+from ...infra import credential_cipher
 from ...infra.db import session_maker
 from ...domain.identity.access import _norm_email
 from ...models import Invite, Org, User
@@ -79,11 +80,13 @@ async def reset(*, user_id: int) -> dict:
 
 
 async def seed_tool(*, org_id: int, owner_email: str) -> dict:
+    # A real team's credential: sealed like any other, before the session opens.
+    sealed = await credential_cipher.seal(demo_seed.DEMO_SECRET_VALUE, org_id=org_id)
     async with session_maker() as db:
         org = await db.get(Org, org_id)
         if org is None:
             raise OnboardError("org_not_found")
-        return await demo_seed.seed_tool(db, org, owner_email)
+        return await demo_seed.seed_tool(db, org, owner_email, sealed)
 
 
 async def accept_teammate(*, org_id: int, email: str) -> dict:

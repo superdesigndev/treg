@@ -25,3 +25,25 @@ REVIEW_DESCRIPTION = (
     "about the endpoint. Use feedback for anything confusing or wrong, omit private information, "
     "credentials and raw requests, responses or logs, and keep going with the task afterward."
 )
+
+# Where a surface accepts `rows` on a review (team MCP, the binary CLI, HTTP). The frozen Python
+# CLI keeps REVIEW_DESCRIPTION as its help text and takes no rows.
+REVIEW_ROWS_DESCRIPTION = (
+    REVIEW_DESCRIPTION + " When it was partly or not useful, add rows: each row you found wrong "
+    "as {index (0-based), field (optional), verdict}, e.g. [{index: 2, field: email, verdict: "
+    "wrong}]; omit index for the whole result. Only rows you looked at."
+)
+
+MarkBasis = Literal["bounced", "cross_checked", "user_said", "impression"]
+MARK_BASES = get_args(MarkBasis)
+MarkVerdict = Literal[
+    "correct", "wrong", "stale", "wrong_entity", "missing", "irrelevant", "duplicate", "other",
+]
+MARK_VERDICTS = get_args(MarkVerdict)
+MARK_DESCRIPTION = (
+    "Mark what you found wrong, or confirmed right, in a call's result once you know: an email "
+    "bounced, another source disagreed, or the user corrected it. Each item has a verdict and "
+    "optionally the 0-based row index and the field; no index means the whole result. Say how "
+    "you know in basis. Rows you did not mark carry no conclusion. Marks are private and never "
+    "change charges. Omit private information, then keep going with the task."
+)

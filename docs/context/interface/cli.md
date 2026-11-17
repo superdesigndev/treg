@@ -8,7 +8,7 @@ sources:
   - src/treg/routers/views/catalog.py
   - src/treg/routers/views/account.py
   - src/treg/application/home.py
-  - tests/test_released_cli_compat.py
+  - tests/test_cli_account_flows.py
   - tests/test_cli_key_compatibility.py
   - src/treg/routers/auth_helpers.py
   - src/treg/cli_analytics.py
@@ -136,7 +136,7 @@ is self-teaching. This fragment holds only what the code and help cannot say. Th
   with `X-Treg-Client-Notice`, worded by `client_notice.notice` ("available", or "no longer
   supported" below the minimum). The CLI prints the header as-is on stderr, once a day per notice
   (`client-notice` beside the config) and never under `--json`; it holds no release logic itself.
-  `test_released_cli_compat` checks that refusal preserves config bytes and the prior team.
+  `test_cli_key_compatibility` checks that refusal leaves credentials and the team unchanged.
 
 ## Calls
 
@@ -215,8 +215,8 @@ is collected**; keep it that way. An installation is a random UUID in `analytics
 
 `cli_session.current` resolves the session once per invocation: `TREG_SESSION_ID`, else the nearest
 agent on the process tree (agent variables are inherited by nested agents, so the tree decides which
-agent is nearest before its own variable is read: `CLAUDE_CODE_SESSION_ID`, `CODEX_THREAD_ID`, else
-the agent's pid and start time), else a reused `session-id` file with an idle timeout; a terminal or
+agent is nearest before its own variable is read: `CLAUDE_CODE_SESSION_ID`, `CODEX_THREAD_ID`,
+`COPILOT_AGENT_SESSION_ID` in the binary ([cli-binary](cli-binary.md)), else the agent's pid and start time), else a reused `session-id` file with an idle timeout; a terminal or
 tmux ancestor would join unrelated commands. Machine-derived ids are sent hashed, never raw.
 
 The hosted registry's public ingestion token is the default only for that registry; self-hosted URLs

@@ -1531,3 +1531,14 @@ async def test_a_missing_scope_is_a_403_challenge_naming_it(clients):
     assert "resource_metadata=" in www
     assert r.json()["error"] == "insufficient_scope"
     assert ok.status_code == 200, ok.text
+
+
+async def test_a_call_only_grant_gets_no_prior_review(clients, monkeypatch):
+    """`prior` rides on `call` but writes a review: it needs the review tool's scope too."""
+    from treg.config import get_settings
+
+    monkeypatch.setattr(get_settings(), "mcp_prior_review_rate", 1)
+    call_only, _ = await _grant(clients, "call-only@superdesign.dev", scope="treg:call")
+    full, _ = await _grant(clients, "full@superdesign.dev", scope="")
+    assert mcp._shows_prior({"authorization": f"Bearer {call_only}"}) is False
+    assert mcp._shows_prior({"authorization": f"Bearer {full}"}) is True

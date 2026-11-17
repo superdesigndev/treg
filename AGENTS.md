@@ -26,9 +26,10 @@ Everything else in this file is guidance; these are the contract, and they win o
    This temporary allowance permits calls when Redis state cannot be confirmed; it is not a durable cap.
 2. A hold (the balance `reserve` sets aside for one call) is settled or released exactly once, on
    every path: timeout, cancellation and exceptions included.
-3. A request holds zero database connections while upstream, object-storage or payment-rail
+3. A request holds zero database connections while upstream, object-storage, KMS or payment-rail
    (chain or facilitator) I/O is in flight. Keep `reserve` and `settle` separate; read archive
-   pointers, close the session, then fetch bytes; verify or settle a payment, then open the session.
+   pointers, close the session, then fetch bytes; verify or settle a payment, then open the session;
+   end the transaction before a credential is opened or sealed.
 4. Plain `/call/` is a faithful relay: the injected credential (on treg's shared key, one of treg's
    accounts for the provider, chosen per call and fixed for anything an account created; on a
    connection to treg's own Meta app it also carries `appsecret_proof`, the HMAC of the injected
@@ -56,6 +57,9 @@ Everything else in this file is guidance; these are the contract, and they win o
    settlement and outcome, every other byte as sent, live and archive hits alike, before the caller
    or an idempotent replay sees it. The archive keeps the answer whole; a call sending
    `X-Treg-Keep-Reported-Charge: true` keeps the member.
+   One more, on every answer: the invitation headers `X-Treg-Hint`, `X-Treg-Hint-Text` and
+   `X-Treg-Review` are treg's own, so an upstream's copies are removed before treg decides its
+   invitation; clients show their text as treg's ([feedback](docs/context/architecture/feedback.md)).
    A live-verified free catalog endpoint may declare an anonymous fallback; its empty binding list
    omits credential injection but does not strip or rewrite caller headers.
    Routed endpoints and overflow wrap the child's answer and say so; they never alter it. A routed
@@ -72,11 +76,12 @@ Everything else in this file is guidance; these are the contract, and they win o
    unlinked temp file under a per-body cap and per-process budget, settles from only the paths its
    row reads (usage meters, `expect` success leaf), then relays the file byte for byte; it is never
    archived or replayed.
-   Authorized free final fetches needing no body evidence stream in full.
+   Free answers needing no body evidence (an authorized final fetch, or a free `utility` reference
+   list with no ownership rule) stream in full.
    `/table/` runs the same call through the same road and returns it as rows and columns; it never
    changes what `/call/` returns (docs/context/architecture/table.md).
    A keyless agent-payments call (no treg credential of any kind) has its payment credential
-   (`Authorization: Payment …`, `PAYMENT-SIGNATURE`, `X-PAYMENT`) consumed
+   (`Authorization: Payment …`, `PAYMENT-SIGNATURE`, `X-PAYMENT`, `SIGN-IN-WITH-X`) consumed
    by treg and removed before the relay; nothing else it sent changes. A request carrying any treg
    credential is never read for a payment (docs/context/architecture/agent-payments.md).
    A 2xx async answer is read whole (bounded) to record the task it names, then relayed byte for
@@ -188,9 +193,11 @@ agents then built against a constitution that was wrong.
   bought credit and `own_key_required` for one that did, naming the remedy and never the rule. A
   slow or failing extension allows the call, and a call on the team's own credential is never asked.
 - **Agent payments** (behind `TREG_AGENT_PAYMENTS_ENABLED`). A keyless caller's payment confirmed
-  on chain is an ordinary `topup` on its wallet's payer team (`governance.teams.make_payer_team`:
-  a machine user, a member with no token); the call then runs the normal road as that team. What
-  a call does not use stays as that team's credit. `application/agent_payments.py` is the only
+  on chain is an ordinary `topup` on its wallet's payer team, one per (network, address)
+  (`governance.teams.make_payer_team`: a machine user, a member with no token); the call then runs
+  the normal road as that team. What a call does not use stays as that team's credit, which a
+  later call draws with a signed proof that moves no money (MPP's zero-amount charge, x402's
+  sign-in-with-x). `application/agent_payments.py` is the only
   writer of `AgentPayment`; the protocol SDKs live only in `infra/agent_payments/`. A payment whose
   settlement went unanswered is resolved by `treg-worker agentpay reconcile` from the chain: the
   same `topup`, under the same reference, only for a transfer that landed. See
@@ -212,9 +219,9 @@ agents then built against a constitution that was wrong.
 
 `expose_dev_code` (dev OTP only on a local sqlite database, `config.py`), the call-time SSRF check
 (`infra/upstream/ssrf.py`), the fail-loud missing-Fernet-key check in `verify_db`, and
-the unconditional `POST /run` denial (`api.py`). Server-side CLI execution is disabled for every
-caller; an executable allow-list and rlimits are not an isolation boundary. Read the fragment before
-touching any of them.
+the unconditional `POST /run` denial (`api.py`). The server holds no CLI execution code; the route
+only tells old clients so. Do not bring it back: an executable allow-list and rlimits are not an
+isolation boundary. Read the fragment before touching any of them.
 
 ## Development
 

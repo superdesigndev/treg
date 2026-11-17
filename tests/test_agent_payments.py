@@ -11,6 +11,7 @@ from __future__ import annotations
 import asyncio
 import time
 from datetime import UTC, datetime, timedelta
+from types import SimpleNamespace
 
 import httpx
 import pytest
@@ -50,11 +51,15 @@ class FakeTempoChain:
         self.payer_verified = True
         self.co_signed = False
         self.lifetime: int | None = 60  # pympp's client signs an expiring nonce valid this long
+        self.payer = TEMPO_PAYER        # who the faked transfers come from
+        self.real_validate = None       # pympp's own check, for zero-amount proofs
 
     async def validate(self, intent, credential, request):
         from mpp._validation import Validation
 
         payload = credential.payload
+        if payload.get("type") == "proof":
+            return await self.real_validate(intent, credential, request)
         if payload.get("type") == "hash":
             details = {"mode": "push", "payer_verified": True,
                        "transaction_hash": payload["hash"].lower()}
@@ -65,7 +70,7 @@ class FakeTempoChain:
                        "valid_before": int(time.time()) + self.lifetime if self.lifetime else None,
                        "transaction_hash": None if self.co_signed else tx_hash(signed)}
         return Validation(credential=credential, details=details, intent="charge",
-                          request=dict(request), payer=TEMPO_PAYER)
+                          request=dict(request), payer=self.payer)
 
     async def broadcast(self, intent, credential, request):
         from mpp import Receipt
@@ -120,6 +125,8 @@ def chain(monkeypatch):
     from mpp.methods.tempo.intents import ChargeIntent
 
     fake = FakeTempoChain()
+    real = ChargeIntent.validate
+    fake.real_validate = lambda intent, c, r: real(intent, c, r)
     monkeypatch.setattr(ChargeIntent, "validate",
                         lambda self, c, r: fake.validate(self, c, r))
     monkeypatch.setattr(ChargeIntent, "broadcast",
@@ -153,7 +160,7 @@ def payments_on(monkeypatch, chain, facilitator):
         MppTempoRail(secret="s" * 40, realm="registry.test", recipient=RECIPIENT, chain_id=42431),
         X402Rail(pay_to=RECIPIENT, network="eip155:84532", asset=X402_ASSET, asset_name="USDC",
                  asset_version="2", facilitator_url="https://facilitator.invalid",
-                 max_timeout_s=120, facilitator=facilitator),
+                 max_timeout_s=120, facilitator=facilitator, origin="https://registry.test"),
     ])
     yield
     agent_payments.configure([])
@@ -166,11 +173,36 @@ async def anon(clients):
         yield c
 
 
-def _mpp_credential(challenge_response: httpx.Response, signature: str = "0x76" + "11" * 40) -> str:
-    from mpp import Challenge, Credential
+@pytest.fixture
+async def wallet(clients):
+    """A keyless client calling the MPP realm's own host, so it is offered the zero-amount proof."""
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://registry.test") as c:
+        yield c
 
-    header = challenge_response.headers.get_list("www-authenticate")[0]
-    challenge = Challenge.from_www_authenticate(header)
+
+def _mpp_challenges(response: httpx.Response) -> list:
+    from mpp import Challenge
+
+    return [Challenge.from_www_authenticate(h) for h in response.headers.get_list("www-authenticate")]
+
+
+async def _mpp_proof(challenge_response: httpx.Response, account) -> str:
+    """A zero-amount proof signed by pympp's own client, as an agent's wallet signs it."""
+    from mpp.methods.tempo import client as tempo_client
+    from mpp.methods.tempo.account import TempoAccount
+    from mpp.runtime import CredentialParams
+
+    challenge = next(c for c in _mpp_challenges(challenge_response) if c.request["amount"] == "0")
+    key = account.key.hex()
+    method = tempo_client.charge(account=TempoAccount.from_key(key if key.startswith("0x") else "0x" + key),
+                                 chain_id=42431, rpc_url="http://rpc.invalid")
+    return await method.create_credential(CredentialParams(challenge=challenge))
+
+
+def _mpp_credential(challenge_response: httpx.Response, signature: str = "0x76" + "11" * 40) -> str:
+    from mpp import Credential
+
+    challenge = next(c for c in _mpp_challenges(challenge_response) if c.request["amount"] != "0")
     return Credential(challenge=challenge.to_echo(),
                       payload={"type": "transaction", "signature": signature}).to_authorization()
 
@@ -200,7 +232,8 @@ def _x402_credential(challenge_response: httpx.Response, account=None,
 
 async def _payer_org(address: str) -> int:
     async with session_maker() as db:
-        return (await db.get(AgentPayer, address)).org_id
+        return (await db.execute(
+            select(AgentPayer).where(AgentPayer.address == address))).scalar_one().org_id
 
 
 async def _balance(address: str) -> int:
@@ -249,7 +282,8 @@ async def test_a_keyless_paid_call_is_challenged_by_both_protocols(anon: AsyncCl
     assert detail["error"] == "payment_required" and detail["reason"] == "payment_required"
     assert detail["amount_micro"] == FLOOR and detail["estimated_cost_micro"] == EP_MICRO
     assert detail["minimum_payment_micro"] == FLOOR
-    assert "payment minimum" in detail["message"] and "not refunded" in detail["message"]
+    assert "smallest payment" in detail["message"] and "not paid back" in detail["message"]
+    assert "costs at most $0.001" in detail["message"]
     assert all(v.startswith("Payment ") for v in r.headers.get_list("www-authenticate"))
     required = decode_payment_required(r.headers["payment-required"])
     assert required["accepts"][0]["amount"] == str(FLOOR)
@@ -313,7 +347,7 @@ async def test_any_treg_credential_takes_the_account_path(anon: AsyncClient, cli
 async def test_search_and_details_say_whether_a_wallet_can_pay(anon: AsyncClient, payments_on):
     detail = (await anon.get(f"/catalog/endpoints/{EP}")).json()["endpoint"]["wallet"]
     assert detail["payable"] and detail["minimum_payment_micro"] == FLOOR
-    assert detail["protocols"] == ["mpp", "x402"] and "not refunded" in detail["note"]
+    assert detail["protocols"] == ["mpp", "x402"] and "not paid back" in detail["note"]
     poll = (await anon.get(f"/catalog/endpoints/{POLL}")).json()["endpoint"]["wallet"]
     assert poll["payable"] and poll["free_for_task_owner"]
     rows = (await anon.get("/catalog/search", params={"q": "tiktok video comments", "limit": 50})).json()["results"]
@@ -333,12 +367,14 @@ async def test_a_poll_is_refused_to_a_wallet_treg_does_not_know(anon: AsyncClien
     assert challenge.status_code == 402, challenge.text
     assert challenge.json()["detail"]["reason"] == "proof_required"
     assert "never settles" in challenge.json()["detail"]["message"]
+    assert "No money moves" in challenge.json()["detail"]["message"]
     credential, payer = _x402_credential(challenge)
     r = await anon.get(f"/call/{POLL}?id=task-1", headers={"PAYMENT-SIGNATURE": credential})
     assert r.status_code == 402 and r.json()["detail"]["reason"] == "unknown_wallet"
     assert facilitator.settles == 0
     async with session_maker() as db:
-        assert await db.get(AgentPayer, payer) is None
+        assert (await db.execute(select(AgentPayer).where(
+            AgentPayer.address == payer))).first() is None
 
 
 async def test_a_poll_needs_a_short_lived_signature(anon: AsyncClient, payments_on, facilitator,
@@ -458,18 +494,18 @@ async def test_a_suspended_payer_is_refused_before_any_payment(anon: AsyncClient
         assert len((await db.execute(select(AgentPayment))).scalars().all()) == 1
 
 
-async def test_concurrent_first_payments_share_one_payer_team(payments_on, monkeypatch):
+async def test_concurrent_first_payments_share_one_payer_team(clients, payments_on, monkeypatch):
     real = agent_payments.make_payer_team
     address = "0x" + "cd" * 20
 
-    async def _loses_the_race(db, addr):
+    async def _loses_the_race(db, network, addr):
         async with session_maker() as other:  # the concurrent request commits first
-            await real(other, addr)
+            await real(other, network, addr)
             await other.commit()
-        return await real(db, addr)
+        return await real(db, network, addr)
 
     monkeypatch.setattr(agent_payments, "make_payer_team", _loses_the_race)
-    org_id = await agent_payments._payer_org(address)
+    org_id = await agent_payments._payer_org("eip155:84532", address)
     assert org_id == await _payer_org(address)
 
 
@@ -847,11 +883,13 @@ class FakeEvm(Chain):
         self.receipts: dict[str, dict] = {}
         self.authorizations: dict[tuple[str, str], str] = {}   # (payer, nonce) -> tx hash
         self.now = datetime.now(UTC).replace(tzinfo=None)
+        self.tags: list[str] = []
 
     async def receipt(self, tx_hash):
         return self.receipts.get(tx_hash.lower())
 
-    async def head(self):
+    async def head(self, tag="latest"):
+        self.tags.append(tag)
         return 1_000, self.now
 
     async def block_at(self, when):
@@ -863,7 +901,7 @@ class FakeEvm(Chain):
 
     def pays(self, tx_hash: str, *, asset: str, payer: str, to: str, amount: int,
              status: str = "0x1") -> None:
-        self.receipts[tx_hash.lower()] = {"transactionHash": tx_hash, "status": status, "logs": [{
+        self.receipts[tx_hash.lower()] = {"transactionHash": tx_hash, "status": status, "blockNumber": "0x1", "logs": [{
             "address": asset, "data": "0x" + f"{amount:064x}",
             "topics": [TRANSFER_TOPIC, topic_address(payer), topic_address(to)]}]}
 
@@ -1160,6 +1198,451 @@ def test_usage_priced_tools_are_not_payable_with_a_wallet():
     assert any(wallet_refusal(ep) == "usage_priced" for ep in usage)
 
 
+# ---- zero-amount proofs (MPP) ------------------------------------------------------------------
+def _signature() -> str:
+    import os
+
+    return "0x76" + os.urandom(40).hex()
+
+
+async def _mpp_paid(client: AsyncClient, chain, account, query: str = "aweme_id=7") -> httpx.Response:
+    """One MPP payment from `account` for EP, settled."""
+    chain.payer = account.address.lower()
+    challenge = await client.get(f"/call/{EP}?{query}")
+    return await client.get(f"/call/{EP}?{query}",
+                            headers={"Authorization": _mpp_credential(challenge, _signature())})
+
+
+async def test_the_proof_challenge_comes_first_on_the_realm_host(wallet: AsyncClient,
+                                                                 anon: AsyncClient, payments_on):
+    r = await wallet.get(f"/call/{EP}?aweme_id=7")
+    assert r.status_code == 402, r.text
+    amounts = [c.request["amount"] for c in _mpp_challenges(r)]
+    proofs = [a == "0" for a in amounts]
+    assert proofs[0] and not proofs[-1] and proofs == sorted(proofs, reverse=True), amounts
+    assert "zero-amount MPP challenge" in r.json()["detail"]["message"]
+    other = await anon.get(f"/call/{EP}?aweme_id=7")
+    assert all(c.request["amount"] != "0" for c in _mpp_challenges(other))
+
+
+async def test_a_proof_draws_credit_and_moves_no_money(wallet: AsyncClient, payments_on, chain):
+    account = Account.create()
+    assert (await _mpp_paid(wallet, chain, account)).status_code == 200
+    payer = account.address.lower()
+    challenge = await wallet.get(f"/call/{EP}?aweme_id=7")
+    proof = await _mpp_proof(challenge, account)
+    r = await wallet.get(f"/call/{EP}?aweme_id=7", headers={"Authorization": proof})
+    assert r.status_code == 200, r.text
+    assert r.headers["X-Treg-Payment"] == "credit" and "payment-receipt" not in r.headers
+    assert not r.json()["headers"].get("authorization", "").startswith("Payment ")
+    assert chain.broadcasts == 1
+    assert await _balance(payer) == FLOOR - 2 * EP_MICRO
+    async with session_maker() as db:
+        assert len((await db.execute(select(AgentPayment))).scalars().all()) == 1
+    again = await wallet.get(f"/call/{EP}?aweme_id=7", headers={"Authorization": proof})
+    assert again.status_code == 402 and again.json()["detail"]["reason"] == "payment_replayed"
+
+
+async def test_a_proof_with_too_little_credit_is_asked_to_pay(wallet: AsyncClient, payments_on,
+                                                              chain):
+    account = Account.create()
+    challenge = await wallet.get(f"/call/{EP}?aweme_id=7")
+    r = await wallet.get(f"/call/{EP}?aweme_id=7",
+                         headers={"Authorization": await _mpp_proof(challenge, account)})
+    assert r.status_code == 402 and r.json()["detail"]["reason"] == "credit_insufficient", r.text
+    assert "credit ($0)" in r.json()["detail"]["message"]
+    assert all(c.request["amount"] != "0" for c in _mpp_challenges(r)) and _mpp_challenges(r)
+    assert chain.broadcasts == 0
+    chain.payer = account.address.lower()
+    paid = await wallet.get(f"/call/{EP}?aweme_id=7",
+                            headers={"Authorization": _mpp_credential(r, _signature())})
+    assert paid.status_code == 200 and paid.headers["X-Treg-Payment"] == "paid"
+
+
+async def test_a_proof_for_another_request_is_refused(wallet: AsyncClient, payments_on, chain):
+    account = Account.create()
+    assert (await _mpp_paid(wallet, chain, account)).status_code == 200
+    challenge = await wallet.get(f"/call/{EP}?aweme_id=7")
+    r = await wallet.get(f"/call/{EP}?aweme_id=8",
+                         headers={"Authorization": await _mpp_proof(challenge, account)})
+    assert r.status_code == 402 and r.json()["detail"]["reason"] == "invalid_challenge", r.text
+
+
+async def test_an_mpp_payment_is_settled_even_when_credit_covers_the_call(wallet: AsyncClient,
+                                                                         payments_on, chain):
+    account = Account.create()
+    assert (await _mpp_paid(wallet, chain, account)).status_code == 200
+    r = await _mpp_paid(wallet, chain, account)
+    assert r.status_code == 200 and r.headers["X-Treg-Payment"] == "paid"
+    assert chain.broadcasts == 2
+    async with session_maker() as db:
+        rows = (await db.execute(select(AgentPayment))).scalars().all()
+    assert [row.status for row in rows] == ["settled", "settled"]
+
+
+async def test_credit_on_one_network_never_pays_on_another(wallet: AsyncClient, payments_on, chain,
+                                                           facilitator):
+    account = Account.create()
+    challenge = await wallet.get(f"/call/{EP}?aweme_id=7")
+    credential, payer = _x402_credential(challenge, account)
+    assert (await wallet.get(f"/call/{EP}?aweme_id=7",
+                             headers={"PAYMENT-SIGNATURE": credential})).status_code == 200
+    challenge = await wallet.get(f"/call/{EP}?aweme_id=7")
+    r = await wallet.get(f"/call/{EP}?aweme_id=7",
+                         headers={"Authorization": await _mpp_proof(challenge, account)})
+    assert r.status_code == 402 and r.json()["detail"]["reason"] == "credit_insufficient"
+    async with session_maker() as db:
+        payers = (await db.execute(select(AgentPayer))).scalars().all()
+    assert [(p.network, p.address) for p in payers] == [("eip155:84532", payer)]
+
+
+async def test_a_wallet_polls_with_a_proof(wallet: AsyncClient, payments_on, chain, monkeypatch):
+    account = Account.create()
+    assert (await _mpp_paid(wallet, chain, account)).status_code == 200
+    challenge = await wallet.get(f"/call/{POLL}?id=someone-elses-task")
+    assert challenge.json()["detail"]["reason"] == "proof_required"
+    assert [c.request["amount"] for c in _mpp_challenges(challenge)][:1] == ["0"]
+    assert all(c.request["amount"] == "0" for c in _mpp_challenges(challenge))
+    assert "payment-required" in challenge.headers   # x402 still proves with an unsettled payment
+    r = await wallet.get(f"/call/{POLL}?id=someone-elses-task",
+                         headers={"Authorization": await _mpp_proof(challenge, account)})
+    # The poll ran as the payer team, and treg's ownership check refused another team's task.
+    assert r.status_code == 403 and r.json()["detail"]["error"] == "async_resource_not_owned"
+    assert chain.broadcasts == 1
+
+
+async def test_a_wallet_polls_its_own_task_with_a_proof_and_no_other_wallet_can(
+        wallet: AsyncClient, payments_on, chain, monkeypatch):
+    calls: list = []
+    monkeypatch.setattr(call_service, "relay", _fake_relay(
+        200, b'{"id": "task-77", "status": "verifying"}', calls=calls))
+    owner, other = Account.create(), Account.create()
+    start = "bounceban.people.email.verify"
+    for account in (owner, other):
+        chain.payer = account.address.lower()
+        challenge = await wallet.get(f"/call/{start}?email=a@b.co")
+        r = await wallet.get(f"/call/{start}?email=a@b.co",
+                             headers={"Authorization": _mpp_credential(challenge, _signature())})
+        assert r.status_code == 200, r.text
+        monkeypatch.setattr(call_service, "relay", _fake_relay(
+            200, b'{"id": "task-88", "status": "verifying"}', calls=calls))
+    paid = chain.broadcasts
+    monkeypatch.setattr(call_service, "relay", _fake_relay(
+        200, b'{"id": "task-77", "status": "success"}', calls=calls))
+
+    challenge = await wallet.get(f"/call/{POLL}?id=task-77")
+    r = await wallet.get(f"/call/{POLL}?id=task-77",
+                         headers={"Authorization": await _mpp_proof(challenge, owner)})
+    assert r.status_code == 200, r.text
+    assert r.json()["status"] == "success"
+
+    challenge = await wallet.get(f"/call/{POLL}?id=task-77")
+    r = await wallet.get(f"/call/{POLL}?id=task-77",
+                         headers={"Authorization": await _mpp_proof(challenge, other)})
+    assert r.status_code == 403 and r.json()["detail"]["error"] == "async_resource_not_owned"
+    assert chain.broadcasts == paid
+
+
+async def test_a_poll_proof_from_an_unknown_wallet_is_refused(wallet: AsyncClient, payments_on,
+                                                              chain):
+    challenge = await wallet.get(f"/call/{POLL}?id=task-1")
+    r = await wallet.get(f"/call/{POLL}?id=task-1",
+                         headers={"Authorization": await _mpp_proof(challenge, Account.create())})
+    assert r.status_code == 402 and r.json()["detail"]["reason"] == "unknown_wallet"
+
+
+async def test_credit_spent_by_another_call_asks_this_wallet_to_pay(wallet: AsyncClient, payments_on,
+                                                                   chain, monkeypatch):
+    from fastapi import HTTPException
+
+    from treg.routers import call as call_router
+
+    account = Account.create()
+    assert (await _mpp_paid(wallet, chain, account)).status_code == 200
+
+    async def _spent(*args, **kwargs):
+        raise HTTPException(status_code=402, detail={"error": "insufficient_balance"})
+
+    monkeypatch.setattr(call_router, "run_call_surface", _spent)
+    challenge = await wallet.get(f"/call/{EP}?aweme_id=7")
+    r = await wallet.get(f"/call/{EP}?aweme_id=7",
+                         headers={"Authorization": await _mpp_proof(challenge, account)})
+    assert r.status_code == 402 and r.json()["detail"]["reason"] == "credit_insufficient", r.text
+    assert _mpp_challenges(r) and all(c.request["amount"] != "0" for c in _mpp_challenges(r))
+
+
+# ---- limits -------------------------------------------------------------------------------------
+async def test_the_payment_check_cap_holds_across_addresses(anon: AsyncClient, payments_on,
+                                                            facilitator, monkeypatch):
+    monkeypatch.setattr(call_service, "relay", _fake_relay(200))
+    monkeypatch.setenv("TREG_AGENT_PAYMENTS_MAX_VERIFICATIONS_MINUTE", "1")
+    get_settings.cache_clear()
+    for i, expected in enumerate((200, 429)):
+        challenge = await anon.get(f"/call/{EP}?aweme_id=7")
+        credential, _ = _x402_credential(challenge)
+        r = await anon.get(f"/call/{EP}?aweme_id=7", headers={
+            "PAYMENT-SIGNATURE": credential, "X-Forwarded-For": f"203.0.113.{i + 1}"})
+        assert r.status_code == expected, r.text
+    assert r.json()["detail"]["reason"] == "rate_limited" and r.headers["retry-after"] == "60"
+    assert facilitator.verifies == 1
+
+
+async def test_unpaid_requests_are_limited_per_address(anon: AsyncClient, payments_on, monkeypatch):
+    monkeypatch.setenv("TREG_AGENT_PAYMENTS_MAX_QUOTES_PER_IP_MINUTE", "2")
+    get_settings.cache_clear()
+    statuses = [(await anon.get(f"/call/{EP}?aweme_id=7")).status_code for _ in range(3)]
+    assert statuses == [402, 402, 429]
+
+
+# ---- the credit route ---------------------------------------------------------------------------
+async def test_the_credit_route_does_not_exist_while_payments_are_off(anon: AsyncClient):
+    from treg.models import Ephemeral
+
+    limit = get_settings().agent_payments_max_quotes_per_ip_minute
+    for _ in range(limit + 10):
+        assert (await anon.get("/agentpay/credit")).status_code == 404
+    async with session_maker() as db:
+        rows = (await db.execute(select(Ephemeral).where(
+            Ephemeral.ns == agent_payments.RATE_NS))).scalars().all()
+    assert rows == []
+
+
+async def test_a_wallet_reads_its_credit_with_a_proof(wallet: AsyncClient, payments_on, chain):
+    account = Account.create()
+    assert (await _mpp_paid(wallet, chain, account)).status_code == 200
+    challenge = await wallet.get("/agentpay/credit")
+    assert challenge.status_code == 402 and challenge.json()["detail"]["reason"] == "proof_required"
+    assert [c.request["amount"] for c in _mpp_challenges(challenge)] and all(
+        c.request["amount"] == "0" for c in _mpp_challenges(challenge))
+    proof = await _mpp_proof(challenge, account)
+    r = await wallet.get("/agentpay/credit", headers={"Authorization": proof})
+    assert r.status_code == 200, r.text
+    view = r.json()
+    assert (view["network"], view["address"]) == ("tempo:42431", account.address.lower())
+    assert view["credit_micro"] == FLOOR - EP_MICRO
+    assert [(p["protocol"], p["amount_micro"], p["status"]) for p in view["recent"]] == [
+        ("mpp", FLOOR, "settled")]
+    assert r.headers["cache-control"] == "no-store"
+    again = await wallet.get("/agentpay/credit", headers={"Authorization": proof})
+    assert again.status_code == 402 and again.json()["detail"]["reason"] == "payment_replayed"
+
+
+async def test_an_unknown_wallet_reads_no_credit(wallet: AsyncClient, payments_on, chain):
+    challenge = await wallet.get("/agentpay/credit")
+    r = await wallet.get("/agentpay/credit",
+                         headers={"Authorization": await _mpp_proof(challenge, Account.create())})
+    assert r.status_code == 200 and (r.json()["credit_micro"], r.json()["recent"]) == (0, [])
+
+
+async def test_the_credit_route_takes_no_payment(wallet: AsyncClient, payments_on, chain):
+    challenge = await wallet.get("/agentpay/credit")
+    payment = await wallet.get(f"/call/{EP}?aweme_id=7")
+    r = await wallet.get("/agentpay/credit",
+                         headers={"Authorization": _mpp_credential(payment, _signature())})
+    assert r.status_code == 402 and challenge.status_code == 402
+    assert chain.broadcasts == 0
+
+
+async def test_expired_proof_claims_and_address_limits_are_swept(wallet: AsyncClient, payments_on,
+                                                                 chain):
+    from treg import ratestore
+    from treg.models import Ephemeral
+
+    async with session_maker() as db:
+        for ns, k in ((agent_payments.PROOF_NS, "old-proof"), (agent_payments.RATE_NS, "ip:old")):
+            await ratestore.kv_put(db, ns, k, {}, ttl_s=60)
+            row = await db.get(Ephemeral, (ns, k))
+            row.expires_at = datetime.now(UTC).replace(tzinfo=None) - timedelta(seconds=1)
+        await db.commit()
+    challenge = await wallet.get("/agentpay/credit")
+    r = await wallet.get("/agentpay/credit",
+                         headers={"Authorization": await _mpp_proof(challenge, Account.create())})
+    assert r.status_code == 200, r.text
+    async with session_maker() as db:
+        assert await db.get(Ephemeral, (agent_payments.PROOF_NS, "old-proof")) is None
+    await wallet.get(f"/call/{EP}?aweme_id=7")
+    async with session_maker() as db:
+        assert await db.get(Ephemeral, (agent_payments.RATE_NS, "ip:old")) is None
+
+
+async def test_a_payment_challenge_is_logged_as_a_payment_step(anon: AsyncClient, payments_on,
+                                                                call_error_lines):
+    r = await anon.get(f"/call/{EP}?aweme_id=7")
+    assert r.status_code == 402
+    (line,) = call_error_lines()
+    assert (line["refused_by"], line["error_class"], line["caller_side"]) == (
+        "payment", "payment_required", True)
+
+
+def test_the_mpp_rail_starts_on_a_production_platform_with_treg_s_replay_store(monkeypatch):
+    monkeypatch.setenv("RENDER", "true")
+    with pytest.raises(RuntimeError, match="no store configured"):
+        MppTempoRail(secret="s" * 40, realm="registry.test", recipient=RECIPIENT, chain_id=42431)
+    store = agent_payments.ReplayStore()
+    rail = MppTempoRail(secret="s" * 40, realm="registry.test", recipient=RECIPIENT,
+                        chain_id=42431, store=store)
+    assert all(method._has_store() for method in rail._mpp.methods)
+
+
+async def test_the_replay_store_claims_a_key_once(clients):
+    store = agent_payments.ReplayStore()
+    assert await store.put_if_absent("mpp:charge:0xabc", "0xabc") is True
+    assert await store.put_if_absent("mpp:charge:0xabc", "0xabc") is False
+    assert await store.get("mpp:charge:0xabc") == "0xabc"
+    assert await store.put_if_absent_until("k2", "raw", time.time() + 60) is True
+    assert await store.put_if_absent_until("k2", "other", time.time() + 60) is False
+    await store.delete("mpp:charge:0xabc")
+    assert await store.get("mpp:charge:0xabc") is None
+    with pytest.raises(ValueError):
+        await store.put_if_absent_until("k3", "raw", time.time() - 1)
+
+
+# ---- x402 sign-in-with-x (SIWX) -----------------------------------------------------------------
+def _siwx_extension(challenge_response: httpx.Response):
+    from mpp.x402 import decode_payment_required
+    from mpp.x402.siwx import from_payment_required
+
+    return from_payment_required(decode_payment_required(challenge_response.headers["payment-required"]))
+
+
+def _siwx_proof(challenge_response: httpx.Response, account, **override) -> str:
+    """A SIWX proof signed the way pympp's SiwxTransport signs it."""
+    from eth_account.messages import encode_defunct
+    from mpp.x402 import siwx
+
+    extension = _siwx_extension(challenge_response)
+    unsigned = {**extension["info"], "address": account.address,
+                "chainId": extension["supportedChains"][0]["chainId"], "type": "eip191", **override}
+    signature = account.sign_message(encode_defunct(text=siwx.to_message(unsigned))).signature.hex()
+    return siwx.encode({**unsigned, "signature": signature if signature.startswith("0x")
+                        else "0x" + signature})
+
+
+async def _x402_paid(client: AsyncClient, account) -> None:
+    challenge = await client.get(f"/call/{EP}?aweme_id=7")
+    credential, _ = _x402_credential(challenge, account)
+    r = await client.get(f"/call/{EP}?aweme_id=7", headers={"PAYMENT-SIGNATURE": credential})
+    assert r.status_code == 200, r.text
+
+
+@pytest.fixture
+async def siwx_agent(clients):
+    """An agent on pympp's own SIWX client, calling treg's public origin."""
+    from mpp.x402.siwx import SiwxTransport
+
+    account = Account.create()
+    transport = SiwxTransport(account=account, inner=ASGITransport(app=app))
+    async with AsyncClient(transport=transport, base_url="https://registry.test") as c:
+        c.account = account
+        yield c
+
+
+async def test_the_x402_402_offers_siwx_only_on_the_public_host(wallet: AsyncClient,
+                                                               anon: AsyncClient, payments_on):
+    extension = _siwx_extension(await wallet.get(f"/call/{EP}?aweme_id=7"))
+    assert extension["info"]["domain"] == "registry.test"
+    assert extension["info"]["uri"] == f"https://registry.test/call/{EP}?aweme_id=7"
+    assert extension["supportedChains"] == [{"chainId": "eip155:84532", "type": "eip191"}]
+    assert _siwx_extension(await anon.get(f"/call/{EP}?aweme_id=7")) is None
+
+
+async def test_a_siwx_agent_with_credit_pays_nothing(siwx_agent: AsyncClient, payments_on,
+                                                     facilitator):
+    await _x402_paid(siwx_agent, siwx_agent.account)
+    payer = siwx_agent.account.address.lower()
+    balance, settles, verifies = await _balance(payer), facilitator.settles, facilitator.verifies
+    r = await siwx_agent.get(f"/call/{EP}?aweme_id=7")   # SiwxTransport answers the 402 itself
+    assert r.status_code == 200, r.text
+    assert r.headers["X-Treg-Payment"] == "credit"
+    assert "sign-in-with-x" not in {k.lower() for k in r.json()["headers"]}
+    assert await _balance(payer) == balance - EP_MICRO
+    assert (facilitator.settles, facilitator.verifies) == (settles, verifies)
+
+
+async def test_a_new_wallet_proves_with_siwx_then_pays(siwx_agent: AsyncClient, payments_on,
+                                                       facilitator):
+    r = await siwx_agent.get(f"/call/{EP}?aweme_id=7")
+    assert r.status_code == 402 and r.json()["detail"]["reason"] == "credit_insufficient"
+    assert _siwx_extension(r) is None                  # the second 402 asks only for a payment
+    credential, payer = _x402_credential(r, siwx_agent.account)
+    paid = await siwx_agent.get(f"/call/{EP}?aweme_id=7", headers={"PAYMENT-SIGNATURE": credential})
+    assert paid.status_code == 200, paid.text
+    assert await _balance(payer) == FLOOR - EP_MICRO
+
+
+async def test_a_siwx_proof_is_used_once_and_only_for_its_request(wallet: AsyncClient, payments_on,
+                                                                  facilitator):
+    account = Account.create()
+    await _x402_paid(wallet, account)
+    challenge = await wallet.get(f"/call/{EP}?aweme_id=7")
+    proof = _siwx_proof(challenge, account)
+    assert (await wallet.get(f"/call/{EP}?aweme_id=7",
+                             headers={"SIGN-IN-WITH-X": proof})).status_code == 200
+    again = await wallet.get(f"/call/{EP}?aweme_id=7", headers={"SIGN-IN-WITH-X": proof})
+    assert again.status_code == 402 and again.json()["detail"]["reason"] == "payment_replayed"
+    other = await wallet.get(f"/call/{EP}?aweme_id=8",
+                             headers={"SIGN-IN-WITH-X": _siwx_proof(challenge, account)})
+    assert other.status_code == 402 and other.json()["detail"]["reason"] == "invalid_challenge"
+    forged = _siwx_proof(challenge, account, address=Account.create().address)
+    r = await wallet.get(f"/call/{EP}?aweme_id=7", headers={"SIGN-IN-WITH-X": forged})
+    assert r.status_code == 402 and r.json()["detail"]["reason"] == "verification_failed"
+
+
+async def test_a_tempo_credit_does_not_answer_a_siwx_proof(wallet: AsyncClient, payments_on, chain):
+    account = Account.create()
+    assert (await _mpp_paid(wallet, chain, account)).status_code == 200
+    challenge = await wallet.get(f"/call/{EP}?aweme_id=7")
+    r = await wallet.get(f"/call/{EP}?aweme_id=7",
+                         headers={"SIGN-IN-WITH-X": _siwx_proof(challenge, account)})
+    assert r.status_code == 402 and r.json()["detail"]["reason"] == "credit_insufficient"
+
+
+async def test_a_wallet_polls_with_siwx(wallet: AsyncClient, payments_on, facilitator):
+    account = Account.create()
+    await _x402_paid(wallet, account)
+    settles = facilitator.settles
+    challenge = await wallet.get(f"/call/{POLL}?id=someone-elses-task")
+    assert challenge.json()["detail"]["reason"] == "proof_required"
+    assert _siwx_extension(challenge) is not None
+    r = await wallet.get(f"/call/{POLL}?id=someone-elses-task",
+                         headers={"SIGN-IN-WITH-X": _siwx_proof(challenge, account)})
+    # The poll ran as the payer team, and treg's ownership check refused another team's task.
+    assert r.status_code == 403 and r.json()["detail"]["error"] == "async_resource_not_owned"
+    assert facilitator.settles == settles
+
+
+async def test_a_wallet_reads_its_credit_with_siwx(wallet: AsyncClient, payments_on, facilitator):
+    account = Account.create()
+    await _x402_paid(wallet, account)
+    challenge = await wallet.get("/agentpay/credit")
+    assert challenge.status_code == 402 and _siwx_extension(challenge) is not None
+    r = await wallet.get("/agentpay/credit",
+                         headers={"SIGN-IN-WITH-X": _siwx_proof(challenge, account)})
+    assert r.status_code == 200, r.text
+    view = r.json()
+    assert (view["network"], view["address"]) == ("eip155:84532", account.address.lower())
+    assert view["credit_micro"] == await _balance(account.address.lower())
+    payment, _ = _x402_credential(challenge, account)
+    refused = await wallet.get("/agentpay/credit", headers={"PAYMENT-SIGNATURE": payment})
+    assert refused.status_code == 402 and refused.json()["detail"]["reason"] == "proof_required"
+
+
+# ---- Base finality and mainnet settings ---------------------------------------------------------
+async def test_the_reconciler_reads_base_at_the_finalized_head(anon: AsyncClient, facilitator, evm):
+    await _stuck(anon, facilitator)
+    await agent_payments.reconcile()
+    assert evm.tags and set(evm.tags) == {"finalized"}
+
+
+def test_mainnet_x402_needs_its_own_rpc(monkeypatch):
+    from treg.config import Settings
+
+    _mainnet_x402(monkeypatch)
+    monkeypatch.delenv("TREG_AGENT_PAYMENTS_X402_RPC_URL")
+    with pytest.raises(ValueError, match="X402_RPC_URL"):
+        Settings()
+
+
 # ---- the Coinbase facilitator's API key -----------------------------------------------------------
 COINBASE = "https://api.cdp.coinbase.com/platform/v2/x402"
 
@@ -1222,6 +1705,7 @@ def _mainnet_x402(monkeypatch):
         "TREG_AGENT_PAYMENTS_X402_FACILITATOR_URL": COINBASE,
         "TREG_AGENT_PAYMENTS_X402_CDP_API_KEY_ID": "k",
         "TREG_AGENT_PAYMENTS_X402_CDP_API_KEY_SECRET": "s",
+        "TREG_AGENT_PAYMENTS_X402_RPC_URL": "https://base.example",
     }.items():
         monkeypatch.setenv(name, value)
 
@@ -1374,6 +1858,8 @@ def test_settling_to_stripe_needs_a_stripe_key(monkeypatch):
 async def test_a_tempo_rpc_key_goes_with_every_rpc_request(monkeypatch):
     from mpp.methods.tempo import server as tempo_server
 
+    from treg.infra.agent_payments import tempo as tempo_rail
+
     charge, given = tempo_server.charge, {}
 
     def spy(**kwargs):
@@ -1381,11 +1867,6 @@ async def test_a_tempo_rpc_key_goes_with_every_rpc_request(monkeypatch):
         return charge(**kwargs)
 
     monkeypatch.setattr(tempo_server, "charge", spy)
-    rail = MppTempoRail(secret="s" * 40, realm="registry.test", recipient=RECIPIENT,
-                        chain_id=42431, rpc_url="https://rpc.example/testnet",
-                        rpc_api_key="tempo_sandbox:sk:k")
-    client = given["http_client"]
-    assert client.headers["tempo-api-key"] == "tempo_sandbox:sk:k"
     sent: list[httpx.Request] = []
 
     def node(request: httpx.Request) -> httpx.Response:
@@ -1393,13 +1874,21 @@ async def test_a_tempo_rpc_key_goes_with_every_rpc_request(monkeypatch):
         return httpx.Response(200, json={"jsonrpc": "2.0", "id": 1,
                                          "result": {"number": "0x1", "timestamp": "0x1"}})
 
-    client._transport = httpx.MockTransport(node)
+    class Node(httpx.AsyncClient):
+        def __init__(self, **kwargs):
+            super().__init__(transport=httpx.MockTransport(node), **kwargs)
+
+    monkeypatch.setattr(tempo_rail, "httpx", SimpleNamespace(AsyncClient=Node))
+    rail = MppTempoRail(secret="s" * 40, realm="registry.test", recipient=RECIPIENT,
+                        chain_id=42431, rpc_url="https://rpc.example/testnet",
+                        rpc_api_key="tempo_sandbox:sk:k")
+    assert given["http_client"].headers["tempo-api-key"] == "tempo_sandbox:sk:k"
     await rail._chain.head()
     assert sent[0].headers["tempo-api-key"] == "tempo_sandbox:sk:k"
     assert str(sent[0].url) == "https://rpc.example/testnet"
 
     MppTempoRail(secret="s" * 40, realm="registry.test", recipient=RECIPIENT, chain_id=42431)
-    assert given["http_client"] is None
+    assert "tempo-api-key" not in given["http_client"].headers
 
 
 def test_a_tempo_rpc_key_needs_its_rpc_url(monkeypatch):
@@ -1444,3 +1933,91 @@ async def test_the_chain_search_stays_near_the_head_and_asks_for_logs_in_spans()
     assert await chain.block_at(when) == 9_999_000
     logs = await chain.logs(address="0x", topics=[], from_block=9_999_000, to_block=9_999_900)
     assert logs == [{"transactionHash": "0xhit"}] and len(chain.ranges) == 3
+
+
+# ---- what a check costs the global cap ----------------------------------------------------------
+async def test_credentials_refused_locally_do_not_spend_the_check_cap(anon: AsyncClient,
+                                                                       payments_on, facilitator,
+                                                                       monkeypatch):
+    monkeypatch.setattr(call_service, "relay", _fake_relay(200))
+    monkeypatch.setenv("TREG_AGENT_PAYMENTS_MAX_VERIFICATIONS_MINUTE", "1")
+    get_settings.cache_clear()
+    junk = [{"SIGN-IN-WITH-X": "x"}, {"PAYMENT-SIGNATURE": "x"}, {"Authorization": "Payment x"}]
+    for i, headers in enumerate(junk):
+        r = await anon.get(f"/call/{EP}?aweme_id=7",
+                           headers={**headers, "X-Forwarded-For": f"203.0.113.{i + 1}"})
+        assert r.status_code == 402, r.text
+    for expected in (200, 429):   # the one slot goes to the first check that reaches the facilitator
+        credential, _ = _x402_credential(await anon.get(f"/call/{EP}?aweme_id=7"))
+        r = await anon.get(f"/call/{EP}?aweme_id=7", headers={"PAYMENT-SIGNATURE": credential})
+        assert r.status_code == expected, r.text
+    assert facilitator.verifies == 1
+
+
+async def test_a_payment_checked_locally_still_spends_the_check_cap(anon: AsyncClient,
+                                                                    payments_on, chain,
+                                                                    monkeypatch):
+    """An MPP pull transfer is checked without the chain, but settling it is a broadcast."""
+    monkeypatch.setattr(call_service, "relay", _fake_relay(200))
+    monkeypatch.setenv("TREG_AGENT_PAYMENTS_MAX_VERIFICATIONS_MINUTE", "1")
+    get_settings.cache_clear()
+    for i, expected in enumerate((200, 429)):
+        challenge = await anon.get(f"/call/{EP}?aweme_id=7")
+        r = await anon.get(f"/call/{EP}?aweme_id=7", headers={
+            "Authorization": _mpp_credential(challenge, "0x76" + f"{i + 1}{i + 1}" * 40),
+            "X-Forwarded-For": f"203.0.113.{i + 1}"})
+        assert r.status_code == expected, r.text
+    assert chain.broadcasts == 1
+
+
+async def test_an_mpp_check_spends_the_cap_once_at_its_first_rpc():
+    import json
+
+    from mpp import Challenge, Credential
+
+    from treg.infra.agent_payments import Offer, PaymentRejected
+
+    rail = MppTempoRail(secret="s" * 40, realm="registry.test", recipient=RECIPIENT,
+                        chain_id=42431, rpc_url="http://rpc.invalid")
+    rpc: list[str] = []
+
+    def answer(request: httpx.Request) -> httpx.Response:
+        method = json.loads(request.content)["method"]
+        rpc.append(method)
+        return httpx.Response(200, json={"jsonrpc": "2.0", "id": 1,
+                                         "result": hex(42431) if method == "eth_chainId" else None})
+
+    rail._chain._client._transport = httpx.MockTransport(answer)
+
+    def offer(path: str) -> Offer:
+        return Offer(amount_micro=FLOOR, method="GET", path=path, query="",
+                     resource_url=f"https://registry.test{path}", description="x",
+                     host="registry.test")
+
+    async def credential(path: str) -> str:
+        challenge = Challenge.from_www_authenticate((await rail.challenge(offer(path)))[0][1])
+        return Credential(challenge=challenge.to_echo(),
+                          payload={"type": "hash", "hash": "0x" + "ab" * 32}).to_authorization()
+
+    spent: list[int] = []
+
+    async def hook() -> None:
+        spent.append(1)
+
+    with pytest.raises(PaymentRejected):   # issued for another route: refused before any RPC
+        await rail.verify(await credential("/call/other"), offer("/call/x"), before_remote=hook)
+    assert (spent, rpc) == ([], [])
+    with pytest.raises(PaymentRejected):   # reaches the chain: one slot, however many RPCs
+        await rail.verify(await credential("/call/x"), offer("/call/x"), before_remote=hook)
+    assert spent == [1] and rpc
+
+    class CapReached(Exception):
+        pass
+
+    async def full() -> None:
+        raise CapReached
+
+    calls = len(rpc)
+    with pytest.raises(CapReached):        # the cap's refusal is what the caller sees
+        await rail.verify(await credential("/call/x"), offer("/call/x"), before_remote=full)
+    assert len(rpc) == calls

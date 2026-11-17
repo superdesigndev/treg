@@ -38,6 +38,7 @@ _DATAPLANE_ONLY = (
     _CATALOG_CALL_ROUTE,
     _TABLE_ROUTE,
     *_TASK_ROUTES,
+    "GET,HEAD /agentpay/credit",
     "GET,HEAD /.well-known/oauth-protected-resource/mcp",
     "GET,HEAD /.well-known/oauth-protected-resource/mcp/",
     "GET,HEAD /.well-known/oauth-protected-resource/mcp/v2",

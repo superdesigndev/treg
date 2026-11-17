@@ -1,11 +1,12 @@
 """Agent payments: a caller with no treg credential pays a catalog call per call
 (docs/context/architecture/agent-payments.md).
 
-A payer is a wallet address with a payer team. A payment confirmed on chain is an ordinary
-`topup` on that team, then the call runs the normal road as the team: reserve, relay, settle or
-release. What a call does not use stays as the team's credit, and a later call whose quote the
-credit covers proves key control with a fresh, short-lived payment that treg does not settle;
-the reconciler checks each one after it expires and credits it if it was settled anyway.
+A payer is a wallet address on one network with a payer team. A payment confirmed on chain is
+an ordinary `topup` on that team, then the call runs the normal road as the team: reserve, relay,
+settle or release. What a call does not use stays as the team's credit. A later call whose quote
+the credit covers proves the wallet instead of paying: on MPP with a zero-amount proof (no money
+moves); on x402 with a fresh, short-lived payment that treg does not settle, which the reconciler
+checks after it expires and credits if it was settled anyway.
 
 No database session is open while a rail verifies, settles or looks a payment up. This module is
 the only writer of `AgentPayment`; `governance.teams.make_payer_team` stages the payer team.
@@ -17,8 +18,9 @@ each settled one there.
 from __future__ import annotations
 
 import asyncio
+import time
 import logging
-from collections.abc import Mapping, Sequence
+from collections.abc import Awaitable, Callable, Mapping, Sequence
 from dataclasses import dataclass, field, replace
 from datetime import timedelta
 
@@ -102,10 +104,13 @@ class PaymentPending(Exception):
 
 
 class RateLimited(Exception):
-    """Too many payments from one client address; no payment was checked."""
+    """Too many keyless requests from one client address, or too many payment checks across all
+    of them; nothing was checked or charged."""
 
-    detail = {"error": "rate_limited", "reason": "rate_limited",
-              "message": "too many payments from this address; wait a minute and send it again"}
+    def __init__(self, message: str = "too many payments from this address; wait a minute and "
+                                      "send it again") -> None:
+        super().__init__(message)
+        self.detail = {"error": "rate_limited", "reason": "rate_limited", "message": message}
 
 
 class PayerSuspended(Exception):
@@ -119,16 +124,59 @@ class PayerSuspended(Exception):
 
 RATE_NS = "agent_payments"
 RATE_WINDOW_S = 60
+PROOF_NS = "agentpay-proof"
+# A proof's claim outlives its challenge by this much, so a clock running behind cannot accept it.
+PROOF_CLAIM_GRACE_S = 300
 
 
-async def _admit_ip(client_ip: str) -> bool:
+def presents_payment(headers: Mapping[str, str]) -> bool:
+    return any(rail.presented(headers) for rail in _rails)
+
+
+async def limit_request(headers: Mapping[str, str], client_ip: str) -> None:
+    """Per client address, before any body is read: requests that carry a payment (each costs a
+    check) and requests that carry none (each is priced) have separate limits."""
+    settings = get_settings()
+    if presents_payment(headers):
+        key, cap = f"ip:{client_ip}", settings.agent_payments_max_payments_per_ip_minute
+        message = "too many payments from this address; wait a minute and send it again"
+    else:
+        key, cap = f"quote-ip:{client_ip}", settings.agent_payments_max_quotes_per_ip_minute
+        message = "too many requests from this address; wait a minute and send it again"
+    async with session_maker() as db:
+        await ratestore.sweep(db, RATE_NS)
+        ok = await ratestore.rate_check(
+            db, RATE_NS, ratestore.ip_limit(client_ip, cap, key=key), RATE_WINDOW_S, atomic=True)
+        await db.commit()
+    if not ok:
+        raise RateLimited(message)
+
+
+async def _limit_verification() -> None:
+    """A payment or proof check about to make a chain or facilitator call: one cap across all
+    clients, which many addresses cannot get around. The rail runs it only once local checks
+    have passed, so a credential refused locally (or a SIWX proof, checked locally) costs none."""
     async with session_maker() as db:
         ok = await ratestore.rate_check(
-            db, RATE_NS,
-            [(f"ip:{client_ip}", get_settings().agent_payments_max_payments_per_ip_minute)],
-            RATE_WINDOW_S)
+            db, RATE_NS, [("verify:all", get_settings().agent_payments_max_verifications_minute)],
+            RATE_WINDOW_S, atomic=True)
         await db.commit()
-    return ok
+    if not ok:
+        log.warning("agent payments: the payment check cap was reached")
+        raise RateLimited("treg is checking too many payments right now; wait a minute and send "
+                          "it again")
+
+
+def _once(hook: Callable[[], Awaitable[None]]) -> Callable[[], Awaitable[None]]:
+    """`hook`, run by the first call only: one request spends at most one check."""
+    spent = False
+
+    async def run() -> None:
+        nonlocal spent
+        if not spent:
+            spent = True
+            await hook()
+    return run
 
 
 class PaymentChallenge(Exception):
@@ -150,7 +198,7 @@ def consumes(name: str, value: str) -> bool:
 
 
 async def quote(*, rest: str, method: str, path: str, query: str,
-                query_items: tuple[tuple[str, str], ...], body: bytes) -> PaidOffer:
+                query_items: tuple[tuple[str, str], ...], body: bytes, host: str = "") -> PaidOffer:
     """The price of this call for a payer. Raises NotServed when the payment path does not serve
     it (not a catalog id, free, routed, own-account, or not on treg's key here)."""
     if reason := unserved(rest, method):
@@ -174,9 +222,17 @@ async def quote(*, rest: str, method: str, path: str, query: str,
     offer = Offer(
         amount_micro=amount, method=method.upper(), path=path, query=query,
         resource_url=f"{base}{path}" + (f"?{query}" if query else ""),
-        description=f"{ep['id']} on treg")
+        description=f"{ep['id']} on treg", host=_hostname(host))
     return PaidOffer(endpoint_id=ep["id"], quote_micro=charged, offer=offer,
                      proof_only=proof_only, is_async=bool(ep.get("async")))
+
+
+def _hostname(host: str) -> str:
+    """The Host header's name, lowercase, without its port."""
+    host = (host or "").strip().lower()
+    if host.startswith("["):
+        return host.split("]", 1)[0] + "]"
+    return host.rsplit(":", 1)[0] if host.count(":") == 1 else host
 
 
 def with_fee(amount_micro: int) -> int:
@@ -201,8 +257,8 @@ def wallet_view(ep: dict) -> dict | None:
         return None
     if async_utility(ep) and not wallet_refusal(ep, allow_free=True):
         return {"payable": True, "free_for_task_owner": True,
-                "note": "free for the wallet that started the task; sign a payment that is never "
-                        "settled"}
+                "note": "free for the wallet that started the task: it proves the wallet with a "
+                        "signature, and no money moves"}
     if reason := wallet_refusal(ep):
         return {"payable": False, "reason": reason,
                 "note": f"{_NOT_SERVED.get(reason, reason)}; sign in to call it"}
@@ -210,39 +266,60 @@ def wallet_view(ep: dict) -> dict | None:
     minimum = settings.agent_payments_min_payment_micro
     return {"payable": True, "protocols": [rail.protocol for rail in _rails],
             "minimum_payment_micro": minimum, "fee_bps": settings.agent_payments_fee_bps,
-            "note": f"pay per call with a wallet, no account; one payment is at least "
-                    f"${ledger.usd(minimum):g}, only the real price is charged, and what is not "
-                    "used stays as credit for the next calls (not refunded)." + _fee_note()}
+            "note": f"pay per call with a wallet, no account. A payment is at least "
+                    f"${ledger.usd(minimum):g}; the call is charged only its real price, and the "
+                    "rest stays as this wallet's credit for its next calls (credit is not paid "
+                    "back as money)." + _fee_note()}
 
 
 _HOW_TO_PAY = {"mpp": "MPP (WWW-Authenticate: Payment)", "x402": "x402 (PAYMENT-REQUIRED)"}
 
 
-async def challenge(paid: PaidOffer, *, reason: str = "", message: str = "") -> PaymentChallenge:
+async def _headers(rails, make) -> list[tuple[str, str]]:
     headers: list[tuple[str, str]] = []
-    for rail in _rails:
+    for rail in rails:
         try:
-            headers += await rail.challenge(paid.offer)
+            headers += await make(rail)
         except Exception:
             log.exception("agent payments: %s challenge failed", rail.protocol)
-    ways = " or ".join(_HOW_TO_PAY.get(rail.protocol, rail.protocol) for rail in _rails)
+    return headers
+
+
+async def challenge(paid: PaidOffer, *, reason: str = "", message: str = "",
+                    offer_proof: bool = True) -> PaymentChallenge:
+    """The 402. A returning wallet's zero-amount proof challenge comes first, because clients
+    answer the first challenge they can pay: a wallet whose credit covers the call then pays
+    nothing, and one whose credit does not is asked again with `credit_insufficient`, without it.
+    A free poll offers only what proves the wallet without settling."""
+    payers = [rail for rail in _rails if not paid.proof_only or rail.deferrable_payments]
+    provers = [rail for rail in _rails if offer_proof and rail.proves(paid.offer)]
+    headers = await _headers(_rails, lambda rail: rail.challenge(
+        paid.offer, pay=rail in payers, prove=rail in provers))
+    ways = " or ".join(_HOW_TO_PAY.get(rail.protocol, rail.protocol) for rail in payers)
+    proof_ways = _proof_ways(provers)
     settings = get_settings()
     minimum = settings.agent_payments_min_payment_micro
     amount, hold = paid.offer.amount_micro, paid.quote_micro
-    why = (f"the payment minimum, ${ledger.usd(minimum):g}" if amount > with_fee(hold)
-           else "the highest price this call can cost")
     if paid.proof_only:
-        message_text = (
-            f"This call is free for the wallet that started the task. Sign a "
-            f"${ledger.usd(amount):g} payment with that wallet ({ways}) and send the same request "
-            "again: treg checks the signature and never settles it.")
+        message_text = ("This call is free for the wallet that started the task. Prove that wallet "
+                        "and send the same request again: ")
+        message_text += f"sign {proof_ways}" if proof_ways else ""
+        if ways:
+            message_text += (", or " if proof_ways else "") + (
+                f"sign a payment with {ways} that treg checks and never settles")
+        message_text += ". No money moves."
     else:
+        pay = (f"${ledger.usd(amount):g} (the smallest payment)" if amount > with_fee(hold)
+               else f"${ledger.usd(amount):g}")
         message_text = (
-            f"Pay ${ledger.usd(amount):g} ({why}) with {ways} and send the same request again. "
-            f"The call holds up to ${ledger.usd(hold):g} and is charged only its real price; a "
-            "failed call or a call with no billable result is charged nothing. What the call does "
-            "not use stays as credit for this wallet's next calls and is not refunded."
-            + _fee_note() + " Or sign in and use a treg key.")
+            f"This call costs at most ${ledger.usd(hold):g}. Pay {pay} with {ways} and send the "
+            "same request again. treg charges only the real price after the call (a failed call "
+            "or one with no billable result costs nothing); the rest stays as this wallet's credit "
+            "for its next calls. Credit is not paid back as money." + _fee_note())
+        if proof_ways:
+            message_text += (f" A wallet that already has credit signs {proof_ways} instead and "
+                             "pays nothing now.")
+        message_text += " Or sign in and use a treg key."
         if paid.is_async:
             message_text += (" This tool starts a task: the hold stays open until the task ends. "
                              "Poll it with the same wallet; polling is free.")
@@ -262,9 +339,28 @@ async def challenge(paid: PaidOffer, *, reason: str = "", message: str = "") -> 
     return PaymentChallenge(detail, headers)
 
 
+_PROOF_WAY = {"mpp": "the zero-amount MPP challenge",
+              "x402": "the x402 sign-in-with-x (SIWX) challenge"}
+
+
+def _proof_ways(rails) -> str:
+    return " or ".join(_PROOF_WAY.get(rail.protocol, rail.protocol) for rail in rails)
+
+
+async def credit_short(paid: PaidOffer, org_id: int | None) -> PaymentChallenge:
+    """The 402 for a proven wallet whose credit does not cover the call: payment challenges only."""
+    credit = 0
+    if org_id is not None:
+        async with session_maker() as db:
+            credit = max(await ledger.balance_of(db, org_id), 0)
+    return await challenge(paid, reason="credit_insufficient", offer_proof=False,
+                           message=f"this wallet's credit (${ledger.usd(credit):g}) does not cover "
+                                   "this call")
+
+
 async def admit(paid: PaidOffer, headers: Mapping[str, str]) -> PayerAdmission:
-    """Verify the presented payment, settle it unless credit covers the call, and return the
-    payer team to call as. Raises PaymentChallenge when the payment cannot be used."""
+    """Verify the presented payment or proof, settle a payment unless credit covers the call, and
+    return the payer team to call as. Raises PaymentChallenge when it cannot be used."""
     presented = [(rail, cred) for rail in _rails if (cred := rail.presented(headers))]
     if not presented:
         raise await challenge(paid)
@@ -272,25 +368,33 @@ async def admit(paid: PaidOffer, headers: Mapping[str, str]) -> PayerAdmission:
         raise await challenge(paid, reason="ambiguous_payment",
                               message="send one payment credential, not several")
     rail, credential = presented[0]
+    check = _once(_limit_verification)
     try:
-        verified = await rail.verify(credential, paid.offer)
+        verified = await rail.verify(credential, paid.offer, before_remote=check)
     except PaymentRejected as exc:
         raise await challenge(paid, reason=exc.code, message=exc.message) from exc
+    if verified.kind == "proof":
+        return await _admit_proof(paid, verified)
+    # A verified payment is settled or looked up on chain next, even one its rail checked
+    # locally (an MPP pull transfer is first broadcast at settlement).
+    await check()
     max_life = get_settings().agent_payments_credit_proof_max_s
     if verified.deferrable and verified.expires_at > _now() + timedelta(seconds=max_life):
         verified = replace(verified, deferrable=False)
 
     if paid.proof_only:
-        org_id = await _known_payer_org(verified.payer)
+        org_id = await _known_payer_org(verified.network, verified.payer)
         if org_id is None:
             raise await challenge(paid, reason="unknown_wallet",
                                   message="this wallet has started no task on treg")
         if not verified.deferrable:
             raise await challenge(paid, reason="signature_needed",
-                                  message="send a signed payment that treg can check without "
-                                          f"settling it, expiring within {max_life} seconds")
+                                  message="prove the wallet with the zero-amount MPP challenge or "
+                                          "x402 sign-in-with-x, or an x402 payment that treg can "
+                                          f"check without settling it, expiring within {max_life} "
+                                          "seconds")
     else:
-        org_id = await _payer_org(verified.payer)
+        org_id = await _payer_org(verified.network, verified.payer)
     if reason := await _suspension(org_id):
         raise PayerSuspended(reason)
     payment_id, draw = await _claim(verified, org_id, paid.quote_micro)
@@ -316,6 +420,79 @@ async def admit(paid: PaidOffer, headers: Mapping[str, str]) -> PayerAdmission:
                 }) from exc
             raise await challenge(paid, reason=exc.code, message=exc.message) from exc
     return PayerAdmission(caller=await _caller(org_id), verified=verified, settlement=settlement)
+
+
+async def _admit_proof(paid: PaidOffer, verified: Verified) -> PayerAdmission:
+    """A zero-amount proof names the wallet and moves no money: the call runs on the credit that
+    wallet already holds on this network, or it is asked to pay."""
+    org_id = await _known_payer_org(verified.network, verified.payer)
+    if paid.proof_only:
+        if org_id is None:
+            raise await challenge(paid, reason="unknown_wallet",
+                                  message="this wallet has started no task on treg")
+    else:
+        credit = 0
+        if org_id is not None:
+            async with session_maker() as db:
+                credit = await ledger.balance_of(db, org_id)
+        if org_id is None or credit < paid.quote_micro:
+            raise await credit_short(paid, org_id)
+    if reason := await _suspension(org_id):
+        raise PayerSuspended(reason)
+    if not await _claim_proof(verified):
+        raise await challenge(paid, reason="payment_replayed", message="this proof was already used")
+    return PayerAdmission(caller=await _caller(org_id), verified=verified, settlement=None)
+
+
+REPLAY_NS = "agentpay-mpp"
+REPLAY_KEEP_S = 7 * 24 * 3600
+
+
+class ReplayStore:
+    """pympp's replay store (`mpp.store.ExpiringStore`) on treg's `Ephemeral` table, shared by
+    every instance. pympp claims transaction hashes in it before it broadcasts or accepts them."""
+
+    async def get(self, key: str):
+        async with session_maker() as db:
+            value = await ratestore.kv_get(db, REPLAY_NS, key)
+            await db.commit()
+        return None if value is None else value.get("v")
+
+    async def put(self, key: str, value) -> None:
+        async with session_maker() as db:
+            await ratestore.kv_put(db, REPLAY_NS, key, {"v": value}, ttl_s=REPLAY_KEEP_S)
+            await db.commit()
+
+    async def delete(self, key: str) -> None:
+        async with session_maker() as db:
+            await ratestore.kv_pop(db, REPLAY_NS, key)
+            await db.commit()
+
+    async def put_if_absent(self, key: str, value) -> bool:
+        return await self._claim(key, value, REPLAY_KEEP_S)
+
+    async def put_if_absent_until(self, key: str, value, expires_at: float) -> bool:
+        ttl = expires_at - time.time()
+        if not ttl > 0:
+            raise ValueError("expires_at must be a finite future Unix timestamp")
+        return await self._claim(key, value, ttl)
+
+    async def _claim(self, key: str, value, ttl_s: float) -> bool:
+        async with session_maker() as db:
+            await ratestore.sweep(db, REPLAY_NS)
+            claimed = await ratestore.kv_claim(db, REPLAY_NS, key, ttl_s, v={"v": value})
+            await db.commit()
+        return claimed
+
+
+async def _claim_proof(verified: Verified) -> bool:
+    """A proof is single-use: its challenge id is claimed once, for as long as it could be valid."""
+    ttl = max((verified.expires_at - _now()).total_seconds(), 0) + PROOF_CLAIM_GRACE_S
+    async with session_maker() as db:
+        await ratestore.sweep(db, PROOF_NS)
+        claimed = await ratestore.kv_claim(db, PROOF_NS, verified.proof_id, ttl)
+        await db.commit()
+    return claimed
 
 
 _inflight: set[asyncio.Task] = set()
@@ -353,20 +530,20 @@ async def _suspension(org_id: int) -> str | None:
         return "account_suspended" if not users or any(u.suspended for u in users) else None
 
 
-async def _known_payer_org(address: str) -> int | None:
+async def _known_payer_org(network: str, address: str) -> int | None:
     async with session_maker() as db:
-        payer = await db.get(AgentPayer, address)
+        payer = await db.get(AgentPayer, (network, address))
         return payer.org_id if payer is not None else None
 
 
-async def _payer_org(address: str) -> int:
+async def _payer_org(network: str, address: str) -> int:
     for _ in range(2):
         async with session_maker() as db:
-            payer = await db.get(AgentPayer, address)
+            payer = await db.get(AgentPayer, (network, address))
             if payer is not None:
                 return payer.org_id
             try:
-                org = await make_payer_team(db, address)
+                org = await make_payer_team(db, network, address)
                 await db.commit()
                 return int(org.id)
             except IntegrityError:
@@ -465,6 +642,7 @@ class PaidCall:
     caller: Caller
     headers: list[tuple[bytes, bytes]]   # the request's headers minus the payment credential
     admission: PayerAdmission
+    paid: PaidOffer
 
     async def answer_headers(self) -> list[tuple[str, str]]:
         """Which money paid, and the credit left once the call has settled or released."""
@@ -479,17 +657,81 @@ class PaidCall:
 async def open_call(*, rest: str, method: str, path: str, query: str,
                     query_items: tuple[tuple[str, str], ...], body: bytes,
                     headers: Mapping[str, str],
-                    raw_headers: Sequence[tuple[bytes, bytes]], client_ip: str) -> PaidCall:
+                    raw_headers: Sequence[tuple[bytes, bytes]]) -> PaidCall:
     """Price the call, take its payment or draw credit, and return the call to run. Raises
-    NotServed, RateLimited, PaymentChallenge or PaymentPending; no call has run when it raises."""
+    NotServed, RateLimited, PaymentChallenge or PaymentPending; no call has run when it raises.
+    `limit_request` has already run for this request."""
     paid = await quote(rest=rest, method=method, path=path, query=query,
-                       query_items=query_items, body=body)
-    if any(rail.presented(headers) for rail in _rails) and not await _admit_ip(client_ip):
-        raise RateLimited
+                       query_items=query_items, body=body, host=headers.get("host", ""))
     admission = await admit(paid, headers)
     relayed = [(name, value) for name, value in raw_headers
                if not consumes(name.decode("latin-1"), value.decode("latin-1"))]
-    return PaidCall(caller=admission.caller, headers=relayed, admission=admission)
+    return PaidCall(caller=admission.caller, headers=relayed, admission=admission, paid=paid)
+
+
+CREDIT_PATH = "/agentpay/credit"
+RECENT_PAYMENTS = 20
+
+
+class NotEnabled(Exception):
+    """The feature is off: the credit route does not exist."""
+
+
+async def credit_of(headers: Mapping[str, str]) -> dict:
+    """What a wallet holds on one network, after it proves the wallet with a proof (MPP's
+    zero-amount charge or x402's SIWX): its credit and its last payments. Read only. Raises
+    NotEnabled, RateLimited or PaymentChallenge."""
+    if not enabled():
+        raise NotEnabled
+    settings = get_settings()
+    base = settings.public_url.rstrip("/")
+    # x402 lists a payment beside its SIWX challenge (its format requires one); this route
+    # refuses it.
+    offer = Offer(amount_micro=max(settings.agent_payments_min_payment_micro, 1), method="GET",
+                  path=CREDIT_PATH, query="", resource_url=f"{base}{CREDIT_PATH}",
+                  description="this wallet's credit", host=_hostname(headers.get("host", "")))
+    provers = [rail for rail in _rails if rail.proves(offer)]
+    asked = PaymentChallenge(
+        {"error": "payment_required", "reason": "proof_required",
+         "message": (f"Prove the wallet: sign {_proof_ways(provers) or 'a wallet proof'} and send "
+                     "the same request again. No money moves.")},
+        await _headers(provers, lambda rail: rail.challenge(offer, pay=False, prove=True)))
+    presented = [(rail, cred) for rail in _rails if (cred := rail.presented(headers))]
+    if not presented:
+        raise asked
+    if len(presented) > 1:
+        asked.detail.update(reason="ambiguous_payment",
+                            message="send one proof, not several. " + asked.detail["message"])
+        raise asked
+    rail, credential = presented[0]
+    try:
+        verified = await rail.verify(credential, offer, before_remote=_limit_verification)
+    except PaymentRejected as exc:
+        asked.detail.update(reason=exc.code, message=f"{exc.message}. {asked.detail['message']}")
+        raise asked from exc
+    if verified.kind != "proof":
+        asked.detail.update(reason="proof_required",
+                            message="this route takes a wallet proof, not a payment. "
+                                    + asked.detail["message"])
+        raise asked
+    if not await _claim_proof(verified):
+        asked.detail.update(reason="payment_replayed",
+                            message="this proof was already used. " + asked.detail["message"])
+        raise asked
+    org_id = await _known_payer_org(verified.network, verified.payer)
+    credit, recent = 0, []
+    if org_id is not None:
+        async with session_maker() as db:
+            credit = max(await ledger.balance_of(db, org_id), 0)
+            rows = (await db.execute(
+                select(AgentPayment).where(AgentPayment.org_id == org_id)
+                .order_by(AgentPayment.created_at.desc(), AgentPayment.id.desc())
+                .limit(RECENT_PAYMENTS))).scalars().all()
+            recent = [{"at": row.created_at.isoformat() + "Z", "protocol": row.protocol,
+                       "amount_micro": row.amount_micro, "status": row.status,
+                       "reference": row.reference} for row in rows]
+    return {"network": verified.network, "address": verified.payer, "credit_micro": credit,
+            "recent": recent}
 
 
 def payment_headers(admission: PayerAdmission) -> list[tuple[str, str]]:

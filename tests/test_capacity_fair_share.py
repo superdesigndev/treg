@@ -206,9 +206,9 @@ async def test_a_freed_shared_place_goes_to_the_team_with_the_fewest_calls_in_pr
     elsewhere = await one.acquire("p", 9, 2)
     heavy = await two.acquire("p", 1, 2)                      # the account is full
     heavy_again = asyncio.create_task(two.acquire("p", 1, 2, max_wait_s=1))  # queues first...
-    await asyncio.sleep(0.05)
+    await _turns()
     light = asyncio.create_task(two.acquire("p", 2, 2, max_wait_s=1))        # ...the light team after
-    await asyncio.sleep(0.05)
+    await _turns()
     elsewhere.release()                                       # a place frees in the OTHER process
     slot = await asyncio.wait_for(light, 1)
     assert not heavy_again.done(), "the light team gets the shared place first"

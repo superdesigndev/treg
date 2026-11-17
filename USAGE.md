@@ -202,13 +202,27 @@ never billed to the balance.
 
 ## Review a catalog call
 
-`treg review <call_id> <useful|partly|not_useful|not_sure> [--reason "text"]` rates a catalog
-call after you have used the result. Phase 1 invites only direct catalog calls served on treg's
-own platform key; sampled calls print an invitation on stderr. Routed and own-key catalog calls
-can still be reviewed uninvited. `not_sure` is fine when you cannot tell. The optional reason is
+`treg review <call_id> <useful|partly|not_useful|not_sure> [--reason "text"] [--rows ROWS]`
+rates a catalog call after you have used the result. Invitations go to direct catalog calls served
+on treg's own platform key and to routed calls; sampled calls print an invitation on stderr.
+Own-key catalog calls can still be reviewed uninvited. When the result was partly or not useful,
+`--rows 2/email:wrong,5:missing` names the 0-based rows you found wrong (binary CLI). `not_sure` is fine when you cannot tell. The optional reason is
 1-200 characters after trimming. Omit private data and raw payloads. Use `feedback` for anything confusing or wrong, then keep going
 with the task. The receipt contains `review_id` and `status` (`received` or `already_reviewed`).
 If the call record is not written yet, retry shortly with the same call ID.
+
+## Mark a result you checked
+
+`treg mark <call_id> [item...] --basis <bounced|cross_checked|user_said|impression>` records what
+you found wrong, or confirmed right, in a call's result once you know. Each item is
+`[INDEX][/FIELD]:VERDICT` (INDEX the 0-based row, a bare verdict meaning the whole result) with a
+verdict of `correct`, `wrong`, `stale`, `wrong_entity`, `missing`, `irrelevant`, `duplicate` or
+`other`: `treg mark CALL_ID 2/email:wrong --basis bounced --checked 10`.
+`--checked N` says how many rows you looked at, `--evidence ID` names the call that showed it (a
+verify call), `--note` adds a private note and `--replaces MARK_ID` corrects an earlier mark (no
+items withdraws it). Marks are private and never change charges. The receipt contains `mark_id`
+and `status` (`received` or `already_received`). The binary CLI has this command; with the
+Python CLI, POST the same fields to `/marks` (see `/feedback.md`).
 
 ## Feedback
 
@@ -388,8 +402,8 @@ globally. The tool's `cli` profile (`bin`, `inject`, `deny`, `enabled`) configur
   with a warning). A member may run a tool whose key **they own**; a **shared** (teammate/admin) key
   requires the isolated runner **and** the server's `TREG_RUN_PROOF` (pass it as `--run-proof` at
   setup).
-- `--server` — disabled globally; `POST /run` returns 503 for every caller. `TREG_RUN_ALLOWED_BINS`
-  cannot re-enable server execution.
+- `--server` — disabled globally; `POST /run` returns 503 for every caller. The server holds no
+  CLI execution code.
 
 ```bash
 treg run stripe -- get /v1/balance          # local: CLI runs here, key injected, never held

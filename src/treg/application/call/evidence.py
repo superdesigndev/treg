@@ -9,7 +9,7 @@ import re
 import zlib
 from urllib.parse import quote, quote_plus, unquote
 
-from ... import crypto
+from ...infra import credential_cipher
 from ...config import get_settings
 from ...infra.upstream import injectors
 from ...models import Secret, Tool
@@ -125,7 +125,7 @@ def _secret_renderings(tool: Tool, secrets: dict[int, Secret]) -> list[str]:
         sid = binding.get("secret_id")
         if sid is None:
             continue
-        plain = crypto.decrypt(secrets[sid].value)
+        plain = credential_cipher.opened(secrets[sid])
         add_credential(plain)
         injector = binding.get("injector", "env")
         if injector not in ("oauth", "secret_file"):

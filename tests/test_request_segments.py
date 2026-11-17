@@ -270,8 +270,9 @@ def test_a_routed_child_records_the_filters_its_request_carries():
     adapter = cat.adapters["crawl4ai.people.search"]
     sent = {"company_domain": "acme.example", "title": "VP Sales", "country": "US",
             "location": "Austin", "limit": 40}
-    body = json.dumps({"where": {"company": {"domain": "acme.example", "country": "us", "city": "Austin"},
-                                 "person": {"title": "VP Sales"}}, "limit": 40}).encode()
+    body = json.dumps({"where": {"company": {"domain": "acme.example"},
+                                 "person": {"title": "VP Sales", "country": "us", "city": "Austin"}},
+                       "limit": 40}).encode()
     parent = ev.segment(_contract(), sent)[1]
     child = ev.segment(_contract(), ev.vendor_identity(adapter, _contract(), (), body))[1]
     keys = ("has_country", "country_iso2", "has_location", "location_kind", "limit_bucket",

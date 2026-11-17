@@ -79,7 +79,10 @@ endpoint ids to an operator freshness ceiling, and `TREG_ARCHIVE_HIT_REPEAT_PRIC
    written once on the provider YAML header and overridable per endpoint. Absent takes
    `archive_default_policy` (`transient`, flippable to `forbidden` by env). A judged `forbidden`
    is always respected and a missing entry is never stored. A judged entry must carry its quote,
-   source and date (`tests/test_archive.py`).
+   source and date (`tests/test_archive.py`). A deployment can also name providers in
+   `no_cache_providers` (env, read at catalog load): their endpoints load as
+   `cache: forbidden` and `response_retention: forbidden`, whatever the YAML says, so the
+   choice stays in the deployment's config rather than the public catalog.
 3. **Body in hand.** A metered answer is already buffered for the settle, so recording adds no
    latency. An own-key catalog answer is read whole only when it fits the size cap ("Own-key
    answers"). Own-tool calls (no catalog entry) are never touched.
@@ -92,7 +95,8 @@ Gates 1 and 2 are `archive.policy(entry)`. Also never recorded or served:
   resource. The serve path skips such rows (`_only_submits`) unless `terminal_on_submission`;
 - a body failing the endpoint's `expect` rule (lookup reports `result_error` for one already
   stored);
-- free final fetches that stream (`streamable_free_result`) and `spooled_response` answers: no
+- free final fetches and free `utility` lists that stream (`streamable_free_result`) and
+  `spooled_response` answers: no
   buffered body, so no empty or partial hash is recorded. A body over the 8 MiB settlement buffer
   fails before recording.
 

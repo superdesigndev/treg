@@ -19,6 +19,7 @@ sources:
   - src/treg/infra/db.py
   - src/treg/infra/money_admission.py
   - scripts/bench_money_admission.py
+  - scripts/bench_money_scaling.py
   - src/treg/email.py
   - src/treg/audit.py
   - scripts/dev-local.sh
@@ -49,6 +50,23 @@ before their `asyncio.run()` loop closes, so the serving loop never receives con
 closed loop; calling `maintenance.upgrade()` directly does not dispose it. `python -m treg keygen`
 prints a Fernet key for `TREG_SECRET_KEY`.
 
+Settings come from the environment and `.env`. With `TREG_AWS_SECRET_ID` set to a Secrets Manager
+ARN, startup also reads that secret, a JSON object keyed by the same `TREG_*` names, and its values
+win over the environment; a secret that cannot be read stops startup. The region is the ARN's, and
+boto3 takes credentials from the standard `AWS_*` variables.
+
+Stored credentials move to KMS in three deploys ([auth & secrets](../architecture/auth-secrets.md),
+Encryption): `TREG_KMS_KEY_ID` on every process that reads credentials, then `TREG_KMS_ENCRYPT_NEW`
+on all of them, then `treg-worker admin reencrypt-credentials` (`--dry-run` first) until it reports
+nothing left to re-seal. The KMS key stays as long as any row is sealed with it.
+
+Rotating `TREG_SECRET_KEY`: deploy `old,new` to every process that decrypts, so processes
+overlapping a rolling deploy can open what updated ones write; then deploy `new,old` everywhere;
+run `treg-worker admin rotate-fernet` until it reports nothing left (it covers Arena payloads and
+any stored credential still on Fernet); then set every process to `new` alone. Keep the old key
+out of the environment but retrievable for as long as a database backup from before the rotation
+can still be restored.
+
 The lifespan and every worker command call read-only `verify_db()`: an unstamped database or a known
 revision behind head is refused; an unknown newer revision (code older than schema) warns and serves,
 because additive revisions tolerate rollback. Startup never creates tables, stamps or runs release
@@ -59,7 +77,9 @@ tasks. If `TREG_SECRET_KEY` is empty on a non-SQLite database, `verify_db()` rai
 - **Rollback floors.** A revision marked `contract = True` is a hard floor: never run older code
   against it. `0034` (managed keys) is one because old code cannot enforce stored disable or revoke
   state. `0078` drops `onboardingprofile`; code older than it touches that table only while a
-  `TREG_ONBOARDING_V2*` setting is on, so keep those off on any rollback past it.
+  `TREG_ONBOARDING_V2*` setting is on, so keep those off on any rollback past it. `0106` rebuilds
+  `agentpayer` with a per-network key; code older than it writes that table only while
+  `TREG_AGENT_PAYMENTS_ENABLED` is on, so keep it off on any rollback past it.
 - **Revision-only schema.** An autogenerate drift guard requires Alembic head and
   `SQLModel.metadata` to match exactly. `reset_db()` uses `create_all` only to build a missing test
   schema and stamps it at head.
@@ -231,8 +251,13 @@ are Stripe deposit addresses from `treg-worker agentpay stripe-address`; needs
 `TREG_AGENT_PAYMENTS_STRIPE_SECRET_KEY`, the key of the Stripe account with stablecoins enabled, or
 `TREG_STRIPE_SECRET_KEY` when that is the same account, and an explicit
 `TREG_AGENT_PAYMENTS_TEMPO_CURRENCY`). Tempo's hosted RPC takes `TREG_AGENT_PAYMENTS_TEMPO_RPC_URL`
-with `TREG_AGENT_PAYMENTS_TEMPO_RPC_API_KEY`. See
-[agent payments](../architecture/agent-payments.md).
+with `TREG_AGENT_PAYMENTS_TEMPO_RPC_API_KEY`. x402 on Base mainnet also needs its own
+`TREG_AGENT_PAYMENTS_X402_RPC_URL` (a paid node: the reconciler reads it at
+`TREG_AGENT_PAYMENTS_X402_BLOCK_TAG`, default `finalized`). Keyless traffic is capped by
+`TREG_AGENT_PAYMENTS_MAX_PAYMENTS_PER_IP_MINUTE`, `TREG_AGENT_PAYMENTS_MAX_QUOTES_PER_IP_MINUTE`
+(unpaid requests) and `TREG_AGENT_PAYMENTS_MAX_VERIFICATIONS_MINUTE` (payment and proof checks
+that reach a chain or facilitator, across all clients). The x402 sign-in-with-x proof names `TREG_PUBLIC_URL`, so it must be the
+origin agents call. See [agent payments](../architecture/agent-payments.md).
 
 ## Optional money admission
 
@@ -263,6 +288,13 @@ small org set; disabling restores the database path, which remains authoritative
 loopback services via `TREG_TEST_DB_URL` and `TREG_TEST_KV_URL` (skipped without them); the bench
 requires database names starting `treg_admission_test` and resets that schema. Its timings are
 local synthetic evidence, not deployed throughput.
+
+`scripts/bench_money_scaling.py` takes the same two services and the same database-name guard. It
+runs the reserve and the settle of each call from separate OS processes and prints, per process
+count, one team's throughput, latency and database statements per call (BEGIN and COMMIT
+included), then checks the ledger.
+Use it to see whether a change lets a team's throughput grow with processes; its timings are
+local synthetic evidence too.
 
 ## Safe local mode
 

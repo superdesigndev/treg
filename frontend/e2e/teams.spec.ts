@@ -30,10 +30,13 @@ test('a slow answer for the team you left never replaces the team you switched t
     released = true
     await route.fulfill(json([{ id: 990001, name: 'first-team-only', base_url: 'https://first.example', bindings: [], bundle_id: null, cli: null }]))
   })
+  const staleAnswer = page.waitForEvent('requestfinished', request =>
+    request.url().endsWith('/tools') && request.headers()['x-treg-org'] === first.slug, { timeout: 5000 })
   await switchTo(page, 'First team')
   await switchTo(page, 'Second team')
-  await expect.poll(() => released, { timeout: 5000 }).toBe(true)
-  await page.waitForTimeout(300)
+  await staleAnswer
+  expect(released).toBe(true)
+  await page.evaluate(() => new Promise(done => requestAnimationFrame(() => requestAnimationFrame(done))))
   await expect(page.getByRole('button', { name: 'Teams' })).toContainText('Second team')
   await expect(page.getByText('first-team-only')).toHaveCount(0)
 })

@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import os
 import re
 from collections.abc import Mapping
 from dataclasses import dataclass, field
@@ -12,7 +13,7 @@ from typing import Literal
 from pydantic import AliasChoices, Field, PositiveInt, field_validator, model_validator
 from urllib.parse import urlsplit
 
-from pydantic_settings import BaseSettings, SettingsConfigDict
+from pydantic_settings import AWSSecretsManagerSettingsSource, BaseSettings, SettingsConfigDict
 
 # Every hostname the hosted service has answered to. treg moved
 # treg.superdesign.dev → treg.to; installed CLIs, skill.md files, .mcp.json configs and
@@ -117,11 +118,44 @@ class Settings(BaseSettings):
     model_config = SettingsConfigDict(env_file=".env", env_prefix="TREG_", extra="ignore",
                                       hide_input_in_errors=True)
 
+    @classmethod
+    def settings_customise_sources(cls, settings_cls, init_settings, env_settings, dotenv_settings,
+                                   file_secret_settings):
+        secret_id = os.environ.get("TREG_AWS_SECRET_ID", "").strip()
+        if not secret_id:
+            return init_settings, env_settings, dotenv_settings, file_secret_settings
+        # An ARN (arn:aws:secretsmanager:<region>:...) names its region; boto3 would otherwise read
+        # AWS_DEFAULT_REGION and ignore AWS_REGION. Credentials come from the standard AWS_* variables.
+        region = secret_id.split(":")[3] if secret_id.startswith("arn:") else None
+        secrets_manager = AWSSecretsManagerSettingsSource(
+            settings_cls, secret_id, region_name=region, case_sensitive=False, env_prefix="TREG_",
+            env_nested_delimiter=None)
+        return init_settings, secrets_manager, env_settings, dotenv_settings, file_secret_settings
+
     review_sample_rate: float = Field(default=0, ge=0, le=1)
     feedback_hint_rate: float = Field(default=0, ge=0, le=1)
     # Review invitations a team can receive per hour, whatever its call volume. Sampling decides
     # WHICH calls qualify; this decides how many of them a team is actually asked about.
     review_budget_per_hour: int = Field(default=5, ge=1)
+    # Targeted review invitations (application/review_targets.py): an endpoint holding fewer than
+    # `review_target_reviews` reviews in the last `review_target_window_days` (at most
+    # `review_target_team_cap` counted per team) is invited more often, up to `review_target_rate`
+    # when it has none. 0 = off: every call is sampled at `review_sample_rate`.
+    review_target_reviews: int = Field(default=0, ge=0)
+    review_target_rate: float = Field(default=1.0, ge=0, le=1)
+    review_target_window_days: int = Field(default=14, ge=1)
+    review_target_team_cap: int = Field(default=10, ge=1)
+    # The share of team-MCP credentials whose `call` tool shows `prior` (a review of the caller's
+    # previous call, sent along with the next one). 0 = nobody, the tool as before.
+    mcp_prior_review_rate: float = Field(default=0, ge=0, le=1)
+    # The mark invitation: after a call on one of these capabilities (an endpoint id equal to one,
+    # or ending in `.<capability>`; empty = every catalog call), sampled at `mark_hint_rate` and
+    # capped per team per hour. Each text is one A/B variant, `{call_id}` filled in, chosen per
+    # call; empty = the built-in text. Copy changes are configuration, not a release.
+    mark_hint_rate: float = Field(default=0, ge=0, le=1)
+    mark_hint_capabilities: list[str] = Field(default_factory=list)
+    mark_hint_per_hour: int = Field(default=3, ge=1)
+    mark_hint_texts: list[str] = Field(default_factory=list)
     # The shared key-value store (Redis protocol). Empty = an in-process fallback; see infra/kv.py.
     kv_url: str = ""
 
@@ -233,6 +267,19 @@ class Settings(BaseSettings):
     # Empty in dev means an ephemeral key is minted at startup (secrets won't survive a restart).
     secret_key: str = ""
 
+    # Stored credentials under AWS KMS envelope encryption (infra/credential_cipher.py). The key
+    # ARN lets this process read KMS-sealed values; kms_encrypt_new also seals new writes with it.
+    kms_key_id: str = ""
+    kms_encrypt_new: bool = False
+
+    @model_validator(mode="after")
+    def _kms_configuration(self):
+        if self.kms_key_id and not self.kms_key_id.startswith("arn:aws:kms:"):
+            raise ValueError("kms_key_id must be a KMS key or alias ARN")
+        if self.kms_encrypt_new and not self.kms_key_id:
+            raise ValueError("kms_encrypt_new requires kms_key_id")
+        return self
+
     api_token: str = "dev-token"
 
     # The Stripe sandbox restricted key (env TREG_DEMO_STRIPE_KEY) behind the landing sandbox's ONE
@@ -252,21 +299,6 @@ class Settings(BaseSettings):
     # by the member. Empty = shared-key local runs are refused (owned-secret runs still work). Set it
     # on the server AND install it via `treg setup-local-run --run-proof` to enable shared local runs.
     run_proof: str = ""
-
-    # `treg run --server` allow-list. The server only executes an entrypoint that is a catalog-known CLI
-    # (stripe/gh/vercel/…) OR listed here (comma-separated) — so a member can't name `bash`/`python` and
-    # run arbitrary code as the server user. Extend it as new CLIs are approved.
-    run_allowed_bins: str = ""
-
-    # Server-run resource limits (the DoS half of the server-run sandbox). Every `--server` run's child
-    # process gets these POSIX rlimits so a runaway or hostile CLI can't exhaust the host. On by default;
-    # a no-op where `resource` is unavailable (non-Unix). We deliberately do NOT cap address space or
-    # process count — a virtual-memory cap crashes Go-based CLIs (gh/stripe/doctl), and the per-user
-    # process cap is shared with the server itself. CPU-seconds + max-file-size + no-core-dumps are the
-    # safe, high-value guards. Set TREG_RUN_RLIMITS=false to disable entirely.
-    run_rlimits: bool = True
-    run_cpu_seconds: int = 300          # CPU time a single server run may burn (backstop to the wall timeout)
-    run_fsize_mb: int = 100             # largest single file a server run may write (disk-fill guard)
 
     # Platform markup on a call served by a PLATFORM key, applied to the estimate at reserve time and
     # to the observed cost at settle time. 0.0 = we charge exactly what the provider charges us.
@@ -764,6 +796,10 @@ class Settings(BaseSettings):
     # licence that was read and says no) is always respected, and actions are never stored, whatever
     # this says.
     archive_default_policy: str = "transient"
+    # Comma-separated provider ids whose answers this deployment never keeps: each of their
+    # endpoints loads as `cache: forbidden` and `response_retention: forbidden`, whatever its
+    # catalog row says. Read when the catalog loads, so a change takes a restart.
+    no_cache_providers: str = ""
     # The refresh worker (serve mode only): how often it scans for due keys, and how many
     # refresh calls ONE provider may spend per UTC day. A refresh is treg's own vendor spend with
     # no caller attached, so the cap is the brake — 0 disables refreshing without touching serving.
@@ -838,7 +874,9 @@ class Settings(BaseSettings):
     agent_payments_x402_asset_version: str = "2"
     agent_payments_x402_facilitator_url: str = "https://x402.org/facilitator"
     agent_payments_x402_max_timeout_s: int = Field(default=120, ge=10, le=3600)
-    agent_payments_x402_rpc_url: str = ""               # empty: the network's public RPC
+    agent_payments_x402_rpc_url: str = ""               # empty: the network's public RPC (testnet only)
+    # Which head the reconciler trusts a transfer at. `finalized`: no reorg can undo it.
+    agent_payments_x402_block_tag: Literal["latest", "safe", "finalized"] = "finalized"
     # A Coinbase Developer Platform API key, for its facilitator (mainnet). Both empty: no auth,
     # which the public testnet facilitator accepts. The secret is the Ed25519 key (base64) or a
     # legacy EC PEM key.
@@ -858,6 +896,10 @@ class Settings(BaseSettings):
     # Requests carrying a payment credential, per client IP per minute: each one costs a
     # signature check, and an x402 one a facilitator request.
     agent_payments_max_payments_per_ip_minute: int = Field(default=30, ge=1)
+    # Payment checks per minute across every client: each one may cost an RPC or facilitator call.
+    agent_payments_max_verifications_minute: int = Field(default=600, ge=1)
+    # Keyless requests with no payment, per client IP per minute: each one is priced.
+    agent_payments_max_quotes_per_ip_minute: int = Field(default=120, ge=1)
 
     @property
     def agent_payments_stripe_key(self) -> str:
@@ -903,6 +945,9 @@ class Settings(BaseSettings):
                 problems.append("TREG_AGENT_PAYMENTS_X402_PAY_TO")
             if x402_mainnet and not self.agent_payments_x402_cdp_api_key_id:
                 problems.append("TREG_AGENT_PAYMENTS_X402_CDP_API_KEY_ID and _SECRET (Base mainnet)")
+            if x402_mainnet and not self.agent_payments_x402_rpc_url:
+                # Money decisions read the chain; the public endpoint is rate-limited and unpinned.
+                problems.append("TREG_AGENT_PAYMENTS_X402_RPC_URL (a paid Base mainnet RPC)")
             if x402_mainnet and self.agent_payments_x402_asset.lower() != base_usdc:
                 problems.append(f"TREG_AGENT_PAYMENTS_X402_ASSET={base_usdc} (Base mainnet USDC)")
             if (self.agent_payments_x402_asset.lower() == base_usdc
@@ -1332,6 +1377,13 @@ class Settings(BaseSettings):
         """Provider-registry review keys awaiting production access."""
         return frozenset(
             key.strip().lower() for key in self.oauth_review_pending.split(",") if key.strip()
+        )
+
+    @property
+    def no_cache_providers_set(self) -> frozenset[str]:
+        """Provider ids whose answers this deployment never stores."""
+        return frozenset(
+            key.strip().lower() for key in self.no_cache_providers.split(",") if key.strip()
         )
 
     @property
