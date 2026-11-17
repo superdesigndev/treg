@@ -70,7 +70,11 @@ Everything else in this file is guidance; these are the contract, and they win o
    same address, each attempt billed as usual, and reports it in `_treg.confirmation`; the answer
    returned is the first provider's, unaltered. With `X-Treg-Route-Decisive`, an email check keeps
    asking providers until one answers valid or invalid, each attempt billed as usual, and reports it
-   in `_treg.decision`; the answer returned is the deciding provider's, unaltered. Responses needing settlement or ownership evidence are buffered by the application
+   in `_treg.decision`; the answer returned is the deciding provider's, unaltered. With
+   `X-Treg-Route-Domain-Match: strict`, an email find that sent a domain keeps asking providers past a
+   hit at another mail domain, each attempt billed as usual, at most two more such hits; the answer
+   returned is the first on-domain hit, or else the first off-domain one, unaltered and flagged
+   (`_treg.domain_match: false`). Responses needing settlement or ownership evidence are buffered by the application
    up to 8 MiB; exceeding that limit fails without charging, never returns a successful prefix.
    An endpoint declaring `spooled_response` (inline media) instead reads its metered 2xx to an
    unlinked temp file under a per-body cap and per-process budget, settles from only the paths its

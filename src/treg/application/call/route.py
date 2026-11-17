@@ -26,6 +26,9 @@ descriptor (`task_id` + poll endpoint) so the caller can resume; `cost_micro` is
 When the caller sent a domain and the hit carries an email, `_treg.domain_match` (and
 `X-Treg-Domain-Match`) says whether the mailbox domain matches. A LinkedIn-only child that returns
 a former employer still counts as a hit and is billed; the flag discloses the mismatch.
+`X-Treg-Route-Domain-Match: strict` (opt-in) makes such an off-domain hit weak: the waterfall goes
+on, at most two more off-domain hits, each attempt at its own price, and the first off-domain
+answer comes back unaltered only when no on-domain hit turns up.
 
 When the caller sent `limit` and the serving child (or a merge) returns more rows, every row stays
 and `_treg.limit_exceeded` / `X-Treg-Limit-Exceeded` say so — paid rows are never trimmed.
@@ -206,13 +209,15 @@ DECISIVE_HEADER = "x-treg-route-decisive"
 QUALITY_HEADER = "x-treg-route-quality"
 UPGRADE_HEADER = "x-treg-route-upgrade"
 COMPLETE_HEADER = "x-treg-route-complete"
+DOMAIN_MATCH_HEADER = "x-treg-route-domain-match"
 _DROP_FROM_CHILD = frozenset({b"content-length", b"content-type", b"transfer-encoding", b"idempotency-key",
                               b"x-treg-route-waterfall", b"x-treg-route-max-cost", b"x-treg-route-prefer",
                               b"x-treg-route-exclude", b"x-treg-route-min-results",
                               b"x-treg-route-merge", b"x-treg-route-strict-filters",
                               b"x-treg-route-verify", b"x-treg-route-confirm",
                               b"x-treg-route-decisive", b"x-treg-route-quality",
-                              b"x-treg-route-upgrade", b"x-treg-route-complete", b"host",
+                              b"x-treg-route-upgrade", b"x-treg-route-complete",
+                              b"x-treg-route-domain-match", b"host",
                               # the child's answer is parsed here: the relay then asks for identity
                               b"accept-encoding"})
 _CALLER_FAULT = frozenset({400, 401, 403, 404, 405, 409, 422})
@@ -435,6 +440,7 @@ class RouteOptions:
     quality: bool = False    # ask providers in order of measured answer quality (`X-Treg-Route-Quality`)
     upgrade: str | None = None  # re-ask by this identity key when the hit carries it (`X-Treg-Route-Upgrade`)
     complete: bool = False   # only a full answer about the subject asked counts (`X-Treg-Route-Complete`, see `_complete_check`)
+    domain_strict: bool = False  # an off-domain email hit is weak (`X-Treg-Route-Domain-Match: strict`)
 
     @classmethod
     def from_headers(cls, get, default_max_cost_micro: int | None = None) -> "RouteOptions":
@@ -461,12 +467,16 @@ class RouteOptions:
         ql = str(get(QUALITY_HEADER) or "").strip().lower()
         up = str(get(UPGRADE_HEADER) or "").strip()
         cp = str(get(COMPLETE_HEADER) or "").strip().lower()
+        dm = str(get(DOMAIN_MATCH_HEADER) or "").strip().lower()
+        if dm not in ("", "off", "strict"):
+            raise ResolutionFailed("catalog_parameter_invalid", status_code=400, rule="type",
+                                   detail=f"{DOMAIN_MATCH_HEADER} must be strict or off, got {get(DOMAIN_MATCH_HEADER)!r}")
         return cls(waterfall=wf not in ("0", "false", "no", "off"),
                    max_cost_micro=max_cost, prefer=_list(get(PREFER_HEADER)), exclude=_list(get(EXCLUDE_HEADER)),
                    min_results=mr, merge=mg in ("1", "true", "yes", "on"), strict_filters=sf in ("1", "true", "yes", "on"),
                    verify=vf in ("1", "true", "yes", "on"), confirm=cf in ("1", "true", "yes", "on"),
                    decisive=dc in ("1", "true", "yes", "on"), quality=ql in ("1", "true", "yes", "on"),
-                   upgrade=up or None, complete=cp in ("1", "true", "yes", "on"))
+                   upgrade=up or None, complete=cp in ("1", "true", "yes", "on"), domain_strict=dm == "strict")
 
 
 class _Bytes:
@@ -1200,6 +1210,16 @@ async def _run_routed(parent: CallContext, ep: dict, body_bytes: bytes, get_head
             "message": (f"{DECISIVE_HEADER} needs the waterfall; drop {WATERFALL_HEADER}: 0. " if contract and contract.verdict_decisive else
                         f"{DECISIVE_HEADER} works only on {', '.join(decidable)}; {ep['id']} has no deciding verdict words. ")
                        + "Nothing was charged."})
+    if options.domain_strict and (contract is None or not contract.advice_domain_mismatch or not options.waterfall):
+        # Refused before anything is planned or held, like confirm: an agent must not believe an
+        # off-domain hit was looked past.
+        matchable = sorted(f"treg.{cap}" for cap, c in catalog_store.load().contracts.items() if c.advice_domain_mismatch)
+        raise ResolutionFailed("catalog_parameter_invalid", status_code=422, rule="unsupported", detail={
+            "error": "route_domain_match_unsupported", "endpoint_id": ep["id"],
+            "message": (f"{DOMAIN_MATCH_HEADER} needs the waterfall; drop {WATERFALL_HEADER}: 0. "
+                        if contract and contract.advice_domain_mismatch else
+                        f"{DOMAIN_MATCH_HEADER} works only on {', '.join(matchable)}. ")
+                       + "Nothing was charged."})
     if options.upgrade and (contract is None or (options.upgrade,) not in contract.identity
                             or options.upgrade not in contract.output):
         # Refused before anything is planned or held: the caller would believe a second lookup ran.
@@ -1252,6 +1272,7 @@ async def _run_routed(parent: CallContext, ep: dict, body_bytes: bytes, get_head
     admission_refusals: list[admission.AdmissionDenied] = []  # treg money the team may not use
     team_busy: list[CallFailure] = []  # treg's own transient team-level refusals (_TEAM_BUSY)
     unconfirmed: list[tuple[str, tuple]] = []   # X-Treg-Route-Confirm: hits waiting for a second provider
+    off_domain: list[tuple] = []   # X-Treg-Route-Domain-Match: strict: hits at another mail domain, the first kept as the fallback
     errored: list[tuple[Attempt, str]] = []     # answered-but-failed attempts and their child call ids
     confirmed_by: str | None = None
     # X-Treg-Route-Decisive: answers whose verdict did not decide, the word that came back, and the
@@ -1635,6 +1656,12 @@ async def _run_routed(parent: CallContext, ep: dict, body_bytes: bytes, get_head
             if weak_hits > MAX_WEAK_FALLBACKS:
                 break
             continue
+        if options.domain_strict and _email_domain_match(plan.identity, core) is False:
+            tried[-1].outcome, tried[-1].detail = "weak", "email at another domain than the one asked"
+            off_domain.append((cand, doc, core, raw))
+            if len(off_domain) > MAX_WEAK_FALLBACKS:
+                break
+            continue
         if options.decisive:
             word = catalog_results.verdict(cand.endpoint["id"], response.status, raw)
             if word not in plan.contract.verdict_decisive:
@@ -1667,6 +1694,8 @@ async def _run_routed(parent: CallContext, ep: dict, body_bytes: bytes, get_head
         winner = undecided[0]        # nobody decided: the first answer, already paid for, marked undecided
     if winner is None and best is not None:
         winner = best[1]          # nobody cleared min_results — the fullest answer we paid for wins
+    if winner is None and off_domain:
+        winner = off_domain[0]    # nothing on-domain: the first off-domain answer, already paid for, still flagged
     if winner is None:
         if tried and len(rate_waits) == len(tried):
             wait = min(rate_waits)
@@ -1802,7 +1831,8 @@ async def _run_routed(parent: CallContext, ep: dict, body_bytes: bytes, get_head
     elif options.verify:
         verification = _unchecked("no_hit")   # a miss is never checked; say why
     # Disclose whether the hit's mailbox domain matches the domain the caller sent. Never alter
-    # the answer: a LinkedIn-only child that returns a former employer is still a billed hit.
+    # the answer: a LinkedIn-only child that returns a former employer is still a billed hit
+    # (under `X-Treg-Route-Domain-Match: strict`, returned only when nothing on-domain turned up).
     domain_match = (_email_domain_match(plan.identity, output)
                     if winner_outcome in ("hit", "weak") else None)
     if (domain_match is False and plan.contract.advice_domain_mismatch and not advice_locked):

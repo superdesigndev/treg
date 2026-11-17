@@ -991,8 +991,8 @@ returned and never documented as stable. An output field may say where it lands 
   `X-Treg-Route-Prefer` is never reordered). The numbers come from an operator scorer's
   `<route_quality_prefix><capability>/routing.json` in a private bucket (`infra/route_quality.py`,
   cached; a request waits at most a second on a cold cache); without it the header keeps price order.
-- Confirm or Decisive on a contract without the declaration, or with `X-Treg-Route-Waterfall: 0`, is
-  a 422 before anything is held.
+- Confirm, Decisive or Domain-Match on a contract without the declaration, or with
+  `X-Treg-Route-Waterfall: 0`, is a 422 before anything is held.
 - A filter typed `int` may declare a range: `min` (required, a whole number of at least 1) and `max`
   (optional, a whole number of at least `min`); anything else fails the load. The routed row shows
   the range, and the routed call refuses a sent value that is not a whole number in it, read as a
@@ -1281,7 +1281,12 @@ an invalid extra never disables the primary.
 - **Domain match on email finds**: with a caller `domain` (or `company_domain` / `website`) and an
   `email` hit, `_treg.domain_match` / `X-Treg-Domain-Match` disclose whether the mailbox host
   matches (as call events store `answer_flags.domain_match`); `advice_domain_mismatch` names it. The
-  hit is still billed and unaltered.
+  hit is still billed and unaltered. `X-Treg-Route-Domain-Match: strict` (opt-in, only on a contract
+  that sets `advice_domain_mismatch`, refused with 422 under `Waterfall: 0`) makes an off-domain
+  hit `weak`: the waterfall goes on, at most `MAX_WEAK_FALLBACKS` more off-domain hits, and the first
+  off-domain answer wins only when nothing on-domain turns up (after unconfirmed, undecided and
+  thin fallbacks). Off by default because the host comparison is exact: a sibling or staff mail
+  domain of the same company reads as off-domain.
 - **The answer says what it ignored**: `ignored_filters` on `_treg` and `X-Treg-Ignored-Filters`.
   `X-Treg-Route-Strict-Filters: 1` drops candidates that cannot express a sent filter
   (`strict: true` in `dropped`) and answers 422 `route_no_candidate`, unbilled, when none is left; a
