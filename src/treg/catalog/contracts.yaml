@@ -1631,7 +1631,7 @@ contracts:
     summary: "LinkedIn job search by keyword — provider-native rows in `jobs`; call events only, never routed"
     routed: false
     identity:
-      - {q: str}
+      - {q: list}   # a search may name several titles (Apify `jobTitles`): hashed as their set
     filters:
       location: {type: str, analytics: value}
     output:

@@ -853,3 +853,16 @@ def test_a_count_over_several_companies_hashes_the_whole_set(monkeypatch):
     assert one["input_id"] == same["input_id"] and one["input_type"] == "company_domain+title"
     assert none["input_type"] == "title"
     assert "domain_class" not in (one["input_meta"] or {})
+
+
+def test_a_job_search_over_several_titles_hashes_the_set(monkeypatch):
+    monkeypatch.setenv("TREG_CALL_EVENTS_HMAC_SECRET", SECRET)
+    get_settings.cache_clear()
+    apify = "apify.linkedin.search.jobs"
+    both = _direct_input(apify, body={"jobTitles": ["Engineer", "designer"]})
+    turned = _direct_input(apify, body={"jobTitles": ["Designer", "engineer"]})
+    one = _direct_input(apify, body={"jobTitles": ["Rust developer"]})
+    crawl = _direct_input("crawl4ai.linkedin.search.jobs", body={"query": "rust  developer"})
+    get_settings.cache_clear()
+    assert both["input_id"] and both["input_id"] == turned["input_id"] != one["input_id"]
+    assert one["input_id"] == crawl["input_id"]
