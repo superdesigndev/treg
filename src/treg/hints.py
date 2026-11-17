@@ -19,7 +19,7 @@ def sampled(kind: Literal["review", "feedback", "mark"], sample_id: str) -> bool
 MARK_HINT = (
     "If you later learn rows of this result were wrong or right (an email bounced, another "
     "source disagreed, the user corrected it), mark them: treg mark {call_id} INDEX[/FIELD]:VERDICT "
-    "--basis bounced|cross_checked|user_said, or MCP mark. Only what you checked; batching at the "
+    "(INDEX the 0-based row) --basis bounced|cross_checked|user_said, or MCP mark. Only what you checked; batching at the "
     "end is fine. Private, never changes charges. Keep going with the task."
 )
 
