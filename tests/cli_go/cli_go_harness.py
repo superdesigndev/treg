@@ -49,6 +49,7 @@ def cli_env(home: Path, env: dict[str, str] | None = None) -> dict[str, str]:
     base = {k: v for k, v in os.environ.items() if not k.startswith("TREG_") and k not in (
         "CLAUDECODE", "CLAUDE_CODE_SESSION_ID", "CLAUDE_PID", "CODEX_THREAD_ID", "CODEX_SESSION_ID",
         "CODEX_SANDBOX", "CODEX_CI", "CURSOR_AGENT", "CURSOR_TRACE_ID", "GEMINI_CLI", "NO_COLOR",
+        "COPILOT_CLI", "COPILOT_AGENT_SESSION_ID", "COPILOT_AGENT", "GITHUB_COPILOT_AGENT",
         "DO_NOT_TRACK")}
     base |= {"HOME": str(home), "TREG_CONFIG": str(home / ".treg" / "config.json"),
              "TREG_TELEMETRY": "0", "PYTHONIOENCODING": "utf-8"}

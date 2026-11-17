@@ -171,6 +171,19 @@ def test_rejected_env_token(fake, tmp_path, go_bin):
     _assert_same(py, go)
 
 
+@pytest.mark.parametrize("env,runtime", [
+    ({"COPILOT_CLI": "1", "COPILOT_AGENT_SESSION_ID": "94be"}, "copilot-cli"),
+    ({"COPILOT_AGENT": "1"}, "copilot-vscode"),
+])
+def test_only_the_binary_names_copilot(fake, tmp_path, go_bin, env, runtime):
+    """A documented difference (cli-binary.md): the frozen Python CLI calls a command Copilot runs `cli`."""
+    fake.route("/call/hdr", Canned(200, {}, b"{}"))
+    py, go, py_seen, go_seen = _both(fake, tmp_path, go_bin, ["call", "hdr"], env={"TREG_TELEMETRY": "1", **env})
+    _assert_same(py, go)
+    assert py_seen[0].headers.get("x-treg-client") == "cli"
+    assert go_seen[0].headers.get("x-treg-client") == runtime
+
+
 def test_org_override_and_session_headers(fake, tmp_path, go_bin):
     fake.route("/call/hdr", Canned(200, {}, b"{}"))
     env = {"TREG_TELEMETRY": "1", "TREG_SESSION_ID": "task-42", "CLAUDECODE": "1", "TREG_ORG": "other"}
