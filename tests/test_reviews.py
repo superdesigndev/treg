@@ -85,7 +85,7 @@ async def test_routed_attribution(clients, monkeypatch, child):
         await db.commit()
     assert (await submit(clients, org)).status_code == 201
     row, = await rows()
-    assert row.invited is False
+    assert row.invited is True  # routed calls are invited, recomputed from the parent's tier
     assert row.routed_via == 'treg.search'
     assert row.endpoint_id == ('winner.search' if child else 'treg.search')
     assert row.provider == ('winner' if child else 'treg')
@@ -95,7 +95,7 @@ async def test_routed_attribution(clients, monkeypatch, child):
     ('platform', 1, 200, False, True), ('platform', 0, 200, False, False),
     ('platform', 1, 500, False, False), ('platform', 1, 200, True, False),
     ('credential', 1, 200, False, False), ('tool', 1, 200, False, False),
-    ('routed', 1, 200, False, False), (None, 1, 200, False, False),
+    ('routed', 1, 200, False, True), ('routed', 0, 200, False, False), (None, 1, 200, False, False),
 ])
 async def test_invited_recomputed(clients, monkeypatch, tier, rate, status, cached, invited):
     monkeypatch.setattr(get_settings(), 'review_sample_rate', rate)

@@ -130,16 +130,22 @@ the whole answer), optional `checked`, `evidence_call_id`, a private `note` and 
 
 ## Review and feedback invitations
 
-`application.call.invite.invitation(context, status, replayed)` runs in `routers.call.call_tool`
-after the response is built and before it streams, and returns `review`, `mark`, `feedback` or
-nothing, in that order of precedence. The
-router sends `X-Treg-Hint: review|mark|feedback` (plus `X-Treg-Review: requested` on a review, read by
-CLI releases up to 0.18, and `X-Treg-Hint-Text` on a mark) and emits one `hint_attached` event per invitation sent. Surfaces only translate
+`application.call.invite.invitation(context, status, replayed, accepts)` runs in
+`routers.call.call_tool` after the response is built and before it streams, and returns `review`,
+`mark`, `feedback` or nothing, in that order of precedence. `accepts` is what the client says it
+shows (`X-Treg-Hints: review,mark,feedback`, parsed by `accepted_kinds`); a client that does not
+send the header gets `LEGACY_KINDS` (review and feedback), since released CLIs drop any other kind
+in silence. A kind outside `accepts` is skipped before its budget is spent, so the call falls
+through to the next. The team `/mcp/` sends all three. The router sends
+`X-Treg-Hint: review|mark|feedback` with its words in `X-Treg-Hint-Text` (`hints.header_text`; plus
+`X-Treg-Review: requested` on a review, read by CLI releases up to 0.18) and emits one
+`hint_attached` event per invitation sent. Surfaces only translate
 the header: the CLI prints a stderr line, the team `/mcp/` renders it into its single hint slot with
 priority replay > 402 > review > mark > feedback. `/mcp/v2/` and OpenAI's clients on `/mcp/` render none,
 so for them `hint_attached` counts an invitation the agent never saw.
 
-- **Review**: a direct catalog call on treg's platform key, 2xx, not replayed, not archive-served,
+- **Review**: a direct catalog call on treg's platform key, or a routed parent (credited to the
+  child that answered, as an uninvited routed review always was), 2xx, not replayed, not archive-served,
   sampled by `hints.sampled("review", call_ref)`, and within the per-team budget
   `kv.store().take("review-budget:<org_id>", review_budget_per_hour, 3600)`. Per-call sampling scales
   with volume, so the budget caps how often a busy team is asked. There is deliberately no

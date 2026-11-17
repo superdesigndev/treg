@@ -783,7 +783,9 @@ async def _api(token: str, *, client_name: str = "mcp"):
         timeout=_TIMEOUT,
         # X-Treg-Client is attribution, not auth: without it every MCP-originated call lands
         # in the audit trail as client="", indistinguishable from unreported CLI traffic.
-        headers={**await _internal_auth(token), "X-Treg-Client": client_name, **host,
+        # Every invitation kind: this surface renders each into the hint slot (`_call_impl`).
+        headers={**await _internal_auth(token), "X-Treg-Client": client_name,
+                 "X-Treg-Hints": "review,mark,feedback", **host,
                  **client_ip.forwarding_headers(_caller_ip.get())},
     ) as client:
         yield client

@@ -32,7 +32,7 @@ from ..application.call.service import (
     create_call_context,
     execute_call,
 )
-from ..application.call.invite import catalog_endpoint, invitation
+from ..application.call.invite import accepted_kinds, catalog_endpoint, invitation
 from ..application.call.intake import (
     META_HEADER,
     CallMeta,
@@ -463,15 +463,14 @@ async def _relay_answer(request: Request, context, upstream: UpstreamResponse, r
     try:
         # Optional invitation, decided before the body streams (application/call/invite.py).
         kind = await invitation(context, response.status_code,
-                                replayed=bool(response.headers.get("X-Treg-Idempotent-Replay")))
+                                replayed=bool(response.headers.get("X-Treg-Idempotent-Replay")),
+                                accepts=accepted_kinds(request.headers.get("X-Treg-Hints")))
         if kind is not None:
             response.headers["X-Treg-Hint"] = kind
-            variant = None
             if kind == "review":
                 response.headers["X-Treg-Review"] = "requested"  # read by CLI <= 0.18
-            elif kind == "mark":
-                variant, text = hints.mark_hint(context.call_ref)
-                response.headers["X-Treg-Hint-Text"] = text
+            variant, text = hints.header_text(kind, context.call_ref)
+            response.headers["X-Treg-Hint-Text"] = text
             _capture_hint(request, context, kind, variant)
     except Exception:  # noqa: BLE001 - a fault here can only lose the hint header
         pass  # A fault here can only lose the header; the answer is already built.

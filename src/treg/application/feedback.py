@@ -115,7 +115,7 @@ async def submit_review(
             if child is not None and child.endpoint_id:
                 endpoint_id, provider = child.endpoint_id, child.provider
         invited = (200 <= record.status_code < 300 and not record.cached
-                   and record.credential_tier == "platform"
+                   and record.credential_tier in ("platform", "routed")
                    and hints.sampled("review", call_id))
         existing = await reviews.get(db, call_id, org_id)
         if existing is not None:

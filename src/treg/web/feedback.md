@@ -113,11 +113,13 @@ Keep private information, credentials, full conversations and raw requests, resp
 out of the reason. Replace sensitive values with placeholders, not hashes. Use `feedback` for
 anything confusing or wrong. Keep going with your task after rating.
 
-Phase 1 invites only direct catalog calls served on treg's own platform key. Routed and own-key
-catalog calls can still be reviewed uninvited.
+Invitations go to direct catalog calls served on treg's own platform key and to routed calls
+(`treg.<capability>`). Own-key catalog calls can still be reviewed uninvited.
 
 CLI invitations appear on stderr; plain HTTP invitations use `X-Treg-Hint: review` (with
-`X-Treg-Review: requested` alongside for older clients). A sampled `X-Treg-Hint: feedback` is a
+`X-Treg-Review: requested` alongside for older clients) and carry the words to show in
+`X-Treg-Hint-Text`. Send `X-Treg-Hints: review,mark,feedback` to say which invitations your
+client shows; without it you get review and feedback only. A sampled `X-Treg-Hint: feedback` is a
 lighter nudge to report friction and asks for nothing.
 MCP invitations appear in the call result's hint. Use the call ID in the response:
 
@@ -125,7 +127,9 @@ MCP invitations appear in the call result's hint. Use the call ID in the respons
 treg review CALL_ID partly --reason "Some results helped answer the question."
 ```
 
-MCP: `review(call_id="CALL_ID", usefulness="partly", reason="Some results helped answer the question.")`.
+With the rows you found wrong (binary CLI): `treg review CALL_ID partly --rows 2/email:wrong,5:missing`.
+
+MCP: `review(call_id="CALL_ID", usefulness="partly", reason="Some results helped answer the question.", rows=[{"index": 2, "field": "email", "verdict": "wrong"}])`.
 HTTP: POST to `{BASE}/reviews` with your `X-Treg-Token` and JSON:
 
 ```json

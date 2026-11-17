@@ -199,6 +199,9 @@ async def test_feedback_hint_rides_plain_http_on_any_successful_call(clients, mo
     assert 'X-Treg-Review' not in response.headers
 
 
+SHOWS_ALL = {'X-Treg-Hints': 'review,mark,feedback'}
+
+
 def _mark_only(monkeypatch, **settings):
     for field, value in {'review_sample_rate': 0, 'feedback_hint_rate': 0, 'mark_hint_rate': 1,
                          'mark_hint_capabilities': [], 'mark_hint_texts': [], **settings}.items():
@@ -212,7 +215,7 @@ async def test_mark_hint_carries_its_text_and_variant(clients, monkeypatch):
     _mark_only(monkeypatch, mark_hint_texts=['A {call_id} \u2014 caf\u00e9', '  ', 'B {call_id}'])
     events = []
     monkeypatch.setattr(analytics, 'capture', lambda *args, **kw: events.append((args, kw)))
-    response = await clients.get('/call/example.search')
+    response = await clients.get('/call/example.search', headers=SHOWS_ALL)
     assert response.status_code == 200 and response.content == b'{}'
     assert response.headers['X-Treg-Hint'] == 'mark'
     assert 'X-Treg-Review' not in response.headers
@@ -241,29 +244,29 @@ def test_mark_hint_default_text_and_stable_variant(monkeypatch):
 async def test_mark_hint_only_on_listed_capabilities(clients, monkeypatch, capabilities, expected):
     _platform_call(monkeypatch)
     _mark_only(monkeypatch, mark_hint_capabilities=capabilities)
-    assert (await clients.get('/call/example.search')).headers.get('X-Treg-Hint') == expected
+    assert (await clients.get('/call/example.search', headers=SHOWS_ALL)).headers.get('X-Treg-Hint') == expected
 
 
 @pytest.mark.parametrize('tier', ['platform', 'credential', 'routed'])
 async def test_mark_hint_on_any_catalog_tier_never_on_own_tools(clients, monkeypatch, tier):
     _platform_call(monkeypatch, tier=tier)
     _mark_only(monkeypatch)
-    assert (await clients.get('/call/example.search')).headers.get('X-Treg-Hint') == 'mark'
+    assert (await clients.get('/call/example.search', headers=SHOWS_ALL)).headers.get('X-Treg-Hint') == 'mark'
 
 
 async def test_mark_hint_never_on_own_tools(clients, monkeypatch):
     _platform_call(monkeypatch, own=True)
     _mark_only(monkeypatch)
-    assert (await clients.get('/call/example.search')).headers.get('X-Treg-Hint') is None
+    assert (await clients.get('/call/example.search', headers=SHOWS_ALL)).headers.get('X-Treg-Hint') is None
 
 
 async def test_mark_hint_budget_then_review_wins(clients, monkeypatch):
     _platform_call(monkeypatch)
     _mark_only(monkeypatch, mark_hint_per_hour=1, feedback_hint_rate=1)
-    kinds = [(await clients.get('/call/example.search')).headers.get('X-Treg-Hint') for _ in range(3)]
+    kinds = [(await clients.get('/call/example.search', headers=SHOWS_ALL)).headers.get('X-Treg-Hint') for _ in range(3)]
     assert kinds == ['mark', 'feedback', 'feedback']
     monkeypatch.setattr(get_settings(), 'review_sample_rate', 1)
-    assert (await clients.get('/call/example.search')).headers.get('X-Treg-Hint') == 'review'
+    assert (await clients.get('/call/example.search', headers=SHOWS_ALL)).headers.get('X-Treg-Hint') == 'review'
 
 
 async def test_mark_hint_rides_a_real_routed_call(clients, enrichment_on, monkeypatch):
@@ -277,12 +280,58 @@ async def test_mark_hint_rides_a_real_routed_call(clients, enrichment_on, monkey
     _mark_only(monkeypatch, mark_hint_capabilities=['people.email.find'])
     events = []
     monkeypatch.setattr(analytics, 'capture', lambda *args, **kw: events.append((args, kw)))
-    response = await clients.post(f'/call/{ROUTED}', json={'full_name': 'Patrick Collison', 'domain': 'stripe.com'})
+    response = await clients.post(f'/call/{ROUTED}', headers=SHOWS_ALL, json={'full_name': 'Patrick Collison', 'domain': 'stripe.com'})
     assert response.status_code == 200, response.text
     assert response.headers.get('X-Treg-Hint') == 'mark'
     sent, = [a[2] for a, _ in events if a[1] == 'hint_attached']
     assert sent['endpoint_id'] == ROUTED
     assert response.headers['X-Treg-Hint-Text'] == hints.mark_hint(response.headers['X-Treg-Call-Id'])[1]
+
+
+async def test_a_client_that_does_not_say_never_gets_a_mark_and_spends_no_budget(clients, monkeypatch):
+    """Released CLIs drop a mark in silence: they get the feedback hint instead."""
+    from treg.application.call import invite
+
+    _platform_call(monkeypatch)
+    _mark_only(monkeypatch, mark_hint_per_hour=1, feedback_hint_rate=1)
+    legacy = [(await clients.get('/call/example.search')).headers.get('X-Treg-Hint') for _ in range(2)]
+    assert legacy == ['feedback', 'feedback']
+    shown = (await clients.get('/call/example.search', headers=SHOWS_ALL)).headers.get('X-Treg-Hint')
+    assert shown == 'mark'
+    only_review = await clients.get('/call/example.search', headers={'X-Treg-Hints': 'review'})
+    assert only_review.headers.get('X-Treg-Hint') is None
+    assert invite.accepted_kinds(None) == invite.LEGACY_KINDS
+    assert invite.accepted_kinds(' Review , MARK ,') == frozenset({'review', 'mark'})
+
+
+@pytest.mark.parametrize('kind', ['review', 'feedback'])
+async def test_review_and_feedback_carry_server_words(clients, monkeypatch, kind):
+    _platform_call(monkeypatch)
+    for field, value in {'review_sample_rate': int(kind == 'review'), 'mark_hint_rate': 0,
+                         'feedback_hint_rate': 1}.items():
+        monkeypatch.setattr(get_settings(), field, value)
+    from treg import analytics
+    events = []
+    monkeypatch.setattr(analytics, 'capture', lambda *args, **kw: events.append((args, kw)))
+    response = await clients.get('/call/example.search')
+    assert response.headers['X-Treg-Hint'] == kind
+    call_id, = [a[2]['call_id'] for a, _ in events if a[1] == 'hint_attached']
+    assert response.headers['X-Treg-Hint-Text'] == hints.header_text(kind, call_id)[1]
+    assert call_id in response.headers['X-Treg-Hint-Text']
+    if kind == 'review':
+        assert '--rows' in response.headers['X-Treg-Hint-Text']
+
+
+async def test_review_is_invited_on_a_real_routed_call(clients, enrichment_on, monkeypatch):
+    from treg.application.call import service as call_service
+    from test_routing import ROUTED, _relay_by_provider
+
+    monkeypatch.setattr(call_service, 'relay', _relay_by_provider(
+        {'tomba': [(200, {'data': {'email': 'patrick@stripe.com', 'score': 99}})]}, []))
+    monkeypatch.setattr(get_settings(), 'review_sample_rate', 1)
+    response = await clients.post(f'/call/{ROUTED}', json={'full_name': 'Patrick Collison', 'domain': 'stripe.com'})
+    assert response.status_code == 200, response.text
+    assert response.headers.get('X-Treg-Hint') == 'review'
 
 
 @pytest.mark.parametrize('own', [True, False])
