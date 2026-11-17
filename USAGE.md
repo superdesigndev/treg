@@ -318,8 +318,8 @@ mail domain than the `domain` you sent: that hit is `weak`, and the waterfall go
 at its own price inside `X-Treg-Route-Max-Cost`, for at most two more off-domain hits. The first
 on-domain hit wins; when none turns up, the first off-domain answer comes back unaltered, with
 `_treg.outcome: weak`, `_treg.domain_match: false` and the advice. A request without a domain is
-not affected. With `X-Treg-Route-Waterfall: 0`, or on another routed tool, the header is refused
-(422, unbilled). Off by default: a company's staff may use a mail domain other than its website's,
+not affected. `true` and `1` mean `strict`; `off`, `false` and `0` mean off; any other value is a 400.
+With `X-Treg-Route-Waterfall: 0`, or on another routed tool, the header is refused (422, unbilled). Off by default: a company's staff may use a mail domain other than its website's,
 and strict mode would look past those addresses too.
 
 `X-Treg-Route-Decisive: true` on `treg.people.email.verify` counts an answer only when it decides:

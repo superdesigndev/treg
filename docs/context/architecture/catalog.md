@@ -1281,7 +1281,7 @@ an invalid extra never disables the primary.
 - **Domain match on email finds**: with a caller `domain` (or `company_domain` / `website`) and an
   `email` hit, `_treg.domain_match` / `X-Treg-Domain-Match` disclose whether the mailbox host
   matches (as call events store `answer_flags.domain_match`); `advice_domain_mismatch` names it. The
-  hit is still billed and unaltered. `X-Treg-Route-Domain-Match: strict` (opt-in, only on a contract
+  hit is still billed and unaltered. `X-Treg-Route-Domain-Match: strict` (or `true` / `1`; opt-in, only on a contract
   that sets `advice_domain_mismatch`, refused with 422 under `Waterfall: 0`) makes an off-domain
   hit `weak`: the waterfall goes on, at most `MAX_WEAK_FALLBACKS` more off-domain hits, and the first
   off-domain answer wins only when nothing on-domain turns up (after unconfirmed, undecided and

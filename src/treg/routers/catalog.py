@@ -740,7 +740,7 @@ async def catalog_endpoint(
                                                    "running also pending, call_id and async (task_id + poll) — "
                                                    "cost_micro is then a hold settled later (GET /calls/{{call_id}})"}
                            if contract and contract.check else {}),
-                        **({"X-Treg-Route-Domain-Match": "strict = when you sent a domain, an email hit at another domain does not "
+                        **({"X-Treg-Route-Domain-Match": "strict (or true) = when you sent a domain, an email hit at another domain does not "
                                                          "end the call: the waterfall goes on (at most two more such hits), each "
                                                          "attempt at its own price, inside X-Treg-Route-Max-Cost; the first "
                                                          "off-domain answer comes back (outcome weak, domain_match false) only when "
