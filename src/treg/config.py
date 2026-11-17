@@ -410,6 +410,7 @@ class Settings(BaseSettings):
     platform_key_blitzapi: str = ""  # x-api-key; monthly record allowance, free key-info balance
     platform_key_mobiusengine_jobs: str = ""  # x-api-key; prepaid USD balance, free GET /v1/balance
     platform_key_hirebase: str = ""  # x-api-key; Growth plan: monthly job allowance then per-job overage
+    platform_key_texastaxapi: str = ""  # Bearer; prepaid credits, X-Credits-Remaining on every keyed answer
     platform_key_anyapi: str = ""  # X-API-Key; prepaid USD wallet, exact charge settles from costUsd
     platform_key_dropleads: str = ""  # X-API-Key; PAYG credits priced in fx.yaml
     platform_key_quickenrich: str = ""  # Bearer; monthly subscription credits, not auto-top-up

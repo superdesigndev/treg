@@ -457,6 +457,18 @@ async def _hirebase(c, key):
             "note": f"jobs meter, overage_mode {jobs.get('overage_mode')}; 429 limit_exceeded at the cap when block"}
 
 
+async def _texastaxapi(c, key):
+    # Free: the county read spends no credit and answers 401 for a bad key. Every keyed answer carries
+    # the account's whole credit balance in X-Credits-Remaining; past zero a lookup answers 402
+    # quota-exceeded unless auto top-up or pay as you go is on.
+    r = await c.get("https://api.texastaxapi.com/v1/counties/48453", headers={"Authorization": f"Bearer {key}"})
+    r.raise_for_status()
+    raw = r.headers.get("x-credits-remaining", "")
+    if not raw.isdigit():
+        raise ValueError("Texas Tax API returned no credit balance")
+    return {"value": int(raw), "unit": "credits", "note": "prepaid credit balance; one credit a billed call"}
+
+
 async def _mobiusengine_jobs(c, key):
     # Free: GET /v1/balance spends nothing and answers 401 for a bad key. A wallet account answers its prepaid
     # dollars; an account on a monthly plan answers mode "plan" and no balance, which is not a usable slot.
@@ -1161,6 +1173,7 @@ BALANCE_ROUTES = {
     "blitzapi": _blitzapi,
     "mobiusengine_jobs": _mobiusengine_jobs,
     "hirebase": _hirebase,
+    "texastaxapi": _texastaxapi,
     "prospeo": _prospeo,
     "aiark": _aiark,
     "wiza": _wiza,

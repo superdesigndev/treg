@@ -4398,6 +4398,33 @@ HIREBASE = OAuthProvider(
 )
 
 
+TEXASTAXAPI = OAuthProvider(
+    service="texastaxapi",
+    display_name="Texas Tax API",
+    auth_kind="key",
+    token_label="API key",
+    token_placeholder="tta_…",
+    # Bearer header only; a key in a query string or any other header is not read.
+    token_header="Authorization",
+    token_format="Bearer {secret}",
+    setup_url="https://texastaxapi.com/account/keys",
+    setup_action_label="Get your Texas Tax API key",
+    setup_steps=(
+        "Sign in at texastaxapi.com with your email address; a new account gets 200 free credits for 14 days.",
+        "Open Account, then API keys, and create a key (it starts with tta_).",
+    ),
+    setup_note="One credit per resolved lookup or owner page with a candidate; misses, errors and county reads are free.",
+    auth_uri="", token_uri="",
+    scopes={},
+    client_id_setting="", client_secret_setting="",
+    category="Research & public data",
+    summary="Look up a Texas property's taxing units, including MUDs, PIDs and ESDs, with rates and estimated taxes, by address, parcel id or owner name.",
+    base_url="https://api.texastaxapi.com/v1",
+    docs_url="https://texastaxapi.com/docs",
+    probe_path="/counties/48453",  # free; a bad key gets HTTP 401 {"error": {"code": "unauthorized", ...}}
+)
+
+
 # Lever's Postings API serves every published posting without a key. The API key Lever documents
 # applies only to the application POST, which is not listed.
 LEVER = OAuthProvider(
@@ -4441,6 +4468,8 @@ REGISTRY: dict[str, OAuthProvider] = {
         # Market data API-key providers
         COINGECKO, POLYGON, FINNHUB, TWELVEDATA, FMP, EODHD, MARKETSTACK, TIINGO,
         FINANCIALDATASETS,
+        # Research & public data API-key providers
+        TEXASTAXAPI,
         # Advertising: API-key ad intelligence + unconfigured OAuth ad platforms
         SPYFU, APIFY, META_AD_LIBRARY, SERPAPI, DANSUGC,
         MICROSOFT_ADS, SNAPCHAT_ADS, TIKTOK_ADS, PINTEREST_ADS,

@@ -64,6 +64,8 @@ _TABLE: list[Signature] = [
     Signature("leadocean", 429, r"fair-use pace reached", "quota"),
     # MobiusEngine.ai Jobs Data: an empty prepaid balance is a 402 {"error": {"code": "insufficient_balance", ...}}.
     Signature("mobiusengine-jobs", 402, r"insufficient_balance", "balance", tripwire=True),
+    # Texas Tax API: no credits, auto top-up or pay as you go left is a 402 {"error": {"code": "quota-exceeded", ...}}.
+    Signature("texastaxapi", 402, r"quota-exceeded", "balance", tripwire=True),
     # Hirebase: a spent monthly meter is a 429 with `X-Billing-Code: limit_exceeded` and "You've reached your
     # plan's included usage of N"; its rate-limit 429 says "Rate limit exceeded" with Retry-After. Meters are
     # per operation (jobs, companies, insights, benchmarks), so lock the endpoint only. A request whose

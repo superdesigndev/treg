@@ -1,0 +1,74 @@
+provider: texastaxapi
+source:
+  docs: https://texastaxapi.com/docs
+  openapi: https://api.texastaxapi.com/v1/openapi.json
+  curated: '2026-11-17'
+pricing_url: https://texastaxapi.com/pricing
+# Billing: one credit per resolved lookup (a 200) or owner page with a candidate (a 200); every other
+# answer is free, misses included. Pay as you go bills $0.03 a lookup plus a 3.5% fee line; credit packs
+# from $20 cost less a lookup. Every keyed answer carries X-Credits-Remaining, the account's credit balance.
+# Probe: GET /v1/counties/48453 is free; a bad key answers 401 {"error": {"code": "unauthorized", …}}.
+limits: "10 requests per 10 s per key on free credits, 100 per 10 s once the account has bought credits or added a card (429 rate-limited with Retry-After). Each county's tax roll has its own shared request rate (503 upstream-busy, Retry-After: 10)."
+proposed_capabilities:
+  property.tax.units: "Find every taxing unit a property pays (county, city, school district, MUD, PID, ESD) with its tax rate and estimated tax, by the property's address or parcel id"
+  property.owner.search: "Find a county's parcels by owner name, with each parcel id and address"
+  property.tax.county: "List the taxing units of a county and whether its property tax data can be looked up"
+defaults:
+  provenance: {source: docs, source_url: 'https://texastaxapi.com/pricing', checked: '2026-11-17', confidence: documented}
+
+endpoints:
+  - id: texastaxapi.property.tax.units
+    added: '2026-11-17'
+    capability: property.tax.units
+    platform: property
+    scope: any_account
+    method: GET
+    path: /lookup
+    name: Texas property tax units and rates by address or parcel id
+    summary: "Look up a Texas property by street address or parcel id: its parcel, appraised value, owner and every taxing unit its county's tax roll lists, including MUDs, PIDs and ESDs, with each unit's rate and estimated tax."
+    input:
+      queryParams:
+        address: {type: string, required: false, note: "one line with the city or ZIP, and the unit if any; at most 200 characters", example: "1700 Guadalupe St, Austin, TX 78701"}
+        parcel_id: {type: string, required: false, note: "the parcel's account as the county prints it, or an owner search candidate's parcel_id; send with county", example: "150000000101001010"}
+        county: {type: string, required: false, note: "the county's 5-digit FIPS code, 48001 to 48507; only with parcel_id", example: "48423"}
+      note: "Send address, or parcel_id with county: never both, never neither."
+    test_request: {queryParams: {address: "100 N Broadway Ave, Tyler, TX 75702"}}
+    price: {value: '0.03105', currency: USD, per: 1, unit: call, note: "Only a resolved lookup is billed: $0.03 on pay as you go plus its 3.5% fee line."}
+    miss: {status: [404], means: "No parcel on the county's tax roll matches the address or parcel id; not billed."}
+    docs_url: https://texastaxapi.com/docs
+
+  - id: texastaxapi.property.owner.search
+    added: '2026-11-17'
+    capability: property.owner.search
+    platform: property
+    scope: any_account
+    method: GET
+    path: /parcels
+    name: Texas parcels by owner name
+    summary: "Search one Texas county's parcels by owner name as the county's records print it, surname first; each candidate has the parcel_id texastaxapi.property.tax.units takes with the county, the situs address and the owner names."
+    input:
+      queryParams:
+        county: {type: string, required: true, note: "the county's 5-digit FIPS code, 48001 to 48507", example: "48423"}
+        owner: {type: string, required: true, note: "the owner's name or its start, surname first; 2 to 100 characters", example: "SMITH COUNTY COURTHOUSE"}
+        page: {type: integer, required: false, default: 1, min: 1, max: 1000, note: "a page can be short or empty while a later one holds more: follow next until it is null"}
+    test_request: {queryParams: {county: "48423", owner: "SMITH COUNTY COURTHOUSE"}}
+    price: {value: '0.03105', currency: USD, per: 1, unit: call, note: "Only a page with at least one candidate is billed: $0.03 on pay as you go plus its 3.5% fee line."}
+    miss: {status: [404], means: "This page holds no candidate, or is past the last; not billed. next names a page that can still hold one."}
+    note: "A name too common for the county's tax roll to list in full answers 422 owner-search-incomplete: send more of it."
+    docs_url: https://texastaxapi.com/docs
+
+  - id: texastaxapi.property.tax.county
+    added: '2026-11-17'
+    capability: property.tax.county
+    platform: property
+    scope: any_account
+    method: GET
+    path: /counties/{fips}
+    name: Texas county property tax coverage and taxing units
+    summary: "Read one Texas county's coverage state and the taxing units the Comptroller lists for it, with their types. Free."
+    input:
+      pathParams:
+        fips: {type: string, required: true, note: "the county's 5-digit FIPS code, 48001 to 48507", example: "48453"}
+    test_request: {pathParams: {fips: "48453"}}
+    price: {value: '0', currency: USD, unit: call, note: "The county read is free; it still needs a key."}
+    docs_url: https://texastaxapi.com/docs
