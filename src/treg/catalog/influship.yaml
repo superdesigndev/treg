@@ -62,6 +62,7 @@ endpoints:
     reserve: {rows: {param: body.limit, default: {value: 25, source: docs}, max: 100}}
     settle: {reported: {header: X-Credits-Charged, unit: usd, scale: 0.01}, worst_case: '2.25'}
     miss: {when: {path: response.data, op: empty}}
+    bill: {miss: charged}
     docs_url: https://docs.influship.com/api-reference/search/ai-powered-creator-search
 
   - id: influship.creators.search.results
@@ -191,6 +192,7 @@ endpoints:
       queryParams: {q: "nasa", limit: 1}
     price: {value: '0.0005', currency: USD, per: 1, unit: call}
     miss: {when: {path: response.data, op: empty}}
+    bill: {miss: charged}
     docs_url: https://docs.influship.com/api-reference/creators/autocomplete-search
 
   - id: influship.creators.profile
@@ -346,6 +348,7 @@ endpoints:
       queryParams: {query: "nasa"}
     price: {value: '0.0018', currency: USD, per: 1, unit: call, note: "per page of results, an empty page included"}
     miss: {when: {path: response.data.videos, op: empty}}
+    bill: {miss: charged}
     docs_url: https://docs.influship.com/api-reference/live-scraping/search-tiktok-videos
 
   - id: influship.youtube.channel.profile
