@@ -122,7 +122,16 @@ display-only `*_usd` twin: **never compute against the USD field.**
 `CallCharge` (revision 0109) is a queue beside them: what one call cost, keyed by `call_id`, held
 until the transaction that applies it to the blocks deletes it. `allowance.record_charges`
 (`domain/money/allowance.py`) queues a batch in one statement, applies the margin, and skips a
-`call_id` already queued; no call path uses it yet, and no balance depends on it. `Hold.allowance` and
+`call_id` already queued. `allowance.fold_charges_in_transaction` applies up to a batch of one
+team's queued rows: it locks the team's allowance hold, deletes the rows it claims, draws each
+charge from the blocks in the usual order, and writes that call's `settle` entry stamped with the
+fold's instant (not the call's, so a reader that pages the ledger by time never has a row appear
+behind its cursor). The charged total comes out of the allowance hold; what the hold cannot cover
+comes straight out of the balance, as an overrun does at `settle`. A queue row's primary key stops
+a second recording only until the row is folded, so the fold also drops any claimed row whose call
+already has a `settle` entry. The daily counter moves as it does at `settle`: consumed goes in, and
+the covered part comes out only when the hold was opened today. No call path uses either function
+yet. `Hold.allowance` and
 `Hold.heartbeat_at` (revision 0110) are likewise ahead of their code: false and null on every row,
 so every hold is still one call's reservation. `settle`, `release` and the stale-hold sweep
 already skip a hold marked `allowance`: it stands behind many calls, and closing it as one call's
