@@ -38,6 +38,10 @@ contracts:
     miss: "email == null"
     idempotent: true            # a lookup — error-fallback to the next provider is safe
     one_subject: true           # every variant names one person: cost per hit ranks first
+    # crawl4ai (Lead) first: it answers in well under a second, a miss is a free 404, and it
+    # returned nothing for invented people in our fake-person check, so a miss costs only a short
+    # hop before the cost-per-hit order. A published route rule for a segment still goes first.
+    prefer: [crawl4ai]
     # The provider's own claim, stored per call; a finder with no `verified` output stores none.
     verdict: {from: verified, words: [verified, unverified], map: {true: verified, false: unverified}}
     # Attached as `_treg.advice` when a hit's `verified` is not true. A find is a guess the provider
