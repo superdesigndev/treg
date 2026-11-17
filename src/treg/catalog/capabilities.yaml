@@ -139,6 +139,10 @@ platforms:
   redfin: {label: "Redfin", category: "E-commerce", summary: "Homes, prices, estimates and listing facts from Redfin."}
   streeteasy: {label: "StreetEasy", category: "E-commerce", summary: "New York City rentals and sales from StreetEasy."}
   rightmove: {label: "Rightmove", category: "E-commerce", summary: "UK homes for sale and to rent from Rightmove."}
+  homes-com: {label: "Homes.com", category: "E-commerce", summary: "US homes for sale, for rent and sold, with agents, from Homes.com."}
+  apartments-com: {label: "Apartments.com", category: "E-commerce", summary: "US apartment rentals, floor plans and rents from Apartments.com."}
+  realestate-au: {label: "realestate.com.au", category: "E-commerce", summary: "Australian homes for sale, for rent and sold from realestate.com.au."}
+  bayut: {label: "Bayut", category: "E-commerce", summary: "UAE properties for sale and rent from Bayut."}
   etsy: {label: "Etsy", category: "E-commerce", summary: "Products and shops from Etsy search."}
   shopify: {label: "Shopify stores", category: "E-commerce", summary: "The product catalog of any Shopify store."}
   steam: {label: "Steam", category: "E-commerce", summary: "Games, prices and reviews from the Steam store."}

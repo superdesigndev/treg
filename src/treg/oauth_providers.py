@@ -2128,7 +2128,8 @@ REALTYAPI = OAuthProvider(
         "Open Dashboard → Settings → API Keys and copy the key.",
     ),
     setup_note=(
-        "Each data request costs one credit, an empty result included; the account check is free. "
+        "Each data request costs one credit (Homes.com two), an empty result included; the account "
+        "check is free. "
         "The free plan includes 250 requests."
     ),
     auth_uri="", token_uri="", scopes={},
@@ -2142,6 +2143,10 @@ REALTYAPI = OAuthProvider(
         CatalogTarget(host="streeteasy.realtyapi.io", base_url="https://streeteasy.realtyapi.io"),
         CatalogTarget(host="airbnb.realtyapi.io", base_url="https://airbnb.realtyapi.io"),
         CatalogTarget(host="rightmove.realtyapi.io", base_url="https://rightmove.realtyapi.io"),
+        CatalogTarget(host="homes.realtyapi.io", base_url="https://homes.realtyapi.io"),
+        CatalogTarget(host="apartments.realtyapi.io", base_url="https://apartments.realtyapi.io"),
+        CatalogTarget(host="realestateau.realtyapi.io", base_url="https://realestateau.realtyapi.io"),
+        CatalogTarget(host="bayut.realtyapi.io", base_url="https://bayut.realtyapi.io"),
     ),
     extra_tools=(
         {"suffix": "realtor", "base_url": "https://realtor.realtyapi.io"},
@@ -2149,6 +2154,10 @@ REALTYAPI = OAuthProvider(
         {"suffix": "streeteasy", "base_url": "https://streeteasy.realtyapi.io"},
         {"suffix": "airbnb", "base_url": "https://airbnb.realtyapi.io"},
         {"suffix": "rightmove", "base_url": "https://rightmove.realtyapi.io"},
+        {"suffix": "homes", "base_url": "https://homes.realtyapi.io"},
+        {"suffix": "apartments", "base_url": "https://apartments.realtyapi.io"},
+        {"suffix": "realestateau", "base_url": "https://realestateau.realtyapi.io"},
+        {"suffix": "bayut", "base_url": "https://bayut.realtyapi.io"},
     ),
     docs_url="https://www.realtyapi.io/docs",
     # free: validates the key without spending a credit; a bad key answers 401 {"error":"Key not found"}

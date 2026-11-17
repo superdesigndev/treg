@@ -2,15 +2,15 @@ provider: realtyapi
 source:
   docs: https://www.realtyapi.io/docs
   # Each portal publishes its own spec at https://<portal>.realtyapi.io/openapi.json (no key
-  # needed): zillow, realtor, redfin, streeteasy, airbnb and rightmove for the rows below. Paths and
-  # parameters here are taken from those specs.
+  # needed). Paths and parameters here are taken from those specs.
   openapi: https://zillow.realtyapi.io/openapi.json
   curated: '2026-11-17'
 pricing_url: https://www.realtyapi.io/pricing
 limits: "No per-key rate limit is published; concurrent requests are unlimited on every plan."
 
-# The twelve most-used routes over the last 30 days, Skip Trace excluded. One key works on every
-# portal host; the Zillow host is the base_url and the other hosts are catalog targets.
+# The ten most-used portals over the last 30 days with their most-used routes (search and details
+# for each, plus Zillow agents, charts and market data); Skip Trace is excluded. One key works on
+# every portal host; the Zillow host is the base_url and the other hosts are catalog targets.
 proposed_capabilities:
   # Also proposed by crawl4ai.yaml with this exact wording: two providers now share it.
   zillow.property.detail: One Zillow home
@@ -25,6 +25,44 @@ proposed_capabilities:
   streeteasy.rental.detail: "Get one New York City rental from StreetEasy"
   airbnb.search.homes: "Search Airbnb stays in a destination"
   rightmove.property.detail: "Get one Rightmove property listing"
+  # Also proposed by crawl4ai.yaml with this exact wording.
+  airbnb.listing.detail: One Airbnb listing
+  zillow.search.radius: "Search Zillow homes within a radius of a map point"
+  zillow.location.suggest: "Suggest Zillow addresses, places and ZIP codes for typed text"
+  zillow.agent.detail: "Get a Zillow agent's profile, sales and reviews"
+  zillow.agent.sales: "List the homes a Zillow agent has sold"
+  zillow.property.charts: "Chart a Zillow home's value, rent, price or tax history"
+  zillow.property.history: "Get a Zillow home's price history"
+  zillow.property.photos: "List a Zillow home's photos"
+  zillow.property.walkscore: "Get a Zillow home's Walk, Transit and Bike Scores"
+  zillow.market.trends: "Get Zillow housing market stats for an area"
+  zillow.property.comparables: "List comparable homes for a Zillow home"
+  realtor.location.suggest: "Suggest Realtor.com places and addresses for typed text"
+  realtor.search.radius: "Search Realtor.com homes within a radius of a map point"
+  realtor.agent.detail: "Get a Realtor.com agent's profile and listings"
+  realtor.agent.search: "Find real estate agents on Realtor.com by area or name"
+  redfin.property.detail: "Get one Redfin home by property id"
+  redfin.search.listings: "Search Redfin homes for sale, for rent or sold in an area"
+  redfin.search.radius: "Search Redfin homes around a map point"
+  redfin.market.trends: "Get Redfin housing market trends for an area"
+  streeteasy.search.rentals: "Search New York City rentals on StreetEasy"
+  streeteasy.search.sales: "Search New York City homes for sale on StreetEasy"
+  streeteasy.sale.detail: "Get one New York City sale listing from StreetEasy"
+  airbnb.listing.availability: "Check an Airbnb listing's availability calendar"
+  rightmove.search.listings: "Search Rightmove homes for sale or to rent in a UK area"
+  rightmove.search.postcode: "Search Rightmove homes around a UK postcode"
+  rightmove.sold.prices: "Get sold house prices for a UK area from Rightmove"
+  homes-com.property.lookup: "Look up a Homes.com home by street address"
+  homes-com.search.listings: "Search Homes.com homes for sale, for rent or sold in an area"
+  homes-com.agent.detail: "Get a Homes.com agent's profile"
+  apartments-com.property.detail: "Get one Apartments.com rental property"
+  apartments-com.search.listings: "Search Apartments.com rentals in an area"
+  realestate-au.search.listings: "Search realestate.com.au homes in an Australian suburb or area"
+  realestate-au.search.postcode: "Search realestate.com.au homes by Australian postcode"
+  realestate-au.property.detail: "Get one realestate.com.au listing"
+  bayut.location.suggest: "Suggest Bayut locations for typed text"
+  bayut.search.listings: "Search Bayut properties for sale or rent in a UAE location"
+  bayut.property.detail: "Get one Bayut property listing"
 
 # Every request that passes the key check costs one credit, an empty result included, so misses
 # and errors in a 2xx answer are charged.
@@ -119,6 +157,202 @@ endpoints:
     miss: {when: {any: [{path: response.agents, op: absent}, {path: response.agents, op: empty}]}}
     docs_url: https://www.realtyapi.io/docs/zillow/agentsearch
 
+  - id: realtyapi.zillow.search.radius
+    added: '2026-11-17'
+    capability: zillow.search.radius
+    platform: zillow
+    scope: any_account
+    method: GET
+    path: /search/bycoordinates
+    name: "Search Zillow listings around a point"
+    summary: "Search Zillow homes for sale, for rent or sold within a radius of a latitude and longitude, with Zillow's price, bed, bath and home type filters."
+    input:
+      queryParams:
+        latitude: {type: "string", required: true, example: "40.599283"}
+        longitude: {type: "string", required: true, example: "-74.129194"}
+        radius: {type: "string", required: true, note: "circle radius around the point", example: "0.5"}
+        listingStatus: {type: "string", required: true, enum: ["For_Sale", "For_Rent", "Sold"], example: "For_Sale"}
+        page: {type: "integer", required: false, min: 1, max: 5, example: 1}
+        sortOrder: {type: "string", required: false, enum: ["Homes_for_you", "Rental_Priority_Score", "Price_High_to_Low", "Price_Low_to_High", "Newest", "Bedrooms", "Bathrooms", "Square_Feet", "Lot_Size", "Year_Built"]}
+        listPriceRange: {type: "string", required: false, note: "min:5000, max:500000, or either bound alone"}
+        bed_min: {type: "string", required: false, enum: ["No_Min", "Studio", "1", "2", "3", "4", "5"]}
+        bed_max: {type: "string", required: false, enum: ["No_Max", "Studio", "1", "2", "3", "4", "5"]}
+        homeType: {type: "string", required: false, note: "comma-separated; empty means every type"}
+    test_request:
+      queryParams: {latitude: "40.599283", longitude: "-74.129194", radius: "0.5", listingStatus: "For_Sale"}
+    miss: {when: {any: [{path: response.searchResults, op: absent}, {path: response.searchResults, op: empty}]}}
+    docs_url: https://www.realtyapi.io/docs/zillow/searchbycoordinates
+
+  - id: realtyapi.zillow.location.suggest
+    added: '2026-11-17'
+    capability: zillow.location.suggest
+    platform: zillow
+    scope: any_account
+    method: GET
+    path: /autocomplete
+    name: "Zillow address and place suggestions"
+    summary: "Suggest Zillow addresses, cities, neighborhoods and ZIP codes for typed text, with each address's zpid and coordinates."
+    input:
+      queryParams:
+        query: {type: "string", required: true, note: "partial address, city, neighborhood or ZIP", example: "649 Keller St, Bay St Louis, MS 39520"}
+    test_request:
+      queryParams: {query: "649 Keller St, Bay St Louis, MS 39520"}
+    miss: {when: {any: [{path: response.results, op: absent}, {path: response.results, op: empty}]}}
+    docs_url: https://www.realtyapi.io/docs/zillow/autocomplete
+
+  - id: realtyapi.zillow.agent.detail
+    added: '2026-11-17'
+    capability: zillow.agent.detail
+    platform: zillow
+    scope: any_account
+    method: GET
+    path: /agent/details
+    name: "Zillow agent profile"
+    summary: "Get a Zillow agent's profile: contact details, ratings and reviews, licenses, sales stats, past sales, service areas and active listings."
+    input:
+      queryParams:
+        username: {type: "string", required: false, note: "the last part of the agent's Zillow profile URL; send username or agent_link", example: "Alex-Antigua"}
+        agent_link: {type: "string", required: false, note: "the agent's full Zillow profile URL"}
+    test_request:
+      queryParams: {username: "Alex-Antigua"}
+    miss: {when: {any: [{path: response.agent_details, op: absent}, {path: response.agent_details, op: empty}]}}
+    docs_url: https://www.realtyapi.io/docs/zillow/agentdetails
+
+  - id: realtyapi.zillow.agent.sales
+    added: '2026-11-17'
+    capability: zillow.agent.sales
+    platform: zillow
+    scope: any_account
+    method: GET
+    path: /agent/sold_properties
+    name: "Homes a Zillow agent sold"
+    summary: "List the homes a Zillow agent sold, with sale date, price, side represented, address and zpid."
+    input:
+      queryParams:
+        encodedZuid: {type: "string", required: true, note: "the agent's encodedZuid from a Zillow agent search result", example: "X1-ZU10bs62tnoyy2x_5dugv"}
+        page: {type: "integer", required: false, min: 1}
+    test_request:
+      queryParams: {encodedZuid: "X1-ZU10bs62tnoyy2x_5dugv"}
+    miss: {when: {any: [{path: response.pastSales, op: absent}, {path: response.pastSales, op: empty}]}}
+    docs_url: https://www.realtyapi.io/docs/zillow/agentsoldproperties
+
+  - id: realtyapi.zillow.property.charts
+    added: '2026-11-17'
+    capability: zillow.property.charts
+    platform: zillow
+    scope: any_account
+    method: GET
+    path: /graph_charts
+    name: "Zillow home value and tax charts"
+    summary: "Get chart data for one Zillow home over time: Zestimate, rent Zestimate, list price, Zestimate change, tax assessment or tax paid."
+    input:
+      queryParams:
+        which: {type: "string", required: true, enum: ["zestimate_history", "rent_zestimate_history", "listing_price", "zestimate_percent_change", "tax_assessment", "tax_paid"], example: "zestimate_history"}
+        recent_first: {type: "boolean", required: true, example: true}
+        byzpid: {type: "string", required: false, note: "send one of byzpid, byaddress or byurl", example: "30907787"}
+        byaddress: {type: "string", required: false}
+        byurl: {type: "string", required: false}
+    test_request:
+      queryParams: {which: "zestimate_history", recent_first: true, byzpid: "30907787"}
+    miss: {when: {any: [{path: response.DataPoints.homeValueChartData, op: absent}, {path: response.DataPoints.homeValueChartData, op: empty}]}}
+    docs_url: https://www.realtyapi.io/docs/zillow/tax-paid-history
+
+  - id: realtyapi.zillow.property.history
+    added: '2026-11-17'
+    capability: zillow.property.history
+    platform: zillow
+    scope: any_account
+    method: GET
+    path: /pricehistory
+    name: "Zillow home price history"
+    summary: "Get a Zillow home's price history: listings, price changes, sales and rentals with dates, prices and price per square foot."
+    input:
+      queryParams:
+        byzpid: {type: "string", required: false, note: "send one of byzpid, byaddress or byurl", example: "44466838"}
+        byaddress: {type: "string", required: false}
+        byurl: {type: "string", required: false}
+    test_request:
+      queryParams: {byzpid: "44466838"}
+    miss: {when: {any: [{path: response.priceHistory, op: absent}, {path: response.priceHistory, op: empty}]}}
+    docs_url: https://www.realtyapi.io/docs/zillow/pricehistory
+
+  - id: realtyapi.zillow.property.photos
+    added: '2026-11-17'
+    capability: zillow.property.photos
+    platform: zillow
+    scope: any_account
+    method: GET
+    path: /propimages
+    name: "Zillow home photos"
+    summary: "List a Zillow home's full-resolution photos, plus its street-view image when Zillow has one."
+    input:
+      queryParams:
+        byzpid: {type: "string", required: false, note: "send one of byzpid, byaddress or byurl", example: "44472566"}
+        byaddress: {type: "string", required: false}
+        byurl: {type: "string", required: false}
+    test_request:
+      queryParams: {byzpid: "44472566"}
+    miss: {when: {any: [{path: response.originalPhotos, op: absent}, {path: response.originalPhotos, op: empty}]}}
+    docs_url: https://www.realtyapi.io/docs/zillow/propertyimages
+
+  - id: realtyapi.zillow.property.walkscore
+    added: '2026-11-17'
+    capability: zillow.property.walkscore
+    platform: zillow
+    scope: any_account
+    method: GET
+    path: /walk_transit_bike
+    name: "Zillow home Walk Score"
+    summary: "Get the Walk Score, Transit Score and Bike Score of a Zillow home."
+    input:
+      queryParams:
+        byzpid: {type: "string", required: false, note: "send one of byzpid, byaddress or byurl", example: "44466838"}
+        byaddress: {type: "string", required: false}
+        byurl: {type: "string", required: false}
+    test_request:
+      queryParams: {byzpid: "44466838"}
+    miss: {when: {any: [{path: response.walk_transit_bike, op: absent}, {path: response.walk_transit_bike, op: empty}]}}
+    docs_url: https://www.realtyapi.io/docs/zillow/walktransitbike
+
+  - id: realtyapi.zillow.market.trends
+    added: '2026-11-17'
+    capability: zillow.market.trends
+    platform: zillow
+    scope: any_account
+    method: GET
+    path: /housing_market
+    name: "Zillow housing market stats"
+    summary: "Get Zillow housing market stats for a city, ZIP or neighborhood: typical home value, inventory, new listings, median list and sale prices, sale-to-list ratio and days to pending."
+    input:
+      queryParams:
+        search_query: {type: "string", required: true, note: "city, ZIP or neighborhood", example: "Austin, TX"}
+        home_type: {type: "string", required: false, enum: ["All_Homes", "Single_Family", "Condo"]}
+        exclude_rentalMarketTrends: {type: "boolean", required: false}
+        exclude_neighborhoods_zhvi: {type: "boolean", required: false}
+    test_request:
+      queryParams: {search_query: "Austin, TX"}
+    miss: {when: {any: [{path: response.market_overview, op: absent}, {path: response.market_overview, op: empty}]}}
+    docs_url: https://www.realtyapi.io/docs/zillow/housingmarket-zhvi
+
+  - id: realtyapi.zillow.property.comparables
+    added: '2026-11-17'
+    capability: zillow.property.comparables
+    platform: zillow
+    scope: any_account
+    method: GET
+    path: /comparable_homes
+    name: "Comparable homes on Zillow"
+    summary: "List comparable homes for one Zillow home, with each comp's price, facts and zpid."
+    input:
+      queryParams:
+        byzpid: {type: "string", required: false, note: "send one of byzpid, byaddress or byurl", example: "44471319"}
+        byaddress: {type: "string", required: false}
+        byurl: {type: "string", required: false}
+    test_request:
+      queryParams: {byzpid: "44471319"}
+    miss: {when: {any: [{path: response.comparable_homes, op: absent}, {path: response.comparable_homes, op: empty}]}}
+    docs_url: https://www.realtyapi.io/docs/zillow/comparablehomes
+
   # --- Realtor.com --------------------------------------------------------------------------------
   - id: realtyapi.realtor.property.detail
     added: '2026-11-17'
@@ -209,6 +443,93 @@ endpoints:
     miss: {when: {any: [{path: response.searchResults, op: absent}, {path: response.searchResults, op: empty}]}}
     docs_url: https://www.realtyapi.io/docs/realtor/searchbylocation
 
+  - id: realtyapi.realtor.location.suggest
+    added: '2026-11-17'
+    capability: realtor.location.suggest
+    platform: realtor
+    scope: any_account
+    method: GET
+    host: realtor.realtyapi.io
+    path: /autocomplete
+    name: "Realtor.com place suggestions"
+    summary: "Suggest Realtor.com cities, neighborhoods, ZIP codes and addresses for typed text, with ids and center coordinates."
+    input:
+      queryParams:
+        input: {type: "string", required: true, note: "partial city, neighborhood, ZIP or address", example: "Austin"}
+        limit: {type: "integer", required: false, min: 1, example: 10}
+    test_request:
+      queryParams: {input: "Austin", limit: 5}
+    miss: {when: {any: [{path: response.searchResults, op: absent}, {path: response.searchResults, op: empty}]}}
+    docs_url: https://www.realtyapi.io/docs/realtor/autocomplete
+
+  - id: realtyapi.realtor.search.radius
+    added: '2026-11-17'
+    capability: realtor.search.radius
+    platform: realtor
+    scope: any_account
+    method: GET
+    host: realtor.realtyapi.io
+    path: /search/bycoordinates
+    name: "Search Realtor.com listings around a point"
+    summary: "Search Realtor.com homes for sale, for rent or sold within a radius of a latitude and longitude, with price, bed, bath and type filters."
+    input:
+      queryParams:
+        latitude: {type: "number", required: true, example: 30.4108}
+        longitude: {type: "number", required: true, example: -97.7177}
+        radius: {type: "number", required: false, note: "miles", example: 1.5}
+        searchType: {type: "string", required: false, note: "comma-separated For_Sale, For_Rent, Sold"}
+        page: {type: "integer", required: false, min: 1, example: 1}
+        resultCount: {type: "integer", required: false, min: 1, max: 200, example: 50}
+        sortOrder: {type: "string", required: false, enum: ["Recommended", "Newest", "Oldest", "Price_High_to_Low", "Price_Low_to_High", "Square_Feet", "Lot_Size", "Beds", "Baths", "Most_Recently_Sold", "Open_House_Date"]}
+        propertyType: {type: "string", required: false, note: "comma-separated House, Condo, Townhome, Multi_Family, Mobile, Farm, Land, Co-op"}
+        priceRange: {type: "string", required: false, note: "min:500000,max:1500000, or either bound alone"}
+        bedsRange: {type: "string", required: false, note: "min:3,max:5, or either bound alone"}
+        bathsRange: {type: "string", required: false, note: "min:2,max:3.5, or either bound alone"}
+    test_request:
+      queryParams: {latitude: 30.4108, longitude: -97.7177, radius: 1.5, resultCount: 5}
+    miss: {when: {any: [{path: response.searchResults, op: absent}, {path: response.searchResults, op: empty}]}}
+    docs_url: https://www.realtyapi.io/docs/realtor/searchbycoordinates
+
+  - id: realtyapi.realtor.agent.detail
+    added: '2026-11-17'
+    capability: realtor.agent.detail
+    platform: realtor
+    scope: any_account
+    method: GET
+    host: realtor.realtyapi.io
+    path: /agent/details
+    name: "Realtor.com agent profile"
+    summary: "Get a Realtor.com agent's profile: contact details, office and broker, ratings, listing stats, served areas and current and sold listings."
+    input:
+      queryParams:
+        fulfillmentId: {type: "string", required: true, note: "the agent's fulfillment_id from a Realtor.com agent search or listing", example: "725142"}
+        listings: {type: "boolean", required: false}
+    test_request:
+      queryParams: {fulfillmentId: "725142"}
+    miss: {when: {any: [{path: response.agent, op: absent}, {path: response.agent, op: empty}]}}
+    docs_url: https://www.realtyapi.io/docs/realtor/agentdetails
+
+  - id: realtyapi.realtor.agent.search
+    added: '2026-11-17'
+    capability: realtor.agent.search
+    platform: realtor
+    scope: any_account
+    method: GET
+    host: realtor.realtyapi.io
+    path: /agent/search
+    name: "Find Realtor.com agents"
+    summary: "Find real estate agents on Realtor.com by city, ZIP or name, with contact details, ratings and the fulfillment id for agent details."
+    input:
+      queryParams:
+        location: {type: "string", required: false, note: "city or ZIP", example: "Austin, TX"}
+        agentName: {type: "string", required: false}
+        page: {type: "integer", required: false, min: 1, example: 1}
+        limit: {type: "integer", required: false, min: 1, example: 20}
+    test_request:
+      queryParams: {location: "Austin, TX", limit: 5}
+    miss: {when: {any: [{path: response.searchResults, op: absent}, {path: response.searchResults, op: empty}]}}
+    docs_url: https://www.realtyapi.io/docs/realtor/agentsearch
+
   # --- Redfin -------------------------------------------------------------------------------------
   - id: realtyapi.redfin.property.lookup
     added: '2026-11-17'
@@ -228,6 +549,102 @@ endpoints:
     miss: {when: {any: [{path: response.details, op: absent}, {path: response.details, op: empty}]}}
     docs_url: https://www.realtyapi.io/docs/redfin/detailsbyaddress
 
+  - id: realtyapi.redfin.property.detail
+    added: '2026-11-17'
+    capability: redfin.property.detail
+    platform: redfin
+    scope: any_account
+    method: GET
+    host: redfin.realtyapi.io
+    path: /detailsbyid
+    name: "Redfin home by property id"
+    summary: "Get one Redfin home by property and listing id: price, Redfin Estimate, facts, history, tour insights and neighborhood stats."
+    input:
+      queryParams:
+        property_id: {type: "string", required: true, note: "from a Redfin search result", example: "20739181"}
+        listing_id: {type: "string", required: true, note: "from the same Redfin search result", example: "192575318"}
+    test_request:
+      queryParams: {property_id: "20739181", listing_id: "192575318"}
+    miss: {when: {any: [{path: response.details, op: absent}, {path: response.details, op: empty}]}}
+    docs_url: https://www.realtyapi.io/docs/redfin/detailsbyid
+
+  - id: realtyapi.redfin.search.listings
+    added: '2026-11-17'
+    capability: redfin.search.listings
+    platform: redfin
+    scope: any_account
+    method: GET
+    host: redfin.realtyapi.io
+    path: /search/bylocation
+    name: "Search Redfin listings in an area"
+    summary: "Search Redfin homes for sale, for rent or sold in a city, ZIP or neighborhood, with price, bed, bath, home type and sold-within filters."
+    input:
+      queryParams:
+        locationName: {type: "string", required: true, note: "city, ZIP or neighborhood", example: "New York"}
+        locationSubName: {type: "string", required: false, note: "state, to tell same-named places apart", example: "NY"}
+        searchType: {type: "string", required: false, enum: ["For_Sale", "For_Rent", "Sold"]}
+        soldWithin: {type: "string", required: false, enum: ["Last_7_Days", "Last_1_Month", "Last_3_Months", "Last_6_Months", "Last_1_Year", "Last_2_Years", "Last_3_Years", "Last_5_Years"]}
+        sortOrder: {type: "string", required: false, enum: ["Recommended", "Newest", "Oldest", "Most_Recently_Sold", "Price_High_to_Low", "Price_Low_to_High", "Square_Feet", "Lot_Size", "Price_per_Sqft", "Beds", "Baths"]}
+        minPrice: {type: "integer", required: false, min: 0}
+        maxPrice: {type: "integer", required: false, min: 0}
+        minBeds: {type: "string", required: false, enum: ["Any", "Studio", "One", "Two", "Three", "Four", "FivePlus", "SixPlus"]}
+        maxBeds: {type: "string", required: false, enum: ["Any", "Studio", "One", "Two", "Three", "Four", "FivePlus", "SixPlus"]}
+        baths: {type: "string", required: false, enum: ["Any", "OnePlus", "OnePointFivePlus", "Two", "TwoPointFivePlus", "ThreePlus", "FourPlus", "FivePlus", "SixPlus"]}
+        homeType: {type: "string", required: false, note: "comma-separated House, Condo, Townhouse, Multi family, Land, Mobile, Co-op"}
+        resultCount: {type: "integer", required: false, min: 1, max: 350, example: 100}
+        page: {type: "integer", required: false, min: 1, example: 1}
+    test_request:
+      queryParams: {locationName: "New York", locationSubName: "NY", resultCount: 5}
+    miss: {when: {any: [{path: response.searchResults, op: absent}, {path: response.searchResults, op: empty}]}}
+    docs_url: https://www.realtyapi.io/docs/redfin/searchbylocation
+
+  - id: realtyapi.redfin.search.radius
+    added: '2026-11-17'
+    capability: redfin.search.radius
+    platform: redfin
+    scope: any_account
+    method: GET
+    host: redfin.realtyapi.io
+    path: /search/bycoordinates
+    name: "Search Redfin listings around a point"
+    summary: "Search Redfin homes for sale, for rent or sold around a latitude and longitude, with price, bed, bath and home type filters."
+    input:
+      queryParams:
+        latitude: {type: "string", required: true, example: "40.748817"}
+        longitude: {type: "string", required: true, example: "-73.985428"}
+        radius: {type: "string", required: true, note: "miles from the point to each side of a square area", example: "1.5"}
+        searchType: {type: "string", required: false, enum: ["For_Sale", "For_Rent", "Sold"]}
+        sortOrder: {type: "string", required: false, enum: ["Recommended", "Newest", "Oldest", "Most_Recently_Sold", "Price_High_to_Low", "Price_Low_to_High", "Square_Feet", "Lot_Size", "Price_per_Sqft", "Beds", "Baths"]}
+        minPrice: {type: "integer", required: false, min: 0}
+        maxPrice: {type: "integer", required: false, min: 0}
+        minBeds: {type: "string", required: false, enum: ["Any", "Studio", "One", "Two", "Three", "Four", "FivePlus", "SixPlus"]}
+        baths: {type: "string", required: false, enum: ["Any", "OnePlus", "OnePointFivePlus", "Two", "TwoPointFivePlus", "ThreePlus", "FourPlus", "FivePlus", "SixPlus"]}
+        resultCount: {type: "integer", required: false, min: 1, max: 350, example: 100}
+        page: {type: "integer", required: false, min: 1, example: 1}
+    test_request:
+      queryParams: {latitude: "40.748817", longitude: "-73.985428", radius: "1.5", resultCount: 5}
+    miss: {when: {any: [{path: response.searchResults, op: absent}, {path: response.searchResults, op: empty}]}}
+    docs_url: https://www.realtyapi.io/docs/redfin/searchbycoordinates
+
+  - id: realtyapi.redfin.market.trends
+    added: '2026-11-17'
+    capability: redfin.market.trends
+    platform: redfin
+    scope: any_account
+    method: GET
+    host: redfin.realtyapi.io
+    path: /housingMarketTrends
+    name: "Redfin housing market trends"
+    summary: "Get Redfin housing market trends for a ZIP, city or neighborhood: median sale price, homes sold and median days on market over time."
+    input:
+      queryParams:
+        location: {type: "string", required: true, note: "ZIP, city or neighborhood", example: "27522"}
+        propertyType: {type: "string", required: false, enum: ["All", "Houses", "Condos", "Townhouses"], example: "All"}
+    test_request:
+      queryParams: {location: "27522"}
+    miss: {when: {any: [{path: response.sections, op: absent}, {path: response.sections, op: empty}]}}
+    docs_url: https://www.realtyapi.io/docs/redfin/housingmarkettrends
+
   # --- StreetEasy ---------------------------------------------------------------------------------
   - id: realtyapi.streeteasy.rental.detail
     added: '2026-11-17'
@@ -246,6 +663,74 @@ endpoints:
       queryParams: {buildingid: "4735143"}
     miss: {when: {path: response.listing_id, op: absent}}
     docs_url: https://www.realtyapi.io/docs/streeteasy/rentaldetailsbyid
+
+  - id: realtyapi.streeteasy.search.rentals
+    added: '2026-11-17'
+    capability: streeteasy.search.rentals
+    platform: streeteasy
+    scope: any_account
+    method: GET
+    host: streeteasy.realtyapi.io
+    path: /search/rent
+    name: "Search StreetEasy rentals"
+    summary: "Search New York City rentals on StreetEasy by borough or neighborhood, with rent, bed, bath, pet and amenity filters, returning listing ids, rent, beds and availability."
+    input:
+      queryParams:
+        location: {type: "string", required: true, note: "borough or neighborhood, such as manhattan or williamsburg", example: "manhattan"}
+        page: {type: "integer", required: false, min: 1}
+        priceRange: {type: "string", required: false, note: "min-max monthly rent, such as 2000-5000"}
+        beds: {type: "string", required: false, enum: ["any", "studio", "1", "1_plus", "2", "2_plus", "3", "3_plus", "4_plus"]}
+        baths: {type: "string", required: false, enum: ["any", "1_plus", "1point5_plus", "2_plus", "3_plus"]}
+        sort_by: {type: "string", required: false, enum: ["Default", "Newest", "Recently_updated", "Most_expensive", "Least_expensive", "Largest", "Smallest"]}
+        pets: {type: "boolean", required: false}
+        amenities: {type: "string", required: false}
+        status: {type: "string", required: false, enum: ["any", "active", "rented", "active_or_contract", "unavailable", "in_contract"]}
+    test_request:
+      queryParams: {location: "manhattan"}
+    miss: {when: {any: [{path: response.search_results.listings, op: absent}, {path: response.search_results.listings, op: empty}]}}
+    docs_url: https://www.realtyapi.io/docs/streeteasy/searchrent
+
+  - id: realtyapi.streeteasy.search.sales
+    added: '2026-11-17'
+    capability: streeteasy.search.sales
+    platform: streeteasy
+    scope: any_account
+    method: GET
+    host: streeteasy.realtyapi.io
+    path: /search/buy
+    name: "Search StreetEasy sales"
+    summary: "Search New York City homes for sale on StreetEasy by borough or neighborhood, with price, bed, bath and status filters, returning listing ids, prices and beds."
+    input:
+      queryParams:
+        location: {type: "string", required: true, note: "borough or neighborhood, such as manhattan or williamsburg", example: "manhattan"}
+        page: {type: "integer", required: false, min: 1}
+        priceRange: {type: "string", required: false, note: "min-max price, such as 500000-2000000"}
+        beds: {type: "string", required: false, enum: ["any", "studio", "1", "1_plus", "2", "2_plus", "3", "3_plus", "4_plus"]}
+        baths: {type: "string", required: false, enum: ["any", "1_plus", "1point5_plus", "2_plus", "3_plus"]}
+        sort_by: {type: "string", required: false, enum: ["Default", "Newest", "Recently_updated", "Most_expensive", "Least_expensive", "Largest", "Smallest"]}
+        status: {type: "string", required: false, enum: ["any", "active", "rented", "active_or_contract", "unavailable", "in_contract"]}
+    test_request:
+      queryParams: {location: "manhattan"}
+    miss: {when: {any: [{path: response.search_results.listings, op: absent}, {path: response.search_results.listings, op: empty}]}}
+    docs_url: https://www.realtyapi.io/docs/streeteasy/searchbuy-forsale
+
+  - id: realtyapi.streeteasy.sale.detail
+    added: '2026-11-17'
+    capability: streeteasy.sale.detail
+    platform: streeteasy
+    scope: any_account
+    method: GET
+    host: streeteasy.realtyapi.io
+    path: /sale_detailsbyid
+    name: "StreetEasy sale by listing id"
+    summary: "Get one New York City sale listing from StreetEasy: price, maintenance and taxes, unit facts, amenities, building, agents, sales history and similar listings."
+    input:
+      queryParams:
+        buildingid: {type: "string", required: true, note: "the sale listing id from a StreetEasy sale search result", example: "1771911"}
+    test_request:
+      queryParams: {buildingid: "1771911"}
+    miss: {when: {path: response.listing_id, op: absent}}
+    docs_url: https://www.realtyapi.io/docs/streeteasy/saledetailsbyid
 
   # --- Airbnb -------------------------------------------------------------------------------------
   - id: realtyapi.airbnb.search.homes
@@ -276,6 +761,41 @@ endpoints:
     miss: {when: {any: [{path: response.searchResults, op: absent}, {path: response.searchResults, op: empty}]}}
     docs_url: https://www.realtyapi.io/docs/airbnb/homesbydestination
 
+  - id: realtyapi.airbnb.listing.detail
+    added: '2026-11-17'
+    capability: airbnb.listing.detail
+    platform: airbnb
+    scope: any_account
+    method: GET
+    host: airbnb.realtyapi.io
+    path: /home/details
+    name: "Airbnb listing for dates"
+    summary: "Get one Airbnb listing for given dates: title, photos, description, amenities, location, house rules, availability and guest reviews."
+    input:
+      queryParams:
+        stayListingId: {type: "string", required: true, note: "the stayListingId of an Airbnb search result"}
+        checkIn: {type: "string", required: true, note: "YYYY-MM-DD, today or later", example: "2027-09-14"}
+        checkOut: {type: "string", required: true, note: "YYYY-MM-DD, after checkIn", example: "2027-09-17"}
+    miss: {when: {any: [{path: response.baseData, op: absent}, {path: response.baseData, op: empty}]}}
+    docs_url: https://www.realtyapi.io/docs/airbnb/home-details
+
+  - id: realtyapi.airbnb.listing.availability
+    added: '2026-11-17'
+    capability: airbnb.listing.availability
+    platform: airbnb
+    scope: any_account
+    method: GET
+    host: airbnb.realtyapi.io
+    path: /home/availability
+    name: "Airbnb availability calendar"
+    summary: "Get an Airbnb listing's availability calendar by day: available or not, check-in and check-out allowed, and minimum and maximum nights."
+    input:
+      queryParams:
+        listingId: {type: "string", required: true, note: "the numeric Airbnb listing id from the listing URL", example: "868126372367701281"}
+    test_request:
+      queryParams: {listingId: "868126372367701281"}
+    docs_url: https://www.realtyapi.io/docs/airbnb/home-availability
+
   # --- Rightmove ----------------------------------------------------------------------------------
   - id: realtyapi.rightmove.property.detail
     added: '2026-11-17'
@@ -294,3 +814,335 @@ endpoints:
       queryParams: {propertyId: "171185315"}
     miss: {when: {path: response.detail.propertyId, op: absent}}
     docs_url: https://www.realtyapi.io/docs/rightmove/detailsbyid
+
+  - id: realtyapi.rightmove.search.listings
+    added: '2026-11-17'
+    capability: rightmove.search.listings
+    platform: rightmove
+    scope: any_account
+    method: GET
+    host: rightmove.realtyapi.io
+    path: /search/bylocation
+    name: "Search Rightmove listings in an area"
+    summary: "Search Rightmove homes for sale or to rent in a UK town, city or area, with price, bedroom, property type, radius and days-listed filters."
+    input:
+      queryParams:
+        location: {type: "string", required: true, note: "UK town, city or area", example: "London"}
+        searchType: {type: "string", required: false, enum: ["BUY", "RENT"]}
+        radius: {type: "number", required: false, min: 0, note: "miles"}
+        page: {type: "integer", required: false, min: 1, example: 1}
+        resultCount: {type: "integer", required: false, min: 1, example: 25}
+        sortOrder: {type: "string", required: false, enum: ["highest_price", "lowest_price", "newest", "oldest", "distance"]}
+        propertyType: {type: "string", required: false}
+        priceRange: {type: "string", required: false}
+        bedroomsRange: {type: "string", required: false}
+        daysSinceAdded: {type: "string", required: false, enum: ["1", "3", "7", "14"]}
+    test_request:
+      queryParams: {location: "London", resultCount: 5}
+    miss: {when: {any: [{path: response.searchResults, op: absent}, {path: response.searchResults, op: empty}]}}
+    docs_url: https://www.realtyapi.io/docs/rightmove/searchbylocation
+
+  - id: realtyapi.rightmove.search.postcode
+    added: '2026-11-17'
+    capability: rightmove.search.postcode
+    platform: rightmove
+    scope: any_account
+    method: GET
+    host: rightmove.realtyapi.io
+    path: /search/byzip
+    name: "Search Rightmove listings by postcode"
+    summary: "Search Rightmove homes for sale or to rent around a UK postcode, with price, bedroom, property type, radius and days-listed filters."
+    input:
+      queryParams:
+        zipCode: {type: "string", required: true, note: "full or partial UK postcode", example: "SW1A 1AA"}
+        searchType: {type: "string", required: false, enum: ["BUY", "RENT"]}
+        radius: {type: "number", required: false, min: 0, note: "miles"}
+        page: {type: "integer", required: false, min: 1, example: 1}
+        resultCount: {type: "integer", required: false, min: 1, example: 25}
+        sortOrder: {type: "string", required: false, enum: ["highest_price", "lowest_price", "newest", "oldest", "distance"]}
+        propertyType: {type: "string", required: false}
+        priceRange: {type: "string", required: false}
+        bedroomsRange: {type: "string", required: false}
+        daysSinceAdded: {type: "string", required: false, enum: ["1", "3", "7", "14"]}
+    test_request:
+      queryParams: {zipCode: "SW1A 1AA", resultCount: 5}
+    miss: {when: {any: [{path: response.searchResults, op: absent}, {path: response.searchResults, op: empty}]}}
+    docs_url: https://www.realtyapi.io/docs/rightmove/searchbyzip
+
+  - id: realtyapi.rightmove.sold.prices
+    added: '2026-11-17'
+    capability: rightmove.sold.prices
+    platform: rightmove
+    scope: any_account
+    method: GET
+    host: rightmove.realtyapi.io
+    path: /sold-prices
+    name: "Rightmove sold house prices"
+    summary: "Get sold house prices for a UK area from Rightmove: address, price, sale date, property type, tenure, bedrooms and coordinates."
+    input:
+      queryParams:
+        location: {type: "string", required: true, note: "UK town, city, area or postcode", example: "London"}
+        radius: {type: "number", required: false, min: 0, note: "miles"}
+        page: {type: "integer", required: false, min: 1, example: 1}
+        propertyType: {type: "string", required: false, enum: ["detached", "semi_detached", "terraced", "flat", "other"]}
+        tenure: {type: "string", required: false, enum: ["FREEHOLD", "LEASEHOLD"]}
+        soldIn: {type: "number", required: false}
+        sortBy: {type: "string", required: false, enum: ["price", "address"]}
+        sortOrder: {type: "string", required: false, enum: ["DESC", "ASC"]}
+    test_request:
+      queryParams: {location: "London"}
+    miss: {when: {any: [{path: response.results, op: absent}, {path: response.results, op: empty}]}}
+    docs_url: https://www.realtyapi.io/docs/rightmove/soldprices
+
+  # --- Homes.com --------------------------------------------------------------------------------
+  - id: realtyapi.homes-com.property.lookup
+    added: '2026-11-17'
+    capability: homes-com.property.lookup
+    platform: homes-com
+    scope: any_account
+    method: GET
+    host: homes.realtyapi.io
+    path: /details/byaddress
+    name: "Homes.com home by street address"
+    summary: "Find a Homes.com home from its street address and return its details: price, facts, features, agents, photos, tax, price and mortgage history, and neighborhood."
+    input:
+      queryParams:
+        address: {type: "string", required: true, note: "street, city and state", example: "4248 Woodglen Ln, Charlotte, NC"}
+    test_request:
+      queryParams: {address: "4248 Woodglen Ln, Charlotte, NC"}
+    price: {value: '2', currency: credit, per: 1, unit: call}
+    provenance: {source: docs, source_url: 'https://www.realtyapi.io/pricing', checked: '2026-11-17', confidence: documented}
+    miss: {when: {any: [{path: response.detail, op: absent}, {path: response.detail, op: empty}]}}
+    docs_url: https://www.realtyapi.io/docs/homes/detailsbyaddress
+
+  - id: realtyapi.homes-com.search.listings
+    added: '2026-11-17'
+    capability: homes-com.search.listings
+    platform: homes-com
+    scope: any_account
+    method: GET
+    host: homes.realtyapi.io
+    path: /search/bylocation
+    name: "Search Homes.com listings in an area"
+    summary: "Search Homes.com homes for sale, for rent or sold in a city, ZIP or neighborhood, with price, bed, bath and property type filters."
+    input:
+      queryParams:
+        location: {type: "string", required: true, note: "city, ZIP or neighborhood", example: "Charlotte, NC"}
+        searchType: {type: "string", required: false, enum: ["For_Sale", "For_Rent", "Sold"], example: "For_Sale"}
+        page: {type: "integer", required: false, min: 1, example: 1}
+        resultCount: {type: "integer", required: false, min: 1, example: 20}
+        sortOrder: {type: "string", required: false, enum: ["Recommended", "Newest", "Price_Low_to_High", "Price_High_to_Low", "Price_Reduced", "Square_Feet", "Price_per_Sq_Ft", "Open_House", "Bedrooms", "Bathrooms", "Year_Built", "Lot_Size"], example: "Recommended"}
+        propertyType: {type: "string", required: false, enum: ["House", "Townhouse", "Condo", "MultiFamily", "Land", "Mobile", "Commercial"]}
+        priceRange: {type: "string", required: false}
+        bedsRange: {type: "string", required: false}
+        bathsRange: {type: "string", required: false}
+    test_request:
+      queryParams: {location: "Charlotte, NC", resultCount: 5}
+    price: {value: '2', currency: credit, per: 1, unit: call}
+    provenance: {source: docs, source_url: 'https://www.realtyapi.io/pricing', checked: '2026-11-17', confidence: documented}
+    miss: {when: {any: [{path: response.searchResults, op: absent}, {path: response.searchResults, op: empty}]}}
+    docs_url: https://www.realtyapi.io/docs/homes/searchbylocation
+
+  - id: realtyapi.homes-com.agent.detail
+    added: '2026-11-17'
+    capability: homes-com.agent.detail
+    platform: homes-com
+    scope: any_account
+    method: GET
+    host: homes.realtyapi.io
+    path: /agent/details
+    name: "Homes.com agent profile"
+    summary: "Get a Homes.com agent's profile: office, contact details, license, bio, rating, active listings, sold count and price range."
+    input:
+      queryParams:
+        id: {type: "string", required: false, note: "the last part of the agent's Homes.com profile URL; send id or url", example: "w9enbmj"}
+        url: {type: "string", required: false, note: "the agent's full Homes.com profile URL"}
+    test_request:
+      queryParams: {id: "w9enbmj"}
+    price: {value: '2', currency: credit, per: 1, unit: call}
+    provenance: {source: docs, source_url: 'https://www.realtyapi.io/pricing', checked: '2026-11-17', confidence: documented}
+    miss: {when: {any: [{path: response.agent, op: absent}, {path: response.agent, op: empty}]}}
+    docs_url: https://www.realtyapi.io/docs/homes/agentdetails
+
+  # --- Apartments.com ---------------------------------------------------------------------------
+  - id: realtyapi.apartments-com.property.detail
+    added: '2026-11-17'
+    capability: apartments-com.property.detail
+    platform: apartments-com
+    scope: any_account
+    method: GET
+    host: apartments.realtyapi.io
+    path: /details/byid
+    name: "Apartments.com property by listing key"
+    summary: "Get one Apartments.com rental property: rent and bed ranges, floor plans and availability, fees, amenities, pet and parking policies, reviews and photos."
+    input:
+      queryParams:
+        listingKey: {type: "string", required: true, note: "the listingKey of an Apartments.com search result", example: "33fdtgf"}
+    test_request:
+      queryParams: {listingKey: "33fdtgf"}
+    miss: {when: {path: response.detail.listingKey, op: absent}}
+    docs_url: https://www.realtyapi.io/docs/apartments/detailsbyid
+
+  - id: realtyapi.apartments-com.search.listings
+    added: '2026-11-17'
+    capability: apartments-com.search.listings
+    platform: apartments-com
+    scope: any_account
+    method: GET
+    host: apartments.realtyapi.io
+    path: /search/bylocation
+    name: "Search Apartments.com rentals in an area"
+    summary: "Search Apartments.com rentals in a city, ZIP or neighborhood, with rent, bed, bath, pet and keyword filters, returning listing keys, rent ranges and ratings."
+    input:
+      queryParams:
+        location: {type: "string", required: true, note: "city, ZIP or neighborhood", example: "New York, NY"}
+        page: {type: "integer", required: false, min: 1, example: 1}
+        resultCount: {type: "integer", required: false, min: 1, example: 50}
+        sortOrder: {type: "string", required: false, enum: ["Default", "Lowest_Rent", "Newest", "Highest_Rent", "Has_Video", "Has_3D_Tour", "Recently_Updated"]}
+        priceRange: {type: "string", required: false}
+        bedRange: {type: "string", required: false}
+        bathRange: {type: "string", required: false}
+        petPolicy: {type: "string", required: false, enum: ["Dog", "Cat", "Dog_and_Cat"]}
+        keywords: {type: "string", required: false}
+    test_request:
+      queryParams: {location: "New York, NY", resultCount: 5}
+    miss: {when: {any: [{path: response.searchResults, op: absent}, {path: response.searchResults, op: empty}]}}
+    docs_url: https://www.realtyapi.io/docs/apartments/searchbylocation
+
+  # --- realestate.com.au ------------------------------------------------------------------------
+  - id: realtyapi.realestate-au.search.listings
+    added: '2026-11-17'
+    capability: realestate-au.search.listings
+    platform: realestate-au
+    scope: any_account
+    method: GET
+    host: realestateau.realtyapi.io
+    path: /search/bylocation
+    name: "Search realestate.com.au listings in an area"
+    summary: "Search realestate.com.au homes for sale, for rent or sold in an Australian suburb or area, with price, bed, bath and property type filters."
+    input:
+      queryParams:
+        location: {type: "string", required: true, note: "suburb, state and postcode, such as Bondi, NSW 2026", example: "Bondi, NSW 2026"}
+        searchType: {type: "string", required: false, enum: ["For_Sale", "For_Rent", "Sold"]}
+        page: {type: "integer", required: false, min: 1, example: 1}
+        resultCount: {type: "integer", required: false, min: 1, example: 30}
+        sortOrder: {type: "string", required: false, enum: ["Recommended", "Newest", "Oldest", "Price_Low_to_High", "Price_High_to_Low", "Most_Recently_Sold", "Oldest_Sold"]}
+        propertyType: {type: "string", required: false}
+        priceRange: {type: "string", required: false}
+        bedsRange: {type: "string", required: false}
+        bathsRange: {type: "string", required: false}
+    test_request:
+      queryParams: {location: "Bondi, NSW 2026", resultCount: 5}
+    miss: {when: {any: [{path: response.searchResults, op: absent}, {path: response.searchResults, op: empty}]}}
+    docs_url: https://www.realtyapi.io/docs/realestateau/searchbylocation
+
+  - id: realtyapi.realestate-au.search.postcode
+    added: '2026-11-17'
+    capability: realestate-au.search.postcode
+    platform: realestate-au
+    scope: any_account
+    method: GET
+    host: realestateau.realtyapi.io
+    path: /search/byzip
+    name: "Search realestate.com.au listings by postcode"
+    summary: "Search realestate.com.au homes for sale, for rent or sold in an Australian postcode, with price, bed, bath and property type filters."
+    input:
+      queryParams:
+        zipCode: {type: "string", required: true, note: "Australian postcode", example: "2026"}
+        searchType: {type: "string", required: false, enum: ["For_Sale", "For_Rent", "Sold"]}
+        page: {type: "integer", required: false, min: 1, example: 1}
+        resultCount: {type: "integer", required: false, min: 1, example: 30}
+        sortOrder: {type: "string", required: false, enum: ["Recommended", "Newest", "Oldest", "Price_Low_to_High", "Price_High_to_Low", "Most_Recently_Sold", "Oldest_Sold"]}
+        propertyType: {type: "string", required: false}
+        priceRange: {type: "string", required: false}
+        bedsRange: {type: "string", required: false}
+        bathsRange: {type: "string", required: false}
+    test_request:
+      queryParams: {zipCode: "2026", resultCount: 5}
+    miss: {when: {any: [{path: response.searchResults, op: absent}, {path: response.searchResults, op: empty}]}}
+    docs_url: https://www.realtyapi.io/docs/realestateau/searchbyzip
+
+  - id: realtyapi.realestate-au.property.detail
+    added: '2026-11-17'
+    capability: realestate-au.property.detail
+    platform: realestate-au
+    scope: any_account
+    method: GET
+    host: realestateau.realtyapi.io
+    path: /details/byid
+    name: "realestate.com.au listing by id"
+    summary: "Get one realestate.com.au listing: price, beds, baths, parking, land and building size, features, inspections, agency and agents, description and photos."
+    input:
+      queryParams:
+        listingId: {type: "string", required: true, note: "the listing_id of a realestate.com.au search result", example: "151956240"}
+    test_request:
+      queryParams: {listingId: "151956240"}
+    miss: {when: {path: response.detail.listing_id, op: absent}}
+    docs_url: https://www.realtyapi.io/docs/realestateau/detailsbyid
+
+  # --- Bayut ------------------------------------------------------------------------------------
+  - id: realtyapi.bayut.location.suggest
+    added: '2026-11-17'
+    capability: bayut.location.suggest
+    platform: bayut
+    scope: any_account
+    method: GET
+    host: bayut.realtyapi.io
+    path: /autocomplete
+    name: "Bayut location suggestions"
+    summary: "Suggest Bayut locations in the UAE for typed text, with the location id Bayut search takes."
+    input:
+      queryParams:
+        query: {type: "string", required: true, note: "partial area or community name", example: "dubai marina"}
+        hitsPerPage: {type: "integer", required: false, min: 1, example: 25}
+        page: {type: "integer", required: false, min: 0, example: 0}
+    test_request:
+      queryParams: {query: "dubai marina", hitsPerPage: 5}
+    miss: {when: {any: [{path: response.data.hits, op: absent}, {path: response.data.hits, op: empty}]}}
+    docs_url: https://www.realtyapi.io/docs/bayut/autocomplete
+
+  - id: realtyapi.bayut.search.listings
+    added: '2026-11-17'
+    capability: bayut.search.listings
+    platform: bayut
+    scope: any_account
+    method: GET
+    host: bayut.realtyapi.io
+    path: /search/property
+    name: "Search Bayut listings"
+    summary: "Search Bayut properties for sale or rent in a UAE location, with price, room, bath, area and furnishing filters, returning listing ids, prices and agencies."
+    input:
+      queryParams:
+        location_external_id: {type: "string", required: true, note: "the location id from Bayut location suggestions", example: "6901"}
+        purpose: {type: "string", required: true, enum: ["for-rent", "for-sale"]}
+        page: {type: "integer", required: false, min: 0, example: 0}
+        hitsPerPage: {type: "integer", required: false, min: 1, example: 25}
+        category: {type: "string", required: false, example: "residential"}
+        rent_frequency: {type: "string", required: false, example: "yearly"}
+        rooms: {type: "string", required: false}
+        baths: {type: "string", required: false}
+        min_price: {type: "string", required: false}
+        max_price: {type: "string", required: false}
+        furnishingStatus: {type: "string", required: false}
+    test_request:
+      queryParams: {location_external_id: "6901", purpose: "for-sale", hitsPerPage: 5}
+    miss: {when: {any: [{path: response.datan.hits, op: absent}, {path: response.datan.hits, op: empty}]}}
+    docs_url: https://www.realtyapi.io/docs/bayut/propertysearch
+
+  - id: realtyapi.bayut.property.detail
+    added: '2026-11-17'
+    capability: bayut.property.detail
+    platform: bayut
+    scope: any_account
+    method: GET
+    host: bayut.realtyapi.io
+    path: /details/property
+    name: "Bayut property by id"
+    summary: "Get one Bayut property listing in the UAE: price, purpose, location, rooms, baths, area, amenities, agency and agent, and photos."
+    input:
+      queryParams:
+        property_external_id: {type: "string", required: true, note: "the externalID of a Bayut search result", example: "16062432"}
+    test_request:
+      queryParams: {property_external_id: "16062432"}
+    miss: {when: {path: response.data.id, op: absent}}
+    docs_url: https://www.realtyapi.io/docs/bayut/propertydetails
