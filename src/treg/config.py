@@ -292,21 +292,6 @@ class Settings(BaseSettings):
     # on the server AND install it via `treg setup-local-run --run-proof` to enable shared local runs.
     run_proof: str = ""
 
-    # `treg run --server` allow-list. The server only executes an entrypoint that is a catalog-known CLI
-    # (stripe/gh/vercel/…) OR listed here (comma-separated) — so a member can't name `bash`/`python` and
-    # run arbitrary code as the server user. Extend it as new CLIs are approved.
-    run_allowed_bins: str = ""
-
-    # Server-run resource limits (the DoS half of the server-run sandbox). Every `--server` run's child
-    # process gets these POSIX rlimits so a runaway or hostile CLI can't exhaust the host. On by default;
-    # a no-op where `resource` is unavailable (non-Unix). We deliberately do NOT cap address space or
-    # process count — a virtual-memory cap crashes Go-based CLIs (gh/stripe/doctl), and the per-user
-    # process cap is shared with the server itself. CPU-seconds + max-file-size + no-core-dumps are the
-    # safe, high-value guards. Set TREG_RUN_RLIMITS=false to disable entirely.
-    run_rlimits: bool = True
-    run_cpu_seconds: int = 300          # CPU time a single server run may burn (backstop to the wall timeout)
-    run_fsize_mb: int = 100             # largest single file a server run may write (disk-fill guard)
-
     # Platform markup on a call served by a PLATFORM key, applied to the estimate at reserve time and
     # to the observed cost at settle time. 0.0 = we charge exactly what the provider charges us.
     # It lives in config (rather than being hardcoded) so turning margin on is a deploy setting, not

@@ -131,9 +131,9 @@ row names any more are deleted by `treg-worker media sweep`.
 
 ## Known limitations (by design, documented on purpose)
 
-**The server CLI runner lacks filesystem/process isolation.** A scrubbed child environment and
-resource limits do not isolate it from the server's credentials. Server-side CLI execution remains
-disabled until an independently reviewed isolation boundary is in place.
+**There is no server-side CLI execution.** A scrubbed child environment and resource limits would
+not isolate a vendor CLI from the server's credentials, so the server runner was removed; `POST /run`
+answers 503 for every caller. It returns only with an independently reviewed isolation boundary.
 
 ## Supported versions
 

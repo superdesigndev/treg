@@ -219,9 +219,9 @@ agents then built against a constitution that was wrong.
 
 `expose_dev_code` (dev OTP only on a local sqlite database, `config.py`), the call-time SSRF check
 (`infra/upstream/ssrf.py`), the fail-loud missing-Fernet-key check in `verify_db`, and
-the unconditional `POST /run` denial (`api.py`). Server-side CLI execution is disabled for every
-caller; an executable allow-list and rlimits are not an isolation boundary. Read the fragment before
-touching any of them.
+the unconditional `POST /run` denial (`api.py`). The server holds no CLI execution code; the route
+only tells old clients so. Do not bring it back: an executable allow-list and rlimits are not an
+isolation boundary. Read the fragment before touching any of them.
 
 ## Development
 
