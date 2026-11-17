@@ -9,6 +9,10 @@ sources:
   - src/treg/domain/money/__init__.py
   - tests/test_free_credit_video.py
   - src/treg/domain/money/settlement.py
+  - src/treg/domain/money/allowance.py
+  - tests/test_money_allowance.py
+  - src/treg/infra/kv.py
+  - tests/test_kv_allowance.py
   - src/treg/domain/asynctasks/__init__.py
   - src/treg/models.py
   - src/treg/application/billing.py
@@ -118,10 +122,54 @@ display-only `*_usd` twin: **never compute against the USD field.**
 (an open reservation), `LedgerEntry` (append-only journal).
 
 `CallCharge` (revision 0109) is a queue beside them: what one call cost, keyed by `call_id`, held
-until the transaction that applies it to the blocks deletes it. The table exists ahead of its
-code; nothing reads or writes it yet, and no balance depends on it. `Hold.allowance` and
-`Hold.heartbeat_at` (revision 0110) are likewise ahead of their code: false and null on every row,
-so every hold is still one call's reservation.
+until the transaction that applies it to the blocks deletes it. `allowance.record_charges`
+(`domain/money/allowance.py`) queues a batch in one statement, applies the margin, and skips a
+`call_id` already queued. `allowance.fold_charges_in_transaction` applies up to a batch of one
+team's queued rows: it locks the team's allowance hold, deletes the rows it claims, draws each
+charge from the blocks in the usual order, and writes that call's `settle` entry stamped with the
+fold's instant (not the call's, so a reader that pages the ledger by time never has a row appear
+behind its cursor). The charged total comes out of the allowance hold; what the hold cannot cover
+comes straight out of the balance, as an overrun does at `settle`. A queue row's primary key stops
+a second recording only until the row is folded, so the fold also drops any claimed row whose call
+already has a `settle` entry. The daily counter moves as it does at `settle`: consumed goes in, and
+the covered part comes out only when the hold was opened today.
+
+A team's allowance is one `Hold` row (`allowance:<org id>`, `allowance` true; revision 0110), so the
+invariant below counts it like any other hold. `allowance.refill_allowance_in_transaction` folds a
+batch, then moves an amount from the balance into that row with `reserve`'s conditional UPDATE and
+a `reserve` entry, opening the row when there is none (an insert that ignores a conflict decides
+between two openers). A balance that cannot cover the amount adds nothing and raises nothing: the
+fold stands and the caller reads `added_micro == 0`. The row keeps its `created_at` for life, and
+the refill returns it as the `epoch` an outside counter must carry. A hold opened on an earlier
+UTC day is not in today's counter, so its top-ups stay out too and its folds add what they
+consume. `allowance.close_allowance_in_transaction` folds everything queued and returns money with
+a `release` entry: all of it, deleting the row, or at most a given amount, keeping the row so
+calls already admitted finish against what is left. Every allowance operation locks the allowance
+hold first, then blocks, then the org row, and locks the blocks once: a close claims its whole
+backlog in batches and only then applies it, because locking the blocks again per batch could meet
+one funded in between, out of primary-key order, and deadlock with a settle that holds it. For the
+same reason a transaction folds once. `settle`, `release` and the stale-hold sweep skip a hold
+marked `allowance`. `heartbeat_at` is stamped by each refill; nothing reads it yet, and no call
+path uses any of these functions yet.
+
+The hold is the authority; the shared store (`infra/kv.py`) only mirrors what of it is still
+unspent, as one hash per team holding `avail` and the hold's `epoch`. Five atomic operations:
+`allowance_take` subtracts an amount when the counter holds at least that much and returns the
+epoch; `allowance_give_back` returns part of a take, only to a counter of the same epoch;
+`allowance_add` adds what a refill just committed to the hold and restarts the counter's expiry;
+`allowance_drop` empties the counter and returns what it held, keeping the epoch, so that figure
+can be released from a hold that stays while calls already admitted keep theirs;
+`allowance_retire` ends the counter of a hold being deleted, returning what it held and leaving
+the next epoch behind for a given time. Epochs only grow (a later hold has a later `created_at`),
+and that is the fence: an add replaces a counter of an older epoch, and is refused as `"stale"`
+when the stored epoch is newer, so a refill whose add arrives after its hold was closed and
+another opened cannot put the closed hold's money back on offer. The fence lasts as long as the
+hash; a writer later than the retired hash's expiry is not caught by it. Each operation returns
+`None` when the store cannot answer, and the in-process store always does: a per-process figure
+cannot be the one every process spends from. Add to the counter only after the refill's commit. In
+that order a failure between the two leaves money in the hold that no counter offers, which a
+close returns; the other order would offer money the hold does not have. The same is true of a
+counter that expired or was lost: its unspent part stays in the hold until a close.
 
     balance_micro == sum(block.remaining_micro) - sum(open hold.amount_micro)
 

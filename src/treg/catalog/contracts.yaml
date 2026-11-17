@@ -1595,3 +1595,199 @@ contracts:
     miss: "platform == null"
     idempotent: true
     routed: false
+
+  # ---- Call events only (`routed: false`): an input_id and a hit verdict for direct calls.
+
+  linkedin.search.people:
+    summary: "LinkedIn member search by name or keyword — provider-native rows in `people`; call events only, never routed"
+    routed: false
+    identity:
+      - {full_name: str}
+      - {first_name: str, last_name: str}
+      - {q: str}
+    derive:
+      full_name: "join(first_name, last_name)"
+    filters:
+      title: {type: str}
+    output:
+      people: {type: list, required: true}
+    miss: "people == []"
+    idempotent: true
+
+  linkedin.search.posts:
+    summary: "LinkedIn post search by keyword — provider-native rows in `posts`; call events only, never routed"
+    routed: false
+    identity:
+      - {q: str}
+    filters:
+      date_posted: {type: str, analytics: value}
+      sort: {type: str, analytics: value}
+    output:
+      posts: {type: list, required: true}
+    miss: "posts == []"
+    idempotent: true
+
+  linkedin.search.jobs:
+    summary: "LinkedIn job search by keyword — provider-native rows in `jobs`; call events only, never routed"
+    routed: false
+    identity:
+      - {q: list}   # a search may name several titles (Apify `jobTitles`): hashed as their set
+    filters:
+      location: {type: str, analytics: value}
+    output:
+      jobs: {type: list, required: true}
+    miss: "jobs == []"
+    idempotent: true
+
+  linkedin.job.detail:
+    summary: "One LinkedIn job posting by id or URL — the provider's own object in `job`; call events only, never routed"
+    routed: false
+    identity:
+      - {job_id: str}
+      - {url: url}
+    derive:
+      job_id: "linkedin_job_id(url)"
+    filters: {}
+    output:
+      job: {type: object, required: true}
+    miss: "job == null"
+    idempotent: true
+
+  x.post.detail:
+    summary: "One X (Twitter) post by id or URL — the provider's own object in `post`; call events only, never routed"
+    routed: false
+    identity:
+      - {post_id: str}
+      - {url: url}
+    derive:
+      post_id: "x_post_id(url)"
+    filters: {}
+    output:
+      post: {type: object, required: true}
+    miss: "post == null"
+    idempotent: true
+
+  meta-ads.library.search:
+    summary: "Meta Ad Library search by keyword — provider-native ad rows in `ads`; call events only, never routed"
+    routed: false
+    identity:
+      - {q: str}
+    filters:
+      country: {type: str, analytics: value}
+    output:
+      ads: {type: list, required: true}
+    miss: "ads == []"
+    idempotent: true
+
+  google.serp.ai_mode:
+    summary: "Google AI Mode's answer to a query — its text in `answer`; call events only, never routed"
+    routed: false
+    identity:
+      - {q: str}
+    filters:
+      country: {type: str, analytics: value}
+    output:
+      answer: {type: str, required: true}
+      sources: {type: list}
+    miss: "answer == null"
+    idempotent: true
+
+  ai-search.chatgpt.scrape:
+    summary: "ChatGPT's answer to a prompt, scraped — its text in `answer`; call events only, never routed"
+    routed: false
+    identity:
+      - {q: str}
+    filters:
+      country: {type: str, analytics: value}
+    output:
+      answer: {type: str, required: true}
+      sources: {type: list}
+    miss: "answer == null"
+    idempotent: true
+
+  ai-search.gemini.scrape:
+    summary: "Gemini's answer to a prompt, scraped — its text in `answer`; call events only, never routed"
+    routed: false
+    identity:
+      - {q: str}
+    filters:
+      country: {type: str, analytics: value}
+    output:
+      answer: {type: str, required: true}
+      sources: {type: list}
+    miss: "answer == null"
+    idempotent: true
+
+  web.answer:
+    summary: "A sourced answer to a question from the web — its text in `answer`; call events only, never routed"
+    routed: false
+    identity:
+      - {q: str}
+    filters: {}
+    output:
+      answer: {type: str, required: true}
+      sources: {type: list}
+    miss: "answer == null"
+    idempotent: true
+
+  people.search.count:
+    summary: "How many people match a company and title — the number in `count`; call events only, never routed"
+    routed: false
+    identity:
+      - {company_domain: list, title: list}
+      - {company_domain: list}
+      - {title: list}
+    filters: {}
+    output:
+      count: {type: int, required: true}
+    # Zero people is the answer "none match": the count's empty answer.
+    miss: "count == 0"
+    idempotent: true
+
+  companies.emails.list:
+    summary: "Email addresses found at one company domain — provider-native rows in `emails`; call events only, never routed"
+    routed: false
+    identity:
+      - {domain: str}
+    filters: {}
+    output:
+      emails: {type: list, required: true}
+    miss: "emails == []"
+    idempotent: true
+
+  people.decision_makers:
+    summary: "Decision makers at one company domain — provider-native rows in `people`; call events only, never routed"
+    routed: false
+    identity:
+      - {company_domain: str}
+    filters: {}
+    output:
+      people: {type: list, required: true}
+    miss: "people == []"
+    idempotent: true
+
+  reddit.search.posts:
+    summary: "Reddit post search by keyword — provider-native rows in `posts`; call events only, never routed"
+    routed: false
+    identity:
+      - {q: str}
+    filters:
+      sort: {type: str, analytics: value}
+    output:
+      posts: {type: list, required: true}
+    miss: "posts == []"
+    idempotent: true
+
+  reddit.post.comments:
+    summary: "Comments on one Reddit post by id or URL — provider-native rows in `comments`; call events only, never routed"
+    routed: false
+    identity:
+      - {post_id: str}
+      - {url: url}
+    derive:
+      post_id: "reddit_post_id(url)"
+    filters: {}
+    output:
+      comments: {type: list, required: true}
+    miss: "comments == []"
+    idempotent: true

@@ -483,11 +483,14 @@ async def _claim_hold(db: AsyncSession, call_id: str) -> _ClaimedHold | None:
     customer's spend out of the invoice after it has already left the balance.
     Same idiom as `reserve`'s conditional UPDATE, for the same reason: where two paths read before
     either writes, the database has to be the one that says no.
+
+    A team's allowance hold is never claimed here: it stands behind many calls, so closing it as
+    one call's hold would return money those calls have already spent.
     """
     mark_money(db, call_id=call_id)
     with money_stage(db, "claim_hold"):
         row = (await db.execute(
-            delete(Hold).where(Hold.id == call_id)
+            delete(Hold).where(Hold.id == call_id, Hold.allowance.is_(False))
             .returning(Hold.amount_micro, Hold.org_id, Hold.endpoint_id, Hold.created_at,
                        Hold.purchased_only)
         )).one_or_none()
@@ -805,7 +808,8 @@ async def reap_stale_holds(db: AsyncSession, *, org_id: int | None = None, limit
     cutoff = _now() - timedelta(seconds=hold_ttl_s())
     deferred = select(AsyncTaskRecord.call_id).where(
         AsyncTaskRecord.call_id == Hold.id, AsyncTaskRecord.status == "pending").exists()
-    q = select(Hold).where(Hold.created_at < cutoff, ~deferred).order_by(Hold.created_at).limit(limit)
+    q = (select(Hold).where(Hold.created_at < cutoff, Hold.allowance.is_(False), ~deferred)
+         .order_by(Hold.created_at).limit(limit))
     if org_id is not None:
         q = q.where(Hold.org_id == org_id)
     with money_stage(db, "reap_scan"):
