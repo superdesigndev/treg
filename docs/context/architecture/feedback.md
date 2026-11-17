@@ -84,7 +84,9 @@ admin service's grants and release; downgrading revision 0030 deletes all handli
 narrowed to its pin (a foreign reference is 404, never an oracle). A missing audit record is a
 retryable 404, including ledger-only evidence, which lacks the attribution a review needs. Own-tool
 calls are 400, and so is a maker reviewing its own listed hub tool. A routed parent is attributed to
-its successful child's endpoint/provider, keeping the parent as `routed_via`. `invited` is recomputed
+its latest successful attempt's endpoint/provider (`<call>:r<n>`; an async attempt's polls,
+`<call>:r<n>:p<k>` on the provider's job endpoint, are left out, since the review is about what was
+asked), keeping the parent as `routed_via`. `invited` is recomputed
 at submission from a 2xx, non-cached, `platform`-tier record and the current sampling rate, so it
 means "sampled, hence eligible"; the true count of invitations sent is the `hint_attached` event.
 Volunteered reviews are accepted with `invited=false` and count through the team vote below. Retries

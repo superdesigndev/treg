@@ -113,9 +113,13 @@ async def submit_review(
         if record.credential_tier == "routed":
             targeted = None
             routed_via = record.endpoint_id
+            # A waterfall attempt is `<call>:r<n>`; an async attempt's polls are `<call>:r<n>:p<k>`
+            # on the provider's job endpoint, which is not what was asked, so they are left out.
+            escaped = call_id.replace("/", "//").replace("%", "/%").replace("_", "/_")
             child = (await db.execute(select(CallRecord).where(
                 CallRecord.org_id == org_id,
                 CallRecord.call_ref.startswith(f"{call_id}:r", autoescape=True),
+                CallRecord.call_ref.not_like(f"{escaped}:r%:%", escape="/"),
                 CallRecord.status_code >= 200, CallRecord.status_code < 300,
             ).order_by(CallRecord.id.desc()).limit(1))).scalar_one_or_none()
             if child is not None and child.endpoint_id:

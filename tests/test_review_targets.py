@@ -13,6 +13,7 @@ from test_hints import _platform_call
 from test_marketplace_call import platform_on  # noqa: F401 - pytest fixture
 from test_routing import enrichment_on  # noqa: F401 - pytest fixture
 from test_route_verify import verifiers_on  # noqa: F401 - pytest fixture
+from test_dropcontact_routing import dropcontact_platform  # noqa: F401 - pytest fixture
 from test_reviews import rows, seed, submit
 
 
@@ -184,3 +185,36 @@ async def test_a_stuck_counts_read_never_holds_a_worker_and_leaves_the_base_rate
     monkeypatch.setattr(review_targets, 'READ_TIMEOUT_S', 0.05)
     await asyncio.wait_for(review_targets.warm(), timeout=2)
     assert review_targets.rate('unreviewed.search') == pytest.approx(0.2)
+
+
+async def test_an_async_find_credits_and_targets_the_find_not_its_poll(clients, dropcontact_platform,
+                                                                       targeting, monkeypatch):
+    """Dropcontact submits a job (people.email.find) and is polled (jobs.get): the review is about
+    the find, so both the review and the invitation go to the find, and a full find stops the boost."""
+    from test_dropcontact_routing import _relay as dropcontact_relay
+
+    dropcontact_relay(monkeypatch, {'success': True, 'data': [{
+        'first_name': 'Peter', 'last_name': 'Jackson',
+        'email': [{'email': 'peter.jackson@company.com', 'qualification': 'nominative@pro'}]}]}, [])
+    monkeypatch.setattr(targeting, 'review_sample_rate', 0)
+    monkeypatch.setattr(targeting, 'feedback_hint_rate', 0)
+    monkeypatch.setattr(targeting, 'review_target_reviews', 1)
+    await review_targets.warm()
+    ask = dict(json={'first_name': 'Peter', 'last_name': 'Jackson', 'domain': 'company.com'},
+               headers={'X-Treg-Route-Prefer': 'dropcontact', 'X-Treg-Route-Waterfall': '0'})
+    first = await clients.post('/call/treg.people.email.find', **ask)
+    assert first.status_code == 200, first.text
+    assert first.headers.get('X-Treg-Hint') == 'review'
+    for _ in range(100):  # the call records are written after the answer; the API says retry
+        review = await clients.post('/reviews', json={'call_id': first.headers['X-Treg-Call-Id'],
+                                                      'usefulness': 'useful'})
+        if review.status_code != 404:
+            break
+        await asyncio.sleep(0.02)
+    assert review.status_code == 201, review.text
+    row, = await rows()
+    assert (row.endpoint_id, row.invited) == ('dropcontact.people.email.find', True)
+    await review_targets.warm()
+    second = await clients.post('/call/treg.people.email.find', **ask)
+    assert second.status_code == 200, second.text
+    assert second.headers.get('X-Treg-Hint') is None
