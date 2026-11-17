@@ -199,6 +199,12 @@ whose `claude` records its arguments, and compares every file left in HOME, mode
   `mcpServers` as `type: "http"`, `url`, `headers` and `tools: ["*"]`, merged like Cursor's, the header
   dropped under `--oauth`. It is written when that directory exists or `copilot` is on PATH. The
   frozen Python CLI does not write it; `test_mcp_install_writes_github_copilot_go` holds the difference.
+- **Copilot as a runtime** is named by the binary only. Copilot CLI sets `COPILOT_CLI=1` and
+  `COPILOT_AGENT_SESSION_ID` on the shell its tool runs, under a process named `copilot`;
+  VS Code sets `COPILOT_AGENT=1` only on the hidden terminals its Copilot agent runs, whose
+  ancestors name no agent. So `X-Treg-Client` is `copilot-cli` or `copilot-vscode`, and the session
+  label follows: the `copilot` process, or VS Code's mark when no nearer agent is on the tree. The
+  frozen Python CLI sends `cli` for both; `test_only_the_binary_names_copilot` holds the difference.
 - **`skill install <name>`** also installs one of the registry's public skills (its well-known
   index, what `skill bootstrap --skills` installs) when the team has no skill of that name; the
   Python CLI refused it as "no skill named ... in this org", which was most `skill install`

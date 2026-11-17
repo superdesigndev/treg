@@ -232,6 +232,10 @@ func Runtime() string {
 		{"GEMINI_CLI", "gemini-cli"},
 		{"PI_CODING_AGENT", "pi"},
 		{"GITHUB_COPILOT_AGENT", "copilot"},
+		// Copilot CLI sets these on the shell its tool runs; VS Code sets COPILOT_AGENT only on the
+		// hidden terminals its Copilot agent runs, never on a person's.
+		{"COPILOT_CLI", "copilot-cli"}, {"COPILOT_AGENT_SESSION_ID", "copilot-cli"},
+		{"COPILOT_AGENT", "copilot-vscode"},
 	} {
 		if os.Getenv(m[0]) != "" {
 			return m[1]

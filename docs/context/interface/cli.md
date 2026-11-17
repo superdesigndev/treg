@@ -215,8 +215,8 @@ is collected**; keep it that way. An installation is a random UUID in `analytics
 
 `cli_session.current` resolves the session once per invocation: `TREG_SESSION_ID`, else the nearest
 agent on the process tree (agent variables are inherited by nested agents, so the tree decides which
-agent is nearest before its own variable is read: `CLAUDE_CODE_SESSION_ID`, `CODEX_THREAD_ID`, else
-the agent's pid and start time), else a reused `session-id` file with an idle timeout; a terminal or
+agent is nearest before its own variable is read: `CLAUDE_CODE_SESSION_ID`, `CODEX_THREAD_ID`,
+`COPILOT_AGENT_SESSION_ID` in the binary ([cli-binary](cli-binary.md)), else the agent's pid and start time), else a reused `session-id` file with an idle timeout; a terminal or
 tmux ancestor would join unrelated commands. Machine-derived ids are sent hashed, never raw.
 
 The hosted registry's public ingestion token is the default only for that registry; self-hosted URLs
