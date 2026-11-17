@@ -314,4 +314,4 @@ stopped with 426 by `routers.auth_helpers.require_managed_cli` before email cred
 team is created or an invite consumed. Current CLIs send `X-Treg-Key-Protocol: 1`. The legacy hint
 (`python-httpx/` User-Agent plus `ngrok-skip-browser-warning: 1` without the marker) is a
 compatibility check, not an authorization boundary: forging or omitting it never relaxes token
-restrictions. `test_released_cli_compat` checks the refusal preserves config bytes.
+restrictions. `test_cli_key_compatibility` checks the refusal leaves credentials and the team unchanged.
