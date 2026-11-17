@@ -4153,11 +4153,6 @@ adapters:
     in: {q: body.query, sort: body.sort}
     out: {posts: rows}
     miss: "coalesce(rows, []) == []"
-  justoneapi.x.reddit-search-v1:
-    route: false
-    accepts: [[q]]
-    in: {q: queryParams.keyword}
-    out: {posts: data.search.dynamic.components.main.edges}
   scrapecreators.reddit.search.posts:
     route: false
     accepts: [[q]]
