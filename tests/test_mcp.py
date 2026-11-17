@@ -931,43 +931,13 @@ async def test_a_list_is_refused_for_a_GET_with_a_clear_reason(clients):
     assert "must be an object, not a list" in json.dumps(out), out
 
 
-def test_stripping_the_link_keeps_the_DIAGNOSIS(clients):
-    """Removing the invitation to pay must not remove the explanation. An agent still needs to know
-    it ran out of money, how short it was, and that its own key is an alternative — otherwise the
-    refusal is indistinguishable from a broken endpoint."""
-    from treg.mcp import _without_purchase_pointers
-
-    real = {"detail": {
-        "error": "insufficient_balance",
-        "message": ("akta.companies.enrich would cost ~$0.875 and this team's balance is $0.5765."
-                    "\n  add funds:      https://treg.to/app#billing"
-                    "\n  or use your own key: treg connections connect --provider akta"),
-        "balance_micro": 576500, "estimated_cost_micro": 875000}}
-    out = _without_purchase_pointers(real)
-    blob = json.dumps(out)
-    assert "insufficient_balance" in blob and "would cost" in blob
-    assert "connections connect" in blob, "the own-key alternative must survive"
-    assert out["detail"]["balance_micro"] == 576500
-
-
-def test_the_strip_does_not_depend_on_which_host_we_run_as(clients):
-    """A first version matched `public_url`, which differs per environment — so it stripped nothing
-    anywhere except production, and the local test passed while the deployed behaviour was wrong."""
-    from treg.mcp import _without_purchase_pointers
-
-    for host in ("https://treg.ngrok.app", "http://127.0.0.1:18790", "https://anything.example"):
-        out = _without_purchase_pointers({"m": f"pay here: {host}/app#billing"})
-        assert "http" not in json.dumps(out), host
-
-
-async def test_a_402_THROUGH_THE_CALL_TOOL_carries_no_link(clients, monkeypatch):
-    """The test the helper-level ones above cannot be. They exercise `_without_purchase_pointers`
-    directly and would pass even with the strip DELETED from `call` - the helper works and nothing
-    connects it to the response a user sees.
-
-    This drives the real path: drain the balance, call a metered endpoint through the MCP tool, and
-    assert on what comes back.
-    """
+@pytest.mark.parametrize("public_url", ["https://treg.ngrok.app", "http://127.0.0.1:18790",
+                                        "https://anything.example"])
+async def test_a_402_THROUGH_THE_CALL_TOOL_carries_no_link(clients, monkeypatch, public_url):
+    """Drain the balance, call a metered endpoint through the MCP tool, and assert on what comes
+    back: no link out, whichever host this deployment runs as, and the diagnosis intact. An agent
+    still needs to know it ran out of money, how short it was, and that its own key is an
+    alternative; otherwise the refusal is indistinguishable from a broken endpoint."""
     from sqlmodel import select
 
     from treg.config import get_settings
@@ -976,6 +946,7 @@ async def test_a_402_THROUGH_THE_CALL_TOOL_carries_no_link(clients, monkeypatch)
 
     monkeypatch.setenv("TREG_PLATFORM_KEY_TIKHUB", "PLATKEY")
     monkeypatch.setenv("TREG_PLATFORM_PROVIDERS", "tikhub")
+    monkeypatch.setenv("TREG_PUBLIC_URL", public_url)
     get_settings.cache_clear()
 
     token = (await verified_signup(clients, json={"email": "broke402@superdesign.dev"})).json()["token"]
@@ -1001,6 +972,10 @@ async def test_a_402_THROUGH_THE_CALL_TOOL_carries_no_link(clients, monkeypatch)
     assert "http://" not in blob and "https://" not in blob, f"a link out survived: {blob}"
     assert "topup_url" not in blob, blob
     assert "not enough for this call" in blob, "the diagnosis must survive"
+    detail = out["body"]["detail"]
+    assert detail["error"] == "insufficient_balance" and "would cost" in detail["message"]
+    assert "connections connect" in detail["message"], "the own-key alternative must survive"
+    assert detail["balance_micro"] == 0 and detail["estimated_cost_micro"] > 0
 
 
 async def test_a_402_THROUGH_CALL_MEDIA_carries_no_link_either(clients, monkeypatch):
