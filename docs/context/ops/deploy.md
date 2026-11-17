@@ -61,8 +61,8 @@ on all of them, then `treg-worker admin reencrypt-credentials` (`--dry-run` firs
 nothing left to re-seal. The KMS key stays as long as any row is sealed with it.
 
 Rotating `TREG_SECRET_KEY`: set it to `new,old` where data is decrypted and deploy, run
-`treg-worker admin rotate-fernet` until it reports nothing left, then set every process to `new`
-alone. Keep the old key out of the environment but retrievable for as long as a database backup
+`treg-worker admin rotate-fernet` until it reports nothing left (it covers Arena payloads and
+any stored credential still on Fernet), then set every process to `new` alone. Keep the old key out of the environment but retrievable for as long as a database backup
 from before the rotation can still be restored.
 
 The lifespan and every worker command call read-only `verify_db()`: an unstamped database or a known

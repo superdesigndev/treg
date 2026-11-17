@@ -10,7 +10,7 @@ from treg import crypto
 from treg.application import fernet_rotation
 from treg.config import get_settings
 from treg.infra.db import reset_db, session_maker
-from treg.models import ArenaRun, Org, WebArenaRun
+from treg.models import ArenaRun, Org, Secret, WebArenaRun
 from treg.timeutil import utcnow_naive
 
 OLD, NEW = Fernet.generate_key().decode(), Fernet.generate_key().decode()
@@ -115,3 +115,29 @@ async def test_rotation_leaves_a_payload_updated_while_it_ran(secret_key):
 
     assert result["arenarun"]["changed"] >= 1
     assert await _payload(run_id) == updated
+
+
+async def test_without_kms_every_real_credential_survives_dropping_the_old_key(secret_key):
+    secret_key(OLD)
+    async with session_maker() as db:
+        team, demo = Org(name="team", slug="rot-team"), Org(name="demo", slug="rot-demo", demo=True)
+        db.add_all([team, demo])
+        await db.flush()
+        real = Secret(org_id=team.id, name="key", value=crypto.encrypt("sk-real"))
+        sealed = Secret(org_id=team.id, name="kms", value="kms1:wrapped.body")
+        seed = Secret(org_id=demo.id, name="echo-key", value=crypto.encrypt("demo-value"))
+        db.add_all([real, sealed, seed])
+        await db.commit()
+        ids = real.id, sealed.id, seed.id
+    secret_key(f"{NEW},{OLD}")
+
+    result = await fernet_rotation.rotate()
+
+    assert result["error"] is None and result["secret"]["rotated"] >= 1
+    secret_key(NEW)
+    async with session_maker() as db:
+        real, sealed, seed = [await db.get(Secret, i) for i in ids]
+    assert crypto.decrypt(real.value) == "sk-real"
+    assert sealed.value == "kms1:wrapped.body"
+    with pytest.raises(InvalidToken):
+        crypto.decrypt(seed.value)
