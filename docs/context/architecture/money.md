@@ -123,8 +123,9 @@ display-only `*_usd` twin: **never compute against the USD field.**
 
 `CallCharge` (revision 0109) is a queue beside them: what one call cost, keyed by `call_id`, held
 until the transaction that applies it to the blocks deletes it. `allowance.record_charges`
-(`domain/money/allowance.py`) queues a batch in one statement, applies the margin, and skips a
-`call_id` already queued. `allowance.fold_charges_in_transaction` applies up to a batch of one
+(`domain/money/allowance.py`) queues a batch in one statement, applies the margin (a call whose
+real cost was never learned is charged what it set aside, as at `settle`), and skips a `call_id`
+already queued. `allowance.fold_charges_in_transaction` applies up to a batch of one
 team's queued rows: it locks the team's allowance hold, deletes the rows it claims, draws each
 charge from the blocks in the usual order, and writes that call's `settle` entry stamped with the
 fold's instant (not the call's, so a reader that pages the ledger by time never has a row appear

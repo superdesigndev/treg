@@ -92,7 +92,8 @@ async def test_recording_a_call_twice_queues_it_once(org_id, monkeypatch):
     async with session_maker() as db:
         assert await allowance.record_charges(db, []) == 0
         assert await allowance.record_charges(
-            db, [first, allowance.Charge("call-2", org_id, "e.two", 0), first]) == 2
+            db, [first, allowance.Charge("call-2", org_id, "e.two", 0), first,
+                 allowance.Charge("call-4", org_id, "e.two", None, reserved_micro=900)]) == 3
         await db.commit()
     async with session_maker() as db:
         assert await allowance.record_charges(
@@ -101,7 +102,8 @@ async def test_recording_a_call_twice_queues_it_once(org_id, monkeypatch):
         await db.commit()
         rows = {row.call_id: row for row in (await db.execute(select(CallCharge))).scalars()}
     assert {call_id: row.amount_micro for call_id, row in rows.items()} == {
-        "call-1": 150, "call-2": 0, "call-3": 2}
+        "call-1": 150, "call-2": 0, "call-3": 2, "call-4": 900}
+    assert rows["call-4"].meta == {"observed_micro": None, "margin": 0.5}
     assert rows["call-1"].meta == {"key_id": 7, "observed_micro": 100, "margin": 0.5}
     assert await _invariant(org_id) == GRANT
 

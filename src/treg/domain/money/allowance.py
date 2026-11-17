@@ -40,13 +40,16 @@ def allowance_id(org_id: int) -> str:
 
 
 class Charge(NamedTuple):
-    """What one finished call cost. `actual_micro` is the raw provider cost; margin is applied here."""
+    """What one finished call cost. `actual_micro` is the raw provider cost; margin is applied
+    here. `None` means the real cost was never learned and charges `reserved_micro`, what the call
+    set aside with margin already in it: the rule `settle` follows."""
 
     call_id: str
     org_id: int
     endpoint_id: str
-    actual_micro: int
+    actual_micro: int | None
     meta: dict | None = None
+    reserved_micro: int = 0
 
 
 async def record_charges(db: AsyncSession, charges: Sequence[Charge]) -> int:
@@ -61,8 +64,10 @@ async def record_charges(db: AsyncSession, charges: Sequence[Charge]) -> int:
     insert = postgresql.insert if db.get_bind().dialect.name == "postgresql" else sqlite.insert
     rows = {charge.call_id: {
         "call_id": charge.call_id, "org_id": charge.org_id, "endpoint_id": charge.endpoint_id or "",
-        "amount_micro": max(0, with_margin(int(charge.actual_micro))),
-        "meta": {**(charge.meta or {}), "observed_micro": int(charge.actual_micro), "margin": margin},
+        "amount_micro": max(0, int(charge.reserved_micro) if charge.actual_micro is None
+                            else with_margin(int(charge.actual_micro))),
+        "meta": {**(charge.meta or {}), "margin": margin,
+                 "observed_micro": None if charge.actual_micro is None else int(charge.actual_micro)},
     } for charge in charges}
     result = await db.execute(
         insert(CallCharge).values(list(rows.values()))
