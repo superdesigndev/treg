@@ -251,23 +251,58 @@ def _request_doc(query_items: Iterable[tuple[str, str]], body: bytes | None) -> 
     return {"queryParams": query, "body": doc_body, "pathParams": query}
 
 
-# A position value that names the first page: no page sent, `page=1` (or 0 where pages count
-# from 0), `offset=0`, an empty cursor or `0`.
-_FIRST_PAGE = {"page": {"", "0", "1"}, "offset": {"", "0"}, "cursor": {"", "0"}}
+# A position value that names the first page: no page sent, `page` 1, `page0` (a page number
+# counted from 0) 0, `offset` 0, an empty cursor or `0`.
+_FIRST_PAGE = {"page": {"", "1"}, "page0": {"", "0"}, "offset": {"", "0"}, "cursor": {"", "0"}}
 # Request parameters that name a page wherever a provider uses them, read at the top level of the
 # query or the body when the adapter declares no `position`. `pages` (how many) is not one.
 _POSITION_PARAMS = (("cursor", "cursor"), ("page_token", "cursor"), ("pageToken", "cursor"),
                     ("next_page_token", "cursor"), ("after", "cursor"), ("page", "page"),
                     ("offset", "offset"), ("start", "offset"), ("skip", "offset"))
+_NUMBER_TYPES = ("integer", "number")
+_COUNTED = ("page", "page0", "offset")
+
+
+def _declared_param(endpoint_id: str, section: str, name: str) -> dict | None:
+    spec = (((catalog_store.load().by_id.get(endpoint_id) or {}).get("input") or {})
+            .get(section) or {}).get(name)
+    return spec if isinstance(spec, dict) else None
+
+
+def _by_name(adapter: Adapter, doc: dict) -> tuple[str, Any] | None:
+    """The first top-level paging parameter the endpoint declares with a type that can be one: a
+    page number or an offset must be declared a number (crawl4ai's Facebook `page` is a page
+    name), a cursor a string or a number. A page declared from 0 (`default: 0`, or `min: 0` with no default
+    of 1) is `page0`."""
+    for name, kind in _POSITION_PARAMS:
+        for section in ("queryParams", "body"):
+            v = doc[section].get(name)
+            if v in (None, ""):
+                continue
+            spec = _declared_param(adapter.endpoint_id, section, name)
+            if spec is None:
+                continue
+            if kind == "cursor":
+                if spec.get("type") in ("string", *_NUMBER_TYPES):
+                    return kind, v
+                continue
+            if spec.get("type") not in _NUMBER_TYPES:
+                continue
+            if kind == "page" and (spec.get("default") == 0
+                                   or (spec.get("min") == 0 and spec.get("default") != 1)):
+                kind = "page0"
+            return kind, v
+    return None
 
 
 def page_position(adapter: Adapter | None, query_items: Iterable[tuple[str, str]] = (),
                   body: bytes | None = None, identity: dict | None = None) -> tuple[str, str] | None:
-    """(`page` | `offset` | `cursor`, value) when a call asks for a later page than the first;
-    None for the first page or when the request says nothing about pages. A direct call is read
-    through its adapter's `position` (else the request path its `paging.cursor` names); a routed
-    parent from the caller's own `cursor`, `page` or `offset`. An adapter that declares neither is
-    read by parameter name (`_POSITION_PARAMS`: SerpApi's `start`, Serper's `page`)."""
+    """(`page` | `page0` | `offset` | `cursor`, value) when a call asks for a later page than the
+    first; None for the first page or when the request says nothing about pages. A direct call is
+    read through its adapter's `position` (else the request path its `paging.cursor` names); a
+    routed parent from the caller's own `cursor`, `page` or `offset`. An adapter that declares
+    neither is read by parameter name, as its endpoint declares the parameter (`_by_name`). A page
+    number or an offset counts only as a non-negative whole number; anything else is no position."""
     found: tuple[str, Any] | None = None
     if identity is not None:
         found = next(((k, identity[k]) for k in ("cursor", "page", "offset") if k in identity), None)
@@ -281,16 +316,20 @@ def page_position(adapter: Adapter | None, query_items: Iterable[tuple[str, str]
             except (TypeError, ValueError, AttributeError, IndexError, KeyError):
                 return None  # an unreadable position reads as the first page, never a failed event
         else:
-            found = next(((kind, part[name]) for name, kind in _POSITION_PARAMS
-                          for part in (doc["queryParams"], doc["body"])
-                          if part.get(name) not in (None, "")), None)
+            found = _by_name(adapter, doc)
     if found is None:
         return None
     kind, v = found
     if isinstance(v, bool) or v is None:
         return None
     text = str(v).strip() if isinstance(v, (str, int, float)) else None
-    if text is None or text in _FIRST_PAGE[kind]:
+    if text is None:
+        return None
+    if kind in _COUNTED:
+        if not text.isdigit():
+            return None
+        text = str(int(text))
+    if text in _FIRST_PAGE[kind]:
         return None
     return kind, text
 
@@ -360,15 +399,32 @@ def vendor_identity(adapter: Adapter, contract: Contract, query_items: Iterable[
     return given
 
 
+def _listed(contract: Contract, field: str) -> bool:
+    """A `list` identity field of an admission-only contract (a count over several companies). A
+    routed contract's list fields stay unrecorded: its published route rules match the segments
+    its calls were recorded in."""
+    return not contract.routed and contract.identity_types.get(field) == "list"
+
+
+def _normalize_field(contract: Contract, field: str, value: Any) -> str | None:
+    """`normalize`, except that a listed field is its values' set: each normalized, sorted and
+    joined, so `[b.com, a.com]` and `[A.com, b.com]` are one question and `[a.com]` another."""
+    if not _listed(contract, field):
+        return normalize(field, value)
+    items = value if isinstance(value, list) else [value]
+    parts = sorted({n for v in items if (n := normalize(field, v)) is not None})
+    return "\x1e".join(parts) or None
+
+
 def segment(contract: Contract, given: dict) -> tuple[str | None, dict[str, str], dict]:
     """(`input_type`, `input_meta`, the normalized identity): the segment a call is in, with no
     hashing, so published route rules match calls exactly as their events record them."""
     identity, supplied = canonical_identity(contract, given or {})
     norm = {k: n for k in contract.identity_types
-            if (n := normalize(k, identity.get(k))) is not None}
+            if (n := _normalize_field(contract, k, identity.get(k))) is not None}
     variant = next((v for v in contract.identity if all(k in norm for k in v)), None)
     meta: dict[str, str] = {}
-    domain = next((norm[k] for k in _DOMAIN_KEYS if k in norm), None)
+    domain = next((norm[k] for k in _DOMAIN_KEYS if k in norm and not _listed(contract, k)), None)
     if domain is None and "@" in norm.get("email", ""):
         domain = norm["email"].rsplit("@", 1)[1]
     # `acme.fr.` is acme.fr written with the DNS root.

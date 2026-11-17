@@ -753,9 +753,13 @@ def test_page_position_reads_a_declared_path_a_cursor_and_a_routed_caller():
     assert ev.page_position(adapter, (), json.dumps({"q": "x", "paging": {"page": 1}}).encode()) is None
     # a declared position wins over a top-level name; nothing declared falls back to the name
     assert ev.page_position(adapter, (("page", "5"),), json.dumps({"q": "x"}).encode()) is None
-    bare = replace(adapter, position={})
-    assert ev.page_position(bare, (("cursor", "abc"),), None) == ("cursor", "abc")
-    assert ev.page_position(bare, (("cursor", "0"),), None) is None
+    # nothing declared: a parameter is read by name only where its endpoint declares it
+    assert ev.page_position(replace(adapter, position={}), (("cursor", "abc"),), None) is None
+    comments = catalog_store.load().adapters["scrapecreators.instagram.post.comments"]
+    assert ev.page_position(comments, (("cursor", "abc"),), None) == ("cursor", "abc")
+    assert ev.page_position(comments, (("cursor", "0"),), None) is None
+    videos = catalog_store.load().adapters["tikhub.tiktok.user.videos"]
+    assert ev.page_position(videos, (("cursor", "20"),), None) == ("cursor", "20")
     assert ev.page_position(None, identity={"q": "x", "cursor": "trg1.abc"}) == ("cursor", "trg1.abc")
     assert ev.page_position(None, identity={"q": "x"}) is None
     with pytest.raises(ValueError):
@@ -796,3 +800,56 @@ def test_admission_only_contracts_never_mint_a_routed_row():
     for capability in ("linkedin.search.people", "web.answer", "people.search.count", "x.post.detail"):
         assert cat.contracts[capability].routed is False
         assert f"treg.{capability}" not in cat.by_id
+
+
+def _direct_input(endpoint_id: str, query: tuple = (), body: dict | None = None) -> dict:
+    cat = catalog_store.load()
+    adapter = cat.adapters[endpoint_id]
+    contract = cat.contracts[cat.by_id[endpoint_id]["capability"]]
+    raw = json.dumps(body).encode() if body is not None else None
+    given = ev.vendor_identity(adapter, contract, query, raw)
+    cols, _ = ev.input_columns(contract, given, ev.page_position(adapter, query, raw))
+    return cols
+
+
+def test_a_page_named_by_a_parameter_called_page_is_no_position():
+    # crawl4ai's Facebook `page` names the page to read, a string: never a page number, never meta.
+    adapter = catalog_store.load().adapters["crawl4ai.facebook.user.posts"]
+    body = json.dumps({"page": "https://www.facebook.com/somebrand"}).encode()
+    assert ev.page_position(adapter, (), body) is None
+    assert ev.page_position(adapter, (), json.dumps({"page": "12345"}).encode()) is None
+
+
+def test_a_page_counted_from_zero_moves_on_at_one(monkeypatch):
+    monkeypatch.setenv("TREG_CALL_EVENTS_HMAC_SECRET", SECRET)
+    get_settings.cache_clear()
+    cat = catalog_store.load()
+    for endpoint_id in ("theirstack.jobs.search", "aiark.people.search"):
+        adapter = cat.adapters[endpoint_id]
+        assert ev.page_position(adapter, (), json.dumps({"page": 0}).encode()) is None, endpoint_id
+        assert ev.page_position(adapter, (), json.dumps({"page": 1}).encode()) == ("page0", "1"), endpoint_id
+    lusha = cat.adapters["lusha.people.search"]
+    assert ev.page_position(lusha, (), json.dumps({"pagination": {"page": 1}}).encode()) == ("page0", "1")
+    # a page counted from 1 still treats page 1 as the first
+    serper = cat.adapters["serper.web.search"]
+    assert ev.page_position(serper, (), json.dumps({"q": "x", "page": 1}).encode()) is None
+    assert ev.page_position(serper, (), json.dumps({"q": "x", "page": 2}).encode()) == ("page", "2")
+    get_settings.cache_clear()
+
+
+def test_a_count_over_several_companies_hashes_the_whole_set(monkeypatch):
+    monkeypatch.setenv("TREG_CALL_EVENTS_HMAC_SECRET", SECRET)
+    get_settings.cache_clear()
+    eid = "dropleads.people.search.count"
+
+    def ask(domains, titles=("CEO",)):
+        filters = {"jobTitles": list(titles), **({"companyDomains": list(domains)} if domains else {})}
+        return _direct_input(eid, body={"filters": filters})
+
+    one, other, none = ask(["a.example", "b.example"]), ask(["c.example", "d.example"]), ask([])
+    same = ask(["B.example", "www.a.example"])
+    get_settings.cache_clear()
+    assert len({one["input_id"], other["input_id"], none["input_id"]}) == 3
+    assert one["input_id"] == same["input_id"] and one["input_type"] == "company_domain+title"
+    assert none["input_type"] == "title"
+    assert "domain_class" not in (one["input_meta"] or {})

@@ -220,7 +220,8 @@ class Adapter:
     # Cursor only: a page number over a provider whose order changes between calls (Dropleads)
     # repeats and skips rows.
     paging: dict[str, str] = field(default_factory=dict)
-    # `{page | offset | cursor: <expression over the provider request>}`: which page of the
+    # `{page | page0 | offset | cursor: <expression over the provider request>}` (`page0`: a page
+    # number counted from 0): which page of the
     # answer a request asks for. Read by call events only, so a later page is a different
     # question from the first (`input_id`), never a retry of it.
     position: dict[str, str] = field(default_factory=dict)
@@ -675,7 +676,7 @@ def _paging(eid: str, raw, out: dict) -> dict[str, str]:
     return {str(k): str(v) for k, v in raw.items()}
 
 
-POSITION_KINDS = ("page", "offset", "cursor")
+POSITION_KINDS = ("page", "page0", "offset", "cursor")
 
 
 def _position(eid: str, raw) -> dict[str, str]:
@@ -683,7 +684,7 @@ def _position(eid: str, raw) -> dict[str, str]:
     if not raw:
         return {}
     if not isinstance(raw, dict) or len(raw) != 1 or next(iter(raw)) not in POSITION_KINDS:
-        raise ValueError(f"adapter {eid}: position is {{page | offset | cursor: <expression>}}")
+        raise ValueError(f"adapter {eid}: position is {{page | page0 | offset | cursor: <expression>}}")
     return {str(k): str(v) for k, v in raw.items()}
 
 

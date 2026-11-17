@@ -1053,6 +1053,7 @@ adapters:
     in_expr: {body.filters.contacts.include.jobTitles: "list(title)", body.pagination.size: "at_least(limit, 10)", body.pagination.page: "0"}
     out: {people: results, count: pagination.total}
     miss: "results == []"
+    position: {page0: body.pagination.page}
     row: {name: "join(firstName, lastName)", title: jobTitle.title, company: company.name, company_domain: company.domain, location: "place(location.city, location.state, location.country)", profile_url: socialLinks.linkedin}
   oceanio.people.search:
     accepts: [[company_domain]]
@@ -1443,6 +1444,7 @@ adapters:
     in_expr: {body.filters.companies.include.domains: "list(domain)", body.pagination.size: "at_least(limit, 10)", body.pagination.page: "0"}
     out: {companies: results, count: pagination.total}
     miss: "results == []"
+    position: {page0: body.pagination.page}
   fiber-ai.companies.search:
     accepts: [[domain]]
     in:  {}
@@ -3960,6 +3962,7 @@ adapters:
     in: {full_name: queryParams.search, first_name: queryParams.firstName,
          last_name: queryParams.lastName, title: queryParams.title}
     out: {people: elements}
+    position: {page: queryParams.page}
     miss: "elements == []"
 
   # ---- linkedin.search.posts (call events only) ----

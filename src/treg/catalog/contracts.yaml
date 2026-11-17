@@ -1734,9 +1734,9 @@ contracts:
     summary: "How many people match a company and title — the number in `count`; call events only, never routed"
     routed: false
     identity:
-      - {company_domain: str, title: str}
-      - {company_domain: str}
-      - {title: str}
+      - {company_domain: list, title: list}
+      - {company_domain: list}
+      - {title: list}
     filters: {}
     output:
       count: {type: int, required: true}

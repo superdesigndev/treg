@@ -104,14 +104,21 @@ The stream has no map type; they travel as JSON objects (`json` columns):
   `first_name`+`last_name` derives `full_name`, so `{full_name, domain}` and
   `{first_name, last_name, domain}` asked of a direct finder, a routed child or the routed parent
   give one `input_id`.
-  A request for a later page than the first is another question: its position (`page`, `offset`
-  or `cursor` and the value sent) joins the hash, so page 2 never reads as a retry of page 1, and
-  a repeat of page 2 still does. A direct call's position is read through its adapter's
-  `position` (`{page | offset | cursor: <expression over the request>}`), else the path its
-  `paging.cursor` names, else a top-level request parameter named `cursor`, `page_token`,
-  `pageToken`, `next_page_token`, `after`, `page`, `offset`, `start` or `skip`; a routed parent's
-  from the caller's `cursor`, `page` or `offset`. No page, `page` 0 or 1, `offset` 0 and an empty
-  or `0` cursor are the first page and leave `input_id` as it was.
+  A request for a later page than the first is another question: its position joins the hash, so
+  page 2 never reads as a retry of page 1, and a repeat of page 2 still does. A direct call's
+  position is read through its adapter's `position` (`{page | page0 | offset | cursor:
+  <expression over the request>}`, `page0` a page number counted from 0), else the path its
+  `paging.cursor` names, else a top-level parameter named `cursor`, `page_token`, `pageToken`,
+  `next_page_token`, `after`, `page`, `offset`, `start` or `skip` that the endpoint declares with
+  a type it can be: a number for a page or an offset (crawl4ai's Facebook `page` is a page name), a
+  string or a number for a cursor. A declared page with `default: 0`, or `min: 0` and no default
+  of 1, counts from 0 (aiark, TheirStack). A routed parent's position is the caller's `cursor`,
+  `page` or `offset`, kept in its route summary. A page number or an offset counts only as a
+  whole number. No page, `page` 1, `page0` 0, `offset` 0 and an empty or `0` cursor are the
+  first page and leave `input_id` as it was.
+  On an admission-only contract, an identity field typed `list` (a count over several companies)
+  is its values' set, each normalized, sorted and joined, so the same companies in another order
+  hash the same and other companies do not.
 - `input_keys`: `{field: hmac}` for every identity field present after derivation.
 - `input_meta`: non-sensitive segments: `domain_class` (`company`, `webmail`, `edu`, `gov`) and
   `tld` of the input domain (or the email's), `calling_code` of an international input phone
