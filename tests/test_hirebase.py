@@ -28,3 +28,45 @@ async def test_the_hirebase_jobs_meter_never_locks_the_whole_provider(monkeypatc
     monkeypatch.setattr(collectors, "_get", fake_get)
     out = await collectors._hirebase(None, "k")
     assert out["value"] == 0 and out["informational"] is True
+
+
+def _routing():
+    from pathlib import Path
+
+    import yaml
+
+    from treg.domain.catalog.routing import contracts as C
+
+    catalog = Path(__file__).parents[1] / "src" / "treg" / "catalog"
+    contract = C.parse_contracts(yaml.safe_load((catalog / "contracts.yaml").read_text()))["companies.jobs.search"]
+    adapter = C.parse_adapters(yaml.safe_load((catalog / "adapters.yaml").read_text()))["hirebase.jobs.search"]
+    return contract, adapter
+
+
+def test_a_free_text_place_reaches_hirebase_as_a_city_to_geocode():
+    """Hirebase geocodes each geo_locations field, so "New York, NY" whole in `city` is the place the
+    caller named; before, `location` had no field and a location search went to another provider."""
+    from treg.domain.catalog.routing import paths as P
+    from treg.domain.catalog.routing.plan import ignored_filters
+
+    contract, adapter = _routing()
+    expr = adapter.in_expr["body.geo_locations"]
+    asked = {"title": "account executive", "location": "New York, NY"}
+    assert ignored_filters(adapter, contract, asked) == ()
+    assert P.evaluate(expr, {**asked, "country": None}) == [{"city": "New York, NY"}]
+    assert P.evaluate(expr, {"location": "Texas", "country": "US"}) == [{"city": "Texas", "country": "United States"}]
+    assert P.evaluate(expr, {"location": None, "country": "GB"}) == [{"country": "United Kingdom"}]
+
+
+def test_the_hirebase_catalog_names_the_seniority_filter_and_where_the_match_threshold_goes():
+    from pathlib import Path
+
+    import yaml
+
+    rows = {e["id"]: e for e in yaml.safe_load(
+        (Path(__file__).parents[1] / "src" / "treg" / "catalog" / "hirebase.yaml").read_text())["endpoints"]}
+    for eid in ("hirebase.jobs.search", "hirebase.jobs.salary.insights"):
+        assert "experience_levels" in rows[eid]["input"]["body"]
+    match = rows["hirebase.jobs.match"]["input"]["body"]
+    # Hirebase answers 422 to a top-level score_threshold; it belongs inside `vector`.
+    assert "score_threshold" not in match and "score_threshold" in match["vector"]["note"]
