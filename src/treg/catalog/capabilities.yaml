@@ -135,6 +135,10 @@ platforms:
   booking: {label: "Booking.com", category: "Reviews & Apps", summary: "Hotels, prices and ratings from Booking.com."}
   glassdoor: {label: "Glassdoor", category: "Reviews & Apps", summary: "Job listings and company reviews from Glassdoor."}
   zillow: {label: "Zillow", category: "E-commerce", summary: "Homes, prices and listing facts from Zillow."}
+  realtor: {label: "Realtor.com", category: "E-commerce", summary: "Homes for sale, for rent and sold, with listing details and MLS numbers, from Realtor.com."}
+  redfin: {label: "Redfin", category: "E-commerce", summary: "Homes, prices, estimates and listing facts from Redfin."}
+  streeteasy: {label: "StreetEasy", category: "E-commerce", summary: "New York City rentals and sales from StreetEasy."}
+  rightmove: {label: "Rightmove", category: "E-commerce", summary: "UK homes for sale and to rent from Rightmove."}
   etsy: {label: "Etsy", category: "E-commerce", summary: "Products and shops from Etsy search."}
   shopify: {label: "Shopify stores", category: "E-commerce", summary: "The product catalog of any Shopify store."}
   steam: {label: "Steam", category: "E-commerce", summary: "Games, prices and reviews from the Steam store."}

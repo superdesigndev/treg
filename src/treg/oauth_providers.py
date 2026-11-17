@@ -2111,6 +2111,50 @@ TINYFISH = OAuthProvider(
     probe_path="/v1/wallet",
 )
 
+# One key for every portal. Each portal is its own host (<portal>.realtyapi.io) with the same
+# x-realtyapi-key header; the Zillow host is the base and the others are catalog targets.
+REALTYAPI = OAuthProvider(
+    service="realtyapi",
+    display_name="RealtyAPI",
+    auth_kind="key",
+    token_label="API key",
+    token_placeholder="your RealtyAPI key (rt_…)",
+    token_header="x-realtyapi-key",
+    token_format="{secret}",
+    setup_url="https://www.realtyapi.io/dashboard?tab=settings&section=keys",
+    setup_action_label="Get your RealtyAPI key",
+    setup_steps=(
+        "Sign in to RealtyAPI; a first API key is created for a new account.",
+        "Open Dashboard → Settings → API Keys and copy the key.",
+    ),
+    setup_note=(
+        "Each data request costs one credit, an empty result included; the account check is free. "
+        "The free plan includes 250 requests."
+    ),
+    auth_uri="", token_uri="", scopes={},
+    client_id_setting="", client_secret_setting="",
+    category="Real estate",
+    summary="Property details, listing search, MLS lookup and agents from Zillow, Realtor.com, Redfin and other US and international portals.",
+    base_url="https://zillow.realtyapi.io",
+    catalog_targets=(
+        CatalogTarget(host="realtor.realtyapi.io", base_url="https://realtor.realtyapi.io"),
+        CatalogTarget(host="redfin.realtyapi.io", base_url="https://redfin.realtyapi.io"),
+        CatalogTarget(host="streeteasy.realtyapi.io", base_url="https://streeteasy.realtyapi.io"),
+        CatalogTarget(host="airbnb.realtyapi.io", base_url="https://airbnb.realtyapi.io"),
+        CatalogTarget(host="rightmove.realtyapi.io", base_url="https://rightmove.realtyapi.io"),
+    ),
+    extra_tools=(
+        {"suffix": "realtor", "base_url": "https://realtor.realtyapi.io"},
+        {"suffix": "redfin", "base_url": "https://redfin.realtyapi.io"},
+        {"suffix": "streeteasy", "base_url": "https://streeteasy.realtyapi.io"},
+        {"suffix": "airbnb", "base_url": "https://airbnb.realtyapi.io"},
+        {"suffix": "rightmove", "base_url": "https://rightmove.realtyapi.io"},
+    ),
+    docs_url="https://www.realtyapi.io/docs",
+    # free: validates the key without spending a credit; a bad key answers 401 {"error":"Key not found"}
+    probe_path="/account",
+)
+
 TIKHUB = OAuthProvider(
     service="tikhub",
     display_name="TikHub",
@@ -4441,6 +4485,8 @@ REGISTRY: dict[str, OAuthProvider] = {
         # Market data API-key providers
         COINGECKO, POLYGON, FINNHUB, TWELVEDATA, FMP, EODHD, MARKETSTACK, TIINGO,
         FINANCIALDATASETS,
+        # Real estate API-key providers
+        REALTYAPI,
         # Advertising: API-key ad intelligence + unconfigured OAuth ad platforms
         SPYFU, APIFY, META_AD_LIBRARY, SERPAPI, DANSUGC,
         MICROSOFT_ADS, SNAPCHAT_ADS, TIKTOK_ADS, PINTEREST_ADS,
@@ -4452,7 +4498,8 @@ DEFAULT_CAPABILITY = "read"
 # Shelf order in the marketplace. Anything carrying a category not named here sorts last, so a
 # provider added without one is visible rather than lost between the shelves.
 CATEGORY_ORDER = ("AI generation", "SEO", "Advertising", "Social media", "Enrichment",
-                  "Market data", "Research & public data", "Jobs data", "Community", "Other")
+                  "Market data", "Research & public data", "Jobs data", "Real estate", "Community",
+                  "Other")
 
 
 def get(service: str) -> OAuthProvider | None:
