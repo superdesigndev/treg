@@ -37,6 +37,9 @@ def _arguments():
             parser.error(f"{key} must explicitly name a disposable loopback service")
     if not urlsplit(os.environ["TREG_TEST_DB_URL"]).path.lstrip("/").startswith("treg_admission_test"):
         parser.error("test database name must start with treg_admission_test")
+    # A configured secret source outranks environment variables in Settings, so it could point
+    # the registry at a database other than the one validated above.
+    os.environ.pop("TREG_AWS_SECRET_ID", None)
     os.environ.update(
         TREG_DATABASE_URL=os.environ["TREG_TEST_DB_URL"], TREG_READ_DATABASE_URL="",
         TREG_KV_URL=os.environ["TREG_TEST_KV_URL"], TREG_TELEMETRY="0", TREG_POSTHOG_KEY="",
@@ -55,6 +58,12 @@ async def _main(args):
     from treg.infra.money_session import money_session
     from treg.models import Org
 
+    # The address the registry resolved, not the one asked for: reset_db() below deletes its rows.
+    bound = session_maker.kw["bind"].url
+    if (bound.host not in {"127.0.0.1", "localhost", "::1"}
+            or not (bound.database or "").startswith("treg_admission_test")):
+        raise SystemExit("the registry resolved a database other than the disposable test one; "
+                         "refusing to reset it")
     settings = get_settings()
     settings.platform_margin = 0
     settings.money_admission_org_ids = []
