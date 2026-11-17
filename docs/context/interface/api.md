@@ -65,7 +65,6 @@ sources:
   - src/treg/timeutil.py
   - src/treg/domain/catalog/store.py
   - src/treg/email.py
-  - src/treg/runner.py
   - src/treg/ratestore.py
   - tests/test_cli_pairing.py
 related:
