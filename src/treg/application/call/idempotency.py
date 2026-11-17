@@ -99,6 +99,15 @@ def _request_fingerprint(method: str, rest: str, body: bytes, query: str = "") -
     genuinely different lookups under one label matched, and the second was answered with the first
     one's data instead of the 422 this function exists to raise.
     """
+    return _fingerprint(method, rest, _canonical_json(body), query)
+
+
+def _raw_request_fingerprint(method: str, rest: str, body: bytes, query: str = "") -> str:
+    """The fingerprint of the body's exact bytes, as labels taken before `_canonical_json` stored it."""
+    return _fingerprint(method, rest, body, query)
+
+
+def _fingerprint(method: str, rest: str, body: bytes, query: str) -> str:
     h = hashlib.sha256()
     h.update(method.upper().encode())
     h.update(b"\0")
@@ -110,8 +119,44 @@ def _request_fingerprint(method: str, rest: str, body: bytes, query: str = "") -
     return h.hexdigest()
 
 
+def _canonical_json(body: bytes) -> bytes:
+    """A JSON body's meaning rather than its spelling: a retry that serializes the same object with
+    its keys in another order, or with other whitespace, is the same request. Any other body is
+    compared byte for byte."""
+    if not body or body.lstrip()[:1] not in (b"{", b"["):
+        return body
+    try:
+        parsed = json.loads(body)
+    except (ValueError, RecursionError):
+        return body
+    return json.dumps(parsed, sort_keys=True, separators=(",", ":"), ensure_ascii=False).encode()
+
+
+_IN_PROGRESS_RETRY_S = 5
+
+
+def _in_progress(key: str, call_ref: str | None) -> IdempotencyFailed:
+    """The 409 for a label whose first call is still running. It names that call, so a caller whose
+    client gave up can find its answer instead of paying for the work again."""
+    return IdempotencyFailed(
+        "idempotency_in_progress", status_code=409, retry_after_s=_IN_PROGRESS_RETRY_S,
+        detail={"error": "idempotency_in_progress", "call_id": call_ref or None,
+                "message": (f"a call with Idempotency-Key {_idem_display(key)!r} is still in progress. "
+                            "Retry with the same key shortly to receive its answer without a second "
+                            "charge; `call_id` names that call"
+                            + (f" (GET /calls/{call_ref}/result once it is done)." if call_ref else "."))})
+
+
+async def _claim_owner(key: str, caller: Caller, db: AsyncSession) -> str | None:
+    """The call that holds this caller's label, read after losing the race to claim it."""
+    return (await db.execute(select(IdempotentCall.call_ref).where(
+        IdempotentCall.membership_id == caller.membership.id,
+        IdempotentCall.key == key))).scalar_one_or_none()
+
+
 async def _replay_idempotent(key: str, fingerprint: str, caller: Caller,
-                             db: AsyncSession) -> IdempotentReplay | None:
+                             db: AsyncSession, *, raw_fingerprint: str | None = None
+                             ) -> IdempotentReplay | None:
     """The stored answer for this caller's label, or None if there is nothing to replay.
 
     Returns a real response, so the provider is never reached and no money moves. That is the whole
@@ -128,7 +173,7 @@ async def _replay_idempotent(key: str, fingerprint: str, caller: Caller,
         await db.delete(row)
         await db.commit()
         return None
-    if row.request_fingerprint and row.request_fingerprint != fingerprint:
+    if row.request_fingerprint and row.request_fingerprint not in (fingerprint, raw_fingerprint):
         raise IdempotencyFailed(
             "idempotency_mismatch", status_code=422,
             detail=(f"Idempotency-Key {_idem_display(key)!r} was already used for a different request. Use a new key, or "
@@ -141,10 +186,7 @@ async def _replay_idempotent(key: str, fingerprint: str, caller: Caller,
     if row.status != "done" or row.response_status is None:
         # Still in flight. The first call is talking to the provider right now; telling the caller to
         # retry is honest and cheap, and it is what stops the second one duplicating the spend.
-        raise IdempotencyFailed(
-            "idempotency_in_progress", status_code=409,
-            detail=(f"a call with Idempotency-Key {_idem_display(key)!r} "
-                    "is still in progress — retry shortly"))
+        raise _in_progress(key, row.call_ref)
     # A trimmed row names its archive entry instead of carrying bytes. Not read here: this runs
     # inside the request's session, and the read can go to object storage.
     trimmed = row.response_body is None and bool(row.archive_content_hash)

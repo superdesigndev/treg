@@ -67,6 +67,8 @@ Gmail dots) share it.
   `sort: "newest"`; `query` may then be empty.
 - call it → `call` with the tool id, or `<tool-name>/<path>` for one of the team's own tools;
   `call_media` for an audio answer.
+- a call whose answer you never received (a timeout) → `call_result` lists the team's latest
+  calls and reads a finished one's answer; check it before calling again.
 - the team's own tools → `my_tools`; durable provider objects such as cloned voices →
   `resources_list`; the balance → `balance`; feedback → `feedback`; a review → `review`; a result
   you later found wrong or confirmed → `mark`.
@@ -299,7 +301,9 @@ first call's charge in `X-Treg-Original-Cost-Micro`.
   see what changed is a new call, and the old key would hand back the old answer. Reusing one for a
   different request is refused (422).
 - Idempotency keys belong to the caller and last 24 hours; a call that fails frees its key at once.
-- 409: the original call is still running; retry shortly.
+- 409: the original call is still running; retry with the same key after `Retry-After`. The
+  body names that call's `call_id`.
+- The body is compared as a value: the same JSON with its keys in another order is the same request.
 - 410 (`idempotency_response_lost`, `idempotency_response_too_large` over the 2 MB replay limit,
   `idempotency_response_not_retained` when provider terms forbid keeping the answer,
   `idempotency_outcome_unknown`): the first call was, or may have been, charged and its answer was

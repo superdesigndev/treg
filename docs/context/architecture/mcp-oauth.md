@@ -104,7 +104,9 @@ shadowed by a same-named team tool. A change is incomplete if only one MCP test 
 - The `hub_*` tools exist only on `/mcp/`; `_HubToolsGate` hides them unless the hub is enabled for
   the caller. `catalog_search` merges visible listed hub tools (`kind: "hub"`) and `call` accepts a hub
   tool id. `/mcp/v2/` never registers them. See [hub](hub.md).
-- `call_media` and `resources_list` exist only on `/mcp/`.
+- `call_media`, `resources_list` and `call_result` exist only on `/mcp/`. `call_result` (scope
+  `treg:read`) is the recovery road for a call whose answer never reached the agent: the team's
+  latest calls from `GET /calls`, or one call's stored answer from `GET /calls/{id}/result`.
 - `feedback` and `review` exist only on `/mcp/`, so V2 never renders the invitation `/call/` decided
   on (`_SurfacePolicy.invites`); `/call/` still decides and records it ([feedback](feedback.md)).
 - **OpenAI clients** (`openai-mcp/` for ChatGPT and its plugin reviewer, `codex-mcp-client/` for Codex,

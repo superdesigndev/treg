@@ -366,6 +366,45 @@ async def test_firecrawl_platform_scrape_bills_a_returned_404_and_byok_wins(
         assert seen[-1] == "Bearer OWN-FIRECRAWL"
 
 
+async def test_a_retry_with_the_same_json_in_another_key_order_is_the_same_call(
+    clients: AsyncClient, monkeypatch, firecrawl_platform_on,
+):
+    """A client that times out and retries may serialize the same body with its keys in another
+    order; refusing that as a different request would leave the paid answer out of reach."""
+    from treg.application.call import idempotency
+
+    seen = []
+
+    def upstream(request):
+        seen.append(request.content)
+        return _dropleads_response(200, {"success": True, "data": {"markdown": "# Paid"}})
+
+    async def post(key: str, body: bytes):
+        return await clients.post("/call/firecrawl.web.scrape", content=body, headers={
+            "Idempotency-Key": key, "Content-Type": "application/json"})
+
+    async with AsyncClient(transport=httpx.MockTransport(upstream)) as vendor:
+        monkeypatch.setattr(A.app.state, "http", vendor)
+        before = await _balance(clients)
+        first = await post("order-retry", b'{"url": "https://example.com", "formats": ["markdown"], "parsers": []}')
+        retry = await post("order-retry", b'{"parsers":[],"formats":["markdown"],"url":"https://example.com"}')
+        changed = await post("order-retry", b'{"parsers":[],"formats":["html"],"url":"https://example.com"}')
+    assert first.status_code == 200, first.text
+    assert retry.status_code == 200, retry.text
+    assert retry.headers["X-Treg-Idempotent-Replay"] == "true"
+    assert retry.headers["X-Treg-Call-Id"] == first.headers["X-Treg-Call-Id"]
+    assert retry.content == first.content
+    assert changed.status_code == 422, changed.text
+    assert len(seen) == 1
+    assert await _balance(clients) == before - int(first.headers["X-Treg-Cost-Micro"])
+
+    # A label stored with the fingerprint of its exact bytes is still answered for those bytes.
+    raw = idempotency._raw_request_fingerprint("POST", "firecrawl.web.scrape", b'{"b": 1, "a": 2}')
+    await _seed_answer(clients, "stored-before-canonical", fingerprint=raw)
+    kept = await post("stored-before-canonical", b'{"b": 1, "a": 2}')
+    assert kept.status_code == 200 and kept.json() == {"seeded": True}, kept.text
+
+
 async def test_firecrawl_search_settles_reported_credits(
     clients: AsyncClient, monkeypatch, firecrawl_platform_on,
 ):
@@ -2193,6 +2232,8 @@ async def test_an_abandoned_claim_is_closed_with_a_stored_410_never_run_again(
     await _ledger(org_id, "gone-owner", "release", reason="not_billable_502", amount=100)
     live = await clients.get(f"/call/{EP}?aweme_id=7", headers={"Idempotency-Key": "stuck-label"})
     assert live.status_code == 409, live.text
+    assert live.json()["detail"]["call_id"] == "gone-owner"
+    assert live.headers["Retry-After"].isdigit()
 
     balance = (await clients.get(f"/orgs/{org_id}/balance")).json()["balance_micro"]
     monkeypatch.setattr(idempotency, "IDEMPOTENCY_STALE_PENDING_S", 0)

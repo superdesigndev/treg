@@ -1005,6 +1005,27 @@ async def test_a_recorded_call_links_to_its_stored_answer(clients: AsyncClient, 
     assert "PLATFORM-TIKHUB-KEY" not in d["request"]["url"]  # pre-injection shape, no secret
 
 
+async def test_an_mcp_agent_recovers_a_paid_answer_it_never_received(clients: AsyncClient, shadow):
+    """The answer an agent's client gave up on is found by listing recent calls, then read by its
+    call_id, without calling the provider again."""
+    from test_mcp import _call_tool, mcp_session
+
+    r1 = await clients.get(f"/call/{EP}?aweme_id=7&count=5")
+    assert r1.status_code == 200, r1.text
+    await archive.drain()
+    await audit.drain()
+    token = clients.headers["X-Treg-Token"]
+    async with mcp_session(clients) as c:
+        listed = await _call_tool(c, "call_result", {}, token=token)
+        [latest] = [row for row in listed["calls"] if row["call_id"] == r1.headers["X-Treg-Call-Id"]]
+        got = await _call_tool(c, "call_result", {"call_id": latest["call_id"]}, token=token)
+        refused = await _call_tool(c, "call_result", {"call_id": "../orgs"}, token=token)
+    assert latest["endpoint_id"] == EP and latest["has_result"] is True
+    assert latest["cost_charged_micro"] == int(r1.headers["X-Treg-Cost-Micro"])
+    assert got["result"]["response"]["body_text"] == r1.text
+    assert "error" in refused
+
+
 async def test_a_served_hit_links_to_the_same_answer(clients: AsyncClient, serve):
     r1 = await clients.get(f"/call/{EP}?aweme_id=7&count=5")
     await archive.drain()

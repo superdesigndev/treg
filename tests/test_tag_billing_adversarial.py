@@ -414,6 +414,12 @@ def test_review_idempotency_separator_and_post_fingerprint_are_unambiguous():
     assert original == call_idem._request_fingerprint("post", "endpoint", b'{"amount":1}', "mode=fast")
     assert original != call_idem._request_fingerprint("POST", "endpoint", b'{"amount":2}', "mode=fast")
     assert original != call_idem._request_fingerprint("POST", "endpoint", b'{"amount":1}', "mode=slow")
+    assert original == call_idem._request_fingerprint("POST", "endpoint", b'{ "amount": 1 }', "mode=fast")
+    keyed = call_idem._request_fingerprint("POST", "endpoint", b'{"a":1,"b":[{"y":2,"x":3}]}')
+    assert keyed == call_idem._request_fingerprint("POST", "endpoint", b'{"b":[{"x":3,"y":2}],"a":1}')
+    assert keyed != call_idem._request_fingerprint("POST", "endpoint", b'{"a":1,"b":[{"x":2,"y":3}]}')
+    assert call_idem._request_fingerprint("POST", "endpoint", b"a=1&b=2") != call_idem._request_fingerprint(
+        "POST", "endpoint", b"b=2&a=1")
 
 
 async def test_review_primary_call_cap_survives_audit_loss(
