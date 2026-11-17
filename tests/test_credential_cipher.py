@@ -12,7 +12,7 @@ from treg.application import credential_reencrypt
 from treg.application.call import service as call_service
 from treg.config import get_settings
 from treg.infra import credential_cipher
-from treg.infra.db import session_maker
+from treg.infra.db import reset_db, session_maker
 from treg.models import Org, Secret
 from treg.application.call.types import UpstreamResponse
 
@@ -185,6 +185,7 @@ async def _org(db, slug: str, *, demo: bool = False) -> Org:
 
 
 async def test_reencryption_reseals_every_real_credential_and_records_refreshable(kms, monkeypatch):
+    await reset_db()
     _writes_off(monkeypatch)
     oauth_blob = json.dumps({"access_token": "a", "refresh_token": "r", "client_id": "c",
                              "client_secret": "s"})
@@ -218,6 +219,7 @@ async def test_reencryption_reseals_every_real_credential_and_records_refreshabl
 
 
 async def test_reencryption_leaves_a_credential_replaced_while_it_ran(kms, monkeypatch):
+    await reset_db()
     _writes_off(monkeypatch)
     async with session_maker() as db:
         team = await _org(db, "reseal-race")

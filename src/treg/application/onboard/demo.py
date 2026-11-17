@@ -159,12 +159,12 @@ async def reset(db: AsyncSession, owner: User) -> dict:
 GUIDED_TEAMMATE = {"name": "Alex Rivera", "email": f"alex@{DEMO_DOMAIN}", "role": "member"}
 
 
-async def seed_tool(db: AsyncSession, org: Org, owner_email: str) -> dict:
+async def seed_tool(db: AsyncSession, org: Org, owner_email: str, sealed_value: str) -> dict:
     """Pre-seed the working echo tool (+ its secret) into the user's own team, so the no-key call
-    works without tool-setup friction. Idempotent."""
+    works without tool-setup friction. Idempotent. `sealed_value` is the echo key, already sealed."""
     if (await db.execute(select(Tool).where(Tool.org_id == org.id, Tool.name == DEMO_TOOL))).scalar_one_or_none() is not None:
         return {"tool": DEMO_TOOL, "reused": True}
-    secret = Secret(org_id=org.id, name="echo-key", owner=owner_email, kind="env", value=crypto.encrypt(DEMO_SECRET_VALUE))
+    secret = Secret(org_id=org.id, name="echo-key", owner=owner_email, kind="env", value=sealed_value)
     db.add(secret)
     await db.flush()
     db.add(Tool(org_id=org.id, name=DEMO_TOOL, owner=owner_email, base_url=DEMO_BASE, host="postman-echo.com",
