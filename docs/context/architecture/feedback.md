@@ -138,8 +138,8 @@ so for them `hint_attached` counts an invitation the agent never saw.
   `kv.store().take("review-budget:<org_id>", review_budget_per_hour, 3600)`. Per-call sampling scales
   with volume, so the budget caps how often a busy team is asked. There is deliberately no
   per-endpoint cooldown. An own tool never qualifies, even if its name matches a catalog endpoint.
-- **Mark**: a successful, non-replayed, non-cached catalog call on any credential tier (never an own
-  tool) whose endpoint id equals or ends in `.<capability>` for one of `mark_hint_capabilities`
+- **Mark**: a successful, non-replayed, non-cached catalog call on any credential tier, a routed
+  parent (`treg.<capability>`, which has no marketplace target) included, never an own tool, whose endpoint id equals or ends in `.<capability>` for one of `mark_hint_capabilities`
   (empty: every catalog call), sampled at `mark_hint_rate` and capped by
   `take("mark-hint-budget:<org_id>", mark_hint_per_hour, 3600)`. It asks for later work, once the
   agent knows. Its text travels in `X-Treg-Hint-Text`: one of `mark_hint_texts` (A/B variants,

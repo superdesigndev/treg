@@ -8,6 +8,8 @@ import pytest
 
 from treg import hints
 from treg.config import get_settings
+from test_marketplace_call import platform_on  # noqa: F401 - pytest fixture
+from test_routing import enrichment_on  # noqa: F401 - pytest fixture
 
 
 @pytest.mark.parametrize('kind,field', [('review', 'review_sample_rate'), ('feedback', 'feedback_hint_rate'),
@@ -77,7 +79,8 @@ async def test_header_before_stream_without_changing_response(
 
 
 def _platform_call(monkeypatch, *, tier='platform', own=False):
-    """A stubbed 2xx call on treg's platform key (or an own tool) with a static body."""
+    """A stubbed 2xx call on treg's platform key (or an own tool, or a routed parent, which runs
+    no marketplace target of its own) with a static body."""
     from treg.routers import call
     from treg.application.call.types import UpstreamResponse
 
@@ -88,6 +91,9 @@ def _platform_call(monkeypatch, *, tier='platform', own=False):
     async def execute(context, client):
         if own:
             context.target = SimpleNamespace(tool=SimpleNamespace(name='example.search'))
+        elif tier == 'routed':
+            context.endpoint_id = 'treg.example.search'
+            context.route_summary = {'identity': {}}
         else:
             context.marketplace = SimpleNamespace(endpoint_id='example.search', tier=tier)
         return UpstreamResponse(200, (), stream(), close)
@@ -258,3 +264,22 @@ async def test_mark_hint_budget_then_review_wins(clients, monkeypatch):
     assert kinds == ['mark', 'feedback', 'feedback']
     monkeypatch.setattr(get_settings(), 'review_sample_rate', 1)
     assert (await clients.get('/call/example.search')).headers.get('X-Treg-Hint') == 'review'
+
+
+async def test_mark_hint_rides_a_real_routed_call(clients, enrichment_on, monkeypatch):
+    """A routed parent runs no marketplace target of its own; it is still a catalog call."""
+    from treg import analytics
+    from treg.application.call import service as call_service
+    from test_routing import ROUTED, _relay_by_provider
+
+    monkeypatch.setattr(call_service, 'relay', _relay_by_provider(
+        {'tomba': [(200, {'data': {'email': 'patrick@stripe.com', 'score': 99}})]}, []))
+    _mark_only(monkeypatch, mark_hint_capabilities=['people.email.find'])
+    events = []
+    monkeypatch.setattr(analytics, 'capture', lambda *args, **kw: events.append((args, kw)))
+    response = await clients.post(f'/call/{ROUTED}', json={'full_name': 'Patrick Collison', 'domain': 'stripe.com'})
+    assert response.status_code == 200, response.text
+    assert response.headers.get('X-Treg-Hint') == 'mark'
+    sent, = [a[2] for a, _ in events if a[1] == 'hint_attached']
+    assert sent['endpoint_id'] == ROUTED
+    assert response.headers['X-Treg-Hint-Text'] == hints.mark_hint(response.headers['X-Treg-Call-Id'])[1]

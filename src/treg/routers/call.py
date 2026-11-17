@@ -32,7 +32,7 @@ from ..application.call.service import (
     create_call_context,
     execute_call,
 )
-from ..application.call.invite import invitation
+from ..application.call.invite import catalog_endpoint, invitation
 from ..application.call.intake import (
     META_HEADER,
     CallMeta,
@@ -299,11 +299,10 @@ async def catalog_endpoint_access(
 def _capture_hint(request: Request, context, kind: str, variant: int | None = None) -> None:
     """One event per invitation actually sent, on every surface: the response-rate denominator.
     Attachment is not display; the surface's `X-Treg-Client` says who was asked."""
-    marketplace = context.marketplace
     slug = context.input.caller.org.slug
     analytics.capture(analytics.SERVER_DISTINCT_ID, "hint_attached", {
         "kind": kind, "call_id": context.call_ref, "client": _client_of(request),
-        "endpoint_id": marketplace.endpoint_id if marketplace is not None else None,
+        "endpoint_id": catalog_endpoint(context),
         **({"variant": variant} if variant is not None else {}),
     }, groups={"team": slug} if slug else None)
 

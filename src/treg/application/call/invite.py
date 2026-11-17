@@ -29,6 +29,16 @@ def mark_budget_key(org_id: int) -> str:
     return f"mark-hint-budget:{org_id}"
 
 
+def catalog_endpoint(context: CallContext) -> str | None:
+    """The catalog endpoint a call answered for: a direct row's id, or a routed parent's
+    (`treg.<capability>`), which runs no marketplace target of its own. None for own tools."""
+    if context.marketplace is not None:
+        return getattr(context.marketplace, "endpoint_id", None)
+    if context.route_summary is not None:
+        return context.endpoint_id
+    return None
+
+
 def _markable(endpoint_id: str | None) -> bool:
     capabilities = get_settings().mark_hint_capabilities
     if not endpoint_id:
@@ -49,8 +59,7 @@ async def invitation(context: CallContext, status: int, *, replayed: bool) -> Ki
                                  get_settings().review_budget_per_hour, BUDGET_WINDOW_S):
             return "review"
     # A mark asks for later work, only once the agent knows; capped per team like a review.
-    if (marketplace is not None and _markable(getattr(marketplace, "endpoint_id", None))
-            and hints.sampled("mark", context.call_ref)):
+    if _markable(catalog_endpoint(context)) and hints.sampled("mark", context.call_ref):
         if await kv.store().take(mark_budget_key(context.input.caller.org_id),
                                  get_settings().mark_hint_per_hour, BUDGET_WINDOW_S):
             return "mark"
