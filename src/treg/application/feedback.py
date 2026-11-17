@@ -7,7 +7,8 @@ from datetime import timedelta
 from sqlalchemy.exc import IntegrityError
 from sqlmodel import select
 
-from .. import hints, ratestore
+from .. import ratestore
+from . import review_targets
 from ..domain import feedback
 from ..domain.feedback import marks, reviews, verdicts
 from ..domain.governance.access import pinned_tag_predicates
@@ -117,7 +118,7 @@ async def submit_review(
                 endpoint_id, provider = child.endpoint_id, child.provider
         invited = (200 <= record.status_code < 300 and not record.cached
                    and record.credential_tier in ("platform", "routed")
-                   and hints.sampled("review", call_id))
+                   and review_targets.sampled(call_id, endpoint_id))
         existing = await reviews.get(db, call_id, org_id)
         if existing is not None:
             return existing.id, False, await marks.of_review(

@@ -64,6 +64,8 @@ EXPECTED_MAKERS: dict[str, set[str]] = {
 
     # Synchronous intake, and the catalog's five-minute verdict fold; admin reads use get_admin_session.
     "application/feedback.py": {API},
+    # One small aggregate of callreview per worker every ten minutes (targeted review invitations).
+    "application/review_targets.py": {API},
     "application/media.py": {API},  # `treg host`: one short write, one short read, no upstream wait
     "application/catalog_find.py": {API},  # one rate-limit write, committed before the judge call
     "application/catalog_search.py": {API},  # the hub read and the per-caller judge cap, each closed before the judge

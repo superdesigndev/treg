@@ -13,6 +13,7 @@ from __future__ import annotations
 from typing import Literal
 
 from ... import hints
+from .. import review_targets
 from ...config import get_settings
 from ...infra import kv
 from .types import CallContext
@@ -57,6 +58,16 @@ def _markable(endpoint_id: str | None) -> bool:
                                    for c in capabilities)
 
 
+def review_endpoint(context: CallContext) -> str | None:
+    """The endpoint a review of this call would be credited to: a direct call's own, or the
+    child that answered a routed one (`served_by`), as application.feedback attributes it."""
+    if context.marketplace is not None:
+        return getattr(context.marketplace, "endpoint_id", None)
+    if context.route_summary is not None:
+        return context.route_summary.get("served_by")
+    return None
+
+
 def reviewable(credential_tier: str | None) -> bool:
     """Calls a review is invited on: direct catalog calls on treg's platform key, and routed
     calls, whose review is credited to the child that answered (application.feedback)."""
@@ -74,7 +85,7 @@ async def invitation(context: CallContext, status: int, *, replayed: bool,
     platform = marketplace is not None and getattr(marketplace, "tier", None) == "platform"
     routed = marketplace is None and context.route_summary is not None
     if ("review" in accepts and (platform or routed)
-            and hints.sampled("review", context.call_ref)):
+            and review_targets.sampled(context.call_ref, review_endpoint(context))):
         if await kv.store().take(budget_key(context.input.caller.org_id),
                                  get_settings().review_budget_per_hour, BUDGET_WINDOW_S):
             return "review"

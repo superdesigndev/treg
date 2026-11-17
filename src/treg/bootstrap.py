@@ -816,6 +816,9 @@ def _lifespan(role: AppRole):
             # serving, so a new worker's first calls do not fall back to the YAML order.
             from .application.call import route_rules as route_rules_app
             await route_rules_app.warm()
+            # Targeted review invitations read their per-endpoint counts once before serving.
+            from .application import review_targets
+            await review_targets.warm()
 
             _s = get_settings()
             limits = httpx.Limits(max_keepalive_connections=_s.upstream_max_keepalive_connections,
