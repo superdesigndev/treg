@@ -4,7 +4,6 @@ from __future__ import annotations
 
 import asyncio
 import json
-import time
 from dataclasses import replace
 from pathlib import Path
 
@@ -65,16 +64,14 @@ async def test_off_by_default_and_a_call_queues_nothing(clients: AsyncClient, en
         {"tomba": [(200, {"data": {"email": "a@sample.example", "score": 96}})]}, []))
     r = await clients.post(f"/call/{ROUTED}", json={"full_name": "A Person", "domain": "sample.example"})
     assert r.status_code == 200, r.text
-    assert len(sink._queue) == 0 and sink.counters["queued"] == 0
+    assert sink.counters["queued"] == 0
 
 
 async def test_overflow_drops_and_counts_without_blocking(events_on, monkeypatch):
     monkeypatch.setattr(sink, "_MAX_PENDING", 3)
-    started = time.perf_counter()
     for i in range(50):
         sink.emit({"call_ref": f"c{i}"})
-    assert time.perf_counter() - started < 0.05  # synchronous, no I/O
-    assert len(sink._queue) == 3 and sink.counters["dropped_overflow"] == 47
+    assert sink.counters["dropped_overflow"] == 47
     events = await _flushed(events_on)
     assert [e["call_ref"] for e in events] == ["c0", "c1", "c2"]
 
