@@ -469,8 +469,12 @@ async def _relay_answer(request: Request, context, upstream: UpstreamResponse, r
             response.headers["X-Treg-Hint"] = kind
             if kind == "review":
                 response.headers["X-Treg-Review"] = "requested"  # read by CLI <= 0.18
-            variant, text = hints.header_text(kind, context.call_ref)
-            response.headers["X-Treg-Hint-Text"] = text
+            variant = None
+            # Words only for a client that declared what it shows: an older one prints its own
+            # line, and these name flags (`--rows`) its release may not have.
+            if kind == "mark" or request.headers.get("X-Treg-Hints") is not None:
+                variant, text = hints.header_text(kind, context.call_ref)
+                response.headers["X-Treg-Hint-Text"] = text
             _capture_hint(request, context, kind, variant)
     except Exception:  # noqa: BLE001 - a fault here can only lose the hint header
         pass  # A fault here can only lose the header; the answer is already built.

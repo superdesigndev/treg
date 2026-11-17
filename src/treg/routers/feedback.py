@@ -120,6 +120,8 @@ async def submit_review(
         raise HTTPException(404, "Call record not found in this team; it may not be written yet. Retry shortly.") from None
     except feedback_app.ReviewOwnTool:
         raise HTTPException(400, "Reviews require a catalog call, not a team's own tool or its own hub tool.") from None
+    except feedback_app.FeedbackRateLimited:
+        raise HTTPException(429, "Too many marks; nothing was saved. Retry later, or review without rows.") from None
     response.status_code = 201 if inserted else 200
     out = {"review_id": review_id, "status": "received" if inserted else "already_reviewed"}
     if mark_id is not None:

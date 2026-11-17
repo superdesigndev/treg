@@ -120,15 +120,18 @@ the whole answer), optional `checked`, `evidence_call_id`, a private `note` and 
   with `review`, and absent from `/mcp/v2/`), `skill.md` and `{BASE}/feedback.md` ("Mark").
 - **Rows on a review.** `POST /reviews` takes optional `rows` (mark items) and `basis` (default
   `impression`). A new review with rows writes one mark in the same transaction with `review_id`
-  set, the review's attribution and no `replaces`; the response carries `mark_id`. A repeated
-  review keeps the first and records no rows. The review's verdict ignores its rows. The team
+  set, the review's attribution and no `replaces`; the response carries `mark_id`. Rows spend the
+  team's mark allowance (`MARK_RATE_MAX`), so a review with rows over it is a 429 that saves
+  nothing. A repeated review keeps the first, records no rows and returns the first one's
+  `mark_id` (`marks.of_review`), so a lost response can still be corrected through `replaces`. The review's verdict ignores its rows. The team
   `/mcp/` `review` tool takes `rows`; its description is `REVIEW_ROWS_DESCRIPTION`, while the
   frozen Python CLI keeps `REVIEW_DESCRIPTION` and sends none.
 - **A review riding on the next call.** The team `/mcp/` `call` tool takes an optional `prior`
   (`PriorReviewIn`: the previous call's `call_id`, `usefulness`, `reason`, `rows`) and posts it to
-  `/reviews` with `client = "mcp-prior"` alongside the call, swallowing any failure and waiting at
-  most 5 s, so it never fails or holds the call. `prior` is a plain object in the schema, parsed
-  inside the tool, so a malformed one is dropped instead of failing the call's argument check. An
+  `/reviews` with `client = "mcp-prior"` as a background task (`_PRIOR_TASKS`, given up after
+  `PRIOR_TIMEOUT_S`), so it never fails or holds the call. `prior` accepts any value and is parsed
+  inside the tool, so a malformed one (a string, a list, a bad field) is dropped instead of failing
+  the call's argument check. An
   OAuth grant sees and sends it only with the `review` tool's scope (`treg:catalog`). `_PriorReviewGate` strips `prior` from `tools/list`
   for every credential outside `mcp_prior_review_rate` (a deterministic share of bearer tokens,
   never an OpenAI client); a `prior` sent outside the share is ignored. The rate defaults to 0.
@@ -145,7 +148,8 @@ shows (`X-Treg-Hints: review,mark,feedback`, parsed by `accepted_kinds`); a clie
 send the header gets `LEGACY_KINDS` (review and feedback), since released CLIs drop any other kind
 in silence. A kind outside `accepts` is skipped before its budget is spent, so the call falls
 through to the next. The team `/mcp/` sends all three. The router sends
-`X-Treg-Hint: review|mark|feedback` with its words in `X-Treg-Hint-Text` (`hints.header_text`; plus
+`X-Treg-Hint: review|mark|feedback` with its words in `X-Treg-Hint-Text` (`hints.header_text`, only
+to a client that sent `X-Treg-Hints`, since the words name flags an older release lacks; plus
 `X-Treg-Review: requested` on a review, read by CLI releases up to 0.18) and emits one
 `hint_attached` event per invitation sent. Surfaces only translate
 the header: the CLI prints a stderr line, the team `/mcp/` renders it into its single hint slot with

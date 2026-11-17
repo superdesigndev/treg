@@ -1580,45 +1580,51 @@ async def call(endpoint_id: str, params: dict | list | None = None,
                headers: dict | None = None, content_type: str | None = None,
                form: dict | None = None, uploads: list[dict] | None = None,
                authorization_method: str | None = None,
-               prior: Annotated[dict | None, Field(description=PRIOR_DESCRIPTION)] = None,
+               prior: Annotated[Any, Field(description=PRIOR_DESCRIPTION)] = None,
                ctx: Context = None) -> CallOut:  # type: ignore[assignment]
-    # `prior` is a plain object in the schema and parsed here, so a malformed one is dropped
-    # rather than failing argument validation for the call it rides on.
-    review = None
+    # `prior` takes any value and is parsed here, so a malformed one (a string, a list, a bad
+    # field) is dropped rather than failing argument validation for the call it rides on.
     if prior is not None and _shows_prior(ctx.headers if ctx else None):
         try:
             parsed = PriorReviewIn.model_validate(prior)
         except ValidationError:
             parsed = None
         if parsed is not None:
-            review = asyncio.create_task(_submit_prior(parsed, ctx))
-    try:
-        return await _call_impl(
-            endpoint_id, params=params, method=method, idempotency_key=idempotency_key,
-            query=query, body=body, headers=headers, content_type=content_type,
-            form=form, uploads=uploads,
-            authorization_method=authorization_method, ctx=ctx,
-            catalog_only=False, surface=_TEAM_SURFACE, allowed_methods=None,
-        )
-    finally:
-        if review is not None:
-            try:
-                await asyncio.wait_for(review, timeout=5)
-            except Exception:  # a prior review can never fail or hold the call
-                logging.getLogger("treg.mcp").info("prior review not recorded", exc_info=True)
+            _start_prior(parsed, _bearer(ctx))
+    return await _call_impl(
+        endpoint_id, params=params, method=method, idempotency_key=idempotency_key,
+        query=query, body=body, headers=headers, content_type=content_type,
+        form=form, uploads=uploads,
+        authorization_method=authorization_method, ctx=ctx,
+        catalog_only=False, surface=_TEAM_SURFACE, allowed_methods=None,
+    )
 
 
 PRIOR_CLIENT = "mcp-prior"  # the review's `client`: tells these reviews from the review tool's
+PRIOR_TIMEOUT_S = 10
+# Running prior reviews: held so the loop does not drop them, removed as each finishes.
+_PRIOR_TASKS: set[asyncio.Task] = set()
 
 
-async def _submit_prior(prior: "PriorReviewIn", ctx: Context) -> None:
+def _start_prior(prior: "PriorReviewIn", token: str) -> None:
+    """Submit the review in the background: the call it rode on never waits for it."""
+    task = asyncio.create_task(_submit_prior(prior, token))
+    _PRIOR_TASKS.add(task)
+    task.add_done_callback(_PRIOR_TASKS.discard)
+
+
+async def _submit_prior(prior: "PriorReviewIn", token: str) -> None:
     body = {"call_id": prior.call_id, "usefulness": prior.usefulness}
     if prior.reason:
         body["reason"] = prior.reason
     if prior.rows:
         body["rows"] = [row.model_dump(exclude_none=True) for row in prior.rows]
-    async with _api(_bearer(ctx), client_name=PRIOR_CLIENT) as client:
-        await client.post("/reviews", json=body)
+    try:
+        async with asyncio.timeout(PRIOR_TIMEOUT_S):
+            async with _api(token, client_name=PRIOR_CLIENT) as client:
+                await client.post("/reviews", json=body)
+    except Exception:  # a prior review is best-effort: it can only be lost
+        logging.getLogger("treg.mcp").info("prior review not recorded", exc_info=True)
 
 
 _IDEMPOTENCY_KEY_MAX = 200  # the server keeps this many characters (application/call/idempotency.py)

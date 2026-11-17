@@ -313,7 +313,13 @@ async def test_review_and_feedback_carry_server_words(clients, monkeypatch, kind
     from treg import analytics
     events = []
     monkeypatch.setattr(analytics, 'capture', lambda *args, **kw: events.append((args, kw)))
-    response = await clients.get('/call/example.search')
+    legacy = await clients.get('/call/example.search')
+    assert legacy.headers['X-Treg-Hint'] == kind
+    # A client that did not declare what it shows prints its own line: no words that may name
+    # flags its release lacks.
+    assert 'X-Treg-Hint-Text' not in legacy.headers
+    events.clear()
+    response = await clients.get('/call/example.search', headers=SHOWS_ALL)
     assert response.headers['X-Treg-Hint'] == kind
     call_id, = [a[2]['call_id'] for a, _ in events if a[1] == 'hint_attached']
     assert response.headers['X-Treg-Hint-Text'] == hints.header_text(kind, call_id)[1]
