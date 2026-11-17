@@ -545,6 +545,11 @@ requirement), a monthly cap, a cooldown stamped in the DB *before* the charge, a
 limit, and an idempotency key from the threshold crossing, so a burst of calls that all notice the
 low balance produces ONE charge.
 
+The call path asks for a refill after a reserve commits and after a refused one. Only for a team
+with auto top-up on, the committed path reloads the Org on its own session once the money lease is
+released and hands it to `maybe_schedule_autotopup`; a team without it pays no read, and a failed
+read is logged without failing the call.
+
 - The stamp is a compare-and-set on `autotopup_last_attempt_at`: `_lock` is per process, so only the
   first process to match the value it read proceeds and the rest return `cooldown` before any Stripe
   call. Without it, losers got 409s that counted as failures and switched auto top-up off while the

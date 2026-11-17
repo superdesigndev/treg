@@ -18,7 +18,7 @@ from dataclasses import dataclass, field
 
 PROCESS_INSTANCE = f"{os.getpid()}-{uuid.uuid4().hex[:12]}"
 _OPERATIONS = frozenset({"reserve", "close", "deferred"})
-_PHASES = frozenset({"preflight", "ledger", "commit", "post_commit"})
+_PHASES = frozenset({"preflight", "ledger", "commit"})
 _BOUNDS_MS = (10, 50, 100, 250, 1000, 5000)
 SLOW_MS = 1000
 _lock = threading.Lock()
