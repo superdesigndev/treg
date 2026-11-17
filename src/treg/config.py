@@ -214,6 +214,17 @@ class Settings(BaseSettings):
             "TREG_MONEY_ADMISSION_RETRY_AFTER_S", "TREG_ORG_CONCURRENCY_RETRY_AFTER_S",
             "money_admission_retry_after_s"))
 
+    # Orgs whose eligible metered calls spend from a standing allowance instead of one hold per
+    # call (money.md "Allowance"); [] = none. Needs the shared key-value store.
+    money_allowance_org_ids: list[PositiveInt] = Field(default_factory=list)
+    # What a refill brings the allowance counter up to, in micro-USD.
+    money_allowance_chunk_micro: int = Field(default=1_000_000, ge=1, le=1_000_000_000)
+    # How long after a refill the counter admits calls. A hold not refilled for this long plus
+    # the hold lifetime has nobody spending from it and is closed.
+    money_allowance_fresh_s: int = Field(default=30, ge=1, le=3600)
+    # How long finished calls wait to share one insert of their charges.
+    money_allowance_linger_ms: int = Field(default=5, ge=0, le=1000)
+
     # Orgs whose untagged free platform calls take no $0 hold (money.md "holdless"); [] = none.
     holdless_free_org_ids: list[PositiveInt] = Field(default_factory=list)
 
