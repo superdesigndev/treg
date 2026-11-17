@@ -127,7 +127,9 @@ the whole answer), optional `checked`, `evidence_call_id`, a private `note` and 
 - **A review riding on the next call.** The team `/mcp/` `call` tool takes an optional `prior`
   (`PriorReviewIn`: the previous call's `call_id`, `usefulness`, `reason`, `rows`) and posts it to
   `/reviews` with `client = "mcp-prior"` alongside the call, swallowing any failure and waiting at
-  most 5 s, so it never fails or holds the call. `_PriorReviewGate` strips `prior` from `tools/list`
+  most 5 s, so it never fails or holds the call. `prior` is a plain object in the schema, parsed
+  inside the tool, so a malformed one is dropped instead of failing the call's argument check. An
+  OAuth grant sees and sends it only with the `review` tool's scope (`treg:catalog`). `_PriorReviewGate` strips `prior` from `tools/list`
   for every credential outside `mcp_prior_review_rate` (a deterministic share of bearer tokens,
   never an OpenAI client); a `prior` sent outside the share is ignored. The rate defaults to 0.
 - **Private.** Marks are never published, quoted or folded into verdicts. `GET /admin/marks` is

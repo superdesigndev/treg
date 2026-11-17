@@ -300,3 +300,23 @@ async def test_a_bad_prior_review_never_fails_the_call(clients, monkeypatch):
             'prior': {'call_id': 'not-a-call-of-ours', 'usefulness': 'useful'}}, token=org['token'])
     assert with_prior == plain
     assert await rows() == []
+
+
+@pytest.mark.parametrize('prior', [
+    {'call_id': 'review-call', 'usefulness': 'partly', 'reason': 'x' * 201},
+    {'call_id': 'review-call', 'usefulness': 'partly', 'rows': [{'row': 2, 'verdict': 'wrong'}]},
+    {'call_id': 'review-call', 'usefulness': 'great'},
+    {'usefulness': 'useful'},
+])
+@pytest.mark.parametrize('rate', [0, 1])
+async def test_a_malformed_prior_review_is_dropped_and_the_call_runs(clients, monkeypatch, prior, rate):
+    from test_mcp import _call_tool as team_call, mcp_session
+
+    monkeypatch.setattr(get_settings(), 'mcp_prior_review_rate', rate)
+    org = await seed(clients)
+    async with mcp_session(clients) as client:
+        plain = await team_call(client, 'call', {'endpoint_id': 'nope.search'}, token=org['token'])
+        with_prior = await team_call(client, 'call', {'endpoint_id': 'nope.search', 'prior': prior},
+                                     token=org['token'])
+    assert with_prior == plain
+    assert await rows() == []

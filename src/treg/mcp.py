@@ -49,7 +49,7 @@ from contextvars import ContextVar
 from dataclasses import asdict, dataclass, replace
 from typing import Annotated, Any, TypedDict
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, ValidationError
 from urllib.parse import parse_qsl, quote, unquote, urlencode, urlsplit
 
 import httpx
@@ -330,14 +330,6 @@ class _PriorReviewGate:
                 return tool
             props = {k: v for k, v in schema["properties"].items() if k != "prior"}
             schema = {**schema, "properties": props}
-            defs = schema.get("$defs")
-            if isinstance(defs, dict) and "PriorReviewIn" in defs:
-                schema["$defs"] = {k: v for k, v in defs.items() if k != "PriorReviewIn"}
-                if not any("MarkItemIn" in json.dumps(v) for v in props.values()) and \
-                        not any("MarkItemIn" in json.dumps(v) for v in schema["$defs"].values()):
-                    schema["$defs"].pop("MarkItemIn", None)
-                if not schema["$defs"]:
-                    schema.pop("$defs")
             if isinstance(tool, dict):
                 return {**tool, "inputSchema": schema}
             return tool.model_copy(update={"input_schema": schema})
@@ -556,6 +548,13 @@ def _shows_prior(headers: Any) -> bool:
     token = raw.removeprefix("Bearer ").removeprefix("bearer ").strip()
     if not token:
         return False
+    # An OAuth grant reviews only with the scope the `review` tool needs: `prior` rides on `call`,
+    # whose own scope the gate checks, and `_api` turns the token into a full identity.
+    claims = _oauth_claims(token)
+    if claims is not None:
+        from .domain.identity import mcp_oauth
+        if _V1_TOOL_SCOPES["review"] not in mcp_oauth.mcp_permissions(claims.get("scope", "")):
+            return False
     bucket = int.from_bytes(hashlib.sha256(f"prior-review:{token}".encode()).digest()[:8], "big")
     return bucket < rate * 2**64
 
@@ -1581,11 +1580,18 @@ async def call(endpoint_id: str, params: dict | list | None = None,
                headers: dict | None = None, content_type: str | None = None,
                form: dict | None = None, uploads: list[dict] | None = None,
                authorization_method: str | None = None,
-               prior: Annotated[PriorReviewIn | None, Field(description=PRIOR_DESCRIPTION)] = None,
+               prior: Annotated[dict | None, Field(description=PRIOR_DESCRIPTION)] = None,
                ctx: Context = None) -> CallOut:  # type: ignore[assignment]
+    # `prior` is a plain object in the schema and parsed here, so a malformed one is dropped
+    # rather than failing argument validation for the call it rides on.
     review = None
     if prior is not None and _shows_prior(ctx.headers if ctx else None):
-        review = asyncio.create_task(_submit_prior(prior, ctx))
+        try:
+            parsed = PriorReviewIn.model_validate(prior)
+        except ValidationError:
+            parsed = None
+        if parsed is not None:
+            review = asyncio.create_task(_submit_prior(parsed, ctx))
     try:
         return await _call_impl(
             endpoint_id, params=params, method=method, idempotency_key=idempotency_key,
