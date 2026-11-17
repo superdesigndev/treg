@@ -8,7 +8,7 @@ sources:
   - src/treg/routers/views/catalog.py
   - src/treg/routers/views/account.py
   - src/treg/application/home.py
-  - tests/test_released_cli_compat.py
+  - tests/test_cli_account_flows.py
   - tests/test_cli_key_compatibility.py
   - src/treg/routers/auth_helpers.py
   - src/treg/cli_analytics.py
@@ -136,7 +136,7 @@ is self-teaching. This fragment holds only what the code and help cannot say. Th
   with `X-Treg-Client-Notice`, worded by `client_notice.notice` ("available", or "no longer
   supported" below the minimum). The CLI prints the header as-is on stderr, once a day per notice
   (`client-notice` beside the config) and never under `--json`; it holds no release logic itself.
-  `test_released_cli_compat` checks that refusal preserves config bytes and the prior team.
+  `test_cli_key_compatibility` checks that refusal leaves credentials and the team unchanged.
 
 ## Calls
 
