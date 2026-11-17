@@ -24,14 +24,30 @@ MARK_HINT = (
 )
 
 
+MARK_EVIDENCE_HINT = (
+    "This check found the address invalid; treg found that address in call {found_call_id}. If the "
+    "check is right, mark it: treg mark {found_call_id} email:wrong --basis cross_checked "
+    "--evidence {call_id} (MCP: mark, same fields). Keep going with the task."
+)
+
+
+def _header_text(text: str) -> str:
+    return "".join(c if " " <= c <= "~" else " " for c in text).strip()
+
+
+def mark_evidence_hint(call_id: str, found_call_id: str) -> str:
+    """The evidence-time invitation: the configured text or the built-in one, ids filled in."""
+    template = get_settings().mark_evidence_text.strip() or MARK_EVIDENCE_HINT
+    return _header_text(template.replace("{found_call_id}", found_call_id).replace("{call_id}", call_id))
+
+
 def mark_hint(call_id: str) -> tuple[int, str]:
     """(variant, text): the configured variants, or the built-in one as variant 0. The variant is
     fixed per call, so the invitation event and the text an agent saw agree. Headers carry the
     text, so it is reduced to printable ASCII."""
     texts = [t for t in get_settings().mark_hint_texts if t.strip()] or [MARK_HINT]
     variant = _bucket("mark-variant", call_id) % len(texts)
-    text = texts[variant].replace("{call_id}", call_id)
-    return variant, "".join(c if " " <= c <= "~" else " " for c in text).strip()
+    return variant, _header_text(texts[variant].replace("{call_id}", call_id))
 
 
 HINT = (

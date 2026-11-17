@@ -32,7 +32,7 @@ from ..application.call.service import (
     create_call_context,
     execute_call,
 )
-from ..application.call.invite import catalog_endpoint, invitation
+from ..application.call.invite import catalog_endpoint, evidence_invitation, invitation, remember_found
 from ..application.call.intake import (
     META_HEADER,
     CallMeta,
@@ -299,7 +299,7 @@ async def catalog_endpoint_access(
 _INVITATION_HEADERS = ("X-Treg-Hint", "X-Treg-Hint-Text", "X-Treg-Review")
 
 
-def _capture_hint(request: Request, context, kind: str, variant: int | None = None) -> None:
+def _capture_hint(request: Request, context, kind: str, variant: int | str | None = None) -> None:
     """One event per invitation actually sent, on every surface: the response-rate denominator.
     Attachment is not display; the surface's `X-Treg-Client` says who was asked."""
     slug = context.input.caller.org.slug
@@ -423,14 +423,19 @@ async def _relay_answer(request: Request, context, upstream: UpstreamResponse, r
         del response.headers[name]
     try:
         # Optional invitation, decided before the body streams (application/call/invite.py).
-        kind = await invitation(context, response.status_code,
-                                replayed=bool(response.headers.get("X-Treg-Idempotent-Replay")))
+        replayed = bool(response.headers.get("X-Treg-Idempotent-Replay"))
+        await remember_found(context, response.status_code, replayed=replayed)
+        variant: int | str | None = None
+        if evidence := await evidence_invitation(context, response.status_code, replayed=replayed):
+            kind, variant = "mark", "evidence"
+            response.headers["X-Treg-Hint-Text"] = evidence
+        else:
+            kind = await invitation(context, response.status_code, replayed=replayed)
         if kind is not None:
             response.headers["X-Treg-Hint"] = kind
-            variant = None
             if kind == "review":
                 response.headers["X-Treg-Review"] = "requested"  # read by CLI <= 0.18
-            elif kind == "mark":
+            elif kind == "mark" and variant is None:
                 variant, text = hints.mark_hint(context.call_ref)
                 response.headers["X-Treg-Hint-Text"] = text
             _capture_hint(request, context, kind, variant)

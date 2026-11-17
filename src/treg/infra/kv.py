@@ -277,6 +277,12 @@ class Store(Protocol):
                                 buckets: list[int]) -> dict[str, tuple[int, int, int]] | None:
         """Per endpoint, (calls, failed, slow) summed over `buckets`; None when the store cannot answer."""
 
+    async def note_found(self, key: str, call_ref: str, ttl_s: int) -> None:
+        """Which call found a value (keyed by its HMAC), for a later check of that value to name."""
+        ...
+
+    async def found_by(self, key: str) -> str | None: ...
+
     async def aclose(self) -> None: ...
 
 
@@ -286,6 +292,7 @@ class LocalStore:
     def __init__(self) -> None:
         self._windows: dict[str, tuple[float, int]] = {}
         self._health: dict[tuple[str, int], tuple[float, list[int]]] = {}
+        self._found: dict[str, tuple[float, str]] = {}
 
     async def take(self, key: str, limit: int, ttl_s: int) -> bool:
         now = time.monotonic()
@@ -297,6 +304,17 @@ class LocalStore:
         count += 1
         self._windows[key] = (expires, count)
         return count <= limit
+
+    async def note_found(self, key: str, call_ref: str, ttl_s: int) -> None:
+        now = time.monotonic()
+        if len(self._found) >= _LOCAL_MAX_KEYS:
+            live = {k: v for k, v in self._found.items() if v[0] > now}
+            self._found = dict(sorted(live.items(), key=lambda kv: kv[1][0])[_LOCAL_MAX_KEYS // 2:])
+        self._found[key] = (now + ttl_s, call_ref)
+
+    async def found_by(self, key: str) -> str | None:
+        expires, call_ref = self._found.get(key, (0.0, ""))
+        return call_ref if expires > time.monotonic() else None
 
     def _evict(self, now: float) -> None:
         live = {k: v for k, v in self._windows.items() if v[0] > now}
@@ -489,6 +507,21 @@ class RedisStore:
                     await pipe.execute()
         except Exception:  # noqa: BLE001 - health is advisory; a lost count only delays a verdict
             return
+
+    async def note_found(self, key: str, call_ref: str, ttl_s: int) -> None:
+        try:
+            async with asyncio.timeout(_OPTIONAL_TIMEOUT_S):
+                await self._client.set(key, call_ref, ex=ttl_s)
+        except Exception:  # noqa: BLE001 - advisory; a lost note only loses one invitation
+            return
+
+    async def found_by(self, key: str) -> str | None:
+        try:
+            async with asyncio.timeout(_OPTIONAL_TIMEOUT_S):
+                value = await self._client.get(key)
+        except Exception:  # noqa: BLE001 - an unreadable store reads as nothing found
+            return None
+        return value if isinstance(value, str) and value else None
 
     async def read_route_health(self, endpoint_ids: list[str],
                                 buckets: list[int]) -> dict[str, tuple[int, int, int]] | None:

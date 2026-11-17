@@ -146,6 +146,15 @@ so for them `hint_attached` counts an invitation the agent never saw.
   `{call_id}` filled, printable ASCII), chosen deterministically per call, or `hints.MARK_HINT`;
   `hint_attached` records the `variant`. The binary CLI prints the text and the team `/mcp/`
   renders it, so copy changes need no release; the frozen Python CLI ignores the kind.
+- **Mark at the evidence** (`mark_evidence_hint`, off by default): it asks at the moment the agent
+  holds the proof. A successful routed email find notes in the store which call found the address
+  (`note_found`, keyed by the call-event HMAC of the address, the team and a hash of the pin, for
+  `mark_evidence_ttl_s`). A later routed email check of that address whose served answer's contract
+  word is `invalid` (`route_summary["answer_verdict"]`) gets `X-Treg-Hint: mark` with a text naming the
+  find and the prefilled command, the check as `--evidence` (`hints.MARK_EVIDENCE_HINT` or
+  `mark_evidence_text`). It wins over every other kind, has its own hourly budget, and its
+  `hint_attached` variant is `evidence`. Direct (non-routed) finds and checks are not linked, and
+  another pin's find is never named. It records nothing: only the agent's mark does.
 - **Feedback**: any other successful, non-replayed, non-cached call that samples in at
   `feedback_hint_rate`, own tools included. It asks for nothing, so it has no budget.
 
@@ -171,6 +180,8 @@ writes; a fault can only lose the header. Sampling rates default to 0.
   never retain exception messages, keys, owner tokens or store URLs.
 - Org admission and quotas: [org-flow-control](org-flow-control.md),
   [org-endpoint-quota](org-endpoint-quota.md).
+- The evidence-time mark invitation (`note_found`, `found_by`): which routed find returned an
+  address, by HMAC, expiring with its TTL; a fault loses one invitation.
 - Routed child health (`note_route_health`, `read_route_health`, and a `take` for the probe turn):
   best-effort time buckets that expire with their window; a fault loses a count or reads as no
   evidence ([catalog](catalog.md), "Child guards").

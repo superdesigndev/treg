@@ -130,6 +130,13 @@ class Settings(BaseSettings):
     mark_hint_capabilities: list[str] = Field(default_factory=list)
     mark_hint_per_hour: int = Field(default=3, ge=1)
     mark_hint_texts: list[str] = Field(default_factory=list)
+    # The evidence-time mark invitation: a routed email check that answers `invalid` for an address
+    # a routed find of the same team and pin returned within `mark_evidence_ttl_s` names that find
+    # and the command to mark it. Off by default; capped per team per hour.
+    mark_evidence_hint: bool = False
+    mark_evidence_ttl_s: int = Field(default=3 * 86400, ge=60)
+    mark_evidence_per_hour: int = Field(default=10, ge=1)
+    mark_evidence_text: str = ""
     # The shared key-value store (Redis protocol). Empty = an in-process fallback; see infra/kv.py.
     kv_url: str = ""
 

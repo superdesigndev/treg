@@ -316,3 +316,80 @@ async def test_an_upstream_cannot_speak_as_a_treg_invitation(clients, monkeypatc
         assert name not in response.headers
     assert response.headers['X-Upstream-Own'] == 'kept'
     assert not [a for a, _ in events if a[1] == 'hint_attached']
+
+
+async def _find_then_verify(clients, monkeypatch, *, verify_status, verify_headers=None,
+                            find_headers=None, address='patrick@stripe.com'):
+    from treg.application.call import service as call_service
+    from test_routing import ROUTED, _relay_by_provider
+
+    monkeypatch.setattr(call_service, 'relay', _relay_by_provider({
+        'tomba': [(200, {'data': {'email': address, 'score': 99}})],
+        'leadmagic': [(200, {'email_status': verify_status})],
+    }, []))
+    found = await clients.post(f'/call/{ROUTED}', headers=find_headers or {},
+                               json={'full_name': 'Patrick Collison', 'domain': 'stripe.com'})
+    assert found.status_code == 200, found.text
+    checked = await clients.post('/call/treg.people.email.verify',
+                                 headers={'X-Treg-Route-Prefer': 'leadmagic', **(verify_headers or {})},
+                                 json={'email': 'Patrick@Stripe.com'})
+    assert checked.status_code == 200, checked.text
+    return found, checked
+
+
+def _evidence_on(monkeypatch, **settings):
+    for field, value in {'review_sample_rate': 0, 'feedback_hint_rate': 0, 'mark_hint_rate': 0,
+                         'mark_evidence_hint': True, 'mark_evidence_text': '', **settings}.items():
+        monkeypatch.setattr(get_settings(), field, value)
+
+
+async def test_an_invalid_check_names_the_find_that_returned_the_address(clients, enrichment_on, monkeypatch):
+    from treg import analytics
+
+    _evidence_on(monkeypatch)
+    events = []
+    monkeypatch.setattr(analytics, 'capture', lambda *args, **kw: events.append((args, kw)))
+    found, checked = await _find_then_verify(clients, monkeypatch, verify_status='invalid')
+    find_ref, check_ref = found.headers['X-Treg-Call-Id'], checked.headers['X-Treg-Call-Id']
+    assert found.headers.get('X-Treg-Hint') is None
+    assert checked.headers['X-Treg-Hint'] == 'mark'
+    text = checked.headers['X-Treg-Hint-Text']
+    assert text == hints.mark_evidence_hint(check_ref, find_ref)
+    assert f'treg mark {find_ref} email:wrong --basis cross_checked --evidence {check_ref}' in text
+    assert 'patrick' not in text.lower()
+    sent, = [a[2] for a, _ in events if a[1] == 'hint_attached']
+    assert (sent['kind'], sent['variant'], sent['call_id']) == ('mark', 'evidence', check_ref)
+
+
+@pytest.mark.parametrize('status', ['valid', 'accept_all', 'unknown'])
+async def test_a_check_that_is_not_invalid_asks_nothing(clients, enrichment_on, monkeypatch, status):
+    _evidence_on(monkeypatch)
+    _, checked = await _find_then_verify(clients, monkeypatch, verify_status=status)
+    assert checked.headers.get('X-Treg-Hint') is None
+
+
+async def test_the_evidence_hint_is_off_by_default(clients, enrichment_on, monkeypatch):
+    _evidence_on(monkeypatch, mark_evidence_hint=False)
+    _, checked = await _find_then_verify(clients, monkeypatch, verify_status='invalid')
+    assert checked.headers.get('X-Treg-Hint') is None
+
+
+async def test_a_check_never_names_another_pins_find(clients, enrichment_on, monkeypatch):
+    from test_tag_billing import _mint_agent, _org_id
+
+    _evidence_on(monkeypatch)
+    org = await _org_id(clients)
+    a = await _mint_agent(clients, org, 'a', role='member', pinned_tags={'customer': 'a'})
+    b = await _mint_agent(clients, org, 'b', role='member', pinned_tags={'customer': 'b'})
+    _, checked = await _find_then_verify(clients, monkeypatch, verify_status='invalid',
+                                         find_headers={'X-Treg-Token': a},
+                                         verify_headers={'X-Treg-Token': b})
+    assert checked.headers.get('X-Treg-Hint') is None
+
+
+async def test_the_evidence_hint_has_its_own_hourly_budget(clients, enrichment_on, monkeypatch):
+    _evidence_on(monkeypatch, mark_evidence_per_hour=1)
+    _, first = await _find_then_verify(clients, monkeypatch, verify_status='invalid')
+    _, second = await _find_then_verify(clients, monkeypatch, verify_status='invalid')
+    assert first.headers.get('X-Treg-Hint') == 'mark'
+    assert second.headers.get('X-Treg-Hint') is None
