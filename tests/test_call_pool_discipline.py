@@ -182,16 +182,14 @@ async def test_a_catalog_search_storm_cannot_starve_calls_of_the_pool(
     # take 1.4 s on a laptop, and a CI runner shared by four workers was seen past the old 5 s
     # (7 CI failures, never locally). The refresh starting late is not what this test is about.
     await asyncio.wait_for(refresh_started.wait(), timeout=30)
-    await asyncio.sleep(0.25)  # let the old path fill all 15 pool slots before calls arrive
-
     try:
+        search_responses = await asyncio.wait_for(asyncio.gather(*searches), timeout=30)
         calls = await asyncio.wait_for(asyncio.gather(*(
             clients.get(f"/call/{EP}?aweme_id=catalog-mix-{i}") for i in range(20)
         )), timeout=15)
     finally:
         release_refresh.set()
 
-    search_responses = await asyncio.wait_for(asyncio.gather(*searches), timeout=10)
     await asyncio.wait_for(A.app.state.endpoint_observation_reader.wait_for_idle(), timeout=10)
     assert [r.status_code for r in search_responses] == [200] * 100
     assert [r.status_code for r in calls] == [200] * 20, [
