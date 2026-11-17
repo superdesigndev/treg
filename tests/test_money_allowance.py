@@ -279,6 +279,28 @@ async def test_a_partial_close_keeps_the_hold_for_calls_still_in_flight(org_id):
     assert await _daily_counter_agrees(org_id) == 800
 
 
+async def test_only_an_allowance_no_refill_has_stamped_lately_is_closed_as_stale(org_id):
+    await _refill(org_id, 30_000)
+    await _record(org_id, 4_000)
+    now = ledger._now()
+    async with session_maker() as db:
+        assert await allowance.stale_allowance_orgs(db, now - timedelta(minutes=5)) == []
+        assert await allowance.close_stale_allowance_in_transaction(
+            db, org_id, stale_before=now - timedelta(minutes=5), reason="idle") is None
+        await db.commit()
+        assert (await db.execute(select(CallCharge))).first() is not None
+        later = now + timedelta(minutes=5)
+        assert await allowance.stale_allowance_orgs(db, later) == [org_id]
+        closed = await allowance.close_stale_allowance_in_transaction(
+            db, org_id, stale_before=later, reason="idle")
+        await db.commit()
+        assert await ledger.open_holds_of(db, org_id) == []
+        assert await allowance.close_stale_allowance_in_transaction(
+            db, org_id, stale_before=later, reason="idle") is None
+    assert (closed.released_micro, closed.folded.calls) == (26_000, 1)
+    assert await _invariant(org_id) == GRANT - 4_000
+
+
 async def test_closing_folds_a_backlog_larger_than_one_batch(org_id, monkeypatch):
     monkeypatch.setattr(allowance, "FOLD_BATCH", 2)
     await _refill(org_id, 10_000)

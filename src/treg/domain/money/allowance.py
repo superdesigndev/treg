@@ -12,7 +12,7 @@ from collections.abc import Sequence
 from datetime import datetime, timedelta
 from typing import NamedTuple
 
-from sqlalchemy import delete, update
+from sqlalchemy import delete, func, update
 from sqlalchemy.dialects import postgresql, sqlite
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlmodel import select
@@ -251,7 +251,37 @@ async def close_allowance_in_transaction(
     way to stop new spending while calls already admitted finish against what is left.
     """
     mark_money(db, "close_allowance", org_id=org_id)
+    return await _close(db, org_id, await _lock_allowance(db, org_id), reason, release_micro)
+
+
+async def close_stale_allowance_in_transaction(
+    db: AsyncSession, org_id: int, *, stale_before: datetime, reason: str,
+) -> Closed | None:
+    """Close a team's allowance in full if no refill has stamped it since `stale_before`; None,
+    and nothing touched, when there is no hold or it is fresher. The check is made under the
+    hold's lock, so a refill that lands first keeps the hold. The caller picks `stale_before`
+    early enough that no call can still be spending from the allowance.
+    """
+    mark_money(db, "close_allowance", org_id=org_id)
     hold = await _lock_allowance(db, org_id)
+    if hold is None or (hold.heartbeat_at or hold.created_at) >= stale_before:
+        return None
+    return await _close(db, org_id, hold, reason, None)
+
+
+async def stale_allowance_orgs(db: AsyncSession, stale_before: datetime, *,
+                               limit: int = 50) -> list[int]:
+    """Teams whose allowance hold was last stamped before `stale_before`. A read; the close
+    re-checks under the lock."""
+    return list((await db.execute(
+        select(Hold.org_id).where(
+            Hold.allowance.is_(True),
+            func.coalesce(Hold.heartbeat_at, Hold.created_at) < stale_before)
+        .order_by(Hold.org_id).limit(limit))).scalars())
+
+
+async def _close(db: AsyncSession, org_id: int, hold: Hold | None, reason: str,
+                 release_micro: int | None) -> Closed:
     claimed: list = []
     while True:
         batch = await _claim_charges(db, org_id, FOLD_BATCH)

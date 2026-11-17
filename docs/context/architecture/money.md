@@ -150,8 +150,10 @@ hold first, then blocks, then the org row, and locks the blocks once: a close cl
 backlog in batches and only then applies it, because locking the blocks again per batch could meet
 one funded in between, out of primary-key order, and deadlock with a settle that holds it. For the
 same reason a transaction folds once. `settle`, `release` and the stale-hold sweep skip a hold
-marked `allowance`. `heartbeat_at` is stamped by each refill; nothing reads it yet, and no call
-path uses any of these functions yet.
+marked `allowance`. `heartbeat_at` is stamped by each refill.
+`allowance.close_stale_allowance_in_transaction` closes in full only a hold no refill has stamped
+since a given instant, checked under the hold's lock so a refill that lands first keeps it;
+`allowance.stale_allowance_orgs` lists the candidates.
 
 The hold is the authority; the shared store (`infra/kv.py`) only mirrors what of it is still
 unspent, as one hash per team holding `avail` and the hold's `epoch`. Five atomic operations:
