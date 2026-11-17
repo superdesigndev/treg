@@ -1820,15 +1820,12 @@ adapters:
     max: {limit: 100}
     out: {jobs: data, count: metadata.total_results, next_cursor: metadata.next_cursor}
   hirebase.jobs.search:
-    # geo_locations geocodes whatever its fields hold, so a free-text place goes in `city` whole:
-    # "New York, NY", "Texas" and "London, United Kingdom" each resolve to the place they name.
-    # company_name is an exact name, so it also answers one company's open jobs.
     additional_capabilities: [companies.jobs]
     accepts: [[title, name], [title], [name]]
     in: {title: body.job_titles, name: body.company_name}
     in_expr:
       body.job_titles: "list(title)"
-      body.geo_locations: "list(obj('city', location, 'country', country_name(country)))"
+      body.geo_locations: "list(obj('city', choose(lower(location) == 'remote', null, location), 'country', country_name(country)))"
       body.location_types: "choose(remote == true, list('Remote'), null)"
       body.days_ago: posted_within_days
       body.limit: limit
