@@ -787,6 +787,10 @@ class Settings(BaseSettings):
     # licence that was read and says no) is always respected, and actions are never stored, whatever
     # this says.
     archive_default_policy: str = "transient"
+    # Comma-separated provider ids whose answers this deployment never keeps: each of their
+    # endpoints loads as `cache: forbidden` and `response_retention: forbidden`, whatever its
+    # catalog row says. Read when the catalog loads, so a change takes a restart.
+    no_cache_providers: str = ""
     # The refresh worker (serve mode only): how often it scans for due keys, and how many
     # refresh calls ONE provider may spend per UTC day. A refresh is treg's own vendor spend with
     # no caller attached, so the cap is the brake — 0 disables refreshing without touching serving.
@@ -1355,6 +1359,13 @@ class Settings(BaseSettings):
         """Provider-registry review keys awaiting production access."""
         return frozenset(
             key.strip().lower() for key in self.oauth_review_pending.split(",") if key.strip()
+        )
+
+    @property
+    def no_cache_providers_set(self) -> frozenset[str]:
+        """Provider ids whose answers this deployment never stores."""
+        return frozenset(
+            key.strip().lower() for key in self.no_cache_providers.split(",") if key.strip()
         )
 
     @property
