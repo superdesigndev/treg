@@ -7,6 +7,7 @@ sources:
   - src/treg/crypto.py
   - src/treg/infra/credential_cipher.py
   - src/treg/application/credential_reencrypt.py
+  - src/treg/application/fernet_rotation.py
   - src/treg/alembic/versions/0108_secret_refreshable.py
   - src/treg/oauth.py
   - src/treg/domain/connections/__init__.py
@@ -120,7 +121,16 @@ Fernet token and still opens locally, so the two formats coexist until every row
   written before the column opens locally; the re-encryption job fills it.
 - **What stays Fernet.** Short-lived state (sign-in return cookies, enterprise SSO state, CLI
   pairing rows), Arena payloads, and the published placeholder values seeded into demo and
-  sandbox teams, which would otherwise put a KMS call behind every anonymous sandbox visit.
+  sandbox teams, which would otherwise put a KMS call behind every anonymous sandbox visit. The
+  echo key `/onboard/seed-tool` puts in a real team is sealed like any other credential.
+- **Rotating the Fernet key.** `TREG_SECRET_KEY` takes a comma-separated list: the first key
+  encrypts, every key decrypts. Deploy `old,new` everywhere first, so every running process can
+  open what the next step writes; then `new,old` everywhere; then run `treg-worker admin rotate-fernet`
+  (`--dry-run` first): it re-encrypts Arena payloads and every stored credential still on Fernet
+  (all of them without KMS) under the first key with a compare-and-set write. Demo and sandbox
+  seeds are not rotated; they stop opening once the old key is dropped.
+  Without `TREG_SESSION_SECRET` the session signature falls back to the whole setting, so a
+  rotation signs everyone out; set a session secret first.
 
 ## OAuth freshness (`domain/connections/refresh.py`)
 

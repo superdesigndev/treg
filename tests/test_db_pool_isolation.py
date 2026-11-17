@@ -102,6 +102,8 @@ EXPECTED_MAKERS: dict[str, set[str]] = {
     "application/evidence_retention.py": {API},
     # Runs only inside `treg-worker admin reencrypt-credentials`; same reasoning as `worker.py`.
     "application/credential_reencrypt.py": {API},
+    # Runs only inside `treg-worker admin rotate-fernet`; same reasoning as `worker.py`.
+    "application/fernet_rotation.py": {API},
     # Off-request writers.
     "audit.py": {BACKGROUND},
     # Request-shaped: the owner delete route and `treg-worker admin erase-archive`, in short

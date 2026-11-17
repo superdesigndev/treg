@@ -60,6 +60,13 @@ Encryption): `TREG_KMS_KEY_ID` on every process that reads credentials, then `TR
 on all of them, then `treg-worker admin reencrypt-credentials` (`--dry-run` first) until it reports
 nothing left to re-seal. The KMS key stays as long as any row is sealed with it.
 
+Rotating `TREG_SECRET_KEY`: deploy `old,new` to every process that decrypts, so processes
+overlapping a rolling deploy can open what updated ones write; then deploy `new,old` everywhere;
+run `treg-worker admin rotate-fernet` until it reports nothing left (it covers Arena payloads and
+any stored credential still on Fernet); then set every process to `new` alone. Keep the old key
+out of the environment but retrievable for as long as a database backup from before the rotation
+can still be restored.
+
 The lifespan and every worker command call read-only `verify_db()`: an unstamped database or a known
 revision behind head is refused; an unknown newer revision (code older than schema) warns and serves,
 because additive revisions tolerate rollback. Startup never creates tables, stamps or runs release
