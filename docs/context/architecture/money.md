@@ -1110,7 +1110,8 @@ Settlement evidence must be complete. The 8 MiB buffer raises a typed 502 on ove
 upstream; the call releases its hold and idempotency claim. Partial JSON never falls back to an
 estimate or settles as success.
 
-An authorized, explicitly free final result GET with no body-evidence consumers streams unbuffered
+An authorized, explicitly free final result GET, or a free `utility` reference list with no
+ownership rule, has no body-evidence consumers and streams unbuffered
 (`MarketplaceCall.streamable_free_result`), closing its settlement with an explicit zero before
 returning the stream (a no-op for a holdless call, above). It is not stored for idempotent replay. MIME type never decides billability.
 

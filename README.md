@@ -83,6 +83,8 @@ treg resources list --provider fishaudio --kind voice
 With your own Fish key, requests remain an unrestricted, unmetered upstream relay and Fish owns the
 account boundary.
 
+A client written for a provider's own API can switch by its base URL alone: `https://treg.to/call/<provider>` in place of the provider's base URL (`https://api.dataforseo.com/v3` → `https://treg.to/call/dataforseo`) runs the catalog tool on that method and path exactly as `/call/<id>` would; a path the catalog does not list is a 404, never relayed.
+
 Catalog tool inputs are described by `treg catalog get <id>`. Tools marked `strict_query` reject undeclared or repeated query parameters, unsupported values and request bodies. Send each declared single-valued parameter once, and a row count such as `limit` as a whole number within its stated maximum: a tool that enforces this answers a 400 `catalog_parameter_invalid` naming the parameter, and nothing is charged.
 
 Your token identifies you on every call (`X-Treg-Token` header) and is the same for all tools.
@@ -374,6 +376,7 @@ Environment variables (prefix `TREG_`, read from `.env`):
 | `TREG_DATABASE_URL`                       | `sqlite+aiosqlite:///./treg.db` | DB URL (SQLite for dev, Postgres in prod)                                                                                                                                  |
 | `TREG_READ_DATABASE_URL`                  | *(empty)*                       | Optional SQLite / PostgreSQL read datasource; empty reuses the primary. Requires callers to opt in; existing queries are unchanged. See [read datasource setup](docs/context/ops/deploy.md#optional-read-replica). |
 | `TREG_SECRET_KEY`                         | *(empty)*                       | Fernet key for secrets-at-rest; empty → an ephemeral key is minted (secrets won't survive a restart)                                                                       |
+| `TREG_AWS_SECRET_ID`                      | *(empty)*                       | ARN of an AWS Secrets Manager secret holding a JSON object of `TREG_*` settings, read once at startup and winning over the environment; AWS credentials come from the standard `AWS_*` variables |
 | `TREG_PUBLIC_URL`                         | `https://treg.to`  | treg's public base, used to build the OAuth callback URI                                                                                                                   |
 | `TREG_SESSION_SECRET`                     | *(empty)*                       | signs the dashboard session cookie; falls back to `TREG_SECRET_KEY`. Set a real value in prod                                                                              |
 | `TREG_GITHUB_CLIENT_ID` / `_SECRET`       | *(empty)*                       | GitHub OAuth sign-in (callback `<public_url>/auth/github/callback`); empty hides the button                                                                                |

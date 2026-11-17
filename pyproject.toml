@@ -43,7 +43,7 @@ server = [
     "aiosqlite>=0.20",
     "asyncpg>=0.30",
     "cryptography>=43",
-    "pydantic-settings>=2.5",
+    "pydantic-settings[aws-secrets-manager]>=2.5",
     "pyyaml>=6",   # the endpoint catalog's data files (src/treg/catalog/*.yaml) — server-side only
     "stripe>=12",  # balance top-ups (src/treg/infra/stripe.py) — the payment rail, server-side only
     "mcp>=2",      # the MCP front door (src/treg/mcp.py) — server-side only; pulls httpx2 ALONGSIDE
@@ -151,6 +151,8 @@ forbidden_modules = [
     "aiosqlite",
     "alembic",
     "asyncpg",
+    "boto3",
+    "botocore",
     "cryptography",
     "fastapi",
     "mcp",

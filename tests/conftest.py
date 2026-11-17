@@ -23,6 +23,10 @@ from pathlib import Path
 # Tests and their CLI subprocesses must never emit production analytics.
 os.environ["TREG_TELEMETRY"] = "0"
 
+# A deployment's Secrets Manager source outranks the environment, so a shell that names one would
+# hand the suite production credentials and its database URL. Tests that need it set it themselves.
+os.environ.pop("TREG_AWS_SECRET_ID", None)
+
 # Isolate the test DB from any .env / running dev server BEFORE importing treg (the engine is
 # built at import time). A real env var overrides the .env file in pydantic-settings.
 # TREG_TEST_DB_URL (not TREG_DATABASE_URL - a stray production URL in a shell must never become the
@@ -619,31 +623,21 @@ def _reset_call_path_caches():
     """The call path keeps in-process copies of ratestore state (the capacity view: 'provider X is
     exhausted' for 60 s), the overflow route view and per-provider rate buckets. `reset_db()` wipes
     the tables, not process memory — so a test that relays a vendor 402 would otherwise leave the
-    NEXT test's tier-4 call refused with a 503 it never asked for (CI, xdist worker gw3, 2026-08-28).
-    Each cache is optional: the modules land in successive PRs of the capacity stack."""
+    NEXT test's tier-4 call refused with a 503 it never asked for (CI, xdist worker gw3, 2026-08-28)."""
     def _clear() -> None:
-        try:
-            from treg.domain.capacity.view import view as capacity_view
-            capacity_view.invalidate()
-            capacity_view._states = {}
-            capacity_view._locks = {}
-            from treg.domain.capacity import marks as capacity_marks
-            capacity_marks._last_probe.clear()
-        except ImportError:
-            pass
-        try:
-            from treg.domain.capacity.routes_view import view as routes_view
-            routes_view.invalidate()
-            routes_view._routes = []
-        except ImportError:
-            pass
-        try:
-            from treg.infra.upstream.limiter import limiter
-            limiter.reset()
-            from treg.application.call import keyslots
-            keyslots._rotation.clear()
-        except ImportError:
-            pass
+        from treg.domain.capacity.view import view as capacity_view
+        capacity_view.invalidate()
+        capacity_view._states = {}
+        capacity_view._locks = {}
+        from treg.domain.capacity import marks as capacity_marks
+        capacity_marks._last_probe.clear()
+        from treg.domain.capacity.routes_view import view as routes_view
+        routes_view.invalidate()
+        routes_view._routes = []
+        from treg.infra.upstream.limiter import limiter
+        limiter.reset()
+        from treg.application.call import keyslots
+        keyslots._rotation.clear()
         # The shared store's in-process fallback (the review-invitation budget): org ids restart
         # with every reset_db(), so a counter left over would ration the NEXT test's team.
         from treg.infra import kv

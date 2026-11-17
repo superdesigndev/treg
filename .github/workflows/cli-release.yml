@@ -57,3 +57,5 @@ jobs:
     uses: ./.github/workflows/cli-mirror.yml
     with:
       tag: ${{ github.ref_name }}
+    # A called workflow reads its own environment's secrets only when the caller passes secrets on.
+    secrets: inherit

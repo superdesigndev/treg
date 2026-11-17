@@ -107,7 +107,8 @@ Gmail dots) share it.
 - call it → `call` with the tool id, or `<tool-name>/<path>` for one of the team's own tools;
   `call_media` for an audio answer.
 - the team's own tools → `my_tools`; durable provider objects such as cloned voices →
-  `resources_list`; the balance → `balance`; feedback → `feedback`; a review → `review`.
+  `resources_list`; the balance → `balance`; feedback → `feedback`; a review → `review`; a result
+  you later found wrong or confirmed → `mark`.
 
 ## Find a tool and call it
 
@@ -243,6 +244,12 @@ pin a job to one provider (`treg org pin`), and then calls to the job's other pr
   provider is at its limit of calls in progress, a team that already has calls running on it gets
   429 `share_busy`; where it is at its rate limit, a call may get 429 `provider_rate_limited`. Send
   fewer at once, retry after `retry_after_s`, or call the routed tool, which moves on by itself.
+- **A client written for the provider's own API** can keep its paths: swap the provider's base URL
+  for `https://treg.to/call/<provider>` (`https://api.dataforseo.com/v3` → `https://treg.to/call/dataforseo`) and send
+  `X-Treg-Token`. The catalog tool on that method and path runs exactly as its id would, a `{param}`
+  segment filled from the path. A path the catalog does not list is a 404 (`X-Treg-Error: 1`) and
+  nothing is relayed; a path two tools share is a 409 naming both ids, so call one by id. A team tool
+  named like the provider takes these calls instead.
 - **Over raw HTTP**, if a body carrying SQL or HTML is refused with an HTML 403 page by the hosting
   edge before treg sees it, base64-encode the body and add `X-Treg-Body-Encoding: base64` (also
   `gzip` or `base64+gzip`). The CLI does this by itself.
@@ -451,6 +458,16 @@ succeeded: `treg feedback submit <quality|pricing|friction|other> "message" --ca
 When a result invites a review, rate that call after using it: `treg review CALL_ID USEFULNESS
 [--reason "..."]` or MCP `review`, with `useful`, `partly`, `not_useful` or `not_sure`. A reason may
 be quoted on the tool's catalog page without naming your team, so write about the tool.
+
+When you learn a result was wrong, or confirm it was right, mark that call: an email bounced,
+another source disagreed, the user corrected it. `treg mark CALL_ID 2/email:wrong --basis bounced`
+in the binary CLI, or the `mark` tool where your MCP connection lists it. Each item is
+`[INDEX][/FIELD]:VERDICT`, INDEX the 0-based row; a bare verdict is the whole result. `--basis` says
+how you know (`bounced`, `cross_checked`, `user_said`, `impression`). If your CLI answers that
+`mark` is not a command and you have no `mark` tool, POST the fields to `https://treg.to/marks` with your
+token ([feedback instructions](https://treg.to/feedback.md)), or skip it. Mark only what you checked, once
+you know; marking several calls at the end of the task is fine. Marks are private and never change
+charges.
 
 ## Rules
 

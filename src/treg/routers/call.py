@@ -14,6 +14,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from .. import analytics
 from .. import audit
+from .. import hints
 from ..application import agent_payments
 from .. import sandbox as demo_sandbox
 from ..application.call import call_errors
@@ -31,7 +32,7 @@ from ..application.call.service import (
     create_call_context,
     execute_call,
 )
-from ..application.call.invite import invitation
+from ..application.call.invite import catalog_endpoint, invitation
 from ..application.call.intake import (
     META_HEADER,
     CallMeta,
@@ -297,14 +298,17 @@ async def catalog_endpoint_access(
     except CallFailure as exc:
         raise _translate_call_failure(exc) from exc
 
-def _capture_hint(request: Request, context, kind: str) -> None:
+_INVITATION_HEADERS = ("X-Treg-Hint", "X-Treg-Hint-Text", "X-Treg-Review")
+
+
+def _capture_hint(request: Request, context, kind: str, variant: int | None = None) -> None:
     """One event per invitation actually sent, on every surface: the response-rate denominator.
     Attachment is not display; the surface's `X-Treg-Client` says who was asked."""
-    marketplace = context.marketplace
     slug = context.input.caller.org.slug
     analytics.capture(analytics.SERVER_DISTINCT_ID, "hint_attached", {
         "kind": kind, "call_id": context.call_ref, "client": _client_of(request),
-        "endpoint_id": marketplace.endpoint_id if marketplace is not None else None,
+        "endpoint_id": catalog_endpoint(context),
+        **({"variant": variant} if variant is not None else {}),
     }, groups={"team": slug} if slug else None)
 
 
@@ -452,15 +456,23 @@ async def _relay_answer(request: Request, context, upstream: UpstreamResponse, r
     """`/call/`'s ending: the provider's answer, streamed unchanged, with the optional invitation."""
     _attach_async_descriptor(upstream, context, rest)
     response = _http_upstream_response(upstream)
+    # The invitation headers are treg's alone. An upstream (or a team's own tool) sending them
+    # would put its words in the slot clients show as treg's (AGENTS.md, non-negotiable 4).
+    for name in _INVITATION_HEADERS:
+        del response.headers[name]
     try:
         # Optional invitation, decided before the body streams (application/call/invite.py).
         kind = await invitation(context, response.status_code,
                                 replayed=bool(response.headers.get("X-Treg-Idempotent-Replay")))
         if kind is not None:
             response.headers["X-Treg-Hint"] = kind
+            variant = None
             if kind == "review":
                 response.headers["X-Treg-Review"] = "requested"  # read by CLI <= 0.18
-            _capture_hint(request, context, kind)
+            elif kind == "mark":
+                variant, text = hints.mark_hint(context.call_ref)
+                response.headers["X-Treg-Hint-Text"] = text
+            _capture_hint(request, context, kind, variant)
     except Exception:  # noqa: BLE001 - a fault here can only lose the hint header
         pass  # A fault here can only lose the header; the answer is already built.
     if routed := _routed_alternative(context, response.status_code):

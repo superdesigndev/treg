@@ -19,7 +19,7 @@ sources:
   - src/treg/domain/identity/api_keys.py
   - src/treg/application/call/resolve.py
   - src/treg/alembic/versions/0104_agent_payments.py
-  - src/treg/alembic/versions/0105_agentpayer_per_network.py
+  - src/treg/alembic/versions/0106_agentpayer_per_network.py
   - src/treg/ratestore.py
   - tests/test_agent_payments.py
   - tests/test_agentpayer_network_migration.py
@@ -106,7 +106,7 @@ credit on one network never pays on another. `governance.teams.make_payer_team` 
 (network, address), a team made of a machine user on the unroutable `payers.treg.local` domain
 (`<address>.<network slug>@payers.treg.local` ; `identity.access.PAYER_DOMAIN`, a machine email: it cannot
 sign in or receive signup credit), a `member` membership with **no token**, and the `AgentPayer`
-row (primary key `(network, address)`, revision 0105) binding the wallet to the team. A wallet whose team was deleted keeps its machine user, which
+row (primary key `(network, address)`, revision 0106) binding the wallet to the team. A wallet whose team was deleted keeps its machine user, which
 the next payment joins to a new team. Nobody can authenticate as that team; only a verified payment
 or proof from its address on its network acts for it, and only on this path.
 

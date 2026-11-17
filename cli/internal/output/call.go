@@ -121,6 +121,11 @@ func envelope(r *api.Response, ctype string) callEnvelope {
 	}
 	if v := h.Get("X-Treg-Hint"); v != "" {
 		m.Set("hint", v)
+		// A mark invitation's words are the registry's (its A/B copy); a script reading
+		// --json gets them here, since nothing goes to stderr in this mode.
+		if t := h.Get("X-Treg-Hint-Text"); t != "" {
+			m.Set("hint_text", t)
+		}
 	}
 	if v := h.Get("X-Treg-Routed-Tool"); v != "" {
 		m.Set("routed_tool", v)
@@ -202,7 +207,7 @@ func (p *Printer) chargeLine(r *api.Response) {
 	}
 }
 
-// hintLine is the registry's optional invitation (X-Treg-Hint: review|feedback); X-Treg-Review is
+// hintLine is the registry's optional invitation (X-Treg-Hint: review|mark|feedback); X-Treg-Review is
 // what a registry before 0.19 sends.
 func (p *Printer) hintLine(r *api.Response) {
 	h := r.Header
@@ -223,6 +228,12 @@ func (p *Printer) hintLine(r *api.Response) {
 		fmt.Fprintf(p.Err, "treg: after using this result, run treg review %s "+
 			"<useful|partly|not_useful|not_sure> [--reason \"...\"]; "+
 			"omit private data, then keep going with the task.\n", id)
+	case "mark":
+		// The registry writes this text (A/B variants are its configuration), so it changes
+		// without a CLI release.
+		if text := h.Get("X-Treg-Hint-Text"); text != "" {
+			fmt.Fprintf(p.Err, "treg: %s\n", text)
+		}
 	case "feedback":
 		fmt.Fprintf(p.Err, "treg: anything confusing or wrong about this call, even if it worked? "+
 			"treg feedback submit <quality|pricing|friction|other> \"what you saw\" "+

@@ -43,6 +43,7 @@ from ...models import (
     EnterpriseSSOBlock,
     EnterpriseSSOIdentity,
     Feedback,
+    CallMark,
     CallReview,
     Media,
     Hold,
@@ -304,6 +305,7 @@ ORG_SCOPED_MODELS = (
     HubListing,   # a tool's search listing goes with the team that asked for it
     HubTool,      # a maker's published tools go with the team that owned them
     CallReview,
+    CallMark,
     Media,        # hosted reference files expire on their own; a deleted team's go now
     AdConversion,  # pending Google Ads conversions belong to the team they'd be attributed to
     EnterpriseSSOIdentity, EnterpriseSSOBlock, EnterpriseDirectoryUser, EnterpriseSSOAudit, EnterpriseSSO,

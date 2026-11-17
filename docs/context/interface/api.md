@@ -248,7 +248,7 @@ says `byok` or `platform`. The raw `/call/fishaudio.voices.list` remains a faith
 
 `* /call/{rest}` captures a framework-neutral `CallInput` for `application.call.service.execute_call`
 ([proxy-model](../architecture/proxy-model.md)). `_execute_call` tries an own tool, a catalog
-endpoint, then only when both miss a hub tool (`<team-slug>.<name>`, 429 `hub_busy` over the
+endpoint (by id, or by vendor path `<provider>/<path>`), then only when both miss a hub tool (`<team-slug>.<name>`, 429 `hub_busy` over the
 per-team slot; [hub](../architecture/hub.md)). `* /catalog/call/{rest}` (hidden from public
 OpenAPI) requires an exact catalog id and skips own-tool resolution, so a same-named team tool
 cannot shadow the catalog endpoint; from the credential ladder on it is the same call.
@@ -291,7 +291,7 @@ the provider.
 | 403 `funds_required`, `own_key_required` | An installed policy extension's `call_admission` point refused treg's money for this call ([policy extensions](../architecture/policy-extensions.md)); refused before any hold or provider request, never naming the rule. `funds_required` (a team that never bought credit) names `topup_url` and the own-key alternative, `own_key_required` only the own-key alternative. Not charged; `refused_by=policy`; MCP strips the top-up link. |
 | 402 `route_max_cost` | `X-Treg-Route-Max-Cost: <usd>` would be exceeded by the reserve with margin; no charge. No default on a direct call (unlike routed calls); non-numeric is 400. Where the catalog declares `ceiling_param`, treg forwards the remaining ceiling net of margin unless the caller sent that parameter (AGENTS.md non-negotiable 4). |
 | 502 `response_buffer_limit` | Response evidence passed the 8 MiB settlement buffer, or for `spooled_response` the per-body or per-process spool budget (the latter is temporary and worth retrying). Not charged; hold and idempotency claim released. Spooled answers are never stored for replay. |
-| 404/409 resolution | A named miss resembling a usable own tool returns `hint` and `did_you_mean`; a URL-passthrough tie is 409 naming the tools and the `/call/<name>/<path>` escape hatch. |
+| 404/409 resolution | A named miss resembling a usable own tool returns `hint` and `did_you_mean`; a URL-passthrough tie is 409 naming the tools and the `/call/<name>/<path>` escape hatch; a vendor path matching several catalog rows is 409 `target_ambiguous` with `candidates`. |
 
 The MCP `call` result mirrors these as fields (`upstream_failed`, `whose_error`, `hint`,
 `retry_after`); only treg's own `insufficient_balance` is ever described as the team's balance.

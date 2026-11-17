@@ -3,9 +3,11 @@ title: Feedback - private intake for problems and suggestions
 status: shipped
 sources:
   - src/treg/feedback_contract.py
+  - cli/internal/commands/mark.go
   - src/treg/domain/feedback/__init__.py
   - src/treg/domain/feedback/reports.py
   - src/treg/domain/feedback/reviews.py
+  - src/treg/domain/feedback/marks.py
   - src/treg/domain/feedback/verdicts.py
   - src/treg/hints.py
   - src/treg/config.py
@@ -17,10 +19,12 @@ sources:
   - src/treg/alembic/versions/0025_feedback.py
   - src/treg/alembic/versions/0026_callreview.py
   - src/treg/alembic/versions/0030_feedback_handling.py
+  - src/treg/alembic/versions/0105_callmark.py
   - tests/test_feedback_handling_schema.py
   - src/treg/web/feedback.md
   - tests/test_feedback.py
   - tests/test_reviews.py
+  - tests/test_marks.py
   - tests/test_endpoint_verdicts.py
   - tests/test_hints.py
   - tests/test_kv.py
@@ -89,14 +93,44 @@ stays open until the application commit (SQLite deferred BEGIN). The sole writer
 `domain.feedback.reviews`. `GET /admin/reviews` is superadmin-only and excluded from OpenAPI; there
 is no team read route.
 
+## Call marks
+
+A review is one opinion per call, often given before the answer is used. A mark is evidence: what
+the caller found wrong, or confirmed right, after checking the answer. `POST /marks` takes
+`call_id`, `basis` (`bounced`, `cross_checked`, `user_said`, `impression`), `items` (each a
+`verdict` from `MARK_VERDICTS`, with an optional 0-based row `index` and `field`; no index means
+the whole answer), optional `checked`, `evidence_call_id`, a private `note` and `replaces`.
+
+- **Append-only.** A team may mark one call many times as it learns more. A correction or
+  withdrawal (empty `items`) is a new row naming the earlier mark it `replaces`, which must be the
+  same team's, on the same call. An identical retry returns the original id with `already_received`,
+  but only after the call is found in the caller's scope, and the hash includes the caller's pin, so
+  a receipt never discloses another pin's call or mark; a unique `(org_id, content_hash)` index
+  arbitrates races.
+- **Attribution.** The call is looked up exactly as for a review (team and pin scope, retryable 404,
+  own tools and a maker's own hub tool refused). The mark keeps the called endpoint, provider and
+  credential tier. A routed answer can merge several children's rows, so a row index is the
+  caller's view of the merged answer and is never credited to a child here.
+- **What it can claim.** `checked` is how many rows the caller looked at, not a denominator: rows
+  it did not mark carry no conclusion. Only rows marked with a verdict, `correct` included, do.
+  `evidence_call_id` is checked against the team's own audit (`evidence_verified`) and never
+  rejects a mark. `basis` is the caller's account of how it knows.
+- **Surfaces.** The binary CLI's `treg mark` (the frozen Python CLI has none; its users POST
+  `/marks`), the team `/mcp/` tool `mark` (relaying to the same intake; hidden from OpenAI's clients
+  with `review`, and absent from `/mcp/v2/`), `skill.md` and `{BASE}/feedback.md` ("Mark").
+- **Private.** Marks are never published, quoted or folded into verdicts. `GET /admin/marks` is
+  superadmin-only and excluded from OpenAPI. The rate limit is per team per hour, separate from
+  feedback reports. The sole writer is `domain.feedback.marks`; `CallMark` is in `ORG_SCOPED_MODELS`.
+
 ## Review and feedback invitations
 
 `application.call.invite.invitation(context, status, replayed)` runs in `routers.call.call_tool`
-after the response is built and before it streams, and returns `review`, `feedback` or nothing. The
-router sends `X-Treg-Hint: review|feedback` (plus `X-Treg-Review: requested` on a review, read by CLI
-releases up to 0.18) and emits one `hint_attached` event per invitation sent. Surfaces only translate
+after the response is built and before it streams, and returns `review`, `mark`, `feedback` or
+nothing, in that order of precedence. The
+router sends `X-Treg-Hint: review|mark|feedback` (plus `X-Treg-Review: requested` on a review, read by
+CLI releases up to 0.18, and `X-Treg-Hint-Text` on a mark) and emits one `hint_attached` event per invitation sent. Surfaces only translate
 the header: the CLI prints a stderr line, the team `/mcp/` renders it into its single hint slot with
-priority replay > 402 > review > feedback. `/mcp/v2/` and OpenAI's clients on `/mcp/` render neither,
+priority replay > 402 > review > mark > feedback. `/mcp/v2/` and OpenAI's clients on `/mcp/` render none,
 so for them `hint_attached` counts an invitation the agent never saw.
 
 - **Review**: a direct catalog call on treg's platform key, 2xx, not replayed, not archive-served,
@@ -104,9 +138,19 @@ so for them `hint_attached` counts an invitation the agent never saw.
   `kv.store().take("review-budget:<org_id>", review_budget_per_hour, 3600)`. Per-call sampling scales
   with volume, so the budget caps how often a busy team is asked. There is deliberately no
   per-endpoint cooldown. An own tool never qualifies, even if its name matches a catalog endpoint.
+- **Mark**: a successful, non-replayed, non-cached catalog call on any credential tier, a routed
+  parent (`treg.<capability>`, which has no marketplace target) included, never an own tool, whose endpoint id equals or ends in `.<capability>` for one of `mark_hint_capabilities`
+  (empty: every catalog call), sampled at `mark_hint_rate` and capped by
+  `take("mark-hint-budget:<org_id>", mark_hint_per_hour, 3600)`. It asks for later work, once the
+  agent knows. Its text travels in `X-Treg-Hint-Text`: one of `mark_hint_texts` (A/B variants,
+  `{call_id}` filled, printable ASCII), chosen deterministically per call, or `hints.MARK_HINT`;
+  `hint_attached` records the `variant`. The binary CLI prints the text and the team `/mcp/`
+  renders it, so copy changes need no release; the frozen Python CLI ignores the kind.
 - **Feedback**: any other successful, non-replayed, non-cached call that samples in at
   `feedback_hint_rate`, own tools included. It asks for nothing, so it has no budget.
 
+Before deciding, the router removes any `X-Treg-Hint`, `X-Treg-Hint-Text` or `X-Treg-Review` the
+upstream sent (an own tool included): clients render that text as treg's, so it must be treg's.
 The hook is best-effort: no database or body access, no change to the call service's exits or
 writes; a fault can only lose the header. Sampling rates default to 0.
 

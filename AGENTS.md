@@ -56,6 +56,9 @@ Everything else in this file is guidance; these are the contract, and they win o
    settlement and outcome, every other byte as sent, live and archive hits alike, before the caller
    or an idempotent replay sees it. The archive keeps the answer whole; a call sending
    `X-Treg-Keep-Reported-Charge: true` keeps the member.
+   One more, on every answer: the invitation headers `X-Treg-Hint`, `X-Treg-Hint-Text` and
+   `X-Treg-Review` are treg's own, so an upstream's copies are removed before treg decides its
+   invitation; clients show their text as treg's ([feedback](docs/context/architecture/feedback.md)).
    A live-verified free catalog endpoint may declare an anonymous fallback; its empty binding list
    omits credential injection but does not strip or rewrite caller headers.
    Routed endpoints and overflow wrap the child's answer and say so; they never alter it. A routed
@@ -72,7 +75,8 @@ Everything else in this file is guidance; these are the contract, and they win o
    unlinked temp file under a per-body cap and per-process budget, settles from only the paths its
    row reads (usage meters, `expect` success leaf), then relays the file byte for byte; it is never
    archived or replayed.
-   Authorized free final fetches needing no body evidence stream in full.
+   Free answers needing no body evidence (an authorized final fetch, or a free `utility` reference
+   list with no ownership rule) stream in full.
    `/table/` runs the same call through the same road and returns it as rows and columns; it never
    changes what `/call/` returns (docs/context/architecture/table.md).
    A keyless agent-payments call (no treg credential of any kind) has its payment credential

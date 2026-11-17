@@ -1,4 +1,4 @@
-"""Migration 0105 keys each payer team by network and address, and keeps the rows it finds."""
+"""Migration 0106 keys each payer team by network and address, and keeps the rows it finds."""
 
 from importlib import import_module
 
@@ -7,7 +7,7 @@ from alembic.operations import Operations
 from sqlalchemy import create_engine, text
 
 
-def _at_0104(connection) -> None:
+def _at_0105(connection) -> None:
     connection.execute(text("""CREATE TABLE agentpayer (
         address VARCHAR NOT NULL PRIMARY KEY, org_id INTEGER NOT NULL UNIQUE,
         created_at DATETIME NOT NULL)"""))
@@ -22,10 +22,10 @@ def _at_0104(connection) -> None:
 
 
 def test_each_payer_takes_its_first_payment_network(monkeypatch):
-    migration = import_module("treg.alembic.versions.0105_agentpayer_per_network")
+    migration = import_module("treg.alembic.versions.0106_agentpayer_per_network")
     engine = create_engine("sqlite://")
     with engine.begin() as connection:
-        _at_0104(connection)
+        _at_0105(connection)
         monkeypatch.setattr(migration, "op", Operations(MigrationContext.configure(connection)))
         migration.upgrade()
         rows = connection.execute(text(
