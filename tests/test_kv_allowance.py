@@ -27,7 +27,7 @@ async def counter():
 async def test_takes_stop_at_what_the_counter_holds(counter):
     store, org_id = counter
     assert await store.allowance_take(org_id, 1) == 0
-    assert await store.allowance_add(org_id, 7, 250, 60_000) == 250
+    assert await store.allowance_add(org_id, 7, 250, fresh_ms=60_000, ttl_ms=60_000) == 250
     assert [await store.allowance_take(org_id, 100) for _ in range(3)] == [7, 7, 0]
     assert await store.allowance_take(org_id, 50) == 7
     assert await store.allowance_take(org_id, 1) == 0
@@ -35,11 +35,25 @@ async def test_takes_stop_at_what_the_counter_holds(counter):
 
 
 @real_redis
+async def test_takes_stop_once_the_counter_is_no_longer_fresh_and_resume_on_the_next_add(counter):
+    store, org_id = counter
+    assert await store.allowance_available(org_id) == 0
+    await store.allowance_add(org_id, 7, 100, fresh_ms=40, ttl_ms=60_000)
+    assert await store.allowance_take(org_id, 10) == 7
+    await asyncio.sleep(0.08)
+    assert await store.allowance_take(org_id, 10) == 0
+    assert await store.allowance_available(org_id) == 90
+    assert await store.allowance_give_back(org_id, 7, 10) is True
+    assert await store.allowance_add(org_id, 7, 0, fresh_ms=60_000, ttl_ms=60_000) == 100
+    assert await store.allowance_take(org_id, 100) == 7
+
+
+@real_redis
 async def test_concurrent_takes_from_two_clients_never_overspend(counter):
     store, org_id = counter
     other = kv.RedisStore(os.environ['TREG_TEST_KV_URL'])
     try:
-        await store.allowance_add(org_id, 3, 1_000, 60_000)
+        await store.allowance_add(org_id, 3, 1_000, fresh_ms=60_000, ttl_ms=60_000)
         taken = await asyncio.gather(*(
             client.allowance_take(org_id, 30) for _ in range(40) for client in (store, other)))
     finally:
@@ -51,12 +65,12 @@ async def test_concurrent_takes_from_two_clients_never_overspend(counter):
 @real_redis
 async def test_a_give_back_reaches_only_the_counter_it_was_taken_from(counter):
     store, org_id = counter
-    await store.allowance_add(org_id, 7, 100, 60_000)
+    await store.allowance_add(org_id, 7, 100, fresh_ms=60_000, ttl_ms=60_000)
     assert await store.allowance_take(org_id, 100) == 7
     assert await store.allowance_give_back(org_id, 7, 30) is True
     assert await store.allowance_give_back(org_id, 8, 30) is False
-    assert await store.allowance_add(org_id, 7, 20, 60_000) == 50
-    assert await store.allowance_add(org_id, 9, 500, 60_000) == 500
+    assert await store.allowance_add(org_id, 7, 20, fresh_ms=60_000, ttl_ms=60_000) == 50
+    assert await store.allowance_add(org_id, 9, 500, fresh_ms=60_000, ttl_ms=60_000) == 500
     assert await store.allowance_give_back(org_id, 7, 30) is False
     assert await store.allowance_take(org_id, 500) == 9
 
@@ -65,20 +79,20 @@ async def test_a_give_back_reaches_only_the_counter_it_was_taken_from(counter):
 async def test_dropping_empties_the_counter_and_keeps_its_epoch(counter):
     store, org_id = counter
     assert await store.allowance_drop(org_id) == 0
-    await store.allowance_add(org_id, 7, 100, 60_000)
+    await store.allowance_add(org_id, 7, 100, fresh_ms=60_000, ttl_ms=60_000)
     assert await store.allowance_take(org_id, 40) == 7
     assert await store.allowance_drop(org_id) == 60
     assert await store.allowance_drop(org_id) == 0
     assert await store.allowance_take(org_id, 1) == 0
     assert await store.allowance_give_back(org_id, 7, 40) is True
-    assert await store.allowance_add(org_id, 7, 10, 60_000) == 50
+    assert await store.allowance_add(org_id, 7, 10, fresh_ms=60_000, ttl_ms=60_000) == 50
 
 
 @real_redis
 async def test_a_writer_with_an_older_epoch_never_replaces_a_newer_counter(counter):
     store, org_id = counter
-    await store.allowance_add(org_id, 9, 500, 60_000)
-    assert await store.allowance_add(org_id, 7, 100, 60_000) == 'stale'
+    await store.allowance_add(org_id, 9, 500, fresh_ms=60_000, ttl_ms=60_000)
+    assert await store.allowance_add(org_id, 7, 100, fresh_ms=60_000, ttl_ms=60_000) == 'stale'
     assert await store.allowance_give_back(org_id, 7, 100) is False
     assert await store.allowance_retire(org_id, 7, 60_000) == 0
     assert await store.allowance_take(org_id, 500) == 9
@@ -88,14 +102,14 @@ async def test_a_writer_with_an_older_epoch_never_replaces_a_newer_counter(count
 async def test_retiring_a_counter_refuses_its_late_writers_and_admits_the_next_hold(counter):
     store, org_id = counter
     epoch = 1_800_000_000_000_007  # the size of a real one: past what a script prints exactly
-    await store.allowance_add(org_id, epoch, 100, 60_000)
+    await store.allowance_add(org_id, epoch, 100, fresh_ms=60_000, ttl_ms=60_000)
     assert await store.allowance_take(org_id, 40) == epoch
     assert await store.allowance_retire(org_id, epoch, 60_000) == 60
-    assert await store.allowance_add(org_id, epoch, 100, 60_000) == 'stale'
+    assert await store.allowance_add(org_id, epoch, 100, fresh_ms=60_000, ttl_ms=60_000) == 'stale'
     assert await store.allowance_give_back(org_id, epoch, 40) is False
     assert await store.allowance_take(org_id, 1) == 0
     assert 0 < await store._client.pttl(kv._allowance_key(org_id)) <= 60_000
-    assert await store.allowance_add(org_id, epoch + 1, 30, 60_000) == 30
+    assert await store.allowance_add(org_id, epoch + 1, 30, fresh_ms=60_000, ttl_ms=60_000) == 30
     assert await store.allowance_take(org_id, 30) == epoch + 1
 
 
@@ -103,7 +117,7 @@ async def test_retiring_a_counter_refuses_its_late_writers_and_admits_the_next_h
 async def test_retiring_with_no_counter_still_leaves_the_fence(counter):
     store, org_id = counter
     assert await store.allowance_retire(org_id, 7, 60_000) == 0
-    assert await store.allowance_add(org_id, 7, 100, 60_000) == 'stale'
+    assert await store.allowance_add(org_id, 7, 100, fresh_ms=60_000, ttl_ms=60_000) == 'stale'
 
 
 async def test_a_store_fault_reads_as_unavailable_and_takes_nothing(monkeypatch):
@@ -117,10 +131,11 @@ async def test_a_store_fault_reads_as_unavailable_and_takes_nothing(monkeypatch)
     store._client = SimpleNamespace(eval=broken)
     assert await store.allowance_take(5, 100) is None
     assert await store.allowance_give_back(5, 7, 100) is None
-    assert await store.allowance_add(5, 7, 100, 1000) is None
+    assert await store.allowance_add(5, 7, 100, fresh_ms=60_000, ttl_ms=1000) is None
     assert await store.allowance_drop(5) is None
     assert await store.allowance_retire(5, 7, 1000) is None
-    assert len(faults) == 5
+    assert await store.allowance_available(5) is None
+    assert len(faults) == 6
 
 
 async def test_arguments_that_are_not_plain_amounts_never_reach_the_script():
@@ -146,6 +161,7 @@ async def test_a_local_store_never_claims_to_be_the_shared_counter():
     store = kv.LocalStore()
     assert await store.allowance_take(5, 100) is None
     assert await store.allowance_give_back(5, 7, 100) is None
-    assert await store.allowance_add(5, 7, 100, 1000) is None
+    assert await store.allowance_add(5, 7, 100, fresh_ms=60_000, ttl_ms=1000) is None
     assert await store.allowance_drop(5) is None
     assert await store.allowance_retire(5, 7, 1000) is None
+    assert await store.allowance_available(5) is None

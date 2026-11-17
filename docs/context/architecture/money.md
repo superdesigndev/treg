@@ -156,10 +156,14 @@ since a given instant, checked under the hold's lock so a refill that lands firs
 `allowance.stale_allowance_orgs` lists the candidates.
 
 The hold is the authority; the shared store (`infra/kv.py`) only mirrors what of it is still
-unspent, as one hash per team holding `avail` and the hold's `epoch`. Five atomic operations:
+unspent, as one hash per team holding `avail` and the hold's `epoch`. Six atomic operations:
 `allowance_take` subtracts an amount when the counter holds at least that much and returns the
 epoch; `allowance_give_back` returns part of a take, only to a counter of the same epoch;
-`allowance_add` adds what a refill just committed to the hold and restarts the counter's expiry;
+`allowance_add` adds what a refill just committed to the hold, admits takes for a given time from
+now and restarts the counter's expiry (takes stop when no add has refreshed the counter in that
+time, by the store's own clock, though what it holds is kept: this is what lets a sweep know that a
+hold no refill has stamped for that time plus the longest call has nobody spending from it);
+`allowance_available` reads what the counter holds, for sizing a refill;
 `allowance_drop` empties the counter and returns what it held, keeping the epoch, so that figure
 can be released from a hold that stays while calls already admitted keep theirs;
 `allowance_retire` ends the counter of a hold being deleted, returning what it held and leaving
