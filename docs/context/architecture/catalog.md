@@ -1288,8 +1288,9 @@ an invalid extra never disables the primary.
   503 stays reserved for capacity/key drops.
 - **A filter applied only as a hint is named too**: an adapter's `soft:` list names caller keys its
   provider receives but does not enforce (exa and parallel people.search read the place and the
-  company as words), and an endpoint parameter marked `applied: soft` makes every key the adapter
-  maps into it soft (`Adapter.soft`, set at load by `_soft_keys`). `ignored_filters()` counts a soft
+  company as words), and an endpoint parameter marked `applied: soft` makes every contract filter
+  the adapter maps into it soft (`Adapter.soft`, set at load by `_soft_keys`). The validator refuses
+  a `soft:` that is not a list of the contract's filter or scoping keys (`soft_problems`). `ignored_filters()` counts a soft
   key the caller sent as not applied, a scoping key included, so the answer names it and strict
   filters drop the child ("applies … only as a hint"). Ranking reads `ignored_filters(soft=False)`
   (`Candidate.hinted` is the difference): a declaration discloses, it never reorders a plan or

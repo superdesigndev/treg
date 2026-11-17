@@ -1531,3 +1531,16 @@ def test_a_public_providers_every_row_is_anonymous():
     assert errors == []
     validator.check_public_provider_row({}, public, "bad", errors)
     assert errors == ["bad: a public provider's every row must be platform_auth: anonymous"]
+
+
+def test_an_adapters_soft_list_must_name_its_contracts_keys(tmp_path, monkeypatch):
+    monkeypatch.setattr(validator, "CATALOG", tmp_path)
+    (tmp_path / "contracts.yaml").write_text(
+        "contracts:\n  x.search:\n    identity: [{q: str}]\n    filters: {country: {type: str}}\n"
+        "    output: {results: {type: list, required: true}}\n    miss: 'results == []'\n")
+    adapter = "adapters:\n  p.x.search: {accepts: [[q]], in: {q: body.q}, out: {results: r}, miss: 'r == []', soft: %s}\n"
+    for soft, problem in (("[country]", None), ("[countyr]", "soft names countyr"), ("country", "soft is a list")):
+        (tmp_path / "adapters.yaml").write_text(adapter % soft)
+        errors: list[str] = []
+        validator.check_routing(errors, {"p.x.search": "x.search"})
+        assert (problem is None and errors == []) or any(problem in e for e in errors), (soft, errors)

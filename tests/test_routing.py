@@ -431,21 +431,41 @@ def test_a_filter_the_provider_takes_only_as_a_hint_is_an_ignored_filter():
     assert ignored_filters(cat.adapters["exa.people.search"], contract, unsent, {"title"}) == ()
 
 
-def test_a_parameter_the_row_marks_soft_makes_the_keys_mapped_into_it_soft():
+def test_a_parameter_the_row_marks_soft_makes_the_filters_mapped_into_it_soft():
+    """Only the contract's filters: never a function name in the expression, nor `q` sent into a
+    soft parameter when `q` is not a filter."""
     from treg.domain.catalog.routing import contracts as C
+    contract = C.parse_contracts({"contracts": {"x": {
+        "identity": [{"q": "str"}], "filters": {"country": {"type": "str"}, "domains": {"type": "list"},
+                                                "language": {"type": "str"}},
+        "output": {"results": {"type": "list", "required": True}}, "miss": "results == []"}}})["x"]
     ad = C.parse_adapters({"adapters": {"x.web.search": {
         "accepts": [["q"]], "in": {"q": "queryParams.query", "country": "queryParams.location"},
-        "in_expr": {"queryParams.sites": "csv(domains)"}, "soft": ["language"],
-        "out": {"results": "results"}, "miss": "results == []"}}})["x.web.search"]
-    row = {"input": {"queryParams": {"query": {"type": "string"},
-                                     "location": {"type": "string", "applied": "soft"},
-                                     "sites": {"type": "string", "applied": "soft"}}}}
-    assert C._soft_keys(ad, row) == ("language", "country", "csv", "domains")
-    assert C._soft_keys(ad, {"input": {}}) == ("language",)
+        "in_expr": {"queryParams.sites": "csv(domains)", "queryParams.text": "join(q, language)"},
+        "soft": ["language"], "out": {"results": "results"}, "miss": "results == []"}}})["x.web.search"]
+    soft = {"type": "string", "applied": "soft"}
+    row = {"input": {"queryParams": {"query": soft, "location": soft, "sites": soft, "text": soft}}}
+    assert C._soft_keys(ad, row, contract) == ("language", "country", "domains")
+    assert C._soft_keys(ad, {"input": {}}, contract) == ("language",)
+
+
+def test_an_adapters_soft_names_only_its_contracts_keys():
+    from treg.domain.catalog.routing import contracts as C
+    cat = catalog_store.load()
+    base = {"accepts": [["q"]], "in": {"q": "body.query"}, "out": {"people": "results"}, "miss": "results == []"}
+    for bad in ("location", ["location", 3], [""]):
+        with pytest.raises(ValueError, match="soft is a list"):
+            C.parse_adapters({"adapters": {"x.people.search": {**base, "soft": bad}}})
+    ads = C.parse_adapters({"adapters": {"x.people.search": {**base, "soft": ["company_domain", "locaton"]}}})
+    assert C.soft_problems(ads, cat.contracts, {"x.people.search": "people.search"}) == [
+        "adapter x.people.search: soft names locaton, not a filter or scoping key of people.search"]
+    assert C.soft_problems(cat.adapters, cat.contracts, {e: cat.by_id[e]["capability"] for e in cat.adapters
+                                                         if e in cat.by_id}) == []
 
 
 @pytest.mark.parametrize("identity, kept", [
     ({"title": "CTO", "location": "Dublin, Ireland", "country": "ie"}, False),
+    ({"title": "CTO", "location": "Cambridge", "country": "us"}, False),
     ({"title": "CTO", "location": "Dublin, Ireland"}, False),
     ({"title": "CTO", "country": "zz"}, False),
     ({"title": "CTO"}, True),

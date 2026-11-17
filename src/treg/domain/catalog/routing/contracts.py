@@ -692,6 +692,14 @@ def _position(eid: str, raw) -> dict[str, str]:
     return {str(k): str(v) for k, v in raw.items()}
 
 
+def _soft(eid: str, raw) -> tuple[str, ...]:
+    if raw is None:
+        return ()
+    if not isinstance(raw, list) or not all(isinstance(k, str) and k for k in raw):
+        raise ValueError(f"adapter {eid}: soft is a list of key names")
+    return tuple(raw)
+
+
 def parse_adapters(doc: dict) -> dict[str, Adapter]:
     out = {}
     for eid, a in (doc.get("adapters") or {}).items():
@@ -708,7 +716,7 @@ def parse_adapters(doc: dict) -> dict[str, Adapter]:
             filter_max={str(k): int(v) for k, v in (a.get("max") or {}).items()},
             additional_capabilities=tuple(a.get("additional_capabilities") or ()),
             route=a.get("route", True) is not False,
-            soft=tuple(str(k) for k in a.get("soft") or ()),
+            soft=_soft(eid, a.get("soft")),
             paging=_paging(eid, a.get("paging"), a.get("out") or {}),
             position=_position(eid, a.get("position")),
             const=dict(a.get("const") or {}), out_map=dict(a.get("out") or {}), miss=str(a.get("miss") or ""),
@@ -978,17 +986,32 @@ def _soft_targets(endpoint: dict) -> set[str]:
             for name, spec in params.items() if isinstance(spec, dict) and spec.get("applied") == "soft"}
 
 
-def _soft_keys(adapter: Adapter, endpoint: dict) -> tuple[str, ...]:
-    """The adapter's own `soft:` keys plus each key it sends into a parameter marked soft."""
-    targets = _soft_targets(endpoint)
+def _soft_keys(adapter: Adapter, endpoint: dict, contract: Contract) -> tuple[str, ...]:
+    """The adapter's own `soft:` keys plus each contract filter it sends into a parameter marked soft."""
+    targets, filters = _soft_targets(endpoint), set(contract.filters or ())
     keys = list(adapter.soft)
     for k, target in adapter.in_map.items():
-        if target in targets:
+        if target in targets and k in filters:
             keys.append(k)
     for target, expr in (adapter.in_expr or {}).items():
         if target in targets:
-            keys += re.findall(r"[A-Za-z_]\w*", expr)
+            keys += [n for n in re.findall(r"[A-Za-z_]\w*", expr) if n in filters]
     return tuple(dict.fromkeys(keys))
+
+
+def soft_problems(adapters: dict[str, Adapter], contracts: dict[str, Contract],
+                  capability_of: dict[str, str]) -> list[str]:
+    """An adapter's `soft:` names only its contract's filter or scoping keys."""
+    problems = []
+    for eid, ad in adapters.items():
+        contract = contracts.get(capability_of.get(eid) or "")
+        if not ad.soft or contract is None:
+            continue
+        known = set(contract.filters or ()) | set(contract.scoping)
+        if unknown := [k for k in ad.soft if k not in known]:
+            problems.append(f"adapter {eid}: soft names {', '.join(unknown)}, not a filter or scoping key "
+                            f"of {capability_of[eid]}")
+    return problems
 
 
 def load_routing(directory: Path, endpoints_by_id: dict[str, dict], read_yaml, read_example) -> tuple[dict[str, Contract], dict[str, Adapter]]:
@@ -1021,5 +1044,5 @@ def load_routing(directory: Path, endpoints_by_id: dict[str, dict], read_yaml, r
                 if extra_ok:
                     additional.append(capability)
         verified[eid] = Adapter(**{**ad.__dict__, "verified": ok, "verify_note": note,
-                                   "verified_capabilities": tuple(additional), "soft": _soft_keys(ad, ep)})
+                                   "verified_capabilities": tuple(additional), "soft": _soft_keys(ad, ep, contract)})
     return contracts, verified

@@ -117,7 +117,8 @@ Publishing a hub tool adds `hub_create`, `hub_update` and `hub_mine`.
   `output.next_cursor` back as `cursor` with the same body; `_treg.paging` says when to ask another provider.
 - Provider search filters and operators (a place, a domain list, `site:`, quoted phrases) are
   best-effort: check the rows against your filters, and on routed search send
-  `X-Treg-Route-Strict-Filters: 1` to skip providers that do not apply them.
+  `X-Treg-Route-Strict-Filters: 1` to skip providers known to take a sent place, company or domain
+  filter only as a hint.
 <!--/routed-->
 - Choosing a provider yourself: first the one whose inputs match what you hold, then measured
   reliability, then price. `treg catalog get <id>` compares the job's ten most reliable and cheapest
