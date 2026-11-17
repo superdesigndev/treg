@@ -47,9 +47,25 @@ def _arguments():
         parsed = urlsplit(os.environ.get(key, ""))
         if parsed.hostname not in LOOPBACK:
             parser.error(f"{key} must explicitly name a disposable loopback service")
+        if parsed.query:
+            parser.error(f"{key} must not carry query parameters: they can override its target")
     if not urlsplit(os.environ["TREG_TEST_DB_URL"]).path.lstrip("/").startswith(DATABASE_PREFIX):
         parser.error(f"test database name must start with {DATABASE_PREFIX}")
     return args
+
+
+def _require_disposable(engine) -> None:
+    """Refuse unless the DRIVER will connect to the loopback test database.
+
+    The URL's host and path are not what it connects to: query parameters such as `?host=` and
+    `?database=` override both, so the check reads the dialect's resolved connection arguments.
+    """
+    target = engine.dialect.create_connect_args(engine.url)[1]
+    database = target.get("database")
+    if (target.get("host") not in LOOPBACK or not isinstance(database, str)
+            or not database.startswith(DATABASE_PREFIX) or "dsn" in target):
+        raise SystemExit("the database connection resolves to something other than the disposable "
+                         "loopback test database; refusing to touch it")
 
 
 def _environment() -> None:
@@ -68,11 +84,8 @@ async def _fund(org_count: int, calls: int) -> list[int]:
     from treg.infra.db import reset_db, session_maker
     from treg.models import Org
 
-    # The address the registry resolved, not the one asked for: reset_db() below deletes its rows.
-    bound = session_maker.kw["bind"].url
-    if bound.host not in LOOPBACK or not (bound.database or "").startswith(DATABASE_PREFIX):
-        raise SystemExit("the registry resolved a database other than the disposable test one; "
-                         "refusing to reset it")
+    # The engine the registry built, not the URL asked for: reset_db() below deletes its rows.
+    _require_disposable(session_maker.kw["bind"].sync_engine)
     store = kv.RedisStore(os.environ["TREG_TEST_KV_URL"])
     try:
         if not await store.ping():
@@ -135,6 +148,7 @@ async def _work(admission: bool, org_ids: list[int], calls: int, concurrency: in
     settings.money_admission_org_ids = []
     settings.money_admission_wait_s = 120
     engine = create_async_engine(os.environ["TREG_TEST_DB_URL"], pool_size=pool_size, max_overflow=0)
+    _require_disposable(engine.sync_engine)
     sessions = async_sessionmaker(engine, expire_on_commit=False)
     async with sessions() as db:
         await db.execute(text("SELECT 1"))
