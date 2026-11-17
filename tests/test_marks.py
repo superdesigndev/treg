@@ -192,3 +192,20 @@ async def test_mcp_mark_schema():
     assert tool.input_schema['required'] == ['call_id', 'basis', 'items']
     # the directory listing was submitted without it
     assert 'mark' not in {tool.name for tool in await directory_mcp.list_tools()}
+
+
+@pytest.mark.parametrize('item', [{'verdict': 'wrong', 'row': 2}, {'verdict': 'wrong', 'index': -1},
+                                  {'verdict': 'wrong', 'field': 'a b'}])
+async def test_mcp_refuses_an_item_it_cannot_place(clients, item):
+    """A misspelled or invalid locator is an error, never a finding about the whole result."""
+    from test_mcp import _rpc, mcp_session
+
+    org = await seed(clients)
+    async with mcp_session(clients) as client:
+        await _rpc(client, 'initialize', {'protocolVersion': '2025-06-18', 'capabilities': {},
+                                          'clientInfo': {'name': 'test', 'version': '1'}}, org['token'])
+        response = await _rpc(client, 'tools/call', {'name': 'mark', 'arguments': {
+            'call_id': 'mark-call', 'basis': 'bounced', 'items': [item]}}, org['token'])
+    result = response.json().get('result') or {}
+    assert result.get('isError') is True or 'error' in response.json(), response.text
+    assert await rows() == []

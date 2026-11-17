@@ -216,7 +216,7 @@ If the call record is not written yet, retry shortly with the same call ID.
 you found wrong, or confirmed right, in a call's result once you know. Each item is
 `[INDEX][/FIELD]:VERDICT` (INDEX the 0-based row, a bare verdict meaning the whole result) with a
 verdict of `correct`, `wrong`, `stale`, `wrong_entity`, `missing`, `irrelevant`, `duplicate` or
-`other`: `treg mark CALL_ID 2/email:wrong_entity 5:stale --basis bounced --checked 10`.
+`other`: `treg mark CALL_ID 2/email:wrong --basis bounced --checked 10`.
 `--checked N` says how many rows you looked at, `--evidence ID` names the call that showed it (a
 verify call), `--note` adds a private note and `--replaces MARK_ID` corrects an earlier mark (no
 items withdraws it). Marks are private and never change charges. The receipt contains `mark_id`

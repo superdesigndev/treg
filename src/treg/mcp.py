@@ -46,7 +46,9 @@ import re
 from contextlib import asynccontextmanager
 from contextvars import ContextVar
 from dataclasses import asdict, dataclass, replace
-from typing import Annotated, Any, Required, TypedDict
+from typing import Annotated, Any, TypedDict
+
+from pydantic import BaseModel, ConfigDict, Field
 from urllib.parse import parse_qsl, quote, unquote, urlencode, urlsplit
 
 import httpx
@@ -465,10 +467,16 @@ class MarkOut(TypedDict, total=False):
     detail: Any
 
 
-class MarkItemIn(TypedDict, total=False):
-    verdict: Required[MarkVerdict]
-    index: int
-    field: str
+class MarkItemIn(BaseModel):
+    """One finding. Unknown keys are refused, not dropped: a misspelled `index` (`row`) would
+    otherwise turn a row's finding into one about the whole result."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    verdict: MarkVerdict
+    index: int | None = Field(default=None, ge=0, description="0-based row; omit for the whole result")
+    field: str | None = Field(default=None, min_length=1, max_length=120,
+                              pattern=r"^[A-Za-z0-9_.\[\]-]+$")
 
 
 class FeedbackOut(TypedDict, total=False):
@@ -1240,7 +1248,8 @@ async def mark(
     checked: int | None = None, evidence_call_id: str | None = None, note: str | None = None,
     replaces: int | None = None,
 ) -> MarkOut:
-    body = {"call_id": call_id, "basis": basis, "items": items}
+    body = {"call_id": call_id, "basis": basis,
+            "items": [item.model_dump(exclude_none=True) for item in items]}
     optional = {"checked": checked, "evidence_call_id": evidence_call_id, "note": note,
                 "replaces": replaces}
     body.update({key: value for key, value in optional.items() if value is not None})

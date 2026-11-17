@@ -433,11 +433,14 @@ When a result invites a review, rate that call after using it: `treg review CALL
 be quoted on the tool's catalog page without naming your team, so write about the tool.
 
 When you learn a result was wrong, or confirm it was right, mark that call: an email bounced,
-another source disagreed, the user corrected it. `treg mark CALL_ID 2/email:wrong_entity 5:stale
---basis bounced`, or MCP `mark`. Each item is `[INDEX][/FIELD]:VERDICT`, INDEX the 0-based row; a
-bare verdict is the whole result. `--basis` says how you know (`bounced`, `cross_checked`,
-`user_said`, `impression`). Mark only what you checked, once you know; marking several calls at
-the end of the task is fine. Marks are private and never change charges.
+another source disagreed, the user corrected it. `treg mark CALL_ID 2/email:wrong --basis bounced`
+in the binary CLI, or the `mark` tool where your MCP connection lists it. Each item is
+`[INDEX][/FIELD]:VERDICT`, INDEX the 0-based row; a bare verdict is the whole result. `--basis` says
+how you know (`bounced`, `cross_checked`, `user_said`, `impression`). If your CLI answers that
+`mark` is not a command and you have no `mark` tool, POST the fields to `https://treg.to/marks` with your
+token ([feedback instructions](https://treg.to/feedback.md)), or skip it. Mark only what you checked, once
+you know; marking several calls at the end of the task is fine. Marks are private and never change
+charges.
 
 ## Rules
 

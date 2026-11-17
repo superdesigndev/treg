@@ -2,6 +2,7 @@ package commands
 
 import (
 	"regexp"
+	"slices"
 	"strconv"
 	"strings"
 	"unicode/utf8"
@@ -29,7 +30,7 @@ func markCmd(env *Env) *cobra.Command {
 	var basis, evidence, note string
 	var checked, replaces int
 	cmd := leaf("mark <call_id> [item...]", markDescription,
-		"treg mark CALL_ID 2/email:wrong_entity 5:stale --basis bounced --checked 10\n"+
+		"treg mark CALL_ID 2/email:wrong --basis bounced --checked 10\n"+
 			"treg mark CALL_ID correct --basis cross_checked --evidence VERIFY_CALL_ID")
 	cmd.Short = "Mark wrong or confirmed rows in a call's result."
 	cmd.Args = cobra.MinimumNArgs(1)
@@ -156,10 +157,5 @@ func parseMarkItem(raw string) (*ojson.Object, bool) {
 }
 
 func isMarkVerdict(v string) bool {
-	for _, known := range markVerdicts {
-		if v == known {
-			return true
-		}
-	}
-	return false
+	return slices.Contains(markVerdicts, v)
 }
