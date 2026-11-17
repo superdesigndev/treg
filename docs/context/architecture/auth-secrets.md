@@ -124,7 +124,8 @@ Fernet token and still opens locally, so the two formats coexist until every row
   sandbox teams, which would otherwise put a KMS call behind every anonymous sandbox visit. The
   echo key `/onboard/seed-tool` puts in a real team is sealed like any other credential.
 - **Rotating the Fernet key.** `TREG_SECRET_KEY` takes a comma-separated list: the first key
-  encrypts, every key decrypts. List the new key first, then run `treg-worker admin rotate-fernet`
+  encrypts, every key decrypts. Deploy `old,new` everywhere first, so every running process can
+  open what the next step writes; then `new,old` everywhere; then run `treg-worker admin rotate-fernet`
   (`--dry-run` first): it re-encrypts Arena payloads and every stored credential still on Fernet
   (all of them without KMS) under the first key with a compare-and-set write. Demo and sandbox
   seeds are not rotated; they stop opening once the old key is dropped.
