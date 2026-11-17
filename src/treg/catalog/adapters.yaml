@@ -1846,6 +1846,14 @@ adapters:
     accepts: [[subreddit]]
     in:  {subreddit: queryParams.subreddit_name}
     out: {posts: data.subredditV3.elements.edges, next_cursor: data.subredditV3.elements.pageInfo.endCursor}
+  apify.reddit.subreddit.posts:
+    accepts: [[subreddit]]
+    in:  {subreddit: body.subreddits}
+    in_expr: {body.subreddits: "list(subreddit)"}
+    const: {queryParams.maxTotalChargeUsd: "0.05", queryParams.timeout: "90",
+            body.sort: "new", body.maxPostsPerSource: 25, body.includeComments: false}
+    out: {posts: "."}
+    miss: ". == []"
 
   tikhub.x.youtube-web-v2-get-video-info:
     accepts: [[video_id]]
