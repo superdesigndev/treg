@@ -175,7 +175,6 @@ async def _work(admission: bool, org_ids: list[int], calls: int, concurrency: in
     await asyncio.gather(*(call(index) for index in range(calls)))
     ended_at = time.time()
     await engine.dispose()
-    latencies.sort()
     # A run that fell back to the database path, or lost a lease, did not measure the shared lease.
     unleased = sum(
         row["lease_lost"] + sum(value for key, value in row.items() if key.startswith("fallback_"))
@@ -183,8 +182,7 @@ async def _work(admission: bool, org_ids: list[int], calls: int, concurrency: in
         for row in money_admission.snapshot()) if admission else 0
     return {"started_at": started_at, "ended_at": ended_at, "round_trips": round_trips,
             "unleased": unleased,
-            "p50_ms": latencies[len(latencies) // 2],
-            "p95_ms": latencies[int((len(latencies) - 1) * .95)]}
+            "latencies_ms": latencies}
 
 
 def _process(arguments: tuple) -> dict:
@@ -210,6 +208,9 @@ def main() -> None:
                        - min(result["started_at"] for result in results))
             per_org = [procs * len(range(k, args.calls, args.orgs)) for k in range(args.orgs)]
             asyncio.run(_verify(org_ids, per_org, total * ESTIMATE_MICRO))
+            # Percentiles of every call together: a mean or a maximum of per-worker percentiles
+            # is not a percentile of the run.
+            latencies = sorted(ms for result in results for ms in result["latencies_ms"])
             unleased = sum(result["unleased"] for result in results)
             if unleased:
                 raise SystemExit(f"{unleased} money sessions ran without the Redis lease "
@@ -220,8 +221,8 @@ def main() -> None:
                 "throughput_per_s": round(total / elapsed, 1),
                 "db_round_trips_per_call": round(
                     sum(result["round_trips"] for result in results) / total, 2),
-                "latency_p50_ms": round(sum(result["p50_ms"] for result in results) / procs, 2),
-                "latency_p95_ms": round(max(result["p95_ms"] for result in results), 2),
+                "latency_p50_ms": round(latencies[len(latencies) // 2], 2),
+                "latency_p95_ms": round(latencies[int((len(latencies) - 1) * .95)], 2),
             }
             rows.append(row)
             print(json.dumps(row), flush=True)
