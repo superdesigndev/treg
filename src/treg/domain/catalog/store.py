@@ -58,6 +58,11 @@ def browsable(ep: dict) -> bool:
     "treg", which the brand rules say must never appear as a vendor."""
     return ep["kind"] not in HIDDEN_KINDS and ep.get("kind") != "routed"
 
+def _no_cache_providers() -> frozenset[str]:
+    from ...config import get_settings
+    return get_settings().no_cache_providers_set
+
+
 def paused_providers() -> frozenset[str]:
     from ...config import get_settings
     return get_settings().paused_providers_set
@@ -713,6 +718,7 @@ def _normalize(raw: dict, provider: str, directory: Path) -> dict:
     capability = raw.get("capability") or ""
     platform = raw.get("platform") or (capability.split(".")[0] if capability else "other")
     verified = raw.get("verified")
+    keeps_nothing = provider.lower() in _no_cache_providers()
     return {
         "id": str(raw["id"]),
         "provider": provider,
@@ -776,8 +782,9 @@ def _normalize(raw: dict, provider: str, directory: Path) -> dict:
         # inherited from the file header unless the endpoint declares its own.
         # Generated media and its task/result utilities must never replay shared-account ids.
         # Enforce this for core and generated extended rows without changing their public kind.
-        "cache": "forbidden" if platform in {"image-gen", "video-gen", "voice-gen", "music-gen"} else raw.get("cache"),
-        "response_retention": raw.get("response_retention"),
+        # A deployment's no-cache providers (TREG_NO_CACHE_PROVIDERS) keep nothing either.
+        "cache": "forbidden" if keeps_nothing or platform in {"image-gen", "video-gen", "voice-gen", "music-gen"} else raw.get("cache"),
+        "response_retention": "forbidden" if keeps_nothing else raw.get("response_retention"),
         "verified": str(verified) if verified else None,
         "added": str(raw.get("added") or "") or None,
         # The first UTC day whose observations describe the service as it is now; ranking and the

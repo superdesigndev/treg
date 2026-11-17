@@ -79,7 +79,10 @@ endpoint ids to an operator freshness ceiling, and `TREG_ARCHIVE_HIT_REPEAT_PRIC
    written once on the provider YAML header and overridable per endpoint. Absent takes
    `archive_default_policy` (`transient`, flippable to `forbidden` by env). A judged `forbidden`
    is always respected and a missing entry is never stored. A judged entry must carry its quote,
-   source and date (`tests/test_archive.py`).
+   source and date (`tests/test_archive.py`). A deployment can also name providers in
+   `no_cache_providers` (env, read at catalog load): their endpoints load as
+   `cache: forbidden` and `response_retention: forbidden`, whatever the YAML says, so the
+   choice stays in the deployment's config rather than the public catalog.
 3. **Body in hand.** A metered answer is already buffered for the settle, so recording adds no
    latency. An own-key catalog answer is read whole only when it fits the size cap ("Own-key
    answers"). Own-tool calls (no catalog entry) are never touched.
