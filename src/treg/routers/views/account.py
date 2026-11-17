@@ -37,7 +37,7 @@ def home_help(state: dict) -> list[str]:
         out.append("treg org create \"<team name>\"   # or treg invites to see invites")
     elif state.get("balance_micro") is not None and state["balance_micro"] <= 0:
         out.append("treg topup   # catalog calls on treg's key spend the balance")
-    out += ["treg catalog search \"<task>\"   # find a tool for a job, with prices",
+    out += ["treg catalog search \"<task>\"   # find a tool for a task, with prices",
             GET_HELP]
     if state.get("own_tools"):
         out.append("treg call <tool>/<path>   # an own_tools entry; <path> is the upstream API's own")

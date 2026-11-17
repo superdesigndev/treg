@@ -296,6 +296,13 @@ def compared_capability(cat: Catalog, platform: str, key: str) -> str | None:
     return next((c for c in (f"{platform}.{key}", key) if (platform, c) in compared), None)
 
 
+def capability_shared(cat: Catalog, platform: str, capability: str | None) -> bool:
+    """Whether an agent is shown the capability: something else does it too, so it can compare or
+    switch. Two providers on the platform (`Catalog.compared`) or a routed row; a capability one
+    provider alone serves would only restate the endpoint id."""
+    return bool(capability) and ((platform, capability) in cat.compared() or f"treg.{capability}" in cat.by_id)
+
+
 def load(*, refresh: bool = False, directory: Path | None = None) -> Catalog:
     """The parsed catalog, cached for the life of the process. `refresh`/`directory` exist for tests."""
     global _CACHE
@@ -1018,6 +1025,7 @@ def endpoint_context(ep: dict, cat: Catalog) -> dict:
     return {
         "capability": ep["capability"],
         "capability_description": cat.capabilities.get(ep["capability"], ""),
+        "capability_shared": capability_shared(cat, ep["platform"], ep["capability"]),
         "platform": ep["platform"],
         "platform_label": cat.platforms.get(ep["platform"], {}).get("label", ep["platform"]),
     }

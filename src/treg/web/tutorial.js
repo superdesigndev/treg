@@ -60,7 +60,7 @@
     // anything happens. The catalog needs none of them, so it is the shortest path from "installed"
     // to "got real data" — and it is what the product now leads with.
     { part: "Part 1 · The catalog (no key, no setup)", who: "tom", title: "Find a tool by what it DOES",
-      explain: "Tom has just installed the CLI. He has no team, no keys, nothing registered — and he can already work. He does not need to know which vendor sells backlink data; he searches by the <b>job</b>. Each hit shows what it costs, so nothing is a surprise.",
+      explain: "Tom has just installed the CLI. He has no team, no keys, nothing registered — and he can already work. He does not need to know which vendor sells backlink data; he searches by the <b>task</b>. Each hit shows what it costs, so nothing is a surprise.",
       cmd: `treg catalog search "backlinks for a domain"`,
       out: `76 matches for "backlinks for a domain" — showing 25\n\n  ENDPOINT                              PLATFORM   PROVIDER     COST\n  dataforseo.web.backlinks.summary      web        DataForSEO   $0.024/call\n  moz.web.backlinks.summary             web        Moz          $0.013334/call (2 quota rows)\n  majestic.web.backlinks.list           web        Majestic     $0.02/call (5000 analysis units)\n  …`,
       notice: "Several providers usually serve one capability at different prices. treg shows them side by side — <b>choosing is yours</b>; it does not silently pick or fail over for you." },

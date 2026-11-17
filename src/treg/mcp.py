@@ -44,6 +44,7 @@ import json
 import logging
 import os
 import re
+from collections.abc import Callable
 from contextlib import asynccontextmanager
 from contextvars import ContextVar
 from dataclasses import asdict, dataclass, replace
@@ -117,6 +118,9 @@ class _SurfacePolicy:
     # Whether catalog_get shows the row's `note`. The directory surface returns what it was
     # submitted with until the next resubmission.
     endpoint_note: bool = True
+    # Whether catalog_search answers in the shape the directory surface was submitted with: `job` on
+    # every judged row and `jobs` for every one on the page, one provider or many.
+    submitted_jobs: bool = False
     # The hint on a balance refusal. Neither surface carries a purchase link (see `_call_impl`); the
     # directory surface keeps the words it was submitted with.
     balance_hint: str = ("the team's prepaid balance is not enough for this call. A team admin can "
@@ -143,6 +147,7 @@ _DIRECTORY_SURFACE = _SurfacePolicy(
     invites=False,
     hidden_platforms=_DIRECTORY_HIDDEN_PLATFORMS,
     endpoint_note=False,
+    submitted_jobs=True,
     balance_hint="the team's prepaid balance is not enough for this call",
 )
 
@@ -409,7 +414,7 @@ _BASE_INSTRUCTIONS = (
     "(Seedance, Gemini Image, GPT Image, Seedream, Veo, Wan) and voice, plus your team's own "
     "tools. Flow: catalog_search (say what you want to do, not a vendor name), then "
     "catalog_get (parameters, price, measured reliability), then call. When several providers "
-    "cover one job, catalog_get ranks them by measured success, speed and price; you pick."
+    "offer the same capability, catalog_get ranks them by measured success, speed and price; you pick."
 )
 _REVIEW_INSTRUCTION = (
     "If a call result invites a review, rate that one call with review(call_id, usefulness, "
@@ -443,6 +448,49 @@ mcp = MCPServer(
 # the trade worth making: a schema is a hint to the model, not a gate on our own error handling.
 
 # NULLABLE as well: the SDK dumps every ABSENT key as `null` in `structuredContent`.
+class CapabilitySearchResult(TypedDict, total=False):
+    endpoint_id: str | None
+    kind: str | None             # "hub" for a listed hub tool; absent otherwise
+    name: str | None
+    provider: str | None
+    routed: str | None           # a routed row: what treg picks among, and where the rest are
+    capability: str | None       # a judged answer: what this row does, when another provider does it too
+    more_providers: int | None   # a judged answer, on a capability's first row: providers of it the page left out
+    usd_per_call: float | None
+    no_key_needed: bool | None
+    added: str | None            # the UTC day the tool reached the catalog (YYYY-MM-DD); null on a routed row
+    score: float | None          # the lexical score; null on a judged answer (no probability is shown)
+    works: float | None          # measured success rate, or null when there isn't enough evidence
+    samples: int | None          # how many real calls that rate stands on
+
+
+class SearchCapability(TypedDict, total=False):
+    capability: str | None
+    providers: int | None        # providers doing it
+    shown: int | None            # rows of it on this page
+
+
+class CapabilitySearchOut(TypedDict, total=False):
+    query: str | None
+    count: int | None
+    total_matches: int | None
+    results: list[CapabilitySearchResult] | None
+    verdict: str | None          # judged answers: strong | closest | name | none | keyword (ranked by words alone)
+    reason: str | None           # on none: gap (the catalog has no tool for it)
+    capabilities: list[SearchCapability] | None  # the capabilities on the page more than one provider does, page order
+    ranking_note: str | None     # set when the tie group outran what the evidence sort could weigh
+    sort: str | None             # with added_within_days or sort: best | newest, the order applied
+    added_within_days: int | None  # the window applied, after the cap
+    capped_at_days: int | None   # set when added_within_days asked for more than the maximum
+    near: list[dict] | None      # zero results only: the rows just under the gate + the words they miss
+    hint: str | None
+    next: str | None
+    error: str | None
+    detail: str | None
+
+
+# The /mcp/v2/ catalog_search shape, as submitted to the Claude directory: change it only with a
+# resubmission.
 class SearchResult(TypedDict, total=False):
     endpoint_id: str | None
     kind: str | None             # "hub" for a listed hub tool; absent otherwise
@@ -1062,7 +1110,8 @@ async def _whose_grant(client: httpx.AsyncClient, slug: str | None, *, oauth: bo
         "provider or platform name lists what it offers. Returns each endpoint's id, provider, price "
         "per call, and whether treg can serve it without you owning an API key. Read `verdict`: "
         "strong = these do it; closest = nearest, check catalog_get; none = not in the catalog, file "
-        "catalog_request. Use it when a task needs data or an API you have no key for. "
+        "catalog_request. A row carries `capability` when other providers do the same thing; "
+        "catalog_get compares them. Use it when a task needs data or an API you have no key for. "
         "Recently added tools: added_within_days=N (1-365; 30 is a good default) keeps tools added "
         "in the last N days, sort='newest' lists newest first; with either, query may be empty."
     ),
@@ -1070,7 +1119,7 @@ async def _whose_grant(client: httpx.AsyncClient, slug: str | None, *, oauth: bo
     structured_output=True
 )
 async def catalog_search(query: str, ctx: Context, limit: int = 8, added_within_days: int | None = None,
-                         sort: str | None = None) -> SearchOut:
+                         sort: str | None = None) -> CapabilitySearchOut:
     return await _catalog_search_impl(query, limit, ctx=ctx, surface=_TEAM_SURFACE,
                                       added_within_days=added_within_days, sort=sort)
 
@@ -1100,7 +1149,7 @@ async def _search_identity(ctx: Context | None) -> tuple[str | None, int | None,
 async def _catalog_search_impl(
     query: str, limit: int = 8, *, ctx: Context | None = None, surface: _SurfacePolicy,
     added_within_days: int | None = None, sort: str | None = None,
-) -> SearchOut:
+) -> CapabilitySearchOut | SearchOut:
     """The use case is `application.catalog_search`: the shipped ranker's page, the discovery
     experiment's say over it, and the records. This layer resolves who is asking (the hub's lists
     and the experiment's log both need it) and shapes the rows for an agent. With a recently-added
@@ -1136,6 +1185,11 @@ async def _catalog_search_impl(
             j for j in page.jobs if j.capability.split(".", 1)[0] not in surface.hidden_platforms])
     ranked, stats, hidden, total, _steering = page.rows, page.stats, page.hidden, page.total, page.steering
     led = catalog_store.led_by(query, cat)   # a named provider leads: its rows' scores carry the lead
+    platform_of = {ep.get("capability"): ep.get("platform", "") for ep, _ in ranked}
+
+    def shown(capability: str | None) -> bool:
+        return bool(capability) and (surface.submitted_jobs or catalog_store.capability_shared(
+            cat, platform_of.get(capability) or capability.split(".", 1)[0], capability))
     if page.arm is not None:
         analytics.capture(page.caller_key or "anonymous", "catalog_search_judged", {
             "source": surface.event_source, "mode": page.log["mode"], "arm": page.arm,
@@ -1158,9 +1212,10 @@ async def _catalog_search_impl(
                           + (f" — {hidden[ep['id']]} more than shown here; catalog_get('{ep['id']}') ranks them all"
                              if ep["id"] in hidden else " below")}
                if _steering and ep.get("kind") == "routed" else {}),
-            # a judged answer: the job this row does, and (on a job's first row) how many of its
-            # vendors the page left out; no probability is shown
-            **({"job": ep["capability"]} if page.judged and ep.get("capability") else {}),
+            # a judged answer: the capability this row does, and (on its first row) how many of its
+            # providers the page left out; no probability is shown
+            **({("job" if surface.submitted_jobs else "capability"): ep["capability"]}
+               if page.judged and shown(ep.get("capability")) else {}),
             **({"more_providers": hidden[ep["id"]]} if page.judged and ep["id"] in hidden else {}),
             "usd_per_call": cat.advertised_usd(cost),
             # BOTH halves of tier 4's own truth, not just the price side: `platform_eligible` says
@@ -1200,7 +1255,8 @@ async def _catalog_search_impl(
         out["verdict"] = page.verdict
         if page.verdict == find_app.NONE:
             out["reason"] = page.reason
-        out["jobs"] = [asdict(j) for j in page.jobs]
+        out["jobs" if surface.submitted_jobs else "capabilities"] = [
+            asdict(j) for j in page.jobs if shown(j.capability)]
     if page.tie_truncated and not page.judged:
         # No silent caps: past this many equally-scoring rows the evidence sort never saw the rest,
         # so the tail is ordered by nothing in particular and must not read as a ranked answer.
@@ -1210,7 +1266,7 @@ async def _catalog_search_impl(
     if withheld and not results:
         # Every match was a generation tool this surface hides: say so, not "nothing matches" or
         # "file a request", either of which sends the agent looking for what is withheld on purpose.
-        for key in ("verdict", "reason", "jobs", "ranking_note"):
+        for key in ("verdict", "reason", "jobs", "capabilities", "ranking_note"):
             out.pop(key, None)
         out["hint"] = _DIRECTORY_HIDDEN_NOTE
         return out
@@ -1244,7 +1300,7 @@ async def _catalog_search_impl(
                 "requests steer which provider gets added next"
             )
     else:
-        hint = _verdict_hint(page, cat)
+        hint = _verdict_hint(page, cat, shown)
         if hint:
             out["hint"] = hint
         out["next"] = ("catalog_get(endpoint_id) for parameters and the exact price, then "
@@ -1252,26 +1308,26 @@ async def _catalog_search_impl(
     return out
 
 
-def _verdict_hint(page, cat: catalog_store.Catalog) -> str | None:
-    """What to do next with a v2 answer, in one line; the facts (each job's vendor count, what the
-    page left out) are on `jobs` and the rows. A fitting job: where the rest of its vendors are
-    (`catalog_get` on its routed row where it has one, else on its first row, which lists the
-    others doing the job). Nearest matches: check before relying on one. A name: search by the
-    job. A keyword page: ranked by words alone."""
+def _verdict_hint(page, cat: catalog_store.Catalog, shown: Callable[[str | None], bool]) -> str | None:
+    """What to do next with a v2 answer, in one line; the facts (each capability's provider count,
+    what the page left out) are on `capabilities` and the rows. A fitting capability several
+    providers do: where the rest of them are (`catalog_get` on its routed row where it has one,
+    else on its first row, which lists the others). Nearest matches: check before relying on one.
+    A name: search by the task. A keyword page: ranked by words alone."""
     if page.verdict is None:
         return None
-    if page.verdict == find_app.STRONG and page.jobs:
-        first = page.jobs[0]
+    if page.verdict == find_app.STRONG and (fitting := [j for j in page.jobs if shown(j.capability)]):
+        first = fitting[0]
         parent = catalog_store.routed_parent(cat, first.capability)
         at = parent["id"] if parent is not None else next(
             ep["id"] for ep, _ in page.rows if ep.get("capability") == first.capability)
-        rest = ", ".join(j.capability for j in page.jobs[1:4])
+        rest = ", ".join(j.capability for j in fitting[1:4])
         return (f"{first.capability} does this; catalog_get('{at}') ranks every provider of it"
                 + (f". Also on this page: {rest}" if rest else ""))
     if page.verdict == find_app.CLOSEST:
         return "no exact fit; read catalog_get before relying on one of these, or say the task differently"
     if page.verdict == find_app.NAME:
-        return "this names a provider or platform; search by the job to compare providers"
+        return "this names a provider or platform; search by the task to compare providers"
     if page.verdict == find_app.KEYWORD:
         return "ranked by keywords only" + (" (the judge did not answer)" if page.reason and page.reason != find_app.NOT_TASK else "")
     return None
@@ -1522,6 +1578,9 @@ async def _catalog_get_impl(
     ep = (out.get("endpoint") or {}) if isinstance(out, dict) else {}
     if isinstance(ep, dict) and not surface.endpoint_note:
         ep.pop("note", None)
+    if isinstance(ep, dict) and not ep.pop("capability_shared", False) and not surface.submitted_jobs:
+        ep.pop("capability", None)
+        ep.pop("capability_description", None)
     if isinstance(ep, dict):
         # Same quote catalog_search already leads with, so an agent that inspects by id
         # does not fall back to the per-record `cost.usd` slice on a grouped credit.
@@ -1898,7 +1957,7 @@ async def _call_impl(endpoint_id: str, params: dict | list | None = None,
             out["hint"] = hints.HINT
     if routed := r.headers.get("X-Treg-Routed-Tool"):
         out["routed_tool"] = routed
-        out["suggestion"] = (f"{routed} does this job: treg picks the provider, falls back when one "
+        out["suggestion"] = (f"{routed} routes this capability: treg picks the provider, falls back when one "
                              "fails or misses, and charges only the answer. Prefer it next time unless "
                              "you need options only this provider has.")
     if r.status_code >= 400:
@@ -2062,7 +2121,7 @@ async def resources_list(
 @mcp.tool(
     description=(
         "The team's prepaid balance in USD, and any spend currently in flight. Check it when a call "
-        "is refused for funds, or before a job that will make many calls."
+        "is refused for funds, or before a task that will make many calls."
     ),
     annotations=_READS,
     structured_output=True

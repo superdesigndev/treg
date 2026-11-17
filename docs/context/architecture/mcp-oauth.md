@@ -58,8 +58,8 @@ behavior.
 
 | Area | Must stay shared | Intentional difference |
 |---|---|---|
-| catalog search | loading, ranking, price view, near misses, the process observation cache and refresh Task used by HTTP | next-call guidance and event source; V2 drops rows on its hidden platforms |
-| endpoint details | the `/catalog/endpoints/{id}` route and error shape | client attribution; V2 refuses an endpoint on its hidden platforms and leaves out the row's `note` (`_SurfacePolicy.endpoint_note`) |
+| catalog search | loading, ranking, price view, near misses, hints, the process observation cache and refresh Task used by HTTP | next-call guidance and event source; V2 drops rows on its hidden platforms; team MCP shows `capability`/`capabilities` only where another provider does it too, V2 keeps its submitted `job`/`jobs` on every one (`_SurfacePolicy.submitted_jobs`) |
+| endpoint details | the `/catalog/endpoints/{id}` route and error shape | client attribution; V2 refuses an endpoint on its hidden platforms and leaves out the row's `note` (`_SurfacePolicy.endpoint_note`); team MCP leaves out a capability no other provider does |
 | calls | request assembly, credentials, policy, limits, idempotency, relay, errors, metering, audit; neither carries a purchase link on a 402 | team MCP accepts team tools; V2 accepts catalog ids only, splits read/write methods, refuses its hidden platforms and shows no invitation; a balance refusal's hint names where an admin adds funds on team MCP only (`_SurfacePolicy.balance_hint`) |
 | balance | team selection, grant labels, balance route, error shape | client attribution |
 | catalog requests | `/tool-requests`, rate limit, field limits, caller IP | event source and client attribution |

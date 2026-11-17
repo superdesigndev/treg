@@ -133,10 +133,10 @@ async def test_a_strong_answer_lists_the_job_by_vendor_with_a_verdict(clients, m
     unit = fr.index(cat).units[fr.index(cat).job_pos[JOB]]
     provider_count = len(unit.providers)
     assert out["verdict"] == "strong" and "reason" not in out
-    assert out["jobs"] == [{"capability": JOB, "providers": provider_count, "shown": 7}]
+    assert out["capabilities"] == [{"capability": JOB, "providers": provider_count, "shown": 7}]
     rows = out["results"]
     assert len(rows) == 8 and rows[0]["endpoint_id"] == f"treg.{JOB}" and "below" not in rows[0]["routed"]
-    assert all(r["job"] == JOB and r["score"] is None for r in rows)
+    assert all(r["capability"] == JOB and r["score"] is None for r in rows)
     assert rows[0]["more_providers"] == provider_count - len({r["provider"] for r in rows[1:]})
     assert "more_providers" not in rows[1]
     assert out["total_matches"] == len(unit.members) + 1
@@ -159,7 +159,7 @@ async def test_a_gap_is_an_empty_page_that_says_so(clients, monkeypatch):
     _v2(monkeypatch)
     monkeypatch.setattr(judge_infra, "judge", _fake_v2({}, plat=("none", 0.9)))
     out = await _search("book a table for two tonight")
-    assert out["count"] == 0 and out["verdict"] == "none" and out["reason"] == "gap" and out["jobs"] == []
+    assert out["count"] == 0 and out["verdict"] == "none" and out["reason"] == "gap" and out["capabilities"] == []
     assert "catalog_request" in out["hint"] and "near" not in out and "next" not in out
     logs, misses = await _rows()
     assert logs[0].verdict == "none:gap" and logs[0].shown == []
@@ -185,8 +185,8 @@ async def test_not_a_task_serves_the_lexical_page_under_keyword(clients, monkeyp
     _v2(monkeypatch)
     monkeypatch.setattr(judge_infra, "judge", _fake_v2({}, plat=("seo", 0.3)))
     out = await _search("backlinks", limit=5)
-    assert out["verdict"] == "keyword" and out["count"] == 5 and out["jobs"] == []
-    assert all(r["score"] is not None and "job" not in r for r in out["results"])
+    assert out["verdict"] == "keyword" and out["count"] == 5 and out["capabilities"] == []
+    assert all(r["score"] is not None and "capability" not in r for r in out["results"])
     assert out["hint"] == "ranked by keywords only"
     logs, misses = await _rows()
     assert logs[0].verdict == "keyword:not_task" and all(o == "baseline" for _, o, _ in logs[0].shown)
@@ -214,9 +214,31 @@ async def test_a_name_answers_with_what_it_offers(clients, monkeypatch):
     out = await _search("hunter", limit=6)
     assert out["verdict"] == "name" and out["count"] == 6
     assert all(r["provider"] == "hunter" and r["score"] is None for r in out["results"])
-    assert len(out["jobs"]) >= 2 and all(j["providers"] == 1 for j in out["jobs"]) and "search by the job" in out["hint"]
+    assert "search by the task" in out["hint"]
     logs, _ = await _rows()
     assert logs[0].verdict == "name" and all(o == "name" for _, o, _ in logs[0].shown)
+
+
+async def test_a_capability_shows_only_where_another_provider_does_it_too(clients, monkeypatch):
+    """One provider's capability would only restate its endpoint id; the directory surface keeps the
+    `job` of every row it was submitted with."""
+    _v2(monkeypatch)
+    cat = catalog_store.load()
+    monkeypatch.setattr(judge_infra, "judge", _fake_v2({}, name=0.95, plat=("none", 0.2)))
+    out = await _search("hunter", limit=8)
+    shared = {r["endpoint_id"]: catalog_store.capability_shared(cat, cat.by_id[r["endpoint_id"]]["platform"],
+                                                                cat.by_id[r["endpoint_id"]]["capability"])
+              for r in out["results"]}
+    assert True in shared.values() and False in shared.values()
+    assert any("capability" not in r and cat.by_id[r["endpoint_id"]]["capability"] for r in out["results"])
+    assert all(("capability" in r) == shared[r["endpoint_id"]] and "job" not in r for r in out["results"])
+    assert {c["capability"] for c in out["capabilities"]} == {r["capability"] for r in out["results"] if "capability" in r}
+
+    monkeypatch.setattr(judge_infra, "judge", _fake_v2({}, name=0.95, plat=("none", 0.2)))
+    v2 = await _search("hunter", limit=8, surface=_mcp._DIRECTORY_SURFACE)
+    assert all(r.get("job") == (cat.by_id[r["endpoint_id"]]["capability"] or None) and "capability" not in r
+               for r in v2["results"])
+    assert len(v2["jobs"]) > len(out["capabilities"]) and "capabilities" not in v2 and v2["hint"] == out["hint"]
 
 
 async def test_the_holdouts_keep_their_pages_and_the_lexical_one_still_records_v2(clients, monkeypatch):
@@ -307,7 +329,7 @@ async def test_the_directory_surface_answers_the_same_way(clients, monkeypatch):
 async def test_off_and_v1_modes_are_untouched(clients, monkeypatch):
     _on(monkeypatch, search_experiment="off")
     out = await _search("backlinks", limit=3)
-    assert "verdict" not in out and "jobs" not in out and all(r["score"] is not None for r in out["results"])
+    assert "verdict" not in out and "capabilities" not in out and all(r["score"] is not None for r in out["results"])
     assert (await _rows()) == ([], [])
 
     # interleave (the rollback): every arm, the baseline holdout included, is the v1 experiment's;
@@ -374,5 +396,5 @@ def test_the_hint_names_a_row_of_the_job_it_speaks_of():
     other = next(e for e in cat.endpoints if catalog_store.browsable(e) and e.get("capability") not in (PLAIN, None))
     page = cs.Page(rows=[(other, 0.0), (g.rows[0]["ep"], 0.0)], total=2, tie_truncated=False, stats={}, hidden={},
                    steering=True, verdict=find.STRONG, jobs=[cs.Job(PLAIN, g.providers, 1)])
-    hint = _mcp._verdict_hint(page, cat)
+    hint = _mcp._verdict_hint(page, cat, lambda capability: True)
     assert f"catalog_get('{g.rows[0]['ep']['id']}')" in hint and other["id"] not in hint

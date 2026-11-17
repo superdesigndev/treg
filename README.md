@@ -148,7 +148,7 @@ management and creative, measurement.
 
 ```bash
 treg catalog                                    # every platform, busiest first
-treg catalog search "find a work email"         # by the job, not the vendor
+treg catalog search "find a work email"         # by the task, not the vendor
 treg catalog search --new                       # tools added in the last 30 days, newest first
 treg catalog get hunter.people.email.find       # params, PRICE, example response
 treg call hunter.people.email.find --query domain=reddit.com --query full_name="Alexis Ohanian"
@@ -170,7 +170,7 @@ free of the balance rather than duplicating them. An endpoint treg has no publis
 serve one capability, `treg catalog search` shows them side by side with prices; **choosing is
 yours** — treg does not silently pick or fail over between providers for you. (When treg's own
 account for a provider is out it may serve the *same* endpoint through a treg-owned relay account,
-disclosed on the response; a team can opt out.) The exception you opt into: `treg.<capability>` routed endpoints, where treg picks the provider for you and names it. For common jobs (scraping a page, web search, Google results, finding an email) start with the routed endpoint, such as `treg.web.extract` or `treg.web.search`, rather than a provider you remember by name. On `treg.people.email.find` and `treg.people.phone.find`, `X-Treg-Route-Verify: true` also checks the found address or number in the same call, as its own charge, and says what the check found.
+disclosed on the response; a team can opt out.) The exception you opt into: `treg.<capability>` routed endpoints, where treg picks the provider for you and names it. For common tasks (scraping a page, web search, Google results, finding an email) start with the routed endpoint, such as `treg.web.extract` or `treg.web.search`, rather than a provider you remember by name. On `treg.people.email.find` and `treg.people.phone.find`, `X-Treg-Route-Verify: true` also checks the found address or number in the same call, as its own charge, and says what the check found.
 
 ```bash
 treg balance          # credit left, calls in flight, recent spend

@@ -242,8 +242,11 @@ identical pages contribute nothing.
   over high on their own lead, then evidence order. A routed parent (`store.routed_parent`) leads
   its job when `routed_discovery` is on (strong and closest only). A listed hub tool whose
   capability is a kept job joins that group; none joins an empty page.
-- Rows carry `job` and, on a job's first row, `more_providers` (folded plus cut); `score` is null;
-  `jobs` lists the page's jobs with vendor counts and rows shown.
+- Rows carry `capability` only where another provider does it too (`store.capability_shared`: two
+  providers on the platform, or a routed row), since one provider's would restate the endpoint id;
+  a job's first row carries `more_providers` (folded plus cut); `score` is null; `capabilities`
+  lists those on the page with provider counts and rows shown. `/mcp/v2/` keeps the fields it was
+  submitted with: `job` on every judged row, `jobs` for every one on the page.
 - Verdicts: `strong`, `closest` and `name` with a `hint` saying only what to do next (`catalog_get`
   on the routed row, else the first row). A **gap** is an empty page with `reason: gap` and a hint to
   file `catalog_request`, never near misses (whose advice, retry with fewer words, is the opposite);

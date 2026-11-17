@@ -464,7 +464,7 @@ def _show_hint_line(resp: httpx.Response) -> None:
     if kind is None and headers.get("X-Treg-Review") == "requested":
         kind = "review"
     if routed := headers.get("X-Treg-Routed-Tool"):
-        print(f"treg: {routed} does this job and picks the provider, with fallback; "
+        print(f"treg: {routed} routes this capability and picks the provider, with fallback; "
               "prefer it unless you need options only this provider has.", file=sys.stderr)
     if not call_id:
         return
@@ -1508,7 +1508,7 @@ def _onboard_test_call(cfg: dict, tools: list) -> None:
 def _demo_catalog_peek(cfg: dict) -> None:
     """Read-only: what the catalog can already do for this team, with nothing registered and no key.
     Costs nothing — a search is free; only a call spends the balance."""
-    print("  The whole catalog, priced per call. Ask for the JOB, not the vendor:")
+    print("  The whole catalog, priced per call. Ask for the TASK, not the vendor:")
     _cmd('treg catalog search "backlinks for a domain"')
     try:
         with _client(cfg) as c:
@@ -5161,7 +5161,7 @@ def cmd_org_pin(args, cfg) -> None:
         out = r.json()
         _ok(f"{out['capability']} → {_B}{out['provider']}{_R}")
         if out.get("alternatives"):
-            _dim(f"  calls to {', '.join(out['alternatives'])} for this job are now refused")
+            _dim(f"  calls to {', '.join(out['alternatives'])} for this capability are now refused")
 
 
 def cmd_org_pins(args, cfg) -> None:
@@ -5175,7 +5175,7 @@ def cmd_org_pins(args, cfg) -> None:
         return
     rows = r.json()
     if not rows:
-        _dim("  no pins — every member picks the provider for each job "
+        _dim("  no pins — every member picks the provider for each capability "
              "(treg catalog get <id> compares them)")
         return
     print(f"\n  {'CAPABILITY':<34} {'PROVIDER':<16} SET BY")
@@ -5472,7 +5472,7 @@ def _catalog_new_days(value: str) -> int:
 
 
 def _catalog_search(query: str, args, cfg) -> None:
-    """Ranked free-text search over every endpoint — the way in when you know the job, not the shelf.
+    """Ranked free-text search over every endpoint — the way in when you know the task, not the shelf.
 
     `--new [DAYS]` keeps tools added in the last DAYS days (30 when no number is given) and `--sort
     newest` lists newest first; with either, the words are optional."""
@@ -6005,11 +6005,11 @@ def _catalog_get(endpoint_id: str, cfg, *, limit: int | None = None) -> None:
     """One endpoint, everything about it — the last stop before `treg call`."""
     with _client(cfg, auth=False) as c:
         r = c.get(f"/catalog/endpoints/{quote(endpoint_id, safe='')}")
-    if r.status_code == 404 and (job := _job_view(endpoint_id, cfg)):
+    if r.status_code == 404 and (shared := _capability_view(endpoint_id, cfg)):
         _note(command="catalog_job")
-        if isinstance(job, str):  # a job with a routed id: its plan already ranks the providers
-            return _catalog_get(job, cfg, limit=limit)
-        _emit(*job)
+        if isinstance(shared, str):  # a routed id: its plan already ranks the providers
+            return _catalog_get(shared, cfg, limit=limit)
+        _emit(*shared)
         return
     if _JSON_OVERRIDE:
         _relay_json(r)
@@ -6029,14 +6029,14 @@ def _catalog_get(endpoint_id: str, cfg, *, limit: int | None = None) -> None:
           catalog_views.GET_GROUPS)
 
 
-def _job_view(job: str, cfg) -> tuple[dict, list[str]] | str | None:
-    """`catalog get <job>`. A job with a routed id answers with that id, whose plan already ranks the
-    providers it routes to and lists the rest; a job without one gets every provider, ranked as
-    `compare` ranks them. None when no job has that id. An id that is both a job and an endpoint (a
-    one-provider job) is answered as the endpoint."""
+def _capability_view(capability: str, cfg) -> tuple[dict, list[str]] | str | None:
+    """`catalog get <capability>`. A capability with a routed id answers with that id, whose plan
+    already ranks the providers it routes to and lists the rest; one without gets every provider,
+    ranked as `compare` ranks them. None when no capability has that id. An id that is both a
+    capability and an endpoint is answered as the endpoint."""
     with _client(cfg, auth=False) as c:
-        r = c.get(f"/catalog/platforms/{quote(job.split('.', 1)[0], safe='')}?include_hidden=1")
-        cap = next((x for x in (_json_dict(r).get("capabilities") or []) if x.get("id") == job), None) \
+        r = c.get(f"/catalog/platforms/{quote(capability.split('.', 1)[0], safe='')}?include_hidden=1")
+        cap = next((x for x in (_json_dict(r).get("capabilities") or []) if x.get("id") == capability), None) \
             if r.status_code == 200 else None
         if not cap or not cap.get("endpoints"):
             return None
@@ -6045,7 +6045,7 @@ def _job_view(job: str, cfg) -> tuple[dict, list[str]] | str | None:
         d = c.get(f"/catalog/endpoints/{quote(cap['endpoints'][0]['id'], safe='')}")
     if d.status_code != 200:
         return None
-    return catalog_views.job(job, cap.get("description"), d.json(), _pinned_provider(cfg, job))
+    return catalog_views.capability(capability, cap.get("description"), d.json(), _pinned_provider(cfg, capability))
 
 
 def _access_detail(endpoint_id: str, cfg) -> str | None:
@@ -6335,7 +6335,7 @@ def build_parser() -> argparse.ArgumentParser:
         # Hard-wrapped: _RAWFMT is RawDescriptionHelpFormatter, so argparse will NOT wrap this for
         # us and an unwrapped paragraph runs off the edge of a narrow terminal.
         description=("treg — the tool catalog for your agent.\n"
-                     "Call the tool a job needs without owning its API key: catalogued\n"
+                     "Call the tool a task needs without owning its API key: catalogued\n"
                      "endpoints priced per call, plus your team's own keys, skills and CLIs.\n"
                      "Credentials are injected server-side, never on your machine."),
         epilog=_ex(
@@ -6513,14 +6513,14 @@ def build_parser() -> argparse.ArgumentParser:
               "treg org project-rm 2")
     oprm.add_argument("project_id", type=int, help="the project id (from `org projects`)")
     oprm.set_defaults(fn=cmd_org_project_rm)
-    opin = mk(og, "pin", "For this JOB, our team uses this provider — the rest are refused (admin+).",
+    opin = mk(og, "pin", "For this capability, our team uses this provider — the rest are refused (admin+).",
               "treg org pin people.email.find --provider hunter",
               "treg org pins", "treg org unpin people.email.find")
     opin.add_argument("capability", help="a capability id, e.g. people.email.find (see `treg catalog get`)")
     opin.add_argument("--provider", required=True, help="the provider service id, e.g. hunter")
     opin.set_defaults(fn=cmd_org_pin)
     mk(og, "pins", "The team's pinned provider per capability.", "treg org pins").set_defaults(fn=cmd_org_pins)
-    oup = mk(og, "unpin", "Remove a pin — the job goes back to the caller's choice (admin+).",
+    oup = mk(og, "unpin", "Remove a pin — the capability goes back to the caller's choice (admin+).",
              "treg org unpin people.email.find")
     oup.add_argument("capability", help="the capability to unpin")
     oup.set_defaults(fn=cmd_org_unpin)

@@ -10,7 +10,7 @@ import (
 )
 
 const rootDescription = "treg - the tool catalog for your agent.\n" +
-	"Call the tool a job needs without owning its API key: catalogued\n" +
+	"Call the tool a task needs without owning its API key: catalogued\n" +
 	"endpoints priced per call, plus your team's own keys, skills and CLIs.\n" +
 	"Credentials are injected server-side, never on your machine."
 

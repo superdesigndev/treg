@@ -147,7 +147,7 @@ async def test_the_cli_search_is_the_agent_search(clients, monkeypatch):
     q = "find the work email of a hotel manager in Cape Town"
     out = (await clients.get("/catalog/search", params={"q": q, "engine": "agent", "limit": 8})).json()
     assert out["engine"] == "agent" and out["verdict"] == "strong"
-    assert out["jobs"][0]["capability"] == "people.email.find"
+    assert out["capabilities"][0]["capability"] == "people.email.find"
     assert out["results"][0]["id"] == "treg.people.email.find"
     plain = (await clients.get("/catalog/search", params={"q": q, "limit": 8})).json()
     assert "verdict" not in plain and "engine" not in plain                       # unchanged without it

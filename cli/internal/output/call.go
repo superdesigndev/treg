@@ -217,7 +217,7 @@ func (p *Printer) hintLine(r *api.Response) {
 		kind = "review"
 	}
 	if routed := h.Get("X-Treg-Routed-Tool"); routed != "" {
-		fmt.Fprintf(p.Err, "treg: %s does this job and picks the provider, with fallback; "+
+		fmt.Fprintf(p.Err, "treg: %s routes this capability and picks the provider, with fallback; "+
 			"prefer it unless you need options only this provider has.\n", routed)
 	}
 	if id == "" {
