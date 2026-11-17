@@ -137,6 +137,9 @@ class Settings(BaseSettings):
     # Review invitations a team can receive per hour, whatever its call volume. Sampling decides
     # WHICH calls qualify; this decides how many of them a team is actually asked about.
     review_budget_per_hour: int = Field(default=5, ge=1)
+    # The share of team-MCP credentials whose `call` tool shows `prior` (a review of the caller's
+    # previous call, sent along with the next one). 0 = nobody, the tool as before.
+    mcp_prior_review_rate: float = Field(default=0, ge=0, le=1)
     # The mark invitation: after a call on one of these capabilities (an endpoint id equal to one,
     # or ending in `.<capability>`; empty = every catalog call), sampled at `mark_hint_rate` and
     # capped per team per hour. Each text is one A/B variant, `{call_id}` filled in, chosen per
@@ -800,6 +803,10 @@ class Settings(BaseSettings):
     # licence that was read and says no) is always respected, and actions are never stored, whatever
     # this says.
     archive_default_policy: str = "transient"
+    # Comma-separated provider ids whose answers this deployment never keeps: each of their
+    # endpoints loads as `cache: forbidden` and `response_retention: forbidden`, whatever its
+    # catalog row says. Read when the catalog loads, so a change takes a restart.
+    no_cache_providers: str = ""
     # The refresh worker (serve mode only): how often it scans for due keys, and how many
     # refresh calls ONE provider may spend per UTC day. A refresh is treg's own vendor spend with
     # no caller attached, so the cap is the brake — 0 disables refreshing without touching serving.
@@ -874,7 +881,9 @@ class Settings(BaseSettings):
     agent_payments_x402_asset_version: str = "2"
     agent_payments_x402_facilitator_url: str = "https://x402.org/facilitator"
     agent_payments_x402_max_timeout_s: int = Field(default=120, ge=10, le=3600)
-    agent_payments_x402_rpc_url: str = ""               # empty: the network's public RPC
+    agent_payments_x402_rpc_url: str = ""               # empty: the network's public RPC (testnet only)
+    # Which head the reconciler trusts a transfer at. `finalized`: no reorg can undo it.
+    agent_payments_x402_block_tag: Literal["latest", "safe", "finalized"] = "finalized"
     # A Coinbase Developer Platform API key, for its facilitator (mainnet). Both empty: no auth,
     # which the public testnet facilitator accepts. The secret is the Ed25519 key (base64) or a
     # legacy EC PEM key.
@@ -894,6 +903,10 @@ class Settings(BaseSettings):
     # Requests carrying a payment credential, per client IP per minute: each one costs a
     # signature check, and an x402 one a facilitator request.
     agent_payments_max_payments_per_ip_minute: int = Field(default=30, ge=1)
+    # Payment checks per minute across every client: each one may cost an RPC or facilitator call.
+    agent_payments_max_verifications_minute: int = Field(default=600, ge=1)
+    # Keyless requests with no payment, per client IP per minute: each one is priced.
+    agent_payments_max_quotes_per_ip_minute: int = Field(default=120, ge=1)
 
     @property
     def agent_payments_stripe_key(self) -> str:
@@ -939,6 +952,9 @@ class Settings(BaseSettings):
                 problems.append("TREG_AGENT_PAYMENTS_X402_PAY_TO")
             if x402_mainnet and not self.agent_payments_x402_cdp_api_key_id:
                 problems.append("TREG_AGENT_PAYMENTS_X402_CDP_API_KEY_ID and _SECRET (Base mainnet)")
+            if x402_mainnet and not self.agent_payments_x402_rpc_url:
+                # Money decisions read the chain; the public endpoint is rate-limited and unpinned.
+                problems.append("TREG_AGENT_PAYMENTS_X402_RPC_URL (a paid Base mainnet RPC)")
             if x402_mainnet and self.agent_payments_x402_asset.lower() != base_usdc:
                 problems.append(f"TREG_AGENT_PAYMENTS_X402_ASSET={base_usdc} (Base mainnet USDC)")
             if (self.agent_payments_x402_asset.lower() == base_usdc
@@ -1368,6 +1384,13 @@ class Settings(BaseSettings):
         """Provider-registry review keys awaiting production access."""
         return frozenset(
             key.strip().lower() for key in self.oauth_review_pending.split(",") if key.strip()
+        )
+
+    @property
+    def no_cache_providers_set(self) -> frozenset[str]:
+        """Provider ids whose answers this deployment never stores."""
+        return frozenset(
+            key.strip().lower() for key in self.no_cache_providers.split(",") if key.strip()
         )
 
     @property

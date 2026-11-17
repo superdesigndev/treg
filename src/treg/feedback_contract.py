@@ -26,6 +26,14 @@ REVIEW_DESCRIPTION = (
     "credentials and raw requests, responses or logs, and keep going with the task afterward."
 )
 
+# Where a surface accepts `rows` on a review (team MCP, the binary CLI, HTTP). The frozen Python
+# CLI keeps REVIEW_DESCRIPTION as its help text and takes no rows.
+REVIEW_ROWS_DESCRIPTION = (
+    REVIEW_DESCRIPTION + " When it was partly or not useful, add rows: each row you found wrong "
+    "as {index (0-based), field (optional), verdict}, e.g. [{index: 2, field: email, verdict: "
+    "wrong}]; omit index for the whole result. Only rows you looked at."
+)
+
 MarkBasis = Literal["bounced", "cross_checked", "user_said", "impression"]
 MARK_BASES = get_args(MarkBasis)
 MarkVerdict = Literal[

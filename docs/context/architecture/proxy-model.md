@@ -203,7 +203,8 @@ bodies on unmetered paths are kept for evidence only when `Content-Length` is de
 access and retention: [data-model](data-model.md#audit-writer-auditpy).
 
 A keyless agent-payments call is the one case where treg removes a non-`x-treg-` header the caller
-sent: its payment credential (`Authorization: Payment …`, `PAYMENT-SIGNATURE`, `X-PAYMENT`), through
+sent: its payment credential or wallet proof (`Authorization: Payment …`, `PAYMENT-SIGNATURE`,
+`X-PAYMENT`, `SIGN-IN-WITH-X`), through
 `routers.call._paid_call` and `agent_payments.consumes`. A request with any treg credential relays
 those headers unchanged.
 

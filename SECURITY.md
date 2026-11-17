@@ -62,6 +62,16 @@ provider account and bypass this platform ownership table.
   (`TREG_BLOCKED_EMAIL_DOMAINS`, unset means no blocks) remains a configurable speed bump at every
   sign-in/sign-up door and both team-creating endpoints; it fails open on classifier errors.
   Suspend abusive users and teams separately, retaining their records for investigation.
+- **Agent payments are off unless a deployment turns them on.** With
+  `TREG_AGENT_PAYMENTS_ENABLED`, a caller with no treg credential may pay one catalog call with MPP
+  or x402. Its payment is checked (and settled) before any upstream request, and becomes credit on
+  a payer team of its own, one per wallet and network, which can only call catalog tools on
+  treg's key. A later call draws that credit only with a fresh signature from the same wallet,
+  bound to that request and accepted once. Payment credentials and proofs are removed before the
+  relay, and a request carrying any treg credential is never read for a payment. Challenges are
+  signed with `TREG_AGENT_PAYMENTS_SECRET`; keep it secret and long. Per-address and global limits
+  bound unpaid requests and payment checks. Smart-contract wallet signatures are not accepted for
+  the x402 sign-in-with-x proof.
 - **Designated sign-in codes are a password, stored only as a hash.** `TREG_FIXED_LOGIN_CODES`
   (unset by default) maps an email with no inbox, such as an app directory reviewer's demo account,
   to the SHA-256 of a fixed code. The email-code door then sends nothing and accepts only that code,

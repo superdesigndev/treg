@@ -81,12 +81,26 @@ async def admin_feedback(
             "next_before": rows[-1].id if len(rows) == limit else None}
 
 
+class MarkItem(BaseModel):
+    model_config = ConfigDict(extra="forbid", str_strip_whitespace=True)
+
+    verdict: MarkVerdict
+    # A position in the answer as the caller saw it (0-based); omitted means the whole answer.
+    index: int | None = Field(default=None, ge=0, le=100_000)
+    field: str | None = Field(default=None, min_length=1, max_length=120,
+                              pattern=r"^[A-Za-z0-9_.\[\]-]+$")
+
+
 class ReviewIn(BaseModel):
     model_config = ConfigDict(extra="forbid", str_strip_whitespace=True)
 
     call_id: CallReference
     usefulness: ReviewUsefulness
     reason: str | None = Field(default=None, min_length=1, max_length=200)
+    # The rows the reviewer found wrong (or right), stored as a mark tied to this review. Its
+    # basis defaults to the reviewer's impression: a review is a judgement after use, not a check.
+    rows: list[MarkItem] = Field(default_factory=list, max_length=200)
+    basis: MarkBasis = "impression"
 
 
 @app.post("/reviews", status_code=201)
@@ -95,17 +109,24 @@ async def submit_review(
     caller: Caller = Depends(require_member),
 ) -> dict:
     try:
-        review_id, inserted = await feedback_app.submit_review(
+        values = body.model_dump()
+        values["rows"] = [{k: v for k, v in row.items() if v is not None} for row in values["rows"]]
+        review_id, inserted, mark_id = await feedback_app.submit_review(
             org_id=caller.org_id, user_email=caller.email,
             client=request.headers.get("X-Treg-Client", ""),
-            pinned_tags=caller.membership.pinned_tags, **body.model_dump(),
+            pinned_tags=caller.membership.pinned_tags, **values,
         )
     except feedback_app.ReviewCallNotFound:
         raise HTTPException(404, "Call record not found in this team; it may not be written yet. Retry shortly.") from None
     except feedback_app.ReviewOwnTool:
         raise HTTPException(400, "Reviews require a catalog call, not a team's own tool or its own hub tool.") from None
+    except feedback_app.FeedbackRateLimited:
+        raise HTTPException(429, "Too many marks; nothing was saved. Retry later, or review without rows.") from None
     response.status_code = 201 if inserted else 200
-    return {"review_id": review_id, "status": "received" if inserted else "already_reviewed"}
+    out = {"review_id": review_id, "status": "received" if inserted else "already_reviewed"}
+    if mark_id is not None:
+        out["mark_id"] = mark_id
+    return out
 
 
 @app.get("/admin/reviews", include_in_schema=False)
@@ -117,16 +138,6 @@ async def admin_reviews(
     rows = await reviews.recent(db, limit=limit, before=before, endpoint_id=endpoint_id)
     return {"items": [row.model_dump() for row in rows],
             "next_before": rows[-1].id if len(rows) == limit else None}
-
-
-class MarkItem(BaseModel):
-    model_config = ConfigDict(extra="forbid", str_strip_whitespace=True)
-
-    verdict: MarkVerdict
-    # A position in the answer as the caller saw it (0-based); omitted means the whole answer.
-    index: int | None = Field(default=None, ge=0, le=100_000)
-    field: str | None = Field(default=None, min_length=1, max_length=120,
-                              pattern=r"^[A-Za-z0-9_.\[\]-]+$")
 
 
 class MarkIn(BaseModel):

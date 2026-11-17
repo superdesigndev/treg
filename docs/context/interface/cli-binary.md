@@ -158,9 +158,12 @@ of new installs (no working `treg` on the machine) to the binary instead, bucket
   from the controlling terminal, the auto top-up consent. Without a terminal the access is every
   tool, a pasted-key connect needs `--key-stdin`, and the consent is no, even for a `y` piped in;
   no command reads an agent's idle pipe.
-- **Commands only the binary has.** `treg mark` ([feedback](../architecture/feedback.md), "Call
-  marks"), and the stderr line for a `mark` invitation, which prints the registry's
-  `X-Treg-Hint-Text` (under `--json`, `_treg.hint_text`). The Python CLI is frozen and ignores that hint kind.
+- **Commands only the binary has.** `treg mark` and `treg review --rows`
+  ([feedback](../architecture/feedback.md), "Call marks"). The binary sends
+  `X-Treg-Hints: review,mark,feedback`, so it is offered mark invitations; the Python CLI sends
+  none and gets review and feedback only. For every invitation the binary prints the registry's
+  `X-Treg-Hint-Text` when sent (under `--json`, `_treg.hint_text`), and its built-in line, the
+  Python CLI's, when not. The Python CLI is frozen and always prints its own lines.
 - **Crashes.** Where the Python CLI dies with a traceback (a `--file` that does not exist), the
   binary prints the exception's last line and exits 1.
 - **Parity suite.** `tests/cli_go` runs both CLIs against a fake registry (canned status, headers
@@ -196,6 +199,12 @@ whose `claude` records its arguments, and compares every file left in HOME, mode
   `mcpServers` as `type: "http"`, `url`, `headers` and `tools: ["*"]`, merged like Cursor's, the header
   dropped under `--oauth`. It is written when that directory exists or `copilot` is on PATH. The
   frozen Python CLI does not write it; `test_mcp_install_writes_github_copilot_go` holds the difference.
+- **Copilot as a runtime** is named by the binary only. Copilot CLI sets `COPILOT_CLI=1` and
+  `COPILOT_AGENT_SESSION_ID` on the shell its tool runs, under a process named `copilot`;
+  VS Code sets `COPILOT_AGENT=1` only on the hidden terminals its Copilot agent runs, whose
+  ancestors name no agent. So `X-Treg-Client` is `copilot-cli` or `copilot-vscode`, and the session
+  label follows: the `copilot` process, or VS Code's mark when no nearer agent is on the tree. The
+  frozen Python CLI sends `cli` for both; `test_only_the_binary_names_copilot` holds the difference.
 - **`skill install <name>`** also installs one of the registry's public skills (its well-known
   index, what `skill bootstrap --skills` installs) when the team has no skill of that name; the
   Python CLI refused it as "no skill named ... in this org", which was most `skill install`

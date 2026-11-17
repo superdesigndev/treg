@@ -7,7 +7,7 @@ sources:
   - src/treg/crypto.py
   - src/treg/infra/credential_cipher.py
   - src/treg/application/credential_reencrypt.py
-  - src/treg/alembic/versions/0106_secret_refreshable.py
+  - src/treg/alembic/versions/0108_secret_refreshable.py
   - src/treg/oauth.py
   - src/treg/domain/connections/__init__.py
   - src/treg/domain/connections/authorization.py

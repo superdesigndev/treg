@@ -449,6 +449,7 @@ _CONTROL_ROUTE_KEYS: frozenset[RouteKey] = frozenset({
 })
 _DATAPLANE_ROUTE_KEYS: frozenset[RouteKey] = frozenset({
     ("/call/{rest:path}", ("DELETE", "GET", "HEAD", "OPTIONS", "PATCH", "POST", "PUT"), "call_tool"),
+    ("/agentpay/credit", ("GET",), "agent_payment_credit"),
     ("/catalog/call/{rest:path}",
      ("DELETE", "GET", "HEAD", "OPTIONS", "PATCH", "POST", "PUT"),
      "call_catalog_endpoint"),
@@ -760,7 +761,8 @@ def configure_agent_payments() -> None:
                 rpc_url=s.agent_payments_tempo_rpc_url,
                 rpc_api_key=s.agent_payments_tempo_rpc_api_key,
                 currency=s.agent_payments_tempo_currency,
-                challenge_ttl_s=s.agent_payments_mpp_challenge_ttl_s))
+                challenge_ttl_s=s.agent_payments_mpp_challenge_ttl_s,
+                store=agent_payments.ReplayStore()))
         if s.agent_payments_x402_enabled:
             from .infra.agent_payments.x402 import X402Rail
 
@@ -772,7 +774,8 @@ def configure_agent_payments() -> None:
                 max_timeout_s=s.agent_payments_x402_max_timeout_s,
                 rpc_url=s.agent_payments_x402_rpc_url,
                 cdp_api_key_id=s.agent_payments_x402_cdp_api_key_id,
-                cdp_api_key_secret=s.agent_payments_x402_cdp_api_key_secret))
+                cdp_api_key_secret=s.agent_payments_x402_cdp_api_key_secret,
+                block_tag=s.agent_payments_x402_block_tag, origin=s.public_url))
     agent_payments.configure(rails)
 
 
