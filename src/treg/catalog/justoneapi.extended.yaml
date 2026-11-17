@@ -4978,6 +4978,7 @@ endpoints:
   summary: Searches Reddit posts by keyword with an optional continuation token.
   docs_url: https://docs.justoneapi.com/en/api/reddit/keyword-search-v1
   price: {value: '0.1', currency: CNY, per: 1, unit: call, note: billed only on success (code 0); errors free}
+  miss: {when: [{path: response.code, op: equals, value: 0}, {path: response.data.search.dynamic.components.main.edges, op: empty}]}
   input:
     queryParams:
       keyword:

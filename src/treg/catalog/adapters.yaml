@@ -3945,3 +3945,100 @@ adapters:
     const: {body.days_ago: 90}
     out: {p50: salary.p50, p25: salary.p25, p75: salary.p75, p90: salary.p90, currency: salary.currency,
           count: salary.count}
+
+  # ---- people.search.count (call events only) ----
+  dropleads.people.search.count:
+    route: false
+    accepts: [[company_domain, title], [company_domain], [title]]
+    in: {company_domain: body.filters.companyDomains, title: body.filters.jobTitles}
+    in_expr: {body.filters.companyDomains: "list(company_domain)", body.filters.jobTitles: "list(title)"}
+    out: {count: count}
+    miss: "count == 0"
+  icypeas.people.search.count:
+    route: false
+    accepts: [[company_domain, title], [company_domain], [title]]
+    in: {company_domain: body.query.currentCompanyWebsite.include, title: body.query.currentJobTitle.include}
+    in_expr: {body.query.currentCompanyWebsite.include: "list(company_domain)",
+              body.query.currentJobTitle.include: "list(title)"}
+    out: {count: total}
+    miss: "total == 0"
+  leadocean.people.search.count:
+    route: false
+    accepts: [[company_domain, title], [company_domain], [title]]
+    in: {company_domain: queryParams.domain, title: queryParams.title}
+    const: {queryParams.count: true, queryParams.limit: 1}
+    out: {count: meta.total}
+    miss: "meta.total == 0"
+  leadsforge.people.search.count:
+    route: false
+    accepts: [[company_domain, title], [company_domain], [title]]
+    in: {company_domain: body.companyDomains.include, title: body.leadJobTitles.include}
+    in_expr: {body.companyDomains.include: "list(company_domain)", body.leadJobTitles.include: "list(title)"}
+    out: {count: totalCount}
+    miss: "totalCount == 0"
+
+  # ---- companies.emails.list (call events only) ----
+  anymailfinder.companies.emails.list:
+    route: false
+    accepts: [[domain]]
+    in: {domain: body.domain}
+    out: {emails: emails}
+    # A blacklisted domain is a refusal, not an empty answer.
+    miss: "email_status == 'not_found'"
+  tomba.companies.emails.list:
+    route: false
+    accepts: [[domain]]
+    in: {domain: queryParams.domain}
+    out: {emails: data.emails}
+    miss: "data.emails == []"
+
+  # ---- people.decision_makers (call events only) ----
+  anymailfinder.people.decision_makers:
+    route: false
+    accepts: [[company_domain]]
+    in: {company_domain: body.domain}
+    # One decision maker per answer: the body is the row.
+    out: {people: "list(.)"}
+    miss: "email_status == 'not_found'"
+
+  # ---- reddit.search.posts (call events only) ----
+  crawl4ai.reddit.search.posts:
+    route: false
+    accepts: [[q]]
+    in: {q: body.query, sort: body.sort}
+    out: {posts: rows}
+    miss: "coalesce(rows, []) == []"
+  justoneapi.x.reddit-search-v1:
+    route: false
+    accepts: [[q]]
+    in: {q: queryParams.keyword}
+    out: {posts: data.search.dynamic.components.main.edges}
+  scrapecreators.reddit.search.posts:
+    route: false
+    accepts: [[q]]
+    in: {q: queryParams.query, sort: queryParams.sort}
+    out: {posts: posts}
+
+  # ---- reddit.post.comments (call events only) ----
+  brightdata.x.reddit-comments:
+    route: false
+    accepts: [[url]]
+    in: {url: body.url}
+    in_read: {post_id: "reddit_post_id(body.url)"}
+    body_array: true
+    const: {queryParams.dataset_id: gd_lvzdpsdlw09j6t702, queryParams.format: json}
+    out: {comments: "."}
+  crawl4ai.reddit.post.comments:
+    route: false
+    accepts: [[url]]
+    in: {url: body.url}
+    # body.url takes the post's page or its bare id.
+    in_read: {post_id: "reddit_post_id(body.url)"}
+    out: {comments: rows}
+    miss: "coalesce(rows, []) == []"
+  tikhub.x.reddit-app-fetch-post-comments:
+    route: false
+    accepts: [[post_id]]
+    in: {post_id: queryParams.post_id}
+    in_read: {post_id: "reddit_post_id(queryParams.post_id)"}
+    out: {comments: data.postInfoById.commentForest.trees}
