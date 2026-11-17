@@ -794,7 +794,7 @@ class PendingOAuth(SQLModel, table=True):
 
 
 class Secret(SQLModel, table=True):
-    """A stored credential blob. `value` is Fernet-encrypted (see crypto.py).
+    """A stored credential blob. `value` is sealed by `infra/credential_cipher.py` (KMS or Fernet).
 
     `kind` selects the injector used at call time (env | secret_file | cli_auth | oauth).
     """
@@ -830,6 +830,9 @@ class Secret(SQLModel, table=True):
     expires_at: NaiveUTC | None = Field(default=None)
     last_refresh_at: NaiveUTC | None = Field(default=None)
     last_error: str = Field(default="")
+    # Whether an oauth credential can be renewed unattended, recorded with each write so listing
+    # connections never opens one. Null on rows written before it existed.
+    refreshable: bool | None = Field(default=None)
 
     created_at: NaiveUTC = Field(default_factory=_now)
 

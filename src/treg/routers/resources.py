@@ -15,11 +15,13 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlmodel import select
 
 from .. import convert as _convert
-from .. import crypto, health, sandbox as demo_sandbox
+from .. import health, sandbox as demo_sandbox
 from .. import providers as _providers
 from .. import skills as _skills
 from ..application import connect as connect_use_cases
 from ..config import get_settings
+from ..domain.connections import refresh as connection_refresh
+from ..infra import credential_cipher
 from ..infra.db import get_session
 from ..domain.governance import access as access_policy
 from ..domain.governance import sandbox as sandbox_policy
@@ -95,9 +97,12 @@ async def create_secret(
         raise HTTPException(status_code=422, detail=(
             f"the sandbox is limited to {exc.cap} {exc.noun} — sign up for more")) from exc
     await _validate_bundle_id(body.bundle_id, caller.org_id, db)
+    await db.commit()  # seal with no transaction held: KMS is network I/O
+    sealed = await credential_cipher.seal(body.value, org_id=caller.org_id)
     secret = Secret(
         org_id=caller.org_id, name=body.name, owner=caller.email, kind=body.kind,
-        value=crypto.encrypt(body.value), bundle_id=body.bundle_id,
+        value=sealed, bundle_id=body.bundle_id,
+        refreshable=connection_refresh.refreshable_flag(body.kind, body.value),
     )
     db.add(secret)
     await db.commit()
@@ -128,6 +133,7 @@ async def update_secret(
     if not _can_manage(caller, secret):
         raise HTTPException(status_code=403, detail="only the creator or an admin can edit this secret")
     _require_not_live_demo_secret(caller, secret)
+    await db.commit()  # open and seal with no transaction held: KMS is network I/O
     fields = body.model_dump(exclude_unset=True)
     # A connection's name is also its tools' names; renaming only the secret strands them.
     if secret.provider and fields.get("name", secret.name) != secret.name:
@@ -140,15 +146,22 @@ async def update_secret(
     # JSON value (else the tool silently 502s later) and reset the now-meaningless health verdict.
     if "kind" in fields and fields["kind"] != secret.kind:
         if fields["kind"] in ("oauth", "secret_file"):
-            raw = fields["value"] if "value" in fields else crypto.decrypt(secret.value)
+            raw = (fields["value"] if "value" in fields
+                   else await credential_cipher.unseal(secret.value, org_id=secret.org_id))
             try:
                 json.loads(raw)
             except (ValueError, TypeError):
                 # from None: a JSONDecodeError keeps the whole document, here the decrypted secret
                 raise HTTPException(status_code=422, detail=f"kind {fields['kind']!r} needs a JSON value") from None
         secret.health_status, secret.health_detail, secret.health_checked_at = "unknown", "", None
+    if "kind" in fields or "value" in fields:
+        kind = fields.get("kind", secret.kind)
+        plaintext = (fields["value"] if "value" in fields else
+                     await credential_cipher.unseal(secret.value, org_id=secret.org_id)
+                     if kind == "oauth" else "")
+        secret.refreshable = connection_refresh.refreshable_flag(kind, plaintext)
     if "value" in fields:
-        fields["value"] = crypto.encrypt(fields["value"])  # re-encrypt on rotate
+        fields["value"] = await credential_cipher.seal(fields["value"], org_id=secret.org_id)
         # The value is exactly what health measures — a rotation invalidates the prior verdict.
         secret.health_status, secret.health_detail, secret.health_checked_at = "unknown", "", None
     for k, v in fields.items():
@@ -541,15 +554,20 @@ async def _register_skill_bundle(body: SkillIn, caller: Caller, db: AsyncSession
     if dupes:  # a duplicate would silently orphan the first secret (only the last id is kept)
         raise HTTPException(status_code=422, detail=f"duplicate secret local_name(s): {dupes}")
     files = _sanitize_bundle_files(body.files)  # drop unsafe paths / secrets before persisting
+    # Credentials are sealed with no transaction held (KMS is network I/O), so the bundle's rows
+    # still commit together below.
+    await db.commit()
+    sealed = [await credential_cipher.seal(s.value, org_id=caller.org_id) for s in body.secrets]
     bundle = Bundle(org_id=caller.org_id, name=body.name, owner=caller.email, recipe=body.recipe, files=files)
     db.add(bundle)
     await db.flush()  # assign bundle.id without committing yet
 
     local_to_id: dict[str, int] = {}
-    for s in body.secrets:
+    for s, value in zip(body.secrets, sealed):
         secret = Secret(
             org_id=caller.org_id, name=s.local_name, owner=caller.email, kind=s.kind,
-            value=crypto.encrypt(s.value), bundle_id=bundle.id,
+            value=value, bundle_id=bundle.id,
+            refreshable=connection_refresh.refreshable_flag(s.kind, s.value),
         )
         db.add(secret)
         await db.flush()

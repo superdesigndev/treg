@@ -153,6 +153,8 @@ Rollups and analytics tables are optional read models: they never determine a mo
 - **`Secret`**: expiry (`expires_at`, `last_refresh_at`, `last_error`) is a separate axis from
   `health_status`; a non-refreshable token stays healthy until it silently dies.
   `authorization_method` selects a grant's method; never infer it from the token's shape.
+  `refreshable` is recorded with every oauth write so lists never open the credential
+  ([auth-secrets](auth-secrets.md), Encryption).
 - **`PendingOAuth`** carries every per-provider quirk through the redirect so the callback
   exchanges the code exactly as the consent URL was built.
 - **`ProviderResource`** deletes tombstone the row, preserving retry authorization and audit.

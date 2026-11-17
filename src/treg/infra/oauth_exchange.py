@@ -6,7 +6,7 @@ import time
 
 import httpx
 
-from .. import crypto
+from . import credential_cipher
 from .oauth_refresh import no_access_token_error, require_public_token_uri
 
 
@@ -16,7 +16,7 @@ class HTTPXOAuthExchangePort:
 
     async def exchange_code(self, pending, code: str) -> dict:
         """Trade an authorization code for the provider's durable token shape."""
-        client_secret = crypto.decrypt(pending.client_secret)
+        client_secret = await credential_cipher.unseal(pending.client_secret, org_id=pending.org_id)
         client_id_param = getattr(pending, "client_id_param", "") or "client_id"
         data = {
             "code": code,

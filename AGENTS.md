@@ -26,9 +26,10 @@ Everything else in this file is guidance; these are the contract, and they win o
    This temporary allowance permits calls when Redis state cannot be confirmed; it is not a durable cap.
 2. A hold (the balance `reserve` sets aside for one call) is settled or released exactly once, on
    every path: timeout, cancellation and exceptions included.
-3. A request holds zero database connections while upstream, object-storage or payment-rail
+3. A request holds zero database connections while upstream, object-storage, KMS or payment-rail
    (chain or facilitator) I/O is in flight. Keep `reserve` and `settle` separate; read archive
-   pointers, close the session, then fetch bytes; verify or settle a payment, then open the session.
+   pointers, close the session, then fetch bytes; verify or settle a payment, then open the session;
+   end the transaction before a credential is opened or sealed.
 4. Plain `/call/` is a faithful relay: the injected credential (on treg's shared key, one of treg's
    accounts for the provider, chosen per call and fixed for anything an account created; on a
    connection to treg's own Meta app it also carries `appsecret_proof`, the HMAC of the injected

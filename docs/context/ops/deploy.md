@@ -54,6 +54,11 @@ ARN, startup also reads that secret, a JSON object keyed by the same `TREG_*` na
 win over the environment; a secret that cannot be read stops startup. The region is the ARN's, and
 boto3 takes credentials from the standard `AWS_*` variables.
 
+Stored credentials move to KMS in three deploys ([auth & secrets](../architecture/auth-secrets.md),
+Encryption): `TREG_KMS_KEY_ID` on every process that reads credentials, then `TREG_KMS_ENCRYPT_NEW`
+on all of them, then `treg-worker admin reencrypt-credentials` (`--dry-run` first) until it reports
+nothing left to re-seal. The KMS key stays as long as any row is sealed with it.
+
 The lifespan and every worker command call read-only `verify_db()`: an unstamped database or a known
 revision behind head is refused; an unknown newer revision (code older than schema) warns and serves,
 because additive revisions tolerate rollback. Startup never creates tables, stamps or runs release

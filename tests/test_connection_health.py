@@ -50,6 +50,7 @@ async def _make_non_refreshable(secret_id: int, expires_in_days: float) -> None:
         blob = json.loads(crypto.decrypt(s.value))
         blob.pop("refresh_token", None)
         s.value = crypto.encrypt(json.dumps(blob))
+        s.refreshable = False
         s.expires_at = datetime.now() + timedelta(days=expires_in_days)
         await db.commit()
 

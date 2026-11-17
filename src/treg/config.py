@@ -259,6 +259,19 @@ class Settings(BaseSettings):
     # Empty in dev means an ephemeral key is minted at startup (secrets won't survive a restart).
     secret_key: str = ""
 
+    # Stored credentials under AWS KMS envelope encryption (infra/credential_cipher.py). The key
+    # ARN lets this process read KMS-sealed values; kms_encrypt_new also seals new writes with it.
+    kms_key_id: str = ""
+    kms_encrypt_new: bool = False
+
+    @model_validator(mode="after")
+    def _kms_configuration(self):
+        if self.kms_key_id and not self.kms_key_id.startswith("arn:aws:kms:"):
+            raise ValueError("kms_key_id must be a KMS key or alias ARN")
+        if self.kms_encrypt_new and not self.kms_key_id:
+            raise ValueError("kms_encrypt_new requires kms_key_id")
+        return self
+
     api_token: str = "dev-token"
 
     # The Stripe sandbox restricted key (env TREG_DEMO_STRIPE_KEY) behind the landing sandbox's ONE
