@@ -29,7 +29,7 @@ endpoints:
     input:
       queryParams:
         address: {type: string, required: false, note: "one line with the city or ZIP, and the unit if any; at most 200 characters", example: "1700 Guadalupe St, Austin, TX 78701"}
-        parcel_id: {type: string, required: false, note: "the parcel's account as the county prints it, or an owner search candidate's parcel_id; send with county", example: "150000000101001010"}
+        parcel_id: {type: string, required: false, note: "an owner search candidate's parcel_id, or the parcel's id in most counties and its account in the rest; another form answers 404; send with county", example: "150000000101001010"}
         county: {type: string, required: false, note: "the county's 5-digit FIPS code, 48001 to 48507; only with parcel_id", example: "48423"}
       note: "Send address, or parcel_id with county: never both, never neither."
     test_request: {queryParams: {address: "100 N Broadway Ave, Tyler, TX 75702"}}
