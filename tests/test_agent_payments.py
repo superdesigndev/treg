@@ -11,6 +11,7 @@ from __future__ import annotations
 import asyncio
 import time
 from datetime import UTC, datetime, timedelta
+from types import SimpleNamespace
 
 import httpx
 import pytest
@@ -1374,6 +1375,8 @@ def test_settling_to_stripe_needs_a_stripe_key(monkeypatch):
 async def test_a_tempo_rpc_key_goes_with_every_rpc_request(monkeypatch):
     from mpp.methods.tempo import server as tempo_server
 
+    from treg.infra.agent_payments import tempo as tempo_rail
+
     charge, given = tempo_server.charge, {}
 
     def spy(**kwargs):
@@ -1381,11 +1384,6 @@ async def test_a_tempo_rpc_key_goes_with_every_rpc_request(monkeypatch):
         return charge(**kwargs)
 
     monkeypatch.setattr(tempo_server, "charge", spy)
-    rail = MppTempoRail(secret="s" * 40, realm="registry.test", recipient=RECIPIENT,
-                        chain_id=42431, rpc_url="https://rpc.example/testnet",
-                        rpc_api_key="tempo_sandbox:sk:k")
-    client = given["http_client"]
-    assert client.headers["tempo-api-key"] == "tempo_sandbox:sk:k"
     sent: list[httpx.Request] = []
 
     def node(request: httpx.Request) -> httpx.Response:
@@ -1393,7 +1391,15 @@ async def test_a_tempo_rpc_key_goes_with_every_rpc_request(monkeypatch):
         return httpx.Response(200, json={"jsonrpc": "2.0", "id": 1,
                                          "result": {"number": "0x1", "timestamp": "0x1"}})
 
-    client._transport = httpx.MockTransport(node)
+    class Node(httpx.AsyncClient):
+        def __init__(self, **kwargs):
+            super().__init__(transport=httpx.MockTransport(node), **kwargs)
+
+    monkeypatch.setattr(tempo_rail, "httpx", SimpleNamespace(AsyncClient=Node))
+    rail = MppTempoRail(secret="s" * 40, realm="registry.test", recipient=RECIPIENT,
+                        chain_id=42431, rpc_url="https://rpc.example/testnet",
+                        rpc_api_key="tempo_sandbox:sk:k")
+    assert given["http_client"].headers["tempo-api-key"] == "tempo_sandbox:sk:k"
     await rail._chain.head()
     assert sent[0].headers["tempo-api-key"] == "tempo_sandbox:sk:k"
     assert str(sent[0].url) == "https://rpc.example/testnet"
