@@ -95,7 +95,7 @@ async def _verify(org_ids: list[int], calls_per_org: list[int], granted: int) ->
 
 async def _work(admission: bool, org_ids: list[int], calls: int, concurrency: int, pool_size: int,
                 start_at: float) -> dict:
-    from sqlalchemy import text
+    from sqlalchemy import event, text
     from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 
     from treg.config import get_settings
@@ -112,6 +112,16 @@ async def _work(admission: bool, org_ids: list[int], calls: int, concurrency: in
     sessions = async_sessionmaker(engine, expire_on_commit=False)
     async with sessions() as db:
         await db.execute(text("SELECT 1"))
+    # Round trips are what a deployment pays for inside the lease: count them, since loopback
+    # hides their cost.
+    round_trips = 0
+
+    def count(*_args) -> None:
+        nonlocal round_trips
+        round_trips += 1
+
+    for name in ("before_cursor_execute", "commit"):
+        event.listen(engine.sync_engine, name, count)
     slots = asyncio.Semaphore(concurrency)
     latencies: list[float] = []
 
@@ -138,7 +148,8 @@ async def _work(admission: bool, org_ids: list[int], calls: int, concurrency: in
     elapsed = time.perf_counter() - started
     await engine.dispose()
     latencies.sort()
-    return {"elapsed_s": elapsed, "p50_ms": latencies[len(latencies) // 2],
+    return {"elapsed_s": elapsed, "round_trips": round_trips,
+            "p50_ms": latencies[len(latencies) // 2],
             "p95_ms": latencies[int((len(latencies) - 1) * .95)]}
 
 
@@ -166,6 +177,8 @@ def main() -> None:
                 "admission": admission, "orgs": args.orgs, "procs": procs, "calls": total,
                 "concurrency_per_proc": args.concurrency,
                 "throughput_per_s": round(total / max(result["elapsed_s"] for result in results), 1),
+                "db_round_trips_per_call": round(
+                    sum(result["round_trips"] for result in results) / total, 2),
                 "latency_p50_ms": round(sum(result["p50_ms"] for result in results) / procs, 2),
                 "latency_p95_ms": round(max(result["p95_ms"] for result in results), 2),
             }
