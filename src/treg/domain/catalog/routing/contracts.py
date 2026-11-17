@@ -220,6 +220,10 @@ class Adapter:
     # Cursor only: a page number over a provider whose order changes between calls (Dropleads)
     # repeats and skips rows.
     paging: dict[str, str] = field(default_factory=dict)
+    # `{page | offset | cursor: <expression over the provider request>}`: which page of the
+    # answer a request asks for. Read by call events only, so a later page is a different
+    # question from the first (`input_id`), never a retry of it.
+    position: dict[str, str] = field(default_factory=dict)
     verified_capabilities: tuple[str, ...] = ()
     verified: bool = False
     verify_note: str = ""
@@ -387,7 +391,8 @@ def retired_contract_keys(doc: dict) -> list[str]:
 
 ADAPTER_KEYS = frozenset({
     "accepts", "in", "in_expr", "in_read", "body_array", "test_identity", "cost_units", "max",
-    "additional_capabilities", "route", "const", "out", "miss", "verdict", "verdicts", "row", "paging"})
+    "additional_capabilities", "route", "const", "out", "miss", "verdict", "verdicts", "row", "paging",
+    "position"})
 # The longest text a mapped row field keeps: a row is read by an agent, and one provider's
 # multi-page bio would otherwise cost more tokens than the rest of the answer.
 ROW_TEXT_MAX = 300
@@ -670,12 +675,24 @@ def _paging(eid: str, raw, out: dict) -> dict[str, str]:
     return {str(k): str(v) for k, v in raw.items()}
 
 
+POSITION_KINDS = ("page", "offset", "cursor")
+
+
+def _position(eid: str, raw) -> dict[str, str]:
+    """`position: {page: queryParams.page}`: one kind, read from one expression."""
+    if not raw:
+        return {}
+    if not isinstance(raw, dict) or len(raw) != 1 or next(iter(raw)) not in POSITION_KINDS:
+        raise ValueError(f"adapter {eid}: position is {{page | offset | cursor: <expression>}}")
+    return {str(k): str(v) for k, v in raw.items()}
+
+
 def parse_adapters(doc: dict) -> dict[str, Adapter]:
     out = {}
     for eid, a in (doc.get("adapters") or {}).items():
         _known_keys(f"adapter {eid}", a, ADAPTER_KEYS)
         _expressions(f"adapter {eid}", *(a.get("in_expr") or {}).values(), *(a.get("in_read") or {}).values(),
-                     *(a.get("out") or {}).values(),
+                     *(a.get("out") or {}).values(), *_position(eid, a.get("position")).values(),
                      *(a.get("row") or {}).values(), *(a[k] for k in ("miss", "verdict") if a.get(k)))
         out[eid] = Adapter(
             endpoint_id=eid, accepts=_variants(a.get("accepts")), in_map=dict(a.get("in") or {}),
@@ -687,6 +704,7 @@ def parse_adapters(doc: dict) -> dict[str, Adapter]:
             additional_capabilities=tuple(a.get("additional_capabilities") or ()),
             route=a.get("route", True) is not False,
             paging=_paging(eid, a.get("paging"), a.get("out") or {}),
+            position=_position(eid, a.get("position")),
             const=dict(a.get("const") or {}), out_map=dict(a.get("out") or {}), miss=str(a.get("miss") or ""),
             row_map={str(k): str(v) for k, v in (a.get("row") or {}).items()},
             verdict=str(a.get("verdict") or ""),

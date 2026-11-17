@@ -151,6 +151,7 @@ def adapter_fingerprint(adapter: Adapter) -> str:
         return cached[1]
     spec = {"accepts": adapter.accepts, "in": adapter.in_map, "in_expr": adapter.in_expr,
             **({"in_read": adapter.in_read} if adapter.in_read else {}),
+            **({"position": adapter.position} if adapter.position else {}),
             "const": adapter.const, "out": adapter.out_map, "miss": adapter.miss,
             "verdict": adapter.verdict, "verdicts": adapter.verdicts}
     digest = hashlib.sha256(json.dumps(spec, sort_keys=True, default=str).encode()).hexdigest()[:12]
@@ -233,22 +234,73 @@ def field_paths(adapter: Adapter, contract: Contract) -> tuple[tuple[str, str, t
     return result
 
 
-def vendor_identity(adapter: Adapter, contract: Contract, query_items: Iterable[tuple[str, str]],
-                    body: bytes | None) -> dict:
-    """The contract identity a vendor-shaped request expresses, read back through the adapter's
-    `in` map (the fixture verifier's reading). Path parameters travel as query values."""
+def _request_doc(query_items: Iterable[tuple[str, str]], body: bytes | None) -> dict:
+    """A vendor request as adapters read it: `{queryParams, body, pathParams}`. Path parameters
+    travel as query values; a body sent as a one-item array (DataForSEO) is read as that item."""
     query = {k: v for k, v in query_items}
     doc_body: Any = {}
     if body:
         try:
             doc_body = json.loads(body)
-        except (ValueError, UnicodeDecodeError):
+        except (ValueError, UnicodeDecodeError, RecursionError):
             doc_body = {}
     if isinstance(doc_body, list):
         doc_body = doc_body[0] if doc_body and isinstance(doc_body[0], dict) else {}
     if not isinstance(doc_body, dict):
         doc_body = {}
-    doc = {"queryParams": query, "body": doc_body, "pathParams": query}
+    return {"queryParams": query, "body": doc_body, "pathParams": query}
+
+
+# A position value that names the first page: no page sent, `page=1` (or 0 where pages count
+# from 0), `offset=0`, an empty cursor or `0`.
+_FIRST_PAGE = {"page": {"", "0", "1"}, "offset": {"", "0"}, "cursor": {"", "0"}}
+# Request parameters that name a page wherever a provider uses them, read at the top level of the
+# query or the body when the adapter declares no `position`. `pages` (how many) is not one.
+_POSITION_PARAMS = (("cursor", "cursor"), ("page_token", "cursor"), ("pageToken", "cursor"),
+                    ("next_page_token", "cursor"), ("after", "cursor"), ("page", "page"),
+                    ("offset", "offset"), ("start", "offset"), ("skip", "offset"))
+
+
+def page_position(adapter: Adapter | None, query_items: Iterable[tuple[str, str]] = (),
+                  body: bytes | None = None, identity: dict | None = None) -> tuple[str, str] | None:
+    """(`page` | `offset` | `cursor`, value) when a call asks for a later page than the first;
+    None for the first page or when the request says nothing about pages. A direct call is read
+    through its adapter's `position` (else the request path its `paging.cursor` names); a routed
+    parent from the caller's own `cursor`, `page` or `offset`. An adapter that declares neither is
+    read by parameter name (`_POSITION_PARAMS`: SerpApi's `start`, Serper's `page`)."""
+    found: tuple[str, Any] | None = None
+    if identity is not None:
+        found = next(((k, identity[k]) for k in ("cursor", "page", "offset") if k in identity), None)
+    elif adapter is not None:
+        doc = _request_doc(query_items, body)
+        if adapter.position or adapter.paging.get("cursor"):
+            kind, expr = next(iter(adapter.position.items())) if adapter.position \
+                else ("cursor", adapter.paging["cursor"])
+            try:
+                found = (kind, P.evaluate(expr, doc))
+            except (TypeError, ValueError, AttributeError, IndexError, KeyError):
+                return None  # an unreadable position reads as the first page, never a failed event
+        else:
+            found = next(((kind, part[name]) for name, kind in _POSITION_PARAMS
+                          for part in (doc["queryParams"], doc["body"])
+                          if part.get(name) not in (None, "")), None)
+    if found is None:
+        return None
+    kind, v = found
+    if isinstance(v, bool) or v is None:
+        return None
+    text = str(v).strip() if isinstance(v, (str, int, float)) else None
+    if text is None or text in _FIRST_PAGE[kind]:
+        return None
+    return kind, text
+
+
+def vendor_identity(adapter: Adapter, contract: Contract, query_items: Iterable[tuple[str, str]],
+                    body: bytes | None) -> dict:
+    """The contract identity a vendor-shaped request expresses, read back through the adapter's
+    `in` map (the fixture verifier's reading). Path parameters travel as query values."""
+    doc = _request_doc(query_items, body)
+    query, doc_body = doc["queryParams"], doc["body"]
     given: dict = {}
     for field_name, target in adapter.in_map.items():
         v = P.get_path(doc, target)
@@ -398,13 +450,22 @@ def segment_checks(contract: Contract) -> dict:
     return checks
 
 
-def input_columns(contract: Contract, given: dict) -> tuple[dict, dict]:
-    """(input columns, the normalized identity) for what the caller asked."""
+def input_columns(contract: Contract, given: dict,
+                  position: tuple[str, str] | None = None) -> tuple[dict, dict]:
+    """(input columns, the normalized identity) for what the caller asked. `position` (a later
+    page, `page_position`) joins `input_id`, so page 2 is not a retry of page 1, and is named in
+    `input_meta` (`page_kind`, and `page` for a page number or an offset; a cursor is opaque)."""
     input_type, meta, norm = segment(contract, given)
     variant = tuple(input_type.split("+")) if input_type else None
+    parts = [f"{k}={norm[k]}" for k in variant] if variant else []
+    if parts and position is not None:
+        parts.append(f"\x1eposition={position[0]}:{position[1]}")
+        meta["page_kind"] = position[0]
+        if position[0] != "cursor":
+            meta["page"] = position[1][:_VALUE_MAX]
     cols = {
         "input_type": input_type,
-        "input_id": (keyed("\x1f".join(f"{k}={norm[k]}" for k in variant)) if variant else None),
+        "input_id": keyed("\x1f".join(parts)) if parts else None,
         "input_keys": {k: keyed(v) for k, v in norm.items()} or None,
         "input_meta": meta or None,
     }
@@ -539,16 +600,19 @@ def _derived(endpoint_id, capability, query, request_body, identity, answer_stat
         out["adapter_fingerprint"] = adapter_fingerprint(adapter)
     if contract is None:
         return out
+    position = None
     if identity is not None:
         given = identity
+        position = page_position(None, identity=identity)
     elif adapter is not None and (query or request_body):
         given = vendor_identity(adapter, contract, query, request_body)
+        position = page_position(adapter, query, request_body)
     else:
         given = {}
     norm: dict = {}
     asked: dict | None = None
     if given:
-        cols, norm = input_columns(contract, given)
+        cols, norm = input_columns(contract, given, position)
         out.update(cols)
         asked, _ = canonical_identity(contract, given)
     if answers_allowed:
