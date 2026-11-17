@@ -127,10 +127,10 @@ the whole answer), optional `checked`, `evidence_call_id`, a private `note` and 
 `application.call.invite.invitation(context, status, replayed)` runs in `routers.call.call_tool`
 after the response is built and before it streams, and returns `review`, `mark`, `feedback` or
 nothing, in that order of precedence. The
-router sends `X-Treg-Hint: review|feedback` (plus `X-Treg-Review: requested` on a review, read by CLI
-releases up to 0.18) and emits one `hint_attached` event per invitation sent. Surfaces only translate
+router sends `X-Treg-Hint: review|mark|feedback` (plus `X-Treg-Review: requested` on a review, read by
+CLI releases up to 0.18, and `X-Treg-Hint-Text` on a mark) and emits one `hint_attached` event per invitation sent. Surfaces only translate
 the header: the CLI prints a stderr line, the team `/mcp/` renders it into its single hint slot with
-priority replay > 402 > review > feedback. `/mcp/v2/` and OpenAI's clients on `/mcp/` render neither,
+priority replay > 402 > review > mark > feedback. `/mcp/v2/` and OpenAI's clients on `/mcp/` render none,
 so for them `hint_attached` counts an invitation the agent never saw.
 
 - **Review**: a direct catalog call on treg's platform key, 2xx, not replayed, not archive-served,
