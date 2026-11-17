@@ -1326,7 +1326,7 @@ endpoints:
   method: POST
   path: /v1/run/google.search_100
   name: Google Search Top 100
-  summary: Run a Google web search and get up to 100 ranked organic results in one call, with true absolute positions rather than per-page numbering. One flat charge whatever the depth, which makes it cheaper than paging google.search past roughly 20 results. It reads ten pages of Google to build the list, so a call takes around three to four minutes - use google.search when you want the first page back in a
+  summary: Run a Google web search and get up to 100 ranked organic results in one call, with true absolute positions rather than per-page numbering. One flat charge whatever the depth; paging google.search for the same 100 results costs less. It reads ten pages of Google to build the list, so a call takes around three to four minutes - use google.search when you want the first page back in a
   input:
     body:
       autocorrect:
@@ -1357,14 +1357,14 @@ endpoints:
     bodyType: json
     queryArrayEncoding: comma
   price:
-    value: '0.0018'
+    value: '0.024'
     currency: USD
     unit: call
-    note: One source serves this, at up to $0.0018 a call. The charge follows the answer's `costUsd`, not the listed price. Send X-Treg-Route-Max-Cost to refuse any source dearer than your ceiling.
+    note: AnyAPI quotes $0.024 a call as its cheapest source for this request. The charge follows the answer's `costUsd`, not the listed price. Send X-Treg-Route-Max-Cost to refuse any source dearer than your ceiling.
   provenance:
     source: observed
     source_url: https://api.getanyapi.com/v1/apis/google.search_100
-    checked: '2026-09-11'
+    checked: '2026-11-12'
     confidence: verified
   docs_url: https://getanyapi.com/api/google/search-100
   test_request:
