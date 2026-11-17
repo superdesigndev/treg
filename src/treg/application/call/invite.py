@@ -59,12 +59,14 @@ def _markable(endpoint_id: str | None) -> bool:
 
 
 def review_endpoint(context: CallContext) -> str | None:
-    """The endpoint a review of this call would be credited to: a direct call's own, or the
-    child that answered a routed one (`served_by`), as application.feedback attributes it."""
+    """The endpoint a review of this call would be credited to: a direct call's own, or a routed
+    one's latest successful child (`credited`), as application.feedback attributes it. Not the
+    child whose answer was returned (`served_by`): with X-Treg-Route-Confirm a later provider
+    confirms it, and the review goes to that one. None when no child succeeded."""
     if context.marketplace is not None:
         return getattr(context.marketplace, "endpoint_id", None)
     if context.route_summary is not None:
-        return context.route_summary.get("served_by")
+        return context.route_summary.get("credited")
     return None
 
 

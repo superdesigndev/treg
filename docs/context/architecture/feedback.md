@@ -164,7 +164,9 @@ so for them `hint_attached` counts an invitation the agent never saw.
   with volume, so the budget caps how often a busy team is asked. There is deliberately no
   per-endpoint cooldown. An own tool never qualifies, even if its name matches a catalog endpoint.
   With `review_target_reviews` > 0 the draw is targeted (`application/review_targets.py`): the
-  endpoint a review would be credited to (a direct call's own, or a routed parent's `served_by`)
+  endpoint a review would be credited to (a direct call's own, or a routed parent's latest
+  successful child, which the router records as `route_summary["credited"]`; not `served_by`,
+  since with `X-Treg-Route-Confirm` a later provider confirms the returned answer)
   is looked up in a per-worker snapshot of reviews per endpoint over `review_target_window_days`,
   each team counted at most `review_target_team_cap` times, refreshed every 10 minutes. Below the
   target the rate climbs linearly from `review_sample_rate` toward `review_target_rate` (an

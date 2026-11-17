@@ -9,6 +9,8 @@ from treg.config import get_settings
 from treg.infra.db import session_maker
 from treg.models import CallReview, Org
 from test_hints import _platform_call
+from test_marketplace_call import platform_on  # noqa: F401 - pytest fixture
+from test_routing import enrichment_on  # noqa: F401 - pytest fixture
 from test_reviews import rows, seed, submit
 
 
@@ -78,10 +80,59 @@ async def test_invited_is_recomputed_with_the_targeted_rate(clients, targeting, 
     assert row.invited is True
 
 
-def test_a_routed_call_is_targeted_by_the_child_that_answered():
-    routed = SimpleNamespace(marketplace=None, route_summary={'served_by': 'winner.people.email.find'})
+def test_a_routed_call_is_targeted_by_the_child_its_review_is_credited_to():
+    # With X-Treg-Route-Confirm the first hit is returned (served_by) and a later provider confirms
+    # it; the review is credited to the latest successful child, so the invitation targets that one.
+    routed = SimpleNamespace(marketplace=None, route_summary={
+        'served_by': 'first.people.email.find', 'credited': 'confirmer.people.email.find'})
     direct = SimpleNamespace(marketplace=SimpleNamespace(endpoint_id='example.search'),
                              route_summary=None)
-    assert invite.review_endpoint(routed) == 'winner.people.email.find'
+    assert invite.review_endpoint(routed) == 'confirmer.people.email.find'
     assert invite.review_endpoint(direct) == 'example.search'
-    assert invite.review_endpoint(SimpleNamespace(marketplace=None, route_summary=None)) is None
+    assert invite.review_endpoint(SimpleNamespace(marketplace=None, route_summary={})) is None
+
+
+@pytest.mark.parametrize('child', [True, False])
+async def test_a_routed_review_recomputes_invited_with_the_credited_child(clients, targeting,
+                                                                          monkeypatch, child):
+    from treg.models import CallRecord
+    monkeypatch.setattr(targeting, 'review_sample_rate', 0)
+    await review_targets.warm()
+    org = await seed(clients, endpoint_id='treg.search', provider='treg', credential_tier='routed')
+    async with session_maker() as db:
+        db.add(CallRecord(org_id=org['org_id'], user_email='tim@superdesign.dev', tool_name='example',
+                          method='GET', path='/', call_ref='review-call:r0',
+                          status_code=200 if child else 503, endpoint_id='winner.search',
+                          provider='winner'))
+        await db.commit()
+    assert (await submit(clients, org)).status_code == 201
+    row, = await rows()
+    # A short credited child is invited at the boosted rate; with no successful child the
+    # invitation had no endpoint to target, so only the base rate (here 0) applies.
+    assert row.invited is child
+
+
+async def test_a_real_routed_call_is_targeted_by_its_successful_child(clients, enrichment_on,
+                                                                      targeting, monkeypatch):
+    from sqlmodel import select
+    from treg.application.call import service as call_service
+    from treg.models import CallRecord
+    from test_routing import ROUTED, _relay_by_provider
+
+    monkeypatch.setattr(call_service, 'relay', _relay_by_provider(
+        {'tomba': [(200, {'data': {'email': 'patrick@stripe.com', 'score': 99}})] * 2}, []))
+    monkeypatch.setattr(targeting, 'review_sample_rate', 0)
+    monkeypatch.setattr(targeting, 'feedback_hint_rate', 0)
+    await review_targets.warm()
+    ask = {'full_name': 'Patrick Collison', 'domain': 'stripe.com'}
+    first = await clients.post(f'/call/{ROUTED}', json=ask)
+    assert first.status_code == 200, first.text
+    assert first.headers.get('X-Treg-Hint') == 'review'
+    async with session_maker() as db:
+        child, = (await db.execute(select(CallRecord.endpoint_id).where(
+            CallRecord.call_ref.startswith(first.headers['X-Treg-Call-Id'] + ':r')))).scalars()
+    await add_reviews(clients, child, teams=10, each=10)
+    await review_targets.warm()
+    second = await clients.post(f'/call/{ROUTED}', json=ask | {'full_name': 'John Collison'})
+    assert second.status_code == 200, second.text
+    assert second.headers.get('X-Treg-Hint') is None

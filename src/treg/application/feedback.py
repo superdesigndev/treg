@@ -107,7 +107,11 @@ async def submit_review(
     async with session_maker() as db:
         record = await _attributable_call(db, org_id=org_id, call_id=call_id, pinned_tags=pinned_tags)
         endpoint_id, provider, routed_via = record.endpoint_id, record.provider, None
+        # The endpoint the invitation was targeted by (application/call/invite.review_endpoint):
+        # a routed call with no successful child had none.
+        targeted = endpoint_id
         if record.credential_tier == "routed":
+            targeted = None
             routed_via = record.endpoint_id
             child = (await db.execute(select(CallRecord).where(
                 CallRecord.org_id == org_id,
@@ -116,9 +120,10 @@ async def submit_review(
             ).order_by(CallRecord.id.desc()).limit(1))).scalar_one_or_none()
             if child is not None and child.endpoint_id:
                 endpoint_id, provider = child.endpoint_id, child.provider
+                targeted = endpoint_id
         invited = (200 <= record.status_code < 300 and not record.cached
                    and record.credential_tier in ("platform", "routed")
-                   and review_targets.sampled(call_id, endpoint_id))
+                   and review_targets.sampled(call_id, targeted))
         existing = await reviews.get(db, call_id, org_id)
         if existing is not None:
             return existing.id, False, await marks.of_review(
