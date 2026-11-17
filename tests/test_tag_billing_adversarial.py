@@ -422,6 +422,25 @@ def test_review_idempotency_separator_and_post_fingerprint_are_unambiguous():
         "POST", "endpoint", b"b=2&a=1")
 
 
+@pytest.mark.parametrize("one, other", [
+    (b'{"n":1e400}', b'{"n":1e500}'),
+    (b'{"n":0.1}', b'{"n":0.10000000000000001}'),
+    (b'{"n":3.141592653589793238462643383279}', b'{"n":3.141592653589793238462643383280}'),
+    (b'{"a":1,"a":2}', b'{"a":2}'),
+    (b'{"n":NaN}', b'{"n":NaN }'),
+    (b'{"n":Infinity}', b'{"n":1e400}'),
+])
+def test_review_a_parse_that_could_merge_two_requests_keeps_them_apart(one, other):
+    assert call_idem._request_fingerprint("POST", "endpoint", one) != call_idem._request_fingerprint(
+        "POST", "endpoint", other)
+
+
+def test_review_a_lone_surrogate_body_is_fingerprinted():
+    body = b'{"b":"\\ud800","a":1}'
+    assert call_idem._request_fingerprint("POST", "endpoint", body) == call_idem._request_fingerprint(
+        "POST", "endpoint", b'{"a":1,"b":"\\ud800"}')
+
+
 async def test_review_primary_call_cap_survives_audit_loss(
     clients: AsyncClient, platform_on, monkeypatch,
 ):

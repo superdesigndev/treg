@@ -398,6 +398,12 @@ async def test_a_retry_with_the_same_json_in_another_key_order_is_the_same_call(
     assert len(seen) == 1
     assert await _balance(clients) == before - int(first.headers["X-Treg-Cost-Micro"])
 
+    async with AsyncClient(transport=httpx.MockTransport(upstream)) as vendor:
+        monkeypatch.setattr(A.app.state, "http", vendor)
+        surrogate = await post("surrogate", b'{"parsers":[],"formats":["markdown"],"q":"\\ud800",'
+                                            b'"url":"https://example.com"}')
+    assert surrogate.status_code < 500, surrogate.text
+
     # A label stored with the fingerprint of its exact bytes is still answered for those bytes.
     raw = idempotency._raw_request_fingerprint("POST", "firecrawl.web.scrape", b'{"b": 1, "a": 2}')
     await _seed_answer(clients, "stored-before-canonical", fingerprint=raw)

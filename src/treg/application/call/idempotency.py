@@ -6,6 +6,7 @@ import asyncio
 import hashlib
 import json
 import logging
+import math
 from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
 from typing import TYPE_CHECKING
@@ -119,17 +120,41 @@ def _fingerprint(method: str, rest: str, body: bytes, query: str) -> str:
     return h.hexdigest()
 
 
+class _NotCanonical(ValueError):
+    pass
+
+
+def _unique_pairs(pairs: list) -> dict:
+    out = dict(pairs)
+    if len(out) != len(pairs):
+        raise _NotCanonical("duplicate key")
+    return out
+
+
+def _exact_float(text: str) -> float:
+    value = float(text)
+    if not math.isfinite(value) or repr(value) != text:
+        raise _NotCanonical("float spelling")
+    return value
+
+
+def _no_constant(text: str):
+    raise _NotCanonical(text)
+
+
 def _canonical_json(body: bytes) -> bytes:
     """A JSON body's meaning rather than its spelling: a retry that serializes the same object with
-    its keys in another order, or with other whitespace, is the same request. Any other body is
-    compared byte for byte."""
+    its keys in another order, or with other whitespace, is the same request. A body whose parse
+    could merge two different requests (a duplicate key, a number a float does not spell back
+    exactly, NaN or Infinity) and any non-JSON body are compared byte for byte."""
     if not body or body.lstrip()[:1] not in (b"{", b"["):
         return body
     try:
-        parsed = json.loads(body)
+        parsed = json.loads(body, object_pairs_hook=_unique_pairs, parse_float=_exact_float,
+                            parse_constant=_no_constant)
     except (ValueError, RecursionError):
         return body
-    return json.dumps(parsed, sort_keys=True, separators=(",", ":"), ensure_ascii=False).encode()
+    return json.dumps(parsed, sort_keys=True, separators=(",", ":")).encode()
 
 
 _IN_PROGRESS_RETRY_S = 5
