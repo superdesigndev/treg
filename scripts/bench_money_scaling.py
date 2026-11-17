@@ -59,9 +59,17 @@ def _environment() -> None:
 
 async def _fund(org_count: int, calls: int) -> list[int]:
     from treg.domain import money as ledger
+    from treg.infra import kv
     from treg.infra.db import reset_db, session_maker
     from treg.models import Org
 
+    store = kv.RedisStore(os.environ["TREG_TEST_KV_URL"])
+    try:
+        if not await store.ping():
+            raise SystemExit("TREG_TEST_KV_URL does not answer; an admission run would silently "
+                             "measure the database path")
+    finally:
+        await store.aclose()
     await reset_db()
     org_ids = []
     async with session_maker() as db:
@@ -158,7 +166,13 @@ async def _work(admission: bool, org_ids: list[int], calls: int, concurrency: in
     ended_at = time.time()
     await engine.dispose()
     latencies.sort()
+    # A run that fell back to the database path, or lost a lease, did not measure the shared lease.
+    unleased = sum(
+        row["lease_lost"] + sum(value for key, value in row.items() if key.startswith("fallback_"))
+        + (row["completed"] if row["mode"] != "redis" else 0)
+        for row in money_admission.snapshot()) if admission else 0
     return {"started_at": started_at, "ended_at": ended_at, "round_trips": round_trips,
+            "unleased": unleased,
             "p50_ms": latencies[len(latencies) // 2],
             "p95_ms": latencies[int((len(latencies) - 1) * .95)]}
 
@@ -186,6 +200,10 @@ def main() -> None:
                        - min(result["started_at"] for result in results))
             per_org = [procs * len(range(k, args.calls, args.orgs)) for k in range(args.orgs)]
             asyncio.run(_verify(org_ids, per_org, total * ESTIMATE_MICRO))
+            unleased = sum(result["unleased"] for result in results)
+            if unleased:
+                raise SystemExit(f"{unleased} money sessions ran without the Redis lease "
+                                 "(fallback or lease loss); this admission run is not a measurement")
             row = {
                 "admission": admission, "orgs": args.orgs, "procs": procs, "calls": total,
                 "concurrency_per_proc": args.concurrency,
