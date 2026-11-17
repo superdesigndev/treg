@@ -4,7 +4,8 @@
 Each call is the money half of a metered call as the call path runs it: reserve under money
 admission, then settle under money admission, each in its own money session. No upstream request,
 no preflight reads and no audit row are made. Every worker is a separate OS process with its own
-event loop, connection pool and Redis client, so cross-process queueing is real.
+event loop, connection pool and Redis client, so cross-process queueing is real. After each run the
+ledger is checked: no open hold, one settle entry per call, balance equal to the credit blocks.
 
 Requires TREG_TEST_DB_URL and TREG_TEST_KV_URL on loopback. This drops and recreates the test
 schema; the database name must start with treg_admission_test. Loopback has no network latency,
@@ -75,6 +76,23 @@ async def _fund(org_count: int, calls: int) -> list[int]:
     return org_ids
 
 
+async def _verify(org_ids: list[int], calls_per_org: list[int], granted: int) -> None:
+    """Every hold closed once, every call billed once, and the balance equal to the blocks."""
+    from treg.domain import money as ledger
+    from treg.infra.db import session_maker
+
+    async with session_maker() as db:
+        for org_id, calls in zip(org_ids, calls_per_org):
+            balance = await ledger.balance_of(db, org_id)
+            assert not await ledger.open_holds_of(db, org_id), "a hold was left open"
+            assert balance == sum(block.remaining_micro for block in await ledger.blocks_of(db, org_id))
+            assert balance == granted - calls * ACTUAL_MICRO
+            settled = [entry.call_id for entry in await ledger.entries_of(db, org_id, limit=calls * 3)
+                       if entry.kind == "settle"]
+            assert len(settled) == len(set(settled)) == calls, "a call was billed twice or not at all"
+    await session_maker.kw["bind"].dispose()
+
+
 async def _work(admission: bool, org_ids: list[int], calls: int, concurrency: int, pool_size: int,
                 start_at: float) -> dict:
     from sqlalchemy import text
@@ -142,6 +160,8 @@ def main() -> None:
             with spawn.Pool(procs) as pool:
                 results = pool.map(_process, [(admission, org_ids, args.calls, args.concurrency,
                                                args.pool_size, start_at)] * procs)
+            per_org = [procs * len(range(k, args.calls, args.orgs)) for k in range(args.orgs)]
+            asyncio.run(_verify(org_ids, per_org, total * ESTIMATE_MICRO))
             row = {
                 "admission": admission, "orgs": args.orgs, "procs": procs, "calls": total,
                 "concurrency_per_proc": args.concurrency,
