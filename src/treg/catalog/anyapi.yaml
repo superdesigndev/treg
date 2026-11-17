@@ -495,7 +495,7 @@ endpoints:
       employmentType:
         type: string
         required: false
-        note: Filter by employment type.
+        note: 'Accepted for compatibility and ignored: listings are not narrowed by employment type.'
         enum:
         - full-time
         - part-time
@@ -505,7 +505,8 @@ endpoints:
       experienceLevel:
         type: string
         required: false
-        note: Filter by required seniority/experience level.
+        note: 'Accepted for compatibility and ignored: listings are not narrowed by seniority or experience
+          level.'
         enum:
         - internship
         - entry
@@ -547,7 +548,8 @@ endpoints:
       workplaceType:
         type: string
         required: false
-        note: Filter by workplace type (remote, hybrid, or onsite).
+        note: 'Accepted for compatibility and ignored: listings are not narrowed to remote, hybrid, or
+          onsite, and each item has no workplace field.'
         enum:
         - remote
         - hybrid
