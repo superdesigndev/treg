@@ -45,9 +45,29 @@ HINT = (
 
 
 def review_hint(call_id: str) -> str:
+    """The MCP surface's words: its `review` tool takes rows."""
     return (
         f"Rate this one call after using it: review(call_id={call_id}, "
-        "usefulness=useful|partly|not_useful|not_sure, reason?); one review per invitation. "
+        "usefulness=useful|partly|not_useful|not_sure, reason?, rows?); one review per invitation. "
+        "When partly or not_useful, rows = the 0-based rows you found wrong, e.g. "
+        "[{index: 2, field: email, verdict: wrong}]. "
         "Anything confusing or wrong: feedback with this call_id in call_ids. "
         "No private data. Then continue."
     )
+
+
+def header_text(kind: str, call_id: str) -> tuple[int | None, str]:
+    """(variant, words) for `X-Treg-Hint-Text`: what a CLI or an HTTP caller shows, so the words
+    change on the server, not in a client release. A mark has configured variants."""
+    if kind == "mark":
+        return mark_hint(call_id)
+    if kind == "review":
+        text = (f"After using this result, rate it: treg review {call_id} "
+                "<useful|partly|not_useful|not_sure> [--reason \"...\"]; when partly or not_useful "
+                "add --rows INDEX[/FIELD]:VERDICT,... for the 0-based rows you found wrong "
+                "(e.g. --rows 2/email:wrong). Omit private data, then keep going with the task.")
+    else:
+        text = ("Anything confusing or wrong about this call, even if it worked? "
+                "treg feedback submit <quality|pricing|friction|other> \"what you saw\" "
+                f"--call-id {call_id}; omit private data, then keep going with the task.")
+    return None, text

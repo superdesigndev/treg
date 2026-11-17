@@ -382,3 +382,22 @@ async def test_refusals_and_feedback_reports_stay_inside_the_pin(clients, identi
         rows = {f.message: f for f in (await db.execute(select(Feedback))).scalars().all()}
     assert rows['customer a private note'].verified_call_ids == [refs[0]]
     assert rows['foreign ref'].verified_call_ids == [] and rows['foreign ref'].tags == {'customer': 'b'}
+
+
+async def test_a_review_retry_names_only_a_mark_the_pin_can_read(clients, identities):
+    """A narrower pin may read the call, but not a mark a wider pin's review rows wrote."""
+    org, h = identities
+    async with session_maker() as db:
+        db.add(CallRecord(org_id=org, user_email='tim@superdesign.dev', tool_name='example',
+                          method='GET', path='/', call_ref='call-aw', status_code=200,
+                          endpoint_id='example.search', provider='example',
+                          tags={'customer': 'a', 'workspace': 'w'}))
+        await db.commit()
+    review = {'call_id': 'call-aw', 'usefulness': 'partly', 'rows': [{'index': 0, 'verdict': 'wrong'}]}
+    first = await clients.post('/reviews', json=review, headers=h['a'])
+    assert first.status_code == 201 and first.json()['mark_id']
+    narrow = await clients.post('/reviews', json=review, headers=h['aw'])
+    assert narrow.status_code == 200
+    assert narrow.json() == {'review_id': first.json()['review_id'], 'status': 'already_reviewed'}
+    wide = await clients.post('/reviews', json=review, headers=h['a'])
+    assert wide.json()['mark_id'] == first.json()['mark_id']

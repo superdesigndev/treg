@@ -19,6 +19,16 @@ from .types import CallContext
 
 Kind = Literal["review", "mark", "feedback"]
 BUDGET_WINDOW_S = 3600
+# What a client that does not say (`X-Treg-Hints`) can show: every CLI released before the
+# header existed renders review and feedback, and drops anything else in silence.
+LEGACY_KINDS: frozenset[str] = frozenset({"review", "feedback"})
+
+
+def accepted_kinds(header: str | None) -> frozenset[str]:
+    """The invitations a client says it shows (`X-Treg-Hints: review,mark,feedback`)."""
+    if header is None:
+        return LEGACY_KINDS
+    return frozenset(k.strip().lower() for k in header.split(",") if k.strip())
 
 
 def budget_key(org_id: int) -> str:
@@ -47,22 +57,33 @@ def _markable(endpoint_id: str | None) -> bool:
                                    for c in capabilities)
 
 
-async def invitation(context: CallContext, status: int, *, replayed: bool) -> Kind | None:
-    """No database, no body access. Phase 1 invites reviews only on direct catalog calls served
-    on treg's platform key; an own tool never qualifies even when its name matches an endpoint."""
+def reviewable(credential_tier: str | None) -> bool:
+    """Calls a review is invited on: direct catalog calls on treg's platform key, and routed
+    calls, whose review is credited to the child that answered (application.feedback)."""
+    return credential_tier in ("platform", "routed")
+
+
+async def invitation(context: CallContext, status: int, *, replayed: bool,
+                     accepts: frozenset[str] = LEGACY_KINDS) -> Kind | None:
+    """No database, no body access. A kind the client does not show is skipped without spending
+    its budget, so the call falls through to one it does; an own tool never qualifies for a
+    review even when its name matches an endpoint."""
     if not (200 <= status < 300) or replayed or context.cached:
         return None
     marketplace = context.marketplace
     platform = marketplace is not None and getattr(marketplace, "tier", None) == "platform"
-    if platform and hints.sampled("review", context.call_ref):
+    routed = marketplace is None and context.route_summary is not None
+    if ("review" in accepts and (platform or routed)
+            and hints.sampled("review", context.call_ref)):
         if await kv.store().take(budget_key(context.input.caller.org_id),
                                  get_settings().review_budget_per_hour, BUDGET_WINDOW_S):
             return "review"
     # A mark asks for later work, only once the agent knows; capped per team like a review.
-    if _markable(catalog_endpoint(context)) and hints.sampled("mark", context.call_ref):
+    if ("mark" in accepts and _markable(catalog_endpoint(context))
+            and hints.sampled("mark", context.call_ref)):
         if await kv.store().take(mark_budget_key(context.input.caller.org_id),
                                  get_settings().mark_hint_per_hour, BUDGET_WINDOW_S):
             return "mark"
-    if hints.sampled("feedback", context.call_ref):
+    if "feedback" in accepts and hints.sampled("feedback", context.call_ref):
         return "feedback"
     return None

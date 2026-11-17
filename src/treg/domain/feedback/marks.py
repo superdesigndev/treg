@@ -42,3 +42,11 @@ async def recent(
     if endpoint_id is not None:
         query = query.where(CallMark.endpoint_id == endpoint_id)
     return list((await db.execute(query.order_by(CallMark.id.desc()).limit(limit))).scalars())
+
+
+async def of_review(db: AsyncSession, org_id: int, review_id: int, *predicates) -> int | None:
+    """The id of the mark a review's rows wrote, if any. `predicates` narrows the team scope
+    further (a pinned reader's tags); the caller builds them."""
+    return (await db.execute(select(CallMark.id).where(
+        CallMark.org_id == org_id, CallMark.review_id == review_id, *predicates,
+    ).order_by(CallMark.id.asc()).limit(1))).scalar_one_or_none()

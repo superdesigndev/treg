@@ -175,6 +175,8 @@ func (c *Client) setHeaders(req *http.Request, r Request, encoded bool) {
 	h.Set("ngrok-skip-browser-warning", "1")
 	h.Set("X-Treg-Client", Runtime())
 	h.Set("X-Treg-Client-Version", buildinfo.Version)
+	// The invitations this binary shows (output.hintLine); the registry offers no other kind.
+	h.Set("X-Treg-Hints", "review,mark,feedback")
 	h.Set("X-Treg-Key-Protocol", "1")
 	if telemetry.Enabled() {
 		s := session.Current(config.Path())

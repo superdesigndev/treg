@@ -137,6 +137,9 @@ class Settings(BaseSettings):
     # Review invitations a team can receive per hour, whatever its call volume. Sampling decides
     # WHICH calls qualify; this decides how many of them a team is actually asked about.
     review_budget_per_hour: int = Field(default=5, ge=1)
+    # The share of team-MCP credentials whose `call` tool shows `prior` (a review of the caller's
+    # previous call, sent along with the next one). 0 = nobody, the tool as before.
+    mcp_prior_review_rate: float = Field(default=0, ge=0, le=1)
     # The mark invitation: after a call on one of these capabilities (an endpoint id equal to one,
     # or ending in `.<capability>`; empty = every catalog call), sampled at `mark_hint_rate` and
     # capped per team per hour. Each text is one A/B variant, `{call_id}` filled in, chosen per
