@@ -1008,7 +1008,13 @@ returned and never documented as stable. An output field may say where it lands 
   caller's identity merged with the child's core output, after the adapter's own `miss`, and a hit it
   marks true becomes a miss (`why: question_miss`) the route moves on from. It names no provider;
   `no_result_on_site(q, results)` judges a `site:` question whose rows are all on other sites. A
-  call without an identity (a replay record) is not judged by it.
+  call without an identity (a replay record) is not judged by it. `web.extract` declares
+  `wall_page(pages)` (`paths.py::wall_page`): a page whose text is under eight words, or short and
+  matching a fixed phrase list (captcha, browser or bot check, access denied, enable JavaScript or
+  cookies, cookie banner, login or signup wall), is a miss; a long page that mentions those words
+  is not. The contract rule moves the walk on but does not change a child's charge; a `per_success`
+  child stops billing such a page only where its own adapter `miss` also calls `wall_page` on its
+  text field.
 - `scoping` names identity keys that scope the answer (`company_domain`): a candidate whose adapter
   never sends a supplied one is dropped from the plan, not ranked down, because a title-only search
   asked for one company's CEO bills title-matched strangers as a hit.

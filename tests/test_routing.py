@@ -694,7 +694,7 @@ def test_a_parallel_extract_page_with_only_excerpts_is_a_hit():
     # an unreadable URL (results [], errors[]) is the free miss.
     extract = cat.adapters["parallel.web.extract"]
     assert not extract.is_miss({"results": [{"url": "u", "excerpts": ["text"], "full_content": None}]})
-    assert not extract.is_miss({"results": [{"url": "u", "excerpts": [], "full_content": "text"}]})
+    assert not extract.is_miss({"results": [{"url": "u", "excerpts": [], "full_content": "This domain is for use in documentation examples without needing permission."}]})
     assert extract.is_miss({"results": [{"url": "u", "excerpts": [], "full_content": None}]})
     assert extract.is_miss({"results": [], "errors": [{"url": "u", "error_type": "connect_error"}]})
     # A multi-URL call is never judged by its first page: a later page may have text.
@@ -724,7 +724,7 @@ def test_search_adapter_does_not_treat_an_answer_without_results_as_a_miss():
     (
         "treg.web.extract", "firecrawl.web.scrape",
         {"url": "https://example.com"},
-        {"success": True, "data": {"markdown": "# Example", "metadata": {"sourceURL": "https://example.com"}}},
+        {"success": True, "data": {"markdown": "# Example\n\nThis domain is for use in documentation examples without needing permission.", "metadata": {"sourceURL": "https://example.com"}}},
         {"url": "https://example.com", "formats": ["markdown"], "parsers": []}, 5_000,
     ),
     (
@@ -2110,6 +2110,59 @@ def test_a_miss_rule_can_combine_a_target_error_status_with_an_empty_text(doc, m
     assert P.evaluate("choose(http_error(code), true, coalesce(text, '') == '')", doc) is miss
 
 
+_ARTICLE = ("CAPTCHA systems ask visitors to prove they are human before a form is accepted. " * 30
+            + "Critics say a site should not make you verify you are human for every page you read.")
+
+
+@pytest.mark.parametrize("page, wall", [
+    ("Recaptcha requires verification. I'm not a robot. reCAPTCHA Privacy - Terms", True),
+    ("TO VERIFY YOU ARE HUMAN, PLEASE PRESS THE BUTTON. Press and hold to confirm.", True),
+    ({"title": "Pardon Our Interruption", "text": "As you were browsing something about your browser made us think you were a bot."}, True),
+    ({"title": "Access Denied", "text": "You don't have permission to access this server. Reference #18.2f1"}, True),
+    ("Vercel Security Checkpoint. Failed to verify your browser. Code 21", True),
+    ("Just a moment... Enable JavaScript and cookies to continue. Performance and security by Cloudflare", True),
+    ("We use cookies to improve your experience. Manage preferences or accept all to continue browsing.", True),
+    ("Create an account to see the full shipment record. Already a member? Sign in to continue.", True),
+    ("Click the button below to continue shopping. Conditions of Use Privacy Policy", True),
+    ("# r/askscience rules", True),
+    (["   \n  "], True),
+    ([{"url": "https://example.com", "title": "Example Domain", "text":
+       "This domain is for use in documentation examples without needing permission. Avoid use in operations."}], False),
+    (_ARTICLE, False),
+    ("Contact us. This form is protected by reCAPTCHA and the Google Privacy Policy and Terms of Service apply. "
+     "Our office is open Monday to Friday, nine to five, at 12 Harbour Street.", False),
+    ({"url": "https://example.com/", "images": ["https://example.com/a.png"]}, False),
+    ([], False), (None, False),
+])
+def test_wall_page_is_true_only_for_a_wall_or_a_near_empty_page(page, wall):
+    assert P.evaluate("wall_page(pages)", {"pages": page}) is wall
+
+
+def test_a_wall_page_is_a_miss_the_extract_route_moves_on_from_and_a_per_success_child_does_not_bill():
+    """A child's 200 page that is only a captcha is no extraction: the route's contract marks it a
+    miss so the walk continues, and a per_success child's own miss rule says so too, so settlement
+    charges nothing. A real page about captchas stays a hit."""
+    cat = catalog_store.load()
+    contract = cat.contracts["web.extract"]
+    ident = {"url": "https://shop.example/p/251"}
+
+    def tinyfish(text):
+        return json.dumps({"results": [{"url": ident["url"], "final_url": ident["url"], "title": "t",
+                                         "text": text, "links": []}], "errors": []}).encode()
+
+    ep, adapter = cat.by_id["tinyfish.web.fetch"], cat.adapters["tinyfish.web.fetch"]
+    wall = call_route.child_outcome(ep, contract, adapter, 200, tinyfish("Checking your browser before accessing "
+                                    "shop.example. Please verify you are human."), tier="platform", identity=ident)
+    assert wall.kind == "miss" and "question_miss" in wall.why
+    page = call_route.child_outcome(ep, contract, adapter, 200, tinyfish(_ARTICLE), tier="platform", identity=ident)
+    assert page.kind == "hit"
+
+    firecrawl = cat.adapters["firecrawl.web.scrape"]
+    assert firecrawl.is_miss({"success": True, "data": {"markdown": "Recaptcha requires verification. I'm not a robot",
+                                                        "metadata": {"statusCode": 200}}})
+    assert not firecrawl.is_miss({"success": True, "data": {"markdown": _ARTICLE, "metadata": {"statusCode": 200}}})
+
+
 async def test_the_geo_aware_child_wins_a_filtered_search_and_the_answer_says_what_was_dropped(
     clients: AsyncClient, enrichment_on, monkeypatch
 ):
@@ -3220,7 +3273,7 @@ async def test_people_enrich_not_found_from_dropleads_and_aiark_is_a_miss_not_a_
 # ---- web.extract / web.search: crawl4ai first by default -------------------------------------------
 @pytest.mark.parametrize("job, body, answer, first_seen", [
     ("treg.web.extract", {"url": "https://example.com"},
-     {"ok": True, "markdown": "# Example Domain", "content_hash": "x", "engine": "archive"},
+     {"ok": True, "markdown": "# Example Domain\n\nThis domain is for use in documentation examples without needing permission.", "content_hash": "x", "engine": "archive"},
      {"url": "https://example.com", "format": "md"}),
     ("treg.web.search", {"q": "rust web crawler"},
      {"results": [{"title": "spider", "url": "https://github.com/spider-rs/spider", "snippet": "s", "source": "gs"}], "n": 1},

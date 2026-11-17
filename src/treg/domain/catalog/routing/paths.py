@@ -717,6 +717,41 @@ def reddit_post_id(v: Any) -> str | None:
     return f"t3_{m.group(1).lower()}" if m else None
 
 
+_URL = re.compile(r"(?:https?:)?//\S+|www\.\S+", re.I)
+_WALL_WORDS_MIN = 8        # fewer words than this is a heading or a shell, not a page
+_WALL_CHARS_MAX = 1000     # a wall page is short: past this, a phrase is the page talking about it
+_WALL_PHRASES = tuple(_fold(p) for p in (
+    "verify you are human", "verify that you are human", "verifying you are human",
+    "confirm you are human", "prove you are human", "human verification", "are you a robot",
+    "not a robot", "recaptcha requires verification", "complete the captcha", "solve the captcha",
+    "checking your browser", "verify your browser", "security checkpoint", "pardon our interruption",
+    "attention required", "complete the security check", "access denied", "access restricted",
+    "access to this page has been denied", "you have been blocked", "request was blocked",
+    "enable javascript", "javascript is disabled", "javascript is required", "turn on javascript",
+    "enable cookies", "cookies are disabled", "cookies must be enabled", "accept cookies to continue",
+    "we use cookies", "click the button below to continue shopping",
+    "sign in to continue", "log in to continue", "login to continue", "sign in to view",
+    "log in to view", "sign up to view", "join to view", "create an account to", "create a free account to",
+    "you must be logged in", "please log in", "please sign in"))
+
+
+def wall_page(page: Any) -> bool:
+    """True when an extracted page (a page object, a list whose first item is one, or its text) is
+    not content: its text, links and markup left out, is fewer than eight words, or is short and
+    says it is a wall (a captcha, a browser or bot check, access denied, enable JavaScript or
+    cookies, a cookie banner, a login or signup wall). A long page that mentions a captcha stays
+    a page. A page with no text field at all is never judged: emptiness is the row's own miss rule."""
+    if isinstance(page, list):
+        page = page[0] if page else None
+    parts = [s for s in _strings(page) if not s.lstrip().startswith("<") and not _URL.fullmatch(s.strip())]
+    if not parts:
+        return False
+    text = _fold(_URL.sub(" ", " ".join(parts)))
+    if len(text.split()) < _WALL_WORDS_MIN:
+        return True
+    return len(text) <= _WALL_CHARS_MAX and any(f" {p} " in f" {text} " for p in _WALL_PHRASES)
+
+
 def starts_with(v: Any, prefix: Any) -> bool:
     return isinstance(v, str) and prefix is not None and v.startswith(str(prefix))
 
@@ -726,7 +761,7 @@ TRANSFORMS = {"values": values, "get": get_path, "null_if": null_if, "choose": c
               "list": as_list, "at_least": at_least, "at_most": at_most, "ceil_to": ceil_to, "linkedin_handle": linkedin_handle, "linkedin_url": linkedin_url,
               "x_post_id": x_post_id, "linkedin_job_id": linkedin_job_id, "reddit_post_id": reddit_post_id,
               "email_domain": email_domain, "host": host, "fmt": fmt, "obj": obj, "tca_filter": tca_filter, "csv": csv, "country_name": country_name, "country_code": country_code,
-              "e164_digits": e164_digits, "key": key, "starts_with": starts_with, "http_error": http_error, "lost_path": lost_path, "no_result_on_site": no_result_on_site, "quoted_absent": quoted_absent, "with_country_code": with_country_code,
+              "e164_digits": e164_digits, "key": key, "starts_with": starts_with, "http_error": http_error, "wall_page": wall_page, "lost_path": lost_path, "no_result_on_site": no_result_on_site, "quoted_absent": quoted_absent, "with_country_code": with_country_code,
               "count_with": count_with, "role_seniority": role_seniority, "role_department": role_department,
               "scalar": scalar, "instagram_handles": instagram_handles, "current_role": current_role, "flagged": flagged, "past_titles": past_titles}
 
