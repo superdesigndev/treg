@@ -3,11 +3,13 @@
 from __future__ import annotations
 
 import asyncio
+from datetime import timedelta
 from uuid import uuid4
 
 import pytest
-from sqlalchemy import select
+from sqlalchemy import select, update
 
+from treg.application import allowance_sweep
 from treg.application.call import allowance as runtime
 from treg.application.call import reserve as call_reserve
 from treg.application.call import settle as call_settle
@@ -19,7 +21,7 @@ from treg.domain.money import allowance
 from treg.infra import kv
 from treg.infra.db import reset_db, session_maker
 from treg.domain.identity.access import Caller
-from treg.models import CallCharge, Membership, Org, Tool, User
+from treg.models import CallCharge, Hold, Membership, Org, Tool, User
 
 GRANT = 5_000_000
 CHUNK = 1_000_000
@@ -379,3 +381,39 @@ async def test_a_team_too_poor_for_a_chunk_is_served_by_the_exact_path(org_id, s
     assert mk.allowance_epoch is None and await _per_call_holds(org_id) == ["c-1"]
     assert await call_settle._platform_settle(mk, 200, observed_override=450) == (450, 450)
     assert await _state(org_id) == (GRANT - 450, 0)
+
+
+# ---- the idle sweep ----------------------------------------------------------------------------
+async def _age_heartbeat(org_id: int, seconds: float) -> None:
+    async with session_maker() as db:
+        await db.execute(update(Hold).where(Hold.org_id == org_id, Hold.allowance.is_(True)).values(
+            heartbeat_at=ledger._now() - timedelta(seconds=seconds)))
+        await db.commit()
+
+
+async def test_the_sweep_returns_an_idle_allowance_with_what_a_lost_take_left_in_it(org_id, store):
+    epoch = await runtime.take(org_id, 600)
+    await runtime.take(org_id, 700)  # a call that crashed: never finished
+    await _finish(org_id, "call-1", epoch, 600, billable=True, actual_micro=450)
+    assert await allowance_sweep.sweep_once(session_maker) == 0, "refilled a moment ago"
+    await _age_heartbeat(org_id, allowance_sweep.idle_after_s() - 5)
+    assert await allowance_sweep.sweep_once(session_maker) == 0
+    await _age_heartbeat(org_id, allowance_sweep.idle_after_s() + 5)
+    assert await allowance_sweep.sweep_once(session_maker) == 1
+    assert await _state(org_id) == (GRANT - 450, 0)
+    assert store.counters[org_id] == {"epoch": epoch + 1, "avail": 0}
+    assert await allowance_sweep.sweep_once(session_maker) == 0
+    new_epoch = await runtime.take(org_id, 600)
+    assert new_epoch > epoch and await _state(org_id) == (GRANT - 450 - CHUNK, CHUNK)
+
+
+async def test_one_team_failing_to_close_does_not_stop_the_sweep(org_id, store, monkeypatch):
+    await runtime.take(org_id, 600)
+    await _age_heartbeat(org_id, allowance_sweep.idle_after_s() + 5)
+
+    async def broken(*args, **kwargs):
+        raise RuntimeError("database down")
+
+    monkeypatch.setattr(allowance, "close_stale_allowance_in_transaction", broken)
+    assert await allowance_sweep.sweep_once(session_maker) == 0
+    assert await _state(org_id) == (GRANT - CHUNK, CHUNK)

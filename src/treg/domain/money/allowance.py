@@ -232,11 +232,12 @@ async def refill_allowance_in_transaction(
 
 class Closed(NamedTuple):
     """`released_micro` went back to the balance; `remaining_micro` is still in the hold (0 once
-    the hold is gone)."""
+    the hold is gone). `epoch` names the hold that was closed, None when there was none."""
 
     released_micro: int
     remaining_micro: int
     folded: Folded
+    epoch: int | None = None
 
 
 async def close_allowance_in_transaction(
@@ -302,4 +303,4 @@ async def _close(db: AsyncSession, org_id: int, hold: Hold | None, reason: str,
     remaining = hold.amount_micro
     if release_micro is None:
         await db.delete(hold)
-    return Closed(released, remaining, folded)
+    return Closed(released, remaining, folded, _epoch(hold))

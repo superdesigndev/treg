@@ -14,6 +14,7 @@ sources:
   - src/treg/infra/kv.py
   - tests/test_kv_allowance.py
   - src/treg/application/call/allowance.py
+  - src/treg/application/allowance_sweep.py
   - tests/test_call_allowance.py
   - src/treg/domain/asynctasks/__init__.py
   - src/treg/models.py
@@ -241,8 +242,14 @@ the store did not apply, or a counter lost with the store leaves money in the al
 no counter offers: unavailable, not spent and not charged, until the hold is closed. Nothing here
 offers money the hold does not have.
 
-Not built yet: closing an idle team's allowance. Until then a listed team that stops calling keeps
-up to a chunk in its allowance hold; the balance shown is lower by that much and the hold is in
+**The idle sweep** (`application/allowance_sweep.py`, a background task wherever background work
+runs, listed teams or not) is what returns that money. A call can take from the counter only for
+`money_allowance_fresh_s` after a refill, and a call lives at most `hold_ttl_s()`, so a hold no
+refill has stamped for those two plus a margin has nobody spending from it. The sweep closes each
+such hold in full (`close_stale_allowance_in_transaction`, under the release lease), then retires
+its counter so a late writer is refused. A charge recorded after that still finds no hold and
+comes out of the balance. While a team keeps calling, its hold is never idle and what a crash left
+in it stays there; the team's balance is lower by up to a chunk plus that, and the hold is in
 `/balance`.
 
 ## The six operations (`domain/money`)
