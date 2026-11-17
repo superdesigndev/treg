@@ -4,7 +4,6 @@ import json
 from datetime import timedelta
 from types import SimpleNamespace
 import pytest
-from cryptography.fernet import InvalidToken
 from sqlmodel import select
 
 from treg.domain import web_arena, web_arena_scores
@@ -175,55 +174,47 @@ def test_repeat_fetch_checks_do_not_hide_later_efficiency(monkeypatch):
     assert row["token_efficiency_percent"] == 80
 
 
-async def test_local_leaderboard_uses_saved_totals_if_old_runs_cannot_decrypt(monkeypatch):
-    async def rows(observed_since=None):
-        return [SimpleNamespace(payload="old ciphertext")]
+async def _saved_runs(*runs, published=None):
+    """Live runs in the database, each a (task, payload) packed with this deployment's key or, for a
+    bytes payload, encrypted with a key it no longer has; `published` is the last saved totals."""
+    from cryptography.fernet import Fernet
+    from treg.application import arena
+    from treg.models import WebArenaPublication, WebArenaRun
 
-    async def saved(kind):
-        assert kind == "live"
-        return {"status": "live", "task_results": {"search": [{"provider": "exa", "runs": 3}]}}
+    at = web_arena_publications.now()
+    old_key = Fernet(Fernet.generate_key())
+    async with session_maker() as db:
+        for n, (task, payload) in enumerate(runs):
+            packed = old_key.encrypt(payload).decode() if isinstance(payload, bytes) else arena._pack(payload)
+            db.add(WebArenaRun(id=f"run-{n}", org_id=1, user_id=1, task=task, mode="battle",
+                               state="completed", payload=packed, created_at=at - timedelta(hours=1),
+                               deadline_at=at, expires_at=at + timedelta(days=1)))
+        if published is not None:
+            db.add(WebArenaPublication(id="saved", kind="live", version="1", payload=published))
+        await db.commit()
 
-    def cannot_decrypt(payload):
-        raise InvalidToken
 
-    monkeypatch.setattr(web_arena_publications, "_live_rows", rows)
-    monkeypatch.setattr(web_arena_publications.web_arena_calls, "coverage_start", lambda: asyncio.sleep(0, result=None))
-    monkeypatch.setattr(web_arena_publications.web_arena_calls, "local_snapshot", lambda: asyncio.sleep(0, result={}))
-    monkeypatch.setattr(web_arena_publications, "published", saved)
-    monkeypatch.setattr(web_arena_publications.arena, "_unpack", cannot_decrypt)
+async def test_local_leaderboard_uses_saved_totals_if_old_runs_cannot_decrypt(clients):
+    await _saved_runs(("search", b'{"attempts": []}'), published={
+        "status": "live", "task_results": {"search": [{"provider": "exa", "runs": 3}]}})
     result = await web_arena_publications.live_now()
     assert result["task_results"]["search"][0]["runs"] == 3
     assert result["stale"] is True
     assert "Last saved" in result["source"]
 
 
-async def test_local_leaderboard_keeps_readable_runs_when_old_runs_cannot_decrypt(monkeypatch):
+async def test_local_leaderboard_keeps_saved_totals_only_for_tasks_with_no_readable_runs(clients):
     current = {"input": "https://example.com", "attempts": [{
         "provider": "search1api", "state": "hit", "duration_ms": 100,
         "quality": {"unique_valid_urls": 10}}]}
-    async def rows(observed_since=None):
-        return [SimpleNamespace(task="sitemap", payload=current),
-                SimpleNamespace(task="sitemap", payload="old ciphertext")]
-
-    async def saved(kind):
-        assert kind == "live"
-        return {"status": "live", "task_results": {"fetch": [{"provider": "exa", "runs": 2}]}}
-
-    def unpack(payload):
-        if isinstance(payload, str):
-            raise InvalidToken
-        return payload
-
-    monkeypatch.setattr(web_arena_publications, "_live_rows", rows)
-    monkeypatch.setattr(web_arena_publications.web_arena_calls, "coverage_start", lambda: asyncio.sleep(0, result=None))
-    monkeypatch.setattr(web_arena_publications.web_arena_calls, "local_snapshot", lambda: asyncio.sleep(0, result={}))
-    monkeypatch.setattr(web_arena_publications, "published", saved)
-    monkeypatch.setattr(web_arena_publications.arena, "_unpack", unpack)
+    saved_fetch = [{"provider": "exa", "runs": 2}]
+    await _saved_runs(("sitemap", current), ("sitemap", b'{"attempts": []}'), published={
+        "status": "live", "task_results": {"fetch": saved_fetch, "sitemap": [{"provider": "exa", "runs": 9}]}})
     result = await web_arena_publications.live_now()
-    assert result["task_results"]["sitemap"][0]["provider"] == "search1api"
-    assert result["task_results"]["fetch"][0]["provider"] == "exa"
     assert result["partial"] is True
     assert result["stale_tasks"] == ["fetch"]
+    assert result["task_results"]["fetch"] == saved_fetch
+    assert "search1api" in {row["provider"] for row in result["task_results"]["sitemap"]}
 
 
 async def test_scheduled_live_totals_refresh_only_when_due(monkeypatch):
