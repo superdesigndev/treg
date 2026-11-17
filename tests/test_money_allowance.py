@@ -162,10 +162,10 @@ async def test_a_call_recorded_again_after_its_fold_is_not_charged_twice(org_id)
 async def test_a_fold_is_bounded_and_leaves_the_rest_queued(org_id):
     await _open(org_id, 10_000)
     await _record(org_id, 10, 10, 10)
-    async with session_maker() as db:
-        assert (await allowance.fold_charges_in_transaction(db, org_id, limit=2)).calls == 2
-        assert (await allowance.fold_charges_in_transaction(db, org_id, limit=2)).calls == 1
-        await db.commit()
+    for expected in (2, 1):
+        async with session_maker() as db:
+            assert (await allowance.fold_charges_in_transaction(db, org_id, limit=2)).calls == expected
+            await db.commit()
     assert await _invariant(org_id) == GRANT - 10_000
 
 
@@ -286,6 +286,26 @@ async def test_closing_folds_a_backlog_larger_than_one_batch(org_id, monkeypatch
         await db.commit()
     assert closed.folded.calls == 5 and closed.released_micro == 9_950
     assert await _invariant(org_id) == GRANT - 50
+
+
+async def test_closing_a_backlog_of_several_batches_locks_the_blocks_once(org_id, monkeypatch):
+    """Locking again after a batch could meet a block funded in between, out of lock order."""
+    monkeypatch.setattr(allowance, "FOLD_BATCH", 2)
+    locks = []
+
+    async def lock_blocks(db, org_ids):
+        locks.append(org_ids)
+        return await ledger._lock_blocks(db, org_ids)
+
+    monkeypatch.setattr(allowance, "_lock_blocks", lock_blocks)
+    await _refill(org_id, 10_000)
+    await _record(org_id, 10, 10, 10, 10, 10)
+    await _record(org_id, 10, 10, 10, 10, 10)
+    async with session_maker() as db:
+        closed = await allowance.close_allowance_in_transaction(db, org_id, reason="idle")
+        await db.commit()
+    assert closed.folded == allowance.Folded(calls=5, charged_micro=50, consumed_micro=50)
+    assert locks == [{org_id}]
 
 
 @postgres_only

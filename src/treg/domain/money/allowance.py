@@ -96,27 +96,44 @@ async def fold_charges_in_transaction(db: AsyncSession, org_id: int, *,
     Each charge becomes that call's `settle` entry, stamped with the fold's instant, and its
     queue row is deleted. The charged total comes out of the allowance hold; whatever the hold
     cannot cover (no hold, or one already drained) comes straight out of the balance, as an
-    overrun does at `settle`. Must run before any other money write in the transaction.
+    overrun does at `settle`. Must run before any other money write in the transaction, and
+    once per transaction: a second fold would lock the blocks again (see `_apply_charges`).
     """
     mark_money(db, "fold", org_id=org_id)
     return await _fold(db, org_id, await _lock_allowance(db, org_id), limit)
 
 
-async def _fold(db: AsyncSession, org_id: int, hold: Hold | None, limit: int) -> Folded:
+async def _claim_charges(db: AsyncSession, org_id: int, limit: int) -> list:
     with money_stage(db, "claim_charges"):
-        claimed = (await db.execute(
+        return list((await db.execute(
             delete(CallCharge).where(CallCharge.call_id.in_(
                 select(CallCharge.call_id).where(CallCharge.org_id == org_id).limit(limit)))
             .returning(CallCharge.call_id, CallCharge.endpoint_id, CallCharge.amount_micro,
-                       CallCharge.meta, CallCharge.created_at))).all()
+                       CallCharge.meta, CallCharge.created_at))).all())
+
+
+async def _fold(db: AsyncSession, org_id: int, hold: Hold | None, limit: int) -> Folded:
+    return await _apply_charges(db, org_id, hold, await _claim_charges(db, org_id, limit))
+
+
+async def _apply_charges(db: AsyncSession, org_id: int, hold: Hold | None, claimed: list) -> Folded:
+    """Charge everything claimed, locking the team's blocks ONCE.
+
+    A transaction that locked the blocks again later could meet one funded in between, out of
+    primary-key order, and deadlock with a settle that already holds it. So a transaction
+    applies charges once, whatever number of batches it claimed them in.
+    """
     if not claimed:
         return Folded()
     # A queue row is gone once folded, so its primary key no longer stops the same call being
     # recorded again. The call's settle entry is the lasting record that it was charged.
+    settled: set[str] = set()
+    ids = [row.call_id for row in claimed]
     with money_stage(db, "settled_charges"):
-        settled = set((await db.execute(select(LedgerEntry.call_id).where(
-            LedgerEntry.call_id.in_([row.call_id for row in claimed]),
-            LedgerEntry.org_id == org_id, LedgerEntry.kind == "settle"))).scalars())
+        for start in range(0, len(ids), FOLD_BATCH):
+            settled.update((await db.execute(select(LedgerEntry.call_id).where(
+                LedgerEntry.call_id.in_(ids[start:start + FOLD_BATCH]),
+                LedgerEntry.org_id == org_id, LedgerEntry.kind == "settle"))).scalars())
     charges = sorted((row for row in claimed if row.call_id not in settled),
                      key=lambda row: (row.created_at, row.call_id))
     charged = sum(row.amount_micro for row in charges)
@@ -230,12 +247,13 @@ async def close_allowance_in_transaction(
     """
     mark_money(db, "close_allowance", org_id=org_id)
     hold = await _lock_allowance(db, org_id)
-    folded = Folded()
+    claimed: list = []
     while True:
-        batch = await _fold(db, org_id, hold, FOLD_BATCH)
-        folded = Folded(*(a + b for a, b in zip(folded, batch)))
-        if batch.calls + batch.duplicates < FOLD_BATCH:
+        batch = await _claim_charges(db, org_id, FOLD_BATCH)
+        claimed.extend(batch)
+        if len(batch) < FOLD_BATCH:
             break
+    folded = await _apply_charges(db, org_id, hold, claimed)
     if hold is None:
         return Closed(0, 0, folded)
     released = hold.amount_micro if release_micro is None else min(

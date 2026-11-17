@@ -145,7 +145,10 @@ UTC day is not in today's counter, so its top-ups stay out too and its folds add
 consume. `allowance.close_allowance_in_transaction` folds everything queued and returns money with
 a `release` entry: all of it, deleting the row, or at most a given amount, keeping the row so
 calls already admitted finish against what is left. Every allowance operation locks the allowance
-hold first, then blocks, then the org row. `settle`, `release` and the stale-hold sweep skip a hold
+hold first, then blocks, then the org row, and locks the blocks once: a close claims its whole
+backlog in batches and only then applies it, because locking the blocks again per batch could meet
+one funded in between, out of primary-key order, and deadlock with a settle that holds it. For the
+same reason a transaction folds once. `settle`, `release` and the stale-hold sweep skip a hold
 marked `allowance`. `heartbeat_at` is stamped by each refill; nothing reads it yet, and no call
 path uses any of these functions yet.
 
