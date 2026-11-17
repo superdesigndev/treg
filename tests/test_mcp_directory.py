@@ -199,6 +199,19 @@ async def test_v2_declares_exact_directory_contract():
         assert disallowed not in blob
 
 
+async def test_v2_search_keeps_its_submitted_job_fields_while_mcp_says_capability():
+    def fields(schema: dict) -> tuple[set, set]:
+        row = schema["$defs"][schema["properties"]["results"]["anyOf"][0]["items"]["$ref"].rsplit("/", 1)[1]]
+        return set(schema["properties"]), set(row["properties"])
+
+    v2 = {t.name: t for t in await mcp.directory_mcp.list_tools()}["catalog_search"].output_schema
+    team = {t.name: t for t in await mcp.mcp.list_tools()}["catalog_search"].output_schema
+    v2_page, v2_row = fields(v2)
+    team_page, team_row = fields(team)
+    assert "jobs" in v2_page and "job" in v2_row and not {"capabilities", "capability"} & (v2_page | v2_row)
+    assert "capabilities" in team_page and "capability" in team_row and not {"jobs", "job"} & (team_page | team_row)
+
+
 async def test_v2_does_not_advertise_or_serve_change_subscriptions():
     async with directory_session() as client:
         discovered = await _modern_rpc(client, "server/discover")

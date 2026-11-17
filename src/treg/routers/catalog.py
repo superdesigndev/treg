@@ -156,7 +156,8 @@ async def catalog_platform(slug: str, include_hidden: int = 0,
         # this is the shape the CLI has been written against since the catalog shipped, and the same
         # endpoints appear in both — a client picks the axis it wants, neither is a subset.
         "capabilities": [
-            {"id": cap, "description": cat.capabilities.get(cap, ""), "endpoints": grouped[cap]}
+            {"id": cap, "description": cat.capabilities.get(cap, ""),
+             "shared": catalog_store.capability_shared(cat, slug, cap), "endpoints": grouped[cap]}
             for cap in sorted(grouped)
         ],
         "extended": extended,
@@ -449,7 +450,7 @@ async def catalog_search(request: Request, q: str = "", limit: int = 25,
 async def _agent_search(request: Request, q: str, limit: int, cat,
                         observations: endpoint_stats.EndpointObservationReader) -> dict:
     """`/catalog/search?engine=agent`: `application.catalog_search.search`, the use case behind an
-    agent's `catalog_search`, shaped as this route's rows plus the answer's verdict and jobs.
+    agent's `catalog_search`, shaped as this route's rows plus the answer's verdict and capabilities.
 
     The judge and the embedding are awaited inside the use case, so nothing here may hold a
     database connection across it: the hub's reader and the caller are each resolved in a session
@@ -499,7 +500,8 @@ async def _agent_search(request: Request, q: str, limit: int, cat,
         out["verdict"] = page.verdict
         if page.reason:
             out["reason"] = page.reason
-        out["jobs"] = [{"capability": j.capability, "providers": j.providers, "shown": j.shown} for j in page.jobs]
+        out["capabilities"] = [{"capability": j.capability, "providers": j.providers, "shown": j.shown}
+                               for j in page.jobs]
     if not results:
         near = catalog_store.near_misses(q, cat)
         if near and page.verdict != find.NONE:
@@ -553,7 +555,7 @@ async def catalog_find(request: Request, q: str = "", platform: str = "",
 
     query = find.clean_query(q)
     if not query:
-        raise HTTPException(status_code=400, detail="describe the job in ?q=")
+        raise HTTPException(status_code=400, detail="describe the task in ?q=")
     if platform and not catalog_store.load().for_platform(platform):
         raise HTTPException(status_code=404, detail=f"unknown platform {platform!r}")
     if not find.configured():
@@ -765,7 +767,7 @@ async def catalog_endpoint(
                      f"${overflow['overflow_price_usd']:g} per {overflow['overflow_price_unit']} instead "
                      f"of the direct price; the answer says so (X-Treg-Served-Via / served_via)"]
                     if overflow else [])
-                 + ([f"treg catalog get {siblings[0]['id']}   # the same job from {siblings[0]['provider']}"]
+                 + ([f"treg catalog get {siblings[0]['id']}   # the same capability from {siblings[0]['provider']}"]
                     if siblings else []),
     }
 
@@ -908,8 +910,8 @@ async def _endpoint_view(answer: view.Answer) -> str | view.Rendered:
     request = answer.request
     endpoint_id = request.path_params["endpoint_id"]
     if answer.status == 404:
-        job = await _job_view(request, endpoint_id, _limit(request))
-        return job or catalog_views.failure_text(catalog_views.unknown_endpoint(endpoint_id, answer.object()))
+        shared = await _capability_view(request, endpoint_id, _limit(request))
+        return shared or catalog_views.failure_text(catalog_views.unknown_endpoint(endpoint_id, answer.object()))
     if answer.status != 200:
         return _refusal_text(answer)
     return await _endpoint_text(request, answer.object(), endpoint_id, _limit(request))
@@ -931,12 +933,12 @@ async def _endpoint_text(request: Request, body: dict, endpoint_id: str, limit: 
     return toon.printed(page, help_lines, catalog_views.GET_GROUPS)
 
 
-async def _job_view(request: Request, job_id: str, limit: int | None) -> view.Rendered | None:
-    """`catalog get <job>`, the way the CLI resolved a job before the registry rendered it: the
-    job's routed id answers as that endpoint; a job without one lists every provider of it."""
-    status, raw = await view.get(request, f"/catalog/platforms/{job_id.split('.', 1)[0]}", "include_hidden=1")
+async def _capability_view(request: Request, capability_id: str, limit: int | None) -> view.Rendered | None:
+    """`catalog get <capability>`, the way the CLI resolved a capability before the registry rendered
+    it: its routed id answers as that endpoint; a capability without one lists every provider of it."""
+    status, raw = await view.get(request, f"/catalog/platforms/{capability_id.split('.', 1)[0]}", "include_hidden=1")
     capabilities = (json.loads(raw).get("capabilities") or []) if status == 200 else []
-    cap = next((x for x in capabilities if x.get("id") == job_id), None)
+    cap = next((x for x in capabilities if x.get("id") == capability_id), None)
     if not cap or not cap.get("endpoints"):
         return None
     if routed := catalog_views.routed_member(cap):
@@ -949,10 +951,10 @@ async def _job_view(request: Request, job_id: str, limit: int | None) -> view.Re
         return None
 
     async def pin(db: AsyncSession, caller) -> str | None:
-        return await view_context.pinned_provider(db, caller, job_id)
+        return await view_context.pinned_provider(db, caller, capability_id)
 
-    page, help_lines = catalog_views.job(job_id, cap.get("description"), json.loads(raw),
-                                         await view.quietly(view.with_caller(request, pin)))
+    page, help_lines = catalog_views.capability(capability_id, cap.get("description"), json.loads(raw),
+                                                await view.quietly(view.with_caller(request, pin)))
     return view.Rendered(toon.printed(page, help_lines), toon.render_json(page, help_lines).encode(), 200)
 
 

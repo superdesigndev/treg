@@ -81,7 +81,7 @@ and it is what treg now leads with.
 ## Step 1 - Find a tool by what it DOES
 
 Tom has just installed the CLI. No team, no keys, nothing registered - and he can already work.
-He does not need to know which vendor sells backlink data; he searches by the **job**, and every
+He does not need to know which vendor sells backlink data; he searches by the **task**, and every
 hit shows what it costs.
 
 ```bash

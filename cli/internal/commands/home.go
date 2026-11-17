@@ -18,7 +18,7 @@ import (
 const homeAbout = "The tool catalog for your agent. Search and call its tools"
 
 var homeNextSteps = []string{
-	`treg catalog search "<task>"   # find a tool for a job, with prices`,
+	`treg catalog search "<task>"   # find a tool for a task, with prices`,
 	"treg catalog get <id>   # params, price, a ready treg call line",
 	"treg --help   # every command",
 }

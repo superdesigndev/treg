@@ -108,7 +108,7 @@ async def test_catalog_get_hides_the_providers_a_team_pin_refuses(clients: Async
     assert r.status_code == 200, r.text
     pinned = decode((await _view(clients, "/catalog/endpoints/tikhub.tiktok.user.profile"))["text"])
     assert {row["id"].split(".")[0] for row in pinned["compare"]} == {"tikhub"}
-    assert pinned["pinned"].startswith("your team pins this job to tikhub")
+    assert pinned["pinned"].startswith("your team pins this capability to tikhub")
 
     anyone = decode((await _view(clients, "/catalog/endpoints/tikhub.tiktok.user.profile", headers=ANONYMOUS))["text"])
     assert "pinned" not in anyone and len({row["id"].split(".")[0] for row in anyone["compare"]}) > 1
@@ -134,8 +134,8 @@ async def test_own_key_marks_the_providers_the_team_holds_a_credential_for(clien
     assert "own_key" not in anyone["endpoints"][0]
 
 
-async def test_a_job_with_a_routed_id_answers_as_that_endpoint(clients: AsyncClient):
-    """`catalog get <job>` with a routed id answers as that endpoint's card.
+async def test_a_capability_with_a_routed_id_answers_as_that_endpoint(clients: AsyncClient):
+    """`catalog get <capability>` with a routed id answers as that endpoint's card.
 
     The view embeds the routed card under `data`. Comparing that card byte-for-byte to a second
     GET of the routed id flakes when live observations flip between the two requests
@@ -158,22 +158,41 @@ async def test_a_job_with_a_routed_id_answers_as_that_endpoint(clients: AsyncCli
     assert plain.status_code == 404, "without the header the route answers as it always did"
 
 
-def _unrouted_job() -> str:
+def _unrouted_capability() -> str:
     cat = catalog_store.load()
     for cap in sorted(cat.capabilities):
         eps = cat.for_capability(cap)
         if (len({e["provider"] for e in eps}) > 1 and not any(e.get("kind") == "routed" for e in eps)
                 and cap not in cat.by_id and cat.for_platform(cap.split(".", 1)[0])):
             return cap
-    raise AssertionError("the catalog has no job without a routed id")
+    raise AssertionError("the catalog has no capability without a routed id")
 
 
-async def test_a_job_without_a_routed_id_lists_every_provider_of_it(clients: AsyncClient):
-    job = _unrouted_job()
-    env = await _view(clients, f"/catalog/endpoints/{job}")
+async def test_a_capability_without_a_routed_id_lists_every_provider_of_it(clients: AsyncClient):
+    capability = _unrouted_capability()
+    env = await _view(clients, f"/catalog/endpoints/{capability}")
     page = decode(env["text"])
-    assert page["job"] == job and page["providers"] > 1 and page["compare"]
+    assert page["capability"] == capability and page["providers"] > 1 and page["compare"]
     assert env["data"] == {**{k: v for k, v in page.items() if k != "help"}, "pinned": None, "help": page["help"]}
+
+
+async def test_a_capability_shows_only_where_another_provider_does_it_too(clients: AsyncClient):
+    """One provider's capability would only restate its endpoint id."""
+    cat = catalog_store.load()
+    on_tiktok = [e for e in cat.for_platform("tiktok")
+                 if catalog_store.browsable(e) and e["capability"] and e["kind"] != "routed"]
+    alone = next(e for e in on_tiktok if not catalog_store.capability_shared(cat, "tiktok", e["capability"]))
+    shared = next(e for e in on_tiktok if catalog_store.capability_shared(cat, "tiktok", e["capability"]))
+
+    assert "capability" not in decode((await _view(clients, f"/catalog/endpoints/{alone['id']}"))["text"])
+    assert decode((await _view(clients, f"/catalog/endpoints/{shared['id']}"))["text"])["capability"] \
+        == shared["capability"]
+
+    shelf = decode((await _view(clients, "/catalog/platforms/tiktok"))["text"])
+    rows = {row["id"]: row.get("capability") for row in shelf["endpoints"]}
+    assert rows[alone["id"]] is None and rows[shared["id"]] == shared["capability"]
+    listed = {c["capability"] for c in shelf["capabilities"]}
+    assert shared["capability"] in listed and alone["capability"] not in listed
 
 
 async def test_an_unknown_id_says_what_to_try(clients: AsyncClient):

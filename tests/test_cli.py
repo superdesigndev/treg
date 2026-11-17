@@ -975,7 +975,7 @@ def test_catalog_get_compares_a_capped_ranked_few(monkeypatch, capsys):
     cli.cmd_catalog(cli.build_parser().parse_args(["catalog", "get", "p0.job", "--limit", "4"]), {"base_url": "http://x"})
     out = _toon(capsys)
     assert [r["id"] for r in out["compare"]] == ["p0.job", "p3.job", "p2.job", "p4.job"]
-    assert out["compare_total"] == 16 and out["help"][0] == "treg catalog get people.search   # every provider of this job"
+    assert out["compare_total"] == 16 and out["help"][0] == "treg catalog get people.search   # every provider of this capability"
 
 
 def test_a_view_tables_only_several_narrow_rows_and_decodes_to_what_it_was_given():
@@ -1077,9 +1077,10 @@ def test_catalog_search_explains_routing_once(monkeypatch, capsys):
     routed row reads as a choice among providers, not as a free call."""
     def routed(cap, children):
         return [{"id": f"treg.{cap}", "kind": "routed", "provider": "treg", "capability": cap,
-                 "summary": cap, "routed_children": children, "cost": {"type": "per_success", "usd": 0, "varies": True}}] + [
-            {"id": child, "provider": child.split(".")[0], "capability": cap, "summary": child,
-             "cost": {"type": "per_call", "usd": 0.001}, "added": "2026-07-28"} for child in children]
+                 "capability_shared": True, "summary": cap, "routed_children": children,
+                 "cost": {"type": "per_success", "usd": 0, "varies": True}}] + [
+            {"id": child, "provider": child.split(".")[0], "capability": cap, "capability_shared": True,
+             "summary": child, "cost": {"type": "per_call", "usd": 0.001}, "added": "2026-07-28"} for child in children]
     rows = routed("web.backlinks.list", ["moz.web.backlinks.list", "serpstat.web.backlinks.list"]) \
         + routed("web.anchors.list", ["moz.web.anchors.list", "serpstat.web.anchors.list"])
     _stub_catalog_client(monkeypatch, {"/catalog/search": _CatalogResp(
@@ -1089,9 +1090,9 @@ def test_catalog_search_explains_routing_once(monkeypatch, capsys):
     text = capsys.readouterr().out
     from toon_format import decode
     out = decode(text)
-    assert text.count("treg.<job>") == 1 and "routed" in out
+    assert text.count("treg.<capability>") == 1 and "routed" in out
     assert [r["id"] for r in out["results"]] == [r["id"] for r in rows]
-    assert {r["job"] for r in out["results"]} == {"web.backlinks.list", "web.anchors.list"}
+    assert {r["capability"] for r in out["results"]} == {"web.backlinks.list", "web.anchors.list"}
     assert out["results"][0]["price"] == "variable", "a routed row bills its children's misses: never 'free'"
     assert out["help"][0].startswith("treg catalog get <id>")
 

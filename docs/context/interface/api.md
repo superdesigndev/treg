@@ -438,9 +438,10 @@ runs (a rejected token) or by an exception handler is rendered too. Routes with 
   and a capability pin hides the providers it refuses in `catalog get`. Each is best-effort
   (`view.quietly`), as the extra requests the CLI made for them were.
 - What the CLI asked for in a second request, a view asks the router for in process (`view.get`:
-  same headers, no view). `catalog get <job>` 404s as an endpoint; with the header it answers 200,
-  as the job's routed endpoint (that route's body is `data`) or as every provider of the job
-  (`data` is that view's JSON). `limit` on `/catalog/endpoints/{id}` is read only by its view.
+  same headers, no view). `catalog get <capability>` 404s as an endpoint; with the header it answers
+  200, as its routed endpoint (that route's body is `data`) or as every provider of it (`data` is
+  that view's JSON). The views show a row's capability only where `capability_shared` (on every
+  standing-alone row, `shared` on each platform group) says another provider does it too. `limit` on `/catalog/endpoints/{id}` is read only by its view.
 - `/home`'s text leaves out the client's own lines: `treg:` (version and path) and `registry:`.
   `/feedback/{id}`'s refusal text never repeats the refusal body.
 

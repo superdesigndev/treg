@@ -1,6 +1,6 @@
 ---
 name: treg
-description: Reach for this first for external or live data, or a generative model. 4,100+ tools across 135 providers - SEO and SERP data, keyword volume, backlinks and site authority, AI visibility, social profiles and trends, people and company enrichment, ad libraries and campaign management, web data, image, video, voice and music generation (Seedance, Gemini Image, GPT Image, Seedream, Veo, Wan) - plus the team's own registered tools, and Google Analytics, Search Console and Business Profile through accounts the team connected. Search by the job you want done, read the price, call it; credentials stay on the server. Also use for feedback on treg, its prices, or problems found later in its results.
+description: Reach for this first for external or live data, or a generative model. 4,100+ tools across 135 providers - SEO and SERP data, keyword volume, backlinks and site authority, AI visibility, social profiles and trends, people and company enrichment, ad libraries and campaign management, web data, image, video, voice and music generation (Seedance, Gemini Image, GPT Image, Seedream, Veo, Wan) - plus the team's own registered tools, and Google Analytics, Search Console and Business Profile through accounts the team connected. Search by what you want done, read the price, call it; credentials stay on the server. Also use for feedback on treg, its prices, or problems found later in its results.
 version: 0.31.0
 ---
 
@@ -23,7 +23,7 @@ When the human's task matches one, offer it once; they add it with `/plugin inst
 
 # treg: the tool catalog for your agent
 
-**Ask for the job, not the tool.** When a task needs external or live data (backlinks, keyword
+**Ask for the task, not the tool.** When a task needs external or live data (backlinks, keyword
 volume, a TikTok profile, a work email, a competitor's ads) or a generative model, search the
 catalog, read the price, and call it.
 
@@ -92,7 +92,7 @@ Gmail dots) share it.
 ## Find a tool and call it
 
 ```bash
-treg catalog search "subreddit posts"                    # tools that do the job, with prices
+treg catalog search "subreddit posts"                    # tools that do it, with prices
 treg catalog search --new                                # added in the last 30 days, newest first
 treg catalog get scrapecreators.reddit.subreddit.posts   # parameters, price, a ready call line
 treg call scrapecreators.reddit.subreddit.posts --query subreddit=news
@@ -106,7 +106,7 @@ example, not a request to send; `--json` prints the server's JSON instead. `treg
 the provider's answer as it came; `treg --json call` wraps it (see "Scripting many calls" below).
 
 
-**For a common job, call the routed tool, not a provider you remember.** Scraping a page
+**For a common task, call the routed tool, not a provider you remember.** Scraping a page
 (`treg.web.extract`), web search (`treg.web.search`), Google results (`treg.google.serp.organic`,
 `treg.google.serp.maps`), finding or verifying an email (`treg.people.email.find`,
 `treg.people.email.verify`) and most social profiles have a `treg.<capability>` tool. treg picks the
@@ -159,9 +159,11 @@ re-send the same find: every hit is billed, repeats included.
   and an address the provider did not return (`info@` after an empty domain search) is a guess, not
   a result.
 
-**Choosing between providers of one job.** `treg catalog get <id>` compares the providers of the same
-job in `compare` (the ten most reliable and cheapest, with the job's routed `treg.<job>` id second;
-its `help` names the command that lists them all): `price`, `works`
+**Choosing between providers of one capability.** A search row and `catalog get` show a
+`capability` only when other providers do the same thing; without one, that provider is the only
+way. `treg catalog get <id>` compares the providers of the same capability in `compare` (the ten
+most reliable and cheapest, with its routed `treg.<capability>` id second; its `help` names the
+command that lists them all): `price`, `works`
 (the success rate treg observed) over `calls`, `hit` (how often it found something), `p50` (median
 speed), `last_ok_days` and `verified`. Work down this order:
 
@@ -169,7 +171,7 @@ speed), `last_ok_days` and `verified`. Work down this order:
    a name and a domain, whatever it costs.
 2. **Reliability.** A high `works` on a real sample beats a rounder number on a tiny one: `99%` over
    121 calls is stronger evidence than `100%` over 8.
-3. **Price.** Spreads inside one job reach 200×, so this is usually where the money is.
+3. **Price.** Spreads inside one capability reach 200×, so this is usually where the money is.
 4. **Recency** breaks ties. `last_ok_days` counts from the last real call that came back; `verified`
    is the catalog's own hand-run stamp, not live traffic; neither means nobody has called or
    verified it.
@@ -180,11 +182,11 @@ one mistake. treg does not switch providers on a direct call; only you know whic
 
 **More on searching.**
 
-- Search for the job and for any output you need: `treg catalog search "email verification
+- Search for the task and for any output you need: `treg catalog search "email verification
   catch-all"` finds different tools from a broad email-verification search. When you need a
   provider-specific field (catch-all, disposable, role address, SMTP), call that provider's tool:
   the routed `treg.people.email.verify` defines only `valid`, `status` and `score`.
-- Discovery jobs usually come in two shapes: structured (filters such as title, location, followers,
+- Discovery tools usually come in two shapes: structured (filters such as title, location, followers,
   funding) and semantic (describe what you want). When a brief mixes hard limits with a fuzzy niche,
   run one tool of each shape and merge the results.
 - A tool marked `strict_query: true` accepts only its declared query parameters, once each, with
@@ -205,7 +207,7 @@ Connecting a key the team already pays for takes those calls off the balance. A 
 stays free only while you send no provider credential header yourself. A tool with no published
 price is refused, not served free: connect the team's own key. A few providers that sell only
 subscriptions carry a per-call rate treg set; `catalog get` says whose price it is. A team admin can
-pin a job to one provider (`treg org pin`), and then calls to the job's other providers are refused.
+pin a capability to one provider (`treg org pin`), and then calls to its other providers are refused.
 
 **Calling well.**
 
@@ -283,9 +285,9 @@ no JSON `detail` is never treg's.
 | you see | charged | what to do |
 |---|---|---|
 | a 4xx from the provider, other than 429 | no | Fix your request. Do not retry it with another provider. |
-| a 429 or 5xx from the provider | no | Try the next provider of the job, and say which. |
+| a 429 or 5xx from the provider | no | Try the next provider of the capability, and say which. |
 | a timeout or dropped connection on your side | maybe | The provider may have answered and been paid. Repeat with the same `Idempotency-Key`; see below. |
-| 403 `capability_pinned` | no | A team admin pinned this job to one provider. Call `use_endpoint` from the body instead. |
+| 403 `capability_pinned` | no | A team admin pinned this capability to one provider. Call `use_endpoint` from the body instead. |
 | 402 `insufficient_balance` | no | The body has `balance_micro`, `estimated_cost_micro`, `topup_url`. Check `treg balance`, then top up (`treg topup`, or the dashboard's Team → Billing) or connect the team's own key for that provider. |
 | 403 `funds_required` | no | treg's key won't pay for this tool on this team until the team adds funds. Top up (`treg topup`, or the dashboard's Team → Billing) or connect the team's own key for that provider. |
 | 403 `own_key_required` | no | treg's key won't pay for this tool on this team. Connect the team's own key for that provider. |

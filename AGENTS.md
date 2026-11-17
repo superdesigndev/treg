@@ -308,6 +308,7 @@ One concept, one word. Settled deliberately - mixed vocabulary is how the old fr
 | the public half | **the catalog** |
 | the team's half | **your own tools** (your keys and skills) |
 | the server itself | **registry**, and only for that |
+| the same thing several providers do | **a capability**, never *job*; an agent sees it only where another provider does it too |
 
 **Do not** call either half a *vault*, a *marketplace*, or *the registry*. Say what the agent can
 now do, not what we store. Never use a count of endpoints or providers in this file; the catalog

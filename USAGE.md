@@ -607,8 +607,8 @@ approves it, the tool is in `treg catalog search` and `catalog_search`, marked `
 the price label and the 30-day success rate, ranked by relevance with no boost. A rejection comes
 with a reason (`treg hub ls`, and the dashboard's Listing tab); listing again asks again. An
 listing belongs to the tool; `unlist` withdraws it. Add
-`"capability": "<a catalog capability id>"` to recipe.json to name the job your tool does: once
-approved, `treg catalog get` on any provider of that job shows your tool beside them. A new tool's
+`"capability": "<a catalog capability id>"` to recipe.json to name what your tool does: once
+approved, `treg catalog get` on any provider of that capability shows your tool beside them. A new tool's
 success rate starts at 90%, counted as 5 runs, and real runs by other teams replace that estimate.
 Once a tool is listed, every new version and every `treg hub price` waits for treg's review: the
 publish answers `review`, callers keep the approved version and price, and you can call the new

@@ -208,8 +208,8 @@ func (e *Env) catalogGet(id string, limit *int) error {
 	return e.catalogPage(e.Client(), r, id)
 }
 
-// catalogPage prints a catalog view. `id` is the one `catalog get` asked for: a job id answers
-// as a job, and an id that is neither is the refusal `unknown_endpoint`.
+// catalogPage prints a catalog view. `id` is the one `catalog get` asked for: a capability id
+// answers as a capability, and an id that is neither is the refusal `unknown_endpoint`.
 func (e *Env) catalogPage(c *api.Client, r api.Request, id string) error {
 	r.Header = append(r.Header, api.WithView)
 	resp, err := e.do(c, r)
@@ -220,7 +220,7 @@ func (e *Env) catalogPage(c *api.Client, r api.Request, id string) error {
 	if !ok {
 		return e.Out.ShowUnrendered(resp)
 	}
-	if id != "" && resp.Status == 200 && answersAJob(id, v.Data) {
+	if id != "" && resp.Status == 200 && answersACapability(id, v.Data) {
 		e.Note("command", "catalog_job")
 	}
 	if e.JSON {
@@ -238,18 +238,19 @@ func (e *Env) catalogPage(c *api.Client, r api.Request, id string) error {
 	return &output.Exit{Code: 1}
 }
 
-// answersAJob: `catalog get <job>` answers with the job's routed endpoint, or the job itself.
-func answersAJob(id string, data []byte) bool {
+// answersACapability: `catalog get <capability>` answers with its routed endpoint, or the
+// capability itself.
+func answersACapability(id string, data []byte) bool {
 	var page struct {
-		Job      *string `json:"job"`
-		Endpoint *struct {
+		Capability *string `json:"capability"`
+		Endpoint   *struct {
 			ID string `json:"id"`
 		} `json:"endpoint"`
 	}
 	if json.Unmarshal(data, &page) != nil {
 		return false
 	}
-	return page.Job != nil || (page.Endpoint != nil && page.Endpoint.ID != id)
+	return page.Capability != nil || (page.Endpoint != nil && page.Endpoint.ID != id)
 }
 
 func (e *Env) catalogRequest(text string) error {

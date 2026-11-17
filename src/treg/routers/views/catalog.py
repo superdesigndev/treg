@@ -18,7 +18,7 @@ EXAMPLE_FIELDS = 40
 
 # `catalog get <id>` in the order an agent acts on it, one paragraph each.
 GET_GROUPS = [
-    ("id", "name", "summary", "note", "job", "upstream"),
+    ("id", "name", "summary", "note", "capability", "upstream"),
     ("price", "native_price", "price_note", "overflow_price", "settle", "access", "call", "requires",
      "stops_at", "complete"),
     ("route_headers",),
@@ -142,25 +142,26 @@ def failure_text(failure: Failure) -> str:
 def platforms(body: dict) -> View:
     rows = body.get("platforms", [])
     shelves = [{"platform": p["slug"], "category": p.get("category") or "Other", "endpoints": p["endpoints"],
-                "jobs": p["capabilities"], "providers": ", ".join(p["providers"])} for p in rows]
+                "providers": ", ".join(p["providers"])} for p in rows]
     return ({"total": len(rows),
-             "platforms": toon.table(shelves, ("platform", "category", "endpoints", "jobs", "providers"))},
-            ["treg catalog <platform>   # its endpoints, by job",
+             "platforms": toon.table(shelves, ("platform", "category", "endpoints", "providers"))},
+            ["treg catalog <platform>   # its endpoints, by capability",
              "treg catalog search \"<task>\"   # find a tool by what it does"])
 
 
 def platform(body: dict, connected: set) -> View:
-    endpoints = [(cap["id"], e) for cap in body.get("capabilities", []) for e in cap["endpoints"]] \
+    groups = body.get("capabilities", [])
+    endpoints = [(cap["id"] if cap.get("shared") else None, e) for cap in groups for e in cap["endpoints"]] \
         + [(None, e) for e in body.get("extended", [])]
     own_key = any(e["provider"] in connected for _, e in endpoints)
-    fields = ("id", "job", "price") + (("own_key",) if own_key else ()) + ("name",)
-    rows = [{"id": e["id"], "job": job, "price": cost_usd(e.get("cost")), "own_key": e["provider"] in connected,
-             "name": clip(e.get("name") or e.get("summary") or "", 120)} for job, e in endpoints]
-    jobs = [{"job": cap["id"], "does": cap.get("description")} for cap in body.get("capabilities", [])]
+    fields = ("id", "capability", "price") + (("own_key",) if own_key else ()) + ("name",)
+    rows = [{"id": e["id"], "capability": cap, "price": cost_usd(e.get("cost")), "own_key": e["provider"] in connected,
+             "name": clip(e.get("name") or e.get("summary") or "", 120)} for cap, e in endpoints]
+    shared = [{"capability": cap["id"], "does": cap.get("description")} for cap in groups if cap.get("shared")]
     return ({"platform": body["platform"]["slug"], "label": body["platform"]["label"],
-             "jobs": toon.table(jobs, ("job", "does")) or None,
+             "capabilities": toon.table(shared, ("capability", "does")) or None,
              "endpoints": toon.table(rows, fields),
-             "routed": f"a treg.<job> id {ROUTED_NOTE}; any other id is one provider"
+             "routed": f"a treg.<capability> id {ROUTED_NOTE}; any other id is one provider"
              if any(e.get("kind") == "routed" for _, e in endpoints) else None},
             [GET_HELP])
 
@@ -185,7 +186,7 @@ def search(body: dict, *, query: str, days: int | None, sort: str, connected: Ca
                  f"treg catalog request \"{query}\"   # requests steer what gets added next"])
     held = connected()
     own_key = any(e["provider"] in held for e in rows)
-    fields = ("id", "job", "price") + (("added",) if added else ()) + (("own_key",) if own_key else ()) + ("name",)
+    fields = ("id", "capability", "price") + (("added",) if added else ()) + (("own_key",) if own_key else ()) + ("name",)
     out_rows, help_lines = [], []
     for e in rows:
         name = e.get("name") or e.get("summary") or ""
@@ -193,7 +194,8 @@ def search(body: dict, *, query: str, days: int | None, sort: str, connected: Ca
             name = f"hub tool by {e.get('provider', '')}: {name}"
         if e.get("kind") == "routed" and e.get("children_hidden"):
             help_lines.append(f"treg catalog get {e['id']}   # all providers of {e.get('capability')}")
-        out_rows.append({"id": e["id"], "job": e.get("capability"), "price": cost_usd(e.get("cost")),
+        out_rows.append({"id": e["id"], "capability": e["capability"] if e.get("capability_shared") else None,
+                         "price": cost_usd(e.get("cost")),
                          "added": e.get("added"), "own_key": e["provider"] in held, "name": clip(name, 120)})
     view |= {"total": body.get("total", len(rows)), "results": toon.table(out_rows, fields)}
     if body.get("verdict") == "closest":
@@ -201,7 +203,7 @@ def search(body: dict, *, query: str, days: int | None, sort: str, connected: Ca
     elif body.get("verdict") == "keyword" and body.get("reason") not in (None, "", "not_task"):
         view["note"] = "ranked by keywords only (the judge did not answer)"
     if any(e.get("kind") == "routed" for e in rows):
-        view["routed"] = f"a treg.<job> id {ROUTED_NOTE}; any other id is one provider"
+        view["routed"] = f"a treg.<capability> id {ROUTED_NOTE}; any other id is one provider"
     help_lines.insert(0, GET_HELP)
     if body.get("total", 0) > len(rows):
         again = ([shlex.quote(query.strip())] if query.strip() else []) + ([f"--new {days}"] if days is not None else []) \
@@ -215,7 +217,7 @@ def unknown_endpoint(endpoint_id: str, body: dict) -> Failure:
     near = (detail.get("did_you_mean") or []) if isinstance(detail, dict) else []
     # The whole id minus its provider, as words: the last segment alone matches half the catalog.
     terms = " ".join(endpoint_id.split(".")[1:] or [endpoint_id]).replace("-", " ").replace("_", " ").strip()
-    return ("unknown_endpoint", f"no endpoint or job {endpoint_id!r} in the catalog",
+    return ("unknown_endpoint", f"no endpoint or capability {endpoint_id!r} in the catalog",
             [f"treg catalog get {near[0]}"] if near else [f"treg catalog search {terms}"],
             {"did_you_mean": near or None})
 
@@ -262,7 +264,7 @@ def endpoint(body: dict, *, access: str | None, pinned: Callable[[str | None], s
     h = head(e)
     view = h | {
         "name": None if routed_id or h.get("summary") else h.get("name"),
-        "job": None if routed_id else e.get("capability"),
+        "capability": e["capability"] if e.get("capability_shared") and not routed_id else None,
         "upstream": f"{e['method']} {e['path']}" if e.get("method") and e.get("path") and not routed_id else None,
         "price": routed_price(body) if routed_id else cost_usd(cost) if cost else "not priced",
         "native_price": native_amount(cost["value"], cost["currency"])
@@ -297,29 +299,29 @@ def endpoint(body: dict, *, access: str | None, pinned: Callable[[str | None], s
     elif routed and not routed_id:
         total = view.get("compare_total")
         help_lines.append(f"treg catalog get {routed}{f' --limit {total}' if total else ''}   # let treg pick the "
-                          f"provider; its plan and every other provider of this job")
+                          f"provider; its plan and every other provider of this capability")
     elif view.get("compare_total") and e.get("capability"):
-        help_lines.append(f"treg catalog get {e['capability']}   # every provider of this job")
+        help_lines.append(f"treg catalog get {e['capability']}   # every provider of this capability")
     if view.get("example_more"):
         help_lines.append(f"treg --json catalog get {e['id']} | jq .example_response   # the whole example")
     if not routed and (others := [row["id"] for row in rows if row["id"] != e["id"]]):
-        help_lines.append(f"treg catalog get {others[0]}   # the next way to do this job in compare")
+        help_lines.append(f"treg catalog get {others[0]}   # the next provider in compare")
     return view, help_lines
 
 
 def routed_member(capability: dict) -> str | None:
-    """The routed id among a job's endpoints, which `catalog get <job>` answers with."""
+    """The routed id among a capability's endpoints, which `catalog get <capability>` answers with."""
     return next((x["id"] for x in capability["endpoints"] if x.get("kind") == "routed"), None)
 
 
-def job(job_id: str, does: str | None, body: dict, pinned: str | None) -> View:
-    """A job without a routed id: every provider of it, ranked as `compare` ranks them. `body` is
-    the `catalog get` answer for the job's first endpoint."""
+def capability(capability_id: str, does: str | None, body: dict, pinned: str | None) -> View:
+    """A capability without a routed id: every provider of it, ranked as `compare` ranks them.
+    `body` is the `catalog get` answer for the capability's first endpoint."""
     members = [body["endpoint"], *(body.get("siblings") or [])]
     ranked = sorted((x for x in members if not pinned or x["provider"] == pinned), key=compare_rank)
-    return ({"job": job_id, "does": does,
+    return ({"capability": capability_id, "does": does,
              "providers": len({x["provider"] for x in ranked}),
-             "pinned": pinned_note(pinned, job_id),
+             "pinned": pinned_note(pinned, capability_id),
              "compare_note": COMPARE_NOTE, "compare": compare_rows(ranked)},
             [GET_HELP])
 
@@ -487,8 +489,8 @@ def async_view(desc) -> dict | None:
 
 
 def compare_view(e: dict, body: dict, limit: int | None, pinned: Callable[[str | None], str | None]) -> dict:
-    """The other ways to do this job. A routed id gets its plan and, on request (`limit`), the
-    providers it does not route to; any other id gets the job's providers, itself first, then the
+    """The other ways to do this. A routed id gets its plan and, on request (`limit`), the
+    providers it does not route to; any other id gets the capability's providers, itself first, then the
     measured ones by success rate and price, then the unmeasured, `limit` rows at most."""
     routing = body.get("routing") or {}
     if routing.get("plan"):
@@ -508,10 +510,10 @@ def compare_view(e: dict, body: dict, limit: int | None, pinned: Callable[[str |
                 "also": toon.table(also[:limit], ("id", "price")) or None if limit else None}
     sibs = body.get("siblings") or []
     if not sibs:
-        return {"compare": f"no other provider does {e['capability']}"} if e.get("capability") else {}
+        return {"compare": "no other provider"} if e.get("capability") else {}
     pin = pinned(e.get("capability"))
     others = sorted((s for s in sibs if not pin or s["provider"] == pin), key=compare_rank)
-    # The routed id rides second, under any limit: it is the other way to do this job.
+    # The routed id rides second, under any limit: it is the other way to do this.
     routed = [s for s in others if s.get("kind") == "routed"]
     rows = [e, *routed, *(s for s in others if s.get("kind") != "routed")][:max(limit or 10, 1 + len(routed))]
     return {"compare_total": len(others) + 1 if len(others) + 1 > len(rows) else None,
@@ -548,8 +550,9 @@ def compare_rows(endpoints: list[dict]) -> list[dict]:
     return toon.table(rows, COMPARE_FIELDS)
 
 
-def pinned_note(pinned: str | None, job_id: str | None) -> str | None:
-    return f"your team pins this job to {pinned}; other providers are refused (admin: treg org unpin {job_id})" \
+def pinned_note(pinned: str | None, capability_id: str | None) -> str | None:
+    return f"your team pins this capability to {pinned}; other providers are refused " \
+           f"(admin: treg org unpin {capability_id})" \
         if pinned else None
 
 
