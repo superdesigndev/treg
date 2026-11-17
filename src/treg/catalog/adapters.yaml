@@ -1053,6 +1053,7 @@ adapters:
     in_expr: {body.filters.contacts.include.jobTitles: "list(title)", body.pagination.size: "at_least(limit, 10)", body.pagination.page: "0"}
     out: {people: results, count: pagination.total}
     miss: "results == []"
+    position: {page0: body.pagination.page}
     row: {name: "join(firstName, lastName)", title: jobTitle.title, company: company.name, company_domain: company.domain, location: "place(location.city, location.state, location.country)", profile_url: socialLinks.linkedin}
   oceanio.people.search:
     accepts: [[company_domain]]
@@ -1443,6 +1444,7 @@ adapters:
     in_expr: {body.filters.companies.include.domains: "list(domain)", body.pagination.size: "at_least(limit, 10)", body.pagination.page: "0"}
     out: {companies: results, count: pagination.total}
     miss: "results == []"
+    position: {page0: body.pagination.page}
   fiber-ai.companies.search:
     accepts: [[domain]]
     in:  {}
@@ -2607,6 +2609,7 @@ adapters:
     in:  {q: queryParams.keyword}
     const: {queryParams.page: "1", queryParams.order: general}
     out: {videos: data.data.result, count: data.data.numResults}
+    position: {page: queryParams.page}   # a page number declared as a string
   tikhub.x.bilibili-app-fetch-search-by-type:
     accepts: [[q]]
     in:  {q: queryParams.keyword}
@@ -3945,3 +3948,241 @@ adapters:
     const: {body.days_ago: 90}
     out: {p50: salary.p50, p25: salary.p25, p75: salary.p75, p90: salary.p90, currency: salary.currency,
           count: salary.count}
+
+  # ---- linkedin.search.people (call events only) ----
+  crawl4ai.linkedin.search.people:
+    route: false
+    accepts: [[first_name, last_name]]
+    in: {first_name: body.first_name, last_name: body.last_name}
+    out: {people: rows}
+    miss: "rows == []"
+  harvestapi.linkedin.profile.search:
+    route: false
+    # `search` is documented as a name search; firstName/lastName are its split form.
+    accepts: [[full_name], [first_name, last_name]]
+    in: {full_name: queryParams.search, first_name: queryParams.firstName,
+         last_name: queryParams.lastName, title: queryParams.title}
+    out: {people: elements}
+    position: {page: queryParams.page}
+    miss: "elements == []"
+
+  # ---- linkedin.search.posts (call events only) ----
+  harvestapi.linkedin.post.search:
+    route: false
+    accepts: [[q]]
+    in: {q: queryParams.search, date_posted: queryParams.postedLimit, sort: queryParams.sortBy}
+    out: {posts: elements}
+    miss: "elements == []"
+
+  # ---- linkedin.search.jobs (call events only) ----
+  apify.linkedin.search.jobs:
+    route: false
+    accepts: [[q]]
+    in: {q: body.jobTitles, location: body.locations}
+    in_expr: {body.jobTitles: "list(q)", body.locations: "list(location)"}
+    out: {jobs: "."}
+    miss: ". == []"
+  crawl4ai.linkedin.search.jobs:
+    route: false
+    accepts: [[q]]
+    in: {q: body.query, location: body.location}
+    out: {jobs: rows}
+    miss: "rows == []"
+  harvestapi.linkedin.search.jobs:
+    route: false
+    accepts: [[q]]
+    in: {q: queryParams.search, location: queryParams.location}
+    out: {jobs: elements}
+    miss: "elements == []"
+
+  # ---- linkedin.job.detail (call events only) ----
+  harvestapi.linkedin.job.get:
+    route: false
+    accepts: [[job_id], [url]]
+    in: {job_id: queryParams.jobId, url: queryParams.url}
+    out: {job: element}
+    miss: "element == null"
+  # ---- meta-ads.library.search (call events only) ----
+  adyntel.meta-ads.library.search:
+    route: false
+    accepts: [[q]]
+    in: {q: body.keyword, country: body.country_code}
+    out: {ads: results}
+    miss: "coalesce(results, []) == []"
+    position: {cursor: body.continuation_token}
+  crawl4ai.meta-ads.library.search:
+    route: false
+    accepts: [[q]]
+    in: {q: body.query, country: body.country}
+    out: {ads: rows}
+    miss: "coalesce(rows, []) == []"
+
+  # ---- google.serp.ai_mode (call events only) ----
+  cloro.google.serp.ai_mode:
+    route: false
+    accepts: [[q]]
+    in: {q: body.prompt, country: body.gl}
+    out: {answer: "coalesce(result.markdown, result.text)", sources: result.sources}
+    miss: "coalesce(result.markdown, result.text, null) == null"
+  crawl4ai.google.serp.ai_mode:
+    route: false
+    accepts: [[q]]
+    in: {q: queryParams.q, country: queryParams.gl}
+    const: {queryParams.deep: "0"}
+    out: {answer: answer.text}
+    miss: "coalesce(answer.text, null) == null"
+  serpapi.x.google-ai-mode:
+    route: false
+    accepts: [[q]]
+    in: {q: queryParams.q}
+    const: {queryParams.engine: google_ai_mode}
+    out: {answer: reconstructed_markdown, sources: references}
+    # an answer may come as text blocks alone; only neither is a miss
+    miss: "coalesce(reconstructed_markdown, text_blocks, null) == null"
+
+  # ---- ai-search.chatgpt.scrape (call events only) ----
+  cloro.ai-search.chatgpt.scrape:
+    route: false
+    accepts: [[q]]
+    in: {q: body.prompt, country: body.country}
+    out: {answer: "coalesce(result.markdown, result.text)", sources: result.sources}
+    miss: "coalesce(result.markdown, result.text, null) == null"
+  crawl4ai.ai-search.chatgpt.scrape:
+    route: false
+    accepts: [[q]]
+    in: {q: body.prompt, country: body.country}
+    out: {answer: "coalesce(rows[0].answer, rows[0].answer_text)", sources: "rows[0].sources"}
+    miss: "coalesce(rows[0].answer, rows[0].answer_text, null) == null"
+
+  # ---- ai-search.gemini.scrape (call events only) ----
+  cloro.ai-search.gemini.scrape:
+    route: false
+    accepts: [[q]]
+    in: {q: body.prompt, country: body.country}
+    out: {answer: "coalesce(result.markdown, result.text)", sources: result.sources}
+    miss: "coalesce(result.markdown, result.text, null) == null"
+
+  # ---- web.answer (call events only) ----
+  crawl4ai.web.answer:
+    route: false
+    accepts: [[q]]
+    in: {q: queryParams.q}
+    out: {answer: answer.text, sources: answer.sources}
+    miss: "coalesce(answer.text, null) == null"
+  exa.web.answer:
+    route: false
+    accepts: [[q]]
+    in: {q: body.query}
+    out: {answer: answer, sources: citations}
+    miss: "coalesce(answer, null) == null"
+  olostep.web.answer:
+    route: false
+    accepts: [[q]]
+    in: {q: body.task}
+    out: {answer: result.json_content, sources: result.sources}
+    miss: "coalesce(result.json_content, null) == null"
+  perplexity.web.answer.fast:
+    route: false
+    accepts: [[q]]
+    in: {q: body.input}
+    const: {body.preset: fast}
+    out: {answer: "output[0].content[0].text", sources: "output[0].content[0].annotations"}
+    miss: "coalesce(output[0].content[0].text, null) == null"
+  perplexity.web.answer.low:
+    route: false
+    accepts: [[q]]
+    in: {q: body.input}
+    const: {body.preset: low}
+    out: {answer: "output[0].content[0].text", sources: "output[0].content[0].annotations"}
+    miss: "coalesce(output[0].content[0].text, null) == null"
+  # ---- people.search.count (call events only) ----
+  dropleads.people.search.count:
+    route: false
+    accepts: [[company_domain, title], [company_domain], [title]]
+    in: {company_domain: body.filters.companyDomains, title: body.filters.jobTitles}
+    in_expr: {body.filters.companyDomains: "list(company_domain)", body.filters.jobTitles: "list(title)"}
+    out: {count: count}
+    miss: "count == 0"
+  icypeas.people.search.count:
+    route: false
+    accepts: [[company_domain, title], [company_domain], [title]]
+    in: {company_domain: body.query.currentCompanyWebsite.include, title: body.query.currentJobTitle.include}
+    in_expr: {body.query.currentCompanyWebsite.include: "list(company_domain)",
+              body.query.currentJobTitle.include: "list(title)"}
+    out: {count: total}
+    miss: "total == 0"
+  leadocean.people.search.count:
+    route: false
+    accepts: [[company_domain, title], [company_domain], [title]]
+    in: {company_domain: queryParams.domain, title: queryParams.title}
+    const: {queryParams.count: true, queryParams.limit: 1}
+    out: {count: meta.total}
+    miss: "meta.total == 0"
+  leadsforge.people.search.count:
+    route: false
+    accepts: [[company_domain, title], [company_domain], [title]]
+    in: {company_domain: body.companyDomains.include, title: body.leadJobTitles.include}
+    in_expr: {body.companyDomains.include: "list(company_domain)", body.leadJobTitles.include: "list(title)"}
+    out: {count: totalCount}
+    miss: "totalCount == 0"
+
+  # ---- companies.emails.list (call events only) ----
+  anymailfinder.companies.emails.list:
+    route: false
+    accepts: [[domain]]
+    in: {domain: body.domain}
+    out: {emails: emails}
+    # A blacklisted domain is a refusal, not an empty answer.
+    miss: "email_status == 'not_found'"
+  tomba.companies.emails.list:
+    route: false
+    accepts: [[domain]]
+    in: {domain: queryParams.domain}
+    out: {emails: data.emails}
+    miss: "data.emails == []"
+
+  # ---- people.decision_makers (call events only) ----
+  anymailfinder.people.decision_makers:
+    route: false
+    accepts: [[company_domain]]
+    in: {company_domain: body.domain}
+    # One decision maker per answer: the body is the row.
+    out: {people: "list(.)"}
+    miss: "email_status == 'not_found'"
+
+  # ---- reddit.search.posts (call events only) ----
+  crawl4ai.reddit.search.posts:
+    route: false
+    accepts: [[q]]
+    in: {q: body.query, sort: body.sort}
+    out: {posts: rows}
+    miss: "coalesce(rows, []) == []"
+  scrapecreators.reddit.search.posts:
+    route: false
+    accepts: [[q]]
+    in: {q: queryParams.query, sort: queryParams.sort}
+    out: {posts: posts}
+
+  # ---- reddit.post.comments (call events only) ----
+  brightdata.x.reddit-comments:
+    route: false
+    accepts: [[url]]
+    in: {url: body.url}
+    in_read: {post_id: "reddit_post_id(body.url)"}
+    body_array: true
+    const: {queryParams.dataset_id: gd_lvzdpsdlw09j6t702, queryParams.format: json}
+    out: {comments: "."}
+  crawl4ai.reddit.post.comments:
+    route: false
+    accepts: [[url]]
+    in: {url: body.url}
+    # body.url takes the post's page or its bare id.
+    in_read: {post_id: "reddit_post_id(body.url)"}
+    out: {comments: rows}
+    miss: "coalesce(rows, []) == []"
+  tikhub.x.reddit-app-fetch-post-comments:
+    route: false
+    accepts: [[post_id]]
+    in: {post_id: queryParams.post_id}
+    in_read: {post_id: "reddit_post_id(queryParams.post_id)"}
+    out: {comments: data.postInfoById.commentForest.trees}
