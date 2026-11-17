@@ -879,9 +879,10 @@ def _explore(contract, ranked: list[Candidate], options: RouteOptions, call_ref:
     if drawn is None or drawable[drawn] is ranked[0]:
         return ranked, None   # the router's own first pick: nothing moves and nothing is capped
     first = drawable[drawn]
-    # Any order the router could have run ends its hit on one of these candidates at that one's
-    # price or more, so the cheapest of them bounds what the default order charges for a hit.
-    cap = min(c.price_micro for c in ranked if c.price_micro is not None)
+    # The caller pays for an explored hit what a hit by the router's own first pick costs. An
+    # allow-list of providers no dearer than that first pick keeps treg's share at zero.
+    cap = ranked[0].price_micro if ranked[0].price_micro is not None else \
+        min(c.price_micro for c in ranked if c.price_micro is not None)
     return [first, *(c for c in ranked if c is not first)], Explore(first.endpoint["id"], drawn, cap)
 
 

@@ -137,8 +137,8 @@ async def test_an_explored_call_asks_the_drawn_provider_first_and_keeps_the_rest
     rest = [c.endpoint["id"] for c in default.candidates if c.endpoint["provider"] != "leadmagic"]
     assert [c.endpoint["id"] for c in plan.candidates[1:]] == rest, "the router's order follows"
     assert plan.route_rule["route_explore"] == "leadmagic"
-    assert plan.explore.cap_micro == min(c.price_micro for c in default.candidates)
-    assert first.price_micro > plan.explore.cap_micro, "leadmagic costs more than the default's cheapest"
+    assert plan.explore.cap_micro == default.candidates[0].price_micro, "a hit costs what the default first pick's would"
+    assert first.price_micro > plan.explore.cap_micro, "leadmagic costs more than the default first pick"
 
 
 async def test_a_preview_or_a_callers_own_order_never_explores(clients, explore):
@@ -169,7 +169,7 @@ async def test_a_provider_not_in_the_plan_is_never_drawn(clients, explore):
     assert plan.explore is None and "route_explore" not in plan.route_rule
 
 
-async def test_an_explored_hit_bills_at_most_the_default_orders_cheapest_hit(
+async def test_an_explored_hit_bills_at_most_the_default_first_picks_price(
         clients, explore, events_on, relay):
     from test_call_vendor_path import _balance
     explore()

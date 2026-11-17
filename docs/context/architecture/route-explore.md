@@ -38,7 +38,8 @@ TREG_ROUTE_EXPLORE_SALT=treg-route-explore-v1   # changing it reshuffles which c
 Each capability names `percent` (0 to 100, decimals allowed) and `providers`, distinct lowercase
 provider names. Anything else fails startup, so a typo cannot explore something nobody approved.
 Only providers that passed provider admission belong in the list (treg-internal
-`provider-admission` skill). Setting `percent` to 0 keeps recording the control arm and moves
+`provider-admission` skill), and only ones no dearer than the capability's usual first pick (see
+Billing). Setting `percent` to 0 keeps recording the control arm and moves
 nothing; removing the capability turns the split off completely.
 
 ## The draw
@@ -87,14 +88,14 @@ a child that bills leaves the hold open (`DeferredSettle`); the parent settles e
 the end of a call that answers and releases them all when it fails. Every attempt that bills is
 paid: a per-success provider bills a hit, a per-call one also bills a miss.
 
-The explored attempt is billed so that the caller never pays more than the router's own order
-would have charged:
+The explored attempt is billed like the router's own first pick:
 
 - If it answers (a hit, or a weak hit kept as an answer), its open hold is lowered
-  (`settle.cap_deferred`) to `cap_micro`, the lowest catalog price among the plan's candidates.
-  Any order the router could have run ends its hit on one of those candidates at that price or
-  more, so the explored hit costs no more than any default hit. The provider's own figure stays on
-  the ledger row (`explore_uncapped_micro`, `explore_cap_micro`).
+  (`settle.cap_deferred`) to `cap_micro`, the catalog price of the provider the router would have
+  asked first. The caller pays for an explored hit what a hit there costs. A dearer explored
+  provider would leave treg paying the difference, so the allow-list should hold only providers no
+  dearer than the usual first pick: then nothing is lowered and treg's books stay even. The
+  ledger row keeps `explore_uncapped_micro` and `explore_cap_micro` whenever a hold was lowered.
 - If it does not answer (a miss, an error, a rejection), its hold is released: the caller pays
   nothing for it, and the rest of the call bills exactly as the default would.
 - A `X-Treg-Route-Max-Cost` check counts the explored attempt at its capped price. The child still
