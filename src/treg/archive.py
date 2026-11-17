@@ -1339,24 +1339,58 @@ async def resolve_result(key_hash: str, content_hash: str) -> dict[str, Any] | N
     }
 
 
-async def bytes_on_file(session, pairs: set[tuple[str, str]]) -> set[tuple[str, str]]:
+async def bytes_on_file(session, pairs: set[tuple[str, str]], *,
+                        timeout_s: int = 30) -> set[tuple[str, str]]:
     """Which `(key_hash, content_hash)` answers still carry their bytes: in object storage, in the
     row, or through a `body_of` carrier. A hash-only version (licence or size refused the bytes) is
-    not on file. Metadata only: no body is read. For retry rows dropping their own copy."""
-    from sqlalchemy import or_, select
+    not on file. Metadata only: no body is read. For retry rows dropping their own copy.
+
+    **Index-friendly rewrite (2026-11):** The original two-IN-list join could pick a bad plan on
+    huge tables (archivekey ~128 GB, archivesnapshot ~98 GB), causing statement_timeout. This
+    version queries one key_hash at a time using the unique index (uq_archive_key_hash), then
+    filters snapshots by content_hash using the content index (ix_archive_snapshot_content).
+    """
+    from sqlalchemy import or_, select, text
 
     from .models import ArchiveKey, ArchiveSnapshot
 
     if not pairs:
         return set()
-    rows = (await session.execute(
-        select(ArchiveKey.key_hash, ArchiveSnapshot.content_hash)
-        .join(ArchiveSnapshot, ArchiveSnapshot.key_id == ArchiveKey.id)
-        .where(ArchiveKey.key_hash.in_({k for k, _ in pairs}),
-               ArchiveSnapshot.content_hash.in_({c for _, c in pairs}),
-               or_(ArchiveSnapshot.body_storage.in_(("r2", "both")), ArchiveSnapshot.body.is_not(None),
-                   ArchiveSnapshot.body_of.is_not(None))))).all()
-    return {(k, c) for k, c in rows} & pairs
+
+    # Group pairs by key_hash for efficient per-key lookups
+    by_key: dict[str, set[str]] = {}
+    for key_hash, content_hash in pairs:
+        by_key.setdefault(key_hash, set()).add(content_hash)
+
+    result: set[tuple[str, str]] = set()
+
+    # Set per-statement timeout for safety
+    if session.bind.dialect.name == "postgresql":
+        await session.execute(text(f"SET LOCAL statement_timeout = '{timeout_s}s'"))
+
+    # Query one key_hash at a time using the unique index
+    for key_hash, content_hashes in by_key.items():
+        # Look up the key by its unique hash (uses uq_archive_key_hash)
+        key = (await session.execute(
+            select(ArchiveKey.id).where(ArchiveKey.key_hash == key_hash)
+        )).scalar_one_or_none()
+        if key is None:
+            continue
+        # Find matching snapshots with bodies (uses ix_archive_snapshot_content via content_hash filter)
+        # and foreign key index on key_id
+        snaps = (await session.execute(
+            select(ArchiveSnapshot.content_hash).where(
+                ArchiveSnapshot.key_id == key,
+                ArchiveSnapshot.content_hash.in_(content_hashes),
+                or_(ArchiveSnapshot.body_storage.in_(("r2", "both")),
+                    ArchiveSnapshot.body.is_not(None),
+                    ArchiveSnapshot.body_of.is_not(None)),
+            )
+        )).scalars().all()
+        for content_hash in snaps:
+            result.add((key_hash, content_hash))
+
+    return result
 
 
 async def answer_bytes(key_hash: str, body_hash: str) -> bytes | None:

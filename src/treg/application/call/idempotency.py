@@ -450,15 +450,19 @@ class IdempotencyPruneResult:
     batches: int
     complete: bool
     page_timeouts: int = 0
+    lock_held: bool = True  # False if another run held the advisory lock
 
 
 _PAGE_TIMEOUT_S = 60
 _DELETE_TIMEOUT_S = 15
+_PRUNE_ADVISORY_LOCK_ID = 0x74726567_70727565  # "tregprue" as int64
+_PRUNE_WALL_BUDGET_S = 55 * 60  # 55 minutes: stop before the next hourly cron
 
 
 async def prune_expired_idempotency(*, batch_size: int = 200, pause_s: float = 0.25,
                                    max_batches: int = 10000, dry_run: bool = False,
-                                   make_session=session_maker) -> IdempotencyPruneResult:
+                                   make_session=session_maker,
+                                   wall_budget_s: float = _PRUNE_WALL_BUDGET_S) -> IdempotencyPruneResult:
     """Remove only completed, expired answers, with a fixed window and bounded transactions.
 
     Page IDs first, then filter the DELETE: filtering before LIMIT can walk the entire cold
@@ -473,6 +477,9 @@ async def prune_expired_idempotency(*, batch_size: int = 200, pause_s: float = 0
     front, so skipped pages are retried on fresh autovacuum state. Any skipped page makes the
     result incomplete, even when later pages succeed; three consecutive timeouts stop traversal.
 
+    **Overlapping runs (2026-11 fix):** An advisory lock prevents twin runs: the second exits 0
+    immediately with `lock_held=False`. A wall-clock budget stops cleanly before the next schedule.
+
     Ops note: after a large initial prune, run `VACUUM (ANALYZE) idempotentcall` once. Autovacuum
     handles routine churn; manual vacuum is only needed after an abnormally large delete ratio.
     """
@@ -481,6 +488,7 @@ async def prune_expired_idempotency(*, batch_size: int = 200, pause_s: float = 0
     if not 0 <= pause_s <= 60:
         raise ValueError("pause_s must be 0..60")
     log = logging.getLogger("treg.idempotency")
+    start_time = asyncio.get_event_loop().time()
 
     async def bound_page(db):
         if db.bind.dialect.name == "postgresql":
@@ -492,7 +500,15 @@ async def prune_expired_idempotency(*, batch_size: int = 200, pause_s: float = 0
             await db.execute(text("SET LOCAL lock_timeout = '1s'"))
             await db.execute(text(f"SET LOCAL statement_timeout = '{_DELETE_TIMEOUT_S}s'"))
 
+    lock_held = True
     async with make_session() as db:
+        # Advisory lock: prevent overlapping runs. Second run exits 0 immediately.
+        if db.bind.dialect.name == "postgresql":
+            got_lock = await db.scalar(text(f"SELECT pg_try_advisory_lock({_PRUNE_ADVISORY_LOCK_ID})"))
+            if not got_lock:
+                log.info("idempotency prune: another run holds the advisory lock; exiting")
+                now = (await db.scalar(select(func.current_timestamp()))).replace(tzinfo=None)
+                return IdempotencyPruneResult(now, 0, 0, 0, 0, True, 0, False)
         await bound_page(db)
         cutoff = (await db.scalar(select(func.current_timestamp()))).replace(tzinfo=None)
         upper_id = (await db.scalar(select(func.max(IdempotentCall.id)))) or 0
@@ -504,62 +520,78 @@ async def prune_expired_idempotency(*, batch_size: int = 200, pause_s: float = 0
     cursor = eligible = deleted = batches = page_timeouts = 0
     consecutive_timeouts = 0
     complete = False
-    while batches < max_batches:
-        rows = None
+
+    try:
+        while batches < max_batches:
+            # Wall-clock budget: stop before the next scheduled run
+            elapsed = asyncio.get_event_loop().time() - start_time
+            if elapsed >= wall_budget_s:
+                log.info("idempotency prune: wall-clock budget exhausted after %.0fs", elapsed)
+                break
+
+            rows = None
+            try:
+                async with make_session() as db:
+                    await bound_page(db)
+                    rows = (await db.execute(select(
+                        IdempotentCall.id, IdempotentCall.status, IdempotentCall.expires_at,
+                    ).where(
+                        IdempotentCall.id <= upper_id, IdempotentCall.id > cursor,
+                    ).order_by(IdempotentCall.id).limit(batch_size))).all()
+            except Exception as exc:
+                is_timeout = "statement timeout" in str(exc).lower() or "QueryCanceledError" in type(exc).__name__
+                if is_timeout:
+                    page_timeouts += 1
+                    consecutive_timeouts += 1
+                    log.warning(
+                        "idempotency prune page timeout: cursor=%d batch_size=%d consecutive=%d (advancing)",
+                        cursor, batch_size, consecutive_timeouts)
+                    cursor += batch_size
+                    batches += 1
+                    if cursor >= upper_id:
+                        complete = True
+                        break
+                    if consecutive_timeouts >= 3:
+                        log.error("idempotency prune: %d consecutive page timeouts, stopping", consecutive_timeouts)
+                        break
+                    await asyncio.sleep(pause_s)
+                    continue
+                raise
+            consecutive_timeouts = 0
+            if not rows:
+                complete = True
+                break
+            ids = [row.id for row in rows if row.status == "done" and row.expires_at < cutoff]
+            eligible += len(ids)
+            if ids and not dry_run:
+                async with make_session() as db:
+                    await bound_delete(db)
+                    removed = (await db.execute(delete(IdempotentCall).where(
+                        *eligible_where, IdempotentCall.id.in_(ids),
+                    ).returning(IdempotentCall.id))).all()
+                    await db.commit()
+                    deleted += len(removed)
+            cursor = rows[-1].id
+            batches += 1
+            complete = len(rows) < batch_size or cursor == upper_id
+            if batches % 50 == 0:
+                log.info(
+                    "idempotency prune: batches=%d deleted=%d cursor=%d timeouts=%d",
+                    batches, deleted, cursor, page_timeouts)
+            if complete:
+                break
+            await asyncio.sleep(pause_s)
+    finally:
+        # Release advisory lock
         try:
             async with make_session() as db:
-                await bound_page(db)
-                rows = (await db.execute(select(
-                    IdempotentCall.id, IdempotentCall.status, IdempotentCall.expires_at,
-                ).where(
-                    IdempotentCall.id <= upper_id, IdempotentCall.id > cursor,
-                ).order_by(IdempotentCall.id).limit(batch_size))).all()
-        except Exception as exc:
-            is_timeout = "statement timeout" in str(exc).lower() or "QueryCanceledError" in type(exc).__name__
-            if is_timeout:
-                page_timeouts += 1
-                consecutive_timeouts += 1
-                log.warning(
-                    "idempotency prune page timeout: cursor=%d batch_size=%d consecutive=%d (advancing)",
-                    cursor, batch_size, consecutive_timeouts)
-                cursor += batch_size
-                batches += 1
-                if cursor >= upper_id:
-                    complete = True
-                    break
-                if consecutive_timeouts >= 3:
-                    log.error("idempotency prune: %d consecutive page timeouts, stopping", consecutive_timeouts)
-                    break
-                await asyncio.sleep(pause_s)
-                continue
-            raise
-        consecutive_timeouts = 0
-        if not rows:
-            complete = True
-            break
-        ids = [row.id for row in rows if row.status == "done" and row.expires_at < cutoff]
-        eligible += len(ids)
-        if ids and not dry_run:
-            async with make_session() as db:
-                await bound_delete(db)
-                removed = (await db.execute(delete(IdempotentCall).where(
-                    *eligible_where, IdempotentCall.id.in_(ids),
-                ).returning(IdempotentCall.id))).all()
-                await db.commit()
-                deleted += len(removed)
-        cursor = rows[-1].id
-        batches += 1
-        complete = len(rows) < batch_size or cursor == upper_id
-        if batches % 50 == 0:
-            log.info(
-                "idempotency prune: batches=%d deleted=%d cursor=%d timeouts=%d",
-                batches, deleted, cursor, page_timeouts)
-        if complete:
-            break
-        await asyncio.sleep(pause_s)
+                if db.bind.dialect.name == "postgresql":
+                    await db.execute(text(f"SELECT pg_advisory_unlock({_PRUNE_ADVISORY_LOCK_ID})"))
+        except Exception:  # noqa: BLE001
+            pass
 
     return IdempotencyPruneResult(
-        cutoff, upper_id, eligible, deleted, batches, complete and page_timeouts == 0, page_timeouts,
+        cutoff, upper_id, eligible, deleted, batches, complete and page_timeouts == 0, page_timeouts, lock_held,
     )
 
 
@@ -572,11 +604,19 @@ class IdempotencyTrimResult:
     bytes_freed: int
     batches: int
     complete: bool
+    timeouts: int = 0
+    skipped_batches: int = 0
+
+
+_TRIM_ADVISORY_LOCK_ID = 0x74726567_69646570  # "tregidep" as int64
+_TRIM_WALL_BUDGET_S = 55 * 60  # 55 minutes: stop before the next hourly cron at minute 43
+_TRIM_BATCH_TIMEOUT_S = 30  # per-batch bytes_on_file + updates
 
 
 async def trim_archived_answers(*, batch_size: int = 200, pause_s: float = 0.25,
                                 max_batches: int = 10000, min_age_s: int = 600, dry_run: bool = False,
-                                make_session=session_maker) -> IdempotencyTrimResult:
+                                make_session=session_maker,
+                                wall_budget_s: float = _TRIM_WALL_BUDGET_S) -> IdempotencyTrimResult:
     """Drop a live retry row's own copy of an answer the archive holds byte for byte.
 
     Without this the same answer is stored twice, once per table, for a day. A row qualifies when its call's `CallRecord`
@@ -587,73 +627,134 @@ async def trim_archived_answers(*, batch_size: int = 200, pause_s: float = 0.25,
     `min_age_s`: the archive records a moment after the call and can shed a recording under load,
     so a row is looked at only once it is ten minutes old. Paged like `prune_expired_idempotency`:
     a fixed upper id, id pages without bodies first, bodies read only for qualifying rows.
+
+    **Resilience (2026-11 fix):** Each batch catches statement_timeout / QueryCanceledError, rolls
+    back, logs, and continues. A timeout does not fail the whole run: the prune of expired rows
+    must complete and exit 0 even if trim cannot finish. Skipped batches are reported but not fatal.
+    An advisory lock prevents overlapping runs: the second exits 0 immediately.
+    A wall-clock budget stops cleanly before the next scheduled run.
     """
     if not 1 <= batch_size <= 1000 or not 1 <= max_batches <= 10000:
         raise ValueError("batch_size must be 1..1000 and max_batches must be 1..10000")
     log = logging.getLogger("treg.idempotency")
+    start_time = asyncio.get_event_loop().time()
 
-    async def bound(db):
+    async def bound_page(db):
         if db.bind.dialect.name == "postgresql":
             await db.execute(text("SET LOCAL lock_timeout = '1s'"))
             await db.execute(text(f"SET LOCAL statement_timeout = '{_PAGE_TIMEOUT_S}s'"))
 
     async with make_session() as db:
-        await bound(db)
+        # Advisory lock: prevent overlapping runs. Second run exits 0 immediately.
+        if db.bind.dialect.name == "postgresql":
+            got_lock = await db.scalar(text(f"SELECT pg_try_advisory_lock({_TRIM_ADVISORY_LOCK_ID})"))
+            if not got_lock:
+                log.info("idempotency trim: another run holds the advisory lock; exiting")
+                now = (await db.scalar(select(func.current_timestamp()))).replace(tzinfo=None)
+                return IdempotencyTrimResult(now, 0, 0, 0, 0, 0, True, 0, 0)
+        await bound_page(db)
         cutoff = (await db.scalar(select(func.current_timestamp()))).replace(tzinfo=None)
         upper_id = (await db.scalar(select(func.max(IdempotentCall.id)))) or 0
     settled_before = cutoff - timedelta(seconds=min_age_s)
-    cursor = examined = trimmed = freed = batches = 0
+    cursor = examined = trimmed = freed = batches = timeouts = skipped_batches = 0
     complete = False
-    while batches < max_batches:
-        async with make_session() as db:
-            await bound(db)
-            page = (await db.execute(select(
-                IdempotentCall.id, IdempotentCall.org_id, IdempotentCall.call_ref, IdempotentCall.status,
-                IdempotentCall.response_status, IdempotentCall.created_at, IdempotentCall.expires_at,
-                IdempotentCall.archive_content_hash, IdempotentCall.response_body.is_not(None).label("has_body"),
-            ).where(IdempotentCall.id > cursor, IdempotentCall.id <= upper_id)
-              .order_by(IdempotentCall.id).limit(batch_size))).all()
-            if not page:
+    consecutive_timeouts = 0
+
+    try:
+        while batches < max_batches:
+            # Wall-clock budget: stop before the next scheduled run
+            elapsed = asyncio.get_event_loop().time() - start_time
+            if elapsed >= wall_budget_s:
+                log.info("idempotency trim: wall-clock budget exhausted after %.0fs", elapsed)
+                break
+
+            try:
+                async with make_session() as db:
+                    await bound_page(db)
+                    page = (await db.execute(select(
+                        IdempotentCall.id, IdempotentCall.org_id, IdempotentCall.call_ref, IdempotentCall.status,
+                        IdempotentCall.response_status, IdempotentCall.created_at, IdempotentCall.expires_at,
+                        IdempotentCall.archive_content_hash, IdempotentCall.response_body.is_not(None).label("has_body"),
+                    ).where(IdempotentCall.id > cursor, IdempotentCall.id <= upper_id)
+                      .order_by(IdempotentCall.id).limit(batch_size))).all()
+                    if not page:
+                        complete = True
+                        break
+                    rows = [r for r in page if r.status == "done" and r.has_body and r.call_ref
+                            and r.archive_content_hash is None and 200 <= (r.response_status or 0) < 300
+                            and r.created_at < settled_before and r.expires_at >= cutoff]
+                    examined += len(rows)
+                    links = {}
+                    if rows:
+                        links = {(c.org_id, c.call_ref): (c.archive_key_hash, c.archive_content_hash)
+                                 for c in (await db.execute(select(
+                                     CallRecord.org_id, CallRecord.call_ref, CallRecord.archive_key_hash,
+                                     CallRecord.archive_content_hash,
+                                 ).where(CallRecord.call_ref.in_({r.call_ref for r in rows}),
+                                         CallRecord.archive_content_hash.is_not(None)))).all()}
+                    wanted = {r.id: links[(r.org_id, r.call_ref)] for r in rows if (r.org_id, r.call_ref) in links}
+                    # bytes_on_file has its own timeout handling; a timeout there is caught here
+                    on_file = await archive.bytes_on_file(db, set(wanted.values()),
+                                                          timeout_s=_TRIM_BATCH_TIMEOUT_S)
+                    wanted = {i: pair for i, pair in wanted.items() if pair in on_file}
+                    if wanted:
+                        bodies = (await db.execute(select(IdempotentCall.id, IdempotentCall.response_body)
+                                                   .where(IdempotentCall.id.in_(wanted)))).all()
+                        same = [(b.id, len(b.response_body)) for b in bodies
+                                if b.response_body is not None and archive.content_hash(b.response_body) == wanted[b.id][1]]
+                        for row_id, size in same:
+                            if dry_run:
+                                trimmed, freed = trimmed + 1, freed + size
+                                continue
+                            key_hash, body_hash = wanted[row_id]
+                            done = (await db.execute(update(IdempotentCall).where(
+                                IdempotentCall.id == row_id, IdempotentCall.status == "done",
+                                IdempotentCall.response_body.is_not(None), IdempotentCall.archive_content_hash.is_(None),
+                            ).values(response_body=None, archive_key_hash=key_hash, archive_content_hash=body_hash)
+                            .execution_options(synchronize_session=False))).rowcount
+                            trimmed, freed = trimmed + done, freed + (size if done else 0)
+                        await db.commit()
+                consecutive_timeouts = 0
+            except Exception as exc:
+                is_timeout = "statement timeout" in str(exc).lower() or "QueryCanceledError" in type(exc).__name__
+                if is_timeout:
+                    timeouts += 1
+                    skipped_batches += 1
+                    consecutive_timeouts += 1
+                    log.warning(
+                        "idempotency trim batch timeout: cursor=%d batch_size=%d consecutive=%d (skipping)",
+                        cursor, batch_size, consecutive_timeouts)
+                    # Advance cursor past this batch and continue
+                    cursor += batch_size
+                    batches += 1
+                    if cursor >= upper_id:
+                        complete = True
+                        break
+                    if consecutive_timeouts >= 5:
+                        log.error("idempotency trim: %d consecutive batch timeouts, stopping trim pass",
+                                  consecutive_timeouts)
+                        break
+                    await asyncio.sleep(pause_s)
+                    continue
+                raise
+
+            cursor = page[-1].id
+            batches += 1
+            if len(page) < batch_size or cursor >= upper_id:
                 complete = True
                 break
-            rows = [r for r in page if r.status == "done" and r.has_body and r.call_ref
-                    and r.archive_content_hash is None and 200 <= (r.response_status or 0) < 300
-                    and r.created_at < settled_before and r.expires_at >= cutoff]
-            examined += len(rows)
-            links = {}
-            if rows:
-                links = {(c.org_id, c.call_ref): (c.archive_key_hash, c.archive_content_hash)
-                         for c in (await db.execute(select(
-                             CallRecord.org_id, CallRecord.call_ref, CallRecord.archive_key_hash,
-                             CallRecord.archive_content_hash,
-                         ).where(CallRecord.call_ref.in_({r.call_ref for r in rows}),
-                                 CallRecord.archive_content_hash.is_not(None)))).all()}
-            wanted = {r.id: links[(r.org_id, r.call_ref)] for r in rows if (r.org_id, r.call_ref) in links}
-            on_file = await archive.bytes_on_file(db, set(wanted.values()))
-            wanted = {i: pair for i, pair in wanted.items() if pair in on_file}
-            if wanted:
-                bodies = (await db.execute(select(IdempotentCall.id, IdempotentCall.response_body)
-                                           .where(IdempotentCall.id.in_(wanted)))).all()
-                same = [(b.id, len(b.response_body)) for b in bodies
-                        if b.response_body is not None and archive.content_hash(b.response_body) == wanted[b.id][1]]
-                for row_id, size in same:
-                    if dry_run:
-                        trimmed, freed = trimmed + 1, freed + size
-                        continue
-                    key_hash, body_hash = wanted[row_id]
-                    done = (await db.execute(update(IdempotentCall).where(
-                        IdempotentCall.id == row_id, IdempotentCall.status == "done",
-                        IdempotentCall.response_body.is_not(None), IdempotentCall.archive_content_hash.is_(None),
-                    ).values(response_body=None, archive_key_hash=key_hash, archive_content_hash=body_hash)
-                    .execution_options(synchronize_session=False))).rowcount
-                    trimmed, freed = trimmed + done, freed + (size if done else 0)
-                await db.commit()
-        cursor = page[-1].id
-        batches += 1
-        if len(page) < batch_size or cursor >= upper_id:
-            complete = True
-            break
-        if batches % 50 == 0:
-            log.info("idempotency trim: batches=%d trimmed=%d freed=%d cursor=%d", batches, trimmed, freed, cursor)
-        await asyncio.sleep(pause_s)
-    return IdempotencyTrimResult(cutoff, upper_id, examined, trimmed, freed, batches, complete)
+            if batches % 50 == 0:
+                log.info("idempotency trim: batches=%d trimmed=%d freed=%d cursor=%d timeouts=%d",
+                         batches, trimmed, freed, cursor, timeouts)
+            await asyncio.sleep(pause_s)
+    finally:
+        # Release advisory lock
+        try:
+            async with make_session() as db:
+                if db.bind.dialect.name == "postgresql":
+                    await db.execute(text(f"SELECT pg_advisory_unlock({_TRIM_ADVISORY_LOCK_ID})"))
+        except Exception:  # noqa: BLE001
+            pass
+
+    return IdempotencyTrimResult(cutoff, upper_id, examined, trimmed, freed, batches,
+                                  complete and timeouts == 0, timeouts, skipped_batches)
