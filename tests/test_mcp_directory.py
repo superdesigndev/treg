@@ -647,7 +647,7 @@ async def test_feedback_hint_only_wraps_successful_sampled_calls(clients, monkey
             replay = await _call_tool(client, tool, args, token, path=path)
             monkeypatch.setattr(call_service, 'relay', _fake_relay(503, b'{"error":"unavailable"}'))
             failed = await _call_tool(client, tool, {**args, 'idempotency_key': 'failed'}, token, path=path)
-        assert first['status'] == 200
+        assert first.get('status') == 200, first
         assert first['body'] == json.loads(body)
         assert first.get('hint') == (hints.HINT if sampled else None)
         assert first['call_id']
