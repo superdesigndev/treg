@@ -818,6 +818,10 @@ def test_a_page_named_by_a_parameter_called_page_is_no_position():
     body = json.dumps({"page": "https://www.facebook.com/somebrand"}).encode()
     assert ev.page_position(adapter, (), body) is None
     assert ev.page_position(adapter, (), json.dumps({"page": "12345"}).encode()) is None
+    # a page number its provider declares as a string is read through a declared `position`
+    bili = catalog_store.load().adapters["justoneapi.x.bilibili-search-video-v2"]
+    assert ev.page_position(bili, (("page", "1"),), None) is None
+    assert ev.page_position(bili, (("page", "2"),), None) == ("page", "2")
 
 
 def test_a_page_counted_from_zero_moves_on_at_one(monkeypatch):

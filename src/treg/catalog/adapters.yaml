@@ -2609,6 +2609,7 @@ adapters:
     in:  {q: queryParams.keyword}
     const: {queryParams.page: "1", queryParams.order: general}
     out: {videos: data.data.result, count: data.data.numResults}
+    position: {page: queryParams.page}   # a page number declared as a string
   tikhub.x.bilibili-app-fetch-search-by-type:
     accepts: [[q]]
     in:  {q: queryParams.keyword}
