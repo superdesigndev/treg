@@ -109,10 +109,12 @@ Fernet token and still opens locally, so the two formats coexist until every row
   than guessing. `treg-worker admin reencrypt-credentials` then re-seals the remaining Fernet rows in
   id batches, opening and sealing with no transaction held and writing each row only if its value is
   unchanged; it refuses to run while new writes are still Fernet, and `--dry-run` calls no KMS.
-- **Once per call.** KMS calls are network I/O run in a worker thread. A call opens each credential
-  once, after its database phase ends (`open_for_call` in a per-call `call_scope`); injection
-  (`relay`), error masking (`evidence`), the sandbox and refresh read that copy. The health run
-  scopes the same way per run.
+- **No connection waits on KMS.** KMS calls are network I/O run in a worker thread, and every
+  path ends its transaction before opening or sealing (AGENTS.md, non-negotiable 3): a bundle
+  import seals all its credentials before its single write transaction.
+- **Once per call.** A call opens each credential once, after its database phase ends
+  (`open_for_call` in a per-call `call_scope`); injection (`relay`), error masking (`evidence`),
+  the sandbox and refresh read that copy. The health run scopes the same way per run.
 - **Listing never opens.** `Secret.refreshable` is recorded with every oauth write, so connection
   lists and expiry state read a column instead of opening every credential. A null on a Fernet row
   written before the column opens locally; the re-encryption job fills it.

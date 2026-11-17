@@ -236,6 +236,7 @@ async def render_grant(tool: Tool, profile: dict, db: AsyncSession, http) -> dic
                 '"from_binding" (the tool has multiple credentials, so treg won\'t guess which one)'
                 if len({b.get("secret_id") for b in tool.bindings}) > 1
                 else f"inject entry {target} has no resolvable secret")
+        await db.commit()  # the credential opens over the network: hold no transaction
         if secret.kind == "oauth":
             await oauth.ensure_fresh(secret, db, http)  # refresh in place; raises on a dead root
             raw = await credential_cipher.unseal(secret.value, org_id=secret.org_id)

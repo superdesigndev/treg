@@ -401,6 +401,8 @@ async def start_oauth_connection(
             )
         if not name:
             raise ConnectError("invalid_provider", "name is required")
+        # Sealed before this session's first query, so no connection waits on KMS.
+        sealed_client_secret = await credential_cipher.seal(client_secret, org_id=org_id)
 
         # Reconnecting targets ONE connection. Scoped to the caller's org so a guessed id can't aim a
         # consent at another org's credential, and matched to the provider so a Slack consent can't be
@@ -441,7 +443,7 @@ async def start_oauth_connection(
         redirect_uri = redirect_uri or treg_callback
         pending = PendingOAuth(
             org_id=org_id, state=state, name=name, owner=owner,
-            client_id=client_id, client_secret=await credential_cipher.seal(client_secret, org_id=org_id),
+            client_id=client_id, client_secret=sealed_client_secret,
             auth_uri=auth_uri, token_uri=token_uri, scopes=scope_sep.join(scopes),
             redirect_uri=redirect_uri, provider=provider_name or "",
             authorization_method=authorization_method if provider_name else "",
@@ -1271,18 +1273,19 @@ async def supply_extra_credential(
         value = value.strip()
         if not value:
             raise ConnectError("extra_credential_required", f"{provider.extra_credential_label} is required")
+        await db.commit()  # seal with no transaction held: KMS is network I/O
+        sealed = await credential_cipher.seal(value, org_id=org_id)
 
         name = f"{provider.service}-{provider.extra_credential_name}"
         extra = (await db.execute(
             select(Secret).where(Secret.org_id == org_id, Secret.name == name)
         )).scalars().first()
         if extra is None:
-            extra = Secret(org_id=org_id, name=name, owner=owner, kind="env",
-                           value=await credential_cipher.seal(value, org_id=org_id))
+            extra = Secret(org_id=org_id, name=name, owner=owner, kind="env", value=sealed)
             db.add(extra)
             await db.flush()
         else:  # re-supplying replaces it — the usual reason is a rotated token
-            extra.value = await credential_cipher.seal(value, org_id=org_id)
+            extra.value = sealed
 
         # The primary binding must match how THIS provider authenticates - OAuth bearer for Google Ads,
         # but a pasted-key provider (Tomba's X-Tomba-Key + X-Tomba-Secret pair) injects a plain header,

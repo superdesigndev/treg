@@ -244,3 +244,31 @@ async def test_reencryption_leaves_a_credential_replaced_while_it_ran(kms, monke
     assert result["changed"] >= 1
     async with session_maker() as db:
         assert (await db.execute(select(Secret.value).where(Secret.id == secret_id))).scalar_one() == replaced
+
+
+async def test_no_database_connection_waits_on_kms_when_credentials_are_written(
+    clients: AsyncClient, kms, monkeypatch,
+):
+    from treg.infra import db as infra_db
+
+    held: list[int] = []
+    seal = credential_cipher.seal
+
+    async def watching_seal(plaintext, *, org_id):
+        held.append(infra_db._engine.pool.checkedout())
+        return await seal(plaintext, org_id=org_id)
+
+    monkeypatch.setattr(credential_cipher, "seal", watching_seal)
+    created = (await clients.post("/secrets", json={"name": "k", "value": "sk-1"})).json()
+    await clients.patch(f"/secrets/{created['id']}", json={"value": "sk-2"})
+    r = await clients.post("/skills", json={
+        "name": "sealed-skill", "secrets": [{"local_name": "a", "value": "sk-a"},
+                                            {"local_name": "b", "value": "sk-b"}],
+        "tools": [{"name": "sealed-tool", "base_url": "http://upstream",
+                   "bindings": [{"secret": "a", "injector": "env", "location": "header",
+                                 "name": "Authorization", "format": "Bearer {secret}"}]}],
+    })
+
+    assert r.status_code == 200, r.text
+    assert len(held) == 4
+    assert held == [0, 0, 0, 0]
