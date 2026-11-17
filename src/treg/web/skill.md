@@ -279,6 +279,50 @@ each call, not the loop.
 - `treg balance` shows the balance and recent charges, and the dashboard's Activity page shows the
   settled cost of every call. `treg topup` adds funds or sets up automatic top-ups.
 
+<!--agentpay-->
+## Pay with a wallet, no account
+
+An agent with no treg account can pay for catalog calls one at a time with a stablecoin wallet.
+The payment is the sign-in: no signup, no token.
+
+1. Send `{BASE}/call/<id>` over HTTP with **no** `X-Treg-Token` and no session cookie. Only
+   catalog ids take this road; MCP, `/table/`, your own tools and URL passthrough need a team.
+2. treg answers 402 `payment_required`. The body gives the call's top price
+   (`estimated_cost_micro`), what to pay (`amount_micro`: that price, or `minimum_payment_micro`
+   when it is higher) and `protocols`. The challenges are in the headers: MPP
+   (`WWW-Authenticate: Payment`) and, where offered, x402 (`PAYMENT-REQUIRED`).
+3. Pay and send the same request again. A client does both: pympp (Python, `mpp.client.Mpp` with
+   `tempo.charge`) or the mppx library (`Mppx.create` with `tempo()`). The `mppx` command line
+   (0.20.1) stops at the `credit_insufficient` 402 below, so it cannot pay from a wallet with no
+   credit.
+
+- **Credit.** The call is charged its real price. The rest stays as this wallet's credit on treg,
+  on that network, and pays its next calls. Credit is never paid back as money, so pay only for
+  what you plan to use.
+- **Spending credit.** The first challenge asks for zero: a wallet with enough credit signs it and
+  pays nothing new. Too little credit answers 402 `credit_insufficient` with the payment challenge
+  only, and the client pays it.
+- **Headers.** Every answer carries `X-Treg-Payment: paid` or `credit`, `X-Treg-Credit-Micro`
+  (credit left) and `X-Treg-Cost-Micro`; a payment adds `X-Treg-Payment-Reference` (its
+  transaction).
+- **Tasks.** Polling a task or fetching its result is free for the wallet that started it (it signs
+  the zero-amount proof). Any other wallet gets 403 `async_resource_not_owned`.
+- **Your credit.** `GET {BASE}/agentpay/credit`, with the same zero-amount proof, returns the
+  wallet's credit and its last payments.
+
+When it refuses:
+
+- **401 `not_authenticated`**: this tool cannot be paid with a wallet; `reason` says why (for
+  example `routed`, `free`, `needs_connection`, `usage_priced`, `invalid_request` for parameters it
+  cannot price). Sign in and use a treg key for it.
+- **402 with another `reason`** (`payment_expired`, `invalid_challenge`, `payment_replayed`, ...):
+  the answer carries a fresh challenge; pay that one.
+- **503 `payment_outcome_unknown`**: the payment may have moved. Do not pay again for this call.
+  treg checks the chain and credits the wallet if it landed; read `/agentpay/credit` a few minutes
+  later.
+- **429 `rate_limited`**: wait `Retry-After` seconds.
+
+<!--/agentpay-->
 ## When a call fails
 
 treg's own refusals carry the header `X-Treg-Error: 1` (`whose_error: treg` over MCP); without it,

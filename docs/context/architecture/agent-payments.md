@@ -95,7 +95,10 @@ until the task ends and that polling with the same wallet is free.
 While the feature is on, catalog search rows and tool details carry `wallet`
 (`agent_payments.wallet_view`): `{payable: true, protocols, minimum_payment_micro, fee_bps, note}`, or
 `{payable: true, free_for_task_owner: true, note}` for an async utility, or
-`{payable: false, reason, note}` with the same reasons as the 401. Off, the field is absent. Only `/call/` takes this
+`{payable: false, reason, note}` with the same reasons as the 401. Off, the field is absent.
+The agent-facing files (`llms.txt`, `skill.md`) carry the wallet road inside
+`<!--agentpay-->...<!--/agentpay-->` blocks, kept only while `agent_payments.enabled()`
+(`routers.web._strip_routed`), so a deployment with the feature off never teaches it. Only `/call/` takes this
 path; `/catalog/call/`, `/table/` and MCP do not.
 
 ## The payer team: how a keyless payer fits the money rules

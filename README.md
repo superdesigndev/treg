@@ -180,6 +180,14 @@ treg topup            # add funds, or set up automatic top-ups
 Out of balance is an HTTP **402** `error: insufficient_balance` carrying `balance_micro`, `estimated_cost_micro` and a `topup_url`,
 so an agent can act on it without reading prose.
 
+**No account at all?** When the operator switches agent payments on, an agent with a stablecoin
+wallet can pay for catalog calls one at a time over HTTP, with MPP (Tempo) or x402 (Base): a
+`/call/<id>` without a treg token answers 402 with the payment challenge, and a client such as pympp
+or the mppx library pays it and sends the call again. What the call does not use stays as that
+wallet's credit for its next calls; it is never paid back as money. The agent-facing rules are in
+the skill's "Pay with a wallet" section, the design in
+[agent payments](docs/context/architecture/agent-payments.md).
+
 **Enrich Arena** lives at `/enrich-arena`, outside the dashboard. Compare enrichment answers with each vendor’s cost and speed,
 vote for the best answer in one click, or watch a sequential waterfall. Capability-compatible
 async providers participate too; Arena handles submit and polling internally. Browsing is
@@ -387,6 +395,7 @@ Environment variables (prefix `TREG_`, read from `.env`):
 | `TREG_ENTERPRISE_SSO_BUNDLE_ONLY` | `true` | Show only the SSO + Directory Sync plan by default; set to `false` to offer both monthly plans. |
 | `TREG_ENTERPRISE_SSO_BUNDLE_PRICE_ID` / `TREG_ENTERPRISE_SSO_ONLY_PRICE_ID` | *(empty)* | Reusable monthly Stripe Price IDs in the same account as `TREG_STRIPE_SECRET_KEY`; an unset or unusable Price hides its plan. Stripe's Price supplies the displayed amount and Checkout charge. |
 | `TREG_ENTERPRISE_SSO_BUNDLE_MIN_PRICE_USD` / `TREG_ENTERPRISE_SSO_ONLY_MIN_PRICE_USD` | `0` | Optional whole-dollar minimum for each monthly Stripe Price; lower prices are hidden and rejected at Checkout. |
+| `TREG_AGENT_PAYMENTS_ENABLED` | `false` | Keyless callers pay per catalog call with MPP or x402. Startup checks the rest of the `TREG_AGENT_PAYMENTS_*` set (secret, rails, recipients, settlement) and names every problem; see [agent payments](docs/context/architecture/agent-payments.md#settings). |
 | `TREG_INSTAGRAM_CLIENT_ID` / `_SECRET`    | *(empty)*                       | Instagram App ID and secret for direct Instagram Login (redirect `<public_url>/oauth/callback`)                                                                           |
 | `TREG_META_CLIENT_ID` / `_SECRET`         | *(empty)*                       | Meta app credentials for Facebook Pages, Meta Ads, and optional Instagram `page-tools`                                                                                     |
 | `TREG_OAUTH_REVIEW_PENDING`               | `instagram-login,page-messages` | Comma-separated registry review keys whose capabilities must remain gated; hosted review state is maintained privately.                                                   |
