@@ -13,8 +13,9 @@ reporters who wish to be named.
 ## The security model (what protects your keys)
 
 tools-registry is built so that **reading the source does not help an attacker** — nothing load-bearing
-is hidden in the code. Secrets live in the database (encrypted with a Fernet key held only in the server
-environment) and enforcement happens server-side and in the operating system.
+is hidden in the code. Secrets live in the database (encrypted with AWS KMS envelope encryption where
+the operator configures it, otherwise with a Fernet key held only in the server environment) and
+enforcement happens server-side and in the operating system.
 
 Durable objects created with a shared provider credential are assigned to one organization before
 their upstream id is exposed. Every shared-key read, use, update, or delete checks that assignment
@@ -25,8 +26,10 @@ provider account and bypass this platform ownership table.
 
 - **The proxy never hands the key to the caller.** For an HTTP tool, the registry injects the credential
   server-side and makes the upstream call; the consumer's token only authorizes it.
-- **Encryption at rest.** Stored secrets are Fernet-encrypted; the key is an environment variable, never
-  in the repo or the database.
+- **Encryption at rest.** With `TREG_KMS_KEY_ID`, every stored credential is sealed under its own data
+  key, which KMS wraps and binds to the owning team; the master key never leaves KMS, and each open
+  is a KMS call in the operator's audit log. Without it, stored secrets are Fernet-encrypted with a
+  key held in the environment, never in the repo or the database.
 - **CLI pairing is shared and single-use.** `treg login` keeps its pairing and social-login return
   state in the database with ten-minute validity windows. Pairing codes and completed credentials
   are encrypted, approval attempts are serialized, and polling atomically consumes a result.

@@ -49,7 +49,8 @@ from contextvars import ContextVar
 
 import httpx
 
-from ... import crypto, jsontext, oauth_providers
+from ... import jsontext, oauth_providers
+from .. import credential_cipher
 from ...application.call.types import GatewayFailed, UpstreamRequest, UpstreamResponse
 from ...config import TREG_USER_AGENT, get_settings
 from ...models import Secret, Tool
@@ -248,7 +249,7 @@ async def relay(
                     detail=f"credential injection failed: {exc}") from exc
             continue
         secret = secrets[binding["secret_id"]]
-        raw = crypto.decrypt(secret.value)
+        raw = credential_cipher.opened(secret)
         try:
             injectors.inject(headers, params, binding, raw, json_body=json_body)
         except ValueError as exc:

@@ -25,7 +25,7 @@ from dataclasses import dataclass
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlmodel import select
 
-from . import crypto
+from .infra import credential_cipher
 from .config import get_settings
 from .models import Secret, Tool
 
@@ -194,7 +194,7 @@ async def _collect_secret_env(tool: Tool, db: AsyncSession) -> tuple[dict[str, s
         for s in secrets:
             if s.kind != "env":
                 continue
-            val = crypto.decrypt(s.value)
+            val = await credential_cipher.unseal(s.value, org_id=s.org_id)
             env[inject_names[s.id]] = val
             values.append(val)
     return env, values

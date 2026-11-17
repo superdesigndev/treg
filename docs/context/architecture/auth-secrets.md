@@ -5,6 +5,9 @@ sources:
   - src/treg/infra/upstream/injectors.py
   - src/treg/infra/upstream/ssrf.py
   - src/treg/crypto.py
+  - src/treg/infra/credential_cipher.py
+  - src/treg/application/credential_reencrypt.py
+  - src/treg/alembic/versions/0106_secret_refreshable.py
   - src/treg/oauth.py
   - src/treg/domain/connections/__init__.py
   - src/treg/domain/connections/authorization.py
@@ -86,18 +89,44 @@ never be used for an upstream that signs or hashes raw body bytes (non-negotiabl
 whose `format` has no `{secret}` placeholder is a protocol constant (`required_headers`) and is
 excluded from secret-evidence scrubbing.
 
-## Encryption (`crypto.py`)
+## Encryption (`infra/credential_cipher.py`, `crypto.py`)
 
-Secret values are Fernet-encrypted at rest with `TREG_SECRET_KEY`; unset, an ephemeral key is used,
+Stored credentials (`Secret.value`, `PendingOAuth.client_secret`) go through `credential_cipher`.
+Without KMS settings it is Fernet with `TREG_SECRET_KEY`, as before; unset, an ephemeral key is used,
 so secrets do not survive a restart (`verify_db` refuses that on a real database). Caller tokens are
 stored only as SHA-256 hashes. Values are never returned to clients, with one exception below.
+
+With `TREG_KMS_KEY_ID` (a KMS key or alias ARN) a process can open KMS-sealed values; with
+`TREG_KMS_ENCRYPT_NEW` as well it seals every new write with KMS. A sealed value is
+`kms1:<wrapped data key>.<nonce + ciphertext>`: one AES-256-GCM data key per value, wrapped by KMS
+under the encryption context `{"treg:purpose": "credential", "treg:org": "<org id>"}`, which is also
+the cipher's associated data. A value copied to another team's row does not open, and every open is
+one KMS `Decrypt` naming the team in the provider's audit log. Any value without the prefix is a
+Fernet token and still opens locally, so the two formats coexist until every row is re-sealed.
+
+- **Rollout order.** Every process that reads credentials gets `TREG_KMS_KEY_ID` first; only then
+  does any get `TREG_KMS_ENCRYPT_NEW`. A process without the key refuses a KMS value loudly rather
+  than guessing. `treg-worker admin reencrypt-credentials` then re-seals the remaining Fernet rows in
+  id batches, opening and sealing with no transaction held and writing each row only if its value is
+  unchanged; it refuses to run while new writes are still Fernet, and `--dry-run` calls no KMS.
+- **Once per call.** KMS calls are network I/O run in a worker thread. A call opens each credential
+  once, after its database phase ends (`open_for_call` in a per-call `call_scope`); injection
+  (`relay`), error masking (`evidence`), the sandbox and refresh read that copy. The health run
+  scopes the same way per run.
+- **Listing never opens.** `Secret.refreshable` is recorded with every oauth write, so connection
+  lists and expiry state read a column instead of opening every credential. A null on a Fernet row
+  written before the column opens locally; the re-encryption job fills it.
+- **What stays Fernet.** Short-lived state (sign-in return cookies, enterprise SSO state, CLI
+  pairing rows), Arena payloads, and the published placeholder values seeded into demo and
+  sandbox teams, which would otherwise put a KMS call behind every anonymous sandbox visit.
 
 ## OAuth freshness (`domain/connections/refresh.py`)
 
 `is_refreshable(blob)` (has `refresh_token`, `client_id`, `client_secret`) picks auto or manual mode;
 a bare uploaded token is injected as-is and re-uploaded on expiry. `ensure_fresh` is the one refresh
 path for the call runtime, health, resource discovery and resource selection; none of them
-implements its own lock, exchange or write.
+implements its own lock, exchange or write. It opens and seals through a `CredentialPort` the caller
+passes in, and ends its read transaction before either.
 
 - The read transaction commits before token-endpoint I/O, and the write opens a new short
   transaction, so provider latency holds no pooled connection.

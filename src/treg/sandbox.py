@@ -31,7 +31,7 @@ from .application.onboard.sandbox import (
     gc as gc,
     is_sandbox_user as is_sandbox_user,
 )
-from . import crypto
+from .infra import credential_cipher
 from .infra.upstream import injectors
 from .models import Org, Secret, Tool
 from .sandbox_identity import visitor_name as visitor_name
@@ -78,7 +78,7 @@ def synthesize(method: str, upstream_url: str, tool: Tool, secrets: dict[int, Se
         sec = secrets.get(b.get("secret_id"))
         if sec is None:
             continue
-        injectors.inject(headers, params, b, crypto.decrypt(sec.value))
+        injectors.inject(headers, params, b, credential_cipher.opened(sec))
     injected_h = dict(headers)
     injected_q = [(k, v) for (k, v) in params if (k, v) not in (query or [])]
     data = SAMPLE_BODIES.get(tool.host,

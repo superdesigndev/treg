@@ -27,7 +27,7 @@ from ...domain.catalog import results as catalog_results
 from ...domain.catalog import schema, store as catalog_store
 from ...domain.money import with_margin
 from ...domain import provider_resources
-from ...infra import money_admission, org_endpoint_quota
+from ...infra import credential_cipher, money_admission, org_endpoint_quota
 from ...infra.db import session_maker
 from ...models import Secret
 from ...sandbox_identity import visitor_name
@@ -177,7 +177,8 @@ def _identity_encoded(response: UpstreamResponse) -> bool:
 async def execute_call(context: CallContext, upstream_client: httpx.AsyncClient) -> UpstreamResponse:
     request = _ApplicationRequest(context)
     try:
-        return await _execute_call(request, upstream_client)
+        with credential_cipher.call_scope():
+            return await _execute_call(request, upstream_client)
     except CallFailure as exc:
         _log_unaudited_child(request, exc.status_code, failure=exc)
         raise
@@ -1302,6 +1303,18 @@ async def _execute_call(request: _ApplicationRequest, upstream_client: httpx.Asy
         _capture(props)
         return None
 
+    async def _open_credentials(secrets: dict[int, Secret], *, audit: bool = True) -> None:
+        # KMS-sealed values open over the network: callers end the DB phase first. Inside the
+        # main try the shared failure path records the attempt, so it is not recorded here.
+        try:
+            await credential_cipher.open_for_call(secrets.values())
+        except Exception as exc:
+            if audit:
+                _audit(502, answered=False)
+            raise GatewayFailed(
+                "credential_unavailable", status_code=502,
+                detail="a stored credential could not be opened") from exc
+
     # Landing-page sandbox: never touch the network — EXCEPT the one live wire. A call to the
     # exact seeded stripe tool (fingerprint-matched; see sandbox.is_live_tool) relays to the real
     # Stripe test API with the env-held demo key. Any tampered/lookalike tool falls through to
@@ -1336,6 +1349,8 @@ async def _execute_call(request: _ApplicationRequest, upstream_client: httpx.Asy
             s = await _await_before_reserve(db.get(Secret, sid), request, call_ref)
             if s is not None and s.org_id == caller.org_id:
                 secrets[sid] = s
+        await db.commit()
+        await _open_credentials(secrets)
         body = (await _await_before_reserve(request.body(), request, call_ref)).decode(
             "utf-8", "replace")
         result = demo_sandbox.synthesize(
@@ -1404,6 +1419,7 @@ async def _execute_call(request: _ApplicationRequest, upstream_client: httpx.Asy
         # Resolution already proved these ids are absent from every org's durable assignments.
         # End the DB phase before asking the provider whether each is an approved public resource.
         await db.commit()
+        await _open_credentials(secrets)
         try:
             await _await_before_reserve(
                 _verify_public_managed_resources(mk, secrets, upstream_client), request, call_ref)
@@ -1487,14 +1503,15 @@ async def _execute_call(request: _ApplicationRequest, upstream_client: httpx.Asy
     # connect on a pay-per-use app), so take the money FIRST. Dispatch admission below releases
     # this hold if a later local check or endpoint quota refuses the call.
     if mk is not None and mk.metered:
+        # Secret reads above opened the dependency session. Release its pool slot before the
+        # credentials open over the network and before the reservation's own transaction.
+        await db.commit()
+        await _open_credentials(secrets)
         # Rendered BEFORE the reserve while `tool` is live. The application closes its reservation
         # session before returning a 402, so refusal evidence cannot rely on a later ORM load.
         refusal_secrets = _safe_secret_renderings(tool, secrets)
         request.context.finalization = FinalizationState.PENDING
         try:
-            # Secret reads above opened the dependency session. Release its pool slot before the
-            # application opens the short transaction that owns the reservation.
-            await db.commit()
             await _platform_reserve(mk, caller, meta=meta, call_ref=call_ref, allow_holdless=True)
             request.context.finalization = FinalizationState.OPEN
         except asyncio.CancelledError:
@@ -1525,6 +1542,8 @@ async def _execute_call(request: _ApplicationRequest, upstream_client: httpx.Asy
     try:
         # treg keeps oauth tokens fresh: refresh in place if stale, before injecting. Inside the
         # try on purpose — a failed refresh after a reserve must release the hold (502 path below).
+        await db.commit()
+        await _open_credentials(secrets, audit=False)
         for secret in secrets.values():
             try:
                 await oauth.ensure_fresh(secret, db, upstream_client)
@@ -1536,6 +1555,7 @@ async def _execute_call(request: _ApplicationRequest, upstream_client: httpx.Asy
         # End the DB phase before network I/O. The session is `expire_on_commit=False`, so
         # `tool`/`secrets`/`caller.org` stay usable without a reload.
         await db.commit()
+        await _open_credentials(secrets, audit=False)  # a value the refresh just replaced
         share_slot = NO_SLOT
         inflight_slot = None
         rl = None

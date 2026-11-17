@@ -21,6 +21,7 @@
     treg-worker admin purge-ad-clicks                      # delete email-to-click stash rows past 90 days
     treg-worker admin erase-archive --org <id>             # erase what an opted-out team stored in the archive
     treg-worker admin revoke-refund <payment_intent>       # revoke a refunded top-up's unspent credit now
+    treg-worker admin reencrypt-credentials [--dry-run]    # re-seal stored Fernet credentials under KMS
     treg-worker admin erase-archive --org <id> --dry-run   # count what that would remove; delete nothing
     treg-worker admin erase-archive --org <id> --include-sole-public  # also public answers only that team paid for
     treg-worker enterprise reconcile [--org <id>]          # repair missed Directory Sync removals
@@ -579,6 +580,21 @@ async def _admin_erase_archive(args) -> int:
     return 0
 
 
+async def _admin_reencrypt_credentials(args) -> int:
+    """Re-seal stored Fernet credentials under KMS (application/credential_reencrypt)."""
+    from .application import credential_reencrypt
+    from .infra.db import verify_db
+
+    await verify_db()
+    try:
+        result = await credential_reencrypt.reencrypt(batch_size=args.batch_size, dry_run=args.dry_run)
+    except credential_reencrypt.KmsWritesOff as exc:
+        print(json.dumps({"error": str(exc)}, sort_keys=True))
+        return 1
+    print(json.dumps(result, sort_keys=True))
+    return 1 if result.get("error") else 0
+
+
 async def _admin_revoke_refund(args) -> int:
     """Revoke a refunded top-up's unspent credit from the refunded total Stripe reports now: for a
     missed `charge.refunded` webhook, or a shortfall that calls in flight held at the time."""
@@ -899,6 +915,13 @@ def main(argv: list[str] | None = None) -> int:
     erase.add_argument("--include-sole-public", action="store_true",
                        help="also erase public answers only this team paid for; shared ones stay")
     erase.set_defaults(fn=_admin_erase_archive)
+    reseal = adminsub.add_parser("reencrypt-credentials",
+                                 help="re-seal stored Fernet credentials under KMS")
+    reseal.add_argument("--batch-size", type=_positive_int, default=200,
+                        help="credentials per batch (default 200)")
+    reseal.add_argument("--dry-run", action="store_true",
+                        help="count what would be re-sealed or flagged; write nothing, call no KMS")
+    reseal.set_defaults(fn=_admin_reencrypt_credentials)
     revoke = adminsub.add_parser("revoke-refund", help="revoke a refunded top-up's unspent credit")
     revoke.add_argument("payment_intent", help="the refunded top-up's Stripe PaymentIntent id (pi_...)")
     revoke.set_defaults(fn=_admin_revoke_refund)

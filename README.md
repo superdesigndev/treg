@@ -377,6 +377,8 @@ Environment variables (prefix `TREG_`, read from `.env`):
 | `TREG_READ_DATABASE_URL`                  | *(empty)*                       | Optional SQLite / PostgreSQL read datasource; empty reuses the primary. Requires callers to opt in; existing queries are unchanged. See [read datasource setup](docs/context/ops/deploy.md#optional-read-replica). |
 | `TREG_SECRET_KEY`                         | *(empty)*                       | Fernet key for secrets-at-rest; empty → an ephemeral key is minted (secrets won't survive a restart)                                                                       |
 | `TREG_AWS_SECRET_ID`                      | *(empty)*                       | ARN of an AWS Secrets Manager secret holding a JSON object of `TREG_*` settings, read once at startup and winning over the environment; AWS credentials come from the standard `AWS_*` variables |
+| `TREG_KMS_KEY_ID`                         | *(empty)*                       | KMS key or alias ARN for stored credentials: this process can open KMS-sealed values (AWS credentials from the standard `AWS_*` variables) |
+| `TREG_KMS_ENCRYPT_NEW`                    | `false`                         | also seal new credential writes with that key; set only once every process that reads credentials has `TREG_KMS_KEY_ID` |
 | `TREG_PUBLIC_URL`                         | `https://treg.to`  | treg's public base, used to build the OAuth callback URI                                                                                                                   |
 | `TREG_SESSION_SECRET`                     | *(empty)*                       | signs the dashboard session cookie; falls back to `TREG_SECRET_KEY`. Set a real value in prod                                                                              |
 | `TREG_GITHUB_CLIENT_ID` / `_SECRET`       | *(empty)*                       | GitHub OAuth sign-in (callback `<public_url>/auth/github/callback`); empty hides the button                                                                                |
@@ -407,7 +409,7 @@ No `.env` is needed for local dev — every setting has a working default (ephem
 
 > **⚠️ Back these up before moving or redeploying:** the Fernet key (`TREG_SECRET_KEY`) and the
 > database (Postgres in prod; `treg.db` for a local sqlite run). Lose the Fernet key and every
-> stored secret becomes unrecoverable.
+> stored secret it sealed becomes unrecoverable; the same holds for a KMS key that is deleted.
 
 ## Architecture
 

@@ -290,6 +290,7 @@ Regenerate via `scripts/build-map.py`.
 | `src/treg/alembic/versions/0102_member_daily_spend_cap.py` | architecture/money.md |
 | `src/treg/alembic/versions/0104_agent_payments.py` | architecture/agent-payments.md |
 | `src/treg/alembic/versions/0105_callmark.py` | architecture/feedback.md |
+| `src/treg/alembic/versions/0106_secret_refreshable.py` | architecture/auth-secrets.md |
 | `src/treg/analytics.py` | architecture/data-model.md, architecture/org-endpoint-quota.md |
 | `src/treg/api.py` | architecture/archive.md, architecture/money.md, architecture/multi-tenancy.md, architecture/proxy-model.md, architecture/super-admin.md, interface/api.md, interface/seo.md |
 | `src/treg/application/__init__.py` | architecture/import-boundaries.md |
@@ -332,6 +333,7 @@ Regenerate via `scripts/build-map.py`.
 | `src/treg/application/catalog_stats.py` | architecture/catalog.md |
 | `src/treg/application/cli_releases.py` | interface/cli-binary.md |
 | `src/treg/application/connect.py` | architecture/auth-secrets.md, architecture/composition.md, architecture/multi-tenancy.md, interface/api.md |
+| `src/treg/application/credential_reencrypt.py` | architecture/auth-secrets.md |
 | `src/treg/application/enterprise_billing.py` | architecture/money.md |
 | `src/treg/application/enterprise_sso.py` | architecture/multi-tenancy.md |
 | `src/treg/application/evidence_retention.py` | architecture/data-model.md, architecture/super-admin.md |
@@ -508,6 +510,7 @@ Regenerate via `scripts/build-map.py`.
 | `src/treg/infra/agent_payments/x402.py` | architecture/agent-payments.md |
 | `src/treg/infra/catalog_observations.py` | architecture/catalog.md |
 | `src/treg/infra/catalog_stat_dirty.py` | architecture/catalog.md, architecture/data-model.md |
+| `src/treg/infra/credential_cipher.py` | architecture/auth-secrets.md |
 | `src/treg/infra/db.py` | architecture/data-model.md, architecture/multi-tenancy.md, ops/deploy.md |
 | `src/treg/infra/embed.py` | architecture/find.md |
 | `src/treg/infra/github_releases.py` | interface/cli-binary.md |
@@ -868,7 +871,7 @@ Regenerate via `scripts/build-map.py`.
 | `architecture/ads-conversions.md` | `adsconv.py`, `signup.py`, `settle.py`, `adtrack.js`, `gtag.js`, `auth.py`, `0075_ad_click_stash.py` |
 | `architecture/agent-payments.md` | `agent_payments.py`, `__init__.py`, `tempo.py`, `x402.py`, `evm.py`, `stripe.py`, `worker.py`, `call.py`, `catalog.py`, `bootstrap.py`, `config.py`, `models.py`, `teams.py`, `access.py`, `api_keys.py`, `resolve.py`, `0104_agent_payments.py`, `test_agent_payments.py` |
 | `architecture/archive.md` | `archive.py`, `hunter.yaml`, `results.py`, `0031_archive_result_admission.py`, `test_cache_result_admission.py`, `test_archive_batch.py`, `test_archive_batch_postgres.py`, `archive_bodies.py`, `config.py`, `object_store.py`, `0032_archive_body_storage.py`, `test_archive_r2.py`, `fake_object_store.py`, `smoke_archive_r2.py`, `0002_archive_tables.py`, `0003_callrecord_cached.py`, `0004_archivekey_request_shape.py`, `0011_callrecord_archive_link.py`, `service.py`, `settle.py`, `0039_archive_own_key_and_repeat_pricing.py`, `backfill_call_archive_links.py`, `api.py`, `bootstrap.py`, `admin.py`, `asynctasks.py`, `archive_erasure.py`, `0067_org_archive_opt_out.py`, `test_archive_opt_out.py` |
-| `architecture/auth-secrets.md` | `injectors.py`, `ssrf.py`, `crypto.py`, `oauth.py`, `__init__.py`, `authorization.py`, `oauth_flow.py`, `refresh.py`, `oauth_exchange.py`, `oauth_refresh.py`, `oauth_providers.py`, `session.js`, `keys.js`, `TeamPage.vue`, `health.py`, `connect.py`, `0051_context_dev_tool_host.py`, `connections.py`, `resources.py`, `__init__.py`, `bindings.py`, `bundles.py`, `api_keys.py`, `access.py`, `api_keys.py`, `test_api_keys.py`, `test_oauth_refresh.py`, `test_key_providers.py`, `config.py` |
+| `architecture/auth-secrets.md` | `injectors.py`, `ssrf.py`, `crypto.py`, `credential_cipher.py`, `credential_reencrypt.py`, `0106_secret_refreshable.py`, `oauth.py`, `__init__.py`, `authorization.py`, `oauth_flow.py`, `refresh.py`, `oauth_exchange.py`, `oauth_refresh.py`, `oauth_providers.py`, `session.js`, `keys.js`, `TeamPage.vue`, `health.py`, `connect.py`, `0051_context_dev_tool_host.py`, `connections.py`, `resources.py`, `__init__.py`, `bindings.py`, `bundles.py`, `api_keys.py`, `access.py`, `api_keys.py`, `test_api_keys.py`, `test_oauth_refresh.py`, `test_key_providers.py`, `config.py` |
 | `architecture/call-events.md` | `call_events.py`, `call_events.py`, `segments.py`, `contracts.yaml`, `call_errors.py`, `call_events_actionable_errors.sql`, `test_call_events.py`, `test_request_segments.py`, `test_call_errors.py` |
 | `architecture/catalog-schema.md` | `__init__.py`, `base.py`, `paths.py`, `common.py`, `legacy.py`, `v2.py`, `manifest.py`, `files.py`, `violations.py`, `violations.yaml`, `export.py`, `outcome.py`, `__init__.py`, `anyapi.py`, `catalog_schema.py`, `catalog_shrink_only.py`, `catalog_v2.py`, `test_catalog_schema.py`, `test_catalog_v2_codemod.py`, `test_anyapi.py` |
 | `architecture/catalog.md` | `__init__.py`, `store.py`, `stats.py`, `results.py`, `rankings.py`, `__init__.py`, `contracts.py`, `paths.py`, `plan.py`, `quality.py`, `health.py`, `synthetic.py`, `rankings.py`, `catalog_stats.py`, `provider_resources.py`, `provider_resources.py`, `provider_resources.py`, `route.py`, `route_health.py`, `async_bridge.py`, `octen.py`, `enrichlayer.py`, `catalog_observations.py`, `catalog_stat_dirty.py`, `route_quality.py`, `settlement.py`, `catalog.py`, `mcp.py`, `0038_endpoint_day_stats.py`, `0066_endpointdaystat_verdicts.py`, `capabilities.yaml`, `aliases.yaml`, `fx.yaml`, `contracts.yaml`, `adapters.yaml`, `catalog_added.py`, `catalog_backfill_added.py`, `catalog_cost_provenance.py`, `catalog_drift.py`, `catalog_fx_update.py`, `catalog_ingest.py`, `catalog_ingest_crawl4ai_recipes.py`, `catalog_validate.py`, `catalog_verify.py`, `catalog_verify_extended.py`, `catalog-added.yml`, `catalog-drift.yml`, `test_aigc_pr_b.py`, `test_call_verdict.py`, `test_catalog_api.py`, `test_catalog_validate.py`, `test_rankings.py`, `test_route_cost_ceiling.py`, `test_routing.py` |

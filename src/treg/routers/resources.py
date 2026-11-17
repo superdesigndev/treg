@@ -15,11 +15,13 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlmodel import select
 
 from .. import convert as _convert
-from .. import crypto, health, sandbox as demo_sandbox
+from .. import health, sandbox as demo_sandbox
 from .. import providers as _providers
 from .. import skills as _skills
 from ..application import connect as connect_use_cases
 from ..config import get_settings
+from ..domain.connections import refresh as connection_refresh
+from ..infra import credential_cipher
 from ..infra.db import get_session
 from ..domain.governance import access as access_policy
 from ..domain.governance import sandbox as sandbox_policy
@@ -97,7 +99,8 @@ async def create_secret(
     await _validate_bundle_id(body.bundle_id, caller.org_id, db)
     secret = Secret(
         org_id=caller.org_id, name=body.name, owner=caller.email, kind=body.kind,
-        value=crypto.encrypt(body.value), bundle_id=body.bundle_id,
+        value=await credential_cipher.seal(body.value, org_id=caller.org_id), bundle_id=body.bundle_id,
+        refreshable=connection_refresh.refreshable_flag(body.kind, body.value),
     )
     db.add(secret)
     await db.commit()
@@ -140,15 +143,22 @@ async def update_secret(
     # JSON value (else the tool silently 502s later) and reset the now-meaningless health verdict.
     if "kind" in fields and fields["kind"] != secret.kind:
         if fields["kind"] in ("oauth", "secret_file"):
-            raw = fields["value"] if "value" in fields else crypto.decrypt(secret.value)
+            raw = (fields["value"] if "value" in fields
+                   else await credential_cipher.unseal(secret.value, org_id=secret.org_id))
             try:
                 json.loads(raw)
             except (ValueError, TypeError):
                 # from None: a JSONDecodeError keeps the whole document, here the decrypted secret
                 raise HTTPException(status_code=422, detail=f"kind {fields['kind']!r} needs a JSON value") from None
         secret.health_status, secret.health_detail, secret.health_checked_at = "unknown", "", None
+    if "kind" in fields or "value" in fields:
+        kind = fields.get("kind", secret.kind)
+        plaintext = (fields["value"] if "value" in fields else
+                     await credential_cipher.unseal(secret.value, org_id=secret.org_id)
+                     if kind == "oauth" else "")
+        secret.refreshable = connection_refresh.refreshable_flag(kind, plaintext)
     if "value" in fields:
-        fields["value"] = crypto.encrypt(fields["value"])  # re-encrypt on rotate
+        fields["value"] = await credential_cipher.seal(fields["value"], org_id=secret.org_id)
         # The value is exactly what health measures — a rotation invalidates the prior verdict.
         secret.health_status, secret.health_detail, secret.health_checked_at = "unknown", "", None
     for k, v in fields.items():
@@ -560,7 +570,8 @@ async def _register_skill_bundle(body: SkillIn, caller: Caller, db: AsyncSession
     for s in body.secrets:
         secret = Secret(
             org_id=caller.org_id, name=s.local_name, owner=caller.email, kind=s.kind,
-            value=crypto.encrypt(s.value), bundle_id=bundle.id,
+            value=await credential_cipher.seal(s.value, org_id=caller.org_id), bundle_id=bundle.id,
+            refreshable=connection_refresh.refreshable_flag(s.kind, s.value),
         )
         db.add(secret)
         await db.flush()
