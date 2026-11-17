@@ -435,6 +435,7 @@ _UNRECORDED_SIGNATURE = {
     "valyu",  # subscription credits remain; no provider-specific empty-balance response was forced
     "octen",  # PAYG balance remains; no provider-specific empty-balance response was forced
     "parallel",  # funded balance remains; documented 402 insufficient credit was not forced
+    "seltz",  # OpenAPI documents 402 INSUFFICIENT_CREDITS; that body was not forced
     "sixtyfour",  # credits remain; documented 402 insufficient credit was not forced
     "blitzapi",  # monthly records remain; an exhausted-key response was not forced
     "enrichlayer",  # PAYG auto top-up remains funded; the docs name 403 but not its response body

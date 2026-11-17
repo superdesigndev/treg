@@ -3570,6 +3570,20 @@ adapters:
     in: {url: queryParams.url}
     out: {pages: "list(.)", count: "len(list(.))"}
     miss: "coalesce(content, '') == ''"
+  seltz.web.search:
+    route: false
+    accepts: [[q]]
+    in: {q: body.query}
+    in_expr: {body.max_results: limit}
+    const: {body.scope: web, body.tier: base}
+    out: {results: documents, count: "len(documents)"}
+  seltz.web.fetch:
+    route: false
+    accepts: [[url]]
+    in_expr: {body.urls: "list(url)"}
+    test_identity: {url: "https://example.com"}
+    const: {body.tier: pro}
+    out: {pages: results, count: "len(results)"}
   scrapegraphai.web.extract:
     route: false
     accepts: [[url]]

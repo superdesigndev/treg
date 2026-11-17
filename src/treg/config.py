@@ -489,6 +489,7 @@ class Settings(BaseSettings):
     platform_key_you: str = ""        # X-API-Key; prepaid USD balance across You.com web APIs
     platform_key_valyu: str = ""      # X-API-Key; subscription credits shared across Valyu APIs
     platform_key_serper: str = ""     # X-API-KEY; prepaid Google search credits, exact charge in response.credits
+    platform_key_seltz: str = ""      # x-api-key; prepaid USD. Search $3 or $5 per 1,000; no published balance route
     platform_key_bravesearch: str = ""  # X-Subscription-Token; prepaid Search requests
     platform_key_litescrape: str = ""  # Bearer; prepaid calls, free key status endpoint
     platform_key_localfalcon: str = ""  # Bearer; On-Demand subscription, $0.0032 per request (scan per grid point), no usage meter

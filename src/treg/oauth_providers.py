@@ -4400,6 +4400,37 @@ HIREBASE = OAuthProvider(
 
 # Lever's Postings API serves every published posting without a key. The API key Lever documents
 # applies only to the application POST, which is not listed.
+SELTZ = OAuthProvider(
+    service="seltz",
+    display_name="Seltz",
+    auth_kind="key",
+    token_label="API key",
+    token_placeholder="your Seltz API key",
+    # The key rides in x-api-key. A header keeps it out of logged URLs. The body field api_key is
+    # the gRPC carrier; the header takes precedence on HTTP.
+    token_header="x-api-key",
+    token_format="{secret}",
+    setup_url="https://console.seltz.ai",
+    setup_action_label="Get your Seltz API key",
+    setup_steps=(
+        "Sign in to the Seltz Console.",
+        "Create an API key and copy it.",
+    ),
+    setup_note=(
+        "Connecting reads the monitor list. The pricing page does not charge that read. "
+        "Search, Answer, Fetch and Agent spend the published USD rates."
+    ),
+    auth_uri="", token_uri="",
+    scopes={},
+    client_id_setting="", client_secret_setting="",
+    category="SEO",
+    summary="Search the web, news, people, companies and filings, fetch pages, and get cited answers.",
+    base_url="https://api.seltz.ai",
+    docs_url="https://docs.seltz.ai",
+    # No priced account route. A garbage key on this list is 401 UNAUTHENTICATED.
+    probe_path="/v1/monitors",
+)
+
 LEVER = OAuthProvider(
     service="lever",
     display_name="Lever",
@@ -4431,7 +4462,7 @@ REGISTRY: dict[str, OAuthProvider] = {
         SCRAPECREATORS,
         # SEO API-key providers
         DATAFORSEO, SERANKING, MOZ, MAJESTIC, SERPSTAT, EXA, SEARCH1API, TAVILY, OCTEN, LINKUP, PARALLEL, YOU, VALYU, KEENABLE, OLOSTEP, FIRECRAWL, CRAWL4AI, SPIDERCLOUD, PERPLEXITY,
-        SCRAPEGRAPHAI, SERPER, BRAVESEARCH, LITESCRAPE, CLORO, LOCALFALCON,
+        SCRAPEGRAPHAI, SERPER, SELTZ, BRAVESEARCH, LITESCRAPE, CLORO, LOCALFALCON,
         # more Enrichment API-key providers
         LUSHA, CORESIGNAL, DIFFBOT, THECOMPANIESAPI, LEADMAGIC, ENRICHLAYER, FIBER_AI, CRUSTDATA, THEIRSTACK, JOBSPIPE, AVIATO,
         COMPANYENRICH, CORPOAPI, OCEANIO, ADYNTEL, TOMBA, TRESTLEIQ, HLRLOOKUP, PREDICTLEADS, FINDYMAIL, ANYMAILFINDER, ENROW, FILTRAT, FILTRAT_FINDER, DROPCONTACT, BRANDDEV, ICYPEAS, LEADSFORGE,
