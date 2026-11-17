@@ -147,10 +147,10 @@ of calls; one strike must not take the provider away from everyone.
   applies. Otherwise a vendor answering free searches at zero credits erases the paid routes'
   strikes.
 - A signature the call could not avoid (the strike itself, a probe through a lock, a free route)
-  is not relayed: once overflow has had its chance, the caller gets the same typed 503, uncharged,
-  while the call's record keeps the provider's status and body. A routed call skips that provider.
-  `capacity_notice.py` still reads `X-Treg-Capacity: exhausted`, which older servers sent on such
-  a relayed answer.
+  is not relayed on treg's shared key: when overflow did not serve it and it settled at zero, the
+  caller gets the same typed 503 `provider_capacity_unavailable`, while the call's record keeps the
+  provider's status and body. A routed call skips that provider. The light CLI still reads
+  `X-Treg-Capacity: exhausted`, which older self-hosted servers sent on such a relayed answer.
 - An expired guessed hold that is still dry opens again on its next two strikes, so a lock nobody
   lifts reopens about hourly.
 

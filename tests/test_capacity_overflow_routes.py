@@ -239,6 +239,9 @@ def test_a_plan_period_cap_is_a_quota_and_a_concurrency_cap_a_burst():
     at_once = (b'{"error":"limit: 10 concurrent parallel for plan pro","metric":"concurrent",'
                b'"window_secs":0,"cap":10,"retry_after_s":1}')
     assert S.classify("crawl4ai", 429, {"retry-after": "1"}, at_once).kind == "burst"
+    pace = (b'{"error":"limit: 60 search per 60s for plan pro","metric":"search",'
+            b'"window_secs":60,"cap":60,"retry_after_s":5}')
+    assert S.classify("crawl4ai", 429, {"retry-after": "5"}, pace).kind == "burst"
 
 
 @pytest.mark.parametrize("provider, status, out, _", _OUT_OF_CREDITS, ids=[r[0] for r in _OUT_OF_CREDITS])

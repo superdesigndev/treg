@@ -147,8 +147,9 @@ _TABLE: list[Signature] = [
     Signature("crawl4ai", 402, r"no_credit", "balance", tripwire=True),
     Signature("crawl4ai", 402, r"spend_cap|plan_cap", "quota"),
     # A plan's period cap is a 429 naming its window ({"metric": "search", "window_secs": 86400,
-    # "retry_after_s": ...}) with Retry-After to its reset; a concurrency cap says "window_secs": 0.
-    Signature("crawl4ai", 429, r'"window_secs"\s*:\s*[1-9]', "quota"),
+    # "retry_after_s": ...}) with Retry-After to its reset; a concurrency cap says "window_secs": 0
+    # and a pace limit a short window (60), both bursts. Only a window of 1000 s or more is a period.
+    Signature("crawl4ai", 429, r'"window_secs"\s*:\s*[1-9]\d{3,}', "quota"),
     Signature("crawl4ai", 429, r"", "burst"),
     # Tavily documents distinct custom statuses for the monthly plan allowance and the operator's
     # PAYGO ceiling. Both are quotas: the first resets with the plan period; the second serves again

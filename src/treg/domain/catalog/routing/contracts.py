@@ -92,8 +92,9 @@ class Contract:
     # ahead of `prefer`. Cost per hit is one number for every domain, but a finder's coverage
     # differs by country.
     prefer_by_domain_suffix: dict[str, tuple[str, ...]] = field(default_factory=dict)
-    # Providers asked after every other candidate of their tier when the caller sends no
-    # `X-Treg-Route-Prefer`: a free provider that is often refused would otherwise lead on price.
+    # Providers asked, on treg's key, after the other treg-key candidates of the same health when
+    # the caller sends no `X-Treg-Route-Prefer`: a free provider that is often refused would
+    # otherwise lead on price. A team's own key is never reordered by it.
     ask_last: tuple[str, ...] = ()
     # Identity key sets on which the caller's own `limit` is a target, not a cap: when the caller
     # sent exactly one of these sets and a `limit`, the route defaults to `X-Treg-Route-Min-Results:

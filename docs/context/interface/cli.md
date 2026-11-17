@@ -79,9 +79,9 @@ is self-teaching. This fragment holds only what the code and help cannot say. Th
   line (`_show_failure_diagnostics`) with the status, whose answer it is (`X-Treg-Error: 1` = treg
   refused, absent = relayed provider answer), the call id and any charge. treg's saturation 503
   carries no `X-Treg-Error` (`api.md`), so the CLI reads its typed `treg_saturated` body; a client
-  that checks only the header blames the provider. `X-Treg-Capacity: exhausted` (sent by older
-  servers on a relayed answer from treg's empty account) swaps in the shared notice from
-  `capacity_notice.py`. With `TREG_TOKEN` set, treg's own 401 adds that the variable
+  that checks only the header blames the provider. `X-Treg-Capacity: exhausted` (sent by
+  older self-hosted servers on a relayed answer from treg's empty account) swaps in the shared
+  notice from `capacity_notice.py`. With `TREG_TOKEN` set, treg's own 401 adds that the variable
   overrides `treg login`. A metered 2xx gets a charge line (an async submission says "reserved up to",
   since its header is the hold ceiling). A large 2xx sent to a terminal or pipe gets a size line
   before the body, so an agent's output cut keeps it; the line names no JSON path, because a guessed

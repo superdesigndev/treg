@@ -741,7 +741,8 @@ async def test_a_vendor_402_on_tregs_key_is_tregs_capacity_refusal(anon: AsyncCl
     r = await anon.get(f"/call/{EP}?aweme_id=7", headers={"PAYMENT-SIGNATURE": credential})
     assert r.status_code == 503 and r.json()["detail"]["error"] == "provider_capacity_unavailable"
     assert "www-authenticate" not in r.headers and "payment-required" not in r.headers
-    assert "payment-response" not in r.headers, "never a receipt on a non-2xx answer"
+    # treg's own headers only: which money paid, never a receipt on a non-2xx answer.
+    assert r.headers["X-Treg-Payment"] == "paid" and "payment-response" not in r.headers
 
 
 async def test_the_insufficient_balance_402_is_unchanged(clients: AsyncClient, payments_on):
