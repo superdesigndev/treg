@@ -257,3 +257,46 @@ async def test_mcp_review_relays_rows(clients):
     mark, = await marks_for()
     assert result['mark_id'] == mark.id
     assert mark.items == [{'index': 1, 'field': 'title', 'verdict': 'stale'}]
+
+
+async def _call_schema(client, token):
+    from test_mcp import _rpc
+    await _rpc(client, 'initialize', {'protocolVersion': '2025-06-18', 'capabilities': {},
+                                      'clientInfo': {'name': 'test', 'version': '1'}}, token)
+    tools = (await _rpc(client, 'tools/list', {}, token)).json()['result']['tools']
+    return next(t for t in tools if t['name'] == 'call')['inputSchema']
+
+
+@pytest.mark.parametrize('rate', [0, 1])
+async def test_prior_review_rides_the_next_call_only_when_shown(clients, monkeypatch, rate):
+    from test_mcp import _call_tool as team_call, mcp_session
+
+    monkeypatch.setattr(get_settings(), 'mcp_prior_review_rate', rate)
+    org = await seed(clients)
+    prior = {'call_id': 'review-call', 'usefulness': 'partly',
+             'rows': [{'index': 0, 'field': 'email', 'verdict': 'wrong'}]}
+    async with mcp_session(clients) as client:
+        schema = await _call_schema(client, org['token'])
+        assert ('prior' in schema['properties']) is bool(rate)
+        await team_call(client, 'call', {'endpoint_id': 'nope.search', 'prior': prior}, token=org['token'])
+    if rate:
+        row, = await rows()
+        assert (row.client, row.usefulness) == ('mcp-prior', 'partly')
+        mark, = await marks_for()
+        assert mark.review_id == row.id and mark.items == [{'index': 0, 'field': 'email', 'verdict': 'wrong'}]
+    else:
+        assert await rows() == [] and await marks_for() == []
+
+
+async def test_a_bad_prior_review_never_fails_the_call(clients, monkeypatch):
+    from test_mcp import _call_tool as team_call, mcp_session
+
+    monkeypatch.setattr(get_settings(), 'mcp_prior_review_rate', 1)
+    org = await seed(clients)
+    async with mcp_session(clients) as client:
+        plain = await team_call(client, 'call', {'endpoint_id': 'nope.search'}, token=org['token'])
+        with_prior = await team_call(client, 'call', {
+            'endpoint_id': 'nope.search',
+            'prior': {'call_id': 'not-a-call-of-ours', 'usefulness': 'useful'}}, token=org['token'])
+    assert with_prior == plain
+    assert await rows() == []

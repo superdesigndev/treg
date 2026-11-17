@@ -35,6 +35,7 @@ not initialized". `bootstrap.py` composes this module's lifespan with its own; s
 
 from __future__ import annotations
 
+import asyncio
 import base64
 import binascii
 import hashlib
@@ -200,7 +201,10 @@ class _UnknownCallArguments:
         arguments = params.get("arguments")
         if ctx.method != "tools/call" or name not in self._tools or not isinstance(arguments, dict):
             return await call_next(ctx)
-        accepted = [p for p in inspect.signature(globals()[self._tools[name]]).parameters if p != "ctx"]
+        accepted = [p for p in inspect.signature(globals()[self._tools[name]]).parameters
+                    if p not in ("ctx", "prior")]
+        if "prior" in inspect.signature(globals()[self._tools[name]]).parameters:
+            arguments = {k: v for k, v in arguments.items() if k != "prior"}
         unknown = sorted(set(arguments) - set(accepted))
         if not unknown:
             return await call_next(ctx)
@@ -305,6 +309,47 @@ class _OpenAIClientGate:
         return result
 
 
+class _PriorReviewGate:
+    """`call`'s `prior` argument is shown only to the credentials `_shows_prior` picks: everyone
+    else lists the tool exactly as before, so the experiment can be compared and turned off."""
+
+    async def __call__(
+        self, ctx: ServerRequestContext[Any, Any], call_next: CallNext
+    ) -> HandlerResult:
+        result = await call_next(ctx)
+        if ctx.method != "tools/list" or _shows_prior(
+                getattr(getattr(ctx, "request", None), "headers", None)):
+            return result
+
+        def strip(tool: Any) -> Any:
+            name = tool.get("name") if isinstance(tool, dict) else getattr(tool, "name", None)
+            if name != "call":
+                return tool
+            schema = tool.get("inputSchema") if isinstance(tool, dict) else tool.input_schema
+            if not isinstance(schema, dict) or "prior" not in schema.get("properties", {}):
+                return tool
+            props = {k: v for k, v in schema["properties"].items() if k != "prior"}
+            schema = {**schema, "properties": props}
+            defs = schema.get("$defs")
+            if isinstance(defs, dict) and "PriorReviewIn" in defs:
+                schema["$defs"] = {k: v for k, v in defs.items() if k != "PriorReviewIn"}
+                if not any("MarkItemIn" in json.dumps(v) for v in props.values()) and \
+                        not any("MarkItemIn" in json.dumps(v) for v in schema["$defs"].values()):
+                    schema["$defs"].pop("MarkItemIn", None)
+                if not schema["$defs"]:
+                    schema.pop("$defs")
+            if isinstance(tool, dict):
+                return {**tool, "inputSchema": schema}
+            return tool.model_copy(update={"input_schema": schema})
+
+        if isinstance(result, dict) and isinstance(result.get("tools"), list):
+            return {**result, "tools": [strip(t) for t in result["tools"]]}
+        tools = getattr(result, "tools", None)
+        if isinstance(tools, list):
+            return result.model_copy(update={"tools": [strip(t) for t in tools]})
+        return result
+
+
 async def _hub_reader(token: str) -> tuple[str | None, str | None]:
     """(team slug, sign-in email) of an MCP caller, for the hub's lists. (None, None) when unknown:
     an unknown reader only sees no hub. Remembered for a minute (`hub_gate.remember`): catalog_search
@@ -392,7 +437,7 @@ mcp = MCPServer(
     instructions=f"{_BASE_INSTRUCTIONS} {_REVIEW_INSTRUCTION}",
     middleware=[_StaticSurfaceCapabilities(), _OAuthScopeGate(_V1_TOOL_SCOPES),
                 _UnknownCallArguments({"call": "call", "call_media": "call_media"}),
-                _HubToolsGate(), _OpenAIClientGate()],
+                _HubToolsGate(), _OpenAIClientGate(), _PriorReviewGate()],
 )
 
 
@@ -478,6 +523,41 @@ class MarkItemIn(BaseModel):
     index: int | None = Field(default=None, ge=0, description="0-based row; omit for the whole result")
     field: str | None = Field(default=None, min_length=1, max_length=120,
                               pattern=r"^[A-Za-z0-9_.\[\]-]+$")
+
+
+PRIOR_DESCRIPTION = (
+    "Optional. How your PREVIOUS treg call's result worked out, now that you have used it: "
+    "{call_id, usefulness: useful|partly|not_useful|not_sure, reason?, rows?}. rows = the 0-based "
+    "rows you found wrong, e.g. [{index: 2, field: email, verdict: wrong}]. Leave it out when you "
+    "have not used that result or already reviewed it. It never changes this call."
+)
+
+
+class PriorReviewIn(BaseModel):
+    """A review of the caller's previous call, riding on the next `call`. Unknown keys are refused
+    so a misspelled field is not silently dropped; an invalid one never fails the call itself."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    call_id: str = Field(min_length=1, max_length=128, pattern=r"^[A-Za-z0-9_-]+$")
+    usefulness: ReviewUsefulness
+    reason: str | None = Field(default=None, min_length=1, max_length=200)
+    rows: list[MarkItemIn] | None = Field(default=None, max_length=200)
+
+
+def _shows_prior(headers: Any) -> bool:
+    """Whether this credential's `call` tool shows `prior`: a deterministic share of team-MCP
+    tokens (`mcp_prior_review_rate`), never an OpenAI client (which has no review either)."""
+    rate = get_settings().mcp_prior_review_rate
+    headers = headers or {}
+    if rate <= 0 or _is_openai_client(headers):
+        return False
+    raw = headers.get("authorization") or headers.get("Authorization") or ""
+    token = raw.removeprefix("Bearer ").removeprefix("bearer ").strip()
+    if not token:
+        return False
+    bucket = int.from_bytes(hashlib.sha256(f"prior-review:{token}".encode()).digest()[:8], "big")
+    return bucket < rate * 2**64
 
 
 class FeedbackOut(TypedDict, total=False):
@@ -1501,14 +1581,38 @@ async def call(endpoint_id: str, params: dict | list | None = None,
                headers: dict | None = None, content_type: str | None = None,
                form: dict | None = None, uploads: list[dict] | None = None,
                authorization_method: str | None = None,
+               prior: Annotated[PriorReviewIn | None, Field(description=PRIOR_DESCRIPTION)] = None,
                ctx: Context = None) -> CallOut:  # type: ignore[assignment]
-    return await _call_impl(
-        endpoint_id, params=params, method=method, idempotency_key=idempotency_key,
-        query=query, body=body, headers=headers, content_type=content_type,
-        form=form, uploads=uploads,
-        authorization_method=authorization_method, ctx=ctx,
-        catalog_only=False, surface=_TEAM_SURFACE, allowed_methods=None,
-    )
+    review = None
+    if prior is not None and _shows_prior(ctx.headers if ctx else None):
+        review = asyncio.create_task(_submit_prior(prior, ctx))
+    try:
+        return await _call_impl(
+            endpoint_id, params=params, method=method, idempotency_key=idempotency_key,
+            query=query, body=body, headers=headers, content_type=content_type,
+            form=form, uploads=uploads,
+            authorization_method=authorization_method, ctx=ctx,
+            catalog_only=False, surface=_TEAM_SURFACE, allowed_methods=None,
+        )
+    finally:
+        if review is not None:
+            try:
+                await asyncio.wait_for(review, timeout=5)
+            except Exception:  # a prior review can never fail or hold the call
+                logging.getLogger("treg.mcp").info("prior review not recorded", exc_info=True)
+
+
+PRIOR_CLIENT = "mcp-prior"  # the review's `client`: tells these reviews from the review tool's
+
+
+async def _submit_prior(prior: "PriorReviewIn", ctx: Context) -> None:
+    body = {"call_id": prior.call_id, "usefulness": prior.usefulness}
+    if prior.reason:
+        body["reason"] = prior.reason
+    if prior.rows:
+        body["rows"] = [row.model_dump(exclude_none=True) for row in prior.rows]
+    async with _api(_bearer(ctx), client_name=PRIOR_CLIENT) as client:
+        await client.post("/reviews", json=body)
 
 
 _IDEMPOTENCY_KEY_MAX = 200  # the server keeps this many characters (application/call/idempotency.py)
