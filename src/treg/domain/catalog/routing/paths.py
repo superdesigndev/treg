@@ -718,38 +718,51 @@ def reddit_post_id(v: Any) -> str | None:
 
 
 _URL = re.compile(r"(?:https?:)?//\S+|www\.\S+", re.I)
-_WALL_WORDS_MIN = 8        # fewer words than this is a heading or a shell, not a page
+_WALL_WORDS_MIN = 8        # fewer words than this, and few characters, is a heading or a shell
+_WALL_CHARS_MIN = 40       # non-space characters: unspaced scripts (Chinese, Japanese) carry a page in few "words"
 _WALL_CHARS_MAX = 1000     # a wall page is short: past this, a phrase is the page talking about it
+_WALL_GENERIC_WORDS = 25   # a common phrase decides only on a page this short, or a real page saying it stays a page
 _WALL_PHRASES = tuple(_fold(p) for p in (
     "verify you are human", "verify that you are human", "verifying you are human",
-    "confirm you are human", "prove you are human", "human verification", "are you a robot",
-    "not a robot", "recaptcha requires verification", "complete the captcha", "solve the captcha",
-    "checking your browser", "verify your browser", "security checkpoint", "pardon our interruption",
-    "attention required", "complete the security check", "access denied", "access restricted",
-    "access to this page has been denied", "you have been blocked", "request was blocked",
-    "enable javascript", "javascript is disabled", "javascript is required", "turn on javascript",
-    "enable cookies", "cookies are disabled", "cookies must be enabled", "accept cookies to continue",
-    "we use cookies", "click the button below to continue shopping",
-    "sign in to continue", "log in to continue", "login to continue", "sign in to view",
-    "log in to view", "sign up to view", "join to view", "create an account to", "create a free account to",
-    "you must be logged in", "please log in", "please sign in"))
+    "confirm you are human", "confirm you are a human", "prove you are human", "human verification",
+    "are you a robot", "not a robot", "recaptcha requires verification", "complete the captcha",
+    "solve the captcha", "checking your browser", "verify your browser", "security checkpoint",
+    "pardon our interruption", "attention required", "complete the security check",
+    "needs to review the security of your connection", "access to this page has been denied",
+    "you have been blocked", "request was blocked", "click the button below to continue shopping",
+    "sign in to view", "log in to view", "sign up to view", "join to view"))
+_WALL_GENERIC = tuple(_fold(p) for p in (
+    "access denied", "access restricted", "enable javascript", "enable js", "javascript is disabled",
+    "javascript is required", "turn on javascript", "enable cookies", "cookies are disabled",
+    "cookies must be enabled", "accept cookies to continue", "sign in to continue", "log in to continue",
+    "login to continue", "create an account to", "create a free account to", "you must be logged in",
+    "please log in", "please sign in"))
 
 
 def wall_page(page: Any) -> bool:
     """True when an extracted page (a page object, a list whose first item is one, or its text) is
-    not content: its text, links and markup left out, is fewer than eight words, or is short and
-    says it is a wall (a captcha, a browser or bot check, access denied, enable JavaScript or
-    cookies, a cookie banner, a login or signup wall). A long page that mentions a captcha stays
-    a page. A page with no text field at all is never judged: emptiness is the row's own miss rule."""
+    not content: its text, links and markup left out, is empty or near-empty (under eight words and
+    under forty non-space characters), or it says it is a wall. A specific wall phrase (a captcha,
+    a browser or bot check, a sign-in-to-view wall) decides on a page of at most 1,000 characters; a
+    common one (access denied, enable JavaScript or cookies, please sign in) only on a page under
+    twenty-five words. Words are counted in any script. A structured answer (text starting with `{`
+    or `[`) is never a wall, and a page with no text field at all is never judged: emptiness is the
+    row's own miss rule."""
     if isinstance(page, list):
         page = page[0] if page else None
     parts = [s for s in _strings(page) if not s.lstrip().startswith("<") and not _URL.fullmatch(s.strip())]
     if not parts:
         return False
-    text = _fold(_URL.sub(" ", " ".join(parts)))
-    if len(text.split()) < _WALL_WORDS_MIN:
+    raw = _URL.sub(" ", " ".join(parts)).strip()
+    if raw[:1] in ("{", "["):
+        return False
+    words = len(re.findall(r"\w+", raw))
+    if words < _WALL_WORDS_MIN and len("".join(raw.split())) < _WALL_CHARS_MIN:
         return True
-    return len(text) <= _WALL_CHARS_MAX and any(f" {p} " in f" {text} " for p in _WALL_PHRASES)
+    text = f" {_fold(raw)} "
+    if len(raw) <= _WALL_CHARS_MAX and any(f" {p} " in text for p in _WALL_PHRASES):
+        return True
+    return words < _WALL_GENERIC_WORDS and any(f" {p} " in text for p in _WALL_GENERIC)
 
 
 def starts_with(v: Any, prefix: Any) -> bool:

@@ -2121,7 +2121,7 @@ _ARTICLE = ("CAPTCHA systems ask visitors to prove they are human before a form 
     ({"title": "Access Denied", "text": "You don't have permission to access this server. Reference #18.2f1"}, True),
     ("Vercel Security Checkpoint. Failed to verify your browser. Code 21", True),
     ("Just a moment... Enable JavaScript and cookies to continue. Performance and security by Cloudflare", True),
-    ("We use cookies to improve your experience. Manage preferences or accept all to continue browsing.", True),
+    ("Please enable cookies in your browser to continue.", True),
     ("Create an account to see the full shipment record. Already a member? Sign in to continue.", True),
     ("Click the button below to continue shopping. Conditions of Use Privacy Policy", True),
     ("# r/askscience rules", True),
@@ -2133,9 +2133,55 @@ _ARTICLE = ("CAPTCHA systems ask visitors to prove they are human before a form 
      "Our office is open Monday to Friday, nine to five, at 12 Harbour Street.", False),
     ({"url": "https://example.com/", "images": ["https://example.com/a.png"]}, False),
     ([], False), (None, False),
+    # Walls seen behind real sites.
+    ("Just a moment...\n\nwww.example.com needs to review the security of your connection before proceeding.", True),
+    ("Verifying you are human. This may take a few seconds. example.com needs to review the security of your "
+     "connection before proceeding. Ray ID: 8f2a1c3b4d5e6f70 Performance & security by Cloudflare", True),
+    ("Sign in to view Jane Doe's full profile. Join now. Welcome back. Email or phone. Password. "
+     "Forgot password? Sign in. New to LinkedIn? Join now", True),
+    ("Press & Hold to confirm you are a human (and not a bot). Reference ID 1a2b3c4d-1234-5678", True),
+    ("Please enable JS and disable any ad blocker", True),
+    ("Click the button below to continue shopping\n\nContinue shopping\n\nConditions of Use Privacy Policy "
+     "(c) 1996-2025, Amazon.com, Inc. or its affiliates", True),
+    ("OK", True),
 ])
 def test_wall_page_is_true_only_for_a_wall_or_a_near_empty_page(page, wall):
     assert P.evaluate("wall_page(pages)", {"pages": page}) is wall
+
+
+@pytest.mark.parametrize("page", [
+    # Words are counted in every script: unspaced Chinese and Japanese are pages too.
+    "Москва — столица России, город федерального значения, административный центр Центрального федерального "
+    "округа и центр Московской области. Крупнейший по численности населения город России и её субъект.",
+    "北京是中华人民共和国的首都，是全国的政治中心、文化中心、国际交往中心和科技创新中心。北京历史悠久，文化灿烂，"
+    "是首批国家历史文化名城和世界上拥有世界文化遗产数最多的城市。",
+    "このワイヤレスイヤホンは最大三十時間の再生が可能です。ノイズキャンセリング機能を搭載し、通勤や旅行に最適です。"
+    "価格は一万二千円（税込）です。",
+    "أعلنت الحكومة اليوم عن خطة جديدة لتحسين البنية التحتية في المدن الكبرى، وتشمل الخطة بناء طرق جديدة وتوسيع "
+    "شبكة النقل العام خلال السنوات الخمس القادمة.",
+    "تهران پایتخت ایران و بزرگ‌ترین شهر این کشور است. این شهر در دامنه جنوبی رشته‌کوه البرز قرار دارد و جمعیت "
+    "آن بیش از نه میلیون نفر است.",
+    "Impressum: Beispiel GmbH, Hauptstraße 5, 10115 Berlin. Geschäftsführer: Max Müller. Telefon 030 123456.",
+    "Zapatillas de running ligeras con suela de goma. Precio: 59,99 €. Envío gratis en pedidos superiores a 50 €.",
+    # A structured answer is never a wall.
+    '{"ip": "203.0.113.7"}',
+    '{"status":"ok","version":"2.4.1","uptime":86400}',
+    # A real short page that carries a cookie banner, a sign-in line, a JavaScript notice or says "access denied".
+    "We use cookies to improve your experience. Accept all | Manage preferences\n\n# Opening hours\n\nOur bakery "
+    "in Leeds is open Monday to Saturday from 7am to 6pm, and Sunday from 8am to 2pm. Fresh sourdough every "
+    "morning; gluten-free loaves on Fridays. Call 0113 555 0101 to order a celebration cake at least two days ahead.",
+    "# Acme Drill X200\n\n18V cordless drill with two batteries and charger. Torque 60 Nm, two speeds, LED light. "
+    "Please sign in to see trade prices. Retail price £89.99. Free delivery over £50.",
+    "# Error 403: Access denied\n\nThe API returns 403 Access denied when the token lacks the read scope. Add the "
+    "scope in your dashboard under Settings > Tokens and retry the request.",
+    "You need to enable JavaScript to run this app.\n\n# Weather in Paris\n\nToday: sunny, high of 21 C, low of "
+    "12 C. Tomorrow: light rain in the afternoon, high of 17 C. Wind from the west at 15 km/h.",
+    "# Blue Ceramic Mug 350 ml\n\nHand-glazed stoneware mug, dishwasher safe. $18.00. In stock. Add to cart.",
+    "An old silent pond / A frog jumps into the pond / Splash! Silence again.",
+    "We use cookies to improve your experience. Manage preferences or accept all to continue browsing.",
+])
+def test_wall_page_keeps_real_pages_in_any_language_and_structured_answers(page):
+    assert P.evaluate("wall_page(pages)", {"pages": page}) is False
 
 
 def test_a_wall_page_is_a_miss_the_extract_route_moves_on_from_and_a_per_success_child_does_not_bill():

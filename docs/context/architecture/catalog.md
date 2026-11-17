@@ -1009,10 +1009,12 @@ returned and never documented as stable. An output field may say where it lands 
   marks true becomes a miss (`why: question_miss`) the route moves on from. It names no provider;
   `no_result_on_site(q, results)` judges a `site:` question whose rows are all on other sites. A
   call without an identity (a replay record) is not judged by it. `web.extract` declares
-  `wall_page(pages)` (`paths.py::wall_page`): a page whose text is under eight words, or short and
-  matching a fixed phrase list (captcha, browser or bot check, access denied, enable JavaScript or
-  cookies, cookie banner, login or signup wall), is a miss; a long page that mentions those words
-  is not. The contract rule moves the walk on but does not change a child's charge; a `per_success`
+  `wall_page(pages)` (`paths.py::wall_page`): a page whose text is near-empty (under eight words,
+  counted in any script, and under forty non-space characters) is a miss; so is one that says it is
+  a wall, where a specific phrase (captcha, browser or bot check, sign in to view) decides on a page
+  of at most 1,000 characters and a common one (access denied, enable JavaScript or cookies, please
+  sign in) only on a page under twenty-five words. A structured answer (text starting with `{` or
+  `[`) and a long page that mentions those words are not walls. The contract rule moves the walk on but does not change a child's charge; a `per_success`
   child stops billing such a page only where its own adapter `miss` also calls `wall_page` on its
   text field.
 - `scoping` names identity keys that scope the answer (`company_domain`): a candidate whose adapter
