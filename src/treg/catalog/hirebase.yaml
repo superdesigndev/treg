@@ -39,9 +39,10 @@ endpoints:
       body:
         job_titles: {type: "array[string]", required: false, note: "OR'd. An unquoted entry needs every word in the title, in any order; wrap it in quotes for the exact phrase; prefix - to exclude", example: ["software engineer"]}
         keywords: {type: "array[string]", required: false, note: "ranked against description, skills and technologies; prefix - to exclude", example: ["kubernetes"]}
-        geo_locations: {type: "array[object]", required: false, note: "[{city, region, country}] with full names; a city matches its metro area", example: [{country: "United States"}]}
+        geo_locations: {type: "array[object]", required: false, note: "[{city, region, country}], any subset; each is geocoded, so a free-text place works in city alone ({city: 'New York, NY'}, {city: 'Texas'}). A city matches its metro area; a place that cannot be found is not filtered on", example: [{country: "United States"}]}
         location_types: {type: "array[string]", required: false, note: "Remote, Hybrid or In-Person", example: ["Remote"]}
-        experience: {type: "array[string]", required: false, note: "Entry, Junior, Mid, Senior or Executive"}
+        experience: {type: "array[string]", required: false, note: "years-of-experience bands, not seniority: Entry, Junior, Mid, Senior or Executive (Executive is 10+ years, mostly senior and staff roles). For the level a job is labelled with, use experience_levels"}
+        experience_levels: {type: "array[string]", required: false, note: "the job's experience_level label: Entry-Level, Junior / Associate, Mid-Level, Senior, Principal / Staff / Lead or Executive", example: ["Executive"]}
         job_types: {type: "array[string]", required: false, note: "Full Time, Part Time, Contract or Internship"}
         salary: {type: object, required: false, note: "{min, max} in currency"}
         currency: {type: string, required: false, example: "USD"}
@@ -108,12 +109,11 @@ endpoints:
     input:
       bodyType: json
       body:
-        vector: {type: object, required: false, note: "{query: profile text} or {job_ids: [_id, ...]} for jobs like these", example: {query: "Backend engineer, 6 years of Go and Postgres at fintech startups, wants remote work"}}
+        vector: {type: object, required: true, note: "{query: profile text} or {job_ids: [_id, ...]} for jobs like these; add score_threshold (0 to 1) inside it for a minimum similarity", example: {query: "Backend engineer, 6 years of Go and Postgres at fintech startups, wants remote work"}}
         lexical: {type: object, required: false, note: "the hirebase.jobs.search filters (job_titles, geo_locations, location_types, days_ago, ...). A misspelled field inside is ignored, not refused", example: {location_types: ["Remote"], days_ago: 14}}
-        score_threshold: {type: number, required: false, min: 0, max: 1}
         page: {type: integer, required: false, default: 1, min: 1}
         limit: {type: integer, required: false, default: 10, min: 1, max: 100, note: "each job returned is charged", example: 3}
-      note: "Answers take 15-25 s. Results carry no similarity score, and one role posted per country can fill several rows."
+      note: "Answers take 15-25 s. Results carry no similarity score, and one role posted per country can fill several rows. Unknown top-level fields answer 422."
     test_request: {body: {vector: {query: "Backend engineer, 6 years of Go and Postgres at fintech startups, wants remote work"}, lexical: {location_types: ["Remote"], days_ago: 14}, limit: 2}}
     price: {value: '1', currency: credit, unit: record, note: "One credit per job returned; an empty page is free. treg holds limit jobs (10 when omitted)."}
     reserve: {rows: {param: body.limit, default: {value: 10, source: docs}, max: 100}}
@@ -242,7 +242,8 @@ endpoints:
         job_titles: {type: "array[string]", required: false, example: ["software engineer"]}
         geo_locations: {type: "array[object]", required: false, note: "[{city, region, country}] with full names", example: [{city: "San Francisco", region: "California", country: "United States"}]}
         location_types: {type: "array[string]", required: false}
-        experience: {type: "array[string]", required: false}
+        experience: {type: "array[string]", required: false, note: "years-of-experience bands; experience_levels filters on the labelled level"}
+        experience_levels: {type: "array[string]", required: false}
         keywords: {type: "array[string]", required: false}
         company_slug: {type: "array[string]", required: false}
         industry: {type: "array[string]", required: false}
