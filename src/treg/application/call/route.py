@@ -1852,6 +1852,10 @@ async def _run_routed(parent: CallContext, ep: dict, body_bytes: bytes, get_head
                           **({"limit_exceeded": limit_exceeded} if limit_exceeded else {}),
                           **({"dropped": plan.dropped} if plan.dropped else {})}}
     _summarize(parent, served_by=served, tried_count=len(tried), output=body_out["output"],
+               # The served answer's contract word (an email check: valid, invalid, ...), for the
+               # mark invitation; None when an upgrade or merge replaced the winner's answer.
+               answer_verdict=(catalog_results.verdict(served, 200, raw)
+                               if served == cand.endpoint["id"] and not merged_from else None),
                hit={"hit": True, "weak": True, "miss": False}.get(winner_outcome),
                check_verdict=(verification or {}).get("verdict")
                if (verification or {}).get("checked") else None)

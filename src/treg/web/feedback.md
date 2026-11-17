@@ -87,7 +87,8 @@ written yet, retry shortly. Your own tools cannot be marked.
 
 A call result may carry a mark invitation (`X-Treg-Hint: mark` with its text in
 `X-Treg-Hint-Text`, a stderr line in the CLI, the hint in MCP). It asks nothing now: mark that call
-only if you later learn something about its rows.
+only if you later learn something about its rows. When an email check through treg finds invalid an
+address that treg found for you, the check's result names the find and the command to mark it.
 
 ## Review
 

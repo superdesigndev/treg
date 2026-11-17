@@ -12,9 +12,13 @@ from __future__ import annotations
 
 from typing import Literal
 
+import hashlib
+import json
+
 from ... import hints
 from ...config import get_settings
 from ...infra import kv
+from .. import call_events
 from .types import CallContext
 
 Kind = Literal["review", "mark", "feedback"]
@@ -66,3 +70,57 @@ async def invitation(context: CallContext, status: int, *, replayed: bool) -> Ki
     if hints.sampled("feedback", context.call_ref):
         return "feedback"
     return None
+
+
+def _found_key(context: CallContext, email: object) -> str | None:
+    """The store key for an address one team and pin found: an HMAC, never the address. The pin is
+    part of it, so a check by one pinned agent never names another pin's call."""
+    normal = call_events.normalize("email", email) if isinstance(email, str) else None
+    if not normal:
+        return None
+    caller = context.input.caller
+    pin = json.dumps(caller.membership.pinned_tags or {}, sort_keys=True)
+    scope = hashlib.sha256(pin.encode()).hexdigest()[:16]
+    return f"mark-found:{caller.org_id}:{scope}:{call_events.keyed(normal)}"
+
+
+def _routed(context: CallContext, capability: str, status: int, replayed: bool) -> dict | None:
+    summary = context.route_summary
+    if (summary is None or not (200 <= status < 300) or replayed
+            or not (context.endpoint_id or "").endswith(f".{capability}")):
+        return None
+    return summary
+
+
+async def remember_found(context: CallContext, status: int, *, replayed: bool) -> None:
+    """A routed email find that returned an address: note which call found it, for a later check.
+    No database, no body access; a store fault only loses a later invitation."""
+    if not get_settings().mark_evidence_hint:
+        return
+    summary = _routed(context, "people.email.find", status, replayed)
+    if summary is None or summary.get("hit") is not True:
+        return
+    key = _found_key(context, (summary.get("output") or {}).get("email"))
+    if key is not None:
+        await kv.store().note_found(key, context.call_ref, get_settings().mark_evidence_ttl_s)
+
+
+async def evidence_invitation(context: CallContext, status: int, *, replayed: bool) -> str | None:
+    """A routed email check that answered `invalid` for an address this team and pin found through
+    treg: the text inviting a mark on that find, with the check as evidence. Else None."""
+    settings = get_settings()
+    if not settings.mark_evidence_hint:
+        return None
+    summary = _routed(context, "people.email.verify", status, replayed)
+    if summary is None or summary.get("answer_verdict") != "invalid":
+        return None
+    key = _found_key(context, (summary.get("identity") or {}).get("email"))
+    if key is None:
+        return None
+    found = await kv.store().found_by(key)
+    if not found or found == context.call_ref:
+        return None
+    if not await kv.store().take(f"mark-evidence-budget:{context.input.caller.org_id}",
+                                 settings.mark_evidence_per_hour, BUDGET_WINDOW_S):
+        return None
+    return hints.mark_evidence_hint(context.call_ref, found)
