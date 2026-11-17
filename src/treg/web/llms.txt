@@ -67,6 +67,16 @@ mention treg's other skills (the ones the installer named; each is described in
 to star the project: `gh api -X PUT user/starred/superdesigndev/treg`,
 or open https://github.com/superdesigndev/treg.
 
+<!--agentpay-->
+**No account? Pay per call with a wallet.** An agent with a stablecoin wallet can call a priced
+catalog tool with no signup and no token: send `{BASE}/call/<id>` over HTTP without
+`X-Treg-Token`, and treg answers 402 with a payment challenge (the body's `protocols` names MPP,
+x402 or both). Pay it and send the same request again; what the call does not use stays as the
+wallet's credit for its next calls, and is never paid back as money. Let a client do it: pympp
+(Python) or the mppx library (`Mppx.create`). The `mppx` command line (0.20.1) cannot yet pay
+from a wallet with no credit. The skill's "Pay with a wallet" section has the rules.
+
+<!--/agentpay-->
 **The loop: search, read, call.**
 
     treg catalog search "backlinks for a domain"   # tools that do the job, with prices

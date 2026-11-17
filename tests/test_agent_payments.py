@@ -360,6 +360,22 @@ async def test_the_catalog_says_nothing_about_wallets_while_payments_are_off(ano
     assert "wallet" not in (await anon.get(f"/catalog/endpoints/{EP}")).json()["endpoint"]
 
 
+async def _agent_files(client: AsyncClient) -> list[str]:
+    return [(await client.get(path)).text for path in ("/llms.txt", "/skill.md")]
+
+
+async def test_the_agent_files_say_nothing_about_wallets_while_payments_are_off(anon: AsyncClient):
+    for body in await _agent_files(anon):
+        assert "Pay with a wallet" not in body and "agentpay" not in body
+
+
+async def test_the_agent_files_teach_the_wallet_road_while_payments_are_on(anon: AsyncClient,
+                                                                         payments_on):
+    for body in await _agent_files(anon):
+        assert "Pay with a wallet" in body
+        assert "<!--agentpay-->" not in body and "<!--/agentpay-->" not in body
+
+
 # ---- polling a task the wallet started ------------------------------------------------------------
 async def test_a_poll_is_refused_to_a_wallet_treg_does_not_know(anon: AsyncClient, payments_on,
                                                                facilitator):
