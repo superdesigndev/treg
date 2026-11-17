@@ -1512,7 +1512,8 @@ async def _execute_call(request: _ApplicationRequest, upstream_client: httpx.Asy
         refusal_secrets = _safe_secret_renderings(tool, secrets)
         request.context.finalization = FinalizationState.PENDING
         try:
-            await _platform_reserve(mk, caller, meta=meta, call_ref=call_ref, allow_holdless=True)
+            await _platform_reserve(mk, caller, meta=meta, call_ref=call_ref, allow_holdless=True,
+                                    allow_allowance=not idem_key)
             request.context.finalization = FinalizationState.OPEN
         except asyncio.CancelledError:
             await _finish_cancelled_call(request, mk, call_ref)

@@ -35,6 +35,7 @@ from ...infra.money_trace import mark_money, money_stage
 from ...models import Org
 from ...timeutil import utcnow_naive as _utcnow_naive
 from .idempotency import _release_idempotent_claim
+from . import allowance as allowance_runtime
 from . import cost as call_cost
 from . import keyslots
 from .resolve import MarketplaceCall, _openmart_credits, _usd_to_micro
@@ -1153,6 +1154,21 @@ async def _platform_settle(
     # the caller because the aggregator's prepaid account still incurred the cost.
     call_id, mk.call_id = mk.call_id, None  # closing is once-only, even if two paths try
     charged = 0
+    if mk.allowance_epoch is not None:
+        # Reserved from the team's allowance: there is no hold to close. The charge is queued
+        # and the unused part goes back to the counter; a release writes nothing at all.
+        epoch, mk.allowance_epoch = mk.allowance_epoch, None
+        charged = await allowance_runtime.finish(
+            mk.payer_org_id, call_id, epoch, mk.reserved_micro or 0, endpoint_id=mk.endpoint_id,
+            billable=billable, actual_micro=actual, archive_use=archive_use if billable else None,
+            meta={"provider": mk.provider, "status_code": status_code, "cost_type": mk.cost_type,
+                  "cost_source": ("provider" if observed is not None else
+                                  mk.settlement_basis.get("amount", {}).get("kind", "estimate")),
+                  **({"cached": True, "cache_price_percent": repeat_percent if cached_repeat else 100}
+                     if cached_hit else {})})
+        if finalized is not None:
+            finalized()
+        return charged, observed
     if (mk.deferred is not None and billable and overflow_spend is None and observed_override is None
             and status_code is not None):
         # A routed child: the parent decides whether the caller pays (a routed call that fails
@@ -1358,6 +1374,16 @@ async def _finish_cancelled_call(
                     ) if possible])
         if mk is not None and mk.metered:
             mk.call_id = None
+        if mk is not None and mk.allowance_epoch is not None:
+            # The parent reserved from the allowance, so it has no hold: return the take (or
+            # charge it, when the purchase was already sent). An overflow child keeps its hold.
+            epoch, mk.allowance_epoch = mk.allowance_epoch, None
+            hold_ids = [hold_id for hold_id in hold_ids if hold_id != call_ref]
+            await allowance_runtime.finish(
+                mk.payer_org_id, call_ref, epoch, mk.reserved_micro or 0,
+                endpoint_id=mk.endpoint_id, billable=charge_hold,
+                meta={"provider": mk.provider, "cost_type": mk.cost_type, "status_code": None,
+                      "reason": "call_cancelled_after_purchase_sent"})
         if hold_ids:
             # `ledger.reserve` may have committed without returning, so `mk.call_id` is not an
             # authority here. The pre-reserve call_ref is the hold id in either outcome, and release

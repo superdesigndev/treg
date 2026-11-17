@@ -13,6 +13,8 @@ sources:
   - tests/test_money_allowance.py
   - src/treg/infra/kv.py
   - tests/test_kv_allowance.py
+  - src/treg/application/call/allowance.py
+  - tests/test_call_allowance.py
   - src/treg/domain/asynctasks/__init__.py
   - src/treg/models.py
   - src/treg/application/billing.py
@@ -196,6 +198,52 @@ first revision.
 `AsyncTaskRecord` is the durable owner of an existing hold after a metered asynchronous submission;
 it creates no other money movement. A `/tasks/` poll is an ordinary call and settles as one
 ([tasks](tasks.md)).
+
+
+## Allowance: one hold for many calls
+
+Off by default: `money_allowance_org_ids` lists the teams, and the shared key-value store must be
+configured. For a listed team, an eligible call (`reserve._allowance_eligible`) reserves with one
+atomic take from the team's allowance counter and touches no balance row, so its calls no longer
+queue on the team's money lease twice each.
+
+Eligible: a direct call (not a child of a route, a hub run or overflow), synchronous, on treg's
+platform key, with no tags, no `Idempotency-Key`, a member with no daily spend limit, a provider
+outside the trial pools, an endpoint any credit may pay for, and a price above zero. Every other
+call keeps its own hold, because something reads that hold: the tag and member rows written with
+it, the async task or routed parent that closes it later, the idempotency check that asks whether
+money moved, the purchased-credit gate.
+
+`application/call/allowance.py` is the whole runtime:
+
+- **take.** `store.allowance_take`. On a miss, one process takes a short lease and refills; the
+  others retry the take for a bounded time. Anything else (the store cannot answer, the wait
+  ran out, the refill failed) returns the call to the exact path, which is always correct.
+- **refill.** Under the money admission lease, like a reserve: reap stale holds, then
+  `refill_allowance_in_transaction` folds queued charges and brings the counter up to
+  `money_allowance_chunk_micro`; after the commit, `store.allowance_add`. A team with a daily cap
+  gets no refill that would pass it: the whole chunk is in today's counter from the moment it
+  is moved, so calls spending from it cannot exceed the cap. When the counter still cannot cover
+  the call (balance or cap), the counter is emptied and that amount released back to the balance,
+  the call takes the exact path, and the team is not tried again for a few seconds. A team with
+  less than a chunk left is therefore served by the exact path.
+- **finish.** `_platform_settle` and the cancel cleanup end a take exactly once (`mk.allowance_epoch`
+  is cleared first). A billable call queues its charge, then gives back what it did not use; a
+  call that is not billable gives everything back and writes nothing. Charges of calls finishing
+  within `money_allowance_linger_ms` share one insert, with the archive's paid-question marks,
+  and each call waits for its batch to commit before it answers. The charge is queued before
+  anything is awaited, so a cancel cannot lose it. A batch that cannot be written is logged, not
+  charged, and its takes returned.
+- **Auto top-up** is asked after a refill, the only moment the balance moved.
+
+What can go wrong lands on one side only. A take the process never finishes (a crash), a give-back
+the store did not apply, or a counter lost with the store leaves money in the allowance hold that
+no counter offers: unavailable, not spent and not charged, until the hold is closed. Nothing here
+offers money the hold does not have.
+
+Not built yet: closing an idle team's allowance. Until then a listed team that stops calling keeps
+up to a chunk in its allowance hold; the balance shown is lower by that much and the hold is in
+`/balance`.
 
 ## The six operations (`domain/money`)
 

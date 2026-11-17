@@ -9,11 +9,16 @@ import pytest
 from sqlalchemy import select
 
 from treg.application.call import allowance as runtime
+from treg.application.call import reserve as call_reserve
+from treg.application.call import settle as call_settle
+from treg.application.call.intake import CallMeta
+from treg.application.call.resolve import MarketplaceCall
 from treg.config import get_settings
 from treg.domain import money as ledger
 from treg.domain.money import allowance
 from treg.infra import kv
 from treg.infra.db import reset_db, session_maker
+from treg.domain.identity.access import Caller
 from treg.models import CallCharge, Membership, Org, Tool, User
 
 GRANT = 5_000_000
@@ -265,3 +270,112 @@ async def test_a_refill_that_fails_sends_the_call_to_the_exact_path(org_id, stor
     assert await runtime.take(org_id, 600) is None
     assert store.leases == {}
 
+
+# ---- through the call path's own reserve, settle and cancel ------------------------------------
+async def _caller(org_id: int) -> Caller:
+    async with session_maker() as db:
+        org = await db.get(Org, org_id)
+        user = User(email=f"{uuid4().hex}@example.invalid")
+        db.add(user)
+        await db.flush()
+        membership = Membership(user_id=user.id, org_id=org_id, role="owner", token_hash=uuid4().hex)
+        db.add(membership)
+        await db.commit()
+        for row in (org, user, membership):
+            await db.refresh(row)
+            db.expunge(row)
+        return Caller(membership, user, org, None)
+
+
+def _call(org_id: int, estimate: int = 600, **fields) -> MarketplaceCall:
+    return MarketplaceCall(
+        tool=Tool(org_id=org_id, name="test", owner="test@example.invalid",
+                  base_url="https://example.invalid", host="example.invalid"),
+        upstream="https://example.invalid/call", consumed=set(), endpoint_id="test.allowance",
+        provider="test", tier="platform", cost_type="per_call", estimate_micro=estimate,
+        settlement_basis={"amount": {"kind": "observed"}, "fallback_micro": estimate}, **fields)
+
+
+async def _per_call_holds(org_id: int) -> list[str]:
+    async with session_maker() as db:
+        return [h.id for h in await ledger.open_holds_of(db, org_id) if not h.allowance]
+
+
+async def test_an_eligible_call_reserves_and_settles_without_a_hold_of_its_own(org_id, store):
+    caller, mk = await _caller(org_id), _call(org_id)
+    await call_reserve._platform_reserve(mk, caller, call_ref="direct-1", allow_allowance=True)
+    assert mk.call_id == "direct-1" and mk.allowance_epoch and mk.reserved_micro == 600
+    assert await _per_call_holds(org_id) == []
+    finalized = []
+    assert await call_settle._platform_settle(
+        mk, 200, observed_override=450, finalized=lambda: finalized.append(1)) == (450, 450)
+    assert mk.call_id is None and mk.allowance_epoch is None and finalized == [1]
+    assert store.counters[org_id]["avail"] == CHUNK - 450
+    assert await call_settle._platform_settle(mk, 200, observed_override=450) == (0, None)
+    async with session_maker() as db:
+        row = (await db.execute(select(CallCharge))).scalar_one()
+    assert (row.call_id, row.amount_micro, row.endpoint_id) == ("direct-1", 450, "test.allowance")
+    assert row.meta["provider"] == "test" and row.meta["status_code"] == 200
+    assert (await _fold(org_id)).consumed_micro == 450
+    assert await _state(org_id) == (GRANT - CHUNK, CHUNK - 450)
+
+
+async def test_an_eligible_call_the_provider_never_answered_returns_its_take(org_id, store):
+    caller, mk = await _caller(org_id), _call(org_id)
+    await call_reserve._platform_reserve(mk, caller, call_ref="direct-1", allow_allowance=True)
+    assert await call_settle._platform_settle(mk, None, reason="network") == (0, None)
+    assert store.counters[org_id]["avail"] == CHUNK
+    async with session_maker() as db:
+        assert (await db.execute(select(CallCharge))).first() is None
+
+
+async def test_a_cancelled_eligible_call_returns_its_take(org_id, store):
+    caller, mk = await _caller(org_id), _call(org_id)
+    await call_reserve._platform_reserve(mk, caller, call_ref="direct-1", allow_allowance=True)
+    await call_settle._finish_cancelled_call(None, mk, "direct-1")
+    assert mk.allowance_epoch is None and store.counters[org_id]["avail"] == CHUNK
+    assert await _state(org_id) == (GRANT - CHUNK, CHUNK)
+
+
+@pytest.mark.parametrize("why", [
+    "not_allowed_by_the_caller", "team_not_listed", "tagged", "child_call", "billed_oauth",
+    "routed_child", "store_unavailable",
+])
+async def test_every_other_call_keeps_its_own_hold(org_id, store, monkeypatch, why):
+    caller, mk, meta, call_ref, allow = await _caller(org_id), _call(org_id), CallMeta(tags={}), "c-1", True
+    if why == "not_allowed_by_the_caller":
+        allow = False
+    elif why == "team_not_listed":
+        monkeypatch.setattr(get_settings(), "money_allowance_org_ids", [])
+    elif why == "tagged":
+        meta = CallMeta(tags={"user": "u1"})
+    elif why == "child_call":
+        call_ref = "c-1:r1"
+    elif why == "billed_oauth":
+        mk = _call(org_id, billed_oauth=True)
+    elif why == "routed_child":
+        mk = _call(org_id, deferred=[])
+    elif why == "store_unavailable":
+        monkeypatch.setattr(kv, "store", lambda: kv.LocalStore())
+    await call_reserve._platform_reserve(mk, caller, meta, call_ref, allow_allowance=allow)
+    assert mk.allowance_epoch is None and mk.call_id == call_ref
+    assert await _per_call_holds(org_id) == [call_ref]
+    assert store.counters == {}
+
+
+async def test_a_member_with_a_spend_limit_keeps_a_hold_of_their_own(org_id, store):
+    caller = await _caller(org_id)
+    caller.membership.role = "member"
+    caller.membership.daily_spend_cap_micro = 5_000
+    mk = _call(org_id)
+    await call_reserve._platform_reserve(mk, caller, call_ref="c-1", allow_allowance=True)
+    assert mk.allowance_epoch is None and await _per_call_holds(org_id) == ["c-1"]
+
+
+async def test_a_team_too_poor_for_a_chunk_is_served_by_the_exact_path(org_id, store, monkeypatch):
+    monkeypatch.setattr(get_settings(), "money_allowance_chunk_micro", GRANT + 1)
+    caller, mk = await _caller(org_id), _call(org_id)
+    await call_reserve._platform_reserve(mk, caller, call_ref="c-1", allow_allowance=True)
+    assert mk.allowance_epoch is None and await _per_call_holds(org_id) == ["c-1"]
+    assert await call_settle._platform_settle(mk, 200, observed_override=450) == (450, 450)
+    assert await _state(org_id) == (GRANT - 450, 0)
