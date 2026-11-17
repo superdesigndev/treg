@@ -1,0 +1,69 @@
+{
+  "match": {
+    "status": "candidate",
+    "score": 95,
+    "person": {
+      "name": {
+        "full": "Bill Gates",
+        "first": "Bill",
+        "last": "Gates"
+      },
+      "bio": "Chair of the Gates Foundation. Founder of Breakthrough Energy. Co-founder of Microsoft. Voracious reader. Avid traveler. Active blogger.",
+      "location": {
+        "display": "Seattle, Washington, United States",
+        "city": "Seattle",
+        "region": "Washington",
+        "country": "United States"
+      },
+      "social_urls": [
+        "https://www.linkedin.com/in/williamhgates"
+      ],
+      "website_urls": [
+        "https://www.linkedin.com/redir/redirect?url=https%3A%2F%2Fgatesnot%2Ees%2Fsourcecode-li&urlhash=Zl5S&trk=public_profile_topcard-website"
+      ],
+      "current_role_status": "unknown",
+      "experience": [
+        {
+          "title": "Co-chair",
+          "organization": {
+            "name": "Gates Foundation"
+          },
+          "start_date": {
+            "year": 2000
+          }
+        },
+        {
+          "title": "Founder",
+          "organization": {
+            "name": "Breakthrough Energy"
+          },
+          "start_date": {
+            "year": 2015
+          }
+        },
+        "… 1 more item(s) truncated"
+      ],
+      "education": [
+        {
+          "institution": {
+            "name": "Harvard University"
+          },
+          "start_date": {
+            "year": 1973
+          },
+          "end_date": {
+            "year": 1975
+          }
+        },
+        {
+          "institution": {
+            "name": "Lakeside School"
+          }
+        }
+      ],
+      "skills": [],
+      "checked_at": "2026-11-17T18:04:25.164379+00:00"
+    }
+  },
+  "request_id": "8afb1dae-f6a5-4a1e-aebe-0e67fcbb12ef"
+}

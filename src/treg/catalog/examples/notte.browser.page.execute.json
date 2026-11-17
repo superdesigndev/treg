@@ -1,0 +1,12 @@
+{
+  "started_at": "2026-11-17T18:09:49.087778Z",
+  "ended_at": "2026-11-17T18:09:50.234616Z",
+  "action": {
+    "type": "goto",
+    "category": "Special Browser Actions",
+    "description": "Goto to a URL (in current tab)",
+    "url": "https://example.com"
+  },
+  "success": true,
+  "message": "Navigated to 'https://example.com' in current tab"
+}

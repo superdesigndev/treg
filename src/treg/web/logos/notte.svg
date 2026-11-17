@@ -1,0 +1,11 @@
+<!-- Official vendor icon: Notte brand kit (notte-icon-black.svg); retrieved 2026-11-17 -->
+<svg width="512" height="512" viewBox="0 0 512 512" fill="none" xmlns="http://www.w3.org/2000/svg">
+<rect x="163.683" y="124.535" width="32" height="329.364" transform="rotate(-30 163.683 124.535)" fill="black" stroke="black"/>
+<rect x="243.5" y="268.5" width="32" height="155" fill="black" stroke="black"/>
+<rect x="252.052" y="240.86" width="32" height="176.739" transform="rotate(30 252.052 240.86)" fill="black" stroke="black"/>
+<rect x="260.653" y="240.202" width="32" height="174.325" transform="rotate(60 260.653 240.202)" fill="black" stroke="black"/>
+<rect x="109.683" y="190.396" width="32" height="329.364" transform="rotate(-60 109.683 190.396)" fill="black" stroke="black"/>
+<rect x="95.5" y="274.5" width="32" height="167" transform="rotate(-90 95.5 274.5)" fill="black" stroke="black"/>
+<path d="M177.5 116L257.382 240.508C263.716 250.382 272.145 258.742 282.07 264.995L403.5 341.5" stroke="black" stroke-width="33"/>
+<path d="M310.217 91.0275L308.648 161.744C308.02 190.032 330.972 213.205 359.265 212.849L440.926 211.821" stroke="black" stroke-width="33"/>
+</svg>

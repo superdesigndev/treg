@@ -1,0 +1,56 @@
+{
+  "status": "ok",
+  "code": 200,
+  "brand": {
+    "domain": "stripe.com",
+    "title": "Stripe",
+    "description": "Stripe is a financial services platform that helps all types of businesses accept payments, build flexible billing models, and manage money movement.",
+    "colors": [
+      {
+        "hex": "#533afd",
+        "source": "site"
+      },
+      {
+        "hex": "#061b31",
+        "source": "site"
+      },
+      "… 6 more item(s) truncated"
+    ],
+    "logos": [
+      {
+        "url": "https://images.stripeassets.com/fzn2n1nzq965/1hgcBNd12BfT9VLgbId7By/01d91920114b124fb4cf6d448f9f06eb/favicon.svg",
+        "type": "icon"
+      },
+      {
+        "url": "https://images.stripeassets.com/fzn2n1nzq965/4vVgZi0ZMoEzOhkcv7EVwK/8cce6fdcf2733b2ec8e99548908847ed/favicon.png?w=96&h=96",
+        "type": "icon"
+      },
+      "… 2 more item(s) truncated"
+    ],
+    "socials": [
+      {
+        "type": "github",
+        "url": "https://github.com/stripe"
+      },
+      {
+        "type": "youtube",
+        "url": "https://www.youtube.com/watch?v=eMSqlQMk480"
+      },
+      "… 7 more item(s) truncated"
+    ],
+    "links": {
+      "careers": "https://stripe.com/careers",
+      "privacy": "https://stripe.com/privacy",
+      "contact": "https://stripe.com/contact/sales",
+      "blog": "https://stripe.com/newsroom/news/stripe-openai-instant-checkout",
+      "pricing": "https://stripe.com/pricing"
+    },
+    "primary_language": "english"
+  },
+  "cache_metadata": {
+    "status": "hit",
+    "age_ms": 302329
+  },
+  "request_id": "0c556044-70d7-429b-8795-010f45491f7c",
+  "partial": false
+}

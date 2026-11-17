@@ -1,0 +1,13 @@
+{
+  "persona_id": "6af7fd98-9b13-4784-af21-28ae17dd3748",
+  "status": "active",
+  "first_name": "Troy",
+  "last_name": "Sellers",
+  "email": "troy.sellers@mail-sand.com",
+  "internal_email": "6af7fd98-9b13-4784-af21-28ae17dd3748@mail-sand.com",
+  "vault_id": null,
+  "phone_number": null,
+  "email_provider": "notte",
+  "name": null,
+  "created_at": "2026-11-17T18:09:52.023248Z"
+}

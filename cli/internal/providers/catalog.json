@@ -1166,6 +1166,17 @@
    "probe": "data/credits"
   },
   {
+   "provider": "Notte",
+   "tokens": [
+    "NOTTE"
+   ],
+   "base_url": "https://api.notte.cc",
+   "auth": {
+    "shape": "bearer"
+   },
+   "probe": "usage"
+  },
+  {
    "provider": "Exa",
    "tokens": [
     "EXA"

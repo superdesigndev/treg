@@ -1,0 +1,193 @@
+{
+  "status": "ok",
+  "domain": "stripe.com",
+  "styleguide": {
+    "mode": "light",
+    "colors": {
+      "accent": "#533afd",
+      "background": "#ffffff",
+      "text": "#ffffff"
+    },
+    "typography": {
+      "headings": {
+        "h1": {
+          "fontFamily": "sohne-var",
+          "fontFallbacks": [
+            "sohne-var",
+            "SF Pro Display",
+            "… 1 more item(s) truncated"
+          ],
+          "fontSize": "48px",
+          "fontWeight": 300.0,
+          "lineHeight": "55.2px",
+          "letterSpacing": "-0.96px"
+        },
+        "h2": {
+          "fontFamily": "sohne-var",
+          "fontFallbacks": [
+            "sohne-var",
+            "SF Pro Display",
+            "… 1 more item(s) truncated"
+          ],
+          "fontSize": "32px",
+          "fontWeight": 300.0,
+          "lineHeight": "35.2px",
+          "letterSpacing": "-0.64px"
+        },
+        "h3": {
+          "fontFamily": "sohne-var",
+          "fontFallbacks": [
+            "sohne-var",
+            "SF Pro Display",
+            "… 1 more item(s) truncated"
+          ],
+          "fontSize": "26px",
+          "fontWeight": 300.0,
+          "lineHeight": "29.12px",
+          "letterSpacing": "-0.26px"
+        },
+        "h4": {
+          "fontFamily": "sohne-var",
+          "fontFallbacks": [
+            "sohne-var",
+            "SF Pro Display",
+            "… 1 more item(s) truncated"
+          ],
+          "fontSize": "16px",
+          "fontWeight": 400.0,
+          "lineHeight": "22.4px",
+          "letterSpacing": "normal"
+        }
+      },
+      "p": {
+        "fontFamily": "sohne-var",
+        "fontFallbacks": [
+          "sohne-var",
+          "SF Pro Display",
+          "… 1 more item(s) truncated"
+        ],
+        "fontSize": "14px",
+        "fontWeight": 300.0,
+        "lineHeight": "19.6px",
+        "letterSpacing": "normal"
+      }
+    },
+    "elementSpacing": {
+      "xs": "0.8px",
+      "sm": "10px",
+      "md": "15.5px",
+      "lg": "40px",
+      "xl": "351.141px"
+    },
+    "shadows": {
+      "sm": "rgba(50, 50, 93, 0.12) 0px 16px 32px 0px",
+      "md": "rgba(50, 50, 93, 0.12) 0px 16px 32px 0px",
+      "lg": "rgba(50, 50, 93, 0.12) 0px 16px 32px 0px",
+      "xl": "rgba(50, 50, 93, 0.12) 0px 16px 32px 0px",
+      "inner": "none"
+    },
+    "fontLinks": {
+      "sohne-var": {
+        "type": "custom",
+        "files": {
+          "300": "https://b.stripecdn.com/mkt-ssr-statics/assets/_next/static/media/Sohne.cb178166.woff2",
+          "400": "https://b.stripecdn.com/mkt-ssr-statics/assets/_next/static/media/Sohne.cb178166.woff2"
+        },
+        "displayName": "sohne var"
+      },
+      "SF Pro Display": {
+        "type": "custom",
+        "files": {},
+        "displayName": "SF Pro Display"
+      }
+    },
+    "components": {
+      "button": {
+        "primary": {
+          "backgroundColor": "#533afd",
+          "color": "#ffffff",
+          "borderColor": "#ffffff",
+          "borderRadius": "4px",
+          "borderWidth": "0px",
+          "borderStyle": "none",
+          "padding": "15.5px 24px 16.5px",
+          "minWidth": "0px",
+          "minHeight": "48.0009765625px",
+          "fontSize": "16px",
+          "fontWeight": 400.0,
+          "fontFamily": "sohne-var",
+          "fontFallbacks": [
+            "sohne-var",
+            "SF Pro Display",
+            "… 1 more item(s) truncated"
+          ],
+          "textDecoration": "none",
+          "boxShadow": "none",
+          "css": "background-color: rgb(83, 58, 253);\nborder-color: rgb(255, 255, 255);\nborder-radius: 4px;\nborder-width: 0px;\nborder-style: none;\npadding: 15.5px 24px 16.5px;\nbox-shadow: none;\ncolor: rgb(255, 255, 255);\nmin-width: 0px;\nmin-height: 0px;\nfont-size: 16px;\nfont-weight: 400;\nfont-family: sohne-var, \"SF Pro Display\", sans-serif;\ntext-decoration: none;\ntext-decoration-color: rgb(255, 255, 255);"
+        },
+        "secondary": {
+          "backgroundColor": "#00000000",
+          "color": "#000000",
+          "borderColor": "#000000",
+          "borderRadius": "4px",
+          "borderWidth": "0px",
+          "borderStyle": "none",
+          "padding": "0px",
+          "minWidth": "0px",
+          "minHeight": "36px",
+          "fontSize": "16px",
+          "fontWeight": 400.0,
+          "fontFamily": "sohne-var",
+          "fontFallbacks": [
+            "sohne-var",
+            "SF Pro Display",
+            "… 1 more item(s) truncated"
+          ],
+          "textDecoration": "none",
+          "boxShadow": "none",
+          "css": "background-color: rgba(0, 0, 0, 0);\nborder-color: rgb(0, 0, 0);\nborder-radius: 4px;\nborder-width: 0px;\nborder-style: none;\npadding: 0px;\nbox-shadow: none;\ncolor: rgb(0, 0, 0);\nmin-width: 0px;\nmin-height: 0px;\nfont-size: 16px;\nfont-weight: 400;\nfont-family: sohne-var, \"SF Pro Display\", sans-serif;\ntext-decoration: none;\ntext-decoration-color: rgb(0, 0, 0);"
+        },
+        "link": {
+          "backgroundColor": "#00000000",
+          "color": "#ffffff",
+          "borderColor": "#ffffff",
+          "borderRadius": "0px",
+          "borderWidth": "0px",
+          "borderStyle": "none",
+          "padding": "0px",
+          "minWidth": "0px",
+          "minHeight": "18.005727767944336px",
+          "fontSize": "14px",
+          "fontWeight": 400.0,
+          "fontFamily": "sohne-var",
+          "fontFallbacks": [
+            "sohne-var",
+            "SF Pro Display",
+            "… 1 more item(s) truncated"
+          ],
+          "textDecoration": "none",
+          "boxShadow": "none",
+          "css": "background-color: rgba(0, 0, 0, 0);\nborder-color: rgb(255, 255, 255);\nborder-radius: 0px;\nborder-width: 0px;\nborder-style: none;\npadding: 0px;\nbox-shadow: none;\ncolor: rgb(255, 255, 255);\nmin-width: 0px;\nmin-height: 0px;\nfont-size: 14px;\nfont-weight: 400;\nfont-family: sohne-var, \"SF Pro Display\", sans-serif;\ntext-decoration: none;\ntext-decoration-color: rgb(255, 255, 255);"
+        }
+      },
+      "card": {
+        "backgroundColor": "#00000000",
+        "borderColor": "#000000",
+        "borderRadius": "0px",
+        "borderWidth": "0px",
+        "borderStyle": "none",
+        "padding": "0px",
+        "boxShadow": "none",
+        "textColor": "#000000",
+        "css": "background-color: rgba(0, 0, 0, 0);\nborder-color: rgb(0, 0, 0);\nborder-radius: 0px;\nborder-width: 0px;\nborder-style: none;\npadding: 0px;\nbox-shadow: none;\ncolor: rgb(0, 0, 0);"
+      }
+    }
+  },
+  "code": 200,
+  "finalDOMState": "loaded",
+  "cache_metadata": {
+    "status": "hit",
+    "age_ms": 305692
+  },
+  "request_id": "01200e82-ada8-4e7f-88fd-a93dbdcc5a07"
+}
