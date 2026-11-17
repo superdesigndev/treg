@@ -3112,6 +3112,7 @@ adapters:
     miss: "coalesce(organic, []) == []"
   search1api.web.search:
     accepts: [[q]]
+    max: {limit: 50}
     in: {q: body.query}
     in_expr: {body.max_results: limit}
     out: {results: results, count: "len(results)"}
@@ -3147,6 +3148,7 @@ adapters:
     miss: "coalesce(results.web, []) == []"
   valyu.web.search:
     accepts: [[q]]
+    max: {limit: 10}
     in: {q: body.query}
     in_expr: {body.max_num_results: limit}
     const: {body.search_type: web, body.max_price: 1.5, body.response_length: short}
@@ -3160,6 +3162,7 @@ adapters:
     miss: "coalesce(results, []) == []"
   keenable.web.search:
     accepts: [[q]]
+    max: {limit: 50}
     in: {q: body.query}
     in_expr: {body.max_results: limit}
     const: {body.mode: pro}
@@ -3179,6 +3182,7 @@ adapters:
     out: {results: results, count: "len(results)"}
   linkup.web.search:
     accepts: [[q]]
+    max: {limit: 20}
     in: {q: body.q}
     in_expr: {body.maxResults: limit}
     const: {body.depth: flash, body.outputType: searchResults}
@@ -3196,6 +3200,7 @@ adapters:
     miss: "coalesce(results, []) == []"
   olostep.web.search:
     accepts: [[q]]
+    max: {limit: 25}
     in: {q: body.query}
     in_expr: {body.limit: limit}
     const: {body.fast_mode: true}
@@ -3203,6 +3208,7 @@ adapters:
     miss: "coalesce(result.links, []) == []"
   scrapegraphai.web.search:
     accepts: [[q]]
+    max: {limit: 20}
     in: {q: body.query}
     in_expr: {body.numResults: limit}
     const: {body.format: markdown, body.allowedTypes: [text/html]}
@@ -3218,6 +3224,7 @@ adapters:
     miss: "coalesce(organic, []) == []"
   spidercloud.web.search:
     accepts: [[q]]
+    max: {limit: 10}
     in: {q: body.search}
     in_expr: {body.search_limit: limit}
     const: {body.fetch_page_content: false}
@@ -3243,6 +3250,7 @@ adapters:
     miss: "coalesce(results, []) == []"
   firecrawl.web.search:
     accepts: [[q]]
+    max: {limit: 10}
     in: {q: body.query}
     in_expr: {body.limit: limit}
     out: {results: data.web, count: "len(data.web)"}
@@ -3673,6 +3681,9 @@ adapters:
     out: {places: rows, count: "len(rows)"}
     miss: "coalesce(rows, []) == []"
   crawl4ai.instagram.user.profile:
+    # evidence only: its recipe never fills biography or external_url (both null on every row, with or
+    # without full_profile), so a routed hit here would hand back a profile without its bio
+    route: false
     accepts: [[username]]
     in: {username: body.username}
     out: {username: "rows[0].username", user_id: "rows[0].user_id", full_name: "rows[0].full_name",
