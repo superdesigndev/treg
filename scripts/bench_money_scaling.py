@@ -93,8 +93,16 @@ async def _verify(org_ids: list[int], calls_per_org: list[int], granted: int) ->
     await session_maker.kw["bind"].dispose()
 
 
-async def _work(admission: bool, org_ids: list[int], calls: int, concurrency: int, pool_size: int,
-                start_at: float) -> dict:
+_ready = None
+
+
+def _share_barrier(barrier) -> None:
+    global _ready
+    _ready = barrier
+
+
+async def _work(admission: bool, org_ids: list[int], calls: int, concurrency: int,
+                pool_size: int) -> dict:
     from sqlalchemy import event, text
     from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 
@@ -142,13 +150,15 @@ async def _work(admission: bool, org_ids: list[int], calls: int, concurrency: in
                 await db.commit()
             latencies.append((time.perf_counter() - started) * 1000)
 
-    await asyncio.sleep(max(0.0, start_at - time.time()))
-    started = time.perf_counter()
+    # Imports, the pool and the first connection are done: wait for every other worker to get
+    # here, so no worker runs alone while the rest are still starting.
+    await asyncio.to_thread(_ready.wait, 120)
+    started_at = time.time()
     await asyncio.gather(*(call(index) for index in range(calls)))
-    elapsed = time.perf_counter() - started
+    ended_at = time.time()
     await engine.dispose()
     latencies.sort()
-    return {"elapsed_s": elapsed, "round_trips": round_trips,
+    return {"started_at": started_at, "ended_at": ended_at, "round_trips": round_trips,
             "p50_ms": latencies[len(latencies) // 2],
             "p95_ms": latencies[int((len(latencies) - 1) * .95)]}
 
@@ -167,16 +177,19 @@ def main() -> None:
         for procs in args.procs:
             total = procs * args.calls
             org_ids = asyncio.run(_fund(args.orgs, total))
-            start_at = time.time() + 2.0  # every worker begins together, after its imports
-            with spawn.Pool(procs) as pool:
+            with spawn.Pool(procs, initializer=_share_barrier,
+                            initargs=(spawn.Barrier(procs),)) as pool:
                 results = pool.map(_process, [(admission, org_ids, args.calls, args.concurrency,
-                                               args.pool_size, start_at)] * procs)
+                                               args.pool_size)] * procs, chunksize=1)
+            # The interval that covers every worker, not the longest single worker.
+            elapsed = (max(result["ended_at"] for result in results)
+                       - min(result["started_at"] for result in results))
             per_org = [procs * len(range(k, args.calls, args.orgs)) for k in range(args.orgs)]
             asyncio.run(_verify(org_ids, per_org, total * ESTIMATE_MICRO))
             row = {
                 "admission": admission, "orgs": args.orgs, "procs": procs, "calls": total,
                 "concurrency_per_proc": args.concurrency,
-                "throughput_per_s": round(total / max(result["elapsed_s"] for result in results), 1),
+                "throughput_per_s": round(total / elapsed, 1),
                 "db_round_trips_per_call": round(
                     sum(result["round_trips"] for result in results) / total, 2),
                 "latency_p50_ms": round(sum(result["p50_ms"] for result in results) / procs, 2),
