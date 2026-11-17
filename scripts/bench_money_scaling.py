@@ -138,15 +138,16 @@ async def _work(admission: bool, org_ids: list[int], calls: int, concurrency: in
     sessions = async_sessionmaker(engine, expire_on_commit=False)
     async with sessions() as db:
         await db.execute(text("SELECT 1"))
-    # Round trips are what a deployment pays for inside the lease: count them, since loopback
-    # hides their cost.
-    round_trips = 0
+    # Loopback hides what a statement costs a deployment inside the lease, so count them: every
+    # executed statement plus the transaction's own BEGIN and COMMIT or ROLLBACK, each a round
+    # trip on this driver. A statement's first prepare on a connection is one more, not counted.
+    statements = 0
 
     def count(*_args) -> None:
-        nonlocal round_trips
-        round_trips += 1
+        nonlocal statements
+        statements += 1
 
-    for name in ("before_cursor_execute", "commit"):
+    for name in ("before_cursor_execute", "begin", "commit", "rollback"):
         event.listen(engine.sync_engine, name, count)
     slots = asyncio.Semaphore(concurrency)
     latencies: list[float] = []
@@ -180,7 +181,7 @@ async def _work(admission: bool, org_ids: list[int], calls: int, concurrency: in
         row["lease_lost"] + sum(value for key, value in row.items() if key.startswith("fallback_"))
         + (row["completed"] if row["mode"] != "redis" else 0)
         for row in money_admission.snapshot()) if admission else 0
-    return {"started_at": started_at, "ended_at": ended_at, "round_trips": round_trips,
+    return {"started_at": started_at, "ended_at": ended_at, "statements": statements,
             "unleased": unleased,
             "latencies_ms": latencies}
 
@@ -219,8 +220,8 @@ def main() -> None:
                 "admission": admission, "orgs": args.orgs, "procs": procs, "calls": total,
                 "concurrency_per_proc": args.concurrency,
                 "throughput_per_s": round(total / elapsed, 1),
-                "db_round_trips_per_call": round(
-                    sum(result["round_trips"] for result in results) / total, 2),
+                "db_statements_per_call": round(
+                    sum(result["statements"] for result in results) / total, 2),
                 "latency_p50_ms": round(latencies[len(latencies) // 2], 2),
                 "latency_p95_ms": round(latencies[int((len(latencies) - 1) * .95)], 2),
             }

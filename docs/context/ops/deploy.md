@@ -284,7 +284,8 @@ local synthetic evidence, not deployed throughput.
 
 `scripts/bench_money_scaling.py` takes the same two services and the same database-name guard. It
 runs the reserve and the settle of each call from separate OS processes and prints, per process
-count, one team's throughput, latency and database round trips per call, then checks the ledger.
+count, one team's throughput, latency and database statements per call (BEGIN and COMMIT
+included), then checks the ledger.
 Use it to see whether a change lets a team's throughput grow with processes; its timings are
 local synthetic evidence too.
 
