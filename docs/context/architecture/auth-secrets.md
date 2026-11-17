@@ -257,7 +257,8 @@ breaks, but nothing schedules it by default. Bump the version in all four places
 
 A provider's platform key is `TREG_PLATFORM_KEY_<PROVIDER>`; a paired half has its own setting.
 `TREG_PLATFORM_ACCOUNTS` adds labelled accounts behind a provider, and a malformed value refuses to
-start. Values live only in the environment: a binding names a setting and account label, never a
+start. Values live only in the process's settings (the environment, or the Secrets Manager secret
+`TREG_AWS_SECRET_ID` names, see [deploy](../ops/deploy.md)): a binding names a setting and account label, never a
 value, and the async worker builds the same bindings as the call path, so keys never reach task
 records, logs or archive evidence ([proxy model](proxy-model.md)).
 

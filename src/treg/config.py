@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import os
 import re
 from collections.abc import Mapping
 from dataclasses import dataclass, field
@@ -12,7 +13,7 @@ from typing import Literal
 from pydantic import AliasChoices, Field, PositiveInt, field_validator, model_validator
 from urllib.parse import urlsplit
 
-from pydantic_settings import BaseSettings, SettingsConfigDict
+from pydantic_settings import AWSSecretsManagerSettingsSource, BaseSettings, SettingsConfigDict
 
 # Every hostname the hosted service has answered to. treg moved
 # treg.superdesign.dev → treg.to; installed CLIs, skill.md files, .mcp.json configs and
@@ -116,6 +117,20 @@ class Settings(BaseSettings):
     # Most of these values are credentials: a validation error names the field, never the value.
     model_config = SettingsConfigDict(env_file=".env", env_prefix="TREG_", extra="ignore",
                                       hide_input_in_errors=True)
+
+    @classmethod
+    def settings_customise_sources(cls, settings_cls, init_settings, env_settings, dotenv_settings,
+                                   file_secret_settings):
+        secret_id = os.environ.get("TREG_AWS_SECRET_ID", "").strip()
+        if not secret_id:
+            return init_settings, env_settings, dotenv_settings, file_secret_settings
+        # An ARN (arn:aws:secretsmanager:<region>:...) names its region; boto3 would otherwise read
+        # AWS_DEFAULT_REGION and ignore AWS_REGION. Credentials come from the standard AWS_* variables.
+        region = secret_id.split(":")[3] if secret_id.startswith("arn:") else None
+        secrets_manager = AWSSecretsManagerSettingsSource(
+            settings_cls, secret_id, region_name=region, case_sensitive=False, env_prefix="TREG_",
+            env_nested_delimiter=None)
+        return init_settings, secrets_manager, env_settings, dotenv_settings, file_secret_settings
 
     review_sample_rate: float = Field(default=0, ge=0, le=1)
     feedback_hint_rate: float = Field(default=0, ge=0, le=1)
