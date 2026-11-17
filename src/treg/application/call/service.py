@@ -2233,7 +2233,10 @@ def _routed_event(request: _ApplicationRequest, ep: dict, status: int, *,
         answer_size = 0
     call_event_app.emit(
         "call", org_id=request.caller.org_id, endpoint_id=ep["id"], capability=ep.get("capability"),
-        call_ref=request.context.call_ref, identity=summary.get("identity"),
+        call_ref=request.context.call_ref,
+        identity=({**summary["identity"], "cursor": summary["cursor"]}
+                  if summary.get("cursor") is not None and isinstance(summary.get("identity"), dict)
+                  else summary.get("identity")),
         output=None if _response_retention_forbidden(summary.get("served_by")) else summary.get("output"),
         answers_allowed=request.caller.org.archive_opt_out_at is None
         and not _response_retention_forbidden(summary.get("served_by")),
