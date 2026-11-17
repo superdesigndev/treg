@@ -5,6 +5,7 @@ from __future__ import annotations
 from datetime import timedelta
 from decimal import Decimal, InvalidOperation
 import json
+import logging
 import re
 from uuid import UUID
 
@@ -27,6 +28,8 @@ from ..timeutil import utcnow_naive as _utcnow_naive
 from ..domain.identity.access import require_superadmin
 from ..domain.governance.teams import cascade_delete_org, delete_membership, drop_member_deny_rules
 
+
+log = logging.getLogger(__name__)
 
 app = APIRouter()
 reads_router = app
@@ -1004,4 +1007,52 @@ async def admin_credit_org(
         "balance_usd": float(Decimal(str(org.balance_micro)) / 1_000_000),
         "block_id": block.id,
         "ref": ref,
+    }
+
+
+class TopupBonusOverrideIn(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    pct: int | None = Field(ge=0, le=50, description="Bonus percent (0-50), or null for the global tiers")
+    reason: str = Field(min_length=1, max_length=1000)
+
+    @field_validator("reason")
+    @classmethod
+    def nonblank_reason(cls, value: str) -> str:
+        value = value.strip()
+        if not value:
+            raise ValueError("reason must not be blank")
+        return value
+
+
+@mutations_router.put("/admin/orgs/{org_id}/topup-bonus")
+async def admin_set_topup_bonus_override(
+    org_id: int, body: TopupBonusOverrideIn, principal: str = Depends(require_superadmin),
+    db: AsyncSession = Depends(get_admin_session),
+) -> dict:
+    """Set or clear a team's own top-up bonus rate.
+
+    With `pct` set, every top-up the team makes, manual or automatic and of any size, earns that
+    percent in place of the global tiers; null returns the team to the tiers.
+    """
+    org = await db.get(Org, org_id)
+    if org is None:
+        raise HTTPException(status_code=404, detail="org not found")
+
+    old_pct = org.topup_bonus_pct
+    org.topup_bonus_pct = body.pct
+    db.add(org)
+    await db.commit()
+
+    log.info(
+        "topup_bonus_override org_id=%s old_pct=%s new_pct=%s reason=%r principal=%s",
+        org_id, old_pct, body.pct, body.reason, principal,
+    )
+
+    return {
+        "org_id": org_id,
+        "old_pct": old_pct,
+        "new_pct": body.pct,
+        "reason": body.reason,
+        "principal": principal,
     }

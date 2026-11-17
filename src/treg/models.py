@@ -97,6 +97,7 @@ class Org(SQLModel, table=True):
     # A PaymentIntent that needs the cardholder present (3DS). Kept so the dashboard can offer an
     # on-session "finish this payment" link instead of starting a fresh charge the bank will re-decline.
     autotopup_recovery_pi: str | None = Field(default=None)
+    topup_bonus_pct: int | None = Field(default=None)
 
     # Caller tags & spend ceiling (see application/call/intake.py `_parse_call_meta` and
     # application/call/reserve.py `_enforce_tag_budgets`).
