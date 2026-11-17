@@ -163,6 +163,16 @@ so for them `hint_attached` counts an invitation the agent never saw.
   `kv.store().take("review-budget:<org_id>", review_budget_per_hour, 3600)`. Per-call sampling scales
   with volume, so the budget caps how often a busy team is asked. There is deliberately no
   per-endpoint cooldown. An own tool never qualifies, even if its name matches a catalog endpoint.
+  With `review_target_reviews` > 0 the draw is targeted (`application/review_targets.py`): the
+  endpoint a review would be credited to (a direct call's own, or a routed parent's `served_by`)
+  is looked up in a per-worker snapshot of reviews per endpoint over `review_target_window_days`,
+  each team counted at most `review_target_team_cap` times, refreshed every 10 minutes. Below the
+  target the rate climbs linearly from `review_sample_rate` toward `review_target_rate` (an
+  endpoint with none); at the target it is the base rate. It is the same deterministic draw
+  (`hints.sampled_at`), and the team budget still caps how many invitations a team receives, so
+  targeting moves invitations toward short endpoints rather than adding work per team. `invited`
+  on a review recomputes with the snapshot of its moment, so near an endpoint's target it can
+  disagree with the invitation sent; `hint_attached` is the exact record.
 - **Mark**: a successful, non-replayed, non-cached catalog call on any credential tier, a routed
   parent (`treg.<capability>`, which has no marketplace target) included, never an own tool, whose endpoint id equals or ends in `.<capability>` for one of `mark_hint_capabilities`
   (empty: every catalog call), sampled at `mark_hint_rate` and capped by
