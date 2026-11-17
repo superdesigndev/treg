@@ -1821,11 +1821,12 @@ adapters:
     out: {jobs: data, count: metadata.total_results, next_cursor: metadata.next_cursor}
   hirebase.jobs.search:
     # A free-text place has no field here (geo_locations wants a city, region and country apart).
-    # company_name is an exact name, so it also answers one company's open jobs.
+    # A domain or a company name answers one company's open jobs; the domain wins when both are given.
     additional_capabilities: [companies.jobs]
-    accepts: [[title, name], [title], [name]]
-    in: {title: body.job_titles, name: body.company_name}
+    accepts: [[title, domain], [title, name], [title], [domain], [name]]
+    in: {title: body.job_titles, domain: body.company_domain}
     in_expr:
+      body.company_name: "choose(domain, null, name)"
       body.job_titles: "list(title)"
       body.geo_locations: "list(obj('country', country_name(country)))"
       body.location_types: "choose(remote == true, list('Remote'), null)"
