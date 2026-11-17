@@ -91,7 +91,7 @@ func reviewCmd(env *Env) *cobra.Command {
 // parseReviewRows reads `2/email:wrong,5:missing` into mark items, at most 200, all or nothing.
 func parseReviewRows(raw string) ([]any, bool) {
 	var items []any
-	for _, part := range strings.Split(raw, ",") {
+	for part := range strings.SplitSeq(raw, ",") {
 		if strings.TrimSpace(part) == "" {
 			continue
 		}
