@@ -283,7 +283,9 @@ async def test_openmart_negative_balance_is_exact_and_exhausts(monkeypatch):
     assert state.health == "exhausted" and state.exhausted_until is not None
 
 
-async def test_fundable_balance_uses_free_credits_route_and_accepts_zero() -> None:
+async def test_fundable_balance_uses_free_credits_route_and_accepts_zero(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
     def probe(request: httpx.Request) -> httpx.Response:
         assert request.method == "GET"
         assert request.url == "https://www.tryfundable.ai/api/v1/credits"
@@ -293,14 +295,14 @@ async def test_fundable_balance_uses_free_credits_route_and_accepts_zero() -> No
         }})
 
     async with httpx.AsyncClient(transport=httpx.MockTransport(probe)) as client:
-        row = await collectors._fundable(client, "test-key")
+        row = await _balance(monkeypatch, "fundable", client, "test-key")
     assert row == {"value": 0, "unit": "credits", "note": "API credit balance"}
     assert collectors.BALANCE_ROUTES["fundable"] is collectors._fundable
     assert "fundable" not in collectors.NO_BALANCE_API
 
 
-async def test_fundable_unlimited_account_is_informational() -> None:
-    row = await _serve_json(collectors._fundable, {"success": True, "data": {
+async def test_fundable_unlimited_account_is_informational(monkeypatch: pytest.MonkeyPatch) -> None:
+    row = await _serve_json(monkeypatch, "fundable", {"success": True, "data": {
         "is_unlimited": True, "monthly_remaining": None, "total_available": None,
     }})
     assert row == {"value": None, "unit": "credits", "note": "unlimited API account",
@@ -313,9 +315,10 @@ async def test_fundable_unlimited_account_is_informational() -> None:
     {"success": True, "data": {"is_unlimited": False, "total_available": True}},
     {"success": True, "data": {"is_unlimited": False, "total_available": -1}},
 ])
-async def test_fundable_rejects_malformed_or_negative_balances(payload: dict[str, object]) -> None:
-    with pytest.raises(ValueError, match="no valid credit balance"):
-        await _serve_json(collectors._fundable, payload)
+async def test_fundable_rejects_malformed_or_negative_balances(
+    payload: dict[str, object], monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    _refused(await _serve_json(monkeypatch, "fundable", payload), "no valid credit balance")
 
 
 

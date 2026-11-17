@@ -1106,6 +1106,16 @@ def test_theirstack_platform_holds_match_the_credit_prices():
     assert not catalog.platform_eligible(catalog.by_id["theirstack.account.credits_consumption"])
 
 
+def test_fundable_catalog_endpoints_are_platform_eligible() -> None:
+    from treg.domain.catalog import store as catalog_store
+
+    catalog = catalog_store.load()
+    endpoints = [ep for ep in catalog.endpoints if ep["provider"] == "fundable"]
+    assert endpoints
+    ineligible = [ep["id"] for ep in endpoints if not catalog.platform_eligible(ep)]
+    assert not ineligible, ineligible
+
+
 def test_litescrape_ai_overview_unserved_is_free():
     mk = _mk("litescrape", endpoint_id="litescrape.google.serp.ai_overview",
              cost_type="per_success", estimate_micro=150)
