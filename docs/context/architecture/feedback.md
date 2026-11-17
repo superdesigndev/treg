@@ -84,7 +84,9 @@ admin service's grants and release; downgrading revision 0030 deletes all handli
 narrowed to its pin (a foreign reference is 404, never an oracle). A missing audit record is a
 retryable 404, including ledger-only evidence, which lacks the attribution a review needs. Own-tool
 calls are 400, and so is a maker reviewing its own listed hub tool. A routed parent is attributed to
-its successful child's endpoint/provider, keeping the parent as `routed_via`. `invited` is recomputed
+its latest successful attempt's endpoint/provider (`<call>:r<n>`; an async attempt's polls,
+`<call>:r<n>:p<k>` on the provider's job endpoint, are left out, since the review is about what was
+asked), keeping the parent as `routed_via`. `invited` is recomputed
 at submission from a 2xx, non-cached, `platform`-tier record and the current sampling rate, so it
 means "sampled, hence eligible"; the true count of invitations sent is the `hint_attached` event.
 Volunteered reviews are accepted with `invited=false` and count through the team vote below. Retries
@@ -163,6 +165,20 @@ so for them `hint_attached` counts an invitation the agent never saw.
   `kv.store().take("review-budget:<org_id>", review_budget_per_hour, 3600)`. Per-call sampling scales
   with volume, so the budget caps how often a busy team is asked. There is deliberately no
   per-endpoint cooldown. An own tool never qualifies, even if its name matches a catalog endpoint.
+  With `review_target_reviews` > 0 the draw is targeted (`application/review_targets.py`): the
+  endpoint a review would be credited to (a direct call's own, or a routed parent's latest
+  successful child, which the router records as `route_summary["credited"]`; not `served_by`,
+  since with `X-Treg-Route-Confirm` a later provider confirms the returned answer)
+  is looked up in a per-worker snapshot of reviews per endpoint over `review_target_window_days`,
+  each team counted at most `review_target_team_cap` times, refreshed every 10 minutes and read
+  once at startup, each read bounded to 2 s (a slow read keeps the last snapshot, or the base
+  rate before the first, and never holds a worker from serving). Below the
+  target the rate climbs linearly from `review_sample_rate` toward `review_target_rate` (an
+  endpoint with none); at the target it is the base rate. It is the same deterministic draw
+  (`hints.sampled_at`), and the team budget still caps how many invitations a team receives, so
+  targeting moves invitations toward short endpoints rather than adding work per team. `invited`
+  on a review recomputes with the snapshot of its moment, so near an endpoint's target it can
+  disagree with the invitation sent; `hint_attached` is the exact record.
 - **Mark**: a successful, non-replayed, non-cached catalog call on any credential tier, a routed
   parent (`treg.<capability>`, which has no marketplace target) included, never an own tool, whose endpoint id equals or ends in `.<capability>` for one of `mark_hint_capabilities`
   (empty: every catalog call), sampled at `mark_hint_rate` and capped by

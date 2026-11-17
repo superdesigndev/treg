@@ -637,6 +637,8 @@ def _reset_call_path_caches():
         limiter.reset()
         from treg.application.call import keyslots
         keyslots._rotation.clear()
+        from treg.application import review_targets
+        review_targets.reset()
         # The shared store's in-process fallback (the review-invitation budget): org ids restart
         # with every reset_db(), so a counter left over would ration the NEXT test's team.
         from treg.infra import kv

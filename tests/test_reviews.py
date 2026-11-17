@@ -78,6 +78,8 @@ async def test_routed_attribution(clients, monkeypatch, child):
     async with session_maker() as db:
         for ref, status, endpoint in [('review-call:r0', 503, 'failed.search'),
                                       ('review-call:r1', 200 if child else 500, 'winner.search'),
+                                      # an async attempt's poll: the job endpoint, not what was asked
+                                      ('review-call:r1:p1', 200, 'winner.jobs.get'),
                                       ('reviewXcall:r2', 200, 'unrelated.search')]:
             db.add(CallRecord(org_id=org['org_id'], user_email='tim@superdesign.dev',
                               tool_name='example', method='GET', path='/', call_ref=ref,

@@ -1320,6 +1320,11 @@ async def _run_routed(parent: CallContext, ep: dict, body_bytes: bytes, get_head
         try:
             response = await _bounded(deadline, execute_child(child, upstream_client))
             _note_call(parent, plan, cand, child, tried)
+            if 200 <= response.status < 300:
+                # The latest successful attempt (never its async polls, `:p<k>`): the endpoint a
+                # review of this call is credited to (application.feedback.submit_review), so
+                # invitations target the same one.
+                _summarize(parent, credited=cand.endpoint["id"])
         except _ChildTimedOut:
             # The child's own cancellation path released its hold (or left it to the deferred
             # close, which this marks unbillable): no answer, no charge. The next candidate runs.

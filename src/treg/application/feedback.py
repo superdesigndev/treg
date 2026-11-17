@@ -7,7 +7,8 @@ from datetime import timedelta
 from sqlalchemy.exc import IntegrityError
 from sqlmodel import select
 
-from .. import hints, ratestore
+from .. import ratestore
+from . import review_targets
 from ..domain import feedback
 from ..domain.feedback import marks, reviews, verdicts
 from ..domain.governance.access import pinned_tag_predicates
@@ -106,18 +107,27 @@ async def submit_review(
     async with session_maker() as db:
         record = await _attributable_call(db, org_id=org_id, call_id=call_id, pinned_tags=pinned_tags)
         endpoint_id, provider, routed_via = record.endpoint_id, record.provider, None
+        # The endpoint the invitation was targeted by (application/call/invite.review_endpoint):
+        # a routed call with no successful child had none.
+        targeted = endpoint_id
         if record.credential_tier == "routed":
+            targeted = None
             routed_via = record.endpoint_id
+            # A waterfall attempt is `<call>:r<n>`; an async attempt's polls are `<call>:r<n>:p<k>`
+            # on the provider's job endpoint, which is not what was asked, so they are left out.
+            escaped = call_id.replace("/", "//").replace("%", "/%").replace("_", "/_")
             child = (await db.execute(select(CallRecord).where(
                 CallRecord.org_id == org_id,
                 CallRecord.call_ref.startswith(f"{call_id}:r", autoescape=True),
+                CallRecord.call_ref.not_like(f"{escaped}:r%:%", escape="/"),
                 CallRecord.status_code >= 200, CallRecord.status_code < 300,
             ).order_by(CallRecord.id.desc()).limit(1))).scalar_one_or_none()
             if child is not None and child.endpoint_id:
                 endpoint_id, provider = child.endpoint_id, child.provider
+                targeted = endpoint_id
         invited = (200 <= record.status_code < 300 and not record.cached
                    and record.credential_tier in ("platform", "routed")
-                   and hints.sampled("review", call_id))
+                   and review_targets.sampled(call_id, targeted))
         existing = await reviews.get(db, call_id, org_id)
         if existing is not None:
             return existing.id, False, await marks.of_review(

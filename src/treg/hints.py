@@ -13,6 +13,11 @@ def sampled(kind: Literal["review", "feedback", "mark"], sample_id: str) -> bool
     settings = get_settings()
     rate = {"review": settings.review_sample_rate, "feedback": settings.feedback_hint_rate,
             "mark": settings.mark_hint_rate}[kind]
+    return sampled_at(kind, sample_id, rate)
+
+
+def sampled_at(kind: str, sample_id: str, rate: float) -> bool:
+    """The same deterministic draw at a given rate (a targeted review rate)."""
     return _bucket(kind, sample_id) < rate * 2**64
 
 
