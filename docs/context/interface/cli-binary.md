@@ -158,9 +158,12 @@ of new installs (no working `treg` on the machine) to the binary instead, bucket
   from the controlling terminal, the auto top-up consent. Without a terminal the access is every
   tool, a pasted-key connect needs `--key-stdin`, and the consent is no, even for a `y` piped in;
   no command reads an agent's idle pipe.
-- **Commands only the binary has.** `treg mark` ([feedback](../architecture/feedback.md), "Call
-  marks"), and the stderr line for a `mark` invitation, which prints the registry's
-  `X-Treg-Hint-Text` (under `--json`, `_treg.hint_text`). The Python CLI is frozen and ignores that hint kind.
+- **Commands only the binary has.** `treg mark` and `treg review --rows`
+  ([feedback](../architecture/feedback.md), "Call marks"). The binary sends
+  `X-Treg-Hints: review,mark,feedback`, so it is offered mark invitations; the Python CLI sends
+  none and gets review and feedback only. For every invitation the binary prints the registry's
+  `X-Treg-Hint-Text` when sent (under `--json`, `_treg.hint_text`), and its built-in line, the
+  Python CLI's, when not. The Python CLI is frozen and always prints its own lines.
 - **Crashes.** Where the Python CLI dies with a traceback (a `--file` that does not exist), the
   binary prints the exception's last line and exits 1.
 - **Parity suite.** `tests/cli_go` runs both CLIs against a fake registry (canned status, headers

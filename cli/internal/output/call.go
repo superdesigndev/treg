@@ -121,8 +121,8 @@ func envelope(r *api.Response, ctype string) callEnvelope {
 	}
 	if v := h.Get("X-Treg-Hint"); v != "" {
 		m.Set("hint", v)
-		// A mark invitation's words are the registry's (its A/B copy); a script reading
-		// --json gets them here, since nothing goes to stderr in this mode.
+		// An invitation's words are the registry's; a script reading --json gets them here,
+		// since nothing goes to stderr in this mode.
 		if t := h.Get("X-Treg-Hint-Text"); t != "" {
 			m.Set("hint_text", t)
 		}
@@ -223,17 +223,17 @@ func (p *Printer) hintLine(r *api.Response) {
 	if id == "" {
 		return
 	}
+	// The registry writes the words (X-Treg-Hint-Text), so they change without a CLI release; the
+	// built-in lines below are for a registry that sends none, and match the Python CLI's.
+	if text := h.Get("X-Treg-Hint-Text"); text != "" && kind != "" {
+		fmt.Fprintf(p.Err, "treg: %s\n", text)
+		return
+	}
 	switch kind {
 	case "review":
 		fmt.Fprintf(p.Err, "treg: after using this result, run treg review %s "+
 			"<useful|partly|not_useful|not_sure> [--reason \"...\"]; "+
 			"omit private data, then keep going with the task.\n", id)
-	case "mark":
-		// The registry writes this text (A/B variants are its configuration), so it changes
-		// without a CLI release.
-		if text := h.Get("X-Treg-Hint-Text"); text != "" {
-			fmt.Fprintf(p.Err, "treg: %s\n", text)
-		}
 	case "feedback":
 		fmt.Fprintf(p.Err, "treg: anything confusing or wrong about this call, even if it worked? "+
 			"treg feedback submit <quality|pricing|friction|other> \"what you saw\" "+

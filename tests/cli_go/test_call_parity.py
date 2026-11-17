@@ -75,7 +75,7 @@ def _assert_same(py, go):
     assert normalize(py.err) == normalize(go.err), (py.err, go.err)
 
 
-IGNORED = {"user-agent", "accept-encoding", "connection", "host", "x-treg-client-version",
+IGNORED = {"user-agent", "accept-encoding", "connection", "host", "x-treg-client-version", "x-treg-hints",
            "x-treg-session", "x-treg-agent"}
 
 
