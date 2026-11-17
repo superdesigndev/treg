@@ -1,0 +1,39 @@
+{
+  "data": [
+    {
+      "party_id": "pty_000000000000000000000001",
+      "name": "Jane Doe",
+      "type": "person",
+      "role": "DAGL",
+      "role_source": "Daglig leder",
+      "start_date": "2020-11-02",
+      "end_date": null,
+      "is_current": true,
+      "birth_year": 1980,
+      "birth_month": 1,
+      "nationality": "NO",
+      "company": null
+    },
+    {
+      "party_id": "pty_000000000000000000000002",
+      "name": "Jane Doe",
+      "type": "person",
+      "role": "LEDE",
+      "role_source": "Styrets leder",
+      "start_date": "2026-09-04",
+      "end_date": null,
+      "is_current": true,
+      "birth_year": 1980,
+      "birth_month": 1,
+      "nationality": "NO",
+      "company": null
+    }
+  ],
+  "pagination": {
+    "limit": 5,
+    "next_cursor": "eyJvIjogNX0",
+    "has_more": true,
+    "total_estimate": 14,
+    "returned": 5
+  }
+}

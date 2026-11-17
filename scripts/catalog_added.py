@@ -102,8 +102,8 @@ def _dates(texts: dict[str, str]) -> dict[str, tuple[str, str]]:
     return out
 
 
-def changed_dates(base: str, directory: Path | None = None) -> list[str]:
-    """One line per tool whose `added` differs from the same id on `base`."""
+def base_texts(base: str, directory: Path | None = None) -> dict[str, str]:
+    """File name -> text of every catalog file on `base`."""
     directory = directory or CATALOG
     def git(*args: str) -> str:
         return subprocess.run(["git", *args], cwd=ROOT, check=True, capture_output=True,
@@ -111,7 +111,13 @@ def changed_dates(base: str, directory: Path | None = None) -> list[str]:
     prefix = directory.relative_to(ROOT).as_posix()
     names = [n for n in git("ls-tree", "--name-only", f"{base}:{prefix}").splitlines()
              if n.endswith(".yaml")]
-    before = _dates({n: git("show", f"{base}:{prefix}/{n}") for n in names})
+    return {n: git("show", f"{base}:{prefix}/{n}") for n in names}
+
+
+def changed_dates(base: str, directory: Path | None = None) -> list[str]:
+    """One line per tool whose `added` differs from the same id on `base`."""
+    directory = directory or CATALOG
+    before = _dates(base_texts(base, directory))
     after = _dates({p.name: p.read_text() for p in sorted(directory.glob("*.yaml"))})
     out = []
     for row_id, (old_file, was) in sorted(before.items()):

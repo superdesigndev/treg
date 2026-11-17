@@ -11,6 +11,7 @@ sources:
   - src/treg/web/skills/recruit/SKILL.md
   - src/treg/web/skills/jev-memory/SKILL.md
   - src/treg/web/skills/rea-growth/SKILL.md
+  - src/treg/web/skills/ai-ugc-video/SKILL.md
   - examples/claude-code-mods/jev-memory/hooks/jev-memory.mjs
   - src/treg/routers/web.py
   - src/treg/mcp_install.py
@@ -25,6 +26,8 @@ sources:
   - dsh/index.js
   - plugins/minimax/.minimax-plugin/plugin.json
   - scripts/minimax_plugin.py
+  - server.json
+  - .github/workflows/mcp-registry.yml
 related:
   - interface/cli.md
   - interface/api.md
@@ -40,8 +43,9 @@ only what a user should install.
 **`skill.md` and `llms.txt` split the work.** `llms.txt` is the entry point in the
 [llms.txt](https://llmstxt.org) format (H1, summary blockquote, prose without headings, then H2 link
 lists) and restates nothing operational; it links `skill.md` for that. Both state the same money
-rule, so change them together. Provider-specific detail (an allowance, voice discovery, pricing
-provenance) lives on the catalog row as a `note`, never in either file.
+rule, so change them together. Provider-specific detail (an allowance, voice discovery) lives on the catalog row, in a
+parameter's, the cost's or the row's `note` ([catalog-schema](../architecture/catalog-schema.md#summary-and-note)),
+never in either file.
 
 `skill.md` mirrors the surfaces in [api.md](api.md) and [cli.md](cli.md); keep the three in sync
 when the API or CLI changes. Its feedback section links `{BASE}/feedback.md`; the contract is in
@@ -61,6 +65,7 @@ Only `src/treg/web/skill.md` is hand-written. Every other copy is served or gene
 | Codex/ChatGPT plugin | `plugin/.codex-plugin/` + `CODEX_SKILL`, via `.agents/plugins/marketplace.json` | the ChatGPT/Codex directory, `codex plugin marketplace add superdesigndev/treg` |
 | DeepSeek Harness | root `package.json` (`dsh.bundle`) + `dsh/cordis.patch.yml` + generated `dsh/skills/treg/SKILL.md` | `dsh plugin --profile <name> add github:superdesigndev/treg` ([DSH-PLUGIN.md](../../DSH-PLUGIN.md)) |
 | MiniMax plugin | `plugins/minimax/` (skills-only), ZIP built by `scripts/minimax_plugin.py` | MiniMax Plugin Marketplace ([MINIMAX-PLUGIN.md](../../MINIMAX-PLUGIN.md)) |
+| MCP Registry (server only, no skill) | root `server.json`, published by `.github/workflows/mcp-registry.yml` on each `v0.*` tag | the official MCP Registry, which GitHub's MCP Registry and VS Code's `@mcp` gallery read |
 
 The Codex submission runbook, test cases and per-tool justifications live in the private
 `treg-internal` repository.
@@ -83,13 +88,20 @@ Constraints the hosts impose, which the code cannot explain:
   `treg mcp install` lists dsh as a manual agent pointing at the bundle.
 - MiniMax admits an authenticated MCP only through its App/Connector program, so its plugin is
   skills-only.
+- The official MCP Registry publishes a version once and never edits it, so `server.json` carries
+  the package version and the workflow refuses a tag naming another. It lists the remote URL-only,
+  like the plugins: a `headers` entry makes VS Code ask for a token before its OAuth sign-in.
+  GitHub OIDC proves the `io.github.superdesigndev` namespace, so no publishing secret exists; the
+  workflow can also be run by hand (`workflow_dispatch`) to republish the current version once.
 
 ## Workflow skills
 
 Served at `GET /skills/<name>/SKILL.md` from `src/treg/web/skills/<name>/SKILL.md`. Those in the
 well-known index are offered by `treg skill bootstrap` and installed only when named with
-`--skills` (or `all`) or already present; `jev-memory` and `rea-growth` are opt-in, kept out of the
-index and `/.well-known/`, so the installer never offers them. Workflow skills name search words
+`--skills` (or `all`) or already present; `jev-memory`, `rea-growth` and `ai-ugc-video` are opt-in, kept out of the
+index and `/.well-known/`, so the installer never offers them. Bootstrap names the offered ones in
+one line and never tells the agent to stop and ask: it runs before sign-in, so `llms.txt` and
+`skill.md` put that question after the first call that returns real data. Workflow skills name search words
 or routed `treg.*` jobs rather than per-provider endpoint ids where the catalog moves weekly; the
 catalog row's price and parameters win over anything a skill states.
 

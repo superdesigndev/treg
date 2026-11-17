@@ -1,0 +1,274 @@
+[
+  {
+    "url": "https://www.walmart.com/ip/Apple-AirPods-Pro-2nd-Generation-Lightning/1752657021",
+    "final_price": 249.99,
+    "sku": "1752657021",
+    "currency": "USD",
+    "gtin": "194253397168",
+    "specifications": [
+      {
+        "name": "Battery life",
+        "value": "6 hr"
+      },
+      {
+        "name": "Headphone style",
+        "value": "In-Ear"
+      },
+      "… 1 more item(s) truncated"
+    ],
+    "image_urls": [
+      "https://i5.walmartimages.com/seo/Apple-AirPods-Pro-2nd-Generation-Lightning_95e6f27f-61a9-4b18-903d-d724d067ce51.d0c0d62cc1b1…",
+      "https://i5.walmartimages.com/asr/36f6736e-85b1-4ffc-a16e-969f8355b0ee.403e15efab2095d04737d6ba9e39ccb0.jpeg",
+      "… 1 more item(s) truncated"
+    ],
+    "top_reviews": {
+      "negative": {
+        "rating": 1,
+        "review": "I was so excited to open up my new AirPods only to find that the case was scratched and yellow, then even worse inside was di…"
+      },
+      "positive": {
+        "rating": 5,
+        "review": "These are great, however, I don’t know that’d I’d spend the extra money for the 2nd generation if I was to do it over. There …"
+      }
+    },
+    "rating_stars": {
+      "one_star": 831,
+      "two_stars": 95,
+      "three_stars": 170,
+      "four_stars": 576,
+      "five_stars": 9969
+    },
+    "related_pages": [
+      "https://www.walmart.com/c/kp/apple-airpods-with-charging-case-2nd-generation",
+      "https://www.walmart.com/c/kp/apple-airpods-max-stores",
+      "… 1 more item(s) truncated"
+    ],
+    "available_for_delivery": true,
+    "available_for_pickup": false,
+    "brand": "Apple",
+    "breadcrumbs": [
+      {
+        "url": "https://www.walmart.com/cp/electronics/3944",
+        "name": "Electronics"
+      },
+      {
+        "url": "https://www.walmart.com/browse/electronics/audio/3944_133251",
+        "name": "Audio"
+      },
+      "… 1 more item(s) truncated"
+    ],
+    "category_ids": "0:3944:133251:1095191:1231498:2452446:1297296",
+    "review_count": 11641,
+    "description": "Experience an unparalleled audio journey with the Apple AirPods Pro (2nd Generation). These advanced in-ear earbuds feature u…",
+    "product_id": "1752657021",
+    "product_name": "Apple AirPods Pro (2nd Generation) Lightning Wireless Bluetooth In-Ear Earbuds, White",
+    "review_tags": [
+      "Value For Money (794)",
+      "Noise Cancellation (427)",
+      "… 1 more item(s) truncated"
+    ],
+    "category_url": "https://www.walmart.com/browse/electronics/airpods-pro/3944_133251_1095191_1231498_2452446_1297296",
+    "category_name": "AirPods Pro",
+    "category_path": "/cp/airpods-pro/1297296",
+    "root_category_url": "https://www.walmart.com/cp/electronics/3944",
+    "root_category_name": "Electronics",
+    "upc": "194253397168",
+    "tags": [
+      "In 50+ people's carts",
+      "Best seller"
+    ],
+    "main_image": "https://i5.walmartimages.com/seo/Apple-AirPods-Pro-2nd-Generation-Lightning_95e6f27f-61a9-4b18-903d-d724d067ce51.d0c0d62cc1b1…",
+    "rating": 4.6,
+    "free_returns": "Free Holiday returns until Jan 31",
+    "sizes": [],
+    "colors": [
+      "White"
+    ],
+    "seller": "6AVE Electronics",
+    "other_attributes": [
+      {
+        "name": "Ingestion Hazard",
+        "value": "This product contains a battery. Death or serious injury can occur if ingested. A swallowed battery can cause Internal Chemic…"
+      },
+      {
+        "name": "State Chemical Disclosure",
+        "value": "na"
+      },
+      "… 1 more item(s) truncated"
+    ],
+    "customer_reviews": [
+      {
+        "name": "beckandcallgirls",
+        "title": "Worth the cost",
+        "review": "Expensive but the fit my ears well and sound great. Easy and useful connectivity with iPhones.  Multiple cups included and th…",
+        "rating": 5,
+        "date": "2023-06-23T00:00:00.000Z",
+        "review_id": "309193279",
+        "min_rating": 1,
+        "max_rating": 5,
+        "incentivized_review": false
+      },
+      {
+        "name": "Neil",
+        "title": "More than satisfied",
+        "review": "I'm so glad I bought these. Overall the price is great compared to other places and they're the real deal :)",
+        "rating": 5,
+        "date": "2023-08-04T00:00:00.000Z",
+        "review_id": "313209340",
+        "min_rating": 1,
+        "max_rating": 5,
+        "incentivized_review": false
+      },
+      "… 1 more item(s) truncated"
+    ],
+    "nutrition_information": [],
+    "initial_price": 249.99,
+    "ingredients_full": null,
+    "categories": [
+      "Electronics",
+      "Audio",
+      "… 1 more item(s) truncated"
+    ],
+    "brand_walmart_url": "https://www.walmart.com/cp/apple-brand-shop/1229722",
+    "condition": "New",
+    "is_returnable": true,
+    "rating_count": 11641,
+    "reviews_count": 11641,
+    "short_description": "Experience an unparalleled audio journey with the Apple AirPods Pro (2nd Generation). These advanced in-ear earbuds feature u…",
+    "variants": [
+      {
+        "id": "5ZZELETLWF8P",
+        "us_item_id": "1752657021",
+        "url": "https://www.walmart.com/ip/Apple-AirPods-Pro-2nd-Generation-Lightning/1752657021",
+        "in_stock": true,
+        "price": {
+          "value": 249.99,
+          "currency": "USD",
+          "discount_value": null,
+          "discount_percent": null,
+          "is_discounted": false
+        }
+      }
+    ],
+    "videos": null,
+    "product_identifiers": {
+      "id": "1752657021",
+      "model": "MQD83AM/A",
+      "product_type_id": "4159",
+      "upc": "194253397168",
+      "us_item_id": "1752657021"
+    },
+    "store_name": "Sacramento Supercenter",
+    "store_location": "Sacramento, 95829",
+    "retailer": "www.walmart.com",
+    "price_range": null,
+    "availability_text": "In stock",
+    "promotion_fulltext": null,
+    "is_available": true,
+    "seller_info": [
+      {
+        "seller_id": "F4AD07D5DBE0499E811C7AD75990860B",
+        "seller_url": "https://www.walmart.com/global/seller/4720",
+        "seller_name": "6AVE Electronics"
+      }
+    ],
+    "variant_attribute": [
+      {
+        "variant_name": "Actual Color",
+        "variant_values": [
+          "White"
+        ]
+      }
+    ],
+    "breadcrumb_text": "Electronics > Audio > Headphones > Shop Headphones by Brand > Apple AirPods > AirPods Pro",
+    "product_variant": [
+      {
+        "value": "White",
+        "type": "Actual Color"
+      }
+    ],
+    "variant_id": "5ZZELETLWF8P",
+    "shipping_availability_date": "2026-11-11T22:59:00.000Z",
+    "max_shipping_availability_date": "2026-11-11T22:59:00.000Z",
+    "store_delivery_date": null,
+    "max_store_delivery_date": null,
+    "product_category": "Electronics > Audio > Headphones > Shop Headphones by Brand > Apple AirPods > AirPods Pro",
+    "price": "$249.99",
+    "sale_price": null,
+    "availability": "in_stock",
+    "availability_date": "2026-11-11T22:59:00.000Z",
+    "group_id": "1752657021",
+    "listing_has_variations": true,
+    "variant_attributes": [
+      {
+        "name": "Actual Color",
+        "value": "White"
+      }
+    ],
+    "variants_details": [
+      {
+        "variant_type": "Actual Color",
+        "variant_options": [
+          {
+            "option_id": "5ZZELETLWF8P",
+            "option_name": "White",
+            "option_price": 249.99,
+            "in_stock": true,
+            "image": "https://www.walmart.com/ip/Apple-AirPods-Pro-2nd-Generation-Lightning/1752657021"
+          }
+        ]
+      }
+    ],
+    "seller_url": "https://www.walmart.com/global/seller/4720",
+    "seller_privacy_policy": "https://www.walmart.com/help/article/walmart-com-privacy-policy/3b75080af40340d6bbd596f116f5d3a8",
+    "seller_tos": "http://walmart.com/help/article/walmart-com-terms-of-use/3b75080af40340d6bbd596f116fae5a0",
+    "return_policy": "https://www.walmart.com/help/article/walmart-marketplace-return-policy/63c3566a9d3546858582acae2fbfdb7e",
+    "return_window": 30,
+    "target_countries": [
+      "US"
+    ],
+    "store_country": "US",
+    "category_urls": [
+      "https://www.walmart.com/cp/electronics/3944",
+      "https://www.walmart.com/browse/electronics/audio/3944_133251",
+      "… 1 more item(s) truncated"
+    ],
+    "mpn": "MQD83AM/A",
+    "product_details": [
+      "Brand: Apple",
+      "Headphone Style: In-Ear",
+      "… 1 more item(s) truncated"
+    ],
+    "store_id": 3081,
+    "order_limit": 4036,
+    "seller_id": "F4AD07D5DBE0499E811C7AD75990860B",
+    "Fulfillment_type": "Seller Fulfilled",
+    "review_images": [
+      "https://i5.walmartimages.com/dfw/6e29e393-3826/k2-_86c82354-e900-4fc9-9a6c-953705ebf039.v1.jpg",
+      "https://i5.walmartimages.com/dfw/6e29e393-da84/k2-_5dc1b851-f55a-458b-82f2-5730ece9dd1b.v1.jpg",
+      "… 1 more item(s) truncated"
+    ],
+    "review_videos": [],
+    "key_item_features": [
+      {
+        "name": "Brand",
+        "value": "Apple"
+      },
+      {
+        "name": "Headphone Style",
+        "value": "In-Ear"
+      },
+      "… 1 more item(s) truncated"
+    ],
+    "indications": null,
+    "warranty": null,
+    "warnings": "Ingestion Hazard: This product contains a battery. Death or serious injury can occur if ingested. A swallowed battery can cau…",
+    "directions": null,
+    "about_the_brand_table": null,
+    "timestamp": "2026-11-10T15:29:38.518Z",
+    "input": {
+      "url": "https://www.walmart.com/ip/Apple-AirPods-Pro-2nd-Generation/1752657021",
+      "zipcode": ""
+    }
+  }
+]

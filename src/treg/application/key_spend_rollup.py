@@ -38,7 +38,7 @@ import time
 import uuid
 from datetime import datetime, timedelta
 
-from sqlalchemy import delete, func, or_, select
+from sqlalchemy import delete, func, literal_column, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from ..infra.db import session_maker
@@ -55,6 +55,9 @@ RECOUNT_DAYS = 2
 RECOUNT_SECONDS = 60.0                  # one run's time on the recount; the next run resumes
 RECOUNT_LEASE = timedelta(minutes=15)   # a run that dies holds the recount no longer than this
 log = logging.getLogger("treg.spend")
+# Postgres matches the partial settle index only when the predicate is a constant in the
+# statement; a bound `kind` lets a cached generic plan read every kind of a team's entries.
+_SETTLE = literal_column("'settle'")
 
 Bucket = tuple[int, str, int, str]   # (org_id, day, api_key_id, endpoint_id)
 
@@ -159,7 +162,7 @@ async def refresh(session_factory=session_maker, *, max_rows: int = 50_000,
             rows = (await db.execute(
                 select(LedgerEntry.org_id, LedgerEntry.call_id, LedgerEntry.endpoint_id,
                        LedgerEntry.amount_micro, LedgerEntry.created_at, LedgerEntry.id)
-                .where(LedgerEntry.kind == "settle", LedgerEntry.created_at < young,
+                .where(LedgerEntry.kind == _SETTLE, LedgerEntry.created_at < young,
                        *_after(state.watermark_at, state.watermark_id))
                 .order_by(LedgerEntry.created_at, LedgerEntry.id).limit(limit))).all()
             buckets: dict[Bucket, list[int]] = {}
@@ -276,7 +279,7 @@ async def _recount_team(session_factory, org_id: int, first: datetime, until: da
             rows = (await db.execute(
                 select(LedgerEntry.org_id, LedgerEntry.call_id, LedgerEntry.endpoint_id,
                        LedgerEntry.amount_micro, LedgerEntry.created_at, LedgerEntry.id)
-                .where(LedgerEntry.org_id == org_id, LedgerEntry.kind == "settle",
+                .where(LedgerEntry.org_id == org_id, LedgerEntry.kind == _SETTLE,
                        LedgerEntry.created_at < until, *_after(*after))
                 .order_by(LedgerEntry.created_at, LedgerEntry.id).limit(batch_rows))).all()
             await _fold_into(db, [row[:5] for row in rows], buckets)

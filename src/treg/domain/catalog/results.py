@@ -13,9 +13,7 @@ from .schema.v2 import is_v2
 
 STRICT_ENDPOINTS = frozenset({
     "leadsforge.people.email.find",
-    "hunter.people.email.find",
     "findymail.search.name",
-    "hunter.companies.emails",
     "leadmagic.x.employee-finder",
     "seranking.google.keywords.volume",
 })
@@ -49,7 +47,7 @@ def _email(value) -> bool:
 
 def has_result_rules(endpoint_id: str) -> bool:
     """Only verified, configured hit/miss adapters opt into result-aware cache behavior; on a v2
-    row the miss is the row's own rule, beside a verified adapter."""
+    row the miss is the row's own rule, for a 2xx or a 4xx status, beside a verified adapter."""
     from .store import load
 
     adapter = load().adapters.get(endpoint_id)
@@ -57,7 +55,7 @@ def has_result_rules(endpoint_id: str) -> bool:
         return False
     endpoint = load().by_id.get(endpoint_id)
     if endpoint is not None and is_v2(endpoint):
-        return outcome.declares_miss(endpoint)
+        return isinstance(endpoint.get("miss"), dict)
     return bool(adapter.miss.strip())
 
 
@@ -211,12 +209,11 @@ def classify(endpoint_id: str, status: int, body: bytes) -> Result:
         if status == "succeeded" and _email(email):
             return Result("found", "email")
         return Result("unknown", "invalid_shape")
-    if endpoint_id in ("hunter.people.email.find", "findymail.search.name"):
-        field = "data" if endpoint_id == "hunter.people.email.find" else "contact"
-        if not isinstance(doc, dict) or field not in doc:
+    if endpoint_id == "findymail.search.name":
+        if not isinstance(doc, dict) or "contact" not in doc:
             return Result("unknown", "invalid_shape")
-        person = doc[field]
-        if field == "contact" and person is None:
+        person = doc["contact"]
+        if person is None:
             return Result("empty", "no_email")
         if not isinstance(person, dict) or "email" not in person:
             return Result("unknown", "invalid_shape")
@@ -241,17 +238,12 @@ def classify(endpoint_id: str, status: int, body: bytes) -> Result:
         return Result("found", "keyword_data") if found else Result("empty", "no_keyword_data")
     if not isinstance(doc, dict):
         return Result("unknown", "invalid_shape")
-    if endpoint_id == "hunter.companies.emails":
-        data = doc.get("data")
-        rows = data.get("emails") if isinstance(data, dict) else None
-        fields, reason = ("value",), "emails"
-    else:
-        rows = doc.get("data")
-        fields, reason = ("name", "full_name", "first_name", "profile_url"), "people"
+    rows = doc.get("data")
     if not isinstance(rows, list):
         return Result("unknown", "invalid_shape")
     if not rows:
-        return Result("empty", "no_" + reason)
+        return Result("empty", "no_people")
+    fields = ("name", "full_name", "first_name", "profile_url")
     if all(isinstance(row, dict) and any(_text(row.get(f)) for f in fields) for row in rows):
-        return Result("found", reason)
+        return Result("found", "people")
     return Result("unknown", "invalid_shape")

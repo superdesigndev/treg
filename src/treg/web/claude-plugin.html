@@ -1,0 +1,121 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1"/>
+<title>Treg plugin for Claude</title>
+<meta name="description" content="Install the Treg plugin in Claude: the Treg skill plus Treg's tools, so Claude can call live data and APIs without holding API keys."/>
+<link rel="canonical" href="{BASE}/plugins/claude"/>
+<link rel="icon" type="image/svg+xml" href="/favicon.svg"/>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Instrument+Serif:ital@0;1&family=Geist+Pixel&family=DM+Mono:ital,wght@0,400;0,500;1,400&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="/legal.css"/>
+<style>
+.doc pre{background:var(--panel2);border:1px solid var(--line);border-radius:8px;padding:12px 14px;overflow-x:auto}
+.doc pre code{background:none;border:0;padding:0}
+</style>
+</head>
+<body>
+<div class="topbar"><div class="in">
+  <a class="brand" href="/"><span class="glyph">▚</span> treg</a>
+  <span class="sp"></span>
+  <a class="nav on" href="/plugins/claude">Claude plugin</a>
+  <a class="nav" href="/pricing">pricing</a>
+  <a class="nav" href="/support">support</a>
+</div></div>
+
+<div class="page"><div class="doc">
+  <div class="eyebrow">Community plugin</div>
+  <h1>Treg plugin for Claude</h1>
+  <div class="stamp"><span>Published by Superdesign</span><span>Source: superdesigndev/treg</span></div>
+
+  <div class="summary">
+    <h2>One install: the Treg skill and Treg's tools</h2>
+    <p>The plugin gives Claude the Treg skill, which teaches it how to find, price and call a tool,
+    and connects Treg's MCP server, which makes the calls. Claude can then use Treg's catalog and
+    your team's own tools without holding an API key. It is a third-party community plugin published
+    by Superdesign; it is not an Anthropic product or a claim of Anthropic verification.</p>
+  </div>
+
+  <h2 class="sec" id="setup"><span class="n">01</span>Install</h2>
+  <p>In Claude Code:</p>
+  <pre><code>/plugin marketplace add superdesigndev/treg
+/plugin install treg@treg</code></pre>
+  <ol>
+    <li>Run <code>/mcp</code>, pick <code>plugin:treg:treg</code>, and choose <b>Authenticate</b>.
+    Claude opens Treg's OAuth consent page.</li>
+    <li>Sign in to Treg, select the team Claude may use, review the requested access, and approve.</li>
+    <li>The Treg tools appear in Claude. Ask for a task, for example "find the search volume for
+    a keyword, and tell me the cost first".</li>
+  </ol>
+  <p>In the Claude apps, install Treg from the plugin directory and connect it the same way.
+  The plugin needs no token and no configuration. Authentication uses OAuth with PKCE; do not paste
+  a Treg token or provider API key into Claude. The plugin's server is <code>{BASE}/mcp/</code>.</p>
+
+  <h2 class="sec" id="scope"><span class="n">02</span>What the plugin includes</h2>
+  <p><b>The Treg skill</b> tells Claude to search the catalog by task, read an endpoint's inputs
+  and price, state the cost before a metered call, and report what it spent.</p>
+  <p><b>The Treg tools</b> on the MCP server:</p>
+  <ul>
+    <li><code>catalog_search</code> and <code>catalog_get</code> find endpoints and show their input,
+    authentication, method, and price.</li>
+    <li><code>call</code> invokes a catalog endpoint or one of your team's own tools. Some catalog
+    endpoints change data at the provider (for example, publish a post or change an ad budget), so
+    <code>call</code> is marked as a tool that can make changes, and Claude can ask you before it runs.</li>
+    <li><code>call_media</code> invokes an audio endpoint and returns the audio to Claude.</li>
+    <li><code>my_tools</code> lists what your team has registered: its own API keys, OAuth
+    connections, and skills.</li>
+    <li><code>resources_list</code> lists items your team created with Treg's provider accounts,
+    for example a cloned voice.</li>
+    <li><code>balance</code> reports the selected team's prepaid balance and daily usage.</li>
+    <li><code>catalog_request</code>, <code>feedback</code> and <code>review</code> record a missing
+    capability, a problem, or a rating of a call. They do not call a provider.</li>
+  </ul>
+  <p>The catalog includes image, video, and voice generation. The plugin cannot call arbitrary URLs:
+  every call goes to a catalog endpoint or to one of your team's own tools.</p>
+
+  <h2 class="sec" id="pricing"><span class="n">03</span>Pricing and limits</h2>
+  <p>Installing the plugin, searching, and inspecting the catalog are free. Before a metered call,
+  Treg returns the endpoint's USD price. Calls served with Treg's platform credential debit the
+  selected team's prepaid balance. Calls with your team's own key are never metered by Treg; the
+  provider bills you directly. Your team's balance and daily cap are enforced before calls. See the
+  current <a href="/pricing">pricing</a> page.</p>
+
+  <h2 class="sec" id="data"><span class="n">04</span>Data flow and security</h2>
+  <p>Claude sends the chosen endpoint id and request inputs to Treg. Treg applies the selected
+  team's access rules and spending limits, injects the applicable credential server-side, and relays
+  the request to that endpoint's provider. The provider response is returned to Claude without
+  reshaping it. Provider credentials are never returned to Claude.</p>
+  <p>Treg records call metadata needed for metering, audit, reliability, and support. Provider request
+  and response data necessarily pass through Treg to complete the call. Read the full
+  <a href="/privacy">privacy policy</a> for retention, processors, and account-data rights, and the
+  <a href="/terms">terms of service</a>.</p>
+
+  <h2 class="sec" id="uninstall"><span class="n">05</span>Uninstall and revoke</h2>
+  <p>In Claude Code, run <code>/plugin uninstall treg@treg</code>. In the Claude apps, remove the
+  plugin from your plugin settings. To revoke the underlying authorization from Treg as well, sign in
+  to Treg and remove the Claude grant from the connected-apps area, or ask
+  <a href="/support">support</a> to revoke it. Uninstalling does not delete your Treg team, balance,
+  provider connections, or audit history.</p>
+
+  <h2 class="sec" id="support"><span class="n">06</span>Support</h2>
+  <p>For setup, billing, privacy, security, or endpoint problems, visit <a href="/support">Treg support</a>
+  or email <a href="mailto:jason@superdesign.dev">jason@superdesign.dev</a>. Include the endpoint id,
+  approximate time, and the error text, but never send passwords, OAuth codes, tokens, or API keys.
+  The plugin's source is public at
+  <a href="https://github.com/superdesigndev/treg/tree/main/plugins/treg" target="_blank" rel="noopener">github.com/superdesigndev/treg</a>.</p>
+</div>
+
+<nav class="toc">
+  <a href="#setup">Install</a><a href="#scope">What it includes</a><a href="#pricing">Pricing</a>
+  <a href="#data">Data flow</a><a href="#uninstall">Uninstall</a><a href="#support">Support</a>
+</nav></div>
+
+<footer><div class="foot-in">
+  <span class="brand"><span class="glyph">▚</span> treg</span><span class="muted">— by Superdesign</span>
+  <span class="sp"></span><a href="/support">support</a><a href="/privacy">privacy</a>
+  <a href="https://github.com/superdesigndev/treg" target="_blank" rel="noopener">github ↗</a>
+</div></footer>
+</body>
+</html>

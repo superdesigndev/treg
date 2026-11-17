@@ -32,9 +32,12 @@ that fails them will be declined.
 4. **Core catalog file** — `src/treg/catalog/<service>.yaml` with the 8–15 endpoints an agent
    would actually reach for, each with: a `capability` from `src/treg/catalog/capabilities.yaml`
    (propose missing ones under `proposed_capabilities:`), typed `input` params, a **cheap**
-   `test_request` (smallest limit, public well-known target), and a `cost` block with provenance
-   (`value`, `currency`, `type`, `source`, `source_url`, `checked`, `confidence`). Follow the
-   schema in the worked example.
+   `test_request` (smallest limit, public well-known target), and a `price` (`value`, `currency`,
+   `per`, `unit`) with its `provenance` (`source`, `source_url`, `checked`, `confidence`), the
+   provider-wide parts once under `defaults:` in the file header. Never write a `cost:` block.
+   Follow the schema in the worked example; `src/treg/catalog/tikhub.yaml` is a full live file,
+   whose `bill` default charges misses and errors because TikHub bills them. Your `bill` follows
+   your own billing; without one, misses and errors are free.
 
 ## Capability first
 
@@ -60,7 +63,7 @@ operation, not only the default one.
 ## Self-verify with your OWN key before opening the PR
 
 Docs drift; meters don't. Before the PR goes up, run **every** `test_request` live against your
-own account and reconcile each `cost` block against what the meter actually charged (a per-call
+own account and reconcile each row's `price` against what the meter actually charged (a per-call
 charge field in the response, a rate-card endpoint, or the balance delta). A price transcribed
 from a docs page has been wrong by 5× in a real submission — the live meter is the authority, and
 a mismatch you find now is a one-line fix instead of a review round-trip.
@@ -69,8 +72,8 @@ While you're there:
 - Quote the probe's bad-key behavior **from the wire** (run it with a garbage key; record the
   exact status and body, with the date) — not from memory or docs.
 - If a `test_request` is a **deliberate miss** (a target chosen so a pay-on-success endpoint
-  charges nothing), label it as such in the endpoint note — and observe the HIT price once on a
-  real target so the cost block's number is metered, not assumed.
+  charges nothing), label it as such in your ledger — and observe the HIT price once on a
+  real target so the price is metered, not assumed.
 
 ```bash
 uv run --frozen python scripts/catalog_added.py      # adds `added:` (today, UTC) to every new row

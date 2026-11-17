@@ -15,11 +15,13 @@ sources:
   - src/treg/domain/catalog/schema/export.py
   - src/treg/domain/catalog/outcome.py
   - src/treg/domain/plugins/__init__.py
+  - src/treg/domain/plugins/anyapi.py
   - scripts/catalog_schema.py
   - scripts/catalog_shrink_only.py
   - scripts/catalog_v2.py
   - tests/test_catalog_schema.py
   - tests/test_catalog_v2_codemod.py
+  - tests/plugins/test_anyapi.py
 related:
   - architecture/catalog.md
   - architecture/money.md
@@ -61,7 +63,8 @@ other row is in **today's spelling**. Mixing `cost` with a v2 key is refused.
 - A v2 row also serves `cost` in today's shape, derived from its price, provenance, reserve and
   settle: a `type` label (free; per_result when a reserve, count or plugin decides the bill;
   per_call when a miss is charged; else per_success), a price table as today's equality maps
-  (omitted when a condition is not one equality), `reserve.rows` with its parameter back in
+  (omitted when a condition is not one equality; its floor `table_min` is served either way),
+  `reserve.rows` with its parameter back in
   `queryParams`/`pathParams`, `reserve.entities` as `{entities: {}}`, `settle.count` and a
   `settle.reported` path (`reported_charge`) with answer-relative paths, and `settle: usage` with its
   meters; `round` is not shown. Every view, eligibility check and price display that reads `cost`
@@ -84,29 +87,71 @@ defaults and type coercion. A usage meter is one value: no `*` and no root filte
 miss when a `miss` rule lists its status and its `when` or `plugin` holds, else an error; a 2xx is
 an error when `expect` does not hold or `error` holds, a miss when it is a 204 or a status-less
 `miss` rule holds, else a hit. Billing reads it in the settlement order; `results.classify` (stats,
-cache admission) reads it for a row that declares a 2xx miss beside a verified adapter, in today's
-result reasons; routing's `child_outcome` reads it too, keeping its own checks (declared miss,
-`not_found`, non-JSON body, empty required output) on top: a 2xx it judges an error is a miss with
-reason `provider_error`, a 204 a miss with `adapter_miss`. A v2 row's adapter only maps fields:
-`Adapter.is_miss` reads the row's rule, so every reader of an adapter's miss reads the one declaration.
+cache admission) reads it for a row that declares a `miss` rule, for a 2xx or a 4xx status, beside
+a verified adapter, in today's result reasons; routing's `child_outcome` reads it too, keeping its
+own checks (declared miss, `not_found`, non-JSON body, empty required output) on top: a 2xx it
+judges an error is a miss with reason `provider_error`, a 204 a miss with `adapter_miss`. A v2 row's
+adapter only maps fields: `Adapter.is_miss` reads the row's rule, so every reader of an adapter's
+miss reads the one declaration. Such an adapter verifies beside any `miss` rule; beside a status
+rule alone, a 2xx that found nothing is a routing miss by the empty required output and a hit to
+stats, unless the row's `error` rule holds on it, and an example the row judges an error verifies
+the adapter as a miss does.
 
 ## Rewriting rows: `scripts/catalog_v2.py`
 
 The codemod rewrites rows in today's spelling by the section 4.4 table and writes today's
 behavior, not a wished one: a per_result or per_call row bills misses and errors, a result-aware
-row gets today's error envelope as an `error` rule, an adapter's `miss` moves to the row. Dry-run
-(the default) prints each rewrite, warns where it reads an answer shape differently, and lists the
-rows it cannot rewrite with the reason (a provider decided in Python, a single-provider cost key, a
-guessed hold, a per_success row whose failed `expect` is free while its error envelope is charged,
-which one `bill.error` cannot say, a replaced key that defines a YAML anchor another row aliases);
-every rewritten row it prints parses whole. `--apply` edits the files in place and keeps every
-comment outside the replaced keys. The fixture replay is the proof that a rewrite changes nothing.
+row gets today's error envelope as an `error` rule, an adapter's `miss` moves to the row. Two
+adapter spellings are read as today's evaluator reads them: `x == []` is `x` present and empty (a
+null list stays a hit), and `coalesce(a, b, []) == []`, whose coalesce skips null, `''` and `[]`,
+is one absent-or-empty rule per path. A per_success row with an `expect` keeps its error envelope
+out of the `error` rule: today its failed `expect` is free while an envelope is charged unless it
+misses, which one `bill.error` cannot say, so billing and routing read the envelope by the miss rule
+and stats and archive admission stop calling it an error. Dry-run (the default) prints each rewrite, warns where it reads
+an answer shape differently, and lists the rows it cannot rewrite with the reason (a provider
+decided in Python, a single-provider cost key, a guessed hold, a fallback beside a different
+`value`, a replaced key that defines a YAML anchor another row aliases); every rewritten row it
+prints parses whole. A provider whose header declares `defaults:` is rewritten against them: a key
+equal to its default is left out, one the row lacks is written as `null`, a row without an `expect`
+takes its header's (a batch keeps the header's `expect` beside the defaults until the codemod has
+run) and with none opts out with `null`, `async: false` becomes
+`async: null` beside an `async` default and goes without one when neither the header nor the defaults
+declare `async` (beside a header `async` block alone the row is refused), and a `bill` default, the batch's
+translation of the Python branch it deletes, is inherited whole, as a `settle` default is by every
+row without a settle form of its own. A row priced by its `observed_cost` is rewritten at the price
+the catalog serves for it today (`_effective_cost`: the figure as a per-call USD price, `provenance:
+{source: observed, confidence: verified}` checked on its `verified` day, and no note: how a price was
+measured is evidence, not a caveat); an `observed_cost` beside
+a `cost` is dropped, since nothing reads it. A fallback equal to its row's
+`value` is dropped, since v2 keeps a fallback only beside a table, and its note joins
+`price.note`. An unpriced row opts out of the price and provenance defaults (`price: null` when
+there are none), inherits the settle and bill rules, which price nothing without a price, and its
+outcome keys move to v2 as a priced row's do. The codemod loads the catalog with a provider's `defaults:` withheld while one
+of its rows is still in today's spelling, and with them once its rows are v2. An inert
+`miss.status` on a 2xx is dropped and its `means` joins the row's `note`. `--apply` edits the files
+in place and keeps every comment outside the replaced keys. The fixture replay is the proof that a
+rewrite changes nothing.
 
 The validator checks a v2 row's cost beyond its model: `price.currency`, `settle.reported.unit`
-and `settle.usage.unit` resolve to a rate in `fx.yaml`, usage `terms` are in USD, and the request
+and `settle.usage.unit` resolve to a rate in `fx.yaml` (a price may name a credit or meter rate
+declared `usd: null`, which keeps the row off treg's key; a settle may not), usage `terms` are in
+USD, and the request
 paths of `reserve.rows.param`, `reserve.entities.from` and `price.table` (`when` and `times`) name
-declared input fields; an equality-only table also meets today's table checks (required or
-defaulted fields, enum and range, a bounded `times`, a fallback at least every row's maximum).
+declared input fields; an equality-only table also meets today's table checks (enum and range, a
+bounded `times`, a fallback at least every row's maximum), except that it may compare an optional
+field without a default: an equality on an absent field does not hold, so a later row or the
+fallback prices that request. A
+`provenance.checked` older than 90 days warns, as `cost.checked` does.
+
+**The worst case a hold covers.** A row whose provider-reported figure settles the call may declare
+the most one call can cost: `cost.worst_case` (a number in the cost's currency, beside `settle:
+usage` or `reported_charge`) or `settle.worst_case` (money in the price's currency, beside
+`settle.usage` or `settle.reported`; the model refuses it elsewhere, since a count or plugin settle is
+already capped). The hold is the higher of the estimate and the worst case
+([money](money.md)); a missing figure still settles at the estimate. The validator refuses a worst
+case below the hold it raises (the fallback beside a usage settle or a table, else the value) and
+warns on a usage-settled row without one. A v2 row serves it as `cost.worst_case`, and the codemod
+moves `cost.worst_case` to `settle.worst_case`.
 
 ## Provider defaults and the one merge rule
 
@@ -116,6 +161,43 @@ in at most one of the provider's two files. Per top-level key: a row's value win
 `credential`, `base_url`, `hosts` or `null`, and never repeats a header key of today's spelling
 (`cache`, `expect`, `async`, `ceiling_param`, `response_retention`) in either of the provider's
 files.
+
+## Summary and note
+
+A row has two prose fields, and each caveat has one home.
+
+- **`summary`** says what the tool does, in positive terms. It is searched and shown in lists.
+- **`note`** holds caveats about the whole tool or its answer that have no more specific home. Only
+  the endpoint's own detail shows it; it is not searched.
+- **A caveat goes to its most specific home first:** a parameter's `input.*.note`, then the charge's
+  `cost.note` (`price.note` on a v2 row), then the row's `note`. Maintainer context is a YAML
+  comment; evidence (dates, sample sizes, how a price was measured) is the pull request body.
+
+The writing rules no check can judge:
+
+- **Most callers need it.** A sentence earns its place when most callers of the tool's main use meet
+  it and it changes how they call or read the answer. A failure only some callers hit belongs in
+  the error they get at that moment, and nothing is written when that error already explains it.
+  Correcting a false statement always qualifies.
+- **Write what the probes show.** No hedging: a sentence that needs "may" or "often" stays out until
+  probes confirm it, and a confirmed behaviour that holds only in some cases names the case ("when
+  X, Y").
+- **Summary.** Verb + object + key outputs; lead with the essentials: CLI search shows only the
+  start of a summary. Positive only: a limit or trap goes to a note. No parameter or output-column
+  lists.
+- **Note.** Each sentence a fact and its consequence for the caller. Nothing that fits a more
+  specific home. No price derivation.
+- **Both.** State the present fact; never argue with an earlier version. Do not contradict another
+  field. Say each thing once.
+
+A note in that shape: "Answers for a private account are empty: check `is_private` before paging."
+
+The validator warns when a summary runs over about 50 tokens or a note over about 75, and when the
+summary, the note or a parameter or charge note contains a word from the reflection list
+(`scripts/catalog_text_reflect.txt`); each warning names the word and why, and the author decides.
+With `--base` it adds one error: a row respelled between `cost:` and `price:` without the
+`catalog-migration` label. Run `uv run python scripts/catalog_validate.py --base origin/main`
+locally to see the warnings for the rows you touched.
 
 ## The shrink-only violation list
 
@@ -132,7 +214,11 @@ pull request that adds an entry the base branch lacks. Fix the data; never grow 
 - A v2 row names a plugin as `<module>.<function>`; `domain/plugins` resolves it by import from the
   row's own provider module (the slug with `-` as `_`) and calls it with read-only views of the
   request and the answer; it may do no I/O ([import-boundaries](import-boundaries.md)). One that
-  raises is missing evidence for its hook, and only the exception's type is logged.
+  raises is missing evidence for its hook, and only the exception's type is logged. An adapter
+  `miss` that needs an if-then-else, which the codemod refuses, becomes an outcome plugin
+  (`miss: {plugin: <module>.<function>}`) when its row moves to v2. Any outcome plugin (`expect`,
+  `error`, `miss`, `not_found`) may be called without the request, since stats and routing judge an
+  answer alone.
 - In the editor JSON Schemas (`scripts/catalog_schema.py`) every field carries `x-kind` (provider
   fact, account term, deployment switch, catalog curation) and credential placement carries
   `x-gated`.

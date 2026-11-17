@@ -109,8 +109,10 @@ unit: a job sold by thirty vendors spends thirty judge seats or none.
   own (the job may not be what it does). The long-term fix for such a member is its own capability.
 - **uncatalogued endpoint**: no capability; its own unit.
 
-Only the browse surface counts (`store.browsable`, no paused provider: catalog.md § Paused
-providers). A first-party endpoint may share its capability's id, so the index keeps jobs
+The browse surface counts (`store.browsable`, no paused provider: catalog.md § Paused
+providers), and so do hidden (account/utility) members of a catalogued job: a job that lives
+only under Account and setup can still be found. Hidden endpoints with no capability stay
+out. A first-party endpoint may share its capability's id, so the index keeps jobs
 (`job_pos`) and endpoints (`pos`) apart.
 
 **Channels.** The lexical channel scores each unit by the idf of every query word its card holds as
@@ -176,7 +178,7 @@ instances may embed the same cards) and no DB connection during the build.
 | 2 | the query is exactly a name, or a name's prefix with name p >= `find_name_min` | `name` (wins over strong) |
 | 3 | no strong fit, at most three words, the name table matches | `name` |
 | 4 | no strong fit, name p >= `find_name_min`, no name matched, nothing kept | `none`, `gap` |
-| 5 | platform Choice is `none` with confidence >= `find_gap_min` | top under 0.6: `none`, `gap`; else `closest`, never strong |
+| 5 | platform Choice is `none` with confidence >= `find_gap_min` | nothing at or over keep: `none`, `gap`; else `closest`, never strong |
 | 6 | a fit at or over high | `strong` |
 | 7 | a fit at or over keep | `closest` |
 | 8 | nothing kept, platform Choice names a platform with confidence >= `find_gap_min` | `none`, `gap` (the platform is listed, this job on it is not) |

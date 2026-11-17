@@ -4,6 +4,9 @@ export default {
 // Getting started: the agent picker and the per-agent setup line
     welcomeAgents(){ return TregAgentSetup.agents; },
 welcomeMoreAgents(){ return TregAgentSetup.moreAgents; },
+// null until the first read answers for this team: waiting -> connected -> first (call made)
+    startStage(){ const p=this.startProgress; if(!p || p.org_id!==this.activeOrgId) return null;
+      return p.first_call ? 'first' : (p.connected ? 'connected' : 'waiting'); },
 welcomeAgent(){ return this.welcomeAgents.concat(this.welcomeMoreAgents).find(a=>a.id===this.welcome.agent) || this.welcomeAgents[0]; },
 welcomeIsMore(){ return this.welcomeMoreAgents.some(a=>a.id===this.welcome.agent); },
 welcomeSetupCmd(){ return this.buildAgentPrompt('agent', true); },

@@ -12,79 +12,104 @@ if TYPE_CHECKING:
 
 Blame = Literal["caller", "treg", "upstream", "org_connection"]
 
-_BLAME_BY_KIND: dict[str, Blame] = {
-    "metadata_invalid": "caller",
-    "metadata_pin_mismatch": "caller",
-    "idempotency_mismatch": "caller",
-    "idempotency_in_progress": "treg",
-    "invalid_target": "caller",
-    "tool_access_denied": "caller",
-    "target_not_found": "caller",
-    "hub_not_runnable": "treg",
-    "hub_input_invalid": "caller",
-    "hub_run_failed": "upstream",
-    "hub_busy": "caller",
-    "hub_price_unaffordable": "caller",
-    "unknown_endpoint": "caller",
-    "target_ambiguous": "caller",
-    "catalog_retired": "caller",
-    "catalog_parameter_invalid": "caller",
-    "async_resource_not_owned": "caller",
-    "provider_resource_not_owned": "caller",
-    "provider_resource_state_failed": "treg",
-    "capability_pinned": "caller",
-    "policy_denied": "caller",
-    "daily_cap_reached": "caller",
-    "org_endpoint_quota_exceeded": "caller",
-    "public_demo_rate_limited": "caller",
-    "trial_allowance_unavailable": "treg",
-    "trial_allowance_reached": "caller",
-    "platform_cap_unavailable": "treg",
-    "money_admission_timeout": "treg",
-    "catalog_price_invalid": "treg",
-    "platform_daily_cap_reached": "caller",
-    "tag_budget_unavailable": "treg",
-    "tag_cardinality_exceeded": "caller",
-    "tag_blocked": "caller",
-    "tag_call_cap_reached": "caller",
-    "tag_spend_cap_reached": "caller",
-    "insufficient_balance": "caller",
+FAILURE_KINDS: dict[str, tuple[Blame, str]] = {
+    "metadata_invalid": ("caller", "caller_input"),
+    "metadata_pin_mismatch": ("caller", "caller_input"),
+    "idempotency_mismatch": ("caller", "caller_input"),
+    "idempotency_in_progress": ("treg", "treg_capacity"),
+    "invalid_target": ("caller", "caller_input"),
+    "tool_access_denied": ("caller", "caller_policy"),
+    "target_not_found": ("caller", "not_found"),
+    "hub_not_runnable": ("treg", "treg_error"),
+    "hub_input_invalid": ("caller", "caller_input"),
+    "hub_run_failed": ("upstream", "upstream_error"),
+    # A hub run stopped by the caller's price ceiling or a crash in treg (a `hub_run_failed` whose
+    # detail names it).
+    "hub_run_max_cost": ("caller", "caller_balance_or_cap"),
+    "hub_run_crashed": ("treg", "treg_error"),
+    "hub_busy": ("caller", "treg_policy"),
+    "hub_price_unaffordable": ("caller", "caller_balance_or_cap"),
+    "unknown_endpoint": ("caller", "not_found"),
+    "target_ambiguous": ("caller", "caller_input"),
+    "catalog_retired": ("caller", "treg_policy"),
+    "catalog_parameter_invalid": ("caller", "caller_input"),
+    "async_resource_not_owned": ("caller", "treg_policy"),
+    "provider_resource_not_owned": ("caller", "treg_policy"),
+    "provider_resource_state_failed": ("treg", "treg_error"),
+    "capability_pinned": ("caller", "treg_policy"),
+    "policy_denied": ("caller", "caller_policy"),
+    # An installed policy extension refused treg's money for this call (`call_admission`).
+    "admission_denied": ("caller", "treg_policy"),
+    "daily_cap_reached": ("caller", "caller_balance_or_cap"),
+    "org_endpoint_quota_exceeded": ("caller", "treg_policy"),
+    "public_demo_rate_limited": ("caller", "treg_policy"),
+    "trial_allowance_unavailable": ("treg", "treg_capacity"),
+    "trial_allowance_reached": ("caller", "caller_balance_or_cap"),
+    "platform_cap_unavailable": ("treg", "treg_capacity"),
+    "money_admission_timeout": ("treg", "treg_capacity"),
+    "catalog_price_invalid": ("treg", "treg_error"),
+    "platform_daily_cap_reached": ("caller", "caller_balance_or_cap"),
+    "tag_budget_unavailable": ("treg", "treg_capacity"),
+    "tag_cardinality_exceeded": ("caller", "caller_input"),
+    "tag_blocked": ("caller", "caller_policy"),
+    "tag_call_cap_reached": ("caller", "caller_balance_or_cap"),
+    "tag_spend_cap_reached": ("caller", "caller_balance_or_cap"),
+    "member_spend_cap_unavailable": ("treg", "treg_capacity"),
+    "member_spend_cap_reached": ("caller", "caller_balance_or_cap"),
+    "insufficient_balance": ("caller", "caller_balance_or_cap"),
+    "free_credit_excludes_video": ("caller", "caller_balance_or_cap"),
     # treg's OWN vendor account for the provider is out (balance/quota) — a 503 the caller cannot
     # fix, answered before any hold exists, with the same-capability alternatives named.
-    "provider_capacity": "treg",
+    "provider_capacity": ("treg", "treg_capacity"),
     # This deployment paused the provider (TREG_PAUSED_PROVIDERS): refused before any hold.
-    "provider_paused": "treg",
+    "provider_paused": ("treg", "treg_policy"),
     # Fair share: the provider on treg's key is fully used and this team already holds calls on it
     # (domain/capacity/fair_share.py). Not charged; a routed job moves to its next provider.
-    "share_busy": "caller",
+    "share_busy": ("caller", "treg_policy"),
     # treg's account for the provider is at its declared rate (domain/capacity/rate_observe.py):
     # refused before it was sent, not charged; a routed job moves to its next provider.
-    "provider_rate_limited": "treg",
+    "provider_rate_limited": ("treg", "treg_capacity"),
     # Routed endpoints (treg.<capability>): the caller's identity fits no provider, or the
     # ceiling they set is below the cheapest candidate, or every candidate failed.
-    "route_no_candidate": "caller",
-    "route_max_cost": "caller",
-    "route_failed": "upstream",
-    "route_caller_fault": "caller",
-    "route_not_found": "caller",       # the requested page or record does not exist at its source
-    "injection_failed": "treg",
-    "platform_account_retired": "treg",
-    "platform_account_split": "treg",
-    "platform_account_unavailable": "treg",
-    "ssrf_refused": "treg",
-    "connect_failed": "upstream",
-    "read_timeout": "upstream",
-    "stream_interrupted": "upstream",
-    "response_buffer_limit": "treg",
-    "refresh_failed": "org_connection",
-    "credential_missing": "org_connection",
-    "authorization_required": "org_connection",
-    "method_mismatch": "caller",
+    "route_no_candidate": ("caller", "caller_input"),
+    "route_max_cost": ("caller", "caller_balance_or_cap"),
+    "route_failed": ("upstream", "upstream_error"),
+    "route_caller_fault": ("caller", "caller_input"),
+    "route_not_found": ("caller", "not_found"),       # the requested page or record does not exist at its source
+    "injection_failed": ("treg", "treg_error"),
+    "platform_account_retired": ("treg", "our_provider_account"),
+    "platform_account_split": ("treg", "our_provider_account"),
+    "platform_account_unavailable": ("treg", "our_provider_account"),
+    "ssrf_refused": ("treg", "treg_error"),
+    # No connection to the provider was free within the pool wait, or this process already has the
+    # provider's cap of calls in flight: nothing was sent, not charged, retry shortly.
+    "upstream_busy": ("treg", "treg_capacity"),
+    "connect_failed": ("upstream", "upstream_error"),
+    "read_timeout": ("upstream", "timeout"),
+    "stream_interrupted": ("upstream", "upstream_error"),
+    "response_buffer_limit": ("treg", "treg_error"),
+    "refresh_failed": ("org_connection", "caller_provider_account"),
+    "credential_missing": ("org_connection", "caller_provider_account"),
+    # The `log_kind` of a `credential_missing` treg's own key should have served: this deployment
+    # has no key or allow-list entry for the provider.
+    "platform_key_missing": ("treg", "our_provider_account"),
+    "authorization_required": ("org_connection", "caller_provider_account"),
+    "method_mismatch": ("caller", "caller_input"),
+    "db_pool": ("treg", "treg_capacity"),
+    "unexpected_exception": ("treg", "treg_error"),
+    "org_concurrency_limit": ("caller", "treg_policy"),
+    "org_rate_limit": ("caller", "treg_policy"),
+    "org_traffic_paused": ("caller", "treg_policy"),
 }
 
 
 class CallFailure(Exception):
-    """A call failure translated once by the HTTP adapter."""
+    """A call failure translated once by the HTTP adapter.
+
+    `parameter` and `rule` name the request field a refusal is about and the rule it broke, and
+    `log_kind` the failure kind read in place of `kind` where the refusal the caller sees as one
+    kind has two causes; all three are for the `call_error` log line only (call_errors.py), and the
+    caller sees `detail` alone."""
 
     def __init__(
         self,
@@ -93,13 +118,21 @@ class CallFailure(Exception):
         status_code: int,
         detail: str | dict,
         retry_after_s: int | None = None,
+        parameter: str | None = None,
+        rule: str | None = None,
+        log_kind: str | None = None,
     ) -> None:
         super().__init__(str(detail))
         self.kind = kind
-        self.blame = _BLAME_BY_KIND[kind]
+        self.blame = FAILURE_KINDS[kind][0]
         self.status_code = status_code
         self.detail = detail
         self.retry_after_s = retry_after_s
+        named = detail.get("parameter") if isinstance(detail, dict) else None
+        self.parameter = parameter if parameter is not None else (
+            named if isinstance(named, str) else None)
+        self.rule = rule
+        self.log_kind = log_kind
 
 
 class IntakeFailed(CallFailure):
@@ -132,6 +165,20 @@ class RequestBody(Protocol):
     async def read(self) -> bytes: ...
 
 
+class EmptyBody:
+    """The body of a call treg makes itself with nothing to send: a provider listing, a task poll."""
+
+    async def _nothing(self) -> AsyncIterator[bytes]:
+        return
+        yield b""
+
+    def stream(self) -> AsyncIterator[bytes]:
+        return self._nothing()
+
+    async def read(self) -> bytes:
+        return b""
+
+
 @dataclass(frozen=True)
 class UserSnapshot:
     id: int | None
@@ -148,6 +195,7 @@ class MembershipSnapshot:
     tool_access: list | None
     project_access: list | None
     pinned_tags: dict | None
+    daily_spend_cap_micro: int | None = None
 
 
 @dataclass(frozen=True)
@@ -168,6 +216,8 @@ class OrgSnapshot:
     first_call_at: Any
     autotopup_max_per_hour: int = 0
     archive_opt_out_at: Any = None   # set = the team opted out of the archive (archive.md)
+    created_at: Any = None
+    member_daily_spend_cap_micro: int | None = None
 
 
 @dataclass(frozen=True)
@@ -210,6 +260,7 @@ class CallerSnapshot:
                                 if membership.project_access is not None else None),
                 pinned_tags=(dict(membership.pinned_tags)
                              if membership.pinned_tags is not None else None),
+                daily_spend_cap_micro=membership.daily_spend_cap_micro,
             ),
             user=UserSnapshot(id=caller.user.id, email=caller.user.email),
             org=OrgSnapshot(
@@ -229,6 +280,8 @@ class CallerSnapshot:
                 autotopup_max_per_hour=int(getattr(org, 'autotopup_max_per_hour', 0) or 0),
                 archive_opt_out_at=getattr(org, 'archive_opt_out_at', None),
                 first_call_at=org.first_call_at,
+                created_at=getattr(org, "created_at", None),
+                member_daily_spend_cap_micro=org.member_daily_spend_cap_micro,
             ),
             api_key_id=key.id if key else None,
             api_key_name=key.name if key else None,
@@ -290,6 +343,10 @@ class CallContext:
     # A routed parent's outcome for its call event (route.py `_summarize`): identity, output,
     # served_by, tried_count, hit, verdict, check_verdict. Never read by money or relay.
     route_summary: dict | None = None
+    # The request left for the provider (the relay's `ON_SEND`, past every local check), or its
+    # archived answer was served.
+    # A routed parent attributes its order only to children that did (route.py `_note_call`).
+    reached_provider: bool = False
 
 
 @dataclass(frozen=True)
@@ -312,6 +369,9 @@ class IdempotentReplay:
     media_type: str
     charged_micro: int
     call_ref: str
+    # `(key_hash, content_hash)` when the row dropped its own copy: the bytes are read by
+    # `idempotency.resolve_archived_replay` AFTER the request's session closes (non-negotiable 3).
+    archive: tuple[str, str] | None = None
 
 
 @dataclass(frozen=True)

@@ -1,0 +1,38 @@
+{
+  "version": "0.1.20261103",
+  "status_code": 20000,
+  "status_message": "Ok.",
+  "time": "1.4189 sec.",
+  "cost": 0,
+  "tasks_count": 1,
+  "tasks_error": 0,
+  "tasks": [
+    {
+      "id": "11162217-2171-0666-0000-af8f1001ad2a",
+      "status_code": 20000,
+      "status_message": "Ok.",
+      "time": "1.4116 sec.",
+      "cost": 0,
+      "result_count": 3,
+      "path": [
+        "v3",
+        "… 2 more item(s) truncated"
+      ],
+      "data": {
+        "api": "appendix",
+        "function": "goto_url_converter",
+        "goto_urls": [
+          "https://google.com/goto?url=CAES3wIBxCJF14BQSfBub9ZQPl9an4iyfRO4PFoe8c-4x5CuSKeGOjxbjrttxl6215RTCqhOi6l0qpPvWJ1OhC_pS6eGsALt0YbMJjy9IHO_OmusrJ-PUa1NdcDtJMoFQUjE2Unb2nov_uU50qDnhfjBbv9ROqPIJmp4_xKWhptP… [569 chars]",
+          "… 2 more item(s) truncated"
+        ]
+      },
+      "result": [
+        {
+          "goto": "https://google.com/goto?url=CAES3wIBxCJF14BQSfBub9ZQPl9an4iyfRO4PFoe8c-4x5CuSKeGOjxbjrttxl6215RTCqhOi6l0qpPvWJ1OhC_pS6eGsALt0YbMJjy9IHO_OmusrJ-PUa1NdcDtJMoFQUjE2Unb2nov_uU50qDnhfjBbv9ROqPIJmp4_xKWhptP… [569 chars]",
+          "url": "https://www.techjockey.com/us/category/crm-software?srsltid=AYCX9vLLFLsmJKaXhBI-7zUWBIw_R9QoYZlF_gt4GNb3f9vmJfKZY7OH#:~:text=Best%20CRM%20Software&text=Salesforce%20CRM&text=Zoho%20CRM&text=LeadSquare… [290 chars]"
+        },
+        "… 2 more item(s) truncated"
+      ]
+    }
+  ]
+}

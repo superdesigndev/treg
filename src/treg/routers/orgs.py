@@ -47,6 +47,7 @@ from ..domain.identity.access import (
     _norm_email,
     _role_at_least,
     require_identity,
+    require_person,
     require_member,
 )
 from ..domain.identity import api_keys as managed_keys
@@ -70,12 +71,14 @@ from ..models import (
 )
 from ..timeutil import as_naive as _as_naive
 from ..timeutil import utcnow_naive as _utcnow_naive
-from .auth_helpers import _is_https, require_managed_cli
+from . import view
+from .auth_helpers import require_managed_cli, trusted_public_base
 from .signup_cookies import REFERRAL_COOKIE
+from .views import account as account_views
+from .views import toon
 
 
 _day_start_utc = usage_policy._day_start_utc
-count_today = usage_policy.count_today
 _deny_match = access_policy._deny_match
 _org_deny_rules = access_policy._org_deny_rules
 
@@ -108,7 +111,7 @@ _LANDING_RE = re.compile(r"^/app/(skills|tools)/[A-Za-z0-9][A-Za-z0-9._%-]*$")
 
 class AcceptIn(BaseModel):
     code: str
-    email: str
+    email: str = ""
 
 
 def _require_admin_of(org_id: int, caller: Caller) -> None:
@@ -175,6 +178,28 @@ class RoleIn(BaseModel):
 
 class CapIn(BaseModel):
     daily_call_cap: int  # per-user, per-day usage cap for the member; -1 = unlimited
+
+
+class SpendCapIn(BaseModel):
+    # micro-USD per UTC day on treg's keys. None = follow the team default; -1 = no limit.
+    daily_spend_cap_micro: int | None = None
+
+
+def _check_spend_cap(value: int | None, field: str, *, allow_none_limit: bool) -> None:
+    if value is None:
+        return
+    if value < (-1 if allow_none_limit else 0):
+        allowed = "-1 (no limit) or 0 or more" if allow_none_limit else "0 or more, or null for none"
+        raise HTTPException(status_code=422, detail=f"{field} must be {allowed}")
+
+
+async def _member_spend_view(db: AsyncSession, org: Org, memberships) -> dict[int, dict]:
+    """Each member's daily spend limit (own figure and the one in force) and what counts against it
+    today. One grouped query for the whole roster."""
+    spent = await ledger.members_spent_since(db, org.id, usage_policy._day_start_utc())
+    return {m.id: {"daily_spend_cap_micro": m.daily_spend_cap_micro,
+                   "effective_daily_spend_cap_micro": budget_policy.member_daily_spend_cap(m, org),
+                   "spent_today_micro": spent.get(m.id, 0)} for m in memberships}
 
 
 class AccessIn(BaseModel):
@@ -305,6 +330,9 @@ class OrgPatchIn(BaseModel):
 
 class OrgSettingsIn(BaseModel):
     daily_cap_micro: int | None = None
+    # The daily spend limit every member and agent gets (not owners or admins). Setting it, or
+    # null to clear it, also clears each member's and agent's own figure: it applies to all.
+    member_daily_spend_cap_micro: int | None = None
     platform_overflow: bool | None = None  # False = opt out of the overflow relay
     archive: bool | None = None  # False = opt out of the archive (archive.md, "Opting out")
     budget_dims: list[str] | None = None
@@ -475,6 +503,22 @@ async def home(
     return await home_app.summary(db, user.email, caller, teams=count)
 
 
+@view.renders(home)
+async def _home_view(answer: view.Answer) -> str:
+    """Bare `treg` after the CLI's own `treg:` and `registry:` lines."""
+    status = answer.status
+    if status == 200:
+        state = answer.object()
+    elif status in (401, 403):
+        state = (account_views.credential_refused(status, answer.object()) if view.credentials_sent(answer.request)
+                 else {"account": None})
+    elif status >= 500:
+        state = {"registry_error": f"HTTP {status} from /home"}
+    else:
+        state = {"unavailable": f"HTTP {status} from /home is not a treg answer"}
+    return toon.printed(*account_views.home(state))
+
+
 app = APIRouter()
 invite_entry_router = app
 
@@ -512,9 +556,8 @@ async def create_invite(
     if body.landing is not None and not _LANDING_RE.match(body.landing):
         raise HTTPException(status_code=422, detail="landing must be a detail path like /app/skills/<name>")
     code = crypto.new_token()
-    # A SECOND secret for the email link only. The admin gets `code` back (out-of-band relay) so the
-    # code can never be a sign-in factor; `email_token` is never returned here — only the inbox sees
-    # it, which is what lets /auth/invite-signin treat it like an emailed OTP and mint a session.
+    # A second secret for the email link only, never returned here. Neither it nor `code` signs anyone
+    # in; /auth/invite-signin only prefills the invitee's address on the login page.
     email_token = crypto.new_token()
     invite = Invite(
         org_id=org_id, email=email, role=body.role,
@@ -527,15 +570,13 @@ async def create_invite(
     await db.commit()
     org = await db.get(Org, org_id)  # for the invite email's team name
     if not email.endswith("@" + demo_seed.DEMO_DOMAIN):  # don't email the onboarding's fake teammate domain
-        scheme = "https" if _is_https(request) else request.url.scheme
-        host = request.headers.get("host", "")
         shared = ""  # share-born invite → the email leads with what was shared
         if body.landing:
             kind, _, name = body.landing.removeprefix("/app/").partition("/")
             shared = f'the {"skill" if kind == "skills" else "tool"} “{name}”'
         await email_sender.send_invite(  # best-effort; the code is also returned for out-of-band relay
             email, caller.email, (org.name if org else email), body.role, code, email_token,
-            expires_at.isoformat(), link_base=(f"{scheme}://{host}" if host else ""), shared=shared,
+            expires_at.isoformat(), link_base=trusted_public_base(request), shared=shared,
         )
     return {"code": code, "email": email, "role": body.role, "org_id": org_id,
             "expires_at": expires_at.isoformat()}  # email_token deliberately NOT returned (inbox-only)
@@ -543,35 +584,35 @@ async def create_invite(
 
 @app.post("/invites/accept")
 async def accept_invite(
-    body: AcceptIn, request: Request, response: Response, db: AsyncSession = Depends(get_session),
+    body: AcceptIn, request: Request, response: Response, user: User = Depends(require_person),
+    db: AsyncSession = Depends(get_session),
 ) -> dict:
+    """Join a team with an invite code, signed in as the invited email.
+
+    The code is also returned to the admin who created the invite, so it only names the invite; it
+    never proves who the caller is. The caller's own sign-in (email code, GitHub or Google) proves
+    the email, exactly as on `POST /invites/{id}/accept`. A key pinned to one team cannot accept."""
     require_managed_cli(request, team_change=True)
-    # Open endpoint, protected by the unguessable one-time code. Registers the user if new,
-    # joins them to the org, and mints their own org-scoped token (the admin never sees it).
     invite = (
         await db.execute(select(Invite).where(Invite.code_hash == crypto.hash_token(body.code)))
     ).scalar_one_or_none()
-    email = _norm_email(body.email)
-    if invite is None or invite.status != "pending":
-        raise HTTPException(status_code=404, detail="invalid or already-used invite code")
-    if invite.expires_at is not None and _as_naive(invite.expires_at) < _utcnow_naive():
-        raise HTTPException(status_code=410, detail="invite code expired")
-    if invite.email != email:
+    if body.email and _norm_email(body.email) != user.email:
         raise HTTPException(status_code=403, detail="this invite is for a different email")
+    return await _join_invited_team(db, response, invite, user)
+
+
+async def _join_invited_team(
+    db: AsyncSession, response: Response, invite: Invite | None, user: User,
+) -> dict:
+    if invite is None or invite.status != "pending":
+        raise HTTPException(status_code=404, detail="invalid or already-used invite")
+    if invite.email != user.email:
+        raise HTTPException(status_code=403, detail="this invite is for a different email")
+    if invite.expires_at is not None and _as_naive(invite.expires_at) < _utcnow_naive():
+        raise HTTPException(status_code=410, detail="invite expired")
     org = await db.get(Org, invite.org_id)
     if org is not None and org.suspended:  # don't let anyone join a platform-locked org
         raise HTTPException(status_code=403, detail="org suspended")
-    if signup_use_cases.blocked_email(email, "invite_code"):  # creates a User directly: guards itself
-        raise HTTPException(status_code=403, detail="this address cannot be used to sign in")
-    user = (await db.execute(select(User).where(User.email == email))).scalar_one_or_none()
-    if user is not None and user.suspended:  # a banned user must not accrue new memberships
-        raise HTTPException(status_code=403, detail="account suspended")
-    if user is None:
-        # Brand-new user → create the user only. Accepting the invite below IS their first team
-        # (no auto personal org — consistent with the login doors).
-        user = User(email=email)
-        db.add(user)
-        await db.flush()
     existing = (
         await db.execute(
             select(Membership).where(Membership.user_id == user.id, Membership.org_id == invite.org_id)
@@ -580,9 +621,9 @@ async def accept_invite(
     if existing is not None:
         raise HTTPException(status_code=409, detail="already a member of this org")
     membership = Membership(
-        user_id=user.id, org_id=invite.org_id, role=invite.role,
-        token_hash="", tool_access=invite.tool_access,
-        project_access=invite.project_access, local_run_enabled=invite.local_run_enabled,
+        user_id=user.id, org_id=invite.org_id, role=invite.role, token_hash="",
+        tool_access=invite.tool_access, project_access=invite.project_access,
+        local_run_enabled=invite.local_run_enabled,
     )
     db.add(membership)
     await db.flush()
@@ -660,51 +701,12 @@ invite_management_router = app
 
 @app.post("/invites/{invite_id}/accept")
 async def accept_my_invite(
-    invite_id: int, request: Request, response: Response, user: User = Depends(require_identity),
+    invite_id: int, request: Request, response: Response, user: User = Depends(require_person),
     db: AsyncSession = Depends(get_session),
 ) -> dict:
-    """Accept an invite addressed to my already-proven email — no code needed (the identity token
-    proves the email). The code path (`POST /invites/accept`) stays for out-of-band joins."""
+    """Accept an invite addressed to my already-proven email by its id (the dashboard's list)."""
     require_managed_cli(request, team_change=True)
-    invite = await db.get(Invite, invite_id)
-    if invite is None or invite.status != "pending":
-        raise HTTPException(status_code=404, detail="invalid or already-used invite")
-    if invite.email != user.email:
-        raise HTTPException(status_code=403, detail="this invite is for a different email")
-    if invite.expires_at is not None and _as_naive(invite.expires_at) < _utcnow_naive():
-        raise HTTPException(status_code=410, detail="invite expired")
-    org = await db.get(Org, invite.org_id)
-    if org is not None and org.suspended:  # don't let anyone join a platform-locked org
-        raise HTTPException(status_code=403, detail="org suspended")
-    existing = (
-        await db.execute(
-            select(Membership).where(Membership.user_id == user.id, Membership.org_id == invite.org_id)
-        )
-    ).scalar_one_or_none()
-    if existing is not None:
-        raise HTTPException(status_code=409, detail="already a member of this org")
-    membership = Membership(
-        user_id=user.id, org_id=invite.org_id, role=invite.role, token_hash="",
-        tool_access=invite.tool_access, project_access=invite.project_access,
-        local_run_enabled=invite.local_run_enabled,
-    )
-    db.add(membership)
-    await db.flush()
-    default = await managed_keys.ensure_default_key(db, membership, user)
-    token = identity_session.make_identity(
-        user.id, user.token_version, org=org.slug,
-        key_generation=default.default_generation if default else None,
-        scope=identity_session.TEAM_SCOPE,
-    )
-    invite.status = "accepted"
-    try:
-        await db.commit()  # a concurrent double-accept trips uq_membership_user_org — 409, not 500
-    except IntegrityError as exc:
-        await db.rollback()
-        raise HTTPException(status_code=409, detail="already a member of this org") from exc
-    org = await db.get(Org, invite.org_id)
-    response.headers["Cache-Control"] = "no-store"
-    return {"org": org.slug, "org_id": org.id, "name": org.name, "role": invite.role, "token": token}
+    return await _join_invited_team(db, response, await db.get(Invite, invite_id), user)
 
 
 @app.get("/orgs/{org_id}/invites")
@@ -756,12 +758,14 @@ async def list_members(
         )).scalars().all()
     }
     used = await _used_today_by_user(db, org_id)  # one grouped query, not N+1
+    spend = await _member_spend_view(db, caller.org, memberships)
     out: list[dict] = []
     for m in memberships:
         user = users.get(m.user_id)
         if user is not None:
             out.append({"user_id": user.id, "email": user.email, "role": m.role,
                         "daily_call_cap": m.daily_call_cap, "used_today": used.get(user.email, 0),
+                        **spend[m.id],
                         "tool_access": m.tool_access, "project_access": m.project_access,
                         "local_run_enabled": m.local_run_enabled,
                         # so the dashboard can separate people from machines in one roster —
@@ -773,6 +777,23 @@ async def list_members(
                         "created_by": m.created_by,
                         "avatar_url": images.public_url(user.avatar_key)})
     return out
+
+
+@app.get("/orgs/{org_id}/admins")
+async def list_admins(
+    org_id: int, caller: Caller = Depends(require_member), db: AsyncSession = Depends(get_session)
+) -> list[dict]:
+    """The people who can add funds, for a member whose team ran out: owner and admin emails only.
+    The full roster stays admin-only."""
+    if caller.org_id != org_id:
+        raise HTTPException(status_code=403, detail="this org's token is required")
+    rows = (await db.execute(
+        select(User.email, Membership.role).join(Membership, Membership.user_id == User.id)
+        .where(Membership.org_id == org_id, Membership.role.in_(("owner", "admin")))
+    )).all()
+    people = [(email, role) for email, role in rows if not _is_agent_email(email)]
+    return [{"email": email, "role": role}
+            for email, role in sorted(people, key=lambda p: (p[1] != "owner", p[0]))]
 
 
 app = APIRouter()
@@ -802,6 +823,26 @@ async def set_member_cap(
     membership.daily_call_cap = body.daily_call_cap
     await db.commit()
     return {"user_id": user_id, "org_id": org_id, "daily_call_cap": body.daily_call_cap}
+
+
+@app.patch("/orgs/{org_id}/members/{user_id}/spend-cap")
+async def set_member_spend_cap(
+    org_id: int, user_id: int, body: SpendCapIn,
+    caller: Caller = Depends(require_member), db: AsyncSession = Depends(get_session),
+) -> dict:
+    """Set one member's daily spend limit on treg's keys (admin/owner), in micro-USD. `null` follows
+    the team default, `-1` is no limit, 0 or more is this member's own limit."""
+    _require_admin_of(org_id, caller)
+    _check_spend_cap(body.daily_spend_cap_micro, "daily_spend_cap_micro", allow_none_limit=True)
+    membership = (await db.execute(
+        select(Membership).where(Membership.org_id == org_id, Membership.user_id == user_id)
+    )).scalar_one_or_none()
+    if membership is None:
+        raise HTTPException(status_code=404, detail="not a member of this org")
+    membership.daily_spend_cap_micro = body.daily_spend_cap_micro
+    await db.commit()
+    return {"user_id": user_id, "org_id": org_id,
+            **(await _member_spend_view(db, caller.org, [membership]))[membership.id]}
 
 
 @app.patch("/orgs/{org_id}/members/{user_id}/access")
@@ -837,9 +878,14 @@ async def my_usage(
     caller: Caller = Depends(require_member), db: AsyncSession = Depends(get_session),
 ) -> dict:
     """The caller's own usage today + cap for the active org — so a member sees 'used / cap' without
-    admin access. `cap` is -1 when unlimited."""
-    return {"org": caller.org.slug, "used_today": await count_today(db, caller.org_id, caller.email),
-            "cap": caller.membership.daily_call_cap}
+    admin access. `cap` is -1 when unlimited. Counted as the members list counts it."""
+    used = await _used_today_by_user(db, caller.org_id)
+    spend_cap = budget_policy.member_daily_spend_cap(caller.membership, caller.org)
+    spent = (await ledger.member_spent_since(db, caller.membership.id, usage_policy._day_start_utc())
+             if spend_cap is not None else 0)
+    return {"org": caller.org.slug, "used_today": used.get(caller.email, 0),
+            "cap": caller.membership.daily_call_cap,
+            "daily_spend_cap_micro": spend_cap, "spent_today_micro": spent}
 
 
 @app.delete("/orgs/{org_id}/members/{user_id}")
@@ -1051,6 +1097,7 @@ class AgentIn(BaseModel):
     name: str
     role: str = "member"  # never "owner" (see below); "admin" is owner-granted only
     daily_call_cap: int = -1  # -1 = unlimited, mirroring set_member_cap
+    daily_spend_cap_micro: int | None = None  # None = the team default, mirroring set_member_spend_cap
     tool_access: list[str] | None = None  # None = every tool, mirroring set_member_access
     project_access: list | None = None  # None = every project; slugs or ids, mirroring set_member_access
     local_run_enabled: bool = True
@@ -1089,6 +1136,7 @@ async def create_agent(
         raise HTTPException(status_code=403, detail="only an owner can create an admin agent")
     if body.daily_call_cap < -1:
         raise HTTPException(status_code=422, detail="daily_call_cap must be -1 (unlimited) or >= 0")
+    _check_spend_cap(body.daily_spend_cap_micro, "daily_spend_cap_micro", allow_none_limit=True)
 
     email = _agent_email(caller.org, name)
     user = (await db.execute(select(User).where(User.email == email))).scalar_one_or_none()
@@ -1113,6 +1161,7 @@ async def create_agent(
     else:
         membership.role = _keep("role", membership.role)
     membership.daily_call_cap = _keep("daily_call_cap", membership.daily_call_cap)
+    membership.daily_spend_cap_micro = _keep("daily_spend_cap_micro", membership.daily_spend_cap_micro)
     if is_new or "tool_access" in sent:  # only re-validate what the caller actually sent
         membership.tool_access = _normalize_tool_access(
             body.tool_access, await _known_access_names(org_id, db))
@@ -1147,6 +1196,7 @@ async def create_agent(
     return {"token": token, "name": name, "email": email, "org": caller.org.slug, "user_id": user.id,
             "api_key_id": key.id,
             "role": membership.role, "daily_call_cap": membership.daily_call_cap,
+            "daily_spend_cap_micro": membership.daily_spend_cap_micro,
             "tool_access": membership.tool_access, "project_access": membership.project_access,
             "local_run_enabled": membership.local_run_enabled,
             "pinned_tags": membership.pinned_tags,
@@ -1213,6 +1263,40 @@ async def agent_connection(
     ).exists()))).scalar_one()
     response.headers["Cache-Control"] = "no-store"
     return {"connected": connected}
+
+
+@app.get("/orgs/{org_id}/first-call")
+async def team_first_call(
+    org_id: int, response: Response,
+    caller: Caller = Depends(require_member), db: AsyncSession = Depends(get_session),
+) -> dict:
+    """Getting started's progress: has an agent reached this team, and which tool did its first
+    successful call reach. Each answer is at most one indexed row; no usage scan."""
+    if caller.org_id != org_id:
+        raise HTTPException(status_code=403, detail="not your org")
+    response.headers["Cache-Control"] = "no-store"
+    first_call = None
+    if caller.org.first_call_at is not None:
+        row = (await db.execute(
+            select(CallRecord.endpoint_id, CallRecord.tool_name, CallRecord.created_at)
+            .where(CallRecord.org_id == org_id, CallRecord.kind == "call",
+                   CallRecord.status_code >= 200, CallRecord.status_code < 400)
+            .order_by(CallRecord.created_at, CallRecord.id).limit(1)
+        )).first()
+        # The audit row can be shed under load; first_call_at is not, so it still answers.
+        first_call = ({"tool": row.endpoint_id or row.tool_name, "at": row.created_at.isoformat()}
+                      if row else {"tool": None, "at": caller.org.first_call_at.isoformat()})
+        return {"connected": True, "first_call": first_call}
+    # A check-in or any audited call, or this member's Default key presented by a CLI or agent
+    # (a browser session never touches it).
+    seen = (await db.execute(select(select(CallRecord.id).where(
+        CallRecord.org_id == org_id).exists()))).scalar_one()
+    if not seen:
+        seen = (await db.execute(select(select(ApiKey.id).where(
+            ApiKey.org_id == org_id, ApiKey.membership_id == caller.membership.id,
+            ApiKey.kind == managed_keys.DEFAULT_KIND, ApiKey.last_used_at.is_not(None),
+        ).exists()))).scalar_one()
+    return {"connected": seen, "first_call": None}
 
 
 @app.post("/agents/checkin")
@@ -1499,6 +1583,7 @@ async def get_org_settings(
     return {"daily_cap_micro": _effective_daily_cap(org),  # 0 = no limit
             "daily_cap_set_by_team": int(org.daily_cap_micro or 0) or None,
             "platform_default_micro": get_settings().platform_daily_cap_micro,  # 0 = none
+            "member_daily_spend_cap_micro": org.member_daily_spend_cap_micro,  # None = none
             "platform_overflow": not org.platform_overflow_disabled,
             # The archive opt-out (archive.md, "Opting out"): the moment the team objected, or None.
             "archive": org.archive_opt_out_at is None,
@@ -1524,6 +1609,11 @@ async def set_org_settings(
         if body.daily_cap_micro < 0:
             raise HTTPException(status_code=422, detail="daily_cap_micro must be 0 or more")
         org.daily_cap_micro = body.daily_cap_micro
+    if "member_daily_spend_cap_micro" in sent:
+        _check_spend_cap(body.member_daily_spend_cap_micro, "member_daily_spend_cap_micro",
+                         allow_none_limit=False)
+        org.member_daily_spend_cap_micro = body.member_daily_spend_cap_micro
+        await budget_policy.reset_member_spend_caps(db, org_id)
     if "platform_overflow" in sent and body.platform_overflow is not None:
         org.platform_overflow_disabled = not body.platform_overflow
     if "archive" in sent and body.archive is not None:

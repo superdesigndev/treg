@@ -13,6 +13,7 @@ import httpx
 from ...domain import asynctasks as asynctasks_rules
 from ...domain import money as ledger
 from ...domain.catalog import results as catalog_results
+from ...domain.catalog import schema
 from ...domain.catalog import store as catalog_store
 from ...domain.catalog.stats import Tally
 from ..asynctasks import terminal_judgement
@@ -57,12 +58,16 @@ def _json(raw: bytes) -> object:
 def platform_call(ep: dict, query: QueryValues, body: bytes, consumed: set[str], *,
                   routed_child: bool) -> MarketplaceCall:
     """The MarketplaceCall the resolver builds for treg's own key, with a hold of the estimate."""
+    cat = catalog_store.load()
+    if schema.is_v2(ep):
+        call_cost.require_rates(ep, cat)
     pricing = price_call(ep, query, body, consumed)
-    cost = catalog_store.load().cost_view(ep.get("cost"), ep["provider"]) or {}
+    cost = cat.cost_view(ep.get("cost"), ep["provider"]) or {}
     return MarketplaceCall(
         tool=None, upstream="", consumed=consumed, endpoint_id=ep["id"], provider=ep["provider"],
         tier="platform", cost_type=str(cost.get("type") or "per_call"),
-        estimate_micro=pricing.estimate_micro, unit_micro=pricing.unit_micro,
+        estimate_micro=pricing.estimate_micro, worst_case_micro=pricing.worst_case_micro,
+        unit_micro=pricing.unit_micro,
         reported_charge_unit_micro=pricing.reported_charge_unit_micro,
         settlement_basis=pricing.settlement_basis, request_data=pricing.request_data,
         cost_terms=pricing.terms,
@@ -70,7 +75,7 @@ def platform_call(ep: dict, query: QueryValues, body: bytes, consumed: set[str],
         managed_resource=ep.get("managed_resource"),
         spooled_evidence=_spool_evidence_paths(ep, ep.get("cost") or {}),
         call_id="replay", payer_org_id=0,
-        reserved_micro=ledger.with_margin(pricing.estimate_micro),
+        reserved_micro=ledger.with_margin(max(pricing.estimate_micro, pricing.worst_case_micro)),
         deferred=[] if routed_child else None,
     )
 

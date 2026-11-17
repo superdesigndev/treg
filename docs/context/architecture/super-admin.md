@@ -27,7 +27,14 @@ suspended (principal = that email); otherwise 403. The env token bootstraps; `PO
 The gate always checks the primary (admin pool, `get_admin_session`), so replication lag never delays
 suspension or revocation, and commits before returning to release that connection. Read-only reports
 may then use `get_admin_read_session` (the read database, else the admin pool); a reader failure never
-retries on the primary. No admin path uses the API pool (`ops/deploy.md`).
+retries on the primary. Whole-window aggregates over `callrecord` and the ledger (`/admin/archive`,
+`/admin/reconcile/*`) use `get_admin_report_session` instead: the same reader choice, one report
+at a time per process (a second is refused at once), each statement capped by a server-side
+timeout, refusals and timeouts answered as a 429 `report_busy`. The timeout is the only thing that
+stops such a query; a browser or proxy giving up does not, and an uncapped one outlives the
+instance that started it. The archive panel polls only after its previous poll has returned; a
+429 shows it as busy and keeps polling, and only a 401 or 403 sends it back to the token gate.
+No admin path uses the API pool (`ops/deploy.md`).
 
 `require_member` returns 403 for a suspended user or org; super-admin routes are unaffected.
 
@@ -51,6 +58,10 @@ Routes live in `routers.admin` (plus `GET /admin/feedback` and `/admin/reviews`,
 - **Org credit** (`POST /admin/orgs/{org_id}/credit`, HTTP twin of `scripts/manual_grant.py`) grants
   through `money.grant()` with `kind="promotional"` so it burns before purchased balance; `ref` is the
   idempotency key (duplicate for the same org is 409).
+- **Referral affiliates** use exact-user reads and a versioned, operation-idempotent flag update
+  under `/admin/referrals/users`. The flag and authenticated-principal event commit together;
+  shared-token events identify `env-admin`, not an individual approver. See the
+  [API contract](../interface/api.md) and [reward rules](money.md).
 
 ## CLI
 

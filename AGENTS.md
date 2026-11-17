@@ -9,25 +9,12 @@ credential server-side when one is required, and relays the answer verbatim. A c
 explicitly verified as public can instead relay with no injected credential. We never model an
 upstream API.
 
-## Paired treg.to checkout
+## Public repository
 
-For work on the hosted treg.to service, clone the public `treg` repository and private
-`treg-internal` repository as siblings with those exact directory names. When `../treg-internal`
-exists, treat both repositories as one operational workspace:
-
-- `treg` owns public product code, portable behavior and self-hosting documentation.
-- `treg-internal` owns live production configuration, operational runbooks, incident evidence and
-  private admin tools.
-- Read both repositories before changing production behavior, but never copy credentials, live
-  environment exports, customer data or raw logs between them.
-- Everything committed here is public, comments and commit messages included: describe treg.to
-  only by mechanism, never by its numbers, dates, hosts, instance counts or schedules. Those go to
-  `../treg-internal`.
-- Commit and open PRs separately. State the merge order whenever one PR links to or depends on the
-  other.
-
-Do not clone `treg-internal` inside this repository and do not make it a Git submodule. Start agents
-from the repository that owns the task; the sibling path supplies the other half of treg.to context.
+Everything committed here is public, comments and commit messages included. Describe the hosted
+treg.to service only by mechanism, never by its numbers, dates, hosts, instance counts or
+schedules. If a private checkout exists at `../treg-internal`, read its `AGENTS.md` before
+changing production behavior.
 
 ## Non-negotiables
 
@@ -39,8 +26,10 @@ Everything else in this file is guidance; these are the contract, and they win o
    This temporary allowance permits calls when Redis state cannot be confirmed; it is not a durable cap.
 2. A hold (the balance `reserve` sets aside for one call) is settled or released exactly once, on
    every path: timeout, cancellation and exceptions included.
-3. A request holds zero database connections while upstream or object-storage I/O is in flight.
-   Keep `reserve` and `settle` separate; read archive pointers, close the session, then fetch bytes.
+3. A request holds zero database connections while upstream, object-storage, KMS or payment-rail
+   (chain or facilitator) I/O is in flight. Keep `reserve` and `settle` separate; read archive
+   pointers, close the session, then fetch bytes; verify or settle a payment, then open the session;
+   end the transaction before a credential is opened or sealed.
 4. Plain `/call/` is a faithful relay: the injected credential (on treg's shared key, one of treg's
    accounts for the provider, chosen per call and fixed for anything an account created; on a
    connection to treg's own Meta app it also carries `appsecret_proof`, the HMAC of the injected
@@ -62,9 +51,19 @@ Everything else in this file is guidance; these are the contract, and they win o
    back in an error body is masked (`***`) before the caller, an idempotent replay or the evidence
    row sees it. The error body is read whole (gzip/deflate decoded) up to 8 MiB; on a credentialed
    call one that cannot be scanned is replaced whole, never relayed as a prefix.
+   One more, on a metered 2xx and only while the deploy switch `TREG_STRIP_REPORTED_CHARGE` is on
+   (off by default): the member the row's settlement reads the provider's own charge from
+   (`settle.reported.path`, or `cost.reported_charge.path` in today's spelling) is removed after
+   settlement and outcome, every other byte as sent, live and archive hits alike, before the caller
+   or an idempotent replay sees it. The archive keeps the answer whole; a call sending
+   `X-Treg-Keep-Reported-Charge: true` keeps the member.
+   One more, on every answer: the invitation headers `X-Treg-Hint`, `X-Treg-Hint-Text` and
+   `X-Treg-Review` are treg's own, so an upstream's copies are removed before treg decides its
+   invitation; clients show their text as treg's ([feedback](docs/context/architecture/feedback.md)).
    A live-verified free catalog endpoint may declare an anonymous fallback; its empty binding list
    omits credential injection but does not strip or rewrite caller headers.
-   Routed endpoints and overflow wrap the child's answer and say so; they never alter it. With
+   Routed endpoints and overflow wrap the child's answer and say so; they never alter it. A routed
+   call reads each child's answer up to the same 8 MiB; a larger one is that child's unbilled error. With
    `X-Treg-Route-Verify`, an email or phone find makes one more linked child call (the check), with its own
    hold and charge, and reports it in `_treg.verification`; the find's answer is not altered. With
    `X-Treg-Route-Confirm`, an email find keeps asking providers after a hit until another returns the
@@ -77,11 +76,22 @@ Everything else in this file is guidance; these are the contract, and they win o
    unlinked temp file under a per-body cap and per-process budget, settles from only the paths its
    row reads (usage meters, `expect` success leaf), then relays the file byte for byte; it is never
    archived or replayed.
-   Authorized free final fetches needing no body evidence stream in full.
+   Free answers needing no body evidence (an authorized final fetch, or a free `utility` reference
+   list with no ownership rule) stream in full.
    `/table/` runs the same call through the same road and returns it as rows and columns; it never
    changes what `/call/` returns (docs/context/architecture/table.md).
-5. Balances change only through money's five entries: grant, topup, reserve, settle, release.
-   There is deliberately no refund or adjustment entry; an ops correction is a grant.
+   A keyless agent-payments call (no treg credential of any kind) has its payment credential
+   (`Authorization: Payment …`, `PAYMENT-SIGNATURE`, `X-PAYMENT`, `SIGN-IN-WITH-X`) consumed
+   by treg and removed before the relay; nothing else it sent changes. A request carrying any treg
+   credential is never read for a payment (docs/context/architecture/agent-payments.md).
+   A 2xx async answer is read whole (bounded) to record the task it names, then relayed byte for
+   byte; one too large streams untouched and is not recorded. `/tasks/{call_id}` polls that task
+   through the same road and reads the answer with the descriptor; it never changes what `/call/`
+   returns (docs/context/architecture/tasks.md).
+5. Balances change only through money's six entries: grant, topup, reserve, settle, release,
+   revoke. `revoke` only takes back the unspent credit of one top-up Stripe refunded (and its
+   bonus, in proportion), never another payment's block and never below the unheld balance.
+   There is no adjustment entry; an ops correction is a grant.
 
 **Changing any invariant in this file means editing this file in the same PR.** Routed endpoints
 and overflow once shipped with every other doc updated while this file still said "no router";
@@ -102,8 +112,6 @@ agents then built against a constitution that was wrong.
   source) and its hand-kept prose mirror `src/treg/web/tutorial.md`.
 - `README.md` is the overview and quickstart, `USAGE.md` the CLI reference, `CONTRIBUTING.md` the
   dev setup, `SECURITY.md` required reading before touching the proxy, runners, auth or secrets.
-- If available, `../treg-internal` holds private operational configuration and tools; read its
-  `README.md` before changing production settings. Public development does not depend on it.
 
 ## Architecture
 
@@ -139,6 +147,10 @@ agents then built against a constitution that was wrong.
   the auto-top-up fields; the call runtime may persist an OAuth token refresh into `secret`; audit
   writes `callrecord`, domains only read it (`application/evidence_retention.py` also updates it,
   blanking the two evidence columns past retention).
+- **Referral affiliates.** `domain/referrals.py` alone writes `User.referral_affiliate`, its
+  version and `ReferralAffiliateEvent`; the private admin calls the authenticated API. The flag
+  exempts only future qualification from the per-referrer cap, never abuse gates or historical
+  capped records. See `docs/context/architecture/money.md`.
 - **Feedback handling.** This repo owns `FeedbackHandling` and `FeedbackHandlingEvent` models and
   migrations; the private admin service is their only runtime writer. Original reports remain
   owned by the feedback domain. See `docs/context/architecture/feedback.md`.
@@ -150,11 +162,13 @@ agents then built against a constitution that was wrong.
   team, an exact count or money. See `docs/context/architecture/showcase.md`.
 - **The call runtime is self-contained.** `src/treg/application/call/` depends on no management
   code (routes, login, OAuth consent, Stripe top-up), reads only membership, deny rules,
-  credentials, catalog prices and balances, and writes only what `tests/test_call_architecture.py`
+  credentials, catalog prices and balances (plus, when a policy extension asks `call_admission`,
+  the team's first owner and whether it ever bought credit), and writes only what
+  `tests/test_call_architecture.py`
   allowlists (the ledger entries, idempotency claims, OAuth refresh, audit and telemetry, first-call
   markers, tag budgets, capacity marks, overflow spend, the member's daily-cap slot, the per-team
-  archive-question marks, durable provider-resource ownership, Redis org/endpoint
-  quota admission counters, and the shared provider rate window's members). Extend the
+  archive-question marks, durable provider-resource ownership, the task an async answer names,
+  Redis org/endpoint quota admission counters, and the shared provider rate window's members). Extend the
   test's allowlist in the same PR as any new write, and expect the reviewer to ask why.
 - **The tool hub** (`application/hub/`, behind `TREG_HUB_ENABLED`) runs a maker's recipe as ordinary
   calls: every step goes through `execute_call` under its own hold, a catalog step as the caller and
@@ -173,6 +187,21 @@ agents then built against a constitution that was wrong.
   the grant. Team deletion never restores eligibility; an invitation code is not email proof.
   An installed policy extension may defer it through the `signup_credit` decision point
   (`src/treg/policy.py`, docs/context/architecture/policy-extensions.md); extensions only restrict.
+- **Call admission.** Before treg's own money pays for a call (its key or its pay-per-use OAuth
+  app), an installed policy extension may refuse it through the `call_admission` decision point: a
+  403 before any hold and before the provider is reached, `funds_required` for a team that never
+  bought credit and `own_key_required` for one that did, naming the remedy and never the rule. A
+  slow or failing extension allows the call, and a call on the team's own credential is never asked.
+- **Agent payments** (behind `TREG_AGENT_PAYMENTS_ENABLED`). A keyless caller's payment confirmed
+  on chain is an ordinary `topup` on its wallet's payer team, one per (network, address)
+  (`governance.teams.make_payer_team`: a machine user, a member with no token); the call then runs
+  the normal road as that team. What a call does not use stays as that team's credit, which a
+  later call draws with a signed proof that moves no money (MPP's zero-amount charge, x402's
+  sign-in-with-x). `application/agent_payments.py` is the only
+  writer of `AgentPayment`; the protocol SDKs live only in `infra/agent_payments/`. A payment whose
+  settlement went unanswered is resolved by `treg-worker agentpay reconcile` from the chain: the
+  same `topup`, under the same reference, only for a transfer that landed. See
+  `docs/context/architecture/agent-payments.md`.
 - **Money.** Everything is **integer micro-USD** - never floats, never cents. The Stripe SDK lives
   only in `infra/stripe.py`, orchestration in `application/billing.py`, and `reconcile.py` is
   read-only. See `docs/context/architecture/money.md`.
@@ -190,9 +219,9 @@ agents then built against a constitution that was wrong.
 
 `expose_dev_code` (dev OTP only on a local sqlite database, `config.py`), the call-time SSRF check
 (`infra/upstream/ssrf.py`), the fail-loud missing-Fernet-key check in `verify_db`, and
-the unconditional `POST /run` denial (`api.py`). Server-side CLI execution is disabled for every
-caller; an executable allow-list and rlimits are not an isolation boundary. Read the fragment before
-touching any of them.
+the unconditional `POST /run` denial (`api.py`). The server holds no CLI execution code; the route
+only tells old clients so. Do not bring it back: an executable allow-list and rlimits are not an
+isolation boundary. Read the fragment before touching any of them.
 
 ## Development
 
@@ -204,6 +233,8 @@ uv run python -m treg                          # the server
 uv run lint-imports                            # the import-linter contracts (CI runs this too)
 uv run ruff check                              # lint, config in pyproject.toml (CI runs this too)
 scripts/dev-local.sh up                        # live dev stack on :18790 with its own sqlite DB
+(cd cli && go vet ./... && go test ./...)      # the binary CLI (Go)
+TREG_GO_BUILD=1 uv run --with pytest-xdist pytest tests/cli_go -n auto   # its parity with the Python CLI
 ```
 
 xdist is pulled via `--with`, not the lockfile — same as CI. Every test process gets its own
@@ -212,6 +243,10 @@ so parallel runs and side-by-side runs never share one.
 
 - **Dependencies change through `uv add` or `uv lock`, never by hand.** `pyproject.toml` pins
   `required-version` so an old uv refuses to run instead of rewriting `uv.lock`; CI uses `--locked`.
+- **The binary CLI** in `cli/` (Go, its own module) is replacing the Python CLI, which is frozen:
+  a new command goes to the Go CLI, and the two keep the same output, exit statuses and files,
+  proved by `tests/cli_go`, except the differences `cli-binary.md` names ("Compatibility with the
+  Python CLI") and the harness's `normalize` spells out. See `docs/context/interface/cli-binary.md`.
 - **The package is split.** The base install is the light CLI; the FastAPI/DB stack is the
   `[server]` extra, the certificate authority is `[proxy]`. Never import a heavy dependency at the
   top of a CLI-path module; the "Lightweight CLI modules" import-linter contract lists them and
@@ -258,9 +293,11 @@ so parallel runs and side-by-side runs never share one.
   goes in the PR body, never into a fragment or a comment. A fragment moves only when a mechanism
   changes; `drift.sh` naming one is a prompt to check it, not an obligation to write. No dated
   per-provider sections in `docs/context/architecture/catalog.md`: a provider's quirk lives on
-  its row as a `note`. No per-endpoint tests: the round-trip test over every shipped adapter and
-  the validator already judge the rows, and a test that restates a list of declarations is
-  deleted, not extended. Code a data change needs ships in the same PR as its first rows.
+  its row, in the most specific note. Write and review every summary and note against
+  `docs/context/architecture/catalog-schema.md` ("Summary and note"). No per-endpoint tests: the
+  round-trip test over every shipped adapter and the validator already judge the rows, and a test
+  that restates a list of declarations is deleted, not extended. Code a data change needs ships in
+  the same PR as its first rows.
 
 ## When writing user-facing copy
 
@@ -277,6 +314,19 @@ One concept, one word. Settled deliberately - mixed vocabulary is how the old fr
 now do, not what we store. Never use a count of endpoints or providers in this file; the catalog
 changes weekly and every stale number is a lie.
 
+**A new public page: offer it a share image.** When you add a public page, ask the person driving
+the session whether it should get its own `og:image` from `scripts/og_images.py` (add the page to a
+group in `GROUPS`, then run the script for that one page). Tell them that if they do not like the
+current look, a new style is one more template in `LAYOUTS`. Without a card the page keeps the
+site-wide `/media/og.png`. `docs/context/interface/seo.md` ("The social card") has the details.
+
 **Do not document what is not built.** An agent that believes a feature exists fails in a way
 nobody can debug. Provider choice is the easiest thing to overstate: treg compares providers, and
 chooses only in the two disclosed cases of non-negotiable 4.
+
+## Code Review Rules
+
+- Look for security issues.
+- This repository is public: flag anything the Public repository section says must not be
+  committed.
+- Skip speculative edge cases: report a bug only with a concrete path real usage can hit.

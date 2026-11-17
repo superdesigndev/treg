@@ -105,23 +105,25 @@ def _skill(tmp_path, base, name, text):
 
 
 def test_skill_bootstrap_installs_only_treg_and_lists_the_rest(monkeypatch, tmp_path, capsys):
-    """`treg skill bootstrap` (what install.sh runs) installs the treg skill alone, and prints the
-    other advertised skills with the command that adds them, never a hostile name."""
+    """`treg skill bootstrap` (what install.sh runs) installs the treg skill alone and names the
+    other advertised skills in one line with the command that adds them, never a hostile name. It
+    never asks the agent to stop and ask the human: that would come before sign-in."""
     assert _bootstrap(monkeypatch, tmp_path) == ["treg"]
     out = capsys.readouterr().out
-    assert "lead-signals  Find people ready to buy." in out
-    assert "treg skill bootstrap --skills all" in out
+    assert "More skills, not installed: lead-signals, recruit (add later:" in out
+    assert "treg skill bootstrap --skills <name>,<name> or --skills all" in out
     assert "evil" not in out
+    assert "If you are an agent" not in out
 
 
 def test_skill_bootstrap_installs_named_and_all(monkeypatch, tmp_path, capsys):
     assert _bootstrap(monkeypatch, tmp_path, skills="Recruit, nope") == ["recruit", "treg"]
     out = capsys.readouterr().out
     assert "Not a skill on this registry: nope" in out
-    assert "recruit  " not in out.split("Optional skills")[1]
+    assert "recruit" not in out.split("More skills")[1]
     assert _bootstrap(monkeypatch, tmp_path, skills="all,recruit") == ["lead-signals", "recruit", "treg"]
     out = capsys.readouterr().out
-    assert "Optional skills" not in out and "Not a skill" not in out
+    assert "More skills" not in out and "Not a skill" not in out
     assert not (tmp_path / "evil").exists()
 
 

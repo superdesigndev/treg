@@ -1,0 +1,39 @@
+{
+  "data": [
+    {
+      "id": "co_noed4814063eff269830d20cca",
+      "jurisdiction": "no",
+      "company_number": "993888621",
+      "company_number_scheme": "NO-ORGNR",
+      "legal_name": "EQUINOR - SENIORKLUBB HARSTAD",
+      "display_name": null,
+      "legal_name_english": null,
+      "status": "active",
+      "match": {
+        "type": "name_prefix",
+        "identifier": null
+      }
+    },
+    {
+      "id": "co_no13399f1784c21a85e33bc9dc",
+      "jurisdiction": "no",
+      "company_number": "985619433",
+      "company_number_scheme": "NO-ORGNR",
+      "legal_name": "EQUINOR ALGERIA AS",
+      "display_name": null,
+      "legal_name_english": null,
+      "status": "active",
+      "match": {
+        "type": "name_prefix",
+        "identifier": null
+      }
+    }
+  ],
+  "pagination": {
+    "limit": 2,
+    "next_cursor": "eyJvIjogMn0",
+    "has_more": true,
+    "total_estimate": 178,
+    "returned": 2
+  }
+}

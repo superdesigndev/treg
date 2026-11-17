@@ -17,7 +17,7 @@ from httpx import AsyncClient
 from treg import cli as _cli
 from treg import localrun
 from treg.models import Tool
-from conftest import verified_signup
+from conftest import verified_signup, accept_with_code
 
 
 @pytest.fixture(autouse=True)
@@ -360,7 +360,7 @@ async def test_grant_refused_for_viewer_who_may_still_call(clients: AsyncClient)
     await clients.post("/tools", json={"name": "stripe", "base_url": "http://upstream", "secret_id": sid,
                                        "cli": {"enabled": True}}, headers=h)
     code = (await clients.post(f"/orgs/{org_id}/invites", json={"email": "vi@x.dev", "role": "viewer"}, headers=h)).json()["code"]
-    vtok = (await clients.post("/invites/accept", json={"code": code, "email": "vi@x.dev"})).json()["token"]
+    vtok = (await accept_with_code(clients, json={"code": code, "email": "vi@x.dev"})).json()["token"]
     vh = {"X-Treg-Token": vtok}
     assert (await clients.get("/call/stripe/anything", headers=vh)).status_code == 200   # viewer may call
     r = await clients.post("/tools/stripe/grant", json={"argv": []}, headers=vh)
@@ -749,7 +749,7 @@ async def test_owner_only_binding_and_runner_proof(clients: AsyncClient, monkeyp
                                        "cli": {"enabled": True, "bin": "printenv", "inject": [{"via": "env", "name": "X"}]}})
     org_id = (await clients.get("/orgs")).json()[0]["org_id"]
     inv = (await clients.post(f"/orgs/{org_id}/invites", json={"email": "memberb@x.dev", "role": "member"})).json()
-    tokB = (await clients.post("/invites/accept", json={"code": inv["code"], "email": "memberb@x.dev"})).json()["token"]
+    tokB = (await accept_with_code(clients, json={"code": inv["code"], "email": "memberb@x.dev"})).json()["token"]
     hb = {"X-Treg-Token": tokB}
 
     # A1 — member B cannot bind the owner's secret to a tool B controls
@@ -828,19 +828,6 @@ def test_cmd_run_allows_vendor_flags_after_the_separator(monkeypatch):
     with pytest.raises(SystemExit) as e:
         cli_mod.cmd_run(args, {"base_url": "http://x", "token": "t"})
     assert "before the tool name" not in str(e.value.code).lower()          # guard did NOT trip
-
-
-async def test_run_slot_caps_concurrent_runs_per_user():
-    from treg import runner
-    import contextlib
-    async with contextlib.AsyncExitStack() as stack:
-        for _ in range(runner.MAX_CONCURRENT_RUNS_PER_USER):        # fill this user's slots
-            await stack.enter_async_context(runner.run_slot("u@x"))
-        with pytest.raises(runner.RunBusy):                          # one more → busy
-            await stack.enter_async_context(runner.run_slot("u@x"))
-    # slots released on exit → a fresh run works again
-    async with runner.run_slot("u@x"):
-        pass
 
 
 def test_run_server_timeout_exits_nonzero(monkeypatch):

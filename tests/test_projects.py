@@ -18,7 +18,7 @@ import pytest
 from httpx import ASGITransport, AsyncClient
 from sqlmodel import select
 
-from conftest import make_upstream
+from conftest import make_upstream, accept_with_code
 
 from treg import crypto
 from treg.api import app
@@ -231,7 +231,7 @@ async def test_an_invite_carries_the_project_scope_onto_the_membership(env):
         "email": "new@x.dev", "project_access": [env.apollo["slug"]]})
     assert r.status_code == 200, r.text
     code = r.json()["code"]
-    joined = await env.c.post("/invites/accept", json={"code": code, "email": "new@x.dev"})
+    joined = await accept_with_code(env.c, json={"code": code, "email": "new@x.dev"})
     assert joined.status_code == 200, joined.text
     names = {t["name"] for t in (await env.c.get("/tools", headers=_h(joined.json()["token"]))).json()}
     assert names == {"a-tool", "shared"}

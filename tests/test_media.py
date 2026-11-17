@@ -15,12 +15,33 @@ async def test_host_then_fetch_roundtrip_is_byte_exact_and_public(clients: Async
     r = await clients.post("/media", content=PNG, headers={"content-type": "image/png"})
     assert r.status_code == 201, r.text
     body = r.json()
-    assert body["url"].endswith("/m/" + body["token"]) and body["size"] == len(PNG)
+    # URL carries a content-type extension so vendors that check the path suffix accept it.
+    assert body["url"].endswith("/m/" + body["token"] + ".png") and body["size"] == len(PNG)
     # The vendor's fetcher holds no treg token: the URL alone must serve the bytes.
     anon = AsyncClient(transport=clients._transport, base_url="http://registry")
-    g = await anon.get(f"/m/{body['token']}")
-    assert g.status_code == 200 and g.content == PNG and g.headers["content-type"] == "image/png"
-    assert g.headers["content-security-policy"] == "sandbox" and g.headers["x-content-type-options"] == "nosniff"
+    for path in (f"/m/{body['token']}.png", f"/m/{body['token']}"):  # both shapes keep working
+        g = await anon.get(path)
+        assert g.status_code == 200 and g.content == PNG and g.headers["content-type"] == "image/png"
+        assert g.headers["content-security-policy"] == "sandbox" and g.headers["x-content-type-options"] == "nosniff"
+
+
+async def test_hosted_url_ends_in_a_content_type_extension(clients: AsyncClient):
+    """PiAPI Seedance (and similar) reject extensionless paths; the public URL must carry one."""
+    anon = AsyncClient(transport=clients._transport, base_url="http://registry")
+    cases = [
+        ("video/mp4", b"ftyp", ".mp4"),
+        ("video/quicktime", b"moov", ".mov"),
+        ("audio/mpeg", b"ID3x", ".mp3"),
+        ("audio/wav", b"RIFFx", ".wav"),
+        ("image/jpeg", b"\xff\xd8", ".jpg"),
+    ]
+    for ctype, payload, ext in cases:
+        r = await clients.post("/media", content=payload, headers={"content-type": ctype})
+        assert r.status_code == 201, r.text
+        body = r.json()
+        assert body["url"].endswith("/m/" + body["token"] + ext), body["url"]
+        g = await anon.get(f"/m/{body['token']}{ext}")
+        assert g.status_code == 200 and g.content == payload and g.headers["content-type"] == ctype
 
 
 async def test_hosting_needs_a_member_token(clients: AsyncClient):

@@ -214,6 +214,26 @@ async def require_identity(
     raise HTTPException(status_code=401, detail="not authenticated")
 
 
+async def require_person(
+    request: Request,
+    x_treg_token: str = Header(default=""),
+    x_treg_org: str = Header(default=""),
+    treg_session: str = Cookie(default=""),
+    db: AsyncSession = Depends(get_session),
+) -> User:
+    """The caller as a person, for acts on the account rather than inside one team: joining a team
+    or minting a Default key for another team. An identity token or a browser session qualifies; a
+    key that resolves to one membership (an Additional, agent or legacy team key) names a team, not a
+    person, so it is refused here even though `require_identity` accepts it."""
+    if x_treg_token:
+        membership, _ = await _membership_and_key_by_token(x_treg_token, db)
+        if membership is not None:
+            raise HTTPException(status_code=403, detail=(
+                "this key belongs to one team and cannot act for your account — sign in with "
+                "`treg login` or the dashboard"))
+    return await require_identity(request, x_treg_token, x_treg_org, treg_session, db)
+
+
 def _sso_scope_allows(request: Request, org_id: int) -> bool:
     path = request.url.path.split("/")
     scoped_team_path = len(path) > 2 and path[1] == "orgs" and path[2] == str(org_id)
@@ -450,6 +470,7 @@ PUBLIC_DEMO_DOMAIN = "public-demo.treg.local"  # unroutable — the public ident
 # The words collide, the concepts don't; kept apart deliberately.
 AGENT_DOMAIN = "agents.treg.local"  # unroutable — an agent acts only by its token
 SANDBOX_DOMAIN = "sandbox.treg.local"  # landing sandbox visitors; the sandbox is closed
+PAYER_DOMAIN = "payers.treg.local"  # unroutable — an agent payer acts only by a verified payment
 SANDBOX_CLOSED = "the demo sandbox is closed — sign in at treg.to to use treg"
 
 
@@ -464,7 +485,8 @@ def _refuse_sandbox_visitor(user: User | None) -> None:
 
 def _is_machine_email(email: str) -> bool:
     """An identity minted by an admin for a machine — never a person who can sign in."""
-    return _is_agent_email(email) or _norm_email(email).endswith(f"@{PUBLIC_DEMO_DOMAIN}")
+    return _is_agent_email(email) or _norm_email(email).endswith(
+        (f"@{PUBLIC_DEMO_DOMAIN}", f"@{PAYER_DOMAIN}"))
 
 
 # Entirely configuration: `TREG_BLOCKED_EMAIL_DOMAINS` and nothing else. An unset variable blocks

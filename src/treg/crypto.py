@@ -1,7 +1,7 @@
-"""Secret-at-rest encryption (Fernet). Decision #2: secrets are never stored plaintext.
+"""Fernet encryption for short-lived state, Arena payloads and, without KMS, stored credentials.
 
-One symmetric key (TREG_SECRET_KEY). The proxy decrypts only at call time, in memory,
-and never returns the plaintext to a client.
+TREG_SECRET_KEY is one key, or a comma-separated list during a rotation: the first key encrypts and
+every listed key decrypts.
 """
 
 from __future__ import annotations
@@ -9,7 +9,7 @@ from __future__ import annotations
 import hashlib
 import secrets as _secrets
 
-from cryptography.fernet import Fernet
+from cryptography.fernet import Fernet, MultiFernet
 
 from .config import get_settings
 
@@ -18,9 +18,9 @@ from .config import get_settings
 _EPHEMERAL = Fernet.generate_key()
 
 
-def _fernet() -> Fernet:
-    key = get_settings().secret_key
-    return Fernet(key.encode() if key else _EPHEMERAL)
+def _fernet() -> MultiFernet:
+    keys = [k.strip() for k in get_settings().secret_key.split(",") if k.strip()]
+    return MultiFernet([Fernet(k.encode()) for k in keys] or [Fernet(_EPHEMERAL)])
 
 
 def encrypt(plaintext: str) -> str:
@@ -29,6 +29,21 @@ def encrypt(plaintext: str) -> str:
 
 def decrypt(token: str) -> str:
     return _fernet().decrypt(token.encode()).decode()
+
+
+def rotate(token: str) -> str:
+    """`token` re-encrypted under the first key; raises if no listed key opens it."""
+    return _fernet().rotate(token.encode()).decode()
+
+
+def is_current(token: str) -> bool:
+    """Whether the first key alone opens `token`."""
+    keys = [k.strip() for k in get_settings().secret_key.split(",") if k.strip()]
+    try:
+        Fernet((keys[0] if keys else _EPHEMERAL.decode()).encode()).decrypt(token.encode())
+    except Exception:  # noqa: BLE001 — InvalidToken, or a value that is not a Fernet token at all
+        return False
+    return True
 
 
 def new_key() -> str:

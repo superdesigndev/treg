@@ -1,0 +1,29 @@
+{
+  "ar": {
+    "companies": "complete",
+    "directors": "absent",
+    "ownership": "absent",
+    "documents": "absent",
+    "financials": "absent",
+    "lei": "absent",
+    "activity": "complete"
+  },
+  "br": {
+    "companies": "complete",
+    "directors": "partial",
+    "ownership": "absent",
+    "documents": "absent",
+    "financials": "absent",
+    "lei": "absent",
+    "activity": "complete"
+  },
+  "ca": {
+    "companies": "complete",
+    "directors": "absent",
+    "ownership": "absent",
+    "documents": "absent",
+    "financials": "absent",
+    "lei": "absent",
+    "activity": "absent"
+  }
+}

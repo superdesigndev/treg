@@ -2,10 +2,14 @@
   "content": [
     {
       "id": "00000000-0000-0000-0000-000000000001",
-      "profile": {"first_name": "Jane", "last_name": "Example", "full_name": "Jane Example", "title": "Founder"},
+      "profile": {"first_name": "Jane", "last_name": "Example", "full_name": "Jane Example", "title": "Founder", "headline": "Founder at Example"},
       "link": {"linkedin": "https://www.linkedin.com/in/example"},
-      "location": {"country": "United States"},
-      "company": {"id": "00000000-0000-0000-0000-000000000002", "name": "Example", "domain": "example.com"}
+      "location": {"default": "Austin, Texas, United States", "city": "Austin", "state": "Texas", "country": "United States"},
+      "company": {
+        "id": "00000000-0000-0000-0000-000000000002",
+        "summary": {"name": "Example"},
+        "link": {"website": "https://example.com", "domain": "example.com"}
+      }
     }
   ],
   "totalElements": 1,

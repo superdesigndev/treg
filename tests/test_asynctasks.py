@@ -702,20 +702,29 @@ async def test_pending_row_write_failure_releases_the_hold_and_alerts(
     assert entry.meta.get("reason") == "async_task_not_recorded"
 
 
+async def _fund_purchased(clients: AsyncClient) -> None:
+    org_id = (await clients.get("/orgs")).json()[0]["org_id"]
+    async with session_maker() as db:
+        await ledger.topup(db, org_id, 50_000_000, "pi_asynctasks_video")
+        await db.commit()
+
+
 @pytest.fixture
-def minimax_platform(monkeypatch):
+async def minimax_platform(monkeypatch, clients):
     monkeypatch.setenv("TREG_PLATFORM_KEY_MINIMAX", "test-platform-token")
     monkeypatch.setenv("TREG_PLATFORM_PROVIDERS", "minimax")
     get_settings.cache_clear()
+    await _fund_purchased(clients)  # video generation is paid from purchased credit only
     yield
     get_settings.cache_clear()
 
 
 @pytest.fixture
-def openrouter_platform(monkeypatch):
+async def openrouter_platform(monkeypatch, clients):
     monkeypatch.setenv("TREG_PLATFORM_KEY_OPENROUTER", "test-platform-token")
     monkeypatch.setenv("TREG_PLATFORM_PROVIDERS", "openrouter")
     get_settings.cache_clear()
+    await _fund_purchased(clients)  # video generation is paid from purchased credit only
     yield
     get_settings.cache_clear()
 

@@ -275,14 +275,15 @@ async def test_the_preview_of_a_hub_tool_is_its_manifest_fields(clients: AsyncCl
     # the provider's own field names, mapped to the fixed columns (decision F)
     ("quickenrich.people.search.domain", {"linkedin_url": "employee_linkedin", "company": "company_name"}),
     ("aiark.people.search", {"first_name": "profile.first_name", "title": "profile.title",
-                             "company": "company.name", "linkedin_url": "link.linkedin"}),
+                             "company": "company.summary.name", "linkedin_url": "link.linkedin",
+                             "name": "profile.full_name", "location": "location.default"}),
     ("lusha.people.search", {"title": "jobTitle.title", "company": "company.name",
                              "linkedin_url": "socialLinks.linkedin", "location": "location.city"}),
     ("wiza.people.search", {"title": "job_title", "company": "job_company_name", "location": "location_name"}),
     ("crustdata.people.search", {"title": "basic_profile.current_title",
                                  "location": "basic_profile.location.full_location"}),
     ("icypeas.people.search", {"title": "lastJobTitle", "company": "lastCompanyName"}),
-    ("dropleads.people.search", {"company": "organization_name", "location": "city"}),
+    ("dropleads.people.search", {"name": "fullName", "company": "companyName", "linkedin_url": "linkedinUrl"}),
     ("aviato.people.search", {"linkedin_url": "URLs.linkedin"}),
 ])
 def test_each_people_provider_fills_the_fixed_columns(provider, expect):

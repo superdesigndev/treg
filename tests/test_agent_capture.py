@@ -335,6 +335,25 @@ async def test_rotation_requires_a_new_key_checkin(env, route, archive_enabled):
     assert (await env.c.get(settings, headers=_h(env.owner))).json()["archive"] is archive_enabled
 
 
+async def test_first_call_reports_check_in_then_the_first_tool(env):
+    path = f"/orgs/{env.org_id}/first-call"
+    first = await env.c.get(path, headers=_h(env.member))
+    assert first.status_code == 200 and first.json() == {"connected": False, "first_call": None}
+    assert first.headers["cache-control"] == "no-store"
+    assert (await env.c.post("/agents/checkin", headers=_h(env.member))).status_code == 200
+    assert (await env.c.get(path, headers=_h(env.member))).json() == {"connected": True, "first_call": None}
+    assert (await env.c.get("/call/alpha/ok", headers=_h(env.member))).status_code == 200
+    await audit.drain()
+    body = (await env.c.get(path, headers=_h(env.member))).json()
+    assert body["connected"] is True and body["first_call"]["tool"] == "alpha"
+    async with session_maker() as s:
+        other = Org(name="Other", slug="other")
+        s.add(other)
+        await s.commit()
+        other_id = other.id
+    assert (await env.c.get(f"/orgs/{other_id}/first-call", headers=_h(env.member))).status_code == 403
+
+
 async def test_connection_requires_admin_in_the_selected_org(env):
     agent = await _agent(env)
     path = _connection_path(env, agent)

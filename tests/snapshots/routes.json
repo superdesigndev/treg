@@ -361,6 +361,49 @@
     "methods": [
       "POST"
     ],
+    "name": "submit_mark",
+    "path": "/marks"
+  },
+  {
+    "kind": "APIRoute",
+    "methods": [
+      "GET",
+      "HEAD"
+    ],
+    "name": "admin_marks",
+    "path": "/admin/marks"
+  },
+  {
+    "kind": "APIRoute",
+    "methods": [
+      "POST"
+    ],
+    "name": "cli_events",
+    "path": "/cli/events"
+  },
+  {
+    "kind": "APIRoute",
+    "methods": [
+      "GET",
+      "HEAD"
+    ],
+    "name": "cli_latest",
+    "path": "/cli/latest"
+  },
+  {
+    "kind": "APIRoute",
+    "methods": [
+      "GET",
+      "HEAD"
+    ],
+    "name": "cli_latest_download",
+    "path": "/cli/latest/{platform}"
+  },
+  {
+    "kind": "APIRoute",
+    "methods": [
+      "POST"
+    ],
     "name": "publish_hub_tool",
     "path": "/hub/tools"
   },
@@ -752,6 +795,15 @@
       "GET",
       "HEAD"
     ],
+    "name": "install_ps1",
+    "path": "/install.ps1"
+  },
+  {
+    "kind": "APIRoute",
+    "methods": [
+      "GET",
+      "HEAD"
+    ],
     "name": "install_sh_linked",
     "path": "/i/{code}"
   },
@@ -904,6 +956,15 @@
       "GET",
       "HEAD"
     ],
+    "name": "ai_ugc_video_skill_md",
+    "path": "/skills/ai-ugc-video/SKILL.md"
+  },
+  {
+    "kind": "APIRoute",
+    "methods": [
+      "GET",
+      "HEAD"
+    ],
     "name": "feedback_md",
     "path": "/feedback.md"
   },
@@ -969,6 +1030,15 @@
     ],
     "name": "claude_connector_page",
     "path": "/connectors/claude"
+  },
+  {
+    "kind": "APIRoute",
+    "methods": [
+      "GET",
+      "HEAD"
+    ],
+    "name": "claude_plugin_page",
+    "path": "/plugins/claude"
   },
   {
     "kind": "APIRoute",
@@ -1075,6 +1145,15 @@
       "GET",
       "HEAD"
     ],
+    "name": "aigc_page",
+    "path": "/aigc"
+  },
+  {
+    "kind": "APIRoute",
+    "methods": [
+      "GET",
+      "HEAD"
+    ],
     "name": "aeo_page",
     "path": "/aeo"
   },
@@ -1086,6 +1165,15 @@
     ],
     "name": "rea_growth_page",
     "path": "/rea-growth"
+  },
+  {
+    "kind": "APIRoute",
+    "methods": [
+      "GET",
+      "HEAD"
+    ],
+    "name": "social_search_page",
+    "path": "/social"
   },
   {
     "kind": "APIRoute",
@@ -1131,6 +1219,15 @@
     ],
     "name": "leads_signals_page",
     "path": "/leads-signals"
+  },
+  {
+    "kind": "APIRoute",
+    "methods": [
+      "GET",
+      "HEAD"
+    ],
+    "name": "jobs_api_page",
+    "path": "/jobs-api"
   },
   {
     "kind": "APIRoute",
@@ -1683,6 +1780,15 @@
       "GET",
       "HEAD"
     ],
+    "name": "list_admins",
+    "path": "/orgs/{org_id}/admins"
+  },
+  {
+    "kind": "APIRoute",
+    "methods": [
+      "GET",
+      "HEAD"
+    ],
     "name": "org_usage",
     "path": "/orgs/{org_id}/usage"
   },
@@ -1862,6 +1968,15 @@
       "GET",
       "HEAD"
     ],
+    "name": "sso_domains",
+    "path": "/orgs/{org_id}/sso/domains"
+  },
+  {
+    "kind": "APIRoute",
+    "methods": [
+      "GET",
+      "HEAD"
+    ],
     "name": "sso_blocked_members",
     "path": "/orgs/{org_id}/sso/blocked"
   },
@@ -1969,6 +2084,14 @@
     "methods": [
       "PATCH"
     ],
+    "name": "set_member_spend_cap",
+    "path": "/orgs/{org_id}/members/{user_id}/spend-cap"
+  },
+  {
+    "kind": "APIRoute",
+    "methods": [
+      "PATCH"
+    ],
     "name": "set_member_access",
     "path": "/orgs/{org_id}/members/{user_id}/access"
   },
@@ -2054,6 +2177,15 @@
     ],
     "name": "agent_connection",
     "path": "/orgs/{org_id}/agents/{user_id}/connection"
+  },
+  {
+    "kind": "APIRoute",
+    "methods": [
+      "GET",
+      "HEAD"
+    ],
+    "name": "team_first_call",
+    "path": "/orgs/{org_id}/first-call"
   },
   {
     "kind": "APIRoute",
@@ -2671,6 +2803,32 @@
   {
     "kind": "APIRoute",
     "methods": [
+      "GET",
+      "HEAD"
+    ],
+    "name": "admin_referral_user_by_email",
+    "path": "/admin/referrals/users"
+  },
+  {
+    "kind": "APIRoute",
+    "methods": [
+      "GET",
+      "HEAD"
+    ],
+    "name": "admin_referral_user",
+    "path": "/admin/referrals/users/{user_id}"
+  },
+  {
+    "kind": "APIRoute",
+    "methods": [
+      "PUT"
+    ],
+    "name": "admin_set_referral_affiliate",
+    "path": "/admin/referrals/users/{user_id}/affiliate"
+  },
+  {
+    "kind": "APIRoute",
+    "methods": [
       "POST"
     ],
     "name": "admin_set_superadmin",
@@ -2823,6 +2981,15 @@
   {
     "kind": "APIRoute",
     "methods": [
+      "GET",
+      "HEAD"
+    ],
+    "name": "agent_payment_credit",
+    "path": "/agentpay/credit"
+  },
+  {
+    "kind": "APIRoute",
+    "methods": [
       "DELETE",
       "GET",
       "HEAD",
@@ -2865,6 +3032,23 @@
     ],
     "name": "table_account",
     "path": "/table-account"
+  },
+  {
+    "kind": "APIRoute",
+    "methods": [
+      "POST"
+    ],
+    "name": "task_submission",
+    "path": "/tasks/{call_id}"
+  },
+  {
+    "kind": "APIRoute",
+    "methods": [
+      "GET",
+      "HEAD"
+    ],
+    "name": "task_look",
+    "path": "/tasks/{call_id}"
   },
   {
     "kind": "APIRoute",
@@ -3324,6 +3508,24 @@
     ],
     "name": "rankings_board",
     "path": "/rankings/data/{board}"
+  },
+  {
+    "kind": "APIRoute",
+    "methods": [
+      "GET",
+      "HEAD"
+    ],
+    "name": "compare_hub",
+    "path": "/compare"
+  },
+  {
+    "kind": "APIRoute",
+    "methods": [
+      "GET",
+      "HEAD"
+    ],
+    "name": "compare_page",
+    "path": "/compare/{slug}"
   },
   {
     "kind": "APIRoute",

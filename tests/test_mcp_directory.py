@@ -348,6 +348,19 @@ async def test_team_and_directory_endpoint_details_and_balance_match(clients):
     assert team_balance == directory_balance
 
 
+async def test_only_the_team_surface_shows_a_rows_note(clients):
+    """The directory surface returns what it was submitted with; `/mcp/` shows the row's note."""
+    from treg.domain.catalog import store
+    ep = next(e for e in store.load().endpoints
+              if e.get("note") and e.get("platform") not in mcp._DIRECTORY_HIDDEN_PLATFORMS)
+    token = clients.headers["X-Treg-Token"]
+    async with paired_mcp_session() as client:
+        team = await _call_tool(client, "catalog_get", {"endpoint_id": ep["id"]}, token, path="/mcp/")
+        directory = await _call_tool(client, "catalog_get", {"endpoint_id": ep["id"]}, token)
+    assert team["endpoint"]["note"] == ep["note"]
+    assert directory["endpoint"]["id"] == ep["id"] and "note" not in directory["endpoint"]
+
+
 async def test_team_and_directory_catalog_call_results_match_except_attribution(clients):
     from treg import audit
 
@@ -524,15 +537,17 @@ async def test_v2_write_call_and_insufficient_balance_errors_use_shared_behavior
             org.balance_micro = 0
             db.add(org)
             await db.commit()
-        async with directory_session() as client:
-            refused = await _call_tool(client, "catalog_call_read", {
-                "endpoint_id": "tikhub.tiktok.video.comments",
-                "params": {"aweme_id": "7"},
-            }, token)
-        blob = json.dumps(refused)
-        assert refused["status"] == 402
-        assert "topup_url" not in blob and "http://" not in blob and "https://" not in blob
-        assert "not enough for this call" in refused["hint"]
+        args = {"endpoint_id": "tikhub.tiktok.video.comments", "params": {"aweme_id": "7"}}
+        async with paired_mcp_session() as client:
+            refused = await _call_tool(client, "catalog_call_read", args, token)
+            team = await _call_tool(client, "call", args, token, path="/mcp/")
+        for answer in (refused, team):
+            blob = json.dumps(answer)
+            assert answer["status"] == 402
+            assert "topup_url" not in blob and "http://" not in blob and "https://" not in blob
+        assert refused["hint"] == "the team's prepaid balance is not enough for this call"
+        assert team["hint"].startswith(refused["hint"])
+        assert "Team → Billing" in team["hint"]
     finally:
         get_settings.cache_clear()
 
@@ -632,7 +647,7 @@ async def test_feedback_hint_only_wraps_successful_sampled_calls(clients, monkey
             replay = await _call_tool(client, tool, args, token, path=path)
             monkeypatch.setattr(call_service, 'relay', _fake_relay(503, b'{"error":"unavailable"}'))
             failed = await _call_tool(client, tool, {**args, 'idempotency_key': 'failed'}, token, path=path)
-        assert first['status'] == 200
+        assert first.get('status') == 200, first
         assert first['body'] == json.loads(body)
         assert first.get('hint') == (hints.HINT if sampled else None)
         assert first['call_id']
@@ -670,6 +685,29 @@ async def test_review_hint_wins_over_feedback_and_replay_wins_over_review(client
         assert first['hint'] == hints.review_hint(first['call_id'])
         assert replay['replayed'] is True
         assert 'stored answer' in replay['hint']
+    finally:
+        get_settings.cache_clear()
+
+
+async def test_team_mcp_renders_the_mark_hint_text(clients, monkeypatch):
+    from treg import hints
+    from treg.application.call import service as call_service
+    from test_marketplace_call import _fake_relay
+
+    monkeypatch.setenv('TREG_PLATFORM_KEY_TIKHUB', 'SYNTHETIC-PLATFORM-KEY')
+    monkeypatch.setenv('TREG_PLATFORM_PROVIDERS', 'tikhub')
+    get_settings.cache_clear()
+    monkeypatch.setattr(hints, 'sampled', lambda kind, ref: kind == 'mark')
+    monkeypatch.setattr(call_service, 'relay', _fake_relay(200, b'{"data":{"items":[]}}'))
+    args = {'endpoint_id': 'tikhub.tiktok.video.comments', 'params': {'aweme_id': '7'}}
+    try:
+        async with paired_mcp_session() as client:
+            team = await _call_tool(client, 'call', {**args, 'idempotency_key': 'mark-team'},
+                                    clients.headers['X-Treg-Token'], path='/mcp/')
+            directory = await _call_tool(client, 'catalog_call_read', {**args, 'idempotency_key': 'mark-v2'},
+                                         clients.headers['X-Treg-Token'])
+        assert team['hint'] == hints.mark_hint(team['call_id'])[1]
+        assert 'hint' not in directory
     finally:
         get_settings.cache_clear()
 
@@ -751,3 +789,27 @@ async def test_v2_does_not_list_describe_or_call_generation_endpoints(clients):
         assert v2_search["hint"] == mcp._DIRECTORY_HIDDEN_NOTE
     assert mcp._DIRECTORY_HIDDEN_NOTE in v2_get["error"]
     assert mcp._DIRECTORY_HIDDEN_NOTE in v2_call["error"] and "status" not in v2_call
+
+
+async def test_v2_holds_an_oauth_token_to_its_granted_scope():
+    from treg.domain.identity import mcp_oauth
+    token = mcp_oauth.make_access_token(user_id=1, org_id=1, audience=mcp_oauth.mcp_resource_url("v2"),
+                                        scope="treg:catalog treg:directory")
+    async with directory_session() as client:
+        for name, args in (("catalog_call_read", {"endpoint_id": "exa.search"}),
+                           ("catalog_call_write", {"endpoint_id": "exa.search"}), ("balance", {})):
+            out = await _call_tool(client, name, args, token)
+            assert out.get("error") == "insufficient_scope", (name, out)
+
+
+async def test_v2_challenges_a_missing_scope_and_confines_catalog_get():
+    from treg.domain.identity import mcp_oauth
+    token = mcp_oauth.make_access_token(user_id=1, org_id=1, audience=mcp_oauth.mcp_resource_url("v2"),
+                                        scope="treg:catalog treg:directory")
+    async with directory_session() as client:
+        r = await _rpc(client, "tools/call", {"name": "catalog_call_read",
+                                              "arguments": {"endpoint_id": "exa.search"}}, token)
+        walked = await _call_tool(client, "catalog_get", {"endpoint_id": "../../orgs/1/balance"}, token)
+    assert r.status_code == 403, r.text
+    assert 'scope="treg:catalog treg:call treg:directory"' in r.headers["www-authenticate"]
+    assert "balance_usd" not in json.dumps(walked)

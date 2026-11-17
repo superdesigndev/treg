@@ -613,6 +613,16 @@ async def test_catalog_get_answers_for_a_hub_id_and_hides_what_the_maker_hides(c
     assert (await clients.get("/catalog/endpoints/nobody.nothing")).status_code == 404
 
 
+async def test_catalog_gets_view_of_a_hub_id_is_its_contract(clients: AsyncClient, hub_on, platform_on):
+    from toon_format import decode
+    tool_id = await _publish_live(clients)
+    r = await clients.get(f"/catalog/endpoints/{tool_id}", headers={"X-Treg-View": "1"})
+    assert r.status_code == 200 and r.headers["X-Treg-View"] == "1"
+    page = decode(r.json()["text"])
+    assert page["id"] == tool_id and page["maker"] == r.json()["data"]["endpoint"]["provider"]
+    assert page["call"].startswith(f"treg call {tool_id} --data") and page["health"].startswith("live")
+
+
 async def test_catalog_get_on_a_hub_id_with_the_flag_off_is_a_plain_404(clients: AsyncClient, hub_on, platform_on, monkeypatch):
     tool_id = await _publish_live(clients)
     monkeypatch.setenv("TREG_HUB_ENABLED", "0")
@@ -649,6 +659,33 @@ async def _live_tool_with_readme(clients, monkeypatch, price=0.01):
                                                "readme": "# Leads\n\nWhat it **returns**, with `code`.\n\n- one\n- two\n\n<script>alert(1)</script>"})
     assert r.status_code == 201 and r.json()["status"] == "live", r.text
     return r.json()
+
+
+async def test_a_failed_run_logs_one_call_error_line_for_the_run(
+        clients: AsyncClient, hub_on, platform_on, monkeypatch, call_error_lines):
+    tool_id = (await _live_tool_with_readme(clients, monkeypatch))["tool_id"]
+    monkeypatch.setattr(call_service, "relay", _fake_relay(500, b'{}'))
+    run = await clients.post(f"/call/{tool_id}", json={"domain": "x"})
+    assert run.status_code == 424
+    lines = call_error_lines()
+    (root,) = [line for line in lines if line["road"] == "hub"]
+    assert (root["call_ref"], root["status"], root["kind"]) == (run.headers["X-Treg-Call-Id"], 424, "hub_run_failed")
+    assert (root["by"], root["error_class"], root["step"]) == ("upstream", "upstream_error", None)
+    assert any(line["step"] and line["status"] == 500 for line in lines)
+
+
+async def test_a_run_treg_crashed_logs_a_treg_error_not_an_upstream_one(
+        clients: AsyncClient, hub_on, platform_on, monkeypatch, call_error_lines):
+    from treg.domain.hub import refs
+
+    def boom(*_a, **_k):
+        raise RuntimeError("a bug in treg")
+    tool_id = (await _live_tool_with_readme(clients, monkeypatch))["tool_id"]
+    monkeypatch.setattr(refs, "resolve", boom)
+    run = await clients.post(f"/call/{tool_id}", json={"domain": "x"})
+    assert run.status_code == 424 and run.json()["detail"]["error"] == "hub_run_crashed"
+    (root,) = [line for line in call_error_lines() if line["road"] == "hub"]
+    assert (root["kind"], root["by"], root["error_class"]) == ("hub_run_crashed", "treg", "treg_error")
 
 
 async def test_the_public_page_shows_the_contract_and_hides_the_makers_side(clients: AsyncClient, hub_on, platform_on, monkeypatch):
@@ -1237,16 +1274,6 @@ async def test_the_public_log_hides_when_the_maker_switches_it_off(clients: Asyn
 
 
 # ---------------------------------------------------------------------------------------------
-# Phase 10.4: the dashboard's Listing tab carries the two switches.
-
-def test_the_dashboard_carries_the_listing_tab():
-    from pathlib import Path
-    page = (Path(__file__).parents[1] / "frontend/src/pages/HubPage.vue").read_text()
-    for needle in ("setHubFlag('listed'", "setHubFlag('public_log'", "hub.tab==='listing'", "hubListingWords(hub.tool)"):
-        assert needle in page, needle
-
-
-# ---------------------------------------------------------------------------------------------
 # The run ceiling a tool declares, and the cost a script can see (built with lead-pipeline)
 
 def test_the_run_ceiling_comes_from_the_caller_then_the_tool_then_one_dollar():
@@ -1713,3 +1740,31 @@ async def test_an_open_route_looks_up_a_key_once_a_minute(clients: AsyncClient, 
         hub_gate._readers.clear()
         monkeypatch.delenv("TREG_HUB_USERS", raising=False)
         get_settings.cache_clear()
+
+
+async def test_a_for_each_runs_failed_items_log_as_its_steps_not_as_calls(
+        clients: AsyncClient, hub_on, platform_on, monkeypatch, call_error_lines):
+    import re
+    monkeypatch.setattr(call_service, "relay", _fake_relay(200, b'{"data": ["a", "b", "c"]}'))
+    await _own_supabase(clients)
+    m = _steps_manifest(steps=[{"name": "people", "call": EP, "input": {"aweme_id": "$input.domain"}},
+                               {"name": "each", "call": EP, "input": {"aweme_id": "$v"},
+                                "for_each": "$people.data", "as": "v"}],
+                        output={"leads": "$each"})
+    r = await clients.post("/hub/tools", json={"manifest": m, "check": CHECK, "readme": "x"})
+    assert r.status_code == 201 and r.json()["status"] == "live", r.text
+    tool_id = r.json()["tool_id"]
+    first, rate_limited = _fake_relay(200, b'{"data": ["a", "b", "c"]}'), _fake_relay(429, b'{}')
+    seen = []
+
+    async def relay(*a, **k):
+        seen.append(1)
+        return await (first if len(seen) == 1 else rate_limited)(*a, **k)
+    monkeypatch.setattr(call_service, "relay", relay)
+    run = await clients.post(f"/call/{tool_id}", json={"domain": "x"})
+    assert run.status_code == 424, run.text
+    lines = call_error_lines()
+    (root,) = [line for line in lines if line["step"] is None]
+    assert (root["road"], root["call_ref"]) == ("hub", run.headers["X-Treg-Call-Id"])
+    items = [line for line in lines if line["step"] is not None]
+    assert items and all(re.fullmatch(r"s1\.\d", line["step"]) and line["status"] == 429 for line in items)

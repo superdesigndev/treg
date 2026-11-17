@@ -18,6 +18,7 @@ from .domain.connections.refresh import (
     expiry_state as expiry_state,
     secret_is_refreshable as secret_is_refreshable,
 )
+from .infra.credential_cipher import Credentials
 from .infra.oauth_exchange import HTTPXOAuthExchangePort
 from .infra.oauth_refresh import HTTPXOAuthRefreshPort
 from .models import PendingOAuth, Secret
@@ -32,4 +33,5 @@ async def refresh(blob: dict, client: httpx.AsyncClient) -> dict:
 
 
 async def ensure_fresh(secret: Secret, db: AsyncSession, client: httpx.AsyncClient) -> None:
-    await _ensure_fresh(secret, db, HTTPXOAuthRefreshPort(client), oauth_providers.platform_refresh_blob)
+    await _ensure_fresh(secret, db, HTTPXOAuthRefreshPort(client), oauth_providers.platform_refresh_blob,
+                        credentials=Credentials())

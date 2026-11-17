@@ -3,12 +3,17 @@ title: The CLI (treg) + skill scaffolding
 status: shipped
 sources:
   - src/treg/cli.py
-  - src/treg/cli_view.py
+  - src/treg/routers/views/__init__.py
+  - src/treg/routers/views/toon.py
+  - src/treg/routers/views/catalog.py
+  - src/treg/routers/views/account.py
   - src/treg/application/home.py
-  - tests/test_released_cli_compat.py
+  - tests/test_cli_account_flows.py
   - tests/test_cli_key_compatibility.py
   - src/treg/routers/auth_helpers.py
   - src/treg/cli_analytics.py
+  - src/treg/web/install.sh
+  - src/treg/client_notice.py
   - src/treg/cli_session.py
   - src/treg/convert.py
   - src/treg/agents.py
@@ -17,6 +22,7 @@ sources:
 related:
   - interface/api.md
   - interface/skill.md
+  - interface/cli-binary.md
 ---
 
 # The `treg` CLI
@@ -24,7 +30,8 @@ related:
 A thin client over the API in `src/treg/cli.py` (stdlib `argparse` plus `httpx`): every command is
 HTTP calls with no business logic of its own. `USAGE.md` and `treg <cmd> -h` are the command
 reference; every command carries a description, per-argument help and an Examples epilog, so help
-is self-teaching. This fragment holds only what the code and help cannot say.
+is self-teaching. This fragment holds only what the code and help cannot say. The Go rewrite in
+`cli/` keeps these contracts; what is its own is in [cli-binary](cli-binary.md).
 
 ## Front page and routing
 
@@ -53,12 +60,16 @@ is self-teaching. This fragment holds only what the code and help cannot say.
 
 ## Output for agents
 
-- **TOON views.** The home view and `catalog` print through `cli_view.render` (the reference
-  `toon-format` encoder, pinned to one release because `cli_view` overrides its private table
-  decisions). The whole output decodes as TOON, which is how tests read it. Commands and request
-  values print unquoted so they copy without unescaping. Nothing is clipped except a list row's
-  `name`; ids, prices and notes print whole. A refusal is data too: `_fail` prints `error`, `message`
-  and `help` on stdout and exits 1.
+- **TOON views.** The home view and `catalog` print through `routers/views/toon.render` (the
+  reference `toon-format` encoder, pinned to one release because `toon` overrides its private table
+  decisions). The builders that turn the registry's JSON into a view (`routers/views/catalog.py`,
+  `routers/views/account.py`) are shared with the registry, which renders the same text for a client
+  that asks (`X-Treg-View`, [api](api.md) "Views"); what the CLI fetched in extra requests (connected
+  providers, a capability pin, endpoint access) the builders take as arguments, called lazily so this
+  CLI asks no more than before. The whole output decodes as TOON, which is how tests read it.
+  Commands and request values print unquoted so they copy without unescaping. Nothing is clipped
+  except a list row's `name`; ids, prices and notes print whole. A refusal is data too: `_fail`
+  prints `error`, `message` and `help` on stdout and exits 1.
 - **`--json`** prints the server's JSON as received. On `call` (not `--await`) it prints one envelope,
   `{"result": <body>, "_treg": {...}}` (`_call_envelope`), and suppresses the charge, hint and
   diagnostic stderr lines: a script that merged the streams once discarded every result it had paid
@@ -97,10 +108,11 @@ is self-teaching. This fragment holds only what the code and help cannot say.
 - `_active_org` resolves `/orgs`, falling back to `/auth/me` when `/orgs` refuses an agent key.
   `strict=False` is for callers that only enrich output: `sys.exit` raises `SystemExit`, which
   `except Exception` does not catch, so a call-site try/except would not save the page.
-- **Browser login.** `POST /auth/cli/start` returns a `login_id` and a short pairing code; the
-  `/login?cli=<id>#code=<code>` page shows the code from the URL fragment (never sent to the server,
-  so never in request logs) so the user confirms it matches the terminal. The server still validates
-  the code at approve time: a login you did not start cannot be approved into a token.
+- **Browser login.** `POST /auth/cli/start` returns a `login_id` and a short pairing code; the CLI
+  opens `/login?cli=<id>` and prints the code, and the user types it on that page. The link never
+  carries the code, and the page never reads one from it (a `#code=` an older CLI still appends is
+  ignored), so the code is the proof that the person approving also sees the terminal. The server
+  validates it at approve time: a login you did not start cannot be approved into a token.
 - **Team Default key, not bootstrap.** An org-less login yields a signed `scp=bootstrap` credential
   that identifies the account for onboarding, expires after seven days and cannot call team
   resources. Selecting, creating, joining or accepting a team replaces the stored token with that
@@ -119,7 +131,12 @@ is self-teaching. This fragment holds only what the code and help cannot say.
   `X-Treg-Key-Protocol: 1`; the legacy hint is the released CLI's `python-httpx/` User-Agent plus
   `ngrok-skip-browser-warning: 1` without that marker. It is a compatibility check, not an
   authorization boundary: omitting or forging it never relaxes token restrictions.
-  `test_released_cli_compat` checks that refusal preserves config bytes and the prior team.
+- **Version notice.** When the operator sets `cli_latest_version` or `cli_min_version`,
+  `bootstrap_http._ClientNoticeMiddleware` answers any request carrying `X-Treg-Client-Version`
+  with `X-Treg-Client-Notice`, worded by `client_notice.notice` ("available", or "no longer
+  supported" below the minimum). The CLI prints the header as-is on stderr, once a day per notice
+  (`client-notice` beside the config) and never under `--json`; it holds no release logic itself.
+  `test_cli_key_compatibility` checks that refusal leaves credentials and the team unchanged.
 
 ## Calls
 
@@ -138,7 +155,8 @@ is self-teaching. This fragment holds only what the code and help cannot say.
   result prints a retrieval command instead of downloading, and running it writes non-text bytes
   untouched (the upstream `Content-Type` stays authoritative). **Exit codes are a contract:** 0
   success, 2 provider terminal failure, 3 timeout, interruption or recoverable polling failure, 1
-  malformed usage or metadata.
+  malformed usage or metadata. The Go CLI keeps this output and these codes but follows the
+  registry's `/tasks/{call_id}` instead of reading the descriptor ([tasks](../architecture/tasks.md)).
 - **Pasted-key connect.** `connections connect --provider` reads `GET /oauth/providers`; a `key` or
   `token` provider reads the key with `getpass` or, with `--key-stdin`, all of stdin, keeping it off
   the command line. Without a terminal and without `--key-stdin` it exits with that instruction
@@ -197,8 +215,8 @@ is collected**; keep it that way. An installation is a random UUID in `analytics
 
 `cli_session.current` resolves the session once per invocation: `TREG_SESSION_ID`, else the nearest
 agent on the process tree (agent variables are inherited by nested agents, so the tree decides which
-agent is nearest before its own variable is read: `CLAUDE_CODE_SESSION_ID`, `CODEX_THREAD_ID`, else
-the agent's pid and start time), else a reused `session-id` file with an idle timeout; a terminal or
+agent is nearest before its own variable is read: `CLAUDE_CODE_SESSION_ID`, `CODEX_THREAD_ID`,
+`COPILOT_AGENT_SESSION_ID` in the binary ([cli-binary](cli-binary.md)), else the agent's pid and start time), else a reused `session-id` file with an idle timeout; a terminal or
 tmux ancestor would join unrelated commands. Machine-derived ids are sent hashed, never raw.
 
 The hosted registry's public ingestion token is the default only for that registry; self-hosted URLs
@@ -206,3 +224,12 @@ send nothing unless `TREG_CLI_POSTHOG_KEY` is set. `TREG_TELEMETRY=0|false|off` 
 disables analytics, id creation, the process walk and both session headers. Capture runs in a daemon
 thread with a short timeout and wait budget; telemetry failures are silent and never change output or
 exit status.
+
+`install.sh` reports `cli_install_step` under the same rules. Its `install_step` is `started`,
+then `installed` (with `on_path`) or `failed` with a fixed `reason` (`install_command`,
+`python_version`, `no_installer`); the event carries the installer used, the prior and new CLI
+versions, OS, architecture, whether a short link (`ad_link`) or token (`with_token`) was passed,
+never the token, and the `arm` (`python` or `binary`, [cli-binary](cli-binary.md)) it was given. PostHog types a property name once per project, and `step` is numeric there, so
+new names must not reuse one with another type. The route templates the server's `posthog_key`, so
+a registry without one sends nothing. The installer writes `analytics-id` when it is missing, so
+the first command joins the install that produced it.

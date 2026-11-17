@@ -33,9 +33,10 @@ durable cap or a billing quota. Exact one-time org/endpoint call allowances are 
 
 ## Where the gate sits
 
-`routers.call.run_call_surface` calls `org_flow_control.check` and then `org_concurrency.acquire`
-after trusted `Caller` and context resolution, before money admission, body consumption or
-upstream work. It covers `/call/`, `/catalog/call/`, `/table/` and the MCP adapters that use them,
+`routers.call.run_call_input` (behind `run_call_surface`) calls `org_flow_control.check` and then
+`org_concurrency.acquire` after trusted `Caller` and context resolution, before money admission,
+body consumption or upstream work. It covers `/call/`, `/catalog/call/`, `/table/`, a `/tasks/`
+poll and the MCP adapters that use them,
 on every credential tier (own-key calls included, billing unchanged).
 
 - Routed, verification, overflow and hub children call the application directly and consume no

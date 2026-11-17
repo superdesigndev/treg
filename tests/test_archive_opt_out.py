@@ -10,7 +10,7 @@ import pytest
 from httpx import AsyncClient
 from sqlalchemy import select
 
-from conftest import verified_signup
+from conftest import verified_signup, accept_with_code
 from treg import archive, archive_bodies, audit, bootstrap
 from treg.application import archive_erasure
 from treg.application.call import service as call_service
@@ -291,7 +291,7 @@ async def test_opt_out_is_admin_only_and_records_the_moment(clients: AsyncClient
     assert row.archive_opt_out_at is not None
     # A member who is not an admin may read it but not change it.
     inv = await clients.post(f"/orgs/{org_id}/invites", json={"email": "plain@example.com", "role": "member"})
-    accepted = await clients.post("/invites/accept", json={"code": inv.json()["code"], "email": "plain@example.com"})
+    accepted = await accept_with_code(clients, json={"code": inv.json()["code"], "email": "plain@example.com"})
     assert accepted.status_code == 200, accepted.text
     headers = {"X-Treg-Token": accepted.json()["token"]}
     assert (await _settings(clients, org_id, headers))["archive"] is False

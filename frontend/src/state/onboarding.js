@@ -1,5 +1,8 @@
 import { storageGet, storageRemove } from './storage.js'
 
+// About five minutes of watching per round.
+const FIRST_CALL_PAUSE_MS=4000, FIRST_CALL_TRIES=75
+
 export default {
 maybeOnboard(){  // first-run: a brand-new user with no team yet gets one made for them (autoTeam)
       // An invite LINK landed here (?invite_org= from /auth/invite-signin's POST)? Open the accept
@@ -86,5 +89,35 @@ async copyStart(text, tag){
       } catch(_) {
         this.startCopyError='Could not copy. Select the text and copy it manually. For an API key, choose Show key first.';
       }
-    }
+    },
+// Getting started watches for the team's first sign of life: one GET /orgs/{id}/first-call now, then
+// one per pause until a first call shows, bounded, the next pause only after the last read settles.
+// Leaving the page or switching teams cancels it; copying the setup line starts a fresh round.
+pollFirstCall(){ this.stopFirstCallPoll();
+      const orgId=this.activeOrgId;
+      if(this.view!=='start' || !this.sessionMode || !orgId) return;
+      if(this.startProgress && this.startProgress.org_id===orgId && this.startProgress.first_call) return;
+      const poll={controller:new AbortController(), timer:null};
+      this.elements.firstCallPoll=poll; this.startWatching=true;
+      const live=()=>this.elements.firstCallPoll===poll && !poll.controller.signal.aborted
+        && this.view==='start' && this.activeOrgId===orgId;
+      let tries=0;
+      const tick=async()=>{
+        if(!live()){ if(this.elements.firstCallPoll===poll) this.stopFirstCallPoll(); return; }
+        tries++;
+        try{
+          const s=await this.api('/orgs/'+orgId+'/first-call',{signal:poll.controller.signal, cache:'no-store'});
+          if(!live()) return;
+          this.startProgress={org_id:orgId, connected:!!s.connected, first_call:s.first_call||null};
+          if(s.first_call){ this.stopFirstCallPoll(); return; }
+        }catch(e){
+          if(!live()) return;
+          if([401,403,404].includes(e.status)){ this.stopFirstCallPoll(); return; }
+        }
+        if(live() && tries<FIRST_CALL_TRIES) poll.timer=setTimeout(tick,FIRST_CALL_PAUSE_MS);
+        else if(this.elements.firstCallPoll===poll) this.stopFirstCallPoll();
+      };
+      tick(); },
+stopFirstCallPoll(){ const poll=this.elements.firstCallPoll; this.elements.firstCallPoll=null; this.startWatching=false;
+      if(poll){ clearTimeout(poll.timer); poll.controller.abort(); } }
 }

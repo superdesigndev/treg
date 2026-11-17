@@ -33,6 +33,7 @@ _LEASE_ATTEMPT_TIMEOUT_S = 1.5
 _LEASE_RETRY_BUDGET_S = 2.5
 _LOCAL_MAX_KEYS = 10_000
 _FLOW_CONTROL_MAX_BYTES = 32768
+ROUTE_RULES_KEY = "treg:route-rules:v1"
 _READ_ORG_FLOW_CONTROL = """
 local kind = redis.call('TYPE', KEYS[1]).ok
 if kind == 'none' then return false end
@@ -123,6 +124,50 @@ redis.call('ZADD', KEYS[1], now + tonumber(ARGV[2]), ARGV[1])
 local last = redis.call('ZRANGE', KEYS[1], -1, -1, 'WITHSCORES')
 redis.call('PEXPIREAT', KEYS[1], math.ceil(tonumber(last[2])))
 return {1, 0}
+"""
+
+# A team's allowance counter: a hash of what is still available and the `epoch` of the database
+# hold that backs it. Epochs only grow, and every write checks the one stored: a give-back
+# reaches only its own counter, and a writer holding an older epoch never replaces a newer one.
+_ALLOWANCE_TAKE = """
+local avail = tonumber(redis.call('HGET', KEYS[1], 'avail'))
+if not avail or avail < tonumber(ARGV[1]) then return 0 end
+redis.call('HINCRBY', KEYS[1], 'avail', '-' .. ARGV[1])
+return redis.call('HGET', KEYS[1], 'epoch')
+"""
+_ALLOWANCE_GIVE_BACK = """
+if redis.call('HGET', KEYS[1], 'epoch') ~= ARGV[1] then return 0 end
+redis.call('HINCRBY', KEYS[1], 'avail', ARGV[2])
+return 1
+"""
+_ALLOWANCE_ADD = """
+local stored = redis.call('HGET', KEYS[1], 'epoch')
+if stored and tonumber(stored) > tonumber(ARGV[1]) then return -1 end
+if stored ~= ARGV[1] then
+    redis.call('DEL', KEYS[1])
+    redis.call('HSET', KEYS[1], 'epoch', ARGV[1], 'avail', '0')
+end
+local avail = redis.call('HINCRBY', KEYS[1], 'avail', ARGV[2])
+redis.call('PEXPIRE', KEYS[1], ARGV[3])
+return avail
+"""
+# The hash stays, emptied, so its epoch keeps fencing writers that arrive later.
+_ALLOWANCE_DROP = """
+local avail = redis.call('HGET', KEYS[1], 'avail')
+if not avail then return 0 end
+redis.call('HSET', KEYS[1], 'avail', '0')
+return tonumber(avail)
+"""
+# ARGV[2] is the next epoch, computed by the caller: a script cannot print one exactly.
+_ALLOWANCE_RETIRE = """
+local stored = redis.call('HGET', KEYS[1], 'epoch')
+if stored and tonumber(stored) > tonumber(ARGV[1]) then return 0 end
+local avail = 0
+if stored == ARGV[1] then avail = tonumber(redis.call('HGET', KEYS[1], 'avail')) or 0 end
+redis.call('DEL', KEYS[1])
+redis.call('HSET', KEYS[1], 'epoch', ARGV[2], 'avail', '0')
+redis.call('PEXPIRE', KEYS[1], ARGV[3])
+return avail
 """
 
 # One persistent bucket identity across published versions. Rate and optional slot admission
@@ -245,6 +290,9 @@ class Store(Protocol):
     async def read_org_flow_control(self, org_id: int) -> FlowControlReadResult:
         """Bounded JSON or missing (None), distinct from invalid data and transport failure."""
 
+    async def read_route_rules(self) -> FlowControlReadResult:
+        """The published route rule set, read like a flow-control snapshot."""
+
     async def acquire_lease(self, key: str, token: str, ttl_ms: int) -> AcquireResult: ...
 
     async def renew_lease(self, key: str, token: str, ttl_ms: int, *,
@@ -265,6 +313,41 @@ class Store(Protocol):
     async def rate_window(self, key: str, token: str, ttl_ms: int, limit: int) -> RateWindowResult:
         """Admit one member into a sliding window of `limit`, or say how long until one expires."""
 
+    async def allowance_take(self, org_id: int, amount_micro: int) -> int | None:
+        """Take `amount_micro` from a team's allowance counter in one atomic step. The counter's
+        epoch when taken, 0 when the counter is absent or holds less, None when the store cannot
+        answer. Money is never taken on 0 or None."""
+
+    async def allowance_give_back(self, org_id: int, epoch: int, amount_micro: int) -> bool | None:
+        """Return part of a take to the counter it came from. False when that counter is gone or
+        was rebuilt for another epoch (the money then stays in the database hold); None when the
+        store cannot answer."""
+
+    async def allowance_add(self, org_id: int, epoch: int, amount_micro: int,
+                            ttl_ms: int) -> int | Literal["stale"] | None:
+        """Add to a team's counter after the same amount was committed to its hold, and restart
+        the counter's expiry. A counter of an older epoch is replaced, not added to. "stale" when
+        the stored epoch is newer: this writer's hold has been closed since, and nothing is
+        added. Otherwise what is now available; None when the store cannot answer."""
+
+    async def allowance_drop(self, org_id: int) -> int | None:
+        """Empty a team's counter and return what it held (0 when absent), in one atomic step, so
+        no take can succeed on money the returned figure already counts. The epoch stays, for a
+        hold that stays. None when the store cannot answer."""
+
+    async def allowance_retire(self, org_id: int, epoch: int, ttl_ms: int) -> int | None:
+        """End the counter of a hold that is being deleted: return what it held and leave the
+        next epoch behind for `ttl_ms`, so a late add or give-back for `epoch` is refused. 0 and
+        no change when a newer epoch is already stored. None when the store cannot answer."""
+
+    async def note_route_health(self, endpoint_id: str, bucket: int, *, failed: bool, slow: bool,
+                                ttl_s: int) -> None:
+        """Count one routed child's answer in its time bucket. Best-effort: a fault loses it."""
+
+    async def read_route_health(self, endpoint_ids: list[str],
+                                buckets: list[int]) -> dict[str, tuple[int, int, int]] | None:
+        """Per endpoint, (calls, failed, slow) summed over `buckets`; None when the store cannot answer."""
+
     async def aclose(self) -> None: ...
 
 
@@ -273,6 +356,7 @@ class LocalStore:
 
     def __init__(self) -> None:
         self._windows: dict[str, tuple[float, int]] = {}
+        self._health: dict[tuple[str, int], tuple[float, list[int]]] = {}
 
     async def take(self, key: str, limit: int, ttl_s: int) -> bool:
         now = time.monotonic()
@@ -298,6 +382,9 @@ class LocalStore:
         # Local state cannot stand in for published Redis configuration.
         return FlowControlReadFailure.UNAVAILABLE
 
+    async def read_route_rules(self) -> FlowControlReadResult:
+        return FlowControlReadFailure.UNAVAILABLE
+
     async def acquire_lease(self, key: str, token: str, ttl_ms: int) -> AcquireResult:
         return "unavailable"  # Local counters cannot promise cross-process exclusion.
 
@@ -310,6 +397,34 @@ class LocalStore:
 
     async def aclose(self) -> None:
         self._windows.clear()
+        self._health.clear()
+
+    async def note_route_health(self, endpoint_id: str, bucket: int, *, failed: bool, slow: bool,
+                                ttl_s: int) -> None:
+        now = time.monotonic()
+        key = (endpoint_id, bucket)
+        if key not in self._health and len(self._health) >= _LOCAL_MAX_KEYS:
+            self._health = {k: v for k, v in self._health.items() if v[0] > now}
+            if len(self._health) >= _LOCAL_MAX_KEYS:
+                self._health.clear()
+        expires, counts = self._health.get(key, (now + ttl_s, [0, 0, 0]))
+        counts[0] += 1
+        counts[1] += int(failed)
+        counts[2] += int(slow)
+        self._health[key] = (expires, counts)
+
+    async def read_route_health(self, endpoint_ids: list[str],
+                                buckets: list[int]) -> dict[str, tuple[int, int, int]] | None:
+        now = time.monotonic()
+        out = {}
+        for endpoint_id in endpoint_ids:
+            total = [0, 0, 0]
+            for bucket in buckets:
+                expires, counts = self._health.get((endpoint_id, bucket), (0.0, [0, 0, 0]))
+                if expires > now:
+                    total = [a + b for a, b in zip(total, counts)]
+            out[endpoint_id] = (total[0], total[1], total[2])
+        return out
 
     async def acquire_slot(self, key: str, token: str, ttl_ms: int, limit: int) -> AcquireResult:
         return "unavailable"
@@ -326,6 +441,23 @@ class LocalStore:
 
     async def rate_window(self, key: str, token: str, ttl_ms: int, limit: int) -> RateWindowResult:
         return RateWindowResult("unavailable")
+
+    # A per-process counter cannot be the one figure every process spends from.
+    async def allowance_take(self, org_id: int, amount_micro: int) -> int | None:
+        return None
+
+    async def allowance_give_back(self, org_id: int, epoch: int, amount_micro: int) -> bool | None:
+        return None
+
+    async def allowance_add(self, org_id: int, epoch: int, amount_micro: int,
+                            ttl_ms: int) -> int | Literal["stale"] | None:
+        return None
+
+    async def allowance_drop(self, org_id: int) -> int | None:
+        return None
+
+    async def allowance_retire(self, org_id: int, epoch: int, ttl_ms: int) -> int | None:
+        return None
 
 
 class RedisStore:
@@ -352,10 +484,15 @@ class RedisStore:
     async def read_org_flow_control(self, org_id: int) -> FlowControlReadResult:
         if type(org_id) is not int or not 0 < org_id <= 2147483647:
             return FlowControlReadFailure.INVALID
+        return await self._read_published(f"treg:traffic-control:org:{org_id}")
+
+    async def read_route_rules(self) -> FlowControlReadResult:
+        return await self._read_published(ROUTE_RULES_KEY)
+
+    async def _read_published(self, key: str) -> FlowControlReadResult:
         try:
             async with asyncio.timeout(_OPTIONAL_TIMEOUT_S):
-                value = await self._client.eval(
-                    _READ_ORG_FLOW_CONTROL, 1, f"treg:traffic-control:org:{org_id}")
+                value = await self._client.eval(_READ_ORG_FLOW_CONTROL, 1, key)
             if value is None:
                 return None
             if not isinstance(value, str) or len(value.encode("utf-8")) > _FLOW_CONTROL_MAX_BYTES:
@@ -424,6 +561,75 @@ class RedisStore:
         except Exception:  # noqa: BLE001 - any Redis fault reads as an unknown window
             return RateWindowResult("unavailable")
         return RateWindowResult("admit") if admitted else RateWindowResult("over", wait_ms)
+
+    async def _allowance_eval(self, script: str, org_id: int, *args: int) -> int | None:
+        if any(type(value) is not int or value < 0 for value in (org_id, *args)):
+            raise ValueError("allowance counter arguments are non-negative integers")
+        try:
+            async with asyncio.timeout(_TIMEOUT_S):
+                return int(await self._client.eval(script, 1, _allowance_key(org_id), *args))
+        except Exception as exc:  # noqa: BLE001 - the caller falls back to the database path
+            _note_fault(exc)
+            return None
+
+    async def allowance_take(self, org_id: int, amount_micro: int) -> int | None:
+        if amount_micro == 0:
+            raise ValueError("an allowance take is a positive amount")
+        return await self._allowance_eval(_ALLOWANCE_TAKE, org_id, amount_micro)
+
+    async def allowance_give_back(self, org_id: int, epoch: int, amount_micro: int) -> bool | None:
+        result = await self._allowance_eval(_ALLOWANCE_GIVE_BACK, org_id, epoch, amount_micro)
+        return None if result is None else bool(result)
+
+    async def allowance_add(self, org_id: int, epoch: int, amount_micro: int,
+                            ttl_ms: int) -> int | Literal["stale"] | None:
+        result = await self._allowance_eval(_ALLOWANCE_ADD, org_id, epoch, amount_micro, ttl_ms)
+        return "stale" if result == -1 else result
+
+    async def allowance_drop(self, org_id: int) -> int | None:
+        return await self._allowance_eval(_ALLOWANCE_DROP, org_id)
+
+    async def allowance_retire(self, org_id: int, epoch: int, ttl_ms: int) -> int | None:
+        return await self._allowance_eval(_ALLOWANCE_RETIRE, org_id, epoch, epoch + 1, ttl_ms)
+
+    async def note_route_health(self, endpoint_id: str, bucket: int, *, failed: bool, slow: bool,
+                                ttl_s: int) -> None:
+        key = _route_health_key(endpoint_id, bucket)
+        try:
+            async with asyncio.timeout(_OPTIONAL_TIMEOUT_S):
+                async with self._client.pipeline(transaction=False) as pipe:
+                    pipe.hincrby(key, "n", 1)
+                    if failed:
+                        pipe.hincrby(key, "f", 1)
+                    if slow:
+                        pipe.hincrby(key, "s", 1)
+                    pipe.expire(key, ttl_s, nx=True)
+                    await pipe.execute()
+        except Exception:  # noqa: BLE001 - health is advisory; a lost count only delays a verdict
+            return
+
+    async def read_route_health(self, endpoint_ids: list[str],
+                                buckets: list[int]) -> dict[str, tuple[int, int, int]] | None:
+        try:
+            async with asyncio.timeout(_OPTIONAL_TIMEOUT_S):
+                async with self._client.pipeline(transaction=False) as pipe:
+                    for endpoint_id in endpoint_ids:
+                        for bucket in buckets:
+                            pipe.hmget(_route_health_key(endpoint_id, bucket), "n", "f", "s")
+                    rows = await pipe.execute()
+        except Exception:  # noqa: BLE001 - an unreadable store reads as no evidence
+            return None
+        out = {}
+        for i, endpoint_id in enumerate(endpoint_ids):
+            total = [0, 0, 0]
+            for row in rows[i * len(buckets):(i + 1) * len(buckets)]:
+                for j, value in enumerate(row or ()):
+                    try:
+                        total[j] += max(0, int(value or 0))
+                    except (TypeError, ValueError):
+                        continue
+            out[endpoint_id] = (total[0], total[1], total[2])
+        return out
 
     async def ping(self) -> bool:
         try:
@@ -614,6 +820,14 @@ def drain_lease_errors() -> list[dict]:
         rows = list(_lease_errors.values())
         _lease_errors.clear()
     return rows
+
+
+def _allowance_key(org_id: int) -> str:
+    return f"treg:money-allowance:v1:{org_id}"
+
+
+def _route_health_key(endpoint_id: str, bucket: int) -> str:
+    return f"treg:route-health:v1:{endpoint_id}:{bucket}"
 
 
 def _note_fault(exc: BaseException) -> None:

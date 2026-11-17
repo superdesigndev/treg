@@ -21,6 +21,12 @@
       ]
     },
     {
+      "name": "ai-ugc-video",
+      "source": "./plugins/workflows/ai-ugc-video",
+      "description": "\"Make realistic AI UGC videos cheaply: viral research, locked assets, scripts, Seedance/Avatar IV generation, and final edit. Use for AI UGC ads, talking-head videos, or AIGC short films.\"",
+      "category": "productivity"
+    },
+    {
       "name": "jev-memory",
       "source": "./plugins/workflows/jev-memory",
       "description": "Use when the user wants Claude Code to remember their preferences across sessions, asks for a memory mod or memory harness for Claude Code, mentions the Jev memory classifier or a \"classifier on every turn\" mod, or wants to build a Claude Code mod on treg and Jev. Installs a ready-made Claude Code mod that has Jev judge each prompt after the turn and saves lasting preferences to .claude/jev-memory.md, or builds the same mod from one prompt.",

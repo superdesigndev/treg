@@ -79,7 +79,7 @@ class Org(SQLModel, table=True):
     autotopup_enabled: bool = Field(default=False)
     autotopup_threshold_micro: int = Field(default=0, sa_type=BigInteger)   # 0 = "use the configured default"
     autotopup_amount_micro: int = Field(default=0, sa_type=BigInteger)      # 0 = "use the configured default"
-    autotopup_monthly_cap_micro: int = Field(default=0)  # 0 = the default, `billing.TOPUP_MAX_USD`
+    autotopup_monthly_cap_micro: int = Field(default=0, sa_type=BigInteger)  # 0 = the default, `billing.TOPUP_MAX_USD`
     # How many automatic charges may run in one hour after a SUCCESSFUL one (0 = the configured
     # default). Part of the mandate the team agreed to, so it is stored next to the amounts.
     autotopup_max_per_hour: int = Field(default=0)
@@ -112,6 +112,9 @@ class Org(SQLModel, table=True):
     # raising it past the ceiling is refused — which makes that a conversation with us rather than an
     # env-var edit that lifts the blast-radius rail for every team at once.
     daily_cap_micro: int = Field(default=0, sa_type=BigInteger)
+    # The daily spend limit every member and agent gets unless their own row sets one. NULL = none.
+    # Owners and admins never inherit it (governance/budgets.member_daily_spend_cap).
+    member_daily_spend_cap_micro: int | None = Field(default=None, sa_type=BigInteger)
 
     # Google Ads attribution (see adsconv.py).
     # The click that produced this team, captured as a first-party cookie on landing and persisted
@@ -194,6 +197,51 @@ class OrgFlowControlVersion(SQLModel, table=True):
     published_at: NaiveUTC | None = Field(default=None)
 
 
+class RouteRuleVersion(SQLModel, table=True):
+    """Saved route rule sets (docs/context/architecture/route-rules.md). The private admin is the
+    only writer; workers read the published snapshot from Redis, never this table."""
+
+    __table_args__ = (
+        CheckConstraint("version > 0", name="ck_routeruleversion_version"),
+        CheckConstraint("review_status IN ('draft', 'approved', 'rejected')",
+                        name="ck_routeruleversion_review_status"),
+        CheckConstraint("publish_status IN ('unpublished', 'pending', 'published', 'failed')",
+                        name="ck_routeruleversion_publish_status"),
+        CheckConstraint("length(trim(created_by)) > 0 AND length(trim(reason)) > 0",
+                        name="ck_routeruleversion_created"),
+        CheckConstraint(
+            "review_status = 'draft' OR (reviewed_by IS NOT NULL AND length(trim(reviewed_by)) > 0"
+            " AND reviewed_at IS NOT NULL)",
+            name="ck_routeruleversion_reviewed"),
+        CheckConstraint("publish_status = 'unpublished' OR review_status = 'approved'",
+                        name="ck_routeruleversion_publish_approved"),
+        CheckConstraint(
+            "publish_status != 'published' OR "
+            "(published_by IS NOT NULL AND length(trim(published_by)) > 0 AND published_at IS NOT NULL)",
+            name="ck_routeruleversion_published"),
+        Index("ix_routeruleversion_publish_status", "publish_status", "version"),
+    )
+    version: int = Field(sa_column=Column(Integer, primary_key=True, autoincrement=False))
+    config: dict = Field(sa_column=Column(
+        JSON(none_as_null=True).with_variant(JSONB(none_as_null=True), "postgresql"),
+        nullable=False,
+    ))
+    reason: str
+    created_by: str
+    created_at: NaiveUTC = Field(default_factory=_now)
+    review_status: str = Field(default="draft", sa_column=Column(
+        String, nullable=False, server_default="draft",
+    ))
+    reviewed_by: str | None = Field(default=None)
+    reviewed_at: NaiveUTC | None = Field(default=None)
+    review_note: str | None = Field(default=None)
+    publish_status: str = Field(default="unpublished", sa_column=Column(
+        String, nullable=False, server_default="unpublished",
+    ))
+    published_by: str | None = Field(default=None)
+    published_at: NaiveUTC | None = Field(default=None)
+
+
 class User(SQLModel, table=True):
     """A global identity (one email/login). Identity ONLY — the token and role live on
     Membership, so one person in two orgs has two memberships (two tokens), one User.
@@ -221,6 +269,12 @@ class User(SQLModel, table=True):
     # same human unlimited codes to farm with. NULL until they open the Referrals page; minted lazily
     # so we never generate codes for the majority who never look. See domain/referrals.py.
     referral_code: str | None = Field(default=None, index=True, unique=True)
+    referral_affiliate: bool = Field(
+        default=False, sa_column=Column(Boolean, nullable=False, server_default=text("false")),
+    )
+    referral_affiliate_version: int = Field(
+        default=0, sa_column=Column(Integer, nullable=False, server_default=text("0")),
+    )
     created_at: NaiveUTC = Field(default_factory=_now)
     # This person's picture: a media key (`img/user_avatar/<sha256>.webp`) in the public media bucket, or
     # NULL for initials. Set by the person themselves through `application.images`. Appended last.
@@ -271,6 +325,9 @@ class Membership(SQLModel, table=True):
     # capped members are counted; the roster's `used_today` still reads the journal.
     calls_today: int = Field(default=0, sa_column=Column("calls_today", Integer, nullable=False, server_default="0"))
     calls_today_day: date | None = Field(default=None)
+    # This member's daily spend limit on treg's keys, in micro-USD. NULL = follow the team default
+    # (`Org.member_daily_spend_cap_micro`), -1 = no limit, 0 or more = this limit.
+    daily_spend_cap_micro: int | None = Field(default=None, sa_type=BigInteger)
     # Per-member tool ACL: NULL = ALL tools in the org (the default — no restriction, no regression); a
     # JSON list of tool NAMES = the ONLY tools this member may call or run. See
     # governance.access._require_tool_access.
@@ -446,11 +503,10 @@ class Invite(SQLModel, table=True):
     """A one-time invite code (no email server yet). An admin creates it and shares the code
     (Slack/DM); the invitee redeems it and mints their own org-scoped token. (Used by PR2.)
 
-    TWO secrets, deliberately split: `code_hash` is the admin-visible out-of-band code (returned
-    from POST /orgs/{id}/invites so it can be relayed via Slack/DM) — it lets you JOIN but never
-    signs you in, because the admin provably holds it. `email_token_hash` is a second secret that
-    ONLY travels inside the invite email's link: possession proves inbox access (the same bar as
-    the emailed OTP), so /auth/invite-signin may mint a session from it. One-time: nulled on use.
+    TWO secrets: `code_hash` is the admin-visible out-of-band code (returned from
+    POST /orgs/{id}/invites so it can be relayed via Slack/DM); `email_token_hash` travels only in
+    the invite email's link. Neither signs anyone in: the code names the invite for a signed-in
+    invitee, and the link only prefills the invitee's address on the login page.
     """
 
     id: int | None = Field(default=None, primary_key=True)
@@ -458,7 +514,7 @@ class Invite(SQLModel, table=True):
     email: str = Field(index=True)
     role: str = Field(default="member")
     code_hash: str = Field(index=True)
-    email_token_hash: str | None = Field(default=None, index=True)  # inbox-only sign-in secret (see docstring)
+    email_token_hash: str | None = Field(default=None, index=True)  # the emailed link's lookup key (see docstring)
     status: str = Field(default="pending")  # pending | accepted | revoked
     invited_by: str = Field(default="")  # inviter email (audit)
     expires_at: NaiveUTC | None = Field(default=None)  # one-time AND time-bounded; None = never
@@ -738,7 +794,7 @@ class PendingOAuth(SQLModel, table=True):
 
 
 class Secret(SQLModel, table=True):
-    """A stored credential blob. `value` is Fernet-encrypted (see crypto.py).
+    """A stored credential blob. `value` is sealed by `infra/credential_cipher.py` (KMS or Fernet).
 
     `kind` selects the injector used at call time (env | secret_file | cli_auth | oauth).
     """
@@ -774,6 +830,9 @@ class Secret(SQLModel, table=True):
     expires_at: NaiveUTC | None = Field(default=None)
     last_refresh_at: NaiveUTC | None = Field(default=None)
     last_error: str = Field(default="")
+    # Whether an oauth credential can be renewed unattended, recorded with each write so listing
+    # connections never opens one. Null on rows written before it existed.
+    refreshable: bool | None = Field(default=None)
 
     created_at: NaiveUTC = Field(default_factory=_now)
 
@@ -961,6 +1020,47 @@ class CreditBlock(SQLModel, table=True):
     created_at: NaiveUTC = Field(default_factory=_now)
 
 
+class AgentPayer(SQLModel, table=True):
+    """The payer team of one wallet address on one network that pays per call with no treg
+    account (docs/context/architecture/agent-payments.md). Its membership has no token: only a
+    verified payment or proof from `address` on `network` acts for it. Credit on one network never
+    pays on another: one address can have a different owner per chain (a smart wallet). Staged only
+    by `governance.teams.make_payer_team`."""
+
+    network: str = Field(primary_key=True)  # e.g. tempo:4217, eip155:8453
+    address: str = Field(primary_key=True)  # lowercase 0x hex, 20 bytes
+    org_id: int = Field(unique=True)
+    created_at: NaiveUTC = Field(default_factory=_now)
+
+
+class AgentPayment(SQLModel, table=True):
+    """One payment proof presented by an agent payer, used at most once (`proof_id` UNIQUE).
+    `credit` = proved key control and drew existing credit, never settled; `settling` = chain
+    settlement started; `settled` = confirmed and topped up under `agentpay:<proof_id>`;
+    `failed` = settlement refused or expired unsettled; `expired` = a `credit` proof that expired
+    and was never settled. `treg-worker agentpay reconcile` resolves a `settling` row from the
+    chain and looks each expired `credit` row up once. Written only by `application/agent_payments.py`."""
+
+    id: int | None = Field(default=None, primary_key=True)
+    proof_id: str = Field(sa_column_kwargs={"unique": True}, index=True)
+    protocol: str          # mpp | x402
+    network: str           # e.g. tempo:42431, eip155:84532
+    payer_address: str = Field(index=True)
+    org_id: int = Field(index=True)
+    amount_micro: int = Field(sa_column=Column("amount_micro", BigInteger, nullable=False))
+    # treg's fee kept from `amount_micro`; the payer team is credited the rest.
+    fee_micro: int = Field(default=0, sa_column=Column("fee_micro", BigInteger, nullable=False))
+    status: str = Field(index=True)
+    asset: str             # the token contract the transfer moves
+    pay_to: str            # the address the transfer credits
+    expires_at: NaiveUTC   # after this the authorization can no longer be settled
+    reference: str | None = Field(default=None)  # the settlement transaction
+    stripe_payment_intent: str | None = Field(default=None)  # settlement `stripe`: the record
+    error: str | None = Field(default=None)
+    created_at: NaiveUTC = Field(default_factory=_now)
+    updated_at: NaiveUTC = Field(default_factory=_now)
+
+
 class LedgerEntry(SQLModel, table=True):
     """APPEND-ONLY money journal: every balance/block movement writes exactly one row, in the same
     transaction as the movement itself. Nothing edits or deletes a row — a correction is a new
@@ -993,7 +1093,7 @@ class LedgerEntry(SQLModel, table=True):
     id: str = Field(primary_key=True)  # uuid4 hex
     org_id: int = Field(foreign_key="org.id")
     block_id: str | None = Field(default=None, index=True)
-    # grant | topup | reserve | settle | release
+    # grant | topup | reserve | settle | release | revoke
     kind: str = Field(index=True)
     amount_micro: int  # signed (see docstring)
     call_id: str | None = Field(default=None, index=True)
@@ -1017,6 +1117,32 @@ class Hold(SQLModel, table=True):
     endpoint_id: str = Field(default="")
     amount_micro: int = Field(sa_type=BigInteger)  # what was withheld from the balance (margin already applied)
     created_at: NaiveUTC = Field(default_factory=_now, index=True)
+    # Reserved for an endpoint free credit may not pay for: settle draws only `purchased` blocks.
+    purchased_only: bool = Field(
+        default=False, sa_column=Column(Boolean, nullable=False, server_default=text("false")),
+    )
+    # A team's standing allowance rather than one call's reservation, and when its holder last
+    # renewed it. Nothing sets either yet.
+    allowance: bool = Field(
+        default=False, sa_column=Column(Boolean, nullable=False, server_default=text("false")),
+    )
+    heartbeat_at: NaiveUTC | None = Field(default=None)
+
+
+class CallCharge(SQLModel, table=True):
+    """What one call cost, recorded before the charge is applied to the team's credit blocks.
+
+    A short-lived queue, not history: the transaction that applies a row deletes it, and the
+    permanent record of the call stays its `settle` ledger entry. `call_id` is the primary key, so
+    a call can be recorded once. Owned by `domain/money`.
+    """
+
+    call_id: str = Field(primary_key=True)
+    org_id: int = Field(index=True)
+    endpoint_id: str = Field(default="")
+    amount_micro: int = Field(sa_type=BigInteger)  # what the team owes for the call, margin applied
+    meta: dict = Field(default_factory=dict, sa_column=Column(JSON, nullable=False))
+    created_at: NaiveUTC = Field(default_factory=_now)
 
 
 class AsyncTaskRecord(SQLModel, table=True):
@@ -1080,6 +1206,22 @@ class AsyncResourceRecord(SQLModel, table=True):
     key_slot: str | None = Field(default=None)  # config.PlatformSlot label; NULL = primary
 
 
+class CallTask(SQLModel, table=True):
+    """The provider task an async call's answer names, on every credential tier, read when treg
+    relayed that answer. `/tasks/{call_id}` follows it for the team that made the call."""
+
+    call_id: str = Field(primary_key=True)  # the X-Treg-Call-Id the caller holds
+    org_id: int = Field(index=True)
+    endpoint_id: str
+    descriptor: dict = Field(default_factory=dict, sa_column=Column("descriptor", JSON, nullable=False))
+    task_id: str | None = Field(default=None)  # NULL: the answer named no task
+    poll_url: str | None = Field(default=None)
+    # Of the bytes relayed; NULL for a routed pending answer, whose body is treg's own envelope.
+    submission_sha256: str | None = Field(default=None)
+    tags: dict | None = Field(default=None, sa_column=Column("tags", JSON, nullable=True))
+    created_at: NaiveUTC = Field(default_factory=_now, index=True)
+
+
 class ProviderResource(SQLModel, table=True):
     """A durable object created with treg's shared provider credential for one organization.
 
@@ -1112,6 +1254,29 @@ class ProviderResource(SQLModel, table=True):
     updated_at: datetime = Field(default_factory=_now)
     deleted_at: datetime | None = Field(default=None, index=True)
     key_slot: str | None = Field(default=None)  # config.PlatformSlot label; NULL = primary
+
+
+class MemberSpend(SQLModel, table=True):
+    """What one metered call cost, attributed to the member who made it. Written by `domain/money`
+    only, in the transaction that moves the money, and only for a member whose daily spend limit
+    applies: the limit is checked against these rows, so an unlimited member writes none.
+
+    Follows its hold like `TagSpend`: the estimate while in flight, the consumed figure (restamped
+    to settle time) once settled, deleted on release.
+    """
+
+    __table_args__ = (Index("ix_memberspend_membership_created", "membership_id", "created_at"),
+                      Index("ix_memberspend_org_created", "org_id", "created_at"))
+
+    id: int | None = Field(default=None, primary_key=True)
+    # No foreign keys (AGENTS.md): team deletion clears these rows (ORG_SCOPED_MODELS), and removing
+    # a member leaves today's rows for the ledger to reconcile against.
+    org_id: int
+    membership_id: int
+    hold_id: str = Field(index=True)
+    settled: bool = Field(default=False)
+    amount_micro: int = Field(default=0, sa_type=BigInteger)
+    created_at: NaiveUTC = Field(default_factory=_now)
 
 
 class TagSpend(SQLModel, table=True):
@@ -1193,6 +1358,27 @@ class TagBudget(SQLModel, table=True):
     note: str = Field(default="")
     created_at: NaiveUTC = Field(default_factory=_now)
     updated_at: NaiveUTC = Field(default_factory=_now)
+
+
+class ReferralAffiliateEvent(SQLModel, table=True):
+    """Durable affiliate operations, retained independently of account deletion."""
+
+    __table_args__ = (
+        UniqueConstraint("user_id", "user_created_at", "version", name="uq_referralaffiliateevent_user_version"),
+        CheckConstraint("version > 0", name="ck_referralaffiliateevent_version"),
+        CheckConstraint("length(trim(reason)) > 0 AND length(trim(principal)) > 0",
+                        name="ck_referralaffiliateevent_reason_principal"),
+    )
+
+    operation_id: str = Field(primary_key=True)
+    user_id: int = Field(index=True)
+    user_created_at: NaiveUTC
+    version: int
+    previous_affiliate: bool
+    affiliate: bool
+    reason: str
+    principal: str
+    created_at: NaiveUTC = Field(default_factory=_now)
 
 
 class Referral(SQLModel, table=True):
@@ -1445,6 +1631,10 @@ class IdempotentCall(SQLModel, table=True):
         UniqueConstraint("membership_id", "key", name="uq_idem_caller_key"),
         # The per-call expired-label sweep in `_claim_idempotent` (Alembic 0053).
         Index("ix_idempotentcall_membership_id_expires_at", "membership_id", "expires_at"),
+        # Only rows that dropped their copy: the archive pruner's "still needed" read (Alembic 0066).
+        Index("ix_idempotentcall_archive_live", "expires_at",
+              postgresql_where=text("archive_content_hash IS NOT NULL"),
+              sqlite_where=text("archive_content_hash IS NOT NULL")),
     )
 
     id: int | None = Field(default=None, primary_key=True)
@@ -1468,6 +1658,11 @@ class IdempotentCall(SQLModel, table=True):
     charged_micro: int = Field(default=0)
     created_at: NaiveUTC = Field(default_factory=_now)
     expires_at: NaiveUTC
+    # Set when the hourly `treg-worker idempotency prune` dropped `response_body` because the archive
+    # holds the same bytes (`ArchiveKey.key_hash`, `ArchiveSnapshot.content_hash`); a replay then
+    # reads them from there, instead of the same answer being stored twice.
+    archive_key_hash: str | None = Field(default=None)
+    archive_content_hash: str | None = Field(default=None)
 
 
 class Feedback(SQLModel, table=True):
@@ -1643,6 +1838,43 @@ class CallReview(SQLModel, table=True):
     client: str = Field(default="")
     usefulness: str
     reason: str | None = Field(default=None)
+    created_at: NaiveUTC = Field(default_factory=_now)
+
+
+class CallMark(SQLModel, table=True):
+    """What an agent found wrong (or confirmed right) in one call's answer, after checking it.
+
+    Append-only: a correction or withdrawal is a new row naming the one it `replaces`. `items`
+    holds what the caller claimed, per row `index` and `field`; an index is a position in the
+    answer the caller saw and is not attributed to a routed child. `checked` is how many rows the
+    caller looked at, never a denominator for an error rate. `note` is private: never published.
+    """
+
+    __table_args__ = (
+        Index("ix_callmark_endpoint_id_created_at", "endpoint_id", "created_at"),
+        Index("ix_callmark_org_id_content_hash", "org_id", "content_hash", unique=True),
+    )
+
+    id: int | None = Field(default=None, primary_key=True)
+    # No foreign keys (AGENTS.md): team deletion clears these rows (ORG_SCOPED_MODELS).
+    org_id: int = Field(index=True)
+    user_email: str
+    call_id: str = Field(index=True)
+    endpoint_id: str
+    provider: str | None = Field(default=None)
+    credential_tier: str | None = Field(default=None)
+    client: str = Field(default="")
+    basis: str
+    items: list[dict] = Field(default_factory=list, sa_column=Column(JSON, nullable=False))
+    checked: int | None = Field(default=None)
+    evidence_call_id: str | None = Field(default=None)
+    evidence_verified: bool = Field(default=False)
+    note: str | None = Field(default=None)
+    replaces: int | None = Field(default=None)
+    # The review whose `rows` this mark records (POST /reviews); None for a mark sent on its own.
+    review_id: int | None = Field(default=None)
+    tags: dict | None = Field(default=None, sa_column=Column("tags", JSON, nullable=True))
+    content_hash: str
     created_at: NaiveUTC = Field(default_factory=_now)
 
 

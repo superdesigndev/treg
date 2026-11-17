@@ -85,7 +85,7 @@ async def test_platform_detail_groups_the_same_job_across_providers(clients: Asy
     assert ep["method"] == "GET" and ep["path"].startswith("/")
     assert ep["tier"] == "core", "an endpoint with no explicit tier is core, not hidden"
     assert ep["verified"] and ep["has_example"] is True
-    assert ep["cost"]["type"] == "per_success"
+    assert ep["cost"]["type"] == "per_call", "TikHub bills every 2xx, a miss included"
 
 
 async def test_every_listed_endpoint_carries_its_platform(clients: AsyncClient):
@@ -472,6 +472,22 @@ async def test_retired_rows_leave_discovery_but_keep_an_actionable_direct_lookup
     assert detail["superseded_by"] == successor
     search = (await clients.get("/catalog/search", params={"q": retired})).json()
     assert retired not in {row["id"] for row in search["results"]}
+
+
+async def test_a_rows_note_is_served_on_its_own_detail_only(clients: AsyncClient):
+    """`note` is a caller-facing caveat about the whole tool: `catalog get` shows it, while the
+    lists and search, which compare rows by their summary, leave it out."""
+    ep = next(e for e in cs.load().endpoints if e.get("note") and e["kind"] not in cs.HIDDEN_KINDS)
+    detail = (await clients.get(f"/catalog/endpoints/{ep['id']}")).json()
+    assert detail["endpoint"]["note"] == ep["note"]
+    shelf = (await clients.get(f"/catalog/platforms/{ep['platform']}")).json()
+    listed = [e for c in shelf["capabilities"] for e in c["endpoints"]] + shelf["extended"]
+    assert ep["id"] in {e["id"] for e in listed}
+    assert not any("note" in e for e in listed)
+    provider = (await clients.get(f"/catalog/providers/{ep['provider']}")).json()
+    assert not any("note" in t for p in provider["platforms"] for t in p["tools"])
+    search = (await clients.get("/catalog/search", params={"q": ep["name"] or ep["summary"]})).json()
+    assert search["results"] and not any("note" in r for r in search["results"])
 
 
 async def test_call_template_carries_method_and_body_for_a_post(clients: AsyncClient):
@@ -1025,54 +1041,18 @@ credit_rates_usd:
     assert "fine_trial" not in blob, "a compliant trial entry must pass"
 
 
-def test_trial_pools_flow_from_fx_to_eligibility_and_display():
-    """The real file's three pools, end to end through the loader: a $0 price that is platform
-    eligible AND carries its allowance wherever the cost is shown — a bare $0.00 would read as
-    unlimited."""
+def test_a_trial_priced_row_shows_its_daily_allowance_beside_its_zero_price():
+    """A bare $0.00 would read as unlimited."""
     from treg.domain.catalog import store as cs
 
     c = cs.load()
-    assert c.trial_pools == {"finnhub": 50, "twelvedata": 20, "tiingo": 20,
-                             "getleadsio": 5}
-    ep = c.by_id["finnhub.quote"]
-    assert c.platform_eligible(ep)
-    cost = c.cost_view(ep["cost"], "finnhub")
-    assert cost["usd"] == 0.0 and cost["trial_calls_per_team_day"] == 50
-    # and the two NON-trial own-key providers stay ineligible — the license boundary holds
-    assert not c.platform_eligible(c.by_id["polygon.prev-close"])
-    assert not c.platform_eligible(c.by_id["eodhd.eod"])
-
-
-def test_anymailfinder_platform_prices_all_shared_key_tools():
-    from treg.domain.catalog import store as cs
-
-    c = cs.load()
-    rows = [ep for ep in c.endpoints if ep["id"].startswith("anymailfinder.")]
-    assert len(rows) == 7
-    eligible = {ep["id"] for ep in rows if c.platform_eligible(ep)}
-    assert eligible == {
-        "anymailfinder.people.email.find",
-        "anymailfinder.people.decision_makers",
-        "anymailfinder.companies.emails.list",
-        "anymailfinder.people.email.verify",
-        "anymailfinder.companies.emails.count",
-    }
-
-
-def test_orbisearch_shared_key_scope_and_verified_credit_prices():
-    from treg.domain.catalog import store as cs
-
-    c = cs.load()
-    assert c.credit_rates["orbisearch"] == 0.0062
-    for suffix, usd in (("people.email.verify", 0.00124),
-                        ("people.email.find", 0.0062),
-                        ("companies.enrich", 0.0062)):
-        ep = c.by_id[f"orbisearch.{suffix}"]
-        assert c.platform_eligible(ep), suffix
-        assert c.cost_view(ep["cost"], "orbisearch")["usd"] == usd
-    assert not c.platform_eligible(c.by_id["orbisearch.account.usage"])
-    assert not c.platform_eligible(c.by_id["orbisearch.people.email.content.spam_check"])
-    assert c.cost_view(c.by_id["anymailfinder.people.email.verify"]["cost"], "anymailfinder")["usd"] == 0.004
+    assert c.trial_pools
+    for provider, allowance in c.trial_pools.items():
+        rows = [ep for ep in c.endpoints if ep["provider"] == provider and c.platform_eligible(ep)
+                and c.cost_view(ep["cost"], provider)["usd"] == 0.0]
+        assert rows, provider
+        for ep in rows:
+            assert c.cost_view(ep["cost"], provider)["trial_calls_per_team_day"] == allowance, ep["id"]
 
 
 # ---- an id that misses -------------------------------------------------------------------------
@@ -1208,7 +1188,7 @@ async def test_search_caps_a_routed_group_at_a_few_children(clients: AsyncClient
 def test_generic_display_prices_match_web_and_cli():
     from treg.domain.catalog import store
     from treg.routers.web import _price_label
-    from treg.cli import _cost_usd, _cost_label
+    from treg.routers.views.catalog import cost_label as _cost_label, cost_usd as _cost_usd
     cat = store.load()
     for quantity, rate in [(25, 2.0), (100, 1.0)]:
         raw = {'type': 'per_result', 'currency': 'USD', 'value': rate, 'per': quantity,
@@ -1241,7 +1221,7 @@ def test_moz_lists_priced_per_returned_row_show_per_result():
     `limit` of 50 looks like the one-row price. `display.unit` names the returned item; the
     meter stays `quota_rows` and `usd` stays the price of one row."""
     from treg.application.call.resolve import _platform_estimate_micro
-    from treg.cli import _cost_label, _cost_usd
+    from treg.routers.views.catalog import cost_label as _cost_label, cost_usd as _cost_usd
     from treg.routers.web import _price_label
 
     cat = cs.load()

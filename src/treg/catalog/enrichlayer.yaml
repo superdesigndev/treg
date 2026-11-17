@@ -1220,7 +1220,6 @@ proposed_capabilities:
   people.role.lookup: Find a person in a role at a company.
   companies.id.resolve: Resolve a numeric company ID to its public identifier.
   companies.employees.search: Search employees of one company by job title or keyword.
-  people.profile.from_phone: Find social profiles from a contact phone number.
   linkedin.job.profile: Get a job profile by URL.
   linkedin.jobs.search: Search job postings using company and role filters.
   people.email.disposable: Check whether an email domain is disposable.

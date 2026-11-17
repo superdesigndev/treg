@@ -16,6 +16,8 @@ sources:
   - src/treg/domain/capacity/events.py
   - tests/test_capacity_protect.py
   - src/treg/infra/upstream/limiter.py
+  - src/treg/infra/upstream/inflight.py
+  - tests/test_upstream_inflight.py
   - src/treg/domain/capacity/overflow_spend.py
   - src/treg/domain/capacity/routes_view.py
   - src/treg/application/call/overflow.py
@@ -103,7 +105,10 @@ collector, its `_KNOWN` / `_RATE_LIMITS` entry, its signature row or its catalog
   `CapacitySnapshot` per provider, publishes each `LatestState` to ratestore as
   `capacity:state:<provider>` and commits once. The key is the Settings slot spelling
   (`fiber_ai`); `state_key()` maps a catalog id (`fiber-ai`) onto it, so readers find the state
-  under either spelling. A note that looks like a credential is withheld before it is stored. The
+  under either spelling. A note that looks like a credential is withheld before it is stored. A
+  failed HTTP balance route is stored as its status code only (`_failure_note`: httpx messages
+  carry the request URL, and some routes take the key in the query), and an error text holding
+  the provider's credential value or a query credential mark is withheld (`snapshot_from`). The
   sweep never touches the call path's locks: the meter it reads may not be the allowance that ran
   out.
 - **`view.py`** - `LatestStateView`, the in-process copy of both namespaces reloaded from ratestore
@@ -217,6 +222,24 @@ lease; expiry cannot stop a request already sent. When the store fails the proce
 and skips the store briefly; without `TREG_KV_URL` each process enforces the cap alone. Choosing an
 account (`keyslots`) reads only this process's places.
 
+## Upstream connections: a bounded wait and a cap per provider
+
+Every relayed call shares one pooled HTTP client per process (`bootstrap._lifespan`). A provider
+that stops answering holds its connections until the read timeout, so without a bound its calls
+fill the pool and every other provider's calls queue behind them. Two bounds apply to every tier:
+
+1. The pool wait is its own short timeout (`TREG_UPSTREAM_POOL_TIMEOUT_S`, default 2 s), the
+   handshake another (`TREG_UPSTREAM_CONNECT_TIMEOUT_S`, 10 s); the read timeout stays
+   `call_timeout_s`. A call that cannot get a connection leaves as the typed 503 `upstream_busy`
+   with `Retry-After`: nothing was sent, the hold is released in full, not charged.
+   `TREG_UPSTREAM_MAX_CONNECTIONS` and `TREG_UPSTREAM_MAX_KEEPALIVE_CONNECTIONS` size the pool.
+2. `infra/upstream/inflight.py` counts the calls in flight per provider in this process, after the
+   fair-share place and before the outbound admissions, and returns the place when the relay block
+   ends. `TREG_UPSTREAM_INFLIGHT_MODE` is `log` by default (a provider past
+   `TREG_UPSTREAM_INFLIGHT_CAP`, default 50, is logged as `treg.upstream_inflight`, the call
+   proceeds), `enforce` also refuses past the cap with the same `upstream_busy` answer, `off`
+   counts nothing. The count is per process, DB-free, and does not meter or route anything.
+
 ## Protect: a shared rate window, observed everywhere, enforced where listed
 
 The smoother is per process and never refuses, so every further process adds its own allowance.
@@ -286,8 +309,10 @@ the aggregator's real price with no markup, disclosed through `X-Treg-Cost-Micro
   check refused small requests while serving larger ones, which callers read as a plan change. Such
   a fallback charges the aggregator's flat fee, including an empty page.
 - **The seed** (`overflow_seed.json`) holds candidate mappings and verification evidence. Enabled
-  routes decay without verification. Verification records live in
-  `tests/fixtures/aggregators/verification/`; `scripts/contactout_overflow_verify.py` renews
+  routes decay without verification. A free-to-us vendor route still carries the aggregator's list
+  price here (Apollo people search is `$0.002`/call): that figure is what catalog disclosure and the
+  child reserve use; settlement still follows the aggregator's in-band charge. Verification records
+  live in `tests/fixtures/aggregators/verification/`; `scripts/contactout_overflow_verify.py` renews
   ContactOut routes whose static catalog examples cannot.
 - **Mark scope on a failed child** (`overflow.py`): only `aggregator_auth` and `aggregator_balance`
   mark `overflow:<aggregator>` for every provider. Everything else (the aggregator's account for

@@ -16,9 +16,8 @@ without one — a guessed price is worse than an honest gap, because a gap refus
 a guess spends real money (docs/context/architecture/catalog.md, Cost).
 
 The three confidence levels it assigns, and what earns them:
-  verified   — the price came from the provider's OWN live rate card (TikHub's
-               get_all_endpoints_info, DataForSEO's /appendix/user_data) or was observed being
-               billed on a real call. Re-checkable without trusting a docs page.
+  verified   — the price came from the provider's OWN live rate card (DataForSEO's
+               /appendix/user_data) or was observed being billed on a real call. Re-checkable without trusting a docs page.
   documented — transcribed from the provider's docs or pricing page during the 2026-07-28 sweep.
   inferred   — the recorded figure is a floor or the top of a published range (base-fee-plus-per-row
                endpoints, "1-9 credits", "$0.50-$5.00 per 1,000"), so it is not the whole charge.
@@ -50,29 +49,7 @@ CANONICAL_FREE = {"type": "free", "value": 0, "currency": "USD", "unit": "call"}
 # charge covers for each cost type, so `cost_view` can divide by `per` and a reader knows whether
 # "0.0015" is per call or per row.
 PROVIDERS: dict[str, dict] = {
-    # Prices from the provider's own machine-readable rate card → verified.
-    "tikhub": {
-        "source": "rate_card_api", "confidence": "verified",
-        "url": "https://api.tikhub.io/api/v1/tikhub/user/get_all_endpoints_info",
-        "units": {"*": "call"},
-    },
-    "dataforseo": {
-        "source": "rate_card_api", "confidence": "verified",
-        "url": "https://api.dataforseo.com/v3/appendix/user_data",
-        "units": {"*": "call", "per_result": "page"},
-    },
-    # Credit counts come from `credits_charged` in the provider's own OpenAPI response examples —
-    # first-party, machine-readable and re-fetchable, so the COUNT is verified. (What is merely
-    # inferred is the credits→USD rate, and that lives in fx.yaml with its own basis.)
-    "scrapecreators": {"source": "rate_card_api", "confidence": "verified",
-                       "url": "https://docs.scrapecreators.com/openapi.json", "units": {"*": "call"}},
     # Prices transcribed from docs / pricing pages → documented.
-    # Just One API's figures are a hand-exported snapshot of the logged-in dashboard's pricing page
-    # (operator-supplied justoneapi_prices.json) — first-party, but a local file nothing can re-check.
-    "justoneapi": {"source": "rate_card_api", "confidence": "documented",
-                   "url": "https://www.justoneapi.com/", "units": {"*": "call"}},
-    "brightdata": {"source": "docs", "confidence": "documented",
-                   "url": "https://brightdata.com/pricing", "units": {"*": "record"}},
     "diffbot": {"source": "docs", "confidence": "documented",
                 "url": "https://www.diffbot.com/pricing/",
                 "units": {"*": "page", "per_result": "record"}},
@@ -86,8 +63,6 @@ PROVIDERS: dict[str, dict] = {
                    "url": "https://coresignal.com/pricing/", "units": {"*": "record"}},
     "crunchbase": {"source": "docs", "confidence": "documented",
                    "url": "https://data.crunchbase.com/docs/using-the-api", "units": {"*": "call"}},
-    "hunter": {"source": "docs", "confidence": "documented",
-               "url": "https://hunter.io/pricing", "units": {"*": "call", "per_result": "record"}},
     "leadmagic": {"source": "docs", "confidence": "documented",
                   "url": "https://leadmagic.io/pricing", "units": {"*": "call", "per_result": "record"}},
     "lusha": {"source": "docs", "confidence": "documented",
@@ -213,7 +188,6 @@ PRICES: dict[str, dict] = {
     # `per` > 1 only makes sense against a `type` that counts the same thing: these four billed
     # "per N returned items" while claiming `per_success` (per successful CALL), which would have
     # priced a 50-review response as one charge. The quantity and the trigger have to agree.
-    "hunter.companies.emails": {"per": 10, "unit": "record"},        # 1 credit per 10 emails
     "akta.companies.reviews": {"type": "per_result", "per": 50, "unit": "review"},  # 1.5cr / 50
     "akta.x.product-reviews": {"type": "per_result", "per": 50, "unit": "review"},
     "akta.x.jobs": {"type": "per_result", "per": 10, "unit": "item"},      # 4 credits per 10 listings

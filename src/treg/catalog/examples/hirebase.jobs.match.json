@@ -1,0 +1,127 @@
+{
+  "jobs": [
+    {
+      "_id": "6af6b758fd92f8e7b77c89fa",
+      "company_name": "Epiroc",
+      "job_title": "Senior Software Engineer (C++) - Agentic AI",
+      "description": "<h2>Role Overview</h2><p>As a Senior Software Engineer specializing in C++ within Epiroc's Agentic AI division, you will play a pivotal role in developing high-performance software solutions that power cutting-edge mining and construction equipment.</p><h2>What You Will Do</h2><p>You will be responsible for designing, implementing, and validating embedded control software that directly impacts the reliability, safety, and efficiency of machinery deployed in challenging real-world environments.</p><h2>Why It Might Be a Fit</h2><p>This position offers a unique opportunity to drive innovation by integrating agentic AI methodologies into our software development lifecycle, shaping the future of automated engineering processes.</p><h2>Requirements</h2><ul><li>Bachelor's or master's degree in Electronics, Mechatronics, Robotics, Computer Science, or a closely related engineering discipline.</li><li>5-8 years of professional experience in application software development for embedded systems using C++, with strong Object-Oriented Programming skills.</li><li>Hands-on understanding of automotive and industrial communication protocols, including CAN, J1939, LIN, and Ethernet.</li><li>Proven experience working with AI coding assistants and agentic AI workflows, including knowledge of concepts like multi-channel processing (MCP), agent-to-agent (A2A) communication, and agent skills design.</li><li>Familiarity with version control systems such as Git and project management tools like JIRA and Polarion.</li><li>Demonstrated ability in designing and operating agentic systems in complex engineering environments.</li><li>Strong analytical and problem-solving abilities, combined with effective written and verbal communication skills to collaborate across diverse teams.</li><li>Experience working within Agile methodologies such as Scrum and Kanban.</li></ul>",
+      "application_link": "https://www.careerprofile.epiroc.com/job/-/1416536333/",
+      "job_type": "Full Time",
+      "location_type": "In-Person",
+      "date_posted": "2026-11-13",
+      "first_ingested": "2026-11-13T06:54:25.720000",
+      "updated_at": null,
+      "company_link": "www.epiroc.com",
+      "company_logo": "https://logos.hirebase.org/87c4c217-6609-45df-92d8-8159f804fe52/epiroc-320x320-q95.jpg",
+      "job_board": "successfactors",
+      "job_board_link": "https://www.careerprofile.epiroc.com",
+      "requirements_summary": "The ideal candidate will have a strong background in software development, experience with AI coding assistants, and a proven ability to design and operate agentic systems in complex engineering environments",
+      "visa_sponsored": false,
+      "company_data": {
+        "description_summary": "Epiroc is a leading provider of mining and infrastructure equipment, offering advanced technology and expert services to maximize productivity and sustainability. With a focus on safety, environmental responsibility, and customer collaboration, Epiroc delivers reliable solutions for rock excavation, automation, and engineering in the natural resources sector.",
+        "linkedin_link": "https://www.linkedin.com/company/epiroc",
+        "size_range": {
+          "min": 10000,
+          "max": null
+        },
+        "industries": [
+          "Energy & Mining",
+          "Construction"
+        ],
+        "subindustries": [
+          "Mining Equipment & Technology",
+          "Heavy & Civil Engineering"
+        ],
+        "services": [
+          "Mining",
+          "Infrastructure",
+          "Natural Resources",
+          "Technology",
+          "Rock Excavation",
+          "Automation",
+          "Sustainability",
+          "Battery",
+          "Drilling",
+          "Engineering"
+        ],
+        "type": "Enterprise",
+        "is_recruiting_agency": false,
+        "is_3rd_party_agency": false
+      },
+      "job_slug": "senior-software-engineer-c-agentic-ai-26332d8c",
+      "company_slug": "epiroc",
+      "locations": [
+        {
+          "city": "Bengaluru",
+          "region": "Karnataka",
+          "country": "India",
+          "coordinates": {
+            "type": "Point",
+            "coordinates": [
+              77.590082,
+              12.9767936
+            ]
+          },
+          "bbox": [
+            12.8336251,
+            13.1426598,
+            77.4600507,
+            77.7843613
+          ],
+          "address": "Bengaluru, Bangalore North, Bengaluru Urban, Karnataka, India"
+        }
+      ],
+      "job_categories": [
+        "Information Technology Jobs",
+        "Software Engineer Jobs"
+      ],
+      "location_raw": "Bengaluru KA 560058 IN",
+      "expired": null,
+      "salary_range": null,
+      "offers_equity": null,
+      "equity": null,
+      "yoe_range": {
+        "min": 5.0,
+        "max": 8.0
+      },
+      "experience_level": null,
+      "description_raw": null,
+      "recruiter_agency": false,
+      "signals": [],
+      "technologies": [
+        "C++",
+        "Azure DevOps",
+        "Git",
+        "JIRA",
+        "Polarion"
+      ],
+      "technologies_tracked": null,
+      "skills": [
+        "Object-Oriented Programming",
+        "AI coding assistants",
+        "Agentic AI workflows",
+        "Multi-channel processing (MCP)",
+        "Agent-to-agent (A2A) communication",
+        "Agent skills design"
+      ],
+      "education_level": null,
+      "team": "Research and Development",
+      "benefits": null,
+      "contact_email": null,
+      "contact_phone": null,
+      "coolness_score": 7.7,
+      "flexibility_score": 5.6,
+      "compensation_value_score": 7.6,
+      "benefits_score": 7.1,
+      "impact_autonomy_score": 8.2,
+      "prestige_score": 7.1,
+      "growth_score": 7.3,
+      "meta_completeness": false,
+      "meta_targetability": null
+    }
+  ],
+  "total_count": 2500,
+  "page": 1,
+  "limit": 1,
+  "total_pages": 2500
+}

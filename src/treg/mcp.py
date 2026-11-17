@@ -35,6 +35,7 @@ not initialized". `bootstrap.py` composes this module's lifespan with its own; s
 
 from __future__ import annotations
 
+import asyncio
 import base64
 import binascii
 import hashlib
@@ -42,10 +43,13 @@ import inspect
 import json
 import logging
 import os
+import re
 from contextlib import asynccontextmanager
 from contextvars import ContextVar
 from dataclasses import asdict, dataclass, replace
 from typing import Annotated, Any, TypedDict
+
+from pydantic import BaseModel, ConfigDict, Field, ValidationError
 from urllib.parse import parse_qsl, quote, unquote, urlencode, urlsplit
 
 import httpx
@@ -62,10 +66,13 @@ from .application import catalog_find as find_app
 from .application import catalog_search as search_app
 from .application import search_experiment
 from .domain.catalog import store as catalog_store
-from .capacity_notice import account_out_notice, is_balance_refusal
+from .capacity_notice import account_out_notice, is_admission_refusal, is_balance_refusal
 from .client_identity import printable_ascii
 from .config import get_settings
-from .feedback_contract import FeedbackCategory, FEEDBACK_DESCRIPTION, ReviewUsefulness, REVIEW_DESCRIPTION
+from .feedback_contract import (
+    FEEDBACK_DESCRIPTION, MARK_DESCRIPTION, REVIEW_ROWS_DESCRIPTION, FeedbackCategory, MarkBasis,
+    MarkVerdict, ReviewUsefulness,
+)
 from .domain.catalog.stats import EndpointObservationReader
 from .infra import org_traffic
 
@@ -107,6 +114,13 @@ class _SurfacePolicy:
     invites: bool = True
     # Catalog platforms this surface neither lists, describes nor calls.
     hidden_platforms: frozenset[str] = frozenset()
+    # Whether catalog_get shows the row's `note`. The directory surface returns what it was
+    # submitted with until the next resubmission.
+    endpoint_note: bool = True
+    # The hint on a balance refusal. Neither surface carries a purchase link (see `_call_impl`); the
+    # directory surface keeps the words it was submitted with.
+    balance_hint: str = ("the team's prepaid balance is not enough for this call. A team admin can "
+                         "add funds in the treg dashboard under Team → Billing.")
 
     def hides(self, ep: dict | None) -> bool:
         return bool(ep) and ep.get("platform") in self.hidden_platforms
@@ -128,6 +142,8 @@ _DIRECTORY_SURFACE = _SurfacePolicy(
     next_call="catalog_call_read(...) or catalog_call_write(...), based on the documented method",
     invites=False,
     hidden_platforms=_DIRECTORY_HIDDEN_PLATFORMS,
+    endpoint_note=False,
+    balance_hint="the team's prepaid balance is not enough for this call",
 )
 
 
@@ -185,7 +201,10 @@ class _UnknownCallArguments:
         arguments = params.get("arguments")
         if ctx.method != "tools/call" or name not in self._tools or not isinstance(arguments, dict):
             return await call_next(ctx)
-        accepted = [p for p in inspect.signature(globals()[self._tools[name]]).parameters if p != "ctx"]
+        accepted = [p for p in inspect.signature(globals()[self._tools[name]]).parameters
+                    if p not in ("ctx", "prior")]
+        if "prior" in inspect.signature(globals()[self._tools[name]]).parameters:
+            arguments = {k: v for k, v in arguments.items() if k != "prior"}
         unknown = sorted(set(arguments) - set(accepted))
         if not unknown:
             return await call_next(ctx)
@@ -199,6 +218,56 @@ class _UnknownCallArguments:
                               structured_content=refusal, is_error=True)
 
 
+class _OAuthScopeGate:
+    """Refuse a tool call whose OAuth access token does not carry the scope that tool needs.
+
+    The scope is the permission the person granted at consent; a token reaches the internal API as
+    a full identity, so this is the only place it can be held to it. Per-org and identity tokens
+    carry no OAuth scope and pass. A tool missing from `required` is refused to OAuth tokens."""
+
+    def __init__(self, required: dict[str, str]) -> None:
+        self._required = required  # tool name -> the scope it needs
+
+    async def __call__(
+        self, ctx: ServerRequestContext[Any, Any], call_next: CallNext
+    ) -> HandlerResult:
+        if ctx.method != "tools/call":
+            return await call_next(ctx)
+        headers = getattr(getattr(ctx, "request", None), "headers", None) or {}
+        raw = headers.get("authorization") or headers.get("Authorization") or ""
+        claims = _oauth_claims(raw.removeprefix("Bearer ").removeprefix("bearer ").strip())
+        if claims is None:
+            return await call_next(ctx)
+        from .domain.identity import mcp_oauth
+        name = (ctx.params or {}).get("name")
+        needed = self._required.get(name)
+        if needed is not None and needed in mcp_oauth.mcp_permissions(claims.get("scope", "")):
+            return await call_next(ctx)
+        base = get_settings().public_url.rstrip("/")
+        refusal = {
+            "error": "insufficient_scope",
+            "detail": (f"{name} needs the {needed or 'a treg'} scope, which this grant does not carry; "
+                       f"nothing was sent. Re-authorize at {base}/oauth/authorize asking for it."),
+            "required_scope": needed,
+        }
+        return CallToolResult(content=[TextContent(type="text", text=json.dumps(refusal))],
+                              structured_content=refusal, is_error=True)
+
+
+_V1_TOOL_SCOPES = {
+    "catalog_search": "treg:catalog", "catalog_get": "treg:catalog", "catalog_request": "treg:catalog",
+    "feedback": "treg:catalog", "review": "treg:catalog", "mark": "treg:catalog",
+    "call": "treg:call", "call_media": "treg:call", "hub_create": "treg:call", "hub_update": "treg:call",
+    "balance": "treg:read", "my_tools": "treg:read", "resources_list": "treg:read", "hub_mine": "treg:read",
+}
+_V2_TOOL_SCOPES = {
+    "catalog_search": "treg:catalog", "catalog_get": "treg:catalog", "catalog_request": "treg:catalog",
+    "catalog_call_read": "treg:call", "catalog_call_write": "treg:call",
+    "balance": "treg:read",
+}
+_TOOL_SCOPES = {"v1": _V1_TOOL_SCOPES, "v2": _V2_TOOL_SCOPES}
+
+
 _HUB_TOOL_NAMES = frozenset({"hub_create", "hub_update", "hub_mine"})
 
 # OpenAI's clients: ChatGPT and its plugin reviewer send `openai-mcp/...`, Codex `codex-mcp-client/...`.
@@ -206,6 +275,7 @@ _HUB_TOOL_NAMES = frozenset({"hub_create", "hub_update", "hub_mine"})
 # results, as collecting behavioral data for analytics. Those clients get neither; every other client
 # keeps both. `/call/` still decides and records an invitation, this surface just does not show it.
 _OPENAI_UA_PREFIXES = ("openai-mcp/", "codex-mcp-client/")
+_OPENAI_HIDDEN_TOOLS = frozenset({"review", "mark"})
 
 
 def _is_openai_client(headers: Any) -> bool:
@@ -215,7 +285,8 @@ def _is_openai_client(headers: Any) -> bool:
 
 
 class _OpenAIClientGate:
-    """For OpenAI's clients only: no `review` tool and no review sentence in the instructions."""
+    """For OpenAI's clients only: no `review` or `mark` tool and no sentence about them in the
+    instructions."""
 
     async def __call__(
         self, ctx: ServerRequestContext[Any, Any], call_next: CallNext
@@ -231,10 +302,43 @@ class _OpenAIClientGate:
         if isinstance(result, dict) and isinstance(result.get("tools"), list):
             return {**result, "tools": [t for t in result["tools"]
                                         if (t.get("name") if isinstance(t, dict) else getattr(t, "name", None))
-                                        != "review"]}
+                                        not in _OPENAI_HIDDEN_TOOLS]}
         tools = getattr(result, "tools", None)
         if isinstance(tools, list):
-            return result.model_copy(update={"tools": [t for t in tools if getattr(t, "name", None) != "review"]})
+            return result.model_copy(update={"tools": [t for t in tools if getattr(t, "name", None) not in _OPENAI_HIDDEN_TOOLS]})
+        return result
+
+
+class _PriorReviewGate:
+    """`call`'s `prior` argument is shown only to the credentials `_shows_prior` picks: everyone
+    else lists the tool exactly as before, so the experiment can be compared and turned off."""
+
+    async def __call__(
+        self, ctx: ServerRequestContext[Any, Any], call_next: CallNext
+    ) -> HandlerResult:
+        result = await call_next(ctx)
+        if ctx.method != "tools/list" or _shows_prior(
+                getattr(getattr(ctx, "request", None), "headers", None)):
+            return result
+
+        def strip(tool: Any) -> Any:
+            name = tool.get("name") if isinstance(tool, dict) else getattr(tool, "name", None)
+            if name != "call":
+                return tool
+            schema = tool.get("inputSchema") if isinstance(tool, dict) else tool.input_schema
+            if not isinstance(schema, dict) or "prior" not in schema.get("properties", {}):
+                return tool
+            props = {k: v for k, v in schema["properties"].items() if k != "prior"}
+            schema = {**schema, "properties": props}
+            if isinstance(tool, dict):
+                return {**tool, "inputSchema": schema}
+            return tool.model_copy(update={"input_schema": schema})
+
+        if isinstance(result, dict) and isinstance(result.get("tools"), list):
+            return {**result, "tools": [strip(t) for t in result["tools"]]}
+        tools = getattr(result, "tools", None)
+        if isinstance(tools, list):
+            return result.model_copy(update={"tools": [strip(t) for t in tools]})
         return result
 
 
@@ -309,7 +413,8 @@ _BASE_INSTRUCTIONS = (
 )
 _REVIEW_INSTRUCTION = (
     "If a call result invites a review, rate that one call with review(call_id, usefulness, "
-    "reason?) after using it, then continue."
+    "reason?) after using it, then continue. If you later learn a result was wrong (a bounce, "
+    "another source, the user's correction), mark(call_id, basis, items) says which rows."
 )
 
 mcp = MCPServer(
@@ -322,9 +427,9 @@ mcp = MCPServer(
         "Wan) and voice), plus your team's own tools."
     ),
     instructions=f"{_BASE_INSTRUCTIONS} {_REVIEW_INSTRUCTION}",
-    middleware=[_StaticSurfaceCapabilities(),
+    middleware=[_StaticSurfaceCapabilities(), _OAuthScopeGate(_V1_TOOL_SCOPES),
                 _UnknownCallArguments({"call": "call", "call_media": "call_media"}),
-                _HubToolsGate(), _OpenAIClientGate()],
+                _HubToolsGate(), _OpenAIClientGate(), _PriorReviewGate()],
 )
 
 
@@ -390,7 +495,68 @@ class RequestOut(TypedDict, total=False):
 class ReviewOut(TypedDict, total=False):
     review_id: int | None
     status: str | None
+    mark_id: int | None
     detail: Any
+
+
+class MarkOut(TypedDict, total=False):
+    mark_id: int | None
+    status: str | None
+    detail: Any
+
+
+class MarkItemIn(BaseModel):
+    """One finding. Unknown keys are refused, not dropped: a misspelled `index` (`row`) would
+    otherwise turn a row's finding into one about the whole result."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    verdict: MarkVerdict
+    index: int | None = Field(default=None, ge=0, description="0-based row; omit for the whole result")
+    field: str | None = Field(default=None, min_length=1, max_length=120,
+                              pattern=r"^[A-Za-z0-9_.\[\]-]+$")
+
+
+PRIOR_DESCRIPTION = (
+    "Optional. How your PREVIOUS treg call's result worked out, now that you have used it: "
+    "{call_id, usefulness: useful|partly|not_useful|not_sure, reason?, rows?}. rows = the 0-based "
+    "rows you found wrong, e.g. [{index: 2, field: email, verdict: wrong}]. Leave it out when you "
+    "have not used that result or already reviewed it. It never changes this call."
+)
+
+
+class PriorReviewIn(BaseModel):
+    """A review of the caller's previous call, riding on the next `call`. Unknown keys are refused
+    so a misspelled field is not silently dropped; an invalid one never fails the call itself."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    call_id: str = Field(min_length=1, max_length=128, pattern=r"^[A-Za-z0-9_-]+$")
+    usefulness: ReviewUsefulness
+    reason: str | None = Field(default=None, min_length=1, max_length=200)
+    rows: list[MarkItemIn] | None = Field(default=None, max_length=200)
+
+
+def _shows_prior(headers: Any) -> bool:
+    """Whether this credential's `call` tool shows `prior`: a deterministic share of team-MCP
+    tokens (`mcp_prior_review_rate`), never an OpenAI client (which has no review either)."""
+    rate = get_settings().mcp_prior_review_rate
+    headers = headers or {}
+    if rate <= 0 or _is_openai_client(headers):
+        return False
+    raw = headers.get("authorization") or headers.get("Authorization") or ""
+    token = raw.removeprefix("Bearer ").removeprefix("bearer ").strip()
+    if not token:
+        return False
+    # An OAuth grant reviews only with the scope the `review` tool needs: `prior` rides on `call`,
+    # whose own scope the gate checks, and `_api` turns the token into a full identity.
+    claims = _oauth_claims(token)
+    if claims is not None:
+        from .domain.identity import mcp_oauth
+        if _V1_TOOL_SCOPES["review"] not in mcp_oauth.mcp_permissions(claims.get("scope", "")):
+            return False
+    bucket = int.from_bytes(hashlib.sha256(f"prior-review:{token}".encode()).digest()[:8], "big")
+    return bucket < rate * 2**64
 
 
 class FeedbackOut(TypedDict, total=False):
@@ -696,19 +862,29 @@ async def _api(token: str, *, client_name: str = "mcp"):
         timeout=_TIMEOUT,
         # X-Treg-Client is attribution, not auth: without it every MCP-originated call lands
         # in the audit trail as client="", indistinguishable from unreported CLI traffic.
-        headers={**await _internal_auth(token), "X-Treg-Client": client_name, **host,
+        # Every invitation kind: this surface renders each into the hint slot (`_call_impl`).
+        headers={**await _internal_auth(token), "X-Treg-Client": client_name,
+                 "X-Treg-Hints": "review,mark,feedback", **host,
                  **client_ip.forwarding_headers(_caller_ip.get())},
     ) as client:
         yield client
 
 
-_UNSAFE_SEGMENTS = frozenset({"", ".", ".."})
+_UNSAFE_SEGMENTS = frozenset({".", ".."})
 
 
 def _leaves_route(endpoint_id: str) -> bool:
-    """Whether a dot or empty segment, at any depth of percent-encoding, could move the call off its
-    route: httpx collapses `..` before the in-process request, and the caller's credential rides it."""
+    """Whether a `.` or `..` segment, at any depth of percent-encoding, could move the call off its
+    route: httpx collapses those before the in-process request, and the caller's credential rides it.
+
+    Empty segments (a mid-path `//`, or `%2F` that only becomes empty after decoding) stay under the
+    route and must pass: own-tool paths carry percent-encoded URLs in a single segment (e.g. a GSC
+    `feedpath` of `https%3A%2F%2F…`), and refusing the empty that appears only after `unquote` blocked
+    them. An empty `endpoint_id` is still refused.
+    """
     path = endpoint_id.partition("?")[0].partition("#")[0]
+    if path == "":
+        return True
     for _ in range(4):
         segments = path.split("/")
         # A trailing slash is a real upstream path (`tool/items/`), not a way out.
@@ -723,7 +899,7 @@ def _leaves_route(endpoint_id: str) -> bool:
     return True
 
 
-_UNSAFE_ID_ERROR = {"error": "endpoint_id may not contain an empty, '.' or '..' path segment",
+_UNSAFE_ID_ERROR = {"error": "endpoint_id may not contain a '.' or '..' path segment",
                     "hint": "pass a catalog id or '<tool-name>/<path>' exactly"}
 
 
@@ -735,6 +911,18 @@ def _call_url(route: str, endpoint_id: str) -> str:
     return url
 
 
+_ID_SEGMENT = re.compile(r"[A-Za-z0-9][A-Za-z0-9._~:@+-]*")
+
+
+def _segment_url(route: str, value: str) -> str | None:
+    """`route/value` when `value` is one plain path segment (a catalog id, a hub tool id), else None.
+    The internal request carries the caller's whole identity, so an id that could walk to another
+    route (`../../orgs/1/balance`, an encoded slash) must never be formatted into a path."""
+    if not isinstance(value, str) or not _ID_SEGMENT.fullmatch(value) or _leaves_route(value):
+        return None
+    return f"{route}/{value}"
+
+
 def _body(r: httpx.Response) -> Any:
     try:
         body = r.json()
@@ -744,6 +932,30 @@ def _body(r: httpx.Response) -> Any:
     # agent gets "Error serializing to JSON" with no body, call_id or cost for a call it paid for.
     # pydantic cannot write the escape, so the surrogate becomes U+FFFD (treg/jsontext.py).
     return jsontext.scrub_surrogates(body) if jsontext.may_hold_surrogates(r.content) else body
+
+
+def _dead_mcp_key_problem() -> dict:
+    """The saved MCP bearer is dead - CLI login does not refresh it. Name the cause and the repair.
+
+    A static Authorization header written by `treg mcp install` survives `treg login` and session-
+    secret rotation. Agents that only see "not signed in" then re-login the CLI and get nowhere.
+    Point them at `treg mcp install --oauth`, which rewrites every managed client to URL-only so the
+    client can authorize itself (Claude Code `/mcp`, Codex `codex mcp login`, Cursor/opencode OAuth).
+    A key the user set by hand (dsh's `TREG_TOKEN`, a hand-written entry) is out of the installer's
+    reach, so the hint also says to replace it. This hint is the one place the repair is documented.
+    """
+    return {
+        "error": "not signed in, or this token is invalid or expired",
+        "hint": (
+            "This MCP server holds its own saved key, separate from the CLI login, and that key is "
+            "no longer valid. Run `treg update`, then `treg mcp install --oauth` (needs no login), "
+            "restart the agent, then authorize treg in the client (Claude Code: `/mcp`, then "
+            "Authenticate; Codex: `codex mcp login treg`; Cursor/opencode: follow the client's "
+            "sign-in prompt). If you set this key yourself (for example the `TREG_TOKEN` "
+            f"environment variable), replace it with a current team key from "
+            f"{get_settings().public_url.rstrip('/')} and restart the agent."
+        ),
+    }
 
 
 async def _resolve_org(client: httpx.AsyncClient) -> tuple[int | None, str | None, dict | None]:
@@ -766,6 +978,10 @@ async def _resolve_org(client: httpx.AsyncClient) -> tuple[int | None, str | Non
     pinned = client.headers.get("X-Treg-Org")
     if pinned:
         r = await client.get("/orgs")
+        if r.status_code == 401:
+            # Dead team-pinned key (revoke-tokens / Default-key rotation / bad signature still
+            # carrying an org claim). The old answer said the TEAM was gone; the key is what died.
+            return None, None, _dead_mcp_key_problem()
         for o in (_body(r) or []) if r.status_code == 200 else []:
             if o.get("slug") == pinned:
                 return int(o["org_id"]), pinned, None
@@ -778,10 +994,7 @@ async def _resolve_org(client: httpx.AsyncClient) -> tuple[int | None, str | Non
 
     r = await client.get("/orgs")
     if r.status_code == 401 or me.status_code == 401:
-        return None, None, {"error": "not signed in, or this token is invalid or expired",
-                            "hint": ("sign in again with `treg login`, then run `treg mcp install` to "
-                                     "update this server's token, or configure a current key from "
-                                     f"{get_settings().public_url.rstrip('/')}")}
+        return None, None, _dead_mcp_key_problem()
     if r.status_code != 200:
         return None, None, {"error": "could not read the teams for this token"}
     orgs = _body(r) or []
@@ -892,6 +1105,7 @@ async def _catalog_search_impl(
     experiment's say over it, and the records. This layer resolves who is asking (the hub's lists
     and the experiment's log both need it) and shapes the rows for an agent. With a recently-added
     option the page is `search_app.added_page` instead: a date list, no judge, no experiment."""
+    from .application.call.resolve import anonymous_served
     cat = catalog_store.load()
     limit = max(1, min(limit, 25))
     try:
@@ -953,11 +1167,13 @@ async def _catalog_search_impl(
             # the row is priceable, `platform_key_for` says this deploy actually holds an enabled
             # key; an eligible-but-keyless row would refuse at call time.
             # a routed row is servable when any child is: its children carry the keys
+            # a verified public row needs only the provider allow-list, no key (`anonymous_served`)
             "no_key_needed": ep.get("kind") == "hub" or cat.platform_eligible(ep) and (
                 ep.get("kind") == "routed"
-                and any(get_settings().platform_key_for((cat.by_id.get(i) or {}).get("provider"))
-                        for i in ep.get("routed_children") or [])
-                or bool(get_settings().platform_key_for(ep.get("provider")))),
+                and any(get_settings().platform_key_for(kid.get("provider")) or anonymous_served(kid) is not None
+                        for i in ep.get("routed_children") or [] if (kid := cat.by_id.get(i)))
+                or bool(get_settings().platform_key_for(ep.get("provider")))
+                or anonymous_served(ep) is not None),
             "added": ep.get("added") or None,
             "score": None if page.judged or led else score,
             # The measured half of the answer, at the step where the agent is choosing.
@@ -1092,28 +1308,51 @@ async def feedback(
 
 
 @mcp.tool(
-    description=REVIEW_DESCRIPTION,
+    description=REVIEW_ROWS_DESCRIPTION,
     annotations=ToolAnnotations(read_only_hint=False, destructive_hint=False, open_world_hint=True,
                                 idempotent_hint=False),
     structured_output=True,
 )
 async def review(
     call_id: str, usefulness: ReviewUsefulness, ctx: Context, reason: str | None = None,
+    rows: list[MarkItemIn] | None = None,
 ) -> ReviewOut:
-    return await _review_impl(call_id, usefulness, ctx, reason, surface=_TEAM_SURFACE)
+    return await _review_impl(call_id, usefulness, ctx, reason, surface=_TEAM_SURFACE, rows=rows)
+
+
+@mcp.tool(
+    description=MARK_DESCRIPTION,
+    annotations=ToolAnnotations(read_only_hint=False, destructive_hint=False, open_world_hint=True,
+                                idempotent_hint=True),
+    structured_output=True,
+)
+async def mark(
+    call_id: str, basis: MarkBasis, items: list[MarkItemIn], ctx: Context,
+    checked: int | None = None, evidence_call_id: str | None = None, note: str | None = None,
+    replaces: int | None = None,
+) -> MarkOut:
+    body = {"call_id": call_id, "basis": basis,
+            "items": [item.model_dump(exclude_none=True) for item in items]}
+    optional = {"checked": checked, "evidence_call_id": evidence_call_id, "note": note,
+                "replaces": replaces}
+    body.update({key: value for key, value in optional.items() if value is not None})
+    async with _api(_bearer(ctx)) as client:
+        response = await client.post("/marks", json=body)
+    return _body(response)
 
 
 async def _review_impl(
     call_id: str, usefulness: ReviewUsefulness, ctx: Context, reason: str | None,
-    *, surface: _SurfacePolicy,
+    *, surface: _SurfacePolicy, rows: list["MarkItemIn"] | None = None,
 ) -> ReviewOut:
     token = _bearer(ctx)
     api_context = (_api(token) if surface is _TEAM_SURFACE
                    else _api(token, client_name=surface.client_name))
+    body = {"call_id": call_id, "usefulness": usefulness, "reason": reason}
+    if rows:
+        body["rows"] = [row.model_dump(exclude_none=True) for row in rows]
     async with api_context as client:
-        response = await client.post("/reviews", json={
-            "call_id": call_id, "usefulness": usefulness, "reason": reason,
-        })
+        response = await client.post("/reviews", json=body)
     return _body(response)
 
 
@@ -1177,7 +1416,10 @@ async def hub_update(
     tool_id: str, manifest: dict[str, Any], check: dict[str, Any], readme: str, ctx: Context,
     script: str | None = None,
 ) -> HubPublishOut:
-    return await _hub_publish_impl(ctx, "PUT", f"/hub/tools/{tool_id}",
+    path = _segment_url("/hub/tools", tool_id)
+    if path is None:
+        return {"error": "invalid_tool_id", "detail": f"{tool_id!r} is not a hub tool id"}
+    return await _hub_publish_impl(ctx, "PUT", path,
                                    {"manifest": manifest, "script": script, "check": check, "readme": readme})
 
 
@@ -1263,8 +1505,9 @@ async def _catalog_get_impl(
             _, slug, problem = await _resolve_org(client)
             if slug and not problem:
                 headers["X-Treg-Org"] = slug
-        r = await client.get(f"/catalog/endpoints/{endpoint_id}", headers=headers)
-    if r.status_code == 404:
+        url = _segment_url("/catalog/endpoints", endpoint_id)
+        r = await client.get(url, headers=headers) if url else None
+    if r is None or r.status_code == 404:
         cat = catalog_store.load()
         return {"error": f"unknown endpoint {endpoint_id!r}",
                 # Naming the near miss, not just the tool to go back to. An id one segment off is
@@ -1277,6 +1520,8 @@ async def _catalog_get_impl(
     # Lifted onto the result so the schema advertises it: the direct price is not the only price
     # a "free" endpoint can bill.
     ep = (out.get("endpoint") or {}) if isinstance(out, dict) else {}
+    if isinstance(ep, dict) and not surface.endpoint_note:
+        ep.pop("note", None)
     if isinstance(ep, dict):
         # Same quote catalog_search already leads with, so an agent that inspects by id
         # does not fall back to the per-record `cost.usd` slice on a grouped credit.
@@ -1335,7 +1580,17 @@ async def call(endpoint_id: str, params: dict | list | None = None,
                headers: dict | None = None, content_type: str | None = None,
                form: dict | None = None, uploads: list[dict] | None = None,
                authorization_method: str | None = None,
+               prior: Annotated[Any, Field(description=PRIOR_DESCRIPTION)] = None,
                ctx: Context = None) -> CallOut:  # type: ignore[assignment]
+    # `prior` takes any value and is parsed here, so a malformed one (a string, a list, a bad
+    # field) is dropped rather than failing argument validation for the call it rides on.
+    if prior is not None and _shows_prior(ctx.headers if ctx else None):
+        try:
+            parsed = PriorReviewIn.model_validate(prior)
+        except ValidationError:
+            parsed = None
+        if parsed is not None:
+            _start_prior(parsed, _bearer(ctx))
     return await _call_impl(
         endpoint_id, params=params, method=method, idempotency_key=idempotency_key,
         query=query, body=body, headers=headers, content_type=content_type,
@@ -1343,6 +1598,33 @@ async def call(endpoint_id: str, params: dict | list | None = None,
         authorization_method=authorization_method, ctx=ctx,
         catalog_only=False, surface=_TEAM_SURFACE, allowed_methods=None,
     )
+
+
+PRIOR_CLIENT = "mcp-prior"  # the review's `client`: tells these reviews from the review tool's
+PRIOR_TIMEOUT_S = 10
+# Running prior reviews: held so the loop does not drop them, removed as each finishes.
+_PRIOR_TASKS: set[asyncio.Task] = set()
+
+
+def _start_prior(prior: "PriorReviewIn", token: str) -> None:
+    """Submit the review in the background: the call it rode on never waits for it."""
+    task = asyncio.create_task(_submit_prior(prior, token))
+    _PRIOR_TASKS.add(task)
+    task.add_done_callback(_PRIOR_TASKS.discard)
+
+
+async def _submit_prior(prior: "PriorReviewIn", token: str) -> None:
+    body = {"call_id": prior.call_id, "usefulness": prior.usefulness}
+    if prior.reason:
+        body["reason"] = prior.reason
+    if prior.rows:
+        body["rows"] = [row.model_dump(exclude_none=True) for row in prior.rows]
+    try:
+        async with asyncio.timeout(PRIOR_TIMEOUT_S):
+            async with _api(token, client_name=PRIOR_CLIENT) as client:
+                await client.post("/reviews", json=body)
+    except Exception:  # a prior review is best-effort: it can only be lost
+        logging.getLogger("treg.mcp").info("prior review not recorded", exc_info=True)
 
 
 _IDEMPOTENCY_KEY_MAX = 200  # the server keeps this many characters (application/call/idempotency.py)
@@ -1610,6 +1892,8 @@ async def _call_impl(endpoint_id: str, params: dict | list | None = None,
         kind = r.headers.get("X-Treg-Hint")
         if kind == "review" and out.get("call_id"):
             out["hint"] = hints.review_hint(out["call_id"])
+        elif kind == "mark" and r.headers.get("X-Treg-Hint-Text"):
+            out["hint"] = r.headers["X-Treg-Hint-Text"]
         elif kind == "feedback":
             out["hint"] = hints.HINT
     if routed := r.headers.get("X-Treg-Routed-Tool"):
@@ -1620,6 +1904,7 @@ async def _call_impl(endpoint_id: str, params: dict | list | None = None,
     if r.status_code >= 400:
         # Whose fault it was matters to an agent deciding whether to retry elsewhere.
         out["whose_error"] = "treg" if r.headers.get("X-Treg-Error") else "provider"
+    admitted_no = r.status_code == 403 and is_admission_refusal(r.headers, out.get("body"))
     if notice := account_out_notice(r.headers):
         # treg's own account for this tool is out: not the caller's balance, not theirs to fix. The
         # provider's words would name its wallet and top-up page, so they are left out; the call id
@@ -1627,18 +1912,21 @@ async def _call_impl(endpoint_id: str, params: dict | list | None = None,
         out.pop("body", None)
         out["whose_error"] = "treg"
         out["hint"] = notice
-    elif r.status_code == 402:
+    elif r.status_code == 402 or admitted_no:
         # States the fact and stops. No link, and `topup_url` is stripped from the relayed body, so
-        # nothing on this path points a user at a payment page.
+        # nothing on this path points a user at a payment page. A 403 admission refusal names the
+        # same remedy and gets the same treatment.
         #
         # ChatGPT's submission policy supports linking users out to purchase PHYSICAL goods only;
         # prepaid API credit is a digital good.
         #
         # Scoped to the MCP path deliberately. `/call/`'s 402 still carries `topup_url` for the CLI
         # and the dashboard, where no such policy applies and the shortcut is genuinely useful.
+        if admitted_no:
+            out["hint"] = "treg won't pay for this call on this team; the body names the way around it"
         out["body"] = _without_purchase_pointers(out.get("body"))
         if is_balance_refusal(r.headers, out.get("body")):
-            out["hint"] = "the team's prepaid balance is not enough for this call"
+            out["hint"] = surface.balance_hint
     return out
 
 
@@ -1708,6 +1996,9 @@ async def _call_media_impl(
             structuredContent=metadata,
         )
     metadata["body"] = _body(response)
+    if response.status_code == 402 or (
+            response.status_code == 403 and is_admission_refusal(response.headers, metadata["body"])):
+        metadata["body"] = _without_purchase_pointers(metadata["body"])  # as `call` does: no payment link
     return CallToolResult(
         content=[TextContent(type="text", text=json.dumps(metadata, ensure_ascii=False, default=str))],
         structuredContent=metadata, isError=response.status_code >= 400,
@@ -1879,7 +2170,7 @@ directory_mcp = MCPServer(
         "several providers cover one job, catalog_get ranks them by measured success, speed and "
         "price; you pick."
     ),
-    middleware=[_StaticSurfaceCapabilities(), _UnknownCallArguments({
+    middleware=[_StaticSurfaceCapabilities(), _OAuthScopeGate(_V2_TOOL_SCOPES), _UnknownCallArguments({
         "catalog_call_read": "directory_catalog_call_read",
         "catalog_call_write": "directory_catalog_call_write",
     })],
@@ -2150,6 +2441,8 @@ class RequireAuthForProtectedTools:
         # challenging it would try to write to a socket that is already gone. Let the transport see
         # the exact request/disconnect sequence instead.
         verdict = self._auth_verdict(scope, body) if body_complete else None
+        if isinstance(verdict, tuple):
+            return await self._insufficient_scope(scope, receive, send, verdict[1])
         if verdict is not None:
             return await self._challenge(scope, receive, send, invalid=(verdict == "invalid"))
 
@@ -2205,7 +2498,28 @@ class RequireAuthForProtectedTools:
         # (initialize, tools/list, tools/call, prompts/*, resources/*) needs a credential.
         if not isinstance(method, str) or method.startswith("notifications/") or method == "ping":
             return None
-        return self._token_verdict(scope)
+        verdict = self._token_verdict(scope)
+        if verdict is None and method == "tools/call":
+            params = rpc.get("params")
+            return self._scope_verdict(scope, params.get("name") if isinstance(params, dict) else None)
+        return verdict
+
+    def _scope_verdict(self, scope, tool: Any) -> tuple[str, str] | None:
+        """("insufficient", the scope to request) when an OAuth token lacks the tool's scope. The
+        MCP spec answers that with 403 and a challenge naming the scope, which a client acts on by
+        asking the person for more; a tool error at 200 leaves it stuck."""
+        claims = _oauth_claims(_bearer_from_scope(scope))
+        if claims is None:
+            return None
+        from .domain.identity import mcp_oauth
+        needed = _TOOL_SCOPES[self.resource_version].get(tool)
+        held = mcp_oauth.mcp_permissions(claims.get("scope", ""))
+        if needed in held:
+            return None
+        wanted = held | {needed} if needed else held
+        markers = [s for s in claims.get("scope", "").split() if s == mcp_oauth.DIRECTORY_SCOPE]
+        return ("insufficient", " ".join(
+            [s for s in mcp_oauth.BASE_SCOPES if s in wanted] + markers))
 
     def _token_verdict(self, scope) -> str | None:
         """None = a credential to pass on. "missing" = none. "invalid" = a DEAD access token."""
@@ -2251,6 +2565,29 @@ class RequireAuthForProtectedTools:
         # The header the spec is actually about: it names where to discover how to authenticate.
         await JSONResponse(payload, status_code=401,
                            headers={"WWW-Authenticate": www})(scope, receive, send)
+
+
+    async def _insufficient_scope(self, scope, receive, send, wanted: str) -> None:
+        base = get_settings().public_url.rstrip("/")
+        suffix = "/mcp/v2" if self.resource_version == "v2" else ""
+        meta = f"{base}/.well-known/oauth-protected-resource{suffix}"
+        www = (f'Bearer error="insufficient_scope", scope="{wanted}", resource_metadata="{meta}", '
+               f'error_description="this tool needs a scope the grant does not carry"')
+        payload = {"error": "insufficient_scope",
+                   "error_description": ("this tool needs a scope the grant does not carry; nothing "
+                                         f"was sent. Re-authorize at {base}/oauth/authorize with scope "
+                                         f"\"{wanted}\""),
+                   "scope": wanted, "resource_metadata": meta}
+        await JSONResponse(payload, status_code=403,
+                           headers={"WWW-Authenticate": www})(scope, receive, send)
+
+
+def _bearer_from_scope(scope) -> str:
+    for k, v in scope.get("headers", []):
+        if k.lower() == b"authorization" and v.strip():
+            token = v.decode("latin-1").strip()
+            return token[7:].strip() if token.lower().startswith("bearer ") else token
+    return ""
 
 
 class NoTransformResponses:

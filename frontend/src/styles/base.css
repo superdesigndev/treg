@@ -1148,6 +1148,7 @@ a.td-prov:hover{color:var(--ink);text-decoration:underline;text-underline-offset
 .td-nav svg{width:16px;height:16px;fill:none;stroke:currentColor;stroke-width:1.6;stroke-linecap:round;stroke-linejoin:round}
 .td-b{flex:1;overflow:auto;padding:0 26px calc(32px + env(safe-area-inset-bottom,0px))}
 .td-sum{margin:0 0 20px;font-size:14px;line-height:1.6;color:var(--muted)}
+.td-caveat{margin:0 0 20px;padding:11px 14px;border-radius:12px;background:var(--panel2);font-size:13px;line-height:1.55;color:var(--ink);overflow-wrap:anywhere}
 .td-stats{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:10px;margin:0 0 20px}
 .td-stats div{padding:12px 14px;border-radius:12px;background:var(--panel2)}
 .td-stats span{display:block;font-size:11.5px;color:var(--muted)}

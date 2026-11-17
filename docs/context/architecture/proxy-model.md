@@ -3,6 +3,7 @@ title: The proxy - faithful credential-injecting relay + tool resolution
 status: shipped
 sources:
   - src/treg/infra/upstream/relay.py
+  - src/treg/infra/upstream/pathsegment.py
   - src/treg/jsontext.py
   - src/treg/infra/upstream/ssrf.py
   - src/treg/api.py
@@ -18,6 +19,8 @@ sources:
   - src/treg/application/call/types.py
   - src/treg/application/asynctasks.py
   - src/treg/application/call/keyslots.py
+  - src/treg/domain/catalog/reported_charge.py
+  - tests/test_reported_charge.py
   - src/treg/alembic/versions/0069_platform_key_slot.py
   - tests/test_platform_accounts.py
   - src/treg/client_identity.py
@@ -69,7 +72,8 @@ comparing hosts, so two providers sharing one API host (Facebook and Instagram o
 `graph.facebook.com`) resolve to different tools; the relay stays provider-agnostic.
 
 A live-verified free `GET` catalog row can declare `platform_auth: anonymous`. A team tool or team
-credential still wins. Otherwise `_anonymous_offer` requires the deployment's provider allow-list
+credential still wins, except that a public provider (`auth_kind="public"`) has no credential: a
+same-named team secret is never used for it, and only a team tool does. Otherwise `_anonymous_offer` requires the deployment's provider allow-list
 and creates an unmetered virtual tool with no bindings; `relay()` then injects nothing and strips or
 rewrites no caller header. The catalog price is free only when the caller supplies no provider
 credential header. No provider-specific anonymous path rules exist in the resolver or relay.
@@ -189,7 +193,7 @@ only: the admin-log pattern nets would rewrite ordinary fields like `"key": "uni
 normalized re-check that still finds a credential, a credential that cannot be rendered, or a body
 that cannot be decoded replaces the whole body with a `response_redacted` error. An unchanged body
 keeps its bytes and encoding; a masked one is re-sent identity-encoded with a fresh
-`Content-Length`. 2xx bodies are untouched.
+`Content-Length`. 2xx bodies are untouched, save the one member below.
 
 A failed unmetered response is read whole (`_read_whole_if_small`, up to 8 MiB) so masking sees
 every byte; one too large is replaced on a credentialed call and streamed untouched
@@ -197,6 +201,36 @@ every byte; one too large is replaced on a credentialed call and streamed untouc
 bodies on unmetered paths are kept for evidence only when `Content-Length` is declared and within
 `evidence._ERROR_CALLER_BODY_MAX`; larger or chunked uploads keep streaming. Redaction order,
 access and retention: [data-model](data-model.md#audit-writer-auditpy).
+
+A keyless agent-payments call is the one case where treg removes a non-`x-treg-` header the caller
+sent: its payment credential or wallet proof (`Authorization: Payment …`, `PAYMENT-SIGNATURE`,
+`X-PAYMENT`, `SIGN-IN-WITH-X`), through
+`routers.call._paid_call` and `agent_payments.consumes`. A request with any treg credential relays
+those headers unchanged.
+
+### The provider's reported charge
+
+`strip_reported_charge` (`TREG_STRIP_REPORTED_CHARGE`, off by default) removes the provider's own
+charge from a metered 2xx answer before the caller sees it (AGENTS.md non-negotiable 4). The member
+is the one the row's settlement reads: `reported_charge.path_of` takes a v2 row's
+`settle.reported.path`, or a row in today's spelling's `cost.reported_charge.path` under
+`response` (the move `scripts/catalog_v2.py` makes), so both spellings strip alike; a
+header-reported charge, a usage meter and a provider read hard-coded in `_observed_cost_micro` name
+no member. `reported_charge.without` is pure: it finds the selected objects as `paths.select`
+walks them, cuts every occurrence of the member out of each and keeps every other byte (indentation,
+separators, escapes, number spellings); an answer that is not one UTF-8 JSON document, a path
+selecting nothing or one ending in an index or a filter returns the bytes unchanged.
+
+`service._without_reported_charge` applies it at one place: in the metered hand-off after
+settlement, capacity signals, classification, the audit row, overflow and error masking, before
+the idempotent store and the task record (`POST /tasks/{call_id}` compares the answer the caller
+holds). A served archive hit and an overflow answer pass the same point; the archive recorded the
+provider's bytes earlier, so a repeat hit settles from the charge it carries. `X-Treg-Upstream-Failed`
+reads the provider's bytes. `X-Treg-Keep-Reported-Charge` (truthy) keeps the member; `X-Treg-*`
+headers are never relayed, and a routed child inherits it with the rest of its parent's headers.
+Non-2xx, encoded, streamed free fetches and spooled answers are never rewritten. `GET
+/calls/{id}/result` applies `answer_for_caller` to a metered row's archived bytes.
+`tests/test_reported_charge.py` covers the function and both surfaces.
 
 ## Connection discipline: a call in flight holds no DB connection
 
@@ -209,6 +243,10 @@ from token-endpoint I/O. Holding the request transaction through relay deadlocks
 (each request holds a slot while its settlement waits for another);
 `tests/test_call_pool_discipline.py` checks occupancy at the network boundary. Pool sizing:
 [deploy](../ops/deploy.md).
+
+A keyless agent-payments call verifies and settles its payment with the chain or facilitator before
+the call starts and with no session open; the database work around it is short sessions of its own
+([agent payments](agent-payments.md)).
 
 ## Tool resolution (`application.call.resolve`)
 
@@ -235,9 +273,24 @@ a tool the caller cannot see can neither cause a `409` nor win; this only narrow
 resolves still passes `_require_tool_use`. When ACL alone removed every match the answer is `403`
 naming only the host the caller supplied, never the hidden tool.
 
-A named miss falls through, in order: an exact catalog endpoint, then, only for a top-level call
-(`child_of is None`), a hub tool (`<team-slug>.<name>`). An own tool or catalog id always wins; a
-hub tool never shadows either. Hub runs take a per-team `hub_limits.slot()` and refuse with
+A named miss falls through, in order: an exact catalog endpoint, then a **vendor path**, then, only
+for a top-level call (`child_of is None`), a hub tool (`<team-slug>.<name>`). An own tool or catalog
+id always wins; a hub tool never shadows either.
+
+A vendor path is the named shape with a catalog provider for the name: `<provider>/<path>`, where
+`path` is relative to the provider's `base_url` (`/call/dataforseo/serp/google/organic/live/advanced`,
+DataForSEO's base already ending in `/v3`). So a client switches by replacing the vendor's base URL
+with `/call/<provider>`, and the same URL means the same upstream request whether a team's own tool
+named `<provider>` takes it (that wins, as every named shape does) or the catalog does.
+`vendor_path_endpoint` matches the provider's rows on method and path, a `{param}` taking one
+non-empty segment; fewer placeholders win (`/users/me` before `/users/{id}`) and a remaining tie is
+`409 target_ambiguous` with the candidate ids, never a guess. The row then runs exactly as
+`/call/<id>`: the segments become the query parameters of those names, which `_marketplace_upstream`
+consumes, so pricing, holds, capacity and the archive key are the id call's; a query parameter
+repeating one is `400`. A path on a row's other method is `400`; no match is `404` naming the base
+URL (with "drop the leading `/v3`" when the path repeats it) and relays nothing. Rows on another
+host than the base URL, with `authorization_paths`, or with a fixed query in `path` are id-only.
+`/catalog/call/` and keyless agent payments take ids only. Hub runs take a per-team `hub_limits.slot()` and refuse with
 `429 hub_busy` past `MAX_RUNS_PER_TEAM` rather than queue ([hub](hub.md)).
 
 Named-miss diagnostics, all on the error path:
@@ -259,10 +312,14 @@ resolution is shared.
 ### Catalog targets
 
 A live catalog row enters `_resolve_marketplace_call` and its credential ladder.
-`_marketplace_upstream` percent-encodes placeholder values but preserves a value already containing
-a valid `%HH` escape (an encoded Search Console property id must not become `%253A`). Raw `@` stays
+`_marketplace_upstream` places every placeholder value as exactly one path segment
+(`infra/upstream/pathsegment.py`): a value containing a valid `%HH` escape is decoded first
+(`unquote_to_bytes`, so non-UTF-8 bytes survive) and then encoded once, so an encoded Search Console
+property id does not become `%253A` and an encoded `/`, `?` or `#` stays escaped. Raw `@` stays
 literal: it is legal in a path segment and some email-path APIs reject `%40`. Slashes, query and
-fragment delimiters and invalid `%` stay escaped. A catalog `host` on a provider that opted into
+fragment delimiters and invalid `%` are escaped. A value that decodes to `.` or `..` is refused
+with `catalog_parameter_invalid` (400) before any hold, since URL normalization would remove it as
+a dot segment. The overflow road fills Orthogonal's `path` with the same `pathsegment.encode`. A catalog `host` on a provider that opted into
 `catalog_targets` must resolve through `OAuthProvider.profile_for_catalog_host` to an exact
 approved HTTPS base URL, which keeps its path prefix and supplies the binding; anything else is a
 treg 502 before reserve, so catalog data cannot redirect an injected credential.
@@ -295,11 +352,21 @@ member and project are ANDed, each NULL-means-any. `_deny_match` is pure and mir
 
 ### Call-time SSRF guard
 
+Every call-time lookup goes through `ssrf.host_is_public_async`: the blocking resolver runs on a small
+dedicated pool (`ssrf_lookup_threads`), so a slow or dead name server never stops the event loop, and at
+most one lookup per host is in flight (later callers await the same answer). No verdict is kept after it
+lands, so each new call resolves again.
+
 Just before `send`, `relay()` re-resolves the upstream host (`host_is_public`, gated by
 `proxy_ssrf_check`) and refuses with `502` if any address is non-public: a `base_url` public at
-registration can later resolve to `169.254.169.254` or localhost. Registration
-(`ssrf.safe_webhook_url`) also normalizes numeric IP encodings (`2130706433`, `0x7f000001`,
-`127.1`) through `inet_aton` before the literal-IP block. Targets must be globally routable
+registration can later resolve to `169.254.169.254` or localhost. The other server-side roads to a
+user-chosen address make the same check (`ssrf.url_host_is_public`, resolved off the event loop,
+same switch) just before sending: the health probe (`health._probe`), the owner webhook
+(`health._notify`), and the OAuth token endpoint on refresh (`HTTPXOAuthRefreshPort.exchange`) and
+code exchange (`HTTPXOAuthExchangePort.exchange_code`). Registration
+(`ssrf.safe_webhook_url`) strips a trailing dot (`localhost.`; for a tool's `base_url` only while
+`proxy_ssrf_check` is on, so a local registry can still name a loopback upstream) and normalizes numeric IP encodings
+(`2130706433`, `0x7f000001`, `127.1`) through `inet_aton` before the literal-IP block. Targets must be globally routable
 unicast. CGNAT `100.64.0.0/10` is internal service space (Tailscale, WireGuard overlays, Fly.io,
 some Kubernetes pod CIDRs, Alibaba Cloud's metadata endpoint `100.100.100.200`). NAT64 prefixes
 mapping non-global IPv4 do not make a target public; `64:ff9b::/96` stays blocked. A narrow
@@ -312,8 +379,9 @@ Treg refusals carry `X-Treg-Error: 1`. Application failures map to
 contracts: [api](../interface/api.md).
 
 `_audit` records each attempt and mirrors it through `_tool_called_props` / `analytics.capture`
-(never params or bodies). `domain.catalog.results.classify` shares hit/miss rules between telemetry
-and cache admission and inspects only already-buffered bodies
+(never params or bodies); a failed one also writes a classified `call_error` line
+([call events](call-events.md#failed-calls)). `domain.catalog.results.classify` shares hit/miss
+rules between telemetry and cache admission and inspects only already-buffered bodies
 ([archive result admission](archive.md#result-admission)). Overflow keeps both attempt rows under
 one call reference but emits one product event (`defer_analytics`).
 
@@ -352,6 +420,17 @@ A crash before that leaves holds to the reaper, which releases in the caller's f
 `route.child_outcome` reads each child's answer and is shared with
 [replay](replay.md). The parent assembles `{output, raw, _treg}` and owns the idempotency label.
 A pending outcome (`202`, `X-Treg-Route-Outcome: pending`) sends no `X-Treg-Cost-Micro`.
+Paging is by cursor only. An adapter declaring `paging: {cursor: <upstream path>}` gets a treg cursor in
+`output.next_cursor` (`trg1.` + the serving endpoint, the provider's own `next_cursor` and a hash of
+the body); sent back as `cursor`, it pins the call to that endpoint with no waterfall, merge or fill,
+and puts the provider's token at that path. A cursor for another body is refused 422
+`route_cursor_invalid`; a list from an adapter without `paging` names the candidates that have it on
+`_treg.paging`. Page numbers are not supported: a provider whose order changes between calls repeats
+and skips rows. Any other body paging key (`page`, `offset`, ...) the contract does not declare is
+refused 422 `route_paging_unsupported`, never dropped, since a dropped one re-bills page one.
+A candidate whose v1 price table multiplies the field
+its adapter fills from `limit` is priced from that upstream request (`_table_price`), the same
+figure its child hold reserves, so `X-Treg-Route-Max-Cost` judges the size asked for.
 
 ## Several treg-owned accounts behind one provider
 
@@ -560,12 +639,16 @@ zero estimate, a required fetch ownership rule and no submission, owned poll or 
 evidence. Their successful GETs bypass `_buffer_response` (ownership is still checked before relay)
 and stream in full with headers (including Range) through the router's close-once lifecycle. Audit
 size is unknown, not zero; nothing is archived or kept for replay, and the claim is released.
+A free `kind: utility` row with no ownership rule or managed resource (a provider's reference
+list, such as DataForSEO's per-country location codes) qualifies the same way: it has nothing to
+settle or learn, and a large country's list outgrows the buffer.
 
 Other responses needing settlement or ownership evidence have a hard 8 MiB complete-body budget:
 `_buffer_response` raises `GatewayFailed(response_buffer_limit)` on the first overflowing chunk,
 before any success headers, and closes the upstream in `finally`. The hold and claim are released,
 the caller gets a 502 at zero cost blamed on treg, and no prefix reaches settlement, archive or
-replay. Own-key streams are outside this limit. `tests/test_call_response_limits.py` covers both
+replay. Own-key streams are outside this limit; an own-key async answer is read whole up to
+`_TASK_ANSWER_MAX` to record its task, and a larger one streams untouched ([tasks](tasks.md)). `tests/test_call_response_limits.py` covers both
 HTTP hops.
 
 ### Spooled evidence for inline media

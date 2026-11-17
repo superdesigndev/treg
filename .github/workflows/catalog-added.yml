@@ -4,7 +4,9 @@ name: Catalog added dates
 # (docs/context/architecture/catalog.md). This compares every tool id with the base branch.
 # A deliberate change (a wrong backfill, a renamed tool given its old date) passes only with the
 # `added-date-change` label; adding or removing the label re-runs this check alone, not CI.
-# It also fails when the catalog schema's shrink-only violation list gains an entry the base lacks.
+# It also fails when the catalog schema's shrink-only violation list gains an entry the base lacks,
+# and when a row changes between today's `cost` spelling and v2 without the `catalog-migration`
+# label; the summary and note warnings of the rows added or changed are printed with it.
 on:
   pull_request:
     types: [opened, synchronize, reopened, labeled, unlabeled]
@@ -31,31 +33,35 @@ jobs:
       - name: Fetch the base branch
         if: github.event_name == 'pull_request'
         run: git fetch --no-tags --depth=1 origin "${{ github.base_ref }}"
-      - name: Find the added-date-change label
+      - name: Find the added-date-change and catalog-migration labels
         id: label
         env:
           GH_TOKEN: ${{ github.token }}
-          PR_LABELED: ${{ contains(github.event.pull_request.labels.*.name, 'added-date-change') }}
+          PR_LABELS: ${{ join(github.event.pull_request.labels.*.name, ' ') }}
         # A merge queue build carries no pull request payload and holds every pull request queued
         # ahead of this one; each is named by its merge or squash commit subject.
         run: |
-          allow="$PR_LABELED"
+          labels=" $PR_LABELS "
           if [ "$GITHUB_EVENT_NAME" = merge_group ]; then
             for number in $(git log --first-parent --format=%s "$BASE..HEAD" | grep -oE '#[0-9]+' | tr -d '#' | sort -u); do
-              if gh pr view "$number" --repo "$GITHUB_REPOSITORY" --json labels --jq '.labels[].name' 2>/dev/null \
-                  | grep -qx added-date-change; then
-                allow=true
-              fi
+              labels="$labels $(gh pr view "$number" --repo "$GITHUB_REPOSITORY" --json labels --jq '.labels[].name' 2>/dev/null | tr '\n' ' ') "
             done
           fi
-          echo "allow=$allow" >> "$GITHUB_OUTPUT"
+          for label in added-date-change catalog-migration; do
+            case "$labels" in *" $label "*) on=true ;; *) on=false ;; esac
+            echo "$(echo "$label" | tr - _)=$on"
+          done >> "$GITHUB_OUTPUT"
       - uses: astral-sh/setup-uv@v7
         with:
           python-version: "3.13"
       - name: Existing added dates are unchanged
         env:
-          ALLOW: ${{ steps.label.outputs.allow == 'true' && '--allow-change' || '' }}
+          ALLOW: ${{ steps.label.outputs.added_date_change == 'true' && '--allow-change' || '' }}
         # The helper needs only PyYAML; no project install.
         run: uv run --no-project --with pyyaml python scripts/catalog_added.py --base "$BASE" ${ALLOW:+"$ALLOW"}
       - name: The shrink-only violation list did not grow
         run: uv run --locked python scripts/catalog_shrink_only.py --base "$BASE"
+      - name: Every row keeps its spelling, and the text of added or changed rows is judged
+        env:
+          ALLOW: ${{ steps.label.outputs.catalog_migration == 'true' && '--allow-respelling' || '' }}
+        run: uv run --locked python scripts/catalog_validate.py --base "$BASE" ${ALLOW:+"$ALLOW"}

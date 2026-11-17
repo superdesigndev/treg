@@ -1,0 +1,95 @@
+# Filtrat's email finder, on its own Filtrat account and key (verification is filtrat.yaml): a name and a
+# company domain in, a confirmed work email out. Every call is synchronous; each answer reports its
+# own charge in credits_used, which settles the call. Only found addresses cost credits: not found,
+# and a catch-all address that can't be confirmed, are free. A repeat of a search the account already
+# made is free (is_cached: true, credits_used 0). Bulk finder jobs are not listed.
+# The same account reads a company's LinkedIn page by its URL (companies.enrich): 12 credits per
+# company found, from the same balance; a page that isn't found is free, and the same page again
+# within 30 days is free.
+provider: filtrat-finder
+source:
+  docs: https://filtrat.io/v1/docs
+  openapi: https://filtrat.io/openapi.json
+  curated: '2026-11-10'
+pricing_url: https://filtrat.io/v1/credits/rate-card
+limits: "On treg's finder key: 110 searches a minute (a request over that waits up to 10 s, then 429 with Retry-After) and at most 20 in progress (503 SERVER_BUSY with Retry-After past that). Every search answers within 15 seconds; one still running then answers not_found, free. Other keys: 200 a minute. Company pages have their own allowance on the same key: 600 a minute and 20 in progress; a page read stops after 10 seconds and answers not_found, free."
+cache: forbidden
+endpoints:
+  - id: filtrat-finder.people.email.find
+    added: '2026-11-10'
+    domain: people
+    capability: people.email.find
+    platform: people
+    scope: any_account
+    method: POST
+    path: /finder/search
+    name: Find a work email
+    summary: Find a person's work email; on a catch-all domain the address is resolved to a confirmed one.
+    body_allowlist: true
+    platform_request:
+      body.resolve_catchall: true
+    input:
+      bodyType: json
+      body:
+        first_name: {type: string, required: false, example: Jane}
+        last_name: {type: string, required: false, example: Doe}
+        full_name: {type: string, required: false, note: "Instead of first_name and last_name"}
+        domain: {type: string, required: true, example: example.com, note: "Company domain or website URL"}
+        company_name: {type: string, required: false, note: "Corrects a domain that doesn't receive mail"}
+        resolve_catchall: {type: boolean, required: true, enum: [true], example: true, note: "Fixed to true on this tool."}
+      note: "status found or not_found (free). A found address is confirmed, including on a catch-all domain; one that can't be confirmed comes back not_found, free. Found costs 25 credits when the address needed catch-all resolution and 20 when it didn't; credits_used says which."
+    test_request: {body: {first_name: Jane, last_name: Doe, domain: example.com, resolve_catchall: true}}
+    cost:
+      type: per_success
+      value: 25
+      currency: credit
+      per: 1
+      unit: result
+      settle: usage
+      usage: {path: credits_used, unit: credit}
+      fallback: {value: 25, note: "Twenty-five credits is the most a find with catch-all resolution costs."}
+      source: observed
+      source_url: https://filtrat.io/v1/credits/rate-card
+      checked: '2026-11-10'
+      confidence: verified
+      note: "credits_used settles the call. A find that needed catch-all resolution reduced the balance by 25 credits; the same person found again without needing it reduced it by 20. Misses are free."
+    verified: '2026-11-11'
+    example_response: examples/filtrat-finder.people.email.find.json
+    docs_url: https://filtrat.io/v1/docs
+  - id: filtrat-finder.companies.enrich
+    added: '2026-11-13'
+    domain: companies
+    capability: companies.enrich
+    platform: companies
+    scope: any_account
+    method: POST
+    path: /company/linkedin-page
+    name: Enrich a company from its LinkedIn page
+    summary: "A company's LinkedIn page, read live and returned as structured data: name, website, domain, industry, type, size, employee count, followers, headquarters, country, specialties, description, phone, every office location and social links."
+    body_allowlist: true
+    platform_request:
+      body.mode: json
+    input:
+      bodyType: json
+      body:
+        url: {type: string, required: true, example: "https://www.linkedin.com/company/stripe", note: "linkedin.com/company/<name or numeric id>; www. and https:// optional, /about/ and query strings ignored. Any other URL answers 422 INVALID_URL, free."}
+        mode: {type: string, required: true, enum: [json], example: json, note: "Fixed to json on this tool."}
+      note: "status found or not_found (free). Fields LinkedIn doesn't show for a company come back null. The page is read live, about 4-6 s (at most 10 s, then not_found, free); the same page again within 30 days answers at once, free."
+    test_request: {body: {url: "https://www.linkedin.com/company/stripe", mode: json}}
+    cost:
+      type: per_success
+      value: 12
+      currency: credit
+      per: 1
+      unit: result
+      settle: usage
+      usage: {path: credits_used, unit: credit}
+      fallback: {value: 12, note: "Twelve credits is what a company page found costs."}
+      source: observed
+      source_url: https://filtrat.io/v1/credits/rate-card
+      checked: '2026-11-11'
+      confidence: verified
+      note: "credits_used settles the call. A page found reduced the balance by 12 credits; not_found and a repeat of the same page within 30 days report 0."
+    verified: '2026-11-11'
+    example_response: examples/filtrat-finder.companies.enrich.json
+    docs_url: https://filtrat.io/v1/docs

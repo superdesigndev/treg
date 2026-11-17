@@ -16,6 +16,7 @@ sources:
   - src/treg/web/connect-demo.html
   - tests/test_mcp.py
   - tests/test_mcp_oauth.py
+  - tests/test_m365_oauth.py
   - tests/test_mcp_directory.py
   - tests/test_marketplace_call.py
 related:
@@ -27,8 +28,8 @@ related:
 
 # MCP
 
-The doors an assistant comes through (ChatGPT, Claude, Claude Code, Cursor, anything speaking the
-Model Context Protocol). One deployment, database and enforcement layer serve both:
+The doors an assistant comes through (ChatGPT, Claude, Claude Code, Cursor, Microsoft 365 Copilot,
+anything speaking the Model Context Protocol). One deployment, database and enforcement layer serve both:
 
 - `/mcp/` is the team MCP surface: catalog, team tools and imported skills.
 - `/mcp/v2/` is the catalog-only Claude directory surface. It cannot list or call team-owned tools,
@@ -58,8 +59,8 @@ behavior.
 | Area | Must stay shared | Intentional difference |
 |---|---|---|
 | catalog search | loading, ranking, price view, near misses, the process observation cache and refresh Task used by HTTP | next-call guidance and event source; V2 drops rows on its hidden platforms |
-| endpoint details | the `/catalog/endpoints/{id}` route and error shape | client attribution; V2 refuses an endpoint on its hidden platforms |
-| calls | request assembly, credentials, policy, limits, idempotency, relay, errors, metering, audit | team MCP accepts team tools; V2 accepts catalog ids only, splits read/write methods, refuses its hidden platforms and shows no invitation |
+| endpoint details | the `/catalog/endpoints/{id}` route and error shape | client attribution; V2 refuses an endpoint on its hidden platforms and leaves out the row's `note` (`_SurfacePolicy.endpoint_note`) |
+| calls | request assembly, credentials, policy, limits, idempotency, relay, errors, metering, audit; neither carries a purchase link on a 402 | team MCP accepts team tools; V2 accepts catalog ids only, splits read/write methods, refuses its hidden platforms and shows no invitation; a balance refusal's hint names where an admin adds funds on team MCP only (`_SurfacePolicy.balance_hint`) |
 | balance | team selection, grant labels, balance route, error shape | client attribution |
 | catalog requests | `/tool-requests`, rate limit, field limits, caller IP | event source and client attribution |
 | transport | host checks, compression, cache headers, eager auth, static capabilities | V2 has a separate audience, metadata path, scope marker and Claude browser origin |
@@ -151,8 +152,9 @@ through the real routes without a socket. The enforcement rules (deny rules, pin
 access, the credential ladder, metering) live in those routes; a path that read the database
 directly would be a second implementation of each, drifting quietly. Those requests carry the
 caller's credential (for an OAuth bearer, the identity it is exchanged for), so the call tools
-refuse an `endpoint_id` with an empty, `.` or `..` segment at any depth of percent-encoding (a
-trailing slash excepted): httpx collapses dot segments, so `../orgs/...` would otherwise reach a
+refuse an `endpoint_id` with a `.` or `..` segment at any depth of percent-encoding (a trailing
+slash and a mid-path empty segment excepted — percent-encoded URLs inside one segment must still
+reach the upstream encoded): httpx collapses dot segments, so `../orgs/...` would otherwise reach a
 management route. `_call_url` also checks the final path stays under the call route. The catalog is the one
 exception, read straight from `catalog_store` for speed, not permission.
 
@@ -313,6 +315,29 @@ The document must claim its own URL, or a document hosted anywhere could assert 
 `client_id` and inherit their consent. `redirect_uris` match exactly, never by prefix
 (`https://good.test/cb.evil` starts with the registered value).
 
+## A confidential client: Microsoft 365 Copilot
+
+Microsoft 365 Copilot reaches `/mcp/` through treg's declarative agent (`plugins/m365-copilot/`),
+and supports neither CIMD nor DCR without a client secret, nor an API key on an MCP action. Its token
+store sends every plugin's code to one shared redirect URI
+(`mcp_oauth.M365_REDIRECT_URI`), so that URI cannot tell treg's agent from a plugin anyone else
+registered with our authorize URL and a server of their own as its base URL. A public client
+there would hand a user's grant to whoever built the look-alike; the consent screen's
+self-registration warning is the only defence a DCR client has.
+
+So the agent is a first-party **confidential** client, `treg-m365-copilot`, built like
+"treg for Sheets" from settings rather than a row (`_m365_client`): it exists only while
+`m365_client_secret` is set, the same value entered in the publisher's Microsoft OAuth registration.
+The token endpoint authenticates it on both grants with `client_secret_basic` (Microsoft's default,
+both halves form-urlencoded) or `client_secret_post`, never both at once; a failure is
+`invalid_client` with 401 (and `WWW-Authenticate: Basic` after a Basic attempt). The refresh grant
+authenticates before the replay check, so a copied refresh token without the secret cannot even
+revoke its family. PKCE stays mandatory. Microsoft sends no `resource` on this path, so the grant
+takes the V1 default. Public clients are unchanged: PKCE binds their code, and a secret one sends is
+ignored. Because only treg's registration holds the secret, the consent screen names the client
+without the self-registration warning. `token_endpoint_auth_methods_supported` still advertises
+`none` alone: DCR issues only public clients, and the confidential one is configured out of band.
+
 ## The consent screen is the security boundary
 
 It is the only place a human sees what they grant, so it says it in words (*this spends the team's
@@ -320,6 +345,24 @@ balance*, *uses the keys your team registered, without seeing them*) and warns w
 registered itself, because DCR is open to any name. It carries the team picker with each team's
 balance: a person in several teams is asked, not guessed at, and showing the balance prevents picking
 an empty team.
+
+### Scopes are what was consented, and every tool call is held to them
+
+`treg:catalog` (search, read prices, feedback), `treg:call` (spend the balance, use the team's keys,
+publish hub tools) and `treg:read` (balance, the team's own tools, its provider resources) are the
+permission scopes. `mcp_oauth.granted_mcp_scope` records the supported scopes a client asked for;
+a request naming none of them is a request for all three, which is what clients that omit `scope`
+expect. The consent page lists only the granted lines, and the token response returns the granted
+string. A token reaches the internal API as a full identity, so a `tools/call` on either surface
+whose token lacks the tool's scope (`_TOOL_SCOPES`; a tool missing from the map is refused to OAuth
+tokens) is refused before any internal request. The transport answers it 403 with
+`WWW-Authenticate: Bearer error="insufficient_scope", scope="<granted plus needed>"`, the MCP spec's
+cue for a client to ask the person for more; `_OAuthScopeGate` refuses the same calls as a tool
+error for any request the transport does not inspect. Because that identity is whole, a caller's id
+is formatted into an internal path only as one plain segment (`_segment_url`): `catalog_get` with
+`../../orgs/<id>/balance` would otherwise read a route its scope does not allow. A grant recorded before
+normalization with an empty or foreign scope was consented as full access and keeps it
+(`mcp_permissions`). Per-org and identity tokens carry no OAuth scope and are not gated.
 
 Approval is a same-origin POST (a GET that granted access could be triggered by any navigating page),
 and the page inherits `X-Frame-Options: DENY`. `Origin: null` is accepted only when `Sec-Fetch-Site`
@@ -394,6 +437,14 @@ session; the query parameter is only a UI cue and carries no OAuth data. Every s
 the parked request. The cookie stores a relative path and honours only `/oauth/authorize`, so it
 cannot become a general post-login redirect.
 
+Resuming straight after sign-in means a new account reaches consent before the dashboard has made
+its first team. For an account that is not onboarded, has no membership and did not sign in through
+SSO, consent shows the name the first team will take (`first_run.team_names`) instead of the picker,
+and approval with `org_id=0` runs the dashboard's own first run (`first_run.first_team`, outside the
+consent session) before minting the code, so signup credit and attribution behave as in the
+dashboard. "treg for Sheets" is excluded. An onboarded account with no team (it left every team) is
+still refused.
+
 ## `/connect-demo`
 
 A page that plays a third-party app and runs the whole flow (register, consent popup, exchange, tool
@@ -416,7 +467,8 @@ OAuth is the click-to-connect path. The headless path, and the installer's defau
 key as an `Authorization: Bearer` header. `treg mcp install` (`mcp_install.py`) registers the server
 into each supported agent with that header: Claude Code via `claude mcp add --scope user` (user-global;
 it owns its format and redacts the token), Cursor and opencode via their documented JSON, Codex as one
-`[mcp_servers.treg]` table in `~/.codex/config.toml`. The stdlib has no TOML writer, so
+`[mcp_servers.treg]` table in `~/.codex/config.toml`, and (binary CLI only) GitHub Copilot as an
+`mcpServers` entry in its user `mcp-config.json` ([cli-binary](../interface/cli-binary.md)). The stdlib has no TOML writer, so
 `_write_toml_agent` cuts out any previous table as text, appends a fresh one, and writes only when
 `tomllib` parses it back to exactly that entry. Hermes (YAML, a server-only dependency) and OpenClaw
 are reported with the exact manual step, never written.
@@ -433,6 +485,13 @@ are reported with the exact manual step, never written.
   on a 401, and treg returns 200 for a valid header. The key carries its team and needs no second
   header. `curl {BASE}/install.sh | sh -s -- --token <key>` installs, signs in and runs
   `treg mcp install` in one paste.
+- **`treg mcp install --oauth` repairs a dead saved header.** Session-secret rotation,
+  `revoke-tokens` and Default-key rotation kill the bearer written into each agent while the CLI
+  recovers with `treg login`, and Claude Code and Codex refuse OAuth fallback while
+  `headers.Authorization` is set. `--oauth` needs no valid token: it rewrites every managed entry to
+  the URL only (Claude without `--header`, JSON without `headers`, Codex without `http_headers`) and
+  says how each client authorizes. `_resolve_org` names this repair on the unpinned 401 and on a
+  pinned `/orgs` 401; a 200 that does not list the team keeps the "no longer available" wording.
 
 A builder proxying MCP sets `X-Treg-Meta` once per session on their own HTTP client; the model never
 sees it.

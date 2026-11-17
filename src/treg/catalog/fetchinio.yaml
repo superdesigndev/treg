@@ -4,9 +4,8 @@ source:
   openapi: https://docs.fetchin.io/api-reference/openapi.json
   curated: '2026-09-24'
 limits: >-
-  The account reports 5 requests/second. Get Post Engagement consumes two rate-limit units;
-  treg conservatively paces the shared key at 2 calls/second because smoothing is provider-wide.
-  BYOK calls use the customer's account limit.
+  Get Post Engagement consumes two rate-limit units; treg conservatively paces the shared key at
+  2 calls/second because smoothing is provider-wide. BYOK calls use the customer's account limit.
 pricing_url: https://fetchin.io/pricing/credits
 proposed_capabilities:
   linkedin.post.engagement: List a post's comments and reactions together

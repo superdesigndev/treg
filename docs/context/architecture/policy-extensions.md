@@ -5,6 +5,7 @@ sources:
   - src/treg/policy.py
   - src/treg/bootstrap.py
   - src/treg/application/signup.py
+  - src/treg/application/call/admission.py
   - src/treg/domain/identity/promotions.py
   - tests/test_policy.py
 ---
@@ -49,3 +50,38 @@ entry type. A first-proof deferral is never re-asked, since a first proof happen
 Failure grants because the other signup-credit defenses (one credit per inbox, the human check, the
 domain blocklist) still apply, so a broken extension returns to the public baseline instead of
 withholding credit from every new user.
+
+## `call_admission`
+
+Outcomes `allow` or `deny`; on failure `allow`; budget 20 ms. Asked from `_execute_call` through
+`application/call/admission.py` once a call has resolved to treg's own money (`mk.metered`: its key, or
+its pay-per-use OAuth app), before anything reaches the provider on that account: the public-resource
+check, the direct reserve and an overflow-only attempt all come after it. A call on the team's own
+credential never asks, and a deployment without a handler reads nothing extra
+(`PolicyRegistry.asks_call_admission`).
+
+The context carries what treg already knows about the call (team, caller, key, endpoint, provider, the
+catalog row's `platform`, `funding`, the raw estimate) plus one read made only for this point on the
+session the call already holds: the team's first owner (the person behind every agent identity) and
+whether the team bought credit it was not refunded for (a purchased block with no `revoke`). That
+session is committed before asking, so no pooled connection waits on the extension, and the reserve's
+own commit that follows has nothing left to send.
+
+The decision covers the whole call. An archive hit is refused too: it spends the team's credit on
+treg's account even though no provider is reached. An overflow attempt rides the same decision, and
+the context names the provider the call asked for, not the aggregator that might serve it.
+
+`deny` is a 403 of kind `admission_denied`. Its body names the endpoint, the provider and the remedy,
+never the rule: `funds_required` with the top-up URL and the own-key alternative for a team that never
+bought credit, `own_key_required` with only the own-key alternative for one that did, since adding funds
+could not help it. Nothing is reserved; the audit row reads `refused_by=policy`, charged 0. On MCP the
+top-up URL and link are stripped like a 402's, and `hint` states the fact. A routed job skips a refused
+candidate without spending its error allowance (another candidate may run on the team's own key); when
+nothing ran and a candidate was refused, it answers that refusal for the routed endpoint, with `tried`,
+not a 502 or a cost-ceiling 402.
+
+Failure allows: a broken extension returns treg to its public limits (balance, caps, quotas), which still
+bound the spend, instead of refusing every metered call. Failures arrive at the call rate, so the
+`event=policy_failed` line is written at most once per point and error every 10 s with a `suppressed`
+count; the fault event rolls up on its own. The budget cancels a handler only at an await, so a handler
+deciding from memory is never cut short by a busy event loop.

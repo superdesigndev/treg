@@ -1151,6 +1151,35 @@ async def test_hlrlookup_insufficient_credit_200_is_never_billed_and_strikes_the
     get_settings.cache_clear()
 
 
+async def test_dataforseo_cost_limit_200_is_never_billed_and_strikes_the_breaker(
+        clients: AsyncClient, monkeypatch):
+    """DataForSEO's spent account cost limit is HTTP 200 with its own `status_code` 40203, on the
+    envelope or on the task. Treg's account, not the caller's: released, and a strike on the breaker."""
+    from treg.domain.capacity import signatures as S
+    msg = "The money limit per day has been exceeded: 1000.0984 >= 1000."
+    task = {"version": "0.1", "status_code": 20000, "tasks": [{"status_code": 40203, "status_message": msg}]}
+    assert S.is_exhausting(S.classify("dataforseo", 200, None, json.dumps(task).encode()))
+    assert S.classify("dataforseo", 200, None, b'{"status_code": 40202}') is None, "a per-minute rate limit"
+    assert S.classify("dataforseo", 200, None, b'{"tasks": [{"status_code": 40501}]}') is None, "a caller's error"
+    monkeypatch.setenv("TREG_PLATFORM_KEY_DATAFORSEO", "login:password")
+    monkeypatch.setenv("TREG_PLATFORM_PROVIDERS", "dataforseo")
+    get_settings.cache_clear()
+    out = json.dumps({"version": "0.1", "status_code": 40203, "status_message": msg, "cost": 0,
+                      "tasks_count": 0, "tasks_error": 0, "tasks": None}).encode()
+    monkeypatch.setattr(call_service, "relay", _fake_relay(200, out))
+    before = await _balance(clients)
+    r = await clients.post("/call/dataforseo.google.serp.organic",
+                           json=[{"keyword": "coffee", "location_code": 2840, "language_code": "en"}])
+    assert r.status_code == 200 and r.headers["X-Treg-Capacity"] == "exhausted", r.headers
+    assert await _balance(clients) == before and await _holds() == []
+    release = next(e for e in await _rows(LedgerEntry) if e.kind == "release")
+    assert release.meta.get("reason") == "capacity_balance"
+    async with session_maker() as db:
+        lock = Lock.from_json(await ratestore.kv_get(db, LOCK_NS, "dataforseo"))
+    assert lock.strikes == 1
+    get_settings.cache_clear()
+
+
 async def test_icypeas_out_of_credits_200_overflows_through_orthogonal(
         clients: AsyncClient, overflow_on, monkeypatch):
     monkeypatch.setenv("TREG_PLATFORM_KEY_ICYPEAS", "PLATFORM-ICYPEAS")
@@ -1208,3 +1237,23 @@ async def test_icypeas_people_search_overflows_at_orthogonals_flat_fee(clients: 
     assert before - await _balance(clients) == 10_000
     assert seen[0].json == {"api": "icypeas", "path": "/api/find-people", "body": body}
     assert await _holds() == []
+
+
+async def test_an_overflow_only_spend_refusal_gives_back_the_call_slot(clients: AsyncClient, overflow_on, monkeypatch):
+    await _route(price_micro=3_000)
+    await _exhausted()
+    org_id = (await clients.get("/auth/me")).json()["org_id"]
+    r = await clients.post(f"/orgs/{org_id}/agents",
+                           json={"name": "rep-overflow", "daily_call_cap": 1, "daily_spend_cap_micro": 0})
+    assert r.status_code == 200, r.text
+    agent = r.json()
+    seen = []
+    monkeypatch.setattr(O, "_send", _orthogonal([(200, {"success": True, "data": VENDOR_BODY, "priceCents": 0.3})], seen))
+    for n in (1, 2, 3):
+        r = await clients.get(f"/call/{EP}?aweme_id={n}", headers={"X-Treg-Token": agent["token"]})
+        assert r.status_code == 429 and r.json()["detail"]["error"] == "member_spend_cap_reached", r.text
+    assert seen == []
+    await clients.patch(f"/orgs/{org_id}/members/{agent['user_id']}/spend-cap",
+                        json={"daily_spend_cap_micro": -1})
+    r = await clients.get(f"/call/{EP}?aweme_id=4", headers={"X-Treg-Token": agent["token"]})
+    assert r.status_code == 200 and r.headers["X-Treg-Served-Via"] == "overflow:orthogonal", r.text

@@ -114,8 +114,45 @@ def _rows(rule: dict, request: dict) -> int | None:
     value = found[0] if found else None
     raw = str(value).strip() if value is not None and not isinstance(value, list) else ""
     if raw.isdigit():
-        return top if len(raw) > len(str(top)) else max(1, min(int(raw), top))
+        return top if len(raw.lstrip("0")) > len(str(top)) else max(1, min(int(raw.lstrip("0") or "0"), top))
     return int(rule["default"]["value"]) if rule.get("default") else None
+
+
+def _whole(value: object, top: int | None, low: int = 1) -> bool:
+    """A count parameter's value is a whole number from `low` to `top`, or of at least `low` when `top`
+    is None: a JSON integer, or ASCII digits."""
+    if isinstance(value, str) and value.isascii() and value.isdigit():
+        digits = value.lstrip("0")
+        if len(digits) > len(str(low if top is None else top)):
+            return top is None
+        value = int(digits or "0")
+    return isinstance(value, int) and not isinstance(value, bool) and low <= value and (top is None or value <= top)
+
+
+def _invalid(ep: dict, parameter: str, rule: str, message: str) -> ResolutionFailed:
+    return ResolutionFailed("catalog_parameter_invalid", status_code=400, rule=rule, detail={
+        "error": "catalog_parameter_invalid", "endpoint_id": ep["id"], "parameter": parameter,
+        "message": message})
+
+
+def require_request(ep: dict, request_data: dict) -> None:
+    """On every tier, before anything is held: a parameter whose declared type is not a list is sent
+    at most once, and a `reserve.rows` count the request carries is a whole number from 1 to its
+    max (an absent one takes the default). The value itself is never echoed."""
+    inputs = ep.get("input") or {}
+    declared = {**(inputs.get("pathParams") or {}), **(inputs.get("queryParams") or {})}
+    for block in ("queryParams", "pathParams"):
+        for name, value in (request_data.get(block) or {}).items():
+            spec = declared.get(name)
+            if isinstance(value, list) and isinstance(spec, dict) and "array" not in str(spec.get("type")) \
+                    and spec.get("type") != "list":
+                raise _invalid(ep, name, "repeat", f"{ep['id']} takes {name} once")
+    rule = (ep.get("reserve") or {}).get("rows")
+    if rule and rule.get("param"):
+        found = select(rule["param"], request_document(ep, request_data, defaults=False))
+        if found and found[0] is not None and not _whole(found[0], int(rule["max"])):
+            raise _invalid(ep, rule["param"], "range",
+                           f"{ep['id']} needs {rule['param']}: a whole number from 1 to {rule['max']}")
 
 
 def require_rows(ep: dict, request_data: dict) -> None:
@@ -123,12 +160,27 @@ def require_rows(ep: dict, request_data: dict) -> None:
     before anything is held."""
     rule = (ep.get("reserve") or {}).get("rows")
     if rule and _rows(rule, request_document(ep, request_data, defaults=False)) is None:
-        raise ResolutionFailed("catalog_parameter_invalid", status_code=400, detail={
-            "error": "catalog_parameter_invalid", "endpoint_id": ep["id"], "parameter": rule["param"],
-            "message": f"{ep['id']} needs {rule['param']}: a whole number from 1 to {rule['max']}"})
+        raise _invalid(ep, rule["param"], "required",
+                       f"{ep['id']} needs {rule['param']}: a whole number from 1 to {rule['max']}")
 
 
-def _entities(rule: dict, request: dict) -> int:
+def require_rates(ep: dict, cat) -> None:
+    """On treg's key, a row whose price, reported charge or usage meter is in a credit or meter
+    fx.yaml has no rate for refuses the call before anything is held."""
+    price_ = ep.get("price") or {}
+    settle = ep.get("settle") or {}
+    needed = [(price_.get("currency", "USD"), price_.get("unit"))] \
+        if price_.get("value") is not None or price_.get("table") is not None or price_.get("rates") else []
+    needed += [_meter(settle[form]["unit"]) for form in ("reported", "usage") if form in settle]
+    for currency, unit in needed:
+        if _rate(cat, ep["provider"], currency, unit) is None:
+            name = f"{ep['provider']} {unit if currency == 'unit' else currency}"
+            raise ResolutionFailed("catalog_price_invalid", status_code=503, detail={
+                "error": "catalog_price_invalid", "endpoint_id": ep["id"], "rate": name,
+                "message": f"{ep['id']} could not be priced: fx.yaml has no rate for {name}"})
+
+
+def _entity_total(rule: dict, request: dict) -> int:
     paths = rule["from"] if isinstance(rule["from"], list) else [rule["from"]]
     total = 0
     for path in paths:
@@ -139,7 +191,25 @@ def _entities(rule: dict, request: dict) -> int:
                     total += sum(1 for part in parts if part.strip())
                 elif item is not None:
                     total += 1
-    return max(1, min(total, int(rule.get("max") or 10_000)))
+    return total
+
+
+def _entities(rule: dict, request: dict) -> int:
+    return max(1, min(_entity_total(rule, request), int(rule.get("max") or 10_000)))
+
+
+def require_entities(ep: dict, request_data: dict) -> None:
+    """On treg's key, a request naming more `reserve.entities` than the row's max is refused
+    before anything is held: the hold stops at the max, so the rest would go unheld."""
+    rule = (ep.get("reserve") or {}).get("entities")
+    if not rule:
+        return
+    top = int(rule.get("max") or 10_000)
+    if _entity_total(rule, request_document(ep, request_data, defaults=False)) > top:
+        raise ResolutionFailed("catalog_parameter_invalid", status_code=400, rule="platform", detail={
+            "error": "catalog_parameter_invalid", "endpoint_id": ep["id"], "parameter": rule["from"],
+            "message": f"{ep['id']} takes at most {top} inputs per call on treg's key; split the "
+                       "request or connect your own key"})
 
 
 def plugin_request(ep: dict, request_data: dict) -> plugins.Request:
@@ -185,11 +255,15 @@ def price(ep: dict, cat, request_data: dict) -> tuple[int, int, int, dict]:
             raise ResolutionFailed("catalog_price_invalid", status_code=503, detail={
                 "error": "catalog_price_invalid", "endpoint_id": ep["id"],
                 "message": f"{ep['id']} could not price this request"})
-        hold = min(held, _micro_up(Decimal(reserve["max"]) * rate))
+        terms["count_max_micro"] = _micro_up(Decimal(reserve["max"]) * rate)
+        hold = min(held, terms["count_max_micro"])
     else:
         units = ((_rows(reserve["rows"], raw) or 1) if "rows" in reserve
                  else _entities(reserve["entities"], raw) if "entities" in reserve else 1)
         hold = amount(terms, units)
+        top = (reserve.get("rows") or reserve.get("entities") or {}).get("max")
+        if top is not None:
+            terms["count_max_micro"] = amount(terms, int(top))
     scalar = (price_.get("value") if price_.get("value") is not None
               else (price_.get("fallback") or {}).get("value"))
     unit = _micro_up(Decimal(scalar) * rate) if scalar is not None else 0
@@ -197,6 +271,15 @@ def price(ep: dict, cat, request_data: dict) -> tuple[int, int, int, dict]:
     credit_unit = (settlement_basis._micro(credit, 1_000_000)
                    if credit and "credit" in (price_.get("currency"), (reported or {}).get("unit")) else 0)
     return hold, unit, credit_unit, terms
+
+
+def worst_case_micro(ep: dict, cat) -> int:
+    """RAW micro-USD of a v2 row's `settle.worst_case` in its price's currency, 0 when it declares
+    none or the currency has no rate."""
+    worst = (ep.get("settle") or {}).get("worst_case")
+    price_ = ep.get("price") or {}
+    rate = currency_micro(cat, ep["provider"], price_.get("currency", "USD"), price_.get("unit"))
+    return 0 if worst is None or rate is None else _micro_up(Decimal(worst) * rate)
 
 
 def _reads_request(ep: dict) -> bool:
@@ -255,18 +338,20 @@ def reported(terms: dict, doc: object, headers=None) -> int | None:
         return None
     try:
         figure = Decimal(str(raw).strip()) * Decimal(str(rule.get("scale", 1)))
+        if not figure.is_finite() or figure < 0:
+            return None
+        return int((figure * Decimal(terms["reported_micro"])).quantize(Decimal(1), rounding=ROUND_HALF_UP))
     except (InvalidOperation, ValueError):
         return None
-    if not figure.is_finite() or figure < 0:
-        return None
-    return int((figure * Decimal(terms["reported_micro"])).quantize(Decimal(1), rounding=ROUND_HALF_UP))
 
 
 def _evidence(terms: dict, hold: int, doc: object, request: plugins.Request | None,
               answer: plugins.Answer | None) -> int | None:
-    """What a `count` or `plugin` settle reads off this answer, capped at the hold."""
+    """What a `count` or `plugin` settle reads off this answer, capped at the row's declared
+    maximum (its `reserve` max at the unit price), or at the hold when the row declares none."""
     found = _uncapped(terms, doc, request, answer)
-    return None if found is None else min(found, hold)
+    cap = terms.get("count_max_micro")
+    return None if found is None else min(found, hold if cap is None else int(cap))
 
 
 def _uncapped(terms: dict, doc: object, request: plugins.Request | None,
@@ -327,18 +412,23 @@ def _settled(terms: dict, basis_: dict, hold: int, doc: object, raw: bytes, evid
     return hold if evidence is None else evidence
 
 
-def _figure(terms: dict, doc: object, headers, submitted: int | None) -> int | None:
-    """A readable reported charge, else what the provider reported on an async submission."""
-    figure = reported(terms, doc, headers)
-    return submitted if figure is None and (terms.get("settle") or {}).get("reported") else figure
+def _figure(terms: dict, doc: object, headers, terminal: bool, submitted: int | None) -> int | None:
+    """The provider's reported charge: read off this answer, or for an async task the one it
+    reported on the submission, which is when the task was billed; a terminal answer's own figure
+    is never read."""
+    if terminal:
+        return submitted if (terms.get("settle") or {}).get("reported") else None
+    return reported(terms, doc, headers)
 
 
 def charge(terms: dict, basis_: dict, hold: int, status: int, doc: object, *, raw: bytes = b"",
-           headers=None, request_data: dict | None = None,
+           headers=None, request_data: dict | None = None, terminal: bool = False,
            submitted: int | None = None) -> tuple[int | None, int]:
     """(observed, actual) for a 2xx answer, by the settlement order from step 2: `free_when`, a
     readable reported charge, then the outcome with `bill`, then the `settle` form. `observed` is
-    what the answer itself said it cost."""
+    what the answer itself said it cost: a free outcome with no settle evidence says 0, as a row in
+    today's spelling records it. A `terminal` answer is an async task's, settled with what the
+    provider reported on its `submitted` submission."""
     request_values = request_data if request_data is not None else terms.get("request") or {}
     endpoint = {"provider": terms["provider"], **terms}
     request = plugins.Request(method=terms["method"],
@@ -349,13 +439,13 @@ def charge(terms: dict, basis_: dict, hold: int, status: int, doc: object, *, ra
     if free_when is not None and holds(free_when, {
             **request_document(endpoint, request_values, defaults=True), "response": doc}):
         return 0, 0
-    if (figure := _figure(terms, doc, headers, submitted)) is not None:
+    if (figure := _figure(terms, doc, headers, terminal, submitted)) is not None:
         return figure, figure
     evidence = _evidence(terms, hold, doc, request, answer)
     judged = outcomes.judge(endpoint, status, doc, request=request, answer=answer)
     rule = {"error": bill.get("error", "free"), "miss": bill.get("miss", "free")}.get(judged.state, "charged")
     if rule == "free":
-        return evidence, 0
+        return (0 if evidence is None else evidence), 0
     if rule != "charged":
         return evidence, min(amount(terms, rule), hold)
     return evidence, _settled(terms, basis_, hold, doc, raw, evidence)
@@ -363,14 +453,15 @@ def charge(terms: dict, basis_: dict, hold: int, status: int, doc: object, *, ra
 
 def terminal(terms: dict, basis_: dict, outcome: str, doc: object) -> int:
     """What an async v2 task settles at on its terminal answer: a `billed_failure` is charged by
-    its `settle` form, a `success` goes through steps 2 to 5 with the terminal document; a figure
-    the provider reported on the submission stands in for one the terminal answer lacks."""
+    its `settle` form, a `success` goes through steps 2 to 5 with the terminal document. A reported
+    settle is the figure the provider reported on the submission, as a row in today's spelling
+    settles it."""
     hold = int(basis_.get("reserve_micro") or 0)
     raw = json.dumps(doc).encode() if doc is not None else b""
     submitted = basis_.get("submission_charge_micro")
     if outcome != "billed_failure":
-        return charge(terms, basis_, hold, 200, doc, raw=raw, submitted=submitted)[1]
-    if (figure := _figure(terms, doc, None, submitted)) is not None:
+        return charge(terms, basis_, hold, 200, doc, raw=raw, terminal=True, submitted=submitted)[1]
+    if (figure := _figure(terms, doc, None, True, submitted)) is not None:
         return figure
     return _settled(terms, basis_, hold, doc, raw, _evidence(terms, hold, doc, None, None))
 

@@ -133,6 +133,33 @@ async def test_a_task_that_fails_after_posting_still_bills_what_dataforseo_charg
     assert task.status == "settled" and task.settled_micro == 3_750
 
 
+async def test_a_task_whose_submission_reported_no_cost_settles_at_the_hold(
+    clients: AsyncClient, monkeypatch, dfs_platform,
+):
+    """The terminal answer's own `cost` (0 on a task_get) is never the bill, and a task_get's 20000
+    fails the submission's own success rule, so only the charged error keeps this at the hold."""
+    posted = _envelope([_task(TASK_A, 20100, 0.00375)])
+    posted.pop("cost")
+    answers = [
+        _response(200, posted),
+        _response(200, _envelope([_task(TASK_A, 20000, 0, result=[{"items": []}])])),
+    ]
+
+    async def fake_relay(*args, **kwargs):
+        return answers.pop(0)
+
+    monkeypatch.setattr(call_service, "relay", fake_relay)
+    submitted = await clients.post(f"/call/{POST}", json=[{"keyword": "tea"}])
+    assert submitted.status_code == 200
+    async with session_maker() as db:
+        task = (await db.execute(select(AsyncTaskRecord))).scalar_one()
+    assert "submission_charge_micro" not in task.settlement_basis
+    assert (await clients.get(f"/call/{GET}", params={"id": TASK_A})).status_code == 200
+    async with session_maker() as db:
+        task = await db.get(AsyncTaskRecord, task.call_id)
+    assert task.status == "settled" and task.settled_micro == task.settlement_basis["reserve_micro"] > 0
+
+
 async def test_a_batch_whose_first_task_was_refused_bills_the_tasks_dataforseo_accepted(
     clients: AsyncClient, monkeypatch, dfs_platform,
 ):

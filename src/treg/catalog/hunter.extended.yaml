@@ -8,7 +8,6 @@ source:
   - https://help.hunter.io/en/articles/1970956-hunter-api
 endpoints:
 - id: hunter.x.discover-companies
-  tier: extended
   platform: companies
   capability: companies.search
   method: POST
@@ -49,19 +48,19 @@ endpoints:
     body:
       query: B2B SaaS companies in the United States
     bodyType: json
-  cost:
-    type: free
-    value: 0
+  price:
+    value: '0'
     currency: USD
     unit: call
     note: Discover does not consume search or verification credits
+  error: {when: {any: [{path: response.error, op: present}, {path: response.errors, op: present}]}}
+  miss: {when: [{path: response.data, op: present}, {path: response.data, op: empty}]}
   docs_url: https://hunter.io/api-documentation/v2#discover
   verified: '2026-07-28'
   added: '2026-07-28'
   example_response: examples/hunter.x.discover-companies.json
   observed_time: 2.11
 - id: hunter.x.discover-people
-  tier: extended
   platform: companies
   capability: companies.search
   method: GET
@@ -87,11 +86,7 @@ endpoints:
   test_request:
     queryParams:
       query: B2B SaaS companies in the United States
-  cost:
-    type: free
-    value: 0
-    currency: USD
-    unit: call
+  price: {value: '0', currency: USD, unit: call}
   docs_url: https://hunter.io/api-documentation/v2#discover
   verified: '2026-07-28'
   added: '2026-07-28'
@@ -99,7 +94,6 @@ endpoints:
   observed_time: 1.25
 - id: hunter.x.discover-views-list
   kind: account
-  tier: extended
   platform: companies
   method: GET
   path: /discover/views
@@ -109,11 +103,7 @@ endpoints:
     note: no required params
   test_request:
     queryParams: {}
-  cost:
-    type: free
-    value: 0
-    currency: USD
-    unit: call
+  price: {value: '0', currency: USD, unit: call}
   docs_url: https://hunter.io/api-documentation/v2#discover
   verified: '2026-07-28'
   added: '2026-07-28'
@@ -122,7 +112,6 @@ endpoints:
 - id: hunter.x.discover-views-get
   added: '2026-07-28'
   kind: account
-  tier: extended
   platform: companies
   method: GET
   path: /discover/views/{id}
@@ -135,16 +124,11 @@ endpoints:
         required: true
         note: saved-search id, from hunter.x.discover-views-list
   untestable: requires a real saved-search id belonging to the account; no bare public target exists
-  cost:
-    type: free
-    value: 0
-    currency: USD
-    unit: call
+  price: {value: '0', currency: USD, unit: call}
   docs_url: https://hunter.io/api-documentation/v2#discover
 - id: hunter.x.discover-views-create
   added: '2026-07-28'
   kind: account
-  tier: extended
   platform: companies
   method: POST
   path: /discover/views
@@ -161,16 +145,11 @@ endpoints:
         required: false
     bodyType: json
   untestable: writes real account state (creates a saved search); deliberately not probed blind
-  cost:
-    type: free
-    value: 0
-    currency: USD
-    unit: call
+  price: {value: '0', currency: USD, unit: call}
   docs_url: https://hunter.io/api-documentation/v2#discover
 - id: hunter.x.discover-views-delete
   added: '2026-07-28'
   kind: account
-  tier: extended
   platform: companies
   method: DELETE
   path: /discover/views/{id}
@@ -182,16 +161,11 @@ endpoints:
         type: string
         required: true
   untestable: destructive; requires a real saved-search id, none available for a blind probe
-  cost:
-    type: free
-    value: 0
-    currency: USD
-    unit: call
+  price: {value: '0', currency: USD, unit: call}
   docs_url: https://hunter.io/api-documentation/v2#discover
 - id: hunter.x.domain-finder
   capability: companies.domain.find
   platform: companies
-  tier: extended
   method: GET
   path: /domain-finder
   name: "Find a company's domain from its name"
@@ -216,19 +190,13 @@ endpoints:
     queryParams:
       company: Stripe
       limit: 1
-  cost:
-    type: free
-    value: 0
-    currency: USD
-    unit: call
-    note: does not consume credits
+  price: {value: '0', currency: USD, unit: call, note: does not consume credits}
   docs_url: https://hunter.io/api-documentation/v2#domain-finder
   verified: '2026-07-28'
   added: '2026-07-28'
   example_response: examples/hunter.x.domain-finder.json
   observed_time: 5.83
 - id: hunter.x.email-count
-  tier: extended
   platform: people
   method: GET
   path: /email-count
@@ -252,11 +220,7 @@ endpoints:
   test_request:
     queryParams:
       domain: stripe.com
-  cost:
-    type: free
-    value: 0
-    currency: USD
-    unit: call
+  price: {value: '0', currency: USD, unit: call}
   docs_url: https://hunter.io/api-documentation/v2#email-count
   verified: '2026-07-28'
   added: '2026-07-28'
@@ -264,13 +228,15 @@ endpoints:
   observed_time: 0.02
 - id: hunter.x.multi-domain-search
   added: '2026-07-28'
-  tier: extended
   platform: people
   method: POST
   path: /multi-domain-search
   name: Search emails across companies matching filters
   summary: Searches every company matching your filters in one request; returns masked rows with reveal handles
   input:
+    # Hunter takes location, industry, technology, seniority and required_field as one
+    # comma-separated value; a list a caller passes is sent that way, not as repeated keys.
+    queryArrayEncoding: comma
     queryParams:
       company_name:
         type: string
@@ -350,9 +316,8 @@ endpoints:
       location: US
       department: executive
       limit: 1
-  cost:
-    type: free
-    value: 0
+  price:
+    value: '0'
     currency: USD
     unit: call
     note: 'search is free; credits are charged only on hunter.x.multi-domain-search-reveal. Beta: parameters may change'
@@ -362,7 +327,6 @@ endpoints:
   capability: people.search
 - id: hunter.x.multi-domain-search-reveal
   added: '2026-07-28'
-  tier: extended
   platform: people
   method: POST
   path: /multi-domain-search/reveal
@@ -376,21 +340,15 @@ endpoints:
         note: array of opaque handles from a prior multi-domain-search response, max 100 per request
     bodyType: json
   untestable: handles are opaque ids minted by a prior multi-domain-search call; none exist without one
-  cost:
-    type: per_success
-    value: 1
+  price:
+    value: '1'
     currency: credit
     per: 1
     unit: call
-    source: docs
-    source_url: https://hunter.io/pricing
-    checked: '2026-07-28'
-    confidence: documented
     note: 1 SEARCH credit per personal email revealed; 1 credit per domain for generic emails
   docs_url: https://hunter.io/api-documentation/v2#multi-domain-search
   capability: people.enrich
 - id: hunter.x.combined-find
-  tier: extended
   platform: people
   method: GET
   path: /combined/find
@@ -409,19 +367,20 @@ endpoints:
   test_request:
     queryParams:
       email: steli@close.io
-  cost:
-    type: per_success
-    value: 0.2
+  price:
+    value: '0.2'
     currency: credit
     per: 1
     unit: call
-    source: docs
-    source_url: https://hunter.io/pricing
-    checked: '2026-07-28'
-    confidence: documented
     note: 0.2 credits, billed conditionally (only when the combined record comes back complete); a 404 or partial record is free — same rate as the /people/find and /companies/find enrichment routes
+  # A JSON answer naming no person is an error outcome, and free; an error envelope beside a named
+  # person is charged.
+  bill:
+    error: charged
+    free_when: &hunter-no-person [{path: response, op: present}, {path: response.data.person.name.fullName, op: absent}]
+  error: {when: {any: [{path: response.error, op: present}, {path: response.errors, op: present}, *hunter-no-person]}}
   miss:
-    status: 404
+    status: [404]
     means: "no record for that email — an expected outcome (and free, per the cost note), not an API failure; do not retry"
   docs_url: https://hunter.io/api-documentation/v2#email-enrichment
   verified: '2026-07-28'
@@ -431,7 +390,6 @@ endpoints:
   capability: people.enrich
 - id: hunter.x.leads-list
   kind: account
-  tier: extended
   platform: people
   method: GET
   path: /leads
@@ -462,11 +420,7 @@ endpoints:
   test_request:
     queryParams:
       limit: 1
-  cost:
-    type: free
-    value: 0
-    currency: USD
-    unit: call
+  price: {value: '0', currency: USD, unit: call}
   docs_url: https://hunter.io/api/leads
   verified: '2026-07-28'
   added: '2026-07-28'
@@ -475,7 +429,6 @@ endpoints:
 - id: hunter.x.leads-get
   added: '2026-07-28'
   kind: account
-  tier: extended
   platform: people
   method: GET
   path: /leads/{id}
@@ -487,16 +440,11 @@ endpoints:
         type: string
         required: true
   untestable: requires a real lead id belonging to the account
-  cost:
-    type: free
-    value: 0
-    currency: USD
-    unit: call
+  price: {value: '0', currency: USD, unit: call}
   docs_url: https://hunter.io/api/leads
 - id: hunter.x.leads-create
   added: '2026-07-28'
   kind: account
-  tier: extended
   platform: people
   method: POST
   path: /leads
@@ -549,16 +497,11 @@ endpoints:
     bodyType: json
     note: writes real account state, deliberately no test_request
   untestable: writes real account state (creates a lead); deliberately not probed blind
-  cost:
-    type: free
-    value: 0
-    currency: USD
-    unit: call
+  price: {value: '0', currency: USD, unit: call}
   docs_url: https://hunter.io/api/leads
 - id: hunter.x.leads-update
   added: '2026-07-28'
   kind: account
-  tier: extended
   platform: people
   method: PUT
   path: /leads/{id}
@@ -584,16 +527,11 @@ endpoints:
         required: false
     bodyType: json
   untestable: requires a real lead id belonging to the account; mutating
-  cost:
-    type: free
-    value: 0
-    currency: USD
-    unit: call
+  price: {value: '0', currency: USD, unit: call}
   docs_url: https://hunter.io/api/leads
 - id: hunter.x.leads-delete
   added: '2026-07-28'
   kind: account
-  tier: extended
   platform: people
   method: DELETE
   path: /leads/{id}
@@ -605,15 +543,10 @@ endpoints:
         type: string
         required: true
   untestable: destructive; requires a real lead id
-  cost:
-    type: free
-    value: 0
-    currency: USD
-    unit: call
+  price: {value: '0', currency: USD, unit: call}
   docs_url: https://hunter.io/api/leads
 - id: hunter.x.leads-lists-list
   kind: account
-  tier: extended
   platform: people
   method: GET
   path: /leads_lists
@@ -632,11 +565,7 @@ endpoints:
   test_request:
     queryParams:
       limit: 1
-  cost:
-    type: free
-    value: 0
-    currency: USD
-    unit: call
+  price: {value: '0', currency: USD, unit: call}
   docs_url: https://hunter.io/api/leads
   verified: '2026-07-28'
   added: '2026-07-28'
@@ -645,7 +574,6 @@ endpoints:
 - id: hunter.x.leads-lists-get
   added: '2026-07-28'
   kind: account
-  tier: extended
   platform: people
   method: GET
   path: /leads_lists/{id}
@@ -657,16 +585,11 @@ endpoints:
         type: string
         required: true
   untestable: requires a real leads-list id belonging to the account
-  cost:
-    type: free
-    value: 0
-    currency: USD
-    unit: call
+  price: {value: '0', currency: USD, unit: call}
   docs_url: https://hunter.io/api/leads
 - id: hunter.x.leads-lists-create
   added: '2026-07-28'
   kind: account
-  tier: extended
   platform: people
   method: POST
   path: /leads_lists
@@ -683,16 +606,11 @@ endpoints:
     bodyType: json
     note: writes real account state, deliberately no test_request
   untestable: writes real account state (creates a leads list); deliberately not probed blind
-  cost:
-    type: free
-    value: 0
-    currency: USD
-    unit: call
+  price: {value: '0', currency: USD, unit: call}
   docs_url: https://hunter.io/api/leads
 - id: hunter.x.leads-lists-update
   added: '2026-07-28'
   kind: account
-  tier: extended
   platform: people
   method: PUT
   path: /leads_lists/{id}
@@ -712,16 +630,11 @@ endpoints:
         required: false
     bodyType: json
   untestable: requires a real leads-list id; mutating
-  cost:
-    type: free
-    value: 0
-    currency: USD
-    unit: call
+  price: {value: '0', currency: USD, unit: call}
   docs_url: https://hunter.io/api/leads
 - id: hunter.x.leads-lists-delete
   added: '2026-07-28'
   kind: account
-  tier: extended
   platform: people
   method: DELETE
   path: /leads_lists/{id}
@@ -733,16 +646,11 @@ endpoints:
         type: string
         required: true
   untestable: destructive; requires a real leads-list id
-  cost:
-    type: free
-    value: 0
-    currency: USD
-    unit: call
+  price: {value: '0', currency: USD, unit: call}
   docs_url: https://hunter.io/api/leads
 - id: hunter.x.custom-attributes-list
   added: '2026-07-28'
   kind: account
-  tier: extended
   platform: people
   method: GET
   path: /custom_attributes
@@ -752,11 +660,7 @@ endpoints:
     note: no required params
   test_request:
     queryParams: {}
-  cost:
-    type: free
-    value: 0
-    currency: USD
-    unit: call
+  price: {value: '0', currency: USD, unit: call}
   docs_url: https://help.hunter.io/en/articles/1970956-hunter-api
   unverified: 'http 404 — WITHDRAWN, not broken. Re-probed 2026-07-31 and still 404, and the tell is
     the response BODY — Hunter answers every real API route with its JSON error envelope
@@ -768,7 +672,6 @@ endpoints:
 - id: hunter.x.custom-attributes-create
   added: '2026-07-28'
   kind: account
-  tier: extended
   platform: people
   method: POST
   path: /custom_attributes
@@ -782,16 +685,11 @@ endpoints:
     bodyType: json
     note: writes real account state, deliberately no test_request
   untestable: writes real account state (creates a custom attribute); deliberately not probed blind. NOTE 2026-07-31 — the family's read route GET /custom_attributes 404s with an HTML page rather than Hunter's JSON error envelope, so this write route is very likely retired too; it was not called because a write needs a real lead.
-  cost:
-    type: free
-    value: 0
-    currency: USD
-    unit: call
+  price: {value: '0', currency: USD, unit: call}
   docs_url: https://help.hunter.io/en/articles/1970956-hunter-api
 - id: hunter.x.custom-attributes-update
   added: '2026-07-28'
   kind: account
-  tier: extended
   platform: people
   method: PUT
   path: /custom_attributes/{id}
@@ -808,16 +706,11 @@ endpoints:
         required: false
     bodyType: json
   untestable: requires a real custom-attribute id; mutating. NOTE 2026-07-31 — the family's read route GET /custom_attributes 404s with an HTML page rather than Hunter's JSON error envelope, so this write route is very likely retired too; it was not called because a write needs a real lead.
-  cost:
-    type: free
-    value: 0
-    currency: USD
-    unit: call
+  price: {value: '0', currency: USD, unit: call}
   docs_url: https://help.hunter.io/en/articles/1970956-hunter-api
 - id: hunter.x.custom-attributes-delete
   added: '2026-07-28'
   kind: account
-  tier: extended
   platform: people
   method: DELETE
   path: /custom_attributes/{id}
@@ -829,15 +722,10 @@ endpoints:
         type: string
         required: true
   untestable: destructive; requires a real custom-attribute id. NOTE 2026-07-31 — the family's read route GET /custom_attributes 404s with an HTML page rather than Hunter's JSON error envelope, so this write route is very likely retired too; it was not called because a write needs a real lead.
-  cost:
-    type: free
-    value: 0
-    currency: USD
-    unit: call
+  price: {value: '0', currency: USD, unit: call}
   docs_url: https://help.hunter.io/en/articles/1970956-hunter-api
 - id: hunter.x.campaigns-list
   kind: account
-  tier: extended
   platform: people
   method: GET
   path: /campaigns
@@ -856,11 +744,7 @@ endpoints:
   test_request:
     queryParams:
       limit: 1
-  cost:
-    type: free
-    value: 0
-    currency: USD
-    unit: call
+  price: {value: '0', currency: USD, unit: call}
   docs_url: https://help.hunter.io/en/articles/1970956-hunter-api
   verified: '2026-07-28'
   added: '2026-07-28'
@@ -869,7 +753,6 @@ endpoints:
 - id: hunter.x.campaigns-recipients-list
   added: '2026-07-28'
   kind: account
-  tier: extended
   platform: people
   method: GET
   path: /campaigns/{id}/recipients
@@ -881,16 +764,11 @@ endpoints:
         type: string
         required: true
   untestable: requires a real campaign id belonging to the account
-  cost:
-    type: free
-    value: 0
-    currency: USD
-    unit: call
+  price: {value: '0', currency: USD, unit: call}
   docs_url: https://help.hunter.io/en/articles/1970956-hunter-api
 - id: hunter.x.campaigns-recipients-add
   added: '2026-07-28'
   kind: account
-  tier: extended
   platform: people
   method: POST
   path: /campaigns/{id}/recipients
@@ -912,9 +790,8 @@ endpoints:
     bodyType: json
     note: enrolling a recipient can trigger a REAL outreach email — never call this blind; deliberately no test_request
   untestable: enrolling a recipient can trigger a REAL outreach email; deliberately not probed blind
-  cost:
-    type: free
-    value: 0
+  price:
+    value: '0'
     currency: USD
     unit: call
     note: no search/verification credit charged; consumes the account's sending quota instead
@@ -922,7 +799,6 @@ endpoints:
 - id: hunter.x.campaigns-recipients-remove
   added: '2026-07-28'
   kind: account
-  tier: extended
   platform: people
   method: DELETE
   path: /campaigns/{id}/recipients
@@ -939,9 +815,5 @@ endpoints:
         required: false
     bodyType: json
   untestable: requires a real campaign id and enrolled recipients; mutating
-  cost:
-    type: free
-    value: 0
-    currency: USD
-    unit: call
+  price: {value: '0', currency: USD, unit: call}
   docs_url: https://help.hunter.io/en/articles/1970956-hunter-api

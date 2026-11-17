@@ -122,6 +122,13 @@ never aborted or retried automatically; an uncertain write says it may have comp
 Logout and teardown clear everything; a lost POST response or closed tab cannot recover a
 hash-stored key, and the UI says to save it before closing.
 
+## Out of credit
+
+`#billing` is where every 402 and email sends a person to add funds, but the Billing tab is admin-only.
+A member who lands there (`memberFunds`, set in `loadOrgAdmin`) is told to ask an admin and shown the
+team's owners and admins from `GET /orgs/{org_id}/admins`, which any member of that team may read;
+the full roster (`/members`) stays admin-only.
+
 ## Spend
 
 `GET /orgs/{id}/api-keys/spend` (Team -> API Keys) and `GET /orgs/{id}/usage/spend` (Activity ->
@@ -172,7 +179,9 @@ Admins also see the team's "No API key" total (`NO_KEY` in `state/constants.js`)
   `tour/tour.js` drives the dashboard tour.
 - The top bar's sides never shrink below their content, so the nav scrolls rather than overlaps.
 - **Referral** links are never gated behind paying, and opening `GET /referrals` runs the payout
-  sweep ([money](../architecture/money.md)).
+  sweep ([money](../architecture/money.md)). Only finite `cap.limit` values can show the reached-limit
+  warning. The partner page uses `cap.standard_limit` (falling back to `cap.limit` for older APIs)
+  for its cap number, preserving the existing partner terms and application link.
 - The Team Showcase tab (`#orgs/showcase`, owners and admins) manages /showcase entries; a 409 keeps
   the draft and offers a reload. Avatars upload as raw bodies to `POST /images/{kind}`; with
   `/auth/me` `uploads: false` the controls are hidden. See [showcase](../architecture/showcase.md).

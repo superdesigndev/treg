@@ -23,6 +23,24 @@ def test_compare_names_what_differs_and_fails(tmp_path, capsys):
     assert "byte-identical" in capsys.readouterr().out
 
 
+def test_a_declared_path_passes_and_any_other_difference_still_fails(tmp_path, capsys):
+    base = {"by_id": {"a.x": {"cost": 1}, "a.y": {}}, "fx": {"USD": 1.0}}
+    noted = {"by_id": {"a.x": {"cost": 1, "note": "n"}, "a.y": {"note": "m"}}, "fx": {"USD": 1.0}}
+    body = tmp_path / "body.md"
+    body.write_text("Why.\n\n```dump-declared\nby_id.*.note  # the loader serves a row's note\n```\n")
+    assert catalog_dump.declared_paths(body.read_text()) == ["by_id.*.note"]
+    for name, doc in (("b", base), ("c", noted), ("d", noted | {"fx": {"USD": 2.0}})):
+        (tmp_path / f"{name}.json").write_text(json.dumps(doc))
+    compare = ["--compare", str(tmp_path / "b.json")]
+    assert catalog_dump.main([*compare, str(tmp_path / "c.json"), "--declared-in", str(body)]) == 0
+    assert "declared by_id.*.note: 2 difference(s)" in capsys.readouterr().out
+    assert catalog_dump.main([*compare, str(tmp_path / "c.json")]) == 1
+    capsys.readouterr()
+    assert catalog_dump.main([*compare, str(tmp_path / "d.json"), "--declared-in", str(body)]) == 1
+    assert capsys.readouterr().out.splitlines() == [
+        "declared by_id.*.note: 2 difference(s)", "first difference: fx.USD", "fx: 1 differ: USD"]
+
+
 def test_a_dataclass_field_at_its_default_is_left_out():
     import dataclasses
 

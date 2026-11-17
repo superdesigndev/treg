@@ -19,6 +19,10 @@ proposed_capabilities:
   web.places.detail: "Get details for temporary Brave place identifiers"
   web.places.description: "Get descriptions for temporary Brave place identifiers"
 
+defaults:
+  bill: {miss: charged, error: charged}
+  provenance: {source: docs, source_url: 'https://brave.com/search/api/', checked: '2026-10-30', confidence: documented}
+
 endpoints:
   - id: bravesearch.web.search
     capability: web.search
@@ -43,17 +47,14 @@ endpoints:
     verified: '2026-10-30'
     added: '2026-10-30'
     example_response: examples/bravesearch.web.search.json
-    cost: &search_cost
-      type: per_call
-      value: 5
+    price:
+      value: '5'
       currency: USD
       per: 1000
       unit: call
-      source: docs
-      source_url: https://brave.com/search/api/
-      checked: '2026-10-30'
-      confidence: documented
-      note: "Live probes matched the documented rate; no per-call dollar meter is exposed."
+      note: Live probes matched the documented rate; no per-call dollar meter is exposed.
+    error: {when: {any: [{path: response.error, op: present}, {path: response.errors, op: present}]}}
+    miss: {when: {any: [{path: response.web.results, op: absent}, {path: response.web.results, op: empty}]}}
     docs_url: https://api-dashboard.search.brave.com/api-reference/web/search/get
 
   - id: bravesearch.web.search.news
@@ -77,7 +78,14 @@ endpoints:
     verified: '2026-10-30'
     added: '2026-10-30'
     example_response: examples/bravesearch.web.search.news.json
-    cost: *search_cost
+    price:
+      value: '5'
+      currency: USD
+      per: 1000
+      unit: call
+      note: Live probes matched the documented rate; no per-call dollar meter is exposed.
+    error: {when: {any: [{path: response.error, op: present}, {path: response.errors, op: present}]}}
+    miss: {when: {any: [{path: response.results, op: absent}, {path: response.results, op: empty}]}}
     docs_url: https://api-dashboard.search.brave.com/api-reference/news/news_search/get
 
   - id: bravesearch.web.search.context
@@ -101,7 +109,12 @@ endpoints:
     verified: '2026-10-30'
     added: '2026-10-30'
     example_response: examples/bravesearch.web.search.context.json
-    cost: *search_cost
+    price:
+      value: '5'
+      currency: USD
+      per: 1000
+      unit: call
+      note: Live probes matched the documented rate; no per-call dollar meter is exposed.
     docs_url: https://api-dashboard.search.brave.com/api-reference/ai/llm_context/get
 
   - id: bravesearch.web.search.images
@@ -125,7 +138,12 @@ endpoints:
     verified: '2026-10-30'
     added: '2026-10-30'
     example_response: examples/bravesearch.web.search.images.json
-    cost: *search_cost
+    price:
+      value: '5'
+      currency: USD
+      per: 1000
+      unit: call
+      note: Live probes matched the documented rate; no per-call dollar meter is exposed.
     docs_url: https://api-dashboard.search.brave.com/api-reference/images/image_search
 
   - id: bravesearch.web.search.videos
@@ -149,7 +167,12 @@ endpoints:
     verified: '2026-10-30'
     added: '2026-10-30'
     example_response: examples/bravesearch.web.search.videos.json
-    cost: *search_cost
+    price:
+      value: '5'
+      currency: USD
+      per: 1000
+      unit: call
+      note: Live probes matched the documented rate; no per-call dollar meter is exposed.
     docs_url: https://api-dashboard.search.brave.com/api-reference/videos/video_search/get
 
   - id: bravesearch.places.search
@@ -174,7 +197,12 @@ endpoints:
     verified: '2026-10-30'
     added: '2026-10-30'
     example_response: examples/bravesearch.places.search.json
-    cost: *search_cost
+    price:
+      value: '5'
+      currency: USD
+      per: 1000
+      unit: call
+      note: Live probes matched the documented rate; no per-call dollar meter is exposed.
     docs_url: https://api-dashboard.search.brave.com/api-reference/web/place_search
 
   - id: bravesearch.places.detail
@@ -194,7 +222,12 @@ endpoints:
     verified: '2026-10-30'
     added: '2026-10-30'
     example_response: examples/bravesearch.places.detail.json
-    cost: *search_cost
+    price:
+      value: '5'
+      currency: USD
+      per: 1000
+      unit: call
+      note: Live probes matched the documented rate; no per-call dollar meter is exposed.
     docs_url: https://api-dashboard.search.brave.com/api-reference/web/poi_details
 
   - id: bravesearch.places.description
@@ -214,5 +247,10 @@ endpoints:
     verified: '2026-10-30'
     added: '2026-10-30'
     example_response: examples/bravesearch.places.description.json
-    cost: *search_cost
+    price:
+      value: '5'
+      currency: USD
+      per: 1000
+      unit: call
+      note: Live probes matched the documented rate; no per-call dollar meter is exposed.
     docs_url: https://api-dashboard.search.brave.com/api-reference/web/poi_descriptions

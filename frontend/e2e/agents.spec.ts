@@ -34,9 +34,10 @@ test('agent setup polls only connection status across return and both rotation c
   await page.getByRole('button', { name: 'Done', exact: true }).click()
 
   // An existing lifetime check-in cannot confirm a freshly rotated credential.
-  await page.getByRole('button', { name: 'Rotate', exact: true }).click()
+  await page.getByRole('button', { name: 'More actions for poll-bot' }).click()
+  await page.getByRole('menuitem', { name: 'Rotate token' }).click()
   const rotated = page.waitForResponse(r => /\/orgs\/\d+\/agents$/.test(r.url()) && r.request().method() === 'POST')
-  await page.getByRole('button', { name: 'Confirm rotate', exact: true }).click()
+  await page.getByRole('dialog').getByRole('button', { name: 'Rotate token' }).click()
   const replacement = await (await rotated).json()
   await expect(page.getByText('waiting for its first check-in…', { exact: true })).toBeVisible()
   await page.waitForResponse(r => r.url().includes(`/connection?api_key_id=${replacement.api_key_id}`))
@@ -159,7 +160,11 @@ for (const action of ['create', 'rotate', 'keyAction'] as const) {
     })
     const received = page.waitForResponse(r => new URL(r.url()).pathname === path && r.request().method() === 'POST')
     if (action === 'create') await page.getByRole('button', { name: 'Create', exact: true }).click()
-    else {
+    else if (action === 'rotate') {
+      await page.getByRole('row').filter({ hasText: 'retained-bot' }).getByRole('button', { name: 'More actions for retained-bot' }).click()
+      await page.getByRole('menuitem', { name: 'Rotate token' }).click()
+      await page.getByRole('dialog').getByRole('button', { name: 'Rotate token' }).click()
+    } else {
       await page.getByRole('row').filter({ hasText: 'retained-bot' }).getByRole('button', { name: 'Rotate', exact: true }).click()
       await page.getByRole('button', { name: 'Confirm rotate', exact: true }).click()
     }

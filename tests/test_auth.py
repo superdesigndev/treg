@@ -518,6 +518,20 @@ async def test_observe_keeps_social_credit_for_a_failed_check(login, social_widg
     assert balance == get_settings().promo_grant_micro
 
 
+async def test_social_check_off_signs_a_new_address_in_with_credit(login, social_widget, monkeypatch, caplog):
+    provider, client = login
+    monkeypatch.setattr(get_settings(), "turnstile_social", False)
+    caplog.set_level("INFO", logger="treg")
+    callback = await _through_provider(client, provider)
+    assert callback.status_code == 302 and callback.headers["location"] == "/app"
+    team = await client.post("/orgs", json={"name": "social-team"})
+    async with session_maker() as s:
+        assert (await s.get(Org, team.json()["org_id"])).balance_micro == get_settings().promo_grant_micro
+    assert social_widget["forms"] == []
+    assert any(f"event=social_signup door={provider} captcha=- promo=True" in r.getMessage()
+               for r in caplog.records)
+
+
 async def test_a_verified_user_signs_in_without_the_check(login, social_widget):
     provider, client = login
     async with session_maker() as s:

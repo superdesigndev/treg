@@ -176,3 +176,24 @@ async def test_mcp_call_never_relays_the_edge_address_upstream(clients, ip_confi
     seen = out["body"]["headers"]
     assert header not in seen and "x-forwarded-for" not in seen
     assert "203.0.113.9" not in str(seen)
+
+
+@pytest.mark.parametrize(("spec", "ip", "expected"), [
+    ("", "3.6.34.81", False),
+    ("3.6.34.81", "3.6.34.81", True),
+    ("3.6.34.81", "3.6.34.82", False),
+    ("3.6.34.81, 10.0.0.0/8", "10.42.0.7", True),
+    ("2001:db8::/32", "2001:db8::1", True),
+    ("3.6.34.81", "not-an-ip", False),
+])
+def test_exempt_matches_addresses_and_blocks(monkeypatch, spec, ip, expected):
+    monkeypatch.setattr(get_settings(), "rate_limit_exempt_ips", spec)
+    assert client_ip.exempt(ip) is expected
+
+
+def test_an_exempt_list_that_is_not_addresses_refuses_to_boot():
+    from pydantic import ValidationError
+
+    from treg.config import Settings
+    with pytest.raises(ValidationError):
+        Settings(_env_file=None, rate_limit_exempt_ips="3.6.34.81, office")

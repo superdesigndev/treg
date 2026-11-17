@@ -98,7 +98,8 @@ async def admit(client_ip: str) -> bool:
     async with database.session_maker() as db:
         ok = await ratestore.rate_check(
             db, RATE_NS,
-            [(f"ip:{client_ip}", int(s.find_max_per_ip_hour)), ("all", int(s.find_max_per_hour))],
+            [*ratestore.ip_limit(client_ip, int(s.find_max_per_ip_hour), key=f"ip:{client_ip}"),
+             ("all", int(s.find_max_per_hour))],
             RATE_WINDOW_S)
         await db.commit()
     return ok
@@ -301,7 +302,6 @@ JUDGED = (STRONG, CLOSEST, NAME)  # verdicts whose rows are the judge's answer, 
 FIT_FROM_JOB = "job"            # the row carries its job's fit
 FIT_FROM_ENDPOINT = "endpoint"  # the row was judged on its own words
 FOLDED = 5                      # vendors a job under high shows (as `store.MAX_ROUTED_CHILDREN`)
-CAPPED_TOP = 0.6                # under a confident "no platform", below this is a gap
 
 # What a fitting JOB means. The `false` side is the endpoint question's: sharing words is not doing
 # the job, and a bare name does no job at all (the NAME question answers that).
@@ -448,7 +448,7 @@ def decide(query: str, cands: list[find_recall.Candidate], j: judge_infra.Judgem
     2. the query is exactly a name, or a name's prefix the judge reads as a name: name
     3. no strong fit, a short query, a name matches: name (a typed prefix)
     4. no strong fit, the judge reads a name, the name table has none and nothing is kept: none/gap
-    5. the judge picks no platform with confidence: none/gap under `CAPPED_TOP`, else closest (never strong)
+    5. the judge picks no platform with confidence: none/gap when nothing is kept, else closest (never strong)
     6. a fit at or over high: strong
     7. a fit at or over keep: closest
     8. nothing kept and the judge picked a platform with confidence: none/gap (the catalog has the
@@ -478,7 +478,7 @@ def decide(query: str, cands: list[find_recall.Candidate], j: judge_infra.Judgem
     elif is_name and not strong and not kept:
         found.reason = GAP
     elif plat and plat["choice"] == "none" and plat["confidence"] >= float(s.find_gap_min):
-        if top < CAPPED_TOP:
+        if not kept:              # nothing met keep: a gap. A kept fit is closest, never strong.
             found.reason = GAP
         else:
             found.verdict = CLOSEST

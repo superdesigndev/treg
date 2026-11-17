@@ -30,10 +30,13 @@ test('a slow answer for the team you left never replaces the team you switched t
     released = true
     await route.fulfill(json([{ id: 990001, name: 'first-team-only', base_url: 'https://first.example', bindings: [], bundle_id: null, cli: null }]))
   })
+  const staleAnswer = page.waitForEvent('requestfinished', request =>
+    request.url().endsWith('/tools') && request.headers()['x-treg-org'] === first.slug, { timeout: 5000 })
   await switchTo(page, 'First team')
   await switchTo(page, 'Second team')
-  await expect.poll(() => released, { timeout: 5000 }).toBe(true)
-  await page.waitForTimeout(300)
+  await staleAnswer
+  expect(released).toBe(true)
+  await page.evaluate(() => new Promise(done => requestAnimationFrame(() => requestAnimationFrame(done))))
   await expect(page.getByRole('button', { name: 'Teams' })).toContainText('Second team')
   await expect(page.getByText('first-team-only')).toHaveCount(0)
 })
@@ -49,7 +52,7 @@ test.afterAll(async () => { await owner?.close() })
 test('a member with no daily cap reads as no limit, a cap can be set and cleared, spend waits for the rollup, and tabs live in the address', async () => {
   const page = owner
   await page.getByRole('navigation', { name: 'Primary navigation' }).getByRole('button', { name: 'Team', exact: true }).click()
-  const cap = page.getByRole('spinbutton', { name: /^Daily cap for / })
+  const cap = page.getByRole('spinbutton', { name: /^Calls per day for / })
   await expect(cap).toHaveValue('')
   await expect(cap).toHaveAttribute('placeholder', 'No limit')
   await page.getByRole('button', { name: '＋ Add agent' }).click()
@@ -61,6 +64,41 @@ test('a member with no daily cap reads as no limit, a cap can be set and cleared
     await page.reload()
     await expect(cap).toHaveValue(value)
   }
+
+  // The team's daily spend default lives behind the Spend / day header, in a dialog.
+  const setAll = page.getByRole('button', { name: 'Set for all' })
+  await setAll.click()
+  const dialog = page.getByRole('dialog', { name: 'Daily spend for each member/agent' })
+  await dialog.getByRole('spinbutton', { name: 'Daily spend limit for every member' }).fill('5')
+  await dialog.getByRole('button', { name: 'Save' }).click()
+  await expect(dialog).toHaveCount(0)
+  await expect(page.getByRole('button', { name: 'All: $5.00' })).toBeVisible()
+  await page.reload()
+  // The owner never follows the team default, so their row offers only No limit and Custom.
+  const ownerSpend = page.getByRole('combobox', { name: /^Daily spend limit for / }).first()
+  await expect(ownerSpend.locator('option')).toHaveText(['No limit', 'Custom'])
+  await expect(ownerSpend).toHaveValue('none')
+  await page.getByRole('button', { name: 'All: $5.00' }).click()
+  await dialog.getByRole('button', { name: 'Remove limit' }).click()
+  await expect(dialog).toHaveCount(0)
+  await expect(setAll).toBeVisible()
+
+  // One member's own limit: a menu of team default / no limit / custom. A custom amount saves when
+  // the box loses focus, takes whole dollars only, and survives a reload.
+  const spend = page.getByRole('combobox', { name: /^Daily spend limit for / }).first()
+  await spend.selectOption('custom')
+  const amount = page.getByRole('spinbutton', { name: /^Custom daily spend for / }).first()
+  await expect(amount).toBeFocused()
+  await amount.fill('7')
+  await amount.blur()
+  await expect(page.getByRole('status').filter({ hasText: 'Spend limit saved for' })).toBeVisible()
+  await page.reload()
+  await expect(spend).toHaveValue('custom')
+  await expect(amount).toHaveValue('7')
+  await spend.selectOption('none')
+  await expect(amount).toHaveCount(0)
+  await page.reload()
+  await expect(spend).toHaveValue('none')
 
   // Spend per API key, on this signed-in session: the suite's sign-ins sit at the per-IP code limit.
   // Both the API Keys column and the Usage chart wait for the rollup, then read it.

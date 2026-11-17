@@ -21,6 +21,7 @@ from treg.domain.catalog import store as catalog_store
 from treg.domain.catalog.routing.contracts import Check
 from treg.infra.db import session_maker
 from treg.models import AsyncTaskRecord, CallRecord, Hold, LedgerEntry
+from treg.infra.upstream import relay as relay_module
 
 from test_marketplace_call import _balance, platform_on  # noqa: F401
 
@@ -54,6 +55,8 @@ def _relay(answers: dict[str, list[tuple[int, dict]]], seen: list, gate: dict | 
     async def relay(request, upstream_url, tool, secrets, client, **kwargs):
         if before_outbound := kwargs.get("before_outbound"):
             await before_outbound()
+        if (on_send := relay_module.ON_SEND.get()) is not None:
+            on_send()  # as the real relay does once its local checks pass
         provider = next(p for p in ("bounceban", "tomba", "hunter") if p in upstream_url)
         key = provider + ("-verify" if "verif" in upstream_url and provider != "bounceban" else "")
         seen.append(key)

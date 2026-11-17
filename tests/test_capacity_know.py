@@ -82,6 +82,26 @@ def test_snapshot_never_carries_a_credential():
     assert snapshot_from("x", {"value": None, "unit": "", "no_api": True, "note": "n/a"}).error == "no_balance_api"
 
 
+@pytest.mark.parametrize("status", [429, 401, 503, 302])
+async def test_a_failed_balance_route_never_stores_the_key(monkeypatch, status):
+    fake = "fake-balance-key-0123456789abcdef"
+    for provider in collectors.BALANCE_ROUTES:
+        monkeypatch.setenv(f"TREG_PLATFORM_KEY_{provider.upper().replace('-', '_')}", f"{fake}-{provider}")
+    for aux in collectors.AUX_SLOTS:
+        monkeypatch.setenv(f"TREG_PLATFORM_KEY_{aux.upper()}", f"{fake}-{aux}")
+    collectors.get_settings.cache_clear()
+    answer = httpx.MockTransport(lambda request: httpx.Response(
+        status, json={"error": "no"}, headers={"location": "https://example.invalid/login"}))
+    try:
+        async with httpx.AsyncClient(transport=answer) as client:
+            for provider in sorted(collectors.BALANCE_ROUTES):
+                snap = snapshot_from(provider, await collectors.provider_balance(provider, client))
+                assert fake not in snap.error + snap.note, provider
+    finally:
+        collectors.get_settings.cache_clear()
+    assert snapshot_from("x", {"value": None, "note": "KeyError: 'currentTeamId'"}).error == "KeyError: 'currentTeamId'"
+
+
 def test_latest_state_rules():
     pol = default_policy("findymail", has_key=True)
     now = utcnow_naive()

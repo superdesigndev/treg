@@ -61,15 +61,31 @@ class Declaration:
             return False
         if not fnmatch.fnmatchcase(change.field, self.field):
             return False
-        if self.has_from and change.old != self.from_value:
+        if self.has_from and not _same(change.old, self.from_value):
             return False
-        if self.has_to and change.new != self.to_value:
+        if self.has_to and not _same(change.new, self.to_value):
             return False
-        return all(change.candidate.get(k) == v for k, v in self.where.items())
+        return all(_same(change.candidate.get(k), v) for k, v in self.where.items())
 
 
 def _value(item: object) -> object:
     return tuple(item) if isinstance(item, list) else item
+
+
+def _kind(value: object) -> object:
+    # Declarations are hand-written YAML integers while replayed JSON money fields can arrive as
+    # floats, so an int and a float compare by value; bool, None and str stay strictly distinct.
+    return "number" if isinstance(value, (int, float)) and not isinstance(value, bool) else type(value)
+
+
+def _same(value: object, declared: object) -> bool:
+    """Equal and of one kind: a bool is never a number, null is only null, a string only a string;
+    an int and a float compare by value."""
+    if _kind(value) != _kind(declared):
+        return False
+    if isinstance(value, tuple):
+        return len(value) == len(declared) and all(map(_same, value, declared))
+    return value == declared
 
 
 @dataclass(frozen=True)

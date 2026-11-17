@@ -19,6 +19,7 @@ sources:
   - src/treg/infra/db.py
   - src/treg/infra/money_admission.py
   - scripts/bench_money_admission.py
+  - scripts/bench_money_scaling.py
   - src/treg/email.py
   - src/treg/audit.py
   - scripts/dev-local.sh
@@ -49,6 +50,23 @@ before their `asyncio.run()` loop closes, so the serving loop never receives con
 closed loop; calling `maintenance.upgrade()` directly does not dispose it. `python -m treg keygen`
 prints a Fernet key for `TREG_SECRET_KEY`.
 
+Settings come from the environment and `.env`. With `TREG_AWS_SECRET_ID` set to a Secrets Manager
+ARN, startup also reads that secret, a JSON object keyed by the same `TREG_*` names, and its values
+win over the environment; a secret that cannot be read stops startup. The region is the ARN's, and
+boto3 takes credentials from the standard `AWS_*` variables.
+
+Stored credentials move to KMS in three deploys ([auth & secrets](../architecture/auth-secrets.md),
+Encryption): `TREG_KMS_KEY_ID` on every process that reads credentials, then `TREG_KMS_ENCRYPT_NEW`
+on all of them, then `treg-worker admin reencrypt-credentials` (`--dry-run` first) until it reports
+nothing left to re-seal. The KMS key stays as long as any row is sealed with it.
+
+Rotating `TREG_SECRET_KEY`: deploy `old,new` to every process that decrypts, so processes
+overlapping a rolling deploy can open what updated ones write; then deploy `new,old` everywhere;
+run `treg-worker admin rotate-fernet` until it reports nothing left (it covers Arena payloads and
+any stored credential still on Fernet); then set every process to `new` alone. Keep the old key
+out of the environment but retrievable for as long as a database backup from before the rotation
+can still be restored.
+
 The lifespan and every worker command call read-only `verify_db()`: an unstamped database or a known
 revision behind head is refused; an unknown newer revision (code older than schema) warns and serves,
 because additive revisions tolerate rollback. Startup never creates tables, stamps or runs release
@@ -59,7 +77,9 @@ tasks. If `TREG_SECRET_KEY` is empty on a non-SQLite database, `verify_db()` rai
 - **Rollback floors.** A revision marked `contract = True` is a hard floor: never run older code
   against it. `0034` (managed keys) is one because old code cannot enforce stored disable or revoke
   state. `0078` drops `onboardingprofile`; code older than it touches that table only while a
-  `TREG_ONBOARDING_V2*` setting is on, so keep those off on any rollback past it.
+  `TREG_ONBOARDING_V2*` setting is on, so keep those off on any rollback past it. `0106` rebuilds
+  `agentpayer` with a per-network key; code older than it writes that table only while
+  `TREG_AGENT_PAYMENTS_ENABLED` is on, so keep it off on any rollback past it.
 - **Revision-only schema.** An autogenerate drift guard requires Alembic head and
   `SQLModel.metadata` to match exactly. `reset_db()` uses `create_all` only to build a missing test
   schema and stamps it at head.
@@ -110,6 +130,11 @@ their timestamp intervals because connections are reused. Read the coverage limi
 [data-model](../architecture/data-model.md#product-analytics-writer-analyticspy) before
 interpreting missing records.
 
+A web worker whose event loop stops for seconds writes `loop_stall` to stderr with the loop thread's
+stack while it is stopped, and `loop_stall_end` with the gap between heartbeats for every stall,
+seen in progress or not (`infra/loop_stall.py`). A stack with `stack_reliable: false` was taken
+after the GIL came back and does not name the holder.
+
 ### Dashboard reports
 
 Team reports that aggregate whole windows of the audit and ledger tables (`/orgs/{id}/usage`,
@@ -146,7 +171,10 @@ URL does not establish replication; operators provision a compatible schema and 
 
 `/admin/errors` reads evidence from this datasource with a 3-second statement limit (it shares the
 read pool with dashboard reports); authorization stays on the admin pool and releases its connection
-first, and with no read URL it keeps using the admin pool. Further callers must tolerate replica lag
+first, and with no read URL it keeps using the admin pool. `/admin/archive` and
+`/admin/reconcile/*` read the same datasource through `get_admin_report_session`: one report per
+process, a 60-second statement limit, the same fallback to the admin pool (where that limit is
+what protects the primary). Further callers must tolerate replica lag
 and keep writes, cursor advancement and concurrency control on the primary. `connection_budget()`
 covers only primary pools: budget the read pool against its own target, and add both when they share
 a server. Schema upgrades, startup verification and test resets target the primary.
@@ -184,8 +212,10 @@ meaning is not obvious from the field:
 Credentials stay in the deployment secret store.
 
 **Public host aliases.** `TREG_PUBLIC_HOST_ALIASES` is the complete JSON list of extra hostnames
-accepted for social-login callbacks, MCP hosts, origins and token audiences, and the hub self-relay
-guard; setting it replaces the list. It does not change `TREG_PUBLIC_URL`, canonical links or
+accepted for social-login callbacks, MCP hosts, origins and token audiences, the hub self-relay
+guard, and the host of invite-email links and Stripe return URLs; setting it replaces the list.
+Those links never take any other `Host`: `routers/auth_helpers.trusted_public_base` falls back to
+`TREG_PUBLIC_URL`, so a forged header cannot send an invite token elsewhere. It does not change `TREG_PUBLIC_URL`, canonical links or
 provider-connect callbacks. Register each alias's `/auth/google/callback` and
 `/auth/github/callback` with the OAuth clients first, and list it in Turnstile's widget hostnames
 (a non-empty `TREG_TURNSTILE_HOSTNAMES` overrides the server-side fallback and must list every
@@ -195,7 +225,9 @@ host). Apply alias configuration before deploying code that consumes it.
 `TREG_CLIENT_IP_HEADER=cf-connecting-ip`; otherwise set `TREG_TRUSTED_PROXY_HOPS` to the number of
 proxies appending to `X-Forwarded-For` (0 when clients connect directly). Each process logs
 `event=client_ip_sources` once and `event=client_ip_header_missing` when the configured header does
-not arrive ([multi-tenancy](../architecture/multi-tenancy.md), "Client address").
+not arrive ([multi-tenancy](../architecture/multi-tenancy.md), "Client address"). For an authorized
+security test or a probe that must not be throttled, list its addresses in
+`TREG_RATE_LIMIT_EXEMPT_IPS` for the engagement and remove them after; the setting is read at startup.
 
 **Call events** ([call-events](../architecture/call-events.md)) need `TREG_CALL_EVENTS_URL` and
 `TREG_CALL_EVENTS_HMAC_SECRET` on every process that serves calls or settles async tasks. Keep the
@@ -205,6 +237,27 @@ secret stable: changing it breaks every join across the change.
 `TREG_CLIENT_ID_SECRET` is set on the processes that relay calls. Turn it on after the provider is
 ready to read the header, and keep the secret stable: changing it gives every team a new code at
 every provider.
+
+**Agent payments.** `TREG_AGENT_PAYMENTS_ENABLED` lets a caller with no treg credential pay a
+catalog call with MPP or x402. It needs `TREG_AGENT_PAYMENTS_SECRET` (32+ characters), at least one
+of `TREG_AGENT_PAYMENTS_MPP_ENABLED` / `TREG_AGENT_PAYMENTS_X402_ENABLED`, and each enabled rail's
+recipient address; the defaults are testnets, and startup names every missing setting in one error.
+On mainnet the x402 facilitator is Coinbase's
+(`TREG_AGENT_PAYMENTS_X402_FACILITATOR_URL=https://api.cdp.coinbase.com/platform/v2/x402`) and needs
+`TREG_AGENT_PAYMENTS_X402_CDP_API_KEY_ID` and `_SECRET`, plus Base mainnet USDC as
+`TREG_AGENT_PAYMENTS_X402_ASSET` with `TREG_AGENT_PAYMENTS_X402_ASSET_NAME="USD Coin"`.
+`TREG_AGENT_PAYMENTS_SETTLEMENT` is `wallet` (the recipients are treg's own wallet) or `stripe` (they
+are Stripe deposit addresses from `treg-worker agentpay stripe-address`; needs
+`TREG_AGENT_PAYMENTS_STRIPE_SECRET_KEY`, the key of the Stripe account with stablecoins enabled, or
+`TREG_STRIPE_SECRET_KEY` when that is the same account, and an explicit
+`TREG_AGENT_PAYMENTS_TEMPO_CURRENCY`). Tempo's hosted RPC takes `TREG_AGENT_PAYMENTS_TEMPO_RPC_URL`
+with `TREG_AGENT_PAYMENTS_TEMPO_RPC_API_KEY`. x402 on Base mainnet also needs its own
+`TREG_AGENT_PAYMENTS_X402_RPC_URL` (a paid node: the reconciler reads it at
+`TREG_AGENT_PAYMENTS_X402_BLOCK_TAG`, default `finalized`). Keyless traffic is capped by
+`TREG_AGENT_PAYMENTS_MAX_PAYMENTS_PER_IP_MINUTE`, `TREG_AGENT_PAYMENTS_MAX_QUOTES_PER_IP_MINUTE`
+(unpaid requests) and `TREG_AGENT_PAYMENTS_MAX_VERIFICATIONS_MINUTE` (payment and proof checks
+that reach a chain or facilitator, across all clients). The x402 sign-in-with-x proof names `TREG_PUBLIC_URL`, so it must be the
+origin agents call. See [agent payments](../architecture/agent-payments.md).
 
 ## Optional money admission
 
@@ -235,6 +288,13 @@ small org set; disabling restores the database path, which remains authoritative
 loopback services via `TREG_TEST_DB_URL` and `TREG_TEST_KV_URL` (skipped without them); the bench
 requires database names starting `treg_admission_test` and resets that schema. Its timings are
 local synthetic evidence, not deployed throughput.
+
+`scripts/bench_money_scaling.py` takes the same two services and the same database-name guard. It
+runs the reserve and the settle of each call from separate OS processes and prints, per process
+count, one team's throughput, latency and database statements per call (BEGIN and COMMIT
+included), then checks the ledger.
+Use it to see whether a change lets a team's throughput grow with processes; its timings are
+local synthetic evidence too.
 
 ## Safe local mode
 
@@ -279,7 +339,22 @@ database (web and scheduled workers) must build the same way. Render's bundled `
 so a wheel operator pins versions in their own requirements.
 
 **Release order.** The served installer installs the CLI from PyPI, so a server change that needs a
-new CLI ships only after that CLI is released.
+new CLI ships only after that CLI is released. After a release is on PyPI, set `TREG_CLI_LATEST_VERSION` to it so
+older CLIs are told to update (a Python version only: a 1.x value has every Python CLI update into the
+Python CLI again); set `TREG_CLI_MIN_VERSION` when a server change stops an older CLI
+from working.
+
+**The binary CLI** is released by pushing a `v1.2.3` tag (`v1.3.0-beta.1` for beta), which runs
+the `CLI release` workflow; it needs the `cli-release` environment's `MINISIGN_SECRET_KEY` (an
+unencrypted `minisign -G -W` key) and the `TREG_UPDATE_KEY` variable (its public key line). A
+channel whose version the operator names (`TREG_CLI_BETA_VERSION` for beta,
+`TREG_CLI_STABLE_VERSION` for stable) moves only when the operator moves it; one
+left empty, or at a 0.x value, follows the newest GitHub release
+([cli-binary](../interface/cli-binary.md)). A download mirror needs the `cli-mirror` environment
+(variables `R2_ENDPOINT` and `R2_BUCKET`, secrets `R2_ACCESS_KEY_ID` and `R2_SECRET_ACCESS_KEY` for
+an S3-compatible bucket served publicly) and `TREG_CLI_MIRROR_BASE_URL` naming where that bucket's
+`cli/v{version}` is served; copy any release published before with the `CLI mirror` workflow, and
+name a version on a channel only once its copy is there.
 
 ## Audit, archive and spool back-pressure
 
@@ -328,15 +403,27 @@ job's credentials. `treg-worker --help` lists them; what follows is what a sched
   `TREG_PLATFORM_OPENROUTER_MANAGEMENT_KEY` and `TREG_PLATFORM_FISHAUDIO_WORKSPACE_ID` when those
   balances should be observed.
 - **`asynctasks settle`** completes durable holds for asynchronous upstream operations.
+- **`billing reconcile`** checks the top-ups Stripe collected against the ledger
+  ([money](../architecture/money.md), "Reconciliation against Stripe"); run it at least daily with an
+  overlapping `--hours`. It exits 1 on a gap and posts to `TREG_OPS_SLACK_WEBHOOK_URL` when set.
 - **`arena insights`** needs the archive object-store settings when R2 reads are on.
 - **`showcase activity`** is needed only where the showcase leaderboard is served.
 - **`media sweep`** deletes unreferenced public pictures (only `img/`, older than a day). Pictures are
   off until `TREG_MEDIA_STORE_ENDPOINT`, its keys, `TREG_MEDIA_STAGING_BUCKET` and
   `TREG_MEDIA_PUBLIC_BUCKET` are set (SECURITY.md, "Picture storage"); `TREG_MEDIA_BASE_URL` empty
   means treg serves the bucket at `/media-files/`.
+- **`idempotency prune`**: hourly. Deletes expired retry answers for every team and drops a live
+  row's copy of an answer the archive holds (`--skip-trim` keeps copies). Exits nonzero on an
+  incomplete run; run one instance at a time.
 - **`admin purge-evidence`** and **`admin purge-ad-clicks`**: daily. Without them expired rows stop
   being shown or read but stay in the database.
 - **`hub check`** runs each live [hub](../architecture/hub.md) tool's `check.json` as its maker
   (spending the maker's balance); health is derived from the last three runs.
 - **`jev xboost`** needs `TREG_JEV_TREG_TOKEN` (a member token, so its spend is an ordinary bill) and
   `TREG_AI_GATEWAY_API_KEY`, also set on the web service for the visitor judge endpoint.
+- **`agentpay reconcile`** resolves agent payments whose settlement went unanswered (older than
+  `TREG_AGENT_PAYMENTS_RECONCILE_MIN_AGE_S`, default 300) from the chain, and with settlement
+  `stripe` records settled payments to Stripe. Run it every few minutes when agent payments are on;
+  it exits at once when they are off. **`agentpay stripe-address --network tempo|base`** creates one
+  reusable Stripe crypto deposit address and prints it (setup for settlement `stripe`; run once per
+  network).

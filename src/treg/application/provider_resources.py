@@ -13,21 +13,12 @@ from ..domain.identity.access import Caller
 from ..infra.db import session_maker
 from .call.access import catalog_endpoint_access
 from .call.service import create_call_context, execute_call
-from .call.types import CallFailure, CallInput, CallerSnapshot, UpstreamResponse
+from .call.types import CallFailure, CallInput, CallerSnapshot, EmptyBody, UpstreamResponse
 
 
 _RESOURCE_RESPONSE_MAX = 8 * 1024 * 1024
 _FISH_PAGE_SIZE = 100
 _FISH_MAX_PAGES = 100
-
-
-class _BytesBody:
-    async def read(self) -> bytes:
-        return b""
-
-    async def stream(self):
-        if False:
-            yield b""
 
 
 @dataclass(frozen=True)
@@ -121,7 +112,7 @@ async def _fish_account_voices(
             raw_headers=raw_headers,
             query_items=query_items,
             raw_query=urlencode(query_items),
-            body=_BytesBody(),
+            body=EmptyBody(),
             caller=CallerSnapshot.capture(caller),
             client_ip=client_ip,
         )

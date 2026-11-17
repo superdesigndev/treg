@@ -1,0 +1,50 @@
+{
+  "version": "0.1.20261103",
+  "status_code": 20000,
+  "status_message": "Ok.",
+  "time": "0.0463 sec.",
+  "cost": 0.101,
+  "tasks_count": 1,
+  "tasks_error": 0,
+  "tasks": [
+    {
+      "id": "11162217-2171-0635-0000-75b81fcafa2d",
+      "status_code": 20000,
+      "status_message": "Ok.",
+      "time": "0.0320 sec.",
+      "cost": 0.101,
+      "result_count": 1,
+      "path": [
+        "v3",
+        "… 4 more item(s) truncated"
+      ],
+      "data": {
+        "api": "ai_optimization",
+        "function": "aggregated_metrics",
+        "target": [
+          {
+            "domain": "hubspot.com"
+          }
+        ],
+        "platform": "google",
+        "location_code": 2840,
+        "language_code": "en",
+        "internal_list_limit": 3
+      },
+      "result": [
+        {
+          "total": {
+            "location": "… [1 item(s) truncated]",
+            "language": "… [1 item(s) truncated]",
+            "platform": "… [1 item(s) truncated]",
+            "sources_domain": "… [3 item(s) truncated]",
+            "search_results_domain": null,
+            "brand_entities_title": null,
+            "brand_entities_category": null
+          },
+          "items": null
+        }
+      ]
+    }
+  ]
+}

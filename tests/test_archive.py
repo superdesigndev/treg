@@ -2046,3 +2046,37 @@ async def test_a_direct_call_names_the_routed_tool_for_its_job(clients: AsyncCli
     live = await clients.get(f"/call/{EP}?aweme_id=7&count=5")
     assert live.status_code == 200
     assert live.headers["X-Treg-Routed-Tool"] == "treg.tiktok.video.comments"
+
+
+async def test_pruner_keeps_an_answer_a_live_retry_row_points_to(clients: AsyncClient, shadow, monkeypatch):
+    """A retry row that dropped its own copy names an archive answer for the rest of its 24-hour
+    window; stripping it would turn the replay into a 410 for an answer the team paid for."""
+    from datetime import timedelta
+
+    from tests.test_marketplace_call import _fake_relay
+    from treg.models import IdempotentCall, Membership
+
+    for n in range(4):
+        monkeypatch.setattr(call_service, "relay",
+                            _fake_relay(200, b'{"v": %d, "pad": "%s"}' % (n, b"x" * 300)))
+        await clients.get(f"/call/{EP}?aweme_id=7")
+        await archive.drain()
+    await _age_versions(days=30)
+    keys, snaps = await _rows()
+    oldest = min(snaps, key=lambda s: s.version)
+    async with session_maker() as s:
+        m = (await s.execute(select(Membership))).scalars().first()
+        s.add(IdempotentCall(org_id=m.org_id, membership_id=m.id, key="trimmed", status="done",
+                             response_status=200, response_body=None, call_ref="c-trimmed",
+                             archive_key_hash=keys[0].key_hash, archive_content_hash=oldest.content_hash,
+                             expires_at=archive._utcnow() + timedelta(hours=12)))
+        await s.commit()
+    assert await archive.prune_once() == 1               # v2 stripped; v1 is still needed
+    _, snaps = await _rows()
+    assert next(s for s in snaps if s.id == oldest.id).body is not None
+    async with session_maker() as s:                     # once the row expires, it may go
+        row = (await s.execute(select(IdempotentCall))).scalars().one()
+        row.expires_at = archive._utcnow() - timedelta(minutes=1)
+        s.add(row)
+        await s.commit()
+    assert await archive.prune_once() == 1

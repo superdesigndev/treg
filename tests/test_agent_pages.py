@@ -404,8 +404,9 @@ async def test_jev_page_embeds_the_walkthrough_and_links_the_lead_list(clients: 
 
 
 async def test_no_served_page_mentions_monid(clients: AsyncClient):
-    """Monid is never named on a treg.to page: not in a comparison, a bench table or copy. The
-    overflow code that routes through it is backend and never rendered."""
+    """Monid is named on its own comparison page (`/compare/treg-vs-monid`) and the comparison hub,
+    and nowhere else: not in a bench table or copy. The overflow code that routes through it is
+    backend and never rendered."""
     import re
     from pathlib import Path
     web = Path(__file__).resolve().parents[1] / "src" / "treg" / "web"
@@ -416,7 +417,7 @@ async def test_no_served_page_mentions_monid(clients: AsyncClient):
     # provider pages are generated from the catalog, which has no such provider.
     sitemap = (await clients.get("/sitemap.xml")).text
     paths = sorted({re.sub(r"^https?://[^/]+", "", u) for u in re.findall(r"<loc>([^<]+)</loc>", sitemap)})
-    paths = [p for p in paths if not p.startswith(("/catalog/", "/tools/"))]
+    paths = [p for p in paths if not p.startswith(("/catalog/", "/tools/", "/compare"))]
     paths += [p + ".md" for p in paths if p.startswith(("/agents/", "/workflows/", "/use-cases/"))]
     paths += ["/gtm-engineering.md", "/llms.txt"]
     assert "/blog/work-email-finding-bench" in paths and "/gtm-engineering" in paths

@@ -1,16 +1,16 @@
-// ai-visibility: ask five AI answer engines the same question, report who they mention.
+// ai-visibility: ask three AI answer engines the same question, report who they mention.
 //
-// One call per engine (ChatGPT, Gemini, Copilot, Google AI Mode; Perplexity when cloro fixes it), each on its own so
+// One call per engine (ChatGPT, Gemini, Google AI Mode), each on its own so
 // one failure never stops the others. Then ONE judgment call per engine that answered: Jev
 // (openrouter.ai-judge.decide) reads the answer and says, for the brand and each competitor,
 // whether the COMPANY is referred to. That is what a text search cannot do: a brand called
 // "Linear" would match "a linear process". Every name is one independent yes/no question in the
-// same request, so a run is at most 5 + 5 = 10 calls (4 + 4 today). A source URL on the brand's own domain is a
+// same request, so a run is at most 3 + 3 = 6 calls. A source URL on the brand's own domain is a
 // second, free signal: the engine cited you.
 //
 // Fallback: when the judgment call fails, a whole-word text match decides, and the row says so.
 //
-// Two things keep a run inside 120 s. The five engines are asked AT THE SAME TIME (ctx.call does
+// Two things keep a run inside 120 s. The engines are asked AT THE SAME TIME (ctx.call does
 // not block the engine, and the hub runs four at once); one after another they take 160 s at the
 // median. And the question is wrapped to ask for a SHORT LIST of names, not an essay: the engines
 // answer faster, the judge reads less, and "did it name us" is all we want to know anyway.
@@ -18,13 +18,10 @@
 const ASK = q => `${q}\n\nAnswer with a short list of the top 5 names, one line each with a few words on why. ` +
   "No introduction, no comparison, no conclusion.";
 
-// Perplexity is out for now: on production over 14 days (1,395 calls) it failed 51% of the time and
-// ran past 90 s in 38%; the other four fail 0.3-8%. Put it back as one line when cloro fixes it.
 const ENGINE_TIMEOUT_S = 75;        // an engine that has not answered by then is "did not answer"
 const ENGINES = [
   { name: "chatgpt",    call: "cloro.ai-search.chatgpt.scrape",    refused: ["CN", "CZ", "HK", "IR", "MO", "RU", "VE"], geo: "country" },
   { name: "gemini",     call: "cloro.ai-search.gemini.scrape",     refused: ["BY", "CN", "RU"], geo: "country" },
-  { name: "copilot",    call: "cloro.ai-search.copilot.scrape",    refused: ["BY", "CN", "RU", "SY", "VE"], geo: "country" },
   { name: "google_ai_mode", call: "cloro.google.serp.ai_mode",     refused: [], geo: "gl" },
 ];
 const JUDGE = "openrouter.ai-judge.decide";
@@ -39,7 +36,7 @@ export default async function run(ctx) {
   const country = String(ctx.inputs.country || "US").trim().toUpperCase();
   const names = [brand, ...competitors];
 
-  // 1. the five engines, all at once
+  // 1. the engines, all at once
   const asked = ASK(prompt);
   const rows = await Promise.all(ENGINES.map(async e => {
     if (e.refused.includes(country)) return row(e.name, "skipped", `${e.name} does not serve ${country}`);

@@ -177,16 +177,20 @@ class Usage(Model):
 
 
 class Settle(Model):
-    """Absent: the hold."""
+    """Absent: the hold. `worst_case`, beside a reported or usage settle, is the most one call can
+    settle at, in the price's currency: the hold is never below it."""
 
     count: Count | None = None
     reported: Reported | None = None
     usage: Usage | None = None
     plugin: PluginName | None = None
+    worst_case: Money | None = None
 
     @model_validator(mode="after")
     def _shape(self) -> Settle:
         _one_of(self, ("count", "reported", "usage", "plugin"))
+        if self.worst_case is not None and self.reported is None and self.usage is None:
+            raise ValueError("settle.worst_case belongs beside settle.reported or settle.usage")
         return self
 
 
@@ -299,6 +303,22 @@ def _legacy_location(path: str, input_schema: dict) -> str:
     return f"pathParams.{rest}" if named in (input_schema.get("pathParams") or {}) else f"queryParams.{rest}"
 
 
+def _row_price(row: dict, input_schema: dict) -> dict:
+    out = {"value": _number(row["value"])}
+    if row.get("times"):
+        out["times"] = _legacy_location(row["times"], input_schema)
+    if row.get("times_min") is not None:
+        out["times_min"] = row["times_min"]
+    return out
+
+
+def floor_rows(price: dict | None, input_schema: dict) -> dict | None:
+    """A price table's rows without their conditions, in today's display shape: what the served
+    floor (`table_min`) is read from, whether or not that shape can show the conditions."""
+    table = (price or {}).get("table")
+    return None if table is None else {"table": [_row_price(row, input_schema) for row in table]}
+
+
 def _table_view(table: list[dict], input_schema: dict) -> list[dict] | None:
     """A price table in today's display shape (`when` as a map of request fields to values), or
     None when a row has a condition other than one equality, which today's shape cannot show."""
@@ -306,13 +326,8 @@ def _table_view(table: list[dict], input_schema: dict) -> list[dict] | None:
     for row in table:
         if any(not isinstance(c, dict) or c.get("op") != "equals" for c in row["when"]):
             return None
-        out = {"when": {_legacy_location(c["path"], input_schema): c["value"] for c in row["when"]},
-               "value": _number(row["value"])}
-        if row.get("times"):
-            out["times"] = _legacy_location(row["times"], input_schema)
-        if row.get("times_min") is not None:
-            out["times_min"] = row["times_min"]
-        rows.append(out)
+        rows.append({"when": {_legacy_location(c["path"], input_schema): c["value"] for c in row["when"]},
+                     **_row_price(row, input_schema)})
     return rows
 
 
@@ -374,6 +389,8 @@ def served_cost(row: dict, input_schema: dict) -> dict | None:
         out["usage"] = {"unit": usage["unit"], **(
             {"terms": [{"path": relative(t["path"]), "rate": float(t["rate"])} for t in usage["terms"]]}
             if "terms" in usage else {"path": relative(usage["path"])})}
+    if settle.get("worst_case") is not None:
+        out["worst_case"] = _number(settle["worst_case"])
     out.update(provenance)
     if "note" in price:
         out["note"] = price["note"]

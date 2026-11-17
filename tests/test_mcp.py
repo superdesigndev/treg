@@ -116,7 +116,7 @@ async def test_the_server_lists_the_shared_tools(clients):
         names = {t["name"] for t in r.json()["result"]["tools"]}
     # The hub tools are listed only where the hub is on for the caller (test_hub_tools_are_listed_*).
     assert names == {"catalog_search", "catalog_get", "call", "call_media", "resources_list",
-                     "balance", "my_tools", "catalog_request", "feedback", "review"}
+                     "balance", "my_tools", "catalog_request", "feedback", "review", "mark"}
 
 
 async def test_openai_clients_get_no_review_tool_or_review_instruction(clients):
@@ -139,10 +139,11 @@ async def test_openai_clients_get_no_review_tool_or_review_instruction(clients):
 
     for ua in ("openai-mcp/1.0.0", "codex-mcp-client/0.160.1"):
         instructions, names = await surface(ua)
-        assert "review" not in names and "catalog_search" in names, ua
-        assert "review(" not in instructions and "catalog_search" in instructions, ua
+        assert not {"review", "mark"} & names and "catalog_search" in names, ua
+        assert "review(" not in instructions and "mark(" not in instructions, ua
+        assert "catalog_search" in instructions, ua
     instructions, names = await surface("claude-code/2.1.291 (cli)")
-    assert "review" in names and "review(" in instructions
+    assert {"review", "mark"} <= names and "review(" in instructions and "mark(" in instructions
 
 
 async def _tool_names(clients, token):
@@ -382,6 +383,35 @@ async def test_a_team_default_token_resolves_its_team(clients):
     assert out.get("team")
 
 
+
+async def test_a_revoked_team_key_names_the_oauth_repair_not_a_missing_team(clients):
+    """Pinned dead key: `/orgs` 401 must NOT say the team is gone - the key died. Name the repair.
+
+    `treg mcp install` writes a team-pinned Default key as a static Authorization header. After
+    revoke-tokens (or session-secret rotation) that header is still present, so `_resolve_org`
+    takes the pinned branch. The old copy answered "team … no longer available"; agents then
+    chased the wrong fix.
+    """
+    token = (await verified_signup(clients, json={"email": "dead-pinned@superdesign.dev"})).json()["token"]
+    clients.headers["X-Treg-Token"] = token
+    # Prove the live key works first (pinned path succeeds).
+    async with mcp_session(clients) as c:
+        live = await _call_tool(c, "balance", {}, token=token)
+    assert "balance_usd" in live, live
+
+    revoked = await clients.post("/auth/revoke-tokens", headers={"X-Treg-Token": token})
+    assert revoked.status_code == 200, revoked.text
+
+    async with mcp_session(clients) as c:
+        out = await _call_tool(c, "balance", {}, token=token)
+    assert "no longer available" not in json.dumps(out), out
+    assert "not signed in" in out.get("error", ""), out
+    assert "treg mcp install --oauth" in out.get("hint", ""), out
+    assert "separate from the CLI login" in out.get("hint", ""), out
+    assert "treg update" in out.get("hint", ""), out
+    assert "TREG_TOKEN" in out.get("hint", ""), out
+
+
 async def test_one_team_cannot_read_another_teams_tools(clients):
     """Tenant isolation, asserted rather than assumed. Two orgs, two tokens: each sees only its own
     registered tools. This is the property a second front door is most likely to lose."""
@@ -450,7 +480,7 @@ async def test_every_tool_declares_what_it_can_do(clients):
 
     ann = {t.name: t.annotations for t in await server.list_tools()}
     assert set(ann) == {"catalog_search", "catalog_get", "call", "call_media", "resources_list", "balance", "my_tools",
-                        "catalog_request", "feedback", "review", "hub_create", "hub_update", "hub_mine"}
+                        "catalog_request", "feedback", "review", "mark", "hub_create", "hub_update", "hub_mine"}
     assert all(a.title is None for a in ann.values())
     for name in ("catalog_search", "catalog_get", "resources_list", "balance", "my_tools"):
         a = ann[name]
@@ -462,7 +492,7 @@ async def test_every_tool_declares_what_it_can_do(clients):
         assert a.destructive_hint is True and a.open_world_hint is True
     # These write nothing upstream and spend nothing, but their text reaches the treg team (and a
     # review's reason may be quoted on a public catalog page), so they are open world.
-    for name in ("catalog_request", "feedback", "review"):
+    for name in ("catalog_request", "feedback", "review", "mark"):
         a = ann[name]
         assert a.read_only_hint is False, name
         assert a.destructive_hint is False and a.open_world_hint is True, name
@@ -854,14 +884,17 @@ async def test_auth_middleware_preserves_a_real_mid_body_disconnect() -> None:
 async def test_a_BAD_token_is_the_tool_s_business_not_the_transport_s(clients):
     """The challenge fires only when there is NO credential. Deciding whether a token is valid needs
     the database, and doing that in transport middleware would put a second authentication
-    implementation in front of the first."""
+    implementation in front of the first. A garbage bearer still answers 200 at the transport and
+    the tool names the OAuth repair command (MCP grant ≠ CLI login)."""
     async with mcp_session(clients) as c:
         r = await c.post("http://localhost/mcp/", json={
             "jsonrpc": "2.0", "id": 1, "method": "tools/call",
             "params": {"name": "balance", "arguments": {}}},
             headers={**MCP_HEADERS, "Authorization": "Bearer not-a-real-token"})
     assert r.status_code == 200
-    assert "error" in json.loads(r.json()["result"]["content"][0]["text"])
+    body = json.loads(r.json()["result"]["content"][0]["text"])
+    assert "error" in body
+    assert "treg mcp install --oauth" in body.get("hint", ""), body
 
 
 async def test_call_accepts_an_ARRAY_body(clients):
@@ -898,43 +931,13 @@ async def test_a_list_is_refused_for_a_GET_with_a_clear_reason(clients):
     assert "must be an object, not a list" in json.dumps(out), out
 
 
-def test_stripping_the_link_keeps_the_DIAGNOSIS(clients):
-    """Removing the invitation to pay must not remove the explanation. An agent still needs to know
-    it ran out of money, how short it was, and that its own key is an alternative — otherwise the
-    refusal is indistinguishable from a broken endpoint."""
-    from treg.mcp import _without_purchase_pointers
-
-    real = {"detail": {
-        "error": "insufficient_balance",
-        "message": ("akta.companies.enrich would cost ~$0.875 and this team's balance is $0.5765."
-                    "\n  add funds:      https://treg.to/app#billing"
-                    "\n  or use your own key: treg connections connect --provider akta"),
-        "balance_micro": 576500, "estimated_cost_micro": 875000}}
-    out = _without_purchase_pointers(real)
-    blob = json.dumps(out)
-    assert "insufficient_balance" in blob and "would cost" in blob
-    assert "connections connect" in blob, "the own-key alternative must survive"
-    assert out["detail"]["balance_micro"] == 576500
-
-
-def test_the_strip_does_not_depend_on_which_host_we_run_as(clients):
-    """A first version matched `public_url`, which differs per environment — so it stripped nothing
-    anywhere except production, and the local test passed while the deployed behaviour was wrong."""
-    from treg.mcp import _without_purchase_pointers
-
-    for host in ("https://treg.ngrok.app", "http://127.0.0.1:18790", "https://anything.example"):
-        out = _without_purchase_pointers({"m": f"pay here: {host}/app#billing"})
-        assert "http" not in json.dumps(out), host
-
-
-async def test_a_402_THROUGH_THE_CALL_TOOL_carries_no_link(clients, monkeypatch):
-    """The test the helper-level ones above cannot be. They exercise `_without_purchase_pointers`
-    directly and would pass even with the strip DELETED from `call` - the helper works and nothing
-    connects it to the response a user sees.
-
-    This drives the real path: drain the balance, call a metered endpoint through the MCP tool, and
-    assert on what comes back.
-    """
+@pytest.mark.parametrize("public_url", ["https://treg.ngrok.app", "http://127.0.0.1:18790",
+                                        "https://anything.example"])
+async def test_a_402_THROUGH_THE_CALL_TOOL_carries_no_link(clients, monkeypatch, public_url):
+    """Drain the balance, call a metered endpoint through the MCP tool, and assert on what comes
+    back: no link out, whichever host this deployment runs as, and the diagnosis intact. An agent
+    still needs to know it ran out of money, how short it was, and that its own key is an
+    alternative; otherwise the refusal is indistinguishable from a broken endpoint."""
     from sqlmodel import select
 
     from treg.config import get_settings
@@ -943,6 +946,7 @@ async def test_a_402_THROUGH_THE_CALL_TOOL_carries_no_link(clients, monkeypatch)
 
     monkeypatch.setenv("TREG_PLATFORM_KEY_TIKHUB", "PLATKEY")
     monkeypatch.setenv("TREG_PLATFORM_PROVIDERS", "tikhub")
+    monkeypatch.setenv("TREG_PUBLIC_URL", public_url)
     get_settings.cache_clear()
 
     token = (await verified_signup(clients, json={"email": "broke402@superdesign.dev"})).json()["token"]
@@ -968,6 +972,42 @@ async def test_a_402_THROUGH_THE_CALL_TOOL_carries_no_link(clients, monkeypatch)
     assert "http://" not in blob and "https://" not in blob, f"a link out survived: {blob}"
     assert "topup_url" not in blob, blob
     assert "not enough for this call" in blob, "the diagnosis must survive"
+    detail = out["body"]["detail"]
+    assert detail["error"] == "insufficient_balance" and "would cost" in detail["message"]
+    assert "connections connect" in detail["message"], "the own-key alternative must survive"
+    assert detail["balance_micro"] == 0 and detail["estimated_cost_micro"] > 0
+
+
+async def test_a_402_THROUGH_CALL_MEDIA_carries_no_link_either(clients, monkeypatch):
+    """`call_media` relays its own error body; a balance refusal there must not link out either."""
+    from sqlmodel import select
+
+    from treg.config import get_settings
+    from treg.infra.db import session_maker
+    from treg.models import Org
+
+    monkeypatch.setenv("TREG_PLATFORM_KEY_MINIMAX", "PLATKEY")
+    monkeypatch.setenv("TREG_PLATFORM_PROVIDERS", "minimax")
+    get_settings.cache_clear()
+    org_id = (await clients.get("/orgs")).json()[0]["org_id"]
+    token = clients.headers["X-Treg-Token"]
+    async with session_maker() as db:
+        org = (await db.execute(select(Org).where(Org.id == org_id))).scalar_one()
+        org.balance_micro = 0
+        db.add(org)
+        await db.commit()
+    try:
+        async with mcp_session(clients) as c:
+            out = await _call_tool(c, "call_media", {
+                "endpoint_id": "minimax.voice-gen.speech-2-8-turbo",
+                "body": {"model": "speech-2.8-turbo", "text": "hello", "stream": False,
+                         "output_format": "url", "voice_setting": {"voice_id": "English_expressive_narrator"}}},
+                token=token)
+    finally:
+        get_settings.cache_clear()
+    assert out.get("status") == 402, out
+    blob = json.dumps(out)
+    assert "http://" not in blob and "https://" not in blob and "topup_url" not in blob, blob
 
 
 # ---- the expired-token challenge: what makes silent refresh possible -------------------------

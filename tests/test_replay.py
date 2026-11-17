@@ -256,6 +256,44 @@ def test_a_declaration_matches_a_list_valued_field():
     assert report.passed and not report.untested_declarations
 
 
+@pytest.mark.parametrize(("old", "new", "declared", "covered"), [
+    (False, True, {"from": 0}, False),
+    (False, True, {"to": 1}, False),
+    (0, 1, {"from": False}, False),
+    (0, 5, {"from": None}, False),
+    ("", "x", {"from": None}, False),
+    (None, 5, {"from": 0}, False),
+    (None, "x", {"from": ""}, False),
+    ("1000", 0, {"from": 1000}, False),
+    (1000, 0, {"from": "1000"}, False),
+    (["0"], ["1"], {"from": [0]}, False),
+    (False, True, {"from": False, "to": True}, True),
+    (1000, 0, {"from": 1000.0, "to": 0}, True),
+    (1000.0, 0.0, {"from": 1000, "to": 0}, True),
+    (None, 5, {"from": None, "to": 5}, True),
+    ("a", "b", {"from": "a", "to": "b"}, True),
+    (["a"], ["b"], {"from": ["a"], "to": ["b"]}, True),
+])
+def test_a_declared_value_matches_only_a_value_of_its_own_kind(old, new, declared, covered):
+    base = {"r1": _line("r1", settle={"billable": old})}
+    cand = {"r1": _line("r1", settle={"billable": new})}
+    rule = differ.parse_declarations([{"endpoint": "acme.lookup", "field": "settle.billable",
+                                       **declared, "reason": "kind"}])
+    assert differ.compare(base, cand, rule).passed is covered
+
+
+@pytest.mark.parametrize(("state", "where", "covered"), [
+    (False, False, True), (False, 0, False), (0, False, False), (0, 0.0, True),
+    (None, None, True), (None, 0, False), ("", None, False), ("1", 1, False),
+])
+def test_a_where_value_matches_only_a_value_of_its_own_kind(state, where, covered):
+    base = {"r1": _line("r1", settle={"actual_micro": 4000}, outcome={"flag": state})}
+    cand = {"r1": _line("r1", settle={"actual_micro": 0}, outcome={"flag": state})}
+    rule = differ.parse_declarations([{"endpoint": "acme.lookup", "field": "settle.actual_micro",
+                                       "where": {"outcome.flag": where}, "reason": "kind"}])
+    assert differ.compare(base, cand, rule).passed is covered
+
+
 def test_every_declaration_a_change_matches_is_exercised():
     base = {"r1": _line("r1", settle={"actual_micro": 4000})}
     cand = {"r1": _line("r1", settle={"actual_micro": 0})}

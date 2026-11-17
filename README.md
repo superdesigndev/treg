@@ -83,7 +83,9 @@ treg resources list --provider fishaudio --kind voice
 With your own Fish key, requests remain an unrestricted, unmetered upstream relay and Fish owns the
 account boundary.
 
-Catalog tool inputs are described by `treg catalog get <id>`. Tools marked `strict_query` reject undeclared or repeated query parameters, unsupported values and request bodies.
+A client written for a provider's own API can switch by its base URL alone: `https://treg.to/call/<provider>` in place of the provider's base URL (`https://api.dataforseo.com/v3` → `https://treg.to/call/dataforseo`) runs the catalog tool on that method and path exactly as `/call/<id>` would; a path the catalog does not list is a 404, never relayed.
+
+Catalog tool inputs are described by `treg catalog get <id>`. Tools marked `strict_query` reject undeclared or repeated query parameters, unsupported values and request bodies. Send each declared single-valued parameter once, and a row count such as `limit` as a whole number within its stated maximum: a tool that enforces this answers a 400 `catalog_parameter_invalid` naming the parameter, and nothing is charged.
 
 Your token identifies you on every call (`X-Treg-Token` header) and is the same for all tools.
 Discover what your team has shared: `treg tool ls` · check credential health: `treg health`.
@@ -114,7 +116,8 @@ Ready-made recipes your agent runs end to end, every call through treg:
 | [`make-ugc`](skills/make-ugc/SKILL.md) | Make AI UGC videos: trending hooks, a presenter, talking-head clips, captions ([treg.to/ugc](https://treg.to/ugc)) |
 | [`jev-memory`](skills/jev-memory/SKILL.md) | Give Claude Code a memory: a Claude Code mod where Jev judges each prompt after the turn and keeps your lasting preferences, installed ready-made or built from one prompt ([the mod](examples/claude-code-mods/jev-memory)) |
 
-`install.sh` installs only `treg` and lists the others; name the ones you want with
+`install.sh` installs only `treg` and names the others in one line; your agent offers them after
+sign-in and the first call. Name the ones you want with
 `sh -s -- --skills lead-signals,recruit` (or `--skills all`; the opt-in `jev-memory` and `rea-growth` are never in that set). In Claude Code each one is
 also its own plugin in treg's marketplace: `/plugin install recruit@treg`, or pick them from `/plugin`. To add
 them to an existing agent instead ([skills.sh](https://skills.sh) CLI):
@@ -154,7 +157,8 @@ treg call hunter.people.email.find --query domain=reddit.com --query full_name="
 **How a catalogued call is served** — the credential ladder, in order:
 
 1. your team registered its own tool for that provider → that tool, that key;
-2. your team stored a secret for the provider → injected through a virtual tool;
+2. your team stored a secret for the provider → injected through a virtual tool (never for a keyless
+   public API, which has nothing to connect);
 3. neither, and the endpoint has a verified public route → **no provider key**, free;
 4. otherwise → **treg's own key**, billed to the team's prepaid balance.
 
@@ -244,8 +248,7 @@ treg run gh -- pr list
 ```
 
 `--local` (default) runs on your machine. Server-side CLI execution (`--server`) is disabled globally.
-For a whole session, `treg shell start` opens a subshell where every registered CLI injects
-automatically — just use `stripe`, `gh`, … normally; `exit` reverts. `treg runs` is the audit log.
+`treg runs` is the audit log.
 
 ### 3. Skills
 
@@ -282,7 +285,8 @@ treg oauth connect gsc --client-secret client_secret.json \
 
 Full options for every command: [`USAGE.md`](USAGE.md).
 
-The CLI sends anonymous command usage to PostHog when using treg.to (no arguments or credentials).
+The CLI and its installer send anonymous usage to PostHog when using treg.to (which command ran and
+how it ended, never request content or credentials).
 Disable with `TREG_TELEMETRY=0` or `DO_NOT_TRACK=1`.
 See [analytics details](USAGE.md#anonymous-usage-analytics).
 
@@ -296,7 +300,7 @@ and skill belongs to the active org. Roles: **owner / admin / member / viewer**.
 ```bash
 treg org create "Acme"                        # make a team, become owner
 treg org invite teammate@acme.com             # invite by email (pick role + tool access)
-treg org join <code> --email you@acme.com     # accept an invite (creates you if new)
+treg org join <code>                          # accept an invite (sign in as the invited email first)
 treg org ls | use <slug> | members            # switch orgs, see the roster
 treg org access <member> --tools a,b          # per-member tool access (admin+)
 ```
@@ -371,7 +375,10 @@ Environment variables (prefix `TREG_`, read from `.env`):
 | ----------------------------------------- | ------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `TREG_DATABASE_URL`                       | `sqlite+aiosqlite:///./treg.db` | DB URL (SQLite for dev, Postgres in prod)                                                                                                                                  |
 | `TREG_READ_DATABASE_URL`                  | *(empty)*                       | Optional SQLite / PostgreSQL read datasource; empty reuses the primary. Requires callers to opt in; existing queries are unchanged. See [read datasource setup](docs/context/ops/deploy.md#optional-read-replica). |
-| `TREG_SECRET_KEY`                         | *(empty)*                       | Fernet key for secrets-at-rest; empty → an ephemeral key is minted (secrets won't survive a restart)                                                                       |
+| `TREG_SECRET_KEY`                         | *(empty)*                       | Fernet key for secrets-at-rest; empty → an ephemeral key is minted (secrets won't survive a restart). During a rotation, a comma-separated list: the first key encrypts, every key decrypts                                                                       |
+| `TREG_AWS_SECRET_ID`                      | *(empty)*                       | ARN of an AWS Secrets Manager secret holding a JSON object of `TREG_*` settings, read once at startup and winning over the environment; AWS credentials come from the standard `AWS_*` variables |
+| `TREG_KMS_KEY_ID`                         | *(empty)*                       | KMS key or alias ARN for stored credentials: this process can open KMS-sealed values (AWS credentials from the standard `AWS_*` variables) |
+| `TREG_KMS_ENCRYPT_NEW`                    | `false`                         | also seal new credential writes with that key; set only once every process that reads credentials has `TREG_KMS_KEY_ID` |
 | `TREG_PUBLIC_URL`                         | `https://treg.to`  | treg's public base, used to build the OAuth callback URI                                                                                                                   |
 | `TREG_SESSION_SECRET`                     | *(empty)*                       | signs the dashboard session cookie; falls back to `TREG_SECRET_KEY`. Set a real value in prod                                                                              |
 | `TREG_GITHUB_CLIENT_ID` / `_SECRET`       | *(empty)*                       | GitHub OAuth sign-in (callback `<public_url>/auth/github/callback`); empty hides the button                                                                                |
@@ -387,9 +394,11 @@ Environment variables (prefix `TREG_`, read from `.env`):
 | `TREG_BLOCKED_EMAIL_DOMAINS`              | *(empty)*                       | comma-separated email domains refused at every sign-up/sign-in door and at team creation (subdomains included, case-insensitive). Empty blocks nothing — no list ships in the code |
 | `TREG_CLIENT_IP_HEADER`                   | *(empty)*                       | a header only your edge can set, used as the client address for every per-IP limit (`cf-connecting-ip` behind Cloudflare) |
 | `TREG_TRUSTED_PROXY_HOPS`                 | `1`                             | without that header: the `X-Forwarded-For` entry this many hops from the RIGHT (the one your nearest proxy appended); `0` when clients connect directly. The first entry is client-written and never trusted |
+| `TREG_RATE_LIMIT_EXEMPT_IPS`              | *(empty)*                       | comma-separated addresses or CIDR blocks exempt from every per-IP limit (an authorized security test, a monitoring probe); per-email, per-user and deployment-wide limits still apply. A malformed entry refuses to start |
 | `TREG_REQUIRED_EXTENSIONS`                | *(empty)*                       | comma-separated policy extensions (`treg.extensions` entry points) that must be installed, else startup fails. treg.to runs a private abuse-policy extension this way; it can only restrict ([policy extensions](docs/context/architecture/policy-extensions.md)) |
 | `TREG_TURNSTILE_SITE_KEY` / `_SECRET`     | *(empty)*                       | Cloudflare Turnstile on every email sign-in form and on a new address's first GitHub/Google sign-in; either empty = off. The site key is served in `/captcha.js`, the secret only reaches siteverify |
 | `TREG_TURNSTILE_MODE`                     | `observe`                       | `observe` logs each outcome and changes nothing; `enforce` refuses a code to a missing or invalid token, gives no signup credit when Cloudflare cannot answer, and gives a new GitHub/Google user signup credit only on a passed check |
+| `TREG_TURNSTILE_SOCIAL`                   | `true`                          | `false` skips the check on a new address's first GitHub/Google sign-in, which then gets signup credit as with no widget; the email door is unchanged |
 | `TREG_TURNSTILE_HOSTNAMES`                | *(empty)*                       | comma-separated hosts a token must be solved on; empty = the `TREG_PUBLIC_URL` host (and its known aliases) |
 | `TREG_ADMIN_TOKEN`                        | *(empty)*                       | cross-tenant **super-admin** bearer; authorizes every `/admin/*` endpoint. Empty disables the env path (only `is_superadmin` users reach `/admin`). Keep it long + secret. |
 | `TREG_EMAIL_DEV_MODE`                     | `false`                         | when true, `/auth/email/start` returns the OTP in its response (no mail sender needed) — **dev/local only**, never in prod.                                                |
@@ -400,7 +409,7 @@ No `.env` is needed for local dev — every setting has a working default (ephem
 
 > **⚠️ Back these up before moving or redeploying:** the Fernet key (`TREG_SECRET_KEY`) and the
 > database (Postgres in prod; `treg.db` for a local sqlite run). Lose the Fernet key and every
-> stored secret becomes unrecoverable.
+> stored secret it sealed becomes unrecoverable; the same holds for a KMS key that is deleted.
 
 ## Architecture
 

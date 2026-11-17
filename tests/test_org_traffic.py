@@ -3,6 +3,7 @@ import asyncio
 import io
 import json
 import logging
+import re
 import subprocess
 import sys
 from types import SimpleNamespace
@@ -12,12 +13,10 @@ import pytest
 from sqlalchemy.exc import TimeoutError as PoolTimeoutError
 
 from treg import mcp
-from treg.application.call.types import UpstreamResponse
 from treg.config import get_settings
 from treg.infra import org_traffic as traffic
-from treg.routers import call as routes
-from test_marketplace_call import platform_on  # noqa: F401
-from test_org_concurrency import gate, _configure_org  # noqa: F401
+from test_marketplace_call import EP, platform_on  # noqa: F401
+from test_org_concurrency import _configure_org, _gated, _upstream, gate, own_key  # noqa: F401
 from test_routing import enrichment_on  # noqa: F401
 
 
@@ -299,24 +298,33 @@ async def test_trusted_org_log_and_unresolved_null(
     (PoolTimeoutError(), 503, "db_pool"),
 ])
 async def test_exception_or_pool_timeout_keeps_status_and_finishes(
-    clients, counter, caller_key_id, monkeypatch, caplog, posthog_events, path, failure, status,
-    failure_kind,
+    clients, platform_on, counter, caller_key_id, monkeypatch, caplog, posthog_events, path, failure,
+    status, failure_kind,
 ):
     monkeypatch.setattr(get_settings(), "table_enabled", True)
-    execute = AsyncMock(side_effect=failure)
-    monkeypatch.setattr(routes, "execute_call", execute)
+
+    def fault():
+        raise failure
+
+    _upstream(monkeypatch, fault)
     if status == 500:
         with pytest.raises(RuntimeError, match="fault"):
-            await clients.get(path + "example/path")
+            await clients.get(f"{path}{EP}?aweme_id=7")
+        call_ref = None
     else:
-        assert (await clients.get(path + "example/path")).status_code == status
+        response = await clients.get(f"{path}{EP}?aweme_id=7")
+        assert response.status_code == status
+        call_ref = response.headers["X-Treg-Call-Id"]
     [row] = counter.snapshot()["top"]
     assert row["requests"] == row["completed"] == 1
     assert row["status_503"] == (status == 503)
     [logged] = logs(caplog)
     assert logged["status"] == status
     assert logged["api_key_id"] == caller_key_id
-    assert logged["call_ref"] == execute.await_args.args[0].call_ref
+    assert logged["endpoint_id"] == EP
+    assert re.fullmatch(r"[0-9a-f]{32}", logged["call_ref"])
+    if call_ref is not None:
+        assert logged["call_ref"] == call_ref
     [event] = await posthog_events()
     assert logged["failure_kind"] == event["properties"]["failure_kind"] == failure_kind
     assert not counter.orgs
@@ -354,34 +362,20 @@ async def test_pool_timeout_before_identity_logs_intake_failure_kind(
 
 @pytest.mark.parametrize("ending", ["success", "error", "cancel"])
 async def test_stream_lifetime_across_windows(
-    clients, counter, caller_key_id, monkeypatch, ending, caplog,
+    clients, platform_on, counter, caller_key_id, monkeypatch, ending, caplog,
 ):
+    await own_key(clients)
     entered, proceed = asyncio.Event(), asyncio.Event()
     closed = AsyncMock()
-
-    async def body():
-        entered.set()
-        yield b"first"
-        await proceed.wait()
-        if ending == "error":
-            raise RuntimeError("stream fault")
-        yield b"last"
-
-    async def invoke(context, _client):
-        context.tool_name = "example"
-        context.endpoint_id = "example.read"
-        return UpstreamResponse(
-            200, ((b"x-treg-call-id", b"untrusted-upstream-id"),
-                  (b"x-treg-idempotent-replay", b"true")), body(), closed)
-
-    execute = AsyncMock(side_effect=invoke)
-    monkeypatch.setattr(routes, "execute_call", execute)
-    task = asyncio.create_task(clients.get("/call/example/path"))
+    _upstream(monkeypatch, _gated(entered, proceed, closed, fail=ending == "error", headers=(
+        (b"x-treg-call-id", b"untrusted-upstream-id"), (b"x-treg-idempotent-replay", b"true"))))
+    task = asyncio.create_task(clients.get(f"/call/{EP}?aweme_id=7"))
     try:
         await asyncio.wait_for(entered.wait(), 2)
         assert counter.snapshot()["top"][0]["in_flight_max"] == 1
         assert next(iter(counter.orgs.values())).live == 1
         assert not logs(caplog)  # Correlation is emitted after the same stream/cleanup boundary.
+        call_ref = None
         if ending == "cancel":
             task.cancel()
             with pytest.raises(asyncio.CancelledError):
@@ -392,7 +386,9 @@ async def test_stream_lifetime_across_windows(
                 with pytest.raises(RuntimeError, match="stream fault"):
                     await task
             else:
-                assert (await task).content == b"firstlast"
+                response = await task
+                assert response.content == b'{"part":"last"}'
+                call_ref = response.headers["X-Treg-Call-Id"]
         closed.assert_awaited_once()
         [row] = counter.snapshot()["top"]
         assert row["requests"] == 0 and row["completed"] == row["in_flight_max"] == 1
@@ -400,9 +396,11 @@ async def test_stream_lifetime_across_windows(
         [logged] = logs(caplog)
         assert logged["status"] == 200  # don't invent a status after headers were sent
         assert logged["api_key_id"] == caller_key_id
-        assert logged["call_ref"] == execute.await_args.args[0].call_ref != "untrusted-upstream-id"
+        assert re.fullmatch(r"[0-9a-f]{32}", logged["call_ref"])
+        if call_ref is not None:
+            assert logged["call_ref"] == call_ref
         assert logged["replay_of"] is None
-        assert logged["tool_name"] == "example" and logged["endpoint_id"] == "example.read"
+        assert logged["tool_name"] == logged["endpoint_id"] == EP
     finally:
         proceed.set()
         task.cancel()
@@ -504,6 +502,74 @@ async def test_routed_children_count_one_root(clients, counter, enrichment_on, m
     assert logged["method"] == "POST" and logged["replay_of"] is None
     [row] = counter.snapshot()["top"]
     assert row["requests"] == row["completed"] == 1
+    assert logs(caplog, "call_child") == []
+
+
+async def test_failed_routed_child_logs_one_child_line(clients, counter, enrichment_on, monkeypatch,
+                                                       caplog):
+    from treg.application.call import service
+    from test_routing import _relay_by_provider, ROUTED
+
+    seen = []
+    monkeypatch.setattr(service, "relay", _relay_by_provider(
+        {"tomba": [(500, {"error": "upstream down"})], "*": [(404, {})] * 20}, seen))
+    response = await clients.post(f"/call/{ROUTED}", json={"full_name": "Test", "domain": "example.com"})
+    assert any(provider == "tomba" for provider, *_ in seen)
+    root_ref = response.headers["X-Treg-Call-Id"]
+    [root] = logs(caplog)
+    assert root["call_ref"] == root_ref and root["endpoint_id"] == ROUTED
+    [child] = logs(caplog, "call_child")
+    assert child["provider"] == "tomba" and child["status"] == 500
+    assert child["parent_ref"] == root_ref and child["call_ref"].startswith(root_ref + ":r")
+    assert child["step"].startswith("r") and child["credential_tier"] == "platform"
+    assert child["endpoint_id"].startswith("tomba.")
+    assert set(child) == {"worker_pid", "org_id", "call_ref", "parent_ref", "step", "endpoint_id",
+                          "provider", "credential_tier", "status", "upstream_ms", "duration_ms"}
+    [row] = counter.snapshot()["top"]
+    assert row["requests"] == row["completed"] == 1
+
+
+@pytest.mark.parametrize("on_send,error,logged", [
+    (False, "ConnectError", 0),  # refused before the send hook (an SSRF block, a failed injection)
+    (True, "PoolTimeout", 0),    # the hook fired, but no pool slot: the request never left
+    (True, "ReadTimeout", 1),    # sent; the vendor did not answer
+])
+async def test_child_failure_is_logged_only_once_the_request_left(
+        clients, counter, enrichment_on, monkeypatch, caplog, on_send, error, logged):
+    import httpx
+    from treg.application.call import service
+    from treg.infra.upstream import relay as relay_module
+    from test_routing import _relay_by_provider, ROUTED
+
+    others = _relay_by_provider({"*": [(404, {})] * 20}, [])
+    tried = []
+
+    async def relay(request, upstream_url, *args, **kwargs):
+        if "tomba" not in upstream_url:
+            return await others(request, upstream_url, *args, **kwargs)
+        tried.append(upstream_url)
+        if on_send:
+            relay_module.ON_SEND.get()()
+        raise getattr(httpx, error)("tomba attempt failed")
+
+    monkeypatch.setattr(service, "relay", relay)
+    await clients.post(f"/call/{ROUTED}", json={"full_name": "Test", "domain": "example.com"})
+    assert tried
+    children = logs(caplog, "call_child")
+    assert len(children) == logged
+    assert all(child["provider"] == "tomba" and child["status"] >= 500 for child in children)
+
+
+def test_for_each_hub_item_is_a_child(caplog):
+    from types import SimpleNamespace
+    from treg.application.call import service
+
+    mk = SimpleNamespace(endpoint_id="tomba.email.find", provider="tomba", tier="platform")
+    service._log_failed_child(org_id=1, call_ref="run:s1.3", mk=mk, status=500,
+                              reached_provider=True, refused_by=None, upstream_ms=5,
+                              duration_ms=6)
+    [child] = logs(caplog, "call_child")
+    assert child["parent_ref"] == "run" and child["step"] == "s1.3"
 
 
 @pytest.mark.parametrize("path,tool,args", [

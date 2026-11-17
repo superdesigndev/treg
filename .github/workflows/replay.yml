@@ -50,8 +50,10 @@ jobs:
         # Only a pull request that changes loader, schema or validator source owes this check. The
         # head's script runs in each checkout's own environment on the base's catalog, so a pull
         # request that also changes catalog rows is judged on its code alone; the replay judges
-        # the rows.
+        # the rows. Paths the body declares in a `dump-declared` block may differ.
         if: ${{ !cancelled() }}
+        env:
+          PR_BODY: ${{ github.event.pull_request.body }}
         run: |
           OUT="$RUNNER_TEMP/replay"
           BASE="$RUNNER_TEMP/base"
@@ -66,9 +68,11 @@ jobs:
           uv sync --locked
           uv run --locked python scripts/catalog_dump.py "$OUT/candidate-catalog.json" \
             --catalog "$BASE/src/treg/catalog"
+          printf '%s\n' "$PR_BODY" > "$OUT/dump-body.md"
           status=0
           uv run --locked python scripts/catalog_dump.py --compare \
-            "$OUT/base-catalog.json" "$OUT/candidate-catalog.json" > "$OUT/catalog.txt" || status=$?
+            "$OUT/base-catalog.json" "$OUT/candidate-catalog.json" \
+            --declared-in "$OUT/dump-body.md" > "$OUT/catalog.txt" || status=$?
           tee -a "$GITHUB_STEP_SUMMARY" < "$OUT/catalog.txt"
           exit "$status"
       - name: Fail on an undeclared difference

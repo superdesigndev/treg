@@ -16,7 +16,11 @@ const COL_TIPS = {
 }
 
 export default {
-mkProvider(){ return this.providers.find(p=>p.service===this.mkService)||null; },
+mkProvider(){ const p=this.providers.find(p=>p.service===this.mkService); if(p) return p;
+      // a keyless public provider is not in the Connect listing: its page reads the catalog's record
+      // a paused provider keeps the paused page (the Connect listing leaves paused providers out too)
+      const d=this.mkToolData, c=d && d.provider;
+      return c && c.auth_kind==='public' && !this.mkPaused ? {...c, configured:true} : null; },
 mkPaused(){ return this.providerPaused(this.mkService); },
 mkAccounts(){ return this.connAccounts.filter(a=>a.service===this.mkService); },
 // Which capabilities ANY account here already holds — a page-level "you have this" summary,
@@ -189,6 +193,8 @@ platEpById(){ const m={}; for(const r of this.platRowsAll) for(const e of r.endp
     drawerEp(){ if(!this.drawerTool) return null;
       return (this.view==='provider' ? this.mkToolById : this.platEpById)[this.drawerTool]||null; },
 drawerInfo(){ const i=this.drawerTool && this.epInfo[this.drawerTool]; return i&&i.data||null; },
+// The row's caveat rides only on the tool's own detail, never on the list the drawer opened from.
+    drawerNote(){ const d=this.drawerInfo; return d && d.endpoint && d.endpoint.note || ''; },
 // The comparison a URL names, by its key (`enrich` on the companies shelf is `companies.enrich`).
     platComparison(){ return this.platCap ? this.platComparisons.find(j=>j.slug===this.platCap)||null : null; },
 platCapRow(){ return this.platComparison ? this.platComparison.row : null; },
@@ -236,11 +242,13 @@ drawerIds(){
     drawerNext(){ const e=this.drawerEp; if(!e) return '';
       if(this.providerPaused(e.provider)) return 'paused';
       if(this.catEndpointConnected(e)) return 'copy';
+      // a public provider this server has not enabled: nothing to copy or try, its calls are refused
+      if(this.endpointAccessLabel(e)==='Not enabled on this server') return 'off';
       if(this.provAuthKind(e.provider)==='oauth') return 'connect';
       return e.platform_eligible===false ? 'key' : 'copy'; },
 // Everything else worth knowing, as one quiet line instead of a row of chips.
     drawerFacts(){ const e=this.drawerEp; if(!e) return '';
-      const access={'Platform + BYOK':"treg's key or yours", 'Platform access':"treg's key", 'BYOK only':'your own key only'}[this.endpointAccessLabel(e)] || this.endpointAccessLabel(e);
+      const access={'Platform + BYOK':"treg's key or yours", 'Platform access':"treg's key", 'BYOK only':'your own key only', 'Free, no key':'free, no key needed', 'Not enabled on this server':'not enabled on this server: refused unless your team registered its own tool for its host'}[this.endpointAccessLabel(e)] || this.endpointAccessLabel(e);
       return [access, e.verified ? 'verified live '+this.verdictDate(e.verified) : 'not yet verified live',
               e.scope==='own_account' ? 'reads the account you connect' : e.scope==='any_account' ? 'any public account' : ''].filter(Boolean).join(' · '); },
 // A provider's tools by platform (GET /catalog/providers/<service>), for its provider page.

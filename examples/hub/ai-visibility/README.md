@@ -1,10 +1,10 @@
 # ai-visibility
 
-Ask four AI answer engines the same question. Find out who they mention.
+Ask three AI answer engines the same question. Find out who they mention.
 
 ## What it does
 
-1. Sends your question to **ChatGPT, Gemini, Copilot and Google AI Mode**, all at
+1. Sends your question to **ChatGPT, Gemini and Google AI Mode**, all at
    the same time. One engine failing never stops the others. The question is wrapped to ask for a
    short list of the top 5 names with a few words each, no introduction and no conclusion: the
    engines answer faster, and "did it name us" is the whole point.
@@ -25,16 +25,16 @@ decided instead). Plus the totals: `brand_mentioned_by`, `brand_cited_by`,
 
 ## What it costs
 
-- The four engine calls, at cost: about **1.1 cents** together.
-- Four judgment calls, at cost: about **0.01 cents** together.
+- The three engine calls, at cost: about **0.8 cents** together.
+- Three judgment calls, at cost: about **0.01 cents** together.
 - Plus **$0.02** for the tool (`ctx.charge(0.02, "fee")`, cap `max_price_usd` $0.02).
 
 ## Limits
 
-- At most 8 calls a run. Up to 8 competitors.
+- At most 6 calls a run. Up to 8 competitors.
 - An engine that has not answered in 75 seconds is reported as `timed_out`; the others still count.
-- Perplexity is left out for now: it failed half its calls over two weeks. It comes back when its
-  provider is stable.
+- Copilot and Perplexity are not asked: both block logged-out sessions, so cloro no longer
+  serves them.
 - Each engine refuses a few countries (for example CN, RU). An engine that does not serve your
   `country` is **skipped** and says so; the run still returns the others.
 - The judge reads the first 6,000 characters of each answer.

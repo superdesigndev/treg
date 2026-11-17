@@ -45,10 +45,12 @@ import hashlib
 import hmac
 import json
 from collections.abc import Awaitable, Callable
+from contextvars import ContextVar
 
 import httpx
 
-from ... import crypto, jsontext, oauth_providers
+from ... import jsontext, oauth_providers
+from .. import credential_cipher
 from ...application.call.types import GatewayFailed, UpstreamRequest, UpstreamResponse
 from ...config import TREG_USER_AGENT, get_settings
 from ...models import Secret, Tool
@@ -163,6 +165,11 @@ def _scrub_treg_cookies(headers: httpx.Headers) -> None:
         del headers["cookie"]
 
 
+
+# Set by a caller that needs to know the request actually left: called once every local check
+# above has passed, immediately before the send. Not called for a request refused here.
+ON_SEND: ContextVar[Callable[[], None] | None] = ContextVar("relay_on_send", default=None)
+
 async def relay(
     request: UpstreamRequest,
     upstream_url: str,
@@ -242,7 +249,7 @@ async def relay(
                     detail=f"credential injection failed: {exc}") from exc
             continue
         secret = secrets[binding["secret_id"]]
-        raw = crypto.decrypt(secret.value)
+        raw = credential_cipher.opened(secret)
         try:
             injectors.inject(headers, params, binding, raw, json_body=json_body)
         except ValueError as exc:
@@ -279,12 +286,15 @@ async def relay(
     # Call-time SSRF guard: resolve the upstream host NOW and refuse an internal target — defeats DNS
     # rebinding (base_url was public at registration, its DNS now points at 169.254.169.254 / localhost).
     from . import health
-    if get_settings().proxy_ssrf_check and not health.host_is_public(upstream_req.url.host):
+    if get_settings().proxy_ssrf_check and not await health.host_is_public_async(
+            upstream_req.url.host, health.host_is_public):
         raise GatewayFailed(
             "ssrf_refused", status_code=502,
             detail="upstream host resolves to a non-public address")
     if before_outbound is not None:
         await before_outbound()
+    if (on_send := ON_SEND.get()) is not None:
+        on_send()
     upstream_resp = await client.send(upstream_req, stream=True)
 
     # Response drop set: hop-by-hop + whatever the upstream marked hop-by-hop via its Connection

@@ -58,6 +58,11 @@ def browsable(ep: dict) -> bool:
     "treg", which the brand rules say must never appear as a vendor."""
     return ep["kind"] not in HIDDEN_KINDS and ep.get("kind") != "routed"
 
+def _no_cache_providers() -> frozenset[str]:
+    from ...config import get_settings
+    return get_settings().no_cache_providers_set
+
+
 def paused_providers() -> frozenset[str]:
     from ...config import get_settings
     return get_settings().paused_providers_set
@@ -505,7 +510,7 @@ def _parse(directory: Path) -> Catalog:
                 kept = {k: v for k, v in raw.items() if k not in schema.v2.RESOLVED_KEYS}
                 ep = {**_normalize(kept, provider, directory), "tier": doc_tier[path]}
                 ep.update(schema.served(row, ep["input"]))
-                if (floor := _table_floor(ep["cost"], ep["input"])) is not None:
+                if (floor := _table_floor(schema.v2.floor_rows(ep["price"], ep["input"]), ep["input"])) is not None:
                     ep["cost"]["table_min"] = floor
                 if (span := _table_rate(ep["cost"])) is not None:
                     ep["cost"].update(table_rate=list(span[:2]), table_rate_unit=span[2])
@@ -713,6 +718,7 @@ def _normalize(raw: dict, provider: str, directory: Path) -> dict:
     capability = raw.get("capability") or ""
     platform = raw.get("platform") or (capability.split(".")[0] if capability else "other")
     verified = raw.get("verified")
+    keeps_nothing = provider.lower() in _no_cache_providers()
     return {
         "id": str(raw["id"]),
         "provider": provider,
@@ -728,6 +734,7 @@ def _normalize(raw: dict, provider: str, directory: Path) -> dict:
         "host": str(raw.get("host") or "").strip().lower(),
         "name": str(raw.get("name") or "").strip(),
         "summary": raw.get("summary") or "",
+        **({"note": note} if (note := str(raw.get("note") or "").strip()) else {}),
         "input": raw.get("input") or {},
         "authorization_method": str(raw.get("authorization_method") or ""),
         "authorization_methods": list(raw.get("authorization_methods") or []),
@@ -775,8 +782,9 @@ def _normalize(raw: dict, provider: str, directory: Path) -> dict:
         # inherited from the file header unless the endpoint declares its own.
         # Generated media and its task/result utilities must never replay shared-account ids.
         # Enforce this for core and generated extended rows without changing their public kind.
-        "cache": "forbidden" if platform in {"image-gen", "video-gen", "voice-gen", "music-gen"} else raw.get("cache"),
-        "response_retention": raw.get("response_retention"),
+        # A deployment's no-cache providers (TREG_NO_CACHE_PROVIDERS) keep nothing either.
+        "cache": "forbidden" if keeps_nothing or platform in {"image-gen", "video-gen", "voice-gen", "music-gen"} else raw.get("cache"),
+        "response_retention": "forbidden" if keeps_nothing else raw.get("response_retention"),
         "verified": str(verified) if verified else None,
         "added": str(raw.get("added") or "") or None,
         # The first UTC day whose observations describe the service as it is now; ranking and the
@@ -882,14 +890,17 @@ def sibling_view(ep: dict, provider_display: str, cat: Catalog) -> dict:
     }
 
 
-def endpoint_view(ep: dict, provider_display: str, cat: Catalog | None = None) -> dict:
-    """The public JSON shape of one endpoint (the dashboard + CLI render this)."""
+def endpoint_view(ep: dict, provider_display: str, cat: Catalog | None = None, *,
+                  detail: bool = False) -> dict:
+    """The public JSON shape of one endpoint (the dashboard + CLI render this). `detail` is the
+    endpoint's own page, which alone carries the row's `note`: lists and search leave it out."""
     return {
         "id": ep["id"],
         "provider": ep["provider"],
         "provider_display": provider_display,
         "name": ep.get("name") or "",
         "summary": ep["summary"],
+        **({"note": ep["note"]} if detail and ep.get("note") else {}),
         "method": ep["method"],
         "path": ep["path"],
         "scope": ep["scope"],

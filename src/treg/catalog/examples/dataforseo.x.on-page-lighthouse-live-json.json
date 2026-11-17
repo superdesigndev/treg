@@ -1,0 +1,55 @@
+{
+  "version": "0.1.20261103",
+  "status_code": 20000,
+  "status_message": "Ok.",
+  "time": "22.6257 sec.",
+  "cost": 0.005,
+  "tasks_count": 1,
+  "tasks_error": 0,
+  "tasks": [
+    {
+      "id": "11162217-2171-0324-0000-dd5b21d0fb1e",
+      "status_code": 20000,
+      "status_message": "Ok.",
+      "time": "22.6172 sec.",
+      "cost": 0.005,
+      "result_count": 1,
+      "path": [
+        "v3",
+        "… 4 more item(s) truncated"
+      ],
+      "data": {
+        "api": "on_page",
+        "function": "lighthouse",
+        "url": "https://dataforseo.com",
+        "for_mobile": false,
+        "categories": [
+          "performance"
+        ]
+      },
+      "result": [
+        {
+          "lighthouseVersion": "13.4.0",
+          "requestedUrl": "https://dataforseo.com/",
+          "mainDocumentUrl": "https://dataforseo.com/",
+          "finalDisplayedUrl": "https://dataforseo.com/",
+          "finalUrl": "https://dataforseo.com/",
+          "fetchTime": "2026-11-16T22:17:12.373Z",
+          "gatherMode": "navigation",
+          "runWarnings": "… [0 item(s) truncated]",
+          "userAgent": "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) HeadlessChrome/132.0.0.0 Safari/537.36",
+          "environment": "… {4 field(s) truncated}",
+          "audits": "… {49 field(s) truncated}",
+          "configSettings": "… {31 field(s) truncated}",
+          "categories": "… {1 field(s) truncated}",
+          "categoryGroups": "… {21 field(s) truncated}",
+          "stackPacks": "… [1 item(s) truncated]",
+          "entities": "… [10 item(s) truncated]",
+          "fullPageScreenshot": "… {2 field(s) truncated}",
+          "timing": "… {2 field(s) truncated}",
+          "i18n": "… {2 field(s) truncated}"
+        }
+      ]
+    }
+  ]
+}

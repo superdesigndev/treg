@@ -43,6 +43,11 @@
     },
     {
       "args": [],
+      "class": "treg.bootstrap_http._ClientNoticeMiddleware",
+      "kwargs": {}
+    },
+    {
+      "args": [],
       "class": "treg.api._SecurityHeadersMiddleware",
       "kwargs": {}
     },

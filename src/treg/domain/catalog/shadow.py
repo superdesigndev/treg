@@ -26,8 +26,10 @@ from dataclasses import dataclass, field
 from difflib import SequenceMatcher
 from typing import Any
 
+from . import outcome
 from .routing import paths as P
-from .routing.contracts import Adapter, adapter_accepts, parse_adapters
+from .routing.contracts import Adapter, adapter_accepts, answer_of, parse_adapters
+from .schema.v2 import is_v2
 
 # Fields compared by similarity rather than equality: a name written two ways is still one name.
 SIMILAR_FIELDS = frozenset({"name", "title", "company_name", "full_name"})
@@ -96,13 +98,23 @@ def shadow_request(target: Target, identity: dict[str, Any]) -> tuple[dict[str, 
 
 
 def read(adapter: Adapter, body: Any) -> tuple[bool, dict[str, Any]]:
-    """(found, contract fields) from one provider answer; a body that breaks the adapter is a miss."""
+    """(found, contract fields) from one provider answer; a body that breaks the adapter is a miss,
+    and so is an answer a v2 row's outcome declaration does not judge a hit."""
     try:
-        if adapter.is_miss(body):
+        if adapter.is_miss(body) or not _hit(adapter, body):
             return False, {}
         return True, adapter.from_upstream(body)
     except Exception:  # noqa: BLE001 - a malformed answer is a miss, never a crash of the run
         return False, {}
+
+
+def _hit(adapter: Adapter, body: Any) -> bool:
+    if adapter.miss:
+        return True
+    from .store import load
+
+    endpoint = load().by_id.get(adapter.endpoint_id) or {}
+    return not is_v2(endpoint) or outcome.judge(endpoint, 200, body, answer=answer_of(body)).state == "hit"
 
 
 def normalize(value: Any) -> str:

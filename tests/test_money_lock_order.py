@@ -656,3 +656,33 @@ async def test_opposite_referral_payouts_credit_both_sides_once(postgres_money, 
             grants = [entry for entry in await ledger.entries_of(db, org_id)
                       if entry.kind == "grant" and entry.meta.get("block_kind") == "referral"]
             assert sorted(entry.amount_micro for entry in grants) == [30, 50]
+
+
+async def test_a_refund_revoke_and_a_settlement_on_the_same_credit_both_complete(postgres_money):
+    """Revoke locks the refunded block and then Org, the order a settlement takes them in. Pause the
+    revoke after its balance update and let a settlement of a hold drawn on the same block wait for
+    it: both must commit, the settlement drawing what the revoke left."""
+    async with session_maker() as db:
+        org = Org(name="refund-race", slug="refund-race")
+        db.add(org)
+        await db.flush()
+        org_id = org.id
+        block = await ledger.topup(db, org_id, 1_000, "pi_race")
+        block_id = block.id
+        await db.commit()
+    held = await _reserve(org_id, "refund-race-hold")  # 100 held, 900 unheld
+
+    async def revoke():
+        async with session_maker() as db:
+            result = await ledger.revoke_in_transaction(
+                db, org_id, [ledger.RevokeTarget(block_id, 1_000)])
+            await db.commit()
+            return result[0].revoked_micro
+
+    async def settle():
+        async with session_maker() as db:
+            return await ledger.settle(db, held, 80)
+
+    results = await _contend_after_statement(postgres_money, revoke, settle, "UPDATE ORG ")
+    assert results == [900, 80], results
+    await _assert_accounting(org_id, balance=20, spent=80)

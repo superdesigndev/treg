@@ -224,7 +224,14 @@ endpoints:
         url: {type: string, required: true, format: uri, example: "https://example.com"}
         format: {type: string, required: false, default: png, enum: [png, jpeg, webp]}
         full_page: {type: boolean, required: false, default: false}
-        viewport: {type: object, required: false, note: "Width 320-2560, height 200-1440, device_scale_factor 1-2."}
+        viewport:
+          type: object
+          required: false
+          properties:
+            width: {type: integer, required: false, min: 320, max: 2560, default: 1440}
+            height: {type: integer, required: false, min: 200, max: 1440, default: 900}
+            device_scale_factor: {type: number, required: false, min: 1, max: 2, default: 1}
+          note: "Browser viewport object ({width, height, device_scale_factor}); omit for provider defaults."
         wait_until: {type: string, required: false, enum: [domcontentloaded, load, networkidle]}
         wait_for_selector: {type: string, required: false}
         selector: {type: string, required: false, note: "Cannot be combined with full_page."}

@@ -155,6 +155,30 @@ def _serp_desc(text: str, limit: int = 155) -> str:
 _TITLE_MAX = 65
 
 
+_OG_DEFAULT_ALT = "treg.to: one key for the whole tool catalog, priced per call"
+
+
+def og_image(base: str, path: str, alt: str = "") -> tuple[str, str]:
+    """The page's share image and its alt text: its own card when `scripts/og_images.py` wrote
+    `media/og/<path>.jpg`, else the site-wide `/media/og.png`."""
+    rel = _og_cards().get(path.rstrip("/") or "/")
+    if rel:
+        return f"{base}/media/{rel}", alt or _OG_DEFAULT_ALT
+    return f"{base}/media/og.png", _OG_DEFAULT_ALT
+
+
+@lru_cache(maxsize=1)
+def _og_cards() -> dict[str, str]:
+    """Page path -> `og/<path>.jpg` for every card on disk. The lookup never builds a file path
+    from the request."""
+    root = _MEDIA_DIR / "og"
+    cards = {}
+    for f in sorted(root.rglob("*.jpg")) if root.is_dir() else ():
+        page = f.relative_to(root).with_suffix("").as_posix()
+        cards["/" if page == "index" else "/" + page] = "og/" + f.relative_to(root).as_posix()
+    return cards
+
+
 def _page(title: str, description: str, path: str, body: str, ld: list[dict],
           *, nav_current: str = "", head_extra: str = "", css: str = "catalog.css") -> HTMLResponse:
     """The shared shell for every server-rendered page. One place that owns <title>, the meta
@@ -179,6 +203,7 @@ def _page(title: str, description: str, path: str, body: str, ld: list[dict],
     the app keeps them and opens sign-in in place (see the boot in index.html), and the page that
     produced the signup is recorded."""
     base = get_settings().public_url.rstrip("/")
+    og_url, og_alt = og_image(base, path, title)
     ref = quote(path.strip("/").replace("/", "-") or "home", safe="")
     t, d = _esc_html(title), _esc_html(description)
     url = _esc_html(base + path)  # `path` reaches attribute context — escape it like title/description
@@ -190,6 +215,12 @@ def _page(title: str, description: str, path: str, body: str, ld: list[dict],
         + json.dumps(b, separators=(",", ":")).replace("<", "\\u003c")
         + "</script>"
         for b in ld)
+    compare_col = ""
+    if _hosted():
+        from .. import compare_pages as cp
+        compare_col = ('\n      <div class="foot-col"><div class="lab">Compare</div>\n        '
+                       + "".join(f'<a href="/compare/{cp.page_slug(k)}">treg vs {_esc_html(cp.short(k))}</a>'
+                                 for k in cp.FOOTER) + '<a href="/compare">All comparisons →</a></div>')
     def navlink(href: str, label: str, extra: str = "") -> str:
         cur = ' aria-current="page"' if href == nav_current else ""
         return f'<a href="{href}"{cur}{extra}>{label}</a>'
@@ -212,14 +243,14 @@ def _page(title: str, description: str, path: str, body: str, ld: list[dict],
 <meta property="og:url" content="{url}"/>
 <meta property="og:title" content="{t}"/>
 <meta property="og:description" content="{d}"/>
-<meta property="og:image" content="{base}/media/og.png"/>
+<meta property="og:image" content="{_esc_html(og_url)}"/>
 <meta property="og:image:width" content="1200"/>
 <meta property="og:image:height" content="630"/>
-<meta property="og:image:alt" content="treg.to: one key for the whole tool catalog, priced per call"/>
+<meta property="og:image:alt" content="{_esc_html(og_alt)}"/>
 <meta name="twitter:card" content="summary_large_image"/>
 <meta name="twitter:title" content="{t}"/>
 <meta name="twitter:description" content="{d}"/>
-<meta name="twitter:image" content="{base}/media/og.png"/>
+<meta name="twitter:image" content="{_esc_html(og_url)}"/>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Geist+Pixel&family=Inter:wght@400;450;500;600;650;700&family=DM+Mono:ital,wght@0,400;0,500&display=swap" rel="stylesheet">
@@ -253,7 +284,7 @@ def _page(title: str, description: str, path: str, body: str, ld: list[dict],
         ><a href="{_GH}" target="_blank" rel="noopener">GitHub ↗</a></div>
       <div class="foot-col"><div class="lab">Company</div>
         <a href="/resources">Resources</a><a href="/support">Support</a
-        ><a href="/terms">Terms</a><a href="/privacy">Privacy</a></div>
+        ><a href="/terms">Terms</a><a href="/privacy">Privacy</a></div>{compare_col}
     </nav>
   </div>
 </footer>
@@ -296,6 +327,7 @@ def _spa_catalog_page(title: str, description: str, path: str, ld: list[dict],
     # not a guarantee this function makes. Escape it where it is used, so a future "slug not found →
     # suggestions" page cannot turn a canonical tag into a reflected XSS.
     url = _esc_html(base + path)
+    og_url, _ = og_image(base, path, title)
     blocks = "\n".join(
         '<script type="application/ld+json">'
         + json.dumps(b, separators=(",", ":")).replace("<", "\\u003c") + "</script>"
@@ -310,13 +342,13 @@ def _spa_catalog_page(title: str, description: str, path: str, ld: list[dict],
         f'<meta property="og:url" content="{url}"/>\n'
         f'<meta property="og:title" content="{t}"/>\n'
         f'<meta property="og:description" content="{d}"/>\n'
-        f'<meta property="og:image" content="{base}/media/og.png"/>\n'
+        f'<meta property="og:image" content="{_esc_html(og_url)}"/>\n'
         f'<meta property="og:image:width" content="1200"/>\n'
         f'<meta property="og:image:height" content="630"/>\n'
         f'<meta name="twitter:card" content="summary_large_image"/>\n'
         f'<meta name="twitter:title" content="{t}"/>\n'
         f'<meta name="twitter:description" content="{d}"/>\n'
-        f'<meta name="twitter:image" content="{base}/media/og.png"/>\n'
+        f'<meta name="twitter:image" content="{_esc_html(og_url)}"/>\n'
         + blocks
     )
     html = _dashboard_document(index)
@@ -392,8 +424,9 @@ async def catalog_index():
                     'compare the providers that do one job, <a href="/workflows">the workflows</a> '
                     'chain several jobs into one prompt with the price of each step, and '
                     '<a href="/agents">the agent pages</a> show the whole menu for one '
-                    'agent, and <a href="/blog">the blog</a> carries the measured receipts and '
-                    'launch notes.</p>' if _hosted() else "")
+                    'agent, <a href="/blog">the blog</a> carries the measured receipts and '
+                    'launch notes, and <a href="/compare">the comparisons</a> set treg beside other '
+                    'tool gateways for agents.</p>' if _hosted() else "")
                  + "".join(sections)
                  + f"<h2>The providers</h2><p>{len(prov_rows)} vendors serve this catalog, each "
                    f"with its own page: {prov_links}</p>")
@@ -2545,14 +2578,25 @@ async def tools_provider(service: str, db: AsyncSession = Depends(get_session),
     # Both halves of tier 4, as `no_key_needed` in mcp.py: a priceable row is servable only where this
     # deploy holds an enabled key for the provider; an eligible-but-keyless row refuses at call time.
     served = bool(get_settings().platform_key_for(svc))
-    platform_eps = [e for e in eps if served and cat.platform_eligible(e)]
-    byok_only = len(eps) - len(platform_eps)
+    # An anonymous row needs no key, only the provider allow-list (`anonymous_served`).
+    from ..application.call.resolve import anonymous_served
+    public = bool(reg and reg.auth_kind == "public")
+    # Keyless rows run with no key at all (resolve tries them before treg's key), so they are never
+    # counted as treg's key; for a public provider they are its whole served surface.
+    keyless_eps = [e for e in eps if anonymous_served(e) is not None]
+    platform_eps = (keyless_eps if public else
+                    [e for e in eps if e not in keyless_eps and cat.platform_eligible(e) and served])
+    byok_only = len(eps) - len(platform_eps) - (0 if public else len(keyless_eps))
     key_auth = bool(reg and reg.auth_kind == "key")
     oauth_metered = bool(reg and reg.platform_billed and svc in get_settings().oauth_billed_set)
     mixed = bool(platform_eps and byok_only and key_auth)
     prices = [c for e in platform_eps if (c := cat.cost_view(e.get("cost"), e.get("provider"))) and c["usd"]]
     # Published prices do not remove the OAuth account-connection requirement.
-    is_oauth = bool(reg and reg.auth_kind == "oauth") or not platform_eps
+    # A public provider has no account to connect even where this server has not enabled it. A key
+    # provider without its key reads as own-key, as on main; its keyless rows carry their own label.
+    is_oauth = bool(reg and reg.auth_kind == "oauth") or (not platform_eps and not public)
+    # A public provider this server has not allow-listed: nothing to connect, but nothing callable either.
+    public_off = public and not platform_eps
     cheapest = _price_label(min(prices, key=lambda c: c["usd"])) if prices else ""
     verified = len([e for e in eps if e["verified"]])
     plat_label = {sl: pl["label"] for sl, pl in cat.platforms.items()}
@@ -2608,8 +2652,10 @@ async def tools_provider(service: str, db: AsyncSession = Depends(get_session),
         if len(demo_eps) == 3:
             break
 
-    kicker = (f"{len(eps)} tools · your own account · never metered" if is_oauth
-              else f"{len(eps)} tools · from {_esc_html(cheapest)} · $0.000 markup")
+    kicker = (f"{len(eps)} tools · not enabled on this server" if public_off
+              else f"{len(eps)} tools · your own account · never metered"
+              + (f" · {len(keyless_eps)} free, no key" if keyless_eps else "") if is_oauth
+              else f"{len(eps)} tools · " + (f"from {_esc_html(cheapest)}" if cheapest else "free") + " · $0.000 markup")
     if measured:
         kicker += f" · {_esc_html(measured)}"
     mcp_intent = svc in _MCP_INTENT_PROVIDERS
@@ -2619,6 +2665,12 @@ async def tools_provider(service: str, db: AsyncSession = Depends(get_session),
             f"{_esc_html(blurb)} Connect your own {esc_d} account once and your agent uses it "
             "from then on, through one treg.to token. Calls on your own connection are never metered."
             if is_oauth else
+            f"{_esc_html(blurb)} {esc_d} is a public API with no key and nothing to connect; this server "
+            "has not enabled it, so its tools are not callable here unless your team registers its own tool for its host."
+            if public_off else
+            f"{_esc_html(blurb)} {len(eps)} tools for your agent through one treg.to key. {esc_d} is a "
+            "public API: free, no key, nothing to connect."
+            if public else
             f"{_esc_html(blurb)} {len(eps)} tools for your agent through one treg.to key, priced "
             f"at the provider's own rate{' from ' + _esc_html(cheapest) if cheapest else ''}, with no {esc_d} signup.")
     h1_text = (f"{esc_d} MCP: connect your own account" if is_oauth and mcp_intent
@@ -2626,7 +2678,8 @@ async def tools_provider(service: str, db: AsyncSession = Depends(get_session),
                else (f"{esc_d}: {len(eps)} tools from {_esc_html(cheapest)}" if cheapest
                      else f"{esc_d}: {len(eps)} tools"))
     if mixed:
-        kicker = f"{len(eps)} tools · {len(platform_eps)} platform + BYOK · {byok_only} BYOK only"
+        kicker = (f"{len(eps)} tools · {len(platform_eps)} platform + BYOK · {byok_only} BYOK only"
+                  + (f" · {len(keyless_eps)} free, no key" if keyless_eps else ""))
         h1_text = f"{esc_d}: {len(eps)} tools, platform or your own key"
         lede = (f"{_esc_html(blurb)} {len(platform_eps)} tools support treg's platform key. "
                 f"All {len(eps)} support your own {esc_d} key; {byok_only} require it. "
@@ -2655,21 +2708,25 @@ async def tools_provider(service: str, db: AsyncSession = Depends(get_session),
         "</div></div>")
 
     flow = (
-        '<section id="flow"><div class="wrap"><div class="seclab">What your agent can now do</div>'
+        '<section id="flow"><div class="wrap"><div class="seclab">'
+        + ("What your agent could do once this server enables it" if public_off else "What your agent can now do")
+        + "</div>"
         f"<h2>{esc_d}, one prompt away</h2>"
         '<div class="fx">'
         '<div class="fp"><div class="tag">AGENT</div>'
         f'<div class="agrow">{_agent_ptiles()}</div>'
-        + "".join(f'<div class="t"><span>{_esc_html(t)}</span><i>✓</i></div>' for t in task_lines)
+        + "".join(f'<div class="t"><span>{_esc_html(t)}</span>' + ("" if public_off else "<i>✓</i>") + "</div>"
+                  for t in task_lines)
         + "</div>"
         '<div class="ar">→</div>'
         '<div class="fp dk"><div class="b"><span>▚</span> treg</div>'
         + "".join(
             f'<div class="c">$ treg call <em>{_esc_html(e["id"])}</em></div>'
-            f'<div class="cr"><i>✓ 200</i>'
-            + (f" · {_esc_html(pl)}"
-               if (pl := _price_label(cat.cost_view(e.get("cost"), e.get("provider")))) else "")
-            + "</div>"
+            + ('<div class="cr"><i>✗ refused</i> · not enabled on this server</div>' if public_off else
+               '<div class="cr"><i>✓ 200</i>'
+               + (f" · {_esc_html(pl)}"
+                  if (pl := _price_label(cat.cost_view(e.get("cost"), e.get("provider")))) else "")
+               + "</div>")
             for e in demo_eps)
         + '<div class="c" style="opacity:.55">$ _</div></div>'
         '<div class="ar">→</div>'
@@ -2679,7 +2736,8 @@ async def tools_provider(service: str, db: AsyncSession = Depends(get_session),
         f'<b>{esc_d}</b><span class="bdg">{badge}</span></div>'
         f'<div class="sm">{_esc_html(blurb) or esc_d + " through one treg.to token."}</div>'
         f'<div class="ct">⚒ {len(eps)} TOOLS'
-        + (" · platform + BYOK" if mixed else ("" if is_oauth else " · metered per call")) + "</div></div>"
+        + (" · platform + BYOK" if mixed else "" if is_oauth else " · not enabled on this server" if public_off else " · free, no key" if public
+           else " · metered per call") + "</div></div>"
         "</div>"
         + (f'<p style="font-size:12.5px;color:var(--muted);margin-top:12px">{_esc_html(category)}'
            f"{' · ' if category and base_api else ''}<code>{_esc_html(base_api)}</code></p>"
@@ -2721,7 +2779,8 @@ async def tools_provider(service: str, db: AsyncSession = Depends(get_session),
         f"<pre>{_esc_html(prompt)}</pre></div>"
         '<h3>Run one directly</h3>'
         '<div class="sample"><div class="sbar">'
-        + ("a live-verified call" if sample_eps[0]["verified"] else "a call") + "</div>"
+        + ("a call this server refuses until it enables this provider" if public_off else
+           "a live-verified call" if sample_eps[0]["verified"] else "a call") + "</div>"
         f"<pre>{_esc_html(catalog_store.call_template(sample_eps[0]).replace('https://treg.to', base))}</pre></div>"
         "</div></section>")
 
@@ -2734,18 +2793,34 @@ async def tools_provider(service: str, db: AsyncSession = Depends(get_session),
         + ("<div class=\"card\"><h4>Your account, held safely</h4><p>Connect once; treg.to keeps the "
            "credential server-side and injects it per call. No key on any machine.</p></div>"
            if is_oauth else
+           f"<div class=\"card\"><h4>No {esc_d} signup</h4><p>Its tools need no key: "
+           "there is nothing to connect.</p></div>"
+           if public_off else
+           f"<div class=\"card\"><h4>No {esc_d} signup</h4><p>Its tools are free and need no key: "
+           "there is nothing to connect.</p></div>"
+           if public else
            f"<div class=\"card\"><h4>No {esc_d} signup</h4><p>Eligible tools run on treg.to's key, "
            "metered per call from a prepaid balance.</p></div>")
-        + '<div class="card"><h4>Price before the call</h4><p>The provider&#x27;s own rate, $0.000 '
-        'markup. <a href="/pricing">How billing works</a>.</p></div>'
+        + ('<div class="card"><h4>Not enabled here</h4><p>This server has not enabled these tools, '
+           'so calls are refused unless your team registers its own tool for its host.</p></div>' if public_off else
+           '<div class="card"><h4>Free</h4><p>No charge per call and no markup.</p></div>' if public else
+           '<div class="card"><h4>Price before the call</h4><p>The provider&#x27;s own rate, $0.000 '
+           'markup. <a href="/pricing">How billing works</a>.</p></div>')
         + ('<div class="card"><h4>Account billing</h4><p>'
            + ("Calls through treg's OAuth app are metered under this server's billing policy."
               if oauth_metered else "Calls through your own connection are not metered by treg.")
            + '</p></div>' if is_oauth else
+           '<div class="card"><h4>No subscription, no seats</h4><p>Once this server enables it, a free '
+           'treg.to account is all it takes: no card, and no account with the provider.</p></div>'
+           if public_off else
+           '<div class="card"><h4>No subscription, no seats</h4><p>A free treg.to account is all it '
+           'takes: no card, and no account with the provider.</p></div>' if public else
            '<div class="card"><h4>No subscription, no seats</h4><p>Platform calls are charged per call. '
            '$1.00 free per new team, no card to start.</p></div>')
         + (f'<div class="card"><h4>Your own {esc_d} key is free</h4><p>Register it and those calls are '
            "never metered. Your key always wins.</p></div>" if key_auth else
+           f'<div class="card"><h4>Nothing to connect</h4><p>{esc_d} is a public API: '
+           "no account, no key.</p></div>" if public else
            '<div class="card"><h4>Your account connection</h4><p>'
            + ("Calls through treg's OAuth app are metered under this server's billing policy."
               if oauth_metered else "Connect your account with the provider's supported authentication method.")
@@ -2765,15 +2840,18 @@ async def tools_provider(service: str, db: AsyncSession = Depends(get_session),
         shown = sorted(items, key=lambda e: (not e.get("verified"), e["id"]))[:max_shown]
         for e in shown:
             price = _price_label(cat.cost_view(e.get("cost"), e.get("provider")))
-            eligible = served and cat.platform_eligible(e)
+            eligible = e in platform_eps
             if reg and reg.auth_kind == "oauth":
                 access = "OAuth connection · metered" if oauth_metered else "OAuth connection"
+            elif key_auth and e in keyless_eps:
+                access = "Free, no key"
             elif key_auth:
                 access = "Platform + BYOK" if eligible else "BYOK only"
                 if not eligible:
                     price = "No treg charge; upstream " + price
             else:
-                access = "Platform access" if eligible else "Own connection required"
+                access = ("Free, no key" if eligible and public else "Platform access" if eligible else
+                          "Not enabled on this server" if public else "Own connection required")
             kind = "account management" if e.get("kind") == "account" else ("helper" if e.get("kind") == "utility" else "")
             bits = [b for b in (access, kind, "live-verified" if e.get("verified") else "", _esc_html(price)) if b]
             lis.append(f"<li><b>{_esc_html(e['name'])}</b>"
@@ -2817,6 +2895,14 @@ async def tools_provider(service: str, db: AsyncSession = Depends(get_session),
              f"Yes. This is an own-account connection: you sign in to {display} once and your "
              "agent uses that connection through your treg.to token. Calls on it are never metered."),
         ]
+    elif public:
+        faq_items = [
+            (f"Do I need a {display} account?",
+             f"No. {display} is a public API with no key: there is nothing to connect."),
+            ("What does a call cost?", "Nothing. treg.to does not charge for these calls."
+             if not public_off else "This server has not enabled these tools, so calls are refused unless "
+             "your team registers its own tool for the provider's host."),
+        ]
     else:
         faq_items = [
             (f"Do I need a {display} account?",
@@ -2845,6 +2931,10 @@ async def tools_provider(service: str, db: AsyncSession = Depends(get_session),
          "Anything that speaks MCP (Claude Code, Claude Desktop, ChatGPT, Codex, Cursor, Grok) "
          "and anything that can make an HTTP request (LangChain, CrewAI, LlamaIndex, plain code)."),
         (f"Is this the official {display} MCP server?",
+         "No. " + ("Once this server enables it, " if public_off else "")
+         + f"treg.to relays {display}'s real public API: the request is the provider's own, no "
+         f"credential is added, and the answer is relayed verbatim. The official {display} channels "
+         "are linked above." if public else
          f"No. treg.to serves {display}'s real API through its own metered proxy: the request "
          f"is the provider's own, the credential is injected server-side, and the answer is "
          f"relayed verbatim. The official {display} channels are linked above."),
@@ -2870,7 +2960,22 @@ async def tools_provider(service: str, db: AsyncSession = Depends(get_session),
                               f"measured success rate and speed.</p></a>" for js, jsent in used_in)
                     + "</div></div></section>")
 
-    body = _TOOLS_CSS + hero + flow + setup + tryit + why + tools_sec + used_sec + alt_sec + faq + copy_js
+    cmp_sec = ""
+    if _hosted():
+        from .. import compare_pages as cp
+        if cmp_key := cp.for_provider(svc):
+            cmp_short = _esc_html(cp.short(cmp_key))
+            cmp_sec = (
+                '<section id="compare"><div class="wrap"><div class="seclab">Compare</div>'
+                f"<h2>treg vs {cmp_short}</h2>"
+                f"<p>Calling {esc_d} through treg, or using {cmp_short} on its own? The comparison "
+                "reads both products' public pages side by side: billing, keys, access and limits. "
+                f'<a href="/compare/{cp.page_slug(cmp_key)}">Read treg vs {cmp_short}</a>.</p>'
+                "</div></section>")
+    if public_off:  # nothing here is callable until this server enables it: no prompt to try
+        tryit = ""
+    body = (_TOOLS_CSS + hero + flow + setup + tryit + why + tools_sec + used_sec + alt_sec + cmp_sec
+            + faq + copy_js)
 
     if is_oauth:
         if mcp_intent:
@@ -2891,7 +2996,12 @@ async def tools_provider(service: str, db: AsyncSession = Depends(get_session),
             # Both branches must be shorter than the primary; the H1 still starts with `display`.
             title = (f"{display}: from {cheapest} | treg.to" if cheapest
                      else f"{display} | treg.to")
-        desc = (f"{display} API pricing at the provider's own rate, with no {display} signup: {len(eps)} tools "
+        desc = (f"{display} public API with no key and nothing to connect; not enabled on this server."
+                if public_off else
+                f"{display} public API, free, with no key and nothing to connect: {len(eps)} tools through one "
+                f"treg.to key or MCP server{', ' + measured if measured else ''}. Use it from Claude Code, "
+                "ChatGPT or any agent." if public else
+                f"{display} API pricing at the provider's own rate, with no {display} signup: {len(eps)} tools "
                 f"{'from ' + cheapest + ' ' if cheapest else ''}through one treg.to key or MCP server"
                 f"{', ' + measured if measured else ''}. Use it from Claude Code, ChatGPT or any agent.")
 
@@ -2937,7 +3047,8 @@ async def tools_provider(service: str, db: AsyncSession = Depends(get_session),
              {"@type": "HowToStep", "position": 2, "name": "Or add the MCP server yourself",
               "text": f"claude mcp add --transport http treg {base}/mcp"},
              {"@type": "HowToStep", "position": 3, "name": f"Call {display}",
-              "text": f"Ask your agent, or call {base}/call/{sample_id} over HTTP."}]},
+              "text": f"Ask your agent, or call {base}/call/{sample_id} over HTTP"
+                      + (" once this server enables it." if public_off else ".")}]},
     ]
     return _page(title, _serp_desc(desc), f"/tools/{svc}", body, ld,
                  nav_current="/catalog", css="usecase.css")
@@ -3432,18 +3543,22 @@ _SITEMAP_PAGES: tuple[tuple[str, str, str], ...] = (
     ("/vendor-listing", "vendor-listing.md", "0.5"),
     ("/support", "support.html", "0.4"),
     ("/connectors/claude", "claude-connector.html", "0.6"),
+    ("/plugins/claude", "claude-plugin.html", "0.6"),
     ("/sheets", "sheets.html", "0.6"),
     ("/people-search", "people-search.html", "0.8"),
     ("/leads-signals", "leads-signals.html", "0.8"),
+    ("/jobs-api", "jobs-api.html", "0.8"),
     ("/recruit", "recruit.html", "0.8"),
     ("/web-access", "web-access.html", "0.8"),
     ("/grokbot", "grokbot.html", "0.8"),
     ("/fable", "fable-gtm.html", "0.8"),
     ("/gpt6", "astra.html", "0.8"),
     ("/ugc", "ugc.html", "0.8"),
+    ("/aigc", "aigc.html", "0.8"),
     ("/aeo", "aeo.html", "0.8"),
     ("/rankings", "rankings.html", "0.8"),
     ("/rea-growth", "rea-growth.html", "0.8"),
+    ("/social", "social-search.html", "0.8"),
     ("/jev", "jev.html", "0.8"),
     ("/terms", "terms.html", "0.2"),
     ("/privacy", "privacy.html", "0.2"),
@@ -3528,6 +3643,9 @@ async def sitemap_xml():
         hub = _WEB_DIR / "gtm-engineering.html"
         add("/gtm-engineering", _iso_day(hub.stat().st_mtime) if hub.exists() else "", "0.8")
         add("/showcase", _iso_day((_WEB_DIR / "showcase.html").stat().st_mtime), "0.8")
+        from . import compare  # imports this module; a top-level import would be circular
+        for path, day in compare.sitemap_paths():
+            add(path, day, "0.7")
     out.append("</urlset>")
     return Response("\n".join(out), media_type="application/xml; charset=utf-8",
                     headers={"Cache-Control": "max-age=3600"})
@@ -3546,22 +3664,40 @@ async def indexnow_key():
                     headers={"Cache-Control": "public, max-age=86400"})
 
 
-def _install_script(ad_link: str = "") -> PlainTextResponse:
+def _install_script(ad_link: str = "", channel: str = "") -> PlainTextResponse:
     """The install script with the serving domain templated in, so it targets whichever host is
     live (dev box or the real domain after deploy), and the short-link code when fetched as
-    `/i/<code>` (empty on the plain URL)."""
-    f = _WEB_DIR / "install.sh"
+    `/i/<code>` (empty on the plain URL). `channel=beta` serves the binary CLI's installer."""
+    f = _WEB_DIR / ("install-bin.sh" if channel == "beta" else "install.sh")
     if not f.exists():
         raise HTTPException(status_code=404, detail="install.sh not bundled")
-    base = get_settings().public_url.rstrip("/")
-    text = f.read_text(encoding="utf-8").replace("{BASE}", base).replace("{AD_LINK}", ad_link)
+    settings = get_settings()
+    base = settings.public_url.rstrip("/")
+    text = (f.read_text(encoding="utf-8").replace("{BASE}", base).replace("{AD_LINK}", ad_link)
+            .replace("{CHANNEL}", channel or "stable")
+            .replace("{POSTHOG_KEY}", settings.posthog_key)
+            .replace("{POSTHOG_HOST}", settings.posthog_host.rstrip("/"))
+            .replace("{BINARY_PERCENT}", str(settings.cli_binary_install_percent)))
     return PlainTextResponse(text, media_type="text/x-shellscript; charset=utf-8")
 
 
 @app.get("/install.sh", include_in_schema=False)
-async def install_sh():
-    """`curl -fsSL {BASE}/install.sh | sh` — installs the treg CLI and points it at this server."""
-    return _install_script()
+async def install_sh(channel: str = ""):
+    """`curl -fsSL {BASE}/install.sh | sh`: installs the treg CLI and points it at this server.
+    `?channel=beta` installs the binary CLI's beta channel instead."""
+    return _install_script(channel="beta" if channel == "beta" else "")
+
+
+@app.get("/install.ps1", include_in_schema=False)
+async def install_ps1(channel: str = ""):
+    """`irm {BASE}/install.ps1 | iex`: installs the binary treg CLI on Windows."""
+    f = _WEB_DIR / "install.ps1"
+    if not f.exists():
+        raise HTTPException(status_code=404, detail="install.ps1 not bundled")
+    base = get_settings().public_url.rstrip("/")
+    text = (f.read_text(encoding="utf-8").replace("{BASE}", base)
+            .replace("{CHANNEL}", "beta" if channel == "beta" else "stable"))
+    return PlainTextResponse(text, media_type="text/plain; charset=utf-8")
 
 
 @app.get("/i/{code}", include_in_schema=False)
@@ -3767,6 +3903,14 @@ async def rea_growth_skill_md():
     return _serve_md("skills/rea-growth/SKILL.md")
 
 
+@app.get("/skills/ai-ugc-video/SKILL.md", include_in_schema=False)
+async def ai_ugc_video_skill_md():
+    """The ai-ugc-video skill: the /aigc flow (viral reference, locked assets, voices, shoot plan,
+    Seedance takes, finish) as a file an agent can follow. Opt-in like rea-growth: kept out of the
+    well-known index, so `treg skill bootstrap` (install.sh) never installs it unasked."""
+    return _serve_md("skills/ai-ugc-video/SKILL.md")
+
+
 @app.get("/feedback.md", include_in_schema=False)
 async def feedback_md():
     return _serve_md("feedback.md")
@@ -3845,6 +3989,13 @@ async def privacy_page(request: Request):
 async def claude_connector_page(request: Request):
     """Setup, scope, billing, privacy, and removal instructions for the Claude connector."""
     return _static_page("claude-connector.html", request)
+
+
+@app.get("/plugins/claude", include_in_schema=False)
+async def claude_plugin_page(request: Request):
+    """Install, scope, billing, privacy, and removal instructions for the Claude plugin. The plugin
+    manifest's documentationUrl points here, so the Claude directory listing links to this path."""
+    return _static_page("claude-plugin.html", request)
 
 
 @app.get("/sheets", include_in_schema=False)
@@ -3974,6 +4125,13 @@ async def ugc_page(request: Request):
     return _static_page("ugc.html", request)
 
 
+@app.get("/aigc", include_in_schema=False)
+async def aigc_page(request: Request):
+    """AI video launch page: one video in four steps (viral reference, locked assets, voices,
+    the Seedance take) with each step's endpoint and price, then the ai-ugc-video skill prompt."""
+    return _static_page("aigc.html", request)
+
+
 @app.get("/aeo", include_in_schema=False)
 async def aeo_page(request: Request):
     """Landing page for the AEO workflow article: getting AI answers to recommend a product in four
@@ -3990,6 +4148,15 @@ async def rea_growth_page(request: Request):
     openings) and returns plays marked seen or inferred, each with the ask that runs it. Served
     like /aeo: canonical, in the sitemap, no-cache, relative asset paths."""
     return _static_page("rea-growth.html", request)
+
+
+@app.get("/social", include_in_schema=False)
+async def social_search_page(request: Request):
+    """Social media on autopilot: the agent spots viral posts, tracks their creators, decodes the
+    structure, reads the comments, posts and A/B tests on connected
+    accounts. The page follows the launch film's design. Served
+    like /rea-growth: canonical, in the sitemap, no-cache."""
+    return _static_page("social-search.html", request)
 
 
 @app.get("/rea-growth.md", include_in_schema=False)
@@ -4039,6 +4206,13 @@ async def leads_signals_page(request: Request):
     """Landing page for the buyer-signals launch ("Claude for Monitor Leads Signal"). Built from the
     /people-search page and served the same way: canonical, in the sitemap, relative asset paths."""
     return _static_page("leads-signals.html", request)
+
+
+@app.get("/jobs-api", include_in_schema=False)
+async def jobs_api_page(request: Request):
+    """Landing page for the Jev × treg Jobs API launch ("One API to any job data"). Built from the
+    /leads-signals page and served the same way: canonical, in the sitemap, relative asset paths."""
+    return _static_page("jobs-api.html", request)
 
 
 @app.get("/recruit", include_in_schema=False)
@@ -4144,7 +4318,9 @@ async def jev_xboost_judge(request: Request, db: AsyncSession = Depends(get_sess
     for known in [*(run.get("manual") or []), *(run.get("posts") or [])]:
         if str(known.get("id")) == post_id:
             return {**known, "cached": True}
-    ok = await ratestore.rate_check(db, _JEV_JUDGE_NS, [(f"ip:{_client_ip(request)}", 5), ("all", 60)], window_s=3600)
+    ip = _client_ip(request)
+    ok = await ratestore.rate_check(
+        db, _JEV_JUDGE_NS, [*ratestore.ip_limit(ip, 5, key=f"ip:{ip}"), ("all", 60)], window_s=3600)
     await db.commit()
     if not ok:
         raise HTTPException(status_code=429, detail="that is enough for this hour; the daily run continues")
@@ -4165,6 +4341,10 @@ async def jev_xboost_judge(request: Request, db: AsyncSession = Depends(get_sess
 # chronological (newest first), not alphabetical.
 _BLOG_LAUNCHES: list[tuple[str, str, str, str]] = [
     # (slug, title, date, one-line blurb)
+    ("/aigc", "AI Video Generation for Your Agent", "2026-11-11",
+     "Seedance, Veo, Wan, Hailuo and Kling with one token; pay per finished clip."),
+    ("/social", "Put Your Social Media on Autopilot", "2026-11-04",
+     "Spot what goes viral, decode it, auto-post and A/B test. One treg key."),
     ("/rea-growth", "REA for Growth", "2026-10-29",
      "Name a company; your agent takes its distribution apart and hands you plays to copy."),
     ("/aeo", "How to Get AI to Recommend Your Product", "2026-10-17",
@@ -4177,6 +4357,8 @@ _BLOG_LAUNCHES: list[tuple[str, str, str, str]] = [
      "Apps whose agents reach the outside world through treg, the people who made them, and their launch posts."),
     ("/gtm-engineering", "The GTM Engineering Playbook", "2026-09-30",
      "16 chapters from ICP to rollout: a prompt and a rule in each, and the data steps tested on recorded runs."),
+    ("/jobs-api", "Jev × treg Jobs API", "2026-11-16",
+     "One API to any job data: find and rank open roles, reach the hiring manager, and check real posted pay."),
     ("/leads-signals", "Claude for Monitor Leads Signal", "2026-09-28",
      "Your agent checks hiring, funding, job changes and social chatter on a schedule, and reports what's new."),
     ("/jev", "How to use Jev", "2026-09-20",

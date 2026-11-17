@@ -434,3 +434,105 @@ def test_codex_refuses_to_touch_a_config_it_cannot_prove_correct(tmp_path, monke
     out = mcp_install.install_mcp(base_url="https://treg.to", token="NEW", only=["codex"])
     assert out["results"][0][1] == "error", out
     assert cfg.read_text() == subtable
+
+
+# ---- OAuth repair path (`treg mcp install --oauth`) ---------------------------------------------
+
+def test_oauth_rewrites_json_agents_without_authorization_headers(tmp_path, monkeypatch):
+    """Cursor + opencode: URL-only entries, no headers - so the client can fall through to OAuth.
+    A prior header-authed entry is replaced; unrelated servers survive."""
+    monkeypatch.setattr(mcp_install, "HOME", tmp_path)
+    monkeypatch.setenv("XDG_CONFIG_HOME", str(tmp_path / ".config"))
+    cur = tmp_path / ".cursor"; cur.mkdir()
+    (cur / "mcp.json").write_text(json.dumps({
+        "mcpServers": {
+            "other": {"url": "http://x"},
+            "treg": {"url": "https://treg.to/mcp/",
+                     "headers": {"Authorization": "Bearer DEAD"}},
+        }}))
+    oc_dir = tmp_path / ".config" / "opencode"; oc_dir.mkdir(parents=True)
+    (oc_dir / "opencode.json").write_text(json.dumps({
+        "mcp": {"treg": {"type": "remote", "url": "https://treg.to/mcp/", "enabled": True,
+                         "headers": {"Authorization": "Bearer DEAD"}}}}))
+
+    out = mcp_install.install_mcp(base_url="https://treg.to", token="", oauth=True,
+                                  only=["cursor", "opencode"])
+    assert all(s == "ok" for _, s, _ in out["results"]), out
+
+    cursor = json.loads((cur / "mcp.json").read_text())
+    assert cursor["mcpServers"]["other"] == {"url": "http://x"}
+    assert cursor["mcpServers"]["treg"] == {"url": "https://treg.to/mcp/"}
+
+    oc = json.loads((oc_dir / "opencode.json").read_text())
+    assert oc["mcp"]["treg"] == {"type": "remote", "url": "https://treg.to/mcp/", "enabled": True}
+
+
+def test_oauth_rewrites_codex_without_http_headers(tmp_path, monkeypatch):
+    """Codex TOML: URL only, no http_headers - so `codex mcp login` can authorize."""
+    import tomllib
+    monkeypatch.setattr(mcp_install, "HOME", tmp_path)
+    monkeypatch.setenv("XDG_CONFIG_HOME", str(tmp_path / ".config"))
+    (tmp_path / ".codex").mkdir()
+    (tmp_path / ".codex" / "config.toml").write_text(
+        '[mcp_servers.treg]\nurl = "https://treg.to/mcp/"\n'
+        'http_headers = { "Authorization" = "Bearer DEAD" }\n')
+    out = mcp_install.install_mcp(base_url="https://treg.to", token="", oauth=True, only=["codex"])
+    assert out["results"][0][1] == "ok", out
+    data = tomllib.loads((tmp_path / ".codex" / "config.toml").read_text())
+    assert data["mcp_servers"]["treg"] == {"url": "https://treg.to/mcp/"}
+    assert "Authorization" not in (tmp_path / ".codex" / "config.toml").read_text()
+
+
+def test_oauth_claude_add_omits_header(tmp_path, monkeypatch):
+    """Claude Code: `claude mcp add` without --header so OAuth fallback is not disabled."""
+    monkeypatch.setattr(mcp_install, "HOME", tmp_path)
+    monkeypatch.setenv("XDG_CONFIG_HOME", str(tmp_path / ".config"))
+    (tmp_path / ".claude").mkdir()
+    calls = []
+
+    def fake_which(name):
+        return "/usr/bin/claude" if name == "claude" else None
+
+    def fake_run(cmd, **kwargs):
+        calls.append(list(cmd))
+        class R:
+            returncode = 0
+            stdout = "ok"
+            stderr = ""
+        return R()
+
+    monkeypatch.setattr(mcp_install.shutil, "which", fake_which)
+    monkeypatch.setattr(mcp_install.subprocess, "run", fake_run)
+    out = mcp_install.install_mcp(base_url="https://treg.to", token="IGNORED", oauth=True,
+                                  only=["claude"])
+    assert out["results"][0][1] == "ok", out
+    add = next(c for c in calls if "add" in c)
+    assert "--header" not in add
+    assert "Authorization" not in " ".join(add)
+    assert add[-2:] == ["treg", "https://treg.to/mcp/"]
+
+
+def test_cmd_mcp_install_oauth_needs_no_token(tmp_path, monkeypatch, capsys):
+    """`--oauth` must not require login or hit /auth/me - the stored key is already dead."""
+    from types import SimpleNamespace
+
+    from treg import cli
+
+    monkeypatch.setattr(mcp_install, "HOME", tmp_path)
+    monkeypatch.setenv("XDG_CONFIG_HOME", str(tmp_path / ".config"))
+    (tmp_path / ".cursor").mkdir()
+    monkeypatch.setattr(mcp_install, "MCP_AGENTS", {"cursor": mcp_install.MCP_AGENTS["cursor"]})
+    monkeypatch.setattr(mcp_install, "MANUAL_AGENTS", {})
+    monkeypatch.delenv("TREG_TOKEN", raising=False)
+
+    def boom(*a, **k):
+        raise AssertionError("oauth repair must not verify a token")
+
+    monkeypatch.setattr(cli, "_client", boom)
+    cli.cmd_mcp_install(SimpleNamespace(name=None, oauth=True),
+                        {"base_url": "https://treg.to"})  # no token in cfg
+    written = json.loads((tmp_path / ".cursor" / "mcp.json").read_text())
+    assert written["mcpServers"]["treg"] == {"url": "https://treg.to/mcp/"}
+    out = capsys.readouterr().out
+    assert "OAuth" in out
+    assert "codex mcp login" in out

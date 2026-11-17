@@ -20,12 +20,14 @@ from treg import crypto
 from treg.api import app
 from treg.bootstrap_handlers import _report_busy
 from treg.infra import db as infra_db
-from treg.infra.db import (ReportBusy, get_admin_read_session, get_report_session, reset_db,
-                           session_maker)
+from treg.infra.db import (ReportBusy, get_admin_read_session, get_admin_report_session,
+                           get_report_session, reset_db, session_maker)
 from treg.models import Membership, Org, User
 
 REPORT_ROUTES = {"/orgs/{org_id}/usage", "/orgs/{org_id}/usage/by-tag",
                  "/orgs/{org_id}/agents/observed"}
+ADMIN_REPORT_ROUTES = {"/admin/archive", "/admin/reconcile/drift", "/admin/reconcile/spend",
+                       "/admin/reconcile/repeats", "/admin/reconcile/asynctasks"}
 
 
 def _h(token: str) -> dict:
@@ -143,3 +145,45 @@ async def test_other_admin_read_errors_pass_through_unchanged():
     with pytest.raises(DBAPIError) as caught:
         await gen.athrow(other)
     assert caught.value is other
+
+
+def test_the_whole_window_admin_reports_take_the_admin_report_session():
+    routes = {r.path: r for r in app.routes
+              if isinstance(r, APIRoute) and r.path in ADMIN_REPORT_ROUTES}
+    assert set(routes) == ADMIN_REPORT_ROUTES
+    for route in routes.values():
+        assert get_admin_report_session in _route_dependencies(route), route.path
+
+
+async def test_a_running_admin_report_refuses_the_next_one_at_once(monkeypatch):
+    """A second poll while one whole-window report runs is refused, never queued behind it."""
+    monkeypatch.setattr(infra_db, "_ADMIN_REPORT_WAIT_S", 0.01)
+    first = get_admin_report_session()
+    await first.__anext__()
+    try:
+        second = get_admin_report_session()
+        with pytest.raises(ReportBusy) as caught:
+            await second.__anext__()
+        assert caught.value.reason == "busy"
+    finally:
+        await first.aclose()
+    assert infra_db._admin_report_slots()._value == infra_db._ADMIN_REPORT_SLOTS
+
+
+async def test_an_admin_report_cut_off_by_its_timeout_gives_its_slot_back():
+    gen = get_admin_report_session()
+    await gen.__anext__()
+    with pytest.raises(ReportBusy) as caught:
+        await gen.athrow(DBAPIError("SELECT 1", {}, _Canceled()))
+    assert caught.value.reason == "timeout"
+    assert infra_db._admin_report_slots()._value == infra_db._ADMIN_REPORT_SLOTS
+
+
+async def test_other_admin_report_errors_pass_through_and_give_the_slot_back():
+    gen = get_admin_report_session()
+    await gen.__anext__()
+    other = DBAPIError("SELECT 1", {}, Exception("boom"))
+    with pytest.raises(DBAPIError) as caught:
+        await gen.athrow(other)
+    assert caught.value is other
+    assert infra_db._admin_report_slots()._value == infra_db._ADMIN_REPORT_SLOTS

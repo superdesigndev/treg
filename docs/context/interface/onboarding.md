@@ -11,6 +11,7 @@ sources:
   - src/treg/routers/auth.py
   - src/treg/routers/onboard.py
   - frontend/src/state/onboarding.js
+  - frontend/src/state/onboardingComputed.js
   - frontend/src/pages/GettingStartedPage.vue
 related:
   - interface/api.md
@@ -29,11 +30,20 @@ account's one first run by flipping `User.onboarded`, so a second tab gets `crea
 makes nothing; a refused create hands the claim back so a retry can make it. The team goes through
 the ordinary signup door (`signup.create_org`), so signup credit, utm, ads attribution and referral
 behave as for a team the user named. Declining an invite on first run also goes through `autoTeam`.
+An MCP client's OAuth consent makes the same first team for a new account that signs in mid-authorization
+(architecture/mcp-oauth.md, "Sign-in mid-authorization").
 
 When `created: true`, the welcome dialog opens over the view the user landed on; Getting started
 carries the same agent picker and setup line for anyone who skipped it. A use-case landing's
 `/app?ref=<page>` is stashed in `localStorage['treg-ref']` because sign-in reloads the page, and
 `_welcomeAgentFromRef` preselects that agent (unknown refs are ignored).
+
+Getting started says whether the setup worked. `pollFirstCall` reads `GET /orgs/{id}/first-call`
+when the page opens, then once per pause (bounded rounds, the next pause only after the last read
+settles) until a first call shows; `startStage` turns the answer into "Waiting for your agent…",
+"Connected" or "First call made: <tool>". Copying the setup line or opening the connector or plugin
+link starts a new round; leaving the page or switching teams cancels it, and an answer for another
+team is never shown. A team that already made a call gets one read and no polling.
 
 Getting started shows the team's signed Default key, which is revealable again on purpose: the
 server derives it from signed identity, team and Default generation. Additional and agent keys are
@@ -48,9 +58,12 @@ setup, else catalog. After a first human `treg login`, `_maybe_offer_onboarding`
 
 - **catalog** needs no team, secret or tool. It asks `/catalog/endpoints/<id>/access` how that
   exact call would be served and branches on the answer instead of hardcoding an endpoint: treg's
-  key (price shown and confirmed), the team's own credential (not metered), or a dead-end naming
-  the command that fixes it, with nothing called. A server with no platform providers enabled
-  (`TREG_PLATFORM_PROVIDERS` empty, the default) sends every user without a key to the dead-end.
+  key (price shown and confirmed), the team's own credential (not metered), a verified keyless
+  public route (free, called), or a dead-end with nothing called. The dead-end names the command
+  that fixes it from the access answer's `connect_command` (an older server that sends none gets
+  `treg connections connect --provider <p>`); a keyless public API this server has not enabled sends
+  it empty, so the dead-end gives only the server's reason. A server with no platform providers
+  enabled (`TREG_PLATFORM_PROVIDERS` empty, the default) sends every user without a key there.
 - **setup** imports the cwd `.env` and the chosen skill folders in one pass deduped by skill name.
   "This project" is hidden when the cwd is `/`, `$HOME` or its parent (`_is_rootish`), so setup
   never sweeps a whole account.

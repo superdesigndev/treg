@@ -1,0 +1,36 @@
+{
+  "additionalPlain": "you will never find a job better than this one!!!\n",
+  "additional": "<div>you will never find a job better than this one!!!</div>",
+  "categories": {
+    "commitment": "Part time",
+    "department": "Engineering",
+    "location": "Arlington, TX",
+    "team": "Data Science",
+    "allLocations": [
+      "Arlington, TX"
+    ]
+  },
+  "createdAt": 1553186035299,
+  "descriptionPlain": "Come work in Arlington!\n\nthis job is AMAAZING!\n",
+  "description": "<div>Come work in Arlington!</div><div><br></div><div>this job is AMAAZING!</div>",
+  "id": "33538a2f-d27d-4a96-8f05-fa4b0e4d940e",
+  "lists": [
+    {
+      "text": "Qualifications",
+      "content": "<li>be smart</li><li>be very smart</li>"
+    },
+    {
+      "text": "Duties",
+      "content": "<li>work hard</li><li>work VERY hard</li>"
+    }
+  ],
+  "text": "AbelsonTaylor Writer",
+  "country": "US",
+  "workplaceType": "unspecified",
+  "opening": "<div>Come work in Arlington!</div>",
+  "openingPlain": "Come work in Arlington!",
+  "descriptionBody": "<div>this job is AMAAZING!</div>",
+  "descriptionBodyPlain": "this job is AMAAZING!\n",
+  "hostedUrl": "https://jobs.eu.lever.co/leverdemo/33538a2f-d27d-4a96-8f05-fa4b0e4d940e",
+  "applyUrl": "https://jobs.eu.lever.co/leverdemo/33538a2f-d27d-4a96-8f05-fa4b0e4d940e/apply"
+}

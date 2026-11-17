@@ -27,7 +27,7 @@ export default { setup: useDashboard }
                 a community, or a team that builds on treg for clients.</p>
               <div class="lbl" style="margin-top:16px">What you earn</div>
               <p class="sub" style="margin:6px 0 0">A share of what your referrals top up, paid to you in
-                cash monthly. Not credit, and no {{ref.cap.limit}}-referral cap.</p>
+                cash monthly. Not credit, and no {{ref.cap.standard_limit ?? ref.cap.limit}}-referral cap.</p>
               <div class="lbl" style="margin-top:16px">How to get in</div>
               <p class="sub" style="margin:6px 0 14px">Invite only. Tell us about your audience and how
                 you'd send people to treg, and we'll get back to you.</p>
@@ -87,7 +87,7 @@ export default { setup: useDashboard }
 
               <!-- The cap refusal IS the commercial conversation, same posture as a daily-cap
                    refusal: it names the limit and points at a human rather than silently paying 0. -->
-              <div v-if="ref.cap.paid >= ref.cap.limit" class="card"
+              <div v-if="ref.cap.limit != null && ref.cap.paid >= ref.cap.limit" class="card"
                    style="margin-top:14px;border-color:var(--accent)">
                 <div class="lbl">You've hit the {{ref.cap.limit}}-referral limit</div>
                 <p class="sub" style="margin:6px 0 0">That's as far as the self-serve program goes.

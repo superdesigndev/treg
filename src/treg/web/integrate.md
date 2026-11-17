@@ -64,6 +64,7 @@ from the provider costs nothing. One request header matters when you resell with
   and nothing is charged. Where the provider accepts a ceiling parameter, treg forwards the
   remaining ceiling upstream so settlement cannot exceed it; a refusal from that parameter is a
   non-2xx and costs nothing. For every other provider the header is a pre-reservation guard.
+  The reservation is the price at the requested size rounded up to the provider's billing block (one billed per 25 results holds a whole block for 5 rows), plus treg's margin, so catalog price × limit can fall short; when a provider's hold does not fit, `_treg.tried` names the hold and the ceiling left.
   Direct calls have no default ceiling; only the header caps them.
 
 The catalog's `~$/call` figure is an estimate at the default page size: a `per_result` price with
@@ -169,8 +170,8 @@ These carry nothing about your treg account — no balance, no top-up link — s
 ```
 
 **Never proxy a treg error body to your end user blindly.** The team-level ones (`402
-insufficient_balance`, `429 platform_daily_cap_reached`) contain *your* balance and a top-up URL.
-Handle those yourself.
+insufficient_balance`, `429 platform_daily_cap_reached`, `403 funds_required`) contain *your*
+balance or a top-up URL. Handle those yourself.
 
 > **Per-customer caps are advisory, not exact.** They are checked against an aggregate, so concurrent
 > calls can overshoot by roughly one call's estimate per in-flight request. Your prepaid balance is

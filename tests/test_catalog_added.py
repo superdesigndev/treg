@@ -154,3 +154,41 @@ def test_ingest_carries_reviewed_prices_rules_and_status_but_not_a_superseded_bl
     assert priced["status"] == "retired" and priced["untestable"] == "needs a crawl"
     assert priced["platform_blocked"] == "no owner"
     assert "platform_blocked" not in reader
+
+
+def test_ingest_carries_a_v2_rows_reviewed_cost_and_outcome_rules(tmp_path, monkeypatch):
+    """A row in the v2 spelling holds the miss its adapter used to, so a re-ingest that drops it
+    would change how its answers are judged."""
+    monkeypatch.setattr(ingest, "CATALOG", tmp_path)
+    (tmp_path / "example.extended.yaml").write_text(
+        "provider: example\nendpoints:\n"
+        "- id: example.x.read\n  method: GET\n  path: /read\n  added: '2026-08-02'\n"
+        "  price: {value: '0.002', currency: USD, per: 1, unit: call}\n"
+        "  error: {when: {path: response.error, op: present}}\n"
+        "  miss: {when: {path: response.data.items, op: empty}}\n")
+    endpoints = [{"id": "example.x.read", "method": "GET", "path": "/read", "summary": "r",
+                  "price": {"value": "0.001", "currency": "USD", "per": 1, "unit": "call"}}]
+    ingest.carry_verification("example", endpoints)
+    assert endpoints[0]["price"]["value"] == "0.002"
+    assert endpoints[0]["error"] == {"when": {"path": "response.error", "op": "present"}}
+    assert endpoints[0]["miss"] == {"when": {"path": "response.data.items", "op": "empty"}}
+
+
+def test_ingest_carries_a_v2_rows_price_and_provenance_as_one_fact(tmp_path, monkeypatch):
+    """A route the rate card moves to 0 keeps its reviewed price and the provenance it inherits; one
+    that moves off 0 keeps its free price and its opt-out. Neither is a priced row without provenance."""
+    monkeypatch.setattr(ingest, "CATALOG", tmp_path)
+    (tmp_path / "example.extended.yaml").write_text(
+        "provider: example\nendpoints:\n"
+        "- id: example.x.priced\n  method: GET\n  path: /priced\n  added: '2026-08-02'\n"
+        "  price: {value: '0.001', currency: USD, per: 1, unit: call}\n"
+        "- id: example.x.free\n  method: GET\n  path: /free\n  added: '2026-08-02'\n"
+        "  price: {value: '0', currency: USD, unit: call}\n  provenance: null\n")
+    endpoints = [{"id": "example.x.priced", "method": "GET", "path": "/priced", "summary": "p",
+                  "price": {"value": "0", "currency": "USD", "unit": "call"}, "provenance": None},
+                 {"id": "example.x.free", "method": "GET", "path": "/free", "summary": "f",
+                  "price": {"value": "0.002", "currency": "USD", "per": 1, "unit": "call"}}]
+    ingest.carry_verification("example", endpoints)
+    priced, free = endpoints
+    assert priced["price"]["value"] == "0.001" and "provenance" not in priced
+    assert free["price"]["value"] == "0" and "provenance" in free and free["provenance"] is None
