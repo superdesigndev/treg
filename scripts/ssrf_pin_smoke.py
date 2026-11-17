@@ -22,7 +22,7 @@ import time
 
 import httpx
 
-from treg.infra.upstream.pinned import is_refusal, public_only_transport
+from treg.infra.upstream.pinned import environment_proxies, is_refusal, public_only_transport
 
 PUBLIC = ("https://example.com/", "https://www.cloudflare.com/cdn-cgi/trace", "https://api.github.com/")
 INTERNAL = ("http://127.0.0.1:9/", "http://localhost/", "http://169.254.169.254/latest/meta-data/")
@@ -45,6 +45,10 @@ def resolver_is_real() -> bool:
 
 
 async def main() -> int:
+    if proxies := environment_proxies():
+        print(f"an egress proxy is set ({', '.join(sorted(proxies))}): upstream_client keeps the plain "
+              "client there in every TREG_SSRF_PIN mode, so there is nothing to check.")
+        return 2
     if not resolver_is_real():
         return 2
     pinned = httpx.AsyncClient(transport=public_only_transport(), trust_env=False, timeout=15)
@@ -68,13 +72,15 @@ async def main() -> int:
                 took = time.monotonic() - began
                 check(f"refuse {url}", is_refusal(exc) and took < 2, f"{took:.2f}s")
 
-        try:
-            await pinned.get(PUBLIC[0], timeout=httpx.Timeout(5, connect=0.001))
-            check("tiny connect timeout", False, "connected")
-        except httpx.ConnectTimeout:
-            check("tiny connect timeout", True)
-        except httpx.HTTPError as exc:
-            check("tiny connect timeout", False, type(exc).__name__)
+        # A fresh client, so the request must open a new connection rather than reuse one.
+        async with httpx.AsyncClient(transport=public_only_transport(), trust_env=False) as fresh:
+            try:
+                await fresh.get(PUBLIC[0], timeout=httpx.Timeout(5, connect=0.001))
+                check("tiny connect timeout", False, "connected")
+            except httpx.ConnectTimeout:
+                check("tiny connect timeout", True)
+            except httpx.HTTPError as exc:
+                check("tiny connect timeout", False, type(exc).__name__)
 
         tasks = [asyncio.ensure_future(pinned.get(PUBLIC[i % len(PUBLIC)])) for i in range(30)]
         await asyncio.sleep(0.02)

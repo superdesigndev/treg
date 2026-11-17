@@ -378,8 +378,10 @@ races a name (Happy Eyeballs, RFC 8305): the next starts after a 0.25 s stagger 
 fails, the first to connect wins, the lookup and every attempt share the one connect timeout, and
 every other connection is closed, also when the caller is cancelled during that cleanup. TLS
 verification, SNI and the Host header stay on the URL's name, so the upstream sees the same request.
-A refusal surfaces from `relay()` as the same `ssrf_refused` 502. The pinned client ignores
-environment proxies (`trust_env=False`): a proxy resolves the name itself, outside the check.
+A refusal surfaces from `relay()` as the same `ssrf_refused` 502. The pinned pool builds the TLS
+context httpx's default builds (`SSL_CERT_FILE` / `SSL_CERT_DIR` apply). Behind an environment
+egress proxy every mode builds the plain client and logs that pinning has no effect: the proxy
+resolves the name itself, and a custom transport would make httpx skip the proxy for every upstream.
 `scripts/ssrf_pin_smoke.py` exercises the transport against real HTTPS hosts from a machine with a
 real resolver before a mode change. `python -m treg` refuses to serve with `proxy_ssrf_check` off on
 a non-sqlite database (`Settings.ssrf_check_missing`); only a local registry may turn the guard off.

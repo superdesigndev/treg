@@ -9,7 +9,8 @@ request.
 
 `TREG_SSRF_PIN` rolls it out: `off` builds a plain client, `log` connects the way httpx always did
 and logs each connection pinning would refuse, `enforce` pins. Hosts passed as `bypass_hosts` (the
-catalog's fixed provider hosts) always connect the way httpx always did.
+catalog's fixed provider hosts) always connect the way httpx always did, and behind an environment
+egress proxy every mode builds the plain client.
 """
 
 from __future__ import annotations
@@ -18,6 +19,7 @@ import asyncio
 import ipaddress
 import logging
 import socket
+import urllib.request
 from typing import Iterable
 
 import httpcore
@@ -199,12 +201,12 @@ def public_only_transport(*, limits: httpx.Limits | None = None,
                           backend: httpcore.AsyncNetworkBackend | None = None,
                           getaddrinfo=socket.getaddrinfo, bypass_hosts: frozenset[str] = frozenset(),
                           enforce: bool = True) -> httpx.AsyncHTTPTransport:
-    """httpx's own transport with its connection pool rebuilt on `PublicOnlyBackend`. Environment
-    proxies are ignored on purpose: a proxy resolves the name itself, out of reach of the check."""
+    """httpx's own transport with its connection pool rebuilt on `PublicOnlyBackend`, with the TLS
+    context httpx's default builds (it honours SSL_CERT_FILE / SSL_CERT_DIR)."""
     limits = limits or httpx.Limits()
-    transport = httpx.AsyncHTTPTransport(limits=limits, trust_env=False)
+    transport = httpx.AsyncHTTPTransport(limits=limits)
     transport._pool = httpcore.AsyncConnectionPool(
-        ssl_context=httpx.create_ssl_context(trust_env=False),
+        ssl_context=httpx.create_ssl_context(trust_env=True),
         max_connections=limits.max_connections,
         max_keepalive_connections=limits.max_keepalive_connections,
         keepalive_expiry=limits.keepalive_expiry,
@@ -224,15 +226,27 @@ def is_refusal(exc: BaseException) -> bool:
     return False
 
 
+def environment_proxies() -> dict[str, str]:
+    """The egress proxies httpx would take from the environment (it reads them the same way)."""
+    return {k: v for k, v in urllib.request.getproxies().items() if k in ("http", "https", "all") and v}
+
+
 def upstream_client(*, bypass_hosts: frozenset[str] = frozenset(), **kwargs) -> httpx.AsyncClient:
     """The client for any request to an upstream a caller or provider chose. With the SSRF guard on
     (`proxy_ssrf_check`) and `ssrf_pin` at `log` or `enforce`, it connects through
-    `public_only_transport`; otherwise it is the plain client treg always used."""
+    `public_only_transport`; otherwise it is the plain client treg always used.
+
+    Behind an environment egress proxy it is always the plain client: a proxy resolves the name
+    itself, so there is no address to pin, and passing a transport would make httpx skip the proxy
+    and change how every upstream, the catalog's included, is reached."""
     from ...config import get_settings
 
     s = get_settings()
     if s.proxy_ssrf_check and s.ssrf_pin in ("log", "enforce"):
-        kwargs["transport"] = public_only_transport(
-            limits=kwargs.pop("limits", None), bypass_hosts=bypass_hosts, enforce=s.ssrf_pin == "enforce")
-        kwargs["trust_env"] = False
+        if kwargs.get("trust_env", True) and environment_proxies():
+            log.warning("ssrf_pin=%s has no effect: an environment egress proxy is set", s.ssrf_pin)
+        else:
+            kwargs["transport"] = public_only_transport(
+                limits=kwargs.pop("limits", None), bypass_hosts=bypass_hosts,
+                enforce=s.ssrf_pin == "enforce")
     return httpx.AsyncClient(**kwargs)

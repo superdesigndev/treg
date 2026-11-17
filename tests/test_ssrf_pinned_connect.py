@@ -77,8 +77,17 @@ async def test_rebinding_after_the_check_is_refused_by_the_relay(monkeypatch):
     assert backend.connected == []
 
 
+_PROXY_VARS = ("HTTP_PROXY", "HTTPS_PROXY", "ALL_PROXY", "http_proxy", "https_proxy", "all_proxy")
+
+
+@pytest.fixture
+def no_proxy_env(monkeypatch):
+    for name in _PROXY_VARS:
+        monkeypatch.delenv(name, raising=False)
+
+
 @pytest.mark.parametrize("mode,enforce", [("log", False), ("enforce", True)])
-def test_upstream_clients_connect_through_the_guard(monkeypatch, mode, enforce):
+def test_upstream_clients_connect_through_the_guard(monkeypatch, no_proxy_env, mode, enforce):
     monkeypatch.setattr(get_settings(), "proxy_ssrf_check", True)
     monkeypatch.setattr(get_settings(), "ssrf_pin", mode)
     client = pinned.upstream_client(bypass_hosts=frozenset({"api.provider.example"}), timeout=5)
@@ -88,7 +97,7 @@ def test_upstream_clients_connect_through_the_guard(monkeypatch, mode, enforce):
     assert client._mounts == {}, "an environment proxy would resolve the name outside the guard"
 
 
-def test_pinning_off_is_the_client_treg_always_used(monkeypatch):
+def test_pinning_off_is_the_client_treg_always_used(monkeypatch, no_proxy_env):
     monkeypatch.setattr(get_settings(), "proxy_ssrf_check", True)
     monkeypatch.setattr(get_settings(), "ssrf_pin", "off")
     client = pinned.upstream_client(timeout=5)
@@ -287,3 +296,27 @@ def test_catalog_hosts_are_fixed_names():
     from treg.application.upstream_hosts import catalog_hosts
     hosts = catalog_hosts()
     assert hosts and all(h == h.lower() and "." in h and not set("{}*/:@ ") & set(h) for h in hosts)
+
+
+@pytest.mark.parametrize("mode", ["log", "enforce"])
+def test_behind_an_egress_proxy_every_mode_keeps_the_plain_client(monkeypatch, no_proxy_env, caplog, mode):
+    monkeypatch.setenv("HTTPS_PROXY", "http://egress.example:3128")
+    monkeypatch.setattr(get_settings(), "proxy_ssrf_check", True)
+    monkeypatch.setattr(get_settings(), "ssrf_pin", mode)
+    with caplog.at_level("WARNING", logger="treg"):
+        client = pinned.upstream_client(bypass_hosts=frozenset({"api.provider.example"}), timeout=5)
+    assert not isinstance(getattr(client._transport._pool, "_network_backend", None), pinned.PublicOnlyBackend)
+    assert client._mounts, "the environment proxy still carries every upstream request"
+    assert "has no effect: an environment egress proxy is set" in caplog.text
+
+
+def test_the_pinned_pool_builds_tls_from_the_environment(monkeypatch):
+    seen: list[dict] = []
+    real = httpx.create_ssl_context
+
+    def recording(**kwargs):
+        seen.append(kwargs)
+        return real(**kwargs)
+    monkeypatch.setattr(httpx, "create_ssl_context", recording)
+    pinned.public_only_transport()
+    assert seen and all(k.get("trust_env", True) for k in seen), "SSL_CERT_FILE / SSL_CERT_DIR still apply"
