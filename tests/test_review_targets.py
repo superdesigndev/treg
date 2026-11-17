@@ -1,4 +1,5 @@
 """Targeted review invitations: endpoints short of reviews are invited more often."""
+import asyncio
 from types import SimpleNamespace
 
 import pytest
@@ -153,8 +154,12 @@ async def test_a_confirmed_find_targets_and_credits_the_confirmer(clients, verif
     assert first.status_code == 200, first.text
     assert first.json()['_treg']['served_by'] == 'tomba.people.email.find'
     assert first.headers.get('X-Treg-Hint') == 'review'
-    review = await clients.post('/reviews', json={'call_id': first.headers['X-Treg-Call-Id'],
-                                                  'usefulness': 'useful'})
+    for _ in range(100):  # the call record is written after the answer; the API says retry
+        review = await clients.post('/reviews', json={'call_id': first.headers['X-Treg-Call-Id'],
+                                                      'usefulness': 'useful'})
+        if review.status_code != 404:
+            break
+        await asyncio.sleep(0.02)
     assert review.status_code == 201, review.text
     row, = await rows()
     assert (row.endpoint_id, row.invited) == ('hunter.people.email.find', True)
@@ -166,7 +171,6 @@ async def test_a_confirmed_find_targets_and_credits_the_confirmer(clients, verif
 
 async def test_a_stuck_counts_read_never_holds_a_worker_and_leaves_the_base_rate(targeting,
                                                                                 monkeypatch):
-    import asyncio
     import contextlib
 
     @contextlib.asynccontextmanager
