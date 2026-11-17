@@ -19,6 +19,7 @@ sources:
   - src/treg/infra/db.py
   - src/treg/infra/money_admission.py
   - scripts/bench_money_admission.py
+  - scripts/bench_money_scaling.py
   - src/treg/email.py
   - src/treg/audit.py
   - scripts/dev-local.sh
@@ -280,6 +281,12 @@ small org set; disabling restores the database path, which remains authoritative
 loopback services via `TREG_TEST_DB_URL` and `TREG_TEST_KV_URL` (skipped without them); the bench
 requires database names starting `treg_admission_test` and resets that schema. Its timings are
 local synthetic evidence, not deployed throughput.
+
+`scripts/bench_money_scaling.py` takes the same two services and the same database-name guard. It
+runs the reserve and the settle of each call from separate OS processes and prints, per process
+count, one team's throughput, latency and database round trips per call, then checks the ledger.
+Use it to see whether a change lets a team's throughput grow with processes; its timings are
+local synthetic evidence too.
 
 ## Safe local mode
 
