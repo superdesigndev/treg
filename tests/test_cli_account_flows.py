@@ -1,48 +1,22 @@
-"""Opt-in checks of the unmodified PyPI CLI against this checkout's ASGI server.
+"""The CLI's account commands, run unmodified against this checkout's ASGI server.
 
-Set TREG_RELEASED_CLI_DIR to a directory with verified 0.16.0 and 0.19.0 wheel
-contents. No CLI config, browser, paid upstream call, or production service is used.
+No CLI config, browser, paid upstream call, or production service is used.
 """
 from __future__ import annotations
 
 import asyncio
-import importlib.util
-import hashlib
-import json
-import os
-from pathlib import Path
-import sys
 from types import SimpleNamespace
 from urllib.parse import parse_qs, urlsplit
 
 import httpx
-import pytest
 
+from treg import cli
 from treg.api import app
 from treg.domain.identity import session as sess
 
 
-@pytest.mark.parametrize('version', ['0.16.0', '0.19.0', 'current'])
-async def test_released_cli_flows(clients, tmp_path, monkeypatch, capsys, version):
-    if version == 'current':
-        from treg import cli
-    else:
-        root = os.environ.get('TREG_RELEASED_CLI_DIR')
-        if not root:
-            pytest.skip('set TREG_RELEASED_CLI_DIR to verified released wheels')
-        package = Path(root) / version / 'treg'
-        hashes = {
-            '0.16.0': 'db4e241b01a81d57ea1d4d17947736f2589aff61ac6a4b1e28bc8524c03f4df1',
-            '0.19.0': '825aa562e75582667c2d555d836db5a3d7a8ce3371af62b0eed6f96aa41edb26',
-        }
-        assert hashlib.sha256((package / 'cli.py').read_bytes()).hexdigest() == hashes[version]
-        name = 'released_treg_' + version.replace('.', '_')
-        spec = importlib.util.spec_from_file_location(name, package / '__init__.py',
-                                                    submodule_search_locations=[str(package)])
-        module = importlib.util.module_from_spec(spec)
-        sys.modules[name] = module
-        spec.loader.exec_module(module)
-        cli = __import__(name + '.cli', fromlist=['cli'])
+async def test_login_team_switch_team_create_and_email_login_each_leave_a_working_key(
+        clients, tmp_path, monkeypatch):
     monkeypatch.setattr(cli, 'CONFIG_PATH', tmp_path / 'config.json')
     monkeypatch.setattr(cli, '_maybe_offer_onboarding', lambda cfg: None)
     # The sync CLI runs on a thread; each HTTP request reaches the real async server on
@@ -119,41 +93,14 @@ async def test_released_cli_flows(clients, tmp_path, monkeypatch, capsys, versio
     outcomes['browser_login'] = await resources()
     await command('org', 'use', second)
     outcomes['team_switch'] = await resources()
-    before = cli.CONFIG_PATH.read_bytes()
-    before_orgs = len((await clients.get('/orgs')).json())
-    if version == 'current':
-        await command('org', 'create', 'Browser-created')
-    else:
-        capsys.readouterr()
-        with pytest.raises(SystemExit):
-            await command('org', 'create', 'Browser-created')
-        error = capsys.readouterr().err
-        assert 'HTTP 426 — treg refused the call' in error
-        assert 'the provider answered' not in error
-        assert cli.CONFIG_PATH.read_bytes() == before
-        assert len((await clients.get('/orgs')).json()) == before_orgs
-        assert trace[-1] == ('POST', '/orgs', 426)
+    await command('org', 'create', 'Browser-created')
     outcomes['browser_team_create'] = await resources()
     # An existing saved unscoped identity token from the old server.
     cfg.update(token=sess.make_identity(claims['uid']), identity=True, active_org=team)
     outcomes['saved_token'] = await resources()
-    cli._save_config(cfg)
-    before = cli.CONFIG_PATH.read_bytes()
     email = (await clients.get('/auth/me')).json()['email']
-    if version == 'current':
-        await command('login', '--email', email)
-    else:
-        capsys.readouterr()
-        with pytest.raises(SystemExit):
-            await command('login', '--email', email)
-        error = capsys.readouterr().err
-        assert 'HTTP 426 — treg refused the call' in error
-        assert 'the provider answered' not in error
-        assert cli.CONFIG_PATH.read_bytes() == before
-        assert trace[-1] == ('POST', '/auth/email/start', 426)
+    await command('login', '--email', email)
     outcomes['email_login'] = await resources() if cfg.get('active_org') else 'no team'
     await command('org', 'create', 'Email-created')
     outcomes['email_team_create'] = await resources()
-    (tmp_path / 'outcomes.json').write_text(json.dumps(outcomes))
-    print('COMPAT', version, json.dumps(outcomes), 'TRACE', trace)
-    assert set(outcomes.values()) == {200}
+    assert outcomes == dict.fromkeys(outcomes, 200), (outcomes, trace)

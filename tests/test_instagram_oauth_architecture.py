@@ -443,6 +443,7 @@ async def test_expired_grant_returns_structured_reconnect_guidance(
         blob = json.loads(crypto.decrypt(secret.value))
         blob.pop("refresh_token", None)
         secret.value = crypto.encrypt(json.dumps(blob))
+        secret.refreshable = False
         secret.expires_at = utcnow_naive() - timedelta(minutes=1)
         await db.commit()
     response = await clients.get(

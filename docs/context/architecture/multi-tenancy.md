@@ -240,11 +240,12 @@ name, so nothing gates on it. Scoping a detected agent means minting it a token.
 
 ## Agent payer teams
 
-`governance.teams.make_payer_team` creates the team of one agent-payments wallet address: a
-machine user `<address>@payers.treg.local` (`identity.access.PAYER_DOMAIN`, counted by
+`governance.teams.make_payer_team` creates the team of one agent-payments wallet address on one
+network: a machine user `<address>.<network slug>@payers.treg.local` (`identity.access.PAYER_DOMAIN`, counted by
 `_is_machine_email` and `api_keys.is_machine_email`, so no sign-in door and no signup credit), one
 `member` membership with an empty `token_hash`, and the `AgentPayer` row. No token or session can
-reach it; `routers.call._paid_call` acts for it only after a verified payment from that address
+reach it; `routers.call._paid_call` acts for it only after a verified payment or proof from that
+address on that network
 ([agent payments](agent-payments.md)). `AgentPayer` and `AgentPayment` are in
 `ORG_SCOPED_MODELS`, so a deleted payer team takes them with it.
 
@@ -313,4 +314,4 @@ stopped with 426 by `routers.auth_helpers.require_managed_cli` before email cred
 team is created or an invite consumed. Current CLIs send `X-Treg-Key-Protocol: 1`. The legacy hint
 (`python-httpx/` User-Agent plus `ngrok-skip-browser-warning: 1` without the marker) is a
 compatibility check, not an authorization boundary: forging or omitting it never relaxes token
-restrictions. `test_released_cli_compat` checks the refusal preserves config bytes.
+restrictions. `test_cli_key_compatibility` checks the refusal leaves credentials and the team unchanged.

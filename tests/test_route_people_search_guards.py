@@ -1,12 +1,16 @@
 """A routed people search neither re-bills page one for a page it cannot send, nor lets Exa's
 per-result rider pass X-Treg-Route-Max-Cost on a base-price hold."""
 
+import json
+
 import pytest
 
+from treg import call_events as sink
 from treg.application.call import service
 from treg.config import get_settings
 
 from test_marketplace_call import _balance, platform_on  # noqa: F401
+from test_call_events import SECRET
 from test_routing import _relay_by_provider
 
 
@@ -108,3 +112,27 @@ async def test_cursor_for_another_question_is_refused(clients, lists_on, monkeyp
     r = await clients.post("/call/treg.people.search", json=nxt)
     assert r.status_code == 422 and r.json()["detail"]["error"] == "route_cursor_invalid", r.text
     assert len(seen) == 1 and await _balance(clients) == before
+
+
+async def test_a_routed_continuation_is_a_later_page_in_its_call_event(clients, lists_on, monkeypatch):
+    monkeypatch.setenv("TREG_CALL_EVENTS_URL", "https://stream.example.invalid")
+    monkeypatch.setenv("TREG_CALL_EVENTS_HMAC_SECRET", SECRET)
+    get_settings.cache_clear()
+    sink.reset()
+    sent: list[dict] = []
+
+    async def capture(batch, **_):
+        sent.extend(json.loads(b"[" + b",".join(batch) + b"]"))
+
+    monkeypatch.setattr(sink, "_post", capture)
+    monkeypatch.setattr(service, "relay", _relay_by_provider(
+        {"quickenrich": [(200, _qe(3, "QE-2")), (200, _qe(3, None))], "*": []}, []))
+    body = {"title": "VP Sales", "limit": 3}
+    first = await _page(clients, body, "quickenrich")
+    await _page(clients, {**body, "cursor": first["output"]["next_cursor"]}, "quickenrich")
+    await sink.drain()
+    sink.reset()
+    parents = [e for e in sent if e["endpoint_id"] == "treg.people.search" and not e.get("parent_ref")]
+    assert len(parents) == 2 and all(p.get("input_id") for p in parents)
+    assert parents[0]["input_id"] != parents[1]["input_id"]
+    assert parents[1]["input_meta"]["page_kind"] == "cursor" and "page_kind" not in parents[0]["input_meta"]

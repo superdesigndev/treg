@@ -64,6 +64,8 @@ EXPECTED_MAKERS: dict[str, set[str]] = {
 
     # Synchronous intake, and the catalog's five-minute verdict fold; admin reads use get_admin_session.
     "application/feedback.py": {API},
+    # One small aggregate of callreview per worker every ten minutes (targeted review invitations).
+    "application/review_targets.py": {API},
     "application/media.py": {API},  # `treg host`: one short write, one short read, no upstream wait
     "application/catalog_find.py": {API},  # one rate-limit write, committed before the judge call
     "application/catalog_search.py": {API},  # the hub read and the per-caller judge cap, each closed before the judge
@@ -98,6 +100,10 @@ EXPECTED_MAKERS: dict[str, set[str]] = {
     "application/images.py": {API},
     # Runs only inside `treg-worker admin purge-evidence`; same reasoning as `worker.py`.
     "application/evidence_retention.py": {API},
+    # Runs only inside `treg-worker admin reencrypt-credentials`; same reasoning as `worker.py`.
+    "application/credential_reencrypt.py": {API},
+    # Runs only inside `treg-worker admin rotate-fernet`; same reasoning as `worker.py`.
+    "application/fernet_rotation.py": {API},
     # Off-request writers.
     "audit.py": {BACKGROUND},
     # Request-shaped: the owner delete route and `treg-worker admin erase-archive`, in short

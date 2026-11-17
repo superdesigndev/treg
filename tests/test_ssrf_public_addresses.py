@@ -117,7 +117,7 @@ async def test_oauth_refresh_rechecks_dns(internal_names):
 
 async def test_oauth_code_exchange_rechecks_dns(internal_names):
     pending = SimpleNamespace(
-        client_secret=crypto.encrypt("csec"), client_id="cid", redirect_uri="https://treg.test/cb",
+        client_secret=crypto.encrypt("csec"), org_id=1, client_id="cid", redirect_uri="https://treg.test/cb",
         code_verifier="", token_endpoint_auth_method="client_secret_post",
         token_uri="https://inside.example/token",
     )
@@ -131,7 +131,7 @@ async def test_oauth_code_exchange_rechecks_dns(internal_names):
 async def test_token_answer_without_access_token_is_not_echoed():
     answer = {"error": "MARKER-ERROR", "error_description": "MARKER-BODY"}
     pending = SimpleNamespace(
-        client_secret=crypto.encrypt("csec"), client_id="cid", redirect_uri="https://treg.test/cb",
+        client_secret=crypto.encrypt("csec"), org_id=1, client_id="cid", redirect_uri="https://treg.test/cb",
         code_verifier="", token_endpoint_auth_method="client_secret_post",
         token_uri="https://outside.example/token",
     )

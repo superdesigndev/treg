@@ -1,0 +1,37 @@
+{
+  "version": "0.1.20261103",
+  "status_code": 20000,
+  "status_message": "Ok.",
+  "time": "0.1227 sec.",
+  "cost": 0,
+  "tasks_count": 1,
+  "tasks_error": 0,
+  "tasks": [
+    {
+      "id": "11162217-2171-0616-0000-5d65f1f4ba22",
+      "status_code": 20000,
+      "status_message": "Ok.",
+      "time": "0.0000 sec.",
+      "cost": 0,
+      "result_count": 3,
+      "path": [
+        "v3",
+        "… 4 more item(s) truncated"
+      ],
+      "data": {
+        "api": "ai_optimization",
+        "function": "llm_responses",
+        "se": "perplexity"
+      },
+      "result": [
+        {
+          "model_name": "sonar-reasoning-pro",
+          "reasoning": false,
+          "web_search_supported": true,
+          "task_post_supported": false
+        },
+        "… 2 more item(s) truncated"
+      ]
+    }
+  ]
+}

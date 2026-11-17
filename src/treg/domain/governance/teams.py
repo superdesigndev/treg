@@ -43,6 +43,8 @@ from ...models import (
     EnterpriseSSOBlock,
     EnterpriseSSOIdentity,
     Feedback,
+    CallCharge,
+    CallMark,
     CallReview,
     Media,
     Hold,
@@ -212,12 +214,13 @@ async def _make_org_membership(
     return org, token
 
 
-async def make_payer_team(db: AsyncSession, address: str) -> Org:
-    """Stage the team of one agent payer wallet (docs/context/architecture/agent-payments.md): a
-    machine user on the unroutable payer domain, a `member` membership with no token, and the
-    address binding. No signup credit. A wallet whose team was deleted keeps its machine user and
-    gets a new team. Caller commits; a concurrent create loses on the `AgentPayer` primary key."""
-    email = f"{address}@{PAYER_DOMAIN}"
+async def make_payer_team(db: AsyncSession, network: str, address: str) -> Org:
+    """Stage the team of one agent payer wallet on one network
+    (docs/context/architecture/agent-payments.md): a machine user on the unroutable payer domain, a
+    `member` membership with no token, and the (network, address) binding. No signup credit. A
+    wallet whose team was deleted keeps its machine user and gets a new team. Caller commits; a
+    concurrent create loses on the `AgentPayer` primary key."""
+    email = f"{address}.{re.sub(r'[^a-z0-9]+', '-', network.lower())}@{PAYER_DOMAIN}"
     user = (await db.execute(select(User).where(User.email == email))).scalar_one_or_none()
     if user is None:
         user = User(email=email, onboarded=True)
@@ -227,7 +230,7 @@ async def make_payer_team(db: AsyncSession, address: str) -> Org:
     db.add(org)
     await db.flush()
     db.add(Membership(user_id=user.id, org_id=org.id, role="member", token_hash=""))
-    db.add(AgentPayer(address=address, org_id=org.id))
+    db.add(AgentPayer(network=network, address=address, org_id=org.id))
     await db.flush()
     return org
 
@@ -295,6 +298,7 @@ ORG_SCOPED_MODELS = (
     TagBudget,
     MemberSpend,  # likewise: its rows reference a Hold
     TagSpend,  # before the money tables it attributes: its rows reference a Hold that is about to go
+    CallCharge,  # calls not yet applied to the blocks that are about to go
     CallTask, AsyncResourceRecord, ProviderResource, AsyncTaskRecord, LedgerEntry, Hold, CreditBlock,
     OAuthCode, OAuthRefresh,   # grants naming a team that no longer exists
     IdempotentCall,            # a remembered answer belongs to the team that paid for it
@@ -303,6 +307,7 @@ ORG_SCOPED_MODELS = (
     HubListing,   # a tool's search listing goes with the team that asked for it
     HubTool,      # a maker's published tools go with the team that owned them
     CallReview,
+    CallMark,
     Media,        # hosted reference files expire on their own; a deleted team's go now
     AdConversion,  # pending Google Ads conversions belong to the team they'd be attributed to
     EnterpriseSSOIdentity, EnterpriseSSOBlock, EnterpriseDirectoryUser, EnterpriseSSOAudit, EnterpriseSSO,

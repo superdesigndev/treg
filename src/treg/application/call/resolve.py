@@ -226,6 +226,77 @@ def _catalog_endpoint_for(rest: str) -> dict | None:
     return catalog_store.load().by_id.get(rest)
 
 
+def vendor_path_endpoint(
+    rest: str, method: str, query: QueryValues,
+) -> tuple[dict, tuple[tuple[str, str], ...]] | None:
+    """`<provider>/<path>` -> (catalog row, its path parameters), or None when the first segment is
+    not a catalog provider. `path` is relative to the provider's base URL, so the same URL means
+    the same upstream request whether it reaches a team's own tool named `<provider>` (which wins,
+    in `_resolve_call`) or this catalog lookup. Matched rows run exactly as `/call/<id>`, with
+    each `{param}` given as the query parameter of that name.
+
+    A literal segment beats a `{param}` (fewer placeholders win, as the vendor routes `/users/me`
+    before `/users/{id}`); rows still tied are refused, never guessed. Rows on another host than
+    the provider's base URL, rows whose path varies by authorization method, and rows whose path
+    carries a fixed query are reachable by id only. No match is a 404: nothing is relayed."""
+    service, sep, path = rest.partition("/")
+    if not sep or rest.startswith("http"):
+        return None
+    cat = catalog_store.load()
+    rows = [ep for ep in cat.by_id.values() if ep.get("provider") == service]
+    provider = oauth_providers.get(service)
+    if not rows or provider is None or not provider.base_url:
+        return None
+    base_host = _host_of(provider.base_url)
+    wanted = ("/" + path).split("/")
+    # ponytail: linear scan of one provider's rows, only on the vendor-path fallthrough.
+    matched: list[tuple[dict, tuple[tuple[str, str], ...]]] = []
+    for ep in rows:
+        template = ep.get("path") or "/"
+        if (ep.get("kind") == "routed" or "?" in template or ep.get("authorization_paths")
+                or (ep.get("host") and str(ep["host"]).strip().lower() != base_host)):
+            continue
+        parts = ("/" + template.lstrip("/")).split("/")
+        if len(parts) != len(wanted):
+            continue
+        params = []
+        for want, part in zip(wanted, parts):
+            if (name := re.fullmatch(r"\{(\w+)\}", part)) and want:
+                params.append((name.group(1), want))
+            elif want != part:
+                break
+        else:
+            matched.append((ep, tuple(params)))
+    target = f"{provider.base_url.rstrip('/')}/{path}"
+    same_method = [m for m in matched if (m[0].get("method") or "GET").upper() == method.upper()]
+    if not same_method:
+        if matched:
+            methods = sorted({(m[0].get("method") or "GET").upper() for m in matched})
+            raise ResolutionFailed(
+                "method_mismatch", status_code=400,
+                detail=f"{target} is {' or '.join(methods)} in the catalog, not {method.upper()}")
+        base_path = urlsplit(provider.base_url).path.rstrip("/")
+        hint = (f"paths are relative to {provider.base_url}: drop the leading {base_path!r}"
+                if base_path and ("/" + path).startswith(base_path + "/") else
+                f"{service!r} is a catalog provider and paths are relative to {provider.base_url}; "
+                "treg catalog search <what you need> → treg call <endpoint-id>")
+        raise ResolutionFailed("target_not_found", status_code=404, detail={
+            "error": f"no catalog endpoint for {method.upper()} {target}", "hint": hint})
+    fewest = min(len(params) for _, params in same_method)
+    top = [m for m in same_method if len(m[1]) == fewest]
+    if len(top) > 1:
+        ids = sorted(ep["id"] for ep, _ in top)
+        raise ResolutionFailed("target_ambiguous", status_code=409, detail={
+            "error": f"{method.upper()} {target} matches several catalog endpoints",
+            "hint": "call one by id: /call/<endpoint-id>", "candidates": ids})
+    ep, params = top[0]
+    if clash := [name for name, _ in params if query.get(name) is not None]:
+        raise ResolutionFailed(
+            "catalog_parameter_invalid", status_code=400, parameter=f"pathParams.{clash[0]}",
+            rule="repeat", detail=f"{clash[0]} is already given by the path {target}")
+    return ep, params
+
+
 def _enforce_catalog_status(ep: dict) -> None:
     """Refuse a catalog id the provider has retired or broken, with its migration story.
 
@@ -327,6 +398,7 @@ class MarketplaceCall:
     async_descriptor: dict | None = None
     resource_ownership: dict | None = None
     managed_resource: dict | None = None
+    kind: str = ""                  # the row's `kind`; a free `utility` list streams (streamable_free_result)
     public_resource_ids: tuple[str, ...] = ()
     # On an endpoint declaring `spooled_response`: the response paths its settlement reads (the
     # usage meters, the `expect` success rule). A metered 2xx goes to disk; only these are kept.
@@ -358,14 +430,17 @@ class MarketplaceCall:
 
     @property
     def streamable_free_result(self) -> bool:
-        """An authorized final fetch with no body evidence to settle or learn."""
+        """A free answer with no body evidence to settle or learn: an authorized final fetch, or a
+        free reference list (`kind: utility`) with no ownership rule, which can outgrow the 8 MiB
+        settlement buffer (DataForSEO's US location list)."""
         ownership = self.resource_ownership or {}
         required = ownership.get("requires") or {}
         return (self.tier == "platform" and self.cost_type == "free"
                 and self.estimate_micro == 0 and not self.billed_oauth
                 and self.async_owner_call_id is None and not self.async_descriptor
                 and not ownership.get("produces")
-                and str(required.get("kind", "")).startswith("fetch:"))
+                and (str(required.get("kind", "")).startswith("fetch:")
+                     or (self.kind == "utility" and not ownership and not self.managed_resource)))
 
     @property
     def holdless_eligible(self) -> bool:
@@ -2366,6 +2441,7 @@ async def _resolve_marketplace_call(
         reported_charge_unit_micro=pricing.reported_charge_unit_micro,
         settlement_basis=pricing.settlement_basis, request_data=pricing.request_data,
         cost_terms=pricing.terms,
+        kind=str(ep.get("kind") or ""),
         async_descriptor=ep.get("async"), resource_ownership=ep.get("resource_ownership"),
         managed_resource=ep.get("managed_resource"),
         spooled_evidence=_spool_evidence_paths(ep, ep.get("cost") or {}),

@@ -1151,6 +1151,35 @@ async def test_hlrlookup_insufficient_credit_200_is_never_billed_and_strikes_the
     get_settings.cache_clear()
 
 
+async def test_dataforseo_cost_limit_200_is_never_billed_and_strikes_the_breaker(
+        clients: AsyncClient, monkeypatch):
+    """DataForSEO's spent account cost limit is HTTP 200 with its own `status_code` 40203, on the
+    envelope or on the task. Treg's account, not the caller's: released, and a strike on the breaker."""
+    from treg.domain.capacity import signatures as S
+    msg = "The money limit per day has been exceeded: 1000.0984 >= 1000."
+    task = {"version": "0.1", "status_code": 20000, "tasks": [{"status_code": 40203, "status_message": msg}]}
+    assert S.is_exhausting(S.classify("dataforseo", 200, None, json.dumps(task).encode()))
+    assert S.classify("dataforseo", 200, None, b'{"status_code": 40202}') is None, "a per-minute rate limit"
+    assert S.classify("dataforseo", 200, None, b'{"tasks": [{"status_code": 40501}]}') is None, "a caller's error"
+    monkeypatch.setenv("TREG_PLATFORM_KEY_DATAFORSEO", "login:password")
+    monkeypatch.setenv("TREG_PLATFORM_PROVIDERS", "dataforseo")
+    get_settings.cache_clear()
+    out = json.dumps({"version": "0.1", "status_code": 40203, "status_message": msg, "cost": 0,
+                      "tasks_count": 0, "tasks_error": 0, "tasks": None}).encode()
+    monkeypatch.setattr(call_service, "relay", _fake_relay(200, out))
+    before = await _balance(clients)
+    r = await clients.post("/call/dataforseo.google.serp.organic",
+                           json=[{"keyword": "coffee", "location_code": 2840, "language_code": "en"}])
+    assert r.status_code == 200 and r.headers["X-Treg-Capacity"] == "exhausted", r.headers
+    assert await _balance(clients) == before and await _holds() == []
+    release = next(e for e in await _rows(LedgerEntry) if e.kind == "release")
+    assert release.meta.get("reason") == "capacity_balance"
+    async with session_maker() as db:
+        lock = Lock.from_json(await ratestore.kv_get(db, LOCK_NS, "dataforseo"))
+    assert lock.strikes == 1
+    get_settings.cache_clear()
+
+
 async def test_icypeas_out_of_credits_200_overflows_through_orthogonal(
         clients: AsyncClient, overflow_on, monkeypatch):
     monkeypatch.setenv("TREG_PLATFORM_KEY_ICYPEAS", "PLATFORM-ICYPEAS")

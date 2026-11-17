@@ -384,6 +384,7 @@ endpoints:
     test_request:
       queryParams: {query: "ai", sort: "relevance"}
     price: {value: '1', currency: credit, per: 1, unit: call}
+    miss: {when: {path: response.posts, op: empty}}
     verified: '2026-07-28'
     added: '2026-07-28'
     example_response: examples/scrapecreators.reddit.search.posts.json

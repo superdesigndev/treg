@@ -774,6 +774,145 @@
         "title": "ListingDecisionIn",
         "type": "object"
       },
+      "MarkIn": {
+        "additionalProperties": false,
+        "properties": {
+          "basis": {
+            "enum": [
+              "bounced",
+              "cross_checked",
+              "user_said",
+              "impression"
+            ],
+            "title": "Basis",
+            "type": "string"
+          },
+          "call_id": {
+            "maxLength": 128,
+            "minLength": 1,
+            "pattern": "^[A-Za-z0-9_-]+$",
+            "title": "Call Id",
+            "type": "string"
+          },
+          "checked": {
+            "anyOf": [
+              {
+                "maximum": 100000.0,
+                "minimum": 0.0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Checked"
+          },
+          "evidence_call_id": {
+            "anyOf": [
+              {
+                "maxLength": 128,
+                "minLength": 1,
+                "pattern": "^[A-Za-z0-9_-]+$",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Evidence Call Id"
+          },
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/MarkItem"
+            },
+            "maxItems": 200,
+            "title": "Items",
+            "type": "array"
+          },
+          "note": {
+            "anyOf": [
+              {
+                "maxLength": 500,
+                "minLength": 1,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Note"
+          },
+          "replaces": {
+            "anyOf": [
+              {
+                "minimum": 1.0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Replaces"
+          }
+        },
+        "required": [
+          "call_id",
+          "basis"
+        ],
+        "title": "MarkIn",
+        "type": "object"
+      },
+      "MarkItem": {
+        "additionalProperties": false,
+        "properties": {
+          "field": {
+            "anyOf": [
+              {
+                "maxLength": 120,
+                "minLength": 1,
+                "pattern": "^[A-Za-z0-9_.\\[\\]-]+$",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Field"
+          },
+          "index": {
+            "anyOf": [
+              {
+                "maximum": 100000.0,
+                "minimum": 0.0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Index"
+          },
+          "verdict": {
+            "enum": [
+              "correct",
+              "wrong",
+              "stale",
+              "wrong_entity",
+              "missing",
+              "irrelevant",
+              "duplicate",
+              "other"
+            ],
+            "title": "Verdict",
+            "type": "string"
+          }
+        },
+        "required": [
+          "verdict"
+        ],
+        "title": "MarkItem",
+        "type": "object"
+      },
       "OAuthStartIn": {
         "description": "Two modes. BYO: supply client_id/client_secret/auth_uri/token_uri/scopes yourself.\nREGISTRY: supply `provider` (+ optional `capability`) and treg fills all of it from its own\napproved app — see oauth_providers.py.",
         "properties": {
@@ -1113,6 +1252,17 @@
       "ReviewIn": {
         "additionalProperties": false,
         "properties": {
+          "basis": {
+            "default": "impression",
+            "enum": [
+              "bounced",
+              "cross_checked",
+              "user_said",
+              "impression"
+            ],
+            "title": "Basis",
+            "type": "string"
+          },
           "call_id": {
             "maxLength": 128,
             "minLength": 1,
@@ -1132,6 +1282,14 @@
               }
             ],
             "title": "Reason"
+          },
+          "rows": {
+            "items": {
+              "$ref": "#/components/schemas/MarkItem"
+            },
+            "maxItems": 200,
+            "title": "Rows",
+            "type": "array"
           },
           "usefulness": {
             "enum": [
@@ -9066,6 +9224,78 @@
           }
         },
         "summary": "Accept My Invite"
+      }
+    },
+    "/marks": {
+      "post": {
+        "operationId": "submit_mark_marks_post",
+        "parameters": [
+          {
+            "in": "header",
+            "name": "x-treg-token",
+            "required": false,
+            "schema": {
+              "default": "",
+              "title": "X-Treg-Token",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "x-treg-org",
+            "required": false,
+            "schema": {
+              "default": "",
+              "title": "X-Treg-Org",
+              "type": "string"
+            }
+          },
+          {
+            "in": "cookie",
+            "name": "treg_session",
+            "required": false,
+            "schema": {
+              "default": "",
+              "title": "Treg Session",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/MarkIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response Submit Mark Marks Post",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Submit Mark"
       }
     },
     "/media": {

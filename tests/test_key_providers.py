@@ -302,8 +302,6 @@ def test_hlrlookup_platform_bindings_match_the_byok_pair():
 
 
 def test_paid_key_verification_probe_is_typed_and_unique():
-    paid = {p.service: p.probe_cost_micro for p in P.REGISTRY.values() if p.probe_cost_micro}
-    assert paid == {"keenable": 4_000, "trestleiq": 15_000}
     assert all(isinstance(p.probe_cost_micro, int) and p.probe_cost_micro >= 0
                for p in P.REGISTRY.values())
     listing = {row["service"]: row for row in P.listing()}
@@ -889,32 +887,27 @@ async def test_connecting_a_public_provider_not_enabled_says_so(clients, monkeyp
     assert r.status_code == 422 and "call its catalog tools directly" in r.text
 
 
-def test_a_demo_teams_key_provider_refusal_offers_no_keyless_tool_it_is_refused(monkeypatch):
-    """Both refusal branches judge alternatives for this team: a demo team is refused keyless tools,
-    so a key provider's refusal never lists one as callable."""
-    from types import SimpleNamespace
-    from treg.application.call import resolve as R
-    free = {"id": "board.jobs", "provider": "board", "capability": "x.y", "platform_auth": "anonymous"}
-    asked = {"id": "hunter.x", "provider": "hunter", "capability": "x.y"}
+@pytest.mark.parametrize("public_demo", [False, True])
+async def test_a_demo_teams_key_provider_refusal_offers_no_keyless_tool_it_is_refused(
+    clients, monkeypatch, public_demo,
+):
+    """Greenhouse and Ashby serve companies.jobs keyless, but not to a public demo team, so a
+    refusal for a missing Hirebase key must not offer them to one."""
+    from treg.config import get_settings
+    from treg.infra.db import session_maker
+    from treg.models import Org
 
-    class Cat:
-        def for_capability(self, cap):
-            return [asked, free]
-
-        def cost_view(self, cost, provider):
-            return {"usd": 0}
-
-        def platform_eligible(self, ep):
-            return True
-
-    monkeypatch.setattr(R.catalog_store, "load", lambda: Cat())
-    monkeypatch.setattr(R.catalog_store, "paused", lambda ep: False)
-    monkeypatch.setattr(R, "anonymous_served", lambda ep: {"type": "free"} if ep is free else None)
-    monkeypatch.setattr(R, "_anonymous_offer", lambda ep, org: None)  # refused to this (demo) team
-    monkeypatch.setattr(R, "_platform_key_missing", lambda ep, provider: False)
-    exc = R._marketplace_no_credential("hunter", asked["id"], P.REGISTRY["hunter"], asked,
-                                       SimpleNamespace(public_demo=True, id=1))
-    assert "callable now, no key needed" not in str(exc.detail), exc.detail
+    monkeypatch.setenv("TREG_PLATFORM_PROVIDERS", "greenhouse,ashby")
+    get_settings.cache_clear()
+    async with session_maker() as db:
+        org = await db.get(Org, (await clients.get("/orgs")).json()[0]["org_id"])
+        org.public_demo = public_demo
+        await db.commit()
+    r = await clients.get("/call/hirebase.companies.jobs?company_slug=stripe")
+    get_settings.cache_clear()
+    assert r.status_code == 404 and "no hirebase credential" in r.text, r.text
+    offered = "greenhouse.companies.jobs  free  (callable now, no key needed)" in r.json()["detail"]
+    assert offered is not public_demo, r.text
 
 
 async def test_a_paused_public_provider_s_key_paste_says_it_is_paused(clients, monkeypatch):

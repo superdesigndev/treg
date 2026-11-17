@@ -157,6 +157,11 @@ _TABLE: list[Signature] = [
     # HLR Lookup answers an empty account with a 200 whose `results[0].error` is
     # INSUFFICIENT_CREDIT (its docs; the catalog row's `expect` already keeps it unbilled).
     Signature("hlrlookup", 200, r'"error"\s*:\s*"insufficient_credit"', "balance"),
+    # DataForSEO answers HTTP 200 and puts its own code in `status_code`, on the envelope or on a
+    # task: 40200 payment required, 40203 the account's cost limit (a daily or per-minute money
+    # ceiling set in its dashboard), 40210 insufficient funds (docs, appendix/errors). All three are
+    # the whole account, so the lock is provider-wide; the probe lifts it on the first 2xx.
+    Signature("dataforseo", 200, r'"status_code"\s*:\s*402(?:00|03|10)\b', "balance"),
     # Tomba: a route's spent allowance is a 429 "You have reached your usage limit", with no Retry-After.
     Signature("tomba", 429, r"reached your usage limit", "quota", tripwire=True),
     # Fish Audio: too many requests in flight is a 429 "exceeded your current concurrency limit", no Retry-After.

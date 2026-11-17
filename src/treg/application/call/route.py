@@ -1150,8 +1150,12 @@ async def _run_routed(parent: CallContext, ep: dict, body_bytes: bytes, get_head
         raise ResolutionFailed("catalog_parameter_invalid", status_code=400, parameter="body", rule="type",
                                detail=f"{ep['id']} expects a JSON object body")
     # `cursor` resumes a paged answer on the endpoint that served it; it is no part of the question.
-    resume = _read_cursor(ep, given.pop("cursor"), given) if "cursor" in given else None
-    parent.route_summary = {"identity": given, "size": len(body_bytes or b"")}
+    paged = "cursor" in given
+    cursor = given.pop("cursor") if paged else None
+    resume = _read_cursor(ep, cursor, given) if paged else None
+    # The call event still counts a continuation as a later page (`call_events.page_position`).
+    parent.route_summary = {"identity": given, "size": len(body_bytes or b""),
+                            **({"cursor": cursor} if paged else {})}
     contract = catalog_store.load().contracts.get(ep["capability"])
     declared = set(contract.identity_types) | set(contract.filters or {}) if contract else set()
     if paging := sorted(k for k in given if k in _PAGING_KEYS and k not in declared):
@@ -1316,6 +1320,11 @@ async def _run_routed(parent: CallContext, ep: dict, body_bytes: bytes, get_head
         try:
             response = await _bounded(deadline, execute_child(child, upstream_client))
             _note_call(parent, plan, cand, child, tried)
+            if 200 <= response.status < 300:
+                # The latest successful attempt (never its async polls, `:p<k>`): the endpoint a
+                # review of this call is credited to (application.feedback.submit_review), so
+                # invitations target the same one.
+                _summarize(parent, credited=cand.endpoint["id"])
         except _ChildTimedOut:
             # The child's own cancellation path released its hold (or left it to the deferred
             # close, which this marks unbillable): no answer, no charge. The next candidate runs.

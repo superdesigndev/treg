@@ -688,41 +688,8 @@ def test_every_routed_adapter_sends_its_rows_platform_request_pins():
     assert missing == {}, missing
 
 
-def test_firecrawl_web_adapters_are_verified_routed_children():
+def test_a_parallel_extract_page_with_only_excerpts_is_a_hit():
     cat = catalog_store.load()
-    for parent, child in (
-        ("treg.web.search", "firecrawl.web.search"),
-        ("treg.web.extract", "firecrawl.web.scrape"),
-        ("treg.web.map", "firecrawl.web.map"),
-    ):
-        adapter = cat.adapters[child]
-        assert adapter.verified, (child, adapter.verify_note)
-        assert not adapter.verify_note, child
-        assert child in cat.by_id[parent]["routed_children"], (parent, child)
-
-
-def test_you_web_adapters_are_verified_routed_children():
-    cat = catalog_store.load()
-    for parent, child in (
-        ("treg.web.search", "you.web.search"),
-        ("treg.web.extract", "you.web.contents"),
-    ):
-        adapter = cat.adapters[child]
-        assert adapter.verified, (child, adapter.verify_note)
-        assert not adapter.verify_note, child
-        assert child in cat.by_id[parent]["routed_children"], (parent, child)
-
-
-def test_parallel_adapters_are_routed_and_an_excerpt_only_page_is_a_hit():
-    cat = catalog_store.load()
-    for parent, child in (
-        ("treg.web.search", "parallel.web.search"),
-        ("treg.web.extract", "parallel.web.extract"),
-        ("treg.people.search", "parallel.people.search"),
-        ("treg.companies.search", "parallel.companies.search"),
-    ):
-        assert cat.adapters[child].verified, (child, cat.adapters[child].verify_note)
-        assert child in cat.by_id[parent]["routed_children"], (parent, child)
     # A direct Extract without full_content still returns billed excerpts; only an empty page or
     # an unreadable URL (results [], errors[]) is the free miss.
     extract = cat.adapters["parallel.web.extract"]

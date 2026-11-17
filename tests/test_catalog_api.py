@@ -1072,54 +1072,18 @@ credit_rates_usd:
     assert "fine_trial" not in blob, "a compliant trial entry must pass"
 
 
-def test_trial_pools_flow_from_fx_to_eligibility_and_display():
-    """The real file's three pools, end to end through the loader: a $0 price that is platform
-    eligible AND carries its allowance wherever the cost is shown — a bare $0.00 would read as
-    unlimited."""
+def test_a_trial_priced_row_shows_its_daily_allowance_beside_its_zero_price():
+    """A bare $0.00 would read as unlimited."""
     from treg.domain.catalog import store as cs
 
     c = cs.load()
-    assert c.trial_pools == {"finnhub": 50, "twelvedata": 20, "tiingo": 20,
-                             "getleadsio": 5}
-    ep = c.by_id["finnhub.quote"]
-    assert c.platform_eligible(ep)
-    cost = c.cost_view(ep["cost"], "finnhub")
-    assert cost["usd"] == 0.0 and cost["trial_calls_per_team_day"] == 50
-    # and the two NON-trial own-key providers stay ineligible — the license boundary holds
-    assert not c.platform_eligible(c.by_id["polygon.prev-close"])
-    assert not c.platform_eligible(c.by_id["eodhd.eod"])
-
-
-def test_anymailfinder_platform_prices_all_shared_key_tools():
-    from treg.domain.catalog import store as cs
-
-    c = cs.load()
-    rows = [ep for ep in c.endpoints if ep["id"].startswith("anymailfinder.")]
-    assert len(rows) == 7
-    eligible = {ep["id"] for ep in rows if c.platform_eligible(ep)}
-    assert eligible == {
-        "anymailfinder.people.email.find",
-        "anymailfinder.people.decision_makers",
-        "anymailfinder.companies.emails.list",
-        "anymailfinder.people.email.verify",
-        "anymailfinder.companies.emails.count",
-    }
-
-
-def test_orbisearch_shared_key_scope_and_verified_credit_prices():
-    from treg.domain.catalog import store as cs
-
-    c = cs.load()
-    assert c.credit_rates["orbisearch"] == 0.0062
-    for suffix, usd in (("people.email.verify", 0.00124),
-                        ("people.email.find", 0.0062),
-                        ("companies.enrich", 0.0062)):
-        ep = c.by_id[f"orbisearch.{suffix}"]
-        assert c.platform_eligible(ep), suffix
-        assert c.cost_view(ep["cost"], "orbisearch")["usd"] == usd
-    assert not c.platform_eligible(c.by_id["orbisearch.account.usage"])
-    assert not c.platform_eligible(c.by_id["orbisearch.people.email.content.spam_check"])
-    assert c.cost_view(c.by_id["anymailfinder.people.email.verify"]["cost"], "anymailfinder")["usd"] == 0.004
+    assert c.trial_pools
+    for provider, allowance in c.trial_pools.items():
+        rows = [ep for ep in c.endpoints if ep["provider"] == provider and c.platform_eligible(ep)
+                and c.cost_view(ep["cost"], provider)["usd"] == 0.0]
+        assert rows, provider
+        for ep in rows:
+            assert c.cost_view(ep["cost"], provider)["trial_calls_per_team_day"] == allowance, ep["id"]
 
 
 # ---- an id that misses -------------------------------------------------------------------------

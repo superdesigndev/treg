@@ -361,6 +361,23 @@
     "methods": [
       "POST"
     ],
+    "name": "submit_mark",
+    "path": "/marks"
+  },
+  {
+    "kind": "APIRoute",
+    "methods": [
+      "GET",
+      "HEAD"
+    ],
+    "name": "admin_marks",
+    "path": "/admin/marks"
+  },
+  {
+    "kind": "APIRoute",
+    "methods": [
+      "POST"
+    ],
     "name": "cli_events",
     "path": "/cli/events"
   },
@@ -2960,6 +2977,15 @@
     ],
     "name": "call_tool",
     "path": "/call/{rest:path}"
+  },
+  {
+    "kind": "APIRoute",
+    "methods": [
+      "GET",
+      "HEAD"
+    ],
+    "name": "agent_payment_credit",
+    "path": "/agentpay/credit"
   },
   {
     "kind": "APIRoute",

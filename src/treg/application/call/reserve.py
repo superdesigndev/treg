@@ -419,11 +419,17 @@ async def _platform_reserve(mk: MarketplaceCall, caller: Caller, meta: CallMeta 
                     raise
                 with timing.phase("commit"):
                     await db.commit()
-                # The conditional UPDATE bypasses an ORM instance. Reload after commit so auto-top-up sees
-                # the balance crossing that triggered this reservation.
-                mark_money(db, "reserve_post_commit", org_id=caller.org_id, call_id=call_ref)
-                with timing.phase("post_commit"), money_stage(db, "post_commit_read"):
-                    org = await db.get(Org, caller.org_id)
+        if auto_on:
+            # The conditional UPDATE bypasses an ORM instance, so auto top-up reloads the balance
+            # this reservation just moved: after the lease, on its own session, and only for a team
+            # that has it on. The hold is committed; a failed read must not fail the call.
+            org = None
+            try:
+                async with session_maker() as read_db:
+                    org = await read_db.get(Org, caller.org_id)
+            except Exception as exc:  # noqa: BLE001
+                logging.getLogger("treg.ledger").warning(
+                    "auto top-up read after reserve failed for org %s: %s", caller.org_id, exc)
             if org is not None:
                 billing.maybe_schedule_autotopup(org)
     except ledger.PurchasedCreditShort as exc:
