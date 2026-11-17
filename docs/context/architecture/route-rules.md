@@ -17,6 +17,7 @@ sources:
   - tests/test_route_rules.py
 related:
   - architecture/catalog.md
+  - architecture/route-explore.md
   - architecture/call-events.md
   - architecture/org-flow-control.md
 ---
@@ -124,8 +125,9 @@ Every routed parent that reached a plan carries these separate facts in its even
 
 - `route_order`: which order the first provider actually reached came from: `header`
   (`X-Treg-Route-Prefer`), `default` (the contract's own order would have called it then too),
-  `rule`, or `quality` (`X-Treg-Route-Quality` moved it). Absent when no provider was reached,
-  whatever the header or rule.
+  `rule`, `explore` (the exploration split put it first, [route-explore.md](route-explore.md)), or
+  `quality` (`X-Treg-Route-Quality` moved it). Absent when no provider was reached, whatever the
+  header or rule.
 - `route_retry_order`: the same for the first later call the contract's own order would not have
   made next: `rule`, or `quality` (`X-Treg-Route-Quality`, or `X-Treg-Route-Decisive` ordering the
   providers left after an undecided answer). Absent when every later call is the one the contract's
@@ -144,6 +146,8 @@ not. So a rule whose pick was refused, skipped, excluded or already first is `de
   when a read found none published. Absent when the feature is off or the worker has not read yet,
   so "no rule under version 8" and "not read" stay distinct.
 - `route_rule`: the id of the rule that matched, even when a header or quality ordering overrode it.
+- `route_explore` and `route_explore_absorbed_micro`: the call's exploration arm and what treg took
+  off its bill ([route-explore.md](route-explore.md)). The split starts from the rule's order.
 
 ## Storage
 

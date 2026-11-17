@@ -279,11 +279,35 @@ class Plan:
     route_rule: dict[str, str] | None = None   # what ordered it (`route_order`, published rule), for the event
     orders: dict[str, list[str]] = field(default_factory=dict)  # endpoint ids by `default` / `rule` order
     health: dict[str, str] = field(default_factory=dict)  # endpoint id -> short-window verdict, when not ok
+    explore: Explore | None = None   # this call's exploration arm when it moved the first provider
 
     def view(self) -> dict:
         return {"capability": self.contract.capability, "identity_variant": list(self.variant),
                 "plan": [c.view() for c in self.candidates], "dropped": self.dropped,
                 **({"health": self.health} if self.health else {})}
+
+
+@dataclass(frozen=True)
+class Explore:
+    """An explored call whose drawn provider is not the one the router would have asked first.
+    `cap_micro`: the most the caller pays for that first attempt when it answers (pre-margin, like
+    every candidate price); an attempt that does not answer is not billed at all."""
+    endpoint_id: str
+    provider: str
+    cap_micro: int
+
+
+def explore_draw(call_ref: str, *, salt: str, percent: float, providers: list[str]) -> str | None:
+    """The exploration arm of one call: None (the default order) or one of `providers`, uniformly.
+    Bucketed by the call id, never the team or the question, so every call is its own draw and two
+    teams' traffic mixes evenly. Two independent slices of one salted hash: the first decides
+    whether the call explores, the second which provider."""
+    if not providers or percent <= 0:
+        return None
+    digest = hashlib.sha256(f"{salt}:{call_ref}".encode()).digest()
+    if int.from_bytes(digest[:8], "big") % 10_000 >= round(percent * 100):
+        return None
+    return providers[int.from_bytes(digest[8:16], "big") % len(providers)]
 
 
 def sampled_provider_allowed(provider: str, percentages: dict[str, int], *, org_id: int | None,

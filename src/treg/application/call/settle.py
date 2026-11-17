@@ -1260,6 +1260,26 @@ class DeferredSettle:
     reserved_at: float | None = None
 
 
+def cap_deferred(items: list[DeferredSettle], call_id: str, cap_micro: int) -> int | None:
+    """Lower what this routed child's open hold will settle at to `cap_micro` of provider cost, so
+    the caller is charged at most that plus margin; treg pays the provider the rest. Returns what
+    the caller will now be charged, or None when the child left no billable hold to lower (it
+    settled on its own, through an aggregator or a provider-reported figure, and stays as it is)."""
+    for item in items:
+        if item.call_id == call_id and item.billable:
+            # No actual figure settles the whole hold, which already carries the margin.
+            current = (ledger.with_margin(item.actual_micro) if item.actual_micro is not None
+                       else item.reserved_micro)
+            ceiling = ledger.with_margin(max(0, cap_micro))
+            if current is None or current > ceiling:
+                # The ledger row keeps the provider's own figure beside the capped one.
+                item.meta = {**item.meta, "explore_cap_micro": cap_micro,
+                             "explore_uncapped_micro": item.actual_micro}
+                item.actual_micro, current = max(0, cap_micro), ceiling
+            return current
+    return None
+
+
 def hold_admission_wait_s(reserved_at: list[float | None]) -> float | None:
     """What the oldest of these holds can still spend waiting for admission and leave half the
     reaper's grace for the settlement session: past `hold_ttl_s()` another reserve may reap it."""
