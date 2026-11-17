@@ -39,10 +39,10 @@ endpoints:
       body:
         job_titles: {type: "array[string]", required: false, note: "OR'd. An unquoted entry needs every word in the title, in any order; wrap it in quotes for the exact phrase; prefix - to exclude", example: ["software engineer"]}
         keywords: {type: "array[string]", required: false, note: "ranked against description, skills and technologies; prefix - to exclude", example: ["kubernetes"]}
-        geo_locations: {type: "array[object]", required: false, note: "[{city, region, country}], any subset; each is geocoded, so a free-text place works in city alone ({city: 'New York, NY'}, {city: 'Texas'}). A city matches its metro area; a place that cannot be found is not filtered on", example: [{country: "United States"}]}
+        geo_locations: {type: "array[object]", required: false, note: "[{city, region, country}], any subset; each is geocoded, so a free-text place works in city alone ({city: 'New York, NY'}, {city: 'Texas'}). A city matches its metro area; a place that cannot be found, \"Remote\" included, is not filtered on: use location_types for remote", example: [{country: "United States"}]}
         location_types: {type: "array[string]", required: false, note: "Remote, Hybrid or In-Person", example: ["Remote"]}
         experience: {type: "array[string]", required: false, note: "years-of-experience bands, not seniority: Entry, Junior, Mid, Senior or Executive (Executive is 10+ years, mostly senior and staff roles). For the level a job is labelled with, use experience_levels"}
-        experience_levels: {type: "array[string]", required: false, note: "the job's experience_level label: Entry-Level, Junior / Associate, Mid-Level, Senior, Principal / Staff / Lead or Executive", example: ["Executive"]}
+        experience_levels: {type: "array[string]", required: false, note: "the job's experience_level label: Entry-Level, Junior / Associate, Mid-Level, Senior, Principal / Staff / Lead or Executive. total_count ignores it and counts as if it were absent", example: ["Executive"]}
         job_types: {type: "array[string]", required: false, note: "Full Time, Part Time, Contract or Internship"}
         salary: {type: object, required: false, note: "{min, max} in currency"}
         currency: {type: string, required: false, example: "USD"}
@@ -245,7 +245,7 @@ endpoints:
         geo_locations: {type: "array[object]", required: false, note: "[{city, region, country}] with full names", example: [{city: "San Francisco", region: "California", country: "United States"}]}
         location_types: {type: "array[string]", required: false}
         experience: {type: "array[string]", required: false, note: "years-of-experience bands; experience_levels filters on the labelled level"}
-        experience_levels: {type: "array[string]", required: false}
+        experience_levels: {type: "array[string]", required: false, note: "Entry-Level, Junior / Associate, Mid-Level, Senior, Principal / Staff / Lead or Executive"}
         keywords: {type: "array[string]", required: false}
         company_slug: {type: "array[string]", required: false}
         industry: {type: "array[string]", required: false}

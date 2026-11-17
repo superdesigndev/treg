@@ -1826,8 +1826,8 @@ adapters:
     in_expr:
       body.company_name: "choose(domain, null, name)"
       body.job_titles: "list(title)"
-      body.geo_locations: "list(obj('city', location, 'country', country_name(country)))"
-      body.location_types: "choose(remote == true, list('Remote'), null)"
+      body.geo_locations: "list(obj('city', choose(lower(location) == 'remote', null, location), 'country', country_name(country)))"
+      body.location_types: "choose(remote == true, list('Remote'), choose(lower(location) == 'remote', list('Remote'), null))"
       body.days_ago: posted_within_days
       body.limit: limit
     max: {limit: 100}
