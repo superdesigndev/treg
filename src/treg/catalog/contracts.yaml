@@ -1596,12 +1596,7 @@ contracts:
     idempotent: true
     routed: false
 
-  # ---- Admission-only contracts for call events: `routed: false`, never a treg.<capability> row.
-  # They give these capabilities' direct calls an `input_id` (the same question asked of two
-  # providers hashes the same) and, through each provider's verified adapter, a hit verdict
-  # (docs/context/architecture/call-events.md, "Admission-only contracts"). The identity names
-  # the question: a query, a prompt, a name, a domain or one object's id. Scoping filters
-  # (country, date window, sort) stay out of `input_id`; a later page joins it (`position`).
+  # ---- Call events only (`routed: false`): an input_id and a hit verdict for direct calls.
 
   linkedin.search.people:
     summary: "LinkedIn member search by name or keyword — provider-native rows in `people`; call events only, never routed"

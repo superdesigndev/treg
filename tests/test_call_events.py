@@ -716,3 +716,83 @@ async def test_an_unreadable_opt_out_never_stops_a_release(
     [terminal] = [e for e in events if e["event_kind"] == "async_terminal"]
     assert terminal["call_ref"] == call_ref and terminal["async_outcome"] == "timed_out"
     assert terminal["cost_charged_micro"] == 0 and terminal.get("answer_values") is None
+
+
+# ---- paging and admission-only contracts ----------------------------------------------------------
+
+def _serp_input(query: dict) -> dict:
+    cat = catalog_store.load()
+    adapter = cat.adapters["serpapi.google.serp.organic"]
+    contract = cat.contracts["google.serp.organic"]
+    items = tuple(query.items())
+    given = ev.vendor_identity(adapter, contract, items, None)
+    cols, _ = ev.input_columns(contract, given, ev.page_position(adapter, items, None))
+    return cols
+
+
+def test_a_later_page_is_a_different_question_from_the_first(monkeypatch):
+    monkeypatch.setenv("TREG_CALL_EVENTS_HMAC_SECRET", SECRET)
+    get_settings.cache_clear()
+    first = _serp_input({"engine": "google", "q": "coffee"})
+    also_first = _serp_input({"engine": "google", "q": "Coffee", "start": "0"})
+    second = _serp_input({"engine": "google", "q": "coffee", "start": "10"})
+    again = _serp_input({"engine": "google", "q": "coffee", "start": "10"})
+    get_settings.cache_clear()
+    assert first["input_id"] == also_first["input_id"]
+    assert second["input_id"] not in (None, first["input_id"]) and second["input_id"] == again["input_id"]
+    assert second["input_type"] == first["input_type"] == "q"
+    assert second["input_meta"]["page_kind"] == "offset" and second["input_meta"]["page"] == "10"
+    assert "page_kind" not in (first["input_meta"] or {})
+
+
+def test_page_position_reads_a_declared_path_a_cursor_and_a_routed_caller():
+    adapter = C.Adapter(endpoint_id="t", accepts=(("q",),), in_map={"q": "body.q"}, out_map={},
+                        miss="", position={"page": "body.paging.page"})
+    body = json.dumps({"q": "x", "paging": {"page": 3}}).encode()
+    assert ev.page_position(adapter, (), body) == ("page", "3")
+    assert ev.page_position(adapter, (), json.dumps({"q": "x", "paging": {"page": 1}}).encode()) is None
+    # a declared position wins over a top-level name; nothing declared falls back to the name
+    assert ev.page_position(adapter, (("page", "5"),), json.dumps({"q": "x"}).encode()) is None
+    bare = replace(adapter, position={})
+    assert ev.page_position(bare, (("cursor", "abc"),), None) == ("cursor", "abc")
+    assert ev.page_position(bare, (("cursor", "0"),), None) is None
+    assert ev.page_position(None, identity={"q": "x", "cursor": "trg1.abc"}) == ("cursor", "trg1.abc")
+    assert ev.page_position(None, identity={"q": "x"}) is None
+    with pytest.raises(ValueError):
+        C.parse_adapters({"adapters": {"t": {"position": {"page": "body.p", "offset": "body.o"}}}})
+
+
+def test_an_object_asked_by_url_or_by_id_hashes_the_same(monkeypatch):
+    monkeypatch.setenv("TREG_CALL_EVENTS_HMAC_SECRET", SECRET)
+    get_settings.cache_clear()
+    contracts = catalog_store.load().contracts
+    pairs = [
+        ("x.post.detail", {"url": "https://twitter.com/jack/status/20?s=1"}, {"post_id": "20"}),
+        ("linkedin.job.detail", {"url": "https://www.linkedin.com/jobs/view/software-engineer-at-pave-4310512612/"},
+         {"job_id": "4310512612"}),
+        ("reddit.post.comments", {"url": "https://www.reddit.com/r/rust/comments/1w38wm2/a_title/"},
+         {"post_id": "t3_1w38wm2"}),
+    ]
+    for capability, by_url, by_id in pairs:
+        a, _ = ev.input_columns(contracts[capability], by_url)
+        b, _ = ev.input_columns(contracts[capability], by_id)
+        assert a["input_id"] and a["input_id"] == b["input_id"], capability
+        assert a["input_type"] == b["input_type"] != "url", capability
+    get_settings.cache_clear()
+
+
+def test_id_readers_take_urls_ids_and_refuse_other_text():
+    assert P.x_post_id("https://x.com/i/web/status/123") == P.x_post_id(123) == "123"
+    assert P.x_post_id("https://example.com/status/1") is None
+    assert P.linkedin_job_id("https://www.linkedin.com/jobs/search/?currentJobId=42&k=x") == "42"
+    assert P.linkedin_job_id("https://www.linkedin.com/jobs/view/4442669023") == "4442669023"
+    assert P.linkedin_job_id("https://example.com/jobs/view/4442669023") is None
+    assert P.reddit_post_id("https://redd.it/AbC123") == P.reddit_post_id("abc123") == "t3_abc123"
+    assert P.reddit_post_id("not a post id") is None
+
+
+def test_admission_only_contracts_never_mint_a_routed_row():
+    cat = catalog_store.load()
+    for capability in ("linkedin.search.people", "web.answer", "people.search.count", "x.post.detail"):
+        assert cat.contracts[capability].routed is False
+        assert f"treg.{capability}" not in cat.by_id
