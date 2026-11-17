@@ -1040,6 +1040,10 @@ returned and never documented as stable. An output field may say where it lands 
 - `prefer` is the default provider order when the caller sends no `X-Treg-Route-Prefer`. Cost per
   hit ignores time, so a contract may prefer a dearer but faster, more reliable provider. It orders
   only children that express every filter the caller sent (see Ranking).
+- `ask_last` names providers asked after every other candidate of their tier when the caller sends
+  no `X-Treg-Route-Prefer` and the default order or a route rule does not name them: a free
+  provider that is often refused would otherwise lead on cost per hit. A team's own key still
+  comes first, and the caller's own prefer still places it.
 - `prefer_by_domain_suffix` maps a suffix of the identity's `domain` to providers asked first, ahead
   of `prefer`, when the caller sends no `X-Treg-Route-Prefer`; the longest matching suffix wins.
   Coverage differs by country while cost per hit is one number. The suffix only sees the company

@@ -4564,6 +4564,23 @@ def test_ignoring_a_sent_filter_outranks_a_contract_prefer_but_not_the_callers()
                                            caller_prefer=True)] == ["a.jobs.search", "b.jobs.search"]
 
 
+def test_ask_last_goes_after_every_candidate_of_its_tier_but_never_before_the_callers_prefer():
+    """A contract's `ask_last` provider leads on price no more; a team's own key still comes first,
+    and a caller's own X-Treg-Route-Prefer still places it."""
+    def cand(eid, price, tier="platform"):
+        return Candidate(endpoint={"id": eid, "provider": eid.split(".")[0], "cost": {"type": "per_call"}},
+                         adapter=None, variant=("email",), tier=tier, price_micro=price, hit_rate=None,
+                         ok_rate=None, p50_ms=None, last_ok_days=None)
+    free, cheap, dear = cand("free.verify", 0), cand("cheap.verify", 1_000), cand("dear.verify", 9_000)
+    order = lambda **kw: [c.endpoint["id"] for c in rank([free, cheap, dear], **kw)]  # noqa: E731
+    assert order() == ["free.verify", "cheap.verify", "dear.verify"]
+    assert order(last=("free",)) == ["cheap.verify", "dear.verify", "free.verify"]
+    assert order(prefer=["free"], last=("free",)) == ["free.verify", "cheap.verify", "dear.verify"]
+    assert order(prefer=["free"], last=("free",), caller_prefer=True)[0] == "free.verify"
+    own = cand("free.verify", 0, tier="credential")
+    assert [c.endpoint["id"] for c in rank([own, cheap], last=("free",))] == ["free.verify", "cheap.verify"]
+
+
 async def test_an_oversized_child_answer_is_unbilled_and_the_next_provider_answers(
         clients: AsyncClient, enrichment_on, monkeypatch):
     """Only an unmetered child (own key or anonymous) streams unbuffered, so only it can pass the

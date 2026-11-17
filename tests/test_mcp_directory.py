@@ -713,10 +713,9 @@ async def test_team_mcp_renders_the_mark_hint_text(clients, monkeypatch):
 
 
 @pytest.mark.parametrize(('path', 'tool'), [('/mcp/', 'call'), ('/mcp/v2/', 'catalog_call_read')])
-async def test_account_out_notice_wins_with_all_sampling_enabled(clients, monkeypatch, path, tool):
+async def test_capacity_refusal_carries_no_sampled_hint(clients, monkeypatch, path, tool):
     from treg import hints
     from treg.application.call import service as call_service
-    from treg.capacity_notice import account_out_notice
     from test_marketplace_call import _fake_relay
 
     monkeypatch.setenv('TREG_PLATFORM_KEY_TIKHUB', 'SYNTHETIC-PLATFORM-KEY')
@@ -729,9 +728,10 @@ async def test_account_out_notice_wins_with_all_sampling_enabled(clients, monkey
             result = await _call_tool(client, tool, {
                 'endpoint_id': 'tikhub.tiktok.video.comments', 'params': {'aweme_id': '7'},
             }, clients.headers['X-Treg-Token'], path=path)
-        assert result['status'] == 402 and result['whose_error'] == 'treg'
-        # treg's own account answered 402: not the team's balance, so not the balance hint.
-        assert result['hint'] == account_out_notice({'X-Treg-Capacity': 'exhausted', 'X-Treg-Cost-Micro': '0'})
+        # treg's own account answered 402: treg's refusal, never the team's balance hint.
+        assert result['status'] == 503 and result['whose_error'] == 'treg'
+        assert result['body']['detail']['error'] == 'provider_capacity_unavailable'
+        assert 'payment required' not in json.dumps(result) and 'hint' not in result
     finally:
         get_settings.cache_clear()
 

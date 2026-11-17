@@ -841,7 +841,7 @@ async def build_plan(ep: dict, identity_given: dict, caller, options: RouteOptio
     def ordered(prefer):
         out = rank(cands, prefer=prefer, exclude=options.exclude,
                    given=given, derive=contract.derive, one_subject=contract.one_subject,
-                   caller_prefer=bool(options.prefer))
+                   caller_prefer=bool(options.prefer), last=contract.ask_last)
         if options.complete:  # stable: price order within each group
             out = [c for c in out if _can_answer_fully(contract, c.adapter)] + \
                   [c for c in out if not _can_answer_fully(contract, c.adapter)]
@@ -1380,6 +1380,10 @@ async def _run_routed(parent: CallContext, ep: dict, body_bytes: bytes, get_head
                     raise
                 tried.append(Attempt(cand.endpoint["id"], cand.endpoint["provider"], "skipped",
                                      exc.status_code, 0, "endpoint call allowance exhausted"))
+                continue
+            if exc.kind == "provider_capacity":
+                tried.append(Attempt(cand.endpoint["id"], cand.endpoint["provider"], "skipped",
+                                     exc.status_code, 0, "treg's account is used up"))
                 continue
             if exc.kind == "provider_rate_limited":
                 tried.append(Attempt(cand.endpoint["id"], cand.endpoint["provider"], "skipped",

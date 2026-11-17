@@ -92,6 +92,9 @@ class Contract:
     # ahead of `prefer`. Cost per hit is one number for every domain, but a finder's coverage
     # differs by country.
     prefer_by_domain_suffix: dict[str, tuple[str, ...]] = field(default_factory=dict)
+    # Providers asked after every other candidate of their tier when the caller sends no
+    # `X-Treg-Route-Prefer`: a free provider that is often refused would otherwise lead on price.
+    ask_last: tuple[str, ...] = ()
     # Identity key sets on which the caller's own `limit` is a target, not a cap: when the caller
     # sent exactly one of these sets and a `limit`, the route defaults to `X-Treg-Route-Min-Results:
     # <limit>` plus `X-Treg-Route-Merge: 1`, so a short answer goes on to the next provider and the
@@ -383,7 +386,7 @@ def _variants(raw) -> tuple[tuple[str, ...], ...]:
 
 CONTRACT_KEYS = frozenset({
     "summary", "identity", "derive", "filters", "output", "miss", "idempotent", "default_max_cost_usd",
-    "advice_unverified", "advice_domain_mismatch", "routed", "scoping", "carried_by", "fill_rows", "prefer", "prefer_by_domain_suffix", "check", "confirm",
+    "advice_unverified", "advice_domain_mismatch", "routed", "scoping", "carried_by", "fill_rows", "prefer", "prefer_by_domain_suffix", "ask_last", "check", "confirm",
     "empty_is_failure", "one_subject", "complete", "verdict", "question_miss", "question_miss_bound", "row", "stand_in",
     "stand_in_carries", "fill_limit_when", "identity_notes", "segments"})
 # Contract keys that no longer do anything, with what replaced them. `prefer_when` ordered
@@ -490,6 +493,7 @@ def parse_contracts(doc: dict) -> dict[str, Contract]:
             carried_by=_parse_carried_by(cap, c.get("carried_by"), types, scoping),
             prefer=tuple(str(p).lower() for p in c.get("prefer") or ()),
             prefer_by_domain_suffix=_parse_prefer_by_domain_suffix(cap, c.get("prefer_by_domain_suffix"), types),
+            ask_last=tuple(str(p).lower() for p in c.get("ask_last") or ()),
             fill_limit_when=_parse_fill_limit_when(cap, c.get("fill_limit_when"), types, c),
             fill_rows=_parse_fill_rows(cap, c.get("fill_rows"), c),
             check=_parse_check(cap, c.get("check"), c.get("output") or {}),
