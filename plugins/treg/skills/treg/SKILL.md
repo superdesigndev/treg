@@ -283,7 +283,7 @@ no JSON `detail` is never treg's.
 | you see | charged | what to do |
 |---|---|---|
 | a 4xx from the provider, other than 429 | no | Fix your request. Do not retry it with another provider. |
-| a 4xx with `X-Treg-Review-Pending` (`hint` over MCP) | no | The provider has not yet approved treg's app for the scopes it names. Reconnecting does not help; tell the user the permission waits for the provider's app review. |
+| a 4xx with `X-Treg-Review-Pending` (`hint` over MCP) | no | The provider may not yet have approved treg's app for the scopes it names. If the call needs one of them, reconnecting does not help; tell the user the permission waits for the provider's app review. |
 | a 429 or 5xx from the provider | no | Try the next provider of the job, and say which. |
 | a timeout or dropped connection on your side | maybe | The provider may have answered and been paid. Repeat with the same `Idempotency-Key`; see below. |
 | 403 `capability_pinned` | no | A team admin pinned this job to one provider. Call `use_endpoint` from the body instead. |

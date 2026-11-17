@@ -244,5 +244,11 @@ def test_review_refusal_needs_a_declared_code_and_a_pending_granted_scope(monkey
         assert P.review_refusal_scopes(P.FACEBOOK, granted, {"error": {"code": "200"}}) == []
         assert P.review_refusal_scopes(P.FACEBOOK, ["pages_show_list"], refusal) == []
         assert P.review_refusal_scopes(P.GOOGLE_SEARCH_CONSOLE, granted, refusal) == []
+        comments = {"required_scopes": ["pages_manage_engagement", "pages_show_list"]}
+        posts = {"required_scopes": ["pages_show_list"]}
+        assert P.review_refusal_scopes(P.FACEBOOK, granted, refusal, comments) == [
+            "pages_manage_engagement"]
+        assert P.review_refusal_scopes(P.FACEBOOK, granted, refusal, posts) == []
+        assert "treg's app" in P.review_refusal_note(P.FACEBOOK, ["pages_manage_engagement"])
     finally:
         get_settings.cache_clear()

@@ -74,7 +74,9 @@ The same keys tell a connection and a call the truth while review is pending. A 
 comments and messages; `page-messages`; Facebook Pages' `page-engagement`). `GET /connections` lists
 the granted ones as `scopes_in_review` with a `review_note` the dashboard card shows, and a relayed
 4xx whose Graph `error.code` is 10 or 200 (`review_refusal`) carries `X-Treg-Review-Pending` with
-those scopes (`_note_review_refusal`). The body is relayed unchanged; the call is an own-tool call,
+those scopes, narrowed to the endpoint's own `required_scopes` when the catalog declares them
+(`_note_review_refusal`). Codes 10 and 200 are also Meta's general permission errors, so the sentence
+says the review may be the reason (`review_refusal_note`). The body is relayed unchanged; the call is an own-tool call,
 so it is not charged.
 
 Change it only after Meta marks the related access approved. Development-mode tests with app-role

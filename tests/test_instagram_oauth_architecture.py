@@ -481,10 +481,12 @@ async def test_review_pending_scopes_show_on_the_connection_and_the_refused_call
     refused = await publish()
     assert refused.status_code == 403, refused.text
     assert refused.json()["error"]["code"] == 10
-    assert refused.headers["X-Treg-Review-Pending"].split() == connection["scopes_in_review"]
-    note = refused.headers["X-Treg-Review-Pending-Text"]
-    assert note.startswith("Pending Meta App Review")
-    assert note.endswith("This call was not charged.")
+    assert refused.headers["X-Treg-Review-Pending"] == "instagram_business_content_publish"
+    assert refused.headers["X-Treg-Review-Pending-Text"] == (
+        "This may be because Meta has not yet approved instagram_business_content_publish for "
+        "treg's app; if the call needs one of these, reconnecting will not help. This call was "
+        "not charged."
+    )
     assert "X-Treg-Cost-Micro" not in refused.headers
 
     monkeypatch.setenv("TREG_OAUTH_REVIEW_PENDING", "")
