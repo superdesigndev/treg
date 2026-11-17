@@ -45,7 +45,9 @@ endpoints:
         job_types: {type: "array[string]", required: false, note: "Full Time, Part Time, Contract or Internship"}
         salary: {type: object, required: false, note: "{min, max} in currency"}
         currency: {type: string, required: false, example: "USD"}
-        company_name: {type: string, required: false, note: "the whole name of one Hirebase company, case ignored: 'Ramp' never finds LiveRamp or Kramp. A company listed twice is two names ('Palantir' and 'Palantir Technologies' hold different jobs); company_slug names one exactly", example: "Ramp"}
+        company_name: {type: string, required: false, note: "one company's name, case ignored; a known variant finds it ('Ford Motor Company' finds Ford), but 'Ramp' never finds LiveRamp or Kramp", example: "Ramp"}
+        company_domain: {type: string, required: false, note: "one company's website, without scheme", example: "ford.com"}
+        company_domains: {type: "array[string]", required: false, note: "several companies' websites, OR'd", example: ["ford.com", "ramp.com"]}
         company_slug: {type: "array[string]", required: false, note: "Hirebase company slugs; resolve one with hirebase.companies.search", example: ["palantir-technologies"]}
         funding_types: {type: "array[string]", required: false, example: ["Series A"]}
         days_ago: {type: integer, required: false, example: 7}
@@ -58,7 +60,7 @@ endpoints:
         page: {type: integer, required: false, default: 1, min: 1}
         limit: {type: integer, required: false, default: 10, min: 1, max: 100, note: "jobs per page, and the price: each job returned is charged", example: 1}
       note: "Unknown fields answer 422. A multi-location posting comes back as one row per location."
-    test_request: {body: {company_name: "Ramp", limit: 1}}
+    test_request: {body: {company_domain: "ramp.com", limit: 1}}
     price: {value: '1', currency: credit, unit: record, note: "One credit per job returned; an empty page is free. treg holds limit jobs (10 when omitted)."}
     reserve: {rows: {param: body.limit, default: {value: 10, source: docs}, max: 100}}
     settle: {count: {path: response.jobs}}
