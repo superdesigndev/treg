@@ -117,7 +117,9 @@ display-only `*_usd` twin: **never compute against the USD field.**
 
 `CallCharge` (revision 0109) is a queue beside them: what one call cost, keyed by `call_id`, held
 until the transaction that applies it to the blocks deletes it. The table exists ahead of its
-code; nothing reads or writes it yet, and no balance depends on it.
+code; nothing reads or writes it yet, and no balance depends on it. `Hold.allowance` and
+`Hold.heartbeat_at` (revision 0110) are likewise ahead of their code: false and null on every row,
+so every hold is still one call's reservation.
 
     balance_micro == sum(block.remaining_micro) - sum(open hold.amount_micro)
 

@@ -1121,6 +1121,12 @@ class Hold(SQLModel, table=True):
     purchased_only: bool = Field(
         default=False, sa_column=Column(Boolean, nullable=False, server_default=text("false")),
     )
+    # A team's standing allowance rather than one call's reservation, and when its holder last
+    # renewed it. Nothing sets either yet.
+    allowance: bool = Field(
+        default=False, sa_column=Column(Boolean, nullable=False, server_default=text("false")),
+    )
+    heartbeat_at: NaiveUTC | None = Field(default=None)
 
 
 class CallCharge(SQLModel, table=True):
