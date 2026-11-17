@@ -126,6 +126,35 @@ redis.call('PEXPIREAT', KEYS[1], math.ceil(tonumber(last[2])))
 return {1, 0}
 """
 
+# A team's allowance counter: a hash of what is still available and the `epoch` of the database
+# hold that backs it. The epoch is checked on every write, so a counter built for an earlier
+# hold never receives money that belongs to this one.
+_ALLOWANCE_TAKE = """
+local avail = tonumber(redis.call('HGET', KEYS[1], 'avail'))
+if not avail or avail < tonumber(ARGV[1]) then return 0 end
+redis.call('HINCRBY', KEYS[1], 'avail', '-' .. ARGV[1])
+return redis.call('HGET', KEYS[1], 'epoch')
+"""
+_ALLOWANCE_GIVE_BACK = """
+if redis.call('HGET', KEYS[1], 'epoch') ~= ARGV[1] then return 0 end
+redis.call('HINCRBY', KEYS[1], 'avail', ARGV[2])
+return 1
+"""
+_ALLOWANCE_ADD = """
+if redis.call('HGET', KEYS[1], 'epoch') ~= ARGV[1] then
+    redis.call('DEL', KEYS[1])
+    redis.call('HSET', KEYS[1], 'epoch', ARGV[1], 'avail', '0')
+end
+local avail = redis.call('HINCRBY', KEYS[1], 'avail', ARGV[2])
+redis.call('PEXPIRE', KEYS[1], ARGV[3])
+return avail
+"""
+_ALLOWANCE_DROP = """
+local avail = redis.call('HGET', KEYS[1], 'avail')
+redis.call('DEL', KEYS[1])
+return tonumber(avail) or 0
+"""
+
 # One persistent bucket identity across published versions. Rate and optional slot admission
 # happen together: refusals may refill/update bucket metadata, but spend neither resource.
 _ADMIT_ORG = """
@@ -269,6 +298,27 @@ class Store(Protocol):
     async def rate_window(self, key: str, token: str, ttl_ms: int, limit: int) -> RateWindowResult:
         """Admit one member into a sliding window of `limit`, or say how long until one expires."""
 
+    async def allowance_take(self, org_id: int, amount_micro: int) -> int | None:
+        """Take `amount_micro` from a team's allowance counter in one atomic step. The counter's
+        epoch when taken, 0 when the counter is absent or holds less, None when the store cannot
+        answer. Money is never taken on 0 or None."""
+
+    async def allowance_give_back(self, org_id: int, epoch: int, amount_micro: int) -> bool | None:
+        """Return part of a take to the counter it came from. False when that counter is gone or
+        was rebuilt for another epoch (the money then stays in the database hold); None when the
+        store cannot answer."""
+
+    async def allowance_add(self, org_id: int, epoch: int, amount_micro: int,
+                            ttl_ms: int) -> int | None:
+        """Add to a team's counter after the same amount was committed to its hold, and restart
+        the counter's expiry. A counter of another epoch is replaced, not added to. Returns what
+        is now available; None when the store cannot answer."""
+
+    async def allowance_drop(self, org_id: int) -> int | None:
+        """Delete a team's counter and return what it still held (0 when absent), in one atomic
+        step, so no take can succeed after the returned figure was read. None when the store
+        cannot answer."""
+
     async def note_route_health(self, endpoint_id: str, bucket: int, *, failed: bool, slow: bool,
                                 ttl_s: int) -> None:
         """Count one routed child's answer in its time bucket. Best-effort: a fault loses it."""
@@ -370,6 +420,20 @@ class LocalStore:
 
     async def rate_window(self, key: str, token: str, ttl_ms: int, limit: int) -> RateWindowResult:
         return RateWindowResult("unavailable")
+
+    # A per-process counter cannot be the one figure every process spends from.
+    async def allowance_take(self, org_id: int, amount_micro: int) -> int | None:
+        return None
+
+    async def allowance_give_back(self, org_id: int, epoch: int, amount_micro: int) -> bool | None:
+        return None
+
+    async def allowance_add(self, org_id: int, epoch: int, amount_micro: int,
+                            ttl_ms: int) -> int | None:
+        return None
+
+    async def allowance_drop(self, org_id: int) -> int | None:
+        return None
 
 
 class RedisStore:
@@ -473,6 +537,32 @@ class RedisStore:
         except Exception:  # noqa: BLE001 - any Redis fault reads as an unknown window
             return RateWindowResult("unavailable")
         return RateWindowResult("admit") if admitted else RateWindowResult("over", wait_ms)
+
+    async def _allowance_eval(self, script: str, org_id: int, *args: int) -> int | None:
+        if any(type(value) is not int or value < 0 for value in (org_id, *args)):
+            raise ValueError("allowance counter arguments are non-negative integers")
+        try:
+            async with asyncio.timeout(_TIMEOUT_S):
+                return int(await self._client.eval(script, 1, _allowance_key(org_id), *args))
+        except Exception as exc:  # noqa: BLE001 - the caller falls back to the database path
+            _note_fault(exc)
+            return None
+
+    async def allowance_take(self, org_id: int, amount_micro: int) -> int | None:
+        if amount_micro == 0:
+            raise ValueError("an allowance take is a positive amount")
+        return await self._allowance_eval(_ALLOWANCE_TAKE, org_id, amount_micro)
+
+    async def allowance_give_back(self, org_id: int, epoch: int, amount_micro: int) -> bool | None:
+        result = await self._allowance_eval(_ALLOWANCE_GIVE_BACK, org_id, epoch, amount_micro)
+        return None if result is None else bool(result)
+
+    async def allowance_add(self, org_id: int, epoch: int, amount_micro: int,
+                            ttl_ms: int) -> int | None:
+        return await self._allowance_eval(_ALLOWANCE_ADD, org_id, epoch, amount_micro, ttl_ms)
+
+    async def allowance_drop(self, org_id: int) -> int | None:
+        return await self._allowance_eval(_ALLOWANCE_DROP, org_id)
 
     async def note_route_health(self, endpoint_id: str, bucket: int, *, failed: bool, slow: bool,
                                 ttl_s: int) -> None:
@@ -702,6 +792,10 @@ def drain_lease_errors() -> list[dict]:
         rows = list(_lease_errors.values())
         _lease_errors.clear()
     return rows
+
+
+def _allowance_key(org_id: int) -> str:
+    return f"treg:money-allowance:v1:{org_id}"
 
 
 def _route_health_key(endpoint_id: str, bucket: int) -> str:

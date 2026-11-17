@@ -11,6 +11,8 @@ sources:
   - src/treg/domain/money/settlement.py
   - src/treg/domain/money/allowance.py
   - tests/test_money_allowance.py
+  - src/treg/infra/kv.py
+  - tests/test_kv_allowance.py
   - src/treg/domain/asynctasks/__init__.py
   - src/treg/models.py
   - src/treg/application/billing.py
@@ -146,6 +148,19 @@ calls already admitted finish against what is left. Every allowance operation lo
 hold first, then blocks, then the org row. `settle`, `release` and the stale-hold sweep skip a hold
 marked `allowance`. `heartbeat_at` is stamped by each refill; nothing reads it yet, and no call
 path uses any of these functions yet.
+
+The hold is the authority; the shared store (`infra/kv.py`) only mirrors what of it is still
+unspent, as one hash per team holding `avail` and the hold's `epoch`. Four atomic operations:
+`allowance_take` subtracts an amount when the counter holds at least that much and returns the
+epoch; `allowance_give_back` returns part of a take, only to a counter of the same epoch;
+`allowance_add` adds what a refill just committed to the hold and restarts the counter's expiry,
+replacing a counter of another epoch; `allowance_drop` deletes the counter and returns what it
+held, so that figure can be released from the hold while calls already admitted keep theirs. Each
+returns `None` when the store cannot answer, and the in-process store always does: a per-process
+figure cannot be the one every process spends from. Add to the counter only after the refill's
+commit. In that order a failure between the two leaves money in the hold that no counter
+offers, which a close returns; the other order would offer money the hold does not have. The same
+is true of a counter that expired or was lost: its unspent part stays in the hold until a close.
 
     balance_micro == sum(block.remaining_micro) - sum(open hold.amount_micro)
 
