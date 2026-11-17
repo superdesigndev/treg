@@ -307,8 +307,6 @@ class Settings(BaseSettings):
     # merchant routes have been observed at 9s→105s.
     call_timeout_s: int = 180
     hold_grace_s: int = 60
-    # Seconds between one process's lazy stale-hold sweeps of the same org; 0 sweeps on every reserve.
-    hold_reap_interval_s: float = Field(default=30.0, ge=0, le=3600)
     # The shared upstream client's pool (bootstrap `_lifespan`). A call that cannot get a connection
     # within `upstream_pool_timeout_s` leaves as the typed 503 `upstream_busy`, not charged, instead
     # of waiting call_timeout_s; `upstream_connect_timeout_s` bounds the TCP/TLS handshake. The read

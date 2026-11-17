@@ -38,13 +38,11 @@ relay and settle would otherwise strand that money forever, and the alternative 
 would need a scheduler, a leader election on multi-instance deploys, and would still only run on a
 timer. Sweeping one org's stale holds is a single indexed DELETE-ish pass on the rare occasion any
 exist, paid by the caller who benefits from it — and any org that never calls again has no balance
-to strand in the first place. A process sweeps one org at most once per `hold_reap_interval_s`, and
-always before it refuses a reserve for lack of balance.
+to strand in the first place.
 """
 
 from __future__ import annotations
 
-import time
 import uuid
 from collections.abc import Sequence
 from datetime import datetime, timedelta, timezone
@@ -371,9 +369,8 @@ async def reserve(
     rather than from their own caller — whoever reserved is whoever pays, so a header changing
     mid-flight cannot reattribute a charge that is already in progress.
 
-    Reaps this org's stale holds first when a sweep is due, and always before refusing, so a call
-    that crashed before settling can't keep money out of circulation (and can't make a funded org
-    look broke).
+    Reaps this org's stale holds first, so a call that crashed before settling can't keep money out
+    of circulation (and can't make a funded org look broke).
     """
     try:
         call_id = await reserve_in_transaction(
@@ -403,27 +400,27 @@ async def reserve_in_transaction(
     `member_id` attributes the hold to a member whose daily spend limit applies (`MemberSpend`).
     """
     mark_money(db, "reserve", org_id=org_id, call_id=call_id)
-    swept = _sweep_due(org_id)
-    if swept:
-        with money_stage(db, "reap_stale_holds"):
-            await reap_stale_holds(db, org_id=org_id)
+    with money_stage(db, "reap_stale_holds"):
+        await reap_stale_holds(db, org_id=org_id)
     charged = max(0, with_margin(int(est_micro)))
     # The caller may supply the id so ONE value identifies the call everywhere: the hold, both
     # ledger entries, the audit row and the X-Treg-Call-Id the caller gets back.
     call_id = call_id or _id()
     mark_money(db, "reserve", org_id=org_id, call_id=call_id)
-    try:
-        await _balance_gate(db, org_id, charged, purchased_only=purchased_only)
-    except (InsufficientBalance, PurchasedCreditShort):
-        # A skipped sweep must not make a funded org look broke: sweep now, and ask once more only
-        # if that gave money back.
-        if swept:
-            raise
-        with money_stage(db, "reap_stale_holds"):
-            released = await reap_stale_holds(db, org_id=org_id)
-        if not released:
-            raise
-        await _balance_gate(db, org_id, charged, purchased_only=purchased_only)
+    if purchased_only and charged > 0:
+        await _purchased_gate(db, org_id, charged)
+    with money_stage(db, "reserve_balance"):
+        result = await db.execute(
+            # The gate. One statement: the WHERE is the check and the SET is the debit, so two concurrent
+            # callers cannot both pass it. rowcount 0 = the balance was not there.
+            update(Org)
+            .where(Org.id == org_id, Org.balance_micro >= charged)
+            .values(balance_micro=Org.balance_micro - charged, **_spent_today_values(charged))
+        )
+    if result.rowcount != 1:
+        with money_stage(db, "read_balance"):
+            balance = (await db.execute(select(Org.balance_micro).where(Org.id == org_id))).scalar() or 0
+        raise InsufficientBalance(org_id, int(balance), charged)
     db.add(Hold(id=call_id, org_id=org_id, endpoint_id=endpoint_id or "", amount_micro=charged,
                 purchased_only=purchased_only))
     await _entry(db, org_id=org_id, kind="reserve", amount_micro=-charged, call_id=call_id,
@@ -440,44 +437,6 @@ async def reserve_in_transaction(
         db.add(MemberSpend(org_id=org_id, membership_id=member_id, hold_id=call_id,
                            amount_micro=charged))
     return call_id
-
-
-_swept_at: dict[int, float] = {}
-_SWEPT_KEPT = 50_000
-
-
-def _sweep_due(org_id: int) -> bool:
-    """Whether this reserve runs the lazy stale-hold sweep for its org.
-
-    At most once per `hold_reap_interval_s` per org in this process (0 = every reserve). A hold is
-    stale only minutes after its call began, so a sweep a few seconds later frees the same money.
-    """
-    interval = get_settings().hold_reap_interval_s
-    now = time.monotonic()
-    last = _swept_at.get(org_id)
-    if interval > 0 and last is not None and now - last < interval:
-        return False
-    if len(_swept_at) >= _SWEPT_KEPT:
-        _swept_at.clear()
-    _swept_at[org_id] = now
-    return True
-
-
-async def _balance_gate(db: AsyncSession, org_id: int, charged: int, *, purchased_only: bool) -> None:
-    if purchased_only and charged > 0:
-        await _purchased_gate(db, org_id, charged)
-    with money_stage(db, "reserve_balance"):
-        result = await db.execute(
-            # The gate. One statement: the WHERE is the check and the SET is the debit, so two concurrent
-            # callers cannot both pass it. rowcount 0 = the balance was not there.
-            update(Org)
-            .where(Org.id == org_id, Org.balance_micro >= charged)
-            .values(balance_micro=Org.balance_micro - charged, **_spent_today_values(charged))
-        )
-    if result.rowcount != 1:
-        with money_stage(db, "read_balance"):
-            balance = (await db.execute(select(Org.balance_micro).where(Org.id == org_id))).scalar() or 0
-        raise InsufficientBalance(org_id, int(balance), charged)
 
 
 async def _purchased_gate(db: AsyncSession, org_id: int, charged: int) -> None:
