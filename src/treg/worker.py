@@ -311,8 +311,9 @@ async def _hub_check(args) -> int:
         print("hub is off (TREG_HUB_ENABLED); nothing to check")
         return 0
     out = []
+    from .application.upstream_hosts import catalog_hosts
     from .infra.upstream.pinned import upstream_client
-    async with upstream_client(timeout=200.0) as upstream:
+    async with upstream_client(bypass_hosts=catalog_hosts(), timeout=200.0) as upstream:
         async with session_maker() as db:
             q = select(HubTool).where(HubTool.status == "live").order_by(HubTool.tool_id, HubTool.version.desc())
             if args.only:

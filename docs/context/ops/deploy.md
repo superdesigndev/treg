@@ -165,6 +165,9 @@ a server. Schema upgrades, startup verification and test resets target the prima
 meaning is not obvious from the field:
 
 - `public_url` builds OAuth callbacks and public links; self-hosters must set their canonical URL.
+- `TREG_SSRF_PIN` (`off` | `log` | `enforce`, default `off`) rolls out connect-time address pinning
+  for upstreams outside the catalog; change it only after `scripts/ssrf_pin_smoke.py` passes on the
+  deploy's network, and set it back to `off` to roll back (architecture/proxy-model.md).
 - `secret_key` empty creates an ephemeral key, fit only for local development.
 - `admin_token` is the cross-tenant super-admin bearer; empty disables that path.
 - Empty OAuth client credentials make a provider unconfigured instead of failing mid-consent.

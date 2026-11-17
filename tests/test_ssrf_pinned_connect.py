@@ -77,11 +77,22 @@ async def test_rebinding_after_the_check_is_refused_by_the_relay(monkeypatch):
     assert backend.connected == []
 
 
-def test_upstream_clients_connect_through_the_guard(monkeypatch):
+@pytest.mark.parametrize("mode,enforce", [("log", False), ("enforce", True)])
+def test_upstream_clients_connect_through_the_guard(monkeypatch, mode, enforce):
     monkeypatch.setattr(get_settings(), "proxy_ssrf_check", True)
-    client = pinned.upstream_client(timeout=5)
-    assert isinstance(client._transport._pool._network_backend, pinned.PublicOnlyBackend)
+    monkeypatch.setattr(get_settings(), "ssrf_pin", mode)
+    client = pinned.upstream_client(bypass_hosts=frozenset({"api.provider.example"}), timeout=5)
+    backend = client._transport._pool._network_backend
+    assert isinstance(backend, pinned.PublicOnlyBackend) and backend._enforce is enforce
+    assert backend._bypass == {"api.provider.example"}
     assert client._mounts == {}, "an environment proxy would resolve the name outside the guard"
+
+
+def test_pinning_off_is_the_client_treg_always_used(monkeypatch):
+    monkeypatch.setattr(get_settings(), "proxy_ssrf_check", True)
+    monkeypatch.setattr(get_settings(), "ssrf_pin", "off")
+    client = pinned.upstream_client(timeout=5)
+    assert not isinstance(getattr(client._transport._pool, "_network_backend", None), pinned.PublicOnlyBackend)
 
 
 @pytest.mark.parametrize("database_url,check,missing", [
@@ -164,3 +175,115 @@ async def test_only_the_winning_connection_stays_open():
     staged = _Staged({"8.8.8.8": "ok", "1.1.1.1": "ok"})
     stream = await _backend(staged, "8.8.8.8", "1.1.1.1").connect_tcp("two.example", 443, timeout=2.0)
     assert stream is not None and staged.started == ["8.8.8.8"] and staged.closed == []
+
+
+def _v(*pairs):
+    def getaddrinfo(host, port, *args, **kwargs):
+        return [((socket.AF_INET6 if ":" in ip else socket.AF_INET), socket.SOCK_STREAM, 6, "", (ip, port))
+                for ip in pairs]
+    return getaddrinfo
+
+
+def test_address_families_interleave():
+    order = pinned._public_addresses("dual.example", 443, _v(
+        "2606:4700::1", "2606:4700::2", "2606:4700::3", "1.1.1.1", "1.0.0.1"))
+    assert order == ["2606:4700::1", "1.1.1.1", "2606:4700::2", "1.0.0.1", "2606:4700::3"]
+
+
+async def test_dead_ipv6_answers_do_not_starve_ipv4():
+    import time
+    staged = _Staged({"2606:4700::1": "hang", "2606:4700::2": "hang", "2606:4700::3": "hang",
+                      "1.1.1.1": "ok"})
+    backend = pinned.PublicOnlyBackend(staged, _v("2606:4700::1", "2606:4700::2", "2606:4700::3", "1.1.1.1"))
+    began = time.monotonic()
+    await backend.connect_tcp("dual.example", 443, timeout=0.6)
+    assert time.monotonic() - began < 0.45 and staged.started[:2] == ["2606:4700::1", "1.1.1.1"]
+
+
+class _Together(httpcore.AsyncNetworkBackend):
+    """Two attempts that connect at the same instant; closing a connection can be held open."""
+
+    def __init__(self, hold_close: bool) -> None:
+        import asyncio
+        self.started: list[str] = []
+        self.closed: list[str] = []
+        self.both = asyncio.Event()
+        self.release = asyncio.Event()
+        if not hold_close:
+            self.release.set()
+
+    async def connect_tcp(self, host, port, timeout=None, local_address=None, socket_options=None):
+        self.started.append(host)
+        if len(self.started) == 2:
+            self.both.set()
+        await self.both.wait()
+        backend = self
+
+        class _Stream(httpcore.AsyncMockStream):
+            name = host
+
+            async def aclose(self) -> None:
+                await backend.release.wait()
+                backend.closed.append(host)
+        return _Stream([])
+
+    async def connect_unix_socket(self, path, timeout=None, socket_options=None):
+        raise NotImplementedError
+
+    async def sleep(self, seconds):
+        import asyncio
+        await asyncio.sleep(seconds)
+
+
+async def test_when_two_connect_at_once_the_loser_is_closed():
+    together = _Together(hold_close=False)
+    backend = pinned.PublicOnlyBackend(together, _v("1.1.1.1", "1.0.0.1"))
+    stream = await backend.connect_tcp("two.example", 443, timeout=2.0)
+    assert together.started == ["1.1.1.1", "1.0.0.1"]
+    assert together.closed == [n for n in together.started if n != stream.name]
+
+
+async def test_cancelled_while_closing_the_loser_leaks_nothing():
+    import asyncio
+    together = _Together(hold_close=True)
+    backend = pinned.PublicOnlyBackend(together, _v("1.1.1.1", "1.0.0.1"))
+    task = asyncio.ensure_future(backend.connect_tcp("two.example", 443, timeout=2.0))
+    await together.both.wait()
+    for _ in range(5):
+        await asyncio.sleep(0)
+    task.cancel()
+    together.release.set()
+    with pytest.raises(asyncio.CancelledError):
+        await task
+    for _ in range(5):
+        await asyncio.sleep(0)
+    assert sorted(together.closed) == ["1.0.0.1", "1.1.1.1"], "both connections must be closed"
+
+
+async def test_log_mode_connects_as_before_and_reports_a_refusal(caplog):
+    import asyncio
+    staged = _Staged({"inside.example": "ok"})
+    backend = pinned.PublicOnlyBackend(staged, _answers(["10.0.0.5"]), enforce=False)
+    with caplog.at_level("WARNING", logger="treg"):
+        await backend.connect_tcp("inside.example", 443, timeout=1.0)
+        for _ in range(20):
+            await asyncio.sleep(0.01)
+            if "ssrf_pin would refuse" in caplog.text:
+                break
+    assert staged.started == ["inside.example"], "log mode connects by name, as httpx always did"
+    assert "ssrf_pin would refuse host=inside.example" in caplog.text
+
+
+async def test_a_catalog_host_connects_as_before():
+    def never(*args, **kwargs):
+        raise AssertionError("a catalog host is not resolved by the pinning backend")
+    staged = _Staged({"API.Provider.example": "ok"})
+    backend = pinned.PublicOnlyBackend(staged, never, bypass_hosts=frozenset({"api.provider.example"}))
+    await backend.connect_tcp("API.Provider.example", 443, timeout=1.0)
+    assert staged.started == ["API.Provider.example"]
+
+
+def test_catalog_hosts_are_fixed_names():
+    from treg.application.upstream_hosts import catalog_hosts
+    hosts = catalog_hosts()
+    assert hosts and all(h == h.lower() and "." in h and not set("{}*/:@ ") & set(h) for h in hosts)

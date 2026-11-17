@@ -814,8 +814,10 @@ def _lifespan(role: AppRole):
             _s = get_settings()
             limits = httpx.Limits(max_keepalive_connections=_s.upstream_max_keepalive_connections,
                                   max_connections=_s.upstream_max_connections)
+            from .application.upstream_hosts import catalog_hosts
             from .infra.upstream.pinned import upstream_client
             app.state.http = upstream_client(
+                bypass_hosts=catalog_hosts(),
                 limits=limits,
                 timeout=httpx.Timeout(float(_s.call_timeout_s), connect=_s.upstream_connect_timeout_s,
                                       pool=_s.upstream_pool_timeout_s),

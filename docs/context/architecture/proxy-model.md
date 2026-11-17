@@ -7,6 +7,7 @@ sources:
   - src/treg/jsontext.py
   - src/treg/infra/upstream/ssrf.py
   - src/treg/infra/upstream/pinned.py
+  - src/treg/application/upstream_hosts.py
   - src/treg/api.py
   - src/treg/bootstrap_http.py
   - src/treg/application/call/authorize.py
@@ -356,18 +357,32 @@ unicast. CGNAT `100.64.0.0/10` is internal service space (Tailscale, WireGuard o
 some Kubernetes pod CIDRs, Alibaba Cloud's metadata endpoint `100.100.100.200`). NAT64 prefixes
 mapping non-global IPv4 do not make a target public; `64:ff9b::/96` stays blocked.
 
-The check above and the connection are not two lookups. Every client that reaches a chosen upstream
-(the shared `app.state.http`, the async-task poller, the hub check, shadow calls) is built by
-`pinned.upstream_client`, whose transport resolves the host once at connect time, refuses unless
-every answer is public, and opens the socket to one of those answers (`PublicOnlyBackend`). It
-races those answers the way httpcore's own backend races a name (Happy Eyeballs, RFC 8305): the
-next starts after a 0.25 s stagger or as soon as one fails, the first to connect wins, and the
-lookup and every attempt share the one connect timeout. TLS
+Connect-time pinning closes the window between that check and httpx's own lookup. Every client that
+reaches a chosen upstream (the shared `app.state.http`, the async-task poller, the hub check, shadow
+calls) is built by `pinned.upstream_client`. `TREG_SSRF_PIN` (`ssrf_pin`) rolls it out without a
+code change: `off` (the default) builds the plain client treg always used; `log` connects as before
+and logs `ssrf_pin would refuse host=...` for each connection pinning would refuse, with the lookup
+off the request's path; `enforce` opens the socket only to an address the connect-time lookup
+approved (`PublicOnlyBackend`). Setting it back to `off` is the rollback, and the pre-send check
+above stays in every mode.
+
+The catalog's fixed provider hosts (`application.upstream_hosts.catalog_hosts`: provider
+`base_url`s, approved catalog targets and endpoint `host`s, none built from caller or connection
+input) are passed as `bypass_hosts` and keep httpx's own connection path in every mode; a provider
+whose host is ever built from connection input must leave that set. Everything else is pinned: own
+tools, health probes, owner webhooks, OAuth token endpoints a caller named, and `poll_url`s a
+provider returned.
+
+When pinning, the answers are interleaved by address family and raced as httpcore's own backend
+races a name (Happy Eyeballs, RFC 8305): the next starts after a 0.25 s stagger or as soon as one
+fails, the first to connect wins, the lookup and every attempt share the one connect timeout, and
+every other connection is closed, also when the caller is cancelled during that cleanup. TLS
 verification, SNI and the Host header stay on the URL's name, so the upstream sees the same request.
-A refusal there surfaces from `relay()` as the same `ssrf_refused` 502. The client ignores
+A refusal surfaces from `relay()` as the same `ssrf_refused` 502. The pinned client ignores
 environment proxies (`trust_env=False`): a proxy resolves the name itself, outside the check.
-`python -m treg` refuses to serve with `proxy_ssrf_check` off on a non-sqlite database
-(`Settings.ssrf_check_missing`); only a local registry may turn the guard off.
+`scripts/ssrf_pin_smoke.py` exercises the transport against real HTTPS hosts from a machine with a
+real resolver before a mode change. `python -m treg` refuses to serve with `proxy_ssrf_check` off on
+a non-sqlite database (`Settings.ssrf_check_missing`); only a local registry may turn the guard off.
 
 ## Responses and diagnostic evidence
 

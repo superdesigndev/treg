@@ -16,6 +16,7 @@ from sqlalchemy import select, update
 from .. import archive, audit, call_events as event_sink, oauth_providers
 from ..config import TREG_USER_AGENT
 from ..infra.upstream.pinned import upstream_client
+from .upstream_hosts import catalog_hosts
 from ..domain.governance.access import pinned_tag_predicates
 from ..domain import asynctasks
 from ..domain import money as ledger
@@ -663,11 +664,11 @@ async def settle_due(*, limit: int = DEFAULT_LIMIT, client: httpx.AsyncClient | 
     # read in a fresh worker process parses every provider file. Inside a poll that parse would
     # block the event loop past POLL_TIMEOUT_S; after this the polls read the cached catalog and
     # their timeout measures the provider alone.
-    await asyncio.to_thread(catalog_store.load)
+    bypass_hosts = await asyncio.to_thread(catalog_hosts) or frozenset()
     global_sem = asyncio.Semaphore(GLOBAL_CONCURRENCY)
     provider_sems: dict[str, asyncio.Semaphore] = {}
     owned = client is None
-    client = client or upstream_client(timeout=POLL_TIMEOUT_S, headers={"User-Agent": TREG_USER_AGENT})
+    client = client or upstream_client(bypass_hosts=bypass_hosts, timeout=POLL_TIMEOUT_S, headers={"User-Agent": TREG_USER_AGENT})
     claimed = 0
 
     async def run(call_id: str, provider: str) -> str:

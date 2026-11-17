@@ -692,6 +692,18 @@ class Settings(BaseSettings):
     proxy_ssrf_check: bool = True
     # Threads for the call-time address lookup, which runs off the event loop; one lookup per host at a time.
     ssrf_lookup_threads: int = 8
+    # Connect-time address pinning for upstreams outside the catalog (infra/upstream/pinned.py):
+    # `off` connects as before, `log` connects as before and logs each connection pinning would
+    # refuse, `enforce` opens the socket only to an address the connect-time lookup approved.
+    ssrf_pin: str = "off"
+
+    @field_validator("ssrf_pin")
+    @classmethod
+    def _ssrf_pin_mode(cls, value: str) -> str:
+        mode = (value or "off").strip().lower()
+        if mode not in ("off", "log", "enforce"):
+            raise ValueError("ssrf_pin must be off, log or enforce")
+        return mode
 
     # The archive's rollout switch (see treg/archive.py): "off" (default) | "shadow" (record +
     # learn from metered platform responses, serve nothing) | "serve" (shadow + answer eligible

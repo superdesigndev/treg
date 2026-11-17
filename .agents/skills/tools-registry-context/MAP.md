@@ -364,6 +364,7 @@ Regenerate via `scripts/build-map.py`.
 | `src/treg/application/signup.py` | architecture/ads-conversions.md, architecture/money.md, architecture/multi-tenancy.md, architecture/policy-extensions.md, interface/api.md |
 | `src/treg/application/table.py` | architecture/table.md |
 | `src/treg/application/tasks.py` | architecture/tasks.md |
+| `src/treg/application/upstream_hosts.py` | architecture/proxy-model.md |
 | `src/treg/application/view_context.py` | interface/api.md |
 | `src/treg/application/web_arena.py` | interface/web-arena.md |
 | `src/treg/application/web_arena_calls.py` | interface/web-arena.md |
@@ -540,6 +541,7 @@ Regenerate via `scripts/build-map.py`.
 | `src/treg/infra/upstream/injectors.py` | architecture/auth-secrets.md, architecture/import-boundaries.md |
 | `src/treg/infra/upstream/limiter.py` | architecture/import-boundaries.md, ops/capacity.md |
 | `src/treg/infra/upstream/pathsegment.py` | architecture/proxy-model.md |
+| `src/treg/infra/upstream/pinned.py` | architecture/proxy-model.md |
 | `src/treg/infra/upstream/relay.py` | architecture/import-boundaries.md, architecture/org-endpoint-quota.md, architecture/proxy-model.md, architecture/route-rules.md, interface/api.md |
 | `src/treg/infra/upstream/ssrf.py` | architecture/auth-secrets.md, architecture/proxy-model.md |
 | `src/treg/infra/workbench_store.py` | architecture/workbench-storage.md |
@@ -881,7 +883,7 @@ Regenerate via `scripts/build-map.py`.
 | `architecture/org-flow-control.md` | `org_flow_control.py`, `org_concurrency.py`, `structured_logging.py`, `kv.py`, `config.py`, `call.py`, `mcp.py`, `test_org_flow_control.py`, `test_org_flow_control_reader.py`, `test_org_flow_control_redis.py`, `test_org_rate_limit_redis.py`, `test_org_concurrency.py`, `test_org_concurrency_redis.py`, `generate.ts` |
 | `architecture/org-traffic.md` | `org_traffic.py`, `structured_logging.py`, `bootstrap.py`, `call.py`, `table.py`, `mcp.py`, `types.py`, `service.py`, `test_org_traffic.py`, `test_org_concurrency.py` |
 | `architecture/policy-extensions.md` | `policy.py`, `bootstrap.py`, `signup.py`, `admission.py`, `promotions.py`, `test_policy.py` |
-| `architecture/proxy-model.md` | `relay.py`, `pathsegment.py`, `jsontext.py`, `ssrf.py`, `api.py`, `bootstrap_http.py`, `authorize.py`, `idempotency.py`, `intake.py`, `resolve.py`, `reserve.py`, `settle.py`, `evidence.py`, `service.py`, `types.py`, `asynctasks.py`, `keyslots.py`, `reported_charge.py`, `test_reported_charge.py`, `0069_platform_key_slot.py`, `test_platform_accounts.py`, `client_identity.py`, `call_surface.py`, `sandbox_identity.py`, `access.py`, `publicdemo.py`, `usage.py`, `call.py`, `limits.py`, `test_ssrf_public_addresses.py`, `test_call_application_contract.py`, `test_call_cancellation.py`, `test_call_response_limits.py`, `test_error_capture.py`, `test_marketplace_call.py`, `test_oauth_billed.py`, `test_passthrough.py`, `test_tag_billing.py`, `test_tag_billing_adversarial.py`, `test_call_architecture.py`, `test_asynctasks.py`, `test_relay_content_length.py` |
+| `architecture/proxy-model.md` | `relay.py`, `pathsegment.py`, `jsontext.py`, `ssrf.py`, `pinned.py`, `upstream_hosts.py`, `api.py`, `bootstrap_http.py`, `authorize.py`, `idempotency.py`, `intake.py`, `resolve.py`, `reserve.py`, `settle.py`, `evidence.py`, `service.py`, `types.py`, `asynctasks.py`, `keyslots.py`, `reported_charge.py`, `test_reported_charge.py`, `0069_platform_key_slot.py`, `test_platform_accounts.py`, `client_identity.py`, `call_surface.py`, `sandbox_identity.py`, `access.py`, `publicdemo.py`, `usage.py`, `call.py`, `limits.py`, `test_ssrf_public_addresses.py`, `test_call_application_contract.py`, `test_call_cancellation.py`, `test_call_response_limits.py`, `test_error_capture.py`, `test_marketplace_call.py`, `test_oauth_billed.py`, `test_passthrough.py`, `test_tag_billing.py`, `test_tag_billing_adversarial.py`, `test_call_architecture.py`, `test_asynctasks.py`, `test_relay_content_length.py` |
 | `architecture/replay.md` | `__init__.py`, `__main__.py`, `records.py`, `engine.py`, `fixtures.py`, `differ.py`, `test_replay.py`, `catalog_dump.py`, `test_catalog_dump.py` |
 | `architecture/route-rules.md` | `rules.py`, `route_rules.py`, `route.py`, `call_events.py`, `segments.py`, `service.py`, `types.py`, `relay.py`, `kv.py`, `config.py`, `models.py`, `0096_route_rule_version.py`, `test_route_rules.py` |
 | `architecture/shadow.md` | `shadow.py`, `shadow.py`, `0086_shadow_pairs.py`, `test_shadow.py` |

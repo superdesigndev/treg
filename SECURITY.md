@@ -41,10 +41,12 @@ provider account and bypass this platform ownership table.
   archived results and shared-provider async ownership; foreign and untagged records return 404.
   These scopes do not partition a team's BYOK account or authenticate public media URLs.
 - **SSRF guard.** A tool's upstream host is re-resolved at call time and internal/metadata addresses are
-  refused. The connection then opens to an address that same connect-time lookup approved, so a name
-  cannot answer the check with a public address and the socket with an internal one (DNS rebinding).
-  Health probes, owner webhooks and OAuth token requests are checked the same way before they are
-  sent. A deploy on a real database refuses to start with the guard switched off.
+  refused. Health probes, owner webhooks and OAuth token requests are checked the same way before
+  they are sent. With `TREG_SSRF_PIN=enforce`, a connection to any host outside the catalog's fixed
+  provider hosts also opens only to an address its own connect-time lookup approved, so a name cannot
+  answer the check with a public address and the socket with an internal one (DNS rebinding); the
+  default `off` leaves that window open. A deploy on a real database refuses to start with the guard
+  switched off.
 - **Local runs are sandboxed.** `treg run` on a member's machine executes the CLI as a locked-down
   `treg-run` user, with an egress allow-list and an optional filesystem jail, so a shared key can't be
   read, exfiltrated over the network, or written to a member-readable file.
