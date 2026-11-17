@@ -1,5 +1,5 @@
 version = 1
-revision = 5
+revision = 3
 requires-python = ">=3.12, <3.14"
 
 [[package]]
@@ -1482,16 +1482,16 @@ crypto = [
 
 [[package]]
 name = "pympp"
-version = "0.22.0"
+version = "0.25.0"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "httpx" },
     { name = "pydantic" },
     { name = "rfc8785" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/58/00/37b0c89d77b02a65923a1c73b956363c1aacf7825f98b7dc68b8e90f6060/pympp-0.22.0.tar.gz", hash = "sha256:27cea850799470e52d296bda5d3f8d3ebf8f26572cdfdf877adf2237a9902dac", size = 898276, upload-time = "2026-11-09T21:57:07.67Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/7e/d0/04686ab4faeee0dd780810645cc0db9911d6f153c6e76343be8f16696b54/pympp-0.25.0.tar.gz", hash = "sha256:ce93786a1b9e2a5ba36d04f9ac44ef514e9315a46914bab64b59578924b62a1f", size = 982358, upload-time = "2026-11-16T18:33:18.971Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/95/e1/d40e1d7bb1efa04587ce81b24e54e10f9b0958ba34e8b330047b57eb00d6/pympp-0.22.0-py3-none-any.whl", hash = "sha256:fceab5e4508b59d3ad8b1777fe2b045c35c5def49d6831298dc980307c461e72", size = 412227, upload-time = "2026-11-09T21:57:05.76Z" },
+    { url = "https://files.pythonhosted.org/packages/72/9a/a8b34d5fad18a7233d5246302fcc78f27d7be6d63c1e427d3a0789232306/pympp-0.25.0-py3-none-any.whl", hash = "sha256:109a430c630013c17c9961da38f9c51fa6cabdca834ea8c158491b1867b851f9", size = 457143, upload-time = "2026-11-16T18:33:17.315Z" },
 ]
 
 [package.optional-dependencies]
@@ -2005,7 +2005,7 @@ requires-dist = [
     { name = "pillow", marker = "extra == 'server'", specifier = ">=11" },
     { name = "posthog", specifier = ">=7.47.3" },
     { name = "pydantic-settings", extras = ["aws-secrets-manager"], marker = "extra == 'server'", specifier = ">=2.5" },
-    { name = "pympp", extras = ["cdp", "tempo"], marker = "extra == 'server'", specifier = ">=0.22,<0.23" },
+    { name = "pympp", extras = ["cdp", "tempo"], marker = "extra == 'server'", specifier = ">=0.25,<0.26" },
     { name = "pyyaml", marker = "extra == 'server'", specifier = ">=6" },
     { name = "questionary", specifier = ">=2.0" },
     { name = "quickjs", marker = "extra == 'server'", specifier = ">=1.19.4" },

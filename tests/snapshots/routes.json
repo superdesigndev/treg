@@ -2981,6 +2981,15 @@
   {
     "kind": "APIRoute",
     "methods": [
+      "GET",
+      "HEAD"
+    ],
+    "name": "agent_payment_credit",
+    "path": "/agentpay/credit"
+  },
+  {
+    "kind": "APIRoute",
+    "methods": [
       "DELETE",
       "GET",
       "HEAD",

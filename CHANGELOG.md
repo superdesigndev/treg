@@ -10,6 +10,14 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
 
 ### Added
 
+- **Agent payments (off by default).** With `TREG_AGENT_PAYMENTS_ENABLED`, an agent with no treg
+  account can pay for a catalog call from a crypto wallet, with MPP on Tempo or x402 on Base. treg
+  charges only the real price after the call; the rest stays as that wallet's credit on that
+  network. A wallet with credit proves itself with a signature that moves no money (MPP's
+  zero-amount proof, x402's sign-in-with-x), and polls of its own async tasks are free.
+  `GET /agentpay/credit` shows a wallet its credit and recent payments. Revision `0106` is a
+  rollback floor (see the deploy guide).
+
 - **`X-Treg-Route-Confirm` on `treg.people.email.find`.** An opt-in header: a hit counts only once
   a second provider returns the same address, so one provider's wrong guess no longer comes back
   alone. Each extra attempt is billed at its own price inside `X-Treg-Route-Max-Cost`. The first

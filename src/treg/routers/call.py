@@ -239,6 +239,7 @@ async def _stamp_call_exit(
     status_code: int,
     *,
     failure_kind: str | None = None,
+    refused_by: str | None = None,
 ) -> None:
     """Give one call-surface exit the three things every other exit gets: the id that joins the response
     to the audit row, the row itself, and the release of any idempotency label the request took.
@@ -256,10 +257,11 @@ async def _stamp_call_exit(
         key_id, key_name, key_prefix = getattr(request.state, "call_key", (None, None, None))
         context = getattr(request.state, "call_context", None)
         rest = _call_rest(request, context)
+        refused_by = refused_by or _refusal_kind(status_code)
         audit.record_call(
             org_id=org_id, user_email=email, tool_name=rest.split("/", 1)[0] or "—",
             method=request.method, path=request.url.path, status_code=status_code,
-            client=_client_of(request), refused_by=_refusal_kind(status_code),
+            client=_client_of(request), refused_by=refused_by,
             api_key_id=key_id, api_key_name=key_name, api_key_prefix=key_prefix,
             telemetry={"call_ref": call_ref, "tags": getattr(request.state, "call_pins", None)})
         failure = getattr(request.state, "call_failure", None)
@@ -270,7 +272,7 @@ async def _stamp_call_exit(
                   else "own_tool" if getattr(context, "target", None) is not None else "unresolved"),
             endpoint_id=getattr(marketplace, "endpoint_id", None),
             provider=getattr(marketplace, "provider", None),
-            tier=getattr(marketplace, "tier", None), refused_by=_refusal_kind(status_code),
+            tier=getattr(marketplace, "tier", None), refused_by=refused_by,
             failure=failure, kind=failure_kind,
             billed_oauth=bool(getattr(marketplace, "billed_oauth", False)), answered=False)
         if failure_kind:
@@ -346,6 +348,10 @@ async def _paid_call(rest: str, request: Request) -> Response:
     the payment path does not serve answers exactly as an unauthenticated call always has."""
     if reason := agent_payments.unserved(rest, request.method):
         raise HTTPException(status_code=401, detail=agent_payments.NotServed(reason).detail)
+    try:
+        await agent_payments.limit_request(request.headers, _client_ip(request))
+    except agent_payments.RateLimited as exc:
+        return await _payment_refusal(request, 429, exc.detail, [("Retry-After", "60")])
     body = await _capped_body(request) if _may_have_body(request) else b""
     raw_path = request.scope.get("raw_path")
     try:
@@ -353,8 +359,7 @@ async def _paid_call(rest: str, request: Request) -> Response:
             rest=rest, method=request.method,
             path=raw_path.decode("ascii", "replace") if raw_path else request.url.path,
             query=request.url.query or "", query_items=tuple(request.query_params.multi_items()),
-            body=body, headers=request.headers, raw_headers=request.headers.raw,
-            client_ip=_client_ip(request))
+            body=body, headers=request.headers, raw_headers=request.headers.raw)
     except agent_payments.NotServed as exc:
         raise HTTPException(status_code=401, detail=exc.detail) from None
     except agent_payments.RateLimited as exc:
@@ -369,6 +374,11 @@ async def _paid_call(rest: str, request: Request) -> Response:
         response = await run_call_surface(rest, request, paid.caller, prefix="/call/",
                                           finish=_relay_answer, headers=paid.headers)
     except HTTPException as exc:
+        if exc.status_code == 402 and paid.admission.settlement is None:
+            # The credit was spent by another call between the check and the hold: ask this
+            # wallet to pay, as a payment client expects of a 402.
+            challenge = await agent_payments.credit_short(paid.paid, int(paid.caller.org.id))
+            return await _payment_refusal(request, 402, challenge.detail, challenge.headers)
         if exc.status_code == 402:
             # A payment client answers every 402 with a payment; treg's own balance refusal is
             # not a payment challenge.
@@ -382,6 +392,33 @@ async def _paid_call(rest: str, request: Request) -> Response:
         response.headers.append(name, value)
     response.headers.setdefault("Cache-Control", "private")
     return response
+
+
+@app.get(agent_payments.CREDIT_PATH, include_in_schema=False)
+async def agent_payment_credit(request: Request) -> Response:
+    """A keyless wallet's credit on one network, after a zero-amount proof
+    (docs/context/architecture/agent-payments.md). Not found while the feature is off."""
+    if not agent_payments.enabled():
+        raise HTTPException(status_code=404, detail="Not Found")
+    try:
+        await agent_payments.limit_request(request.headers, _client_ip(request))
+        view = await agent_payments.credit_of(request.headers)
+    except agent_payments.NotEnabled:
+        raise HTTPException(status_code=404, detail="Not Found") from None
+    except agent_payments.RateLimited as exc:
+        return _credit_refusal(429, exc.detail, [("Retry-After", "60")])
+    except agent_payments.PaymentChallenge as exc:
+        return _credit_refusal(402, exc.detail, exc.headers)
+    return JSONResponse(view, headers={"Cache-Control": "no-store"})
+
+
+def _credit_refusal(status: int, detail: dict, headers: list[tuple[str, str]]) -> Response:
+    resp = JSONResponse({"detail": detail}, status_code=status)
+    for name, value in headers:
+        resp.headers.append(name, value)
+    resp.headers["Cache-Control"] = "no-store"
+    resp.headers["X-Treg-Error"] = "1"
+    return resp
 
 
 async def _capped_body(request: Request) -> bytes:
@@ -409,7 +446,9 @@ async def _payment_refusal(request: Request, status: int, detail: dict,
         resp.headers.append(name, value)
     resp.headers["Cache-Control"] = "no-store"
     resp.headers["X-Treg-Error"] = "1"
-    await _stamp_call_exit(request, resp, status)
+    # A 402 here asks a keyless caller to pay or prove a wallet: a step of the payment, not a
+    # balance refusal.
+    await _stamp_call_exit(request, resp, status, refused_by="payment" if status == 402 else None)
     return resp
 
 

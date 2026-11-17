@@ -171,6 +171,8 @@ Rollups and analytics tables are optional read models: they never determine a mo
   same transaction as its terminal update, and the worker acknowledges only an unchanged revision.
 - **`Ephemeral`** is the DB home for state that must survive restarts and stay correct across
   instances (OTPs, rate windows, CLI pairing); see [api](../interface/api.md), "CLI pairing".
+  `rate_check` reads and rewrites a key's hit list without a lock unless called with `atomic=True`
+  (agent payments), which locks the row through an upsert until the commit.
   `_prune_handshakes` deletes at most 100 expired pairing rows per CLI start, so physical removal
   can lag while reads still enforce expiry.
 - **`AdConversion`**: unique `(org_id, action)` is the sole idempotency mechanism, not a
@@ -192,8 +194,9 @@ Rollups and analytics tables are optional read models: they never determine a mo
   raw requests, responses, contacts or credentials. `RankingsSnapshot` holds no team, key or money,
   so team deletion has nothing to remove.
 
-- **`AgentPayer` / `AgentPayment`**: the payer team of one agent-payments wallet address, and each
-  payment proof it presented (`proof_id` UNIQUE, status `credit|settling|settled|failed`). `asset`,
+- **`AgentPayer` / `AgentPayment`**: the payer team of one agent-payments wallet address on one
+  network (primary key `(network, address)`), and each payment it presented (`proof_id` UNIQUE,
+  status `credit|settling|settled|failed|expired`; an MPP zero-amount proof leaves no row). `asset`,
   `pay_to` and `expires_at` let the reconciler find the transfer on chain; `stripe_payment_intent` is
   set once a payment settled to Stripe is recorded there. `governance.teams.make_payer_team` stages
   `AgentPayer`; `application.agent_payments` is the only writer of `AgentPayment`. Team deletion
@@ -267,7 +270,8 @@ so (`ready: false`) instead of guessing. Team deletion clears a team's rollup ro
 
 - `kind`: `call`, `local_run`, or `async_poll` (an authorized free status read, excluded from
   `/calls` before pagination).
-- `refused_by`: a treg refusal's mechanism; null for an upstream answer. `endpoint_stats` excludes
+- `refused_by`: a treg refusal's mechanism; null for an upstream answer (`payment` is an
+  agent-payments 402 asking a keyless caller to pay or prove its wallet). `endpoint_stats` excludes
   refused rows.
 - `call_ref` is the `X-Treg-Call-Id` and the ledger's `call_id` on a metered call: one value joins
   audit, money and the builder's records.

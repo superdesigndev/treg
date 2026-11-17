@@ -80,7 +80,7 @@ Everything else in this file is guidance; these are the contract, and they win o
    `/table/` runs the same call through the same road and returns it as rows and columns; it never
    changes what `/call/` returns (docs/context/architecture/table.md).
    A keyless agent-payments call (no treg credential of any kind) has its payment credential
-   (`Authorization: Payment …`, `PAYMENT-SIGNATURE`, `X-PAYMENT`) consumed
+   (`Authorization: Payment …`, `PAYMENT-SIGNATURE`, `X-PAYMENT`, `SIGN-IN-WITH-X`) consumed
    by treg and removed before the relay; nothing else it sent changes. A request carrying any treg
    credential is never read for a payment (docs/context/architecture/agent-payments.md).
    A 2xx async answer is read whole (bounded) to record the task it names, then relayed byte for
@@ -192,9 +192,11 @@ agents then built against a constitution that was wrong.
   bought credit and `own_key_required` for one that did, naming the remedy and never the rule. A
   slow or failing extension allows the call, and a call on the team's own credential is never asked.
 - **Agent payments** (behind `TREG_AGENT_PAYMENTS_ENABLED`). A keyless caller's payment confirmed
-  on chain is an ordinary `topup` on its wallet's payer team (`governance.teams.make_payer_team`:
-  a machine user, a member with no token); the call then runs the normal road as that team. What
-  a call does not use stays as that team's credit. `application/agent_payments.py` is the only
+  on chain is an ordinary `topup` on its wallet's payer team, one per (network, address)
+  (`governance.teams.make_payer_team`: a machine user, a member with no token); the call then runs
+  the normal road as that team. What a call does not use stays as that team's credit, which a
+  later call draws with a signed proof that moves no money (MPP's zero-amount charge, x402's
+  sign-in-with-x). `application/agent_payments.py` is the only
   writer of `AgentPayment`; the protocol SDKs live only in `infra/agent_payments/`. A payment whose
   settlement went unanswered is resolved by `treg-worker agentpay reconcile` from the chain: the
   same `topup`, under the same reference, only for a transfer that landed. See

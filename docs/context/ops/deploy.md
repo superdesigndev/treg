@@ -64,7 +64,9 @@ tasks. If `TREG_SECRET_KEY` is empty on a non-SQLite database, `verify_db()` rai
 - **Rollback floors.** A revision marked `contract = True` is a hard floor: never run older code
   against it. `0034` (managed keys) is one because old code cannot enforce stored disable or revoke
   state. `0078` drops `onboardingprofile`; code older than it touches that table only while a
-  `TREG_ONBOARDING_V2*` setting is on, so keep those off on any rollback past it.
+  `TREG_ONBOARDING_V2*` setting is on, so keep those off on any rollback past it. `0106` rebuilds
+  `agentpayer` with a per-network key; code older than it writes that table only while
+  `TREG_AGENT_PAYMENTS_ENABLED` is on, so keep it off on any rollback past it.
 - **Revision-only schema.** An autogenerate drift guard requires Alembic head and
   `SQLModel.metadata` to match exactly. `reset_db()` uses `create_all` only to build a missing test
   schema and stamps it at head.
@@ -236,8 +238,13 @@ are Stripe deposit addresses from `treg-worker agentpay stripe-address`; needs
 `TREG_AGENT_PAYMENTS_STRIPE_SECRET_KEY`, the key of the Stripe account with stablecoins enabled, or
 `TREG_STRIPE_SECRET_KEY` when that is the same account, and an explicit
 `TREG_AGENT_PAYMENTS_TEMPO_CURRENCY`). Tempo's hosted RPC takes `TREG_AGENT_PAYMENTS_TEMPO_RPC_URL`
-with `TREG_AGENT_PAYMENTS_TEMPO_RPC_API_KEY`. See
-[agent payments](../architecture/agent-payments.md).
+with `TREG_AGENT_PAYMENTS_TEMPO_RPC_API_KEY`. x402 on Base mainnet also needs its own
+`TREG_AGENT_PAYMENTS_X402_RPC_URL` (a paid node: the reconciler reads it at
+`TREG_AGENT_PAYMENTS_X402_BLOCK_TAG`, default `finalized`). Keyless traffic is capped by
+`TREG_AGENT_PAYMENTS_MAX_PAYMENTS_PER_IP_MINUTE`, `TREG_AGENT_PAYMENTS_MAX_QUOTES_PER_IP_MINUTE`
+(unpaid requests) and `TREG_AGENT_PAYMENTS_MAX_VERIFICATIONS_MINUTE` (payment and proof checks
+that reach a chain or facilitator, across all clients). The x402 sign-in-with-x proof names `TREG_PUBLIC_URL`, so it must be the
+origin agents call. See [agent payments](../architecture/agent-payments.md).
 
 ## Optional money admission
 

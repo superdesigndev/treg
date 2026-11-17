@@ -7,7 +7,7 @@ CLI and every other server path never load them. No rail opens a database sessio
 
 from __future__ import annotations
 
-from collections.abc import Mapping
+from collections.abc import Awaitable, Callable, Mapping
 from dataclasses import dataclass, field
 from datetime import datetime
 from typing import Any, Literal, Protocol
@@ -23,11 +23,13 @@ class Offer:
     query: str                   # the raw query string
     resource_url: str
     description: str
+    host: str = ""               # the hostname the request was sent to, lowercase, no port
 
 
 @dataclass(frozen=True)
 class Verified:
-    """A credential that proved key control over `payer` and authorizes `amount_micro`."""
+    """A credential that proved key control over `payer`. A `payment` authorizes `amount_micro`;
+    a `proof` (MPP's zero-amount charge, x402's SIWX) moves no money and only names the payer."""
 
     protocol: str                # mpp | x402
     network: str
@@ -40,6 +42,7 @@ class Verified:
     # False: the payer already moved the money (MPP push mode); treg cannot decline to settle.
     deferrable: bool = True
     credential: Any = field(default=None, repr=False, compare=False)
+    kind: Literal["payment", "proof"] = "payment"
 
 
 @dataclass(frozen=True)
@@ -88,12 +91,25 @@ class PaymentRail(Protocol):
     stripe_network: str | None   # Stripe's name for the network, when Stripe takes it
     # Lowercase request header names this rail reads; treg removes them before the relay.
     consumed_headers: tuple[str, ...]
+    # True when a payment may be checked and left unsettled (to prove a wallet); False when every
+    # payment is settled and the wallet proves itself with a proof instead.
+    deferrable_payments: bool
 
     def presented(self, headers: Mapping[str, str]) -> str | None: ...
 
-    async def challenge(self, offer: Offer) -> list[tuple[str, str]]: ...
+    # Whether this rail can ask for a wallet proof on this request (clients sign one only for the
+    # host they called).
+    def proves(self, offer: Offer) -> bool: ...
 
-    async def verify(self, credential: str, offer: Offer) -> Verified: ...
+    # The 402 headers: a payment challenge when `pay`, and a wallet proof (first) when `prove` and
+    # `proves(offer)`; [] when neither.
+    async def challenge(self, offer: Offer, *, pay: bool = True,
+                        prove: bool = False) -> list[tuple[str, str]]: ...
+
+    # `before_remote` runs once, just before the first chain or facilitator request this check
+    # makes; a credential refused by local checks alone never runs it. What it raises propagates.
+    async def verify(self, credential: str, offer: Offer, *,
+                     before_remote: Callable[[], Awaitable[None]] | None = None) -> Verified: ...
 
     async def settle(self, verified: Verified, offer: Offer) -> Settlement: ...
 

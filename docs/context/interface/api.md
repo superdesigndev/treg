@@ -369,19 +369,27 @@ With `TREG_AGENT_PAYMENTS_ENABLED`, a `/call/<catalog id>` request carrying no t
 all, for a tool treg's own key serves, answers 402 `{"detail": {"error": "payment_required",
 "reason", "endpoint_id", "amount_micro", "estimated_cost_micro", "minimum_payment_micro",
 "protocols", "message"}}` with
-`X-Treg-Error: 1`, `Cache-Control: no-store`, `WWW-Authenticate: Payment ...` (MPP) and
-`PAYMENT-REQUIRED` (x402). The request sent again with a payment credential is answered as a
-normal call, its body unchanged; every such answer carries `X-Treg-Payment: paid|credit`,
+`X-Treg-Error: 1`, `Cache-Control: no-store`, `WWW-Authenticate: Payment ...` (MPP; on the MPP
+realm's host the zero-amount proof challenges come first) and `PAYMENT-REQUIRED` (x402; on the
+public host it carries the `sign-in-with-x` extension). A wallet with credit answers the
+zero-amount challenge, or the SIWX one in a `SIGN-IN-WITH-X` header, with a proof and pays nothing; a proof whose credit
+does not cover the call answers 402 `reason: credit_insufficient` with the payment challenges only.
+The request sent again with a payment credential is answered as a normal call, its body unchanged; every such answer carries `X-Treg-Payment: paid|credit`,
 `X-Treg-Credit-Micro` (the credit left) and, when it paid, `X-Treg-Paid-Micro` and
 `X-Treg-Payment-Reference`, plus `Cache-Control: private` when the answer set none; a 2xx also
 carries `Payment-Receipt` or `PAYMENT-RESPONSE`. treg's own 402s (`insufficient_balance`,
-`route_max_cost`) answer 503 there. A settlement treg cannot confirm answers 503
-`payment_outcome_unknown` with no call. A keyless body over 1 MiB is 413; too many payments from one address answer 429
+`route_max_cost`) answer 503 there, except that credit spent by another call between the check and
+the hold answers the `credit_insufficient` 402. A settlement treg cannot confirm answers 503
+`payment_outcome_unknown` with no call. A keyless body over 1 MiB is 413; too many requests from one
+address (with or without a payment), or too many payment checks across all clients, answer 429
 `rate_limited` with `Retry-After`. A wallet whose payer team or its member is suspended answers 403
 `payer_suspended` (`reason: org_suspended|account_suspended`) before any payment is taken. Every other keyless call
 is a 401 `{"detail": {"error": "not_authenticated", "reason", "message"}}`. A free poll or result fetch
-of an async tool is served to a wallet that already paid for a call: its 402 has `reason:
-proof_required`, and the payment it asks for is checked and never settled. While the feature is
+of an async tool is served to a wallet that already paid for a call on that network: its 402 has
+`reason: proof_required` and offers the MPP zero-amount proof, x402 SIWX, or an x402 payment that
+is checked and never settled. `GET /agentpay/credit` (404 while the feature is off) answers 402
+`proof_required` with the proof challenges, then, with a valid proof, `{"network", "address",
+"credit_micro", "recent": [{"at", "protocol", "amount_micro", "status", "reference"}]}`. While the feature is
 on, `/catalog/search` rows and `/catalog/endpoints/<id>` carry `wallet` (`payable`, and `reason`
 when it is not). See [agent payments](../architecture/agent-payments.md).
 
