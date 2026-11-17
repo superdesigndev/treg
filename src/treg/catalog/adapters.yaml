@@ -3945,3 +3945,97 @@ adapters:
     const: {body.days_ago: 90}
     out: {p50: salary.p50, p25: salary.p25, p75: salary.p75, p90: salary.p90, currency: salary.currency,
           count: salary.count}
+
+  # ---- meta-ads.library.search (call events only) ----
+  adyntel.meta-ads.library.search:
+    route: false
+    accepts: [[q]]
+    in: {q: body.keyword, country: body.country_code}
+    out: {ads: results}
+    miss: "coalesce(results, []) == []"
+    position: {cursor: body.continuation_token}
+  crawl4ai.meta-ads.library.search:
+    route: false
+    accepts: [[q]]
+    in: {q: body.query, country: body.country}
+    out: {ads: rows}
+    miss: "coalesce(rows, []) == []"
+
+  # ---- google.serp.ai_mode (call events only) ----
+  cloro.google.serp.ai_mode:
+    route: false
+    accepts: [[q]]
+    in: {q: body.prompt, country: body.gl}
+    out: {answer: "coalesce(result.markdown, result.text)", sources: result.sources}
+    miss: "coalesce(result.markdown, result.text, null) == null"
+  crawl4ai.google.serp.ai_mode:
+    route: false
+    accepts: [[q]]
+    in: {q: queryParams.q, country: queryParams.gl}
+    const: {queryParams.deep: "0"}
+    out: {answer: answer.text}
+    miss: "coalesce(answer.text, null) == null"
+  serpapi.x.google-ai-mode:
+    route: false
+    accepts: [[q]]
+    in: {q: queryParams.q}
+    const: {queryParams.engine: google_ai_mode}
+    out: {answer: reconstructed_markdown, sources: references}
+    # an answer may come as text blocks alone; only neither is a miss
+    miss: "coalesce(reconstructed_markdown, text_blocks, null) == null"
+
+  # ---- ai-search.chatgpt.scrape (call events only) ----
+  cloro.ai-search.chatgpt.scrape:
+    route: false
+    accepts: [[q]]
+    in: {q: body.prompt, country: body.country}
+    out: {answer: "coalesce(result.markdown, result.text)", sources: result.sources}
+    miss: "coalesce(result.markdown, result.text, null) == null"
+  crawl4ai.ai-search.chatgpt.scrape:
+    route: false
+    accepts: [[q]]
+    in: {q: body.prompt, country: body.country}
+    out: {answer: "coalesce(rows[0].answer, rows[0].answer_text)", sources: "rows[0].sources"}
+    miss: "coalesce(rows[0].answer, rows[0].answer_text, null) == null"
+
+  # ---- ai-search.gemini.scrape (call events only) ----
+  cloro.ai-search.gemini.scrape:
+    route: false
+    accepts: [[q]]
+    in: {q: body.prompt, country: body.country}
+    out: {answer: "coalesce(result.markdown, result.text)", sources: result.sources}
+    miss: "coalesce(result.markdown, result.text, null) == null"
+
+  # ---- web.answer (call events only) ----
+  crawl4ai.web.answer:
+    route: false
+    accepts: [[q]]
+    in: {q: queryParams.q}
+    out: {answer: answer.text, sources: answer.sources}
+    miss: "coalesce(answer.text, null) == null"
+  exa.web.answer:
+    route: false
+    accepts: [[q]]
+    in: {q: body.query}
+    out: {answer: answer, sources: citations}
+    miss: "coalesce(answer, null) == null"
+  olostep.web.answer:
+    route: false
+    accepts: [[q]]
+    in: {q: body.task}
+    out: {answer: result.json_content, sources: result.sources}
+    miss: "coalesce(result.json_content, null) == null"
+  perplexity.web.answer.fast:
+    route: false
+    accepts: [[q]]
+    in: {q: body.input}
+    const: {body.preset: fast}
+    out: {answer: "output[0].content[0].text", sources: "output[0].content[0].annotations"}
+    miss: "coalesce(output[0].content[0].text, null) == null"
+  perplexity.web.answer.low:
+    route: false
+    accepts: [[q]]
+    in: {q: body.input}
+    const: {body.preset: low}
+    out: {answer: "output[0].content[0].text", sources: "output[0].content[0].annotations"}
+    miss: "coalesce(output[0].content[0].text, null) == null"
