@@ -77,6 +77,8 @@ class OAuthProvider:
     #            is the natural unit (Slack): our app can't be installed into their workspace on
     #            their behalf, and a shared app would put treg between them and their own data.
     #            Setup is a form, not a redirect, so the provider carries the instructions.
+    # "public" — a keyless public API: nothing to connect or verify. Its catalog rows are served
+    #            only as `platform_auth: anonymous`; the provider is left out of the Connect listing.
     auth_kind: str = "oauth"
     token_label: str = ""  # "Bot token"
     token_placeholder: str = ""  # "xoxb-…"
@@ -1342,11 +1344,12 @@ ARIHAAN_PEOPLE = OAuthProvider(
     token_placeholder="your Arihaan People API key",
     token_header="Authorization",
     token_format="Bearer {secret}",
-    setup_url="https://people-api.arihaan.ai/pay-per-person",
+    setup_url="https://people.arihaan.ai/lists#keys",
     setup_action_label="Get your Arihaan People API key",
     setup_steps=(
-        "Open the pay-per-person page and sign in with Google.",
-        "Copy the API key shown under API keys.",
+        "Open people.arihaan.ai/lists and sign in with Google.",
+        "Add your LinkedIn profile URL and where you heard about us (asked once; required before any call).",
+        "Create a key under API keys and copy it.",
         "Add funds to the prepaid balance: calls are charged from it.",
     ),
     setup_note="Billed per call from a prepaid balance. The balance, usage, meta and rates routes are free.",
@@ -1354,9 +1357,9 @@ ARIHAAN_PEOPLE = OAuthProvider(
     scopes={},
     client_id_setting="", client_secret_setting="",
     category="People data",
-    summary="Search B2B leads and work emails by role, company and location, look people up by LinkedIn profile URL, email or phone, and get phone numbers. Pay per call.",
+    summary="Personal emails and fuller LinkedIn profiles from a LinkedIn URL, B2B lead search with work emails by role, company and location, reverse lookup by email or phone, and phone numbers. Pay per call.",
     base_url="https://people-api.arihaan.ai",
-    docs_url="https://people-api.arihaan.ai/docs",
+    docs_url="https://people.arihaan.ai/docs",
     probe_path="/v2/balance",  # free; a bad or missing key gets HTTP 401
 )
 
@@ -1400,7 +1403,7 @@ MOBIUSENGINE_JOBS = OAuthProvider(
     setup_url="https://jobs.mobiusengine.ai/login?utm_source=treg&utm_medium=connect",
     setup_action_label="Get your MobiusEngine.ai Jobs Data API key",
     setup_steps=(
-        "Open jobs.mobiusengine.ai and sign in with Google. New accounts start with a $1 credit.",
+        "Open jobs.mobiusengine.ai and sign in with Google. New accounts start with a 10 cent credit; add your LinkedIn profile on the account page, or the key answers 403 profile_required.",
         "Copy the API key shown on your first sign-in (it is shown once; more can be made under API keys).",
         "Add funds on your account page (jobs.mobiusengine.ai/app) when the credit is used: calls are charged per job from that balance.",
     ),
@@ -1413,6 +1416,21 @@ MOBIUSENGINE_JOBS = OAuthProvider(
     base_url="https://jobs-api.arihaan.ai",
     docs_url="https://jobs.mobiusengine.ai/docs?utm_source=treg&utm_medium=docs",
     probe_path="/v1/balance",  # free; a bad or missing key gets HTTP 401 {"error": {"code": "unauthorized", ...}}
+)
+
+# Keyless: the Job Board API answers every GET without authentication, so there is nothing to
+# connect or probe. Rows are `platform_auth: anonymous`; no EU host is listed.
+GREENHOUSE = OAuthProvider(
+    service="greenhouse",
+    display_name="Greenhouse Job Board",
+    auth_kind="public",
+    auth_uri="", token_uri="",
+    scopes={},
+    client_id_setting="", client_secret_setting="",
+    category="Jobs data",
+    summary="List a company's open jobs, departments and offices from its Greenhouse job board, with pay ranges and application questions.",
+    base_url="https://boards-api.greenhouse.io/v1",
+    docs_url="https://docs.greenhouse.io/job-board.html",
 )
 
 ANYAPI = OAuthProvider(
@@ -2640,6 +2658,24 @@ THEIRSTACK = OAuthProvider(
 )
 
 
+JOBSPIPE = OAuthProvider(
+    service="jobspipe", display_name="JobsPipe", auth_kind="key",
+    token_label="API key", token_placeholder="your JobsPipe API key (jp_live_…)",
+    token_header="Authorization", token_format="Bearer {secret}",
+    setup_url="https://jobspipe.dev/signup",
+    setup_action_label="Get your JobsPipe API key",
+    setup_steps=("Sign up at JobsPipe (new accounts get 1,000 free credits, once).",
+                 "Open the dashboard, create an API key and copy it."),
+    setup_note="Each job costs a credit the first time your account pulls it in a month; repeats, empty pages, counts and company suggestions are free.",
+    auth_uri="", token_uri="", scopes={}, client_id_setting="", client_secret_setting="",
+    category="Jobs data",
+    summary="Search job postings with full descriptions and pay, poll for new ones, benchmark salaries by country and read company technologies.",
+    base_url="https://api.jobspipe.dev",
+    docs_url="https://jobspipe.dev/docs",
+    probe_path="/v1/account",  # free; a bad key gets 401
+)
+
+
 AVIATO = OAuthProvider(
     service="aviato",
     display_name="Aviato",
@@ -2927,6 +2963,23 @@ BRAVESEARCH = OAuthProvider(
     base_url="https://api.search.brave.com/res",
     docs_url="https://api-dashboard.search.brave.com/documentation",
     probe_path="/v1/web/search?q=example.com&count=1",
+)
+
+LOCALFALCON = OAuthProvider(
+    service="localfalcon", display_name="Local Falcon", auth_kind="key",
+    token_label="API key", token_placeholder="your Local Falcon API key",
+    token_header="Authorization", token_format="Bearer {secret}",
+    setup_url="https://www.localfalcon.com/api/credentials/",
+    setup_action_label="Get your Local Falcon API key",
+    setup_steps=("Enable On-Demand API access on your Local Falcon account.",
+                 "Copy your API key from the API Credentials page and paste it here."),
+    setup_note="Connecting checks the key with the free grid-points endpoint.",
+    auth_uri="", token_uri="", scopes={}, client_id_setting="", client_secret_setting="",
+    category="SEO",
+    summary="Check where a business ranks in Google Maps across a grid of points, and search Maps by keyword.",
+    base_url="https://api.localfalcon.com",
+    docs_url="https://docs.localfalcon.com/",
+    probe_path="/v1/grid/?lat=40.7484&lng=-73.9857&grid_size=3&radius=1&measurement=mi",
 )
 
 LITESCRAPE = OAuthProvider(
@@ -4299,6 +4352,95 @@ CORPOAPI = OAuthProvider(
     probe_path="/v1/usage",
 )
 
+
+ASHBY = OAuthProvider(
+    service="ashby",
+    display_name="Ashby job boards",
+    auth_kind="public",
+    auth_uri="", token_uri="",
+    scopes={},
+    client_id_setting="", client_secret_setting="",
+    category="Jobs data",
+    summary="Every open job on a company's Ashby job board, with full descriptions and posted pay.",
+    base_url="https://api.ashbyhq.com",
+    docs_url="https://developers.ashbyhq.com/docs/public-job-posting-api",
+)
+
+
+WORKABLE = OAuthProvider(
+    service="workable",
+    display_name="Workable",
+    auth_kind="public",
+    auth_uri="", token_uri="",
+    scopes={},
+    client_id_setting="", client_secret_setting="",
+    category="Jobs data",
+    summary="List a company's open jobs from its Workable careers page, with descriptions. Free, no key.",
+    # Workable documents www.workable.com/api/accounts/{subdomain}; that answers 302 to this host,
+    # and the relay never follows redirects, so the catalog targets the redirect's host directly.
+    base_url="https://apply.workable.com",
+    docs_url="https://workable.readme.io/reference/jobs-1",
+)
+
+
+SMARTRECRUITERS = OAuthProvider(
+    service="smartrecruiters",
+    display_name="SmartRecruiters",
+    auth_kind="public",
+    auth_uri="", token_uri="",
+    scopes={},
+    client_id_setting="", client_secret_setting="",
+    category="Jobs data",
+    summary="Open job postings from employers hiring on SmartRecruiters: search one company's board and read full job ads. Free, no key.",
+    base_url="https://api.smartrecruiters.com",
+    docs_url="https://developers.smartrecruiters.com/docs/posting-api",
+)
+
+
+HIREBASE = OAuthProvider(
+    service="hirebase",
+    display_name="Hirebase",
+    auth_kind="key",
+    token_label="API key",
+    token_placeholder="hb_...",
+    # The key rides in x-api-key; the header keeps it out of logged URLs.
+    token_header="x-api-key",
+    token_format="{secret}",
+    setup_url="https://www.hirebase.org/signup",
+    setup_action_label="Get your Hirebase API key",
+    setup_steps=(
+        "Create an account at hirebase.org/signup.",
+        "Copy your key from Profile, then API Key (it starts with hb_).",
+        "The Free plan includes 500 jobs, 50 companies, 25 insights and 3 salary benchmarks a month; paid plans raise them.",
+    ),
+    setup_note="Billed per job or company returned from a monthly allowance; insights and salary benchmarks are counted per call. An empty job or company page is free; an insights call is counted even when it finds nothing.",
+    auth_uri="", token_uri="",
+    scopes={},
+    client_id_setting="", client_secret_setting="",
+    category="Jobs data",
+    summary="Search fresh job postings read from employers' own career pages, match jobs to a candidate profile, list a company's open jobs and get salary percentiles for a role and place.",
+    base_url="https://api.hirebase.org/v2",
+    docs_url="https://www.hirebase.org/docs",
+    probe_path="/billing/usage/summary",  # free; a bad key gets HTTP 401 {"detail": "Invalid API key"}
+)
+
+
+# Lever's Postings API serves every published posting without a key. The API key Lever documents
+# applies only to the application POST, which is not listed.
+LEVER = OAuthProvider(
+    service="lever",
+    display_name="Lever",
+    auth_kind="public",
+    auth_uri="", token_uri="",
+    scopes={},
+    client_id_setting="", client_secret_setting="",
+    category="Jobs data",
+    summary="List a company's open jobs on its Lever careers site, with full descriptions, or read one posting.",
+    base_url="https://api.lever.co",
+    catalog_targets=(CatalogTarget(host="api.eu.lever.co", base_url="https://api.eu.lever.co"),),
+    docs_url="https://github.com/lever/postings-api",
+)
+
 REGISTRY: dict[str, OAuthProvider] = {
     p.service: p
     for p in (
@@ -4307,7 +4449,7 @@ REGISTRY: dict[str, OAuthProvider] = {
         LINKEDIN, SLACK, X, TIKTOK, FACEBOOK, INSTAGRAM, META_ADS,
         # API-key providers
         ARIHAAN_PEOPLE,
-        ANYAPI, APOLLO, PDL, AKTA, HUNTER, MOBIUSENGINE_JOBS, SUMBLE, MOLTSETS, OPENMART, HARVESTAPI, FETCHINIO, SIXTYFOUR, LEADOCEAN, BLITZAPI, DROPLEADS,
+        ANYAPI, APOLLO, PDL, AKTA, HUNTER, MOBIUSENGINE_JOBS, GREENHOUSE, SUMBLE, MOLTSETS, OPENMART, HARVESTAPI, FETCHINIO, SIXTYFOUR, LEADOCEAN, BLITZAPI, DROPLEADS, ASHBY, WORKABLE, SMARTRECRUITERS, HIREBASE, LEVER,
         QUICKENRICH, PROSPEO, AIARK, WIZA, LIMADATA, GETLEADSIO, SCRUBBY, ZEROBOUNCE, DATAGMA,
         TRYKITT, CONTACTOUT, MILLIONVERIFIER, ORBISEARCH, BOUNCEBAN, CRUNCHBASE, MINIMAX, FISHAUDIO,
         OPENROUTER,
@@ -4317,9 +4459,9 @@ REGISTRY: dict[str, OAuthProvider] = {
         SCRAPECREATORS,
         # SEO API-key providers
         DATAFORSEO, SERANKING, MOZ, MAJESTIC, SERPSTAT, EXA, SEARCH1API, TAVILY, OCTEN, LINKUP, PARALLEL, YOU, VALYU, KEENABLE, OLOSTEP, FIRECRAWL, CRAWL4AI, SPIDERCLOUD, PERPLEXITY,
-        SCRAPEGRAPHAI, SERPER, BRAVESEARCH, LITESCRAPE, CLORO,
+        SCRAPEGRAPHAI, SERPER, BRAVESEARCH, LITESCRAPE, CLORO, LOCALFALCON,
         # more Enrichment API-key providers
-        LUSHA, CORESIGNAL, DIFFBOT, THECOMPANIESAPI, LEADMAGIC, ENRICHLAYER, FIBER_AI, CRUSTDATA, THEIRSTACK, AVIATO,
+        LUSHA, CORESIGNAL, DIFFBOT, THECOMPANIESAPI, LEADMAGIC, ENRICHLAYER, FIBER_AI, CRUSTDATA, THEIRSTACK, JOBSPIPE, AVIATO,
         COMPANYENRICH, CORPOAPI, OCEANIO, ADYNTEL, TOMBA, TRESTLEIQ, HLRLOOKUP, PREDICTLEADS, FINDYMAIL, ANYMAILFINDER, ENROW, FILTRAT, FILTRAT_FINDER, DROPCONTACT, BRANDDEV, ICYPEAS, LEADSFORGE,
         INFLUENCERSCLUB, VILLAGE,
         # Places: intent-scored local search
@@ -4641,6 +4783,8 @@ def listing() -> list[dict]:
             "supports_discovery": p.supports_discovery,
             "has_identity": p.has_identity,
             "auth_kind": p.auth_kind,
+            # whether this server serves the provider's keyless rows (its allow-list)
+            "enabled": get_settings().platform_provider_enabled(p.service),
             "token_label": p.token_label,
             "token_placeholder": p.token_placeholder,
             "setup_url": p.setup_url,
@@ -4668,7 +4812,7 @@ def listing() -> list[dict]:
         # Grouped first, alphabetical within a shelf — so the dashboard can render the shelves by
         # walking the list once instead of re-sorting what the registry already knows.
         for p in sorted(
-            (p for p in REGISTRY.values() if not is_paused(p.service)),
+            (p for p in REGISTRY.values() if not is_paused(p.service) and p.auth_kind != "public"),
             key=lambda p: (
                 CATEGORY_ORDER.index(p.category) if p.category in CATEGORY_ORDER else len(CATEGORY_ORDER),
                 p.display_name,

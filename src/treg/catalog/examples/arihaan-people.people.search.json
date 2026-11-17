@@ -45,14 +45,12 @@
   ],
   "next_cursor": "cDE6MTAwMDQxMTYx",
   "billing": {
-    "card": "payg",
-    "charge_usd": 0.0208,
-    "charge_micro": 20800,
+    "card": "treg",
+    "charge_usd": 0.005361,
+    "charge_micro": 5361,
     "events": {
-      "scan_unit": 4,
-      "person": 2
-    },
-    "scan_units": 4,
-    "est_scan_usd": 0.012226
+      "scan_unit": 1,
+      "person": 1
+    }
   }
 }

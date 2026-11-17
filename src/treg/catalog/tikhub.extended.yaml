@@ -16108,6 +16108,8 @@ endpoints:
   name: "Reddit post comments by post fullname"
   summary: 'Reddit: fetch post comments (app)'
   price: {value: '0.001', currency: USD, per: 1, unit: call}
+  # An unknown post (postInfoById null) is no comments, not an error.
+  miss: {when: [{path: response.data, op: present}, {any: [{path: response.data.postInfoById, op: absent}, {path: response.data.postInfoById.commentForest.trees, op: empty}]}]}
   input:
     queryParams:
       post_id:

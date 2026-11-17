@@ -361,6 +361,23 @@
     "methods": [
       "POST"
     ],
+    "name": "submit_mark",
+    "path": "/marks"
+  },
+  {
+    "kind": "APIRoute",
+    "methods": [
+      "GET",
+      "HEAD"
+    ],
+    "name": "admin_marks",
+    "path": "/admin/marks"
+  },
+  {
+    "kind": "APIRoute",
+    "methods": [
+      "POST"
+    ],
     "name": "cli_events",
     "path": "/cli/events"
   },
@@ -1020,6 +1037,15 @@
       "GET",
       "HEAD"
     ],
+    "name": "claude_plugin_page",
+    "path": "/plugins/claude"
+  },
+  {
+    "kind": "APIRoute",
+    "methods": [
+      "GET",
+      "HEAD"
+    ],
     "name": "sheets_page",
     "path": "/sheets"
   },
@@ -1193,6 +1219,15 @@
     ],
     "name": "leads_signals_page",
     "path": "/leads-signals"
+  },
+  {
+    "kind": "APIRoute",
+    "methods": [
+      "GET",
+      "HEAD"
+    ],
+    "name": "jobs_api_page",
+    "path": "/jobs-api"
   },
   {
     "kind": "APIRoute",
@@ -2942,6 +2977,15 @@
     ],
     "name": "call_tool",
     "path": "/call/{rest:path}"
+  },
+  {
+    "kind": "APIRoute",
+    "methods": [
+      "GET",
+      "HEAD"
+    ],
+    "name": "agent_payment_credit",
+    "path": "/agentpay/credit"
   },
   {
     "kind": "APIRoute",

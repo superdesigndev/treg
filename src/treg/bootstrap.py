@@ -116,6 +116,8 @@ _CONTROL_ROUTE_KEYS: frozenset[RouteKey] = frozenset({
     ('/feedback', ('POST',), 'submit_feedback'),
     ('/reviews', ('POST',), 'submit_review'),
     ('/admin/reviews', ('GET',), 'admin_reviews'),
+    ('/marks', ('POST',), 'submit_mark'),
+    ('/admin/marks', ('GET',), 'admin_marks'),
     ('/feedback/{feedback_id}', ('GET',), 'get_feedback'),
     ('/media', ('POST',), 'host_media'),
     ('/m/{token}', ('GET',), 'serve_media'),
@@ -197,6 +199,7 @@ _CONTROL_ROUTE_KEYS: frozenset[RouteKey] = frozenset({
     ('/privacy', ('GET',), 'privacy_page'),
     ('/sheets', ('GET',), 'sheets_page'),
     ('/connectors/claude', ('GET',), 'claude_connector_page'),
+    ('/plugins/claude', ('GET',), 'claude_plugin_page'),
     ('/adtrack.js', ('GET',), 'adtrack_js'),
     ('/captcha.js', ('GET',), 'captcha_js'),
     ('/agent-setup.js', ('GET',), 'agent_setup_js'),
@@ -250,6 +253,7 @@ _CONTROL_ROUTE_KEYS: frozenset[RouteKey] = frozenset({
     ('/people-search', ('GET',), 'people_search_page'),
     ('/start', ('GET',), 'start_page'),
     ('/leads-signals', ('GET',), 'leads_signals_page'),
+    ('/jobs-api', ('GET',), 'jobs_api_page'),
     ('/recruit', ('GET',), 'recruit_page'),
     ('/web-access', ('GET',), 'web_access_page'),
     ('/gtm-engineering', ('GET',), 'gtm_engineering_page'),
@@ -445,6 +449,7 @@ _CONTROL_ROUTE_KEYS: frozenset[RouteKey] = frozenset({
 })
 _DATAPLANE_ROUTE_KEYS: frozenset[RouteKey] = frozenset({
     ("/call/{rest:path}", ("DELETE", "GET", "HEAD", "OPTIONS", "PATCH", "POST", "PUT"), "call_tool"),
+    ("/agentpay/credit", ("GET",), "agent_payment_credit"),
     ("/catalog/call/{rest:path}",
      ("DELETE", "GET", "HEAD", "OPTIONS", "PATCH", "POST", "PUT"),
      "call_catalog_endpoint"),
@@ -735,6 +740,45 @@ def configure_provider_labels() -> None:
     catalog_store.configure_provider_labels(label)
 
 
+def configure_agent_payments() -> None:
+    """Composition seam: the payment rails the settings turn on. The protocol SDKs load only here,
+    and only when the feature is on (docs/context/architecture/agent-payments.md)."""
+    from urllib.parse import urlsplit
+
+    from .application import agent_payments
+
+    s = get_settings()
+    rails = []
+    if s.agent_payments_enabled:
+        if s.agent_payments_mpp_enabled:
+            from .infra.agent_payments.tempo import MppTempoRail
+
+            rails.append(MppTempoRail(
+                secret=s.agent_payments_secret,
+                realm=s.agent_payments_realm or urlsplit(s.public_url).hostname or "treg",
+                recipient=s.agent_payments_tempo_recipient,
+                chain_id=s.agent_payments_tempo_chain_id,
+                rpc_url=s.agent_payments_tempo_rpc_url,
+                rpc_api_key=s.agent_payments_tempo_rpc_api_key,
+                currency=s.agent_payments_tempo_currency,
+                challenge_ttl_s=s.agent_payments_mpp_challenge_ttl_s,
+                store=agent_payments.ReplayStore()))
+        if s.agent_payments_x402_enabled:
+            from .infra.agent_payments.x402 import X402Rail
+
+            rails.append(X402Rail(
+                pay_to=s.agent_payments_x402_pay_to, network=s.agent_payments_x402_network,
+                asset=s.agent_payments_x402_asset, asset_name=s.agent_payments_x402_asset_name,
+                asset_version=s.agent_payments_x402_asset_version,
+                facilitator_url=s.agent_payments_x402_facilitator_url,
+                max_timeout_s=s.agent_payments_x402_max_timeout_s,
+                rpc_url=s.agent_payments_x402_rpc_url,
+                cdp_api_key_id=s.agent_payments_x402_cdp_api_key_id,
+                cdp_api_key_secret=s.agent_payments_x402_cdp_api_key_secret,
+                block_tag=s.agent_payments_x402_block_tag, origin=s.public_url))
+    agent_payments.configure(rails)
+
+
 def configure_archive_object_store(store) -> None:
     """Composition seam shared by startup and in-memory tests. Find's card vectors share the store."""
     from . import archive_bodies
@@ -772,11 +816,17 @@ def _lifespan(role: AppRole):
             # serving, so a new worker's first calls do not fall back to the YAML order.
             from .application.call import route_rules as route_rules_app
             await route_rules_app.warm()
+            # Targeted review invitations read their per-endpoint counts once before serving.
+            from .application import review_targets
+            await review_targets.warm()
 
-            limits = httpx.Limits(max_keepalive_connections=100, max_connections=200)
+            _s = get_settings()
+            limits = httpx.Limits(max_keepalive_connections=_s.upstream_max_keepalive_connections,
+                                  max_connections=_s.upstream_max_connections)
             app.state.http = httpx.AsyncClient(
                 limits=limits,
-                timeout=httpx.Timeout(float(get_settings().call_timeout_s)),
+                timeout=httpx.Timeout(float(_s.call_timeout_s), connect=_s.upstream_connect_timeout_s,
+                                      pool=_s.upstream_pool_timeout_s),
                 # what a provider sees when no caller header says otherwise, never python-httpx/x
                 headers={"User-Agent": TREG_USER_AGENT},
             )
@@ -897,6 +947,7 @@ def create_app(role: AppRole = "all", *, archive_object_store=None) -> FastAPI:
 
     keyslots.check_accounts()  # an unusable TREG_PLATFORM_ACCOUNTS entry refuses to start
     configure_provider_labels()
+    configure_agent_payments()
 
     expose_docs = role != "dataplane"
     app = FastAPI(

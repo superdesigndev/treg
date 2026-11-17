@@ -386,6 +386,7 @@ contracts:
       location: {type: str, default: null, note: "free-text place ('London, United Kingdom', 'Greater Phoenix') passed through to providers that take one; finer than country, never normalised. A place the brief abbreviates goes here spelled out ('in OR' is 'Oregon, United States', 'APAC' is 'Asia Pacific'), not left in q or dropped"}
       limit: {type: int, default: 10, min: 1, note: "rows to return — THE price dial: most providers bill per row. For a list you will check against a brief, ask for more than you will keep (25 to keep 15): some rows will not fit it. With a free-text q a short answer goes on to the next provider until the rows reach limit"}
       keywords: {type: list, default: null, note: "skills, topics or domain terms the person must match ('microservices', 'match analysis') — the SUBSTANCE of most briefs; a provider with no keyword field answers a looser question and ranks below one that has it"}
+      cursor: {type: str, default: null, note: "the next page: the previous answer's output.next_cursor, sent with the same body otherwise. The page comes from the provider that served the first one; null there means no next page"}
     # A company-blind provider (lusha, wiza: title only) returns the same strangers for every domain.
     # A child that cannot send one of these answers a different question. A `q` counts only when the
     # child's matched variant carries it or `title` (carried_by): crawl4ai answers
@@ -755,17 +756,92 @@ contracts:
     idempotent: true
 
   companies.jobs.search:
-    summary: "Open job listings at a company, by name or domain — provider-native job rows in `jobs`"
+    summary: "Search open job postings by title across companies, or at one company by name or domain — provider-native job rows in `jobs`"
     identity:
+      - {title: str, domain: str}
+      - {title: str, name: str}
+      - {title: str}
       - {name: str}
       - {domain: str}
-    filters:
-      limit: {type: int, default: 10, note: "rows to return — most providers bill per row"}
+    identity_notes:
+      title: "job title words ('data engineer'); with name or domain, that role at that company"
+      name: "the employer's whole name as the company writes it ('Ramp'): every job index asked for a name matches the whole name, so 'Ramp' never finds LiveRamp, and a company listed under two names answers for the one sent. For one company's own board, treg.companies.jobs takes the board itself: the whole board on Greenhouse, Ashby and Workable, up to `limit` (at most 100) on Lever and SmartRecruiters"
+      domain: "the employer's website domain ('ramp.com')"
+    # A title search answered without the title, or a company search answered without the company,
+    # bills strangers' or the whole company's jobs as a hit. A name and a domain name one company,
+    # so a child that sends either keeps a {name, domain} request.
+    scoping: [title, name, domain]
+    carried_by: {name: [domain], domain: [name]}
+    filters: &jobs_filters
+      country: {type: str, default: null, note: "ISO alpha-2 country of the job ('US', 'GB')", analytics: value}
+      location: {type: str, default: null, note: "free-text place of the job, finer than country ('Texas', 'New York, NY', 'Berlin'), passed to providers that take one"}
+      remote: {type: bool, default: null, note: "true: remote jobs only. false or absent: no remote filter", analytics: value}
+      posted_within_days: {type: int, min: 1, max: 365, default: null, note: "posted (or first seen) in the last N days. Absent, TheirStack still asks for the last 30 days: it has no open/closed flag", analytics: value}
+      limit: {type: int, default: 10, note: "rows to return — most providers bill per row; PredictLeads (by domain) bills one flat price for up to 500 rows. On treg.companies.jobs, a board named by ats: Greenhouse, Ashby and Workable answer the whole board whatever limit is, free; Lever and SmartRecruiters answer up to limit, at most 100"}
     output:
       jobs: {type: list, required: true}
       count: {type: int}
       next_cursor: {type: str}
     miss: "jobs == []"
+    idempotent: true
+    # The three with the fullest current postings at the lowest price per job. MobiusEngine and
+    # JobsPipe match a company name in part, so they take title searches only (adapters.yaml); a
+    # name goes to Hirebase first, then the other whole-name indexes.
+    prefer: [mobiusengine-jobs, hirebase, jobspipe]
+
+  companies.jobs:
+    summary: "One company's current open job postings: from its own job board when you name it (ats + board), else from job indexes by name or domain — provider-native job rows in `jobs`"
+    identity:
+      - {ats: str, board: str}
+      - {domain: str}
+      - {name: str}
+    identity_notes:
+      ats: "the company's job system, read from its careers URL: greenhouse (job-boards.greenhouse.io/<board>), lever (jobs.lever.co/<board>), lever_eu (jobs.eu.lever.co/<board>), ashby (jobs.ashbyhq.com/<board>), smartrecruiters (careers.smartrecruiters.com/<board>), workable (apply.workable.com/<board>). The board is read free; add name or domain so a board treg cannot read answers from a job index"
+      board: "the board's name, the path segment after the host in that URL ('discord')"
+      name: "the employer's whole name as the company writes it ('Ramp'): every index asked matches the whole name, so 'Ramp' never finds LiveRamp, and a company listed under two names answers for the one sent"
+      domain: "the employer's website domain ('ramp.com')"
+    # The board named by `ats` reaches only that system's reader: treg never guesses a board on
+    # another system.
+    derive:
+      greenhouse_board: "choose(lower(ats) == 'greenhouse', board, null)"
+      lever_board: "choose(lower(ats) == 'lever', board, null)"
+      lever_eu_board: "choose(lower(ats) == 'lever_eu', board, null)"
+      ashby_board: "choose(lower(ats) == 'ashby', board, null)"
+      smartrecruiters_board: "choose(lower(ats) == 'smartrecruiters', board, null)"
+      workable_board: "choose(lower(ats) == 'workable', board, null)"
+    # The search's filters exactly: a job index's adapter serves both contracts
+    # (`additional_capabilities` needs equal filters).
+    filters: *jobs_filters
+    output:
+      jobs: {type: list, required: true}
+      count: {type: int}
+      next_cursor: {type: str}
+    miss: "jobs == []"
+    idempotent: true
+    # A name goes only to whole-name indexes, Hirebase then TheirStack; a domain keeps PredictLeads
+    # ahead of TheirStack, as its price puts it.
+    prefer: [hirebase, predictleads, theirstack]
+
+  jobs.salary.benchmark:
+    summary: "Posted-pay percentiles for a job title in a country or a city — treg picks the provider and names the one that served"
+    identity:
+      - {title: str}
+    identity_notes:
+      title: "the job title ('data engineer')"
+    filters:
+      country: {type: str, default: null, note: "ISO alpha-2 country ('US', 'GB'); every provider takes it", analytics: value}
+      region: {type: str, default: null, note: "state or province in full ('Texas', 'Ontario'); only a provider with sub-country pay data takes it", analytics: value}
+      city: {type: str, default: null, note: "city ('San Francisco', 'London'); only a provider with sub-country pay data takes it", analytics: value}
+      location: {type: str, default: null, note: "one city in plain words ('London'), the same as `city`, which wins when both are sent; a state or province goes in `region`, and a place in several parts ('Austin, Texas') is not sent as a city", analytics: value}
+    output:
+      p50: {type: float, required: true, note: "median annual posted pay, in `currency`", analytics: value}
+      p10: {type: float}
+      p25: {type: float}
+      p75: {type: float}
+      p90: {type: float}
+      currency: {type: str, note: "one provider always answers in USD, another in the place's own currency", analytics: value}
+      count: {type: int, note: "postings with pay the percentiles come from", analytics: value}
+    miss: "p50 == null"
     idempotent: true
 
   companies.news:
@@ -1519,3 +1595,199 @@ contracts:
     miss: "platform == null"
     idempotent: true
     routed: false
+
+  # ---- Call events only (`routed: false`): an input_id and a hit verdict for direct calls.
+
+  linkedin.search.people:
+    summary: "LinkedIn member search by name or keyword — provider-native rows in `people`; call events only, never routed"
+    routed: false
+    identity:
+      - {full_name: str}
+      - {first_name: str, last_name: str}
+      - {q: str}
+    derive:
+      full_name: "join(first_name, last_name)"
+    filters:
+      title: {type: str}
+    output:
+      people: {type: list, required: true}
+    miss: "people == []"
+    idempotent: true
+
+  linkedin.search.posts:
+    summary: "LinkedIn post search by keyword — provider-native rows in `posts`; call events only, never routed"
+    routed: false
+    identity:
+      - {q: str}
+    filters:
+      date_posted: {type: str, analytics: value}
+      sort: {type: str, analytics: value}
+    output:
+      posts: {type: list, required: true}
+    miss: "posts == []"
+    idempotent: true
+
+  linkedin.search.jobs:
+    summary: "LinkedIn job search by keyword — provider-native rows in `jobs`; call events only, never routed"
+    routed: false
+    identity:
+      - {q: list}   # a search may name several titles (Apify `jobTitles`): hashed as their set
+    filters:
+      location: {type: str, analytics: value}
+    output:
+      jobs: {type: list, required: true}
+    miss: "jobs == []"
+    idempotent: true
+
+  linkedin.job.detail:
+    summary: "One LinkedIn job posting by id or URL — the provider's own object in `job`; call events only, never routed"
+    routed: false
+    identity:
+      - {job_id: str}
+      - {url: url}
+    derive:
+      job_id: "linkedin_job_id(url)"
+    filters: {}
+    output:
+      job: {type: object, required: true}
+    miss: "job == null"
+    idempotent: true
+
+  x.post.detail:
+    summary: "One X (Twitter) post by id or URL — the provider's own object in `post`; call events only, never routed"
+    routed: false
+    identity:
+      - {post_id: str}
+      - {url: url}
+    derive:
+      post_id: "x_post_id(url)"
+    filters: {}
+    output:
+      post: {type: object, required: true}
+    miss: "post == null"
+    idempotent: true
+
+  meta-ads.library.search:
+    summary: "Meta Ad Library search by keyword — provider-native ad rows in `ads`; call events only, never routed"
+    routed: false
+    identity:
+      - {q: str}
+    filters:
+      country: {type: str, analytics: value}
+    output:
+      ads: {type: list, required: true}
+    miss: "ads == []"
+    idempotent: true
+
+  google.serp.ai_mode:
+    summary: "Google AI Mode's answer to a query — its text in `answer`; call events only, never routed"
+    routed: false
+    identity:
+      - {q: str}
+    filters:
+      country: {type: str, analytics: value}
+    output:
+      answer: {type: str, required: true}
+      sources: {type: list}
+    miss: "answer == null"
+    idempotent: true
+
+  ai-search.chatgpt.scrape:
+    summary: "ChatGPT's answer to a prompt, scraped — its text in `answer`; call events only, never routed"
+    routed: false
+    identity:
+      - {q: str}
+    filters:
+      country: {type: str, analytics: value}
+    output:
+      answer: {type: str, required: true}
+      sources: {type: list}
+    miss: "answer == null"
+    idempotent: true
+
+  ai-search.gemini.scrape:
+    summary: "Gemini's answer to a prompt, scraped — its text in `answer`; call events only, never routed"
+    routed: false
+    identity:
+      - {q: str}
+    filters:
+      country: {type: str, analytics: value}
+    output:
+      answer: {type: str, required: true}
+      sources: {type: list}
+    miss: "answer == null"
+    idempotent: true
+
+  web.answer:
+    summary: "A sourced answer to a question from the web — its text in `answer`; call events only, never routed"
+    routed: false
+    identity:
+      - {q: str}
+    filters: {}
+    output:
+      answer: {type: str, required: true}
+      sources: {type: list}
+    miss: "answer == null"
+    idempotent: true
+
+  people.search.count:
+    summary: "How many people match a company and title — the number in `count`; call events only, never routed"
+    routed: false
+    identity:
+      - {company_domain: list, title: list}
+      - {company_domain: list}
+      - {title: list}
+    filters: {}
+    output:
+      count: {type: int, required: true}
+    # Zero people is the answer "none match": the count's empty answer.
+    miss: "count == 0"
+    idempotent: true
+
+  companies.emails.list:
+    summary: "Email addresses found at one company domain — provider-native rows in `emails`; call events only, never routed"
+    routed: false
+    identity:
+      - {domain: str}
+    filters: {}
+    output:
+      emails: {type: list, required: true}
+    miss: "emails == []"
+    idempotent: true
+
+  people.decision_makers:
+    summary: "Decision makers at one company domain — provider-native rows in `people`; call events only, never routed"
+    routed: false
+    identity:
+      - {company_domain: str}
+    filters: {}
+    output:
+      people: {type: list, required: true}
+    miss: "people == []"
+    idempotent: true
+
+  reddit.search.posts:
+    summary: "Reddit post search by keyword — provider-native rows in `posts`; call events only, never routed"
+    routed: false
+    identity:
+      - {q: str}
+    filters:
+      sort: {type: str, analytics: value}
+    output:
+      posts: {type: list, required: true}
+    miss: "posts == []"
+    idempotent: true
+
+  reddit.post.comments:
+    summary: "Comments on one Reddit post by id or URL — provider-native rows in `comments`; call events only, never routed"
+    routed: false
+    identity:
+      - {post_id: str}
+      - {url: url}
+    derive:
+      post_id: "reddit_post_id(url)"
+    filters: {}
+    output:
+      comments: {type: list, required: true}
+    miss: "comments == []"
+    idempotent: true

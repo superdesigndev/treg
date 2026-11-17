@@ -236,6 +236,19 @@ def test_the_same_status_with_another_body_is_no_capacity_signal(provider, statu
     assert S.classify(provider, status, {}, other) is None
 
 
+def test_jobspipe_spent_credits_lock_but_a_plan_gate_and_a_rate_limit_do_not():
+    spent = S.classify("jobspipe", 402, {"retry-after": "1296000"},
+                       b'{"error":"Monthly request quota exceeded","message":"Upgrade to continue.",'
+                       b'"upgrade_url":"https://jobspipe.dev/pricing"}')
+    assert spent.kind == "balance" and S.is_exhausting(spent)
+    gate = S.classify("jobspipe", 402, {}, b'{"error":"Monitors need the Builder package or above '
+                                           b'(they deliver to webhooks)"}')
+    assert gate.kind == "unknown" and not S.is_exhausting(gate)
+    for headers in ({"retry-after": "1"}, {}):
+        burst = S.classify("jobspipe", 429, headers, b'{"error":"Rate limit exceeded"}')
+        assert burst.kind == "burst" and not S.is_exhausting(burst)
+
+
 def test_a_dropcontact_batch_larger_than_a_funded_balance_never_locks():
     sig = S.classify("dropcontact", 403, {}, b'{"error":true,"reason":"You submitted 5 valid items but only have 2 credits left"}')
     assert not S.is_exhausting(sig)
@@ -382,7 +395,7 @@ def test_an_unrecorded_vendor_phrase_is_a_tripwire_never_a_mark():
 # gap, not a claim the vendor never runs dry: their 4xx trips `unrecorded` instead.
 _UNRECORDED_SIGNATURE = {
     "adyntel",  # no balance endpoint; documented 402 does not uniquely prove wallet exhaustion
-    "apify", "branddev", "brightdata", "coresignal", "crustdata", "dataforseo",
+    "apify", "branddev", "brightdata", "coresignal", "crustdata",
     "diffbot", "exa", "fiber-ai", "finnhub", "justoneapi", "marketstack",
     "sumble",  # exhaustion not forced; no overflow route claimed
     "harvestapi",  # wallet exhaustion unobserved; no overflow route
@@ -395,6 +408,7 @@ _UNRECORDED_SIGNATURE = {
     "firecrawl",  # credit balance remains; documented 402 was not deliberately forced
     "search1api",  # funded credits remain; documented generic 402 was not deliberately forced
     "bravesearch",  # prepaid credits remain; no empty-credit response was deliberately forced
+    "localfalcon",  # invoiced per request, no prepaid balance to exhaust; no empty-credit response exists to record
     "linkup",  # 429 means either exhausted credit or excess concurrency; balance was not exhausted
     "scrapegraphai",  # trial credits remain; no provider-specific empty-balance body was forced
     "scrubby",  # funded account not exhausted; no provider-specific empty-balance body recorded
@@ -484,6 +498,8 @@ def test_orthogonal_build_wraps_the_vendor_request_unchanged():
                         "query": {"limit": "1", "domain": "stripe.com"}, "body": {"name": "Patrick"}}
     req2 = orthogonal.build(_route(agg_path="/api/v1/{id}/x"), "K", [], None, {"id": "42"})
     assert req2.json == {"api": "findymail", "path": "/api/v1/42/x"}
+    req3 = orthogonal.build(_route(agg_path="/api/v1/{id}/x"), "K", [], None, {"id": "a/../b?c#d"})
+    assert req3.json["path"] == "/api/v1/a%2F..%2Fb%3Fc%23d/x"
 
 
 def test_orthogonal_parse_success_price_upstream_error_and_contract():

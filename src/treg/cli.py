@@ -640,9 +640,9 @@ def cmd_login(args, cfg) -> None:
     # session with one click, else offers every configured door (GitHub / Google / email code).
     import secrets as _secrets
     base = cfg["base_url"].rstrip("/")
-    # Ask the SERVER to start the login: it mints the login_id AND a short pairing code. The browser
-    # must echo the code back before it finishes, so a login you didn't start — someone mailing you a
-    # /login?cli=… link — can't be approved into a token for them. If the server is too old to know
+    # Ask the SERVER to start the login: it mints the login_id AND a short pairing code. The person
+    # types the code from this terminal on the sign-in page, so a login you didn't start — someone
+    # mailing you a /login?cli=… link — can't be approved into a token for them. If the server is too old to know
     # /start, fall back to a locally-minted id (no code) so login still works.
     code = None
     start_exc = None
@@ -666,16 +666,13 @@ def cmd_login(args, cfg) -> None:
             f"  then retry `treg login`.\n"
             f"  (error: {start_exc})"
         )
-    # The code rides in the URL FRAGMENT (never sent to the server, so it stays out of request logs):
-    # the /login page displays it for a visual match against this terminal instead of making the user
-    # type it. The server still validates the code at approve time — the guard itself is unchanged.
     ad_link = _pending_ad_link()
-    url = f"{base}/login?cli={lid}" + (f"&ad={ad_link}" if ad_link else "") + (f"#code={code}" if code else "")
+    url = f"{base}/login?cli={lid}" + (f"&ad={ad_link}" if ad_link else "")
     # flush=True for non-TTY agent shells where stdout is block-buffered — the pairing code must
     # appear immediately so an agent driving a browser can see and verify it.
     print(f"Opening your browser to sign in…\nIf it doesn't open, visit:\n  {url}\n", flush=True)
     if code:
-        print(f"  The sign-in page shows this code — check it matches:  {_B}{_TEAL}{code}{_R}\n", flush=True)
+        print(f"  Type this code on the sign-in page:  {_B}{_TEAL}{code}{_R}\n", flush=True)
     print("Waiting for authorization…", flush=True)
     try:
         webbrowser.open(url)
@@ -1208,6 +1205,8 @@ def _run_catalog(cfg: dict, args) -> None:
     if tier == "platform":
         _kv("served", "on treg's key — you need no account with this provider")
         _kv("price", f"~${a.get('estimated_cost_usd', 0):g} per call, from your team balance")
+    elif tier == "anonymous":
+        _kv("served", "free, no key needed — a verified public route")
     elif tier in ("tool", "credential"):
         if a.get("metered"):
             # An oauth-billed provider (X): the credential is the team's, the upstream bill is
@@ -1219,9 +1218,12 @@ def _run_catalog(cfg: dict, args) -> None:
     else:
         _kv("served", "not yet")
         _dim(f"  {detail}")
-        _tip("Nobody on your team has a key for this provider, and treg is not serving it on its "
-             "own key. Connect one and this same call works:")
-        _cmd(f"treg connections connect --provider {ep.get('provider') or '<provider>'}")
+        # an older server sends no connect_command; a keyless public API sends it empty: nothing to connect
+        connect = a.get("connect_command", f"treg connections connect --provider {ep.get('provider') or '<provider>'}")
+        if connect:
+            _tip("Nobody on your team has a key for this provider, and treg is not serving it on its "
+                 "own key. Connect one and this same call works:")
+            _cmd(connect)
         return
 
     _section("③ Make the call")
@@ -1918,11 +1920,13 @@ def _import_env(args, cfg, env_path: str) -> None:
                     val = values.get(a.secret_name)
                     if not val:
                         print(f"  ✗ {a.tool_name}: {a.secret_name} has no value in the env — skipped"); continue
-                if a.tool_name in existing_tools:               # already registered → skip (or replace) BEFORE writing a secret
+                legacy = prov._legacy_slug(a.detection.provider or "")
+                found = a.tool_name if a.tool_name in existing_tools else (legacy if legacy in existing_tools else None)
+                if found:                                       # already registered → skip (or replace) BEFORE writing a secret
                     if not args.replace:
-                        print(f"  · {a.tool_name}: already registered (use --replace)")
-                        print(f"    ↗ {_detail_url(cfg, 'tool', a.tool_name)}"); continue
-                    c.delete(f"/tools/{existing_tools[a.tool_name]}")
+                        print(f"  · {found}: already registered (use --replace)")
+                        print(f"    ↗ {_detail_url(cfg, 'tool', found)}"); continue
+                    c.delete(f"/tools/{existing_tools[found]}")
                     if a.secret_name in existing_secrets:
                         c.delete(f"/secrets/{existing_secrets[a.secret_name]}")
                 elif a.secret_name in existing_secrets:         # stale orphan secret from a prior failed run
@@ -2075,12 +2079,11 @@ def _import_add_cli(args, cfg) -> None:
         rt = c.post("/tools", json={"name": name, "base_url": base_url, "bindings": bindings, "cli": profile})
         if rt.status_code >= 400:
             sys.exit(f"tool failed ({rt.status_code}) {rt.text[:120]}")
-    # An unknown bin is NOT on the server allow-list (the RCE guard), so it runs LOCALLY; server-run needs
-    # an admin to allow-list the bin. If a key was bound it's also a callable HTTP tool.
+    # The CLI runs locally; if a key was bound it's also a callable HTTP tool.
     print(f"✓ Registered '{name}'. Run it locally: `treg cli run {name}`.")
     print(f"  ↗ {_detail_url(cfg, 'tool', name)}")
     if bindings:
-        print(f"  (key stored — also a callable API tool; to run '{bin_}' on the SERVER too, an admin adds it to TREG_RUN_ALLOWED_BINS.)")
+        print("  (key stored — also a callable API tool.)")
     import json as _json
     entry = {"provider": name.title(), "tokens": [envvar.split("_")[0]] if envvar else [], "base_url": base_url,
              "auth": {"shape": "bearer"},
@@ -2253,6 +2256,8 @@ def _import_llm(c, unknowns: list, env_path: str, args) -> None:
             tool_name = f"{prov._slug(e.get('provider') or var)}-{n}"; n += 1
         if args.replace and var in existing_secrets:      # replace: clear the old secret + tool first
             existing_tools.get(tool_name) and c.delete(f"/tools/{existing_tools[tool_name]}")
+            legacy = prov._legacy_slug(e.get("provider") or var)
+            legacy != tool_name and existing_tools.get(legacy) and c.delete(f"/tools/{existing_tools[legacy]}")
             c.delete(f"/secrets/{existing_secrets[var]}")
         elif var in existing_secrets:
             print(f"  · {var}: already registered (use --replace)"); continue
@@ -4470,7 +4475,11 @@ def cmd_balance(args, cfg) -> None:
     elif auto and auto.get("disabled_reason"):
         print(f"  {_AM}auto top-up off — {auto['disabled_reason']}. Run `treg topup --auto on` after "
               f"fixing your card.{_R}")
-    items = (b.get("entries") or {}).get("items") or []
+    entries = b.get("entries") or {}
+    items = entries.get("items") or []
+    if not items and entries.get("withheld"):  # below admin: an empty list is withheld, not "nothing spent"
+        print(f"\n  {_M}the ledger is shown to team admins — `treg calls` lists this team's calls.{_R}\n")
+        return
     if not items:
         print(f"\n  {_M}no ledger activity yet — nothing has been spent.{_R}\n")
         return

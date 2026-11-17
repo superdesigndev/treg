@@ -1,0 +1,37 @@
+{
+  "metadata": {
+    "total_companies": 857,
+    "returned_companies": 1,
+    "next_cursor": "eyJvIjoxfQ",
+    "credits_charged": 3,
+    "companies_already_paid": 0,
+    "credits_remaining": 561,
+    "credits_allowance": 1000
+  },
+  "data": [
+    {
+      "key": "2464653973565992877",
+      "name": "Deloitte",
+      "legal_name": "DELOITTE LLP",
+      "lei": "549300FJV7IV1ZHGAV28",
+      "domain": "deloitte.com",
+      "website": "https://deloitte.com",
+      "logo": "https://media.licdn.com/dms/image/v2/C560BAQGNtpblgQpJoQ/company-logo_200_200/company-logo_200_200/0/1662120928214/deloitte_logo?e=2147483647&v=beta&t=RmQ0B-LXkBhDips663u_1abgL-zvPI7MVeUjE3bfCSE",
+      "linkedin_url": "https://www.linkedin.com/company/deloitte",
+      "employee_count": 539496,
+      "revenue_usd": 70500000000,
+      "industry": "Business Consulting and Services",
+      "hq_country": "GB",
+      "hq_city": "London",
+      "employer_type": "employer",
+      "jobs": 90,
+      "jobs_in_subtree": 90,
+      "last_posted": "2026-11-13 00:00:00",
+      "countries": 1,
+      "depth": 0,
+      "parent_lei": null,
+      "has_children": false,
+      "children": []
+    }
+  ]
+}

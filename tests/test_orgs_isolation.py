@@ -143,3 +143,29 @@ async def test_role_gate_member_manages_own_and_admin_manages_any(env):
     await _make_tool(env.c, env.member_a, name="member-owned-2", secret_value="MMM")
     mid2 = next(t["id"] for t in (await env.c.get("/tools", headers=_h(env.owner_a))).json() if t["name"] == "member-owned-2")
     assert (await env.c.delete(f"/tools/{mid2}", headers=_h(env.owner_a))).status_code == 200
+
+
+async def test_a_dotted_tool_name_needs_an_admin(env):
+    dotted = "tikhub.tiktok.video.comments"
+    tool = {"name": dotted, "base_url": "http://upstream/member"}
+    skill = {"name": "s", "recipe": "x", "tools": [dict(tool, bindings=[])]}
+    assert (await env.c.post("/tools", headers=_h(env.member_a), json=tool)).status_code == 403
+    assert (await env.c.post("/skills", headers=_h(env.member_a), json=skill)).status_code == 403
+    agent = (await env.c.post(f"/orgs/{env.org_a}/agents", headers=_h(env.owner_a),
+                              json={"name": "cust-a", "pinned_tags": {"customer": "A"}})).json()
+    assert (await env.c.post("/tools", headers=_h(agent["token"]), json=tool)).status_code == 403
+    assert (await env.c.post("/skills", headers=_h(agent["token"]), json=skill)).status_code == 403
+    r = await env.c.get(f"/call/{dotted}", headers=_h(env.owner_a))
+    assert "/member" not in r.text
+
+    plain = {"name": "plain-tool", "base_url": "http://upstream/member"}
+    assert (await env.c.post("/tools", headers=_h(env.member_a), json=plain)).status_code == 200
+    owned = {"name": dotted, "base_url": "http://upstream/owner"}
+    assert (await env.c.post("/tools", headers=_h(env.owner_a), json=owned)).status_code == 200
+
+
+async def test_an_oauth_connection_name_is_a_plain_tool_name(env):
+    r = await env.c.post("/oauth/start", headers=_h(env.member_a), json={
+        "name": "tikhub.tiktok.video.comments", "client_id": "c", "client_secret": "s"})
+    assert r.status_code == 422
+    assert "lowercase letters, digits and dashes" in r.text

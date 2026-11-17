@@ -10,6 +10,8 @@ from sqlalchemy.orm import aliased
 from sqlmodel import select
 
 from ...models import (
+    AgentPayer,
+    AgentPayment,
     ShowcaseApp,
     ShowcaseAppEvent,
     ShowcaseAppKey,
@@ -41,6 +43,8 @@ from ...models import (
     EnterpriseSSOBlock,
     EnterpriseSSOIdentity,
     Feedback,
+    CallCharge,
+    CallMark,
     CallReview,
     Media,
     Hold,
@@ -74,7 +78,7 @@ from ...models import (
 )
 from ..identity import session as sess
 from ..identity import api_keys as managed_keys
-from ..identity.access import _membership_by_token, _resolve_org, lock_user
+from ..identity.access import PAYER_DOMAIN, _membership_by_token, _resolve_org, lock_user
 
 
 MAX_OWNED_TEAMS = 10
@@ -210,6 +214,27 @@ async def _make_org_membership(
     return org, token
 
 
+async def make_payer_team(db: AsyncSession, network: str, address: str) -> Org:
+    """Stage the team of one agent payer wallet on one network
+    (docs/context/architecture/agent-payments.md): a machine user on the unroutable payer domain, a
+    `member` membership with no token, and the (network, address) binding. No signup credit. A
+    wallet whose team was deleted keeps its machine user and gets a new team. Caller commits; a
+    concurrent create loses on the `AgentPayer` primary key."""
+    email = f"{address}.{re.sub(r'[^a-z0-9]+', '-', network.lower())}@{PAYER_DOMAIN}"
+    user = (await db.execute(select(User).where(User.email == email))).scalar_one_or_none()
+    if user is None:
+        user = User(email=email, onboarded=True)
+        db.add(user)
+        await db.flush()
+    org = Org(name=f"Payer {address[:10]}", slug=await _unique_slug(f"payer-{address[2:12]}", db))
+    db.add(org)
+    await db.flush()
+    db.add(Membership(user_id=user.id, org_id=org.id, role="member", token_hash=""))
+    db.add(AgentPayer(network=network, address=address, org_id=org.id))
+    await db.flush()
+    return org
+
+
 async def list_user_orgs(
     *, user_id: int, x_treg_token: str, x_treg_org: str, db: AsyncSession,
 ) -> list[dict]:
@@ -273,6 +298,7 @@ ORG_SCOPED_MODELS = (
     TagBudget,
     MemberSpend,  # likewise: its rows reference a Hold
     TagSpend,  # before the money tables it attributes: its rows reference a Hold that is about to go
+    CallCharge,  # calls not yet applied to the blocks that are about to go
     CallTask, AsyncResourceRecord, ProviderResource, AsyncTaskRecord, LedgerEntry, Hold, CreditBlock,
     OAuthCode, OAuthRefresh,   # grants naming a team that no longer exists
     IdempotentCall,            # a remembered answer belongs to the team that paid for it
@@ -281,9 +307,11 @@ ORG_SCOPED_MODELS = (
     HubListing,   # a tool's search listing goes with the team that asked for it
     HubTool,      # a maker's published tools go with the team that owned them
     CallReview,
+    CallMark,
     Media,        # hosted reference files expire on their own; a deleted team's go now
     AdConversion,  # pending Google Ads conversions belong to the team they'd be attributed to
     EnterpriseSSOIdentity, EnterpriseSSOBlock, EnterpriseDirectoryUser, EnterpriseSSOAudit, EnterpriseSSO,
+    AgentPayment, AgentPayer,  # an agent payer's proofs and its address binding
     Membership,   # last: it is what makes the caller a member of the org being deleted
 )
 

@@ -78,6 +78,8 @@ async def test_routed_attribution(clients, monkeypatch, child):
     async with session_maker() as db:
         for ref, status, endpoint in [('review-call:r0', 503, 'failed.search'),
                                       ('review-call:r1', 200 if child else 500, 'winner.search'),
+                                      # an async attempt's poll: the job endpoint, not what was asked
+                                      ('review-call:r1:p1', 200, 'winner.jobs.get'),
                                       ('reviewXcall:r2', 200, 'unrelated.search')]:
             db.add(CallRecord(org_id=org['org_id'], user_email='tim@superdesign.dev',
                               tool_name='example', method='GET', path='/', call_ref=ref,
@@ -85,7 +87,7 @@ async def test_routed_attribution(clients, monkeypatch, child):
         await db.commit()
     assert (await submit(clients, org)).status_code == 201
     row, = await rows()
-    assert row.invited is False
+    assert row.invited is True  # routed calls are invited, recomputed from the parent's tier
     assert row.routed_via == 'treg.search'
     assert row.endpoint_id == ('winner.search' if child else 'treg.search')
     assert row.provider == ('winner' if child else 'treg')
@@ -95,7 +97,7 @@ async def test_routed_attribution(clients, monkeypatch, child):
     ('platform', 1, 200, False, True), ('platform', 0, 200, False, False),
     ('platform', 1, 500, False, False), ('platform', 1, 200, True, False),
     ('credential', 1, 200, False, False), ('tool', 1, 200, False, False),
-    ('routed', 1, 200, False, False), (None, 1, 200, False, False),
+    ('routed', 1, 200, False, True), ('routed', 0, 200, False, False), (None, 1, 200, False, False),
 ])
 async def test_invited_recomputed(clients, monkeypatch, tier, rate, status, cached, invited):
     monkeypatch.setattr(get_settings(), 'review_sample_rate', rate)
@@ -153,10 +155,11 @@ async def test_mcp_review_relay(clients):
 
 async def test_mcp_review_schema():
     from treg.mcp import mcp, directory_mcp
-    from treg.feedback_contract import REVIEW_DESCRIPTION, REVIEW_USEFULNESS
+    from treg.feedback_contract import REVIEW_ROWS_DESCRIPTION, REVIEW_USEFULNESS
 
     tool = next(tool for tool in await mcp.list_tools() if tool.name == 'review')
-    assert tool.description == REVIEW_DESCRIPTION
+    assert tool.description == REVIEW_ROWS_DESCRIPTION
+    assert 'rows' in tool.input_schema['properties']
     assert tool.input_schema['properties']['usefulness']['enum'] == list(REVIEW_USEFULNESS)
     assert tool.input_schema['required'] == ['call_id', 'usefulness']
     assert tool.annotations.read_only_hint is False
@@ -200,3 +203,211 @@ async def test_public_demo_cannot_submit_reviews(clients):
                                   json={'call_id': 'id', 'usefulness': 'useful'})
     assert response.status_code == 403
     assert await rows() == []
+
+
+async def marks_for(call_id='review-call'):
+    from treg.models import CallMark
+    async with session_maker() as db:
+        return list((await db.execute(select(CallMark).where(CallMark.call_id == call_id))).scalars())
+
+
+async def test_review_rows_become_one_mark_tied_to_the_review(clients):
+    org = await seed(clients)
+    response = await submit(clients, org, usefulness='partly', reason='Two rows were off.',
+                            rows=[{'index': 2, 'field': 'email', 'verdict': 'wrong'},
+                                  {'index': 5, 'verdict': 'missing'}])
+    assert response.status_code == 201, response.text
+    body = response.json()
+    mark, = await marks_for()
+    assert body == {'review_id': body['review_id'], 'status': 'received', 'mark_id': mark.id}
+    assert (mark.review_id, mark.basis, mark.endpoint_id, mark.client) == (
+        body['review_id'], 'impression', 'example.search', 'review-test')
+    assert mark.items == [{'index': 2, 'field': 'email', 'verdict': 'wrong'},
+                          {'index': 5, 'verdict': 'missing'}]
+    # A repeated review keeps the first, adds no rows and names the first one's mark.
+    again = await submit(clients, org, usefulness='not_useful', rows=[{'verdict': 'wrong'}])
+    assert again.json() == {'review_id': body['review_id'], 'status': 'already_reviewed',
+                            'mark_id': mark.id}
+    assert len(await marks_for()) == 1
+
+
+async def test_review_rows_take_a_stated_basis_and_refuse_unknown_keys(clients):
+    org = await seed(clients)
+    bad = await submit(clients, org, rows=[{'row': 2, 'verdict': 'wrong'}])
+    assert bad.status_code == 422
+    assert await marks_for() == []
+    ok = await submit(clients, org, usefulness='partly', basis='bounced',
+                      rows=[{'index': 0, 'field': 'email', 'verdict': 'wrong'}])
+    assert ok.status_code == 201, ok.text
+    mark, = await marks_for()
+    assert mark.basis == 'bounced'
+
+
+async def test_review_without_rows_writes_no_mark(clients):
+    org = await seed(clients)
+    assert (await submit(clients, org)).json()['status'] == 'received'
+    assert await marks_for() == []
+
+
+async def test_mcp_review_relays_rows(clients):
+    from test_mcp import _call_tool as team_call, mcp_session
+
+    org = await seed(clients)
+    async with mcp_session(clients) as client:
+        result = await team_call(client, 'review', {
+            'call_id': 'review-call', 'usefulness': 'partly',
+            'rows': [{'index': 1, 'field': 'title', 'verdict': 'stale'}]}, token=org['token'])
+    mark, = await marks_for()
+    assert result['mark_id'] == mark.id
+    assert mark.items == [{'index': 1, 'field': 'title', 'verdict': 'stale'}]
+
+
+async def _call_schema(client, token):
+    from test_mcp import _rpc
+    await _rpc(client, 'initialize', {'protocolVersion': '2025-06-18', 'capabilities': {},
+                                      'clientInfo': {'name': 'test', 'version': '1'}}, token)
+    tools = (await _rpc(client, 'tools/list', {}, token)).json()['result']['tools']
+    return next(t for t in tools if t['name'] == 'call')['inputSchema']
+
+
+@pytest.mark.parametrize('rate', [0, 1])
+async def test_prior_review_rides_the_next_call_only_when_shown(clients, monkeypatch, rate):
+    from test_mcp import _call_tool as team_call, mcp_session
+
+    monkeypatch.setattr(get_settings(), 'mcp_prior_review_rate', rate)
+    org = await seed(clients)
+    prior = {'call_id': 'review-call', 'usefulness': 'partly',
+             'rows': [{'index': 0, 'field': 'email', 'verdict': 'wrong'}]}
+    async with mcp_session(clients) as client:
+        schema = await _call_schema(client, org['token'])
+        assert ('prior' in schema['properties']) is bool(rate)
+        await team_call(client, 'call', {'endpoint_id': 'nope.search', 'prior': prior}, token=org['token'])
+        await _priors_done()
+    if rate:
+        row, = await rows()
+        assert (row.client, row.usefulness) == ('mcp-prior', 'partly')
+        mark, = await marks_for()
+        assert mark.review_id == row.id and mark.items == [{'index': 0, 'field': 'email', 'verdict': 'wrong'}]
+    else:
+        assert await rows() == [] and await marks_for() == []
+
+
+async def test_a_bad_prior_review_never_fails_the_call(clients, monkeypatch):
+    from test_mcp import _call_tool as team_call, mcp_session
+
+    monkeypatch.setattr(get_settings(), 'mcp_prior_review_rate', 1)
+    org = await seed(clients)
+    async with mcp_session(clients) as client:
+        plain = await team_call(client, 'call', {'endpoint_id': 'nope.search'}, token=org['token'])
+        with_prior = await team_call(client, 'call', {
+            'endpoint_id': 'nope.search',
+            'prior': {'call_id': 'not-a-call-of-ours', 'usefulness': 'useful'}}, token=org['token'])
+        await _priors_done()
+    assert with_prior == plain
+    assert await rows() == []
+
+
+@pytest.mark.parametrize('prior', [
+    'unreviewed', ['review-call'], 7, True,
+    {'call_id': 'review-call', 'usefulness': 'partly', 'reason': 'x' * 201},
+    {'call_id': 'review-call', 'usefulness': 'partly', 'rows': [{'row': 2, 'verdict': 'wrong'}]},
+    {'call_id': 'review-call', 'usefulness': 'great'},
+    {'usefulness': 'useful'},
+])
+@pytest.mark.parametrize('rate', [0, 1])
+async def test_a_malformed_prior_review_is_dropped_and_the_call_runs(clients, monkeypatch, prior, rate):
+    from test_mcp import _call_tool as team_call, mcp_session
+
+    monkeypatch.setattr(get_settings(), 'mcp_prior_review_rate', rate)
+    org = await seed(clients)
+    async with mcp_session(clients) as client:
+        plain = await team_call(client, 'call', {'endpoint_id': 'nope.search'}, token=org['token'])
+        with_prior = await team_call(client, 'call', {'endpoint_id': 'nope.search', 'prior': prior},
+                                     token=org['token'])
+        await _priors_done()
+    assert with_prior == plain
+    assert await rows() == []
+
+
+async def _priors_done():
+    import asyncio
+    from treg import mcp
+    while mcp._PRIOR_TASKS:
+        await asyncio.gather(*list(mcp._PRIOR_TASKS), return_exceptions=True)
+
+
+async def test_a_slow_prior_review_does_not_hold_the_call(clients, monkeypatch):
+    import asyncio
+    import time
+    from treg import mcp
+    from test_mcp import _call_tool as team_call, mcp_session
+
+    monkeypatch.setattr(get_settings(), 'mcp_prior_review_rate', 1)
+    monkeypatch.setattr(mcp, 'PRIOR_TIMEOUT_S', 0.5)
+    started = asyncio.Event()
+
+    async def hang(prior, token):
+        started.set()
+        await asyncio.sleep(3600)
+    monkeypatch.setattr(mcp, '_submit_prior', hang)
+    org = await seed(clients)
+    async with mcp_session(clients) as client:
+        began = time.monotonic()
+        await team_call(client, 'call', {'endpoint_id': 'nope.search',
+                                         'prior': {'call_id': 'review-call', 'usefulness': 'useful'}},
+                        token=org['token'])
+        assert time.monotonic() - began < 2
+        assert started.is_set() and mcp._PRIOR_TASKS
+        for task in list(mcp._PRIOR_TASKS):
+            task.cancel()
+        await asyncio.gather(*list(mcp._PRIOR_TASKS), return_exceptions=True)
+
+
+async def test_the_real_submission_gives_up_after_its_timeout(clients, monkeypatch):
+    import asyncio
+    from contextlib import asynccontextmanager
+    from treg import mcp
+
+    monkeypatch.setattr(mcp, 'PRIOR_TIMEOUT_S', 0.05)
+
+    class Slow:
+        async def post(self, *args, **kw):
+            await asyncio.sleep(3600)
+
+    @asynccontextmanager
+    async def slow_api(token, *, client_name='mcp'):
+        yield Slow()
+    monkeypatch.setattr(mcp, '_api', slow_api)
+    await asyncio.wait_for(mcp._submit_prior(mcp.PriorReviewIn(call_id='c1', usefulness='useful'), 't'), 1)
+
+
+async def test_a_retried_review_returns_the_mark_its_rows_wrote(clients):
+    org = await seed(clients)
+    rows_ = [{'index': 1, 'verdict': 'wrong'}]
+    first = (await submit(clients, org, usefulness='partly', rows=rows_)).json()
+    again = await submit(clients, org, usefulness='partly', rows=rows_)
+    assert again.status_code == 200
+    assert again.json() == {'review_id': first['review_id'], 'status': 'already_reviewed',
+                            'mark_id': first['mark_id']}
+    assert len(await marks_for()) == 1
+
+
+async def test_review_rows_spend_the_mark_allowance(clients, monkeypatch):
+    from treg.application import feedback as feedback_app
+
+    monkeypatch.setattr(feedback_app, 'MARK_RATE_MAX', 1)
+    org = await seed(clients)
+    async with session_maker() as db:
+        db.add(CallRecord(org_id=org['org_id'], user_email='tim@superdesign.dev', tool_name='example',
+                          method='GET', path='/', call_ref='second-call', status_code=200,
+                          endpoint_id='example.search', provider='example'))
+        await db.commit()
+    marked = await clients.post('/marks', headers={'X-Treg-Token': org['token']},
+                                json={'call_id': 'second-call', 'basis': 'bounced',
+                                      'items': [{'verdict': 'wrong'}]})
+    assert marked.status_code == 201, marked.text
+    refused = await submit(clients, org, usefulness='partly', rows=[{'verdict': 'wrong'}])
+    assert refused.status_code == 429
+    assert await rows() == [] and await marks_for() == []
+    # Without rows the review spends nothing and is saved.
+    assert (await submit(clients, org, usefulness='partly')).status_code == 201

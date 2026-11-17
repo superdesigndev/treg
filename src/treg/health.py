@@ -15,9 +15,11 @@ import httpx
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlmodel import select
 
-from . import crypto, oauth, oauth_providers
+from . import oauth, oauth_providers
+from .infra import credential_cipher
+from .config import get_settings
 from .infra.upstream import injectors
-from .infra.upstream.ssrf import host_is_public as host_is_public, safe_webhook_url
+from .infra.upstream.ssrf import host_is_public as host_is_public, host_is_public_async as host_is_public_async, safe_webhook_url, url_host_is_public
 from .models import Invite, Membership, PendingOAuth, Secret, Tool, User
 from .timeutil import utcnow_naive
 
@@ -73,7 +75,7 @@ async def _probe(tool: Tool, smap: dict[int, Secret], client: httpx.AsyncClient)
             s = smap.get(b["secret_id"])  # a dangling binding (secret deleted) → skip, don't KeyError
             if s is None:
                 continue
-            raw = crypto.decrypt(s.value)
+            raw = credential_cipher.opened(s)
             injectors.inject(headers, params, b, raw)  # a bad binding must not 500 the run
             if proof := oauth_providers.connection_appsecret_proof(s, b, raw, url):
                 params = [(k, v) for (k, v) in params if k != "appsecret_proof"] + [("appsecret_proof", proof)]
@@ -83,6 +85,8 @@ async def _probe(tool: Tool, smap: dict[int, Secret], client: httpx.AsyncClient)
         probe_url = httpx.URL(url)
         for k, v in params:
             probe_url = probe_url.copy_add_param(k, v)
+        if get_settings().proxy_ssrf_check and not await url_host_is_public(probe_url):
+            return "unknown", "probe refused: host resolves to a non-public address"
         r = await client.request(hc.get("method", "GET"), probe_url, headers=headers, timeout=15.0)
     except (ValueError, KeyError, IndexError, AttributeError) as exc:
         return "invalid", f"injection failed: {exc}"  # a bad binding IS a credential/config problem
@@ -144,46 +148,51 @@ async def run_all(db: AsyncSession, client: httpx.AsyncClient, org_id: int | Non
         _mark(s, status, detail, now)
         evaluated.add(sid)
 
-    for tool in tools:
-        # One bad tool (a malformed health_check, a weird binding, a decrypt error) must NEVER 500 the
-        # whole batch — a health run has to be resilient. Isolate each tool; on an unexpected error mark
-        # its secrets "unknown" (a runner problem, not proof the credential is bad) and keep going.
-        try:
-            smap = {sid: secrets[sid] for b in tool.bindings
-                    if (sid := b.get("secret_id")) is not None and sid in secrets}
-            if any(oauth_providers.is_paused(s.provider) for s in smap.values()):
-                # Paused on this deployment: no refresh, no probe, no verdict. The provider would
-                # fail every check, and the connection must be intact when the pause is lifted.
-                continue
-            oauth_bad = False
-            for sid, s in smap.items():
-                if s.kind == "oauth":
-                    try:
-                        await oauth.ensure_fresh(s, db, client)
-                    except Exception as exc:  # noqa: BLE001
-                        apply(s, sid, "invalid", f"oauth refresh failed: {exc}")
-                        oauth_bad = True
-            if oauth_bad:
-                continue  # a dead credential can't pass a probe; already flagged
-            hc = tool.health_check if isinstance(tool.health_check, dict) else None  # ignore a malformed hc
-            if hc and hc.get("path") is not None:
-                status, detail = await _probe(tool, smap, client)
-                for sid, s in smap.items():
-                    apply(s, sid, status, detail)
-            else:
+    with credential_cipher.call_scope():  # each credential opens once per run
+        for tool in tools:
+            # One bad tool (a malformed health_check, a weird binding, a decrypt error) must NEVER 500 the
+            # whole batch — a health run has to be resilient. Isolate each tool; on an unexpected error mark
+            # its secrets "unknown" (a runner problem, not proof the credential is bad) and keep going.
+            try:
+                smap = {sid: secrets[sid] for b in tool.bindings
+                        if (sid := b.get("secret_id")) is not None and sid in secrets}
+                if any(oauth_providers.is_paused(s.provider) for s in smap.values()):
+                    # Paused on this deployment: no refresh, no probe, no verdict. The provider would
+                    # fail every check, and the connection must be intact when the pause is lifted.
+                    continue
+                await db.commit()  # credentials open over the network: hold no transaction
+                await credential_cipher.open_for_call(smap.values())
+                oauth_bad = False
                 for sid, s in smap.items():
                     if s.kind == "oauth":
-                        apply(s, sid, "ok", "oauth refresh ok")  # refresh succeeded above (won't downgrade a probe-fail)
-                    # non-oauth without a probe can't be validated without calling — leave as-is
-        except Exception as exc:  # noqa: BLE001 — contain the blast radius to this one tool
-            for b in tool.bindings:
-                sid = b.get("secret_id")
-                if sid in secrets:
-                    apply(secrets[sid], sid, "unknown", f"health check errored: {str(exc)[:120]}")
-        # Persist THIS tool's verdicts before moving on — so the whole sweep isn't one long transaction
-        # holding a DB connection idle across every slow probe (bad for Postgres). expire_on_commit=False
-        # keeps the in-memory objects usable for the worst-status-wins logic in later iterations.
-        await db.commit()
+                        try:
+                            await oauth.ensure_fresh(s, db, client)
+                        except Exception as exc:  # noqa: BLE001
+                            apply(s, sid, "invalid", f"oauth refresh failed: {exc}")
+                            oauth_bad = True
+                if oauth_bad:
+                    continue  # a dead credential can't pass a probe; already flagged
+                await db.commit()
+                await credential_cipher.open_for_call(smap.values())  # a value the refresh replaced
+                hc = tool.health_check if isinstance(tool.health_check, dict) else None  # ignore a malformed hc
+                if hc and hc.get("path") is not None:
+                    status, detail = await _probe(tool, smap, client)
+                    for sid, s in smap.items():
+                        apply(s, sid, status, detail)
+                else:
+                    for sid, s in smap.items():
+                        if s.kind == "oauth":
+                            apply(s, sid, "ok", "oauth refresh ok")  # refresh succeeded above (won't downgrade a probe-fail)
+                        # non-oauth without a probe can't be validated without calling — leave as-is
+            except Exception as exc:  # noqa: BLE001 — contain the blast radius to this one tool
+                for b in tool.bindings:
+                    sid = b.get("secret_id")
+                    if sid in secrets:
+                        apply(secrets[sid], sid, "unknown", f"health check errored: {str(exc)[:120]}")
+            # Persist THIS tool's verdicts before moving on — so the whole sweep isn't one long transaction
+            # holding a DB connection idle across every slow probe (bad for Postgres). expire_on_commit=False
+            # keeps the in-memory objects usable for the worst-status-wins logic in later iterations.
+            await db.commit()
 
     # A secret no longer bound to any tool carries a frozen verdict about a binding that's gone —
     # reset it to "unknown" so /health and /admin/health don't report a permanently-stale ok/invalid.
@@ -249,6 +258,8 @@ async def _notify(invalid: list[Secret], db: AsyncSession, client: httpx.AsyncCl
         if webhook is None:
             continue
         try:
+            if get_settings().proxy_ssrf_check and not await url_host_is_public(webhook):
+                continue
             await client.post(webhook, json={"owner": owner, "invalid_credentials": items}, timeout=10.0)
         except Exception:  # noqa: BLE001 — an alert hiccup must never break the run
             pass

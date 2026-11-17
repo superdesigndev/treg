@@ -947,10 +947,16 @@ def ingest_dataforseo(refresh: bool) -> tuple[Path, dict]:
         stem = "/".join(seg[: seg.index("live")]) if "live" in seg else (
             "/".join(seg[:-1]) if seg[-1] == "task_post" else path)
         families.setdefault(stem, []).append(path)
+    # A task_post already listed beside its live twin was added on purpose (the cheaper Standard
+    # queue); keep it, or a regeneration drops it and its reader.
+    current = CATALOG / "dataforseo.extended.yaml"
+    listed = {ep.get("path") for ep in (yaml.safe_load(current.read_text()) or {}).get("endpoints") or []
+              } if current.is_file() else set()
     chosen: list[str] = []
     for paths in families.values():
         live = [p for p in paths if "/live" in p]
-        chosen += live or paths
+        kept = [p for p in paths if p.endswith("/task_post") and p.removeprefix("/v3") in listed]
+        chosen += (live + kept) if live else paths
 
     skip = core_routes("dataforseo")
     endpoints = []

@@ -2,6 +2,7 @@ package api
 
 import (
 	"net/http"
+	"sync"
 	"testing"
 )
 
@@ -62,6 +63,7 @@ func TestEnvironmentWinsAndLoopbackIsDirect(t *testing.T) {
 	}
 	t.Setenv("HTTPS_PROXY", "")
 	t.Setenv("NO_PROXY", "")
+	t.Cleanup(func() { systemOnce, system = sync.Once{}, systemSettings{} })
 	systemOnce.Do(func() {})
 	system = systemSettings{https: "http://sys:1"}
 	if u, _ := Proxy(req); u == nil || u.Host != "sys:1" {

@@ -353,13 +353,18 @@ async def _platform_reserve(mk: MarketplaceCall, caller: Caller, meta: CallMeta 
     `allow_holdless` admits a `holdless_eligible` call from an untagged caller in an org listed in
     `holdless_free_org_ids` without a hold: a $0 reserve and its release only queued on the org's
     balance row. A tagged call keeps its hold,
-    because the tag rows written with it count toward `calls_per_day`."""
+    because the tag rows written with it count toward `calls_per_day`.
+
+    The hold is the estimate, or the row's declared worst case when that is higher: a settle that
+    reads the provider's figure may exceed the estimate, and calls in flight together all passed
+    the balance gate already, so only a hold that covers the worst case bounds them."""
     if (allow_holdless and mk.holdless_eligible and not meta.tags
             and caller.org_id in get_settings().holdless_free_org_ids):
         await _holdless_reserve(mk, caller)
         return
     mk.holdless = False
-    charged = ledger.with_margin(mk.estimate_micro)
+    held = max(mk.estimate_micro, mk.worst_case_micro)
+    charged = ledger.with_margin(held)
     mk.payer_org_id = caller.org_id
     mk.reserved_micro = max(0, charged)
     mk.reserved_at = time.monotonic()
@@ -390,14 +395,14 @@ async def _platform_reserve(mk: MarketplaceCall, caller: Caller, meta: CallMeta 
                 # The builder's own per-tag ceilings first: a refusal that belongs to ONE of their users
                 # must not surface as the team-wide balance error, which names the builder's private numbers.
                 with timing.phase("preflight"), money_stage(db, "preflight"):
-                    await _enforce_tag_budgets(caller, meta, db, add_micro=mk.estimate_micro)
+                    await _enforce_tag_budgets(caller, meta, db, add_micro=held)
                     member_id = await _enforce_member_spend_cap(caller, charged, db)
-                    await _enforce_platform_daily_cap(caller, mk.estimate_micro, db)
+                    await _enforce_platform_daily_cap(caller, held, db)
                     await _enforce_trial_allowance(caller, mk.provider, mk.endpoint_id, db)
                 try:
                     with timing.phase("ledger"):
                         mk.call_id = await ledger.reserve_in_transaction(
-                            db, caller.org_id, mk.endpoint_id, mk.estimate_micro,
+                            db, caller.org_id, mk.endpoint_id, held,
                             meta={"tier": "oauth" if mk.billed_oauth else "platform",
                                   "provider": mk.provider, "cost_type": mk.cost_type},
                             tags=meta.tags, call_id=call_ref,
@@ -414,11 +419,17 @@ async def _platform_reserve(mk: MarketplaceCall, caller: Caller, meta: CallMeta 
                     raise
                 with timing.phase("commit"):
                     await db.commit()
-                # The conditional UPDATE bypasses an ORM instance. Reload after commit so auto-top-up sees
-                # the balance crossing that triggered this reservation.
-                mark_money(db, "reserve_post_commit", org_id=caller.org_id, call_id=call_ref)
-                with timing.phase("post_commit"), money_stage(db, "post_commit_read"):
-                    org = await db.get(Org, caller.org_id)
+        if auto_on:
+            # The conditional UPDATE bypasses an ORM instance, so auto top-up reloads the balance
+            # this reservation just moved: after the lease, on its own session, and only for a team
+            # that has it on. The hold is committed; a failed read must not fail the call.
+            org = None
+            try:
+                async with session_maker() as read_db:
+                    org = await read_db.get(Org, caller.org_id)
+            except Exception as exc:  # noqa: BLE001
+                logging.getLogger("treg.ledger").warning(
+                    "auto top-up read after reserve failed for org %s: %s", caller.org_id, exc)
             if org is not None:
                 billing.maybe_schedule_autotopup(org)
     except ledger.PurchasedCreditShort as exc:

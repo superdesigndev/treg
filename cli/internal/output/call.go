@@ -121,6 +121,11 @@ func envelope(r *api.Response, ctype string) callEnvelope {
 	}
 	if v := h.Get("X-Treg-Hint"); v != "" {
 		m.Set("hint", v)
+		// An invitation's words are the registry's; a script reading --json gets them here,
+		// since nothing goes to stderr in this mode.
+		if t := h.Get("X-Treg-Hint-Text"); t != "" {
+			m.Set("hint_text", t)
+		}
 	}
 	if v := h.Get("X-Treg-Routed-Tool"); v != "" {
 		m.Set("routed_tool", v)
@@ -202,7 +207,7 @@ func (p *Printer) chargeLine(r *api.Response) {
 	}
 }
 
-// hintLine is the registry's optional invitation (X-Treg-Hint: review|feedback); X-Treg-Review is
+// hintLine is the registry's optional invitation (X-Treg-Hint: review|mark|feedback); X-Treg-Review is
 // what a registry before 0.19 sends.
 func (p *Printer) hintLine(r *api.Response) {
 	h := r.Header
@@ -216,6 +221,12 @@ func (p *Printer) hintLine(r *api.Response) {
 			"prefer it unless you need options only this provider has.\n", routed)
 	}
 	if id == "" {
+		return
+	}
+	// The registry writes the words (X-Treg-Hint-Text), so they change without a CLI release; the
+	// built-in lines below are for a registry that sends none, and match the Python CLI's.
+	if text := h.Get("X-Treg-Hint-Text"); text != "" && kind != "" {
+		fmt.Fprintf(p.Err, "treg: %s\n", text)
 		return
 	}
 	switch kind {

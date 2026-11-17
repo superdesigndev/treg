@@ -4,13 +4,11 @@
   "with_phone": 2749,
   "with_linkedin": 12830,
   "billing": {
-    "card": "payg",
-    "charge_usd": 0.014,
-    "charge_micro": 14000,
+    "card": "treg",
+    "charge_usd": 0.002,
+    "charge_micro": 2000,
     "events": {
-      "count_unit": 7
-    },
-    "count_units": 7,
-    "est_scan_usd": 0.009712
+      "count_unit": 1
+    }
   }
 }

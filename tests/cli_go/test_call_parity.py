@@ -75,7 +75,7 @@ def _assert_same(py, go):
     assert normalize(py.err) == normalize(go.err), (py.err, go.err)
 
 
-IGNORED = {"user-agent", "accept-encoding", "connection", "host", "x-treg-client-version",
+IGNORED = {"user-agent", "accept-encoding", "connection", "host", "x-treg-client-version", "x-treg-hints",
            "x-treg-session", "x-treg-agent"}
 
 
@@ -169,6 +169,19 @@ def test_rejected_env_token(fake, tmp_path, go_bin):
     fake.route("/call/auth", Canned(401, {"X-Treg-Error": "1"}, b'{"detail":"invalid token"}'))
     py, go, *_ = _both(fake, tmp_path, go_bin, ["call", "auth"], env={"TREG_TOKEN": "env-token"})
     _assert_same(py, go)
+
+
+@pytest.mark.parametrize("env,runtime", [
+    ({"COPILOT_CLI": "1", "COPILOT_AGENT_SESSION_ID": "94be"}, "copilot-cli"),
+    ({"COPILOT_AGENT": "1"}, "copilot-vscode"),
+])
+def test_only_the_binary_names_copilot(fake, tmp_path, go_bin, env, runtime):
+    """A documented difference (cli-binary.md): the frozen Python CLI calls a command Copilot runs `cli`."""
+    fake.route("/call/hdr", Canned(200, {}, b"{}"))
+    py, go, py_seen, go_seen = _both(fake, tmp_path, go_bin, ["call", "hdr"], env={"TREG_TELEMETRY": "1", **env})
+    _assert_same(py, go)
+    assert py_seen[0].headers.get("x-treg-client") == "cli"
+    assert go_seen[0].headers.get("x-treg-client") == runtime
 
 
 def test_org_override_and_session_headers(fake, tmp_path, go_bin):

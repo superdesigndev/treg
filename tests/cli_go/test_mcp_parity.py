@@ -1,6 +1,6 @@
 """`treg mcp install|grants|use-team` from the Go CLI beside the Python CLI: the same output, exit
 status and agent configs (Claude Code through its own CLI, Cursor, Codex, opencode), against a
-real registry."""
+real registry. GitHub Copilot is written by the Go CLI only."""
 from __future__ import annotations
 
 import json
@@ -140,6 +140,30 @@ def test_mcp_install_writes_the_registry_it_talks_to_go(tmp_path, live, team, go
     assert f'url = "{want}"' in (go_m.home / ".codex/config.toml").read_text()
     assert go_m.calls("claude")[-1][7] == want
     assert str(go_bin) not in "".join(p.read_text() for p in go_m.home.rglob("*") if p.is_file())
+
+
+def test_mcp_install_writes_github_copilot_go(tmp_path, live, team, go_bin):
+    """Intentional difference: the Go CLI also registers the server in GitHub Copilot's user file,
+    $COPILOT_HOME/mcp-config.json (default ~/.copilot), which Copilot CLI and Copilot in VS Code
+    both read; the frozen Python CLI never writes it."""
+    py_m, go_m = _machines(tmp_path, live, team)
+    for m in (py_m, go_m):
+        m.mkdirs(".copilot")
+        m.write(".copilot/mcp-config.json", json.dumps({"mcpServers": {"gh": {"type": "local", "command": "x"}}}))
+    want = live.url + "/mcp/"
+    for argv, headers in ((["mcp", "install"], {"Authorization": f"Bearer {team.token}"}),
+                          (["mcp", "install", "--oauth"], None)):
+        go = run_in(go_m, [str(go_bin)], argv)
+        assert go.code == 0, go
+        assert "GitHub Copilot" in go.text
+        servers = json.loads((go_m.home / ".copilot/mcp-config.json").read_text())["mcpServers"]
+        entry = {"type": "http", "url": want, **({"headers": headers} if headers else {}), "tools": ["*"]}
+        assert servers == {"gh": {"type": "local", "command": "x"}, "treg": entry}, servers
+        assert list(servers["treg"]) == list(entry)
+    assert _private(go_m, ".copilot/mcp-config.json") == 0o600
+    py, _ = both(py_m, go_m, go_bin, ["mcp", "install"])
+    assert py.code == 0
+    assert "treg" not in json.loads((py_m.home / ".copilot/mcp-config.json").read_text())["mcpServers"]
 
 
 def test_mcp_grants_live(tmp_path, live, team, go_bin):

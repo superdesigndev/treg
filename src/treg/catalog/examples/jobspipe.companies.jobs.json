@@ -1,0 +1,51 @@
+{
+  "metadata": {
+    "total_results": null,
+    "truncated_results": 2,
+    "total_companies": null,
+    "truncated_companies": 0,
+    "next_cursor": "eyJwIjoiMjAyNi0xMS0xMyAwNjowMDowMCIsImsiOiI1NjU2NzA0OTA5MDQwNzgwMjI2IiwidiI6MiwidyI6IjIwMjYtMTEtMTQgMDA6MDk6MDAifQ",
+    "next_delta_cursor": null,
+    "credits_charged": 1,
+    "jobs_already_paid": 1,
+    "credits_remaining": 565,
+    "credits_allowance": 1000
+  },
+  "data": [
+    {
+      "id": "8926653002",
+      "job_title": "Renewals Manager - Italy/ Spain",
+      "company": "GitLab",
+      "company_domain": "about.gitlab.com",
+      "url": "https://job-boards.greenhouse.io/gitlab/jobs/8926653002",
+      "final_url": null,
+      "date_posted": "2026-11-13T13:11:49+00:00",
+      "discovered_at": "2026-11-13T18:18:56+00:00",
+      "status": "active",
+      "location": "Remote",
+      "country_code": null,
+      "remote": true,
+      "work_arrangement": "remote",
+      "seniority": null,
+      "min_annual_salary_usd": null,
+      "max_annual_salary_usd": null,
+      "salary_currency": null,
+      "estimated_avg_annual_salary_usd": null,
+      "occupation_code": "1221",
+      "occupation_label": "Sales and Marketing Managers",
+      "technology_slugs": [
+        "gitlab"
+      ],
+      "description": "GitLab is the intelligent orchestration platform for DevSecOps. GitLab enables organizations to increase developer productivity, improve operational efficiency, reduce security and compliance risk, an…",
+      "sources": [
+        {
+          "provider": "greenhouse",
+          "url": "https://job-boards.greenhouse.io/gitlab/jobs/8926653002",
+          "seen_at": "2026-11-13T18:18:56.926868+00:00"
+        }
+      ],
+      "last_seen_at": "2026-11-13 18:18:56",
+      "ghost_score": null
+    }
+  ]
+}

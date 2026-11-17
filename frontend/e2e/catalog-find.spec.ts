@@ -55,12 +55,14 @@ test('an empty auto answer is one line, never a page', async ({ page }) => {
 })
 
 test('a platform name being typed filters the shelves and gets an answer above them; one character does not ask', async ({ page }) => {
+  await page.clock.install()
   const asked = await answer(page, { verdict: 'strong', rows: [row('hunter.people.email.find', 0.9)] })
   const everyCard = await page.locator('.cat-card').count()
   await box(page).fill('t')
-  await page.waitForTimeout(1200)
+  await page.clock.runFor(2000)                                              // well past the typing pause
   expect(asked, 'one character does not ask').toEqual([])
   await box(page).fill('tiktok')
+  await page.clock.runFor(2000)
   await expect.poll(() => asked).toEqual(['tiktok'])
   await expect(page.locator('.fa .ui-tbody .ui-tr')).toHaveCount(1)
   const names = await page.locator('.cat-card .cat-name b').allTextContents()

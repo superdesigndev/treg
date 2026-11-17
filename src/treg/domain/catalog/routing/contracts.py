@@ -216,6 +216,15 @@ class Adapter:
     filter_max: dict[str, int] = field(default_factory=dict)  # `max:` a filter this provider caps (`limit: 8`); a request above it skips the provider
     additional_capabilities: tuple[str, ...] = ()  # opt-in reuse of the same request/output mapping
     route: bool = True                        # False: hit/miss evidence only, never a router candidate
+    # `{cursor: <upstream path>}`: where the provider takes back the `next_cursor` its answer carried.
+    # Cursor only: a page number over a provider whose order changes between calls (Dropleads)
+    # repeats and skips rows.
+    paging: dict[str, str] = field(default_factory=dict)
+    # `{page | page0 | offset | cursor: <expression over the provider request>}` (`page0`: a page
+    # number counted from 0): which page of the
+    # answer a request asks for. Read by call events only, so a later page is a different
+    # question from the first (`input_id`), never a retry of it.
+    position: dict[str, str] = field(default_factory=dict)
     verified_capabilities: tuple[str, ...] = ()
     verified: bool = False
     verify_note: str = ""
@@ -383,7 +392,8 @@ def retired_contract_keys(doc: dict) -> list[str]:
 
 ADAPTER_KEYS = frozenset({
     "accepts", "in", "in_expr", "in_read", "body_array", "test_identity", "cost_units", "max",
-    "additional_capabilities", "route", "const", "out", "miss", "verdict", "verdicts", "row"})
+    "additional_capabilities", "route", "const", "out", "miss", "verdict", "verdicts", "row", "paging",
+    "position"})
 # The longest text a mapped row field keeps: a row is read by an agent, and one provider's
 # multi-page bio would otherwise cost more tokens than the rest of the answer.
 ROW_TEXT_MAX = 300
@@ -654,12 +664,36 @@ def _parse_verdict(cap: str, raw) -> dict:
             "verdict_decisive": decisive}
 
 
+def _paging(eid: str, raw, out: dict) -> dict[str, str]:
+    """`paging: {cursor: <body. or queryParams. path>}`, beside the `out.next_cursor` it pages with."""
+    if not raw:
+        return {}
+    if (not isinstance(raw, dict) or list(raw) != ["cursor"]
+            or not str(raw["cursor"]).startswith(("body.", "queryParams."))):
+        raise ValueError(f"adapter {eid}: paging is {{cursor: <body. or queryParams. path>}}")
+    if "next_cursor" not in out:
+        raise ValueError(f"adapter {eid}: paging.cursor needs out.next_cursor")
+    return {str(k): str(v) for k, v in raw.items()}
+
+
+POSITION_KINDS = ("page", "page0", "offset", "cursor")
+
+
+def _position(eid: str, raw) -> dict[str, str]:
+    """`position: {page: queryParams.page}`: one kind, read from one expression."""
+    if not raw:
+        return {}
+    if not isinstance(raw, dict) or len(raw) != 1 or next(iter(raw)) not in POSITION_KINDS:
+        raise ValueError(f"adapter {eid}: position is {{page | page0 | offset | cursor: <expression>}}")
+    return {str(k): str(v) for k, v in raw.items()}
+
+
 def parse_adapters(doc: dict) -> dict[str, Adapter]:
     out = {}
     for eid, a in (doc.get("adapters") or {}).items():
         _known_keys(f"adapter {eid}", a, ADAPTER_KEYS)
         _expressions(f"adapter {eid}", *(a.get("in_expr") or {}).values(), *(a.get("in_read") or {}).values(),
-                     *(a.get("out") or {}).values(),
+                     *(a.get("out") or {}).values(), *_position(eid, a.get("position")).values(),
                      *(a.get("row") or {}).values(), *(a[k] for k in ("miss", "verdict") if a.get(k)))
         out[eid] = Adapter(
             endpoint_id=eid, accepts=_variants(a.get("accepts")), in_map=dict(a.get("in") or {}),
@@ -670,6 +704,8 @@ def parse_adapters(doc: dict) -> dict[str, Adapter]:
             filter_max={str(k): int(v) for k, v in (a.get("max") or {}).items()},
             additional_capabilities=tuple(a.get("additional_capabilities") or ()),
             route=a.get("route", True) is not False,
+            paging=_paging(eid, a.get("paging"), a.get("out") or {}),
+            position=_position(eid, a.get("position")),
             const=dict(a.get("const") or {}), out_map=dict(a.get("out") or {}), miss=str(a.get("miss") or ""),
             row_map={str(k): str(v) for k, v in (a.get("row") or {}).items()},
             verdict=str(a.get("verdict") or ""),

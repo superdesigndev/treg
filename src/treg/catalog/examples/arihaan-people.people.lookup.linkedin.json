@@ -29,9 +29,9 @@
   ],
   "max_matches_per_key": 5,
   "billing": {
-    "card": "payg",
-    "charge_usd": 0.001,
-    "charge_micro": 1000,
+    "card": "treg",
+    "charge_usd": 0.000902,
+    "charge_micro": 902,
     "events": {
       "hit_linkedin": 1
     }

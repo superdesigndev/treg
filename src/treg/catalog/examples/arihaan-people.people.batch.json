@@ -45,7 +45,7 @@
   ],
   "missing": [],
   "billing": {
-    "card": "payg",
+    "card": "treg",
     "charge_usd": 0.001,
     "charge_micro": 1000,
     "events": {

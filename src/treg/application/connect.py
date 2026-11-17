@@ -18,6 +18,7 @@ from ..domain.catalog import store as catalog_store
 from ..domain.connections import authorization as connection_authorization
 from ..domain.connections import refresh as connection_refresh
 from ..domain.connections.oauth_flow import consent_url, is_loopback, pkce_challenge_hex
+from ..infra import credential_cipher
 from ..infra.db import session_maker
 from ..infra.oauth_exchange import HTTPXOAuthExchangePort
 from ..infra.oauth_refresh import HTTPXOAuthRefreshPort
@@ -323,6 +324,8 @@ async def start_oauth_connection(
     client_secret: str, auth_uri: str, token_uri: str, scopes: list[str],
     redirect_uri: str | None,
 ) -> dict:
+    if name:
+        name = _valid_tool_name(name)
     async with session_maker() as db:
         code_verifier, auth_params, auth_method = "", "", "client_secret_post"
         cid_param, scope_sep = "client_id", " "
@@ -348,6 +351,11 @@ async def start_oauth_connection(
                     "dashboard's Connections page, with "
                     f"`treg connections connect --provider {provider.service}` on an up-to-date "
                     "CLI (`treg update`), or via POST /connections/token",
+                )
+            if provider.auth_kind == "public":
+                raise ConnectError(
+                    "invalid_provider",
+                    _public_nothing_to_connect(provider),
                 )
             chosen_capability = capability or provider.connect_default_capability
             try:
@@ -393,6 +401,8 @@ async def start_oauth_connection(
             )
         if not name:
             raise ConnectError("invalid_provider", "name is required")
+        # Sealed before this session's first query, so no connection waits on KMS.
+        sealed_client_secret = await credential_cipher.seal(client_secret, org_id=org_id)
 
         # Reconnecting targets ONE connection. Scoped to the caller's org so a guessed id can't aim a
         # consent at another org's credential, and matched to the provider so a Slack consent can't be
@@ -433,7 +443,7 @@ async def start_oauth_connection(
         redirect_uri = redirect_uri or treg_callback
         pending = PendingOAuth(
             org_id=org_id, state=state, name=name, owner=owner,
-            client_id=client_id, client_secret=crypto.encrypt(client_secret),
+            client_id=client_id, client_secret=sealed_client_secret,
             auth_uri=auth_uri, token_uri=token_uri, scopes=scope_sep.join(scopes),
             redirect_uri=redirect_uri, provider=provider_name or "",
             authorization_method=authorization_method if provider_name else "",
@@ -501,6 +511,7 @@ async def complete_oauth_connection(
         return OAuthCallbackOutcome("exchange_failed")
 
     reselect: tuple[int, str, str] | None = None
+    sealed_blob = await credential_cipher.seal(json.dumps(blob), org_id=pending.org_id)
     # Phase 2 stores the result and provisions local rows. Re-read the pending row so two callback
     # deliveries cannot create two credentials after both complete their provider requests.
     async with session_maker() as db:
@@ -525,11 +536,12 @@ async def complete_oauth_connection(
                     org_id=pending.org_id,
                     name=await _free_connection_name(pending.name, pending.org_id, db),
                     owner=pending.owner,
-                    kind="oauth", value=crypto.encrypt(json.dumps(blob)),
+                    kind="oauth", value=sealed_blob, refreshable=connection_refresh.is_refreshable(blob),
                 )
                 db.add(secret)
             else:
-                secret.value = crypto.encrypt(json.dumps(blob))
+                secret.value = sealed_blob
+                secret.refreshable = connection_refresh.is_refreshable(blob)
                 secret.last_error = ""
                 # The new blob has no derived resource token. Unselect the resource so the tool
                 # binds the root token again, then derive the token anew once this commits.
@@ -602,10 +614,24 @@ async def _reselect_after_reconnect(
             await db.commit()
 
 
+
+def _public_nothing_to_connect(provider) -> str:
+    """A public provider has nothing to connect; say whether this server serves its tools."""
+    if get_settings().platform_provider_enabled(provider.service):
+        return f"{provider.display_name} is a public API with nothing to connect: call its catalog tools directly"
+    return (f"{provider.display_name} is a public API with nothing to connect, and this server has not "
+            "enabled it, so its tools are not callable here unless your team registers its own tool for its host")
+
 async def connect_with_pasted_secret(
     *, provider_name: str, raw_token: str, org_id: int, owner: str, client_factory,
 ) -> dict:
     provider = oauth_providers.get(provider_name)
+    if provider is not None and provider.auth_kind == "public":
+        _refuse_paused(provider_name)  # a paused provider says so first, as every other path does
+        raise ConnectError(
+            "invalid_token_provider",
+            _public_nothing_to_connect(provider),
+        )
     if provider is None or not provider.uses_pasted_secret:
         raise ConnectError("invalid_token_provider", "this provider is connected by consent, not a token")
     _refuse_paused(provider_name)
@@ -699,6 +725,7 @@ async def connect_with_pasted_secret(
             "invalid_token", f"{provider.display_name} rejected that token ({why})"
         )
 
+    sealed = await credential_cipher.seal(token, org_id=org_id)
     async with session_maker() as db:
         secret = (await db.execute(
             select(Secret).where(Secret.org_id == org_id, Secret.provider == provider.service)
@@ -706,11 +733,11 @@ async def connect_with_pasted_secret(
         if secret is None:
             secret = Secret(
                 org_id=org_id, name=provider.service, owner=owner, kind="env",
-                value=crypto.encrypt(token), provider=provider.service,
+                value=sealed, provider=provider.service,
             )
             db.add(secret)
         else:
-            secret.value = crypto.encrypt(token)
+            secret.value = sealed
         if provider.token_scopes_header:
             granted = resp.headers.get(provider.token_scopes_header, "")
             if granted:
@@ -861,10 +888,12 @@ async def _connection_for_upstream(
     async with session_maker() as db:
         secret = await _owned_connection(secret_id, org_id, db)
         _refuse_paused(secret.provider)
+        await db.commit()  # end the read before the credential opens over the network
         await connection_refresh.ensure_fresh(
             secret, db, HTTPXOAuthRefreshPort(client), oauth_providers.platform_refresh_blob,
+            credentials=credential_cipher.Credentials(),
         )
-        return secret, crypto.decrypt(secret.value)
+    return secret, await credential_cipher.unseal(secret.value, org_id=secret.org_id)
 
 
 def _with_appsecret_proof(provider, client_id: str, token: str, url: str) -> str:
@@ -1024,8 +1053,11 @@ async def select_connection_resource(
     # closed so provider latency cannot hold a database connection or transaction open.
     if provider and provider.resource_token_path:
         setup_fields = await _resolve_resource_call_token(
-            provider, source_value, granted_scopes, resource_ref, client,
+            provider, source_value, org_id, granted_scopes, resource_ref, client,
         )
+        # The merged blob is sealed before the write session, against the value it was derived
+        # from; the session below refuses it if the connection changed in between.
+        stored_fields = await _sealed_with_resource_call_token(source_value, org_id, setup_fields)
 
     async with session_maker() as db:
         secret = await _owned_connection(secret_id, org_id, db)
@@ -1037,7 +1069,7 @@ async def select_connection_resource(
                     "connection_changed",
                     "the connection changed during resource setup; select the resource again",
                 )
-            _store_resource_call_token(provider, secret, setup_fields)
+            secret.value = stored_fields
             await _upgrade_resource_call_bindings(provider, secret, db)
         secret.resource_ref = resource_ref
         secret.resource_name = resource_name
@@ -1069,14 +1101,14 @@ async def select_connection_resource(
 
 
 async def _resolve_resource_call_token(
-    provider, encrypted_value: str, granted_scopes: str, resource_ref: str, client,
+    provider, encrypted_value: str, org_id: int, granted_scopes: str, resource_ref: str, client,
 ) -> dict[str, str]:
     """Resolve a resource-scoped call token without exposing it to the picker.
 
     The root OAuth token remains in ``access_token`` for refresh and future resource discovery.
     Provider HTTP work is complete before the caller opens the write transaction.
     """
-    blob = json.loads(crypto.decrypt(encrypted_value))
+    blob = json.loads(await credential_cipher.unseal(encrypted_value, org_id=org_id))
     root_token = blob.get("access_token") or blob.get("token")
     headers = {"Authorization": f"Bearer {root_token}"}
 
@@ -1131,11 +1163,11 @@ async def _resolve_resource_call_token(
     return fields
 
 
-def _store_resource_call_token(provider, secret: Secret, fields: dict[str, str]) -> None:
-    """Merge resolved provider fields into the encrypted OAuth blob."""
-    blob = json.loads(crypto.decrypt(secret.value))
+async def _sealed_with_resource_call_token(value: str, org_id: int, fields: dict[str, str]) -> str:
+    """The sealed OAuth blob `value` with the resolved provider fields merged in."""
+    blob = json.loads(await credential_cipher.unseal(value, org_id=org_id))
     blob.update(fields)
-    secret.value = crypto.encrypt(json.dumps(blob))
+    return await credential_cipher.seal(json.dumps(blob), org_id=org_id)
 
 
 async def _upgrade_resource_call_bindings(provider, secret: Secret, db: AsyncSession) -> None:
@@ -1241,18 +1273,19 @@ async def supply_extra_credential(
         value = value.strip()
         if not value:
             raise ConnectError("extra_credential_required", f"{provider.extra_credential_label} is required")
+        await db.commit()  # seal with no transaction held: KMS is network I/O
+        sealed = await credential_cipher.seal(value, org_id=org_id)
 
         name = f"{provider.service}-{provider.extra_credential_name}"
         extra = (await db.execute(
             select(Secret).where(Secret.org_id == org_id, Secret.name == name)
         )).scalars().first()
         if extra is None:
-            extra = Secret(org_id=org_id, name=name, owner=owner, kind="env",
-                           value=crypto.encrypt(value))
+            extra = Secret(org_id=org_id, name=name, owner=owner, kind="env", value=sealed)
             db.add(extra)
             await db.flush()
         else:  # re-supplying replaces it — the usual reason is a rotated token
-            extra.value = crypto.encrypt(value)
+            extra.value = sealed
 
         # The primary binding must match how THIS provider authenticates - OAuth bearer for Google Ads,
         # but a pasted-key provider (Tomba's X-Tomba-Key + X-Tomba-Secret pair) injects a plain header,

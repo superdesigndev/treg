@@ -5,6 +5,8 @@ sources:
   - src/treg/call_events.py
   - src/treg/application/call_events.py
   - src/treg/domain/catalog/routing/segments.py
+  - src/treg/domain/catalog/routing/contracts.py
+  - src/treg/domain/catalog/routing/paths.py
   - src/treg/catalog/contracts.yaml
   - src/treg/application/call/call_errors.py
   - scripts/call_events_actionable_errors.sql
@@ -102,11 +104,27 @@ The stream has no map type; they travel as JSON objects (`json` columns):
   `first_name`+`last_name` derives `full_name`, so `{full_name, domain}` and
   `{first_name, last_name, domain}` asked of a direct finder, a routed child or the routed parent
   give one `input_id`.
+  A request for a later page than the first is another question: its position joins the hash, so
+  page 2 never reads as a retry of page 1, and a repeat of page 2 still does. A direct call's
+  position is read through its adapter's `position` (`{page | page0 | offset | cursor:
+  <expression over the request>}`, `page0` a page number counted from 0), else the path its
+  `paging.cursor` names, else a top-level parameter named `cursor`, `page_token`, `pageToken`,
+  `next_page_token`, `after`, `page`, `offset`, `start` or `skip` that the endpoint declares with
+  a type it can be: a number for a page or an offset (crawl4ai's Facebook `page` is a page name), a
+  string or a number for a cursor. A declared page with `default: 0`, or `min: 0` and no default
+  of 1, counts from 0 (aiark, TheirStack). A routed parent's position is the caller's `cursor`,
+  `page` or `offset`, kept in its route summary. A page number or an offset counts only as a
+  whole number. No page, `page` 1, `page0` 0, `offset` 0 and an empty or `0` cursor are the
+  first page and leave `input_id` as it was.
+  On an admission-only contract, an identity field typed `list` (a count over several companies)
+  is its values' set, each normalized, sorted and joined, so the same companies in another order
+  hash the same and other companies do not.
 - `input_keys`: `{field: hmac}` for every identity field present after derivation.
 - `input_meta`: non-sensitive segments: `domain_class` (`company`, `webmail`, `edu`, `gov`) and
   `tld` of the input domain (or the email's), `calling_code` of an international input phone
   (`44`, `1`), plus any filter declared `analytics: value`, plus the categories of the contract's
-  segment set (`segments:` on the contract, below). A routed
+  segment set (`segments:` on the contract, below), plus `page_kind` and, for a page number or an
+  offset, `page` on a later page (a cursor is opaque and not recorded). A routed
   parent also carries `route_order` and `route_retry_order` (what decided its order) and, with published rules on,
   `route_rules_version` and `route_rule` ([route-rules.md](route-rules.md)).
 - `answer_keys`: `{field: hmac}` for output fields declared `analytics: key`.
@@ -122,6 +140,30 @@ The stream has no map type; they travel as JSON objects (`json` columns):
   `domain_match` comparison is disclosed to callers on a routed email-find hit as
   `_treg.domain_match` / `X-Treg-Domain-Match` (see [catalog.md](catalog.md)); this event flag
   stays the analytics form.
+
+## Admission-only contracts
+
+A capability gets `input_*` and a decided `hit` only when it has a contract and its endpoint a
+verified adapter. A capability nobody routes still gets both from a contract declared
+`routed: false`, which never mints a `treg.<capability>` row, with `route: false` adapters, which
+never enter routing or the arena. The adapter's `miss` then decides `hit` on every direct call. It
+also decides cache admission (an empty answer is not cached), and on a `per_success` endpoint
+settle charges nothing for a miss. The identity names the question, so two providers asked it
+hash the same:
+
+| Family | Identity | Hit |
+| --- | --- | --- |
+| Searches (`linkedin.search.*`, `reddit.search.posts`, `meta-ads.library.search`) | the query (`q`), or a person's name | at least one result row |
+| Lists about one subject (`companies.emails.list`, `people.decision_makers`, `reddit.post.comments`) | the domain, or the post (`post_id`, derived from its URL) | at least one row |
+| One object (`x.post.detail`, `linkedin.job.detail`) | its id, derived from its URL (`x_post_id`, `linkedin_job_id`) | the object is returned |
+| Answers (`web.answer`, `google.serp.ai_mode`, `ai-search.*.scrape`) | the question or prompt (`q`) | answer text is returned |
+| Counts (`people.search.count`) | company domain and title | a count above zero |
+
+Scoping filters (country, date window, sort, location) stay out of `input_id`; the ones declared
+`analytics: value` go to `input_meta`, so analysis can split by them. A status poll
+(`video-gen.task.status`) gets neither: repeating it is how it works, so an `input_id` would make
+every poll a retry, and a running task is neither a hit nor a miss. Its outcome belongs to the
+generation it polls.
 
 ## Request segments
 
@@ -227,8 +269,8 @@ a child. It is a log line, not a column.
 | `endpoint_id`, `provider`, `tier` | a catalog id (null when the name is not one), and the credential tier |
 | `status`, `refused_by` | the status of this attempt, and treg's refusal mechanism as the event's `refused_by` |
 | `by` | `upstream` when the provider answered or failed to (timeout, dropped connection), else `treg` |
-| `error_class` | `caller_input`, `caller_balance_or_cap`, `caller_policy`, `caller_auth`, `caller_provider_account`, `not_found`, `rate_limit`, `timeout`, `upstream_error`, `treg_capacity`, `treg_policy`, `our_provider_account`, `treg_error`, `other` |
-| `caller_side` | `true` for `caller_auth`, `caller_balance_or_cap`, `caller_policy` and `caller_provider_account` |
+| `error_class` | `caller_input`, `caller_balance_or_cap`, `caller_policy`, `caller_auth`, `caller_provider_account`, `not_found`, `rate_limit`, `timeout`, `upstream_error`, `treg_capacity`, `treg_policy`, `our_provider_account`, `treg_error`, `payment_required` (an agent-payments 402 that asks a keyless caller to pay or prove its wallet, `refused_by: payment`), `other` |
+| `caller_side` | `true` for `caller_auth`, `caller_balance_or_cap`, `caller_policy`, `caller_provider_account` and `payment_required` |
 | `kind` | the failure kind treg raised, or its internal `log_kind` when it has one |
 | `signal` | the provider's documented error read from its answer, per `domain/capacity/signatures.py` |
 | `parameter`, `rule` | for treg's own refusal of a request: the field (`queryParams.limit`, `body.urls.0`, or `undeclared`) and the rule it broke (`required`, `type`, `enum`, `range`, `repeat`, `undeclared`, `json`, `fixed`, `platform`, `authorization_method`, `unsupported`) |
@@ -238,7 +280,10 @@ a child. It is a log line, not a column.
 is its table. A provider account error belongs to whoever holds the account: an upstream 401/403 is
 `caller_provider_account` on the `credential` and `tool` tiers, and a credit error (a 402 or an
 out-of-credit answer) is the caller's only when the caller pays the provider, so treg's own key and
-its pay-per-use OAuth app are `our_provider_account`.
+its pay-per-use OAuth app are `our_provider_account`. On treg's key an upstream 401 is
+`our_provider_account` but a 403 is `upstream_error`, unless it is a documented out-of-credit
+answer: scrapers and APIs answer 403 for the page or record they were asked for, not for treg's
+account.
 
 No request or answer value, header, credential or message text is logged. The answer is read only
 for its documented error code. A parameter is named only when every part looks like a field name

@@ -209,7 +209,8 @@ async def render_grant(tool: Tool, profile: dict, db: AsyncSession, http) -> dic
     server only resolves + renders the value. Raises LookupError (a referenced secret is missing) or lets
     an oauth refresh error propagate — the endpoint maps both to the same statuses the /call path uses."""
     from sqlmodel import select
-    from . import crypto, oauth
+    from . import oauth
+    from .infra import credential_cipher
     from .models import Secret
     inject = profile.get("inject") or []
     if not inject:
@@ -235,9 +236,11 @@ async def render_grant(tool: Tool, profile: dict, db: AsyncSession, http) -> dic
                 '"from_binding" (the tool has multiple credentials, so treg won\'t guess which one)'
                 if len({b.get("secret_id") for b in tool.bindings}) > 1
                 else f"inject entry {target} has no resolvable secret")
+        await db.commit()  # the credential opens over the network: hold no transaction
         if secret.kind == "oauth":
             await oauth.ensure_fresh(secret, db, http)  # refresh in place; raises on a dead root
-            raw = crypto.decrypt(secret.value)
+            await db.commit()  # the refresh reloaded the row in a new transaction
+            raw = await credential_cipher.unseal(secret.value, org_id=secret.org_id)
             blob = json.loads(raw)
             field = entry.get("secret_field", "access_token")
             if field not in _OAUTH_RELEASABLE_FIELDS:  # never hand out refresh_token / client_secret
@@ -255,7 +258,7 @@ async def render_grant(tool: Tool, profile: dict, db: AsyncSession, http) -> dic
             t = _leaf_ttl(blob)
             ttl = t if ttl is None else min(ttl, t if t is not None else ttl)
         else:  # env | param | cli_auth | secret_file — the stored string
-            value = crypto.decrypt(secret.value)
+            value = await credential_cipher.unseal(secret.value, org_id=secret.org_id)
         # A stray trailing newline (common in file-sourced secrets) becomes an illegal env/header value
         # downstream — strip it here exactly as build_payload does on the register path.
         value = value.strip()

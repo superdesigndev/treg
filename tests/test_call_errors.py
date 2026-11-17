@@ -22,6 +22,7 @@ from treg.infra.org_concurrency import AdmissionRejected
 EP = "tikhub.tiktok.video.comments"
 CALLER_INPUT = "7461234567890123456"
 PROVIDER_ANSWER = "person-ann-lee@example.com"
+UPSTREAM_WORDS = "upstream-rejected-it"
 
 
 @pytest.fixture
@@ -53,7 +54,10 @@ async def _answering(status: int, doc: dict) -> None:
     (400, {"refused_by": "request", "kind": "route_caller_fault"}, ("upstream", "caller_input")),
     (402, {"tier": "credential"}, ("upstream", "caller_provider_account")),
     (401, {"tier": "tool"}, ("upstream", "caller_provider_account")),
-    (403, {"tier": "platform"}, ("upstream", "our_provider_account")),
+    (403, {"tier": "platform"}, ("upstream", "upstream_error")),
+    (403, {"tier": "platform", "signal": "balance"}, ("upstream", "our_provider_account")),
+    (401, {"tier": "platform"}, ("upstream", "our_provider_account")),
+    (403, {"tier": "credential"}, ("upstream", "caller_provider_account")),
     (402, {"tier": "anonymous"}, ("upstream", "our_provider_account")),
     (400, {"tier": "platform", "signal": "balance"}, ("upstream", "our_provider_account")),
     (400, {"tier": "credential", "signal": "balance"}, ("upstream", "caller_provider_account")),
@@ -69,6 +73,7 @@ async def _answering(status: int, doc: dict) -> None:
     (422, {"refused_by": "request", "kind": "route_no_candidate"}, ("treg", "caller_input")),
     (503, {"kind": "route_no_candidate"}, ("treg", "treg_capacity")),
     (503, {"answered": False}, ("treg", "treg_error")),
+    (402, {"refused_by": "payment"}, ("treg", "payment_required")),
 ])
 def test_class_table(status, kw, expected):
     assert call_errors.classify(status, **{"tier": None, **kw}) == expected
@@ -115,13 +120,13 @@ async def test_an_upstream_402_is_the_account_of_whoever_owns_the_key(
 async def test_no_request_or_answer_value_is_logged(clients: AsyncClient, platform_on,
                                                     call_error_lines, caplog):
     await clients.post("/secrets", json={"name": "tikhub", "value": "OWN-KEY"})
-    await _answering(400, {"error": f"bad aweme_id {CALLER_INPUT}", "echo": PROVIDER_ANSWER})
+    await _answering(400, {"error": f"{UPSTREAM_WORDS} aweme_id {CALLER_INPUT}", "echo": PROVIDER_ANSWER})
     r = await clients.get(f"/call/{EP}?aweme_id={CALLER_INPUT}&count=5")
     assert r.status_code == 400, r.text
     (line,) = call_error_lines()
     assert line["error_class"] == "caller_input" and line["by"] == "upstream"
     text = "\n".join(r.getMessage() for r in caplog.records if r.name == call_errors.log.name)
-    for value in (CALLER_INPUT, PROVIDER_ANSWER, "OWN-KEY", "aweme_id", "bad"):
+    for value in (CALLER_INPUT, PROVIDER_ANSWER, "OWN-KEY", "aweme_id", UPSTREAM_WORDS):
         assert value not in text
 
 

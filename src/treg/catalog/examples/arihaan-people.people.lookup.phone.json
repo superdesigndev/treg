@@ -7,7 +7,7 @@
   ],
   "max_matches_per_key": 5,
   "billing": {
-    "card": "payg",
+    "card": "treg",
     "charge_usd": 0.0003,
     "charge_micro": 300,
     "events": {

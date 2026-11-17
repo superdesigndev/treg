@@ -11,7 +11,7 @@ from treg.application import asynctasks as task_app
 from treg.application.call import service as call_service
 from treg.domain import money
 from treg.infra.db import session_maker
-from treg.models import AsyncResourceRecord, AsyncTaskRecord, CallRecord, Feedback, LedgerEntry, RunRecord
+from treg.models import AsyncResourceRecord, AsyncTaskRecord, CallMark, CallRecord, Feedback, LedgerEntry, RunRecord
 from treg.timeutil import utcnow_naive
 from test_asynctasks import EP, _response, replicate_platform, legacy_async_platform, minimax_platform  # noqa: F401 - pytest fixtures
 from test_tag_billing import _mint_agent, _mk_echo_tool, _org_id
@@ -321,6 +321,35 @@ async def test_routed_parent_row_carries_the_pin_and_reviews_are_scoped(clients,
     assert (await clients.post('/reviews', json=review, headers=h['a'])).status_code == 201
 
 
+async def test_a_mark_receipt_never_crosses_a_pin(clients, identities):
+    """An identical retry returns the original receipt only to a caller that can read the call,
+    so a foreign pin learns nothing about another customer's call or the marks on it."""
+    org, h = identities
+    async with session_maker() as db:
+        for ref, tags in [('call-a', {'customer': 'a'}), ('call-b', {'customer': 'b'})]:
+            db.add(CallRecord(org_id=org, user_email='tim@superdesign.dev', tool_name='example',
+                              method='GET', path='/', call_ref=ref, status_code=200,
+                              endpoint_id='example.search', provider='example', tags=tags))
+        await db.commit()
+    mark = {'call_id': 'call-a', 'basis': 'bounced', 'items': [{'index': 0, 'verdict': 'wrong'}]}
+    assert (await clients.post('/marks', json=mark, headers=h['b'])).status_code == 404
+    first = await clients.post('/marks', json=mark, headers=h['a'])
+    assert first.status_code == 201
+    mark_id = first.json()['mark_id']
+    retry = await clients.post('/marks', json=mark, headers=h['b'])
+    assert retry.status_code == 404 and str(mark_id) not in retry.text
+    assert (await clients.post('/marks', json={**mark, 'call_id': 'call-b', 'replaces': mark_id},
+                               headers=h['b'])).status_code == 404
+    again = await clients.post('/marks', json=mark, headers=h['a'])
+    assert again.status_code == 200 and again.json()['mark_id'] == mark_id
+    # the unpinned team reads every call; its identical mark is its own, not the pin's receipt
+    own = await clients.post('/marks', json=mark)
+    assert own.status_code == 201 and own.json()['mark_id'] != mark_id
+    async with session_maker() as db:
+        rows = list((await db.execute(select(CallMark).order_by(CallMark.id))).scalars())
+    assert [(row.call_id, row.tags) for row in rows] == [('call-a', {'customer': 'a'}), ('call-a', None)]
+
+
 async def test_refusals_and_feedback_reports_stay_inside_the_pin(clients, identities):
     """A refusal is written by the router's fallback, not by `service.py`; it must carry the pin or
     the caller cannot see its own 403/404 while integrating. A feedback report snapshots the pin
@@ -353,3 +382,22 @@ async def test_refusals_and_feedback_reports_stay_inside_the_pin(clients, identi
         rows = {f.message: f for f in (await db.execute(select(Feedback))).scalars().all()}
     assert rows['customer a private note'].verified_call_ids == [refs[0]]
     assert rows['foreign ref'].verified_call_ids == [] and rows['foreign ref'].tags == {'customer': 'b'}
+
+
+async def test_a_review_retry_names_only_a_mark_the_pin_can_read(clients, identities):
+    """A narrower pin may read the call, but not a mark a wider pin's review rows wrote."""
+    org, h = identities
+    async with session_maker() as db:
+        db.add(CallRecord(org_id=org, user_email='tim@superdesign.dev', tool_name='example',
+                          method='GET', path='/', call_ref='call-aw', status_code=200,
+                          endpoint_id='example.search', provider='example',
+                          tags={'customer': 'a', 'workspace': 'w'}))
+        await db.commit()
+    review = {'call_id': 'call-aw', 'usefulness': 'partly', 'rows': [{'index': 0, 'verdict': 'wrong'}]}
+    first = await clients.post('/reviews', json=review, headers=h['a'])
+    assert first.status_code == 201 and first.json()['mark_id']
+    narrow = await clients.post('/reviews', json=review, headers=h['aw'])
+    assert narrow.status_code == 200
+    assert narrow.json() == {'review_id': first.json()['review_id'], 'status': 'already_reviewed'}
+    wide = await clients.post('/reviews', json=review, headers=h['a'])
+    assert wide.json()['mark_id'] == first.json()['mark_id']
