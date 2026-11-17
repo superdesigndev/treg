@@ -120,7 +120,8 @@ async def submit_review(
                    and hints.sampled("review", call_id))
         existing = await reviews.get(db, call_id, org_id)
         if existing is not None:
-            return existing.id, False, await marks.of_review(db, org_id, existing.id)
+            return existing.id, False, await marks.of_review(
+                db, org_id, existing.id, *pinned_tag_predicates(CallMark.tags, pinned_tags))
         if rows:
             # Rows are marks: they spend the team's mark allowance, as `/marks` does.
             await ratestore.sweep(db, MARK_NAMESPACE)
@@ -144,7 +145,8 @@ async def submit_review(
             existing = await reviews.get(db, call_id, org_id)
             if existing is None:
                 raise
-            return existing.id, False, await marks.of_review(db, org_id, existing.id)
+            return existing.id, False, await marks.of_review(
+                db, org_id, existing.id, *pinned_tag_predicates(CallMark.tags, pinned_tags))
         review_id, mark_id = row.id, None
         if rows:
             tags = dict(pinned_tags) if pinned_tags else None

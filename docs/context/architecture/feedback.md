@@ -123,7 +123,8 @@ the whole answer), optional `checked`, `evidence_call_id`, a private `note` and 
   set, the review's attribution and no `replaces`; the response carries `mark_id`. Rows spend the
   team's mark allowance (`MARK_RATE_MAX`), so a review with rows over it is a 429 that saves
   nothing. A repeated review keeps the first, records no rows and returns the first one's
-  `mark_id` (`marks.of_review`), so a lost response can still be corrected through `replaces`. The review's verdict ignores its rows. The team
+  `mark_id` (`marks.of_review`, filtered by the caller's pin like any mark read), so a lost
+  response can still be corrected through `replaces`. The review's verdict ignores its rows. The team
   `/mcp/` `review` tool takes `rows`; its description is `REVIEW_ROWS_DESCRIPTION`, while the
   frozen Python CLI keeps `REVIEW_DESCRIPTION` and sends none.
 - **A review riding on the next call.** The team `/mcp/` `call` tool takes an optional `prior`
