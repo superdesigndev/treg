@@ -1123,6 +1123,22 @@ class Hold(SQLModel, table=True):
     )
 
 
+class CallCharge(SQLModel, table=True):
+    """What one call cost, recorded before the charge is applied to the team's credit blocks.
+
+    A short-lived queue, not history: the transaction that applies a row deletes it, and the
+    permanent record of the call stays its `settle` ledger entry. `call_id` is the primary key, so
+    a call can be recorded once. Owned by `domain/money`.
+    """
+
+    call_id: str = Field(primary_key=True)
+    org_id: int = Field(index=True)
+    endpoint_id: str = Field(default="")
+    amount_micro: int = Field(sa_type=BigInteger)  # what the team owes for the call, margin applied
+    meta: dict = Field(default_factory=dict, sa_column=Column(JSON, nullable=False))
+    created_at: NaiveUTC = Field(default_factory=_now)
+
+
 class AsyncTaskRecord(SQLModel, table=True):
     """A metered async submission whose existing ledger hold awaits terminal evidence."""
 

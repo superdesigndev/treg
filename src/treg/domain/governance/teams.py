@@ -43,6 +43,7 @@ from ...models import (
     EnterpriseSSOBlock,
     EnterpriseSSOIdentity,
     Feedback,
+    CallCharge,
     CallMark,
     CallReview,
     Media,
@@ -297,6 +298,7 @@ ORG_SCOPED_MODELS = (
     TagBudget,
     MemberSpend,  # likewise: its rows reference a Hold
     TagSpend,  # before the money tables it attributes: its rows reference a Hold that is about to go
+    CallCharge,  # calls not yet applied to the blocks that are about to go
     CallTask, AsyncResourceRecord, ProviderResource, AsyncTaskRecord, LedgerEntry, Hold, CreditBlock,
     OAuthCode, OAuthRefresh,   # grants naming a team that no longer exists
     IdempotentCall,            # a remembered answer belongs to the team that paid for it

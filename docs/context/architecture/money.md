@@ -115,6 +115,10 @@ display-only `*_usd` twin: **never compute against the USD field.**
 `Org.balance_micro` (materialized), `CreditBlock` (one funding event and what is left of it), `Hold`
 (an open reservation), `LedgerEntry` (append-only journal).
 
+`CallCharge` (revision 0109) is a queue beside them: what one call cost, keyed by `call_id`, held
+until the transaction that applies it to the blocks deletes it. The table exists ahead of its
+code; nothing reads or writes it yet, and no balance depends on it.
+
     balance_micro == sum(block.remaining_micro) - sum(open hold.amount_micro)
 
 The balance is a column because `reserve` must be one conditional UPDATE. Every operation writes its
