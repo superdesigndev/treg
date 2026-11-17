@@ -689,6 +689,29 @@ async def test_review_hint_wins_over_feedback_and_replay_wins_over_review(client
         get_settings.cache_clear()
 
 
+async def test_team_mcp_renders_the_mark_hint_text(clients, monkeypatch):
+    from treg import hints
+    from treg.application.call import service as call_service
+    from test_marketplace_call import _fake_relay
+
+    monkeypatch.setenv('TREG_PLATFORM_KEY_TIKHUB', 'SYNTHETIC-PLATFORM-KEY')
+    monkeypatch.setenv('TREG_PLATFORM_PROVIDERS', 'tikhub')
+    get_settings.cache_clear()
+    monkeypatch.setattr(hints, 'sampled', lambda kind, ref: kind == 'mark')
+    monkeypatch.setattr(call_service, 'relay', _fake_relay(200, b'{"data":{"items":[]}}'))
+    args = {'endpoint_id': 'tikhub.tiktok.video.comments', 'params': {'aweme_id': '7'}}
+    try:
+        async with paired_mcp_session() as client:
+            team = await _call_tool(client, 'call', {**args, 'idempotency_key': 'mark-team'},
+                                    clients.headers['X-Treg-Token'], path='/mcp/')
+            directory = await _call_tool(client, 'catalog_call_read', {**args, 'idempotency_key': 'mark-v2'},
+                                         clients.headers['X-Treg-Token'])
+        assert team['hint'] == hints.mark_hint(team['call_id'])[1]
+        assert 'hint' not in directory
+    finally:
+        get_settings.cache_clear()
+
+
 @pytest.mark.parametrize(('path', 'tool'), [('/mcp/', 'call'), ('/mcp/v2/', 'catalog_call_read')])
 async def test_account_out_notice_wins_with_all_sampling_enabled(clients, monkeypatch, path, tool):
     from treg import hints

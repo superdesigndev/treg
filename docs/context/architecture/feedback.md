@@ -125,11 +125,12 @@ the whole answer), optional `checked`, `evidence_call_id`, a private `note` and 
 ## Review and feedback invitations
 
 `application.call.invite.invitation(context, status, replayed)` runs in `routers.call.call_tool`
-after the response is built and before it streams, and returns `review`, `feedback` or nothing. The
-router sends `X-Treg-Hint: review|feedback` (plus `X-Treg-Review: requested` on a review, read by CLI
-releases up to 0.18) and emits one `hint_attached` event per invitation sent. Surfaces only translate
+after the response is built and before it streams, and returns `review`, `mark`, `feedback` or
+nothing, in that order of precedence. The
+router sends `X-Treg-Hint: review|mark|feedback` (plus `X-Treg-Review: requested` on a review, read by
+CLI releases up to 0.18, and `X-Treg-Hint-Text` on a mark) and emits one `hint_attached` event per invitation sent. Surfaces only translate
 the header: the CLI prints a stderr line, the team `/mcp/` renders it into its single hint slot with
-priority replay > 402 > review > feedback. `/mcp/v2/` and OpenAI's clients on `/mcp/` render neither,
+priority replay > 402 > review > mark > feedback. `/mcp/v2/` and OpenAI's clients on `/mcp/` render none,
 so for them `hint_attached` counts an invitation the agent never saw.
 
 - **Review**: a direct catalog call on treg's platform key, 2xx, not replayed, not archive-served,
@@ -137,9 +138,19 @@ so for them `hint_attached` counts an invitation the agent never saw.
   `kv.store().take("review-budget:<org_id>", review_budget_per_hour, 3600)`. Per-call sampling scales
   with volume, so the budget caps how often a busy team is asked. There is deliberately no
   per-endpoint cooldown. An own tool never qualifies, even if its name matches a catalog endpoint.
+- **Mark**: a successful, non-replayed, non-cached catalog call on any credential tier, a routed
+  parent (`treg.<capability>`, which has no marketplace target) included, never an own tool, whose endpoint id equals or ends in `.<capability>` for one of `mark_hint_capabilities`
+  (empty: every catalog call), sampled at `mark_hint_rate` and capped by
+  `take("mark-hint-budget:<org_id>", mark_hint_per_hour, 3600)`. It asks for later work, once the
+  agent knows. Its text travels in `X-Treg-Hint-Text`: one of `mark_hint_texts` (A/B variants,
+  `{call_id}` filled, printable ASCII), chosen deterministically per call, or `hints.MARK_HINT`;
+  `hint_attached` records the `variant`. The binary CLI prints the text and the team `/mcp/`
+  renders it, so copy changes need no release; the frozen Python CLI ignores the kind.
 - **Feedback**: any other successful, non-replayed, non-cached call that samples in at
   `feedback_hint_rate`, own tools included. It asks for nothing, so it has no budget.
 
+Before deciding, the router removes any `X-Treg-Hint`, `X-Treg-Hint-Text` or `X-Treg-Review` the
+upstream sent (an own tool included): clients render that text as treg's, so it must be treg's.
 The hook is best-effort: no database or body access, no change to the call service's exits or
 writes; a fault can only lose the header. Sampling rates default to 0.
 

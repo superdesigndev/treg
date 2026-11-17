@@ -56,6 +56,9 @@ Everything else in this file is guidance; these are the contract, and they win o
    settlement and outcome, every other byte as sent, live and archive hits alike, before the caller
    or an idempotent replay sees it. The archive keeps the answer whole; a call sending
    `X-Treg-Keep-Reported-Charge: true` keeps the member.
+   One more, on every answer: the invitation headers `X-Treg-Hint`, `X-Treg-Hint-Text` and
+   `X-Treg-Review` are treg's own, so an upstream's copies are removed before treg decides its
+   invitation; clients show their text as treg's ([feedback](docs/context/architecture/feedback.md)).
    A live-verified free catalog endpoint may declare an anonymous fallback; its empty binding list
    omits credential injection but does not strip or rewrite caller headers.
    Routed endpoints and overflow wrap the child's answer and say so; they never alter it. A routed

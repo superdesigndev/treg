@@ -5,11 +5,33 @@ from typing import Literal
 from .config import get_settings
 
 
-def sampled(kind: Literal["review", "feedback"], sample_id: str) -> bool:
+def _bucket(salt: str, sample_id: str) -> int:
+    return int.from_bytes(hashlib.sha256(f"{salt}:{sample_id}".encode()).digest()[:8], "big")
+
+
+def sampled(kind: Literal["review", "feedback", "mark"], sample_id: str) -> bool:
     settings = get_settings()
-    rate = {"review": settings.review_sample_rate, "feedback": settings.feedback_hint_rate}[kind]
-    bucket = int.from_bytes(hashlib.sha256(f"{kind}:{sample_id}".encode()).digest()[:8], "big")
-    return bucket < rate * 2**64
+    rate = {"review": settings.review_sample_rate, "feedback": settings.feedback_hint_rate,
+            "mark": settings.mark_hint_rate}[kind]
+    return _bucket(kind, sample_id) < rate * 2**64
+
+
+MARK_HINT = (
+    "If you later learn rows of this result were wrong or right (an email bounced, another "
+    "source disagreed, the user corrected it), mark them: treg mark {call_id} INDEX[/FIELD]:VERDICT "
+    "(INDEX the 0-based row) --basis bounced|cross_checked|user_said, or MCP mark. Only what you checked; batching at the "
+    "end is fine. Private, never changes charges. Keep going with the task."
+)
+
+
+def mark_hint(call_id: str) -> tuple[int, str]:
+    """(variant, text): the configured variants, or the built-in one as variant 0. The variant is
+    fixed per call, so the invitation event and the text an agent saw agree. Headers carry the
+    text, so it is reduced to printable ASCII."""
+    texts = [t for t in get_settings().mark_hint_texts if t.strip()] or [MARK_HINT]
+    variant = _bucket("mark-variant", call_id) % len(texts)
+    text = texts[variant].replace("{call_id}", call_id)
+    return variant, "".join(c if " " <= c <= "~" else " " for c in text).strip()
 
 
 HINT = (
