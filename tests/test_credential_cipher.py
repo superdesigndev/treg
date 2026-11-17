@@ -272,3 +272,33 @@ async def test_no_database_connection_waits_on_kms_when_credentials_are_written(
     assert r.status_code == 200, r.text
     assert len(held) == 4
     assert held == [0, 0, 0, 0]
+
+
+async def test_no_database_connection_waits_on_kms_when_a_run_grant_refreshes(
+    clients: AsyncClient, kms, monkeypatch,
+):
+    from treg.infra import db as infra_db
+
+    stale = json.dumps({"access_token": "old", "refresh_token": "r", "client_id": "cid",
+                        "client_secret": "csec", "token_uri": "http://upstream/token", "expires_at": 0})
+    r = await clients.post("/skills", json={
+        "name": "grant-skill", "recipe": "# grant-skill\n",
+        "secrets": [{"local_name": "conn", "kind": "oauth", "value": stale}],
+        "tools": [{"name": "grant-skill", "base_url": "https://api.example.com",
+                   "cli": {"bin": "sh", "enabled": True,
+                           "inject": [{"secret": "conn", "via": "env", "name": "TOKEN",
+                                       "secret_field": "access_token"}]}}],
+    })
+    assert r.status_code == 200, r.text
+    held: list[int] = []
+    unseal = credential_cipher.unseal
+
+    async def watching_unseal(value, *, org_id):
+        held.append(infra_db._engine.pool.checkedout())
+        return await unseal(value, org_id=org_id)
+
+    monkeypatch.setattr(credential_cipher, "unseal", watching_unseal)
+    grant = await clients.post("/tools/grant-skill/grant", json={"argv": []})
+
+    assert grant.status_code == 200, grant.text
+    assert held and set(held) == {0}

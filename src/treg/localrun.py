@@ -239,6 +239,7 @@ async def render_grant(tool: Tool, profile: dict, db: AsyncSession, http) -> dic
         await db.commit()  # the credential opens over the network: hold no transaction
         if secret.kind == "oauth":
             await oauth.ensure_fresh(secret, db, http)  # refresh in place; raises on a dead root
+            await db.commit()  # the refresh reloaded the row in a new transaction
             raw = await credential_cipher.unseal(secret.value, org_id=secret.org_id)
             blob = json.loads(raw)
             field = entry.get("secret_field", "access_token")
