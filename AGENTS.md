@@ -75,7 +75,8 @@ Everything else in this file is guidance; these are the contract, and they win o
    unlinked temp file under a per-body cap and per-process budget, settles from only the paths its
    row reads (usage meters, `expect` success leaf), then relays the file byte for byte; it is never
    archived or replayed.
-   Authorized free final fetches needing no body evidence stream in full.
+   Free answers needing no body evidence (an authorized final fetch, or a free `utility` reference
+   list with no ownership rule) stream in full.
    `/table/` runs the same call through the same road and returns it as rows and columns; it never
    changes what `/call/` returns (docs/context/architecture/table.md).
    A keyless agent-payments call (no treg credential of any kind) has its payment credential

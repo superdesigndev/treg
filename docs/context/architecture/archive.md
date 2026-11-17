@@ -92,7 +92,8 @@ Gates 1 and 2 are `archive.policy(entry)`. Also never recorded or served:
   resource. The serve path skips such rows (`_only_submits`) unless `terminal_on_submission`;
 - a body failing the endpoint's `expect` rule (lookup reports `result_error` for one already
   stored);
-- free final fetches that stream (`streamable_free_result`) and `spooled_response` answers: no
+- free final fetches and free `utility` lists that stream (`streamable_free_result`) and
+  `spooled_response` answers: no
   buffered body, so no empty or partial hash is recorded. A body over the 8 MiB settlement buffer
   fails before recording.
 

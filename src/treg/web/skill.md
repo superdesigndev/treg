@@ -228,6 +228,12 @@ pin a job to one provider (`treg org pin`), and then calls to the job's other pr
   provider is at its limit of calls in progress, a team that already has calls running on it gets
   429 `share_busy`; where it is at its rate limit, a call may get 429 `provider_rate_limited`. Send
   fewer at once, retry after `retry_after_s`, or call the routed tool, which moves on by itself.
+- **A client written for the provider's own API** can keep its paths: swap the provider's base URL
+  for `{BASE}/call/<provider>` (`https://api.dataforseo.com/v3` → `{BASE}/call/dataforseo`) and send
+  `X-Treg-Token`. The catalog tool on that method and path runs exactly as its id would, a `{param}`
+  segment filled from the path. A path the catalog does not list is a 404 (`X-Treg-Error: 1`) and
+  nothing is relayed; a path two tools share is a 409 naming both ids, so call one by id. A team tool
+  named like the provider takes these calls instead.
 - **Over raw HTTP**, if a body carrying SQL or HTML is refused with an HTML 403 page by the hosting
   edge before treg sees it, base64-encode the body and add `X-Treg-Body-Encoding: base64` (also
   `gzip` or `base64+gzip`). The CLI does this by itself.

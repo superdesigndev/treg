@@ -272,9 +272,24 @@ a tool the caller cannot see can neither cause a `409` nor win; this only narrow
 resolves still passes `_require_tool_use`. When ACL alone removed every match the answer is `403`
 naming only the host the caller supplied, never the hidden tool.
 
-A named miss falls through, in order: an exact catalog endpoint, then, only for a top-level call
-(`child_of is None`), a hub tool (`<team-slug>.<name>`). An own tool or catalog id always wins; a
-hub tool never shadows either. Hub runs take a per-team `hub_limits.slot()` and refuse with
+A named miss falls through, in order: an exact catalog endpoint, then a **vendor path**, then, only
+for a top-level call (`child_of is None`), a hub tool (`<team-slug>.<name>`). An own tool or catalog
+id always wins; a hub tool never shadows either.
+
+A vendor path is the named shape with a catalog provider for the name: `<provider>/<path>`, where
+`path` is relative to the provider's `base_url` (`/call/dataforseo/serp/google/organic/live/advanced`,
+DataForSEO's base already ending in `/v3`). So a client switches by replacing the vendor's base URL
+with `/call/<provider>`, and the same URL means the same upstream request whether a team's own tool
+named `<provider>` takes it (that wins, as every named shape does) or the catalog does.
+`vendor_path_endpoint` matches the provider's rows on method and path, a `{param}` taking one
+non-empty segment; fewer placeholders win (`/users/me` before `/users/{id}`) and a remaining tie is
+`409 target_ambiguous` with the candidate ids, never a guess. The row then runs exactly as
+`/call/<id>`: the segments become the query parameters of those names, which `_marketplace_upstream`
+consumes, so pricing, holds, capacity and the archive key are the id call's; a query parameter
+repeating one is `400`. A path on a row's other method is `400`; no match is `404` naming the base
+URL (with "drop the leading `/v3`" when the path repeats it) and relays nothing. Rows on another
+host than the base URL, with `authorization_paths`, or with a fixed query in `path` are id-only.
+`/catalog/call/` and keyless agent payments take ids only. Hub runs take a per-team `hub_limits.slot()` and refuse with
 `429 hub_busy` past `MAX_RUNS_PER_TEAM` rather than queue ([hub](hub.md)).
 
 Named-miss diagnostics, all on the error path:
@@ -623,6 +638,9 @@ zero estimate, a required fetch ownership rule and no submission, owned poll or 
 evidence. Their successful GETs bypass `_buffer_response` (ownership is still checked before relay)
 and stream in full with headers (including Range) through the router's close-once lifecycle. Audit
 size is unknown, not zero; nothing is archived or kept for replay, and the claim is released.
+A free `kind: utility` row with no ownership rule or managed resource (a provider's reference
+list, such as DataForSEO's per-country location codes) qualifies the same way: it has nothing to
+settle or learn, and a large country's list outgrows the buffer.
 
 Other responses needing settlement or ownership evidence have a hard 8 MiB complete-body budget:
 `_buffer_response` raises `GatewayFailed(response_buffer_limit)` on the first overflowing chunk,
