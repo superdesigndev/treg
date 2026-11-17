@@ -26,6 +26,7 @@ from ..domain import referrals
 from ..domain.catalog import store as catalog_store
 from ..domain.identity import session as sess
 from ..config import PUBLIC_HOST_ALIASES, get_settings
+from ..application import agent_payments
 from ..application import signup as signup_use_cases
 from ..infra.db import get_session
 from ..models import User
@@ -3755,19 +3756,21 @@ def _hub_app_visible(slug: str | None) -> bool:
 
 
 def _strip_routed(text: str, hub_on: bool | None = None) -> str:
-    """Remove the `<!--routed-->…<!--/routed-->` blocks (and, when kept, just the markers), and the
-    `<!--hub-->…<!--/hub-->` blocks the same way behind `hub_enabled`: an agent-facing file must
-    never describe what this deployment has not switched on (AGENTS.md: do not document what is
-    not built)."""
-    if routed_discovery_on():
-        text = text.replace("<!--routed-->\n", "").replace("\n<!--/routed-->", "")
-    else:
-        text = re.sub(r"<!--routed-->.*?<!--/routed-->\n?", "", text, flags=re.S)
+    """Remove the `<!--routed-->…<!--/routed-->` blocks (and, when kept, just the markers), the
+    `<!--agentpay-->…<!--/agentpay-->` blocks the same way behind agent payments, and the
+    `<!--hub-->…<!--/hub-->` blocks behind `hub_enabled`: an agent-facing file must never describe
+    what this deployment has not switched on (AGENTS.md: do not document what is not built)."""
+    text = _keep_block(text, "routed", routed_discovery_on())
+    text = _keep_block(text, "agentpay", agent_payments.enabled())
     # The hub sections follow the reader: while TREG_HUB_TEAMS limits the hub, only a reader acting
     # for a listed team gets them (`hub_on`, from the route); with no reader, the public answer.
-    if hub_on if hub_on is not None else _hub_app_visible(None):
-        return text.replace("<!--hub-->\n", "").replace("\n<!--/hub-->", "")
-    return re.sub(r"<!--hub-->.*?<!--/hub-->\n?", "", text, flags=re.S)
+    return _keep_block(text, "hub", hub_on if hub_on is not None else _hub_app_visible(None))
+
+
+def _keep_block(text: str, name: str, keep: bool) -> str:
+    if keep:
+        return text.replace(f"<!--{name}-->\n", "").replace(f"\n<!--/{name}-->", "")
+    return re.sub(rf"<!--{name}-->.*?<!--/{name}-->\n?", "", text, flags=re.S)
 
 
 def _fill_headline(text: str) -> str:
