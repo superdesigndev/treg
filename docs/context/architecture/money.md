@@ -42,6 +42,8 @@ sources:
   - src/treg/domain/governance/budgets.py
   - src/treg/infra/__init__.py
   - src/treg/infra/money_admission.py
+  - src/treg/alembic/versions/0109_callcharge.py
+  - src/treg/alembic/versions/0110_hold_allowance.py
   - src/treg/infra/money_session.py
   - src/treg/application/hub/runner.py
   - src/treg/infra/stripe.py
