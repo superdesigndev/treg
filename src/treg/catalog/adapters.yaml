@@ -3945,3 +3945,56 @@ adapters:
     const: {body.days_ago: 90}
     out: {p50: salary.p50, p25: salary.p25, p75: salary.p75, p90: salary.p90, currency: salary.currency,
           count: salary.count}
+
+  # ---- linkedin.search.people (call events only) ----
+  crawl4ai.linkedin.search.people:
+    route: false
+    accepts: [[first_name, last_name]]
+    in: {first_name: body.first_name, last_name: body.last_name}
+    out: {people: rows}
+    miss: "rows == []"
+  harvestapi.linkedin.profile.search:
+    route: false
+    # `search` is documented as a name search; firstName/lastName are its split form.
+    accepts: [[full_name], [first_name, last_name]]
+    in: {full_name: queryParams.search, first_name: queryParams.firstName,
+         last_name: queryParams.lastName, title: queryParams.title}
+    out: {people: elements}
+    miss: "elements == []"
+
+  # ---- linkedin.search.posts (call events only) ----
+  harvestapi.linkedin.post.search:
+    route: false
+    accepts: [[q]]
+    in: {q: queryParams.search, date_posted: queryParams.postedLimit, sort: queryParams.sortBy}
+    out: {posts: elements}
+    miss: "elements == []"
+
+  # ---- linkedin.search.jobs (call events only) ----
+  apify.linkedin.search.jobs:
+    route: false
+    accepts: [[q]]
+    in: {q: body.jobTitles, location: body.locations}
+    in_expr: {body.jobTitles: "list(q)", body.locations: "list(location)"}
+    out: {jobs: "."}
+    miss: ". == []"
+  crawl4ai.linkedin.search.jobs:
+    route: false
+    accepts: [[q]]
+    in: {q: body.query, location: body.location}
+    out: {jobs: rows}
+    miss: "rows == []"
+  harvestapi.linkedin.search.jobs:
+    route: false
+    accepts: [[q]]
+    in: {q: queryParams.search, location: queryParams.location}
+    out: {jobs: elements}
+    miss: "elements == []"
+
+  # ---- linkedin.job.detail (call events only) ----
+  harvestapi.linkedin.job.get:
+    route: false
+    accepts: [[job_id], [url]]
+    in: {job_id: queryParams.jobId, url: queryParams.url}
+    out: {job: element}
+    miss: "element == null"
