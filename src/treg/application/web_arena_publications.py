@@ -67,7 +67,7 @@ async def live_now() -> dict:
                 "stale": True}
     doc = summarize_live(readable, catalog_store.load(), traffic, observed_since=observed_since)
     saved_tasks = snapshot.get("task_results", {}) if snapshot.get("status") == "live" else {}
-    stale_tasks = sorted(set(saved_tasks) - set(doc["task_results"]))
+    stale_tasks = sorted(set(saved_tasks) - {row.task for row in readable})
     for task in stale_tasks:
         doc["task_results"][task] = saved_tasks[task]
     return {**doc, "source": "Readable Battle totals; older local runs could not be read.",
