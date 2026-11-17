@@ -6,12 +6,13 @@ from datetime import timedelta
 from uuid import uuid4
 
 import pytest
-from sqlalchemy import update
+from sqlalchemy import select, update
 
 from treg.config import get_settings
 from treg.domain import money as ledger
+from treg.domain.money import allowance
 from treg.infra.db import reset_db, session_maker
-from treg.models import Hold, Org
+from treg.models import CallCharge, Hold, Org
 
 GRANT = 1_000_000
 
@@ -50,3 +51,23 @@ async def test_a_per_call_close_and_the_stale_sweep_leave_an_allowance_hold_alon
         assert await ledger.settle(db, "allowance-row", 10) == 0
         assert await ledger.reap_stale_holds(db, org_id=org_id) == 0
     assert await _invariant(org_id) == GRANT - 40_000
+
+
+async def test_recording_a_call_twice_queues_it_once(org_id, monkeypatch):
+    monkeypatch.setattr(get_settings(), "platform_margin", 0.5)
+    first = allowance.Charge("call-1", org_id, "e.one", 100, {"key_id": 7})
+    async with session_maker() as db:
+        assert await allowance.record_charges(db, []) == 0
+        assert await allowance.record_charges(
+            db, [first, allowance.Charge("call-2", org_id, "e.two", 0), first]) == 2
+        await db.commit()
+    async with session_maker() as db:
+        assert await allowance.record_charges(
+            db, [allowance.Charge("call-1", org_id, "e.one", 999),
+                 allowance.Charge("call-3", org_id, "e.one", 1)]) == 1
+        await db.commit()
+        rows = {row.call_id: row for row in (await db.execute(select(CallCharge))).scalars()}
+    assert {call_id: row.amount_micro for call_id, row in rows.items()} == {
+        "call-1": 150, "call-2": 0, "call-3": 2}
+    assert rows["call-1"].meta == {"key_id": 7, "observed_micro": 100, "margin": 0.5}
+    assert await _invariant(org_id) == GRANT

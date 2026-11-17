@@ -9,6 +9,8 @@ sources:
   - src/treg/domain/money/__init__.py
   - tests/test_free_credit_video.py
   - src/treg/domain/money/settlement.py
+  - src/treg/domain/money/allowance.py
+  - tests/test_money_allowance.py
   - src/treg/domain/asynctasks/__init__.py
   - src/treg/models.py
   - src/treg/application/billing.py
@@ -118,8 +120,9 @@ display-only `*_usd` twin: **never compute against the USD field.**
 (an open reservation), `LedgerEntry` (append-only journal).
 
 `CallCharge` (revision 0109) is a queue beside them: what one call cost, keyed by `call_id`, held
-until the transaction that applies it to the blocks deletes it. The table exists ahead of its
-code; nothing reads or writes it yet, and no balance depends on it. `Hold.allowance` and
+until the transaction that applies it to the blocks deletes it. `allowance.record_charges`
+(`domain/money/allowance.py`) queues a batch in one statement, applies the margin, and skips a
+`call_id` already queued; no call path uses it yet, and no balance depends on it. `Hold.allowance` and
 `Hold.heartbeat_at` (revision 0110) are likewise ahead of their code: false and null on every row,
 so every hold is still one call's reservation. `settle`, `release` and the stale-hold sweep
 already skip a hold marked `allowance`: it stands behind many calls, and closing it as one call's
