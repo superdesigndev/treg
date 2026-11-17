@@ -490,10 +490,13 @@ def test_a_long_value_is_capped():
     assert cols["answer_values"]["location"] == "x" * 256
 
 
-def test_the_public_contract_does_not_carry_the_event_mapping():
-    import inspect
-    from treg.routers import catalog as catalog_router
-    assert '!= "analytics"' in inspect.getsource(catalog_router)
+async def test_the_public_contract_does_not_carry_the_event_mapping(clients: AsyncClient, enrichment_on):
+    r = await clients.get(f"/catalog/endpoints/{ROUTED}")
+    assert r.status_code == 200, r.text
+    capability = r.json()["endpoint"]["capability"]
+    assert any("analytics" in (spec or {}) for spec in catalog_store.load().contracts[capability].output.values())
+    output = r.json()["routing"]["contract"]["output"]
+    assert output and all("analytics" not in spec for spec in output.values())
 
 
 # ---- through the call path -------------------------------------------------------------------------
