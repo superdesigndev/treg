@@ -11,6 +11,7 @@ from treg.models import CallReview, Org
 from test_hints import _platform_call
 from test_marketplace_call import platform_on  # noqa: F401 - pytest fixture
 from test_routing import enrichment_on  # noqa: F401 - pytest fixture
+from test_route_verify import verifiers_on  # noqa: F401 - pytest fixture
 from test_reviews import rows, seed, submit
 
 
@@ -114,9 +115,7 @@ async def test_a_routed_review_recomputes_invited_with_the_credited_child(client
 
 async def test_a_real_routed_call_is_targeted_by_its_successful_child(clients, enrichment_on,
                                                                       targeting, monkeypatch):
-    from sqlmodel import select
     from treg.application.call import service as call_service
-    from treg.models import CallRecord
     from test_routing import ROUTED, _relay_by_provider
 
     monkeypatch.setattr(call_service, 'relay', _relay_by_provider(
@@ -128,11 +127,56 @@ async def test_a_real_routed_call_is_targeted_by_its_successful_child(clients, e
     first = await clients.post(f'/call/{ROUTED}', json=ask)
     assert first.status_code == 200, first.text
     assert first.headers.get('X-Treg-Hint') == 'review'
-    async with session_maker() as db:
-        child, = (await db.execute(select(CallRecord.endpoint_id).where(
-            CallRecord.call_ref.startswith(first.headers['X-Treg-Call-Id'] + ':r')))).scalars()
+    child = first.json()['_treg']['served_by']  # one hit, no confirm: also the credited child
     await add_reviews(clients, child, teams=10, each=10)
     await review_targets.warm()
     second = await clients.post(f'/call/{ROUTED}', json=ask | {'full_name': 'John Collison'})
     assert second.status_code == 200, second.text
     assert second.headers.get('X-Treg-Hint') is None
+
+
+async def test_a_confirmed_find_targets_and_credits_the_confirmer(clients, verifiers_on, targeting,
+                                                                   monkeypatch):
+    """Tomba's hit is returned and Hunter confirms it: the review is credited to Hunter, so the
+    invitation targets Hunter too, and once Hunter is full the next call is not boosted."""
+    from treg.application.call import service as call_service
+    from test_route_confirm import ON, _hunter
+    from test_route_verify import ASK, FIND, TOMBA_HIT, _relay
+
+    monkeypatch.setattr(call_service, 'relay', _relay(
+        {'tomba': [TOMBA_HIT] * 2, 'hunter': [_hunter('Patrick@Stripe.COM')] * 2}, []))
+    monkeypatch.setattr(targeting, 'review_sample_rate', 0)
+    monkeypatch.setattr(targeting, 'feedback_hint_rate', 0)
+    monkeypatch.setattr(targeting, 'review_target_reviews', 1)
+    await review_targets.warm()
+    first = await clients.post(f'/call/{FIND}', json=ASK, headers=ON)
+    assert first.status_code == 200, first.text
+    assert first.json()['_treg']['served_by'] == 'tomba.people.email.find'
+    assert first.headers.get('X-Treg-Hint') == 'review'
+    review = await clients.post('/reviews', json={'call_id': first.headers['X-Treg-Call-Id'],
+                                                  'usefulness': 'useful'})
+    assert review.status_code == 201, review.text
+    row, = await rows()
+    assert (row.endpoint_id, row.invited) == ('hunter.people.email.find', True)
+    await review_targets.warm()
+    second = await clients.post(f'/call/{FIND}', json=ASK, headers=ON)
+    assert second.status_code == 200, second.text
+    assert second.headers.get('X-Treg-Hint') is None
+
+
+async def test_a_stuck_counts_read_never_holds_a_worker_and_leaves_the_base_rate(targeting,
+                                                                                monkeypatch):
+    import asyncio
+    import contextlib
+
+    @contextlib.asynccontextmanager
+    async def stuck():
+        class Db:
+            async def execute(self, *_):
+                await asyncio.Event().wait()
+        yield Db()
+
+    monkeypatch.setattr(review_targets, 'session_maker', stuck)
+    monkeypatch.setattr(review_targets, 'READ_TIMEOUT_S', 0.05)
+    await asyncio.wait_for(review_targets.warm(), timeout=2)
+    assert review_targets.rate('unreviewed.search') == pytest.approx(0.2)

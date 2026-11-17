@@ -30,6 +30,7 @@ from ..timeutil import utcnow_naive
 
 log = logging.getLogger(__name__)
 REFRESH_S = 600
+READ_TIMEOUT_S = 2.0
 
 
 class _Counts:
@@ -47,10 +48,12 @@ class _Counts:
                     .where(CallReview.created_at >= since)
                     .group_by(CallReview.endpoint_id, CallReview.org_id).subquery())
         try:
-            async with session_maker() as db:
+            # Optional data: a slow or stuck read must never hold a worker's startup or pile up,
+            # so it is bounded, and on timeout the last snapshot (or the base rate) stands.
+            async with asyncio.timeout(READ_TIMEOUT_S), session_maker() as db:
                 rows = (await db.execute(select(per_team.c.endpoint_id, func.sum(per_team.c.n))
                                          .group_by(per_team.c.endpoint_id))).all()
-        except Exception:  # a failed read keeps the last snapshot
+        except Exception:  # a failed or timed-out read keeps the last snapshot
             log.warning("review target counts refresh failed", exc_info=True)
             return
         self.by_endpoint = {endpoint: int(n) for endpoint, n in rows if endpoint}
