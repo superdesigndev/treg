@@ -3496,6 +3496,22 @@ adapters:
     out: {platform: result.platform, username: result.username, url: result.url, full_name: result.fullname, followers: result.followers}
     miss: "result.platform == null"
 
+  # Judge-only: per_success settle zeros on an empty technologies list (no detection, no credit).
+  findymail.technologies:
+    route: false
+    accepts: [[domain]]
+    in: {domain: body.domain}
+    out: {technologies: technologies, count: "len(coalesce(technologies, []))"}
+    miss: "coalesce(technologies, []) == []"
+
+  # Judge-only: per_success settle zeros on an empty emails list (Aviato bills only a hit).
+  aviato.people.contact.get:
+    route: false
+    accepts: [[linkedin_url]]
+    in: {linkedin_url: queryParams.linkedinURL}
+    out: {emails: emails, count: "len(coalesce(emails, []))"}
+    miss: "coalesce(emails, []) == []"
+
   # Judge-only: per_success settle zeros when every social URL is null (the documented miss body).
   enrichlayer.contacts.reverse-phone:
     route: false
