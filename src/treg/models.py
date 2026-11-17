@@ -1846,6 +1846,8 @@ class CallMark(SQLModel, table=True):
     evidence_verified: bool = Field(default=False)
     note: str | None = Field(default=None)
     replaces: int | None = Field(default=None)
+    # The review whose `rows` this mark records (POST /reviews); None for a mark sent on its own.
+    review_id: int | None = Field(default=None)
     tags: dict | None = Field(default=None, sa_column=Column("tags", JSON, nullable=True))
     content_hash: str
     created_at: NaiveUTC = Field(default_factory=_now)

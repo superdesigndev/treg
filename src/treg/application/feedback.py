@@ -96,8 +96,12 @@ async def _attributable_call(db, *, org_id: int, call_id: str, pinned_tags: dict
 async def submit_review(
     *, org_id: int, user_email: str, call_id: str, usefulness: ReviewUsefulness,
     reason: str | None = None, client: str = "", pinned_tags: dict | None = None,
-) -> tuple[int, bool]:
-    """Return (review_id, inserted); attribution never comes from the caller."""
+    rows: list[dict] | None = None, basis: MarkBasis = "impression",
+) -> tuple[int, bool, int | None]:
+    """Return (review_id, inserted, mark_id); attribution never comes from the caller.
+
+    `rows` (the rows the reviewer judged, mark items) become one mark tied to the review in the
+    same transaction; a repeated review of the same call keeps the first and records no rows."""
     async with session_maker() as db:
         record = await _attributable_call(db, org_id=org_id, call_id=call_id, pinned_tags=pinned_tags)
         endpoint_id, provider, routed_via = record.endpoint_id, record.provider, None
@@ -115,7 +119,7 @@ async def submit_review(
                    and hints.sampled("review", call_id))
         existing = await reviews.get(db, call_id, org_id)
         if existing is not None:
-            return existing.id, False
+            return existing.id, False, None
         # Keep the savepoint open until the application's commit, mirroring money.topup:
         # releasing the first savepoint can commit early with SQLite's deferred BEGIN.
         nested = await db.begin_nested()
@@ -131,10 +135,24 @@ async def submit_review(
             existing = await reviews.get(db, call_id, org_id)
             if existing is None:
                 raise
-            return existing.id, False
-        review_id = row.id
+            return existing.id, False, None
+        review_id, mark_id = row.id, None
+        if rows:
+            tags = dict(pinned_tags) if pinned_tags else None
+            payload = {"basis": basis, "items": rows, "checked": None, "evidence_call_id": None,
+                       "note": None, "replaces": None}
+            mark = marks.add(
+                db, org_id=org_id, user_email=user_email, call_id=call_id,
+                endpoint_id=record.endpoint_id, provider=record.provider,
+                credential_tier=record.credential_tier, client=client, evidence_verified=False,
+                content_hash=marks.content_hash(call_id, {**payload, "tags": tags,
+                                                          "review_id": review_id}),
+                tags=tags, review_id=review_id, **payload,
+            )
+            await db.flush()
+            mark_id = mark.id
         await db.commit()
-        return review_id, True
+        return review_id, True, mark_id
 
 
 

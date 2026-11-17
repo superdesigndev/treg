@@ -69,7 +69,7 @@ from .capacity_notice import account_out_notice, is_admission_refusal, is_balanc
 from .client_identity import printable_ascii
 from .config import get_settings
 from .feedback_contract import (
-    FEEDBACK_DESCRIPTION, MARK_DESCRIPTION, REVIEW_DESCRIPTION, FeedbackCategory, MarkBasis,
+    FEEDBACK_DESCRIPTION, MARK_DESCRIPTION, REVIEW_ROWS_DESCRIPTION, FeedbackCategory, MarkBasis,
     MarkVerdict, ReviewUsefulness,
 )
 from .domain.catalog.stats import EndpointObservationReader
@@ -458,6 +458,7 @@ class RequestOut(TypedDict, total=False):
 class ReviewOut(TypedDict, total=False):
     review_id: int | None
     status: str | None
+    mark_id: int | None
     detail: Any
 
 
@@ -1226,15 +1227,16 @@ async def feedback(
 
 
 @mcp.tool(
-    description=REVIEW_DESCRIPTION,
+    description=REVIEW_ROWS_DESCRIPTION,
     annotations=ToolAnnotations(read_only_hint=False, destructive_hint=False, open_world_hint=True,
                                 idempotent_hint=False),
     structured_output=True,
 )
 async def review(
     call_id: str, usefulness: ReviewUsefulness, ctx: Context, reason: str | None = None,
+    rows: list[MarkItemIn] | None = None,
 ) -> ReviewOut:
-    return await _review_impl(call_id, usefulness, ctx, reason, surface=_TEAM_SURFACE)
+    return await _review_impl(call_id, usefulness, ctx, reason, surface=_TEAM_SURFACE, rows=rows)
 
 
 @mcp.tool(
@@ -1260,15 +1262,16 @@ async def mark(
 
 async def _review_impl(
     call_id: str, usefulness: ReviewUsefulness, ctx: Context, reason: str | None,
-    *, surface: _SurfacePolicy,
+    *, surface: _SurfacePolicy, rows: list["MarkItemIn"] | None = None,
 ) -> ReviewOut:
     token = _bearer(ctx)
     api_context = (_api(token) if surface is _TEAM_SURFACE
                    else _api(token, client_name=surface.client_name))
+    body = {"call_id": call_id, "usefulness": usefulness, "reason": reason}
+    if rows:
+        body["rows"] = [row.model_dump(exclude_none=True) for row in rows]
     async with api_context as client:
-        response = await client.post("/reviews", json={
-            "call_id": call_id, "usefulness": usefulness, "reason": reason,
-        })
+        response = await client.post("/reviews", json=body)
     return _body(response)
 
 

@@ -118,6 +118,12 @@ the whole answer), optional `checked`, `evidence_call_id`, a private `note` and 
 - **Surfaces.** The binary CLI's `treg mark` (the frozen Python CLI has none; its users POST
   `/marks`), the team `/mcp/` tool `mark` (relaying to the same intake; hidden from OpenAI's clients
   with `review`, and absent from `/mcp/v2/`), `skill.md` and `{BASE}/feedback.md` ("Mark").
+- **Rows on a review.** `POST /reviews` takes optional `rows` (mark items) and `basis` (default
+  `impression`). A new review with rows writes one mark in the same transaction with `review_id`
+  set, the review's attribution and no `replaces`; the response carries `mark_id`. A repeated
+  review keeps the first and records no rows. The review's verdict ignores its rows. The team
+  `/mcp/` `review` tool takes `rows`; its description is `REVIEW_ROWS_DESCRIPTION`, while the
+  frozen Python CLI keeps `REVIEW_DESCRIPTION` and sends none.
 - **Private.** Marks are never published, quoted or folded into verdicts. `GET /admin/marks` is
   superadmin-only and excluded from OpenAPI. The rate limit is per team per hour, separate from
   feedback reports. The sole writer is `domain.feedback.marks`; `CallMark` is in `ORG_SCOPED_MODELS`.

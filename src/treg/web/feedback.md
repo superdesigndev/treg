@@ -102,6 +102,12 @@ quotes a few reasons, without naming the team, so write the reason about the end
 - `call_id`: required, the call's opaque reference (letters, digits, `_` or `-`, at most 128 characters).
 - `usefulness`: required, `useful`, `partly`, `not_useful`, or `not_sure`. Uncertainty is fine.
 - `reason`: optional, 1-200 characters after trimming whitespace.
+- `rows`: optional, up to 200 items, the rows you found wrong (or right), same items as a
+  [mark](#mark): `{"index": 2, "field": "email", "verdict": "wrong"}`, `index` 0-based and
+  omitted for the whole result. Add them when the call was `partly` or `not_useful`; only rows
+  you looked at. They are stored as a mark tied to the review and returned as `mark_id`.
+- `basis`: optional, how you know the rows, `impression` (default: your judgement after using
+  the result), `bounced`, `cross_checked` or `user_said`.
 
 Keep private information, credentials, full conversations and raw requests, responses or logs
 out of the reason. Replace sensitive values with placeholders, not hashes. Use `feedback` for

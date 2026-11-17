@@ -1252,6 +1252,17 @@
       "ReviewIn": {
         "additionalProperties": false,
         "properties": {
+          "basis": {
+            "default": "impression",
+            "enum": [
+              "bounced",
+              "cross_checked",
+              "user_said",
+              "impression"
+            ],
+            "title": "Basis",
+            "type": "string"
+          },
           "call_id": {
             "maxLength": 128,
             "minLength": 1,
@@ -1271,6 +1282,14 @@
               }
             ],
             "title": "Reason"
+          },
+          "rows": {
+            "items": {
+              "$ref": "#/components/schemas/MarkItem"
+            },
+            "maxItems": 200,
+            "title": "Rows",
+            "type": "array"
           },
           "usefulness": {
             "enum": [

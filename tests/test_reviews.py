@@ -153,10 +153,11 @@ async def test_mcp_review_relay(clients):
 
 async def test_mcp_review_schema():
     from treg.mcp import mcp, directory_mcp
-    from treg.feedback_contract import REVIEW_DESCRIPTION, REVIEW_USEFULNESS
+    from treg.feedback_contract import REVIEW_ROWS_DESCRIPTION, REVIEW_USEFULNESS
 
     tool = next(tool for tool in await mcp.list_tools() if tool.name == 'review')
-    assert tool.description == REVIEW_DESCRIPTION
+    assert tool.description == REVIEW_ROWS_DESCRIPTION
+    assert 'rows' in tool.input_schema['properties']
     assert tool.input_schema['properties']['usefulness']['enum'] == list(REVIEW_USEFULNESS)
     assert tool.input_schema['required'] == ['call_id', 'usefulness']
     assert tool.annotations.read_only_hint is False
@@ -200,3 +201,59 @@ async def test_public_demo_cannot_submit_reviews(clients):
                                   json={'call_id': 'id', 'usefulness': 'useful'})
     assert response.status_code == 403
     assert await rows() == []
+
+
+async def marks_for(call_id='review-call'):
+    from treg.models import CallMark
+    async with session_maker() as db:
+        return list((await db.execute(select(CallMark).where(CallMark.call_id == call_id))).scalars())
+
+
+async def test_review_rows_become_one_mark_tied_to_the_review(clients):
+    org = await seed(clients)
+    response = await submit(clients, org, usefulness='partly', reason='Two rows were off.',
+                            rows=[{'index': 2, 'field': 'email', 'verdict': 'wrong'},
+                                  {'index': 5, 'verdict': 'missing'}])
+    assert response.status_code == 201, response.text
+    body = response.json()
+    mark, = await marks_for()
+    assert body == {'review_id': body['review_id'], 'status': 'received', 'mark_id': mark.id}
+    assert (mark.review_id, mark.basis, mark.endpoint_id, mark.client) == (
+        body['review_id'], 'impression', 'example.search', 'review-test')
+    assert mark.items == [{'index': 2, 'field': 'email', 'verdict': 'wrong'},
+                          {'index': 5, 'verdict': 'missing'}]
+    # A repeated review keeps the first and adds no rows.
+    again = await submit(clients, org, usefulness='not_useful', rows=[{'verdict': 'wrong'}])
+    assert again.json() == {'review_id': body['review_id'], 'status': 'already_reviewed'}
+    assert len(await marks_for()) == 1
+
+
+async def test_review_rows_take_a_stated_basis_and_refuse_unknown_keys(clients):
+    org = await seed(clients)
+    bad = await submit(clients, org, rows=[{'row': 2, 'verdict': 'wrong'}])
+    assert bad.status_code == 422
+    assert await marks_for() == []
+    ok = await submit(clients, org, usefulness='partly', basis='bounced',
+                      rows=[{'index': 0, 'field': 'email', 'verdict': 'wrong'}])
+    assert ok.status_code == 201, ok.text
+    mark, = await marks_for()
+    assert mark.basis == 'bounced'
+
+
+async def test_review_without_rows_writes_no_mark(clients):
+    org = await seed(clients)
+    assert (await submit(clients, org)).json()['status'] == 'received'
+    assert await marks_for() == []
+
+
+async def test_mcp_review_relays_rows(clients):
+    from test_mcp import _call_tool as team_call, mcp_session
+
+    org = await seed(clients)
+    async with mcp_session(clients) as client:
+        result = await team_call(client, 'review', {
+            'call_id': 'review-call', 'usefulness': 'partly',
+            'rows': [{'index': 1, 'field': 'title', 'verdict': 'stale'}]}, token=org['token'])
+    mark, = await marks_for()
+    assert result['mark_id'] == mark.id
+    assert mark.items == [{'index': 1, 'field': 'title', 'verdict': 'stale'}]
