@@ -1821,12 +1821,13 @@ adapters:
     out: {jobs: data, count: metadata.total_results, next_cursor: metadata.next_cursor}
   hirebase.jobs.search:
     additional_capabilities: [companies.jobs]
-    accepts: [[title, name], [title], [name]]
-    in: {title: body.job_titles, name: body.company_name}
+    accepts: [[title, domain], [title, name], [title], [domain], [name]]
+    in: {title: body.job_titles, domain: body.company_domain}
     in_expr:
+      body.company_name: "choose(domain, null, name)"
       body.job_titles: "list(title)"
       body.geo_locations: "list(obj('city', choose(lower(location) == 'remote', null, location), 'country', country_name(country)))"
-      body.location_types: "choose(remote == true, list('Remote'), null)"
+      body.location_types: "choose(remote == true, list('Remote'), choose(lower(location) == 'remote', list('Remote'), null))"
       body.days_ago: posted_within_days
       body.limit: limit
     max: {limit: 100}
