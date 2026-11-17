@@ -217,6 +217,29 @@ async def test_local_leaderboard_keeps_saved_totals_only_for_tasks_with_no_reada
     assert "search1api" in {row["provider"] for row in result["task_results"]["sitemap"]}
 
 
+async def test_local_leaderboard_keeps_fresh_direct_calls_over_saved_totals(clients):
+    """A task with recent direct calls is current even without a readable Battle run."""
+    from treg.models import CallRecord
+
+    async with session_maker() as db:
+        db.add(CallRecord(org_id=1, user_email="synthetic@example.test", tool_name="crawl4ai.web.scrape",
+                          endpoint_id="crawl4ai.web.scrape", method="POST", path="/synthetic",
+                          kind="call", cached=False, status_code=200, hit=True, duration_ms=100,
+                          response_bytes=10, created_at=web_arena_publications.now() - timedelta(hours=1)))
+        await db.commit()
+    current = {"input": "https://example.com", "attempts": [{
+        "provider": "search1api", "state": "hit", "duration_ms": 100,
+        "quality": {"unique_valid_urls": 10}}]}
+    saved_news, saved_fetch = [{"provider": "exa", "runs": 4}], [{"provider": "exa", "runs": 2}]
+    await _saved_runs(("sitemap", current), ("sitemap", b'{"attempts": []}'), published={
+        "status": "live", "task_results": {"fetch": saved_fetch, "news": saved_news}})
+    result = await web_arena_publications.live_now()
+    assert result["stale_tasks"] == ["news"]
+    assert result["task_results"]["news"] == saved_news
+    assert result["task_results"]["fetch"] != saved_fetch
+    assert {row["provider"]: row["runs"] for row in result["task_results"]["fetch"]}["crawl4ai"] == 1
+
+
 async def test_scheduled_live_totals_refresh_only_when_due(monkeypatch):
     current = web_arena_publications.now()
     refreshed = []
