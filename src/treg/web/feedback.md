@@ -46,6 +46,45 @@ Over HTTP, GET `{BASE}/feedback/{feedback_id}` with the same team's authenticati
 Reports are accessible to that team and registry administrators, not published to the catalog.
 
 
+## Mark
+
+Mark a call when you learn its result was wrong, or confirm it was right: an email bounced,
+another source disagreed, or the user corrected it. Mark only what you checked, once you know,
+not on first sight; marking several calls at the end of the task is fine. Unlike a review, you may
+mark one call again as you learn more. Marks are private, never published and never change charges.
+
+The binary CLI has `treg mark`; the Python CLI does not. The `mark` MCP tool is on the team `/mcp/`
+server, but not for every client. Without either, use the HTTP form below.
+
+- `call_id`: required, the call whose result you checked.
+- `basis`: required, how you know: `bounced` (a send bounced), `cross_checked` (another source or a
+  verify call), `user_said` (the user corrected or confirmed it), or `impression` (a judgement
+  without a check).
+- `items`: what you found, each with a `verdict` (`correct`, `wrong`, `stale` (was true, no longer),
+  `wrong_entity` (belongs to someone else), `missing`, `irrelevant`, `duplicate`, `other`), an
+  optional 0-based row `index` and an optional `field` such as `email` or `experience[0].title`.
+  No index means the whole result. Rows you did not mark carry no conclusion.
+- `checked`: optional, how many rows you looked at.
+- `evidence_call_id`: optional, the call that showed it, such as an email verify call.
+- `note`: optional, 1-500 characters, private. Omit private information.
+- `replaces`: optional, an earlier `mark_id` of the same call that this one corrects; with no items
+  it withdraws that mark.
+
+```bash
+treg mark CALL_ID 2/email:wrong --basis bounced --checked 10
+```
+
+MCP: `mark(call_id="CALL_ID", basis="bounced", items=[{"index": 2, "field": "email", "verdict": "wrong"}], checked=10)`.
+HTTP: POST to `{BASE}/marks` with your `X-Treg-Token` and JSON:
+
+```json
+{"call_id": "CALL_ID", "basis": "bounced", "items": [{"index": 2, "field": "email", "verdict": "wrong"}], "checked": 10}
+```
+
+A new mark returns HTTP 201 with `mark_id` and `status: "received"`; sending the same mark again
+returns HTTP 200 with the original ID and `status: "already_received"`. If the call record is not
+written yet, retry shortly. Your own tools cannot be marked.
+
 ## Review
 
 A review rates one catalog call after you have used its result. Feedback is a self-initiated
