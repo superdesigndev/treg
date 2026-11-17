@@ -1142,7 +1142,7 @@ class Settings(BaseSettings):
     instagram_client_secret: str = ""
     # Comma-separated registry review keys that do not yet have production access. Remove one key
     # when its review is approved; set an explicit empty value when all reviews are complete.
-    oauth_review_pending: str = "instagram-login,page-messages"
+    oauth_review_pending: str = "instagram-login,page-messages,page-engagement"
     # Comma-separated provider service ids this deployment has paused (TREG_PAUSED_PROVIDERS), e.g.
     # one whose upstream access this deployment's app has lost. A paused provider leaves catalog
     # search and the connect listing, and its calls and connects are refused with a typed 503

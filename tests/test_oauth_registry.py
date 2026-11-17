@@ -229,3 +229,20 @@ def test_catalog_targets_are_exact_provider_approved_https_roots():
         unsafe.profile_for_catalog_host("api.diffbot.com")
     with pytest.raises(ValueError, match="not uniquely approved"):
         P.DIFFBOT.profile_for_catalog_host("credentials.example")
+
+
+def test_review_refusal_needs_a_declared_code_and_a_pending_granted_scope(monkeypatch):
+    from treg import oauth_providers as P
+
+    monkeypatch.setenv("TREG_OAUTH_REVIEW_PENDING", "page-engagement")
+    get_settings.cache_clear()
+    try:
+        granted = ["pages_show_list", "pages_manage_engagement", "pages_messaging"]
+        refusal = {"error": {"code": 200, "message": "(#200) Permissions error"}}
+        assert P.review_refusal_scopes(P.FACEBOOK, granted, refusal) == ["pages_manage_engagement"]
+        assert P.review_refusal_scopes(P.FACEBOOK, granted, {"error": {"code": 190}}) == []
+        assert P.review_refusal_scopes(P.FACEBOOK, granted, {"error": {"code": "200"}}) == []
+        assert P.review_refusal_scopes(P.FACEBOOK, ["pages_show_list"], refusal) == []
+        assert P.review_refusal_scopes(P.GOOGLE_SEARCH_CONSOLE, granted, refusal) == []
+    finally:
+        get_settings.cache_clear()

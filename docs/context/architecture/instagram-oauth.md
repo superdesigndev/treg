@@ -14,6 +14,7 @@ sources:
   - src/treg/domain/connections/oauth_flow.py
   - src/treg/infra/oauth_exchange.py
   - src/treg/mcp.py
+  - src/treg/oauth_providers.py
   - src/treg/routers/call.py
   - frontend/src/state/connections.js
   - frontend/src/pages/ProviderPage.vue
@@ -63,10 +64,18 @@ Meta App Review state is configuration, not code: `TREG_OAUTH_REVIEW_PENDING` li
 capabilities still under review, and the registry derives the recommended method, review warnings and
 capability choices from it:
 
-- `instagram-login,page-messages`: plain Connect uses Page `page-tools`; warnings and the optional
+- `instagram-login,page-messages` (the code default also adds `page-engagement`): plain Connect uses Page `page-tools`; warnings and the optional
   Page-message choice stay visible for reviewers and app-role accounts.
 - `instagram-login`: plain Connect uses full `page-messages`.
 - empty: plain Connect uses direct Instagram `manage`; all review warnings disappear.
+
+The same keys tell a connection and a call the truth while review is pending. A provider's
+`review_scopes` maps each key to the scopes Meta refuses until approval (Instagram Login's publish,
+comments and messages; `page-messages`; Facebook Pages' `page-engagement`). `GET /connections` lists
+the granted ones as `scopes_in_review` with a `review_note` the dashboard card shows, and a relayed
+4xx whose Graph `error.code` is 10 or 200 (`review_refusal`) carries `X-Treg-Review-Pending` with
+those scopes (`_note_review_refusal`). The body is relayed unchanged; the call is an own-tool call,
+so it is not charged.
 
 Change it only after Meta marks the related access approved. Development-mode tests with app-role
 accounts do not prove review is complete, and production access to accounts the app owner does not

@@ -521,6 +521,8 @@ def _show_failure_diagnostics(resp: httpx.Response) -> None:
     print(line, file=sys.stderr)
     if notice:
         print(f"treg: {notice}", file=sys.stderr)
+    elif relayed and (review := headers.get("X-Treg-Review-Pending-Text")):
+        print(f"treg: {review}", file=sys.stderr)
     if resp.status_code == 401 and not relayed and os.environ.get("TREG_TOKEN"):
         print("treg: TREG_TOKEN was rejected, and it overrides `treg login`: set it to a current key",
               file=sys.stderr)
@@ -2705,6 +2707,8 @@ def _call_envelope(response: httpx.Response, content_type: str) -> dict:
         meta["replay"] = True
     if upstream_failed := headers.get("X-Treg-Upstream-Failed"):
         meta["upstream_failed"] = upstream_failed
+    if review := headers.get("X-Treg-Review-Pending-Text"):
+        meta["review_pending"] = review
     if headers.get(CAPACITY_HEADER) == EXHAUSTED:
         meta["capacity"] = EXHAUSTED
     if headers.get("X-Treg-Async"):

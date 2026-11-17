@@ -1904,6 +1904,8 @@ async def _call_impl(endpoint_id: str, params: dict | list | None = None,
     if r.status_code >= 400:
         # Whose fault it was matters to an agent deciding whether to retry elsewhere.
         out["whose_error"] = "treg" if r.headers.get("X-Treg-Error") else "provider"
+        if review := r.headers.get("X-Treg-Review-Pending-Text"):
+            out["hint"] = review
     admitted_no = r.status_code == 403 and is_admission_refusal(r.headers, out.get("body"))
     if notice := account_out_notice(r.headers):
         # treg's own account for this tool is out: not the caller's balance, not theirs to fix. The

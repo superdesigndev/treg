@@ -200,6 +200,13 @@ class OAuthProvider:
     connect_default_capability_name: str = ""
     # Method used while the semantic default method is still behind a registry review key.
     review_fallback_authorization_method: str = ""
+    # Scopes the provider refuses for accounts without a role on this registry's app until its
+    # app review is approved, keyed by the review key in `TREG_OAUTH_REVIEW_PENDING`; a grant
+    # still lists them. `review_refusal` is the JSON path of the provider's error code and the
+    # codes it uses for that refusal; `app_review_name` is what the provider calls its review.
+    review_scopes: tuple[tuple[str, tuple[str, ...]], ...] = ()
+    review_refusal: tuple[str, tuple[int, ...]] = ("", ())
+    app_review_name: str = ""
     # Method assigned to grants created before explicit method identity existed. Empty means the
     # provider's normal default. This keeps compatibility policy in provider metadata.
     legacy_authorization_method: str = ""
@@ -957,6 +964,11 @@ _FB_READ = ["pages_show_list", "pages_read_engagement", "read_insights", "busine
 # discover_id_field/label_field read both listings.
 _META_BIZ_PAGE_LISTS = ("owned_pages.data", "client_pages.data")
 
+# Graph API error codes 10 and 200 mean the app itself lacks the permission, whatever the token
+# holds. https://developers.facebook.com/docs/graph-api/guides/error-handling
+_META_PERMISSION_REFUSAL = ("error.code", (10, 200))
+_META_APP_REVIEW = "Meta App Review"
+
 FACEBOOK = OAuthProvider(
     service="facebook",
     display_name="Facebook Pages",
@@ -983,6 +995,12 @@ FACEBOOK = OAuthProvider(
     client_id_setting="meta_client_id",
     client_secret_setting="meta_client_secret",
     appsecret_proof=True,
+    review_scopes=(
+        ("page-engagement", ("pages_manage_engagement", "pages_read_user_content")),
+        ("page-messages", ("pages_messaging",)),
+    ),
+    review_refusal=_META_PERMISSION_REFUSAL,
+    app_review_name=_META_APP_REVIEW,
     category="Social media",
     summary=(
         "Your Pages' posts, comments and reach — and publishing to them."
@@ -1063,6 +1081,15 @@ INSTAGRAM = OAuthProvider(
     long_lived_exchange_style="instagram",
     default_capability_name="manage",
     review_fallback_authorization_method="facebook-page",
+    review_scopes=(
+        ("instagram-login", (
+            "instagram_business_content_publish", "instagram_business_manage_comments",
+            "instagram_business_manage_messages",
+        )),
+        ("page-messages", ("instagram_manage_messages", "pages_messaging")),
+    ),
+    review_refusal=_META_PERMISSION_REFUSAL,
+    app_review_name=_META_APP_REVIEW,
     legacy_authorization_method="facebook-page",
     authorization_methods=(
         OAuthAuthorizationMethod(
@@ -4690,6 +4717,35 @@ def scope_label(scope: str) -> str:
     a far worse failure than showing the raw string for one line.
     """
     return SCOPE_LABELS.get(scope, scope)
+
+
+def review_pending_scopes(provider: OAuthProvider | None, granted: list[str]) -> list[str]:
+    """Granted scopes the provider still refuses because this registry's app review is pending."""
+    if provider is None:
+        return []
+    return connection_authorization.review_pending_scopes(
+        provider.review_scopes, granted, get_settings().oauth_review_pending_set,
+    )
+
+
+def review_pending_note(provider: OAuthProvider, scopes: list[str]) -> str:
+    """One sentence naming review-pending scopes, for a connection and for a refused call."""
+    review = provider.app_review_name or f"{provider.display_name}'s app review"
+    return (
+        f"Pending {review}: {provider.display_name} refuses {', '.join(scopes)} for accounts "
+        "without a role on this registry's app until the review is approved. Reconnecting "
+        "does not change this."
+    )
+
+
+def review_refusal_scopes(provider: OAuthProvider | None, granted: list[str], body: object) -> list[str]:
+    """Review-pending scopes behind a provider error body that says the app lacks a permission."""
+    if provider is None:
+        return []
+    path, codes = provider.review_refusal
+    if not connection_authorization.is_review_refusal(path, codes, body):
+        return []
+    return review_pending_scopes(provider, granted)
 
 
 def listing() -> list[dict]:

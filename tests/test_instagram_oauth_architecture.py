@@ -454,3 +454,43 @@ async def test_expired_grant_returns_structured_reconnect_guidance(
     detail = response.json()["detail"]
     assert detail["error"] == "authorization_expired"
     assert detail["required_authorization_method"] == "instagram-login"
+
+
+async def test_review_pending_scopes_show_on_the_connection_and_the_refused_call(
+    clients: AsyncClient, instagram_apps, monkeypatch,
+):
+    monkeypatch.setenv("TREG_OAUTH_REVIEW_PENDING", "instagram-login")
+    get_settings.cache_clear()
+    direct = await _complete(clients, {"provider": "instagram", "capability": "manage"})
+    rows = {row["id"]: row for row in (await clients.get("/connections")).json()}
+    connection = rows[direct["secret_id"]]
+    assert connection["scopes_in_review"] == [
+        "instagram_business_content_publish", "instagram_business_manage_comments",
+        "instagram_business_manage_messages",
+    ]
+    assert "Pending Meta App Review" in connection["review_note"]
+
+    async def publish():
+        return await clients.post(
+            "/call/instagram.instagram.media.container.create",
+            params={"ig_user_id": "17841400000000000"},
+            json={"image_url": "https://example.com/a.jpg"},
+            headers={"X-Treg-Authorization-Method": "instagram-login"},
+        )
+
+    refused = await publish()
+    assert refused.status_code == 403, refused.text
+    assert refused.json()["error"]["code"] == 10
+    assert refused.headers["X-Treg-Review-Pending"].split() == connection["scopes_in_review"]
+    note = refused.headers["X-Treg-Review-Pending-Text"]
+    assert note.startswith("Pending Meta App Review")
+    assert note.endswith("This call was not charged.")
+    assert "X-Treg-Cost-Micro" not in refused.headers
+
+    monkeypatch.setenv("TREG_OAUTH_REVIEW_PENDING", "")
+    get_settings.cache_clear()
+    rows = {row["id"]: row for row in (await clients.get("/connections")).json()}
+    assert rows[direct["secret_id"]]["scopes_in_review"] == []
+    approved = await publish()
+    assert approved.status_code == 403
+    assert "X-Treg-Review-Pending" not in approved.headers
