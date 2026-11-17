@@ -9,17 +9,27 @@ to the credit blocks and writes each call's `settle` entry. Nothing here commits
 from __future__ import annotations
 
 from collections.abc import Sequence
+from datetime import datetime, timedelta
 from typing import NamedTuple
 
-from sqlalchemy import delete
+from sqlalchemy import delete, update
 from sqlalchemy.dialects import postgresql, sqlite
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlmodel import select
 
 from ...config import get_settings
 from ...infra.money_trace import mark_money, money_stage
-from ...models import CallCharge, Hold, LedgerEntry
-from . import _add_balance, _consume_blocks, _day_start, _entry, _lock_blocks, _now, with_margin
+from ...models import CallCharge, Hold, LedgerEntry, Org
+from . import (
+    _add_balance,
+    _consume_blocks,
+    _day_start,
+    _entry,
+    _lock_blocks,
+    _now,
+    _spent_today_values,
+    with_margin,
+)
 
 FOLD_BATCH = 500
 
@@ -132,3 +142,111 @@ async def _fold(db: AsyncSession, org_id: int, hold: Hold | None, limit: int) ->
     if covered != consumed or consumed != counted:
         await _add_balance(db, org_id, covered - consumed, spent_delta_micro=consumed - counted)
     return Folded(len(charges), charged, consumed, len(claimed) - len(charges))
+
+
+class Allowance(NamedTuple):
+    """A team's allowance after a refill. `epoch` names this hold row for as long as it exists
+    (None when the team has no allowance); a counter kept outside the database carries it, so
+    one built for an earlier row is never mistaken for this one's."""
+
+    epoch: int | None
+    amount_micro: int
+    added_micro: int
+    folded: Folded
+
+
+def _epoch(hold: Hold) -> int:
+    return (hold.created_at - datetime(1970, 1, 1)) // timedelta(microseconds=1)
+
+
+async def refill_allowance_in_transaction(
+    db: AsyncSession, org_id: int, add_micro: int, *, fold_limit: int = FOLD_BATCH,
+) -> Allowance:
+    """Fold a batch of queued charges, then move `add_micro` from the balance into the team's
+    allowance hold, opening the hold if there is none. In the caller's transaction, before any
+    other money write.
+
+    The move is `reserve`'s conditional UPDATE and writes a `reserve` entry. A balance that
+    cannot cover it adds nothing and raises nothing: the fold still stands, and `added_micro`
+    of 0 tells the caller to stop spending from the allowance. `add_micro` is money, not a
+    provider cost: no margin is applied. Stamps the hold's heartbeat.
+    """
+    mark_money(db, "refill", org_id=org_id)
+    add = max(0, int(add_micro))
+    hold = await _lock_allowance(db, org_id)
+    opened = False
+    if hold is None and add:
+        # Two callers can both find no row. The insert decides which one opens it, and the
+        # other waits on the lock below and tops up the row the first one made.
+        insert = postgresql.insert if db.get_bind().dialect.name == "postgresql" else sqlite.insert
+        now = _now()
+        opened = (await db.execute(insert(Hold).values(
+            id=allowance_id(org_id), org_id=org_id, endpoint_id="", amount_micro=0,
+            created_at=now, purchased_only=False, allowance=True, heartbeat_at=now,
+        ).on_conflict_do_nothing(index_elements=[Hold.id]))).rowcount == 1
+        hold = await _lock_allowance(db, org_id)
+    folded = await _fold(db, org_id, hold, fold_limit)
+    if hold is None:
+        return Allowance(None, 0, 0, folded)
+    added = 0
+    if add:
+        counted = _spent_today_values(add) if hold.created_at >= _day_start() else {}
+        with money_stage(db, "reserve_balance"):
+            result = await db.execute(
+                update(Org).where(Org.id == org_id, Org.balance_micro >= add)
+                .values(balance_micro=Org.balance_micro - add, **counted))
+        if result.rowcount == 1:
+            added = add
+            hold.amount_micro += add
+            await _entry(db, org_id=org_id, kind="reserve", amount_micro=-add, call_id=hold.id,
+                         meta={"allowance": True, "charged_micro": add,
+                               "hold_micro": hold.amount_micro})
+    if opened and not added:
+        await db.delete(hold)
+        return Allowance(None, 0, 0, folded)
+    hold.heartbeat_at = _now()
+    return Allowance(_epoch(hold), hold.amount_micro, added, folded)
+
+
+class Closed(NamedTuple):
+    """`released_micro` went back to the balance; `remaining_micro` is still in the hold (0 once
+    the hold is gone)."""
+
+    released_micro: int
+    remaining_micro: int
+    folded: Folded
+
+
+async def close_allowance_in_transaction(
+    db: AsyncSession, org_id: int, *, reason: str, release_micro: int | None = None,
+) -> Closed:
+    """Fold every queued charge, then return allowance money to the balance with a `release`
+    entry. In the caller's transaction, before any other money write.
+
+    `release_micro=None` returns all of it and deletes the hold. Charges recorded after that find
+    no hold and come straight out of the balance, so use it only once no call can still be
+    spending from the allowance. A number returns at most that much and keeps the hold: the
+    way to stop new spending while calls already admitted finish against what is left.
+    """
+    mark_money(db, "close_allowance", org_id=org_id)
+    hold = await _lock_allowance(db, org_id)
+    folded = Folded()
+    while True:
+        batch = await _fold(db, org_id, hold, FOLD_BATCH)
+        folded = Folded(*(a + b for a, b in zip(folded, batch)))
+        if batch.calls + batch.duplicates < FOLD_BATCH:
+            break
+    if hold is None:
+        return Closed(0, 0, folded)
+    released = hold.amount_micro if release_micro is None else min(
+        max(0, int(release_micro)), hold.amount_micro)
+    if released:
+        hold.amount_micro -= released
+        counted = -released if hold.created_at >= _day_start() else 0
+        await _add_balance(db, org_id, released, spent_delta_micro=counted)
+        await _entry(db, org_id=org_id, kind="release", amount_micro=released, call_id=hold.id,
+                     meta={"allowance": True, "reason": reason, "hold_micro": hold.amount_micro})
+    remaining = hold.amount_micro
+    if release_micro is None:
+        await db.delete(hold)
+    return Closed(released, remaining, folded)

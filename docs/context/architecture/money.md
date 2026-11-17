@@ -130,12 +130,22 @@ behind its cursor). The charged total comes out of the allowance hold; what the 
 comes straight out of the balance, as an overrun does at `settle`. A queue row's primary key stops
 a second recording only until the row is folded, so the fold also drops any claimed row whose call
 already has a `settle` entry. The daily counter moves as it does at `settle`: consumed goes in, and
-the covered part comes out only when the hold was opened today. No call path uses either function
-yet. `Hold.allowance` and
-`Hold.heartbeat_at` (revision 0110) are likewise ahead of their code: false and null on every row,
-so every hold is still one call's reservation. `settle`, `release` and the stale-hold sweep
-already skip a hold marked `allowance`: it stands behind many calls, and closing it as one call's
-hold would return money those calls spent.
+the covered part comes out only when the hold was opened today.
+
+A team's allowance is one `Hold` row (`allowance:<org id>`, `allowance` true; revision 0110), so the
+invariant below counts it like any other hold. `allowance.refill_allowance_in_transaction` folds a
+batch, then moves an amount from the balance into that row with `reserve`'s conditional UPDATE and
+a `reserve` entry, opening the row when there is none (an insert that ignores a conflict decides
+between two openers). A balance that cannot cover the amount adds nothing and raises nothing: the
+fold stands and the caller reads `added_micro == 0`. The row keeps its `created_at` for life, and
+the refill returns it as the `epoch` an outside counter must carry. A hold opened on an earlier
+UTC day is not in today's counter, so its top-ups stay out too and its folds add what they
+consume. `allowance.close_allowance_in_transaction` folds everything queued and returns money with
+a `release` entry: all of it, deleting the row, or at most a given amount, keeping the row so
+calls already admitted finish against what is left. Every allowance operation locks the allowance
+hold first, then blocks, then the org row. `settle`, `release` and the stale-hold sweep skip a hold
+marked `allowance`. `heartbeat_at` is stamped by each refill; nothing reads it yet, and no call
+path uses any of these functions yet.
 
     balance_micro == sum(block.remaining_micro) - sum(open hold.amount_micro)
 
