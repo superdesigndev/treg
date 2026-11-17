@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import asyncio
+import os
 from datetime import timedelta
 from uuid import uuid4
 
@@ -417,3 +418,53 @@ async def test_one_team_failing_to_close_does_not_stop_the_sweep(org_id, store, 
     monkeypatch.setattr(allowance, "close_stale_allowance_in_transaction", broken)
     assert await allowance_sweep.sweep_once(session_maker) == 0
     assert await _state(org_id) == (GRANT - CHUNK, CHUNK)
+
+
+# ---- the real store ----------------------------------------------------------------------------
+@pytest.mark.skipif(not os.environ.get("TREG_TEST_KV_URL"),
+                    reason="set TREG_TEST_KV_URL to a scratch Redis")
+async def test_many_calls_at_once_on_a_real_store_are_each_charged_once(org_id, monkeypatch):
+    """The whole path against the real counter: concurrent reserves across refills, a mix of
+    charged, released and cancelled calls, then the sweep. Every charged call is in the ledger
+    once and all other money is back in the balance."""
+    real = kv.RedisStore(os.environ["TREG_TEST_KV_URL"])
+    monkeypatch.setattr(kv, "store", lambda: real)
+    monkeypatch.setattr(kv, "configured", lambda: True)
+    monkeypatch.setattr(runtime, "_refused_until", {})
+    monkeypatch.setattr(runtime, "_charges", runtime._ChargeWriter())
+    monkeypatch.setattr(get_settings(), "money_allowance_chunk_micro", 20_000)
+    caller = await _caller(org_id)
+
+    in_flight = asyncio.Semaphore(40)  # a scratch Redis accepts few connections
+
+    async def one(index: int) -> int:
+        async with in_flight:
+            mk = _call(org_id)
+            await call_reserve._platform_reserve(
+                mk, caller, call_ref=f"real-{index}", allow_allowance=True)
+            assert mk.allowance_epoch, "the allowance served the call"
+            await asyncio.sleep(0)
+            if index % 10 == 0:
+                await call_settle._finish_cancelled_call(None, mk, f"real-{index}")
+                return 0
+            if index % 7 == 0:
+                return (await call_settle._platform_settle(mk, None, reason="network"))[0]
+            return (await call_settle._platform_settle(mk, 200, observed_override=450))[0]
+
+    try:
+        charged = await asyncio.gather(*(one(index) for index in range(300)))
+        paid = [amount for amount in charged if amount]
+        assert set(paid) == {450} and len(paid) == sum(
+            1 for index in range(300) if index % 10 and index % 7)
+        await _age_heartbeat(org_id, allowance_sweep.idle_after_s() + 5)
+        assert await allowance_sweep.sweep_once(session_maker) == 1
+        assert await _state(org_id) == (GRANT - 450 * len(paid), 0)
+        async with session_maker() as db:
+            settles = [entry.call_id for entry in await ledger.entries_of(db, org_id, limit=1000)
+                       if entry.kind == "settle"]
+            assert (await db.execute(select(CallCharge))).first() is None
+        assert len(settles) == len(set(settles)) == len(paid)
+        assert await real.allowance_take(org_id, 1) == 0
+    finally:
+        await real._client.delete(kv._allowance_key(org_id), runtime._refill_key(org_id))
+        await real.aclose()
