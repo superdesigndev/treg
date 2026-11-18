@@ -222,7 +222,30 @@ _OUT_OF_CREDITS = [
      b'{"message":"linkedinURL must be a valid URL"}'),
     ("orbisearch", 403, b'{"detail":"Insufficient credits: 0 available, 0.2 needed"}',
      b'{"detail":"Not authenticated"}'),
+    ("trykitt", 418, b'{"message":"Our system thinks your activity may be violating our fair use policy. (CASE 001) '
+     b'Please open a support ticket to get unblocked","response_code":418}',
+     b'{"message":"I\'m a teapot","response_code":418}'),
+    ("apify", 403, b'{"error":{"type":"platform-feature-disabled","message":"You\'ve reached your monthly usage limit '
+     b'of $100.00, so Actor runs and other Apify services are blocked until your monthly usage cycle resets."}}',
+     b'{"error":{"type":"insufficient-permissions","message":"You do not have permission to run this Actor."}}'),
 ]
+
+
+def test_a_plan_period_cap_is_a_quota_and_a_concurrency_cap_a_burst():
+    day = (b'{"error":"limit: 1000 search per 86400s for plan pro","metric":"search",'
+           b'"window_secs":86400,"cap":1000,"retry_after_s":3600}')
+    sig = S.classify("crawl4ai", 429, {"retry-after": "3600"}, day)
+    assert sig.kind == "quota" and sig.resets_at is not None
+    at_once = (b'{"error":"limit: 10 concurrent parallel for plan pro","metric":"concurrent",'
+               b'"window_secs":0,"cap":10,"retry_after_s":1}')
+    assert S.classify("crawl4ai", 429, {"retry-after": "1"}, at_once).kind == "burst"
+    pace = (b'{"error":"limit: 60 search per 60s for plan pro","metric":"search",'
+            b'"window_secs":60,"cap":60,"retry_after_s":5}')
+    assert S.classify("crawl4ai", 429, {"retry-after": "5"}, pace).kind == "burst"
+    one_client = (b'{"error":"limit: 500 search per 86400s for this client","metric":"search",'
+                  b'"window_secs":86400,"cap":500,"retry_after_s":3600}')
+    assert not S.is_exhausting(S.classify("crawl4ai", 429, {"retry-after": "3600"}, one_client)), \
+        "a cap on one client never locks the endpoint for every team"
 
 
 @pytest.mark.parametrize("provider, status, out, _", _OUT_OF_CREDITS, ids=[r[0] for r in _OUT_OF_CREDITS])
@@ -395,7 +418,7 @@ def test_an_unrecorded_vendor_phrase_is_a_tripwire_never_a_mark():
 # gap, not a claim the vendor never runs dry: their 4xx trips `unrecorded` instead.
 _UNRECORDED_SIGNATURE = {
     "adyntel",  # no balance endpoint; documented 402 does not uniquely prove wallet exhaustion
-    "apify", "branddev", "brightdata", "coresignal", "crustdata",
+    "branddev", "brightdata", "coresignal", "crustdata",
     "diffbot", "exa", "fiber-ai", "finnhub", "justoneapi", "marketstack",
     "sumble",  # exhaustion not forced; no overflow route claimed
     "harvestapi",  # wallet exhaustion unobserved; no overflow route

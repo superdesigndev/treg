@@ -17,7 +17,6 @@ from ...application import hub as hub_app
 from ...application.hub import runner as hub_runner
 from ...application.hub import limits as hub_limits
 from ... import sandbox as demo_sandbox
-from ...capacity_notice import CAPACITY_HEADER, EXHAUSTED
 from ...client_identity import _norm_client, mcp_host
 from ...config import get_settings
 from ...domain.catalog import outcome as catalog_outcome
@@ -2174,6 +2173,19 @@ async def _execute_call(request: _ApplicationRequest, upstream_client: httpx.Asy
                 _capture(_overflow_event(pending, outcome, charged))
             else:
                 _capture(pending)  # the vendor's own answer stands
+        if may_overflow and not served_via and not charged \
+                and capacity_signal in capacity_signatures.EXHAUSTING_KINDS:
+            # treg's own account is out of money or out of its period allowance. The provider's
+            # answer (a 2xx with the error inside, a 401 that reads as the caller's key) stays in
+            # the call's error evidence; the caller gets treg's typed refusal, uncharged.
+            await response.close()
+            request.state.call_cost_micro = 0
+            from .resolve import _provider_capacity_unavailable
+            raise _provider_capacity_unavailable(
+                _catalog_endpoint_for(mk.endpoint_id) or {"id": mk.endpoint_id},
+                mk.provider, capacity_view.exhausted_until(
+                    mk.provider, mk.endpoint_id, keyslots.capacity_slot(mk.key_slot),
+                    metered=capacity_marks.spends_balance(mk.cost_type)))
         # Mask credentials echoed in error bodies after settlement and capacity processing (which
         # need the original body) but before the body reaches the caller or the replay store.
         if response.status >= 400 and spooled_bytes is None:
@@ -2222,10 +2234,6 @@ async def _execute_call(request: _ApplicationRequest, upstream_client: httpx.Asy
             # DataForSEO task status other than 20000). The body is relayed as any 2xx is and the
             # charge is what the provider reported; this header is how the caller learns it.
             _set_response_header(response, "X-Treg-Upstream-Failed", upstream_failed)
-        if not served_via and capacity_signal in capacity_signatures.EXHAUSTING_KINDS:
-            # treg's own account is out. The body stays the provider's; this header lets every
-            # surface tell the caller it is not their balance and not theirs to fix.
-            _set_response_header(response, CAPACITY_HEADER, EXHAUSTED)
         if smoothed:
             _set_response_header(response, "X-Treg-Smoothed", " ".join(smoothed))
         return response

@@ -308,7 +308,8 @@ def sampled_provider_allowed(provider: str, percentages: dict[str, int], *, org_
 
 def rank(candidates: list[Candidate], *, prefer: list[str] | None = None, exclude: list[str] | None = None,
          given: set[str] | frozenset[str] | None = None, derive: dict[str, str] | None = None,
-         one_subject: bool = False, caller_prefer: bool = False) -> list[Candidate]:
+         one_subject: bool = False, caller_prefer: bool = False,
+         last: tuple[str, ...] | list[str] = ()) -> list[Candidate]:
     """`given` = the identity keys the CALLER actually sent; `derive` = the contract's derive rules.
     `one_subject` (the contract's flag): every variant names the same person, so expected cost per
     hit leads and specificity only breaks ties. Specificity first sent `{linkedin_url, full_name,
@@ -318,8 +319,12 @@ def rank(candidates: list[Candidate], *, prefer: list[str] | None = None, exclud
     variant names, or one it was derived from (`first_name`/`last_name` cover a supplied
     `full_name`; `domain` covers a supplied `email`). So `{first_name, last_name, domain}` and
     `{full_name, domain}` are equally specific for a caller who sent a full name and a domain, and
-    price decides between hunter and apollo — while a domain-only variant still ranks below both."""
+    price decides between hunter and apollo — while a domain-only variant still ranks below both.
+    `last` (the contract's `ask_last`) ranks those providers, on treg's key only, after the other
+    healthy treg-key candidates unless they are named in `prefer`; a caller's own prefer ignores it,
+    and a team's own key is never reordered by it."""
     prefer = [p.lower() for p in prefer or []]
+    last = set() if caller_prefer else {p.lower() for p in last} - set(prefer)
     given = set(given or ())
     derive = derive or {}
 
@@ -358,6 +363,8 @@ def rank(candidates: list[Candidate], *, prefer: list[str] | None = None, exclud
         # ahead of one that asks the real one. The caller's own prefer still places it.
         if missed and not caller_prefer:
             pref = len(prefer)
+        if tier == 2 and c.endpoint["provider"].lower() in last:
+            pref = len(prefer) + 1
         order = (pref, unwell) if caller_prefer else (unwell, pref)
         return (tier, *order, *lead,
                 c.p50_ms if c.p50_ms is not None else 10**9,

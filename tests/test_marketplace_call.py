@@ -198,10 +198,11 @@ async def test_hlrlookup_platform_pair_rides_the_body_and_settles_reported_credi
     await A.app.state.http.aclose()
     A.app.state.http = AsyncClient(transport=httpx.MockTransport(upstream))
     charges = []
-    for body in (_HLR_LIVE, {**_HLR_LIVE, "usa_status": "YES"}, _HLR_LIVE, _HLR_LIVE):
+    for n, body in enumerate((_HLR_LIVE, {**_HLR_LIVE, "usa_status": "YES"}, _HLR_LIVE, _HLR_LIVE)):
         before = await _balance(clients)
         response = await clients.post("/call/hlrlookup.people.phone.verify", json=body)
-        assert response.status_code == 200, response.text
+        # The last answer is treg's own account out of credit: treg's refusal, uncharged.
+        assert response.status_code == (503 if n == 3 else 200), response.text
         charges.append(before - await _balance(clients))
     # One credit is $0.006608; a US mobile with usa_status costs two; free answers cost nothing.
     assert charges == [6_608, 13_216, 0, 0]
