@@ -492,6 +492,34 @@ async def _hold(org_id: int, hold_id: str):
         return next(h for h in await ledger.open_holds_of(db, org_id) if h.id == hold_id)
 
 
+async def test_a_charge_admitted_for_a_team_that_is_gone_is_dropped_not_charged(org_id):
+    """A charge written late can land after its team was deleted. There is then no team to
+    charge; and where the database hands the number to a new team, that team owes nothing."""
+    gone = org_id + 1_000
+    async with session_maker() as db:  # no team with this number: nothing to write a ledger for
+        await allowance.record_charges(
+            db, [allowance.Charge("late", gone, "e.metered", 600, reserved_micro=600, epoch=1)])
+        await db.commit()
+        folded = await allowance.fold_charges_in_transaction(db, gone)
+        await db.commit()
+    assert folded == allowance.Folded(orphaned=1)
+    # The same number, a new team: its ledger began (the fixture's grant) after the hold the
+    # charge names, so the charge was never this team's.
+    before = allowance._epoch_of(ledger._now() - timedelta(hours=1))
+    current = allowance._epoch(await _hold(org_id, await _open(org_id, 1_000)))
+    async with session_maker() as db:
+        await allowance.record_charges(db, [
+            allowance.Charge("theirs", org_id, "e.metered", 600, reserved_micro=600, epoch=before),
+            allowance.Charge("ours", org_id, "e.metered", 100, reserved_micro=100, epoch=current)])
+        await db.commit()
+        folded = await allowance.fold_charges_in_transaction(db, org_id)
+        await db.commit()
+        assert (folded.calls, folded.charged_micro, folded.orphaned) == (1, 100, 1)
+        assert await ledger.balance_of(db, org_id) == GRANT - 1_000
+    assert list(await _settles(org_id)) == ["ours"]
+    await _invariant(org_id)
+
+
 async def test_a_reserve_refused_for_what_the_queue_owes_leaves_the_team_as_it_was(org_id):
     await _record(org_id, GRANT)  # no hold stands behind it: all of the balance is owed
     async with session_maker() as db:

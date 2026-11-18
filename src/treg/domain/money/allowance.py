@@ -8,6 +8,7 @@ to the credit blocks and writes each call's `settle` entry. Nothing here commits
 
 from __future__ import annotations
 
+import logging
 from collections.abc import Sequence
 from datetime import datetime, timedelta
 from typing import NamedTuple
@@ -33,6 +34,7 @@ from . import (
 )
 
 FOLD_BATCH = 500
+log = logging.getLogger("treg.ledger")
 
 
 def allowance_id(org_id: int) -> str:
@@ -101,12 +103,14 @@ async def record_charges(db: AsyncSession, charges: Sequence[Charge]) -> set[str
 
 class Folded(NamedTuple):
     """One fold: `calls` settle entries written for `charged_micro`, `consumed_micro` of it drawn
-    from blocks, and `duplicates` charges dropped because their call was already settled."""
+    from blocks, `duplicates` charges dropped because their call was already settled, and
+    `orphaned` charges dropped because the team they were admitted for is gone."""
 
     calls: int = 0
     charged_micro: int = 0
     consumed_micro: int = 0
     duplicates: int = 0
+    orphaned: int = 0
 
 
 async def _lock_allowance(db: AsyncSession, org_id: int) -> Hold | None:
@@ -175,6 +179,12 @@ async def _apply_charges(db: AsyncSession, org_id: int, hold: Hold | None, claim
                 LedgerEntry.org_id == org_id, LedgerEntry.kind == "settle"))).scalars())
     charges = sorted((row for row in claimed if row.call_id not in settled),
                      key=lambda row: (row.created_at, row.call_id))
+    duplicates = len(claimed) - len(charges)
+    charges = await _of_this_team(db, org_id, hold, charges)
+    orphaned = len(claimed) - duplicates - len(charges)
+    if orphaned:
+        log.error("allowance_charges_orphaned org_id=%s dropped=%s: the team they were admitted "
+                  "for has been deleted", org_id, orphaned)
     charged = sum(row.amount_micro for row in charges)
     blocks = await _lock_blocks(db, {org_id}) if charged > 0 else []
     folded_at = _now()
@@ -202,7 +212,28 @@ async def _apply_charges(db: AsyncSession, org_id: int, hold: Hold | None, claim
     counted = covered if hold is not None and hold.created_at >= _day_start() else 0
     if covered != consumed or consumed != counted:
         await _add_balance(db, org_id, covered - consumed, spent_delta_micro=consumed - counted)
-    return Folded(len(charges), charged, consumed, len(claimed) - len(charges))
+    return Folded(len(charges), charged, consumed, duplicates, orphaned)
+
+
+async def _of_this_team(db: AsyncSession, org_id: int, hold: Hold | None, charges: list) -> list:
+    """The charges that belong to the team `org_id` names now. A charge written late can land
+    after its team was deleted: there is then no team to charge, and a database that gives a
+    new team the old number must not charge that one. A team's ledger begins before any
+    allowance hold of its own can be funded, so a charge that names a hold older than the
+    team's first ledger entry was admitted for a team that is gone. Read only when a charge
+    names a hold other than the one the team has, which is rare."""
+    if not charges:
+        return charges
+    if (await db.execute(select(Org.id).where(Org.id == org_id))).first() is None:
+        return []
+    foreign = [row for row in charges if row.hold_created_at is not None
+               and (hold is None or row.hold_created_at != hold.created_at)]
+    if not foreign:
+        return charges
+    began = (await db.execute(select(func.min(LedgerEntry.created_at)).where(
+        LedgerEntry.org_id == org_id))).scalar()
+    return [row for row in charges if row not in foreign
+            or (began is not None and row.hold_created_at >= began)]
 
 
 async def holds_behind(db: AsyncSession, org_ids: Sequence[int]) -> dict[int, int]:
@@ -265,7 +296,11 @@ class Allowance(NamedTuple):
 
 
 def _epoch(hold: Hold) -> int:
-    return (hold.created_at - datetime(1970, 1, 1)) // timedelta(microseconds=1)
+    return _epoch_of(hold.created_at)
+
+
+def _epoch_of(created_at: datetime) -> int:
+    return (created_at - datetime(1970, 1, 1)) // timedelta(microseconds=1)
 
 
 async def committed_today(db: AsyncSession, org_id: int) -> int:
