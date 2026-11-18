@@ -88,8 +88,7 @@ async def record_charges(db: AsyncSession, charges: Sequence[Charge]) -> set[str
             "endpoint_id": charge.endpoint_id or "", "amount_micro": amount,
             "overrun_micro": (0 if charge.reserved_micro is None
                               else max(0, amount - int(charge.reserved_micro))),
-            "hold_created_at": (None if charge.epoch is None else
-                                datetime(1970, 1, 1) + timedelta(microseconds=charge.epoch)),
+            "hold_created_at": hold_created_at(charge.epoch),
             "meta": {**(charge.meta or {}), "margin": margin,
                      "observed_micro": (None if charge.actual_micro is None
                                         else int(charge.actual_micro))},
@@ -111,6 +110,11 @@ class Folded(NamedTuple):
     consumed_micro: int = 0
     duplicates: int = 0
     orphaned: int = 0
+
+    @property
+    def claimed(self) -> int:
+        """How many queue rows this fold took: a full batch means more may be queued."""
+        return self.calls + self.duplicates + self.orphaned
 
 
 async def _lock_allowance(db: AsyncSession, org_id: int) -> Hold | None:
@@ -180,7 +184,9 @@ async def _apply_charges(db: AsyncSession, org_id: int, hold: Hold | None, claim
     charges = sorted((row for row in claimed if row.call_id not in settled),
                      key=lambda row: (row.created_at, row.call_id))
     duplicates = len(claimed) - len(charges)
-    charges = await _of_this_team(db, org_id, hold, charges)
+    if charges:
+        team = await team_of(db, org_id)
+        charges = [row for row in charges if owed_by(team, row.hold_created_at)]
     orphaned = len(claimed) - duplicates - len(charges)
     if orphaned:
         log.error("allowance_charges_orphaned org_id=%s dropped=%s: the team they were admitted "
@@ -215,25 +221,42 @@ async def _apply_charges(db: AsyncSession, org_id: int, hold: Hold | None, claim
     return Folded(len(charges), charged, consumed, duplicates, orphaned)
 
 
-async def _of_this_team(db: AsyncSession, org_id: int, hold: Hold | None, charges: list) -> list:
-    """The charges that belong to the team `org_id` names now. A charge written late can land
-    after its team was deleted: there is then no team to charge, and a database that gives a
-    new team the old number must not charge that one. A team's ledger begins before any
-    allowance hold of its own can be funded, so a charge that names a hold older than the
-    team's first ledger entry was admitted for a team that is gone. Read only when a charge
-    names a hold other than the one the team has, which is rare."""
-    if not charges:
-        return charges
+class Team(NamedTuple):
+    """Whether the team a charge names is still there, for `owed_by`. `since` is set only where
+    the database can give a deleted team's number to a new one: the instant this team's ledger
+    began."""
+
+    exists: bool
+    since: datetime | None = None
+    reusable_id: bool = False
+
+
+async def team_of(db: AsyncSession, org_id: int) -> Team:
+    """Read what `owed_by` needs to tell a charge of this team from one admitted for a team that
+    was deleted. On PostgreSQL a number is never given out twice, so the team existing is the
+    whole answer. SQLite gives the highest number out again; there a team's ledger begins
+    before any allowance hold of its own is funded (one writer at a time, so nothing lands in
+    between), and a hold older than the ledger was another team's."""
     if (await db.execute(select(Org.id).where(Org.id == org_id))).first() is None:
-        return []
-    foreign = [row for row in charges if row.hold_created_at is not None
-               and (hold is None or row.hold_created_at != hold.created_at)]
-    if not foreign:
-        return charges
-    began = (await db.execute(select(func.min(LedgerEntry.created_at)).where(
+        return Team(False)
+    if db.get_bind().dialect.name != "sqlite":
+        return Team(True)
+    since = (await db.execute(select(func.min(LedgerEntry.created_at)).where(
         LedgerEntry.org_id == org_id))).scalar()
-    return [row for row in charges if row not in foreign
-            or (began is not None and row.hold_created_at >= began)]
+    return Team(True, since, True)
+
+
+def owed_by(team: Team, hold_created_at: datetime | None) -> bool:
+    """Whether a charge that names the hold created at `hold_created_at` is this team's to pay."""
+    if not team.exists:
+        return False
+    if not team.reusable_id or hold_created_at is None:
+        return True
+    return team.since is not None and hold_created_at >= team.since
+
+
+def hold_created_at(epoch: int | None) -> datetime | None:
+    return None if epoch is None else datetime(1970, 1, 1) + timedelta(microseconds=epoch)
 
 
 async def holds_behind(db: AsyncSession, org_ids: Sequence[int]) -> dict[int, int]:

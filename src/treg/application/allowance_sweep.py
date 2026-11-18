@@ -116,7 +116,7 @@ async def fold_queued_once(session_maker) -> int:
                         folded = await allowance.fold_charges_in_transaction(db, org_id)
                         await db.commit()
                 total += folded.calls
-                if folded.calls + folded.duplicates < allowance.FOLD_BATCH:
+                if folded.claimed < allowance.FOLD_BATCH:
                     break
         except Exception:
             log.error("folding the queued charges of org %s failed", org_id, exc_info=True)
