@@ -569,7 +569,8 @@ def _activity(**row):
     from types import SimpleNamespace
 
     base = {"pid": 7, "relname": "ledgerentry", "mode": "ShareUpdateExclusiveLock",
-            "backend_type": "autovacuum worker", "query": "", "xact_s": 900.0}
+            "backend_type": "autovacuum worker", "query": "", "xact_s": 900.0,
+            "past_freeze_age": False}
     return SimpleNamespace(**{**base, **row})
 
 
@@ -585,6 +586,28 @@ def test_only_an_anti_wraparound_autovacuum_or_a_long_transaction_is_a_long_hold
     with caplog.at_level("WARNING", logger="treg.maintenance"):
         assert _long_holder(_activity(query="<insufficient privilege>")) is None
     assert "pg_read_all_stats" in caplog.text
+    assert "past its freeze age" in _long_holder(
+        _activity(query="<insufficient privilege>", past_freeze_age=True))
+
+
+def _hidden(**row):
+    """What pg_stat_activity shows a role without pg_read_all_stats for another role's session,
+    autovacuum included: the pid, and NULL kind, start and query."""
+    return _activity(backend_type=None, query=None, xact_s=None, **row)
+
+
+def test_a_session_this_role_cannot_see_is_judged_by_its_lock_and_the_freeze_age(caplog):
+    from treg.maintenance import _long_holder
+
+    refused = _long_holder(_hidden(past_freeze_age=True))
+    assert refused.startswith("pid 7 (hidden from this role; on a table past its freeze age")
+    assert refused.endswith("holds ShareUpdateExclusiveLock on ledgerentry")
+    with caplog.at_level("WARNING", logger="treg.maintenance"):
+        assert _long_holder(_hidden()) is None
+        assert _long_holder(_hidden(mode="AccessShareLock", past_freeze_age=True)) is None
+    warnings = [r.getMessage() for r in caplog.records]
+    assert len(warnings) == 2
+    assert all("cannot see pid 7" in w and "pg_read_all_stats" in w for w in warnings)
 
 
 _FIXTURE_REVISIONS = {
@@ -662,3 +685,35 @@ async def test_postgres_preflight_refuses_a_transaction_holding_a_pending_table(
         monkeypatch.setattr(get_settings(), "migration_lock_holder_check", False)
         await maintenance._refuse_behind_long_lock_holder(config, {"org"})
         await holder.rollback()
+
+
+async def test_postgres_preflight_sees_another_roles_lock_without_pg_read_all_stats(caplog):
+    from sqlalchemy import text
+    from sqlalchemy.exc import DBAPIError
+
+    from treg.infra.db import _engine, reset_db
+    from treg.maintenance import _LONG_LOCK_HOLDERS, _long_holder
+
+    if _engine.dialect.name != "postgresql":
+        pytest.skip("pg_locks and pg_stat_activity are PostgreSQL's")
+    await reset_db()
+    try:
+        async with _engine.begin() as admin:
+            await admin.execute(text(
+                "DO $$ BEGIN CREATE ROLE treg_lockguard_probe NOLOGIN; "
+                "EXCEPTION WHEN duplicate_object OR unique_violation THEN NULL; END $$"))
+    except DBAPIError:
+        pytest.skip("the test role cannot create a role")
+    async with _engine.connect() as holder, _engine.connect() as checker:
+        await holder.execute(text("LOCK TABLE org IN SHARE UPDATE EXCLUSIVE MODE"))
+        await checker.execute(text("SET ROLE treg_lockguard_probe"))
+        rows = (await checker.execute(_LONG_LOCK_HOLDERS, {
+            "tables": ["org"], "max_xact_s": 3600})).all()
+        await checker.execute(text("RESET ROLE"))
+        await holder.rollback()
+    assert [(r.relname, r.mode, r.backend_type, r.xact_s) for r in rows] == [
+        ("org", "ShareUpdateExclusiveLock", None, None)]
+    with caplog.at_level("WARNING", logger="treg.maintenance"):
+        assert (_long_holder(rows[0]) is None) is (not rows[0].past_freeze_age)
+    if not rows[0].past_freeze_age:
+        assert "pg_read_all_stats" in caplog.text

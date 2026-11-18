@@ -119,9 +119,15 @@ before it requests any lock, `maintenance._refuse_behind_long_lock_holder` reads
 literals in their files, docstrings excluded), and refuses at once, naming the session, when an
 anti-wraparound autovacuum or a transaction older than `TREG_MIGRATION_LOCK_HOLDER_MAX_XACT_S`
 (30 s) holds a lock on one of them. Nothing ran; wait for the holder (never cancel an
-anti-wraparound vacuum) or end the transaction, then deploy again. A role without
-`pg_read_all_stats` cannot read an autovacuum's query, so the check logs a warning and continues;
-the lock wait still bounds that case. A holder that starts after the check is bounded the same way.
+anti-wraparound vacuum) or end the transaction, then deploy again. `pg_locks` and `pg_class` are
+readable by every role, but to a role without `pg_read_all_stats` PostgreSQL shows another role's
+sessions, autovacuum included, with NULL `backend_type`, `xact_start` and `query`. The check keeps
+those rows: one holding `SHARE UPDATE EXCLUSIVE` on a table whose `age(relfrozenxid)` or
+`mxid_age(relminmxid)` has reached `autovacuum_freeze_max_age` (or its multixact twin) is taken as
+an anti-wraparound autovacuum and refused; any other hidden holder is logged as a warning naming
+its pid, lock and table, and the upgrade continues, bounded by the lock wait. Granting
+`pg_read_all_stats` to the migration role gives the check full sight. A holder that starts after
+the check is bounded the same way.
 `TREG_MIGRATION_LOCK_HOLDER_CHECK=false` turns the check off.
 
 - Hot-table ALTERs belong in their own revision, add only nullable columns without defaults

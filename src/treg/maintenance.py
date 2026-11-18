@@ -35,9 +35,17 @@ RELEASE_TASKS: tuple[ReleaseTask, ...] = (
 # pg_read_all_stats.
 _HIDDEN_QUERY = "<insufficient privilege>"
 
+# pg_locks and pg_class are readable by every role; pg_stat_activity hides backend_type,
+# xact_start and query of another role's sessions (NULL) from a role without pg_read_all_stats,
+# autovacuum included. Such a row is kept and judged by its lock and by the table's freeze age.
 _LONG_LOCK_HOLDERS = text("""
     SELECT a.pid, c.relname, l.mode, a.backend_type, a.query,
-           EXTRACT(EPOCH FROM now() - a.xact_start) AS xact_s
+           EXTRACT(EPOCH FROM now() - a.xact_start) AS xact_s,
+           (c.relkind IN ('r', 'm', 't')
+            AND (age(c.relfrozenxid) >= current_setting('autovacuum_freeze_max_age')::bigint
+                 OR mxid_age(c.relminmxid)
+                    >= current_setting('autovacuum_multixact_freeze_max_age')::bigint))
+             AS past_freeze_age
     FROM pg_locks l
     JOIN pg_class c ON c.oid = l.relation
     JOIN pg_stat_activity a ON a.pid = l.pid
@@ -46,7 +54,8 @@ _LONG_LOCK_HOLDERS = text("""
       AND pg_table_is_visible(c.oid)
       AND c.relname = ANY(:tables)
       AND a.pid <> pg_backend_pid()
-      AND (a.backend_type = 'autovacuum worker'
+      AND (a.backend_type IS NULL
+           OR a.backend_type = 'autovacuum worker'
            OR a.xact_start < now() - make_interval(secs => :max_xact_s))
     ORDER BY c.relname, a.pid
 """)
@@ -141,14 +150,31 @@ def _tables_named_by_pending(script: ScriptDirectory, current: tuple[str, ...],
 
 
 def _long_holder(row) -> str | None:
+    if row.backend_type is None:
+        # Another role's session this role cannot see: its age and kind are unknown. A
+        # SHARE UPDATE EXCLUSIVE lock on a table past its freeze age is what an anti-wraparound
+        # autovacuum holds; anything else is left to the bounded lock wait.
+        if row.mode == "ShareUpdateExclusiveLock" and row.past_freeze_age:
+            return (f"pid {row.pid} (hidden from this role; on a table past its freeze age, "
+                    f"most likely an autovacuum to prevent wraparound) holds {row.mode} "
+                    f"on {row.relname}")
+        logger.warning(
+            "migration preflight cannot see pid %d holding %s on %s: it belongs to another "
+            "role and this role lacks pg_read_all_stats, so its age and kind are unknown; "
+            "continuing", row.pid, row.mode, row.relname,
+        )
+        return None
     if row.backend_type != "autovacuum worker":
         return (f"pid {row.pid} ({row.backend_type}, transaction open {row.xact_s:.0f} s) "
                 f"holds {row.mode} on {row.relname}")
     if row.query in (None, "", _HIDDEN_QUERY):
+        if row.past_freeze_age:
+            return (f"pid {row.pid} (autovacuum on a table past its freeze age) "
+                    f"holds {row.mode} on {row.relname}")
         logger.warning(
-            "migration preflight cannot tell whether autovacuum pid %d on %s is an "
-            "anti-wraparound pass: this role cannot read its query (grant pg_read_all_stats); "
-            "continuing", row.pid, row.relname,
+            "migration preflight cannot read the query of autovacuum pid %d on %s "
+            "(grant pg_read_all_stats); the table is not past its freeze age, continuing",
+            row.pid, row.relname,
         )
         return None
     if "to prevent wraparound" not in row.query:
