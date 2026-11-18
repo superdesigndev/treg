@@ -69,7 +69,7 @@ endpoints:
       note: "Use a suggestion's place_id and lat/lng as the input to the rank and rank-grid tools. When the answer is an empty suggestions list after a slow (10 s+) reply, retry once: a live probe answered empty, then 2 matches 30 s later. Both answers are billed."
     strict_query: true
     test_request: {queryParams: {query: "Katz's Delicatessen", near: "New York, NY"}}
-    price: {value: '3.20', currency: USD, per: 1000, unit: call, note: "Local Falcon exposes no per-call meter; the charge is the documented rate."}
+    price: {value: '6.40', currency: USD, per: 1000, unit: call, note: "treg's price per call, one data point. Local Falcon exposes no per-call meter."}
     miss: {when: {any: [{path: response.data.suggestions, op: absent}, {path: response.data.suggestions, op: empty}]}}
     docs_url: https://docs.localfalcon.com/
 
@@ -93,7 +93,7 @@ endpoints:
         zoom: {type: integer, required: false, min: 0, max: 18, default: 13, note: "Google Maps zoom level of the simulated search."}
     strict_query: true
     test_request: {queryParams: {lat: 40.722233, lng: -73.987429, keyword: deli}}
-    price: {value: '3.20', currency: USD, per: 1000, unit: call, note: "Local Falcon exposes no per-call meter; the charge is the documented rate."}
+    price: {value: '6.40', currency: USD, per: 1000, unit: call, note: "treg's price per call, one data point. Local Falcon exposes no per-call meter."}
     miss: {when: {any: [{path: response.data.results, op: absent}, {path: response.data.results, op: empty}]}}
     docs_url: https://docs.localfalcon.com/
 
@@ -119,7 +119,7 @@ endpoints:
       note: "Result items name the place id map_id_encoded. data.raw repeats the 20 results."
     strict_query: true
     test_request: {queryParams: {lat: 40.722233, lng: -73.987429, keyword: deli, place_id: ChIJCar0f49ZwokR6ozLV-dHNTE}}
-    price: {value: '3.20', currency: USD, per: 1000, unit: call, note: "Local Falcon exposes no per-call meter; the charge is the documented rate."}
+    price: {value: '6.40', currency: USD, per: 1000, unit: call, note: "treg's price per call, one data point. Local Falcon exposes no per-call meter."}
     docs_url: https://docs.localfalcon.com/
 
   - id: localfalcon.google.maps.rank_grid
@@ -148,15 +148,15 @@ endpoints:
     test_request: {queryParams: {place_id: ChIJCar0f49ZwokR6ozLV-dHNTE, keyword: deli, lat: 40.722233, lng: -73.987429, grid_size: '3', radius: 0.5, measurement: mi}}
     price:
       table:
-        - {when: [{path: query.grid_size, op: equals, value: '3'}], value: '0.0288'}
-        - {when: [{path: query.grid_size, op: equals, value: '5'}], value: '0.08'}
-        - {when: [{path: query.grid_size, op: equals, value: '7'}], value: '0.1568'}
-        - {when: [{path: query.grid_size, op: equals, value: '9'}], value: '0.2592'}
-        - {when: [{path: query.grid_size, op: equals, value: '11'}], value: '0.3872'}
-        - {when: [{path: query.grid_size, op: equals, value: '13'}], value: '0.5408'}
-        - {when: [{path: query.grid_size, op: equals, value: '15'}], value: '0.72'}
-      fallback: {value: '0.72', note: "The grid 15 price, the largest scan."}
+        - {when: [{path: query.grid_size, op: equals, value: '3'}], value: '0.0576'}
+        - {when: [{path: query.grid_size, op: equals, value: '5'}], value: '0.16'}
+        - {when: [{path: query.grid_size, op: equals, value: '7'}], value: '0.3136'}
+        - {when: [{path: query.grid_size, op: equals, value: '9'}], value: '0.5184'}
+        - {when: [{path: query.grid_size, op: equals, value: '11'}], value: '0.7744'}
+        - {when: [{path: query.grid_size, op: equals, value: '13'}], value: '1.0816'}
+        - {when: [{path: query.grid_size, op: equals, value: '15'}], value: '1.44'}
+      fallback: {value: '1.44', note: "The grid 15 price, the largest scan."}
       currency: USD
       unit: call
-      note: "$0.0032 per grid point (grid_size squared). Local Falcon exposes no per-call meter; the charge is the documented rate."
+      note: "treg's price: $0.0064 per grid point (grid_size squared; one data point per grid point). Local Falcon exposes no per-call meter."
     docs_url: https://docs.localfalcon.com/

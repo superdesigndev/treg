@@ -730,7 +730,8 @@ async def test_treg_own_balance_refusal_is_a_503_on_the_paid_path(anon: AsyncCli
     assert "payment-required" not in r.headers and "www-authenticate" not in r.headers
 
 
-async def test_a_vendor_402_is_relayed_verbatim(anon: AsyncClient, payments_on, monkeypatch):
+async def test_a_vendor_402_on_tregs_key_is_tregs_capacity_refusal(anon: AsyncClient, payments_on, monkeypatch):
+    """The vendor's 402 on treg's key is treg's account out, never a payment challenge to answer."""
     vendor = b'{"vendor":"out of credit"}'
     monkeypatch.setattr(call_service, "relay", _fake_relay(
         402, vendor, headers=((b"www-authenticate", b'Payment id="vendor"'),
@@ -738,9 +739,8 @@ async def test_a_vendor_402_is_relayed_verbatim(anon: AsyncClient, payments_on, 
     challenge = await anon.get(f"/call/{EP}?aweme_id=7")
     credential, _ = _x402_credential(challenge)
     r = await anon.get(f"/call/{EP}?aweme_id=7", headers={"PAYMENT-SIGNATURE": credential})
-    assert r.status_code == 402 and r.content == vendor
-    assert r.headers.get_list("www-authenticate") == ['Payment id="vendor"']
-    assert "X-Treg-Error" not in r.headers and "payment-required" not in r.headers
+    assert r.status_code == 503 and r.json()["detail"]["error"] == "provider_capacity_unavailable"
+    assert "www-authenticate" not in r.headers and "payment-required" not in r.headers
     # treg's own headers only: which money paid, never a receipt on a non-2xx answer.
     assert r.headers["X-Treg-Payment"] == "paid" and "payment-response" not in r.headers
 
@@ -762,7 +762,28 @@ def test_the_feature_refuses_to_start_without_a_secret(monkeypatch):
     monkeypatch.setenv("TREG_AGENT_PAYMENTS_ENABLED", "1")
     monkeypatch.delenv("TREG_AGENT_PAYMENTS_SECRET", raising=False)
     with pytest.raises(ValueError, match="TREG_AGENT_PAYMENTS_SECRET"):
-        Settings()
+        Settings().check_agent_payments()
+
+
+def test_a_process_without_payment_code_starts_while_payments_lack_their_secrets(monkeypatch):
+    from treg.bootstrap import configure_agent_payments
+    from treg.config import Settings
+
+    monkeypatch.setenv("TREG_AGENT_PAYMENTS_ENABLED", "1")
+    monkeypatch.setenv("TREG_AGENT_PAYMENTS_SETTLEMENT", "stripe")
+    monkeypatch.setenv("TREG_AGENT_PAYMENTS_TEMPO_RECIPIENT", "not-an-address")
+    for name in ("TREG_AGENT_PAYMENTS_SECRET", "TREG_AGENT_PAYMENTS_STRIPE_SECRET_KEY",
+                 "TREG_STRIPE_SECRET_KEY"):
+        monkeypatch.setenv(name, "")  # empty, not unset: an unset name still reads `.env`
+    assert Settings().agent_payments_enabled
+    get_settings.cache_clear()
+    try:
+        with pytest.raises(ValueError, match="agent payments cannot start") as error:
+            configure_agent_payments()
+    finally:
+        get_settings.cache_clear()
+    for name in ("SECRET", "STRIPE_SECRET_KEY", "TEMPO_RECIPIENT"):
+        assert f"TREG_AGENT_PAYMENTS_{name}" in str(error.value)
 
 
 def test_a_challenge_carries_integer_micro_usd_as_token_base_units():
@@ -1656,7 +1677,7 @@ def test_mainnet_x402_needs_its_own_rpc(monkeypatch):
     _mainnet_x402(monkeypatch)
     monkeypatch.delenv("TREG_AGENT_PAYMENTS_X402_RPC_URL")
     with pytest.raises(ValueError, match="X402_RPC_URL"):
-        Settings()
+        Settings().check_agent_payments()
 
 
 # ---- the Coinbase facilitator's API key -----------------------------------------------------------
@@ -1708,7 +1729,7 @@ def test_a_cdp_key_needs_both_halves(monkeypatch):
     monkeypatch.setenv("TREG_AGENT_PAYMENTS_X402_CDP_API_KEY_ID", "k")
     monkeypatch.delenv("TREG_AGENT_PAYMENTS_X402_CDP_API_KEY_SECRET", raising=False)
     with pytest.raises(ValueError, match="CDP_API_KEY"):
-        Settings()
+        Settings().check_agent_payments()
 
 
 def _mainnet_x402(monkeypatch):
@@ -1730,7 +1751,7 @@ def test_a_complete_mainnet_x402_configuration_starts(monkeypatch):
     from treg.config import Settings
 
     _mainnet_x402(monkeypatch)
-    assert Settings().agent_payments_x402_enabled
+    Settings().check_agent_payments()
 
 
 @pytest.mark.parametrize(("name", "value", "named"), [
@@ -1745,7 +1766,7 @@ def test_a_wrong_mainnet_setting_is_named(monkeypatch, name, value, named):
     _mainnet_x402(monkeypatch)
     monkeypatch.setenv(name, value)
     with pytest.raises(ValueError, match=named):
-        Settings()
+        Settings().check_agent_payments()
 
 
 def test_one_error_names_every_missing_setting(monkeypatch):
@@ -1757,7 +1778,7 @@ def test_one_error_names_every_missing_setting(monkeypatch):
     for name in ("SECRET", "TEMPO_RECIPIENT", "X402_PAY_TO"):
         monkeypatch.delenv(f"TREG_AGENT_PAYMENTS_{name}", raising=False)
     with pytest.raises(ValueError) as error:
-        Settings()
+        Settings().check_agent_payments()
     for name in ("SECRET", "TEMPO_RECIPIENT", "X402_PAY_TO"):
         assert f"TREG_AGENT_PAYMENTS_{name}" in str(error.value)
 
@@ -1770,9 +1791,9 @@ def test_mainnet_and_testnet_rails_never_mix(monkeypatch):
     monkeypatch.setenv("TREG_AGENT_PAYMENTS_TEMPO_RECIPIENT", RECIPIENT)
     monkeypatch.setenv("TREG_AGENT_PAYMENTS_TEMPO_CHAIN_ID", "42431")
     with pytest.raises(ValueError, match="both mainnet or both testnet"):
-        Settings()
+        Settings().check_agent_payments()
     monkeypatch.setenv("TREG_AGENT_PAYMENTS_TEMPO_CHAIN_ID", "4217")
-    assert Settings().agent_payments_mpp_enabled
+    Settings().check_agent_payments()
 
 
 # ---- settlement to Stripe ------------------------------------------------------------------------
@@ -1866,9 +1887,10 @@ def test_settling_to_stripe_needs_a_stripe_key(monkeypatch):
     monkeypatch.setenv("TREG_AGENT_PAYMENTS_ENABLED", "1")
     monkeypatch.setenv("TREG_AGENT_PAYMENTS_SECRET", "s" * 40)
     monkeypatch.setenv("TREG_AGENT_PAYMENTS_SETTLEMENT", "stripe")
-    monkeypatch.delenv("TREG_STRIPE_SECRET_KEY", raising=False)
+    for name in ("TREG_AGENT_PAYMENTS_STRIPE_SECRET_KEY", "TREG_STRIPE_SECRET_KEY"):
+        monkeypatch.setenv(name, "")  # empty, not unset: an unset name still reads `.env`
     with pytest.raises(ValueError, match="TREG_STRIPE_SECRET_KEY"):
-        Settings()
+        Settings().check_agent_payments()
 
 
 async def test_a_tempo_rpc_key_goes_with_every_rpc_request(monkeypatch):
@@ -1917,9 +1939,9 @@ def test_a_tempo_rpc_key_needs_its_rpc_url(monkeypatch):
     monkeypatch.setenv("TREG_AGENT_PAYMENTS_TEMPO_RPC_API_KEY", "tempo_sandbox:sk:k")
     monkeypatch.delenv("TREG_AGENT_PAYMENTS_TEMPO_RPC_URL", raising=False)
     with pytest.raises(ValueError, match="TREG_AGENT_PAYMENTS_TEMPO_RPC_URL"):
-        Settings()
+        Settings().check_agent_payments()
     monkeypatch.setenv("TREG_AGENT_PAYMENTS_TEMPO_RPC_URL", "https://rpc.example/testnet")
-    assert Settings().agent_payments_tempo_rpc_api_key
+    Settings().check_agent_payments()
 
 
 async def test_the_chain_search_stays_near_the_head_and_asks_for_logs_in_spans():
@@ -1986,15 +2008,14 @@ async def test_a_payment_checked_locally_still_spends_the_check_cap(anon: AsyncC
     assert chain.broadcasts == 1
 
 
-async def test_an_mpp_check_spends_the_cap_once_at_its_first_rpc():
+async def test_an_mpp_check_spends_the_cap_once_at_its_first_rpc(monkeypatch):
     import json
 
     from mpp import Challenge, Credential
 
     from treg.infra.agent_payments import Offer, PaymentRejected
+    from treg.infra.agent_payments import tempo as tempo_rail
 
-    rail = MppTempoRail(secret="s" * 40, realm="registry.test", recipient=RECIPIENT,
-                        chain_id=42431, rpc_url="http://rpc.invalid")
     rpc: list[str] = []
 
     def answer(request: httpx.Request) -> httpx.Response:
@@ -2003,7 +2024,15 @@ async def test_an_mpp_check_spends_the_cap_once_at_its_first_rpc():
         return httpx.Response(200, json={"jsonrpc": "2.0", "id": 1,
                                          "result": hex(42431) if method == "eth_chainId" else None})
 
-    rail._chain._client._transport = httpx.MockTransport(answer)
+    # The node is handed over at construction: httpx routes requests through the environment's proxy
+    # (on macOS, the system proxy) and past a `_transport` swapped in afterwards.
+    class Node(httpx.AsyncClient):
+        def __init__(self, **kwargs):
+            super().__init__(transport=httpx.MockTransport(answer), **kwargs)
+
+    monkeypatch.setattr(tempo_rail, "httpx", SimpleNamespace(AsyncClient=Node))
+    rail = MppTempoRail(secret="s" * 40, realm="registry.test", recipient=RECIPIENT,
+                        chain_id=42431, rpc_url="http://rpc.invalid")
 
     def offer(path: str) -> Offer:
         return Offer(amount_micro=FLOOR, method="GET", path=path, query="",

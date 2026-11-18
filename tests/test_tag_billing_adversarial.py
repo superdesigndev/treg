@@ -414,6 +414,47 @@ def test_review_idempotency_separator_and_post_fingerprint_are_unambiguous():
     assert original == call_idem._request_fingerprint("post", "endpoint", b'{"amount":1}', "mode=fast")
     assert original != call_idem._request_fingerprint("POST", "endpoint", b'{"amount":2}', "mode=fast")
     assert original != call_idem._request_fingerprint("POST", "endpoint", b'{"amount":1}', "mode=slow")
+    assert original == call_idem._request_fingerprint("POST", "endpoint", b'{ "amount": 1 }', "mode=fast")
+    keyed = call_idem._request_fingerprint("POST", "endpoint", b'{"a":1,"b":[{"y":2,"x":3}]}')
+    assert keyed == call_idem._request_fingerprint("POST", "endpoint", b'{"b":[{"x":3,"y":2}],"a":1}')
+    assert keyed != call_idem._request_fingerprint("POST", "endpoint", b'{"a":1,"b":[{"x":2,"y":3}]}')
+    assert call_idem._request_fingerprint("POST", "endpoint", b"a=1&b=2") != call_idem._request_fingerprint(
+        "POST", "endpoint", b"b=2&a=1")
+
+
+@pytest.mark.parametrize("one, other", [
+    (b'{"n":1e400}', b'{"n":1e500}'),
+    (b'{"n":0.1}', b'{"n":0.10000000000000001}'),
+    (b'{"n":3.141592653589793238462643383279}', b'{"n":3.141592653589793238462643383280}'),
+    (b'{"a":1,"a":2}', b'{"a":2}'),
+    (b'{"n":NaN}', b'{"n":NaN }'),
+    (b'{"n":Infinity}', b'{"n":1e400}'),
+    (b'{"a":-0}', b'{"a":0}'),
+])
+def test_review_a_parse_that_could_merge_two_requests_keeps_them_apart(one, other):
+    assert call_idem._request_fingerprint("POST", "endpoint", one) != call_idem._request_fingerprint(
+        "POST", "endpoint", other)
+
+
+def test_review_a_large_body_is_compared_byte_for_byte_without_parsing(monkeypatch):
+    import time
+
+    big = b"[" + b",".join([b"0.5"] * (call_idem._CANONICAL_MAX_BYTES // 3)) + b"]"
+    assert len(big) > call_idem._CANONICAL_MAX_BYTES
+    monkeypatch.setattr(call_idem.json, "loads", lambda *a, **k: pytest.fail("parsed a large body"))
+    started = time.perf_counter()
+    assert call_idem._canonical_json(big) is big
+    assert time.perf_counter() - started < 0.05
+    assert call_idem._request_fingerprint("POST", "endpoint", big) == call_idem._raw_request_fingerprint(
+        "POST", "endpoint", big)
+    assert call_idem._request_fingerprint("POST", "endpoint", big) != call_idem._request_fingerprint(
+        "POST", "endpoint", big.replace(b",", b", ", 1))
+
+
+def test_review_a_lone_surrogate_body_is_fingerprinted():
+    body = b'{"b":"\\ud800","a":1}'
+    assert call_idem._request_fingerprint("POST", "endpoint", body) == call_idem._request_fingerprint(
+        "POST", "endpoint", b'{"a":1,"b":"\\ud800"}')
 
 
 async def test_review_primary_call_cap_survives_audit_loss(

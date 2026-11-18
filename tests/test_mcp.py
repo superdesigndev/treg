@@ -116,7 +116,8 @@ async def test_the_server_lists_the_shared_tools(clients):
         names = {t["name"] for t in r.json()["result"]["tools"]}
     # The hub tools are listed only where the hub is on for the caller (test_hub_tools_are_listed_*).
     assert names == {"catalog_search", "catalog_get", "call", "call_media", "resources_list",
-                     "balance", "my_tools", "catalog_request", "feedback", "review", "mark"}
+                     "balance", "my_tools", "catalog_request", "feedback", "review", "mark",
+                     "call_result"}
 
 
 async def test_openai_clients_get_no_review_tool_or_review_instruction(clients):
@@ -480,9 +481,10 @@ async def test_every_tool_declares_what_it_can_do(clients):
 
     ann = {t.name: t.annotations for t in await server.list_tools()}
     assert set(ann) == {"catalog_search", "catalog_get", "call", "call_media", "resources_list", "balance", "my_tools",
-                        "catalog_request", "feedback", "review", "mark", "hub_create", "hub_update", "hub_mine"}
+                        "catalog_request", "feedback", "review", "mark", "hub_create", "hub_update", "hub_mine",
+                        "call_result"}
     assert all(a.title is None for a in ann.values())
-    for name in ("catalog_search", "catalog_get", "resources_list", "balance", "my_tools"):
+    for name in ("catalog_search", "catalog_get", "resources_list", "balance", "my_tools", "call_result"):
         a = ann[name]
         assert a and a.read_only_hint is True, name
         assert a.destructive_hint is False and a.open_world_hint is False, name
@@ -635,6 +637,18 @@ async def test_structured_content_VALIDATES_against_the_advertised_schema(client
             structured = (r.json().get("result") or {}).get("structuredContent")
             assert structured is not None, f"{tool} returned no structuredContent: {r.text[:200]}"
             jsonschema.validate(structured, schemas[tool])  # raises on any mismatch
+
+
+def test_mcp_gzip_uses_a_fast_level_because_it_runs_on_the_event_loop():
+    from starlette.middleware.gzip import GZipMiddleware
+
+    import treg.mcp as mcp_module
+
+    for transport_app in (mcp_module.mcp_app, mcp_module.directory_mcp_app):
+        layer = transport_app
+        while not isinstance(layer, GZipMiddleware):
+            layer = layer.app
+        assert layer.compresslevel == mcp_module.MCP_GZIP_LEVEL == 1
 
 
 async def test_large_mcp_responses_are_gzipped_AT_THE_ORIGIN(clients):

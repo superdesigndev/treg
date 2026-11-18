@@ -8,7 +8,6 @@ from urllib.parse import urlsplit
 
 from fastapi import APIRouter, Cookie, Depends, Header, HTTPException, Request
 from fastapi.responses import JSONResponse, Response, StreamingResponse
-from sqlalchemy.exc import TimeoutError as PoolTimeoutError
 from starlette.background import BackgroundTask
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -47,7 +46,7 @@ from ..domain.governance import access as access_policy
 from ..domain.governance import publicdemo as publicdemo_policy
 from ..domain.governance import usage as usage_policy
 from ..domain.identity.access import Caller, require_member
-from ..infra.db import get_session
+from ..infra.db import answers_db_busy, get_session
 from ..infra import org_concurrency, org_flow_control, org_traffic
 from ..models import Tool
 from .auth import _client_ip
@@ -583,10 +582,10 @@ async def run_call_input(request: Request, caller: Caller, call_input: CallInput
     except CallFailure as exc:
         request.state.call_failure = exc
         raise _translate_call_failure(exc) from exc
-    except PoolTimeoutError:
-        # The application-wide handler owns the typed 503 and its db_pool event.
-        raise
-    except Exception:
+    except Exception as exc:
+        if answers_db_busy(exc):
+            # The application-wide handler owns the typed 503 and its db_pool event.
+            raise
         # Starlette still owns the bare 500 response. Record the attempted call before re-raising so
         # this treg-owned failure is represented once in the same funnel as normal call outcomes.
         request.state.idem_claim = context.idempotency

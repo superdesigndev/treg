@@ -327,6 +327,15 @@ def make_upstream(hook_hits: list | None = None) -> FastAPI:
             return {"data": []}
         return {"data": [{"id": "IG-CONVERSATION-1", "page_id": page_id}]}
 
+    @up.post("/v25.0/{ig_user_id}/media")
+    async def instagram_media_container(ig_user_id: str, request: Request):
+        # Graph's answer while the app lacks Advanced Access for publishing: the token holds the
+        # scope, the app does not.
+        return JSONResponse({"error": {
+            "message": "Application does not have permission for this action",
+            "type": "IGApiException", "code": 10, "fbtrace_id": "TRACE",
+        }}, status_code=403)
+
     @up.get("/v25.0/{page_id}/posts")
     async def facebook_page_posts(page_id: str, request: Request):
         if refused := _meta_proof_missing(request):

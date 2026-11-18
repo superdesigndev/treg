@@ -521,6 +521,8 @@ def _show_failure_diagnostics(resp: httpx.Response) -> None:
     print(line, file=sys.stderr)
     if notice:
         print(f"treg: {notice}", file=sys.stderr)
+    elif relayed and (review := headers.get("X-Treg-Review-Pending-Text")):
+        print(f"treg: {review}", file=sys.stderr)
     if resp.status_code == 401 and not relayed and os.environ.get("TREG_TOKEN"):
         print("treg: TREG_TOKEN was rejected, and it overrides `treg login`: set it to a current key",
               file=sys.stderr)
@@ -919,7 +921,7 @@ def _splash() -> None:
         import tty
     except ImportError:
         return
-    title, sub = "tools-registry", " — the tool catalog for your agent"
+    title, sub = "treg", " - the tool catalog for your agent"
     chars = ([("▚", f"{_A}{_B}"), (" ", "")] + [(c, _B) for c in title] + [(c, _M) for c in sub])
     frames = _dither_frames(chars)
 
@@ -944,7 +946,7 @@ def _splash() -> None:
         sys.stdout.flush()
 
 
-def _brand(sub: str) -> None: print(f"\n{_A}{_B}▚ tools-registry{_R} {_M}— {sub}{_R}")
+def _brand(sub: str) -> None: print(f"\n{_A}{_B}▚ treg{_R} {_M}- {sub}{_R}")
 def _ok(t: str) -> None: print(f"  {_G}✓{_R} {t}")
 def _dim(t: str) -> None: print(f"{_M}{t}{_R}")
 
@@ -2705,6 +2707,8 @@ def _call_envelope(response: httpx.Response, content_type: str) -> dict:
         meta["replay"] = True
     if upstream_failed := headers.get("X-Treg-Upstream-Failed"):
         meta["upstream_failed"] = upstream_failed
+    if review := headers.get("X-Treg-Review-Pending-Text"):
+        meta["review_pending"] = review
     if headers.get(CAPACITY_HEADER) == EXHAUSTED:
         meta["capacity"] = EXHAUSTED
     if headers.get("X-Treg-Async"):

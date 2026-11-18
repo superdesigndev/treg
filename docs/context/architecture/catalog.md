@@ -991,8 +991,8 @@ returned and never documented as stable. An output field may say where it lands 
   `X-Treg-Route-Prefer` is never reordered). The numbers come from an operator scorer's
   `<route_quality_prefix><capability>/routing.json` in a private bucket (`infra/route_quality.py`,
   cached; a request waits at most a second on a cold cache); without it the header keeps price order.
-- Confirm or Decisive on a contract without the declaration, or with `X-Treg-Route-Waterfall: 0`, is
-  a 422 before anything is held.
+- Confirm, Decisive or Domain-Match on a contract without the declaration, or with
+  `X-Treg-Route-Waterfall: 0`, is a 422 before anything is held.
 - A filter typed `int` may declare a range: `min` (required, a whole number of at least 1) and `max`
   (optional, a whole number of at least `min`); anything else fails the load. The routed row shows
   the range, and the routed call refuses a sent value that is not a whole number in it, read as a
@@ -1005,10 +1005,31 @@ returned and never documented as stable. An output field may say where it lands 
   `has_result_rules` reads them) but no `treg.<capability>` row is generated. For a capability whose
   "children" are one provider's price tiers.
 - `question_miss` is a miss rule that also sees the question: `child_outcome` evaluates it on the
-  caller's identity merged with the child's core output, after the adapter's own `miss`, and a hit it
-  marks true becomes a miss (`why: question_miss`) the route moves on from. It names no provider;
-  `no_result_on_site(q, results)` judges a `site:` question whose rows are all on other sites. A
-  call without an identity (a replay record) is not judged by it.
+  caller's identity merged with the child's core output, beside the adapter's own `miss` (both can
+  be true), and an answer it marks true is a miss with `why` naming `question_miss`. It names no
+  provider; `no_result_on_site(q, results)` judges a `site:` question whose rows are all on other
+  sites. A call without an identity (a replay record) is not judged by it. Such an answer walks
+  on to the end, as a `site:` search needs (the next provider may hold the site), unless the
+  contract declares `question_miss_bound: true`: then, on a waterfall, an answer ruled out by the
+  question alone (or with the adapter's own miss) is kept like a weak hit and bounded like one
+  (`route.py`, `MAX_WEAK_FALLBACKS`): the attempt is `weak` with a `question_miss:` detail, at most
+  two more providers are asked (every later answer counts, an empty one too), and if none answers better the first such answer is returned as
+  `outcome: weak`, recorded in the call event as no hit (and in the arena as a miss, `arena.routed_state`). An answer the provider itself reported as
+  failed (`provider_error`, `expect_failed`) stays a miss. `web.extract` declares it, because every
+  provider often returns the same wall page and some bill it.
+  `web.extract` declares `wall_page(pages)` (`paths.py::wall_page`): a page that says it is a
+  wall. An interstitial's phrase (captcha, "checking your browser", "verify you are human")
+  decides on a page of at most 1,000 characters; phrases real pages also carry (sign in to view,
+  not a robot, access denied, enable JavaScript or cookies) decide only on a short page, two of
+  them under twenty-five words and one alone under fifteen ("forgot password" counts only beside
+  another). A short answer is never a wall for
+  being short ("OK", an address, a price), nor is a blank page (the row's own miss rule) or a
+  structured answer (text starting with `{` or `[`). The rule runs on the event loop up to three
+  times per child, so a page past 20,000 characters of text, 256,000 characters in all or 50,000
+  values is left unjudged without being read further. The contract rule does not change a child's
+  charge; a `per_success` child stops billing such a page only where its own adapter `miss` also
+  calls `wall_page` on its text field, and only those adapters count a wall against measured
+  reliability.
 - `scoping` names identity keys that scope the answer (`company_domain`): a candidate whose adapter
   never sends a supplied one is dropped from the plan, not ranked down, because a title-only search
   asked for one company's CEO bills title-matched strangers as a hit.
@@ -1019,6 +1040,11 @@ returned and never documented as stable. An output field may say where it lands 
 - `prefer` is the default provider order when the caller sends no `X-Treg-Route-Prefer`. Cost per
   hit ignores time, so a contract may prefer a dearer but faster, more reliable provider. It orders
   only children that express every filter the caller sent (see Ranking).
+- `ask_last` names providers that, on treg's key, are asked after the other treg-key candidates of
+  the same health when the caller sends no `X-Treg-Route-Prefer` and the default order or a route
+  rule does not name them: a free provider that is often refused would otherwise lead on cost per
+  hit. Health still ranks first, so a failing or slow provider is still asked after a healthy one
+  named here. A team's own key is never reordered by it, and the caller's own prefer still places it.
 - `prefer_by_domain_suffix` maps a suffix of the identity's `domain` to providers asked first, ahead
   of `prefer`, when the caller sends no `X-Treg-Route-Prefer`; the longest matching suffix wins.
   Coverage differs by country while cost per hit is one number. The suffix only sees the company
@@ -1239,7 +1265,8 @@ an invalid extra never disables the primary.
     health still counts it slow past half the same bound (`_child_bound_s`), so routing can ask it
     after the healthy ones; only the cancellation is waived.
     *Short-window health* (`route_health`, verdict in `routing/health.py`): every treg-key or
-    anonymous child that reached its provider (never an archive hit, never a local refusal) counts
+    anonymous child that reached its provider (never an archive hit, never a local refusal, never
+    `upstream_busy`: treg's own connection pool or in-flight cap, whose request never left) counts
     as answered, failed (5xx, 405/408/410, a gateway timeout or connect failure, the time bound) or
     slow (past half its bound) in a time bucket of the key-value store (`kv.note_route_health`,
     `BUCKETS` buckets across `route_health_window_s`, expiring with the window), so every worker
@@ -1281,11 +1308,30 @@ an invalid extra never disables the primary.
 - **Domain match on email finds**: with a caller `domain` (or `company_domain` / `website`) and an
   `email` hit, `_treg.domain_match` / `X-Treg-Domain-Match` disclose whether the mailbox host
   matches (as call events store `answer_flags.domain_match`); `advice_domain_mismatch` names it. The
-  hit is still billed and unaltered.
+  hit is still billed and unaltered. `X-Treg-Route-Domain-Match: strict` (or `true` / `1` / `yes` / `on`; opt-in, only on a contract
+  that sets `advice_domain_mismatch`, refused with 422 under `Waterfall: 0`) makes an off-domain
+  hit `weak`: the waterfall goes on, at most `MAX_WEAK_FALLBACKS` more off-domain hits, and the first
+  off-domain answer wins only when nothing on-domain turns up (after unconfirmed, undecided and
+  thin fallbacks). A thin off-domain answer under Complete or Min-Results is weak first and counts
+  toward the weak limit, not the off-domain limit. Off by default because the host comparison is exact: a sibling or staff mail
+  domain of the same company reads as off-domain.
 - **The answer says what it ignored**: `ignored_filters` on `_treg` and `X-Treg-Ignored-Filters`.
   `X-Treg-Route-Strict-Filters: 1` drops candidates that cannot express a sent filter
   (`strict: true` in `dropped`) and answers 422 `route_no_candidate`, unbilled, when none is left; a
   503 stays reserved for capacity/key drops.
+- **A filter applied only as a hint is named too**: an adapter's `soft:` list names caller keys its
+  provider receives but does not enforce (exa and parallel people.search read the place and the
+  company as words), and an endpoint parameter marked `applied: soft` makes every contract filter
+  the adapter maps into it soft (`Adapter.soft`, set at load by `_soft_keys`). The validator refuses
+  a `soft:` that is not a list of the contract's filter or scoping keys (`soft_problems`), and
+  warns on an `applied: soft` parameter no contract filter maps into (`soft_unrouted`): there the
+  mark changes only the `catalog get` text, as on TinyFish search, whose contracts have no place
+  or domain filter. `ignored_filters()` counts a soft
+  key the caller sent as not applied, a scoping key included, so the answer names it and strict
+  filters drop the child ("applies … only as a hint"). Ranking reads `ignored_filters(soft=False)`
+  (`Candidate.hinted` is the difference): a declaration discloses, it never reorders a plan or
+  takes a published rule's place away. On a direct call `treg catalog get` opens the parameter's
+  note with "a hint, not a filter" (`params_view`); the answer is relayed as sent.
 - **Who a no-candidate refusal is on** (`_no_candidate_refusal`): 503 when capacity or a missing
   key took a candidate (treg's side); 422 for strict-filter and scope drops (the caller's). When
   treg's demo policy alone took every candidate that could take the identity (a child dropped as

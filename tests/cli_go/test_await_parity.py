@@ -116,7 +116,7 @@ class ScriptedProvider:
 
 
 @pytest.fixture(scope="module")
-def registry(tmp_path_factory):
+def registry(tmp_path_factory, go_bin):  # go_bin first: skip before booting a registry, as `live` does
     from .cli_go_live import LiveRegistry
     provider = ScriptedProvider()
     live = LiveRegistry(tmp_path_factory.mktemp("await"), catalog_patch={
