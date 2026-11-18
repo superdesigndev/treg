@@ -502,6 +502,7 @@ async def test_a_rows_own_outcome_decides_before_its_status_on_both_paths(client
     await _record(strict, 200, 100, ago=old, hit=False, outcome="miss")       # blocked: fails here
     await _record(strict, 200, 100, ago=old, hit=False, outcome="not_found")  # the target's 404
     await _record(strict, 200, 100, ago=old, outcome="error")                 # maybe the caller's
+    await _record(strict, 200, 100, ago=old, hit=False, outcome="error")      # and found nothing
     await _record(strict, 400, 100, ago=old, hit=False, outcome="miss")       # a declared 4xx miss
     await _record(strict, 200, 100, ago=old, hit=False)                       # before the column
     await _record(strict, 429, 100, ago=old)                                  # undecided status
@@ -514,8 +515,8 @@ async def test_a_rows_own_outcome_decides_before_its_status_on_both_paths(client
     live = await _live([strict, plain])
     folded = await PostgresEndpointObservationReader(session_maker).get_many([strict, plain])
     assert folded == live
-    assert live[strict]["samples"] == 9 and live[strict]["decided"] == 6
-    assert live[strict]["ok_rate"] == round(3 / 6, 4)
+    assert live[strict]["samples"] == 10 and live[strict]["decided"] == 7
+    assert live[strict]["ok_rate"] == round(3 / 7, 4)
     assert live[plain]["samples"] == 6 and live[plain]["decided"] == 5
     assert live[plain]["ok_rate"] == 1.0
 

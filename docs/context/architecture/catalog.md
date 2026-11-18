@@ -861,7 +861,7 @@ bill when treg's own account is out.
   `not_found` (the target itself does not exist) decides nothing. `error` decides nothing either: a
   2xx failing `expect` or matching `error` is no success, but those rules hold the caller's
   mistakes (a refused field) beside the provider's failures, so it is held against nobody, as a
-  4xx is. Rows in today's spelling,
+  4xx is, unless it also found nothing on an `empty_is_failure` contract, which fails as below. Rows in today's spelling,
   async submissions, spooled or streamed answers, a non-2xx the declaration does not decide and
   rows written before the column keep the rules below. Moving a provider to v2 is what moves it to
   its own declaration; no provider is named in the stats code.

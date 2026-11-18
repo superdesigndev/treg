@@ -57,14 +57,17 @@ def decided(status_code: int, hit: bool | None, outcome: str | None,
     A row carrying `outcome` (a v2 row's own declaration, `results.judged_outcome`) is judged by
     it whatever its status: `hit` succeeds, `miss` fails only where the capability counts an empty
     answer as a failure (`empty_fails`, the contract's `empty_is_failure`), and `not_found` (the
-    target itself does not exist) and `error` decide nothing. An error a row declares inside a 2xx
-    mixes the caller's mistakes (a field the provider refused) with the provider's own failures,
-    so it is treated as a 4xx is: never a success, never held against the provider. Any other row keeps the status
+    target itself does not exist) decides nothing. An error a row declares inside a 2xx mixes the
+    caller's mistakes (a field the provider refused) with the provider's own failures, so it is
+    treated as a 4xx is, never a success and never held against the provider, except where the
+    status rule already fails it: an error that found nothing (`hit` False) under `empty_fails`. Any other row keeps the status
     rule: 2xx succeeds unless an `empty_fails` adapter judged it empty, 5xx and 405 fail, and the
     rest of 4xx is the caller's. `observed` spells the same rule in SQL."""
     if outcome is not None:
         if outcome == "miss":
             return (not empty_fails, empty_fails)
+        if outcome == "error":
+            return (False, empty_fails and hit is False)
         return (outcome == "hit", False)
     empty = empty_fails and status_code < 300 and hit is False
     return (status_code < 300 and not empty,
@@ -328,7 +331,8 @@ async def observed(
                CallRecord.outcome == "hit",
                (CallRecord.outcome == "miss") & not_(in_strict))
     bad = or_(legacy & ((CallRecord.status_code >= 500) | (CallRecord.status_code == 405) | empty),
-              (CallRecord.outcome == "miss") & in_strict)
+              (CallRecord.outcome == "miss") & in_strict,
+              (CallRecord.outcome == "error") & in_strict & CallRecord.hit.is_(False))
 
     rows = (await db.execute(
         select(
