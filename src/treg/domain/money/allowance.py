@@ -184,9 +184,8 @@ async def _apply_charges(db: AsyncSession, org_id: int, hold: Hold | None, claim
     charges = sorted((row for row in claimed if row.call_id not in settled),
                      key=lambda row: (row.created_at, row.call_id))
     duplicates = len(claimed) - len(charges)
-    if charges:
-        team = await team_of(db, org_id)
-        charges = [row for row in charges if owed_by(team, row.hold_created_at)]
+    if charges and not await team_exists(db, org_id):
+        charges = []
     orphaned = len(claimed) - duplicates - len(charges)
     if orphaned:
         log.error("allowance_charges_orphaned org_id=%s dropped=%s: the team they were admitted "
@@ -221,38 +220,11 @@ async def _apply_charges(db: AsyncSession, org_id: int, hold: Hold | None, claim
     return Folded(len(charges), charged, consumed, duplicates, orphaned)
 
 
-class Team(NamedTuple):
-    """Whether the team a charge names is still there, for `owed_by`. `since` is set only where
-    the database can give a deleted team's number to a new one: the instant this team's ledger
-    began."""
-
-    exists: bool
-    since: datetime | None = None
-    reusable_id: bool = False
-
-
-async def team_of(db: AsyncSession, org_id: int) -> Team:
-    """Read what `owed_by` needs to tell a charge of this team from one admitted for a team that
-    was deleted. On PostgreSQL a number is never given out twice, so the team existing is the
-    whole answer. SQLite gives the highest number out again; there a team's ledger begins
-    before any allowance hold of its own is funded (one writer at a time, so nothing lands in
-    between), and a hold older than the ledger was another team's."""
-    if (await db.execute(select(Org.id).where(Org.id == org_id))).first() is None:
-        return Team(False)
-    if db.get_bind().dialect.name != "sqlite":
-        return Team(True)
-    since = (await db.execute(select(func.min(LedgerEntry.created_at)).where(
-        LedgerEntry.org_id == org_id))).scalar()
-    return Team(True, since, True)
-
-
-def owed_by(team: Team, hold_created_at: datetime | None) -> bool:
-    """Whether a charge that names the hold created at `hold_created_at` is this team's to pay."""
-    if not team.exists:
-        return False
-    if not team.reusable_id or hold_created_at is None:
-        return True
-    return team.since is not None and hold_created_at >= team.since
+async def team_exists(db: AsyncSession, org_id: int) -> bool:
+    """Whether there is still a team to charge. A charge written late can land after its team
+    was deleted; it is then nobody's. (A number is never given to another team: the allowance
+    runs only on PostgreSQL.)"""
+    return (await db.execute(select(Org.id).where(Org.id == org_id))).first() is not None
 
 
 def hold_created_at(epoch: int | None) -> datetime | None:
@@ -389,6 +361,13 @@ async def refill_allowance_in_transaction(
     mark_money(db, "refill", org_id=org_id)
     add = max(0, int(add_micro))
     hold = await _lock_allowance(db, org_id)
+    if hold is not None and counter_epoch is not None and counter_epoch > _epoch(hold):
+        # The store's counter names a later epoch than the hold: the hold's counter was retired
+        # (by a deletion of the team that did not commit) and nothing can be published for it
+        # again. Money added to it would be out of every call's reach. It is closed instead,
+        # and the next refill opens a hold the store will take.
+        closed = await _close(db, org_id, hold, "counter_retired", None)
+        return Allowance(None, 0, 0, closed.folded)
     if fresh_add_micro is not None and (hold is None or _epoch(hold) != counter_epoch):
         add = max(0, int(fresh_add_micro))
     opened = False

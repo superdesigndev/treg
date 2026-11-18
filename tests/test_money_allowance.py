@@ -494,7 +494,7 @@ async def _hold(org_id: int, hold_id: str):
 
 async def test_a_charge_admitted_for_a_team_that_is_gone_is_dropped_not_charged(org_id):
     """A charge written late can land after its team was deleted. There is then no team to
-    charge; and where the database hands the number to a new team, that team owes nothing."""
+    charge, and no ledger to write an entry in."""
     gone = org_id + 1_000
     async with session_maker() as db:  # no team with this number: nothing to write a ledger for
         await allowance.record_charges(
@@ -503,26 +503,6 @@ async def test_a_charge_admitted_for_a_team_that_is_gone_is_dropped_not_charged(
         folded = await allowance.fold_charges_in_transaction(db, gone)
         await db.commit()
     assert folded == allowance.Folded(orphaned=1)
-    # The same number, a new team: its ledger began (the fixture's grant) after the hold the
-    # charge names, so the charge was never this team's.
-    before = allowance._epoch_of(ledger._now() - timedelta(hours=1))
-    current = allowance._epoch(await _hold(org_id, await _open(org_id, 1_000)))
-    async with session_maker() as db:
-        await allowance.record_charges(db, [
-            allowance.Charge("theirs", org_id, "e.metered", 600, reserved_micro=600, epoch=before),
-            allowance.Charge("ours", org_id, "e.metered", 100, reserved_micro=100, epoch=current)])
-        await db.commit()
-        folded = await allowance.fold_charges_in_transaction(db, org_id)
-        await db.commit()
-        if db.get_bind().dialect.name == "sqlite":
-            assert (folded.calls, folded.charged_micro, folded.orphaned) == (1, 100, 1)
-            assert await ledger.balance_of(db, org_id) == GRANT - 1_000
-        else:
-            # PostgreSQL never gives a number out twice, so this is the team's own late charge
-            # (its hold could be older than a first top-up that landed while it was opened).
-            assert (folded.calls, folded.charged_micro, folded.orphaned) == (2, 700, 0)
-            assert await ledger.balance_of(db, org_id) == GRANT - 1_000 - 600
-    await _invariant(org_id)
 
 
 async def test_a_reserve_refused_for_what_the_queue_owes_leaves_the_team_as_it_was(org_id):
