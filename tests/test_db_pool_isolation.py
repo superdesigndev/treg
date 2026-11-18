@@ -121,6 +121,8 @@ EXPECTED_MAKERS: dict[str, set[str]] = {
     "application/credential_reencrypt.py": {API},
     # Runs only inside `treg-worker admin rotate-fernet`; same reasoning as `worker.py`.
     "application/fernet_rotation.py": {API},
+    # Runs only inside `treg-worker` and `python -m treg upgrade`; same reasoning as `worker.py`.
+    "application/call_record_partitions.py": {API},
     # Off-request writers.
     "audit.py": {BACKGROUND},
     "application/allowance_sweep.py": {BACKGROUND},

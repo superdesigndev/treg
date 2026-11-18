@@ -711,6 +711,14 @@ job's credentials. `treg-worker --help` lists them; what follows is what a sched
   "Row retention").
 - **`admin purge-evidence`** and **`admin purge-ad-clicks`**: daily. Without them expired rows stop
   being shown or read but stay in the database.
+- **Call record partitions** (PostgreSQL). `usage rollup` creates the coming month partitions of a
+  partitioned `callrecord` before it folds, and every release does the same; while `callrecord`
+  is the plain table both are no-ops. A `usage rollup` run whose partition upkeep failed still
+  folds, logs "callrecord partition upkeep failed" as an error and exits 1, so alert on either.
+  `admin callrecord-partitions` does only that step. `admin callrecord-backfill --days N` copies
+  call records into `callrecord_partitioned` beside live traffic and resumes when run again; it
+  needs only the database, not `verify_db()`
+  ([data model](../architecture/data-model.md), "preparing monthly partitions and a 64-bit id").
 - **`hub check`** runs each live [hub](../architecture/hub.md) tool's `check.json` as its maker
   (spending the maker's balance); health is derived from the last three runs.
 - **`jev xboost`** needs `TREG_JEV_TREG_TOKEN` (a member token, so its spend is an ordinary bill) and
