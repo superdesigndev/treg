@@ -718,8 +718,9 @@ def reddit_post_id(v: Any) -> str | None:
 
 
 _URL = re.compile(r"(?:https?:)?//\S+|www\.\S+", re.I)
-_WALL_WORDS_MIN = 8        # fewer words than this, and few characters, is a heading or a shell
-_WALL_CHARS_MIN = 40       # non-space characters: unspaced scripts (Chinese, Japanese) carry a page in few "words"
+_WALL_READ_MAX = 20_000    # characters: a wall is never this long, so a longer page is not read at all
+_WALL_SCAN_MAX = 256_000   # characters of every string, links and markup included, before the page is left unjudged
+_WALL_URL_MAX = 4096       # a longer string is not a bare link
 _WALL_CHARS_MAX = 1000     # a wall page is short: past this, a phrase is the page talking about it
 _WALL_GENERIC_WORDS = 25   # a common phrase decides only on a page this short, or a real page saying it stays a page
 _WALL_PHRASES = tuple(_fold(p) for p in (
@@ -739,30 +740,52 @@ _WALL_GENERIC = tuple(_fold(p) for p in (
     "please log in", "please sign in"))
 
 
+def _each_string(v: Any):
+    if isinstance(v, str):
+        yield v
+    elif isinstance(v, dict):
+        for x in v.values():
+            yield from _each_string(x)
+    elif isinstance(v, list):
+        for x in v:
+            yield from _each_string(x)
+
+
 def wall_page(page: Any) -> bool:
     """True when an extracted page (a page object, a list whose first item is one, or its text) is
-    not content: its text, links and markup left out, is empty or near-empty (under eight words and
-    under forty non-space characters), or it says it is a wall. A specific wall phrase (a captcha,
-    a browser or bot check, a sign-in-to-view wall) decides on a page of at most 1,000 characters; a
-    common one (access denied, enable JavaScript or cookies, please sign in) only on a page under
-    twenty-five words. Words are counted in any script. A structured answer (text starting with `{`
-    or `[`) is never a wall, and a page with no text field at all is never judged: emptiness is the
-    row's own miss rule."""
+    not content: its text, links and markup left out, is blank, or it says it is a wall. A specific
+    wall phrase (a captcha, a browser or bot check, a sign-in-to-view wall) decides on a page of at
+    most 1,000 characters; a common one (access denied, enable JavaScript or cookies, please sign
+    in) only on a page under twenty-five words. A short answer is not a wall for being short ("OK",
+    an address, a price). A structured answer (text starting with `{` or `[`), a page over 20,000
+    characters of text or 256,000 of strings in all (never read further) and a page with no text field at all are never walls:
+    emptiness is the row's own miss rule."""
     if isinstance(page, list):
         page = page[0] if page else None
-    parts = [s for s in _strings(page) if not s.lstrip().startswith("<") and not _URL.fullmatch(s.strip())]
+    parts, size, seen = [], 0, 0
+    for s in _each_string(page):
+        seen += len(s)
+        if seen > _WALL_SCAN_MAX:
+            return False
+        head = s[:64].lstrip()
+        if head.startswith("<") or (len(s) <= _WALL_URL_MAX and _URL.fullmatch(s.strip())):
+            continue
+        size += len(s)
+        if size > _WALL_READ_MAX:
+            return False
+        parts.append(s)
     if not parts:
         return False
     raw = _URL.sub(" ", " ".join(parts)).strip()
+    if not raw:
+        return True
     if raw[:1] in ("{", "["):
         return False
-    words = len(re.findall(r"\w+", raw))
-    if words < _WALL_WORDS_MIN and len("".join(raw.split())) < _WALL_CHARS_MIN:
-        return True
     text = f" {_fold(raw)} "
     if len(raw) <= _WALL_CHARS_MAX and any(f" {p} " in text for p in _WALL_PHRASES):
         return True
-    return words < _WALL_GENERIC_WORDS and any(f" {p} " in text for p in _WALL_GENERIC)
+    return (any(f" {p} " in text for p in _WALL_GENERIC)
+            and len(re.findall(r"\w+", raw)) < _WALL_GENERIC_WORDS)
 
 
 def starts_with(v: Any, prefix: Any) -> bool:

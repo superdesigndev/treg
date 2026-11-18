@@ -2124,7 +2124,6 @@ _ARTICLE = ("CAPTCHA systems ask visitors to prove they are human before a form 
     ("Please enable cookies in your browser to continue.", True),
     ("Create an account to see the full shipment record. Already a member? Sign in to continue.", True),
     ("Click the button below to continue shopping. Conditions of Use Privacy Policy", True),
-    ("# r/askscience rules", True),
     (["   \n  "], True),
     ([{"url": "https://example.com", "title": "Example Domain", "text":
        "This domain is for use in documentation examples without needing permission. Avoid use in operations."}], False),
@@ -2143,9 +2142,8 @@ _ARTICLE = ("CAPTCHA systems ask visitors to prove they are human before a form 
     ("Please enable JS and disable any ad blocker", True),
     ("Click the button below to continue shopping\n\nContinue shopping\n\nConditions of Use Privacy Policy "
      "(c) 1996-2025, Amazon.com, Inc. or its affiliates", True),
-    ("OK", True),
 ])
-def test_wall_page_is_true_only_for_a_wall_or_a_near_empty_page(page, wall):
+def test_wall_page_is_true_only_for_a_wall_or_a_blank_page(page, wall):
     assert P.evaluate("wall_page(pages)", {"pages": page}) is wall
 
 
@@ -2179,9 +2177,28 @@ def test_wall_page_is_true_only_for_a_wall_or_a_near_empty_page(page, wall):
     "# Blue Ceramic Mug 350 ml\n\nHand-glazed stoneware mug, dishwasher safe. $18.00. In stock. Add to cart.",
     "An old silent pond / A frog jumps into the pond / Splash! Silence again.",
     "We use cookies to improve your experience. Manage preferences or accept all to continue browsing.",
+    # A short answer is not a wall for being short: judging it a miss would walk every provider.
+    "OK", "pong", "42", "true", "203.0.113.7", "Hello, World!", "# r/askscience rules",
+    "User-agent: *\nDisallow: /admin/\nSitemap: https://example.com/sitemap.xml",
+    "Bitcoin price: $97,412.55", "# Weather\nLondon 12C, cloudy", "# Coming soon\n\nWe launch in March.",
+    "Ephemeral: lasting for a very short time.",
 ])
 def test_wall_page_keeps_real_pages_in_any_language_and_structured_answers(page):
     assert P.evaluate("wall_page(pages)", {"pages": page}) is False
+
+
+def test_wall_page_does_not_read_a_long_page():
+    """The rule runs on the event loop, up to three times per child: a page past the read limit is
+    judged at once, never scanned, even when it opens like a wall."""
+    import time
+    big = "Please verify you are human. " + "x" * (8 * 1024 * 1024)
+    pages = [{"url": "https://example.com", "text": big, "title": "Just a moment..."}]
+    links = [{"text": "Please verify you are human.", "links": [f"https://example.com/p/{i}" for i in range(300_000)]}]
+    started = time.perf_counter()
+    assert P.wall_page(pages) is False
+    assert P.wall_page(big) is False
+    assert P.wall_page(links) is False
+    assert time.perf_counter() - started < 0.05
 
 
 def test_a_wall_page_is_a_miss_the_extract_route_moves_on_from_and_a_per_success_child_does_not_bill():

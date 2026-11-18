@@ -1009,14 +1009,16 @@ returned and never documented as stable. An output field may say where it lands 
   marks true becomes a miss (`why: question_miss`) the route moves on from. It names no provider;
   `no_result_on_site(q, results)` judges a `site:` question whose rows are all on other sites. A
   call without an identity (a replay record) is not judged by it. `web.extract` declares
-  `wall_page(pages)` (`paths.py::wall_page`): a page whose text is near-empty (under eight words,
-  counted in any script, and under forty non-space characters) is a miss; so is one that says it is
-  a wall, where a specific phrase (captcha, browser or bot check, sign in to view) decides on a page
-  of at most 1,000 characters and a common one (access denied, enable JavaScript or cookies, please
-  sign in) only on a page under twenty-five words. A structured answer (text starting with `{` or
-  `[`) and a long page that mentions those words are not walls. The contract rule moves the walk on but does not change a child's charge; a `per_success`
-  child stops billing such a page only where its own adapter `miss` also calls `wall_page` on its
-  text field.
+  `wall_page(pages)` (`paths.py::wall_page`): a page whose text is blank, or that says it is a
+  wall, is a miss. A specific phrase (captcha, browser or bot check, sign in to view) decides on a
+  page of at most 1,000 characters; a common one (access denied, enable JavaScript or cookies,
+  please sign in) only on a page under twenty-five words. A short answer is never a wall for being
+  short ("OK", an address, a price): a false miss walks every routed child, and some bill a miss.
+  A structured answer (text starting with `{` or `[`) is not a wall, and a page past 20,000
+  characters of text or 256,000 of strings in all is not read at all, because the rule runs on
+  the event loop up to three times per child. The contract rule moves the walk on but does not
+  change a child's charge; a `per_success` child stops billing such a page only where its own
+  adapter `miss` also calls `wall_page` on its text field.
 - `scoping` names identity keys that scope the answer (`company_domain`): a candidate whose adapter
   never sends a supplied one is dropped from the plan, not ranked down, because a title-only search
   asked for one company's CEO bills title-matched strangers as a hit.
