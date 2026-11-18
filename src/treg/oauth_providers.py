@@ -2649,6 +2649,24 @@ JOBSPIPE = OAuthProvider(
 )
 
 
+MERMAIL = OAuthProvider(
+    service="mermail", display_name="Mermail", auth_kind="key",
+    token_label="API key", token_placeholder="your Mermail API key (sk-proj-…)",
+    token_header="x-api-key", token_format="{secret}",
+    setup_url="https://console.mermail.app",
+    setup_action_label="Get your Mermail API key",
+    setup_steps=("Sign up at Mermail (the Free plan includes 1,000 API credits a month).",
+                 "Open Settings → API Keys, create a key and copy the sk-proj-… value once."),
+    setup_note="Each call spends API credits from your workspace plan: a read costs 1, a draft 2, a send or reply 5 and a new inbox 10. The account check is a 1-credit read.",
+    auth_uri="", token_uri="", scopes={}, client_id_setting="", client_secret_setting="",
+    category="Email",
+    summary="Email inboxes for AI agents: create an inbox with its own address, read and search mail, then send, reply and save drafts.",
+    base_url="https://console.mermail.app",
+    docs_url="https://docs.mermail.app/api-reference/overview",
+    probe_path="/api/v1/workspaces",  # 1 credit; a bad key gets 401
+)
+
+
 AVIATO = OAuthProvider(
     service="aviato",
     display_name="Aviato",
@@ -4434,6 +4452,8 @@ REGISTRY: dict[str, OAuthProvider] = {
         SCRAPEGRAPHAI, SERPER, BRAVESEARCH, LITESCRAPE, CLORO, LOCALFALCON,
         # more Enrichment API-key providers
         LUSHA, CORESIGNAL, DIFFBOT, THECOMPANIESAPI, LEADMAGIC, ENRICHLAYER, FIBER_AI, CRUSTDATA, THEIRSTACK, JOBSPIPE, AVIATO,
+        # Email: agent inboxes
+        MERMAIL,
         COMPANYENRICH, CORPOAPI, OCEANIO, ADYNTEL, TOMBA, TRESTLEIQ, HLRLOOKUP, PREDICTLEADS, FINDYMAIL, ANYMAILFINDER, ENROW, FILTRAT, FILTRAT_FINDER, DROPCONTACT, BRANDDEV, ICYPEAS, LEADSFORGE,
         INFLUENCERSCLUB, VILLAGE,
         # Places: intent-scored local search
