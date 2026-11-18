@@ -156,7 +156,26 @@ async def test_a_failed_partition_upkeep_fails_the_rollup_run_after_the_fold(mon
 
 
 
-async def test_the_staged_table_has_the_live_tables_columns(before_swap):
+@pytest.fixture
+async def at_head():
+    """The database every later revision builds: a revision that changes `callrecord` alone
+    fails the parity tests. Once `callrecord` is the partitioned table there is nothing to keep
+    in step, and they skip."""
+    if db._engine.dialect.name != "postgresql":
+        pytest.skip("requires an isolated PostgreSQL database via TREG_TEST_DB_URL")
+    await audit.drain()
+    await _drop_everything()
+    try:
+        await _upgrade_to("head")
+        if await _scalar("SELECT relkind::text FROM pg_class WHERE oid = 'callrecord'::regclass") == "p":
+            pytest.skip("callrecord is partitioned: nothing left to keep in step")
+        yield
+    finally:
+        await _drop_everything()
+        await db.reset_db()
+
+
+async def test_the_staged_table_has_the_live_tables_columns(at_head):
     """The copy names the live table's columns, so a column added to `callrecord` before the swap
     must be added to `callrecord_partitioned` in the same migration; this fails until it is."""
     shape = text("""
@@ -201,7 +220,7 @@ async def test_the_backfill_waits_while_the_replica_lags(before_swap, monkeypatc
     assert (await partitions.backfill(31, batch_rows=10, pause=0))["replica_waits"] == 0
 
 
-async def test_the_staged_table_has_the_live_tables_indexes(before_swap):
+async def test_the_staged_table_has_the_live_tables_indexes(at_head):
     """The swap gives the staged table the live table's name and index names, so every index the
     live table has (a migration adding one before the swap) must exist on the staged table too."""
     defs = text("SELECT indexname, indexdef FROM pg_indexes WHERE tablename = :name")
@@ -285,3 +304,31 @@ async def test_a_column_added_during_a_run_is_copied_from_the_next_batch_on(befo
     out = await partitions.backfill(31, batch_rows=10, pause=0, max_replica_lag=5)
     assert out["done"] and added
     assert await _scalar("SELECT count(*) FROM callrecord_partitioned WHERE extra = 'x'") == 30
+
+
+async def test_a_first_pass_split_over_two_runs_resyncs_from_the_first_run(before_swap, monkeypatch):
+    """The first run copies the newest rows and stops on its time budget; a verdict lands on one
+    of them; the second run, two days later, finishes the copy and the resync. With no completed
+    pass yet, the resync looks back from when the first run began, not from the second run."""
+    first = await partitions.backfill(5, batch_rows=4, max_seconds=0, pause=0)
+    assert first["done"] is False
+    assert await _scalar("SELECT min(id) FROM callrecord_partitioned") == 37
+    async with db.session_maker() as session:
+        await session.execute(text("UPDATE callrecord SET hit = true WHERE id = 38"))
+        await session.commit()
+    later = utcnow_naive() + timedelta(days=2)
+    monkeypatch.setattr(partitions, "utcnow_naive", lambda: later)
+    second = await partitions.backfill(5, batch_rows=4, pause=0)
+    assert second["done"] is True
+    assert await _scalar("SELECT hit FROM callrecord_partitioned WHERE id = 38") is True
+
+
+async def test_a_second_backfill_while_one_runs_does_nothing(before_swap):
+    async with db._engine.connect() as other:
+        assert (await other.execute(text("SELECT pg_try_advisory_lock(:k)"),
+                                    {"k": partitions.BACKFILL_LOCK_KEY})).scalar_one()
+        busy = await partitions.backfill(31, batch_rows=10, pause=0)
+        await other.execute(text("SELECT pg_advisory_unlock(:k)"), {"k": partitions.BACKFILL_LOCK_KEY})
+    assert busy["busy"] is True and busy["copied"] == 0
+    assert await _scalar("SELECT count(*) FROM callrecord_partitioned") == 0
+    assert (await partitions.backfill(31, batch_rows=10, pause=0))["copied"] == 40
