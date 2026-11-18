@@ -1980,6 +1980,37 @@ FISHAUDIO = OAuthProvider(
     probe_reject_statuses=(401, 403),
 )
 
+SPEKO = OAuthProvider(
+    service="speko",
+    display_name="Speko",
+    auth_kind="key",
+    token_label="API key",
+    token_placeholder="your Speko API key (sk_live_...)",
+    token_header="Authorization",
+    token_format="Bearer {secret}",
+    setup_url="https://platform.speko.ai/gateway/keys",
+    setup_action_label="Get your Speko API key",
+    setup_steps=(
+        "Sign in to Speko and open Gateway → API keys.",
+        "Create an API key and copy it.",
+    ),
+    setup_note="Speech bills per character and calls per minute, from your Speko credits; voice and model lookups are free.",
+    auth_uri="", token_uri="", scopes={},
+    client_id_setting="", client_secret_setting="",
+    category="AI generation",
+    summary="Run voice agents on phone calls, and generate speech across 60+ TTS models through one key.",
+    base_url="https://api.speko.dev",
+    # Speech to text runs on the Speko Router, a second host that takes the same API key.
+    catalog_targets=(CatalogTarget(host="router.speko.dev", base_url="https://router.speko.dev"),),
+    extra_tools=(
+        {"suffix": "router", "base_url": "https://router.speko.dev",
+         "examples": [{"method": "POST", "path": "/v1/stt/transcriptions",
+                       "note": "Transcribe one uploaded recording; auto-routed unless the request part pins a model."}]},
+    ),
+    docs_url="https://docs.speko.ai/api-reference",
+    probe_path="/v1/voices",  # free; a bad key gets 401 {"code":"UNAUTHORIZED"}
+)
+
 OPENROUTER = OAuthProvider(
     service="openrouter",
     display_name="OpenRouter",
@@ -4477,6 +4508,7 @@ REGISTRY: dict[str, OAuthProvider] = {
         ANYAPI, APOLLO, PDL, AKTA, HUNTER, MOBIUSENGINE_JOBS, GREENHOUSE, SUMBLE, MOLTSETS, OPENMART, HARVESTAPI, FETCHINIO, SIXTYFOUR, LEADOCEAN, BLITZAPI, DROPLEADS, ASHBY, WORKABLE, SMARTRECRUITERS, HIREBASE, LEVER,
         QUICKENRICH, PROSPEO, AIARK, WIZA, LIMADATA, GETLEADSIO, SCRUBBY, ZEROBOUNCE, DATAGMA,
         TRYKITT, CONTACTOUT, MILLIONVERIFIER, ORBISEARCH, BOUNCEBAN, CRUNCHBASE, MINIMAX, FISHAUDIO,
+        SPEKO,
         OPENROUTER,
         REPLICATE,
         REAPI, PIAPI, GOOGLE_AI, TINYFISH,
