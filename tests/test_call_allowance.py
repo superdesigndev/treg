@@ -1018,6 +1018,21 @@ async def test_a_team_the_store_refuses_does_not_hold_up_anothers_freeze_or_its_
     assert not runtime._freeze_tasks and not runtime._freeze_wake
 
 
+async def test_a_process_about_to_exit_waits_for_the_freezes_it_owes(org_id, store, monkeypatch):
+    """A worker tick ends its process. A freeze still being retried would go with it."""
+    freeze, away = store.allowance_freeze, [True]
+
+    async def sometimes_away(org, **kwargs):
+        return None if away[0] else await freeze(org, **kwargs)
+
+    monkeypatch.setattr(store, "allowance_freeze", sometimes_away)
+    assert await runtime.freeze(org_id) is False
+    assert await runtime.deliver_owed_freezes(timeout_s=0.02) == 1, "still owed: reported, not hidden"
+    away[0] = False
+    assert await runtime.deliver_owed_freezes(timeout_s=5) == 0
+    assert store.counters[org_id]["frozen"] == 1
+
+
 async def test_an_overrun_outside_the_allowance_before_the_first_publish_holds_the_new_counter(
         org_id, store, monkeypatch):
     """The first refill has committed its hold and not published. A tagged call overruns now:

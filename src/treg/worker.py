@@ -264,10 +264,17 @@ async def _asynctasks_settle(args) -> int:
     from . import call_events
 
     await verify_db()
+    from .application.call import allowance as allowance_runtime
+
     try:
         result = await settle_due(limit=args.limit)
     finally:
         await call_events.drain()  # the terminal events this tick observed
+        # A settlement past its hold freezes its team's allowance counter from a task of its
+        # own; this process ends with the tick, so it waits for those here.
+        lost = await allowance_runtime.deliver_owed_freezes()
+        if lost:
+            print(f"{lost} allowance freeze(s) did not reach the store before exit", file=sys.stderr)
     print(json.dumps(result.__dict__, sort_keys=True))
     return 0
 
