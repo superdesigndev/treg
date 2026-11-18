@@ -165,6 +165,7 @@ _DATAPLANE_DERIVED_WRITES = {
         (call_allowance._refill, "money_admission.admit"),
         (call_allowance._refill, "allowance.refill_allowance_in_transaction"),
         (call_allowance._drain, "allowance.close_allowance_in_transaction"),
+        (call_allowance._fold_backlog, "allowance.fold_charges_in_transaction"),
     ),
     # What a call spent from the allowance is queued as a `callcharge` row, a batch per insert,
     # committed before the call answers; a refill applies the queue to the blocks and the ledger.
@@ -216,6 +217,7 @@ _DERIVED_WRITE_FILES = {
     _SRC / "application" / "call" / "allowance.py": {
         "money_admission.admit", "ledger.reap_stale_holds",
         "allowance.refill_allowance_in_transaction", "allowance.close_allowance_in_transaction",
+        "allowance.fold_charges_in_transaction",
         "allowance.record_charges", "archive.note_org_uses_in_transaction",
         "store.allowance_take", "store.allowance_take_up_to", "store.allowance_give_back",
         "store.allowance_add",
@@ -264,6 +266,11 @@ _EXPECTED_DERIVED_WRITE_SITES = {
     ("application/call/allowance.py", "_drain", "allowance.close_allowance_in_transaction"),
     ("application/call/allowance.py", "_drain", "money_admission.admit"),
     ("application/call/allowance.py", "_drain", "store.allowance_drop"),
+    # a refill that folded a full batch leaves the rest of the queue to a background fold
+    ("application/call/allowance.py", "_fold_backlog", "allowance.fold_charges_in_transaction"),
+    ("application/call/allowance.py", "_fold_backlog", "money_admission.admit"),
+    ("application/call/allowance.py", "_fold_backlog", "store.acquire_lease"),
+    ("application/call/allowance.py", "_fold_backlog", "store.release_lease"),
     ("application/call/allowance.py", "_refill", "allowance.refill_allowance_in_transaction"),
     ("application/call/allowance.py", "_refill", "ledger.reap_stale_holds"),
     ("application/call/allowance.py", "_refill", "money_admission.admit"),

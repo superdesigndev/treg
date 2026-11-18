@@ -323,6 +323,14 @@ async def stale_allowance_orgs(db: AsyncSession, stale_before: datetime, *,
         .order_by(Hold.org_id).limit(limit))).scalars())
 
 
+async def orgs_with_queued_charges(db: AsyncSession, queued_before: datetime, *,
+                                   limit: int = 50) -> list[int]:
+    """Teams with a charge queued since before `queued_before`: a queue nothing is folding."""
+    return list((await db.execute(
+        select(CallCharge.org_id).where(CallCharge.created_at < queued_before)
+        .distinct().order_by(CallCharge.org_id).limit(limit))).scalars())
+
+
 async def _close(db: AsyncSession, org_id: int, hold: Hold | None, reason: str,
                  release_micro: int | None) -> Closed:
     claimed: list = []

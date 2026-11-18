@@ -253,6 +253,16 @@ money moved, the purchased-credit gate.
   takes back anything above it, which covers an overrun the store could not be told about.
 - **Auto top-up** is asked after a refill, the only moment the balance moved.
 
+- **The queue is kept short.** One refill folds one batch, and a chunk can pay for more calls
+  than a batch holds, so a refill that folded a full batch starts a background fold for the
+  team: a batch per transaction under the close lease, one process at a time, until the queue
+  is shorter than a batch. Calls keep taking from the counter meanwhile, since a fold moves
+  only money their takes already removed from it. The idle sweep's worker also folds, each
+  pass, the queue of any team with a charge older than a pass: a team no longer listed, a
+  charge written after its hold was closed. A call's `settle` entry, and every report read from
+  the ledger, therefore trails the call by a refill cycle at most while the team is busy and by
+  about a sweep pass otherwise.
+
 What can go wrong lands on one side only. A take the process never finishes (a crash), a give-back
 the store did not apply, or a counter lost with the store leaves money in the allowance hold that
 no counter offers: unavailable, not spent and not charged, until the hold is closed. Nothing here

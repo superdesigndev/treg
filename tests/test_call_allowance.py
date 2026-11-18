@@ -523,6 +523,48 @@ async def test_a_refill_published_late_admits_no_call_past_what_its_stamp_covers
     assert await _state(org_id) == (GRANT - CHUNK, CHUNK)
 
 
+# ---- keeping up with the queue -----------------------------------------------------------------
+async def _queued(org_id: int) -> int:
+    async with session_maker() as db:
+        return len((await db.execute(
+            select(CallCharge.call_id).where(CallCharge.org_id == org_id))).all())
+
+
+async def test_a_busy_teams_queue_does_not_outgrow_what_a_refill_folds(org_id, store, monkeypatch):
+    """A chunk pays for more calls than one refill folds. The queue must still come back down."""
+    monkeypatch.setattr(allowance, "FOLD_BATCH", 5)
+    monkeypatch.setattr(get_settings(), "money_allowance_chunk_micro", 2_000)
+    monkeypatch.setattr(runtime, "_folding", {})
+    backlog = []
+    for round_ in range(4):
+        for index in range(20):  # twenty calls of 100 spend one chunk
+            epoch = await runtime.take(org_id, 100)
+            await _finish(org_id, f"r{round_}-{index}", epoch, 100, billable=True)
+        epoch = await runtime.take(org_id, 100)  # the counter is empty: this one refills
+        await _finish(org_id, f"r{round_}-refill", epoch, 100, billable=False)
+        if runtime._folding.get(org_id):
+            await runtime._folding[org_id]
+        backlog.append(await _queued(org_id))
+    assert max(backlog) < 5, backlog
+    assert store.leases == {}
+    balance, hold = await _state(org_id)
+    assert store.counters[org_id]["avail"] <= hold
+
+
+async def test_the_sweep_folds_a_queue_nothing_else_is_folding(org_id, store, monkeypatch):
+    epoch = await runtime.take(org_id, 600)
+    await _finish(org_id, "old-1", epoch, 600, billable=True, actual_micro=450)
+    assert await allowance_sweep.fold_queued_once(session_maker) == 0, "queued a moment ago"
+    async with session_maker() as db:
+        await db.execute(update(CallCharge).values(
+            created_at=ledger._now() - timedelta(seconds=allowance_sweep._SWEEP_EVERY_S + 5)))
+        await db.commit()
+    monkeypatch.setattr(get_settings(), "money_allowance_org_ids", [])  # no longer listed
+    assert await allowance_sweep.fold_queued_once(session_maker) == 1
+    assert await _queued(org_id) == 0
+    assert await _state(org_id) == (GRANT - CHUNK, CHUNK - 450)
+
+
 # ---- a daily cap across midnight ---------------------------------------------------------------
 async def _move_hold_to_yesterday(org_id: int) -> None:
     async with session_maker() as db:

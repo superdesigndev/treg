@@ -26,6 +26,7 @@ log = logging.getLogger("treg.money_allowance")
 _SLACK_S = 30
 _SWEEP_EVERY_S = 60.0
 _FENCE_TTL_MS = 24 * 3600 * 1000
+_FOLD_BATCHES_PER_PASS = 20
 
 
 def idle_after_s() -> int:
@@ -62,12 +63,44 @@ async def sweep_once(session_maker) -> int:
     return closed
 
 
+async def fold_queued_once(session_maker) -> int:
+    """Fold the queue of every team that has a charge older than a sweep interval. A busy
+    team's refills fold its queue; this is for a queue nothing else is folding: a team no longer
+    listed, a charge written after its hold was closed. Returns how many charges were folded."""
+    queued_before = utcnow_naive() - timedelta(seconds=_SWEEP_EVERY_S)
+    async with session_maker() as db:
+        org_ids = await allowance.orgs_with_queued_charges(db, queued_before)
+    total = 0
+    for org_id in org_ids:
+        try:
+            for _ in range(_FOLD_BATCHES_PER_PASS):
+                async with (
+                    money_admission.admit(
+                        money_admission.require_balance_orgs([org_id]), operation="close"),
+                    money_session(session_maker()) as db,
+                ):
+                    folded = await allowance.fold_charges_in_transaction(db, org_id)
+                    await db.commit()
+                total += folded.calls
+                if folded.calls + folded.duplicates < allowance.FOLD_BATCH:
+                    break
+        except Exception:
+            log.error("folding the queued charges of org %s failed", org_id, exc_info=True)
+    return total
+
+
+async def run_once(session_maker) -> None:
+    """One pass of both jobs, one after the other: never more than one connection."""
+    await sweep_once(session_maker)
+    await fold_queued_once(session_maker)
+
+
 async def worker(*, every_s: float = _SWEEP_EVERY_S) -> None:
     """Sweep forever on the background pool, one connection at a time. A bad pass never kills
     the loop."""
     while True:
         try:
-            await sweep_once(background_session_maker)
+            await run_once(background_session_maker)
         except asyncio.CancelledError:
             raise
         except Exception:

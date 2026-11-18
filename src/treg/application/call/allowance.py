@@ -104,6 +104,10 @@ async def _refill(org_id: int, need_micro: int, daily_cap_micro: int) -> bool:
     except money_admission.ReserveAdmissionTimeout:
         return False
     _refills[org_id] = _refills.get(org_id, 0) + 1
+    if result.folded.calls + result.folded.duplicates >= allowance.FOLD_BATCH:
+        # A full batch: more is queued than one refill folds. A chunk can pay for more calls
+        # than that, so without this the queue of a busy team would only grow.
+        _fold_in_background(org_id)
     log.info("allowance_refill org_id=%s added=%s hold=%s counter_before=%s folded=%s duplicates=%s",
              org_id, result.added_micro, result.amount_micro, available,
              result.folded.calls, result.folded.duplicates)
@@ -127,6 +131,45 @@ async def _refill(org_id: int, need_micro: int, daily_cap_micro: int) -> bool:
                     org_id, added, result.amount_micro)
         await store.allowance_take_up_to(org_id, result.epoch, added - result.amount_micro)
     return True
+
+
+_folding: dict[int, asyncio.Task] = {}
+
+
+def _fold_key(org_id: int) -> str:
+    return f"treg:money-allowance-fold:v1:{org_id}"
+
+
+def _fold_in_background(org_id: int) -> None:
+    task = _folding.get(org_id)
+    loop = asyncio.get_running_loop()
+    if task is None or task.done() or task.get_loop() is not loop:
+        _folding[org_id] = loop.create_task(_fold_backlog(org_id), name="treg-allowance-fold")
+
+
+async def _fold_backlog(org_id: int) -> None:
+    """Fold a team's queued charges, a batch per transaction, until the queue is short. One
+    process at a time per team; calls keep taking from the counter meanwhile, since a fold
+    moves only money their takes already removed from it."""
+    store, key, token = kv.store(), _fold_key(org_id), uuid.uuid4().hex
+    try:
+        while True:
+            if await store.acquire_lease(key, token, _REFILL_LEASE_MS) != "acquired":
+                return
+            try:
+                async with (
+                    money_admission.admit(
+                        money_admission.require_balance_orgs([org_id]), operation="close"),
+                    money_session(session_maker()) as db,
+                ):
+                    folded = await allowance.fold_charges_in_transaction(db, org_id)
+                    await db.commit()
+            finally:
+                await store.release_lease(key, token)
+            if folded.calls + folded.duplicates < allowance.FOLD_BATCH:
+                return
+    except Exception:
+        log.error("folding the queued charges of org %s failed", org_id, exc_info=True)
 
 
 async def _drain(org_id: int, reason: str) -> None:
