@@ -236,7 +236,7 @@ async def _repair_bucket(session_factory, endpoint_id: str, day: str, at: dateti
         scanned_at = utcnow_naive()
         rows = await db.stream(select(
             CallRecord.status_code, CallRecord.created_at, CallRecord.duration_ms,
-            CallRecord.hit, CallRecord.cost_observed_micro, CallRecord.verdict,
+            CallRecord.hit, CallRecord.cost_observed_micro, CallRecord.verdict, CallRecord.outcome,
         ).where(CallRecord.endpoint_id == endpoint_id,
                 CallRecord.created_at >= start, CallRecord.created_at < start + timedelta(days=1),
                 CallRecord.id <= state.cursor_id,
@@ -245,10 +245,11 @@ async def _repair_bucket(session_factory, endpoint_id: str, day: str, at: dateti
             # Cross the async result boundary once per bounded batch, then unpack rows locally.
             # The query still reads the complete folded day from one source snapshot.
             async for batch in rows.partitions(BATCH_ROWS):
-                for status_code, created_at, duration_ms, hit, cost, verdict in batch:
+                for status_code, created_at, duration_ms, hit, cost, verdict, outcome in batch:
                     tally.fold(status_code=status_code, created_at=created_at,
                                duration_ms=duration_ms, hit=hit, cost_observed_micro=cost,
-                               refused_by=None, verdict=verdict, empty_fails=empty_fails)
+                               refused_by=None, verdict=verdict, empty_fails=empty_fails,
+                               outcome=outcome)
                 # Buffered rows need no I/O await; let timeout/cancellation run between batches.
                 await asyncio.sleep(0)
         finally:
@@ -363,7 +364,8 @@ async def refresh(session_factory=session_maker, *, max_rows: int = 500_000,
             rows = (await db.execute(
                 select(CallRecord.id, CallRecord.endpoint_id, CallRecord.status_code,
                        CallRecord.created_at, CallRecord.duration_ms, CallRecord.hit,
-                       CallRecord.cost_observed_micro, CallRecord.refused_by, CallRecord.verdict)
+                       CallRecord.cost_observed_micro, CallRecord.refused_by, CallRecord.verdict,
+                       CallRecord.outcome)
                 .where(CallRecord.id > state.cursor_id).order_by(CallRecord.id).limit(limit)
             )).all()
             touched: dict[tuple[str, str], stats.Tally] = {}   # this batch only, read under the lock
@@ -371,7 +373,8 @@ async def refresh(session_factory=session_maker, *, max_rows: int = 500_000,
             batch_touched: set[tuple[str, str]] = set()
             last: tuple[int, datetime] | None = None
             deferred = False
-            for row_id, endpoint_id, status_code, created_at, duration_ms, hit, cost, refused_by, verdict in rows:
+            for (row_id, endpoint_id, status_code, created_at, duration_ms, hit, cost, refused_by, verdict,
+                 outcome) in rows:
                 if created_at >= young:
                     deferred = True     # still inside the commit lag: this row and everything after it wait
                     break
@@ -388,7 +391,8 @@ async def refresh(session_factory=session_maker, *, max_rows: int = 500_000,
                     reconciled[key] = existing is None or existing.terminal_reconciled
                 if tally.fold(status_code=status_code, created_at=created_at, duration_ms=duration_ms,
                               hit=hit, cost_observed_micro=cost, refused_by=refused_by,
-                              verdict=verdict, empty_fails=catalog_store.empty_is_failure(endpoint_id)):
+                              verdict=verdict, empty_fails=catalog_store.empty_is_failure(endpoint_id),
+                              outcome=outcome):
                     batch_touched.add(key)
             buckets_touched |= batch_touched
             for endpoint_id, day in sorted(batch_touched):

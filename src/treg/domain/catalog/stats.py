@@ -32,7 +32,7 @@ from dataclasses import dataclass, field
 from datetime import datetime, timedelta, timezone
 from typing import Protocol, TypeAlias
 
-from sqlalchemy import case, func, literal
+from sqlalchemy import case, false, func, not_, or_
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlmodel import select
 
@@ -48,6 +48,25 @@ LATENCY_SAMPLE = 400
 
 EndpointObservation: TypeAlias = dict[str, int | float | None]
 ObservationSnapshot: TypeAlias = dict[str, EndpointObservation]
+
+
+def decided(status_code: int, hit: bool | None, outcome: str | None,
+            empty_fails: bool) -> tuple[bool, bool]:
+    """(success, failure) of one row the endpoint answered; neither = not decided.
+
+    A row carrying `outcome` (a v2 row's own declaration, `results.judged_outcome`) is judged by
+    it whatever its status: `hit` succeeds, `error` fails, `not_found` (the target itself does not
+    exist) decides nothing, and `miss` fails only where the capability counts an empty answer as
+    a failure (`empty_fails`, the contract's `empty_is_failure`). Any other row keeps the status
+    rule: 2xx succeeds unless an `empty_fails` adapter judged it empty, 5xx and 405 fail, and the
+    rest of 4xx is the caller's. `observed` spells the same rule in SQL."""
+    if outcome is not None:
+        if outcome == "miss":
+            return (not empty_fails, empty_fails)
+        return (outcome == "hit", outcome == "error")
+    empty = empty_fails and status_code < 300 and hit is False
+    return (status_code < 300 and not empty,
+            empty or status_code >= 500 or status_code == 405)
 
 
 @dataclass
@@ -92,7 +111,7 @@ class Tally:
     def fold(self, *, status_code: int, created_at: datetime, duration_ms: int | None,
              hit: bool | None, cost_observed_micro: int | None, refused_by: str | None,
              verdict: str | None = None, rng: random.Random | None = None,
-             empty_fails: bool = False) -> bool:
+             empty_fails: bool = False, outcome: str | None = None) -> bool:
         """Fold one audit row in. Returns False when the row is not evidence about the endpoint.
 
         Mirrors the predicates in `observed()` exactly; see its docstring for why each one is
@@ -101,18 +120,13 @@ class Tally:
         if refused_by is not None:
             return False     # treg said no before a byte went upstream: the caller's account, not the endpoint
         self.n += 1
-        # `empty_fails` (the capability's `empty_is_failure`): a 2xx the adapter judged empty is the
-        # provider failing the job, counted as bad, never as a success.
-        empty = empty_fails and status_code < 300 and hit is False
-        success = status_code < 300 and not empty
-        if empty:
+        success, failure = decided(status_code, hit, outcome, empty_fails)
+        if failure:
             self.bad += 1
         if success:
             self.ok += 1
             if self.last_ok is None or created_at > self.last_ok:
                 self.last_ok = created_at
-        elif status_code >= 500 or status_code == 405:
-            self.bad += 1
         if hit is not None:
             self.hit_decided += 1
             if hit:
@@ -293,6 +307,10 @@ async def observed(
     call whose method differs from the recorded one is refused with a 400 before it is relayed. So a
     405 coming back from the provider says the recorded method is wrong — a stale catalog contract,
     not a bad query — and it is counted as decided against the endpoint.
+
+    **A row's own `outcome` comes before all of that** (`decided`): a v2 row says what its answers
+    mean, so a 2xx it declares an error fails, a 4xx it declares a miss is judged as one, and an
+    answer it declares `not_found` decides nothing.
     """
     ids = [e for e in dict.fromkeys(endpoint_ids) if e]
     if not ids:
@@ -300,10 +318,16 @@ async def observed(
     since = _now() - timedelta(days=days)
     from .store import empty_is_failure
     strict = [e for e in ids if empty_is_failure(e)]
-    # The same `empty_fails` rule as `Tally.fold`: a 2xx judged empty on a strict capability.
-    empty = (CallRecord.endpoint_id.in_(strict) & (CallRecord.status_code < 300)
-             & CallRecord.hit.is_(False)) if strict else literal(False)
-    good = (CallRecord.status_code < 300) & ~empty
+    # `decided`, in SQL: a row's own `outcome` first, else the status rule with `empty_fails`.
+    in_strict = CallRecord.endpoint_id.in_(strict) if strict else false()
+    legacy = CallRecord.outcome.is_(None)
+    empty = in_strict & (CallRecord.status_code < 300) & CallRecord.hit.is_(False)
+    good = or_(legacy & (CallRecord.status_code < 300) & not_(empty),
+               CallRecord.outcome == "hit",
+               (CallRecord.outcome == "miss") & not_(in_strict))
+    bad = or_(legacy & ((CallRecord.status_code >= 500) | (CallRecord.status_code == 405) | empty),
+              CallRecord.outcome == "error",
+              (CallRecord.outcome == "miss") & in_strict)
 
     rows = (await db.execute(
         select(
@@ -311,8 +335,7 @@ async def observed(
             func.count().label("n"),
             func.sum(case((good, 1), else_=0)).label("ok"),
             # 5xx, plus 405: on a catalog call the method is the catalog's, not the caller's.
-            func.sum(case(((CallRecord.status_code >= 500) | (CallRecord.status_code == 405) | empty, 1),
-                          else_=0)).label("bad"),
+            func.sum(case((bad, 1), else_=0)).label("bad"),
             # LAST OK means last SUCCESS, not the last call.
             func.max(case((good, CallRecord.created_at))).label("last_ok"),
             # HIT RATE: the adapter's verdict (`hit`), plus — for per-success endpoints, which bill
@@ -320,9 +343,9 @@ async def observed(
             # before the column existed. `per_success` says which endpoints the fallback applies to.
             func.sum(case((CallRecord.hit.is_(True), 1), else_=0)).label("hits"),
             func.sum(case((CallRecord.hit.is_not(None), 1), else_=0)).label("hit_decided"),
-            func.sum(case(((CallRecord.hit.is_(None)) & (CallRecord.status_code < 300)
+            func.sum(case(((CallRecord.hit.is_(None)) & good
                            & (CallRecord.cost_observed_micro > 0), 1), else_=0)).label("paid_hits"),
-            func.sum(case(((CallRecord.hit.is_(None)) & (CallRecord.status_code < 300)
+            func.sum(case(((CallRecord.hit.is_(None)) & good
                            & (CallRecord.cost_observed_micro == 0), 1), else_=0)).label("free_misses"),
         )
         .where(CallRecord.endpoint_id.in_(ids), CallRecord.created_at >= since,

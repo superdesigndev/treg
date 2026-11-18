@@ -674,6 +674,12 @@ class CallRecord(SQLModel, table=True):
     # NULL = the contract records no verdict, the answer carried none, or the provider used a
     # word its adapter does not map. Never content: one word from a closed list.
     verdict: str | None = Field(default=None)
+    # What a v2 row's own declaration judged this answer (`results.judged_outcome`): `hit`,
+    # `miss`, `error` or `not_found`. Reliability reads it before the status code, so a provider's
+    # 2xx error counts against it and the target's own 404 counts against nobody.
+    # NULL = a row in today's spelling, an async submission, a non-2xx the declaration does not
+    # decide, or a row written before the column existed; those keep the status rule.
+    outcome: str | None = Field(default=None)
 
 
 class RunRecord(SQLModel, table=True):

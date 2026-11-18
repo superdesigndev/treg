@@ -855,6 +855,14 @@ bill when treg's own account is out.
 
 ### Rules for the published numbers
 
+- **A v2 row's own declaration decides before the status** (`stats.decided`). The call records what
+  the row judged (`CallRecord.outcome`, from `results.judged_outcome`): `hit` succeeds, `error` fails
+  whatever the status (a 2xx failing `expect` or matching `error` is no success), `not_found` (the
+  target itself does not exist) decides nothing, and `miss` fails where the contract is
+  `empty_is_failure` and succeeds elsewhere, a declared 4xx miss included. Rows in today's spelling,
+  async submissions, spooled or streamed answers, a non-2xx the declaration does not decide and
+  rows written before the column keep the rules below. Moving a provider to v2 is what moves it to
+  its own declaration; no provider is named in the stats code.
 - **A 4xx never counts against the provider**; only 2xx versus 5xx decides the rate. **405 is the
   exception**: `/call/` refuses a method mismatch before relay, so a provider 405 says the RECORDED
   method is stale and counts against the endpoint.

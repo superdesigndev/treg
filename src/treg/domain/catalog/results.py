@@ -159,6 +159,30 @@ def _judged(endpoint: dict, status: int, body: bytes, doc: object) -> Result:
     return Result("empty", "adapter_miss") if judged.state == "miss" else Result("found", "adapter_hit")
 
 
+def judged_outcome(endpoint_id: str, status: int, body: bytes) -> str | None:
+    """What a v2 row's own declaration says of one answer, for reliability: `not_found` when its
+    `not_found` rule holds, else `outcome.judge`'s `hit`, `miss` or `error`. None for a row in
+    today's spelling and for a non-2xx the declaration does not decide, which keep the status
+    rule. Needs no adapter: the row's declaration is the whole judgement."""
+    from .store import load
+
+    endpoint = load().by_id.get(endpoint_id)
+    if endpoint is None or not is_v2(endpoint):
+        return None
+    try:
+        doc = json.loads(body) if body else None
+    except (ValueError, RecursionError, UnicodeDecodeError, TypeError):
+        doc = None
+    try:
+        if outcome.not_found(endpoint, status, doc):
+            return "not_found"
+        answer = plugins.Answer(status=status, headers={}, raw=body, body=doc)
+        judged = outcome.judge(endpoint, status, doc, answer=answer)
+    except Exception:  # noqa: BLE001 - a rule that cannot be read is no judgement; the status rule stands
+        return None
+    return None if judged.cause == "status" else judged.state
+
+
 def classify(endpoint_id: str, status: int, body: bytes) -> Result:
     if not 200 <= status < 300:
         # A declared miss is an answer ("nobody has it"), not a failure: without this every miss
