@@ -9,6 +9,10 @@
 # `accepts` lists the contract identity variants (by their keys) this endpoint can serve.
 # `route: false` keeps a verified adapter out of routing and the arena; its `miss` still judges
 # hit/miss evidence for this endpoint's own calls.
+# `soft` lists caller keys the provider takes only as a hint (a place written into a semantic
+# query): a routed answer names them in `_treg.ignored_filters` and X-Treg-Route-Strict-Filters
+# skips the provider, but they never rank it down. A parameter the endpoint row marks
+# `applied: soft` makes every key mapped into it soft too.
 #
 # Every adapter is VERIFIED at catalog load against the endpoint's `test_request` (in) and its
 # captured `example_response` (out): one that cannot round-trip its fixture does not become a
@@ -992,6 +996,8 @@ adapters:
     in_expr: {body.query: "join(phrase(q, title, location, country_name(country), company_domain), csv(keywords))", body.numResults: limit,
               body.contents.highlights.query: "join(phrase(q, title, location, country_name(country)), csv(keywords))"}
     const: {body.category: people, body.contents.highlights.maxCharacters: 1000}
+    # The company and place reach the semantic search as words: rows elsewhere still come back.
+    soft: [company_domain, location, country]
     out: {people: results, count: "len(results)"}
     miss: "results == []"
     # The current role is the undated-end one, not the history's first item: Exa sometimes lists an
@@ -1007,6 +1013,8 @@ adapters:
     in: {q: body.objective}
     in_expr: {body.objective: "join(phrase(q, company_domain), csv(keywords))", body.match_limit: "at_least(at_most(limit, 100), 5)"}
     const: {body.entity_type: people}
+    # The company and place reach the objective as words (the place through treg's stand-in text).
+    soft: [company_domain, location, country]
     out: {people: entities, count: "len(entities)"}
     miss: "coalesce(entities, []) == []"
     row: {name: name, profile_url: url, summary: description}

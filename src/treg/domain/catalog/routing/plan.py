@@ -22,7 +22,7 @@ def _used_keys(adapter: Adapter) -> set[str]:
 
 
 def ignored_filters(adapter: Adapter, contract: Contract, identity: dict[str, Any],
-                    given: set[str] | frozenset[str] | None = None) -> tuple[str, ...]:
+                    given: set[str] | frozenset[str] | None = None, *, soft: bool = True) -> tuple[str, ...]:
     """Filters the caller supplied that this adapter has no place for — the provider will answer a
     LOOSER question than the one asked. Pure, and knowable before the call, so ranking can use it.
 
@@ -38,14 +38,20 @@ def ignored_filters(adapter: Adapter, contract: Contract, identity: dict[str, An
     `limit` is a page size, not a filter: an adapter without one answers the same question, and its
     price already reflects the rows it bills. The contract defaults it, so counting it ranked every
     limit-less child last, so a free-on-miss role finder fell behind a search that bills its empty
-    answers."""
+    answers.
+
+    A key the adapter declares soft (`Adapter.soft`) reaches the provider only as a hint, so its rows
+    need not match it: it counts as not applied, a scoping key the caller sent included. `soft=False`
+    leaves those keys out: what ranking reads, so a declaration discloses without reordering."""
     used = _used_keys(adapter)
     # A filter written into a stand-in's text (`q` "… in Germany") reaches the provider there.
     for k in _stand_in_sent(adapter, identity):
         used |= _carried(contract, k, identity)
-    return tuple(k for k in (contract.filters or ()) if k != "limit"
+    soft = set(getattr(adapter, "soft", None) or ()) if soft else set()
+    keys = (*(contract.filters or ()), *(k for k in contract.scoping if k in soft))
+    return tuple(k for k in dict.fromkeys(keys) if k != "limit"
                  and identity.get(k) not in (None, "") and (given is None or k in given)
-                 and (k not in used or _unmappable(adapter, k, identity)))
+                 and (k not in used or k in soft or _unmappable(adapter, k, identity)))
 
 
 def _unmappable(adapter: Adapter, key: str, identity: dict[str, Any]) -> bool:
@@ -231,6 +237,7 @@ class Candidate:
     exhausted: bool = False
     note: str = ""
     ignored: tuple[str, ...] = ()     # caller filters this adapter cannot express (ranks it down)
+    hinted: tuple[str, ...] = ()      # of `ignored`, those it sends only as a hint: named, never ranked down
     # What one miss costs (`miss_charge_micro`, or an overflow route's price). None: the full
     # price when the child's cost bills a miss, else 0.
     miss_micro: int | None = None
@@ -340,7 +347,8 @@ def rank(candidates: list[Candidate], *, prefer: list[str] | None = None, exclud
         # non-empty answer to the looser question still counts as a hit — so it must never win on
         # price alone. It stays reachable, just last among equals.
         cost = c.expected_cost_per_hit
-        lead = (len(c.ignored), cost, specificity) if one_subject else (specificity, len(c.ignored), cost)
+        missed = len(c.ignored) - len(c.hinted)
+        lead = (missed, cost, specificity) if one_subject else (specificity, missed, cost)
         # A child failing or slow right now is asked after the healthy ones of its tier, whatever
         # order a contract default or a published rule gives it. Only the caller's own prefer
         # (`caller_prefer`) outranks health, and a team's own key is never asked later for it.
@@ -348,7 +356,7 @@ def rank(candidates: list[Candidate], *, prefer: list[str] | None = None, exclud
         # A contract default or a published rule orders only children that ask the whole question:
         # one that ignores a sent filter loses its place in it, so it never answers a looser question
         # ahead of one that asks the real one. The caller's own prefer still places it.
-        if c.ignored and not caller_prefer:
+        if missed and not caller_prefer:
             pref = len(prefer)
         order = (pref, unwell) if caller_prefer else (unwell, pref)
         return (tier, *order, *lead,

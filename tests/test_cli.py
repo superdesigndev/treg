@@ -1005,6 +1005,14 @@ def test_params_say_shared_prose_once_and_lead_with_the_endpoint_rule():
         "per-param examples are not a request: `call` is the runnable one"
 
 
+def test_a_parameter_applied_only_as_a_hint_says_so_first():
+    view = catalog_views.params_view({"queryParams": {
+        "location": {"type": "string", "applied": "soft", "note": "rows from other countries come back"},
+        "language": {"type": "string", "note": "two letters"}}})
+    notes = {r["name"]: r["note"] for r in view["params"]}
+    assert notes == {"location": "a hint, not a filter · rows from other countries come back", "language": "two letters"}
+
+
 def test_a_credit_price_reads_as_dollars_with_the_credits_behind_it():
     """A bare credit count is not a price — a reader cannot compare "1 credit" to "$0.001". When
     the server priced the credit, dollars lead; only an unpriced credit shows alone."""
