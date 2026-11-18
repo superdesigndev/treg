@@ -284,8 +284,8 @@ _EXPECTED_DERIVED_WRITE_SITES = {
     ("application/call/allowance.py", "_write", "store.allowance_freeze"),
     ("application/call/allowance.py", "_refill", "store.allowance_take_up_to"),
     # a call near the counter's deadline refills it beside itself, under the same lease
-    ("application/call/allowance.py", "_refresh", "store.acquire_lease"),
-    ("application/call/allowance.py", "_refresh", "store.release_lease"),
+    ("application/call/allowance.py", "_refresh_once", "store.acquire_lease"),
+    ("application/call/allowance.py", "_refresh_once", "store.release_lease"),
     ("application/call/allowance.py", "_take", "store.acquire_lease"),
     ("application/call/allowance.py", "_take", "store.allowance_take"),
     ("application/call/allowance.py", "_take", "store.release_lease"),

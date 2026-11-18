@@ -170,14 +170,21 @@ async def _take(org_id: int, amount_micro: int, daily_cap_micro: int, after_refi
 
 
 _refreshing: dict[int, asyncio.Task] = {}
+# An ask that arrived while the team's refill was running, for that refill to act on when it is
+# done: the running one may already have published what it added.
+_refresh_again: dict[int, tuple] = {}
+_after_refills: set[asyncio.Task] = set()
 
 
 def _refresh_in_background(org_id: int, daily_cap_micro: int, after_refill) -> None:
     task = _refreshing.get(org_id)
     loop = asyncio.get_running_loop()
     if task is None or task.done() or task.get_loop() is not loop:
+        _refresh_again.pop(org_id, None)
         _refreshing[org_id] = loop.create_task(
             _refresh(org_id, daily_cap_micro, after_refill), name="treg-allowance-refresh")
+    else:
+        _refresh_again[org_id] = (daily_cap_micro, after_refill)
 
 
 async def _refresh(org_id: int, daily_cap_micro: int, after_refill) -> None:
@@ -186,38 +193,64 @@ async def _refresh(org_id: int, daily_cap_micro: int, after_refill) -> None:
 
     It asks for no amount of its own: the counter goes back up to a chunk, and a balance that
     cannot pay for that leaves the counter with what it has. The call that started this was
-    served; what the next one needs is for its own refill to decide."""
-    store, key, token = kv.store(), money_key(org_id), uuid.uuid4().hex
-    deadline = time.monotonic() + _REFRESH_WAIT_S
+    served; what the next one needs is for its own refill to decide.
+
+    The store asks one caller, once. An ask that reaches this process while a refill is still
+    on its way out is kept and gets a refill of its own, or nobody would act on it."""
     try:
         while True:
-            acquired = await store.acquire_lease(key, token, _REFILL_LEASE_MS)
-            if acquired == "acquired":
-                before = refills(org_id)
-                try:
-                    await _refill(org_id, 0, daily_cap_micro)
-                finally:
-                    await store.release_lease(key, token)
-                # The refill is over once the lease is given up. What follows may take a
-                # while, and the next ask for this team must find nothing in its way.
-                if _refreshing.get(org_id) is asyncio.current_task():
-                    del _refreshing[org_id]
-                if after_refill is not None and refills(org_id) != before:
-                    await after_refill()
+            await _refresh_once(org_id, daily_cap_micro, after_refill)
+            again = _refresh_again.pop(org_id, None)
+            if again is None:
                 return
-            if acquired == "unavailable" or time.monotonic() > deadline:
-                return
-            await asyncio.sleep(0.02 + random.random() * 0.02)
+            daily_cap_micro, after_refill = again
     except Exception:
         log.error("allowance refill ahead of the deadline failed for org %s", org_id,
                   exc_info=True)
+    finally:
+        if _refreshing.get(org_id) is asyncio.current_task():
+            del _refreshing[org_id]
+
+
+async def _refresh_once(org_id: int, daily_cap_micro: int, after_refill) -> None:
+    store, key, token = kv.store(), money_key(org_id), uuid.uuid4().hex
+    deadline = time.monotonic() + _REFRESH_WAIT_S
+    while True:
+        acquired = await store.acquire_lease(key, token, _REFILL_LEASE_MS)
+        if acquired == "acquired":
+            before = refills(org_id)
+            try:
+                await _refill(org_id, 0, daily_cap_micro)
+            finally:
+                await store.release_lease(key, token)
+            if after_refill is not None and refills(org_id) != before:
+                # On its own: it may take a while, and the team's next refill must not wait.
+                task = asyncio.get_running_loop().create_task(
+                    _after_refill(org_id, after_refill), name="treg-allowance-after-refill")
+                _after_refills.add(task)
+                task.add_done_callback(_after_refills.discard)
+            return
+        if acquired == "unavailable" or time.monotonic() > deadline:
+            return
+        await asyncio.sleep(0.02 + random.random() * 0.02)
+
+
+async def _after_refill(org_id: int, after_refill) -> None:
+    try:
+        await after_refill()
+    except Exception:
+        log.error("the step after an allowance refill failed for org %s", org_id, exc_info=True)
 
 
 async def _current_daily_cap(org_id: int, db) -> int:
-    """The team's daily cap as its row has it now. A refill can run long after the call that
-    asked for it read the team."""
+    """The team's daily cap as its row has it now, with the row locked. A refill can run long
+    after the call that asked for it read the team. A plain read would still miss a cap whose
+    change is open in another transaction: the refill's balance update then waits for that
+    change to commit, and checks only the balance. Locked, the read waits instead, and what the
+    refill reads of the day's spend afterwards is under the same lock. The team's row is the
+    last lock a money transaction takes, and the refill takes none after it."""
     return budget_policy._effective_daily_cap((await db.execute(
-        select(Org.daily_cap_micro).where(Org.id == org_id))).one_or_none())
+        select(Org.daily_cap_micro).where(Org.id == org_id).with_for_update())).one_or_none())
 
 
 async def _refill(org_id: int, need_micro: int, daily_cap_micro: int) -> bool:

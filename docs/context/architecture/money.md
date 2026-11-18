@@ -290,20 +290,26 @@ money moved, the purchased-credit gate.
 - **A busy team is refilled before a call has to wait.** A take that leaves the counter within
   half its lifetime of the deadline, or under a quarter of a chunk, answers its epoch negated:
   the call has its money, and that one caller (the store asks one at a time, and again only
-  after a pause, which is for a refill that failed: a deadline it has not asked about yet asks
-  at once, since a refill opens a window that may be shorter than the pause, and so does a
-  counter low again after an add that brought money) starts a refill beside itself. Nobody waits on
+  after a pause, which is for a counter that stays low or a refill that failed: a deadline it
+  has not asked about yet asks at once, since a refill opens a window that may be shorter than
+  the pause, and so does the take that brings the counter from at or above the low mark to
+  below it, or any low take after an add that brought money) starts a refill beside itself. Nobody waits on
   that refill, so it waits for the team's lease far longer than a call does. It asks for no
   amount of its own: it brings the counter back to a chunk, and a balance that cannot pay for
   that leaves the counter with what it has, where an in-line refill that cannot serve its call
   drains the allowance. The call that asked was served, so its price is no measure of the next
   one, and setting it aside again would take that much out of every other call's reach. The
-  process counts a team's refill as running only until it gives up the lease, so an ask that
-  arrives while what follows the refill is still running starts the next one.
+  store asks one caller once, so the process must not lose an ask: one that arrives while the
+  team's refill is still running (it may already have published its add) is kept, and the same
+  task refills again when it is done; what follows a refill, the auto top-up read, runs on its
+  own and holds nothing back.
 - **A refill reads the daily cap again.** The cap a refill is handed is the one its call saw,
   and a refill can wait some time for its turn. `refill_allowance_in_transaction` therefore
   also reads the team's cap in its own transaction, where it reads the day's spend, and keeps
-  to the stricter of the two. Without it every call of a busy team met a
+  to the stricter of the two. The read locks the team's row: a cap change still open in
+  another transaction would otherwise be missed, because the refill's balance update waits for
+  that change and then checks only the balance. The row is the last lock in money's order
+  (hold, blocks, team), and the day's spend read after it is under the same lock. Without it every call of a busy team met a
   lapsed counter at once each time the lifetime ran out, the ones that did not get the lease
   left for the exact path, and the refill then queued behind them on the money admission lease:
   the exact path serves one call at a time, so the team stayed there.
@@ -399,7 +405,7 @@ money moved, the purchased-credit gate.
   never answered as free because something later failed.
 - **Auto top-up** is asked after a refill, the only moment the balance moved. A refill a call
   started beside itself commits after the call has its take, so the reserve hands it the ask
-  and it is made once that refill has committed and given up the lease.
+  and it is made, in a task of its own, once that refill has committed and given up the lease.
 
 - **The queue is kept short, in short transactions.** A fold keeps the team's lease and the
   hold's row lock for as long as its transaction runs, and a refill waits for both. Applying a

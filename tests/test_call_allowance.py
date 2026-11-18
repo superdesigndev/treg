@@ -56,11 +56,13 @@ class FakeStore:
         if (counter is None or self._frozen(counter) or now > self.until_ms
                 or counter.get("avail", 0) < amount):
             return 0
+        before = counter["avail"]
         counter["avail"] -= amount
         near = now + ahead_ms > self.until_ms
         if (near or counter["avail"] < low_micro) and (
                 now - counter.get("asked", 0) >= 2000
-                or (near and counter.get("asked_for") != self.until_ms)):
+                or (near and counter.get("asked_for") != self.until_ms)
+                or before >= low_micro > counter["avail"]):
             counter["asked"], counter["asked_for"] = now, self.until_ms
             return -counter["epoch"]
         return counter["epoch"]
@@ -156,6 +158,8 @@ async def store(monkeypatch):
     # No refill ahead of the deadline unless a test asks for one: each asserts exact amounts.
     monkeypatch.setattr(runtime, "_ahead", lambda: {"ahead_ms": 0, "low_micro": 0})
     monkeypatch.setattr(runtime, "_refreshing", {})
+    monkeypatch.setattr(runtime, "_refresh_again", {})
+    monkeypatch.setattr(runtime, "_after_refills", set())
     return fake
 
 
@@ -1672,21 +1676,15 @@ async def test_steady_calls_stay_on_the_allowance_while_folds_keep_the_lease(
         return folded
 
     monkeypatch.setattr(allowance, "fold_charges_in_transaction", slow_fold)
-    refill, refresh, in_line, beside = runtime._refill, runtime._refresh, [0], [False]
+    refill, in_line = runtime._refill, [0]
 
     async def counted_refill(*args):
-        in_line[0] += not beside[0]
+        # By the task that runs it: a refill beside a call is its own task, and an in-line one
+        # runs in its caller's, whatever else is going on at that moment.
+        in_line[0] += asyncio.current_task() not in runtime._refreshing.values()
         return await refill(*args)
 
-    async def marked_refresh(*args):
-        beside[0] = True
-        try:
-            await refresh(*args)
-        finally:
-            beside[0] = False
-
     monkeypatch.setattr(runtime, "_refill", counted_refill)
-    monkeypatch.setattr(runtime, "_refresh", marked_refresh)
     stop, left, served = time.monotonic() + 3.5, [], [0]
 
     async def caller(name: int) -> None:
@@ -1747,6 +1745,7 @@ async def test_auto_top_up_is_asked_after_a_refill_that_commits_beside_the_call(
     assert await runtime.take(org_id, 100, after_refill=after_refill)
     assert asked == []
     await runtime._refreshing[org_id]
+    await asyncio.gather(*runtime._after_refills)
     assert asked == [2] and store.leases == {}, "asked with the lease already given up"
 
 
@@ -1768,6 +1767,7 @@ async def test_a_reserve_asks_auto_top_up_again_when_its_refill_commits_after_it
         _call(org_id), caller, call_ref="second", allow_allowance=True)
     assert seen == [GRANT - CHUNK], "the refill beside this call has not committed yet"
     await runtime._refreshing[org_id]
+    await asyncio.gather(*runtime._after_refills)
     assert seen == [GRANT - CHUNK, GRANT - CHUNK - 1_200], "and is seen once it has"
 
 
@@ -1813,11 +1813,73 @@ async def test_a_slow_auto_top_up_read_does_not_hold_back_the_next_refill(
     assert await runtime.take(org_id, 100)
     monkeypatch.setattr(runtime, "_ahead", lambda: {"ahead_ms": 3_600_000, "low_micro": 0})
     assert await runtime.take(org_id, 100, after_refill=slow)
-    first = runtime._refreshing[org_id]
     await reading.wait()
-    assert runtime.refills(org_id) == 2 and store.leases == {} and not first.done()
+    assert runtime.refills(org_id) == 2 and store.leases == {}
+    assert org_id not in runtime._refreshing, "the refill is over; only the read is still going"
     assert await runtime.take(org_id, 100), "the new deadline asks, and is heard"
     await runtime._refreshing[org_id]
     assert runtime.refills(org_id) == 3
     release.set()
-    await first
+    await asyncio.gather(*runtime._after_refills)
+
+
+async def test_an_ask_that_arrives_while_a_refill_is_on_its_way_out_gets_its_own_refill(
+        org_id, store, monkeypatch):
+    """The refill has published its add and is waiting for the store to confirm the lease is
+    given up. A call spends the new money down to the mark, and the store asks this process,
+    once. The refill on its way out must not be the reason nobody acts on that."""
+    monkeypatch.setattr(runtime, "_ahead", _AHEAD)
+    release, releasing, hold_release = store.release_lease, asyncio.Event(), asyncio.Event()
+
+    async def slow_release(key, token):
+        await release(key, token)
+        if not releasing.is_set():
+            releasing.set()
+            await hold_release.wait()
+
+    assert await runtime.take(org_id, 800_000)
+    monkeypatch.setattr(store, "release_lease", slow_release)
+    await releasing.wait()
+    assert store.counters[org_id]["avail"] == CHUNK
+    assert await runtime.take(org_id, 800_000)
+    hold_release.set()
+    await runtime._refreshing[org_id]
+    assert store.counters[org_id]["avail"] == CHUNK, "refilled again by the same task"
+    refills = runtime.refills(org_id)
+    assert await runtime.take(org_id, 210_000)
+    assert runtime.refills(org_id) == refills, "no call had to refill in line"
+
+
+async def test_a_counter_filled_by_a_cancelled_call_asks_again_when_it_next_runs_low(
+        org_id, store, monkeypatch):
+    monkeypatch.setattr(runtime, "_ahead", _AHEAD)
+    key = runtime.money_key(org_id)
+    assert await runtime.take(org_id, 10)  # the counter exists; nothing is low yet
+    store.leases[key] = "a fold"
+    epoch = await runtime.take(org_id, 800_000)
+    await _finish(org_id, "cancelled", epoch, 800_000, billable=False)
+    del store.leases[key]
+    await runtime._refreshing[org_id]
+    refills = runtime.refills(org_id)
+    assert await runtime.take(org_id, 800_000)
+    await runtime._refreshing[org_id]
+    assert runtime.refills(org_id) == refills + 1, "asked at once, although the last ask was just now"
+    assert await runtime.take(org_id, 210_000)
+    assert runtime.refills(org_id) == refills + 1, "no call had to refill in line"
+
+
+@pytest.mark.skipif(infra_db._is_sqlite, reason="needs row locks")
+async def test_a_refill_waits_for_a_daily_cap_change_that_is_still_open(org_id, store):
+    """The team's admin has changed the cap and not committed. A refill that read the row
+    without waiting would see the old cap, then wait on the same row to move the balance and
+    check only the balance."""
+    assert await runtime.take(org_id, 800_000)
+    store.expire()
+    async with session_maker() as admin:
+        await admin.execute(update(Org).where(Org.id == org_id).values(daily_cap_micro=CHUNK))
+        refill = asyncio.create_task(runtime.take(org_id, 600_000))
+        await asyncio.sleep(0.3)
+        assert not refill.done(), "waiting for the cap"
+        await admin.commit()
+    assert await refill is None, "the cap has no room for more"
+    assert (await _state(org_id))[0] >= GRANT - CHUNK
