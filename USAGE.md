@@ -313,6 +313,15 @@ with `X-Treg-Route-Waterfall: 0`, or on a routed tool without a confirm field, t
 refused (422, unbilled). Agreement is not delivery: combine it with `X-Treg-Route-Verify` to also
 check the mailbox.
 
+`X-Treg-Route-Domain-Match: strict` on `treg.people.email.find` keeps looking past a hit at another
+mail domain than the `domain` you sent: that hit is `weak`, and the waterfall goes on, each attempt
+at its own price inside `X-Treg-Route-Max-Cost`, for at most two more off-domain hits. The first
+on-domain hit wins; when none turns up, the first off-domain answer comes back unaltered, with
+`_treg.outcome: weak`, `_treg.domain_match: false` and the advice. A request without a domain is
+not affected. `true`, `1`, `yes` and `on` mean `strict`; `off`, `false`, `0` and `no` mean off; any other value is a 400.
+With `X-Treg-Route-Waterfall: 0`, or on another routed tool, the header is refused (422, unbilled). Off by default: a company's staff may use a mail domain other than its website's,
+and strict mode would look past those addresses too.
+
 `X-Treg-Route-Decisive: true` on `treg.people.email.verify` counts an answer only when it decides:
 `valid` or `invalid`. An `unknown`, `catch_all` or `risky` verdict, or a failed attempt, sends the
 check on to at most two more providers, each at its own price inside `X-Treg-Route-Max-Cost`; those

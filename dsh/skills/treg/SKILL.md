@@ -156,7 +156,10 @@ How a routed call works:
   refused with an unbilled 422 instead.
 - When you sent a `domain` on an email find, `_treg.domain_match` (and `X-Treg-Domain-Match`) says
   whether the hit's mailbox domain matches it. A LinkedIn-only provider often returns a former
-  employer; the hit is still billed — read the flag before treating the address as current.
+  employer; the hit is still billed — read the flag before treating the address as current. When
+  you need an address at that domain, send `X-Treg-Route-Domain-Match: strict`: an off-domain hit
+  no longer ends the call, the next providers are asked (each attempt billed at its own price), and
+  the first off-domain answer comes back (`_treg.outcome: weak`) only when none is on-domain.
 - A routed call ends on the first answer its contract's `miss` does not reject (`stops_at` in
   `treg catalog get`), even a thin one. When you need more, send `X-Treg-Route-Complete: 1`: it
   keeps going until an answer fills every `complete` field (`routing.contract.complete` in

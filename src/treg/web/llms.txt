@@ -129,7 +129,8 @@ Publishing a hub tool adds `hub_create`, `hub_update` and `hub_mine`.
   switched to. treg's own refusals say in their body what to do.
 - A found email or phone number is the provider's best match, not a confirmed one: verify it before
   anyone sends to it. On an email find where you sent a domain, also read `_treg.domain_match` —
-  a LinkedIn-only provider often returns a former employer.
+  a LinkedIn-only provider often returns a former employer. `X-Treg-Route-Domain-Match: strict`
+  keeps asking providers past an off-domain hit, each attempt at its own price.
 - Never ask for a provider key or paste one into code. Register it with treg once, and every agent
   on the team calls it without holding it.
 - When an answer or an error names a next step (a hint, `_treg.advice`, an error body), follow it.

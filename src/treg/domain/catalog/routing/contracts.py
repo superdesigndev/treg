@@ -63,7 +63,8 @@ class Contract:
     # One sentence the router attaches as `_treg.advice` when a hit's email domain does not match
     # the domain the caller asked for (`_treg.domain_match: false`). Disclose only — the answer is
     # not altered. Empty = flag only, no advice. A LinkedIn-only child often returns a former
-    # employer when the caller also sent a domain.
+    # employer when the caller also sent a domain. Set = the contract also takes
+    # `X-Treg-Route-Domain-Match: strict`, which looks past such a hit (route.py).
     advice_domain_mismatch: str = ""
     # False = the contract exists so the archive can judge found/empty (`results.has_result_rules`
     # needs a verified adapter, and an adapter verifies only against a contract); no
