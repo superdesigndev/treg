@@ -63,6 +63,11 @@ RUN_LOCK_KEY = 0x61726574
 # Pending object deletes: rows read per page, and object-store calls in flight at once.
 OBJECT_PAGE = 500
 OBJECT_CONCURRENCY = 4
+# Hashes per statement when recording pending objects.
+_HASH_CHUNK = 5_000
+# The grace period must outlast a recorder's whole store (`archive._STORE_TIMEOUT_S`): between
+# confirming an object exists and committing its snapshot. Plus a margin.
+MIN_OBJECT_GRACE_S = archive._STORE_TIMEOUT_S + 120
 # A deleted object's row stays this long (or the grace period, if longer) as a tombstone: a
 # recorder that confirmed the object just before the delete still sees the `deleting` mark.
 TOMBSTONE_KEEP_S = 900
@@ -70,6 +75,10 @@ TOMBSTONE_KEEP_S = 900
 
 class ObjectStoreMissing(RuntimeError):
     """Pending objects are due for deletion but no object store is configured."""
+
+
+class ObjectDeletesFailed(RuntimeError):
+    """The pending-object step hit a database error; the run stops with `stopped: "error"`."""
 
 
 @dataclass
@@ -167,11 +176,14 @@ async def _record_unreferenced(db, hashes: set[str], now: datetime) -> int:
     more as pending object deletes (`recorded_at` now, also for one already pending) -> how many."""
     if not hashes:
         return 0
-    still = set((await db.execute(
-        select(ArchiveSnapshot.content_hash).distinct()
-        .where(ArchiveSnapshot.content_hash.in_(hashes),
-               ArchiveSnapshot.body_storage.in_(_OBJECT_STORED)))).scalars().all())
-    gone = sorted(hashes - still)
+    ordered = sorted(hashes)
+    still: set[str] = set()
+    for start in range(0, len(ordered), _HASH_CHUNK):
+        still |= set((await db.execute(
+            select(ArchiveSnapshot.content_hash).distinct()
+            .where(ArchiveSnapshot.content_hash.in_(ordered[start:start + _HASH_CHUNK]),
+                   ArchiveSnapshot.body_storage.in_(_OBJECT_STORED)))).scalars().all())
+    gone = [h for h in ordered if h not in still]
     if not gone:
         return 0
     dialect = db.get_bind().dialect.name
@@ -179,13 +191,14 @@ async def _record_unreferenced(db, hashes: set[str], now: datetime) -> int:
         from sqlalchemy.dialects.postgresql import insert
     else:
         from sqlalchemy.dialects.sqlite import insert
-    statement = insert(ArchiveObjectPending).values(
-        [{"content_hash": h, "recorded_at": now} for h in gone])
-    # Recorded again: a new grace period. `deleting` stays as it was: once a delete was attempted
-    # the object may be gone, and a recorder that sees the mark keeps its own copy of the bytes.
-    await db.execute(statement.on_conflict_do_update(
-        index_elements=[ArchiveObjectPending.content_hash],
-        set_={"recorded_at": statement.excluded.recorded_at, "deleted_at": None, "attempts": 0}))
+    for start in range(0, len(gone), _HASH_CHUNK):
+        statement = insert(ArchiveObjectPending).values(
+            [{"content_hash": h, "recorded_at": now} for h in gone[start:start + _HASH_CHUNK]])
+        # Recorded again: a new grace period. `deleting` stays as it was: once a delete was
+        # attempted the object may be gone, and a recorder that sees the mark keeps its own copy.
+        await db.execute(statement.on_conflict_do_update(
+            index_elements=[ArchiveObjectPending.content_hash],
+            set_={"recorded_at": statement.excluded.recorded_at, "deleted_at": None, "attempts": 0}))
     return len(gone)
 
 
@@ -240,14 +253,18 @@ async def _delete_one_object(result: RetentionResult, content_hash: str, *, cuto
         _log.warning("archive retention: object %s not deleted (%s)", content_hash[:12],
                      type(exc).__name__)
         result.objects_failed += 1
-        async with session_factory() as db:
-            await _bounded(db)
-            await db.execute(update(ArchiveObjectPending)
-                             .where(ArchiveObjectPending.content_hash == content_hash,
-                                    ArchiveObjectPending.deleted_at.is_(None))
-                             .values(recorded_at=utcnow_naive(),
-                                     attempts=ArchiveObjectPending.attempts + 1))
-            await db.commit()
+        try:
+            async with session_factory() as db:
+                await _bounded(db)
+                await db.execute(update(ArchiveObjectPending)
+                                 .where(ArchiveObjectPending.content_hash == content_hash,
+                                        ArchiveObjectPending.deleted_at.is_(None))
+                                 .values(recorded_at=utcnow_naive(),
+                                         attempts=ArchiveObjectPending.attempts + 1))
+                await db.commit()
+        except DBAPIError as exc:   # the row is held elsewhere: it stays due, and the run goes on
+            _log.warning("archive retention: pending object %s not moved back (%s)",
+                         content_hash[:12], type(exc).__name__)
 
 
 async def _gated(gate: asyncio.Semaphore, spent, work) -> None:
@@ -268,16 +285,27 @@ async def _delete_due_objects(result: RetentionResult, *, grace_s: float, sessio
     # Fixed for the run: every row a page handles leaves the due set (deleted, tombstoned, or moved
     # past the cutoff by a failure or a new recording), so the pages end.
     cutoff = utcnow_naive() - timedelta(seconds=grace_s)
+    # A row held elsewhere (its mark and its move-back both timed out) stays due: it is skipped
+    # for the rest of the run, so it neither repeats nor hides the rows after it.
+    attempted: set[str] = set()
+    stuck: set[str] = set()
     while not spent():
+        query = (select(ArchiveObjectPending.content_hash)
+                 .where(ArchiveObjectPending.deleted_at.is_(None),
+                        ArchiveObjectPending.recorded_at <= cutoff)
+                 .order_by(ArchiveObjectPending.recorded_at).limit(page))
+        if stuck:
+            query = query.where(ArchiveObjectPending.content_hash.not_in(stuck))
         async with session_factory() as db:
             await _bounded(db)
-            due = (await db.execute(
-                select(ArchiveObjectPending.content_hash)
-                .where(ArchiveObjectPending.deleted_at.is_(None),
-                       ArchiveObjectPending.recorded_at <= cutoff)
-                .order_by(ArchiveObjectPending.recorded_at).limit(page))).scalars().all()
+            page_hashes = (await db.execute(query)).scalars().all()
+        stuck.update(h for h in page_hashes if h in attempted)
+        due = [h for h in page_hashes if h not in attempted]
         if not due:
+            if page_hashes:
+                continue
             break
+        attempted.update(due)
         if store is None:
             raise ObjectStoreMissing("archive objects are due for deletion but no object store is configured")
         await asyncio.gather(*(
@@ -327,6 +355,9 @@ async def run(*, dry_run: bool = False, days: int | None = None, batch: int | No
     max_seconds = cfg.archive_retention_max_seconds if max_seconds is None else max_seconds
     max_keys = cfg.archive_retention_max_keys if max_keys is None else max_keys
     grace = cfg.archive_retention_object_grace_s if object_grace_s is None else object_grace_s
+    if not dry_run and grace < MIN_OBJECT_GRACE_S:
+        raise ValueError(f"the object grace period must be at least {MIN_OBJECT_GRACE_S} s, "
+                         "longer than a recorder's store timeout")
     if (days < 1 or not 1 <= batch <= MAX_BATCH or not 0 <= pause_s <= 60 or max_seconds <= 0
             or max_keys < 1):
         raise ValueError(f"days >= 1, batch 1..{MAX_BATCH}, pause 0..60 s, a positive time budget "
@@ -385,8 +416,12 @@ async def _run(result: RetentionResult, *, days: int, batch: int, pause_s: float
     failures = 0
     try:
         if not dry_run:
-            await _delete_due_objects(result, grace_s=object_grace_s, session_factory=session_factory,
-                                      spent=lambda: clock() - started >= max_seconds)
+            try:
+                await _delete_due_objects(result, grace_s=object_grace_s,
+                                          session_factory=session_factory,
+                                          spent=lambda: clock() - started >= max_seconds)
+            except DBAPIError as exc:
+                raise ObjectDeletesFailed(f"pending object deletes stopped ({type(exc).__name__})") from exc
         while True:
             if cursor >= upper:
                 result.pass_complete, result.stopped = True, "pass_complete"
@@ -416,7 +451,7 @@ async def _run(result: RetentionResult, *, days: int, batch: int, pause_s: float
             result.next_after = cursor
             if pause_s:
                 await asyncio.sleep(pause_s)
-    except ObjectStoreMissing as exc:
+    except (ObjectStoreMissing, ObjectDeletesFailed) as exc:
         result.stopped, result.error = "error", str(exc)
     result.next_after = cursor
     if not dry_run:

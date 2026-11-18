@@ -711,16 +711,18 @@ async def trim_archived_answers(*, batch_size: int = 200, pause_s: float = 0.25,
             wanted = {r.id: links[(r.org_id, r.call_ref)] for r in rows if (r.org_id, r.call_ref) in links}
             on_file = await archive.bytes_on_file(db, set(wanted.values()))
             wanted = {i: pair for i, pair in wanted.items() if pair in on_file}
-            if wanted and not dry_run:
-                # Hold the keys until this page commits, so row retention cannot delete an answer
-                # between the check above and the trim below; a key it holds is left for later.
-                held = await archive.lock_keys_for_share(db, {k for k, _ in wanted.values()})
-                wanted = {i: pair for i, pair in wanted.items() if pair[0] in held}
             if wanted:
                 bodies = (await db.execute(select(IdempotentCall.id, IdempotentCall.response_body)
                                            .where(IdempotentCall.id.in_(wanted)))).all()
                 same = [(b.id, len(b.response_body)) for b in bodies
                         if b.response_body is not None and archive.content_hash(b.response_body) == wanted[b.id][1]]
+                if same and not dry_run:
+                    # Hold the keys only for the updates below, after the bodies are read and
+                    # hashed, so row retention cannot delete an answer between the check above and
+                    # the trim, and a recorder (which locks the key) waits for the updates only. A
+                    # key retention holds is left for the next trim.
+                    held = await archive.lock_keys_for_share(db, {wanted[i][0] for i, _ in same})
+                    same = [(i, size) for i, size in same if wanted[i][0] in held]
                 for row_id, size in same:
                     if dry_run:
                         trimmed, freed = trimmed + 1, freed + size

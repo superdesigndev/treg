@@ -343,7 +343,7 @@ explicitly and the FK cascades as a backstop, so token revocation never 500s on 
   `FOR UPDATE SKIP LOCKED`, so a member's concurrent calls never queue on each other.
 - `treg-worker idempotency prune` (hourly) deletes expired completed rows for every team, then
   `trim_archived_answers` drops `response_body` from a live `done` 2xx row whose call's archive answer
-  `archive.bytes_on_file` confirms and whose own sha256 matches; it holds those keys `FOR SHARE SKIP
+  `archive.bytes_on_file` confirms and whose own sha256 matches; after hashing it holds those keys `FOR SHARE SKIP
   LOCKED` and re-checks the answer in its UPDATE, so row retention cannot remove it meanwhile. The row keeps `archive_key_hash` /
   `archive_content_hash`; a replay reads the bytes with `archive.answer_bytes` after its session
   closes, hash-checked, and answers 410 `idempotency_response_lost` if they are gone, never a new run.

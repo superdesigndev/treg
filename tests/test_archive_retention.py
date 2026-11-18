@@ -90,6 +90,7 @@ async def _left() -> tuple[set[str], int, int]:
 def retention_on(monkeypatch):
     monkeypatch.setattr(get_settings(), "archive_retention_enabled", True)
     monkeypatch.setattr(get_settings(), "archive_retention_pause_s", 0)
+    monkeypatch.setattr(archive_retention, "MIN_OBJECT_GRACE_S", 0)   # tests make objects due at once
 
 
 @pytest.fixture
@@ -641,3 +642,67 @@ async def test_a_trim_racing_retention_never_leaves_a_paid_replay_without_its_an
     async with session_maker() as s:
         row = await s.get(IdempotentCall, row_id)
     assert trimmed.trimmed == 0 and row.response_body == body and row.archive_content_hash is None
+
+
+async def test_the_trim_holds_keys_only_for_its_updates(clients: AsyncClient, platform_on, monkeypatch):
+    """The trim reads and hashes the bodies first and locks the keys only for the updates, so a
+    recorder (which locks its key) never waits behind a slow page."""
+    from treg.application.call import idempotency
+    from treg.models import CallRecord
+    from tests.test_marketplace_call import _seed_answer
+
+    body = b'{"rows":[2]}'
+    row_id = await _seed_answer(clients, "idem-2", body=body)
+    await _key("k2", age_days=1, bodies=((body.decode(), "db"),))
+    async with session_maker() as s:
+        row = await s.get(IdempotentCall, row_id)
+        row.call_ref = "call-2"
+        row.created_at = utcnow_naive() - timedelta(hours=1)
+        s.add(CallRecord(org_id=row.org_id, user_email="t@x.dev", tool_name="t", call_ref="call-2",
+                         endpoint_id=EP, method="GET", path="/x", status_code=200,
+                         archive_key_hash=_h("k2"), archive_content_hash=archive.content_hash(body)))
+        await s.commit()
+    real_hash, real_lock, locked_at = archive.content_hash, archive.lock_keys_for_share, []
+
+    def slow_hash(raw):
+        time.sleep(0.3)                    # a page of large bodies
+        return real_hash(raw)
+
+    async def lock(db_, hashes):
+        locked_at.append(time.monotonic())
+        return await real_lock(db_, hashes)
+    monkeypatch.setattr(archive, "content_hash", slow_hash)
+    monkeypatch.setattr(archive, "lock_keys_for_share", lock)
+    trimmed = await idempotency.trim_archived_answers(pause_s=0)
+    released = time.monotonic()
+    assert trimmed.trimmed == 1 and locked_at
+    assert released - locked_at[0] < 0.1    # what a recorder of that key could wait at most
+
+
+async def test_a_held_pending_row_never_stops_the_run(clients: AsyncClient, retention_on, store):
+    """Another session holds one pending row: marking it times out, and so does moving it back.
+    The run logs it and deletes the other objects."""
+    if session_maker.kw["bind"].dialect.name != "postgresql":
+        pytest.skip("row locks are PostgreSQL's")
+    now = utcnow_naive()
+    for name in ("held", "free"):
+        store.objects[_h(name)] = b"."
+    async with session_maker() as s:
+        s.add_all([ArchiveObjectPending(content_hash=_h(name), recorded_at=now - timedelta(hours=1))
+                   for name in ("held", "free")])
+        await s.commit()
+    async with session_maker() as holder:
+        await holder.execute(text("SELECT 1 FROM archiveobjectpending WHERE content_hash = :h FOR UPDATE"),
+                             {"h": _h("held")})
+        result = await archive_retention.run(object_grace_s=0)
+        await holder.rollback()
+    assert result["stopped"] == "pass_complete" and result["objects"] == 1
+    assert result["objects_failed"] == 1
+    assert _h("held") in store.objects and _h("free") not in store.objects
+
+
+async def test_a_grace_period_shorter_than_a_recording_is_refused(clients: AsyncClient, monkeypatch):
+    monkeypatch.setattr(get_settings(), "archive_retention_enabled", True)
+    with pytest.raises(ValueError, match="grace period must be at least"):
+        await archive_retention.run(object_grace_s=archive_retention.MIN_OBJECT_GRACE_S - 1)
+    assert (await archive_retention.run(dry_run=True, object_grace_s=0))["dry_run"] is True

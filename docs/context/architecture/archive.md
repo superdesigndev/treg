@@ -528,12 +528,15 @@ session open while object storage is called. Each object goes in three steps:
    still sees the mark.
 
 A failed delete moves the row to the back of the queue (`recorded_at` now, `attempts` + 1), so it
-never blocks the rows after it; with no object store configured the due rows wait and the run
+never blocks the rows after it; a row held by another session (its mark and its move-back both
+time out) is logged and skipped for the rest of the run, and a database error outside one row
+ends the run with `stopped: "error"`. The grace period is refused below `MIN_OBJECT_GRACE_S`, the
+recorder's store timeout plus 120 s. Hashes are recorded `_HASH_CHUNK` (5,000) per statement; with no object store configured the due rows wait and the run
 reports `stopped: "error"`. A hash recorded again restarts its grace period and keeps its
 `deleting` mark.
 
-`trim_archived_answers` (the idempotency pruner dropping a retry row's own copy) locks the keys it
-trims against `FOR SHARE SKIP LOCKED` (`archive.lock_keys_for_share`) and re-checks in its UPDATE
+`trim_archived_answers` (the idempotency pruner dropping a retry row's own copy) reads and hashes a
+page's bodies first, then locks the keys it trims `FOR SHARE SKIP LOCKED` for its updates only (`archive.lock_keys_for_share`) and re-checks in its UPDATE
 that the answer is still on file (`archive.answer_on_file`): retention deletes a key only under
 `FOR UPDATE SKIP LOCKED`, so a trimmed retry row never points at an answer retention removed.
 
