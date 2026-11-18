@@ -14,6 +14,7 @@ import logging
 import random
 import time
 import uuid
+from collections.abc import Awaitable, Callable
 from datetime import datetime, timedelta
 
 from ... import archive
@@ -89,10 +90,14 @@ def money_key(org_id: int) -> str:
     return f"treg:money-allowance-money:v1:{org_id}"
 
 
-async def take(org_id: int, amount_micro: int, *, daily_cap_micro: int = 0) -> int | None:
+async def take(org_id: int, amount_micro: int, *, daily_cap_micro: int = 0,
+               after_refill: Callable[[], Awaitable[None]] | None = None) -> int | None:
     """Reserve `amount_micro` from the team's allowance. The counter's epoch, or None when the
     call must use the exact path: the store cannot answer, another process holds the refill for
-    too long, or the balance or the daily cap leaves no room to refill."""
+    too long, or the balance or the daily cap leaves no room to refill.
+
+    A refill this call starts beside itself commits after this returns, so `refills` around the
+    call does not show it: `after_refill` is awaited once that refill has moved the balance."""
     if (_refused_until.get(org_id, 0.0) > time.monotonic() or _charges.behind()
             or org_id in _freezes_due or not _charges.has_room(_in_flight[0])):
         return None
@@ -101,7 +106,7 @@ async def take(org_id: int, amount_micro: int, *, daily_cap_micro: int = 0) -> i
     _in_flight[0] += 1
     epoch = None
     try:
-        epoch = await _take(org_id, amount_micro, daily_cap_micro)
+        epoch = await _take(org_id, amount_micro, daily_cap_micro, after_refill)
     finally:
         if not epoch:
             _in_flight[0] -= 1
@@ -116,19 +121,19 @@ def _ahead() -> dict:
             "low_micro": settings.money_allowance_chunk_micro // 4}
 
 
-def _taken(org_id: int, answer: int | None, amount_micro: int, daily_cap_micro: int) -> int | None:
+def _taken(org_id: int, answer: int | None, daily_cap_micro: int, after_refill) -> int | None:
     """The epoch a take answered. A negated one also asks this caller for a refill, which runs
     beside the call: the call has its money."""
     if answer is not None and answer < 0:
-        _refresh_in_background(org_id, amount_micro, daily_cap_micro)
+        _refresh_in_background(org_id, daily_cap_micro, after_refill)
         return -answer
     return answer
 
 
-async def _take(org_id: int, amount_micro: int, daily_cap_micro: int) -> int | None:
+async def _take(org_id: int, amount_micro: int, daily_cap_micro: int, after_refill=None) -> int | None:
     store = kv.store()
     epoch = _taken(org_id, await store.allowance_take(org_id, amount_micro, **_ahead()),
-                   amount_micro, daily_cap_micro)
+                   daily_cap_micro, after_refill)
     if epoch or epoch is None:
         return epoch
     key, token = money_key(org_id), uuid.uuid4().hex
@@ -148,12 +153,12 @@ async def _take(org_id: int, amount_micro: int, daily_cap_micro: int) -> int | N
             if not refilled:
                 return None
             return _taken(org_id, await store.allowance_take(org_id, amount_micro, **_ahead()),
-                          amount_micro, daily_cap_micro) or None
+                          daily_cap_micro, after_refill) or None
         # Another process holds the lease: for a refill, whose add is what this call is waiting
         # for, or for a fold, after which this call refills.
         await asyncio.sleep(0.01 + random.random() * 0.02)
         epoch = _taken(org_id, await store.allowance_take(org_id, amount_micro, **_ahead()),
-                       amount_micro, daily_cap_micro)
+                       daily_cap_micro, after_refill)
         if (epoch or epoch is None or time.monotonic() > deadline
                 or _refused_until.get(org_id, 0.0) > time.monotonic()):
             return epoch or None
@@ -162,27 +167,34 @@ async def _take(org_id: int, amount_micro: int, daily_cap_micro: int) -> int | N
 _refreshing: dict[int, asyncio.Task] = {}
 
 
-def _refresh_in_background(org_id: int, need_micro: int, daily_cap_micro: int) -> None:
+def _refresh_in_background(org_id: int, daily_cap_micro: int, after_refill) -> None:
     task = _refreshing.get(org_id)
     loop = asyncio.get_running_loop()
     if task is None or task.done() or task.get_loop() is not loop:
         _refreshing[org_id] = loop.create_task(
-            _refresh(org_id, need_micro, daily_cap_micro), name="treg-allowance-refresh")
+            _refresh(org_id, daily_cap_micro, after_refill), name="treg-allowance-refresh")
 
 
-async def _refresh(org_id: int, need_micro: int, daily_cap_micro: int) -> None:
+async def _refresh(org_id: int, daily_cap_micro: int, after_refill) -> None:
     """Refill a counter that still admits calls, so none of them finds it lapsed. Nobody waits
-    on this, so it waits for the lease far longer than a call does."""
+    on this, so it waits for the lease far longer than a call does.
+
+    It asks for no amount of its own: the counter goes back up to a chunk, and a balance that
+    cannot pay for that leaves the counter with what it has. The call that started this was
+    served; what the next one needs is for its own refill to decide."""
     store, key, token = kv.store(), money_key(org_id), uuid.uuid4().hex
     deadline = time.monotonic() + _REFRESH_WAIT_S
     try:
         while True:
             acquired = await store.acquire_lease(key, token, _REFILL_LEASE_MS)
             if acquired == "acquired":
+                before = refills(org_id)
                 try:
-                    await _refill(org_id, need_micro, daily_cap_micro)
+                    await _refill(org_id, 0, daily_cap_micro)
                 finally:
                     await store.release_lease(key, token)
+                if after_refill is not None and refills(org_id) != before:
+                    await after_refill()
                 return
             if acquired == "unavailable" or time.monotonic() > deadline:
                 return

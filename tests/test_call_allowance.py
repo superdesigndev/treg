@@ -57,9 +57,11 @@ class FakeStore:
                 or counter.get("avail", 0) < amount):
             return 0
         counter["avail"] -= amount
-        if ((now + ahead_ms > self.until_ms or counter["avail"] < low_micro)
-                and now - counter.get("asked", 0) >= 2000):
-            counter["asked"] = now
+        near = now + ahead_ms > self.until_ms
+        if (near or counter["avail"] < low_micro) and (
+                now - counter.get("asked", 0) >= 2000
+                or (near and counter.get("asked_for") != self.until_ms)):
+            counter["asked"], counter["asked_for"] = now, self.until_ms
             return -counter["epoch"]
         return counter["epoch"]
 
@@ -1598,9 +1600,6 @@ async def test_a_call_near_the_deadline_refills_beside_itself_and_keeps_its_take
     assert runtime.refills(org_id) == refills + 1 and store.until_ms > first_deadline
     assert store.counters[org_id]["avail"] == CHUNK and store.leases == {}
     assert await _state(org_id) == (GRANT - CHUNK - 200, CHUNK + 200)
-    assert await runtime.take(org_id, 100)
-    assert org_id not in runtime._refreshing or runtime._refreshing[org_id].done(), \
-        "asked once, then not again for a while"
 
 
 async def test_a_counter_running_low_is_refilled_before_it_is_empty(org_id, store, monkeypatch):
@@ -1671,7 +1670,22 @@ async def test_steady_calls_stay_on_the_allowance_while_folds_keep_the_lease(
         return folded
 
     monkeypatch.setattr(allowance, "fold_charges_in_transaction", slow_fold)
-    stop, left, served = time.monotonic() + 2.5, [], [0]
+    refill, refresh, in_line, beside = runtime._refill, runtime._refresh, [0], [False]
+
+    async def counted_refill(*args):
+        in_line[0] += not beside[0]
+        return await refill(*args)
+
+    async def marked_refresh(*args):
+        beside[0] = True
+        try:
+            await refresh(*args)
+        finally:
+            beside[0] = False
+
+    monkeypatch.setattr(runtime, "_refill", counted_refill)
+    monkeypatch.setattr(runtime, "_refresh", marked_refresh)
+    stop, left, served = time.monotonic() + 3.5, [], [0]
 
     async def caller(name: int) -> None:
         index = 0
@@ -1688,6 +1702,68 @@ async def test_steady_calls_stay_on_the_allowance_while_folds_keep_the_lease(
     await asyncio.gather(*(caller(name) for name in range(12)))
     await asyncio.gather(*runtime._refreshing.values(), *runtime._folding.values())
     assert left == [] and served[0] > 100, (len(left), served[0])
-    assert runtime.refills(org_id) >= 3, "refilled ahead of each deadline"
+    assert in_line == [1], "only the first call, which found no counter, refilled in line"
+    assert runtime.refills(org_id) >= 4, "each window asked for its own refill"
     balance, hold = await _state(org_id)
     assert store.counters[org_id]["avail"] <= hold
+
+
+async def test_a_refill_beside_a_large_call_does_not_set_that_calls_amount_aside_again(
+        org_id, store, monkeypatch):
+    """The call that asked was served. What it cost says nothing about the next call."""
+    monkeypatch.setattr(runtime, "_ahead", _AHEAD)
+    assert await runtime.take(org_id, 2_500_000)
+    await runtime._refreshing[org_id]
+    assert store.counters[org_id]["avail"] == CHUNK
+    assert await _state(org_id) == (GRANT - 2_500_000 - CHUNK, 2_500_000 + CHUNK)
+
+
+async def test_a_refill_beside_a_call_that_the_balance_cannot_pay_for_keeps_the_counter(
+        org_id, store, monkeypatch):
+    """Nothing is added, and nothing is taken away: the allowance still serves what it holds,
+    and the call in flight can still give its money back to it."""
+    monkeypatch.setattr(runtime, "_ahead", _AHEAD)
+    epoch = await runtime.take(org_id, 4_250_000)
+    await runtime._refreshing[org_id]
+    assert await _state(org_id) == (GRANT - 4_250_000, 4_250_000)
+    assert runtime._refused_until.get(org_id, 0) < time.monotonic()
+    await _finish(org_id, "cancelled", epoch, 4_250_000, billable=False)
+    assert store.counters[org_id]["avail"] == 4_250_000
+    assert await runtime.take(org_id, 800_000), "the team's money is all still within reach"
+
+
+async def test_auto_top_up_is_asked_after_a_refill_that_commits_beside_the_call(
+        org_id, store, monkeypatch):
+    asked = []
+
+    async def after_refill():
+        asked.append(runtime.refills(org_id))
+
+    assert await runtime.take(org_id, 100, after_refill=after_refill)
+    assert asked == [], "an in-line refill shows in the count around the take"
+    monkeypatch.setattr(runtime, "_ahead", lambda: {"ahead_ms": 3_600_000, "low_micro": 0})
+    assert await runtime.take(org_id, 100, after_refill=after_refill)
+    assert asked == []
+    await runtime._refreshing[org_id]
+    assert asked == [2] and store.leases == {}, "asked with the lease already given up"
+
+
+async def test_a_reserve_asks_auto_top_up_again_when_its_refill_commits_after_it_returned(
+        org_id, store, monkeypatch):
+    caller = await _caller(org_id)
+    caller.org.autotopup_enabled, caller.org.autotopup_consented_at = True, ledger._now()
+    seen = []
+
+    async def note(org):
+        seen.append((await _state(org))[0])
+
+    monkeypatch.setattr(call_reserve, "_schedule_autotopup_after", note)
+    await call_reserve._platform_reserve(
+        _call(org_id), caller, call_ref="first", allow_allowance=True)
+    assert seen == [GRANT - CHUNK]
+    monkeypatch.setattr(runtime, "_ahead", lambda: {"ahead_ms": 3_600_000, "low_micro": 0})
+    await call_reserve._platform_reserve(
+        _call(org_id), caller, call_ref="second", allow_allowance=True)
+    assert seen == [GRANT - CHUNK], "the refill beside this call has not committed yet"
+    await runtime._refreshing[org_id]
+    assert seen == [GRANT - CHUNK, GRANT - CHUNK - 1_200], "and is seen once it has"
