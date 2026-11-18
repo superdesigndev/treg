@@ -243,8 +243,9 @@ sets `store_answered` again.
 
 A lease whose acquire or release the store did not answer (a stall) is kept in a bounded list
 (`provider_concurrency._unanswered`) and released again once the store answers a later request,
-while it is younger than one lease. A release the store dropped would otherwise leave its place
-counted until the lease ends; this holds for the account's places as well as the team's.
+however old: after an outage longer than a lease the store still runs a queued acquire and stamps
+it with its own clock. A release the store dropped would otherwise leave its place counted until
+the lease ends; this holds for the account's places as well as the team's.
 
 ## Upstream connections: a bounded wait and a cap per provider
 
