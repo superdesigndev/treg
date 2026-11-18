@@ -11,6 +11,8 @@ from __future__ import annotations
 
 import asyncio
 import logging
+import uuid
+from contextlib import asynccontextmanager
 from datetime import timedelta
 
 from ..domain import money as ledger
@@ -18,7 +20,7 @@ from ..domain.money import allowance
 from ..infra import kv, money_admission
 from ..infra.db import background_session_maker
 from ..infra.money_session import money_session
-from .call.allowance import money_lock
+from .call.allowance import money_key, money_lock
 from ..timeutil import utcnow_naive
 
 log = logging.getLogger("treg.money_allowance")
@@ -28,6 +30,20 @@ _SLACK_S = 30
 _SWEEP_EVERY_S = 60.0
 _FENCE_TTL_MS = 24 * 3600 * 1000
 _FOLD_BATCHES_PER_PASS = 20
+_LEASE_MS = 5000
+
+
+@asynccontextmanager
+async def _team_lease(org_id: int):
+    """Hold the team's allowance money lease, or yield False when another process has it. A
+    store that cannot answer admits nobody to the counter either, so the sweep goes on."""
+    store, key, token = kv.store(), money_key(org_id), uuid.uuid4().hex
+    acquired = await store.acquire_lease(key, token, _LEASE_MS)
+    try:
+        yield acquired != "busy"
+    finally:
+        if acquired == "acquired":
+            await store.release_lease(key, token)
 
 
 def idle_after_s() -> int:
@@ -44,15 +60,18 @@ async def sweep_once(session_maker) -> int:
     closed = 0
     for org_id in org_ids:
         try:
-            async with (
-                money_lock(org_id),
-                money_admission.admit(
-                    money_admission.require_balance_orgs([org_id]), operation="release"),
-                money_session(session_maker()) as db,
-            ):
-                result = await allowance.close_stale_allowance_in_transaction(
-                    db, org_id, stale_before=stale_before, reason="idle")
-                await db.commit()
+            async with _team_lease(org_id) as free:
+                if not free:
+                    continue
+                async with (
+                    money_lock(org_id),
+                    money_admission.admit(
+                        money_admission.require_balance_orgs([org_id]), operation="release"),
+                    money_session(session_maker()) as db,
+                ):
+                    result = await allowance.close_stale_allowance_in_transaction(
+                        db, org_id, stale_before=stale_before, reason="idle")
+                    await db.commit()
             if result is None:
                 continue
             closed += 1
@@ -77,14 +96,17 @@ async def fold_queued_once(session_maker) -> int:
     for org_id in org_ids:
         try:
             for _ in range(_FOLD_BATCHES_PER_PASS):
-                async with (
-                    money_lock(org_id),
-                    money_admission.admit(
-                        money_admission.require_balance_orgs([org_id]), operation="close"),
-                    money_session(session_maker()) as db,
-                ):
-                    folded = await allowance.fold_charges_in_transaction(db, org_id)
-                    await db.commit()
+                async with _team_lease(org_id) as free:
+                    if not free:
+                        break
+                    async with (
+                        money_lock(org_id),
+                        money_admission.admit(
+                            money_admission.require_balance_orgs([org_id]), operation="close"),
+                        money_session(session_maker()) as db,
+                    ):
+                        folded = await allowance.fold_charges_in_transaction(db, org_id)
+                        await db.commit()
                 total += folded.calls
                 if folded.calls + folded.duplicates < allowance.FOLD_BATCH:
                     break

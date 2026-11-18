@@ -626,6 +626,32 @@ async def test_the_sweep_folds_a_queue_nothing_else_is_folding(org_id, store, mo
     assert await _state(org_id) == (GRANT - CHUNK, CHUNK - 450)
 
 
+# ---- one money session per team, across processes ---------------------------------------------
+async def test_no_allowance_money_session_starts_while_another_process_holds_the_teams_lease(
+        org_id, store, monkeypatch):
+    """Refill, fold, close: each reads the hold and then writes it. Without row locks (SQLite)
+    two processes doing that at once lose a write, so they all take one lease."""
+    monkeypatch.setattr(runtime, "_REFILL_WAIT_S", 0.02)
+    epoch = await runtime.take(org_id, 600)
+    await _finish(org_id, "call-1", epoch, 600, billable=True, actual_micro=450)
+    async with session_maker() as db:
+        await db.execute(update(CallCharge).values(created_at=ledger._now() - timedelta(hours=1)))
+        await db.execute(update(Hold).where(Hold.allowance.is_(True)).values(
+            heartbeat_at=ledger._now() - timedelta(hours=1)))
+        await db.commit()
+    store.leases[runtime.money_key(org_id)] = "another-process"
+    store.expire()
+    await runtime._fold_backlog(org_id)
+    assert await allowance_sweep.fold_queued_once(session_maker) == 0
+    assert await allowance_sweep.sweep_once(session_maker) == 0
+    assert await runtime.take(org_id, 600) is None
+    assert await _queued(org_id) == 1 and await _state(org_id) == (GRANT - CHUNK, CHUNK)
+    del store.leases[runtime.money_key(org_id)]
+    assert await allowance_sweep.fold_queued_once(session_maker) == 1
+    assert await allowance_sweep.sweep_once(session_maker) == 1
+    assert store.leases == {}
+
+
 # ---- a daily cap across midnight ---------------------------------------------------------------
 async def _move_hold_to_yesterday(org_id: int) -> None:
     async with session_maker() as db:
@@ -752,5 +778,5 @@ async def test_many_calls_at_once_on_a_real_store_are_each_charged_once(org_id, 
         assert len(settles) == len(set(settles)) == len(paid)
         assert await real.allowance_take(org_id, 1) == 0
     finally:
-        await real._client.delete(kv._allowance_key(org_id), runtime._refill_key(org_id))
+        await real._client.delete(kv._allowance_key(org_id), runtime.money_key(org_id))
         await real.aclose()

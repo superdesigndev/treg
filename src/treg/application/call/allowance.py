@@ -58,8 +58,12 @@ def enabled_for(org_id: int) -> bool:
     return org_id in get_settings().money_allowance_org_ids and kv.configured()
 
 
-def _refill_key(org_id: int) -> str:
-    return f"treg:money-allowance-refill:v1:{org_id}"
+def money_key(org_id: int) -> str:
+    """The lease every allowance money session of a team holds: a refill, a drain, a fold, the
+    sweep's close. PostgreSQL would make them wait on the hold's row lock anyway. SQLite has no
+    row locks, so there this lease is what stops two processes from both reading the hold
+    before either writes."""
+    return f"treg:money-allowance-money:v1:{org_id}"
 
 
 async def take(org_id: int, amount_micro: int, *, daily_cap_micro: int = 0) -> int | None:
@@ -72,7 +76,7 @@ async def take(org_id: int, amount_micro: int, *, daily_cap_micro: int = 0) -> i
     epoch = await store.allowance_take(org_id, amount_micro)
     if epoch or epoch is None:
         return epoch
-    key, token = _refill_key(org_id), uuid.uuid4().hex
+    key, token = money_key(org_id), uuid.uuid4().hex
     deadline = time.monotonic() + _REFILL_WAIT_S
     while True:
         acquired = await store.acquire_lease(key, token, _REFILL_LEASE_MS)
@@ -149,10 +153,6 @@ async def _refill(org_id: int, need_micro: int, daily_cap_micro: int) -> bool:
 _folding: dict[int, asyncio.Task] = {}
 
 
-def _fold_key(org_id: int) -> str:
-    return f"treg:money-allowance-fold:v1:{org_id}"
-
-
 def _fold_in_background(org_id: int) -> None:
     task = _folding.get(org_id)
     loop = asyncio.get_running_loop()
@@ -164,9 +164,12 @@ async def _fold_backlog(org_id: int) -> None:
     """Fold a team's queued charges, a batch per transaction, until the queue is short. One
     process at a time per team; calls keep taking from the counter meanwhile, since a fold
     moves only money their takes already removed from it."""
-    store, key, token = kv.store(), _fold_key(org_id), uuid.uuid4().hex
+    store, key, token = kv.store(), money_key(org_id), uuid.uuid4().hex
     try:
         while True:
+            # The lease is given up between batches, and a moment left for a refill to take it:
+            # calls are waiting on a refill, nobody is waiting on this.
+            await asyncio.sleep(0.01)
             if await store.acquire_lease(key, token, _REFILL_LEASE_MS) != "acquired":
                 return
             try:

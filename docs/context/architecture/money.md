@@ -274,6 +274,13 @@ money moved, the purchased-credit gate.
   the ledger, therefore trails the call by about a batch of the team's calls while it is busy and
   by about a sweep pass otherwise.
 
+- **One money session per team.** A refill, a drain, a fold and the sweep's close each read the
+  hold and then write it. All of them hold one lease in the store for the team
+  (`allowance.money_key`), and a per-team lock inside the process. PostgreSQL would make them
+  wait on the hold's row lock anyway; on SQLite, which has no row locks, the lease is what keeps
+  two processes from both reading before either writes. A session that outlives the lease is
+  still safe on PostgreSQL and is not on SQLite.
+
 What can go wrong lands on one side only. A take the process never finishes (a crash), a give-back
 the store did not apply, or a counter lost with the store leaves money in the allowance hold that
 no counter offers: unavailable, not spent and not charged, until the hold is closed. Nothing here
