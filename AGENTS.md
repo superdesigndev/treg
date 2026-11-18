@@ -330,3 +330,12 @@ chooses only in the two disclosed cases of non-negotiable 4.
 - This repository is public: flag anything the Public repository section says must not be
   committed.
 - Skip speculative edge cases: report a bug only with a concrete path real usage can hit.
+- Flag as P1 a degraded mode (a fallback, fail-open path, breaker or retry window) that can stay
+  on after its cause is gone. Work it skips must not extend it; a new real failure may restart
+  its timer. A test must show that once the dependency recovers it exits within its stated
+  bound while traffic continues.
+- When a change moves work from the key-value store or a queue onto the database on the call or
+  money path, follow the real path: which rows it contends on, how many pool connections are held
+  while it waits, and what bounds its concurrency. Ask for that evidence when the PR lacks it.
+  Flag P1 when fallback traffic, from one team or several at once, can exhaust the shared pool and
+  block other calls.
