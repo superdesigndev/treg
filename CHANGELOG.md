@@ -83,3 +83,10 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
   one that may have the hub switched on, so it ships the knowledge and lets the agent find out at
   run time. The section tells an agent to read a `404` as "this registry does not offer the hub"
   rather than retrying.
+
+- **The call record table is partitioned by month and its ids are 64-bit** (PostgreSQL; SQLite is
+  unchanged). `python -m treg upgrade` replaces `callrecord` by rename and keeps the old table as
+  `callrecord_legacy`. A small table is copied during the upgrade. A large one must be copied
+  first: the upgrade stops with the command to run (`treg-worker admin callrecord-backfill
+  --days N`), then continues when run again. PostgreSQL 14 or newer is required. Old months can
+  be dropped with `TREG_CALLRECORD_RETENTION_MONTHS`, which is off by default.

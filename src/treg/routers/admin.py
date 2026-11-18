@@ -79,8 +79,14 @@ async def admin_stats(_: str = Depends(require_superadmin), db: AsyncSession = D
     calls_7d, _ok_7d = await calls_since(7)
     calls_30d, ok_30d = await calls_since(30)
     if db.bind.dialect.name == "postgresql":
-        total_calls = await n(text(
-            "SELECT GREATEST(reltuples, 0)::bigint FROM pg_class WHERE oid = 'callrecord'::regclass"))
+        # The planner's estimate, never a count. A partitioned table has no rows of its own: sum
+        # its partitions; while `callrecord_legacy` exists add it (the window copied before the
+        # swap is then counted twice, until the legacy table is dropped).
+        total_calls = await n(text("""
+            SELECT COALESCE(SUM(GREATEST(c.reltuples, 0)), 0)::bigint FROM pg_class c
+            WHERE (c.oid = 'callrecord'::regclass AND c.relkind = 'r')
+               OR c.oid IN (SELECT inhrelid FROM pg_inherits WHERE inhparent = 'callrecord'::regclass)
+               OR c.oid = to_regclass('callrecord_legacy')"""))
     else:
         total_calls = await n(select(func.count()).select_from(CallRecord))
     return {
