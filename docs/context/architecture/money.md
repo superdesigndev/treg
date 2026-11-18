@@ -392,19 +392,19 @@ The WHERE is the check and the SET the debit, so the database decides who gets t
 `rowcount 0` is `InsufficientBalance`, a 402 the agent can act on. No SELECT-then-UPDATE, no
 application lock: N concurrent callers against a balance that affords K get exactly K successes.
 
-The balance in that WHERE is read less what the team's queued call charges (`CallCharge`, below)
-will take from it when they are applied: their overruns, and what they set aside beyond what the
-allowance hold has left. That money is spent and the balance column does not show it yet, so a
-reserve must not set it aside a second time. Most teams have nothing queued, and the statement
-that subtracts a queue costs more to plan than the plain gate, so a reserve first reads the
-queue's team index once: with nothing there the gate is the statement above, unchanged; with
-something there the gate subtracts it, reading the queue in one pass. A charge queued after
-that read is one the reserve was ahead of. Under
-PostgreSQL's READ COMMITTED a gate that waited for the team's row rechecks its WHERE on the new
-balance but on the queue as it was when the statement began, so a fold that committed meanwhile
-is counted in both. A gate that matched no row is therefore not the refusal: a fresh statement
-reads balance and queue in one state, and the gate is run again (a bounded number of times)
-when that says the money is there. The 402 carries the figure that statement read.
+A team with an allowance can also owe money the balance column does not show yet: what its
+queued call charges (`CallCharge`, below) will take when they are applied, their overruns and
+what they set aside beyond what the allowance hold has left. A reserve must not set that aside
+a second time, and it must decide on a balance and a queue that belong to one moment. So the
+order is: the gate above debits, which also holds the team's row until the transaction ends;
+then the queue's team index is read once. With nothing queued, which is nearly every reserve,
+that is all. With something queued, one statement reads the debited balance less what the
+queue owes; below zero, the debit is put back in the same transaction and the reserve is
+refused with a 402 carrying what was free. Reading the queue before the debit, or inside the
+debit's own statement, would not do: PostgreSQL's READ COMMITTED rechecks a row the statement
+waited for against the snapshot it began with, so the queue could be older than the balance,
+letting a reserve spend a refund that a queued overrun already owes, or refusing one because a
+fold was counted in both. A charge queued after the read is one the reserve was ahead of.
 
 **Block consumption order** follows `_KIND_ORDER`: the free kinds (promotional, referral, bonus)
 first, then `earned`, then purchased, oldest first within a kind. Promo

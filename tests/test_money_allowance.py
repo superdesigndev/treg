@@ -457,6 +457,51 @@ async def test_closing_a_backlog_of_several_batches_locks_the_blocks_once(org_id
     assert locks == [{org_id}]
 
 
+async def test_a_reserve_refused_for_what_the_queue_owes_leaves_the_team_as_it_was(org_id):
+    await _record(org_id, GRANT)  # no hold stands behind it: all of the balance is owed
+    async with session_maker() as db:
+        before = await ledger.spent_today(db, org_id)
+        with pytest.raises(ledger.InsufficientBalance) as refused:
+            await ledger.reserve_in_transaction(db, org_id, "e.metered", 300, call_id="late")
+        assert (refused.value.balance_micro, refused.value.required_micro) == (0, 300)
+        await db.commit()
+        assert await ledger.balance_of(db, org_id) == GRANT
+        assert await ledger.spent_today(db, org_id) == before
+        assert await ledger.open_holds_of(db, org_id) == []
+    await _invariant(org_id)
+
+
+@postgres_only
+async def test_a_reserve_does_not_spend_a_refund_that_a_queued_overrun_already_owes(org_id):
+    """300 is free. A reserve of 300 waits for a hold's release on the team's row; meanwhile an
+    overrun of 1_100 is queued. When the reserve gets the row the balance reads 1_300 and 200
+    of it is free: the queue it decides on must be as new as the balance."""
+    async with session_maker() as db:
+        await ledger.reserve(db, org_id, "e.metered", GRANT - 1_300, call_id="rest")
+        await ledger.reserve(db, org_id, "e.metered", 1_000, call_id="held")
+
+    async def reserve() -> None:
+        async with session_maker() as db:
+            await ledger.reserve(db, org_id, "e.metered", 300, call_id="waited")
+
+    async with session_maker() as db:
+        await ledger.release_in_transaction(db, "held")
+        await db.flush()
+        waiting = asyncio.create_task(reserve())
+        await asyncio.sleep(0.3)
+        assert not waiting.done(), "waits for the release's lock on the team"
+        async with session_maker() as other:
+            await allowance.record_charges(
+                other, [allowance.Charge("over", org_id, "e.metered", 1_100, reserved_micro=0)])
+            await other.commit()
+        await db.commit()
+    with pytest.raises(ledger.InsufficientBalance) as refused:
+        await waiting
+    assert refused.value.balance_micro == 200
+    async with session_maker() as db:
+        assert await ledger.balance_of(db, org_id) == 1_300
+
+
 @postgres_only
 async def test_a_reserve_that_waited_for_a_fold_counts_its_charges_once(org_id):
     """A queued overrun leaves 400 free of a balance of 1_000, before the fold and after it. A

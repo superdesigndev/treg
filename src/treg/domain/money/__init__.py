@@ -361,9 +361,6 @@ async def revoke_in_transaction(
     return out
 
 
-_GATE_TRIES = 3
-
-
 async def reserve(
     db: AsyncSession, org_id: int, endpoint_id: str, est_micro: int, *, meta: dict | None = None,
     tags: dict[str, str] | None = None, call_id: str | None = None, purchased_only: bool = False,
@@ -421,36 +418,33 @@ async def reserve_in_transaction(
     mark_money(db, "reserve", org_id=org_id, call_id=call_id)
     if purchased_only and charged > 0:
         await _purchased_gate(db, org_id, charged)
-    # Most teams have nothing queued, and the statement that subtracts a queue costs more to plan
-    # than the gate itself: one read of the queue's index says which gate this reserve needs. A
-    # charge queued after this read is one the reserve was ahead of.
+    with money_stage(db, "reserve_balance"):
+        result = await db.execute(
+            # The gate. One statement: the WHERE is the check and the SET is the debit, so two concurrent
+            # callers cannot both pass it. rowcount 0 = the balance was not there.
+            update(Org)
+            .where(Org.id == org_id, Org.balance_micro >= charged)
+            .values(balance_micro=Org.balance_micro - charged, **_spent_today_values(charged))
+        )
+    if result.rowcount != 1:
+        with money_stage(db, "read_balance"):
+            balance = (await db.execute(select(Org.balance_micro).where(Org.id == org_id))).scalar() or 0
+        raise InsufficientBalance(org_id, int(balance), charged)
+    # The debit holds the team's row, so the balance cannot move again before this transaction
+    # ends, and the queue is read after it: both belong to one moment. Read before the debit,
+    # or in the debit's own statement (PostgreSQL rechecks a row it waited for against the
+    # snapshot the statement began with), the queue could be older than the balance.
     with money_stage(db, "reserve_queue"):
         queued = (await db.execute(
             select(CallCharge.call_id).where(CallCharge.org_id == org_id).limit(1))).first()
-    free = Org.balance_micro - _queued_unbacked(org_id) if queued else Org.balance_micro
-    gate = (
-        # The gate. One statement: the WHERE is the check and the SET is the debit, so two concurrent
-        # callers cannot both pass it. rowcount 0 = the balance was not there.
-        update(Org)
-        .where(Org.id == org_id, free >= charged)
-        .values(balance_micro=Org.balance_micro - charged, **_spent_today_values(charged))
-    )
-    available = select(free).where(Org.id == org_id)
-    for _ in range(_GATE_TRIES):
-        with money_stage(db, "reserve_balance"):
-            result = await db.execute(gate)
-        if result.rowcount == 1:
-            break
-        with money_stage(db, "read_balance"):
-            balance = int((await db.execute(available)).scalar() or 0)
-        # PostgreSQL READ COMMITTED: a gate that waited for the team's row rechecks its WHERE on
-        # the new balance and the queue as it was when the statement began. A fold that committed
-        # meanwhile has moved its charges from the queue into the balance, and the gate counts
-        # them in both. A fresh statement sees one state; only it may refuse.
-        if balance < charged:
-            raise InsufficientBalance(org_id, balance, charged)
-    else:
-        raise InsufficientBalance(org_id, balance, charged)
+    if queued is not None and charged > 0:
+        with money_stage(db, "reserve_queue"):
+            left = int((await db.execute(
+                select(Org.balance_micro - _queued_unbacked(org_id)).where(Org.id == org_id)
+            )).scalar() or 0)
+        if left < 0:
+            await _add_balance(db, org_id, charged, spent_delta_micro=-charged)
+            raise InsufficientBalance(org_id, left + charged, charged)
     db.add(Hold(id=call_id, org_id=org_id, endpoint_id=endpoint_id or "", amount_micro=charged,
                 purchased_only=purchased_only))
     await _entry(db, org_id=org_id, kind="reserve", amount_micro=-charged, call_id=call_id,
@@ -474,8 +468,8 @@ def _queued_unbacked(org_id: int):
     overruns, which no hold was set aside for, and what they set aside beyond what the team's
     allowance hold has left. The balance still shows this money, and it is already spent. A
     queued charge whose call has a `settle` entry is left out, as applying it will drop it.
-    A SQL expression for the statement that gates on the balance: one pass over the team's
-    queue, and the hold is read only when something is queued."""
+    A SQL expression: one pass over the team's queue, and the hold is read only when something
+    is queued."""
     queued = (
         select(func.coalesce(func.sum(CallCharge.overrun_micro), 0).label("overruns"),
                func.coalesce(func.sum(CallCharge.amount_micro - CallCharge.overrun_micro), 0)
