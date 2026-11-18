@@ -464,11 +464,32 @@ async def test_a_reserve_refused_for_what_the_queue_owes_leaves_the_team_as_it_w
         with pytest.raises(ledger.InsufficientBalance) as refused:
             await ledger.reserve_in_transaction(db, org_id, "e.metered", 300, call_id="late")
         assert (refused.value.balance_micro, refused.value.required_micro) == (0, 300)
+        with pytest.raises(ledger.InsufficientBalance) as refused:
+            await ledger.reserve_in_transaction(db, org_id, "e.metered", GRANT * 2, call_id="more")
+        assert refused.value.balance_micro == 0, "both refusals report what is free of the queue"
         await db.commit()
         assert await ledger.balance_of(db, org_id) == GRANT
         assert await ledger.spent_today(db, org_id) == before
         assert await ledger.open_holds_of(db, org_id) == []
     await _invariant(org_id)
+
+
+async def test_a_reserve_of_nothing_is_refused_before_a_fold_as_it_is_after(org_id):
+    """A call estimated at zero is still charged what it turns out to cost. A team whose queue
+    owes more than its balance cannot pay for it, whether or not the queue has been applied."""
+    async with session_maker() as db:
+        await ledger.reserve(db, org_id, "e.metered", 600, call_id="in-flight")
+    await _record(org_id, GRANT - 100)
+    async with session_maker() as db:
+        with pytest.raises(ledger.InsufficientBalance) as refused:
+            await ledger.reserve_in_transaction(db, org_id, "e.metered", 0, call_id="zero")
+        assert refused.value.balance_micro == -500
+        await db.rollback()
+        await allowance.fold_charges_in_transaction(db, org_id)
+        await db.commit()
+        with pytest.raises(ledger.InsufficientBalance) as refused:
+            await ledger.reserve_in_transaction(db, org_id, "e.metered", 0, call_id="zero")
+        assert refused.value.balance_micro == -500
 
 
 @postgres_only

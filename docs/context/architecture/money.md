@@ -402,7 +402,9 @@ order is: the gate above debits, which also holds the team's row until the trans
 then the queue's team index is read once. With nothing queued, which is nearly every reserve,
 that is all. With something queued, one statement reads the debited balance less what the
 queue owes; below zero, the debit is put back in the same transaction and the reserve is
-refused with a 402 carrying what was free. Reading the queue before the debit, or inside the
+refused with a 402 carrying what was free; a reserve of nothing (a call estimated at zero and
+charged what it turns out to cost) is checked the same way, and the gate's own refusal
+reports the same figure, the balance less what the queue owes. Reading the queue before the debit, or inside the
 debit's own statement, would not do: PostgreSQL's READ COMMITTED rechecks a row the statement
 waited for against the snapshot it began with, so the queue could be older than the balance,
 letting a reserve spend a refund that a queued overrun already owes, or refusing one because a

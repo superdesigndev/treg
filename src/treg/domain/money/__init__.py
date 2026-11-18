@@ -427,8 +427,11 @@ async def reserve_in_transaction(
             .values(balance_micro=Org.balance_micro - charged, **_spent_today_values(charged))
         )
     if result.rowcount != 1:
+        # The same figure the refusal below reports: what is free of the queue's claims.
         with money_stage(db, "read_balance"):
-            balance = (await db.execute(select(Org.balance_micro).where(Org.id == org_id))).scalar() or 0
+            balance = (await db.execute(
+                select(Org.balance_micro - _queued_unbacked(org_id)).where(Org.id == org_id)
+            )).scalar() or 0
         raise InsufficientBalance(org_id, int(balance), charged)
     # The debit holds the team's row, so the balance cannot move again before this transaction
     # ends, and the queue is read after it: both belong to one moment. Read before the debit,
@@ -437,7 +440,7 @@ async def reserve_in_transaction(
     with money_stage(db, "reserve_queue"):
         queued = (await db.execute(
             select(CallCharge.call_id).where(CallCharge.org_id == org_id).limit(1))).first()
-    if queued is not None and charged > 0:
+    if queued is not None:
         with money_stage(db, "reserve_queue"):
             left = int((await db.execute(
                 select(Org.balance_micro - _queued_unbacked(org_id)).where(Org.id == org_id)
