@@ -1,0 +1,306 @@
+provider: chunkify
+# Core catalog file for treg (target path in their repo: src/treg/catalog/chunkify.yaml).
+# Shape copied from docs/VENDORS.md ("Acme SEO") and live files (piapi.yaml for the async poll).
+# DRAFT 2026-11-18: run treg's scripts/catalog_validate.py and catalog_added.py before the PR.
+source:
+  docs: https://chunkify.dev/docs
+  openapi: https://chunkify.dev/docs/openapi.json
+  llms: https://chunkify.dev/docs/llms.txt
+  curated: 2026-11-18
+pricing_url: https://chunkify.dev/pricing
+limits: "A transcoding needs a Source whose host proves the file cannot change while it is encoded: a strong ETag the host honors on If-Match (S3, R2, GCS, GitHub raw), or an object version. Hosts that ignore If-Match, such as many Cloudflare-cached sites, get HTTP 400 `source does not provide a verifiable object version or strong conditional ETag` on chunkify.transcoding.create; Assets and thumbnails from the same Source still work. Async processing: a create call answers at once with data.id and status `preparing`; poll the matching GET until status is `ready`, `failed`, `cancelled` or `expired`. Signed file URLs last at most ten minutes, so read the resource again for a fresh one. Outputs on Chunkify temporary storage are deleted 24 hours after publication. Rate limits: https://chunkify.dev/docs/api-reference/rate-limit"
+defaults:
+  provenance: {source: docs, source_url: 'https://chunkify.dev/pricing', checked: '2026-11-18', confidence: documented}
+  # Pricing FAQ: "Processing charges are released for failed assets or transcoding jobs."
+  bill: {miss: free, error: free}
+
+proposed_capabilities:
+  # No platform covers video processing today (video-gen generates, video-understand reads).
+  # Proposed platform, to add under `platforms:` in capabilities.yaml:
+  #   video-process: {label: "Video processing", category: "Developer", summary: "Transcode, prepare for streaming and thumbnail video files you own, through your own storage."}
+  video-process.source.import: "Register a video URL as an input and read its duration, size and codecs"
+  video-process.transcode: "Convert a video file to MP4, WebM or audio"
+  video-process.stream.prepare: "Prepare a video for adaptive HLS streaming"
+  video-process.thumbnails: "Generate thumbnail images or sprite sheets from a video"
+  video-process.task.status: "Check an async video processing task"
+  video-process.tasks.list: "List recent video processing tasks and their status"
+  video-process.usage: "Read processed minutes and usage for your own account"
+
+endpoints:
+  # --- inputs -------------------------------------------------------------------------------------
+  - id: chunkify.source.create
+    added: '2026-11-18'
+    capability: video-process.source.import
+    platform: video-process
+    scope: own_account
+    method: POST
+    path: /sources
+    name: "Import a video URL"
+    summary: "Register a public video URL as a Source; returns its id, then duration, size, resolution and codecs when Chunkify has read the file."
+    input:
+      body:
+        url: {type: string, required: true, note: "Public HTTP(S) URL of the video file, up to 4096 characters.", example: "https://raw.githubusercontent.com/mediaelement/mediaelement-files/master/big_buck_bunny.mp4"}
+        metadata: {type: object, required: false, note: "String key/value pairs, at most 2048 bytes serialized.", example: {ref: "treg-test"}}
+      bodyType: json
+    test_request:
+      body: {url: "https://raw.githubusercontent.com/mediaelement/mediaelement-files/master/big_buck_bunny.mp4"}
+    price: {value: '0', currency: USD, per: 1, unit: call, note: "No charge is published for creating a Source."}
+    docs_url: https://chunkify.dev/docs/api-reference/sources/create-a-new-source
+
+  - id: chunkify.source.get
+    added: '2026-11-18'
+    kind: utility
+    capability: video-process.source.import
+    platform: video-process
+    scope: own_account
+    method: GET
+    path: /sources/{sourceId}
+    name: "Read a Source"
+    summary: "Read a Source's duration, size, resolution, frame rate and codecs."
+    input:
+      pathParams:
+        sourceId: {type: string, required: true, example: "src_3A0yDPVjACk8FkYZFnP7Ab5DSDV"}
+    test_request: {pathParams: {sourceId: "<from chunkify.source.create>"}}
+    price: {value: '0', currency: USD, per: 1, unit: call}
+    docs_url: https://chunkify.dev/docs/api-reference/sources/get-a-single-source
+
+  # --- transcoding (standalone files) ---------------------------------------------------------
+  - id: chunkify.transcoding.create
+    added: '2026-11-18'
+    capability: video-process.transcode
+    platform: video-process
+    scope: own_account
+    method: POST
+    path: /transcodings
+    name: "Transcode a video"
+    summary: "Encode a Source to H.264, HEVC or AV1 MP4, VP9 WebM, or AAC M4A. Async: poll chunkify.transcoding.get."
+    async:
+      id_from: data.id
+      poll:
+        endpoint: chunkify.transcoding.get
+        param: {in: pathParams, name: transcodingId}
+      status:
+        path: data.status
+        success: [ready]
+        failure: [failed, cancelled, expired]
+        progress: [preparing]
+      result:
+        path: data.files
+      interval: 5
+    input:
+      body:
+        source_id: {type: string, required: true, example: "src_3A0yDPVjACk8FkYZFnP7Ab5DSDV"}
+        format:
+          type: object
+          required: true
+          note: "Discriminated by `id`. Omitted settings use the format defaults (https://chunkify.dev/docs/transcoding/formats)."
+          properties:
+            id: {type: string, required: true, enum: [mp4_h264, mp4_h265, mp4_av1, webm_vp9, m4a_aac], example: mp4_h264}
+            crf: {type: integer, required: false, note: "Video formats only."}
+        storage:
+          type: object
+          required: false
+          note: "Omit to use the Project default storage. On Chunkify temporary storage the path is generated and the file is deleted 24 hours after publication."
+          properties:
+            id: {type: string, required: false}
+            path: {type: string, required: false, example: "exports/video.mp4"}
+        metadata: {type: object, required: false}
+      bodyType: json
+    test_request:
+      body: {source_id: "<from chunkify.source.create>", format: {id: mp4_h264}}
+    # Billed per minute of ENCODED OUTPUT: resolution rate x codec x frame-rate x per-title factors.
+    # H.264 <=30 fps, per-title off: SD $0.0040, HD $0.0080, 2K $0.0150, 4K $0.0300 per output minute.
+    # Codec: H.264 x1, VP9 x2, HEVC x2.5, AV1 x3. Frame rate: <=30 x1, <=60 x2, >60 x3. Per-title x1.5.
+    # Audio only (m4a_aac): $0.0005 per output minute. Durations round up to the second; each charge to $0.0001.
+    # The test call (60 s SD H.264, 61 billed seconds) should meter $0.0041.
+    price: {value: '0.0080', currency: USD, per: 1, unit: item, note: "One item = one minute of encoded output, HD H.264 up to 30 fps. The bill depends on output duration, resolution, codec and frame rate, known after encoding; see the rate table in the comment above and https://chunkify.dev/pricing"}
+    docs_url: https://chunkify.dev/docs/api-reference/transcodings/create-transcoding
+
+  - id: chunkify.transcoding.get
+    added: '2026-11-18'
+    kind: utility
+    capability: video-process.task.status
+    platform: video-process
+    scope: own_account
+    method: GET
+    path: /transcodings/{transcodingId}
+    name: "Check a transcoding"
+    summary: "Read a transcoding's status and progress; when ready, its files with a signed download URL (valid up to ten minutes), size, duration and codecs."
+    resource_ownership:
+      requires: {kind: "poll:chunkify.transcoding.get", param: transcodingId}
+    input:
+      pathParams:
+        transcodingId: {type: string, required: true, example: "<from chunkify.transcoding.create>"}
+    test_request: {pathParams: {transcodingId: "<from chunkify.transcoding.create>"}}
+    price: {value: '0', currency: USD, per: 1, unit: call}
+    docs_url: https://chunkify.dev/docs/api-reference/transcodings/get-transcoding
+
+  - id: chunkify.transcodings.list
+    added: '2026-11-18'
+    capability: video-process.tasks.list
+    platform: video-process
+    scope: own_account
+    method: GET
+    path: /transcodings
+    name: "List transcodings"
+    summary: "List recent transcodings, filtered by status or Source."
+    input:
+      queryParams:
+        limit: {type: integer, required: false, example: 5}
+        status: {type: string, required: false, enum: [preparing, ready, failed, cancelled, expired]}
+        source_id: {type: string, required: false}
+    test_request: {queryParams: {limit: 1}}
+    price: {value: '0', currency: USD, per: 1, unit: call}
+    docs_url: https://chunkify.dev/docs/api-reference/transcodings/list-transcodings
+
+  # --- streaming (Assets) -----------------------------------------------------------------------
+  - id: chunkify.asset.create
+    added: '2026-11-18'
+    capability: video-process.stream.prepare
+    platform: video-process
+    scope: own_account
+    method: POST
+    path: /assets
+    name: "Prepare a video for streaming"
+    summary: "Turn a Source into an HLS streaming Asset with per-title qualities, a poster and timeline previews. Async: poll chunkify.asset.get."
+    async:
+      id_from: data.id
+      poll:
+        endpoint: chunkify.asset.get
+        param: {in: pathParams, name: assetId}
+      status:
+        path: data.status
+        success: [ready]
+        failure: [failed, expired]
+        progress: [preparing]
+      result:
+        path: data.preview_url
+      interval: 5
+    input:
+      body:
+        source_id: {type: string, required: true, example: "src_3A0yDPVjACk8FkYZFnP7Ab5DSDV"}
+        title: {type: string, required: false, note: "Up to 256 characters.", example: "Big Buck Bunny"}
+        max_resolution: {type: string, required: false, note: "Omit to use the Project default, or the plan maximum if unset."}
+        preview_enabled: {type: boolean, required: false, note: "Public HLS preview URL without an API token.", example: true}
+        workflow_id: {type: string, required: false, note: "Omit for the Project default; null disables automation (captions, MP4s, thumbnails)."}
+        metadata: {type: object, required: false}
+      bodyType: json
+    test_request:
+      body: {source_id: "<from chunkify.source.create>", title: "treg test", preview_enabled: true}
+    # Billed once per INPUT minute by the input's resolution tier; every streaming quality included.
+    # Pay as you go: SD $0.0075, HD $0.0300, 2K $0.0750, 4K $0.1500. Team: SD $0.0050, HD $0.0200, 2K $0.0500, 4K $0.1000.
+    # The test call (60 s SD input, 61 billed seconds, Pay as you go) should meter $0.0077.
+    price: {value: '0.0300', currency: USD, per: 1, unit: item, note: "One item = one minute of input video, HD tier, Pay as you go. Billed once per input minute by the input's resolution tier; see the rate table above and https://chunkify.dev/pricing"}
+    docs_url: https://chunkify.dev/docs/api-reference/assets/create-an-asset
+
+  - id: chunkify.asset.get
+    added: '2026-11-18'
+    kind: utility
+    capability: video-process.task.status
+    platform: video-process
+    scope: own_account
+    method: GET
+    path: /assets/{assetId}
+    name: "Check a streaming Asset"
+    summary: "Read an Asset's status; once playback_ready, its HLS playlist path, CDN URL, public preview URL and poster."
+    resource_ownership:
+      requires: {kind: "poll:chunkify.asset.get", param: assetId}
+    input:
+      pathParams:
+        assetId: {type: string, required: true, example: "<from chunkify.asset.create>"}
+    test_request: {pathParams: {assetId: "<from chunkify.asset.create>"}}
+    price: {value: '0', currency: USD, per: 1, unit: call}
+    docs_url: https://chunkify.dev/docs/api-reference/assets/retrieve-an-asset
+
+  - id: chunkify.assets.list
+    added: '2026-11-18'
+    capability: video-process.tasks.list
+    platform: video-process
+    scope: own_account
+    method: GET
+    path: /assets
+    name: "List streaming Assets"
+    summary: "List Assets, filtered by status, Source or a title search."
+    input:
+      queryParams:
+        limit: {type: integer, required: false, example: 5}
+        status: {type: string, required: false, enum: [preparing, ready, failed, expired]}
+        search: {type: string, required: false}
+    test_request: {queryParams: {limit: 1}}
+    price: {value: '0', currency: USD, per: 1, unit: call}
+    docs_url: https://chunkify.dev/docs/api-reference/assets/list-assets
+
+  # --- thumbnails ---------------------------------------------------------------------------------
+  - id: chunkify.thumbnails.create
+    added: '2026-11-18'
+    capability: video-process.thumbnails
+    platform: video-process
+    scope: own_account
+    method: POST
+    path: /thumbnails
+    name: "Generate thumbnails"
+    summary: "Generate 1 to 100 JPEG or WebP images, or sprite sheets, at given times or evenly spaced. Async: poll chunkify.thumbnails.get."
+    async:
+      id_from: data.id
+      poll:
+        endpoint: chunkify.thumbnails.get
+        param: {in: pathParams, name: thumbnailId}
+      status:
+        path: data.status
+        success: [ready]
+        failure: [failed, expired]
+        progress: [preparing]
+      result:
+        path: data.files
+      interval: 3
+    input:
+      body:
+        source_id: {type: string, required: true, example: "src_3A0yDPVjACk8FkYZFnP7Ab5DSDV"}
+        count: {type: integer, required: false, min: 1, max: 100, note: "Evenly spaced over the range. Use count or timestamps.", example: 3}
+        timestamps: {type: array, required: false, note: "1 to 100 times in seconds."}
+        output: {type: string, required: false, enum: [images, sprites], example: images}
+        format: {type: string, required: false, enum: [jpeg, webp], example: jpeg}
+        size: {type: integer, required: false, min: 64, max: 1920, note: "Longest edge in pixels, default 320.", example: 320}
+      bodyType: json
+    test_request:
+      body: {source_id: "<from chunkify.source.create>", count: 1, format: jpeg, size: 320}
+    price: {value: '0.0005', currency: USD, per: 1, unit: item, note: "One item = one published image or sprite cell; VTT files are free."}
+    docs_url: https://chunkify.dev/docs/api-reference/thumbnails/create-thumbnails
+
+  - id: chunkify.thumbnails.get
+    added: '2026-11-18'
+    kind: utility
+    capability: video-process.task.status
+    platform: video-process
+    scope: own_account
+    method: GET
+    path: /thumbnails/{thumbnailId}
+    name: "Check a thumbnail request"
+    summary: "Read a thumbnail request's status and, when ready, its image files."
+    resource_ownership:
+      requires: {kind: "poll:chunkify.thumbnails.get", param: thumbnailId}
+    input:
+      pathParams:
+        thumbnailId: {type: string, required: true, example: "<from chunkify.thumbnails.create>"}
+    test_request: {pathParams: {thumbnailId: "<from chunkify.thumbnails.create>"}}
+    price: {value: '0', currency: USD, per: 1, unit: call}
+    docs_url: https://chunkify.dev/docs/api-reference/thumbnails/get-thumbnails
+
+  # --- account ------------------------------------------------------------------------------------
+  - id: chunkify.metrics.usage
+    added: '2026-11-18'
+    capability: video-process.usage
+    platform: video-process
+    scope: own_account
+    method: GET
+    path: /metrics/usage
+    name: "Read usage"
+    summary: "Read billed processing usage for the Project over a date range."
+    input:
+      queryParams:
+        from: {type: string, required: false, note: "Start date."}
+        to: {type: string, required: false, note: "End date."}
+        format: {type: string, required: false}
+    test_request: {queryParams: {}}
+    price: {value: '0', currency: USD, per: 1, unit: call}
+    docs_url: https://chunkify.dev/docs/api-reference/metrics/get-usage-metrics
