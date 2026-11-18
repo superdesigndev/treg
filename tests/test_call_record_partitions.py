@@ -332,3 +332,26 @@ async def test_a_second_backfill_while_one_runs_does_nothing(before_swap):
     assert busy["busy"] is True and busy["copied"] == 0
     assert await _scalar("SELECT count(*) FROM callrecord_partitioned") == 0
     assert (await partitions.backfill(31, batch_rows=10, pause=0))["copied"] == 40
+
+
+async def test_a_resync_batch_reads_only_its_id_range_of_the_staged_table(before_swap):
+    """The resync joins the staged table to the live one by id; both sides carry the batch's
+    bounds, so the staged side is probed within the range instead of read whole."""
+    await partitions.backfill(31, batch_rows=10, pause=0)
+    compiled = str(partitions._RESYNC.compile())
+    async with db.session_maker() as session:
+        await session.execute(text("SET LOCAL enable_seqscan = off"))
+        plan = "\n".join((await session.execute(
+            text("EXPLAIN " + compiled.replace(":after", "10").replace(":upto", "20")))).scalars().all())
+    lines = plan.splitlines()
+    staged_conditions = [lines[i + 1] for i, line in enumerate(lines[:-1])
+                         if "Scan" in line and " on callrecord_y" in line]
+    assert staged_conditions and all("id > 10" in c for c in staged_conditions), plan
+
+
+def test_a_busy_backfill_exits_nonzero(monkeypatch, capsys):
+    async def busy(days, **options):
+        return {"phase": None, "copied": 0, "done": False, "busy": True}
+    monkeypatch.setattr(partitions, "backfill", busy)
+    assert worker.main(["admin", "callrecord-backfill", "--days", "31"]) == 1
+    assert "another backfill is running" in capsys.readouterr().err

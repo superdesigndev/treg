@@ -420,7 +420,9 @@ async def _first_id_at(db, since: datetime, top: int) -> int:
 
 _RESYNC = text(
     f"UPDATE {STAGED} n SET hit = o.hit, verdict = o.verdict FROM {TABLE} o "
-    "WHERE o.id > :after AND o.id <= :upto AND n.id = o.id AND n.created_at = o.created_at "
+    # Bounded on both sides, so a batch reads its id range of the staged table, not all of it.
+    "WHERE o.id > :after AND o.id <= :upto AND n.id > :after AND n.id <= :upto "
+    "AND n.id = o.id AND n.created_at = o.created_at "
     "AND (n.hit IS DISTINCT FROM o.hit OR n.verdict IS DISTINCT FROM o.verdict)")
 
 
