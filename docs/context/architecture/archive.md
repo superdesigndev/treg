@@ -510,15 +510,32 @@ keeps the position between runs (a pass reaching the end starts from 0).
 candidate predicate, and deletes snapshots and keys, moving the running totals. In the same
 transaction it records in `archiveobjectpending` each object-stored body hash (`r2`, `both`) that
 no snapshot references any more, with the time. Nothing in object storage is touched before that
-commit, so a batch that rolls back deletes no object. At its start, each real run deletes the
-pending objects recorded more than `TREG_ARCHIVE_RETENTION_OBJECT_GRACE_S` ago (default 900 s,
-longer than a recorder's check-that-the-object-exists to commit window and its upload budget),
-re-checking right before each delete that no snapshot references the hash; a referenced hash
-leaves the table and its object stays. So a recorder that found the object (and skipped its
-upload) and commits after the batch keeps its bytes. No session is open while object storage is
-called. A failed object delete keeps its row for the next run; with no object store configured
-the due rows wait and the run reports `stopped: "error"`. A hash recorded again restarts its
-grace period.
+commit, so a batch that rolls back deletes no object.
+
+At its start, each real run deletes the pending objects recorded more than
+`TREG_ARCHIVE_RETENTION_OBJECT_GRACE_S` ago (default 900 s), page after page (`OBJECT_PAGE`) until
+none is due or the time budget is spent, `OBJECT_CONCURRENCY` object-store calls at a time, with no
+session open while object storage is called. Each object goes in three steps:
+
+1. Mark the row `deleting` and commit. The recorder reads the pending row of the hash it is about
+   to point at `FOR SHARE` in its own transaction (`archive._object_may_be_gone`): a recorder that
+   read it first makes the mark wait for its commit, and one that reads it after sees the mark and
+   keeps the bytes in its own row (`body_storage = db`).
+2. Re-check that no committed snapshot references the hash; one does: the row goes, the object
+   stays.
+3. Delete the object, then keep the row as a tombstone (`deleted_at`) for `TOMBSTONE_KEEP_S` (or
+   the grace period, if longer), so a recorder that confirmed the object just before the delete
+   still sees the mark.
+
+A failed delete moves the row to the back of the queue (`recorded_at` now, `attempts` + 1), so it
+never blocks the rows after it; with no object store configured the due rows wait and the run
+reports `stopped: "error"`. A hash recorded again restarts its grace period and keeps its
+`deleting` mark.
+
+`trim_archived_answers` (the idempotency pruner dropping a retry row's own copy) locks the keys it
+trims against `FOR SHARE SKIP LOCKED` (`archive.lock_keys_for_share`) and re-checks in its UPDATE
+that the answer is still on file (`archive.answer_on_file`): retention deletes a key only under
+`FOR UPDATE SKIP LOCKED`, so a trimmed retry row never points at an answer retention removed.
 
 The marks go last, just before the commit. A settle locks its team's `org` row and then upserts
 the mark, so a mark lock held across the slow deletes would queue that team's payments behind the

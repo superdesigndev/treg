@@ -711,6 +711,11 @@ async def trim_archived_answers(*, batch_size: int = 200, pause_s: float = 0.25,
             wanted = {r.id: links[(r.org_id, r.call_ref)] for r in rows if (r.org_id, r.call_ref) in links}
             on_file = await archive.bytes_on_file(db, set(wanted.values()))
             wanted = {i: pair for i, pair in wanted.items() if pair in on_file}
+            if wanted and not dry_run:
+                # Hold the keys until this page commits, so row retention cannot delete an answer
+                # between the check above and the trim below; a key it holds is left for later.
+                held = await archive.lock_keys_for_share(db, {k for k, _ in wanted.values()})
+                wanted = {i: pair for i, pair in wanted.items() if pair[0] in held}
             if wanted:
                 bodies = (await db.execute(select(IdempotentCall.id, IdempotentCall.response_body)
                                            .where(IdempotentCall.id.in_(wanted)))).all()
@@ -724,6 +729,7 @@ async def trim_archived_answers(*, batch_size: int = 200, pause_s: float = 0.25,
                     done = (await db.execute(update(IdempotentCall).where(
                         IdempotentCall.id == row_id, IdempotentCall.status == "done",
                         IdempotentCall.response_body.is_not(None), IdempotentCall.archive_content_hash.is_(None),
+                        archive.answer_on_file(key_hash, body_hash),
                     ).values(response_body=None, archive_key_hash=key_hash, archive_content_hash=body_hash)
                     .execution_options(synchronize_session=False))).rowcount
                     trimmed, freed = trimmed + done, freed + (size if done else 0)

@@ -2502,10 +2502,17 @@ class ArchiveRetentionCursor(SQLModel, table=True):
 class ArchiveObjectPending(SQLModel, table=True):
     """An object-stored archive body whose last snapshot row retention deleted, waiting to be
     deleted from object storage once `recorded_at` is older than the grace period and no snapshot
-    references `content_hash` again. Written only by `application.archive_retention`."""
+    references `content_hash` again. Written only by `application.archive_retention`; the
+    recorder reads it `FOR SHARE` (`archive._store_locked`)."""
+
+    __table_args__ = (Index("ix_archiveobjectpending_recorded_at", "recorded_at"),)
 
     content_hash: str = Field(primary_key=True)
     recorded_at: NaiveUTC = Field(default_factory=_now)
+    # A delete was attempted: the object may be gone, so a recorder keeps its own copy.
+    deleting: bool = Field(default=False, sa_column=Column(Boolean, nullable=False, server_default="false"))
+    deleted_at: NaiveUTC | None = None   # the object went; the row stays one grace period
+    attempts: int = Field(default=0, sa_column=Column(Integer, nullable=False, server_default="0"))
 
 
 class ArchiveEndpointStat(SQLModel, table=True):

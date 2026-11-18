@@ -1087,6 +1087,8 @@ async def _store_locked(
         new_key = newest is None            # first version ⇒ this recording created the key
         seen_before = (key.stable_seen, key.change_seen)
 
+        if plan.storage in ("r2", "both") and await _object_may_be_gone(s, ch):
+            plan = archive_bodies.WritePlan("db", reason="object_delete_pending")
         stored, enc = _pack(body) if plan.keep_db else (None, None)
         snap = ArchiveSnapshot(
             key_id=key.id, version=1 if newest is None else newest.version + 1,
@@ -1359,6 +1361,36 @@ async def bytes_on_file(session, pairs: set[tuple[str, str]]) -> set[tuple[str, 
                or_(ArchiveSnapshot.body_storage.in_(("r2", "both")), ArchiveSnapshot.body.is_not(None),
                    ArchiveSnapshot.body_of.is_not(None))))).all()
     return {(k, c) for k, c in rows} & pairs
+
+
+def answer_on_file(key_hash: str, body_hash: str):
+    """A SQL condition: the answer `(key_hash, body_hash)` still carries its bytes (as in
+    `bytes_on_file`), for a statement that must re-check it as it writes."""
+    from sqlalchemy import exists, or_
+
+    from .models import ArchiveKey, ArchiveSnapshot
+
+    return exists().where(
+        ArchiveSnapshot.key_id == ArchiveKey.id, ArchiveKey.key_hash == key_hash,
+        ArchiveSnapshot.content_hash == body_hash,
+        or_(ArchiveSnapshot.body_storage.in_(("r2", "both")), ArchiveSnapshot.body.is_not(None),
+            ArchiveSnapshot.body_of.is_not(None)))
+
+
+async def lock_keys_for_share(session, key_hashes: set[str]) -> set[str]:
+    """Lock the given keys `FOR SHARE SKIP LOCKED` in the caller's transaction -> the hashes
+    locked. Row retention deletes a key only under `FOR UPDATE SKIP LOCKED`, so a key held here
+    stays until the caller commits; a key retention holds (or has deleted) is not returned."""
+    from sqlalchemy import select
+
+    from .models import ArchiveKey
+
+    if not key_hashes:
+        return set()
+    return set((await session.execute(
+        select(ArchiveKey.key_hash).where(ArchiveKey.key_hash.in_(key_hashes))
+        .order_by(ArchiveKey.id)
+        .with_for_update(read=True, skip_locked=True))).scalars().all())
 
 
 async def answer_bytes(key_hash: str, body_hash: str) -> bytes | None:
@@ -1647,6 +1679,22 @@ async def note_org_uses_in_transaction(db, uses: Iterable[tuple[int, str]]) -> N
 async def note_org_use_in_transaction(db, org_id: int, key_hash: str) -> None:
     """Mark one paid question atomically with its caller's settlement."""
     await note_org_uses_in_transaction(db, [(org_id, key_hash)])
+
+
+async def _object_may_be_gone(s, content_hash: str) -> bool:
+    """In the recording transaction: whether row retention has started deleting this body's
+    object (application/archive_retention.py). The pending row is read `FOR SHARE`, so a delete
+    that has not marked it yet waits for this transaction and then finds the new snapshot; one
+    that marked it already may have taken the object, so the snapshot keeps the bytes itself."""
+    from sqlalchemy import select
+
+    from .models import ArchiveObjectPending
+
+    deleting = (await s.execute(
+        select(ArchiveObjectPending.deleting)
+        .where(ArchiveObjectPending.content_hash == content_hash)
+        .with_for_update(read=True))).scalar()
+    return bool(deleting)
 
 
 _TOUCH_EVERY_S = 60.0

@@ -19,7 +19,7 @@ from alembic.runtime.migration import MigrationContext
 from httpx import AsyncClient
 from sqlalchemy import select, text
 
-from treg import archive, bootstrap, worker
+from treg import archive, archive_bodies, bootstrap, worker
 from treg.application import archive_retention
 from treg.config import get_settings
 from treg.domain.catalog import store as catalog_store
@@ -178,7 +178,9 @@ async def test_orphaned_objects_go_after_the_grace_period_and_shared_ones_stay(
     later = await archive_retention.run(object_grace_s=0)
     assert later["objects"] == 1 and set(store.objects) == {_h("shared")}
     async with session_maker() as s:
-        assert (await s.execute(select(ArchiveObjectPending))).scalars().all() == []
+        rows = (await s.execute(select(ArchiveObjectPending))).scalars().all()
+    assert [(r.content_hash, r.deleting, r.deleted_at is not None) for r in rows] \
+        == [(_h("only-here"), True, True)]                              # the tombstone
 
 
 async def test_a_failed_or_impossible_object_delete_waits_for_the_next_run(
@@ -207,7 +209,7 @@ async def test_a_failed_or_impossible_object_delete_waits_for_the_next_run(
 
 async def test_a_run_stops_at_its_time_budget_and_the_next_resumes(clients: AsyncClient, retention_on):
     ids = [await _key(f"dormant-{i}", age_days=40) for i in range(3)]
-    ticks = iter([0, 0, 0, 10, 10])        # start, batch 1, batch 2, then over budget
+    ticks = iter([0, 0, 0, 0, 10, 10])     # start, object deletes, batch 1, batch 2, then over budget
     first = await archive_retention.run(batch=1, max_seconds=5, after=ids[0] - 1,
                                         clock=lambda: next(ticks))
     assert (first["keys"], first["stopped"], first["next_after"]) == (2, "time_budget", ids[1])
@@ -531,3 +533,111 @@ async def test_a_recorder_that_saw_the_object_and_commits_later_keeps_its_bytes(
         on_file = await archive.bytes_on_file(s, {(_h("young-b"), _h("x"))})
         assert (await s.execute(select(ArchiveObjectPending))).scalars().all() == []
     assert _h("x") in store.objects and on_file == {(_h("young-b"), _h("x"))}
+
+
+async def _pending_hashes() -> set[str]:
+    async with session_maker() as s:
+        return set((await s.execute(select(ArchiveObjectPending.content_hash)
+                                    .where(ArchiveObjectPending.deleted_at.is_(None)))).scalars().all())
+
+
+async def test_a_recorder_that_confirmed_the_object_before_the_delete_keeps_the_bytes(
+        clients: AsyncClient, serve, retention_on, store, monkeypatch):
+    """A recorder confirms the object (so it skips the upload) after the batch committed, the due
+    delete then takes the object, and the recorder commits last. It sees the `deleting` mark (the
+    tombstone stays one grace period) and keeps the bytes in its row: the answer stays readable."""
+    body = b'{"n":1}'
+    ch = archive.content_hash(body)
+    store.objects[ch] = body
+    await _key("dormant-a", age_days=40, bodies=((body.decode(), "r2"),))
+    assert (await archive_retention.run())["objects_pending"] == 1
+    real_prepare = archive_bodies.prepare
+
+    async def confirmed_then_deleted(*args, **kwargs):
+        plan = await real_prepare(*args, **kwargs)        # the object is there: no upload
+        assert plan.storage == "r2"
+        later = await archive_retention.run(object_grace_s=0)
+        assert later["objects"] == 1 and ch not in store.objects
+        return plan
+    monkeypatch.setattr(archive_bodies, "prepare", confirmed_then_deleted)
+    await archive._store(method="GET", endpoint_id=EP, provider="tikhub",
+                         url="https://api.tikhub.io/x?aweme_id=late", caller_body=b"", headers={},
+                         status_code=200, media_type="application/json", body=body,
+                         plan=archive_bodies.WritePlan("r2"))
+    async with session_maker() as s:
+        late = (await s.execute(select(ArchiveKey).where(ArchiveKey.key_hash != _h("dormant-a")))).scalar_one()
+        snap = (await s.execute(select(ArchiveSnapshot).where(ArchiveSnapshot.key_id == late.id))).scalar_one()
+    assert snap.body_storage == "db"
+    assert await archive.answer_bytes(late.key_hash, ch) == body
+
+
+async def test_more_than_a_page_of_due_objects_all_go_in_one_run(clients: AsyncClient, retention_on, store):
+    now = utcnow_naive()
+    for i in range(1200):
+        store.objects[_h(f"b{i}")] = b"."
+    async with session_maker() as s:
+        s.add_all([ArchiveObjectPending(content_hash=_h(f"b{i}"), recorded_at=now - timedelta(hours=1))
+                   for i in range(1200)])
+        await s.commit()
+    result = await archive_retention.run(object_grace_s=0, max_seconds=3600)
+    assert result["objects"] == 1200 and store.objects == {} and await _pending_hashes() == set()
+
+
+async def test_failing_objects_move_back_and_do_not_block_the_rest(clients: AsyncClient, retention_on,
+                                                                   store):
+    now = utcnow_naive()
+    for i in range(3):
+        store.objects[_h(f"b{i}")] = b"."
+    async with session_maker() as s:
+        s.add_all([ArchiveObjectPending(content_hash=_h(f"b{i}"), recorded_at=now - timedelta(hours=3 - i))
+                   for i in range(3)])
+        await s.commit()
+    real = store.delete
+
+    async def fail_two_oldest(content_hash):
+        if content_hash in (_h("b0"), _h("b1")):
+            raise RuntimeError("permanent 403")
+        return await real(content_hash)
+    store.delete = fail_two_oldest
+    result = archive_retention.RetentionResult(enabled=True, dry_run=False)
+    await archive_retention._delete_due_objects(result, grace_s=60, session_factory=session_maker,
+                                                spent=lambda: False, page=2)
+    assert (result.objects, result.objects_failed) == (1, 2)
+    assert _h("b2") not in store.objects
+    async with session_maker() as s:
+        rows = {r.content_hash: r for r in (await s.execute(select(ArchiveObjectPending))).scalars().all()}
+    assert {rows[_h("b0")].attempts, rows[_h("b1")].attempts} == {1}
+    assert rows[_h("b0")].recorded_at > now - timedelta(minutes=1)      # back of the queue
+    assert rows[_h("b2")].deleted_at is not None                         # the tombstone
+
+
+async def test_a_trim_racing_retention_never_leaves_a_paid_replay_without_its_answer(
+        clients: AsyncClient, platform_on, retention_on, store, monkeypatch):
+    """Trim checks the answer is on file, retention deletes that key, trim would then clear the
+    row's own copy: the key lock and the re-check in the trim's UPDATE keep the copy."""
+    from treg.application.call import idempotency
+    from treg.models import CallRecord
+    from tests.test_marketplace_call import _seed_answer
+
+    body = b'{"rows":[1]}'
+    row_id = await _seed_answer(clients, "idem-1", body=body)
+    await _key("k1", age_days=40, bodies=((body.decode(), "db"),))
+    async with session_maker() as s:
+        row = await s.get(IdempotentCall, row_id)
+        row.call_ref = "call-1"
+        row.created_at = utcnow_naive() - timedelta(hours=1)
+        s.add(CallRecord(org_id=row.org_id, user_email="t@x.dev", tool_name="t", call_ref="call-1",
+                         endpoint_id=EP, method="GET", path="/x", status_code=200,
+                         archive_key_hash=_h("k1"), archive_content_hash=archive.content_hash(body)))
+        await s.commit()
+    real = archive.bytes_on_file
+
+    async def on_file_then_retention(db_, pairs):
+        found = await real(db_, pairs)
+        assert (await archive_retention.run())["keys"] == 1      # another worker, in between
+        return found
+    monkeypatch.setattr(archive, "bytes_on_file", on_file_then_retention)
+    trimmed = await idempotency.trim_archived_answers(pause_s=0)
+    async with session_maker() as s:
+        row = await s.get(IdempotentCall, row_id)
+    assert trimmed.trimmed == 0 and row.response_body == body and row.archive_content_hash is None

@@ -33,7 +33,11 @@ def upgrade() -> None:
         "archiveobjectpending",
         sa.Column("content_hash", sa.String(), primary_key=True),
         sa.Column("recorded_at", sa.DateTime(), nullable=False),
+        sa.Column("deleting", sa.Boolean(), nullable=False, server_default=sa.false()),
+        sa.Column("deleted_at", sa.DateTime(), nullable=True),
+        sa.Column("attempts", sa.Integer(), nullable=False, server_default="0"),
     )
+    op.create_index("ix_archiveobjectpending_recorded_at", "archiveobjectpending", ["recorded_at"])
 
 
 def downgrade() -> None:
