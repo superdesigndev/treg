@@ -218,10 +218,6 @@ class OrgSnapshot:
     archive_opt_out_at: Any = None   # set = the team opted out of the archive (archive.md)
     created_at: Any = None
     member_daily_spend_cap_micro: int | None = None
-    stripe_customer_id: str | None = None
-    stripe_default_pm: str | None = None
-    autotopup_last_attempt_at: Any = None
-    autotopup_failures: int = 0
 
 
 @dataclass(frozen=True)
@@ -286,10 +282,6 @@ class CallerSnapshot:
                 first_call_at=org.first_call_at,
                 created_at=getattr(org, "created_at", None),
                 member_daily_spend_cap_micro=org.member_daily_spend_cap_micro,
-                stripe_customer_id=org.stripe_customer_id,
-                stripe_default_pm=org.stripe_default_pm,
-                autotopup_last_attempt_at=org.autotopup_last_attempt_at,
-                autotopup_failures=int(org.autotopup_failures or 0),
             ),
             api_key_id=key.id if key else None,
             api_key_name=key.name if key else None,

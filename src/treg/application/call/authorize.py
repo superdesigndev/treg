@@ -1,10 +1,7 @@
 """Framework-neutral authorization for a resolved proxied call."""
 
 import logging
-from contextlib import nullcontext
 from datetime import date
-
-from sqlalchemy.ext.asyncio import AsyncSession
 
 from ... import oauth_providers
 from ... import sandbox as demo_sandbox
@@ -21,13 +18,10 @@ log = logging.getLogger("treg.call")
 
 async def authorize_call(
     *, caller: Caller, tool: Tool, upstream_url: str, method: str, client_ip: str,
-    db: AsyncSession | None = None,
 ) -> date | None:
     """Run the no-money gates in their frozen ACL, deny, member-cap, public-demo order. Returns
-    the UTC day the member's call slot was taken on, or None when no slot was taken.
-
-    `db` is the caller's request session from resolution; the commit here ends its transaction."""
-    async with (nullcontext(db) if db is not None else session_maker()) as db:
+    the UTC day the member's call slot was taken on, or None when no slot was taken."""
+    async with session_maker() as db:
         # Per-member tool + project ACL (NULL access = all; admins exempt).
         try:
             access_policy._require_tool_use(caller, tool)
