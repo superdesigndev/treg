@@ -539,6 +539,8 @@ def test_a_declaration_judges_only_v2_rows_and_only_what_it_decides():
     assert judged_outcome(scrape, 200, answer("markdown", success=False, error_code="WEBSITE_BLOCKED")) == "miss"
     assert judged_outcome(scrape, 200, b'{"error": "bad key"}') == "error"
     assert judged_outcome(scrape, 429, b'{"message": "slow down"}') is None
+    assert judged_outcome("greenhouse.companies.jobs", 404, b'{"status": 404}') == "miss"   # declared
+    assert judged_outcome("greenhouse.companies.jobs", 500, b'{}') is None
     assert judged_outcome("tinyfish.web.fetch", 200, b'{"results": []}') is None
 
 

@@ -161,9 +161,9 @@ def _judged(endpoint: dict, status: int, body: bytes, doc: object) -> Result:
 
 def judged_outcome(endpoint_id: str, status: int, body: bytes) -> str | None:
     """What a v2 row's own declaration says of one answer, for reliability: `not_found` when its
-    `not_found` rule holds, else `outcome.judge`'s `hit`, `miss` or `error`. None for a row in
-    today's spelling and for a non-2xx the declaration does not decide, which keep the status
-    rule. Needs no adapter: the row's declaration is the whole judgement."""
+    `not_found` rule holds, else `outcome.judge`'s `hit`, `miss` or `error`, a non-2xx its `miss`
+    rule lists included. None for a row in today's spelling and for a non-2xx the declaration does
+    not decide, which keep the status rule. Needs no adapter: the row's declaration is the whole judgement."""
     from .store import load
 
     endpoint = load().by_id.get(endpoint_id)
@@ -180,7 +180,7 @@ def judged_outcome(endpoint_id: str, status: int, body: bytes) -> str | None:
         judged = outcome.judge(endpoint, status, doc, answer=answer)
     except Exception:  # noqa: BLE001 - a rule that cannot be read is no judgement; the status rule stands
         return None
-    return None if judged.cause == "status" else judged.state
+    return None if judged.state == "error" and judged.cause == "status" else judged.state
 
 
 def classify(endpoint_id: str, status: int, body: bytes) -> Result:
