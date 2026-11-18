@@ -2590,6 +2590,9 @@ def _bearer_from_scope(scope) -> str:
     return ""
 
 
+MCP_GZIP_LEVEL = 1
+
+
 class NoTransformResponses:
     """Stamp `Cache-Control: no-store, no-transform` on every MCP response.
 
@@ -2668,11 +2671,15 @@ def build_mcp_app(*, server: MCPServer | None = None, resource_version: str = "v
     #
     # NoTransformResponses is outermost so the auth wrapper's own 401 challenges carry the header
     # too; gzip sits between so challenges and answers alike are origin-encoded.
+    #
+    # Starlette compresses the whole body synchronously on the event loop, and its default level 9
+    # runs at a few MB/s: a multi-megabyte tool result held every request in the process for
+    # seconds. Level 1 is several times faster and still lets the edge pass the response through.
     from starlette.middleware.gzip import GZipMiddleware
 
     return NoTransformResponses(GZipMiddleware(RequireAuthForProtectedTools(
                                                    transport, resource_version=resource_version),
-                                               minimum_size=1024))
+                                               minimum_size=1024, compresslevel=MCP_GZIP_LEVEL))
 
 
 mcp_app = build_mcp_app()
