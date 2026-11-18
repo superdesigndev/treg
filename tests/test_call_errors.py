@@ -349,9 +349,18 @@ def _crashing_child(monkeypatch, raised: Exception):
     return call_service.execute_call, context
 
 
+def _caused_by_refused_connection() -> RuntimeError:
+    from asyncpg.exceptions import TooManyConnectionsError
+    try:
+        raise RuntimeError("wrapped") from TooManyConnectionsError("too many clients")
+    except RuntimeError as exc:
+        return exc
+
+
 @pytest.mark.parametrize(("raised", "status", "kind", "cls"), [
     (RuntimeError("boom"), 500, "unexpected_exception", "treg_error"),
     (__import__("sqlalchemy.exc").exc.TimeoutError("pool"), 503, "db_pool", "treg_capacity"),
+    (_caused_by_refused_connection(), 500, "unexpected_exception", "treg_error"),
 ])
 async def test_a_child_that_crashes_before_its_audit_logs_its_line(
         monkeypatch, call_error_lines, raised, status, kind, cls):

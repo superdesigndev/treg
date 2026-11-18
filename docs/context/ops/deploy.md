@@ -177,7 +177,14 @@ per-pool peak, capacity and headroom: resize from measurements, one pool at a ti
 does not repair a slow scan, lock queue or missing index.
 
 A request that gets no slot within `pool_timeout` receives `503 {"treg_saturated": true}` with
-`Retry-After: 2` (`bootstrap_handlers._pool_saturated`). SQLite aliases all three makers to one
+`Retry-After: 2` (`bootstrap_handlers._pool_saturated`). The database refusing a new connection
+(asyncpg `TooManyConnectionsError`, including "remaining connection slots are reserved", and
+`CannotConnectNowError`, raw or inside a SQLAlchemy `OperationalError` or `InterfaceError`, the
+`DB_BUSY_WRAPPERS`) is the same condition and gets the same response; `infra/db.py` `DB_BUSY_ERRORS`,
+`is_db_busy` and `answers_db_busy` name it. Any other error type, even one whose cause is a refused
+connection, stays a server error the call router stamps itself. A settle that meets it retries
+once on a fresh session, like a pool timeout, because the error arises before any statement runs.
+SQLite aliases all three makers to one
 engine: it has file-level write locks it cannot share, so separate engines would only manufacture
 lock failures.
 
@@ -235,6 +242,20 @@ what protects the primary). Further callers must tolerate replica lag
 and keep writes, cursor advancement and concurrency control on the primary. `connection_budget()`
 covers only primary pools: budget the read pool against its own target, and add both when they share
 a server. Schema upgrades, startup verification and test resets target the primary.
+
+### Connection budget
+
+Per process, the primary connections are the sum over `api`, `admin` and `background` of
+`pool_size + max_overflow` (`connection_budget()["per_process"]`). The ceiling to stay under is
+`per_process * processes alive at once`, where processes alive is `WEB_CONCURRENCY * instances`, doubled
+for the rolling-deploy overlap (`deploy_peak`), plus every worker, cron and admin process, all measured
+against the database `max_connections` minus its reserved slots. Pools open lazily and a healthy
+database holds far fewer than the capacity, but a slow database keeps connections checked out and the
+peak approaches it. Do not shrink the `api` overflow to fit: a smaller api pool turns a short database
+slowdown into saturation 503s. Before adding web workers or instances, put a connection pooler in
+transaction mode between the services and the database (the code uses only `SET LOCAL` and
+transaction-level advisory locks; asyncpg then needs its statement caches off). `python -m treg
+upgrade` and Alembic use session-level settings and must keep a direct database URL, never the pooler's.
 
 ## Configuration (`config.py`)
 
