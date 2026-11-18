@@ -10,7 +10,7 @@ from sqlmodel import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from ... import crypto
-from ...domain.governance.teams import cascade_delete_org
+from ...domain.governance.teams import cascade_delete_org, lock_allowance_holds
 from ...domain.identity.access import SANDBOX_DOMAIN
 from ...models import Membership, Org, Secret, Tool, User
 from ...sandbox_identity import visitor_name
@@ -158,6 +158,7 @@ async def gc(db: AsyncSession) -> int:
                 logging.getLogger("treg").warning(
                     "sandbox user %s belongs to a non-sandbox org; kept for review", u.id)
                 continue
+            await lock_allowance_holds(db, [org.id for org in orgs])
             for org in orgs:
                 # The shared cascade, never a private table list.
                 await cascade_delete_org(org, db)

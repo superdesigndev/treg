@@ -147,8 +147,10 @@ of calls; one strike must not take the provider away from everyone.
   applies. Otherwise a vendor answering free searches at zero credits erases the paid routes'
   strikes.
 - A signature the call could not avoid (the strike itself, a probe through a lock, a free route)
-  is relayed as the provider answered, with `X-Treg-Capacity: exhausted` so the caller is told it is
-  treg's account, not its balance (`capacity_notice.py`).
+  is not relayed on treg's shared key: when overflow did not serve it and it settled at zero, the
+  caller gets the same typed 503 `provider_capacity_unavailable`, while the call's record keeps the
+  provider's status and body. A routed call skips that provider. The light CLI still reads
+  `X-Treg-Capacity: exhausted`, which older self-hosted servers sent on such a relayed answer.
 - An expired guessed hold that is still dry opens again on its next two strikes, so a lock nobody
   lifts reopens about hourly.
 
@@ -158,8 +160,8 @@ with no wait header takes its reset from the row's `resets`, else from the sweep
 parsed by format, never by provider; a 429 no row matched is a burst when the wait is at most 60 s
 and a quota when longer. Exhaustion can arrive as any status, including a 2xx: the call path reads
 a platform 2xx through the table too, so such an answer is released rather than settled, never
-archived, counted as a strike and eligible for overflow. Bare HTTP 402 uses the shared balance
-signature. Two guards against the next unrecorded vendor:
+archived, counted as a strike, eligible for overflow and otherwise the typed 503. Bare HTTP 402
+uses the shared balance signature. Two guards against the next unrecorded vendor:
 
 - `unrecorded`: a 4xx no row matched whose body still names credits, quota or balance (generic
   nouns plus each row's `tripwire` phrase; a row's regex never joins by itself, since alternations
@@ -270,7 +272,7 @@ Redis `TREG_KV_URL`, and an enforce list needs `observe`; `Settings` refuses to 
   its error budget.
 - A routed child on treg's own key whose answer the signature table marks `balance` or `quota`
   (treg's account out of money or out of its period allowance, e.g. LeadOcean's 429 "Fair-use pace
-  reached") is likewise `skipped` (`child_outcome` kind `account_exhausted`), never an error: one
+  reached") is likewise `skipped` (its typed `provider_capacity` refusal), never an error: one
   used-up account beside providers that answered "nobody" leaves the call a 200 miss, not a 502.
   A provider that is down (5xx) is still an error, so a failed routed call stays free.
 - A capacity probe (`probe_lock_id`) and a team's poll of its own job (`free_owned_poll`) are

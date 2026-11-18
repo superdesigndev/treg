@@ -392,12 +392,13 @@ def test_stand_in_carries_names_only_keys_its_expression_reads():
 
 
 def test_a_stand_in_carries_the_country_so_it_is_not_an_ignored_filter():
-    """parallel has no country field of its own; the stand-in sentence says the country, so it
+    """A provider with no country field of its own, whose stand-in sentence says the country,
     answers the question asked. A `q` the caller wrote gets no stand-in, so there it is ignored."""
+    import dataclasses
     from treg.domain.catalog.routing.plan import ignored_filters
     cat = catalog_store.load()
     contract = cat.contracts["people.search"]
-    parallel = cat.adapters["parallel.people.search"]
+    parallel = dataclasses.replace(cat.adapters["parallel.people.search"], soft=())
     built, _ = canonical_identity(contract, {"company_domain": "stripe.com", "title": "CTO", "country": "ie"})
     assert ignored_filters(parallel, contract, built, {"company_domain", "title", "country"}) == ()
     written, _ = canonical_identity(contract, {"q": "CTO at stripe.com", "country": "ie"})
@@ -413,13 +414,63 @@ def test_a_stand_in_carries_the_country_so_it_is_not_an_ignored_filter():
         "a country the location already says is still said"
 
 
+def test_a_filter_the_provider_takes_only_as_a_hint_is_an_ignored_filter():
+    """parallel and exa read the place and the company as words in a semantic query, so rows from
+    elsewhere still come back: the request carries them, and they are named as not applied."""
+    from treg.domain.catalog.routing.plan import ignored_filters
+    cat = catalog_store.load()
+    contract = cat.contracts["people.search"]
+    named, _ = canonical_identity(contract, {"title": "CTO", "location": "Dublin, Ireland", "country": "ie",
+                                             "company_domain": "stripe.com"})
+    sent = {"title", "location", "country", "company_domain"}
+    for eid in ("parallel.people.search", "exa.people.search"):
+        ad = cat.adapters[eid]
+        assert "Dublin, Ireland" in str(ad.to_upstream(named, ("q",))[1]), "the hint still reaches the provider"
+        assert ignored_filters(ad, contract, named, sent) == ("country", "location", "company_domain")
+    unsent, _ = canonical_identity(contract, {"title": "CTO"})
+    assert ignored_filters(cat.adapters["exa.people.search"], contract, unsent, {"title"}) == ()
+
+
+def test_a_parameter_the_row_marks_soft_makes_the_filters_mapped_into_it_soft():
+    """Only the contract's filters: never a function name in the expression, nor `q` sent into a
+    soft parameter when `q` is not a filter."""
+    from treg.domain.catalog.routing import contracts as C
+    contract = C.parse_contracts({"contracts": {"x": {
+        "identity": [{"q": "str"}], "filters": {"country": {"type": "str"}, "domains": {"type": "list"},
+                                                "language": {"type": "str"}},
+        "output": {"results": {"type": "list", "required": True}}, "miss": "results == []"}}})["x"]
+    ad = C.parse_adapters({"adapters": {"x.web.search": {
+        "accepts": [["q"]], "in": {"q": "queryParams.query", "country": "queryParams.location"},
+        "in_expr": {"queryParams.sites": "csv(domains)", "queryParams.text": "join(q, language)"},
+        "soft": ["language"], "out": {"results": "results"}, "miss": "results == []"}}})["x.web.search"]
+    soft = {"type": "string", "applied": "soft"}
+    row = {"input": {"queryParams": {"query": soft, "location": soft, "sites": soft, "text": soft}}}
+    assert C._soft_keys(ad, row, contract) == ("language", "country", "domains")
+    assert C._soft_keys(ad, {"input": {}}, contract) == ("language",)
+
+
+def test_an_adapters_soft_names_only_its_contracts_keys():
+    from treg.domain.catalog.routing import contracts as C
+    cat = catalog_store.load()
+    base = {"accepts": [["q"]], "in": {"q": "body.query"}, "out": {"people": "results"}, "miss": "results == []"}
+    for bad in ("location", ["location", 3], [""]):
+        with pytest.raises(ValueError, match="soft is a list"):
+            C.parse_adapters({"adapters": {"x.people.search": {**base, "soft": bad}}})
+    ads = C.parse_adapters({"adapters": {"x.people.search": {**base, "soft": ["company_domain", "locaton"]}}})
+    assert C.soft_problems(ads, cat.contracts, {"x.people.search": "people.search"}) == [
+        "adapter x.people.search: soft names locaton, not a filter or scoping key of people.search"]
+    assert C.soft_problems(cat.adapters, cat.contracts, {e: cat.by_id[e]["capability"] for e in cat.adapters
+                                                         if e in cat.by_id}) == []
+
+
 @pytest.mark.parametrize("identity, kept", [
-    ({"title": "CTO", "location": "Dublin, Ireland", "country": "ie"}, True),
-    ({"title": "CTO", "location": "Cambridge", "country": "us"}, True),
-    ({"title": "CTO", "location": "Dublin, Ireland"}, True),
+    ({"title": "CTO", "location": "Dublin, Ireland", "country": "ie"}, False),
+    ({"title": "CTO", "location": "Cambridge", "country": "us"}, False),
+    ({"title": "CTO", "location": "Dublin, Ireland"}, False),
     ({"title": "CTO", "country": "zz"}, False),
+    ({"title": "CTO"}, True),
 ])
-async def test_strict_filters_keep_a_stand_in_provider_whose_text_says_the_filters(
+async def test_strict_filters_skip_a_stand_in_provider_that_takes_the_place_only_as_a_hint(
         clients, all_people_search_on, identity, kept):
     cat = catalog_store.load()
     options = call_route.RouteOptions.from_headers(
@@ -428,6 +479,9 @@ async def test_strict_filters_keep_a_stand_in_provider_whose_text_says_the_filte
     caller = SimpleNamespace(org_id=1, org=SimpleNamespace(id=1, platform_overflow_disabled=False))
     plan = await call_route.build_plan(cat.by_id["treg.people.search"], identity, caller, options)
     assert ("parallel.people.search" in [c.endpoint["id"] for c in plan.candidates]) is kept
+    if "location" in identity:
+        why = next(d["why"] for d in plan.dropped if d["endpoint_id"] == "parallel.people.search")
+        assert why.startswith("applies ") and "location only as a hint" in why
 
 
 def test_a_domain_is_said_only_as_the_whole_host():
@@ -477,7 +531,8 @@ async def test_a_company_scoped_request_offers_the_free_text_providers_last(
     q_only = ["parallel.people.search", "exa.people.search"]
     assert order[-2:] == q_only and "exa.people.search" not in {d["endpoint_id"] for d in plan.dropped}
     exa = next(c for c in plan.candidates if c.endpoint["id"] == "exa.people.search")
-    assert exa.variant == ("q",) and exa.ignored == ()
+    assert exa.variant == ("q",) and exa.ignored == tuple(k for k in ("country", "company_domain") if k in identity)
+    assert exa.hinted == exa.ignored, "a hint is named, never ranked down"
     _, body = exa.adapter.to_upstream(plan.identity, exa.variant)
     assert body["query"].startswith(identity.get("title", "people") + " at example.com")
     preferred = await call_route.build_plan(ep, identity, caller, call_route.RouteOptions.from_headers(
@@ -694,7 +749,7 @@ def test_a_parallel_extract_page_with_only_excerpts_is_a_hit():
     # an unreadable URL (results [], errors[]) is the free miss.
     extract = cat.adapters["parallel.web.extract"]
     assert not extract.is_miss({"results": [{"url": "u", "excerpts": ["text"], "full_content": None}]})
-    assert not extract.is_miss({"results": [{"url": "u", "excerpts": [], "full_content": "text"}]})
+    assert not extract.is_miss({"results": [{"url": "u", "excerpts": [], "full_content": "This domain is for use in documentation examples without needing permission."}]})
     assert extract.is_miss({"results": [{"url": "u", "excerpts": [], "full_content": None}]})
     assert extract.is_miss({"results": [], "errors": [{"url": "u", "error_type": "connect_error"}]})
     # A multi-URL call is never judged by its first page: a later page may have text.
@@ -724,7 +779,7 @@ def test_search_adapter_does_not_treat_an_answer_without_results_as_a_miss():
     (
         "treg.web.extract", "firecrawl.web.scrape",
         {"url": "https://example.com"},
-        {"success": True, "data": {"markdown": "# Example", "metadata": {"sourceURL": "https://example.com"}}},
+        {"success": True, "data": {"markdown": "# Example\n\nThis domain is for use in documentation examples without needing permission.", "metadata": {"sourceURL": "https://example.com"}}},
         {"url": "https://example.com", "formats": ["markdown"], "parsers": []}, 5_000,
     ),
     (
@@ -2110,6 +2165,143 @@ def test_a_miss_rule_can_combine_a_target_error_status_with_an_empty_text(doc, m
     assert P.evaluate("choose(http_error(code), true, coalesce(text, '') == '')", doc) is miss
 
 
+_ARTICLE = ("CAPTCHA systems ask visitors to prove they are human before a form is accepted. " * 30
+            + "Critics say a site should not make you verify you are human for every page you read.")
+
+
+@pytest.mark.parametrize("page, wall", [
+    ("Recaptcha requires verification. I'm not a robot. reCAPTCHA Privacy - Terms", True),
+    ("TO VERIFY YOU ARE HUMAN, PLEASE PRESS THE BUTTON. Press and hold to confirm.", True),
+    ({"title": "Pardon Our Interruption", "text": "As you were browsing something about your browser made us think you were a bot."}, True),
+    ({"title": "Access Denied", "text": "You don't have permission to access this server. Reference #18.2f1"}, True),
+    ("Vercel Security Checkpoint. Failed to verify your browser. Code 21", True),
+    ("Just a moment... Enable JavaScript and cookies to continue. Performance and security by Cloudflare", True),
+    ("Please enable cookies in your browser to continue.", True),
+    ("Create an account to see the full shipment record. Already a member? Sign in to continue.", True),
+    ("Click the button below to continue shopping. Conditions of Use Privacy Policy", True),
+    (["   \n  "], False),
+    ([{"url": "https://example.com", "title": "Example Domain", "text":
+       "This domain is for use in documentation examples without needing permission. Avoid use in operations."}], False),
+    (_ARTICLE, False),
+    ("Contact us. This form is protected by reCAPTCHA and the Google Privacy Policy and Terms of Service apply. "
+     "Our office is open Monday to Friday, nine to five, at 12 Harbour Street.", False),
+    ({"url": "https://example.com/", "images": ["https://example.com/a.png"]}, False),
+    ([], False), (None, False),
+    # Walls seen behind real sites.
+    ("Just a moment...\n\nwww.example.com needs to review the security of your connection before proceeding.", True),
+    ("Verifying you are human. This may take a few seconds. example.com needs to review the security of your "
+     "connection before proceeding. Ray ID: 8f2a1c3b4d5e6f70 Performance & security by Cloudflare", True),
+    ("Sign in to view Jane Doe's full profile. Join now. Email or phone. Password. Forgot password? Sign in.", True),
+    ("Forgot password? Enter your email and we will send you a link.", False),
+    ("Press & Hold to confirm you are a human (and not a bot). Reference ID 1a2b3c4d-1234-5678", True),
+    ("Please enable JS and disable any ad blocker", True),
+    ("Click the button below to continue shopping\n\nContinue shopping\n\nConditions of Use Privacy Policy "
+     "(c) 1996-2025, Amazon.com, Inc. or its affiliates", True),
+])
+def test_wall_page_is_true_only_for_a_wall_or_a_blank_page(page, wall):
+    assert P.evaluate("wall_page(pages)", {"pages": page}) is wall
+
+
+@pytest.mark.parametrize("page", [
+    # Words are counted in every script: unspaced Chinese and Japanese are pages too.
+    "Москва — столица России, город федерального значения, административный центр Центрального федерального "
+    "округа и центр Московской области. Крупнейший по численности населения город России и её субъект.",
+    "北京是中华人民共和国的首都，是全国的政治中心、文化中心、国际交往中心和科技创新中心。北京历史悠久，文化灿烂，"
+    "是首批国家历史文化名城和世界上拥有世界文化遗产数最多的城市。",
+    "このワイヤレスイヤホンは最大三十時間の再生が可能です。ノイズキャンセリング機能を搭載し、通勤や旅行に最適です。"
+    "価格は一万二千円（税込）です。",
+    "أعلنت الحكومة اليوم عن خطة جديدة لتحسين البنية التحتية في المدن الكبرى، وتشمل الخطة بناء طرق جديدة وتوسيع "
+    "شبكة النقل العام خلال السنوات الخمس القادمة.",
+    "تهران پایتخت ایران و بزرگ‌ترین شهر این کشور است. این شهر در دامنه جنوبی رشته‌کوه البرز قرار دارد و جمعیت "
+    "آن بیش از نه میلیون نفر است.",
+    "Impressum: Beispiel GmbH, Hauptstraße 5, 10115 Berlin. Geschäftsführer: Max Müller. Telefon 030 123456.",
+    "Zapatillas de running ligeras con suela de goma. Precio: 59,99 €. Envío gratis en pedidos superiores a 50 €.",
+    # A structured answer is never a wall.
+    '{"ip": "203.0.113.7"}',
+    '{"status":"ok","version":"2.4.1","uptime":86400}',
+    # A real short page that carries a cookie banner, a sign-in line, a JavaScript notice or says "access denied".
+    "We use cookies to improve your experience. Accept all | Manage preferences\n\n# Opening hours\n\nOur bakery "
+    "in Leeds is open Monday to Saturday from 7am to 6pm, and Sunday from 8am to 2pm. Fresh sourdough every "
+    "morning; gluten-free loaves on Fridays. Call 0113 555 0101 to order a celebration cake at least two days ahead.",
+    "# Acme Drill X200\n\n18V cordless drill with two batteries and charger. Torque 60 Nm, two speeds, LED light. "
+    "Please sign in to see trade prices. Retail price £89.99. Free delivery over £50.",
+    "# Error 403: Access denied\n\nThe API returns 403 Access denied when the token lacks the read scope. Add the "
+    "scope in your dashboard under Settings > Tokens and retry the request.",
+    "You need to enable JavaScript to run this app.\n\n# Weather in Paris\n\nToday: sunny, high of 21 C, low of "
+    "12 C. Tomorrow: light rain in the afternoon, high of 17 C. Wind from the west at 15 km/h.",
+    "# Blue Ceramic Mug 350 ml\n\nHand-glazed stoneware mug, dishwasher safe. $18.00. In stock. Add to cart.",
+    "An old silent pond / A frog jumps into the pond / Splash! Silence again.",
+    "We use cookies to improve your experience. Manage preferences or accept all to continue browsing.",
+    # A short answer is not a wall for being short: judging it a miss would walk every provider.
+    "OK", "pong", "42", "true", "203.0.113.7", "Hello, World!", "# r/askscience rules",
+    "User-agent: *\nDisallow: /admin/\nSitemap: https://example.com/sitemap.xml",
+    "Bitcoin price: $97,412.55", "# Weather\nLondon 12C, cloudy", "# Coming soon\n\nWe launch in March.",
+    "Ephemeral: lasting for a very short time.",
+    # A real short page with a sign-in, sign-up or log-in line, or a form's "I'm not a robot".
+    "# Jane Doe\nSenior Data Engineer at Acme Corp\nBerlin, Germany\n500+ connections\n\n"
+    "Sign in to view Jane's full profile",
+    "# Luigi's Trattoria\n4.6 stars from 1,284 reviews. Wood-fired pizza, fresh pasta, family run since 1987. "
+    "\"Best carbonara in town\" - Maria. Sign up to view all reviews",
+    "# Sam Lee\nIllustrator and children's book author. Portland, Oregon. Recent work: The Lighthouse Fox. "
+    "Log in to view more",
+    "# Contact us\nName\nEmail\nMessage\nI'm not a robot\nSend. We answer within two working days.",
+])
+def test_wall_page_keeps_real_pages_in_any_language_and_structured_answers(page):
+    assert P.evaluate("wall_page(pages)", {"pages": page}) is False
+
+
+def test_wall_page_does_not_read_a_long_page():
+    """The rule runs on the event loop, up to three times per child: a page past the read limit is
+    judged at once, never scanned, even when it opens like a wall."""
+    import time
+    big = "Please verify you are human. " + "x" * (8 * 1024 * 1024)
+    pages = [{"url": "https://example.com", "text": big, "title": "Just a moment..."}]
+    links = [{"text": "Please verify you are human.", "links": [f"https://example.com/p/{i}" for i in range(300_000)]}]
+    started = time.perf_counter()
+    assert P.wall_page(pages) is False
+    assert P.wall_page(big) is False
+    assert P.wall_page(links) is False
+    assert time.perf_counter() - started < 0.05
+
+
+def test_wall_page_stops_after_a_bounded_number_of_values():
+    """Every value counts, not only text: millions of empty strings, numbers and nulls are left
+    unjudged in a few milliseconds."""
+    import time
+    flat = [{"text": "Please verify you are human.", "a": [""] * 3_000_000, "b": [0, None] * 1_000_000}]
+    nested = [{"text": "Please verify you are human.", "a": [[0] * 40] * 40_000}]
+    started = time.perf_counter()
+    assert P.wall_page(flat) is False
+    assert P.wall_page(nested) is False
+    assert time.perf_counter() - started < 0.05
+    assert P.wall_page([{"text": "Please verify you are human.", "a": [0] * 100}]) is True
+
+
+def test_a_wall_page_is_a_miss_the_extract_route_moves_on_from_and_a_per_success_child_does_not_bill():
+    """A child's 200 page that is only a captcha is no extraction: the route's contract marks it a
+    miss so the walk continues, and a per_success child's own miss rule says so too, so settlement
+    charges nothing. A real page about captchas stays a hit."""
+    cat = catalog_store.load()
+    contract = cat.contracts["web.extract"]
+    ident = {"url": "https://shop.example/p/251"}
+
+    def tinyfish(text):
+        return json.dumps({"results": [{"url": ident["url"], "final_url": ident["url"], "title": "t",
+                                         "text": text, "links": []}], "errors": []}).encode()
+
+    ep, adapter = cat.by_id["tinyfish.web.fetch"], cat.adapters["tinyfish.web.fetch"]
+    wall = call_route.child_outcome(ep, contract, adapter, 200, tinyfish("Checking your browser before accessing "
+                                    "shop.example. Please verify you are human."), tier="platform", identity=ident)
+    assert wall.kind == "miss" and "question_miss" in wall.why
+    page = call_route.child_outcome(ep, contract, adapter, 200, tinyfish(_ARTICLE), tier="platform", identity=ident)
+    assert page.kind == "hit"
+
+    firecrawl = cat.adapters["firecrawl.web.scrape"]
+    assert firecrawl.is_miss({"success": True, "data": {"markdown": "Recaptcha requires verification. I'm not a robot",
+                                                        "metadata": {"statusCode": 200}}})
+    assert not firecrawl.is_miss({"success": True, "data": {"markdown": _ARTICLE, "metadata": {"statusCode": 200}}})
+
+
 async def test_the_geo_aware_child_wins_a_filtered_search_and_the_answer_says_what_was_dropped(
     clients: AsyncClient, enrichment_on, monkeypatch
 ):
@@ -3220,7 +3412,7 @@ async def test_people_enrich_not_found_from_dropleads_and_aiark_is_a_miss_not_a_
 # ---- web.extract / web.search: crawl4ai first by default -------------------------------------------
 @pytest.mark.parametrize("job, body, answer, first_seen", [
     ("treg.web.extract", {"url": "https://example.com"},
-     {"ok": True, "markdown": "# Example Domain", "content_hash": "x", "engine": "archive"},
+     {"ok": True, "markdown": "# Example Domain\n\nThis domain is for use in documentation examples without needing permission.", "content_hash": "x", "engine": "archive"},
      {"url": "https://example.com", "format": "md"}),
     ("treg.web.search", {"q": "rust web crawler"},
      {"results": [{"title": "spider", "url": "https://github.com/spider-rs/spider", "snippet": "s", "source": "gs"}], "n": 1},
@@ -3240,6 +3432,120 @@ async def test_crawl4ai_answers_scrape_and_search_first_by_default(clients, monk
         assert seen[0][3] == first_seen
     else:
         assert seen[0][2] == {"q": "rust web crawler"}
+    get_settings.cache_clear()
+
+
+_WALL = "Checking your browser before accessing shop.example. Please verify you are human."
+
+
+async def test_a_wall_page_walks_at_most_two_more_providers_then_returns_the_wall_marked(clients, monkeypatch):
+    """Every provider often returns the same wall, and some bill it: after the first wall the walk
+    asks at most two more, then answers with the first wall as a weak answer that says why. A real
+    page from one of those two is the answer."""
+    for name in ("CRAWL4AI", "FIRECRAWL", "LINKUP", "SERPER"):
+        monkeypatch.setenv(f"TREG_PLATFORM_KEY_{name}", f"PLATFORM-{name}")
+    monkeypatch.setenv("TREG_PLATFORM_PROVIDERS", "crawl4ai,firecrawl,linkup,serper")
+    get_settings.cache_clear()
+    prefer = {"X-Treg-Route-Prefer": "crawl4ai,firecrawl,linkup,serper"}
+
+    def answers(linkup_text):
+        return {"crawl4ai": [(200, {"ok": True, "markdown": _WALL, "text_len": len(_WALL)})],
+                "firecrawl": [(200, {"success": True, "data": {"markdown": _WALL}})],
+                "linkup": [(200, {"markdown": linkup_text})],
+                "serper": [(200, {"text": _ARTICLE, "markdown": _ARTICLE})]}
+
+    seen, summaries = [], []
+    real_summarize = call_route._summarize
+    monkeypatch.setattr(call_route, "_summarize", lambda parent, **o: (summaries.append(o), real_summarize(parent, **o)))
+    monkeypatch.setattr(call_service, "relay", _relay_by_provider(answers(_WALL), seen))
+    r = await clients.post("/call/treg.web.extract", json={"url": "https://shop.example/p/1"}, headers=prefer)
+    assert r.status_code == 200, r.text
+    meta = r.json()["_treg"]
+    assert [s[0] for s in seen] == ["crawl4ai", "firecrawl", "linkup"], "serper is never asked"
+    assert meta["outcome"] == "weak" and meta["served_by"] == "crawl4ai.web.scrape"
+    assert all(t["outcome"] == "weak" and t["detail"].startswith("question_miss") for t in meta["tried"])
+    assert [o["hit"] for o in summaries if "hit" in o] == [False], "the wall answered is recorded as a miss"
+
+    seen.clear()
+    monkeypatch.setattr(call_service, "relay", _relay_by_provider(answers(_ARTICLE), seen))
+    r = await clients.post("/call/treg.web.extract", json={"url": "https://shop.example/p/2"}, headers=prefer)
+    assert r.status_code == 200, r.text
+    assert [s[0] for s in seen] == ["crawl4ai", "firecrawl", "linkup"]
+    assert r.json()["_treg"]["outcome"] == "hit" and r.json()["_treg"]["served_by"] == "linkup.web.fetch"
+    get_settings.cache_clear()
+
+
+async def test_misses_after_a_wall_count_toward_the_bound(clients, monkeypatch):
+    """Once a wall is kept, every later answer counts, empty ones too: a wall then empty pages asks
+    three providers in all and answers with the wall, recorded as no hit."""
+    names = ("crawl4ai", "firecrawl", "linkup", "serper", "keenable")
+    for name in names:
+        monkeypatch.setenv(f"TREG_PLATFORM_KEY_{name.upper()}", f"PLATFORM-{name.upper()}")
+    monkeypatch.setenv("TREG_PLATFORM_PROVIDERS", ",".join(names))
+    get_settings.cache_clear()
+    seen, summaries = [], []
+    real_summarize = call_route._summarize
+    monkeypatch.setattr(call_route, "_summarize", lambda parent, **o: (summaries.append(o), real_summarize(parent, **o)))
+    monkeypatch.setattr(call_service, "relay", _relay_by_provider({
+        "crawl4ai": [(200, {"ok": True, "markdown": _WALL, "text_len": len(_WALL)})],
+        "firecrawl": [(200, {"success": True, "data": {"markdown": ""}})],
+        "linkup": [(200, {"markdown": ""})],
+        "serper": [(200, {"text": "", "markdown": ""})],
+        "keenable": [(200, {"content": ""})]}, seen))
+    r = await clients.post("/call/treg.web.extract", json={"url": "https://shop.example/p/4"},
+                           headers={"X-Treg-Route-Prefer": ",".join(names)})
+    assert r.status_code == 200, r.text
+    meta = r.json()["_treg"]
+    assert [s[0] for s in seen] == ["crawl4ai", "firecrawl", "linkup"]
+    assert [t["outcome"] for t in meta["tried"]] == ["weak", "miss", "miss"]
+    assert meta["outcome"] == "weak" and meta["served_by"] == "crawl4ai.web.scrape"
+    assert [o["hit"] for o in summaries if "hit" in o] == [False]
+    get_settings.cache_clear()
+
+
+async def test_a_provider_that_reports_its_own_failure_does_not_count_toward_the_wall_bound(clients, monkeypatch):
+    """A wall page under the provider's own failure flag is a failure, not a wall answer: it neither
+    uses one of the two extra asks nor can be returned as the weak answer."""
+    for name in ("CRAWL4AI", "FIRECRAWL", "LINKUP", "SERPER"):
+        monkeypatch.setenv(f"TREG_PLATFORM_KEY_{name}", f"PLATFORM-{name}")
+    monkeypatch.setenv("TREG_PLATFORM_PROVIDERS", "crawl4ai,firecrawl,linkup,serper")
+    get_settings.cache_clear()
+    seen = []
+    monkeypatch.setattr(call_service, "relay", _relay_by_provider({
+        "firecrawl": [(200, {"success": False, "data": {"markdown": _WALL}})],
+        "crawl4ai": [(200, {"ok": True, "markdown": _WALL, "text_len": len(_WALL)})],
+        "linkup": [(200, {"markdown": _WALL})],
+        "serper": [(200, {"text": _ARTICLE, "markdown": _ARTICLE})]}, seen))
+    r = await clients.post("/call/treg.web.extract", json={"url": "https://shop.example/p/3"},
+                           headers={"X-Treg-Route-Prefer": "firecrawl,crawl4ai,linkup,serper"})
+    assert r.status_code == 200, r.text
+    meta = r.json()["_treg"]
+    assert [s[0] for s in seen] == ["firecrawl", "crawl4ai", "linkup", "serper"]
+    assert [t["outcome"] for t in meta["tried"]] == ["miss", "weak", "weak", "hit"]
+    assert meta["served_by"] == "serper.web.extract"
+    get_settings.cache_clear()
+
+
+async def test_a_site_search_still_walks_on_to_the_provider_that_has_the_site(clients, monkeypatch):
+    """The bound is the contract's choice: web.search does not take it, so three off-site answers
+    do not stop the walk and the fourth provider's on-site row is the hit."""
+    for name in ("CRAWL4AI", "EXA", "KEENABLE", "PARALLEL"):
+        monkeypatch.setenv(f"TREG_PLATFORM_KEY_{name}", f"PLATFORM-{name}")
+    monkeypatch.setenv("TREG_PLATFORM_PROVIDERS", "crawl4ai,exa,keenable,parallel")
+    get_settings.cache_clear()
+    assert catalog_store.load().contracts["web.search"].question_miss_bound is False
+    off = {"results": [{"url": "https://www.reddit.com/r/vps", "title": "VPS prices"}]}
+    on = {"results": [{"url": "https://www.ovhcloud.com/en/vps/", "title": "VPS"}]}
+    seen = []
+    monkeypatch.setattr(call_service, "relay", _relay_by_provider(
+        {"crawl4ai": [(200, off)], "exa": [(200, off)], "keenable": [(200, off)], "parallel": [(200, on)]}, seen))
+    r = await clients.post("/call/treg.web.search", json={"q": "site:ovhcloud.com vps price"},
+                           headers={"X-Treg-Route-Prefer": "crawl4ai,exa,keenable,parallel"})
+    assert r.status_code == 200, r.text
+    meta = r.json()["_treg"]
+    assert [s[0] for s in seen] == ["crawl4ai", "exa", "keenable", "parallel"]
+    assert [t["outcome"] for t in meta["tried"]] == ["miss", "miss", "miss", "hit"]
+    assert meta["outcome"] == "hit" and meta["served_by"] == "parallel.web.search"
     get_settings.cache_clear()
 
 
@@ -4256,6 +4562,26 @@ def test_ignoring_a_sent_filter_outranks_a_contract_prefer_but_not_the_callers()
         "b.jobs.search", "a.jobs.search"]
     assert [c.endpoint["id"] for c in rank([blind, aware], prefer=["a"], given={"title", "country"},
                                            caller_prefer=True)] == ["a.jobs.search", "b.jobs.search"]
+
+
+def test_ask_last_goes_after_the_other_treg_key_candidates_but_never_before_the_callers_prefer():
+    """A contract's `ask_last` provider leads on price no more; a team's own key still comes first,
+    and a caller's own X-Treg-Route-Prefer still places it."""
+    def cand(eid, price, tier="platform"):
+        return Candidate(endpoint={"id": eid, "provider": eid.split(".")[0], "cost": {"type": "per_call"}},
+                         adapter=None, variant=("email",), tier=tier, price_micro=price, hit_rate=None,
+                         ok_rate=None, p50_ms=None, last_ok_days=None)
+    free, cheap, dear = cand("free.verify", 0), cand("cheap.verify", 1_000), cand("dear.verify", 9_000)
+    order = lambda **kw: [c.endpoint["id"] for c in rank([free, cheap, dear], **kw)]  # noqa: E731
+    assert order() == ["free.verify", "cheap.verify", "dear.verify"]
+    assert order(last=("free",)) == ["cheap.verify", "dear.verify", "free.verify"]
+    assert order(prefer=["free"], last=("free",)) == ["free.verify", "cheap.verify", "dear.verify"]
+    assert order(prefer=["free"], last=("free",), caller_prefer=True)[0] == "free.verify"
+    own, own_cheap = cand("free.verify", 0, tier="credential"), cand("cheap.verify", 1_000, tier="credential")
+    assert [c.endpoint["id"] for c in rank([own, cheap], last=("free",))] == ["free.verify", "cheap.verify"]
+    assert rank([own_cheap, own], last=("free",)) == rank([own_cheap, own]), \
+        "never reordered among a team's own keys"
+    assert rank([own, own_cheap], last=("cheap",)) == rank([own, own_cheap])
 
 
 async def test_an_oversized_child_answer_is_unbilled_and_the_next_provider_answers(

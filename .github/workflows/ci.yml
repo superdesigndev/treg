@@ -171,6 +171,7 @@ jobs:
           tests/test_money_trace_runner.py
           tests/test_asynctasks.py
           tests/test_alembic_baseline.py
+          tests/test_maintenance.py
           tests/test_org_flow_control_schema.py
           tests/test_workbench_table_schema.py
           tests/test_redundant_index_migration.py

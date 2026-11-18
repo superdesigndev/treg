@@ -854,6 +854,11 @@ async def list_connections(*, org_id: int) -> list[dict]:
                 granted = s.granted_scopes.split()
                 have = provider.satisfied_capabilities(granted)
                 view["capabilities"] = have
+                in_review = oauth_providers.review_pending_scopes(provider, granted)
+                view["scopes_in_review"] = in_review
+                view["review_note"] = (
+                    oauth_providers.review_pending_note(provider, in_review) if in_review else ""
+                )
                 # Providers don't backfill scopes onto an issued grant, so a capability the user never
                 # consented to can only be added by re-consenting. Naming the gap here is what turns an
                 # opaque upstream 403 into "reconnect to enable write".

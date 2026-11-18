@@ -25,7 +25,11 @@ Everything else in this file is guidance; these are the contract, and they win o
    it counts admitted logical calls, not money or provider credits.
    This temporary allowance permits calls when Redis state cannot be confirmed; it is not a durable cap.
 2. A hold (the balance `reserve` sets aside for one call) is settled or released exactly once, on
-   every path: timeout, cancellation and exceptions included.
+   every path: timeout, cancellation and exceptions included. A call of a team listed in
+   `money_allowance_org_ids` may instead take its reservation from the team's allowance (one
+   standing hold, mirrored in a shared counter); that take is charged or given back exactly once
+   on the same paths, and a take that is never finished stays in the allowance hold, never spent
+   and never charged, until the hold is closed.
 3. A request holds zero database connections while upstream, object-storage, KMS or payment-rail
    (chain or facilitator) I/O is in flight. Keep `reserve` and `settle` separate; read archive
    pointers, close the session, then fetch bytes; verify or settle a payment, then open the session;
@@ -60,6 +64,12 @@ Everything else in this file is guidance; these are the contract, and they win o
    One more, on every answer: the invitation headers `X-Treg-Hint`, `X-Treg-Hint-Text` and
    `X-Treg-Review` are treg's own, so an upstream's copies are removed before treg decides its
    invitation; clients show their text as treg's ([feedback](docs/context/architecture/feedback.md)).
+   One replacement, on treg's shared key only: an answer the capacity signature table reads as
+   treg's account out of money or out of its period allowance (`balance` or `quota`, any status, a
+   2xx included), that overflow did not serve and that settled at zero, reaches the caller,
+   uncharged, as the typed 503 `provider_capacity_unavailable` with `Retry-After`; a masked copy of
+   the provider's answer stays in the call's error evidence, and a routed call skips that provider.
+   A team's own key is relayed unchanged.
    A live-verified free catalog endpoint may declare an anonymous fallback; its empty binding list
    omits credential injection but does not strip or rewrite caller headers.
    Routed endpoints and overflow wrap the child's answer and say so; they never alter it. A routed
@@ -70,7 +80,11 @@ Everything else in this file is guidance; these are the contract, and they win o
    same address, each attempt billed as usual, and reports it in `_treg.confirmation`; the answer
    returned is the first provider's, unaltered. With `X-Treg-Route-Decisive`, an email check keeps
    asking providers until one answers valid or invalid, each attempt billed as usual, and reports it
-   in `_treg.decision`; the answer returned is the deciding provider's, unaltered. Responses needing settlement or ownership evidence are buffered by the application
+   in `_treg.decision`; the answer returned is the deciding provider's, unaltered. With
+   `X-Treg-Route-Domain-Match: strict`, an email find that sent a domain keeps asking providers past a
+   hit at another mail domain, each attempt billed as usual, at most two more such hits; the answer
+   returned is the first on-domain hit, or else the first off-domain one, unaltered and flagged
+   (`_treg.domain_match: false`). Responses needing settlement or ownership evidence are buffered by the application
    up to 8 MiB; exceeding that limit fails without charging, never returns a successful prefix.
    An endpoint declaring `spooled_response` (inline media) instead reads its metered 2xx to an
    unlinked temp file under a per-body cap and per-process budget, settles from only the paths its
@@ -165,7 +179,8 @@ agents then built against a constitution that was wrong.
   credentials, catalog prices and balances (plus, when a policy extension asks `call_admission`,
   the team's first owner and whether it ever bought credit), and writes only what
   `tests/test_call_architecture.py`
-  allowlists (the ledger entries, idempotency claims, OAuth refresh, audit and telemetry, first-call
+  allowlists (the ledger entries, the allowance counter, its refills and queued call charges,
+  idempotency claims, OAuth refresh, audit and telemetry, first-call
   markers, tag budgets, capacity marks, overflow spend, the member's daily-cap slot, the per-team
   archive-question marks, durable provider-resource ownership, the task an async answer names,
   Redis org/endpoint quota admission counters, and the shared provider rate window's members). Extend the
@@ -330,3 +345,12 @@ chooses only in the two disclosed cases of non-negotiable 4.
 - This repository is public: flag anything the Public repository section says must not be
   committed.
 - Skip speculative edge cases: report a bug only with a concrete path real usage can hit.
+- Flag as P1 a degraded mode (a fallback, fail-open path, breaker or retry window) that can stay
+  on after its cause is gone. Work it skips must not extend it; a new real failure may restart
+  its timer. A test must show that once the dependency recovers it exits within its stated
+  bound while traffic continues.
+- When a change moves work from the key-value store or a queue onto the database on the call or
+  money path, follow the real path: which rows it contends on, how many pool connections are held
+  while it waits, and what bounds its concurrency. Ask for that evidence when the PR lacks it.
+  Flag P1 when fallback traffic, from one team or several at once, can exhaust the shared pool and
+  block other calls.

@@ -46,7 +46,8 @@ contracts:
     advice_unverified: "This address was found, not confirmed deliverable (verified != true). Send X-Treg-Route-Verify: true and treg checks it with treg.people.email.verify in the same call, or run that check yourself before outreach — a fraction of a cent, and it catches catch-all domains and dead mailboxes."
     # Attached as `_treg.advice` when the hit's mailbox domain differs from the domain the caller
     # sent (`_treg.domain_match: false`). LinkedIn-only children ignore the domain and often return
-    # a former employer; the flag discloses it, the answer is not altered.
+    # a former employer; the flag discloses it, the answer is not altered. Its presence also opens
+    # `X-Treg-Route-Domain-Match: strict` (route.py), which keeps looking past such a hit.
     advice_domain_mismatch: "The address is at a different domain than the one you sent (_treg.domain_match: false). A LinkedIn-only provider often returns a former employer. Treat this as a possible stale hit: prefer a provider that takes domain, or re-ask with X-Treg-Route-Prefer naming one that does."
     # `X-Treg-Route-Verify`: checks every hit, a finder's own `verified` included; BounceBan first here only.
     # The check wins over the finder's claim: a `verified: true` hit it does not find valid says so.
@@ -195,6 +196,32 @@ contracts:
     # Never `verified`: a live line is not proof it is this person's number.
     verdict: {from: live_status, words: [live, dead, unknown]}
 
+  # One Findymail child; settle needs a verified miss predicate for per_success empty bodies.
+  companies.tech_stack:
+    summary: "The technologies detected on one company domain — Findymail technologies; miss judging only, never routed"
+    routed: false
+    identity:
+      - {domain: str}
+    filters: {}
+    output:
+      technologies: {type: list, required: true, note: "the provider's own technology rows (name, category, last detected)"}
+      count: {type: int}
+    miss: "technologies == []"
+    idempotent: true
+
+  # One Aviato child; settle needs a verified miss predicate for per_success empty bodies.
+  people.contact.get:
+    summary: "A person's known email addresses — Aviato contact info; miss judging only, never routed"
+    routed: false
+    identity:
+      - {linkedin_url: url}
+    filters: {}
+    output:
+      emails: {type: list, required: true, note: "the provider's own email rows (address and type)"}
+      count: {type: int}
+    miss: "emails == []"
+    idempotent: true
+
   # One Enrichlayer child; settle needs a verified miss predicate for per_success all-null bodies.
   people.profile.from_phone:
     summary: "Find social profiles from a contact phone number — Enrichlayer reverse phone; miss judging only, never routed"
@@ -257,6 +284,8 @@ contracts:
     # not a miss, and catch-all is kept apart from `risky` so it can be counted on its own.
     # `decisive`: the words that answer the question, for `X-Treg-Route-Decisive` (route.py).
     verdict: {from: status, words: [valid, invalid, catch_all, risky, unknown], decisive: [valid, invalid]}
+    # ContactOut's free verifier answers most calls on treg's key with a 429; asked first on price, it adds a refused attempt to most calls.
+    ask_last: [contactout]
 
   people.enrich:
     summary: "Enrich a person from an email, a LinkedIn URL or a name + company domain — treg picks the provider and names the one that served"
@@ -1516,6 +1545,8 @@ contracts:
       pages: {type: list, required: true, note: "the provider's own extracted page objects; raw is the same body"}
       count: {type: int}
     miss: "pages == []"
+    question_miss: "wall_page(pages)"   # a captcha, bot check, login or cookie wall is not the page
+    question_miss_bound: true   # every provider returns the same wall: ask two more, then answer with it, marked
     idempotent: true
     empty_is_failure: true   # an empty answer is the provider failing the job
 

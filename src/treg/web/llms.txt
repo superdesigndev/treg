@@ -67,6 +67,16 @@ mention treg's other skills (the ones the installer named; each is described in
 to star the project: `gh api -X PUT user/starred/superdesigndev/treg`,
 or open https://github.com/superdesigndev/treg.
 
+<!--agentpay-->
+**No account? Pay per call with a wallet.** An agent with a stablecoin wallet can call a priced
+catalog tool with no signup and no token: send `{BASE}/call/<id>` over HTTP without
+`X-Treg-Token`, and treg answers 402 with a payment challenge (the body's `protocols` names MPP,
+x402 or both). Pay it and send the same request again; what the call does not use stays as the
+wallet's credit for its next calls, and is never paid back as money. Let a client do it: pympp
+(Python) or the mppx library (`Mppx.create`). The `mppx` command line (0.20.1) cannot yet pay
+from a wallet with no credit. The skill's "Pay with a wallet" section has the rules.
+
+<!--/agentpay-->
 **The loop: search, read, call.**
 
     treg catalog search "backlinks for a domain"   # tools that do the job, with prices
@@ -85,8 +95,8 @@ for `https://api.dataforseo.com/v3/serp/...`), runs the catalog tool on that pat
 would; a path no catalog tool lists is a 404 with `X-Treg-Error: 1`, never relayed.
 
 The MCP server at `{BASE}/mcp/` takes a bearer header or OAuth, and offers `catalog_search`,
-`catalog_get`, `call`, `call_media` (audio), `resources_list`, `balance`, `my_tools`,
-`catalog_request`, `feedback`, `review` and `mark`.
+`catalog_get`, `call`, `call_media` (audio), `call_result`, `resources_list`, `balance`,
+`my_tools`, `catalog_request`, `feedback`, `review` and `mark`.
 <!--hub-->
 Publishing a hub tool adds `hub_create`, `hub_update` and `hub_mine`.
 <!--/hub-->
@@ -105,6 +115,10 @@ Publishing a hub tool adds `hub_create`, `hub_update` and `hub_mine`.
   treg picks the provider, falls back when one fails or misses, and bills only the answer it
   returns. Name a provider only when you need fields only it has. To page a list, send
   `output.next_cursor` back as `cursor` with the same body; `_treg.paging` says when to ask another provider.
+- Provider search filters and operators (a place, a domain list, `site:`, quoted phrases) are
+  best-effort: check the rows against your filters, and on routed people search send
+  `X-Treg-Route-Strict-Filters: 1` to skip providers known to take a sent place or company only as a
+  hint.
 <!--/routed-->
 - Choosing a provider yourself: first the one whose inputs match what you hold, then measured
   reliability, then price. `treg catalog get <id>` compares the job's ten most reliable and cheapest
@@ -116,10 +130,13 @@ Publishing a hub tool adds `hub_create`, `hub_update` and `hub_mine`.
   `X-Treg-Route-Max-Cost` header caps each call, not the loop.
 - A 4xx from the provider (other than 429) is about your request: fix it rather than retrying it with
   another provider. After a 429 or a 5xx, try the next provider of the job and say which one you
-  switched to. treg's own refusals say in their body what to do.
+  switched to. treg's own refusals say in their body what to do. A 4xx carrying
+  `X-Treg-Review-Pending` names Meta scopes still waiting for app review of treg's app; if the call
+  needs one of them, reconnecting will not help.
 - A found email or phone number is the provider's best match, not a confirmed one: verify it before
   anyone sends to it. On an email find where you sent a domain, also read `_treg.domain_match` —
-  a LinkedIn-only provider often returns a former employer.
+  a LinkedIn-only provider often returns a former employer. `X-Treg-Route-Domain-Match: strict`
+  keeps asking providers past an off-domain hit, each attempt at its own price.
 - Never ask for a provider key or paste one into code. Register it with treg once, and every agent
   on the team calls it without holding it.
 - When an answer or an error names a next step (a hint, `_treg.advice`, an error body), follow it.

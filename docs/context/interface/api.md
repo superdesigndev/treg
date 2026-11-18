@@ -252,8 +252,8 @@ per-team slot; [hub](../architecture/hub.md)). `* /catalog/call/{rest}` (hidden 
 OpenAPI) requires an exact catalog id and skips own-tool resolution, so a same-named team tool
 cannot shadow the catalog endpoint; from the credential ladder on it is the same call.
 
-A pool with no slot within 5 s answers `503 {"treg_saturated": true}` with `Retry-After: 2`
-(`_pool_saturated`), still captured as a `db_pool` fault and a `tool_called` event, and releases an
+A pool with no slot within 5 s, or a database that refuses a new connection (`DB_BUSY_ERRORS`),
+answers `503 {"treg_saturated": true}` with `Retry-After: 2` (`_pool_saturated`), still captured as a `db_pool` fault and a `tool_called` event, and releases an
 acquired idempotency label so a retry is not a false 409. A `platform_auth: anonymous` endpoint
 relays through a virtual tool with no bindings when no team credential exists (a public provider has
 none: a same-named team secret is ignored): no platform key, no
@@ -270,7 +270,7 @@ the provider.
 | `X-Treg-Async` | The effective async descriptor as compact JSON, attached before streaming; the router reads no provider bytes. |
 | `X-Treg-Served-Via` | `overflow:<aggregator>` when served through an overflow relay ([proxy-model](../architecture/proxy-model.md), Overflow); MCP results carry `served_via`. |
 | `X-Treg-Upstream-Failed` | `<json_path>=<value>` on a metered 2xx failing the endpoint's `expect` rule. Body untouched, settlement unchanged, never archived or counted found. |
-| `X-Treg-Capacity: exhausted` | A platform-tier answer the capacity table reads as treg's own account out, set from the same signal that strikes the breaker. Absent on own keys, treg's refusals, overflow, replays. |
+| `X-Treg-Review-Pending`, `X-Treg-Review-Pending-Text` | On a relayed 4xx whose body carries the provider's declared "app lacks this permission" code (`review_refusal`) while the connection holds scopes still in app review (`review_scopes` under `TREG_OAUTH_REVIEW_PENDING`): the scopes (only the endpoint's own `required_scopes` when declared), and one sentence saying the pending review may be the reason. Body untouched; MCP puts the sentence in `hint`, both CLIs on stderr. |
 | `X-Treg-Smoothed` | `wait=`, `retry=1` or `share_wait=` when treg spaced or re-sent a platform call ([capacity](../ops/capacity.md)). Informational. |
 | `X-Treg-Cache`, `X-Treg-Fetched-At`, `X-Treg-Age` | An archive hit ([archive](../architecture/archive.md)). |
 
@@ -278,7 +278,7 @@ the provider.
 
 | Status, `detail.error` | Contract |
 |---|---|
-| 503 `provider_capacity_unavailable` | treg's own account cannot serve now; refused before any hold, names `alternatives` and `resets_at`, never calls one for the caller. A team's own key is unaffected. `platform_overflow: false` in team settings opts into this instead of an overflow relay. |
+| 503 `provider_capacity_unavailable` | treg's own account cannot serve now; refused before any hold, names `alternatives` and `resets_at`, never calls one for the caller. Also replaces, uncharged, a platform answer the capacity table reads as treg's account out (any status, a 2xx included) that overflow did not serve. Both carry `Retry-After`: the seconds until `resets_at` when known, else 60. A team's own key is unaffected. `platform_overflow: false` in team settings opts into this instead of an overflow relay. |
 | 503 `provider_paused` | `TREG_PAUSED_PROVIDERS` lists the provider; refused before any hold, token refresh or upstream request, on catalog ids, connection tools and URL passthrough alike. Discovery leaves its endpoints out, connect routes refuse, existing connections are never changed (listed with `paused: true`), and `GET /meta` carries `paused_providers`. |
 | 429 `org_*` | Published org flow-control refusals ([org-flow-control](../architecture/org-flow-control.md)). |
 | 429 `share_busy` | Waited too long for a fair-share place; not charged. |
@@ -304,9 +304,13 @@ X-Treg-Cost-Micro: 0                     a replay charges nothing
 X-Treg-Original-Cost-Micro: <charge>     what the first call cost (or reserved)
 ```
 
-422 when a key is reused for a different request, 409 while the first call is in flight. Over MCP
-it is the `idempotency_key` argument and a replay carries `replayed: true`. Storage rules:
-[money](../architecture/money.md).
+422 when a key is reused for a different request, 409 while the first call is in flight. The
+request is compared by method, path, query and body; a JSON body by its parsed value, so the same
+object with its keys in another order or other whitespace is the same request
+(`_canonical_json`, bodies up to `_CANONICAL_MAX_BYTES`). The 409 (`idempotency_in_progress`) carries `Retry-After` and names the first
+call in `detail.call_id`. Over MCP it is the `idempotency_key` argument and a replay carries
+`replayed: true`; `call_result` lists the team's recent calls and reads one's stored answer
+(`GET /calls`, `GET /calls/{id}/result`). Storage rules: [money](../architecture/money.md).
 
 ### `X-Treg-Keep-Reported-Charge` on `/call/`
 

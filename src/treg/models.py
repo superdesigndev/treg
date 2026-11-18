@@ -1121,8 +1121,8 @@ class Hold(SQLModel, table=True):
     purchased_only: bool = Field(
         default=False, sa_column=Column(Boolean, nullable=False, server_default=text("false")),
     )
-    # A team's standing allowance rather than one call's reservation, and when its holder last
-    # renewed it. Nothing sets either yet.
+    # A team's standing allowance rather than one call's reservation, and the instant until
+    # which calls may be admitted against it (set by each refill).
     allowance: bool = Field(
         default=False, sa_column=Column(Boolean, nullable=False, server_default=text("false")),
     )
@@ -1141,6 +1141,13 @@ class CallCharge(SQLModel, table=True):
     org_id: int = Field(index=True)
     endpoint_id: str = Field(default="")
     amount_micro: int = Field(sa_type=BigInteger)  # what the team owes for the call, margin applied
+    # The part of `amount_micro` the call never set aside: owed to the balance, not to the
+    # allowance hold, which still stands behind other calls.
+    overrun_micro: int = Field(
+        default=0, sa_column=Column(BigInteger, nullable=False, server_default=text("0")))
+    # `created_at` of the allowance hold the call set its money aside from. Only that hold pays
+    # for what the call set aside: one opened since stands behind other calls.
+    hold_created_at: NaiveUTC | None = Field(default=None)
     meta: dict = Field(default_factory=dict, sa_column=Column(JSON, nullable=False))
     created_at: NaiveUTC = Field(default_factory=_now)
 

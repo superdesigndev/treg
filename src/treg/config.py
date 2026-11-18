@@ -222,6 +222,17 @@ class Settings(BaseSettings):
             "TREG_MONEY_ADMISSION_RETRY_AFTER_S", "TREG_ORG_CONCURRENCY_RETRY_AFTER_S",
             "money_admission_retry_after_s"))
 
+    # Orgs whose eligible metered calls spend from a standing allowance instead of one hold per
+    # call (money.md "Allowance"); [] = none. Needs the shared key-value store.
+    money_allowance_org_ids: list[PositiveInt] = Field(default_factory=list)
+    # What a refill brings the allowance counter up to, in micro-USD.
+    money_allowance_chunk_micro: int = Field(default=1_000_000, ge=1, le=1_000_000_000)
+    # How long after a refill the counter admits calls. A hold not refilled for this long plus
+    # the hold lifetime has nobody spending from it and is closed.
+    money_allowance_fresh_s: int = Field(default=30, ge=1, le=3600)
+    # How long finished calls wait to share one insert of their charges.
+    money_allowance_linger_ms: int = Field(default=5, ge=0, le=1000)
+
     # Orgs whose untagged free platform calls take no $0 hold (money.md "holdless"); [] = none.
     holdless_free_org_ids: list[PositiveInt] = Field(default_factory=list)
 
@@ -262,6 +273,18 @@ class Settings(BaseSettings):
     # too small and real traffic gets 503s, too large and the bulkhead is decorative, and neither is
     # visible from a test. A wrong number must be a dashboard edit, not a deploy.
     db_pool_overrides: str = ""
+
+    # `python -m treg upgrade` on PostgreSQL (docs/context/ops/deploy.md "PostgreSQL lock
+    # queueing"). The lock wait stays above PostgreSQL's default `deadlock_timeout` (1 s): that is
+    # when a waiting ALTER makes an ordinary autovacuum give up its lock, so a wait of exactly 1 s
+    # can time out at the instant it would have won.
+    migration_lock_timeout_s: float = Field(default=2.0, gt=1, le=5)
+    migration_lock_retry_attempts: int = Field(default=30, ge=1, le=200)
+    migration_lock_retry_pause_s: float = Field(default=2.0, ge=0, le=60)
+    migration_lock_retry_budget_s: float = Field(default=600.0, gt=0)
+    migration_lock_holder_check: bool = True
+    migration_lock_holder_check_skip: str = ""
+    migration_lock_holder_max_xact_s: float = Field(default=30.0, gt=0)
 
     # Fernet key (urlsafe base64, 32 bytes). Generate with `treg keygen` (see crypto.py).
     # Empty in dev means an ephemeral key is minted at startup (secrets won't survive a restart).
@@ -457,6 +480,7 @@ class Settings(BaseSettings):
     # Enrichment slots: fund the accounts and set the keys before naming any of these in
     # TREG_PLATFORM_PROVIDERS.
     platform_key_companyenrich: str = ""  # Bearer key
+    platform_key_fundable: str = ""  # Bearer API key
     platform_key_corpoapi: str = ""      # X-API-Key; prepaid USD balance, $0.05 per paid call, 100 free on signup
     platform_key_oceanio: str = ""        # X-Api-Token; fx.yaml usd is null so tier 4 stays refused until priced
     platform_key_predictleads: str = ""   # base64 of "api_key:api_token" (HTTP Basic, like dataforseo)
@@ -906,22 +930,30 @@ class Settings(BaseSettings):
     def agent_payments_stripe_key(self) -> str:
         return self.agent_payments_stripe_secret_key or self.stripe_secret_key
 
-    @model_validator(mode="after")
-    def _agent_payments_configuration(self):
+    def check_agent_payments(self) -> None:
+        """Refuse to configure the payment rails with one error naming every problem. Called where
+        the rails are configured, never from `Settings()`: the payment settings live in a shared
+        environment group, and a process that runs no payment code must not fail on a missing or
+        incomplete one. A value of the wrong type still fails `Settings()` everywhere."""
+        if problems := self.agent_payments_problems():
+            raise ValueError("agent payments cannot start: " + "; ".join(problems))
+
+    def agent_payments_problems(self) -> list[str]:
+        """Every payment setting that is malformed, and, with the feature on, every one the enabled
+        rails are missing or get wrong."""
+        problems = []
         for name in ("agent_payments_tempo_recipient", "agent_payments_x402_pay_to",
                      "agent_payments_tempo_currency", "agent_payments_x402_asset"):
             value = getattr(self, name)
             if value and not re.fullmatch(r"0x[0-9a-fA-F]{40}", value):
-                raise ValueError(f"{name} must be a 0x-prefixed 20-byte address")
+                problems.append(f"TREG_{name.upper()} as a 0x-prefixed 20-byte address")
         if bool(self.agent_payments_x402_cdp_api_key_id) != bool(self.agent_payments_x402_cdp_api_key_secret):
-            raise ValueError("set both TREG_AGENT_PAYMENTS_X402_CDP_API_KEY_ID and _SECRET, or neither")
+            problems.append("both TREG_AGENT_PAYMENTS_X402_CDP_API_KEY_ID and _SECRET, or neither")
         if self.agent_payments_enabled:
-            if problems := self._agent_payments_problems():
-                raise ValueError("agent payments cannot start: " + "; ".join(problems))
-        return self
+            problems += self._agent_payments_missing()
+        return problems
 
-    def _agent_payments_problems(self) -> list[str]:
-        """Every setting the enabled rails are missing or get wrong, so one start names them all."""
+    def _agent_payments_missing(self) -> list[str]:
         coinbase = "https://api.cdp.coinbase.com/platform/v2/x402"
         base_usdc = "0x833589fcd6edb6e08f4c7c32d4f71b54bda02913"
         problems = []
@@ -1143,7 +1175,7 @@ class Settings(BaseSettings):
     instagram_client_secret: str = ""
     # Comma-separated registry review keys that do not yet have production access. Remove one key
     # when its review is approved; set an explicit empty value when all reviews are complete.
-    oauth_review_pending: str = "instagram-login,page-messages"
+    oauth_review_pending: str = "instagram-login,page-messages,page-engagement"
     # Comma-separated provider service ids this deployment has paused (TREG_PAUSED_PROVIDERS), e.g.
     # one whose upstream access this deployment's app has lost. A paused provider leaves catalog
     # search and the connect listing, and its calls and connects are refused with a typed 503
@@ -1413,7 +1445,7 @@ class Settings(BaseSettings):
     # send (dev mode still returns the code; prod without a key silently skips the send). From must
     # be a Resend-verified domain.
     resend_api_key: str = ""
-    email_from: str = "tools-registry <no-reply@treg.to>"
+    email_from: str = "treg <no-reply@treg.to>"
 
 
 @lru_cache

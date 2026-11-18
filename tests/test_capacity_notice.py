@@ -29,13 +29,12 @@ def test_the_notice_says_not_charged_only_on_a_zero_charge():
     assert account_out_notice({"X-Treg-Cost-Micro": "0"}) is None
 
 
-async def test_an_out_of_credit_platform_answer_is_relayed_untouched_and_flagged(clients, platform_on, monkeypatch):
+async def test_an_out_of_credit_platform_answer_is_treg_capacity_refusal(clients, platform_on, monkeypatch):
     monkeypatch.setattr(call_service, "relay", _fake_relay(402, OUT))
     r = await clients.get(f"/call/{EP}?aweme_id=7")
-    assert r.status_code == 402 and r.content == OUT, "the body stays the provider's"
-    assert r.headers["x-treg-capacity"] == "exhausted"
-    assert r.headers["x-treg-cost-micro"] == "0"
-    assert "x-treg-error" not in r.headers
+    assert r.status_code == 503 and r.json()["detail"]["error"] == "provider_capacity_unavailable"
+    assert "vendor.example" not in r.text, "the provider's wallet details stay out"
+    assert r.headers["x-treg-error"] == "1"
 
 
 async def test_an_ordinary_provider_error_is_not_flagged(clients, platform_on, monkeypatch):
@@ -63,10 +62,8 @@ async def _mcp_call(clients, monkeypatch) -> dict:
 
 async def test_mcp_gives_the_notice_without_the_providers_body(clients, platform_on, monkeypatch):
     out = await _mcp_call(clients, monkeypatch)
-    assert out["status"] == 402 and out["call_id"] and out["cost_usd"] == 0
-    assert "body" not in out, "the provider's wallet details stay out"
-    assert out["whose_error"] == "treg" and out["hint"] == NOTICE
-    assert "vendor.example" not in json.dumps(out)
+    assert out["status"] == 503 and out["whose_error"] == "treg"
+    assert "vendor.example" not in json.dumps(out), "the provider's wallet details stay out"
 
 
 async def test_mcp_never_blames_the_teams_balance_for_its_own_keys_402(clients, platform_on, monkeypatch):

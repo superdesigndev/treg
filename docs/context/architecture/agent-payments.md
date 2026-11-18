@@ -95,7 +95,10 @@ until the task ends and that polling with the same wallet is free.
 While the feature is on, catalog search rows and tool details carry `wallet`
 (`agent_payments.wallet_view`): `{payable: true, protocols, minimum_payment_micro, fee_bps, note}`, or
 `{payable: true, free_for_task_owner: true, note}` for an async utility, or
-`{payable: false, reason, note}` with the same reasons as the 401. Off, the field is absent. Only `/call/` takes this
+`{payable: false, reason, note}` with the same reasons as the 401. Off, the field is absent.
+The agent-facing files (`llms.txt`, `skill.md`) carry the wallet road inside
+`<!--agentpay-->...<!--/agentpay-->` blocks, kept only while `agent_payments.enabled()`
+(`routers.web._strip_routed`), so a deployment with the feature off never teaches it. Only `/call/` takes this
 path; `/catalog/call/`, `/table/` and MCP do not.
 
 ## The payer team: how a keyless payer fits the money rules
@@ -374,8 +377,13 @@ default `finalized`), `..._x402_cdp_api_key_id` and `..._x402_cdp_api_key_secret
 `agent_payments_max_quotes_per_ip_minute`, `agent_payments_max_verifications_minute`. Every
 address is checked to be 20 bytes.
 
-With the feature on, startup checks the whole set and refuses with one error that names every
-problem (`Settings._agent_payments_problems`): the secret; at least one rail switch; each enabled
+The check runs where the rails are configured (`bootstrap.configure_agent_payments`: the web app
+and `treg-worker agentpay reconcile`), never in `Settings()`, so a scheduled worker that shares the
+environment but runs no payment code starts with payment settings missing or incomplete. A value
+of the wrong type (a `TREG_AGENT_PAYMENTS_SETTLEMENT` outside `wallet`/`stripe`, a non-integer
+chain id, a bound broken) still fails `Settings()` in every process, as any setting does. There it refuses
+with one error that names every problem (`Settings.check_agent_payments`): a malformed address or
+a CDP key missing one half, always; with the feature on, also the secret; at least one rail switch; each enabled
 rail's recipient; for `stripe` settlement a Stripe key and an explicit Tempo currency; a Tempo RPC API key only
 with its RPC URL; on Base
 mainnet a CDP key, its own RPC URL, Base mainnet USDC as the asset and its EIP-712 name `USD Coin`; a CDP key only

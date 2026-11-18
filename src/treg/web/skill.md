@@ -67,6 +67,8 @@ Gmail dots) share it.
   `sort: "newest"`; `query` may then be empty.
 - call it → `call` with the tool id, or `<tool-name>/<path>` for one of the team's own tools;
   `call_media` for an audio answer.
+- a call whose answer you never received (a timeout) → `call_result` lists the team's latest
+  calls and reads a finished one's answer; check it before calling again.
 - the team's own tools → `my_tools`; durable provider objects such as cloned voices →
   `resources_list`; the balance → `balance`; feedback → `feedback`; a review → `review`; a result
   you later found wrong or confirmed → `mark`.
@@ -133,9 +135,17 @@ How a routed call works:
 - A filter the serving provider could not apply is named in `X-Treg-Ignored-Filters` and
   `_treg.ignored_filters`: filter the rows yourself, or send `X-Treg-Route-Strict-Filters: 1` to be
   refused with an unbilled 422 instead.
+- Provider search filters and operators (a place, a domain list, `site:`, quoted phrases) are
+  best-effort: check the rows against your filters. A parameter `treg catalog get` notes as "a
+  hint, not a filter" steers the ranking only. On routed people search, a provider known to take a
+  sent place or company only as a hint is named in `_treg.ignored_filters`, so
+  `X-Treg-Route-Strict-Filters: 1` skips it.
 - When you sent a `domain` on an email find, `_treg.domain_match` (and `X-Treg-Domain-Match`) says
   whether the hit's mailbox domain matches it. A LinkedIn-only provider often returns a former
-  employer; the hit is still billed — read the flag before treating the address as current.
+  employer; the hit is still billed — read the flag before treating the address as current. When
+  you need an address at that domain, send `X-Treg-Route-Domain-Match: strict`: an off-domain hit
+  no longer ends the call, the next providers are asked (each attempt billed at its own price), and
+  the first off-domain answer comes back (`_treg.outcome: weak`) only when none is on-domain.
 - A routed call ends on the first answer its contract's `miss` does not reject (`stops_at` in
   `treg catalog get`), even a thin one. When you need more, send `X-Treg-Route-Complete: 1`: it
   keeps going until an answer fills every `complete` field (`routing.contract.complete` in
@@ -279,6 +289,50 @@ each call, not the loop.
 - `treg balance` shows the balance and recent charges, and the dashboard's Activity page shows the
   settled cost of every call. `treg topup` adds funds or sets up automatic top-ups.
 
+<!--agentpay-->
+## Pay with a wallet, no account
+
+An agent with no treg account can pay for catalog calls one at a time with a stablecoin wallet.
+The payment is the sign-in: no signup, no token.
+
+1. Send `{BASE}/call/<id>` over HTTP with **no** `X-Treg-Token` and no session cookie. Only
+   catalog ids take this road; MCP, `/table/`, your own tools and URL passthrough need a team.
+2. treg answers 402 `payment_required`. The body gives the call's top price
+   (`estimated_cost_micro`), what to pay (`amount_micro`: that price, or `minimum_payment_micro`
+   when it is higher) and `protocols`. The challenges are in the headers: MPP
+   (`WWW-Authenticate: Payment`) and, where offered, x402 (`PAYMENT-REQUIRED`).
+3. Pay and send the same request again. A client does both: pympp (Python, `mpp.client.Mpp` with
+   `tempo.charge`) or the mppx library (`Mppx.create` with `tempo()`). The `mppx` command line
+   (0.20.1) stops at the `credit_insufficient` 402 below, so it cannot pay from a wallet with no
+   credit.
+
+- **Credit.** The call is charged its real price. The rest stays as this wallet's credit on treg,
+  on that network, and pays its next calls. Credit is never paid back as money, so pay only for
+  what you plan to use.
+- **Spending credit.** The first challenge asks for zero: a wallet with enough credit signs it and
+  pays nothing new. Too little credit answers 402 `credit_insufficient` with the payment challenge
+  only, and the client pays it.
+- **Headers.** Every answer carries `X-Treg-Payment: paid` or `credit`, `X-Treg-Credit-Micro`
+  (credit left) and `X-Treg-Cost-Micro`; a payment adds `X-Treg-Payment-Reference` (its
+  transaction).
+- **Tasks.** Polling a task or fetching its result is free for the wallet that started it (it signs
+  the zero-amount proof). Any other wallet gets 403 `async_resource_not_owned`.
+- **Your credit.** `GET {BASE}/agentpay/credit`, with the same zero-amount proof, returns the
+  wallet's credit and its last payments.
+
+When it refuses:
+
+- **401 `not_authenticated`**: this tool cannot be paid with a wallet; `reason` says why (for
+  example `routed`, `free`, `needs_connection`, `usage_priced`, `invalid_request` for parameters it
+  cannot price). Sign in and use a treg key for it.
+- **402 with another `reason`** (`payment_expired`, `invalid_challenge`, `payment_replayed`, ...):
+  the answer carries a fresh challenge; pay that one.
+- **503 `payment_outcome_unknown`**: the payment may have moved. Do not pay again for this call.
+  treg checks the chain and credits the wallet if it landed; read `/agentpay/credit` a few minutes
+  later.
+- **429 `rate_limited`**: wait `Retry-After` seconds.
+
+<!--/agentpay-->
 ## When a call fails
 
 treg's own refusals carry the header `X-Treg-Error: 1` (`whose_error: treg` over MCP); without it,
@@ -288,6 +342,7 @@ no JSON `detail` is never treg's.
 | you see | charged | what to do |
 |---|---|---|
 | a 4xx from the provider, other than 429 | no | Fix your request. Do not retry it with another provider. |
+| a 4xx with `X-Treg-Review-Pending` (`hint` over MCP) | no | The provider may not yet have approved treg's app for the scopes it names. If the call needs one of them, reconnecting does not help; tell the user the permission waits for the provider's app review. |
 | a 429 or 5xx from the provider | no | Try the next provider of the job, and say which. |
 | a timeout or dropped connection on your side | maybe | The provider may have answered and been paid. Repeat with the same `Idempotency-Key`; see below. |
 | 403 `capability_pinned` | no | A team admin pinned this job to one provider. Call `use_endpoint` from the body instead. |
@@ -300,8 +355,7 @@ no JSON `detail` is never treg's.
 | 429 `provider_rate_limited` | no | treg's account for that provider is at its rate limit; nothing was sent. Retry after `retry_after_s`, or call the routed tool. |
 | 429 `member_spend_cap_reached` | no | You reached your own daily spend limit on this team. Do not retry before `resets_at` (00:00 UTC; also the `Retry-After` header). Tell the user; a team admin can raise the limit. |
 | 429 `trial_allowance_reached` | no | A free trial pool on treg's key is used up for today; it resets at 00:00 UTC. Connect the team's own key. |
-| 503 `provider_capacity_unavailable` | no | treg's own account for that provider is out. Take one of the body's `alternatives`, use the team's own key, or retry after `resets_at` or a minute. |
-| `X-Treg-Capacity: exhausted` on any status | not when `X-Treg-Cost-Micro` is `0` | treg's own account for that tool refused for want of credit. Not your balance; try another tool. |
+| 503 `provider_capacity_unavailable` | no | treg's own account for that provider is out. Not your balance. Take one of the body's `alternatives`, use the team's own key, or retry after `resets_at` or a minute. |
 | 502 `route_failed` | no | No provider of a routed call answered; `tried` lists what each did. Nothing was charged; retry later. |
 | 409, 410 with an `idempotency_*` error | see below | See "Retrying without paying twice". |
 
@@ -322,7 +376,9 @@ first call's charge in `X-Treg-Original-Cost-Micro`.
   see what changed is a new call, and the old key would hand back the old answer. Reusing one for a
   different request is refused (422).
 - Idempotency keys belong to the caller and last 24 hours; a call that fails frees its key at once.
-- 409: the original call is still running; retry shortly.
+- 409: the original call is still running; retry with the same key after `Retry-After`. The
+  body names that call's `call_id`.
+- The body is compared as a value: the same JSON with its keys in another order is the same request.
 - 410 (`idempotency_response_lost`, `idempotency_response_too_large` over the 2 MB replay limit,
   `idempotency_response_not_retained` when provider terms forbid keeping the answer,
   `idempotency_outcome_unknown`): the first call was, or may have been, charged and its answer was

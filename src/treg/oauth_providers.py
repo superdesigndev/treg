@@ -200,6 +200,13 @@ class OAuthProvider:
     connect_default_capability_name: str = ""
     # Method used while the semantic default method is still behind a registry review key.
     review_fallback_authorization_method: str = ""
+    # Scopes the provider refuses for accounts without a role on treg's app until its app review
+    # is approved, keyed by the review key in `TREG_OAUTH_REVIEW_PENDING`; a grant still lists
+    # them. `review_refusal` is the JSON path of the provider's error code and the codes it uses
+    # for that refusal; `app_reviewer` is the company that runs the review.
+    review_scopes: tuple[tuple[str, tuple[str, ...]], ...] = ()
+    review_refusal: tuple[str, tuple[int, ...]] = ("", ())
+    app_reviewer: str = ""
     # Method assigned to grants created before explicit method identity existed. Empty means the
     # provider's normal default. This keeps compatibility policy in provider metadata.
     legacy_authorization_method: str = ""
@@ -957,6 +964,10 @@ _FB_READ = ["pages_show_list", "pages_read_engagement", "read_insights", "busine
 # discover_id_field/label_field read both listings.
 _META_BIZ_PAGE_LISTS = ("owned_pages.data", "client_pages.data")
 
+# Graph API error codes 10 and 200 mean the app itself lacks the permission, whatever the token
+# holds. https://developers.facebook.com/docs/graph-api/guides/error-handling
+_META_PERMISSION_REFUSAL = ("error.code", (10, 200))
+
 FACEBOOK = OAuthProvider(
     service="facebook",
     display_name="Facebook Pages",
@@ -983,6 +994,12 @@ FACEBOOK = OAuthProvider(
     client_id_setting="meta_client_id",
     client_secret_setting="meta_client_secret",
     appsecret_proof=True,
+    review_scopes=(
+        ("page-engagement", ("pages_manage_engagement", "pages_read_user_content")),
+        ("page-messages", ("pages_messaging",)),
+    ),
+    review_refusal=_META_PERMISSION_REFUSAL,
+    app_reviewer="Meta",
     category="Social media",
     summary=(
         "Your Pages' posts, comments and reach — and publishing to them."
@@ -1063,6 +1080,15 @@ INSTAGRAM = OAuthProvider(
     long_lived_exchange_style="instagram",
     default_capability_name="manage",
     review_fallback_authorization_method="facebook-page",
+    review_scopes=(
+        ("instagram-login", (
+            "instagram_business_content_publish", "instagram_business_manage_comments",
+            "instagram_business_manage_messages",
+        )),
+        ("page-messages", ("instagram_manage_messages", "pages_messaging")),
+    ),
+    review_refusal=_META_PERMISSION_REFUSAL,
+    app_reviewer="Meta",
     legacy_authorization_method="facebook-page",
     authorization_methods=(
         OAuthAuthorizationMethod(
@@ -3257,6 +3283,33 @@ COMPANYENRICH = OAuthProvider(
 )
 
 
+FUNDABLE = OAuthProvider(
+    service="fundable",
+    display_name="Fundable",
+    auth_kind="key",
+    token_label="API key",
+    token_placeholder="your Fundable API key",
+    token_header="Authorization",
+    token_format="Bearer {secret}",
+    setup_url="https://www.tryfundable.ai/api-access/",
+    setup_action_label="Get your Fundable API key",
+    setup_steps=(
+        "Sign up for a Fundable account.",
+        "Open API Access and create an API key.",
+        "Copy the key and paste it here.",
+    ),
+    auth_uri="", token_uri="",
+    scopes={},
+    client_id_setting="", client_secret_setting="",
+    category="Enrichment",
+    summary="Search companies, funding rounds, investors and people, and retrieve their funding histories.",
+    base_url="https://www.tryfundable.ai/api/v1",
+    docs_url="https://docs.tryfundable.ai",
+    # Free industry search rejects a bogus key with HTTP 401 INVALID_API_KEY.
+    probe_path="/industry/search?name=software",
+)
+
+
 OCEANIO = OAuthProvider(
     service="oceanio",
     display_name="Ocean.io",
@@ -4460,8 +4513,9 @@ REGISTRY: dict[str, OAuthProvider] = {
         SCRAPEGRAPHAI, SERPER, BRAVESEARCH, LITESCRAPE, CLORO, LOCALFALCON,
         # more Enrichment API-key providers
         LUSHA, CORESIGNAL, DIFFBOT, THECOMPANIESAPI, LEADMAGIC, ENRICHLAYER, FIBER_AI, CRUSTDATA, THEIRSTACK, JOBSPIPE, AVIATO,
-        COMPANYENRICH, CORPOAPI, OCEANIO, ADYNTEL, TOMBA, TRESTLEIQ, HLRLOOKUP, PREDICTLEADS, FINDYMAIL, ANYMAILFINDER, ENROW, FILTRAT, FILTRAT_FINDER, DROPCONTACT, BRANDDEV, ICYPEAS, LEADSFORGE,
-        INFLUENCERSCLUB, VILLAGE, VIRLO,
+        COMPANYENRICH, FUNDABLE, CORPOAPI, OCEANIO, ADYNTEL, TOMBA, TRESTLEIQ, HLRLOOKUP, PREDICTLEADS, FINDYMAIL, ANYMAILFINDER, ENROW, FILTRAT, FILTRAT_FINDER, DROPCONTACT, BRANDDEV, ICYPEAS, LEADSFORGE,
+        INFLUENCERSCLUB, VILLAGE,
+        VIRLO,
         # Places: intent-scored local search
         ATLY,
         # Market data API-key providers
@@ -4716,6 +4770,57 @@ def scope_label(scope: str) -> str:
     a far worse failure than showing the raw string for one line.
     """
     return SCOPE_LABELS.get(scope, scope)
+
+
+def review_pending_scopes(provider: OAuthProvider | None, granted: list[str]) -> list[str]:
+    """Granted scopes the provider still refuses because treg's app review is pending."""
+    if provider is None:
+        return []
+    return connection_authorization.review_pending_scopes(
+        provider.review_scopes, granted, get_settings().oauth_review_pending_set,
+    )
+
+
+def review_pending_note(provider: OAuthProvider, scopes: list[str]) -> str:
+    """The connection's note: these granted scopes wait for the provider's review of treg's app."""
+    reviewer = provider.app_reviewer or provider.display_name
+    return (
+        f"Pending {reviewer} App Review: {provider.display_name} refuses {', '.join(scopes)} "
+        "for accounts without a role on treg's app until the review is approved. Reconnecting "
+        "does not change this."
+    )
+
+
+def review_refusal_note(provider: OAuthProvider, scopes: list[str]) -> str:
+    """A refused call's note. The refusal code is also the provider's general permission error,
+    so it says what may be the reason, not what is."""
+    reviewer = provider.app_reviewer or provider.display_name
+    return (
+        f"This may be because {reviewer} has not yet approved {', '.join(scopes)} for treg's "
+        "app; if the call needs one of these, reconnecting will not help."
+    )
+
+
+def review_refusal_scopes(
+    provider: OAuthProvider | None, granted: list[str], body: object,
+    endpoint: dict | None = None, stored_method: str = "",
+) -> list[str]:
+    """Review-pending scopes behind a provider error body that says the app lacks a permission.
+
+    When the catalog declares the called endpoint's scopes, only those are named, and none when
+    the endpoint needs no pending scope."""
+    if provider is None:
+        return []
+    path, codes = provider.review_refusal
+    if not connection_authorization.is_review_refusal(path, codes, body):
+        return []
+    pending = review_pending_scopes(provider, granted)
+    if not endpoint or not endpoint.get("required_scopes"):
+        return pending
+    method_name = provider.authorization_method_name(stored_method)
+    method = next((m for m in provider.authorization_methods if m.name == method_name), None)
+    needed = set(connection_authorization.required_scopes(endpoint, method))
+    return [scope for scope in pending if scope in needed]
 
 
 def listing() -> list[dict]:
