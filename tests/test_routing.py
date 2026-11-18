@@ -2137,6 +2137,7 @@ _ARTICLE = ("CAPTCHA systems ask visitors to prove they are human before a form 
     ("Verifying you are human. This may take a few seconds. example.com needs to review the security of your "
      "connection before proceeding. Ray ID: 8f2a1c3b4d5e6f70 Performance & security by Cloudflare", True),
     ("Sign in to view Jane Doe's full profile. Join now. Email or phone. Password. Forgot password? Sign in.", True),
+    ("Forgot password? Enter your email and we will send you a link.", False),
     ("Press & Hold to confirm you are a human (and not a bot). Reference ID 1a2b3c4d-1234-5678", True),
     ("Please enable JS and disable any ad blocker", True),
     ("Click the button below to continue shopping\n\nContinue shopping\n\nConditions of Use Privacy Policy "
@@ -3416,6 +3417,34 @@ async def test_a_wall_page_walks_at_most_two_more_providers_then_returns_the_wal
     assert r.status_code == 200, r.text
     assert [s[0] for s in seen] == ["crawl4ai", "firecrawl", "linkup"]
     assert r.json()["_treg"]["outcome"] == "hit" and r.json()["_treg"]["served_by"] == "linkup.web.fetch"
+    get_settings.cache_clear()
+
+
+async def test_misses_after_a_wall_count_toward_the_bound(clients, monkeypatch):
+    """Once a wall is kept, every later answer counts, empty ones too: a wall then empty pages asks
+    three providers in all and answers with the wall, recorded as no hit."""
+    names = ("crawl4ai", "firecrawl", "linkup", "serper", "keenable")
+    for name in names:
+        monkeypatch.setenv(f"TREG_PLATFORM_KEY_{name.upper()}", f"PLATFORM-{name.upper()}")
+    monkeypatch.setenv("TREG_PLATFORM_PROVIDERS", ",".join(names))
+    get_settings.cache_clear()
+    seen, summaries = [], []
+    real_summarize = call_route._summarize
+    monkeypatch.setattr(call_route, "_summarize", lambda parent, **o: (summaries.append(o), real_summarize(parent, **o)))
+    monkeypatch.setattr(call_service, "relay", _relay_by_provider({
+        "crawl4ai": [(200, {"ok": True, "markdown": _WALL, "text_len": len(_WALL)})],
+        "firecrawl": [(200, {"success": True, "data": {"markdown": ""}})],
+        "linkup": [(200, {"markdown": ""})],
+        "serper": [(200, {"text": "", "markdown": ""})],
+        "keenable": [(200, {"content": ""})]}, seen))
+    r = await clients.post("/call/treg.web.extract", json={"url": "https://shop.example/p/4"},
+                           headers={"X-Treg-Route-Prefer": ",".join(names)})
+    assert r.status_code == 200, r.text
+    meta = r.json()["_treg"]
+    assert [s[0] for s in seen] == ["crawl4ai", "firecrawl", "linkup"]
+    assert [t["outcome"] for t in meta["tried"]] == ["weak", "miss", "miss"]
+    assert meta["outcome"] == "weak" and meta["served_by"] == "crawl4ai.web.scrape"
+    assert [o["hit"] for o in summaries if "hit" in o] == [False]
     get_settings.cache_clear()
 
 

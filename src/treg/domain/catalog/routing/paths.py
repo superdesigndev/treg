@@ -741,7 +741,8 @@ _WALL_GENERIC = tuple(_fold(p) for p in (
     "cookies must be enabled", "accept cookies to continue", "sign in to continue", "log in to continue",
     "login to continue", "sign in to view", "log in to view", "sign up to view", "join to view",
     "create an account to", "create a free account to", "you must be logged in", "please log in",
-    "please sign in", "forgot password"))
+    "please sign in"))
+_WALL_SECONDARY = (_fold("forgot password"),)   # counted only beside a common phrase, never alone
 
 
 def wall_page(page: Any) -> bool:
@@ -789,6 +790,7 @@ def wall_page(page: Any) -> bool:
     said = sum(f" {p} " in text for p in _WALL_GENERIC)
     if not said:
         return False
+    said += sum(f" {p} " in text for p in _WALL_SECONDARY)
     words = len(re.findall(r"\w+", raw))
     return words < (_WALL_GENERIC_WORDS if said > 1 else _WALL_GENERIC_ONE)
 

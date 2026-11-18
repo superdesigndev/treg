@@ -1245,6 +1245,7 @@ async def _run_routed(parent: CallContext, ep: dict, body_bytes: bytes, get_head
     winner: tuple[Candidate, dict, dict, bytes] | None = None
     answers: list[tuple] = []      # every attempt that returned rows, for X-Treg-Route-Merge
     weak_hits = 0
+    wall_seen = False   # a question_miss answer was kept: every later answer counts toward the bound
     best: tuple[int, tuple[Candidate, dict, dict, bytes]] | None = None   # best WEAK answer seen
     other_subject: list[tuple[str, tuple]] = []   # X-Treg-Route-Complete: answers about another identifier, never returned unconfirmed
     cost_capped = False            # true when any candidate was skipped due to max-cost ceiling
@@ -1592,6 +1593,7 @@ async def _run_routed(parent: CallContext, ep: dict, body_bytes: bytes, get_head
                                  f"question_miss: {plan.contract.question_miss}", ignored=ignored))
             if best is None:
                 best = (0, (cand, doc, core, raw))
+            wall_seen = True
             weak_hits += 1
             if weak_hits > MAX_WEAK_FALLBACKS:
                 break
@@ -1600,6 +1602,10 @@ async def _run_routed(parent: CallContext, ep: dict, body_bytes: bytes, get_head
             tried.append(Attempt(cand.endpoint["id"], cand.endpoint["provider"], "miss", response.status, charged,
                                  outcome.detail, ignored=ignored))
             if options.waterfall:
+                if wall_seen:
+                    weak_hits += 1
+                    if weak_hits > MAX_WEAK_FALLBACKS:
+                        break
                 continue
             winner = (cand, doc if doc is not None else {}, {}, raw)
             break
