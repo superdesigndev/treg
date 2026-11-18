@@ -2672,9 +2672,8 @@ def build_mcp_app(*, server: MCPServer | None = None, resource_version: str = "v
     # NoTransformResponses is outermost so the auth wrapper's own 401 challenges carry the header
     # too; gzip sits between so challenges and answers alike are origin-encoded.
     #
-    # Starlette compresses the whole body synchronously on the event loop, and its default level 9
-    # runs at a few MB/s: a multi-megabyte tool result held every request in the process for
-    # seconds. Level 1 is several times faster and still lets the edge pass the response through.
+    # Starlette compresses the whole body synchronously on the event loop; its default level 9 is
+    # several times slower than level 1.
     from starlette.middleware.gzip import GZipMiddleware
 
     return NoTransformResponses(GZipMiddleware(RequireAuthForProtectedTools(
