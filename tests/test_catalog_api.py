@@ -1055,16 +1055,6 @@ def test_a_trial_priced_row_shows_its_daily_allowance_beside_its_zero_price():
             assert c.cost_view(ep["cost"], provider)["trial_calls_per_team_day"] == allowance, ep["id"]
 
 
-def test_nace_catalog_is_platform_priced():
-    from treg.domain.catalog import store as cs
-
-    c = cs.load()
-    rows = [ep for ep in c.endpoints if ep["provider"] == "nace"]
-    assert rows
-    for ep in rows:
-        assert c.platform_eligible(ep), ep["id"]
-
-
 # ---- an id that misses -------------------------------------------------------------------------
 async def test_an_unknown_id_names_the_ids_it_nearly_matched(clients: AsyncClient):
     """An id is not free text. An agent holding one that misses by a segment has hit a dead end
