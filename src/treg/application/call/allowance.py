@@ -375,7 +375,9 @@ _charges = _ChargeWriter()
 # Freezes asked for and not yet taken by the store, per team.
 _freezes_due: dict[int, int] = {}
 _freeze_waiters: dict[int, list[asyncio.Future]] = {}
-_freeze_task: list[asyncio.Task | None] = [None]
+_freeze_tasks: dict[int, asyncio.Task] = {}
+_freeze_wake: dict[int, asyncio.Event] = {}
+_FREEZE_RETRY_S = 0.5
 
 
 async def overran(db, org_id: int | None, charged_micro: int, reserved_micro: int | None) -> bool:
@@ -402,8 +404,11 @@ def freeze(org_id: int) -> asyncio.Future | None:
     _freezes_due[org_id] = _freezes_due.get(org_id, 0) + 1
     tried = asyncio.get_running_loop().create_future()
     _freeze_waiters.setdefault(org_id, []).append(tried)
-    _freeze_task[0] = _ChargeWriter._ensure(
-        _freeze_task[0], _deliver_freezes, "treg-allowance-freezes")
+    _freeze_tasks[org_id] = _ChargeWriter._ensure(
+        _freeze_tasks.get(org_id), lambda: _deliver_freezes(org_id), "treg-allowance-freeze")
+    wake = _freeze_wake.get(org_id)
+    if wake is not None:
+        wake.set()
     return tried
 
 
@@ -414,32 +419,38 @@ async def _freeze_once(org_id: int) -> bool:
         return False
 
 
-async def _deliver_freezes() -> None:
-    delay = 0.5
-    while _freezes_due:
-        undelivered = False
-        for org_id in sorted(_freezes_due):
-            # One freeze stands for every settlement that asked before it was sent, and for
-            # none that asks while it is on its way: that one committed after a refill may
-            # already have read this freeze.
-            owed, waiters = _freezes_due[org_id], _freeze_waiters.pop(org_id, [])
-            taken = await _freeze_once(org_id)
-            if taken:
-                if _freezes_due[org_id] == owed:
-                    del _freezes_due[org_id]
-                else:
-                    _freezes_due[org_id] -= owed
-            else:
-                undelivered = True
-                log.error("allowance_freeze_undelivered org_id=%s; it will be sent again", org_id)
-            for tried in waiters:
-                if not tried.done():
-                    tried.set_result(taken)
-        if undelivered:
-            await asyncio.sleep(delay)
-            delay = min(delay * 2, 30.0)
-        else:
-            delay = 0.5
+async def _deliver_freezes(org_id: int) -> None:
+    """Send one team's freezes until the store has taken them all. A task per team: a team the
+    store keeps refusing does not hold up another's, and a freeze asked while this one waits to
+    try again is tried at once, so the settlement that asked waits for one attempt, not for
+    the pause."""
+    delay = _FREEZE_RETRY_S
+    wake = _freeze_wake[org_id] = asyncio.Event()
+    while org_id in _freezes_due:
+        # One freeze stands for every settlement that asked before it was sent, and for none
+        # that asks while it is on its way: that one committed after a refill may already
+        # have read this freeze.
+        owed, waiters = _freezes_due[org_id], _freeze_waiters.pop(org_id, [])
+        wake.clear()
+        taken = await _freeze_once(org_id)
+        if taken and _freezes_due[org_id] == owed:
+            del _freezes_due[org_id]
+        elif taken:
+            _freezes_due[org_id] -= owed
+        for tried in waiters:
+            if not tried.done():
+                tried.set_result(taken)
+        if taken:
+            delay = _FREEZE_RETRY_S
+            continue
+        log.error("allowance_freeze_undelivered org_id=%s; it will be sent again", org_id)
+        try:
+            await asyncio.wait_for(wake.wait(), delay)
+        except TimeoutError:
+            pass
+        delay = min(delay * 2, 30.0)
+    _freeze_wake.pop(org_id, None)
+    _freeze_tasks.pop(org_id, None)
 
 
 async def finish(org_id: int, call_id: str, epoch: int, reserved_micro: int, *,

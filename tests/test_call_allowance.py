@@ -135,7 +135,9 @@ async def store(monkeypatch):
     monkeypatch.setattr(runtime, "_in_flight", [0])
     monkeypatch.setattr(runtime, "_freezes_due", {})
     monkeypatch.setattr(runtime, "_freeze_waiters", {})
-    monkeypatch.setattr(runtime, "_freeze_task", [None])
+    monkeypatch.setattr(runtime, "_freeze_tasks", {})
+    monkeypatch.setattr(runtime, "_freeze_wake", {})
+    monkeypatch.setattr(runtime, "_FREEZE_RETRY_S", 0.001)
     return fake
 
 
@@ -878,11 +880,11 @@ async def test_a_freeze_the_store_did_not_take_is_sent_until_it_has(org_id, stor
     assert await call_settle._platform_settle(mk, 200, observed_override=900) == (900, 900)
     assert runtime._freezes_due == {org_id: 1} and store.counters[org_id].get("frozen", 0) == 0
     assert await runtime.take(org_id, 100) is None, "this process owes the team a freeze"
-    for _ in range(5):
-        await asyncio.sleep(0)
-    assert len(calls) >= 2 and runtime._freezes_due == {org_id: 1}, "still sending"
+    while len(calls) < 4:
+        await asyncio.sleep(0.001)
+    assert runtime._freezes_due == {org_id: 1}, "still sending"
     away[0] = False
-    await runtime._freeze_task[0]
+    await runtime._freeze_tasks[org_id]
     assert not runtime._freezes_due and store.counters[org_id]["frozen"] == 1
     assert await runtime.take(org_id, 100) == epoch
 
@@ -892,7 +894,7 @@ async def test_a_freeze_is_handed_over_before_the_request_can_be_cancelled(org_i
     await runtime.take(org_id, 100)
     assert runtime.freeze(org_id) is not None
     assert await runtime.take(org_id, 100) is None, "owed from the moment it is asked"
-    await runtime._freeze_task[0]
+    await runtime._freeze_tasks[org_id]
     assert store.counters[org_id]["frozen"] == 1 and not runtime._freezes_due
 
 
@@ -914,8 +916,28 @@ async def test_a_freeze_asked_while_another_is_on_its_way_is_sent_as_well(org_id
     second = runtime.freeze(org_id)
     arrive.set()
     assert await first is True and await second is True
-    await runtime._freeze_task[0]
     assert store.counters[org_id]["frozen"] == 2 and not runtime._freezes_due
+
+
+async def test_a_team_the_store_refuses_does_not_hold_up_anothers_freeze_or_its_own_next(
+        org_id, store, monkeypatch):
+    """Settlements wait for their freeze to be tried once. That wait must not include the pause
+    before another team's next attempt, nor the pause before this team's own."""
+    monkeypatch.setattr(runtime, "_FREEZE_RETRY_S", 30.0)
+    other, freeze, refused = org_id + 1, store.allowance_freeze, [True]
+
+    async def refuses_one_team(org, **kwargs):
+        return None if org == org_id and refused[0] else await freeze(org, **kwargs)
+
+    monkeypatch.setattr(store, "allowance_freeze", refuses_one_team)
+    assert await asyncio.wait_for(runtime.freeze(org_id), 1) is False
+    assert await asyncio.wait_for(runtime.freeze(other), 1) is True
+    assert await asyncio.wait_for(runtime.freeze(org_id), 1) is False, "tried at once, not after the pause"
+    refused[0] = False
+    assert await asyncio.wait_for(runtime.freeze(org_id), 1) is True
+    await asyncio.sleep(0)
+    assert not runtime._freezes_due and store.counters[org_id]["frozen"] == 1
+    assert not runtime._freeze_tasks and not runtime._freeze_wake
 
 
 async def test_an_overrun_outside_the_allowance_before_the_first_publish_holds_the_new_counter(

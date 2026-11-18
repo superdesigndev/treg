@@ -294,7 +294,9 @@ money moved, the purchased-credit gate.
   after the commit: asking for it is not a coroutine, it hands the freeze to a task of its own
   before the request awaits anything, so a cancelled request has still handed it over. The
   task sends until the store has taken it, and the process admits no call from that team's
-  counter meanwhile. One freeze taken stands for every settlement that asked before it was
+  counter meanwhile. There is a task per team, so a team the store keeps refusing does not
+  hold up another's freeze; and a freeze asked while the task waits to try again is tried at
+  once, so the settlement that asked waits for one attempt, never for the pause. One freeze taken stands for every settlement that asked before it was
   sent and for none that asked while it was on its way; those get another. A process that
   dies first loses the freezes it owed.
 - **The exact path and a queued charge.** A charge that is committed and not yet folded has
