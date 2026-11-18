@@ -282,9 +282,20 @@ money moved, the purchased-credit gate.
   path's balance gate decides: the stop the next reserve is after an overrun there. Each refill
   also compares the counter with the hold it just committed and takes back anything above it.
 - **A settlement outside the allowance that took more than its hold** (a tagged call, a routed
-  child, an async task) freezes the counter the same way, after its commit, when the team is
-  listed: it may have used the team's last credit, and calls admitted from the counter would not
-  meet the balance gate its own next reserve does.
+  child, an async task) freezes the counter the same way, after its commit: it may have used
+  the team's last credit, and calls admitted from the counter would not meet the balance gate
+  its own next reserve does. Whether to freeze is read in the settlement's own transaction,
+  after its ledger write: the team has an allowance hold (`allowance.has_allowance`). The hold
+  row decides, not the process's list of teams, which two processes can read differently
+  while a setting rolls out; and a refill that has not committed yet waits for the same
+  balance row, so it reads the balance after the overrun. The settlement is committed by
+  then, so a freeze the store did not take is owed: the process keeps sending it until the
+  store has it, and admits no call from that team's counter meanwhile. A process that dies
+  first loses the freeze it owed.
+- **The exact path and a queued charge.** A charge that is committed and not yet folded has
+  not moved the balance. `reserve`'s gate subtracts what the queue will take from the balance
+  (overruns, and what was set aside beyond the hold), so a call on the exact path cannot set
+  that money aside again while the fold is pending.
 - **What a call is told it was charged.** Normally the charge: its money was set aside, so the
   ledger will take exactly that. While the counter is frozen that may not be true, because the
   team's credit may not cover every queued charge. A call that ends then (the one that overran,

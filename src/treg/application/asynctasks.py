@@ -472,27 +472,19 @@ async def _finish(call_id: str, outcome: str, document: object | None, now, *,
             await db.commit()
             return "backed_off"
         row.completed_at = now
+        # the call package imports this module
+        from .call import allowance as allowance_runtime
+
+        overran = await allowance_runtime.overran(
+            db, row.org_id, row.settled_micro or 0, row.reserved_micro)
         await db.commit()
         if settled is not None:
             settled["micro"] = row.settled_micro
-        if (row.settled_micro or 0) > row.reserved_micro:
-            await _freeze_allowance(row.org_id)
+        if overran:
+            # A settlement past its hold may have used the team's last credit; calls admitted
+            # from the team's allowance counter do not meet the balance gate (money.md).
+            await allowance_runtime.freeze(row.org_id)
         return row.status
-
-
-async def _freeze_allowance(org_id: int) -> None:
-    """A settlement past its hold may have used the team's last credit; calls admitted from the
-    team's allowance counter do not meet the balance gate, so the counter is frozen until a
-    refill has read the balance (money.md "Allowance"). Never raises."""
-    from .call import allowance as allowance_runtime  # the call package imports this module
-
-    if not allowance_runtime.enabled_for(org_id):
-        return
-    try:
-        await allowance_runtime.freeze(org_id)
-    except Exception:
-        log.error("freezing the allowance of org %s after an overrun failed", org_id,
-                  exc_info=True)
 
 
 async def _finish_balance(org_id: int | None, operation: str, call_id: str, outcome: str,

@@ -194,6 +194,14 @@ async def _apply_charges(db: AsyncSession, org_id: int, hold: Hold | None, claim
     return Folded(len(charges), charged, consumed, len(claimed) - len(charges))
 
 
+async def has_allowance(db: AsyncSession, org_id: int) -> bool:
+    """Whether the team has an allowance hold. Read in a transaction that has already written
+    the team's balance, the answer is exact for that write: a refill that has not committed yet
+    waits for the same balance row, and reads it after."""
+    return (await db.execute(
+        select(Hold.id).where(Hold.id == allowance_id(org_id)))).first() is not None
+
+
 async def settled_calls(db: AsyncSession, call_ids: Sequence[str]) -> set[str]:
     """Which of these calls already have a `settle` entry."""
     if not call_ids:

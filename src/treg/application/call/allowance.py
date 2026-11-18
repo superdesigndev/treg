@@ -77,7 +77,7 @@ async def take(org_id: int, amount_micro: int, *, daily_cap_micro: int = 0) -> i
     call must use the exact path: the store cannot answer, another process holds the refill for
     too long, or the balance or the daily cap leaves no room to refill."""
     if (_refused_until.get(org_id, 0.0) > time.monotonic() or _charges.behind()
-            or not _charges.has_room(_in_flight[0])):
+            or org_id in _freezes_due or not _charges.has_room(_in_flight[0])):
         return None
     # The place is taken before anything is awaited, so calls arriving together cannot all pass
     # on the last one. `finish` gives it back, or hands it to the charge writer.
@@ -336,7 +336,8 @@ class _ChargeWriter:
         open over a balance nobody has checked."""
         store = kv.store()
         for org_id in sorted({charge.org_id for charge, _ in rows if _overran(charge)}):
-            if await store.allowance_freeze(org_id) is None and kv.configured():
+            if (await store.allowance_freeze(org_id, ttl_ms=_COUNTER_TTL_MS) is None
+                    and kv.configured()):
                 raise ConnectionError("the store did not take a freeze")
         self.owed = max(0, self.owed - len(rows))
         for charge, _ in rows:
@@ -371,12 +372,50 @@ def _overran(charge: allowance.Charge) -> bool:
 _charges = _ChargeWriter()
 
 
+_freezes_due: set[int] = set()
+_freeze_task: list[asyncio.Task | None] = [None]
+
+
+async def overran(db, org_id: int | None, charged_micro: int, reserved_micro: int | None) -> bool:
+    """Whether a settlement outside the allowance owes the team's counter a freeze: it took more
+    than its hold, and the team has an allowance hold. Asked in the settlement's transaction,
+    after its ledger write and before its commit; the hold row decides, not this process's list
+    of teams, which another process may read differently."""
+    if (org_id is None or reserved_micro is None or charged_micro <= reserved_micro
+            or not kv.configured()):
+        return False
+    return await allowance.has_allowance(db, org_id)
+
+
 async def freeze(org_id: int) -> None:
     """Stop admitting a team's calls from its counter until a refill has read the balance again.
-    For a settlement outside the allowance that took more than its hold: the team's credit may
-    be gone, and the counter does not know."""
-    if kv.configured():
-        await kv.store().allowance_freeze(org_id)
+    For a settlement outside the allowance that took more than its hold, after its commit: the
+    team's credit may be gone, and the counter does not know. A freeze the store did not take is
+    owed, and sent again until it has. Never raises."""
+    if not kv.configured() or await _freeze_once(org_id):
+        return
+    log.error("allowance_freeze_undelivered org_id=%s; sending it again in the background", org_id)
+    _freezes_due.add(org_id)
+    _freeze_task[0] = _ChargeWriter._ensure(
+        _freeze_task[0], _deliver_freezes, "treg-allowance-freezes")
+
+
+async def _freeze_once(org_id: int) -> bool:
+    try:
+        return await kv.store().allowance_freeze(org_id, ttl_ms=_COUNTER_TTL_MS) is not None
+    except Exception:  # noqa: BLE001 - whatever the fault, the freeze is still owed
+        return False
+
+
+async def _deliver_freezes() -> None:
+    delay = 0.5
+    while _freezes_due:
+        await asyncio.sleep(delay)
+        for org_id in sorted(_freezes_due):
+            if await _freeze_once(org_id):
+                _freezes_due.discard(org_id)
+                log.info("allowance_freeze_delivered org_id=%s", org_id)
+        delay = min(delay * 2, 30.0) if _freezes_due else 0.5
 
 
 async def finish(org_id: int, call_id: str, epoch: int, reserved_micro: int, *,

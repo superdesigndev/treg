@@ -1235,11 +1235,14 @@ async def _platform_settle(
                         with money_stage(db, "overflow_spend"):
                             await overflow_spend_ledger.add_in_transaction(
                                 db, overflow_spend[0], overflow_spend[1], overflow_spend[2])
+                    overran = await allowance_runtime.overran(
+                        db, mk.payer_org_id, charged, mk.reserved_micro)
                 with timing.phase("commit"):
                     await db.commit()
                 if finalized is not None:
                     finalized()
-            await _freeze_allowance_after_overrun(mk.payer_org_id, charged, mk.reserved_micro)
+            if overran:
+                await allowance_runtime.freeze(mk.payer_org_id)
             return charged
 
     try:
@@ -1260,21 +1263,6 @@ async def _platform_settle(
             "settle/release failed for call %s (%s, status %s): %s",
             call_id, mk.endpoint_id, status_code, exc, exc_info=True)
     return charged, observed
-
-
-async def _freeze_allowance_after_overrun(org_id: int | None, charged: int,
-                                          reserved_micro: int | None) -> None:
-    """A settlement that took more than its hold may have used the team's last credit. Its own
-    next reserve would meet the balance gate; calls admitted from the team's allowance counter
-    would not, so the counter is frozen until a refill has read the balance. Never raises."""
-    if (org_id is None or reserved_micro is None or charged <= reserved_micro
-            or not allowance_runtime.enabled_for(org_id)):
-        return
-    try:
-        await allowance_runtime.freeze(org_id)
-    except Exception:
-        logging.getLogger("treg.ledger").error(
-            "freezing the allowance of org %s after an overrun failed", org_id, exc_info=True)
 
 
 @dataclass
@@ -1343,10 +1331,14 @@ async def close_deferred(items: list[DeferredSettle], *, charge: bool, why: str 
                     if uses:
                         with money_stage(db, "archive_use"):
                             await archive.note_org_uses_in_transaction(db, uses)
+                    overran = sorted({
+                        d.payer_org_id for d, amount in zip(pending, amounts)
+                        if await allowance_runtime.overran(
+                            db, d.payer_org_id, amount, d.reserved_micro)})
                 with timing.phase("commit"):
                     await db.commit()
-        for d, amount in zip(pending, amounts):
-            await _freeze_allowance_after_overrun(d.payer_org_id, amount, d.reserved_micro)
+        for org_id in overran:
+            await allowance_runtime.freeze(org_id)
     except Exception as exc:
         logging.getLogger("treg.ledger").error(
             "closing %d deferred routed holds (charge=%s) failed: %s", len(pending), charge, exc,

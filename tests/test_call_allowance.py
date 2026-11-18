@@ -807,9 +807,9 @@ async def test_a_committed_overrun_whose_freeze_does_not_reach_the_store_is_gone
         org_id, store, monkeypatch):
     freeze, calls = store.allowance_freeze, []
 
-    async def flaky(org):
+    async def flaky(org, **kwargs):
         calls.append(org)
-        return None if len(calls) == 1 else await freeze(org)
+        return None if len(calls) == 1 else await freeze(org, **kwargs)
 
     monkeypatch.setattr(store, "allowance_freeze", flaky)
     epoch = await runtime.take(org_id, 600)
@@ -834,11 +834,69 @@ async def test_a_settlement_outside_the_allowance_that_overran_freezes_the_count
         assert await call_settle._platform_settle(mk, 200, observed_override=cost) == (cost, cost)
         assert store.counters[org_id].get("frozen", 0) == frozen
     assert await runtime.take(org_id, 100) == epoch, "a refill read the balance and reopened it"
+    # The hold decides, not this process's list: another process may still list the team.
     monkeypatch.setattr(get_settings(), "money_allowance_org_ids", [])
     mk = _call(org_id)
     await call_reserve._platform_reserve(mk, caller, call_ref="unlisted-over")
     await call_settle._platform_settle(mk, 200, observed_override=900)
-    assert store.counters[org_id]["frozen"] == 1, "a team with no allowance has no counter to freeze"
+    assert store.counters[org_id]["frozen"] == 2
+    async with session_maker() as db:
+        await allowance.close_allowance_in_transaction(db, org_id, reason="test")
+        await db.commit()
+    mk = _call(org_id)
+    await call_reserve._platform_reserve(mk, caller, call_ref="no-hold-over")
+    await call_settle._platform_settle(mk, 200, observed_override=900)
+    assert store.counters[org_id]["frozen"] == 2, "a team with no allowance hold has nothing to freeze"
+
+
+async def test_a_freeze_the_store_did_not_take_is_sent_until_it_has(org_id, store, monkeypatch):
+    """The settlement is committed and cannot be undone for a store that is away. The freeze is
+    owed: this process stops taking for the team, and keeps sending."""
+    caller = await _caller(org_id)
+    epoch = await runtime.take(org_id, 100)
+    monkeypatch.setattr(runtime, "_freezes_due", set())
+    freeze, calls = store.allowance_freeze, []
+
+    async def away_twice(org, **kwargs):
+        calls.append(org)
+        if len(calls) == 1:
+            return None
+        if len(calls) == 2:
+            raise ConnectionError("store away")
+        return await freeze(org, **kwargs)
+
+    monkeypatch.setattr(store, "allowance_freeze", away_twice)
+    await _instantly(monkeypatch)
+    mk = _call(org_id)
+    await call_reserve._platform_reserve(mk, caller, CallMeta(tags={"user": "u"}), "tagged-over")
+    assert await call_settle._platform_settle(mk, 200, observed_override=900) == (900, 900)
+    assert runtime._freezes_due == {org_id} and store.counters[org_id].get("frozen", 0) == 0
+    assert await runtime.take(org_id, 100) is None, "this process owes the team a freeze"
+    await runtime._freeze_task[0]
+    assert calls == [org_id] * 3 and not runtime._freezes_due
+    assert store.counters[org_id]["frozen"] == 1
+    assert await runtime.take(org_id, 100) == epoch
+
+
+async def test_an_overrun_outside_the_allowance_before_the_first_publish_holds_the_new_counter(
+        org_id, store, monkeypatch):
+    """The first refill has committed its hold and not published. A tagged call overruns now:
+    there is no counter to freeze, and the one the refill builds read the balance before it."""
+    caller = await _caller(org_id)
+    add = store.allowance_add
+    mk = _call(org_id)
+    await call_reserve._platform_reserve(mk, caller, CallMeta(tags={"user": "u"}), "tagged-over")
+
+    async def overrun_lands_first(*args, **kwargs):
+        monkeypatch.setattr(store, "allowance_add", add)
+        await call_settle._platform_settle(mk, 200, observed_override=900)
+        return await add(*args, **kwargs)
+
+    monkeypatch.setattr(store, "allowance_add", overrun_lands_first)
+    assert await runtime.take(org_id, 100) is None, "built frozen"
+    counter = store.counters[org_id]
+    assert (counter["avail"] > 0, counter["frozen"], counter["thawed"]) == (True, 1, 0)
+    assert await runtime.take(org_id, 100), "the next refill read the balance after the overrun"
 
 
 async def test_a_settle_entry_that_cannot_be_read_back_is_not_answered_as_free(
