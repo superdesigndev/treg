@@ -127,7 +127,7 @@ async def lookup_host(host: str, check=None, *, pool: str = CALL) -> str:
     if entry is None:
         if pool == METADATA and sum(1 for e in _inflight.values() if e.pool == pool) >= (
                 _threads(pool) * _METADATA_PENDING_PER_THREAD):
-            log.warning("ssrf_lookup_busy pool=%s host=%s", pool, host)
+            log.warning("ssrf_lookup_busy pool=%s", pool)
             return TIMED_OUT
         work = _lookup_executor(pool).submit(check or host_is_public, host)
         entry = _Lookup(pool, work, asyncio.wrap_future(work))
@@ -138,7 +138,7 @@ async def lookup_host(host: str, check=None, *, pool: str = CALL) -> str:
     try:
         ok = await asyncio.wait_for(asyncio.shield(entry.answer), limit if limit > 0 else None)
     except TimeoutError:
-        log.warning("ssrf_lookup_timeout pool=%s host=%s limit_s=%s", pool, host, limit)
+        log.warning("ssrf_lookup_timeout pool=%s limit_s=%s", pool, limit)
         return TIMED_OUT
     finally:
         entry.waiters -= 1

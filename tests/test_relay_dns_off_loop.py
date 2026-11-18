@@ -193,7 +193,7 @@ async def test_a_lookup_timeout_logs_a_warning(dead_resolver, caplog):
     async with httpx.AsyncClient(transport=httpx.MockTransport(lambda r: httpx.Response(200))) as client:
         with caplog.at_level(logging.WARNING, logger="treg.ssrf"), pytest.raises(GatewayFailed):
             await _relay("quiet.example", client)
-    assert any("ssrf_lookup_timeout" in r.message and "quiet.example" in r.message for r in caplog.records)
+    assert any("ssrf_lookup_timeout" in r.message and "quiet.example" not in r.message for r in caplog.records)
 
 
 @pytest.fixture
