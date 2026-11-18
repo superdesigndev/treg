@@ -813,3 +813,31 @@ async def test_v2_challenges_a_missing_scope_and_confines_catalog_get():
     assert r.status_code == 403, r.text
     assert 'scope="treg:catalog treg:call treg:directory"' in r.headers["www-authenticate"]
     assert "balance_usd" not in json.dumps(walked)
+
+
+@pytest.mark.parametrize(('path', 'tool', 'shown'), [('/mcp/', 'call', True),
+                                                     ('/mcp/v2/', 'catalog_call_read', False)])
+async def test_review_pending_hint_stays_off_the_directory_surface(clients, monkeypatch, path, tool, shown):
+    from treg.application.call import service as call_service
+    from test_marketplace_call import _fake_relay
+
+    note = "This may be because Meta has not yet approved a_scope for treg's app."
+
+    def _note(response, secrets, body, charged, endpoint_id):
+        call_service._set_response_header(response, 'X-Treg-Review-Pending', 'a_scope')
+        call_service._set_response_header(response, 'X-Treg-Review-Pending-Text', note)
+
+    monkeypatch.setenv('TREG_PLATFORM_KEY_TIKHUB', 'SYNTHETIC-PLATFORM-KEY')
+    monkeypatch.setenv('TREG_PLATFORM_PROVIDERS', 'tikhub')
+    get_settings.cache_clear()
+    monkeypatch.setattr(call_service, 'relay', _fake_relay(403, b'{"error":{"code":10}}'))
+    monkeypatch.setattr(call_service, '_note_review_refusal', _note)
+    try:
+        async with paired_mcp_session() as client:
+            result = await _call_tool(client, tool, {
+                'endpoint_id': 'tikhub.tiktok.video.comments', 'params': {'aweme_id': '7'},
+            }, clients.headers['X-Treg-Token'], path=path)
+        assert result['status'] == 403
+        assert (result.get('hint') == note) is shown
+    finally:
+        get_settings.cache_clear()
