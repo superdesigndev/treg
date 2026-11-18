@@ -23,7 +23,7 @@ from treg.domain.catalog import store as catalog_store
 
 from test_marketplace_call import _balance, _telemetry
 
-CONGRESSIONAL = "vigil.stocks.congressional-trades"   # GET /v1/congressional-trades, $0.02
+CONGRESSIONAL = "vigil.stocks.congressional-trades"   # GET /v1/congressional-trades, free
 INSIDER = "vigil.stocks.insider-trades"                # GET /v1/insider-trades, $0.01
 INSIDER_PARAMS = {"ticker": "NVDA", "side": "sell", "limit": 1}
 INTENT = "vigil.stocks.insider-intent"                 # GET /v1/insider-intent, $0.02
@@ -124,10 +124,10 @@ async def test_platform_insider_call_bills_per_success_on_the_platform_key(
     assert request.headers["x-vigil-key"] == PLATFORM_KEY
 
 
-async def test_platform_congressional_call_bills_per_success_on_the_platform_key(
+async def test_platform_congressional_call_is_free_on_the_platform_key(
     clients, vigil_on, monkeypatch,
 ):
-    """No org key: treg's own key pays, the caller is metered $0.02 (20000 micro-USD)."""
+    """No org key: treg's own key makes the call, and the caller is metered $0 (congressional data is free)."""
     seen: list = []
     await _platform_vendor(
         clients, monkeypatch, seen,
@@ -137,8 +137,8 @@ async def test_platform_congressional_call_bills_per_success_on_the_platform_key
     before = await _balance(clients)
     response = await clients.get(f"/call/{CONGRESSIONAL}", params={"ticker": "NVDA", "limit": 1})
     assert response.status_code == 200, response.text
-    assert response.headers["X-Treg-Cost-Micro"] == "20000"
-    assert await _balance(clients) == before - 20_000
+    assert response.headers["X-Treg-Cost-Micro"] == "0"
+    assert await _balance(clients) == before
     (request,) = seen
     assert request.url.path == "/v1/congressional-trades"
     assert request.url.params["ticker"] == "NVDA"

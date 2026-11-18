@@ -59,7 +59,7 @@ endpoints:
         limit: {type: integer, required: false, min: 1, max: 100, note: "default 20"}
         cursor: {type: string, required: false, note: "opaque cursor from the response next_cursor; pass back verbatim"}
     test_request: {queryParams: {ticker: NVDA, limit: 1}}
-    price: {value: '0.02', currency: USD, per: 1, unit: call, note: "Every HTTP 200 bills the full rate, including zero-row 200s. Errors never bill."}
+    price: {value: '0', currency: USD, unit: call, note: "Free and unbilled: congressional data is free to read and is not offered, priced or licensed for business use. A successful call still consumes the calling key's monthly cap."}
     docs_url: https://renolabshq.com/vigil/api
 
   - id: vigil.stocks.insider-trades
