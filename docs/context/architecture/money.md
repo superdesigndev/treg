@@ -188,7 +188,8 @@ admitted, and two counts, `frozen` and `thawed`. The operations are atomic scrip
   not frozen (`frozen == thawed`) and the store's clock is not past `until`.
   Given a lead time and a low mark, it negates the epoch for one caller at a time once the
   counter is that close to `until` or that low: the take stands, and the caller refills.
-  `asked` holds when it last did and `asked_for` the `until` it asked about.
+  `asked` holds when it last did and `asked_for` the `until` it asked about; an add of more
+  than nothing clears `asked`.
 - `allowance_give_back` returns part of a take, only to a counter of the same epoch.
 - `allowance_add` adds what a refill just committed to the hold. It sets `until` from the instant
   the refill wrote on the hold, never from when the add lands, and never moves it back: a refill
@@ -289,13 +290,20 @@ money moved, the purchased-credit gate.
 - **A busy team is refilled before a call has to wait.** A take that leaves the counter within
   half its lifetime of the deadline, or under a quarter of a chunk, answers its epoch negated:
   the call has its money, and that one caller (the store asks one at a time, and again only
-  after a pause, except that a deadline it has not asked about yet asks at once: a refill opens
-  a window that may be shorter than the pause) starts a refill beside itself. Nobody waits on
+  after a pause, which is for a refill that failed: a deadline it has not asked about yet asks
+  at once, since a refill opens a window that may be shorter than the pause, and so does a
+  counter low again after an add that brought money) starts a refill beside itself. Nobody waits on
   that refill, so it waits for the team's lease far longer than a call does. It asks for no
   amount of its own: it brings the counter back to a chunk, and a balance that cannot pay for
   that leaves the counter with what it has, where an in-line refill that cannot serve its call
   drains the allowance. The call that asked was served, so its price is no measure of the next
-  one, and setting it aside again would take that much out of every other call's reach. Without it every call of a busy team met a
+  one, and setting it aside again would take that much out of every other call's reach. The
+  process counts a team's refill as running only until it gives up the lease, so an ask that
+  arrives while what follows the refill is still running starts the next one.
+- **A refill reads the daily cap again.** The cap a refill is handed is the one its call saw,
+  and a refill can wait some time for its turn. `refill_allowance_in_transaction` therefore
+  also reads the team's cap in its own transaction, where it reads the day's spend, and keeps
+  to the stricter of the two. Without it every call of a busy team met a
   lapsed counter at once each time the lifetime ran out, the ones that did not get the lease
   left for the exact path, and the refill then queued behind them on the money admission lease:
   the exact path serves one call at a time, so the team stayed there.

@@ -10,6 +10,7 @@ spends money the hold does not have.
 from __future__ import annotations
 
 import asyncio
+import functools
 import logging
 import random
 import time
@@ -17,14 +18,18 @@ import uuid
 from collections.abc import Awaitable, Callable
 from datetime import datetime, timedelta
 
+from sqlmodel import select
+
 from ... import archive
 from ...config import get_settings
 from ...domain import money as ledger
+from ...domain.governance import budgets as budget_policy
 from ...domain.money import allowance
 from ...infra import db as infra_db
 from ...infra import kv, money_admission
 from ...infra.db import session_maker
 from ...infra.money_session import money_session
+from ...models import Org
 
 log = logging.getLogger("treg.money_allowance")
 
@@ -193,6 +198,10 @@ async def _refresh(org_id: int, daily_cap_micro: int, after_refill) -> None:
                     await _refill(org_id, 0, daily_cap_micro)
                 finally:
                     await store.release_lease(key, token)
+                # The refill is over once the lease is given up. What follows may take a
+                # while, and the next ask for this team must find nothing in its way.
+                if _refreshing.get(org_id) is asyncio.current_task():
+                    del _refreshing[org_id]
                 if after_refill is not None and refills(org_id) != before:
                     await after_refill()
                 return
@@ -202,6 +211,13 @@ async def _refresh(org_id: int, daily_cap_micro: int, after_refill) -> None:
     except Exception:
         log.error("allowance refill ahead of the deadline failed for org %s", org_id,
                   exc_info=True)
+
+
+async def _current_daily_cap(org_id: int, db) -> int:
+    """The team's daily cap as its row has it now. A refill can run long after the call that
+    asked for it read the team."""
+    return budget_policy._effective_daily_cap((await db.execute(
+        select(Org.daily_cap_micro).where(Org.id == org_id))).one_or_none())
 
 
 async def _refill(org_id: int, need_micro: int, daily_cap_micro: int) -> bool:
@@ -229,7 +245,8 @@ async def _refill(org_id: int, need_micro: int, daily_cap_micro: int) -> bool:
             result = await allowance.refill_allowance_in_transaction(
                 db, org_id, max(0, target - available), daily_cap_micro=daily_cap_micro,
                 fold_limit=_REFILL_FOLD, fold_all=seen_frozen != thawed,
-                counter_epoch=counter_epoch, fresh_add_micro=target)
+                counter_epoch=counter_epoch, fresh_add_micro=target,
+                current_daily_cap=functools.partial(_current_daily_cap, org_id))
             await db.commit()
     except money_admission.ReserveAdmissionTimeout:
         return False

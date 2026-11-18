@@ -89,6 +89,8 @@ class FakeStore:
                 "epoch": epoch, "avail": 0, "frozen": (counter or {}).get("frozen", 0),
                 "thawed": (counter or {}).get("thawed", 0)}
         counter["avail"] += amount
+        if amount > 0:
+            counter.pop("asked", None)
         if counter.setdefault("thawed", 0) < seen_frozen <= counter["frozen"]:
             counter["thawed"] = seen_frozen
         self.until_ms = max(self.until_ms, until_ms)
@@ -1767,3 +1769,55 @@ async def test_a_reserve_asks_auto_top_up_again_when_its_refill_commits_after_it
     assert seen == [GRANT - CHUNK], "the refill beside this call has not committed yet"
     await runtime._refreshing[org_id]
     assert seen == [GRANT - CHUNK, GRANT - CHUNK - 1_200], "and is seen once it has"
+
+
+async def test_a_refill_that_waited_its_turn_keeps_to_the_daily_cap_the_team_has_now(
+        org_id, store, monkeypatch):
+    """The call that asked saw no cap. The team set one while the refill waited for the lease."""
+    assert await runtime.take(org_id, 800_000)
+    monkeypatch.setattr(runtime, "_ahead", _AHEAD)
+    key = runtime.money_key(org_id)
+    store.leases[key] = "a fold"
+    assert await runtime.take(org_id, 1_000), "low now: a refill is asked for, and waits"
+    await asyncio.sleep(0.05)
+    async with session_maker() as db:
+        await db.execute(update(Org).where(Org.id == org_id).values(daily_cap_micro=CHUNK))
+        await db.commit()
+    del store.leases[key]
+    await runtime._refreshing[org_id]
+    assert await _state(org_id) == (GRANT - CHUNK, CHUNK), "nothing past the cap was set aside"
+
+
+async def test_a_low_counter_asks_again_as_soon_as_a_refill_has_filled_it(
+        org_id, store, monkeypatch):
+    monkeypatch.setattr(runtime, "_ahead", _AHEAD)
+    in_line = runtime.refills(org_id)
+    for amount in (800_000, 800_000, 210_000):
+        before = runtime.refills(org_id)
+        assert await runtime.take(org_id, amount)
+        in_line += runtime.refills(org_id) - before
+        if (task := runtime._refreshing.get(org_id)) is not None:
+            await task
+    assert in_line == 1, "only the first call, which found no counter"
+    assert store.counters[org_id]["avail"] == CHUNK - 210_000
+
+
+async def test_a_slow_auto_top_up_read_does_not_hold_back_the_next_refill(
+        org_id, store, monkeypatch):
+    reading, release = asyncio.Event(), asyncio.Event()
+
+    async def slow():
+        reading.set()
+        await release.wait()
+
+    assert await runtime.take(org_id, 100)
+    monkeypatch.setattr(runtime, "_ahead", lambda: {"ahead_ms": 3_600_000, "low_micro": 0})
+    assert await runtime.take(org_id, 100, after_refill=slow)
+    first = runtime._refreshing[org_id]
+    await reading.wait()
+    assert runtime.refills(org_id) == 2 and store.leases == {} and not first.done()
+    assert await runtime.take(org_id, 100), "the new deadline asks, and is heard"
+    await runtime._refreshing[org_id]
+    assert runtime.refills(org_id) == 3
+    release.set()
+    await first
