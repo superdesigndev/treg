@@ -3265,7 +3265,7 @@ adapters:
     accepts: [[url]]
     in: {url: body.url}
     out: {pages: "list(results)", count: "len(list(results))"}
-    miss: "coalesce(results.content, '') == ''"
+    miss: "choose(wall_page(results.content), true, coalesce(results.content, '') == '')"
   you.web.contents:
     accepts: [[url]]
     in_expr: {body.urls: "list(url)"}

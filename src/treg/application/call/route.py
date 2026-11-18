@@ -399,7 +399,7 @@ def child_outcome(endpoint: dict, contract, adapter, status: int, raw: bytes, *,
         is_miss = is_miss or judged.cause == "no_content"
     off_question = False
     rule = getattr(contract, "question_miss", "")
-    if rule and identity and doc is not None and not (is_miss or empty_core):
+    if rule and identity and doc is not None and not empty_core:
         try:
             off_question = bool(P.evaluate(rule, {**identity, **core}))
         except Exception as exc:  # noqa: BLE001 — a rule that cannot read this answer judges nothing
@@ -410,7 +410,7 @@ def child_outcome(endpoint: dict, contract, adapter, status: int, raw: bytes, *,
             ("expect_failed", bool(upstream_failed)), ("provider_error", provider_error),
             ("question_miss", off_question)) if on)
         return ChildOutcome(
-            "miss", why=why, doc=doc,
+            "miss", why=why, doc=doc, core=core if off_question else {},
             detail=f"provider reported failure: {upstream_failed}" if upstream_failed else "")
     rows = max((len(v) for v in core.values() if isinstance(v, list)), default=1)
     return ChildOutcome("hit", doc=doc, core=core, rows=rows)
@@ -1581,6 +1581,19 @@ async def _run_routed(parent: CallContext, ep: dict, body_bytes: bytes, get_head
                 break
             continue
         doc, core = outcome.doc, outcome.core
+        if outcome.kind == "miss" and "question_miss" in outcome.why and options.waterfall:
+            # An answer only the question rules out (a wall page, rows off the asked site) is kept
+            # like a weak hit and bounded like one: every provider often returns the same answer,
+            # and some bill it, so the walk asks at most MAX_WEAK_FALLBACKS more and then returns
+            # the first such answer, marked, if nothing better turned up.
+            tried.append(Attempt(cand.endpoint["id"], cand.endpoint["provider"], "weak", response.status, charged,
+                                 f"question_miss: {plan.contract.question_miss}", ignored=ignored))
+            if best is None:
+                best = (0, (cand, doc, core, raw))
+            weak_hits += 1
+            if weak_hits > MAX_WEAK_FALLBACKS:
+                break
+            continue
         if outcome.kind == "miss":
             tried.append(Attempt(cand.endpoint["id"], cand.endpoint["provider"], "miss", response.status, charged,
                                  outcome.detail, ignored=ignored))

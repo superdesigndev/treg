@@ -718,74 +718,79 @@ def reddit_post_id(v: Any) -> str | None:
 
 
 _URL = re.compile(r"(?:https?:)?//\S+|www\.\S+", re.I)
-_WALL_READ_MAX = 20_000    # characters: a wall is never this long, so a longer page is not read at all
-_WALL_SCAN_MAX = 256_000   # characters of every string, links and markup included, before the page is left unjudged
+_WALL_READ_MAX = 20_000    # characters of text: a wall is never this long, so a longer page is not read further
+_WALL_SCAN_MAX = 256_000   # characters plus one per node, links and markup included, before the page is left unjudged
+_WALL_NODES_MAX = 50_000   # values visited, strings or not, before the page is left unjudged
 _WALL_URL_MAX = 4096       # a longer string is not a bare link
 _WALL_CHARS_MAX = 1000     # a wall page is short: past this, a phrase is the page talking about it
-_WALL_GENERIC_WORDS = 25   # a common phrase decides only on a page this short, or a real page saying it stays a page
+_WALL_GENERIC_WORDS = 25   # two common phrases decide only on a page this short, or a real page saying them stays a page
+_WALL_GENERIC_ONE = 15     # one common phrase decides only on a page shorter still
+# Said only by an interstitial (a captcha or a browser check standing in for the page).
 _WALL_PHRASES = tuple(_fold(p) for p in (
     "verify you are human", "verify that you are human", "verifying you are human",
-    "confirm you are human", "confirm you are a human", "prove you are human", "human verification",
-    "are you a robot", "not a robot", "recaptcha requires verification", "complete the captcha",
-    "solve the captcha", "checking your browser", "verify your browser", "security checkpoint",
-    "pardon our interruption", "attention required", "complete the security check",
-    "needs to review the security of your connection", "access to this page has been denied",
-    "you have been blocked", "request was blocked", "click the button below to continue shopping",
-    "sign in to view", "log in to view", "sign up to view", "join to view"))
+    "confirm you are human", "confirm you are a human", "prove you are human",
+    "recaptcha requires verification", "complete the captcha", "solve the captcha",
+    "checking your browser", "pardon our interruption", "complete the security check",
+    "needs to review the security of your connection", "click the button below to continue shopping"))
+# Also said by real pages (a profile with a sign-in line, a form with "I'm not a robot").
 _WALL_GENERIC = tuple(_fold(p) for p in (
+    "are you a robot", "not a robot", "human verification", "security checkpoint", "verify your browser",
+    "attention required", "access to this page has been denied", "you have been blocked", "request was blocked",
     "access denied", "access restricted", "enable javascript", "enable js", "javascript is disabled",
     "javascript is required", "turn on javascript", "enable cookies", "cookies are disabled",
     "cookies must be enabled", "accept cookies to continue", "sign in to continue", "log in to continue",
-    "login to continue", "create an account to", "create a free account to", "you must be logged in",
-    "please log in", "please sign in"))
-
-
-def _each_string(v: Any):
-    if isinstance(v, str):
-        yield v
-    elif isinstance(v, dict):
-        for x in v.values():
-            yield from _each_string(x)
-    elif isinstance(v, list):
-        for x in v:
-            yield from _each_string(x)
+    "login to continue", "sign in to view", "log in to view", "sign up to view", "join to view",
+    "create an account to", "create a free account to", "you must be logged in", "please log in",
+    "please sign in", "forgot password"))
 
 
 def wall_page(page: Any) -> bool:
     """True when an extracted page (a page object, a list whose first item is one, or its text) is
-    not content: its text, links and markup left out, is blank, or it says it is a wall. A specific
-    wall phrase (a captcha, a browser or bot check, a sign-in-to-view wall) decides on a page of at
-    most 1,000 characters; a common one (access denied, enable JavaScript or cookies, please sign
-    in) only on a page under twenty-five words. A short answer is not a wall for being short ("OK",
-    an address, a price). A structured answer (text starting with `{` or `[`), a page over 20,000
-    characters of text or 256,000 of strings in all (never read further) and a page with no text field at all are never walls:
-    emptiness is the row's own miss rule."""
+    not content: its text, links and markup left out, says it is a wall. An
+    interstitial's phrase (a captcha, a browser check) decides on a page of at most 1,000
+    characters; phrases real pages also carry (sign in to view, not a robot, access denied, enable
+    JavaScript or cookies) only on a short page: two of them under twenty-five words, one alone
+    under fifteen. A short answer is not a wall for
+    being short ("OK", an address, a price). A structured answer (text starting with `{` or `[`), a
+    page past 20,000 characters of text, 256,000 characters in all or 50,000 values (never read
+    further) and a blank page are never walls: emptiness is the row's own miss rule."""
     if isinstance(page, list):
         page = page[0] if page else None
-    parts, size, seen = [], 0, 0
-    for s in _each_string(page):
-        seen += len(s)
-        if seen > _WALL_SCAN_MAX:
-            return False
-        head = s[:64].lstrip()
-        if head.startswith("<") or (len(s) <= _WALL_URL_MAX and _URL.fullmatch(s.strip())):
+    parts, size, seen, nodes = [], 0, 0, 0
+    stack = [iter((page,))]
+    while stack:
+        v = next(stack[-1], _MISSING)
+        if v is _MISSING:
+            stack.pop()
             continue
-        size += len(s)
-        if size > _WALL_READ_MAX:
+        nodes += 1
+        seen += len(v) + 1 if isinstance(v, str) else 1
+        if nodes > _WALL_NODES_MAX or seen > _WALL_SCAN_MAX:
             return False
-        parts.append(s)
+        if isinstance(v, (dict, list)):
+            if nodes + len(v) > _WALL_NODES_MAX:   # every item would be visited: stop before it
+                return False
+            stack.append(iter(v.values() if isinstance(v, dict) else v))
+        elif isinstance(v, str):
+            if v[:64].lstrip().startswith("<") or (len(v) <= _WALL_URL_MAX and _URL.fullmatch(v.strip())):
+                continue
+            size += len(v)
+            if size > _WALL_READ_MAX:
+                return False
+            parts.append(v)
     if not parts:
         return False
     raw = _URL.sub(" ", " ".join(parts)).strip()
-    if not raw:
-        return True
-    if raw[:1] in ("{", "["):
+    if not raw or raw[:1] in ("{", "["):
         return False
     text = f" {_fold(raw)} "
     if len(raw) <= _WALL_CHARS_MAX and any(f" {p} " in text for p in _WALL_PHRASES):
         return True
-    return (any(f" {p} " in text for p in _WALL_GENERIC)
-            and len(re.findall(r"\w+", raw)) < _WALL_GENERIC_WORDS)
+    said = sum(f" {p} " in text for p in _WALL_GENERIC)
+    if not said:
+        return False
+    words = len(re.findall(r"\w+", raw))
+    return words < (_WALL_GENERIC_WORDS if said > 1 else _WALL_GENERIC_ONE)
 
 
 def starts_with(v: Any, prefix: Any) -> bool:

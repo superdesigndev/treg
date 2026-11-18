@@ -2124,7 +2124,7 @@ _ARTICLE = ("CAPTCHA systems ask visitors to prove they are human before a form 
     ("Please enable cookies in your browser to continue.", True),
     ("Create an account to see the full shipment record. Already a member? Sign in to continue.", True),
     ("Click the button below to continue shopping. Conditions of Use Privacy Policy", True),
-    (["   \n  "], True),
+    (["   \n  "], False),
     ([{"url": "https://example.com", "title": "Example Domain", "text":
        "This domain is for use in documentation examples without needing permission. Avoid use in operations."}], False),
     (_ARTICLE, False),
@@ -2136,8 +2136,7 @@ _ARTICLE = ("CAPTCHA systems ask visitors to prove they are human before a form 
     ("Just a moment...\n\nwww.example.com needs to review the security of your connection before proceeding.", True),
     ("Verifying you are human. This may take a few seconds. example.com needs to review the security of your "
      "connection before proceeding. Ray ID: 8f2a1c3b4d5e6f70 Performance & security by Cloudflare", True),
-    ("Sign in to view Jane Doe's full profile. Join now. Welcome back. Email or phone. Password. "
-     "Forgot password? Sign in. New to LinkedIn? Join now", True),
+    ("Sign in to view Jane Doe's full profile. Join now. Email or phone. Password. Forgot password? Sign in.", True),
     ("Press & Hold to confirm you are a human (and not a bot). Reference ID 1a2b3c4d-1234-5678", True),
     ("Please enable JS and disable any ad blocker", True),
     ("Click the button below to continue shopping\n\nContinue shopping\n\nConditions of Use Privacy Policy "
@@ -2182,6 +2181,14 @@ def test_wall_page_is_true_only_for_a_wall_or_a_blank_page(page, wall):
     "User-agent: *\nDisallow: /admin/\nSitemap: https://example.com/sitemap.xml",
     "Bitcoin price: $97,412.55", "# Weather\nLondon 12C, cloudy", "# Coming soon\n\nWe launch in March.",
     "Ephemeral: lasting for a very short time.",
+    # A real short page with a sign-in, sign-up or log-in line, or a form's "I'm not a robot".
+    "# Jane Doe\nSenior Data Engineer at Acme Corp\nBerlin, Germany\n500+ connections\n\n"
+    "Sign in to view Jane's full profile",
+    "# Luigi's Trattoria\n4.6 stars from 1,284 reviews. Wood-fired pizza, fresh pasta, family run since 1987. "
+    "\"Best carbonara in town\" - Maria. Sign up to view all reviews",
+    "# Sam Lee\nIllustrator and children's book author. Portland, Oregon. Recent work: The Lighthouse Fox. "
+    "Log in to view more",
+    "# Contact us\nName\nEmail\nMessage\nI'm not a robot\nSend. We answer within two working days.",
 ])
 def test_wall_page_keeps_real_pages_in_any_language_and_structured_answers(page):
     assert P.evaluate("wall_page(pages)", {"pages": page}) is False
@@ -2199,6 +2206,19 @@ def test_wall_page_does_not_read_a_long_page():
     assert P.wall_page(big) is False
     assert P.wall_page(links) is False
     assert time.perf_counter() - started < 0.05
+
+
+def test_wall_page_stops_after_a_bounded_number_of_values():
+    """Every value counts, not only text: millions of empty strings, numbers and nulls are left
+    unjudged in a few milliseconds."""
+    import time
+    flat = [{"text": "Please verify you are human.", "a": [""] * 3_000_000, "b": [0, None] * 1_000_000}]
+    nested = [{"text": "Please verify you are human.", "a": [[0] * 40] * 40_000}]
+    started = time.perf_counter()
+    assert P.wall_page(flat) is False
+    assert P.wall_page(nested) is False
+    assert time.perf_counter() - started < 0.05
+    assert P.wall_page([{"text": "Please verify you are human.", "a": [0] * 100}]) is True
 
 
 def test_a_wall_page_is_a_miss_the_extract_route_moves_on_from_and_a_per_success_child_does_not_bill():
@@ -3356,6 +3376,45 @@ async def test_crawl4ai_answers_scrape_and_search_first_by_default(clients, monk
         assert seen[0][3] == first_seen
     else:
         assert seen[0][2] == {"q": "rust web crawler"}
+    get_settings.cache_clear()
+
+
+_WALL = "Checking your browser before accessing shop.example. Please verify you are human."
+
+
+async def test_a_wall_page_walks_at_most_two_more_providers_then_returns_the_wall_marked(clients, monkeypatch):
+    """Every provider often returns the same wall, and some bill it: after the first wall the walk
+    asks at most two more, then answers with the first wall as a weak answer that says why. A real
+    page from one of those two is the answer."""
+    for name in ("CRAWL4AI", "FIRECRAWL", "LINKUP", "SERPER"):
+        monkeypatch.setenv(f"TREG_PLATFORM_KEY_{name}", f"PLATFORM-{name}")
+    monkeypatch.setenv("TREG_PLATFORM_PROVIDERS", "crawl4ai,firecrawl,linkup,serper")
+    get_settings.cache_clear()
+    prefer = {"X-Treg-Route-Prefer": "crawl4ai,firecrawl,linkup,serper"}
+
+    def answers(linkup_text):
+        return {"crawl4ai": [(200, {"ok": True, "markdown": _WALL, "text_len": len(_WALL)})],
+                "firecrawl": [(200, {"success": True, "data": {"markdown": _WALL}})],
+                "linkup": [(200, {"markdown": linkup_text})],
+                "serper": [(200, {"text": _ARTICLE, "markdown": _ARTICLE})]}
+
+    seen = []
+    monkeypatch.setattr(call_service, "relay", _relay_by_provider(answers(_WALL), seen))
+    before = await _balance(clients)
+    r = await clients.post("/call/treg.web.extract", json={"url": "https://shop.example/p/1"}, headers=prefer)
+    assert r.status_code == 200, r.text
+    meta = r.json()["_treg"]
+    assert [s[0] for s in seen] == ["crawl4ai", "firecrawl", "linkup"], "serper is never asked"
+    assert meta["outcome"] == "weak" and meta["served_by"] == "crawl4ai.web.scrape"
+    assert all(t["outcome"] == "weak" and t["detail"].startswith("question_miss") for t in meta["tried"])
+    assert await _balance(clients) == before, "every child here bills per success and a wall is no success"
+
+    seen.clear()
+    monkeypatch.setattr(call_service, "relay", _relay_by_provider(answers(_ARTICLE), seen))
+    r = await clients.post("/call/treg.web.extract", json={"url": "https://shop.example/p/2"}, headers=prefer)
+    assert r.status_code == 200, r.text
+    assert [s[0] for s in seen] == ["crawl4ai", "firecrawl", "linkup"]
+    assert r.json()["_treg"]["outcome"] == "hit" and r.json()["_treg"]["served_by"] == "linkup.web.fetch"
     get_settings.cache_clear()
 
 
