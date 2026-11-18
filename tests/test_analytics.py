@@ -7,6 +7,8 @@ of those guarantees; the event payload shape (distinct_id / $groups / $lib) is p
 
 from __future__ import annotations
 
+import asyncio
+
 import logging
 
 import pytest
@@ -56,11 +58,11 @@ def posts(monkeypatch):
     return sent
 
 
-async def test_disabled_is_a_noop():
+async def test_disabled_is_a_noop(posts):
     # default settings: no key → capture must not even queue (self-hosters send nothing)
     analytics.capture("a@b.c", "tool_called", {"x": 1})
-    assert analytics._queue == []
-    assert analytics._flusher is None
+    await analytics.drain()
+    assert posts == []
 
 
 async def test_batch_shape_and_drain(enabled, posts):
@@ -131,11 +133,12 @@ async def test_service_started_reports_role_and_archive_settings(enabled, posts,
     assert props["build"] == analytics.build_id() and props["archive_config"] == analytics.archive_config_id()
 
 
-async def test_queue_is_bounded(enabled, monkeypatch):
+async def test_queue_is_bounded_and_drops_the_newest_past_the_bound(enabled, posts, monkeypatch):
     monkeypatch.setattr(analytics, "_MAX_PENDING", 10)
     for i in range(25):
         analytics.capture("a@b.c", "e", {"i": i})
-    assert len(analytics._queue) == 10  # newest dropped past the bound, no growth
+    await analytics.drain()
+    assert [event["properties"]["i"] for batch in posts for event in batch] == list(range(10))
 
 
 async def test_oversized_drain_splits_batches(enabled, posts, monkeypatch):
@@ -153,7 +156,10 @@ async def test_post_failure_is_swallowed_and_capture_never_raises(enabled, monke
     monkeypatch.setattr(analytics, "_post", _boom)
     analytics.capture("a@b.c", "e")
     await analytics.drain()  # must return, not raise
-    assert analytics._queue == []  # the batch was dropped, not retried
+    retried = []
+    monkeypatch.setattr(analytics, "_post", lambda batch: retried.append(batch) or asyncio.sleep(0))
+    await analytics.drain()
+    assert retried == []  # the batch was dropped, not retried
 
     # capture() itself swallows internal failures — the never-raise contract call sites
     # (the Stripe webhook above all) depend on

@@ -52,7 +52,8 @@ _DROP_FROM_CHILD = frozenset({b"content-length", b"content-type", b"transfer-enc
                               b"accept-encoding"})
 # Refusals that are the same for every step: no point starting anything else.
 _GLOBAL_REFUSALS = frozenset({"insufficient_balance", "tag_spend_cap_reached",
-                              "platform_daily_cap_reached", "daily_cap_reached"})
+                              "platform_daily_cap_reached", "member_spend_cap_reached",
+                              "daily_cap_reached"})
 
 
 class _Bytes:

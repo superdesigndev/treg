@@ -21,7 +21,9 @@ def fake():
 
 
 @pytest.fixture(scope="session")
-def live(tmp_path_factory):
+def live(tmp_path_factory, go_bin):
+    # go_bin first: without a Go binary every test here skips, and booting a registry only to skip
+    # once it is up turned the skip into an error on a loaded machine where it came up too slowly.
     from .cli_go_live import LiveRegistry
     registry = LiveRegistry(tmp_path_factory.mktemp("live"))
     yield registry

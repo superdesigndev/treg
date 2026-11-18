@@ -1,0 +1,150 @@
+{
+  "code": 200,
+  "code_desc": false,
+  "success": true,
+  "message": false,
+  "parameters": {
+    "place_id": "ChIJCar0f49ZwokR6ozLV-dHNTE",
+    "keyword": "deli",
+    "lat": "40.722233",
+    "lng": "-73.987429",
+    "grid_size": "3",
+    "radius": "0.5",
+    "measurement": "mi"
+  },
+  "data": {
+    "points": 9,
+    "found": 5,
+    "percent": 55.55555555555556,
+    "arp": 12.8,
+    "atrp": 25.77777777777778,
+    "solv": 11.11111111111111,
+    "results": [
+      {
+        "lat": 40.71500452640328,
+        "lng": -73.9969667391868,
+        "found": 1,
+        "rank": 16,
+        "count": 20,
+        "results": [
+          {
+            "rank": 1,
+            "map_id": "0x89c24e4b25254773:0xe0e57df6f6332017",
+            "map_id_encoded": "ChIJc0clJUtOwokRFyAz9vZ95eA",
+            "title": "Highline Deli II",
+            "address": "83 Canal St #6019, New York, NY 10002",
+            "latitude": 40.715461399999995,
+            "longitude": -73.9931933,
+            "rating": 3.7,
+            "reviews_cnt": 158,
+            "phone": "(212) 226-3811",
+            "link": null,
+            "display_link": null,
+            "claimed": false,
+            "category": [
+              {
+                "id": "deli",
+                "title": "Deli"
+              },
+              {
+                "id": "grocery_store",
+                "title": "Grocery store"
+              }
+            ]
+          },
+          {
+            "rank": 2,
+            "map_id": "0x89c25bb2359cba91:0xf6693c48d75fdd4",
+            "map_id_encoded": "ChIJkbqcNbJbwokR1P11jcSTZg8",
+            "title": "46 Mott Deli",
+            "address": "46 Mott St, New York, NY 10013",
+            "latitude": 40.7153166,
+            "longitude": -73.9985439,
+            "rating": 4.8,
+            "reviews_cnt": 201,
+            "phone": "(646) 715-6699",
+            "link": null,
+            "display_link": null,
+            "claimed": false,
+            "category": [
+              {
+                "id": "deli",
+                "title": "Deli"
+              },
+              {
+                "id": "chinese_supermarket",
+                "title": "Chinese supermarket"
+              },
+              "… 2 more item(s) truncated"
+            ]
+          },
+          "… 18 more item(s) truncated"
+        ],
+        "ttr": 5
+      },
+      {
+        "lat": 40.722233,
+        "lng": -73.9969667391868,
+        "found": 1,
+        "rank": 15,
+        "count": 20,
+        "results": [
+          {
+            "rank": 1,
+            "map_id": "0x89c25988dfea8929:0xa472a592637d7216",
+            "map_id_encoded": "ChIJKYnq34hZwokRFnJ9Y5KlcqQ",
+            "title": "The Corner Deli",
+            "address": "106 Kenmare St, New York, NY 10012",
+            "latitude": 40.7213979,
+            "longitude": -73.9976088,
+            "rating": 3.7,
+            "reviews_cnt": 65,
+            "phone": null,
+            "link": "http://www.newyorkcornerdeli.com/",
+            "display_link": "www.newyorkcornerdeli.com",
+            "claimed": false,
+            "category": [
+              {
+                "id": "deli",
+                "title": "Deli"
+              },
+              {
+                "id": "restaurant",
+                "title": "Restaurant"
+              }
+            ]
+          },
+          {
+            "rank": 2,
+            "map_id": "0x89c25988bd13e951:0x4cc655c93284a591",
+            "map_id_encoded": "ChIJUekTvYhZwokRkaWEMslVxkw",
+            "title": "Parisi Bakery & Deli",
+            "address": "198 Mott St, New York, NY 10012",
+            "latitude": 40.7210872,
+            "longitude": -73.9954941,
+            "rating": 4.8,
+            "reviews_cnt": 668,
+            "phone": "(212) 226-6378",
+            "link": null,
+            "display_link": null,
+            "claimed": false,
+            "category": [
+              {
+                "id": "deli",
+                "title": "Deli"
+              },
+              {
+                "id": "bakery",
+                "title": "Bakery"
+              }
+            ]
+          },
+          "… 18 more item(s) truncated"
+        ],
+        "ttr": 5
+      },
+      "… 7 more item(s) truncated"
+    ],
+    "ttr": 7
+  }
+}

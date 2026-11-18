@@ -66,7 +66,8 @@ def platform_call(ep: dict, query: QueryValues, body: bytes, consumed: set[str],
     return MarketplaceCall(
         tool=None, upstream="", consumed=consumed, endpoint_id=ep["id"], provider=ep["provider"],
         tier="platform", cost_type=str(cost.get("type") or "per_call"),
-        estimate_micro=pricing.estimate_micro, unit_micro=pricing.unit_micro,
+        estimate_micro=pricing.estimate_micro, worst_case_micro=pricing.worst_case_micro,
+        unit_micro=pricing.unit_micro,
         reported_charge_unit_micro=pricing.reported_charge_unit_micro,
         settlement_basis=pricing.settlement_basis, request_data=pricing.request_data,
         cost_terms=pricing.terms,
@@ -74,7 +75,7 @@ def platform_call(ep: dict, query: QueryValues, body: bytes, consumed: set[str],
         managed_resource=ep.get("managed_resource"),
         spooled_evidence=_spool_evidence_paths(ep, ep.get("cost") or {}),
         call_id="replay", payer_org_id=0,
-        reserved_micro=ledger.with_margin(pricing.estimate_micro),
+        reserved_micro=ledger.with_margin(max(pricing.estimate_micro, pricing.worst_case_micro)),
         deferred=[] if routed_child else None,
     )
 

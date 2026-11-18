@@ -83,6 +83,8 @@ treg resources list --provider fishaudio --kind voice
 With your own Fish key, requests remain an unrestricted, unmetered upstream relay and Fish owns the
 account boundary.
 
+A client written for a provider's own API can switch by its base URL alone: `https://treg.to/call/<provider>` in place of the provider's base URL (`https://api.dataforseo.com/v3` → `https://treg.to/call/dataforseo`) runs the catalog tool on that method and path exactly as `/call/<id>` would; a path the catalog does not list is a 404, never relayed.
+
 Catalog tool inputs are described by `treg catalog get <id>`. Tools marked `strict_query` reject undeclared or repeated query parameters, unsupported values and request bodies. Send each declared single-valued parameter once, and a row count such as `limit` as a whole number within its stated maximum: a tool that enforces this answers a 400 `catalog_parameter_invalid` naming the parameter, and nothing is charged.
 
 Your token identifies you on every call (`X-Treg-Token` header) and is the same for all tools.
@@ -155,7 +157,8 @@ treg call hunter.people.email.find --query domain=reddit.com --query full_name="
 **How a catalogued call is served** — the credential ladder, in order:
 
 1. your team registered its own tool for that provider → that tool, that key;
-2. your team stored a secret for the provider → injected through a virtual tool;
+2. your team stored a secret for the provider → injected through a virtual tool (never for a keyless
+   public API, which has nothing to connect);
 3. neither, and the endpoint has a verified public route → **no provider key**, free;
 4. otherwise → **treg's own key**, billed to the team's prepaid balance.
 
@@ -176,6 +179,14 @@ treg topup            # add funds, or set up automatic top-ups
 
 Out of balance is an HTTP **402** `error: insufficient_balance` carrying `balance_micro`, `estimated_cost_micro` and a `topup_url`,
 so an agent can act on it without reading prose.
+
+**No account at all?** When the operator switches agent payments on, an agent with a stablecoin
+wallet can pay for catalog calls one at a time over HTTP, with MPP (Tempo) or x402 (Base): a
+`/call/<id>` without a treg token answers 402 with the payment challenge, and a client such as pympp
+or the mppx library pays it and sends the call again. What the call does not use stays as that
+wallet's credit for its next calls; it is never paid back as money. The agent-facing rules are in
+the skill's "Pay with a wallet" section, the design in
+[agent payments](docs/context/architecture/agent-payments.md).
 
 **Enrich Arena** lives at `/enrich-arena`, outside the dashboard. Compare enrichment answers with each vendor’s cost and speed,
 vote for the best answer in one click, or watch a sequential waterfall. Capability-compatible
@@ -282,7 +293,8 @@ treg oauth connect gsc --client-secret client_secret.json \
 
 Full options for every command: [`USAGE.md`](USAGE.md).
 
-The CLI and its installer send anonymous usage to PostHog when using treg.to (no arguments or credentials).
+The CLI and its installer send anonymous usage to PostHog when using treg.to (which command ran and
+how it ended, never request content or credentials).
 Disable with `TREG_TELEMETRY=0` or `DO_NOT_TRACK=1`.
 See [analytics details](USAGE.md#anonymous-usage-analytics).
 
@@ -371,7 +383,10 @@ Environment variables (prefix `TREG_`, read from `.env`):
 | ----------------------------------------- | ------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `TREG_DATABASE_URL`                       | `sqlite+aiosqlite:///./treg.db` | DB URL (SQLite for dev, Postgres in prod)                                                                                                                                  |
 | `TREG_READ_DATABASE_URL`                  | *(empty)*                       | Optional SQLite / PostgreSQL read datasource; empty reuses the primary. Requires callers to opt in; existing queries are unchanged. See [read datasource setup](docs/context/ops/deploy.md#optional-read-replica). |
-| `TREG_SECRET_KEY`                         | *(empty)*                       | Fernet key for secrets-at-rest; empty → an ephemeral key is minted (secrets won't survive a restart)                                                                       |
+| `TREG_SECRET_KEY`                         | *(empty)*                       | Fernet key for secrets-at-rest; empty → an ephemeral key is minted (secrets won't survive a restart). During a rotation, a comma-separated list: the first key encrypts, every key decrypts                                                                       |
+| `TREG_AWS_SECRET_ID`                      | *(empty)*                       | ARN of an AWS Secrets Manager secret holding a JSON object of `TREG_*` settings, read once at startup and winning over the environment; AWS credentials come from the standard `AWS_*` variables |
+| `TREG_KMS_KEY_ID`                         | *(empty)*                       | KMS key or alias ARN for stored credentials: this process can open KMS-sealed values (AWS credentials from the standard `AWS_*` variables) |
+| `TREG_KMS_ENCRYPT_NEW`                    | `false`                         | also seal new credential writes with that key; set only once every process that reads credentials has `TREG_KMS_KEY_ID` |
 | `TREG_PUBLIC_URL`                         | `https://treg.to`  | treg's public base, used to build the OAuth callback URI                                                                                                                   |
 | `TREG_SESSION_SECRET`                     | *(empty)*                       | signs the dashboard session cookie; falls back to `TREG_SECRET_KEY`. Set a real value in prod                                                                              |
 | `TREG_GITHUB_CLIENT_ID` / `_SECRET`       | *(empty)*                       | GitHub OAuth sign-in (callback `<public_url>/auth/github/callback`); empty hides the button                                                                                |
@@ -380,6 +395,7 @@ Environment variables (prefix `TREG_`, read from `.env`):
 | `TREG_ENTERPRISE_SSO_BUNDLE_ONLY` | `true` | Show only the SSO + Directory Sync plan by default; set to `false` to offer both monthly plans. |
 | `TREG_ENTERPRISE_SSO_BUNDLE_PRICE_ID` / `TREG_ENTERPRISE_SSO_ONLY_PRICE_ID` | *(empty)* | Reusable monthly Stripe Price IDs in the same account as `TREG_STRIPE_SECRET_KEY`; an unset or unusable Price hides its plan. Stripe's Price supplies the displayed amount and Checkout charge. |
 | `TREG_ENTERPRISE_SSO_BUNDLE_MIN_PRICE_USD` / `TREG_ENTERPRISE_SSO_ONLY_MIN_PRICE_USD` | `0` | Optional whole-dollar minimum for each monthly Stripe Price; lower prices are hidden and rejected at Checkout. |
+| `TREG_AGENT_PAYMENTS_ENABLED` | `false` | Keyless callers pay per catalog call with MPP or x402. Startup checks the rest of the `TREG_AGENT_PAYMENTS_*` set (secret, rails, recipients, settlement) and names every problem; see [agent payments](docs/context/architecture/agent-payments.md#settings). |
 | `TREG_INSTAGRAM_CLIENT_ID` / `_SECRET`    | *(empty)*                       | Instagram App ID and secret for direct Instagram Login (redirect `<public_url>/oauth/callback`)                                                                           |
 | `TREG_META_CLIENT_ID` / `_SECRET`         | *(empty)*                       | Meta app credentials for Facebook Pages, Meta Ads, and optional Instagram `page-tools`                                                                                     |
 | `TREG_OAUTH_REVIEW_PENDING`               | `instagram-login,page-messages` | Comma-separated registry review keys whose capabilities must remain gated; hosted review state is maintained privately.                                                   |
@@ -402,7 +418,7 @@ No `.env` is needed for local dev — every setting has a working default (ephem
 
 > **⚠️ Back these up before moving or redeploying:** the Fernet key (`TREG_SECRET_KEY`) and the
 > database (Postgres in prod; `treg.db` for a local sqlite run). Lose the Fernet key and every
-> stored secret becomes unrecoverable.
+> stored secret it sealed becomes unrecoverable; the same holds for a KMS key that is deleted.
 
 ## Architecture
 

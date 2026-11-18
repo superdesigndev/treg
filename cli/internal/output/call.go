@@ -113,6 +113,9 @@ func envelope(r *api.Response, ctype string) callEnvelope {
 	if v := h.Get("X-Treg-Upstream-Failed"); v != "" {
 		m.Set("upstream_failed", v)
 	}
+	if v := h.Get("X-Treg-Review-Pending-Text"); v != "" {
+		m.Set("review_pending", v)
+	}
 	if h.Get(capacityHeader) == exhausted {
 		m.Set("capacity", exhausted)
 	}
@@ -121,6 +124,11 @@ func envelope(r *api.Response, ctype string) callEnvelope {
 	}
 	if v := h.Get("X-Treg-Hint"); v != "" {
 		m.Set("hint", v)
+		// An invitation's words are the registry's; a script reading --json gets them here,
+		// since nothing goes to stderr in this mode.
+		if t := h.Get("X-Treg-Hint-Text"); t != "" {
+			m.Set("hint_text", t)
+		}
 	}
 	if v := h.Get("X-Treg-Routed-Tool"); v != "" {
 		m.Set("routed_tool", v)
@@ -202,7 +210,7 @@ func (p *Printer) chargeLine(r *api.Response) {
 	}
 }
 
-// hintLine is the registry's optional invitation (X-Treg-Hint: review|feedback); X-Treg-Review is
+// hintLine is the registry's optional invitation (X-Treg-Hint: review|mark|feedback); X-Treg-Review is
 // what a registry before 0.19 sends.
 func (p *Printer) hintLine(r *api.Response) {
 	h := r.Header
@@ -216,6 +224,12 @@ func (p *Printer) hintLine(r *api.Response) {
 			"prefer it unless you need options only this provider has.\n", routed)
 	}
 	if id == "" {
+		return
+	}
+	// The registry writes the words (X-Treg-Hint-Text), so they change without a CLI release; the
+	// built-in lines below are for a registry that sends none, and match the Python CLI's.
+	if text := h.Get("X-Treg-Hint-Text"); text != "" && kind != "" {
+		fmt.Fprintf(p.Err, "treg: %s\n", text)
 		return
 	}
 	switch kind {
@@ -280,6 +294,8 @@ func (p *Printer) failureDiagnostics(r *api.Response) {
 	fmt.Fprintln(p.Err, line)
 	if notice != "" {
 		fmt.Fprintln(p.Err, "treg: "+notice)
+	} else if review := h.Get("X-Treg-Review-Pending-Text"); relayed && review != "" {
+		fmt.Fprintln(p.Err, "treg: "+review)
 	}
 	if r.Status == 401 && !relayed && os.Getenv("TREG_TOKEN") != "" {
 		fmt.Fprintln(p.Err, "treg: TREG_TOKEN was rejected, and it overrides `treg login`: set it to a current key")

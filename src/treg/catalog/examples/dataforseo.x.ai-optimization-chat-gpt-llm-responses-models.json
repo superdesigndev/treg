@@ -1,0 +1,37 @@
+{
+  "version": "0.1.20261103",
+  "status_code": 20000,
+  "status_message": "Ok.",
+  "time": "0.0214 sec.",
+  "cost": 0,
+  "tasks_count": 1,
+  "tasks_error": 0,
+  "tasks": [
+    {
+      "id": "11162217-2171-0616-0000-9b798c34cac1",
+      "status_code": 20000,
+      "status_message": "Ok.",
+      "time": "0.0003 sec.",
+      "cost": 0,
+      "result_count": 31,
+      "path": [
+        "v3",
+        "… 4 more item(s) truncated"
+      ],
+      "data": {
+        "api": "ai_optimization",
+        "function": "llm_responses",
+        "se": "chat_gpt"
+      },
+      "result": [
+        {
+          "model_name": "gpt-6.1-sol",
+          "reasoning": true,
+          "web_search_supported": true,
+          "task_post_supported": true
+        },
+        "… 30 more item(s) truncated"
+      ]
+    }
+  ]
+}

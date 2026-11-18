@@ -6,7 +6,8 @@ import time
 
 import httpx
 
-from .. import crypto
+from . import credential_cipher
+from .oauth_refresh import no_access_token_error, require_public_token_uri
 
 
 class HTTPXOAuthExchangePort:
@@ -15,7 +16,7 @@ class HTTPXOAuthExchangePort:
 
     async def exchange_code(self, pending, code: str) -> dict:
         """Trade an authorization code for the provider's durable token shape."""
-        client_secret = crypto.decrypt(pending.client_secret)
+        client_secret = await credential_cipher.unseal(pending.client_secret, org_id=pending.org_id)
         client_id_param = getattr(pending, "client_id_param", "") or "client_id"
         data = {
             "code": code,
@@ -30,14 +31,13 @@ class HTTPXOAuthExchangePort:
             kwargs["auth"] = (pending.client_id, client_secret)
         else:
             data["client_secret"] = client_secret
+        await require_public_token_uri(pending.token_uri)
         response = await self.client.post(pending.token_uri, data=data, **kwargs)
         response.raise_for_status()
         token = response.json()
         access = token.get("access_token")
         if not access:
-            raise ValueError(
-                f"token endpoint returned no access_token: {token.get('error') or token}"
-            )
+            raise no_access_token_error(token)
         blob = {
             "access_token": access,
             "token": access,

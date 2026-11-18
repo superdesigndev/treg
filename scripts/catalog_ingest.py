@@ -947,10 +947,16 @@ def ingest_dataforseo(refresh: bool) -> tuple[Path, dict]:
         stem = "/".join(seg[: seg.index("live")]) if "live" in seg else (
             "/".join(seg[:-1]) if seg[-1] == "task_post" else path)
         families.setdefault(stem, []).append(path)
+    # A task_post already listed beside its live twin was added on purpose (the cheaper Standard
+    # queue); keep it, or a regeneration drops it and its reader.
+    current = CATALOG / "dataforseo.extended.yaml"
+    listed = {ep.get("path") for ep in (yaml.safe_load(current.read_text()) or {}).get("endpoints") or []
+              } if current.is_file() else set()
     chosen: list[str] = []
     for paths in families.values():
         live = [p for p in paths if "/live" in p]
-        chosen += live or paths
+        kept = [p for p in paths if p.endswith("/task_post") and p.removeprefix("/v3") in listed]
+        chosen += (live + kept) if live else paths
 
     skip = core_routes("dataforseo")
     endpoints = []
@@ -1576,14 +1582,15 @@ def _anyapi_flat_floor(api: dict) -> float:
 
 
 def anyapi_cost_note(lanes: int, ceiling: float) -> str:
-    """The row's `price.note`: how far a failover can take one charge, what settles it and how a
-    caller caps it. A caller reads it; how the listed price was measured stays in `_anyapi_price`.
+    """The row's `price.note`: how far a failover can take one charge, what settles it, how a
+    caller caps it, and that a miss is billed (the `bill` default in anyapi.yaml). A caller reads it; how the listed price was measured stays in `_anyapi_price`.
     The hand-curated core rows in anyapi.yaml use the same sentences."""
     serve = (f"{lanes} sources serve this, cheapest first; a failed attempt retries on the next, up "
              f"to ${ceiling:g} at the dearest." if lanes > 1 else
              f"One source serves this, at up to ${ceiling:g} a call.")
     return (f"{serve} The charge follows the answer's `costUsd`, not the listed price. Send "
-            "X-Treg-Route-Max-Cost to refuse any source dearer than your ceiling.")
+            "X-Treg-Route-Max-Cost to refuse any source dearer than your ceiling. A not-found or "
+            "empty answer is billed too, at its own `costUsd`.")
 
 
 def ingest_anyapi(refresh: bool = False):

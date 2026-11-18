@@ -11,6 +11,7 @@ from fastapi.responses import Response, StreamingResponse
 from .. import audit, oauth_providers
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from ..application import agent_payments
 from ..application import catalog_find as find
 from ..application import feedback as feedback_app
 from ..application import view_context
@@ -172,6 +173,8 @@ async def catalog_platform(slug: str, include_hidden: int = 0,
             service: {"service": service, "display_name": _provider_display(service),
                       **cat.provider_meta.get(service, {}),
                       "auth_kind": getattr(oauth_providers.get(service), "auth_kind", None),
+                      # whether this server serves the provider's keyless rows (its allow-list)
+                      "enabled": get_settings().platform_provider_enabled(service),
                       "metered": bool(getattr(oauth_providers.get(service), "platform_billed", False)
                                       and service in get_settings().oauth_billed_set)}
             for service in sorted({ep["provider"] for ep in eps})
@@ -210,7 +213,13 @@ async def catalog_provider(service: str) -> dict:
                                "providers": len(compared[(plat, cap)]), "description": cat.capabilities.get(cap, "")}
         shelves.setdefault(plat, []).append(view)
     return {
-        "provider": {"service": service, "display_name": display, **cat.provider_meta.get(service, {})},
+        "provider": {"service": service, "display_name": display, **cat.provider_meta.get(service, {}),
+                     # the dashboard's provider page reads a public provider from here: it is not in
+                     # the Connect listing (there is nothing to connect)
+                     **({"auth_kind": "public", "summary": reg.summary or "", "docs_url": reg.docs_url or "",
+                         "enabled": get_settings().platform_provider_enabled(service)}
+                        if (reg := oauth_providers.get(service)) is not None and reg.auth_kind == "public"
+                        else {})},
         "platforms": [
             {"slug": slug, "label": cat.platforms.get(slug, {}).get("label", slug),
              "tools": sorted(tools, key=lambda v: (v["kind"] in catalog_store.HIDDEN_KINDS, v["name"] or v["summary"] or v["id"]))}
@@ -221,8 +230,14 @@ async def catalog_provider(service: str) -> dict:
 
 def _quote_skip(ep: dict, cat) -> str | None:
     """Why the router would not call this child on treg's key, in `route.py`'s words; None if it would."""
+    from ..application.call.resolve import _anonymous_refusal, anonymous_served
     if catalog_store.paused(ep):
         return f"{ep['provider']} is paused on this deployment"
+    if anonymous_served(ep) is not None:  # the keyless tier: free, no key on this deployment needed
+        return None
+    if (ep.get("platform_auth") == "anonymous"  # a public provider's row not served here: its true reason
+            and getattr(oauth_providers.get(ep["provider"]), "auth_kind", "") == "public"):
+        return f"{ep['provider']} {_anonymous_refusal(ep, None)}"
     if not cat.platform_eligible(ep):
         return "not platform-eligible and no own key"
     if not get_settings().platform_key_for(ep["provider"]):
@@ -320,6 +335,13 @@ async def _verdicts_or_empty() -> dict[str, dict]:
         return {}
 
 
+def _wallet(ep: dict) -> dict:
+    """Whether a caller with no treg account can pay for this tool with a wallet, while agent
+    payments are on (docs/context/architecture/agent-payments.md)."""
+    view = agent_payments.wallet_view(ep)
+    return {"wallet": view} if view is not None else {}
+
+
 @app.get("/catalog/search")
 async def catalog_search(request: Request, q: str = "", limit: int = 25,
                          added_within_days: int | None = None, sort: str = "", engine: str = "",
@@ -372,7 +394,8 @@ async def catalog_search(request: Request, q: str = "", limit: int = 25,
         (dict(ep) | {"score": None if led else score, "observed": stats.get(ep["id"])}) if ep.get("kind") == "hub" else
         (catalog_store.endpoint_view(ep, _provider_display(ep["provider"]), cat)
          | catalog_store.endpoint_context(ep, cat)
-         | {"score": None if led else score, "observed": stats.get(ep["id"])})
+         | {"score": None if led else score, "observed": stats.get(ep["id"])}
+         | _wallet(ep))
         for ep, score in ranked
     ]
     results = catalog_store.group_routed(results, max_children=catalog_store.MAX_ROUTED_CHILDREN)[:limit]
@@ -651,7 +674,8 @@ async def catalog_endpoint(
     # And what other teams' agents said after using each of them (`reviews`, where there are any):
     # the other half of the choice, attached here for the same reason as `observed`.
     verdicts = await _verdicts_or_empty()
-    view = _with_reviews(view | {"observed": stats.get(endpoint_id)} | overflow, verdicts)
+    view = _with_reviews(view | {"observed": stats.get(endpoint_id)} | overflow | _wallet(ep),
+                         verdicts)
     siblings = [_with_reviews(s | {"observed": stats.get(s["id"])}, verdicts, quotes=False) for s in siblings]
     # Hub tools treg approved for this job sit beside its providers, with a seeded success rate while they are new. Shown for comparison only: they are
     # never a routed child (AGENTS.md non-negotiable 4).
@@ -665,6 +689,7 @@ async def catalog_endpoint(
         # The QUOTE (routing plan §3.5): the contract and the ranked children on treg's key, priced
         # at a one-row lookup. Own keys rank first at call time (this route is open, so it cannot
         # know the caller's); nothing is reserved here.
+        from ..application.call.resolve import anonymous_served
         from ..domain.catalog.routing.plan import Candidate, cost_at, miss_charge_micro, rank
         contract = cat.contracts.get(ep["capability"])
         kids = [cat.by_id[i] for i in ep.get("routed_children") or [] if i in cat.by_id]
@@ -673,11 +698,15 @@ async def catalog_endpoint(
             st = stats.get(k["id"]) or {}
             ad = cat.adapters.get(k["id"])
             cv = cat.cost_view(k.get("cost"), k["provider"])
-            price = cost_at(cv, {}, ad)
-            cands.append(Candidate(k, ad, ad.accepts[0] if ad and ad.accepts else (), "platform",
+            # Tiered as `route.build_plan` tiers it for a team with no own key: keyless rows first, free.
+            anonymous = anonymous_served(k) is not None
+            price = 0 if anonymous else cost_at(cv, {}, ad)
+            cands.append(Candidate(k, ad, ad.accepts[0] if ad and ad.accepts else (),
+                                   "anonymous" if anonymous else "platform",
                                    price, st.get("hit_rate"),
                                    st.get("ok_rate"), st.get("p50_ms"), st.get("last_ok_days"),
-                                   miss_micro=miss_charge_micro(cv, {}, ad, price) if price is not None else None))
+                                   miss_micro=0 if anonymous else
+                                   miss_charge_micro(cv, {}, ad, price) if price is not None else None))
         routing = {
             "contract": {"identity": [list(v) for v in contract.identity], "output": {
                              # `analytics` is treg's own event mapping, not part of the answer.
@@ -711,6 +740,11 @@ async def catalog_endpoint(
                                                    "running also pending, call_id and async (task_id + poll) — "
                                                    "cost_micro is then a hold settled later (GET /calls/{{call_id}})"}
                            if contract and contract.check else {}),
+                        **({"X-Treg-Route-Domain-Match": "strict (or true) = when you sent a domain, an email hit at another domain does not "
+                                                         "end the call: the waterfall goes on (at most two more such hits), each "
+                                                         "attempt at its own price, inside X-Treg-Route-Max-Cost; the first "
+                                                         "off-domain answer comes back (outcome weak, domain_match false) only when "
+                                                         "nothing on-domain turns up"} if contract and contract.advice_domain_mismatch else {}),
                         **({"X-Treg-Route-Confirm": f"true = a hit counts only once a second provider returns the same {contract.confirm}; "
                                                     "each attempt at its own price, inside X-Treg-Route-Max-Cost; the answer is "
                                                     "_treg.confirmation {field, confirmed, confirmed_by}"} if contract and contract.confirm else {}),

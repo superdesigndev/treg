@@ -1069,6 +1069,7 @@ endpoints:
     bodyType: json
     note: same generic runner as brightdata.web.scrape.structured with dataset_id fixed to this dataset (see that entry and brightdata.instagram.user.profile in the core file for the pattern). >1 minute falls back to HTTP 202 + snapshot_id — use brightdata.web.scrape.job.start for anything beyond a handful of URLs. Exact required body fields were not individually re-confirmed per dataset here; verify against the dataset's own quickstart page before high-volume use.
   price: {value: '0.0015', currency: USD, unit: record, note: "$1.50 per 1000 records delivered, pay-per-success — the general Web Scraper API rate documented for this product family; some datasets carry different published rates, confirm on brightdata.com/pricing before volume use"}
+  miss: {when: {path: response, op: empty}}
   test_request:
     queryParams: {dataset_id: gd_lvzdpsdlw09j6t702, format: json}
     body: [{"url": "https://www.reddit.com/r/IAmA/comments/z1c9z/i_am_barack_obama_president_of_the_united_states/"}]

@@ -19,6 +19,7 @@ sources:
   - src/treg/infra/db.py
   - src/treg/infra/money_admission.py
   - scripts/bench_money_admission.py
+  - scripts/bench_money_scaling.py
   - src/treg/email.py
   - src/treg/audit.py
   - scripts/dev-local.sh
@@ -49,6 +50,23 @@ before their `asyncio.run()` loop closes, so the serving loop never receives con
 closed loop; calling `maintenance.upgrade()` directly does not dispose it. `python -m treg keygen`
 prints a Fernet key for `TREG_SECRET_KEY`.
 
+Settings come from the environment and `.env`. With `TREG_AWS_SECRET_ID` set to a Secrets Manager
+ARN, startup also reads that secret, a JSON object keyed by the same `TREG_*` names, and its values
+win over the environment; a secret that cannot be read stops startup. The region is the ARN's, and
+boto3 takes credentials from the standard `AWS_*` variables.
+
+Stored credentials move to KMS in three deploys ([auth & secrets](../architecture/auth-secrets.md),
+Encryption): `TREG_KMS_KEY_ID` on every process that reads credentials, then `TREG_KMS_ENCRYPT_NEW`
+on all of them, then `treg-worker admin reencrypt-credentials` (`--dry-run` first) until it reports
+nothing left to re-seal. The KMS key stays as long as any row is sealed with it.
+
+Rotating `TREG_SECRET_KEY`: deploy `old,new` to every process that decrypts, so processes
+overlapping a rolling deploy can open what updated ones write; then deploy `new,old` everywhere;
+run `treg-worker admin rotate-fernet` until it reports nothing left (it covers Arena payloads and
+any stored credential still on Fernet); then set every process to `new` alone. Keep the old key
+out of the environment but retrievable for as long as a database backup from before the rotation
+can still be restored.
+
 The lifespan and every worker command call read-only `verify_db()`: an unstamped database or a known
 revision behind head is refused; an unknown newer revision (code older than schema) warns and serves,
 because additive revisions tolerate rollback. Startup never creates tables, stamps or runs release
@@ -59,20 +77,79 @@ tasks. If `TREG_SECRET_KEY` is empty on a non-SQLite database, `verify_db()` rai
 - **Rollback floors.** A revision marked `contract = True` is a hard floor: never run older code
   against it. `0034` (managed keys) is one because old code cannot enforce stored disable or revoke
   state. `0078` drops `onboardingprofile`; code older than it touches that table only while a
-  `TREG_ONBOARDING_V2*` setting is on, so keep those off on any rollback past it.
+  `TREG_ONBOARDING_V2*` setting is on, so keep those off on any rollback past it. `0106` rebuilds
+  `agentpayer` with a per-network key; code older than it writes that table only while
+  `TREG_AGENT_PAYMENTS_ENABLED` is on, so keep it off on any rollback past it.
 - **Revision-only schema.** An autogenerate drift guard requires Alembic head and
   `SQLModel.metadata` to match exactly. `reset_db()` uses `create_all` only to build a missing test
   schema and stamps it at head.
 - **Deploy schema first**, then application and worker code that expects the new revision. A
   platform whose scheduled workers update independently must sequence them accordingly.
 
+**Release order with scheduled workers.** Every `treg-worker` command refuses a database behind its
+build (`verify_db()`), so a scheduled service that redeploys on its own the moment a revision is
+merged fails every run until the web upgrade has applied it, and keeps failing if that upgrade
+refused. Turn automatic deploys off for scheduled services and redeploy them from the release
+script, only after the web pre-deploy upgrade passed:
+
+1. Merge; the web service builds and its pre-deploy step runs `python -m treg upgrade`.
+2. If the upgrade refused (lock timeout budget spent, or the long-lock-holder check), stop: the
+   database is unchanged or stamped part-way, and both the old web code and the old scheduled
+   workers keep running against it. Fix the cause and redeploy the web service.
+3. Once the upgrade passed and the new web code serves, redeploy each scheduled service.
+
 **PostgreSQL lock queueing.** While an `ALTER TABLE` waits for its `ACCESS EXCLUSIVE` lock, every
-later query on that table queues behind it. So migrations set a 5 s `lock_timeout`, the longest stall
-a deploy may inflict, and no revision may raise it for an `ALTER`. A deploy waits longer by retrying
-instead: `maintenance` re-runs `alembic upgrade head` up to `LOCK_RETRY_ATTEMPTS` times after a lock
-timeout with a jittered pause so short transactions drain, and `env.py` commits each revision on its
-own (`transaction_per_migration`) so a retry resumes at the revision that timed out. Any other error
-fails the deploy at once.
+later query on that table queues behind it. So migrations set `lock_timeout` to
+`TREG_MIGRATION_LOCK_TIMEOUT_S` (2 s, at most 5 s), the longest stall a deploy may inflict, and no
+revision may raise it for an `ALTER`. The value stays above PostgreSQL's default `deadlock_timeout`
+(1 s): that is when a waiting `ALTER` makes an ordinary autovacuum on the table give up its lock,
+and a wait of exactly 1 s can time out at that same instant. `env.py` sets the timeouts again after
+every revision (`on_version_apply`), so an index revision that restores fixed values does not
+lengthen the next revision's wait. A deploy waits longer by retrying instead: `maintenance` re-runs
+`alembic upgrade head` up to `TREG_MIGRATION_LOCK_RETRY_ATTEMPTS` times (30) after a lock timeout,
+within `TREG_MIGRATION_LOCK_RETRY_BUDGET_S` (600 s),
+pausing a random time between half and all of `TREG_MIGRATION_LOCK_RETRY_PAUSE_S` (2 s) so short
+transactions drain, and `env.py` commits each revision on its own (`transaction_per_migration`) so a
+retry resumes at the revision that timed out. Any other error fails the deploy at once.
+
+**Refusing behind a long lock holder.** Retrying helps only against holders that let go soon.
+PostgreSQL never cancels an anti-wraparound autovacuum for a waiting `ALTER`, and an open
+transaction keeps its locks until it ends; behind either, every attempt repeats the stall. So
+before every attempt (the first and each retry), `maintenance._refuse_behind_long_lock_holder`
+reads `pg_locks` and `pg_stat_activity` (read-only, PostgreSQL only) for the tables the pending
+revisions name (string literals in their files, docstrings excluded), together with their
+partitions (`pg_partition_tree`) and TOAST tables (`reltoastrelid`), and refuses at once, naming
+the session, when an anti-wraparound autovacuum or a transaction older than
+`TREG_MIGRATION_LOCK_HOLDER_MAX_XACT_S` (30 s) holds a conflicting lock on one of them. Only
+conflicting modes count: a pending revision that plainly changes rows takes ROW EXCLUSIVE, so
+readers and autovacuum do not stop it; any other revision is taken to need ACCESS EXCLUSIVE,
+which every mode blocks. `maintenance._takes_access_exclusive` reads a revision fail-closed: it
+is data-only only when every call in `upgrade()` and the module functions it calls is
+`op.execute` of literal UPDATE/INSERT/DELETE/SELECT SQL, `op.bulk_insert`, a
+`sa.text`/`sa.table`/`sa.column` expression or another module function, and no string there or
+in a module constant names a DDL keyword (`DO` included) anywhere once SQL comments are removed.
+Any other call (`op.get_bind()`, an imported helper, a class, `sa.Index(...).create`) means ACCESS
+EXCLUSIVE. Table names are read from the revision's strings, docstrings and error messages left
+out. Nothing ran after the check; wait for the holder (never cancel an anti-wraparound vacuum) or
+end the transaction, then deploy again. To go ahead behind the bounded lock wait for this one
+deploy, set `TREG_MIGRATION_LOCK_HOLDER_CHECK_SKIP` to the head revision id the refusal names: it
+applies only while that revision is the head and stops by itself when a later one ships (a value
+that no longer matches is ignored with a warning). `TREG_MIGRATION_LOCK_HOLDER_CHECK=false` still
+turns the check off, for this one deploy only, then remove it; every upgrade logs a warning
+while either bypass is in force. `pg_locks` and `pg_class` are readable by every role, but to a role without
+`pg_read_all_stats` PostgreSQL shows another role's sessions, autovacuum included, with NULL
+`backend_type`, `xact_start` and `query`. The check keeps those rows: one holding `SHARE UPDATE
+EXCLUSIVE` on a table whose `age(relfrozenxid)` or `mxid_age(relminmxid)` has reached
+`autovacuum_freeze_max_age` (or its multixact twin; a lower per-table reloption wins) is taken as
+an anti-wraparound autovacuum and refused; any other hidden holder is logged as a warning naming
+its pid, lock and table, and the upgrade continues, bounded by the lock wait. Granting
+`pg_read_all_stats` to the migration role gives the check full sight.
+
+**Retry time budget.** Beside the attempt count, retries stop once the next pause would pass
+`TREG_MIGRATION_LOCK_RETRY_BUDGET_S` (600 s) since the first attempt, with an error naming the
+setting; revisions committed before the timeout stay applied. The budget keeps the whole retry
+loop well inside a platform's pre-deploy time limit even when each attempt runs long revisions
+before it times out.
 
 - Hot-table ALTERs belong in their own revision, add only nullable columns without defaults
   (metadata-only in PostgreSQL), and leave backfills and `NOT NULL` to later steps.
@@ -192,8 +269,10 @@ meaning is not obvious from the field:
 Credentials stay in the deployment secret store.
 
 **Public host aliases.** `TREG_PUBLIC_HOST_ALIASES` is the complete JSON list of extra hostnames
-accepted for social-login callbacks, MCP hosts, origins and token audiences, and the hub self-relay
-guard; setting it replaces the list. It does not change `TREG_PUBLIC_URL`, canonical links or
+accepted for social-login callbacks, MCP hosts, origins and token audiences, the hub self-relay
+guard, and the host of invite-email links and Stripe return URLs; setting it replaces the list.
+Those links never take any other `Host`: `routers/auth_helpers.trusted_public_base` falls back to
+`TREG_PUBLIC_URL`, so a forged header cannot send an invite token elsewhere. It does not change `TREG_PUBLIC_URL`, canonical links or
 provider-connect callbacks. Register each alias's `/auth/google/callback` and
 `/auth/github/callback` with the OAuth clients first, and list it in Turnstile's widget hostnames
 (a non-empty `TREG_TURNSTILE_HOSTNAMES` overrides the server-side fallback and must list every
@@ -215,6 +294,30 @@ secret stable: changing it breaks every join across the change.
 `TREG_CLIENT_ID_SECRET` is set on the processes that relay calls. Turn it on after the provider is
 ready to read the header, and keep the secret stable: changing it gives every team a new code at
 every provider.
+
+**Agent payments.** `TREG_AGENT_PAYMENTS_ENABLED` lets a caller with no treg credential pay a
+catalog call with MPP or x402. It needs `TREG_AGENT_PAYMENTS_SECRET` (32+ characters), at least one
+of `TREG_AGENT_PAYMENTS_MPP_ENABLED` / `TREG_AGENT_PAYMENTS_X402_ENABLED`, and each enabled rail's
+recipient address; the defaults are testnets. The web app and `treg-worker agentpay reconcile`
+refuse to start with one error naming every missing setting; other workers start without them, so
+the payment secrets belong on those two, and the Stripe key also wherever
+`treg-worker agentpay stripe-address` runs. A value of the wrong type still stops every process.
+On mainnet the x402 facilitator is Coinbase's
+(`TREG_AGENT_PAYMENTS_X402_FACILITATOR_URL=https://api.cdp.coinbase.com/platform/v2/x402`) and needs
+`TREG_AGENT_PAYMENTS_X402_CDP_API_KEY_ID` and `_SECRET`, plus Base mainnet USDC as
+`TREG_AGENT_PAYMENTS_X402_ASSET` with `TREG_AGENT_PAYMENTS_X402_ASSET_NAME="USD Coin"`.
+`TREG_AGENT_PAYMENTS_SETTLEMENT` is `wallet` (the recipients are treg's own wallet) or `stripe` (they
+are Stripe deposit addresses from `treg-worker agentpay stripe-address`; needs
+`TREG_AGENT_PAYMENTS_STRIPE_SECRET_KEY`, the key of the Stripe account with stablecoins enabled, or
+`TREG_STRIPE_SECRET_KEY` when that is the same account, and an explicit
+`TREG_AGENT_PAYMENTS_TEMPO_CURRENCY`). Tempo's hosted RPC takes `TREG_AGENT_PAYMENTS_TEMPO_RPC_URL`
+with `TREG_AGENT_PAYMENTS_TEMPO_RPC_API_KEY`. x402 on Base mainnet also needs its own
+`TREG_AGENT_PAYMENTS_X402_RPC_URL` (a paid node: the reconciler reads it at
+`TREG_AGENT_PAYMENTS_X402_BLOCK_TAG`, default `finalized`). Keyless traffic is capped by
+`TREG_AGENT_PAYMENTS_MAX_PAYMENTS_PER_IP_MINUTE`, `TREG_AGENT_PAYMENTS_MAX_QUOTES_PER_IP_MINUTE`
+(unpaid requests) and `TREG_AGENT_PAYMENTS_MAX_VERIFICATIONS_MINUTE` (payment and proof checks
+that reach a chain or facilitator, across all clients). The x402 sign-in-with-x proof names `TREG_PUBLIC_URL`, so it must be the
+origin agents call. See [agent payments](../architecture/agent-payments.md).
 
 ## Optional money admission
 
@@ -245,6 +348,13 @@ small org set; disabling restores the database path, which remains authoritative
 loopback services via `TREG_TEST_DB_URL` and `TREG_TEST_KV_URL` (skipped without them); the bench
 requires database names starting `treg_admission_test` and resets that schema. Its timings are
 local synthetic evidence, not deployed throughput.
+
+`scripts/bench_money_scaling.py` takes the same two services and the same database-name guard. It
+runs the reserve and the settle of each call from separate OS processes and prints, per process
+count, one team's throughput, latency and database statements per call (BEGIN and COMMIT
+included), then checks the ledger.
+Use it to see whether a change lets a team's throughput grow with processes; its timings are
+local synthetic evidence too.
 
 ## Safe local mode
 
@@ -300,7 +410,11 @@ unencrypted `minisign -G -W` key) and the `TREG_UPDATE_KEY` variable (its public
 channel whose version the operator names (`TREG_CLI_BETA_VERSION` for beta,
 `TREG_CLI_STABLE_VERSION` for stable) moves only when the operator moves it; one
 left empty, or at a 0.x value, follows the newest GitHub release
-([cli-binary](../interface/cli-binary.md)).
+([cli-binary](../interface/cli-binary.md)). A download mirror needs the `cli-mirror` environment
+(variables `R2_ENDPOINT` and `R2_BUCKET`, secrets `R2_ACCESS_KEY_ID` and `R2_SECRET_ACCESS_KEY` for
+an S3-compatible bucket served publicly) and `TREG_CLI_MIRROR_BASE_URL` naming where that bucket's
+`cli/v{version}` is served; copy any release published before with the `CLI mirror` workflow, and
+name a version on a channel only once its copy is there.
 
 ## Audit, archive and spool back-pressure
 
@@ -367,3 +481,9 @@ job's credentials. `treg-worker --help` lists them; what follows is what a sched
   (spending the maker's balance); health is derived from the last three runs.
 - **`jev xboost`** needs `TREG_JEV_TREG_TOKEN` (a member token, so its spend is an ordinary bill) and
   `TREG_AI_GATEWAY_API_KEY`, also set on the web service for the visitor judge endpoint.
+- **`agentpay reconcile`** resolves agent payments whose settlement went unanswered (older than
+  `TREG_AGENT_PAYMENTS_RECONCILE_MIN_AGE_S`, default 300) from the chain, and with settlement
+  `stripe` records settled payments to Stripe. Run it every few minutes when agent payments are on;
+  it exits at once when they are off. **`agentpay stripe-address --network tempo|base`** creates one
+  reusable Stripe crypto deposit address and prints it (setup for settlement `stripe`; run once per
+  network).

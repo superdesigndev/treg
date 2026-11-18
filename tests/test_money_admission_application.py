@@ -693,6 +693,7 @@ def _enable_real_admission(monkeypatch, *, wait_s: float = 2.0, unavailable: boo
     monkeypatch.setattr(kv, "store", lambda: store)
     monkeypatch.setattr(money_admission, "_local_loop", None)
     monkeypatch.setattr(money_admission, "_windows", {})
+    monkeypatch.setattr(money_admission, "_store_down_until", 0.0)
     monkeypatch.setattr(money_admission, "_current", {})
     return store
 
@@ -734,6 +735,28 @@ async def test_reserve_waits_before_checkout_and_reaps_without_a_second_admit(mo
         kinds = (await db.execute(select(LedgerEntry.kind).where(
             LedgerEntry.call_id == "stale-hold"))).scalars().all()
         assert kinds.count("release") == 1
+
+
+async def test_reserve_reloads_the_org_for_auto_top_up_only_when_on_and_after_the_lease(
+        money_db, monkeypatch):
+    org_id, caller = await _payer("reserve-autotopup")
+    probe = AdmissionProbe(monkeypatch)
+    probe.allow.set()
+    scheduled = []
+    monkeypatch.setattr(
+        call_reserve.billing, "maybe_schedule_autotopup",
+        lambda org: scheduled.append((org.id, org.balance_micro, len(probe.connections_on_exit))))
+    try:
+        await call_reserve._platform_reserve(_call(org_id, "topup-off"), caller, call_ref="topup-off")
+        assert scheduled == []
+        assert probe.checkouts == 1, "a team without auto top-up pays no read after its reserve"
+        caller.org.autotopup_enabled = True
+        caller.org.autotopup_consented_at = datetime(2026, 1, 1)
+        await call_reserve._platform_reserve(_call(org_id, "topup-on"), caller, call_ref="topup-on")
+        assert scheduled == [(org_id, 800, 2)], "the committed balance, read after the lease exits"
+        assert probe.checkouts == 3
+    finally:
+        probe.close()
 
 
 async def test_pure_release_batches_admit_once_as_release(money_db, monkeypatch):
@@ -1044,7 +1067,7 @@ async def test_reserve_timeout_does_not_cache_429_if_claim_cleanup_keeps_failing
     assert "could not release idempotency claim" in caplog.text
     del store.values[key]
     retry = await _admission_request(clients, "/call/")
-    assert retry["status"] == 409 and "is still in progress" in retry["body"]["detail"]
+    assert retry["status"] == 409 and "is still in progress" in retry["body"]["detail"]["message"]
     monkeypatch.setattr(idempotency, "IDEMPOTENCY_STALE_PENDING_S", 0)
     stale = await _admission_request(clients, "/call/")
     assert stale["status"] == 410 and stale["body"]["detail"]["error"] == "idempotency_outcome_unknown"
@@ -1063,6 +1086,7 @@ async def test_kv_fallback_still_completes_reserve_and_release(money_db, monkeyp
     release_org = await _fund("fallback-release")
     await _reserve(release_org, "fallback-release")
     monkeypatch.setattr(money_admission, "_windows", {})
+    monkeypatch.setattr(money_admission, "_store_down_until", 0.0)
     monkeypatch.setattr(money_admission, "_current", {})
     store.unavailable = True
     charged, _observed = await call_settle._platform_settle(_call(release_org, "fallback-release"), 503)

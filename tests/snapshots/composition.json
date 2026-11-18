@@ -28,12 +28,7 @@
   "middleware": [
     {
       "args": [],
-      "class": "treg.mcp.NormalizeDirectoryMCPPath",
-      "kwargs": {}
-    },
-    {
-      "args": [],
-      "class": "treg.bootstrap_http._GzipResponseMiddleware",
+      "class": "treg.mcp.NormalizeMCPPath",
       "kwargs": {}
     },
     {

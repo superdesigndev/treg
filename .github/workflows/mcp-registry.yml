@@ -1,0 +1,43 @@
+name: MCP Registry
+
+# Publishes server.json to the official MCP Registry (registry.modelcontextprotocol.io), which
+# GitHub's MCP Registry and VS Code's MCP gallery read. One publication per registry release: the
+# 0.x tags. A version can be published once and never edited, so the tag must equal pyproject's
+# version, which tests/test_plugin.py already ties server.json to. GitHub OIDC proves this
+# repository's organization for the io.github.superdesigndev namespace; no secret is stored.
+on:
+  push:
+    tags: ["v0.*"]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  id-token: write
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    env:
+      MCP_PUBLISHER_VERSION: v1.8.9
+    steps:
+      - uses: actions/checkout@v4
+      - name: The tag names the version server.json carries
+        if: github.ref_type == 'tag'
+        run: |
+          test "${GITHUB_REF_NAME#v}" = "$(jq -r .version server.json)"
+      - uses: sigstore/cosign-installer@6f9f17788090df1f26f669e9d70d6ae9567deba6 # v4.1.2
+      - name: Download and verify mcp-publisher
+        run: |
+          set -euo pipefail
+          archive="mcp-publisher_linux_amd64.tar.gz"
+          base_url="https://github.com/modelcontextprotocol/registry/releases/download/${MCP_PUBLISHER_VERSION}"
+          curl --fail --location --silent --show-error --output "$archive" "$base_url/$archive"
+          curl --fail --location --silent --show-error --output "$archive.sigstore.json" "$base_url/$archive.sigstore.json"
+          cosign verify-blob \
+            --bundle "$archive.sigstore.json" \
+            --certificate-identity "https://github.com/modelcontextprotocol/registry/.github/workflows/release.yml@refs/tags/${MCP_PUBLISHER_VERSION}" \
+            --certificate-oidc-issuer "https://token.actions.githubusercontent.com" \
+            "$archive"
+          tar xzf "$archive" mcp-publisher
+      - run: ./mcp-publisher login github-oidc
+      - run: ./mcp-publisher publish

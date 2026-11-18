@@ -14,9 +14,11 @@
    ================================================================ */
 :root{
   --bg:#f4f4f1; --surface:#fff; --panel:#fafaf9; --panel2:#f0f0ee;
-  --ink:#1a1a1a; --muted:#7c7c7c; --muted2:#989898;
+  /* --muted/--muted2/--teal are darkened from the landing page's #7c7c7c/#989898/#1a7da6, as in
+     usecase.css: those measured under the 4.5:1 floor on --bg, and they carry running copy here. */
+  --ink:#1a1a1a; --muted:#5f5f5f; --muted2:#6e6e6e;
   --line:#2626231a; --line2:#25252233;
-  --teal:#1a7da6;
+  --teal:#136485;
   --green:#118453; --amber:#ba6603; --red:#c0362f;
   --inverse:#1a1a1a; --inverse-ink:#f8f8f7;
   --shadow-sm:0 1px 2px #00000014;
@@ -47,10 +49,13 @@ a:hover{text-decoration:underline}
 .nav .brand{display:flex;align-items:center;gap:8px;font-family:var(--mono);font-weight:500;
   font-size:16px;color:var(--ink)}
 .nav .brand .glyph{width:22px;height:22px;border-radius:6px;background:var(--inverse);
-  color:var(--inverse-ink);display:grid;place-items:center;font-size:13px}
+  color:var(--inverse-ink);display:grid;place-items:center}
+/* the SVG mark, same geometry as favicon.svg and the dashboard's BrandMark */
+.glyph svg{width:57%;height:57%;display:block;fill:currentColor}
 .nav .links{margin-left:auto;display:flex;align-items:center;gap:20px;font-size:14px}
-.nav .links a{color:var(--muted);font-weight:500}
-.nav .links a:hover{color:var(--ink);text-decoration:none}
+/* :not(.candy): the CTA sits in .links too, and this selector outranks .candy's colour */
+.nav .links a:not(.candy){color:var(--muted);font-weight:500}
+.nav .links a:not(.candy):hover{color:var(--ink);text-decoration:none}
 .nav .links a[aria-current]{color:var(--ink)}
 .candy{background:var(--inverse);color:var(--inverse-ink);border:0;border-radius:10px;
   padding:8px 15px;font-family:inherit;font-size:14px;font-weight:600;cursor:pointer;
@@ -135,7 +140,10 @@ pre.call{margin:9px 0 0;background:var(--panel);border-radius:var(--rb);padding:
 .op p{margin:7px 0 0;font-size:13.5px;color:var(--muted);font-family:var(--sans)}
 .op .params{margin:8px 0 0;font-family:var(--mono);font-size:11.5px;color:var(--muted2)}
 .prose{max-width:72ch}
-.prose h2{font-size:20px;font-weight:650;letter-spacing:-.01em;margin:30px 0 10px}
+/* .prose sits inside .cat on /docs: undo the section label look (.cat h2) for its headings */
+.prose h2{font-size:20px;font-weight:650;letter-spacing:-.01em;margin:30px 0 10px;
+  text-transform:none;color:var(--ink);padding-bottom:0;border-bottom:0}
+.prose pre.call{margin:4px 0 14px}
 .prose p{margin:0 0 12px;color:var(--muted);font-size:14.5px}
 .prose code{font-family:var(--mono);font-size:13px;background:var(--panel2);border-radius:5px;
   padding:1px 6px;color:var(--ink)}
@@ -146,7 +154,7 @@ footer{border-top:1px solid var(--line);margin-top:46px;padding:34px 0 44px}
   justify-content:space-between;gap:32px 56px;flex-wrap:wrap;font-size:13px}
 .foot-in .brand{display:flex;align-items:center;gap:8px;font-family:var(--mono);font-weight:500}
 .foot-in .brand .glyph{width:20px;height:20px;border-radius:6px;background:var(--inverse);
-  color:var(--inverse-ink);display:grid;place-items:center;font-size:12px}
+  color:var(--inverse-ink);display:grid;place-items:center}
 .foot-brand{display:flex;flex-direction:column;gap:8px}
 .foot-brand .note{font-family:var(--mono);font-size:12px;color:var(--muted)}
 .foot-cols{display:flex;gap:56px;flex-wrap:wrap}

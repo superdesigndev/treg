@@ -1,5 +1,5 @@
 {
- "version": 28,
+ "version": 29,
  "providers": [
   {
    "provider": "Google Ads",
@@ -794,6 +794,29 @@
     "shape": "bearer"
    },
    "probe": "v0/billing/credit-balance"
+  },
+  {
+   "provider": "JobsPipe",
+   "tokens": [
+    "JOBSPIPE"
+   ],
+   "base_url": "https://api.jobspipe.dev",
+   "auth": {
+    "shape": "bearer"
+   },
+   "probe": "v1/account"
+  },
+  {
+   "provider": "Hirebase",
+   "tokens": [
+    "HIREBASE"
+   ],
+   "base_url": "https://api.hirebase.org/v2",
+   "auth": {
+    "shape": "api_key_header",
+    "header": "x-api-key"
+   },
+   "probe": "billing/usage/summary"
   },
   {
    "provider": "Aviato",

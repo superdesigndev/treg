@@ -135,3 +135,19 @@ async def test_kv_take_returns_a_live_value_once():
         await db.commit()
     async with session_maker() as db:
         assert await ratestore.kv_get(db, "code", "old") is None
+
+
+async def test_an_atomic_rate_check_counts_every_concurrent_hit():
+    await reset_db()
+    import asyncio
+
+    async def one() -> bool:
+        async with session_maker() as db:
+            ok = await ratestore.rate_check(db, "t", [("all", 5)], 60, atomic=True)
+            await db.commit()
+            return ok
+
+    results = await asyncio.gather(*(one() for _ in range(20)))
+    assert results.count(True) == 5
+    async with session_maker() as db:
+        assert len((await db.get(Ephemeral, ("t", "all"))).v["hits"]) == 5

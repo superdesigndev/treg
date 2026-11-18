@@ -27,7 +27,7 @@ from dataclasses import dataclass, field
 # `auth` is the provider's DEFAULT shape; a per-variable form (CLIENT_ID/SECRET → oauth2) can override
 # it. Served at GET /providers.json so the CLI can refresh centrally (bundled copy = offline fallback);
 # bump CATALOG_VERSION whenever entries change so a cache can tell it's stale.
-CATALOG_VERSION = 28  # v28: Nace key detection
+CATALOG_VERSION = 29  # v29: Nace key detection
 # `skills` (optional) matches a SKILL FOLDER name for file-credential skills that have no env var to
 # key on (OAuth token files etc.) — see `match_skill`. Such providers carry `tokens: []` so the env
 # scanner never mis-detects them as a simple bearer key (their real auth is OAuth + extra headers).
@@ -158,6 +158,10 @@ CATALOG: list[dict] = [
      "required_headers": {"x-api-version": "2025-11-01"}},
     {"provider": "TheirStack", "tokens": ["THEIRSTACK"], "base_url": "https://api.theirstack.com",
      "auth": {"shape": "bearer"}, "probe": "v0/billing/credit-balance"},
+    {"provider": "JobsPipe", "tokens": ["JOBSPIPE"], "base_url": "https://api.jobspipe.dev",
+     "auth": {"shape": "bearer"}, "probe": "v1/account"},
+    {"provider": "Hirebase", "tokens": ["HIREBASE"], "base_url": "https://api.hirebase.org/v2",
+     "auth": {"shape": "api_key_header", "header": "x-api-key"}, "probe": "billing/usage/summary"},
     {"provider": "Aviato", "tokens": ["AVIATO"], "base_url": "https://data.api.aviato.co",
      "auth": {"shape": "bearer"}, "probe": "billing/balance"},
     {"provider": "Enrichlayer", "tokens": ["ENRICHLAYER"], "base_url": "https://enrichlayer.com",
@@ -550,8 +554,12 @@ def scan_env(env_path: str, catalog: list[dict] | None = None) -> list[Detection
     return detections
 
 
-def _slug(provider: str) -> str:
+def _legacy_slug(provider: str) -> str:
     return provider.lower().replace(" ", "-")
+
+
+def _slug(provider: str) -> str:
+    return _legacy_slug(provider).replace(".", "-")
 
 
 def build_binding(auth: dict) -> dict | None:
@@ -632,7 +640,7 @@ def plan_actions(detections: list[Detection]) -> list[Action]:
             if user_var and pass_var:
                 actions.append(Action(
                     detection=d, supported=True, base_url=d.base_url, tool_name=_slug(d.provider or ""),
-                    secret_name=f"{_slug(d.provider or '').replace('-', '_').upper()}_BASIC",
+                    secret_name=f"{_legacy_slug(d.provider or '').replace('-', '_').upper()}_BASIC",
                     binding=build_binding({"shape": "basic"}), combine=(user_var, pass_var)))
             else:
                 actions.append(Action(detection=d, supported=False, base_url=d.base_url,

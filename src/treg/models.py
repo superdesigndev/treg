@@ -79,7 +79,7 @@ class Org(SQLModel, table=True):
     autotopup_enabled: bool = Field(default=False)
     autotopup_threshold_micro: int = Field(default=0, sa_type=BigInteger)   # 0 = "use the configured default"
     autotopup_amount_micro: int = Field(default=0, sa_type=BigInteger)      # 0 = "use the configured default"
-    autotopup_monthly_cap_micro: int = Field(default=0)  # 0 = the default, `billing.TOPUP_MAX_USD`
+    autotopup_monthly_cap_micro: int = Field(default=0, sa_type=BigInteger)  # 0 = the default, `billing.TOPUP_MAX_USD`
     # How many automatic charges may run in one hour after a SUCCESSFUL one (0 = the configured
     # default). Part of the mandate the team agreed to, so it is stored next to the amounts.
     autotopup_max_per_hour: int = Field(default=0)
@@ -112,6 +112,9 @@ class Org(SQLModel, table=True):
     # raising it past the ceiling is refused — which makes that a conversation with us rather than an
     # env-var edit that lifts the blast-radius rail for every team at once.
     daily_cap_micro: int = Field(default=0, sa_type=BigInteger)
+    # The daily spend limit every member and agent gets unless their own row sets one. NULL = none.
+    # Owners and admins never inherit it (governance/budgets.member_daily_spend_cap).
+    member_daily_spend_cap_micro: int | None = Field(default=None, sa_type=BigInteger)
 
     # Google Ads attribution (see adsconv.py).
     # The click that produced this team, captured as a first-party cookie on landing and persisted
@@ -322,6 +325,9 @@ class Membership(SQLModel, table=True):
     # capped members are counted; the roster's `used_today` still reads the journal.
     calls_today: int = Field(default=0, sa_column=Column("calls_today", Integer, nullable=False, server_default="0"))
     calls_today_day: date | None = Field(default=None)
+    # This member's daily spend limit on treg's keys, in micro-USD. NULL = follow the team default
+    # (`Org.member_daily_spend_cap_micro`), -1 = no limit, 0 or more = this limit.
+    daily_spend_cap_micro: int | None = Field(default=None, sa_type=BigInteger)
     # Per-member tool ACL: NULL = ALL tools in the org (the default — no restriction, no regression); a
     # JSON list of tool NAMES = the ONLY tools this member may call or run. See
     # governance.access._require_tool_access.
@@ -788,7 +794,7 @@ class PendingOAuth(SQLModel, table=True):
 
 
 class Secret(SQLModel, table=True):
-    """A stored credential blob. `value` is Fernet-encrypted (see crypto.py).
+    """A stored credential blob. `value` is sealed by `infra/credential_cipher.py` (KMS or Fernet).
 
     `kind` selects the injector used at call time (env | secret_file | cli_auth | oauth).
     """
@@ -824,6 +830,9 @@ class Secret(SQLModel, table=True):
     expires_at: NaiveUTC | None = Field(default=None)
     last_refresh_at: NaiveUTC | None = Field(default=None)
     last_error: str = Field(default="")
+    # Whether an oauth credential can be renewed unattended, recorded with each write so listing
+    # connections never opens one. Null on rows written before it existed.
+    refreshable: bool | None = Field(default=None)
 
     created_at: NaiveUTC = Field(default_factory=_now)
 
@@ -1011,6 +1020,47 @@ class CreditBlock(SQLModel, table=True):
     created_at: NaiveUTC = Field(default_factory=_now)
 
 
+class AgentPayer(SQLModel, table=True):
+    """The payer team of one wallet address on one network that pays per call with no treg
+    account (docs/context/architecture/agent-payments.md). Its membership has no token: only a
+    verified payment or proof from `address` on `network` acts for it. Credit on one network never
+    pays on another: one address can have a different owner per chain (a smart wallet). Staged only
+    by `governance.teams.make_payer_team`."""
+
+    network: str = Field(primary_key=True)  # e.g. tempo:4217, eip155:8453
+    address: str = Field(primary_key=True)  # lowercase 0x hex, 20 bytes
+    org_id: int = Field(unique=True)
+    created_at: NaiveUTC = Field(default_factory=_now)
+
+
+class AgentPayment(SQLModel, table=True):
+    """One payment proof presented by an agent payer, used at most once (`proof_id` UNIQUE).
+    `credit` = proved key control and drew existing credit, never settled; `settling` = chain
+    settlement started; `settled` = confirmed and topped up under `agentpay:<proof_id>`;
+    `failed` = settlement refused or expired unsettled; `expired` = a `credit` proof that expired
+    and was never settled. `treg-worker agentpay reconcile` resolves a `settling` row from the
+    chain and looks each expired `credit` row up once. Written only by `application/agent_payments.py`."""
+
+    id: int | None = Field(default=None, primary_key=True)
+    proof_id: str = Field(sa_column_kwargs={"unique": True}, index=True)
+    protocol: str          # mpp | x402
+    network: str           # e.g. tempo:42431, eip155:84532
+    payer_address: str = Field(index=True)
+    org_id: int = Field(index=True)
+    amount_micro: int = Field(sa_column=Column("amount_micro", BigInteger, nullable=False))
+    # treg's fee kept from `amount_micro`; the payer team is credited the rest.
+    fee_micro: int = Field(default=0, sa_column=Column("fee_micro", BigInteger, nullable=False))
+    status: str = Field(index=True)
+    asset: str             # the token contract the transfer moves
+    pay_to: str            # the address the transfer credits
+    expires_at: NaiveUTC   # after this the authorization can no longer be settled
+    reference: str | None = Field(default=None)  # the settlement transaction
+    stripe_payment_intent: str | None = Field(default=None)  # settlement `stripe`: the record
+    error: str | None = Field(default=None)
+    created_at: NaiveUTC = Field(default_factory=_now)
+    updated_at: NaiveUTC = Field(default_factory=_now)
+
+
 class LedgerEntry(SQLModel, table=True):
     """APPEND-ONLY money journal: every balance/block movement writes exactly one row, in the same
     transaction as the movement itself. Nothing edits or deletes a row — a correction is a new
@@ -1071,6 +1121,28 @@ class Hold(SQLModel, table=True):
     purchased_only: bool = Field(
         default=False, sa_column=Column(Boolean, nullable=False, server_default=text("false")),
     )
+    # A team's standing allowance rather than one call's reservation, and when its holder last
+    # renewed it. Nothing sets either yet.
+    allowance: bool = Field(
+        default=False, sa_column=Column(Boolean, nullable=False, server_default=text("false")),
+    )
+    heartbeat_at: NaiveUTC | None = Field(default=None)
+
+
+class CallCharge(SQLModel, table=True):
+    """What one call cost, recorded before the charge is applied to the team's credit blocks.
+
+    A short-lived queue, not history: the transaction that applies a row deletes it, and the
+    permanent record of the call stays its `settle` ledger entry. `call_id` is the primary key, so
+    a call can be recorded once. Owned by `domain/money`.
+    """
+
+    call_id: str = Field(primary_key=True)
+    org_id: int = Field(index=True)
+    endpoint_id: str = Field(default="")
+    amount_micro: int = Field(sa_type=BigInteger)  # what the team owes for the call, margin applied
+    meta: dict = Field(default_factory=dict, sa_column=Column(JSON, nullable=False))
+    created_at: NaiveUTC = Field(default_factory=_now)
 
 
 class AsyncTaskRecord(SQLModel, table=True):
@@ -1182,6 +1254,29 @@ class ProviderResource(SQLModel, table=True):
     updated_at: datetime = Field(default_factory=_now)
     deleted_at: datetime | None = Field(default=None, index=True)
     key_slot: str | None = Field(default=None)  # config.PlatformSlot label; NULL = primary
+
+
+class MemberSpend(SQLModel, table=True):
+    """What one metered call cost, attributed to the member who made it. Written by `domain/money`
+    only, in the transaction that moves the money, and only for a member whose daily spend limit
+    applies: the limit is checked against these rows, so an unlimited member writes none.
+
+    Follows its hold like `TagSpend`: the estimate while in flight, the consumed figure (restamped
+    to settle time) once settled, deleted on release.
+    """
+
+    __table_args__ = (Index("ix_memberspend_membership_created", "membership_id", "created_at"),
+                      Index("ix_memberspend_org_created", "org_id", "created_at"))
+
+    id: int | None = Field(default=None, primary_key=True)
+    # No foreign keys (AGENTS.md): team deletion clears these rows (ORG_SCOPED_MODELS), and removing
+    # a member leaves today's rows for the ledger to reconcile against.
+    org_id: int
+    membership_id: int
+    hold_id: str = Field(index=True)
+    settled: bool = Field(default=False)
+    amount_micro: int = Field(default=0, sa_type=BigInteger)
+    created_at: NaiveUTC = Field(default_factory=_now)
 
 
 class TagSpend(SQLModel, table=True):
@@ -1743,6 +1838,43 @@ class CallReview(SQLModel, table=True):
     client: str = Field(default="")
     usefulness: str
     reason: str | None = Field(default=None)
+    created_at: NaiveUTC = Field(default_factory=_now)
+
+
+class CallMark(SQLModel, table=True):
+    """What an agent found wrong (or confirmed right) in one call's answer, after checking it.
+
+    Append-only: a correction or withdrawal is a new row naming the one it `replaces`. `items`
+    holds what the caller claimed, per row `index` and `field`; an index is a position in the
+    answer the caller saw and is not attributed to a routed child. `checked` is how many rows the
+    caller looked at, never a denominator for an error rate. `note` is private: never published.
+    """
+
+    __table_args__ = (
+        Index("ix_callmark_endpoint_id_created_at", "endpoint_id", "created_at"),
+        Index("ix_callmark_org_id_content_hash", "org_id", "content_hash", unique=True),
+    )
+
+    id: int | None = Field(default=None, primary_key=True)
+    # No foreign keys (AGENTS.md): team deletion clears these rows (ORG_SCOPED_MODELS).
+    org_id: int = Field(index=True)
+    user_email: str
+    call_id: str = Field(index=True)
+    endpoint_id: str
+    provider: str | None = Field(default=None)
+    credential_tier: str | None = Field(default=None)
+    client: str = Field(default="")
+    basis: str
+    items: list[dict] = Field(default_factory=list, sa_column=Column(JSON, nullable=False))
+    checked: int | None = Field(default=None)
+    evidence_call_id: str | None = Field(default=None)
+    evidence_verified: bool = Field(default=False)
+    note: str | None = Field(default=None)
+    replaces: int | None = Field(default=None)
+    # The review whose `rows` this mark records (POST /reviews); None for a mark sent on its own.
+    review_id: int | None = Field(default=None)
+    tags: dict | None = Field(default=None, sa_column=Column("tags", JSON, nullable=True))
+    content_hash: str
     created_at: NaiveUTC = Field(default_factory=_now)
 
 

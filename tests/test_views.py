@@ -223,6 +223,7 @@ AUTOTOPUP_ON = {"enabled": True, "amount_micro": 20_000_000, "threshold_micro": 
     (BALANCE, AUTOTOPUP_ON),
     (BALANCE, {"enabled": False, "disabled_reason": "the card was declined"}),
     ({**BALANCE, "blocks": [], "holds": [], "entries": {"items": []}}, None),
+    ({**BALANCE, "blocks": [], "holds": [], "entries": {"items": [], "withheld": True}}, None),
 ])
 def test_balance_text_is_what_the_python_cli_prints(monkeypatch, capsys, body, auto):
     """The Python CLI prints `treg balance` itself; the registry's text must not drift from it."""

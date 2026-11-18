@@ -346,6 +346,18 @@ def test_usage_meters_settle_from_the_frozen_basis_and_may_exceed_the_hold():
     assert call(ep, answer={"usage": {"in": 0}})[1].actual_micro == 0
 
 
+def test_a_declared_worst_case_is_held_while_a_missing_meter_settles_at_the_estimate():
+    ep = row(price={"value": "1", "currency": "credit"},
+             settle={"usage": {"path": "response.cost", "unit": "credit"}, "worst_case": "15"})
+    assert ep["cost"]["worst_case"] == 15
+    assert cost.worst_case_micro(ep, Rates()) == 300000
+    assert cost.worst_case_micro(row(settle={"usage": {"path": "response.cost", "unit": "credit"}}), Rates()) == 0
+    hold, decision = call(ep, answer={"other": 1})
+    assert hold == 20000 and decision.actual_micro == 20000
+    with pytest.raises(ValueError, match="worst_case belongs beside"):
+        row(settle={"count": {"path": "response.items"}, "worst_case": "15"})
+
+
 def test_a_header_report_is_scaled_and_a_settle_plugin_without_evidence_is_the_hold(monkeypatch):
     module = types.ModuleType("treg.domain.plugins.demo")
     module.rows = lambda request, answer: len(answer.body["rows"]) if "rows" in answer.body else None

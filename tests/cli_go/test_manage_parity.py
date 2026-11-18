@@ -453,7 +453,7 @@ def _run(fake, tmp_path, label: str, cli: list[str], case: Case):
     return result, fake.seen[start:], config, files
 
 
-IGNORED = {"user-agent", "accept-encoding", "connection", "host", "x-treg-client-version", "x-treg-session", "x-treg-agent",
+IGNORED = {"user-agent", "accept-encoding", "connection", "host", "x-treg-client-version", "x-treg-hints", "x-treg-session", "x-treg-agent",
            "content-length"}
 
 
