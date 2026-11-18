@@ -152,7 +152,7 @@ async def _refill(org_id: int, need_micro: int, daily_cap_micro: int) -> bool:
         # what it showed goes with it.
         available = 0
     _refills[org_id] = _refills.get(org_id, 0) + 1
-    if result.folded.calls + result.folded.duplicates >= allowance.FOLD_BATCH:
+    if result.folded.claimed >= allowance.FOLD_BATCH:
         # A full batch: more is queued than one refill folds. A chunk can pay for more calls
         # than that, so without this the queue of a busy team would only grow.
         _fold_in_background(org_id)
@@ -215,7 +215,7 @@ async def _fold_backlog(org_id: int) -> None:
                     await db.commit()
             finally:
                 await store.release_lease(key, token)
-            if folded.calls + folded.duplicates < allowance.FOLD_BATCH:
+            if folded.claimed < allowance.FOLD_BATCH:
                 return
     except Exception:
         log.error("folding the queued charges of org %s failed", org_id, exc_info=True)
@@ -360,31 +360,55 @@ class _ChargeWriter:
     @staticmethod
     async def _write(rows: list, *, again: bool = False) -> set[int]:
         """Write the rows; return the teams with a charge among them that its own hold no
-        longer stands behind (closed since, with or without another in its place)."""
-        teams = sorted({charge.org_id for charge, _ in rows if charge.epoch is not None})
-        # Bounded like every money transaction: this one holds teams' hold rows, and a process
-        # that stalled here would keep their refills, folds and sweeps waiting.
+        longer stands behind (closed since, with or without another in its place).
+
+        One transaction per team. A transaction that held several teams' hold rows would have to
+        take them in an order every other holder of two agreed on, and a team's first hold can
+        appear after a deletion of several teams has chosen its order."""
+        unbacked: set[int] = set()
+        by_team: dict[int, list] = {}
+        for row in rows:
+            by_team.setdefault(row[0].org_id, []).append(row)
+        for org_id in sorted(by_team):
+            if await _ChargeWriter._write_team(org_id, by_team[org_id], again):
+                unbacked.add(org_id)
+        return unbacked
+
+    @staticmethod
+    async def _write_team(org_id: int, rows: list, again: bool) -> bool:
+        # Bounded like every money transaction: this one holds the team's hold row, and a
+        # process that stalled here would keep its refills, folds and sweeps waiting.
         async with money_session(session_maker()) as db:
-            # PostgreSQL: the shared lock on the hold rows comes first, the order a team's
+            # PostgreSQL: the shared lock on the hold row comes first, the order a team's
             # deletion uses too. SQLite has no row locks and begins its transaction only at
-            # the first write, so there the insert comes first and the holds are read under
+            # the first write, so there the insert comes first and the hold is read under
             # the write lock it took.
             row_locks = db.get_bind().dialect.name == "postgresql"
-            holds = await allowance.holds_behind(db, teams) if row_locks else {}
-            new = await allowance.record_charges(db, [charge for charge, _ in rows])
+            holds = await allowance.holds_behind(db, [org_id]) if row_locks else {}
+            # A charge admitted for a team that has been deleted is nobody's: neither queued
+            # nor marked as a paid question, which a new team of the same number would inherit.
+            team = await allowance.team_of(db, org_id)
+            owed = [(charge, use) for charge, use in rows
+                    if allowance.owed_by(team, allowance.hold_created_at(charge.epoch))]
+            if len(owed) < len(rows):
+                log.error("allowance_charges_orphaned org_id=%s dropped=%s: the team they were "
+                          "admitted for has been deleted", org_id, len(rows) - len(owed))
+            if not owed:
+                return False
+            new = await allowance.record_charges(db, [charge for charge, _ in owed])
             if not row_locks:
-                holds = await allowance.holds_behind(db, teams)
+                holds = await allowance.holds_behind(db, [org_id])
             # A row that was already there was committed by an earlier attempt, which marked its
             # paid question too. On a rewrite, so was a row that is new only because the earlier
             # attempt's row has been applied and deleted since: its call has a settle entry.
             if again and new:
                 new -= await allowance.settled_calls(db, sorted(new))
-            uses = [use for charge, use in rows if use is not None and charge.call_id in new]
+            uses = [use for charge, use in owed if use is not None and charge.call_id in new]
             if uses:
                 await archive.note_org_uses_in_transaction(db, uses)
             await db.commit()
-        return {charge.org_id for charge, _ in rows
-                if charge.epoch is not None and holds.get(charge.org_id) != charge.epoch}
+        return any(charge.epoch is not None and holds.get(org_id) != charge.epoch
+                   for charge, _ in owed)
 
 
 def _overran(charge: allowance.Charge) -> bool:

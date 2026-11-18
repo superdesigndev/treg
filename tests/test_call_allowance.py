@@ -26,7 +26,7 @@ from treg.infra import db as infra_db
 from treg.infra import kv
 from treg.infra.db import reset_db, session_maker
 from treg.domain.identity.access import Caller
-from treg.models import CallCharge, Hold, Membership, Org, Tool, User
+from treg.models import ArchiveKeyOrg, CallCharge, Hold, LedgerEntry, Membership, Org, Tool, User
 
 GRANT = 5_000_000
 CHUNK = 1_000_000
@@ -558,6 +558,45 @@ async def test_a_process_about_to_exit_wakes_a_freeze_that_is_pausing(org_id, st
     away[0] = False
     assert await asyncio.wait_for(runtime.deliver_owed_freezes(timeout_s=2), 3) == 0
     assert store.counters[org_id]["frozen"] == 1
+
+
+async def test_deleting_a_team_retires_its_counter(org_id, store):
+    """The counter admits calls by the team's number alone. With the team gone it must admit
+    none, for a new team that is given the number as well."""
+    epoch = await runtime.take(org_id, 100)
+    assert store.counters[org_id]["avail"] == CHUNK - 100
+    async with session_maker() as db:
+        await cascade_delete_org(await db.get(Org, org_id), db)
+        await db.commit()
+    assert (store.counters[org_id]["avail"], store.counters[org_id]["epoch"]) == (0, epoch + 1)
+    assert await store.allowance_take(org_id, 1) == 0
+
+
+async def test_the_writer_drops_a_charge_and_its_paid_mark_when_the_team_is_gone(org_id, store):
+    """Nothing to queue, and no paid-question mark for a later team of the same number."""
+    gone = org_id + 1_000
+    charge = allowance.Charge("late", gone, "e.metered", 400, None, 600, 1)
+    assert await runtime._ChargeWriter._write([(charge, (gone, "question"))]) == set()
+    async with session_maker() as db:
+        assert (await db.execute(select(CallCharge).where(CallCharge.org_id == gone))).first() is None
+        assert (await db.execute(
+            select(ArchiveKeyOrg).where(ArchiveKeyOrg.org_id == gone))).first() is None
+
+
+async def test_the_writer_holds_one_teams_hold_at_a_time(org_id, store):
+    """A batch for two teams is two transactions, so no order between their holds exists for a
+    deletion of several teams to contradict."""
+    other = org_id + 1
+    async with session_maker() as db:
+        db.add(Org(id=other, name="other", slug=uuid4().hex))
+        await db.commit()
+    rows = [(allowance.Charge(f"c-{team}", team, "e.metered", 400, None, 600, None), None)
+            for team in (other, org_id)]
+    seen = await _statements(lambda: runtime._ChargeWriter._write(rows))
+    inserts = [i for i, text in enumerate(seen) if text.startswith("insert into callcharge")]
+    holds = [i for i, text in enumerate(seen) if " from hold " in text]
+    assert len(inserts) == 2 and len(holds) == 2, "each team's hold read with its own insert"
+    assert await _queued(org_id) == 1 and await _queued(other) == 1
 
 
 async def test_a_charge_carries_the_hold_its_call_took_from(org_id, store):
@@ -1323,6 +1362,10 @@ async def _move_hold_to_yesterday(org_id: int) -> None:
             created_at=born))
         await db.execute(update(CallCharge).where(CallCharge.org_id == org_id).values(
             hold_created_at=born))
+        # A team's ledger begins before its hold does: the grant moves back too.
+        await db.execute(update(LedgerEntry).where(
+            LedgerEntry.org_id == org_id, LedgerEntry.kind == "grant").values(
+            created_at=born - timedelta(days=1)))
         await db.execute(update(Org).where(Org.id == org_id).values(
             spent_today_day=(ledger._now() - timedelta(days=1)).date()))
         await db.commit()

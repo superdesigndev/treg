@@ -170,8 +170,8 @@ _DATAPLANE_DERIVED_WRITES = {
     # What a call spent from the allowance is queued as a `callcharge` row, a batch per insert,
     # committed before the call answers; a refill applies the queue to the blocks and the ledger.
     "allowance_call_charge": (
-        (call_allowance._ChargeWriter._write, "allowance.record_charges"),
-        (call_allowance._ChargeWriter._write, "archive.note_org_uses_in_transaction"),
+        (call_allowance._ChargeWriter._write_team, "allowance.record_charges"),
+        (call_allowance._ChargeWriter._write_team, "archive.note_org_uses_in_transaction"),
     ),
 }
 _EXPECTED_DATAPLANE_WRITES = frozenset({
@@ -276,8 +276,8 @@ _EXPECTED_DERIVED_WRITE_SITES = {
     ("application/call/allowance.py", "_refill", "ledger.reap_stale_holds"),
     ("application/call/allowance.py", "_refill", "money_admission.admit"),
     ("application/call/allowance.py", "_refill", "store.allowance_add"),
-    ("application/call/allowance.py", "_write", "allowance.record_charges"),
-    ("application/call/allowance.py", "_write", "archive.note_org_uses_in_transaction"),
+    ("application/call/allowance.py", "_write_team", "allowance.record_charges"),
+    ("application/call/allowance.py", "_write_team", "archive.note_org_uses_in_transaction"),
     ("application/call/allowance.py", "finish", "store.allowance_give_back"),
     # the charge writer freezes a team's counter once an overrun's charge is committed, and
     # a refill takes back whatever a counter holds above its hold
