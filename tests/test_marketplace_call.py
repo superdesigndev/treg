@@ -198,10 +198,11 @@ async def test_hlrlookup_platform_pair_rides_the_body_and_settles_reported_credi
     await A.app.state.http.aclose()
     A.app.state.http = AsyncClient(transport=httpx.MockTransport(upstream))
     charges = []
-    for body in (_HLR_LIVE, {**_HLR_LIVE, "usa_status": "YES"}, _HLR_LIVE, _HLR_LIVE):
+    for n, body in enumerate((_HLR_LIVE, {**_HLR_LIVE, "usa_status": "YES"}, _HLR_LIVE, _HLR_LIVE)):
         before = await _balance(clients)
         response = await clients.post("/call/hlrlookup.people.phone.verify", json=body)
-        assert response.status_code == 200, response.text
+        # The last answer is treg's own account out of credit: treg's refusal, uncharged.
+        assert response.status_code == (503 if n == 3 else 200), response.text
         charges.append(before - await _balance(clients))
     # One credit is $0.006608; a US mobile with usa_status costs two; free answers cost nothing.
     assert charges == [6_608, 13_216, 0, 0]
@@ -1151,6 +1152,16 @@ def test_theirstack_platform_holds_match_the_credit_prices():
         assert estimate == hold and unit > 0
     assert not catalog.platform_eligible(catalog.by_id["theirstack.account.balance"])
     assert not catalog.platform_eligible(catalog.by_id["theirstack.account.credits_consumption"])
+
+
+def test_fundable_catalog_endpoints_are_platform_eligible() -> None:
+    from treg.domain.catalog import store as catalog_store
+
+    catalog = catalog_store.load()
+    endpoints = [ep for ep in catalog.endpoints if ep["provider"] == "fundable"]
+    assert endpoints
+    ineligible = [ep["id"] for ep in endpoints if not catalog.platform_eligible(ep)]
+    assert not ineligible, ineligible
 
 
 def test_litescrape_ai_overview_unserved_is_free():

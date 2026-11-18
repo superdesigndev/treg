@@ -509,8 +509,17 @@ answered: `cf-mitigated`, an HTML block page, 1xxx problem-JSON) strikes nothing
 caller's request shape must not take the provider away from every team. An `unrecorded` signal (a
 4xx matching no row whose body still names credits/quota/balance) emits a `capacity` `unrecorded`
 event ([capacity](../ops/capacity.md)): the tripwire for a vendor dialect missing from the table.
-Tiers 1/2 never consult the view; an org's own key running dry is relayed unchanged, as is the
-vendor's 402 on this call. The protection is for the next caller.
+Tiers 1/2 never consult the view; an org's own key running dry is relayed unchanged.
+
+The call that meets the signature (a strike, a probe, a free route's own quota) is not relayed
+either. `service._execute_call` replaces a tier-4 (treg's shared key) answer whose signal is
+`balance` or `quota`, that overflow did not serve and that settled at zero, with the same typed 503
+`provider_capacity_unavailable` (`_provider_capacity_unavailable`), so a 2xx carrying the vendor's
+own error code or a 401 that reads as the caller's key never reaches the caller. Every
+`provider_capacity` 503 built there, this one and the refusal before any hold alike, carries
+`Retry-After` (the seconds until `resets_at` when known, else `CAPACITY_RETRY_AFTER_S`), since many
+clients retry a 503 at once. The audit row, its error evidence and `tool_called` keep the vendor's status and body. A routed child's
+`provider_capacity` refusal is `skipped` ("treg's account is used up"), never an error.
 
 ## Burst smoothing on treg's own keys
 

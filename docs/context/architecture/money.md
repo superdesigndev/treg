@@ -186,6 +186,10 @@ admitted, and two counts, `frozen` and `thawed`. The operations are atomic scrip
 
 - `allowance_take` subtracts an amount and returns the epoch, when the counter holds that much, is
   not frozen (`frozen == thawed`) and the store's clock is not past `until`.
+  Given a lead time and a low mark, it negates the epoch for one caller at a time once the
+  counter is that close to `until` or that low: the take stands, and the caller refills.
+  `asked` holds when it last did and `asked_for` the `until` it asked about; an add of more
+  than nothing clears `asked`.
 - `allowance_give_back` returns part of a take, only to a counter of the same epoch.
 - `allowance_add` adds what a refill just committed to the hold. It sets `until` from the instant
   the refill wrote on the hold, never from when the add lands, and never moves it back: a refill
@@ -283,6 +287,36 @@ money moved, the purchased-credit gate.
 - **take.** `store.allowance_take`. On a miss, one process takes a short lease and refills; the
   others retry the take for a bounded time. Anything else (the store cannot answer, the wait
   ran out, the refill failed) returns the call to the exact path, which is always correct.
+- **A busy team is refilled before a call has to wait.** A take that leaves the counter within
+  half its lifetime of the deadline, or under a quarter of a chunk, answers its epoch negated:
+  the call has its money, and that one caller (the store asks one at a time, and again only
+  after a pause, which is for a counter that stays low or a refill that failed: a deadline it
+  has not asked about yet asks at once, since a refill opens a window that may be shorter than
+  the pause, and so does the take that brings the counter from at or above the low mark to
+  below it, or any low take after an add that brought money) starts a refill beside itself. Nobody waits on
+  that refill, so it waits for the team's lease far longer than a call does. It asks for no
+  amount of its own: it brings the counter back to a chunk, and a balance that cannot pay for
+  that leaves the counter with what it has, where an in-line refill that cannot serve its call
+  drains the allowance. The call that asked was served, so its price is no measure of the next
+  one, and setting it aside again would take that much out of every other call's reach. The
+  store asks one caller once, so the process must not lose an ask: one that arrives while the
+  team's refill is still running (it may already have published its add) is kept, and the same
+  task refills again when it is done; what follows a refill, the auto top-up read, runs on its
+  own and holds nothing back.
+- **A refill reads the daily cap again.** The cap a refill is handed is the one its call saw,
+  and a refill can wait some time for its turn. `refill_allowance_in_transaction` therefore
+  also reads the team's cap in its own transaction, where it reads the day's spend, and keeps
+  to the stricter of the two. The read locks the team's row, with the lock an update of it
+  takes and no stronger (`FOR NO KEY UPDATE`): the fold before it may already have updated the
+  row, and a top-up holds a key-share lock on it from its credit block's foreign key while it
+  waits to update the balance, so asking for the full row lock would have each wait for the
+  other. A cap change still open in
+  another transaction would otherwise be missed, because the refill's balance update waits for
+  that change and then checks only the balance. The row is the last lock in money's order
+  (hold, blocks, team), and the day's spend read after it is under the same lock. Without it every call of a busy team met a
+  lapsed counter at once each time the lifetime ran out, the ones that did not get the lease
+  left for the exact path, and the refill then queued behind them on the money admission lease:
+  the exact path serves one call at a time, so the team stayed there.
 - **refill.** Under the money admission lease, like a reserve: reap stale holds, then
   `refill_allowance_in_transaction` folds queued charges and brings the counter up to
   `money_allowance_chunk_micro`; after the commit, `store.allowance_add`. A team with a daily cap
@@ -373,9 +407,15 @@ money moved, the purchased-credit gate.
   folding too, and the call waits a bounded time for its entry; past that, or when the entry
   cannot be read, it answers with the charge and logs it. Once its charge is queued a call is
   never answered as free because something later failed.
-- **Auto top-up** is asked after a refill, the only moment the balance moved.
+- **Auto top-up** is asked after a refill, the only moment the balance moved. A refill a call
+  started beside itself commits after the call has its take, so the reserve hands it the ask
+  and it is made, in a task of its own, once that refill has committed and given up the lease.
 
-- **The queue is kept short.** One refill folds one batch, a chunk can pay for more calls than
+- **The queue is kept short, in short transactions.** A fold keeps the team's lease and the
+  hold's row lock for as long as its transaction runs, and a refill waits for both. Applying a
+  charge costs a ledger lookup and a ledger insert, so the time grows with the batch: a refill
+  folds a small batch and a background fold a somewhat larger one, both far below the most a
+  single statement may claim. One refill folds one batch, a chunk can pay for more calls than
   a batch holds, and a chunk of cheap calls lasts a long time between refills. So a background
   fold for the team is started by a refill that folded a full batch, and by the charge writer
   each time the charges this process wrote for the team since its last fold fill a batch: a batch per transaction under the close lease, one process at a time, until the queue

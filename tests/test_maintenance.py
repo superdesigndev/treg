@@ -375,6 +375,62 @@ def test_upgrade_names_the_rollback_when_the_database_is_newer_than_the_build(tm
     assert _alembic_version(database) == "9999"
 
 
+@pytest.mark.parametrize("stamp", ["abc123def456", "0042x", "0000"])
+async def test_serve_refuses_an_unknown_stamp_that_is_not_a_later_revision(stamp, monkeypatch):
+    """Only a later numbered revision of this project is tolerated; another Alembic project's
+    id, a typo, or a number at or below this build's head that it does not know keeps refusing."""
+    from cryptography.fernet import Fernet
+    from sqlalchemy import text
+
+    from treg import maintenance
+    from treg.__main__ import _prepare_serve
+    from treg.config import get_settings
+    from treg.infra.db import _engine, _schema_info, reset_db, verify_db
+
+    monkeypatch.setattr(get_settings(), "secret_key", Fernet.generate_key().decode())
+
+    await reset_db()
+    head, _ = _schema_info()
+    async with _engine.begin() as connection:
+        await connection.execute(
+            text("UPDATE alembic_version SET version_num = :stamp"), {"stamp": stamp})
+    try:
+        with pytest.raises(maintenance.SchemaNewerThanBuild):
+            await _prepare_serve()
+        with pytest.raises(RuntimeError, match="not one this build knows"):
+            await verify_db()
+    finally:
+        async with _engine.begin() as connection:
+            await connection.execute(
+                text("UPDATE alembic_version SET version_num = :head"), {"head": head})
+
+
+async def test_serve_starts_on_a_database_newer_than_the_build(caplog):
+    """A newer release can commit one revision and then fail on the next; the old release must
+    still restart on that stamp, as the ASGI entry does. Only `python -m treg upgrade` refuses."""
+    from sqlalchemy import text
+
+    from treg import maintenance
+    from treg.__main__ import _prepare_serve
+    from treg.infra.db import _engine, _schema_info, reset_db
+
+    await reset_db()
+    head, _ = _schema_info()
+    async with _engine.begin() as connection:
+        await connection.execute(text("UPDATE alembic_version SET version_num = '9999'"))
+    try:
+        with pytest.raises(maintenance.SchemaNewerThanBuild):
+            await maintenance.upgrade()
+        with caplog.at_level("WARNING", logger="treg"):
+            await _prepare_serve()
+        assert "OLDER than the schema" in caplog.text
+        assert "Serving anyway" in caplog.text
+    finally:
+        async with _engine.begin() as connection:
+            await connection.execute(
+                text("UPDATE alembic_version SET version_num = :head"), {"head": head})
+
+
 def test_upgrade_applies_a_pending_revision_from_one_behind_head(tmp_path):
     env, database, _ = _env(tmp_path)
     previous = _one_behind_head()

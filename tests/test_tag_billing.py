@@ -703,8 +703,11 @@ async def test_a_provider_credential_refusal_is_never_billed(clients: AsyncClien
     for status in (401, 402, 403, 407, 408, 429):
         monkeypatch.setattr(call_service, "relay", _fake_relay(status, b'{"message":"out of credits"}'))
         r = await clients.get(f"/call/{EP}?aweme_id=7", headers={"X-Treg-Meta": "customer=cust_A"})
-        assert r.status_code == status, r.text
-        assert r.headers.get("X-Treg-Cost-Micro") == "0", f"{status} was billed"
+        if status == 402:  # treg's own account out: its typed refusal, uncharged
+            assert r.status_code == 503, r.text
+        else:
+            assert r.status_code == status, r.text
+            assert r.headers.get("X-Treg-Cost-Micro") == "0", f"{status} was billed"
 
     assert (await clients.get(f"/orgs/{org_id}/balance")).json()["balance_micro"] == before
     async with session_maker() as db:

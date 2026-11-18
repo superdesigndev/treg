@@ -266,6 +266,19 @@ def _schema_info() -> tuple[str, frozenset[str]]:
     return head, known
 
 
+def _is_newer_revision(revision: str) -> bool:
+    """A stamp a later release of this project wrote: all digits and past this build's head.
+    Another Alembic project's id or a typo is not one."""
+    head, _ = _schema_info()
+    return revision.isdigit() and head.isdigit() and int(revision) > int(head)
+
+
+async def stamped_newer_than_build() -> bool:
+    async with _engine.connect() as connection:
+        revision = await connection.run_sync(_current_revision)
+    return revision is not None and _is_newer_revision(revision)
+
+
 def _current_revision(sync_connection) -> str | None:
     inspector = inspect(sync_connection)
     if "alembic_version" not in inspector.get_table_names():
@@ -303,6 +316,12 @@ async def verify_db() -> None:
 
     head, known = _schema_info()
     if revision not in known:
+        if not _is_newer_revision(revision):
+            raise RuntimeError(
+                f"Database revision {revision} is not one this build knows, nor a later "
+                f"numbered revision than its head ({head}): this is not a treg database, or "
+                "alembic_version holds a typo. Refusing to start."
+            )
         logging.getLogger("treg").warning(
             "Database revision %s is unknown to this build; running code is older than the schema; "
             "additive revisions tolerate this, a contract revision does not.",

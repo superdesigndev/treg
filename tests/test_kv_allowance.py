@@ -39,6 +39,59 @@ async def test_takes_stop_at_what_the_counter_holds(counter):
 
 
 @real_redis
+async def test_a_take_near_the_deadline_or_the_bottom_asks_one_caller_to_refill(counter, monkeypatch):
+    store, org_id = counter
+    await store.allowance_add(org_id, 7, 1_000, until_ms=_soon(10_000), ttl_ms=60_000, seen_frozen=0)
+    assert await store.allowance_take(org_id, 10, ahead_ms=5_000, low_micro=100) == 7
+    assert await store.allowance_take(org_id, 10, ahead_ms=20_000) == -7, "inside the lead"
+    assert await store.allowance_take(org_id, 10, ahead_ms=20_000) == 7, "one caller is asked"
+    assert (await store.allowance_state(org_id))[0] == 970, "each of them took its money"
+    monkeypatch.setattr(kv, "_ALLOWANCE_ASK_AGAIN_MS", 0)
+    assert await store.allowance_take(org_id, 10, low_micro=961) == -7, "below the low mark"
+    assert await store.allowance_take(org_id, 10, low_micro=100) == 7
+    assert await store.allowance_take(org_id, 10) == 7, "nobody is asked without a lead or a mark"
+
+
+@real_redis
+async def test_each_deadline_asks_for_its_own_refill_however_soon_after_the_last(counter):
+    """A refill moves the deadline on. The window it opens can be shorter than the pause between
+    two asks, and must not lapse because the last ask was a moment ago."""
+    store, org_id = counter
+    await store.allowance_add(org_id, 7, 1_000, until_ms=_soon(10_000), ttl_ms=60_000, seen_frozen=0)
+    assert await store.allowance_take(org_id, 10, ahead_ms=20_000) == -7
+    assert await store.allowance_take(org_id, 10, ahead_ms=20_000) == 7
+    await store.allowance_add(org_id, 7, 20, until_ms=_soon(15_000), ttl_ms=60_000, seen_frozen=0)
+    assert await store.allowance_take(org_id, 10, ahead_ms=20_000) == -7, "a new deadline"
+    assert await store.allowance_take(org_id, 10, ahead_ms=20_000) == 7
+
+
+@real_redis
+async def test_the_take_that_crosses_the_low_mark_asks_whatever_the_pause(counter):
+    """A call gave its money back and the counter is above the mark again. The refill that was
+    asked for then added nothing, so the pause still runs; the next dip must not wait it out."""
+    store, org_id = counter
+    await store.allowance_add(org_id, 7, 1_000, until_ms=_soon(), ttl_ms=60_000, seen_frozen=0)
+    assert await store.allowance_take(org_id, 800, low_micro=250) == -7
+    assert await store.allowance_give_back(org_id, 7, 800) is True
+    await store.allowance_add(org_id, 7, 0, until_ms=_soon(), ttl_ms=60_000, seen_frozen=0)
+    assert await store.allowance_take(org_id, 800, low_micro=250) == -7, "crossed the mark again"
+    assert await store.allowance_take(org_id, 10, low_micro=250) == 7, "staying low waits"
+
+
+@real_redis
+async def test_a_counter_low_again_after_a_refill_that_paid_asks_at_once(counter):
+    """The pause is for a refill that failed. One that brought money worked; a counter low
+    again right after it is being spent, and waiting would let it run dry."""
+    store, org_id = counter
+    await store.allowance_add(org_id, 7, 1_000, until_ms=_soon(), ttl_ms=60_000, seen_frozen=0)
+    assert await store.allowance_take(org_id, 800, low_micro=250) == -7
+    await store.allowance_add(org_id, 7, 0, until_ms=_soon(), ttl_ms=60_000, seen_frozen=0)
+    assert await store.allowance_take(org_id, 10, low_micro=250) == 7, "nothing came: the pause holds"
+    await store.allowance_add(org_id, 7, 810, until_ms=_soon(), ttl_ms=60_000, seen_frozen=0)
+    assert await store.allowance_take(org_id, 800, low_micro=250) == -7, "it paid, and is low again"
+
+
+@real_redis
 async def test_takes_stop_once_the_counter_is_no_longer_fresh_and_resume_on_the_next_add(counter):
     store, org_id = counter
     assert await store.allowance_state(org_id) == (0, 0, 0, 0)
@@ -279,7 +332,8 @@ async def test_arguments_that_are_not_plain_amounts_never_reach_the_script():
         await store.allowance_give_back(5, 7, -1)
     assert not calls
     assert await store.allowance_take(5, 100) == 1
-    assert calls == [(kv._ALLOWANCE_TAKE, 1, 'treg:money-allowance:v1:5', 100)]
+    assert calls == [(kv._ALLOWANCE_TAKE, 1, 'treg:money-allowance:v1:5', 100, 0, 0,
+                      kv._ALLOWANCE_ASK_AGAIN_MS)]
 
 
 async def test_a_local_store_never_claims_to_be_the_shared_counter():

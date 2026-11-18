@@ -1,5 +1,6 @@
 """Reservation and spend-cap helpers for metered calls."""
 
+import functools
 import logging
 import random
 import time
@@ -428,7 +429,9 @@ async def _platform_reserve(mk: MarketplaceCall, caller: Caller, meta: CallMeta 
         before = allowance_runtime.refills(caller.org_id)
         epoch = await allowance_runtime.take(
             caller.org_id, mk.reserved_micro,
-            daily_cap_micro=budget_policy._effective_daily_cap(caller.org))
+            daily_cap_micro=budget_policy._effective_daily_cap(caller.org),
+            after_refill=(
+                functools.partial(_schedule_autotopup_after, caller.org_id) if auto_on else None))
         if epoch:
             # Recorded on the call before anything else is awaited: a cancel from here on
             # finds the take and returns it.

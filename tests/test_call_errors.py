@@ -111,7 +111,7 @@ async def test_an_upstream_402_is_the_account_of_whoever_owns_the_key(
         await clients.post("/secrets", json={"name": "tikhub", "value": "OWN-KEY"})
     await _answering(402, {"error": "out of credits", "echo": PROVIDER_ANSWER, "id": CALLER_INPUT})
     r = await clients.get(f"/call/{EP}?aweme_id={CALLER_INPUT}")
-    assert r.status_code == 402, r.text
+    assert r.status_code == (402 if own_key else 503), r.text
     (line,) = call_error_lines()
     assert (line["by"], line["error_class"], line["caller_side"]) == ("upstream", expected, caller_side)
     assert line["tier"] == ("credential" if own_key else "platform")

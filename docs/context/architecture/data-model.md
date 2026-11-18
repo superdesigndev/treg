@@ -370,7 +370,8 @@ The request session commits before the relay ([proxy-model](proxy-model.md)).
   `timeutil.as_naive`.
 - `verify_db()` is the read-only lifespan and worker guard: it refuses a missing Fernet key on a
   real database, requires the stamp at head, refuses a known older revision, and warns but serves
-  on an unknown newer one so an additive release can roll back.
+  on an unknown newer one (all digits and above this build's head, `db._is_newer_revision`) so an
+  additive release can roll back; any other unknown stamp is refused.
 - `dispose_engine()` closes pooled connections before a maintenance event loop exits, so a later
   loop never inherits connections bound to a closed one.
 - `reset_db()` is test-only: it deletes every row, rewinds Postgres sequences and stamps head,

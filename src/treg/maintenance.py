@@ -359,6 +359,10 @@ async def _refuse_behind_long_lock_holder(config: Config, tables: set[str]) -> N
         )
 
 
+class SchemaNewerThanBuild(RuntimeError):
+    """The database is stamped at a revision this build does not know."""
+
+
 async def _upgrade_schema() -> None:
     tables = await _table_names()
     config = _alembic_config()
@@ -370,7 +374,7 @@ async def _upgrade_schema() -> None:
         except util.CommandError as exc:
             if "Can't locate revision" not in str(exc):
                 raise
-            raise RuntimeError(
+            raise SchemaNewerThanBuild(
                 "This database is stamped at a revision this build does not know - the running "
                 "code is OLDER than the schema (a rollback past the rollback floor, or a stale "
                 "checkout). Deploy a release at least as new as the database. No migration ran."

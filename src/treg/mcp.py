@@ -66,7 +66,7 @@ from .application import catalog_find as find_app
 from .application import catalog_search as search_app
 from .application import search_experiment
 from .domain.catalog import store as catalog_store
-from .capacity_notice import account_out_notice, is_admission_refusal, is_balance_refusal
+from .capacity_notice import is_admission_refusal, is_balance_refusal
 from .client_identity import printable_ascii
 from .config import get_settings
 from .feedback_contract import (
@@ -1919,14 +1919,7 @@ async def _call_impl(endpoint_id: str, params: dict | list | None = None,
         if review and surface is not _DIRECTORY_SURFACE:
             out["hint"] = review
     admitted_no = r.status_code == 403 and is_admission_refusal(r.headers, out.get("body"))
-    if notice := account_out_notice(r.headers):
-        # treg's own account for this tool is out: not the caller's balance, not theirs to fix. The
-        # provider's words would name its wallet and top-up page, so they are left out; the call id
-        # stays for support.
-        out.pop("body", None)
-        out["whose_error"] = "treg"
-        out["hint"] = notice
-    elif r.status_code == 402 or admitted_no:
+    if r.status_code == 402 or admitted_no:
         # States the fact and stops. No link, and `topup_url` is stripped from the relayed body, so
         # nothing on this path points a user at a payment page. A 403 admission refusal names the
         # same remedy and gets the same treatment.
