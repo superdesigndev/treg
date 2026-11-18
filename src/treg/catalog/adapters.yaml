@@ -1805,8 +1805,8 @@ adapters:
     in: {title: queryParams.title}
     in_expr:
       queryParams.countries: "upper(country)"
-      queryParams.locations: location
-      queryParams.work_mode: "choose(remote == true, 'Remote Solely', null)"
+      queryParams.locations: "choose(lower(location) == 'remote', null, location)"
+      queryParams.work_mode: "choose(remote == true, 'Remote Solely', choose(lower(location) == 'remote', 'Remote Solely', null))"
       queryParams.posted_within_days: posted_within_days
       queryParams.limit: limit
     max: {limit: 100}
@@ -1821,8 +1821,8 @@ adapters:
     in_expr:
       body.job_title_or: "list(title)"
       body.job_country_code_or: "list(upper(country))"
-      body.job_location_or: "list(location)"
-      body.remote: "choose(remote == true, true, null)"
+      body.job_location_or: "list(choose(lower(location) == 'remote', null, location))"
+      body.remote: "choose(remote == true, true, choose(lower(location) == 'remote', true, null))"
       body.posted_at_max_age_days: posted_within_days
       body.limit: limit
     max: {limit: 100}
@@ -1849,7 +1849,7 @@ adapters:
       body.company_name_or: "choose(domain, null, list(name))"
       body.job_title_or: "list(title)"
       body.job_country_code_or: "list(upper(country))"
-      body.workplace_types_or: "choose(remote == true, list('remote'), null)"
+      body.workplace_types_or: "choose(remote == true, list('remote'), choose(lower(location) == 'remote', list('remote'), null))"
       # No open/closed flag: a recent window keeps a company's old postings out.
       body.posted_at_max_age_days: "coalesce(posted_within_days, 30)"
       body.limit: limit

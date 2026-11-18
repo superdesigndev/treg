@@ -1142,6 +1142,10 @@ The expression language (`domain/catalog/routing/paths.py`) is deliberately tiny
 module. They are generic helpers, not provider-specific rewrites; `raw` is never touched. A country
 filter must never silently become a default country: `dfs_location` returns nothing for a value
 that names no country, and a one-argument transform with no value counts the filter as ignored.
+A routed job search treats the place `location="Remote"` (any case) as a remote filter on every
+child (Hirebase, JobsPipe, TheirStack, MobiusEngine), the same as `remote=true`, and never sends
+"Remote" as a literal place, so the same query filters remote whichever provider answers
+(`tests/test_jobs_routing.py`).
 
 **Verified at load, or absent** (`routing/contracts.py::verify`): `in` must reproduce the endpoint's
 own `test_request` and `out` must fill every required core field from its example (an example that
