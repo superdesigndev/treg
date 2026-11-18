@@ -3889,6 +3889,13 @@ async def recruit_skill_md():
     return _serve_md("skills/recruit/SKILL.md")
 
 
+@app.get("/skills/doomscroll/SKILL.md", include_in_schema=False)
+async def doomscroll_skill_md():
+    """The doomscroll skill: a topic and a window in, the posts worth seeing across platforms out,
+    grouped into stories, with its merge script inline. Bundled like lead-signals."""
+    return _serve_md("skills/doomscroll/SKILL.md")
+
+
 @app.get("/skills/jev-memory/SKILL.md", include_in_schema=False)
 async def jev_memory_skill_md():
     """The jev-memory skill: install (or build) the Claude Code mod in
@@ -4719,7 +4726,8 @@ async def well_known_skills_index():
     entries = []
     for name, path in (("treg", "skill.md"), ("make-ugc", "skills/make-ugc/SKILL.md"),
                        ("lead-signals", "skills/lead-signals/SKILL.md"),
-                       ("web-access", "skills/web-access/SKILL.md"), ("recruit", "skills/recruit/SKILL.md")):
+                       ("web-access", "skills/web-access/SKILL.md"), ("recruit", "skills/recruit/SKILL.md"),
+                       ("doomscroll", "skills/doomscroll/SKILL.md")):
         fm = _skill_frontmatter(path)
         entry = {"name": fm.get("name", name), "description": fm.get("description", ""), "files": ["SKILL.md"]}
         if summary := (fm.get("metadata") or {}).get("summary"):
@@ -4759,6 +4767,12 @@ async def well_known_web_access_md():
 async def well_known_recruit_md():
     """The fifth entry `index.json` promises; the same file as /skills/recruit/SKILL.md."""
     return _serve_md("skills/recruit/SKILL.md")
+
+
+@app.get("/.well-known/skills/doomscroll/SKILL.md", include_in_schema=False)
+async def well_known_doomscroll_md():
+    """The sixth entry `index.json` promises; the same file as /skills/doomscroll/SKILL.md."""
+    return _serve_md("skills/doomscroll/SKILL.md")
 
 
 @app.get("/connect-demo", include_in_schema=False)
