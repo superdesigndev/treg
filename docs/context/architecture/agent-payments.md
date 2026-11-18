@@ -379,7 +379,9 @@ address is checked to be 20 bytes.
 
 The check runs where the rails are configured (`bootstrap.configure_agent_payments`: the web app
 and `treg-worker agentpay reconcile`), never in `Settings()`, so a scheduled worker that shares the
-environment but runs no payment code starts whatever the payment settings say. There it refuses
+environment but runs no payment code starts with payment settings missing or incomplete. A value
+of the wrong type (a `TREG_AGENT_PAYMENTS_SETTLEMENT` outside `wallet`/`stripe`, a non-integer
+chain id, a bound broken) still fails `Settings()` in every process, as any setting does. There it refuses
 with one error that names every problem (`Settings.check_agent_payments`): a malformed address or
 a CDP key missing one half, always; with the feature on, also the secret; at least one rail switch; each enabled
 rail's recipient; for `stripe` settlement a Stripe key and an explicit Tempo currency; a Tempo RPC API key only

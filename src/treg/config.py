@@ -908,7 +908,8 @@ class Settings(BaseSettings):
     def check_agent_payments(self) -> None:
         """Refuse to configure the payment rails with one error naming every problem. Called where
         the rails are configured, never from `Settings()`: the payment settings live in a shared
-        environment group, and a process that runs no payment code must not fail on them."""
+        environment group, and a process that runs no payment code must not fail on a missing or
+        incomplete one. A value of the wrong type still fails `Settings()` everywhere."""
         if problems := self.agent_payments_problems():
             raise ValueError("agent payments cannot start: " + "; ".join(problems))
 

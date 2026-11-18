@@ -772,8 +772,9 @@ def test_a_process_without_payment_code_starts_while_payments_lack_their_secrets
     monkeypatch.setenv("TREG_AGENT_PAYMENTS_ENABLED", "1")
     monkeypatch.setenv("TREG_AGENT_PAYMENTS_SETTLEMENT", "stripe")
     monkeypatch.setenv("TREG_AGENT_PAYMENTS_TEMPO_RECIPIENT", "not-an-address")
-    monkeypatch.delenv("TREG_AGENT_PAYMENTS_SECRET", raising=False)
-    monkeypatch.delenv("TREG_STRIPE_SECRET_KEY", raising=False)
+    for name in ("TREG_AGENT_PAYMENTS_SECRET", "TREG_AGENT_PAYMENTS_STRIPE_SECRET_KEY",
+                 "TREG_STRIPE_SECRET_KEY"):
+        monkeypatch.setenv(name, "")  # empty, not unset: an unset name still reads `.env`
     assert Settings().agent_payments_enabled
     get_settings.cache_clear()
     try:
@@ -1886,7 +1887,8 @@ def test_settling_to_stripe_needs_a_stripe_key(monkeypatch):
     monkeypatch.setenv("TREG_AGENT_PAYMENTS_ENABLED", "1")
     monkeypatch.setenv("TREG_AGENT_PAYMENTS_SECRET", "s" * 40)
     monkeypatch.setenv("TREG_AGENT_PAYMENTS_SETTLEMENT", "stripe")
-    monkeypatch.delenv("TREG_STRIPE_SECRET_KEY", raising=False)
+    for name in ("TREG_AGENT_PAYMENTS_STRIPE_SECRET_KEY", "TREG_STRIPE_SECRET_KEY"):
+        monkeypatch.setenv(name, "")  # empty, not unset: an unset name still reads `.env`
     with pytest.raises(ValueError, match="TREG_STRIPE_SECRET_KEY"):
         Settings().check_agent_payments()
 

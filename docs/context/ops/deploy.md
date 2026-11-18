@@ -242,8 +242,9 @@ every provider.
 catalog call with MPP or x402. It needs `TREG_AGENT_PAYMENTS_SECRET` (32+ characters), at least one
 of `TREG_AGENT_PAYMENTS_MPP_ENABLED` / `TREG_AGENT_PAYMENTS_X402_ENABLED`, and each enabled rail's
 recipient address; the defaults are testnets. The web app and `treg-worker agentpay reconcile`
-refuse to start with one error naming every missing setting; other workers ignore these settings,
-so the secrets belong only on those two.
+refuse to start with one error naming every missing setting; other workers start without them, so
+the payment secrets belong on those two, and the Stripe key also wherever
+`treg-worker agentpay stripe-address` runs. A value of the wrong type still stops every process.
 On mainnet the x402 facilitator is Coinbase's
 (`TREG_AGENT_PAYMENTS_X402_FACILITATOR_URL=https://api.cdp.coinbase.com/platform/v2/x402`) and needs
 `TREG_AGENT_PAYMENTS_X402_CDP_API_KEY_ID` and `_SECRET`, plus Base mainnet USDC as
