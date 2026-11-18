@@ -38,8 +38,7 @@
     <ul>
       <li><b>We collect almost nothing about you.</b> An email address to sign in, the teams you're in, and a log of which tools were called. That's the account.</li>
       <li><b>Your credentials are encrypted and never returned.</b> No stored secret value is ever sent back to a client, shown in the dashboard, or read by us.</li>
-      <li><b>We keep a record of each call, and often a copy of the answer.</b> We log each call's tool, method, path, status code and timestamp. A copy of the answer is kept so the same question can be answered again without a new call: answers fetched with your own keys stay private to your team, while answers fetched on treg's shared keys may be served to any team asking exactly the same question. Some providers' answers are never stored, and a team admin can turn storing off at any time.</li>
-      <li><b>Analytics and tracking.</b> We use PostHog for product analytics, including session recordings with every form input masked, and Intercom for support chat. Every page loads Google's gtag.js with all consent signals denied: it sets no advertising cookie and reads none; it sends Google cookieless pings (page views on marketing pages, and one signup event when you create your first team) that Google uses only to estimate whether its ads lead to signups. When you sign up, make your first call, or make your first payment, we also send Google Ads a SHA-256 hash of your email address (Enhanced Conversions) so Google can match that event to an ad you saw or clicked, on any device; Google matches the hash only against its own signed-in accounts and never for personalised advertising.</li>
+      <li><b>Minimal tracking.</b> We use product analytics and a support chat, and no advertising cookies. Every page loads Google's gtag.js with all consent signals denied: it sets no advertising cookie and reads none; it sends Google cookieless pings (page views on marketing pages, and one signup event when you create your first team) that Google uses only to estimate whether its ads lead to signups. When you sign up, make your first call, or make your first payment, we also send Google Ads a SHA-256 hash of your email address (Enhanced Conversions) so Google can match that event to an ad you saw or clicked, on any device; Google matches the hash only against its own signed-in accounts and never for personalised advertising.</li>
       <li><b>No training, no selling.</b> Your credentials, skills, and connected-account data are never sold and never used to train models.</li>
     </ul>
   </div>
@@ -66,17 +65,13 @@
     <li><b>Token hashes.</b> We store a SHA-256 hash of each access token, never the token itself.</li>
     <li>Short-lived sign-in codes and rate-limit counters, which expire automatically.</li>
   </ul>
-  <p>We do not ask for your name, phone number, address, photo, or date of birth.</p>
-
-  <h3>Payments</h3>
-  <p>When your team adds funds, card payments are handled by <b>Stripe</b>: we receive the amount and
-  whether it succeeded, never your card number. If an agent pays for calls from a crypto wallet, we
-  store the wallet address and the payment, which are already public on that blockchain.</p>
+  <p>We do not ask for your name, phone number, address, photo, or date of birth. Card payments are
+  handled by Stripe; we never see your card number.</p>
 
   <h3>Credentials and connections</h3>
   <ul>
     <li><b>Secret values you store</b> (API keys, tokens, credential files), <b>encrypted at rest</b>
-      under keys held in AWS KMS. These are never returned through the API and never displayed
+      with authenticated encryption. These are never returned through the API and never displayed
       after they're saved.</li>
     <li><b>OAuth tokens</b> from accounts you connect, plus the metadata needed to use them: the
       provider, the scopes you actually granted, the specific property or account you selected and
@@ -87,33 +82,20 @@
   <h3>Usage and audit records</h3>
   <ul>
     <li>For each proxied or local-run call: the caller's email, the tool name, HTTP method, request
-      path, status code, cost, and timestamp. Query parameters are kept only as a one-way hash.</li>
-    <li>For a call that fails: the request and the provider's error response, with every injected
-      credential masked, kept for 14 days so the failure can be investigated.</li>
-    <li>One pseudonymous event per call (the endpoint, the outcome, and which fields the answer
-      contained, never their values), kept for 12 months to measure provider quality.</li>
+      path, status code, and timestamp.</li>
   </ul>
-
-  <h3>Stored answers</h3>
-  <p>treg keeps a copy of a provider's answer so the same question can be answered again without a
-  new call. An answer fetched with your team's own key is kept for your team only. An answer fetched
-  on treg's shared provider keys is treated as a public question: it may be served to any team that
-  asks exactly the same question, and that team is not told who asked before. Some providers' answers
-  are never stored, on any key. A team admin can turn storing off in the team's settings, which stops
-  both new copies and answers served from copies.</p>
-
-  <h3>Analytics and support</h3>
-  <p><b>PostHog</b> records page views, product events and, on most pages, session recordings, with
-  every form input and code block masked. When you sign in, it links them to your email address.
-  <b>Intercom</b> runs the support chat; when you're signed in, it knows your email address. Neither
-  is used for advertising.</p>
+  <div class="note">
+    <p>We may keep a copy of a provider's answer so the same question can be answered without a new
+    call, and, for a call that fails, the request and error for a short time to investigate it. A team
+    admin can turn storing answers off.</p>
+  </div>
 
   <h3>Content you create</h3>
   <p>Skills (SKILL.md text and companion files), tool definitions, and their upstream URLs. Treat
   skill text as visible to everyone in the team it lives in — don't put secrets there.</p>
 
   <h3>Technical data</h3>
-  <p>Our hosting and edge providers process standard server logs (IP address, user agent, request line,
+  <p>Our hosting provider processes standard server logs (IP address, user agent, request line,
   timestamp) for security and abuse prevention, retained on their default schedule. We don't build
   profiles from them.</p>
 
@@ -122,10 +104,9 @@
     <tr><th>Data</th><th>Purpose</th><th>Basis (GDPR Art. 6)</th></tr>
     <tr><td>Email, team membership</td><td>Provide the account; sign-in; invitations</td><td>Contract</td></tr>
     <tr><td>Stored credentials, OAuth tokens</td><td>Execute the calls you ask for; keep them valid</td><td>Contract</td></tr>
-    <tr><td>Call records and failed-call evidence</td><td>Show teams who used what; enforce caps; investigate failures and abuse</td><td>Legitimate interests / Contract</td></tr>
-    <tr><td>Stored answers</td><td>Answer a repeat question without a new call</td><td>Contract / Legitimate interests</td></tr>
-    <tr><td>Payment records</td><td>Process top-ups; keep accounting records</td><td>Contract / Legal obligation</td></tr>
-    <tr><td>Product analytics, session recordings, support chat</td><td>Understand and improve the product; answer support questions</td><td>Legitimate interests</td></tr>
+    <tr><td>Call records</td><td>Show teams who used what; enforce caps; investigate abuse</td><td>Legitimate interests / Contract</td></tr>
+    <tr><td>Payment records</td><td>Take payments; keep accounting records</td><td>Contract / Legal obligation</td></tr>
+    <tr><td>Product analytics, support chat</td><td>Improve the product; answer support questions</td><td>Legitimate interests</td></tr>
     <tr><td>Server logs, rate-limit counters</td><td>Security, abuse prevention, service reliability</td><td>Legitimate interests</td></tr>
     <tr><td>Skills and tool definitions</td><td>Store and share what you asked us to share</td><td>Contract</td></tr>
   </table></div>
@@ -136,10 +117,7 @@
     <li>We never use your credentials, connected-account data, or skill content to <b>train machine
       learning models</b> — ours or anyone else's.</li>
     <li>We never put <b>advertising pixels or advertising cookies</b> on the Service. Pages load
-      Google's gtag.js for ad-conversion measurement only, with every consent signal denied (no
-      advertising cookies; the dashboard sends Google's cookieless consent ping on load and one signup
-      event when you create your first team). There is no Google Analytics property. Our product
-      analytics (PostHog) is never shared with advertisers.</li>
+      Google's gtag.js for ad-conversion measurement only, with every consent signal denied.</li>
     <li>We never use your stored credentials for anything other than the call you or a permitted
       teammate initiated, plus automated health checks and token refreshes.</li>
   </ul>
@@ -216,15 +194,14 @@
   <div class="tw"><table>
     <tr><th>Recipient</th><th>What they get</th><th>Why</th><th>Where</th></tr>
     <tr><td>Render</td><td>Application hosting and the managed database — all stored data</td><td>Runs the Service</td><td>USA (Oregon)</td></tr>
-    <tr><td>Amazon Web Services</td><td>The keys that encrypt stored credentials, and treg's own provider keys</td><td>Key management and secrets</td><td>USA (Oregon)</td></tr>
-    <tr><td>Cloudflare</td><td>Traffic to treg.to; stored answers and call events</td><td>Edge network and object storage</td><td>USA (storage); edge worldwide</td></tr>
-    <tr><td>Stripe</td><td>Your payment details and billing email when your team adds funds</td><td>Card payments</td><td>USA</td></tr>
-    <tr><td>Blockchain networks and payment facilitators</td><td>A paying wallet's address and payment</td><td>Agent payments from a crypto wallet</td><td>Public networks</td></tr>
-    <tr><td>PostHog</td><td>Page views, product events and session recordings (inputs masked); your email address once you sign in</td><td>Product analytics</td><td>European Union</td></tr>
-    <tr><td>Intercom</td><td>Your email address and the messages you send to support</td><td>Support chat</td><td>USA</td></tr>
-    <tr><td>Grafana</td><td>Service logs, with credentials and response bodies excluded</td><td>Monitoring</td><td>USA</td></tr>
-    <tr><td>Vercel AI Gateway</td><td>The text of requests to treg's language-model features</td><td>Language-model features</td><td>USA</td></tr>
-    <tr><td>WorkOS</td><td>Your sign-in identity from your company's identity provider</td><td>Enterprise single sign-on</td><td>USA</td></tr>
+    <tr><td>Amazon Web Services</td><td>Encryption keys and secrets</td><td>Key management</td><td>USA (Oregon)</td></tr>
+    <tr><td>Cloudflare</td><td>Traffic to treg.to; stored data</td><td>Edge network and storage</td><td>USA</td></tr>
+    <tr><td>Stripe</td><td>Payment details when your team adds funds</td><td>Payments</td><td>USA</td></tr>
+    <tr><td>PostHog</td><td>Usage of the site and dashboard, including your email address once you sign in</td><td>Product analytics</td><td>European Union</td></tr>
+    <tr><td>Intercom</td><td>Your email address and support messages</td><td>Support chat</td><td>USA</td></tr>
+    <tr><td>Grafana</td><td>Service logs, without credentials</td><td>Monitoring</td><td>USA</td></tr>
+    <tr><td>Vercel AI Gateway</td><td>Requests to language-model features</td><td>Language models</td><td>USA</td></tr>
+    <tr><td>WorkOS</td><td>Your sign-in identity, if your company uses single sign-on</td><td>Enterprise sign-in</td><td>USA</td></tr>
     <tr><td>Resend</td><td>Your email address and the message body</td><td>Sends sign-in codes and invitations</td><td>USA</td></tr>
     <tr><td>Google Fonts</td><td>Your IP address, when you load a treg web page</td><td>Serves the site's typefaces</td><td>USA</td></tr>
     <tr><td>Upstream APIs you connect</td><td>Whatever your call sends them</td><td>The call you asked us to make</td><td>Varies by provider</td></tr>
@@ -257,10 +234,9 @@
   you, and neither is used for advertising.</p>
   <p><code>treg_utm</code>: set by our own <code>/sitetrack.js</code> on your first page — if the link
   you arrived by carried campaign tags (<code>utm_*</code>) or a referring site, it remembers that source
-  so we can tell which links bring people to treg, retained for <b>90 days</b>. It holds no identifier.
-  The same campaign source is also recorded in our product analytics (PostHog).</p>
-  <p><b>PostHog and Intercom</b> set their own cookies (<code>ph_*</code>, <code>intercom-*</code>) to
-  run product analytics and the support chat. They are not used for advertising.</p>
+  so we can tell which links bring people to treg, retained for <b>90 days</b>. It holds no identifier.</p>
+  <p>Our product analytics (PostHog) and support chat (Intercom) set their own cookies. They are not
+  used for advertising.</p>
   <p><code>treg_ad</code>: set by our own <code>/adtrack.js</code>, not a Google script — if you arrive
   from a Google Ads click, it records which ad click led to your visit (the click id and the landing
   page), retained for <b>90 days</b>. It exists to tell us whether an ad turned into a signup, an active
@@ -277,9 +253,8 @@
 
   <h2 class="sec" id="s8"><span class="n">08</span>How we protect it</h2>
   <ul>
-    <li>Secret values and OAuth tokens are sealed with <b>AWS KMS envelope encryption</b>: each has its
-      own data key, bound to its team, and every decryption is logged. The database alone decrypts
-      nothing.</li>
+    <li>Secret values and OAuth tokens are <b>encrypted at rest</b> with a key held outside the
+      database.</li>
     <li>Access tokens are stored only as <b>SHA-256 hashes</b>; a database leak doesn't yield usable
       tokens.</li>
     <li>All traffic is over <b>HTTPS</b>. Every record is scoped to an organization, and access is
@@ -296,12 +271,7 @@
     <tr><td>Credentials and OAuth tokens</td><td>Until you delete them, disconnect the provider, or delete the team</td></tr>
     <tr><td>Skills and tool definitions</td><td>Until deleted by you or a team admin</td></tr>
     <tr><td>Call records</td><td>While the owning team exists; deleted with it</td></tr>
-    <tr><td>Failed-call request and error response</td><td>14 days</td></tr>
-    <tr><td>Pseudonymous call events</td><td>12 months</td></tr>
-    <tr><td>Answers fetched with your team's own keys</td><td>While the owning team exists; deleted with it, or earlier on request</td></tr>
-    <tr><td>Answers fetched on treg's shared keys</td><td>Kept as shared answers after a team is deleted; on request, we delete the ones no other team has asked for</td></tr>
-    <tr><td>Payment records</td><td>As long as tax and accounting law requires</td></tr>
-    <tr><td>Product analytics and session recordings</td><td>Our analytics provider's retention period</td></tr>
+    <tr><td>Copies of answers kept to serve a repeat question</td><td>Until no longer needed, or earlier on request. A team admin can stop the storing at any time in the team's settings</td></tr>
     <tr><td>Sign-in codes, rate-limit counters</td><td>Minutes — expired rows are swept automatically</td></tr>
     <tr><td>Invitations</td><td>Until accepted, revoked, or expired</td></tr>
     <tr><td>Hosting server logs</td><td>Our provider's default window (short)</td></tr>
@@ -323,7 +293,7 @@
   <p>California residents: we do not sell or share personal information as those terms are defined by
   the CPRA, and we have not done so in the preceding 12 months.</p>
   <p>EEA/UK residents: you also have the right to lodge a complaint with your local supervisory
-  authority. Data is processed in the United States, and product analytics in the European Union; where a transfer mechanism is required, we rely
+  authority. Data is processed mainly in the United States; where a transfer mechanism is required, we rely
   on the Standard Contractual Clauses offered by our processors.</p>
 
   <h2 class="sec" id="s11"><span class="n">11</span>Children</h2>
