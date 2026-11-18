@@ -208,7 +208,9 @@ on those places, DB-free, after the DB phase and around the relay (platform tier
    whose team has the fewest calls in progress, oldest first. No place stays empty while a call
    waits.
 3. After `fair_share_wait_s` (0 turns the gate off) the call leaves as the typed `share_busy` 429,
-   not charged. A routed job reads it as a child error and asks its next provider.
+   not charged. The body's `active` is this team's in-progress count and may be 0 when other
+   traffic holds the places; `retry_after_s` is a retry hint, not a promise a place will be free.
+   A routed job reads it as a child error and asks its next provider.
 
 The place is held until the answer is read and released in the relay block's `finally` on every
 path; a streamed free answer releases when the relay block ends. A wait shows in `X-Treg-Smoothed`
