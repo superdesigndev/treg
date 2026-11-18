@@ -242,6 +242,11 @@ money moved, the purchased-credit gate.
   and each call waits for its batch to commit before it answers. The charge is queued before
   anything is awaited, so a cancel cannot lose it. A batch that cannot be written is logged, not
   charged, and its takes returned.
+- **A call that cost more than it set aside** takes the difference from the counter as well, or
+  all the counter has. What the hold then cannot cover comes out of the balance, and the next
+  refill is refused there: the same stop the exact path has, where the next reserve is the gate
+  after an overrun. Each refill also compares the counter with the hold it just committed and
+  takes back anything above it, which covers an overrun the store could not be told about.
 - **Auto top-up** is asked after a refill, the only moment the balance moved.
 
 What can go wrong lands on one side only. A take the process never finishes (a crash), a give-back

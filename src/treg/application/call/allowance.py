@@ -118,7 +118,15 @@ async def _refill(org_id: int, need_micro: int, daily_cap_micro: int) -> bool:
     added = await store.allowance_add(
         org_id, result.epoch, result.added_micro,
         until_ms=stamped_ms + settings.money_allowance_fresh_s * 1000, ttl_ms=_COUNTER_TTL_MS)
-    return isinstance(added, int)
+    if not isinstance(added, int):
+        return False
+    if added > result.amount_micro:
+        # The counter may never offer more than its hold has. It does only after a charge drew
+        # from the hold what the counter was not told about.
+        log.warning("allowance_counter_above_hold org_id=%s counter=%s hold=%s",
+                    org_id, added, result.amount_micro)
+        await store.allowance_take_up_to(org_id, result.epoch, added - result.amount_micro)
+    return True
 
 
 async def _drain(org_id: int, reason: str) -> None:
@@ -213,9 +221,12 @@ async def finish(org_id: int, call_id: str, epoch: int, reserved_micro: int, *,
         if amount < reserved_micro:
             await store.allowance_give_back(org_id, epoch, reserved_micro - amount)
         elif amount > reserved_micro:
-            # The call cost more than it set aside. Take the difference too, so the counter does
-            # not go on offering money this charge will draw from the hold. Best effort.
-            await store.allowance_take(org_id, amount - reserved_micro)
+            # The call cost more than it set aside, and the charge will draw the difference from
+            # the hold. Take it from the counter too, or all the counter has: whatever the hold
+            # cannot cover then comes out of the balance, and the next refill is refused there,
+            # which is how an overrun is stopped on the exact path. If the store cannot answer,
+            # the next refill finds the counter above its hold and takes the difference back.
+            await store.allowance_take_up_to(org_id, epoch, amount - reserved_micro)
         if await written:
             return amount
         await store.allowance_give_back(org_id, epoch, min(amount, reserved_micro))

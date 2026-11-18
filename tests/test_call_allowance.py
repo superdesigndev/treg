@@ -181,6 +181,35 @@ async def test_a_call_that_is_not_billable_gives_everything_back_and_writes_noth
         assert (await db.execute(select(CallCharge))).first() is None
 
 
+async def test_an_overrun_larger_than_the_counter_leaves_nothing_on_offer(org_id, store, monkeypatch):
+    """The hold cannot cover the charge, so the counter must not go on admitting calls."""
+    monkeypatch.setattr(get_settings(), "money_allowance_chunk_micro", 1_000)
+    epoch = await runtime.take(org_id, 600)
+    assert await _finish(org_id, "call-1", epoch, 600, billable=True, actual_micro=1_500) == 1_500
+    assert store.counters[org_id]["avail"] == 0
+    assert (await _fold(org_id)).consumed_micro == 1_500
+    assert await _state(org_id) == (GRANT - 1_500, 0)  # 500 past the hold came out of the balance
+
+
+async def test_a_counter_left_above_its_hold_is_brought_back_down_by_the_next_refill(
+        org_id, store, monkeypatch):
+    monkeypatch.setattr(get_settings(), "money_allowance_chunk_micro", 1_000)
+
+    async def unavailable(*args):
+        return None
+
+    take_up_to = store.allowance_take_up_to
+    monkeypatch.setattr(store, "allowance_take_up_to", unavailable)
+    epoch = await runtime.take(org_id, 600)
+    await _finish(org_id, "call-1", epoch, 600, billable=True, actual_micro=1_500)
+    assert store.counters[org_id]["avail"] == 400, "the store could not be told"
+    monkeypatch.setattr(store, "allowance_take_up_to", take_up_to)
+    store.expire()
+    assert await runtime.take(org_id, 100) == epoch  # the refill folds, adds 600, then corrects
+    balance, hold = await _state(org_id)
+    assert hold == 600 and store.counters[org_id]["avail"] == hold - 100
+
+
 async def test_an_unknown_cost_charges_the_reservation_and_an_overrun_takes_the_difference(
         org_id, store):
     epoch = await runtime.take(org_id, 600)

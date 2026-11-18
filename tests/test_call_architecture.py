@@ -217,7 +217,8 @@ _DERIVED_WRITE_FILES = {
         "money_admission.admit", "ledger.reap_stale_holds",
         "allowance.refill_allowance_in_transaction", "allowance.close_allowance_in_transaction",
         "allowance.record_charges", "archive.note_org_uses_in_transaction",
-        "store.allowance_take", "store.allowance_give_back", "store.allowance_add",
+        "store.allowance_take", "store.allowance_take_up_to", "store.allowance_give_back",
+        "store.allowance_add",
         "store.allowance_drop", "store.acquire_lease", "store.release_lease",
     },
     _SRC / "application" / "call" / "settle.py": {
@@ -270,8 +271,10 @@ _EXPECTED_DERIVED_WRITE_SITES = {
     ("application/call/allowance.py", "_write", "allowance.record_charges"),
     ("application/call/allowance.py", "_write", "archive.note_org_uses_in_transaction"),
     ("application/call/allowance.py", "finish", "store.allowance_give_back"),
-    # a call that cost more than it set aside takes the difference from the counter as well
-    ("application/call/allowance.py", "finish", "store.allowance_take"),
+    # a call that cost more than it set aside takes the difference from the counter as well,
+    # and a refill takes back whatever a counter holds above its hold
+    ("application/call/allowance.py", "finish", "store.allowance_take_up_to"),
+    ("application/call/allowance.py", "_refill", "store.allowance_take_up_to"),
     ("application/call/allowance.py", "take", "store.acquire_lease"),
     ("application/call/allowance.py", "take", "store.allowance_take"),
     ("application/call/allowance.py", "take", "store.release_lease"),
