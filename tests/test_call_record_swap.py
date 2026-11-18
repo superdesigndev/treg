@@ -306,10 +306,14 @@ async def test_rows_written_during_the_resync_are_copied_before_the_lock(before_
     monkeypatch.setattr(swap, "_COMMIT_MARGIN", 2)
     real_resync, real_swap, left_under_lock = swap._resync_verdicts, swap._swap, []
 
+    arrived = []
+
     def resync_while_calls_arrive(bind, reached):
         real_resync(bind, reached)
-        bind.execute(_ROWS, {"org_id": before_swap, "count": 60, "step": timedelta(milliseconds=1),
-                             "newest": utcnow_naive()})
+        if not arrived:                    # during the first resync, the long one
+            arrived.append(1)
+            bind.execute(_ROWS, {"org_id": before_swap, "count": 60, "step": timedelta(milliseconds=1),
+                                 "newest": utcnow_naive()})
 
     def swap_and_measure(bind, columns, reached):
         left_under_lock.append(bind.execute(text("SELECT max(id) FROM callrecord")).scalar() - reached)
@@ -641,3 +645,61 @@ async def test_partitions_cover_the_oldest_row_to_copy_whatever_its_id(before_sw
         await session.commit()
     await _swap_in_process()
     assert await _scalar("SELECT count(*) FROM callrecord") == 41
+
+
+async def test_late_values_landing_during_the_quiet_wait_are_resynced_before_the_lock(before_swap,
+                                                                                      monkeypatch):
+    """A row copied after the first resync gets its verdict while the swap waits for quiet; the
+    resync after the wait takes it, so the locked copy (which skips rows already copied) does not
+    leave it stale."""
+    real_wait, done = swap._wait_until_quiet, []
+
+    def verdict_lands_while_waiting(bind, table, deadline):
+        if not done:
+            done.append(1)
+            bind.execute(_ROWS, {"org_id": before_swap, "count": 1, "step": timedelta(seconds=1),
+                                 "newest": utcnow_naive()})
+            bind.execute(text("INSERT INTO callrecord_partitioned SELECT * FROM callrecord WHERE id = 41"))
+            bind.execute(text("UPDATE callrecord SET hit = true, verdict = 'valid' WHERE id = 41"))
+        real_wait(bind, table, deadline)
+    monkeypatch.setattr(swap, "_wait_until_quiet", verdict_lands_while_waiting)
+
+    await _swap_in_process()
+
+    async with db.session_maker() as session:
+        row = await session.get(CallRecord, 41)
+        assert (row.hit, row.verdict) == (True, "valid")
+
+
+async def test_the_upkeep_leaves_the_staged_table_to_the_swap(before_swap):
+    """Before the swap the staged table is analyzed by 0117 itself; the cron analyzes only the
+    live `callrecord` once it is partitioned."""
+    await _upgrade_to("0116")
+    await partitions.backfill(31, batch_rows=10, pause=0)
+    async with db.session_maker() as session:
+        for name in (await session.execute(text(
+                "SELECT inhrelid::regclass::text FROM pg_inherits "
+                "WHERE inhparent = 'callrecord_partitioned'::regclass"))).scalars().all():
+            await session.execute(text(f"ANALYZE {name}"))
+        await session.commit()
+    assert await partitions.analyze_if_stale() == []
+
+
+def test_drop_legacy_takes_a_window(monkeypatch):
+    from treg import worker
+    import treg.infra.db as infra_db
+
+    seen = {}
+
+    async def verified():
+        return None
+
+    async def drop(**options):
+        seen.update(options)
+        return {"dropped": False, "deleted_rows": 0, "error": "window"}
+    monkeypatch.setattr(infra_db, "verify_db", verified)
+    monkeypatch.setattr(partitions, "drop_legacy", drop)
+    assert worker.main(["admin", "callrecord-drop-legacy"]) == 1
+    assert seen == {"window_s": 120.0}
+    worker.main(["admin", "callrecord-drop-legacy", "--window-s", "600"])
+    assert seen == {"window_s": 600.0}

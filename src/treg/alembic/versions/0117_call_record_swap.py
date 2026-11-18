@@ -365,8 +365,10 @@ def _swap(bind, columns: str, reached: int) -> None:
     deadline = time.monotonic() + _QUIET_WAIT_S
     while True:
         _wait_until_quiet(bind, LIVE, deadline)
-        # What came in during the wait is copied now, so the locked copy stays small.
+        # What came in during the wait is copied now, so the locked copy stays small, and late
+        # values that landed meanwhile on rows copied after the first resync are taken too.
         reached = _catch_up(bind, columns, reached)
+        _resync_verdicts(bind, reached)
         if _try_locks(bind):
             break
         if time.monotonic() >= deadline:
