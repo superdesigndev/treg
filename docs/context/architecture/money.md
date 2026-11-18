@@ -205,6 +205,10 @@ is closed and its counter retired. So a deployment whose store can roll acknowle
 back takes its teams off the allowance after such an event, and puts them back once the
 conditions in [deploy](../ops/deploy.md) hold.
 
+A refill that finds a counter with something in it and no hold (the sweep closed the hold and
+its retiring of the counter did not reach the store) drops the counter, so the next one opens
+a hold instead of reading the old figure as enough.
+
 Epochs only grow (a later hold has a later `created_at`), and that is the fence: an add replaces
 a counter of an older epoch, and is refused as `"stale"` when the stored epoch is newer, so a
 refill whose add arrives after its hold was closed and another opened cannot put the closed hold's

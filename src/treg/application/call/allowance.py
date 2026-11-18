@@ -159,6 +159,13 @@ async def _refill(org_id: int, need_micro: int, daily_cap_micro: int) -> bool:
         _refused_until[org_id] = time.monotonic() + _REFUSAL_COOLDOWN_S
         if result.epoch is not None:
             await _drain(org_id, "no_room_to_refill")
+        elif available:
+            # A counter with no hold behind it: the sweep closed the hold and its retiring of
+            # the counter did not reach the store. Left alone, what it still shows would keep
+            # every refill from asking for money, and the team on the exact path until the
+            # hash expires.
+            log.warning("allowance_counter_without_hold org_id=%s counter=%s", org_id, available)
+            await store.allowance_drop(org_id)
         return False
     # The deadline is the one the refill wrote on the hold, not one counted from now: the idle
     # sweep reads the hold, so a refill published late must not admit calls past it.

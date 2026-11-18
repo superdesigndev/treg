@@ -411,6 +411,25 @@ async def test_a_refill_tops_the_counter_back_up_and_folds_what_was_queued(org_i
         assert (await db.execute(select(CallCharge))).first() is None
 
 
+async def test_a_counter_whose_hold_was_closed_without_it_is_dropped_and_rebuilt(
+        org_id, store, monkeypatch):
+    """The sweep closed the hold and the store did not take the counter's retiring. The counter
+    still shows a chunk, so a refill asks for nothing, and there is no hold to refill."""
+    epoch = await runtime.take(org_id, 100)
+    await runtime.finish(org_id, "only", epoch, 100, endpoint_id="e", billable=False)
+    async with session_maker() as db:
+        await allowance.close_allowance_in_transaction(db, org_id, reason="idle")
+        await db.commit()
+    store.expire()
+    assert store.counters[org_id]["avail"] == CHUNK
+    assert await runtime.take(org_id, 100) is None
+    assert store.counters[org_id]["avail"] == 0, "dropped: nothing stands behind it"
+    monkeypatch.setattr(runtime, "_refused_until", {})
+    rebuilt = await runtime.take(org_id, 100)
+    assert rebuilt and rebuilt > epoch
+    assert await _state(org_id) == (GRANT - CHUNK, CHUNK)
+
+
 async def test_a_balance_that_cannot_refill_drains_the_allowance_for_the_exact_path(
         org_id, store, monkeypatch):
     monkeypatch.setattr(get_settings(), "money_allowance_chunk_micro", GRANT)
