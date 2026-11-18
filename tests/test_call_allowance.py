@@ -1658,6 +1658,7 @@ async def test_a_call_gives_up_on_a_lease_held_too_long(org_id, store, monkeypat
     assert await runtime.take(org_id, 100) is None
 
 
+@pytest.mark.skipif(infra_db._is_sqlite, reason="timed against a database that takes writers at once")
 async def test_steady_calls_stay_on_the_allowance_while_folds_keep_the_lease(
         org_id, store, monkeypatch):
     """A fold batch that takes a while, a counter that lapses every second, and calls that never
@@ -1883,3 +1884,41 @@ async def test_a_refill_waits_for_a_daily_cap_change_that_is_still_open(org_id, 
         await admin.commit()
     assert await refill is None, "the cap has no room for more"
     assert (await _state(org_id))[0] >= GRANT - CHUNK
+
+
+@pytest.mark.skipif(infra_db._is_sqlite, reason="needs row locks")
+async def test_a_refill_does_not_wait_for_a_top_up_that_is_waiting_for_it(org_id, store):
+    """A top-up inserting a credit block holds a key-share lock on the team's row, from the
+    foreign key check, before it updates the balance. A refill that has already written the
+    row and then asked for the full row lock to read the cap would wait for the top-up, and
+    the top-up for the refill."""
+    seen = await _statements(lambda: runtime.take(org_id, 100))
+    assert any(" from org " in text and text.endswith("for no key update") for text in seen)
+    store.expire()
+    async with session_maker() as top_up:
+        await top_up.execute(select(Org.id).where(Org.id == org_id).with_for_update(
+            read=True, key_share=True))
+        assert await asyncio.wait_for(runtime.take(org_id, 100), 5), "the refill went through"
+
+
+async def test_a_refill_that_fails_does_not_take_a_kept_ask_down_with_it(
+        org_id, store, monkeypatch):
+    monkeypatch.setattr(runtime, "_ahead", lambda: {"ahead_ms": 3_600_000, "low_micro": 0})
+    refill, started, go, calls = runtime._refill, asyncio.Event(), asyncio.Event(), []
+
+    async def first_one_fails(*args):
+        calls.append(args)
+        if len(calls) == 1:
+            started.set()
+            await go.wait()
+            raise RuntimeError("the database blinked")
+        return await refill(*args)
+
+    assert await runtime.take(org_id, 100)
+    monkeypatch.setattr(runtime, "_refill", first_one_fails)
+    assert await runtime.take(org_id, 100)
+    await started.wait()
+    runtime._refresh_in_background(org_id, 0, None)  # an ask that arrives meanwhile
+    go.set()
+    await runtime._refreshing[org_id]
+    assert len(calls) == 2 and runtime.refills(org_id) == 2 and store.leases == {}

@@ -199,14 +199,16 @@ async def _refresh(org_id: int, daily_cap_micro: int, after_refill) -> None:
     on its way out is kept and gets a refill of its own, or nobody would act on it."""
     try:
         while True:
-            await _refresh_once(org_id, daily_cap_micro, after_refill)
+            try:
+                await _refresh_once(org_id, daily_cap_micro, after_refill)
+            except Exception:
+                # A kept ask still gets its refill: this failure says nothing about the next.
+                log.error("allowance refill ahead of the deadline failed for org %s", org_id,
+                          exc_info=True)
             again = _refresh_again.pop(org_id, None)
             if again is None:
                 return
             daily_cap_micro, after_refill = again
-    except Exception:
-        log.error("allowance refill ahead of the deadline failed for org %s", org_id,
-                  exc_info=True)
     finally:
         if _refreshing.get(org_id) is asyncio.current_task():
             del _refreshing[org_id]
@@ -248,9 +250,15 @@ async def _current_daily_cap(org_id: int, db) -> int:
     change is open in another transaction: the refill's balance update then waits for that
     change to commit, and checks only the balance. Locked, the read waits instead, and what the
     refill reads of the day's spend afterwards is under the same lock. The team's row is the
-    last lock a money transaction takes, and the refill takes none after it."""
+    last lock a money transaction takes, and the refill takes none after it.
+
+    The lock is the one an update of the row takes (NO KEY UPDATE), no stronger. By now the
+    fold may have updated the row, and a top-up inserting a credit block holds a KEY SHARE on
+    it from the foreign key check while it waits to update the balance. Asking for the full
+    row lock here would wait for that top-up, which is waiting for this transaction."""
     return budget_policy._effective_daily_cap((await db.execute(
-        select(Org.daily_cap_micro).where(Org.id == org_id).with_for_update())).one_or_none())
+        select(Org.daily_cap_micro).where(Org.id == org_id)
+        .with_for_update(key_share=True))).one_or_none())
 
 
 async def _refill(org_id: int, need_micro: int, daily_cap_micro: int) -> bool:

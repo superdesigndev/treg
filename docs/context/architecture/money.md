@@ -306,7 +306,11 @@ money moved, the purchased-credit gate.
 - **A refill reads the daily cap again.** The cap a refill is handed is the one its call saw,
   and a refill can wait some time for its turn. `refill_allowance_in_transaction` therefore
   also reads the team's cap in its own transaction, where it reads the day's spend, and keeps
-  to the stricter of the two. The read locks the team's row: a cap change still open in
+  to the stricter of the two. The read locks the team's row, with the lock an update of it
+  takes and no stronger (`FOR NO KEY UPDATE`): the fold before it may already have updated the
+  row, and a top-up holds a key-share lock on it from its credit block's foreign key while it
+  waits to update the balance, so asking for the full row lock would have each wait for the
+  other. A cap change still open in
   another transaction would otherwise be missed, because the refill's balance update waits for
   that change and then checks only the balance. The row is the last lock in money's order
   (hold, blocks, team), and the day's spend read after it is under the same lock. Without it every call of a busy team met a
