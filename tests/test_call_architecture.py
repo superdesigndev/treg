@@ -281,7 +281,7 @@ _EXPECTED_DERIVED_WRITE_SITES = {
     ("application/call/allowance.py", "finish", "store.allowance_give_back"),
     # the charge writer freezes a team's counter once an overrun's charge is committed, and
     # a refill takes back whatever a counter holds above its hold
-    ("application/call/allowance.py", "_committed", "store.allowance_freeze"),
+    ("application/call/allowance.py", "_write", "store.allowance_freeze"),
     ("application/call/allowance.py", "_refill", "store.allowance_take_up_to"),
     ("application/call/allowance.py", "_take", "store.acquire_lease"),
     ("application/call/allowance.py", "_take", "store.allowance_take"),

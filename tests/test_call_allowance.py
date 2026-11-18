@@ -136,6 +136,8 @@ async def store(monkeypatch):
     monkeypatch.setattr(runtime, "_refused_until", {})
     monkeypatch.setattr(runtime, "_charges", runtime._ChargeWriter())
     monkeypatch.setattr(runtime, "_in_flight", [0])
+    # The allowance is PostgreSQL only; its logic is still tested on whatever the suite runs on.
+    monkeypatch.setattr(runtime, "_database_supported", lambda: True)
     monkeypatch.setattr(runtime, "_freezes_due", {})
     monkeypatch.setattr(runtime, "_freeze_waiters", {})
     monkeypatch.setattr(runtime, "_freeze_tasks", {})
@@ -576,11 +578,53 @@ async def test_the_writer_drops_a_charge_and_its_paid_mark_when_the_team_is_gone
     """Nothing to queue, and no paid-question mark for a later team of the same number."""
     gone = org_id + 1_000
     charge = allowance.Charge("late", gone, "e.metered", 400, None, 600, 1)
-    assert await runtime._ChargeWriter._write([(charge, (gone, "question"))]) == set()
+    await runtime._ChargeWriter._write([(charge, (gone, "question"))])
     async with session_maker() as db:
         assert (await db.execute(select(CallCharge).where(CallCharge.org_id == gone))).first() is None
         assert (await db.execute(
             select(ArchiveKeyOrg).where(ArchiveKeyOrg.org_id == gone))).first() is None
+
+
+async def test_a_teams_freeze_does_not_wait_for_another_teams_write(org_id, store, monkeypatch):
+    """One team's overrun is committed; the next team's write then fails. The first team's
+    counter is still admitting calls, so its freeze cannot wait for the batch."""
+    epoch = await runtime.take(org_id, 600)
+    later_team = org_id + 1
+    write_team = runtime._ChargeWriter._write_team
+
+    async def second_fails(team, rows, again):
+        if team == later_team:
+            raise ConnectionError("database away")
+        return await write_team(team, rows, again)
+
+    monkeypatch.setattr(runtime._ChargeWriter, "_write_team", staticmethod(second_fails))
+    rows = [(allowance.Charge("over", org_id, "e.metered", 900, None, 600, epoch), None),
+            (allowance.Charge("other", later_team, "e.metered", 100, None, 100, None), None)]
+    with pytest.raises(ConnectionError):
+        await runtime._ChargeWriter._write(rows)
+    counter = store.counters[org_id]
+    assert counter["frozen"] != counter["thawed"] and await _queued(org_id) == 1
+
+
+async def test_the_allowance_is_off_where_the_database_is_not_postgresql(org_id, store, monkeypatch):
+    assert runtime.enabled_for(org_id)
+    monkeypatch.setattr(runtime, "_database_supported", lambda: False)
+    assert not runtime.enabled_for(org_id)
+
+
+async def test_a_hold_whose_counter_was_retired_is_closed_and_a_new_one_opened(
+        org_id, store, monkeypatch):
+    """A deletion of the team retired the counter and then did not commit. The store will take
+    nothing more for that hold: money added to it would be out of every call's reach."""
+    old = await runtime.take(org_id, 100)
+    await _finish(org_id, "only", old, 100, billable=False)
+    await store.allowance_retire(org_id, old, 60_000)
+    assert await runtime.take(org_id, 100) is None, "this refill closes the retired hold"
+    assert await _state(org_id) == (GRANT, 0)
+    monkeypatch.setattr(runtime, "_refused_until", {})
+    new = await runtime.take(org_id, 100)
+    assert new and new > old + 1
+    assert await _state(org_id) == (GRANT - CHUNK, CHUNK)
 
 
 async def test_the_writer_holds_one_teams_hold_at_a_time(org_id, store):
@@ -1015,16 +1059,16 @@ async def test_a_committed_overrun_whose_freeze_does_not_reach_the_store_is_gone
 
     async def flaky(org, **kwargs):
         calls.append(org)
-        return None if len(calls) == 1 else await freeze(org, **kwargs)
+        return None if len(calls) <= 2 else await freeze(org, **kwargs)
 
     monkeypatch.setattr(store, "allowance_freeze", flaky)
     epoch = await runtime.take(org_id, 600)
     await _instantly(monkeypatch)
     assert await _finish(org_id, "over", epoch, 600, billable=True, actual_micro=900) == 900
-    assert runtime._charges.behind()
+    assert runtime._charges.behind(), "the write and its one retry both lacked the freeze"
     await runtime._charges._retry_task
     assert store.counters[org_id]["frozen"] == 1 and not runtime._charges.behind()
-    assert runtime._charges.owed == 0
+    assert runtime._charges.owed == 0 and len(calls) == 3
 
 
 async def test_a_settlement_outside_the_allowance_that_overran_freezes_the_counter(

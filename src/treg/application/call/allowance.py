@@ -20,6 +20,7 @@ from ... import archive
 from ...config import get_settings
 from ...domain import money as ledger
 from ...domain.money import allowance
+from ...infra import db as infra_db
 from ...infra import kv, money_admission
 from ...infra.db import session_maker
 from ...infra.money_session import money_session
@@ -61,7 +62,15 @@ def refills(org_id: int) -> int:
 
 
 def enabled_for(org_id: int) -> bool:
-    return org_id in get_settings().money_allowance_org_ids and kv.configured()
+    return (org_id in get_settings().money_allowance_org_ids and kv.configured()
+            and _database_supported())
+
+
+def _database_supported() -> bool:
+    """The allowance runs on PostgreSQL only. It leans on row locks to order a refill, a fold, a
+    charge write and a team's deletion, and on a team's number never being given to another
+    team; SQLite offers neither."""
+    return not infra_db._is_sqlite
 
 
 def money_key(org_id: int) -> str:
@@ -294,11 +303,11 @@ class _ChargeWriter:
             confirmed = True
             try:
                 try:
-                    unbacked = await self._write(rows)
+                    await self._write(rows)
                 except Exception:  # noqa: BLE001 - one bounded retry on a fresh transaction
                     await asyncio.sleep(0.2)
-                    unbacked = await self._write(rows, again=True)
-                await self._committed(rows, unbacked)
+                    await self._write(rows, again=True)
+                self._committed(rows)
             except Exception:
                 confirmed = False
                 log.error("writing %d call charges is unconfirmed; retrying in the background",
@@ -316,7 +325,8 @@ class _ChargeWriter:
             await asyncio.sleep(delay)
             rows = self._unconfirmed[:allowance.FOLD_BATCH]
             try:
-                await self._committed(rows, await self._write(rows, again=True))
+                await self._write(rows, again=True)
+                self._committed(rows)
             except Exception:  # noqa: BLE001 - whatever the fault, try again later
                 delay = min(delay * 2, 60.0)
                 continue
@@ -333,20 +343,9 @@ class _ChargeWriter:
         more calls to the allowance: each would add a charge the database is not taking."""
         return bool(self._unconfirmed)
 
-    async def _committed(self, rows: list, unbacked: set[int]) -> None:
-        """The rows are in the database. Freeze the counter of every team with a charge among
-        them that takes from the balance (an overrun, or a charge its hold no longer backs:
-        `unbacked`), then count the rows as written and start folds that are due.
-
-        Raises when a freeze does not reach the store: the batch then stays unconfirmed and is
-        gone through again, because such a charge committed without its freeze is a counter
-        left open over a balance nobody has checked."""
-        store = kv.store()
-        owing = unbacked | {charge.org_id for charge, _ in rows if _overran(charge)}
-        for org_id in sorted(owing):
-            if (await store.allowance_freeze(org_id, ttl_ms=_COUNTER_TTL_MS) is None
-                    and kv.configured()):
-                raise ConnectionError("the store did not take a freeze")
+    def _committed(self, rows: list) -> None:
+        """The rows are in the database and their teams' freezes with the store: count the rows
+        as written and start folds that are due."""
         self.owed = max(0, self.owed - len(rows))
         for charge, _ in rows:
             count = self._since_fold.get(charge.org_id, 0) + 1
@@ -358,44 +357,47 @@ class _ChargeWriter:
             self._since_fold[charge.org_id] = count
 
     @staticmethod
-    async def _write(rows: list, *, again: bool = False) -> set[int]:
-        """Write the rows; return the teams with a charge among them that its own hold no
-        longer stands behind (closed since, with or without another in its place).
+    async def _write(rows: list, *, again: bool = False) -> None:
+        """Write the rows, one transaction per team, and freeze each team's counter as soon as
+        its own rows are committed.
 
-        One transaction per team. A transaction that held several teams' hold rows would have to
-        take them in an order every other holder of two agreed on, and a team's first hold can
-        appear after a deletion of several teams has chosen its order."""
-        unbacked: set[int] = set()
+        A transaction that held several teams' hold rows would have to take them in an order
+        every other holder of two agreed on, and a team's first hold can appear after a deletion
+        of several teams has chosen its order. And a team's freeze must not wait for another
+        team's write: its rows are committed, and its counter is still admitting calls.
+
+        Raises when a write fails or a freeze does not reach the store; the batch is then gone
+        through again, which writes nothing twice and sends the freeze again."""
+        store = kv.store()
         by_team: dict[int, list] = {}
         for row in rows:
             by_team.setdefault(row[0].org_id, []).append(row)
         for org_id in sorted(by_team):
-            if await _ChargeWriter._write_team(org_id, by_team[org_id], again):
-                unbacked.add(org_id)
-        return unbacked
+            if (await _ChargeWriter._write_team(org_id, by_team[org_id], again)
+                    and await store.allowance_freeze(org_id, ttl_ms=_COUNTER_TTL_MS) is None
+                    and kv.configured()):
+                raise ConnectionError("the store did not take a freeze")
 
     @staticmethod
     async def _write_team(org_id: int, rows: list, again: bool) -> bool:
+        """Write one team's rows. True when one of them takes from the balance: it overran what
+        its call set aside, or its own hold no longer stands behind it (closed since, with or
+        without another in its place)."""
         # Bounded like every money transaction: this one holds the team's hold row, and a
         # process that stalled here would keep its refills, folds and sweeps waiting.
         async with money_session(session_maker()) as db:
             # PostgreSQL: the shared lock on the hold row comes first, the order a team's
-            # deletion uses too. SQLite has no row locks and begins its transaction only at
-            # the first write, so there the insert comes first and the hold is read under
-            # the write lock it took.
+            # deletion uses too. Where there are no row locks the insert comes first and the
+            # hold is read under the write lock it took.
             row_locks = db.get_bind().dialect.name == "postgresql"
             holds = await allowance.holds_behind(db, [org_id]) if row_locks else {}
             # A charge admitted for a team that has been deleted is nobody's: neither queued
-            # nor marked as a paid question, which a new team of the same number would inherit.
-            team = await allowance.team_of(db, org_id)
-            owed = [(charge, use) for charge, use in rows
-                    if allowance.owed_by(team, allowance.hold_created_at(charge.epoch))]
-            if len(owed) < len(rows):
+            # nor marked as a paid question.
+            if not await allowance.team_exists(db, org_id):
                 log.error("allowance_charges_orphaned org_id=%s dropped=%s: the team they were "
-                          "admitted for has been deleted", org_id, len(rows) - len(owed))
-            if not owed:
+                          "admitted for has been deleted", org_id, len(rows))
                 return False
-            new = await allowance.record_charges(db, [charge for charge, _ in owed])
+            new = await allowance.record_charges(db, [charge for charge, _ in rows])
             if not row_locks:
                 holds = await allowance.holds_behind(db, [org_id])
             # A row that was already there was committed by an earlier attempt, which marked its
@@ -403,12 +405,13 @@ class _ChargeWriter:
             # attempt's row has been applied and deleted since: its call has a settle entry.
             if again and new:
                 new -= await allowance.settled_calls(db, sorted(new))
-            uses = [use for charge, use in owed if use is not None and charge.call_id in new]
+            uses = [use for charge, use in rows if use is not None and charge.call_id in new]
             if uses:
                 await archive.note_org_uses_in_transaction(db, uses)
             await db.commit()
-        return any(charge.epoch is not None and holds.get(org_id) != charge.epoch
-                   for charge, _ in owed)
+        return any(_overran(charge)
+                   or (charge.epoch is not None and holds.get(org_id) != charge.epoch)
+                   for charge, _ in rows)
 
 
 def _overran(charge: allowance.Charge) -> bool:

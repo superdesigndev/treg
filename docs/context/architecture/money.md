@@ -140,20 +140,21 @@ that hold pays for it: a charge written late, after its hold was closed and anot
 comes out of the balance whole, because the hold in its place stands behind the calls it
 admitted. The balance gate of `reserve` and the daily figure count such a charge the same way
 before it is applied (`_charge_parts`). A charge can also land after its team was deleted.
-It is then nobody's (`allowance.team_of`, `owed_by`): the charge writer neither queues it nor
+It is then nobody's (`allowance.team_exists`): the charge writer neither queues it nor
 writes its paid-question mark, and a fold drops one already queued (`Folded.orphaned`, logged)
-instead of writing a ledger entry for a team that is not there. On PostgreSQL a team's number
-is never given out again, so the team existing settles it. SQLite gives the highest number
-out again; there a charge that names a hold older than the team's first ledger entry was
-admitted for the team that had the number before, and is dropped the same way. That test is
-used only on SQLite, where one writer at a time means no funding can land between a hold's
-creation and its first money; on PostgreSQL it could, and the test would drop a real charge.
-A team's deletion also retires its counter in the shared store, which admits calls by the
-team's number alone. A
+instead of writing a ledger entry for a team that is not there. A team's deletion also
+retires its counter in the shared store, which admits calls by the team's number alone. If
+the deletion then does not commit, the hold is still there and the store will take nothing
+more for it: the next refill sees a counter of a later epoch than the hold, closes the hold
+and returns its money, and the one after opens a new hold. A
 queue row's primary key stops
 a second recording only until the row is folded, so the fold also drops any claimed row whose call
 already has a `settle` entry. The daily counter moves as it does at `settle`: consumed goes in, and
 the covered part comes out only when the hold was opened today.
+
+The allowance runs on PostgreSQL only (`enabled_for` is false elsewhere). It leans on row locks
+to order a refill, a fold, a charge write and a team's deletion, and on a team's number never
+being given to another team; SQLite offers neither.
 
 A team's allowance is one `Hold` row (`allowance:<org id>`, `allowance` true; revision 0110), so the
 invariant below counts it like any other hold. `allowance.refill_allowance_in_transaction` folds a
@@ -333,7 +334,8 @@ money moved, the purchased-credit gate.
   the allowance hold before it deletes the team's queued charges, the writer's order
   (`teams.lock_allowance_holds`). The writer writes one team per transaction, so it never
   holds two teams' hold rows and no order between them exists for a deletion of several teams
-  to contradict. A freeze
+  to contradict; and it freezes a team's counter as soon as that team's rows are committed,
+  not when the whole batch is. A freeze
   that does not reach the store leaves the batch unconfirmed, to be gone through again. A
   refill of a frozen counter folds the whole queue, not one batch. And a refill that then finds
   the balance below zero adds nothing and drains the counter back to the balance, so the exact

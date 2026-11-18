@@ -271,7 +271,7 @@ an id restores the hold path for that org's new calls; no migration is needed.
 
 `TREG_MONEY_ALLOWANCE_ORG_IDS` (default `[]`) lists orgs whose eligible metered calls spend from
 a standing allowance instead of one hold per call ([money](../architecture/money.md), "Allowance");
-it needs `TREG_KV_URL`. `TREG_MONEY_ALLOWANCE_CHUNK_MICRO` is what a refill brings the counter up
+it needs `TREG_KV_URL` and PostgreSQL, and is ignored on SQLite. `TREG_MONEY_ALLOWANCE_CHUNK_MICRO` is what a refill brings the counter up
 to, `TREG_MONEY_ALLOWANCE_FRESH_S` how long a refill keeps admitting calls, and
 `TREG_MONEY_ALLOWANCE_LINGER_MS` how long finished calls wait to share one insert. Removing an id
 returns that org's new calls to the hold path at once; no migration is needed. The idle sweep
