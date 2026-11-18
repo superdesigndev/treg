@@ -130,6 +130,9 @@ async def store(monkeypatch):
     monkeypatch.setattr(runtime, "_refused_until", {})
     monkeypatch.setattr(runtime, "_charges", runtime._ChargeWriter())
     monkeypatch.setattr(runtime, "_in_flight", [0])
+    monkeypatch.setattr(runtime, "_freezes_due", {})
+    monkeypatch.setattr(runtime, "_freeze_waiters", {})
+    monkeypatch.setattr(runtime, "_freeze_task", [None])
     return fake
 
 
@@ -854,28 +857,62 @@ async def test_a_freeze_the_store_did_not_take_is_sent_until_it_has(org_id, stor
     owed: this process stops taking for the team, and keeps sending."""
     caller = await _caller(org_id)
     epoch = await runtime.take(org_id, 100)
-    monkeypatch.setattr(runtime, "_freezes_due", set())
-    freeze, calls = store.allowance_freeze, []
+    monkeypatch.setattr(runtime, "_freezes_due", {})
+    freeze, away, calls = store.allowance_freeze, [True], []
 
-    async def away_twice(org, **kwargs):
+    async def sometimes_away(org, **kwargs):
         calls.append(org)
-        if len(calls) == 1:
+        if away[0] and len(calls) % 2:
             return None
-        if len(calls) == 2:
+        if away[0]:
             raise ConnectionError("store away")
         return await freeze(org, **kwargs)
 
-    monkeypatch.setattr(store, "allowance_freeze", away_twice)
+    monkeypatch.setattr(store, "allowance_freeze", sometimes_away)
     await _instantly(monkeypatch)
     mk = _call(org_id)
     await call_reserve._platform_reserve(mk, caller, CallMeta(tags={"user": "u"}), "tagged-over")
     assert await call_settle._platform_settle(mk, 200, observed_override=900) == (900, 900)
-    assert runtime._freezes_due == {org_id} and store.counters[org_id].get("frozen", 0) == 0
+    assert runtime._freezes_due == {org_id: 1} and store.counters[org_id].get("frozen", 0) == 0
     assert await runtime.take(org_id, 100) is None, "this process owes the team a freeze"
+    for _ in range(5):
+        await asyncio.sleep(0)
+    assert len(calls) >= 2 and runtime._freezes_due == {org_id: 1}, "still sending"
+    away[0] = False
     await runtime._freeze_task[0]
-    assert calls == [org_id] * 3 and not runtime._freezes_due
-    assert store.counters[org_id]["frozen"] == 1
+    assert not runtime._freezes_due and store.counters[org_id]["frozen"] == 1
     assert await runtime.take(org_id, 100) == epoch
+
+
+async def test_a_freeze_is_handed_over_before_the_request_can_be_cancelled(org_id, store):
+    """Asking is not a coroutine: nothing the request awaits afterwards has to finish."""
+    await runtime.take(org_id, 100)
+    assert runtime.freeze(org_id) is not None
+    assert await runtime.take(org_id, 100) is None, "owed from the moment it is asked"
+    await runtime._freeze_task[0]
+    assert store.counters[org_id]["frozen"] == 1 and not runtime._freezes_due
+
+
+async def test_a_freeze_asked_while_another_is_on_its_way_is_sent_as_well(org_id, store, monkeypatch):
+    """The one on its way may be read, and thawed, by a refill that ran before the second
+    settlement committed. Its arrival says nothing about the second."""
+    await runtime.take(org_id, 100)
+    freeze, on_its_way, arrive = store.allowance_freeze, asyncio.Event(), asyncio.Event()
+
+    async def slow_once(org, **kwargs):
+        if not on_its_way.is_set():
+            on_its_way.set()
+            await arrive.wait()
+        return await freeze(org, **kwargs)
+
+    monkeypatch.setattr(store, "allowance_freeze", slow_once)
+    first = runtime.freeze(org_id)
+    await on_its_way.wait()
+    second = runtime.freeze(org_id)
+    arrive.set()
+    assert await first is True and await second is True
+    await runtime._freeze_task[0]
+    assert store.counters[org_id]["frozen"] == 2 and not runtime._freezes_due
 
 
 async def test_an_overrun_outside_the_allowance_before_the_first_publish_holds_the_new_counter(

@@ -1239,10 +1239,11 @@ async def _platform_settle(
                         db, mk.payer_org_id, charged, mk.reserved_micro)
                 with timing.phase("commit"):
                     await db.commit()
+                frozen = allowance_runtime.freeze(mk.payer_org_id) if overran else None
                 if finalized is not None:
                     finalized()
-            if overran:
-                await allowance_runtime.freeze(mk.payer_org_id)
+            if frozen is not None:
+                await asyncio.shield(frozen)
             return charged
 
     try:
@@ -1337,8 +1338,10 @@ async def close_deferred(items: list[DeferredSettle], *, charge: bool, why: str 
                             db, d.payer_org_id, amount, d.reserved_micro)})
                 with timing.phase("commit"):
                     await db.commit()
-        for org_id in overran:
-            await allowance_runtime.freeze(org_id)
+                frozen = [allowance_runtime.freeze(org_id) for org_id in overran]
+        for tried in frozen:
+            if tried is not None:
+                await asyncio.shield(tried)
     except Exception as exc:
         logging.getLogger("treg.ledger").error(
             "closing %d deferred routed holds (charge=%s) failed: %s", len(pending), charge, exc,

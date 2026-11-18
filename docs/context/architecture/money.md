@@ -290,10 +290,13 @@ money moved, the purchased-credit gate.
   after its ledger write: the team has an allowance hold (`allowance.has_allowance`). The hold
   row decides, not the process's list of teams, which two processes can read differently
   while a setting rolls out; and a refill that has not committed yet waits for the same
-  balance row, so it reads the balance after the overrun. The settlement is committed by
-  then, so a freeze the store did not take is owed: the process keeps sending it until the
-  store has it, and admits no call from that team's counter meanwhile. A process that dies
-  first loses the freeze it owed.
+  balance row, so it reads the balance after the overrun. The freeze is owed from the line
+  after the commit: asking for it is not a coroutine, it hands the freeze to a task of its own
+  before the request awaits anything, so a cancelled request has still handed it over. The
+  task sends until the store has taken it, and the process admits no call from that team's
+  counter meanwhile. One freeze taken stands for every settlement that asked before it was
+  sent and for none that asked while it was on its way; those get another. A process that
+  dies first loses the freezes it owed.
 - **The exact path and a queued charge.** A charge that is committed and not yet folded has
   not moved the balance. `reserve`'s gate subtracts what the queue will take from the balance
   (overruns, and what was set aside beyond the hold), so a call on the exact path cannot set

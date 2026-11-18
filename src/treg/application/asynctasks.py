@@ -478,12 +478,13 @@ async def _finish(call_id: str, outcome: str, document: object | None, now, *,
         overran = await allowance_runtime.overran(
             db, row.org_id, row.settled_micro or 0, row.reserved_micro)
         await db.commit()
+        # A settlement past its hold may have used the team's last credit; calls admitted
+        # from the team's allowance counter do not meet the balance gate (money.md).
+        frozen = allowance_runtime.freeze(row.org_id) if overran else None
         if settled is not None:
             settled["micro"] = row.settled_micro
-        if overran:
-            # A settlement past its hold may have used the team's last credit; calls admitted
-            # from the team's allowance counter do not meet the balance gate (money.md).
-            await allowance_runtime.freeze(row.org_id)
+        if frozen is not None:
+            await asyncio.shield(frozen)
         return row.status
 
 
