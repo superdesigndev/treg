@@ -375,6 +375,32 @@ def test_upgrade_names_the_rollback_when_the_database_is_newer_than_the_build(tm
     assert _alembic_version(database) == "9999"
 
 
+async def test_serve_starts_on_a_database_newer_than_the_build(caplog):
+    """A newer release can commit one revision and then fail on the next; the old release must
+    still restart on that stamp, as the ASGI entry does. Only `python -m treg upgrade` refuses."""
+    from sqlalchemy import text
+
+    from treg import maintenance
+    from treg.__main__ import _prepare_serve
+    from treg.infra.db import _engine, _schema_info, reset_db
+
+    await reset_db()
+    head, _ = _schema_info()
+    async with _engine.begin() as connection:
+        await connection.execute(text("UPDATE alembic_version SET version_num = '9999'"))
+    try:
+        with pytest.raises(maintenance.SchemaNewerThanBuild):
+            await maintenance.upgrade()
+        with caplog.at_level("WARNING", logger="treg"):
+            await _prepare_serve()
+        assert "OLDER than the schema" in caplog.text
+        assert "Serving anyway" in caplog.text
+    finally:
+        async with _engine.begin() as connection:
+            await connection.execute(
+                text("UPDATE alembic_version SET version_num = :head"), {"head": head})
+
+
 def test_upgrade_applies_a_pending_revision_from_one_behind_head(tmp_path):
     env, database, _ = _env(tmp_path)
     previous = _one_behind_head()

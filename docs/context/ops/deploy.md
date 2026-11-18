@@ -45,7 +45,11 @@ stamped at a revision this build does not know is also refused, because an expli
 cross the rollback floor.
 
 `python -m treg` runs the same upgrade phase, bootstraps the single local user when enabled, and
-serves `treg.api:app` on `$PORT` (default 18790). Both pre-Uvicorn paths dispose the async engine
+serves `treg.api:app` on `$PORT` (default 18790). On a database stamped at a revision this build
+does not know (`maintenance.SchemaNewerThanBuild`) it logs a warning, skips the release tasks and
+serves anyway, as the ASGI entry (`verify_db`) does: a newer release whose upgrade committed one
+revision and then failed on the next leaves such a stamp, and the old release must still restart
+on it. Both pre-Uvicorn paths dispose the async engine
 before their `asyncio.run()` loop closes, so the serving loop never receives connections bound to a
 closed loop; calling `maintenance.upgrade()` directly does not dispose it. `python -m treg keygen`
 prints a Fernet key for `TREG_SECRET_KEY`.
