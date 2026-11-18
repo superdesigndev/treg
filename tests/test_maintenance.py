@@ -722,7 +722,7 @@ async def test_postgres_preflight_refuses_a_transaction_holding_a_pending_table(
         await maintenance._refuse_behind_long_lock_holder(config, {"org"})  # still young
         await asyncio.sleep(0.8)
         with pytest.raises(RuntimeError, match=r"transaction open \d+ s\) holds AccessShareLock on org"
-                           r".*TREG_MIGRATION_LOCK_HOLDER_CHECK=false"):
+                           r".*TREG_MIGRATION_LOCK_HOLDER_CHECK_SKIP=\d+; it ends by itself"):
             await maintenance._refuse_behind_long_lock_holder(config, {"org"})
         monkeypatch.setattr(get_settings(), "migration_lock_holder_check", False)
         await maintenance._refuse_behind_long_lock_holder(config, {"org"})
@@ -769,12 +769,12 @@ TABLE = sa.table("org", sa.column("id"))
 
 def _fill():
     op.execute("UPDATE org SET note = '' WHERE note IS NULL")
-    op.get_bind().execute(sa.update(TABLE).values(id=TABLE.c.id))
 
 
 def upgrade():
     _fill()
-    op.execute(sa.text("INSERT INTO org (id) VALUES (1)"))
+    op.execute(sa.text("-- backfill\\nINSERT INTO org (id) VALUES (1)"))
+    op.bulk_insert(TABLE, [{"id": 2}])
 
 
 def downgrade():
@@ -782,16 +782,31 @@ def downgrade():
 """
 
 
+def _with_upgrade(lines: str) -> str:
+    return _DATA_ONLY.replace("    _fill()\n", "    _fill()\n" + lines)
+
+
 @pytest.mark.parametrize(("body", "access_exclusive"), [
     (_DATA_ONLY, False),
-    (_DATA_ONLY.replace("    _fill()\n", "    _fill()\n    op.add_column('org', None)\n"), True),
+    (_with_upgrade("    op.add_column('org', None)\n"), True),
     (_DATA_ONLY.replace("UPDATE org SET", "ALTER TABLE org ADD x int; UPDATE org SET"), True),
     (_DATA_ONLY.replace('TABLE = sa.table("org", sa.column("id"))',
                         'TABLE = sa.table("org", sa.column("id"))\nDDL = "CREATE INDEX i ON org (id)"'),
      True),
-    (_DATA_ONLY.replace('op.execute(sa.text("INSERT INTO org (id) VALUES (1)"))',
-                        "op.execute(SQL)"), True),
+    (_DATA_ONLY.replace('op.execute(sa.text("-- backfill', 'op.execute(SQL, sa.text("-- backfill'),
+     True),
     (_DATA_ONLY.replace("def upgrade():", "def not_upgrade():"), True),
+    # the second review's probes: each must fail closed
+    (_with_upgrade('    op.get_bind().execute(sa.text("DO $$ BEGIN ALTER TABLE org ADD y int; END $$"))\n'),
+     True),
+    (_with_upgrade('    op.execute("-- tidy\\nALTER TABLE org ADD z int")\n'), True),
+    (_with_upgrade('    op.execute("UPDATE org SET id = id; ALTER TABLE org ADD w int")\n'), True),
+    (_with_upgrade('    sa.Index("ix", TABLE.c.id).create(op.get_bind())\n'), True),
+    (_DATA_ONLY.replace("import sqlalchemy as sa\n", "import sqlalchemy as sa\nfrom helpers import widen\n")
+     .replace("    _fill()\n", "    _fill()\n    widen()\n"), True),
+    (_DATA_ONLY.replace("def upgrade():", "class Steps:\n    def run(self):\n"
+                        "        op.add_column('org', None)\n\n\ndef upgrade():")
+     .replace("    _fill()\n", "    _fill()\n    Steps().run()\n"), True),
 ])
 def test_only_a_plain_row_change_revision_is_read_as_not_taking_access_exclusive(
         tmp_path, body, access_exclusive):
@@ -865,3 +880,55 @@ async def test_postgres_preflight_sees_a_lock_held_on_one_partition_only(monkeyp
     finally:
         async with _engine.begin() as setup:
             await setup.execute(text("DROP TABLE IF EXISTS lockguard_parted"))
+
+
+def test_error_messages_in_a_revision_do_not_name_its_tables(tmp_path):
+    from treg.maintenance import _revision_strings
+
+    path = tmp_path / "revision.py"
+    path.write_text('def upgrade():\n    op.execute("UPDATE alpha SET x = 1")\n'
+                    '    raise RuntimeError("beta must be empty first")\n')
+    assert _revision_strings(str(path)) == ["UPDATE alpha SET x = 1"]
+
+
+def _head(monkeypatch, head="0117"):
+    from treg import maintenance
+
+    monkeypatch.setattr(maintenance, "_head_revision", lambda config: head)
+
+
+async def test_the_check_bypass_is_logged_and_ends_at_the_next_revision(monkeypatch, caplog):
+    from treg import maintenance
+    from treg.config import get_settings
+
+    _head(monkeypatch)
+    calls = _fake_upgrade(monkeypatch, [_lock_timeout()])
+    monkeypatch.setattr(get_settings(), "migration_lock_holder_check_skip", "0117")
+    with caplog.at_level("WARNING", logger="treg.maintenance"):
+        await maintenance._upgrade_schema()
+    offs = [r for r in caplog.records if "check is OFF" in r.getMessage()]
+    assert len(offs) == 1 and "_SKIP=0117 matches the head revision" in offs[0].getMessage()
+    assert maintenance._holder_check_bypass_quiet(maintenance._alembic_config())
+
+    _head(monkeypatch, "0118")
+    caplog.clear()
+    with caplog.at_level("WARNING", logger="treg.maintenance"):
+        assert maintenance._holder_check_bypass(maintenance._alembic_config()) is None
+    assert "does not match the head revision 0118" in caplog.text
+    assert not maintenance._holder_check_bypass_quiet(maintenance._alembic_config())
+    assert calls == ["preflight", "head"] * 2
+
+
+async def test_turning_the_check_off_warns_on_every_upgrade(monkeypatch, caplog):
+    from treg import maintenance
+    from treg.config import get_settings
+
+    _head(monkeypatch)
+    _fake_upgrade(monkeypatch, [])
+    monkeypatch.setattr(get_settings(), "migration_lock_holder_check", False)
+    with caplog.at_level("WARNING", logger="treg.maintenance"):
+        await maintenance._upgrade_schema()
+        await maintenance._upgrade_schema()
+    offs = [r.getMessage() for r in caplog.records if "check is OFF" in r.getMessage()]
+    assert len(offs) == 2
+    assert all("remove it after this deploy" in message for message in offs)

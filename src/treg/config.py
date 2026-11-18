@@ -272,6 +272,7 @@ class Settings(BaseSettings):
     migration_lock_retry_pause_s: float = Field(default=2.0, ge=0, le=60)
     migration_lock_retry_budget_s: float = Field(default=600.0, gt=0)
     migration_lock_holder_check: bool = True
+    migration_lock_holder_check_skip: str = ""
     migration_lock_holder_max_xact_s: float = Field(default=30.0, gt=0)
 
     # Fernet key (urlsafe base64, 32 bytes). Generate with `treg keygen` (see crypto.py).

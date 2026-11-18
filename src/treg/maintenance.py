@@ -94,11 +94,13 @@ _ALL_LOCK_MODES = (
 _CONFLICTS_WITH_ROW_EXCLUSIVE = (
     "ShareLock", "ShareRowExclusiveLock", "ExclusiveLock", "AccessExclusiveLock",
 )
-_DATA_OPS = frozenset({"execute", "get_bind", "get_context", "bulk_insert", "inline_literal"})
+_DATA_OPS = frozenset({"execute", "bulk_insert", "inline_literal"})
+_SQL_EXPRESSIONS = frozenset({"text", "table", "column"})
 _DATA_SQL = re.compile(r"\s*(UPDATE|INSERT|DELETE|SELECT|WITH)\b", re.IGNORECASE)
 _DDL_SQL = re.compile(
-    r"\s*(ALTER|DROP|CREATE|LOCK|TRUNCATE|VACUUM|CLUSTER|REINDEX|COMMENT|GRANT|REVOKE)\b",
+    r"\b(ALTER|DROP|CREATE|LOCK|TRUNCATE|VACUUM|CLUSTER|REINDEX|COMMENT|GRANT|REVOKE|DO)\b",
     re.IGNORECASE)
+_SQL_COMMENT = re.compile(r"--[^\n]*|/\*.*?\*/", re.DOTALL)
 
 logger = logging.getLogger("treg.maintenance")
 
@@ -138,6 +140,9 @@ async def _upgrade_head_with_lock_retry(config: Config, tables: set[str]) -> Non
     attempts = settings.migration_lock_retry_attempts
     pause_s = settings.migration_lock_retry_pause_s
     budget_s = settings.migration_lock_retry_budget_s
+    bypass = _holder_check_bypass(config)
+    if bypass:
+        logger.warning("migration long-lock-holder check is OFF for this upgrade: %s", bypass)
     started = time.monotonic()
     for attempt in range(1, attempts + 1):
         await _refuse_behind_long_lock_holder(config, tables)
@@ -164,19 +169,20 @@ async def _upgrade_head_with_lock_retry(config: Config, tables: set[str]) -> Non
 
 
 def _revision_strings(path: str) -> list[str]:
-    """Every string literal in a revision file except docstrings: the table names its operations
-    and raw SQL use, without the prose that mentions other tables."""
+    """Every string literal in a revision file except docstrings and error messages: the table
+    names its operations and raw SQL use, without the prose that mentions other tables."""
     with open(path, encoding="utf-8") as source:
         tree = ast.parse(source.read())
-    docstrings = {
+    skipped = {
         id(node.body[0].value) for node in ast.walk(tree)
         if isinstance(node, (ast.Module, ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef))
         and node.body and isinstance(node.body[0], ast.Expr)
         and isinstance(node.body[0].value, ast.Constant)
-    }
+    } | {id(inner) for node in ast.walk(tree) if isinstance(node, ast.Raise)
+         for inner in ast.walk(node)}
     return [node.value for node in ast.walk(tree)
             if isinstance(node, ast.Constant) and isinstance(node.value, str)
-            and id(node) not in docstrings]
+            and id(node) not in skipped]
 
 
 async def _pending_revision_tables(config: Config,
@@ -211,11 +217,16 @@ def _tables_named_by_pending(script: ScriptDirectory, current: tuple[str, ...],
             for match in word.findall(literal)}
 
 
+def _reads_as_ddl(literal: str) -> bool:
+    return bool(_DDL_SQL.search(_SQL_COMMENT.sub(" ", literal)))
+
+
 def _takes_access_exclusive(path: str) -> bool:
-    """False only for a revision that plainly changes rows: every `op.*` call is a data call,
-    every `op.execute` argument is literal UPDATE/INSERT/DELETE/SELECT SQL, and no string reads
-    as DDL, in `upgrade()`, the module's functions it calls and its module-level constants.
-    Anything else is taken to need ACCESS EXCLUSIVE."""
+    """False only for a revision that plainly changes rows, read fail-closed: in `upgrade()` and
+    the module functions it calls, every call is a data `op.*` call (`execute` of literal
+    UPDATE/INSERT/DELETE/SELECT SQL, `bulk_insert`), a `sa.text`/`sa.table`/`sa.column`
+    expression, or another module function; and no string there or in a module constant names a
+    DDL keyword anywhere, SQL comments removed. Anything else is taken to need ACCESS EXCLUSIVE."""
     with open(path, encoding="utf-8") as source:
         module = ast.parse(source.read())
     functions = {node.name: node for node in module.body if isinstance(node, ast.FunctionDef)}
@@ -223,33 +234,66 @@ def _takes_access_exclusive(path: str) -> bool:
         return True
     constants = [node for node in module.body if isinstance(node, (ast.Assign, ast.AnnAssign))]
     if any(isinstance(node, ast.Constant) and isinstance(node.value, str)
-           and _DDL_SQL.match(node.value) for constant in constants for node in ast.walk(constant)):
+           and _reads_as_ddl(node.value) for constant in constants for node in ast.walk(constant)):
         return True
     reached, queue = {"upgrade"}, [functions["upgrade"]]
     while queue:
         for node in ast.walk(queue.pop()):
             if isinstance(node, ast.Constant) and isinstance(node.value, str) \
-                    and _DDL_SQL.match(node.value):
+                    and _reads_as_ddl(node.value):
                 return True
             if not isinstance(node, ast.Call):
                 continue
-            if isinstance(node.func, ast.Name) and node.func.id in functions \
-                    and node.func.id not in reached:
-                reached.add(node.func.id)
-                queue.append(functions[node.func.id])
-            if not (isinstance(node.func, ast.Attribute) and isinstance(node.func.value, ast.Name)
-                    and node.func.value.id == "op"):
+            func = node.func
+            if isinstance(func, ast.Name) and func.id in functions:
+                if func.id not in reached:
+                    reached.add(func.id)
+                    queue.append(functions[func.id])
                 continue
-            if node.func.attr not in _DATA_OPS:
+            if not (isinstance(func, ast.Attribute) and isinstance(func.value, ast.Name)):
                 return True
-            if node.func.attr == "execute":
+            if func.value.id in ("sa", "sqlalchemy") and func.attr in _SQL_EXPRESSIONS:
+                continue
+            if func.value.id != "op" or func.attr not in _DATA_OPS:
+                return True
+            if func.attr == "execute":
                 argument = node.args[0] if node.args else None
                 if isinstance(argument, ast.Call) and argument.args:
                     argument = argument.args[0]
                 if not (isinstance(argument, ast.Constant) and isinstance(argument.value, str)
-                        and _DATA_SQL.match(argument.value)):
+                        and _DATA_SQL.match(_SQL_COMMENT.sub(" ", argument.value))):
                     return True
     return False
+
+
+def _head_revision(config: Config) -> str | None:
+    return ScriptDirectory.from_config(config).get_current_head()
+
+
+def _holder_check_bypass_quiet(config: Config) -> bool:
+    settings = get_settings()
+    skip = settings.migration_lock_holder_check_skip
+    return not settings.migration_lock_holder_check or bool(skip and skip == _head_revision(config))
+
+
+def _holder_check_bypass(config: Config) -> str | None:
+    """Why the long-holder check is off for this upgrade, or None when it runs."""
+    settings = get_settings()
+    if not settings.migration_lock_holder_check:
+        return ("TREG_MIGRATION_LOCK_HOLDER_CHECK=false; remove it after this deploy, or use "
+                "TREG_MIGRATION_LOCK_HOLDER_CHECK_SKIP=<head revision>, which ends by itself")
+    skip = settings.migration_lock_holder_check_skip
+    if not skip:
+        return None
+    head = _head_revision(config)
+    if skip == head:
+        return (f"TREG_MIGRATION_LOCK_HOLDER_CHECK_SKIP={skip} matches the head revision; it "
+                "stops applying once a later revision ships")
+    logger.warning(
+        "TREG_MIGRATION_LOCK_HOLDER_CHECK_SKIP=%s does not match the head revision %s; the check "
+        "runs (remove the setting)", skip, head,
+    )
+    return None
 
 
 def _long_holder(row) -> str | None:
@@ -291,7 +335,7 @@ async def _refuse_behind_long_lock_holder(config: Config, tables: set[str]) -> N
     locks until it ends; retrying behind either only repeats the stall on every later query.
     Only a holder whose lock conflicts with what the pending revisions take counts."""
     settings = get_settings()
-    if not settings.migration_lock_holder_check or _engine.dialect.name != "postgresql":
+    if _engine.dialect.name != "postgresql" or _holder_check_bypass_quiet(config):
         return
     touched, access_exclusive = await _pending_revision_tables(config, tables)
     if not touched:
@@ -308,9 +352,10 @@ async def _refuse_behind_long_lock_holder(config: Config, tables: set[str]) -> N
             "Refusing to upgrade: a pending revision needs a lock a long-running session holds, "
             "and waiting for it would stall every query on that table on each retry. "
             + "; ".join(holders) + ". Wait for it to finish (never cancel an anti-wraparound "
-            "vacuum) or end that transaction, then run `python -m treg upgrade` again; to "
-            "upgrade anyway, behind the bounded lock wait, set "
-            "TREG_MIGRATION_LOCK_HOLDER_CHECK=false. Nothing was applied after this check."
+            "vacuum) or end that transaction, then run `python -m treg upgrade` again. To "
+            "upgrade anyway behind the bounded lock wait for this one deploy, set "
+            f"TREG_MIGRATION_LOCK_HOLDER_CHECK_SKIP={_head_revision(config)}; it ends by itself "
+            "at the next revision. Nothing was applied after this check."
         )
 
 

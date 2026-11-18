@@ -121,14 +121,22 @@ revisions name (string literals in their files, docstrings excluded), together w
 partitions (`pg_partition_tree`) and TOAST tables (`reltoastrelid`), and refuses at once, naming
 the session, when an anti-wraparound autovacuum or a transaction older than
 `TREG_MIGRATION_LOCK_HOLDER_MAX_XACT_S` (30 s) holds a conflicting lock on one of them. Only
-conflicting modes count: a pending revision that plainly changes rows (`maintenance.
-_takes_access_exclusive` is false: only data `op.*` calls, literal UPDATE/INSERT/DELETE/SELECT
-SQL, no DDL string in `upgrade()`, the functions it calls or module constants) takes ROW
-EXCLUSIVE, so readers and autovacuum do not stop it; any other revision is taken to need ACCESS
-EXCLUSIVE, which every mode blocks. Nothing ran after the check; wait for the holder (never
-cancel an anti-wraparound vacuum) or end the transaction, then deploy again, or set
-`TREG_MIGRATION_LOCK_HOLDER_CHECK=false` (the refusal says so) to go ahead behind the bounded
-lock wait. `pg_locks` and `pg_class` are readable by every role, but to a role without
+conflicting modes count: a pending revision that plainly changes rows takes ROW EXCLUSIVE, so
+readers and autovacuum do not stop it; any other revision is taken to need ACCESS EXCLUSIVE,
+which every mode blocks. `maintenance._takes_access_exclusive` reads a revision fail-closed: it
+is data-only only when every call in `upgrade()` and the module functions it calls is
+`op.execute` of literal UPDATE/INSERT/DELETE/SELECT SQL, `op.bulk_insert`, a
+`sa.text`/`sa.table`/`sa.column` expression or another module function, and no string there or
+in a module constant names a DDL keyword (`DO` included) anywhere once SQL comments are removed.
+Any other call (`op.get_bind()`, an imported helper, a class, `sa.Index(...).create`) means ACCESS
+EXCLUSIVE. Table names are read from the revision's strings, docstrings and error messages left
+out. Nothing ran after the check; wait for the holder (never cancel an anti-wraparound vacuum) or
+end the transaction, then deploy again. To go ahead behind the bounded lock wait for this one
+deploy, set `TREG_MIGRATION_LOCK_HOLDER_CHECK_SKIP` to the head revision id the refusal names: it
+applies only while that revision is the head and stops by itself when a later one ships (a value
+that no longer matches is ignored with a warning). `TREG_MIGRATION_LOCK_HOLDER_CHECK=false` still
+turns the check off, for this one deploy only, then remove it; every upgrade logs a warning
+while either bypass is in force. `pg_locks` and `pg_class` are readable by every role, but to a role without
 `pg_read_all_stats` PostgreSQL shows another role's sessions, autovacuum included, with NULL
 `backend_type`, `xact_start` and `query`. The check keeps those rows: one holding `SHARE UPDATE
 EXCLUSIVE` on a table whose `age(relfrozenxid)` or `mxid_age(relminmxid)` has reached
