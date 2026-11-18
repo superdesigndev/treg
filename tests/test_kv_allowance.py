@@ -122,7 +122,6 @@ async def test_only_an_add_that_read_the_freeze_may_thaw_it(counter):
     """A refill reads the freeze count, runs its transaction, then adds. A freeze that lands in
     between is one its transaction did not see, so its add must not lift it."""
     store, org_id = counter
-    assert await store.allowance_freeze(org_id) == 0, "no counter"
     await store.allowance_add(org_id, 7, 100, until_ms=_soon(), ttl_ms=60_000, seen_frozen=0)
     available, seen, thawed = await store.allowance_state(org_id)
     assert (available, seen, thawed) == (100, 0, 0)
@@ -136,6 +135,24 @@ async def test_only_an_add_that_read_the_freeze_may_thaw_it(counter):
     assert await store.allowance_take(org_id, 10) == 0, "one of two freezes accounted for"
     await store.allowance_add(org_id, 7, 0, until_ms=_soon(), ttl_ms=60_000, seen_frozen=2)
     assert await store.allowance_take(org_id, 150) == 7
+
+
+@real_redis
+async def test_a_freeze_that_lands_before_the_first_add_holds_the_counter_it_builds(counter):
+    """The first refill has committed and not published. A freeze that lands now finds no
+    counter; the add, whose transaction did not see the freeze, must not open one over it."""
+    store, org_id = counter
+    assert await store.allowance_state(org_id) == (0, 0, 0)
+    assert await store.allowance_freeze(org_id, ttl_ms=60_000) == 1
+    assert 0 < await store._client.pttl(kv._allowance_key(org_id)) <= 60_000
+    assert await store.allowance_take(org_id, 10) == 0
+    assert await store.allowance_give_back(org_id, 7, 10) is False
+    assert await store.allowance_add(
+        org_id, 7, 100, until_ms=_soon(), ttl_ms=60_000, seen_frozen=0) == 100
+    assert await store.allowance_take(org_id, 10) == 0, "built frozen"
+    assert await store.allowance_state(org_id) == (100, 1, 0)
+    await store.allowance_add(org_id, 7, 0, until_ms=_soon(), ttl_ms=60_000, seen_frozen=1)
+    assert await store.allowance_take(org_id, 100) == 7
 
 
 @real_redis

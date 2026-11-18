@@ -50,14 +50,14 @@ class FakeStore:
         await asyncio.sleep(0)  # a real store call lets other calls run meanwhile
         counter = self.counters.get(org_id)
         if (counter is None or self._frozen(counter) or time.time() * 1000 > self.until_ms
-                or counter["avail"] < amount):
+                or counter.get("avail", 0) < amount):
             return 0
         counter["avail"] -= amount
         return counter["epoch"]
 
     async def allowance_take_up_to(self, org_id, epoch, amount):
         counter = self.counters.get(org_id)
-        if counter is None or counter["epoch"] != epoch:
+        if counter is None or counter.get("epoch") != epoch:
             return 0
         taken = min(counter["avail"], amount)
         counter["avail"] -= taken
@@ -65,16 +65,16 @@ class FakeStore:
 
     async def allowance_give_back(self, org_id, epoch, amount):
         counter = self.counters.get(org_id)
-        if counter is None or counter["epoch"] != epoch:
+        if counter is None or counter.get("epoch") != epoch:
             return False
         counter["avail"] += amount
         return True
 
     async def allowance_add(self, org_id, epoch, amount, *, until_ms, ttl_ms, seen_frozen):
         counter = self.counters.get(org_id)
-        if counter is not None and counter["epoch"] > epoch:
+        if counter is not None and counter.get("epoch", 0) > epoch:
             return "stale"
-        if counter is None or counter["epoch"] != epoch:
+        if counter is None or counter.get("epoch") != epoch:
             counter = self.counters[org_id] = {
                 "epoch": epoch, "avail": 0, "frozen": (counter or {}).get("frozen", 0)}
         counter["avail"] += amount
@@ -88,25 +88,24 @@ class FakeStore:
 
     async def allowance_drop(self, org_id):
         counter = self.counters.get(org_id)
-        if counter is None:
+        if counter is None or "avail" not in counter:
             return 0
         left, counter["avail"] = counter["avail"], 0
         counter["frozen"] = counter.get("frozen", 0) + 1
         return left
 
-    async def allowance_freeze(self, org_id):
-        counter = self.counters.get(org_id)
-        if counter is None:
-            return 0
+    async def allowance_freeze(self, org_id, *, ttl_ms=0):
+        counter = self.counters.setdefault(org_id, {})
         counter["frozen"] = counter.get("frozen", 0) + 1
         return counter["frozen"]
 
     async def allowance_retire(self, org_id, epoch, ttl_ms):
         counter = self.counters.get(org_id)
-        if counter is not None and counter["epoch"] > epoch:
+        if counter is not None and counter.get("epoch", 0) > epoch:
             return 0
-        left = counter["avail"] if counter is not None and counter["epoch"] == epoch else 0
-        self.counters[org_id] = {"epoch": epoch + 1, "avail": 0}
+        left = counter["avail"] if counter is not None and counter.get("epoch") == epoch else 0
+        self.counters[org_id] = {"epoch": epoch + 1, "avail": 0,
+                                 "frozen": (counter or {}).get("frozen", 0)}
         return left
 
     async def acquire_lease(self, key, token, ttl_ms):

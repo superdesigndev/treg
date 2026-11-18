@@ -198,9 +198,14 @@ redis.call('HSET', KEYS[1], 'avail', '0')
 redis.call('HINCRBY', KEYS[1], 'frozen', 1)
 return tonumber(avail)
 """
+# With no hash yet, the freeze is kept in one that holds only the count, for ARGV[1]: an add on
+# its way from a transaction that did not see this freeze builds the counter on top of it, and
+# cannot thaw it.
 _ALLOWANCE_FREEZE = """
-if redis.call('EXISTS', KEYS[1]) == 0 then return 0 end
-return redis.call('HINCRBY', KEYS[1], 'frozen', 1)
+local fresh = redis.call('EXISTS', KEYS[1]) == 0
+local frozen = redis.call('HINCRBY', KEYS[1], 'frozen', 1)
+if fresh then redis.call('PEXPIRE', KEYS[1], ARGV[1]) end
+return frozen
 """
 # ARGV[2] is the next epoch, computed by the caller: a script cannot print one exactly.
 _ALLOWANCE_RETIRE = """
@@ -385,10 +390,11 @@ class Store(Protocol):
         epoch is newer: this writer's hold has been closed since, and nothing is added.
         Otherwise what is now available; None when the store cannot answer."""
 
-    async def allowance_freeze(self, org_id: int) -> int | None:
+    async def allowance_freeze(self, org_id: int, *, ttl_ms: int = 86_400_000) -> int | None:
         """Stop takes from a team's counter, keeping what it holds, until an add whose caller
-        read the freeze count after this call. Returns the new count (0 when there is no
-        counter); None when the store cannot answer."""
+        read the freeze count after this call. With no counter yet the freeze is still kept,
+        for `ttl_ms`, and the counter an add then builds starts frozen. Returns the new count;
+        None when the store cannot answer."""
 
     async def allowance_state(self, org_id: int) -> tuple[int, int, int] | None:
         """(available, freezes, freezes thawed) of a team's counter, zeros when absent. A
@@ -522,7 +528,7 @@ class LocalStore:
                             seen_frozen: int) -> int | Literal["stale"] | None:
         return None
 
-    async def allowance_freeze(self, org_id: int) -> int | None:
+    async def allowance_freeze(self, org_id: int, *, ttl_ms: int = 86_400_000) -> int | None:
         return None
 
     async def allowance_state(self, org_id: int) -> tuple[int, int, int] | None:
@@ -666,8 +672,8 @@ class RedisStore:
             _ALLOWANCE_ADD, org_id, epoch, amount_micro, until_ms, ttl_ms, seen_frozen)
         return "stale" if result == -1 else result
 
-    async def allowance_freeze(self, org_id: int) -> int | None:
-        return await self._allowance_eval(_ALLOWANCE_FREEZE, org_id)
+    async def allowance_freeze(self, org_id: int, *, ttl_ms: int = 86_400_000) -> int | None:
+        return await self._allowance_eval(_ALLOWANCE_FREEZE, org_id, ttl_ms)
 
     async def allowance_state(self, org_id: int) -> tuple[int, int, int] | None:
         try:

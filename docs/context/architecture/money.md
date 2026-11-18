@@ -175,7 +175,9 @@ admitted, and two counts, `frozen` and `thawed`. The operations are atomic scrip
   and never past the count the hash itself holds, so a count read from a hash the store has
   since lost cannot leave the rebuilt one frozen for good.
 - `allowance_freeze` raises the freeze count: what the counter holds is kept, but no call is
-  admitted until an add whose caller read the count after this.
+  admitted until an add whose caller read the count after this. A freeze that finds no hash
+  leaves one holding only the count: a refill may have committed and not yet published, and
+  the counter its add builds then starts frozen.
 - `allowance_state` reads `avail` and the two counts, for a refill.
 - `allowance_drop` empties the counter, returns what it held and freezes it, keeping the epoch:
   that figure can be released from a hold that stays while calls already admitted keep theirs.
