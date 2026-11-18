@@ -476,6 +476,7 @@ class Settings(BaseSettings):
     platform_key_twelvedata: str = ""   # FREE Basic key (800/day TOTAL) — trial pool, 20 calls/team/day
     platform_key_tiingo: str = ""       # FREE Starter key (1,000/day total) — trial pool, 20 calls/team/day
     platform_key_financialdatasets: str = ""  # X-API-KEY; prepaid Credits with vendor auto-reload
+    platform_key_filingdelta: str = ""  # X-API-Key; prepaid credit pack, 1 credit = one paid card, no free quota
     # Enrichment slots: fund the accounts and set the keys before naming any of these in
     # TREG_PLATFORM_PROVIDERS.
     platform_key_companyenrich: str = ""  # Bearer key
