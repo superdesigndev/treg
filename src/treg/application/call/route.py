@@ -1383,7 +1383,9 @@ async def _run_routed(parent: CallContext, ep: dict, body_bytes: bytes, get_head
                 continue
             if exc.status_code in _CALLER_FAULT and exc.kind not in _CANDIDATE_LOCAL_FAILURES:
                 raise
-            if isinstance(exc, GatewayFailed):   # the provider timed out or could not be reached
+            # The provider timed out or could not be reached. `upstream_busy` is treg's own
+            # connection pool or in-flight cap: the request never left, so the provider is not judged.
+            if isinstance(exc, GatewayFailed) and exc.kind != "upstream_busy":
                 _note_health(cand, child, failed=True, slow=False)
             errors += 1
             tried.append(Attempt(cand.endpoint["id"], cand.endpoint["provider"], "error", exc.status_code, 0, str(exc.detail)[:120]))
