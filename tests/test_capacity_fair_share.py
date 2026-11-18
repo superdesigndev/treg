@@ -609,3 +609,26 @@ async def test_places_a_stalled_store_applies_late_are_released_again_once_it_an
     (await gate.acquire("p", 2, 10, team_ceiling_percent=80)).release()  # the store answers again
     await _turns()
     assert shared.held("p:team:1") == 0
+
+
+async def test_a_release_a_stalled_store_dropped_frees_the_place_once_it_answers(shared):
+    provider_concurrency._unanswered.clear()
+    stalled = False
+    release = shared.release_slot
+
+    async def release_slot(key, token):
+        return "unavailable" if stalled else await release(key, token)
+
+    shared.release_slot = release_slot
+    gate = FairShare()
+    slots = [await gate.acquire("p", 1, 3) for _ in range(3)]
+    stalled = True
+    for s in slots:  # the calls finish during the stall; the store drops their releases
+        s.release()
+    await _turns()
+    assert shared.held("p") == 3
+    stalled = False
+    gate._pools["p"].store_down_until = 0.0
+    (await gate.acquire("p", 2, 3, max_wait_s=0.5)).release()  # the store answers again
+    await _turns()
+    assert shared.held("p") == 0

@@ -241,6 +241,11 @@ request alone owns. So a store that stops answering costs each call one wait at 
 recovery, the ceiling returns from the second call in each process: the first asks the account and
 sets `store_answered` again.
 
+A lease whose acquire or release the store did not answer (a stall) is kept in a bounded list
+(`provider_concurrency._unanswered`) and released again once the store answers a later request,
+while it is younger than one lease. A release the store dropped would otherwise leave its place
+counted until the lease ends; this holds for the account's places as well as the team's.
+
 ## Upstream connections: a bounded wait and a cap per provider
 
 Every relayed call shares one pooled HTTP client per process (`bootstrap._lifespan`). A provider

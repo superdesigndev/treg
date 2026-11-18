@@ -20,8 +20,8 @@ log = logging.getLogger("treg.provider_concurrency")
 _LEASE_S = 30.0
 BUSY: Final = "busy"
 _pending: set[asyncio.Task] = set()
-# Leases whose request got no answer: the store may still run the acquire after the release this
-# process sent, so each is released again once the store answers.
+# Leases whose acquire or release got no answer: the store may hold the place anyway (an acquire
+# it ran late, or a release it dropped), so each is released again once the store answers.
 _unanswered: collections.deque[Lease] = collections.deque(maxlen=10_000)
 
 
@@ -66,8 +66,10 @@ class Lease:
             return
 
     async def _release(self, *, quiet: bool = False) -> None:
-        if await self.store.release_slot(self.key, self.token) == "unavailable" and not quiet:
-            log.warning("provider_concurrency release_unavailable key=%s; expires by lease", self.key)
+        if await self.store.release_slot(self.key, self.token) == "unavailable":
+            _unanswered.append(self)  # released again once the store answers
+            if not quiet:
+                log.warning("provider_concurrency release_unavailable key=%s; expires by lease", self.key)
 
     def release(self) -> None:
         if self._released:
@@ -80,7 +82,9 @@ class Lease:
 
 async def _drop_after(attempt: asyncio.Future, lease: Lease) -> None:
     """The write may land after the caller left: wait for it, then drop only this token."""
-    await asyncio.gather(attempt, return_exceptions=True)
+    results = await asyncio.gather(attempt, return_exceptions=True)
+    if results[0] not in ("acquired", "busy"):
+        _unanswered.append(lease)
     await lease._release(quiet=True)
 
 
