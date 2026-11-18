@@ -634,7 +634,7 @@ async def _admin_callrecord_drop_legacy(args) -> int:
     from .infra.db import verify_db
 
     await verify_db()
-    result = await call_record_partitions.drop_legacy()
+    result = await call_record_partitions.drop_legacy(window_s=args.window_s)
     print(json.dumps(result, sort_keys=True))
     return 1 if result["error"] else 0
 
@@ -1158,6 +1158,10 @@ def main(argv: list[str] | None = None) -> int:
     drop_legacy = adminsub.add_parser(
         "callrecord-drop-legacy",
         help="delete rows of teams deleted during the copy, then drop callrecord_legacy")
+    drop_legacy.add_argument(
+        "--window-s", type=float, default=120.0,
+        help="how long to keep trying to drop the foreign key to org (default 120); "
+             "run it in a quiet hour and again on dropped: false")
     drop_legacy.set_defaults(fn=_admin_callrecord_drop_legacy)
     erase = adminsub.add_parser("erase-archive", help="erase what an opted-out team stored in the archive")
     erase.add_argument("--org", type=_positive_int, required=True, help="the team's org id")

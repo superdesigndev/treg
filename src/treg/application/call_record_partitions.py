@@ -179,12 +179,13 @@ async def maintain(*, session_factory=session_maker) -> dict:
 
 
 async def analyze_if_stale(*, session_factory=session_maker) -> list[str]:
-    """ANALYZE a partitioned call record table whose own row estimate is below 90 % of its
+    """ANALYZE the partitioned `callrecord` when its own row estimate is below 90 % of its
     partitions' -> the tables analyzed. Autovacuum analyzes each partition but never the
-    partitioned parent, whose statistics the planner uses for queries over all months."""
+    partitioned parent, whose statistics the planner uses for queries over all months. The staged
+    table before the swap is analyzed by the swap itself (alembic 0117), not here."""
     analyzed = []
     async with session_factory() as db:
-        for table in (TABLE, STAGED):
+        for table in (TABLE,):
             if await _relkind(db, table) != "p":
                 continue
             own, parts = (await db.execute(text("""
@@ -572,7 +573,7 @@ async def _drop_legacy_foreign_keys(db, *, window_s: float = FK_DROP_WINDOW_S) -
         await asyncio.sleep(0.05)
 
 
-async def drop_legacy(*, session_factory=session_maker) -> dict:
+async def drop_legacy(*, window_s: float = FK_DROP_WINDOW_S, session_factory=session_maker) -> dict:
     """Remove the rows of teams deleted during the copy, then drop `callrecord_legacy`
     -> {dropped, deleted_rows, error}.
 
@@ -586,7 +587,7 @@ async def drop_legacy(*, session_factory=session_maker) -> dict:
             return {"dropped": False, "deleted_rows": deleted, "error": None}
         await db.commit()
         try:
-            await _drop_legacy_foreign_keys(db)
+            await _drop_legacy_foreign_keys(db, window_s=window_s)
         except TimeoutError as exc:
             return {"dropped": False, "deleted_rows": deleted, "error": str(exc)}
     for attempt in range(1, DROP_LEGACY_ATTEMPTS + 1):

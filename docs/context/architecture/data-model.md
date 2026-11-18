@@ -420,8 +420,9 @@ created as a plain table and attached, which takes SHARE UPDATE EXCLUSIVE on `ca
 inserts and reads do not wait; `CREATE TABLE ... PARTITION OF` would take ACCESS EXCLUSIVE. There
 is no default partition for the same reason: every attach would lock and scan it, and
 `DETACH ... CONCURRENTLY` refuses to run beside one. Autovacuum analyzes each partition but
-never the partitioned parent, so `analyze_if_stale` (in `maintain()`) runs `ANALYZE` on it when
-its row estimate falls below 90 % of its partitions'.
+never the partitioned parent, so `analyze_if_stale` (in `maintain()`) runs `ANALYZE` on the live
+`callrecord` when its row estimate falls below 90 % of its partitions' (the staged table is
+analyzed by the swap).
 
 **Retention** is `TREG_CALLRECORD_RETENTION_MONTHS`, 0 by default, which keeps every month. With
 `N`, `maintain()` detaches (`DETACH PARTITION ... CONCURRENTLY`) and drops each partition older
@@ -477,7 +478,7 @@ so no reader ever sees a table with part of its history, and only the rename blo
    a statement on `callrecord`, or kept a transaction open, for longer than
    `_QUIET_STATEMENT_S` (each poll first runs `pg_stat_clear_snapshot()`: inside a transaction
    PostgreSQL otherwise keeps serving the first `pg_stat_activity` it read); copies what came in
-   during the wait; and tries the locks with a
+   during the wait and resyncs the rows above `resynced_upto` again; and tries the locks with a
    `_LOCK_TRY` lock timeout inside a savepoint, starting over on a timeout, so a lock request
    never queues inserts for longer than that. It refuses if the window ends first. Holding both
    locks, it copies the last rows, trades the table and index names, moves the sequence and
@@ -488,7 +489,8 @@ so no reader ever sees a table with part of its history, and only the rename blo
 5. `treg-worker admin callrecord-drop-legacy` deletes the rows of teams deleted while the copy ran
    (`delete_rows_of_deleted_teams`, committed batches, never in the upgrade), drops the legacy
    table's foreign key to `org` the way the swap takes its lock (wait for quiet on `org`, then
-   `_LOCK_TRY` attempts inside a savepoint, within `FK_DROP_WINDOW_S`), so an `org` read never
+   `_LOCK_TRY` attempts inside a savepoint, within `--window-s`, 120 s by default; run it in a quiet
+   hour and again when it answers `dropped: false`), so an `org` read never
    queues behind it for long, then drops the table, so the file deletion holds no lock on `org`. Before that, the same backfill command
    copies still older history from it into `callrecord` if it is wanted.
 
