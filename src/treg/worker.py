@@ -620,6 +620,9 @@ async def _admin_callrecord_backfill(args) -> int:
         args.days, batch_rows=args.batch_rows, max_seconds=args.max_seconds,
         pause=args.pause_seconds, max_replica_lag=args.max_replica_lag)
     print(json.dumps(result, sort_keys=True))
+    if result.get("busy"):
+        print("callrecord-backfill: another backfill is running; nothing was done", file=sys.stderr)
+        return 1
     return 0
 
 
