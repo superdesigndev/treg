@@ -6,6 +6,7 @@ charged. Own keys are never gated."""
 from __future__ import annotations
 
 import asyncio
+import time
 
 import pytest
 from httpx import AsyncClient
@@ -393,3 +394,72 @@ async def test_a_failing_store_leaves_the_ceiling_open(shared):
     assert all(s.team_lease is None for s in slots)
     for s in slots:
         s.release()
+
+
+async def test_a_hanging_store_costs_one_wait_and_the_ceiling_returns_under_traffic(shared, monkeypatch):
+    from treg.domain.capacity import fair_share as fair_share_module
+
+    monkeypatch.setattr(fair_share_module, "_STORE_DOWN_S", 0.3)
+    delay, hang = 0.1, (0.3, 1.3)
+    pools = [FairShare() for _ in range(4)]                 # four server processes, one account
+    loop = asyncio.get_running_loop()
+    start = loop.time()
+    waits: list[tuple[float, float]] = []                   # (started, seconds waited for a place)
+    team_places_after: list[bool] = []
+    refused = 0
+
+    async def one_call(i: int) -> None:
+        nonlocal refused
+        began = loop.time() - start
+        try:
+            slot = await pools[i % 4].acquire("p", i % 3, 10, max_wait_s=1, team_ceiling_percent=80)
+        except ShareBusy:
+            refused += 1
+            return
+        waits.append((began, loop.time() - start - began))
+        if began > hang[1] + 0.6:
+            team_places_after.append(slot.team_lease is not None)
+        await asyncio.sleep(0.03)
+        slot.release()
+
+    calls, left_by_hang = [], None
+    for i in range(250):                                    # one call every 10 ms for 2.5 s
+        now = loop.time() - start
+        down = hang[0] <= now < hang[1]
+        if not down and now >= hang[1] and left_by_hang is None:
+            left_by_hang = {key: set(owners) for key, owners in shared.owners.items()}
+        shared.delay, shared.down = (delay, True) if down else (0.0, False)
+        calls.append(asyncio.create_task(one_call(i)))
+        await asyncio.sleep(0.01)
+    await asyncio.gather(*calls)
+    await _turns()
+
+    assert refused == 0
+    # Calls already asking when the store stopped answering wait twice, once; after the first
+    # unanswered request every call waits once at most, each one just past a store window included.
+    after_onset = [w for began, w in waits if hang[0] + 2 * delay <= began < hang[1]]
+    assert len(after_onset) > 50 and max(after_onset) < 1.5 * delay
+    assert all(p._pools["p"].store_answered for p in pools), "every process left skip mode"
+    assert all(time.monotonic() >= p._pools["p"].store_down_until for p in pools)
+    assert team_places_after and all(team_places_after), "the ceiling applies again"
+    assert all(p._pools["p"].active == 0 for p in pools)
+    for key, owners in shared.owners.items():               # a release the hang refused expires
+        assert owners <= left_by_hang.get(key, set()), key  # with its lease; nothing later stays
+
+
+async def test_a_team_request_without_an_answer_never_opens_the_store_window(shared, monkeypatch):
+    real = provider_concurrency.try_acquire
+
+    async def team_key_silent(account, cap):
+        return None if ":team:" in account else await real(account, cap)
+
+    monkeypatch.setattr(provider_concurrency, "try_acquire", team_key_silent)
+    gate = FairShare()
+    slot = await gate.acquire("p", 1, 10, team_ceiling_percent=80)
+    pool = gate._pools["p"]
+    assert slot.team_lease is None and slot.lease is not None
+    assert pool.store_down_until == 0.0, "the window belongs to the account request"
+    assert pool.store_answered, "the account request answered after the team one did not"
+    slot.release()
+    await _turns()
+    assert not any(shared.owners.values())

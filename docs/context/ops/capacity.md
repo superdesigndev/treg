@@ -231,7 +231,11 @@ one: a freed place goes to whichever process's request lands first. `TREG_FAIR_S
 team (`<account>:team:<org id>`) through the same lease scripts. A call over its team's ceiling
 leaves at once as `share_busy`, so the remaining places stay for other teams; other teams are not
 affected. A cap whose ceiling would equal the cap, a store that fails, and no store leave the
-account's own rule alone.
+account's own rule alone. The team request runs only while the account's last store request got an
+answer (`_Pool.store_answered`): a store that stops answering costs a call one wait, on the account
+request, and the ceiling returns with the first account answer. A team request that gets no answer
+only clears `store_answered`; it never opens or extends the store-down window, which the account
+request alone owns.
 
 ## Upstream connections: a bounded wait and a cap per provider
 

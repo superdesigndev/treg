@@ -74,6 +74,9 @@ class _Pool:
     line: list[_Waiter] = field(default_factory=list)
     asking: set[asyncio.Task] = field(default_factory=set)  # store requests in flight
     store_down_until: float = 0.0
+    # The account's last store request got an answer (a place or "full"). Rule 4's team request
+    # runs only then, so a hanging store costs a call one wait, on the account request alone.
+    store_answered: bool = True
     full_until: float = 0.0  # the store said full; ask again after this
     probing: bool = False  # after "full", one request at a time until a place lands
     poll_s: float = _FIRST_POLL_S
@@ -145,11 +148,14 @@ class _Pool:
                 self.full_until = now + self.poll_s * random.uniform(0.5, 1.0)
                 self.poll_s = min(self.poll_s * 2, _MAX_POLL_S)
             self.probing = True
+            self.store_answered = True
         elif outcome is None:  # skip the store for a while instead of waiting on it per call
             self.store_down_until = time.monotonic() + _STORE_DOWN_S
+            self.store_answered = False
         else:
             lease = outcome
             self.poll_s, self.probing = _FIRST_POLL_S, False
+            self.store_answered = True
         if lease is not None:
             waiter = self.next_waiter() if self.active < self.cap else None
             if waiter is None:  # every caller left (or the cap fell) while the store answered
@@ -224,14 +230,20 @@ class FairShare:
     async def _team_place(self, pool: _Pool, team: int,
                           percent: int) -> provider_concurrency.Lease | None:
         """Rule 4: the team's place under its ceiling, or `ShareBusy`; None when no ceiling
-        applies or the store does not answer (the account's own rule still holds)."""
+        applies or the store does not answer (the account's own rule still holds).
+
+        Skipped until the account's own request has an answer again (`store_answered`), and a team
+        request that gets none only marks that: the store-down window belongs to the account
+        request, so this one never opens or extends it."""
         ceiling = math.ceil(pool.cap * percent / 100)
         if not pool.shared or not 0 < percent < 100 or ceiling >= pool.cap:
             return None
-        if time.monotonic() < pool.store_down_until:
+        if not pool.store_answered or time.monotonic() < pool.store_down_until:
             return None
         outcome = await provider_concurrency.try_acquire(f"{pool.name}:team:{team}", ceiling)
-        if outcome == provider_concurrency.BUSY:
+        if outcome is None:
+            pool.store_answered = False
+        elif outcome == provider_concurrency.BUSY:
             raise ShareBusy(pool.name, team, ceiling, 0.0)
         return outcome
 
