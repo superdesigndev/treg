@@ -517,6 +517,11 @@ async def cascade_delete_org(org: Org, db: AsyncSession) -> None:
         await db.flush()
         await db.delete(app)
     await db.flush()
+    # The team's allowance hold is locked before any of its queued call charges is deleted: the
+    # order the charge writer uses. Deleting a charge first, a writer that holds the hold and is
+    # writing that charge again would wait on the delete while this waits on the hold.
+    await db.execute(select(Hold.id).where(Hold.org_id == org.id, Hold.allowance.is_(True))
+                     .with_for_update())
     for model in ORG_SCOPED_MODELS:
         for r in (await db.execute(select(model).where(model.org_id == org.id))).scalars().all():
             await db.delete(r)
