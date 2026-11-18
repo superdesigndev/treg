@@ -70,7 +70,7 @@ async def take(org_id: int, amount_micro: int, *, daily_cap_micro: int = 0) -> i
     """Reserve `amount_micro` from the team's allowance. The counter's epoch, or None when the
     call must use the exact path: the store cannot answer, another process holds the refill for
     too long, or the balance or the daily cap leaves no room to refill."""
-    if _refused_until.get(org_id, 0.0) > time.monotonic():
+    if _refused_until.get(org_id, 0.0) > time.monotonic() or _charges.behind():
         return None
     store = kv.store()
     epoch = await store.allowance_take(org_id, amount_micro)
@@ -214,7 +214,10 @@ class _ChargeWriter:
 
     A write that raises proves nothing about whether it committed. Such a batch is reported
     unconfirmed, never as "not charged", and is written again until it lands: recording a call
-    twice charges it once, so repeating is safe and giving up is not.
+    twice charges it once, so repeating is safe and giving up is not. While any charge is
+    unconfirmed the process admits no new call to the allowance (`behind`), so what waits here
+    is bounded by the calls that were already in flight; `_MAX_UNCONFIRMED` is far above that
+    and is only the last guard on memory.
     """
 
     _MAX_UNCONFIRMED = 20_000
@@ -288,6 +291,12 @@ class _ChargeWriter:
             delay = 1.0
             self._written(rows)
             log.info("%d unconfirmed call charges are now written", len(rows))
+
+    def behind(self) -> bool:
+        """This process has charges it could not confirm written. Until it has, it admits no
+        more calls to the allowance: each would add a charge to a queue the database is not
+        taking, and the queue is bounded."""
+        return bool(self._unconfirmed)
 
     def _written(self, rows: list) -> None:
         """Start a fold for each team whose charges written by this process since its last

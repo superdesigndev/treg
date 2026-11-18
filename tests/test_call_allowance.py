@@ -149,6 +149,12 @@ async def _state(org_id: int) -> tuple[int, int]:
     return balance, sum(h.amount_micro for h in holds if h.allowance)
 
 
+async def _queued(org_id: int) -> int:
+    async with session_maker() as db:
+        return len((await db.execute(
+            select(CallCharge.call_id).where(CallCharge.org_id == org_id))).all())
+
+
 async def _finish(org_id, call_id, epoch, reserved, **kwargs) -> int:
     return await runtime.finish(org_id, call_id, epoch, reserved, endpoint_id="e.metered", **kwargs)
 
@@ -319,6 +325,53 @@ async def test_a_charge_the_database_refused_is_written_once_the_database_is_bac
         assert (await db.execute(select(CallCharge))).first() is None
     await runtime._charges._retry_task
     assert (await _fold(org_id)).consumed_micro == 450
+
+
+async def test_no_call_is_admitted_while_charges_wait_to_be_written(org_id, store, monkeypatch):
+    """With the database refusing writes, each admitted call would add a charge to a bounded
+    retry queue. So none is admitted until the queue is written."""
+    write, down = runtime._ChargeWriter._write, [True]
+
+    async def maybe(rows):
+        if down[0]:
+            raise ConnectionError("database down")
+        await write(rows)
+
+    monkeypatch.setattr(runtime._ChargeWriter, "_write", staticmethod(maybe))
+    first, second = await runtime.take(org_id, 100), await runtime.take(org_id, 100)
+    real_sleep = asyncio.sleep
+
+    async def retry_waits(delay):
+        await real_sleep(0 if delay < 1 else 0.02)
+
+    monkeypatch.setattr(runtime.asyncio, "sleep", retry_waits)
+    assert await _finish(org_id, "a", first, 100, billable=True) == 100
+    assert await runtime.take(org_id, 100) is None, "this process is behind on its charges"
+    assert await _finish(org_id, "b", second, 100, billable=True) == 100
+    down[0] = False
+    await runtime._charges._retry_task
+    assert await _queued(org_id) == 2, "both charges landed once the database was back"
+    assert await runtime.take(org_id, 100) == first
+
+
+async def test_a_retried_batch_marks_only_the_paid_questions_its_rows_are_new_for(
+        org_id, store, monkeypatch):
+    """One charge of the batch was committed by the lost first attempt, the other was not. The
+    rewrite must still mark the second's question as paid."""
+    marked = []
+
+    async def note(db, uses):
+        marked.extend(uses)
+
+    monkeypatch.setattr(runtime.archive, "note_org_uses_in_transaction", note)
+    async with session_maker() as db:
+        await allowance.record_charges(db, [allowance.Charge("a", org_id, "e", 100)])
+        await db.commit()
+    await runtime._ChargeWriter._write([
+        (allowance.Charge("a", org_id, "e", 100), (org_id, "question-a")),
+        (allowance.Charge("b", org_id, "e", 100), (org_id, "question-b")),
+    ])
+    assert marked == [(org_id, "question-b")] and await _queued(org_id) == 2
 
 
 async def test_takes_racing_an_empty_counter_refill_it_once(org_id, store):
@@ -570,12 +623,6 @@ async def test_a_refill_published_late_admits_no_call_past_what_its_stamp_covers
 
 
 # ---- keeping up with the queue -----------------------------------------------------------------
-async def _queued(org_id: int) -> int:
-    async with session_maker() as db:
-        return len((await db.execute(
-            select(CallCharge.call_id).where(CallCharge.org_id == org_id))).all())
-
-
 async def test_a_busy_teams_queue_does_not_outgrow_what_a_refill_folds(org_id, store, monkeypatch):
     """A chunk pays for more calls than one refill folds. The queue must still come back down."""
     monkeypatch.setattr(allowance, "FOLD_BATCH", 5)

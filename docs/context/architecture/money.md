@@ -248,8 +248,11 @@ money moved, the purchased-credit gate.
   anything is awaited, so a cancel cannot lose it. A write that raises twice proves nothing
   about whether it committed, so such a batch is never treated as "not charged": the call is
   told the charge, its money stays out of the counter, and the writer keeps writing the batch in
-  the background until it lands (recording a call twice charges it once). If the process dies
-  first, the charge is lost and its money stays in the hold until the hold is closed.
+  the background until it lands (recording a call twice charges it once). The rewrite marks
+  the paid question of each row that was new to it and of no other. While any charge is
+  unconfirmed the process admits no new call to the allowance, so what waits is bounded by the
+  calls already in flight. If the process dies first, the charge is lost and its money stays in
+  the hold until the hold is closed.
 - **A call that cost more than it set aside.** The charge row keeps that part apart
   (`callcharge.overrun_micro`, revision 0111). A fold takes from the hold only what calls set
   aside; an overrun comes out of the balance, as at `settle`, so the hold keeps what other calls
