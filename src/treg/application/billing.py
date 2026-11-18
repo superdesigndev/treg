@@ -134,20 +134,23 @@ def cents_to_micro(amount_cents: int) -> int:
     return int(amount_cents) * MICRO_PER_CENT
 
 
-def bonus_for_topup(amount_micro: int) -> tuple[int, int]:
+def bonus_for_topup(amount_micro: int, org_pct: int | None = None) -> tuple[int, int]:
     """The promotional bonus a top-up of `amount_micro` earns, manual or automatic, as
     `(bonus_micro, percent)`.
 
-    Tiered by size (`topup_bonus_tiers`): the highest tier at or below the amount applies, so $99 gets
-    the $50 rate and $250 the $200 rate. Integer micro-USD throughout — `amount * pct // 100`
-    truncates the sub-micro remainder, which is at most a millionth of a dollar in treg's favour.
+    A team with its own rate (`Org.topup_bonus_pct`, passed as `org_pct`) earns that rate on every
+    top-up, whatever its size. Otherwise tiered by size (`topup_bonus_tiers`): the highest tier at or
+    below the amount applies, so $99 gets the $50 rate and $250 the $200 rate. Integer micro-USD
+    throughout — `amount * pct // 100` truncates the sub-micro remainder, which is at most a
+    millionth of a dollar in treg's favour.
     """
-    tiers = get_settings().topup_bonus_tiers or {}
-    usd = int(amount_micro) // MICRO_PER_USD
-    pct = 0
-    for floor_usd in sorted(int(k) for k in tiers):
-        if usd >= floor_usd:
-            pct = int(tiers[floor_usd] if floor_usd in tiers else tiers[str(floor_usd)])
+    pct = org_pct if org_pct is not None else 0
+    if org_pct is None:
+        tiers = get_settings().topup_bonus_tiers or {}
+        usd = int(amount_micro) // MICRO_PER_USD
+        for floor_usd in sorted(int(k) for k in tiers):
+            if usd >= floor_usd:
+                pct = int(tiers[floor_usd] if floor_usd in tiers else tiers[str(floor_usd)])
     if pct <= 0:
         return 0, 0
     return int(amount_micro) * pct // 100, pct
@@ -1628,16 +1631,20 @@ async def _grant_topup_bonus(db: AsyncSession, org_id: int, pi_id: str, block_id
                              amount_micro: int) -> tuple[int, int]:
     """Grant a top-up's bonus unless this payment already has one; commits. Returns what this call
     granted, net of a refund recorded before it."""
-    bonus_micro, bonus_pct = bonus_for_topup(amount_micro)
+    org = await db.get(Org, org_id)
+    org_pct = org.topup_bonus_pct if org else None
+    bonus_micro, bonus_pct = bonus_for_topup(amount_micro, org_pct)
     if bonus_micro <= 0:
         return 0, 0
     created_at = await _lock_purchased_block(db, block_id)
     if _now() - created_at > BONUS_HEAL_WINDOW or pi_id in await _bonused_payments(db, org_id):
         await db.rollback()
         return 0, 0
-    bonus = await ledger.grant(db, org_id, amount_micro=bonus_micro, kind="bonus", once=False,
-                               meta={"source": "topup_bonus", "payment_intent": pi_id,
-                                     "pct": bonus_pct, "topup_block_id": block_id})
+    meta: dict = {"source": "topup_bonus", "payment_intent": pi_id,
+                  "pct": bonus_pct, "topup_block_id": block_id}
+    if org_pct is not None:
+        meta["override"] = True
+    bonus = await ledger.grant(db, org_id, amount_micro=bonus_micro, kind="bonus", once=False, meta=meta)
     refunded = await _refunded_of(db, block_id)
     if refunded and bonus is not None:
         revoked = await ledger.revoke_in_transaction(
@@ -1935,7 +1942,9 @@ async def billing_state(db: AsyncSession, org: Org) -> dict:
                   "default_usd": await next_default_usd(db, org.id),
                   "presets": list(s.topup_presets),
                   # {usd: percent}; JSON turns the keys into strings — the UI compares numerically.
-                  "bonus_tiers": {int(k): int(v) for k, v in (s.topup_bonus_tiers or {}).items()}},
+                  # A team with its own rate sees it as one tier that every amount reaches.
+                  "bonus_tiers": {0: int(org.topup_bonus_pct)} if org.topup_bonus_pct is not None
+                  else {int(k): int(v) for k, v in (s.topup_bonus_tiers or {}).items()}},
         "autotopup": {
             "enabled": bool(org.autotopup_enabled),
             "consented_at": org.autotopup_consented_at.isoformat() if org.autotopup_consented_at else None,
@@ -2217,8 +2226,10 @@ async def reconcile_topups(*, since: datetime, until: datetime) -> dict:
             select(CreditBlock).where(CreditBlock.stripe_payment_intent.in_(ids))
         )).scalars()} if ids else {}
         org_ids = {org_id for _, org_id, _, _ in topups}
-        live = set((await db.execute(select(Org.id).where(Org.id.in_(org_ids)))).scalars()) \
-            if org_ids else set()
+        org_pcts = dict((await db.execute(
+            select(Org.id, Org.topup_bonus_pct).where(Org.id.in_(org_ids))
+        )).all()) if org_ids else {}
+        live = set(org_pcts)
         bonused: set[str] = set()
         for org_id in live:
             bonused |= await _bonused_payments(db, org_id)
@@ -2231,7 +2242,7 @@ async def reconcile_topups(*, since: datetime, until: datetime) -> dict:
             gap = GAP_NOT_CREDITED
         elif block.org_id != org_id or block.amount_micro != amount_micro:
             gap = GAP_CREDITED_DIFFERENTLY
-        elif bonus_for_topup(amount_micro)[0] > 0 and pi["id"] not in bonused:
+        elif bonus_for_topup(amount_micro, org_pcts[org_id])[0] > 0 and pi["id"] not in bonused:
             gap = GAP_BONUS_MISSING
         else:
             continue

@@ -2001,6 +2001,37 @@
         "title": "ToolUpdate",
         "type": "object"
       },
+      "TopupBonusOverrideIn": {
+        "additionalProperties": false,
+        "properties": {
+          "pct": {
+            "anyOf": [
+              {
+                "maximum": 50.0,
+                "minimum": 0.0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Bonus percent (0-50), or null for the global tiers",
+            "title": "Pct"
+          },
+          "reason": {
+            "maxLength": 1000,
+            "minLength": 1,
+            "title": "Reason",
+            "type": "string"
+          }
+        },
+        "required": [
+          "pct",
+          "reason"
+        ],
+        "title": "TopupBonusOverrideIn",
+        "type": "object"
+      },
       "TopupIn": {
         "properties": {
           "amount_usd": {
@@ -3341,6 +3372,78 @@
           }
         },
         "summary": "Admin Suspend Org"
+      }
+    },
+    "/admin/orgs/{org_id}/topup-bonus": {
+      "put": {
+        "description": "Set or clear a team's own top-up bonus rate.\n\nWith `pct` set, every top-up the team makes, manual or automatic and of any size, earns that\npercent in place of the global tiers; null returns the team to the tiers.",
+        "operationId": "admin_set_topup_bonus_override_admin_orgs__org_id__topup_bonus_put",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "org_id",
+            "required": true,
+            "schema": {
+              "title": "Org Id",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "header",
+            "name": "x-treg-token",
+            "required": false,
+            "schema": {
+              "default": "",
+              "title": "X-Treg-Token",
+              "type": "string"
+            }
+          },
+          {
+            "in": "cookie",
+            "name": "treg_session",
+            "required": false,
+            "schema": {
+              "default": "",
+              "title": "Treg Session",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/TopupBonusOverrideIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response Admin Set Topup Bonus Override Admin Orgs  Org Id  Topup Bonus Put",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Admin Set Topup Bonus Override"
       }
     },
     "/admin/reconcile/asynctasks": {

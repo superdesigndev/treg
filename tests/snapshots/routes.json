@@ -2877,6 +2877,14 @@
   {
     "kind": "APIRoute",
     "methods": [
+      "PUT"
+    ],
+    "name": "admin_set_topup_bonus_override",
+    "path": "/admin/orgs/{org_id}/topup-bonus"
+  },
+  {
+    "kind": "APIRoute",
+    "methods": [
       "GET",
       "HEAD"
     ],

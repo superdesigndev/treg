@@ -269,6 +269,23 @@ async def test_reconcile_reports_every_paid_top_up_the_ledger_does_not_match(c, 
     assert lost_gap["org_id"] == org_id and lost_gap["amount_micro"] == 920_000_000
 
 
+async def test_reconcile_expects_a_bonus_by_the_teams_own_rate(c, monkeypatch):
+    """$20 earns nothing on the tiers but 15% on a team's own rate: a missing grant is a gap."""
+    from treg.models import Org
+    org_id = await _org(c)
+    async with session_maker() as db:
+        (await db.get(Org, org_id)).topup_bonus_pct = 15
+        await db.commit()
+    small = _pi(org_id, "pi_small", 2_000)
+    _fail_bonus_grants(monkeypatch, times=1)
+    assert (await _deliver(c, small)).status_code == 500
+    monkeypatch.setattr(billing, "_sdk", _stripe_lists([small]))
+    until = datetime.now(timezone.utc).replace(tzinfo=None)
+    report = await billing.reconcile_topups(since=until - timedelta(hours=48), until=until)
+    assert [(g["gap"], g["payment_intent"]) for g in report["gaps"]] == [
+        (billing.GAP_BONUS_MISSING, "pi_small")]
+
+
 async def test_reconcile_ignores_a_paid_top_up_of_a_deleted_team(c, monkeypatch):
     org_id = await _org(c)
     assert (await _deliver(c, _pi(org_id, "pi_gone", 10_000))).status_code == 200
