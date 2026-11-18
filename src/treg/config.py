@@ -905,22 +905,30 @@ class Settings(BaseSettings):
     def agent_payments_stripe_key(self) -> str:
         return self.agent_payments_stripe_secret_key or self.stripe_secret_key
 
-    @model_validator(mode="after")
-    def _agent_payments_configuration(self):
+    def check_agent_payments(self) -> None:
+        """Refuse to configure the payment rails with one error naming every problem. Called where
+        the rails are configured, never from `Settings()`: the payment settings live in a shared
+        environment group, and a process that runs no payment code must not fail on a missing or
+        incomplete one. A value of the wrong type still fails `Settings()` everywhere."""
+        if problems := self.agent_payments_problems():
+            raise ValueError("agent payments cannot start: " + "; ".join(problems))
+
+    def agent_payments_problems(self) -> list[str]:
+        """Every payment setting that is malformed, and, with the feature on, every one the enabled
+        rails are missing or get wrong."""
+        problems = []
         for name in ("agent_payments_tempo_recipient", "agent_payments_x402_pay_to",
                      "agent_payments_tempo_currency", "agent_payments_x402_asset"):
             value = getattr(self, name)
             if value and not re.fullmatch(r"0x[0-9a-fA-F]{40}", value):
-                raise ValueError(f"{name} must be a 0x-prefixed 20-byte address")
+                problems.append(f"TREG_{name.upper()} as a 0x-prefixed 20-byte address")
         if bool(self.agent_payments_x402_cdp_api_key_id) != bool(self.agent_payments_x402_cdp_api_key_secret):
-            raise ValueError("set both TREG_AGENT_PAYMENTS_X402_CDP_API_KEY_ID and _SECRET, or neither")
+            problems.append("both TREG_AGENT_PAYMENTS_X402_CDP_API_KEY_ID and _SECRET, or neither")
         if self.agent_payments_enabled:
-            if problems := self._agent_payments_problems():
-                raise ValueError("agent payments cannot start: " + "; ".join(problems))
-        return self
+            problems += self._agent_payments_missing()
+        return problems
 
-    def _agent_payments_problems(self) -> list[str]:
-        """Every setting the enabled rails are missing or get wrong, so one start names them all."""
+    def _agent_payments_missing(self) -> list[str]:
         coinbase = "https://api.cdp.coinbase.com/platform/v2/x402"
         base_usdc = "0x833589fcd6edb6e08f4c7c32d4f71b54bda02913"
         problems = []
