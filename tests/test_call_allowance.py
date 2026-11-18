@@ -9,7 +9,7 @@ from datetime import datetime, timedelta
 from uuid import uuid4
 
 import pytest
-from sqlalchemy import select, update
+from sqlalchemy import event, select, update
 
 from treg.application import allowance_sweep
 from treg.application.call import allowance as runtime
@@ -21,6 +21,8 @@ from treg.application.call.types import ReservationFailed
 from treg.config import get_settings
 from treg.domain import money as ledger
 from treg.domain.money import allowance
+from treg.domain.governance.teams import cascade_delete_org
+from treg.infra import db as infra_db
 from treg.infra import kv
 from treg.infra.db import reset_db, session_maker
 from treg.domain.identity.access import Caller
@@ -477,6 +479,55 @@ async def test_a_charge_its_hold_no_longer_backs_stops_the_counter_like_an_overr
     assert await runtime.take(org_id, 100) is None, "a refill read the balance: it is below zero"
     assert store.counters[org_id]["avail"] == 0
     assert await _state(org_id) == (-300, 700), "the later hold keeps what its call set aside"
+
+
+async def _statements(run) -> list[str]:
+    seen: list[str] = []
+
+    def capture(conn, cursor, statement, parameters, context, executemany):
+        seen.append(" ".join(statement.lower().split()))
+
+    engine = infra_db._engine.sync_engine
+    event.listen(engine, "before_cursor_execute", capture)
+    try:
+        await run()
+    finally:
+        event.remove(engine, "before_cursor_execute", capture)
+    return seen
+
+
+async def test_the_charge_writer_decides_a_charges_hold_inside_a_real_transaction(org_id, store):
+    """PostgreSQL: the shared lock on the hold row, then the insert. SQLite takes no row lock
+    and begins its transaction at the first write, so there the insert comes first and the
+    hold is read under the lock it took."""
+    epoch = await runtime.take(org_id, 600)
+    charge = allowance.Charge("ordered", org_id, "e.metered", 400, None, 600, epoch)
+    seen = await _statements(lambda: runtime._ChargeWriter._write([(charge, None)]))
+    insert = next(i for i, text in enumerate(seen) if text.startswith("insert into callcharge"))
+    hold = next(i for i, text in enumerate(seen) if " from hold " in text)
+    if infra_db._is_sqlite:
+        assert insert < hold
+    else:
+        assert hold < insert and seen[hold].endswith("for share")
+        assert any("idle_in_transaction_session_timeout" in text for text in seen[:hold])
+
+
+async def test_deleting_a_team_locks_its_allowance_hold_before_its_queued_charges(org_id, store):
+    """The order the charge writer uses. The other way round, a writer holding the hold while it
+    writes a charge again and a deletion that has deleted that charge wait on each other."""
+    epoch = await runtime.take(org_id, 600)
+    await _finish(org_id, "queued", epoch, 600, billable=True, actual_micro=400)
+
+    async def delete() -> None:
+        async with session_maker() as db:
+            await cascade_delete_org(await db.get(Org, org_id), db)
+            await db.rollback()
+
+    seen = await _statements(delete)
+    lock = next(i for i, text in enumerate(seen) if " from hold " in text and "allowance" in text)
+    charge = next(i for i, text in enumerate(seen) if "delete from callcharge" in text)
+    assert lock < charge
+    assert infra_db._is_sqlite or seen[lock].endswith("for update")
 
 
 async def test_a_charge_carries_the_hold_its_call_took_from(org_id, store):

@@ -315,7 +315,11 @@ money moved, the purchased-credit gate.
   charge too comes out of the balance. It learns which in the transaction that writes the
   rows, reading the teams' hold rows under a shared lock first (`allowance.holds_behind`), so
   a close of the hold waits for the write and applies the charge to its own hold, or is done
-  and the charge is known to owe the balance. A freeze
+  and the charge is known to owe the balance. On SQLite, which has no row locks and begins a
+  transaction only at its first write, the rows are inserted first and the holds read under
+  the write lock that took. The write runs in a money session, so a writer that stalls
+  holding hold rows is ended like any stalled money transaction; and a team's deletion locks
+  the allowance hold before it deletes the team's queued charges, the writer's order. A freeze
   that does not reach the store leaves the batch unconfirmed, to be gone through again. A
   refill of a frozen counter folds the whole queue, not one batch. And a refill that then finds
   the balance below zero adds nothing and drains the counter back to the balance, so the exact

@@ -361,10 +361,19 @@ class _ChargeWriter:
     async def _write(rows: list, *, again: bool = False) -> set[int]:
         """Write the rows; return the teams with a charge among them that its own hold no
         longer stands behind (closed since, with or without another in its place)."""
-        async with session_maker() as db:
-            holds = await allowance.holds_behind(db, sorted(
-                {charge.org_id for charge, _ in rows if charge.epoch is not None}))
+        teams = sorted({charge.org_id for charge, _ in rows if charge.epoch is not None})
+        # Bounded like every money transaction: this one holds teams' hold rows, and a process
+        # that stalled here would keep their refills, folds and sweeps waiting.
+        async with money_session(session_maker()) as db:
+            # PostgreSQL: the shared lock on the hold rows comes first, the order a team's
+            # deletion uses too. SQLite has no row locks and begins its transaction only at
+            # the first write, so there the insert comes first and the holds are read under
+            # the write lock it took.
+            row_locks = db.get_bind().dialect.name == "postgresql"
+            holds = await allowance.holds_behind(db, teams) if row_locks else {}
             new = await allowance.record_charges(db, [charge for charge, _ in rows])
+            if not row_locks:
+                holds = await allowance.holds_behind(db, teams)
             # A row that was already there was committed by an earlier attempt, which marked its
             # paid question too. On a rewrite, so was a row that is new only because the earlier
             # attempt's row has been applied and deleted since: its call has a settle entry.
