@@ -15,6 +15,7 @@ from __future__ import annotations
 import asyncio
 import logging
 import math
+import secrets
 import threading
 import time
 from dataclasses import dataclass
@@ -154,22 +155,21 @@ return 1
 # landed after that read is one the transaction did not account for, and stays in force. A
 # counter rebuilt for a newer epoch keeps the counts of the one it replaces.
 #
-# The counts of a new hash start at the store's clock in microseconds, not at zero. A hash can
-# be lost and built again under the same epoch, and a count read from the lost one must not
-# pass for a count of the new one: starting later than any count the lost hash could have
-# reached, the new hash is thawed by nothing read before it existed.
+# The counts of a new hash start at a random number its creator supplies, not at zero, and a
+# count thaws only when it lies between the hash's own two counts. The store can lose a hash
+# and build it again under the same epoch; a count read from the lost one is a count of another
+# hash, and says nothing about what its reader saw of this one. Starting each hash somewhere
+# else in a range of 2^52 is what tells them apart, with no clock to run backwards.
 _ALLOWANCE_COUNTS = """
-local function counts()
+local function counts(base)
     if redis.call('HEXISTS', KEYS[1], 'frozen') == 1 then return end
-    local t = redis.call('TIME')
-    local base = string.format('%.0f', t[1] * 1000000 + t[2])
     redis.call('HSET', KEYS[1], 'frozen', base, 'thawed', base)
 end
 """
 _ALLOWANCE_ADD = _ALLOWANCE_COUNTS + """
 local stored = redis.call('HGET', KEYS[1], 'epoch')
 if stored and tonumber(stored) > tonumber(ARGV[1]) then return -1 end
-counts()
+counts(ARGV[6])
 if stored ~= ARGV[1] then
     local frozen = redis.call('HGET', KEYS[1], 'frozen')
     local thawed = redis.call('HGET', KEYS[1], 'thawed')
@@ -180,9 +180,10 @@ local avail = redis.call('HINCRBY', KEYS[1], 'avail', ARGV[2])
 if tonumber(ARGV[3]) > tonumber(redis.call('HGET', KEYS[1], 'until') or '0') then
     redis.call('HSET', KEYS[1], 'until', ARGV[3])
 end
-local thaw = math.min(tonumber(ARGV[5]), tonumber(redis.call('HGET', KEYS[1], 'frozen')))
-if thaw > tonumber(redis.call('HGET', KEYS[1], 'thawed')) then
-    redis.call('HSET', KEYS[1], 'thawed', string.format('%.0f', thaw))
+local seen = tonumber(ARGV[5])
+if seen > tonumber(redis.call('HGET', KEYS[1], 'thawed'))
+    and seen <= tonumber(redis.call('HGET', KEYS[1], 'frozen')) then
+    redis.call('HSET', KEYS[1], 'thawed', ARGV[5])
 end
 redis.call('PEXPIRE', KEYS[1], ARGV[4])
 return avail
@@ -215,7 +216,7 @@ return tonumber(avail)
 # cannot thaw it.
 _ALLOWANCE_FREEZE = _ALLOWANCE_COUNTS + """
 local fresh = redis.call('EXISTS', KEYS[1]) == 0
-counts()
+counts(ARGV[2])
 local frozen = redis.call('HINCRBY', KEYS[1], 'frozen', 1)
 if fresh then redis.call('PEXPIRE', KEYS[1], ARGV[1]) end
 return frozen
@@ -226,7 +227,7 @@ local stored = redis.call('HGET', KEYS[1], 'epoch')
 if stored and tonumber(stored) > tonumber(ARGV[1]) then return 0 end
 local avail = 0
 if stored == ARGV[1] then avail = tonumber(redis.call('HGET', KEYS[1], 'avail')) or 0 end
-counts()
+counts(ARGV[4])
 local frozen = redis.call('HGET', KEYS[1], 'frozen')
 local thawed = redis.call('HGET', KEYS[1], 'thawed')
 redis.call('DEL', KEYS[1])
@@ -401,7 +402,7 @@ class Store(Protocol):
         changes nothing), and the counter expires after `ttl_ms`. An amount of 0 only renews
         both. `seen_frozen` is the freeze count the caller read before its database transaction:
         the counter is thawed up to it and no further, so a freeze that landed since stays in
-        force. A counter of an older epoch is replaced, not added to. "stale" when the stored
+        force; a count that is not one of this counter's own thaws nothing. A counter of an older epoch is replaced, not added to. "stale" when the stored
         epoch is newer: this writer's hold has been closed since, and nothing is added.
         Otherwise what is now available; None when the store cannot answer."""
 
@@ -684,11 +685,12 @@ class RedisStore:
                             until_ms: int, ttl_ms: int,
                             seen_frozen: int) -> int | Literal["stale"] | None:
         result = await self._allowance_eval(
-            _ALLOWANCE_ADD, org_id, epoch, amount_micro, until_ms, ttl_ms, seen_frozen)
+            _ALLOWANCE_ADD, org_id, epoch, amount_micro, until_ms, ttl_ms, seen_frozen,
+            _new_counts())
         return "stale" if result == -1 else result
 
     async def allowance_freeze(self, org_id: int, *, ttl_ms: int = 86_400_000) -> int | None:
-        return await self._allowance_eval(_ALLOWANCE_FREEZE, org_id, ttl_ms)
+        return await self._allowance_eval(_ALLOWANCE_FREEZE, org_id, ttl_ms, _new_counts())
 
     async def allowance_state(self, org_id: int) -> tuple[int, int, int] | None:
         try:
@@ -704,7 +706,8 @@ class RedisStore:
         return await self._allowance_eval(_ALLOWANCE_DROP, org_id)
 
     async def allowance_retire(self, org_id: int, epoch: int, ttl_ms: int) -> int | None:
-        return await self._allowance_eval(_ALLOWANCE_RETIRE, org_id, epoch, epoch + 1, ttl_ms)
+        return await self._allowance_eval(
+            _ALLOWANCE_RETIRE, org_id, epoch, epoch + 1, ttl_ms, _new_counts())
 
     async def note_route_health(self, endpoint_id: str, bucket: int, *, failed: bool, slow: bool,
                                 ttl_s: int) -> None:
@@ -934,6 +937,12 @@ def drain_lease_errors() -> list[dict]:
         rows = list(_lease_errors.values())
         _lease_errors.clear()
     return rows
+
+
+def _new_counts() -> int:
+    """Where the freeze counts of a new allowance hash start: below 2^52, so the store's
+    numbers stay exact however many freezes follow."""
+    return 2**40 + secrets.randbelow(2**52 - 2**40)
 
 
 def _allowance_key(org_id: int) -> str:

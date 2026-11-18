@@ -76,9 +76,11 @@ class FakeStore:
             return "stale"
         if counter is None or counter.get("epoch") != epoch:
             counter = self.counters[org_id] = {
-                "epoch": epoch, "avail": 0, "frozen": (counter or {}).get("frozen", 0)}
+                "epoch": epoch, "avail": 0, "frozen": (counter or {}).get("frozen", 0),
+                "thawed": (counter or {}).get("thawed", 0)}
         counter["avail"] += amount
-        counter["thawed"] = max(counter.get("thawed", 0), min(seen_frozen, counter["frozen"]))
+        if counter.setdefault("thawed", 0) < seen_frozen <= counter["frozen"]:
+            counter["thawed"] = seen_frozen
         self.until_ms = max(self.until_ms, until_ms)
         return counter["avail"]
 
@@ -105,7 +107,8 @@ class FakeStore:
             return 0
         left = counter["avail"] if counter is not None and counter.get("epoch") == epoch else 0
         self.counters[org_id] = {"epoch": epoch + 1, "avail": 0,
-                                 "frozen": (counter or {}).get("frozen", 0)}
+                                 "frozen": (counter or {}).get("frozen", 0),
+                                 "thawed": (counter or {}).get("thawed", 0)}
         return left
 
     async def acquire_lease(self, key, token, ttl_ms):

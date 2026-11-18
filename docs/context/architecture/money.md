@@ -172,10 +172,10 @@ admitted, and two counts, `frozen` and `thawed`. The operations are atomic scrip
   the refill wrote on the hold, never from when the add lands, and never moves it back: a refill
   published late admits calls for less time or none. It thaws the counter only up to the freeze
   count its caller read before its transaction, so a freeze that landed since stays in force,
-  and never past the count the hash itself holds. The counts of a new hash start at the
-  store's clock in microseconds, not at zero: the store can lose a hash and build it again
-  under the same epoch, and a count read from the lost one is then lower than any the new one
-  holds, so it neither thaws a freeze of the new hash nor leaves it frozen for good.
+  and only when that count lies between the hash's own two counts. The counts of a new hash
+  start at a random number, not at zero: the store can lose a hash and build it again under
+  the same epoch, and a count read from the lost one is then not a count of the new one, so it
+  neither thaws a freeze of the new hash nor leaves it frozen for good. No clock is involved.
 - `allowance_freeze` raises the freeze count: what the counter holds is kept, but no call is
   admitted until an add whose caller read the count after this. A freeze that finds no hash
   leaves one holding only the count: a refill may have committed and not yet published, and

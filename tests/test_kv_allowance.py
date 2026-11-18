@@ -174,19 +174,23 @@ async def test_a_freeze_count_read_from_a_counter_since_lost_does_not_jam_the_re
 
 
 @real_redis
-async def test_a_freeze_on_a_rebuilt_counter_is_not_thawed_by_a_count_read_from_the_lost_one(counter):
+@pytest.mark.parametrize("first, rebuilt", [(2**41, 2**40), (2**40, 2**41), (None, None)])
+async def test_a_freeze_on_a_rebuilt_counter_is_not_thawed_by_a_count_read_from_the_lost_one(
+        counter, monkeypatch, first, rebuilt):
     """A refill read five freezes. The store lost the hash, and an overrun after the refill's
-    transaction froze the one built in its place. The refill's count is of another hash: that
-    it is as large as the new one's says nothing about what its transaction saw."""
+    transaction froze the one built in its place. The refill's count is of another hash,
+    whether it is larger or smaller than the new one's."""
     store, org_id = counter
+    if first is not None:
+        monkeypatch.setattr(kv, "_new_counts", lambda: first)
     await store.allowance_add(org_id, 7, 100, until_ms=_soon(), ttl_ms=60_000, seen_frozen=0)
     for _ in range(5):
         await store.allowance_freeze(org_id)
     _, seen, _ = await store.allowance_state(org_id)
     await store._client.delete(kv._allowance_key(org_id))
-    await asyncio.sleep(0.002)
+    if rebuilt is not None:
+        monkeypatch.setattr(kv, "_new_counts", lambda: rebuilt)
     frozen = await store.allowance_freeze(org_id)
-    assert frozen > seen
     assert await store.allowance_add(
         org_id, 7, 100, until_ms=_soon(), ttl_ms=60_000, seen_frozen=seen) == 100
     assert await store.allowance_take(org_id, 10) == 0, "the count of a lost hash thaws nothing"
