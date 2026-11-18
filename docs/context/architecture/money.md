@@ -191,12 +191,19 @@ The counter is only as good as the store's memory of it. A store that loses a ha
 handled: the counts above, and a refill that rebuilds from the hold. A store that goes BACK to
 an earlier state of the same hash is not detected: one restored from an older snapshot, or a
 replica promoted before it received writes its primary had acknowledged. Takes and freezes
-from the lost interval are then undone, and that money can be admitted a second time. The
-damage is bounded, not prevented: at most what the stale hash still offers, only until its
-`until` (a refill's `money_allowance_fresh_s`), and the next refill takes back anything the
-counter holds above its hold; what was admitted twice is charged all the same and comes out
-of the balance. A deployment that can roll acknowledged writes back should take its teams
-off the allowance after such an event until the idle sweep has closed their holds.
+from the lost interval are then undone, and that money can be admitted a second time.
+
+Nothing in the design bounds that. What the stale hash offers is not the limit: calls in
+flight under the same epoch still give back to it, and refills still add to it and move
+`until` on. A refill takes back only what the counter holds above the whole hold, and the hold
+also stands behind calls in flight, so a counter below the hold can still offer more than is
+free; one refill does not show the counter is right again. Nor is the money sure to be
+collected: the counter meters what calls set aside, a call can cost more, and a charge the
+team's credit blocks cannot cover is taken only as far as they go (`block_shortfall_micro`),
+which leaves the platform paying the provider for the rest. The state ends only when the hold
+is closed and its counter retired. So a deployment whose store can roll acknowledged writes
+back takes its teams off the allowance after such an event, and puts them back once the
+conditions in [deploy](../ops/deploy.md) hold.
 
 Epochs only grow (a later hold has a later `created_at`), and that is the fence: an add replaces
 a counter of an older epoch, and is refused as `"stale"` when the stored epoch is newer, so a

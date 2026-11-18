@@ -279,8 +279,19 @@ returns that org's new calls to the hold path at once; no migration is needed. T
 consumer of the `background` pool, which is one connection larger per process for it. The
 allowance trusts the store to keep the writes it acknowledged. A store that can go back to an
 earlier state (a restore from an older snapshot, a replica promoted before it caught up) can
-admit money twice for up to `TREG_MONEY_ALLOWANCE_FRESH_S`; after such an event, empty the
-list until the sweep has closed the allowance holds, then list the teams again.
+admit the same money twice, with no bound on amount or time while the allowance stays on, and
+what a team's credit cannot cover is the platform's cost. After such an event, empty the
+list, and list a team again only when all of these can be seen:
+
+- every process that serves calls has restarted on the empty list (the list is read per
+  process, so one still running the old value keeps admitting from the counter);
+- calls admitted before that have ended and their charges are written: no process logs
+  unconfirmed call charges, and the team has no `callcharge` rows left;
+- the team has no `hold` row with `allowance` set (the idle sweep closes it once no refill has
+  stamped it for the hold lifetime plus its margin);
+- the team's counter in the store is gone, or shows nothing available. The sweep retires it
+  after closing the hold, but that write is not retried; a counter left behind is dropped by
+  the first refill that finds no hold, at the price of one refused take.
 
 Raising `TREG_MONEY_ADMISSION_WAIT_S` lengthens no other timeout: Redis command budgets, the
 upstream `call_timeout_s`, hold age (`call_timeout_s + hold_grace_s`), CLI, local-proxy and MCP
