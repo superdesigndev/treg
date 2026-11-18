@@ -174,7 +174,9 @@ A row has two prose fields, and each caveat has one home.
   comment; evidence (dates, sample sizes, how a price was measured) is the pull request body.
 - **A filter the provider takes only as a hint** carries `applied: soft` beside its note, which
   says what comes back instead. `treg catalog get` opens that parameter's note with "a hint, not a
-  filter", and routing counts a key mapped into it as not applied ([catalog](catalog.md)).
+  filter". Routing counts a key mapped into it as not applied only when the endpoint's contract has
+  that filter; otherwise the mark changes only the `catalog get` text, and the validator warns
+  ([catalog](catalog.md)).
 
 The writing rules no check can judge:
 

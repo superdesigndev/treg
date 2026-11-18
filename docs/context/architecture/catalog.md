@@ -1290,7 +1290,10 @@ an invalid extra never disables the primary.
   provider receives but does not enforce (exa and parallel people.search read the place and the
   company as words), and an endpoint parameter marked `applied: soft` makes every contract filter
   the adapter maps into it soft (`Adapter.soft`, set at load by `_soft_keys`). The validator refuses
-  a `soft:` that is not a list of the contract's filter or scoping keys (`soft_problems`). `ignored_filters()` counts a soft
+  a `soft:` that is not a list of the contract's filter or scoping keys (`soft_problems`), and
+  warns on an `applied: soft` parameter no contract filter maps into (`soft_unrouted`): there the
+  mark changes only the `catalog get` text, as on TinyFish search, whose contracts have no place
+  or domain filter. `ignored_filters()` counts a soft
   key the caller sent as not applied, a scoping key included, so the answer names it and strict
   filters drop the child ("applies … only as a hint"). Ranking reads `ignored_filters(soft=False)`
   (`Candidate.hinted` is the difference): a declaration discloses, it never reorders a plan or

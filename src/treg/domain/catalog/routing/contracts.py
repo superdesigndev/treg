@@ -999,6 +999,26 @@ def _soft_keys(adapter: Adapter, endpoint: dict, contract: Contract) -> tuple[st
     return tuple(dict.fromkeys(keys))
 
 
+def soft_unrouted(adapters: dict[str, Adapter], contracts: dict[str, Contract],
+                  endpoints: dict[str, dict]) -> list[str]:
+    """Parameters an endpoint row marks `applied: soft` that no contract filter is mapped into:
+    the mark changes only what `catalog get` says, never a routed plan."""
+    out = []
+    for eid, ep in endpoints.items():
+        targets = _soft_targets(ep)
+        if not targets:
+            continue
+        ad, contract = adapters.get(eid), contracts.get(str(ep.get("capability") or ""))
+        filters = set(contract.filters or ()) if contract is not None else set()
+        routed = set()
+        if ad is not None:
+            routed |= {t for k, t in ad.in_map.items() if k in filters}
+            routed |= {t for t, e in (ad.in_expr or {}).items() if set(re.findall(r"[A-Za-z_]\w*", e)) & filters}
+        out += [f"{eid}: {t} is applied: soft but no contract filter maps into it; only catalog get shows it"
+                for t in sorted(targets - routed)]
+    return out
+
+
 def soft_problems(adapters: dict[str, Adapter], contracts: dict[str, Contract],
                   capability_of: dict[str, str]) -> list[str]:
     """An adapter's `soft:` names only its contract's filter or scoping keys."""

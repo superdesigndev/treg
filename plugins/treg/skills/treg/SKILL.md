@@ -135,8 +135,9 @@ How a routed call works:
   refused with an unbilled 422 instead.
 - Provider search filters and operators (a place, a domain list, `site:`, quoted phrases) are
   best-effort: check the rows against your filters. A parameter `treg catalog get` notes as "a
-  hint, not a filter" steers the ranking only, and a routed provider known to take a filter only as
-  a hint is named in `_treg.ignored_filters`, so `X-Treg-Route-Strict-Filters: 1` skips it.
+  hint, not a filter" steers the ranking only. On routed people search, a provider known to take a
+  sent place or company only as a hint is named in `_treg.ignored_filters`, so
+  `X-Treg-Route-Strict-Filters: 1` skips it.
 - When you sent a `domain` on an email find, `_treg.domain_match` (and `X-Treg-Domain-Match`) says
   whether the hit's mailbox domain matches it. A LinkedIn-only provider often returns a former
   employer; the hit is still billed — read the flag before treating the address as current.

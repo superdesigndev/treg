@@ -1542,5 +1542,22 @@ def test_an_adapters_soft_list_must_name_its_contracts_keys(tmp_path, monkeypatc
     for soft, problem in (("[country]", None), ("[countyr]", "soft names countyr"), ("country", "soft is a list")):
         (tmp_path / "adapters.yaml").write_text(adapter % soft)
         errors: list[str] = []
-        validator.check_routing(errors, {"p.x.search": "x.search"})
+        validator.check_routing(errors, {"p.x.search": {"capability": "x.search"}})
         assert (problem is None and errors == []) or any(problem in e for e in errors), (soft, errors)
+
+
+def test_a_soft_parameter_no_contract_filter_reaches_is_a_warning(tmp_path, monkeypatch):
+    monkeypatch.setattr(validator, "CATALOG", tmp_path)
+    (tmp_path / "contracts.yaml").write_text(
+        "contracts:\n  x.search:\n    identity: [{q: str}]\n    filters: {country: {type: str}}\n"
+        "    output: {results: {type: list, required: true}}\n    miss: 'results == []'\n")
+    (tmp_path / "adapters.yaml").write_text(
+        "adapters:\n  p.x.search: {accepts: [[q]], in: {q: queryParams.q, country: queryParams.gl}, "
+        "out: {results: r}, miss: 'r == []'}\n")
+    soft = {"type": "string", "applied": "soft"}
+    row = {"capability": "x.search", "input": {"queryParams": {"q": {"type": "string"}, "gl": soft, "sites": soft}}}
+    errors: list[str] = []
+    warnings: list[str] = []
+    validator.check_routing(errors, {"p.x.search": row}, warnings)
+    assert errors == [] and warnings == [
+        "p.x.search: queryParams.sites is applied: soft but no contract filter maps into it; only catalog get shows it"]
