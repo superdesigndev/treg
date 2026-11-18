@@ -209,9 +209,9 @@ class Allowance(NamedTuple):
     # had no more): nothing was added, and the caller must stop offering the allowance so the
     # exact path's balance gate decides, as it does after an overrun at `settle`.
     overdrawn: bool = False
-    # When this refill stamped the hold. Calls may be admitted against the allowance only for
-    # a set time after it, whenever the caller gets round to publishing the refill.
-    heartbeat_at: datetime | None = None
+    # The instant written on the hold until which calls may be admitted against the allowance.
+    # The caller publishes exactly this, however late it gets round to it.
+    admit_until: datetime | None = None
 
 
 def _epoch(hold: Hold) -> int:
@@ -262,7 +262,8 @@ async def refill_allowance_in_transaction(
     The move is `reserve`'s conditional UPDATE and writes a `reserve` entry. A balance that
     cannot cover it adds nothing and raises nothing: the fold still stands, and `added_micro`
     of 0 tells the caller to stop spending from the allowance. `add_micro` is money, not a
-    provider cost: no margin is applied. Stamps the hold's heartbeat.
+    provider cost: no margin is applied. Writes on the hold (`heartbeat_at`) the instant until
+    which calls may be admitted against it: now plus `money_allowance_fresh_s`.
 
     With `daily_cap_micro`, nothing is added that could take the day past the cap. The day's
     worst case (`committed_today`) is read AFTER the fold, under the hold's lock, and the amount
@@ -311,7 +312,10 @@ async def refill_allowance_in_transaction(
     if opened and not added:
         await db.delete(hold)
         return Allowance(None, 0, 0, folded, over_cap, overdrawn)
-    hold.heartbeat_at = _now()
+    # Never earlier than one already published: the store keeps the latest too, and a sweep
+    # must be able to trust this row whatever freshness the process that wrote it was running.
+    admit_until = _now() + timedelta(seconds=get_settings().money_allowance_fresh_s)
+    hold.heartbeat_at = max(hold.heartbeat_at or admit_until, admit_until)
     return Allowance(_epoch(hold), hold.amount_micro, added, folded, over_cap, overdrawn,
                      hold.heartbeat_at)
 
@@ -344,10 +348,11 @@ async def close_allowance_in_transaction(
 async def close_stale_allowance_in_transaction(
     db: AsyncSession, org_id: int, *, stale_before: datetime, reason: str,
 ) -> Closed | None:
-    """Close a team's allowance in full if no refill has stamped it since `stale_before`; None,
-    and nothing touched, when there is no hold or it is fresher. The check is made under the
-    hold's lock, so a refill that lands first keeps the hold. The caller picks `stale_before`
-    early enough that no call can still be spending from the allowance.
+    """Close a team's allowance in full if it stopped admitting calls before `stale_before`;
+    None, and nothing touched, when there is no hold or it admitted calls later than that. The
+    check is made under the hold's lock, so a refill that lands first keeps the hold. The
+    caller picks `stale_before` at least one call's lifetime back, so no call admitted against
+    the allowance can still be running.
     """
     mark_money(db, "close_allowance", org_id=org_id)
     hold = await _lock_allowance(db, org_id)
@@ -358,8 +363,8 @@ async def close_stale_allowance_in_transaction(
 
 async def stale_allowance_orgs(db: AsyncSession, stale_before: datetime, *,
                                limit: int = 50) -> list[int]:
-    """Teams whose allowance hold was last stamped before `stale_before`. A read; the close
-    re-checks under the lock."""
+    """Teams whose allowance hold stopped admitting calls before `stale_before`. A read; the
+    close re-checks under the lock."""
     return list((await db.execute(
         select(Hold.org_id).where(
             Hold.allowance.is_(True),

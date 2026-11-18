@@ -1,9 +1,10 @@
 """Close the allowance of a team that has stopped spending from it.
 
-A call can take from a team's allowance counter only for `money_allowance_fresh_s` after a refill,
-and a call lives at most `hold_ttl_s()`. So an allowance hold no refill has stamped for those two
-together has nobody spending from it, and all of it can go back to the balance: what the counter
-still held, and whatever a crashed call or a lost give-back left behind.
+Each refill writes on the hold the instant until which calls may take from the team's counter, and
+publishes that same instant to the counter. A call lives at most `hold_ttl_s()`. So a hold whose
+instant passed that long ago has nobody spending from it, and all of it can go back to the
+balance: what the counter still held, and whatever a crashed call or a lost give-back left behind.
+The instant is read from the row, never recomputed from this process's settings.
 """
 
 from __future__ import annotations
@@ -12,7 +13,6 @@ import asyncio
 import logging
 from datetime import timedelta
 
-from ..config import get_settings
 from ..domain import money as ledger
 from ..domain.money import allowance
 from ..infra import kv, money_admission
@@ -31,8 +31,9 @@ _FOLD_BATCHES_PER_PASS = 20
 
 
 def idle_after_s() -> int:
-    """How long after its last refill an allowance hold is known to be unused."""
-    return get_settings().money_allowance_fresh_s + ledger.hold_ttl_s() + _SLACK_S
+    """How long after an allowance hold stopped admitting calls it is known to be unused: the
+    longest a call admitted at the last moment can live, plus the clocks' margin."""
+    return ledger.hold_ttl_s() + _SLACK_S
 
 
 async def sweep_once(session_maker) -> int:

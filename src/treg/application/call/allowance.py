@@ -130,12 +130,11 @@ async def _refill(org_id: int, need_micro: int, daily_cap_micro: int) -> bool:
         if result.epoch is not None:
             await _drain(org_id, "no_room_to_refill")
         return False
-    # The deadline counts from the hold's stamp, not from now: the idle sweep reads that stamp,
-    # so a refill published late must not admit calls past what the stamp accounts for.
-    stamped_ms = (result.heartbeat_at - datetime(1970, 1, 1)) // timedelta(milliseconds=1)
+    # The deadline is the one the refill wrote on the hold, not one counted from now: the idle
+    # sweep reads the hold, so a refill published late must not admit calls past it.
+    until_ms = (result.admit_until - datetime(1970, 1, 1)) // timedelta(milliseconds=1)
     added = await store.allowance_add(
-        org_id, result.epoch, result.added_micro,
-        until_ms=stamped_ms + settings.money_allowance_fresh_s * 1000, ttl_ms=_COUNTER_TTL_MS)
+        org_id, result.epoch, result.added_micro, until_ms=until_ms, ttl_ms=_COUNTER_TTL_MS)
     if not isinstance(added, int):
         return False
     if added > result.amount_micro:

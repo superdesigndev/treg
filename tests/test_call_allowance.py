@@ -523,6 +523,24 @@ async def test_the_sweep_returns_an_idle_allowance_with_what_a_lost_take_left_in
     assert new_epoch > epoch and await _state(org_id) == (GRANT - 450 - CHUNK, CHUNK)
 
 
+async def test_the_sweep_trusts_the_deadline_on_the_hold_not_its_own_settings(
+        org_id, store, monkeypatch):
+    """A refill published a long window; a process with a shorter one configured then sweeps.
+    Calls are still being admitted, so the hold must stay."""
+    monkeypatch.setattr(get_settings(), "money_allowance_fresh_s", 3_600)
+    await runtime.take(org_id, 100)
+    monkeypatch.setattr(get_settings(), "money_allowance_fresh_s", 1)
+    now = ledger._now()
+    monkeypatch.setattr(allowance_sweep, "utcnow_naive", lambda: now + timedelta(seconds=1_800))
+    assert await allowance_sweep.sweep_once(session_maker) == 0
+    assert await _state(org_id) == (GRANT - CHUNK, CHUNK)
+    await runtime.take(org_id, 100)  # this refill has the shorter window; the hold keeps the later
+    assert await allowance_sweep.sweep_once(session_maker) == 0
+    monkeypatch.setattr(allowance_sweep, "utcnow_naive", lambda: now + timedelta(
+        seconds=3_600 + allowance_sweep.idle_after_s() + 5))
+    assert await allowance_sweep.sweep_once(session_maker) == 1
+
+
 async def test_one_team_failing_to_close_does_not_stop_the_sweep(org_id, store, monkeypatch):
     await runtime.take(org_id, 600)
     await _age_heartbeat(org_id, allowance_sweep.idle_after_s() + 5)

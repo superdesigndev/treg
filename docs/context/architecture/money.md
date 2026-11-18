@@ -154,9 +154,11 @@ hold first, then blocks, then the org row, and locks the blocks once: a close cl
 backlog in batches and only then applies it, because locking the blocks again per batch could meet
 one funded in between, out of primary-key order, and deadlock with a settle that holds it. For the
 same reason a transaction folds once. `settle`, `release` and the stale-hold sweep skip a hold
-marked `allowance`. `heartbeat_at` is stamped by each refill.
-`allowance.close_stale_allowance_in_transaction` closes in full only a hold no refill has stamped
-since a given instant, checked under the hold's lock so a refill that lands first keeps it;
+marked `allowance`. Each refill writes in `heartbeat_at` the instant until which calls may be
+admitted against the hold (now plus `money_allowance_fresh_s`, never earlier than the one
+already there). `allowance.close_stale_allowance_in_transaction` closes in full only a hold whose
+instant passed before a given one, checked under the hold's lock so a refill that lands first
+keeps it;
 `allowance.stale_allowance_orgs` lists the candidates.
 
 The hold is the authority; the shared store (`infra/kv.py`) only mirrors what of it is still
@@ -278,11 +280,14 @@ no counter offers: unavailable, not spent and not charged, until the hold is clo
 offers money the hold does not have.
 
 **The idle sweep** (`application/allowance_sweep.py`, a background task wherever background work
-runs, listed teams or not) is what returns that money. A call can take from the counter only
-until `money_allowance_fresh_s` after the stamp of a refill, and a call lives at most
-`hold_ttl_s()`, so a hold no refill has stamped for those two plus a margin has nobody spending
-from it. The margin covers only the difference between clocks (the processes' and the store's);
-a process that stalls between a refill's commit and its publish cannot widen the window. The sweep closes each
+runs, listed teams or not) is what returns that money. A refill writes on the hold the instant
+until which calls may take from the counter and publishes that same instant to the counter, and
+a call lives at most `hold_ttl_s()`, so a hold whose instant passed that long ago, plus a margin,
+has nobody spending from it. The margin covers only the difference between clocks (the
+processes' and the store's). The sweep reads the instant from the row and never recomputes it
+from its own settings, so processes running different `money_allowance_fresh_s` during a deploy
+agree, and a process that stalls between a refill's commit and its publish cannot widen the
+window. The sweep closes each
 such hold in full (`close_stale_allowance_in_transaction`, under the release lease), then retires
 its counter so a late writer is refused. A charge recorded after that still finds no hold and
 comes out of the balance. While a team keeps calling, its hold is never idle and what a crash left
