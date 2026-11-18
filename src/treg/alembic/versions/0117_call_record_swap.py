@@ -182,10 +182,11 @@ def _start(bind) -> int:
 
 
 def _create_partitions(bind, after: int) -> None:
-    """One partition per month, from the month of the first row still to copy to a few ahead."""
+    """One partition per month, from the month of the oldest row still to copy to a few ahead.
+    The oldest by `created_at`, not the lowest id: an id is handed out before its row commits,
+    and a row may carry an older timestamp than rows with lower ids."""
     today = _now(bind).date()
-    oldest = _scalar(bind, f"SELECT created_at FROM {LIVE} WHERE id > :after ORDER BY id LIMIT 1",
-                     after=after)
+    oldest = _scalar(bind, f"SELECT min(created_at) FROM {LIVE} WHERE id > :after", after=after)
     first = min(oldest.date(), today) if oldest else today
     start = first.year * 12 + first.month - 1
     count = (today.year - first.year) * 12 + today.month - first.month + 1 + _MONTHS_AHEAD
@@ -281,6 +282,9 @@ def _wait_until_quiet(bind, table: str, deadline: float) -> None:
     transaction older than `_QUIET_STATEMENT_S`; refuse at `deadline`. Sessions of other roles
     show no `query_start` without `pg_read_all_stats` and are not waited for."""
     while True:
+        # Inside a transaction PostgreSQL keeps serving the first pg_stat_activity it read; without
+        # this every poll would see the sessions as they were at the first one.
+        bind.execute(sa.text("SELECT pg_stat_clear_snapshot()"))
         busy = bind.execute(_LONG_STATEMENTS, {"name": table, "limit": _QUIET_STATEMENT_S}).scalars().all()
         if not busy:
             return
@@ -401,7 +405,14 @@ def upgrade() -> None:
             # The resync takes as long as it takes; what was written meanwhile is copied here,
             # without a lock, not by the swap under it.
             reached = _catch_up(bind, columns, reached)
-            bind.execute(sa.text(f"ANALYZE {NEW}"))
+            # The new table holds weeks of rows: a longer limit for this statement only.
+            statement_timeout = _scalar(bind, "SHOW statement_timeout")
+            bind.execute(sa.text("SET statement_timeout = '15min'"))
+            try:
+                bind.execute(sa.text(f"ANALYZE {NEW}"))
+            finally:
+                bind.execute(sa.text("SELECT set_config('statement_timeout', :value, false)"),
+                             {"value": statement_timeout})
         _swap(op.get_bind(), columns, reached)
 
 
