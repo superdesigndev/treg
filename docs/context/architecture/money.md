@@ -181,8 +181,11 @@ admitted, and two counts, `frozen` and `thawed`. The operations are atomic scrip
   leaves one holding only the count: a refill may have committed and not yet published, and
   the counter its add builds then starts frozen.
 - `allowance_state` reads `avail` and the two counts, for a refill.
-- `allowance_drop` empties the counter, returns what it held and freezes it, keeping the epoch:
-  that figure can be released from a hold that stays while calls already admitted keep theirs.
+- `allowance_drop` empties the counter of a given epoch, returns what it held and freezes it,
+  keeping the epoch: that figure can be released from the hold of that epoch, which stays
+  while calls already admitted keep theirs. The release names the epoch too
+  (`close_allowance_in_transaction(epoch=)`) and is checked under the hold's lock, so a drain
+  that stalls between the two steps returns nothing from a hold opened since.
 - `allowance_take_up_to` takes an amount or all the counter holds when that is less.
 - `allowance_retire` ends the counter of a hold being deleted, returning what it held and leaving
   the next epoch, with the old freezes, behind for a given time.

@@ -203,9 +203,12 @@ return {tonumber(redis.call('HGET', KEYS[1], 'avail') or '0'),
         tonumber(redis.call('HGET', KEYS[1], 'thawed') or '0'),
         tonumber(redis.call('HGET', KEYS[1], 'epoch') or '0')}
 """
-# The hash stays, emptied, so its epoch keeps fencing writers that arrive later. It is frozen
+# Only the counter of the caller's epoch: the figure returned is taken out of that hold, and a
+# caller that arrives late must not empty the counter of a later one. The hash stays, emptied,
+# so its epoch keeps fencing writers that arrive later. It is frozen
 # too: what calls in flight give back afterwards is not offered until a refill has looked at it.
 _ALLOWANCE_DROP = """
+if redis.call('HGET', KEYS[1], 'epoch') ~= ARGV[1] then return 0 end
 local avail = redis.call('HGET', KEYS[1], 'avail')
 if not avail then return 0 end
 redis.call('HSET', KEYS[1], 'avail', '0')
@@ -419,10 +422,11 @@ class Store(Protocol):
         epoch only, and hand its freeze count to `allowance_add`; never admit a call on it.
         None when the store cannot answer."""
 
-    async def allowance_drop(self, org_id: int) -> int | None:
-        """Empty a team's counter and return what it held (0 when absent), in one atomic step, so
-        no take can succeed on money the returned figure already counts. The epoch stays, for a
-        hold that stays, and the counter is frozen. None when the store cannot answer."""
+    async def allowance_drop(self, org_id: int, epoch: int) -> int | None:
+        """Empty a team's counter of this epoch and return what it held (0 when absent or of
+        another epoch), in one atomic step, so no take can succeed on money the returned figure
+        already counts. The epoch stays, for a hold that stays, and the counter is frozen. None
+        when the store cannot answer."""
 
     async def allowance_retire(self, org_id: int, epoch: int, ttl_ms: int) -> int | None:
         """End the counter of a hold that is being deleted: return what it held and leave the
@@ -552,7 +556,7 @@ class LocalStore:
     async def allowance_state(self, org_id: int) -> tuple[int, int, int, int] | None:
         return None
 
-    async def allowance_drop(self, org_id: int) -> int | None:
+    async def allowance_drop(self, org_id: int, epoch: int) -> int | None:
         return None
 
     async def allowance_retire(self, org_id: int, epoch: int, ttl_ms: int) -> int | None:
@@ -704,8 +708,8 @@ class RedisStore:
             _note_fault(exc)
             return None
 
-    async def allowance_drop(self, org_id: int) -> int | None:
-        return await self._allowance_eval(_ALLOWANCE_DROP, org_id)
+    async def allowance_drop(self, org_id: int, epoch: int) -> int | None:
+        return await self._allowance_eval(_ALLOWANCE_DROP, org_id, epoch)
 
     async def allowance_retire(self, org_id: int, epoch: int, ttl_ms: int) -> int | None:
         return await self._allowance_eval(

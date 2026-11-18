@@ -370,9 +370,15 @@ class Closed(NamedTuple):
 
 async def close_allowance_in_transaction(
     db: AsyncSession, org_id: int, *, reason: str, release_micro: int | None = None,
+    epoch: int | None = None,
 ) -> Closed:
     """Fold every queued charge, then return allowance money to the balance with a `release`
     entry. In the caller's transaction, before any other money write.
+
+    With `epoch`, money is returned only from the hold of that epoch: a caller that took a
+    figure out of one hold's counter must not return it from a hold opened since, which stands
+    behind other calls. Checked under the hold's lock; on another hold, or none, nothing is
+    returned and the queue is still folded.
 
     `release_micro=None` returns all of it and deletes the hold. Charges recorded after that find
     no hold and come straight out of the balance, so use it only once no call can still be
@@ -380,7 +386,10 @@ async def close_allowance_in_transaction(
     way to stop new spending while calls already admitted finish against what is left.
     """
     mark_money(db, "close_allowance", org_id=org_id)
-    return await _close(db, org_id, await _lock_allowance(db, org_id), reason, release_micro)
+    hold = await _lock_allowance(db, org_id)
+    if epoch is not None and hold is not None and _epoch(hold) != epoch:
+        release_micro = 0
+    return await _close(db, org_id, hold, reason, release_micro)
 
 
 async def close_stale_allowance_in_transaction(

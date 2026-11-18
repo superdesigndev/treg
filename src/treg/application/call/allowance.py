@@ -163,7 +163,7 @@ async def _refill(org_id: int, need_micro: int, daily_cap_micro: int) -> bool:
             or available + result.added_micro < need_micro):
         _refused_until[org_id] = time.monotonic() + _REFUSAL_COOLDOWN_S
         if result.epoch is not None:
-            await _drain(org_id, "no_room_to_refill")
+            await _drain(org_id, result.epoch, "no_room_to_refill")
         return False
     # The deadline is the one the refill wrote on the hold, not one counted from now: the idle
     # sweep reads the hold, so a refill published late must not admit calls past it.
@@ -221,11 +221,13 @@ async def _fold_backlog(org_id: int) -> None:
         log.error("folding the queued charges of org %s failed", org_id, exc_info=True)
 
 
-async def _drain(org_id: int, reason: str) -> None:
+async def _drain(org_id: int, epoch: int, reason: str) -> None:
     """Empty the counter and return what it held to the balance. The hold stays, with what calls
-    already admitted may still charge."""
+    already admitted may still charge. Both steps name the hold by its epoch: between them the
+    hold can be closed and another opened, and what one counter held is not the other's to
+    return."""
     store = kv.store()
-    left = await store.allowance_drop(org_id)
+    left = await store.allowance_drop(org_id, epoch)
     if not left:
         return
     async with (
@@ -234,7 +236,7 @@ async def _drain(org_id: int, reason: str) -> None:
         money_session(session_maker()) as db,
     ):
         await allowance.close_allowance_in_transaction(
-            db, org_id, reason=reason, release_micro=left)
+            db, org_id, reason=reason, release_micro=left, epoch=epoch)
         await db.commit()
 
 

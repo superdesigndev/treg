@@ -5,7 +5,7 @@ from __future__ import annotations
 import asyncio
 import os
 import time
-from datetime import timedelta
+from datetime import datetime, timedelta
 from uuid import uuid4
 
 import pytest
@@ -89,9 +89,9 @@ class FakeStore:
         return (counter.get("avail", 0), counter.get("frozen", 0), counter.get("thawed", 0),
                 counter.get("epoch", 0))
 
-    async def allowance_drop(self, org_id):
+    async def allowance_drop(self, org_id, epoch):
         counter = self.counters.get(org_id)
-        if counter is None or "avail" not in counter:
+        if counter is None or "avail" not in counter or counter.get("epoch") != epoch:
             return 0
         left, counter["avail"] = counter["avail"], 0
         counter["frozen"] = counter.get("frozen", 0) + 1
@@ -429,6 +429,31 @@ async def test_a_counter_left_by_a_closed_hold_does_not_count_toward_the_next_on
     assert rebuilt and rebuilt > epoch
     assert store.counters[org_id]["avail"] == CHUNK - 500
     assert await _state(org_id) == (GRANT - CHUNK, CHUNK)
+
+
+async def test_a_drain_that_arrives_late_takes_nothing_from_a_later_hold(org_id, store, monkeypatch):
+    """A drain empties the counter, then stalls. The hold is closed and another opened, with a
+    call admitted against it. What the old counter held is not the new hold's to return."""
+    old = await runtime.take(org_id, 100)
+    await runtime.finish(org_id, "first", old, 100, endpoint_id="e", billable=False)
+    drop = store.allowance_drop
+
+    async def stalls_after(org, epoch):
+        left = await drop(org, epoch)
+        monkeypatch.setattr(store, "allowance_drop", drop)
+        async with session_maker() as db:
+            await allowance.close_allowance_in_transaction(db, org_id, reason="idle")
+            await db.commit()
+        await store.allowance_retire(org, epoch, 60_000)
+        assert await runtime.take(org_id, 700), "a later hold, with a call in flight"
+        return left
+
+    monkeypatch.setattr(store, "allowance_drop", stalls_after)
+    await runtime._drain(org_id, old, "late")
+    assert await _state(org_id) == (GRANT - CHUNK, CHUNK), "the later hold is whole"
+    assert store.counters[org_id]["avail"] == CHUNK - 700
+    await runtime._drain(org_id, old, "late again")
+    assert store.counters[org_id]["avail"] == CHUNK - 700, "nor is the later counter emptied"
 
 
 async def test_a_balance_that_cannot_refill_drains_the_allowance_for_the_exact_path(
@@ -1160,9 +1185,12 @@ async def test_no_allowance_money_session_starts_while_another_process_holds_the
 
 # ---- a daily cap across midnight ---------------------------------------------------------------
 async def _move_hold_to_yesterday(org_id: int) -> None:
+    """The hold's birth names it, and its counter carries the same name: both move."""
+    born = ledger._now() - timedelta(days=1)
+    kv.store().counters[org_id]["epoch"] = (born - datetime(1970, 1, 1)) // timedelta(microseconds=1)
     async with session_maker() as db:
         await db.execute(update(Hold).where(Hold.org_id == org_id, Hold.allowance.is_(True)).values(
-            created_at=ledger._now() - timedelta(days=1)))
+            created_at=born))
         await db.execute(update(Org).where(Org.id == org_id).values(
             spent_today_day=(ledger._now() - timedelta(days=1)).date()))
         await db.commit()

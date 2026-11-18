@@ -85,7 +85,7 @@ async def test_concurrent_takes_from_two_clients_never_overspend(counter):
     finally:
         await other.aclose()
     assert sum(1 for epoch in taken if epoch == 3) == 33 and set(taken) == {0, 3}
-    assert await store.allowance_drop(org_id) == 10
+    assert await store.allowance_drop(org_id, 3) == 10
 
 
 @real_redis
@@ -104,11 +104,12 @@ async def test_a_give_back_reaches_only_the_counter_it_was_taken_from(counter):
 @real_redis
 async def test_dropping_empties_and_freezes_the_counter_and_keeps_its_epoch(counter):
     store, org_id = counter
-    assert await store.allowance_drop(org_id) == 0
+    assert await store.allowance_drop(org_id, 7) == 0
     await store.allowance_add(org_id, 7, 100, until_ms=_soon(), ttl_ms=60_000, seen_frozen=0)
     assert await store.allowance_take(org_id, 40) == 7
-    assert await store.allowance_drop(org_id) == 60
-    assert await store.allowance_drop(org_id) == 0
+    assert await store.allowance_drop(org_id, 6) == 0, "another hold's counter"
+    assert await store.allowance_drop(org_id, 7) == 60
+    assert await store.allowance_drop(org_id, 7) == 0
     assert await store.allowance_give_back(org_id, 7, 40) is True
     available, frozen, thawed, _ = await store.allowance_state(org_id)
     assert (available, frozen - thawed) == (40, 2)
@@ -254,7 +255,7 @@ async def test_a_store_fault_reads_as_unavailable_and_takes_nothing(monkeypatch)
     assert await store.allowance_take(5, 100) is None
     assert await store.allowance_give_back(5, 7, 100) is None
     assert await store.allowance_add(5, 7, 100, until_ms=_soon(), ttl_ms=1000, seen_frozen=0) is None
-    assert await store.allowance_drop(5) is None
+    assert await store.allowance_drop(5, 7) is None
     assert await store.allowance_retire(5, 7, 1000) is None
     assert await store.allowance_state(5) is None
     assert await store.allowance_take_up_to(5, 7, 100) is None
@@ -286,7 +287,7 @@ async def test_a_local_store_never_claims_to_be_the_shared_counter():
     assert await store.allowance_take(5, 100) is None
     assert await store.allowance_give_back(5, 7, 100) is None
     assert await store.allowance_add(5, 7, 100, until_ms=_soon(), ttl_ms=1000, seen_frozen=0) is None
-    assert await store.allowance_drop(5) is None
+    assert await store.allowance_drop(5, 7) is None
     assert await store.allowance_retire(5, 7, 1000) is None
     assert await store.allowance_state(5) is None
     assert await store.allowance_take_up_to(5, 7, 100) is None
