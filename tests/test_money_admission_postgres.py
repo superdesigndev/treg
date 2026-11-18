@@ -371,7 +371,8 @@ async def test_redis_unavailable_falls_back_without_duplicate_settlement(
         assert sorted(results) == [0] * len(calls) + [70] * len(calls)
         await _accounting(org, calls)
         rows = admission.snapshot()
-        assert sum(row["fallback_kv_unavailable"] for row in rows) == 8
+        assert sum(row["fallback_kv_unavailable"] + row["fallback_kv_store_down"]
+                   for row in rows) == 8
     finally:
         await offline.aclose()
 
