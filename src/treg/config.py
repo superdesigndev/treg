@@ -1432,7 +1432,7 @@ class Settings(BaseSettings):
     # send (dev mode still returns the code; prod without a key silently skips the send). From must
     # be a Resend-verified domain.
     resend_api_key: str = ""
-    email_from: str = "tools-registry <no-reply@treg.to>"
+    email_from: str = "treg <no-reply@treg.to>"
 
 
 @lru_cache
