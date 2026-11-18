@@ -30,6 +30,7 @@ from treg.models import ArchiveKeyOrg, CallCharge, Hold, LedgerEntry, Membership
 
 GRANT = 5_000_000
 CHUNK = 1_000_000
+_AHEAD = runtime._ahead
 
 
 class FakeStore:
@@ -48,13 +49,22 @@ class FakeStore:
     def _frozen(self, counter) -> bool:
         return counter.get("frozen", 0) != counter.get("thawed", 0)
 
-    async def allowance_take(self, org_id, amount):
+    async def allowance_take(self, org_id, amount, *, ahead_ms=0, low_micro=0):
         await asyncio.sleep(0)  # a real store call lets other calls run meanwhile
         counter = self.counters.get(org_id)
-        if (counter is None or self._frozen(counter) or time.time() * 1000 > self.until_ms
+        now = time.time() * 1000
+        if (counter is None or self._frozen(counter) or now > self.until_ms
                 or counter.get("avail", 0) < amount):
             return 0
+        before = counter["avail"]
         counter["avail"] -= amount
+        near = now + ahead_ms > self.until_ms
+        if (near or counter["avail"] < low_micro) and (
+                now - counter.get("asked", 0) >= 2000
+                or (near and counter.get("asked_for") != self.until_ms)
+                or before >= low_micro > counter["avail"]):
+            counter["asked"], counter["asked_for"] = now, self.until_ms
+            return -counter["epoch"]
         return counter["epoch"]
 
     async def allowance_take_up_to(self, org_id, epoch, amount):
@@ -81,6 +91,8 @@ class FakeStore:
                 "epoch": epoch, "avail": 0, "frozen": (counter or {}).get("frozen", 0),
                 "thawed": (counter or {}).get("thawed", 0)}
         counter["avail"] += amount
+        if amount > 0:
+            counter.pop("asked", None)
         if counter.setdefault("thawed", 0) < seen_frozen <= counter["frozen"]:
             counter["thawed"] = seen_frozen
         self.until_ms = max(self.until_ms, until_ms)
@@ -143,6 +155,11 @@ async def store(monkeypatch):
     monkeypatch.setattr(runtime, "_freeze_tasks", {})
     monkeypatch.setattr(runtime, "_freeze_wake", {})
     monkeypatch.setattr(runtime, "_FREEZE_RETRY_S", 0.001)
+    # No refill ahead of the deadline unless a test asks for one: each asserts exact amounts.
+    monkeypatch.setattr(runtime, "_ahead", lambda: {"ahead_ms": 0, "low_micro": 0})
+    monkeypatch.setattr(runtime, "_refreshing", {})
+    monkeypatch.setattr(runtime, "_refresh_again", {})
+    monkeypatch.setattr(runtime, "_after_refills", set())
     return fake
 
 
@@ -1352,7 +1369,8 @@ async def test_a_charge_rewritten_after_it_was_applied_does_not_mark_its_questio
 # ---- keeping up with the queue -----------------------------------------------------------------
 async def test_a_busy_teams_queue_does_not_outgrow_what_a_refill_folds(org_id, store, monkeypatch):
     """A chunk pays for more calls than one refill folds. The queue must still come back down."""
-    monkeypatch.setattr(allowance, "FOLD_BATCH", 5)
+    monkeypatch.setattr(runtime, "_REFILL_FOLD", 5)
+    monkeypatch.setattr(runtime, "_BACKLOG_FOLD", 5)
     monkeypatch.setattr(get_settings(), "money_allowance_chunk_micro", 2_000)
     monkeypatch.setattr(runtime, "_folding", {})
     backlog = []
@@ -1373,7 +1391,8 @@ async def test_a_busy_teams_queue_does_not_outgrow_what_a_refill_folds(org_id, s
 
 async def test_cheap_calls_that_never_empty_the_counter_are_still_folded(org_id, store, monkeypatch):
     """One chunk pays for all of these, so no refill comes to fold them."""
-    monkeypatch.setattr(allowance, "FOLD_BATCH", 5)
+    monkeypatch.setattr(runtime, "_REFILL_FOLD", 5)
+    monkeypatch.setattr(runtime, "_BACKLOG_FOLD", 5)
     monkeypatch.setattr(runtime, "_folding", {})
     backlog = []
     for index in range(23):
@@ -1531,6 +1550,8 @@ async def test_many_calls_at_once_on_a_real_store_are_each_charged_once(org_id, 
     monkeypatch.setattr(runtime, "_refused_until", {})
     monkeypatch.setattr(runtime, "_charges", runtime._ChargeWriter())
     monkeypatch.setattr(get_settings(), "money_allowance_chunk_micro", 20_000)
+    monkeypatch.setattr(runtime, "_refreshing", {})
+    monkeypatch.setattr(runtime, "_folding", {})
     caller = await _caller(org_id)
 
     in_flight = asyncio.Semaphore(40)  # a scratch Redis accepts few connections
@@ -1554,6 +1575,8 @@ async def test_many_calls_at_once_on_a_real_store_are_each_charged_once(org_id, 
         paid = [amount for amount in charged if amount]
         assert set(paid) == {450} and len(paid) == sum(
             1 for index in range(300) if index % 10 and index % 7)
+        # A refill asked for ahead of the deadline moves the deadline on when it lands.
+        await asyncio.gather(*runtime._refreshing.values(), *runtime._folding.values())
         await _age_heartbeat(org_id, allowance_sweep.idle_after_s() + 5)
         assert await allowance_sweep.sweep_once(session_maker) == 1
         assert await _state(org_id) == (GRANT - 450 * len(paid), 0)
@@ -1566,3 +1589,336 @@ async def test_many_calls_at_once_on_a_real_store_are_each_charged_once(org_id, 
     finally:
         await real._client.delete(kv._allowance_key(org_id), runtime.money_key(org_id))
         await real.aclose()
+
+
+# ---- refilling ahead of the deadline -----------------------------------------------------------
+async def test_a_call_near_the_deadline_refills_beside_itself_and_keeps_its_take(
+        org_id, store, monkeypatch):
+    """Calls after it must not find the counter lapsed and wait for a refill, or leave for the
+    exact path."""
+    assert await runtime.take(org_id, 100), "no counter yet: this call refills in line"
+    first_deadline, refills = store.until_ms, runtime.refills(org_id)
+    monkeypatch.setattr(runtime, "_ahead", lambda: {"ahead_ms": 3_600_000, "low_micro": 0})
+    await asyncio.sleep(0.01)
+    assert await runtime.take(org_id, 100)
+    assert runtime.refills(org_id) == refills, "the call did not wait for the refill"
+    await runtime._refreshing[org_id]
+    assert runtime.refills(org_id) == refills + 1 and store.until_ms > first_deadline
+    assert store.counters[org_id]["avail"] == CHUNK and store.leases == {}
+    assert await _state(org_id) == (GRANT - CHUNK - 200, CHUNK + 200)
+
+
+async def test_a_counter_running_low_is_refilled_before_it_is_empty(org_id, store, monkeypatch):
+    monkeypatch.setattr(runtime, "_ahead", lambda: {"ahead_ms": 0, "low_micro": CHUNK // 4})
+    assert await runtime.take(org_id, CHUNK // 2)
+    assert org_id not in runtime._refreshing
+    assert await runtime.take(org_id, CHUNK // 2 - 100)
+    await runtime._refreshing[org_id]
+    assert store.counters[org_id]["avail"] == CHUNK
+
+
+async def test_a_refill_ahead_of_the_deadline_waits_for_a_fold_to_give_up_the_lease(
+        org_id, store, monkeypatch):
+    assert await runtime.take(org_id, 100)
+    refills = runtime.refills(org_id)
+    monkeypatch.setattr(runtime, "_ahead", lambda: {"ahead_ms": 3_600_000, "low_micro": 0})
+    store.leases[runtime.money_key(org_id)] = "a fold"
+    assert await runtime.take(org_id, 100)
+    await asyncio.sleep(0.1)
+    assert not runtime._refreshing[org_id].done() and runtime.refills(org_id) == refills
+    del store.leases[runtime.money_key(org_id)]
+    await runtime._refreshing[org_id]
+    assert runtime.refills(org_id) == refills + 1
+
+
+async def test_a_call_waits_for_the_lease_a_fold_holds_instead_of_taking_its_own_hold(
+        org_id, store):
+    """A fold batch keeps the lease for as long as its transaction runs. A call that finds the
+    counter lapsed meanwhile refills once the fold lets go."""
+    assert await runtime.take(org_id, 100)
+    store.expire()
+    key = runtime.money_key(org_id)
+    store.leases[key] = "a fold"
+
+    async def fold_ends():
+        await asyncio.sleep(0.5)
+        del store.leases[key]
+
+    ending = asyncio.create_task(fold_ends())
+    assert await runtime.take(org_id, 100), "taken from the allowance after the fold"
+    await ending
+    assert runtime.refills(org_id) == 2 and store.leases == {}
+
+
+async def test_a_call_gives_up_on_a_lease_held_too_long(org_id, store, monkeypatch):
+    monkeypatch.setattr(runtime, "_REFILL_WAIT_S", 0.05)
+    assert await runtime.take(org_id, 100)
+    store.expire()
+    store.leases[runtime.money_key(org_id)] = "someone slow"
+    assert await runtime.take(org_id, 100) is None
+
+
+@pytest.mark.skipif(infra_db._is_sqlite, reason="timed against a database that takes writers at once")
+async def test_steady_calls_stay_on_the_allowance_while_folds_keep_the_lease(
+        org_id, store, monkeypatch):
+    """A fold batch that takes a while, a counter that lapses every second, and calls that never
+    stop: the shape that once sent every call to the exact path, where the refill then queued
+    behind them. No call after the first may leave the allowance."""
+    monkeypatch.setattr(runtime, "_ahead", _AHEAD)
+    monkeypatch.setattr(get_settings(), "money_allowance_fresh_s", 1)
+    monkeypatch.setattr(runtime, "_REFILL_FOLD", 5)
+    monkeypatch.setattr(runtime, "_BACKLOG_FOLD", 20)
+    monkeypatch.setattr(runtime, "_folding", {})
+    fold = allowance.fold_charges_in_transaction
+
+    async def slow_fold(db, org, **kwargs):
+        folded = await fold(db, org, **kwargs)
+        await asyncio.sleep(0.4)
+        return folded
+
+    monkeypatch.setattr(allowance, "fold_charges_in_transaction", slow_fold)
+    refill, in_line = runtime._refill, [0]
+
+    async def counted_refill(*args):
+        # By the task that runs it: a refill beside a call is its own task, and an in-line one
+        # runs in its caller's, whatever else is going on at that moment.
+        in_line[0] += asyncio.current_task() not in runtime._refreshing.values()
+        return await refill(*args)
+
+    monkeypatch.setattr(runtime, "_refill", counted_refill)
+    stop, left, served = time.monotonic() + 3.5, [], [0]
+
+    async def caller(name: int) -> None:
+        index = 0
+        while time.monotonic() < stop:
+            epoch = await runtime.take(org_id, 100)
+            if epoch is None:
+                left.append((name, index))
+            else:
+                served[0] += 1
+                await _finish(org_id, f"steady-{name}-{index}", epoch, 100, billable=True)
+            index += 1
+            await asyncio.sleep(0.005)
+
+    await asyncio.gather(*(caller(name) for name in range(12)))
+    await asyncio.gather(*runtime._refreshing.values(), *runtime._folding.values())
+    assert left == [] and served[0] > 100, (len(left), served[0])
+    assert in_line == [1], "only the first call, which found no counter, refilled in line"
+    assert runtime.refills(org_id) >= 4, "each window asked for its own refill"
+    balance, hold = await _state(org_id)
+    assert store.counters[org_id]["avail"] <= hold
+
+
+async def test_a_refill_beside_a_large_call_does_not_set_that_calls_amount_aside_again(
+        org_id, store, monkeypatch):
+    """The call that asked was served. What it cost says nothing about the next call."""
+    monkeypatch.setattr(runtime, "_ahead", _AHEAD)
+    assert await runtime.take(org_id, 2_500_000)
+    await runtime._refreshing[org_id]
+    assert store.counters[org_id]["avail"] == CHUNK
+    assert await _state(org_id) == (GRANT - 2_500_000 - CHUNK, 2_500_000 + CHUNK)
+
+
+async def test_a_refill_beside_a_call_that_the_balance_cannot_pay_for_keeps_the_counter(
+        org_id, store, monkeypatch):
+    """Nothing is added, and nothing is taken away: the allowance still serves what it holds,
+    and the call in flight can still give its money back to it."""
+    monkeypatch.setattr(runtime, "_ahead", _AHEAD)
+    epoch = await runtime.take(org_id, 4_250_000)
+    await runtime._refreshing[org_id]
+    assert await _state(org_id) == (GRANT - 4_250_000, 4_250_000)
+    assert runtime._refused_until.get(org_id, 0) < time.monotonic()
+    await _finish(org_id, "cancelled", epoch, 4_250_000, billable=False)
+    assert store.counters[org_id]["avail"] == 4_250_000
+    assert await runtime.take(org_id, 800_000), "the team's money is all still within reach"
+
+
+async def test_auto_top_up_is_asked_after_a_refill_that_commits_beside_the_call(
+        org_id, store, monkeypatch):
+    asked = []
+
+    async def after_refill():
+        asked.append(runtime.refills(org_id))
+
+    assert await runtime.take(org_id, 100, after_refill=after_refill)
+    assert asked == [], "an in-line refill shows in the count around the take"
+    monkeypatch.setattr(runtime, "_ahead", lambda: {"ahead_ms": 3_600_000, "low_micro": 0})
+    assert await runtime.take(org_id, 100, after_refill=after_refill)
+    assert asked == []
+    await runtime._refreshing[org_id]
+    await asyncio.gather(*runtime._after_refills)
+    assert asked == [2] and store.leases == {}, "asked with the lease already given up"
+
+
+async def test_a_reserve_asks_auto_top_up_again_when_its_refill_commits_after_it_returned(
+        org_id, store, monkeypatch):
+    caller = await _caller(org_id)
+    caller.org.autotopup_enabled, caller.org.autotopup_consented_at = True, ledger._now()
+    seen = []
+
+    async def note(org):
+        seen.append((await _state(org))[0])
+
+    monkeypatch.setattr(call_reserve, "_schedule_autotopup_after", note)
+    await call_reserve._platform_reserve(
+        _call(org_id), caller, call_ref="first", allow_allowance=True)
+    assert seen == [GRANT - CHUNK]
+    monkeypatch.setattr(runtime, "_ahead", lambda: {"ahead_ms": 3_600_000, "low_micro": 0})
+    await call_reserve._platform_reserve(
+        _call(org_id), caller, call_ref="second", allow_allowance=True)
+    assert seen == [GRANT - CHUNK], "the refill beside this call has not committed yet"
+    await runtime._refreshing[org_id]
+    await asyncio.gather(*runtime._after_refills)
+    assert seen == [GRANT - CHUNK, GRANT - CHUNK - 1_200], "and is seen once it has"
+
+
+async def test_a_refill_that_waited_its_turn_keeps_to_the_daily_cap_the_team_has_now(
+        org_id, store, monkeypatch):
+    """The call that asked saw no cap. The team set one while the refill waited for the lease."""
+    assert await runtime.take(org_id, 800_000)
+    monkeypatch.setattr(runtime, "_ahead", _AHEAD)
+    key = runtime.money_key(org_id)
+    store.leases[key] = "a fold"
+    assert await runtime.take(org_id, 1_000), "low now: a refill is asked for, and waits"
+    await asyncio.sleep(0.05)
+    async with session_maker() as db:
+        await db.execute(update(Org).where(Org.id == org_id).values(daily_cap_micro=CHUNK))
+        await db.commit()
+    del store.leases[key]
+    await runtime._refreshing[org_id]
+    assert await _state(org_id) == (GRANT - CHUNK, CHUNK), "nothing past the cap was set aside"
+
+
+async def test_a_low_counter_asks_again_as_soon_as_a_refill_has_filled_it(
+        org_id, store, monkeypatch):
+    monkeypatch.setattr(runtime, "_ahead", _AHEAD)
+    in_line = runtime.refills(org_id)
+    for amount in (800_000, 800_000, 210_000):
+        before = runtime.refills(org_id)
+        assert await runtime.take(org_id, amount)
+        in_line += runtime.refills(org_id) - before
+        if (task := runtime._refreshing.get(org_id)) is not None:
+            await task
+    assert in_line == 1, "only the first call, which found no counter"
+    assert store.counters[org_id]["avail"] == CHUNK - 210_000
+
+
+async def test_a_slow_auto_top_up_read_does_not_hold_back_the_next_refill(
+        org_id, store, monkeypatch):
+    reading, release = asyncio.Event(), asyncio.Event()
+
+    async def slow():
+        reading.set()
+        await release.wait()
+
+    assert await runtime.take(org_id, 100)
+    monkeypatch.setattr(runtime, "_ahead", lambda: {"ahead_ms": 3_600_000, "low_micro": 0})
+    assert await runtime.take(org_id, 100, after_refill=slow)
+    await reading.wait()
+    assert runtime.refills(org_id) == 2 and store.leases == {}
+    assert org_id not in runtime._refreshing, "the refill is over; only the read is still going"
+    assert await runtime.take(org_id, 100), "the new deadline asks, and is heard"
+    await runtime._refreshing[org_id]
+    assert runtime.refills(org_id) == 3
+    release.set()
+    await asyncio.gather(*runtime._after_refills)
+
+
+async def test_an_ask_that_arrives_while_a_refill_is_on_its_way_out_gets_its_own_refill(
+        org_id, store, monkeypatch):
+    """The refill has published its add and is waiting for the store to confirm the lease is
+    given up. A call spends the new money down to the mark, and the store asks this process,
+    once. The refill on its way out must not be the reason nobody acts on that."""
+    monkeypatch.setattr(runtime, "_ahead", _AHEAD)
+    release, releasing, hold_release = store.release_lease, asyncio.Event(), asyncio.Event()
+
+    async def slow_release(key, token):
+        await release(key, token)
+        if not releasing.is_set():
+            releasing.set()
+            await hold_release.wait()
+
+    assert await runtime.take(org_id, 800_000)
+    monkeypatch.setattr(store, "release_lease", slow_release)
+    await releasing.wait()
+    assert store.counters[org_id]["avail"] == CHUNK
+    assert await runtime.take(org_id, 800_000)
+    hold_release.set()
+    await runtime._refreshing[org_id]
+    assert store.counters[org_id]["avail"] == CHUNK, "refilled again by the same task"
+    refills = runtime.refills(org_id)
+    assert await runtime.take(org_id, 210_000)
+    assert runtime.refills(org_id) == refills, "no call had to refill in line"
+
+
+async def test_a_counter_filled_by_a_cancelled_call_asks_again_when_it_next_runs_low(
+        org_id, store, monkeypatch):
+    monkeypatch.setattr(runtime, "_ahead", _AHEAD)
+    key = runtime.money_key(org_id)
+    assert await runtime.take(org_id, 10)  # the counter exists; nothing is low yet
+    store.leases[key] = "a fold"
+    epoch = await runtime.take(org_id, 800_000)
+    await _finish(org_id, "cancelled", epoch, 800_000, billable=False)
+    del store.leases[key]
+    await runtime._refreshing[org_id]
+    refills = runtime.refills(org_id)
+    assert await runtime.take(org_id, 800_000)
+    await runtime._refreshing[org_id]
+    assert runtime.refills(org_id) == refills + 1, "asked at once, although the last ask was just now"
+    assert await runtime.take(org_id, 210_000)
+    assert runtime.refills(org_id) == refills + 1, "no call had to refill in line"
+
+
+@pytest.mark.skipif(infra_db._is_sqlite, reason="needs row locks")
+async def test_a_refill_waits_for_a_daily_cap_change_that_is_still_open(org_id, store):
+    """The team's admin has changed the cap and not committed. A refill that read the row
+    without waiting would see the old cap, then wait on the same row to move the balance and
+    check only the balance."""
+    assert await runtime.take(org_id, 800_000)
+    store.expire()
+    async with session_maker() as admin:
+        await admin.execute(update(Org).where(Org.id == org_id).values(daily_cap_micro=CHUNK))
+        refill = asyncio.create_task(runtime.take(org_id, 600_000))
+        await asyncio.sleep(0.3)
+        assert not refill.done(), "waiting for the cap"
+        await admin.commit()
+    assert await refill is None, "the cap has no room for more"
+    assert (await _state(org_id))[0] >= GRANT - CHUNK
+
+
+@pytest.mark.skipif(infra_db._is_sqlite, reason="needs row locks")
+async def test_a_refill_does_not_wait_for_a_top_up_that_is_waiting_for_it(org_id, store):
+    """A top-up inserting a credit block holds a key-share lock on the team's row, from the
+    foreign key check, before it updates the balance. A refill that has already written the
+    row and then asked for the full row lock to read the cap would wait for the top-up, and
+    the top-up for the refill."""
+    seen = await _statements(lambda: runtime.take(org_id, 100))
+    assert any(" from org " in text and text.endswith("for no key update") for text in seen)
+    store.expire()
+    async with session_maker() as top_up:
+        await top_up.execute(select(Org.id).where(Org.id == org_id).with_for_update(
+            read=True, key_share=True))
+        assert await asyncio.wait_for(runtime.take(org_id, 100), 5), "the refill went through"
+
+
+async def test_a_refill_that_fails_does_not_take_a_kept_ask_down_with_it(
+        org_id, store, monkeypatch):
+    monkeypatch.setattr(runtime, "_ahead", lambda: {"ahead_ms": 3_600_000, "low_micro": 0})
+    refill, started, go, calls = runtime._refill, asyncio.Event(), asyncio.Event(), []
+
+    async def first_one_fails(*args):
+        calls.append(args)
+        if len(calls) == 1:
+            started.set()
+            await go.wait()
+            raise RuntimeError("the database blinked")
+        return await refill(*args)
+
+    assert await runtime.take(org_id, 100)
+    monkeypatch.setattr(runtime, "_refill", first_one_fails)
+    assert await runtime.take(org_id, 100)
+    await started.wait()
+    runtime._refresh_in_background(org_id, 0, None)  # an ask that arrives meanwhile
+    go.set()
+    await runtime._refreshing[org_id]
+    assert len(calls) == 2 and runtime.refills(org_id) == 2 and store.leases == {}

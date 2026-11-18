@@ -9,7 +9,7 @@ to the credit blocks and writes each call's `settle` entry. Nothing here commits
 from __future__ import annotations
 
 import logging
-from collections.abc import Sequence
+from collections.abc import Awaitable, Callable, Sequence
 from datetime import datetime, timedelta
 from typing import NamedTuple
 
@@ -338,6 +338,7 @@ async def refill_allowance_in_transaction(
     db: AsyncSession, org_id: int, add_micro: int, *, daily_cap_micro: int = 0,
     fold_limit: int = FOLD_BATCH, fold_all: bool = False,
     counter_epoch: int | None = None, fresh_add_micro: int | None = None,
+    current_daily_cap: Callable[[AsyncSession], Awaitable[int]] | None = None,
 ) -> Allowance:
     """Fold a batch of queued charges, then move `add_micro` from the balance into the team's
     allowance hold, opening the hold if there is none. In the caller's transaction, before any
@@ -361,6 +362,9 @@ async def refill_allowance_in_transaction(
     With `daily_cap_micro`, nothing is added that could take the day past the cap. The day's
     worst case (`committed_today`) is read AFTER the fold, under the hold's lock, and the amount
     asked for is added to it. `over_cap` reports that it exceeds the cap before adding anything.
+    `daily_cap_micro` is the cap its caller saw, which can be some time ago for a refill that
+    waited its turn. `current_daily_cap` reads the team's cap at that same point, in this
+    transaction, and the stricter of the two applies: a cap the team has just lowered holds.
     """
     mark_money(db, "refill", org_id=org_id)
     add = max(0, int(add_micro))
@@ -392,6 +396,9 @@ async def refill_allowance_in_transaction(
     folded = (await _apply_charges(db, org_id, hold, await _claim_all_charges(db, org_id))
               if fold_all else await _fold(db, org_id, hold, fold_limit))
     over_cap = False
+    if current_daily_cap is not None:
+        daily_cap_micro = min(
+            (cap for cap in (daily_cap_micro, await current_daily_cap(db)) if cap > 0), default=0)
     if daily_cap_micro > 0:
         exposed = await committed_today(db, org_id)
         over_cap = exposed > daily_cap_micro
