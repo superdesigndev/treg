@@ -984,9 +984,9 @@ def create_app(role: AppRole = "all", *, archive_object_store=None) -> FastAPI:
     _install_head_and_openapi(app)
 
     if role != "control" and _mcp is not None:
+        # Claude removes the final slash and does not follow redirects. Normalize before any mount.
+        app.add_middleware(_mcp.NormalizeMCPPath)
         if get_settings().claude_connector_enabled:
-            # Claude can remove the final slash. Normalize before the parent V1 mount can match.
-            app.add_middleware(_mcp.NormalizeDirectoryMCPPath)
             # Register the nested mount first so the /mcp parent does not consume it.
             app.mount("/mcp/v2", _mcp.directory_mcp_app)
         app.mount("/mcp", _mcp.mcp_app)
