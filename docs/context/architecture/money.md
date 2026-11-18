@@ -145,8 +145,10 @@ writes its paid-question mark, and a fold drops one already queued (`Folded.orph
 instead of writing a ledger entry for a team that is not there. A team's deletion also
 retires its counter in the shared store, which admits calls by the team's number alone. If
 the deletion then does not commit, the hold is still there and the store will take nothing
-more for it: the next refill sees a counter of a later epoch than the hold, closes the hold
-and returns its money, and the one after opens a new hold. A
+more for it. A refill that sees a counter of a later epoch than the hold adds nothing to it
+and returns nothing from it, and leaves its deadline where it was: calls admitted before the
+retiring still stand on that money. The team's calls take the exact path until the idle sweep
+closes the hold, and the refill after that opens a new one. A
 queue row's primary key stops
 a second recording only until the row is folded, so the fold also drops any claimed row whose call
 already has a `settle` entry. The daily counter moves as it does at `settle`: consumed goes in, and
@@ -335,7 +337,8 @@ money moved, the purchased-credit gate.
   (`teams.lock_allowance_holds`). The writer writes one team per transaction, so it never
   holds two teams' hold rows and no order between them exists for a deletion of several teams
   to contradict; and it freezes a team's counter as soon as that team's rows are committed,
-  not when the whole batch is. A freeze
+  not when the whole batch is. A team whose write or freeze fails does not stop the others in
+  the batch from being written. A freeze
   that does not reach the store leaves the batch unconfirmed, to be gone through again. A
   refill of a frozen counter folds the whole queue, not one batch. And a refill that then finds
   the balance below zero adds nothing and drains the counter back to the balance, so the exact

@@ -168,10 +168,10 @@ async def _refill(org_id: int, need_micro: int, daily_cap_micro: int) -> bool:
     log.info("allowance_refill org_id=%s added=%s hold=%s counter_before=%s folded=%s duplicates=%s",
              org_id, result.added_micro, result.amount_micro, available,
              result.folded.calls, result.folded.duplicates)
-    if (result.epoch is None or result.over_cap or result.overdrawn
+    if (result.epoch is None or result.over_cap or result.overdrawn or result.retired
             or available + result.added_micro < need_micro):
         _refused_until[org_id] = time.monotonic() + _REFUSAL_COOLDOWN_S
-        if result.epoch is not None:
+        if result.epoch is not None and not result.retired:
             await _drain(org_id, result.epoch, "no_room_to_refill")
         return False
     # The deadline is the one the refill wrote on the hold, not one counted from now: the idle
@@ -366,17 +366,26 @@ class _ChargeWriter:
         of several teams has chosen its order. And a team's freeze must not wait for another
         team's write: its rows are committed, and its counter is still admitting calls.
 
-        Raises when a write fails or a freeze does not reach the store; the batch is then gone
-        through again, which writes nothing twice and sends the freeze again."""
+        Raises, after every team was tried, when a write failed or a freeze did not reach the
+        store; the batch is then gone through again, which writes nothing twice and sends the
+        freeze again."""
         store = kv.store()
         by_team: dict[int, list] = {}
         for row in rows:
             by_team.setdefault(row[0].org_id, []).append(row)
+        failure: Exception | None = None
         for org_id in sorted(by_team):
-            if (await _ChargeWriter._write_team(org_id, by_team[org_id], again)
-                    and await store.allowance_freeze(org_id, ttl_ms=_COUNTER_TTL_MS) is None
-                    and kv.configured()):
-                raise ConnectionError("the store did not take a freeze")
+            # One team's failure is not another's: every team's rows are tried, so a store
+            # that does not take one team's freeze keeps no other team's charge in memory.
+            try:
+                if (await _ChargeWriter._write_team(org_id, by_team[org_id], again)
+                        and await store.allowance_freeze(org_id, ttl_ms=_COUNTER_TTL_MS) is None
+                        and kv.configured()):
+                    raise ConnectionError("the store did not take a freeze")
+            except Exception as exc:  # noqa: BLE001 - reported once every team was tried
+                failure = failure or exc
+        if failure is not None:
+            raise failure
 
     @staticmethod
     async def _write_team(org_id: int, rows: list, again: bool) -> bool:

@@ -612,19 +612,50 @@ async def test_the_allowance_is_off_where_the_database_is_not_postgresql(org_id,
     assert not runtime.enabled_for(org_id)
 
 
-async def test_a_hold_whose_counter_was_retired_is_closed_and_a_new_one_opened(
+async def test_a_hold_whose_counter_was_retired_keeps_what_calls_in_flight_stand_on(
         org_id, store, monkeypatch):
     """A deletion of the team retired the counter and then did not commit. The store will take
-    nothing more for that hold: money added to it would be out of every call's reach."""
-    old = await runtime.take(org_id, 100)
-    await _finish(org_id, "only", old, 100, billable=False)
+    nothing more for that hold, so nothing is added to it; and a call admitted before still
+    stands on its money, so nothing is returned until the sweep knows it idle."""
+    old = await runtime.take(org_id, 700)
+    async with session_maker() as db:
+        stamped = next(h for h in await ledger.open_holds_of(db, org_id) if h.allowance).heartbeat_at
     await store.allowance_retire(org_id, old, 60_000)
-    assert await runtime.take(org_id, 100) is None, "this refill closes the retired hold"
-    assert await _state(org_id) == (GRANT, 0)
+    assert await runtime.take(org_id, 100) is None
+    assert await _state(org_id) == (GRANT - CHUNK, CHUNK), "nothing added, nothing returned"
+    async with session_maker() as db:
+        hold = next(h for h in await ledger.open_holds_of(db, org_id) if h.allowance)
+        assert hold.heartbeat_at == stamped, "its deadline is not moved on"
+    assert await _finish(org_id, "in-flight", old, 700, billable=True, actual_micro=700) == 700
+    await _fold(org_id)
+    assert await _state(org_id) == (GRANT - CHUNK, CHUNK - 700), "paid from the hold it took from"
+    async with session_maker() as db:  # the idle sweep, once no call can still stand on it
+        await allowance.close_allowance_in_transaction(db, org_id, reason="idle")
+        await db.commit()
     monkeypatch.setattr(runtime, "_refused_until", {})
     new = await runtime.take(org_id, 100)
     assert new and new > old + 1
-    assert await _state(org_id) == (GRANT - CHUNK, CHUNK)
+    assert await _state(org_id) == (GRANT - 700 - CHUNK, CHUNK)
+
+
+async def test_a_freeze_the_store_refuses_one_team_does_not_keep_another_teams_charge_unwritten(
+        org_id, store, monkeypatch):
+    """The first team's overrun is committed and its freeze not taken. The second team's charge
+    has nothing to do with that: it is written, not left in this process's memory."""
+    earlier_team, epoch = org_id - 1, await runtime.take(org_id, 100)
+    async with session_maker() as db:
+        db.add(Org(id=earlier_team, name="earlier", slug=uuid4().hex))
+        await db.commit()
+
+    async def refuses(org, **kwargs):
+        return None
+
+    monkeypatch.setattr(store, "allowance_freeze", refuses)
+    rows = [(allowance.Charge("over", earlier_team, "e.metered", 900, None, 600, None), None),
+            (allowance.Charge("plain", org_id, "e.metered", 100, None, 100, epoch), None)]
+    with pytest.raises(ConnectionError):
+        await runtime._ChargeWriter._write(rows)
+    assert await _queued(earlier_team) == 1 and await _queued(org_id) == 1
 
 
 async def test_the_writer_holds_one_teams_hold_at_a_time(org_id, store):
