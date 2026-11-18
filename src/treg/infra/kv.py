@@ -140,8 +140,10 @@ return {1, 0}
 # that would otherwise find the counter lapsed. `asked` keeps it to one caller per ARGV[4] ms,
 # so a refill that failed, or one that could not lift a low counter, is not asked for per call.
 # A deadline the counter has not asked about yet (`asked_for`) asks at once: each refill opens a
-# window that may be shorter than the pause. An add that brought money ends the pause too: the
-# refill worked, and a counter that runs low again right after it is spending, not failing.
+# window that may be shorter than the pause. The take that brings the counter from at or above
+# the low mark to below it asks at once as well, however the counter got back above (an add, or
+# a call giving its money back): the pause is for a counter that stays low. An add that brought
+# money ends the pause too: the refill worked.
 _ALLOWANCE_ASK_AGAIN_MS = 2000
 _ALLOWANCE_TAKE = """
 local avail = tonumber(redis.call('HGET', KEYS[1], 'avail'))
@@ -152,13 +154,16 @@ local t = redis.call('TIME')
 local now = t[1] * 1000 + math.floor(t[2] / 1000)
 local fresh_until = tonumber(redis.call('HGET', KEYS[1], 'until') or '0')
 if now > fresh_until then return 0 end
+local before = avail
 avail = redis.call('HINCRBY', KEYS[1], 'avail', '-' .. ARGV[1])
 local epoch = redis.call('HGET', KEYS[1], 'epoch')
 local near = now + tonumber(ARGV[2]) > fresh_until
-if near or avail < tonumber(ARGV[3]) then
+local low = tonumber(ARGV[3])
+if near or avail < low then
     local window = string.format('%.0f', fresh_until)
     if now - tonumber(redis.call('HGET', KEYS[1], 'asked') or '0') >= tonumber(ARGV[4])
-        or (near and redis.call('HGET', KEYS[1], 'asked_for') ~= window) then
+        or (near and redis.call('HGET', KEYS[1], 'asked_for') ~= window)
+        or (before >= low and avail < low) then
         redis.call('HSET', KEYS[1], 'asked', string.format('%.0f', now), 'asked_for', window)
         return '-' .. epoch
     end

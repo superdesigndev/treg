@@ -66,6 +66,19 @@ async def test_each_deadline_asks_for_its_own_refill_however_soon_after_the_last
 
 
 @real_redis
+async def test_the_take_that_crosses_the_low_mark_asks_whatever_the_pause(counter):
+    """A call gave its money back and the counter is above the mark again. The refill that was
+    asked for then added nothing, so the pause still runs; the next dip must not wait it out."""
+    store, org_id = counter
+    await store.allowance_add(org_id, 7, 1_000, until_ms=_soon(), ttl_ms=60_000, seen_frozen=0)
+    assert await store.allowance_take(org_id, 800, low_micro=250) == -7
+    assert await store.allowance_give_back(org_id, 7, 800) is True
+    await store.allowance_add(org_id, 7, 0, until_ms=_soon(), ttl_ms=60_000, seen_frozen=0)
+    assert await store.allowance_take(org_id, 800, low_micro=250) == -7, "crossed the mark again"
+    assert await store.allowance_take(org_id, 10, low_micro=250) == 7, "staying low waits"
+
+
+@real_redis
 async def test_a_counter_low_again_after_a_refill_that_paid_asks_at_once(counter):
     """The pause is for a refill that failed. One that brought money worked; a counter low
     again right after it is being spent, and waiting would let it run dry."""
