@@ -1,5 +1,5 @@
 """One team's money path under concurrency against real loopback PostgreSQL (and Redis for the
-admission run), never production: calls reserve and close while the lazy reap and the scheduled
+admission runs), never production: calls reserve and close while the lazy reap and the scheduled
 sweep race for the same stale holds. Opt in with TREG_TEST_DB_URL (and TREG_TEST_KV_URL)."""
 
 from __future__ import annotations
@@ -21,7 +21,7 @@ from treg.application.call.resolve import MarketplaceCall
 from treg.config import get_settings
 from treg.domain import money as ledger
 from treg.domain.identity.access import Caller
-from treg.infra import kv
+from treg.infra import kv, money_admission
 from treg.infra.db import reset_db, session_maker
 from treg.models import Hold, LedgerEntry, Membership, Org, Tool, User
 from treg.timeutil import utcnow_naive
@@ -97,11 +97,19 @@ def _call(org_id: int) -> MarketplaceCall:
     )
 
 
-@pytest.mark.parametrize("admission", [False, True], ids=["db-only", "admission"])
+@pytest.mark.parametrize("admission", ["off", "on", "store-down"])
 async def test_concurrent_calls_and_reapers_keep_drift_zero_and_close_each_hold_once(
         local_postgres, monkeypatch, admission):
     org_id, caller = await _team()
-    store = await _admission_on(monkeypatch, org_id) if admission else None
+    store = await _admission_on(monkeypatch, org_id) if admission != "off" else None
+    offline = None
+    if admission == "store-down":
+        # Admission on, Redis unreachable for the whole run: every reserve, close and sweep release
+        # falls back to the database without the team's lock, under continuous traffic.
+        offline = kv.RedisStore("redis://127.0.0.1:1/0")
+        assert not await offline.ping()
+        monkeypatch.setattr(kv, "store", lambda: offline)
+        monkeypatch.setattr(money_admission, "_store_down_until", 0.0)
     stale = await _stale_holds(org_id)
     monkeypatch.setattr(get_settings(), "reserve_reaps_stale_holds", True)
     settled: list[str] = []
@@ -132,9 +140,24 @@ async def test_concurrent_calls_and_reapers_keep_drift_zero_and_close_each_hold_
     finally:
         done.set()
         await sweep
-        if store is not None:
-            await store.aclose()
     await hold_sweep.reap_stale_holds()
+    if offline is not None:
+        await offline.aclose()
+        assert any(row["fallback_kv_unavailable"] + row["fallback_kv_store_down"]
+                   for row in money_admission.snapshot())
+        # The store is back: once the skip window has passed, the next reserve is admitted by
+        # Redis again, so the fallback ends by itself.
+        monkeypatch.setattr(kv, "store", lambda: store)
+        later = money_admission._clock() + money_admission._STORE_DOWN_S + 1
+        monkeypatch.setattr(money_admission, "_clock", lambda: later)
+        mk, after = _call(org_id), f"after-{uuid4().hex}"
+        await call_reserve._platform_reserve(mk, caller, call_ref=after)
+        assert (await call_settle._platform_settle(mk, 200, observed_override=70))[0] == 70
+        settled.append(after)
+        assert any(row["operation"] == "reserve" and row["mode"] == "redis" and row["completed"]
+                   for row in money_admission.snapshot())
+    if store is not None:
+        await store.aclose()
 
     async with session_maker() as db:
         blocks = await ledger.blocks_of(db, org_id)
