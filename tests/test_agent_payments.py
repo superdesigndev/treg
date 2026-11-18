@@ -2008,15 +2008,14 @@ async def test_a_payment_checked_locally_still_spends_the_check_cap(anon: AsyncC
     assert chain.broadcasts == 1
 
 
-async def test_an_mpp_check_spends_the_cap_once_at_its_first_rpc():
+async def test_an_mpp_check_spends_the_cap_once_at_its_first_rpc(monkeypatch):
     import json
 
     from mpp import Challenge, Credential
 
     from treg.infra.agent_payments import Offer, PaymentRejected
+    from treg.infra.agent_payments import tempo as tempo_rail
 
-    rail = MppTempoRail(secret="s" * 40, realm="registry.test", recipient=RECIPIENT,
-                        chain_id=42431, rpc_url="http://rpc.invalid")
     rpc: list[str] = []
 
     def answer(request: httpx.Request) -> httpx.Response:
@@ -2025,7 +2024,15 @@ async def test_an_mpp_check_spends_the_cap_once_at_its_first_rpc():
         return httpx.Response(200, json={"jsonrpc": "2.0", "id": 1,
                                          "result": hex(42431) if method == "eth_chainId" else None})
 
-    rail._chain._client._transport = httpx.MockTransport(answer)
+    # The node is handed over at construction: httpx routes requests through the environment's proxy
+    # (on macOS, the system proxy) and past a `_transport` swapped in afterwards.
+    class Node(httpx.AsyncClient):
+        def __init__(self, **kwargs):
+            super().__init__(transport=httpx.MockTransport(answer), **kwargs)
+
+    monkeypatch.setattr(tempo_rail, "httpx", SimpleNamespace(AsyncClient=Node))
+    rail = MppTempoRail(secret="s" * 40, realm="registry.test", recipient=RECIPIENT,
+                        chain_id=42431, rpc_url="http://rpc.invalid")
 
     def offer(path: str) -> Offer:
         return Offer(amount_micro=FLOOR, method="GET", path=path, query="",
