@@ -333,7 +333,10 @@ parameters, missing required inputs and unsupported enum values; declared path p
 and are consumed. `body_allowlist` rows (`_enforce_catalog_body`) reject undeclared top-level JSON
 fields, missing required fields, invalid declared scalars and arrays outside their declared
 cardinality or item enum (an array of objects may require all or any named item fields; an omitted
-optional array is allowed). Both apply on every tier and never to raw own-tool relays.
+optional array is allowed). An object field that declares `properties` is held to them the same way,
+at any depth (`_enforce_allowlisted_object`): its undeclared keys, missing required keys, invalid
+scalars and values outside their bounds are refused under the nested name (`body.search.count`).
+Both apply on every tier and never to raw own-tool relays.
 
 ### Authorization and deny rules
 

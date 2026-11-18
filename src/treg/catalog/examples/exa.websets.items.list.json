@@ -1,0 +1,74 @@
+{
+  "data": [
+    {
+      "id": "witem_01m7r8f5fjqs0s795qqs0s795q",
+      "object": "webset_item",
+      "source": "search",
+      "sourceId": "wsearch_01m7r8eva5767mn7fh7b709zxr",
+      "websetId": "webset_01m7r8etr5hktwkq5v5e3t5a2k",
+      "properties": {
+        "type": "company",
+        "url": "https://qdrant.tech",
+        "description": "Powering the next generation of AI applications\nwith advanced and high-performant vector similarity search technology.\n\nQdrant is an open-source vector search engine. It deploys as an API service providing a search for the nearest high-dimensional vectors. With Qdrant, embeddings or neural network encoders can be turned into full-fledged applications for matching, searching, recommending, and much more. \n\nMake the most of your Unstructured Data!",
+        "content": "# Qdrant\n\nQdrant is a Software Development company. Qdrant is an Open-Source Vector Search Engine written in Rust. It provides fast and scalable vector similarity search service with convenient API. Qdrant employs 159 people (+45.9% YoY, +50 people) and has an annual revenue of $1M, founded in 2021. Headquartered in Berlin, Berlin, Germany, with presence in United States. Its workforce is distributed across 25 countries (including Germany, United States, Spain, India, and Netherlands).\n\n## About\n\nPowering the next generation of AI applications\nwith advanced and high-performant vector similarity search technology.\n\nQdrant is an open-source vector search engine. It deploys as an API service providing a search for the nearest high-dimensional vectors. With Qdrant, embeddings or neural network encoders can be turned into full-fledged applications for matching, searching, recommending, and much more. \n\nMake the most of your Unstructured Data!\n\n## Company Details\n- Industry: Software Development\n- Type: Privately held\n- Headquarters: Berlin, Germany\n- Founded Year: 2021\n- Homepage: qdrant.tech\n- Aliases: Qdrant Solutions GmbH, qdrant, qdrant solutions",
+        "company": {
+          "name": "Qdrant",
+          "location": "Berlin, Germany",
+          "employees": 102,
+          "industry": null,
+          "about": "Qdrant is a Software Development company. Qdrant is an Open-Source Vector Search Engine that provides fast and scalable vector similarity search service with convenient API. Qdrant has 100-150 employees (+70% YoY) and has annual revenue in the $1M-$10M range, founded in 2021. Headquartered in Berlin, Berlin, Germany, with presence in United States. Its workforce is distributed across 25 countries (including Germany, United States, Spain, India, and France). Has $88.3M in total funding, with 5 prior funding rounds.",
+          "logoUrl": "https://media.licdn.com/dms/image/v2/D4D0BAQGJgSgWmgTCIQ/company-logo_200_200/B4DZgABCBEH8AM-/0/1752346928000/qdrant_logo?e=2147483647&v=beta&t=WruBXkp9lSqEt3ETIg7GqoH2S8lOMoJZ7RL56x5ELzc",
+          "foundedYear": 2021,
+          "headquarters": {
+            "address": null,
+            "city": "Berlin",
+            "state": "Berlin",
+            "postalCode": "10115",
+            "country": "Germany",
+            "countryCode": "DE"
+          },
+          "financials": {
+            "revenueAnnual": 1000000,
+            "fundingTotal": 88268073,
+            "fundingLatestRound": null
+          },
+          "webTraffic": {
+            "visitsMonthly": 300240,
+            "uniqueVisitors": null
+          }
+        }
+      },
+      "evaluations": [
+        {
+          "criterion": "Develops an open-source vector database.",
+          "reasoning": "The page describes Qdrant as an open-source vector search engine and says it provides a service for vector similarity search.",
+          "satisfied": "yes",
+          "references": [
+            {
+              "title": "Qdrant",
+              "snippet": "# Qdrant\n\nQdrant is a Software Development company. Qdrant is an Open-Source Vector Search Engine written in Rust. It provides fast and scalable vector similarity search service with convenient API. Qdrant employs 159 people (+45.9% YoY, +50 people) and has an annual revenue of $1M, founded in 2021. Headquartered in Berlin, Berlin, Germany, with presence in United States. Its workforce is distributed across 25 countries (including Germany, United States, Spain, India, and Netherlands).\n\n## About\n\nPowering the next generation of AI applications\nwith advanced and high-performant vector similarity search technology.\n\nQdrant is an open-source vector search engine. It deploys as an API service providing a search for the nearest high-dimensional vectors. With Qdrant, embeddings or neural network encoders can be turned into full-fledged applications for matching, searching, recommending, and much more. \n\nMake the most of your Unstructured Data!\n\n## Company Details\n- Industry: Software Develop",
+              "url": "https://qdrant.tech/"
+            }
+          ]
+        },
+        {
+          "criterion": "Is headquartered in Europe.",
+          "reasoning": "The page lists its headquarters as Berlin, Germany.",
+          "satisfied": "yes",
+          "references": [
+            {
+              "title": "Qdrant",
+              "snippet": "# Qdrant\n\nQdrant is a Software Development company. Qdrant is an Open-Source Vector Search Engine written in Rust. It provides fast and scalable vector similarity search service with convenient API. Qdrant employs 159 people (+45.9% YoY, +50 people) and has an annual revenue of $1M, founded in 2021. Headquartered in Berlin, Berlin, Germany, with presence in United States. Its workforce is distributed across 25 countries (including Germany, United States, Spain, India, and Netherlands).\n\n## About\n\nPowering the next generation of AI applications\nwith advanced and high-performant vector similarity search technology.\n\nQdrant is an open-source vector search engine. It deploys as an API service providing a search for the nearest high-dimensional vectors. With Qdrant, embeddings or neural network encoders can be turned into full-fledged applications for matching, searching, recommending, and much more. \n\nMake the most of your Unstructured Data!\n\n## Company Details\n- Industry: Software Develop",
+              "url": "https://qdrant.tech/"
+            }
+          ]
+        }
+      ],
+      "enrichments": [],
+      "createdAt": "2026-11-18T21:19:40.018Z",
+      "updatedAt": "2026-11-18T21:19:40.018Z"
+    }
+  ],
+  "nextCursor": null,
+  "hasMore": false
+}

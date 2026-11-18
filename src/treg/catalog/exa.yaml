@@ -23,6 +23,9 @@ proposed_capabilities:
   web.search.deep: "Deep multi-query web search with reasoning"
   web.similar: "Find pages similar to a URL"
   web.search.podcasts: "Search podcast episodes by what was said, with full transcripts"
+  web.list.build: "Build a verified list of companies, people or pages that meet criteria"
+  web.list.status: "Check a webset's status, progress and cost"
+  web.list.items: "List a webset's verified matches"
 
 endpoints:
   - id: exa.web.search
@@ -614,3 +617,117 @@ endpoints:
       confidence: verified
       note: "$0.005 per answer (OBSERVED 2026-08-27: costDollars.total 0.005). Platform billing settles the exact costDollars.total."
     docs_url: https://docs.exa.ai/reference/answer
+
+  - id: exa.websets.create
+    domain: search
+    capability: web.list.build
+    platform: web
+    scope: any_account
+    method: POST
+    path: /websets/v0/websets
+    body_allowlist: true
+    name: "Build a verified list of companies, people or pages"
+    summary: "Describe the entities you want; Exa searches, checks every candidate against criteria and keeps only the matches, each with the evidence for every criterion."
+    input:
+      bodyType: json
+      body:
+        search:
+          type: object
+          required: true
+          note: "what to find. Criteria and entity are generated from the query when omitted."
+          example: {query: "open source vector database companies headquartered in Europe", count: 10}
+          properties:
+            query: {type: string, required: true, note: "describe the entities and every requirement in words, up to 5000 characters; URLs in it are read as context", example: "open source vector database companies headquartered in Europe"}
+            count: {type: integer, required: true, min: 1, max: 100, note: "how many matches to find, 1-100; fewer come back when fewer exist", example: 10}
+            entity: {type: object, required: false, note: "{type: company | person | article | research_paper} or {type: custom, description}; detected from the query when omitted"}
+            criteria: {type: "array[object]", required: false, minItems: 1, maxItems: 5, note: "1-5 of {description}; every match satisfies all of them"}
+            maxPeoplePerCompany: {type: integer, required: false, min: 1, note: "person searches: at most this many people from one company"}
+            recall: {type: boolean, required: false, note: "true also estimates how many matching entities exist, in the search's recall field"}
+        title: {type: string, required: false}
+        metadata: {type: object, required: false, note: "string key-value pairs kept on the webset"}
+      note: "Answers at once with the webset (status running) and its one search; matches arrive over minutes. Await the task, then page the matches with exa.websets.items.list. Enrichments, imports, exclusions and scopes over other websets are not offered on this route."
+    test_request:
+      body: {search: {query: "open source vector database companies headquartered in Europe", count: 3}}
+    unverified: "Live verification with treg’s shared credential pending."
+    added: '2026-11-18'
+    example_response: examples/exa.websets.create.json
+    terminal_example_response: examples/exa.websets.get.json
+    cost:
+      type: per_call
+      value: 1
+      worst_case: 5
+      fallback: {value: 5, note: "the worst case, when the ended search reports no costDollars"}
+      currency: USD
+      unit: call
+      settle: usage
+      usage: {path: searches.0.costDollars.total, unit: usd}
+      source: docs
+      source_url: https://docs.exa.ai/websets/pricing
+      checked: '2026-11-18'
+      confidence: documented
+      note: "Usage-based pricing is $0.10 per Agent Compute Unit plus $0.005 per web search the webset runs. When the search ends, treg settles from costDollars.total and releases any unused hold. Canceled searches are billable."
+    docs_url: https://docs.exa.ai/websets/api/websets/create-a-webset
+    async:
+      id_from: id
+      poll:
+        endpoint: exa.websets.get
+        param: {in: pathParams, name: id}
+      status:
+        path: searches.0.status
+        progress: [created, running]
+        success: [completed]
+        failure: []
+        billed_failure: [canceled]
+      result:
+        fetch: exa.websets.items.list
+        fetch_param: {in: pathParams, name: webset, value_from: id}
+      interval: 15
+      max_age: 86400
+
+  - id: exa.websets.get
+    async: false
+    kind: utility
+    capability: web.list.status
+    platform: web
+    scope: any_account
+    method: GET
+    path: /websets/v0/websets/{id}
+    name: "Check a webset"
+    summary: "An owned webset's status and its search's progress (found, analyzed, completion) and cost."
+    resource_ownership:
+      requires: {kind: "poll:exa.websets.get", param: id}
+    input:
+      pathParams:
+        id: {type: string, required: true, example: "webset_01m7r8etr5hktwkq5v5e3t5a2k"}
+    test_request: {pathParams: {id: "webset_01m7r8etr5hktwkq5v5e3t5a2k"}}
+    cost: {type: free, value: 0, currency: USD, unit: call, note: "Reading a webset is not billed."}
+    unverified: "Live verification with treg’s shared credential pending."
+    added: '2026-11-18'
+    docs_url: https://docs.exa.ai/websets/api/websets/get-a-webset
+    example_response: examples/exa.websets.get.json
+
+  - id: exa.websets.items.list
+    async: false
+    kind: utility
+    capability: web.list.items
+    platform: web
+    scope: any_account
+    method: GET
+    path: /websets/v0/websets/{webset}/items
+    name: "List a webset's matches"
+    summary: "An owned webset's matches: the entity (url, name, description and typed properties) and, for each criterion, whether it was satisfied and the evidence."
+    resource_ownership:
+      requires: {kind: "fetch:exa.websets.items.list", param: webset}
+    input:
+      pathParams:
+        webset: {type: string, required: true, example: "webset_01m7r8etr5hktwkq5v5e3t5a2k"}
+      queryParams:
+        cursor: {type: string, required: false, note: "nextCursor from the previous page"}
+        limit: {type: integer, required: false, min: 1, max: 100, default: 20, example: 20}
+      note: "Page with cursor until hasMore is false."
+    test_request: {pathParams: {webset: "webset_01m7r8etr5hktwkq5v5e3t5a2k"}, queryParams: {limit: 3}}
+    cost: {type: free, value: 0, currency: USD, unit: call, note: "Listing matches is not billed."}
+    unverified: "Live verification with treg’s shared credential pending."
+    added: '2026-11-18'
+    docs_url: https://docs.exa.ai/websets/api/websets/items/list-all-items-for-a-webset
+    example_response: examples/exa.websets.items.list.json

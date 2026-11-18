@@ -1452,55 +1452,7 @@ def _enforce_catalog_body(ep: dict, body: bytes) -> None:
     document = _strict_json_object(body, ep["id"])
     fields = (ep.get("input") or {}).get("body") or {}
     if ep.get("body_allowlist"):
-        unknown = sorted(set(document) - set(fields))
-        missing = sorted(
-            name for name, spec in fields.items()
-            if isinstance(spec, dict) and spec.get("required")
-            and (name not in document or document.get(name) in (None, ""))
-        )
-        if unknown or missing:
-            raise ResolutionFailed(
-                "catalog_parameter_invalid", status_code=400,
-                parameter=f"body.{(unknown or missing)[0]}",
-                rule="undeclared" if unknown else "required", detail={
-                    "error": "catalog_parameter_invalid",
-                    "endpoint_id": ep["id"],
-                    "message": "Use only the declared body fields and include every required field.",
-                    **({"undeclared": unknown} if unknown else {}),
-                    **({"missing": missing} if missing else {}),
-                },
-            )
-        scalar_types = {
-            "string": lambda value: isinstance(value, str),
-            "integer": lambda value: isinstance(value, int) and not isinstance(value, bool),
-            "number": lambda value: isinstance(value, (int, float)) and not isinstance(value, bool),
-            "boolean": lambda value: isinstance(value, bool),
-            "object": lambda value: isinstance(value, dict),
-        }
-        for name, value in document.items():
-            spec = fields.get(name)
-            if not isinstance(spec, dict):
-                continue
-            declared = str(spec.get("type") or "")
-            checker = scalar_types.get(declared)
-            invalid = "type" if checker is not None and not checker(value) else None
-            if (not invalid and not declared.startswith("array")
-                    and spec.get("enum") is not None and value not in spec["enum"]):
-                invalid = "enum"
-            if not invalid and declared in {"integer", "number"}:
-                minimum, maximum = spec.get("min"), spec.get("max")
-                if ((isinstance(minimum, (int, float)) and value < minimum)
-                        or (isinstance(maximum, (int, float)) and value > maximum)):
-                    invalid = "range"
-            if invalid:
-                raise ResolutionFailed(
-                    "catalog_parameter_invalid", status_code=400, rule=invalid, detail={
-                        "error": "catalog_parameter_invalid",
-                        "endpoint_id": ep["id"],
-                        "parameter": f"body.{name}",
-                        "message": f"{ep['id']} received an invalid value for body.{name}",
-                    },
-                )
+        _enforce_allowlisted_object(ep["id"], fields, document, "body")
     for name, spec in fields.items():
         if not isinstance(spec, dict) or not str(spec.get("type") or "").startswith("array"):
             continue
@@ -1545,6 +1497,66 @@ def _enforce_catalog_body(ep: dict, body: bytes) -> None:
                             "message": f"{ep['id']} requires the declared contact fields in body.{name}.{index}",
                         },
                     )
+
+
+_SCALAR_TYPES = {
+    "string": lambda value: isinstance(value, str),
+    "integer": lambda value: isinstance(value, int) and not isinstance(value, bool),
+    "number": lambda value: isinstance(value, (int, float)) and not isinstance(value, bool),
+    "boolean": lambda value: isinstance(value, bool),
+    "object": lambda value: isinstance(value, dict),
+}
+
+
+def _enforce_allowlisted_object(ep_id: str, fields: dict, document: dict, where: str) -> None:
+    """Hold one JSON object to its declared fields: none undeclared, every required one present,
+    each scalar of its declared type, enum and numeric bounds. An object field that declares
+    `properties` is held to them the same way, so a bound on a nested field (`search.count`) is
+    enforced like a top-level one."""
+    unknown = sorted(set(document) - set(fields))
+    missing = sorted(
+        name for name, spec in fields.items()
+        if isinstance(spec, dict) and spec.get("required")
+        and (name not in document or document.get(name) in (None, ""))
+    )
+    if unknown or missing:
+        raise ResolutionFailed(
+            "catalog_parameter_invalid", status_code=400,
+            parameter=f"{where}.{(unknown or missing)[0]}",
+            rule="undeclared" if unknown else "required", detail={
+                "error": "catalog_parameter_invalid",
+                "endpoint_id": ep_id,
+                "message": "Use only the declared body fields and include every required field.",
+                **({"undeclared": unknown} if unknown else {}),
+                **({"missing": missing} if missing else {}),
+            },
+        )
+    for name, value in document.items():
+        spec = fields.get(name)
+        if not isinstance(spec, dict):
+            continue
+        declared = str(spec.get("type") or "")
+        checker = _SCALAR_TYPES.get(declared)
+        invalid = "type" if checker is not None and not checker(value) else None
+        if (not invalid and not declared.startswith("array")
+                and spec.get("enum") is not None and value not in spec["enum"]):
+            invalid = "enum"
+        if not invalid and declared in {"integer", "number"}:
+            minimum, maximum = spec.get("min"), spec.get("max")
+            if ((isinstance(minimum, (int, float)) and value < minimum)
+                    or (isinstance(maximum, (int, float)) and value > maximum)):
+                invalid = "range"
+        if invalid:
+            raise ResolutionFailed(
+                "catalog_parameter_invalid", status_code=400, rule=invalid, detail={
+                    "error": "catalog_parameter_invalid",
+                    "endpoint_id": ep_id,
+                    "parameter": f"{where}.{name}",
+                    "message": f"{ep_id} received an invalid value for {where}.{name}",
+                },
+            )
+        if declared == "object" and isinstance(spec.get("properties"), dict):
+            _enforce_allowlisted_object(ep_id, spec["properties"], value, f"{where}.{name}")
 
 
 def _request_headers(headers) -> dict[str, str]:
