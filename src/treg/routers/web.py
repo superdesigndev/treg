@@ -94,6 +94,10 @@ app = catalog_pages_router
 _CATALOG_RESERVED = frozenset({"platforms", "search", "find", "endpoints", "examples", "call", "providers"})
 
 _GH = "https://github.com/superdesigndev/treg"
+# The brand mark: same geometry as web/favicon.svg and the dashboard's BrandMark.vue, so it follows
+# the theme instead of depending on a font's quadrant glyph.
+_GLYPH = ('<span class="glyph" aria-hidden="true"><svg viewBox="0 0 290 290"><rect width="140.5" height="140.5" rx="20"/>'
+          '<rect x="149.5" y="149.5" width="140.5" height="140.5" rx="20"/></svg></span>')
 
 
 def _usd_short(usd: float) -> str:
@@ -261,7 +265,7 @@ def _page(title: str, description: str, path: str, body: str, ld: list[dict],
 </head>
 <body>
 <div class="navwrap"><nav class="nav">
-  <a class="brand" href="/"><span class="glyph">▚</span> treg</a>
+  <a class="brand" href="/">{_GLYPH} treg</a>
   <div class="links">
     {navlink("/catalog", "Catalog")}
     {navlink("/tutorial", "Tutorial")}
@@ -274,7 +278,7 @@ def _page(title: str, description: str, path: str, body: str, ld: list[dict],
 <footer>
   <div class="foot-in">
     <div class="foot-brand">
-      <div class="brand"><span class="glyph">▚</span> treg</div>
+      <div class="brand">{_GLYPH} treg</div>
       <div class="note">100% open source</div>
     </div>
     <nav class="foot-cols" aria-label="Site">
@@ -320,7 +324,7 @@ def _spa_catalog_page(title: str, description: str, path: str, ld: list[dict],
     """
     index = _dashboard_index()
     if not index.exists():
-        return HTMLResponse("<h3>tools-registry API. Dashboard not bundled.</h3>")
+        return HTMLResponse("<h3>treg API. Dashboard not bundled.</h3>")
     base = get_settings().public_url.rstrip("/")
     t, d = _esc_html(title), _esc_html(description)
     # `path` carries the {slug} from the URL. Today an unknown slug 404s in catalog_platform before
@@ -3060,7 +3064,7 @@ _PV_CSS = """<style>
 .pv-ctas{display:flex;gap:10px;flex-wrap:wrap;margin-bottom:16px}
 .pv-btn{border-radius:10px;padding:10px 18px;font-weight:600;font-size:14px;text-decoration:none;display:inline-block}
 .pv-btn.p{background:#191917;color:#fff}
-.pv-btn.g{border:1px solid var(--line,#e6e6df);background:#fff;color:inherit;font-family:var(--mono,ui-monospace);font-weight:500;font-size:12.5px}
+.pv-btn.g{border:1px solid var(--line2,#25252233);padding:9px 17px;background:#fff;color:var(--ink,#1a1a1a);font-weight:500}
 .pv-why{display:grid;grid-template-columns:repeat(auto-fit,minmax(240px,1fr));gap:12px;margin:14px 0}
 .pv-why div{background:#fff;border:1px solid var(--line,#e6e6df);border-radius:12px;padding:14px 16px;font-size:13.5px;color:#4a4a46}
 .pv-why b{display:block;margin-bottom:5px;color:#191917;font-size:14px}
@@ -3427,7 +3431,7 @@ def _spa_with_og(kind: str, name: str):
     name segment and never exposes resource contents."""
     index = _dashboard_index()
     if not index.exists():
-        return HTMLResponse("<h3>tools-registry API. Dashboard not bundled.</h3>")
+        return HTMLResponse("<h3>treg API. Dashboard not bundled.</h3>")
     label = {"skills": "skill", "runs": "run"}.get(kind, "tool")
     safe = _esc_html(name)
     meta = (

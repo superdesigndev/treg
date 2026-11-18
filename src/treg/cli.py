@@ -921,7 +921,7 @@ def _splash() -> None:
         import tty
     except ImportError:
         return
-    title, sub = "tools-registry", " — the tool catalog for your agent"
+    title, sub = "treg", " - the tool catalog for your agent"
     chars = ([("▚", f"{_A}{_B}"), (" ", "")] + [(c, _B) for c in title] + [(c, _M) for c in sub])
     frames = _dither_frames(chars)
 
@@ -946,7 +946,7 @@ def _splash() -> None:
         sys.stdout.flush()
 
 
-def _brand(sub: str) -> None: print(f"\n{_A}{_B}▚ tools-registry{_R} {_M}— {sub}{_R}")
+def _brand(sub: str) -> None: print(f"\n{_A}{_B}▚ treg{_R} {_M}- {sub}{_R}")
 def _ok(t: str) -> None: print(f"  {_G}✓{_R} {t}")
 def _dim(t: str) -> None: print(f"{_M}{t}{_R}")
 

@@ -1,98 +1,126 @@
-/* Shared skin for the legal pages (/terms, /privacy). Tokens lifted from the landing page's
-   final "monologue" skin so the legal pages read as the same product, not a bolted-on doc. */
+/* Shared skin for the document pages: /terms, /privacy, /support, /sheets, /connectors/claude,
+   /plugins/claude and the connect demo. Tokens are usecase.css's (the landing page's light skin with
+   its muted greys darkened to pass 4.5:1 on --bg), so these pages read as the same product as the
+   rest of treg.to. Rules of that system (DESIGN.md): no brand accent, colour only for status; system
+   sans for reading, DM Mono for identifiers and figures; Geist Pixel on the h1 only; cards are
+   surfaces lifted by shadow. */
 :root{
-  --bg:#151412; --deep:#0d0c0b; --panel:#1c1b19; --panel2:#252422;
-  --line:rgba(255,255,255,.09); --line2:rgba(255,255,255,.14);
-  --ink:#f2efe8; --ink70:rgba(242,239,232,.72); --ink55:rgba(242,239,232,.55);
-  --link:#19D0E8; --tint:rgba(25,208,232,.12); --green:#A6EE98;
-  --display:"Geist Pixel","Instrument Serif",Georgia,serif;
-  --body:"DM Mono",ui-monospace,"SF Mono",Menlo,monospace;
+  --bg:#f4f4f1; --surface:#fff; --panel2:#f0f0ee;
+  --ink:#1a1a1a; --muted:#5f5f5f; --muted2:#6e6e6e;
+  --line:#2626231a; --line2:#25252233;
+  --teal:#136485; --green:#118453; --amber:#ba6603;
+  --inverse:#1a1a1a; --inverse-ink:#f8f8f7;
+  --shadow-sm:0 1px 2px #00000014;
+  --shadow-md:0 1px 2px -1px #0000000a,0 4px 6px -1px #0000000f;
+  --ease:cubic-bezier(.2,.72,.25,1);
+  --display:"Geist Pixel",ui-monospace,monospace;
+  --sans:ui-sans-serif,-apple-system,system-ui,"Segoe UI",Roboto,Helvetica,Arial,"PingFang SC",
+    "Hiragino Sans GB","Microsoft YaHei",sans-serif;
+  --mono:"DM Mono",ui-monospace,"SF Mono",Menlo,Consolas,monospace;
 }
-*{box-sizing:border-box}
+*{box-sizing:border-box;min-width:0}
 html{scroll-behavior:smooth}
-body{margin:0;background:var(--bg);color:var(--ink);font-family:var(--body);
-  font-size:14.5px;line-height:1.72;-webkit-font-smoothing:antialiased}
-/* film grain, same as the landing */
-body::before{content:"";position:fixed;inset:0;pointer-events:none;z-index:1;
-  background:repeating-linear-gradient(180deg,transparent 0 3px,rgba(255,255,255,.012) 3px 4px)}
-a{color:var(--link);text-decoration:none}
+body{margin:0;background:var(--bg);color:var(--ink);font-family:var(--sans);
+  font-size:15px;line-height:1.65;-webkit-font-smoothing:antialiased}
+a{color:var(--teal);text-decoration:none}
 a:hover{text-decoration:underline}
-code{font-family:var(--body);background:var(--panel2);border:1px solid var(--line);
-  border-radius:5px;padding:1px 6px;font-size:.92em;color:var(--ink)}
+:focus-visible{outline:0;box-shadow:0 0 0 2px var(--bg),0 0 0 3.5px var(--ink)}
+code{font-family:var(--mono);background:var(--panel2);border-radius:5px;padding:1px 6px;
+  font-size:.88em;color:var(--ink)}
 
-/* ---------- top bar ---------- */
-.topbar{position:sticky;top:0;z-index:20;background:rgba(21,20,18,.86);backdrop-filter:blur(12px);
-  border-bottom:1px solid var(--line)}
-.topbar .in{max-width:1000px;margin:0 auto;padding:14px 28px;display:flex;align-items:center;gap:18px}
-.brand{display:inline-flex;align-items:center;gap:9px;color:var(--ink);font-weight:500;font-size:14px}
-.brand .glyph{font-family:var(--display);font-size:18px;line-height:1}
+/* ---------- brand mark: the same geometry as favicon.svg and the dashboard's BrandMark ---------- */
+.brand{display:inline-flex;align-items:center;gap:9px;color:var(--ink);font-weight:600;font-size:15px}
+.brand:hover{text-decoration:none}
+.glyph{display:grid;place-items:center;width:28px;height:28px;border-radius:8px;flex:none;
+  background:var(--inverse);color:var(--inverse-ink)}
+.glyph svg{width:57%;height:57%;display:block;fill:currentColor}
+
+/* ---------- top bar: the floating pill nav of the landing and catalog pages ---------- */
+.topbar{position:sticky;top:0;z-index:20;padding:14px 20px;
+  background:linear-gradient(var(--bg) 60%,transparent)}
+.topbar .in{max-width:1000px;margin:0 auto;display:flex;align-items:center;gap:22px;
+  background:rgba(255,255,255,.86);backdrop-filter:blur(14px);-webkit-backdrop-filter:blur(14px);
+  border:1px solid var(--line);border-radius:14px;padding:10px 22px;box-shadow:var(--shadow-md)}
 .topbar .sp{flex:1}
-.topbar a.nav{color:var(--ink55);font-size:12.5px;letter-spacing:.02em}
+.topbar a.nav{color:var(--muted);font-size:14px;font-weight:500;white-space:nowrap}
 .topbar a.nav:hover{color:var(--ink);text-decoration:none}
 .topbar a.nav.on{color:var(--ink)}
 
 /* ---------- layout ---------- */
-.page{max-width:1000px;margin:0 auto;padding:56px 28px 120px;position:relative;z-index:2;
-  display:grid;grid-template-columns:1fr 216px;gap:56px;align-items:start}
+.page{max-width:1000px;margin:0 auto;padding:44px 28px 120px;
+  display:grid;grid-template-columns:minmax(0,1fr) 216px;gap:56px;align-items:start}
 .doc{min-width:0}
-h1{font-family:var(--display);font-weight:400;font-size:clamp(30px,4vw,46px);line-height:1.14;
-  letter-spacing:-.02em;margin:0}
-.eyebrow{font-size:11.5px;letter-spacing:.16em;text-transform:uppercase;color:var(--link);
-  margin-bottom:16px}
-.stamp{margin-top:18px;font-size:12.5px;color:var(--ink55);display:flex;gap:16px;flex-wrap:wrap}
-.summary{margin-top:34px;background:var(--panel);border:1px solid var(--line);border-radius:16px;
-  padding:22px 24px}
-.summary h2{font-family:var(--body);font-size:11.5px;letter-spacing:.16em;text-transform:uppercase;
-  color:var(--ink55);margin:0 0 12px;font-weight:500}
+h1{font-family:var(--display);font-weight:400;font-size:clamp(30px,4vw,44px);line-height:1.12;
+  letter-spacing:-.005em;margin:0}
+.eyebrow{font-family:var(--mono);font-size:12.5px;color:var(--muted);margin-bottom:14px}
+.stamp{margin-top:16px;font-family:var(--mono);font-size:12.5px;color:var(--muted);
+  display:flex;gap:4px 16px;flex-wrap:wrap}
+.summary{margin-top:30px;background:var(--surface);border-radius:20px;padding:22px 26px;
+  box-shadow:var(--shadow-md)}
+.summary h2{font-size:15px;font-weight:600;color:var(--ink);margin:0 0 8px}
 .summary ul{margin:0;padding-left:20px}
-.summary li{margin:7px 0;color:var(--ink70)}
-.summary li b{color:var(--ink);font-weight:500}
+.summary li{margin:7px 0;color:var(--muted)}
+.summary li b{color:var(--ink);font-weight:600}
 
-h2.sec{font-family:var(--display);font-weight:400;font-size:24px;letter-spacing:-.01em;
-  margin:52px 0 0;scroll-margin-top:80px}
-h2.sec .n{color:var(--ink55);font-size:.72em;margin-right:12px}
-h3{font-family:var(--body);font-weight:500;font-size:14.5px;color:var(--ink);margin:26px 0 0}
-p{color:var(--ink70);margin:12px 0 0}
-ul,ol{color:var(--ink70);margin:12px 0 0;padding-left:22px}
+h2.sec{font-size:22px;font-weight:600;line-height:1.3;letter-spacing:-.01em;
+  margin:52px 0 0;scroll-margin-top:96px}
+h2.sec .n{font-family:var(--mono);font-weight:400;color:var(--muted2);font-size:.62em;
+  margin-right:12px;vertical-align:.12em}
+h3{font-weight:600;font-size:15px;color:var(--ink);margin:26px 0 0}
+p{color:var(--muted);margin:12px 0 0}
+ul,ol{color:var(--muted);margin:12px 0 0;padding-left:22px}
 li{margin:6px 0}
-li b,p b{color:var(--ink);font-weight:500}
+li b,p b{color:var(--ink);font-weight:600}
 hr{border:0;border-top:1px solid var(--line);margin:44px 0 0}
+.fine{font-size:13px;color:var(--muted)}
+.doc pre{font-family:var(--mono);font-size:12.5px;line-height:1.6;background:var(--surface);
+  border-radius:12px;padding:12px 14px;overflow-x:auto;box-shadow:var(--shadow-sm);color:var(--ink)}
+.doc pre code{background:none;padding:0;font-size:inherit}
 
-/* a callout for the load-bearing promises */
-.note{margin-top:20px;border-left:2px solid var(--link);background:var(--tint);
-  border-radius:0 12px 12px 0;padding:14px 18px}
+/* a callout for the load-bearing promises: information is teal, a warning amber */
+.note{margin-top:20px;border-left:2px solid var(--teal);
+  background:color-mix(in srgb,var(--teal) 7%,var(--surface));border-radius:0 12px 12px 0;padding:14px 18px}
 .note p{margin:0;color:var(--ink)}
-.note.warn{border-left-color:#E8B419;background:rgba(232,180,25,.10)}
+.note.warn{border-left-color:var(--amber);background:color-mix(in srgb,var(--amber) 8%,var(--surface))}
 
 /* Wide tables scroll inside their own box rather than pushing the page sideways. Cells wrap —
    nowrap would make the retention/subprocessor tables far wider than any viewport. */
-.tw{overflow-x:auto;margin-top:18px}
+.tw{overflow-x:auto;margin-top:18px;background:var(--surface);border-radius:14px;box-shadow:var(--shadow-sm)}
 /* table-layout:fixed is load-bearing — with auto layout the long "purpose" cells blow past
    width:100% inside the scroll container instead of wrapping, and the last columns get clipped. */
-table{width:100%;min-width:440px;border-collapse:collapse;font-size:13px;
+table{width:100%;min-width:440px;border-collapse:collapse;font-size:13.5px;
   table-layout:fixed;overflow-wrap:anywhere}
 th,td{text-align:left;padding:10px 14px;border-bottom:1px solid var(--line);vertical-align:top}
-th{color:var(--ink55);font-weight:500;font-size:11.5px;letter-spacing:.1em;text-transform:uppercase}
-td{color:var(--ink70)}
+tr:last-child td{border-bottom:0}
+th{color:var(--muted);font-weight:600;font-size:12.5px}
+td{color:var(--muted)}
 td:first-child{color:var(--ink)}
 
 /* ---------- sticky table of contents ---------- */
-.toc{position:sticky;top:88px;font-size:12.5px}
-.toc .lbl{color:var(--ink55);font-size:11px;letter-spacing:.16em;text-transform:uppercase;
-  margin-bottom:12px}
-.toc a{display:block;color:var(--ink55);padding:4px 0 4px 12px;border-left:1px solid var(--line)}
+.toc{position:sticky;top:96px;font-size:13px}
+.toc .lbl{color:var(--muted);font-weight:600;margin-bottom:10px}
+.toc a{display:block;color:var(--muted);padding:4px 0 4px 12px;border-left:1px solid var(--line)}
 .toc a:hover{color:var(--ink);text-decoration:none;border-left-color:var(--line2)}
-.toc a.on{color:var(--ink);border-left-color:var(--link)}
+.toc a.on{color:var(--ink);border-left-color:var(--ink)}
 
-footer{border-top:1px solid var(--line);background:var(--deep);position:relative;z-index:2}
+footer{border-top:1px solid var(--line)}
 .foot-in{max-width:1000px;margin:0 auto;padding:30px 28px 40px;display:flex;align-items:center;
-  gap:22px;flex-wrap:wrap;font-size:12.5px}
-.foot-in a{color:var(--ink55)}
+  gap:22px;flex-wrap:wrap;font-size:13px}
+.foot-in .brand{font-size:14px}
+.foot-in .glyph{width:22px;height:22px;border-radius:6px}
+.foot-in a{color:var(--muted)}
 .foot-in a:hover{color:var(--ink);text-decoration:none}
 .foot-in .sp{flex:1}
-.foot-in .muted{color:var(--ink55)}
+.foot-in .muted{color:var(--muted);font-family:var(--mono);font-size:12px}
 
 @media(max-width:860px){
-  .page{grid-template-columns:1fr;gap:0;padding-top:38px}
+  .page{grid-template-columns:minmax(0,1fr);gap:0;padding-top:28px}
   .toc{display:none}
 }
+@media(max-width:560px){
+  .topbar{padding:10px 12px}
+  .topbar .in{gap:14px;padding:9px 14px}
+  .page{padding:24px 18px 96px}
+}
+/* the link to the page you are on is the one a narrow bar can spare */
+@media(max-width:420px){.topbar a.nav.on{display:none}}
