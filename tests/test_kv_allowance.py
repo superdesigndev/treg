@@ -53,6 +53,21 @@ async def test_a_take_near_the_deadline_or_the_bottom_asks_one_caller_to_refill(
 
 
 @real_redis
+async def test_each_deadline_asks_for_its_own_refill_however_soon_after_the_last(counter):
+    """A refill moves the deadline on. The window it opens can be shorter than the pause between
+    two asks, and must not lapse because the last ask was a moment ago."""
+    store, org_id = counter
+    await store.allowance_add(org_id, 7, 1_000, until_ms=_soon(10_000), ttl_ms=60_000, seen_frozen=0)
+    assert await store.allowance_take(org_id, 10, ahead_ms=20_000) == -7
+    assert await store.allowance_take(org_id, 10, ahead_ms=20_000) == 7
+    await store.allowance_add(org_id, 7, 20, until_ms=_soon(15_000), ttl_ms=60_000, seen_frozen=0)
+    assert await store.allowance_take(org_id, 10, ahead_ms=20_000) == -7, "a new deadline"
+    assert await store.allowance_take(org_id, 10, ahead_ms=20_000) == 7
+    assert await store.allowance_take(org_id, 10, low_micro=10_000) == 7, \
+        "a counter still low after its refill waits out the pause"
+
+
+@real_redis
 async def test_takes_stop_once_the_counter_is_no_longer_fresh_and_resume_on_the_next_add(counter):
     store, org_id = counter
     assert await store.allowance_state(org_id) == (0, 0, 0, 0)
