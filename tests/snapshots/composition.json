@@ -28,7 +28,7 @@
   "middleware": [
     {
       "args": [],
-      "class": "treg.mcp.NormalizeDirectoryMCPPath",
+      "class": "treg.mcp.NormalizeMCPPath",
       "kwargs": {}
     },
     {

@@ -168,6 +168,37 @@ async def test_v2_no_slash_path_rejects_a_v1_token_with_the_v2_challenge(monkeyp
         get_settings.cache_clear()
 
 
+@pytest.mark.parametrize("connector_enabled", ["true", "false"])
+async def test_team_no_slash_path_answers_the_v1_challenge(monkeypatch, connector_enabled):
+    """Claude's custom-connector check strips the final slash and does not follow redirects.
+
+    A 307 to `/mcp/` reads to it as "server not found", so `/mcp` must answer the OAuth challenge
+    itself, whether or not the V2 directory surface is enabled.
+    """
+    monkeypatch.setenv("TREG_CLAUDE_CONNECTOR_ENABLED", connector_enabled)
+    get_settings.cache_clear()
+    try:
+        app = create_app("all")
+        async with AsyncClient(transport=ASGITransport(app=app),
+                               base_url="http://registry") as client:
+            responses = [
+                await client.post(path, json={"jsonrpc": "2.0", "id": 1, "method": "initialize",
+                                              "params": {"protocolVersion": "2025-06-18",
+                                                         "capabilities": {},
+                                                         "clientInfo": {"name": "slash-test",
+                                                                        "version": "1"}}},
+                                  headers=MCP_HEADERS)
+                for path in ("/mcp", "/mcp/")
+            ]
+        for response in responses:
+            assert response.status_code == 401
+            challenge = response.headers["www-authenticate"]
+            assert "/.well-known/oauth-protected-resource" in challenge
+            assert "/mcp/v2" not in challenge
+    finally:
+        get_settings.cache_clear()
+
+
 async def test_v2_declares_exact_directory_contract():
     tools = {tool.name: tool for tool in await mcp.directory_mcp.list_tools()}
     # The six tools the directory listing was submitted with; a seventh is a change to that listing.

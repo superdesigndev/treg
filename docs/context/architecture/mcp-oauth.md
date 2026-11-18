@@ -44,9 +44,11 @@ catalog ids and splits calls by the catalog's HTTP method, so Claude can treat G
 as reads and ask approval for POST, PUT, PATCH and DELETE. `/mcp/v2/` is the second transport
 surface; **connector release V1** is the first product release submitted to Claude's directory.
 
-`NormalizeDirectoryMCPPath` makes `/mcp/v2` and `/mcp/v2/` the same V2 resource: a real Claude
-custom-connector flow strips the trailing slash, and without normalization the request falls through
-to the team `/mcp` mount and receives the wrong OAuth resource identity.
+`NormalizeMCPPath` makes `/mcp` and `/mcp/` the same V1 resource, and `/mcp/v2` and `/mcp/v2/` the
+same V2 resource: a real Claude custom-connector flow strips the trailing slash and does not follow
+redirects. Without normalization `/mcp` answers the mount's 307, which the connector check reports as
+"not found", and `/mcp/v2` falls through to the team `/mcp` mount and receives the wrong OAuth
+resource identity.
 
 `TREG_CLAUDE_CONNECTOR_ENABLED` (default false) controls the V2 mount, lifespan, resource metadata,
 new V2 grants and the catalog-only call route (404 when off). `/mcp/` does not depend on it.
