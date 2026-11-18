@@ -558,11 +558,17 @@ async def test_an_allowance_already_past_a_lowered_cap_is_drained(org_id, store)
     assert await _state(org_id) == (GRANT - 600, 600)  # the unfinished take stays in the hold
 
 
-async def test_the_exact_path_leaves_room_for_an_allowance_carried_over_midnight(org_id, store):
+@pytest.mark.parametrize("switched_off", [False, True])
+async def test_the_exact_path_leaves_room_for_an_allowance_carried_over_midnight(
+        org_id, store, monkeypatch, switched_off):
+    """The hold and its money outlive the switch, so the cap check may not depend on it."""
     caller = await _caller(org_id)
     caller.org.daily_cap_micro = CHUNK + 500
     await runtime.take(org_id, 600, daily_cap_micro=CHUNK + 500)
     await _move_hold_to_yesterday(org_id)
+    if switched_off:
+        monkeypatch.setattr(get_settings(), "money_allowance_org_ids", [])
+        monkeypatch.setattr(kv, "configured", lambda: False)
     with pytest.raises(ReservationFailed) as refused:
         await call_reserve._platform_reserve(
             _call(org_id), caller, CallMeta(tags={"user": "u1"}), "tagged-1", allow_allowance=True)
@@ -572,6 +578,29 @@ async def test_the_exact_path_leaves_room_for_an_allowance_carried_over_midnight
         _call(org_id, estimate=400), caller, CallMeta(tags={"user": "u1"}), "tagged-2",
         allow_allowance=True)
     assert await _per_call_holds(org_id) == ["tagged-2"]
+
+
+async def test_charges_still_queued_after_the_switch_is_off_count_toward_the_cap(
+        org_id, store, monkeypatch):
+    """A day's cap of charges waits to be folded, the allowance is switched off, and its hold
+    is gone. The exact path must not admit the cap a second time."""
+    caller = await _caller(org_id)
+    caller.org.daily_cap_micro = CHUNK
+    epoch = await runtime.take(org_id, CHUNK, daily_cap_micro=CHUNK)
+    await _finish(org_id, "spent-the-cap", epoch, CHUNK, billable=True)
+    await _move_hold_to_yesterday(org_id)
+    monkeypatch.setattr(get_settings(), "money_allowance_org_ids", [])
+    with pytest.raises(ReservationFailed) as refused:
+        await call_reserve._platform_reserve(_call(org_id), caller, call_ref="after-1")
+    assert refused.value.kind == "platform_daily_cap_reached"
+    async with session_maker() as db:  # the hold is closed without folding: charges orphaned
+        await db.execute(update(Hold).where(Hold.org_id == org_id).values(amount_micro=0))
+        await db.execute(update(Org).where(Org.id == org_id).values(
+            balance_micro=Org.balance_micro + CHUNK))
+        await db.commit()
+    with pytest.raises(ReservationFailed):
+        await call_reserve._platform_reserve(_call(org_id), caller, call_ref="after-2")
+    assert await _per_call_holds(org_id) == []
 
 
 # ---- the real store ----------------------------------------------------------------------------

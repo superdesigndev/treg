@@ -261,14 +261,15 @@ async def test_a_refill_under_a_daily_cap_counts_the_fold_and_an_earlier_days_ho
     over = await refill(1, cap=6_999)
     assert (over.added_micro, over.over_cap) == (0, True)
     async with session_maker() as db:
-        assert await allowance.uncounted_allowance_micro(db, org_id) == 6_000
+        assert await allowance.committed_today(db, org_id) == 1_000 + 6_000
+        assert await ledger.spent_today(db, org_id) == 1_000
     assert await _invariant(org_id) == GRANT - 1_000 - 6_000
 
 
 async def test_a_hold_opened_today_is_already_in_the_counter_a_cap_is_checked_against(org_id):
     await _refill(org_id, 5_000)
     async with session_maker() as db:
-        assert await allowance.uncounted_allowance_micro(db, org_id) == 0
+        assert await allowance.committed_today(db, org_id) == await ledger.spent_today(db, org_id)
         result = await allowance.refill_allowance_in_transaction(
             db, org_id, 2_000, daily_cap_micro=7_000)
         assert (result.added_micro, result.over_cap) == (2_000, False)
@@ -276,6 +277,23 @@ async def test_a_hold_opened_today_is_already_in_the_counter_a_cap_is_checked_ag
             db, org_id, 1, daily_cap_micro=7_000)
         assert (again.added_micro, again.over_cap) == (0, False)
         await db.commit()
+
+
+async def test_queued_charges_no_hold_stands_behind_count_toward_today(org_id):
+    async with session_maker() as db:
+        assert await allowance.committed_today(db, org_id + 1) == 0
+        assert await allowance.committed_today(db, org_id) == 0
+    await _record(org_id, 700, 300)
+    async with session_maker() as db:
+        assert await allowance.committed_today(db, org_id) == 1_000
+    await _open(org_id, 600)  # a hold opened today covers 600 of them and is in the counter
+    async with session_maker() as db:
+        assert await allowance.committed_today(db, org_id) == 600 + 400
+    async with session_maker() as db:
+        await allowance.fold_charges_in_transaction(db, org_id)
+        await db.commit()
+        assert await allowance.committed_today(db, org_id) == 1_000 == (
+            await ledger.spent_today(db, org_id))
 
 
 async def test_closing_returns_what_is_left_and_deletes_the_hold(org_id):

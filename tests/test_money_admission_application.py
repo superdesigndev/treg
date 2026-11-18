@@ -22,6 +22,7 @@ from treg.application.call.types import ReservationFailed
 from treg.application.hub import runner as hub_runner
 from treg.config import Settings, get_settings
 from treg.domain import money as ledger
+from treg.domain.money import allowance as money_allowance
 from treg.domain.identity.access import Caller
 from treg.infra import kv, money_admission
 from treg.infra.money_session import money_session
@@ -1386,7 +1387,7 @@ async def test_free_platform_call_still_honours_an_exhausted_daily_cap(
     async def spent(_db, _org_id):
         return 101
 
-    monkeypatch.setattr(ledger, "spent_today", spent)
+    monkeypatch.setattr(money_allowance, "committed_today", spent)
     response = await clients.post(f"/call/{FREE_EP}", json=FREE_BODY)
     assert response.status_code == 429, response.text
     assert "platform_daily_cap_reached" in response.text

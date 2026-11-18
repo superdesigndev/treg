@@ -26,6 +26,7 @@ from httpx import AsyncClient
 from treg import api as A, audit, oauth_providers
 from treg.infra import org_traffic
 from treg.domain import money as ledger
+from treg.domain.money import allowance as money_allowance
 from treg.domain.money import settlement as settlement_basis
 from treg.domain.catalog import store as catalog_store
 from treg.application.call import contactout, octen
@@ -1582,7 +1583,7 @@ async def test_daily_cap_refuses_when_it_cannot_be_verified(clients: AsyncClient
     async def _boom(db, org_id):
         raise RuntimeError("ledger unavailable")
 
-    monkeypatch.setattr(ledger, "spent_today", _boom)
+    monkeypatch.setattr(money_allowance, "committed_today", _boom)
     monkeypatch.setenv("TREG_PLATFORM_DAILY_CAP_USD", "1")
     get_settings.cache_clear()
     try:

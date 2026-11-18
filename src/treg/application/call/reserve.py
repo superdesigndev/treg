@@ -148,11 +148,9 @@ async def _enforce_platform_daily_cap(caller: Caller, add_micro: int, db: AsyncS
     if cap <= 0:  # no limit applies: the balance (and the auto-top-up monthly cap) is the bound
         return
     try:
-        spent = await ledger.spent_today(db, caller.org_id)
-        if allowance_runtime.enabled_for(caller.org_id):
-            # An allowance opened on an earlier day can still be spent today and is not in
-            # today's counter; this call's own hold must leave room for it.
-            spent += await money_allowance.uncounted_allowance_micro(db, caller.org_id)
+        # Today's counter plus what an allowance can still spend today outside it. Read from
+        # the rows, not from the allowance switch: a hold and its queued charges outlive it.
+        spent = await money_allowance.committed_today(db, caller.org_id)
     except Exception as exc:  # cannot verify the ceiling ⇒ do not spend
         logging.getLogger("treg.ledger").warning(
             "platform daily-cap check failed for org %s: %s", caller.org_id, exc)

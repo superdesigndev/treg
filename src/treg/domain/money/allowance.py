@@ -28,7 +28,6 @@ from . import (
     _lock_blocks,
     _now,
     _spent_today_values,
-    spent_today,
     with_margin,
 )
 
@@ -188,18 +187,29 @@ def _epoch(hold: Hold) -> int:
     return (hold.created_at - datetime(1970, 1, 1)) // timedelta(microseconds=1)
 
 
-def _uncounted(hold: Hold | None) -> int:
-    """What an allowance hold can still spend today without today's counter knowing: all of
-    it when the hold was opened on an earlier day, since such a hold and its top-ups are not
-    in the counter until a fold puts what was consumed there."""
-    return hold.amount_micro if hold is not None and hold.created_at < _day_start() else 0
+async def committed_today(db: AsyncSession, org_id: int) -> int:
+    """The most a team can turn out to have spent today from what is already committed: the
+    number a daily cap is checked against. One statement.
 
-
-async def uncounted_allowance_micro(db: AsyncSession, org_id: int) -> int:
-    """`_uncounted` for a team's allowance, for a daily-cap check made outside a refill."""
-    row = (await db.execute(select(Hold.amount_micro, Hold.created_at).where(
-        Hold.id == allowance_id(org_id)))).one_or_none()
-    return int(row[0]) if row is not None and row[1] < _day_start() else 0
+    Today's counter (`spent_today`) holds what settled today and every hold opened today. Two
+    things can still be spent today that it does not hold: an allowance hold opened on an
+    earlier day, all of it, and queued charges no hold stands behind. Both are read from the
+    rows themselves, so the figure is right whether or not the team's allowance is switched on.
+    """
+    hold_id = allowance_id(org_id)
+    row = (await db.execute(select(
+        Org.spent_today_micro, Org.spent_today_day,
+        select(Hold.amount_micro).where(Hold.id == hold_id).scalar_subquery(),
+        select(Hold.created_at).where(Hold.id == hold_id).scalar_subquery(),
+        select(func.coalesce(func.sum(CallCharge.amount_micro), 0)).where(
+            CallCharge.org_id == org_id).scalar_subquery(),
+    ).where(Org.id == org_id))).one_or_none()
+    if row is None:
+        return 0
+    spent = int(row[0]) if row[1] == _now().date() else 0
+    held, queued = int(row[2] or 0), int(row[4] or 0)
+    earlier_day = held if row[3] is not None and row[3] < _day_start() else 0
+    return spent + earlier_day + max(0, queued - held)
 
 
 async def refill_allowance_in_transaction(
@@ -216,9 +226,8 @@ async def refill_allowance_in_transaction(
     provider cost: no margin is applied. Stamps the hold's heartbeat.
 
     With `daily_cap_micro`, nothing is added that could take the day past the cap. The day's
-    worst case is read AFTER the fold, under the hold's lock: what today's counter holds, plus
-    all of a hold opened on an earlier day (`_uncounted`), plus the amount asked for. `over_cap`
-    reports that the first two alone already exceed the cap.
+    worst case (`committed_today`) is read AFTER the fold, under the hold's lock, and the amount
+    asked for is added to it. `over_cap` reports that it exceeds the cap before adding anything.
     """
     mark_money(db, "refill", org_id=org_id)
     add = max(0, int(add_micro))
@@ -237,7 +246,7 @@ async def refill_allowance_in_transaction(
     folded = await _fold(db, org_id, hold, fold_limit)
     over_cap = False
     if daily_cap_micro > 0:
-        exposed = await spent_today(db, org_id) + _uncounted(hold)
+        exposed = await committed_today(db, org_id)
         over_cap = exposed > daily_cap_micro
         if exposed + add > daily_cap_micro:
             add = 0
