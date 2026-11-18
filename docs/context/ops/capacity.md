@@ -232,10 +232,12 @@ team (`<account>:team:<org id>`) through the same lease scripts. A call over its
 leaves at once as `share_busy`, so the remaining places stay for other teams; other teams are not
 affected. A cap whose ceiling would equal the cap, a store that fails, and no store leave the
 account's own rule alone. The team request runs only while the account's last store request got an
-answer (`_Pool.store_answered`): a store that stops answering costs a call one wait, on the account
-request, and the ceiling returns with the first account answer. A team request that gets no answer
-only clears `store_answered`; it never opens or extends the store-down window, which the account
-request alone owns.
+answer (`_Pool.store_answered`). A team request that gets no answer clears `store_answered`, and
+its call takes its place from this process's count, as inside the store-down window, instead of
+also waiting on the account request; it never opens or extends that window, which the account
+request alone owns. So a store that stops answering costs each call one wait at most. After
+recovery, the ceiling returns from the second call in each process: the first asks the account and
+sets `store_answered` again.
 
 ## Upstream connections: a bounded wait and a cap per provider
 

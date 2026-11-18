@@ -62,6 +62,7 @@ class _Waiter:
     future: asyncio.Future
     contended: bool  # the call met a full provider; only then does its wait show
     since: float = field(default_factory=time.monotonic)
+    local: bool = False  # its team request got no answer: served from this process's count
 
 
 @dataclass
@@ -94,12 +95,13 @@ class _Pool:
         else:
             self.by_team.pop(team, None)
 
-    def next_waiter(self) -> _Waiter | None:
+    def next_waiter(self, *, local_only: bool = False) -> _Waiter | None:
         """The waiting call whose team has the fewest in progress, oldest first; drops cancelled."""
         self.line = [w for w in self.line if not w.future.done()]
-        if not self.line:
+        line = [w for w in self.line if w.local] if local_only else self.line
+        if not line:
             return None
-        return min(self.line, key=lambda w: (self.by_team.get(w.team, 0), w.since))
+        return min(line, key=lambda w: (self.by_team.get(w.team, 0), w.since))
 
     def hand(self, waiter: _Waiter, lease: provider_concurrency.Lease | None) -> None:
         self.line.remove(waiter)
@@ -113,6 +115,8 @@ class _Pool:
             while self.active < self.cap and (waiter := self.next_waiter()) is not None:
                 self.hand(waiter, None)
             return
+        while self.active < self.cap and (waiter := self.next_waiter(local_only=True)) is not None:
+            self.hand(waiter, None)
         if now < self.full_until:
             if self.retry is None:
                 self.retry = asyncio.get_running_loop().call_later(
@@ -218,8 +222,11 @@ class FairShare:
             return NO_SLOT
         pool = self._pool(provider, cap)
         team_lease = await self._team_place(pool, team, team_ceiling_percent)
+        local = team_lease is _UNANSWERED
+        if local:
+            team_lease = None
         try:
-            slot = await self._place(pool, provider, team, max_wait_s)
+            slot = await self._place(pool, provider, team, max_wait_s, local=local)
         except BaseException:
             if team_lease is not None:
                 team_lease.release()
@@ -228,13 +235,14 @@ class FairShare:
         return slot
 
     async def _team_place(self, pool: _Pool, team: int,
-                          percent: int) -> provider_concurrency.Lease | None:
+                          percent: int) -> provider_concurrency.Lease | None | object:
         """Rule 4: the team's place under its ceiling, or `ShareBusy`; None when no ceiling
-        applies or the store does not answer (the account's own rule still holds).
+        applies; `_UNANSWERED` when the store does not answer.
 
-        Skipped until the account's own request has an answer again (`store_answered`), and a team
-        request that gets none only marks that: the store-down window belongs to the account
-        request, so this one never opens or extends it."""
+        Skipped until the account's own request has an answer again (`store_answered`). A team
+        request that gets none marks that, and its call takes its place from this process's count
+        instead of waiting on the account request too; the store-down window belongs to the
+        account request, so this one never opens or extends it."""
         ceiling = math.ceil(pool.cap * percent / 100)
         if not pool.shared or not 0 < percent < 100 or ceiling >= pool.cap:
             return None
@@ -243,16 +251,22 @@ class FairShare:
         outcome = await provider_concurrency.try_acquire(f"{pool.name}:team:{team}", ceiling)
         if outcome is None:
             pool.store_answered = False
-        elif outcome == provider_concurrency.BUSY:
+            return _UNANSWERED
+        if outcome == provider_concurrency.BUSY:
             raise ShareBusy(pool.name, team, ceiling, 0.0)
         return outcome
 
-    async def _place(self, pool: _Pool, provider: str, team: int, max_wait_s: float) -> Slot:
-        full = pool.active >= pool.cap or bool(pool.line)
-        if not pool.shared and not full:
+    async def _place(self, pool: _Pool, provider: str, team: int, max_wait_s: float, *,
+                     local: bool = False) -> Slot:
+        # A local call does not queue behind calls waiting on the store, only behind this
+        # process's count, as every call does inside the store-down window.
+        full = pool.active >= pool.cap or bool(pool.next_waiter(local_only=True) if local
+                                               else pool.line)
+        if (not pool.shared or local) and not full:
             pool.take(team)
             return Slot(self, provider, team)
-        waiter = _Waiter(team, asyncio.get_running_loop().create_future(), contended=full)
+        waiter = _Waiter(team, asyncio.get_running_loop().create_future(), contended=full,
+                         local=local)
         pool.line.append(waiter)
         pool.dispatch()  # the newcomer may outrank a heavier team for a place that is free now
         try:
@@ -295,6 +309,10 @@ class FairShare:
             if pool.retry is not None:
                 pool.retry.cancel()
         self._pools.clear()
+
+
+_UNANSWERED = object()
+"""`_team_place`: the store did not answer the team request."""
 
 
 def _ms_since(t: float) -> int:
