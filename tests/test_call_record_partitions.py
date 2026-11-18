@@ -199,3 +199,89 @@ async def test_the_backfill_waits_while_the_replica_lags(before_swap, monkeypatc
     assert out["replica_waits"] == 2 and out["done"] is True
     assert await _scalar("SELECT count(*) FROM callrecord_partitioned") == 40
     assert (await partitions.backfill(31, batch_rows=10, pause=0))["replica_waits"] == 0
+
+
+async def test_the_staged_table_has_the_live_tables_indexes(before_swap):
+    """The swap gives the staged table the live table's name and index names, so every index the
+    live table has (a migration adding one before the swap) must exist on the staged table too."""
+    defs = text("SELECT indexname, indexdef FROM pg_indexes WHERE tablename = :name")
+
+    def normalized(rows, table):
+        return {d.replace("ON ONLY ", "ON ").replace(f"{table}", "callrecord")
+                for name, d in rows if not name.endswith("_pkey")}
+    async with db.session_maker() as session:
+        live = (await session.execute(defs, {"name": "callrecord"})).all()
+        staged = (await session.execute(defs, {"name": "callrecord_partitioned"})).all()
+    assert normalized(live, "callrecord") == normalized(staged, "callrecord_partitioned")
+    assert len(live) > 10
+
+
+async def test_each_run_resyncs_verdicts_that_landed_after_the_copy(before_swap):
+    first = await partitions.backfill(31, batch_rows=10, pause=0)
+    note = json.loads(await _scalar("SELECT obj_description('callrecord_partitioned'::regclass, 'pg_class')"))
+    assert note[partitions.NOTE_RESYNCED_UPTO] == 40 and partitions.NOTE_RESYNC_PASS not in note
+    assert first["done"]
+    async with db.session_maker() as session:     # 20 hours old: inside the 25-hour look-back
+        await session.execute(text("UPDATE callrecord SET hit = true, verdict = 'valid' WHERE id = 20"))
+        await session.commit()
+    again = await partitions.backfill(31, batch_rows=10, pause=0)
+    assert again["resynced"] == 1
+    assert await _scalar("SELECT verdict FROM callrecord_partitioned WHERE id = 20") == "valid"
+
+
+async def test_a_resync_pass_ends_with_a_short_pass_to_the_current_top(before_swap, monkeypatch):
+    """Rows copied while a pass runs (another copy, a catch-up) get their late values too."""
+    await partitions.backfill(31, batch_rows=10, pause=0)
+    real_note, injected = partitions._write_note, []
+
+    async def copy_arrives_mid_pass(db_, note):
+        await real_note(db_, note)
+        if partitions.NOTE_RESYNC_PASS in note and not injected:
+            injected.append(1)
+            async with db.session_maker() as session:
+                await session.execute(_ROWS, {"org_id": before_swap, "count": 1,
+                                              "step": timedelta(seconds=1), "newest": utcnow_naive()})
+                await session.execute(text(
+                    "INSERT INTO callrecord_partitioned SELECT * FROM callrecord WHERE id = 41"))
+                await session.execute(text("UPDATE callrecord SET verdict = 'valid' WHERE id = 41"))
+                await session.commit()
+    monkeypatch.setattr(partitions, "_write_note", copy_arrives_mid_pass)
+    async with db.session_maker() as session:     # make the next run's pass have work to do
+        await session.execute(text("UPDATE callrecord SET verdict = 'invalid' WHERE id = 39"))
+        await session.commit()
+    await partitions.backfill(31, batch_rows=10, pause=0)
+    assert injected
+    assert await _scalar("SELECT verdict FROM callrecord_partitioned WHERE id = 41") == "valid"
+    note = json.loads(await _scalar("SELECT obj_description('callrecord_partitioned'::regclass, 'pg_class')"))
+    assert note[partitions.NOTE_RESYNCED_UPTO] == 41
+
+
+async def test_the_orphan_sweep_paces_between_delete_batches(before_swap):
+    await partitions.backfill(31, batch_rows=10, pause=0)
+    async with db.session_maker() as session:
+        await session.execute(text("DELETE FROM callrecord WHERE org_id = :id"), {"id": before_swap})
+        await session.execute(text("DELETE FROM org WHERE id = :id"), {"id": before_swap})
+        await session.commit()
+    paused = []
+
+    async def between():
+        paused.append(1)
+    assert await partitions.delete_rows_of_deleted_teams(batch=10, between_batches=between) == 40
+    assert len(paused) == 4
+
+
+async def test_a_column_added_during_a_run_is_copied_from_the_next_batch_on(before_swap, monkeypatch):
+    added = []
+
+    async def lag() -> float:
+        if not added:
+            added.append(1)
+            async with db.session_maker() as session:
+                await session.execute(text("ALTER TABLE callrecord ADD COLUMN extra text DEFAULT 'x'"))
+                await session.execute(text("ALTER TABLE callrecord_partitioned ADD COLUMN extra text"))
+                await session.commit()
+        return 0.0
+    monkeypatch.setattr(partitions, "replica_lag_seconds", lag)
+    out = await partitions.backfill(31, batch_rows=10, pause=0, max_replica_lag=5)
+    assert out["done"] and added
+    assert await _scalar("SELECT count(*) FROM callrecord_partitioned WHERE extra = 'x'") == 30

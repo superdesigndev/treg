@@ -26,7 +26,7 @@ import json
 import logging
 import re
 import time
-from datetime import date, timedelta
+from datetime import date, datetime, timedelta
 
 from sqlalchemy import text
 
@@ -45,6 +45,14 @@ COMMIT_MARGIN = 20_000
 # The staged table's comment (JSON) carries when the first backfill run started: rows copied then
 # can still receive a late `hit`/`verdict`, so the swap resyncs from that moment, not from "now".
 NOTE_BACKFILL_STARTED = "backfill_started_at"
+# Late `hit`/`verdict` values: how far the backfill's resync got, when that pass began, and the
+# cursor of a pass that has not finished. The swap reads them.
+NOTE_RESYNCED_UPTO = "resynced_upto"
+NOTE_RESYNCED_AT = "resynced_at"
+NOTE_RESYNC_PASS = "resync_pass"
+# A verdict lands at most a day after its row (an async task's answer is kept 24 h); the resync
+# looks back a little further.
+RESYNC_LOOK_BACK = timedelta(hours=25)
 # The copy runs on the primary beside live traffic and its WAL is replayed by every replica, so by
 # default it leaves the database idle about as long as each batch keeps it busy.
 BACKFILL_BATCH_ROWS = 5_000
@@ -172,9 +180,17 @@ async def ensure_for_release() -> int:
     return len(await ensure())
 
 
-async def _copy_ids(db, source: str, target: str, columns: str, first: int, below: int,
-                    session_factory) -> int:
-    """Copy the rows with `first <= id < below`, after creating the partitions their months need."""
+async def _columns(db, table: str) -> str:
+    names = (await db.execute(text(
+        "SELECT attname FROM pg_attribute WHERE attrelid = to_regclass(:name) "
+        "AND attnum > 0 AND NOT attisdropped ORDER BY attnum"), {"name": table})).scalars().all()
+    return ", ".join(f'"{name}"' for name in names)
+
+
+async def _copy_ids(db, source: str, target: str, first: int, below: int, session_factory) -> int:
+    """Copy the rows with `first <= id < below`, after creating the partitions their months need.
+    The column list is read again for every batch, so a column added meanwhile is copied too."""
+    columns = await _columns(db, source)
     oldest, newest = (await db.execute(text(
         f"SELECT min(created_at), max(created_at) FROM {source} "
         "WHERE id >= :first AND id < CAST(:below AS bigint)"), {"first": first, "below": below})).one()
@@ -210,10 +226,7 @@ async def _note_first_run(db) -> None:
         await db.commit()
         return
     note[NOTE_BACKFILL_STARTED] = utcnow_naive().isoformat()
-    # COMMENT takes no bind parameters; the note is JSON this code wrote, quotes doubled.
-    literal = json.dumps(note, sort_keys=True).replace("'", "''")
-    await db.execute(text(f"COMMENT ON TABLE {STAGED} IS '{literal}'"))
-    await db.commit()
+    await _write_note(db, note)
 
 
 async def replica_lag_seconds() -> float:
@@ -228,7 +241,7 @@ async def replica_lag_seconds() -> float:
 
 
 async def delete_rows_of_deleted_teams(*, table: str = STAGED, batch: int = DELETED_TEAM_BATCH,
-                                       session_factory=session_maker) -> int:
+                                       between_batches=None, session_factory=session_maker) -> int:
     """Delete from a partitioned `table` the rows of teams that no longer exist, `batch` rows per
     committed transaction -> rows deleted. A team deleted while a backfill batch was copying its
     rows can leave copies behind. Postgres cannot skip through an index, so the distinct teams
@@ -258,6 +271,8 @@ async def delete_rows_of_deleted_teams(*, table: str = STAGED, batch: int = DELE
                 deleted += int(result.rowcount or 0)
                 if (result.rowcount or 0) < batch:
                     break
+                if between_batches is not None:
+                    await between_batches()
     return deleted
 
 
@@ -265,25 +280,28 @@ async def backfill(days: int, *, batch_rows: int = BACKFILL_BATCH_ROWS, max_seco
                    pause: float = BACKFILL_PAUSE_SECONDS, max_replica_lag: float | None = None,
                    session_factory=session_maker) -> dict:
     """Copy the last `days` days of call records from the plain `callrecord` into
-    `callrecord_partitioned`, which nothing reads yet -> {phase, copied, batches, reached, done}
+    `callrecord_partitioned`, which nothing reads yet
+    -> {phase, copied, batches, reached, done, deleted_orphans, replica_waits, resynced}
     (`phase: "before_swap"`, or None when there is nothing to copy into).
 
     Rows keep their ids. Each batch is one transaction over a bounded id range, and no batch
     takes a lock a reader or a writer waits for. A run first copies what was written since the
     last one, then continues below the lowest id the target holds, newest first, until the rows
-    are older than `days`. A run that stops (`max_seconds`, a failure) is
-    resumed by running it again; `done` is true when the cutoff or the first row was reached.
+    are older than `days`. A run that stops (`max_seconds`, a failure) is resumed by running it
+    again; `done` is true when the cutoff or the first row was reached.
 
-    Each run first deletes the copied rows of teams deleted since (`delete_rows_of_deleted_teams`).
-    With `max_replica_lag` (seconds), it waits between batches while the read replica is further
-    behind than that.
+    Each run first deletes the copied rows of teams deleted since (`delete_rows_of_deleted_teams`),
+    and last resyncs late `hit`/`verdict` values (`_resync_late_verdicts`). With
+    `max_replica_lag` (seconds), it waits between batches while the read replica is further behind
+    than that.
     """
     if days < 1 or batch_rows < 1:
         raise ValueError("days and batch_rows must be >= 1")
     started = time.monotonic()
     cutoff = utcnow_naive() - timedelta(days=days)
+    run_started = utcnow_naive()
     out = {"phase": None, "copied": 0, "batches": 0, "reached": None, "done": True,
-           "deleted_orphans": 0, "replica_waits": 0}
+           "deleted_orphans": 0, "replica_waits": 0, "resynced": 0}
 
     def spent() -> bool:
         return max_seconds is not None and time.monotonic() - started >= max_seconds
@@ -300,40 +318,117 @@ async def backfill(days: int, *, batch_rows: int = BACKFILL_BATCH_ROWS, max_seco
             source, target, out["phase"] = TABLE, STAGED, "before_swap"
         else:
             return out
-        names = (await db.execute(text(
-            "SELECT attname FROM pg_attribute WHERE attrelid = to_regclass(:name) "
-            "AND attnum > 0 AND NOT attisdropped ORDER BY attnum"), {"name": source})).scalars().all()
-        columns = ", ".join(f'"{name}"' for name in names)
         oldest_copied, newest_copied = (await db.execute(text(
             f"SELECT min(id), max(id) FROM {target}"))).one()
         await db.commit()
-        if out["phase"] == "before_swap":
-            await _note_first_run(db)
-            out["deleted_orphans"] = await delete_rows_of_deleted_teams(
-                table=target, session_factory=session_factory)
+        await _note_first_run(db)
+        out["deleted_orphans"] = await delete_rows_of_deleted_teams(
+            table=target, between_batches=between_batches, session_factory=session_factory)
 
-        if out["phase"] == "before_swap" and newest_copied is not None:
-            top = (await db.execute(text(f"SELECT max(id) FROM {source}"))).scalar() or 0
-            for first in range(max(newest_copied - COMMIT_MARGIN, oldest_copied), top + 1, batch_rows):
-                out["copied"] += await _copy_ids(db, source, target, columns, first,
-                                                 min(first + batch_rows, top + 1), session_factory)
+        async def copy() -> bool:
+            if newest_copied is not None:
+                top = (await db.execute(text(f"SELECT max(id) FROM {source}"))).scalar() or 0
+                for first in range(max(newest_copied - COMMIT_MARGIN, oldest_copied), top + 1,
+                                   batch_rows):
+                    out["copied"] += await _copy_ids(db, source, target, first,
+                                                     min(first + batch_rows, top + 1), session_factory)
+                    out["batches"] += 1
+                    if spent():
+                        return False
+                    await between_batches()
+            while True:
+                below = (await db.execute(text(f"SELECT min(id) FROM {target}"))).scalar() or _NO_BOUND
+                first, oldest, newest = (await db.execute(text(
+                    f"SELECT min(id), min(created_at), max(created_at) FROM ("
+                    f"SELECT id, created_at FROM {source} WHERE id < CAST(:below AS bigint) "
+                    f"ORDER BY id DESC LIMIT :rows) batch"), {"below": below, "rows": batch_rows})).one()
+                await db.commit()
+                if first is None or newest < cutoff:
+                    return True
+                out["copied"] += await _copy_ids(db, source, target, first, below, session_factory)
                 out["batches"] += 1
+                out["reached"] = oldest.isoformat()
                 if spent():
-                    return {**out, "done": False}
+                    return False
                 await between_batches()
 
-        while True:
-            below = (await db.execute(text(f"SELECT min(id) FROM {target}"))).scalar() or _NO_BOUND
-            first, oldest, newest = (await db.execute(text(
-                f"SELECT min(id), min(created_at), max(created_at) FROM ("
-                f"SELECT id, created_at FROM {source} WHERE id < CAST(:below AS bigint) "
-                f"ORDER BY id DESC LIMIT :rows) batch"), {"below": below, "rows": batch_rows})).one()
-            await db.commit()
-            if first is None or newest < cutoff:
-                return out
-            out["copied"] += await _copy_ids(db, source, target, columns, first, below, session_factory)
-            out["batches"] += 1
-            out["reached"] = oldest.isoformat()
-            if spent():
-                return {**out, "done": False}
-            await between_batches()
+        if not await copy():
+            return {**out, "done": False}
+        if not await _resync_late_verdicts(db, out, run_started=run_started, batch_rows=batch_rows,
+                                           spent=spent, between_batches=between_batches):
+            return {**out, "done": False}
+        return out
+
+
+async def _write_note(db, note: dict) -> None:
+    # COMMENT takes no bind parameters; the note is JSON this code wrote, quotes doubled.
+    literal = json.dumps(note, sort_keys=True).replace("'", "''")
+    await db.execute(text(f"COMMENT ON TABLE {STAGED} IS '{literal}'"))
+    await db.commit()
+
+
+async def _first_id_at(db, since: datetime, top: int) -> int:
+    """The smallest id of `callrecord` whose row is at or after `since`, by bisection on the
+    primary key: ids and `created_at` rise together, and there is no index on `created_at` alone."""
+    low, high = 0, top + 1
+    while low < high:
+        mid = (low + high) // 2
+        row = (await db.execute(text(
+            f"SELECT id, created_at FROM {TABLE} WHERE id >= :mid ORDER BY id LIMIT 1"),
+            {"mid": mid})).first()
+        if row is None or row.created_at >= since:
+            high = mid
+        else:
+            low = row.id + 1
+    await db.commit()
+    return low
+
+
+_RESYNC = text(
+    f"UPDATE {STAGED} n SET hit = o.hit, verdict = o.verdict FROM {TABLE} o "
+    "WHERE o.id > :after AND o.id <= :upto AND n.id = o.id AND n.created_at = o.created_at "
+    "AND (n.hit IS DISTINCT FROM o.hit OR n.verdict IS DISTINCT FROM o.verdict)")
+
+
+async def _resync_late_verdicts(db, out: dict, *, run_started: datetime, batch_rows: int, spent,
+                                between_batches) -> bool:
+    """Give the copied rows the late `hit`/`verdict` values the live table got since they were
+    copied -> False when the time budget stopped it (it resumes on the next run).
+
+    A verdict lands at most `RESYNC_LOOK_BACK` after its row (an async task's answer is kept 24 h).
+    A pass covers the rows created from `RESYNC_LOOK_BACK` before the previous pass began (before
+    this run, for the first) up to the top copied id, then one short pass up to the top id copied
+    meanwhile. It notes its cursor after each batch (`resync_pass`), and on completion
+    `resynced_upto` and `resynced_at` (when it began), which the swap reads."""
+    note = await staged_note(db)
+    top = int((await db.execute(text(f"SELECT max(id) FROM {STAGED}"))).scalar() or 0)
+    await db.commit()
+    unfinished = note.get(NOTE_RESYNC_PASS)
+    if isinstance(unfinished, dict):
+        began, after = unfinished["began"], int(unfinished["cursor"])
+    else:
+        began = run_started.isoformat()
+        since = datetime.fromisoformat(note.get(NOTE_RESYNCED_AT, began))
+        after = max(await _first_id_at(db, since - RESYNC_LOOK_BACK, top) - 1, 0)
+    while after < top:
+        upto = min(after + batch_rows, top)
+        result = await db.execute(_RESYNC, {"after": after, "upto": upto})
+        out["resynced"] += int(result.rowcount or 0)
+        await db.commit()
+        after = upto
+        note[NOTE_RESYNC_PASS] = {"began": began, "cursor": after}
+        await _write_note(db, note)
+        if spent() and after < top:
+            return False
+        await between_batches()
+    # One short pass up to what is copied now: rows another run copied while this pass ran.
+    latest = int((await db.execute(text(f"SELECT max(id) FROM {STAGED}"))).scalar() or 0)
+    if latest > after:
+        result = await db.execute(_RESYNC, {"after": after, "upto": latest})
+        out["resynced"] += int(result.rowcount or 0)
+        await db.commit()
+        after = latest
+    note.pop(NOTE_RESYNC_PASS, None)
+    note[NOTE_RESYNCED_UPTO], note[NOTE_RESYNCED_AT] = after, began
+    await _write_note(db, note)
+    return True

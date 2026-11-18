@@ -611,7 +611,7 @@ job's credentials. `treg-worker --help` lists them; what follows is what a sched
   `admin callrecord-partitions` does only that step. `admin callrecord-backfill --days N` copies
   call records into `callrecord_partitioned` beside live traffic and resumes when run again
   (`--max-replica-lag S` waits while the replica is more than `S` seconds behind); it needs only
-  the database, not `verify_db()`. Until the swap, a migration that adds a column to
+  the database, not `verify_db()`. Until the swap, a migration that adds a column or an index to
   `callrecord` must add it to `callrecord_partitioned` too
   ([data model](../architecture/data-model.md), "preparing monthly partitions and a 64-bit id").
 - **`hub check`** runs each live [hub](../architecture/hub.md) tool's `check.json` as its maker

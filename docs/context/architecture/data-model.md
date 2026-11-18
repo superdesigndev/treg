@@ -348,21 +348,32 @@ the plain `callrecord`; this section is the preparation only.
 3. `treg-worker admin callrecord-backfill --days N` copies the last `N` days into it, newest
    first, in bounded transactions beside live traffic, for as long as that takes; run again, it
    resumes, and first copies what was written since. Each batch creates the month partitions its
-   rows need. By default a batch is 5,000 rows followed by a 0.5 s pause (`--batch-rows`,
-   `--pause-seconds`), so the copy leaves the primary and its replicas room. The new table grows
-   by about the size of the rows copied and the WAL by as much, so check disk headroom and watch
-   replica lag while it runs. The first run notes when it started (`NOTE_BACKFILL_STARTED`, a JSON
-   comment on the table): a row copied then can still receive a late `hit` or `verdict`, so a
-   later step resyncs from that moment. Each run first deletes the copied rows of teams that no
-   longer exist (`delete_rows_of_deleted_teams`: the distinct teams walked through the
-   `(org_id, id)` index, each kept only `NOT EXISTS` in `org`, deleted in committed batches),
-   which closes the race with a team deleted while a batch copied its rows. With
-   `--max-replica-lag S` it waits between batches while the read replica is more than `S`
-   seconds behind (`pg_last_xact_replay_timestamp()`).
+   rows need and reads the column list again, so a column added meanwhile is copied from the next
+   batch on. By default a batch is 5,000 rows followed by a 0.5 s pause (`--batch-rows`,
+   `--pause-seconds`; `--max-replica-lag S` also waits while the read replica is more than `S`
+   seconds behind, `pg_last_xact_replay_timestamp()`), so the copy leaves the primary and its
+   replicas room. The new table grows by about the size of the rows copied and the WAL by as much,
+   so check disk headroom and watch replica lag while it runs. The first run notes when it started
+   (`NOTE_BACKFILL_STARTED`, in a JSON comment on the table).
+   - Each run first deletes the copied rows of teams that no longer exist
+     (`delete_rows_of_deleted_teams`: the distinct teams walked through the `(org_id, id)` index,
+     each kept only `NOT EXISTS` in `org`, deleted in committed batches with the same pause and
+     replica brake between them), which closes the race with a team deleted while a batch copied
+     its rows.
+   - Each run last resyncs late `hit`/`verdict` values (`_resync_late_verdicts`): a row copied
+     before its verdict landed is stale, and a verdict lands at most a day after its row (an async
+     task's answer is kept 24 h). A pass covers the rows created from `RESYNC_LOOK_BACK` (25 hours)
+     before the previous pass began (before this run, on the first) up to the top copied id, then
+     one short pass up to the top id copied meanwhile. It writes its cursor (`resync_pass`) to the
+     note after each batch, so a stopped run resumes, and on completion `resynced_upto` and
+     `resynced_at` (when the pass began), which the swap reads.
 
-**Columns move together.** The copy names the live table's columns, so until the swap any
-migration that adds a column to `callrecord` must add it to `callrecord_partitioned` too, in the
-same revision. `test_the_staged_table_has_the_live_tables_columns` fails until it does.
+**Columns and indexes move together.** The copy names the live table's columns and the swap
+gives the staged table the live table's index names, so until the swap any migration that adds a
+column or an index to `callrecord` must add it to `callrecord_partitioned` too, in the same
+revision (on the partitioned table an index is created `ON ONLY` the parent, then built
+concurrently per partition and attached). `test_the_staged_table_has_the_live_tables_columns` and
+`test_the_staged_table_has_the_live_tables_indexes` fail until it does.
 
 While `callrecord_partitioned` exists, team deletion also deletes the team's rows from it
 (`cascade_delete_org`); with no foreign key, nothing else would.
