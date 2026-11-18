@@ -162,29 +162,34 @@ keeps it;
 `allowance.stale_allowance_orgs` lists the candidates.
 
 The hold is the authority; the shared store (`infra/kv.py`) only mirrors what of it is still
-unspent, as one hash per team holding `avail` and the hold's `epoch`. Seven atomic operations:
-`allowance_take` subtracts an amount when the counter holds at least that much and returns the
-epoch; `allowance_give_back` returns part of a take, only to a counter of the same epoch;
-`allowance_add` adds what a refill just committed to the hold and sets the instant past which
-takes stop (what the counter holds is kept). The caller derives that instant from the stamp the
-refill put on the hold, not from when the add lands, and an earlier instant than the one stored
-changes nothing: a refill published late admits calls for less time or none. That is what lets a
-sweep conclude, from the stamp alone, that a hold has nobody spending from it;
-`allowance_take_up_to` takes an amount or all the counter holds when that is less;
-`allowance_available` reads what the counter holds, for sizing a refill;
-`allowance_drop` empties the counter and returns what it held, keeping the epoch, so that figure
-can be released from a hold that stays while calls already admitted keep theirs;
-`allowance_retire` ends the counter of a hold being deleted, returning what it held and leaving
-the next epoch behind for a given time. Epochs only grow (a later hold has a later `created_at`),
-and that is the fence: an add replaces a counter of an older epoch, and is refused as `"stale"`
-when the stored epoch is newer, so a refill whose add arrives after its hold was closed and
-another opened cannot put the closed hold's money back on offer. The fence lasts as long as the
-hash; a writer later than the retired hash's expiry is not caught by it. Each operation returns
-`None` when the store cannot answer, and the in-process store always does: a per-process figure
-cannot be the one every process spends from. Add to the counter only after the refill's commit. In
-that order a failure between the two leaves money in the hold that no counter offers, which a
-close returns; the other order would offer money the hold does not have. The same is true of a
-counter that expired or was lost: its unspent part stays in the hold until a close.
+unspent, as one hash per team: `avail`, the hold's `epoch`, the instant `until` which takes are
+admitted, and two counts, `frozen` and `thawed`. The operations are atomic scripts:
+
+- `allowance_take` subtracts an amount and returns the epoch, when the counter holds that much, is
+  not frozen (`frozen == thawed`) and the store's clock is not past `until`.
+- `allowance_give_back` returns part of a take, only to a counter of the same epoch.
+- `allowance_add` adds what a refill just committed to the hold. It sets `until` from the instant
+  the refill wrote on the hold, never from when the add lands, and never moves it back: a refill
+  published late admits calls for less time or none. It thaws the counter only up to the freeze
+  count its caller read before its transaction, so a freeze that landed since stays in force.
+- `allowance_freeze` raises the freeze count: what the counter holds is kept, but no call is
+  admitted until an add whose caller read the count after this.
+- `allowance_state` reads `avail` and the two counts, for a refill.
+- `allowance_drop` empties the counter, returns what it held and freezes it, keeping the epoch:
+  that figure can be released from a hold that stays while calls already admitted keep theirs.
+- `allowance_take_up_to` takes an amount or all the counter holds when that is less.
+- `allowance_retire` ends the counter of a hold being deleted, returning what it held and leaving
+  the next epoch, with the old freezes, behind for a given time.
+
+Epochs only grow (a later hold has a later `created_at`), and that is the fence: an add replaces
+a counter of an older epoch, and is refused as `"stale"` when the stored epoch is newer, so a
+refill whose add arrives after its hold was closed and another opened cannot put the closed hold's
+money back on offer. The fence lasts as long as the hash. Each operation returns `None` when the
+store cannot answer, and the in-process store always does: a per-process figure cannot be the one
+every process spends from. Add to the counter only after the refill's commit. In that order a
+failure between the two leaves money in the hold that no counter offers, which a close returns;
+the other order would offer money the hold does not have. The same is true of a counter that
+expired or was lost: its unspent part stays in the hold until a close.
 
     balance_micro == sum(block.remaining_micro) - sum(open hold.amount_micro)
 
@@ -249,21 +254,34 @@ money moved, the purchased-credit gate.
   about whether it committed, so such a batch is never treated as "not charged": the call is
   told the charge, its money stays out of the counter, and the writer keeps writing the batch in
   the background until it lands (recording a call twice charges it once). The rewrite marks
-  the paid question of each row that was new to it and of no other. While any charge is
-  unconfirmed the process admits no new call to the allowance, so what waits is bounded by the
-  calls already in flight. If the process dies first, the charge is lost and its money stays in
+  the paid question of each row that was new to it and whose call has no `settle` entry yet (a
+  row is also new when the first attempt's row was applied and deleted since, and that attempt
+  marked it). While any charge is unconfirmed the process admits no new call to the allowance,
+  and a call is admitted only while the writer still has room for one more row than the calls
+  in flight could bring, so no admitted call's charge is ever without a place to wait. If the process dies first, the charge is lost and its money stays in
   the hold until the hold is closed.
 - **A call that cost more than it set aside.** The charge row keeps that part apart
   (`callcharge.overrun_micro`, revision 0111). A fold takes from the hold only what calls set
   aside; an overrun comes out of the balance, as at `settle`, so the hold keeps what other calls
   in flight set aside and a later give-back is still backed. The balance may not have it, so the
-  call freezes the counter (`store.allowance_freeze`): what is there is kept, but no call is
-  admitted until a refill has applied the charge. A refill that finds the balance below zero
-  after its fold adds nothing and drains the counter back to the balance, and the exact path's
-  balance gate decides: the same stop the next reserve is after an overrun there. The call then
-  applies its own charge at once and answers with what the team's credit really paid, which is
-  less than the charge when the blocks ran out (`block_shortfall_micro`). Each refill also
-  compares the counter with the hold it just committed and takes back anything above it.
+  call freezes the counter, and only a refill that has applied that charge and read the balance
+  afterwards may let calls spend again. Three things make that hold. The call freezes twice,
+  before its charge is written (a call finishing beside it sees the freeze) and after (a refill
+  may thaw only the freezes it read before its transaction, and only a transaction that starts
+  after the commit can see the charge); a charge written late by the retry freezes again when it
+  lands. A refill of a frozen counter folds the whole queue, not one batch. And a refill that
+  then finds the balance below zero adds nothing and drains the counter back to the balance, so
+  the exact path's balance gate decides: the stop the next reserve is after an overrun there.
+  Each refill also compares the counter with the hold it just committed and takes back anything
+  above it.
+- **What a call is told it was charged.** Normally the charge: its money was set aside, so the
+  ledger will take exactly that. While the counter is frozen that may not be true, because the
+  team's credit may not cover every queued charge. A call that ends then (the one that overran,
+  and any other that reads the counter frozen once its charge is written) folds the team's queue
+  at once and answers with what its `settle` entry took, which is less than the charge when the
+  blocks ran out (`block_shortfall_micro`). When another process holds the team's lease it is
+  folding too, and the call waits a bounded time for its entry; past that it answers with the
+  charge and logs it.
 - **Auto top-up** is asked after a refill, the only moment the balance moved.
 
 - **The queue is kept short.** One refill folds one batch, a chunk can pay for more calls than
@@ -282,7 +300,8 @@ money moved, the purchased-credit gate.
   (`allowance.money_key`), and a per-team lock inside the process. PostgreSQL would make them
   wait on the hold's row lock anyway; on SQLite, which has no row locks, the lease is what keeps
   two processes from both reading before either writes. A session that outlives the lease is
-  still safe on PostgreSQL and is not on SQLite.
+  still safe on PostgreSQL and is not on SQLite. When the store cannot answer nobody can take
+  the lease: the sweep still writes on PostgreSQL and puts the write off on SQLite.
 
 What can go wrong lands on one side only. A take the process never finishes (a crash), a give-back
 the store did not apply, or a counter lost with the store leaves money in the allowance hold that

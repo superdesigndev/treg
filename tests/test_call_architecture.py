@@ -153,7 +153,7 @@ _DATAPLANE_DERIVED_WRITES = {
     # nothing else.
     "allowance_counter": (
         (reserve._platform_reserve, "allowance_runtime.take"),
-        (call_allowance.take, "store.allowance_take"),
+        (call_allowance._take, "store.allowance_take"),
         (call_allowance._refill, "store.allowance_add"),
         (call_allowance._drain, "store.allowance_drop"),
         (call_allowance.finish, "store.allowance_give_back"),
@@ -282,10 +282,12 @@ _EXPECTED_DERIVED_WRITE_SITES = {
     # a call that cost more than it set aside stops takes until a refill has applied it,
     # and a refill takes back whatever a counter holds above its hold
     ("application/call/allowance.py", "finish", "store.allowance_freeze"),
+    # an overrun whose charge was written late freezes again once it is in the database
+    ("application/call/allowance.py", "_retry", "store.allowance_freeze"),
     ("application/call/allowance.py", "_refill", "store.allowance_take_up_to"),
-    ("application/call/allowance.py", "take", "store.acquire_lease"),
-    ("application/call/allowance.py", "take", "store.allowance_take"),
-    ("application/call/allowance.py", "take", "store.release_lease"),
+    ("application/call/allowance.py", "_take", "store.acquire_lease"),
+    ("application/call/allowance.py", "_take", "store.allowance_take"),
+    ("application/call/allowance.py", "_take", "store.release_lease"),
     ("application/call/reserve.py", "_platform_reserve", "allowance_runtime.take"),
     ("application/call/reserve.py", "_schedule_autotopup_after", "billing.maybe_schedule_autotopup"),
     ("application/call/settle.py", "_cleanup", "allowance_runtime.finish"),

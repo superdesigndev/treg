@@ -136,6 +136,8 @@ return {1, 0}
 _ALLOWANCE_TAKE = """
 local avail = tonumber(redis.call('HGET', KEYS[1], 'avail'))
 if not avail or avail < tonumber(ARGV[1]) then return 0 end
+if (redis.call('HGET', KEYS[1], 'frozen') or '0') ~= (redis.call('HGET', KEYS[1], 'thawed') or '0')
+then return 0 end
 local t = redis.call('TIME')
 local fresh_until = tonumber(redis.call('HGET', KEYS[1], 'until') or '0')
 if t[1] * 1000 + math.floor(t[2] / 1000) > fresh_until then return 0 end
@@ -147,22 +149,30 @@ if redis.call('HGET', KEYS[1], 'epoch') ~= ARGV[1] then return 0 end
 redis.call('HINCRBY', KEYS[1], 'avail', ARGV[2])
 return 1
 """
+# `frozen` counts the freezes; takes stop while `thawed` differs from it. An add may thaw only
+# up to the count its caller read BEFORE its database transaction (ARGV[5]): a freeze that
+# landed after that read is one the transaction did not account for, and stays in force. A
+# counter rebuilt for a newer epoch keeps the freezes of the one it replaces.
 _ALLOWANCE_ADD = """
 local stored = redis.call('HGET', KEYS[1], 'epoch')
 if stored and tonumber(stored) > tonumber(ARGV[1]) then return -1 end
 if stored ~= ARGV[1] then
+    local frozen = redis.call('HGET', KEYS[1], 'frozen') or '0'
     redis.call('DEL', KEYS[1])
-    redis.call('HSET', KEYS[1], 'epoch', ARGV[1], 'avail', '0')
+    redis.call('HSET', KEYS[1], 'epoch', ARGV[1], 'avail', '0', 'frozen', frozen)
 end
 local avail = redis.call('HINCRBY', KEYS[1], 'avail', ARGV[2])
 if tonumber(ARGV[3]) > tonumber(redis.call('HGET', KEYS[1], 'until') or '0') then
     redis.call('HSET', KEYS[1], 'until', ARGV[3])
 end
+if tonumber(ARGV[5]) > tonumber(redis.call('HGET', KEYS[1], 'thawed') or '0') then
+    redis.call('HSET', KEYS[1], 'thawed', ARGV[5])
+end
 redis.call('PEXPIRE', KEYS[1], ARGV[4])
 return avail
 """
-# Takes what is there when the counter holds less than asked: the caller is charging money the
-# counter may not go on offering.
+# Takes what is there when the counter holds less than asked: the caller found the counter
+# above its hold.
 _ALLOWANCE_TAKE_UP_TO = """
 if redis.call('HGET', KEYS[1], 'epoch') ~= ARGV[1] then return 0 end
 local avail = tonumber(redis.call('HGET', KEYS[1], 'avail') or '0')
@@ -170,19 +180,23 @@ local taken = math.min(avail, tonumber(ARGV[2]))
 if taken > 0 then redis.call('HINCRBY', KEYS[1], 'avail', string.format('%.0f', -taken)) end
 return taken
 """
-_ALLOWANCE_AVAILABLE = "return tonumber(redis.call('HGET', KEYS[1], 'avail') or '0')"
-# The hash stays, emptied, so its epoch keeps fencing writers that arrive later. Takes stop too:
-# what calls in flight give back afterwards is not offered until a refill has looked at it.
+_ALLOWANCE_STATE = """
+return {tonumber(redis.call('HGET', KEYS[1], 'avail') or '0'),
+        tonumber(redis.call('HGET', KEYS[1], 'frozen') or '0'),
+        tonumber(redis.call('HGET', KEYS[1], 'thawed') or '0')}
+"""
+# The hash stays, emptied, so its epoch keeps fencing writers that arrive later. It is frozen
+# too: what calls in flight give back afterwards is not offered until a refill has looked at it.
 _ALLOWANCE_DROP = """
 local avail = redis.call('HGET', KEYS[1], 'avail')
 if not avail then return 0 end
-redis.call('HSET', KEYS[1], 'avail', '0', 'until', '0')
+redis.call('HSET', KEYS[1], 'avail', '0')
+redis.call('HINCRBY', KEYS[1], 'frozen', 1)
 return tonumber(avail)
 """
 _ALLOWANCE_FREEZE = """
-if redis.call('HGET', KEYS[1], 'epoch') ~= ARGV[1] then return 0 end
-redis.call('HSET', KEYS[1], 'until', '0')
-return 1
+if redis.call('EXISTS', KEYS[1]) == 0 then return 0 end
+return redis.call('HINCRBY', KEYS[1], 'frozen', 1)
 """
 # ARGV[2] is the next epoch, computed by the caller: a script cannot print one exactly.
 _ALLOWANCE_RETIRE = """
@@ -190,8 +204,9 @@ local stored = redis.call('HGET', KEYS[1], 'epoch')
 if stored and tonumber(stored) > tonumber(ARGV[1]) then return 0 end
 local avail = 0
 if stored == ARGV[1] then avail = tonumber(redis.call('HGET', KEYS[1], 'avail')) or 0 end
+local frozen = redis.call('HGET', KEYS[1], 'frozen') or '0'
 redis.call('DEL', KEYS[1])
-redis.call('HSET', KEYS[1], 'epoch', ARGV[2], 'avail', '0')
+redis.call('HSET', KEYS[1], 'epoch', ARGV[2], 'avail', '0', 'frozen', frozen)
 redis.call('PEXPIRE', KEYS[1], ARGV[3])
 return avail
 """
@@ -355,27 +370,31 @@ class Store(Protocol):
         store cannot answer."""
 
     async def allowance_add(self, org_id: int, epoch: int, amount_micro: int, *,
-                            until_ms: int, ttl_ms: int) -> int | Literal["stale"] | None:
+                            until_ms: int, ttl_ms: int,
+                            seen_frozen: int) -> int | Literal["stale"] | None:
         """Add to a team's counter after the same amount was committed to its hold. Takes are
         admitted until `until_ms` (epoch milliseconds; an earlier value than the one stored
         changes nothing), and the counter expires after `ttl_ms`. An amount of 0 only renews
-        both. A counter of an older epoch is replaced, not added to. "stale" when
-        the stored epoch is newer: this writer's hold has been closed since, and nothing is
-        added. Otherwise what is now available; None when the store cannot answer."""
+        both. `seen_frozen` is the freeze count the caller read before its database transaction:
+        the counter is thawed up to it and no further, so a freeze that landed since stays in
+        force. A counter of an older epoch is replaced, not added to. "stale" when the stored
+        epoch is newer: this writer's hold has been closed since, and nothing is added.
+        Otherwise what is now available; None when the store cannot answer."""
 
-    async def allowance_freeze(self, org_id: int, epoch: int) -> bool | None:
-        """Stop takes from the counter of `epoch` until the next add, keeping what it holds.
-        False for another epoch; None when the store cannot answer."""
+    async def allowance_freeze(self, org_id: int) -> int | None:
+        """Stop takes from a team's counter, keeping what it holds, until an add whose caller
+        read the freeze count after this call. Returns the new count (0 when there is no
+        counter); None when the store cannot answer."""
 
-    async def allowance_available(self, org_id: int) -> int | None:
-        """What a team's counter holds now, fresh or not (0 when absent). A reading, already old
-        when it returns: size a refill with it, never admit a call on it. None when the store
-        cannot answer."""
+    async def allowance_state(self, org_id: int) -> tuple[int, int, int] | None:
+        """(available, freezes, freezes thawed) of a team's counter, zeros when absent. A
+        reading, already old when it returns: size a refill with it and hand its freeze count
+        to `allowance_add`, never admit a call on it. None when the store cannot answer."""
 
     async def allowance_drop(self, org_id: int) -> int | None:
         """Empty a team's counter and return what it held (0 when absent), in one atomic step, so
         no take can succeed on money the returned figure already counts. The epoch stays, for a
-        hold that stays, and takes stop until the next add. None when the store cannot answer."""
+        hold that stays, and the counter is frozen. None when the store cannot answer."""
 
     async def allowance_retire(self, org_id: int, epoch: int, ttl_ms: int) -> int | None:
         """End the counter of a hold that is being deleted: return what it held and leave the
@@ -495,13 +514,14 @@ class LocalStore:
         return None
 
     async def allowance_add(self, org_id: int, epoch: int, amount_micro: int, *,
-                            until_ms: int, ttl_ms: int) -> int | Literal["stale"] | None:
+                            until_ms: int, ttl_ms: int,
+                            seen_frozen: int) -> int | Literal["stale"] | None:
         return None
 
-    async def allowance_freeze(self, org_id: int, epoch: int) -> bool | None:
+    async def allowance_freeze(self, org_id: int) -> int | None:
         return None
 
-    async def allowance_available(self, org_id: int) -> int | None:
+    async def allowance_state(self, org_id: int) -> tuple[int, int, int] | None:
         return None
 
     async def allowance_drop(self, org_id: int) -> int | None:
@@ -636,17 +656,24 @@ class RedisStore:
         return None if result is None else bool(result)
 
     async def allowance_add(self, org_id: int, epoch: int, amount_micro: int, *,
-                            until_ms: int, ttl_ms: int) -> int | Literal["stale"] | None:
+                            until_ms: int, ttl_ms: int,
+                            seen_frozen: int) -> int | Literal["stale"] | None:
         result = await self._allowance_eval(
-            _ALLOWANCE_ADD, org_id, epoch, amount_micro, until_ms, ttl_ms)
+            _ALLOWANCE_ADD, org_id, epoch, amount_micro, until_ms, ttl_ms, seen_frozen)
         return "stale" if result == -1 else result
 
-    async def allowance_freeze(self, org_id: int, epoch: int) -> bool | None:
-        result = await self._allowance_eval(_ALLOWANCE_FREEZE, org_id, epoch)
-        return None if result is None else bool(result)
+    async def allowance_freeze(self, org_id: int) -> int | None:
+        return await self._allowance_eval(_ALLOWANCE_FREEZE, org_id)
 
-    async def allowance_available(self, org_id: int) -> int | None:
-        return await self._allowance_eval(_ALLOWANCE_AVAILABLE, org_id)
+    async def allowance_state(self, org_id: int) -> tuple[int, int, int] | None:
+        try:
+            async with asyncio.timeout(_TIMEOUT_S):
+                avail, frozen, thawed = await self._client.eval(
+                    _ALLOWANCE_STATE, 1, _allowance_key(org_id))
+            return int(avail), int(frozen), int(thawed)
+        except Exception as exc:  # noqa: BLE001 - the caller falls back to the database path
+            _note_fault(exc)
+            return None
 
     async def allowance_drop(self, org_id: int) -> int | None:
         return await self._allowance_eval(_ALLOWANCE_DROP, org_id)

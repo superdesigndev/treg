@@ -133,6 +133,15 @@ async def _claim_charges(db: AsyncSession, org_id: int, limit: int) -> list:
                        CallCharge.meta, CallCharge.created_at, CallCharge.overrun_micro))).all())
 
 
+async def _claim_all_charges(db: AsyncSession, org_id: int) -> list:
+    claimed: list = []
+    while True:
+        batch = await _claim_charges(db, org_id, FOLD_BATCH)
+        claimed.extend(batch)
+        if len(batch) < FOLD_BATCH:
+            return claimed
+
+
 async def _fold(db: AsyncSession, org_id: int, hold: Hold | None, limit: int) -> Folded:
     return await _apply_charges(db, org_id, hold, await _claim_charges(db, org_id, limit))
 
@@ -183,6 +192,14 @@ async def _apply_charges(db: AsyncSession, org_id: int, hold: Hold | None, claim
     if covered != consumed or consumed != counted:
         await _add_balance(db, org_id, covered - consumed, spent_delta_micro=consumed - counted)
     return Folded(len(charges), charged, consumed, len(claimed) - len(charges))
+
+
+async def settled_calls(db: AsyncSession, call_ids: Sequence[str]) -> set[str]:
+    """Which of these calls already have a `settle` entry."""
+    if not call_ids:
+        return set()
+    return set((await db.execute(select(LedgerEntry.call_id).where(
+        LedgerEntry.call_id.in_(list(call_ids)), LedgerEntry.kind == "settle"))).scalars())
 
 
 async def settled_micro(db: AsyncSession, org_id: int, call_id: str) -> int | None:
@@ -253,7 +270,7 @@ async def committed_today(db: AsyncSession, org_id: int) -> int:
 
 async def refill_allowance_in_transaction(
     db: AsyncSession, org_id: int, add_micro: int, *, daily_cap_micro: int = 0,
-    fold_limit: int = FOLD_BATCH,
+    fold_limit: int = FOLD_BATCH, fold_all: bool = False,
 ) -> Allowance:
     """Fold a batch of queued charges, then move `add_micro` from the balance into the team's
     allowance hold, opening the hold if there is none. In the caller's transaction, before any
@@ -264,6 +281,10 @@ async def refill_allowance_in_transaction(
     of 0 tells the caller to stop spending from the allowance. `add_micro` is money, not a
     provider cost: no margin is applied. Writes on the hold (`heartbeat_at`) the instant until
     which calls may be admitted against it: now plus `money_allowance_fresh_s`.
+
+    `fold_all` folds the whole queue instead of one batch. A caller that must know the balance
+    with every queued charge applied (it is about to let calls spend again after an overrun)
+    passes it: `overdrawn` is only as good as the charges that were folded before it was read.
 
     With `daily_cap_micro`, nothing is added that could take the day past the cap. The day's
     worst case (`committed_today`) is read AFTER the fold, under the hold's lock, and the amount
@@ -283,7 +304,8 @@ async def refill_allowance_in_transaction(
             created_at=now, purchased_only=False, allowance=True, heartbeat_at=now,
         ).on_conflict_do_nothing(index_elements=[Hold.id]))).rowcount == 1
         hold = await _lock_allowance(db, org_id)
-    folded = await _fold(db, org_id, hold, fold_limit)
+    folded = (await _apply_charges(db, org_id, hold, await _claim_all_charges(db, org_id))
+              if fold_all else await _fold(db, org_id, hold, fold_limit))
     over_cap = False
     if daily_cap_micro > 0:
         exposed = await committed_today(db, org_id)
@@ -382,13 +404,7 @@ async def orgs_with_queued_charges(db: AsyncSession, queued_before: datetime, *,
 
 async def _close(db: AsyncSession, org_id: int, hold: Hold | None, reason: str,
                  release_micro: int | None) -> Closed:
-    claimed: list = []
-    while True:
-        batch = await _claim_charges(db, org_id, FOLD_BATCH)
-        claimed.extend(batch)
-        if len(batch) < FOLD_BATCH:
-            break
-    folded = await _apply_charges(db, org_id, hold, claimed)
+    folded = await _apply_charges(db, org_id, hold, await _claim_all_charges(db, org_id))
     if hold is None:
         return Closed(0, 0, folded)
     released = hold.amount_micro if release_micro is None else min(

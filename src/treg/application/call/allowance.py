@@ -30,9 +30,13 @@ log = logging.getLogger("treg.money_allowance")
 _REFUSAL_COOLDOWN_S = 5.0
 _REFILL_LEASE_MS = 5000
 _REFILL_WAIT_S = 0.25
+_SETTLED_TRIES = 20
 # Long enough that a counter outlives any pause in refills that still leaves its hold open.
 _COUNTER_TTL_MS = 24 * 3600 * 1000
 _refused_until: dict[int, float] = {}
+# Takes this process admitted and has not finished. Each will hand the charge writer one row at
+# most, so admitting against the writer's room now is what keeps it from ever overflowing.
+_in_flight = [0]
 _money_locks: dict[tuple[int, asyncio.AbstractEventLoop], asyncio.Lock] = {}
 
 
@@ -70,8 +74,16 @@ async def take(org_id: int, amount_micro: int, *, daily_cap_micro: int = 0) -> i
     """Reserve `amount_micro` from the team's allowance. The counter's epoch, or None when the
     call must use the exact path: the store cannot answer, another process holds the refill for
     too long, or the balance or the daily cap leaves no room to refill."""
-    if _refused_until.get(org_id, 0.0) > time.monotonic() or _charges.behind():
+    if (_refused_until.get(org_id, 0.0) > time.monotonic() or _charges.behind()
+            or not _charges.has_room(_in_flight[0])):
         return None
+    epoch = await _take(org_id, amount_micro, daily_cap_micro)
+    if epoch:
+        _in_flight[0] += 1
+    return epoch
+
+
+async def _take(org_id: int, amount_micro: int, daily_cap_micro: int) -> int | None:
     store = kv.store()
     epoch = await store.allowance_take(org_id, amount_micro)
     if epoch or epoch is None:
@@ -103,9 +115,12 @@ async def _refill(org_id: int, need_micro: int, daily_cap_micro: int) -> bool:
     cannot cover `need_micro`; the allowance is then drained back to the balance so the exact
     path sees all of the team's money."""
     store, settings = kv.store(), get_settings()
-    available = await store.allowance_available(org_id)
-    if available is None:
+    state = await store.allowance_state(org_id)
+    if state is None:
         return False
+    # Read BEFORE the transaction: the add below may thaw only the freezes counted here. One
+    # that lands later was raised by a charge this transaction may not have folded.
+    available, seen_frozen, thawed = state
     add = max(0, max(settings.money_allowance_chunk_micro, need_micro) - available)
     try:
         async with (
@@ -115,8 +130,11 @@ async def _refill(org_id: int, need_micro: int, daily_cap_micro: int) -> bool:
             money_session(session_maker()) as db,
         ):
             await ledger.reap_stale_holds(db, org_id=org_id)
+            # Frozen: a call cost more than it set aside. Calls may spend again only once every
+            # queued charge is applied and the balance read after that, not after one batch.
             result = await allowance.refill_allowance_in_transaction(
-                db, org_id, add, daily_cap_micro=daily_cap_micro)
+                db, org_id, add, daily_cap_micro=daily_cap_micro,
+                fold_all=seen_frozen != thawed)
             await db.commit()
     except money_admission.ReserveAdmissionTimeout:
         return False
@@ -138,7 +156,8 @@ async def _refill(org_id: int, need_micro: int, daily_cap_micro: int) -> bool:
     # sweep reads the hold, so a refill published late must not admit calls past it.
     until_ms = (result.admit_until - datetime(1970, 1, 1)) // timedelta(milliseconds=1)
     added = await store.allowance_add(
-        org_id, result.epoch, result.added_micro, until_ms=until_ms, ttl_ms=_COUNTER_TTL_MS)
+        org_id, result.epoch, result.added_micro, until_ms=until_ms, ttl_ms=_COUNTER_TTL_MS,
+        seen_frozen=seen_frozen)
     if not isinstance(added, int):
         return False
     if added > result.amount_micro:
@@ -259,7 +278,7 @@ class _ChargeWriter:
                     await self._write(rows)
                 except Exception:  # noqa: BLE001 - one bounded retry on a fresh transaction
                     await asyncio.sleep(0.2)
-                    await self._write(rows)
+                    await self._write(rows, again=True)
             except Exception:
                 confirmed = False
                 log.error("writing %d call charges is unconfirmed; retrying in the background",
@@ -283,7 +302,13 @@ class _ChargeWriter:
             await asyncio.sleep(delay)
             rows = self._unconfirmed[:allowance.FOLD_BATCH]
             try:
-                await self._write(rows)
+                await self._write(rows, again=True)
+                # An overrun froze its team's counter when the call ended, but its charge was
+                # not in the database then. Freeze again now that it is: only a refill that
+                # starts after this can have applied it.
+                store = kv.store()
+                for org_id in {charge.org_id for charge, _ in rows if _overran(charge)}:
+                    await store.allowance_freeze(org_id)
             except Exception:  # noqa: BLE001 - whatever the fault, try again later
                 delay = min(delay * 2, 60.0)
                 continue
@@ -291,6 +316,10 @@ class _ChargeWriter:
             delay = 1.0
             self._written(rows)
             log.info("%d unconfirmed call charges are now written", len(rows))
+
+    def has_room(self, in_flight: int) -> bool:
+        """Whether one more admitted call can still be given a place if every write fails."""
+        return in_flight + len(self._pending) + len(self._unconfirmed) < self._MAX_UNCONFIRMED
 
     def behind(self) -> bool:
         """This process has charges it could not confirm written. Until it has, it admits no
@@ -310,15 +339,23 @@ class _ChargeWriter:
             self._since_fold[charge.org_id] = count
 
     @staticmethod
-    async def _write(rows: list) -> None:
+    async def _write(rows: list, *, again: bool = False) -> None:
         async with session_maker() as db:
             new = await allowance.record_charges(db, [charge for charge, _ in rows])
-            # A row that was already there was committed by an earlier attempt, which marked
-            # its paid question too; a row new to this attempt has not been marked by anyone.
+            # A row that was already there was committed by an earlier attempt, which marked its
+            # paid question too. On a rewrite, so was a row that is new only because the earlier
+            # attempt's row has been applied and deleted since: its call has a settle entry.
+            if again and new:
+                new -= await allowance.settled_calls(db, sorted(new))
             uses = [use for charge, use in rows if use is not None and charge.call_id in new]
             if uses:
                 await archive.note_org_uses_in_transaction(db, uses)
             await db.commit()
+
+
+def _overran(charge: allowance.Charge) -> bool:
+    return (charge.reserved_micro is not None
+            and allowance.charged_micro(charge) > charge.reserved_micro)
 
 
 _charges = _ChargeWriter()
@@ -336,6 +373,7 @@ async def finish(org_id: int, call_id: str, epoch: int, reserved_micro: int, *,
     given back: it may have committed, and it is written again until it has.
     """
     store = kv.store()
+    _in_flight[0] = max(0, _in_flight[0] - 1)
     try:
         if not billable:
             await store.allowance_give_back(org_id, epoch, reserved_micro)
@@ -343,25 +381,46 @@ async def finish(org_id: int, call_id: str, epoch: int, reserved_micro: int, *,
         charge = allowance.Charge(call_id, org_id, endpoint_id, actual_micro, meta, reserved_micro)
         amount = allowance.charged_micro(charge)
         written = _charges.submit(charge, archive_use)
-        if amount < reserved_micro:
+        if amount > reserved_micro:
+            # The call cost more than it set aside. The difference is owed to the balance, which
+            # may not have it, so no call is admitted from the counter until a refill has applied
+            # this charge and read the balance: the gate the next reserve is after an overrun at
+            # `settle`. Frozen now, before the write, so that a call finishing beside this one
+            # sees it; and again after the write, because a refill may thaw only freezes it read
+            # before its transaction, and only one that starts after the commit has the charge.
+            await store.allowance_freeze(org_id)
+        elif amount < reserved_micro:
             await store.allowance_give_back(org_id, epoch, reserved_micro - amount)
         # Unconfirmed is not "not charged": the charge may have committed, and the writer keeps
-        # trying until it has. What the call spent stays out of the counter either way.
+        # trying until it has (and freezes again then). Its money stays out of the counter.
         confirmed = await written
-        if amount <= reserved_micro:
-            return amount
-        # The call cost more than it set aside. The difference is owed to the balance, which may
-        # not have it. So no call is admitted from the counter until a refill has applied this
-        # charge and seen the balance: the gate the next reserve is after an overrun at `settle`.
-        await store.allowance_freeze(org_id, epoch)
+        if amount > reserved_micro and confirmed:
+            await store.allowance_freeze(org_id)
         if not confirmed:
             return amount
-        # Apply it now, to answer with what the team's credit really paid: with too little
-        # credit left that is less than the charge, and the ledger says so.
-        await _fold_backlog(org_id)
-        async with session_maker() as db:
-            settled = await allowance.settled_micro(db, org_id, call_id)
-        return amount if settled is None else settled
+        if amount <= reserved_micro:
+            state = await store.allowance_state(org_id)
+            if state is None or state[1] == state[2]:
+                return amount
+        # Frozen: some call of the team cost more than it set aside, and the team's credit may
+        # not cover every charge. Apply the queue now and answer with what the ledger took from
+        # the team for this call, which is less than the charge when the credit ran out.
+        return await _settled(org_id, call_id, amount)
     except Exception:
         log.error("finishing allowance take %s failed", call_id, exc_info=True)
         return 0
+
+
+async def _settled(org_id: int, call_id: str, amount: int) -> int:
+    """What the call's settle entry took, folding the team's queue to get it written. Another
+    process may hold the team's lease; it is folding too, so wait for the entry a bounded time.
+    `amount` if it still is not there."""
+    for _ in range(_SETTLED_TRIES):
+        await _fold_backlog(org_id)
+        async with session_maker() as db:
+            settled = await allowance.settled_micro(db, org_id, call_id)
+        if settled is not None:
+            return settled
+        await asyncio.sleep(0.05)
+    log.warning("allowance call %s was answered before its charge was applied", call_id)
+    return amount
