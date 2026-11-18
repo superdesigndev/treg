@@ -171,7 +171,9 @@ admitted, and two counts, `frozen` and `thawed`. The operations are atomic scrip
 - `allowance_add` adds what a refill just committed to the hold. It sets `until` from the instant
   the refill wrote on the hold, never from when the add lands, and never moves it back: a refill
   published late admits calls for less time or none. It thaws the counter only up to the freeze
-  count its caller read before its transaction, so a freeze that landed since stays in force.
+  count its caller read before its transaction, so a freeze that landed since stays in force,
+  and never past the count the hash itself holds, so a count read from a hash the store has
+  since lost cannot leave the rebuilt one frozen for good.
 - `allowance_freeze` raises the freeze count: what the counter holds is kept, but no call is
   admitted until an add whose caller read the count after this.
 - `allowance_state` reads `avail` and the two counts, for a refill.
@@ -256,32 +258,40 @@ money moved, the purchased-credit gate.
   the background until it lands (recording a call twice charges it once). The rewrite marks
   the paid question of each row that was new to it and whose call has no `settle` entry yet (a
   row is also new when the first attempt's row was applied and deleted since, and that attempt
-  marked it). While any charge is unconfirmed the process admits no new call to the allowance,
-  and a call is admitted only while the writer still has room for one more row than the calls
-  in flight could bring, so no admitted call's charge is ever without a place to wait. If the process dies first, the charge is lost and its money stays in
+  marked it). While any charge is unconfirmed the process admits no new call to the allowance.
+  A call takes a place before its take is awaited and hands it to the writer, which keeps it
+  until the row is known written; a call is admitted only while places remain, so no admitted
+  call's charge is ever cut from a queue. The take is recorded on the call before anything else
+  is awaited, so a cancel finds it and returns it with its place. If the process dies first, the charge is lost and its money stays in
   the hold until the hold is closed.
 - **A call that cost more than it set aside.** The charge row keeps that part apart
   (`callcharge.overrun_micro`, revision 0111). A fold takes from the hold only what calls set
   aside; an overrun comes out of the balance, as at `settle`, so the hold keeps what other calls
   in flight set aside and a later give-back is still backed. The balance may not have it, so the
-  call freezes the counter, and only a refill that has applied that charge and read the balance
-  afterwards may let calls spend again. Three things make that hold. The call freezes twice,
-  before its charge is written (a call finishing beside it sees the freeze) and after (a refill
+  counter is frozen, and only a refill that has applied that charge and read the balance
+  afterwards may let calls spend again. Three things make that hold. The charge writer, not the
+  call, freezes the counter, after the charge is committed and before the call is told: a refill
   may thaw only the freezes it read before its transaction, and only a transaction that starts
-  after the commit can see the charge); a charge written late by the retry freezes again when it
-  lands. A refill of a frozen counter folds the whole queue, not one batch. And a refill that
-  then finds the balance below zero adds nothing and drains the counter back to the balance, so
-  the exact path's balance gate decides: the stop the next reserve is after an overrun there.
-  Each refill also compares the counter with the hold it just committed and takes back anything
-  above it.
+  after the commit can have read this one, so it has the charge in front of it; a call cancelled
+  while it waited changes nothing, and a charge written late freezes when it lands. A freeze
+  that does not reach the store leaves the batch unconfirmed, to be gone through again. A
+  refill of a frozen counter folds the whole queue, not one batch. And a refill that then finds
+  the balance below zero adds nothing and drains the counter back to the balance, so the exact
+  path's balance gate decides: the stop the next reserve is after an overrun there. Each refill
+  also compares the counter with the hold it just committed and takes back anything above it.
+- **A settlement outside the allowance that took more than its hold** (a tagged call, a routed
+  child, an async task) freezes the counter the same way, after its commit, when the team is
+  listed: it may have used the team's last credit, and calls admitted from the counter would not
+  meet the balance gate its own next reserve does.
 - **What a call is told it was charged.** Normally the charge: its money was set aside, so the
   ledger will take exactly that. While the counter is frozen that may not be true, because the
   team's credit may not cover every queued charge. A call that ends then (the one that overran,
   and any other that reads the counter frozen once its charge is written) folds the team's queue
   at once and answers with what its `settle` entry took, which is less than the charge when the
   blocks ran out (`block_shortfall_micro`). When another process holds the team's lease it is
-  folding too, and the call waits a bounded time for its entry; past that it answers with the
-  charge and logs it.
+  folding too, and the call waits a bounded time for its entry; past that, or when the entry
+  cannot be read, it answers with the charge and logs it. Once its charge is queued a call is
+  never answered as free because something later failed.
 - **Auto top-up** is asked after a refill, the only moment the balance moved.
 
 - **The queue is kept short.** One refill folds one batch, a chunk can pay for more calls than

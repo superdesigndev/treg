@@ -429,10 +429,13 @@ async def _platform_reserve(mk: MarketplaceCall, caller: Caller, meta: CallMeta 
         epoch = await allowance_runtime.take(
             caller.org_id, mk.reserved_micro,
             daily_cap_micro=budget_policy._effective_daily_cap(caller.org))
+        if epoch:
+            # Recorded on the call before anything else is awaited: a cancel from here on
+            # finds the take and returns it.
+            mk.call_id, mk.allowance_epoch = call_ref, epoch
         if auto_on and allowance_runtime.refills(caller.org_id) != before:
             await _schedule_autotopup_after(caller.org_id)
         if epoch:
-            mk.call_id, mk.allowance_epoch = call_ref, epoch
             return
     # Loaded inside the session, scheduled only after the lease is gone. The refill task opens
     # its own session and may call Stripe; that work is not part of this reserve.

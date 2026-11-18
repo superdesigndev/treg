@@ -279,11 +279,9 @@ _EXPECTED_DERIVED_WRITE_SITES = {
     ("application/call/allowance.py", "_write", "allowance.record_charges"),
     ("application/call/allowance.py", "_write", "archive.note_org_uses_in_transaction"),
     ("application/call/allowance.py", "finish", "store.allowance_give_back"),
-    # a call that cost more than it set aside stops takes until a refill has applied it,
-    # and a refill takes back whatever a counter holds above its hold
-    ("application/call/allowance.py", "finish", "store.allowance_freeze"),
-    # an overrun whose charge was written late freezes again once it is in the database
-    ("application/call/allowance.py", "_retry", "store.allowance_freeze"),
+    # the charge writer freezes a team's counter once an overrun's charge is committed, and
+    # a refill takes back whatever a counter holds above its hold
+    ("application/call/allowance.py", "_committed", "store.allowance_freeze"),
     ("application/call/allowance.py", "_refill", "store.allowance_take_up_to"),
     ("application/call/allowance.py", "_take", "store.acquire_lease"),
     ("application/call/allowance.py", "_take", "store.allowance_take"),
