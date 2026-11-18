@@ -852,8 +852,8 @@ afterwards: the reserve IS the charge, and a wrong count is a wrong bill. A row 
 `cost.reserve` skips that inference and its counted settle is capped at the hold.
 
 `_platform_settle` uses its own short session and never turns a served response into a 500. A pool
-timeout or PostgreSQL deadlock (`DBAPIError` with `orig.sqlstate == "40P01"`, never message matching)
-gets one retry of the whole settlement/release transaction, including overflow spend, in a fresh
+timeout, a PostgreSQL deadlock (`DBAPIError` with `orig.sqlstate == "40P01"`, never message
+matching) or a refused connection (`DB_BUSY_ERRORS`) gets one retry of the whole settlement/release transaction, including overflow spend, in a fresh
 session. A second failure leaves the hold to the reaper and preserves the upstream response. No
 upstream retry or extra ledger operation is introduced.
 
