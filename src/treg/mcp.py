@@ -259,6 +259,7 @@ _V1_TOOL_SCOPES = {
     "feedback": "treg:catalog", "review": "treg:catalog", "mark": "treg:catalog",
     "call": "treg:call", "call_media": "treg:call", "hub_create": "treg:call", "hub_update": "treg:call",
     "balance": "treg:read", "my_tools": "treg:read", "resources_list": "treg:read", "hub_mine": "treg:read",
+    "call_result": "treg:read",
 }
 _V2_TOOL_SCOPES = {
     "catalog_search": "treg:catalog", "catalog_get": "treg:catalog", "catalog_request": "treg:catalog",
@@ -631,6 +632,14 @@ class ResourcesOut(TypedDict, total=False):
     source: str | None
     count: int | None
     resources: list[dict[str, Any]] | None
+    error: str | None
+    detail: Any
+
+
+class CallResultOut(TypedDict, total=False):
+    team: str | None
+    calls: list[dict[str, Any]] | None  # without call_id: the team's latest calls, newest first
+    result: dict[str, Any] | None       # with call_id: what that call asked and what came back
     error: str | None
     detail: Any
 
@@ -1556,7 +1565,9 @@ async def _catalog_get_impl(
         "nothing the second time; the result carries `replayed: true`. Use a NEW key (or none) for "
         "genuinely new work, even when the parameters are identical: repeating a search to see "
         "what changed is a new call, not a retry, and reusing the key would hand you the old answer. "
-        "Reusing one key for a DIFFERENT request is refused rather than answered.\n\n"
+        "Reusing one key for a DIFFERENT request is refused rather than answered. If a call timed "
+        "out on your side and you sent no key, do not call again: `call_result` lists the team's "
+        "latest calls and returns a finished call's stored answer.\n\n"
         "For requests `params` can't express, the explicit slots mirror the CLI's flags: `query` "
         "is ALWAYS the query string (a list value expands to repeated keys), `body` is ALWAYS the "
         "request body (object/array → JSON; a STRING is sent raw, with `content_type` naming what "
@@ -2057,6 +2068,53 @@ async def resources_list(
     ctx: Context, provider: str = "", kind: str = "",
 ) -> ResourcesOut:
     return await _resources_list_impl(provider, kind, ctx, surface=_TEAM_SURFACE)
+
+
+_RECENT_CALL_FIELDS = ("call_ref", "endpoint_id", "status_code", "cost_charged_micro", "has_result",
+                       "created_at", "async_task")
+
+
+async def _call_result_impl(call_id: str, limit: int, ctx: Context) -> CallResultOut:
+    token = _bearer(ctx)
+    if not token:
+        return _need_token()
+    url = _segment_url("/calls", call_id) if call_id else None
+    if call_id and url is None:
+        return {"error": "call_id must be the call_id a call returned, or a row id from this list"}
+    async with _api(token) as client:
+        org_id, slug, problem = await _resolve_org(client)
+        if problem:
+            return problem
+        headers = {"X-Treg-Org": slug or ""}
+        if url is not None:
+            r = await client.get(f"{url}/result", headers=headers)
+        else:
+            r = await client.get("/calls", params={"limit": max(1, min(limit, 50))}, headers=headers)
+    body = _body(r)
+    if r.status_code != 200:
+        return {"error": "could not read the call" if call_id else "could not list recent calls",
+                "detail": body}
+    if url is not None:
+        return {"team": slug, "result": body}
+    rows = body if isinstance(body, list) else []
+    return {"team": slug, "calls": [
+        {"call_id": c.get("call_ref"), **{k: c.get(k) for k in _RECENT_CALL_FIELDS if k != "call_ref"}}
+        for c in rows]}
+
+
+@mcp.tool(
+    description=(
+        "Recover a call you already made, typically one whose answer never reached you (your client "
+        "timed out or the connection dropped while treg finished it). Without `call_id`: this team's "
+        "latest calls, newest first, each with its call_id, endpoint, status, charge and whether an "
+        "answer is stored (`has_result`). With `call_id`: what that call asked and what came back. "
+        "Reading costs nothing; check here before calling again, so a finished call is not paid twice."
+    ),
+    annotations=_READS,
+    structured_output=True
+)
+async def call_result(ctx: Context, call_id: str = "", limit: int = 10) -> CallResultOut:
+    return await _call_result_impl(call_id, limit, ctx)
 
 
 @mcp.tool(

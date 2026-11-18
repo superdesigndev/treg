@@ -305,6 +305,9 @@ Redaction in `application.call.evidence` is security-sensitive and order matters
 A caller-scoped replay cache keyed by `(membership_id, key)`. `delete_membership` removes it
 explicitly and the FK cascades as a backstop, so token revocation never 500s on a cached answer.
 
+- `request_fingerprint` hashes method, path, query and body, a JSON body as its canonical
+  serialization (`_canonical_json`); a row stored with the raw-bytes fingerprint still matches
+  the same bytes (`_raw_request_fingerprint`). A 409 on a live `pending` row names its `call_ref`.
 - A `pending` row is a lease owned by one call's `call_ref`: the owner renews `created_at` every
   `IDEMPOTENCY_LEASE_RENEW_S`, and every store, release and renewal is fenced on `call_ref`.
 - A lease older than `IDEMPOTENCY_STALE_PENDING_S` with no open hold or pending async task under

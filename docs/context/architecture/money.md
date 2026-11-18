@@ -986,7 +986,10 @@ still pay the provider twice.
   (`scope_shared_idempotency_key`), so two customers' identical labels never resolve to one upstream
   job; BYOK labels pass verbatim.
 - A short transaction claims a pending row before relay; the unique constraint arbitrates (loser
-  409); reusing a label with another fingerprint is 422.
+  409, naming the holder's `call_id` with `Retry-After`); reusing a label with another fingerprint
+  is 422. A JSON body enters the fingerprint as its canonical serialization (`_canonical_json`), so
+  key order and whitespace do not make a retry a different request; a body over
+  `_CANONICAL_MAX_BYTES`, or one whose parse could merge two requests, keeps its raw bytes.
 - Metered successes keep status, body, charge and call id for 24 hours.
   `response_retention: forbidden` keeps a body-free 410 receipt instead, for BYOK too. Uncharged
   failures (including every routed failure), other BYOK calls and owned free polls release the label
