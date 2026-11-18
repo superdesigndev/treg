@@ -7,7 +7,6 @@
     treg-worker asynctasks settle [--limit 50]       # complete deferred metered-call holds
     treg-worker agentpay reconcile [--limit 50]      # resolve agent payments whose settlement went unanswered
     treg-worker agentpay stripe-address --network tempo|base   # one-time setup for settlement `stripe`
-    treg-worker holds reap [--batch-size 100]        # release stale holds of every org (every minute)
     treg-worker arena insights [--max-seconds 110]   # fold new audit rows into the Arena aggregate
     treg-worker catalog stats [--max-rows 500000]    # fold new audit rows into per-day endpoint stats
     treg-worker catalog requeue-async-stats [--apply]   # preview or queue one async-window repair
@@ -309,17 +308,6 @@ async def _agentpay_stripe_address(args) -> int:
     address = await agent_payments.create_stripe_deposit_address(args.network)
     print(json.dumps({k: address.get(k) for k in ("id", "network", "address", "supported_tokens",
                                                    "livemode")}, sort_keys=True))
-    return 0
-
-
-async def _holds_reap(args) -> int:
-    from dataclasses import asdict
-    from .infra.db import verify_db
-    from .application.hold_sweep import reap_stale_holds
-
-    await verify_db()
-    result = await reap_stale_holds(batch_size=args.batch_size, max_batches=args.max_batches)
-    print(json.dumps(asdict(result), sort_keys=True))
     return 0
 
 
@@ -850,14 +838,6 @@ def main(argv: list[str] | None = None) -> int:
     addr = paysub.add_parser("stripe-address", help="create a Stripe crypto deposit address (prints it)")
     addr.add_argument("--network", choices=("tempo", "base"), required=True)
     addr.set_defaults(fn=_agentpay_stripe_address)
-    holds = sub.add_parser("holds", help="open balance holds")
-    holdssub = holds.add_subparsers(dest="cmd", required=True)
-    reap = holdssub.add_parser("reap", help="release holds older than the call timeout plus grace, every org")
-    reap.add_argument("--batch-size", type=_positive_int, default=100,
-                      help="stale holds to read at a time")
-    reap.add_argument("--max-batches", type=_positive_int, default=50,
-                      help="reads in one run; the next run continues")
-    reap.set_defaults(fn=_holds_reap)
     hub = sub.add_parser("hub", help="the tool hub")
     hubsub = hub.add_subparsers(dest="cmd", required=True)
     chk = hubsub.add_parser("check", help="run every live hub tool's check.json once, as its maker (spends the maker's balance at step prices)")

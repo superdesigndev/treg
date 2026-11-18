@@ -33,12 +33,12 @@ funds. This is why there is no SELECT-then-UPDATE and no application lock, and i
 on SQLite and Postgres. N concurrent callers against a balance that affords K get exactly K
 successes.
 
-Hold reaper: LAZY, at the top of `reserve`, scoped to the org that is calling, while
-`reserve_reaps_stale_holds` is on. A crash between relay and settle would otherwise strand that
-money. Sweeping one org's stale holds is a single indexed pass on the rare occasion any exist, paid
-by the caller who benefits from it. The scan runs inside the reserve transaction, so on a busy team
-it is one more statement in the serialized part of every call; `treg-worker holds reap` sweeps every
-org on a schedule instead, and the setting turns the lazy pass off once that schedule exists.
+Hold reaper: LAZY, at the top of `reserve`, scoped to the org that is calling. A crash between
+relay and settle would otherwise strand that money forever, and the alternative (a background timer)
+would need a scheduler, a leader election on multi-instance deploys, and would still only run on a
+timer. Sweeping one org's stale holds is a single indexed DELETE-ish pass on the rare occasion any
+exist, paid by the caller who benefits from it — and any org that never calls again has no balance
+to strand in the first place.
 """
 
 from __future__ import annotations
@@ -48,7 +48,7 @@ from collections.abc import Sequence
 from datetime import datetime, timedelta, timezone
 from typing import NamedTuple
 
-from sqlalchemy import and_, case, delete, func, literal_column, or_, update
+from sqlalchemy import case, delete, func, literal_column, or_, update
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlmodel import select
@@ -392,35 +392,15 @@ async def reserve(
     return call_id
 
 
-class Reserved(NamedTuple):
-    """A staged reservation: its hold id and the org balance the gate's UPDATE left."""
-
-    call_id: str
-    balance_micro: int
-
-
 async def reserve_in_transaction(
     db: AsyncSession, org_id: int, endpoint_id: str, est_micro: int, *, meta: dict | None = None,
     tags: dict[str, str] | None = None, call_id: str | None = None, purchased_only: bool = False,
     member_id: int | None = None,
 ) -> str:
-    """`reserve_returning_balance_in_transaction` for a caller that needs only the hold id."""
-    reserved = await reserve_returning_balance_in_transaction(
-        db, org_id, endpoint_id, est_micro, meta=meta, tags=tags, call_id=call_id,
-        purchased_only=purchased_only, member_id=member_id)
-    return reserved.call_id
-
-
-async def reserve_returning_balance_in_transaction(
-    db: AsyncSession, org_id: int, endpoint_id: str, est_micro: int, *, meta: dict | None = None,
-    tags: dict[str, str] | None = None, call_id: str | None = None, purchased_only: bool = False,
-    member_id: int | None = None,
-) -> Reserved:
     """Stage one call reservation in the caller-owned transaction.
 
-    Lazy stale-hold releases (`reserve_reaps_stale_holds`) still commit independently before the
-    balance gate. The caller must commit a successful reservation or roll back an insufficient one.
-    The balance comes back from the gate's own UPDATE, so nobody reads the org row again.
+    Lazy stale-hold releases still commit independently before the balance gate. The caller must
+    commit a successful reservation or roll back an insufficient one.
 
     `purchased_only` adds a second gate before the balance one: the org's purchased blocks, less
     its open purchased-only holds, must cover the charge, and the hold settles from purchased
@@ -429,9 +409,8 @@ async def reserve_returning_balance_in_transaction(
     `member_id` attributes the hold to a member whose daily spend limit applies (`MemberSpend`).
     """
     mark_money(db, "reserve", org_id=org_id, call_id=call_id)
-    if get_settings().reserve_reaps_stale_holds:
-        with money_stage(db, "reap_stale_holds"):
-            await reap_stale_holds(db, org_id=org_id)
+    with money_stage(db, "reap_stale_holds"):
+        await reap_stale_holds(db, org_id=org_id)
     charged = max(0, with_margin(int(est_micro)))
     # The caller may supply the id so ONE value identifies the call everywhere: the hold, both
     # ledger entries, the audit row and the X-Treg-Call-Id the caller gets back.
@@ -446,10 +425,8 @@ async def reserve_returning_balance_in_transaction(
             update(Org)
             .where(Org.id == org_id, Org.balance_micro >= charged)
             .values(balance_micro=Org.balance_micro - charged, **_spent_today_values(charged))
-            .returning(Org.balance_micro)
         )
-    balance_after = result.scalar_one_or_none()
-    if balance_after is None:
+    if result.rowcount != 1:
         # The same figure the refusal below reports: what is free of the queue's claims.
         with money_stage(db, "read_balance"):
             balance = (await db.execute(
@@ -486,7 +463,7 @@ async def reserve_returning_balance_in_transaction(
     if member_id is not None:
         db.add(MemberSpend(org_id=org_id, membership_id=member_id, hold_id=call_id,
                            amount_micro=charged))
-    return Reserved(call_id, int(balance_after))
+    return call_id
 
 
 def _charge_parts(org_id: int):
@@ -547,11 +524,11 @@ async def _purchased_gate(db: AsyncSession, org_id: int, charged: int) -> None:
 
 
 class _ClaimedHold(NamedTuple):
-    """A hold's fields, as the `DELETE ... RETURNING` that claimed its row returned them.
+    """A hold's fields, COPIED OUT before its row was deleted.
 
     Deliberately values and not the ORM object: the `delete()` that claims the row can expire the
     matching instance in the session, and touching an expired attribute afterwards is implicit async
-    I/O (MissingGreenlet). Copying the returned values makes that impossible rather than merely
+    I/O (MissingGreenlet). Reading everything up front makes that impossible rather than merely
     unlikely.
     """
 
@@ -891,46 +868,23 @@ def hold_ttl_s() -> int:
 
 async def reap_stale_holds(db: AsyncSession, *, org_id: int | None = None, limit: int = 100) -> int:
     """Release holds older than `hold_ttl_s()` — a call that old cannot still be settling, so the
-    money belongs back in the balance. `org_id=None` sweeps every org; `reserve` passes its own org
-    (the lazy strategy). Returns how many were released. Commits (via `release`)."""
+    money belongs back in the balance. `org_id=None` sweeps every org (for an admin/ops call);
+    `reserve` passes its own org, which is the lazy strategy that keeps this off any scheduler.
+    Returns how many were released. Commits (via `release`)."""
     mark_money(db, "reap", org_id=org_id)
-    with money_stage(db, "reap_scan"):
-        stale = (await db.execute(_stale_holds_query(org_id=org_id, limit=limit))).scalars().all()
-    for hold in stale:
-        await release(db, hold.id, reason="stale_hold_reaped",
-                      meta={"age_s": int((_now() - hold.created_at).total_seconds())})
-    return len(stale)
-
-
-def _stale_holds_query(*, org_id: int | None, limit: int,
-                       after: tuple[datetime, str] | None = None):
     cutoff = _now() - timedelta(seconds=hold_ttl_s())
     deferred = select(AsyncTaskRecord.call_id).where(
         AsyncTaskRecord.call_id == Hold.id, AsyncTaskRecord.status == "pending").exists()
     q = (select(Hold).where(Hold.created_at < cutoff, Hold.allowance.is_(False), ~deferred)
-         .order_by(Hold.created_at, Hold.id).limit(limit))
-    if after is not None:
-        at, call_id = after
-        q = q.where(or_(Hold.created_at > at, and_(Hold.created_at == at, Hold.id > call_id)))
-    return q if org_id is None else q.where(Hold.org_id == org_id)
-
-
-class StaleHold(NamedTuple):
-    call_id: str
-    org_id: int
-    age_s: int
-    created_at: datetime
-
-
-async def stale_holds(db: AsyncSession, *, limit: int = 100,
-                      after: tuple[datetime, str] | None = None) -> list[StaleHold]:
-    """Holds `reap_stale_holds` would release, oldest first, across every org. Reads only.
-    `after` is the `(created_at, call_id)` of the last hold a previous read returned; the read
-    starts past it, so a hold that could not be released never comes back at the head."""
-    now = _now()
-    rows = (await db.execute(_stale_holds_query(org_id=None, limit=limit, after=after))).scalars().all()
-    return [StaleHold(h.id, int(h.org_id), int((now - h.created_at).total_seconds()), h.created_at)
-            for h in rows]
+         .order_by(Hold.created_at).limit(limit))
+    if org_id is not None:
+        q = q.where(Hold.org_id == org_id)
+    with money_stage(db, "reap_scan"):
+        stale = (await db.execute(q)).scalars().all()
+    for hold in stale:
+        await release(db, hold.id, reason="stale_hold_reaped",
+                      meta={"age_s": int((_now() - hold.created_at).total_seconds())})
+    return len(stale)
 
 
 async def spent_today(db: AsyncSession, org_id: int) -> int:

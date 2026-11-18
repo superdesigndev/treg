@@ -43,8 +43,6 @@ EXPECTED_MAKERS: dict[str, set[str]] = {
     "application/enterprise_sso.py": {API},
     "routers/enterprise_sso.py": {API},
     "application/asynctasks.py": {API},
-    # The scheduled stale-hold sweep runs in the `treg-worker` process: one release per session.
-    "application/hold_sweep.py": {API},
     # Organization resource CRUD uses short API-pool transactions around, never during, upstream I/O.
     "application/provider_resources.py": {API},
     # Interactive paid runs: short transactions between legs, never across upstream waits.

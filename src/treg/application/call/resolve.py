@@ -6,7 +6,6 @@ import hashlib
 import json
 import math
 import re
-from contextlib import nullcontext
 from email import policy
 from email.parser import BytesParser
 from collections.abc import Awaitable, Callable
@@ -216,21 +215,9 @@ async def resolve_call_target(
     rest: str,
     caller: Caller,
     resolver: Callable[[str, Caller, AsyncSession], Awaitable[ResolvedTarget]],
-    db: AsyncSession | None = None,
 ) -> ResolvedTarget:
-    """`db` is the caller's request session, kept open for the steps after this one."""
-    async with (nullcontext(db) if db is not None else session_maker()) as session:
-        return await resolver(rest, caller, session)
-
-
-async def load_marketplace_views() -> None:
-    """Refresh the cached capacity and overflow views a catalog resolution reads (60 s each).
-
-    Their refresh opens its own session, so it runs before the resolution session's first
-    statement: a request never waits for a second pooled connection while holding one."""
-    await capacity_view.load()
-    if get_settings().overflow_mode != "off":
-        await overflow_routes_view.load()
+    async with session_maker() as db:
+        return await resolver(rest, caller, db)
 
 
 def _catalog_endpoint_for(rest: str) -> dict | None:
@@ -2710,18 +2697,16 @@ async def resolve_marketplace_target(
     resolve_call: Callable[[str, Caller, AsyncSession], Awaitable[ResolvedTarget]],
     request_headers=None,
     authorization_method: str = "",
-    db: AsyncSession | None = None,
 ) -> MarketplaceCall:
-    """`db` is the caller's request session, kept open for the steps after this one."""
     if oauth_providers.is_paused(ep.get("provider")):
         raise provider_paused(ep["provider"], ep["id"])
-    # The exhausted view is refreshed before any hold exists, and only while no connection is held
-    # (`load_marketplace_views`). A session already in a transaction reads the view as it is: its
-    # caller refreshed it before that session's first statement. A stale or empty view never
-    # refuses: blocking fires on confirmed signals only.
-    if db is None or not db.in_transaction():
-        await load_marketplace_views()
-    async with (nullcontext(db) if db is not None else session_maker()) as session:
+    # The exhausted view is refreshed here - before the resolution session opens, so at most one
+    # connection is held at a time, and before any hold exists. Cached 60 s; a stale or empty view
+    # never refuses: blocking fires on confirmed signals only.
+    await capacity_view.load()
+    if get_settings().overflow_mode != "off":
+        await overflow_routes_view.load()  # same discipline: before the session, cached 60 s
+    async with session_maker() as db:
         return await _resolve_marketplace_call(
             ep,
             method=method,
@@ -2729,7 +2714,7 @@ async def resolve_marketplace_target(
             has_body=has_body,
             read_body=read_body,
             caller=caller,
-            db=session,
+            db=db,
             resolve_call=resolve_call,
             request_headers=request_headers,
             authorization_method=authorization_method,

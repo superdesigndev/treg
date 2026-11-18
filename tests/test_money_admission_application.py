@@ -738,7 +738,7 @@ async def test_reserve_waits_before_checkout_and_reaps_without_a_second_admit(mo
         assert kinds.count("release") == 1
 
 
-async def test_reserve_hands_auto_top_up_the_gate_balance_only_when_on_and_after_the_lease(
+async def test_reserve_reloads_the_org_for_auto_top_up_only_when_on_and_after_the_lease(
         money_db, monkeypatch):
     org_id, caller = await _payer("reserve-autotopup")
     probe = AdmissionProbe(monkeypatch)
@@ -746,17 +746,16 @@ async def test_reserve_hands_auto_top_up_the_gate_balance_only_when_on_and_after
     scheduled = []
     monkeypatch.setattr(
         call_reserve.billing, "maybe_schedule_autotopup",
-        lambda org, balance_micro=None: scheduled.append(
-            (org.id, balance_micro, len(probe.connections_on_exit))))
+        lambda org: scheduled.append((org.id, org.balance_micro, len(probe.connections_on_exit))))
     try:
         await call_reserve._platform_reserve(_call(org_id, "topup-off"), caller, call_ref="topup-off")
         assert scheduled == []
-        assert probe.checkouts == 1
+        assert probe.checkouts == 1, "a team without auto top-up pays no read after its reserve"
         caller.org.autotopup_enabled = True
         caller.org.autotopup_consented_at = datetime(2026, 1, 1)
         await call_reserve._platform_reserve(_call(org_id, "topup-on"), caller, call_ref="topup-on")
-        assert scheduled == [(org_id, 800, 2)], "the gate's balance, scheduled after the lease exits"
-        assert probe.checkouts == 2, "no org read after the reserve"
+        assert scheduled == [(org_id, 800, 2)], "the committed balance, read after the lease exits"
+        assert probe.checkouts == 3
     finally:
         probe.close()
 

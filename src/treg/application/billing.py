@@ -1399,22 +1399,19 @@ async def _record_failure(db: AsyncSession, org_id: int, reason: str) -> dict:
 _scheduled: set[int] = set()
 
 
-def maybe_schedule_autotopup(org: Org, *, balance_micro: int | None = None) -> bool:
+def maybe_schedule_autotopup(org: Org) -> bool:
     """FIRE AND FORGET a refill check for this org. Returns whether a task was actually started.
 
     Deliberately synchronous and non-awaitable: the caller is on a request path (phase 3 calls it
     right after `reserve`), and a Stripe round-trip is hundreds of milliseconds that must never land
     in an agent's call latency. The cheap in-memory checks happen here so the common case — auto-top-up
     off, or balance healthy — costs a dict lookup and no task at all.
-
-    `balance_micro` is a balance fresher than `org`'s, such as the one `reserve` just left.
     """
     if not (configured() and org and org.id and org.autotopup_enabled and org.autotopup_consented_at):
         return False
     if not (org.stripe_customer_id and org.stripe_default_pm):
         return False
-    balance = org.balance_micro if balance_micro is None else balance_micro
-    if balance >= autotopup_prefs(org)["threshold_micro"]:
+    if org.balance_micro >= autotopup_prefs(org)["threshold_micro"]:
         return False
     # The DB re-checks under its lock; this only spares a task per call while the wait runs, which
     # matters because a REFUSED call schedules too.
