@@ -627,6 +627,51 @@ async def test_unknown_endpoint_access_is_a_clean_404(clients: AsyncClient):
     assert "unknown endpoint" in r.text
 
 
+async def test_endpoint_shows_exhaustion_notice_when_platform_key_exhausted(clients: AsyncClient, monkeypatch):
+    """When treg's platform key for a provider is exhausted, the endpoint detail should include
+    the exhaustion notice with the reset time and BYOK suggestion."""
+    from datetime import timedelta
+    from treg import ratestore
+    from treg.config import get_settings
+    from treg.domain.capacity.policy import LatestState
+    from treg.domain.capacity.sweep import STATE_NS
+    from treg.domain.capacity.view import view as capacity_view
+    from treg.infra.db import session_maker
+    from treg.timeutil import utcnow_naive
+
+    monkeypatch.setenv("TREG_PLATFORM_KEY_TIKHUB", "PLATFORM-TIKHUB-KEY")
+    monkeypatch.setenv("TREG_PLATFORM_PROVIDERS", "tikhub")
+    get_settings.cache_clear()
+
+    now = utcnow_naive()
+    reset_at = now + timedelta(days=21)
+    state = LatestState("tikhub", 0.0, "USD", now, "exact",
+                        exhausted_until=reset_at, health="exhausted")
+    async with session_maker() as db:
+        await ratestore.kv_put(db, STATE_NS, "tikhub", state.to_json(), ttl_s=3600)
+        await db.commit()
+    capacity_view.invalidate()
+
+    try:
+        r = await clients.get("/catalog/endpoints/tikhub.tiktok.user.profile")
+        assert r.status_code == 200
+        body = r.json()
+        assert body.get("platform_exhausted") is True, "exhaustion flag should be set"
+        assert body.get("platform_resets_at"), "resets_at should be provided"
+        notice = body.get("platform_exhaustion_notice", "")
+        assert "out of capacity" in notice, "notice should explain exhaustion"
+        assert "tikhub" in notice.lower(), "notice should name the provider"
+        assert "treg secret add" in notice, "notice should suggest BYOK"
+        assert any("out of capacity" in h or "connect your own key" in h for h in body.get("hints", [])), \
+            "hints should include exhaustion notice"
+    finally:
+        async with session_maker() as db:
+            await ratestore.kv_pop(db, STATE_NS, "tikhub")
+            await db.commit()
+        capacity_view.invalidate()
+        get_settings.cache_clear()
+
+
 def test_call_template_unflattens_dotted_body_keys_and_drops_parent_placeholder():
     """A synthetic JSON-RPC schema: parent `params` plus `params.*` children. The
     placeholder must not survive next to the nested object."""
