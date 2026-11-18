@@ -276,8 +276,6 @@ _EXPECTED_DERIVED_WRITE_SITES = {
     ("application/call/allowance.py", "_refill", "ledger.reap_stale_holds"),
     ("application/call/allowance.py", "_refill", "money_admission.admit"),
     ("application/call/allowance.py", "_refill", "store.allowance_add"),
-    # a counter the sweep could not retire, found with no hold behind it
-    ("application/call/allowance.py", "_refill", "store.allowance_drop"),
     ("application/call/allowance.py", "_write", "allowance.record_charges"),
     ("application/call/allowance.py", "_write", "archive.note_org_uses_in_transaction"),
     ("application/call/allowance.py", "finish", "store.allowance_give_back"),

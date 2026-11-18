@@ -86,7 +86,8 @@ class FakeStore:
 
     async def allowance_state(self, org_id):
         counter = self.counters.get(org_id, {})
-        return counter.get("avail", 0), counter.get("frozen", 0), counter.get("thawed", 0)
+        return (counter.get("avail", 0), counter.get("frozen", 0), counter.get("thawed", 0),
+                counter.get("epoch", 0))
 
     async def allowance_drop(self, org_id):
         counter = self.counters.get(org_id)
@@ -411,22 +412,22 @@ async def test_a_refill_tops_the_counter_back_up_and_folds_what_was_queued(org_i
         assert (await db.execute(select(CallCharge))).first() is None
 
 
-async def test_a_counter_whose_hold_was_closed_without_it_is_dropped_and_rebuilt(
-        org_id, store, monkeypatch):
-    """The sweep closed the hold and the store did not take the counter's retiring. The counter
-    still shows a chunk, so a refill asks for nothing, and there is no hold to refill."""
-    epoch = await runtime.take(org_id, 100)
-    await runtime.finish(org_id, "only", epoch, 100, endpoint_id="e", billable=False)
+@pytest.mark.parametrize("left", [CHUNK, 600, 0])
+async def test_a_counter_left_by_a_closed_hold_does_not_count_toward_the_next_one(
+        org_id, store, left):
+    """The sweep closed the hold and the store did not take the counter's retiring. Whatever
+    the counter still shows belongs to no hold: the next hold is opened for a whole chunk, and
+    its counter replaces the old one."""
+    epoch = await runtime.take(org_id, CHUNK)
+    await store.allowance_give_back(org_id, epoch, left)
     async with session_maker() as db:
         await allowance.close_allowance_in_transaction(db, org_id, reason="idle")
         await db.commit()
     store.expire()
-    assert store.counters[org_id]["avail"] == CHUNK
-    assert await runtime.take(org_id, 100) is None
-    assert store.counters[org_id]["avail"] == 0, "dropped: nothing stands behind it"
-    monkeypatch.setattr(runtime, "_refused_until", {})
-    rebuilt = await runtime.take(org_id, 100)
+    assert store.counters[org_id]["avail"] == left
+    rebuilt = await runtime.take(org_id, 500)
     assert rebuilt and rebuilt > epoch
+    assert store.counters[org_id]["avail"] == CHUNK - 500
     assert await _state(org_id) == (GRANT - CHUNK, CHUNK)
 
 

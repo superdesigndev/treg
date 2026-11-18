@@ -41,7 +41,7 @@ async def test_takes_stop_at_what_the_counter_holds(counter):
 @real_redis
 async def test_takes_stop_once_the_counter_is_no_longer_fresh_and_resume_on_the_next_add(counter):
     store, org_id = counter
-    assert await store.allowance_state(org_id) == (0, 0, 0)
+    assert await store.allowance_state(org_id) == (0, 0, 0, 0)
     await store.allowance_add(org_id, 7, 100, until_ms=_soon(40), ttl_ms=60_000, seen_frozen=0)
     assert await store.allowance_take(org_id, 10) == 7
     await asyncio.sleep(0.08)
@@ -110,7 +110,7 @@ async def test_dropping_empties_and_freezes_the_counter_and_keeps_its_epoch(coun
     assert await store.allowance_drop(org_id) == 60
     assert await store.allowance_drop(org_id) == 0
     assert await store.allowance_give_back(org_id, 7, 40) is True
-    available, frozen, thawed = await store.allowance_state(org_id)
+    available, frozen, thawed, _ = await store.allowance_state(org_id)
     assert (available, frozen - thawed) == (40, 2)
     assert await store.allowance_take(org_id, 1) == 0, "given back, but not offered until thawed"
     assert await store.allowance_add(
@@ -124,7 +124,7 @@ async def test_only_an_add_that_read_the_freeze_may_thaw_it(counter):
     between is one its transaction did not see, so its add must not lift it."""
     store, org_id = counter
     await store.allowance_add(org_id, 7, 100, until_ms=_soon(), ttl_ms=60_000, seen_frozen=0)
-    available, seen, thawed = await store.allowance_state(org_id)
+    available, seen, thawed, _ = await store.allowance_state(org_id)
     assert available == 100 and seen == thawed > 0
     assert await store.allowance_freeze(org_id) == seen + 1
     assert await store.allowance_add(
@@ -143,7 +143,7 @@ async def test_a_freeze_that_lands_before_the_first_add_holds_the_counter_it_bui
     """The first refill has committed and not published. A freeze that lands now finds no
     counter; the add, whose transaction did not see the freeze, must not open one over it."""
     store, org_id = counter
-    assert await store.allowance_state(org_id) == (0, 0, 0)
+    assert await store.allowance_state(org_id) == (0, 0, 0, 0)
     frozen = await store.allowance_freeze(org_id, ttl_ms=60_000)
     assert 0 < await store._client.pttl(kv._allowance_key(org_id)) <= 60_000
     assert await store.allowance_take(org_id, 10) == 0
@@ -151,7 +151,7 @@ async def test_a_freeze_that_lands_before_the_first_add_holds_the_counter_it_bui
     assert await store.allowance_add(
         org_id, 7, 100, until_ms=_soon(), ttl_ms=60_000, seen_frozen=0) == 100
     assert await store.allowance_take(org_id, 10) == 0, "built frozen"
-    assert await store.allowance_state(org_id) == (100, frozen, frozen - 1)
+    assert await store.allowance_state(org_id) == (100, frozen, frozen - 1, 7)
     await store.allowance_add(org_id, 7, 0, until_ms=_soon(), ttl_ms=60_000, seen_frozen=frozen)
     assert await store.allowance_take(org_id, 100) == 7
 
@@ -164,11 +164,11 @@ async def test_a_freeze_count_read_from_a_counter_since_lost_does_not_jam_the_re
     await store.allowance_add(org_id, 7, 100, until_ms=_soon(), ttl_ms=60_000, seen_frozen=0)
     for _ in range(3):
         await store.allowance_freeze(org_id)
-    _, seen, _ = await store.allowance_state(org_id)
+    _, seen, _, _ = await store.allowance_state(org_id)
     await store._client.delete(kv._allowance_key(org_id))
     assert await store.allowance_add(
         org_id, 7, 100, until_ms=_soon(), ttl_ms=60_000, seen_frozen=seen) == 100
-    available, frozen, thawed = await store.allowance_state(org_id)
+    available, frozen, thawed, _ = await store.allowance_state(org_id)
     assert available == 100 and frozen == thawed
     assert await store.allowance_take(org_id, 100) == 7
 
@@ -186,7 +186,7 @@ async def test_a_freeze_on_a_rebuilt_counter_is_not_thawed_by_a_count_read_from_
     await store.allowance_add(org_id, 7, 100, until_ms=_soon(), ttl_ms=60_000, seen_frozen=0)
     for _ in range(5):
         await store.allowance_freeze(org_id)
-    _, seen, _ = await store.allowance_state(org_id)
+    _, seen, _, _ = await store.allowance_state(org_id)
     await store._client.delete(kv._allowance_key(org_id))
     if rebuilt is not None:
         monkeypatch.setattr(kv, "_new_counts", lambda: rebuilt)

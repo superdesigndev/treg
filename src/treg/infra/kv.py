@@ -200,7 +200,8 @@ return taken
 _ALLOWANCE_STATE = """
 return {tonumber(redis.call('HGET', KEYS[1], 'avail') or '0'),
         tonumber(redis.call('HGET', KEYS[1], 'frozen') or '0'),
-        tonumber(redis.call('HGET', KEYS[1], 'thawed') or '0')}
+        tonumber(redis.call('HGET', KEYS[1], 'thawed') or '0'),
+        tonumber(redis.call('HGET', KEYS[1], 'epoch') or '0')}
 """
 # The hash stays, emptied, so its epoch keeps fencing writers that arrive later. It is frozen
 # too: what calls in flight give back afterwards is not offered until a refill has looked at it.
@@ -412,10 +413,11 @@ class Store(Protocol):
         for `ttl_ms`, and the counter an add then builds starts frozen. Returns the new count;
         None when the store cannot answer."""
 
-    async def allowance_state(self, org_id: int) -> tuple[int, int, int] | None:
-        """(available, freezes, freezes thawed) of a team's counter, zeros when absent. A
-        reading, already old when it returns: size a refill with it and hand its freeze count
-        to `allowance_add`, never admit a call on it. None when the store cannot answer."""
+    async def allowance_state(self, org_id: int) -> tuple[int, int, int, int] | None:
+        """(available, freezes, freezes thawed, epoch) of a team's counter, zeros when absent.
+        A reading, already old when it returns: size a refill with it, for the hold of that
+        epoch only, and hand its freeze count to `allowance_add`; never admit a call on it.
+        None when the store cannot answer."""
 
     async def allowance_drop(self, org_id: int) -> int | None:
         """Empty a team's counter and return what it held (0 when absent), in one atomic step, so
@@ -547,7 +549,7 @@ class LocalStore:
     async def allowance_freeze(self, org_id: int, *, ttl_ms: int = 86_400_000) -> int | None:
         return None
 
-    async def allowance_state(self, org_id: int) -> tuple[int, int, int] | None:
+    async def allowance_state(self, org_id: int) -> tuple[int, int, int, int] | None:
         return None
 
     async def allowance_drop(self, org_id: int) -> int | None:
@@ -692,12 +694,12 @@ class RedisStore:
     async def allowance_freeze(self, org_id: int, *, ttl_ms: int = 86_400_000) -> int | None:
         return await self._allowance_eval(_ALLOWANCE_FREEZE, org_id, ttl_ms, _new_counts())
 
-    async def allowance_state(self, org_id: int) -> tuple[int, int, int] | None:
+    async def allowance_state(self, org_id: int) -> tuple[int, int, int, int] | None:
         try:
             async with asyncio.timeout(_TIMEOUT_S):
-                avail, frozen, thawed = await self._client.eval(
+                avail, frozen, thawed, epoch = await self._client.eval(
                     _ALLOWANCE_STATE, 1, _allowance_key(org_id))
-            return int(avail), int(frozen), int(thawed)
+            return int(avail), int(frozen), int(thawed), int(epoch)
         except Exception as exc:  # noqa: BLE001 - the caller falls back to the database path
             _note_fault(exc)
             return None

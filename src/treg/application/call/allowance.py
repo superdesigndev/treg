@@ -128,8 +128,8 @@ async def _refill(org_id: int, need_micro: int, daily_cap_micro: int) -> bool:
         return False
     # Read BEFORE the transaction: the add below may thaw only the freezes counted here. One
     # that lands later was raised by a charge this transaction may not have folded.
-    available, seen_frozen, thawed = state
-    add = max(0, max(settings.money_allowance_chunk_micro, need_micro) - available)
+    available, seen_frozen, thawed, counter_epoch = state
+    target = max(settings.money_allowance_chunk_micro, need_micro)
     try:
         async with (
             money_lock(org_id),
@@ -141,11 +141,16 @@ async def _refill(org_id: int, need_micro: int, daily_cap_micro: int) -> bool:
             # Frozen: a call cost more than it set aside. Calls may spend again only once every
             # queued charge is applied and the balance read after that, not after one batch.
             result = await allowance.refill_allowance_in_transaction(
-                db, org_id, add, daily_cap_micro=daily_cap_micro,
-                fold_all=seen_frozen != thawed)
+                db, org_id, max(0, target - available), daily_cap_micro=daily_cap_micro,
+                fold_all=seen_frozen != thawed,
+                counter_epoch=counter_epoch, fresh_add_micro=target)
             await db.commit()
     except money_admission.ReserveAdmissionTimeout:
         return False
+    if result.epoch != counter_epoch:
+        # The counter read was built for another hold. Publishing this one replaces it, and
+        # what it showed goes with it.
+        available = 0
     _refills[org_id] = _refills.get(org_id, 0) + 1
     if result.folded.calls + result.folded.duplicates >= allowance.FOLD_BATCH:
         # A full batch: more is queued than one refill folds. A chunk can pay for more calls
@@ -159,13 +164,6 @@ async def _refill(org_id: int, need_micro: int, daily_cap_micro: int) -> bool:
         _refused_until[org_id] = time.monotonic() + _REFUSAL_COOLDOWN_S
         if result.epoch is not None:
             await _drain(org_id, "no_room_to_refill")
-        elif available:
-            # A counter with no hold behind it: the sweep closed the hold and its retiring of
-            # the counter did not reach the store. Left alone, what it still shows would keep
-            # every refill from asking for money, and the team on the exact path until the
-            # hash expires.
-            log.warning("allowance_counter_without_hold org_id=%s counter=%s", org_id, available)
-            await store.allowance_drop(org_id)
         return False
     # The deadline is the one the refill wrote on the hold, not one counted from now: the idle
     # sweep reads the hold, so a refill published late must not admit calls past it.
