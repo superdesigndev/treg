@@ -29,7 +29,7 @@
   <div class="eyebrow">Legal</div>
   <h1>Treg Terms of Service</h1>
   <div class="stamp">
-    <span>Last updated: 22 July 2026</span>
+    <span>Last updated: 18 November 2026</span>
     <span>Effective: 22 July 2026</span>
   </div>
 
@@ -39,7 +39,7 @@
       <li><b>What this is.</b> Treg holds your API keys and OAuth connections server-side and lets your teammates and AI agents use them through a revocable token — without the key ever landing on a machine.</li>
       <li><b>Your credentials stay yours.</b> We store them encrypted, use them only to make the calls you or your team ask for, and never sell or mine them.</li>
       <li><b>You are responsible for what you connect.</b> Only upload credentials you have the right to use, and follow the terms of whatever upstream API sits behind them.</li>
-      <li><b>Free, and offered as-is.</b> The hosted service is in early access with no uptime promise. Don't make it the only copy of anything you can't lose.</li>
+      <li><b>Offered as-is.</b> The hosted service is in early access with no uptime promise. Don't make it the only copy of anything you can't lose.</li>
       <li><b>Self-hosting is separate.</b> If you run your own registry, the source license governs — not this document.</li>
     </ul>
     <p style="margin-top:14px;font-size:12.5px;color:var(--ink55)">This summary is for orientation only. The numbered sections below are the actual agreement.</p>
@@ -70,7 +70,7 @@
       you, within whatever access your role and per-member tool list allow.</li>
     <li>You can revoke every token you hold at once from the dashboard, and we'll do the same on
       request if you believe a token has leaked.</li>
-    <li>Tell us promptly at <a href="mailto:jason@superdesign.dev">jason@superdesign.dev</a> if you
+    <li>Tell us promptly at <a href="mailto:jason@treg.to">jason@treg.to</a> if you
       suspect unauthorized access.</li>
   </ul>
 
@@ -96,7 +96,7 @@
     <li>Secret values are <b>encrypted at rest</b> and are never returned through the API or shown in
       the dashboard after they're stored.</li>
     <li>We inject them <b>only</b> into calls that an authenticated member of the owning team makes to
-      a tool they have access to — through the call proxy, a local-run grant, or a server-side run.</li>
+      a tool they have access to — through the call proxy or a local-run grant.</li>
     <li>We do <b>not</b> read, mine, sell, or use your credentials or the data they reach for any
       purpose other than performing the call you asked for and keeping the credential healthy
       (periodic validity checks and OAuth token refresh).</li>
@@ -130,6 +130,9 @@
       exactly this reason.</li>
     <li>Rate limits, quotas, billing, and enforcement are the upstream provider's. If they suspend or
       revoke your access, we can't restore it.</li>
+    <li>Some providers restrict reselling, redistributing, or storing their data. When you build on
+      treg, including inside your own product, you must follow each provider's terms for the data
+      you receive.</li>
     <li>Disconnecting a provider in treg deletes the stored token on our side; revoking treg's access
       in the provider's own settings is the belt-and-braces version, and we recommend both.</li>
   </ul>
@@ -153,13 +156,13 @@
       another team's data;</li>
     <li>run malware, mine cryptocurrency, send spam or bulk unsolicited email, or host illegal
       content;</li>
-    <li>use server-side runs to execute code intended to escape the sandbox, or to proxy traffic to
-      destinations unrelated to a registered tool;</li>
+    <li>proxy traffic to destinations unrelated to a registered tool;</li>
     <li>redistribute the open-source software to third parties as a competing hosted service — see §11.
       (Using the hosted treg.to API inside your own product — with your own billing layer and the
-      pass-through attribution mechanics — is allowed; that is calling our API, not reselling it.)</li>
+      pass-through attribution mechanics — is allowed; that is calling our API, not reselling it. The
+      upstream provider's own limits on reselling its data still apply; see §05.)</li>
   </ul>
-  <p>We apply per-member daily call caps, egress restrictions, and sandboxing to protect the Service.
+  <p>We apply per-member daily call caps and egress restrictions to protect the Service.
   Circumventing them is a breach of these Terms.</p>
 
   <h2 class="sec" id="s8"><span class="n">08</span>Early access, availability, and changes</h2>
@@ -223,8 +226,7 @@
   special, consequential, or punitive damages, or for lost profits, revenue, goodwill, or data,
   however caused.</p>
   <p>Our total aggregate liability arising out of or relating to the Service is limited to the greater
-  of (a) the amount you paid us for the Service in the twelve months before the claim, or (b) US$100.
-  While the Service is free, that means US$100.</p>
+  of (a) the amount you paid us for the Service in the twelve months before the claim, or (b) US$100.</p>
 
   <h2 class="sec" id="s13"><span class="n">13</span>Indemnity</h2>
   <p>You'll defend and indemnify us against claims, losses, and costs arising from your use of the
@@ -245,7 +247,7 @@
 
   <h2 class="sec" id="s16"><span class="n">16</span>Contact</h2>
   <p>Questions about these Terms, or anything else:
-  <a href="mailto:jason@superdesign.dev">jason@superdesign.dev</a>.
+  <a href="mailto:jason@treg.to">jason@treg.to</a>.
   Security reports are welcome and taken seriously — see
   <a href="https://github.com/superdesigndev/treg/blob/main/SECURITY.md" target="_blank" rel="noopener">SECURITY.md</a>.</p>
 
