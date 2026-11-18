@@ -78,12 +78,13 @@ endpoints:
     name: LinkedIn posts by member URL, slug or URN
     summary: Fetch posts from a professional profile with engagement metrics.
     strict_query: true
-    input: &profile_page_input
+    input:
       queryParams:
         profileUrlOrUrn: {type: string, required: true, example: satyanadella, note: "Profile URL, public identifier or profile URN."}
         count: {type: integer, required: false, default: 10, min: 1, max: 50}
         paginationToken: {type: string, required: false, note: "Pass the token from the previous response unchanged."}
-      note: "Cursor-paginated. Keep paging while hasMore is true. The deprecated start offset is intentionally excluded because this endpoint rejects non-zero offsets."
+        includeReposts: {type: boolean, required: false, default: false, note: "When true, also return plain reposts (postType repost, original under resharedPost) and collaborative posts. When false or omitted, Fetchin leaves those items out of posts but still counts them in pageSize and hasMore. The price does not change. Accepts true, false, 1, or 0."}
+      note: "Cursor-paginated. Keep paging while hasMore is true. When includeReposts is false or omitted, a short or empty posts list can have hasMore true because Fetchin counted filtered plain reposts and collaborative posts. The deprecated start offset is intentionally excluded because this endpoint rejects non-zero offsets."
     test_request: {queryParams: {profileUrlOrUrn: satyanadella, count: 1}}
     cost: *one_credit
     verified: '2026-09-24'
@@ -102,7 +103,12 @@ endpoints:
     name: LinkedIn posts reacted to by a member
     summary: Fetch posts that a professional profile has reacted to.
     strict_query: true
-    input: *profile_page_input
+    input:
+      queryParams:
+        profileUrlOrUrn: {type: string, required: true, example: satyanadella, note: "Profile URL, public identifier or profile URN."}
+        count: {type: integer, required: false, default: 10, min: 1, max: 50}
+        paginationToken: {type: string, required: false, note: "Pass the token from the previous response unchanged."}
+      note: "Cursor-paginated. Keep paging while hasMore is true. The deprecated start offset is intentionally excluded because this endpoint rejects non-zero offsets."
     test_request: {queryParams: {profileUrlOrUrn: williamhgates, count: 1}}
     cost: *one_credit
     verified: '2026-09-24'

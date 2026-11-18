@@ -3453,6 +3453,10 @@ adapters:
     accepts: [[linkedin_url], [linkedin_handle]]
     in: {linkedin_url: queryParams.profileUrlOrUrn, linkedin_handle: queryParams.profileUrlOrUrn}
     in_expr: {queryParams.count: limit}
+    # Fetchin omits plain reposts and collaborative posts unless includeReposts=true (its default
+    # is false). The routed activity feed always asks for them; Fetchin does not change the price.
+    # Originals-only callers use this child directly and omit the flag, or pass false.
+    const: {queryParams.includeReposts: "true"}
     out: {posts: posts, next_cursor: paginationToken, has_more: hasMore}
     miss: "posts == []"
   fetchinio.linkedin.post.comments:

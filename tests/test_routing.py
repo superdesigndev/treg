@@ -4241,6 +4241,21 @@ def test_a_web_search_that_asks_for_passages_asks_exa_for_the_ones_matching_q(co
         assert "contents" not in sent
 
 
+def test_a_routed_linkedin_posts_request_asks_fetchin_for_reposts():
+    """Fetchin drops plain reposts unless includeReposts=true. The routed activity feed always
+    sends that flag; Harvest already returns reposts and is not given the Fetchin parameter."""
+    cat = catalog_store.load()
+    ident, _ = canonical_identity(cat.contracts["linkedin.user.posts"],
+                                  {"linkedin_handle": "satyanadella"})
+    fetchin_q, _ = cat.adapters["fetchinio.linkedin.user.posts"].to_upstream(ident, ("linkedin_handle",))
+    harvest_q, _ = cat.adapters["harvestapi.linkedin.user.posts"].to_upstream(ident, ("linkedin_handle",))
+    assert fetchin_q["includeReposts"] == "true"
+    assert fetchin_q["profileUrlOrUrn"] == "satyanadella"
+    assert "includeReposts" not in harvest_q
+    params = (cat.by_id["fetchinio.linkedin.user.posts"].get("input") or {}).get("queryParams") or {}
+    assert "includeReposts" in params and params["includeReposts"].get("default") is False
+
+
 def test_a_flag_that_is_off_leaves_the_provider_sample_where_it_was():
     """An unsent or `false` flag asks for nothing: the sample hash sees the identity it saw before the
     filter existed, so a request that never sends `contents` keeps its provider."""
