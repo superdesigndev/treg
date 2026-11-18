@@ -20,7 +20,7 @@ source:
 # Use is under the Terms and Fair Use Policy: https://people.arihaan.ai/terms and https://people.arihaan.ai/fair-use
 # Probe: GET /v2/balance is free; a bad or missing key answers 401.
 limits: "100 people per search page; 100 ids per fetch or phone call; one key per lookup row here; a search that would read more than the scan cap is refused with HTTP 400 and nothing is charged; HTTP 402 when the prepaid balance is below the reserve; HTTP 403 profile_required until the account owner adds a LinkedIn profile URL and where they heard about us; HTTP 429 with resets_at past the per-key caps (treg's key gets 20x the usual: 1,200 calls a minute, 200 at once, 1,000,000 people and 40,000 personal emails a day)"
-pricing_url: https://people-api.arihaan.ai/v2/rates
+pricing_url: https://people.arihaan.ai/docs#pricing
 endpoints:
   - id: arihaan-people.people.email.personal
     added: '2026-11-17'
