@@ -1005,10 +1005,31 @@ returned and never documented as stable. An output field may say where it lands 
   `has_result_rules` reads them) but no `treg.<capability>` row is generated. For a capability whose
   "children" are one provider's price tiers.
 - `question_miss` is a miss rule that also sees the question: `child_outcome` evaluates it on the
-  caller's identity merged with the child's core output, after the adapter's own `miss`, and a hit it
-  marks true becomes a miss (`why: question_miss`) the route moves on from. It names no provider;
-  `no_result_on_site(q, results)` judges a `site:` question whose rows are all on other sites. A
-  call without an identity (a replay record) is not judged by it.
+  caller's identity merged with the child's core output, beside the adapter's own `miss` (both can
+  be true), and an answer it marks true is a miss with `why` naming `question_miss`. It names no
+  provider; `no_result_on_site(q, results)` judges a `site:` question whose rows are all on other
+  sites. A call without an identity (a replay record) is not judged by it. Such an answer walks
+  on to the end, as a `site:` search needs (the next provider may hold the site), unless the
+  contract declares `question_miss_bound: true`: then, on a waterfall, an answer ruled out by the
+  question alone (or with the adapter's own miss) is kept like a weak hit and bounded like one
+  (`route.py`, `MAX_WEAK_FALLBACKS`): the attempt is `weak` with a `question_miss:` detail, at most
+  two more providers are asked (every later answer counts, an empty one too), and if none answers better the first such answer is returned as
+  `outcome: weak`, recorded in the call event as no hit (and in the arena as a miss, `arena.routed_state`). An answer the provider itself reported as
+  failed (`provider_error`, `expect_failed`) stays a miss. `web.extract` declares it, because every
+  provider often returns the same wall page and some bill it.
+  `web.extract` declares `wall_page(pages)` (`paths.py::wall_page`): a page that says it is a
+  wall. An interstitial's phrase (captcha, "checking your browser", "verify you are human")
+  decides on a page of at most 1,000 characters; phrases real pages also carry (sign in to view,
+  not a robot, access denied, enable JavaScript or cookies) decide only on a short page, two of
+  them under twenty-five words and one alone under fifteen ("forgot password" counts only beside
+  another). A short answer is never a wall for
+  being short ("OK", an address, a price), nor is a blank page (the row's own miss rule) or a
+  structured answer (text starting with `{` or `[`). The rule runs on the event loop up to three
+  times per child, so a page past 20,000 characters of text, 256,000 characters in all or 50,000
+  values is left unjudged without being read further. The contract rule does not change a child's
+  charge; a `per_success` child stops billing such a page only where its own adapter `miss` also
+  calls `wall_page` on its text field, and only those adapters count a wall against measured
+  reliability.
 - `scoping` names identity keys that scope the answer (`company_domain`): a candidate whose adapter
   never sends a supplied one is dropped from the plan, not ranked down, because a title-only search
   asked for one company's CEO bills title-matched strangers as a hit.

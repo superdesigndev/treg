@@ -340,7 +340,8 @@ async def test_firecrawl_platform_scrape_bills_a_returned_404_and_byok_wins(
         assert request.url.path == "/v2/scrape"
         assert json.loads(request.content)["parsers"] == []
         return _dropleads_response(200, {"success": True, "data": {
-            "markdown": "# Missing", "metadata": {"statusCode": 404},
+            "markdown": "# Page not found\n\nThe page you asked for has moved or no longer exists. Try the search box.",
+            "metadata": {"statusCode": 404},
         }})
 
     async with AsyncClient(transport=httpx.MockTransport(upstream)) as vendor:
