@@ -532,11 +532,22 @@ async def _billing_reconcile(args) -> int:
 
 async def _usage_rollup(args) -> int:
     from .infra.db import verify_db
+    from .application import call_record_partitions
     from .application.call_usage_rollup import refresh
 
     await verify_db()
+    # This cron reads `callrecord` every few minutes, so it also keeps the table's coming month
+    # partitions in place. A failure here (a lock timeout) must not stop the fold; the next run
+    # tries again, and the run exits 1 so a scheduler's failure alert names it.
+    upkeep_failed = False
+    try:
+        await call_record_partitions.maintain()
+    except Exception:
+        import logging
+        upkeep_failed = True
+        logging.getLogger("treg.worker").error("callrecord partition upkeep failed", exc_info=True)
     print(json.dumps(await refresh(max_rows=args.max_rows), sort_keys=True))
-    return 0
+    return 1 if upkeep_failed else 0
 
 
 async def _jev_xboost(args) -> int:
@@ -568,6 +579,28 @@ async def _admin_purge_evidence(args) -> int:
     result = await evidence_retention.purge(batch_size=args.batch_size)
     print(json.dumps(result, sort_keys=True))
     return 1 if result.get("error") else 0
+
+
+async def _admin_callrecord_partitions(args) -> int:
+    """Create the coming month partitions of `callrecord`; with retention on, drop the expired."""
+    from .application import call_record_partitions
+    from .infra.db import verify_db
+
+    await verify_db()
+    print(json.dumps(await call_record_partitions.maintain(), sort_keys=True))
+    return 0
+
+
+async def _admin_callrecord_backfill(args) -> int:
+    """Copy `--days` of call records into the partitioned table. No `verify_db()`: it may run
+    from a checkout of a later release while the schema is still at alembic 0116."""
+    from .application import call_record_partitions
+
+    result = await call_record_partitions.backfill(
+        args.days, batch_rows=args.batch_rows, max_seconds=args.max_seconds,
+        pause=args.pause_seconds)
+    print(json.dumps(result, sort_keys=True))
+    return 0
 
 
 async def _admin_purge_ad_clicks(args) -> int:
@@ -997,6 +1030,19 @@ def main(argv: list[str] | None = None) -> int:
     purge.set_defaults(fn=_admin_purge_evidence)
     clicks = adminsub.add_parser("purge-ad-clicks", help="delete email-to-click stash rows past 90 days")
     clicks.set_defaults(fn=_admin_purge_ad_clicks)
+    parts = adminsub.add_parser("callrecord-partitions",
+                                help="create the coming month partitions of callrecord; drop the expired when retention is on")
+    parts.set_defaults(fn=_admin_callrecord_partitions)
+    backfill = adminsub.add_parser("callrecord-backfill",
+                                   help="copy recent call records into callrecord_partitioned; run again to resume")
+    backfill.add_argument("--days", type=_positive_int, required=True, help="how many days of history to copy")
+    backfill.add_argument("--batch-rows", type=_positive_int, default=5_000,
+                          help="rows per transaction (default 5000)")
+    backfill.add_argument("--pause-seconds", type=float, default=0.5,
+                          help="sleep between batches (default 0.5)")
+    backfill.add_argument("--max-seconds", type=float, default=None,
+                          help="stop after this long; the next run resumes")
+    backfill.set_defaults(fn=_admin_callrecord_backfill)
     erase = adminsub.add_parser("erase-archive", help="erase what an opted-out team stored in the archive")
     erase.add_argument("--org", type=_positive_int, required=True, help="the team's org id")
     erase.add_argument("--dry-run", action="store_true",
