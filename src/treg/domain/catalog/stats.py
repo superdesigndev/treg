@@ -55,15 +55,17 @@ def decided(status_code: int, hit: bool | None, outcome: str | None,
     """(success, failure) of one row the endpoint answered; neither = not decided.
 
     A row carrying `outcome` (a v2 row's own declaration, `results.judged_outcome`) is judged by
-    it whatever its status: `hit` succeeds, `error` fails, `not_found` (the target itself does not
-    exist) decides nothing, and `miss` fails only where the capability counts an empty answer as
-    a failure (`empty_fails`, the contract's `empty_is_failure`). Any other row keeps the status
+    it whatever its status: `hit` succeeds, `miss` fails only where the capability counts an empty
+    answer as a failure (`empty_fails`, the contract's `empty_is_failure`), and `not_found` (the
+    target itself does not exist) and `error` decide nothing. An error a row declares inside a 2xx
+    mixes the caller's mistakes (a field the provider refused) with the provider's own failures,
+    so it is treated as a 4xx is: never a success, never held against the provider. Any other row keeps the status
     rule: 2xx succeeds unless an `empty_fails` adapter judged it empty, 5xx and 405 fail, and the
     rest of 4xx is the caller's. `observed` spells the same rule in SQL."""
     if outcome is not None:
         if outcome == "miss":
             return (not empty_fails, empty_fails)
-        return (outcome == "hit", outcome == "error")
+        return (outcome == "hit", False)
     empty = empty_fails and status_code < 300 and hit is False
     return (status_code < 300 and not empty,
             empty or status_code >= 500 or status_code == 405)
@@ -309,8 +311,8 @@ async def observed(
     not a bad query — and it is counted as decided against the endpoint.
 
     **A row's own `outcome` comes before all of that** (`decided`): a v2 row says what its answers
-    mean, so a 2xx it declares an error fails, a 4xx it declares a miss is judged as one, and an
-    answer it declares `not_found` decides nothing.
+    mean, so a 2xx it declares an error is no success, a 4xx it declares a miss is judged as one,
+    and neither an error nor an answer it declares `not_found` is held against it.
     """
     ids = [e for e in dict.fromkeys(endpoint_ids) if e]
     if not ids:
@@ -326,7 +328,6 @@ async def observed(
                CallRecord.outcome == "hit",
                (CallRecord.outcome == "miss") & not_(in_strict))
     bad = or_(legacy & ((CallRecord.status_code >= 500) | (CallRecord.status_code == 405) | empty),
-              CallRecord.outcome == "error",
               (CallRecord.outcome == "miss") & in_strict)
 
     rows = (await db.execute(
