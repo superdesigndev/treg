@@ -152,7 +152,9 @@ return 1
 # `frozen` counts the freezes; takes stop while `thawed` differs from it. An add may thaw only
 # up to the count its caller read BEFORE its database transaction (ARGV[5]): a freeze that
 # landed after that read is one the transaction did not account for, and stays in force. A
-# counter rebuilt for a newer epoch keeps the freezes of the one it replaces.
+# counter rebuilt for a newer epoch keeps the freezes of the one it replaces. A count read from
+# a hash that has since been lost never thaws past what the hash now holds, which would leave
+# the two counts unequal for good.
 _ALLOWANCE_ADD = """
 local stored = redis.call('HGET', KEYS[1], 'epoch')
 if stored and tonumber(stored) > tonumber(ARGV[1]) then return -1 end
@@ -165,8 +167,10 @@ local avail = redis.call('HINCRBY', KEYS[1], 'avail', ARGV[2])
 if tonumber(ARGV[3]) > tonumber(redis.call('HGET', KEYS[1], 'until') or '0') then
     redis.call('HSET', KEYS[1], 'until', ARGV[3])
 end
-if tonumber(ARGV[5]) > tonumber(redis.call('HGET', KEYS[1], 'thawed') or '0') then
-    redis.call('HSET', KEYS[1], 'thawed', ARGV[5])
+local frozen = tonumber(redis.call('HGET', KEYS[1], 'frozen') or '0')
+local thaw = math.min(tonumber(ARGV[5]), frozen)
+if thaw > tonumber(redis.call('HGET', KEYS[1], 'thawed') or '0') then
+    redis.call('HSET', KEYS[1], 'thawed', thaw)
 end
 redis.call('PEXPIRE', KEYS[1], ARGV[4])
 return avail

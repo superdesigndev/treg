@@ -139,6 +139,22 @@ async def test_only_an_add_that_read_the_freeze_may_thaw_it(counter):
 
 
 @real_redis
+async def test_a_freeze_count_read_from_a_counter_since_lost_does_not_jam_the_rebuilt_one(counter):
+    """A refill read three freezes; the store then lost the hash. Thawing the rebuilt counter to
+    three would leave it frozen with nothing left to bring the two counts together."""
+    store, org_id = counter
+    await store.allowance_add(org_id, 7, 100, until_ms=_soon(), ttl_ms=60_000, seen_frozen=0)
+    for _ in range(3):
+        await store.allowance_freeze(org_id)
+    _, seen, _ = await store.allowance_state(org_id)
+    await store._client.delete(kv._allowance_key(org_id))
+    assert await store.allowance_add(
+        org_id, 7, 100, until_ms=_soon(), ttl_ms=60_000, seen_frozen=seen) == 100
+    assert await store.allowance_state(org_id) == (100, 0, 0)
+    assert await store.allowance_take(org_id, 100) == 7
+
+
+@real_redis
 async def test_a_counter_rebuilt_for_a_newer_hold_keeps_the_freezes_of_the_old_one(counter):
     store, org_id = counter
     await store.allowance_add(org_id, 7, 100, until_ms=_soon(), ttl_ms=60_000, seen_frozen=0)
