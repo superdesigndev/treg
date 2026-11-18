@@ -150,48 +150,87 @@ class _ChargeWriter:
 
     One insert per call would put a transaction back on every call. Calls that finish within
     the linger share one, and each still waits for its batch to commit before it answers.
+
+    A write that raises proves nothing about whether it committed. Such a batch is reported
+    unconfirmed, never as "not charged", and is written again until it lands: recording a call
+    twice charges it once, so repeating is safe and giving up is not.
     """
+
+    _MAX_UNCONFIRMED = 20_000
 
     def __init__(self) -> None:
         self._pending: list[tuple[allowance.Charge, tuple[int, str] | None, asyncio.Future]] = []
+        self._unconfirmed: list[tuple[allowance.Charge, tuple[int, str] | None]] = []
         self._task: asyncio.Task | None = None
+        self._retry_task: asyncio.Task | None = None
 
     def submit(self, charge: allowance.Charge,
                archive_use: tuple[int, str] | None) -> asyncio.Future:
         """Queue one charge now, with no await: a call cancelled right after still pays. The
-        future resolves True once the charge is committed, False if the write failed."""
+        future resolves True once the charge is known committed, False when that is not known
+        yet and the writer keeps trying."""
         loop = asyncio.get_running_loop()
         future = loop.create_future()
         self._pending.append((charge, archive_use, future))
-        if self._task is None or self._task.done() or self._task.get_loop() is not loop:
-            self._task = loop.create_task(self._run(), name="treg-allowance-charges")
+        self._task = self._ensure(self._task, self._run, "treg-allowance-charges")
         return future
+
+    @staticmethod
+    def _ensure(task: asyncio.Task | None, run, name: str) -> asyncio.Task:
+        loop = asyncio.get_running_loop()
+        if task is None or task.done() or task.get_loop() is not loop:
+            return loop.create_task(run(), name=name)
+        return task
 
     async def _run(self) -> None:
         while self._pending:
             await asyncio.sleep(get_settings().money_allowance_linger_ms / 1000)
             batch = self._pending[:allowance.FOLD_BATCH]
             del self._pending[:len(batch)]
-            written = True
+            rows = [(charge, use) for charge, use, _ in batch]
+            confirmed = True
             try:
                 try:
-                    await self._write(batch)
+                    await self._write(rows)
                 except Exception:  # noqa: BLE001 - one bounded retry on a fresh transaction
                     await asyncio.sleep(0.2)
-                    await self._write(batch)
+                    await self._write(rows)
             except Exception:
-                written = False
-                log.error("writing %d call charges failed; they are not charged", len(batch),
-                          exc_info=True)
+                confirmed = False
+                log.error("writing %d call charges is unconfirmed; retrying in the background",
+                          len(rows), exc_info=True)
+                room = max(0, self._MAX_UNCONFIRMED - len(self._unconfirmed))
+                if len(rows) > room:
+                    log.error("dropping %d unconfirmed call charges: the retry queue is full",
+                              len(rows) - room)
+                self._unconfirmed.extend(rows[:room])
+                self._retry_task = self._ensure(
+                    self._retry_task, self._retry, "treg-allowance-charge-retry")
             for _, _, future in batch:
                 if not future.done():
-                    future.set_result(written)
+                    future.set_result(confirmed)
+
+    async def _retry(self) -> None:
+        delay = 1.0
+        while self._unconfirmed:
+            await asyncio.sleep(delay)
+            rows = self._unconfirmed[:allowance.FOLD_BATCH]
+            try:
+                await self._write(rows)
+            except Exception:  # noqa: BLE001 - whatever the fault, try again later
+                delay = min(delay * 2, 60.0)
+                continue
+            del self._unconfirmed[:len(rows)]
+            delay = 1.0
+            log.info("%d unconfirmed call charges are now written", len(rows))
 
     @staticmethod
-    async def _write(batch: list) -> None:
+    async def _write(rows: list) -> None:
         async with session_maker() as db:
-            await allowance.record_charges(db, [charge for charge, _, _ in batch])
-            uses = [use for _, use, _ in batch if use is not None]
+            new = await allowance.record_charges(db, [charge for charge, _ in rows])
+            # A row that was already there means an earlier attempt committed, and that attempt
+            # marked its paid questions too.
+            uses = [use for _, use in rows if use is not None] if new == len(rows) else []
             if uses:
                 await archive.note_org_uses_in_transaction(db, uses)
             await db.commit()
@@ -208,6 +247,8 @@ async def finish(org_id: int, call_id: str, epoch: int, reserved_micro: int, *,
 
     The charge is queued before anything is awaited, so a cancel in the middle cannot lose it.
     A give-back that does not arrive leaves that money in the hold until a close returns it.
+    A charge whose write is not confirmed is still reported as charged and its money is not
+    given back: it may have committed, and it is written again until it has.
     """
     store = kv.store()
     try:
@@ -227,10 +268,10 @@ async def finish(org_id: int, call_id: str, epoch: int, reserved_micro: int, *,
             # which is how an overrun is stopped on the exact path. If the store cannot answer,
             # the next refill finds the counter above its hold and takes the difference back.
             await store.allowance_take_up_to(org_id, epoch, amount - reserved_micro)
-        if await written:
-            return amount
-        await store.allowance_give_back(org_id, epoch, min(amount, reserved_micro))
-        return 0
+        # Unconfirmed is not "not charged": the charge may have committed, and the writer keeps
+        # trying until it has. What the call spent stays out of the counter either way.
+        await written
+        return amount
     except Exception:
         log.error("finishing allowance take %s failed", call_id, exc_info=True)
         return 0

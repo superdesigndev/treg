@@ -238,15 +238,59 @@ async def test_calls_finishing_together_share_one_insert(org_id, store, monkeypa
     assert (await _fold(org_id)).calls == 40
 
 
-async def test_a_charge_that_cannot_be_written_is_not_charged_and_its_take_is_returned(
-        org_id, store, monkeypatch):
-    async def broken(batch):
-        raise RuntimeError("database down")
+async def _instantly(monkeypatch) -> None:
+    real_sleep = asyncio.sleep
 
-    monkeypatch.setattr(runtime._ChargeWriter, "_write", staticmethod(broken))
+    async def soon(delay):
+        await real_sleep(0)
+
+    monkeypatch.setattr(runtime.asyncio, "sleep", soon)
+
+
+async def test_a_write_that_committed_but_reported_failure_is_charged_and_not_given_back(
+        org_id, store, monkeypatch):
+    """The first attempt commits and its answer is lost; the retry finds the database down.
+    Two errors do not mean nothing was written."""
+    write, attempts = runtime._ChargeWriter._write, []
+
+    async def lossy(rows):
+        attempts.append(len(rows))
+        if len(attempts) == 1:
+            await write(rows)
+        if len(attempts) <= 2:
+            raise ConnectionError("lost")
+        await write(rows)
+
+    monkeypatch.setattr(runtime._ChargeWriter, "_write", staticmethod(lossy))
     epoch = await runtime.take(org_id, 600)
-    assert await _finish(org_id, "call-1", epoch, 600, billable=True, actual_micro=450) == 0
-    assert store.counters[org_id]["avail"] == CHUNK
+    await _instantly(monkeypatch)
+    assert await _finish(org_id, "call-1", epoch, 600, billable=True) == 600
+    assert store.counters[org_id]["avail"] == CHUNK - 600, "what was charged is not offered again"
+    await runtime._charges._retry_task
+    assert runtime._charges._unconfirmed == [] and len(attempts) == 3
+    assert (await _fold(org_id)) == allowance.Folded(calls=1, charged_micro=600, consumed_micro=600)
+    assert await _state(org_id) == (GRANT - CHUNK, CHUNK - 600)
+
+
+async def test_a_charge_the_database_refused_is_written_once_the_database_is_back(
+        org_id, store, monkeypatch):
+    write, attempts = runtime._ChargeWriter._write, []
+
+    async def down_then_up(rows):
+        attempts.append(len(rows))
+        if len(attempts) <= 3:
+            raise ConnectionError("database down")
+        await write(rows)
+
+    monkeypatch.setattr(runtime._ChargeWriter, "_write", staticmethod(down_then_up))
+    epoch = await runtime.take(org_id, 600)
+    await _instantly(monkeypatch)
+    assert await _finish(org_id, "call-1", epoch, 600, billable=True, actual_micro=450) == 450
+    assert store.counters[org_id]["avail"] == CHUNK - 450
+    async with session_maker() as db:
+        assert (await db.execute(select(CallCharge))).first() is None
+    await runtime._charges._retry_task
+    assert (await _fold(org_id)).consumed_micro == 450
 
 
 async def test_takes_racing_an_empty_counter_refill_it_once(org_id, store):

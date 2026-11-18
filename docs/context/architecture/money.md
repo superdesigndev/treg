@@ -240,8 +240,11 @@ money moved, the purchased-credit gate.
   call that is not billable gives everything back and writes nothing. Charges of calls finishing
   within `money_allowance_linger_ms` share one insert, with the archive's paid-question marks,
   and each call waits for its batch to commit before it answers. The charge is queued before
-  anything is awaited, so a cancel cannot lose it. A batch that cannot be written is logged, not
-  charged, and its takes returned.
+  anything is awaited, so a cancel cannot lose it. A write that raises twice proves nothing
+  about whether it committed, so such a batch is never treated as "not charged": the call is
+  told the charge, its money stays out of the counter, and the writer keeps writing the batch in
+  the background until it lands (recording a call twice charges it once). If the process dies
+  first, the charge is lost and its money stays in the hold until the hold is closed.
 - **A call that cost more than it set aside** takes the difference from the counter as well, or
   all the counter has. What the hold then cannot cover comes out of the balance, and the next
   refill is refused there: the same stop the exact path has, where the next reserve is the gate
