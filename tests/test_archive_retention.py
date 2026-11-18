@@ -323,8 +323,16 @@ async def test_the_live_retry_check_reads_the_partial_index(clients: AsyncClient
         await s.execute(text("SET LOCAL enable_seqscan = off"))
         compiled = query.compile(s.get_bind(), compile_kwargs={"literal_binds": True})
         plan = "\n".join((await s.execute(text(f"EXPLAIN {compiled}"))).scalars().all())
-    assert "ix_idempotentcall_archive_key_hash" in plan
+    # The planner may probe the new index per candidate or hash the live trimmed rows read
+    # through the other partial index; either way it never reads the whole table.
+    assert "ix_idempotentcall_archive_key_hash" in plan or "ix_idempotentcall_archive_live" in plan
     assert "Seq Scan on idempotentcall" not in plan
+    async with session_maker() as s:
+        await s.execute(text("SET LOCAL enable_seqscan = off"))
+        probe = "\n".join((await s.execute(text(
+            "EXPLAIN SELECT 1 FROM idempotentcall WHERE archive_key_hash = 'k' "
+            "AND archive_content_hash IS NOT NULL"))).scalars().all())
+    assert "ix_idempotentcall_archive_key_hash" in probe
 
 
 def _revision(prefix: str):
