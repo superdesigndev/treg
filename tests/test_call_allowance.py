@@ -551,6 +551,21 @@ async def test_a_busy_teams_queue_does_not_outgrow_what_a_refill_folds(org_id, s
     assert store.counters[org_id]["avail"] <= hold
 
 
+async def test_cheap_calls_that_never_empty_the_counter_are_still_folded(org_id, store, monkeypatch):
+    """One chunk pays for all of these, so no refill comes to fold them."""
+    monkeypatch.setattr(allowance, "FOLD_BATCH", 5)
+    monkeypatch.setattr(runtime, "_folding", {})
+    backlog = []
+    for index in range(23):
+        epoch = await runtime.take(org_id, 10)
+        await _finish(org_id, f"cheap-{index}", epoch, 10, billable=True)
+        if runtime._folding.get(org_id):
+            await runtime._folding[org_id]
+        backlog.append(await _queued(org_id))
+    assert runtime.refills(org_id) == 1 and max(backlog) <= 5 and backlog[-1] == 3, backlog
+    assert await _state(org_id) == (GRANT - CHUNK, CHUNK - 200)
+
+
 async def test_the_sweep_folds_a_queue_nothing_else_is_folding(org_id, store, monkeypatch):
     epoch = await runtime.take(org_id, 600)
     await _finish(org_id, "old-1", epoch, 600, billable=True, actual_micro=450)

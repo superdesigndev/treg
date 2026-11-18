@@ -18,6 +18,7 @@ from ..domain.money import allowance
 from ..infra import kv, money_admission
 from ..infra.db import background_session_maker
 from ..infra.money_session import money_session
+from .call.allowance import money_lock
 from ..timeutil import utcnow_naive
 
 log = logging.getLogger("treg.money_allowance")
@@ -43,6 +44,7 @@ async def sweep_once(session_maker) -> int:
     for org_id in org_ids:
         try:
             async with (
+                money_lock(org_id),
                 money_admission.admit(
                     money_admission.require_balance_orgs([org_id]), operation="release"),
                 money_session(session_maker()) as db,
@@ -75,6 +77,7 @@ async def fold_queued_once(session_maker) -> int:
         try:
             for _ in range(_FOLD_BATCHES_PER_PASS):
                 async with (
+                    money_lock(org_id),
                     money_admission.admit(
                         money_admission.require_balance_orgs([org_id]), operation="close"),
                     money_session(session_maker()) as db,

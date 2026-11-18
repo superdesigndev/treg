@@ -33,6 +33,18 @@ _REFILL_WAIT_S = 0.25
 # Long enough that a counter outlives any pause in refills that still leaves its hold open.
 _COUNTER_TTL_MS = 24 * 3600 * 1000
 _refused_until: dict[int, float] = {}
+_money_locks: dict[tuple[int, asyncio.AbstractEventLoop], asyncio.Lock] = {}
+
+
+def money_lock(org_id: int) -> asyncio.Lock:
+    """One allowance money session per team at a time in this process. PostgreSQL would make
+    them wait on the hold's row lock anyway; SQLite has no row locks, and there two sessions
+    that both read the hold before either wrote would lose one of the writes."""
+    key = (org_id, asyncio.get_running_loop())
+    lock = _money_locks.get(key)
+    if lock is None:
+        lock = _money_locks[key] = asyncio.Lock()
+    return lock
 _refills: dict[int, int] = {}
 
 
@@ -93,6 +105,7 @@ async def _refill(org_id: int, need_micro: int, daily_cap_micro: int) -> bool:
     add = max(0, max(settings.money_allowance_chunk_micro, need_micro) - available)
     try:
         async with (
+            money_lock(org_id),
             money_admission.admit(
                 money_admission.require_balance_orgs([org_id]), operation="reserve"),
             money_session(session_maker()) as db,
@@ -158,6 +171,7 @@ async def _fold_backlog(org_id: int) -> None:
                 return
             try:
                 async with (
+                    money_lock(org_id),
                     money_admission.admit(
                         money_admission.require_balance_orgs([org_id]), operation="close"),
                     money_session(session_maker()) as db,
@@ -180,6 +194,7 @@ async def _drain(org_id: int, reason: str) -> None:
     if not left:
         return
     async with (
+        money_lock(org_id),
         money_admission.admit(money_admission.require_balance_orgs([org_id]), operation="release"),
         money_session(session_maker()) as db,
     ):
@@ -206,6 +221,7 @@ class _ChargeWriter:
         self._unconfirmed: list[tuple[allowance.Charge, tuple[int, str] | None]] = []
         self._task: asyncio.Task | None = None
         self._retry_task: asyncio.Task | None = None
+        self._since_fold: dict[int, int] = {}
 
     def submit(self, charge: allowance.Charge,
                archive_use: tuple[int, str] | None) -> asyncio.Future:
@@ -249,6 +265,8 @@ class _ChargeWriter:
                 self._unconfirmed.extend(rows[:room])
                 self._retry_task = self._ensure(
                     self._retry_task, self._retry, "treg-allowance-charge-retry")
+            else:
+                self._written(rows)
             for _, _, future in batch:
                 if not future.done():
                     future.set_result(confirmed)
@@ -265,7 +283,19 @@ class _ChargeWriter:
                 continue
             del self._unconfirmed[:len(rows)]
             delay = 1.0
+            self._written(rows)
             log.info("%d unconfirmed call charges are now written", len(rows))
+
+    def _written(self, rows: list) -> None:
+        """Start a fold for each team whose charges written by this process since its last
+        fold fill a batch. Refills fold too, but a chunk of cheap calls lasts a long time
+        between refills, and the queue must not wait for one."""
+        for charge, _ in rows:
+            count = self._since_fold.get(charge.org_id, 0) + 1
+            if count >= allowance.FOLD_BATCH:
+                count = 0
+                _fold_in_background(charge.org_id)
+            self._since_fold[charge.org_id] = count
 
     @staticmethod
     async def _write(rows: list) -> None:
