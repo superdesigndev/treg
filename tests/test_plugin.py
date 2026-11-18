@@ -400,3 +400,19 @@ def test_the_copilot_mcp_config_is_the_url_alone():
     assert mcp == {"$schema": "https://agent-plugins.org/schemas/1.0.0/mcp.schema.json",
                    "mcpServers": {"treg": {"type": "streamable-http", "url": "https://treg.to/mcp/"}}}
     assert not (COPILOT_PLUGIN_DIR / ".mcp.json").exists()
+
+
+def test_copilots_marketplace_installs_the_copilot_plugin():
+    """Copilot CLI reads `.github/plugin/marketplace.json` before `.claude-plugin/`, so `treg@treg`
+    from `copilot plugin marketplace add superdesigndev/treg` gets `plugins/copilot/` while Claude
+    Code keeps `plugins/treg/`. Direct installs (`owner/repo:path`) are deprecated in Copilot CLI,
+    so the marketplace is the install path. The workflow plugins are the same in both."""
+    copilot = json.loads((ROOT / ".github" / "plugin" / "marketplace.json").read_text(encoding="utf-8"))
+    claude = json.loads(CLAUDE_MARKETPLACE.read_text(encoding="utf-8"))
+    assert copilot["name"] == claude["name"] == "treg"
+    by_name = {p["name"]: p for p in copilot["plugins"]}
+    assert by_name.keys() == {p["name"] for p in claude["plugins"]}
+    assert by_name["treg"]["source"] == "./plugins/copilot"
+    for p in claude["plugins"]:
+        if p["name"] != "treg":
+            assert by_name[p["name"]] == p, f"{p['name']} differs between the two marketplaces"
