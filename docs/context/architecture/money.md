@@ -374,6 +374,12 @@ The WHERE is the check and the SET the debit, so the database decides who gets t
 `rowcount 0` is `InsufficientBalance`, a 402 the agent can act on. No SELECT-then-UPDATE, no
 application lock: N concurrent callers against a balance that affords K get exactly K successes.
 
+The balance in that WHERE is read less what the team's queued call charges (`CallCharge`, below)
+will take from it when they are applied: their overruns, and what they set aside beyond what the
+allowance hold has left. That money is spent and the balance column does not show it yet, so a
+reserve must not set it aside a second time. A team with nothing queued reads its balance as it
+is; the 402 carries the reduced figure.
+
 **Block consumption order** follows `_KIND_ORDER`: the free kinds (promotional, referral, bonus)
 first, then `earned`, then purchased, oldest first within a kind. Promo
 credit is marketing spend and never refundable; purchased credit is a refundable, disputable

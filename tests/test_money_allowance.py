@@ -331,6 +331,32 @@ async def test_a_queued_overrun_counts_toward_today_beside_what_other_calls_set_
     assert await _daily_counter_agrees(org_id) == 1_400
 
 
+async def test_a_queued_overrun_is_not_there_for_another_reserve_to_set_aside(org_id):
+    """Half the credit is in the allowance hold. One call set all of that aside and cost the
+    whole credit; its charge is queued. The balance still reads half, and none of it is free."""
+    await _open(org_id, GRANT // 2)
+    async with session_maker() as db:
+        await allowance.record_charges(
+            db, [allowance.Charge("within", org_id, "e.metered", 1_000, reserved_micro=2_000)])
+        await db.commit()
+        await ledger.reserve(db, org_id, "e.metered", 1_000, call_id="fits")
+        await ledger.release(db, "fits")
+        await allowance.fold_charges_in_transaction(db, org_id)
+        await allowance.record_charges(
+            db, [allowance.Charge("over", org_id, "e.metered", GRANT - 1_000,
+                                  reserved_micro=GRANT // 2 - 1_000)])
+        await db.commit()
+        assert await ledger.balance_of(db, org_id) == GRANT // 2
+        with pytest.raises(ledger.InsufficientBalance) as refused:
+            await ledger.reserve(db, org_id, "e.metered", 1, call_id="late")
+        assert refused.value.balance_micro == 0
+        await db.rollback()
+        await allowance.fold_charges_in_transaction(db, org_id)
+        await db.commit()
+        assert await ledger.balance_of(db, org_id) == 0
+    await _invariant(org_id)
+
+
 async def test_a_settled_call_queued_again_does_not_count_twice_toward_today(org_id):
     await _record(org_id, 1_000)
     async with session_maker() as db:

@@ -55,7 +55,16 @@ from sqlmodel import select
 
 from ...config import get_settings
 from ...infra.money_trace import mark_money, money_stage
-from ...models import AsyncTaskRecord, CreditBlock, Hold, LedgerEntry, MemberSpend, Org, TagSpend
+from ...models import (
+    AsyncTaskRecord,
+    CallCharge,
+    CreditBlock,
+    Hold,
+    LedgerEntry,
+    MemberSpend,
+    Org,
+    TagSpend,
+)
 
 # Block consumption order: promotional credit burns first, then the oldest purchased block. Promo is
 # a marketing expense and never refundable, so spending it first keeps the refundable (and disputable)
@@ -414,12 +423,14 @@ async def reserve_in_transaction(
             # The gate. One statement: the WHERE is the check and the SET is the debit, so two concurrent
             # callers cannot both pass it. rowcount 0 = the balance was not there.
             update(Org)
-            .where(Org.id == org_id, Org.balance_micro >= charged)
+            .where(Org.id == org_id, Org.balance_micro - _queued_unbacked(org_id) >= charged)
             .values(balance_micro=Org.balance_micro - charged, **_spent_today_values(charged))
         )
     if result.rowcount != 1:
         with money_stage(db, "read_balance"):
-            balance = (await db.execute(select(Org.balance_micro).where(Org.id == org_id))).scalar() or 0
+            balance = (await db.execute(
+                select(Org.balance_micro - _queued_unbacked(org_id)).where(Org.id == org_id)
+            )).scalar() or 0
         raise InsufficientBalance(org_id, int(balance), charged)
     db.add(Hold(id=call_id, org_id=org_id, endpoint_id=endpoint_id or "", amount_micro=charged,
                 purchased_only=purchased_only))
@@ -437,6 +448,24 @@ async def reserve_in_transaction(
         db.add(MemberSpend(org_id=org_id, membership_id=member_id, hold_id=call_id,
                            amount_micro=charged))
     return call_id
+
+
+def _queued_unbacked(org_id: int):
+    """What a team's queued call charges will take from its balance when they are applied: their
+    overruns, which no hold was set aside for, and what they set aside beyond what the team's
+    allowance hold has left. The balance still shows this money, and it is already spent. A
+    queued charge whose call has a `settle` entry is left out, as applying it will drop it.
+    A SQL expression for the statement that gates on the balance."""
+    unsettled = (CallCharge.org_id == org_id, ~select(LedgerEntry.id).where(
+        LedgerEntry.call_id == CallCharge.call_id, LedgerEntry.org_id == org_id,
+        LedgerEntry.kind == "settle").exists())
+    overruns = (select(func.coalesce(func.sum(CallCharge.overrun_micro), 0))
+                .where(*unsettled).scalar_subquery())
+    set_aside = (select(func.coalesce(func.sum(CallCharge.amount_micro - CallCharge.overrun_micro), 0))
+                 .where(*unsettled).scalar_subquery())
+    held = func.coalesce(
+        select(Hold.amount_micro).where(Hold.id == f"allowance:{org_id}").scalar_subquery(), 0)
+    return overruns + case((set_aside > held, set_aside - held), else_=0)
 
 
 async def _purchased_gate(db: AsyncSession, org_id: int, charged: int) -> None:
