@@ -148,7 +148,7 @@ async def table_answer(context: CallContext, upstream: UpstreamResponse, rest: s
         table = table_domain.raw(text, truncated=True)
     else:
         try:
-            body = json.loads(text) if text.strip() else None
+            body = json.loads(text.removeprefix("\ufeff")) if text.strip() else None
         except ValueError:
             body = None
         if body is None:

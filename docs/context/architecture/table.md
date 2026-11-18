@@ -123,7 +123,8 @@ columns (`column_source`):
 - **generated**: anything else. `_find_tables` collects every list of objects (looking inside
   `ENVELOPE_KEYS` wrappers): none is `flat`, one is `list`, two or more is `nested` with `tables`
   and a `summary` that also fills `columns`/`rows`, so a client that reads only those still gets a
-  grid.
+  grid. A leading UTF-8 BOM is accepted when parsing JSON; BOM characters inside values
+and non-JSON raw text are preserved.
 
 A field whose name starts with `_` (`_treg`, a provider's `_note`) is never a column; a routed
 answer's `_treg` goes into the reply's `_treg` with `call_id` and `cost_micro`.
