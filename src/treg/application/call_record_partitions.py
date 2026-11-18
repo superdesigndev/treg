@@ -49,6 +49,8 @@ NOTE_BACKFILL_STARTED = "backfill_started_at"
 # default it leaves the database idle about as long as each batch keeps it busy.
 BACKFILL_BATCH_ROWS = 5_000
 BACKFILL_PAUSE_SECONDS = 0.5
+REPLICA_LAG_POLL_SECONDS = 5.0
+DELETED_TEAM_BATCH = 10_000
 _NAME = re.compile(rf"^{TABLE}_y(\d{{4}})m(\d{{2}})$")
 _ADVISORY_KEY = 0x63726563  # one creator at a time; any constant no other advisory lock uses
 _NO_BOUND = 2**62
@@ -214,8 +216,54 @@ async def _note_first_run(db) -> None:
     await db.commit()
 
 
+async def replica_lag_seconds() -> float:
+    """How far the read replica's replay is behind, in seconds; 0 without a replica (the read
+    pool is then the primary, where `pg_last_xact_replay_timestamp()` is NULL)."""
+    from ..infra.db import read_session_maker
+
+    async with read_session_maker() as db:
+        lag = (await db.execute(text(
+            "SELECT EXTRACT(EPOCH FROM now() - pg_last_xact_replay_timestamp())"))).scalar()
+    return max(float(lag or 0), 0.0)
+
+
+async def delete_rows_of_deleted_teams(*, table: str = STAGED, batch: int = DELETED_TEAM_BATCH,
+                                       session_factory=session_maker) -> int:
+    """Delete from a partitioned `table` the rows of teams that no longer exist, `batch` rows per
+    committed transaction -> rows deleted. A team deleted while a backfill batch was copying its
+    rows can leave copies behind. Postgres cannot skip through an index, so the distinct teams
+    are walked one `(org_id, id)` probe each, and each kept only `NOT EXISTS` in `org`; an
+    anti-join against `org` would read every row."""
+    deleted = 0
+    async with session_factory() as db:
+        if await _relkind(db, table) != "p":
+            return 0
+        gone = (await db.execute(text(f"""
+            WITH RECURSIVE team AS (
+                SELECT min(org_id) AS org_id FROM {table}
+                UNION ALL
+                SELECT (SELECT min(org_id) FROM {table} WHERE org_id > team.org_id)
+                FROM team WHERE team.org_id IS NOT NULL
+            )
+            SELECT team.org_id FROM team
+            WHERE team.org_id IS NOT NULL AND NOT EXISTS (SELECT 1 FROM org WHERE org.id = team.org_id)
+        """))).scalars().all()
+        await db.commit()
+        for org_id in gone:
+            while True:
+                result = await db.execute(text(
+                    f"DELETE FROM {table} WHERE (id, created_at) IN (SELECT id, created_at FROM {table} "
+                    "WHERE org_id = :org_id ORDER BY id LIMIT :batch)"), {"org_id": org_id, "batch": batch})
+                await db.commit()
+                deleted += int(result.rowcount or 0)
+                if (result.rowcount or 0) < batch:
+                    break
+    return deleted
+
+
 async def backfill(days: int, *, batch_rows: int = BACKFILL_BATCH_ROWS, max_seconds: float | None = None,
-                   pause: float = BACKFILL_PAUSE_SECONDS, session_factory=session_maker) -> dict:
+                   pause: float = BACKFILL_PAUSE_SECONDS, max_replica_lag: float | None = None,
+                   session_factory=session_maker) -> dict:
     """Copy the last `days` days of call records from the plain `callrecord` into
     `callrecord_partitioned`, which nothing reads yet -> {phase, copied, batches, reached, done}
     (`phase: "before_swap"`, or None when there is nothing to copy into).
@@ -225,15 +273,27 @@ async def backfill(days: int, *, batch_rows: int = BACKFILL_BATCH_ROWS, max_seco
     last one, then continues below the lowest id the target holds, newest first, until the rows
     are older than `days`. A run that stops (`max_seconds`, a failure) is
     resumed by running it again; `done` is true when the cutoff or the first row was reached.
+
+    Each run first deletes the copied rows of teams deleted since (`delete_rows_of_deleted_teams`).
+    With `max_replica_lag` (seconds), it waits between batches while the read replica is further
+    behind than that.
     """
     if days < 1 or batch_rows < 1:
         raise ValueError("days and batch_rows must be >= 1")
     started = time.monotonic()
     cutoff = utcnow_naive() - timedelta(days=days)
-    out = {"phase": None, "copied": 0, "batches": 0, "reached": None, "done": True}
+    out = {"phase": None, "copied": 0, "batches": 0, "reached": None, "done": True,
+           "deleted_orphans": 0, "replica_waits": 0}
 
     def spent() -> bool:
         return max_seconds is not None and time.monotonic() - started >= max_seconds
+
+    async def between_batches() -> None:
+        await asyncio.sleep(pause)
+        while (max_replica_lag is not None and not spent()
+               and await replica_lag_seconds() > max_replica_lag):
+            out["replica_waits"] += 1
+            await asyncio.sleep(REPLICA_LAG_POLL_SECONDS)
 
     async with session_factory() as db:
         if await _relkind(db, TABLE) == "r" and await _relkind(db, STAGED) == "p":
@@ -249,6 +309,8 @@ async def backfill(days: int, *, batch_rows: int = BACKFILL_BATCH_ROWS, max_seco
         await db.commit()
         if out["phase"] == "before_swap":
             await _note_first_run(db)
+            out["deleted_orphans"] = await delete_rows_of_deleted_teams(
+                table=target, session_factory=session_factory)
 
         if out["phase"] == "before_swap" and newest_copied is not None:
             top = (await db.execute(text(f"SELECT max(id) FROM {source}"))).scalar() or 0
@@ -258,7 +320,7 @@ async def backfill(days: int, *, batch_rows: int = BACKFILL_BATCH_ROWS, max_seco
                 out["batches"] += 1
                 if spent():
                     return {**out, "done": False}
-                await asyncio.sleep(pause)
+                await between_batches()
 
         while True:
             below = (await db.execute(text(f"SELECT min(id) FROM {target}"))).scalar() or _NO_BOUND
@@ -274,4 +336,4 @@ async def backfill(days: int, *, batch_rows: int = BACKFILL_BATCH_ROWS, max_seco
             out["reached"] = oldest.isoformat()
             if spent():
                 return {**out, "done": False}
-            await asyncio.sleep(pause)
+            await between_batches()

@@ -122,7 +122,8 @@ def test_the_backfill_paces_itself_by_default(monkeypatch):
         return {}
     monkeypatch.setattr(partitions, "backfill", backfill)
     assert worker.main(["admin", "callrecord-backfill", "--days", "31"]) == 0
-    assert seen == {"days": 31, "batch_rows": 5_000, "max_seconds": None, "pause": 0.5}
+    assert seen == {"days": 31, "batch_rows": 5_000, "max_seconds": None, "pause": 0.5,
+                    "max_replica_lag": None}
     assert worker.main(["admin", "callrecord-backfill", "--days", "31", "--pause-seconds", "2"]) == 0
     assert seen["pause"] == 2
     defaults = inspect.signature(real_backfill).parameters
@@ -153,3 +154,48 @@ async def test_a_failed_partition_upkeep_fails_the_rollup_run_after_the_fold(mon
         assert await worker._usage_rollup(argparse.Namespace(max_rows=10)) == 1
     assert folded and "callrecord partition upkeep failed" in caplog.text
 
+
+
+async def test_the_staged_table_has_the_live_tables_columns(before_swap):
+    """The copy names the live table's columns, so a column added to `callrecord` before the swap
+    must be added to `callrecord_partitioned` in the same migration; this fails until it is."""
+    shape = text("""
+        SELECT attname, format_type(atttypid, atttypmod), attnotnull FROM pg_attribute
+        WHERE attrelid = to_regclass(:name) AND attnum > 0 AND NOT attisdropped ORDER BY attnum""")
+    async with db.session_maker() as session:
+        live = (await session.execute(shape, {"name": "callrecord"})).all()
+        staged = (await session.execute(shape, {"name": "callrecord_partitioned"})).all()
+    widened = {("id", "integer", True): ("id", "bigint", True)}
+    assert [widened.get(tuple(c), tuple(c)) for c in live] == [tuple(c) for c in staged]
+
+
+async def test_each_run_first_deletes_copies_of_deleted_teams(before_swap):
+    """A team deleted while a batch copied its rows can leave copies; the next run removes them."""
+    await partitions.backfill(31, batch_rows=10, pause=0)
+    async with db.session_maker() as session:     # as if deleted mid-copy: the copies stay behind
+        await session.execute(text("DELETE FROM callrecord WHERE org_id = :id"), {"id": before_swap})
+        await session.execute(text("DELETE FROM org WHERE id = :id"), {"id": before_swap})
+        await session.commit()
+    assert await _scalar("SELECT count(*) FROM callrecord_partitioned") == 40
+    out = await partitions.backfill(31, batch_rows=10, pause=0)
+    assert out["deleted_orphans"] == 40
+    async with db.session_maker() as session:
+        session.add(Org(name="kept", slug="kept"))
+        await session.commit()
+    assert await partitions.delete_rows_of_deleted_teams(batch=15) == 0
+    assert await _scalar("SELECT count(*) FROM callrecord_partitioned") == 0
+
+
+async def test_the_backfill_waits_while_the_replica_lags(before_swap, monkeypatch):
+    lags = iter([30.0, 30.0, 0.0])
+    asked = []
+
+    async def lag() -> float:
+        asked.append(1)
+        return next(lags, 0.0)
+    monkeypatch.setattr(partitions, "replica_lag_seconds", lag)
+    monkeypatch.setattr(partitions, "REPLICA_LAG_POLL_SECONDS", 0)
+    out = await partitions.backfill(31, batch_rows=10, pause=0, max_replica_lag=5)
+    assert out["replica_waits"] == 2 and out["done"] is True
+    assert await _scalar("SELECT count(*) FROM callrecord_partitioned") == 40
+    assert (await partitions.backfill(31, batch_rows=10, pause=0))["replica_waits"] == 0
