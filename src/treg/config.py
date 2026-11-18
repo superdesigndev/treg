@@ -270,6 +270,7 @@ class Settings(BaseSettings):
     migration_lock_timeout_s: float = Field(default=2.0, gt=1, le=5)
     migration_lock_retry_attempts: int = Field(default=30, ge=1, le=200)
     migration_lock_retry_pause_s: float = Field(default=2.0, ge=0, le=60)
+    migration_lock_retry_budget_s: float = Field(default=600.0, gt=0)
     migration_lock_holder_check: bool = True
     migration_lock_holder_max_xact_s: float = Field(default=30.0, gt=0)
 

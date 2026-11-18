@@ -7,6 +7,7 @@ import asyncio
 import logging
 import random
 import re
+import time
 from collections.abc import Awaitable, Callable
 from importlib.resources import files
 
@@ -38,27 +39,66 @@ _HIDDEN_QUERY = "<insufficient privilege>"
 # pg_locks and pg_class are readable by every role; pg_stat_activity hides backend_type,
 # xact_start and query of another role's sessions (NULL) from a role without pg_read_all_stats,
 # autovacuum included. Such a row is kept and judged by its lock and by the table's freeze age.
+# A lock on a partition or a TOAST table blocks an ALTER of its parent the same way, and a
+# table's own autovacuum_freeze_max_age reloption can only lower the server setting.
 _LONG_LOCK_HOLDERS = text("""
-    SELECT a.pid, c.relname, l.mode, a.backend_type, a.query,
+    WITH named AS (
+        SELECT oid, relname FROM pg_class
+        WHERE relname = ANY(:tables) AND pg_table_is_visible(oid)
+    ), tree AS (
+        SELECT oid, relname AS parent FROM named
+        UNION
+        SELECT t.relid, n.relname FROM named n CROSS JOIN LATERAL pg_partition_tree(n.oid) t
+    ), rels AS (
+        SELECT oid, parent FROM tree
+        UNION
+        SELECT c.reltoastrelid, t.parent FROM tree t JOIN pg_class c ON c.oid = t.oid
+        WHERE c.reltoastrelid <> 0
+    )
+    SELECT a.pid, l.mode, a.backend_type, a.query,
+           CASE WHEN c.relname = r.parent THEN c.relname
+                ELSE c.relname || ' (part of ' || r.parent || ')' END AS relname,
            EXTRACT(EPOCH FROM now() - a.xact_start) AS xact_s,
-           (c.relkind IN ('r', 'm', 't')
-            AND (age(c.relfrozenxid) >= current_setting('autovacuum_freeze_max_age')::bigint
-                 OR mxid_age(c.relminmxid)
-                    >= current_setting('autovacuum_multixact_freeze_max_age')::bigint))
-             AS past_freeze_age
+           CASE WHEN c.relkind IN ('r', 'm', 't') THEN
+               age(c.relfrozenxid) >= LEAST(
+                   current_setting('autovacuum_freeze_max_age')::bigint,
+                   COALESCE((SELECT o.option_value::bigint FROM pg_options_to_table(c.reloptions) o
+                             WHERE o.option_name = 'autovacuum_freeze_max_age'),
+                            current_setting('autovacuum_freeze_max_age')::bigint))
+               OR mxid_age(c.relminmxid) >= LEAST(
+                   current_setting('autovacuum_multixact_freeze_max_age')::bigint,
+                   COALESCE((SELECT o.option_value::bigint FROM pg_options_to_table(c.reloptions) o
+                             WHERE o.option_name = 'autovacuum_multixact_freeze_max_age'),
+                            current_setting('autovacuum_multixact_freeze_max_age')::bigint))
+           ELSE false END AS past_freeze_age
     FROM pg_locks l
+    JOIN rels r ON r.oid = l.relation
     JOIN pg_class c ON c.oid = l.relation
     JOIN pg_stat_activity a ON a.pid = l.pid
     WHERE l.granted AND l.locktype = 'relation'
       AND l.database = (SELECT oid FROM pg_database WHERE datname = current_database())
-      AND pg_table_is_visible(c.oid)
-      AND c.relname = ANY(:tables)
+      AND l.mode = ANY(:modes)
       AND a.pid <> pg_backend_pid()
       AND (a.backend_type IS NULL
            OR a.backend_type = 'autovacuum worker'
            OR a.xact_start < now() - make_interval(secs => :max_xact_s))
-    ORDER BY c.relname, a.pid
+    ORDER BY r.parent, c.relname, a.pid
 """)
+
+# PostgreSQL's table-level lock conflicts for the two modes a revision takes: DDL takes ACCESS
+# EXCLUSIVE, which conflicts with every mode; plain UPDATE/INSERT/DELETE take ROW EXCLUSIVE.
+_ALL_LOCK_MODES = (
+    "AccessShareLock", "RowShareLock", "RowExclusiveLock", "ShareUpdateExclusiveLock",
+    "ShareLock", "ShareRowExclusiveLock", "ExclusiveLock", "AccessExclusiveLock",
+)
+_CONFLICTS_WITH_ROW_EXCLUSIVE = (
+    "ShareLock", "ShareRowExclusiveLock", "ExclusiveLock", "AccessExclusiveLock",
+)
+_DATA_OPS = frozenset({"execute", "get_bind", "get_context", "bulk_insert", "inline_literal"})
+_DATA_SQL = re.compile(r"\s*(UPDATE|INSERT|DELETE|SELECT|WITH)\b", re.IGNORECASE)
+_DDL_SQL = re.compile(
+    r"\s*(ALTER|DROP|CREATE|LOCK|TRUNCATE|VACUUM|CLUSTER|REINDEX|COMMENT|GRANT|REVOKE)\b",
+    re.IGNORECASE)
 
 logger = logging.getLogger("treg.maintenance")
 
@@ -90,11 +130,17 @@ def _is_lock_timeout(exc: BaseException) -> bool:
     )
 
 
-async def _upgrade_head_with_lock_retry(config: Config) -> None:
+async def _upgrade_head_with_lock_retry(config: Config, tables: set[str]) -> None:
+    """`alembic upgrade head`, retried after a lock timeout. The long-holder check runs before
+    every attempt, since a holder can start between attempts, and retries stop once
+    `migration_lock_retry_budget_s` would be passed."""
     settings = get_settings()
     attempts = settings.migration_lock_retry_attempts
     pause_s = settings.migration_lock_retry_pause_s
+    budget_s = settings.migration_lock_retry_budget_s
+    started = time.monotonic()
     for attempt in range(1, attempts + 1):
+        await _refuse_behind_long_lock_holder(config, tables)
         try:
             await asyncio.to_thread(command.upgrade, config, "head")
             return
@@ -102,6 +148,14 @@ async def _upgrade_head_with_lock_retry(config: Config) -> None:
             if not _is_lock_timeout(exc) or attempt == attempts:
                 raise
             pause = random.uniform(pause_s / 2, pause_s)
+            elapsed = time.monotonic() - started
+            if elapsed + pause > budget_s:
+                raise RuntimeError(
+                    f"Migration lock retries stopped after {elapsed:.0f} s and {attempt} "
+                    f"attempt(s): the retry time budget (TREG_MIGRATION_LOCK_RETRY_BUDGET_S="
+                    f"{budget_s:g}) is spent. Revisions committed before the timeout stay "
+                    "applied; find what holds the lock, then run `python -m treg upgrade` again."
+                ) from exc
             logger.warning(
                 "migration lock timeout on attempt %d/%d; retrying in %.1f s",
                 attempt, attempts, pause,
@@ -125,28 +179,77 @@ def _revision_strings(path: str) -> list[str]:
             and id(node) not in docstrings]
 
 
-async def _pending_revision_tables(config: Config, tables: set[str]) -> set[str]:
-    """Existing tables named in a revision `upgrade head` would apply. Empty when nothing is
-    pending, or when the stamp is unknown (the upgrade itself then refuses with its message)."""
+async def _pending_revision_tables(config: Config,
+                                   tables: set[str]) -> tuple[set[str], bool]:
+    """Existing tables named in a revision `upgrade head` would apply, and whether any of those
+    revisions takes ACCESS EXCLUSIVE. No tables when nothing is pending, or when the stamp is
+    unknown (the upgrade itself then refuses with its message)."""
     async with _engine.connect() as connection:
         current = await connection.run_sync(
             lambda sync_connection: MigrationContext.configure(sync_connection).get_current_heads()
         )
-    return _tables_named_by_pending(ScriptDirectory.from_config(config), current, tables)
+    script = ScriptDirectory.from_config(config)
+    return (_tables_named_by_pending(script, current, tables),
+            any(map(_takes_access_exclusive, _pending_paths(script, current))))
+
+
+def _pending_paths(script: ScriptDirectory, current: tuple[str, ...]) -> list[str]:
+    try:
+        pending = list(script.iterate_revisions("heads", current or "base"))
+    except (RevisionError, util.CommandError):
+        return []
+    return [revision.path for revision in pending if revision.path]
 
 
 def _tables_named_by_pending(script: ScriptDirectory, current: tuple[str, ...],
                              tables: set[str]) -> set[str]:
-    try:
-        pending = list(script.iterate_revisions("heads", current or "base"))
-    except (RevisionError, util.CommandError):
-        return set()
-    if not pending or not tables:
+    paths = _pending_paths(script, current)
+    if not paths or not tables:
         return set()
     word = re.compile(r"\b(" + "|".join(map(re.escape, sorted(tables))) + r")\b")
-    return {match for revision in pending if revision.path
-            for literal in _revision_strings(revision.path)
+    return {match for path in paths for literal in _revision_strings(path)
             for match in word.findall(literal)}
+
+
+def _takes_access_exclusive(path: str) -> bool:
+    """False only for a revision that plainly changes rows: every `op.*` call is a data call,
+    every `op.execute` argument is literal UPDATE/INSERT/DELETE/SELECT SQL, and no string reads
+    as DDL, in `upgrade()`, the module's functions it calls and its module-level constants.
+    Anything else is taken to need ACCESS EXCLUSIVE."""
+    with open(path, encoding="utf-8") as source:
+        module = ast.parse(source.read())
+    functions = {node.name: node for node in module.body if isinstance(node, ast.FunctionDef)}
+    if "upgrade" not in functions:
+        return True
+    constants = [node for node in module.body if isinstance(node, (ast.Assign, ast.AnnAssign))]
+    if any(isinstance(node, ast.Constant) and isinstance(node.value, str)
+           and _DDL_SQL.match(node.value) for constant in constants for node in ast.walk(constant)):
+        return True
+    reached, queue = {"upgrade"}, [functions["upgrade"]]
+    while queue:
+        for node in ast.walk(queue.pop()):
+            if isinstance(node, ast.Constant) and isinstance(node.value, str) \
+                    and _DDL_SQL.match(node.value):
+                return True
+            if not isinstance(node, ast.Call):
+                continue
+            if isinstance(node.func, ast.Name) and node.func.id in functions \
+                    and node.func.id not in reached:
+                reached.add(node.func.id)
+                queue.append(functions[node.func.id])
+            if not (isinstance(node.func, ast.Attribute) and isinstance(node.func.value, ast.Name)
+                    and node.func.value.id == "op"):
+                continue
+            if node.func.attr not in _DATA_OPS:
+                return True
+            if node.func.attr == "execute":
+                argument = node.args[0] if node.args else None
+                if isinstance(argument, ast.Call) and argument.args:
+                    argument = argument.args[0]
+                if not (isinstance(argument, ast.Constant) and isinstance(argument.value, str)
+                        and _DATA_SQL.match(argument.value)):
+                    return True
+    return False
 
 
 def _long_holder(row) -> str | None:
@@ -185,16 +288,19 @@ def _long_holder(row) -> str | None:
 async def _refuse_behind_long_lock_holder(config: Config, tables: set[str]) -> None:
     """Read-only, before any lock is requested. PostgreSQL cancels an ordinary autovacuum that
     blocks a waiting ALTER, but never an anti-wraparound one, and a long transaction keeps its
-    locks until it ends; retrying behind either only repeats the stall on every later query."""
+    locks until it ends; retrying behind either only repeats the stall on every later query.
+    Only a holder whose lock conflicts with what the pending revisions take counts."""
     settings = get_settings()
     if not settings.migration_lock_holder_check or _engine.dialect.name != "postgresql":
         return
-    touched = await _pending_revision_tables(config, tables)
+    touched, access_exclusive = await _pending_revision_tables(config, tables)
     if not touched:
         return
+    modes = _ALL_LOCK_MODES if access_exclusive else _CONFLICTS_WITH_ROW_EXCLUSIVE
     async with _engine.connect() as connection:
         rows = (await connection.execute(_LONG_LOCK_HOLDERS, {
-            "tables": sorted(touched), "max_xact_s": settings.migration_lock_holder_max_xact_s,
+            "tables": sorted(touched), "modes": list(modes),
+            "max_xact_s": settings.migration_lock_holder_max_xact_s,
         })).all()
     holders = [found for found in map(_long_holder, rows) if found]
     if holders:
@@ -202,8 +308,9 @@ async def _refuse_behind_long_lock_holder(config: Config, tables: set[str]) -> N
             "Refusing to upgrade: a pending revision needs a lock a long-running session holds, "
             "and waiting for it would stall every query on that table on each retry. "
             + "; ".join(holders) + ". Wait for it to finish (never cancel an anti-wraparound "
-            "vacuum) or end that transaction, then run `python -m treg upgrade` again. "
-            "No migration ran."
+            "vacuum) or end that transaction, then run `python -m treg upgrade` again; to "
+            "upgrade anyway, behind the bounded lock wait, set "
+            "TREG_MIGRATION_LOCK_HOLDER_CHECK=false. Nothing was applied after this check."
         )
 
 
@@ -213,9 +320,8 @@ async def _upgrade_schema() -> None:
 
     if not tables or "alembic_version" in tables:
         state = "empty" if not tables else "stamped"
-        await _refuse_behind_long_lock_holder(config, tables)
         try:
-            await _upgrade_head_with_lock_retry(config)
+            await _upgrade_head_with_lock_retry(config, tables)
         except util.CommandError as exc:
             if "Can't locate revision" not in str(exc):
                 raise

@@ -107,6 +107,7 @@ and a wait of exactly 1 s can time out at that same instant. `env.py` sets the t
 every revision (`on_version_apply`), so an index revision that restores fixed values does not
 lengthen the next revision's wait. A deploy waits longer by retrying instead: `maintenance` re-runs
 `alembic upgrade head` up to `TREG_MIGRATION_LOCK_RETRY_ATTEMPTS` times (30) after a lock timeout,
+within `TREG_MIGRATION_LOCK_RETRY_BUDGET_S` (600 s),
 pausing a random time between half and all of `TREG_MIGRATION_LOCK_RETRY_PAUSE_S` (2 s) so short
 transactions drain, and `env.py` commits each revision on its own (`transaction_per_migration`) so a
 retry resumes at the revision that timed out. Any other error fails the deploy at once.
@@ -114,21 +115,33 @@ retry resumes at the revision that timed out. Any other error fails the deploy a
 **Refusing behind a long lock holder.** Retrying helps only against holders that let go soon.
 PostgreSQL never cancels an anti-wraparound autovacuum for a waiting `ALTER`, and an open
 transaction keeps its locks until it ends; behind either, every attempt repeats the stall. So
-before it requests any lock, `maintenance._refuse_behind_long_lock_holder` reads `pg_locks` and
-`pg_stat_activity` (read-only, PostgreSQL only) for the tables the pending revisions name (string
-literals in their files, docstrings excluded), and refuses at once, naming the session, when an
-anti-wraparound autovacuum or a transaction older than `TREG_MIGRATION_LOCK_HOLDER_MAX_XACT_S`
-(30 s) holds a lock on one of them. Nothing ran; wait for the holder (never cancel an
-anti-wraparound vacuum) or end the transaction, then deploy again. `pg_locks` and `pg_class` are
-readable by every role, but to a role without `pg_read_all_stats` PostgreSQL shows another role's
-sessions, autovacuum included, with NULL `backend_type`, `xact_start` and `query`. The check keeps
-those rows: one holding `SHARE UPDATE EXCLUSIVE` on a table whose `age(relfrozenxid)` or
-`mxid_age(relminmxid)` has reached `autovacuum_freeze_max_age` (or its multixact twin) is taken as
+before every attempt (the first and each retry), `maintenance._refuse_behind_long_lock_holder`
+reads `pg_locks` and `pg_stat_activity` (read-only, PostgreSQL only) for the tables the pending
+revisions name (string literals in their files, docstrings excluded), together with their
+partitions (`pg_partition_tree`) and TOAST tables (`reltoastrelid`), and refuses at once, naming
+the session, when an anti-wraparound autovacuum or a transaction older than
+`TREG_MIGRATION_LOCK_HOLDER_MAX_XACT_S` (30 s) holds a conflicting lock on one of them. Only
+conflicting modes count: a pending revision that plainly changes rows (`maintenance.
+_takes_access_exclusive` is false: only data `op.*` calls, literal UPDATE/INSERT/DELETE/SELECT
+SQL, no DDL string in `upgrade()`, the functions it calls or module constants) takes ROW
+EXCLUSIVE, so readers and autovacuum do not stop it; any other revision is taken to need ACCESS
+EXCLUSIVE, which every mode blocks. Nothing ran after the check; wait for the holder (never
+cancel an anti-wraparound vacuum) or end the transaction, then deploy again, or set
+`TREG_MIGRATION_LOCK_HOLDER_CHECK=false` (the refusal says so) to go ahead behind the bounded
+lock wait. `pg_locks` and `pg_class` are readable by every role, but to a role without
+`pg_read_all_stats` PostgreSQL shows another role's sessions, autovacuum included, with NULL
+`backend_type`, `xact_start` and `query`. The check keeps those rows: one holding `SHARE UPDATE
+EXCLUSIVE` on a table whose `age(relfrozenxid)` or `mxid_age(relminmxid)` has reached
+`autovacuum_freeze_max_age` (or its multixact twin; a lower per-table reloption wins) is taken as
 an anti-wraparound autovacuum and refused; any other hidden holder is logged as a warning naming
 its pid, lock and table, and the upgrade continues, bounded by the lock wait. Granting
-`pg_read_all_stats` to the migration role gives the check full sight. A holder that starts after
-the check is bounded the same way.
-`TREG_MIGRATION_LOCK_HOLDER_CHECK=false` turns the check off.
+`pg_read_all_stats` to the migration role gives the check full sight.
+
+**Retry time budget.** Beside the attempt count, retries stop once the next pause would pass
+`TREG_MIGRATION_LOCK_RETRY_BUDGET_S` (600 s) since the first attempt, with an error naming the
+setting; revisions committed before the timeout stay applied. The budget keeps the whole retry
+loop well inside a platform's pre-deploy time limit even when each attempt runs long revisions
+before it times out.
 
 - Hot-table ALTERs belong in their own revision, add only nullable columns without defaults
   (metadata-only in PostgreSQL), and leave backfills and `NOT NULL` to later steps.

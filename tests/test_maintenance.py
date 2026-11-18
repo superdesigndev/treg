@@ -500,14 +500,14 @@ async def test_upgrade_retries_a_lock_timeout_and_resumes(monkeypatch, caplog):
     with caplog.at_level("WARNING", logger="treg.maintenance"):
         await maintenance._upgrade_schema()
 
-    assert calls == ["preflight", "head", "head", "head"]
+    assert calls == ["preflight", "head"] * 3
     retries = [r for r in caplog.records if "migration lock timeout" in r.getMessage()]
     assert [r.getMessage()[:40] for r in retries] == [
         "migration lock timeout on attempt 1/30; ", "migration lock timeout on attempt 2/30; ",
     ]
 
 
-async def test_upgrade_gives_up_after_the_retry_budget(monkeypatch):
+async def test_upgrade_gives_up_after_the_retry_attempts(monkeypatch):
     from sqlalchemy.exc import DBAPIError
 
     from treg import maintenance
@@ -520,7 +520,47 @@ async def test_upgrade_gives_up_after_the_retry_budget(monkeypatch):
     with pytest.raises(DBAPIError, match="lock timeout"):
         await maintenance._upgrade_schema()
 
-    assert calls == ["preflight"] + ["head"] * 3
+    assert calls == ["preflight", "head"] * 3
+
+
+async def test_upgrade_stops_retrying_once_the_time_budget_is_spent(monkeypatch):
+    from types import SimpleNamespace
+
+    from treg import maintenance
+    from treg.config import get_settings
+
+    monkeypatch.setattr(get_settings(), "migration_lock_retry_budget_s", 25.0)
+    clock = iter(range(0, 1000, 10))
+    monkeypatch.setattr(maintenance, "time", SimpleNamespace(monotonic=lambda: next(clock)))
+    calls = _fake_upgrade(monkeypatch, [_lock_timeout()] * 10)
+
+    with pytest.raises(RuntimeError, match="TREG_MIGRATION_LOCK_RETRY_BUDGET_S=25") as refused:
+        await maintenance._upgrade_schema()
+
+    assert calls == ["preflight", "head"] * 3
+    assert "3 attempt(s)" in str(refused.value)
+    assert maintenance._is_lock_timeout(refused.value.__cause__)
+
+
+async def test_the_long_holder_check_runs_again_before_every_retry(monkeypatch):
+    """A holder that starts after the first check is caught before the next attempt."""
+    from treg import maintenance
+
+    calls = _fake_upgrade(monkeypatch, [_lock_timeout()])
+    checks = iter([None, RuntimeError("Refusing to upgrade: pid 8 holds AccessShareLock on org")])
+
+    async def preflight(config, tables):
+        calls.append("preflight")
+        outcome = next(checks)
+        if outcome:
+            raise outcome
+
+    monkeypatch.setattr(maintenance, "_refuse_behind_long_lock_holder", preflight)
+
+    with pytest.raises(RuntimeError, match="pid 8 holds AccessShareLock on org"):
+        await maintenance._upgrade_schema()
+
+    assert calls == ["preflight", "head", "preflight"]
 
 
 async def test_upgrade_does_not_retry_other_database_errors(monkeypatch):
@@ -544,6 +584,7 @@ def test_lock_wait_defaults_stay_above_the_deadlock_timeout():
     settings = Settings(_env_file=None)
     assert settings.migration_lock_timeout_s == 2.0
     assert settings.migration_lock_retry_attempts == 30
+    assert settings.migration_lock_retry_budget_s == 600.0
     with pytest.raises(ValidationError):
         Settings(_env_file=None, migration_lock_timeout_s=1.0)
 
@@ -671,7 +712,7 @@ async def test_postgres_preflight_refuses_a_transaction_holding_a_pending_table(
     await reset_db()
 
     async def pending(config, tables):
-        return {"org"}
+        return {"org"}, True
 
     monkeypatch.setattr(maintenance, "_pending_revision_tables", pending)
     monkeypatch.setattr(get_settings(), "migration_lock_holder_max_xact_s", 0.5)
@@ -680,7 +721,8 @@ async def test_postgres_preflight_refuses_a_transaction_holding_a_pending_table(
         await holder.execute(text("LOCK TABLE org IN ACCESS SHARE MODE"))
         await maintenance._refuse_behind_long_lock_holder(config, {"org"})  # still young
         await asyncio.sleep(0.8)
-        with pytest.raises(RuntimeError, match=r"transaction open \d+ s\) holds AccessShareLock on org"):
+        with pytest.raises(RuntimeError, match=r"transaction open \d+ s\) holds AccessShareLock on org"
+                           r".*TREG_MIGRATION_LOCK_HOLDER_CHECK=false"):
             await maintenance._refuse_behind_long_lock_holder(config, {"org"})
         monkeypatch.setattr(get_settings(), "migration_lock_holder_check", False)
         await maintenance._refuse_behind_long_lock_holder(config, {"org"})
@@ -692,7 +734,7 @@ async def test_postgres_preflight_sees_another_roles_lock_without_pg_read_all_st
     from sqlalchemy.exc import DBAPIError
 
     from treg.infra.db import _engine, reset_db
-    from treg.maintenance import _LONG_LOCK_HOLDERS, _long_holder
+    from treg.maintenance import _ALL_LOCK_MODES, _LONG_LOCK_HOLDERS, _long_holder
 
     if _engine.dialect.name != "postgresql":
         pytest.skip("pg_locks and pg_stat_activity are PostgreSQL's")
@@ -708,7 +750,7 @@ async def test_postgres_preflight_sees_another_roles_lock_without_pg_read_all_st
         await holder.execute(text("LOCK TABLE org IN SHARE UPDATE EXCLUSIVE MODE"))
         await checker.execute(text("SET ROLE treg_lockguard_probe"))
         rows = (await checker.execute(_LONG_LOCK_HOLDERS, {
-            "tables": ["org"], "max_xact_s": 3600})).all()
+            "tables": ["org"], "modes": list(_ALL_LOCK_MODES), "max_xact_s": 3600})).all()
         await checker.execute(text("RESET ROLE"))
         await holder.rollback()
     assert [(r.relname, r.mode, r.backend_type, r.xact_s) for r in rows] == [
@@ -717,3 +759,109 @@ async def test_postgres_preflight_sees_another_roles_lock_without_pg_read_all_st
         assert (_long_holder(rows[0]) is None) is (not rows[0].past_freeze_age)
     if not rows[0].past_freeze_age:
         assert "pg_read_all_stats" in caplog.text
+
+
+_DATA_ONLY = """from alembic import op
+import sqlalchemy as sa
+
+TABLE = sa.table("org", sa.column("id"))
+
+
+def _fill():
+    op.execute("UPDATE org SET note = '' WHERE note IS NULL")
+    op.get_bind().execute(sa.update(TABLE).values(id=TABLE.c.id))
+
+
+def upgrade():
+    _fill()
+    op.execute(sa.text("INSERT INTO org (id) VALUES (1)"))
+
+
+def downgrade():
+    op.drop_column("org", "note")
+"""
+
+
+@pytest.mark.parametrize(("body", "access_exclusive"), [
+    (_DATA_ONLY, False),
+    (_DATA_ONLY.replace("    _fill()\n", "    _fill()\n    op.add_column('org', None)\n"), True),
+    (_DATA_ONLY.replace("UPDATE org SET", "ALTER TABLE org ADD x int; UPDATE org SET"), True),
+    (_DATA_ONLY.replace('TABLE = sa.table("org", sa.column("id"))',
+                        'TABLE = sa.table("org", sa.column("id"))\nDDL = "CREATE INDEX i ON org (id)"'),
+     True),
+    (_DATA_ONLY.replace('op.execute(sa.text("INSERT INTO org (id) VALUES (1)"))',
+                        "op.execute(SQL)"), True),
+    (_DATA_ONLY.replace("def upgrade():", "def not_upgrade():"), True),
+])
+def test_only_a_plain_row_change_revision_is_read_as_not_taking_access_exclusive(
+        tmp_path, body, access_exclusive):
+    from treg.maintenance import _takes_access_exclusive
+
+    path = tmp_path / "revision.py"
+    path.write_text(body)
+    assert _takes_access_exclusive(str(path)) is access_exclusive
+
+
+async def test_postgres_preflight_lets_a_reader_through_for_a_data_only_revision(monkeypatch):
+    from sqlalchemy import text
+
+    from treg import maintenance
+    from treg.config import get_settings
+    from treg.infra.db import _engine, reset_db
+
+    if _engine.dialect.name != "postgresql":
+        pytest.skip("pg_locks and pg_stat_activity are PostgreSQL's")
+    await reset_db()
+    access_exclusive = False
+
+    async def pending(config, tables):
+        return {"org"}, access_exclusive
+
+    monkeypatch.setattr(maintenance, "_pending_revision_tables", pending)
+    monkeypatch.setattr(get_settings(), "migration_lock_holder_max_xact_s", 0.1)
+    config = maintenance._alembic_config()
+    async with _engine.connect() as holder:
+        await holder.execute(text("LOCK TABLE org IN ACCESS SHARE MODE"))
+        await asyncio.sleep(0.3)
+        await maintenance._refuse_behind_long_lock_holder(config, {"org"})
+        access_exclusive = True
+        with pytest.raises(RuntimeError, match="holds AccessShareLock on org"):
+            await maintenance._refuse_behind_long_lock_holder(config, {"org"})
+        await holder.rollback()
+
+
+async def test_postgres_preflight_sees_a_lock_held_on_one_partition_only(monkeypatch):
+    from sqlalchemy import text
+
+    from treg import maintenance
+    from treg.config import get_settings
+    from treg.infra.db import _engine, reset_db
+
+    if _engine.dialect.name != "postgresql":
+        pytest.skip("pg_locks and pg_stat_activity are PostgreSQL's")
+    await reset_db()
+
+    async def pending(config, tables):
+        return {"lockguard_parted"}, True
+
+    monkeypatch.setattr(maintenance, "_pending_revision_tables", pending)
+    monkeypatch.setattr(get_settings(), "migration_lock_holder_max_xact_s", 0.1)
+    config = maintenance._alembic_config()
+    async with _engine.begin() as setup:
+        await setup.execute(text("DROP TABLE IF EXISTS lockguard_parted"))
+        await setup.execute(text(
+            "CREATE TABLE lockguard_parted (id int, note text) PARTITION BY RANGE (id)"))
+        await setup.execute(text(
+            "CREATE TABLE lockguard_parted_p1 PARTITION OF lockguard_parted "
+            "FOR VALUES FROM (0) TO (100)"))
+    try:
+        async with _engine.connect() as holder:
+            await holder.execute(text("LOCK TABLE ONLY lockguard_parted_p1 IN ACCESS SHARE MODE"))
+            await asyncio.sleep(0.3)
+            with pytest.raises(RuntimeError, match=r"holds AccessShareLock on "
+                               r"lockguard_parted_p1 \(part of lockguard_parted\)"):
+                await maintenance._refuse_behind_long_lock_holder(config, {"lockguard_parted"})
+            await holder.rollback()
+    finally:
+        async with _engine.begin() as setup:
+            await setup.execute(text("DROP TABLE IF EXISTS lockguard_parted"))
