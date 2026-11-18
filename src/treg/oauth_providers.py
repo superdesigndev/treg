@@ -3800,6 +3800,31 @@ ATLY = OAuthProvider(
 )
 
 
+INFLUSHIP = OAuthProvider(
+    service="influship",
+    display_name="Influship",
+    auth_kind="key",
+    token_label="API key",
+    token_placeholder="your Influship API key (inf_…)",
+    token_header="X-API-Key",
+    token_format="{secret}",
+    setup_url="https://developers.influship.com/api/keys",
+    setup_action_label="Get your Influship API key",
+    setup_steps=(
+        "Sign up or sign in at developers.influship.com (500 starter credits, no card).",
+        "Open API Keys, create a key and copy it when it is shown.",
+    ),
+    setup_note="Billed in credits ($0.01 each) on successful responses only; the key check is free.",
+    auth_uri="", token_uri="",
+    scopes={},
+    client_id_setting="", client_secret_setting="",
+    category="Enrichment",
+    summary="Find Instagram creators from a plain-language brief, score campaign fit, find lookalikes, and read live Instagram, TikTok and YouTube profiles, videos and transcripts.",
+    base_url="https://api.influship.com",
+    docs_url="https://docs.influship.com",
+    probe_path="/v1/auth/test",  # free; a bad key gets 401 unauthorized here
+)
+
 INFLUENCERSCLUB = OAuthProvider(
     service="influencersclub",
     display_name="influencers.club",
@@ -4435,7 +4460,7 @@ REGISTRY: dict[str, OAuthProvider] = {
         # more Enrichment API-key providers
         LUSHA, CORESIGNAL, DIFFBOT, THECOMPANIESAPI, LEADMAGIC, ENRICHLAYER, FIBER_AI, CRUSTDATA, THEIRSTACK, JOBSPIPE, AVIATO,
         COMPANYENRICH, CORPOAPI, OCEANIO, ADYNTEL, TOMBA, TRESTLEIQ, HLRLOOKUP, PREDICTLEADS, FINDYMAIL, ANYMAILFINDER, ENROW, FILTRAT, FILTRAT_FINDER, DROPCONTACT, BRANDDEV, ICYPEAS, LEADSFORGE,
-        INFLUENCERSCLUB, VILLAGE,
+        INFLUENCERSCLUB, INFLUSHIP, VILLAGE,
         # Places: intent-scored local search
         ATLY,
         # Market data API-key providers

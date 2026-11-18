@@ -1,0 +1,419 @@
+provider: influship
+source:
+  docs: https://docs.influship.com
+  openapi: https://api.influship.com/openapi.json
+  curated: '2026-11-17'
+# Prepaid credits at $0.01 each, charged on a 2xx only: a 4xx or 5xx costs nothing. Every metered 2xx
+# carries its exact charge, in credits, in X-Credits-Charged; `scale: 0.01` turns it into USD, so
+# no fx.yaml rate is needed. Probe: GET /v1/auth/test is free; a bad or missing key answers 401.
+limits: "Rate limits are credit budgets per account: the free tier allows 150 credits a minute and 1,500 an hour, paid tiers more (https://docs.influship.com/concepts/quotas-and-limits). Past them HTTP 429 with Retry-After. HTTP 402 insufficient_credits when the balance cannot cover the most a request can cost. Repeated requests with a bad key from one IP answer 429 until Retry-After."
+pricing_url: https://docs.influship.com/concepts/pricing
+defaults:
+  provenance: {source: docs, source_url: 'https://docs.influship.com/concepts/pricing', checked: '2026-11-17', confidence: documented}
+  settle: {reported: {header: X-Credits-Charged, unit: usd, scale: 0.01}}
+proposed_capabilities:
+  # The next three are already proposed, in these words, by influencersclub.yaml.
+  creators.lookalike: "Find creators similar to a reference creator"
+  creators.profile: "Get a creator's profile, contacts and stats"
+  creators.posts: "List a creator's recent posts with engagement"
+  creators.search.results: "Reread the results of a creator search you already ran"
+  creators.campaign.fit: "Score how well creators fit a campaign brief"
+  creators.autocomplete: "Find creators by name or username as you type"
+endpoints:
+  # --- Creator discovery (Influship's own index of Instagram creators) --------------------------
+  - id: influship.creators.search
+    added: '2026-11-17'
+    capability: creators.search
+    platform: creators
+    scope: any_account
+    method: POST
+    path: /v1/search
+    # On treg's key the search belongs to the team that ran it; only that team may reread it.
+    resource_ownership:
+      produces: [{kind: search, path: search_id}]
+    name: "Search creators by brief"
+    summary: "Find Instagram creators that match a plain-language brief, ranked, each with match reasons, profile metrics and supporting posts."
+    note: "All results arrive in one answer, up to limit. The returned search_id rereads them free for an hour through influship.creators.search.results."
+    input:
+      body:
+        query: {type: string, required: true, note: "the brief, 1 to 500 characters", example: "fitness creators who post home workout videos"}
+        limit: {type: integer, required: false, default: 25, min: 1, max: 100, note: "most creators to return, and the price dial: each creator returned is charged", example: 5}
+        platforms: {type: "array[string]", required: false, enum: [instagram], note: "instagram is the only platform searched", example: [instagram]}
+        filters:
+          type: object
+          required: false
+          note: "hard filters on the creators returned"
+          properties:
+            followers:
+              type: object
+              note: "follower count range"
+              properties: {min: {type: number, min: 0}, max: {type: number, min: 0}}
+              example: {min: 10000, max: 500000}
+            engagement_rate:
+              type: object
+              note: "engagement rate range, in percent"
+              properties: {min: {type: number, min: 0, max: 100}, max: {type: number, min: 0, max: 100}}
+              example: {min: 1.5}
+            verified: {type: boolean, note: "filter by verified status"}
+        creator_kinds: {type: "array[string]", required: false, enum: [INFLUENCER, THEME_PAGE], note: "keep only these kinds of account; omit for both", example: [INFLUENCER]}
+    test_request:
+      body: {query: "space science and astronomy educators", limit: 1}
+    price: {value: '0.02', currency: USD, per: 1, unit: result, note: "$0.25 per search plus $0.02 per creator returned; a search that finds no one costs $0.25."}
+    reserve: {rows: {param: body.limit, default: {value: 25, source: docs}, max: 100}}
+    settle: {reported: {header: X-Credits-Charged, unit: usd, scale: 0.01}, worst_case: '2.25'}
+    miss: {when: {path: response.data, op: empty}}
+    bill: {miss: charged}
+    docs_url: https://docs.influship.com/api-reference/search/ai-powered-creator-search
+
+  - id: influship.creators.search.results
+    added: '2026-11-17'
+    capability: creators.search.results
+    platform: creators
+    scope: any_account
+    method: GET
+    path: /v1/search/{id}
+    resource_ownership:
+      requires: {kind: search, param: id}
+    name: "Reread a creator search"
+    summary: "Read the saved results of an earlier creator search again, a page at a time, at no charge."
+    note: "A search is kept for one hour and belongs to the account that ran it; after that the id answers 404."
+    input:
+      pathParams:
+        id: {type: string, required: true, note: "search_id from influship.creators.search", example: "123e4567-e89b-12d3-a456-426614174000"}
+      queryParams:
+        limit: {type: integer, required: false, default: 25, min: 1, max: 100, note: "results per page", example: 25}
+        cursor: {type: string, required: false, note: "next_cursor from the previous page"}
+    untestable: "Needs a search_id from a search the same account ran in the last hour, so no fixed test request exists."
+    price: {value: '0', currency: USD, per: 1, unit: call}
+    settle: null
+    miss: {status: [404], means: "the search has expired or belongs to another account"}
+    docs_url: https://docs.influship.com/api-reference/search/get-search-results-page
+
+  - id: influship.creators.lookalike
+    added: '2026-11-17'
+    capability: creators.lookalike
+    platform: creators
+    scope: any_account
+    method: POST
+    path: /v1/creators/lookalike
+    name: "Find similar creators"
+    summary: "Find Instagram creators similar to one to ten seed creators, ranked by similarity with the traits they share."
+    input:
+      body:
+        seeds:
+          type: "array[object]"
+          required: true
+          minItems: 1
+          maxItems: 10
+          note: "each seed is a creator_id, or a platform and username"
+          properties:
+            creator_id: {type: string, note: "Influship creator id (UUID)"}
+            platform: {type: string, enum: [instagram]}
+            username: {type: string, note: "1 to 50 characters"}
+            weight: {type: number, default: 1, min: 0, max: 1, note: "how much this seed counts against the others"}
+          example: [{platform: instagram, username: astro_ayers}]
+        limit: {type: integer, required: false, default: 25, min: 1, max: 100, note: "most creators to return, and the price dial: each creator returned is charged", example: 5}
+        filters:
+          type: object
+          required: false
+          note: "hard filters on the creators returned"
+          properties:
+            followers:
+              type: object
+              note: "follower count range"
+              properties: {min: {type: number, min: 0}, max: {type: number, min: 0}}
+              example: {min: 10000, max: 500000}
+            engagement_rate:
+              type: object
+              note: "engagement rate range, in percent"
+              properties: {min: {type: number, min: 0, max: 100}, max: {type: number, min: 0, max: 100}}
+              example: {min: 1.5}
+            verified: {type: boolean, note: "filter by verified status"}
+        cursor: {type: string, required: false, note: "next_cursor from the previous page"}
+    test_request:
+      body: {seeds: [{platform: instagram, username: astro_ayers}], limit: 1}
+    price: {value: '0.015', currency: USD, per: 1, unit: result, note: "per creator returned"}
+    reserve: {rows: {param: body.limit, default: {value: 25, source: docs}, max: 100}}
+    miss: {status: [404], means: "no seed is available for similarity matching (seed_not_found), as for the brand accounts nasa and natgeo; try another seed"}
+    docs_url: https://docs.influship.com/api-reference/creators/find-similar-creators
+
+  - id: influship.creators.match
+    added: '2026-11-17'
+    capability: creators.campaign.fit
+    platform: creators
+    scope: any_account
+    method: POST
+    path: /v1/creators/match
+    name: "Score campaign fit"
+    summary: "Score how well each of up to 100 creators fits a campaign brief: a 0 to 1 fit score, a good, neutral or avoid decision, and the evidence behind it."
+    input:
+      body:
+        creators:
+          type: "array[object]"
+          required: true
+          minItems: 1
+          maxItems: 100
+          note: "each creator is a creator_id, or a platform and username"
+          properties:
+            creator_id: {type: string, note: "Influship creator id (UUID)"}
+            platform: {type: string, enum: [instagram]}
+            username: {type: string, note: "1 to 50 characters"}
+          example: [{platform: instagram, username: nasa}]
+        intent:
+          type: object
+          required: true
+          note: "the campaign to score against"
+          properties:
+            query: {type: string, required: true, note: "campaign description, 1 to 500 characters"}
+            context: {type: string, note: "extra detail such as the target audience, up to 2,000 characters"}
+          example: {query: "Looking for fitness creators to promote a new protein bar", context: "Target audience is health-conscious millennials"}
+    test_request:
+      body: {creators: [{creator_id: "80a60cd4-7fd5-4f5a-a661-1f98fa76c773"}], intent: {query: "Space science education campaign"}}
+    price: {value: '0.01', currency: USD, per: 1, unit: result, note: "per creator scored"}
+    reserve: {entities: {from: body.creators, max: 100}}
+    docs_url: https://docs.influship.com/api-reference/creators/score-campaign-fit
+
+  - id: influship.creators.autocomplete
+    added: '2026-11-17'
+    capability: creators.autocomplete
+    platform: creators
+    scope: any_account
+    method: GET
+    path: /v1/creators/autocomplete
+    name: "Autocomplete creators"
+    summary: "Find creators by name or username as you type, with the field and value that matched."
+    input:
+      queryParams:
+        q: {type: string, required: true, note: "2 to 100 characters", example: "nasa"}
+        limit: {type: integer, required: false, default: 5, min: 1, max: 50, example: 5}
+        platform: {type: string, required: false, enum: [instagram], note: "keep matches on this platform"}
+        scope: {type: string, required: false, default: all_platforms, enum: [creator_only, matched_platforms, all_platforms], note: "which of a matched creator's platform profiles to include"}
+    test_request:
+      queryParams: {q: "nasa", limit: 1}
+    price: {value: '0.0005', currency: USD, per: 1, unit: call}
+    miss: {when: {path: response.data, op: empty}}
+    bill: {miss: charged}
+    docs_url: https://docs.influship.com/api-reference/creators/autocomplete-search
+
+  - id: influship.creators.profile
+    added: '2026-11-17'
+    capability: creators.profile
+    platform: creators
+    scope: any_account
+    method: GET
+    path: /v1/profiles/{platform}/{username}
+    name: "Get a creator profile"
+    summary: "Get an Instagram creator's stored profile: bio, verification, followers, engagement rate, average likes and comments, 30-day growth and posting activity."
+    note: "Answers from Influship's index; data_updated_at says when the profile was last refreshed. For a live read of any public account use influship.instagram.user.profile."
+    input:
+      pathParams:
+        platform: {type: string, required: true, enum: [instagram], example: "instagram"}
+        username: {type: string, required: true, note: "1 to 50 characters", example: "nasa"}
+    test_request:
+      pathParams: {platform: "instagram", username: "nasa"}
+    price: {value: '0.001', currency: USD, per: 1, unit: call}
+    miss: {status: [404], means: "the profile is not in Influship's index"}
+    docs_url: https://docs.influship.com/api-reference/profiles/get-profile-by-platform-and-username
+
+  - id: influship.creators.profile.batch
+    added: '2026-11-17'
+    capability: creators.profile
+    platform: creators
+    scope: any_account
+    method: POST
+    path: /v1/profiles/lookup
+    name: "Get creator profiles in a batch"
+    summary: "Get the stored profiles of up to 100 Instagram creators in one call, with the ones not found listed apart."
+    input:
+      body:
+        profiles:
+          type: "array[object]"
+          required: true
+          minItems: 1
+          maxItems: 100
+          item_required_all: [platform, username]
+          properties:
+            platform: {type: string, enum: [instagram]}
+            username: {type: string, note: "1 to 50 characters"}
+          example: [{platform: instagram, username: nasa}]
+    test_request:
+      body: {profiles: [{platform: instagram, username: nasa}]}
+    price: {value: '0.001', currency: USD, per: 1, unit: result, note: "per profile found; the ones listed in not_found are free"}
+    reserve: {entities: {from: body.profiles, max: 100}}
+    miss: {when: {path: response.data, op: empty}}
+    docs_url: https://docs.influship.com/api-reference/profiles/batch-lookup-profiles
+
+  - id: influship.creators.posts
+    added: '2026-11-17'
+    capability: creators.posts
+    platform: creators
+    scope: any_account
+    method: GET
+    path: /v1/posts
+    name: "List a creator's posts"
+    summary: "List a creator's stored Instagram posts with likes, comments, views and media, by recency or by engagement."
+    input:
+      queryParams:
+        platform: {type: string, required: false, enum: [instagram], note: "send with username", example: "instagram"}
+        username: {type: string, required: false, note: "send with platform; 1 to 50 characters", example: "nasa"}
+        creator_id: {type: string, required: false, note: "Influship creator id (UUID), in place of platform and username"}
+        limit: {type: integer, required: false, default: 12, min: 1, max: 50, note: "posts per page, and the price dial: each post returned is charged", example: 12}
+        sort: {type: string, required: false, default: recent, enum: [recent, top_engagement, most_likes, most_views, most_comments]}
+        cursor: {type: string, required: false, note: "next_cursor from the previous page; reuse it only with the same sort"}
+      note: "one of creator_id, or platform and username"
+    test_request:
+      queryParams: {platform: "instagram", username: "nasa", limit: 1}
+    price: {value: '0.0005', currency: USD, per: 1, unit: post, note: "per post returned"}
+    reserve: {rows: {param: query.limit, default: {value: 12, source: docs}, max: 50}}
+    miss: {status: [404], means: "the creator or profile is not in Influship's index"}
+    docs_url: https://docs.influship.com/api-reference/posts/get-posts
+
+  # --- Live platform data -----------------------------------------------------------------------
+  - id: influship.instagram.user.profile
+    added: '2026-11-17'
+    capability: instagram.user.profile
+    platform: instagram
+    scope: any_account
+    method: GET
+    path: /v1/raw/instagram/profile/{username}
+    name: "Instagram profile, live"
+    summary: "Read a public Instagram profile live: name, bio, links, follower, following and post counts, verification, category and engagement rate, with recent posts on request."
+    input:
+      pathParams:
+        username: {type: string, required: true, note: "1 to 50 characters", example: "nasa"}
+      queryParams:
+        include_posts: {type: boolean, required: false, default: false, note: "add the profile's recent posts"}
+        post_limit: {type: integer, required: false, default: 12, min: 1, max: 50, note: "how many recent posts, with include_posts"}
+    test_request:
+      pathParams: {username: "nasa"}
+    price: {value: '0.0018', currency: USD, per: 1, unit: call}
+    miss: {status: [404], means: "no Instagram account has this username"}
+    docs_url: https://docs.influship.com/api-reference/live-scraping/get-live-instagram-profile
+
+  - id: influship.tiktok.user.profile
+    added: '2026-11-17'
+    capability: tiktok.user.profile
+    platform: tiktok
+    scope: any_account
+    method: GET
+    path: /v1/raw/tiktok/profile/{username}
+    name: "TikTok profile, live"
+    summary: "Read a public TikTok profile live: name, bio, link, follower, following, video and like counts, and verified, private and business flags."
+    input:
+      pathParams:
+        username: {type: string, required: true, note: "with or without a leading @; letters, digits, dots and underscores, up to 50 characters", example: "nasa"}
+    test_request:
+      pathParams: {username: "nasa"}
+    price: {value: '0.0018', currency: USD, per: 1, unit: call}
+    miss: {status: [404], means: "no TikTok account has this username"}
+    docs_url: https://docs.influship.com/api-reference/live-scraping/get-live-tiktok-profile
+
+  - id: influship.tiktok.user.videos
+    added: '2026-11-17'
+    capability: tiktok.user.videos
+    platform: tiktok
+    scope: any_account
+    method: GET
+    path: /v1/raw/tiktok/profile/{username}/videos
+    name: "TikTok user's videos, live"
+    summary: "List one page of a TikTok user's videos, latest or most popular first, each with its caption, stats and media links."
+    note: "Media links are signed and expire: download a file soon after the call."
+    input:
+      pathParams:
+        username: {type: string, required: true, note: "with or without a leading @; letters, digits, dots and underscores, up to 50 characters", example: "nasa"}
+      queryParams:
+        sort_by: {type: string, required: false, default: latest, enum: [latest, popular]}
+        cursor: {type: string, required: false, note: "next_cursor from the previous page"}
+        region: {type: string, required: false, default: US, enum: [US]}
+    test_request:
+      pathParams: {username: "nasa"}
+    price: {value: '0.0018', currency: USD, per: 1, unit: call, note: "per page of videos"}
+    miss: {status: [404], means: "no TikTok account has this username"}
+    docs_url: https://docs.influship.com/api-reference/live-scraping/list-live-tiktok-profile-videos
+
+  - id: influship.tiktok.search.videos
+    added: '2026-11-17'
+    capability: tiktok.search.videos
+    platform: tiktok
+    scope: any_account
+    method: GET
+    path: /v1/raw/tiktok/search/videos
+    name: "Search TikTok videos, live"
+    summary: "Search TikTok videos by keyword, one page in relevance order, each with its caption, author, stats and media links."
+    note: "Media links are signed and expire: download a file soon after the call."
+    input:
+      queryParams:
+        query: {type: string, required: true, note: "1 to 100 characters", example: "home workout"}
+        cursor: {type: string, required: false, note: "next_cursor from the previous page; send it with the same query"}
+    test_request:
+      queryParams: {query: "nasa"}
+    price: {value: '0.0018', currency: USD, per: 1, unit: call, note: "per page of results, an empty page included"}
+    miss: {when: {path: response.data.videos, op: empty}}
+    bill: {miss: charged}
+    docs_url: https://docs.influship.com/api-reference/live-scraping/search-tiktok-videos
+
+  - id: influship.youtube.channel.profile
+    added: '2026-11-17'
+    capability: youtube.channel.profile
+    platform: youtube
+    scope: any_account
+    method: GET
+    path: /v1/raw/youtube/channel/{handle}
+    name: "YouTube channel, live"
+    summary: "Read a YouTube channel live: name, description, country, keywords, subscriber, video and total view counts, with recent videos on request."
+    input:
+      pathParams:
+        handle: {type: string, required: true, note: "a handle with or without @, a UC… channel id, or the channel's full URL", example: "@NASA"}
+      queryParams:
+        include_videos: {type: boolean, required: false, default: false, note: "add the channel's recent videos"}
+        video_limit: {type: integer, required: false, default: 12, min: 1, max: 50, note: "how many recent videos, with include_videos"}
+    test_request:
+      pathParams: {handle: "NASA"}
+    price: {value: '0.0018', currency: USD, per: 1, unit: call}
+    miss: {status: [404], means: "no YouTube channel matches this handle or id"}
+    docs_url: https://docs.influship.com/api-reference/live-scraping/get-live-youtube-channel
+
+  - id: influship.youtube.video.captions
+    added: '2026-11-17'
+    capability: youtube.video.captions
+    platform: youtube
+    scope: any_account
+    method: GET
+    path: /v1/raw/youtube/transcript/{video_id}
+    name: "YouTube video transcript"
+    summary: "Get a YouTube video's transcript as timestamped segments and as full text, with its language and the other languages on offer."
+    input:
+      pathParams:
+        video_id: {type: string, required: true, note: "the 11-character video id", example: "jNQXAC9IVRw"}
+      queryParams:
+        language: {type: string, required: false, default: auto, note: "a language code, or auto to detect it", example: "en"}
+    test_request:
+      pathParams: {video_id: "jNQXAC9IVRw"}
+    price: {value: '0.0018', currency: USD, per: 1, unit: call}
+    docs_url: https://docs.influship.com/api-reference/live-scraping/get-youtube-video-transcript
+
+  - id: influship.youtube.search.videos
+    added: '2026-11-17'
+    capability: youtube.search.videos
+    platform: youtube
+    scope: any_account
+    method: GET
+    path: /v1/raw/youtube/search
+    name: "Search YouTube, live"
+    summary: "Search YouTube by keyword, one page of videos and channels, filtered by upload date, duration and country, ordered by relevance or views."
+    input:
+      queryParams:
+        q: {type: string, required: true, note: "1 to 500 characters", example: "home workout"}
+        limit: {type: integer, required: false, default: 20, min: 1, max: 50, note: "most results in the page", example: 20}
+        content_type: {type: string, required: false, default: all, enum: [all, videos], note: "videos leaves channels out"}
+        sort_by: {type: string, required: false, default: relevance, enum: [relevance, popular], note: "popular orders by views"}
+        upload_date: {type: string, required: false, default: any, enum: [any, last_hour, today, this_week, this_month, this_year]}
+        duration: {type: string, required: false, default: any, enum: [any, short, medium, long]}
+        country_code: {type: string, required: false, default: US, note: "two-letter country code", example: "US"}
+        language_code: {type: string, required: false, default: en, example: "en"}
+        cursor: {type: string, required: false, note: "next_cursor from the previous page; send it with the same query and filters"}
+    test_request:
+      queryParams: {q: "nasa space science", limit: 1, content_type: "videos"}
+    price: {value: '0.0018', currency: USD, per: 1, unit: call, note: "per page of results"}
+    miss: {when: {path: response.data.results, op: empty}}
+    docs_url: https://docs.influship.com/api-reference/live-scraping/search-youtube
