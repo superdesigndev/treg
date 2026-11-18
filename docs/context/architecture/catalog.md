@@ -1239,7 +1239,8 @@ an invalid extra never disables the primary.
     health still counts it slow past half the same bound (`_child_bound_s`), so routing can ask it
     after the healthy ones; only the cancellation is waived.
     *Short-window health* (`route_health`, verdict in `routing/health.py`): every treg-key or
-    anonymous child that reached its provider (never an archive hit, never a local refusal) counts
+    anonymous child that reached its provider (never an archive hit, never a local refusal, never
+    `upstream_busy`: treg's own connection pool or in-flight cap, whose request never left) counts
     as answered, failed (5xx, 405/408/410, a gateway timeout or connect failure, the time bound) or
     slow (past half its bound) in a time bucket of the key-value store (`kv.note_route_health`,
     `BUCKETS` buckets across `route_health_window_s`, expiring with the window), so every worker
