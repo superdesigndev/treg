@@ -502,35 +502,98 @@ async def _resync_late_verdicts(db, out: dict, *, run_started: datetime, batch_r
     return True
 
 
-async def _drop_legacy_foreign_keys(db) -> None:
+# The foreign key drop locks `org`, which every call reads: like the swap's lock, it waits for
+# quiet without queuing, then tries with a short lock timeout, within a bounded window.
+_QUIET_STATEMENT_S = 0.5
+_QUIET_POLL_S = 0.1
+_LOCK_TRY = "50ms"
+FK_DROP_WINDOW_S = 120.0
+
+_LONG_HOLDERS = text("""
+    SELECT DISTINCT a.pid
+    FROM pg_locks l JOIN pg_stat_activity a ON a.pid = l.pid
+    WHERE l.relation = to_regclass(:name) AND l.granted AND a.pid <> pg_backend_pid()
+      AND ((a.state = 'active' AND clock_timestamp() - a.query_start > make_interval(secs => :limit))
+        OR (a.state LIKE 'idle in transaction%'
+            AND clock_timestamp() - a.state_change > make_interval(secs => :limit))
+        OR clock_timestamp() - a.xact_start > make_interval(secs => :limit))
+""")
+
+
+def _is_lock_timeout(exc: DBAPIError) -> bool:
+    origin = exc.orig
+    return "lock timeout" in str(origin or exc) or (
+        origin is not None and "LockNotAvailableError" in type(origin).__name__)
+
+
+async def _wait_until_quiet(db, table: str, deadline: float) -> bool:
+    """Wait until no visible session holds `table` through a statement or a transaction older
+    than `_QUIET_STATEMENT_S` -> False when `deadline` passed first. Each poll is its own
+    transaction and clears the activity snapshot, so it sees sessions as they are now."""
+    while True:
+        await db.execute(text("SELECT pg_stat_clear_snapshot()"))
+        busy = (await db.execute(_LONG_HOLDERS, {"name": table, "limit": _QUIET_STATEMENT_S})).first()
+        await db.commit()
+        if busy is None:
+            return True
+        if time.monotonic() >= deadline:
+            return False
+        await asyncio.sleep(_QUIET_POLL_S)
+
+
+async def _drop_legacy_foreign_keys(db, *, window_s: float = FK_DROP_WINDOW_S) -> None:
     """Drop the legacy table's foreign keys (to `org`) in one short transaction, so the drop of
-    the table that follows never holds a lock on `org` while its files are deleted."""
+    the table that follows never holds a lock on `org` while its files are deleted. It waits for
+    quiet on `org`, then tries with a `_LOCK_TRY` lock timeout inside a savepoint and starts over
+    on a timeout, so an `org` read never queues behind it for longer than that; it raises a lock
+    timeout once `window_s` has passed."""
     names = (await db.execute(text(
         "SELECT conname FROM pg_constraint WHERE conrelid = to_regclass(:name) AND contype = 'f'"),
         {"name": LEGACY})).scalars().all()
-    await db.execute(text(f"SET LOCAL lock_timeout = '{DROP_LEGACY_LOCK_TIMEOUT}'"))
-    for name in names:
-        await db.execute(text(f'ALTER TABLE {LEGACY} DROP CONSTRAINT "{name}"'))
     await db.commit()
+    if not names:
+        return
+    deadline = time.monotonic() + window_s
+    while True:
+        if await _wait_until_quiet(db, "org", deadline):
+            try:
+                async with db.begin_nested():
+                    await db.execute(text(f"SET LOCAL lock_timeout = '{_LOCK_TRY}'"))
+                    for name in names:
+                        await db.execute(text(f'ALTER TABLE {LEGACY} DROP CONSTRAINT "{name}"'))
+                await db.commit()
+                return
+            except DBAPIError as exc:
+                if not _is_lock_timeout(exc):
+                    raise
+                await db.rollback()
+        if time.monotonic() >= deadline:
+            raise TimeoutError(f"the foreign key on {LEGACY} was not dropped within {window_s:.0f} s")
+        await asyncio.sleep(0.05)
 
 
 async def drop_legacy(*, session_factory=session_maker) -> dict:
     """Remove the rows of teams deleted during the copy, then drop `callrecord_legacy`
     -> {dropped, deleted_rows, error}.
 
-    The legacy table still holds its foreign key to `org`. That key is dropped first, in its own
-    transaction with a short lock wait (retried), which is the only moment `org` is locked; the
-    table and its files go after, with no lock on `org`.
+    The legacy table still holds its foreign key to `org`. That key is dropped first, on its own
+    (`_drop_legacy_foreign_keys`: quiet first, then 50 ms lock attempts), which is the only moment
+    `org` is locked; the table and its files go after, with no lock on `org`.
     """
     deleted = await delete_rows_of_deleted_teams(table=TABLE, session_factory=session_factory)
+    async with session_factory() as db:
+        if await _relkind(db, LEGACY) is None:
+            return {"dropped": False, "deleted_rows": deleted, "error": None}
+        await db.commit()
+        try:
+            await _drop_legacy_foreign_keys(db)
+        except TimeoutError as exc:
+            return {"dropped": False, "deleted_rows": deleted, "error": str(exc)}
     for attempt in range(1, DROP_LEGACY_ATTEMPTS + 1):
         async with session_factory() as db:
-            if await _relkind(db, LEGACY) is None:
-                return {"dropped": False, "deleted_rows": deleted, "error": None}
             try:
-                await _drop_legacy_foreign_keys(db)
                 await db.execute(text(f"SET LOCAL lock_timeout = '{DROP_LEGACY_LOCK_TIMEOUT}'"))
-                await db.execute(text(f"DROP TABLE {LEGACY}"))
+                await db.execute(text(f"DROP TABLE IF EXISTS {LEGACY}"))
                 await db.commit()
                 return {"dropped": True, "deleted_rows": deleted, "error": None}
             except DBAPIError as exc:

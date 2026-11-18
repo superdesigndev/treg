@@ -471,9 +471,13 @@ so no reader ever sees a table with part of its history, and only the rename blo
    or its last resync did not finish. Otherwise, without a lock, it copies what was written since,
    resyncs only the rows above `resynced_upto` (noting progress after each batch, so a stopped
    upgrade resumes there), copies again what came in meanwhile and runs `ANALYZE` on the new
-   table. Then, within `_QUIET_WAIT_S`: it waits without queuing until no visible session has run
+   table (with a 15-minute statement timeout for that statement only). Month partitions start at
+   the oldest `created_at` still to copy, not the lowest id's month: ids are handed out before
+   their rows commit. Then, within `_QUIET_WAIT_S`: it waits without queuing until no visible session has run
    a statement on `callrecord`, or kept a transaction open, for longer than
-   `_QUIET_STATEMENT_S`; copies what came in during the wait; and tries the locks with a
+   `_QUIET_STATEMENT_S` (each poll first runs `pg_stat_clear_snapshot()`: inside a transaction
+   PostgreSQL otherwise keeps serving the first `pg_stat_activity` it read); copies what came in
+   during the wait; and tries the locks with a
    `_LOCK_TRY` lock timeout inside a savepoint, starting over on a timeout, so a lock request
    never queues inserts for longer than that. It refuses if the window ends first. Holding both
    locks, it copies the last rows, trades the table and index names, moves the sequence and
@@ -483,8 +487,9 @@ so no reader ever sees a table with part of its history, and only the rename blo
    the legacy table only.
 5. `treg-worker admin callrecord-drop-legacy` deletes the rows of teams deleted while the copy ran
    (`delete_rows_of_deleted_teams`, committed batches, never in the upgrade), drops the legacy
-   table's foreign key to `org` in its own short transaction (1 s lock wait, retried), then drops
-   the table, so the file deletion holds no lock on `org`. Before that, the same backfill command
+   table's foreign key to `org` the way the swap takes its lock (wait for quiet on `org`, then
+   `_LOCK_TRY` attempts inside a savepoint, within `FK_DROP_WINDOW_S`), so an `org` read never
+   queues behind it for long, then drops the table, so the file deletion holds no lock on `org`. Before that, the same backfill command
    copies still older history from it into `callrecord` if it is wanted.
 
 **Columns and indexes move together.** The copy names the live table's columns and the swap

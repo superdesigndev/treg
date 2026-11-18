@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import asyncio
 import json
+import random
 import time
 from datetime import timedelta
 from importlib import import_module
@@ -498,7 +499,9 @@ async def test_the_lock_never_stalls_inserts_behind_reports_or_a_long_transactio
         stop.set()
         await asyncio.gather(*readers, return_exceptions=True)
 
-    assert slowest < 0.25 and written > 200
+    # Each lock attempt waits at most 50 ms; the rest of the bound is the locked step itself and a
+    # busy CI machine. A lock request that queued behind the reports would stall for seconds.
+    assert slowest < 1.0 and written > 200
     assert await _scalar("SELECT relkind::text FROM pg_class WHERE oid = 'callrecord'::regclass") == "p"
     assert await _scalar("SELECT count(*) FROM callrecord WHERE tool_name = 'during'") == written
 
@@ -566,3 +569,75 @@ async def test_the_upkeep_analyzes_the_partitioned_table_when_its_estimate_falls
         await session.commit()
     assert (await partitions.maintain())["analyzed"] == ["callrecord"]
     assert (await partitions.maintain())["analyzed"] == []
+
+
+async def test_the_swap_finishes_while_readers_never_pause(before_swap):
+    """Readers run back-to-back transactions of up to 0.3 s on `callrecord`. Each poll for quiet
+    must see the sessions as they are now (the activity snapshot is cleared), so the swap finds
+    its moment instead of waiting out its window."""
+    stop = asyncio.Event()
+
+    async def reader(seed: int):
+        rng = random.Random(seed)
+        async with db._engine.connect() as connection:
+            while not stop.is_set():
+                await connection.execute(text("SELECT count(*) FROM callrecord WHERE id < 5"))
+                await connection.execute(text(f"SELECT pg_sleep({rng.uniform(0, 0.3):.3f})"))
+                await connection.commit()
+
+    readers = [asyncio.create_task(reader(seed)) for seed in (1, 2, 3, 4)]
+    await asyncio.sleep(0.5)
+    started = time.monotonic()
+    try:
+        await asyncio.wait_for(_upgrade_to("head"), timeout=90)
+    finally:
+        stop.set()
+        await asyncio.gather(*readers, return_exceptions=True)
+    assert time.monotonic() - started < 60
+    assert await _scalar("SELECT relkind::text FROM pg_class WHERE oid = 'callrecord'::regclass") == "p"
+
+
+async def test_the_foreign_key_drop_never_stalls_org_reads(before_swap):
+    """A transaction holds `org` for 25 s while short calls keep reading it. The foreign key drop
+    waits for quiet and then tries 50 ms at a time, so an `org` read never waits for long."""
+    await _upgrade_to("head")
+    stop = asyncio.Event()
+    slowest = [0.0]
+
+    async def long_holder():
+        async with db._engine.connect() as connection:
+            await connection.execute(text("SELECT id FROM org WHERE id = :id"), {"id": before_swap})
+            await asyncio.sleep(25)
+            await connection.commit()
+
+    async def org_reads():
+        async with db._engine.connect() as connection:
+            while not stop.is_set():
+                started = time.monotonic()
+                await connection.execute(text("SELECT name FROM org WHERE id = :id"), {"id": before_swap})
+                await connection.commit()
+                slowest[0] = max(slowest[0], time.monotonic() - started)
+                await asyncio.sleep(0.005)
+
+    tasks = [asyncio.create_task(long_holder()), asyncio.create_task(org_reads())]
+    await asyncio.sleep(0.5)
+    try:
+        result = await asyncio.wait_for(partitions.drop_legacy(), timeout=90)
+    finally:
+        stop.set()
+        await asyncio.gather(*tasks, return_exceptions=True)
+    assert result["dropped"] is True
+    # Each attempt waits at most 50 ms (plus a busy CI machine); queuing behind the 25 s holder
+    # would stall for its whole lock wait.
+    assert slowest[0] < 0.5
+
+
+async def test_partitions_cover_the_oldest_row_to_copy_whatever_its_id(before_swap):
+    """An id is handed out before its row commits, and a row may carry an older timestamp than
+    rows with lower ids: the partitions start at the oldest `created_at` still to copy."""
+    async with db.session_maker() as session:
+        await session.execute(_ROWS, {"org_id": before_swap, "count": 1, "step": timedelta(seconds=1),
+                                      "newest": utcnow_naive() - timedelta(days=95)})
+        await session.commit()
+    await _swap_in_process()
+    assert await _scalar("SELECT count(*) FROM callrecord") == 41
