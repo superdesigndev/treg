@@ -287,7 +287,12 @@ async def test_a_full_provider_refuses_with_share_busy_and_charges_nothing(
     before = await _balance(clients)
     r = await clients.get(f"/call/{EP}?aweme_id=7")
     assert r.status_code == 429, r.text
-    assert "share_busy" in r.text and "not charged" in r.text
+    detail = r.json()["detail"]
+    assert detail["error"] == "share_busy" and detail["active"] == 0
+    assert detail["retry_after_s"] == 2
+    assert "already has" not in detail["message"]
+    assert "fully used" in detail["message"] and "0 in progress" in detail["message"]
+    assert "not charged" in detail["message"]
     assert await _balance(clients) == before
     other_team.release()
     r = await clients.get(f"/call/{EP}?aweme_id=7")

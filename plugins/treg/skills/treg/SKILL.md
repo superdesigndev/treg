@@ -220,9 +220,10 @@ pin a job to one provider (`treg org pin`), and then calls to the job's other pr
   were already paid for.
 - **Calling in parallel is fine**, within limits: treg sets no per-token or per-team concurrency
   limit, and a provider's own rate limits are relayed as they are. Where treg's own account for a
-  provider is at its limit of calls in progress, a team that already has calls running on it gets
-  429 `share_busy`; where it is at its rate limit, a call may get 429 `provider_rate_limited`. Send
-  fewer at once, retry after `retry_after_s`, or call the routed tool, which moves on by itself.
+  provider is at its limit of calls in progress, a call gets 429 `share_busy` even if this team
+  has none in progress. Where it is at its rate limit, a call may get 429 `provider_rate_limited`.
+  Send fewer at once, retry after `retry_after_s` (the account may still be full then), or call
+  the routed tool, which moves on by itself.
 - **A client written for the provider's own API** can keep its paths: swap the provider's base URL
   for `https://treg.to/call/<provider>` (`https://api.dataforseo.com/v3` → `https://treg.to/call/dataforseo`) and send
   `X-Treg-Token`. The catalog tool on that method and path runs exactly as its id would, a `{param}`
@@ -290,7 +291,7 @@ no JSON `detail` is never treg's.
 | 403 `funds_required` | no | treg's key won't pay for this tool on this team until the team adds funds. Top up (`treg topup`, or the dashboard's Team → Billing) or connect the team's own key for that provider. |
 | 403 `own_key_required` | no | treg's key won't pay for this tool on this team. Connect the team's own key for that provider. |
 | 402 `route_max_cost` | no | Your `X-Treg-Route-Max-Cost` refused it. Ask for fewer rows or targets, or raise the ceiling. |
-| 429 `share_busy` | no | treg's account for that provider is at its limit and your team already has calls running on it. Send fewer at once, retry after `retry_after_s`, or call the routed tool. |
+| 429 `share_busy` | no | treg's shared account for that provider is at its concurrency limit, even if your team has none in progress. Retry after `retry_after_s` (it may still be full), send fewer at once, or call the routed tool. |
 | 503 `upstream_busy` | no | treg could not take a connection to that provider right now; nothing was sent. Retry after `retry_after_s`. |
 | 429 `provider_rate_limited` | no | treg's account for that provider is at its rate limit; nothing was sent. Retry after `retry_after_s`, or call the routed tool. |
 | 429 `member_spend_cap_reached` | no | You reached your own daily spend limit on this team. Do not retry before `resets_at` (00:00 UTC; also the `Retry-After` header). Tell the user; a team admin can raise the limit. |

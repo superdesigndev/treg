@@ -1674,9 +1674,9 @@ async def _execute_call(request: _ApplicationRequest, upstream_client: httpx.Asy
                             "error": "share_busy", "provider": mk.provider,
                             "endpoint_id": mk.endpoint_id, "active": busy.active,
                             "retry_after_s": RETRY_AFTER_SHARE_S,
-                            "message": f"{mk.provider} is fully used and your team already has "
-                                       f"{busy.active} calls in progress on it; not charged, "
-                                       f"try again in {RETRY_AFTER_SHARE_S} s"}) from None
+                            "message": f"{mk.provider} is fully used; your team has {busy.active} "
+                                       f"in progress; not charged, try again in "
+                                       f"{RETRY_AFTER_SHARE_S} s"}) from None
                     if share_slot.waited_ms:
                         smoothed.append(f"share_wait={share_slot.waited_ms}")
                 if mk is not None:
