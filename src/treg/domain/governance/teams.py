@@ -472,26 +472,9 @@ async def erase_archive_marks(db: AsyncSession, key_hashes: list[str], *,
     return deleted
 
 
-async def apply_archive_stat_deltas(db: AsyncSession, deltas: dict[str, list[int]]) -> None:
-    """Move the endpoint running totals down by `deltas` (endpoint -> [snapshots, bodies_kept,
-    kept_bytes, keys]) in `db` (no commit), in endpoint order, as `archive.flush_stats` takes the
-    same rows, so the two cannot deadlock."""
-    for endpoint_id, (n_snaps, n_bodies, n_bytes, n_keys) in sorted(deltas.items()):
-        if not (n_snaps or n_bodies or n_bytes or n_keys):
-            continue
-        await db.execute(
-            update(ArchiveEndpointStat).where(ArchiveEndpointStat.endpoint_id == endpoint_id)
-            .values(snapshots=ArchiveEndpointStat.snapshots - n_snaps,
-                    bodies_kept=ArchiveEndpointStat.bodies_kept - n_bodies,
-                    kept_bytes=ArchiveEndpointStat.kept_bytes - n_bytes,
-                    keys=ArchiveEndpointStat.keys - n_keys))
-
-
-async def erase_archive_keys(db: AsyncSession, key_ids: list[int], *,
-                             stats: dict[str, list[int]] | None = None) -> int:
+async def erase_archive_keys(db: AsyncSession, key_ids: list[int]) -> int:
     """Delete the given keys with their snapshots in `db` (no commit), moving the endpoint
-    running totals by what the statements returned -> keys deleted. Marks are untouched. With
-    `stats`, the changes are added to it for the caller to apply with others in one pass."""
+    running totals by what the statements returned -> keys deleted. Marks are untouched."""
     if not key_ids:
         return 0
     # Snapshots first (they reference the key and, through `body_of`, each other within a key).
@@ -504,7 +487,7 @@ async def erase_archive_keys(db: AsyncSession, key_ids: list[int], *,
         .returning(ArchiveKey.id, ArchiveKey.endpoint_id))).all()
     endpoint_of = {int(key_id): endpoint_id for key_id, endpoint_id in keys_gone}
     # Running totals (archive.md, "The running totals"): atomic column arithmetic, like the pruner.
-    per_endpoint: dict[str, list[int]] = {} if stats is None else stats
+    per_endpoint: dict[str, list[int]] = {}
     for endpoint_id in endpoint_of.values():
         per_endpoint.setdefault(endpoint_id, [0, 0, 0, 0])[3] += 1
     for key_id, storage, has_body, size in gone:
@@ -516,8 +499,14 @@ async def erase_archive_keys(db: AsyncSession, key_ids: list[int], *,
         if storage is not None or bool(has_body):
             acc[1] += 1
             acc[2] += int(size or 0)
-    if stats is None:
-        await apply_archive_stat_deltas(db, per_endpoint)
+    # In endpoint order, as `archive.flush_stats` takes the same rows, so the two cannot deadlock.
+    for endpoint_id, (n_snaps, n_bodies, n_bytes, n_keys) in sorted(per_endpoint.items()):
+        await db.execute(
+            update(ArchiveEndpointStat).where(ArchiveEndpointStat.endpoint_id == endpoint_id)
+            .values(snapshots=ArchiveEndpointStat.snapshots - n_snaps,
+                    bodies_kept=ArchiveEndpointStat.bodies_kept - n_bodies,
+                    kept_bytes=ArchiveEndpointStat.kept_bytes - n_bytes,
+                    keys=ArchiveEndpointStat.keys - n_keys))
     return len(keys_gone)
 
 

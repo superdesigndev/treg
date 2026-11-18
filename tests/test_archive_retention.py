@@ -25,7 +25,8 @@ from treg.config import get_settings
 from treg.domain.catalog import store as catalog_store
 from treg.infra.db import session_maker
 from treg.models import (
-    ArchiveEndpointStat, ArchiveKey, ArchiveKeyOrg, ArchiveRetentionCursor, ArchiveSnapshot,
+    ArchiveEndpointStat, ArchiveKey, ArchiveKeyOrg, ArchiveObjectPending, ArchiveRetentionCursor,
+    ArchiveSnapshot,
     IdempotentCall,
 )
 from treg.timeutil import utcnow_naive
@@ -163,31 +164,45 @@ async def test_off_by_default_and_a_dry_run_counts_without_deleting(clients: Asy
         assert await s.get(ArchiveRetentionCursor, archive_retention.CURSOR_ID) is None
 
 
-async def test_orphaned_objects_go_and_shared_ones_stay(clients: AsyncClient, retention_on, store):
+async def test_orphaned_objects_go_after_the_grace_period_and_shared_ones_stay(
+        clients: AsyncClient, retention_on, store):
     for body in ("only-here", "shared"):
         store.objects[_h(body)] = body.encode()
     await _key("dormant", age_days=40, bodies=(("only-here", "r2"), ("shared", "both")))
     await _key("kept", age_days=40, asked_days=1, bodies=(("shared", "r2"),))
     result = await archive_retention.run()
-    assert (result["keys"], result["objects"]) == (1, 1)
-    assert set(store.objects) == {_h("shared")}
+    assert (result["keys"], result["objects_pending"], result["objects"]) == (1, 1, 0)
+    assert set(store.objects) == {_h("only-here"), _h("shared")}    # rows first, bytes later
+    early = await archive_retention.run()                           # inside the grace period
+    assert early["objects"] == 0 and _h("only-here") in store.objects
+    later = await archive_retention.run(object_grace_s=0)
+    assert later["objects"] == 1 and set(store.objects) == {_h("shared")}
+    async with session_maker() as s:
+        assert (await s.execute(select(ArchiveObjectPending))).scalars().all() == []
 
 
-async def test_no_rows_go_while_their_bytes_would_stay(clients: AsyncClient, retention_on, store):
+async def test_a_failed_or_impossible_object_delete_waits_for_the_next_run(
+        clients: AsyncClient, retention_on, store):
     await _key("dormant", age_days=40, bodies=(("a", "r2"),))
     store.objects[_h("a")] = b"a"
+    assert (await archive_retention.run())["keys"] == 1                 # rows go first
+
+    real_delete = store.delete
 
     async def broken(_hash):
         raise RuntimeError("store down")
     store.delete = broken
-    failed = await archive_retention.run()
-    assert failed["keys"] == 0 and failed["skipped_batches"] == 1
-    assert (await _left())[0] == {_h("dormant")}
+    failed = await archive_retention.run(object_grace_s=0)
+    assert failed["objects"] == 0 and _h("a") in store.objects
 
     bootstrap.configure_archive_object_store(None)
-    missing = await archive_retention.run(after=0)
+    missing = await archive_retention.run(object_grace_s=0)
     assert missing["stopped"] == "error" and "object store" in missing["error"]
-    assert (await _left())[0] == {_h("dormant")}
+
+    store.delete = real_delete
+    bootstrap.configure_archive_object_store(store)
+    assert (await archive_retention.run(object_grace_s=0))["objects"] == 1
+    assert store.objects == {}
 
 
 async def test_a_run_stops_at_its_time_budget_and_the_next_resumes(clients: AsyncClient, retention_on):
@@ -413,45 +428,6 @@ async def test_a_dry_run_reads_through_the_read_session_maker(clients: AsyncClie
     assert opened
 
 
-async def test_a_key_asked_for_while_its_objects_go_keeps_an_honest_answer(
-        clients: AsyncClient, retention_on, store, monkeypatch):
-    """Objects go before the locked re-check. A key that a paid hit kept meanwhile must not
-    point at bytes that are gone: its `r2` versions become hash-only (a miss, and a retry row
-    keeps its own copy), its `both` versions read the row's copy."""
-    for body in ("a", "b"):
-        store.objects[_h(body)] = body.encode()
-    await _key("racing", age_days=40, bodies=(("a", "r2"), ("b", "both")))
-    async with session_maker() as s:
-        s.add(ArchiveEndpointStat(endpoint_id=EP, provider="tikhub", keys=1, snapshots=2,
-                                  bodies_kept=2, kept_bytes=2))
-        await s.commit()
-    real_delete = archive_retention._delete_objects
-
-    async def delete_then_a_paid_hit(hashes):
-        failed = await real_delete(hashes)
-        async with session_maker() as s:
-            key = (await s.execute(select(ArchiveKey).where(ArchiveKey.key_hash == _h("racing")))).scalar_one()
-            key.last_requested_at = utcnow_naive()
-            s.add(ArchiveKeyOrg(org_id=1, key_hash=_h("racing"), first_call_at=utcnow_naive(),
-                                last_call_at=utcnow_naive()))
-            await s.commit()
-        return failed
-    monkeypatch.setattr(archive_retention, "_delete_objects", delete_then_a_paid_hit)
-
-    result = await archive_retention.run()
-
-    assert (result["keys"], result["objects"]) == (0, 2) and store.objects == {}
-    async with session_maker() as s:
-        storage = dict((await s.execute(select(ArchiveSnapshot.content_hash,
-                                               ArchiveSnapshot.body_storage))).all())
-        assert storage == {_h("a"): None, _h("b"): "db"}
-        stat = await s.get(ArchiveEndpointStat, EP)
-        assert (stat.bodies_kept, stat.kept_bytes) == (1, 1)
-        on_file = await archive.bytes_on_file(s, {(_h("racing"), _h("a")), (_h("racing"), _h("b"))})
-    assert on_file == {(_h("racing"), _h("b"))}
-    assert await archive.answer_bytes(_h("racing"), _h("b")) == b"b"
-
-
 async def test_a_second_run_while_one_works_answers_busy(clients: AsyncClient, retention_on):
     if session_maker.kw["bind"].dialect.name != "postgresql":
         pytest.skip("advisory locks are PostgreSQL's")
@@ -483,59 +459,75 @@ async def test_a_mark_a_settle_holds_is_skipped_not_waited_for(clients: AsyncCli
     assert [(m.org_id, m.calls) for m in marks] == [(1, 2)]
 
 
-async def test_another_key_recording_the_same_body_while_its_object_goes_is_not_on_file(
-        clients: AsyncClient, retention_on, store, monkeypatch):
-    """A young key records body X while the batch deletes X's object (its upload sees the object
-    and skips): after the batch it must not claim bytes that are gone, or a trimmed retry row
-    would answer 410."""
+async def test_a_rolled_back_batch_deletes_no_object(clients: AsyncClient, retention_on, store,
+                                                     monkeypatch):
+    """The reviewer's lock-timeout case: another key records X after the candidate read and a
+    session holds rows the batch needs, so the batch rolls back. Nothing in object storage was
+    touched before the rows committed, so X stays and every snapshot naming it stays honest."""
+    if session_maker.kw["bind"].dialect.name != "postgresql":
+        pytest.skip("row locks are PostgreSQL's")
     store.objects[_h("x")] = b"x"
     await _key("dormant-a", age_days=40, bodies=(("x", "r2"),))
-    real_delete = archive_retention._delete_objects
+    real_erase, held = archive_retention.erase_archive_keys, {}
 
-    async def b_records_then_delete(hashes):
+    async def record_lock_then_erase(db, key_ids, **options):
         await _key("young-b", age_days=0.01, bodies=(("x", "r2"),))
-        return await real_delete(hashes)
-    monkeypatch.setattr(archive_retention, "_delete_objects", b_records_then_delete)
+        lock = session_maker()
+        await lock.__aenter__()
+        await lock.execute(text("SELECT id FROM archivesnapshot WHERE key_id = ANY(:ids) FOR UPDATE"),
+                           {"ids": key_ids})
+        held["lock"] = lock
+        return await real_erase(db, key_ids, **options)
+    monkeypatch.setattr(archive_retention, "erase_archive_keys", record_lock_then_erase)
+    first = await archive_retention.run(object_grace_s=0)
+    await held["lock"].rollback()
+    await held["lock"].__aexit__(None, None, None)
+    monkeypatch.setattr(archive_retention, "erase_archive_keys", real_erase)
+    second = await archive_retention.run(object_grace_s=0)
+    third = await archive_retention.run(object_grace_s=0)
 
-    assert (await archive_retention.run())["keys"] == 1
+    assert first["skipped_batches"] == 1 and second["keys"] == 1
+    assert first["objects"] == second["objects"] == third["objects"] == 0
     async with session_maker() as s:
-        storage = (await s.execute(
-            select(ArchiveSnapshot.body_storage).join(ArchiveKey, ArchiveKey.id == ArchiveSnapshot.key_id)
-            .where(ArchiveKey.key_hash == _h("young-b")))).scalar_one()
         on_file = await archive.bytes_on_file(s, {(_h("young-b"), _h("x"))})
-    assert _h("x") not in store.objects
-    assert storage is None and on_file == set()
+    assert _h("x") in store.objects and on_file == {(_h("young-b"), _h("x"))}
 
 
-async def test_a_batch_moves_each_endpoint_total_once(clients: AsyncClient, retention_on, store,
-                                                      monkeypatch):
-    """The deleted keys' totals and the downgraded snapshots' totals land in one sorted pass."""
-    from sqlalchemy import event
-
+async def test_a_recorder_that_saw_the_object_and_commits_later_keeps_its_bytes(
+        clients: AsyncClient, retention_on, store, monkeypatch):
+    """The reviewer's recorder case: a recorder found X in object storage (so it skipped the
+    upload) and commits its snapshot only after the batch committed. The batch records X as
+    pending; the object is deleted only after the grace period and only if still unreferenced,
+    re-checked right before the delete, so X stays."""
+    if session_maker.kw["bind"].dialect.name != "postgresql":
+        pytest.skip("concurrent sessions are PostgreSQL's")
     store.objects[_h("x")] = b"x"
-    await _key("dormant", age_days=40, bodies=(("x", "r2"),))
-    real_delete = archive_retention._delete_objects
+    await _key("dormant-a", age_days=40, bodies=(("x", "r2"),))
+    real_erase, held = archive_retention.erase_archive_keys, {}
 
-    async def another_key_records_then_delete(hashes):
-        await _key("young", age_days=0.01, bodies=(("x", "r2"),))
-        return await real_delete(hashes)
-    monkeypatch.setattr(archive_retention, "_delete_objects", another_key_records_then_delete)
-    async with session_maker() as s:
-        s.add(ArchiveEndpointStat(endpoint_id=EP, provider="tikhub", keys=2, snapshots=2,
-                                  bodies_kept=2, kept_bytes=2))
-        await s.commit()
-    engine = session_maker.kw["bind"].sync_engine
-    updates: list[str] = []
+    async def recorder_in_flight_then_erase(db, key_ids, **options):
+        rec = session_maker()
+        await rec.__aenter__()
+        key = ArchiveKey(key_hash=_h("young-b"), endpoint_id=EP, provider="tikhub",
+                         policy="transient", req_method="GET", req_url="https://x/y?q=b")
+        rec.add(key)
+        await rec.flush()
+        rec.add(ArchiveSnapshot(key_id=key.id, version=1, content_hash=_h("x"), size_bytes=1,
+                                body_storage="r2"))
+        await rec.flush()                      # uncommitted: the batch cannot see it
+        held["rec"] = rec
+        return await real_erase(db, key_ids, **options)
+    monkeypatch.setattr(archive_retention, "erase_archive_keys", recorder_in_flight_then_erase)
 
-    def record(conn, cursor, statement, *args):
-        if statement.lstrip().upper().startswith("UPDATE ARCHIVEENDPOINTSTAT"):
-            updates.append(statement)
-    event.listen(engine, "before_cursor_execute", record)
-    try:
-        assert (await archive_retention.run())["keys"] == 1
-    finally:
-        event.remove(engine, "before_cursor_execute", record)
-    assert len(updates) == 1
+    result = await archive_retention.run()
+    assert (result["keys"], result["objects_pending"], result["objects"]) == (1, 1, 0)
+    await held["rec"].commit()
+    await held["rec"].__aexit__(None, None, None)
+    monkeypatch.setattr(archive_retention, "erase_archive_keys", real_erase)
+    later = await archive_retention.run(object_grace_s=0)
+
+    assert (later["objects"], later["objects_kept"]) == (0, 1)
     async with session_maker() as s:
-        stat = await s.get(ArchiveEndpointStat, EP)
-        assert (stat.keys, stat.snapshots, stat.bodies_kept, stat.kept_bytes) == (1, 1, 0, 0)
+        on_file = await archive.bytes_on_file(s, {(_h("young-b"), _h("x"))})
+        assert (await s.execute(select(ArchiveObjectPending))).scalars().all() == []
+    assert _h("x") in store.objects and on_file == {(_h("young-b"), _h("x"))}

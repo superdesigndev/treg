@@ -142,6 +142,7 @@ Single writers (AGENTS.md lists the money, audit and showcase ones):
 | `AdClickStash` | `application.signup.stash_ad_click` |
 | `ArchiveKey`, `ArchiveSnapshot`, `ArchiveKeyOrg`, `ArchiveEndpointStat` | `archive.py`; deletes through `governance.teams` for erasure and row retention ([archive](archive.md)) |
 | `ArchiveRetentionCursor` | `application/archive_retention.py` (`treg-worker archive retain`) |
+| `ArchiveObjectPending` | `application/archive_retention.py` (`treg-worker archive retain`) |
 | `Media` | `application.media` ([media](media.md)) |
 | `Feedback` | `domain.feedback` inserts, `application.feedback` commits ([feedback](feedback.md)) |
 | `FeedbackHandling`, `FeedbackHandlingEvent` | the private admin service only |

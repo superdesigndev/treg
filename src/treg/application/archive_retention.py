@@ -10,14 +10,15 @@ paid for it since, it was not fetched since, its endpoint's policy is not `archi
 current), it is not async terminal evidence (`treg://` request URL, read back by Activity), and no
 unexpired idempotent retry row replays from it.
 
-Objects before rows, as in erasure (application/archive_erasure.py): a batch reads its candidates
-and the bodies only they point at, closes its session, deletes those objects, then deletes the rows
-in a fresh, capped transaction that locks the keys (skipping any a recorder holds) and repeats the
-candidate predicate, so a key asked for meanwhile stays. Such a key, or a batch whose row delete
-fails, may have lost its objects; every reader treats missing bytes as a miss, and the next live
-call records them again. A failed object delete keeps that batch's rows for the next pass, and a
-batch that would delete objects with no object store configured stops the run, so no rows go while
-their bytes stay behind.
+Rows before objects. A batch reads its candidates, then in a fresh, capped transaction locks the
+keys (skipping any a recorder holds), repeats the candidate predicate, deletes the rows and, in
+the same transaction, records in `archiveobjectpending` each object-stored body hash that lost its
+last snapshot. Nothing in object storage is touched before that commit, so a batch that rolls back
+deletes nothing. A later run deletes a pending object only once it was recorded more than
+`archive_retention_object_grace_s` ago (longer than a recorder's check-that-the-object-exists to
+commit window and its upload budget) and re-checks, right before each delete, that no snapshot
+references the hash; a referenced hash leaves the table and its object stays. A failed delete
+keeps its row for the next run; with no object store configured, the due rows wait.
 
 The walk is a keyset over `archivekey.id` in fixed id ranges, so every statement reads a bounded
 slice of the primary key however few rows in it qualify; `archiveretentioncursor` keeps the
@@ -33,18 +34,16 @@ from contextlib import asynccontextmanager
 from dataclasses import asdict, dataclass
 from datetime import datetime, timedelta
 
-from sqlalchemy import case, exists, func, or_, select, text, update
+from sqlalchemy import delete, exists, func, or_, select, text
 from sqlalchemy.exc import DBAPIError
 from sqlalchemy.orm import aliased
 
 from .. import archive, archive_bodies
 from ..config import get_settings
-from ..domain.governance.teams import (
-    apply_archive_stat_deltas, erase_archive_keys, erase_archive_marks,
-)
+from ..domain.governance.teams import erase_archive_keys, erase_archive_marks
 from ..infra.db import session_maker
 from ..models import (
-    ArchiveKey, ArchiveKeyOrg, ArchiveRetentionCursor, ArchiveSnapshot,
+    ArchiveKey, ArchiveKeyOrg, ArchiveObjectPending, ArchiveRetentionCursor, ArchiveSnapshot,
     IdempotentCall,
 )
 from ..timeutil import utcnow_naive
@@ -64,7 +63,7 @@ RUN_LOCK_KEY = 0x61726574
 
 
 class ObjectStoreMissing(RuntimeError):
-    """Rows whose bytes live in object storage would go while the bytes stay: refuse."""
+    """Pending objects are due for deletion but no object store is configured."""
 
 
 @dataclass
@@ -79,7 +78,9 @@ class RetentionResult:
     keys: int = 0
     snapshots: int = 0
     marks: int = 0
-    objects: int = 0
+    objects: int = 0          # dry: bodies only these keys hold; real: objects deleted this run
+    objects_pending: int = 0  # hashes recorded for a later run to delete
+    objects_kept: int = 0     # pending hashes referenced again, dropped from the table
     skipped_batches: int = 0
     pass_complete: bool = False
     stopped: str = ""  # pass_complete | time_budget | max_keys | failures | busy | disabled | error
@@ -151,21 +152,76 @@ async def _mark_count(db, key_hashes: list[str]) -> int:
                                  .where(ArchiveKeyOrg.key_hash.in_(key_hashes)))).scalar_one())
 
 
-async def _delete_objects(hashes: set[str]) -> int:
-    """-> how many could not be deleted. The in-process upload cache forgets each one."""
+_OBJECT_STORED = ("r2", "both")
+
+
+async def _record_unreferenced(db, hashes: set[str], now: datetime) -> int:
+    """In the caller's transaction: record the hashes among `hashes` no snapshot references any
+    more as pending object deletes (`recorded_at` now, also for one already pending) -> how many."""
+    if not hashes:
+        return 0
+    still = set((await db.execute(
+        select(ArchiveSnapshot.content_hash).distinct()
+        .where(ArchiveSnapshot.content_hash.in_(hashes),
+               ArchiveSnapshot.body_storage.in_(_OBJECT_STORED)))).scalars().all())
+    gone = sorted(hashes - still)
+    if not gone:
+        return 0
+    dialect = db.get_bind().dialect.name
+    if dialect == "postgresql":
+        from sqlalchemy.dialects.postgresql import insert
+    else:
+        from sqlalchemy.dialects.sqlite import insert
+    statement = insert(ArchiveObjectPending).values(
+        [{"content_hash": h, "recorded_at": now} for h in gone])
+    await db.execute(statement.on_conflict_do_update(
+        index_elements=[ArchiveObjectPending.content_hash],
+        set_={"recorded_at": statement.excluded.recorded_at}))
+    return len(gone)
+
+
+async def _delete_due_objects(result: RetentionResult, *, grace_s: float, session_factory,
+                              spent, limit: int = 1000) -> None:
+    """Delete the pending objects recorded more than `grace_s` ago that no snapshot references,
+    re-checking right before each delete. No session is open while object storage is called."""
+    async with session_factory() as db:
+        await _bounded(db)
+        due = (await db.execute(
+            select(ArchiveObjectPending.content_hash)
+            .where(ArchiveObjectPending.recorded_at <= utcnow_naive() - timedelta(seconds=grace_s))
+            .order_by(ArchiveObjectPending.recorded_at).limit(limit))).scalars().all()
+    if not due:
+        return
     store = archive_bodies._store
-    if hashes and store is None:
-        raise ObjectStoreMissing("archive objects to delete but no object store is configured")
-    failed = 0
-    for content_hash in sorted(hashes):
+    if store is None:
+        raise ObjectStoreMissing("archive objects are due for deletion but no object store is configured")
+    for content_hash in due:
+        if spent():
+            return
+        async with session_factory() as db:
+            await _bounded(db)
+            referenced = (await db.execute(select(exists().where(
+                ArchiveSnapshot.content_hash == content_hash,
+                ArchiveSnapshot.body_storage.in_(_OBJECT_STORED))))).scalar()
+            if referenced:
+                await db.execute(delete(ArchiveObjectPending)
+                                 .where(ArchiveObjectPending.content_hash == content_hash))
+                await db.commit()
+                result.objects_kept += 1
+                continue
         try:
             await store.delete(content_hash)
             archive_bodies.forget(content_hash)
         except Exception as exc:  # noqa: BLE001 - one object failing must not stop the rest
-            failed += 1
             _log.warning("archive retention: object %s not deleted (%s)", content_hash[:12],
                          type(exc).__name__)
-    return failed
+            continue
+        async with session_factory() as db:
+            await _bounded(db)
+            await db.execute(delete(ArchiveObjectPending)
+                             .where(ArchiveObjectPending.content_hash == content_hash))
+            await db.commit()
+        result.objects += 1
 
 
 async def _read_cursor(session_factory) -> int:
@@ -187,6 +243,7 @@ async def _save_cursor(db, after_id: int, *, pass_done: bool = False) -> None:
 async def run(*, dry_run: bool = False, days: int | None = None, batch: int | None = None,
               pause_s: float | None = None, max_seconds: float | None = None,
               max_keys: int | None = None, after: int | None = None,
+              object_grace_s: float | None = None,
               session_factory=session_maker, clock=time.monotonic) -> dict:
     """One bounded run -> the `RetentionResult` as a dict.
 
@@ -201,6 +258,7 @@ async def run(*, dry_run: bool = False, days: int | None = None, batch: int | No
     pause_s = cfg.archive_retention_pause_s if pause_s is None else pause_s
     max_seconds = cfg.archive_retention_max_seconds if max_seconds is None else max_seconds
     max_keys = cfg.archive_retention_max_keys if max_keys is None else max_keys
+    grace = cfg.archive_retention_object_grace_s if object_grace_s is None else object_grace_s
     if (days < 1 or not 1 <= batch <= MAX_BATCH or not 0 <= pause_s <= 60 or max_seconds <= 0
             or max_keys < 1):
         raise ValueError(f"days >= 1, batch 1..{MAX_BATCH}, pause 0..60 s, a positive time budget "
@@ -210,7 +268,8 @@ async def run(*, dry_run: bool = False, days: int | None = None, batch: int | No
         result.stopped = "disabled"
         return asdict(result)
     options = dict(days=days, batch=batch, pause_s=pause_s, max_seconds=max_seconds,
-                   max_keys=max_keys, after=after, session_factory=session_factory, clock=clock)
+                   max_keys=max_keys, after=after, object_grace_s=grace,
+                   session_factory=session_factory, clock=clock)
     if dry_run:
         return await _run(result, **options)
     async with _only_run(session_factory) as alone:
@@ -241,8 +300,8 @@ async def _only_run(session_factory):
 
 
 async def _run(result: RetentionResult, *, days: int, batch: int, pause_s: float,
-               max_seconds: float, max_keys: int, after: int | None, session_factory,
-               clock) -> dict:
+               max_seconds: float, max_keys: int, after: int | None, object_grace_s: float,
+               session_factory, clock) -> dict:
     dry_run = result.dry_run
     now = utcnow_naive()
     cutoff = now - timedelta(days=days)
@@ -257,6 +316,9 @@ async def _run(result: RetentionResult, *, days: int, batch: int, pause_s: float
     result.upper_id = upper
     failures = 0
     try:
+        if not dry_run:
+            await _delete_due_objects(result, grace_s=object_grace_s, session_factory=session_factory,
+                                      spent=lambda: clock() - started >= max_seconds)
         while True:
             if cursor >= upper:
                 result.pass_complete, result.stopped = True, "pass_complete"
@@ -297,35 +359,6 @@ async def _run(result: RetentionResult, *, days: int, batch: int, pause_s: float
     return asdict(result)
 
 
-async def _hash_only_where_bytes_went(db, deleted: set[str], stats: dict[str, list[int]]) -> None:
-    """Every remaining snapshot whose object this batch deleted, after the batch's keys and their
-    snapshots are gone: a key the locked re-check kept, or another key that recorded the same body
-    while the objects went (its upload saw the object and skipped). Mark them as no longer holding
-    those bytes (`r2` -> hash-only, `both` -> `db`), so readers treat them as a miss or read the
-    row's copy, and a retry row keeps its own copy instead of trimming it against bytes that are
-    gone. The bodies left with no copy are added to `stats`."""
-    if not deleted:
-        return
-    gone = (await db.execute(
-        update(ArchiveSnapshot)
-        .where(ArchiveSnapshot.content_hash.in_(deleted),
-               ArchiveSnapshot.body_storage.in_(("r2", "both")))
-        .values(body_storage=case((ArchiveSnapshot.body_storage == "both", "db"), else_=None))
-        .returning(ArchiveSnapshot.key_id, ArchiveSnapshot.body_storage,
-                   ArchiveSnapshot.size_bytes)
-        .execution_options(synchronize_session=False))).all()
-    freed = [(int(key_id), int(size or 0)) for key_id, storage, size in gone if storage is None]
-    if not freed:
-        return
-    endpoint_of = dict((await db.execute(
-        select(ArchiveKey.id, ArchiveKey.endpoint_id)
-        .where(ArchiveKey.id.in_({k for k, _ in freed})))).all())
-    for key_id, size in freed:
-        acc = stats.setdefault(endpoint_of[key_id], [0, 0, 0, 0])
-        acc[1] += 1
-        acc[2] += size
-
-
 async def _batch(result: RetentionResult, *, after: int, upto: int, cutoff: datetime,
                  now: datetime, keep_endpoints: set[str], session_factory) -> None:
     async with session_factory() as db:
@@ -335,8 +368,8 @@ async def _batch(result: RetentionResult, *, after: int, upto: int, cutoff: date
         ids = [i for i, _ in found]
         if not found:
             return
-        orphans = await objects_only_under(db, ids)
         if result.dry_run:
+            orphans = await objects_only_under(db, ids)
             snapshots = await _snapshot_count(db, ids)
             marks = await _mark_count(db, [h for _, h in found])
     if result.dry_run:
@@ -345,10 +378,6 @@ async def _batch(result: RetentionResult, *, after: int, upto: int, cutoff: date
         result.marks += marks
         result.objects += len(orphans)
         return
-    if await _delete_objects(orphans):
-        result.skipped_batches += 1      # rows stay, so the next pass retries these objects
-        return
-    result.objects += len(orphans)
     async with session_factory() as db:
         await _bounded(db)
         locked = (await db.execute(
@@ -357,19 +386,23 @@ async def _batch(result: RetentionResult, *, after: int, upto: int, cutoff: date
             .order_by(ArchiveKey.id)
             .with_for_update(skip_locked=True, of=ArchiveKey))).all()
         key_ids, key_hashes = [int(i) for i, _ in locked], [str(h) for _, h in locked]
-        keys = snapshots = marks = 0
-        stats: dict[str, list[int]] = {}
+        keys = snapshots = marks = pending = 0
         if locked:
             snapshots = await _snapshot_count(db, key_ids)
-            keys = await erase_archive_keys(db, key_ids, stats=stats)
-        await _hash_only_where_bytes_went(db, orphans, stats)
-        await apply_archive_stat_deltas(db, stats)       # one pass, in endpoint order
+            stored = set((await db.execute(
+                select(ArchiveSnapshot.content_hash).distinct()
+                .where(ArchiveSnapshot.key_id.in_(key_ids),
+                       ArchiveSnapshot.body_storage.in_(_OBJECT_STORED)))).scalars().all())
+            keys = await erase_archive_keys(db, key_ids)
+            # Same transaction: a body hash goes on the pending list only if this commit lands.
+            pending = await _record_unreferenced(db, stored, utcnow_naive())
         await _save_cursor(db, upto)
         # Last, just before the commit: a settle locks its team's org row and then upserts this
         # mark, so a mark lock held across the slow deletes above would queue that team's
         # payments behind this job. Marks a settle holds right now are skipped, not waited for.
         marks = await erase_archive_marks(db, key_hashes, unpaid_since=cutoff)
         await db.commit()
+    result.objects_pending += pending
     result.keys += keys
     result.snapshots += snapshots
     result.marks += marks

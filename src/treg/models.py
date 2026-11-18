@@ -2499,6 +2499,15 @@ class ArchiveRetentionCursor(SQLModel, table=True):
     updated_at: NaiveUTC = Field(default_factory=_now)
 
 
+class ArchiveObjectPending(SQLModel, table=True):
+    """An object-stored archive body whose last snapshot row retention deleted, waiting to be
+    deleted from object storage once `recorded_at` is older than the grace period and no snapshot
+    references `content_hash` again. Written only by `application.archive_retention`."""
+
+    content_hash: str = Field(primary_key=True)
+    recorded_at: NaiveUTC = Field(default_factory=_now)
+
+
 class ArchiveEndpointStat(SQLModel, table=True):
     """The archive report's running totals, one row per endpoint — maintained by the recorder
     through batched per-endpoint deltas (archive.flush_stats), so the panel reads 50 tiny rows instead of walking

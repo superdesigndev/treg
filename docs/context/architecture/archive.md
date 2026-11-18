@@ -503,27 +503,32 @@ the key's row lock), so deleting whole keys never removes a snapshot a kept key 
 Each batch is an id range of `TREG_ARCHIVE_RETENTION_BATCH` keys (default 1,000, at most
 `MAX_BATCH`, 10,000, because a batch's key ids are bound twice in one statement) over the primary
 key, so a statement reads a bounded slice however few rows qualify, and `archiveretentioncursor`
-keeps the position between runs (a pass reaching the end starts from 0). The order follows
-erasure: read candidates and the object-stored bodies only they point at, close the session,
-delete those objects, then in a fresh transaction under `statement_timeout` and `lock_timeout`
-lock the keys `FOR UPDATE SKIP LOCKED`, repeating the candidate predicate, and delete snapshots
-and keys, moving the running totals, then the marks last, just before the commit. A settle locks
-its team's `org` row and then upserts the mark, so a mark lock held across the slow deletes would
-queue that team's payments behind the job. The mark delete repeats `last_call_at < cutoff`: a mark
-a team paid for after the locked read stays, and its next call on the question is a repeat. The
-"live retry" check reads the partial index `ix_idempotentcall_archive_key_hash` (Alembic 0114),
-an index probe per candidate instead of a scan of `idempotentcall`. The mark delete locks marks
-`FOR UPDATE SKIP LOCKED` in `(org_id, key_hash)` order, `MARK_CHUNK` (500) at a time, and deletes
-only those: a mark a settle holds is left to it, never waited for. A key asked for between the
-object delete and the locked re-check stays, and another key may record the same body while the
-objects go (its upload sees the object and skips). So, after the batch's keys and snapshots are
-deleted, every remaining version whose object went stops claiming those bytes (`r2` becomes
-hash-only, `both` becomes `db`): readers see a miss or the row's copy, and a retry row keeps its
-own copy instead of trimming it. The running totals of both steps move in one pass, in endpoint
-order (`apply_archive_stat_deltas`, the order `archive.flush_stats` takes). A batch whose row delete fails may have lost its
-objects, which every reader treats as a miss and the next live call records again. A failed object delete keeps the batch's rows for the next pass, and a run
-that would delete objects with no object store configured stops before any row goes. A recorder
-that read a key unlocked and finds it deleted at the lock retries and records it as a new question.
+keeps the position between runs (a pass reaching the end starts from 0).
+
+**Rows before objects.** A batch reads its candidates, then in a fresh transaction under
+`statement_timeout` and `lock_timeout` locks the keys `FOR UPDATE SKIP LOCKED`, repeating the
+candidate predicate, and deletes snapshots and keys, moving the running totals. In the same
+transaction it records in `archiveobjectpending` each object-stored body hash (`r2`, `both`) that
+no snapshot references any more, with the time. Nothing in object storage is touched before that
+commit, so a batch that rolls back deletes no object. At its start, each real run deletes the
+pending objects recorded more than `TREG_ARCHIVE_RETENTION_OBJECT_GRACE_S` ago (default 900 s,
+longer than a recorder's check-that-the-object-exists to commit window and its upload budget),
+re-checking right before each delete that no snapshot references the hash; a referenced hash
+leaves the table and its object stays. So a recorder that found the object (and skipped its
+upload) and commits after the batch keeps its bytes. No session is open while object storage is
+called. A failed object delete keeps its row for the next run; with no object store configured
+the due rows wait and the run reports `stopped: "error"`. A hash recorded again restarts its
+grace period.
+
+The marks go last, just before the commit. A settle locks its team's `org` row and then upserts
+the mark, so a mark lock held across the slow deletes would queue that team's payments behind the
+job. The mark delete repeats `last_call_at < cutoff` (a mark a team paid for after the locked read
+stays, and its next call on the question is a repeat) and locks marks `FOR UPDATE SKIP LOCKED` in
+`(org_id, key_hash)` order, `MARK_CHUNK` (500) at a time, deleting only those: a mark a settle
+holds is left to it, never waited for. The "live retry" check reads the partial index
+`ix_idempotentcall_archive_key_hash` (Alembic 0114), an index probe per candidate instead of a
+scan of `idempotentcall`. A recorder that read a key unlocked and finds it deleted at the lock
+retries and records it as a new question.
 Batches sleep `TREG_ARCHIVE_RETENTION_PAUSE_S` (default 2 s) apart; a run stops at
 `TREG_ARCHIVE_RETENTION_MAX_SECONDS`, after `TREG_ARCHIVE_RETENTION_MAX_KEYS` keys deleted
 (default 200,000, `stopped: "max_keys"`), or after three consecutive failed batches (exit 1). A

@@ -921,6 +921,9 @@ class Settings(BaseSettings):
     archive_retention_pause_s: float = 2.0     # sleep between batches
     archive_retention_max_seconds: int = 600   # time budget per run; the next run resumes
     archive_retention_max_keys: int = 200_000  # keys deleted per run at most; the next run resumes
+    # A pending object is deleted only once recorded this long ago: longer than a recorder's
+    # check-that-the-object-exists to commit window and its upload budget.
+    archive_retention_object_grace_s: int = 900
 
     # The tool hub (docs/context/architecture/hub.md): tools a maker publishes, made of other tools.
     hub_enabled: bool = False

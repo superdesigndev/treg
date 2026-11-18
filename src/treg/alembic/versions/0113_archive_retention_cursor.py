@@ -6,7 +6,9 @@ Create Date: 2026-11-18
 
 `archiveretentioncursor` holds one row: the last `archivekey.id` the row-retention job
 (`treg-worker archive retain`) finished, so each bounded run resumes instead of rereading the
-front of the table. A new, empty table: no existing table is locked or rewritten.
+front of the table. `archiveobjectpending` lists object-stored bodies whose last snapshot the job
+deleted, for a later run to delete from object storage after a grace period. Two new, empty
+tables: no existing table is locked or rewritten.
 """
 from collections.abc import Sequence
 
@@ -27,7 +29,13 @@ def upgrade() -> None:
         sa.Column("passes", sa.Integer(), nullable=False),
         sa.Column("updated_at", sa.DateTime(), nullable=False),
     )
+    op.create_table(
+        "archiveobjectpending",
+        sa.Column("content_hash", sa.String(), primary_key=True),
+        sa.Column("recorded_at", sa.DateTime(), nullable=False),
+    )
 
 
 def downgrade() -> None:
+    op.drop_table("archiveobjectpending")
     op.drop_table("archiveretentioncursor")
