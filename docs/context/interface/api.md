@@ -270,6 +270,7 @@ the provider.
 | `X-Treg-Async` | The effective async descriptor as compact JSON, attached before streaming; the router reads no provider bytes. |
 | `X-Treg-Served-Via` | `overflow:<aggregator>` when served through an overflow relay ([proxy-model](../architecture/proxy-model.md), Overflow); MCP results carry `served_via`. |
 | `X-Treg-Upstream-Failed` | `<json_path>=<value>` on a metered 2xx failing the endpoint's `expect` rule. Body untouched, settlement unchanged, never archived or counted found. |
+| `X-Treg-Review-Pending`, `X-Treg-Review-Pending-Text` | On a relayed 4xx whose body carries the provider's declared "app lacks this permission" code (`review_refusal`) while the connection holds scopes still in app review (`review_scopes` under `TREG_OAUTH_REVIEW_PENDING`): the scopes (only the endpoint's own `required_scopes` when declared), and one sentence saying the pending review may be the reason. Body untouched; MCP puts the sentence in `hint`, both CLIs on stderr. |
 | `X-Treg-Capacity: exhausted` | A platform-tier answer the capacity table reads as treg's own account out, set from the same signal that strikes the breaker. Absent on own keys, treg's refusals, overflow, replays. |
 | `X-Treg-Smoothed` | `wait=`, `retry=1` or `share_wait=` when treg spaced or re-sent a platform call ([capacity](../ops/capacity.md)). Informational. |
 | `X-Treg-Cache`, `X-Treg-Fetched-At`, `X-Treg-Age` | An archive hit ([archive](../architecture/archive.md)). |

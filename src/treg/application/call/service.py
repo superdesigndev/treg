@@ -762,6 +762,39 @@ def _set_response_header(response: UpstreamResponse, name: str, value: str) -> N
     ) + ((wanted, value.encode("latin-1")),)
 
 
+def _note_review_refusal(response: UpstreamResponse, secrets: dict, body: bytes,
+                         charged: int, endpoint_id: str | None) -> None:
+    """Name the review-pending scopes behind a provider's "the app lacks this permission" error.
+
+    The body stays the provider's; the two headers tell the caller the grant is not at fault."""
+    if response.status < 400:
+        return
+    candidates = [
+        (provider, secret) for secret in secrets.values()
+        if (provider := oauth_providers.get(secret.provider) if secret.provider else None)
+        and provider.review_scopes and provider.review_refusal[0]
+    ]
+    if not candidates:
+        return
+    identity = _decompress_for_scan(body, _response_header(response, "content-encoding"))
+    try:
+        parsed = json.loads(identity) if identity else None
+    except (ValueError, RecursionError):
+        return
+    entry = catalog_store.load().by_id.get(endpoint_id or "")
+    for provider, secret in candidates:
+        scopes = oauth_providers.review_refusal_scopes(
+            provider, (secret.granted_scopes or "").split(), parsed,
+            entry, secret.authorization_method or "")
+        if scopes:
+            note = oauth_providers.review_refusal_note(provider, scopes)
+            if not charged:
+                note += " This call was not charged."
+            _set_response_header(response, "X-Treg-Review-Pending", " ".join(scopes))
+            _set_response_header(response, "X-Treg-Review-Pending-Text", note)
+            return
+
+
 async def _relay_live_demo(
     request: _ApplicationRequest, upstream_url: str, key: str, visitor: str,
     client: httpx.AsyncClient,
@@ -2145,6 +2178,8 @@ async def _execute_call(request: _ApplicationRequest, upstream_client: httpx.Asy
         # read as "free" rather than "not applicable".
         _set_response_header(response, "X-Treg-Cost-Micro", str(charged))
         _set_response_header(response, "X-Treg-Call-Id", call_ref)
+        if not served_via and spooled_bytes is None:
+            _note_review_refusal(response, secrets, body, charged, mk.endpoint_id)
         if served_via:
             _set_response_header(response, "X-Treg-Served-Via", served_via)
         elif (200 <= response.status < 300 and spooled_bytes is None and not deferred
@@ -2201,6 +2236,7 @@ async def _execute_call(request: _ApplicationRequest, upstream_client: httpx.Asy
                 await _finish_cancelled_call(request, mk, call_ref, response)
                 raise
     _set_response_header(response, "X-Treg-Call-Id", call_ref)
+    _note_review_refusal(response, secrets, body, 0, mk.endpoint_id if mk else None)
     if free_poll:
         _set_response_header(response, "X-Treg-Cost-Micro", "0")
         if smoothed:
