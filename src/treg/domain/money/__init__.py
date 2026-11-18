@@ -48,7 +48,7 @@ from collections.abc import Sequence
 from datetime import datetime, timedelta, timezone
 from typing import NamedTuple
 
-from sqlalchemy import case, delete, func, literal_column, update
+from sqlalchemy import case, delete, func, literal_column, or_, update
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlmodel import select
@@ -466,27 +466,44 @@ async def reserve_in_transaction(
     return call_id
 
 
+def _charge_parts(org_id: int):
+    """Two per-row SQL expressions over `CallCharge`: what a queued charge may take from the
+    team's allowance hold, and what it takes from the balance outright.
+
+    The hold pays only what a call set aside, and only for a call it admitted
+    (`hold_created_at` names the hold; a row without one is paid from whichever hold there is).
+    The rest is owed by the balance: the call's overrun, and all of a charge whose hold has
+    been closed since, with or without another opened in its place.
+    """
+    own = or_(CallCharge.hold_created_at.is_(None),
+              CallCharge.hold_created_at == select(Hold.created_at).where(
+                  Hold.id == f"allowance:{org_id}").scalar_subquery())
+    set_aside = CallCharge.amount_micro - CallCharge.overrun_micro
+    return (case((own, set_aside), else_=0),
+            CallCharge.overrun_micro + case((own, 0), else_=set_aside))
+
+
 def _queued_unbacked(org_id: int):
-    """What a team's queued call charges will take from its balance when they are applied: their
-    overruns, which no hold was set aside for, and what they set aside beyond what the team's
-    allowance hold has left. The balance still shows this money, and it is already spent. A
+    """What a team's queued call charges will take from its balance when they are applied: what
+    they owe it outright, and what they may take from the allowance hold beyond what the hold
+    has left (`_charge_parts`). The balance still shows this money, and it is already spent. A
     queued charge whose call has a `settle` entry is left out, as applying it will drop it.
-    A SQL expression: one pass over the team's queue, and the hold is read only when something
-    is queued."""
+    A SQL expression: one pass over the team's queue, and the hold's amount is read only when
+    something is queued."""
+    from_hold, outright = _charge_parts(org_id)
     queued = (
-        select(func.coalesce(func.sum(CallCharge.overrun_micro), 0).label("overruns"),
-               func.coalesce(func.sum(CallCharge.amount_micro - CallCharge.overrun_micro), 0)
-               .label("set_aside"))
+        select(func.coalesce(func.sum(outright), 0).label("outright"),
+               func.coalesce(func.sum(from_hold), 0).label("from_hold"))
         .where(CallCharge.org_id == org_id, ~select(LedgerEntry.id).where(
             LedgerEntry.call_id == CallCharge.call_id, LedgerEntry.org_id == org_id,
             LedgerEntry.kind == "settle").exists())
         .subquery())
     held = func.coalesce(
         select(Hold.amount_micro).where(Hold.id == f"allowance:{org_id}").scalar_subquery(), 0)
-    beyond_hold = case((queued.c.set_aside > 0,
-                        case((queued.c.set_aside > held, queued.c.set_aside - held), else_=0)),
+    beyond_hold = case((queued.c.from_hold > 0,
+                        case((queued.c.from_hold > held, queued.c.from_hold - held), else_=0)),
                        else_=0)
-    return select(queued.c.overruns + beyond_hold).scalar_subquery()
+    return select(queued.c.outright + beyond_hold).scalar_subquery()
 
 
 async def _purchased_gate(db: AsyncSession, org_id: int, charged: int) -> None:

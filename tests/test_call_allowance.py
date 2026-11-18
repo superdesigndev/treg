@@ -456,6 +456,16 @@ async def test_a_drain_that_arrives_late_takes_nothing_from_a_later_hold(org_id,
     assert store.counters[org_id]["avail"] == CHUNK - 700, "nor is the later counter emptied"
 
 
+async def test_a_charge_carries_the_hold_its_call_took_from(org_id, store):
+    epoch = await runtime.take(org_id, 600)
+    assert await _finish(org_id, "call", epoch, 600, billable=True, actual_micro=400) == 400
+    async with session_maker() as db:
+        named = (await db.execute(select(CallCharge.hold_created_at).where(
+            CallCharge.call_id == "call"))).scalar_one()
+        hold = next(h for h in await ledger.open_holds_of(db, org_id) if h.allowance)
+    assert named == hold.created_at and allowance._epoch(hold) == epoch
+
+
 async def test_a_balance_that_cannot_refill_drains_the_allowance_for_the_exact_path(
         org_id, store, monkeypatch):
     monkeypatch.setattr(get_settings(), "money_allowance_chunk_micro", GRANT)

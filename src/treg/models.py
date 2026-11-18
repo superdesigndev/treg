@@ -1145,6 +1145,9 @@ class CallCharge(SQLModel, table=True):
     # allowance hold, which still stands behind other calls.
     overrun_micro: int = Field(
         default=0, sa_column=Column(BigInteger, nullable=False, server_default=text("0")))
+    # `created_at` of the allowance hold the call set its money aside from. Only that hold pays
+    # for what the call set aside: one opened since stands behind other calls.
+    hold_created_at: NaiveUTC | None = Field(default=None)
     meta: dict = Field(default_factory=dict, sa_column=Column(JSON, nullable=False))
     created_at: NaiveUTC = Field(default_factory=_now)
 

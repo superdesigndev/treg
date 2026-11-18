@@ -457,6 +457,41 @@ async def test_closing_a_backlog_of_several_batches_locks_the_blocks_once(org_id
     assert locks == [{org_id}]
 
 
+async def test_a_charge_from_an_earlier_hold_is_not_paid_out_of_the_one_opened_since(org_id):
+    """A call set 600 aside from a hold that has been closed; its charge is written late. The
+    hold the team has now holds 1_000 for the calls it admitted: 700 in flight, 300 on offer."""
+    earlier = allowance._epoch((await _hold(org_id, await _open(org_id, 1_000))))
+    async with session_maker() as db:
+        await allowance.close_allowance_in_transaction(db, org_id, reason="idle")
+        await db.commit()
+    await asyncio.sleep(0.002)
+    current = allowance._epoch((await _hold(org_id, await _open(org_id, 1_000))))
+    assert current != earlier
+    async with session_maker() as db:
+        await allowance.record_charges(db, [
+            allowance.Charge("late", org_id, "e.metered", 600, reserved_micro=600, epoch=earlier),
+            allowance.Charge("own", org_id, "e.metered", 100, reserved_micro=100, epoch=current)])
+        await db.commit()
+        assert await allowance.committed_today(db, org_id) == 1_000 + 600
+        with pytest.raises(ledger.InsufficientBalance) as refused:
+            await ledger.reserve_in_transaction(db, org_id, "e.metered", GRANT - 1_500, call_id="x")
+        assert refused.value.balance_micro == GRANT - 1_000 - 600
+        await db.rollback()
+        folded = await allowance.fold_charges_in_transaction(db, org_id)
+        await db.commit()
+        assert folded.calls == 2
+        assert [h.amount_micro for h in await ledger.open_holds_of(db, org_id)] == [900]
+        assert await ledger.balance_of(db, org_id) == GRANT - 1_000 - 600
+        assert await allowance.committed_today(db, org_id) == 1_000 + 600
+    await _invariant(org_id)
+    assert await _daily_counter_agrees(org_id) == 1_000 + 600
+
+
+async def _hold(org_id: int, hold_id: str):
+    async with session_maker() as db:
+        return next(h for h in await ledger.open_holds_of(db, org_id) if h.id == hold_id)
+
+
 async def test_a_reserve_refused_for_what_the_queue_owes_leaves_the_team_as_it_was(org_id):
     await _record(org_id, GRANT)  # no hold stands behind it: all of the balance is owed
     async with session_maker() as db:

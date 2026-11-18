@@ -134,7 +134,12 @@ team's queued rows: it locks the team's allowance hold, deletes the rows it clai
 charge from the blocks in the usual order, and writes that call's `settle` entry stamped with the
 fold's instant (not the call's, so a reader that pages the ledger by time never has a row appear
 behind its cursor). What the calls set aside comes out of the allowance hold; their overruns, and what the hold
-cannot cover, come straight out of the balance, as an overrun does at `settle`. A queue row's primary key stops
+cannot cover, come straight out of the balance, as an overrun does at `settle`. A charge names
+the hold its call set money aside from (`callcharge.hold_created_at`, revision 0111), and only
+that hold pays for it: a charge written late, after its hold was closed and another opened,
+comes out of the balance whole, because the hold in its place stands behind the calls it
+admitted. The balance gate of `reserve` and the daily figure count such a charge the same way
+before it is applied (`_charge_parts`). A queue row's primary key stops
 a second recording only until the row is folded, so the fold also drops any claimed row whose call
 already has a `settle` entry. The daily counter moves as it does at `settle`: consumed goes in, and
 the covered part comes out only when the hold was opened today.

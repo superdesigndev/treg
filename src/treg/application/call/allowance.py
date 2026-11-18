@@ -478,7 +478,8 @@ async def finish(org_id: int, call_id: str, epoch: int, reserved_micro: int, *,
         if not billable:
             await store.allowance_give_back(org_id, epoch, reserved_micro)
             return 0
-        charge = allowance.Charge(call_id, org_id, endpoint_id, actual_micro, meta, reserved_micro)
+        charge = allowance.Charge(
+            call_id, org_id, endpoint_id, actual_micro, meta, reserved_micro, epoch)
         written = _charges.submit(charge, archive_use)
         amount = allowance.charged_micro(charge)
         if amount < reserved_micro:
