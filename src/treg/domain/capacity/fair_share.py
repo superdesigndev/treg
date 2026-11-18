@@ -226,7 +226,7 @@ class FairShare:
             return NO_SLOT
         pool = self._pool(provider, cap)
         asked_at = time.monotonic()
-        team_lease = await self._team_place(pool, team, team_ceiling_percent)
+        team_lease = await self._team_place(pool, team, team_ceiling_percent, max_wait_s)
         local = team_lease is _UNANSWERED
         if local:
             team_lease = None
@@ -241,8 +241,8 @@ class FairShare:
         slot.team_lease = team_lease
         return slot
 
-    async def _team_place(self, pool: _Pool, team: int,
-                          percent: int) -> provider_concurrency.Lease | None | object:
+    async def _team_place(self, pool: _Pool, team: int, percent: int,
+                          max_wait_s: float) -> provider_concurrency.Lease | None | object:
         """Rule 4: the team's place under its ceiling, or `ShareBusy`; None when no ceiling
         applies; `_UNANSWERED` when the store does not answer.
 
@@ -255,7 +255,11 @@ class FairShare:
             return None
         if not pool.store_answered or time.monotonic() < pool.store_down_until:
             return None
-        outcome = await provider_concurrency.try_acquire(f"{pool.name}:team:{team}", ceiling)
+        try:
+            async with asyncio.timeout(max_wait_s):
+                outcome = await provider_concurrency.try_acquire(f"{pool.name}:team:{team}", ceiling)
+        except TimeoutError:
+            outcome = None
         if outcome is None:
             pool.store_answered = False
             return _UNANSWERED

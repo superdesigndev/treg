@@ -577,3 +577,35 @@ async def test_a_call_over_its_team_ceiling_is_refused_for_that_reason(shared):
     assert busy.value.reason == "team_ceiling"
     for s in held:
         s.release()
+
+
+async def test_places_a_stalled_store_applies_late_are_released_again_once_it_answers(shared):
+    """A request the store never answered may still run when it resumes, after the release this
+    process already sent: the team's key must not keep those places until the lease ends."""
+    provider_concurrency._unanswered.clear()
+    late: list[tuple[str, str]] = []
+    stalled = True
+    acquire, release = shared.acquire_slot, shared.release_slot
+
+    async def acquire_slot(key, token, ttl_ms, limit):
+        if stalled:
+            late.append((key, token))
+            return "unavailable"
+        return await acquire(key, token, ttl_ms, limit)
+
+    async def release_slot(key, token):
+        return "unavailable" if stalled else await release(key, token)
+
+    shared.acquire_slot, shared.release_slot = acquire_slot, release_slot
+    gate = FairShare()
+    for _ in range(3):
+        (await gate.acquire("p", 1, 10, team_ceiling_percent=80)).release()
+    await _turns()
+    stalled = False
+    for key, token in late:  # the store resumes and runs what it had queued
+        shared.owners.setdefault(key, set()).add(token)
+    assert shared.held("p:team:1") == 1
+    gate._pools["p"].store_answered, gate._pools["p"].store_down_until = True, 0.0
+    (await gate.acquire("p", 2, 10, team_ceiling_percent=80)).release()  # the store answers again
+    await _turns()
+    assert shared.held("p:team:1") == 0

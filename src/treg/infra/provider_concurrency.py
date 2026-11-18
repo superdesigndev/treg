@@ -8,6 +8,7 @@ No shared store (`TREG_KV_URL` unset) means `enabled()` is false; a store fault 
 from __future__ import annotations
 
 import asyncio
+import collections
 import logging
 import time
 import uuid
@@ -19,6 +20,9 @@ log = logging.getLogger("treg.provider_concurrency")
 _LEASE_S = 30.0
 BUSY: Final = "busy"
 _pending: set[asyncio.Task] = set()
+# Leases whose request got no answer: the store may still run the acquire after the release this
+# process sent, so each is released again once the store answers.
+_unanswered: collections.deque[Lease] = collections.deque(maxlen=10_000)
 
 
 def enabled() -> bool:
@@ -80,6 +84,16 @@ async def _drop_after(attempt: asyncio.Future, lease: Lease) -> None:
     await lease._release(quiet=True)
 
 
+def _release_unanswered() -> None:
+    """The store answers again: every earlier request has run, so release the tokens that got no
+    answer once more. Those older than a lease have expired by themselves."""
+    now = time.monotonic()
+    while _unanswered:
+        lease = _unanswered.popleft()
+        if now < lease.valid_until:
+            _background(lease._release(quiet=True))
+
+
 async def try_acquire(account: str, cap: int) -> Lease | None | Literal["busy"]:
     """One attempt at a place on `account` among `cap` shared by every process: a renewed `Lease`,
     `BUSY` when every place is taken, `None` when the store does not answer."""
@@ -94,6 +108,8 @@ async def try_acquire(account: str, cap: int) -> Lease | None | Literal["busy"]:
     except asyncio.CancelledError:
         _background(_drop_after(attempt, lease))
         raise
+    if outcome in ("acquired", "busy"):
+        _release_unanswered()
     if outcome == "acquired" and time.monotonic() < lease.valid_until:
         lease.renewal = asyncio.get_running_loop().create_task(lease._renew())
         return lease
@@ -102,4 +118,6 @@ async def try_acquire(account: str, cap: int) -> Lease | None | Literal["busy"]:
     # A late "acquired" may name an owner that already expired, and a lost reply may have
     # acquired: drop only this token. A late one asks again; a failing store reads as `None`.
     _background(lease._release(quiet=True))
+    if outcome != "acquired":
+        _unanswered.append(lease)
     return BUSY if outcome == "acquired" else None
