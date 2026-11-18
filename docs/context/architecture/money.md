@@ -795,14 +795,21 @@ discounts are excluded so the invoice charges exactly the refill. Each write has
 idempotency key derived from the credited-purchase count and invoice generation, unchanged across
 midnight or an uncertain Stripe reply.
 
-**The card it charges is the payer's latest choice.** The Customer Portal changes the customer's
-`invoice_settings.default_payment_method` and sends treg nothing, so after the cooldown claim and
-with no database connection open, `_chargeable_pm` reads the customer from Stripe. A set default
-wins and replaces `stripe_default_pm`; Stripe clears the default when that card is detached. With
-no default, the stored card is charged only while it is still attached to this customer; otherwise
-the card is forgotten and the policy waits as `no_card`. A Stripe error in this lookup charges
-nothing and is not a failed attempt. A card saved in treg (`_set_default_pm`, when the stored card
-changes) is also made the customer's default, so an older portal choice cannot win over it.
+**The card it charges is the payer's latest choice.** A card is chosen in treg (top-up Checkout,
+card setup) or in the Customer Portal, which changes the customer's
+`invoice_settings.default_payment_method` and reports it only as `customer.updated`. Every choice
+goes through `_set_default_pm` with its Stripe event's `created` time, kept in
+`stripe_default_pm_at`: an older choice that arrives late or again never replaces a newer one, and
+on a tie the portal wins. A choice made in treg also becomes the Stripe customer's default, so the
+portal shows it and a later portal pick of the old card is a change Stripe reports; a transient
+failure fails the delivery (`CardSyncPending`) so Stripe redelivers it, and a redelivery older than
+a newer choice sends nothing. An automatic top-up's own payment is no new choice.
+`payment_method.detached` forgets the stored card (`no_card`), and a portal card re-arms a policy
+waiting for one. Before charging, with no database connection open, `attempt_auto_topup` checks that
+the stored card is still attached to the customer, so a late or lost detach event never charges a
+removed card; a Stripe error there charges nothing and is not a failed attempt. The webhook
+endpoint must subscribe to both events. A row from before `stripe_default_pm_at` has no time, so
+its first timed choice wins.
 
 Before a new charge, `attempt_auto_topup` pages the customer's invoices (listing, not Stripe's delayed
 search index) since one day before the last credited automatic top-up, or the full history before
