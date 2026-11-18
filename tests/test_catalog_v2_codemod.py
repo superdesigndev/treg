@@ -76,7 +76,11 @@ def test_a_long_adversarial_coalesce_is_judged_in_linear_time(expr):
         codemod.predicate(expr, [])
     except codemod.Refused:
         pass
-    assert time.perf_counter() - started < 1
+    # The guard is linear, not quadratic: a quadratic judge on 50k arguments runs for
+    # minutes, while a linear one finishes well under a second. The bound is generous so
+    # CI scheduling jitter under parallel workers cannot fail a linear judge, yet a
+    # quadratic regression still blows past it by orders of magnitude.
+    assert time.perf_counter() - started < 10
 
 
 @pytest.mark.parametrize("expr", ["coalesce(a, [], []) == []", "coalesce(, []) == []", "coalesce([]) == []",

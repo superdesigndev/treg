@@ -311,7 +311,7 @@ async def test_renewal_validity_timeout_is_not_a_redis_error(fail_first):
         await asyncio.Event().wait()
 
     result = await _store_with(command).renew_lease(
-        "key", "owner", 3000, deadline=time.monotonic() + 0.020)
+        "key", "owner", 3000, deadline=time.monotonic() + 0.200)
     assert result == "deadline_expired"
     assert calls == 1 + fail_first
     errors = kv.drain_lease_errors()
@@ -445,8 +445,11 @@ async def test_cancellation_propagates_and_never_starts_another_attempt(cancel_a
 
 @pytest.mark.parametrize("phase", ("renew", "release"))
 async def test_retry_shares_total_budget_with_first_attempt(monkeypatch, phase):
-    monkeypatch.setattr(kv, "_LEASE_ATTEMPT_TIMEOUT_S", 0.060)
-    monkeypatch.setattr(kv, "_LEASE_RETRY_BUDGET_S", 0.100)
+    # Time constants are scaled up (×10) so a few ms of CI scheduling jitter under
+    # parallel workers is negligible. The shared-vs-fresh-budget ratio is unchanged: a
+    # shared budget finishes near 1.0s, a fresh per-attempt budget near 2.0s and fails.
+    monkeypatch.setattr(kv, "_LEASE_ATTEMPT_TIMEOUT_S", 0.600)
+    monkeypatch.setattr(kv, "_LEASE_RETRY_BUDGET_S", 1.000)
     calls = 0
 
     async def command(*args):
@@ -458,15 +461,18 @@ async def test_retry_shares_total_budget_with_first_attempt(monkeypatch, phase):
     assert await _invoke_retry(_store_with(command), phase) == "unavailable"
     elapsed = asyncio.get_running_loop().time() - started
     assert calls == 2
-    assert 0.080 <= elapsed < 0.200
+    assert 0.800 <= elapsed < 2.000
     row, = kv.drain_lease_errors()
     assert row["count"] == 2 and row["error_type"] == "deadline_exceeded"
 
 
 @pytest.mark.parametrize("phase", ("renew", "release"))
 async def test_first_attempt_cleanup_cannot_grant_second_attempt_a_fresh_budget(monkeypatch, phase):
-    monkeypatch.setattr(kv, "_LEASE_ATTEMPT_TIMEOUT_S", 0.100)
-    monkeypatch.setattr(kv, "_LEASE_RETRY_BUDGET_S", 0.200)
+    # Scaled ×10 like the sibling budget test: ms-level scheduling jitter stays negligible
+    # while the cleanup-comes-out-of-the-budget ratio is preserved. A fresh budget for the
+    # second attempt would push its duration past the 0.750s bound and fail.
+    monkeypatch.setattr(kv, "_LEASE_ATTEMPT_TIMEOUT_S", 1.000)
+    monkeypatch.setattr(kv, "_LEASE_RETRY_BUDGET_S", 2.000)
     loop = asyncio.get_running_loop()
     attempts = []
 
@@ -478,7 +484,7 @@ async def test_first_attempt_cleanup_cannot_grant_second_attempt_a_fresh_budget(
             except asyncio.CancelledError as exc:
                 # A timed-out driver can take time to close its connection. That time must
                 # come out of the original per-key budget, not buy the next attempt 100ms.
-                await asyncio.sleep(0.070)
+                await asyncio.sleep(0.700)
                 raise redis_errors.TimeoutError("timed-out connection cleanup finished") from exc
         await asyncio.Event().wait()
 
@@ -486,15 +492,17 @@ async def test_first_attempt_cleanup_cannot_grant_second_attempt_a_fresh_budget(
     assert await _invoke_retry(_store_with(command), phase) == "unavailable"
     finished = loop.time()
     assert len(attempts) == 2
-    assert attempts[1] - started >= 0.160
-    assert finished - started < 0.245
-    assert finished - attempts[1] < 0.075
+    assert attempts[1] - started >= 1.600
+    assert finished - started < 2.450
+    assert finished - attempts[1] < 0.750
 
 
 @pytest.mark.parametrize("phase", ("renew", "release"))
 async def test_exhausted_total_budget_does_not_start_a_second_command(monkeypatch, phase):
-    monkeypatch.setattr(kv, "_LEASE_ATTEMPT_TIMEOUT_S", 0.020)
-    monkeypatch.setattr(kv, "_LEASE_RETRY_BUDGET_S", 0.040)
+    # Scaled ×10 so scheduling jitter cannot let a second command slip into the budget;
+    # the cleanup (0.300s) still exceeds what remains after the first attempt (0.200s).
+    monkeypatch.setattr(kv, "_LEASE_ATTEMPT_TIMEOUT_S", 0.200)
+    monkeypatch.setattr(kv, "_LEASE_RETRY_BUDGET_S", 0.400)
     calls = 0
 
     async def command(*args):
@@ -503,7 +511,7 @@ async def test_exhausted_total_budget_does_not_start_a_second_command(monkeypatc
         try:
             await asyncio.Event().wait()
         except asyncio.CancelledError as exc:
-            await asyncio.sleep(0.030)
+            await asyncio.sleep(0.300)
             raise redis_errors.TimeoutError("cleanup used remaining budget") from exc
 
     assert await _invoke_retry(_store_with(command), phase) == "unavailable"
