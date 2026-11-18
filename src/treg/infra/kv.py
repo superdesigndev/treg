@@ -140,7 +140,8 @@ return {1, 0}
 # that would otherwise find the counter lapsed. `asked` keeps it to one caller per ARGV[4] ms,
 # so a refill that failed, or one that could not lift a low counter, is not asked for per call.
 # A deadline the counter has not asked about yet (`asked_for`) asks at once: each refill opens a
-# window that may be shorter than the pause.
+# window that may be shorter than the pause. An add that brought money ends the pause too: the
+# refill worked, and a counter that runs low again right after it is spending, not failing.
 _ALLOWANCE_ASK_AGAIN_MS = 2000
 _ALLOWANCE_TAKE = """
 local avail = tonumber(redis.call('HGET', KEYS[1], 'avail'))
@@ -196,6 +197,7 @@ if stored ~= ARGV[1] then
     redis.call('HSET', KEYS[1], 'epoch', ARGV[1], 'avail', '0', 'frozen', frozen, 'thawed', thawed)
 end
 local avail = redis.call('HINCRBY', KEYS[1], 'avail', ARGV[2])
+if tonumber(ARGV[2]) > 0 then redis.call('HDEL', KEYS[1], 'asked') end
 if tonumber(ARGV[3]) > tonumber(redis.call('HGET', KEYS[1], 'until') or '0') then
     redis.call('HSET', KEYS[1], 'until', ARGV[3])
 end

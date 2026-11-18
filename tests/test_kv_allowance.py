@@ -63,8 +63,19 @@ async def test_each_deadline_asks_for_its_own_refill_however_soon_after_the_last
     await store.allowance_add(org_id, 7, 20, until_ms=_soon(15_000), ttl_ms=60_000, seen_frozen=0)
     assert await store.allowance_take(org_id, 10, ahead_ms=20_000) == -7, "a new deadline"
     assert await store.allowance_take(org_id, 10, ahead_ms=20_000) == 7
-    assert await store.allowance_take(org_id, 10, low_micro=10_000) == 7, \
-        "a counter still low after its refill waits out the pause"
+
+
+@real_redis
+async def test_a_counter_low_again_after_a_refill_that_paid_asks_at_once(counter):
+    """The pause is for a refill that failed. One that brought money worked; a counter low
+    again right after it is being spent, and waiting would let it run dry."""
+    store, org_id = counter
+    await store.allowance_add(org_id, 7, 1_000, until_ms=_soon(), ttl_ms=60_000, seen_frozen=0)
+    assert await store.allowance_take(org_id, 800, low_micro=250) == -7
+    await store.allowance_add(org_id, 7, 0, until_ms=_soon(), ttl_ms=60_000, seen_frozen=0)
+    assert await store.allowance_take(org_id, 10, low_micro=250) == 7, "nothing came: the pause holds"
+    await store.allowance_add(org_id, 7, 810, until_ms=_soon(), ttl_ms=60_000, seen_frozen=0)
+    assert await store.allowance_take(org_id, 800, low_micro=250) == -7, "it paid, and is low again"
 
 
 @real_redis
