@@ -375,6 +375,32 @@ def test_upgrade_names_the_rollback_when_the_database_is_newer_than_the_build(tm
     assert _alembic_version(database) == "9999"
 
 
+@pytest.mark.parametrize("stamp", ["abc123def456", "0042x", "0000"])
+async def test_serve_refuses_an_unknown_stamp_that_is_not_a_later_revision(stamp):
+    """Only a later numbered revision of this project is tolerated; another Alembic project's
+    id, a typo, or a number at or below this build's head that it does not know keeps refusing."""
+    from sqlalchemy import text
+
+    from treg import maintenance
+    from treg.__main__ import _prepare_serve
+    from treg.infra.db import _engine, _schema_info, reset_db, verify_db
+
+    await reset_db()
+    head, _ = _schema_info()
+    async with _engine.begin() as connection:
+        await connection.execute(
+            text("UPDATE alembic_version SET version_num = :stamp"), {"stamp": stamp})
+    try:
+        with pytest.raises(maintenance.SchemaNewerThanBuild):
+            await _prepare_serve()
+        with pytest.raises(RuntimeError, match="not one this build knows"):
+            await verify_db()
+    finally:
+        async with _engine.begin() as connection:
+            await connection.execute(
+                text("UPDATE alembic_version SET version_num = :head"), {"head": head})
+
+
 async def test_serve_starts_on_a_database_newer_than_the_build(caplog):
     """A newer release can commit one revision and then fail on the next; the old release must
     still restart on that stamp, as the ASGI entry does. Only `python -m treg upgrade` refuses."""

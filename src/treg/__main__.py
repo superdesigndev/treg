@@ -12,11 +12,13 @@ async def _prepare_serve() -> None:
     import logging
 
     from . import api, maintenance
-    from .infra.db import dispose_engine
+    from .infra.db import dispose_engine, stamped_newer_than_build
 
     try:
         await maintenance.upgrade()
     except maintenance.SchemaNewerThanBuild as exc:
+        if not await stamped_newer_than_build():
+            raise
         logging.getLogger("treg").warning("%s Serving anyway, as the ASGI entry does.", exc)
     await api._bootstrap_single_user()
     await dispose_engine()

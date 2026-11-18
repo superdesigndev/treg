@@ -46,10 +46,12 @@ cross the rollback floor.
 
 `python -m treg` runs the same upgrade phase, bootstraps the single local user when enabled, and
 serves `treg.api:app` on `$PORT` (default 18790). On a database stamped at a revision this build
-does not know (`maintenance.SchemaNewerThanBuild`) it logs a warning, skips the release tasks and
-serves anyway, as the ASGI entry (`verify_db`) does: a newer release whose upgrade committed one
-revision and then failed on the next leaves such a stamp, and the old release must still restart
-on it. Both pre-Uvicorn paths dispose the async engine
+does not know (`maintenance.SchemaNewerThanBuild`) and that reads as a later revision of this
+project (all digits and above this build's head, `db.stamped_newer_than_build`) it logs a warning,
+skips the release tasks and serves anyway, as the ASGI entry (`verify_db`) does: a newer release
+whose upgrade committed one revision and then failed on the next leaves such a stamp, and the old
+release must still restart on it. Any other unknown stamp (another Alembic project's id, a typo)
+is still refused. Both pre-Uvicorn paths dispose the async engine
 before their `asyncio.run()` loop closes, so the serving loop never receives connections bound to a
 closed loop; calling `maintenance.upgrade()` directly does not dispose it. `python -m treg keygen`
 prints a Fernet key for `TREG_SECRET_KEY`.
@@ -72,8 +74,9 @@ out of the environment but retrievable for as long as a database backup from bef
 can still be restored.
 
 The lifespan and every worker command call read-only `verify_db()`: an unstamped database or a known
-revision behind head is refused; an unknown newer revision (code older than schema) warns and serves,
-because additive revisions tolerate rollback. Startup never creates tables, stamps or runs release
+revision behind head is refused; an unknown newer revision (code older than schema: all digits and
+above this build's head) warns and serves, because additive revisions tolerate rollback; any other
+unknown stamp is refused. Startup never creates tables, stamps or runs release
 tasks. If `TREG_SECRET_KEY` is empty on a non-SQLite database, `verify_db()` raises.
 
 ## Schema upgrade safety
