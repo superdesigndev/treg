@@ -196,6 +196,32 @@ contracts:
     # Never `verified`: a live line is not proof it is this person's number.
     verdict: {from: live_status, words: [live, dead, unknown]}
 
+  # One Findymail child; settle needs a verified miss predicate for per_success empty bodies.
+  companies.tech_stack:
+    summary: "The technologies detected on one company domain — Findymail technologies; miss judging only, never routed"
+    routed: false
+    identity:
+      - {domain: str}
+    filters: {}
+    output:
+      technologies: {type: list, required: true, note: "the provider's own technology rows (name, category, last detected)"}
+      count: {type: int}
+    miss: "technologies == []"
+    idempotent: true
+
+  # One Aviato child; settle needs a verified miss predicate for per_success empty bodies.
+  people.contact.get:
+    summary: "A person's known email addresses — Aviato contact info; miss judging only, never routed"
+    routed: false
+    identity:
+      - {linkedin_url: url}
+    filters: {}
+    output:
+      emails: {type: list, required: true, note: "the provider's own email rows (address and type)"}
+      count: {type: int}
+    miss: "emails == []"
+    idempotent: true
+
   # One Enrichlayer child; settle needs a verified miss predicate for per_success all-null bodies.
   people.profile.from_phone:
     summary: "Find social profiles from a contact phone number — Enrichlayer reverse phone; miss judging only, never routed"

@@ -51,7 +51,8 @@ def test_a_reingest_writes_the_generated_price_note_over_the_carried_price(inges
     ingest.carry_verification("anyapi", [fresh], fresh_price_note=True)
     assert fresh["price"] == {**old_price, "note": "One source serves this, at up to $0.0012 a call. The charge "
                               "follows the answer's `costUsd`, not the listed price. Send X-Treg-Route-Max-Cost "
-                              "to refuse any source dearer than your ceiling."}
+                              "to refuse any source dearer than your ceiling. A not-found or empty answer is "
+                              "billed too, at its own `costUsd`."}
     assert fresh["provenance"] == provenance and fresh["miss"] == miss and "cost" not in fresh
 
 
