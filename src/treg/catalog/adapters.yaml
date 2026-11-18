@@ -3378,7 +3378,6 @@ adapters:
     in: {url: body.url}
     const: {body.formats: {markdown: true}}
     out: {pages: "list(.)", count: "len(list(.))"}
-    miss: "coalesce(markdown.data, '') == ''"
 
   search1api.web.sitemap:
     accepts: [[url]]

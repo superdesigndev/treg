@@ -384,23 +384,37 @@ endpoints:
         url: {type: string, required: true, format: uri, example: "https://example.com"}
         formats: {type: object, required: true, enum: [{markdown: true}, {html: true}, {images: true}, {screenshot: true}], example: {markdown: true}, note: "Choose one basic output; charged JSON, highlights, product and PDF OCR options are excluded."}
         maxAgeMs: {type: integer, required: false, min: 0, max: 31536000000, note: "Maximum cache age in milliseconds; 0 fetches fresh."}
-      note: "The curated request permits one basic format. Browser actions and charged extraction options require an own raw tool. A target 404 may still consume the base credit."
+      note: "The curated request permits one basic format. Browser actions and charged extraction options require an own raw tool. A target 404 consumes the base credit; a blocked page or a hostname that does not exist consumes none."
     test_request: {body: {url: "https://example.com", formats: {markdown: true}}}
-    cost:
-      type: per_success
-      value: 1
-      fallback: {value: 1, note: "The curated request allows one basic output and no charged extras."}
+    price:
+      value: '1'
       currency: credit
       per: 1
       unit: call
-      settle: usage
-      usage: {path: key_metadata.credits_consumed, unit: credit}
+      note: "One basic request of any format consumed one credit live. Settle from reported credits. The curated request allows one basic output and no charged extras."
+    provenance:
       source: observed
       source_url: https://docs.context.dev/account/credits
-      checked: '2026-09-28'
+      checked: '2026-11-18'
       confidence: verified
-      note: "One basic Markdown request consumed one credit live; the current rate card prices the other basic formats at the same base. Settle from reported credits."
-    verified: '2026-09-28'
+    settle: {usage: {unit: credit, path: response.key_metadata.credits_consumed}, worst_case: '1'}
+    error: {when: {any: [{path: response.error, op: present}, {path: response.errors, op: present}]}}
+    # A target that could not be read still answers 200, naming the reason in the requested
+    # format's `error_code`; only the requested format carries `data`.
+    miss:
+      when:
+        - {any: [{path: response.markdown.data, op: absent}, {path: response.markdown.data, op: empty}]}
+        - {any: [{path: response.html.data, op: absent}, {path: response.html.data, op: empty}]}
+        - {any: [{path: response.images.data, op: absent}, {path: response.images.data, op: empty}]}
+        - {any: [{path: response.screenshot.data, op: absent}, {path: response.screenshot.data, op: empty}]}
+    not_found:
+      status: [200]
+      when: {any: [{path: response.markdown.error_code, op: in, value: [NOT_FOUND, WEBSITE_NOT_FOUND]},
+                   {path: response.html.error_code, op: in, value: [NOT_FOUND, WEBSITE_NOT_FOUND]},
+                   {path: response.images.error_code, op: in, value: [NOT_FOUND, WEBSITE_NOT_FOUND]},
+                   {path: response.screenshot.error_code, op: in, value: [NOT_FOUND, WEBSITE_NOT_FOUND]}]}
+      means: "the page answered 404 or its hostname does not exist"
+    verified: '2026-11-18'
     added: '2026-09-28'
     example_response: examples/branddev.web.scrape.json
     docs_url: https://docs.context.dev/api-reference/web-scraping/scrape
