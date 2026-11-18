@@ -45,7 +45,7 @@ def _capture_call_intake_failure(request: Request, *, surface: str) -> None:
 
 
 async def _db_error(request: Request, exc: DBAPIError) -> JSONResponse:
-    """A SQLAlchemy-wrapped database error: busy when it carries a refused connection, otherwise
+    """A SQLAlchemy `DB_BUSY_WRAPPERS` error: busy when it carries a refused connection, otherwise
     unchanged (the error continues to the server-error 500 as it did before)."""
     if not is_db_busy(exc):
         raise exc

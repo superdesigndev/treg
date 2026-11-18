@@ -252,8 +252,8 @@ per-team slot; [hub](../architecture/hub.md)). `* /catalog/call/{rest}` (hidden 
 OpenAPI) requires an exact catalog id and skips own-tool resolution, so a same-named team tool
 cannot shadow the catalog endpoint; from the credential ladder on it is the same call.
 
-A pool with no slot within 5 s answers `503 {"treg_saturated": true}` with `Retry-After: 2`
-(`_pool_saturated`), still captured as a `db_pool` fault and a `tool_called` event, and releases an
+A pool with no slot within 5 s, or a database that refuses a new connection (`DB_BUSY_ERRORS`),
+answers `503 {"treg_saturated": true}` with `Retry-After: 2` (`_pool_saturated`), still captured as a `db_pool` fault and a `tool_called` event, and releases an
 acquired idempotency label so a retry is not a false 409. A `platform_auth: anonymous` endpoint
 relays through a virtual tool with no bindings when no team credential exists (a public provider has
 none: a same-named team secret is ignored): no platform key, no

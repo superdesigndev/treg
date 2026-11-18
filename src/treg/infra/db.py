@@ -11,7 +11,7 @@ from importlib import import_module
 
 from asyncpg.exceptions import CannotConnectNowError, TooManyConnectionsError
 from sqlalchemy import bindparam, event, inspect, text
-from sqlalchemy.exc import DBAPIError
+from sqlalchemy.exc import DBAPIError, InterfaceError, OperationalError
 from sqlalchemy.exc import TimeoutError as PoolTimeoutError
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 from sqlmodel import SQLModel
@@ -105,6 +105,9 @@ if _overrides := get_settings().db_pool_overrides:
 # connections yet) is the same condition as an exhausted local pool: treg is busy, the caller retries.
 # SQLAlchemy's asyncpg dialect does not translate a connect-time error, so it arrives raw.
 DB_BUSY_ERRORS = (PoolTimeoutError, TooManyConnectionsError, CannotConnectNowError)
+# The SQLAlchemy wrappers a refused connection can arrive in; an IntegrityError or a
+# ProgrammingError never carries one.
+DB_BUSY_WRAPPERS = (OperationalError, InterfaceError)
 
 
 def is_db_busy(exc: BaseException) -> bool:
@@ -116,6 +119,13 @@ def is_db_busy(exc: BaseException) -> bool:
         seen.add(id(exc))
         exc = getattr(exc, "orig", None) or exc.__cause__
     return False
+
+
+def answers_db_busy(exc: BaseException) -> bool:
+    """True when the application-wide handlers answer `exc` with the typed busy 503: one of
+    `DB_BUSY_ERRORS`, or a `DB_BUSY_WRAPPERS` wrapper carrying one. Any other error type, even one
+    caused by a refused connection, stays a server error."""
+    return isinstance(exc, DB_BUSY_ERRORS + DB_BUSY_WRAPPERS) and is_db_busy(exc)
 
 
 def connection_budget(workers: int | None = None) -> dict[str, int]:

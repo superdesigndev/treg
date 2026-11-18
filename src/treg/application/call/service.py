@@ -27,7 +27,7 @@ from ...domain.catalog import schema, store as catalog_store
 from ...domain.money import with_margin
 from ...domain import provider_resources
 from ...infra import credential_cipher, money_admission, org_endpoint_quota
-from ...infra.db import is_db_busy, session_maker
+from ...infra.db import answers_db_busy, session_maker
 from ...models import Secret
 from ...sandbox_identity import visitor_name
 from ...domain.capacity import marks as capacity_marks
@@ -182,7 +182,7 @@ async def execute_call(context: CallContext, upstream_client: httpx.AsyncClient)
         _log_unaudited_child(request, exc.status_code, failure=exc)
         raise
     except Exception as exc:
-        if is_db_busy(exc):
+        if answers_db_busy(exc):
             _log_unaudited_child(request, 503, kind="db_pool")
         else:
             _log_unaudited_child(request, 500, kind="unexpected_exception")

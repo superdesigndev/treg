@@ -122,8 +122,10 @@ does not repair a slow scan, lock queue or missing index.
 A request that gets no slot within `pool_timeout` receives `503 {"treg_saturated": true}` with
 `Retry-After: 2` (`bootstrap_handlers._pool_saturated`). The database refusing a new connection
 (asyncpg `TooManyConnectionsError`, including "remaining connection slots are reserved", and
-`CannotConnectNowError`, raw or inside a SQLAlchemy `DBAPIError`) is the same condition and gets the
-same response; `infra/db.py` `DB_BUSY_ERRORS` and `is_db_busy` name it. A settle that meets it retries
+`CannotConnectNowError`, raw or inside a SQLAlchemy `OperationalError` or `InterfaceError`, the
+`DB_BUSY_WRAPPERS`) is the same condition and gets the same response; `infra/db.py` `DB_BUSY_ERRORS`,
+`is_db_busy` and `answers_db_busy` name it. Any other error type, even one whose cause is a refused
+connection, stays a server error the call router stamps itself. A settle that meets it retries
 once on a fresh session, like a pool timeout, because the error arises before any statement runs.
 SQLite aliases all three makers to one
 engine: it has file-level write locks it cannot share, so separate engines would only manufacture

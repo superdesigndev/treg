@@ -29,7 +29,11 @@
       "handler": "treg.api._pool_saturated"
     },
     {
-      "exception": "sqlalchemy.exc.DBAPIError",
+      "exception": "sqlalchemy.exc.OperationalError",
+      "handler": "treg.api._db_error"
+    },
+    {
+      "exception": "sqlalchemy.exc.InterfaceError",
       "handler": "treg.api._db_error"
     },
     {

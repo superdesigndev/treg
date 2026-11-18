@@ -17,7 +17,6 @@ import httpx
 from fastapi import FastAPI
 from fastapi.routing import APIRoute, request_response
 from fastapi.staticfiles import StaticFiles
-from sqlalchemy.exc import DBAPIError
 from starlette.exceptions import HTTPException as StarletteHTTPException
 from starlette.responses import RedirectResponse
 from starlette.routing import BaseRoute, Mount
@@ -37,7 +36,7 @@ from .config import TREG_USER_AGENT, get_settings
 from .infra import kv, money_timing, org_traffic, turnstile
 from .infra.loop_stall import start_loop_stall_watch, stop_loop_stall_watch
 from .infra.money_trace_runner import start_money_trace, stop_money_trace
-from .infra.db import DB_BUSY_ERRORS, ReportBusy, background_session_maker, verify_db
+from .infra.db import DB_BUSY_ERRORS, DB_BUSY_WRAPPERS, ReportBusy, background_session_maker, verify_db
 from .infra.catalog_observations import (
     CachedEndpointObservationReader,
     PostgresEndpointObservationReader,
@@ -977,7 +976,8 @@ def create_app(role: AppRole = "all", *, archive_object_store=None) -> FastAPI:
     bootstrap_handlers._stamp_call_exit = call_routes._stamp_call_exit
     for busy in DB_BUSY_ERRORS:
         app.add_exception_handler(busy, bootstrap_handlers._pool_saturated)
-    app.add_exception_handler(DBAPIError, bootstrap_handlers._db_error)
+    for wrapper in DB_BUSY_WRAPPERS:
+        app.add_exception_handler(wrapper, bootstrap_handlers._db_error)
     app.add_exception_handler(ReportBusy, bootstrap_handlers._report_busy)
     app.add_exception_handler(StarletteHTTPException, bootstrap_handlers._mark_treg_own_errors)
 
