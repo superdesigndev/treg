@@ -888,6 +888,11 @@ adapters:
     const: {queryParams.engine: google}
     out: {results: organic_results, count: search_information.total_results}
     miss: "organic_results == []"
+  scrappa.google.serp.organic:
+    accepts: [[q]]
+    in:  {q: queryParams.query}
+    in_expr: {queryParams.gl: "lower(country)", queryParams.hl: language}
+    out: {results: organic_results, count: "len(organic_results)"}
   serpapi.x.google-light:
     accepts: [[q]]
     in:  {q: queryParams.q}

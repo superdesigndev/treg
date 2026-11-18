@@ -15,7 +15,7 @@ source:
 # 404 (no Trustpilot profile, no LinkedIn company, no YouTube transcript) charges 0. Google Search
 # `proxy_country` adds up to 1 credit and is left out of the row's inputs. Google Flights answers 503
 # after about a minute when its upstream is down, and bills nothing.
-limits: Scrappa publishes no request-rate limit. A key without credits gets HTTP 402.
+limits: Up to 48 requests in flight per key on each Scrappa server; above that HTTP 429 with Retry-After 2. A key without credits gets HTTP 403 "You've ran out of credits".
 pricing_url: https://scrappa.co/pricing
 
 proposed_capabilities:

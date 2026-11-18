@@ -472,6 +472,26 @@ async def test_orbisearch_capacity_rejects_invalid_balance(balance, monkeypatch)
         _refused(await _balance(monkeypatch, "orbisearch", client, "test-key"), "valid credit balance")
 
 
+async def test_scrappa_capacity_uses_free_account_usage(monkeypatch):
+    def probe(request):
+        assert request.method == "GET"
+        assert request.url == "https://scrappa.co/api/account/usage"
+        assert request.headers["x-api-key"] == "test-key"
+        return httpx.Response(200, json={"balance": 32500, "credits": {"usable": 32500}})
+
+    async with httpx.AsyncClient(transport=httpx.MockTransport(probe)) as client:
+        row = await _balance(monkeypatch, "scrappa", client, "test-key")
+    assert row == {"value": 32500, "unit": "credits", "note": "usable credit balance"}
+
+
+@pytest.mark.parametrize("balance", [None, True, -1, "12"])
+async def test_scrappa_capacity_rejects_invalid_balance(balance, monkeypatch):
+    async with httpx.AsyncClient(transport=httpx.MockTransport(
+        lambda _request: httpx.Response(200, json={"balance": balance})
+    )) as client:
+        _refused(await _balance(monkeypatch, "scrappa", client, "test-key"), "valid credit balance")
+
+
 @pytest.mark.parametrize("remaining", [None, True, -1, "51000", float("nan")])
 async def test_fetchin_capacity_rejects_uncertain_balances(remaining, monkeypatch):
     def probe(_request):
