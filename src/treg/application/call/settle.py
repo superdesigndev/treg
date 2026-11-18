@@ -1239,7 +1239,8 @@ async def _platform_settle(
                     await db.commit()
                 if finalized is not None:
                     finalized()
-                return charged
+            await _freeze_allowance_after_overrun(mk.payer_org_id, charged, mk.reserved_micro)
+            return charged
 
     try:
         try:
@@ -1259,6 +1260,21 @@ async def _platform_settle(
             "settle/release failed for call %s (%s, status %s): %s",
             call_id, mk.endpoint_id, status_code, exc, exc_info=True)
     return charged, observed
+
+
+async def _freeze_allowance_after_overrun(org_id: int | None, charged: int,
+                                          reserved_micro: int | None) -> None:
+    """A settlement that took more than its hold may have used the team's last credit. Its own
+    next reserve would meet the balance gate; calls admitted from the team's allowance counter
+    would not, so the counter is frozen until a refill has read the balance. Never raises."""
+    if (org_id is None or reserved_micro is None or charged <= reserved_micro
+            or not allowance_runtime.enabled_for(org_id)):
+        return
+    try:
+        await allowance_runtime.freeze(org_id)
+    except Exception:
+        logging.getLogger("treg.ledger").error(
+            "freezing the allowance of org %s after an overrun failed", org_id, exc_info=True)
 
 
 @dataclass
@@ -1329,6 +1345,8 @@ async def close_deferred(items: list[DeferredSettle], *, charge: bool, why: str 
                             await archive.note_org_uses_in_transaction(db, uses)
                 with timing.phase("commit"):
                     await db.commit()
+        for d, amount in zip(pending, amounts):
+            await _freeze_allowance_after_overrun(d.payer_org_id, amount, d.reserved_micro)
     except Exception as exc:
         logging.getLogger("treg.ledger").error(
             "closing %d deferred routed holds (charge=%s) failed: %s", len(pending), charge, exc,

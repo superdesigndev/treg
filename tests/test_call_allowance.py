@@ -47,6 +47,7 @@ class FakeStore:
         return counter.get("frozen", 0) != counter.get("thawed", 0)
 
     async def allowance_take(self, org_id, amount):
+        await asyncio.sleep(0)  # a real store call lets other calls run meanwhile
         counter = self.counters.get(org_id)
         if (counter is None or self._frozen(counter) or time.time() * 1000 > self.until_ms
                 or counter["avail"] < amount):
@@ -77,7 +78,7 @@ class FakeStore:
             counter = self.counters[org_id] = {
                 "epoch": epoch, "avail": 0, "frozen": (counter or {}).get("frozen", 0)}
         counter["avail"] += amount
-        counter["thawed"] = max(counter.get("thawed", 0), seen_frozen)
+        counter["thawed"] = max(counter.get("thawed", 0), min(seen_frozen, counter["frozen"]))
         self.until_ms = max(self.until_ms, until_ms)
         return counter["avail"]
 
@@ -129,6 +130,7 @@ async def store(monkeypatch):
     monkeypatch.setattr(kv, "configured", lambda: True)
     monkeypatch.setattr(runtime, "_refused_until", {})
     monkeypatch.setattr(runtime, "_charges", runtime._ChargeWriter())
+    monkeypatch.setattr(runtime, "_in_flight", [0])
     return fake
 
 
@@ -675,7 +677,7 @@ async def test_a_refill_that_committed_before_an_overrun_cannot_lift_its_freeze(
     assert await runtime.take(org_id, 100) is None, "published, but still frozen"
     assert told == [1_500] and published == [400], "the refill did publish"
     counter = store.counters[org_id]
-    assert (counter["frozen"], counter["thawed"]) == (2, 0), "and thawed nothing it had not read"
+    assert (counter["frozen"], counter["thawed"]) == (1, 0), "and thawed nothing it had not read"
     assert await runtime.take(org_id, 100) is None, "the next refill sees the team overdrawn"
     balance, hold = await _state(org_id)
     assert balance < 0 and hold == 0 and store.counters[org_id]["avail"] == 0
@@ -760,23 +762,166 @@ async def test_an_overrun_written_late_freezes_the_counter_when_it_lands(org_id,
     monkeypatch.setattr(runtime.asyncio, "sleep", retry_waits)
     assert await _finish(org_id, "over", epoch, 600, billable=True, actual_micro=900) == 900
     counter = store.counters[org_id]
-    counter["thawed"] = counter["frozen"]  # as if a refill that could not see the charge thawed
+    assert counter.get("frozen", 0) == 0, "not frozen for a charge no refill could apply yet"
     down[0] = False
     await runtime._charges._retry_task
-    assert counter["frozen"] == counter["thawed"] + 1 and await _queued(org_id) == 1
+    assert counter["frozen"] == 1 and await _queued(org_id) == 1
+
+
+async def test_a_call_cancelled_while_its_charge_is_written_still_freezes_for_its_overrun(
+        org_id, store, monkeypatch):
+    """The request goes away after its charge is queued. The writer commits the charge, and the
+    freeze must not depend on the request still being there."""
+    monkeypatch.setattr(get_settings(), "money_allowance_linger_ms", 30)
+    epoch = await runtime.take(org_id, 600)
+    request = asyncio.create_task(
+        _finish(org_id, "over", epoch, 600, billable=True, actual_micro=900))
+    await asyncio.sleep(0.005)
+    request.cancel()
+    await asyncio.gather(request, return_exceptions=True)
+    await runtime._charges._task
+    counter = store.counters[org_id]
+    assert await _queued(org_id) == 1 and counter["frozen"] == 1
+    assert await runtime.take(org_id, 100) == epoch, "a refill after the commit applies it"
+    assert await _queued(org_id) == 0 and counter["thawed"] == 1
+
+
+async def test_a_refill_between_an_overruns_end_and_its_commit_does_not_leave_it_ungated(
+        org_id, store, monkeypatch):
+    """The call has ended; its charge is not in the database yet. A refill now cannot see the
+    charge and must not be what decides. The freeze comes with the commit, after it."""
+    monkeypatch.setattr(get_settings(), "money_allowance_linger_ms", 30)
+    epoch = await runtime.take(org_id, 600)
+    request = asyncio.create_task(
+        _finish(org_id, "over", epoch, 600, billable=True, actual_micro=900))
+    await asyncio.sleep(0.005)
+    store.expire()
+    assert await runtime.take(org_id, 100) == epoch, "nothing is known yet: an ordinary refill"
+    assert await request == 900
+    counter = store.counters[org_id]
+    assert counter["frozen"] == 1 and counter["thawed"] == 0, "frozen by the commit, not thawed"
+    assert await runtime.take(org_id, 100) == epoch
+    assert counter["thawed"] == 1 and await _queued(org_id) == 0
+
+
+async def test_a_committed_overrun_whose_freeze_does_not_reach_the_store_is_gone_through_again(
+        org_id, store, monkeypatch):
+    freeze, calls = store.allowance_freeze, []
+
+    async def flaky(org):
+        calls.append(org)
+        return None if len(calls) == 1 else await freeze(org)
+
+    monkeypatch.setattr(store, "allowance_freeze", flaky)
+    epoch = await runtime.take(org_id, 600)
+    await _instantly(monkeypatch)
+    assert await _finish(org_id, "over", epoch, 600, billable=True, actual_micro=900) == 900
+    assert runtime._charges.behind()
+    await runtime._charges._retry_task
+    assert store.counters[org_id]["frozen"] == 1 and not runtime._charges.behind()
+    assert runtime._charges.owed == 0
+
+
+async def test_a_settlement_outside_the_allowance_that_overran_freezes_the_counter(
+        org_id, store, monkeypatch):
+    """A tagged call keeps its own hold. It costs more than the hold and may have used the
+    team's last credit; calls admitted from the counter would not meet the balance gate."""
+    caller = await _caller(org_id)
+    epoch = await runtime.take(org_id, 100)
+    for call_ref, cost, frozen in (("tagged-ok", 450, 0), ("tagged-over", 900, 1)):
+        mk = _call(org_id)
+        await call_reserve._platform_reserve(mk, caller, CallMeta(tags={"user": "u"}), call_ref)
+        assert mk.allowance_epoch is None
+        assert await call_settle._platform_settle(mk, 200, observed_override=cost) == (cost, cost)
+        assert store.counters[org_id].get("frozen", 0) == frozen
+    assert await runtime.take(org_id, 100) == epoch, "a refill read the balance and reopened it"
+    monkeypatch.setattr(get_settings(), "money_allowance_org_ids", [])
+    mk = _call(org_id)
+    await call_reserve._platform_reserve(mk, caller, call_ref="unlisted-over")
+    await call_settle._platform_settle(mk, 200, observed_override=900)
+    assert store.counters[org_id]["frozen"] == 1, "a team with no allowance has no counter to freeze"
+
+
+async def test_a_settle_entry_that_cannot_be_read_back_is_not_answered_as_free(
+        org_id, store, monkeypatch):
+    async def broken(db, org, call_id):
+        raise ConnectionError("database down")
+
+    epoch = await runtime.take(org_id, 600)
+    monkeypatch.setattr(allowance, "settled_micro", broken)
+    assert await _finish(org_id, "over", epoch, 600, billable=True, actual_micro=900) == 900
+
+
+async def test_a_counter_lost_during_a_refill_is_not_left_frozen_for_good(org_id, store):
+    """The refill read three freezes, then the store lost the counter. The rebuilt one has none,
+    and thawing it to three would leave the two counts unequal with nothing to raise the other."""
+    epoch = await runtime.take(org_id, 600)
+    for _ in range(3):
+        await store.allowance_freeze(org_id)
+    add = store.allowance_add
+
+    async def lost_first(org, *args, **kwargs):
+        store.counters.pop(org)
+        return await add(org, *args, **kwargs)
+
+    store.allowance_add = lost_first
+    try:
+        assert await runtime.take(org_id, 100) == epoch
+    finally:
+        store.allowance_add = add
+    assert await runtime.take(org_id, 100) == epoch
 
 
 # ---- the retry queue's bound -------------------------------------------------------------------
-async def test_calls_are_admitted_only_while_the_retry_queue_has_room_for_them(
+async def test_calls_are_admitted_only_while_there_is_a_place_for_their_charge(
         org_id, store, monkeypatch):
-    monkeypatch.setattr(runtime._ChargeWriter, "_MAX_UNCONFIRMED", 2)
+    """Calls arriving together, and charges being written, all count: a place is taken before
+    the first await and handed to the writer until its row is known written."""
+    monkeypatch.setattr(runtime, "_MAX_OWED", 3)
     monkeypatch.setattr(runtime, "_in_flight", [0])
-    first, second = await runtime.take(org_id, 100), await runtime.take(org_id, 100)
-    assert first and second
-    assert await runtime.take(org_id, 100) is None, "a third charge would have no place to wait"
-    await _finish(org_id, "a", first, 100, billable=False)
-    assert await runtime.take(org_id, 100) == first
-    assert runtime._in_flight == [2]
+    await runtime.take(org_id, 100)  # opens the allowance, so the next takes are one step each
+    taken = await asyncio.gather(*(runtime.take(org_id, 100) for _ in range(6)))
+    assert sum(1 for epoch in taken if epoch) == 2 and runtime._in_flight == [3]
+    epoch = next(epoch for epoch in taken if epoch)
+    await _finish(org_id, "a", epoch, 100, billable=False)
+    assert runtime._in_flight == [2] and await runtime.take(org_id, 100) == epoch
+
+    release = asyncio.Event()
+    write = runtime._ChargeWriter._write
+
+    async def slow(rows, **kwargs):
+        await release.wait()
+        await write(rows, **kwargs)
+
+    monkeypatch.setattr(runtime._ChargeWriter, "_write", staticmethod(slow))
+    charging = asyncio.create_task(_finish(org_id, "b", epoch, 100, billable=True))
+    await asyncio.sleep(0.02)  # the batch has left the pending list and is being written
+    assert (runtime._in_flight, runtime._charges.owed) == ([2], 1)
+    assert await runtime.take(org_id, 100) is None, "the row being written still holds its place"
+    release.set()
+    assert await charging == 100
+    assert runtime._charges.owed == 0 and await runtime.take(org_id, 100) == epoch
+
+
+async def test_a_take_is_on_the_call_before_the_auto_top_up_read_can_be_cancelled(
+        org_id, store, monkeypatch):
+    caller, mk = await _caller(org_id), _call(org_id)
+    caller.org.autotopup_enabled, caller.org.autotopup_consented_at = True, ledger._now()
+    reading = asyncio.Event()
+
+    async def never_returns(org):
+        reading.set()
+        await asyncio.Event().wait()
+
+    monkeypatch.setattr(call_reserve, "_schedule_autotopup_after", never_returns)
+    reserve = asyncio.create_task(
+        call_reserve._platform_reserve(mk, caller, call_ref="c-1", allow_allowance=True))
+    await reading.wait()
+    reserve.cancel()
+    await asyncio.gather(reserve, return_exceptions=True)
+    assert mk.allowance_epoch and mk.call_id == "c-1"
+    await call_settle._finish_cancelled_call(None, mk, "c-1")
+    assert store.counters[org_id]["avail"] == CHUNK and runtime._in_flight[0] == 0
 
 
 async def test_a_charge_rewritten_after_it_was_applied_does_not_mark_its_question_again(
