@@ -251,6 +251,22 @@ async def test_a_vendor_500_or_caller_400_neither_strikes_nor_clears(clients: As
     assert (await _lock("tikhub")).is_active(), "402, 500, 402 is still two strikes in a row"
 
 
+async def test_an_account_out_refusal_tells_clients_when_to_retry(clients: AsyncClient, platform_on, monkeypatch):
+    """The replaced answer is a 503, which many clients retry at once: it says when to come back,
+    the lock's reset when one is known, else a minute."""
+    monkeypatch.setattr(capacity_marks, "STRIKE_MIN_GAP", timedelta(0))
+    monkeypatch.setattr(call_service, "relay", _fake_relay(402, OUT))
+    r = await clients.get(f"/call/{EP}?aweme_id=7")
+    assert _capacity_503(r) and r.headers["Retry-After"] == "60", "no reset known yet"
+    monkeypatch.setattr(call_service, "relay", _relay(429, b'{"detail":"quota"}', [(b"retry-after", b"7200")]))
+    assert _capacity_503(await clients.get(f"/call/{EP}?aweme_id=7"))
+    r = await clients.get(f"/call/{EP}?aweme_id=7")
+    assert _capacity_503(r)
+    capacity_marks._last_probe.clear()
+    r = await clients.get(f"/call/{EP}?aweme_id=7")  # the probe meets the same quota
+    assert _capacity_503(r) and 7000 < int(r.headers["Retry-After"]) <= 7200, r.headers
+
+
 async def test_quota_429_locks_the_endpoint_only_until_the_reset(clients: AsyncClient, platform_on, monkeypatch):
     relay = _relay(429, b'{"detail":"quota"}', [(b"retry-after", b"7200")])
     lock = await _lock_by_two_signals(clients, monkeypatch, relay)

@@ -5,6 +5,7 @@ from __future__ import annotations
 import asyncio
 import json
 import logging
+import math
 import time
 import uuid
 from types import SimpleNamespace
@@ -30,6 +31,7 @@ from ...infra import credential_cipher, money_admission, org_endpoint_quota
 from ...infra.db import session_maker
 from ...models import Secret
 from ...sandbox_identity import visitor_name
+from ...timeutil import utcnow_naive
 from ...domain.capacity import marks as capacity_marks
 from ...domain.capacity import rate_observe
 from ...domain.capacity import signatures as capacity_signatures
@@ -339,6 +341,7 @@ def _outcome(status_code: int, refused_by: str | None, *, answered: bool) -> str
 
 
 _CHILD_FAILURE_STATUSES = frozenset({401, 402, 403, 418, 429})
+CAPACITY_RETRY_AFTER_S = 60
 # Refused before anything was spent, so the call slot `authorize_call` took is given back.
 _MEMBER_SPEND_REFUSALS = frozenset({"member_spend_cap_reached", "member_spend_cap_unavailable"})
 
@@ -2147,11 +2150,15 @@ async def _execute_call(request: _ApplicationRequest, upstream_client: httpx.Asy
             await response.close()
             request.state.call_cost_micro = 0
             from .resolve import _provider_capacity_unavailable
-            raise _provider_capacity_unavailable(
-                _catalog_endpoint_for(mk.endpoint_id) or {"id": mk.endpoint_id},
-                mk.provider, capacity_view.exhausted_until(
-                    mk.provider, mk.endpoint_id, keyslots.capacity_slot(mk.key_slot),
-                    metered=capacity_marks.spends_balance(mk.cost_type)))
+            resets = capacity_view.exhausted_until(
+                mk.provider, mk.endpoint_id, keyslots.capacity_slot(mk.key_slot),
+                metered=capacity_marks.spends_balance(mk.cost_type))
+            refusal = _provider_capacity_unavailable(
+                _catalog_endpoint_for(mk.endpoint_id) or {"id": mk.endpoint_id}, mk.provider, resets)
+            # A 503 is retried at once by many HTTP clients (RFC 9110 Retry-After asks them to wait).
+            refusal.retry_after_s = (max(1, math.ceil((resets - utcnow_naive()).total_seconds()))
+                                     if resets else CAPACITY_RETRY_AFTER_S)
+            raise refusal
         # Mask credentials echoed in error bodies after settlement and capacity processing (which
         # need the original body) but before the body reaches the caller or the replay store.
         if response.status >= 400 and spooled_bytes is None:
