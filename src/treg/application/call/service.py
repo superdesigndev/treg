@@ -1710,10 +1710,13 @@ async def _execute_call(request: _ApplicationRequest, upstream_client: httpx.Asy
                             "error": "share_busy", "provider": mk.provider,
                             "endpoint_id": mk.endpoint_id, "active": busy.active,
                             "retry_after_s": RETRY_AFTER_SHARE_S,
-                            "message": f"{mk.provider} is fully used"
-                                       + (f" and your team already has {busy.active} calls in "
-                                          f"progress on it" if busy.active else "")
-                                       + f"; not charged, try again in {RETRY_AFTER_SHARE_S} s"}
+                            "message": (
+                                f"your team holds its largest share of {mk.provider}'s places; "
+                                f"not charged, try again shortly" if busy.reason == "team_ceiling"
+                                else f"{mk.provider} is fully used"
+                                + (f" and your team already has {busy.active} calls in "
+                                   f"progress on it" if busy.active else "")
+                                + f"; not charged, try again in {RETRY_AFTER_SHARE_S} s")}
                         ) from None
                     if share_slot.waited_ms:
                         smoothed.append(f"share_wait={share_slot.waited_ms}")

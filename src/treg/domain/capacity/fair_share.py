@@ -49,11 +49,15 @@ log = logging.getLogger("treg.fair_share")
 
 
 class ShareBusy(Exception):
-    """No place freed for this call within the wait; `active` is its team's calls in progress."""
+    """No place for this call: none freed within the wait (`reason` "wait"), or its team already
+    holds its ceiling of the account's places (`reason` "team_ceiling", rule 4). `active` is its
+    team's calls in progress (the ceiling, for "team_ceiling")."""
 
-    def __init__(self, provider: str, team: int, active: int, waited_s: float) -> None:
+    def __init__(self, provider: str, team: int, active: int, waited_s: float,
+                 reason: str = "wait") -> None:
         super().__init__(f"{provider}: team {team} waited {waited_s:.1f} s with {active} calls in progress")
         self.provider, self.team, self.active, self.waited_s = provider, team, active, waited_s
+        self.reason = reason
 
 
 @dataclass
@@ -221,12 +225,15 @@ class FairShare:
         if cap <= 0:
             return NO_SLOT
         pool = self._pool(provider, cap)
+        asked_at = time.monotonic()
         team_lease = await self._team_place(pool, team, team_ceiling_percent)
         local = team_lease is _UNANSWERED
         if local:
             team_lease = None
+        # The team request's time comes out of the same wait, so a slow store never stretches it.
+        left_s = max(0.0, max_wait_s - (time.monotonic() - asked_at))
         try:
-            slot = await self._place(pool, provider, team, max_wait_s, local=local)
+            slot = await self._place(pool, provider, team, left_s, local=local)
         except BaseException:
             if team_lease is not None:
                 team_lease.release()
@@ -253,7 +260,7 @@ class FairShare:
             pool.store_answered = False
             return _UNANSWERED
         if outcome == provider_concurrency.BUSY:
-            raise ShareBusy(pool.name, team, ceiling, 0.0)
+            raise ShareBusy(pool.name, team, ceiling, 0.0, reason="team_ceiling")
         return outcome
 
     async def _place(self, pool: _Pool, provider: str, team: int, max_wait_s: float, *,

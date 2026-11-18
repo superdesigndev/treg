@@ -296,6 +296,25 @@ async def test_a_full_provider_refuses_with_share_busy_and_charges_nothing(
     assert fair_share._pools["tikhub"].active == 0, "the place is returned after the answer"
 
 
+async def test_a_team_ceiling_refusal_says_so_and_charges_nothing(
+    clients: AsyncClient, platform_on, gated, monkeypatch,
+):
+    async def over_ceiling(provider, team, cap, **kwargs):
+        raise ShareBusy(provider, team, 4, 0.0, reason="team_ceiling")
+
+    monkeypatch.setattr(call_service, "relay", _fake_relay(200, b'{"ok":true}'))
+    monkeypatch.setattr(fair_share, "acquire", over_ceiling)
+    before = await _balance(clients)
+    r = await clients.get(f"/call/{EP}?aweme_id=7")
+    assert r.status_code == 429, r.text
+    detail = r.json()
+    detail = detail.get("detail", detail)
+    assert detail["error"] == "share_busy"
+    assert detail["message"] == ("your team holds its largest share of tikhub's places; "
+                                 "not charged, try again shortly")
+    assert await _balance(clients) == before
+
+
 async def test_own_key_calls_are_never_gated(clients: AsyncClient, platform_on, gated, monkeypatch):
     monkeypatch.setattr(call_service, "relay", _fake_relay(200, b'{"ok":true}'))
     await clients.post("/secrets", json={"name": "tikhub", "value": "MKKEY"})  # tier 2
@@ -499,3 +518,30 @@ async def test_a_team_request_without_an_answer_never_opens_the_store_window(sha
         s.release()
     await _turns()
     assert not any(shared.owners.values())
+
+
+async def test_a_slow_store_never_stretches_the_wait_past_its_setting(shared):
+    one, two = FairShare(), FairShare()
+    held = [await one.acquire("p", 9, 2) for _ in range(2)]   # the account is full elsewhere
+    shared.delay = 0.3                                        # slow, but every request answers
+    began = time.monotonic()
+    with pytest.raises(ShareBusy) as busy:
+        await two.acquire("p", 1, 2, max_wait_s=0.5, team_ceiling_percent=50)
+    assert busy.value.reason == "wait"
+    assert time.monotonic() - began < 0.5 + 0.1, "the team request's time is part of the wait"
+    shared.delay = 0.0
+    for s in held:
+        s.release()
+    await asyncio.sleep(0.4)                                  # the late account reply lands
+    await _turns()
+    assert shared.held("p") == 0 and shared.held("p:team:1") == 0
+
+
+async def test_a_call_over_its_team_ceiling_is_refused_for_that_reason(shared):
+    gate = FairShare()
+    held = [await gate.acquire("p", 1, 10, team_ceiling_percent=80) for _ in range(8)]
+    with pytest.raises(ShareBusy) as busy:
+        await gate.acquire("p", 1, 10, team_ceiling_percent=80)
+    assert busy.value.reason == "team_ceiling"
+    for s in held:
+        s.release()

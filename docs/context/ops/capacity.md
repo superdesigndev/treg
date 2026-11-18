@@ -229,8 +229,10 @@ one: a freed place goes to whichever process's request lands first. `TREG_FAIR_S
 (0, off, by default) bounds that: with the shared store, one team holds at most `ceil(cap x percent
 / 100)` places of an account across every process, counted on a second lease key per account and
 team (`<account>:team:<org id>`) through the same lease scripts. A call over its team's ceiling
-leaves at once as `share_busy`, so the remaining places stay for other teams; other teams are not
-affected. A cap whose ceiling would equal the cap, a store that fails, and no store leave the
+leaves at once as `share_busy` (`ShareBusy.reason` "team_ceiling", its own message: "your team
+holds its largest share of <provider>'s places"), so the remaining places stay for other teams;
+other teams are not affected. The team request's time comes out of the same `fair_share_wait_s`
+budget, so a slow store never makes a call wait past it. A cap whose ceiling would equal the cap, a store that fails, and no store leave the
 account's own rule alone. The team request runs only while the account's last store request got an
 answer (`_Pool.store_answered`). A team request that gets no answer clears `store_answered`, and
 its call takes its place from this process's count, as inside the store-down window, instead of
