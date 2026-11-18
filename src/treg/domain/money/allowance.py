@@ -288,6 +288,10 @@ class Allowance(NamedTuple):
     # The instant written on the hold until which calls may be admitted against the allowance.
     # The caller publishes exactly this, however late it gets round to it.
     admit_until: datetime | None = None
+    # The store has retired this hold's counter and will publish nothing for it again. Nothing
+    # was added and its deadline was not moved: the caller stops offering the allowance, and the
+    # idle sweep closes the hold when no call can still stand on it.
+    retired: bool = False
 
 
 def _epoch(hold: Hold) -> int:
@@ -364,10 +368,14 @@ async def refill_allowance_in_transaction(
     if hold is not None and counter_epoch is not None and counter_epoch > _epoch(hold):
         # The store's counter names a later epoch than the hold: the hold's counter was retired
         # (by a deletion of the team that did not commit) and nothing can be published for it
-        # again. Money added to it would be out of every call's reach. It is closed instead,
-        # and the next refill opens a hold the store will take.
-        closed = await _close(db, org_id, hold, "counter_retired", None)
-        return Allowance(None, 0, 0, closed.folded)
+        # again. Nothing is added: money put there would be out of every call's reach. Nothing
+        # is returned either, and the hold's deadline is left alone: calls admitted before the
+        # retiring still stand on this money, and the idle sweep returns it once the longest of
+        # them can have ended. The next refill after that opens a hold the store will take.
+        folded = (await _apply_charges(db, org_id, hold, await _claim_all_charges(db, org_id))
+                  if fold_all else await _fold(db, org_id, hold, fold_limit))
+        return Allowance(_epoch(hold), hold.amount_micro, 0, folded,
+                         admit_until=hold.heartbeat_at, retired=True)
     if fresh_add_micro is not None and (hold is None or _epoch(hold) != counter_epoch):
         add = max(0, int(fresh_add_micro))
     opened = False
