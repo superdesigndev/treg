@@ -330,3 +330,10 @@ chooses only in the two disclosed cases of non-negotiable 4.
 - This repository is public: flag anything the Public repository section says must not be
   committed.
 - Skip speculative edge cases: report a bug only with a concrete path real usage can hit.
+- Flag as P1 a degraded mode (a fallback, fail-open path, breaker or retry window) that has no
+  proven exit. It must turn off once its cause is gone, nothing done while it is on may extend
+  it, and a test must show it exits under continuous traffic. A breaker that counts its own
+  skipped work as a failure never closes.
+- Flag as P1 a fallback that moves work from the key-value store or a queue onto the database on
+  the call or money path, unless the PR says what the database does at full call rate: row locks
+  on `org`, pool connections held, statement time.
