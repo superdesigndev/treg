@@ -245,6 +245,14 @@ def _write_note(bind, note: dict) -> None:
     bind.exec_driver_sql(f"COMMENT ON TABLE {NEW} IS '{literal}'")
 
 
+# Bounded on both sides, so a batch probes its id range of the new table, not all of it.
+_RESYNC = sa.text(
+    f"UPDATE {NEW} n SET hit = o.hit, verdict = o.verdict FROM {LIVE} o "
+    "WHERE o.id > :after AND o.id <= :upto AND n.id > :after AND n.id <= :upto "
+    "AND n.id = o.id AND n.created_at = o.created_at "
+    "AND (n.hit IS DISTINCT FROM o.hit OR n.verdict IS DISTINCT FROM o.verdict)")
+
+
 def _resync_verdicts(bind, reached: int) -> None:
     """Late `hit`/`verdict` values for the rows above the backfill's `resynced_upto` (all rows of
     the last `_RESYNC_LOOK_BACK` when the table was copied here, with no backfill), noting the
@@ -254,10 +262,7 @@ def _resync_verdicts(bind, reached: int) -> None:
         after = int(note["resynced_upto"])
     else:
         after = max(_first_id_at(bind, _now(bind) - _RESYNC_LOOK_BACK, reached) - 1, 0)
-    resync = sa.text(
-        f"UPDATE {NEW} n SET hit = o.hit, verdict = o.verdict FROM {LIVE} o "
-        "WHERE o.id > :after AND o.id <= :upto AND n.id = o.id AND n.created_at = o.created_at "
-        "AND (n.hit IS DISTINCT FROM o.hit OR n.verdict IS DISTINCT FROM o.verdict)")
+    resync = _RESYNC
     while after < reached:
         upto = min(after + _BATCH_ROWS, reached)
         bind.execute(resync, {"after": after, "upto": upto})
