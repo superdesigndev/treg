@@ -4151,6 +4151,38 @@ FINANCIALDATASETS = OAuthProvider(
 )
 
 
+FILINGDELTA = OAuthProvider(
+    service="filingdelta",
+    display_name="FilingDelta",
+    auth_kind="key",
+    token_label="API key",
+    token_placeholder="your FilingDelta credit key",
+    token_header="X-API-Key",
+    token_format="{secret}",
+    setup_url="https://filingdelta.xyz/buy",
+    setup_action_label="Buy a FilingDelta credit pack",
+    setup_steps=(
+        "Open https://filingdelta.xyz/buy and buy a credit pack by card.",
+        "Copy the API key shown once on the page you return to after paying.",
+        "Paste it here. Send the same key as an X-API-Key header on paid HTTP paths (for example /delta/AMD).",
+    ),
+    setup_note=(
+        "A single card uses 1 credit ($0.05). Bundles use credits that match their direct price. "
+        "Connecting checks the key with the free GET /buy/balance route (401 for an invalid key). "
+        "A bad key on a paid card route is treated as unpaid and returns HTTP 402, so /buy/balance is the probe."
+    ),
+    auth_uri="", token_uri="",
+    scopes={},
+    client_id_setting="", client_secret_setting="",
+    category="Market data",
+    summary="Cited JSON cards for material changes in SEC filings and for central-bank rate decisions.",
+    base_url="https://filingdelta.xyz",
+    docs_url="https://filingdelta.xyz/docs",
+    # Free — a garbage key returns HTTP 401 {"error":"unauthorized",...} (observed 2026-11-18).
+    probe_path="/buy/balance",
+)
+
+
 # Alpha Vantage is DELIBERATELY absent. Its API serves real quote data to a garbage key (bogus
 # key -> HTTP 200 with the IBM quote; even premium endpoints answer 200 with an upsell note), so a
 # pasted key can never be validated at connect - the ScrapeCreators rule:
@@ -4493,7 +4525,7 @@ REGISTRY: dict[str, OAuthProvider] = {
         ATLY,
         # Market data API-key providers
         COINGECKO, POLYGON, FINNHUB, TWELVEDATA, FMP, EODHD, MARKETSTACK, TIINGO,
-        FINANCIALDATASETS,
+        FINANCIALDATASETS, FILINGDELTA,
         # Advertising: API-key ad intelligence + unconfigured OAuth ad platforms
         SPYFU, APIFY, META_AD_LIBRARY, SERPAPI, DANSUGC,
         MICROSOFT_ADS, SNAPCHAT_ADS, TIKTOK_ADS, PINTEREST_ADS,
