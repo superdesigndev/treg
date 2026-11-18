@@ -129,8 +129,10 @@ return {1, 0}
 # A team's allowance counter: a hash of what is still available and the `epoch` of the database
 # hold that backs it. Epochs only grow, and every write checks the one stored: a give-back
 # reaches only its own counter, and a writer holding an older epoch never replaces a newer one.
-# `until` is the store's own clock time past which takes stop until the next add: what is
-# available is kept, but nothing new is spent from a counter nobody has refreshed.
+# `until` is the time, in epoch milliseconds, past which takes stop until a later add moves it
+# on: what is available is kept, but nothing new is spent from a counter nobody has refreshed.
+# The caller sets it from the instant it stamped the hold, so an add that arrives late admits
+# takes for less time or none, never for a window the hold's stamp does not cover.
 _ALLOWANCE_TAKE = """
 local avail = tonumber(redis.call('HGET', KEYS[1], 'avail'))
 if not avail or avail < tonumber(ARGV[1]) then return 0 end
@@ -153,10 +155,20 @@ if stored ~= ARGV[1] then
     redis.call('HSET', KEYS[1], 'epoch', ARGV[1], 'avail', '0')
 end
 local avail = redis.call('HINCRBY', KEYS[1], 'avail', ARGV[2])
-local t = redis.call('TIME')
-redis.call('HSET', KEYS[1], 'until', t[1] * 1000 + math.floor(t[2] / 1000) + tonumber(ARGV[3]))
+if tonumber(ARGV[3]) > tonumber(redis.call('HGET', KEYS[1], 'until') or '0') then
+    redis.call('HSET', KEYS[1], 'until', ARGV[3])
+end
 redis.call('PEXPIRE', KEYS[1], ARGV[4])
 return avail
+"""
+# Takes what is there when the counter holds less than asked: the caller is charging money the
+# counter may not go on offering.
+_ALLOWANCE_TAKE_UP_TO = """
+if redis.call('HGET', KEYS[1], 'epoch') ~= ARGV[1] then return 0 end
+local avail = tonumber(redis.call('HGET', KEYS[1], 'avail') or '0')
+local taken = math.min(avail, tonumber(ARGV[2]))
+if taken > 0 then redis.call('HINCRBY', KEYS[1], 'avail', string.format('%.0f', -taken)) end
+return taken
 """
 _ALLOWANCE_AVAILABLE = "return tonumber(redis.call('HGET', KEYS[1], 'avail') or '0')"
 # The hash stays, emptied, so its epoch keeps fencing writers that arrive later.
@@ -323,9 +335,13 @@ class Store(Protocol):
 
     async def allowance_take(self, org_id: int, amount_micro: int) -> int | None:
         """Take `amount_micro` from a team's allowance counter in one atomic step. The counter's
-        epoch when taken; 0 when the counter is absent, holds less, or was last added to longer
-        ago than that add's `fresh_ms`; None when the store cannot answer. Money is never taken
-        on 0 or None."""
+        epoch when taken; 0 when the counter is absent, holds less, or the store's clock is past
+        the latest `until_ms` an add set; None when the store cannot answer. Money is never
+        taken on 0 or None."""
+
+    async def allowance_take_up_to(self, org_id: int, epoch: int, amount_micro: int) -> int | None:
+        """Take `amount_micro` from the counter of `epoch`, or all it holds when that is less.
+        Returns what was taken (0 for another epoch); None when the store cannot answer."""
 
     async def allowance_give_back(self, org_id: int, epoch: int, amount_micro: int) -> bool | None:
         """Return part of a take to the counter it came from. False when that counter is gone or
@@ -333,10 +349,11 @@ class Store(Protocol):
         store cannot answer."""
 
     async def allowance_add(self, org_id: int, epoch: int, amount_micro: int, *,
-                            fresh_ms: int, ttl_ms: int) -> int | Literal["stale"] | None:
+                            until_ms: int, ttl_ms: int) -> int | Literal["stale"] | None:
         """Add to a team's counter after the same amount was committed to its hold. Takes are
-        admitted for `fresh_ms` from now, and the counter expires after `ttl_ms`. An amount of 0
-        only renews both. A counter of an older epoch is replaced, not added to. "stale" when
+        admitted until `until_ms` (epoch milliseconds; an earlier value than the one stored
+        changes nothing), and the counter expires after `ttl_ms`. An amount of 0 only renews
+        both. A counter of an older epoch is replaced, not added to. "stale" when
         the stored epoch is newer: this writer's hold has been closed since, and nothing is
         added. Otherwise what is now available; None when the store cannot answer."""
 
@@ -461,11 +478,14 @@ class LocalStore:
     async def allowance_take(self, org_id: int, amount_micro: int) -> int | None:
         return None
 
+    async def allowance_take_up_to(self, org_id: int, epoch: int, amount_micro: int) -> int | None:
+        return None
+
     async def allowance_give_back(self, org_id: int, epoch: int, amount_micro: int) -> bool | None:
         return None
 
     async def allowance_add(self, org_id: int, epoch: int, amount_micro: int, *,
-                            fresh_ms: int, ttl_ms: int) -> int | Literal["stale"] | None:
+                            until_ms: int, ttl_ms: int) -> int | Literal["stale"] | None:
         return None
 
     async def allowance_available(self, org_id: int) -> int | None:
@@ -595,14 +615,17 @@ class RedisStore:
             raise ValueError("an allowance take is a positive amount")
         return await self._allowance_eval(_ALLOWANCE_TAKE, org_id, amount_micro)
 
+    async def allowance_take_up_to(self, org_id: int, epoch: int, amount_micro: int) -> int | None:
+        return await self._allowance_eval(_ALLOWANCE_TAKE_UP_TO, org_id, epoch, amount_micro)
+
     async def allowance_give_back(self, org_id: int, epoch: int, amount_micro: int) -> bool | None:
         result = await self._allowance_eval(_ALLOWANCE_GIVE_BACK, org_id, epoch, amount_micro)
         return None if result is None else bool(result)
 
     async def allowance_add(self, org_id: int, epoch: int, amount_micro: int, *,
-                            fresh_ms: int, ttl_ms: int) -> int | Literal["stale"] | None:
+                            until_ms: int, ttl_ms: int) -> int | Literal["stale"] | None:
         result = await self._allowance_eval(
-            _ALLOWANCE_ADD, org_id, epoch, amount_micro, fresh_ms, ttl_ms)
+            _ALLOWANCE_ADD, org_id, epoch, amount_micro, until_ms, ttl_ms)
         return "stale" if result == -1 else result
 
     async def allowance_available(self, org_id: int) -> int | None:

@@ -159,13 +159,15 @@ since a given instant, checked under the hold's lock so a refill that lands firs
 `allowance.stale_allowance_orgs` lists the candidates.
 
 The hold is the authority; the shared store (`infra/kv.py`) only mirrors what of it is still
-unspent, as one hash per team holding `avail` and the hold's `epoch`. Six atomic operations:
+unspent, as one hash per team holding `avail` and the hold's `epoch`. Seven atomic operations:
 `allowance_take` subtracts an amount when the counter holds at least that much and returns the
 epoch; `allowance_give_back` returns part of a take, only to a counter of the same epoch;
-`allowance_add` adds what a refill just committed to the hold, admits takes for a given time from
-now and restarts the counter's expiry (takes stop when no add has refreshed the counter in that
-time, by the store's own clock, though what it holds is kept: this is what lets a sweep know that a
-hold no refill has stamped for that time plus the longest call has nobody spending from it);
+`allowance_add` adds what a refill just committed to the hold and sets the instant past which
+takes stop (what the counter holds is kept). The caller derives that instant from the stamp the
+refill put on the hold, not from when the add lands, and an earlier instant than the one stored
+changes nothing: a refill published late admits calls for less time or none. That is what lets a
+sweep conclude, from the stamp alone, that a hold has nobody spending from it;
+`allowance_take_up_to` takes an amount or all the counter holds when that is less;
 `allowance_available` reads what the counter holds, for sizing a refill;
 `allowance_drop` empties the counter and returns what it held, keeping the epoch, so that figure
 can be released from a hold that stays while calls already admitted keep theirs;
@@ -248,9 +250,11 @@ no counter offers: unavailable, not spent and not charged, until the hold is clo
 offers money the hold does not have.
 
 **The idle sweep** (`application/allowance_sweep.py`, a background task wherever background work
-runs, listed teams or not) is what returns that money. A call can take from the counter only for
-`money_allowance_fresh_s` after a refill, and a call lives at most `hold_ttl_s()`, so a hold no
-refill has stamped for those two plus a margin has nobody spending from it. The sweep closes each
+runs, listed teams or not) is what returns that money. A call can take from the counter only
+until `money_allowance_fresh_s` after the stamp of a refill, and a call lives at most
+`hold_ttl_s()`, so a hold no refill has stamped for those two plus a margin has nobody spending
+from it. The margin covers only the difference between clocks (the processes' and the store's);
+a process that stalls between a refill's commit and its publish cannot widen the window. The sweep closes each
 such hold in full (`close_stale_allowance_in_transaction`, under the release lease), then retires
 its counter so a late writer is refused. A charge recorded after that still finds no hold and
 comes out of the balance. While a team keeps calling, its hold is never idle and what a crash left

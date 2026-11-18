@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import asyncio
 import os
+import time
 from datetime import timedelta
 from uuid import uuid4
 
@@ -35,14 +36,26 @@ class FakeStore:
     def __init__(self) -> None:
         self.counters: dict[int, dict] = {}
         self.leases: dict[str, str] = {}
-        self.fresh = True
+        self.until_ms = 0
+
+    def expire(self) -> None:
+        """Move the clock past the deadline: takes stop until an add sets a later one."""
+        self.until_ms = 0
 
     async def allowance_take(self, org_id, amount):
         counter = self.counters.get(org_id)
-        if counter is None or not self.fresh or counter["avail"] < amount:
+        if counter is None or time.time() * 1000 > self.until_ms or counter["avail"] < amount:
             return 0
         counter["avail"] -= amount
         return counter["epoch"]
+
+    async def allowance_take_up_to(self, org_id, epoch, amount):
+        counter = self.counters.get(org_id)
+        if counter is None or counter["epoch"] != epoch:
+            return 0
+        taken = min(counter["avail"], amount)
+        counter["avail"] -= taken
+        return taken
 
     async def allowance_give_back(self, org_id, epoch, amount):
         counter = self.counters.get(org_id)
@@ -51,14 +64,14 @@ class FakeStore:
         counter["avail"] += amount
         return True
 
-    async def allowance_add(self, org_id, epoch, amount, *, fresh_ms, ttl_ms):
+    async def allowance_add(self, org_id, epoch, amount, *, until_ms, ttl_ms):
         counter = self.counters.get(org_id)
         if counter is not None and counter["epoch"] > epoch:
             return "stale"
         if counter is None or counter["epoch"] != epoch:
             counter = self.counters[org_id] = {"epoch": epoch, "avail": 0}
         counter["avail"] += amount
-        self.fresh = True
+        self.until_ms = max(self.until_ms, until_ms)
         return counter["avail"]
 
     async def allowance_available(self, org_id):
@@ -253,7 +266,7 @@ async def test_a_daily_cap_with_no_room_for_a_refill_sends_the_call_to_the_exact
 
 async def test_a_counter_no_longer_fresh_is_refreshed_and_topped_up_by_a_refill(org_id, store):
     epoch = await runtime.take(org_id, 600)
-    store.fresh = False
+    store.expire()
     assert await runtime.take(org_id, 600) == epoch
     assert store.counters[org_id]["avail"] == CHUNK - 600
     assert await _state(org_id) == (GRANT - CHUNK - 600, CHUNK + 600)
@@ -421,6 +434,22 @@ async def test_one_team_failing_to_close_does_not_stop_the_sweep(org_id, store, 
     assert await _state(org_id) == (GRANT - CHUNK, CHUNK)
 
 
+async def test_a_refill_published_late_admits_no_call_past_what_its_stamp_covers(
+        org_id, store, monkeypatch):
+    """The process stalls between the refill's commit and its publish. The sweep judges the
+    hold by the stamp, so the publish must not open a fresh window from the moment it lands."""
+    add = store.allowance_add
+
+    async def late(org, epoch, amount, *, until_ms, ttl_ms):
+        fresh_ms = get_settings().money_allowance_fresh_s * 1000
+        return await add(org, epoch, amount, until_ms=until_ms - fresh_ms - 1, ttl_ms=ttl_ms)
+
+    monkeypatch.setattr(store, "allowance_add", late)  # as if published a whole window late
+    assert await runtime.take(org_id, 600) is None
+    assert store.counters[org_id]["avail"] == CHUNK, "the money is there; no call may take it"
+    assert await _state(org_id) == (GRANT - CHUNK, CHUNK)
+
+
 # ---- a daily cap across midnight ---------------------------------------------------------------
 async def _move_hold_to_yesterday(org_id: int) -> None:
     async with session_maker() as db:
@@ -450,7 +479,7 @@ async def test_an_allowance_carried_over_midnight_cannot_take_the_day_past_its_c
 async def test_an_allowance_already_past_a_lowered_cap_is_drained(org_id, store):
     await runtime.take(org_id, 600, daily_cap_micro=CHUNK)
     await _move_hold_to_yesterday(org_id)
-    store.fresh = False  # the next take refills, and the refill sees the lower cap
+    store.expire()  # the next take refills, and the refill sees the lower cap
     assert await runtime.take(org_id, 600, daily_cap_micro=CHUNK // 2) is None
     assert store.counters[org_id]["avail"] == 0
     assert await _state(org_id) == (GRANT - 600, 600)  # the unfinished take stays in the hold

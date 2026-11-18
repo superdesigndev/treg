@@ -14,6 +14,7 @@ import logging
 import random
 import time
 import uuid
+from datetime import datetime, timedelta
 
 from ... import archive
 from ...config import get_settings
@@ -111,9 +112,12 @@ async def _refill(org_id: int, need_micro: int, daily_cap_micro: int) -> bool:
         if result.epoch is not None:
             await _drain(org_id, "no_room_to_refill")
         return False
+    # The deadline counts from the hold's stamp, not from now: the idle sweep reads that stamp,
+    # so a refill published late must not admit calls past what the stamp accounts for.
+    stamped_ms = (result.heartbeat_at - datetime(1970, 1, 1)) // timedelta(milliseconds=1)
     added = await store.allowance_add(
         org_id, result.epoch, result.added_micro,
-        fresh_ms=settings.money_allowance_fresh_s * 1000, ttl_ms=_COUNTER_TTL_MS)
+        until_ms=stamped_ms + settings.money_allowance_fresh_s * 1000, ttl_ms=_COUNTER_TTL_MS)
     return isinstance(added, int)
 
 

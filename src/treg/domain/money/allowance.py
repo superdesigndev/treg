@@ -179,6 +179,9 @@ class Allowance(NamedTuple):
     # The team's daily cap is already reached by what it has spent today plus what this
     # allowance can still spend: the caller must stop offering the allowance.
     over_cap: bool = False
+    # When this refill stamped the hold. Calls may be admitted against the allowance only for
+    # a set time after it, whenever the caller gets round to publishing the refill.
+    heartbeat_at: datetime | None = None
 
 
 def _epoch(hold: Hold) -> int:
@@ -257,7 +260,7 @@ async def refill_allowance_in_transaction(
         await db.delete(hold)
         return Allowance(None, 0, 0, folded, over_cap)
     hold.heartbeat_at = _now()
-    return Allowance(_epoch(hold), hold.amount_micro, added, folded, over_cap)
+    return Allowance(_epoch(hold), hold.amount_micro, added, folded, over_cap, hold.heartbeat_at)
 
 
 class Closed(NamedTuple):
