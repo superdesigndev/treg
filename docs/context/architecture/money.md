@@ -187,6 +187,17 @@ admitted, and two counts, `frozen` and `thawed`. The operations are atomic scrip
 - `allowance_retire` ends the counter of a hold being deleted, returning what it held and leaving
   the next epoch, with the old freezes, behind for a given time.
 
+The counter is only as good as the store's memory of it. A store that loses a hash is
+handled: the counts above, and a refill that rebuilds from the hold. A store that goes BACK to
+an earlier state of the same hash is not detected: one restored from an older snapshot, or a
+replica promoted before it received writes its primary had acknowledged. Takes and freezes
+from the lost interval are then undone, and that money can be admitted a second time. The
+damage is bounded, not prevented: at most what the stale hash still offers, only until its
+`until` (a refill's `money_allowance_fresh_s`), and the next refill takes back anything the
+counter holds above its hold; what was admitted twice is charged all the same and comes out
+of the balance. A deployment that can roll acknowledged writes back should take its teams
+off the allowance after such an event until the idle sweep has closed their holds.
+
 Epochs only grow (a later hold has a later `created_at`), and that is the fence: an add replaces
 a counter of an older epoch, and is refused as `"stale"` when the stored epoch is newer, so a
 refill whose add arrives after its hold was closed and another opened cannot put the closed hold's

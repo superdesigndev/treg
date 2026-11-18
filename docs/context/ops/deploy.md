@@ -276,7 +276,11 @@ to, `TREG_MONEY_ALLOWANCE_FRESH_S` how long a refill keeps admitting calls, and
 `TREG_MONEY_ALLOWANCE_LINGER_MS` how long finished calls wait to share one insert. Removing an id
 returns that org's new calls to the hold path at once; no migration is needed. The idle sweep
 (`application/allowance_sweep.py`) runs in the `all` and `control` roles and is one more
-consumer of the `background` pool, which is one connection larger per process for it.
+consumer of the `background` pool, which is one connection larger per process for it. The
+allowance trusts the store to keep the writes it acknowledged. A store that can go back to an
+earlier state (a restore from an older snapshot, a replica promoted before it caught up) can
+admit money twice for up to `TREG_MONEY_ALLOWANCE_FRESH_S`; after such an event, empty the
+list until the sweep has closed the allowance holds, then list the teams again.
 
 Raising `TREG_MONEY_ADMISSION_WAIT_S` lengthens no other timeout: Redis command budgets, the
 upstream `call_timeout_s`, hold age (`call_timeout_s + hold_grace_s`), CLI, local-proxy and MCP
