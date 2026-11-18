@@ -101,8 +101,11 @@ def test_migrations_fail_fast_rather_than_queueing_the_world():
     migrations so a contended deploy fails cleanly instead."""
     from importlib.resources import files
 
+    from treg.config import Settings
+
     env_src = files("treg").joinpath("alembic", "env.py").read_text()
-    assert "lock_timeout = '5s'" in env_src
+    assert "SET lock_timeout = '{lock_ms}ms'" in env_src
     assert "statement_timeout = '120s'" in env_src
-    assert env_src.index("lock_timeout = '5s'") < env_src.index("run_sync(_run_migrations)"), (
-        "the timeout must be set BEFORE Alembic migrations run")
+    assert env_src.index("in _session_timeouts():\n                await") < env_src.index(
+        "run_sync(_run_migrations)"), "the timeout must be set BEFORE Alembic migrations run"
+    assert Settings.model_fields["migration_lock_timeout_s"].default <= 5

@@ -263,6 +263,18 @@ class Settings(BaseSettings):
     # visible from a test. A wrong number must be a dashboard edit, not a deploy.
     db_pool_overrides: str = ""
 
+    # `python -m treg upgrade` on PostgreSQL (docs/context/ops/deploy.md "PostgreSQL lock
+    # queueing"). The lock wait stays above PostgreSQL's default `deadlock_timeout` (1 s): that is
+    # when a waiting ALTER makes an ordinary autovacuum give up its lock, so a wait of exactly 1 s
+    # can time out at the instant it would have won.
+    migration_lock_timeout_s: float = Field(default=2.0, gt=1, le=5)
+    migration_lock_retry_attempts: int = Field(default=30, ge=1, le=200)
+    migration_lock_retry_pause_s: float = Field(default=2.0, ge=0, le=60)
+    migration_lock_retry_budget_s: float = Field(default=600.0, gt=0)
+    migration_lock_holder_check: bool = True
+    migration_lock_holder_check_skip: str = ""
+    migration_lock_holder_max_xact_s: float = Field(default=30.0, gt=0)
+
     # Fernet key (urlsafe base64, 32 bytes). Generate with `treg keygen` (see crypto.py).
     # Empty in dev means an ephemeral key is minted at startup (secrets won't survive a restart).
     secret_key: str = ""
