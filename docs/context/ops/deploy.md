@@ -425,8 +425,10 @@ job's credentials. `treg-worker --help` lists them; what follows is what a sched
   balances should be observed.
 - **`asynctasks settle`** completes durable holds for asynchronous upstream operations. Where
   teams spend from an allowance it needs `TREG_KV_URL` too: a task that settles past its hold
-  freezes its team's counter, and without the store the job cannot. The job waits a bounded
-  time before it exits for the freezes it owes, and says on stderr how many it lost.
+  freezes its team's counter, and without the store the job cannot. Every worker command
+  waits a bounded time before it exits for the freezes it owes (a hub check settles child calls
+  too), waking any that were pausing before another attempt, and says on stderr how many it
+  lost.
 - **`billing reconcile`** checks the top-ups Stripe collected against the ledger
   ([money](../architecture/money.md), "Reconciliation against Stripe"); run it at least daily with an
   overlapping `--hours`. It exits 1 on a gap and posts to `TREG_OPS_SLACK_WEBHOOK_URL` when set.

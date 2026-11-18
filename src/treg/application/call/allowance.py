@@ -440,6 +440,8 @@ async def deliver_owed_freezes(timeout_s: float = 10.0) -> int:
     freezes it owes to reach the store. Returns how many are still owed; those are lost with
     the process."""
     tasks = [task for task in _freeze_tasks.values() if not task.done()]
+    for wake in _freeze_wake.values():
+        wake.set()  # a task pausing before its next attempt tries now, not after the pause
     if tasks:
         await asyncio.wait(tasks, timeout=timeout_s)
     return sum(_freezes_due.values())

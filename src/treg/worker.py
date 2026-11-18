@@ -255,6 +255,20 @@ async def _overflow_verify(args) -> int:
     return 0
 
 
+async def _deliver_owed_freezes() -> None:
+    """A command that settled a call past its hold (the async settle tick, a hub check's child
+    calls) left its team's allowance freeze to a task of its own. The process ends with the
+    command, so it waits here, a bounded time and before the store is closed."""
+    if "treg.application.call.allowance" not in sys.modules:
+        return  # the command never touched the call runtime: nothing can be owed
+    try:
+        lost = await sys.modules["treg.application.call.allowance"].deliver_owed_freezes()
+    except Exception:  # noqa: BLE001 - preserve the command's result/failure
+        return
+    if lost:
+        print(f"{lost} allowance freeze(s) did not reach the store before exit", file=sys.stderr)
+
+
 async def _asynctasks_settle(args) -> int:
     from .infra.db import verify_db
     from .application.asynctasks import settle_due
@@ -264,17 +278,10 @@ async def _asynctasks_settle(args) -> int:
     from . import call_events
 
     await verify_db()
-    from .application.call import allowance as allowance_runtime
-
     try:
         result = await settle_due(limit=args.limit)
     finally:
         await call_events.drain()  # the terminal events this tick observed
-        # A settlement past its hold freezes its team's allowance counter from a task of its
-        # own; this process ends with the tick, so it waits for those here.
-        lost = await allowance_runtime.deliver_owed_freezes()
-        if lost:
-            print(f"{lost} allowance freeze(s) did not reach the store before exit", file=sys.stderr)
     print(json.dumps(result.__dict__, sort_keys=True))
     return 0
 
@@ -768,6 +775,7 @@ async def _run_command(args) -> int:
                 except Exception:  # noqa: BLE001 - preserve the command's result/failure
                     pass
                 finally:
+                    await _deliver_owed_freezes()
                     await kv.close()
     finally:
         try:
