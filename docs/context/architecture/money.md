@@ -223,9 +223,14 @@ money moved, the purchased-credit gate.
 - **refill.** Under the money admission lease, like a reserve: reap stale holds, then
   `refill_allowance_in_transaction` folds queued charges and brings the counter up to
   `money_allowance_chunk_micro`; after the commit, `store.allowance_add`. A team with a daily cap
-  gets no refill that would pass it: the whole chunk is in today's counter from the moment it
-  is moved, so calls spending from it cannot exceed the cap. When the counter still cannot cover
-  the call (balance or cap), the counter is emptied and that amount released back to the balance,
+  gets no refill that could take the day past it. The refill computes the day's worst case after
+  its fold, under the hold's lock: today's counter, plus the amount asked for, plus all of a hold
+  opened on an earlier day. Such a hold is not in today's counter (only what a fold consumes from
+  it is), yet all of it can be spent today, so leaving it out would let a team spend yesterday's
+  chunk and then be given another. A hold opened today is already in the counter in full. The
+  exact path's cap check adds the same earlier-day amount for a listed team. When the counter
+  still cannot cover
+  the call (balance or cap), or the worst case already exceeds the cap, the counter is emptied and that amount released back to the balance,
   the call takes the exact path, and the team is not tried again for a few seconds. A team with
   less than a chunk left is therefore served by the exact path.
 - **finish.** `_platform_settle` and the cancel cleanup end a take exactly once (`mk.allowance_epoch`

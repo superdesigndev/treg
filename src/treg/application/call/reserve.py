@@ -15,6 +15,7 @@ from ...application import billing
 from ...caller_metadata import TAG_DEFAULT
 from ...config import get_settings
 from ...domain import money as ledger
+from ...domain.money import allowance as money_allowance
 from ...domain.catalog import store as catalog_store
 from ...domain.governance import budgets as budget_policy
 from ...domain.governance.usage import _day_start_utc
@@ -148,6 +149,10 @@ async def _enforce_platform_daily_cap(caller: Caller, add_micro: int, db: AsyncS
         return
     try:
         spent = await ledger.spent_today(db, caller.org_id)
+        if allowance_runtime.enabled_for(caller.org_id):
+            # An allowance opened on an earlier day can still be spent today and is not in
+            # today's counter; this call's own hold must leave room for it.
+            spent += await money_allowance.uncounted_allowance_micro(db, caller.org_id)
     except Exception as exc:  # cannot verify the ceiling ⇒ do not spend
         logging.getLogger("treg.ledger").warning(
             "platform daily-cap check failed for org %s: %s", caller.org_id, exc)

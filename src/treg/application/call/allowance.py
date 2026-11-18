@@ -97,10 +97,8 @@ async def _refill(org_id: int, need_micro: int, daily_cap_micro: int) -> bool:
             money_session(session_maker()) as db,
         ):
             await ledger.reap_stale_holds(db, org_id=org_id)
-            if daily_cap_micro > 0 and add and (
-                    await ledger.spent_today(db, org_id) + add > daily_cap_micro):
-                add = 0
-            result = await allowance.refill_allowance_in_transaction(db, org_id, add)
+            result = await allowance.refill_allowance_in_transaction(
+                db, org_id, add, daily_cap_micro=daily_cap_micro)
             await db.commit()
     except money_admission.ReserveAdmissionTimeout:
         return False
@@ -108,7 +106,7 @@ async def _refill(org_id: int, need_micro: int, daily_cap_micro: int) -> bool:
     log.info("allowance_refill org_id=%s added=%s hold=%s counter_before=%s folded=%s duplicates=%s",
              org_id, result.added_micro, result.amount_micro, available,
              result.folded.calls, result.folded.duplicates)
-    if result.epoch is None or available + result.added_micro < need_micro:
+    if result.epoch is None or result.over_cap or available + result.added_micro < need_micro:
         _refused_until[org_id] = time.monotonic() + _REFUSAL_COOLDOWN_S
         if result.epoch is not None:
             await _drain(org_id, "no_room_to_refill")

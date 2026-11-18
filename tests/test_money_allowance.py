@@ -242,6 +242,42 @@ async def test_a_top_up_of_a_hold_opened_yesterday_stays_out_of_todays_counter(o
     assert await _daily_counter_agrees(org_id) == 300
 
 
+async def test_a_refill_under_a_daily_cap_counts_the_fold_and_an_earlier_days_hold(org_id):
+    """A hold opened yesterday is not in today's counter, yet all of it can be spent today."""
+    await _open(org_id, 5_000, age=timedelta(days=1))
+    await _record(org_id, 1_000)
+
+    async def refill(add: int, cap: int) -> allowance.Allowance:
+        async with session_maker() as db:
+            result = await allowance.refill_allowance_in_transaction(
+                db, org_id, add, daily_cap_micro=cap)
+            await db.commit()
+        return result
+
+    # After the fold: 1_000 spent today, 4_000 still in yesterday's hold.
+    blocked = await refill(2_000, cap=6_999)
+    assert (blocked.added_micro, blocked.amount_micro, blocked.over_cap) == (0, 4_000, False)
+    assert (await refill(2_000, cap=7_000)).added_micro == 2_000
+    over = await refill(1, cap=6_999)
+    assert (over.added_micro, over.over_cap) == (0, True)
+    async with session_maker() as db:
+        assert await allowance.uncounted_allowance_micro(db, org_id) == 6_000
+    assert await _invariant(org_id) == GRANT - 1_000 - 6_000
+
+
+async def test_a_hold_opened_today_is_already_in_the_counter_a_cap_is_checked_against(org_id):
+    await _refill(org_id, 5_000)
+    async with session_maker() as db:
+        assert await allowance.uncounted_allowance_micro(db, org_id) == 0
+        result = await allowance.refill_allowance_in_transaction(
+            db, org_id, 2_000, daily_cap_micro=7_000)
+        assert (result.added_micro, result.over_cap) == (2_000, False)
+        again = await allowance.refill_allowance_in_transaction(
+            db, org_id, 1, daily_cap_micro=7_000)
+        assert (again.added_micro, again.over_cap) == (0, False)
+        await db.commit()
+
+
 async def test_closing_returns_what_is_left_and_deletes_the_hold(org_id):
     await _refill(org_id, 30_000)
     await _record(org_id, 4_000)

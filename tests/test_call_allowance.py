@@ -16,6 +16,7 @@ from treg.application.call import reserve as call_reserve
 from treg.application.call import settle as call_settle
 from treg.application.call.intake import CallMeta
 from treg.application.call.resolve import MarketplaceCall
+from treg.application.call.types import ReservationFailed
 from treg.config import get_settings
 from treg.domain import money as ledger
 from treg.domain.money import allowance
@@ -418,6 +419,57 @@ async def test_one_team_failing_to_close_does_not_stop_the_sweep(org_id, store, 
     monkeypatch.setattr(allowance, "close_stale_allowance_in_transaction", broken)
     assert await allowance_sweep.sweep_once(session_maker) == 0
     assert await _state(org_id) == (GRANT - CHUNK, CHUNK)
+
+
+# ---- a daily cap across midnight ---------------------------------------------------------------
+async def _move_hold_to_yesterday(org_id: int) -> None:
+    async with session_maker() as db:
+        await db.execute(update(Hold).where(Hold.org_id == org_id, Hold.allowance.is_(True)).values(
+            created_at=ledger._now() - timedelta(days=1)))
+        await db.execute(update(Org).where(Org.id == org_id).values(
+            spent_today_day=(ledger._now() - timedelta(days=1)).date()))
+        await db.commit()
+
+
+async def test_an_allowance_carried_over_midnight_cannot_take_the_day_past_its_cap(org_id, store):
+    """Yesterday's chunk is spent today; the refill that follows must not add another."""
+    cap = CHUNK
+    epoch = await runtime.take(org_id, 1_000, daily_cap_micro=cap)
+    await _finish(org_id, "warm-up", epoch, 1_000, billable=False)
+    await _move_hold_to_yesterday(org_id)
+    for index in range(4):
+        taken = await runtime.take(org_id, CHUNK // 4, daily_cap_micro=cap)
+        await _finish(org_id, f"today-{index}", taken, CHUNK // 4, billable=True)
+    assert store.counters[org_id]["avail"] == 0
+    assert await runtime.take(org_id, 1_000, daily_cap_micro=cap) is None
+    async with session_maker() as db:
+        assert await ledger.spent_today(db, org_id) == cap
+    assert await _state(org_id) == (GRANT - CHUNK, 0)
+
+
+async def test_an_allowance_already_past_a_lowered_cap_is_drained(org_id, store):
+    await runtime.take(org_id, 600, daily_cap_micro=CHUNK)
+    await _move_hold_to_yesterday(org_id)
+    store.fresh = False  # the next take refills, and the refill sees the lower cap
+    assert await runtime.take(org_id, 600, daily_cap_micro=CHUNK // 2) is None
+    assert store.counters[org_id]["avail"] == 0
+    assert await _state(org_id) == (GRANT - 600, 600)  # the unfinished take stays in the hold
+
+
+async def test_the_exact_path_leaves_room_for_an_allowance_carried_over_midnight(org_id, store):
+    caller = await _caller(org_id)
+    caller.org.daily_cap_micro = CHUNK + 500
+    await runtime.take(org_id, 600, daily_cap_micro=CHUNK + 500)
+    await _move_hold_to_yesterday(org_id)
+    with pytest.raises(ReservationFailed) as refused:
+        await call_reserve._platform_reserve(
+            _call(org_id), caller, CallMeta(tags={"user": "u1"}), "tagged-1", allow_allowance=True)
+    assert refused.value.kind == "platform_daily_cap_reached"
+    assert await _per_call_holds(org_id) == []
+    await call_reserve._platform_reserve(
+        _call(org_id, estimate=400), caller, CallMeta(tags={"user": "u1"}), "tagged-2",
+        allow_allowance=True)
+    assert await _per_call_holds(org_id) == ["tagged-2"]
 
 
 # ---- the real store ----------------------------------------------------------------------------

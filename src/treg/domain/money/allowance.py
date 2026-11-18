@@ -28,6 +28,7 @@ from . import (
     _lock_blocks,
     _now,
     _spent_today_values,
+    spent_today,
     with_margin,
 )
 
@@ -175,14 +176,32 @@ class Allowance(NamedTuple):
     amount_micro: int
     added_micro: int
     folded: Folded
+    # The team's daily cap is already reached by what it has spent today plus what this
+    # allowance can still spend: the caller must stop offering the allowance.
+    over_cap: bool = False
 
 
 def _epoch(hold: Hold) -> int:
     return (hold.created_at - datetime(1970, 1, 1)) // timedelta(microseconds=1)
 
 
+def _uncounted(hold: Hold | None) -> int:
+    """What an allowance hold can still spend today without today's counter knowing: all of
+    it when the hold was opened on an earlier day, since such a hold and its top-ups are not
+    in the counter until a fold puts what was consumed there."""
+    return hold.amount_micro if hold is not None and hold.created_at < _day_start() else 0
+
+
+async def uncounted_allowance_micro(db: AsyncSession, org_id: int) -> int:
+    """`_uncounted` for a team's allowance, for a daily-cap check made outside a refill."""
+    row = (await db.execute(select(Hold.amount_micro, Hold.created_at).where(
+        Hold.id == allowance_id(org_id)))).one_or_none()
+    return int(row[0]) if row is not None and row[1] < _day_start() else 0
+
+
 async def refill_allowance_in_transaction(
-    db: AsyncSession, org_id: int, add_micro: int, *, fold_limit: int = FOLD_BATCH,
+    db: AsyncSession, org_id: int, add_micro: int, *, daily_cap_micro: int = 0,
+    fold_limit: int = FOLD_BATCH,
 ) -> Allowance:
     """Fold a batch of queued charges, then move `add_micro` from the balance into the team's
     allowance hold, opening the hold if there is none. In the caller's transaction, before any
@@ -192,6 +211,11 @@ async def refill_allowance_in_transaction(
     cannot cover it adds nothing and raises nothing: the fold still stands, and `added_micro`
     of 0 tells the caller to stop spending from the allowance. `add_micro` is money, not a
     provider cost: no margin is applied. Stamps the hold's heartbeat.
+
+    With `daily_cap_micro`, nothing is added that could take the day past the cap. The day's
+    worst case is read AFTER the fold, under the hold's lock: what today's counter holds, plus
+    all of a hold opened on an earlier day (`_uncounted`), plus the amount asked for. `over_cap`
+    reports that the first two alone already exceed the cap.
     """
     mark_money(db, "refill", org_id=org_id)
     add = max(0, int(add_micro))
@@ -208,8 +232,14 @@ async def refill_allowance_in_transaction(
         ).on_conflict_do_nothing(index_elements=[Hold.id]))).rowcount == 1
         hold = await _lock_allowance(db, org_id)
     folded = await _fold(db, org_id, hold, fold_limit)
+    over_cap = False
+    if daily_cap_micro > 0:
+        exposed = await spent_today(db, org_id) + _uncounted(hold)
+        over_cap = exposed > daily_cap_micro
+        if exposed + add > daily_cap_micro:
+            add = 0
     if hold is None:
-        return Allowance(None, 0, 0, folded)
+        return Allowance(None, 0, 0, folded, over_cap)
     added = 0
     if add:
         counted = _spent_today_values(add) if hold.created_at >= _day_start() else {}
@@ -225,9 +255,9 @@ async def refill_allowance_in_transaction(
                                "hold_micro": hold.amount_micro})
     if opened and not added:
         await db.delete(hold)
-        return Allowance(None, 0, 0, folded)
+        return Allowance(None, 0, 0, folded, over_cap)
     hold.heartbeat_at = _now()
-    return Allowance(_epoch(hold), hold.amount_micro, added, folded)
+    return Allowance(_epoch(hold), hold.amount_micro, added, folded, over_cap)
 
 
 class Closed(NamedTuple):
