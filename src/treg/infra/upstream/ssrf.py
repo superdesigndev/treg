@@ -82,16 +82,23 @@ def _lookup_executor() -> ThreadPoolExecutor:
 
 async def host_is_public_async(host: str, check=None) -> bool:
     """host_is_public off the event loop, on a small dedicated pool. At most one lookup per host is in
-    flight; a caller arriving meanwhile awaits the same answer. No verdict is kept once it lands."""
+    flight; a caller arriving meanwhile awaits the same answer. No verdict is kept once it lands.
+    A caller waits at most `ssrf_lookup_timeout_s` and then gets False; the lookup itself keeps its
+    thread until the resolver returns, and later callers for that host join it."""
     if not host:
         return False
+    from ...config import get_settings
     fut = _inflight.get(host)
     if fut is None:
         loop = asyncio.get_running_loop()
         fut = loop.run_in_executor(_lookup_executor(), check or host_is_public, host)
         _inflight[host] = fut
         fut.add_done_callback(lambda f, h=host: _inflight.pop(h, None) if _inflight.get(h) is f else None)
-    return await asyncio.shield(fut)
+    limit = get_settings().ssrf_lookup_timeout_s
+    try:
+        return await asyncio.wait_for(asyncio.shield(fut), limit if limit > 0 else None)
+    except TimeoutError:
+        return False
 
 
 async def url_host_is_public(url: object) -> bool:

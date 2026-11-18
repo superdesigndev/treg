@@ -310,7 +310,9 @@ and not the other locks out a family of clients, and the gap hides because the c
 does not need the other path.
 
 The CIMD fetch is fenced because the URL is caller-chosen: https only, no redirects, a public address
-at connect time, bounded time and size, reusing `health.safe_webhook_url` and `health.host_is_public`.
+at connect time, bounded time and size, reusing `health.safe_webhook_url` and the off-loop
+`health.host_is_public_async` (the lookup never blocks the event loop and gives up after
+`ssrf_lookup_timeout_s`).
 The document must claim its own URL, or a document hosted anywhere could assert someone else's
 `client_id` and inherit their consent. `redirect_uris` match exactly, never by prefix
 (`https://good.test/cb.evil` starts with the registered value).
