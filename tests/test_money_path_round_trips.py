@@ -1,8 +1,10 @@
 """Database work on a metered call's money path: pool checkouts per call, statements under the
-team's money session, and the stale-hold sweep that can replace the lazy reap."""
+team's money session, no connection held while the caller uploads, auto top-up after reserve, and
+the stale-hold sweep that can replace the lazy reap."""
 
 from __future__ import annotations
 
+import asyncio
 import traceback
 from datetime import timedelta
 
@@ -15,6 +17,7 @@ from treg import audit
 from treg.application import billing
 from treg.application import hold_sweep
 from treg.application.call import reserve as call_reserve
+from treg.application.call import service as call_service
 from treg.application.call import settle as call_settle
 from treg.application.call.resolve import MarketplaceCall
 from treg.config import get_settings
@@ -26,7 +29,7 @@ from treg.infra.db import reset_db, session_maker
 from treg.models import CreditBlock, Hold, LedgerEntry, Membership, Org, Tool, User
 from treg.timeutil import utcnow_naive
 
-from test_marketplace_call import EP, platform_on  # noqa: F401 - fixture reuse
+from test_marketplace_call import EP, EP_DFS, _fake_relay, platform_on  # noqa: F401 - fixture reuse
 
 
 async def test_metered_call_takes_four_pool_checkouts(clients: AsyncClient, platform_on, monkeypatch):
@@ -243,3 +246,131 @@ async def test_sweep_moves_past_holds_it_could_not_release(money_db, monkeypatch
     assert (result.seen, result.released_micro, result.complete) == (6, 100, True)
     assert await _entries("stale-last") == ["release", "reserve"]
     assert await _drift(org_id) == 0
+
+
+async def _autotopup_with_card(clients: AsyncClient, threshold_micro: int) -> int:
+    org_id = (await clients.get("/orgs")).json()[0]["org_id"]
+    async with session_maker() as db:
+        org = await db.get(Org, org_id)
+        org.autotopup_enabled = True
+        org.autotopup_consented_at = utcnow_naive()
+        org.stripe_customer_id = "cus_test"
+        org.stripe_default_pm = "pm_test"
+        org.autotopup_threshold_micro = threshold_micro
+        await db.commit()
+    return org_id
+
+
+@pytest.mark.parametrize("threshold_micro", [1, 10**12], ids=["balance-healthy", "refill-due"])
+async def test_metered_call_with_auto_top_up_and_a_saved_card(
+        clients: AsyncClient, platform_on, monkeypatch, threshold_micro):
+    monkeypatch.setattr(get_settings(), "stripe_secret_key", "sk_test_not_a_key")
+    started: list[int] = []
+
+    async def no_stripe(org_id: int) -> None:
+        started.append(org_id)
+        billing._scheduled.discard(org_id)
+
+    monkeypatch.setattr(billing, "_run_autotopup", no_stripe)
+    org_id = await _autotopup_with_card(clients, threshold_micro)
+    response = await clients.get(f"/call/{EP}?aweme_id=autotopup-{threshold_micro}")
+    await asyncio.sleep(0)
+    assert response.status_code == 200, response.text
+    assert started == ([] if threshold_micro == 1 else [org_id])
+    async with session_maker() as db:
+        assert (await db.execute(select(Hold).where(Hold.org_id == org_id))).first() is None
+    assert await _drift(org_id) == 0
+
+
+async def test_a_failing_auto_top_up_check_never_fails_the_committed_call(
+        clients: AsyncClient, platform_on, monkeypatch):
+    org_id = await _autotopup_with_card(clients, 10**12)
+
+    def broken(*_args, **_kwargs):
+        raise RuntimeError("auto top-up check failed")
+
+    monkeypatch.setattr(billing, "maybe_schedule_autotopup", broken)
+    response = await clients.get(f"/call/{EP}?aweme_id=autotopup-broken")
+    assert response.status_code == 200, response.text
+    async with session_maker() as db:
+        assert (await db.execute(select(Hold).where(Hold.org_id == org_id))).first() is None
+    assert await _drift(org_id) == 0
+
+
+class _HeldConnections:
+    """Pooled connections checked out right now, by the treg frames that took them."""
+
+    def __init__(self) -> None:
+        self.held: dict[int, list[str]] = {}
+        self._engine = session_maker.kw["bind"].sync_engine
+
+    def _out(self, _dbapi, record, _proxy) -> None:
+        parent = greenlet.getcurrent().parent
+        frames = traceback.extract_stack(parent.gr_frame if parent else None)
+        self.held[id(record)] = [f.name for f in frames if "/treg/" in f.filename][-3:]
+
+    def _in(self, _dbapi, record) -> None:
+        self.held.pop(id(record), None)
+
+    def __enter__(self):
+        event.listen(self._engine, "checkout", self._out)
+        event.listen(self._engine, "checkin", self._in)
+        return self
+
+    def __exit__(self, *_exc) -> None:
+        event.remove(self._engine, "checkout", self._out)
+        event.remove(self._engine, "checkin", self._in)
+
+
+VENDOR_PATH = "dataforseo/serp/google/organic/live/advanced"
+
+
+def _quiet_side_writers(monkeypatch) -> None:
+    """The fake upstream, and no key last-used writer: it takes its own connection on its own task."""
+    monkeypatch.setattr(call_service, "relay", _fake_relay(200, b'[{"ok":1}]'))
+    monkeypatch.setattr(managed_keys, "touch", lambda *args, **kwargs: None)
+
+
+@pytest.mark.parametrize("rest", [EP_DFS, VENDOR_PATH], ids=["catalog-id", "vendor-path"])
+async def test_no_connection_is_held_while_the_body_uploads(
+        clients: AsyncClient, platform_on, monkeypatch, rest):
+    _quiet_side_writers(monkeypatch)
+    await audit.drain()
+    stalled, resume = asyncio.Event(), asyncio.Event()
+
+    async def slow_body():
+        yield b'[{"keyword": "coffee", "location_code": 2840'
+        stalled.set()
+        await resume.wait()
+        yield b', "language_code": "en"}]'
+
+    with _HeldConnections() as pool:
+        task = asyncio.create_task(clients.post(
+            f"/call/{rest}", content=slow_body(), headers={"content-type": "application/json"}))
+        try:
+            await asyncio.wait_for(stalled.wait(), 5)
+            await asyncio.sleep(0.3)
+            held_while_uploading = list(pool.held.values())
+        finally:
+            resume.set()
+            response = await asyncio.wait_for(task, 10)
+    assert held_while_uploading == []
+    assert response.status_code == 200, response.text
+
+
+async def test_a_vendor_path_call_refreshes_the_views_before_any_connection(
+        clients: AsyncClient, platform_on, monkeypatch):
+    _quiet_side_writers(monkeypatch)
+    await audit.drain()
+    loaded = call_service.load_marketplace_views
+    held_at_refresh: list[int] = []
+    with _HeldConnections() as pool:
+        async def counted() -> None:
+            held_at_refresh.append(len(pool.held))
+            await loaded()
+
+        monkeypatch.setattr(call_service, "load_marketplace_views", counted)
+        response = await clients.post(f"/call/{VENDOR_PATH}", json=[
+            {"keyword": "coffee", "location_code": 2840, "language_code": "en"}])
+    assert response.status_code == 200, response.text
+    assert held_at_refresh == [0]

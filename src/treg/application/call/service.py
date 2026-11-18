@@ -874,6 +874,16 @@ async def _admit_org_endpoint(request: _ApplicationRequest, endpoint_id: str) ->
     })
 
 
+def _vendor_path_row(rest: str, request: _ApplicationRequest) -> dict | None:
+    """The catalog row a vendor path names, or None; a refusal is left to the resolution order, where
+    a team's own tool of that provider's name wins first."""
+    try:
+        found = vendor_path_endpoint(rest, request.method, request.query_params)
+    except CallFailure:
+        return None
+    return found[0] if found else None
+
+
 async def _execute_call(request: _ApplicationRequest, upstream_client: httpx.AsyncClient) -> UpstreamResponse:
     caller = request.caller
     rest = request.raw_rest
@@ -947,8 +957,14 @@ async def _execute_call(request: _ApplicationRequest, upstream_client: httpx.Asy
         # checkout, ended by authorization's commit. The views a catalog resolution reads refresh
         # first, while no connection is held.
         named = _catalog_endpoint_for(rest)
-        if named is not None and named.get("kind") != "routed":
-            await _await_before_reserve(load_marketplace_views(), request, call_ref)
+        catalog_row = named if named is not None else _vendor_path_row(rest, request)
+        if catalog_row is not None:
+            # A catalog call reads the whole body anyway; reading it before the session's first
+            # statement keeps a slow upload from holding a pooled connection idle in transaction.
+            if request.has_body:
+                await _await_before_reserve(request.body(), request, call_ref)
+            if catalog_row.get("kind") != "routed":
+                await _await_before_reserve(load_marketplace_views(), request, call_ref)
         try:
             target = await _await_before_reserve(
                 resolve_call_target(rest, caller, _resolve_call, db), request, call_ref)

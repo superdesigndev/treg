@@ -860,7 +860,9 @@ low balance produces ONE charge.
 
 The call path asks for a refill after a reserve commits and after a refused one. Only for a team
 with auto top-up on, the committed path hands `maybe_schedule_autotopup` the balance the gate's
-UPDATE returned, once the money lease is released; it reads nothing.
+UPDATE returned, once the money lease is released; it reads nothing. The fields that check reads
+travel on the caller's `OrgSnapshot` (card, customer, last attempt, failures), and a failure there
+is logged, never turned into a failed call: the hold is already committed.
 
 - The stamp is a compare-and-set on `autotopup_last_attempt_at`: `_lock` is per process, so only the
   first process to match the value it read proceeds and the rest return `cooldown` before any Stripe

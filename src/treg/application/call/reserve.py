@@ -478,9 +478,14 @@ async def _platform_reserve(mk: MarketplaceCall, caller: Caller, meta: CallMeta 
                 with timing.phase("commit"):
                     await db.commit()
         # Scheduled after the lease is gone. Auto top-up sees the balance crossing that triggered
-        # this reservation: the gate's UPDATE returned it, so the org row is not read again.
+        # this reservation: the gate's UPDATE returned it, so the org row is not read again. The
+        # hold is committed; a failure here must not fail the call.
         if auto_on:
-            billing.maybe_schedule_autotopup(caller.org, balance_micro=reserved.balance_micro)
+            try:
+                billing.maybe_schedule_autotopup(caller.org, balance_micro=reserved.balance_micro)
+            except Exception as exc:  # noqa: BLE001
+                logging.getLogger("treg.ledger").warning(
+                    "auto top-up check after reserve failed for org %s: %s", caller.org_id, exc)
     except ledger.PurchasedCreditShort as exc:
         if refused_org is not None:
             billing.maybe_schedule_autotopup(refused_org)

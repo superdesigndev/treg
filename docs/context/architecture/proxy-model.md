@@ -236,9 +236,14 @@ Non-2xx, encoded, streamed free fetches and spooled answers are never rewritten.
 
 Resolution, catalog resolution and authorization share the request session (`request.db`): one
 checkout, ended by `authorize_call`'s commit, so a metered call takes four checkouts in all (sign-in,
-that session, reserve, settle). The cached capacity and overflow views refresh first
-(`load_marketplace_views`), before that session's first statement, because their refresh opens a
-session of its own; a routed endpoint commits the request session before its children run, and a
+that session, reserve, settle). When the target is a catalog row (a catalog id, or a vendor path
+`<provider>/<path>` that `vendor_path_endpoint` matches), two things happen before that session's
+first statement, while no connection is held: the caller's body is read whole (a catalog call reads
+it anyway, and a slow upload must not keep a connection idle in transaction), and the cached
+capacity and overflow views refresh (`load_marketplace_views`; routed rows skip it), because their
+refresh opens a session of its own. A call to the team's own tool streams its body as before,
+unless its name is also a catalog id or a provider whose catalog row matches the path. A
+routed endpoint commits the request session before its children run, and a
 cancellation closes it before compensation. Reservation and settlement own their money sessions.
 `service._execute_call` commits the request's secret-loading session before reservation and again
 before relay or the live demo's network call: **zero checked-out request connections during upstream I/O**, including
