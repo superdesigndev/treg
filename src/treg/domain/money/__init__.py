@@ -421,14 +421,21 @@ async def reserve_in_transaction(
     mark_money(db, "reserve", org_id=org_id, call_id=call_id)
     if purchased_only and charged > 0:
         await _purchased_gate(db, org_id, charged)
+    # Most teams have nothing queued, and the statement that subtracts a queue costs more to plan
+    # than the gate itself: one read of the queue's index says which gate this reserve needs. A
+    # charge queued after this read is one the reserve was ahead of.
+    with money_stage(db, "reserve_queue"):
+        queued = (await db.execute(
+            select(CallCharge.call_id).where(CallCharge.org_id == org_id).limit(1))).first()
+    free = Org.balance_micro - _queued_unbacked(org_id) if queued else Org.balance_micro
     gate = (
         # The gate. One statement: the WHERE is the check and the SET is the debit, so two concurrent
         # callers cannot both pass it. rowcount 0 = the balance was not there.
         update(Org)
-        .where(Org.id == org_id, Org.balance_micro - _queued_unbacked(org_id) >= charged)
+        .where(Org.id == org_id, free >= charged)
         .values(balance_micro=Org.balance_micro - charged, **_spent_today_values(charged))
     )
-    available = select(Org.balance_micro - _queued_unbacked(org_id)).where(Org.id == org_id)
+    available = select(free).where(Org.id == org_id)
     for _ in range(_GATE_TRIES):
         with money_stage(db, "reserve_balance"):
             result = await db.execute(gate)
