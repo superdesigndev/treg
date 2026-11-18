@@ -17,7 +17,9 @@ RESEND_URL = "https://api.resend.com/emails"
 
 # Email chrome, in the product's light skin (DESIGN.md): pale canvas, a white card, charcoal ink and
 # an inverse button; colour only for a warning; DM Mono only for codes and figures. Inline styles and
-# solid colours only, because mail clients drop <style> and CSS variables. The mark is the hosted PNG
+# solid colours only, because mail clients drop <style> and CSS variables. Fills are `bgcolor` on a
+# table cell plus `background-color`, never the `background` shorthand: Gmail strips that shorthand
+# from mail it relays, and a white button label was once left on white. The mark is the hosted PNG
 # of the brand mark (mail clients do not render SVG); its alt text keeps the header readable when
 # images are blocked.
 _SANS = "-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif"
@@ -27,22 +29,48 @@ _P = f"margin:0 0 18px;color:{_MUTED};font-size:14px;line-height:1.6"
 _H = f"margin:0 0 6px;color:{_INK};font-size:18px;line-height:1.4;font-weight:600"
 _B = f"color:{_INK};font-weight:600"
 _FINE = f"margin:18px 0 0;color:{_MUTED};font-size:12.5px;line-height:1.6"
-_CODEBOX = f"font-family:{_MONO};color:{_INK};background:{_BOX};border-radius:12px"
+_CODE = f"font-family:{_MONO};color:{_INK}"
+_T = 'role="presentation" cellpadding="0" cellspacing="0" border="0"'
+
+
+def _box(inner: str, style: str = "", fill: str = _BOX) -> str:
+    """A filled, rounded panel that keeps its fill in every client (a table cell with bgcolor)."""
+    return (f'<table {_T} width="100%"><tr><td bgcolor="{fill}" '
+            f'style="background-color:{fill};border-radius:12px;{style}">{inner}</td></tr></table>')
+
+
+def _button(url: str, label: str) -> str:
+    """The inverse pill. Its fill is spelled twice, `bgcolor` on the cell and `background-color` on the
+    link, the two forms mail clients keep, because the white label is unreadable without it."""
+    return (f'<table {_T}><tr><td bgcolor="{_INK}" style="background-color:{_INK};border-radius:999px">'
+            f'<a href="{url}" style="display:inline-block;background-color:{_INK};border:1px solid {_INK};'
+            f'border-radius:999px;color:#ffffff;text-decoration:none;font-weight:600;font-size:14px;'
+            f'font-family:{_SANS};padding:11px 23px">{label}</a></td></tr></table>')
+
+
+def _who(name: str) -> str:
+    """A person or address in bold ink. An address goes in our own mailto link in the same ink: left
+    bare, Gmail links it itself in blue and underlines it over the bold."""
+    v = _esc(name)
+    if "@" in name:
+        v = f'<a href="mailto:{v}" style="color:{_INK};text-decoration:none">{v}</a>'
+    return f'<b style="{_B}">{v}</b>'
 
 
 def _wrap(body: str) -> str:
     base = get_settings().public_url.rstrip("/")
     return (
-        f'<div style="background:{_BOX};padding:36px 16px;font-family:{_SANS}">'
-        '<div style="max-width:460px;margin:0 auto;background:#ffffff;border:1px solid #e6e6e2;border-radius:20px;overflow:hidden">'
-        f'<div style="padding:22px 28px 0;font-size:15px;font-weight:600;color:{_INK};line-height:24px">'
+        f'<table {_T} width="100%" bgcolor="{_BOX}" style="background-color:{_BOX}"><tr>'
+        f'<td align="center" style="padding:36px 16px;font-family:{_SANS}">'
+        f'<table {_T} width="100%" bgcolor="#ffffff" style="max-width:460px;background-color:#ffffff;'
+        'border:1px solid #e6e6e2;border-radius:20px"><tr><td style="padding:22px 28px 28px;text-align:left">'
+        f'<div style="font-size:15px;font-weight:600;color:{_INK};line-height:24px;margin-bottom:22px">'
         f'<img src="{_esc(base)}/media/brand/logo.png" width="24" height="24" alt="treg" '
         'style="display:inline-block;vertical-align:top;border:0;border-radius:6px;margin-right:8px">treg</div>'
-        f'<div style="padding:22px 28px 28px">{body}</div>'
-        '</div>'
-        f'<div style="max-width:460px;margin:14px auto 0;text-align:center;color:#6e6e6e;font-size:12px;line-height:1.6">'
+        f'{body}</td></tr></table>'
+        '<div style="max-width:460px;margin:14px auto 0;text-align:center;color:#6e6e6e;font-size:12px;line-height:1.6">'
         "You received this because someone used this address with treg. If that wasn't you, ignore it.</div>"
-        '</div>'
+        '</td></tr></table>'
     )
 
 
@@ -73,7 +101,8 @@ async def send_otp(email: str, code: str, ttl_minutes: int = 10) -> bool:
     body = (
         f'<p style="{_H}">Your sign-in code</p>'
         f'<p style="{_P}">Enter this to sign in to treg. It expires in {ttl_minutes} minutes.</p>'
-        f'<div style="{_CODEBOX};font-size:32px;font-weight:500;letter-spacing:8px;padding:18px;text-align:center">{code}</div>'
+        + _box(f'<div style="{_CODE};font-size:32px;font-weight:500;letter-spacing:8px;text-align:center">{code}</div>',
+               "padding:18px") +
         f'<p style="{_FINE}">Didn\'t try to sign in? You can safely ignore this email — no one can act without this code.</p>'
     )
     html = _wrap(body)
@@ -95,14 +124,14 @@ async def send_invite(email: str, inviter: str, org_name: str, role: str, code: 
     # address and prefills the login. Neither secret signs anyone in.
     url = f"{base}/auth/invite-signin?t={quote(email_token)}"
     exp = f" It expires on {expires_at[:10]}." if expires_at else ""
-    headline = (f'<b style="{_B}">{_esc(inviter)}</b> shared {_esc(shared)} with you — join <b style="{_B}">{_esc(org_name)}</b> to use it'
-                if shared else f'<b style="{_B}">{_esc(inviter)}</b> invited you to <b style="{_B}">{_esc(org_name)}</b>')
+    headline = (f'{_who(inviter)} shared {_esc(shared)} with you — join <b style="{_B}">{_esc(org_name)}</b> to use it'
+                if shared else f'{_who(inviter)} invited you to <b style="{_B}">{_esc(org_name)}</b>')
     body = (
         f'<p style="{_H}">{headline}</p>'
         f'<p style="{_P}">You\'ve been added as <b style="{_B}">{_esc(role)}</b> on treg — call the team\'s tools with <b style="{_B}">no API keys on your machine</b>.{exp}</p>'
-        f'<a href="{url}" style="display:inline-block;background:{_INK};color:#f8f8f7;text-decoration:none;font-weight:600;font-size:14px;font-family:{_SANS};padding:12px 24px;border-radius:999px">Sign in &amp; accept →</a>'
-        f'<p style="{_FINE};margin-bottom:8px">Sign in with <b style="{_B}">{_esc(email)}</b> and the invite appears automatically. Prefer a code? Use this one:</p>'
-        f'<div style="{_CODEBOX};font-size:13px;padding:12px;word-break:break-all">{_esc(code)}</div>'
+        + _button(url, "Sign in &amp; accept →") +
+        f'<p style="{_FINE};margin-bottom:8px">Sign in with {_who(email)} and the invite appears automatically. Prefer a code? Use this one:</p>'
+        + _box(f'<div style="{_CODE};font-size:13px;word-break:break-all">{_esc(code)}</div>', "padding:12px")
     )
     html = _wrap(body)
     text = (
@@ -133,12 +162,12 @@ async def send_topup_receipt(email: str, org_name: str, amount_micro: int, balan
     body = (
         f'<p style="{_H}">{how} confirmed</p>'
         f'<p style="{_P}">{lead}</p>'
-        f'<div style="background:{_BOX};border-radius:12px;padding:16px">'
-        f'<div style="color:{_MUTED};font-size:12.5px">Team</div>'
-        f'<div style="color:{_INK};font-size:14px;font-weight:600;margin-bottom:10px">{_esc(org_name)}</div>'
-        f'<div style="color:{_MUTED};font-size:12.5px">Balance now</div>'
-        f'<div style="font-family:{_MONO};color:{_INK};font-size:26px;font-weight:500">{left}</div></div>'
-        f'<p style="{_FINE}">Run <code style="font-family:{_MONO};color:{_INK};background:{_BOX};border-radius:5px;padding:1px 6px">treg balance</code> to see what it\'s made of and where it goes.</p>'
+        + _box(f'<div style="color:{_MUTED};font-size:12.5px">Team</div>'
+               f'<div style="color:{_INK};font-size:14px;font-weight:600;margin-bottom:10px">{_esc(org_name)}</div>'
+               f'<div style="color:{_MUTED};font-size:12.5px">Balance now</div>'
+               f'<div style="font-family:{_MONO};color:{_INK};font-size:26px;font-weight:500">{left}</div>',
+               "padding:16px") +
+        f'<p style="{_FINE}">Run <code style="font-family:{_MONO};color:{_INK};background-color:{_BOX};border-radius:5px;padding:1px 6px">treg balance</code> to see what it\'s made of and where it goes.</p>'
     )
     subject = f"{added} added to your treg balance"
     bonus_txt = f" (+ {_money(bonus_micro)} bonus)" if bonus_micro else ""
