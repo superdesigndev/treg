@@ -1581,11 +1581,13 @@ async def _run_routed(parent: CallContext, ep: dict, body_bytes: bytes, get_head
                 break
             continue
         doc, core = outcome.doc, outcome.core
-        if outcome.kind == "miss" and "question_miss" in outcome.why and options.waterfall:
-            # An answer only the question rules out (a wall page, rows off the asked site) is kept
-            # like a weak hit and bounded like one: every provider often returns the same answer,
-            # and some bill it, so the walk asks at most MAX_WEAK_FALLBACKS more and then returns
-            # the first such answer, marked, if nothing better turned up.
+        if (outcome.kind == "miss" and options.waterfall and plan.contract.question_miss_bound
+                and "question_miss" in outcome.why and set(outcome.why) <= {"question_miss", "adapter_miss"}):
+            # An answer only the question rules out (a wall page) is kept like a weak hit and
+            # bounded like one: every provider often returns the same answer, and some bill it, so
+            # the walk asks at most MAX_WEAK_FALLBACKS more and then returns the first such answer,
+            # marked, if nothing better turned up. A provider that reported its own failure is not
+            # an answer and stays a miss.
             tried.append(Attempt(cand.endpoint["id"], cand.endpoint["provider"], "weak", response.status, charged,
                                  f"question_miss: {plan.contract.question_miss}", ignored=ignored))
             if best is None:
@@ -1744,8 +1746,11 @@ async def _run_routed(parent: CallContext, ep: dict, body_bytes: bytes, get_head
             if too_large and too_large == sum(t.outcome != "skipped" for t in tried) else None)
     cand, doc, output, raw = winner
     served = cand.endpoint["id"]
-    winner_outcome = next(t.outcome for t in reversed(tried)
+    winner_attempt = next(t for t in reversed(tried)
                           if t.endpoint_id == served and t.outcome in ("hit", "weak", "miss"))
+    winner_outcome = winner_attempt.outcome
+    # A wall page returned because nothing better turned up is answered, but it is no hit.
+    ruled_out = winner_attempt.detail.startswith("question_miss")
     incomplete = False
     if winner_outcome == "miss" and any(t.outcome == "error" for t in tried):
         # The waterfall-off miss: the same rule as an all-miss walk (see the no-winner branch).
@@ -1874,7 +1879,7 @@ async def _run_routed(parent: CallContext, ep: dict, body_bytes: bytes, get_head
                           **({"limit_exceeded": limit_exceeded} if limit_exceeded else {}),
                           **({"dropped": plan.dropped} if plan.dropped else {})}}
     _summarize(parent, served_by=served, tried_count=len(tried), output=body_out["output"],
-               hit={"hit": True, "weak": True, "miss": False}.get(winner_outcome),
+               hit=False if ruled_out else {"hit": True, "weak": True, "miss": False}.get(winner_outcome),
                check_verdict=(verification or {}).get("verdict")
                if (verification or {}).get("checked") else None)
     _audit_parent(parent, ep, 200, spent, audit_client)

@@ -53,6 +53,10 @@ class Contract:
     # (`question_miss`), so the route moves on. Empty = none. Used where only the question can say
     # an answer is off target (a `site:` search whose rows are all on other sites).
     question_miss: str = ""
+    # True = an answer `question_miss` rules out is kept like a weak hit and the walk asks at most
+    # MAX_WEAK_FALLBACKS more providers (every provider returns the same wall page). False = the
+    # walk goes on to the end, as a `site:` search needs (the next provider may hold the site).
+    question_miss_bound: bool = False
     default_max_cost_usd: float | None = None  # the per-call ceiling when the caller sends none
     # One sentence the router attaches as `_treg.advice` to a HIT whose `output.verified` is not
     # true — a found contact the provider did not confirm deliverable, which an agent should verify
@@ -375,7 +379,7 @@ def _variants(raw) -> tuple[tuple[str, ...], ...]:
 CONTRACT_KEYS = frozenset({
     "summary", "identity", "derive", "filters", "output", "miss", "idempotent", "default_max_cost_usd",
     "advice_unverified", "advice_domain_mismatch", "routed", "scoping", "carried_by", "fill_rows", "prefer", "prefer_by_domain_suffix", "check", "confirm",
-    "empty_is_failure", "one_subject", "complete", "verdict", "question_miss", "row", "stand_in",
+    "empty_is_failure", "one_subject", "complete", "verdict", "question_miss", "question_miss_bound", "row", "stand_in",
     "stand_in_carries", "fill_limit_when", "identity_notes", "segments"})
 # Contract keys that no longer do anything, with what replaced them. `prefer_when` ordered
 # providers by the keys a caller sent; an order for one kind of request is now a published route
@@ -472,6 +476,7 @@ def parse_contracts(doc: dict) -> dict[str, Contract]:
             output={k: (v if isinstance(v, dict) else {"type": str(v)}) for k, v in (c.get("output") or {}).items()},
             miss=str(c.get("miss") or ""), idempotent=bool(c.get("idempotent", True)),
             question_miss=str(c.get("question_miss") or ""),
+            question_miss_bound=bool(c.get("question_miss_bound")),
             default_max_cost_usd=(float(c["default_max_cost_usd"]) if c.get("default_max_cost_usd") is not None else None),
             advice_unverified=str(c.get("advice_unverified") or ""),
             advice_domain_mismatch=str(c.get("advice_domain_mismatch") or ""),

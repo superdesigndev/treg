@@ -3398,16 +3398,17 @@ async def test_a_wall_page_walks_at_most_two_more_providers_then_returns_the_wal
                 "linkup": [(200, {"markdown": linkup_text})],
                 "serper": [(200, {"text": _ARTICLE, "markdown": _ARTICLE})]}
 
-    seen = []
+    seen, summaries = [], []
+    real_summarize = call_route._summarize
+    monkeypatch.setattr(call_route, "_summarize", lambda parent, **o: (summaries.append(o), real_summarize(parent, **o)))
     monkeypatch.setattr(call_service, "relay", _relay_by_provider(answers(_WALL), seen))
-    before = await _balance(clients)
     r = await clients.post("/call/treg.web.extract", json={"url": "https://shop.example/p/1"}, headers=prefer)
     assert r.status_code == 200, r.text
     meta = r.json()["_treg"]
     assert [s[0] for s in seen] == ["crawl4ai", "firecrawl", "linkup"], "serper is never asked"
     assert meta["outcome"] == "weak" and meta["served_by"] == "crawl4ai.web.scrape"
     assert all(t["outcome"] == "weak" and t["detail"].startswith("question_miss") for t in meta["tried"])
-    assert await _balance(clients) == before, "every child here bills per success and a wall is no success"
+    assert [o["hit"] for o in summaries if "hit" in o] == [False], "the wall answered is recorded as a miss"
 
     seen.clear()
     monkeypatch.setattr(call_service, "relay", _relay_by_provider(answers(_ARTICLE), seen))
@@ -3415,6 +3416,52 @@ async def test_a_wall_page_walks_at_most_two_more_providers_then_returns_the_wal
     assert r.status_code == 200, r.text
     assert [s[0] for s in seen] == ["crawl4ai", "firecrawl", "linkup"]
     assert r.json()["_treg"]["outcome"] == "hit" and r.json()["_treg"]["served_by"] == "linkup.web.fetch"
+    get_settings.cache_clear()
+
+
+async def test_a_provider_that_reports_its_own_failure_does_not_count_toward_the_wall_bound(clients, monkeypatch):
+    """A wall page under the provider's own failure flag is a failure, not a wall answer: it neither
+    uses one of the two extra asks nor can be returned as the weak answer."""
+    for name in ("CRAWL4AI", "FIRECRAWL", "LINKUP", "SERPER"):
+        monkeypatch.setenv(f"TREG_PLATFORM_KEY_{name}", f"PLATFORM-{name}")
+    monkeypatch.setenv("TREG_PLATFORM_PROVIDERS", "crawl4ai,firecrawl,linkup,serper")
+    get_settings.cache_clear()
+    seen = []
+    monkeypatch.setattr(call_service, "relay", _relay_by_provider({
+        "firecrawl": [(200, {"success": False, "data": {"markdown": _WALL}})],
+        "crawl4ai": [(200, {"ok": True, "markdown": _WALL, "text_len": len(_WALL)})],
+        "linkup": [(200, {"markdown": _WALL})],
+        "serper": [(200, {"text": _ARTICLE, "markdown": _ARTICLE})]}, seen))
+    r = await clients.post("/call/treg.web.extract", json={"url": "https://shop.example/p/3"},
+                           headers={"X-Treg-Route-Prefer": "firecrawl,crawl4ai,linkup,serper"})
+    assert r.status_code == 200, r.text
+    meta = r.json()["_treg"]
+    assert [s[0] for s in seen] == ["firecrawl", "crawl4ai", "linkup", "serper"]
+    assert [t["outcome"] for t in meta["tried"]] == ["miss", "weak", "weak", "hit"]
+    assert meta["served_by"] == "serper.web.extract"
+    get_settings.cache_clear()
+
+
+async def test_a_site_search_still_walks_on_to_the_provider_that_has_the_site(clients, monkeypatch):
+    """The bound is the contract's choice: web.search does not take it, so three off-site answers
+    do not stop the walk and the fourth provider's on-site row is the hit."""
+    for name in ("CRAWL4AI", "EXA", "KEENABLE", "PARALLEL"):
+        monkeypatch.setenv(f"TREG_PLATFORM_KEY_{name}", f"PLATFORM-{name}")
+    monkeypatch.setenv("TREG_PLATFORM_PROVIDERS", "crawl4ai,exa,keenable,parallel")
+    get_settings.cache_clear()
+    assert catalog_store.load().contracts["web.search"].question_miss_bound is False
+    off = {"results": [{"url": "https://www.reddit.com/r/vps", "title": "VPS prices"}]}
+    on = {"results": [{"url": "https://www.ovhcloud.com/en/vps/", "title": "VPS"}]}
+    seen = []
+    monkeypatch.setattr(call_service, "relay", _relay_by_provider(
+        {"crawl4ai": [(200, off)], "exa": [(200, off)], "keenable": [(200, off)], "parallel": [(200, on)]}, seen))
+    r = await clients.post("/call/treg.web.search", json={"q": "site:ovhcloud.com vps price"},
+                           headers={"X-Treg-Route-Prefer": "crawl4ai,exa,keenable,parallel"})
+    assert r.status_code == 200, r.text
+    meta = r.json()["_treg"]
+    assert [s[0] for s in seen] == ["crawl4ai", "exa", "keenable", "parallel"]
+    assert [t["outcome"] for t in meta["tried"]] == ["miss", "miss", "miss", "hit"]
+    assert meta["outcome"] == "hit" and meta["served_by"] == "parallel.web.search"
     get_settings.cache_clear()
 
 

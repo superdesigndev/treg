@@ -1516,7 +1516,8 @@ contracts:
       pages: {type: list, required: true, note: "the provider's own extracted page objects; raw is the same body"}
       count: {type: int}
     miss: "pages == []"
-    question_miss: "wall_page(pages)"   # a captcha, bot check, login or cookie wall, or a near-empty shell is not the page
+    question_miss: "wall_page(pages)"   # a captcha, bot check, login or cookie wall is not the page
+    question_miss_bound: true   # every provider returns the same wall: ask two more, then answer with it, marked
     idempotent: true
     empty_is_failure: true   # an empty answer is the provider failing the job
 
