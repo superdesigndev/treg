@@ -310,7 +310,12 @@ money moved, the purchased-credit gate.
   call, freezes the counter, after the charge is committed and before the call is told: a refill
   may thaw only the freezes it read before its transaction, and only a transaction that starts
   after the commit can have read this one, so it has the charge in front of it; a call cancelled
-  while it waited changes nothing, and a charge written late freezes when it lands. A freeze
+  while it waited changes nothing, and a charge written late freezes when it lands. The
+  writer freezes the same way for a charge its own hold no longer backs, whatever it cost: that
+  charge too comes out of the balance. It learns which in the transaction that writes the
+  rows, reading the teams' hold rows under a shared lock first (`allowance.holds_behind`), so
+  a close of the hold waits for the write and applies the charge to its own hold, or is done
+  and the charge is known to owe the balance. A freeze
   that does not reach the store leaves the batch unconfirmed, to be gone through again. A
   refill of a frozen counter folds the whole queue, not one batch. And a refill that then finds
   the balance below zero adds nothing and drains the counter back to the balance, so the exact

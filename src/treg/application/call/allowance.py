@@ -294,11 +294,11 @@ class _ChargeWriter:
             confirmed = True
             try:
                 try:
-                    await self._write(rows)
+                    unbacked = await self._write(rows)
                 except Exception:  # noqa: BLE001 - one bounded retry on a fresh transaction
                     await asyncio.sleep(0.2)
-                    await self._write(rows, again=True)
-                await self._committed(rows)
+                    unbacked = await self._write(rows, again=True)
+                await self._committed(rows, unbacked)
             except Exception:
                 confirmed = False
                 log.error("writing %d call charges is unconfirmed; retrying in the background",
@@ -316,8 +316,7 @@ class _ChargeWriter:
             await asyncio.sleep(delay)
             rows = self._unconfirmed[:allowance.FOLD_BATCH]
             try:
-                await self._write(rows, again=True)
-                await self._committed(rows)
+                await self._committed(rows, await self._write(rows, again=True))
             except Exception:  # noqa: BLE001 - whatever the fault, try again later
                 delay = min(delay * 2, 60.0)
                 continue
@@ -334,15 +333,17 @@ class _ChargeWriter:
         more calls to the allowance: each would add a charge the database is not taking."""
         return bool(self._unconfirmed)
 
-    async def _committed(self, rows: list) -> None:
-        """The rows are in the database. Freeze the counter of every team with an overrun among
-        them, then count the rows as written and start folds that are due.
+    async def _committed(self, rows: list, unbacked: set[int]) -> None:
+        """The rows are in the database. Freeze the counter of every team with a charge among
+        them that takes from the balance (an overrun, or a charge its hold no longer backs:
+        `unbacked`), then count the rows as written and start folds that are due.
 
         Raises when a freeze does not reach the store: the batch then stays unconfirmed and is
-        gone through again, because a committed overrun without its freeze is a counter left
-        open over a balance nobody has checked."""
+        gone through again, because such a charge committed without its freeze is a counter
+        left open over a balance nobody has checked."""
         store = kv.store()
-        for org_id in sorted({charge.org_id for charge, _ in rows if _overran(charge)}):
+        owing = unbacked | {charge.org_id for charge, _ in rows if _overran(charge)}
+        for org_id in sorted(owing):
             if (await store.allowance_freeze(org_id, ttl_ms=_COUNTER_TTL_MS) is None
                     and kv.configured()):
                 raise ConnectionError("the store did not take a freeze")
@@ -357,8 +358,12 @@ class _ChargeWriter:
             self._since_fold[charge.org_id] = count
 
     @staticmethod
-    async def _write(rows: list, *, again: bool = False) -> None:
+    async def _write(rows: list, *, again: bool = False) -> set[int]:
+        """Write the rows; return the teams with a charge among them that its own hold no
+        longer stands behind (closed since, with or without another in its place)."""
         async with session_maker() as db:
+            holds = await allowance.holds_behind(db, sorted(
+                {charge.org_id for charge, _ in rows if charge.epoch is not None}))
             new = await allowance.record_charges(db, [charge for charge, _ in rows])
             # A row that was already there was committed by an earlier attempt, which marked its
             # paid question too. On a rewrite, so was a row that is new only because the earlier
@@ -369,6 +374,8 @@ class _ChargeWriter:
             if uses:
                 await archive.note_org_uses_in_transaction(db, uses)
             await db.commit()
+        return {charge.org_id for charge, _ in rows
+                if charge.epoch is not None and holds.get(charge.org_id) != charge.epoch}
 
 
 def _overran(charge: allowance.Charge) -> bool:

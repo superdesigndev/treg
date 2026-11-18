@@ -281,7 +281,7 @@ async def test_calls_finishing_together_share_one_insert(org_id, store, monkeypa
 
     async def counted(batch, **kwargs):
         writes.append(len(batch))
-        await write(batch, **kwargs)
+        return await write(batch, **kwargs)
 
     monkeypatch.setattr(runtime._ChargeWriter, "_write", staticmethod(counted))
     epochs = [await runtime.take(org_id, 100) for _ in range(40)]
@@ -313,7 +313,7 @@ async def test_a_write_that_committed_but_reported_failure_is_charged_and_not_gi
             await write(rows)
         if len(attempts) <= 2:
             raise ConnectionError("lost")
-        await write(rows, **kwargs)
+        return await write(rows, **kwargs)
 
     monkeypatch.setattr(runtime._ChargeWriter, "_write", staticmethod(lossy))
     epoch = await runtime.take(org_id, 600)
@@ -334,7 +334,7 @@ async def test_a_charge_the_database_refused_is_written_once_the_database_is_bac
         attempts.append(len(rows))
         if len(attempts) <= 3:
             raise ConnectionError("database down")
-        await write(rows, **kwargs)
+        return await write(rows, **kwargs)
 
     monkeypatch.setattr(runtime._ChargeWriter, "_write", staticmethod(down_then_up))
     epoch = await runtime.take(org_id, 600)
@@ -355,7 +355,7 @@ async def test_no_call_is_admitted_while_charges_wait_to_be_written(org_id, stor
     async def maybe(rows, **kwargs):
         if down[0]:
             raise ConnectionError("database down")
-        await write(rows, **kwargs)
+        return await write(rows, **kwargs)
 
     monkeypatch.setattr(runtime._ChargeWriter, "_write", staticmethod(maybe))
     first, second = await runtime.take(org_id, 100), await runtime.take(org_id, 100)
@@ -454,6 +454,29 @@ async def test_a_drain_that_arrives_late_takes_nothing_from_a_later_hold(org_id,
     assert store.counters[org_id]["avail"] == CHUNK - 700
     await runtime._drain(org_id, old, "late again")
     assert store.counters[org_id]["avail"] == CHUNK - 700, "nor is the later counter emptied"
+
+
+async def test_a_charge_its_hold_no_longer_backs_stops_the_counter_like_an_overrun(
+        org_id, store, monkeypatch):
+    """A call set 600 aside from a hold that was closed before its charge was written. The
+    charge is within what it set aside, and all of it comes out of the balance, which has
+    nothing. The 300 the later hold's counter still offers must not be handed out."""
+    monkeypatch.setattr(get_settings(), "money_allowance_chunk_micro", 1_000)
+    old = await runtime.take(org_id, 600)
+    async with session_maker() as db:
+        await allowance.close_allowance_in_transaction(db, org_id, reason="idle")
+        await db.commit()
+    await store.allowance_retire(org_id, old, 60_000)
+    later = await runtime.take(org_id, 700)
+    assert later and later != old
+    await _occupy_the_rest_of_the_balance(org_id)
+    assert await _state(org_id) == (0, 1_000) and store.counters[org_id]["avail"] == 300
+    assert await _finish(org_id, "late", old, 600, billable=True, actual_micro=600) == 600
+    counter = store.counters[org_id]
+    assert counter["frozen"] != counter["thawed"], "frozen though nothing overran"
+    assert await runtime.take(org_id, 100) is None, "a refill read the balance: it is below zero"
+    assert store.counters[org_id]["avail"] == 0
+    assert await _state(org_id) == (-300, 700), "the later hold keeps what its call set aside"
 
 
 async def test_a_charge_carries_the_hold_its_call_took_from(org_id, store):
@@ -812,7 +835,7 @@ async def test_an_overrun_written_late_freezes_the_counter_when_it_lands(org_id,
     async def maybe(rows, **kwargs):
         if down[0]:
             raise ConnectionError("database down")
-        await write(rows, **kwargs)
+        return await write(rows, **kwargs)
 
     monkeypatch.setattr(runtime._ChargeWriter, "_write", staticmethod(maybe))
     epoch = await runtime.take(org_id, 600)
@@ -1065,7 +1088,7 @@ async def test_calls_are_admitted_only_while_there_is_a_place_for_their_charge(
 
     async def slow(rows, **kwargs):
         await release.wait()
-        await write(rows, **kwargs)
+        return await write(rows, **kwargs)
 
     monkeypatch.setattr(runtime._ChargeWriter, "_write", staticmethod(slow))
     charging = asyncio.create_task(_finish(org_id, "b", epoch, 100, billable=True))
@@ -1195,12 +1218,15 @@ async def test_no_allowance_money_session_starts_while_another_process_holds_the
 
 # ---- a daily cap across midnight ---------------------------------------------------------------
 async def _move_hold_to_yesterday(org_id: int) -> None:
-    """The hold's birth names it, and its counter carries the same name: both move."""
+    """The hold's birth names it; its counter and the charges queued against it carry the same
+    name, and all move. A take made before this carries the old name: take again after."""
     born = ledger._now() - timedelta(days=1)
     kv.store().counters[org_id]["epoch"] = (born - datetime(1970, 1, 1)) // timedelta(microseconds=1)
     async with session_maker() as db:
         await db.execute(update(Hold).where(Hold.org_id == org_id, Hold.allowance.is_(True)).values(
             created_at=born))
+        await db.execute(update(CallCharge).where(CallCharge.org_id == org_id).values(
+            hold_created_at=born))
         await db.execute(update(Org).where(Org.id == org_id).values(
             spent_today_day=(ledger._now() - timedelta(days=1)).date()))
         await db.commit()
@@ -1262,6 +1288,8 @@ async def test_charges_still_queued_after_the_switch_is_off_count_toward_the_cap
     epoch = await runtime.take(org_id, CHUNK, daily_cap_micro=CHUNK)
     await _finish(org_id, "spent-the-cap", epoch, CHUNK, billable=True)
     await _move_hold_to_yesterday(org_id)
+    async with session_maker() as db:
+        assert await allowance.committed_today(db, org_id) == CHUNK, "counted once"
     monkeypatch.setattr(get_settings(), "money_allowance_org_ids", [])
     with pytest.raises(ReservationFailed) as refused:
         await call_reserve._platform_reserve(_call(org_id), caller, call_ref="after-1")

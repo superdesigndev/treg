@@ -205,6 +205,20 @@ async def _apply_charges(db: AsyncSession, org_id: int, hold: Hold | None, claim
     return Folded(len(charges), charged, consumed, len(claimed) - len(charges))
 
 
+async def holds_behind(db: AsyncSession, org_ids: Sequence[int]) -> dict[int, int]:
+    """The epoch of each team's allowance hold, for teams that have one, under a shared lock on
+    the hold rows. For the transaction that queues charges: a close of the hold waits for it,
+    so a charge found to have its own hold here is still applied to that hold, and one found
+    without it is known to owe the balance."""
+    if not org_ids:
+        return {}
+    with money_stage(db, "lock_allowance"):
+        rows = (await db.execute(
+            select(Hold).where(Hold.id.in_([allowance_id(org_id) for org_id in org_ids]))
+            .order_by(Hold.id).with_for_update(read=True))).scalars().all()
+    return {hold.org_id: _epoch(hold) for hold in rows}
+
+
 async def has_allowance(db: AsyncSession, org_id: int) -> bool:
     """Whether the team has an allowance hold. Read in a transaction that has already written
     the team's balance, the answer is exact for that write: a refill that has not committed yet
