@@ -1,0 +1,34 @@
+{
+  "items": [
+    {
+      "review_source": "Google",
+      "review_id": "Ci9DQUlRQUNvZENodHljRjlvT25CNk9GOTNhazlLU21aZmQwVm1jSE5CZG1KYVRIYxAB",
+      "rating": 5,
+      "timestamp": 1791512138354,
+      "review_updated_timestamp": null,
+      "author_name": "Anonymous reviewer",
+      "author_profile_photo": null,
+      "author_link": null,
+      "author_id": null,
+      "author_review_count": null,
+      "author_reviews_link": null,
+      "author_photo_count": null,
+      "author_local_guide_level": null,
+      "review_text": [
+        "It’s a must-visit for me whenever I’m in Berlin... the architecture is extraordinary—fantastic from every angle.The surrounding atmosphere is super nice, and the best part is the view when you step out of the metro station."
+      ],
+      "review_language": [
+        "en"
+      ],
+      "owner_response_timestamp": null,
+      "owner_response_text": null,
+      "owner_response_language": null,
+      "review_link": "https://www.google.com/maps/reviews/data=!4m8!14m7!1m6!2m5!1sCi9DQUlRQUNvZENodHljRjlvT25CNk9GOTNhazlLU21aZmQwVm1jSE5CZG1KYVRIYxAB",
+      "review_likes": null,
+      "review_form": [],
+      "images": [],
+      "is_google_review": true
+    }
+  ],
+  "nextPage": "CjEIARIpCgoAP7_LAGmK____EhBxY8aJ15AKlIjaYr0AAAAAGgn92PkCYeACj84YACIA"
+}

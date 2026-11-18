@@ -1,0 +1,221 @@
+{
+  "search_information": {
+    "total_results": 132,
+    "time_taken_displayed": 0.42,
+    "query_displayed": "coffee berlin",
+    "organic_results_count": 9
+  },
+  "organic_results": [
+    {
+      "position": 1,
+      "title": "Berlin",
+      "link": "https://www.brian-coffee-spot.com/the-coffee-spot-guide-to/europe/berlin/",
+      "displayed_link": "https://www.brian-coffee-spot.com › europe › berlin",
+      "snippet": "Berlin's has a vibrant and varied speciality coffee scene, with some world-famous roasters, such as Five Elephant, The Barn (…",
+      "snippet_highlighted_words": [
+        "Berlin's has a vibrant and varied speciality coffee scene"
+      ],
+      "thumbnail": "https://encrypted-tbn0.gstatic.com/images?q=tbn%3AANd9GcQvGqFbY5sSaagEY3FUjhycXUbBuAaYdxm3oVYt96tDpJ6J3LPZ1tfQ&usqp=CAE&s=",
+      "favicon": "data:image/jpeg;base64,/9j/4AAQSkZJRgABAQAAAQABAAD/2wCEAAkGBwgHBgkIBwgKCgkLDRYPDQwMDRsUFRAWIB0iIiAdHx8kKDQsJCYxJx8fLT0tMTU3Oj…",
+      "source": "Brian's Coffee Spot",
+      "rank_group": 1,
+      "rank_absolute": 9
+    },
+    {
+      "position": 2,
+      "title": "8 Great Coffee Shops in Berlin",
+      "link": "https://www.2foodtrippers.com/berlin-cafes/",
+      "displayed_link": "https://www.2foodtrippers.com › Guides › Coffee Guides",
+      "snippet": "Top Berlin specialty coffee shops include The Barn, Bonanza, Father Carpenter and Five Elephant. Try them all plus more to fi…",
+      "snippet_highlighted_words": [
+        "The Barn, Bonanza, Father Carpenter and Five Elephant"
+      ],
+      "thumbnail": "https://encrypted-tbn0.gstatic.com/images?q=tbn%3AANd9GcSxViCcOSEqPMqO-tNKewZFJGt7Hk38iKo3WKohzevAa4J6y5ZVscTI&usqp=CAE&s=",
+      "favicon": "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAACAAAAAgCAMAAABEpIrGAAAAMFBMVEVHcEwAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA…",
+      "source": "2foodtrippers",
+      "rank_group": 2,
+      "rank_absolute": 10
+    },
+    "… 7 more item(s) truncated"
+  ],
+  "related_searches": [
+    {
+      "query": "Best coffee berlin",
+      "link": "https://www.google.com/search?gl=us&hl=en&complete=0&pws=0&nfpr=1&q=Best+coffee+berlin"
+    },
+    {
+      "query": "Coffee berlin menu",
+      "link": "https://www.google.com/search?gl=us&hl=en&complete=0&pws=0&nfpr=1&q=Coffee+berlin+menu"
+    },
+    "… 6 more item(s) truncated"
+  ],
+  "people_also_search_for": [
+    {
+      "name": "Best coffee berlin",
+      "query": "Best coffee berlin",
+      "link": "https://www.google.com/search?gl=us&hl=en&complete=0&pws=0&nfpr=1&q=Best+coffee+berlin"
+    },
+    {
+      "name": "Coffee berlin menu",
+      "query": "Coffee berlin menu",
+      "link": "https://www.google.com/search?gl=us&hl=en&complete=0&pws=0&nfpr=1&q=Coffee+berlin+menu"
+    },
+    "… 6 more item(s) truncated"
+  ],
+  "related_questions": [
+    {
+      "question": "Does Berlin have good coffee?",
+      "next_page_token": "fc=EqEBCmJBRERiV2VaV3RxZE5wZ1RhSUstNm9uOUg2aU54bWxCVmN5eTJvUGFTVS1GajdETHZWN1MyaVg3eWVGa1VqZmhlenRGWDdWbHRRUi1Tb28wV2tmaERFRm…"
+    },
+    {
+      "question": "What is a coffee in Berlin about?",
+      "next_page_token": "fc=EqEBCmJBRERiV2VaV3RxZE5wZ1RhSUstNm9uOUg2aU54bWxCVmN5eTJvUGFTVS1GajdETHZWN1MyaVg3eWVGa1VqZmhlenRGWDdWbHRRUi1Tb28wV2tmaERFRm…"
+    },
+    "… 2 more item(s) truncated"
+  ],
+  "things_to_know": [],
+  "knowledge_graph": null,
+  "see_results_about": null,
+  "twitter_card": null,
+  "inline_videos": [],
+  "inline_images": [],
+  "local_map": null,
+  "local_results": {
+    "places": [
+      {
+        "position": 1,
+        "title": "Distrikt coffee",
+        "rating": 4.4,
+        "reviews": 2700,
+        "reviews_original": "(2.7K)",
+        "price": "€10–20",
+        "type": "Coffee shop",
+        "website": "http://distriktcoffee.de/",
+        "address": "Bergstraße 68, 10115 Berlin, Germany",
+        "kgmid": "/g/11bbrgx8km",
+        "rank_absolute": 5
+      },
+      {
+        "position": 2,
+        "title": "Grandaire - Coffee House Alexanderplatz",
+        "rating": 4.8,
+        "reviews": 576,
+        "reviews_original": "(576)",
+        "price": "€1–10",
+        "type": "Coffee shop",
+        "website": "https://www.grandairecoffee.de/",
+        "phone": null,
+        "address": "Voltairestraße 11, 10179 Berlin, Germany",
+        "kgmid": "/g/11y30_5kzw",
+        "rank_absolute": 6
+      },
+      "… 2 more item(s) truncated"
+    ],
+    "modules": [
+      {
+        "title": "Local results",
+        "place_indexes": [
+          0
+        ],
+        "rank_group": 1,
+        "rank_absolute": 5
+      },
+      {
+        "title": "Local results",
+        "place_indexes": [
+          1
+        ],
+        "rank_group": 2,
+        "rank_absolute": 6
+      },
+      "… 2 more item(s) truncated"
+    ]
+  },
+  "popular_products": null,
+  "perspectives": null,
+  "nutrition_information": null,
+  "refine_this_search": null,
+  "organic_results_count": 9,
+  "total_results": 132,
+  "engine_used": "google",
+  "ads": [
+    {
+      "position": 1,
+      "title": "Coffee Circle Onlineshop",
+      "link": "https://www.coffeecircle.com/",
+      "displayed_link": "https://www.coffeecircle.com",
+      "domain": "coffeecircle.com",
+      "source": "Coffee Circle",
+      "snippet": "Spezialitätenkaffee aus Berlin — 24 Türchen hochwertiger Kaffee sorgen jeden Tag für ein neues Geschmackserlebnis. Kaffee Adv…",
+      "tracking_link": "https://www.google.com/aclk?sa=L&pf=1&ai=DChsSEwiv14_cnZGYAxWIgIMHHf34Lz4YACICCAEQChoCZWY&co=1&ase=2&gclid=EAIaIQobChMIr9eP3J…",
+      "block": "top",
+      "rank_group": 1,
+      "rank_absolute": 1
+    },
+    {
+      "position": 2,
+      "title": "Balanced Coffee Beans – the Barn Coffee Roasters",
+      "link": "https://thebarn.de/de/collections/balanced-coffee",
+      "displayed_link": "https://www.thebarn.de",
+      "domain": "thebarn.de",
+      "source": "The Barn",
+      "snippet": "Bestellen Sie online und genießen Sie erstklassigen Kaffeegenuss zu Hause",
+      "tracking_link": "https://www.google.com/aclk?sa=L&pf=1&ai=DChsSEwiv14_cnZGYAxWIgIMHHf34Lz4YACICCAEQAxoCZWY&co=1&ase=2&gclid=EAIaIQobChMIr9eP3J…",
+      "block": "top",
+      "rank_group": 2,
+      "rank_absolute": 2
+    },
+    "… 4 more item(s) truncated"
+  ],
+  "answer_box": null,
+  "ai_overview": null,
+  "top_stories": [],
+  "videos": [],
+  "events_results": [],
+  "recipes_results": [],
+  "immersive_products": [],
+  "shopping_results": [],
+  "filters": [
+    {
+      "label": "Open now",
+      "link": "https://www.google.com/search?gl=us&hl=en&complete=0&pws=0&nfpr=1&q=coffee+berlin+open+now&uds=AE2AFgbf06ZzDvczg9XBG5Z3qflXb3…"
+    },
+    {
+      "label": "Top rated",
+      "link": "https://www.google.com/search?gl=us&hl=en&complete=0&pws=0&nfpr=1&q=top+rated+coffee+berlin&uds=AE2AFgbf06ZzDvczg9XBG5Z3qflXQ…"
+    }
+  ],
+  "shops": [],
+  "price_comparison_sites": [],
+  "shopping_ads": [],
+  "pagination": [
+    {
+      "start": 10,
+      "link": "https://www.google.com/search?q=coffee+berlin&gl=us&hl=en&complete=0&pws=0&nfpr=1&start=10&sstk=AYl2yk9V7F_MQe1bYaCIjzE4sv-Jn…"
+    },
+    {
+      "start": 20,
+      "link": "https://www.google.com/search?q=coffee+berlin&gl=us&hl=en&complete=0&pws=0&nfpr=1&start=20&sstk=AYl2yk9V7F_MQe1bYaCIjzE4sv-Jn…"
+    },
+    "… 7 more item(s) truncated"
+  ],
+  "search_url": "https://www.google.com/search?q=coffee+berlin&gl=us&hl=en&complete=0&pws=0&nfpr=1",
+  "serp_results": [
+    {
+      "type": "paid",
+      "result_index": 0,
+      "rank_group": 1,
+      "rank_absolute": 1
+    },
+    {
+      "type": "paid",
+      "result_index": 1,
+      "rank_group": 2,
+      "rank_absolute": 2
+    },
+    "… 17 more item(s) truncated"
+  ],
+  "service_used": "google",
+  "fetched_at": "2026-11-18T09:44:37+00:00",
+  "cached": true
+}
