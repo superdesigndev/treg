@@ -618,7 +618,7 @@ async def _admin_callrecord_backfill(args) -> int:
 
     result = await call_record_partitions.backfill(
         args.days, batch_rows=args.batch_rows, max_seconds=args.max_seconds,
-        pause=args.pause_seconds)
+        pause=args.pause_seconds, max_replica_lag=args.max_replica_lag)
     print(json.dumps(result, sort_keys=True))
     return 0
 
@@ -1134,6 +1134,8 @@ def main(argv: list[str] | None = None) -> int:
                           help="rows per transaction (default 5000)")
     backfill.add_argument("--pause-seconds", type=float, default=0.5,
                           help="sleep between batches (default 0.5)")
+    backfill.add_argument("--max-replica-lag", type=float, default=None,
+                          help="wait between batches while the read replica is more seconds behind than this")
     backfill.add_argument("--max-seconds", type=float, default=None,
                           help="stop after this long; the next run resumes")
     backfill.set_defaults(fn=_admin_callrecord_backfill)

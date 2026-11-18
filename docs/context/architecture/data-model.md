@@ -407,7 +407,16 @@ the plain `callrecord`; this section is the preparation only.
    by about the size of the rows copied and the WAL by as much, so check disk headroom and watch
    replica lag while it runs. The first run notes when it started (`NOTE_BACKFILL_STARTED`, a JSON
    comment on the table): a row copied then can still receive a late `hit` or `verdict`, so a
-   later step resyncs from that moment.
+   later step resyncs from that moment. Each run first deletes the copied rows of teams that no
+   longer exist (`delete_rows_of_deleted_teams`: the distinct teams walked through the
+   `(org_id, id)` index, each kept only `NOT EXISTS` in `org`, deleted in committed batches),
+   which closes the race with a team deleted while a batch copied its rows. With
+   `--max-replica-lag S` it waits between batches while the read replica is more than `S`
+   seconds behind (`pg_last_xact_replay_timestamp()`).
+
+**Columns move together.** The copy names the live table's columns, so until the swap any
+migration that adds a column to `callrecord` must add it to `callrecord_partitioned` too, in the
+same revision. `test_the_staged_table_has_the_live_tables_columns` fails until it does.
 
 While `callrecord_partitioned` exists, team deletion also deletes the team's rows from it
 (`cascade_delete_org`); with no foreign key, nothing else would.
