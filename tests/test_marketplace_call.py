@@ -309,7 +309,7 @@ async def test_localfalcon_scan_is_priced_by_grid_size_and_cannot_be_reshaped(cl
     try:
         async with AsyncClient(transport=httpx.MockTransport(upstream)) as vendor:
             monkeypatch.setattr(A.app.state, "http", vendor)
-            for size, micro in (("3", 28_800), ("5", 80_000)):
+            for size, micro in (("3", 57_600), ("5", 160_000)):
                 before = await _balance(clients)
                 ok = await clients.get("/call/localfalcon.google.maps.rank_grid", params={**scan, "grid_size": size})
                 assert ok.status_code == 200, ok.text
