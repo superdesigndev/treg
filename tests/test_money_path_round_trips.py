@@ -248,6 +248,35 @@ async def test_sweep_moves_past_holds_it_could_not_release(money_db, monkeypatch
     assert await _drift(org_id) == 0
 
 
+@pytest.mark.parametrize("batch_size", [1, 100])
+async def test_a_release_that_raises_does_not_stop_another_teams(money_db, monkeypatch, batch_size):
+    monkeypatch.setattr(get_settings(), "reserve_reaps_stale_holds", False)
+    broken_org, _ = await _payer("money-path-broken")
+    other_org, _ = await _payer("money-path-other")
+    await _stale_hold(broken_org, "broken")
+    await _stale_hold(other_org, "other")
+    async with session_maker() as db:   # the raising hold is the oldest, first in every run
+        await db.execute(update(Hold).where(Hold.id == "broken").values(
+            created_at=utcnow_naive() - timedelta(seconds=ledger.hold_ttl_s() + 60)))
+        await db.commit()
+    release = ledger.release
+
+    async def release_or_raise(db, call_id, **kwargs):
+        if call_id == "broken":
+            raise RuntimeError("release refused")
+        return await release(db, call_id, **kwargs)
+
+    monkeypatch.setattr(ledger, "release", release_or_raise)
+    result = await hold_sweep.reap_stale_holds(batch_size=batch_size)
+    assert (result.seen, result.failed, result.released_micro, result.complete) == (2, 1, 100, True)
+    assert await _entries("other") == ["release", "reserve"]
+    assert await _entries("broken") == ["reserve"]
+    monkeypatch.setattr(ledger, "release", release)
+    assert (await hold_sweep.reap_stale_holds()).released_micro == 100
+    assert await _entries("broken") == ["release", "reserve"]
+    assert await _drift(broken_org) == await _drift(other_org) == 0
+
+
 async def _autotopup_with_card(clients: AsyncClient, threshold_micro: int) -> int:
     org_id = (await clients.get("/orgs")).json()[0]["org_id"]
     async with session_maker() as db:

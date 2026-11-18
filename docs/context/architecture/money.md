@@ -502,7 +502,9 @@ schedule: it lists stale holds (`ledger.stale_holds`) and releases each in its o
 `release` session. Both scans skip allowance holds, which only their own close releases. Each read
 of the sweep starts past the `(created_at, id)` of the last hold the previous read returned, so a
 hold it could not release never stays at the head of the list and the run always reaches the holds
-behind it. Schedule it every minute, then turn `reserve_reaps_stale_holds` off; the sweep and a lazy
+behind it. A release that raises is counted (`failed`), logged at most once a minute with its
+hold id, and passed over the same way, so one broken hold never keeps another team's money held.
+Schedule it every minute, then turn `reserve_reaps_stale_holds` off; the sweep and a lazy
 reap may race for one hold, and the claim closes it once. A member spend refusal still reaps
 its own team first (`_enforce_member_spend_cap`).
 
