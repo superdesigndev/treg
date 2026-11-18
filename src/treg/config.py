@@ -350,6 +350,10 @@ class Settings(BaseSettings):
     # provider past the cap; `enforce` also refuses with `upstream_busy`; `off` counts nothing.
     upstream_inflight_mode: Literal["off", "log", "enforce"] = "log"
     upstream_inflight_cap: int = Field(default=50, ge=0)
+    # Whether every reserve first reaps its own team's stale holds (money.md "The hold reaper").
+    # Turn it off only once `treg-worker holds reap` runs on a schedule; until then the lazy reap
+    # is the only one.
+    reserve_reaps_stale_holds: bool = True
     # Spooled settlement evidence (application/call/settle.py `_spool_response`): a catalog
     # endpoint declaring `spooled_response` writes its metered 2xx body to an anonymous temp file
     # instead of RAM, reads the top-level keys its usage settles from, settles, then relays the file.

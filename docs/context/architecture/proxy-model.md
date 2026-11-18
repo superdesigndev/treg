@@ -234,9 +234,19 @@ Non-2xx, encoded, streamed free fetches and spooled answers are never rewritten.
 
 ## Connection discipline: a call in flight holds no DB connection
 
-Resolution, authorization and reservation own short sessions. `service._execute_call` commits the
-request's secret-loading session before reservation and again before relay or the live demo's
-network call: **zero checked-out request connections during upstream I/O**, including
+Resolution, catalog resolution and authorization share the request session (`request.db`): one
+checkout, ended by `authorize_call`'s commit, so a metered call takes four checkouts in all (sign-in,
+that session, reserve, settle). When the target is a catalog row (a catalog id, or a vendor path
+`<provider>/<path>` that `vendor_path_endpoint` matches), two things happen before that session's
+first statement, while no connection is held: the caller's body is read whole (a catalog call reads
+it anyway, and a slow upload must not keep a connection idle in transaction), and the cached
+capacity and overflow views refresh (`load_marketplace_views`; routed rows skip it), because their
+refresh opens a session of its own. A call to the team's own tool streams its body as before,
+unless its name is also a catalog id or a provider whose catalog row matches the path. A
+routed endpoint commits the request session before its children run, and a
+cancellation closes it before compensation. Reservation and settlement own their money sessions.
+`service._execute_call` commits the request's secret-loading session before reservation and again
+before relay or the live demo's network call: **zero checked-out request connections during upstream I/O**, including
 rate-smoothing waits. Settlement, first-call recording and idempotency storage use their own
 sessions; `expire_on_commit=False` keeps loaded objects usable. OAuth refresh separates DB work
 from token-endpoint I/O. Holding the request transaction through relay deadlocks a saturated pool
@@ -252,8 +262,9 @@ the call starts and with no session open; the database work around it is short s
 
 `* /call/{rest:path}` -> `routers.call.call_tool()` -> `routers.call.run_call_surface()` (shared
 with `/catalog/call/` and `/table/`, which differ only in `finish`: see [table](table.md)) ->
-`service.execute_call()` -> `resolve_call_target(...)` -> `ResolvedTarget(tool, upstream)`. Each
-resolution use case owns and closes its read session.
+`service.execute_call()` -> `resolve_call_target(...)` -> `ResolvedTarget(tool, upstream)`. Called
+from the call use case, resolution reads on the request session; any other caller passes no session
+and the use case owns and closes its own.
 
 Resolution is scoped to the caller's org (`Tool.org_id == org_id`), so orgs may reuse tool names and
 hosts, and only same-org secrets load. Two shapes:
@@ -338,8 +349,8 @@ optional array is allowed). Both apply on every tier and never to raw own-tool r
 ### Authorization and deny rules
 
 After resolution `application.call.authorize` runs tool/project ACL, deny, member cap and
-public-demo gates in that order, with no hold and no upstream access, and closes its session before
-reserve.
+public-demo gates in that order, with no hold and no upstream access, and commits the request
+session before reserve.
 
 `_enforce_deny` matches the **resolved** upstream against the org's `DenyRule` rows, so both call
 shapes are equally gated, and the relay never follows redirects, so a blocked host is not reachable
@@ -483,7 +494,7 @@ bears that account's exposure.
 
 Tier 4 spends treg's own vendor account, which can be empty. After `_platform_offer` says yes,
 `_resolve_marketplace_call` consults the in-process capacity view (`domain.capacity.view`, loaded
-from ratestore before the session opens). Two sources mark a call exhausted: the sweep's
+from ratestore before the request session's first statement). Two sources mark a call exhausted: the sweep's
 `capacity:state:<provider>` and the call path's lock `capacity:lock:<key>`. Then it raises
 `CallFailure("provider_capacity", 503, blame="treg")` **before any hold exists**, with `resets_at`
 when known and `_capability_alternatives`; treg names options, never chooses (AGENTS.md). Audit

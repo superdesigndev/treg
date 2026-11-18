@@ -75,6 +75,7 @@ from .resolve import (
     _oauth_billed_provider,
     _request_body_document,
     _resolve_call,
+    load_marketplace_views,
     provider_paused,
     resolve_call_target,
     resolve_marketplace_target,
@@ -259,6 +260,14 @@ async def _await_before_reserve(awaitable, request: _ApplicationRequest, call_re
     try:
         return await awaitable
     except asyncio.CancelledError:
+        # The request session may be mid-transaction (resolution through authorization share it);
+        # its connection goes back before compensation opens sessions of its own. A failure or a
+        # second cancellation here must not skip that compensation.
+        if request.db.in_transaction():
+            try:
+                await asyncio.shield(request.db.close())
+            except (Exception, asyncio.CancelledError):  # noqa: BLE001 - compensation runs regardless
+                pass
         await _finish_cancelled_call(request, None, call_ref)
         raise
 
@@ -864,6 +873,16 @@ async def _admit_org_endpoint(request: _ApplicationRequest, endpoint_id: str) ->
     })
 
 
+def _vendor_path_row(rest: str, request: _ApplicationRequest) -> dict | None:
+    """The catalog row a vendor path names, or None; a refusal is left to the resolution order, where
+    a team's own tool of that provider's name wins first."""
+    try:
+        found = vendor_path_endpoint(rest, request.method, request.query_params)
+    except CallFailure:
+        return None
+    return found[0] if found else None
+
+
 async def _execute_call(request: _ApplicationRequest, upstream_client: httpx.AsyncClient) -> UpstreamResponse:
     caller = request.caller
     rest = request.raw_rest
@@ -933,9 +952,21 @@ async def _execute_call(request: _ApplicationRequest, upstream_client: httpx.Asy
             raise ResolutionFailed("target_not_found", status_code=404, detail=(
                 f"unknown catalog endpoint {rest!r} — use catalog_search for a valid endpoint id"))
     else:
+        # Resolution, catalog resolution and authorization share the request session: one
+        # checkout, ended by authorization's commit. The views a catalog resolution reads refresh
+        # first, while no connection is held.
+        named = _catalog_endpoint_for(rest)
+        catalog_row = named if named is not None else _vendor_path_row(rest, request)
+        if catalog_row is not None:
+            # A catalog call reads the whole body anyway; reading it before the session's first
+            # statement keeps a slow upload from holding a pooled connection idle in transaction.
+            if request.has_body:
+                await _await_before_reserve(request.body(), request, call_ref)
+            if catalog_row.get("kind") != "routed":
+                await _await_before_reserve(load_marketplace_views(), request, call_ref)
         try:
             target = await _await_before_reserve(
-                resolve_call_target(rest, caller, _resolve_call), request, call_ref)
+                resolve_call_target(rest, caller, _resolve_call, db), request, call_ref)
             request.context.target = target
             tool, upstream_url = target.tool, target.upstream
             request.context.tool_name = tool.name
@@ -1037,6 +1068,7 @@ async def _execute_call(request: _ApplicationRequest, upstream_client: httpx.Asy
         # A first-party routed endpoint (treg.<capability>): the router picks children and runs
         # each through THIS use case again (child contexts, own hold ids), then assembles one
         # answer. The parent owns the idempotency label and the X-Treg-* stamping below.
+        await db.commit()   # no pooled connection held across the children's own sessions
         try:
             request.context.quota_pending += ((caller.org_id, ep["id"]),)
             body_bytes = await _await_before_reserve(request.body(), request, call_ref)
@@ -1111,6 +1143,7 @@ async def _execute_call(request: _ApplicationRequest, upstream_client: httpx.Asy
                 resolve_call=_resolve_call,
                 request_headers=request.headers,
                 authorization_method=request.headers.get(AUTHORIZATION_METHOD_HEADER, ""),
+                db=db,
             ), request, call_ref)
         except CallFailure as mkexc:
             # Catalog resolution is allowed to fall through from a named miss, but its own 404 must
@@ -1164,6 +1197,7 @@ async def _execute_call(request: _ApplicationRequest, upstream_client: httpx.Asy
                 upstream_url=upstream_url,
                 method=request.method,
                 client_ip=request.client_ip,
+                db=db,
             ),
             request,
             call_ref,

@@ -458,12 +458,13 @@ async def _platform_reserve(mk: MarketplaceCall, caller: Caller, meta: CallMeta 
                     await _enforce_trial_allowance(caller, mk.provider, mk.endpoint_id, db)
                 try:
                     with timing.phase("ledger"):
-                        mk.call_id = await ledger.reserve_in_transaction(
+                        reserved = await ledger.reserve_returning_balance_in_transaction(
                             db, caller.org_id, mk.endpoint_id, held,
                             meta={"tier": "oauth" if mk.billed_oauth else "platform",
                                   "provider": mk.provider, "cost_type": mk.cost_type},
                             tags=meta.tags, call_id=call_ref,
                             purchased_only=_purchased_only(mk.endpoint_id), member_id=member_id)
+                        mk.call_id = reserved.call_id
                 except ledger.InsufficientBalance:
                     await db.rollback()
                     # A refused call asks for a refill too, or a team at $0 with auto top-up on would stay
@@ -476,8 +477,15 @@ async def _platform_reserve(mk: MarketplaceCall, caller: Caller, meta: CallMeta 
                     raise
                 with timing.phase("commit"):
                     await db.commit()
+        # Scheduled after the lease is gone. Auto top-up sees the balance crossing that triggered
+        # this reservation: the gate's UPDATE returned it, so the org row is not read again. The
+        # hold is committed; a failure here must not fail the call.
         if auto_on:
-            await _schedule_autotopup_after(caller.org_id)
+            try:
+                billing.maybe_schedule_autotopup(caller.org, balance_micro=reserved.balance_micro)
+            except Exception as exc:  # noqa: BLE001
+                logging.getLogger("treg.ledger").warning(
+                    "auto top-up check after reserve failed for org %s: %s", caller.org_id, exc)
     except ledger.PurchasedCreditShort as exc:
         if refused_org is not None:
             billing.maybe_schedule_autotopup(refused_org)

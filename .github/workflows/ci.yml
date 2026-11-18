@@ -150,6 +150,8 @@ jobs:
           tests/test_money_admission.py
           tests/test_money_admission_application.py
           tests/test_money_admission_postgres.py
+          tests/test_money_path_concurrency_postgres.py
+          tests/test_money_path_round_trips.py
           tests/test_money_session_postgres.py
           tests/test_money_admission_reporting.py
           tests/test_money_bigint.py
