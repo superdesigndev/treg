@@ -762,7 +762,27 @@ def test_the_feature_refuses_to_start_without_a_secret(monkeypatch):
     monkeypatch.setenv("TREG_AGENT_PAYMENTS_ENABLED", "1")
     monkeypatch.delenv("TREG_AGENT_PAYMENTS_SECRET", raising=False)
     with pytest.raises(ValueError, match="TREG_AGENT_PAYMENTS_SECRET"):
-        Settings()
+        Settings().check_agent_payments()
+
+
+def test_a_process_without_payment_code_starts_while_payments_lack_their_secrets(monkeypatch):
+    from treg.bootstrap import configure_agent_payments
+    from treg.config import Settings
+
+    monkeypatch.setenv("TREG_AGENT_PAYMENTS_ENABLED", "1")
+    monkeypatch.setenv("TREG_AGENT_PAYMENTS_SETTLEMENT", "stripe")
+    monkeypatch.setenv("TREG_AGENT_PAYMENTS_TEMPO_RECIPIENT", "not-an-address")
+    monkeypatch.delenv("TREG_AGENT_PAYMENTS_SECRET", raising=False)
+    monkeypatch.delenv("TREG_STRIPE_SECRET_KEY", raising=False)
+    assert Settings().agent_payments_enabled
+    get_settings.cache_clear()
+    try:
+        with pytest.raises(ValueError, match="agent payments cannot start") as error:
+            configure_agent_payments()
+    finally:
+        get_settings.cache_clear()
+    for name in ("SECRET", "STRIPE_SECRET_KEY", "TEMPO_RECIPIENT"):
+        assert f"TREG_AGENT_PAYMENTS_{name}" in str(error.value)
 
 
 def test_a_challenge_carries_integer_micro_usd_as_token_base_units():
@@ -1656,7 +1676,7 @@ def test_mainnet_x402_needs_its_own_rpc(monkeypatch):
     _mainnet_x402(monkeypatch)
     monkeypatch.delenv("TREG_AGENT_PAYMENTS_X402_RPC_URL")
     with pytest.raises(ValueError, match="X402_RPC_URL"):
-        Settings()
+        Settings().check_agent_payments()
 
 
 # ---- the Coinbase facilitator's API key -----------------------------------------------------------
@@ -1708,7 +1728,7 @@ def test_a_cdp_key_needs_both_halves(monkeypatch):
     monkeypatch.setenv("TREG_AGENT_PAYMENTS_X402_CDP_API_KEY_ID", "k")
     monkeypatch.delenv("TREG_AGENT_PAYMENTS_X402_CDP_API_KEY_SECRET", raising=False)
     with pytest.raises(ValueError, match="CDP_API_KEY"):
-        Settings()
+        Settings().check_agent_payments()
 
 
 def _mainnet_x402(monkeypatch):
@@ -1730,7 +1750,7 @@ def test_a_complete_mainnet_x402_configuration_starts(monkeypatch):
     from treg.config import Settings
 
     _mainnet_x402(monkeypatch)
-    assert Settings().agent_payments_x402_enabled
+    Settings().check_agent_payments()
 
 
 @pytest.mark.parametrize(("name", "value", "named"), [
@@ -1745,7 +1765,7 @@ def test_a_wrong_mainnet_setting_is_named(monkeypatch, name, value, named):
     _mainnet_x402(monkeypatch)
     monkeypatch.setenv(name, value)
     with pytest.raises(ValueError, match=named):
-        Settings()
+        Settings().check_agent_payments()
 
 
 def test_one_error_names_every_missing_setting(monkeypatch):
@@ -1757,7 +1777,7 @@ def test_one_error_names_every_missing_setting(monkeypatch):
     for name in ("SECRET", "TEMPO_RECIPIENT", "X402_PAY_TO"):
         monkeypatch.delenv(f"TREG_AGENT_PAYMENTS_{name}", raising=False)
     with pytest.raises(ValueError) as error:
-        Settings()
+        Settings().check_agent_payments()
     for name in ("SECRET", "TEMPO_RECIPIENT", "X402_PAY_TO"):
         assert f"TREG_AGENT_PAYMENTS_{name}" in str(error.value)
 
@@ -1770,9 +1790,9 @@ def test_mainnet_and_testnet_rails_never_mix(monkeypatch):
     monkeypatch.setenv("TREG_AGENT_PAYMENTS_TEMPO_RECIPIENT", RECIPIENT)
     monkeypatch.setenv("TREG_AGENT_PAYMENTS_TEMPO_CHAIN_ID", "42431")
     with pytest.raises(ValueError, match="both mainnet or both testnet"):
-        Settings()
+        Settings().check_agent_payments()
     monkeypatch.setenv("TREG_AGENT_PAYMENTS_TEMPO_CHAIN_ID", "4217")
-    assert Settings().agent_payments_mpp_enabled
+    Settings().check_agent_payments()
 
 
 # ---- settlement to Stripe ------------------------------------------------------------------------
@@ -1868,7 +1888,7 @@ def test_settling_to_stripe_needs_a_stripe_key(monkeypatch):
     monkeypatch.setenv("TREG_AGENT_PAYMENTS_SETTLEMENT", "stripe")
     monkeypatch.delenv("TREG_STRIPE_SECRET_KEY", raising=False)
     with pytest.raises(ValueError, match="TREG_STRIPE_SECRET_KEY"):
-        Settings()
+        Settings().check_agent_payments()
 
 
 async def test_a_tempo_rpc_key_goes_with_every_rpc_request(monkeypatch):
@@ -1917,9 +1937,9 @@ def test_a_tempo_rpc_key_needs_its_rpc_url(monkeypatch):
     monkeypatch.setenv("TREG_AGENT_PAYMENTS_TEMPO_RPC_API_KEY", "tempo_sandbox:sk:k")
     monkeypatch.delenv("TREG_AGENT_PAYMENTS_TEMPO_RPC_URL", raising=False)
     with pytest.raises(ValueError, match="TREG_AGENT_PAYMENTS_TEMPO_RPC_URL"):
-        Settings()
+        Settings().check_agent_payments()
     monkeypatch.setenv("TREG_AGENT_PAYMENTS_TEMPO_RPC_URL", "https://rpc.example/testnet")
-    assert Settings().agent_payments_tempo_rpc_api_key
+    Settings().check_agent_payments()
 
 
 async def test_the_chain_search_stays_near_the_head_and_asks_for_logs_in_spans():

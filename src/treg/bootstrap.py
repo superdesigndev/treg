@@ -748,6 +748,7 @@ def configure_agent_payments() -> None:
     from .application import agent_payments
 
     s = get_settings()
+    s.check_agent_payments()
     rails = []
     if s.agent_payments_enabled:
         if s.agent_payments_mpp_enabled:
