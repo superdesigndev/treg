@@ -21,7 +21,7 @@ from treg.application.call.types import ReservationFailed
 from treg.config import get_settings
 from treg.domain import money as ledger
 from treg.domain.money import allowance
-from treg.domain.governance.teams import cascade_delete_org
+from treg.domain.governance.teams import cascade_delete_org, lock_allowance_holds
 from treg.infra import db as infra_db
 from treg.infra import kv
 from treg.infra.db import reset_db, session_maker
@@ -524,10 +524,40 @@ async def test_deleting_a_team_locks_its_allowance_hold_before_its_queued_charge
             await db.rollback()
 
     seen = await _statements(delete)
-    lock = next(i for i, text in enumerate(seen) if " from hold " in text and "allowance" in text)
+    lock = next(i for i, text in enumerate(seen) if "from hold where hold.id in" in text)
     charge = next(i for i, text in enumerate(seen) if "delete from callcharge" in text)
     assert lock < charge
     assert infra_db._is_sqlite or seen[lock].endswith("for update")
+
+
+async def test_teams_deleted_together_have_their_holds_locked_in_the_writers_order(org_id, store):
+    """One statement for the batch, ordered by the holds' ids as the writer's is: team by team
+    in any other order, two deletions and a writer's batch could each hold what the other
+    wants."""
+    seen = await _statements(lambda: _lock_holds([org_id + 7, org_id, org_id + 3]))
+    assert len(seen) == 1 and "order by hold.id" in seen[0]
+
+
+async def _lock_holds(org_ids) -> None:
+    async with session_maker() as db:
+        await lock_allowance_holds(db, org_ids)
+        await db.rollback()
+
+
+async def test_a_process_about_to_exit_wakes_a_freeze_that_is_pausing(org_id, store, monkeypatch):
+    """The pause before the next attempt can be longer than the wait at exit. The store is
+    back; the attempt must be made now."""
+    monkeypatch.setattr(runtime, "_FREEZE_RETRY_S", 30.0)
+    freeze, away = store.allowance_freeze, [True]
+
+    async def sometimes_away(org, **kwargs):
+        return None if away[0] else await freeze(org, **kwargs)
+
+    monkeypatch.setattr(store, "allowance_freeze", sometimes_away)
+    assert await runtime.freeze(org_id) is False
+    away[0] = False
+    assert await asyncio.wait_for(runtime.deliver_owed_freezes(timeout_s=2), 3) == 0
+    assert store.counters[org_id]["frozen"] == 1
 
 
 async def test_a_charge_carries_the_hold_its_call_took_from(org_id, store):

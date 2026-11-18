@@ -1,6 +1,7 @@
 """Team creation and deletion rules, and membership read models."""
 
 import re
+from collections.abc import Sequence
 
 import sys
 
@@ -468,6 +469,21 @@ async def erase_archive_keys(db: AsyncSession, key_ids: list[int]) -> int:
     return len(keys_gone)
 
 
+async def lock_allowance_holds(db: AsyncSession, org_ids: Sequence[int]) -> None:
+    """Lock the allowance holds of teams about to be deleted, before any of their queued call
+    charges is deleted: the order the charge writer uses. Deleting a charge first, a writer that
+    holds the hold and is writing that charge again would wait on the delete while the deletion
+    waits on the hold.
+
+    One statement, in the order of the holds' ids, which is the writer's order too. A caller
+    that deletes several teams in one transaction calls this once for all of them, first:
+    locking team by team could take two holds in the opposite order to a writer's batch."""
+    ids = sorted({f"allowance:{org_id}" for org_id in org_ids})
+    if ids:
+        await db.execute(
+            select(Hold.id).where(Hold.id.in_(ids)).order_by(Hold.id).with_for_update())
+
+
 async def cascade_delete_org(org: Org, db: AsyncSession) -> None:
     """Delete every org-scoped row, then the org. Does not commit.
 
@@ -517,11 +533,7 @@ async def cascade_delete_org(org: Org, db: AsyncSession) -> None:
         await db.flush()
         await db.delete(app)
     await db.flush()
-    # The team's allowance hold is locked before any of its queued call charges is deleted: the
-    # order the charge writer uses. Deleting a charge first, a writer that holds the hold and is
-    # writing that charge again would wait on the delete while this waits on the hold.
-    await db.execute(select(Hold.id).where(Hold.org_id == org.id, Hold.allowance.is_(True))
-                     .with_for_update())
+    await lock_allowance_holds(db, [org.id])
     for model in ORG_SCOPED_MODELS:
         for r in (await db.execute(select(model).where(model.org_id == org.id))).scalars().all():
             await db.delete(r)
