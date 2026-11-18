@@ -1,15 +1,17 @@
 """Team creation and deletion rules, and membership read models."""
 
+import logging
 import re
-from collections.abc import Sequence
-
 import sys
+from collections.abc import Sequence
+from datetime import datetime, timedelta
 
 from sqlalchemy import delete, exists, func, update
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import aliased
 from sqlmodel import select
 
+from ...infra import kv
 from ...models import (
     AgentPayer,
     AgentPayment,
@@ -469,7 +471,7 @@ async def erase_archive_keys(db: AsyncSession, key_ids: list[int]) -> int:
     return len(keys_gone)
 
 
-async def lock_allowance_holds(db: AsyncSession, org_ids: Sequence[int]) -> None:
+async def lock_allowance_holds(db: AsyncSession, org_ids: Sequence[int]) -> dict:
     """Lock the allowance holds of teams about to be deleted, before any of their queued call
     charges is deleted: the order the charge writer uses. Deleting a charge first, a writer that
     holds the hold and is writing that charge again would wait on the delete while the deletion
@@ -477,11 +479,28 @@ async def lock_allowance_holds(db: AsyncSession, org_ids: Sequence[int]) -> None
 
     One statement, in the order of the holds' ids, which is the writer's order too. A caller
     that deletes several teams in one transaction calls this once for all of them, first:
-    locking team by team could take two holds in the opposite order to a writer's batch."""
+    locking team by team could take two holds in the opposite order to a writer's batch.
+    Returns each locked hold's `created_at` by team."""
     ids = sorted({f"allowance:{org_id}" for org_id in org_ids})
-    if ids:
-        await db.execute(
-            select(Hold.id).where(Hold.id.in_(ids)).order_by(Hold.id).with_for_update())
+    if not ids:
+        return {}
+    return {org_id: created_at for org_id, created_at in (await db.execute(
+        select(Hold.org_id, Hold.created_at).where(Hold.id.in_(ids)).order_by(Hold.id)
+        .with_for_update())).all()}
+
+
+async def _retire_allowance_counter(org_id: int, hold_created_at) -> None:
+    """End the shared store's counter of a deleted team's allowance hold. The counter is keyed
+    by the team's number and admits calls by itself; left behind, it would go on admitting them
+    with no hold, for a database that gives the number to a new team as well. Before the
+    delete commits: a deletion rolled back afterwards finds its counter emptied, and the next
+    refill rebuilds it."""
+    if not kv.configured():
+        return
+    epoch = (hold_created_at - datetime(1970, 1, 1)) // timedelta(microseconds=1)
+    if await kv.store().allowance_retire(org_id, epoch, 24 * 3600 * 1000) is None:
+        logging.getLogger("treg.ledger").error(
+            "allowance counter of deleted org %s was not retired: the store did not answer", org_id)
 
 
 async def cascade_delete_org(org: Org, db: AsyncSession) -> None:
@@ -533,7 +552,9 @@ async def cascade_delete_org(org: Org, db: AsyncSession) -> None:
         await db.flush()
         await db.delete(app)
     await db.flush()
-    await lock_allowance_holds(db, [org.id])
+    held = await lock_allowance_holds(db, [org.id])
+    if org.id in held:
+        await _retire_allowance_counter(org.id, held[org.id])
     for model in ORG_SCOPED_MODELS:
         for r in (await db.execute(select(model).where(model.org_id == org.id))).scalars().all():
             await db.delete(r)
