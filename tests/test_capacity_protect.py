@@ -8,7 +8,7 @@ from __future__ import annotations
 
 import json
 import logging
-from datetime import timedelta
+from datetime import datetime, timedelta
 
 import pytest
 from httpx import AsyncClient
@@ -265,6 +265,60 @@ async def test_an_account_out_refusal_tells_clients_when_to_retry(clients: Async
     capacity_marks._last_probe.clear()
     r = await clients.get(f"/call/{EP}?aweme_id=7")  # the probe meets the same quota
     assert _capacity_503(r) and 7000 < int(r.headers["Retry-After"]) <= 7200, r.headers
+
+
+async def test_a_refusal_before_any_hold_tells_clients_when_to_retry(clients: AsyncClient, platform_on):
+    await _publish("tikhub", exhausted=True)
+    r = await clients.get(f"/call/{EP}?aweme_id=7")
+    assert _capacity_503(r)
+    resets = datetime.fromisoformat(r.json()["detail"]["resets_at"].rstrip("Z"))
+    wait = (resets - utcnow_naive()).total_seconds()
+    assert wait - 5 <= int(r.headers["Retry-After"]) <= wait + 5, "the seconds until the reset"
+
+
+async def test_steady_traffic_while_dry_never_extends_the_lock_and_a_probe_lifts_it(
+        clients: AsyncClient, platform_on, monkeypatch):
+    """Ten minutes of twenty calls a minute while the account stays dry: only one probe a minute
+    reaches the provider, nothing is charged and the lock keeps its end. After a top-up the next
+    probe lifts it for everyone."""
+    lock = await _lock_by_two_signals(clients, monkeypatch)
+    before = await _balance(clients)
+    dry = _counting(_fake_relay(402, OUT))
+    monkeypatch.setattr(call_service, "relay", dry)
+    for _ in range(10):
+        capacity_marks._last_probe.clear()  # a minute passes
+        for _ in range(20):
+            assert _capacity_503(await clients.get(f"/call/{EP}?aweme_id=7"))
+        now = await _lock(lock.key)
+        assert now.lock_id == lock.lock_id and now.until == lock.until, "never extended"
+    assert dry.calls == 10 and await _balance(clients) == before
+    monkeypatch.setattr(call_service, "relay", _fake_relay(200, b'{"ok":true}'))
+    capacity_marks._last_probe.clear()
+    assert [(await clients.get(f"/call/{EP}?aweme_id=7")).status_code for _ in range(20)] == [200] * 20
+    assert await _lock(lock.key) is None
+
+
+async def test_a_quota_lock_ends_at_its_reset_without_a_probe(clients: AsyncClient, platform_on, monkeypatch):
+    relay = _relay(429, b'{"detail":"quota"}', [(b"retry-after", b"7200")])
+    await _lock_by_two_signals(clients, monkeypatch, relay)
+    later = utcnow_naive() + timedelta(hours=2, minutes=1)
+    monkeypatch.setattr(capacity_marks, "utcnow_naive", lambda: later)
+    capacity_view.invalidate()
+    ok = _counting(_fake_relay(200, b'{"ok":true}'))
+    monkeypatch.setattr(call_service, "relay", ok)
+    assert [(await clients.get(f"/call/{EP}?aweme_id=7")).status_code for _ in range(10)] == [200] * 10
+    assert ok.calls == 10
+
+
+async def test_a_retry_with_the_same_idempotency_key_after_the_refusal_is_served(
+        clients: AsyncClient, platform_on, monkeypatch):
+    """The refusal is not stored under the key: once the account serves again, the same key gets
+    the answer, not a replay of the 503."""
+    headers = {"Idempotency-Key": "account-out-retry"}
+    monkeypatch.setattr(call_service, "relay", _fake_relay(402, OUT))
+    assert _capacity_503(await clients.get(f"/call/{EP}?aweme_id=7", headers=headers))
+    monkeypatch.setattr(call_service, "relay", _fake_relay(200, b'{"ok":true}'))
+    assert (await clients.get(f"/call/{EP}?aweme_id=7", headers=headers)).status_code == 200
 
 
 async def test_quota_429_locks_the_endpoint_only_until_the_reset(clients: AsyncClient, platform_on, monkeypatch):

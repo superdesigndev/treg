@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import math
 import re
 from email import policy
 from email.parser import BytesParser
@@ -31,6 +32,7 @@ from ...domain import provider_resources
 from ...infra.db import session_maker
 from ...infra.upstream import pathsegment
 from ...domain.governance.access import pinned_tag_predicates
+from ...timeutil import utcnow_naive
 from ...models import AsyncResourceRecord, AsyncTaskRecord, CapabilityPin, Org, Secret, Tool
 from ..connect import _host_of, _provider_bindings
 from . import cost as call_cost
@@ -2594,6 +2596,9 @@ def _key_affinity(caller: Caller, headers) -> str:
     return f"{caller.org_id}{_IDEM_SCOPE_SEP}{key}" if key else ""
 
 
+CAPACITY_RETRY_AFTER_S = 60
+
+
 def _provider_capacity_unavailable(ep: dict, service: str, resets, *,
                                    probing: bool = False) -> ResolutionFailed:
     """The typed floor (plan §4.5): no charge, `resets_at` when known, and the same-capability
@@ -2610,7 +2615,10 @@ def _provider_capacity_unavailable(ep: dict, service: str, resets, *,
     lines.extend(_capability_alternatives(ep))
     lines.append(f"  or use your own key: treg secret add {service} --env-var "
                  f"{service.upper().replace('-', '_')}_API_KEY  (own keys are never affected)")
-    return ResolutionFailed("provider_capacity", status_code=503, detail={
+    # Many HTTP clients retry a 503 at once; Retry-After (RFC 9110) asks them to wait.
+    retry_after_s = (max(1, math.ceil((resets - utcnow_naive()).total_seconds())) if resets
+                     else CAPACITY_RETRY_AFTER_S)
+    return ResolutionFailed("provider_capacity", status_code=503, retry_after_s=retry_after_s, detail={
         "error": "provider_capacity_unavailable", "provider": service, "endpoint_id": ep["id"],
         "resets_at": resets.isoformat() + "Z" if resets else None,
         "alternatives": [ln.strip() for ln in _capability_alternatives(ep)[1:]],

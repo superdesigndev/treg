@@ -278,7 +278,7 @@ the provider.
 
 | Status, `detail.error` | Contract |
 |---|---|
-| 503 `provider_capacity_unavailable` | treg's own account cannot serve now; refused before any hold, names `alternatives` and `resets_at`, never calls one for the caller. Also replaces, uncharged, a platform answer the capacity table reads as treg's account out (any status, a 2xx included) that overflow did not serve, with `Retry-After` (the lock's reset when known, else 60 s). A team's own key is unaffected. `platform_overflow: false` in team settings opts into this instead of an overflow relay. |
+| 503 `provider_capacity_unavailable` | treg's own account cannot serve now; refused before any hold, names `alternatives` and `resets_at`, never calls one for the caller. Also replaces, uncharged, a platform answer the capacity table reads as treg's account out (any status, a 2xx included) that overflow did not serve. Both carry `Retry-After`: the seconds until `resets_at` when known, else 60. A team's own key is unaffected. `platform_overflow: false` in team settings opts into this instead of an overflow relay. |
 | 503 `provider_paused` | `TREG_PAUSED_PROVIDERS` lists the provider; refused before any hold, token refresh or upstream request, on catalog ids, connection tools and URL passthrough alike. Discovery leaves its endpoints out, connect routes refuse, existing connections are never changed (listed with `paused: true`), and `GET /meta` carries `paused_providers`. |
 | 429 `org_*` | Published org flow-control refusals ([org-flow-control](../architecture/org-flow-control.md)). |
 | 429 `share_busy` | Waited too long for a fair-share place; not charged. |

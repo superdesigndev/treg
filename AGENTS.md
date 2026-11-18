@@ -62,9 +62,10 @@ Everything else in this file is guidance; these are the contract, and they win o
    invitation; clients show their text as treg's ([feedback](docs/context/architecture/feedback.md)).
    One replacement, on treg's shared key only: an answer the capacity signature table reads as
    treg's account out of money or out of its period allowance (`balance` or `quota`, any status, a
-   2xx included), that overflow did not serve and that settled at zero, reaches the caller as the
-   typed 503 `provider_capacity_unavailable`; the provider's answer stays in the call's error
-   evidence, and a routed call skips that provider. A team's own key is relayed unchanged.
+   2xx included), that overflow did not serve and that settled at zero, reaches the caller,
+   uncharged, as the typed 503 `provider_capacity_unavailable` with `Retry-After`; a masked copy of
+   the provider's answer stays in the call's error evidence, and a routed call skips that provider.
+   A team's own key is relayed unchanged.
    A live-verified free catalog endpoint may declare an anonymous fallback; its empty binding list
    omits credential injection but does not strip or rewrite caller headers.
    Routed endpoints and overflow wrap the child's answer and say so; they never alter it. A routed

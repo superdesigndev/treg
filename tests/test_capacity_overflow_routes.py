@@ -242,6 +242,10 @@ def test_a_plan_period_cap_is_a_quota_and_a_concurrency_cap_a_burst():
     pace = (b'{"error":"limit: 60 search per 60s for plan pro","metric":"search",'
             b'"window_secs":60,"cap":60,"retry_after_s":5}')
     assert S.classify("crawl4ai", 429, {"retry-after": "5"}, pace).kind == "burst"
+    one_client = (b'{"error":"limit: 500 search per 86400s for this client","metric":"search",'
+                  b'"window_secs":86400,"cap":500,"retry_after_s":3600}')
+    assert not S.is_exhausting(S.classify("crawl4ai", 429, {"retry-after": "3600"}, one_client)), \
+        "a cap on one client never locks the endpoint for every team"
 
 
 @pytest.mark.parametrize("provider, status, out, _", _OUT_OF_CREDITS, ids=[r[0] for r in _OUT_OF_CREDITS])

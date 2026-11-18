@@ -515,9 +515,10 @@ The call that meets the signature (a strike, a probe, a free route's own quota) 
 either. `service._execute_call` replaces a tier-4 (treg's shared key) answer whose signal is
 `balance` or `quota`, that overflow did not serve and that settled at zero, with the same typed 503
 `provider_capacity_unavailable` (`_provider_capacity_unavailable`), so a 2xx carrying the vendor's
-own error code or a 401 that reads as the caller's key never reaches the caller. It carries
-`Retry-After` (the lock's reset when known, else `CAPACITY_RETRY_AFTER_S`), since many clients
-retry a 503 at once. The audit row, its error evidence and `tool_called` keep the vendor's status and body. A routed child's
+own error code or a 401 that reads as the caller's key never reaches the caller. Every
+`provider_capacity` 503 built there, this one and the refusal before any hold alike, carries
+`Retry-After` (the seconds until `resets_at` when known, else `CAPACITY_RETRY_AFTER_S`), since many
+clients retry a 503 at once. The audit row, its error evidence and `tool_called` keep the vendor's status and body. A routed child's
 `provider_capacity` refusal is `skipped` ("treg's account is used up"), never an error.
 
 ## Burst smoothing on treg's own keys

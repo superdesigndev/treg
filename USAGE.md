@@ -259,9 +259,9 @@ If treg's **own** account for a provider is out, a metered call is refused with 
 `resets_at` when known and `alternatives` (other providers for the same capability). Your own key
 for the provider is never affected, and treg does not switch providers on your behalf. treg
 re-checks the provider about once a minute, so a retry after a minute can succeed. A call that
-reaches the provider just as treg's account runs out is relayed as the provider answered, with
-`X-Treg-Capacity: exhausted`; `treg call` then prints a notice that the tool is unavailable on
-treg's side instead of naming the provider's wallet.
+reaches the provider just as treg's account runs out is answered with the same 503
+`provider_capacity_unavailable`, uncharged; the provider's own answer is not relayed. Both carry
+`Retry-After`: the seconds until the reset when treg knows it, else 60.
 
 Where the deployment has the overflow relay on, treg may instead serve the **same endpoint** through a
 treg-owned aggregator account — same request, same response shape, the relay's real price (0% markup),
