@@ -82,7 +82,15 @@ class FakeStore:
         if counter is None:
             return 0
         left, counter["avail"] = counter["avail"], 0
+        self.until_ms = 0
         return left
+
+    async def allowance_freeze(self, org_id, epoch):
+        counter = self.counters.get(org_id)
+        if counter is None or counter["epoch"] != epoch:
+            return False
+        self.until_ms = 0
+        return True
 
     async def allowance_retire(self, org_id, epoch, ttl_ms):
         counter = self.counters.get(org_id)
@@ -181,44 +189,64 @@ async def test_a_call_that_is_not_billable_gives_everything_back_and_writes_noth
         assert (await db.execute(select(CallCharge))).first() is None
 
 
-async def test_an_overrun_larger_than_the_counter_leaves_nothing_on_offer(org_id, store, monkeypatch):
-    """The hold cannot cover the charge, so the counter must not go on admitting calls."""
+async def _occupy_the_rest_of_the_balance(org_id: int) -> None:
+    """Leave the team nothing but its allowance, as when other holds have the rest."""
+    async with session_maker() as db:
+        await ledger.reserve(db, org_id, "e.other", await ledger.balance_of(db, org_id),
+                             call_id="other-hold")
+
+
+async def test_an_overrun_is_owed_by_the_balance_and_stops_the_counter_until_a_refill_looks(
+        org_id, store, monkeypatch):
+    """Two calls set aside 600 and 400 of a 1_000 hold; the team has nothing else. The first
+    costs 1_500. When the second is cancelled, its 400 must not be offered to a new call: the
+    team is 500 overdrawn."""
     monkeypatch.setattr(get_settings(), "money_allowance_chunk_micro", 1_000)
-    epoch = await runtime.take(org_id, 600)
-    assert await _finish(org_id, "call-1", epoch, 600, billable=True, actual_micro=1_500) == 1_500
+    first = await runtime.take(org_id, 600)
+    second = await runtime.take(org_id, 400)
+    await _occupy_the_rest_of_the_balance(org_id)
+    assert await _finish(org_id, "first", first, 600, billable=True, actual_micro=1_500) == 1_500
+    assert await _state(org_id) == (-900, 400), "the hold still has what the second set aside"
+    assert await _finish(org_id, "second", second, 400, billable=False) == 0
+    assert store.counters[org_id]["avail"] == 400
+    assert await runtime.take(org_id, 400) is None, "frozen: only a refill may reopen it"
     assert store.counters[org_id]["avail"] == 0
-    assert (await _fold(org_id)).consumed_micro == 1_500
-    assert await _state(org_id) == (GRANT - 1_500, 0)  # 500 past the hold came out of the balance
+    assert await _state(org_id) == (-500, 0), "what was left went back; the exact path decides"
+
+
+async def test_an_overrun_on_a_team_with_money_reopens_at_the_next_refill(org_id, store):
+    epoch = await runtime.take(org_id, 600)
+    assert await _finish(org_id, "call-1", epoch, 600, billable=True) == 600
+    epoch = await runtime.take(org_id, 600)
+    assert await _finish(org_id, "call-2", epoch, 600, billable=True, actual_micro=900) == 900
+    assert store.counters[org_id]["avail"] == CHUNK - 1_200
+    assert await _state(org_id) == (GRANT - CHUNK - 300, CHUNK - 1_200)
+    assert await runtime.take(org_id, 600) == epoch
+    assert store.counters[org_id]["avail"] == CHUNK - 600
+    assert await _state(org_id) == (GRANT - CHUNK - 300 - 1_200, CHUNK)
+
+
+async def test_a_call_is_told_what_its_teams_credit_really_paid(org_id, store, monkeypatch):
+    """All the team has is set aside; the call costs twice that. The ledger can take only what
+    there is and records the rest as a shortfall, and the call is told the same figure."""
+    monkeypatch.setattr(get_settings(), "money_allowance_chunk_micro", GRANT)
+    epoch = await runtime.take(org_id, GRANT)
+    assert await _finish(org_id, "call-1", epoch, GRANT, billable=True,
+                         actual_micro=2 * GRANT) == GRANT
+    async with session_maker() as db:
+        entry, = [e for e in await ledger.entries_of(db, org_id) if e.kind == "settle"]
+    assert entry.amount_micro == -GRANT and entry.meta["block_shortfall_micro"] == GRANT
 
 
 async def test_a_counter_left_above_its_hold_is_brought_back_down_by_the_next_refill(
         org_id, store, monkeypatch):
     monkeypatch.setattr(get_settings(), "money_allowance_chunk_micro", 1_000)
-
-    async def unavailable(*args):
-        return None
-
-    take_up_to = store.allowance_take_up_to
-    monkeypatch.setattr(store, "allowance_take_up_to", unavailable)
-    epoch = await runtime.take(org_id, 600)
-    await _finish(org_id, "call-1", epoch, 600, billable=True, actual_micro=1_500)
-    assert store.counters[org_id]["avail"] == 400, "the store could not be told"
-    monkeypatch.setattr(store, "allowance_take_up_to", take_up_to)
+    epoch = await runtime.take(org_id, 100)
+    store.counters[org_id]["avail"] += 5_000  # as if a give-back was applied twice
     store.expire()
-    assert await runtime.take(org_id, 100) == epoch  # the refill folds, adds 600, then corrects
+    assert await runtime.take(org_id, 100) == epoch
     balance, hold = await _state(org_id)
-    assert hold == 600 and store.counters[org_id]["avail"] == hold - 100
-
-
-async def test_an_unknown_cost_charges_the_reservation_and_an_overrun_takes_the_difference(
-        org_id, store):
-    epoch = await runtime.take(org_id, 600)
-    assert await _finish(org_id, "call-1", epoch, 600, billable=True) == 600
-    epoch = await runtime.take(org_id, 600)
-    assert await _finish(org_id, "call-2", epoch, 600, billable=True, actual_micro=900) == 900
-    assert store.counters[org_id]["avail"] == CHUNK - 1_500
-    assert (await _fold(org_id)).consumed_micro == 1_500
-    assert await _state(org_id) == (GRANT - CHUNK, CHUNK - 1_500)
+    assert store.counters[org_id]["avail"] == hold - 100
 
 
 async def test_calls_finishing_together_share_one_insert(org_id, store, monkeypatch):

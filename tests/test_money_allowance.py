@@ -90,19 +90,23 @@ async def test_recording_a_call_twice_queues_it_once(org_id, monkeypatch):
     monkeypatch.setattr(get_settings(), "platform_margin", 0.5)
     first = allowance.Charge("call-1", org_id, "e.one", 100, {"key_id": 7})
     async with session_maker() as db:
-        assert await allowance.record_charges(db, []) == 0
+        assert await allowance.record_charges(db, []) == set()
         assert await allowance.record_charges(
             db, [first, allowance.Charge("call-2", org_id, "e.two", 0), first,
-                 allowance.Charge("call-4", org_id, "e.two", None, reserved_micro=900)]) == 3
+                 allowance.Charge("call-4", org_id, "e.two", None, reserved_micro=900),
+                 allowance.Charge("call-5", org_id, "e.two", 1_000, reserved_micro=600)],
+        ) == {"call-1", "call-2", "call-4", "call-5"}
         await db.commit()
     async with session_maker() as db:
         assert await allowance.record_charges(
             db, [allowance.Charge("call-1", org_id, "e.one", 999),
-                 allowance.Charge("call-3", org_id, "e.one", 1)]) == 1
+                 allowance.Charge("call-3", org_id, "e.one", 1)]) == {"call-3"}
         await db.commit()
         rows = {row.call_id: row for row in (await db.execute(select(CallCharge))).scalars()}
     assert {call_id: row.amount_micro for call_id, row in rows.items()} == {
-        "call-1": 150, "call-2": 0, "call-3": 2, "call-4": 900}
+        "call-1": 150, "call-2": 0, "call-3": 2, "call-4": 900, "call-5": 1_500}
+    assert {call_id: row.overrun_micro for call_id, row in rows.items() if row.overrun_micro} == {
+        "call-5": 900}, "what a call cost beyond the 600 it set aside"
     assert rows["call-4"].meta == {"observed_micro": None, "margin": 0.5}
     assert rows["call-1"].meta == {"key_id": 7, "observed_micro": 100, "margin": 0.5}
     assert await _invariant(org_id) == GRANT
@@ -145,6 +149,22 @@ async def test_a_fold_takes_from_the_balance_what_the_hold_does_not_cover(org_id
         assert (await db.get(Hold, hold_id)).amount_micro == 0
     assert await _invariant(org_id) == GRANT - 300 - 1_400
     assert await _daily_counter_agrees(org_id) == 1_700
+
+
+async def test_a_calls_overrun_comes_out_of_the_balance_and_leaves_the_hold_to_other_calls(org_id):
+    """Two calls set aside 600 and 400 of a 1_000 hold. The first costs 1_500: the hold pays its
+    600, the balance the other 900, and the 400 the second call set aside is still there."""
+    hold_id = await _open(org_id, 1_000)
+    async with session_maker() as db:
+        await allowance.record_charges(
+            db, [allowance.Charge("first", org_id, "e.metered", 1_500, reserved_micro=600)])
+        await db.commit()
+        folded = await allowance.fold_charges_in_transaction(db, org_id)
+        await db.commit()
+        assert (await db.get(Hold, hold_id)).amount_micro == 400
+    assert folded == allowance.Folded(calls=1, charged_micro=1_500, consumed_micro=1_500)
+    assert await _invariant(org_id) == GRANT - 1_500 - 400
+    assert await _daily_counter_agrees(org_id) == 1_500 + 400
 
 
 async def test_a_call_recorded_again_after_its_fold_is_not_charged_twice(org_id):
@@ -294,6 +314,31 @@ async def test_queued_charges_no_hold_stands_behind_count_toward_today(org_id):
         await db.commit()
         assert await allowance.committed_today(db, org_id) == 1_000 == (
             await ledger.spent_today(db, org_id))
+
+
+async def test_a_queued_overrun_counts_toward_today_beside_what_other_calls_set_aside(org_id):
+    """Two calls set aside 600 and 400 of today's hold. The first cost 1_000 and is queued; the
+    second is still in flight. 1_400 is committed, before the fold and after it."""
+    await _open(org_id, 1_000)
+    async with session_maker() as db:
+        await allowance.record_charges(
+            db, [allowance.Charge("first", org_id, "e.metered", 1_000, reserved_micro=600)])
+        await db.commit()
+        assert await allowance.committed_today(db, org_id) == 1_400
+        await allowance.fold_charges_in_transaction(db, org_id)
+        await db.commit()
+        assert await allowance.committed_today(db, org_id) == 1_400
+    assert await _daily_counter_agrees(org_id) == 1_400
+
+
+async def test_a_settled_call_queued_again_does_not_count_twice_toward_today(org_id):
+    await _record(org_id, 1_000)
+    async with session_maker() as db:
+        await allowance.fold_charges_in_transaction(db, org_id)
+        await db.commit()
+    await _record(org_id, 1_000)  # the same call, written again after its fold
+    async with session_maker() as db:
+        assert await allowance.committed_today(db, org_id) == 1_000
 
 
 async def test_closing_returns_what_is_left_and_deletes_the_hold(org_id):

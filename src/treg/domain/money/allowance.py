@@ -42,37 +42,53 @@ def allowance_id(org_id: int) -> str:
 class Charge(NamedTuple):
     """What one finished call cost. `actual_micro` is the raw provider cost; margin is applied
     here. `None` means the real cost was never learned and charges `reserved_micro`, what the call
-    set aside with margin already in it: the rule `settle` follows."""
+    set aside with margin already in it: the rule `settle` follows.
+
+    With `reserved_micro`, whatever the charge exceeds it by is the call's overrun: the hold
+    never held that part for this call. Without it the whole charge counts as set aside."""
 
     call_id: str
     org_id: int
     endpoint_id: str
     actual_micro: int | None
     meta: dict | None = None
-    reserved_micro: int = 0
+    reserved_micro: int | None = None
 
 
-async def record_charges(db: AsyncSession, charges: Sequence[Charge]) -> int:
-    """Queue finished calls' costs in the caller-owned transaction; return how many were new.
+def charged_micro(charge: Charge) -> int:
+    """What the team owes for `charge`, margin applied."""
+    return max(0, int(charge.reserved_micro or 0) if charge.actual_micro is None
+               else with_margin(int(charge.actual_micro)))
+
+
+async def record_charges(db: AsyncSession, charges: Sequence[Charge]) -> set[str]:
+    """Queue finished calls' costs in the caller-owned transaction; return the `call_id`s that
+    were new.
 
     One statement for the whole batch. A `call_id` already queued is skipped, so recording a call
     twice charges it once.
     """
     if not charges:
-        return 0
+        return set()
     margin = get_settings().platform_margin
     insert = postgresql.insert if db.get_bind().dialect.name == "postgresql" else sqlite.insert
-    rows = {charge.call_id: {
-        "call_id": charge.call_id, "org_id": charge.org_id, "endpoint_id": charge.endpoint_id or "",
-        "amount_micro": max(0, int(charge.reserved_micro) if charge.actual_micro is None
-                            else with_margin(int(charge.actual_micro))),
-        "meta": {**(charge.meta or {}), "margin": margin,
-                 "observed_micro": None if charge.actual_micro is None else int(charge.actual_micro)},
-    } for charge in charges}
+    rows = {}
+    for charge in charges:
+        amount = charged_micro(charge)
+        rows[charge.call_id] = {
+            "call_id": charge.call_id, "org_id": charge.org_id,
+            "endpoint_id": charge.endpoint_id or "", "amount_micro": amount,
+            "overrun_micro": (0 if charge.reserved_micro is None
+                              else max(0, amount - int(charge.reserved_micro))),
+            "meta": {**(charge.meta or {}), "margin": margin,
+                     "observed_micro": (None if charge.actual_micro is None
+                                        else int(charge.actual_micro))},
+        }
     result = await db.execute(
         insert(CallCharge).values(list(rows.values()))
-        .on_conflict_do_nothing(index_elements=[CallCharge.call_id]))
-    return int(result.rowcount)
+        .on_conflict_do_nothing(index_elements=[CallCharge.call_id])
+        .returning(CallCharge.call_id))
+    return set(result.scalars())
 
 
 class Folded(NamedTuple):
@@ -99,9 +115,9 @@ async def fold_charges_in_transaction(db: AsyncSession, org_id: int, *,
     """Apply up to `limit` of a team's queued charges to its blocks, in the caller's transaction.
 
     Each charge becomes that call's `settle` entry, stamped with the fold's instant, and its
-    queue row is deleted. The charged total comes out of the allowance hold; whatever the hold
-    cannot cover (no hold, or one already drained) comes straight out of the balance, as an
-    overrun does at `settle`. Must run before any other money write in the transaction, and
+    queue row is deleted. What the calls set aside comes out of the allowance hold; their
+    overruns, and whatever the hold cannot cover (no hold, or one already drained), come
+    straight out of the balance, as an overrun does at `settle`. Must run before any other money write in the transaction, and
     once per transaction: a second fold would lock the blocks again (see `_apply_charges`).
     """
     mark_money(db, "fold", org_id=org_id)
@@ -114,7 +130,7 @@ async def _claim_charges(db: AsyncSession, org_id: int, limit: int) -> list:
             delete(CallCharge).where(CallCharge.call_id.in_(
                 select(CallCharge.call_id).where(CallCharge.org_id == org_id).limit(limit)))
             .returning(CallCharge.call_id, CallCharge.endpoint_id, CallCharge.amount_micro,
-                       CallCharge.meta, CallCharge.created_at))).all())
+                       CallCharge.meta, CallCharge.created_at, CallCharge.overrun_micro))).all())
 
 
 async def _fold(db: AsyncSession, org_id: int, hold: Hold | None, limit: int) -> Folded:
@@ -155,7 +171,10 @@ async def _apply_charges(db: AsyncSession, org_id: int, hold: Hold | None, claim
             meta={**(row.meta or {}), "allowance": True, "settled_micro": row.amount_micro,
                   "consumed_micro": drawn, "block_shortfall_micro": shortfall,
                   "charged_at": row.created_at.isoformat()})
-    covered = min(charged, hold.amount_micro) if hold is not None else 0
+    # The hold pays for what each call set aside and no more. A call's overrun comes out of the
+    # balance, as it does at `settle`: the rest of the hold belongs to calls still in flight.
+    set_aside = charged - sum(row.overrun_micro for row in charges)
+    covered = min(set_aside, hold.amount_micro) if hold is not None else 0
     if covered:
         hold.amount_micro -= covered
     # The daily counter holds what settled today plus holds opened today, so the covered part
@@ -164,6 +183,14 @@ async def _apply_charges(db: AsyncSession, org_id: int, hold: Hold | None, claim
     if covered != consumed or consumed != counted:
         await _add_balance(db, org_id, covered - consumed, spent_delta_micro=consumed - counted)
     return Folded(len(charges), charged, consumed, len(claimed) - len(charges))
+
+
+async def settled_micro(db: AsyncSession, org_id: int, call_id: str) -> int | None:
+    """What a call's `settle` entry took from the team's credit, or None while it has none."""
+    amount = (await db.execute(select(LedgerEntry.amount_micro).where(
+        LedgerEntry.call_id == call_id, LedgerEntry.org_id == org_id,
+        LedgerEntry.kind == "settle"))).scalars().first()
+    return None if amount is None else -int(amount)
 
 
 class Allowance(NamedTuple):
@@ -178,6 +205,10 @@ class Allowance(NamedTuple):
     # The team's daily cap is already reached by what it has spent today plus what this
     # allowance can still spend: the caller must stop offering the allowance.
     over_cap: bool = False
+    # The balance is below zero after the fold (a call cost more than it set aside and the team
+    # had no more): nothing was added, and the caller must stop offering the allowance so the
+    # exact path's balance gate decides, as it does after an overrun at `settle`.
+    overdrawn: bool = False
     # When this refill stamped the hold. Calls may be admitted against the allowance only for
     # a set time after it, whenever the caller gets round to publishing the refill.
     heartbeat_at: datetime | None = None
@@ -191,25 +222,33 @@ async def committed_today(db: AsyncSession, org_id: int) -> int:
     """The most a team can turn out to have spent today from what is already committed: the
     number a daily cap is checked against. One statement.
 
-    Today's counter (`spent_today`) holds what settled today and every hold opened today. Two
+    Today's counter (`spent_today`) holds what settled today and every hold opened today. Three
     things can still be spent today that it does not hold: an allowance hold opened on an
-    earlier day, all of it, and queued charges no hold stands behind. Both are read from the
-    rows themselves, so the figure is right whether or not the team's allowance is switched on.
+    earlier day, all of it; the overruns of queued charges, which no hold was ever set aside
+    for; and what queued charges set aside beyond what the hold has left (no hold, or one already
+    drained). All are read from the rows themselves, so the figure is right whether or not the
+    team's allowance is switched on. A queued charge whose call already has a `settle` entry is
+    left out, as a fold will drop it.
     """
     hold_id = allowance_id(org_id)
+    unsettled = (CallCharge.org_id == org_id, ~select(LedgerEntry.id).where(
+        LedgerEntry.call_id == CallCharge.call_id, LedgerEntry.org_id == org_id,
+        LedgerEntry.kind == "settle").exists())
     row = (await db.execute(select(
         Org.spent_today_micro, Org.spent_today_day,
         select(Hold.amount_micro).where(Hold.id == hold_id).scalar_subquery(),
         select(Hold.created_at).where(Hold.id == hold_id).scalar_subquery(),
-        select(func.coalesce(func.sum(CallCharge.amount_micro), 0)).where(
-            CallCharge.org_id == org_id).scalar_subquery(),
+        select(func.coalesce(func.sum(CallCharge.amount_micro - CallCharge.overrun_micro), 0))
+        .where(*unsettled).scalar_subquery(),
+        select(func.coalesce(func.sum(CallCharge.overrun_micro), 0))
+        .where(*unsettled).scalar_subquery(),
     ).where(Org.id == org_id))).one_or_none()
     if row is None:
         return 0
     spent = int(row[0]) if row[1] == _now().date() else 0
-    held, queued = int(row[2] or 0), int(row[4] or 0)
+    held, set_aside, overruns = int(row[2] or 0), int(row[4] or 0), int(row[5] or 0)
     earlier_day = held if row[3] is not None and row[3] < _day_start() else 0
-    return spent + earlier_day + max(0, queued - held)
+    return spent + earlier_day + overruns + max(0, set_aside - held)
 
 
 async def refill_allowance_in_transaction(
@@ -250,8 +289,12 @@ async def refill_allowance_in_transaction(
         over_cap = exposed > daily_cap_micro
         if exposed + add > daily_cap_micro:
             add = 0
+    balance = (await db.execute(select(Org.balance_micro).where(Org.id == org_id))).scalar() or 0
+    overdrawn = balance < 0
+    if overdrawn:
+        add = 0
     if hold is None:
-        return Allowance(None, 0, 0, folded, over_cap)
+        return Allowance(None, 0, 0, folded, over_cap, overdrawn)
     added = 0
     if add:
         counted = _spent_today_values(add) if hold.created_at >= _day_start() else {}
@@ -267,9 +310,10 @@ async def refill_allowance_in_transaction(
                                "hold_micro": hold.amount_micro})
     if opened and not added:
         await db.delete(hold)
-        return Allowance(None, 0, 0, folded, over_cap)
+        return Allowance(None, 0, 0, folded, over_cap, overdrawn)
     hold.heartbeat_at = _now()
-    return Allowance(_epoch(hold), hold.amount_micro, added, folded, over_cap, hold.heartbeat_at)
+    return Allowance(_epoch(hold), hold.amount_micro, added, folded, over_cap, overdrawn,
+                     hold.heartbeat_at)
 
 
 class Closed(NamedTuple):

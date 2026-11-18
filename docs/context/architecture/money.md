@@ -51,6 +51,7 @@ sources:
   - src/treg/infra/money_admission.py
   - src/treg/alembic/versions/0109_callcharge.py
   - src/treg/alembic/versions/0110_hold_allowance.py
+  - src/treg/alembic/versions/0111_callcharge_overrun.py
   - src/treg/infra/money_session.py
   - src/treg/application/hub/runner.py
   - src/treg/infra/stripe.py
@@ -132,8 +133,8 @@ already queued. `allowance.fold_charges_in_transaction` applies up to a batch of
 team's queued rows: it locks the team's allowance hold, deletes the rows it claims, draws each
 charge from the blocks in the usual order, and writes that call's `settle` entry stamped with the
 fold's instant (not the call's, so a reader that pages the ledger by time never has a row appear
-behind its cursor). The charged total comes out of the allowance hold; what the hold cannot cover
-comes straight out of the balance, as an overrun does at `settle`. A queue row's primary key stops
+behind its cursor). What the calls set aside comes out of the allowance hold; their overruns, and what the hold
+cannot cover, come straight out of the balance, as an overrun does at `settle`. A queue row's primary key stops
 a second recording only until the row is folded, so the fold also drops any claimed row whose call
 already has a `settle` entry. The daily counter moves as it does at `settle`: consumed goes in, and
 the covered part comes out only when the hold was opened today.
@@ -228,8 +229,9 @@ money moved, the purchased-credit gate.
   gets no refill that could take the day past it. The number a cap is checked against is
   `allowance.committed_today`, one statement over the rows themselves: today's counter, plus all
   of an allowance hold opened on an earlier day (it is not in today's counter, only what a fold
-  consumes from it is, yet all of it can be spent today), plus queued charges no hold stands
-  behind. The refill reads it after its fold, under the hold's lock, and adds the amount asked
+  consumes from it is, yet all of it can be spent today), plus the overruns of queued charges,
+  plus what queued charges set aside beyond what the hold has left. A queued charge whose call
+  already has a `settle` entry is left out, the rule a fold applies. The refill reads it after its fold, under the hold's lock, and adds the amount asked
   for. The exact path's cap check reads the same number for every team, listed or not: a hold
   and its queued charges outlive the switch. When the counter
   still cannot cover
@@ -246,11 +248,17 @@ money moved, the purchased-credit gate.
   told the charge, its money stays out of the counter, and the writer keeps writing the batch in
   the background until it lands (recording a call twice charges it once). If the process dies
   first, the charge is lost and its money stays in the hold until the hold is closed.
-- **A call that cost more than it set aside** takes the difference from the counter as well, or
-  all the counter has. What the hold then cannot cover comes out of the balance, and the next
-  refill is refused there: the same stop the exact path has, where the next reserve is the gate
-  after an overrun. Each refill also compares the counter with the hold it just committed and
-  takes back anything above it, which covers an overrun the store could not be told about.
+- **A call that cost more than it set aside.** The charge row keeps that part apart
+  (`callcharge.overrun_micro`, revision 0111). A fold takes from the hold only what calls set
+  aside; an overrun comes out of the balance, as at `settle`, so the hold keeps what other calls
+  in flight set aside and a later give-back is still backed. The balance may not have it, so the
+  call freezes the counter (`store.allowance_freeze`): what is there is kept, but no call is
+  admitted until a refill has applied the charge. A refill that finds the balance below zero
+  after its fold adds nothing and drains the counter back to the balance, and the exact path's
+  balance gate decides: the same stop the next reserve is after an overrun there. The call then
+  applies its own charge at once and answers with what the team's credit really paid, which is
+  less than the charge when the blocks ran out (`block_shortfall_micro`). Each refill also
+  compares the counter with the hold it just committed and takes back anything above it.
 - **Auto top-up** is asked after a refill, the only moment the balance moved.
 
 - **The queue is kept short.** One refill folds one batch, a chunk can pay for more calls than

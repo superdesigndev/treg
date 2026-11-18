@@ -124,7 +124,8 @@ async def _refill(org_id: int, need_micro: int, daily_cap_micro: int) -> bool:
     log.info("allowance_refill org_id=%s added=%s hold=%s counter_before=%s folded=%s duplicates=%s",
              org_id, result.added_micro, result.amount_micro, available,
              result.folded.calls, result.folded.duplicates)
-    if result.epoch is None or result.over_cap or available + result.added_micro < need_micro:
+    if (result.epoch is None or result.over_cap or result.overdrawn
+            or available + result.added_micro < need_micro):
         _refused_until[org_id] = time.monotonic() + _REFUSAL_COOLDOWN_S
         if result.epoch is not None:
             await _drain(org_id, "no_room_to_refill")
@@ -301,9 +302,9 @@ class _ChargeWriter:
     async def _write(rows: list) -> None:
         async with session_maker() as db:
             new = await allowance.record_charges(db, [charge for charge, _ in rows])
-            # A row that was already there means an earlier attempt committed, and that attempt
-            # marked its paid questions too.
-            uses = [use for _, use in rows if use is not None] if new == len(rows) else []
+            # A row that was already there was committed by an earlier attempt, which marked
+            # its paid question too; a row new to this attempt has not been marked by anyone.
+            uses = [use for charge, use in rows if use is not None and charge.call_id in new]
             if uses:
                 await archive.note_org_uses_in_transaction(db, uses)
             await db.commit()
@@ -328,23 +329,28 @@ async def finish(org_id: int, call_id: str, epoch: int, reserved_micro: int, *,
         if not billable:
             await store.allowance_give_back(org_id, epoch, reserved_micro)
             return 0
-        amount = reserved_micro if actual_micro is None else max(
-            0, ledger.with_margin(int(actual_micro)))
-        written = _charges.submit(allowance.Charge(
-            call_id, org_id, endpoint_id, actual_micro, meta, reserved_micro), archive_use)
+        charge = allowance.Charge(call_id, org_id, endpoint_id, actual_micro, meta, reserved_micro)
+        amount = allowance.charged_micro(charge)
+        written = _charges.submit(charge, archive_use)
         if amount < reserved_micro:
             await store.allowance_give_back(org_id, epoch, reserved_micro - amount)
-        elif amount > reserved_micro:
-            # The call cost more than it set aside, and the charge will draw the difference from
-            # the hold. Take it from the counter too, or all the counter has: whatever the hold
-            # cannot cover then comes out of the balance, and the next refill is refused there,
-            # which is how an overrun is stopped on the exact path. If the store cannot answer,
-            # the next refill finds the counter above its hold and takes the difference back.
-            await store.allowance_take_up_to(org_id, epoch, amount - reserved_micro)
         # Unconfirmed is not "not charged": the charge may have committed, and the writer keeps
         # trying until it has. What the call spent stays out of the counter either way.
-        await written
-        return amount
+        confirmed = await written
+        if amount <= reserved_micro:
+            return amount
+        # The call cost more than it set aside. The difference is owed to the balance, which may
+        # not have it. So no call is admitted from the counter until a refill has applied this
+        # charge and seen the balance: the gate the next reserve is after an overrun at `settle`.
+        await store.allowance_freeze(org_id, epoch)
+        if not confirmed:
+            return amount
+        # Apply it now, to answer with what the team's credit really paid: with too little
+        # credit left that is less than the charge, and the ledger says so.
+        await _fold_backlog(org_id)
+        async with session_maker() as db:
+            settled = await allowance.settled_micro(db, org_id, call_id)
+        return amount if settled is None else settled
     except Exception:
         log.error("finishing allowance take %s failed", call_id, exc_info=True)
         return 0

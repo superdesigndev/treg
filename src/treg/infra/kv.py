@@ -171,12 +171,18 @@ if taken > 0 then redis.call('HINCRBY', KEYS[1], 'avail', string.format('%.0f', 
 return taken
 """
 _ALLOWANCE_AVAILABLE = "return tonumber(redis.call('HGET', KEYS[1], 'avail') or '0')"
-# The hash stays, emptied, so its epoch keeps fencing writers that arrive later.
+# The hash stays, emptied, so its epoch keeps fencing writers that arrive later. Takes stop too:
+# what calls in flight give back afterwards is not offered until a refill has looked at it.
 _ALLOWANCE_DROP = """
 local avail = redis.call('HGET', KEYS[1], 'avail')
 if not avail then return 0 end
-redis.call('HSET', KEYS[1], 'avail', '0')
+redis.call('HSET', KEYS[1], 'avail', '0', 'until', '0')
 return tonumber(avail)
+"""
+_ALLOWANCE_FREEZE = """
+if redis.call('HGET', KEYS[1], 'epoch') ~= ARGV[1] then return 0 end
+redis.call('HSET', KEYS[1], 'until', '0')
+return 1
 """
 # ARGV[2] is the next epoch, computed by the caller: a script cannot print one exactly.
 _ALLOWANCE_RETIRE = """
@@ -357,6 +363,10 @@ class Store(Protocol):
         the stored epoch is newer: this writer's hold has been closed since, and nothing is
         added. Otherwise what is now available; None when the store cannot answer."""
 
+    async def allowance_freeze(self, org_id: int, epoch: int) -> bool | None:
+        """Stop takes from the counter of `epoch` until the next add, keeping what it holds.
+        False for another epoch; None when the store cannot answer."""
+
     async def allowance_available(self, org_id: int) -> int | None:
         """What a team's counter holds now, fresh or not (0 when absent). A reading, already old
         when it returns: size a refill with it, never admit a call on it. None when the store
@@ -365,7 +375,7 @@ class Store(Protocol):
     async def allowance_drop(self, org_id: int) -> int | None:
         """Empty a team's counter and return what it held (0 when absent), in one atomic step, so
         no take can succeed on money the returned figure already counts. The epoch stays, for a
-        hold that stays. None when the store cannot answer."""
+        hold that stays, and takes stop until the next add. None when the store cannot answer."""
 
     async def allowance_retire(self, org_id: int, epoch: int, ttl_ms: int) -> int | None:
         """End the counter of a hold that is being deleted: return what it held and leave the
@@ -486,6 +496,9 @@ class LocalStore:
 
     async def allowance_add(self, org_id: int, epoch: int, amount_micro: int, *,
                             until_ms: int, ttl_ms: int) -> int | Literal["stale"] | None:
+        return None
+
+    async def allowance_freeze(self, org_id: int, epoch: int) -> bool | None:
         return None
 
     async def allowance_available(self, org_id: int) -> int | None:
@@ -627,6 +640,10 @@ class RedisStore:
         result = await self._allowance_eval(
             _ALLOWANCE_ADD, org_id, epoch, amount_micro, until_ms, ttl_ms)
         return "stale" if result == -1 else result
+
+    async def allowance_freeze(self, org_id: int, epoch: int) -> bool | None:
+        result = await self._allowance_eval(_ALLOWANCE_FREEZE, org_id, epoch)
+        return None if result is None else bool(result)
 
     async def allowance_available(self, org_id: int) -> int | None:
         return await self._allowance_eval(_ALLOWANCE_AVAILABLE, org_id)
