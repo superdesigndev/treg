@@ -1043,6 +1043,20 @@ async def test_skipped_operations_do_not_extend_the_breaker_window(gate, monkeyp
                        "fallback_kv_store_down": int(admission._STORE_DOWN_S) - 1}
 
 
+async def test_same_team_reserves_inside_the_breaker_window_are_not_refused(gate, monkeypatch):
+    settings, store = gate
+    settings.money_admission_wait_s = 0.005
+    admission._mark_store_down()
+
+    async def reserve():
+        async with admission.admit([7], operation="reserve"):
+            pass
+
+    results = await asyncio.gather(*[reserve() for _ in range(200)], return_exceptions=True)
+    assert [r for r in results if r is not None] == []
+    assert store.calls == []
+
+
 async def test_the_store_is_tried_again_after_the_breaker_window(gate, monkeypatch):
     _, store = gate
     store.unavailable = True

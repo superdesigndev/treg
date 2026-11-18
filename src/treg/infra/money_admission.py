@@ -390,6 +390,10 @@ async def admit(org_ids: Iterable[int | None], *, operation: str,
                         task = asyncio.create_task(gate.release())
                         _background.add(task)
                         task.add_done_callback(_background.discard)
+                    elif reason == "kv_store_down":
+                        # Nothing reached the store, so there is no lease to clean up. Free the
+                        # team's local lock now; same-team waiters spend their wait budget on it.
+                        gate.release_local()
                     else:
                         await _release_safely(gate)
                     gate = None
