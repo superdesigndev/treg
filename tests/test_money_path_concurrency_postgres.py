@@ -6,6 +6,7 @@ from __future__ import annotations
 
 import asyncio
 import os
+import time
 from collections import Counter
 from datetime import timedelta
 from urllib.parse import urlsplit
@@ -177,3 +178,134 @@ async def test_concurrent_calls_and_reapers_keep_drift_zero_and_close_each_hold_
     reaped = {call_id for call_id, kind, meta in entries
               if kind == "release" and (meta or {}).get("reason") == "stale_hold_reaped"}
     assert reaped == set(stale)
+
+
+class _Proxy:
+    """TCP proxy to Redis. mode: up | refuse (connections reset) | blackhole (accept, never answer)."""
+
+    def __init__(self, target_port: int):
+        self.target_port, self.mode, self.conns = target_port, "up", set()
+
+    async def start(self):
+        self.server = await asyncio.start_server(self._handle, "127.0.0.1", 0)
+        self.port = self.server.sockets[0].getsockname()[1]
+
+    def set(self, mode: str):
+        self.mode = mode
+        if mode != "up":
+            for w in list(self.conns):
+                w.transport.abort()
+            self.conns.clear()
+
+    async def _handle(self, r, w):
+        if self.mode == "refuse":
+            w.transport.abort()
+            return
+        if self.mode == "blackhole":
+            self.conns.add(w)
+            await asyncio.sleep(3600)
+            return
+        ur, uw = await asyncio.open_connection("127.0.0.1", self.target_port)
+        self.conns.update({w, uw})
+
+        async def pipe(a, b):
+            try:
+                while data := await a.read(65536):
+                    if self.mode != "up":
+                        break
+                    b.write(data)
+                    await b.drain()
+            except Exception:  # noqa: BLE001
+                pass
+            finally:
+                b.transport.abort()
+        await asyncio.gather(pipe(r, uw), pipe(ur, w))
+
+
+@pytest.mark.parametrize("down_mode", ["refuse", "blackhole"])
+async def test_redis_down_then_back_under_continuous_traffic(local_postgres, monkeypatch, down_mode):
+    """Real clock, real Redis behind a proxy that goes away and comes back: the fallback must end by
+    itself while calls and the sweep keep running, and every hold must close exactly once."""
+    org_id, caller = await _team()
+    real = await _admission_on(monkeypatch, org_id)
+    real_port = int(get_settings().kv_url.rsplit(":", 1)[1].split("/")[0])
+    proxy = _Proxy(real_port)
+    await proxy.start()
+    store = kv.RedisStore(f"redis://127.0.0.1:{proxy.port}/0")
+    monkeypatch.setattr(kv, "store", lambda: store)
+    monkeypatch.setattr(money_admission, "_store_down_until", 0.0)
+    monkeypatch.setattr(get_settings(), "reserve_reaps_stale_holds", False)   # the sweep does it
+    stale = await _stale_holds(org_id)
+    money_admission.snapshot()
+    settled: list[str] = []
+    released: list[str] = []
+    errors: list[tuple[str, str]] = []
+    stop = asyncio.Event()
+    modes: list[tuple[float, str, int]] = []
+    t0 = time.monotonic()
+
+    async def worker(w: int):
+        n = 0
+        while not stop.is_set():
+            mk, call_id = _call(org_id), f"c-{w}-{n}-{uuid4().hex}"
+            n += 1
+            try:
+                await call_reserve._platform_reserve(mk, caller, call_ref=call_id)
+            except Exception as exc:  # noqa: BLE001
+                errors.append(("reserve", type(exc).__name__))
+                continue
+            if n % 3 == 0:
+                assert (await call_settle._platform_settle(mk, 503))[0] == 0
+                released.append(call_id)
+            else:
+                assert (await call_settle._platform_settle(mk, 200, observed_override=70))[0] == 70
+                settled.append(call_id)
+
+    async def sweeper():
+        while not stop.is_set():
+            await hold_sweep.reap_stale_holds(batch_size=3)
+            await asyncio.sleep(0.05)
+
+    async def sampler():
+        while not stop.is_set():
+            await asyncio.sleep(1.0)
+            for row in money_admission.snapshot():
+                if row["operation"] == "reserve" and row["completed"]:
+                    modes.append((round(time.monotonic() - t0, 1), row["mode"], row["completed"]))
+
+    tasks = [asyncio.create_task(worker(w)) for w in range(8)]
+    tasks += [asyncio.create_task(sweeper()), asyncio.create_task(sampler())]
+    await asyncio.sleep(3)
+    proxy.set(down_mode)
+    down_at = time.monotonic() - t0
+    await asyncio.sleep(10)
+    proxy.set("up")
+    up_at = time.monotonic() - t0
+    await asyncio.sleep(14)
+    stop.set()
+    await asyncio.wait_for(asyncio.gather(*tasks), 60)
+    await hold_sweep.reap_stale_holds()
+    await store.aclose()
+    await real.aclose()
+
+    assert not errors, Counter(errors)
+    tail = [m for m in modes if m[0] >= up_at + 8]
+    assert tail and all(mode == "redis" for _t, mode, _n in tail), "fallback did not end"
+    down = [m for m in modes if down_at + 1 <= m[0] <= up_at]
+    assert down and any(mode == "fallback" for _t, mode, _n in down)
+
+    async with session_maker() as db:
+        blocks = await ledger.blocks_of(db, org_id)
+        holds = await ledger.open_holds_of(db, org_id)
+        balance = await ledger.balance_of(db, org_id)
+        entries = (await db.execute(select(LedgerEntry.call_id, LedgerEntry.kind)
+                                    .where(LedgerEntry.org_id == org_id,
+                                           LedgerEntry.call_id.is_not(None)))).all()
+    assert holds == []
+    assert balance == sum(b.remaining_micro for b in blocks)
+    assert balance == FUNDS - 70 * len(settled)
+    kinds = Counter(entries)
+    for c in settled:
+        assert (kinds[c, "reserve"], kinds[c, "settle"], kinds[c, "release"]) == (1, 1, 0)
+    for c in released + stale:
+        assert (kinds[c, "reserve"], kinds[c, "settle"], kinds[c, "release"]) == (1, 0, 1)
