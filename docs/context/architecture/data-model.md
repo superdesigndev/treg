@@ -408,7 +408,8 @@ the plain `callrecord`; this section is the preparation only.
    seconds behind, `pg_last_xact_replay_timestamp()`), so the copy leaves the primary and its
    replicas room. The new table grows by about the size of the rows copied and the WAL by as much,
    so check disk headroom and watch replica lag while it runs. The first run notes when it started
-   (`NOTE_BACKFILL_STARTED`, in a JSON comment on the table).
+   (`NOTE_BACKFILL_STARTED`, in a JSON comment on the table). One run works at a time: it holds a
+   session advisory lock (`BACKFILL_LOCK_KEY`), and a second run returns `busy` and does nothing.
    - Each run first deletes the copied rows of teams that no longer exist
      (`delete_rows_of_deleted_teams`: the distinct teams walked through the `(org_id, id)` index,
      each kept only `NOT EXISTS` in `org`, deleted in committed batches with the same pause and
@@ -417,7 +418,8 @@ the plain `callrecord`; this section is the preparation only.
    - Each run last resyncs late `hit`/`verdict` values (`_resync_late_verdicts`): a row copied
      before its verdict landed is stale, and a verdict lands at most a day after its row (an async
      task's answer is kept 24 h). A pass covers the rows created from `RESYNC_LOOK_BACK` (25 hours)
-     before the previous pass began (before this run, on the first) up to the top copied id, then
+     before the previous pass began (before the first run began, while no pass has completed) up
+     to the top copied id, then
      one short pass up to the top id copied meanwhile. It writes its cursor (`resync_pass`) to the
      note after each batch, so a stopped run resumes, and on completion `resynced_upto` and
      `resynced_at` (when the pass began), which the swap reads.
@@ -427,7 +429,8 @@ gives the staged table the live table's index names, so until the swap any migra
 column or an index to `callrecord` must add it to `callrecord_partitioned` too, in the same
 revision (on the partitioned table an index is created `ON ONLY` the parent, then built
 concurrently per partition and attached). `test_the_staged_table_has_the_live_tables_columns` and
-`test_the_staged_table_has_the_live_tables_indexes` fail until it does.
+`test_the_staged_table_has_the_live_tables_indexes` fail until it does They build their database with every revision (`upgrade head`), so a later revision
+that changes `callrecord` alone fails them; they skip once `callrecord` is partitioned.
 
 While `callrecord_partitioned` exists, team deletion also deletes the team's rows from it
 (`cascade_delete_org`); with no foreign key, nothing else would.

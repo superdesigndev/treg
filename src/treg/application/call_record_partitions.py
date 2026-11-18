@@ -23,6 +23,7 @@ from __future__ import annotations
 
 import asyncio
 import json
+from contextlib import asynccontextmanager
 import logging
 import re
 import time
@@ -58,6 +59,8 @@ RESYNC_LOOK_BACK = timedelta(hours=25)
 BACKFILL_BATCH_ROWS = 5_000
 BACKFILL_PAUSE_SECONDS = 0.5
 REPLICA_LAG_POLL_SECONDS = 5.0
+# One backfill at a time (pg_try_advisory_lock); a constant no other advisory lock uses.
+BACKFILL_LOCK_KEY = 0x63726266
 DELETED_TEAM_BATCH = 10_000
 _NAME = re.compile(rf"^{TABLE}_y(\d{{4}})m(\d{{2}})$")
 _ADVISORY_KEY = 0x63726563  # one creator at a time; any constant no other advisory lock uses
@@ -281,7 +284,8 @@ async def backfill(days: int, *, batch_rows: int = BACKFILL_BATCH_ROWS, max_seco
                    session_factory=session_maker) -> dict:
     """Copy the last `days` days of call records from the plain `callrecord` into
     `callrecord_partitioned`, which nothing reads yet
-    -> {phase, copied, batches, reached, done, deleted_orphans, replica_waits, resynced}
+    -> {phase, copied, batches, reached, done, deleted_orphans, replica_waits, resynced}, with
+    `busy: True` and nothing done when another backfill holds the lock
     (`phase: "before_swap"`, or None when there is nothing to copy into).
 
     Rows keep their ids. Each batch is one transaction over a bounded id range, and no batch
@@ -306,6 +310,36 @@ async def backfill(days: int, *, batch_rows: int = BACKFILL_BATCH_ROWS, max_seco
     def spent() -> bool:
         return max_seconds is not None and time.monotonic() - started >= max_seconds
 
+    async with _only_backfill(session_factory) as alone:
+        if not alone:
+            return {**out, "done": False, "busy": True}
+        return await _backfill(out, cutoff=cutoff, run_started=run_started, batch_rows=batch_rows,
+                               pause=pause, max_replica_lag=max_replica_lag, spent=spent,
+                               session_factory=session_factory)
+
+
+@asynccontextmanager
+async def _only_backfill(session_factory):
+    """One backfill at a time: a session-level advisory lock on a connection of its own (idle
+    between its statements, so it holds no snapshot) -> whether this run got it."""
+    async with session_factory.kw["bind"].connect() as connection:
+        if connection.dialect.name != "postgresql":
+            yield True
+            return
+        got = bool((await connection.execute(text("SELECT pg_try_advisory_lock(:key)"),
+                                             {"key": BACKFILL_LOCK_KEY})).scalar_one())
+        await connection.commit()
+        try:
+            yield got
+        finally:
+            if got:
+                await connection.execute(text("SELECT pg_advisory_unlock(:key)"),
+                                         {"key": BACKFILL_LOCK_KEY})
+                await connection.commit()
+
+
+async def _backfill(out: dict, *, cutoff, run_started, batch_rows: int, pause: float,
+                    max_replica_lag: float | None, spent, session_factory) -> dict:
     async def between_batches() -> None:
         await asyncio.sleep(pause)
         while (max_replica_lag is not None and not spent()
@@ -408,7 +442,10 @@ async def _resync_late_verdicts(db, out: dict, *, run_started: datetime, batch_r
         began, after = unfinished["began"], int(unfinished["cursor"])
     else:
         began = run_started.isoformat()
-        since = datetime.fromisoformat(note.get(NOTE_RESYNCED_AT, began))
+        # No completed pass yet: the first copy began with the first run, which may be a
+        # stopped one days ago, not this one.
+        since = datetime.fromisoformat(
+            note.get(NOTE_RESYNCED_AT) or note.get(NOTE_BACKFILL_STARTED) or began)
         after = max(await _first_id_at(db, since - RESYNC_LOOK_BACK, top) - 1, 0)
     while after < top:
         upto = min(after + batch_rows, top)
