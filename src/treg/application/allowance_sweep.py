@@ -30,7 +30,10 @@ log = logging.getLogger("treg.money_allowance")
 _SLACK_S = 30
 _SWEEP_EVERY_S = 60.0
 _FENCE_TTL_MS = 24 * 3600 * 1000
-_FOLD_BATCHES_PER_PASS = 20
+# A batch is one transaction under the team's lease, which a refill may be waiting for: short
+# batches, and enough of them that a pass still clears a long queue.
+_FOLD_BATCH = 100
+_FOLD_BATCHES_PER_PASS = 100
 _LEASE_MS = 5000
 
 
@@ -113,10 +116,11 @@ async def fold_queued_once(session_maker) -> int:
                             money_admission.require_balance_orgs([org_id]), operation="close"),
                         money_session(session_maker()) as db,
                     ):
-                        folded = await allowance.fold_charges_in_transaction(db, org_id)
+                        folded = await allowance.fold_charges_in_transaction(
+                            db, org_id, limit=_FOLD_BATCH)
                         await db.commit()
                 total += folded.calls
-                if folded.claimed < allowance.FOLD_BATCH:
+                if folded.claimed < _FOLD_BATCH:
                     break
         except Exception:
             log.error("folding the queued charges of org %s failed", org_id, exc_info=True)
