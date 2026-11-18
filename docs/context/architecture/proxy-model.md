@@ -352,12 +352,23 @@ member and project are ANDed, each NULL-means-any. `_deny_match` is pure and mir
 
 ### Call-time SSRF guard
 
-Every call-time lookup goes through `ssrf.host_is_public_async`: the blocking resolver runs on a small
-dedicated pool (`ssrf_lookup_threads`), so a slow or dead name server never stops the event loop, and at
-most one lookup per host is in flight (later callers await the same answer). No verdict is kept after it
-lands, so each new call resolves again. A caller waits at most `ssrf_lookup_timeout_s` for the answer and
-then counts the host as not public, so a dead name server refuses within that bound instead of queueing
-behind busy threads; the late lookup keeps its thread until the resolver returns.
+Every call-time lookup goes through `ssrf.lookup_host` (`host_is_public_async` is its yes or no): the
+blocking resolver runs on a small dedicated pool, so a slow or dead name server never stops the event
+loop, and at most one lookup per host and pool is in flight (later callers await the same answer). No
+verdict is kept after it lands, so each new call resolves again. There are two pools: `CALL`
+(`ssrf_lookup_threads`) for every road a call or a team's tool takes, and `METADATA`
+(`ssrf_metadata_lookup_threads`) for MCP client metadata documents, which anyone can ask for before
+signing in; that pool also refuses at once past `_METADATA_PENDING_PER_THREAD` lookups per thread, so a
+flood of never-answering hosts there never delays a provider's lookup.
+
+A caller waits at most `ssrf_lookup_timeout_s` (kept above the resolver's own retry time, so one lost
+packet is not a refusal) and then gets `TIMED_OUT`, logged as `ssrf_lookup_timeout`. When the last
+caller waiting on a lookup gives up, a lookup still queued is cancelled; one already running keeps its
+thread until the resolver returns, and later callers for that host join it. The queue is therefore
+never longer than the callers still waiting. `relay()` answers a timeout as `ssrf_refused` with
+`log_kind` `ssrf_lookup_timeout` and its own detail. A routed walk records an `ssrf_refused` child as
+refused before the send: no health strike, no use of the error allowance, and its own cap of
+`MAX_ERROR_FALLBACKS` extra candidates.
 
 Just before `send`, `relay()` re-resolves the upstream host (`host_is_public`, gated by
 `proxy_ssrf_check`) and refuses with `502` if any address is non-public: a `base_url` public at

@@ -310,9 +310,11 @@ and not the other locks out a family of clients, and the gap hides because the c
 does not need the other path.
 
 The CIMD fetch is fenced because the URL is caller-chosen: https only, no redirects, a public address
-at connect time, bounded time and size, reusing `health.safe_webhook_url` and the off-loop
-`health.host_is_public_async` (the lookup never blocks the event loop and gives up after
-`ssrf_lookup_timeout_s`).
+at connect time, reusing `health.safe_webhook_url` and `health.host_is_public_async` on the separate
+`METADATA` lookup pool (proxy-model.md, "Call-time SSRF guard"). One `_CIMD_TIMEOUT_S` deadline covers the
+lookup and the whole read, and the body is streamed and abandoned past `_CIMD_MAX_BYTES`, so a server
+sending one byte at a time holds neither time nor memory. `_resolve_oauth_client` ends its read
+transaction before the fetch, so no database connection waits on a stranger's server.
 The document must claim its own URL, or a document hosted anywhere could assert someone else's
 `client_id` and inherit their consent. `redirect_uris` match exactly, never by prefix
 (`https://good.test/cb.evil` starts with the registered value).

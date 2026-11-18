@@ -11,6 +11,7 @@ from unittest.mock import AsyncMock
 import pytest
 
 from treg.application import call_events as ev
+from treg.application.call import route as call_route
 from treg.application.call import route_rules as reader_app
 from treg.application.call import service as call_service
 from treg.domain.catalog import store as catalog_store
@@ -536,6 +537,23 @@ async def test_a_provider_refused_before_the_send_is_not_reached(
     meta = await _parent_meta(clients, events_on, {"full_name": "Jean Dupont", "domain": "acme.fr"})
     assert [p for p, *_ in seen] == ([] if blocked else ["leadmagic"]) + ["tomba"]
     assert meta["route_order"] == order
+
+
+async def test_an_address_check_refusal_spends_no_error_allowance(clients, enrichment_on, monkeypatch):
+    """Refusals before the send plus one provider failure exceed the routed error allowance, but the
+    refused providers were never asked: the walk goes on, and only the failing provider is struck."""
+    seen, strikes = [], []
+    monkeypatch.setattr(call_service, "relay", _relay_blocking(
+        {"hunter", "findymail"}, {**copy.deepcopy(TOMBA_HIT), "leadmagic": [(503, {"error": "down"})]}, seen))
+    monkeypatch.setattr(call_route, "_note_health", lambda cand, *a, failed=False, **k:
+                        strikes.append(cand.endpoint["provider"]) if failed else None)
+    r = await clients.post(f"/call/{ROUTED}", json={"full_name": "Jean Dupont", "domain": "acme.fr"},
+                           headers={"X-Treg-Route-Prefer": "hunter,findymail,leadmagic,tomba"})
+    assert r.status_code == 200, r.text
+    tried = r.json()["_treg"]["tried"]
+    assert [t["provider"] for t in tried] == ["hunter", "findymail", "leadmagic", "tomba"]
+    assert all(t["detail"].startswith("refused by treg before the send") for t in tried[:2])
+    assert [p for p, *_ in seen] == ["leadmagic", "tomba"] and "hunter" not in strikes and "findymail" not in strikes
 
 
 async def test_every_provider_refused_before_the_send_records_no_order(

@@ -240,13 +240,13 @@ async def test_cimd_document_must_claim_its_own_url(monkeypatch):
     monkeypatch.setattr(health, "safe_webhook_url", lambda u: True)
     monkeypatch.setattr(health, "host_is_public", lambda h: True)
 
-    async def fake_get(self, url, **kw):
+    async def fake_send(self, request, **kw):
         return httpx.Response(200, json={"client_id": "https://someone-else.test/cimd.json",
                                          "client_name": "impostor",
                                          "redirect_uris": ["https://impostor.test/cb"]},
-                              request=httpx.Request("GET", url))
+                              request=request)
 
-    monkeypatch.setattr(httpx.AsyncClient, "get", fake_get)
+    monkeypatch.setattr(httpx.AsyncClient, "send", fake_send)
     assert await mcp_oauth.fetch_client_id_metadata("https://real.test/cimd.json") is None
 
 
@@ -260,13 +260,13 @@ async def test_cimd_accepts_a_well_formed_document(monkeypatch):
     monkeypatch.setattr(health, "safe_webhook_url", lambda u: True)
     monkeypatch.setattr(health, "host_is_public", lambda h: True)
 
-    async def fake_get(self, url, **kw):
-        return httpx.Response(200, json={"client_id": url, "client_name": "ChatGPT",
+    async def fake_send(self, request, **kw):
+        return httpx.Response(200, json={"client_id": str(request.url), "client_name": "ChatGPT",
                                          "redirect_uris": ["https://chatgpt.com/connector/oauth/x",
                                                            "http://evil.test/cb"]},
-                              request=httpx.Request("GET", url))
+                              request=request)
 
-    monkeypatch.setattr(httpx.AsyncClient, "get", fake_get)
+    monkeypatch.setattr(httpx.AsyncClient, "send", fake_send)
     doc = await mcp_oauth.fetch_client_id_metadata("https://chatgpt.com/cimd.json")
     assert doc is not None
     assert doc["client_name"] == "ChatGPT"

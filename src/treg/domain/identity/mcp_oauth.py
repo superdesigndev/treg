@@ -18,6 +18,7 @@ serves Claude Code, Cursor and anything else that implements it.
 
 from __future__ import annotations
 
+import asyncio
 import base64
 import hashlib
 import hmac
@@ -391,17 +392,25 @@ async def fetch_client_id_metadata(url: str) -> dict | None:
     from . import health
 
     u = urlsplit(url)
-    if u.scheme != "https" or not u.hostname:
-        return None
-    if not health.safe_webhook_url(url) or not await health.host_is_public_async(
-            u.hostname, health.host_is_public):
+    if u.scheme != "https" or not u.hostname or not health.safe_webhook_url(url):
         return None
     try:
-        async with httpx.AsyncClient(timeout=_CIMD_TIMEOUT_S, follow_redirects=False) as c:
-            r = await c.get(url, headers={"Accept": "application/json"})
-        if r.status_code != 200 or len(r.content) > _CIMD_MAX_BYTES:
-            return None
-        doc = r.json()
+        # One deadline for the lookup and the whole read: httpx's timeout bounds each read, so a
+        # server sending one byte at a time would otherwise hold the request open indefinitely.
+        async with asyncio.timeout(_CIMD_TIMEOUT_S):
+            if not await health.host_is_public_async(u.hostname, health.host_is_public,
+                                                     pool=health.SSRF_METADATA):
+                return None
+            async with httpx.AsyncClient(timeout=_CIMD_TIMEOUT_S, follow_redirects=False) as c:
+                async with c.stream("GET", url, headers={"Accept": "application/json"}) as r:
+                    if r.status_code != 200:
+                        return None
+                    body = bytearray()
+                    async for chunk in r.aiter_bytes():
+                        body += chunk
+                        if len(body) > _CIMD_MAX_BYTES:
+                            return None
+        doc = json.loads(body)
     except Exception:  # noqa: BLE001 — any failure to fetch is "cannot identify this client"
         return None
     if not isinstance(doc, dict):

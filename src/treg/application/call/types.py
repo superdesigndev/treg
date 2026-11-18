@@ -81,6 +81,8 @@ FAILURE_KINDS: dict[str, tuple[Blame, str]] = {
     "platform_account_split": ("treg", "our_provider_account"),
     "platform_account_unavailable": ("treg", "our_provider_account"),
     "ssrf_refused": ("treg", "treg_error"),
+    # The `log_kind` of an `ssrf_refused` whose address lookup did not answer in time.
+    "ssrf_lookup_timeout": ("treg", "treg_capacity"),
     # No connection to the provider was free within the pool wait, or this process already has the
     # provider's cap of calls in flight: nothing was sent, not charged, retry shortly.
     "upstream_busy": ("treg", "treg_capacity"),

@@ -1189,6 +1189,9 @@ an invalid extra never disables the primary.
     is returned and the refused attempt is `skipped` with detail `refused by treg: <kind>`.
     A `call_admission` refusal of treg's money skips that candidate without
     spending the error allowance; every candidate refused answers that 403 for the routed endpoint.
+    A child refused by treg's address check (`ssrf_refused`, the provider never asked) takes no
+    health strike and spends no error allowance; such refusals have their own cap of
+    `MAX_ERROR_FALLBACKS` extra candidates.
   - Before planning, each identity field is type-checked (`invalid_identity`, 422, even when another
     complete variant was sent). A `url` must parse as an HTTP URL with a dotted host and no userinfo;
     a scheme-less one gets `https://`. A derived `linkedin_url` is built only from a handle-shaped
