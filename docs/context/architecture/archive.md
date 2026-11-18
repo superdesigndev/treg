@@ -500,7 +500,7 @@ which Activity reads), and no unexpired trimmed `IdempotentCall` replays from it
 referenced only from inside its key (`body_of` carriers and `result_snapshot_id` are chosen under
 the key's row lock), so deleting whole keys never removes a snapshot a kept key points at.
 
-Each batch is an id range of `TREG_ARCHIVE_RETENTION_BATCH` keys (default 5,000, at most
+Each batch is an id range of `TREG_ARCHIVE_RETENTION_BATCH` keys (default 1,000, at most
 `MAX_BATCH`, 10,000, because a batch's key ids are bound twice in one statement) over the primary
 key, so a statement reads a bounded slice however few rows qualify, and `archiveretentioncursor`
 keeps the position between runs (a pass reaching the end starts from 0). The order follows
@@ -512,13 +512,23 @@ its team's `org` row and then upserts the mark, so a mark lock held across the s
 queue that team's payments behind the job. The mark delete repeats `last_call_at < cutoff`: a mark
 a team paid for after the locked read stays, and its next call on the question is a repeat. The
 "live retry" check reads the partial index `ix_idempotentcall_archive_key_hash` (Alembic 0114),
-an index probe per candidate instead of a scan of `idempotentcall`. A key asked for in between stays; it, or a batch
-whose row delete fails, may have lost its objects, which every reader treats as a miss and the next
-live call records again. A failed object delete keeps the batch's rows for the next pass, and a run
+an index probe per candidate instead of a scan of `idempotentcall`. The mark delete locks marks
+`FOR UPDATE SKIP LOCKED` in `(org_id, key_hash)` order, `MARK_CHUNK` (500) at a time, and deletes
+only those: a mark a settle holds is left to it, never waited for. A key asked for between the
+object delete and the locked re-check stays; in the same transaction its versions whose object
+went stop claiming those bytes (`r2` becomes hash-only, `both` becomes `db`, the running totals
+drop by the bodies left with no copy), so readers see a miss or the row's copy and a retry row
+keeps its own copy instead of trimming it. A batch whose row delete fails may have lost its
+objects, which every reader treats as a miss and the next live call records again. A failed object delete keeps the batch's rows for the next pass, and a run
 that would delete objects with no object store configured stops before any row goes. A recorder
 that read a key unlocked and finds it deleted at the lock retries and records it as a new question.
-Batches sleep `TREG_ARCHIVE_RETENTION_PAUSE_S` apart; a run stops at
-`TREG_ARCHIVE_RETENTION_MAX_SECONDS`, or after three consecutive failed batches (exit 1).
+Batches sleep `TREG_ARCHIVE_RETENTION_PAUSE_S` (default 2 s) apart; a run stops at
+`TREG_ARCHIVE_RETENTION_MAX_SECONDS`, after `TREG_ARCHIVE_RETENTION_MAX_KEYS` keys deleted
+(default 200,000, `stopped: "max_keys"`), or after three consecutive failed batches (exit 1). A
+real run holds `pg_try_advisory_lock(RUN_LOCK_KEY)` on a connection of its own; a second run
+while it works returns `stopped: "busy"` at once. `--dry-run` reads through
+`read_session_maker`, the replica when one is configured. The deletes leave dead tuples in the
+three large archive tables; plan a manual `VACUUM` of them after the first full pass.
 
 What a team sees: `GET /calls/{id}/result` for a call whose question went answers `expired`, and
 the next call on it is a full-price first call (its mark went with the key).

@@ -89,7 +89,8 @@ EXPECTED_MAKERS: dict[str, set[str]] = {
     "domain/capacity/view.py": {API},
     "domain/identity/api_keys.py": {BACKGROUND},
     # `treg-worker` is its own process; it shares the API pool because nothing else is running in it.
-    "worker.py": {API},
+    # `archive retain --dry-run` only reads, so it reads the replica when one is configured.
+    "worker.py": {API, "read_session_maker"},
     # Runs only inside `treg-worker catalog stats`; same reasoning as `worker.py`.
     "application/catalog_stats.py": {API},
     # Runs only inside `treg-worker spend rollup`; same reasoning as `worker.py`.

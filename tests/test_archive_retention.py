@@ -241,7 +241,7 @@ async def test_the_worker_command(clients: AsyncClient, monkeypatch, capsys):
     monkeypatch.setattr(infra_db, "verify_db", verified)
     await _key("dormant", age_days=40)
     args = argparse.Namespace(dry_run=True, days=None, batch_size=None, pause_seconds=0,
-                              max_seconds=None, after=None)
+                              max_seconds=None, max_keys=None, after=None)
     assert await worker._archive_retain(args) == 0
     assert json.loads(capsys.readouterr().out)["keys"] == 1
     args.dry_run = False
@@ -381,3 +381,103 @@ async def test_a_large_idempotentcall_is_refused_and_the_manual_build_finishes_i
     await _run_revision(module)        # a valid index: nothing to build, no refusal
     async with session_maker() as s:
         assert (await s.execute(validity, {"name": module.NAME})).scalar() is True
+
+
+async def test_a_run_stops_after_max_keys_and_the_next_resumes(clients: AsyncClient, retention_on):
+    for i in range(3):
+        await _key(f"dormant-{i}", age_days=40)
+    first = await archive_retention.run(batch=1, max_keys=2, after=0)
+    assert (first["keys"], first["stopped"]) == (2, "max_keys")
+    second = await archive_retention.run(batch=1, max_keys=2)
+    assert (second["keys"], second["pass_complete"]) == (1, True)
+    assert (await _left())[0] == set()
+
+
+async def test_a_dry_run_reads_through_the_read_session_maker(clients: AsyncClient, monkeypatch, capsys):
+    import treg.infra.db as infra_db
+
+    async def verified():
+        return None
+    opened = []
+
+    def replica():
+        opened.append(1)
+        return session_maker()
+    monkeypatch.setattr(infra_db, "verify_db", verified)
+    monkeypatch.setattr(infra_db, "read_session_maker", replica)
+    await _key("dormant", age_days=40)
+    args = argparse.Namespace(dry_run=True, days=None, batch_size=None, pause_seconds=0,
+                              max_seconds=None, max_keys=None, after=None)
+    assert await worker._archive_retain(args) == 0
+    assert json.loads(capsys.readouterr().out)["keys"] == 1
+    assert opened
+
+
+async def test_a_key_asked_for_while_its_objects_go_keeps_an_honest_answer(
+        clients: AsyncClient, retention_on, store, monkeypatch):
+    """Objects go before the locked re-check. A key that a paid hit kept meanwhile must not
+    point at bytes that are gone: its `r2` versions become hash-only (a miss, and a retry row
+    keeps its own copy), its `both` versions read the row's copy."""
+    for body in ("a", "b"):
+        store.objects[_h(body)] = body.encode()
+    await _key("racing", age_days=40, bodies=(("a", "r2"), ("b", "both")))
+    async with session_maker() as s:
+        s.add(ArchiveEndpointStat(endpoint_id=EP, provider="tikhub", keys=1, snapshots=2,
+                                  bodies_kept=2, kept_bytes=2))
+        await s.commit()
+    real_delete = archive_retention._delete_objects
+
+    async def delete_then_a_paid_hit(hashes):
+        failed = await real_delete(hashes)
+        async with session_maker() as s:
+            key = (await s.execute(select(ArchiveKey).where(ArchiveKey.key_hash == _h("racing")))).scalar_one()
+            key.last_requested_at = utcnow_naive()
+            s.add(ArchiveKeyOrg(org_id=1, key_hash=_h("racing"), first_call_at=utcnow_naive(),
+                                last_call_at=utcnow_naive()))
+            await s.commit()
+        return failed
+    monkeypatch.setattr(archive_retention, "_delete_objects", delete_then_a_paid_hit)
+
+    result = await archive_retention.run()
+
+    assert (result["keys"], result["objects"]) == (0, 2) and store.objects == {}
+    async with session_maker() as s:
+        storage = dict((await s.execute(select(ArchiveSnapshot.content_hash,
+                                               ArchiveSnapshot.body_storage))).all())
+        assert storage == {_h("a"): None, _h("b"): "db"}
+        stat = await s.get(ArchiveEndpointStat, EP)
+        assert (stat.bodies_kept, stat.kept_bytes) == (1, 1)
+        on_file = await archive.bytes_on_file(s, {(_h("racing"), _h("a")), (_h("racing"), _h("b"))})
+    assert on_file == {(_h("racing"), _h("b"))}
+    assert await archive.answer_bytes(_h("racing"), _h("b")) == b"b"
+
+
+async def test_a_second_run_while_one_works_answers_busy(clients: AsyncClient, retention_on):
+    if session_maker.kw["bind"].dialect.name != "postgresql":
+        pytest.skip("advisory locks are PostgreSQL's")
+    await _key("dormant", age_days=40)
+    async with session_maker.kw["bind"].connect() as other:
+        assert (await other.execute(text("SELECT pg_try_advisory_lock(:k)"),
+                                    {"k": archive_retention.RUN_LOCK_KEY})).scalar_one()
+        busy = await archive_retention.run()
+        assert (busy["stopped"], busy["keys"]) == ("busy", 0)
+        await other.execute(text("SELECT pg_advisory_unlock(:k)"), {"k": archive_retention.RUN_LOCK_KEY})
+    assert (await archive_retention.run())["keys"] == 1
+
+
+async def test_a_mark_a_settle_holds_is_skipped_not_waited_for(clients: AsyncClient, retention_on):
+    """A settle that already upserted a mark (holding its row lock, uncommitted) must not make
+    the job's mark delete wait: the job skips that mark and still deletes the key."""
+    if session_maker.kw["bind"].dialect.name != "postgresql":
+        pytest.skip("row locks are PostgreSQL's")
+    await _key("dormant", age_days=40)
+    await _mark("dormant", org_id=1)
+    await _mark("dormant", org_id=2)
+    async with session_maker() as settle:
+        await archive.note_org_use_in_transaction(settle, 1, _h("dormant"))   # holds the row lock
+        result = await asyncio.wait_for(archive_retention.run(), timeout=10)
+        await settle.commit()
+    assert (result["keys"], result["marks"], result["skipped_batches"]) == (1, 1, 0)
+    async with session_maker() as s:
+        marks = (await s.execute(select(ArchiveKeyOrg))).scalars().all()
+    assert [(m.org_id, m.calls) for m in marks] == [(1, 2)]

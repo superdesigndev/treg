@@ -917,9 +917,10 @@ class Settings(BaseSettings):
     # objects. Off by default; the command's `--dry-run` counts what it would delete either way.
     archive_retention_enabled: bool = False
     archive_retention_days: int = 30
-    archive_retention_batch: int = 5000        # key ids per batch (an id range, not a row count)
-    archive_retention_pause_s: float = 0.5     # sleep between batches
+    archive_retention_batch: int = 1000        # key ids per batch (an id range, not a row count)
+    archive_retention_pause_s: float = 2.0     # sleep between batches
     archive_retention_max_seconds: int = 600   # time budget per run; the next run resumes
+    archive_retention_max_keys: int = 200_000  # keys deleted per run at most; the next run resumes
 
     # The tool hub (docs/context/architecture/hub.md): tools a maker publishes, made of other tools.
     hub_enabled: bool = False

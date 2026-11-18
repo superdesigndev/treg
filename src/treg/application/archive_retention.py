@@ -29,10 +29,11 @@ from __future__ import annotations
 import asyncio
 import logging
 import time
+from contextlib import asynccontextmanager
 from dataclasses import asdict, dataclass
 from datetime import datetime, timedelta
 
-from sqlalchemy import exists, func, or_, select, text
+from sqlalchemy import case, exists, func, or_, select, text, update
 from sqlalchemy.exc import DBAPIError
 from sqlalchemy.orm import aliased
 
@@ -40,7 +41,10 @@ from .. import archive, archive_bodies
 from ..config import get_settings
 from ..domain.governance.teams import erase_archive_keys, erase_archive_marks
 from ..infra.db import session_maker
-from ..models import ArchiveKey, ArchiveKeyOrg, ArchiveRetentionCursor, ArchiveSnapshot, IdempotentCall
+from ..models import (
+    ArchiveEndpointStat, ArchiveKey, ArchiveKeyOrg, ArchiveRetentionCursor, ArchiveSnapshot,
+    IdempotentCall,
+)
 from ..timeutil import utcnow_naive
 
 _log = logging.getLogger("treg.archive.retention")
@@ -53,6 +57,8 @@ _MAX_CONSECUTIVE_FAILURES = 3
 # asyncpg binds at most 32,767 values per statement, and `objects_only_under` binds every key id
 # of a batch twice.
 MAX_BATCH = 10_000
+# One real run at a time (pg_try_advisory_lock); any constant no other advisory lock uses.
+RUN_LOCK_KEY = 0x61726574
 
 
 class ObjectStoreMissing(RuntimeError):
@@ -74,7 +80,7 @@ class RetentionResult:
     objects: int = 0
     skipped_batches: int = 0
     pass_complete: bool = False
-    stopped: str = ""       # "pass_complete" | "time_budget" | "failures" | "disabled" | "error"
+    stopped: str = ""  # pass_complete | time_budget | max_keys | failures | busy | disabled | error
     error: str | None = None
 
 
@@ -178,25 +184,64 @@ async def _save_cursor(db, after_id: int, *, pass_done: bool = False) -> None:
 
 async def run(*, dry_run: bool = False, days: int | None = None, batch: int | None = None,
               pause_s: float | None = None, max_seconds: float | None = None,
-              after: int | None = None, session_factory=session_maker,
-              clock=time.monotonic) -> dict:
+              max_keys: int | None = None, after: int | None = None,
+              session_factory=session_maker, clock=time.monotonic) -> dict:
     """One bounded run -> the `RetentionResult` as a dict.
 
     `dry_run` reads the same batches and deletes nothing, setting or not; it starts at the saved
     cursor (or `after`) and never moves it. A real run does nothing unless
-    `archive_retention_enabled`. Both stop at the end of the table or the time budget."""
+    `archive_retention_enabled`, and only one real run works at a time (a second one returns
+    `stopped: "busy"`). Both stop at the end of the table, the time budget, or once `max_keys`
+    keys were deleted (or, dry, counted)."""
     cfg = get_settings()
     days = cfg.archive_retention_days if days is None else days
     batch = cfg.archive_retention_batch if batch is None else batch
     pause_s = cfg.archive_retention_pause_s if pause_s is None else pause_s
     max_seconds = cfg.archive_retention_max_seconds if max_seconds is None else max_seconds
-    if days < 1 or not 1 <= batch <= MAX_BATCH or not 0 <= pause_s <= 60 or max_seconds <= 0:
-        raise ValueError(f"days >= 1, batch 1..{MAX_BATCH}, pause 0..60 s and a positive time budget")
+    max_keys = cfg.archive_retention_max_keys if max_keys is None else max_keys
+    if (days < 1 or not 1 <= batch <= MAX_BATCH or not 0 <= pause_s <= 60 or max_seconds <= 0
+            or max_keys < 1):
+        raise ValueError(f"days >= 1, batch 1..{MAX_BATCH}, pause 0..60 s, a positive time budget "
+                         "and max_keys >= 1")
     result = RetentionResult(enabled=cfg.archive_retention_enabled, dry_run=dry_run)
     if not dry_run and not cfg.archive_retention_enabled:
         result.stopped = "disabled"
         return asdict(result)
+    options = dict(days=days, batch=batch, pause_s=pause_s, max_seconds=max_seconds,
+                   max_keys=max_keys, after=after, session_factory=session_factory, clock=clock)
+    if dry_run:
+        return await _run(result, **options)
+    async with _only_run(session_factory) as alone:
+        if not alone:
+            result.stopped = "busy"
+            return asdict(result)
+        return await _run(result, **options)
 
+
+@asynccontextmanager
+async def _only_run(session_factory):
+    """Hold a session-level advisory lock for the run on a connection of its own (idle between
+    its two statements, so it pins no snapshot) -> whether this run got it. SQLite: always."""
+    async with session_factory.kw["bind"].connect() as connection:
+        if connection.dialect.name != "postgresql":
+            yield True
+            return
+        got = bool((await connection.execute(text("SELECT pg_try_advisory_lock(:key)"),
+                                             {"key": RUN_LOCK_KEY})).scalar_one())
+        await connection.commit()
+        try:
+            yield got
+        finally:
+            if got:
+                await connection.execute(text("SELECT pg_advisory_unlock(:key)"),
+                                         {"key": RUN_LOCK_KEY})
+                await connection.commit()
+
+
+async def _run(result: RetentionResult, *, days: int, batch: int, pause_s: float,
+               max_seconds: float, max_keys: int, after: int | None, session_factory,
+               clock) -> dict:
+    dry_run = result.dry_run
     now = utcnow_naive()
     cutoff = now - timedelta(days=days)
     result.cutoff = cutoff.isoformat()
@@ -216,6 +261,9 @@ async def run(*, dry_run: bool = False, days: int | None = None, batch: int | No
                 break
             if clock() - started >= max_seconds:
                 result.stopped = "time_budget"
+                break
+            if result.keys >= max_keys:
+                result.stopped = "max_keys"
                 break
             upto = min(cursor + batch, upper)
             try:
@@ -245,6 +293,39 @@ async def run(*, dry_run: bool = False, days: int | None = None, batch: int | No
             await db.commit()
     _log.info("archive retention: %s", asdict(result))
     return asdict(result)
+
+
+async def _hash_only_where_bytes_went(db, key_ids: list[int], deleted: set[str]) -> None:
+    """Snapshots of keys the locked re-check kept whose object this batch already deleted: mark
+    them as no longer holding those bytes (`r2` -> hash-only, `both` -> `db`), so readers treat
+    them as a miss or read the row's copy, and a retry row keeps its own copy instead of trimming
+    it against bytes that are gone. The running totals drop by the bodies left with no copy."""
+    if not key_ids or not deleted:
+        return
+    gone = (await db.execute(
+        update(ArchiveSnapshot)
+        .where(ArchiveSnapshot.key_id.in_(key_ids), ArchiveSnapshot.content_hash.in_(deleted),
+               ArchiveSnapshot.body_storage.in_(("r2", "both")))
+        .values(body_storage=case((ArchiveSnapshot.body_storage == "both", "db"), else_=None))
+        .returning(ArchiveSnapshot.key_id, ArchiveSnapshot.body_storage,
+                   ArchiveSnapshot.size_bytes)
+        .execution_options(synchronize_session=False))).all()
+    freed = [(int(key_id), int(size or 0)) for key_id, storage, size in gone if storage is None]
+    if not freed:
+        return
+    endpoint_of = dict((await db.execute(
+        select(ArchiveKey.id, ArchiveKey.endpoint_id)
+        .where(ArchiveKey.id.in_({k for k, _ in freed})))).all())
+    per_endpoint: dict[str, list[int]] = {}
+    for key_id, size in freed:
+        acc = per_endpoint.setdefault(endpoint_of[key_id], [0, 0])
+        acc[0] += 1
+        acc[1] += size
+    for endpoint_id, (bodies, size) in sorted(per_endpoint.items()):
+        await db.execute(update(ArchiveEndpointStat)
+                         .where(ArchiveEndpointStat.endpoint_id == endpoint_id)
+                         .values(bodies_kept=ArchiveEndpointStat.bodies_kept - bodies,
+                                 kept_bytes=ArchiveEndpointStat.kept_bytes - size))
 
 
 async def _batch(result: RetentionResult, *, after: int, upto: int, cutoff: datetime,
@@ -277,18 +358,17 @@ async def _batch(result: RetentionResult, *, after: int, upto: int, cutoff: date
             .where(ArchiveKey.id.in_(ids), *dormant(cutoff, now))
             .order_by(ArchiveKey.id)
             .with_for_update(skip_locked=True, of=ArchiveKey))).all()
+        key_ids, key_hashes = [int(i) for i, _ in locked], [str(h) for _, h in locked]
+        await _hash_only_where_bytes_went(db, sorted(set(ids) - set(key_ids)), orphans)
         keys = snapshots = marks = 0
         if locked:
-            key_ids, key_hashes = [int(i) for i, _ in locked], [str(h) for _, h in locked]
             snapshots = await _snapshot_count(db, key_ids)
             keys = await erase_archive_keys(db, key_ids)
-            await _save_cursor(db, upto)
-            # Last, just before the commit: a settle locks its team's org row and then upserts
-            # this mark, so a mark lock held across the slow deletes above would queue that
-            # team's payments behind this job.
-            marks = await erase_archive_marks(db, key_hashes, unpaid_since=cutoff)
-        else:
-            await _save_cursor(db, upto)
+        await _save_cursor(db, upto)
+        # Last, just before the commit: a settle locks its team's org row and then upserts this
+        # mark, so a mark lock held across the slow deletes above would queue that team's
+        # payments behind this job. Marks a settle holds right now are skipped, not waited for.
+        marks = await erase_archive_marks(db, key_hashes, unpaid_since=cutoff)
         await db.commit()
     result.keys += keys
     result.snapshots += snapshots

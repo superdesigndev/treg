@@ -643,10 +643,14 @@ async def _archive_retain(args) -> int:
     from .infra.db import verify_db
 
     await verify_db()
+    from .infra.db import read_session_maker
+
     options = dict(dry_run=args.dry_run, days=args.days, batch=args.batch_size,
-                   pause_s=args.pause_seconds, max_seconds=args.max_seconds, after=args.after)
+                   pause_s=args.pause_seconds, max_seconds=args.max_seconds,
+                   max_keys=args.max_keys, after=args.after)
     if args.dry_run:
-        result = await archive_retention.run(**options)
+        # A dry run only reads: on the replica when one is configured, never the primary's load.
+        result = await archive_retention.run(**options, session_factory=read_session_maker)
     else:
         async with bootstrap.archive_object_store():
             result = await archive_retention.run(**options)
@@ -1040,9 +1044,11 @@ def main(argv: list[str] | None = None) -> int:
                         help="count the keys, snapshots, marks and objects that would go; delete nothing")
     retain.add_argument("--days", type=_positive_int, help="default TREG_ARCHIVE_RETENTION_DAYS (30)")
     retain.add_argument("--batch-size", type=_positive_int,
-                        help="key ids per batch, at most 10000; default TREG_ARCHIVE_RETENTION_BATCH (5000)")
+                        help="key ids per batch, at most 10000; default TREG_ARCHIVE_RETENTION_BATCH (1000)")
     retain.add_argument("--pause-seconds", type=float, help="sleep between batches")
     retain.add_argument("--max-seconds", type=float, help="time budget for this run")
+    retain.add_argument("--max-keys", type=_positive_int,
+                        help="keys deleted per run at most; default TREG_ARCHIVE_RETENTION_MAX_KEYS (200000)")
     retain.add_argument("--after", type=int, help="start after this key id instead of the saved cursor")
     retain.set_defaults(fn=_archive_retain)
     idem = sub.add_parser("idempotency", help="expired replay-cache maintenance")
