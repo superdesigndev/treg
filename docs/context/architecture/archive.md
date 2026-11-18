@@ -515,17 +515,20 @@ a team paid for after the locked read stays, and its next call on the question i
 an index probe per candidate instead of a scan of `idempotentcall`. The mark delete locks marks
 `FOR UPDATE SKIP LOCKED` in `(org_id, key_hash)` order, `MARK_CHUNK` (500) at a time, and deletes
 only those: a mark a settle holds is left to it, never waited for. A key asked for between the
-object delete and the locked re-check stays; in the same transaction its versions whose object
-went stop claiming those bytes (`r2` becomes hash-only, `both` becomes `db`, the running totals
-drop by the bodies left with no copy), so readers see a miss or the row's copy and a retry row
-keeps its own copy instead of trimming it. A batch whose row delete fails may have lost its
+object delete and the locked re-check stays, and another key may record the same body while the
+objects go (its upload sees the object and skips). So, after the batch's keys and snapshots are
+deleted, every remaining version whose object went stops claiming those bytes (`r2` becomes
+hash-only, `both` becomes `db`): readers see a miss or the row's copy, and a retry row keeps its
+own copy instead of trimming it. The running totals of both steps move in one pass, in endpoint
+order (`apply_archive_stat_deltas`, the order `archive.flush_stats` takes). A batch whose row delete fails may have lost its
 objects, which every reader treats as a miss and the next live call records again. A failed object delete keeps the batch's rows for the next pass, and a run
 that would delete objects with no object store configured stops before any row goes. A recorder
 that read a key unlocked and finds it deleted at the lock retries and records it as a new question.
 Batches sleep `TREG_ARCHIVE_RETENTION_PAUSE_S` (default 2 s) apart; a run stops at
 `TREG_ARCHIVE_RETENTION_MAX_SECONDS`, after `TREG_ARCHIVE_RETENTION_MAX_KEYS` keys deleted
 (default 200,000, `stopped: "max_keys"`), or after three consecutive failed batches (exit 1). A
-real run holds `pg_try_advisory_lock(RUN_LOCK_KEY)` on a connection of its own; a second run
+real run holds `pg_try_advisory_lock(RUN_LOCK_KEY)` on a connection of its own (a session lock:
+the worker must reach PostgreSQL directly, not through a transaction-mode pooler); a second run
 while it works returns `stopped: "busy"` at once. `--dry-run` reads through
 `read_session_maker`, the replica when one is configured. The deletes leave dead tuples in the
 three large archive tables; plan a manual `VACUUM` of them after the first full pass.

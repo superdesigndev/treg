@@ -597,7 +597,8 @@ job's credentials. `treg-worker --help` lists them; what follows is what a sched
 - **`archive retain`**: does nothing until `TREG_ARCHIVE_RETENTION_ENABLED=true`; `--dry-run` counts
   what it would delete either way. Each run stops at `TREG_ARCHIVE_RETENTION_MAX_SECONDS` and the
   next resumes from its cursor (also after `TREG_ARCHIVE_RETENTION_MAX_KEYS` deletions); a second
-  instance answers `busy` and does nothing; run one at a time, with the archive object-store settings
+  instance answers `busy` and does nothing (a session advisory lock: connect the worker to
+  PostgreSQL directly, not through a transaction-mode pooler); run one at a time, with the archive object-store settings
   when R2 writes are on ([archive](../architecture/archive.md), "Row retention").
 - **`admin purge-evidence`** and **`admin purge-ad-clicks`**: daily. Without them expired rows stop
   being shown or read but stay in the database.
