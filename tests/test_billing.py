@@ -774,7 +774,8 @@ def _invoice_sdk(pi_id: str = "pi_auto_1", cents: int = 1000, *, pay_error=None,
                  pi_status: str = "succeeded", payment_method: str = "pm_armed"):
     """A small Stripe invoice adapter with idempotent writes and a real payment association."""
     state = {"status": "draft", "invoice_count": 0, "item_count": 0, "charge_count": 0,
-             "invoice": None, "item": None, "prior_invoices": [], "prepay_pi": False}
+             "invoice": None, "item": None, "prior_invoices": [], "prepay_pi": False,
+             "customer_default": None, "pm_customer": "cus_armed"}
     responses = {}
 
     async def fake_sdk(fn, /, **kw):
@@ -782,7 +783,15 @@ def _invoice_sdk(pi_id: str = "pi_auto_1", cents: int = 1000, *, pay_error=None,
         key = kw.get("idempotency_key")
         if key and key in responses:
             return responses[key]
-        if fn == billing.stripe_adapter.INVOICE_LIST:
+        if fn == billing.stripe_adapter.CUSTOMER_RETRIEVE:
+            result = {"id": kw["id"], "invoice_settings": {
+                "default_payment_method": state["customer_default"]}}
+        elif fn == billing.stripe_adapter.PAYMENT_METHOD_RETRIEVE:
+            result = {"id": kw["id"], "customer": state["pm_customer"]}
+        elif fn == billing.stripe_adapter.CUSTOMER_MODIFY:
+            state["customer_default"] = kw["invoice_settings"]["default_payment_method"]
+            result = {"id": kw["id"], "invoice_settings": kw["invoice_settings"]}
+        elif fn == billing.stripe_adapter.INVOICE_LIST:
             result = {"data": ([state["invoice"]] if state["invoice"] else [])
                       + state["prior_invoices"], "has_more": False}
         elif fn == billing.stripe_adapter.INVOICE_CREATE:
@@ -866,14 +875,15 @@ async def test_auto_topup_charges_off_session_and_credits(c: AsyncClient, monkey
     monkeypatch.setattr(billing, "_sdk", sdk)
     result = await _attempt(org_id)
     assert result["ok"] is True, result
-    assert [fn for fn, _ in sdk.calls[:9]] == [
+    assert [fn for fn, _ in sdk.calls[:11]] == [
+        billing.stripe_adapter.CUSTOMER_RETRIEVE, billing.stripe_adapter.PAYMENT_METHOD_RETRIEVE,
         billing.stripe_adapter.INVOICE_LIST, billing.stripe_adapter.INVOICE_CREATE,
         billing.stripe_adapter.INVOICE_ITEM_LIST, billing.stripe_adapter.INVOICE_ITEM_CREATE,
         billing.stripe_adapter.INVOICE_FINALIZE, billing.stripe_adapter.INVOICE_RETRIEVE,
         billing.stripe_adapter.INVOICE_PAYMENT_LIST,
         billing.stripe_adapter.INVOICE_PAY,
         billing.stripe_adapter.PAYMENT_INTENT_RETRIEVE]
-    assert sdk.calls[1][1]["metadata"]["treg_auto"] == "1"
+    assert sdk.calls[3][1]["metadata"]["treg_auto"] == "1"
     assert sdk.state["invoice_count"] == sdk.state["item_count"] == sdk.state["charge_count"] == 1
     body = (await c.get(f"/orgs/{org_id}/balance", headers=_h(owner))).json()
     assert body["balance_micro"] == 100 + 10_000_000
@@ -1185,6 +1195,91 @@ async def test_a_paid_auto_invoice_re_arms_an_unconfirmed_pause(c: AsyncClient, 
     state = (await c.get("/billing", headers=_h(owner))).json()["autotopup"]
     assert state["enabled"] is enabled
     assert state["disabled_reason"] == (None if enabled else "stripe_unconfirmed")
+
+
+async def _stored_pm(org_id: int) -> str | None:
+    async with session_maker() as db:
+        return (await db.get(Org, org_id)).stripe_default_pm
+
+
+async def test_auto_topup_charges_the_card_made_default_in_the_portal(c: AsyncClient, monkeypatch):
+    """The Customer Portal changes the customer's default card and tells treg nothing. Charging the
+    stored card kept billing the card the payer had replaced."""
+    org_id, _ = await _org(c)
+    await _armed(org_id)
+    sdk = _invoice_sdk(payment_method="pm_portal")
+    sdk.state["customer_default"] = "pm_portal"
+    monkeypatch.setattr(billing, "_sdk", sdk)
+    assert (await _attempt(org_id))["ok"] is True
+    charged = [kw["payment_method"] for fn, kw in sdk.calls
+               if fn == billing.stripe_adapter.INVOICE_PAY]
+    assert charged == ["pm_portal"]
+    assert await _stored_pm(org_id) == "pm_portal"
+
+
+async def test_auto_topup_without_a_customer_default_charges_the_stored_card(c: AsyncClient,
+                                                                              monkeypatch):
+    org_id, _ = await _org(c)
+    await _armed(org_id)
+    sdk = _invoice_sdk(payment_method="pm_armed")
+    monkeypatch.setattr(billing, "_sdk", sdk)
+    assert (await _attempt(org_id))["ok"] is True
+    assert sdk.state["charge_count"] == 1
+    assert await _stored_pm(org_id) == "pm_armed"
+
+
+@pytest.mark.parametrize("missing", [False, True], ids=["detached", "deleted"])
+async def test_auto_topup_never_charges_a_detached_card(c: AsyncClient, monkeypatch, missing):
+    org_id, owner = await _org(c)
+    await _armed(org_id)
+    sdk = _invoice_sdk()
+    sdk.state["pm_customer"] = None
+
+    async def detached(fn, /, **kw):
+        if missing and fn == billing.stripe_adapter.PAYMENT_METHOD_RETRIEVE:
+            raise stripe.InvalidRequestError("No such PaymentMethod", param="id",
+                                             code="resource_missing", http_status=404)
+        return await sdk(fn, **kw)
+
+    monkeypatch.setattr(billing, "_sdk", detached)
+    assert (await _attempt(org_id))["reason"] == "no_card"
+    assert [fn for fn, _ in sdk.calls] == [billing.stripe_adapter.CUSTOMER_RETRIEVE] + (
+        [] if missing else [billing.stripe_adapter.PAYMENT_METHOD_RETRIEVE])
+    assert await _stored_pm(org_id) is None
+    state = (await c.get("/billing", headers=_h(owner))).json()["autotopup"]
+    assert state["enabled"] is False and state["disabled_reason"] == "no_card"
+
+
+async def test_auto_topup_charges_nothing_when_stripe_cannot_name_the_card(c: AsyncClient,
+                                                                           monkeypatch):
+    org_id, _ = await _org(c)
+    await _armed(org_id)
+
+    async def outage(fn, /, **kw):
+        assert fn == billing.stripe_adapter.CUSTOMER_RETRIEVE
+        raise stripe.APIConnectionError("down")
+
+    monkeypatch.setattr(billing, "_sdk", outage)
+    assert (await _attempt(org_id))["reason"] == "stripe_unavailable"
+    assert await _stored_pm(org_id) == "pm_armed"
+
+
+async def test_a_card_saved_in_treg_becomes_the_stripe_customer_default(c: AsyncClient, monkeypatch):
+    """Otherwise an older portal default would win over a card the payer just saved in treg."""
+    org_id, _ = await _org(c)
+    await _armed(org_id)
+    calls = []
+
+    async def sdk(fn, /, **kw):
+        calls.append((fn, kw))
+        return {}
+
+    monkeypatch.setattr(billing, "_sdk", sdk)
+    async with session_maker() as db:
+        assert await billing._set_default_pm(db, org_id, "pm_new_in_treg") is True
+        assert await billing._set_default_pm(db, org_id, "pm_new_in_treg") is False
+    assert calls == [(billing.stripe_adapter.CUSTOMER_MODIFY, {
+        "id": "cus_armed", "invoice_settings": {"default_payment_method": "pm_new_in_treg"}})]
 
 
 @pytest.mark.parametrize("refused_at", ["create", "pay"])

@@ -393,10 +393,59 @@ async def _set_default_pm(db: AsyncSession, org_id: int, payment_method: str | N
     # re-arm on a card that just paid or a newly saved one. A manual payment also resolves a 3DS
     # pause; merely saving a card does not. A deliberate off stays off.
     armed = _arm_if_waiting_for_card(org, card_proven=paid or changed, paid=paid)
+    customer_id = org.stripe_customer_id
     if changed or armed:
         db.add(org)
         await db.commit()
+    if changed and customer_id:
+        await _make_customer_default(customer_id, payment_method)
     return changed
+
+
+async def _make_customer_default(customer_id: str, payment_method: str) -> None:
+    """Make a card saved in treg the customer's default in Stripe too.
+
+    `attempt_auto_topup` charges the customer's `invoice_settings.default_payment_method` first,
+    because that is what the Customer Portal changes. Without this a card saved in treg would lose
+    to an older portal default. Best-effort: the card is already stored, and a failure here only
+    leaves Stripe's default where the payer last put it."""
+    try:
+        await _sdk(stripe_adapter.CUSTOMER_MODIFY, id=customer_id,
+                   invoice_settings={"default_payment_method": payment_method})
+    except Exception as e:  # noqa: BLE001 — the webhook has already stored the card
+        log.warning("billing: could not make the saved card the Stripe customer default: %s", e)
+
+
+def _stripe_id(value) -> str | None:
+    return value if isinstance(value, str) else (value or {}).get("id") or None
+
+
+async def _chargeable_pm(customer_id: str, stored: str) -> str | None:
+    """The card an automatic top-up may charge: the payer's most recent choice, still attached.
+
+    The Customer Portal changes `invoice_settings.default_payment_method` and sends us nothing, so
+    the customer's default wins over the stored card. Treg's own card saves set that default as
+    well (`_make_customer_default`). Stripe clears the default when that card is detached, so a set
+    default is attached. With no default, the stored card is used only if it is still attached to
+    this customer. None means there is no card to charge. Other Stripe errors propagate."""
+    try:
+        customer = await _sdk(stripe_adapter.CUSTOMER_RETRIEVE, id=customer_id)
+    except stripe_adapter.InvalidRequestError as e:
+        if getattr(e, "code", None) == "resource_missing":
+            return None
+        raise
+    if customer.get("deleted"):
+        return None
+    default = _stripe_id((customer.get("invoice_settings") or {}).get("default_payment_method"))
+    if default:
+        return default
+    try:
+        pm = await _sdk(stripe_adapter.PAYMENT_METHOD_RETRIEVE, id=stored)
+    except stripe_adapter.InvalidRequestError as e:
+        if getattr(e, "code", None) == "resource_missing":
+            return None
+        raise
+    return stored if _stripe_id(pm.get("customer")) == customer_id else None
 
 
 def _arm_if_waiting_for_card(org: Org, *, card_proven: bool = False, paid: bool = False,
@@ -1193,14 +1242,30 @@ async def attempt_auto_topup(db: AsyncSession, org_id: int) -> dict:
                        if last_auto_credit else None)
         to = await owner_email(db, org_id)
         customer_id = org.stripe_customer_id
-        payment_method = org.stripe_default_pm
+        stored_pm = org.stripe_default_pm
         org_name = org.name or org.slug
-        base_key = _idempotency_key(org_id, amount_micro, crossing, payment_method)
         invoice_id = ""
         cents = micro_to_cents(amount_micro)
         # Reads above opened a new transaction after the cooldown commit. Release its connection
         # before the Stripe list/create/finalize/pay sequence; the session can be reused afterward.
         await db.rollback()
+        try:
+            payment_method = await _chargeable_pm(customer_id, stored_pm)
+        except Exception as e:  # noqa: BLE001 — nothing was charged; the cooldown stamp makes it wait
+            log.warning("billing: could not read the card for org %s: %s", org_id, e)
+            return {"ok": False, "reason": "stripe_unavailable"}
+        if payment_method is None:
+            return await _card_gone(db, org_id, stored_pm)
+        if payment_method != stored_pm:
+            moved = await db.execute(
+                update(Org).where(Org.id == org_id, Org.stripe_default_pm == stored_pm)
+                .values(stripe_default_pm=payment_method)
+                .execution_options(synchronize_session=False))
+            await db.commit()
+            if moved.rowcount != 1:
+                # A card was saved in treg while Stripe answered; the next attempt reads again.
+                return {"ok": False, "reason": "card_changed"}
+        base_key = _idempotency_key(org_id, amount_micro, crossing, payment_method)
         try:
             invoice, generation = await _attempt_invoice(
                 customer_id, base_key, org_id, created_gte,

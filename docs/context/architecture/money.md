@@ -795,6 +795,15 @@ discounts are excluded so the invoice charges exactly the refill. Each write has
 idempotency key derived from the credited-purchase count and invoice generation, unchanged across
 midnight or an uncertain Stripe reply.
 
+**The card it charges is the payer's latest choice.** The Customer Portal changes the customer's
+`invoice_settings.default_payment_method` and sends treg nothing, so after the cooldown claim and
+with no database connection open, `_chargeable_pm` reads the customer from Stripe. A set default
+wins and replaces `stripe_default_pm`; Stripe clears the default when that card is detached. With
+no default, the stored card is charged only while it is still attached to this customer; otherwise
+the card is forgotten and the policy waits as `no_card`. A Stripe error in this lookup charges
+nothing and is not a failed attempt. A card saved in treg (`_set_default_pm`, when the stored card
+changes) is also made the customer's default, so an older portal choice cannot win over it.
+
 Before a new charge, `attempt_auto_topup` pages the customer's invoices (listing, not Stripe's delayed
 search index) since one day before the last credited automatic top-up, or the full history before
 the first, to recover a draft, open or paid attempt:
