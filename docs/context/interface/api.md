@@ -307,7 +307,7 @@ X-Treg-Original-Cost-Micro: <charge>     what the first call cost (or reserved)
 422 when a key is reused for a different request, 409 while the first call is in flight. The
 request is compared by method, path, query and body; a JSON body by its parsed value, so the same
 object with its keys in another order or other whitespace is the same request
-(`_canonical_json`). The 409 (`idempotency_in_progress`) carries `Retry-After` and names the first
+(`_canonical_json`, bodies up to `_CANONICAL_MAX_BYTES`). The 409 (`idempotency_in_progress`) carries `Retry-After` and names the first
 call in `detail.call_id`. Over MCP it is the `idempotency_key` argument and a replay carries
 `replayed: true`; `call_result` lists the team's recent calls and reads one's stored answer
 (`GET /calls`, `GET /calls/{id}/result`). Storage rules: [money](../architecture/money.md).

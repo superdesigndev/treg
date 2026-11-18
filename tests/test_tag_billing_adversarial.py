@@ -429,10 +429,26 @@ def test_review_idempotency_separator_and_post_fingerprint_are_unambiguous():
     (b'{"a":1,"a":2}', b'{"a":2}'),
     (b'{"n":NaN}', b'{"n":NaN }'),
     (b'{"n":Infinity}', b'{"n":1e400}'),
+    (b'{"a":-0}', b'{"a":0}'),
 ])
 def test_review_a_parse_that_could_merge_two_requests_keeps_them_apart(one, other):
     assert call_idem._request_fingerprint("POST", "endpoint", one) != call_idem._request_fingerprint(
         "POST", "endpoint", other)
+
+
+def test_review_a_large_body_is_compared_byte_for_byte_without_parsing(monkeypatch):
+    import time
+
+    big = b"[" + b",".join([b"0.5"] * (call_idem._CANONICAL_MAX_BYTES // 3)) + b"]"
+    assert len(big) > call_idem._CANONICAL_MAX_BYTES
+    monkeypatch.setattr(call_idem.json, "loads", lambda *a, **k: pytest.fail("parsed a large body"))
+    started = time.perf_counter()
+    assert call_idem._canonical_json(big) is big
+    assert time.perf_counter() - started < 0.05
+    assert call_idem._request_fingerprint("POST", "endpoint", big) == call_idem._raw_request_fingerprint(
+        "POST", "endpoint", big)
+    assert call_idem._request_fingerprint("POST", "endpoint", big) != call_idem._request_fingerprint(
+        "POST", "endpoint", big.replace(b",", b", ", 1))
 
 
 def test_review_a_lone_surrogate_body_is_fingerprinted():

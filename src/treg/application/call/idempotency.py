@@ -142,16 +142,27 @@ def _no_constant(text: str):
     raise _NotCanonical(text)
 
 
+def _exact_int(text: str) -> int:
+    if text == "-0":
+        raise _NotCanonical(text)
+    return int(text)
+
+
+# The parse runs on the event loop; past this a body keeps the byte-for-byte comparison.
+_CANONICAL_MAX_BYTES = 256 * 1024
+
+
 def _canonical_json(body: bytes) -> bytes:
     """A JSON body's meaning rather than its spelling: a retry that serializes the same object with
     its keys in another order, or with other whitespace, is the same request. A body whose parse
-    could merge two different requests (a duplicate key, a number a float does not spell back
-    exactly, NaN or Infinity) and any non-JSON body are compared byte for byte."""
-    if not body or body.lstrip()[:1] not in (b"{", b"["):
+    could merge two different requests (a duplicate key, `-0`, a number a float does not spell back
+    exactly, NaN or Infinity), a body over `_CANONICAL_MAX_BYTES` and any non-JSON body are compared
+    byte for byte."""
+    if not body or len(body) > _CANONICAL_MAX_BYTES or body.lstrip()[:1] not in (b"{", b"["):
         return body
     try:
         parsed = json.loads(body, object_pairs_hook=_unique_pairs, parse_float=_exact_float,
-                            parse_constant=_no_constant)
+                            parse_int=_exact_int, parse_constant=_no_constant)
     except (ValueError, RecursionError):
         return body
     return json.dumps(parsed, sort_keys=True, separators=(",", ":")).encode()
