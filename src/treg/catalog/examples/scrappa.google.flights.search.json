@@ -1,0 +1,84 @@
+{
+  "flights": [
+    {
+      "price": 83,
+      "currency": "USD",
+      "total_duration_minutes": 110,
+      "stops": 0,
+      "airline_name": "Eurowings",
+      "emissions": {
+        "co2_grams": 90000,
+        "co2_kilograms": 90,
+        "typical_co2_grams": 115000,
+        "typical_co2_kilograms": 115,
+        "difference_percent": -22
+      },
+      "booking_token": "CjRIb29sVzVwSWs0cndBQ1RVb3dCRy0tLS0tLS1lanEyMC1uMkFBQUFBR3I5ZGZjQmhFdFNBEgZFVzg0NjQaCgidQBACGgNVU0Q4HHCdQA==",
+      "legs": [
+        {
+          "airline": "EW",
+          "flight_number": "8464",
+          "departure_airport": "BER",
+          "arrival_airport": "LHR",
+          "departure_time": "2027-03-16T17:05:00",
+          "arrival_time": "2027-03-16T17:55:00",
+          "duration_minutes": 110
+        }
+      ]
+    },
+    {
+      "price": 92,
+      "currency": "USD",
+      "total_duration_minutes": 125,
+      "stops": 0,
+      "airline_name": "British Airways",
+      "emissions": {
+        "co2_grams": 86000,
+        "co2_kilograms": 86,
+        "typical_co2_grams": 115000,
+        "typical_co2_kilograms": 115,
+        "difference_percent": -25
+      },
+      "booking_token": "CjRIb29sVzVwSWs0cndBQ1RVb3dCRy0tLS0tLS1lanEyMC1uMkFBQUFBR3I5ZGZjQmhFdFNBEgVCQTk3NRoKCNNHEAIaA1VTRDgccNNH",
+      "legs": [
+        {
+          "airline": "BA",
+          "flight_number": "975",
+          "departure_airport": "BER",
+          "arrival_airport": "LHR",
+          "departure_time": "2027-03-16T09:55:00",
+          "arrival_time": "2027-03-16T11:00:00",
+          "duration_minutes": 125
+        }
+      ]
+    },
+    "… 6 more item(s) truncated"
+  ],
+  "search_metadata": {
+    "origin": "BER",
+    "destination": "LHR",
+    "departure_date": "2027-03-16",
+    "return_date": null,
+    "passengers": {
+      "adults": 1,
+      "children": 0,
+      "infants_in_seat": 0,
+      "infants_on_lap": 0
+    },
+    "cabin_class": "Economy",
+    "exclude_basic": false,
+    "max_stops": "Non-stop only",
+    "sort_by": "Top Flights",
+    "airlines": null,
+    "hl": "en",
+    "gl": "US",
+    "currency": "USD",
+    "response_time_ms": 10688,
+    "departure_time_min": null,
+    "departure_time_max": null,
+    "arrival_time_min": null,
+    "arrival_time_max": null,
+    "max_duration_minutes": null,
+    "max_price": null
+  }
+}

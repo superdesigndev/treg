@@ -1,0 +1,47 @@
+{
+  "results": [
+    {
+      "type": "Video",
+      "id": "MAlSjtxy5ak",
+      "title": "Every programming tutorial",
+      "description": "thx for the explanation.",
+      "thumbnail": "https://i.ytimg.com/vi/MAlSjtxy5ak/hqdefault.jpg?sqp=-oaymwEgCOADEI4CSFXyq4qpAxIIARUAAIhCGAFwAcABBrgC8xg=&rs=AOn4CLDrDBTZsYmYKgIUXe-9mCPW_5fYWQ",
+      "duration": "0:29",
+      "viewCount": "17,224,262 views",
+      "publishedTime": "7 years ago",
+      "channel": {
+        "id": "UCqi0-4XRvQLBo8E5r8bvPsA",
+        "name": "Jombo",
+        "thumbnail": "https://yt3.ggpht.com/ytc/AIdro_mgrUptC2w-_MVOZsiCePj87Yzxgk1Zk8POq68IZcOo=s68-c-k-c0x00ffffff-no-rj",
+        "verified": false,
+        "isVerifiedArtist": false,
+        "url": "https://www.youtube.com/@Jombo1"
+      },
+      "badges": [],
+      "isLive": false,
+      "isShort": false,
+      "isPremium": false,
+      "expandableMetadata": null
+    }
+  ],
+  "pagination": {
+    "continuationToken": "eyJxdWVyeSI6InByb2dyYW1taW5nIHR1dG9yaWFsIiwib3B0aW9ucyI6eyJ0eXBlIjoiYWxsIiwic29ydCI6InJlbGV2YW5jZSIsImR1cmF0aW9uIjpudWxsLCJ1cGxvYWREYXRlIjpudWxsLCJmZWF0dXJlcyI6W10sImNvbnRpbnVhdGlvblRva2VuIjpudWxsLCJsaW1pdCI6MSwicGFnZSI6MSwiaGwiOm51bGwsImdsIjpudWxsLCJzYWZlU2VhcmNoIjpudWxsfSwicGFnZSI6MX0.8261d5ec",
+    "hasMore": true,
+    "page": 1,
+    "pageSize": 1
+  },
+  "query": "programming tutorial",
+  "filters": {
+    "type": "all",
+    "sort": "relevance",
+    "duration": null,
+    "uploadDate": null,
+    "features": [],
+    "continuationToken": null,
+    "limit": 1,
+    "page": 1,
+    "hl": null,
+    "gl": null,
+    "safeSearch": null
+  }
+}

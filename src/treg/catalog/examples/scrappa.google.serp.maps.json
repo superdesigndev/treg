@@ -1,0 +1,64 @@
+{
+  "items": [
+    {
+      "name": "Brandenburg Gate",
+      "price_level": null,
+      "price_level_text": null,
+      "review_count": 191719,
+      "rating": 4.7,
+      "website": "https://www.berlin.de/sehenswuerdigkeiten/3560266-3558930-brandenburger-tor.html",
+      "domain": "berlin.de",
+      "latitude": 52.516274599999996,
+      "longitude": 13.377704099999999,
+      "business_id": "0x47a851c655f20989:0x26bbfb4e84674c63",
+      "subtypes": [
+        "Historical place",
+        "Historical landmark",
+        "… 1 more item(s) truncated"
+      ],
+      "district": "Mitte",
+      "full_address": "Pariser Platz, 10117 Berlin",
+      "timezone": "Europe/Berlin",
+      "short_description": "Grand classical archway & city divide",
+      "full_description": "Restored 18th-century gate & landmark with 12 Doric columns topped by a classical goddess statue.",
+      "owner_id": null,
+      "owner_name": "Brandenburg Gate (Owner)",
+      "owner_link": null,
+      "order_link": null,
+      "google_mid": "/m/014kf8",
+      "type": null,
+      "phone_numbers": [],
+      "place_id": "ChIJiQnyVcZRqEcRY0xnhE77uyY=",
+      "photos_sample": [
+        {
+          "photo_id": "CIABIhDhgiVQzlmX2swTi47rBvqn",
+          "photo_url": "https://lh3.googleusercontent.com/grass-cs/AABkmLd7LAjU9ORw41ACKNQc_xLx8zIDyNzkjNEVvULNGiOMU3o6HOJxst_UdS_LJil6-dnqOdQY_swlmXyDpAFM5p7AXucQd4_FOd14OC6fnzfLACugbCJqrMGjc-QskEU5JXh7AXPavGY4Tc0=w114-h86-k-no",
+          "photo_url_large": "https://lh5.googleusercontent.com/p/CIABIhDhgiVQzlmX2swTi47rBvqn?w3024-h3024-k-no",
+          "video_thumbnail_url": null,
+          "latitude": 52.516274622528485,
+          "longitude": 13.377704068536893,
+          "type": "photo"
+        }
+      ],
+      "neighborhood": "Mitte",
+      "street_address_alt": "Pariser Platz",
+      "street_address_full": "Pariser Platz",
+      "city": "Berlin",
+      "zip_code": "10117",
+      "state": null,
+      "country_code": "DE",
+      "attributes": {
+        "accessibility": {
+          "Wheelchair-accessible car park": true,
+          "Wheelchair-accessible entrance": true
+        }
+      }
+    }
+  ],
+  "pagination": {
+    "current_page": 0,
+    "limit": 1,
+    "total_results": 1,
+    "has_more": true
+  }
+}
