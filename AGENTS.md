@@ -25,7 +25,11 @@ Everything else in this file is guidance; these are the contract, and they win o
    it counts admitted logical calls, not money or provider credits.
    This temporary allowance permits calls when Redis state cannot be confirmed; it is not a durable cap.
 2. A hold (the balance `reserve` sets aside for one call) is settled or released exactly once, on
-   every path: timeout, cancellation and exceptions included.
+   every path: timeout, cancellation and exceptions included. A call of a team listed in
+   `money_allowance_org_ids` may instead take its reservation from the team's allowance (one
+   standing hold, mirrored in a shared counter); that take is charged or given back exactly once
+   on the same paths, and a take that is never finished stays in the allowance hold, never spent
+   and never charged, until the hold is closed.
 3. A request holds zero database connections while upstream, object-storage, KMS or payment-rail
    (chain or facilitator) I/O is in flight. Keep `reserve` and `settle` separate; read archive
    pointers, close the session, then fetch bytes; verify or settle a payment, then open the session;
@@ -169,7 +173,8 @@ agents then built against a constitution that was wrong.
   credentials, catalog prices and balances (plus, when a policy extension asks `call_admission`,
   the team's first owner and whether it ever bought credit), and writes only what
   `tests/test_call_architecture.py`
-  allowlists (the ledger entries, idempotency claims, OAuth refresh, audit and telemetry, first-call
+  allowlists (the ledger entries, the allowance counter, its refills and queued call charges,
+  idempotency claims, OAuth refresh, audit and telemetry, first-call
   markers, tag budgets, capacity marks, overflow spend, the member's daily-cap slot, the per-team
   archive-question marks, durable provider-resource ownership, the task an async answer names,
   Redis org/endpoint quota admission counters, and the shared provider rate window's members). Extend the

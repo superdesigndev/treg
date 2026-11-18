@@ -336,6 +336,34 @@ semantics are in [money](../architecture/money.md#optional-admission-before-the-
 the $0 hold, and with it money admission ([money](../architecture/money.md), "holdless"). Removing
 an id restores the hold path for that org's new calls; no migration is needed.
 
+`TREG_MONEY_ALLOWANCE_ORG_IDS` (default `[]`) lists orgs whose eligible metered calls spend from
+a standing allowance instead of one hold per call ([money](../architecture/money.md), "Allowance");
+it needs `TREG_KV_URL` and PostgreSQL, and is ignored on SQLite. `TREG_MONEY_ALLOWANCE_CHUNK_MICRO` is what a refill brings the counter up
+to, `TREG_MONEY_ALLOWANCE_FRESH_S` how long a refill keeps admitting calls, and
+`TREG_MONEY_ALLOWANCE_LINGER_MS` how long finished calls wait to share one insert. Removing an id
+returns that org's new calls to the hold path at once; no migration is needed. The idle sweep
+(`application/allowance_sweep.py`) runs in the `all` and `control` roles and is one more
+consumer of the `background` pool, which is one connection larger per process for it. The
+allowance trusts the store to keep the writes it acknowledged. A store that can go back to an
+earlier state (a restore from an older snapshot, a replica promoted before it caught up) can
+admit the same money twice, with no bound on amount or time while the allowance stays on, and
+what a team's credit cannot cover is the platform's cost. After such an event, empty the
+list, and list a team again only when all of these can be seen:
+
+- every process that serves calls has restarted on the empty list (the list is read per
+  process, so one still running the old value keeps admitting from the counter);
+- calls admitted before that have ended and their charges are written. A process that still
+  runs logs when it could not confirm call charges and when they are written; the team having
+  no `callcharge` rows shows only that the queue in the database is empty. A process that
+  exited with unconfirmed charges took them with it, and no later log or row shows that:
+  compare the team's calls with its `settle` entries for the interval;
+- the team has no `hold` row with `allowance` set (the idle sweep closes it once no refill has
+  stamped it for the hold lifetime plus its margin);
+- the team's counter in the store has been retired or has expired. With the list empty no
+  call reaches a refill, so nothing else removes it; the sweep retires it after closing the
+  hold, and that write is not retried. A counter still there when the team is listed again is
+  replaced by the first refill, which does not count what it shows.
+
 Raising `TREG_MONEY_ADMISSION_WAIT_S` lengthens no other timeout: Redis command budgets, the
 upstream `call_timeout_s`, hold age (`call_timeout_s + hold_grace_s`), CLI, local-proxy and MCP
 client timeouts, the async settlement worker's processing deadline, hub and Arena deadlines and the
@@ -462,7 +490,12 @@ job's credentials. `treg-worker --help` lists them; what follows is what a sched
   [capacity](capacity.md); verify must be followed by sync. The sweep reads
   `TREG_PLATFORM_OPENROUTER_MANAGEMENT_KEY` and `TREG_PLATFORM_FISHAUDIO_WORKSPACE_ID` when those
   balances should be observed.
-- **`asynctasks settle`** completes durable holds for asynchronous upstream operations.
+- **`asynctasks settle`** completes durable holds for asynchronous upstream operations. Where
+  teams spend from an allowance it needs `TREG_KV_URL` too: a task that settles past its hold
+  freezes its team's counter, and without the store the job cannot. Every worker command
+  waits a bounded time before it exits for the freezes it owes (a hub check settles child calls
+  too), waking any that were pausing before another attempt, and says on stderr how many it
+  lost.
 - **`billing reconcile`** checks the top-ups Stripe collected against the ledger
   ([money](../architecture/money.md), "Reconciliation against Stripe"); run it at least daily with an
   overlapping `--hours`. It exits 1 on a gap and posts to `TREG_OPS_SLACK_WEBHOOK_URL` when set.

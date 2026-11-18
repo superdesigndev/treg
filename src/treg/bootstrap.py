@@ -467,9 +467,9 @@ _DATAPLANE_ROUTE_KEYS: frozenset[RouteKey] = frozenset({
 ROLE_BACKGROUND_TASKS: dict[AppRole, tuple[str, ...]] = {
     # Arena statistics are built by `treg-worker arena insights` (a cron) walking `callrecord`, so
     # web processes never compete for its cursor row. Only `/arena/insights` (a snapshot read) is here.
-    "all": ("treg.adsconv.worker",),
+    "all": ("treg.adsconv.worker", "treg.application.allowance_sweep.worker"),
     "dataplane": (),
-    "control": ("treg.adsconv.worker",),
+    "control": ("treg.adsconv.worker", "treg.application.allowance_sweep.worker"),
 }
 ROLE_STARTUP_CHECKS: dict[AppRole, tuple[str, ...]] = {
     "all": (
@@ -837,6 +837,13 @@ def _lifespan(role: AppRole):
                 else None
             )
             gauge_task = asyncio.create_task(pool_gauge()) if analytics.enabled() else None
+            # Idle allowance holds go back to the balance (money.md "Allowance"). Runs wherever
+            # background work runs, listed teams or not: a hold outlives its team's listing.
+            from .application import allowance_sweep
+            allowance_task = (
+                asyncio.create_task(allowance_sweep.worker())
+                if ROLE_BACKGROUND_TASKS[role] else None
+            )
             # Local transaction diagnostics run even when the analytics transport is disabled.
             trace_runner = start_money_trace(role=role)
             stall_watch = start_loop_stall_watch()
@@ -896,6 +903,7 @@ def _lifespan(role: AppRole):
                 try:
                     workers = [task for task in (
                         gauge_task, ads_task, archive_task, prune_task, find_task, rate_task,
+                        allowance_task,
                     ) if task is not None]
                     for task in workers:
                         task.cancel()
