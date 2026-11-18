@@ -703,3 +703,17 @@ def test_drop_legacy_takes_a_window(monkeypatch):
     assert seen == {"window_s": 120.0}
     worker.main(["admin", "callrecord-drop-legacy", "--window-s", "600"])
     assert seen == {"window_s": 600.0}
+
+
+async def test_the_swap_resync_reads_only_its_id_range_of_the_new_table(before_swap):
+    await _upgrade_to("0116")
+    await partitions.backfill(31, batch_rows=10, pause=0)
+    compiled = str(swap._RESYNC.compile())
+    async with db.session_maker() as session:
+        await session.execute(text("SET LOCAL enable_seqscan = off"))
+        plan = "\n".join((await session.execute(
+            text("EXPLAIN " + compiled.replace(":after", "10").replace(":upto", "20")))).scalars().all())
+    lines = plan.splitlines()
+    staged_conditions = [lines[i + 1] for i, line in enumerate(lines[:-1])
+                         if "Scan" in line and " on callrecord_y" in line]
+    assert staged_conditions and all("id > 10" in c for c in staged_conditions), plan
