@@ -320,7 +320,9 @@ admit wraps the session; nothing inside calls `admit` again. It changes no commi
   holding a pooled connection, which is why these bounds exist.
 - **A silent store costs one timeout, not one per operation.** After a store failure
   (`kv_unavailable` or `gate_error`) the process skips the store for `_STORE_DOWN_S` (5 s, the
-  `fair_share` pattern) and every operation in that window takes the database path at once. A
+  `fair_share` pattern) and every operation in that window takes the database path at once, counted
+  as `kv_store_down`. Only a real store failure opens or extends the window; a skip never does, or
+  steady traffic would keep one failure's window open until the process restarts. A
   failed gate frees its process-local locks before the lease cleanup runs, and the cleanup runs as a
   background task, so a stuck cleanup never holds the next operation; the lease TTL bounds a lease it
   does not remove.

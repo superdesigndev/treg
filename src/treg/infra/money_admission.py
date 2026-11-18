@@ -31,7 +31,7 @@ _OPERATIONS = frozenset({"close", "deferred", "async", "hub", "reserve", "releas
 # Sessions that update an org balance row. A missing org must not fall through into checkout.
 _BALANCE_OPS = frozenset({"reserve", "release"})
 _MODES = frozenset({"disabled", "redis", "fallback"})
-_REASONS = frozenset({"wait_timeout", "kv_unavailable", "kv_not_configured",
+_REASONS = frozenset({"wait_timeout", "kv_unavailable", "kv_store_down", "kv_not_configured",
                       "lease_lost", "missing_identity", "gate_error"})
 _BOUNDS_MS = (10, 50, 100, 250, 1000, 5000)
 _SETTLE_WAIT_LEASES = 2
@@ -201,7 +201,7 @@ class _Gate:
                 if not kv.configured():
                     return "kv_not_configured"
                 if _store_down():
-                    return "kv_unavailable"
+                    return "kv_store_down"
                 self.store = kv.store()
                 for org_id in ids:
                     key, token = f"money-admission:org:{org_id}", uuid.uuid4().hex

@@ -1017,6 +1017,32 @@ async def test_silent_store_costs_one_timeout_then_later_operations_fall_back_at
     await asyncio.gather(*admission._background)
 
 
+async def test_skipped_operations_do_not_extend_the_breaker_window(gate, monkeypatch):
+    _, store = gate
+    now = [1000.0]
+    monkeypatch.setattr(admission, "_clock", lambda: now[0])
+    store.unavailable = True
+    async with admission.admit([7], operation="close"):
+        pass
+    await asyncio.gather(*admission._background)
+    store.unavailable = False
+    # Steady traffic inside the window takes the database path without reopening the window.
+    for _ in range(int(admission._STORE_DOWN_S)):
+        now[0] += 1.0
+        store.calls.clear()
+        async with admission.admit([7], operation="close"):
+            if admission._store_down():
+                assert store.calls == []
+    assert not admission._store_down()
+    store.calls.clear()
+    async with admission.admit([7], operation="close"):
+        assert ("acquire", "money-admission:org:7") in store.calls
+    reasons = {key: value for row in admission.snapshot() for key, value in row.items()
+               if key.startswith("fallback_") and value}
+    assert reasons == {"fallback_kv_unavailable": 1,
+                       "fallback_kv_store_down": int(admission._STORE_DOWN_S) - 1}
+
+
 async def test_the_store_is_tried_again_after_the_breaker_window(gate, monkeypatch):
     _, store = gate
     store.unavailable = True
