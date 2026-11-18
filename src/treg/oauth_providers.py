@@ -4440,6 +4440,32 @@ LEVER = OAuthProvider(
     docs_url="https://github.com/lever/postings-api",
 )
 
+SCRAPPA = OAuthProvider(
+    service="scrappa",
+    display_name="Scrappa",
+    auth_kind="key",
+    token_label="API key",
+    token_placeholder="your Scrappa API key",
+    # Raw key in X-API-KEY (no prefix). A request with no key header at all gets HTTP 402 (an x402
+    # pay-per-call challenge), not 401; a wrong key gets 401 {"code": "UNAUTHORIZED"}.
+    token_header="X-API-KEY",
+    token_format="{secret}",
+    setup_url="https://scrappa.co/dashboard/api-keys",
+    setup_action_label="Get your Scrappa API key",
+    setup_steps=(
+        "Sign up at Scrappa and verify your email: 500 free credits arrive each month.",
+        "Open Dashboard → API keys, create a key and copy it.",
+    ),
+    setup_note="Each successful request spends 1 credit on most routes; failed requests are free and the account check costs nothing.",
+    auth_uri="", token_uri="", scopes={},
+    client_id_setting="", client_secret_setting="",
+    category="Research & public data",
+    summary="Live Google Search, Maps, Flights, Hotels, Jobs and News, plus YouTube, Trustpilot and LinkedIn data, from one API.",
+    base_url="https://scrappa.co/api",
+    docs_url="https://scrappa.co/docs",
+    probe_path="/account/usage",  # free (X-Credits-Charged: 0); a bad key gets 401
+)
+
 REGISTRY: dict[str, OAuthProvider] = {
     p.service: p
     for p in (
@@ -4457,7 +4483,7 @@ REGISTRY: dict[str, OAuthProvider] = {
         SCRAPECREATORS,
         # SEO API-key providers
         DATAFORSEO, SERANKING, MOZ, MAJESTIC, SERPSTAT, EXA, SEARCH1API, TAVILY, OCTEN, LINKUP, PARALLEL, YOU, VALYU, KEENABLE, OLOSTEP, FIRECRAWL, CRAWL4AI, SPIDERCLOUD, PERPLEXITY,
-        SCRAPEGRAPHAI, SERPER, BRAVESEARCH, LITESCRAPE, CLORO, LOCALFALCON,
+        SCRAPEGRAPHAI, SERPER, BRAVESEARCH, LITESCRAPE, CLORO, LOCALFALCON, SCRAPPA,
         # more Enrichment API-key providers
         LUSHA, CORESIGNAL, DIFFBOT, THECOMPANIESAPI, LEADMAGIC, ENRICHLAYER, FIBER_AI, CRUSTDATA, THEIRSTACK, JOBSPIPE, AVIATO,
         COMPANYENRICH, CORPOAPI, OCEANIO, ADYNTEL, TOMBA, TRESTLEIQ, HLRLOOKUP, PREDICTLEADS, FINDYMAIL, ANYMAILFINDER, ENROW, FILTRAT, FILTRAT_FINDER, DROPCONTACT, BRANDDEV, ICYPEAS, LEADSFORGE,

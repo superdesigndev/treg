@@ -1,0 +1,432 @@
+provider: scrappa
+source:
+  docs: https://scrappa.co/docs
+  openapi: https://scrappa.co/api/docs/openapi.json
+  curated: '2026-11-18'
+# Scrappa publishes its rate card in the OpenAPI spec: every operation carries `x-credits: {min, max,
+# rule}`, and most routes are 1 credit. The meter is the `X-Credits-Charged` response header: the exact
+# credits billed for that request, 0 for a free or failed one. Every row settles on it, so a call
+# that Scrappa serves free (an empty Google Jobs page, a repeated search served from its one-hour
+# cache) is not billed on treg's key either. The free check `GET /account/usage` is the registry's
+# probe: a bad key answers 401, a request with no key header at all answers 402 (an x402 pay-per-call
+# challenge), so the two are not the same failure.
+# Live observations (2026-11-18, one request per row; the ledger is in the pull request): an empty
+# Google Maps or Google News page still charges 1 credit, an empty Google Jobs page charges 0, and a
+# 404 (no Trustpilot profile, no LinkedIn company, no YouTube transcript) charges 0. Google Search
+# `proxy_country` adds up to 1 credit and is left out of the row's inputs. Google Flights answers 503
+# after about a minute when its upstream is down, and bills nothing.
+limits: Up to 48 requests in flight per key on each Scrappa server; above that HTTP 429 with Retry-After 2. A key without credits gets HTTP 403 "You've ran out of credits".
+pricing_url: https://scrappa.co/pricing
+
+proposed_capabilities:
+  google.serp.images: "Get Google Images results for a keyword"
+  google.serp.autocomplete: "Get Google query autocomplete suggestions"
+  google.flights.search: "Search Google Flights offers between two airports"
+  google.hotels.search: "Search Google Hotels properties and nightly rates for a place and dates"
+  google.jobs.search: "Search Google Jobs listings by keyword"
+
+defaults:
+  provenance: {source: rate_card_api, source_url: 'https://scrappa.co/api/docs/openapi.json', checked: '2026-11-18', confidence: documented}
+  docs_url: https://scrappa.co/docs
+  bill: {miss: free, error: free}
+  settle: {reported: {header: x-credits-charged, unit: credit}}
+
+endpoints:
+  # --- Google Search family -----------------------------------------------------------------------
+  - id: scrappa.google.serp.organic
+    added: '2026-11-18'
+    verified: '2026-11-18'
+    example_response: examples/scrappa.google.serp.organic.json
+    capability: google.serp.organic
+    platform: google
+    scope: any_account
+    method: GET
+    path: /search
+    name: "Google Search results"
+    summary: "Google results page as JSON: organic results, related searches, knowledge graph, local results and ads"
+    input:
+      queryParams:
+        query: {type: string, required: true, note: "search words", example: "coffee berlin"}
+        location: {type: string, required: false, note: "place name such as Berlin, Germany; cannot be combined with uule", example: "Berlin, Germany"}
+        gl: {type: string, required: false, note: "2-letter country code", example: "de"}
+        hl: {type: string, required: false, note: "2-letter interface language", example: "en"}
+        google_domain: {type: string, required: false, note: "Google domain such as google.de", example: "google.de"}
+        page: {type: integer, required: false, note: "result page, starting at 1"}
+    test_request:
+      queryParams: {query: "coffee berlin"}
+    price: {value: '1', currency: credit, per: 1, unit: call, note: "A search repeated within one hour is served from cache and charges 0 credits"}
+    provenance: {source: observed, source_url: 'https://scrappa.co/api/docs/openapi.json', checked: '2026-11-18', confidence: verified}
+    miss: {when: {path: response.organic_results, op: empty}}
+    docs_url: https://scrappa.co/docs/google-search-api/search
+
+  - id: scrappa.google.serp.maps
+    added: '2026-11-18'
+    verified: '2026-11-18'
+    example_response: examples/scrappa.google.serp.maps.json
+    capability: google.serp.maps
+    platform: google
+    scope: any_account
+    method: GET
+    path: /maps/simple-search
+    name: "Google Maps place search"
+    summary: "Google Maps businesses and places for a search: name, address, rating, review count, coordinates and the business_id to fetch reviews"
+    input:
+      queryParams:
+        query: {type: string, required: true, note: "what and where, e.g. restaurants in new york", example: "Brandenburg Gate Berlin"}
+        limit: {type: integer, required: false, note: "places to return, 1 to 200", example: 1}
+        page: {type: integer, required: false, note: "page, starting at 0"}
+        hl: {type: string, required: false, note: "language code"}
+        gl: {type: string, required: false, note: "country code"}
+        google_domain: {type: string, required: false, note: "Google domain such as google.de"}
+    test_request:
+      queryParams: {query: "Brandenburg Gate Berlin", limit: 1}
+    price: {value: '1', currency: credit, per: 1, unit: call, note: "An empty result still charges 1 credit"}
+    provenance: {source: observed, source_url: 'https://scrappa.co/api/docs/openapi.json', checked: '2026-11-18', confidence: verified}
+    miss: {when: {path: response.items, op: empty}}
+    docs_url: https://scrappa.co/docs/google-maps-api/simple_search
+
+  - id: scrappa.google.maps.reviews
+    added: '2026-11-18'
+    verified: '2026-11-18'
+    example_response: examples/scrappa.google.maps.reviews.json
+    capability: google.maps.reviews
+    platform: google
+    scope: any_account
+    method: GET
+    path: /maps/reviews
+    name: "Google Maps reviews of a place"
+    summary: "Reviews of a Google Maps business: rating, text, date and owner reply, with a token for the next page"
+    input:
+      queryParams:
+        business_id: {type: string, required: true, note: "google_id (0x…:0x…) or place_id; scrappa.google.serp.maps returns it as business_id", example: "0x47a851c655f20989:0x26bbfb4e84674c63"}
+        limit: {type: integer, required: false, note: "reviews per page", example: 1}
+        sort: {type: integer, required: false, enum: [1, 2, 3, 4], note: "1 most relevant, 2 newest, 3 highest rating, 4 lowest rating"}
+        search: {type: string, required: false, note: "keep reviews that mention this word"}
+        page: {type: string, required: false, note: "continuation token from the nextPage field of a previous answer"}
+        hl: {type: string, required: false, note: "language code"}
+        gl: {type: string, required: false, note: "country code"}
+    test_request:
+      queryParams: {business_id: "0x47a851c655f20989:0x26bbfb4e84674c63", limit: 1}
+    price: {value: '1', currency: credit, per: 1, unit: page, note: "1 credit per page of reviews fetched"}
+    provenance: {source: observed, source_url: 'https://scrappa.co/api/docs/openapi.json', checked: '2026-11-18', confidence: verified}
+    miss: {when: {path: response.items, op: empty}}
+    docs_url: https://scrappa.co/docs/google-maps-api/google_reviews
+
+  - id: scrappa.google.serp.news
+    added: '2026-11-18'
+    verified: '2026-11-18'
+    example_response: examples/scrappa.google.serp.news.json
+    capability: google.serp.news
+    platform: google
+    scope: any_account
+    method: GET
+    path: /google/news
+    name: "Google News articles"
+    summary: "Google News articles for a query: title, link, source, snippet and publish time"
+    input:
+      queryParams:
+        q: {type: string, required: false, note: "search words; omit when you pass a token", example: "OpenAI"}
+        gl: {type: string, required: false, note: "country code such as us or de"}
+        hl: {type: string, required: false, note: "language code such as en or de"}
+        topic_token: {type: string, required: false, note: "browse one news topic; cannot be used with q"}
+        publication_token: {type: string, required: false, note: "browse one publication; cannot be used with q"}
+        page: {type: integer, required: false, note: "result page"}
+    test_request:
+      queryParams: {q: "OpenAI"}
+    price: {value: '1', currency: credit, per: 1, unit: call, note: "An empty result still charges 1 credit"}
+    provenance: {source: observed, source_url: 'https://scrappa.co/api/docs/openapi.json', checked: '2026-11-18', confidence: verified}
+    miss: {when: {path: response.news_results, op: empty}}
+    docs_url: https://scrappa.co/docs/google-news-api/google_news
+
+  - id: scrappa.google.serp.images
+    added: '2026-11-18'
+    verified: '2026-11-18'
+    example_response: examples/scrappa.google.serp.images.json
+    capability: google.serp.images
+    platform: google
+    scope: any_account
+    method: GET
+    path: /images
+    name: "Google Images results"
+    summary: "Google Images results: thumbnail, full-size image URL, size, source and page link"
+    input:
+      queryParams:
+        q: {type: string, required: true, note: "search words", example: "coffee"}
+        imgsz: {type: string, required: false, enum: [large, medium, icon], note: "image size"}
+        imgtype: {type: string, required: false, enum: [photo, clipart, lineart, gif, face], note: "image type"}
+        imgar: {type: string, required: false, enum: [tall, square, wide], note: "aspect ratio"}
+        hl: {type: string, required: false, note: "language code"}
+        gl: {type: string, required: false, note: "country code"}
+        page: {type: integer, required: false, note: "result page"}
+    test_request:
+      queryParams: {q: "coffee"}
+    price: {value: '1', currency: credit, per: 1, unit: call}
+    provenance: {source: observed, source_url: 'https://scrappa.co/api/docs/openapi.json', checked: '2026-11-18', confidence: verified}
+    miss: {when: {path: response, op: empty}}
+    docs_url: https://scrappa.co/docs/google-images-api/google_images
+
+  - id: scrappa.google.serp.autocomplete
+    added: '2026-11-18'
+    verified: '2026-11-18'
+    example_response: examples/scrappa.google.serp.autocomplete.json
+    capability: google.serp.autocomplete
+    platform: google
+    scope: any_account
+    method: GET
+    path: /search-light/autocomplete
+    name: "Google search autocomplete"
+    summary: "Google search suggestions for a query prefix, up to 10"
+    input:
+      queryParams:
+        query: {type: string, required: true, note: "the typed prefix", example: "how to"}
+        hl: {type: string, required: false, note: "language code, default en"}
+        limit: {type: integer, required: false, note: "suggestions to return, up to 10", example: 5}
+    test_request:
+      queryParams: {query: "how to", limit: 5}
+    price: {value: '1', currency: credit, per: 1, unit: call}
+    provenance: {source: observed, source_url: 'https://scrappa.co/api/docs/openapi.json', checked: '2026-11-18', confidence: verified}
+    miss: {when: {path: response.suggestions, op: empty}}
+    docs_url: https://scrappa.co/docs/google-search-api/google_search_autocomplete
+
+  - id: scrappa.google.keywords.trends
+    added: '2026-11-18'
+    verified: '2026-11-18'
+    example_response: examples/scrappa.google.keywords.trends.json
+    capability: google.keywords.trends
+    platform: google
+    scope: any_account
+    method: GET
+    path: /google-trends/interest
+    name: "Google Trends interest over time"
+    summary: "Google Trends popularity of a keyword over time as a 0 to 100 series; compare up to 5 keywords"
+    input:
+      queryParams:
+        q: {type: string, required: true, note: "keyword; separate up to 5 keywords with commas to compare them", example: "tesla"}
+        geo: {type: string, required: false, note: "country code such as US or DE, or Worldwide", example: "US"}
+        time_range: {type: string, required: false, enum: ["1h", "4h", "1d", "7d", "30d", "90d", "1y", "5y", "all"], note: "time window", example: "7d"}
+        search_type: {type: string, required: false, enum: [web, images, news, youtube, shopping], note: "Google property to measure"}
+        hl: {type: string, required: false, note: "2-letter language code"}
+    test_request:
+      queryParams: {q: "tesla", time_range: "7d", geo: "US"}
+    price: {value: '1', currency: credit, per: 1, unit: call}
+    provenance: {source: observed, source_url: 'https://scrappa.co/api/docs/openapi.json', checked: '2026-11-18', confidence: verified}
+    miss: {when: {path: response.timeline_data, op: empty}}
+    docs_url: https://scrappa.co/docs/google-trends-api/google_trends_interest
+
+  # --- Google travel and jobs -------------------------------------------------------------------
+  - id: scrappa.google.flights.search
+    added: '2026-11-18'
+    verified: '2026-11-18'
+    example_response: examples/scrappa.google.flights.search.json
+    capability: google.flights.search
+    platform: google
+    scope: any_account
+    method: GET
+    path: /flights/one-way
+    name: "Google Flights one-way search"
+    summary: "One-way Google Flights offers between two airports on a date: price, airline, stops, duration, emissions and legs"
+    note: "Answers in 8 to 55 seconds, and HTTP 503 when Google Flights is unavailable (billed nothing). Use a future departure_date."
+    input:
+      queryParams:
+        origin: {type: string, required: true, note: "origin airport IATA code", example: "BER"}
+        destination: {type: string, required: true, note: "destination airport IATA code", example: "LHR"}
+        departure_date: {type: string, required: true, note: "YYYY-MM-DD, today or later", example: "2027-03-16"}
+        adults: {type: integer, required: false, note: "1 to 9, default 1"}
+        cabin_class: {type: string, required: false, enum: [economy, premium_economy, business, first], note: "cabin"}
+        max_stops: {type: string, required: false, enum: [any, nonstop, one_or_fewer, two_or_fewer], note: "stop limit", example: "nonstop"}
+        currency: {type: string, required: false, note: "3-letter currency code"}
+        max_price: {type: integer, required: false, note: "highest price to return"}
+    test_request:
+      queryParams: {origin: "BER", destination: "LHR", departure_date: "2027-03-16", max_stops: "nonstop"}
+    price: {value: '1', currency: credit, per: 1, unit: call}
+    provenance: {source: observed, source_url: 'https://scrappa.co/api/docs/openapi.json', checked: '2026-11-18', confidence: verified}
+    miss: {when: {path: response.flights, op: empty}}
+    docs_url: https://scrappa.co/docs/google-flights-api/google_flights_one_way
+
+  - id: scrappa.google.hotels.search
+    added: '2026-11-18'
+    verified: '2026-11-18'
+    example_response: examples/scrappa.google.hotels.search.json
+    capability: google.hotels.search
+    platform: google
+    scope: any_account
+    method: GET
+    path: /google-hotels/search
+    name: "Google Hotels search"
+    summary: "Google Hotels properties for a place and dates: name, nightly and total rate, rating, class, amenities and coordinates"
+    input:
+      queryParams:
+        q: {type: string, required: true, note: "place, e.g. Paris, France or Near Eiffel Tower", example: "Paris, France"}
+        check_in_date: {type: string, required: true, note: "YYYY-MM-DD, today or later", example: "2027-03-16"}
+        check_out_date: {type: string, required: true, note: "YYYY-MM-DD, after check_in_date", example: "2027-03-17"}
+        adults: {type: integer, required: false, note: "1 to 10"}
+        currency: {type: string, required: false, note: "3-letter currency code", example: "EUR"}
+        sort_by: {type: integer, required: false, enum: [3, 8, 13], note: "3 lowest price, 8 highest rating, 13 most reviewed"}
+        min_price: {type: integer, required: false, note: "lowest nightly price"}
+        max_price: {type: integer, required: false, note: "highest nightly price"}
+        next_page_token: {type: string, required: false, note: "from the pagination of a previous answer"}
+    test_request:
+      queryParams: {q: "Paris, France", check_in_date: "2027-03-16", check_out_date: "2027-03-17"}
+    price: {value: '1', currency: credit, per: 1, unit: call}
+    provenance: {source: observed, source_url: 'https://scrappa.co/api/docs/openapi.json', checked: '2026-11-18', confidence: verified}
+    miss: {when: {path: response.properties, op: empty}}
+    docs_url: https://scrappa.co/docs/google-hotels-api/google_hotels_search
+
+  - id: scrappa.google.jobs.search
+    added: '2026-11-18'
+    verified: '2026-11-18'
+    example_response: examples/scrappa.google.jobs.search.json
+    capability: google.jobs.search
+    platform: google
+    scope: any_account
+    method: GET
+    path: /google/jobs
+    name: "Google Jobs search"
+    summary: "Google Jobs listings for a query: title, company, location, source, posting extensions and share link"
+    input:
+      queryParams:
+        q: {type: string, required: false, note: "job title or keywords; required unless next_page_token is set", example: "software engineer"}
+        next_page_token: {type: string, required: false, note: "pagination token from a previous answer"}
+        date_posted: {type: string, required: false, enum: [today, 3days, week, month], note: "posting window"}
+        job_type: {type: string, required: false, enum: [full_time, part_time, contract, internship, remote], note: "job type"}
+        lrad: {type: integer, required: false, enum: [5, 10, 25, 50, 100], note: "radius in kilometres"}
+        hl: {type: string, required: false, note: "language code"}
+        gl: {type: string, required: false, note: "country code"}
+    test_request:
+      queryParams: {q: "software engineer"}
+    price: {value: '1', currency: credit, per: 1, unit: call, note: "An empty result charges 0 credits"}
+    provenance: {source: observed, source_url: 'https://scrappa.co/api/docs/openapi.json', checked: '2026-11-18', confidence: verified}
+    miss: {when: {path: response.jobs_results, op: empty}}
+    docs_url: https://scrappa.co/docs/google-jobs-api/google_jobs
+
+  # --- YouTube -----------------------------------------------------------------------------------
+  - id: scrappa.youtube.search.videos
+    added: '2026-11-18'
+    verified: '2026-11-18'
+    example_response: examples/scrappa.youtube.search.videos.json
+    capability: youtube.search.videos
+    platform: youtube
+    scope: any_account
+    method: GET
+    path: /youtube/search
+    name: "YouTube video search"
+    summary: "YouTube search results for a query: video id, title, channel, duration, views and publish age"
+    input:
+      queryParams:
+        query: {type: string, required: false, note: "search words; required unless continuation is set", example: "programming tutorial"}
+        limit: {type: integer, required: false, note: "results, up to 20", example: 1}
+        page: {type: integer, required: false, note: "page, 1 to 10"}
+        type: {type: string, required: false, enum: [video, channel, playlist, movie, all], note: "result type, default video"}
+        continuation: {type: string, required: false, note: "pagination token from a previous answer"}
+        hl: {type: string, required: false, note: "language code"}
+        gl: {type: string, required: false, note: "country code"}
+    test_request:
+      queryParams: {query: "programming tutorial", limit: 1}
+    price: {value: '1', currency: credit, per: 1, unit: call}
+    provenance: {source: observed, source_url: 'https://scrappa.co/api/docs/openapi.json', checked: '2026-11-18', confidence: verified}
+    miss: {when: {path: response.results, op: empty}}
+    docs_url: https://scrappa.co/docs/youtube-api/youtube_search
+
+  - id: scrappa.youtube.video.captions
+    added: '2026-11-18'
+    verified: '2026-11-18'
+    example_response: examples/scrappa.youtube.video.captions.json
+    capability: youtube.video.captions
+    platform: youtube
+    scope: any_account
+    method: GET
+    path: /youtube/transcript
+    name: "YouTube video transcript"
+    summary: "Timed transcript of a YouTube video with its language and the other languages offered"
+    input:
+      queryParams:
+        video_id: {type: string, required: true, note: "YouTube video id", example: "dQw4w9WgXcQ"}
+        language: {type: string, required: false, note: "transcript language code or name, e.g. es"}
+    test_request:
+      queryParams: {video_id: "dQw4w9WgXcQ"}
+    price: {value: '1', currency: credit, per: 1, unit: call, note: "A 404 transcript_not_available charges 0 credits"}
+    provenance: {source: observed, source_url: 'https://scrappa.co/api/docs/openapi.json', checked: '2026-11-18', confidence: verified}
+    miss:
+      status: [404]
+      means: "the video has no transcript (error code transcript_not_available); free"
+    docs_url: https://scrappa.co/docs/youtube-api/youtube_transcript
+
+  # --- Trustpilot and LinkedIn -------------------------------------------------------------------
+  - id: scrappa.trustpilot.business.reviews
+    added: '2026-11-18'
+    verified: '2026-11-18'
+    example_response: examples/scrappa.trustpilot.business.reviews.json
+    capability: trustpilot.business.reviews
+    platform: trustpilot
+    scope: any_account
+    method: GET
+    path: /trustpilot/company-reviews
+    name: "Trustpilot reviews of a company"
+    summary: "Trustpilot reviews of a company by domain: rating, title, text, date, language and the company reply"
+    input:
+      queryParams:
+        company_domain: {type: string, required: true, note: "the company's website domain", example: "stripe.com"}
+        per_page: {type: integer, required: false, note: "reviews per page, 1 to 100", example: 1}
+        page: {type: integer, required: false, note: "page, 1 to 999"}
+        rating: {type: string, required: false, note: "comma-separated star ratings, e.g. 4,5"}
+        sort: {type: string, required: false, enum: [relevance, recency], note: "order"}
+        verified: {type: boolean, required: false, note: "only verified reviews"}
+        languages: {type: string, required: false, note: "2-letter review language, default all"}
+    test_request:
+      queryParams: {company_domain: "stripe.com", per_page: 1}
+    price: {value: '1', currency: credit, per: 1, unit: call, note: "A 404 COMPANY_NOT_FOUND charges 0 credits"}
+    provenance: {source: observed, source_url: 'https://scrappa.co/api/docs/openapi.json', checked: '2026-11-18', confidence: verified}
+    miss:
+      status: [404]
+      means: "the domain has no Trustpilot profile (code COMPANY_NOT_FOUND); free"
+    docs_url: https://scrappa.co/docs/trustpilot-api/trustpilot_company_reviews
+
+  - id: scrappa.trustpilot.search.businesses
+    added: '2026-11-18'
+    verified: '2026-11-18'
+    example_response: examples/scrappa.trustpilot.search.businesses.json
+    capability: trustpilot.search.businesses
+    platform: trustpilot
+    scope: any_account
+    method: GET
+    path: /trustpilot/company-search
+    name: "Trustpilot company search"
+    summary: "Trustpilot company profiles for a keyword: name, domain, TrustScore, review count, category and location"
+    input:
+      queryParams:
+        query: {type: string, required: true, note: "company name or keyword", example: "stripe"}
+        country: {type: string, required: false, note: "ISO-2 country code"}
+        min_rating: {type: string, required: false, enum: [any, "3", "4", "4.5"], note: "lowest TrustScore"}
+        min_review_count: {type: string, required: false, enum: [any, "25", "50", "100", "250", "500"], note: "fewest reviews"}
+        page: {type: integer, required: false, note: "page, 1 to 999"}
+    test_request:
+      queryParams: {query: "stripe"}
+    price: {value: '1', currency: credit, per: 1, unit: call}
+    provenance: {source: observed, source_url: 'https://scrappa.co/api/docs/openapi.json', checked: '2026-11-18', confidence: verified}
+    miss: {when: {path: response.businessUnits, op: empty}}
+    docs_url: https://scrappa.co/docs/trustpilot-api/trustpilot_company_search
+
+  - id: scrappa.linkedin.company.profile
+    added: '2026-11-18'
+    verified: '2026-11-18'
+    example_response: examples/scrappa.linkedin.company.profile.json
+    capability: linkedin.company.profile
+    platform: linkedin
+    scope: any_account
+    method: GET
+    path: /linkedin/company
+    name: "LinkedIn company page"
+    summary: "Public LinkedIn company page: name, description, website, industry, size, headcount, followers, specialties and address"
+    note: "The answer also lists a few named employees: treat them as personal data and do not store them."
+    input:
+      queryParams:
+        url: {type: string, required: false, note: "public company page URL; required unless company_id is set", example: "https://www.linkedin.com/company/microsoft/"}
+        company_id: {type: string, required: false, note: "numeric LinkedIn organization id; required unless url is set"}
+    test_request:
+      queryParams: {url: "https://www.linkedin.com/company/microsoft/"}
+    price: {value: '1', currency: credit, per: 1, unit: call, note: "A 404 Company not found charges 0 credits"}
+    provenance: {source: observed, source_url: 'https://scrappa.co/api/docs/openapi.json', checked: '2026-11-18', confidence: verified}
+    miss:
+      status: [404]
+      means: "no public LinkedIn page for this company; free"
+    docs_url: https://scrappa.co/docs/linkedin-api/linkedin_company

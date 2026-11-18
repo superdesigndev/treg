@@ -1,0 +1,250 @@
+{
+  "search_parameters": {
+    "engine": "google_hotels",
+    "q": "Paris, France",
+    "gl": "us",
+    "hl": "en",
+    "currency": "USD",
+    "check_in_date": "2027-03-16",
+    "check_out_date": "2027-03-17",
+    "adults": 2,
+    "children": 0
+  },
+  "search_information": {
+    "total_results": 15000,
+    "cached": false
+  },
+  "brands": [
+    {
+      "id": 13,
+      "name": "Ibis Budget"
+    },
+    {
+      "id": 94,
+      "name": "Mama Shelter"
+    },
+    "… 81 more item(s) truncated"
+  ],
+  "ads": [],
+  "properties": [
+    {
+      "type": "hotel",
+      "name": "Hyatt Regency Paris Étoile",
+      "description": "Modern rooms & suites in a polished lodging with elegant dining & a bar with panoramic city views.",
+      "link": "https://photos.hotelbeds.com/giata/original/18/180655/180655a_hb_a_031.jpg?20250110134229?20250611043504",
+      "property_token": "ChcIpP7F8OHV3Y5FGgsvZy8xdGdzMDdichAB",
+      "scrappa_property_details_link": "https://scrappa.co/api/google-hotels/search?q=Paris%2C+France&check_in_date=2027-03-16&check_out_date=2027-03-17&adults=2&children=0&currency=USD&hl=en&gl=us&property_token=ChcIpP7F8OHV3Y5FGgsvZy8xdGdzMDdichAB",
+      "scrappa_google_hotels_reviews_link": "https://scrappa.co/api/google-hotels/search?q=Paris%2C+France&check_in_date=2027-03-16&check_out_date=2027-03-17&adults=2&children=0&currency=USD&hl=en&gl=us&property_token=ChcIpP7F8OHV3Y5FGgsvZy8xdGdzMDdichAB",
+      "gps_coordinates": {
+        "latitude": 48.880506399999994,
+        "longitude": 2.284538
+      },
+      "check_in_time": "3:00 PM",
+      "check_out_time": "12:00 PM",
+      "rate_per_night": {
+        "lowest": "$259",
+        "extracted_lowest": 259,
+        "before_taxes_fees": "$259",
+        "extracted_before_taxes_fees": 258.85086
+      },
+      "total_rate": {
+        "lowest": "$259",
+        "extracted_lowest": 259,
+        "before_taxes_fees": "$259",
+        "extracted_before_taxes_fees": 258.85086
+      },
+      "prices": [],
+      "nearby_places": [
+        {
+          "name": "Fondation Louis Vuitton",
+          "transportations": [
+            {
+              "type": "Taxi",
+              "duration": "8 min"
+            }
+          ]
+        },
+        {
+          "name": "Neuilly Porte Maillot",
+          "transportations": [
+            {
+              "type": "Walking",
+              "duration": "8 min"
+            }
+          ]
+        },
+        "… 2 more item(s) truncated"
+      ],
+      "images": [
+        {
+          "thumbnail": "https://lh3.googleusercontent.com/grass-cs/AABkmLc0d_BuP24P14EHvfWyPa_ky0P6eDiCPN1JvVYydhhWgKO55e4qSFp3_SCUWGfW2a0zp2QvkRaE8BM9MQFvet22XN20SH2agYAbxIArIqVyjEYDBh_P8UH1dzQEI1xMAeJYlIWnTg=s287-w287-h192-n-k-no-v1",
+          "original_image": "https://lh3.googleusercontent.com/grass-cs/AABkmLc0d_BuP24P14EHvfWyPa_ky0P6eDiCPN1JvVYydhhWgKO55e4qSFp3_SCUWGfW2a0zp2QvkRaE8BM9MQFvet22XN20SH2agYAbxIArIqVyjEYDBh_P8UH1dzQEI1xMAeJYlIWnTg=s10000"
+        },
+        {
+          "thumbnail": "https://lh3.googleusercontent.com/grass-cs/AABkmLeGySstEInDV0JZWgA5FpKO-eGOD0aiMMleJZ6kOek0JfrDqGJxcdmzZomMem1X00gjrSlg8niG3yKRLJjUMJvZKk6YHfxBvPB0cjzPPgvBQfqOu4VzK0ge-p8l1adDMxixFmL5HABuKmq7=s287-w287-h192-n-k-no-v1",
+          "original_image": "https://lh3.googleusercontent.com/grass-cs/AABkmLeGySstEInDV0JZWgA5FpKO-eGOD0aiMMleJZ6kOek0JfrDqGJxcdmzZomMem1X00gjrSlg8niG3yKRLJjUMJvZKk6YHfxBvPB0cjzPPgvBQfqOu4VzK0ge-p8l1adDMxixFmL5HABuKmq7=s10000"
+        },
+        "… 7 more item(s) truncated"
+      ],
+      "overall_rating": 4.4,
+      "reviews": 6533,
+      "ratings": [
+        {
+          "stars": 5,
+          "count": 4086
+        },
+        {
+          "stars": 4,
+          "count": 1518
+        },
+        "… 3 more item(s) truncated"
+      ],
+      "location_rating": 4.3,
+      "reviews_breakdown": [
+        {
+          "name": "Nature",
+          "description": "Nature and outdoor activities",
+          "total_mentioned": 65,
+          "positive": 62,
+          "negative": 0,
+          "neutral": 3
+        },
+        {
+          "name": "Business",
+          "description": "Business",
+          "total_mentioned": 86,
+          "positive": 47,
+          "negative": 20,
+          "neutral": 19
+        },
+        "… 4 more item(s) truncated"
+      ],
+      "amenities": [
+        "Breakfast ($)",
+        "Free Wi-Fi",
+        "… 12 more item(s) truncated"
+      ],
+      "excluded_amenities": [],
+      "essential_info": [],
+      "eco_certified": false,
+      "hotel_class": "4-star hotel",
+      "extracted_hotel_class": 4
+    },
+    {
+      "type": "hotel",
+      "name": "Timhotel Tour Eiffel",
+      "description": "Unassuming hotel offering Eiffel Tower views & casually decorated rooms with free Wi-Fi.",
+      "link": "https://www.timhotel.com/fr/page/tour-eiffel/accueil.19092?utm_medium=social&utm_source=GoogleMyBusiness&utm_campaign=page-hotel",
+      "property_token": "ChgImYadkZrp2fXoARoLL2cvMXRyOGt3d2gQAQ",
+      "scrappa_property_details_link": "https://scrappa.co/api/google-hotels/search?q=Paris%2C+France&check_in_date=2027-03-16&check_out_date=2027-03-17&adults=2&children=0&currency=USD&hl=en&gl=us&property_token=ChgImYadkZrp2fXoARoLL2cvMXRyOGt3d2gQAQ",
+      "scrappa_google_hotels_reviews_link": "https://scrappa.co/api/google-hotels/search?q=Paris%2C+France&check_in_date=2027-03-16&check_out_date=2027-03-17&adults=2&children=0&currency=USD&hl=en&gl=us&property_token=ChgImYadkZrp2fXoARoLL2cvMXRyOGt3d2gQAQ",
+      "gps_coordinates": {
+        "latitude": 48.850191099999996,
+        "longitude": 2.2922927
+      },
+      "check_in_time": "2:00 PM",
+      "check_out_time": "12:00 PM",
+      "rate_per_night": {
+        "lowest": "$130",
+        "extracted_lowest": 130,
+        "before_taxes_fees": "$130",
+        "extracted_before_taxes_fees": 129.52821
+      },
+      "total_rate": {
+        "lowest": "$130",
+        "extracted_lowest": 130,
+        "before_taxes_fees": "$130",
+        "extracted_before_taxes_fees": 129.52821
+      },
+      "prices": [],
+      "nearby_places": [
+        {
+          "name": "Musée Rodin",
+          "transportations": [
+            {
+              "type": "Taxi",
+              "duration": "9 min"
+            }
+          ]
+        },
+        {
+          "name": "Aéroport de Paris-Charles de Gaulle",
+          "transportations": [
+            {
+              "type": "Taxi",
+              "duration": "41 min"
+            },
+            {
+              "type": "Public transport",
+              "duration": "59 min"
+            }
+          ]
+        },
+        "… 1 more item(s) truncated"
+      ],
+      "images": [
+        {
+          "thumbnail": "https://lh3.googleusercontent.com/grass-cs/AABkmLeQ6zy0z_IZAPRQF0U20LFd6-eSAPnbo6pUEFT0pzxI9e8OhOvDMVlmXcIFdfZsNlcULneX532p81Vutx9__vWrej9v3L1I2CxaFmfc36yxf8zjH2I5NQ6fmr-4_FhWuW3l-0TqzwgKOQQ=s287-w287-h192-n-k-no-v1",
+          "original_image": "https://lh3.googleusercontent.com/grass-cs/AABkmLeQ6zy0z_IZAPRQF0U20LFd6-eSAPnbo6pUEFT0pzxI9e8OhOvDMVlmXcIFdfZsNlcULneX532p81Vutx9__vWrej9v3L1I2CxaFmfc36yxf8zjH2I5NQ6fmr-4_FhWuW3l-0TqzwgKOQQ=s10000"
+        },
+        {
+          "thumbnail": "https://lh3.googleusercontent.com/grass-cs/AABkmLePZRGRzfSxvB5Lgs9_LXMGX2CY5iqsuH3aO7RQ5_gE--dFzFUFSdBnXmqZ9W6XBHxhPXfiT2l6cVR5wrvKEMT8egoGnDB8eGHlnFdTaF2dY5rvfld-SYhnCcgD5kXtZzwkErNu=s287-w287-h192-n-k-no-v1",
+          "original_image": "https://lh3.googleusercontent.com/grass-cs/AABkmLePZRGRzfSxvB5Lgs9_LXMGX2CY5iqsuH3aO7RQ5_gE--dFzFUFSdBnXmqZ9W6XBHxhPXfiT2l6cVR5wrvKEMT8egoGnDB8eGHlnFdTaF2dY5rvfld-SYhnCcgD5kXtZzwkErNu=s10000"
+        },
+        "… 7 more item(s) truncated"
+      ],
+      "overall_rating": 3.8,
+      "reviews": 832,
+      "ratings": [
+        {
+          "stars": 5,
+          "count": 345
+        },
+        {
+          "stars": 4,
+          "count": 202
+        },
+        "… 3 more item(s) truncated"
+      ],
+      "location_rating": 4,
+      "reviews_breakdown": [
+        {
+          "name": "Accessibility",
+          "description": "Accessibility",
+          "total_mentioned": 30,
+          "positive": 3,
+          "negative": 25,
+          "neutral": 2
+        },
+        {
+          "name": "Service",
+          "description": "Service",
+          "total_mentioned": 74,
+          "positive": 49,
+          "negative": 23,
+          "neutral": 2
+        },
+        "… 4 more item(s) truncated"
+      ],
+      "amenities": [
+        "Breakfast ($)",
+        "Free Wi-Fi",
+        "… 5 more item(s) truncated"
+      ],
+      "excluded_amenities": [],
+      "essential_info": [],
+      "eco_certified": false,
+      "hotel_class": "3-star hotel",
+      "extracted_hotel_class": 3,
+      "deal": "https://lh3.googleusercontent.com/grass-cs/AABkmLd4piiNGvmt8BRqXy40jCskATUmy8SqyJd-Pu9ym4_JhF2Hfw2Qg-5u8xIjV_eccg2PgAnCgEeT_Ht4zvpaYEInxxzwg73T2WIDRN4DqVzvrAaggieH81_5Hwif5vbfpM6oFFBW=s287-w287-h192-n-k-no-v1"
+    },
+    "… 18 more item(s) truncated"
+  ],
+  "pagination": {
+    "current_from": 1,
+    "current_to": 20,
+    "next_page_token": "gho_72KqMbM4fFfanhof.Q0JJPQ",
+    "next": "https://scrappa.co/api/google-hotels/search?q=Paris%2C+France&gl=us&hl=en&currency=USD&check_in_date=2027-03-16&check_out_date=2027-03-17&adults=2&children=0&next_page_token=gho_72KqMbM4fFfanhof.Q0JJPQ"
+  },
+  "response_time_ms": 2570
+}

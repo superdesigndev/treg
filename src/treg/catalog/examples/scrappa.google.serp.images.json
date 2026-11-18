@@ -1,0 +1,25 @@
+[
+  {
+    "position": 1,
+    "thumbnail": "https://encrypted-tbn0.gstatic.com/images?q=tbn:ANd9GcQtHO98ebb559chzTw8eP9ZaeLZwr3h70NaxQ66SUO4_A&s",
+    "source": "Wikipedia",
+    "title": "Coffee - Wikipedia",
+    "link": "https://en.wikipedia.org/wiki/Coffee",
+    "original": "https://upload.wikimedia.org/wikipedia/commons/e/e4/Latte_and_dark_coffee.jpg?utm_source=en.wikipedia.org&utm_campaign=index&utm_content=original",
+    "original_width": 3200,
+    "original_height": 2000,
+    "is_product": false
+  },
+  {
+    "position": 2,
+    "thumbnail": "https://encrypted-tbn0.gstatic.com/images?q=tbn:ANd9GcSfXgscfmAgVZdy6_OveIpriTuCUZfCEEs0CaKy5Ixl4Q&s=10",
+    "source": "Allrecipes",
+    "title": "Top Tips for Making a Perfect Cappuccino at Home Every Time",
+    "link": "https://www.allrecipes.com/how-to-make-a-cappuccino-recipe-8624835",
+    "original": "https://www.allrecipes.com/thmb/chsZz0jqIHWYz39ViZR-9k_BkkE=/1500x0/filters:no_upscale():max_bytes(150000):strip_icc()/8624835-how-to-make-a-cappuccino-beauty-4x3-0301-13d55eaad60b42058f24369c292d4ccb.jpg",
+    "original_width": 1500,
+    "original_height": 1125,
+    "is_product": true
+  },
+  "… 98 more item(s) truncated"
+]
