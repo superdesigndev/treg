@@ -152,25 +152,37 @@ return 1
 # `frozen` counts the freezes; takes stop while `thawed` differs from it. An add may thaw only
 # up to the count its caller read BEFORE its database transaction (ARGV[5]): a freeze that
 # landed after that read is one the transaction did not account for, and stays in force. A
-# counter rebuilt for a newer epoch keeps the freezes of the one it replaces. A count read from
-# a hash that has since been lost never thaws past what the hash now holds, which would leave
-# the two counts unequal for good.
-_ALLOWANCE_ADD = """
+# counter rebuilt for a newer epoch keeps the counts of the one it replaces.
+#
+# The counts of a new hash start at the store's clock in microseconds, not at zero. A hash can
+# be lost and built again under the same epoch, and a count read from the lost one must not
+# pass for a count of the new one: starting later than any count the lost hash could have
+# reached, the new hash is thawed by nothing read before it existed.
+_ALLOWANCE_COUNTS = """
+local function counts()
+    if redis.call('HEXISTS', KEYS[1], 'frozen') == 1 then return end
+    local t = redis.call('TIME')
+    local base = string.format('%.0f', t[1] * 1000000 + t[2])
+    redis.call('HSET', KEYS[1], 'frozen', base, 'thawed', base)
+end
+"""
+_ALLOWANCE_ADD = _ALLOWANCE_COUNTS + """
 local stored = redis.call('HGET', KEYS[1], 'epoch')
 if stored and tonumber(stored) > tonumber(ARGV[1]) then return -1 end
+counts()
 if stored ~= ARGV[1] then
-    local frozen = redis.call('HGET', KEYS[1], 'frozen') or '0'
+    local frozen = redis.call('HGET', KEYS[1], 'frozen')
+    local thawed = redis.call('HGET', KEYS[1], 'thawed')
     redis.call('DEL', KEYS[1])
-    redis.call('HSET', KEYS[1], 'epoch', ARGV[1], 'avail', '0', 'frozen', frozen)
+    redis.call('HSET', KEYS[1], 'epoch', ARGV[1], 'avail', '0', 'frozen', frozen, 'thawed', thawed)
 end
 local avail = redis.call('HINCRBY', KEYS[1], 'avail', ARGV[2])
 if tonumber(ARGV[3]) > tonumber(redis.call('HGET', KEYS[1], 'until') or '0') then
     redis.call('HSET', KEYS[1], 'until', ARGV[3])
 end
-local frozen = tonumber(redis.call('HGET', KEYS[1], 'frozen') or '0')
-local thaw = math.min(tonumber(ARGV[5]), frozen)
-if thaw > tonumber(redis.call('HGET', KEYS[1], 'thawed') or '0') then
-    redis.call('HSET', KEYS[1], 'thawed', thaw)
+local thaw = math.min(tonumber(ARGV[5]), tonumber(redis.call('HGET', KEYS[1], 'frozen')))
+if thaw > tonumber(redis.call('HGET', KEYS[1], 'thawed')) then
+    redis.call('HSET', KEYS[1], 'thawed', string.format('%.0f', thaw))
 end
 redis.call('PEXPIRE', KEYS[1], ARGV[4])
 return avail
@@ -198,24 +210,27 @@ redis.call('HSET', KEYS[1], 'avail', '0')
 redis.call('HINCRBY', KEYS[1], 'frozen', 1)
 return tonumber(avail)
 """
-# With no hash yet, the freeze is kept in one that holds only the count, for ARGV[1]: an add on
+# With no hash yet, the freeze is kept in one that holds only the counts, for ARGV[1]: an add on
 # its way from a transaction that did not see this freeze builds the counter on top of it, and
 # cannot thaw it.
-_ALLOWANCE_FREEZE = """
+_ALLOWANCE_FREEZE = _ALLOWANCE_COUNTS + """
 local fresh = redis.call('EXISTS', KEYS[1]) == 0
+counts()
 local frozen = redis.call('HINCRBY', KEYS[1], 'frozen', 1)
 if fresh then redis.call('PEXPIRE', KEYS[1], ARGV[1]) end
 return frozen
 """
 # ARGV[2] is the next epoch, computed by the caller: a script cannot print one exactly.
-_ALLOWANCE_RETIRE = """
+_ALLOWANCE_RETIRE = _ALLOWANCE_COUNTS + """
 local stored = redis.call('HGET', KEYS[1], 'epoch')
 if stored and tonumber(stored) > tonumber(ARGV[1]) then return 0 end
 local avail = 0
 if stored == ARGV[1] then avail = tonumber(redis.call('HGET', KEYS[1], 'avail')) or 0 end
-local frozen = redis.call('HGET', KEYS[1], 'frozen') or '0'
+counts()
+local frozen = redis.call('HGET', KEYS[1], 'frozen')
+local thawed = redis.call('HGET', KEYS[1], 'thawed')
 redis.call('DEL', KEYS[1])
-redis.call('HSET', KEYS[1], 'epoch', ARGV[2], 'avail', '0', 'frozen', frozen)
+redis.call('HSET', KEYS[1], 'epoch', ARGV[2], 'avail', '0', 'frozen', frozen, 'thawed', thawed)
 redis.call('PEXPIRE', KEYS[1], ARGV[3])
 return avail
 """

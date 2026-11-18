@@ -71,7 +71,7 @@ async def test_take_up_to_takes_what_is_there_from_its_own_epoch_only(counter):
     assert await store.allowance_take_up_to(org_id, 7, 150) == 150
     assert await store.allowance_take_up_to(org_id, 7, 900) == 250
     assert await store.allowance_take_up_to(org_id, 7, 900) == 0
-    assert await store.allowance_state(org_id) == (0, 0, 0)
+    assert (await store.allowance_state(org_id))[0] == 0
 
 
 @real_redis
@@ -110,10 +110,11 @@ async def test_dropping_empties_and_freezes_the_counter_and_keeps_its_epoch(coun
     assert await store.allowance_drop(org_id) == 60
     assert await store.allowance_drop(org_id) == 0
     assert await store.allowance_give_back(org_id, 7, 40) is True
-    assert await store.allowance_state(org_id) == (40, 2, 0)
+    available, frozen, thawed = await store.allowance_state(org_id)
+    assert (available, frozen - thawed) == (40, 2)
     assert await store.allowance_take(org_id, 1) == 0, "given back, but not offered until thawed"
     assert await store.allowance_add(
-        org_id, 7, 10, until_ms=_soon(), ttl_ms=60_000, seen_frozen=2) == 50
+        org_id, 7, 10, until_ms=_soon(), ttl_ms=60_000, seen_frozen=frozen) == 50
     assert await store.allowance_take(org_id, 50) == 7
 
 
@@ -124,16 +125,16 @@ async def test_only_an_add_that_read_the_freeze_may_thaw_it(counter):
     store, org_id = counter
     await store.allowance_add(org_id, 7, 100, until_ms=_soon(), ttl_ms=60_000, seen_frozen=0)
     available, seen, thawed = await store.allowance_state(org_id)
-    assert (available, seen, thawed) == (100, 0, 0)
-    assert await store.allowance_freeze(org_id) == 1
+    assert available == 100 and seen == thawed > 0
+    assert await store.allowance_freeze(org_id) == seen + 1
     assert await store.allowance_add(
         org_id, 7, 50, until_ms=_soon(), ttl_ms=60_000, seen_frozen=seen) == 150
     assert await store.allowance_take(org_id, 10) == 0, "the earlier reading cannot thaw it"
-    assert await store.allowance_freeze(org_id) == 2
+    assert await store.allowance_freeze(org_id) == seen + 2
     assert await store.allowance_add(
-        org_id, 7, 0, until_ms=_soon(), ttl_ms=60_000, seen_frozen=1) == 150
+        org_id, 7, 0, until_ms=_soon(), ttl_ms=60_000, seen_frozen=seen + 1) == 150
     assert await store.allowance_take(org_id, 10) == 0, "one of two freezes accounted for"
-    await store.allowance_add(org_id, 7, 0, until_ms=_soon(), ttl_ms=60_000, seen_frozen=2)
+    await store.allowance_add(org_id, 7, 0, until_ms=_soon(), ttl_ms=60_000, seen_frozen=seen + 2)
     assert await store.allowance_take(org_id, 150) == 7
 
 
@@ -143,15 +144,15 @@ async def test_a_freeze_that_lands_before_the_first_add_holds_the_counter_it_bui
     counter; the add, whose transaction did not see the freeze, must not open one over it."""
     store, org_id = counter
     assert await store.allowance_state(org_id) == (0, 0, 0)
-    assert await store.allowance_freeze(org_id, ttl_ms=60_000) == 1
+    frozen = await store.allowance_freeze(org_id, ttl_ms=60_000)
     assert 0 < await store._client.pttl(kv._allowance_key(org_id)) <= 60_000
     assert await store.allowance_take(org_id, 10) == 0
     assert await store.allowance_give_back(org_id, 7, 10) is False
     assert await store.allowance_add(
         org_id, 7, 100, until_ms=_soon(), ttl_ms=60_000, seen_frozen=0) == 100
     assert await store.allowance_take(org_id, 10) == 0, "built frozen"
-    assert await store.allowance_state(org_id) == (100, 1, 0)
-    await store.allowance_add(org_id, 7, 0, until_ms=_soon(), ttl_ms=60_000, seen_frozen=1)
+    assert await store.allowance_state(org_id) == (100, frozen, frozen - 1)
+    await store.allowance_add(org_id, 7, 0, until_ms=_soon(), ttl_ms=60_000, seen_frozen=frozen)
     assert await store.allowance_take(org_id, 100) == 7
 
 
@@ -167,7 +168,29 @@ async def test_a_freeze_count_read_from_a_counter_since_lost_does_not_jam_the_re
     await store._client.delete(kv._allowance_key(org_id))
     assert await store.allowance_add(
         org_id, 7, 100, until_ms=_soon(), ttl_ms=60_000, seen_frozen=seen) == 100
-    assert await store.allowance_state(org_id) == (100, 0, 0)
+    available, frozen, thawed = await store.allowance_state(org_id)
+    assert available == 100 and frozen == thawed
+    assert await store.allowance_take(org_id, 100) == 7
+
+
+@real_redis
+async def test_a_freeze_on_a_rebuilt_counter_is_not_thawed_by_a_count_read_from_the_lost_one(counter):
+    """A refill read five freezes. The store lost the hash, and an overrun after the refill's
+    transaction froze the one built in its place. The refill's count is of another hash: that
+    it is as large as the new one's says nothing about what its transaction saw."""
+    store, org_id = counter
+    await store.allowance_add(org_id, 7, 100, until_ms=_soon(), ttl_ms=60_000, seen_frozen=0)
+    for _ in range(5):
+        await store.allowance_freeze(org_id)
+    _, seen, _ = await store.allowance_state(org_id)
+    await store._client.delete(kv._allowance_key(org_id))
+    await asyncio.sleep(0.002)
+    frozen = await store.allowance_freeze(org_id)
+    assert frozen > seen
+    assert await store.allowance_add(
+        org_id, 7, 100, until_ms=_soon(), ttl_ms=60_000, seen_frozen=seen) == 100
+    assert await store.allowance_take(org_id, 10) == 0, "the count of a lost hash thaws nothing"
+    await store.allowance_add(org_id, 7, 0, until_ms=_soon(), ttl_ms=60_000, seen_frozen=frozen)
     assert await store.allowance_take(org_id, 100) == 7
 
 
@@ -175,11 +198,11 @@ async def test_a_freeze_count_read_from_a_counter_since_lost_does_not_jam_the_re
 async def test_a_counter_rebuilt_for_a_newer_hold_keeps_the_freezes_of_the_old_one(counter):
     store, org_id = counter
     await store.allowance_add(org_id, 7, 100, until_ms=_soon(), ttl_ms=60_000, seen_frozen=0)
-    await store.allowance_freeze(org_id)
+    frozen = await store.allowance_freeze(org_id)
     await store.allowance_retire(org_id, 7, 60_000)
     await store.allowance_add(org_id, 9, 100, until_ms=_soon(), ttl_ms=60_000, seen_frozen=0)
     assert await store.allowance_take(org_id, 10) == 0
-    await store.allowance_add(org_id, 9, 0, until_ms=_soon(), ttl_ms=60_000, seen_frozen=1)
+    await store.allowance_add(org_id, 9, 0, until_ms=_soon(), ttl_ms=60_000, seen_frozen=frozen)
     assert await store.allowance_take(org_id, 10) == 9
 
 
