@@ -25,12 +25,17 @@ class SweepResult:
 
 async def reap_stale_holds(*, batch_size: int = 100, max_batches: int = 50) -> SweepResult:
     """Release every hold older than `ledger.hold_ttl_s()`, at most `max_batches` reads of
-    `batch_size`. `complete` is False when the last read was full, so the next run continues."""
+    `batch_size`. Each read starts past the last hold the previous one returned, so a hold another
+    close already claimed, or one `release` skips, never stalls the sweep. `complete` is False when
+    the last read was full, so the next run continues."""
     result = SweepResult()
+    after = None
     while result.batches < max_batches:
         async with session_maker() as db:
-            batch = await ledger.stale_holds(db, limit=batch_size)
+            batch = await ledger.stale_holds(db, limit=batch_size, after=after)
         result.batches += 1
+        if batch:
+            after = (batch[-1].created_at, batch[-1].call_id)
         for hold in batch:
             result.seen += 1
             async with (

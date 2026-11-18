@@ -48,7 +48,7 @@ from collections.abc import Sequence
 from datetime import datetime, timedelta, timezone
 from typing import NamedTuple
 
-from sqlalchemy import case, delete, func, literal_column, or_, update
+from sqlalchemy import and_, case, delete, func, literal_column, or_, update
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlmodel import select
@@ -902,12 +902,16 @@ async def reap_stale_holds(db: AsyncSession, *, org_id: int | None = None, limit
     return len(stale)
 
 
-def _stale_holds_query(*, org_id: int | None, limit: int):
+def _stale_holds_query(*, org_id: int | None, limit: int,
+                       after: tuple[datetime, str] | None = None):
     cutoff = _now() - timedelta(seconds=hold_ttl_s())
     deferred = select(AsyncTaskRecord.call_id).where(
         AsyncTaskRecord.call_id == Hold.id, AsyncTaskRecord.status == "pending").exists()
     q = (select(Hold).where(Hold.created_at < cutoff, Hold.allowance.is_(False), ~deferred)
-         .order_by(Hold.created_at).limit(limit))
+         .order_by(Hold.created_at, Hold.id).limit(limit))
+    if after is not None:
+        at, call_id = after
+        q = q.where(or_(Hold.created_at > at, and_(Hold.created_at == at, Hold.id > call_id)))
     return q if org_id is None else q.where(Hold.org_id == org_id)
 
 
@@ -915,13 +919,18 @@ class StaleHold(NamedTuple):
     call_id: str
     org_id: int
     age_s: int
+    created_at: datetime
 
 
-async def stale_holds(db: AsyncSession, *, limit: int = 100) -> list[StaleHold]:
-    """Holds `reap_stale_holds` would release, oldest first, across every org. Reads only."""
+async def stale_holds(db: AsyncSession, *, limit: int = 100,
+                      after: tuple[datetime, str] | None = None) -> list[StaleHold]:
+    """Holds `reap_stale_holds` would release, oldest first, across every org. Reads only.
+    `after` is the `(created_at, call_id)` of the last hold a previous read returned; the read
+    starts past it, so a hold that could not be released never comes back at the head."""
     now = _now()
-    rows = (await db.execute(_stale_holds_query(org_id=None, limit=limit))).scalars().all()
-    return [StaleHold(h.id, int(h.org_id), int((now - h.created_at).total_seconds())) for h in rows]
+    rows = (await db.execute(_stale_holds_query(org_id=None, limit=limit, after=after))).scalars().all()
+    return [StaleHold(h.id, int(h.org_id), int((now - h.created_at).total_seconds()), h.created_at)
+            for h in rows]
 
 
 async def spent_today(db: AsyncSession, org_id: int) -> int:

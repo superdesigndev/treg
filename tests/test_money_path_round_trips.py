@@ -19,6 +19,7 @@ from treg.application.call import settle as call_settle
 from treg.application.call.resolve import MarketplaceCall
 from treg.config import get_settings
 from treg.domain import money as ledger
+from treg.domain.money import allowance
 from treg.domain.identity import api_keys as managed_keys
 from treg.domain.identity.access import Caller
 from treg.infra.db import reset_db, session_maker
@@ -197,3 +198,48 @@ async def test_sweep_continues_in_batches(money_db, monkeypatch):
     assert (rest.seen, rest.complete) == (1, True)
     assert await _drift(org_id) == 0
 
+
+async def _aged_allowance_hold(org_id: int, age_s: int) -> None:
+    async with session_maker() as db:
+        db.add(Hold(id=allowance.allowance_id(org_id), org_id=org_id, amount_micro=1_000,
+                    allowance=True, created_at=utcnow_naive() - timedelta(seconds=age_s)))
+        await db.execute(update(Org).where(Org.id == org_id).values(
+            balance_micro=Org.balance_micro - 1_000))
+        await db.commit()
+
+
+async def test_aged_allowance_holds_never_stall_the_sweep(money_db, monkeypatch):
+    monkeypatch.setattr(get_settings(), "reserve_reaps_stale_holds", False)
+    allowance_orgs = [(await _payer(f"money-path-allowance-{n}"))[0] for n in range(5)]
+    for allowance_org in allowance_orgs:
+        await _aged_allowance_hold(allowance_org, ledger.hold_ttl_s() + 3_600)
+    org_id, _caller = await _payer("money-path-behind-allowance")
+    await _stale_hold(org_id, "stale-behind")
+
+    result = await hold_sweep.reap_stale_holds(batch_size=2, max_batches=5)
+    assert (result.seen, result.released_micro, result.complete) == (1, 100, True)
+    assert await _entries("stale-behind") == ["release", "reserve"]
+    async with session_maker() as db:
+        for allowance_org in allowance_orgs:
+            assert await db.get(Hold, allowance.allowance_id(allowance_org)) is not None
+    for every_org in (*allowance_orgs, org_id):
+        assert await _drift(every_org) == 0
+
+
+async def test_sweep_moves_past_holds_it_could_not_release(money_db, monkeypatch):
+    monkeypatch.setattr(get_settings(), "reserve_reaps_stale_holds", False)
+    org_id, _caller = await _payer("money-path-cursor")
+    for n in range(5):
+        await _stale_hold(org_id, f"stale-{n}")
+    await _stale_hold(org_id, "stale-last")
+    stuck = {f"stale-{n}" for n in range(5)}
+    release = ledger.release
+
+    async def release_or_skip(db, call_id, **kwargs):
+        return 0 if call_id in stuck else await release(db, call_id, **kwargs)
+
+    monkeypatch.setattr(ledger, "release", release_or_skip)
+    result = await hold_sweep.reap_stale_holds(batch_size=2, max_batches=5)
+    assert (result.seen, result.released_micro, result.complete) == (6, 100, True)
+    assert await _entries("stale-last") == ["release", "reserve"]
+    assert await _drift(org_id) == 0

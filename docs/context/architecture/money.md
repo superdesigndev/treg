@@ -499,9 +499,11 @@ strand money. Each stale release commits independently before the new balance ga
 inside every reserve's admitted session, the serialized part of a busy team's calls, so
 `treg-worker holds reap` (`application.hold_sweep`) does the same releases for every org on a
 schedule: it lists stale holds (`ledger.stale_holds`) and releases each in its own admitted
-`release` session. Both scans skip allowance holds, which only their own close releases. Schedule
-it every minute, then turn `reserve_reaps_stale_holds` off; the sweep and
-a lazy reap may race for one hold, and the claim closes it once. A member spend refusal still reaps
+`release` session. Both scans skip allowance holds, which only their own close releases. Each read
+of the sweep starts past the `(created_at, id)` of the last hold the previous read returned, so a
+hold it could not release never stays at the head of the list and the run always reaches the holds
+behind it. Schedule it every minute, then turn `reserve_reaps_stale_holds` off; the sweep and a lazy
+reap may race for one hold, and the claim closes it once. A member spend refusal still reaps
 its own team first (`_enforce_member_spend_cap`).
 
 **One statement per step.** The balance gate's UPDATE returns the new balance (`RETURNING`), so
