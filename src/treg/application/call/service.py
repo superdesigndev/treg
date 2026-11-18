@@ -779,7 +779,7 @@ def _note_review_refusal(response: UpstreamResponse, secrets: dict, body: bytes,
     identity = _decompress_for_scan(body, _response_header(response, "content-encoding"))
     try:
         parsed = json.loads(identity) if identity else None
-    except ValueError:
+    except (ValueError, RecursionError):
         return
     entry = catalog_store.load().by_id.get(endpoint_id or "")
     for provider, secret in candidates:

@@ -252,3 +252,21 @@ def test_review_refusal_needs_a_declared_code_and_a_pending_granted_scope(monkey
         assert "treg's app" in P.review_refusal_note(P.FACEBOOK, ["pages_manage_engagement"])
     finally:
         get_settings.cache_clear()
+
+
+def test_a_deeply_nested_error_body_is_relayed_without_a_review_note(monkeypatch):
+    from types import SimpleNamespace
+
+    from treg.application.call import service
+    from treg.models import Secret
+
+    monkeypatch.setenv("TREG_OAUTH_REVIEW_PENDING", "instagram-login")
+    get_settings.cache_clear()
+    try:
+        response = SimpleNamespace(status=403, raw_headers=())
+        secret = Secret(provider="instagram", granted_scopes="instagram_business_content_publish")
+        body = b"[" * 200_000 + b"]" * 200_000
+        service._note_review_refusal(response, {1: secret}, body, 0, None)
+        assert response.raw_headers == ()
+    finally:
+        get_settings.cache_clear()
