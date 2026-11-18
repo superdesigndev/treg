@@ -289,6 +289,7 @@ async def test_a_full_provider_refuses_with_share_busy_and_charges_nothing(
     r = await clients.get(f"/call/{EP}?aweme_id=7")
     assert r.status_code == 429, r.text
     assert "share_busy" in r.text and "not charged" in r.text
+    assert r.headers["Retry-After"] == "2"
     assert await _balance(clients) == before
     other_team.release()
     r = await clients.get(f"/call/{EP}?aweme_id=7")
@@ -313,6 +314,37 @@ async def test_a_team_ceiling_refusal_says_so_and_charges_nothing(
     assert detail["message"] == ("your team holds its largest share of tikhub's places; "
                                  "not charged, try again shortly")
     assert await _balance(clients) == before
+
+
+async def test_a_team_over_its_ceiling_through_the_call_path_is_refused_with_retry_after(
+    clients: AsyncClient, platform_on, shared, monkeypatch,
+):
+    monkeypatch.setattr(capacity_view, "concurrency", lambda provider: 5 if provider == "tikhub" else 0)
+    monkeypatch.setenv("TREG_FAIR_SHARE_WAIT_S", "0.5")
+    monkeypatch.setenv("TREG_FAIR_SHARE_TEAM_CEILING_PERCENT", "80")
+    get_settings.cache_clear()
+    hold, entered = asyncio.Event(), []
+    inner = _fake_relay(200, b'{"ok":true}')
+
+    async def slow_relay(*args, **kwargs):
+        entered.append(1)
+        await hold.wait()
+        return await inner(*args, **kwargs)
+
+    monkeypatch.setattr(call_service, "relay", slow_relay)
+    running = [asyncio.create_task(clients.get(f"/call/{EP}?aweme_id={n}")) for n in range(4)]
+    try:
+        while len(entered) < 4:
+            await asyncio.sleep(0.01)
+        r = await clients.get(f"/call/{EP}?aweme_id=9")  # the fifth call of a team capped at 4 of 5
+        assert r.status_code == 429, r.text
+        assert r.headers["Retry-After"] == "2"
+        assert "largest share" in r.text and "not charged" in r.text
+    finally:
+        hold.set()
+        done = await asyncio.gather(*running)
+        get_settings.cache_clear()
+    assert [d.status_code for d in done] == [200] * 4
 
 
 async def test_own_key_calls_are_never_gated(clients: AsyncClient, platform_on, gated, monkeypatch):

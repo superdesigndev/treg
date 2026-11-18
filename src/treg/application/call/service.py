@@ -1716,8 +1716,8 @@ async def _execute_call(request: _ApplicationRequest, upstream_client: httpx.Asy
                                 else f"{mk.provider} is fully used"
                                 + (f" and your team already has {busy.active} calls in "
                                    f"progress on it" if busy.active else "")
-                                + f"; not charged, try again in {RETRY_AFTER_SHARE_S} s")}
-                        ) from None
+                                + f"; not charged, try again in {RETRY_AFTER_SHARE_S} s")},
+                            retry_after_s=RETRY_AFTER_SHARE_S) from None
                     if share_slot.waited_ms:
                         smoothed.append(f"share_wait={share_slot.waited_ms}")
                 if mk is not None:
