@@ -287,6 +287,7 @@ endpoints:
     test_request:
       pathParams: {username: "nasa"}
     price: {value: '0.0018', currency: USD, per: 1, unit: call}
+    miss: {status: [404], means: "no Instagram account has this username"}
     docs_url: https://docs.influship.com/api-reference/live-scraping/get-live-instagram-profile
 
   - id: influship.tiktok.user.profile
