@@ -458,6 +458,33 @@ async def test_closing_a_backlog_of_several_batches_locks_the_blocks_once(org_id
 
 
 @postgres_only
+async def test_a_reserve_that_waited_for_a_fold_counts_its_charges_once(org_id):
+    """A queued overrun leaves 400 free of a balance of 1_000, before the fold and after it. A
+    reserve of 300 that waits for the fold's lock on the team must not subtract the overrun
+    from the balance the fold has already taken it from."""
+    async with session_maker() as db:
+        await ledger.reserve(db, org_id, "e.metered", GRANT - 1_000, call_id="rest")
+        await allowance.record_charges(
+            db, [allowance.Charge("over", org_id, "e.metered", 600, reserved_micro=0)])
+        await db.commit()
+
+    async def reserve() -> None:
+        async with session_maker() as db:
+            await ledger.reserve(db, org_id, "e.metered", 300, call_id="waited")
+
+    async with session_maker() as db:
+        await allowance.fold_charges_in_transaction(db, org_id)
+        await db.flush()
+        waiting = asyncio.create_task(reserve())
+        await asyncio.sleep(0.3)
+        assert not waiting.done(), "waits for the fold's lock on the team"
+        await db.commit()
+    await waiting
+    async with session_maker() as db:
+        assert await ledger.balance_of(db, org_id) == 100
+
+
+@postgres_only
 async def test_concurrent_refills_open_one_hold(org_id):
     results = await asyncio.gather(*(_refill(org_id, 1_000) for _ in range(8)))
     assert len({result.epoch for result in results}) == 1

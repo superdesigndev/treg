@@ -390,8 +390,13 @@ application lock: N concurrent callers against a balance that affords K get exac
 The balance in that WHERE is read less what the team's queued call charges (`CallCharge`, below)
 will take from it when they are applied: their overruns, and what they set aside beyond what the
 allowance hold has left. That money is spent and the balance column does not show it yet, so a
-reserve must not set it aside a second time. A team with nothing queued reads its balance as it
-is; the 402 carries the reduced figure.
+reserve must not set it aside a second time. The queue is read in one pass, and the hold only
+when something is queued; a team with nothing queued reads its balance as it is. Under
+PostgreSQL's READ COMMITTED a gate that waited for the team's row rechecks its WHERE on the new
+balance but on the queue as it was when the statement began, so a fold that committed meanwhile
+is counted in both. A gate that matched no row is therefore not the refusal: a fresh statement
+reads balance and queue in one state, and the gate is run again (a bounded number of times)
+when that says the money is there. The 402 carries the figure that statement read.
 
 **Block consumption order** follows `_KIND_ORDER`: the free kinds (promotional, referral, bonus)
 first, then `earned`, then purchased, oldest first within a kind. Promo
