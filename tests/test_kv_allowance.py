@@ -39,6 +39,20 @@ async def test_takes_stop_at_what_the_counter_holds(counter):
 
 
 @real_redis
+async def test_a_take_near_the_deadline_or_the_bottom_asks_one_caller_to_refill(counter, monkeypatch):
+    store, org_id = counter
+    await store.allowance_add(org_id, 7, 1_000, until_ms=_soon(10_000), ttl_ms=60_000, seen_frozen=0)
+    assert await store.allowance_take(org_id, 10, ahead_ms=5_000, low_micro=100) == 7
+    assert await store.allowance_take(org_id, 10, ahead_ms=20_000) == -7, "inside the lead"
+    assert await store.allowance_take(org_id, 10, ahead_ms=20_000) == 7, "one caller is asked"
+    assert (await store.allowance_state(org_id))[0] == 970, "each of them took its money"
+    monkeypatch.setattr(kv, "_ALLOWANCE_ASK_AGAIN_MS", 0)
+    assert await store.allowance_take(org_id, 10, low_micro=961) == -7, "below the low mark"
+    assert await store.allowance_take(org_id, 10, low_micro=100) == 7
+    assert await store.allowance_take(org_id, 10) == 7, "nobody is asked without a lead or a mark"
+
+
+@real_redis
 async def test_takes_stop_once_the_counter_is_no_longer_fresh_and_resume_on_the_next_add(counter):
     store, org_id = counter
     assert await store.allowance_state(org_id) == (0, 0, 0, 0)
@@ -279,7 +293,8 @@ async def test_arguments_that_are_not_plain_amounts_never_reach_the_script():
         await store.allowance_give_back(5, 7, -1)
     assert not calls
     assert await store.allowance_take(5, 100) == 1
-    assert calls == [(kv._ALLOWANCE_TAKE, 1, 'treg:money-allowance:v1:5', 100)]
+    assert calls == [(kv._ALLOWANCE_TAKE, 1, 'treg:money-allowance:v1:5', 100, 0, 0,
+                      kv._ALLOWANCE_ASK_AGAIN_MS)]
 
 
 async def test_a_local_store_never_claims_to_be_the_shared_counter():
