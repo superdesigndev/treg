@@ -637,6 +637,18 @@ async def test_structured_content_VALIDATES_against_the_advertised_schema(client
             jsonschema.validate(structured, schemas[tool])  # raises on any mismatch
 
 
+def test_mcp_gzip_uses_a_fast_level_because_it_runs_on_the_event_loop():
+    from starlette.middleware.gzip import GZipMiddleware
+
+    import treg.mcp as mcp_module
+
+    for transport_app in (mcp_module.mcp_app, mcp_module.directory_mcp_app):
+        layer = transport_app
+        while not isinstance(layer, GZipMiddleware):
+            layer = layer.app
+        assert layer.compresslevel == mcp_module.MCP_GZIP_LEVEL == 1
+
+
 async def test_large_mcp_responses_are_gzipped_AT_THE_ORIGIN(clients):
     """The fix that actually works for edge re-compression (issue #100). Render's edge ignored
     `no-transform` and kept Brotli-compressing large responses — which a real client stack

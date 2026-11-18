@@ -233,7 +233,9 @@ A managed edge may Brotli-compress large responses, and at least one real client
 brotlicffi) dies mid-decode and hangs to its timeout. Managed edges can ignore `Cache-Control:
 no-transform`; the header stays (`NoTransformResponses`, outermost so 401 challenges carry it), but
 the working fix is `GZipMiddleware` inside `build_mcp_app`: an edge does not recompress a response
-already carrying `Content-Encoding: gzip`. Post-deploy check whenever this path changes: a large
+already carrying `Content-Encoding: gzip`. It compresses at level 1 (`MCP_GZIP_LEVEL`): Starlette
+compresses the whole body synchronously on the event loop, so every request in the worker waits for
+it, and the default level 9 is several times slower on JSON. Post-deploy check whenever this path changes: a large
 authenticated `catalog_get` over `/mcp/` with `Accept-Encoding: br, gzip` must return
 `content-encoding: gzip`.
 
