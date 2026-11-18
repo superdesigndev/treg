@@ -362,7 +362,8 @@ signing in; that pool also refuses at once past `_METADATA_PENDING_PER_THREAD` l
 flood of never-answering hosts there never delays a provider's lookup.
 
 A caller waits at most `ssrf_lookup_timeout_s` (kept above the resolver's own retry time, so one lost
-packet is not a refusal) and then gets `TIMED_OUT`, logged as `ssrf_lookup_timeout`. When the last
+packet is not a refusal) and then gets `TIMED_OUT`, logged as `ssrf_lookup_timeout` (that warning and
+`ssrf_lookup_busy` at most once a second each, the next line counting the ones held back). When the last
 caller waiting on a lookup gives up, a lookup still queued is cancelled; one already running keeps its
 thread until the resolver returns, and later callers for that host join it. The queue is therefore
 never longer than the callers still waiting. `relay()` answers a timeout as `ssrf_refused` with

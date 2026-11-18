@@ -6,6 +6,7 @@ import asyncio
 import ipaddress
 import logging
 import socket
+import time
 from concurrent.futures import Future, ThreadPoolExecutor
 from dataclasses import dataclass
 from urllib.parse import urlsplit
@@ -76,6 +77,19 @@ CALL, METADATA = "call", "metadata"
 _METADATA_PENDING_PER_THREAD = 4
 
 log = logging.getLogger("treg.ssrf")
+_WARN_EVERY_S = 1.0
+_warned: dict[str, list[float | int]] = {}  # kind -> [last line's monotonic time, lines held back since]
+
+
+def _warn(kind: str, fmt: str, *args: object) -> None:
+    """At most one warning line per kind per second; the next line counts the ones held back."""
+    now = time.monotonic()
+    state = _warned.setdefault(kind, [float("-inf"), 0])
+    if now - state[0] < _WARN_EVERY_S:
+        state[1] += 1
+        return
+    suppressed, state[0], state[1] = state[1], now, 0
+    log.warning(f"{kind} {fmt} suppressed=%s", *args, suppressed)
 
 
 @dataclass(eq=False)
@@ -127,7 +141,7 @@ async def lookup_host(host: str, check=None, *, pool: str = CALL) -> str:
     if entry is None:
         if pool == METADATA and sum(1 for e in _inflight.values() if e.pool == pool) >= (
                 _threads(pool) * _METADATA_PENDING_PER_THREAD):
-            log.warning("ssrf_lookup_busy pool=%s", pool)
+            _warn("ssrf_lookup_busy", "pool=%s", pool)
             return TIMED_OUT
         work = _lookup_executor(pool).submit(check or host_is_public, host)
         entry = _Lookup(pool, work, asyncio.wrap_future(work))
@@ -138,7 +152,7 @@ async def lookup_host(host: str, check=None, *, pool: str = CALL) -> str:
     try:
         ok = await asyncio.wait_for(asyncio.shield(entry.answer), limit if limit > 0 else None)
     except TimeoutError:
-        log.warning("ssrf_lookup_timeout pool=%s limit_s=%s", pool, limit)
+        _warn("ssrf_lookup_timeout", "pool=%s limit_s=%s", pool, limit)
         return TIMED_OUT
     finally:
         entry.waiters -= 1

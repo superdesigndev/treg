@@ -189,7 +189,10 @@ async def test_client_metadata_is_refused_when_the_lookup_outlasts_the_limit(dea
     assert time.monotonic() - started < 0.5
 
 
-async def test_a_lookup_timeout_logs_a_warning(dead_resolver, caplog):
+async def test_a_lookup_timeout_logs_a_warning(dead_resolver, caplog, monkeypatch):
+    from treg.infra.upstream import ssrf
+
+    monkeypatch.setattr(ssrf, "_warned", {})
     async with httpx.AsyncClient(transport=httpx.MockTransport(lambda r: httpx.Response(200))) as client:
         with caplog.at_level(logging.WARNING, logger="treg.ssrf"), pytest.raises(GatewayFailed):
             await _relay("quiet.example", client)
@@ -402,3 +405,21 @@ async def test_no_database_transaction_is_open_while_the_metadata_document_is_fe
         monkeypatch.setattr(mcp_oauth, "fetch_client_id_metadata", fetch)
         assert await auth._resolve_oauth_client("https://new-client.example/c.json", db) is None
     assert seen == [False]
+
+
+def test_lookup_warnings_are_held_to_one_line_per_second_per_kind(monkeypatch, caplog):
+    from treg.infra.upstream import ssrf
+
+    now = [1000.0]
+    monkeypatch.setattr(ssrf.time, "monotonic", lambda: now[0])
+    monkeypatch.setattr(ssrf, "_warned", {})
+    with caplog.at_level(logging.WARNING, logger="treg.ssrf"):
+        for _ in range(50):
+            ssrf._warn("ssrf_lookup_timeout", "pool=%s", "call")
+            ssrf._warn("ssrf_lookup_busy", "pool=%s", "metadata")
+        now[0] += 1.0
+        ssrf._warn("ssrf_lookup_timeout", "pool=%s", "call")
+    lines = [r.getMessage() for r in caplog.records]
+    assert lines == ["ssrf_lookup_timeout pool=call suppressed=0",
+                     "ssrf_lookup_busy pool=metadata suppressed=0",
+                     "ssrf_lookup_timeout pool=call suppressed=49"]
