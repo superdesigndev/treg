@@ -161,6 +161,11 @@ agents then built against a constitution that was wrong.
   the auto-top-up fields; the call runtime may persist an OAuth token refresh into `secret`; audit
   writes `callrecord`, domains only read it (`application/evidence_retention.py` also updates it,
   blanking the two evidence columns past retention).
+- **Call records are kept by month.** On PostgreSQL `callrecord` is partitioned by month on
+  `created_at` with a 64-bit id; `application/call_record_partitions.py` alone creates its
+  partitions and, when `callrecord_retention_months` is set (off by default), drops the expired
+  ones. Its ids are unique because they come from one sequence, so never insert an explicit id.
+  See `docs/context/architecture/data-model.md`.
 - **Referral affiliates.** `domain/referrals.py` alone writes `User.referral_affiliate`, its
   version and `ReferralAffiliateEvent`; the private admin calls the authenticated API. The flag
   exempts only future qualification from the per-referrer cap, never abuse gates or historical

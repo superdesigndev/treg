@@ -538,6 +538,10 @@ class Invite(SQLModel, table=True):
     created_at: NaiveUTC = Field(default_factory=_now)
 
 
+# SQLite gives a rowid alias only to a column declared exactly INTEGER PRIMARY KEY.
+_AUDIT_ID = BigInteger().with_variant(Integer(), "sqlite")
+
+
 class CallRecord(SQLModel, table=True):
     """Audit: who called which tool, in which org, when, with what result. Written off the
     request path (fire-and-forget) so it never adds latency to a proxied call.
@@ -579,8 +583,10 @@ class CallRecord(SQLModel, table=True):
                             postgresql_where=text("api_key_id IS NOT NULL"),
                             sqlite_where=text("api_key_id IS NOT NULL")),)
 
-    id: int | None = Field(default=None, primary_key=True)
-    org_id: int | None = Field(default=None, foreign_key="org.id")
+    # 64-bit. On PostgreSQL the table is partitioned by month on `created_at` and its primary key
+    # is (id, created_at); ids come from one sequence, so `id` alone still names one row.
+    id: int | None = Field(default=None, primary_key=True, sa_type=_AUDIT_ID)
+    org_id: int | None = Field(default=None)
     user_email: str = Field(index=True)
     tool_name: str = Field(index=True)
     method: str
