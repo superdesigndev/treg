@@ -17,6 +17,7 @@ from datetime import timedelta
 
 from ..domain import money as ledger
 from ..domain.money import allowance
+from ..infra import db as infra_db
 from ..infra import kv, money_admission
 from ..infra.db import background_session_maker
 from ..infra.money_session import money_session
@@ -33,14 +34,21 @@ _FOLD_BATCHES_PER_PASS = 20
 _LEASE_MS = 5000
 
 
+def _row_locks() -> bool:
+    return not infra_db._is_sqlite
+
+
 @asynccontextmanager
 async def _team_lease(org_id: int):
-    """Hold the team's allowance money lease, or yield False when another process has it. A
-    store that cannot answer admits nobody to the counter either, so the sweep goes on."""
+    """Hold the team's allowance money lease; yield whether this pass may write the team's money.
+
+    Not while another process has the lease. When the store cannot answer there is no lease to
+    have: PostgreSQL still makes two writers wait on the hold's row lock, so the sweep goes on
+    there; SQLite has no row locks, and the write waits for a pass that can take the lease."""
     store, key, token = kv.store(), money_key(org_id), uuid.uuid4().hex
     acquired = await store.acquire_lease(key, token, _LEASE_MS)
     try:
-        yield acquired != "busy"
+        yield acquired == "acquired" or (acquired == "unavailable" and _row_locks())
     finally:
         if acquired == "acquired":
             await store.release_lease(key, token)
