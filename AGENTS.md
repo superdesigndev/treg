@@ -336,5 +336,6 @@ chooses only in the two disclosed cases of non-negotiable 4.
   bound while traffic continues.
 - When a change moves work from the key-value store or a queue onto the database on the call or
   money path, follow the real path: which rows it contends on, how many pool connections are held
-  while it waits, and what bounds its concurrency. Ask for that evidence when the PR lacks it;
-  flag P1 only for a reachable path where one team's waits can exhaust the pool for others.
+  while it waits, and what bounds its concurrency. Ask for that evidence when the PR lacks it.
+  Flag P1 when fallback traffic, from one team or several at once, can exhaust the shared pool and
+  block other calls.
