@@ -89,13 +89,11 @@ async def _drop_after(attempt: asyncio.Future, lease: Lease) -> None:
 
 
 def _release_unanswered() -> None:
-    """The store answers again: every earlier request has run, so release the tokens that got no
-    answer once more. Those older than a lease have expired by themselves."""
-    now = time.monotonic()
+    """The store answers again: release the tokens that got no answer once more. Every one is
+    released, however old: the store stamps a late acquire with its own clock at recovery, so it
+    holds the place a full lease from then, and a token already gone just answers not owned."""
     while _unanswered:
-        lease = _unanswered.popleft()
-        if now < lease.valid_until:
-            _background(lease._release(quiet=True))
+        _background(_unanswered.popleft()._release(quiet=True))
 
 
 async def try_acquire(account: str, cap: int) -> Lease | None | Literal["busy"]:

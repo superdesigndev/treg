@@ -632,3 +632,30 @@ async def test_a_release_a_stalled_store_dropped_frees_the_place_once_it_answers
     (await gate.acquire("p", 2, 3, max_wait_s=0.5)).release()  # the store answers again
     await _turns()
     assert shared.held("p") == 0
+
+
+async def test_a_place_a_store_applies_late_after_a_stall_longer_than_the_lease_is_released(shared):
+    provider_concurrency._unanswered.clear()
+    stalled, late = True, []
+    acquire = shared.acquire_slot
+
+    async def acquire_slot(key, token, ttl_ms, limit):
+        if stalled:
+            late.append((key, token))
+            return "unavailable"
+        return await acquire(key, token, ttl_ms, limit)
+
+    shared.acquire_slot = acquire_slot
+    gate = FairShare()
+    (await gate.acquire("p", 1, 3)).release()
+    await _turns()
+    stalled = False
+    for lease in provider_concurrency._unanswered:
+        lease.valid_until = 0.0  # the stall outlasted the lease on this process's clock
+    for key, token in late:  # the store runs the queued acquire and stamps it with its own clock
+        shared.owners.setdefault(key, set()).add(token)
+    assert shared.held("p") == 1
+    gate._pools["p"].store_down_until = 0.0
+    (await gate.acquire("p", 2, 3)).release()  # the store answers again
+    await _turns()
+    assert shared.held("p") == 0
