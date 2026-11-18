@@ -305,6 +305,9 @@ Redaction in `application.call.evidence` is security-sensitive and order matters
 A caller-scoped replay cache keyed by `(membership_id, key)`. `delete_membership` removes it
 explicitly and the FK cascades as a backstop, so token revocation never 500s on a cached answer.
 
+- `request_fingerprint` hashes method, path, query and body, a JSON body as its canonical
+  serialization (`_canonical_json`); a row stored with the raw-bytes fingerprint still matches
+  the same bytes (`_raw_request_fingerprint`). A 409 on a live `pending` row names its `call_ref`.
 - A `pending` row is a lease owned by one call's `call_ref`: the owner renews `created_at` every
   `IDEMPOTENCY_LEASE_RENEW_S`, and every store, release and renewal is fenced on `call_ref`.
 - A lease older than `IDEMPOTENCY_STALE_PENDING_S` with no open hold or pending async task under
@@ -367,7 +370,8 @@ The request session commits before the relay ([proxy-model](proxy-model.md)).
   `timeutil.as_naive`.
 - `verify_db()` is the read-only lifespan and worker guard: it refuses a missing Fernet key on a
   real database, requires the stamp at head, refuses a known older revision, and warns but serves
-  on an unknown newer one so an additive release can roll back.
+  on an unknown newer one (all digits and above this build's head, `db._is_newer_revision`) so an
+  additive release can roll back; any other unknown stamp is refused.
 - `dispose_engine()` closes pooled connections before a maintenance event loop exits, so a later
   loop never inherits connections bound to a closed one.
 - `reset_db()` is test-only: it deletes every row, rewinds Postgres sequences and stamps head,
@@ -383,8 +387,9 @@ All production schema execution goes through `maintenance._upgrade_schema`. An e
 database runs `alembic upgrade head`; a non-empty unstamped database is refused without inspection
 (it must pass through adoption release 0.14.x); an unknown newer revision is refused. Scripts ship
 inside the wheel; Alembic runs through `asyncio.to_thread` because `env.py` owns its own
-`asyncio.run`. On Postgres `env.py` sets `lock_timeout = 5s` and commits each revision separately,
-so `maintenance`'s bounded retry resumes at the revision that timed out.
+`asyncio.run`. On Postgres `env.py` sets `lock_timeout` from `TREG_MIGRATION_LOCK_TIMEOUT_S` (2 s) and
+commits each revision separately, so `maintenance`'s bounded retry resumes at the revision that
+timed out ([deploy](../ops/deploy.md), PostgreSQL lock queueing).
 
 - The drift guard upgrades to head, autogenerates against `SQLModel.metadata` and requires an
   empty diff (SQLite in the suite, Postgres in CI).

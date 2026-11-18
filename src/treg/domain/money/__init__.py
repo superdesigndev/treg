@@ -48,14 +48,23 @@ from collections.abc import Sequence
 from datetime import datetime, timedelta, timezone
 from typing import NamedTuple
 
-from sqlalchemy import case, delete, func, literal_column, update
+from sqlalchemy import case, delete, func, literal_column, or_, update
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlmodel import select
 
 from ...config import get_settings
 from ...infra.money_trace import mark_money, money_stage
-from ...models import AsyncTaskRecord, CreditBlock, Hold, LedgerEntry, MemberSpend, Org, TagSpend
+from ...models import (
+    AsyncTaskRecord,
+    CallCharge,
+    CreditBlock,
+    Hold,
+    LedgerEntry,
+    MemberSpend,
+    Org,
+    TagSpend,
+)
 
 # Block consumption order: promotional credit burns first, then the oldest purchased block. Promo is
 # a marketing expense and never refundable, so spending it first keeps the refundable (and disputable)
@@ -418,9 +427,27 @@ async def reserve_in_transaction(
             .values(balance_micro=Org.balance_micro - charged, **_spent_today_values(charged))
         )
     if result.rowcount != 1:
+        # The same figure the refusal below reports: what is free of the queue's claims.
         with money_stage(db, "read_balance"):
-            balance = (await db.execute(select(Org.balance_micro).where(Org.id == org_id))).scalar() or 0
+            balance = (await db.execute(
+                select(Org.balance_micro - _queued_unbacked(org_id)).where(Org.id == org_id)
+            )).scalar() or 0
         raise InsufficientBalance(org_id, int(balance), charged)
+    # The debit holds the team's row, so the balance cannot move again before this transaction
+    # ends, and the queue is read after it: both belong to one moment. Read before the debit,
+    # or in the debit's own statement (PostgreSQL rechecks a row it waited for against the
+    # snapshot the statement began with), the queue could be older than the balance.
+    with money_stage(db, "reserve_queue"):
+        queued = (await db.execute(
+            select(CallCharge.call_id).where(CallCharge.org_id == org_id).limit(1))).first()
+    if queued is not None:
+        with money_stage(db, "reserve_queue"):
+            left = int((await db.execute(
+                select(Org.balance_micro - _queued_unbacked(org_id)).where(Org.id == org_id)
+            )).scalar() or 0)
+        if left < 0:
+            await _add_balance(db, org_id, charged, spent_delta_micro=-charged)
+            raise InsufficientBalance(org_id, left + charged, charged)
     db.add(Hold(id=call_id, org_id=org_id, endpoint_id=endpoint_id or "", amount_micro=charged,
                 purchased_only=purchased_only))
     await _entry(db, org_id=org_id, kind="reserve", amount_micro=-charged, call_id=call_id,
@@ -437,6 +464,46 @@ async def reserve_in_transaction(
         db.add(MemberSpend(org_id=org_id, membership_id=member_id, hold_id=call_id,
                            amount_micro=charged))
     return call_id
+
+
+def _charge_parts(org_id: int):
+    """Two per-row SQL expressions over `CallCharge`: what a queued charge may take from the
+    team's allowance hold, and what it takes from the balance outright.
+
+    The hold pays only what a call set aside, and only for a call it admitted
+    (`hold_created_at` names the hold; a row without one is paid from whichever hold there is).
+    The rest is owed by the balance: the call's overrun, and all of a charge whose hold has
+    been closed since, with or without another opened in its place.
+    """
+    own = or_(CallCharge.hold_created_at.is_(None),
+              CallCharge.hold_created_at == select(Hold.created_at).where(
+                  Hold.id == f"allowance:{org_id}").scalar_subquery())
+    set_aside = CallCharge.amount_micro - CallCharge.overrun_micro
+    return (case((own, set_aside), else_=0),
+            CallCharge.overrun_micro + case((own, 0), else_=set_aside))
+
+
+def _queued_unbacked(org_id: int):
+    """What a team's queued call charges will take from its balance when they are applied: what
+    they owe it outright, and what they may take from the allowance hold beyond what the hold
+    has left (`_charge_parts`). The balance still shows this money, and it is already spent. A
+    queued charge whose call has a `settle` entry is left out, as applying it will drop it.
+    A SQL expression: one pass over the team's queue, and the hold's amount is read only when
+    something is queued."""
+    from_hold, outright = _charge_parts(org_id)
+    queued = (
+        select(func.coalesce(func.sum(outright), 0).label("outright"),
+               func.coalesce(func.sum(from_hold), 0).label("from_hold"))
+        .where(CallCharge.org_id == org_id, ~select(LedgerEntry.id).where(
+            LedgerEntry.call_id == CallCharge.call_id, LedgerEntry.org_id == org_id,
+            LedgerEntry.kind == "settle").exists())
+        .subquery())
+    held = func.coalesce(
+        select(Hold.amount_micro).where(Hold.id == f"allowance:{org_id}").scalar_subquery(), 0)
+    beyond_hold = case((queued.c.from_hold > 0,
+                        case((queued.c.from_hold > held, queued.c.from_hold - held), else_=0)),
+                       else_=0)
+    return select(queued.c.outright + beyond_hold).scalar_subquery()
 
 
 async def _purchased_gate(db: AsyncSession, org_id: int, charged: int) -> None:

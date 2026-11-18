@@ -113,6 +113,9 @@ func envelope(r *api.Response, ctype string) callEnvelope {
 	if v := h.Get("X-Treg-Upstream-Failed"); v != "" {
 		m.Set("upstream_failed", v)
 	}
+	if v := h.Get("X-Treg-Review-Pending-Text"); v != "" {
+		m.Set("review_pending", v)
+	}
 	if h.Get(capacityHeader) == exhausted {
 		m.Set("capacity", exhausted)
 	}
@@ -291,6 +294,8 @@ func (p *Printer) failureDiagnostics(r *api.Response) {
 	fmt.Fprintln(p.Err, line)
 	if notice != "" {
 		fmt.Fprintln(p.Err, "treg: "+notice)
+	} else if review := h.Get("X-Treg-Review-Pending-Text"); relayed && review != "" {
+		fmt.Fprintln(p.Err, "treg: "+review)
 	}
 	if r.Status == 401 && !relayed && os.Getenv("TREG_TOKEN") != "" {
 		fmt.Fprintln(p.Err, "treg: TREG_TOKEN was rejected, and it overrides `treg login`: set it to a current key")

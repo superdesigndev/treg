@@ -413,6 +413,8 @@ def params_view(inp: dict) -> dict:
     for r in rows:
         spec, parts = r.pop("_spec"), []
         prose = r.pop("_prose")
+        if spec.get("applied") == "soft":
+            parts.append("a hint, not a filter")
         if prose and prose not in shared:
             parts.append(prose)
         if isinstance(spec.get("enum"), list) and spec["enum"]:

@@ -44,9 +44,11 @@ catalog ids and splits calls by the catalog's HTTP method, so Claude can treat G
 as reads and ask approval for POST, PUT, PATCH and DELETE. `/mcp/v2/` is the second transport
 surface; **connector release V1** is the first product release submitted to Claude's directory.
 
-`NormalizeDirectoryMCPPath` makes `/mcp/v2` and `/mcp/v2/` the same V2 resource: a real Claude
-custom-connector flow strips the trailing slash, and without normalization the request falls through
-to the team `/mcp` mount and receives the wrong OAuth resource identity.
+`NormalizeMCPPath` makes `/mcp` and `/mcp/` the same V1 resource, and `/mcp/v2` and `/mcp/v2/` the
+same V2 resource: a real Claude custom-connector flow strips the trailing slash and does not follow
+redirects. Without normalization `/mcp` answers the mount's 307, which the connector check reports as
+"not found", and `/mcp/v2` falls through to the team `/mcp` mount and receives the wrong OAuth
+resource identity.
 
 `TREG_CLAUDE_CONNECTOR_ENABLED` (default false) controls the V2 mount, lifespan, resource metadata,
 new V2 grants and the catalog-only call route (404 when off). `/mcp/` does not depend on it.
@@ -104,7 +106,9 @@ shadowed by a same-named team tool. A change is incomplete if only one MCP test 
 - The `hub_*` tools exist only on `/mcp/`; `_HubToolsGate` hides them unless the hub is enabled for
   the caller. `catalog_search` merges visible listed hub tools (`kind: "hub"`) and `call` accepts a hub
   tool id. `/mcp/v2/` never registers them. See [hub](hub.md).
-- `call_media` and `resources_list` exist only on `/mcp/`.
+- `call_media`, `resources_list` and `call_result` exist only on `/mcp/`. `call_result` (scope
+  `treg:read`) is the recovery road for a call whose answer never reached the agent: the team's
+  latest calls from `GET /calls`, or one call's stored answer from `GET /calls/{id}/result`.
 - `feedback` and `review` exist only on `/mcp/`, so V2 never renders the invitation `/call/` decided
   on (`_SurfacePolicy.invites`); `/call/` still decides and records it ([feedback](feedback.md)).
 - **OpenAI clients** (`openai-mcp/` for ChatGPT and its plugin reviewer, `codex-mcp-client/` for Codex,
@@ -233,7 +237,9 @@ A managed edge may Brotli-compress large responses, and at least one real client
 brotlicffi) dies mid-decode and hangs to its timeout. Managed edges can ignore `Cache-Control:
 no-transform`; the header stays (`NoTransformResponses`, outermost so 401 challenges carry it), but
 the working fix is `GZipMiddleware` inside `build_mcp_app`: an edge does not recompress a response
-already carrying `Content-Encoding: gzip`. Post-deploy check whenever this path changes: a large
+already carrying `Content-Encoding: gzip`. It compresses at level 1 (`MCP_GZIP_LEVEL`): Starlette
+compresses the whole body synchronously on the event loop, so every request in the worker waits for
+it, and the default level 9 is several times slower on JSON. Post-deploy check whenever this path changes: a large
 authenticated `catalog_get` over `/mcp/` with `Accept-Encoding: br, gzip` must return
 `content-encoding: gzip`.
 
