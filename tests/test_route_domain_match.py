@@ -111,7 +111,7 @@ async def test_at_most_two_more_off_domain_hits_are_taken(clients: AsyncClient, 
     assert before - await _balance(clients) == int(r.headers["X-Treg-Cost-Micro"]) == d["_treg"]["charged_micro"]
 
 
-@pytest.mark.parametrize("value", ["true", "1", "STRICT"])
+@pytest.mark.parametrize("value", ["true", "1", "yes", "on", "STRICT"])
 async def test_true_and_1_mean_strict(clients: AsyncClient, verifiers_on, monkeypatch, value):
     seen = []
     monkeypatch.setattr(call_service, "relay", _relay({"tomba": [TOMBA_OFF], "hunter": [_hunter("patrick@stripe.com")]}, seen))
@@ -120,7 +120,7 @@ async def test_true_and_1_mean_strict(clients: AsyncClient, verifiers_on, monkey
     assert seen == ["tomba", "hunter"] and r.json()["output"]["email"] == "patrick@stripe.com"
 
 
-@pytest.mark.parametrize("value", ["off", "false", "0"])
+@pytest.mark.parametrize("value", ["off", "false", "0", "no"])
 async def test_false_and_0_mean_off(clients: AsyncClient, verifiers_on, monkeypatch, value):
     seen = []
     monkeypatch.setattr(call_service, "relay", _relay({"tomba": [TOMBA_OFF]}, seen))
@@ -132,5 +132,5 @@ async def test_false_and_0_mean_off(clients: AsyncClient, verifiers_on, monkeypa
 async def test_an_unknown_value_is_refused(clients: AsyncClient, verifiers_on, monkeypatch):
     seen = []
     monkeypatch.setattr(call_service, "relay", _relay({}, seen))
-    r = await clients.post(f"/call/{FIND}", json=ASK, headers={"X-Treg-Route-Domain-Match": "yes"})
+    r = await clients.post(f"/call/{FIND}", json=ASK, headers={"X-Treg-Route-Domain-Match": "maybe"})
     assert r.status_code == 400 and seen == []

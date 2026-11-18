@@ -468,16 +468,16 @@ class RouteOptions:
         up = str(get(UPGRADE_HEADER) or "").strip()
         cp = str(get(COMPLETE_HEADER) or "").strip().lower()
         dm = str(get(DOMAIN_MATCH_HEADER) or "").strip().lower()
-        if dm not in ("", "off", "false", "0", "strict", "true", "1"):
+        if dm not in ("", "off", "false", "0", "no", "strict", "true", "1", "yes", "on"):
             raise ResolutionFailed("catalog_parameter_invalid", status_code=400, rule="type",
-                                   detail=f"{DOMAIN_MATCH_HEADER} must be strict (or true, 1) or off (or false, 0), "
+                                   detail=f"{DOMAIN_MATCH_HEADER} must be strict (or true, 1, yes, on) or off (or false, 0, no), "
                                           f"got {get(DOMAIN_MATCH_HEADER)!r}")
         return cls(waterfall=wf not in ("0", "false", "no", "off"),
                    max_cost_micro=max_cost, prefer=_list(get(PREFER_HEADER)), exclude=_list(get(EXCLUDE_HEADER)),
                    min_results=mr, merge=mg in ("1", "true", "yes", "on"), strict_filters=sf in ("1", "true", "yes", "on"),
                    verify=vf in ("1", "true", "yes", "on"), confirm=cf in ("1", "true", "yes", "on"),
                    decisive=dc in ("1", "true", "yes", "on"), quality=ql in ("1", "true", "yes", "on"),
-                   upgrade=up or None, complete=cp in ("1", "true", "yes", "on"), domain_strict=dm in ("strict", "true", "1"))
+                   upgrade=up or None, complete=cp in ("1", "true", "yes", "on"), domain_strict=dm in ("strict", "true", "1", "yes", "on"))
 
 
 class _Bytes:
