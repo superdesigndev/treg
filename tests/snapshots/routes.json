@@ -1262,6 +1262,15 @@
       "GET",
       "HEAD"
     ],
+    "name": "whats_new_page",
+    "path": "/whats-new"
+  },
+  {
+    "kind": "APIRoute",
+    "methods": [
+      "GET",
+      "HEAD"
+    ],
     "name": "gtm_engineering_page",
     "path": "/gtm-engineering"
   },

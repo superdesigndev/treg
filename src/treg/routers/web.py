@@ -3551,6 +3551,7 @@ _SITEMAP_PAGES: tuple[tuple[str, str, str], ...] = (
     ("/jobs-api", "jobs-api.html", "0.8"),
     ("/recruit", "recruit.html", "0.8"),
     ("/web-access", "web-access.html", "0.8"),
+    ("/whats-new", "whats-new.html", "0.8"),
     ("/grokbot", "grokbot.html", "0.8"),
     ("/fable", "fable-gtm.html", "0.8"),
     ("/gpt6", "astra.html", "0.8"),
@@ -4240,6 +4241,13 @@ async def web_access_page(request: Request):
     return _static_page("web-access.html", request)
 
 
+@app.get("/whats-new", include_in_schema=False)
+async def whats_new_page(request: Request):
+    """Landing page for the whats-new skill ("See What's New on Any Topic"). Served like /leads-signals;
+    its demo rows are real posts bundled in the page."""
+    return _static_page("whats-new.html", request)
+
+
 @app.get("/gtm-engineering", include_in_schema=False)
 async def gtm_engineering_page(request: Request):
     """The GTM-engineering hub: the seven jobs a GTM engineer runs, each linked to its existing
@@ -4351,6 +4359,8 @@ async def jev_xboost_judge(request: Request, db: AsyncSession = Depends(get_sess
 # chronological (newest first), not alphabetical.
 _BLOG_LAUNCHES: list[tuple[str, str, str, str]] = [
     # (slug, title, date, one-line blurb)
+    ("/whats-new", "See What's New on Any Topic", "2026-11-19",
+     "Name a topic and a time window; your agent reads six platforms and hands back the posts worth seeing."),
     ("/aigc", "AI Video Generation for Your Agent", "2026-11-11",
      "Seedance, Veo, Wan, Hailuo and Kling with one token; pay per finished clip."),
     ("/social", "Put Your Social Media on Autopilot", "2026-11-04",

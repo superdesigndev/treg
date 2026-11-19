@@ -120,6 +120,14 @@ async def test_web_access_landing_page_installs_the_skill(clients):
     assert "/web-arena/api/leaderboard" in r.text
 
 
+async def test_whats_new_landing_page_installs_the_skill(clients):
+    """The /whats-new page is served with its placeholders filled and points at the skill it sells."""
+    r = await clients.get("/whats-new")
+    assert r.status_code == 200 and "{BASE}" not in r.text and "{ENDPOINTS}" not in r.text
+    assert "npx skills add superdesigndev/treg --skill whats-new" in r.text
+    assert "/app?ref=whats-new" in r.text and 'rel="canonical" href="https://treg.to/whats-new"' in r.text
+
+
 async def test_rea_growth_skill_is_served_but_opt_in(clients):
     """The /rea-growth flow as a skill, served by URL with its placeholders filled, but kept out of
     the index so install.sh never installs it unasked."""

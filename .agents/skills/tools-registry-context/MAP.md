@@ -709,6 +709,7 @@ Regenerate via `scripts/build-map.py`.
 | `src/treg/web/usecase-social.html` | interface/seo.md |
 | `src/treg/web/usecase.css` | interface/seo.md |
 | `src/treg/web/web-access.html` | interface/seo.md |
+| `src/treg/web/whats-new.html` | interface/seo.md |
 | `src/treg/web/web-arena.html` | interface/web-arena.md |
 | `src/treg/web/web-arena/arena.css` | interface/web-arena.md |
 | `src/treg/web/web-arena/arena.js` | interface/web-arena.md |
