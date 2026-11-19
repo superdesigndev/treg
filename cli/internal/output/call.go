@@ -131,7 +131,7 @@ func envelope(r *api.Response, ctype string) callEnvelope {
 		}
 	}
 	if v := h.Get("X-Treg-Routed-Tool"); v != "" {
-		m.Set("routed_tool", v)
+		m.Set("routed_alternative", v)
 	}
 	return callEnvelope{Result: result, Treg: m}
 }

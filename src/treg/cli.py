@@ -2716,7 +2716,7 @@ def _call_envelope(response: httpx.Response, content_type: str) -> dict:
     if kind := headers.get("X-Treg-Hint"):
         meta["hint"] = kind
     if routed := headers.get("X-Treg-Routed-Tool"):
-        meta["routed_tool"] = routed
+        meta["routed_alternative"] = routed
     return {"result": result, "_treg": meta}
 
 
