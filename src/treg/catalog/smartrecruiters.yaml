@@ -32,7 +32,7 @@ endpoints:
         region: {type: string, required: false}
         city: {type: string, required: false, example: Sydney}
         department: {type: string, required: false, note: "department id from a posting's department.id"}
-        locationType: {type: "array[string]", required: false, enum: [REMOTE, HYBRID, ONSITE, ANY]}
+        locationType: {type: array, items: {type: string, enum: [REMOTE, HYBRID, ONSITE, ANY]}, required: false}
         language: {type: string, required: false, note: "job ad language, ISO 639-1 codes separated by commas (en-GB, fr-CA, pt-BR, pt-PT, zh-TW, zh-CN also accepted)"}
         releasedAfter: {type: string, required: false, note: "ISO 8601 date-time; only postings released after it", example: "2026-11-01T00:00:00.000Z"}
         limit: {type: integer, required: false, min: 1, max: 100, default: 100, note: "a larger value is answered as 100", example: 1}

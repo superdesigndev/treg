@@ -69,3 +69,38 @@ async def test_separate_processes_never_exceed_the_account_cap(redis_url):
         await store._client.delete(f"{account}:in-progress")
     finally:
         await store.aclose()
+
+
+async def test_a_long_release_again_list_does_not_crowd_the_shared_client(redis_url, monkeypatch):
+    from treg.infra import provider_concurrency as pc
+
+    store = kv.RedisStore(redis_url)
+    monkeypatch.setattr(kv, "configured", lambda: True)
+    monkeypatch.setattr(kv, "store", lambda: store)
+    try:
+        pc._unanswered.clear()
+        for _ in range(400):
+            pc._unanswered.append(pc.Lease(store, f"treg-test-{uuid4().hex}"))
+        errors, lat = [], []
+
+        async def other(account):
+            for _ in range(30):
+                began = asyncio.get_running_loop().time()
+                try:
+                    got = await pc.try_acquire(account, 100)
+                except Exception as exc:  # noqa: BLE001
+                    errors.append(exc)
+                    continue
+                if got is None:
+                    errors.append("unavailable")
+                elif got != pc.BUSY:
+                    got.release()
+                lat.append(asyncio.get_running_loop().time() - began)
+                await asyncio.sleep(0.005)
+
+        await asyncio.gather(*(other(f"treg-test-{uuid4().hex}") for _ in range(10)))
+        await asyncio.sleep(0.5)
+        assert not errors and not pc._unanswered
+        assert max(lat) < 1.0
+    finally:
+        await store.aclose()

@@ -61,7 +61,7 @@ endpoints:
       body:
         domain: {type: string, required: false, note: "Preferred company domain.", example: "stripe.com"}
         company_name: {type: string, required: false, note: "Use if the domain is unknown."}
-        decision_maker_category: {type: "array[string]", required: true, note: "Ordered categories: ceo, engineering, finance, hr, it, logistics, marketing, operations, buyer, sales.", example: ["ceo"]}
+        decision_maker_category: {type: [array, string], items: {type: string}, required: true, note: "Ordered categories: ceo, engineering, finance, hr, it, logistics, marketing, operations, buyer, sales.", example: ["ceo"]}
       note: "Supply domain or company_name. Only the first category with a valid result is returned; a not_found result costs zero."
     test_request: {body: {domain: "stripe.com", decision_maker_category: ["ceo"]}}
     cost:

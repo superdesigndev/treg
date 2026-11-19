@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Generate every plugin's SKILL.md from the one source: `src/treg/web/skill.md`.
 
-Five shop windows, one source:
+Six shop windows, one source:
 
 - **codex**  -> `plugin/skills/treg/SKILL.md` — ships an MCP connector, so its bootstrap points at
   the MCP tools and tells the reader NOT to reach for a terminal.
@@ -17,6 +17,10 @@ Five shop windows, one source:
   a dsh profile. See docs/DSH-PLUGIN.md.
 - **minimax** -> `plugins/minimax/skills/treg/SKILL.md`: skills-only, the served page unchanged.
   See docs/MINIMAX-PLUGIN.md.
+- **copilot** -> `plugins/copilot/skills/treg/SKILL.md`: the GitHub Copilot plugin (Agent Plugins
+  1.0.0). It declares the remote MCP server like the Claude/Cursor folder, so its bootstrap checks for
+  the tools first; its own root because that spec fixes the MCP config at `mcp.json` with a schema
+  and transport type Cursor does not document.
 
 The bare skill sits at the REPO ROOT because that is what `npx skills add` resolves and what
 `clawhub skill publish` takes. The Claude Code plugin is NOT the repo root: a root plugin ships the
@@ -78,6 +82,10 @@ DSH_TARGET = ROOT / "dsh" / "skills" / "treg" / "SKILL.md"
 # own root — submitted as the GitHub subdirectory `plugins/minimax/`, or zipped from inside it. See
 # docs/MINIMAX-PLUGIN.md.
 MINIMAX_TARGET = ROOT / "plugins" / "minimax" / "skills" / "treg" / "SKILL.md"
+# GitHub Copilot (CLI, VS Code, the Copilot app) installs Agent Plugins 1.0.0: `plugin.json` and
+# `mcp.json` at the plugin root, and nothing else may name the MCP file. Cursor reads `mcp.json` in
+# `plugins/treg/` too, in its own shape, so Copilot gets its own root.
+COPILOT_TARGET = ROOT / "plugins" / "copilot" / "skills" / "treg" / "SKILL.md"
 CLAUDE_MARKETPLACE = ROOT / ".claude-plugin" / "marketplace.json"
 CLAUDE_MANIFEST = ROOT / "plugins" / "treg" / ".claude-plugin" / "plugin.json"
 WORKFLOWS = ROOT / "plugins" / "workflows"
@@ -148,6 +156,20 @@ described in `/plugin`:
 When the human's task matches one, offer it once; they add it with `/plugin install <name>@treg`.
 """
 
+COPILOT_BOOTSTRAP = """
+This plugin ships treg's MCP server (`https://treg.to/mcp/`, OAuth sign-in). If you cannot see its
+tools yet, they are waiting for sign-in: the human connects treg in Copilot's MCP server settings and
+signs in to treg in the browser when asked. Do not install the CLI for this.
+
+treg's own marketplace also offers ready workflow skills as separate plugins. After
+`copilot plugin marketplace add superdesigndev/treg`, the human adds one with
+`copilot plugin install <name>@treg`:
+
+{WORKFLOWS}
+
+When the human's task matches one, offer it once.
+"""
+
 DSH_BOOTSTRAP = """
 ## First, check which treg you have
 
@@ -189,7 +211,7 @@ a directory dsh also scans. Harmless, but redundant with this bundle.
 ---
 """
 
-# variant -> (target, bootstrap, stamp_version). One source, five shop windows; None means the
+# variant -> (target, bootstrap, stamp_version). One source, six shop windows; None means the
 # served page unchanged.
 VARIANTS = {
     "codex": (CODEX_TARGET, None, False),
@@ -197,6 +219,7 @@ VARIANTS = {
     "plugin": (PLUGIN_TARGET, PLUGIN_BOOTSTRAP, True),
     "dsh": (DSH_TARGET, DSH_BOOTSTRAP, False),
     "minimax": (MINIMAX_TARGET, None, True),
+    "copilot": (COPILOT_TARGET, COPILOT_BOOTSTRAP, True),
 }
 
 

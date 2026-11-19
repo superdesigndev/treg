@@ -58,9 +58,9 @@ endpoints:
         size: {type: string, required: false, default: adaptive, enum: [adaptive, "16:9", "9:16", "1:1", "4:3", "3:4", "21:9"], example: "16:9", note: "When image_with_roles uses role first_frame or last_frame, size must be adaptive — not a fixed ratio such as 1:1."}
         resolution: {type: string, required: false, default: 720p, enum: [480p, 720p, 1080p], example: 480p}
         generate_audio: {type: boolean, required: false, default: true}
-        image_urls: {type: array, required: false, example: ["https://picsum.photos/seed/treg-aigc/720/1280"], note: "Up to 30 public image URLs (<30 MB each), used as references. Mutually exclusive with image_with_roles — send one or the other, never both; combining them yields provider HTTP 400 code 20003. Each URL must answer a plain GET with the raw image bytes and an image/* content-type (signed cloud-storage or CDN links work; file-page hosts such as tmpfiles.org return HTML, and the task then fails unbilled with the vendor's generic upstream error). `treg host <file>` prints a URL that satisfies this."}
-        audio_urls: {type: array, required: false, note: "Up to 10 public audio URLs (<=15 MB, 2-30 s each; combined <=30 s). Audio references are not billed."}
-        image_with_roles: {type: array, required: false, note: "Objects {url, role} with role first_frame, last_frame or reference_image. Mutually exclusive with image_urls — send one or the other, never both; combining them yields provider HTTP 400 code 20003. When using role first_frame or last_frame, size must be adaptive (not a fixed ratio such as 1:1)."}
+        image_urls: {type: array, items: {type: string}, required: false, example: ["https://picsum.photos/seed/treg-aigc/720/1280"], note: "Up to 30 public image URLs (<30 MB each), used as references. Mutually exclusive with image_with_roles — send one or the other, never both; combining them yields provider HTTP 400 code 20003. Each URL must answer a plain GET with the raw image bytes and an image/* content-type (signed cloud-storage or CDN links work; file-page hosts such as tmpfiles.org return HTML, and the task then fails unbilled with the vendor's generic upstream error). `treg host <file>` prints a URL that satisfies this."}
+        audio_urls: {type: array, items: {type: string}, required: false, note: "Up to 10 public audio URLs (<=15 MB, 2-30 s each; combined <=30 s). Audio references are not billed."}
+        image_with_roles: {type: array, items: {type: object}, required: false, note: "Objects {url, role} with role first_frame, last_frame or reference_image. Mutually exclusive with image_urls — send one or the other, never both; combining them yields provider HTTP 400 code 20003. When using role first_frame or last_frame, size must be adaptive (not a fixed ratio such as 1:1)."}
         seed: {type: integer, required: false}
         watermark: {type: boolean, required: false, default: false}
       bodyType: json
@@ -107,9 +107,9 @@ endpoints:
         size: {type: string, required: false, default: adaptive, enum: [adaptive, "16:9", "9:16", "1:1", "4:3", "3:4", "21:9"], example: "9:16", note: "When image_with_roles uses role first_frame or last_frame, size must be adaptive — not a fixed ratio such as 1:1."}
         resolution: {type: string, required: false, default: 720p, enum: [480p, 720p, 1080p], example: 480p}
         generate_audio: {type: boolean, required: false, default: true}
-        image_urls: {type: array, required: false, example: ["https://picsum.photos/seed/treg-aigc/720/1280"], note: "Up to 30 public image URLs; a photo of a person is accepted as the subject reference. Mutually exclusive with image_with_roles — send one or the other, never both; combining them yields provider HTTP 400 code 20003. Each URL must answer a plain GET with the raw image bytes and an image/* content-type (signed cloud-storage or CDN links work; file-page hosts such as tmpfiles.org return HTML, and the task then fails unbilled with the vendor's generic upstream error). `treg host <file>` prints a URL that satisfies this."}
-        audio_urls: {type: array, required: false, note: "Up to 10 public audio URLs; a voice reference drives the generated speech."}
-        image_with_roles: {type: array, required: false, note: "Objects {url, role} with role first_frame, last_frame or reference_image. Mutually exclusive with image_urls — send one or the other, never both; combining them yields provider HTTP 400 code 20003. When using role first_frame or last_frame, size must be adaptive (not a fixed ratio such as 1:1)."}
+        image_urls: {type: array, items: {type: string}, required: false, example: ["https://picsum.photos/seed/treg-aigc/720/1280"], note: "Up to 30 public image URLs; a photo of a person is accepted as the subject reference. Mutually exclusive with image_with_roles — send one or the other, never both; combining them yields provider HTTP 400 code 20003. Each URL must answer a plain GET with the raw image bytes and an image/* content-type (signed cloud-storage or CDN links work; file-page hosts such as tmpfiles.org return HTML, and the task then fails unbilled with the vendor's generic upstream error). `treg host <file>` prints a URL that satisfies this."}
+        audio_urls: {type: array, items: {type: string}, required: false, note: "Up to 10 public audio URLs; a voice reference drives the generated speech."}
+        image_with_roles: {type: array, items: {type: object}, required: false, note: "Objects {url, role} with role first_frame, last_frame or reference_image. Mutually exclusive with image_urls — send one or the other, never both; combining them yields provider HTTP 400 code 20003. When using role first_frame or last_frame, size must be adaptive (not a fixed ratio such as 1:1)."}
         seed: {type: integer, required: false}
       bodyType: json
     test_request:
@@ -167,7 +167,7 @@ endpoints:
         size: {type: string, required: false, default: 1024x1024, enum: [1024x1024, 1024x1536, 1536x1024], example: 1024x1024, note: "Other custom sizes exist upstream but are not listed: the price table covers these three."}
         quality: {type: string, required: false, default: low, enum: [low, medium, high], example: low, note: "Quality is the biggest cost lever on the official channel; xhigh/max are not listed."}
         n: {type: integer, required: false, default: 1, min: 1, max: 10, example: 1}
-        image_urls: {type: array, required: false, note: "Up to 16 public image URLs to edit. Each URL must answer a plain GET with the raw image bytes and an image/* content-type (signed cloud-storage or CDN links work; file-page hosts such as tmpfiles.org return HTML, and the task then fails unbilled with the vendor's generic upstream error). `treg host <file>` prints a URL that satisfies this."}
+        image_urls: {type: array, items: {type: string}, required: false, note: "Up to 16 public image URLs to edit. Each URL must answer a plain GET with the raw image bytes and an image/* content-type (signed cloud-storage or CDN links work; file-page hosts such as tmpfiles.org return HTML, and the task then fails unbilled with the vendor's generic upstream error). `treg host <file>` prints a URL that satisfies this."}
         mask_url: {type: string, required: false, note: "Masked inpainting; requires image_urls."}
         background: {type: string, required: false, default: auto, enum: [auto, opaque, transparent]}
       bodyType: json
@@ -242,7 +242,7 @@ endpoints:
         prompt: {type: string, required: true, example: "A clean editorial illustration of a paper airplane."}
         size: {type: string, required: false, default: "1:1", enum: ["1:1", "16:9", "9:16", "4:3", "3:4", "3:2", "2:3", "21:9"], example: "1:1", note: "Aspect ratio."}
         resolution: {type: string, required: false, default: 1k, enum: [1k, 2k, 4k], example: 1k}
-        image_urls: {type: array, required: false, note: "Up to 16 public image URLs for image-to-image. Each URL must answer a plain GET with the raw image bytes and an image/* content-type (signed cloud-storage or CDN links work; file-page hosts such as tmpfiles.org return HTML, and the task then fails unbilled with the vendor's generic upstream error). `treg host <file>` prints a URL that satisfies this."}
+        image_urls: {type: array, items: {type: string}, required: false, note: "Up to 16 public image URLs for image-to-image. Each URL must answer a plain GET with the raw image bytes and an image/* content-type (signed cloud-storage or CDN links work; file-page hosts such as tmpfiles.org return HTML, and the task then fails unbilled with the vendor's generic upstream error). `treg host <file>` prints a URL that satisfies this."}
       bodyType: json
     test_request:
       body: {model: gpt-image-2, prompt: "A clean editorial illustration of a paper airplane.", size: "1:1", resolution: 1k}
@@ -294,7 +294,7 @@ endpoints:
         prompt: {type: string, required: true, example: "A clean editorial illustration of a paper airplane."}
         size: {type: string, required: false, default: "1:1", enum: ["1:1", "16:9", "9:16", "4:3", "3:4", "3:2", "2:3", "21:9", "5:4", "4:5"], example: "1:1", note: "Aspect ratio."}
         resolution: {type: string, required: false, default: 1K, enum: [1K, 2K, 4K], example: 1K}
-        image_urls: {type: array, required: false, note: "Up to 14 public image URLs for image-to-image. Each URL must answer a plain GET with the raw image bytes and an image/* content-type (signed cloud-storage or CDN links work; file-page hosts such as tmpfiles.org return HTML, and the task then fails unbilled with the vendor's generic upstream error). `treg host <file>` prints a URL that satisfies this."}
+        image_urls: {type: array, items: {type: string}, required: false, note: "Up to 14 public image URLs for image-to-image. Each URL must answer a plain GET with the raw image bytes and an image/* content-type (signed cloud-storage or CDN links work; file-page hosts such as tmpfiles.org return HTML, and the task then fails unbilled with the vendor's generic upstream error). `treg host <file>` prints a URL that satisfies this."}
       bodyType: json
     test_request:
       body: {model: gemini-3-pro-image-preview, prompt: "A clean editorial illustration of a paper airplane.", size: "1:1", resolution: 1K}

@@ -25,8 +25,8 @@ endpoints:
         depth: {type: string, required: true, enum: [flash, fast, standard, deep], example: flash}
         outputType: {type: string, required: true, enum: [searchResults, sourcedAnswer, structured], example: searchResults}
         maxResults: {type: number, required: false, min: 1, max: 20, example: 5}
-        includeDomains: {type: "array[string]", required: false, maxItems: 100}
-        excludeDomains: {type: "array[string]", required: false}
+        includeDomains: {type: array, items: {type: string}, required: false, maxItems: 100}
+        excludeDomains: {type: array, items: {type: string}, required: false}
         fromDate: {type: string, required: false, note: "ISO date YYYY-MM-DD."}
         toDate: {type: string, required: false, note: "ISO date YYYY-MM-DD."}
         structuredOutputSchema: {type: string, required: false, note: "JSON Schema encoded as a string; required for structured output."}
@@ -76,7 +76,7 @@ endpoints:
     input:
       bodyType: json
       body:
-        url: {type: string, required: true, format: uri, example: "https://example.com"}
+        url: {type: string, required: true, format: url, example: "https://example.com"}
         mode: {type: string, required: false, default: standard, enum: [standard, pro]}
         renderJs: {type: boolean, required: false, default: false}
         extractImages: {type: boolean, required: false, default: false}
@@ -115,7 +115,7 @@ endpoints:
     input:
       bodyType: json
       body:
-        url: {type: string, required: true, format: uri, example: "https://example.com"}
+        url: {type: string, required: true, format: url, example: "https://example.com"}
         schema: {type: object, required: true, example: {type: object, properties: {title: {type: string}}}}
         instructions: {type: string, required: false, note: "Additional extraction guidance; maximum 4,000 characters."}
         mode: {type: string, required: false, default: standard, enum: [standard, pro]}
@@ -159,8 +159,8 @@ endpoints:
         outputType: {type: string, required: true, enum: [sourcedAnswer, structured], example: sourcedAnswer}
         reasoningDepth: {type: string, required: true, enum: [S, M, L, XL], example: S}
         mode: {type: string, required: false, default: auto, enum: [answer, auto, investigate, research]}
-        includeDomains: {type: "array[string]", required: false, maxItems: 100}
-        excludeDomains: {type: "array[string]", required: false}
+        includeDomains: {type: array, items: {type: string}, required: false, maxItems: 100}
+        excludeDomains: {type: array, items: {type: string}, required: false}
         fromDate: {type: string, required: false, note: "ISO date YYYY-MM-DD."}
         toDate: {type: string, required: false, note: "ISO date YYYY-MM-DD."}
         structuredOutputSchema: {type: string, required: false, note: "JSON Schema encoded as a string; required for structured output."}

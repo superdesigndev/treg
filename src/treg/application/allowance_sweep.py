@@ -1,6 +1,13 @@
-"""Close the allowance of a team that has stopped spending from it.
+"""The allowance's background work: apply queued charges to the ledger, and close the allowance
+of a team that has stopped spending from it.
 
-Each refill writes on the hold the instant until which calls may take from the team's counter, and
+**Folding.** A finished call's charge waits in a queue (`CallCharge`). This loop is what applies
+the queue: a team at a time, a batch per transaction, on the background pool. Request processes
+do not fold, so the connections folding uses do not grow with traffic or with the number of
+busy teams: one per process running this loop. A team another process is working on is skipped,
+not waited for.
+
+**Closing.** Each refill writes on the hold the instant until which calls may take from the team's counter, and
 publishes that same instant to the counter. A call lives at most `hold_ttl_s()`. So a hold whose
 instant passed that long ago has nobody spending from it, and all of it can go back to the
 balance: what the counter still held, and whatever a crashed call or a lost give-back left behind.
@@ -11,6 +18,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
+import time
 import uuid
 from contextlib import asynccontextmanager
 from datetime import timedelta
@@ -29,11 +37,15 @@ log = logging.getLogger("treg.money_allowance")
 # Clock differences between processes and a refill slow to reach the counter.
 _SLACK_S = 30
 _SWEEP_EVERY_S = 60.0
+_FOLD_EVERY_S = 1.0
 _FENCE_TTL_MS = 24 * 3600 * 1000
 # A batch is one transaction under the team's lease, which a refill may be waiting for: short
-# batches, and enough of them that a pass still clears a long queue.
+# batches. A pass moves on to the next team after a few, so one long queue does not keep the
+# others waiting; the next pass comes back to it.
 _FOLD_BATCH = 100
-_FOLD_BATCHES_PER_PASS = 100
+_FOLD_BATCHES_PER_PASS = 10
+_TEAMS_PER_PAGE = 50
+_ADMISSION_WAIT_S = 0.25
 _LEASE_MS = 5000
 
 
@@ -64,83 +76,123 @@ def idle_after_s() -> int:
 
 
 async def sweep_once(session_maker) -> int:
-    """Close every allowance hold idle for `idle_after_s()`. Returns how many were closed."""
+    """Close every allowance hold idle for `idle_after_s()`, a page of teams at a time, so a
+    team is reached however many before it cannot be closed yet. Returns how many were closed."""
     stale_before = utcnow_naive() - timedelta(seconds=idle_after_s())
-    async with session_maker() as db:
-        org_ids = await allowance.stale_allowance_orgs(db, stale_before)
-    closed = 0
-    for org_id in org_ids:
-        try:
-            async with _team_lease(org_id) as free:
-                if not free:
-                    continue
-                async with (
-                    money_lock(org_id),
-                    money_admission.admit(
-                        money_admission.require_balance_orgs([org_id]), operation="release"),
-                    money_session(session_maker()) as db,
-                ):
-                    result = await allowance.close_stale_allowance_in_transaction(
-                        db, org_id, stale_before=stale_before, reason="idle")
-                    await db.commit()
-            if result is None:
-                continue
-            closed += 1
-            # After the commit: the hold is gone, so its counter must not be added to again. The
-            # counter stopped admitting takes long ago; this only refuses a late writer.
-            await kv.store().allowance_retire(org_id, result.epoch, _FENCE_TTL_MS)
-            log.info("allowance_closed org_id=%s released=%s folded=%s",
-                     org_id, result.released_micro, result.folded.calls)
-        except Exception:
-            log.error("closing the idle allowance of org %s failed", org_id, exc_info=True)
-    return closed
+    closed, after = 0, 0
+    while True:
+        async with session_maker() as db:
+            org_ids = await allowance.stale_allowance_orgs(
+                db, stale_before, after=after, limit=_TEAMS_PER_PAGE)
+        for org_id in org_ids:
+            closed += await _close_idle(session_maker, org_id, stale_before)
+        if len(org_ids) < _TEAMS_PER_PAGE:
+            return closed
+        after = org_ids[-1]
+
+
+async def _close_idle(session_maker, org_id: int, stale_before) -> bool:
+    """Close one team's idle hold. False when another process has the team, its money sessions
+    are busy, the hold is no longer idle, or on a fault: the next sweep comes back."""
+    try:
+        async with _team_lease(org_id) as free:
+            if not free:
+                return False
+            async with (
+                money_lock(org_id),
+                money_admission.admit(
+                    money_admission.require_balance_orgs([org_id]), operation="release",
+                    max_wait_s=_ADMISSION_WAIT_S, refuse_on_timeout=True),
+                money_session(session_maker()) as db,
+            ):
+                result = await allowance.close_stale_allowance_in_transaction(
+                    db, org_id, stale_before=stale_before, reason="idle")
+                await db.commit()
+        if result is None:
+            return False
+        # After the commit: the hold is gone, so its counter must not be added to again. The
+        # counter stopped admitting takes long ago; this only refuses a late writer.
+        await kv.store().allowance_retire(org_id, result.epoch, _FENCE_TTL_MS)
+        log.info("allowance_closed org_id=%s released=%s folded=%s",
+                 org_id, result.released_micro, result.folded.calls)
+        return True
+    except money_admission.AdmissionTimeout:
+        return False
+    except Exception:
+        log.error("closing the idle allowance of org %s failed", org_id, exc_info=True)
+        return False
 
 
 async def fold_queued_once(session_maker) -> int:
-    """Fold the queue of every team that has a charge older than a sweep interval. A busy
-    team's refills fold its queue; this is for a queue nothing else is folding: a team no longer
-    listed, a charge written after its hold was closed. Returns how many charges were folded."""
-    queued_before = utcnow_naive() - timedelta(seconds=_SWEEP_EVERY_S)
-    async with session_maker() as db:
-        org_ids = await allowance.orgs_with_queued_charges(db, queued_before)
+    """Fold the queue of every team that has charges queued, listed or not: a queue outlives
+    its team's listing and its hold. A pass goes through all of them, a page of teams at a
+    time, so a team is reached however many others keep queueing. Returns how many charges
+    were folded."""
+    total, after, queued_before = 0, 0, utcnow_naive()
+    while True:
+        async with session_maker() as db:
+            org_ids = await allowance.orgs_with_queued_charges(
+                db, queued_before, after=after, limit=_TEAMS_PER_PAGE)
+        for org_id in org_ids:
+            total += await _fold_team(session_maker, org_id)
+        if len(org_ids) < _TEAMS_PER_PAGE:
+            return total
+        after = org_ids[-1]
+
+
+async def _fold_team(session_maker, org_id: int) -> int:
+    """A few batches of one team's queue. Stops when another process has the team or the team's
+    money sessions are busy, and the next pass comes back: the teams behind it are not kept
+    waiting. One team failing does not stop the pass."""
     total = 0
-    for org_id in org_ids:
-        try:
-            for _ in range(_FOLD_BATCHES_PER_PASS):
-                async with _team_lease(org_id) as free:
-                    if not free:
-                        break
-                    async with (
-                        money_lock(org_id),
-                        money_admission.admit(
-                            money_admission.require_balance_orgs([org_id]), operation="close"),
-                        money_session(session_maker()) as db,
-                    ):
-                        folded = await allowance.fold_charges_in_transaction(
-                            db, org_id, limit=_FOLD_BATCH)
-                        await db.commit()
-                total += folded.calls
-                if folded.claimed < _FOLD_BATCH:
+    try:
+        for _ in range(_FOLD_BATCHES_PER_PASS):
+            async with _team_lease(org_id) as free:
+                if not free:
                     break
-        except Exception:
-            log.error("folding the queued charges of org %s failed", org_id, exc_info=True)
+                async with (
+                    money_lock(org_id),
+                    money_admission.admit(
+                        money_admission.require_balance_orgs([org_id]), operation="close",
+                        max_wait_s=_ADMISSION_WAIT_S, refuse_on_timeout=True),
+                    money_session(session_maker()) as db,
+                ):
+                    folded = await allowance.fold_charges_in_transaction(
+                        db, org_id, limit=_FOLD_BATCH)
+                    await db.commit()
+            total += folded.calls
+            if folded.claimed < _FOLD_BATCH:
+                break
+    except money_admission.AdmissionTimeout:
+        pass
+    except Exception:
+        log.error("folding the queued charges of org %s failed", org_id, exc_info=True)
     return total
 
 
-async def run_once(session_maker) -> None:
-    """One pass of both jobs, one after the other: never more than one connection."""
-    await sweep_once(session_maker)
-    await fold_queued_once(session_maker)
+async def run_once(session_maker, *, sweep: bool) -> int:
+    """One pass: the idle sweep when it is due, then the fold, one after the other, so never
+    more than one connection. Returns how many charges were folded."""
+    if sweep:
+        await sweep_once(session_maker)
+    return await fold_queued_once(session_maker)
 
 
-async def worker(*, every_s: float = _SWEEP_EVERY_S) -> None:
-    """Sweep forever on the background pool, one connection at a time. A bad pass never kills
-    the loop."""
+async def worker(*, fold_every_s: float = _FOLD_EVERY_S,
+                 sweep_every_s: float = _SWEEP_EVERY_S) -> None:
+    """Fold and sweep forever on the background pool. A pass that folded something is followed
+    by the next at once; an idle one by a pause. A bad pass never kills the loop."""
+    next_sweep = 0.0
     while True:
+        folded = 0
+        sweep = time.monotonic() >= next_sweep
+        if sweep:
+            next_sweep = time.monotonic() + sweep_every_s
         try:
-            await run_once(background_session_maker)
+            folded = await run_once(background_session_maker, sweep=sweep)
         except asyncio.CancelledError:
             raise
         except Exception:
-            log.error("allowance sweep pass failed", exc_info=True)
-        await asyncio.sleep(every_s)
+            log.error("allowance background pass failed", exc_info=True)
+        if not folded:
+            await asyncio.sleep(fold_every_s)

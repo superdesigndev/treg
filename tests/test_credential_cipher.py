@@ -249,15 +249,14 @@ async def test_reencryption_leaves_a_credential_replaced_while_it_ran(kms, monke
 
 
 async def test_no_database_connection_waits_on_kms_when_credentials_are_written(
-    clients: AsyncClient, kms, monkeypatch,
+    clients: AsyncClient, kms, monkeypatch, connections_held_here,
 ):
-    from treg.infra import db as infra_db
 
     held: list[int] = []
     seal = credential_cipher.seal
 
     async def watching_seal(plaintext, *, org_id):
-        held.append(infra_db._engine.pool.checkedout())
+        held.append(connections_held_here())
         return await seal(plaintext, org_id=org_id)
 
     monkeypatch.setattr(credential_cipher, "seal", watching_seal)
@@ -277,9 +276,8 @@ async def test_no_database_connection_waits_on_kms_when_credentials_are_written(
 
 
 async def test_no_database_connection_waits_on_kms_when_a_run_grant_refreshes(
-    clients: AsyncClient, kms, monkeypatch,
+    clients: AsyncClient, kms, monkeypatch, connections_held_here,
 ):
-    from treg.infra import db as infra_db
 
     stale = json.dumps({"access_token": "old", "refresh_token": "r", "client_id": "cid",
                         "client_secret": "csec", "token_uri": "http://upstream/token", "expires_at": 0})
@@ -296,7 +294,7 @@ async def test_no_database_connection_waits_on_kms_when_a_run_grant_refreshes(
     unseal = credential_cipher.unseal
 
     async def watching_unseal(value, *, org_id):
-        held.append(infra_db._engine.pool.checkedout())
+        held.append(connections_held_here())
         return await unseal(value, org_id=org_id)
 
     monkeypatch.setattr(credential_cipher, "unseal", watching_unseal)

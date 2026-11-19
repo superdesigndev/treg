@@ -75,6 +75,12 @@ def test_no_dead_internal_link(field: str):
 USECASE = "/use-cases/find-professional-emails"
 
 
+async def test_use_case_note_heading_keeps_decimal_prices_together(clients: AsyncClient):
+    response = await clients.get("/use-cases/how-ai-answers-mention-your-brand")
+    assert response.status_code == 200
+    assert "costs about $0.003 to $0.004.</h4><p>The DataForSEO example" in response.text
+
+
 async def test_non_canonical_casing_redirects_to_the_one_spelling(clients: AsyncClient):
     """Lookups are case-insensitive, but the request's own bytes must never be rendered into the
     canonical / alternate / breadcrumb (CodeQL py/reflective-xss) — and `/agents/ChatGPT` serving a

@@ -150,7 +150,7 @@ endpoints:
         filter_updated: {type: string, required: false}
         request_version: {type: string, required: false}
       body:
-        requests: {type: array, required: true, note: "list of {person_id, metadata?} objects, up to 100"}
+        requests: {type: array, items: {type: object}, required: true, note: "list of {person_id, metadata?} objects, up to 100"}
       bodyType: json
     untestable: "requires real PDL person_ids from a prior enrich/search result; no public well-known ids are documented"
     cost: {type: per_success, value: 1, currency: credit, per: 1, unit: call, source: docs, source_url: 'https://www.peopledatalabs.com/pricing', checked: '2026-07-28', confidence: documented, note: 1 credit per record returned}
