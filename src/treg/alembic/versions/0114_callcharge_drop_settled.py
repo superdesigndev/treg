@@ -10,6 +10,10 @@ Rewrites now take such a row out themselves and the fold applies every row it cl
 left from before must not reach it: it would be charged a second time. This removes them, the
 same rows the fold used to drop. Nothing to undo.
 
+Run it only once no process whose charge writer leaves such a row queued is still serving
+calls: one that queues another after this has run is not cleaned up after, since a revision
+runs once.
+
 Rollback floor: code older than this revision runs unchanged on what is left, since it dropped
 these same rows itself, so a code rollback needs no downgrade. What a rollback must not do is
 run a build whose charge writer does not take back a re-queued settled call beside a build whose

@@ -384,10 +384,13 @@ not fold, so a deployment that turns the allowance on must run at least one proc
 those roles. A queued charge is applied as it stands: a fold does not ask the ledger whether
 its call was settled before. What makes that true is the charge writer, which takes back a
 charge it re-queued for a settled call, so an upgrade to this behaviour from a build whose
-writer did not do that has two conditions: `python -m treg upgrade` has run (it removes any
-such row left queued), and no process of the earlier build is still serving calls, since one
-could queue another. Stop the earlier processes before the new ones fold, or upgrade through
-the build that added the writer's cleanup first. The
+writer did not do that is done in this order: stop every process of the earlier build and let
+its transactions in flight end; run `python -m treg upgrade` (revision `0114` removes any such
+row left queued); start the new build. The order matters: an earlier process still serving
+calls after `0114` has run can queue another such row, the revision does not run a second
+time, and the new build's fold would charge that call twice. Where every process already runs
+a build with the writer's cleanup, no such row can be queued any more and the upgrade needs no
+stop. The
 allowance trusts the store to keep the writes it acknowledged. A store that can go back to an
 earlier state (a restore from an older snapshot, a replica promoted before it caught up) can
 admit the same money twice, with no bound on amount or time while the allowance stays on, and

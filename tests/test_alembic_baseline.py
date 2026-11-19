@@ -124,7 +124,8 @@ async def test_managed_key_migration_backfills_human_and_agent_hashes():
 
 async def test_upgrade_removes_queued_charges_whose_call_is_already_settled():
     """A fold no longer drops a queued charge whose call has a settle entry, so a row left from
-    before would be charged again. The upgrade removes it and leaves every other row queued."""
+    before would be charged again. The upgrade removes it and leaves every other row queued:
+    one with no ledger entry, one with only a reserve, one settled for another team."""
     await audit.drain()
     await _drop_everything()
     try:
@@ -136,7 +137,7 @@ async def test_upgrade_removes_queued_charges_whose_call_is_already_settled():
             session.add_all([
                 CallCharge(call_id=call_id, org_id=team, endpoint_id="e", amount_micro=400)
                 for team, call_id in ((org_id, "settled"), (org_id, "waiting"),
-                                      (other, "elsewhere"))])
+                                      (org_id, "unseen"), (other, "elsewhere"))])
             session.add_all([
                 LedgerEntry(id="entry-settled", org_id=org_id, kind="settle", amount_micro=-400,
                             call_id="settled"),
@@ -151,7 +152,7 @@ async def test_upgrade_removes_queued_charges_whose_call_is_already_settled():
         async with db.session_maker() as session:
             queued = (await session.execute(
                 select(CallCharge.call_id).order_by(CallCharge.call_id))).scalars().all()
-        assert queued == ["elsewhere", "waiting"]
+        assert queued == ["elsewhere", "unseen", "waiting"]
     finally:
         await _drop_everything()
         await db.reset_db()
