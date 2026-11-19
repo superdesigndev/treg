@@ -45,6 +45,7 @@ _FENCE_TTL_MS = 24 * 3600 * 1000
 _FOLD_BATCH = 100
 _FOLD_BATCHES_PER_PASS = 10
 _TEAMS_PER_PAGE = 50
+_ADMISSION_WAIT_S = 0.25
 _LEASE_MS = 5000
 
 
@@ -125,8 +126,9 @@ async def fold_queued_once(session_maker) -> int:
 
 
 async def _fold_team(session_maker, org_id: int) -> int:
-    """A few batches of one team's queue. 0 when another process has the team, or on a fault:
-    one team failing does not stop the pass."""
+    """A few batches of one team's queue. Stops when another process has the team or the team's
+    money sessions are busy, and the next pass comes back: the teams behind it are not kept
+    waiting. One team failing does not stop the pass."""
     total = 0
     try:
         for _ in range(_FOLD_BATCHES_PER_PASS):
@@ -136,7 +138,8 @@ async def _fold_team(session_maker, org_id: int) -> int:
                 async with (
                     money_lock(org_id),
                     money_admission.admit(
-                        money_admission.require_balance_orgs([org_id]), operation="close"),
+                        money_admission.require_balance_orgs([org_id]), operation="close",
+                        max_wait_s=_ADMISSION_WAIT_S, refuse_on_timeout=True),
                     money_session(session_maker()) as db,
                 ):
                     folded = await allowance.fold_charges_in_transaction(
@@ -145,6 +148,8 @@ async def _fold_team(session_maker, org_id: int) -> int:
             total += folded.calls
             if folded.claimed < _FOLD_BATCH:
                 break
+    except money_admission.AdmissionTimeout:
+        pass
     except Exception:
         log.error("folding the queued charges of org %s failed", org_id, exc_info=True)
     return total

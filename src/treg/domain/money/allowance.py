@@ -29,6 +29,7 @@ from . import (
     _entry,
     _lock_blocks,
     _now,
+    _queued_unbacked,
     _spent_today_values,
     with_margin,
 )
@@ -415,25 +416,33 @@ async def refill_allowance_in_transaction(
         over_cap = exposed > daily_cap_micro
         if exposed + add > daily_cap_micro:
             add = 0
-    balance = (await db.execute(select(Org.balance_micro).where(Org.id == org_id))).scalar() or 0
-    overdrawn = balance < 0
-    if overdrawn:
-        add = 0
+    debited, counted = False, {}
+    if hold is not None and add:
+        counted = _spent_today_values(add) if hold.created_at >= _day_start() else {}
+        with money_stage(db, "reserve_balance"):
+            debited = (await db.execute(
+                update(Org).where(Org.id == org_id, Org.balance_micro >= add)
+                .values(balance_micro=Org.balance_micro - add, **counted))).rowcount == 1
+    # What the balance has free of the queue's claims, read after the debit as `reserve` does:
+    # the debit holds the team's row, so the two belong to one moment. A charge queued for more
+    # than its call set aside is owed by the balance from the moment it is queued, folded or not.
+    with money_stage(db, "reserve_queue"):
+        free = int((await db.execute(
+            select(Org.balance_micro - _queued_unbacked(org_id)).where(Org.id == org_id)
+        )).scalar() or 0)
+    if debited and free < 0:
+        await _add_balance(db, org_id, add, spent_delta_micro=-add if counted else 0)
+        free, debited = free + add, False
+    overdrawn = free < 0
     if hold is None:
         return Allowance(None, 0, 0, folded, over_cap, overdrawn)
     added = 0
-    if add:
-        counted = _spent_today_values(add) if hold.created_at >= _day_start() else {}
-        with money_stage(db, "reserve_balance"):
-            result = await db.execute(
-                update(Org).where(Org.id == org_id, Org.balance_micro >= add)
-                .values(balance_micro=Org.balance_micro - add, **counted))
-        if result.rowcount == 1:
-            added = add
-            hold.amount_micro += add
-            await _entry(db, org_id=org_id, kind="reserve", amount_micro=-add, call_id=hold.id,
-                         meta={"allowance": True, "charged_micro": add,
-                               "hold_micro": hold.amount_micro})
+    if debited:
+        added = add
+        hold.amount_micro += add
+        await _entry(db, org_id=org_id, kind="reserve", amount_micro=-add, call_id=hold.id,
+                     meta={"allowance": True, "charged_micro": add,
+                           "hold_micro": hold.amount_micro})
     if opened and not added:
         await db.delete(hold)
         return Allowance(None, 0, 0, folded, over_cap, overdrawn)

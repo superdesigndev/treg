@@ -876,6 +876,18 @@ async def test_caller_cap_is_a_hard_bound_on_the_extended_wait(gate, max_wait_s,
     assert row["mode"] == "fallback" and row["fallback_wait_timeout"] == 1
 
 
+async def test_a_caller_that_can_come_back_is_refused_at_its_cap_instead_of_falling_back(gate):
+    settings, store = gate
+    store.values["money-admission:org:7"] = ("another-owner", time.monotonic() + 10)
+    with pytest.raises(admission.AdmissionTimeout, match="wait_timeout"):
+        async with admission.admit([7], operation="close", max_wait_s=0.05,
+                                   refuse_on_timeout=True):
+            pytest.fail("a refused wait must not enter its money session")
+    assert store.values["money-admission:org:7"][0] == "another-owner"
+    [row] = completed()
+    assert row["rejected"] == 1 and row["failed"] == row["fallback_wait_timeout"] == 0
+
+
 async def test_settlement_wait_leaves_half_the_hold_grace_for_the_session(gate):
     settings, store = gate
     settings.money_admission_wait_s = 0.02

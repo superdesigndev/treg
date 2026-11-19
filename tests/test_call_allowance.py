@@ -1034,10 +1034,7 @@ async def test_a_frozen_counter_is_reopened_only_after_the_whole_queue_is_applie
             for index in range(5)] + [
             allowance.Charge("zz-overrun", org_id, "e", GRANT * 2, reserved_micro=10)])
         await db.commit()
-    assert await runtime.take(org_id, 100)  # not frozen yet: this refill applies nothing
-    assert await _queued(org_id) == 6
     await store.allowance_freeze(org_id)
-    monkeypatch.setattr(runtime, "_refused_until", {})
     assert await runtime.take(org_id, 100) is None
     assert await _queued(org_id) == 0, "every queued charge was applied before deciding"
     balance, _ = await _state(org_id)
@@ -1456,6 +1453,45 @@ async def test_a_pass_reaches_every_team_however_many_have_charges_queued(
         assert await _queued(team) == 0 and (await _state(team))[0] == GRANT - 400
 
 
+async def test_a_team_whose_money_sessions_are_busy_does_not_hold_up_the_teams_behind_it(
+        org_id, store, monkeypatch):
+    """The pass does not wait its turn behind a team's other money sessions: it leaves that
+    team's queue for the next pass and goes on to the next team."""
+    monkeypatch.setattr(get_settings(), "money_admission_enabled", True)
+    monkeypatch.setattr(allowance_sweep, "_ADMISSION_WAIT_S", 0.05)
+    async with session_maker() as db:
+        db.add(Org(id=org_id + 1, name="later", slug=uuid4().hex))
+        await db.flush()
+        await ledger.grant(db, org_id + 1, amount_micro=GRANT)
+        await allowance.record_charges(db, [
+            allowance.Charge(f"queued-{team}", team, "e.metered", 400, reserved_micro=400)
+            for team in (org_id, org_id + 1)])
+        await db.commit()
+    store.leases[f"money-admission:org:{org_id}"] = "an exact settle"
+    assert await allowance_sweep.fold_queued_once(session_maker) == 1
+    assert (await _queued(org_id), await _queued(org_id + 1)) == (1, 0)
+    del store.leases[f"money-admission:org:{org_id}"]
+    assert await allowance_sweep.fold_queued_once(session_maker) == 1
+    assert await _queued(org_id) == 0
+
+
+async def test_a_refill_does_not_hand_out_what_a_queued_overrun_already_owes(
+        org_id, store):
+    """A call cost more than it set aside. Its charge is committed and the counter's freeze has
+    not arrived. The balance still shows the money the overrun will take, and a refill that
+    went by the balance alone would let the next call spend it."""
+    assert await runtime.take(org_id, 100)
+    async with session_maker() as db:
+        await allowance.record_charges(db, [
+            allowance.Charge("overrun", org_id, "e", GRANT * 2, reserved_micro=100)])
+        await db.commit()
+    store.expire()
+    assert await runtime.take(org_id, 100) is None
+    assert store.counters[org_id]["avail"] == 0
+    assert await _state(org_id) == (0, 0) and await _queued(org_id) == 0, (
+        "nothing was added, and what the counter held went to the overrun")
+
+
 async def test_the_background_loop_folds_a_queue_whether_or_not_its_team_is_listed(
         org_id, store, monkeypatch):
     epoch = await runtime.take(org_id, 600)
@@ -1760,9 +1796,15 @@ async def test_steady_calls_stay_on_the_allowance_while_folds_keep_the_lease(
             index += 1
             await asyncio.sleep(0.005)
 
-    await asyncio.gather(*(caller(name) for name in range(12)))
+    loop = asyncio.create_task(allowance_sweep.worker(fold_every_s=0.05))
+    try:
+        await asyncio.gather(*(caller(name) for name in range(12)))
+    finally:
+        loop.cancel()
+        await asyncio.gather(loop, return_exceptions=True)
     await asyncio.gather(*runtime._refreshing.values())
     assert left == [] and served[0] > 100, (len(left), served[0])
+    assert await _queued(org_id) < served[0] / 2, "the background loop kept applying the queue"
     assert in_line == [1], "only the first call, which found no counter, refilled in line"
     assert runtime.refills(org_id) >= 4, "each window asked for its own refill"
     balance, hold = await _state(org_id)

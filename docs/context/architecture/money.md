@@ -321,7 +321,12 @@ money moved, the purchased-credit gate.
   `refill_allowance_in_transaction` brings the counter up to `money_allowance_chunk_micro`;
   after the commit, `store.allowance_add`. A refill does not fold: calls wait on it, and the
   queue is the background loop's. Only a frozen counter's refill folds, and then the whole
-  queue, so the balance it reads is the true one. A team with a daily cap
+  queue, so the balance it reads is the true one. What a refill may add is judged as an exact
+  reserve judges it, against the balance less what the queue will take from it
+  (`_queued_unbacked`), read after the debit: a charge queued for more than its call set aside
+  is owed from the moment it is queued, and its freeze can reach the counter after the next
+  refill. A refill that finds the balance short of that adds nothing and the counter is drained.
+  A team with a daily cap
   gets no refill that could take the day past it. The number a cap is checked against is
   `allowance.committed_today`, one statement over the rows themselves: today's counter, plus all
   of an allowance hold opened on an earlier day (it is not in today's counter, only what a fold
@@ -425,15 +430,22 @@ money moved, the purchased-credit gate.
   pause. Request processes only queue charges: neither a refill nor the charge writer folds.
   So the connections folding uses are one per process running the loop, whatever the traffic
   and however many teams are busy, and none of them comes from the pool requests use. A team
-  another process is working on (its lease is taken) is skipped, not waited for, and a pass
+  another process is working on (its lease is taken) is skipped, not waited for; so is a team
+  whose other money sessions hold the admission lease (the fold asks `admit` to refuse after a
+  short wait instead of falling back), and the next pass comes back to it. A pass
   leaves a team after a few batches so one long queue does not keep the others waiting. Calls
   keep taking from the counter meanwhile, since a fold moves only money their takes already
   removed from it: until its charge is folded, a call's money stays in the hold. A call's
   `settle` entry, and every report read from the ledger (today's spend among them), therefore
   trails the call by about a pass, longer while a team queues faster than a batch is applied.
-  A daily cap does not trail: `committed_today` counts the queue. The one fold outside the
-  loop is asked for by a call that finishes on a frozen counter and must answer with what the
-  ledger took for it (`_settled`).
+  A daily cap does not trail: `committed_today` counts the queue. Three folds run outside the
+  loop, on the request pool, each because the next step needs the balance with every charge
+  applied: a call that finishes on a frozen counter and must answer with what the ledger took
+  for it (`_settled`); a frozen counter's refill; and a drain, which folds the team's whole
+  queue before it returns the counter's money to the balance (a refill found no room, by
+  balance or daily cap, and the team goes back to the exact path). A long queue makes that one
+  request slow; the order, fold then return, is what keeps the returned money from being spent
+  twice.
 
 - **One money session per team.** A refill, a drain, a fold and the sweep's close each read the
   hold and then write it. All of them hold one lease in the store for the team
@@ -598,7 +610,9 @@ admit wraps the session; nothing inside calls `admit` again. It changes no commi
   answers this same 429 rather than asking the next provider (catalog.md § Routing). Every other
   operation, on a missing identity, unavailable Redis, store error, lease loss or expired budget,
   releases partial gates and runs the original database path; it never raises, because settlement
-  and cleanup must run.
+  and cleanup must run. One caller opts out: work that can simply come back later (the allowance
+  fold loop) passes `refuse_on_timeout` and gets `AdmissionTimeout` at its own `max_wait_s`
+  before the database, counted as `rejected`.
 - **Wait bounds.** Non-reserve operations wait `max(money_admission_wait_s, 2 * lease)` (a dead
   holder keeps its lease for one TTL), but never more than half of `hold_grace_s`, and never past
   the reaper age of the oldest affected hold: the call records a monotonic `reserved_at` before
