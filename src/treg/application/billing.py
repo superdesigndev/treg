@@ -377,7 +377,8 @@ async def get_or_create_customer(db: AsyncSession, org: Org, *, email: str = "")
 
 async def _set_default_pm(db: AsyncSession, org_id: int, payment_method: str | None, *,
                           paid: bool = False, chosen_at: int | None = None,
-                          tell_stripe: bool = True, portal: bool = False) -> bool:
+                          tell_stripe: bool = True, portal: bool = False,
+                          replacing: tuple[str | None] | None = None) -> bool:
     """Record the payer's choice of card to charge off-session. An opaque `pm_…` reference — no
     card data ever reaches our database. Returns True when the stored card changed.
 
@@ -386,7 +387,8 @@ async def _set_default_pm(db: AsyncSession, org_id: int, payment_method: str | N
     `customer.updated`), so an older choice that arrives late never replaces a newer one; on a tie
     the portal wins. The comparison and the write are one UPDATE, so two deliveries racing cannot
     both win. `tell_stripe`: the choice also becomes the Stripe customer's default, so the portal
-    shows the card treg charges. The transaction ends before that Stripe call."""
+    shows the card treg charges. The transaction ends before that Stripe call. `replacing`: write
+    only while the stored card is still that one, in the same UPDATE."""
     if not payment_method:
         return False
     org = await db.get(Org, org_id)
@@ -398,6 +400,10 @@ async def _set_default_pm(db: AsyncSession, org_id: int, payment_method: str | N
         newer = (or_(latest.is_(None), latest <= chosen_at) if portal else
                  or_(latest.is_(None), latest < chosen_at,
                      and_(latest == chosen_at, Org.stripe_default_pm == payment_method)))
+        if replacing is not None:
+            expected = replacing[0]
+            newer = and_(newer, Org.stripe_default_pm.is_(None) if expected is None
+                         else Org.stripe_default_pm == expected)
         won = await db.execute(
             update(Org).where(Org.id == org_id, newer)
             .values(stripe_default_pm=payment_method, stripe_default_pm_at=chosen_at)
@@ -2035,6 +2041,57 @@ async def revoke_refunded_payment(pi_id: str) -> dict:
     async with _db.session_maker() as db:
         return await revoke_refunded(db, pi_id, cents_to_micro(charge.get("amount_refunded") or 0),
                                      source="operator")
+
+
+async def sync_card_from_stripe(org_id: int, *, apply: bool = False) -> dict:
+    """The operator's road for a team whose newer card choice treg never heard of: a portal change
+    made before treg handled `customer.updated`. Adopts the Stripe customer's default card only
+    when it is still attached, is a different physical card from the stored one, and was created
+    after it. Reads Stripe with no database connection open; `apply=False` reports and writes
+    nothing. The write goes through `_set_default_pm` as a portal choice made now, so it is atomic
+    and re-arms a policy that was waiting for a card."""
+    if not configured():
+        raise BillingNotConfigured("Stripe is not configured")
+    async with _db.session_maker() as db:
+        org = await db.get(Org, org_id)
+        if org is None:
+            return {"org_id": org_id, "action": "none", "reason": "no such team"}
+        customer_id, stored = org.stripe_customer_id, org.stripe_default_pm
+    result: dict = {"org_id": org_id, "stored_card": stored}
+    if not customer_id:
+        return {**result, "action": "none", "reason": "no Stripe customer"}
+    customer = await _sdk(stripe_adapter.CUSTOMER_RETRIEVE, id=customer_id)
+    default = (None if customer.get("deleted") else
+               _stripe_id((customer.get("invoice_settings") or {}).get("default_payment_method")))
+    result["stripe_default"] = default
+    if not default:
+        return {**result, "action": "none", "reason": "no Stripe default card"}
+    if default == stored:
+        return {**result, "action": "none", "reason": "already the stored card"}
+    chosen = await _sdk(stripe_adapter.PAYMENT_METHOD_RETRIEVE, id=default)
+    if _stripe_id(chosen.get("customer")) != customer_id:
+        return {**result, "action": "none", "reason": "Stripe default is not attached"}
+    if stored:
+        try:
+            current = await _sdk(stripe_adapter.PAYMENT_METHOD_RETRIEVE, id=stored)
+        except stripe_adapter.InvalidRequestError as e:
+            if getattr(e, "code", None) != "resource_missing":
+                raise
+            return {**result, "action": "none", "reason": "stored card is gone; check by hand"}
+        fingerprint = (current.get("card") or {}).get("fingerprint")
+        if fingerprint and fingerprint == (chosen.get("card") or {}).get("fingerprint"):
+            return {**result, "action": "none", "reason": "same physical card"}
+        if int(chosen.get("created") or 0) <= int(current.get("created") or 0):
+            return {**result, "action": "none", "reason": "stored card is the newer choice"}
+        result["stored_attached"] = _stripe_id(current.get("customer")) == customer_id
+    if not apply:
+        return {**result, "action": "adopt", "applied": False}
+    async with _db.session_maker() as db:
+        changed = await _set_default_pm(db, org_id, default, chosen_at=int(time.time()),
+                                        tell_stripe=False, portal=True, replacing=(stored,))
+    if not changed:
+        return {**result, "action": "none", "reason": "stored card changed since the check"}
+    return {**result, "action": "adopt", "applied": True, "changed": True}
 
 
 async def _on_payment_failed(db: AsyncSession, pi: dict) -> dict:
