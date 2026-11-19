@@ -9,6 +9,11 @@ call already had a `settle` entry, which a rewrite of an unconfirmed write could
 Rewrites now take such a row out themselves and the fold applies every row it claims, so a row
 left from before must not reach it: it would be charged a second time. This removes them, the
 same rows the fold used to drop. Nothing to undo.
+
+Rollback floor: code older than this revision runs unchanged on what is left, since it dropped
+these same rows itself, so a code rollback needs no downgrade. What a rollback must not do is
+run a build whose charge writer does not take back a re-queued settled call beside a build whose
+fold applies every row it claims.
 """
 from collections.abc import Sequence
 
@@ -19,6 +24,7 @@ revision: str = "0114"
 down_revision: str | Sequence[str] | None = "0113"
 branch_labels: str | Sequence[str] | None = None
 depends_on: str | Sequence[str] | None = None
+contract = True
 
 
 def upgrade() -> None:

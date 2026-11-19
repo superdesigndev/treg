@@ -86,7 +86,10 @@ tasks. If `TREG_SECRET_KEY` is empty on a non-SQLite database, `verify_db()` rai
   state. `0078` drops `onboardingprofile`; code older than it touches that table only while a
   `TREG_ONBOARDING_V2*` setting is on, so keep those off on any rollback past it. `0106` rebuilds
   `agentpayer` with a per-network key; code older than it writes that table only while
-  `TREG_AGENT_PAYMENTS_ENABLED` is on, so keep it off on any rollback past it.
+  `TREG_AGENT_PAYMENTS_ENABLED` is on, so keep it off on any rollback past it. `0114` removes
+  queued call charges whose call is already settled; older code runs unchanged on what is left,
+  but a rollback must not put a build whose charge writer leaves such a row queued beside a
+  build whose fold applies every row it claims.
 - **Revision-only schema.** An autogenerate drift guard requires Alembic head and
   `SQLModel.metadata` to match exactly. `reset_db()` uses `create_all` only to build a missing test
   schema and stamps it at head.
