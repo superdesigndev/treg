@@ -17,6 +17,7 @@ BASE="{BASE}"
 # An affiliate partner's code is left for the first team made after the
 # next `treg login`:
 #   curl -fsSL {BASE}/install.sh | sh -s -- --ref <code>                     (or: TREG_REF=<code> … | sh)
+#     leaves an affiliate partner's code in ~/.treg/ref for the binary CLI's next team
 TOKEN="${TREG_TOKEN:-}"
 SKILLS=""
 REF="${TREG_REF:-}"
@@ -120,6 +121,7 @@ install_binary() {  # install_binary [note]: the binary CLI's installer on its s
   set -- --channel stable
   if [ -n "$TOKEN" ]; then set -- "$@" --token "$TOKEN"; fi
   if [ -n "$SKILLS" ]; then set -- "$@" --skills "$SKILLS"; fi
+  if [ -n "$REF" ]; then set -- "$@" --ref "$REF"; fi
   sh -c "$script" install-bin "$@"
 }
 fail() {  # fail <reason>

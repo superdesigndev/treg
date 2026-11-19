@@ -78,7 +78,7 @@ only what they created; admin/owner manage anything in the org; admin+ can invit
 
 | Command | Options | What it does |
 |---|---|---|
-| `treg org create` | `"NAME"`, `--ref CODE` (optional, binary CLI only) | create a new org; you become its owner (new token, auto-active). `--ref` (default: `TREG_REF`, or the code `treg login --ref` kept) credits an affiliate partner for the new team. A friend's referral code works only as a `?ref=` link, not here |
+| `treg org create` | `"NAME"`, `--ref CODE` (optional, binary CLI only) | create a new org; you become its owner (new token, auto-active). `--ref` (default: the code `treg login --ref` kept, then `TREG_REF`) credits an affiliate partner for the new team. A friend's referral code works only as a `?ref=` link, not here |
 | `treg org ls` | — | list your orgs (marks the active one) |
 | `treg org use` | `SLUG` | switch the active org |
 | `treg org rename` | `--name "NAME"`, `--slug SLUG` | (admin+) rename the active org and/or change its slug; existing keys keep working |
