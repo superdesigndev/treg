@@ -3,6 +3,7 @@ tool (application/compare.py, docs feedback.md "Pairwise comparisons"). Syntheti
 stubbed relay: no production data, no network."""
 from __future__ import annotations
 
+from urllib.parse import urlsplit
 import json
 import uuid
 from datetime import timedelta
@@ -184,7 +185,7 @@ async def test_a_recent_routed_call_gets_a_ready_pair(clients, search_on, monkey
     assert (result["status"], result["called"], result["ready"]) == ("ran", 1, 1)
     # B is asked once, directly on its own endpoint, with the request its own adapter builds.
     call, = sent
-    assert call["url"].startswith("https://api.exa.ai") and call["tool"].name == "exa.web.search"
+    assert urlsplit(call["url"]).hostname == "api.exa.ai" and call["tool"].name == "exa.web.search"
     assert call["body"]["query"] == "who makes the best espresso"
     assert all(b.get("platform_setting") for b in call["tool"].bindings)
     row, = await _rows()
