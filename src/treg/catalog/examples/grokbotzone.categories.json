@@ -1,0 +1,184 @@
+[
+  {
+    "slug": "business-operations",
+    "label": "Business & Operations",
+    "count": 361,
+    "purpose": "Run the back office: invoices, reports, vendors, process and team admin.",
+    "updated": "2026-10-28"
+  },
+  {
+    "slug": "calendar-meetings-scheduling",
+    "label": "Calendar, Meetings & Scheduling",
+    "count": 135,
+    "purpose": "Book, move and prepare for meetings without the back-and-forth.",
+    "updated": "2026-10-28"
+  },
+  {
+    "slug": "coding-software",
+    "label": "Coding & Software",
+    "count": 588,
+    "purpose": "Write, review, debug and ship code with a bot at your side.",
+    "updated": "2026-10-28"
+  },
+  {
+    "slug": "email-inbox",
+    "label": "Email & Inbox",
+    "count": 309,
+    "purpose": "Triage, draft and tame your inbox.",
+    "updated": "2026-10-28"
+  },
+  {
+    "slug": "everything-else",
+    "label": "Everything Else",
+    "count": 69,
+    "purpose": "Bots that do not fit a box, from niche tools to one-off ideas.",
+    "updated": "2026-10-28"
+  },
+  {
+    "slug": "family-kids-learning",
+    "label": "Family, Kids & Learning",
+    "count": 384,
+    "purpose": "Homework help, learning plans, and family organising.",
+    "updated": "2026-10-28"
+  },
+  {
+    "slug": "food-recipes-dining",
+    "label": "Food, Recipes & Dining",
+    "count": 184,
+    "purpose": "Plan meals, cook from what you have, and pick where to eat.",
+    "updated": "2026-10-28"
+  },
+  {
+    "slug": "fun-games-hobbies",
+    "label": "Fun, Games & Hobbies",
+    "count": 166,
+    "purpose": "Games, hobbies and play.",
+    "updated": "2026-10-28"
+  },
+  {
+    "slug": "grok-bot-helpers-bots-that-build-or-manage-bots",
+    "label": "Grok Bot Helpers (Bots That Build or Manage Bots)",
+    "count": 577,
+    "purpose": "Bots that build, tune or manage other Grok bots.",
+    "updated": "2026-10-28"
+  },
+  {
+    "slug": "health-fitness-wellness",
+    "label": "Health, Fitness & Wellness",
+    "count": 207,
+    "purpose": "Training plans, nutrition, sleep and everyday wellness questions.",
+    "updated": "2026-10-28"
+  },
+  {
+    "slug": "home-garden-pets",
+    "label": "Home, Garden & Pets",
+    "count": 290,
+    "purpose": "Home projects, gardens and pet care.",
+    "updated": "2026-10-28"
+  },
+  {
+    "slug": "jobs-careers",
+    "label": "Jobs & Careers",
+    "count": 260,
+    "purpose": "Resumes, job search, interviews and career moves.",
+    "updated": "2026-10-28"
+  },
+  {
+    "slug": "legal-tax-paperwork",
+    "label": "Legal, Tax & Paperwork",
+    "count": 176,
+    "purpose": "Understand forms, filings and everyday legal and tax paperwork.",
+    "updated": "2026-10-28"
+  },
+  {
+    "slug": "marketing-seo-ads",
+    "label": "Marketing, SEO & Ads",
+    "count": 263,
+    "purpose": "Campaigns, search visibility, ad copy and content plans.",
+    "updated": "2026-10-28"
+  },
+  {
+    "slug": "money-personal-finance",
+    "label": "Money & Personal Finance",
+    "count": 351,
+    "purpose": "Budgets, bills, savings and everyday money decisions.",
+    "updated": "2026-10-28"
+  },
+  {
+    "slug": "privacy-security-scam-protection",
+    "label": "Privacy, Security & Scam Protection",
+    "count": 265,
+    "purpose": "Stop spam calls, spot scams, and lock down your data.",
+    "updated": "2026-10-28"
+  },
+  {
+    "slug": "productivity-personal-assistant",
+    "label": "Productivity & Personal Assistant",
+    "count": 538,
+    "purpose": "Tasks, notes, reminders and a personal assistant for the day.",
+    "updated": "2026-10-28"
+  },
+  {
+    "slug": "real-estate",
+    "label": "Real Estate",
+    "count": 83,
+    "purpose": "Search, compare and manage property, as a buyer, seller or landlord.",
+    "updated": "2026-10-28"
+  },
+  {
+    "slug": "research-news-briefings",
+    "label": "Research, News & Briefings",
+    "count": 726,
+    "purpose": "Research a topic, follow the news, and get a short briefing.",
+    "updated": "2026-10-28"
+  },
+  {
+    "slug": "sales-lead-generation",
+    "label": "Sales & Lead Generation",
+    "count": 264,
+    "purpose": "Find leads, write outreach and keep a pipeline moving.",
+    "updated": "2026-10-28"
+  },
+  {
+    "slug": "shopping-deals",
+    "label": "Shopping & Deals",
+    "count": 273,
+    "purpose": "Compare prices, find deals, and decide what to buy.",
+    "updated": "2026-10-28"
+  },
+  {
+    "slug": "trading-crypto-investing",
+    "label": "Trading, Crypto & Investing",
+    "count": 391,
+    "purpose": "Markets, crypto and investing research and tracking.",
+    "updated": "2026-10-28"
+  },
+  {
+    "slug": "travel",
+    "label": "Travel",
+    "count": 137,
+    "purpose": "Plan trips, find routes, and handle the details of getting there.",
+    "updated": "2026-10-28"
+  },
+  {
+    "slug": "video-images-audio-design",
+    "label": "Video, Images, Audio & Design",
+    "count": 620,
+    "purpose": "Make and edit video, images, audio and design work.",
+    "updated": "2026-10-28"
+  },
+  {
+    "slug": "writing-publishing",
+    "label": "Writing & Publishing",
+    "count": 327,
+    "purpose": "Draft, edit and publish writing of every length.",
+    "updated": "2026-10-28"
+  },
+  {
+    "slug": "x-twitter-social-media",
+    "label": "X (Twitter) & Social Media",
+    "count": 308,
+    "purpose": "Post, grow and manage your presence on X and other social platforms.",
+    "updated": "2026-10-28"
+  }
+]

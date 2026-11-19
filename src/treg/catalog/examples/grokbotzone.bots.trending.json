@@ -1,0 +1,36 @@
+{
+  "asOf": "2026-11-19",
+  "basis": "first-party opens and views on grokbot.zone over the last 14 days, recomputed hourly",
+  "global": [
+    "grok-bot-helpers-bots-that-build-or-manage-bots-BrViAOWzDSiAjBLqUnBgA",
+    "grok-bot-helpers-bots-that-build-or-manage-bots-r8zaql5zh9x4pjtsgsar5",
+    "x-twitter-social-media-7V6XbVZRZ04eHej3tJIAQ",
+    "grok-bot-helpers-bots-that-build-or-manage-bots-jtNRaumQu9DvvadLlHeiA",
+    "grok-bot-helpers-bots-that-build-or-manage-bots-dEFFB5_KX5U06lNJWVZCi"
+  ],
+  "perCategory": {
+    "grok-bot-helpers-bots-that-build-or-manage-bots": [
+      "grok-bot-helpers-bots-that-build-or-manage-bots-BrViAOWzDSiAjBLqUnBgA",
+      "grok-bot-helpers-bots-that-build-or-manage-bots-r8zaql5zh9x4pjtsgsar5",
+      "grok-bot-helpers-bots-that-build-or-manage-bots-jtNRaumQu9DvvadLlHeiA"
+    ],
+    "x-twitter-social-media": [
+      "x-twitter-social-media-7V6XbVZRZ04eHej3tJIAQ",
+      "x-twitter-social-media-fJoloWNDTl7ee9VwxNJxH",
+      "x-twitter-social-media-5dNYHBFOnqSQ08bXttxOM"
+    ]
+  },
+  "method": {
+    "window_days": 14,
+    "half_life_days": 3,
+    "weights": {
+      "opens": 3,
+      "views": 1
+    },
+    "source": "first-party",
+    "telemetry_start": "2026-11-01",
+    "prior_until": null,
+    "prior_share": 0
+  },
+  "generatedAt": "2026-11-19T16:00:33.941Z"
+}

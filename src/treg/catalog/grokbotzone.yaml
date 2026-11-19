@@ -1,0 +1,152 @@
+provider: grokbotzone
+source:
+  docs: https://grokbot.zone/api/
+  openapi: null
+  curated: '2026-11-19'
+# GrokBot Zone's read API is a static, read-only JSON catalog of public Grok bot listings, served
+# from a Cloudflare Worker. There is no account, no key and no charge: every route answers 200 to
+# an anonymous GET, so the rows relay anonymously and are metered at zero.
+limits: "No key, no account and no published rate limit. The snapshot refreshes twice a week (Monday and Thursday) and each file carries its own asOf date."
+
+defaults:
+  provenance: {source: observed, source_url: 'https://grokbot.zone/api/', checked: '2026-11-19', confidence: verified}
+
+endpoints:
+  - id: grokbotzone.index
+    added: '2026-11-19'
+    platform_auth: anonymous
+    domain: other
+    capability: grok.bots.index
+    platform: grok
+    scope: any_account
+    method: GET
+    path: /api/v1/index.json
+    name: "The GrokBot Zone API index"
+    summary: "The API's own map: the asOf date, the total number of indexed bots, and the path of every read route."
+    note: "Bot listings are a snapshot; a bot's own page at x.ai holds the current details."
+    test_request: {queryParams: {}}
+    price: {value: '0', currency: USD, unit: call}
+    miss: {status: [404], means: "The route was moved; read /api/v1/index.json again for the current paths."}
+    verified: '2026-11-19'
+    example_response: examples/grokbotzone.index.json
+    docs_url: https://grokbot.zone/api/
+
+  - id: grokbotzone.categories
+    added: '2026-11-19'
+    platform_auth: anonymous
+    domain: other
+    capability: grok.bots.categories
+    platform: grok
+    scope: any_account
+    method: GET
+    path: /api/v1/categories.json
+    name: "Every Grok bot category"
+    summary: "All bot categories with their slug, label, bot count and what the category is for."
+    note: "Each slug is the path segment for that category's own listing file."
+    test_request: {queryParams: {}}
+    price: {value: '0', currency: USD, unit: call}
+    miss: {status: [404], means: "The route was moved; read /api/v1/index.json again for the current paths."}
+    verified: '2026-11-19'
+    example_response: examples/grokbotzone.categories.json
+    docs_url: https://grokbot.zone/api/
+
+  - id: grokbotzone.bots.category
+    added: '2026-11-19'
+    platform_auth: anonymous
+    domain: other
+    capability: grok.bots.list
+    platform: grok
+    scope: any_account
+    method: GET
+    path: /api/v1/categories/{slug}.json
+    name: "The bots in one category"
+    summary: "Every bot listed in one category, as compact records with name, author, description and the link to the bot."
+    input:
+      pathParams:
+        slug: {type: string, required: true, note: "the category slug from the categories list", example: coding-software}
+    note: "A category with no bots answers 404 with the site's HTML page, not a JSON body."
+    test_request: {pathParams: {slug: coding-software}}
+    price: {value: '0', currency: USD, unit: call}
+    miss: {status: [404], means: "No category has that slug, or the category holds no bots; the body is the site's HTML 404 page. Read the categories list for the exact slugs."}
+    verified: '2026-11-19'
+    example_response: examples/grokbotzone.bots.category.json
+    docs_url: https://grokbot.zone/api/
+
+  - id: grokbotzone.bots.trending
+    added: '2026-11-19'
+    platform_auth: anonymous
+    domain: other
+    capability: grok.bots.trending
+    platform: grok
+    scope: any_account
+    method: GET
+    path: /api/v1/trending.json
+    name: "The trending Grok bots"
+    summary: "The most-opened and most-viewed bots over the last 14 days, ranked globally and again for each category, with the window and weights that produced the order."
+    note: "The ranking is recomputed hourly from first-party opens and views; the weights are in the method block of the answer."
+    test_request: {queryParams: {}}
+    price: {value: '0', currency: USD, unit: call}
+    miss: {status: [404], means: "The route was moved; read /api/v1/index.json again for the current paths."}
+    verified: '2026-11-19'
+    example_response: examples/grokbotzone.bots.trending.json
+    docs_url: https://grokbot.zone/api/
+
+  - id: grokbotzone.bots.recent
+    added: '2026-11-19'
+    platform_auth: anonymous
+    domain: other
+    capability: grok.bots.recent
+    platform: grok
+    scope: any_account
+    method: GET
+    path: /api/v1/recent.json
+    name: "Recently refreshed bot categories"
+    summary: "The categories in refresh order, each with its label, bot count and the date its listings were last updated."
+    note: "Use this to see which categories changed most recently before reading their listings."
+    test_request: {queryParams: {}}
+    price: {value: '0', currency: USD, unit: call}
+    miss: {status: [404], means: "The route was moved; read /api/v1/index.json again for the current paths."}
+    verified: '2026-11-19'
+    example_response: examples/grokbotzone.bots.recent.json
+    docs_url: https://grokbot.zone/api/
+
+  - id: grokbotzone.bot.detail
+    added: '2026-11-19'
+    platform_auth: anonymous
+    domain: other
+    capability: grok.bots.detail
+    platform: grok
+    scope: any_account
+    method: GET
+    path: /api/v1/bots/{id}.json
+    name: "One Grok bot"
+    summary: "One bot's full listing: its id, name, author, description, category, the code to paste into Grok and the link to the bot."
+    input:
+      pathParams:
+        id: {type: string, required: true, note: "the bot id, from a category listing or the trending list", example: grok-bot-helpers-bots-that-build-or-manage-bots-BrViAOWzDSiAjBLqUnBgA}
+    note: "A bot that has left the index answers 404; the id comes from a category listing or the trending list."
+    test_request: {pathParams: {id: grok-bot-helpers-bots-that-build-or-manage-bots-BrViAOWzDSiAjBLqUnBgA}}
+    price: {value: '0', currency: USD, unit: call}
+    miss: {status: [404], means: "No bot has that id; the body is the site's HTML 404 page. Read a category listing for the ids that exist."}
+    verified: '2026-11-19'
+    example_response: examples/grokbotzone.bot.detail.json
+    docs_url: https://grokbot.zone/api/
+
+  - id: grokbotzone.bots.codes
+    added: '2026-11-19'
+    platform_auth: anonymous
+    domain: other
+    capability: grok.bots.codes
+    platform: grok
+    scope: any_account
+    method: GET
+    path: /api/v1/codes.json
+    name: "Every listed Grok bot code"
+    summary: "The lowercase code of every listed bot, for checking whether a code is in the index."
+    note: "One file holds every code, so read it once and keep it rather than calling it per lookup."
+    test_request: {queryParams: {}}
+    price: {value: '0', currency: USD, unit: call}
+    miss: {status: [404], means: "The route was moved; read /api/v1/index.json again for the current paths."}
+    verified: '2026-11-19'
+    example_response: examples/grokbotzone.bots.codes.json
+    docs_url: https://grokbot.zone/api/
