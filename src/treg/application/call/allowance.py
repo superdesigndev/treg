@@ -17,6 +17,7 @@ import time
 import uuid
 from collections.abc import Awaitable, Callable
 from datetime import datetime, timedelta
+from typing import NamedTuple
 
 from sqlmodel import select
 
@@ -374,12 +375,25 @@ async def _drain(org_id: int, epoch: int, reason: str) -> None:
         await db.commit()
 
 
+class _Written(NamedTuple):
+    """What the writer tells a call about its charge. `confirmed`: the charge is known
+    committed. `took_from_balance`: a charge of the call's team in the same batch took from the
+    balance, so the team's credit may not cover every charge and the call answers with what
+    the ledger took for it. The counter's freeze says the same, but a refill can lift it
+    before the call is told."""
+
+    confirmed: bool
+    took_from_balance: bool = False
+
+
 class _Unwritten(Exception):
     """A batch left some teams' rows unconfirmed; `orgs` names those teams. Every other team's
-    rows are committed and its freeze is with the store."""
+    rows are committed and its freeze is with the store; `took_from_balance` names the ones of
+    them with a charge that took from the balance."""
 
-    def __init__(self, orgs) -> None:
+    def __init__(self, orgs, took_from_balance=()) -> None:
         self.orgs = frozenset(orgs)
+        self.took_from_balance = frozenset(took_from_balance)
         super().__init__(f"call charges of {len(self.orgs)} team(s) are unconfirmed")
 
 
@@ -413,8 +427,8 @@ class _ChargeWriter:
     def submit(self, charge: allowance.Charge,
                archive_use: tuple[int, str] | None) -> asyncio.Future:
         """Queue one charge now, with no await: a call cancelled right after still pays. The
-        future resolves True once the charge is known committed, False when that is not known
-        yet and the writer keeps trying."""
+        future resolves to a `_Written`: confirmed once the charge is known committed,
+        unconfirmed when that is not known yet and the writer keeps trying."""
         loop = asyncio.get_running_loop()
         future = loop.create_future()
         self._pending.append((charge, archive_use, future))
@@ -435,10 +449,13 @@ class _ChargeWriter:
             batch = self._pending[:allowance.FOLD_BATCH]
             del self._pending[:len(batch)]
             rows = [(charge, use) for charge, use, _ in batch]
-            failed, fault = await self._attempt(rows)
+            failed, drew, fault = await self._attempt(rows)
+            # A team whose rows are committed is told now: its calls do not wait for another
+            # team's retry.
+            self._answer(batch, failed, drew, final=False)
             if failed:  # one bounded retry on a fresh transaction, of the teams that failed
                 await asyncio.sleep(0.2)
-                failed, fault = await self._attempt(
+                failed, drew, fault = await self._attempt(
                     [row for row in rows if row[0].org_id in failed], again=True)
             owed = [row for row in rows if row[0].org_id in failed]
             self._committed([row for row in rows if row[0].org_id not in failed])
@@ -448,29 +465,37 @@ class _ChargeWriter:
                 self._unconfirmed.extend(owed)
                 self._retry_task = self._ensure(
                     self._retry_task, self._retry, "treg-allowance-charge-retry")
-            for charge, _, future in batch:
-                if not future.done():
-                    future.set_result(charge.org_id not in failed)
+            self._answer(batch, failed, drew, final=True)
+
+    @staticmethod
+    def _answer(batch: list, failed: frozenset[int], drew: frozenset[int], *,
+                final: bool) -> None:
+        """Tell each waiting call of a team that was written. A team that failed is told only
+        once it has been tried again (`final`)."""
+        for charge, _, future in batch:
+            if future.done() or (charge.org_id in failed and not final):
+                continue
+            future.set_result(_Written(charge.org_id not in failed, charge.org_id in drew))
 
     async def _attempt(self, rows: list, *, again: bool = False
-                       ) -> tuple[frozenset[int], BaseException | None]:
-        """Write the rows. Returns the teams whose rows are not confirmed written, with the
-        fault: none when every team's were. A fault that names no team leaves them all
-        unconfirmed."""
+                       ) -> tuple[frozenset[int], frozenset[int], BaseException | None]:
+        """Write the rows. Returns the teams whose rows are not confirmed written, the teams
+        written with a charge that took from the balance, and the fault: none when every
+        team's rows were written. A fault that names no team leaves them all unconfirmed."""
         try:
-            await self._write(rows, again=again)
+            drew = await self._write(rows, again=again)
         except _Unwritten as exc:
-            return exc.orgs, exc.__cause__ or exc
+            return exc.orgs, exc.took_from_balance, exc.__cause__ or exc
         except Exception as exc:  # noqa: BLE001 - whatever the fault, the rows are tried again
-            return frozenset(charge.org_id for charge, _ in rows), exc
-        return frozenset(), None
+            return frozenset(charge.org_id for charge, _ in rows), frozenset(), exc
+        return frozenset(), frozenset(drew or ()), None
 
     async def _retry(self) -> None:
         delay = 1.0
         while self._unconfirmed:
             await asyncio.sleep(delay)
             rows = self._unconfirmed[:allowance.FOLD_BATCH]
-            failed, _ = await self._attempt(rows, again=True)
+            failed, _, _ = await self._attempt(rows, again=True)
             written = [row for row in rows if row[0].org_id not in failed]
             self._committed(written)
             # The rows still unconfirmed go to the back: a team whose writes keep failing does
@@ -496,7 +521,7 @@ class _ChargeWriter:
         self.owed = max(0, self.owed - len(rows))
 
     @staticmethod
-    async def _write(rows: list, *, again: bool = False) -> None:
+    async def _write(rows: list, *, again: bool = False) -> set[int]:
         """Write the rows, one transaction per team, and freeze each team's counter as soon as
         its own rows are committed.
 
@@ -505,26 +530,30 @@ class _ChargeWriter:
         of several teams has chosen its order. And a team's freeze must not wait for another
         team's write: its rows are committed, and its counter is still admitting calls.
 
-        Raises `_Unwritten`, after every team was tried, naming the teams whose write failed
-        or whose freeze did not reach the store. Their rows are then gone through again, which
-        writes nothing twice and sends the freeze again."""
+        Returns the teams with a charge that took from the balance. Raises `_Unwritten`, after
+        every team was tried, naming the teams whose write failed or whose freeze did not reach
+        the store. Their rows are then gone through again, which writes nothing twice and sends
+        the freeze again."""
         store = kv.store()
         by_team: dict[int, list] = {}
         for row in rows:
             by_team.setdefault(row[0].org_id, []).append(row)
         failed: dict[int, Exception] = {}
+        drew: set[int] = set()
         for org_id in sorted(by_team):
             # One team's failure is not another's: every team's rows are tried, so a store
             # that does not take one team's freeze keeps no other team's charge in memory.
             try:
-                if (await _ChargeWriter._write_team(org_id, by_team[org_id], again)
-                        and await store.allowance_freeze(org_id, ttl_ms=_COUNTER_TTL_MS) is None
-                        and kv.configured()):
-                    raise ConnectionError("the store did not take a freeze")
+                if await _ChargeWriter._write_team(org_id, by_team[org_id], again):
+                    if (await store.allowance_freeze(org_id, ttl_ms=_COUNTER_TTL_MS) is None
+                            and kv.configured()):
+                        raise ConnectionError("the store did not take a freeze")
+                    drew.add(org_id)
             except Exception as exc:  # noqa: BLE001 - reported once every team was tried
                 failed[org_id] = exc
         if failed:
-            raise _Unwritten(failed) from next(iter(failed.values()))
+            raise _Unwritten(failed, drew) from next(iter(failed.values()))
+        return drew
 
     @staticmethod
     async def _write_team(org_id: int, rows: list, again: bool) -> bool:
@@ -691,14 +720,16 @@ async def finish(org_id: int, call_id: str, epoch: int, reserved_micro: int, *,
         # Unconfirmed is not "not charged": the charge may have committed, and the writer keeps
         # trying until it has. Its money stays out of the counter either way. An overrun freezes
         # the counter, and the writer does that once the charge is committed.
-        if not await written:
+        confirmed, took_from_balance = await written
+        if not confirmed:
             return amount
-        if amount <= reserved_micro:
+        if amount <= reserved_micro and not took_from_balance:
             state = await store.allowance_state(org_id)
             if state is None or state[1] == state[2]:
                 return amount
-        # Frozen: some settlement of the team took more than was set aside for it, and the
-        # team's credit may not cover every charge. Apply the queue now and answer with what the
+        # Frozen, or a charge written with this one took from the balance: some settlement of
+        # the team took more than was set aside for it, and the team's credit may not cover
+        # every charge. Apply the queue now and answer with what the
         # ledger took from the team for this call, less than the charge when the credit ran out.
         return await _settled(org_id, call_id, amount)
     except Exception:

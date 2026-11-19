@@ -358,8 +358,11 @@ money moved, the purchased-credit gate.
   told the charge, its money stays out of the counter, and the writer keeps writing them in
   the background until they land (recording a call twice charges it once). A batch is answered
   a team at a time: only the teams whose write or freeze failed are written again and reported
-  unconfirmed, and a team whose rows are committed has its calls confirmed, so each still
-  answers with what the ledger took for it. The rewrite marks
+  unconfirmed, and a team whose rows are committed has its calls confirmed at once, without
+  waiting for another team's retry. With the confirmation the writer says whether a charge of
+  the team in that batch took from the balance; a call told so answers with what the ledger
+  took for it even when the counter is no longer frozen, since a refill can fold the queue and
+  lift the freeze before the call is told. The rewrite marks
   the paid question of each row that was new to it and whose call has no `settle` entry yet (a
   row is also new when the first attempt's row was applied and deleted since, and that attempt
   marked it). While any charge is unconfirmed the process admits no new call to the allowance.

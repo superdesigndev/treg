@@ -741,7 +741,8 @@ async def test_one_teams_failed_write_leaves_another_teams_calls_confirmed(
     ours = writer.submit(allowance.Charge("ours", org_id, "e.metered", 100, None, 100, epoch), None)
     theirs = writer.submit(
         allowance.Charge("theirs", later_team, "e.metered", 100, None, 100, None), None)
-    assert (await ours, await theirs) == (True, False)
+    assert ((await ours).confirmed, (await theirs).confirmed) == (True, False)
+    assert ours.done() and not (await ours).took_from_balance
     assert attempts == [(org_id, False), (later_team, False), (later_team, True)], (
         "only the team that failed is written again")
     assert [charge.call_id for charge, _ in writer._unconfirmed] == ["theirs"]
@@ -1119,6 +1120,30 @@ async def test_a_call_finishing_beside_an_overrun_is_told_what_the_ledger_took(
         entries = {e.call_id: e for e in await ledger.entries_of(db, org_id) if e.kind == "settle"}
     assert entries["second"].amount_micro == 0
     assert entries["second"].meta["block_shortfall_micro"] == 2_000_000
+
+
+async def test_a_call_beside_an_overrun_reads_the_ledger_even_once_the_freeze_is_lifted(
+        org_id, store, monkeypatch):
+    """The same two calls, written in one batch. A refill folds both and lifts the freeze
+    before the second call is told its charge is written, so the counter no longer says that
+    the team's credit ran short. The writer does: the second call still answers 0."""
+    monkeypatch.setattr(get_settings(), "money_allowance_chunk_micro", GRANT)
+    first = await runtime.take(org_id, 3_000_000)
+    second = await runtime.take(org_id, 2_000_000)
+    freeze = store.allowance_freeze
+
+    async def frozen_then_lifted(org, **kwargs):
+        frozen = await freeze(org, **kwargs)
+        store.counters[org]["thawed"] = frozen
+        return frozen
+
+    monkeypatch.setattr(store, "allowance_freeze", frozen_then_lifted)
+    told = await asyncio.gather(
+        _finish(org_id, "first", first, 3_000_000, billable=True, actual_micro=GRANT),
+        _finish(org_id, "second", second, 2_000_000, billable=True))
+    counter = store.counters[org_id]
+    assert counter["frozen"] == counter["thawed"], "nothing in the counter says to look"
+    assert told == [GRANT, 0]
 
 
 async def test_a_call_waits_for_another_process_to_apply_its_charge(org_id, store, monkeypatch):
