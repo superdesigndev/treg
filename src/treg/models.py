@@ -593,7 +593,7 @@ class CallRecord(SQLModel, table=True):
     # The RUNTIME that made the call — "claude-code", "codex", "cursor", … — self-reported by the
     # treg CLI via X-Treg-Client (attribution, NOT authentication: anything holding the token can
     # claim any name). "" = unreported. What makes the observed-agents roster possible.
-    client: str = Field(default="", index=True)
+    client: str = Field(default="")
     # The key snapshot used for this call. Historical rows before managed-key tracking keep NULL.
     # Logical reference only: Activity must survive key and membership lifecycle changes.
     api_key_id: int | None = Field(default=None)
@@ -604,8 +604,8 @@ class CallRecord(SQLModel, table=True):
     # expected it to cost vs what the provider said it cost, and how big/slow the answer was. The
     # money itself is NOT here — it landed synchronously in the ledger (see domain/money); this table is
     # analytics and is allowed to lose rows.
-    endpoint_id: str | None = Field(default=None, index=True)
-    provider: str | None = Field(default=None, index=True)
+    endpoint_id: str | None = Field(default=None)
+    provider: str | None = Field(default=None)
     # tool | credential | platform — which rung of the credential ladder served it. "platform" is the
     # only one that spends treg's own money, so this is what a spend audit groups by.
     credential_tier: str | None = Field(default=None)
@@ -620,7 +620,7 @@ class CallRecord(SQLModel, table=True):
     # The hash itself never carries a body, so it is safe to keep forever; it is the future cache key
     # and the repeat-rate signal. For the ONE case where a body IS retained, see
     # `error_request` below — it is deliberately narrow and does not weaken this column's guarantee.
-    params_hash: str | None = Field(default=None, index=True)
+    params_hash: str | None = Field(default=None)
     # Failure evidence (NULL unless a relayed call failed).
     # The only place treg retains request or response CONTENT, and the exception to "bodies are not
     # stored". Written on failed catalog, own-key, and plain own-tool calls: production failures
@@ -641,18 +641,18 @@ class CallRecord(SQLModel, table=True):
     # or endpoint) | request (malformed pre-relay: wrong method, missing param, bad body). What
     # separates "the provider failed" from "we said no" — without it a paywall 402 is
     # indistinguishable from a provider error, and provider stats absorb our own refusals.
-    refused_by: str | None = Field(default=None, index=True)
+    refused_by: str | None = Field(default=None)
     # Caller tags (X-Treg-Meta).
     # A builder reselling treg tags each call with their OWN ids ("customer=cust_8123,
     # workspace=ws_9") so they can attribute, budget and invoice their users. `tags` is the whole
-    # bag; `budget_dim`/`budget_val` are the indexed copy of the org's PRIMARY dimension, which is
+    # bag; `budget_dim`/`budget_val` are the flat copy of the org's PRIMARY dimension, which is
     # what a per-tag report groups by without folding JSON (see TagSpend for the money side).
     # "" — never NULL — because NULLs are distinct in a unique index on both engines.
     # Echoed to the caller as X-Treg-Call-Id and used as the ledger call_id on a metered call, so a
     # builder can join this row, the money rows and their OWN records on one value.
     call_ref: str = Field(default="", index=True)
     budget_dim: str = Field(default="")
-    budget_val: str = Field(default="", index=True)
+    budget_val: str = Field(default="")
     tags: dict | None = Field(default=None, sa_column=Column("tags", JSON, nullable=True))
     created_at: NaiveUTC = Field(default_factory=_now)
     # True when the archive served this answer instead of the vendor (X-Treg-Cache: hit).
