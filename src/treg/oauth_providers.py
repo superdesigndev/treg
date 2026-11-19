@@ -1957,6 +1957,26 @@ MINIMAX = OAuthProvider(
     probe_reject_statuses=(401, 403),
 )
 
+PIXVERSE = OAuthProvider(
+    service="pixverse",
+    display_name="PixVerse",
+    auth_kind="token",
+    token_label="API key",
+    token_placeholder="your PixVerse API key",
+    token_header="API-KEY",
+    token_format="{secret}",
+    setup_url="https://platform.pixverse.ai/",
+    setup_action_label="Get your PixVerse API key",
+    setup_steps=("Sign in to PixVerse API Platform and create an API key.",),
+    setup_note="Use a fresh Ai-trace-id on each API request. Generation can consume Credits.",
+    auth_uri="", token_uri="", scopes={},
+    client_id_setting="", client_secret_setting="",
+    category="AI generation",
+    summary="Generate and edit video with text, image, and video inputs.",
+    base_url="https://app-api.pixverse.ai",
+    docs_url="https://github.com/PixVerseAI/enterprise",
+)
+
 FISHAUDIO = OAuthProvider(
     service="fishaudio",
     display_name="Fish Audio",
@@ -4476,7 +4496,7 @@ REGISTRY: dict[str, OAuthProvider] = {
         # API-key providers
         ANYAPI, APOLLO, PDL, AKTA, HUNTER, MOBIUSENGINE_JOBS, GREENHOUSE, SUMBLE, MOLTSETS, OPENMART, HARVESTAPI, FETCHINIO, SIXTYFOUR, LEADOCEAN, BLITZAPI, DROPLEADS, ASHBY, WORKABLE, SMARTRECRUITERS, HIREBASE, LEVER,
         QUICKENRICH, PROSPEO, AIARK, WIZA, LIMADATA, GETLEADSIO, SCRUBBY, ZEROBOUNCE, DATAGMA,
-        TRYKITT, CONTACTOUT, MILLIONVERIFIER, ORBISEARCH, BOUNCEBAN, CRUNCHBASE, MINIMAX, FISHAUDIO,
+        TRYKITT, CONTACTOUT, MILLIONVERIFIER, ORBISEARCH, BOUNCEBAN, CRUNCHBASE, MINIMAX, PIXVERSE, FISHAUDIO,
         OPENROUTER,
         REPLICATE,
         REAPI, PIAPI, GOOGLE_AI, TINYFISH,
