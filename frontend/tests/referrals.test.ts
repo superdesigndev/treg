@@ -43,18 +43,20 @@ test('affiliates beyond the ordinary cap see no limit warning and retain histori
   expect(html).toContain('Over your limit')
 })
 
-test('affiliates retain the original partner terms and application link with a readable standard cap', async () => {
+test('affiliates see the partner terms, the Dub application link and the partner login with a readable standard cap', async () => {
   const html = await page({ paid: 25, limit: null, affiliate: true }, 'partner')
-  expect(html).toContain('Revenue share, paid in cash. By invitation.')
-  expect(html).toContain('cash monthly. Not credit, and no 20-referral cap.')
+  expect(html).toContain('Revenue share, paid in cash. Reviewed applications.')
+  expect(html.replace(/\s+/g, ' ')).toContain('20% of every top-up your referrals make in their first 6 months, paid in cash once you reach $100.')
+  expect(html).toContain('Not credit, and no 20-referral cap.')
   expect(html).toContain('Apply to be an affiliate partner')
-  expect(html).toContain('https://forms.gle/5N3DyVPrNJkrGuxF6')
+  expect(html).toContain('https://partners.dub.co/treg/apply')
+  expect(html).toContain('href="https://partners.dub.co"')
 })
 
 test('ordinary users retain the original partner application', async () => {
   const html = await page({ paid: 20, limit: 20, affiliate: false }, 'partner')
   expect(html).toContain('Apply to be an affiliate partner')
-  expect(html).toContain('Revenue share, paid in cash. By invitation.')
-  expect(html).toContain('cash monthly. Not credit, and no 20-referral cap.')
+  expect(html).toContain('Revenue share, paid in cash. Reviewed applications.')
+  expect(html).toContain('Not credit, and no 20-referral cap.')
   expect(html).not.toContain('Affiliate access active')
 })
