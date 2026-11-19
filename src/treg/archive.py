@@ -1662,12 +1662,9 @@ async def note_org_use_in_transaction(db, org_id: int, key_hash: str) -> None:
     await note_org_uses_in_transaction(db, [(org_id, key_hash)])
 
 
-# A key's demand is written at most once per interval by each process. Every hit on one key
-# writes the same row: unbounded, a burst of hits on one question queues its writers on that
-# row's lock, each holding a connection while it waits.
 _TOUCH_EVERY_S = 60.0
 _MAX_TOUCHED = 4096
-_touched: dict[str, float] = {}  # key -> when its touch was scheduled, oldest first
+_touched: dict[str, float] = {}
 _clock = time.monotonic
 
 
@@ -1682,8 +1679,6 @@ def _touch(key_hash: str) -> None:
         return
     _touched.pop(key_hash, None)
     if len(_touched) >= _MAX_TOUCHED:
-        # Marks whose interval is over go first. Still full, only the oldest goes: that key may
-        # write once early, and every other key keeps its mark.
         for stale in [key for key, at in _touched.items() if now - at >= _TOUCH_EVERY_S]:
             del _touched[stale]
         if len(_touched) >= _MAX_TOUCHED:
@@ -1711,7 +1706,6 @@ async def _touch_write(key_hash: str) -> None:
                             .values(last_requested_at=_utcnow()))
             await s.commit()
     except asyncio.CancelledError:
-        # `_touch` bounds the write with a timeout, which ends it by cancelling it.
         _touched.pop(key_hash, None)
         raise
     except Exception:  # noqa: BLE001
