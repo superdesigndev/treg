@@ -623,9 +623,13 @@ async def _process(call_id: str, client: httpx.AsyncClient, attempt: int, *,
         async with asyncio.timeout(POLL_TIMEOUT_S):
             status, body = await _poll(snapshot, client)
         if not 200 <= status < 300:
-            # Only a successful poll is evidence. A 404 or 401 body that happens to carry
-            # "status": "succeeded" is an error envelope, not a terminal state; the CLI treats
-            # every non-2xx the same way, and money must not depend on an error page's fields.
+            try:
+                pending_document = json.loads(body)
+            except (ValueError, TypeError):
+                pending_document = None
+            if asynctasks.is_pending_response(snapshot.descriptor, status, pending_document):
+                return await _finish(call_id, "progress", pending_document, utcnow_naive(),
+                                     expected_attempt=attempt)
             log.warning("async poll for call %s returned HTTP %s; backing off", call_id, status)
             return await _finish(call_id, "poll_error", None, utcnow_naive(), expected_attempt=attempt)
         document = json.loads(body)

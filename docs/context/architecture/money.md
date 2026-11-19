@@ -771,7 +771,8 @@ The worker selects due rows, takes provider/global concurrency slots, then claim
 `POLL_TIMEOUT_S` total deadline including body consumption, use the normal credential injector (a
 static poll's parameter rides as `query_items` or a declared, percent-encoded path substitution; the
 relay forwards no URL-embedded query), cap the body at `MAX_POLL_BODY_BYTES`, and take terminal
-evidence only from a 2xx. HTTP errors, invalid JSON and timeouts back off
+evidence only from a 2xx. A non-2xx matching the descriptor's `pending_response` stays in progress;
+other HTTP errors, invalid JSON and timeouts back off
 (`next_failure_check`: 2, 4, 8, then 15 minutes); there is no provider-wide circuit breaker. The
 worker never lets one row abort a tick, and loads the catalog once in a thread before polling so the
 poll timeout measures the provider alone. **At the deadline (`MAX_AGE`, or the descriptor's shorter

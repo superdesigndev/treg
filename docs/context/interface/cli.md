@@ -153,7 +153,8 @@ is self-teaching. This fragment holds only what the code and help cannot say. Th
   `treg.domain.asynctasks`, never a CLI-side copy. It prints the task id and a resumable command to
   stderr, polls every descriptor `interval` and never past `max_age`, skips polling on
   `terminal_on_submission`, retries network/5xx failures with backoff, and keeps waiting through
-  unknown statuses after one warning. Stdout holds only the terminal response bytes; a fetch-mode
+  unknown statuses after one warning. A descriptor's exact `pending_response` HTTP envelope also
+  keeps the wait open at its normal interval. Stdout holds only the terminal response bytes; a fetch-mode
   result prints a retrieval command instead of downloading, and running it writes non-text bytes
   untouched (the upstream `Content-Type` stays authoritative). **Exit codes are a contract:** 0
   success, 2 provider terminal failure, 3 timeout, interruption or recoverable polling failure, 1

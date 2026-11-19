@@ -590,6 +590,108 @@ async def test_owned_terminal_poll_finalizes_original_task_before_response(
     assert (await task_app.settle_due()).claimed == 0
 
 
+async def test_apollo_platform_phone_poll_is_owned_and_settles_reported_credits_once(
+    clients: AsyncClient, monkeypatch,
+):
+    monkeypatch.setenv("TREG_PLATFORM_KEY_APOLLO", "PLATFORM-APOLLO-KEY")
+    monkeypatch.setenv("TREG_PLATFORM_PROVIDERS", "apollo")
+    get_settings.cache_clear()
+    request_id = "1039995589705121900"
+    try:
+        async def submit(*args, **kwargs):
+            return _response(200, {
+                "person": {"id": "example-person-id"},
+                "phone_enrichment": {"status": "pending"},
+                "request_id_str": request_id,
+            })
+
+        monkeypatch.setattr(call_service, "relay", submit)
+        sent = await clients.post(
+            "/call/apollo.people.phone.find?name=Example%20Person&domain=example.com"
+            "&reveal_phone_number=true&poll_only=true")
+        assert sent.status_code == 200, sent.text
+        call_id = sent.headers["X-Treg-Call-Id"]
+        async with session_maker() as db:
+            task = await db.get(AsyncTaskRecord, call_id)
+            assert task.status == "pending" and task.reserved_micro >= 234_000
+            assert await db.get(Hold, call_id) is not None
+
+        polled_count = 0
+
+        async def poll(*args, **kwargs):
+            nonlocal polled_count
+            polled_count += 1
+            if polled_count == 1:
+                return _response(404, {"error_code": "result_pending", "retry_after_seconds": 2})
+            return _response(200, {
+                "request_id": request_id,
+                "webhook_status": "skipped",
+                "request_type": "phone",
+                "webhook_result": {
+                    "status": "success", "credits_consumed": 8,
+                    "people": [{"id": "example-person-id", "phone_numbers": [
+                        {"sanitized_number": "+12025550116", "type_cd": "work_direct"}]}],
+                },
+            })
+
+        monkeypatch.setattr(call_service, "relay", poll)
+        other = await verified_signup(clients, json={"email": "phone-stranger@example.com"})
+        assert other.status_code == 200, other.text
+        denied = await clients.get(
+            f"/call/apollo.people.phone.result?request_id={request_id}",
+            headers={"X-Treg-Token": other.json()["token"]})
+        assert denied.status_code == 403 and polled_count == 0
+
+        pending = await clients.get(f"/call/apollo.people.phone.result?request_id={request_id}")
+        assert pending.status_code == 404 and pending.json()["error_code"] == "result_pending"
+        async with session_maker() as db:
+            assert (await db.get(AsyncTaskRecord, call_id)).status == "pending"
+            assert await db.get(Hold, call_id) is not None
+
+        received = await clients.get(f"/call/apollo.people.phone.result?request_id={request_id}")
+        assert received.status_code == 200, received.text
+        assert received.json()["webhook_result"]["people"][0]["phone_numbers"][0]["type_cd"] == "work_direct"
+        assert polled_count == 2
+        async with session_maker() as db:
+            task = await db.get(AsyncTaskRecord, call_id)
+            assert task.status == "settled" and task.settled_micro == 208_000
+            assert await db.get(Hold, call_id) is None
+        repeated = await clients.get(f"/call/apollo.people.phone.result?request_id={request_id}")
+        assert repeated.status_code == 200
+        async with session_maker() as db:
+            entries = (await db.execute(select(LedgerEntry).where(
+                LedgerEntry.call_id == call_id, LedgerEntry.kind == "settle"))).scalars().all()
+            assert len(entries) == 1
+    finally:
+        get_settings.cache_clear()
+
+
+async def test_apollo_platform_phone_no_task_releases_hold(clients: AsyncClient, monkeypatch):
+    monkeypatch.setenv("TREG_PLATFORM_KEY_APOLLO", "PLATFORM-APOLLO-KEY")
+    monkeypatch.setenv("TREG_PLATFORM_PROVIDERS", "apollo")
+    get_settings.cache_clear()
+    try:
+        async def no_match(*args, **kwargs):
+            return _response(200, {
+                "person": {"match_confidence": "none"},
+                "phone_enrichment": {"status": "not_attempted"},
+                "request_id_str": "1039995589705121900",
+            })
+
+        monkeypatch.setattr(call_service, "relay", no_match)
+        sent = await clients.post(
+            "/call/apollo.people.phone.find?name=No%20Such%20Person&domain=example.com"
+            "&reveal_phone_number=true&poll_only=true")
+        assert sent.status_code == 200, sent.text
+        assert sent.headers["X-Treg-Cost-Micro"] == "0"
+        call_id = sent.headers["X-Treg-Call-Id"]
+        async with session_maker() as db:
+            assert await db.get(AsyncTaskRecord, call_id) is None
+            assert await db.get(Hold, call_id) is None
+    finally:
+        get_settings.cache_clear()
+
+
 async def test_firecrawl_crawl_poll_settles_reported_credits_once(clients: AsyncClient, monkeypatch):
     monkeypatch.setenv("TREG_PLATFORM_KEY_FIRECRAWL", "PLATFORM-FIRECRAWL")
     monkeypatch.setenv("TREG_PLATFORM_PROVIDERS", "firecrawl")
@@ -1160,6 +1262,28 @@ async def test_worker_backs_off_unknown_status(
         hold.created_at = utcnow_naive() - timedelta(seconds=ledger.hold_ttl_s() + 1)
         await db.commit()
         assert await ledger.reap_stale_holds(db, org_id=row.org_id) == 0
+        assert await db.get(Hold, call_id) is not None
+
+
+async def test_worker_treats_declared_pending_http_envelope_as_progress(
+    clients: AsyncClient, monkeypatch, replicate_platform,
+):
+    call_id = await _due_submission(clients, monkeypatch, {"status": "processing"})
+    async with session_maker() as db:
+        row = await db.get(AsyncTaskRecord, call_id)
+        row.descriptor = {**row.descriptor, "pending_response": {
+            "status": 404, "path": "error_code", "equals": "result_pending"}}
+        await db.commit()
+
+    async def pending_poll(row, client):
+        return 404, b'{"error_code":"result_pending"}'
+
+    monkeypatch.setattr(task_app, "_poll", pending_poll)
+    result = await task_app.settle_due()
+    assert result.backed_off == 1
+    async with session_maker() as db:
+        row = await db.get(AsyncTaskRecord, call_id)
+        assert row.status == "pending" and row.consecutive_failures == 0
         assert await db.get(Hold, call_id) is not None
 
 

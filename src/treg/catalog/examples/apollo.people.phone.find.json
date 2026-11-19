@@ -1,0 +1,9 @@
+{
+  "person": {
+    "id": "example-person-id",
+    "name": "Example Person",
+    "organization": {"name": "Example Inc"}
+  },
+  "phone_enrichment": {"status": "pending", "request_id": "example-internal-id"},
+  "request_id_str": "1039995589705121900"
+}

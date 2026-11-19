@@ -359,7 +359,7 @@ child's adapter-built request through these checks (`_query_refusal`, `_body_ref
 - **`refuse`**: a 400 `catalog_parameter_invalid` naming the parameter and the declared rule, never
   the value, and nothing is charged; the routed plan drops the child as `needs <parameter>: <rule>`.
 
-Rules that refused before the parameter check refuse in either mode. `strict_query` rows
+Rules that refused before the parameter check refuse in either mode. `strict_query` GET and query-only POST rows
 (`_enforce_catalog_query`) reject bodies, undeclared or duplicate query parameters, missing required
 inputs and values outside a declared enum; declared path placeholders pass and are consumed.
 `strict_body` and `body_allowlist` rows (`_enforce_strict_body`) require one JSON object body and

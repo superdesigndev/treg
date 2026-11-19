@@ -75,6 +75,85 @@ endpoints:
       note: 'Metered at the 1-credit baseline treg calls with: reveal_phone_number and reveal_personal_emails both default false, so a default enrich consumes 1 credit for demographics or an email, charged only when credit-consuming data comes back (no match, no charge) — the same documented Basic-plan rate (fx.yaml credit_rates_usd.apollo) as apollo.companies.enrich. The phone reveal (+8 per mobile, returned async to webhook_url) and the waterfalls (whose vendors may bill even on a miss) are refused on treg''s shared key, so this rate covers every shared-key call. A no-match answers 200 with a person stub at match_confidence none; it is free unless it carries an email.'
     docs_url: https://docs.apollo.io/reference/people-enrichment
 
+  - id: apollo.people.phone.find
+    added: '2026-11-19'
+    domain: contacts
+    capability: people.phone.find
+    platform: people
+    scope: any_account
+    method: POST
+    path: /people/match
+    strict_query: true
+    cache: forbidden
+    async:
+      id_from: request_id_str
+      poll:
+        endpoint: apollo.people.phone.result
+        param: {in: pathParams, name: request_id}
+      status:
+        path: webhook_result.status
+        success: [success]
+      result: {path: webhook_result.people}
+      interval: 10
+      max_age: 600
+      pending_response: {status: 404, path: error_code, equals: result_pending}
+    expect: {json_path: phone_enrichment.status, equals: pending}
+    name: Find a person's phone numbers with Apollo
+    summary: Reveal Apollo's mobile and direct office numbers for one person; poll for the completed result.
+    input:
+      queryParams:
+        email: {type: string, required: false, example: "tim@apple.com"}
+        linkedin_url: {type: string, required: false, example: "https://www.linkedin.com/in/tim-cook"}
+        name: {type: string, required: false, example: "Tim Cook"}
+        domain: {type: string, required: false, example: "apple.com"}
+        reveal_phone_number: {type: boolean, required: true, enum: [true], example: true}
+        poll_only: {type: boolean, required: true, enum: [true], example: true}
+      note: "Send an email, LinkedIn URL or name plus employer domain. Apollo returns a request_id_str when phone_enrichment.status is pending; poll the linked result tool. The result labels each number with type_cd, including mobile or work_direct. Waterfalls and caller webhooks are excluded."
+    test_request: {queryParams: {name: "Tim Cook", domain: "apple.com", reveal_phone_number: true, poll_only: true}}
+    cost:
+      type: per_success
+      value: 9
+      currency: credit
+      per: 1
+      unit: call
+      settle: usage
+      usage: {path: webhook_result.credits_consumed, unit: credit}
+      fallback: {value: 9, note: "The documented maximum is one demographic credit plus eight for a phone; missing terminal usage settles at this estimate for review."}
+      worst_case: 9
+      source: docs
+      source_url: https://docs.apollo.io/docs/api-pricing
+      checked: '2026-11-20'
+      confidence: documented
+      note: "A live poll-only phone reveal reported credits_consumed 8 and the direct-dial credit counter rose by 8. A no-match returned not_attempted and changed neither credit counter. Apollo may also charge a demographic credit at submission; the terminal phone meter does not attribute that component, so treg absorbs it when it occurs."
+    verified: '2026-11-20'
+    example_response: examples/apollo.people.phone.find.json
+    terminal_example_response: examples/apollo.people.phone.result.json
+    docs_url: https://docs.apollo.io/reference/people-enrichment
+
+  - id: apollo.people.phone.result
+    added: '2026-11-19'
+    kind: utility
+    domain: contacts
+    capability: people.phone.find
+    platform: people
+    scope: any_account
+    method: GET
+    path: /webhook_result/{request_id}
+    strict_query: true
+    cache: forbidden
+    resource_ownership:
+      requires: {kind: "poll:apollo.people.phone.result", param: request_id}
+    name: Get a completed Apollo phone lookup
+    summary: Read the result of a phone lookup this team started.
+    input:
+      pathParams:
+        request_id: {type: string, required: true, example: "1039995589705121900"}
+      note: "A pending result answers 404 result_pending with retry_after_seconds. Only use the top-level request_id_str from the submission; phone_enrichment.request_id is a different identifier."
+    test_request: {pathParams: {request_id: "1039995589705121900"}}
+    cost: {type: free, value: 0, currency: USD, unit: call, source: docs, source_url: "https://docs.apollo.io/reference/poll-webhook-result", checked: '2026-11-20', confidence: documented, note: "Apollo lists polling at zero credits."}
+    example_response: examples/apollo.people.phone.result.json
+    docs_url: https://docs.apollo.io/reference/poll-webhook-result
+
   - id: apollo.people.search
     test_request:
       bodyType: json
