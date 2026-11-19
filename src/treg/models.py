@@ -12,7 +12,7 @@ from datetime import date, datetime, timezone
 from typing import Annotated
 
 from pydantic import NaiveDatetime
-from sqlalchemy import BigInteger, Boolean, JSON, CheckConstraint, Column, Index, Integer, String, UniqueConstraint, text
+from sqlalchemy import BigInteger, Boolean, JSON, CheckConstraint, Column, Index, Integer, String, Text, UniqueConstraint, text
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlmodel import Field, SQLModel
 
@@ -1892,6 +1892,47 @@ class CallMark(SQLModel, table=True):
     tags: dict | None = Field(default=None, sa_column=Column("tags", JSON, nullable=True))
     content_hash: str
     created_at: NaiveUTC = Field(default_factory=_now)
+
+
+class CallComparison(SQLModel, table=True):
+    """Two vendors' answers to one routed call's input, and the team's agent's blinded verdict.
+
+    A is the answer the team was served; B is the other vendor of a configured pair, asked later by
+    `treg-worker compare collect` on treg's key (application/compare.py). `first` is which of the
+    two is shown as answer 1. Bodies are stored truncated; `input` is the capability input,
+    truncated. Written only by `domain/feedback/comparisons.py`.
+    """
+
+    __table_args__ = (
+        Index("ix_callcomparison_org_id_status_created_at", "org_id", "status", "created_at"),
+        Index("ix_callcomparison_org_id_capability_created_at", "org_id", "capability", "created_at"),
+        Index("ix_callcomparison_created_at", "created_at"),
+    )
+
+    id: int | None = Field(default=None, primary_key=True)
+    # No foreign keys (AGENTS.md): `treg-worker compare collect` removes a deleted team's rows.
+    org_id: int
+    user_email: str
+    call_ref: str = Field(unique=True, index=True)
+    capability: str
+    a_endpoint: str
+    a_provider: str
+    b_endpoint: str | None = Field(default=None)
+    b_provider: str
+    b_call_ref: str | None = Field(default=None)
+    b_cost_micro: int = Field(default=0, sa_type=BigInteger)
+    input: str = Field(default="", sa_type=Text)
+    a_body: str = Field(default="", sa_type=Text)
+    b_body: str = Field(default="", sa_type=Text)
+    # The parts stored cut at their limit: a comma list of input, a, b ("" = none).
+    truncated: str = Field(default="")
+    first: str = Field(default="a")      # a | b: which answer is shown as answer 1
+    status: str = Field(default="ready")  # ready | failed | decided
+    choice: str | None = Field(default=None)  # a | b | tie | both_bad
+    reason: str | None = Field(default=None)
+    client: str = Field(default="")
+    created_at: NaiveUTC = Field(default_factory=_now)
+    decided_at: NaiveUTC | None = Field(default=None)
 
 
 class Media(SQLModel, table=True):

@@ -1,0 +1,86 @@
+"""The sole writer of callcomparison. The application owns the transaction.
+
+A comparison is shown blinded: answer 1 and answer 2 in the stored `first` order, never a vendor
+name. A verdict names 1, 2, tie or both_bad and is mapped back to a and b here."""
+from datetime import datetime
+
+from sqlalchemy import func, or_, update
+from sqlalchemy.ext.asyncio import AsyncSession
+from sqlmodel import select
+
+from ...models import CallComparison
+
+READY, FAILED, DECIDED = "ready", "failed", "decided"
+CHOICES = ("1", "2", "tie", "both_bad")
+
+
+def add(db: AsyncSession, **values) -> CallComparison:
+    row = CallComparison(**values)
+    db.add(row)
+    return row
+
+
+async def by_call_ref(db: AsyncSession, call_ref: str) -> CallComparison | None:
+    return (await db.execute(select(CallComparison).where(
+        CallComparison.call_ref == call_ref))).scalar_one_or_none()
+
+
+async def get(db: AsyncSession, comparison_id: int, org_id: int) -> CallComparison | None:
+    return (await db.execute(select(CallComparison).where(
+        CallComparison.id == comparison_id, CallComparison.org_id == org_id,
+    ))).scalar_one_or_none()
+
+
+async def next_ready(db: AsyncSession, org_id: int, since: datetime) -> CallComparison | None:
+    """The team's oldest comparison still waiting for a verdict, created at or after `since`."""
+    return (await db.execute(select(CallComparison).where(
+        CallComparison.org_id == org_id, CallComparison.status == READY,
+        CallComparison.created_at >= since,
+    ).order_by(CallComparison.created_at.asc(), CallComparison.id.asc()).limit(1))).scalar_one_or_none()
+
+
+async def counted(db: AsyncSession, org_id: int, capability: str, pair: tuple[str, str], *,
+                  since: datetime, ready_since: datetime) -> int:
+    """The team's comparisons of one capability and unordered pair that count toward its cap:
+    decided ones since `since`, and ones still waiting that were created since `ready_since`.
+    Read through (org_id, capability, created_at)."""
+    x, y = pair
+    return int((await db.execute(select(func.count()).select_from(CallComparison).where(
+        CallComparison.org_id == org_id, CallComparison.capability == capability,
+        CallComparison.created_at >= since,
+        or_((CallComparison.a_provider == x) & (CallComparison.b_provider == y),
+            (CallComparison.a_provider == y) & (CallComparison.b_provider == x)),
+        or_(CallComparison.status == DECIDED,
+            (CallComparison.status == READY) & (CallComparison.created_at >= ready_since)),
+    ))).scalar() or 0)
+
+
+def shown(row: CallComparison) -> tuple[str, str]:
+    """(answer 1, answer 2) in the order the agent sees them."""
+    return (row.a_body, row.b_body) if row.first == "a" else (row.b_body, row.a_body)
+
+
+def side(row: CallComparison, choice: str) -> str:
+    """The stored verdict for a shown choice: 1/2 become a/b through `first`."""
+    if choice == "1":
+        return row.first
+    if choice == "2":
+        return "b" if row.first == "a" else "a"
+    return choice
+
+
+async def decide(db: AsyncSession, row: CallComparison, *, choice: str, reason: str | None,
+                 client: str, at: datetime) -> bool:
+    """Record the verdict on a waiting comparison; False when it already had one (kept)."""
+    result = await db.execute(update(CallComparison).where(
+        CallComparison.id == row.id, CallComparison.status == READY,
+    ).values(choice=side(row, choice), reason=reason, client=client, status=DECIDED, decided_at=at)
+        .execution_options(synchronize_session=False))
+    return result.rowcount == 1
+
+
+def shown_choice(row: CallComparison) -> str | None:
+    """The stored verdict as the agent gave it (1, 2, tie, both_bad)."""
+    if row.choice in ("a", "b"):
+        return "1" if row.choice == row.first else "2"
+    return row.choice
