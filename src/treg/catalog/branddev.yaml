@@ -401,14 +401,7 @@ endpoints:
     # is a miss, a blocked page or a missing hostname consumes none.
     settle: {reported: {path: response.key_metadata.credits_consumed, unit: credit}, worst_case: '1'}
     error: {when: {any: [{path: response.error, op: present}, {path: response.errors, op: present}]}}
-    # A target that could not be read still answers 200, naming the reason in the requested
-    # format's `error_code`; only the requested format carries `data`.
-    miss:
-      when:
-        - {any: [{path: response.markdown.data, op: absent}, {path: response.markdown.data, op: empty}]}
-        - {any: [{path: response.html.data, op: absent}, {path: response.html.data, op: empty}]}
-        - {any: [{path: response.images.data, op: absent}, {path: response.images.data, op: empty}]}
-        - {any: [{path: response.screenshot.data, op: absent}, {path: response.screenshot.data, op: empty}]}
+    miss: {plugin: branddev.scrape_miss, means: "no format carries a page, or the Markdown is a captcha, bot check, login or cookie wall"}
     not_found:
       status: [200]
       when: {any: [{path: response.markdown.error_code, op: in, value: [NOT_FOUND, WEBSITE_NOT_FOUND]},
