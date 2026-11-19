@@ -76,16 +76,18 @@ Review already published non-null rate and concurrency values before enabling, s
 workers enforce all three controls.
 
 To lift one Org's limit, publish a higher version with that field null. To disable everything,
-turn the flag off through a normal deploy; accepted work finishes, and no key deletion or
-migration is needed. Enabling, disabling and refresh are not atomic across workers. Lowering a
+turn the flag off through a normal deploy, removing any `TREG_ORG_FLOW_CONTROL_DEFAULT_*` values in
+that same deploy (a default without the flag refuses to boot); accepted work finishes, and no key
+deletion or migration is needed. Enabling, disabling and refresh are not atomic across workers. Lowering a
 limit stops new admissions until occupancy falls below it; it never evicts accepted work.
 
 ## Default limits
 
 ```sh
-TREG_ORG_FLOW_CONTROL_DEFAULT_MAX_IN_FLIGHT=   # unset = no default concurrency limit
-TREG_ORG_FLOW_CONTROL_DEFAULT_RPS=             # unset = no default rate; set with BURST
-TREG_ORG_FLOW_CONTROL_DEFAULT_BURST=
+# Leave a variable unset (not empty) to disable it; an empty value fails to parse.
+# TREG_ORG_FLOW_CONTROL_DEFAULT_MAX_IN_FLIGHT=<positive integer>
+# TREG_ORG_FLOW_CONTROL_DEFAULT_RPS=<positive number>     # only together with BURST
+# TREG_ORG_FLOW_CONTROL_DEFAULT_BURST=<positive integer>
 ```
 
 Unmetered root calls (a team's own key, its own registered tools) never pass money admission, so
