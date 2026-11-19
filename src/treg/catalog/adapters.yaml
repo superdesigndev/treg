@@ -1413,6 +1413,7 @@ adapters:
   hunter.x.discover-companies:
     accepts: [[q]]
     in:  {q: body.query}
+    in_expr: {body.limit: "at_most(limit, 100)"}
     out: {companies: data, count: meta.results}
   aviato.companies.search:
     accepts: [[name]]
