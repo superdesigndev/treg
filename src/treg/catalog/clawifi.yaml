@@ -1,0 +1,365 @@
+provider: clawifi
+source:
+  docs: https://clawifi.dev/docs
+  openapi: https://api.clawifi.dev/openapi.json
+  rate_card: https://api.clawifi.dev/billing/manifest
+  llms: https://clawifi.dev/llms.txt
+  curated: '2026-11-19'
+# Prepaid credits from a monthly plan or a non-expiring pack. GET /billing/manifest (public, no key) is the rate
+# card the API charges from; https://clawifi.dev/pricing.json is the same table. A call needs its minimum cost in
+# balance to start and is charged what it actually cost: cache hits, Clawifi's own failures, answers with status
+# >= 400 and answers with nothing to read cost 0. Every billable answer carries the charge in
+# X-Clawifi-Credits-Charged and the balance in X-Clawifi-Credits-Remaining; treg settles on the first.
+# Probe: GET /usage is free; a bad or missing key answers 401.
+limits: "Requests at once per plan: Free 2, Starter 5, Pro 25, Scale 75. Past that, HTTP 429 with Retry-After. HTTP 402 when the balance does not cover the call's minimum cost; nothing is charged. Sending dry_run: true returns a call's cost without running it."
+pricing_url: https://clawifi.dev/pricing
+defaults:
+  provenance: {source: rate_card_api, source_url: 'https://api.clawifi.dev/billing/manifest', checked: '2026-11-19', confidence: documented}
+  # The exact charge of every billable answer, 0 for a cache hit or an answer with nothing to read.
+  settle: {reported: {header: x-clawifi-credits-charged, unit: credit}}
+
+endpoints:
+  - id: clawifi.web.search
+    added: '2026-11-19'
+    capability: web.search
+    platform: web
+    domain: search
+    scope: any_account
+    method: POST
+    path: /search/free
+    name: Search the web
+    summary: Search the web across several engines as one call; returns ranked results with URL, title, snippet, engine and dates when the engine gives them.
+    input:
+      bodyType: json
+      body:
+        query: {type: string, required: true, example: "Model Context Protocol specification"}
+        max_results: {type: integer, required: false, default: 10, min: 1, max: 50, example: 3}
+        provider: {type: string, required: false, default: free_auto, note: "Engine choice; free_auto asks engines one after another until one has results. The other values are listed on https://clawifi.dev/sources."}
+        include_domains: {type: array, items: {type: string}, required: false}
+        exclude_domains: {type: array, items: {type: string}, required: false}
+        time_range: {type: string, required: false, enum: [day, week, month, year]}
+        country: {type: string, required: false, note: "ISO 3166-1 two-letter code."}
+        language: {type: string, required: false, note: "ISO 639-1 two-letter code."}
+        allow_browser_fallback: {type: boolean, required: false, default: false}
+    test_request:
+      body: {query: "Model Context Protocol specification", max_results: 3}
+    price: {value: '1', currency: credit, unit: call,
+            note: "1 credit per search. An identical search within 60 seconds is served from cache for 0; a search with no results costs 0."}
+    error: {when: {path: response.success, op: equals, value: false}}
+    miss: {when: {any: [{path: response.results, op: absent}, {path: response.results, op: empty}]}}
+    docs_url: https://clawifi.dev/docs/api/post-search-free
+
+  - id: clawifi.web.search.content
+    added: '2026-11-19'
+    capability: web.search
+    platform: web
+    domain: search
+    scope: any_account
+    method: POST
+    path: /search/content
+    name: Search the web and read the top results
+    summary: Search the web and read the top results in one call; each result carries the search hit and the page as Markdown with metadata and dates.
+    input:
+      bodyType: json
+      body:
+        query: {type: string, required: true, example: "Model Context Protocol specification"}
+        max_results: {type: integer, required: false, default: 10, min: 1, max: 50, example: 2}
+        fetch: {type: object, required: false, note: "Page reading options: max_results_to_fetch (default 3), formats, mode (auto, http or browser), passages (0-20).", example: {max_results_to_fetch: 1}}
+        full: {type: boolean, required: false, note: "true returns each result whole; by default each is shortened to under 3 KB."}
+      note: "results[].scrape is null for a page that could not be read, with the reason in results[].error."
+    test_request:
+      body: {query: "Model Context Protocol specification", max_results: 2, fetch: {max_results_to_fetch: 1}}
+    price: {value: '1', currency: credit, unit: call}
+    error: {when: {path: response.success, op: equals, value: false}}
+    miss: {when: {any: [{path: response.results, op: absent}, {path: response.results, op: empty}]}}
+    docs_url: https://clawifi.dev/docs/api/post-search-content
+
+  - id: clawifi.web.fetch
+    added: '2026-11-19'
+    capability: web.extract
+    platform: web
+    domain: extract
+    scope: any_account
+    method: POST
+    path: /fetch
+    name: Read a page or PDF
+    summary: Read a web page or PDF as clean Markdown and text, or only the passages that answer a query; returns title, dates, language and content status.
+    input:
+      bodyType: json
+      body:
+        url: {type: string, required: true, example: "https://docs.python.org/3/library/json.html"}
+        query: {type: string, required: false, maxLength: 500, note: "Return only the passages that answer it; costs nothing extra."}
+        top_k: {type: integer, required: false, default: 5, min: 1, max: 20}
+        render: {type: string, required: false, default: never, enum: [never, auto, always], note: "auto renders a JavaScript page in a browser; always renders every page."}
+        force_browser: {type: boolean, required: false, default: false}
+        content_scope: {type: string, required: false, default: main, enum: [main, full]}
+        target_selector: {type: string, required: false}
+        wait_for_selector: {type: string, required: false}
+        wait_until: {type: string, required: false, default: domcontentloaded, enum: [commit, domcontentloaded, load, networkidle]}
+        max_pages: {type: integer, required: false, default: 50, min: 1, max: 500, note: "PDF pages to read."}
+        exclude_tags: {type: array, items: {type: string}, required: false, maxItems: 20}
+        return_raw_html: {type: boolean, required: false, default: false}
+        skip_archive: {type: boolean, required: false, default: false}
+        timeout_seconds: {type: integer, required: false}
+      note: "content_status other than ok (blocked, needs_javascript, not_found, thin) means nothing to read; diagnostics.suggested_retry says what to try next."
+    test_request:
+      body: {url: "https://docs.python.org/3/library/json.html"}
+    price:
+      table:
+        - {when: [{path: body.force_browser, op: equals, value: true}], value: '3'}
+        - {when: [{path: body.render, op: equals, value: always}], value: '3'}
+        - {when: [{path: body.render, op: equals, value: never}], value: '1'}
+      fallback: {value: '3', note: "render: auto renders a JavaScript page in a browser for 3 credits."}
+      currency: credit
+      unit: call
+      note: "1 credit for a page read over HTTP, 3 when it is rendered in a browser. A PDF costs 2 per started 50 pages instead. A cached page and a page with nothing to read cost 0."
+    miss: {when: {path: response.content_status, op: in, value: [blocked, needs_javascript, not_found, thin]}}
+    docs_url: https://clawifi.dev/docs/api/post-fetch
+
+  - id: clawifi.web.scrape
+    added: '2026-11-19'
+    capability: web.extract
+    platform: web
+    domain: extract
+    scope: any_account
+    method: POST
+    path: /scrape
+    name: Scrape a page into chosen formats
+    summary: Scrape a web page into the formats you choose (Markdown, text, HTML, links, images, metadata, embedded state JSON), with query passages on request.
+    input:
+      bodyType: json
+      body:
+        url: {type: string, required: true, example: "https://www.python.org/about/"}
+        formats: {type: array, items: {type: [string, object]}, required: false, note: "Any of markdown, text, html, raw_html, links, images, metadata, screenshot, json, state_json; markdown when omitted.", example: ["markdown", "links"]}
+        mode: {type: string, required: false, default: auto, enum: [auto, http, browser], note: "auto reads over HTTP and switches to a browser for a JavaScript page."}
+        query: {type: string, required: false, maxLength: 500}
+        top_k: {type: integer, required: false, default: 5, min: 1, max: 20}
+        target_selector: {type: string, required: false}
+        wait_for_selector: {type: string, required: false}
+        wait_until: {type: string, required: false, default: domcontentloaded, enum: [commit, domcontentloaded, load, networkidle]}
+        exclude_tags: {type: array, items: {type: string}, required: false, maxItems: 20}
+        skip_archive: {type: boolean, required: false, default: false}
+        timeout_seconds: {type: integer, required: false}
+      note: "format_results says per format whether it worked."
+    test_request:
+      body: {url: "https://www.python.org/about/", formats: ["markdown", "links"], mode: http}
+    price:
+      table:
+        - {when: [{path: body.mode, op: equals, value: browser}], value: '3'}
+        - {when: [{path: body.mode, op: equals, value: http}], value: '1'}
+        - {when: [{path: body.mode, op: equals, value: auto}], value: '1'}
+      fallback: {value: '3', note: "A browser read, the most one page costs."}
+      currency: credit
+      unit: call
+      note: "1 credit over HTTP, 3 in a browser; mode auto costs 3 when it switches to the browser. A cached page and a page with nothing to read cost 0."
+    miss: {when: {path: response.content_status, op: in, value: [blocked, needs_javascript, not_found, thin]}}
+    docs_url: https://clawifi.dev/docs/api/post-scrape
+
+  - id: clawifi.web.extract
+    added: '2026-11-19'
+    capability: web.extract.structured
+    platform: web
+    domain: extract
+    scope: any_account
+    method: POST
+    path: /extract
+    name: Extract fields from a page
+    summary: Extract typed fields from one web page with a preset (article, product, person, company) or your own schema; returns the values, where each was found and a confidence.
+    input:
+      bodyType: json
+      body:
+        url: {type: string, required: true, example: "https://en.wikipedia.org/wiki/HTTP"}
+        preset: {type: string, required: false, enum: [article, product, person, company], example: article}
+        schema: {type: object, required: false, note: "Field name to {type, required, selectors, patterns, hints}; type is one of string, number, integer, boolean, array, url, object, table."}
+        force_browser: {type: boolean, required: false, default: false}
+        wait_until: {type: string, required: false, default: domcontentloaded, enum: [commit, domcontentloaded, load, networkidle]}
+        skip_archive: {type: boolean, required: false, default: false}
+        timeout_seconds: {type: integer, required: false}
+      note: "Send a preset or a schema; without one, data comes back empty."
+    test_request:
+      body: {url: "https://en.wikipedia.org/wiki/HTTP", preset: article}
+    price:
+      table:
+        - {when: [{path: body.force_browser, op: equals, value: true}], value: '3'}
+        - {when: [{path: body.force_browser, op: equals, value: false}], value: '1'}
+      fallback: {value: '3', note: "A browser read, the most one page costs."}
+      currency: credit
+      unit: call
+      note: "1 credit for an extraction over HTTP, 3 when the page is read in a browser. A cached page and a page with nothing to read cost 0."
+    miss: {when: {path: response.success, op: equals, value: false}}
+    docs_url: https://clawifi.dev/docs/api/post-extract
+
+  - id: clawifi.web.browse
+    added: '2026-11-19'
+    capability: web.extract
+    platform: web
+    domain: extract
+    scope: any_account
+    method: POST
+    path: /browse
+    name: Read a page in a browser
+    summary: Read a JavaScript-rendered web page in a browser and return it as Markdown and text, or only the passages that answer a query.
+    input:
+      bodyType: json
+      body:
+        url: {type: string, required: true, example: "https://example.com"}
+        query: {type: string, required: false, maxLength: 500}
+        top_k: {type: integer, required: false, default: 5, min: 1, max: 20}
+        content_scope: {type: string, required: false, default: main, enum: [main, full]}
+        target_selector: {type: string, required: false}
+        wait_for_selector: {type: string, required: false}
+        wait_until: {type: string, required: false, default: domcontentloaded, enum: [commit, domcontentloaded, load, networkidle]}
+        exclude_tags: {type: array, items: {type: string}, required: false, maxItems: 20}
+        skip_archive: {type: boolean, required: false, default: false}
+        timeout_seconds: {type: integer, required: false}
+    test_request:
+      body: {url: "https://example.com"}
+    price: {value: '3', currency: credit, unit: call,
+            note: "3 credits per browser read. A cached page and a page with nothing to read cost 0; a page served from the archive without a render costs 1."}
+    miss: {when: {path: response.content_status, op: in, value: [blocked, needs_javascript, not_found, thin]}}
+    docs_url: https://clawifi.dev/docs/api/post-browse
+
+  - id: clawifi.web.map
+    added: '2026-11-19'
+    capability: web.map
+    platform: web
+    domain: map
+    scope: any_account
+    method: POST
+    path: /map
+    name: Map a website
+    summary: Discover the URLs of a website from robots.txt, sitemaps, feeds and page links, optionally filtered by a search term.
+    input:
+      bodyType: json
+      body:
+        url: {type: string, required: true, example: "https://docs.python.org/3/"}
+        max_urls: {type: integer, required: false, default: 100, min: 1, max: 1000, example: 10, note: "The price dial: every started 10 URLs returned cost 1 credit."}
+        search: {type: string, required: false}
+        sources: {type: array, items: {type: string, enum: [robots, sitemap, html_links, rss, docs_paths]}, required: false}
+        same_domain_only: {type: boolean, required: false, default: true}
+        allow_subdomains: {type: boolean, required: false, default: false}
+        ignore_query_params: {type: boolean, required: false, default: true}
+        robots_policy: {type: string, required: false, default: respect, enum: [respect, ignore]}
+        timeout_seconds: {type: integer, required: false}
+    test_request:
+      body: {url: "https://docs.python.org/3/", max_urls: 10}
+    price: {value: '1', per: 10, round: up, currency: credit, unit: result,
+            note: "1 credit per started 10 URLs returned, at least 1; a map that finds no URLs costs 0."}
+    reserve: {rows: {param: body.max_urls, default: {value: 100, source: docs}, max: 1000}}
+    miss: {when: {any: [{path: response.urls, op: absent}, {path: response.urls, op: empty}]}}
+    docs_url: https://clawifi.dev/docs/api/post-map
+
+  - id: clawifi.web.search.publications
+    added: '2026-11-19'
+    capability: web.search.publications
+    platform: web
+    domain: search
+    scope: any_account
+    method: POST
+    path: /academic/search
+    name: Search papers in one academic source
+    summary: Search scholarly papers in one academic source (arXiv, PubMed, Semantic Scholar or OpenAlex); each result is a paper record with its fields.
+    input:
+      bodyType: json
+      body:
+        query: {type: string, required: true, example: "retrieval augmented generation"}
+        source: {type: string, required: true, enum: [arxiv, pubmed, semantic_scholar, openalex], example: arxiv}
+        max_results: {type: integer, required: false, default: 10, min: 1, max: 50, example: 3}
+        filters: {type: object, required: false}
+    test_request:
+      body: {query: "retrieval augmented generation", source: arxiv, max_results: 3}
+    price: {value: '1', currency: credit, unit: call, note: "1 credit per search; a search with no results costs 0."}
+    miss: {when: {path: response.0, op: absent}}
+    docs_url: https://clawifi.dev/docs/api/post-academic-search
+
+  - id: clawifi.web.search.archives
+    added: '2026-11-19'
+    capability: web.search.publications
+    platform: web
+    domain: search
+    scope: any_account
+    method: POST
+    path: /archives/search
+    name: Search open-access archives
+    summary: Search open scholarly archives (arXiv, Crossref, Zenodo, OSF, DOAJ, PubMed Central, bioRxiv, medRxiv) in one call, with optional date bounds.
+    input:
+      bodyType: json
+      body:
+        query: {type: string, required: true, maxLength: 500, example: "large language models"}
+        sources: {type: array, items: {type: string, enum: [arxiv, crossref, zenodo, osf, doaj, pmc, biorxiv, medrxiv]}, required: false, example: ["arxiv"]}
+        max_results_per_source: {type: integer, required: false, default: 5, example: 3}
+        from_date: {type: string, required: false, note: "YYYY-MM-DD"}
+        to_date: {type: string, required: false, note: "YYYY-MM-DD"}
+    test_request:
+      body: {query: "large language models", sources: ["arxiv"], max_results_per_source: 3}
+    price: {value: '1', currency: credit, unit: call, note: "1 credit per search; a search with no results costs 0."}
+    miss: {when: {any: [{path: response.results, op: absent}, {path: response.results, op: empty}]}}
+    docs_url: https://clawifi.dev/docs/search
+
+  - id: clawifi.packages.search
+    added: '2026-11-19'
+    capability: packages.search
+    platform: packages
+    domain: search
+    scope: any_account
+    method: POST
+    path: /packages/search
+    name: Search package registries
+    summary: Search package registries (PyPI, npm, crates.io, Maven, NuGet, RubyGems, Packagist, pub.dev) by keyword; returns matching packages per registry.
+    input:
+      bodyType: json
+      body:
+        query: {type: string, required: true, maxLength: 200, example: "http client", note: "PyPI is matched by exact package name, so a query with a space finds nothing there; the other registries take keywords."}
+        ecosystems: {type: array, items: {type: string, enum: [pypi, npm, crates, maven, nuget, rubygems, packagist, pub]}, required: false, example: ["npm"]}
+        max_results_per_ecosystem: {type: integer, required: false, default: 5, example: 3}
+    test_request:
+      body: {query: "http client", ecosystems: ["npm"], max_results_per_ecosystem: 3}
+    price: {value: '1', currency: credit, unit: call, note: "1 credit per search; a search with no results costs 0."}
+    miss: {when: {any: [{path: response.results, op: absent}, {path: response.results, op: empty}]}}
+    docs_url: https://clawifi.dev/docs/api/post-packages-search
+
+  - id: clawifi.research.datasets.search
+    added: '2026-11-19'
+    capability: research.datasets.search
+    platform: research
+    domain: search
+    scope: any_account
+    method: POST
+    path: /datasets/search
+    name: Search public datasets
+    summary: Search public datasets on Hugging Face, OpenML, Dataverse and Figshare by keyword; returns matching datasets per source.
+    input:
+      bodyType: json
+      body:
+        query: {type: string, required: true, maxLength: 300, example: "sentiment analysis"}
+        sources: {type: array, items: {type: string, enum: [huggingface, openml, dataverse, figshare]}, required: false, example: ["huggingface"]}
+        max_results_per_source: {type: integer, required: false, default: 5, example: 3}
+    test_request:
+      body: {query: "sentiment analysis", sources: ["huggingface"], max_results_per_source: 3}
+    price: {value: '1', currency: credit, unit: call, note: "1 credit per search; a search with no results costs 0."}
+    miss: {when: {any: [{path: response.results, op: absent}, {path: response.results, op: empty}]}}
+    docs_url: https://clawifi.dev/docs/api/post-datasets-search
+
+  - id: clawifi.github.repo.profile
+    added: '2026-11-19'
+    capability: github.repo.profile
+    platform: github
+    domain: repo
+    scope: any_account
+    method: GET
+    path: /code/repo
+    name: Read a GitHub repository
+    summary: Read a public GitHub repository's metadata through GitHub's API, as a Repository record.
+    input:
+      queryParams:
+        owner: {type: string, required: true, example: "python"}
+        repo: {type: string, required: true, example: "cpython"}
+    test_request:
+      queryParams: {owner: "python", repo: "cpython"}
+    price: {value: '1', currency: credit, unit: call}
+    miss: {when: {path: response.success, op: equals, value: false}}
+    docs_url: https://clawifi.dev/api-reference
+
+proposed_capabilities:
+  packages.search: "Search package registries by keyword"
+  research.datasets.search: "Search public datasets by keyword"
