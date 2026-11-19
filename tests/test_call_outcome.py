@@ -74,3 +74,27 @@ async def test_the_routed_job_still_charges_nothing_for_a_page_that_does_not_exi
     assert r.status_code == 404 and r.json()["detail"]["error"] == "route_not_found", r.text
     assert [t["endpoint_id"] for t in r.json()["detail"]["tried"]] == [SCRAPE]
     assert await _balance(clients) == before
+
+
+async def test_a_wall_page_context_dev_billed_is_charged_when_the_route_answers(clients: AsyncClient, monkeypatch):
+    """A captcha page Context.dev consumed a credit for is no answer, so the walk goes on, but the
+    credit it reported is the caller's once the route answers, as any billed miss on the way is."""
+    monkeypatch.setenv("TREG_PLATFORM_KEY_BRANDDEV", "PLATFORM-BRANDDEV-KEY")
+    monkeypatch.setenv("TREG_PLATFORM_KEY_FIRECRAWL", "PLATFORM-FIRECRAWL-KEY")
+    monkeypatch.setenv("TREG_PLATFORM_PROVIDERS", "branddev,firecrawl")
+    get_settings.cache_clear()
+    wall = "Just a moment... Enable JavaScript and cookies to continue. Performance and security by Cloudflare"
+    page = "# Example Domain\n\nThis domain is for use in illustrative examples in documents. " * 3
+    seen = []
+    monkeypatch.setattr(call_service, "relay", _relay_by_provider({
+        "context.dev": [(200, _answer(1, success=True, data=wall))],
+        "firecrawl": [(200, {"success": True, "data": {"markdown": page, "metadata": {"statusCode": 200}}})],
+    }, seen))
+    before = await _balance(clients)
+    r = await clients.post("/call/treg.web.extract", json={"url": "https://x.test/walled"})
+    assert r.status_code == 200, r.text
+    assert [s[0] for s in seen] == ["context.dev", "firecrawl"]
+    tried = {t["endpoint_id"]: t for t in r.json()["_treg"]["tried"]}
+    assert tried[SCRAPE]["outcome"] != "hit" and tried[SCRAPE]["charged_micro"] > 0
+    assert before - await _balance(clients) == sum(t["charged_micro"] for t in tried.values())
+    get_settings.cache_clear()
