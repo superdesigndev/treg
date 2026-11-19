@@ -431,7 +431,13 @@ async def refill_allowance_in_transaction(
             select(Org.balance_micro - _queued_unbacked(org_id)).where(Org.id == org_id)
         )).scalar() or 0)
     if debited and free < 0:
-        await _add_balance(db, org_id, add, spent_delta_micro=-add if counted else 0)
+        # Undo the debit as it was made. The day's counter is taken back from the day the debit
+        # counted it on, whatever the clock says now: a midnight between the two must not open
+        # the new day below zero.
+        uncounted = {"spent_today_micro": Org.spent_today_micro - add} if counted else {}
+        with money_stage(db, "update_balance"):
+            await db.execute(update(Org).where(Org.id == org_id).values(
+                balance_micro=Org.balance_micro + add, **uncounted))
         free, debited = free + add, False
     overdrawn = free < 0
     if hold is None:

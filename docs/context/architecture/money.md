@@ -325,7 +325,9 @@ money moved, the purchased-credit gate.
   reserve judges it, against the balance less what the queue will take from it
   (`_queued_unbacked`), read after the debit: a charge queued for more than its call set aside
   is owed from the moment it is queued, and its freeze can reach the counter after the next
-  refill. A refill that finds the balance short of that adds nothing and the counter is drained.
+  refill. A refill that finds the balance short of that undoes its debit exactly (the day's
+  counter is taken back from the day it was counted on, not by the clock), adds nothing, and
+  the counter is drained.
   A team with a daily cap
   gets no refill that could take the day past it. The number a cap is checked against is
   `allowance.committed_today`, one statement over the rows themselves: today's counter, plus all
@@ -432,7 +434,8 @@ money moved, the purchased-credit gate.
   and however many teams are busy, and none of them comes from the pool requests use. A team
   another process is working on (its lease is taken) is skipped, not waited for; so is a team
   whose other money sessions hold the admission lease (the fold asks `admit` to refuse after a
-  short wait instead of falling back), and the next pass comes back to it. A pass
+  short wait instead of falling back), and the next pass comes back to it. The idle sweep
+  waits no longer than that either: it runs first in the same loop. A pass
   leaves a team after a few batches so one long queue does not keep the others waiting. Calls
   keep taking from the counter meanwhile, since a fold moves only money their takes already
   removed from it: until its charge is folded, a call's money stays in the hold. A call's

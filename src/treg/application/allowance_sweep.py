@@ -89,7 +89,8 @@ async def sweep_once(session_maker) -> int:
                 async with (
                     money_lock(org_id),
                     money_admission.admit(
-                        money_admission.require_balance_orgs([org_id]), operation="release"),
+                        money_admission.require_balance_orgs([org_id]), operation="release",
+                        max_wait_s=_ADMISSION_WAIT_S, refuse_on_timeout=True),
                     money_session(session_maker()) as db,
                 ):
                     result = await allowance.close_stale_allowance_in_transaction(
@@ -103,6 +104,8 @@ async def sweep_once(session_maker) -> int:
             await kv.store().allowance_retire(org_id, result.epoch, _FENCE_TTL_MS)
             log.info("allowance_closed org_id=%s released=%s folded=%s",
                      org_id, result.released_micro, result.folded.calls)
+        except money_admission.AdmissionTimeout:
+            continue  # the team's money sessions are busy: the next sweep comes back
         except Exception:
             log.error("closing the idle allowance of org %s failed", org_id, exc_info=True)
     return closed

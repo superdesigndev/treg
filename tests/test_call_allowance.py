@@ -1475,6 +1475,59 @@ async def test_a_team_whose_money_sessions_are_busy_does_not_hold_up_the_teams_b
     assert await _queued(org_id) == 0
 
 
+async def test_an_idle_allowance_whose_team_is_busy_does_not_hold_up_another_teams_charges(
+        org_id, store, monkeypatch):
+    """The sweep runs before the fold in a pass. A team it cannot close yet is left for the next
+    sweep, and the charges queued behind it are applied in this pass."""
+    monkeypatch.setattr(get_settings(), "money_admission_enabled", True)
+    monkeypatch.setattr(allowance_sweep, "_ADMISSION_WAIT_S", 0.05)
+    assert await runtime.take(org_id, 100)
+    await _age_heartbeat(org_id, allowance_sweep.idle_after_s() + 5)
+    async with session_maker() as db:
+        db.add(Org(id=org_id + 1, name="later", slug=uuid4().hex))
+        await db.flush()
+        await ledger.grant(db, org_id + 1, amount_micro=GRANT)
+        await allowance.record_charges(db, [
+            allowance.Charge("queued", org_id + 1, "e.metered", 400, reserved_micro=400)])
+        await db.commit()
+    store.leases[f"money-admission:org:{org_id}"] = "an exact settle"
+    started = time.monotonic()
+    assert await allowance_sweep.run_once(session_maker, sweep=True) == 1
+    assert time.monotonic() - started < 2
+    assert await _queued(org_id + 1) == 0 and (await _state(org_id))[1] > 0, "not closed yet"
+    del store.leases[f"money-admission:org:{org_id}"]
+    assert await allowance_sweep.sweep_once(session_maker) == 1
+    assert await _state(org_id) == (GRANT, 0)
+
+
+async def test_a_refill_refused_across_midnight_leaves_the_new_days_spend_alone(
+        org_id, store, monkeypatch):
+    """The debit counted on one day and the refusal came on the next. Taking it back by the
+    clock would open the new day's counter below zero, and a daily cap would let more through."""
+    async with session_maker() as db:
+        await allowance.refill_allowance_in_transaction(db, org_id, 1_000)
+        await allowance.record_charges(db, [
+            allowance.Charge("overrun", org_id, "e", GRANT * 2, reserved_micro=10)])
+        await db.commit()
+    now, unbacked, tomorrow = ledger._now, allowance._queued_unbacked, []
+
+    def read_after_midnight(team):
+        tomorrow.append(True)
+        return unbacked(team)
+
+    monkeypatch.setattr(allowance, "_queued_unbacked", read_after_midnight)
+    monkeypatch.setattr(ledger, "_now", lambda: now() + timedelta(days=len(tomorrow)))
+    async with session_maker() as db:
+        before = (await db.execute(select(
+            Org.spent_today_micro, Org.spent_today_day).where(Org.id == org_id))).one()
+        result = await allowance.refill_allowance_in_transaction(db, org_id, 500, fold_limit=0)
+        await db.commit()
+        after = (await db.execute(select(
+            Org.spent_today_micro, Org.spent_today_day).where(Org.id == org_id))).one()
+    assert tomorrow and result.added_micro == 0 and result.overdrawn
+    assert tuple(after) == tuple(before) and after[0] >= 0
+
+
 async def test_a_refill_does_not_hand_out_what_a_queued_overrun_already_owes(
         org_id, store):
     """A call cost more than it set aside. Its charge is committed and the counter's freeze has
