@@ -528,9 +528,10 @@ class _ChargeWriter:
                 holds = await allowance.holds_behind(db, [org_id])
             # A row that was already there was committed by an earlier attempt, which marked its
             # paid question too. On a rewrite, so was a row that is new only because the earlier
-            # attempt's row has been applied and deleted since: its call has a settle entry.
+            # attempt's row has been applied and deleted since: its call has a settle entry, and
+            # the row just written is taken out again.
             if again and new:
-                new -= await allowance.settled_calls(db, sorted(new))
+                new -= await allowance.drop_settled_charges(db, sorted(new))
             uses = [use for charge, use in rows if use is not None and charge.call_id in new]
             if uses:
                 await archive.note_org_uses_in_transaction(db, uses)

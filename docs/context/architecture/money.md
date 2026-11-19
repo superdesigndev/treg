@@ -150,8 +150,13 @@ and returns nothing from it, and leaves its deadline where it was: calls admitte
 retiring still stand on that money. The team's calls take the exact path until the idle sweep
 closes the hold, and the refill after that opens a new one. A
 queue row's primary key stops
-a second recording only until the row is folded, so the fold also drops any claimed row whose call
-already has a `settle` entry. The daily counter moves as it does at `settle`: consumed goes in, and
+a second recording only until the row is folded. Only a rewrite of charges whose first write went
+unconfirmed can record a call twice, and it takes back, in its own transaction, any row it has
+just queued whose call already has a `settle` entry (`drop_settled_charges`): the entry was
+committed before that insert could succeed, and the new row is the rewrite's own until it
+commits. So no reader of the queue and no fold meets a settled call queued, and the readers
+(`committed_today`, `_queued_unbacked`) sum the queue's rows without looking each one up in the
+ledger. The fold still drops any claimed row whose call already has a `settle` entry. The daily counter moves as it does at `settle`: consumed goes in, and
 the covered part comes out only when the hold was opened today.
 
 The allowance runs on PostgreSQL only (`enabled_for` is false elsewhere). It leans on row locks
@@ -333,8 +338,7 @@ money moved, the purchased-credit gate.
   `allowance.committed_today`, one statement over the rows themselves: today's counter, plus all
   of an allowance hold opened on an earlier day (it is not in today's counter, only what a fold
   consumes from it is, yet all of it can be spent today), plus the overruns of queued charges,
-  plus what queued charges set aside beyond what the hold has left. A queued charge whose call
-  already has a `settle` entry is left out, the rule a fold applies. The refill reads it after its fold, under the hold's lock, and adds the amount asked
+  plus what queued charges set aside beyond what the hold has left. The refill reads it after its fold, under the hold's lock, and adds the amount asked
   for. The exact path's cap check reads the same number for every team, listed or not: a hold
   and its queued charges outlive the switch. When the counter
   still cannot cover

@@ -265,12 +265,22 @@ async def has_allowance(db: AsyncSession, org_id: int) -> bool:
         select(Hold.id).where(Hold.id == allowance_id(org_id)))).first() is not None
 
 
-async def settled_calls(db: AsyncSession, call_ids: Sequence[str]) -> set[str]:
-    """Which of these calls already have a `settle` entry."""
+async def drop_settled_charges(db: AsyncSession, call_ids: Sequence[str]) -> set[str]:
+    """Of the calls a rewrite has just queued, the ones that already have a `settle` entry: the
+    first attempt's row was committed and has been folded since. Their new rows are taken out
+    of the queue again, in the transaction that put them there, so no reader of the queue and
+    no fold ever sees a settled call queued. Returns those calls.
+
+    Only a rewrite can queue a call twice, and a row it has just inserted is its own until it
+    commits: the settle entry, if there is one, was committed before the insert could succeed.
+    """
     if not call_ids:
         return set()
-    return set((await db.execute(select(LedgerEntry.call_id).where(
+    settled = set((await db.execute(select(LedgerEntry.call_id).where(
         LedgerEntry.call_id.in_(list(call_ids)), LedgerEntry.kind == "settle"))).scalars())
+    if settled:
+        await db.execute(delete(CallCharge).where(CallCharge.call_id.in_(sorted(settled))))
+    return settled
 
 
 async def settled_micro(db: AsyncSession, org_id: int, call_id: str) -> int | None:
@@ -323,14 +333,12 @@ async def committed_today(db: AsyncSession, org_id: int) -> int:
     earlier day, all of it; what queued charges owe the balance outright (their overruns, and
     all of a charge whose own hold is gone); and what queued charges may take from the hold
     beyond what it has left. All are read from the rows themselves, so the figure is right whether or not the
-    team's allowance is switched on. A queued charge whose call already has a `settle` entry is
-    left out, as a fold will drop it.
+    team's allowance is switched on. Every queued row is a charge still to be applied: a
+    rewrite never leaves a settled call queued (`drop_settled_charges`).
     """
     hold_id = allowance_id(org_id)
     from_hold, outright = _charge_parts(org_id)
-    unsettled = (CallCharge.org_id == org_id, ~select(LedgerEntry.id).where(
-        LedgerEntry.call_id == CallCharge.call_id, LedgerEntry.org_id == org_id,
-        LedgerEntry.kind == "settle").exists())
+    unsettled = (CallCharge.org_id == org_id,)
     row = (await db.execute(select(
         Org.spent_today_micro, Org.spent_today_day,
         select(Hold.amount_micro).where(Hold.id == hold_id).scalar_subquery(),
