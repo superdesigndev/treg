@@ -1,0 +1,165 @@
+provider: vidcrawl
+source:
+  docs: https://vidcrawl.com/api-reference
+  openapi: https://vidcrawl.com/docs/json
+  curated: '2026-11-19'
+pricing_url: https://vidcrawl.com/#pricing
+limits: "Token-bucket per API key across /v1/scrape, /v1/frames, /v1/search, and /v1/agent; rate headers accompany throttled responses."
+defaults:
+  provenance:
+    source: docs
+    source_url: 'https://vidcrawl.com/#pricing'
+    checked: '2026-11-19'
+    confidence: documented
+proposed_capabilities:
+  video-understand.video.scrape: "Extract cleaned metadata, chapters, timestamped transcript, and visual storyboard grids from a public video URL"
+  video-understand.video.frames: "Extract sharp JPEG frames at specific timestamps from a public video URL"
+  video-understand.video.agent: "Analyze public video URLs against a prompt with cited timestamps, OCR, scenes, and structured JSON output"
+endpoints:
+  - id: vidcrawl.account.usage
+    added: '2026-11-19'
+    kind: account
+    capability: account.usage
+    platform: account
+    scope: own_account
+    method: GET
+    path: /v1/account
+    name: "VidCrawl: Account balance and cost schedule"
+    summary: "Current VidCrawl credit balance and per-endpoint credit rates (free)"
+    input:
+      note: "No parameters. Send the API key in Authorization: Bearer."
+    test_request: {queryParams: {}}
+    price:
+      value: '0'
+      currency: USD
+      per: 1
+      unit: call
+      note: "Free health probe and balance lookup; consumes zero credits."
+    provenance: null
+    docs_url: https://vidcrawl.com/api-reference
+
+  - id: vidcrawl.video-understand.scrape
+    added: '2026-11-19'
+    capability: video-understand.video.scrape
+    platform: video-understand
+    scope: any_account
+    method: POST
+    path: /v1/scrape
+    name: "VidCrawl: Scrape video context"
+    summary: "Extract video metadata, chapters, timestamped transcript, and 3x3 visual storyboard grids as Markdown and JSON."
+    input:
+      body:
+        url: {type: string, required: true, note: "Public YouTube, TikTok, Instagram Reels, or X video URL.", example: "https://www.youtube.com/watch?v=dQw4w9WgXcQ"}
+        formats: {type: array, required: false, note: "Output layers from markdown, segments, storyboard (1 to 3 items; defaults to all three).", example: ["markdown", "segments", "storyboard"]}
+        lang: {type: string, required: false, default: "en", note: "Preferred BCP-47 transcript language code (e.g. en, zh-Hans).", example: "en"}
+        max_age_sec: {type: integer, required: false, min: 0, max: 31536000, default: 2592000, note: "Maximum cache age in seconds (0..31536000). Pass 0 to force a fresh live scrape.", example: 2592000}
+      bodyType: json
+    test_request:
+      body: {url: "https://www.youtube.com/watch?v=dQw4w9WgXcQ", formats: ["markdown", "segments", "storyboard"], lang: "en"}
+    price:
+      value: '0.009'
+      currency: USD
+      per: 1
+      unit: call
+      note: "One credit ($0.009 at Starter rate, $0.00725 on Growth). Cached replays and upstream errors spend zero credits."
+    docs_url: https://vidcrawl.com/api-reference
+
+  - id: vidcrawl.video-understand.frames
+    added: '2026-11-19'
+    capability: video-understand.video.frames
+    platform: video-understand
+    scope: any_account
+    method: POST
+    path: /v1/frames
+    name: "VidCrawl: Extract video frames"
+    summary: "Slice 1 to 20 sharp JPEG frames at exact video timestamps without downloading the full file."
+    input:
+      body:
+        url: {type: string, required: true, note: "Public YouTube, TikTok, Instagram Reels, or X video URL.", example: "https://www.youtube.com/watch?v=dQw4w9WgXcQ"}
+        timestamps_sec: {type: array, required: true, minItems: 1, maxItems: 20, note: "Target timestamps in seconds (1 to 20 non-negative numbers).", example: [12.5, 45]}
+        max_width: {type: integer, required: false, min: 320, max: 1920, default: 1280, note: "Maximum frame width in pixels (320..1920).", example: 1280}
+      bodyType: json
+    test_request:
+      body: {url: "https://www.youtube.com/watch?v=dQw4w9WgXcQ", timestamps_sec: [12.5, 45], max_width: 1280}
+    price:
+      value: '0.009'
+      currency: USD
+      per: 1
+      unit: call
+      note: "Flat one credit ($0.009 at Starter rate) for 1 to 20 timestamps in one call."
+    docs_url: https://vidcrawl.com/api-reference
+
+  - id: vidcrawl.youtube.search.videos
+    added: '2026-11-19'
+    capability: youtube.search.videos
+    platform: youtube
+    scope: any_account
+    method: POST
+    path: /v1/search
+    name: "VidCrawl: Search videos"
+    summary: "Search YouTube videos live or via cached index, with optional inline metadata, transcript, and storyboard scraping."
+    input:
+      body:
+        query: {type: string, required: true, note: "Search query string (1..200 characters).", example: "tanstack start tutorial"}
+        platform: {type: string, required: false, default: "youtube", enum: ["youtube", "tiktok"], note: "Target platform; tiktok currently returns 422 UNSUPPORTED_PLATFORM.", example: "youtube"}
+        limit: {type: integer, required: false, min: 1, max: 20, default: 5, note: "Maximum results to return (1..20).", example: 5}
+        scrape: {type: boolean, required: false, default: false, note: "Set true to attach Layer 1 scrape payloads to each result (+1 credit per scraped result).", example: false}
+        lang: {type: string, required: false, default: "en", note: "Preferred BCP-47 transcript language code when scrape is true.", example: "en"}
+        source: {type: string, required: false, default: "live", enum: ["live", "index"], note: "Search mode: live (1 credit) or index (cached scrapes, 0 credits up to 1,000/day).", example: "live"}
+        domain: {type: string, required: false, note: "Optional domain or channel filter (1..200 chars) for source index.", example: "youtube.com"}
+      bodyType: json
+    test_request:
+      body: {query: "tanstack start tutorial", platform: "youtube", limit: 3, scrape: false, source: "live"}
+    price:
+      table:
+        - when: [{path: body.scrape, op: equals, value: true}]
+          value: '0.189'
+        - when: [{path: body.source, op: equals, value: index}, {path: body.scrape, op: absent}]
+          value: '0'
+        - when: [{path: body.source, op: equals, value: index}, {path: body.scrape, op: equals, value: false}]
+          value: '0'
+        - when: [{path: body.scrape, op: equals, value: false}]
+          value: '0.009'
+        - when: [{path: body.scrape, op: absent}]
+          value: '0.009'
+      fallback:
+        value: '0.189'
+        note: "Worst-case hold covers inline scraping up to 20 returned results ($0.189 at Starter rate)."
+      currency: USD
+      note: "Live search costs one credit ($0.009); index search costs zero; inline scrape adds one credit per scraped result."
+    docs_url: https://vidcrawl.com/api-reference
+
+  - id: vidcrawl.video-understand.agent
+    added: '2026-11-19'
+    capability: video-understand.video.agent
+    platform: video-understand
+    scope: any_account
+    method: POST
+    path: /v1/agent
+    name: "VidCrawl: Multimodal video agent"
+    summary: "Run a bounded video agent across 1-10 URLs for cited Q&A, on-screen OCR, scene logs, and JSON Schema extraction."
+    input:
+      body:
+        prompt: {type: string, required: true, note: "Question or extraction instruction across the target videos (1..4000 chars).", example: "Summarize the pricing tiers shown in this video."}
+        urls: {type: array, required: true, minItems: 1, maxItems: 10, note: "One to ten public video URLs for the agent to inspect.", example: ["https://www.youtube.com/watch?v=dQw4w9WgXcQ"]}
+        effort: {type: string, required: false, default: "low", enum: ["low", "medium", "high"], note: "Inspection depth: low (3 credits = $0.027), medium (5 credits = $0.045), or high (10 credits = $0.090).", example: "low"}
+        schema: {type: object, required: false, note: "Optional JSON Schema (<= 8192 serialized bytes) to shape the returned data object."}
+      bodyType: json
+    test_request:
+      body: {prompt: "Summarize the pricing tiers shown in this video.", urls: ["https://www.youtube.com/watch?v=dQw4w9WgXcQ"], effort: "low"}
+    price:
+      table:
+        - when: [{path: body.effort, op: equals, value: low}]
+          value: '0.027'
+        - when: [{path: body.effort, op: absent}]
+          value: '0.027'
+        - when: [{path: body.effort, op: equals, value: medium}]
+          value: '0.045'
+        - when: [{path: body.effort, op: equals, value: high}]
+          value: '0.09'
+      fallback:
+        value: '0.09'
+        note: "Worst-case hold matches effort high (ten credits, $0.090 at Starter rate)."
+      currency: USD
+      note: "Effort sets credit cost: low is 3 credits ($0.027), medium is 5 ($0.045), high is 10 ($0.090) at Starter rate."
+    docs_url: https://vidcrawl.com/api-reference
