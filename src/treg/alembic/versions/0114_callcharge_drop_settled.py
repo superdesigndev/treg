@@ -1,0 +1,36 @@
+"""callcharge: remove queued charges whose call is already settled
+
+Revision ID: 0114
+Revises: 0113
+Create Date: 2026-11-19
+
+Data only. A fold used to look every claimed charge up in the ledger and drop the ones whose
+call already had a `settle` entry, which a rewrite of an unconfirmed write could leave queued.
+Rewrites now take such a row out themselves and the fold applies every row it claims, so a row
+left from before must not reach it: it would be charged a second time. This removes them, the
+same rows the fold used to drop. Nothing to undo.
+"""
+from collections.abc import Sequence
+
+import sqlalchemy as sa
+from alembic import op
+
+revision: str = "0114"
+down_revision: str | Sequence[str] | None = "0113"
+branch_labels: str | Sequence[str] | None = None
+depends_on: str | Sequence[str] | None = None
+
+
+def upgrade() -> None:
+    op.execute(sa.text("""
+        DELETE FROM callcharge
+        WHERE EXISTS (
+            SELECT 1 FROM ledgerentry
+            WHERE ledgerentry.call_id = callcharge.call_id
+              AND ledgerentry.org_id = callcharge.org_id
+              AND ledgerentry.kind = 'settle')
+    """))
+
+
+def downgrade() -> None:
+    pass

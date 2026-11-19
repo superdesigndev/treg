@@ -158,7 +158,8 @@ commits (its insert waits for a fold of the first row that is still in progress)
 call is never left queued: a fold applies every row it claims, and the readers of the queue
 (`committed_today`, `_queued_unbacked`) count every row, with no lookup in the ledger. That
 lookup was one index probe per queued row on random call ids, the larger share of a fold's
-time. The daily counter moves as it does at `settle`: consumed goes in, and
+time. A row left queued by a build whose rewrite did not do this is removed by the upgrade
+(revision 0114); deploy.md states what an upgrade from such a build needs. The daily counter moves as it does at `settle`: consumed goes in, and
 the covered part comes out only when the hold was opened today.
 
 The allowance runs on PostgreSQL only (`enabled_for` is false elsewhere). It leans on row locks
