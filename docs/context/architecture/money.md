@@ -805,7 +805,9 @@ written to the Stripe customer's default, after the transaction ends, with metad
 and its time (`treg_card`, `treg_card_chosen_at`). Stripe reports that write as a
 `customer.updated` stamped later; the metadata keeps the time of the choice, so treg's own write
 never beats a portal choice made in between, and writing a portal choice back repairs Stripe's
-default if an older treg write landed after it. A transient failure fails the delivery
+default if an older treg write landed after it. Those writes run after commit and can finish out of
+order, so a `customer.updated` reporting a card other than the stored one, once it has lost, writes
+the stored choice back (`_repair_stripe_default`); that write's own echo matches and settles. A transient failure fails the delivery
 (`CardSyncPending`) so Stripe redelivers it; a redelivery older than a newer choice sends nothing.
 An automatic top-up's own payment is no new choice. `payment_method.detached` forgets the stored
 card (`no_card`) with an UPDATE conditioned on that card, and a portal card re-arms a policy waiting

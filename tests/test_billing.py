@@ -1262,9 +1262,9 @@ async def test_the_newest_card_choice_wins_whatever_order_events_arrive(c: Async
     await _deliver(c, _customer_updated("cus_armed", "pm_portal", 300))
     r = await _deliver(c, _setup_event(org_id, "pm_treg_old", 200))
     assert r.json()["changed"] is False and sdk.calls == ["pm_portal"]
-    # A late portal event from 250 loses too.
+    # A late portal event from 250 loses too, and Stripe is set back to the stored choice.
     await _deliver(c, _customer_updated("cus_armed", "pm_older_portal", 250, before="pm_x"))
-    assert await _stored_pm(org_id) == "pm_portal" and sdk.calls == ["pm_portal"]
+    assert await _stored_pm(org_id) == "pm_portal" and sdk.calls == ["pm_portal", "pm_portal"]
     # A newer treg save wins and becomes Stripe's default.
     await _deliver(c, _setup_event(org_id, "pm_treg_new", 400))
     assert await _stored_pm(org_id) == "pm_treg_new" and sdk.calls[-1] == "pm_treg_new"
@@ -1298,6 +1298,25 @@ async def test_treg_own_stripe_write_keeps_the_time_of_the_choice(c: AsyncClient
     for event in ((echo, portal) if own_write_first else (portal, echo)):
         assert (await _deliver(c, event)).status_code == 200
     assert await _stored_pm(org_id) == "pm_portal"
+
+
+async def test_an_older_stripe_write_that_finishes_last_is_repaired(c: AsyncClient, monkeypatch):
+    """treg's Stripe writes run after commit and can finish out of order: the write of B (chosen at
+    100) lands after the write of C (chosen at 200). Stripe then holds B while treg stores C, and a
+    later portal pick of B would be no change Stripe reports."""
+    org_id, _ = await _org(c)
+    await _armed(org_id, stripe_default_pm_at=50)
+    sdk = _modify_sdk()
+    monkeypatch.setattr(billing, "_sdk", sdk)
+    await _deliver(c, _setup_event(org_id, "pm_b", 100))
+    await _deliver(c, _setup_event(org_id, "pm_c", 200))
+    r = await _deliver(c, _own_write("cus_armed", "pm_b", 100, 300))
+    assert r.json()["repaired"] is True and await _stored_pm(org_id) == "pm_c"
+    assert sdk.calls[-1] == "pm_c"
+    assert sdk.metadata[-1] == {"treg_card": "pm_c", "treg_card_chosen_at": "200"}
+    # The repair's own echo matches the stored choice, so it settles.
+    r = await _deliver(c, _own_write("cus_armed", "pm_c", 200, 301))
+    assert r.json()["repaired"] is False and len(sdk.calls) == 3
 
 
 async def test_no_database_transaction_is_open_during_the_stripe_write(c: AsyncClient,

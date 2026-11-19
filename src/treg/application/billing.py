@@ -496,17 +496,34 @@ async def _on_customer_updated(db: AsyncSession, customer: dict, previous: dict,
     org = await _org_for_customer(db, customer.get("id"), meta)
     if org is None:
         return {"handled": False, "reason": "not a treg customer"}
+    org_id, customer_id = org.id, org.stripe_customer_id
     if "metadata" in (previous or {}) and meta.get("treg_card") == after:
         try:
             chosen_at = int(meta.get("treg_card_chosen_at") or "")
         except ValueError:
             return {"handled": False, "reason": "treg's own write"}
-        changed = await _set_default_pm(db, org.id, after, chosen_at=chosen_at, tell_stripe=False)
-        return {"handled": True, "changed": changed, "own_write": True}
-    # A portal choice is written back with its time, which repairs Stripe's default if treg's
-    # write of an older choice landed after it.
-    changed = await _set_default_pm(db, org.id, after, chosen_at=created, portal=True)
-    return {"handled": True, "changed": changed}
+        changed = await _set_default_pm(db, org_id, after, chosen_at=chosen_at, tell_stripe=False)
+        result = {"handled": True, "changed": changed, "own_write": True}
+    else:
+        # A portal choice is written back with its time, which repairs Stripe's default if treg's
+        # write of an older choice landed after it.
+        changed = await _set_default_pm(db, org_id, after, chosen_at=created, portal=True)
+        result = {"handled": True, "changed": changed}
+    return {**result, "repaired": await _repair_stripe_default(db, org_id, customer_id, after)}
+
+
+async def _repair_stripe_default(db: AsyncSession, org_id: int, customer_id: str,
+                                 reported: str) -> bool:
+    """Stripe reported `reported` as the default, but an older choice that lost to the stored one
+    can still be what Stripe holds: treg's writes to Stripe run after commit and may finish out of
+    order. Write the stored choice back. Its own echo then matches, so this settles."""
+    row = (await db.execute(select(Org.stripe_default_pm, Org.stripe_default_pm_at)
+                            .where(Org.id == org_id))).first()
+    await db.rollback()
+    if row is None or not row[0] or row[0] == reported:
+        return False
+    await _make_customer_default(customer_id, row[0], row[1])
+    return True
 
 
 async def _on_payment_method_detached(db: AsyncSession, pm: dict, previous: dict) -> dict:
