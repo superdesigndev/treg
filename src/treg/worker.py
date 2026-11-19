@@ -386,6 +386,18 @@ async def _shadow_collect(args) -> int:
     return 0
 
 
+async def _compare_collect(args) -> int:
+    from .infra.db import verify_db
+    from .application import compare
+    from .bootstrap import archive_object_store
+
+    async with archive_object_store():
+        await verify_db()
+        result = await compare.collect(max_seconds=args.max_seconds)
+    print(compare.dumps(result))
+    return 0
+
+
 async def _shadow_report(args) -> int:
     from .infra.db import verify_db
     from .application import shadow
@@ -877,6 +889,13 @@ def main(argv: list[str] | None = None) -> int:
     shr = shsub.add_parser("report", help="print the comparison report as JSON")
     shr.add_argument("--days", type=int, default=1)
     shr.set_defaults(fn=_shadow_report)
+    cmp = sub.add_parser("compare", help="pairwise comparisons (off unless compare_pairs and "
+                         "compare_max_per_day are set)")
+    cmpsub = cmp.add_subparsers(dest="cmd", required=True)
+    cmpc = cmpsub.add_parser("collect", help="ask the other vendor of a pair the input of sampled "
+                             "recent routed calls")
+    cmpc.add_argument("--max-seconds", type=float, default=600.0)
+    cmpc.set_defaults(fn=_compare_collect)
     web_arena = sub.add_parser("web-arena", help="Web Arena saved leaderboard totals")
     websub = web_arena.add_subparsers(dest="cmd", required=True)
     totals = websub.add_parser("totals", help="publish content-free Web provider totals")

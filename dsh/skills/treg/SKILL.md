@@ -110,7 +110,8 @@ Gmail dots) share it.
   calls and reads a finished one's answer; check it before calling again.
 - the team's own tools → `my_tools`; durable provider objects such as cloned voices →
   `resources_list`; the balance → `balance`; feedback → `feedback`; a review → `review`; a result
-  you later found wrong or confirmed → `mark`.
+  you later found wrong or confirmed → `mark`; a comparison a call result invites (optional) →
+  `compare`.
 
 ## Find a tool and call it
 

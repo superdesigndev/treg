@@ -1445,7 +1445,8 @@ async def test_a_catalog_only_grant_cannot_spend_or_read_the_team(clients):
         for name, args in (("call", {"endpoint_id": "exa.search", "params": {"query": "x"}}),
                            ("call_media", {"endpoint_id": "exa.search"}),
                            ("balance", {}), ("my_tools", {}), ("resources_list", {}),
-                           ("call_result", {})):
+                           ("call_result", {}), ("compare", {}),
+                           ("compare", {"comparison_id": 1, "choice": "1"})):
             out = await _call_tool(c, name, args, token=access)
             assert out.get("error") == "insufficient_scope", (name, out)
         searched = await _call_tool(c, "catalog_search", {"query": "web search"}, token=access)
