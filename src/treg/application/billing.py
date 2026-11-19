@@ -526,10 +526,18 @@ async def _repair_stripe_default(db: AsyncSession, org_id: int, customer_id: str
     return True
 
 
-async def _on_payment_method_detached(db: AsyncSession, pm: dict, previous: dict) -> dict:
-    """A card was removed from the customer. Forget it if it is the one auto top-up charges."""
-    org = await _org_for_customer(db, _stripe_id((previous or {}).get("customer")))
-    if org is None or not pm.get("id") or org.stripe_default_pm != pm["id"]:
+async def _on_payment_method_detached(db: AsyncSession, pm: dict) -> dict:
+    """A card was removed from the customer. Forget it if it is the one auto top-up charges.
+
+    The detached card no longer names its customer, and Stripe documents `previous_attributes`
+    only for `*.updated` events, so the org is the one storing this card. Rare, so the lookup
+    has no index of its own."""
+    if not pm.get("id"):
+        return {"handled": False, "reason": "no card id"}
+    org = (await db.execute(select(Org).where(Org.stripe_default_pm == pm["id"])
+                            .limit(1))).scalars().first()
+    if org is None:
+        await db.rollback()
         return {"handled": False, "reason": "not the card auto top-up charges"}
     await _card_gone(db, org.id, pm["id"])
     return {"handled": True, "card_removed": True}
@@ -1658,7 +1666,7 @@ async def handle_webhook_event(db: AsyncSession, event: dict) -> dict:
     if kind == "customer.updated":
         return await _on_customer_updated(db, obj, previous, created)
     if kind == "payment_method.detached":
-        return await _on_payment_method_detached(db, obj, previous)
+        return await _on_payment_method_detached(db, obj)
     if kind in ("charge.dispute.created", "charge.refunded"):
         return await _on_payment_reversed(db, obj, kind)
     # Everything else acknowledged and dropped — deliberately, not by omission. `invoice_creation` on

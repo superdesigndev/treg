@@ -810,7 +810,8 @@ order, so a `customer.updated` reporting a card other than the stored one, once 
 the stored choice back (`_repair_stripe_default`); that write's own echo matches and settles. A transient failure fails the delivery
 (`CardSyncPending`) so Stripe redelivers it; a redelivery older than a newer choice sends nothing.
 An automatic top-up's own payment is no new choice. `payment_method.detached` forgets the stored
-card (`no_card`) with an UPDATE conditioned on that card, and a portal card re-arms a policy waiting
+card (`no_card`), finding the org by that card because the event names no customer, with an UPDATE
+conditioned on that card, and a portal card re-arms a policy waiting
 for one. The org is found by the customer's `treg_org_id` metadata when present. Before charging,
 with no database connection open, `attempt_auto_topup` checks that the stored card is still
 attached to the customer, so a late or lost detach event never charges a removed card; a Stripe

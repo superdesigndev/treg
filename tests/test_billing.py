@@ -1422,8 +1422,7 @@ async def test_a_card_removed_in_the_portal_is_forgotten(c: AsyncClient, monkeyp
 
     monkeypatch.setattr(billing.email_mod, "send_autotopup_disabled", no_email)
     other = {"id": "evt_d1", "type": "payment_method.detached", "created": 200,
-             "data": {"object": {"id": "pm_other", "customer": None},
-                      "previous_attributes": {"customer": "cus_armed"}}}
+             "data": {"object": {"id": "pm_other", "customer": None}}}
     assert (await _deliver(c, other)).json()["handled"] is False
     mine = {**other, "id": "evt_d2", "data": {**other["data"], "object": {"id": "pm_armed",
                                                                          "customer": None}}}
