@@ -20,6 +20,7 @@ from .infra import credential_cipher
 from .config import get_settings
 from .infra.upstream import injectors
 from .infra.upstream.ssrf import host_is_public as host_is_public, host_is_public_async as host_is_public_async, safe_webhook_url, url_host_is_public
+from .infra.upstream.ssrf import METADATA as SSRF_METADATA  # noqa: F401 - re-exported for mcp_oauth
 from .models import Invite, Membership, PendingOAuth, Secret, Tool, User
 from .timeutil import utcnow_naive
 

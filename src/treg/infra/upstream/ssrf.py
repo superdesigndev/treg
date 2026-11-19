@@ -4,8 +4,11 @@ from __future__ import annotations
 
 import asyncio
 import ipaddress
+import logging
 import socket
-from concurrent.futures import ThreadPoolExecutor
+import time
+from concurrent.futures import Future, ThreadPoolExecutor
+from dataclasses import dataclass
 from urllib.parse import urlsplit
 
 
@@ -67,31 +70,100 @@ def host_is_public(host: str) -> bool:
     return True
 
 
-_executor: ThreadPoolExecutor | None = None
-_inflight: dict[str, asyncio.Future] = {}
+PUBLIC, REFUSED, TIMED_OUT = "public", "refused", "timed_out"
+CALL, METADATA = "call", "metadata"
+# A metadata lookup is asked for without signing in, so its pool also refuses at once past this many
+# lookups per thread instead of queueing them.
+_METADATA_PENDING_PER_THREAD = 4
+
+log = logging.getLogger("treg.ssrf")
+_WARN_EVERY_S = 1.0
+_warned: dict[str, list[float | int]] = {}  # kind -> [last line's monotonic time, lines held back since]
 
 
-def _lookup_executor() -> ThreadPoolExecutor:
-    global _executor
-    if _executor is None:
-        from ...config import get_settings
-        _executor = ThreadPoolExecutor(
-            max_workers=max(1, get_settings().ssrf_lookup_threads), thread_name_prefix="treg-ssrf-dns")
-    return _executor
+def _warn(kind: str, fmt: str, *args: object) -> None:
+    """At most one warning line per kind per second; the next line counts the ones held back."""
+    now = time.monotonic()
+    state = _warned.setdefault(kind, [float("-inf"), 0])
+    if now - state[0] < _WARN_EVERY_S:
+        state[1] += 1
+        return
+    suppressed, state[0], state[1] = state[1], now, 0
+    log.warning(f"{kind} {fmt} suppressed=%s", *args, suppressed)
 
 
-async def host_is_public_async(host: str, check=None) -> bool:
-    """host_is_public off the event loop, on a small dedicated pool. At most one lookup per host is in
-    flight; a caller arriving meanwhile awaits the same answer. No verdict is kept once it lands."""
+@dataclass(eq=False)
+class _Lookup:
+    pool: str
+    work: Future
+    answer: asyncio.Future
+    waiters: int = 0
+
+
+_executors: dict[str, ThreadPoolExecutor] = {}
+_inflight: dict[tuple[str, str], _Lookup] = {}
+
+
+def _threads(pool: str) -> int:
+    from ...config import get_settings
+    s = get_settings()
+    return max(1, s.ssrf_metadata_lookup_threads if pool == METADATA else s.ssrf_lookup_threads)
+
+
+def _lookup_executor(pool: str = CALL) -> ThreadPoolExecutor:
+    executor = _executors.get(pool)
+    if executor is None:
+        executor = _executors[pool] = ThreadPoolExecutor(
+            max_workers=_threads(pool),
+            thread_name_prefix="treg-ssrf-dns" if pool == CALL else f"treg-ssrf-dns-{pool}")
+    return executor
+
+
+def _forget(key: tuple[str, str], entry: _Lookup) -> None:
+    if _inflight.get(key) is entry:
+        del _inflight[key]
+
+
+async def lookup_host(host: str, check=None, *, pool: str = CALL) -> str:
+    """host_is_public off the event loop: PUBLIC, REFUSED, or TIMED_OUT when no answer came in time.
+
+    Each pool has its own threads: CALL for the call road, METADATA for MCP client documents fetched
+    before sign-in, so no flood of the second can delay the first. At most one lookup per host and
+    pool is in flight; a caller arriving meanwhile awaits the same answer, and no verdict is kept once
+    it lands. A caller waits at most `ssrf_lookup_timeout_s`. When the last caller waiting on a lookup
+    gives up, a lookup that has not started yet is cancelled; one already running keeps its thread
+    until the resolver returns, and later callers for that host join it."""
     if not host:
-        return False
-    fut = _inflight.get(host)
-    if fut is None:
-        loop = asyncio.get_running_loop()
-        fut = loop.run_in_executor(_lookup_executor(), check or host_is_public, host)
-        _inflight[host] = fut
-        fut.add_done_callback(lambda f, h=host: _inflight.pop(h, None) if _inflight.get(h) is f else None)
-    return await asyncio.shield(fut)
+        return REFUSED
+    from ...config import get_settings
+    key = (pool, host)
+    entry = _inflight.get(key)
+    if entry is None:
+        if pool == METADATA and sum(1 for e in _inflight.values() if e.pool == pool) >= (
+                _threads(pool) * _METADATA_PENDING_PER_THREAD):
+            _warn("ssrf_lookup_busy", "pool=%s", pool)
+            return TIMED_OUT
+        work = _lookup_executor(pool).submit(check or host_is_public, host)
+        entry = _Lookup(pool, work, asyncio.wrap_future(work))
+        _inflight[key] = entry
+        entry.answer.add_done_callback(lambda _f, k=key, e=entry: _forget(k, e))
+    entry.waiters += 1
+    limit = get_settings().ssrf_lookup_timeout_s
+    try:
+        ok = await asyncio.wait_for(asyncio.shield(entry.answer), limit if limit > 0 else None)
+    except TimeoutError:
+        _warn("ssrf_lookup_timeout", "pool=%s limit_s=%s", pool, limit)
+        return TIMED_OUT
+    finally:
+        entry.waiters -= 1
+        if entry.waiters == 0 and not entry.answer.done() and entry.work.cancel():
+            _forget(key, entry)
+    return PUBLIC if ok else REFUSED
+
+
+async def host_is_public_async(host: str, check=None, *, pool: str = CALL) -> bool:
+    """lookup_host as a yes or no: a lookup that timed out counts as not public."""
+    return await lookup_host(host, check, pool=pool) == PUBLIC
 
 
 async def url_host_is_public(url: object) -> bool:

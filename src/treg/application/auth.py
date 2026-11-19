@@ -976,6 +976,9 @@ async def _resolve_oauth_client(client_id: str, db: AsyncSession) -> OAuthClient
         return row
     if not client_id.startswith("https://"):
         return row  # a dcr client we do not know is simply unknown
+    # End the read transaction before the fetch so no connection waits on a stranger's server
+    # (`expire_on_commit=False`: `row` stays usable).
+    await db.commit()
     doc = await mcp_oauth.fetch_client_id_metadata(client_id)
     if doc is None:
         return row  # keep a stale copy over nothing: a transient fetch failure is not a revocation

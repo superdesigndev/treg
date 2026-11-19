@@ -1266,6 +1266,7 @@ async def _run_routed(parent: CallContext, ep: dict, body_bytes: bytes, get_head
     tried: list[Attempt] = []
     spent = 0
     errors = 0
+    unresolved = 0  # candidates refused by treg's address check before the send
     too_large = 0  # attempts cut by treg's own routed-read cap, not a provider failing
     rejected_by: set[str] = set()  # providers that answered a vendor 4xx
     winner: tuple[Candidate, dict, dict, bytes] | None = None
@@ -1411,6 +1412,15 @@ async def _run_routed(parent: CallContext, ep: dict, body_bytes: bytes, get_head
                                      exc.status_code, 0, f"refused by treg: {exc.kind}"))
                 team_busy.append(exc)
                 if len(team_busy) >= MAX_TEAM_BUSY_TRIES:
+                    break
+                continue
+            if exc.kind == "ssrf_refused":
+                # Refused by treg's address check before the send: the provider was never asked, so
+                # no health strike and no error allowance; its own cap bounds a resolver outage.
+                unresolved += 1
+                tried.append(Attempt(cand.endpoint["id"], cand.endpoint["provider"], "error",
+                                     exc.status_code, 0, f"refused by treg before the send: {exc.detail}"[:120]))
+                if unresolved > MAX_ERROR_FALLBACKS:
                     break
                 continue
             if exc.status_code in _CALLER_FAULT and exc.kind not in _CANDIDATE_LOCAL_FAILURES:

@@ -748,6 +748,13 @@ class Settings(BaseSettings):
     proxy_ssrf_check: bool = True
     # Threads for the call-time address lookup, which runs off the event loop; one lookup per host at a time.
     ssrf_lookup_threads: int = 8
+    # Threads for the lookup of an MCP client's metadata host, asked for before sign-in; kept apart
+    # from the call road's threads.
+    ssrf_metadata_lookup_threads: int = 2
+    # Longest a caller waits for a lookup; past it the host counts as not public (refused). Kept above
+    # the resolver's own retry time (a lost UDP packet costs one 5 s retry), so a slow answer that does
+    # come is never refused. 0 = no limit.
+    ssrf_lookup_timeout_s: float = 15.0
 
     # The archive's rollout switch (see treg/archive.py): "off" (default) | "shadow" (record +
     # learn from metered platform responses, serve nothing) | "serve" (shadow + answer eligible
