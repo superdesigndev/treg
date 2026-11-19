@@ -127,7 +127,7 @@ async def submit_review(
                 targeted = endpoint_id
         invited = (200 <= record.status_code < 300 and not record.cached
                    and record.credential_tier in ("platform", "routed")
-                   and review_targets.sampled(call_id, targeted))
+                   and review_targets.sampled(call_id, targeted, org_id))
         existing = await reviews.get(db, call_id, org_id)
         if existing is not None:
             return existing.id, False, await marks.of_review(

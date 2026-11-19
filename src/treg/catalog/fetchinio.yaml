@@ -173,10 +173,10 @@ endpoints:
     input:
       queryParams:
         postUrlOrUrn: {type: string, required: true, example: "urn:li:activity:7508596155145043968", note: "Post URL, activity URN or share URN."}
-        commentCount: {type: integer, required: false, default: 100, min: 1, max: 100}
+        commentCount: {type: integer, required: false, default: 100, min: 1}
         commentStart: {type: integer, required: false, default: 0, min: 0}
         commentPaginationToken: {type: string, required: false}
-        reactionCount: {type: integer, required: false, default: 100, min: 1, max: 100}
+        reactionCount: {type: integer, required: false, default: 100, min: 1}
         reactionStart: {type: integer, required: false, default: 0, min: 0}
       note: "Returns both datasets atomically. The call consumes two credits and two rate-limit units."
     test_request: {queryParams: {postUrlOrUrn: "urn:li:activity:7508596155145043968", commentCount: 1, reactionCount: 1}}

@@ -31,7 +31,6 @@ from treg.application.call import service as call_service
 from treg.routers import call as call_routes
 from treg import audit
 from treg.domain import money as ledger
-from treg.domain.identity import api_keys as managed_keys
 from treg.config import get_settings
 from treg.infra.db import _background_engine, _engine, answers_db_busy, is_db_busy, session_maker
 from treg.infra.upstream.relay import relay as upstream_relay
@@ -53,43 +52,37 @@ async def dispose_exhausted_pool_on_its_own_loop():
     await _engine.dispose()
 
 
-def _relay_that_checks_the_pool(seen: list[int]):
-    """The real relay, with the pool's checked-out count sampled at the moment the upstream is
+def _relay_that_checks_the_pool(seen: list[int], held):
+    """The real relay, with the connections the call holds sampled at the moment the upstream is
     called. Recorded rather than asserted here: an assertion inside the relay would surface as a
     502, not a test failure."""
     original = upstream_relay
 
     async def _relay(*args, **kwargs):
-        seen.append(_engine.pool.checkedout())
+        seen.append(held())
         return await original(*args, **kwargs)
 
     return _relay
 
 
 async def test_a_metered_call_holds_no_db_connection_while_upstream_is_called(
-    clients: AsyncClient, platform_on, monkeypatch,
+    clients: AsyncClient, platform_on, monkeypatch, connections_held_here,
 ):
-    await audit.drain()  # an earlier test's fire-and-forget audit row must not be counted
-    # This call's auth would schedule a last-used write on SQLite's shared pool.
-    monkeypatch.setattr(managed_keys, "touch", lambda *args, **kwargs: None)
     seen: list[int] = []
-    monkeypatch.setattr(call_service, "relay", _relay_that_checks_the_pool(seen))
+    monkeypatch.setattr(call_service, "relay", _relay_that_checks_the_pool(seen, connections_held_here))
     r = await clients.get(f"/call/{EP}?aweme_id=7")
     assert r.status_code == 200, r.text
     assert seen == [0], f"pooled connections held during the upstream round trip: {seen}"
 
 
 async def test_an_own_key_call_holds_no_db_connection_while_upstream_is_called(
-    clients: AsyncClient, monkeypatch,
+    clients: AsyncClient, monkeypatch, connections_held_here,
 ):
     """The unmetered path pins one too (the secret loads auto-begin a transaction), and it has no
     second session to deadlock against — it just eats a slot per in-flight call for nothing."""
     await clients.post("/secrets", json={"name": "tikhub", "value": "MKKEY"})
-    await audit.drain()
-    # Creating the secret schedules a last-used write on SQLite's shared pool.
-    await managed_keys.drain_last_used()
     seen: list[int] = []
-    monkeypatch.setattr(call_service, "relay", _relay_that_checks_the_pool(seen))
+    monkeypatch.setattr(call_service, "relay", _relay_that_checks_the_pool(seen, connections_held_here))
     r = await clients.get(f"/call/{EP}?aweme_id=7")
     assert r.status_code == 200 and r.json()["auth"] == "Bearer MKKEY"
     assert seen == [0], f"pooled connections held during the upstream round trip: {seen}"

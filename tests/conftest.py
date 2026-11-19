@@ -585,6 +585,37 @@ async def drain_background_writes():
     await media_app.drain()
 
 
+@pytest.fixture
+def connections_held_here():
+    """How many pooled connections the calling asyncio task holds right now, across every engine.
+
+    `pool.checkedout()` counts the whole process: a background write (audit, a key's last-used
+    stamp) holding a connection at that instant reads as the call's own, and on SQLite every engine
+    is one pool. This counts only checkouts made by the task that asks."""
+    from sqlalchemy import event
+    from treg.infra.db import _engines
+
+    held: dict[asyncio.Task | None, int] = {}
+
+    def checkout(_dbapi, record, _proxy):
+        task = record.info["held_by"] = asyncio.current_task()
+        held[task] = held.get(task, 0) + 1
+
+    def checkin(_dbapi, record):
+        if "held_by" in record.info:
+            task = record.info.pop("held_by")
+            held[task] -= 1
+
+    pools = {id(e.sync_engine.pool): e.sync_engine.pool for e in _engines}.values()
+    for pool in pools:
+        event.listen(pool, "checkout", checkout)
+        event.listen(pool, "checkin", checkin)
+    yield lambda: held.get(asyncio.current_task(), 0)
+    for pool in pools:
+        event.remove(pool, "checkout", checkout)
+        event.remove(pool, "checkin", checkin)
+
+
 @pytest.fixture(autouse=True)
 async def _drain_around_each_test():
     """Every test starts and ends with no background write in flight. A fixture that calls

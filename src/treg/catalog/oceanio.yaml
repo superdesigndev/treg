@@ -71,8 +71,8 @@ endpoints:
     input:
       body:
         company: {type: object, required: false, note: "the company to match. `domain` alone is enough and is by far the most reliable key; also accepts name, registrationNumber, email, phone, countryCode, state, city, streetAddress, postalCode, address, linkedin, twitter, facebook, instagram, xing, youtube", example: {domain: "stripe.com"}}
-        people: {type: "array[object]", required: false, note: "people to match the company through, when you have a contact but not a domain — each entry takes name/firstName/lastName/jobTitle/email/phone/linkedin"}
-        fields: {type: "array[string]", required: false, note: "which Company fields to return. Narrowing this cuts bandwidth and latency but NOT price. Omit for the full record", example: ["domain", "name", "webTraffic", "technologies", "headcountGrowth"]}
+        people: {type: array, items: {type: object}, required: false, note: "people to match the company through, when you have a contact but not a domain — each entry takes name/firstName/lastName/jobTitle/email/phone/linkedin"}
+        fields: {type: array, items: {type: string}, required: false, note: "which Company fields to return. Narrowing this cuts bandwidth and latency but NOT price. Omit for the full record", example: ["domain", "name", "webTraffic", "technologies", "headcountGrowth"]}
       note: "the returned record is the wide one — web traffic (visits, pageViews, pagesPerVisit, bounceRate), the site's technology stack and technologyCategories, headcountGrowth at 3/6/12 months, departmentSizes, revenue band, funding round, locations and LinkedIn industry. The response reports its own price in `creditsUsed`"
     test_request:
       body: {company: {domain: "stripe.com"}}
@@ -104,8 +104,8 @@ endpoints:
     summary: "Lookup and enrich multiple companies by domain (max 1000). This endpoint provides simple, per-result pricing"
     input:
       body:
-        domains: {type: "array[string]", required: true, note: "company domains, max 1000 per call. Domain redirections are resolved automatically", example: ["stripe.com", "anthropic.com"]}
-        fields: {type: "array[string]", required: false, note: "which Company fields to return; omit for the full record", example: ["domain", "name", "employeeCountOcean", "webTraffic"]}
+        domains: {type: array, items: {type: string}, required: true, note: "company domains, max 1000 per call. Domain redirections are resolved automatically", example: ["stripe.com", "anthropic.com"]}
+        fields: {type: array, items: {type: string}, required: false, note: "which Company fields to return; omit for the full record", example: ["domain", "name", "employeeCountOcean", "webTraffic"]}
       note: "the cheapest way to enrich by domain — 0.05 credit per company found, half the price of /v2/enrich/company, and synchronous. Domains with no match come back as `company: null` and, per the response's own accounting, are not billed. `totalRequested`, `totalFound` and `creditsUsed` are returned alongside the records"
     test_request:
       body: {domains: ["stripe.com"]}
@@ -139,7 +139,7 @@ endpoints:
       body:
         companyDataMapping: {type: object, required: true, note: "a dict of YOUR id -> a single-company enrich body, i.e. {\"c1\": {\"company\": {\"domain\": \"anthropic.com\"}}}. 1 to 10,000 entries. Your ids come back in the webhook payload so you can join the results", example: {c1: {company: {domain: "anthropic.com"}}}}
         webhookUrl: {type: string, required: true, note: "a PUBLIC https URL that receives the enriched companies when the job finishes. There is no status route to poll — without a reachable webhook you never see the results", example: "https://example.com/treg-webhook"}
-        fields: {type: "array[string]", required: false, note: "which Company fields the webhook payload should carry", example: ["domain", "name", "employeeCountOcean"]}
+        fields: {type: array, items: {type: string}, required: false, note: "which Company fields the webhook payload should carry", example: ["domain", "name", "employeeCountOcean"]}
       note: "ASYNC. The HTTP response is only {\"status\": \"in progress\"}; the data arrives at your webhook. For fewer than a thousand domains prefer /v2/lookup/companies, which is synchronous AND cheaper per company"
     test_request:
       body: {companyDataMapping: {c1: {company: {domain: "anthropic.com"}}}, webhookUrl: "https://example.com/treg-webhook", fields: ["domain", "name", "employeeCountOcean"]}
@@ -170,7 +170,7 @@ endpoints:
     summary: "Check available companies in Ocean's database and trigger process of data gathering for the missing ones"
     input:
       body:
-        domains: {type: "array[string]", required: true, note: "domains to check and, if missing, queue for collection", example: ["stripe.com", "anthropic.com"]}
+        domains: {type: array, items: {type: string}, required: true, note: "domains to check and, if missing, queue for collection", example: ["stripe.com", "anthropic.com"]}
       note: "FREE, and the right first call before a big enrichment run: it returns `successfulDomains`, so you learn which domains are covered without paying to enrich them, and the misses start being crawled in the background. Re-run the enrich a while later for the ones that were missing"
     test_request:
       body: {domains: ["stripe.com", "anthropic.com"]}
@@ -228,8 +228,8 @@ endpoints:
     summary: "Lookup and enrich multiple people by LinkedIn handle or Ocean ID (max 1000). This endpoint provides simple, per-result pricing"
     input:
       body:
-        linkedinHandles: {type: "array[string]", required: false, note: "LinkedIn profile handles — the slug only, not the full URL (e.g. \"patrickcollison\")", example: ["patrickcollison"]}
-        oceanIds: {type: "array[string]", required: false, note: "person ids returned by any other endpoint's `id` field"}
+        linkedinHandles: {type: array, items: {type: string}, required: false, note: "LinkedIn profile handles — the slug only, not the full URL (e.g. \"patrickcollison\")", example: ["patrickcollison"]}
+        oceanIds: {type: array, items: {type: string}, required: false, note: "person ids returned by any other endpoint's `id` field"}
       note: "give either list or both; 1,000 entries across the two combined. Half the price of /v2/enrich/person per person and synchronous. Only matched people are returned, so compare `totalFound` against `totalRequested` to see the misses"
     test_request:
       body: {linkedinHandles: ["patrickcollison"]}
@@ -300,7 +300,7 @@ endpoints:
         searchAfter: {type: string, required: false, note: "the cursor returned by the previous call; pass it back for the next page"}
         companiesFilters: {type: object, required: false, note: "the company filter block. `lookalikeDomains` is the headline one — seed it with domains you already like and the result is companies semantically similar to them, each row tagged `relevance` A/B/C. The rest: includeDomains, excludeDomains, companySizes, employeeCountOcean, employeeCountLinkedin, revenues, yearFounded, fundingRound, industries, excludeIndustries, industryCategories, linkedinIndustries, primaryLocations, otherLocations, countriesCount, locationsCount, technologies, keywords, webTraffic, socialMedias, mobileApps, ecommerce, departmentSizes, headcountGrowth, departmentHeadcountGrowth, minRelevance, maxRelevance, updatedWithinMonths, fieldsExist, fieldsNotExist, companyMatchingMode. `technologies` is an object, not a list: {apps: {any_of: [...]}} or {categories: {...}}, each taking all_of, any_of or none_of. Industry and technology values must match GET /v2/data-fields exactly; free text returns zero rows", example: {lookalikeDomains: ["stripe.com"]}}
         peopleFilters: {type: object, required: false, note: "narrows to companies that EMPLOY people matching these filters — seniorities, departments, jobTitleKeywords, skills, countries, cities, states and more"}
-        fields: {type: "array[string]", required: false, note: "which Company fields to return; omit for the full record", example: ["domain", "name", "webTraffic", "technologies", "headcountGrowth"]}
+        fields: {type: array, items: {type: string}, required: false, note: "which Company fields to return; omit for the full record", example: ["domain", "name", "webTraffic", "technologies", "headcountGrowth"]}
       note: "the provider's distinctive endpoint. `total` reports the full match count while `size` controls how many you pay for, so run with a small size first to size a segment before buying it. Valid values for the industries/technologies/regions filters come from GET /v2/data-fields"
     test_request:
       body:
@@ -341,7 +341,7 @@ endpoints:
         size: {type: integer, required: false, note: "how many similar companies to return — the price dial, max 10,000 with your own key; the shared key requires an explicit size of 1-100", example: 2}
         searchAfter: {type: string, required: false, note: "cursor from the previous page"}
         peopleFilters: {type: object, required: false, note: "narrows to companies that EMPLOY people matching these filters"}
-        fields: {type: "array[string]", required: false, note: "which Company fields to return"}
+        fields: {type: array, items: {type: string}, required: false, note: "which Company fields to return"}
       note: "the same route as oceanio.companies.search, listed separately because lookalike-by-seed-domain is a job of its own and few providers do it. Each row carries `relevance`: A / B / C. `minRelevance` and `maxRelevance` inside companiesFilters let you keep only the close matches"
     test_request:
       body:
@@ -384,7 +384,7 @@ endpoints:
         peoplePerCompany: {type: integer, required: false, note: "cap on people returned per company, so one big employer does not eat the whole page. Omit to take everyone"}
         jobTitleThreshold: {type: number, required: false, note: "0-1 similarity floor for jobTitleKeywords matching; default 0.8"}
         searchAfter: {type: string, required: false, note: "cursor from the previous page"}
-        fields: {type: "array[string]", required: false, note: "which Person fields to return; omit for the default set"}
+        fields: {type: array, items: {type: string}, required: false, note: "which Person fields to return; omit for the default set"}
       note: "combine companiesFilters (who the account is) with peopleFilters (who the buyer is) to build a contact list in one call. Emails and phones are NOT included — reveal them separately, and expensively, via /v2/reveal/emails and /v2/reveal/phones using the `id` of each person returned here. `lookalikeLinkedinHandles` does the people equivalent of lookalike company search"
     test_request:
       body:
@@ -421,7 +421,7 @@ endpoints:
     summary: "Get emails and email statuses for people"
     input:
       body:
-        personIds: {type: "array[string]", required: true, note: "Ocean person ids — the `id` field of any person returned by enrich, lookup or search. One email credit is charged for every VERIFIED email found", example: ["8646fe23931d019b"]}
+        personIds: {type: array, items: {type: string}, required: true, note: "Ocean person ids — the `id` field of any person returned by enrich, lookup or search. One email credit is charged for every VERIFIED email found", example: ["8646fe23931d019b"]}
         webhookUrl: {type: string, required: true, note: "a PUBLIC https URL that receives the addresses and their verification statuses. There is no status route to poll — the inline response is only {\"status\": \"in progress\"}", example: "https://example.com/treg-webhook"}
       note: "EXPENSIVE relative to enrichment — about 10x an enrich per verified address — and asynchronous. Accounts on plans with a dedicated email-credit pool spend that pool; on the account we tested the charge came out of the standard balance. Nothing is charged for a person whose address cannot be verified"
     test_request:
@@ -454,7 +454,7 @@ endpoints:
     summary: "Get phones and phone statuses for people"
     input:
       body:
-        personIds: {type: "array[string]", required: true, note: "Ocean person ids. One phone credit is charged for every VERIFIED phone found", example: ["8646fe23931d019b"]}
+        personIds: {type: array, items: {type: string}, required: true, note: "Ocean person ids. One phone credit is charged for every VERIFIED phone found", example: ["8646fe23931d019b"]}
         webhookUrl: {type: string, required: true, note: "a PUBLIC https URL that receives the numbers and their statuses; the inline response is only {\"status\": \"in progress\"}", example: "https://example.com/treg-webhook"}
       note: "THE MOST EXPENSIVE ENDPOINT HERE — a single phone cost 10 credits in our test, 100x a company enrich. Never fan this out over a search result without capping the list first"
     test_request:
@@ -490,11 +490,11 @@ endpoints:
         - {kind: segmentation, path: segmentationId}
     input:
       body:
-        domains: {type: "array[string]", required: true, note: "the companies to group — typically your customer list or best-fit accounts", example: ["stripe.com", "adyen.com", "razorpay.com", "checkout.com", "mollie.com"]}
-        leadScoringFeatures: {type: "array[string]", required: false, note: "which company attributes to cluster on, e.g. industries, technologies, company_size. Omit for the default set"}
+        domains: {type: array, items: {type: string}, required: true, note: "the companies to group — typically your customer list or best-fit accounts", example: ["stripe.com", "adyen.com", "razorpay.com", "checkout.com", "mollie.com"]}
+        leadScoringFeatures: {type: array, items: {type: string}, required: false, note: "which company attributes to cluster on, e.g. industries, technologies, company_size. Omit for the default set"}
         numberOfSegmentsMode: {type: integer, required: false, note: "bias toward fewer or more segments; omit to let the service choose"}
-        positiveDomains: {type: "array[string]", required: false, note: "good-fit companies — the segmentation leans toward companies like these"}
-        negativeDomains: {type: "array[string]", required: false, note: "poor-fit companies — the segmentation leans away from these"}
+        positiveDomains: {type: array, items: {type: string}, required: false, note: "good-fit companies — the segmentation leans toward companies like these"}
+        negativeDomains: {type: array, items: {type: string}, required: false, note: "poor-fit companies — the segmentation leans away from these"}
       note: "ASYNC but POLLABLE, unlike the webhook endpoints: it returns `segmentationId` immediately, then you poll oceanio.companies.segment.get until `status` is SUCCESSFUL. Free in our test. A handful of domains lands everything in one 'Other' segment — feed it a real list (dozens to hundreds) for useful clusters"
     test_request:
       body: {domains: ["stripe.com", "adyen.com", "razorpay.com", "checkout.com", "mollie.com"]}
@@ -542,7 +542,7 @@ endpoints:
       pathParams:
         segmentation_id: {type: integer, required: true, note: "the segmentation to teach", example: 153746}
       body:
-        domains: {type: "array[string]", required: true, note: "the domains to add to the list", example: ["adyen.com"]}
+        domains: {type: array, items: {type: string}, required: true, note: "the domains to add to the list", example: ["adyen.com"]}
         type: {type: string, required: true, note: "\"positive\" (good fit) or \"negative\" (poor fit) — REQUIRED; omitting it returns 422", example: "positive"}
       note: "the feedback loop: closed-won accounts in as positive, churned or disqualified ones as negative, then re-run the segmentation. Returns {\"status\": \"updated\"}"
     test_request:
@@ -570,7 +570,7 @@ endpoints:
       pathParams:
         segmentation_id: {type: integer, required: true, note: "a segmentation whose status is SUCCESSFUL", example: 153746}
       body:
-        domains: {type: "array[string]", required: true, note: "domains to place into the existing segments, max 1000", example: ["gocardless.com"]}
+        domains: {type: array, items: {type: string}, required: true, note: "domains to place into the existing segments, max 1000", example: ["gocardless.com"]}
       note: "the scoring half of segmentation — score inbound leads against an ICP you already built. NOT VERIFIED: on a freshly created segmentation the call returned HTTP 412 {\"detail\": \"Segmentation must be re-run to enable attribution.\"}, and re-running a segmentation is a dashboard action we did not want to trigger on the test account. Price also unconfirmed for the same reason"
     test_request:
       pathParams: {segmentation_id: 153746}
@@ -620,8 +620,8 @@ endpoints:
     input:
       body:
         name: {type: string, required: true, note: "the beginning of a company name, or a domain", example: "stripe"}
-        countryFilters: {type: "array[string]", required: false, note: "restrict suggestions to these countries"}
-        excludeDomains: {type: "array[string]", required: false, note: "domains to leave out of the suggestions"}
+        countryFilters: {type: array, items: {type: string}, required: false, note: "restrict suggestions to these countries"}
+        excludeDomains: {type: array, items: {type: string}, required: false, note: "domains to leave out of the suggestions"}
         forLookalikeSearch: {type: boolean, required: false, note: "leave it at the default. Setting it false skips domain validation, and those results are NOT safe to feed into a lookalike search"}
       note: "the name-to-domain resolver — turn 'Stripe' into stripe.com before calling an enrich or seeding lookalikeDomains. Returns name, domain and logo per suggestion"
     test_request:

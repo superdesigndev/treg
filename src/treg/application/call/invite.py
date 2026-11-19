@@ -6,19 +6,21 @@ A review invitation asks the agent for work, so it is rationed twice: `hints.sam
 calls qualify (deterministic, so `POST /reviews` can recompute eligibility), and a per-team hourly
 budget in the shared store caps HOW MANY a team is asked about, whatever its call volume. A team
 hammering one endpoint 2,000 times in an hour is asked `review_budget_per_hour` times, not 100.
-The feedback hint asks for nothing and stays purely sampled.
+The feedback hint asks for nothing and stays purely sampled. A comparison invitation
+(`compare`) is decided from a flag the comparison worker sets when a team has a pair waiting
+(application/compare.py), so it reads no database either, and is rationed per team per hour.
 """
 from __future__ import annotations
 
 from typing import Literal
 
 from ... import hints
-from .. import review_targets
+from .. import compare, review_targets
 from ...config import get_settings
 from ...infra import kv
 from .types import CallContext
 
-Kind = Literal["review", "mark", "feedback"]
+Kind = Literal["compare", "review", "mark", "feedback"]
 BUDGET_WINDOW_S = 3600
 # What a client that does not say (`X-Treg-Hints`) can show: every CLI released before the
 # header existed renders review and feedback, and drops anything else in silence.
@@ -26,7 +28,7 @@ LEGACY_KINDS: frozenset[str] = frozenset({"review", "feedback"})
 
 
 def accepted_kinds(header: str | None) -> frozenset[str]:
-    """The invitations a client says it shows (`X-Treg-Hints: review,mark,feedback`)."""
+    """The invitations a client says it shows (`X-Treg-Hints: review,mark,feedback,compare`)."""
     if header is None:
         return LEGACY_KINDS
     return frozenset(k.strip().lower() for k in header.split(",") if k.strip())
@@ -83,11 +85,14 @@ async def invitation(context: CallContext, status: int, *, replayed: bool,
     review even when its name matches an endpoint."""
     if not (200 <= status < 300) or replayed or context.cached:
         return None
+    if "compare" in accepts and await _compare_waiting(context):
+        return "compare"
     marketplace = context.marketplace
     platform = marketplace is not None and getattr(marketplace, "tier", None) == "platform"
     routed = marketplace is None and context.route_summary is not None
     if ("review" in accepts and (platform or routed)
-            and review_targets.sampled(context.call_ref, review_endpoint(context))):
+            and review_targets.sampled(context.call_ref, review_endpoint(context),
+                                          context.input.caller.org_id)):
         if await kv.store().take(budget_key(context.input.caller.org_id),
                                  get_settings().review_budget_per_hour, BUDGET_WINDOW_S):
             return "review"
@@ -100,3 +105,17 @@ async def invitation(context: CallContext, status: int, *, replayed: bool,
     if "feedback" in accepts and hints.sampled("feedback", context.call_ref):
         return "feedback"
     return None
+
+
+async def _compare_waiting(context: CallContext) -> bool:
+    """The team has a comparison waiting and its hourly ration of compare invitations is not spent.
+    A pinned caller never reads one (application/compare.py), so it is never asked."""
+    settings = get_settings()
+    caller = context.input.caller
+    if not compare.configured() or caller.membership.pinned_tags is not None:
+        return False
+    store = kv.store()
+    if not await store.has_flag(compare.ready_key(caller.org_id)):
+        return False
+    return await store.take(compare.hint_budget_key(caller.org_id), settings.compare_budget_per_hour,
+                            BUDGET_WINDOW_S)

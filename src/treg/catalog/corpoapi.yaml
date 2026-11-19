@@ -51,7 +51,7 @@ endpoints:
     input:
       queryParams:
         q: {type: string, required: true, note: "a company name, or a registration number or identifier; at least 2 characters", example: "equinor"}
-        jurisdiction: {type: "array[string]", required: true, note: "one or more ISO 3166-1 alpha-2 codes, US states as us-xx; comma-separate or repeat. Every search is scoped; keep it to a few jurisdictions", example: "no"}
+        jurisdiction: {type: array, items: {type: string}, required: true, note: "one or more ISO 3166-1 alpha-2 codes, US states as us-xx; comma-separate or repeat. Every search is scoped; keep it to a few jurisdictions", example: "no"}
         status: {type: string, required: false, note: "normalised statuses, e.g. active, dissolved; comma-separate"}
         legal_form: {type: string, required: false, note: "register legal-form codes, e.g. AB-ORGFO"}
         active_only: {type: boolean, required: false, note: "shortcut for status=active"}

@@ -1,11 +1,12 @@
 """Feedback intake and private reads; all writes use the application transaction."""
 
-from typing import Annotated
+from typing import Annotated, Literal
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request, Response
 from pydantic import BaseModel, ConfigDict, Field, StringConstraints, field_validator, model_validator
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from ..application import compare as compare_app
 from ..application import feedback as feedback_app
 from ..domain import feedback
 from ..domain.feedback import marks, reviews
@@ -193,3 +194,37 @@ async def admin_marks(
     rows = await marks.recent(db, limit=limit, before=before, endpoint_id=endpoint_id)
     return {"items": [row.model_dump() for row in rows],
             "next_before": rows[-1].id if len(rows) == limit else None}
+
+
+@app.get("/comparisons/next")
+async def next_comparison(caller: Caller = Depends(require_member)):
+    """The team's oldest comparison waiting for a verdict, blinded: answer 1 and 2, no vendor."""
+    pair = await compare_app.next_for(caller.org_id, pinned=caller.membership.pinned_tags is not None)
+    if pair is None:
+        return Response(status_code=204)
+    return pair
+
+
+class ComparisonIn(BaseModel):
+    model_config = ConfigDict(extra="forbid", str_strip_whitespace=True)
+
+    comparison_id: int = Field(ge=1)
+    choice: Literal["1", "2", "tie", "both_bad"]
+    reason: str | None = Field(default=None, min_length=1, max_length=300)
+
+
+@app.post("/comparisons", status_code=201)
+async def submit_comparison(
+    body: ComparisonIn, request: Request, response: Response,
+    caller: Caller = Depends(require_member),
+) -> dict:
+    try:
+        choice, inserted = await compare_app.submit(
+            caller.org_id, pinned=caller.membership.pinned_tags is not None,
+            comparison_id=body.comparison_id, choice=body.choice, reason=body.reason,
+            client=request.headers.get("X-Treg-Client", ""))
+    except compare_app.ComparisonNotFound:
+        raise HTTPException(404, "Comparison not found in this team.") from None
+    response.status_code = 201 if inserted else 200
+    return {"comparison_id": body.comparison_id, "choice": choice,
+            "status": "received" if inserted else "already_received"}

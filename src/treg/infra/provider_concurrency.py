@@ -8,6 +8,7 @@ No shared store (`TREG_KV_URL` unset) means `enabled()` is false; a store fault 
 from __future__ import annotations
 
 import asyncio
+import collections
 import logging
 import time
 import uuid
@@ -19,6 +20,9 @@ log = logging.getLogger("treg.provider_concurrency")
 _LEASE_S = 30.0
 BUSY: Final = "busy"
 _pending: set[asyncio.Task] = set()
+# Leases whose acquire or release got no answer: the store may hold the place anyway (an acquire
+# it ran late, or a release it dropped), so each is released again once the store answers.
+_unanswered: collections.deque[Lease] = collections.deque(maxlen=10_000)
 
 
 def enabled() -> bool:
@@ -62,8 +66,10 @@ class Lease:
             return
 
     async def _release(self, *, quiet: bool = False) -> None:
-        if await self.store.release_slot(self.key, self.token) == "unavailable" and not quiet:
-            log.warning("provider_concurrency release_unavailable key=%s; expires by lease", self.key)
+        if await self.store.release_slot(self.key, self.token) == "unavailable":
+            _unanswered.append(self)  # released again once the store answers
+            if not quiet:
+                log.warning("provider_concurrency release_unavailable key=%s; expires by lease", self.key)
 
     def release(self) -> None:
         if self._released:
@@ -76,8 +82,47 @@ class Lease:
 
 async def _drop_after(attempt: asyncio.Future, lease: Lease) -> None:
     """The write may land after the caller left: wait for it, then drop only this token."""
-    await asyncio.gather(attempt, return_exceptions=True)
+    results = await asyncio.gather(attempt, return_exceptions=True)
+    if results[0] not in ("acquired", "busy"):
+        _unanswered.append(lease)
     await lease._release(quiet=True)
+
+
+_DRAIN_WORKERS = 4
+_draining: asyncio.Task | None = None
+
+
+def _release_unanswered() -> None:
+    """The store answers again: release the tokens that got no answer once more. Every one is
+    released, however old: the store stamps a late acquire with its own clock at recovery, so it
+    holds the place a full lease from then, and a token already gone just answers not owned.
+    One background drain with a few requests at a time, so a long list never crowds the shared
+    client's connections that other callers need; it stops at the first request the store does
+    not answer and keeps the rest for the next answer."""
+    global _draining
+    loop = asyncio.get_running_loop()
+    if not _unanswered or (_draining is not None and not _draining.done()
+                           and _draining.get_loop() is loop):
+        return
+    _draining = loop.create_task(_drain())
+
+
+async def _drain() -> None:
+    stopped = False
+
+    async def worker() -> None:
+        nonlocal stopped
+        while _unanswered and not stopped:
+            lease = _unanswered.popleft()
+            try:
+                outcome = await lease.store.release_slot(lease.key, lease.token)
+            except Exception:  # noqa: BLE001 - a store fault keeps the lease for later
+                outcome = "unavailable"
+            if outcome == "unavailable":
+                _unanswered.appendleft(lease)
+                stopped = True
+
+    await asyncio.gather(*(worker() for _ in range(_DRAIN_WORKERS)))
 
 
 async def try_acquire(account: str, cap: int) -> Lease | None | Literal["busy"]:
@@ -94,6 +139,8 @@ async def try_acquire(account: str, cap: int) -> Lease | None | Literal["busy"]:
     except asyncio.CancelledError:
         _background(_drop_after(attempt, lease))
         raise
+    if outcome in ("acquired", "busy"):
+        _release_unanswered()
     if outcome == "acquired" and time.monotonic() < lease.valid_until:
         lease.renewal = asyncio.get_running_loop().create_task(lease._renew())
         return lease
@@ -102,4 +149,6 @@ async def try_acquire(account: str, cap: int) -> Lease | None | Literal["busy"]:
     # A late "acquired" may name an owner that already expired, and a lost reply may have
     # acquired: drop only this token. A late one asks again; a failing store reads as `None`.
     _background(lease._release(quiet=True))
+    if outcome != "acquired":
+        _unanswered.append(lease)
     return BUSY if outcome == "acquired" else None

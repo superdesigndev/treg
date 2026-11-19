@@ -61,12 +61,12 @@ endpoints:
         advertiser_id: {type: string, required: true, example: "7000000000000000000"}
         report_type: {type: string, required: true, note: "BASIC (performance) | AUDIENCE (demographic breakdowns) | PLAYABLE_MATERIAL | CATALOG | BC", example: "BASIC"}
         data_level: {type: string, required: true, note: "AUCTION_ADVERTISER | AUCTION_CAMPAIGN | AUCTION_ADGROUP | AUCTION_AD — must match the id dimension you ask for", example: "AUCTION_CAMPAIGN"}
-        dimensions: {type: array, required: true, note: "JSON array in the query string. One id dimension plus optionally stat_time_day for a daily series: [\"campaign_id\",\"stat_time_day\"]", example: ["campaign_id", "stat_time_day"]}
-        metrics: {type: array, required: false, note: "JSON array; defaults to a thin set, so always name them", example: ["spend", "impressions", "clicks", "ctr", "cpc", "conversion", "cost_per_conversion"]}
+        dimensions: {type: array, items: {type: string}, required: true, note: "JSON array in the query string. One id dimension plus optionally stat_time_day for a daily series: [\"campaign_id\",\"stat_time_day\"]", example: ["campaign_id", "stat_time_day"]}
+        metrics: {type: array, items: {type: string}, required: false, note: "JSON array; defaults to a thin set, so always name them", example: ["spend", "impressions", "clicks", "ctr", "cpc", "conversion", "cost_per_conversion"]}
         start_date: {type: string, required: false, note: "YYYY-MM-DD, in the advertiser's timezone; required unless query_lifetime is true", example: "2026-06-28"}
         end_date: {type: string, required: false, note: "YYYY-MM-DD; the window is capped (about 30 days for most report types)", example: "2026-07-28"}
         query_lifetime: {type: boolean, required: false, note: "true returns all-time totals and forbids start_date/end_date", example: false}
-        filtering: {type: array, required: false, note: "JSON array of filter objects, e.g. [{\"field_name\":\"campaign_ids\",\"filter_type\":\"IN\",\"filter_value\":\"[\\\"123\\\"]\"}]"}
+        filtering: {type: array, items: {type: object}, required: false, note: "JSON array of filter objects, e.g. [{\"field_name\":\"campaign_ids\",\"filter_type\":\"IN\",\"filter_value\":\"[\\\"123\\\"]\"}]"}
         order_field: {type: string, required: false, example: "spend"}
         order_type: {type: string, required: false, note: "ASC | DESC", example: "DESC"}
         page: {type: integer, required: false, example: 1}
@@ -88,7 +88,7 @@ endpoints:
       queryParams:
         advertiser_id: {type: string, required: true, example: "7000000000000000000"}
         filtering: {type: object, required: false, note: "JSON object in the query string: {\"primary_status\":\"STATUS_DELIVERY_OK\"} or {\"campaign_ids\":[\"123\"]}", example: {"primary_status": "STATUS_DELIVERY_OK"}}
-        fields: {type: array, required: false, note: "JSON array; omit for the default field set", example: ["campaign_id", "campaign_name", "objective_type", "budget", "budget_mode", "operation_status"]}
+        fields: {type: array, items: {type: string}, required: false, note: "JSON array; omit for the default field set", example: ["campaign_id", "campaign_name", "objective_type", "budget", "budget_mode", "operation_status"]}
         page: {type: integer, required: false, example: 1}
         page_size: {type: integer, required: false, note: "max 1000, default 10 — the small default is the usual reason a campaign looks missing", example: 100}
       note: "budget is a number in the account currency and budget_mode says whether it is daily (BUDGET_MODE_DAY) or lifetime. Two status fields disagree on purpose: operation_status is what you set (ENABLE/DISABLE), primary_status is what TikTok is actually doing (delivering, budget exceeded, in review)"
@@ -108,7 +108,7 @@ endpoints:
       queryParams:
         advertiser_id: {type: string, required: true, example: "7000000000000000000"}
         filtering: {type: object, required: false, note: "{\"campaign_ids\":[\"123\"]} to scope to one campaign", example: {"campaign_ids": ["1234567890123456789"]}}
-        fields: {type: array, required: false, example: ["adgroup_id", "adgroup_name", "campaign_id", "budget", "bid_price", "billing_event", "optimization_goal", "placement_type", "operation_status"]}
+        fields: {type: array, items: {type: string}, required: false, example: ["adgroup_id", "adgroup_name", "campaign_id", "budget", "bid_price", "billing_event", "optimization_goal", "placement_type", "operation_status"]}
         page: {type: integer, required: false, example: 1}
         page_size: {type: integer, required: false, example: 100}
       note: "the ad group is where TikTok keeps targeting, placements, bidding and schedule — the audience definition an agent usually wants is here, not on the campaign"
@@ -128,7 +128,7 @@ endpoints:
       queryParams:
         advertiser_id: {type: string, required: true, example: "7000000000000000000"}
         filtering: {type: object, required: false, note: "{\"adgroup_ids\":[\"123\"]} or {\"ad_ids\":[\"456\"]}", example: {"adgroup_ids": ["1234567890123456789"]}}
-        fields: {type: array, required: false, example: ["ad_id", "ad_name", "adgroup_id", "ad_format", "ad_text", "video_id", "image_ids", "landing_page_url", "call_to_action", "operation_status"]}
+        fields: {type: array, items: {type: string}, required: false, example: ["ad_id", "ad_name", "adgroup_id", "ad_format", "ad_text", "video_id", "image_ids", "landing_page_url", "call_to_action", "operation_status"]}
         page: {type: integer, required: false, example: 1}
         page_size: {type: integer, required: false, example: 100}
       note: "creatives come back as ids (video_id, image_ids), not playable URLs — resolve them through the file/video/ad/get/ endpoint to get preview links, which expire"

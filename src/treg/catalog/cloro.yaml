@@ -59,7 +59,7 @@ endpoints:
     method: GET
     path: /v1/states
     name: "List supported US states"
-    summary: "Lists the US states available for state-level geo-targeting on the ChatGPT and Gemini endpoints. Only US is supported; any other country returns an empty array."
+    summary: "Lists the US states available for state-level geo-targeting on the ChatGPT, Gemini and Bing AI Mode endpoints. Only US is supported; any other country returns an empty array."
     input:
       queryParams:
         country: {type: string, required: false, note: "ISO 3166-1 alpha-2 country code", example: "US"}
@@ -132,7 +132,7 @@ endpoints:
         prompt: {type: string, required: true, note: "1-10,000 characters", example: "best running shoes for flat feet"}
         country: {type: string, required: true, note: "ISO 3166-1 alpha-2. CN, CZ, HK, IR, MO, RU and VE are refused.", example: "US"}
         state: {type: string, required: false, note: "US state code for state-level targeting; adds 2 credits", example: "CA"}
-        legacy: {type: boolean, required: true, enum: [true], note: "the desktop UI, where ads and shopping render; free"}
+        legacy: {type: boolean, required: true, note: "the desktop UI, where ads and shopping render; free"}
         disableWebSearch: {type: boolean, required: false, note: "answer from the model alone, without a web search"}
         include:
           type: object
@@ -543,7 +543,52 @@ endpoints:
     cost: {type: free, value: 0, currency: USD, unit: call}
     docs_url: https://cloro.dev/docs/api-reference/endpoint/google/resolve-goto
 
+  # --- Bing -------------------------------------------------------------------------------------
+  - id: cloro.bing.serp.ai_mode
+    domain: serp
+    capability: bing.serp.ai_mode
+    platform: bing
+    scope: any_account
+    method: POST
+    path: /v1/monitor/bing/aimode
+    name: "Bing AI Mode answer — text, sources, citation pills"
+    summary: "Runs a prompt through Bing AI Mode from a chosen country and returns the answer text with its cited sources and citation pills, optionally as Markdown or HTML."
+    input:
+      body:
+        prompt: {type: string, required: true, note: "at most 3,500 characters after URL encoding, so fewer for non-Latin scripts", example: "best running shoes for flat feet"}
+        country: {type: string, required: true, note: "ISO 3166-1 alpha-2. CN, KR and RU are refused; use cloro.account.coverage.countries for the current list.", example: "US"}
+        state: {type: string, required: false, note: "US state code for state-level targeting; adds 2 credits", example: "CA"}
+        include:
+          type: object
+          required: false
+          note: "any of markdown, html. Both are free on this endpoint."
+      bodyType: json
+    test_request:
+      body:
+        prompt: "best running shoes for flat feet"
+        country: "US"
+        include: {markdown: true, html: true}
+      bodyType: json
+    added: '2026-11-19'
+    example_response: examples/cloro.bing.serp.ai_mode.json
+    cost:
+      type: per_success
+      value: 6
+      currency: credit
+      per: 1
+      unit: call
+      source: docs
+      source_url: 'https://cloro.dev/docs/api-reference/endpoint/monitor-bing-aimode'
+      checked: '2026-11-07'
+      confidence: documented
+      modifiers:
+        state: {location: body, when: present, add_credits: 2}
+      note: "4 base + the 2-credit sync surcharge. include.markdown and include.html are free — only `state` moves the price, by 2. A failed extraction is not charged."
+    docs_url: https://cloro.dev/docs/api-reference/endpoint/monitor-bing-aimode
+
 proposed_capabilities:
+  # Bing AI Mode is the same job as google.serp.ai_mode against Bing, so it gets the matching id.
+  bing.serp.ai_mode: "Get Bing AI Mode results for a keyword"
   # ai-search already carries chatgpt/gemini `.scrape` and perplexity `.answer`. Copilot is the same
   # job against one more answer engine and has no id yet.
   ai-search.copilot.scrape: "Scrape a live Microsoft Copilot answer page for a keyword"
