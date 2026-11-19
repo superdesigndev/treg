@@ -30,12 +30,12 @@ endpoints:
     input:
       bodyType: json
       body:
-        company_domain_or: {type: 'array[string]', required: false, example: [stripe.com]}
-        company_name_or: {type: 'array[string]', required: false, example: [Stripe]}
+        company_domain_or: {type: array, items: {type: string}, required: false, example: [stripe.com]}
+        company_name_or: {type: array, items: {type: string}, required: false, example: [Stripe]}
         posted_at_max_age_days: {type: integer, required: false, example: 30}
-        job_title_or: {type: 'array[string]', required: false, example: [Software Engineer]}
-        job_country_code_or: {type: 'array[string]', required: false, example: [US]}
-        job_technology_slug_or: {type: 'array[string]', required: false, example: [python]}
+        job_title_or: {type: array, items: {type: string}, required: false, example: [Software Engineer]}
+        job_country_code_or: {type: array, items: {type: string}, required: false, example: [US]}
+        job_technology_slug_or: {type: array, items: {type: string}, required: false, example: [python]}
         page: {type: integer, required: false, min: 0, example: 0}
         limit: {type: integer, required: false, min: 1, note: "Default 25 upstream; shared-key calls require 1-100 to bound the hold.", example: 1}
       note: "The upstream accepts many more filters; send them in the raw JSON body. Supply at least one date, job or company filter. More than 50 company identifiers also require a date filter."
@@ -59,10 +59,10 @@ endpoints:
     input:
       bodyType: json
       body:
-        company_domain_or: {type: 'array[string]', required: false, example: [stripe.com]}
-        company_name_or: {type: 'array[string]', required: false, example: [Stripe]}
-        company_country_code_or: {type: 'array[string]', required: false, example: [US]}
-        company_technology_slug_or: {type: 'array[string]', required: false, example: [python]}
+        company_domain_or: {type: array, items: {type: string}, required: false, example: [stripe.com]}
+        company_name_or: {type: array, items: {type: string}, required: false, example: [Stripe]}
+        company_country_code_or: {type: array, items: {type: string}, required: false, example: [US]}
+        company_technology_slug_or: {type: array, items: {type: string}, required: false, example: [python]}
         min_employee_count: {type: integer, required: false, example: 100}
         page: {type: integer, required: false, min: 0, example: 0}
         limit: {type: integer, required: false, min: 1, note: "Default 25 upstream; shared-key calls require 1-100 to bound the hold.", example: 1}

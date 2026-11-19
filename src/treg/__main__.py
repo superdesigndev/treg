@@ -9,10 +9,17 @@ import sys
 async def _prepare_serve() -> None:
     """Apply release maintenance, then provision this local box when single-user mode allows it."""
     # Both imports are deliberately lazy so `python -m treg keygen` stays on the light path.
-    from . import api, maintenance
-    from .infra.db import dispose_engine
+    import logging
 
-    await maintenance.upgrade()
+    from . import api, maintenance
+    from .infra.db import dispose_engine, stamped_newer_than_build
+
+    try:
+        await maintenance.upgrade()
+    except maintenance.SchemaNewerThanBuild as exc:
+        if not await stamped_newer_than_build():
+            raise
+        logging.getLogger("treg").warning("%s Serving anyway, as the ASGI entry does.", exc)
     await api._bootstrap_single_user()
     await dispose_engine()
 

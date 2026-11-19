@@ -1004,6 +1004,7 @@ main.flush,.redesign main.flush{padding:0;max-width:none}
 .cn-bad .cn-st{--cn-tone:var(--red)}
 .cn-quiet .cn-st{--cn-tone:var(--muted)}
 .cn-what{margin:0;font-size:12.5px;line-height:1.5;color:var(--muted)}
+.cn-review{color:var(--amber)}
 .cn-fix p{margin:0 0 8px;font-size:12.5px;line-height:1.5;color:var(--ink)}
 .cn-fix-r{display:flex;gap:8px}
 .cn-fix-r input{flex:1;min-width:0;height:30px;border-radius:9px;padding:0 10px;font-size:12.5px}

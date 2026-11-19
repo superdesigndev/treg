@@ -16,6 +16,8 @@ export TREG_RESEND_API_KEY=
 export TREG_POSTHOG_KEY=
 export TREG_INTERCOM_APP_ID=
 export TREG_PLATFORM_PROVIDERS=
+# Every browser sign-in comes from this one address; per-email windows still apply.
+export TREG_RATE_LIMIT_EXEMPT_IPS=127.0.0.1
 # The first-run flow for these addresses only (e2e/onboarding.spec.ts); everyone else, and so every
 # other spec's signIn, keeps the team-name dialog.
 export PORT="$TREG_E2E_PORT"

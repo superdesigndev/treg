@@ -1,0 +1,4 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" role="img" aria-label="Fundable">
+  <rect width="64" height="64" rx="14" fill="#334155"/>
+  <path d="M23 49V15h24v7H31v8h14v7H31v12z" fill="#fff"/>
+</svg>

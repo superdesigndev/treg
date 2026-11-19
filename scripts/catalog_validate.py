@@ -83,7 +83,7 @@ from treg.application.call.resolve import _ENTITY_UNITS  # noqa: E402
 from treg.domain.asynctasks import json_path  # noqa: E402
 from treg.domain.catalog.routing import paths as _paths  # noqa: E402
 from treg.domain import plugins  # noqa: E402
-from treg.domain.catalog import schema  # noqa: E402
+from treg.domain.catalog import params, schema  # noqa: E402
 from treg.domain.catalog.schema import violations  # noqa: E402
 from treg.domain.catalog.schema.paths import leaves, parse_path  # noqa: E402
 from treg.domain.catalog.schema.v2 import _legacy_location  # noqa: E402
@@ -353,6 +353,26 @@ def _finite_number(value: object) -> bool:
             and math.isfinite(float(value)))
 
 
+def check_param_specs(ep: dict, where: str, errors: list[str]) -> None:
+    """Every parameter declaration is in the one vocabulary (`catalog.params.declaration_errors`),
+    except a location the violation list records as refused data."""
+    inp = ep.get("input")
+    if not isinstance(inp, dict):
+        return
+    refused = {path for (at, path) in violations.load().rejected if at == ep.get("id")}
+    for location in ("queryParams", "pathParams", "headers", "body"):
+        block = inp.get(location)
+        if not isinstance(block, dict) or not block or f"input.{location}" in refused:
+            continue
+        if location == "body" and ("properties" in block or not all(isinstance(v, dict) for v in block.values())):
+            errors_at = params.declaration_errors(block, "input.body")
+        else:
+            errors_at = [e for name, spec in block.items()
+                         for e in params.declaration_errors(spec, f"input.{location}.{name}")]
+        for message in errors_at:
+            fail(errors, where, message)
+
+
 def check_strict_query(ep: dict, where: str, errors: list[str]) -> None:
     if "strict_query" not in ep:
         return
@@ -375,9 +395,6 @@ def check_strict_query(ep: dict, where: str, errors: list[str]) -> None:
     for name, spec in (fields | path_fields).items():
         if not isinstance(spec, dict):
             fail(errors, where, f"strict query field {name} must be a mapping")
-        elif "enum" in spec and (not isinstance(spec["enum"], list) or not spec["enum"]
-                                 or any(not isinstance(v, str) for v in spec["enum"])):
-            fail(errors, where, f"strict query field {name} enum must contain strings")
 
 
 def check_strict_body(ep: dict, where: str, errors: list[str]) -> None:
@@ -389,16 +406,15 @@ def check_strict_body(ep: dict, where: str, errors: list[str]) -> None:
     fields = (ep.get("input") or {}).get("body")
     arrays = [
         spec for spec in (fields or {}).values()
-        if isinstance(spec, dict) and str(spec.get("type") or "").startswith("array")
+        if isinstance(spec, dict) and params.takes_list(spec)
     ]
     if ep.get("method") not in {"POST", "PUT", "PATCH"} or not arrays:
         fail(errors, where, "strict_body requires a body method with a declared array field")
         return
     for spec in arrays:
-        minimum = spec.get("minItems", spec.get("min"))
-        maximum = spec.get("maxItems", spec.get("max"))
+        minimum, maximum = spec.get("minItems"), spec.get("maxItems")
         if not isinstance(minimum, int) or not isinstance(maximum, int) or minimum > maximum:
-            fail(errors, where, "strict_body array fields require valid integer min/max bounds")
+            fail(errors, where, "strict_body array fields require valid integer minItems/maxItems bounds")
 
 
 def check_body_allowlist(ep: dict, where: str, errors: list[str]) -> None:
@@ -416,15 +432,18 @@ def check_body_allowlist(ep: dict, where: str, errors: list[str]) -> None:
             if rule not in spec:
                 continue
             values = spec[rule]
-            if (spec.get("type") != "array[object]" or not isinstance(values, list) or not values
+            if (spec.get("type") != "array" or (spec.get("items") or {}).get("type") != "object"
+                    or not isinstance(values, list) or not values
                     or any(not isinstance(value, str) or not value.strip() for value in values)
                     or len(values) != len(set(values))):
-                fail(errors, where, f"body.{name}.{rule} requires distinct field names on array[object]")
+                fail(errors, where, f"body.{name}.{rule} requires distinct field names on an array of objects")
 
 
 def check_platform_request(rule: object, input_schema: object, where: str,
                            errors: list[str]) -> None:
-    """Platform-only fixed request values; BYOK input remains an upstream contract."""
+    """Platform-only fixed request values, each one its field declares on every tier, written as
+    the declared type; a path or query pin may list the values allowed. BYOK input remains an
+    upstream contract."""
     if not isinstance(rule, dict) or not rule:
         fail(errors, where, "platform_request must be a non-empty mapping")
         return
@@ -436,13 +455,29 @@ def check_platform_request(rule: object, input_schema: object, where: str,
             continue
         spec = fields.get(path) if isinstance(path, str) else None
         if (not isinstance(path, str)
-                or not path.startswith(("body.", "headers.", "queryParams.")) or spec is None):
-            fail(errors, where, "platform_request must name a declared body, header or query field")
+                or not path.startswith(("body.", "headers.", "queryParams.", "pathParams.")) or spec is None):
+            fail(errors, where, "platform_request must name a declared body, header, query or path field")
             continue
-        allowed = spec.get("enum")
-        if (not isinstance(allowed, list) or len(allowed) != 1
-                or type(value) is not type(allowed[0]) or value != allowed[0]):
-            fail(errors, where, "platform_request value must match the field's singleton enum")
+        values = value if isinstance(value, list) and path.startswith(("queryParams.", "pathParams.")) else [value]
+        if not values or any(not any(params.holds(kind, one) for kind in params.types_of(spec))
+                             or params.refusal(spec, one) for one in values):
+            fail(errors, where, "platform_request value must be one its field declares, written as its "
+                                "type, or for a path or query field a non-empty list of them")
+
+
+def check_path_enum_pins(ep: dict, where: str, errors: list[str]) -> None:
+    """A path enum on a row treg's key can serve is that key's pin, so it is written as a
+    `platform_request` path pin; the enum alone binds treg's key only once the parameter check
+    refuses."""
+    if (ep.get("scope") == "own_account" or ep.get("kind") == "account"
+            or ep.get("platform_blocked") or ep.get("status")):
+        return
+    pins = ep.get("platform_request") if isinstance(ep.get("platform_request"), dict) else {}
+    path_params = (ep.get("input") or {}).get("pathParams") or {}
+    for name, spec in path_params.items() if isinstance(path_params, dict) else ():
+        if isinstance(spec, dict) and "enum" in spec and f"pathParams.{name}" not in pins:
+            fail(errors, where, f"pathParams.{name} declares an enum without a platform_request "
+                                f"pathParams.{name} pin for treg's key")
 
 
 def check_team_label(rule: object, input_schema: object, where: str, errors: list[str]) -> None:
@@ -1108,6 +1143,9 @@ def check_provider_query_params(block, where: str, errors: list[str]) -> None:
             fail(errors, where, f"queryParams.{pname} must be an identifier mapped to a field spec")
         elif spec.get("required"):
             fail(errors, where, f"queryParams.{pname}: a provider-level query parameter cannot be required")
+        else:
+            for message in params.declaration_errors(spec, f"queryParams.{pname}"):
+                fail(errors, where, message)
 
 
 def check_cost(cost: dict, where: str, errors: list[str], warnings: list[str],
@@ -1599,14 +1637,18 @@ def check_v2_cost(row: schema.V2Row, ep: dict, provider: str, where: str, errors
                 fail(errors, f"{where}:price.table[{index}]", f"'{path}' is not a declared input field")
 
 
-def check_routing(errors: list[str]) -> None:
-    """contracts.yaml and adapters.yaml parse whole, every expression in them included."""
-    from treg.domain.catalog.routing.contracts import parse_adapters, parse_contracts, retired_contract_keys
+def check_routing(errors: list[str], endpoints: dict[str, dict] | None = None,
+                  warnings: list[str] | None = None) -> None:
+    """contracts.yaml and adapters.yaml parse whole, every expression in them included, and an
+    adapter's `soft:` names its contract's keys."""
+    from treg.domain.catalog.routing.contracts import (parse_adapters, parse_contracts, retired_contract_keys,
+                                                        soft_problems, soft_unrouted)
 
+    parsed = {}
     for name, parse in (("contracts.yaml", parse_contracts), ("adapters.yaml", parse_adapters)):
         try:
             doc = schema.read_yaml(CATALOG / name) or {}
-            parse(doc)
+            parsed[name] = parse(doc)
         except (ValueError, TypeError, AttributeError) as exc:
             fail(errors, name, f"does not parse: {exc}")
             continue
@@ -1614,6 +1656,26 @@ def check_routing(errors: list[str]) -> None:
             # The loader skips a retired key so an older catalog still loads; the shipped one may not carry it.
             for problem in retired_contract_keys(doc):
                 fail(errors, name, problem)
+    if len(parsed) == 2:
+        capability_of = {eid: str(ep.get("capability") or "") for eid, ep in (endpoints or {}).items()}
+        for problem in soft_problems(parsed["adapters.yaml"], parsed["contracts.yaml"], capability_of):
+            fail(errors, "adapters.yaml", problem)
+        if warnings is not None:
+            warnings += soft_unrouted(parsed["adapters.yaml"], parsed["contracts.yaml"], endpoints or {})
+    path = CATALOG / "contracts.yaml"
+    for cap, contract in (((schema.read_yaml(path) or {}) if path.is_file() else {}).get("contracts") or {}).items():
+        if not isinstance(contract, dict):
+            continue
+        fields = [(f"identity.{k}", v) for variant in contract.get("identity") or [] if isinstance(variant, dict)
+                  for k, v in variant.items()]
+        fields += [(f"{section}.{k}", v) for section in ("filters", "output")
+                   for k, v in (contract.get(section) or {}).items()]
+        fields += [(f"row.{k}", v) for k, v in ((contract.get("row") or {}).get("fields") or {}).items()]
+        for at, value in fields:
+            spec = value if isinstance(value, dict) else {"type": value}
+            spec = {k: v for k, v in spec.items() if k not in ("analytics", "required", "note", "default")}
+            for message in params.declaration_errors(spec, at):
+                fail(errors, f"contracts.yaml:{cap}", message)
 
 
 def check_manifests(errors: list[str]) -> None:
@@ -1823,6 +1885,7 @@ def main(argv: list[str]) -> int:
                         fail(errors, where, f"host '{host}' is not an approved catalog target for '{service}'")
             check_status_marker(ep, where, endpoint_status, errors)
             inp = ep.get("input") or {}
+            check_param_specs(ep, where, errors)
             check_strict_query(ep, where, errors)
             check_strict_body(ep, where, errors)
             check_body_allowlist(ep, where, errors)
@@ -1830,6 +1893,7 @@ def main(argv: list[str]) -> int:
             check_public_provider_row(ep, REGISTRY.get(service), where, errors)
             if "platform_request" in ep:
                 check_platform_request(ep["platform_request"], inp, where, errors)
+            check_path_enum_pins(ep, where, errors)
             if "team_label" in ep:
                 check_team_label(ep["team_label"], inp, where, errors)
             if "caller_email" in ep:
@@ -1866,11 +1930,11 @@ def main(argv: list[str]) -> int:
                                        _effective_cost(ep) if legacy else None, errors)
                 if isinstance(cost, dict) and cost.get("settle") == "terminal_presence":
                     body_fields = inp.get("body") or {}
-                    bounded = any(isinstance(spec, dict) and str(spec.get("type", "")).startswith("array")
+                    bounded = any(isinstance(spec, dict) and params.takes_list(spec)
                                   and spec.get("required") and spec.get("minItems") == 1
                                   and spec.get("maxItems") == 1 for spec in body_fields.values())
                     root_result = "row" not in cost["presence"]
-                    scalar_body = not any(isinstance(spec, dict) and str(spec.get("type", "")).startswith("array")
+                    scalar_body = not any(isinstance(spec, dict) and params.takes_list(spec)
                                           for spec in body_fields.values())
                     if not ep.get("body_allowlist") or (not bounded and not (root_result and scalar_body)):
                         fail(errors, where, "terminal_presence requires body_allowlist and a singular request body")
@@ -1945,7 +2009,7 @@ def main(argv: list[str]) -> int:
         fail(errors, eid, "in UNDECLARED_RESERVE but not in the catalog")
     if not only:
         errors += violations.audit(uses, docs, hits)
-        check_routing(errors)
+        check_routing(errors, endpoint_index, warnings)
         check_manifests(errors)
 
     for e in errors:

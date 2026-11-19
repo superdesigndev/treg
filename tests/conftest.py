@@ -327,6 +327,15 @@ def make_upstream(hook_hits: list | None = None) -> FastAPI:
             return {"data": []}
         return {"data": [{"id": "IG-CONVERSATION-1", "page_id": page_id}]}
 
+    @up.post("/v25.0/{ig_user_id}/media")
+    async def instagram_media_container(ig_user_id: str, request: Request):
+        # Graph's answer while the app lacks Advanced Access for publishing: the token holds the
+        # scope, the app does not.
+        return JSONResponse({"error": {
+            "message": "Application does not have permission for this action",
+            "type": "IGApiException", "code": 10, "fbtrace_id": "TRACE",
+        }}, status_code=403)
+
     @up.get("/v25.0/{page_id}/posts")
     async def facebook_page_posts(page_id: str, request: Request):
         if refused := _meta_proof_missing(request):
@@ -574,6 +583,37 @@ async def drain_background_writes():
     managed_keys._last_used_claims.clear()
     # And `treg host`'s background object deleter.
     await media_app.drain()
+
+
+@pytest.fixture
+def connections_held_here():
+    """How many pooled connections the calling asyncio task holds right now, across every engine.
+
+    `pool.checkedout()` counts the whole process: a background write (audit, a key's last-used
+    stamp) holding a connection at that instant reads as the call's own, and on SQLite every engine
+    is one pool. This counts only checkouts made by the task that asks."""
+    from sqlalchemy import event
+    from treg.infra.db import _engines
+
+    held: dict[asyncio.Task | None, int] = {}
+
+    def checkout(_dbapi, record, _proxy):
+        task = record.info["held_by"] = asyncio.current_task()
+        held[task] = held.get(task, 0) + 1
+
+    def checkin(_dbapi, record):
+        if "held_by" in record.info:
+            task = record.info.pop("held_by")
+            held[task] -= 1
+
+    pools = {id(e.sync_engine.pool): e.sync_engine.pool for e in _engines}.values()
+    for pool in pools:
+        event.listen(pool, "checkout", checkout)
+        event.listen(pool, "checkin", checkin)
+    yield lambda: held.get(asyncio.current_task(), 0)
+    for pool in pools:
+        event.remove(pool, "checkout", checkout)
+        event.remove(pool, "checkin", checkin)
 
 
 @pytest.fixture(autouse=True)

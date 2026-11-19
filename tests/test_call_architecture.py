@@ -12,6 +12,7 @@ import pytest
 from treg import archive, archive_bodies, bootstrap
 from treg.application import billing, asynctasks as task_app
 from treg.application.hub import runner as hub_runner
+from treg.application.call import allowance as call_allowance
 from treg.application.call import authorize, overflow, reserve, route, service, settle
 from treg.domain import money
 from treg.domain.capacity import fair_share, marks as capacity_marks, rate_observe
@@ -59,6 +60,8 @@ _DATAPLANE_DERIVED_WRITES = {
         (money.reap_stale_holds, "release"),
         # A member spend refusal reaps first, so a crashed call's expired hold cannot block them.
         (reserve._enforce_member_spend_cap, "ledger.reap_stale_holds"),
+        # An allowance refill is the only money session some teams open, so it reaps too.
+        (call_allowance._refill, "ledger.reap_stale_holds"),
     ),
     # Plan §4.1 / refactor plan §1.6 "platform-account capacity marks": a confirmed balance/quota
     # signature on treg's own key marks the provider exhausted in ratestore (the shared Ephemeral
@@ -145,6 +148,31 @@ _DATAPLANE_DERIVED_WRITES = {
         (rate_observe.release, "provider_rate.release"),
         (provider_rate._release, "store.release_slot"),
     ),
+    # A listed team's eligible call reserves from the team's allowance counter (Redis) instead of
+    # a hold: one atomic take, and a give-back of what it did not use. A released call writes
+    # nothing else.
+    "allowance_counter": (
+        (reserve._platform_reserve, "allowance_runtime.take"),
+        (call_allowance._take, "store.allowance_take"),
+        (call_allowance._refill, "store.allowance_add"),
+        (call_allowance._drain, "store.allowance_drop"),
+        (call_allowance.finish, "store.allowance_give_back"),
+        (settle._platform_settle, "allowance_runtime.finish"),
+    ),
+    # The counter is refilled from the balance into the team's one allowance hold, under the
+    # same money admission lease as a reserve, by whichever call found the counter short.
+    "allowance_hold_refill": (
+        (call_allowance._refill, "money_admission.admit"),
+        (call_allowance._refill, "allowance.refill_allowance_in_transaction"),
+        (call_allowance._drain, "allowance.close_allowance_in_transaction"),
+        (call_allowance._fold_backlog, "allowance.fold_charges_in_transaction"),
+    ),
+    # What a call spent from the allowance is queued as a `callcharge` row, a batch per insert,
+    # committed before the call answers; a refill applies the queue to the blocks and the ledger.
+    "allowance_call_charge": (
+        (call_allowance._ChargeWriter._write_team, "allowance.record_charges"),
+        (call_allowance._ChargeWriter._write_team, "archive.note_org_uses_in_transaction"),
+    ),
 }
 _EXPECTED_DATAPLANE_WRITES = frozenset({
     "org_endpoint_quota",
@@ -167,6 +195,9 @@ _EXPECTED_DATAPLANE_WRITES = frozenset({
     "member_spend_attribution",
     "provider_concurrency_lease",
     "provider_rate_window",
+    "allowance_counter",
+    "allowance_hold_refill",
+    "allowance_call_charge",
 })
 _DERIVED_WRITE_FILES = {
     _SRC / "application" / "asynctasks.py": {"money_admission.admit"},
@@ -181,9 +212,20 @@ _DERIVED_WRITE_FILES = {
     _SRC / "domain" / "governance" / "usage.py": {"take_daily_slot"},
     _SRC / "application" / "call" / "reserve.py": {
         "billing.maybe_schedule_autotopup", "money_admission.admit", "reserve_admission",
-        "ledger.reap_stale_holds",
+        "ledger.reap_stale_holds", "allowance_runtime.take",
+    },
+    _SRC / "application" / "call" / "allowance.py": {
+        "money_admission.admit", "ledger.reap_stale_holds",
+        "allowance.refill_allowance_in_transaction", "allowance.close_allowance_in_transaction",
+        "allowance.fold_charges_in_transaction",
+        "allowance.record_charges", "archive.note_org_uses_in_transaction",
+        "store.allowance_take", "store.allowance_take_up_to", "store.allowance_give_back",
+        "store.allowance_freeze",
+        "store.allowance_add",
+        "store.allowance_drop", "store.acquire_lease", "store.release_lease",
     },
     _SRC / "application" / "call" / "settle.py": {
+        "allowance_runtime.finish",
         "money_admission.admit", "adsconv.queue", "capacity_marks.strike", "capacity_marks.clear",
         "capacity_marks.clear_sweep_state",
         "overflow_spend_ledger.add_in_transaction", "archive.note_org_use_in_transaction",
@@ -222,6 +264,36 @@ _DERIVED_WRITE_FILES = {
     _SRC / "domain" / "money" / "__init__.py": {"reap_stale_holds", "release", "MemberSpend"},
 }
 _EXPECTED_DERIVED_WRITE_SITES = {
+    ("application/call/allowance.py", "_drain", "allowance.close_allowance_in_transaction"),
+    ("application/call/allowance.py", "_drain", "money_admission.admit"),
+    ("application/call/allowance.py", "_drain", "store.allowance_drop"),
+    # a refill that folded a full batch leaves the rest of the queue to a background fold
+    ("application/call/allowance.py", "_fold_backlog", "allowance.fold_charges_in_transaction"),
+    ("application/call/allowance.py", "_fold_backlog", "money_admission.admit"),
+    ("application/call/allowance.py", "_fold_backlog", "store.acquire_lease"),
+    ("application/call/allowance.py", "_fold_backlog", "store.release_lease"),
+    ("application/call/allowance.py", "_refill", "allowance.refill_allowance_in_transaction"),
+    ("application/call/allowance.py", "_refill", "ledger.reap_stale_holds"),
+    ("application/call/allowance.py", "_refill", "money_admission.admit"),
+    ("application/call/allowance.py", "_refill", "store.allowance_add"),
+    ("application/call/allowance.py", "_write_team", "allowance.record_charges"),
+    ("application/call/allowance.py", "_write_team", "archive.note_org_uses_in_transaction"),
+    ("application/call/allowance.py", "finish", "store.allowance_give_back"),
+    # the charge writer freezes a team's counter once an overrun's charge is committed, and
+    # a refill takes back whatever a counter holds above its hold
+    ("application/call/allowance.py", "_write", "store.allowance_freeze"),
+    ("application/call/allowance.py", "_refill", "store.allowance_take_up_to"),
+    # a call near the counter's deadline refills it beside itself, under the same lease
+    ("application/call/allowance.py", "_refresh_once", "store.acquire_lease"),
+    ("application/call/allowance.py", "_refresh_once", "store.release_lease"),
+    ("application/call/allowance.py", "_take", "store.acquire_lease"),
+    ("application/call/allowance.py", "_take", "store.allowance_take"),
+    ("application/call/allowance.py", "_take", "store.release_lease"),
+    ("application/call/reserve.py", "_platform_reserve", "allowance_runtime.take"),
+    ("application/call/reserve.py", "_schedule_autotopup_after", "billing.maybe_schedule_autotopup"),
+    ("application/call/settle.py", "_cleanup", "allowance_runtime.finish"),
+    ("application/call/settle.py", "_finish_cancelled_call", "allowance_runtime.finish"),
+    ("application/call/settle.py", "_platform_settle", "allowance_runtime.finish"),
     ("application/call/service.py", "_admit_org_endpoint", "org_endpoint_quota.admit"),
     ("application/call/reserve.py", "_platform_reserve", "reserve_admission"),
     ("application/call/reserve.py", "reserve_admission", "money_admission.admit"),
@@ -387,9 +459,9 @@ def test_catalog_access_router_only_translates_the_application_result() -> None:
 
 def test_startup_manifests_keep_dataplane_and_control_work_separate() -> None:
     assert bootstrap.ROLE_BACKGROUND_TASKS == {
-        "all": ("treg.adsconv.worker",),
+        "all": ("treg.adsconv.worker", "treg.application.allowance_sweep.worker"),
         "dataplane": (),
-        "control": ("treg.adsconv.worker",),
+        "control": ("treg.adsconv.worker", "treg.application.allowance_sweep.worker"),
     }
     for checks in bootstrap.ROLE_STARTUP_CHECKS.values():
         assert "treg.api._backfill_provider_extra_tools" not in checks

@@ -262,8 +262,8 @@ endpoints:
       bodyType: json
       body:
         data: {type: object, required: true, note: "Lead or record to evaluate."}
-        qualification_criteria: {type: array, required: true, note: "Criteria objects accepted by Sixtyfour."}
-        references: {type: array, required: false, note: "Optional reference URLs."}
+        qualification_criteria: {type: array, items: {type: object}, required: true, note: "Criteria objects accepted by Sixtyfour."}
+        references: {type: array, items: {type: string}, required: false, note: "Optional reference URLs."}
         struct: {type: object, required: false}
         max_tool_calls: {type: integer, required: true, enum: [10], example: 10}
       note: "Shared-key calls are limited to ten agent tool calls."

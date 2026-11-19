@@ -259,9 +259,9 @@ If treg's **own** account for a provider is out, a metered call is refused with 
 `resets_at` when known and `alternatives` (other providers for the same capability). Your own key
 for the provider is never affected, and treg does not switch providers on your behalf. treg
 re-checks the provider about once a minute, so a retry after a minute can succeed. A call that
-reaches the provider just as treg's account runs out is relayed as the provider answered, with
-`X-Treg-Capacity: exhausted`; `treg call` then prints a notice that the tool is unavailable on
-treg's side instead of naming the provider's wallet.
+reaches the provider just as treg's account runs out is answered with the same 503
+`provider_capacity_unavailable`, uncharged; the provider's own answer is not relayed. Both carry
+`Retry-After`: the seconds until the reset when treg knows it, else 60.
 
 Where the deployment has the overflow relay on, treg may instead serve the **same endpoint** through a
 treg-owned aggregator account — same request, same response shape, the relay's real price (0% markup),
@@ -312,6 +312,15 @@ Fewer wrong addresses get through, at a higher price and a slower answer. It nee
 with `X-Treg-Route-Waterfall: 0`, or on a routed tool without a confirm field, the header is
 refused (422, unbilled). Agreement is not delivery: combine it with `X-Treg-Route-Verify` to also
 check the mailbox.
+
+`X-Treg-Route-Domain-Match: strict` on `treg.people.email.find` keeps looking past a hit at another
+mail domain than the `domain` you sent: that hit is `weak`, and the waterfall goes on, each attempt
+at its own price inside `X-Treg-Route-Max-Cost`, for at most two more off-domain hits. The first
+on-domain hit wins; when none turns up, the first off-domain answer comes back unaltered, with
+`_treg.outcome: weak`, `_treg.domain_match: false` and the advice. A request without a domain is
+not affected. `true`, `1`, `yes` and `on` mean `strict`; `off`, `false`, `0` and `no` mean off; any other value is a 400.
+With `X-Treg-Route-Waterfall: 0`, or on another routed tool, the header is refused (422, unbilled). Off by default: a company's staff may use a mail domain other than its website's,
+and strict mode would look past those addresses too.
 
 `X-Treg-Route-Decisive: true` on `treg.people.email.verify` counts an answer only when it decides:
 `valid` or `invalid`. An `unknown`, `catch_all` or `risky` verdict, or a failed attempt, sends the

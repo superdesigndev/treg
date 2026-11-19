@@ -730,7 +730,8 @@ async def test_treg_own_balance_refusal_is_a_503_on_the_paid_path(anon: AsyncCli
     assert "payment-required" not in r.headers and "www-authenticate" not in r.headers
 
 
-async def test_a_vendor_402_is_relayed_verbatim(anon: AsyncClient, payments_on, monkeypatch):
+async def test_a_vendor_402_on_tregs_key_is_tregs_capacity_refusal(anon: AsyncClient, payments_on, monkeypatch):
+    """The vendor's 402 on treg's key is treg's account out, never a payment challenge to answer."""
     vendor = b'{"vendor":"out of credit"}'
     monkeypatch.setattr(call_service, "relay", _fake_relay(
         402, vendor, headers=((b"www-authenticate", b'Payment id="vendor"'),
@@ -738,9 +739,8 @@ async def test_a_vendor_402_is_relayed_verbatim(anon: AsyncClient, payments_on, 
     challenge = await anon.get(f"/call/{EP}?aweme_id=7")
     credential, _ = _x402_credential(challenge)
     r = await anon.get(f"/call/{EP}?aweme_id=7", headers={"PAYMENT-SIGNATURE": credential})
-    assert r.status_code == 402 and r.content == vendor
-    assert r.headers.get_list("www-authenticate") == ['Payment id="vendor"']
-    assert "X-Treg-Error" not in r.headers and "payment-required" not in r.headers
+    assert r.status_code == 503 and r.json()["detail"]["error"] == "provider_capacity_unavailable"
+    assert "www-authenticate" not in r.headers and "payment-required" not in r.headers
     # treg's own headers only: which money paid, never a receipt on a non-2xx answer.
     assert r.headers["X-Treg-Payment"] == "paid" and "payment-response" not in r.headers
 
@@ -2008,15 +2008,14 @@ async def test_a_payment_checked_locally_still_spends_the_check_cap(anon: AsyncC
     assert chain.broadcasts == 1
 
 
-async def test_an_mpp_check_spends_the_cap_once_at_its_first_rpc():
+async def test_an_mpp_check_spends_the_cap_once_at_its_first_rpc(monkeypatch):
     import json
 
     from mpp import Challenge, Credential
 
     from treg.infra.agent_payments import Offer, PaymentRejected
+    from treg.infra.agent_payments import tempo as tempo_rail
 
-    rail = MppTempoRail(secret="s" * 40, realm="registry.test", recipient=RECIPIENT,
-                        chain_id=42431, rpc_url="http://rpc.invalid")
     rpc: list[str] = []
 
     def answer(request: httpx.Request) -> httpx.Response:
@@ -2025,7 +2024,15 @@ async def test_an_mpp_check_spends_the_cap_once_at_its_first_rpc():
         return httpx.Response(200, json={"jsonrpc": "2.0", "id": 1,
                                          "result": hex(42431) if method == "eth_chainId" else None})
 
-    rail._chain._client._transport = httpx.MockTransport(answer)
+    # The node is handed over at construction: httpx routes requests through the environment's proxy
+    # (on macOS, the system proxy) and past a `_transport` swapped in afterwards.
+    class Node(httpx.AsyncClient):
+        def __init__(self, **kwargs):
+            super().__init__(transport=httpx.MockTransport(answer), **kwargs)
+
+    monkeypatch.setattr(tempo_rail, "httpx", SimpleNamespace(AsyncClient=Node))
+    rail = MppTempoRail(secret="s" * 40, realm="registry.test", recipient=RECIPIENT,
+                        chain_id=42431, rpc_url="http://rpc.invalid")
 
     def offer(path: str) -> Offer:
         return Offer(amount_micro=FLOOR, method="GET", path=path, query="",

@@ -222,6 +222,17 @@ class Settings(BaseSettings):
             "TREG_MONEY_ADMISSION_RETRY_AFTER_S", "TREG_ORG_CONCURRENCY_RETRY_AFTER_S",
             "money_admission_retry_after_s"))
 
+    # Orgs whose eligible metered calls spend from a standing allowance instead of one hold per
+    # call (money.md "Allowance"); [] = none. Needs the shared key-value store.
+    money_allowance_org_ids: list[PositiveInt] = Field(default_factory=list)
+    # What a refill brings the allowance counter up to, in micro-USD.
+    money_allowance_chunk_micro: int = Field(default=1_000_000, ge=1, le=1_000_000_000)
+    # How long after a refill the counter admits calls. A hold not refilled for this long plus
+    # the hold lifetime has nobody spending from it and is closed.
+    money_allowance_fresh_s: int = Field(default=30, ge=1, le=3600)
+    # How long finished calls wait to share one insert of their charges.
+    money_allowance_linger_ms: int = Field(default=5, ge=0, le=1000)
+
     # Orgs whose untagged free platform calls take no $0 hold (money.md "holdless"); [] = none.
     holdless_free_org_ids: list[PositiveInt] = Field(default_factory=list)
 
@@ -242,6 +253,11 @@ class Settings(BaseSettings):
         if v.startswith("postgresql://"):
             v = "postgresql+asyncpg://" + v[len("postgresql://") :]
         return v
+
+    @field_validator("param_check", mode="before")
+    @classmethod
+    def _param_check_mode(cls, value: object) -> str:
+        return "refuse" if str(value).strip().lower() == "refuse" else "log"
 
     @field_validator("rate_limit_exempt_ips")
     @classmethod
@@ -353,6 +369,11 @@ class Settings(BaseSettings):
     # provider's own charge from (domain/catalog/reported_charge.py), after settlement and outcome;
     # a call sending X-Treg-Keep-Reported-Charge keeps it. The archive keeps the answer whole.
     strip_reported_charge: bool = False
+    # The parameter check (domain/catalog/params.py) on catalog calls and routed calls: `log` (the
+    # default) relays a request that breaks a declared type, enum or range as before and logs one
+    # `catalog_parameter_would_refuse` line; `refuse` answers 400 catalog_parameter_invalid before
+    # any hold. Any other value reads as log.
+    param_check: str = "log"
     # Fair share of a provider's concurrency on treg's own keys (domain/capacity/fair_share.py):
     # how long a call waits in line for a place before a routed job moves on and a direct call is
     # refused, not charged. 0 turns the gate off (TREG_FAIR_SHARE_WAIT_S=0).
@@ -468,6 +489,7 @@ class Settings(BaseSettings):
     # Enrichment slots: fund the accounts and set the keys before naming any of these in
     # TREG_PLATFORM_PROVIDERS.
     platform_key_companyenrich: str = ""  # Bearer key
+    platform_key_fundable: str = ""  # Bearer API key
     platform_key_corpoapi: str = ""      # X-API-Key; prepaid USD balance, $0.05 per paid call, 100 free on signup
     platform_key_oceanio: str = ""        # X-Api-Token; fx.yaml usd is null so tier 4 stays refused until priced
     platform_key_predictleads: str = ""   # base64 of "api_key:api_token" (HTTP Basic, like dataforseo)
@@ -1162,7 +1184,7 @@ class Settings(BaseSettings):
     instagram_client_secret: str = ""
     # Comma-separated registry review keys that do not yet have production access. Remove one key
     # when its review is approved; set an explicit empty value when all reviews are complete.
-    oauth_review_pending: str = "instagram-login,page-messages"
+    oauth_review_pending: str = "instagram-login,page-messages,page-engagement"
     # Comma-separated provider service ids this deployment has paused (TREG_PAUSED_PROVIDERS), e.g.
     # one whose upstream access this deployment's app has lost. A paused provider leaves catalog
     # search and the connect listing, and its calls and connects are refused with a typed 503
@@ -1432,7 +1454,7 @@ class Settings(BaseSettings):
     # send (dev mode still returns the code; prod without a key silently skips the send). From must
     # be a Resend-verified domain.
     resend_api_key: str = ""
-    email_from: str = "tools-registry <no-reply@treg.to>"
+    email_from: str = "treg <no-reply@treg.to>"
 
 
 @lru_cache

@@ -26,6 +26,9 @@ descriptor (`task_id` + poll endpoint) so the caller can resume; `cost_micro` is
 When the caller sent a domain and the hit carries an email, `_treg.domain_match` (and
 `X-Treg-Domain-Match`) says whether the mailbox domain matches. A LinkedIn-only child that returns
 a former employer still counts as a hit and is billed; the flag discloses the mismatch.
+`X-Treg-Route-Domain-Match: strict` (opt-in) makes such an off-domain hit weak: the waterfall goes
+on, at most two more off-domain hits, each attempt at its own price, and the first off-domain
+answer comes back unaltered only when no on-domain hit turns up.
 
 When the caller sent `limit` and the serving child (or a merge) returns more rows, every row stays
 and `_treg.limit_exceeded` / `X-Treg-Limit-Exceeded` say so — paid rows are never trimmed.
@@ -78,6 +81,7 @@ from ...domain import plugins
 from ...domain import money as ledger
 from ...domain.money import settlement as settlement_basis
 from ...domain.catalog import outcome as catalog_outcome
+from ...domain.catalog import params
 from ...domain.catalog import results as catalog_results
 from ...domain.catalog import stats as endpoint_stats
 from ...domain.catalog import store as catalog_store
@@ -99,7 +103,9 @@ from . import route_health
 from . import route_rules as route_rules_app
 from . import cost as call_cost
 from .intake import _tag_telemetry
-from .resolve import _anonymous_offer, _anonymous_refusal, _host_of, _marketplace_secret
+from .resolve import (QueryValues, _anonymous_offer, _anonymous_refusal, _body_refusal, _host_of,
+                      _marketplace_secret, _parameter_refused, _query_refusal, param_check_refuses,
+                      would_refuse)
 from .settle import close_deferred
 from .types import CallContext, CallFailure, GatewayFailed, ResolutionFailed, UpstreamResponse
 
@@ -206,13 +212,15 @@ DECISIVE_HEADER = "x-treg-route-decisive"
 QUALITY_HEADER = "x-treg-route-quality"
 UPGRADE_HEADER = "x-treg-route-upgrade"
 COMPLETE_HEADER = "x-treg-route-complete"
+DOMAIN_MATCH_HEADER = "x-treg-route-domain-match"
 _DROP_FROM_CHILD = frozenset({b"content-length", b"content-type", b"transfer-encoding", b"idempotency-key",
                               b"x-treg-route-waterfall", b"x-treg-route-max-cost", b"x-treg-route-prefer",
                               b"x-treg-route-exclude", b"x-treg-route-min-results",
                               b"x-treg-route-merge", b"x-treg-route-strict-filters",
                               b"x-treg-route-verify", b"x-treg-route-confirm",
                               b"x-treg-route-decisive", b"x-treg-route-quality",
-                              b"x-treg-route-upgrade", b"x-treg-route-complete", b"host",
+                              b"x-treg-route-upgrade", b"x-treg-route-complete",
+                              b"x-treg-route-domain-match", b"host",
                               # the child's answer is parsed here: the relay then asks for identity
                               b"accept-encoding"})
 _CALLER_FAULT = frozenset({400, 401, 403, 404, 405, 409, 422})
@@ -289,7 +297,7 @@ def _other_subject(contract, identity: dict, core: dict) -> str | None:
     identity field the contract also returns), else None. A renamed profile reports its new handle,
     a wrong match someone else's: `_complete_check` tells them apart by a second provider."""
     for k in contract.output:
-        if k in contract.identity_types and identity.get(k) not in (None, "") and core.get(k) not in (None, ""):
+        if k in contract.identity_specs and identity.get(k) not in (None, "") and core.get(k) not in (None, ""):
             if _subject(k, core[k]) != _subject(k, identity[k]):
                 return _subject(k, core[k])
     return None
@@ -399,7 +407,7 @@ def child_outcome(endpoint: dict, contract, adapter, status: int, raw: bytes, *,
         is_miss = is_miss or judged.cause == "no_content"
     off_question = False
     rule = getattr(contract, "question_miss", "")
-    if rule and identity and doc is not None and not (is_miss or empty_core):
+    if rule and identity and doc is not None and not empty_core:
         try:
             off_question = bool(P.evaluate(rule, {**identity, **core}))
         except Exception as exc:  # noqa: BLE001 — a rule that cannot read this answer judges nothing
@@ -410,7 +418,7 @@ def child_outcome(endpoint: dict, contract, adapter, status: int, raw: bytes, *,
             ("expect_failed", bool(upstream_failed)), ("provider_error", provider_error),
             ("question_miss", off_question)) if on)
         return ChildOutcome(
-            "miss", why=why, doc=doc,
+            "miss", why=why, doc=doc, core=core if off_question else {},
             detail=f"provider reported failure: {upstream_failed}" if upstream_failed else "")
     rows = max((len(v) for v in core.values() if isinstance(v, list)), default=1)
     return ChildOutcome("hit", doc=doc, core=core, rows=rows)
@@ -435,6 +443,7 @@ class RouteOptions:
     quality: bool = False    # ask providers in order of measured answer quality (`X-Treg-Route-Quality`)
     upgrade: str | None = None  # re-ask by this identity key when the hit carries it (`X-Treg-Route-Upgrade`)
     complete: bool = False   # only a full answer about the subject asked counts (`X-Treg-Route-Complete`, see `_complete_check`)
+    domain_strict: bool = False  # an off-domain email hit is weak (`X-Treg-Route-Domain-Match: strict`)
 
     @classmethod
     def from_headers(cls, get, default_max_cost_micro: int | None = None) -> "RouteOptions":
@@ -461,12 +470,17 @@ class RouteOptions:
         ql = str(get(QUALITY_HEADER) or "").strip().lower()
         up = str(get(UPGRADE_HEADER) or "").strip()
         cp = str(get(COMPLETE_HEADER) or "").strip().lower()
+        dm = str(get(DOMAIN_MATCH_HEADER) or "").strip().lower()
+        if dm not in ("", "off", "false", "0", "no", "strict", "true", "1", "yes", "on"):
+            raise ResolutionFailed("catalog_parameter_invalid", status_code=400, rule="type",
+                                   detail=f"{DOMAIN_MATCH_HEADER} must be strict (or true, 1, yes, on) or off (or false, 0, no), "
+                                          f"got {get(DOMAIN_MATCH_HEADER)!r}")
         return cls(waterfall=wf not in ("0", "false", "no", "off"),
                    max_cost_micro=max_cost, prefer=_list(get(PREFER_HEADER)), exclude=_list(get(EXCLUDE_HEADER)),
                    min_results=mr, merge=mg in ("1", "true", "yes", "on"), strict_filters=sf in ("1", "true", "yes", "on"),
                    verify=vf in ("1", "true", "yes", "on"), confirm=cf in ("1", "true", "yes", "on"),
                    decisive=dc in ("1", "true", "yes", "on"), quality=ql in ("1", "true", "yes", "on"),
-                   upgrade=up or None, complete=cp in ("1", "true", "yes", "on"))
+                   upgrade=up or None, complete=cp in ("1", "true", "yes", "on"), domain_strict=dm in ("strict", "true", "1", "yes", "on"))
 
 
 class _Bytes:
@@ -538,17 +552,17 @@ def _require_counts(ep: dict, candidates: list, filters: dict, given: dict) -> N
 def _empty_output(contract) -> dict:
     """The contract's output shape for a miss / pending / no-core answer.
 
-    Required list fields are `[]`, never `null`: the catalog types `results` / `people` / … as lists,
+    Required array fields are `[]`, never `null`: the catalog types `results` / `people` / … as arrays,
     and callers (and the miss rule `results == []`) treat null as a broken response rather than an
-    empty one. The list's companion `count` (int) is `0`; every other scalar — including other ints
+    empty one. The list's companion `count` (integer) is `0`; every other scalar — including other integers
     such as `followers` — stays `null` so an all-miss is not a fabricated zero measurement.
     """
     out = {}
     for k, spec in contract.output.items():
         t = (spec or {}).get("type")
-        if t == "list":
+        if t == "array":
             out[k] = []
-        elif t == "int" and k == "count":
+        elif t == "integer" and k == "count":
             out[k] = 0
         else:
             out[k] = None
@@ -559,7 +573,7 @@ def _list_field(contract) -> str | None:
     """The contract's ONE list-shaped required output (`people`, `companies`). Merging only makes
     sense for these: two answers to "this person's email" is a conflict, not a union."""
     for k in contract.required_output:
-        if (contract.output.get(k) or {}).get("type") == "list":
+        if (contract.output.get(k) or {}).get("type") == "array":
             return k
     return None
 
@@ -640,6 +654,19 @@ def _merge_rows(field: str, answers: list[tuple], limit: int | None = None):
     return out
 
 
+def _declaration_refusal(e: dict, adapter, identity: dict, variant) -> tuple[str, str, str] | None:
+    """(child parameter, rule, reason) the adapter's request for this identity breaks, by the
+    check the child runs on every tier before a hold, else None. Sent in refuse mode, the child's
+    400 would read as the caller's fault and end the routed call, so the plan drops the child
+    instead; in log mode the child stays and the drop is logged. A request the adapter cannot build
+    is left to the run, which records it."""
+    try:
+        query, body = adapter.to_upstream(identity, variant)
+    except Exception:  # noqa: BLE001
+        return None
+    return _query_refusal(e, QueryValues(tuple(query.items()))) or _body_refusal(e, _child_body(e, body))
+
+
 def _table_price(cat, ep: dict, adapter, identity: dict, variant) -> int | None:
     """What the child's hold will be for a v1 price table, priced from the upstream request this
     adapter sends; the table's fallback ceiling would price every size alike. None for any other row."""
@@ -694,6 +721,17 @@ async def build_plan(ep: dict, identity_given: dict, caller, options: RouteOptio
             capped.append((e, ad, v))
     raw = capped
     _require_counts(ep, raw, contract.filters, identity_given)
+    fitting = []
+    would: dict[str, tuple[str, str]] = {}
+    for e, ad, v in raw:
+        if not (refused := _declaration_refusal(e, ad, identity, v)):
+            fitting.append((e, ad, v))
+        elif param_check_refuses():
+            dropped.append({"endpoint_id": e["id"], "why": f"needs {refused[0]}: {refused[2]}"})
+        else:
+            would[e["id"]] = refused[0], refused[1]
+            fitting.append((e, ad, v))
+    raw = fitting
     scoped = []
     for e, ad, v in raw:
         if missing := unscoped(ad, contract, identity):
@@ -735,6 +773,7 @@ async def build_plan(ep: dict, identity_given: dict, caller, options: RouteOptio
     # A `false` flag asks for nothing (`contents: false` is the default answer), so it is not sent.
     given = {k for k, v in (identity_given or {}).items() if v not in (None, "") and v is not False}
     cands: list[Candidate] = []
+    would_drop: list[dict] = []
     for e, ad, v in raw:
         st = stats.get(e["id"]) or {}
         anonymous = _anonymous_offer(e, caller.org) is not None
@@ -746,6 +785,8 @@ async def build_plan(ep: dict, identity_given: dict, caller, options: RouteOptio
             "anonymous" if anonymous else
             "platform"
         )
+        if found := would.pop(e["id"], None):
+            would_drop.append({"endpoint_id": e["id"], "parameter": found[0], "rule": found[1], "tier": tier})
         cv = cat.cost_view(e.get("cost"), e["provider"])
         direct_exhausted = tier == "platform" and keyslots.all_exhausted(
             e["provider"], e["id"], metered=spends_balance((e.get("cost") or {}).get("type")))
@@ -761,13 +802,15 @@ async def build_plan(ep: dict, identity_given: dict, caller, options: RouteOptio
             # reports no rows and charges nothing for it.
             price = overflow_route.agg_price_micro
             miss = price if getattr(overflow_route, "agg_unit", "call") == "call" else 0
+        ignored = ignored_filters(ad, contract, identity, given)
+        hard = ignored_filters(ad, contract, identity, given, soft=False)
         c = Candidate(endpoint=e, adapter=ad, variant=v, tier=tier, price_micro=price, hit_rate=st.get("hit_rate"),
                       ok_rate=st.get("ok_rate"), p50_ms=st.get("p50_ms"), last_ok_days=st.get("last_ok_days"),
                       p95_ms=st.get("p95_ms"),
                       exhausted=direct_exhausted and overflow_route is None,
                       note=(f"direct account exhausted; overflow via {overflow_route.aggregator}"
                             if overflow_route is not None else ""),
-                      ignored=ignored_filters(ad, contract, identity, given), miss_micro=miss)
+                      ignored=ignored, hinted=tuple(k for k in ignored if k not in hard), miss_micro=miss)
         if catalog_store.paused(e):
             dropped.append({"endpoint_id": e["id"], "why": f"{e['provider']} is paused on this deployment"})
             continue
@@ -804,11 +847,16 @@ async def build_plan(ep: dict, identity_given: dict, caller, options: RouteOptio
         for c in cands:
             if c.ignored:
                 wants = " | ".join("{" + ", ".join(a) + "}" for a in c.adapter.accepts)
+                hard = [k for k in c.ignored if k not in c.hinted]
+                why = "; ".join(([f"cannot express {', '.join(hard)}"] if hard else [])
+                                + ([f"applies {', '.join(c.hinted)} only as a hint"] if c.hinted else []))
                 dropped.append({"endpoint_id": c.endpoint["id"], "strict": True,
-                                "why": f"cannot express {', '.join(c.ignored)} (X-Treg-Route-Strict-Filters); it takes {wants}"})
+                                "why": f"{why} (X-Treg-Route-Strict-Filters); it takes {wants}"})
             else:
                 kept.append(c)
         cands = kept
+    would_drop += [{"endpoint_id": eid, "parameter": found[0], "rule": found[1], "tier": "none"}
+                   for eid, found in would.items()]
     health = await _apply_health(cands, dropped, probe=probe, exclude=options.exclude,
                                  max_cost_micro=options.max_cost_micro)
     decision = None
@@ -825,7 +873,7 @@ async def build_plan(ep: dict, identity_given: dict, caller, options: RouteOptio
     def ordered(prefer):
         out = rank(cands, prefer=prefer, exclude=options.exclude,
                    given=given, derive=contract.derive, one_subject=contract.one_subject,
-                   caller_prefer=bool(options.prefer))
+                   caller_prefer=bool(options.prefer), last=contract.ask_last)
         if options.complete:  # stable: price order within each group
             out = [c for c in out if _can_answer_fully(contract, c.adapter)] + \
                   [c for c in out if not _can_answer_fully(contract, c.adapter)]
@@ -843,7 +891,7 @@ async def build_plan(ep: dict, identity_given: dict, caller, options: RouteOptio
             orders["rule"] = _endpoints(ruled)
             ranked = ruled
     return Plan(contract=contract, identity=identity, variant=variant, candidates=ranked, dropped=dropped,
-                route_rule=route_rule, orders=orders, health=health)
+                route_rule=route_rule, orders=orders, would_drop=would_drop, health=health)
 
 
 _GUARDED_TIERS = ("platform", "anonymous")   # a team's own key is never skipped or reordered for health
@@ -980,11 +1028,16 @@ def _endpoints(cands) -> list[str]:
     return [c.endpoint["id"] for c in cands]
 
 
+def _child_body(ep: dict, body) -> bytes:
+    """The JSON body a child call sends: none on a method that takes none."""
+    return json.dumps(body).encode() if ep["method"] in ("POST", "PUT", "PATCH") and body is not None else b""
+
+
 def _child_input(parent, ep: dict, query: dict[str, str], body: dict,
                  remaining_micro: int | None = None, extra_headers: tuple = ()) -> object:
     from .types import CallInput
-    has_body = ep["method"] in ("POST", "PUT", "PATCH") and body is not None
-    payload = json.dumps(body).encode() if has_body else b""
+    payload = _child_body(ep, body)
+    has_body = bool(payload)
     headers = [(k, v) for k, v in parent.input.raw_headers if k.lower() not in _DROP_FROM_CHILD]
     if remaining_micro is not None:
         # Replace the parent's total ceiling with the unspent amount. The child validates its
@@ -997,7 +1050,8 @@ def _child_input(parent, ep: dict, query: dict[str, str], body: dict,
     items = tuple(query.items())
     return CallInput(method=ep["method"], raw_rest=ep["id"], raw_headers=tuple(headers), query_items=items,
                      raw_query=urlencode(items), body=_Bytes(payload), caller=parent.input.caller,
-                     client_ip=parent.input.client_ip, catalog_only=parent.input.catalog_only)
+                     client_ip=parent.input.client_ip, catalog_only=parent.input.catalog_only,
+                     routed_child=True)
 
 
 # A routed call parses each child's answer, so it holds the whole of it, as settlement does: an
@@ -1157,7 +1211,7 @@ async def _run_routed(parent: CallContext, ep: dict, body_bytes: bytes, get_head
     parent.route_summary = {"identity": given, "size": len(body_bytes or b""),
                             **({"cursor": cursor} if paged else {})}
     contract = catalog_store.load().contracts.get(ep["capability"])
-    declared = set(contract.identity_types) | set(contract.filters or {}) if contract else set()
+    declared = set(contract.identity_specs) | set(contract.filters or {}) if contract else set()
     if paging := sorted(k for k in given if k in _PAGING_KEYS and k not in declared):
         # Dropped silently, the next "page" is page one again and bills again.
         raise ResolutionFailed("catalog_parameter_invalid", status_code=422, rule="unsupported", detail={
@@ -1200,6 +1254,16 @@ async def _run_routed(parent: CallContext, ep: dict, body_bytes: bytes, get_head
             "message": (f"{DECISIVE_HEADER} needs the waterfall; drop {WATERFALL_HEADER}: 0. " if contract and contract.verdict_decisive else
                         f"{DECISIVE_HEADER} works only on {', '.join(decidable)}; {ep['id']} has no deciding verdict words. ")
                        + "Nothing was charged."})
+    if options.domain_strict and (contract is None or not contract.advice_domain_mismatch or not options.waterfall):
+        # Refused before anything is planned or held, like confirm: an agent must not believe an
+        # off-domain hit was looked past.
+        matchable = sorted(f"treg.{cap}" for cap, c in catalog_store.load().contracts.items() if c.advice_domain_mismatch)
+        raise ResolutionFailed("catalog_parameter_invalid", status_code=422, rule="unsupported", detail={
+            "error": "route_domain_match_unsupported", "endpoint_id": ep["id"],
+            "message": (f"{DOMAIN_MATCH_HEADER} needs the waterfall; drop {WATERFALL_HEADER}: 0. "
+                        if contract and contract.advice_domain_mismatch else
+                        f"{DOMAIN_MATCH_HEADER} works only on {', '.join(matchable)}. ")
+                       + "Nothing was charged."})
     if options.upgrade and (contract is None or (options.upgrade,) not in contract.identity
                             or options.upgrade not in contract.output):
         # Refused before anything is planned or held: the caller would believe a second lookup ran.
@@ -1214,10 +1278,18 @@ async def _run_routed(parent: CallContext, ep: dict, body_bytes: bytes, get_head
                        + ". Omit a field you don't have rather than sending a placeholder. Nothing was charged."})
     if contract:
         _require_ranges(ep, contract.filters, given)
+    for name, spec in ({**contract.identity_specs, **contract.filters}.items() if contract else ()):
+        if name in given and (found := params.check(spec, given[name])):
+            if param_check_refuses():
+                raise _parameter_refused(ep, f"body.{name}", *found)
+            would_refuse(ep["id"], f"body.{name}", found[0], "routed", "routed")
+            break
     await capacity_view.load()
     if get_settings().overflow_mode != "off":
         await overflow_routes_view.load()
     plan = await build_plan(ep, given, parent.input.caller, options, probe=True)
+    for drop in plan.would_drop:
+        would_refuse(drop["endpoint_id"], drop["parameter"], drop["rule"], drop["tier"], "routed_plan")
     if resume:
         plan.candidates = [c for c in plan.candidates if c.endpoint["id"] == resume[0]]
         if not plan.candidates:
@@ -1245,6 +1317,7 @@ async def _run_routed(parent: CallContext, ep: dict, body_bytes: bytes, get_head
     winner: tuple[Candidate, dict, dict, bytes] | None = None
     answers: list[tuple] = []      # every attempt that returned rows, for X-Treg-Route-Merge
     weak_hits = 0
+    wall_seen = False   # a question_miss answer was kept: every later answer counts toward the bound
     best: tuple[int, tuple[Candidate, dict, dict, bytes]] | None = None   # best WEAK answer seen
     other_subject: list[tuple[str, tuple]] = []   # X-Treg-Route-Complete: answers about another identifier, never returned unconfirmed
     cost_capped = False            # true when any candidate was skipped due to max-cost ceiling
@@ -1252,6 +1325,7 @@ async def _run_routed(parent: CallContext, ep: dict, body_bytes: bytes, get_head
     admission_refusals: list[admission.AdmissionDenied] = []  # treg money the team may not use
     team_busy: list[CallFailure] = []  # treg's own transient team-level refusals (_TEAM_BUSY)
     unconfirmed: list[tuple[str, tuple]] = []   # X-Treg-Route-Confirm: hits waiting for a second provider
+    off_domain: list[tuple] = []   # X-Treg-Route-Domain-Match: strict: hits at another mail domain, the first kept as the fallback
     errored: list[tuple[Attempt, str]] = []     # answered-but-failed attempts and their child call ids
     confirmed_by: str | None = None
     # X-Treg-Route-Decisive: answers whose verdict did not decide, the word that came back, and the
@@ -1353,6 +1427,10 @@ async def _run_routed(parent: CallContext, ep: dict, body_bytes: bytes, get_head
                 tried.append(Attempt(cand.endpoint["id"], cand.endpoint["provider"], "skipped",
                                      exc.status_code, 0, "endpoint call allowance exhausted"))
                 continue
+            if exc.kind == "provider_capacity":
+                tried.append(Attempt(cand.endpoint["id"], cand.endpoint["provider"], "skipped",
+                                     exc.status_code, 0, "treg's account is used up"))
+                continue
             if exc.kind == "provider_rate_limited":
                 tried.append(Attempt(cand.endpoint["id"], cand.endpoint["provider"], "skipped",
                                      exc.status_code, 0, "treg's account is at its rate limit"))
@@ -1383,7 +1461,9 @@ async def _run_routed(parent: CallContext, ep: dict, body_bytes: bytes, get_head
                 continue
             if exc.status_code in _CALLER_FAULT and exc.kind not in _CANDIDATE_LOCAL_FAILURES:
                 raise
-            if isinstance(exc, GatewayFailed):   # the provider timed out or could not be reached
+            # The provider timed out or could not be reached. `upstream_busy` is treg's own
+            # connection pool or in-flight cap: the request never left, so the provider is not judged.
+            if isinstance(exc, GatewayFailed) and exc.kind != "upstream_busy":
                 _note_health(cand, child, failed=True, slow=False)
             errors += 1
             tried.append(Attempt(cand.endpoint["id"], cand.endpoint["provider"], "error", exc.status_code, 0, str(exc.detail)[:120]))
@@ -1581,10 +1661,30 @@ async def _run_routed(parent: CallContext, ep: dict, body_bytes: bytes, get_head
                 break
             continue
         doc, core = outcome.doc, outcome.core
+        if (outcome.kind == "miss" and options.waterfall and plan.contract.question_miss_bound
+                and "question_miss" in outcome.why and set(outcome.why) <= {"question_miss", "adapter_miss"}):
+            # An answer only the question rules out (a wall page) is kept like a weak hit and
+            # bounded like one: every provider often returns the same answer, and some bill it, so
+            # the walk asks at most MAX_WEAK_FALLBACKS more and then returns the first such answer,
+            # marked, if nothing better turned up. A provider that reported its own failure is not
+            # an answer and stays a miss.
+            tried.append(Attempt(cand.endpoint["id"], cand.endpoint["provider"], "weak", response.status, charged,
+                                 f"question_miss: {plan.contract.question_miss}", ignored=ignored))
+            if best is None:
+                best = (0, (cand, doc, core, raw))
+            wall_seen = True
+            weak_hits += 1
+            if weak_hits > MAX_WEAK_FALLBACKS:
+                break
+            continue
         if outcome.kind == "miss":
             tried.append(Attempt(cand.endpoint["id"], cand.endpoint["provider"], "miss", response.status, charged,
                                  outcome.detail, ignored=ignored))
             if options.waterfall:
+                if wall_seen:
+                    weak_hits += 1
+                    if weak_hits > MAX_WEAK_FALLBACKS:
+                        break
                 continue
             winner = (cand, doc if doc is not None else {}, {}, raw)
             break
@@ -1592,10 +1692,12 @@ async def _run_routed(parent: CallContext, ep: dict, body_bytes: bytes, get_head
         # how many rows make an answer; below it the waterfall keeps going and the best result so
         # far is kept, so a weak first provider can still win if nothing better turns up.
         n_rows = outcome.rows
+        list_field = _list_field(plan.contract)
+        have = n_rows if list_field else max(1, n_rows)
         # Under a merge the distinct rows of every answer so far are what the caller gets, so
         # they, not this answer alone, decide whether to keep looking.
-        have = (len(_merge_rows(lf, [*answers, (cand, doc, core, raw)]))
-                if options.merge and (lf := _list_field(plan.contract)) else n_rows)
+        if options.merge and list_field:
+            have = len(_merge_rows(list_field, [*answers, (cand, doc, core, raw)]))
         weak = options.waterfall and have < options.min_results
         # `X-Treg-Route-Complete`: an answer carrying under half the contract's output fields is
         # weak like a short list (the fullest one wins if nothing better turns up), and an answer
@@ -1635,6 +1737,12 @@ async def _run_routed(parent: CallContext, ep: dict, body_bytes: bytes, get_head
             if weak_hits > MAX_WEAK_FALLBACKS:
                 break
             continue
+        if options.domain_strict and _email_domain_match(plan.identity, core) is False:
+            tried[-1].outcome, tried[-1].detail = "weak", "email at another domain than the one asked"
+            off_domain.append((cand, doc, core, raw))
+            if len(off_domain) > MAX_WEAK_FALLBACKS:
+                break
+            continue
         if options.decisive:
             word = catalog_results.verdict(cand.endpoint["id"], response.status, raw)
             if word not in plan.contract.verdict_decisive:
@@ -1667,6 +1775,8 @@ async def _run_routed(parent: CallContext, ep: dict, body_bytes: bytes, get_head
         winner = undecided[0]        # nobody decided: the first answer, already paid for, marked undecided
     if winner is None and best is not None:
         winner = best[1]          # nobody cleared min_results — the fullest answer we paid for wins
+    if winner is None and off_domain:
+        winner = off_domain[0]    # nothing on-domain: the first off-domain answer, already paid for, still flagged
     if winner is None:
         if tried and len(rate_waits) == len(tried):
             wait = min(rate_waits)
@@ -1731,8 +1841,11 @@ async def _run_routed(parent: CallContext, ep: dict, body_bytes: bytes, get_head
             if too_large and too_large == sum(t.outcome != "skipped" for t in tried) else None)
     cand, doc, output, raw = winner
     served = cand.endpoint["id"]
-    winner_outcome = next(t.outcome for t in reversed(tried)
+    winner_attempt = next(t for t in reversed(tried)
                           if t.endpoint_id == served and t.outcome in ("hit", "weak", "miss"))
+    winner_outcome = winner_attempt.outcome
+    # A wall page returned because nothing better turned up is answered, but it is no hit.
+    ruled_out = winner_attempt.detail.startswith("question_miss")
     incomplete = False
     if winner_outcome == "miss" and any(t.outcome == "error" for t in tried):
         # The waterfall-off miss: the same rule as an all-miss walk (see the no-winner branch).
@@ -1802,7 +1915,8 @@ async def _run_routed(parent: CallContext, ep: dict, body_bytes: bytes, get_head
     elif options.verify:
         verification = _unchecked("no_hit")   # a miss is never checked; say why
     # Disclose whether the hit's mailbox domain matches the domain the caller sent. Never alter
-    # the answer: a LinkedIn-only child that returns a former employer is still a billed hit.
+    # the answer: a LinkedIn-only child that returns a former employer is still a billed hit
+    # (under `X-Treg-Route-Domain-Match: strict`, returned only when nothing on-domain turned up).
     domain_match = (_email_domain_match(plan.identity, output)
                     if winner_outcome in ("hit", "weak") else None)
     if (domain_match is False and plan.contract.advice_domain_mismatch and not advice_locked):
@@ -1861,7 +1975,7 @@ async def _run_routed(parent: CallContext, ep: dict, body_bytes: bytes, get_head
                           **({"limit_exceeded": limit_exceeded} if limit_exceeded else {}),
                           **({"dropped": plan.dropped} if plan.dropped else {})}}
     _summarize(parent, served_by=served, tried_count=len(tried), output=body_out["output"],
-               hit={"hit": True, "weak": True, "miss": False}.get(winner_outcome),
+               hit=False if ruled_out else {"hit": True, "weak": True, "miss": False}.get(winner_outcome),
                check_verdict=(verification or {}).get("verdict")
                if (verification or {}).get("checked") else None)
     _audit_parent(parent, ep, 200, spent, audit_client)

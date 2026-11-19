@@ -26,6 +26,7 @@ from httpx import AsyncClient
 from treg import api as A, audit, oauth_providers
 from treg.infra import org_traffic
 from treg.domain import money as ledger
+from treg.domain.money import allowance as money_allowance
 from treg.domain.money import settlement as settlement_basis
 from treg.domain.catalog import store as catalog_store
 from treg.application.call import contactout, octen
@@ -197,10 +198,11 @@ async def test_hlrlookup_platform_pair_rides_the_body_and_settles_reported_credi
     await A.app.state.http.aclose()
     A.app.state.http = AsyncClient(transport=httpx.MockTransport(upstream))
     charges = []
-    for body in (_HLR_LIVE, {**_HLR_LIVE, "usa_status": "YES"}, _HLR_LIVE, _HLR_LIVE):
+    for n, body in enumerate((_HLR_LIVE, {**_HLR_LIVE, "usa_status": "YES"}, _HLR_LIVE, _HLR_LIVE)):
         before = await _balance(clients)
         response = await clients.post("/call/hlrlookup.people.phone.verify", json=body)
-        assert response.status_code == 200, response.text
+        # The last answer is treg's own account out of credit: treg's refusal, uncharged.
+        assert response.status_code == (503 if n == 3 else 200), response.text
         charges.append(before - await _balance(clients))
     # One credit is $0.006608; a US mobile with usa_status costs two; free answers cost nothing.
     assert charges == [6_608, 13_216, 0, 0]
@@ -340,7 +342,8 @@ async def test_firecrawl_platform_scrape_bills_a_returned_404_and_byok_wins(
         assert request.url.path == "/v2/scrape"
         assert json.loads(request.content)["parsers"] == []
         return _dropleads_response(200, {"success": True, "data": {
-            "markdown": "# Missing", "metadata": {"statusCode": 404},
+            "markdown": "# Page not found\n\nThe page you asked for has moved or no longer exists. Try the search box.",
+            "metadata": {"statusCode": 404},
         }})
 
     async with AsyncClient(transport=httpx.MockTransport(upstream)) as vendor:
@@ -364,6 +367,51 @@ async def test_firecrawl_platform_scrape_bills_a_returned_404_and_byok_wins(
         assert "X-Treg-Cost-Micro" not in own.headers
         assert await _balance(clients) == own_before
         assert seen[-1] == "Bearer OWN-FIRECRAWL"
+
+
+async def test_a_retry_with_the_same_json_in_another_key_order_is_the_same_call(
+    clients: AsyncClient, monkeypatch, firecrawl_platform_on,
+):
+    """A client that times out and retries may serialize the same body with its keys in another
+    order; refusing that as a different request would leave the paid answer out of reach."""
+    from treg.application.call import idempotency
+
+    seen = []
+
+    def upstream(request):
+        seen.append(request.content)
+        return _dropleads_response(200, {"success": True, "data": {"markdown": "# Paid"}})
+
+    async def post(key: str, body: bytes):
+        return await clients.post("/call/firecrawl.web.scrape", content=body, headers={
+            "Idempotency-Key": key, "Content-Type": "application/json"})
+
+    async with AsyncClient(transport=httpx.MockTransport(upstream)) as vendor:
+        monkeypatch.setattr(A.app.state, "http", vendor)
+        before = await _balance(clients)
+        first = await post("order-retry", b'{"url": "https://example.com", "formats": ["markdown"], "parsers": []}')
+        retry = await post("order-retry", b'{"parsers":[],"formats":["markdown"],"url":"https://example.com"}')
+        changed = await post("order-retry", b'{"parsers":[],"formats":["html"],"url":"https://example.com"}')
+    assert first.status_code == 200, first.text
+    assert retry.status_code == 200, retry.text
+    assert retry.headers["X-Treg-Idempotent-Replay"] == "true"
+    assert retry.headers["X-Treg-Call-Id"] == first.headers["X-Treg-Call-Id"]
+    assert retry.content == first.content
+    assert changed.status_code == 422, changed.text
+    assert len(seen) == 1
+    assert await _balance(clients) == before - int(first.headers["X-Treg-Cost-Micro"])
+
+    async with AsyncClient(transport=httpx.MockTransport(upstream)) as vendor:
+        monkeypatch.setattr(A.app.state, "http", vendor)
+        surrogate = await post("surrogate", b'{"parsers":[],"formats":["markdown"],"q":"\\ud800",'
+                                            b'"url":"https://example.com"}')
+    assert surrogate.status_code < 500, surrogate.text
+
+    # A label stored with the fingerprint of its exact bytes is still answered for those bytes.
+    raw = idempotency._raw_request_fingerprint("POST", "firecrawl.web.scrape", b'{"b": 1, "a": 2}')
+    await _seed_answer(clients, "stored-before-canonical", fingerprint=raw)
+    kept = await post("stored-before-canonical", b'{"b": 1, "a": 2}')
+    assert kept.status_code == 200 and kept.json() == {"seeded": True}, kept.text
 
 
 async def test_firecrawl_search_settles_reported_credits(
@@ -1106,6 +1154,16 @@ def test_theirstack_platform_holds_match_the_credit_prices():
     assert not catalog.platform_eligible(catalog.by_id["theirstack.account.credits_consumption"])
 
 
+def test_fundable_catalog_endpoints_are_platform_eligible() -> None:
+    from treg.domain.catalog import store as catalog_store
+
+    catalog = catalog_store.load()
+    endpoints = [ep for ep in catalog.endpoints if ep["provider"] == "fundable"]
+    assert endpoints
+    ineligible = [ep["id"] for ep in endpoints if not catalog.platform_eligible(ep)]
+    assert not ineligible, ineligible
+
+
 def test_litescrape_ai_overview_unserved_is_free():
     mk = _mk("litescrape", endpoint_id="litescrape.google.serp.ai_overview",
              cost_type="per_success", estimate_micro=150)
@@ -1582,7 +1640,7 @@ async def test_daily_cap_refuses_when_it_cannot_be_verified(clients: AsyncClient
     async def _boom(db, org_id):
         raise RuntimeError("ledger unavailable")
 
-    monkeypatch.setattr(ledger, "spent_today", _boom)
+    monkeypatch.setattr(money_allowance, "committed_today", _boom)
     monkeypatch.setenv("TREG_PLATFORM_DAILY_CAP_USD", "1")
     get_settings.cache_clear()
     try:
@@ -2193,6 +2251,8 @@ async def test_an_abandoned_claim_is_closed_with_a_stored_410_never_run_again(
     await _ledger(org_id, "gone-owner", "release", reason="not_billable_502", amount=100)
     live = await clients.get(f"/call/{EP}?aweme_id=7", headers={"Idempotency-Key": "stuck-label"})
     assert live.status_code == 409, live.text
+    assert live.json()["detail"]["call_id"] == "gone-owner"
+    assert live.headers["Retry-After"].isdigit()
 
     balance = (await clients.get(f"/orgs/{org_id}/balance")).json()["balance_micro"]
     monkeypatch.setattr(idempotency, "IDEMPOTENCY_STALE_PENDING_S", 0)
@@ -3916,7 +3976,7 @@ def test_strict_query_accepts_only_declared_path_parameters():
 
 def test_body_allowlist_requires_declared_fields_within_each_object():
     ep = {"id": "sample.people.find", "body_allowlist": True,
-          "input": {"body": {"data": {"type": "array[object]", "required": True,
+          "input": {"body": {"data": {"type": "array", "items": {"type": "object"}, "required": True,
                                       "minItems": 1, "maxItems": 1,
                                       "item_required_any": ["full_name", "linkedin"],
                                       "item_required_all": ["company"]}}}}

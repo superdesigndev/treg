@@ -12,7 +12,7 @@ HOME_DIR="${TREG_HOME:-$HOME/.treg}"
 URL="http://localhost:$PORT"
 
 say() { printf '  %s\n' "$1"; }
-printf '\n\033[38;5;173m▚ tools-registry\033[0m - starting your local registry…\n\n'
+printf '\n\033[38;5;173m▚ treg\033[0m - starting your local registry…\n\n'
 
 # ---- 1. python (the server needs it; the CLI alone would not) -------------------------------
 PY="$(command -v python3 || true)"
