@@ -257,7 +257,9 @@ the reserve, replacing only the network trip. The response carries `X-Treg-Cache
 `X-Treg-Fetched-At` and `X-Treg-Age`; the audit row carries `cached: true` (`CallRecord.cached`
 is declared last in the model to match ALTER TABLE's append position). A hit is not an
 observation: no snapshot, no learning, only a fire-and-forget `last_requested_at` touch, the
-demand signal refresh reads. `lookup` uses the API pool on purpose so it never queues behind the
+demand signal refresh reads. A process writes one key's touch at most once per interval
+(`_TOUCH_EVERY_S`): every hit on a key writes the same row, and a burst on one question would
+otherwise queue its writers on that row's lock. `lookup` uses the API pool on purpose so it never queues behind the
 archive's own background writes. A metered hit leaves through the live answer's hand-off, so
 `strip_reported_charge` removes the provider's reported charge from it as from a live answer.
 

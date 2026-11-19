@@ -729,6 +729,27 @@ async def test_archive_hit_never_invites_review(clients: AsyncClient, serve, mon
     assert (await clients.get("/calls")).json()[0]["cached"] is True
 
 
+async def test_a_burst_of_hits_on_one_question_writes_its_demand_once(monkeypatch):
+    """Every hit on one key writes the same row. One write per interval is the demand signal;
+    one per hit is a queue on that row's lock."""
+    written: list[str] = []
+
+    async def write(key_hash: str) -> None:
+        written.append(key_hash)
+
+    monkeypatch.setattr(archive, "_touch_write", write)
+    monkeypatch.setattr(archive, "_touched", {})
+    for _ in range(50):
+        archive._touch("one-question")
+    archive._touch("another")
+    await archive.drain()
+    assert written == ["one-question", "another"]
+    monkeypatch.setattr(archive, "_TOUCH_EVERY_S", 0.0)
+    archive._touch("one-question")
+    await archive.drain()
+    assert written == ["one-question", "another", "one-question"], "and again once the interval is over"
+
+
 async def test_a_hit_is_not_a_new_observation(clients: AsyncClient, serve):
     await clients.get(f"/call/{EP}?aweme_id=7")
     await archive.drain()

@@ -30,6 +30,7 @@ import asyncio
 import hashlib
 import json
 import logging
+import time
 import weakref
 from datetime import datetime, timedelta, timezone
 from typing import Any
@@ -1661,12 +1662,26 @@ async def note_org_use_in_transaction(db, org_id: int, key_hash: str) -> None:
     await note_org_uses_in_transaction(db, [(org_id, key_hash)])
 
 
+# A key's demand is written at most once per interval by each process. Every hit on one key
+# writes the same row: unbounded, a burst of hits on one question queues its writers on that
+# row's lock, each holding a connection while it waits.
+_TOUCH_EVERY_S = 60.0
+_MAX_TOUCHED = 4096
+_touched: dict[str, float] = {}
+
+
 def _touch(key_hash: str) -> None:
     """Note that a stored answer was actually wanted (last_requested_at) — fire-and-forget, the
     demand signal the refresh worker (PR 5) will read. A served hit is NOT a recording: it adds
     no snapshot and no change statistics, because nothing new was observed."""
+    now = time.monotonic()
+    if now - _touched.get(key_hash, float("-inf")) < _TOUCH_EVERY_S:
+        return
     if len(_pending) >= _MAX_PENDING:
         return
+    if len(_touched) >= _MAX_TOUCHED:
+        _touched.clear()
+    _touched[key_hash] = now
     task = asyncio.create_task(asyncio.wait_for(_touch_write(key_hash), timeout=_STORE_TIMEOUT_S))
     _pending.add(task)
     task.add_done_callback(_pending.discard)
@@ -1689,6 +1704,7 @@ async def _touch_write(key_hash: str) -> None:
                             .values(last_requested_at=_utcnow()))
             await s.commit()
     except Exception:  # noqa: BLE001
+        _touched.pop(key_hash, None)
         _log.error("archive touch dropped", exc_info=True)
 
 
