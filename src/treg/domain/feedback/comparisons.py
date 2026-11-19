@@ -1,16 +1,17 @@
-"""The sole writer of callcomparison. The application owns the transaction.
+"""The sole writer of callcomparison and compareattemptday. The application owns the transaction.
 
 A comparison is shown blinded: answer 1 and answer 2 in the stored `first` order, never a vendor
 name. A verdict names 1, 2, tie or both_bad and is mapped back to a and b here."""
 from datetime import datetime
 
 from sqlalchemy import func, or_, update
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlmodel import select
 
-from ...models import CallComparison
+from ...models import CallComparison, CompareAttemptDay
 
-READY, FAILED, DECIDED = "ready", "failed", "decided"
+PENDING, READY, FAILED, DECIDED = "pending", "ready", "failed", "decided"
 CHOICES = ("1", "2", "tie", "both_bad")
 
 
@@ -18,6 +19,41 @@ def add(db: AsyncSession, **values) -> CallComparison:
     row = CallComparison(**values)
     db.add(row)
     return row
+
+
+async def take_attempt(db: AsyncSession, day: str, limit: int) -> bool:
+    """Count one second-vendor call against the UTC day's `limit`; False (nothing counted) at the
+    limit. The day's row is locked, so concurrent runs count one at a time."""
+    row = (await db.execute(select(CompareAttemptDay).where(CompareAttemptDay.day == day)
+                            .with_for_update())).scalar_one_or_none()
+    if row is None:
+        if limit < 1:
+            return False
+        nested = await db.begin_nested()
+        try:
+            db.add(CompareAttemptDay(day=day, attempts=1))
+            await db.flush()
+            return True
+        except IntegrityError:
+            await nested.rollback()
+            return await take_attempt(db, day, limit)
+    if row.attempts >= limit:
+        return False
+    row.attempts += 1
+    return True
+
+
+async def attempts(db: AsyncSession, day: str) -> int:
+    row = await db.get(CompareAttemptDay, day)
+    return row.attempts if row is not None else 0
+
+
+async def finish(db: AsyncSession, call_ref: str, **values) -> bool:
+    """Settle a claimed (pending) comparison; False when it is gone (its team was deleted)."""
+    result = await db.execute(update(CallComparison).where(
+        CallComparison.call_ref == call_ref, CallComparison.status == PENDING,
+    ).values(**values).execution_options(synchronize_session=False))
+    return result.rowcount == 1
 
 
 async def by_call_ref(db: AsyncSession, call_ref: str) -> CallComparison | None:
@@ -42,7 +78,7 @@ async def next_ready(db: AsyncSession, org_id: int, since: datetime) -> CallComp
 async def counted(db: AsyncSession, org_id: int, capability: str, pair: tuple[str, str], *,
                   since: datetime, ready_since: datetime) -> int:
     """The team's comparisons of one capability and unordered pair that count toward its cap:
-    decided ones since `since`, and ones still waiting that were created since `ready_since`.
+    decided ones since `since`, and ones in flight or waiting that were created since `ready_since`.
     Read through (org_id, capability, created_at)."""
     x, y = pair
     return int((await db.execute(select(func.count()).select_from(CallComparison).where(
@@ -51,7 +87,7 @@ async def counted(db: AsyncSession, org_id: int, capability: str, pair: tuple[st
         or_((CallComparison.a_provider == x) & (CallComparison.b_provider == y),
             (CallComparison.a_provider == y) & (CallComparison.b_provider == x)),
         or_(CallComparison.status == DECIDED,
-            (CallComparison.status == READY) & (CallComparison.created_at >= ready_since)),
+            CallComparison.status.in_((READY, PENDING)) & (CallComparison.created_at >= ready_since)),
     ))).scalar() or 0)
 
 

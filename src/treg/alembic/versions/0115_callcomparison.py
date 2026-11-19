@@ -1,11 +1,13 @@
-"""call comparisons: two vendors' answers to one routed call's input, and the agent's verdict
+"""call comparisons: two vendors' answers to one routed call's input, the agent's verdict, and
+the daily count of second-vendor calls
 
 Revision ID: 0115
 Revises: 0114
 Create Date: 2026-11-19
 
-Additive: one new table, nothing else touched. No foreign keys (AGENTS.md); the hourly
-`treg-worker compare collect` run removes the rows of a deleted team. Written only by
+Additive: two new tables, nothing else touched. No foreign keys (AGENTS.md): team deletion
+clears a team's comparisons through ORG_SCOPED_MODELS, and every `treg-worker compare collect` run
+removes any it missed. The daily count is no team's row. Written only by
 `domain/feedback/comparisons.py`.
 """
 from collections.abc import Sequence
@@ -54,9 +56,16 @@ def upgrade() -> None:
     op.create_index("ix_callcomparison_org_id_capability_created_at", "callcomparison",
                     ["org_id", "capability", "created_at"])
     op.create_index("ix_callcomparison_created_at", "callcomparison", ["created_at"])
+    op.create_table(
+        "compareattemptday",
+        sa.Column("day", sqlmodel.sql.sqltypes.AutoString(), nullable=False),
+        sa.Column("attempts", sa.Integer(), nullable=False),
+        sa.PrimaryKeyConstraint("day"),
+    )
 
 
 def downgrade() -> None:
+    op.drop_table("compareattemptday")
     op.drop_index("ix_callcomparison_created_at", table_name="callcomparison")
     op.drop_index("ix_callcomparison_org_id_capability_created_at", table_name="callcomparison")
     op.drop_index("ix_callcomparison_org_id_status_created_at", table_name="callcomparison")

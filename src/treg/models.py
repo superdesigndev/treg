@@ -1910,7 +1910,8 @@ class CallComparison(SQLModel, table=True):
     )
 
     id: int | None = Field(default=None, primary_key=True)
-    # No foreign keys (AGENTS.md): `treg-worker compare collect` removes a deleted team's rows.
+    # No foreign keys (AGENTS.md): team deletion clears these rows (ORG_SCOPED_MODELS), and every
+    # `treg-worker compare collect` run removes any it missed.
     org_id: int
     user_email: str
     call_ref: str = Field(unique=True, index=True)
@@ -1927,12 +1928,20 @@ class CallComparison(SQLModel, table=True):
     # The parts stored cut at their limit: a comma list of input, a, b ("" = none).
     truncated: str = Field(default="")
     first: str = Field(default="a")      # a | b: which answer is shown as answer 1
-    status: str = Field(default="ready")  # ready | failed | decided
+    status: str = Field(default="ready")  # pending | ready | failed | decided
     choice: str | None = Field(default=None)  # a | b | tie | both_bad
     reason: str | None = Field(default=None)
     client: str = Field(default="")
     created_at: NaiveUTC = Field(default_factory=_now)
     decided_at: NaiveUTC | None = Field(default=None)
+
+
+class CompareAttemptDay(SQLModel, table=True):
+    """Second-vendor calls the comparison worker claimed on one UTC day (`YYYYMMDD`): the daily
+    limit's count. Not a team's row, so deleting a team gives no quota back."""
+
+    day: str = Field(primary_key=True)
+    attempts: int = Field(default=0)
 
 
 class Media(SQLModel, table=True):
