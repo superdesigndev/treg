@@ -1,8 +1,8 @@
 """Published Org admission snapshots, read lazily from the shared Redis store.
 
-Pause, rate and concurrency are active. Redis failures allow new
-work; malformed publications retain the last valid rule
-until its original expiry. Accepted work never enters this guard again. The bounded worker cache
+Pause, rate and concurrency are active. An Org whose key is confirmed missing gets the
+configured default limits, if any. Redis failures allow new work; malformed publications retain
+the last valid rule until its original expiry. Accepted work never enters this guard again. The bounded worker cache
 is not durable version history.
 """
 from __future__ import annotations
@@ -133,6 +133,7 @@ def _emit(event: str, org_id: int, call_ref: str | None, *,
 class Entry:
     snapshot: Snapshot | None = None
     available: bool = False
+    missing: bool = False
     users: int = 0
     next_refresh: float = 0.0
     next_pause_log: float = 0.0
@@ -202,6 +203,7 @@ class Reader:
             self._failed(entry, org_id, call_ref, "redis_unavailable")
             return
         entry.available = True
+        entry.missing = raw is None
         if raw is None:
             if entry.snapshot is not None or not was_available:
                 _emit("org_flow_control_version_observed", org_id, call_ref, config_version=0,
@@ -228,7 +230,8 @@ class Reader:
                   rate_limit={"rps": snapshot.rate_limit.rps, "burst": snapshot.rate_limit.burst}
                   if snapshot.rate_limit else None)
 
-    async def check(self, org_id: int, call_ref: str | None, refresh_s: float) -> Snapshot | None:
+    async def check(self, org_id: int, call_ref: str | None, refresh_s: float,
+                    default: Snapshot | None = None) -> Snapshot | None:
         entry = self._entry(org_id, call_ref)
         if entry is None:
             return None
@@ -242,6 +245,8 @@ class Reader:
             if not entry.available:
                 return None
             snapshot = entry.snapshot
+            if snapshot is None:
+                return default if entry.missing else None
             if snapshot is not None and snapshot.pause_until is not None:
                 remaining = (snapshot.pause_until - _utcnow()).total_seconds()
                 if remaining > 0:
@@ -269,9 +274,20 @@ def reset() -> None:
     _reader = Reader()
 
 
+def default_snapshot(settings) -> Snapshot | None:
+    """The limits an Org with no published key gets; version zero, never a pause."""
+    limit = settings.org_flow_control_default_max_in_flight
+    rps = settings.org_flow_control_default_rps
+    if limit is None and rps is None:
+        return None
+    rate = RateLimit(rps, settings.org_flow_control_default_burst) if rps is not None else None
+    return Snapshot(0, None, "", limit, rate)
+
+
 async def check(org_id: int, call_ref: str | None = None) -> Snapshot | None:
     """Called once with trusted Caller identity, before root financial/provider work."""
     settings = get_settings()
     if not settings.org_flow_control_enabled:
         return
-    return await _reader.check(org_id, call_ref, settings.org_flow_control_refresh_s)
+    return await _reader.check(org_id, call_ref, settings.org_flow_control_refresh_s,
+                               default_snapshot(settings))

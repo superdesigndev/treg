@@ -178,9 +178,19 @@ class Settings(BaseSettings):
     # Published root-call pause, rate and concurrency admission.
     org_flow_control_enabled: bool = False
     org_flow_control_refresh_s: float = Field(default=2.0, ge=0.2, le=10)
+    # Limits for every Org whose key is confirmed missing; a published snapshot replaces them
+    # whole (org-flow-control.md "Default limits"). None = no default for that limit.
+    org_flow_control_default_max_in_flight: PositiveInt | None = Field(default=None, le=2147483647)
+    org_flow_control_default_rps: float | None = Field(default=None, gt=0, le=9007199254740991)
+    org_flow_control_default_burst: PositiveInt | None = Field(default=None, le=2147483647)
 
     @model_validator(mode="after")
     def _org_flow_control_configuration(self):
+        if (self.org_flow_control_default_rps is None) != (self.org_flow_control_default_burst is None):
+            raise ValueError("a default org rate needs both rps and burst")
+        if (self.org_flow_control_default_max_in_flight is not None
+                or self.org_flow_control_default_rps is not None) and not self.org_flow_control_enabled:
+            raise ValueError("default org limits require org_flow_control_enabled")
         if self.org_flow_control_enabled:
             try:
                 url = urlsplit(self.kv_url)
