@@ -27,6 +27,12 @@
       "category": "productivity"
     },
     {
+      "name": "doomscroll",
+      "source": "./plugins/workflows/doomscroll",
+      "description": "Use when the user wants to know what people are posting about a topic right now or since a recent point in time - the last few hours, today, since a launch, since their last check - such as the best clips, tips, reactions, launches, drama or sentiment on X, TikTok, YouTube, Reddit, Hacker News or Product Hunt. Also for \"catch me up on X\", \"what's the internet saying about X\", \"what did I miss\", or keeping up with a live event.",
+      "category": "productivity"
+    },
+    {
       "name": "jev-memory",
       "source": "./plugins/workflows/jev-memory",
       "description": "Use when the user wants Claude Code to remember their preferences across sessions, asks for a memory mod or memory harness for Claude Code, mentions the Jev memory classifier or a \"classifier on every turn\" mod, or wants to build a Claude Code mod on treg and Jev. Installs a ready-made Claude Code mod that has Jev judge each prompt after the turn and saves lasting preferences to .claude/jev-memory.md, or builds the same mod from one prompt.",

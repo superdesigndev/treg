@@ -13,6 +13,7 @@ treg's own marketplace also offers ready workflow skills as separate plugins. Af
 `copilot plugin install <name>@treg`:
 
 - `ai-ugc-video`
+- `doomscroll`
 - `jev-memory`
 - `lead-signals`
 - `make-ugc`
