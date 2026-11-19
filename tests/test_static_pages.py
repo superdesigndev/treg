@@ -3,6 +3,7 @@ that the catalog's size is read from the catalog, never typed."""
 
 from __future__ import annotations
 
+import json
 import re
 from pathlib import Path
 from urllib.parse import urlsplit
@@ -30,6 +31,39 @@ async def test_grokbot_icons_are_served_files(clients: AsyncClient):
         r = await clients.get(urlsplit(src).path)
         assert r.status_code == 200, src
         assert r.headers["content-type"].startswith("image/"), src
+
+
+async def test_rea_marketing_ships_its_evidence_as_files(clients: AsyncClient):
+    """The DJI report it is built from inlined every screenshot as base64 (most of its weight).
+    The page names bundled files instead; one that does not resolve leaves an empty evidence card,
+    and with relative paths that only holds while the route stays slashless."""
+    page = await clients.get("/rea-marketing")
+    assert page.status_code == 200
+    assert "data:image" not in page.text
+    srcs = set(re.findall(r'src="((?:media|logos)/[^"]+)"', page.text))
+    srcs |= set(re.findall(r'href="(logos/[^"]+)"', page.text))
+    assert any(s.startswith("media/rea-marketing/") for s in srcs)
+    for src in sorted(srcs):
+        r = await clients.get("/" + src)
+        assert r.status_code == 200, src
+        assert r.headers["content-type"].startswith("image/"), src
+    assert "/rea-marketing<" in (await clients.get("/sitemap.xml")).text
+
+
+def test_rea_marketing_chart_adds_up_to_the_report():
+    """The week-by-week chart is typed into the page by hand from the DJI report, so nothing else
+    checks it. Its squares must add up to the report's channel totals (344 Meta ads, 173 creator
+    collabs, 11 owned posts, 1 retail move), and each week's middle spend estimate must sit inside
+    that week's own low-high range: a mistyped week fails here instead of misleading a reader."""
+    page = (Path(__file__).resolve().parent.parent / "src/treg/web/rea-marketing.html").read_text(encoding="utf-8")
+    raw = re.search(r"var WK = (\[\[.*?\]\]);", page).group(1)
+    weeks = json.loads(raw.replace("'", '"'))
+    ran = [w for w in weeks if len(w) > 2]  # weeks still to come carry only their label
+    assert len(ran) == 11
+    assert [sum(w[2][j] for w in ran) for j in range(4)] == [344, 173, 11, 1]
+    for w in ran:
+        low, high = w[6]
+        assert low <= sum(w[5]) <= high, w[1]
 
 
 async def test_static_pages_fill_the_catalog_size(clients: AsyncClient):

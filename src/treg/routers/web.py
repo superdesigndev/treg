@@ -3571,6 +3571,7 @@ _SITEMAP_PAGES: tuple[tuple[str, str, str], ...] = (
     ("/aeo", "aeo.html", "0.8"),
     ("/rankings", "rankings.html", "0.8"),
     ("/rea-growth", "rea-growth.html", "0.8"),
+    ("/rea-marketing", "rea-marketing.html", "0.8"),
     ("/social", "social-search.html", "0.8"),
     ("/jev", "jev.html", "0.8"),
     ("/terms", "terms.html", "0.2"),
@@ -3925,6 +3926,15 @@ async def rea_growth_skill_md():
     return _serve_md("skills/rea-growth/SKILL.md")
 
 
+@app.get("/skills/rea-marketing/SKILL.md", include_in_schema=False)
+async def rea_marketing_skill_md():
+    """The rea-marketing skill: the /rea-marketing flow (a brand's holiday marketing per channel and
+    week, estimated spend and sales, a verdict, the plays to copy) as a file an agent can follow.
+    Opt-in like rea-growth: kept out of the well-known index, so `treg skill bootstrap` (install.sh)
+    never installs it unasked."""
+    return _serve_md("skills/rea-marketing/SKILL.md")
+
+
 @app.get("/skills/ai-ugc-video/SKILL.md", include_in_schema=False)
 async def ai_ugc_video_skill_md():
     """The ai-ugc-video skill: the /aigc flow (viral reference, locked assets, voices, shoot plan,
@@ -4170,6 +4180,15 @@ async def rea_growth_page(request: Request):
     openings) and returns plays marked seen or inferred, each with the ask that runs it. Served
     like /aeo: canonical, in the sitemap, no-cache, relative asset paths."""
     return _static_page("rea-growth.html", request)
+
+
+@app.get("/rea-marketing", include_in_schema=False)
+async def rea_marketing_page(request: Request):
+    """REA for marketing: take apart a brand's seasonal campaign. The agent pulls its ads, creator
+    posts, own social, offers and prices through treg week by week, estimates spend and sales,
+    grades whether it worked and returns plays to copy; DJI's Black Friday is the example. Served
+    like /rea-growth: canonical, in the sitemap, no-cache, relative asset paths."""
+    return _static_page("rea-marketing.html", request)
 
 
 @app.get("/social", include_in_schema=False)
