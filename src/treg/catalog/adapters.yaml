@@ -2941,9 +2941,13 @@ adapters:
     miss: "element.id == null"
   # Lead search is the only Harvest people search whose rows carry names and profile URLs:
   # profile-search hides out-of-network members (no name, no URL), so it stays unrouted.
+  # NOTE: HarvestAPI's currentCompanies expects LinkedIn company URLs or numeric IDs (e.g.
+  # https://www.linkedin.com/company/google), NOT bare domains. Bare domains return empty results
+  # but are still billed. So this adapter accepts title-only queries; callers with a LinkedIn
+  # company URL can call harvestapi.linkedin.leads.search directly by id.
   harvestapi.linkedin.leads.search:
-    accepts: [[company_domain, title], [company_domain], [title]]
-    in: {company_domain: queryParams.currentCompanies, title: queryParams.currentJobTitles}
+    accepts: [[title]]
+    in: {title: queryParams.currentJobTitles}
     in_expr: {queryParams.locations: "coalesce(location, country_name(country))", queryParams.search: "csv(keywords)"}
     out: {people: elements, count: pagination.totalElements}
     miss: "coalesce(elements, []) == []"

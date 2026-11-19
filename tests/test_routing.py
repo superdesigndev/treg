@@ -4007,12 +4007,14 @@ _RANGED_LIMIT = {
     "web.map": ("anyapi,tavily", {"url": "https://example.com"},
                 {"anyapi": {"output": {"data": {"results": ["https://example.com/a"]}}},
                  "tavily": {"results": ["https://example.com/a"]}}),
-    "people.search": ("harvestapi,hunter", {"company_domain": "stripe.com"},
+    "people.search": ("harvestapi,lusha", {"title": "CEO"},
                       {"harvestapi": {"elements": [{"firstName": "A", "lastName": "B",
-                                                    "linkedinUrl": "https://linkedin.com/in/ab"}],
+                                                    "linkedinUrl": "https://linkedin.com/in/ab",
+                                                    "currentPositions": [{"title": "CEO", "companyName": "Acme"}]}],
                                       "pagination": {"totalElements": 1}},
-                       "hunter": {"data": {"domain": "stripe.com", "emails": [
-                           {"value": "a@stripe.com", "first_name": "A", "last_name": "B", "position": "CTO"}]}}}),
+                       "lusha": {"results": [{"firstName": "A", "lastName": "B", "jobTitle": {"title": "CEO"},
+                                              "company": {"name": "Acme"}}],
+                                 "pagination": {"total": 1}}}),
 }
 
 
