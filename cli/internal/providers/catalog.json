@@ -1,5 +1,5 @@
 {
- "version": 28,
+ "version": 29,
  "providers": [
   {
    "provider": "Google Ads",
@@ -805,6 +805,17 @@
     "header": "x-api-key"
    },
    "probe": "billing/usage/summary"
+  },
+  {
+   "provider": "Groundbox",
+   "tokens": [
+    "GROUNDBOX"
+   ],
+   "base_url": "https://api.groundbox.dev/v1",
+   "auth": {
+    "shape": "bearer"
+   },
+   "probe": "sandboxes?limit=1"
   },
   {
    "provider": "Aviato",

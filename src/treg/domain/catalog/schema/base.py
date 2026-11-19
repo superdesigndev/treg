@@ -19,7 +19,7 @@ COST_SOURCES = ("rate_card_api", "docs", "observed", "vendor_email", "inferred")
 # What one unit is called; under `currency: unit` it names the provider's own meter.
 COST_UNITS = ("call", "result", "row", "record", "keyword", "page", "character", "utf8_byte", "review",
               "section", "employee", "GB", "ad", "month", "line", "target", "domain", "item",
-              "post", "user",
+              "post", "user", "minute",
               "api_unit", "analysis_unit", "retrieval_unit", "index_item_unit", "quota_row",
               "verifier_credit", "step", "credit")
 
