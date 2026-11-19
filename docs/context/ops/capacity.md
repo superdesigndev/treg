@@ -16,6 +16,8 @@ sources:
   - src/treg/domain/capacity/events.py
   - tests/test_capacity_protect.py
   - src/treg/infra/upstream/limiter.py
+  - src/treg/infra/upstream/inflight.py
+  - tests/test_upstream_inflight.py
   - src/treg/domain/capacity/overflow_spend.py
   - src/treg/domain/capacity/routes_view.py
   - src/treg/application/call/overflow.py
@@ -103,7 +105,10 @@ collector, its `_KNOWN` / `_RATE_LIMITS` entry, its signature row or its catalog
   `CapacitySnapshot` per provider, publishes each `LatestState` to ratestore as
   `capacity:state:<provider>` and commits once. The key is the Settings slot spelling
   (`fiber_ai`); `state_key()` maps a catalog id (`fiber-ai`) onto it, so readers find the state
-  under either spelling. A note that looks like a credential is withheld before it is stored. The
+  under either spelling. A note that looks like a credential is withheld before it is stored. A
+  failed HTTP balance route is stored as its status code only (`_failure_note`: httpx messages
+  carry the request URL, and some routes take the key in the query), and an error text holding
+  the provider's credential value or a query credential mark is withheld (`snapshot_from`). The
   sweep never touches the call path's locks: the meter it reads may not be the allowance that ran
   out.
 - **`view.py`** - `LatestStateView`, the in-process copy of both namespaces reloaded from ratestore
@@ -142,8 +147,10 @@ of calls; one strike must not take the provider away from everyone.
   applies. Otherwise a vendor answering free searches at zero credits erases the paid routes'
   strikes.
 - A signature the call could not avoid (the strike itself, a probe through a lock, a free route)
-  is relayed as the provider answered, with `X-Treg-Capacity: exhausted` so the caller is told it is
-  treg's account, not its balance (`capacity_notice.py`).
+  is not relayed on treg's shared key: when overflow did not serve it and it settled at zero, the
+  caller gets the same typed 503 `provider_capacity_unavailable`, while the call's record keeps the
+  provider's status and body. A routed call skips that provider. The light CLI still reads
+  `X-Treg-Capacity: exhausted`, which older self-hosted servers sent on such a relayed answer.
 - An expired guessed hold that is still dry opens again on its next two strikes, so a lock nobody
   lifts reopens about hourly.
 
@@ -153,8 +160,8 @@ with no wait header takes its reset from the row's `resets`, else from the sweep
 parsed by format, never by provider; a 429 no row matched is a burst when the wait is at most 60 s
 and a quota when longer. Exhaustion can arrive as any status, including a 2xx: the call path reads
 a platform 2xx through the table too, so such an answer is released rather than settled, never
-archived, counted as a strike and eligible for overflow. Bare HTTP 402 uses the shared balance
-signature. Two guards against the next unrecorded vendor:
+archived, counted as a strike, eligible for overflow and otherwise the typed 503. Bare HTTP 402
+uses the shared balance signature. Two guards against the next unrecorded vendor:
 
 - `unrecorded`: a 4xx no row matched whose body still names credits, quota or balance (generic
   nouns plus each row's `tripwire` phrase; a row's regex never joins by itself, since alternations
@@ -217,6 +224,24 @@ lease; expiry cannot stop a request already sent. When the store fails the proce
 and skips the store briefly; without `TREG_KV_URL` each process enforces the cap alone. Choosing an
 account (`keyslots`) reads only this process's places.
 
+## Upstream connections: a bounded wait and a cap per provider
+
+Every relayed call shares one pooled HTTP client per process (`bootstrap._lifespan`). A provider
+that stops answering holds its connections until the read timeout, so without a bound its calls
+fill the pool and every other provider's calls queue behind them. Two bounds apply to every tier:
+
+1. The pool wait is its own short timeout (`TREG_UPSTREAM_POOL_TIMEOUT_S`, default 2 s), the
+   handshake another (`TREG_UPSTREAM_CONNECT_TIMEOUT_S`, 10 s); the read timeout stays
+   `call_timeout_s`. A call that cannot get a connection leaves as the typed 503 `upstream_busy`
+   with `Retry-After`: nothing was sent, the hold is released in full, not charged.
+   `TREG_UPSTREAM_MAX_CONNECTIONS` and `TREG_UPSTREAM_MAX_KEEPALIVE_CONNECTIONS` size the pool.
+2. `infra/upstream/inflight.py` counts the calls in flight per provider in this process, after the
+   fair-share place and before the outbound admissions, and returns the place when the relay block
+   ends. `TREG_UPSTREAM_INFLIGHT_MODE` is `log` by default (a provider past
+   `TREG_UPSTREAM_INFLIGHT_CAP`, default 50, is logged as `treg.upstream_inflight`, the call
+   proceeds), `enforce` also refuses past the cap with the same `upstream_busy` answer, `off`
+   counts nothing. The count is per process, DB-free, and does not meter or route anything.
+
 ## Protect: a shared rate window, observed everywhere, enforced where listed
 
 The smoother is per process and never refuses, so every further process adds its own allowance.
@@ -247,7 +272,7 @@ Redis `TREG_KV_URL`, and an enforce list needs `observe`; `Settings` refuses to 
   its error budget.
 - A routed child on treg's own key whose answer the signature table marks `balance` or `quota`
   (treg's account out of money or out of its period allowance, e.g. LeadOcean's 429 "Fair-use pace
-  reached") is likewise `skipped` (`child_outcome` kind `account_exhausted`), never an error: one
+  reached") is likewise `skipped` (its typed `provider_capacity` refusal), never an error: one
   used-up account beside providers that answered "nobody" leaves the call a 200 miss, not a 502.
   A provider that is down (5xx) is still an error, so a failed routed call stays free.
 - A capacity probe (`probe_lock_id`) and a team's poll of its own job (`free_owned_poll`) are

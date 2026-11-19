@@ -15,11 +15,13 @@ sources:
   - src/treg/domain/catalog/schema/export.py
   - src/treg/domain/catalog/outcome.py
   - src/treg/domain/plugins/__init__.py
+  - src/treg/domain/plugins/anyapi.py
   - scripts/catalog_schema.py
   - scripts/catalog_shrink_only.py
   - scripts/catalog_v2.py
   - tests/test_catalog_schema.py
   - tests/test_catalog_v2_codemod.py
+  - tests/plugins/test_anyapi.py
 related:
   - architecture/catalog.md
   - architecture/money.md
@@ -61,7 +63,8 @@ other row is in **today's spelling**. Mixing `cost` with a v2 key is refused.
 - A v2 row also serves `cost` in today's shape, derived from its price, provenance, reserve and
   settle: a `type` label (free; per_result when a reserve, count or plugin decides the bill;
   per_call when a miss is charged; else per_success), a price table as today's equality maps
-  (omitted when a condition is not one equality), `reserve.rows` with its parameter back in
+  (omitted when a condition is not one equality; its floor `table_min` is served either way),
+  `reserve.rows` with its parameter back in
   `queryParams`/`pathParams`, `reserve.entities` as `{entities: {}}`, `settle.count` and a
   `settle.reported` path (`reported_charge`) with answer-relative paths, and `settle: usage` with its
   meters; `round` is not shown. Every view, eligibility check and price display that reads `cost`
@@ -91,7 +94,8 @@ judges an error is a miss with reason `provider_error`, a 204 a miss with `adapt
 adapter only maps fields: `Adapter.is_miss` reads the row's rule, so every reader of an adapter's
 miss reads the one declaration. Such an adapter verifies beside any `miss` rule; beside a status
 rule alone, a 2xx that found nothing is a routing miss by the empty required output and a hit to
-stats, unless the row's `error` rule holds on it.
+stats, unless the row's `error` rule holds on it, and an example the row judges an error verifies
+the adapter as a miss does.
 
 ## Rewriting rows: `scripts/catalog_v2.py`
 
@@ -133,9 +137,21 @@ and `settle.usage.unit` resolve to a rate in `fx.yaml` (a price may name a credi
 declared `usd: null`, which keeps the row off treg's key; a settle may not), usage `terms` are in
 USD, and the request
 paths of `reserve.rows.param`, `reserve.entities.from` and `price.table` (`when` and `times`) name
-declared input fields; an equality-only table also meets today's table checks (required or
-defaulted fields, enum and range, a bounded `times`, a fallback at least every row's maximum). A
+declared input fields; an equality-only table also meets today's table checks (enum and range, a
+bounded `times`, a fallback at least every row's maximum), except that it may compare an optional
+field without a default: an equality on an absent field does not hold, so a later row or the
+fallback prices that request. A
 `provenance.checked` older than 90 days warns, as `cost.checked` does.
+
+**The worst case a hold covers.** A row whose provider-reported figure settles the call may declare
+the most one call can cost: `cost.worst_case` (a number in the cost's currency, beside `settle:
+usage` or `reported_charge`) or `settle.worst_case` (money in the price's currency, beside
+`settle.usage` or `settle.reported`; the model refuses it elsewhere, since a count or plugin settle is
+already capped). The hold is the higher of the estimate and the worst case
+([money](money.md)); a missing figure still settles at the estimate. The validator refuses a worst
+case below the hold it raises (the fallback beside a usage settle or a table, else the value) and
+warns on a usage-settled row without one. A v2 row serves it as `cost.worst_case`, and the codemod
+moves `cost.worst_case` to `settle.worst_case`.
 
 ## Provider defaults and the one merge rule
 
@@ -156,6 +172,11 @@ A row has two prose fields, and each caveat has one home.
 - **A caveat goes to its most specific home first:** a parameter's `input.*.note`, then the charge's
   `cost.note` (`price.note` on a v2 row), then the row's `note`. Maintainer context is a YAML
   comment; evidence (dates, sample sizes, how a price was measured) is the pull request body.
+- **A filter the provider takes only as a hint** carries `applied: soft` beside its note, which
+  says what comes back instead. `treg catalog get` opens that parameter's note with "a hint, not a
+  filter". Routing counts a key mapped into it as not applied only when the endpoint's contract has
+  that filter; otherwise the mark changes only the `catalog get` text, and the validator warns
+  ([catalog](catalog.md)).
 
 The writing rules no check can judge:
 
@@ -198,7 +219,11 @@ pull request that adds an entry the base branch lacks. Fix the data; never grow 
 - A v2 row names a plugin as `<module>.<function>`; `domain/plugins` resolves it by import from the
   row's own provider module (the slug with `-` as `_`) and calls it with read-only views of the
   request and the answer; it may do no I/O ([import-boundaries](import-boundaries.md)). One that
-  raises is missing evidence for its hook, and only the exception's type is logged.
+  raises is missing evidence for its hook, and only the exception's type is logged. An adapter
+  `miss` that needs an if-then-else, which the codemod refuses, becomes an outcome plugin
+  (`miss: {plugin: <module>.<function>}`) when its row moves to v2. Any outcome plugin (`expect`,
+  `error`, `miss`, `not_found`) may be called without the request, since stats and routing judge an
+  answer alone.
 - In the editor JSON Schemas (`scripts/catalog_schema.py`) every field carries `x-kind` (provider
   fact, account term, deployment switch, catalog curation) and credential placement carries
   `x-gated`.

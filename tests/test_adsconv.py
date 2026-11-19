@@ -818,18 +818,6 @@ async def test_terms_not_accepted_keeps_retrying_instead_of_dead_lettering(clien
 _WEB = Path(adsconv.__file__).parent / "web"
 
 
-def test_gtag_queues_denied_consent_defaults_before_loading_googles_script():
-    js = (_WEB / "gtag.js").read_text()
-    # Advanced consent mode: the defaults are pushed BEFORE the tag script is appended and before
-    # config, otherwise Google treats the first hits as consented and sets cookies.
-    assert js.index("'consent', 'default'") < js.index("googletagmanager.com/gtag/js") < js.index("'config', TAG_ID")
-    for signal in ("ad_storage", "ad_user_data", "ad_personalization", "analytics_storage"):
-        assert f"{signal}: 'denied'" in js
-    assert "window.tregSignupConversion = function" in js
-    assert "AW-18392771132/0usqCIeQrO0cELzUrcJE" in js.replace("TAG_ID + '/", "AW-18392771132/")
-    assert "transaction_id: tid" in js and "'treg-web-signup-'" in js
-
-
 def test_dashboard_loads_the_tag_conversion_only_and_fires_on_first_team():
     front = Path(adsconv.__file__).resolve().parents[2] / "frontend"
     html = (front / "index.html").read_text()

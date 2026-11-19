@@ -1,0 +1,14 @@
+{
+  "data": {
+    "id": "p_example",
+    "name": "Alex Example",
+    "phone": {
+      "value": "+14155550100",
+      "kind": "direct",
+      "line": "mobile"
+    }
+  },
+  "meta": {
+    "took_ms": 40
+  }
+}

@@ -1,0 +1,82 @@
+[
+  {
+    "url": "redacted",
+    "post_id": "redacted",
+    "post_url": "redacted",
+    "comment_id": "redacted",
+    "user_name": "redacted",
+    "user_id": "redacted",
+    "date_created": "2026-09-02T21:27:13.000Z",
+    "comment_text": "Pace I inquired about the process & im very interested in. I searched for contact info but unsuccessfully. Is there live contact that can be reached., I know this is a new day but I'm grass roots & like talking to humans to get a warmer more informed conversation. I really know that this is somethin",
+    "num_likes": 4,
+    "num_replies": 1,
+    "source_type": "TextWithEntities",
+    "subtype": "TextWithEntities",
+    "type": "Comment",
+    "commentator_profile": null,
+    "comment_link": "redacted",
+    "reply": false,
+    "parent_comment_id": null,
+    "commentator_profile_url": "redacted",
+    "attached_images": null,
+    "timestamp": "2026-11-10T15:26:19.995Z",
+    "input": {
+      "url": "https://www.facebook.com/reel/1634870324219177",
+      "comments_sort": ""
+    }
+  },
+  {
+    "url": "redacted",
+    "post_id": "redacted",
+    "post_url": "redacted",
+    "comment_id": "redacted",
+    "user_name": "redacted",
+    "user_id": "redacted",
+    "user_url": "redacted",
+    "date_created": "2026-10-22T14:27:12.000Z",
+    "comment_text": "Same goes for lenders. Calling a local banker before you have a deal and asking what they want to see on a rental loan makes it a lot easier to close fast when one shows up; I explain what underwriters look for on Banker Breakdown.",
+    "num_likes": 1,
+    "num_replies": 1,
+    "source_type": "TextWithEntities",
+    "subtype": "TextWithEntities",
+    "type": "Comment",
+    "commentator_profile": "redacted",
+    "comment_link": "redacted",
+    "reply": false,
+    "parent_comment_id": null,
+    "commentator_profile_url": "redacted",
+    "attached_images": null,
+    "timestamp": "2026-11-10T15:26:19.995Z",
+    "input": {
+      "url": "https://www.facebook.com/reel/1634870324219177",
+      "comments_sort": ""
+    }
+  },
+  {
+    "url": "redacted",
+    "post_id": "redacted",
+    "post_url": "redacted",
+    "comment_id": "redacted",
+    "user_name": "redacted",
+    "user_id": "redacted",
+    "user_url": "redacted",
+    "date_created": "2026-11-07T17:04:00.000Z",
+    "comment_text": "This is true on the data side too..... we've watched investors buy great lists and then only mail them for months. The list just gets you to the right door. The owner's words on that first call tell you more than any filter we can add..... the awkward call is where the deal actually starts.",
+    "num_likes": 1,
+    "num_replies": 1,
+    "source_type": "TextWithEntities",
+    "subtype": "TextWithEntities",
+    "type": "Comment",
+    "commentator_profile": "redacted",
+    "comment_link": "redacted",
+    "reply": false,
+    "parent_comment_id": null,
+    "commentator_profile_url": "redacted",
+    "attached_images": null,
+    "timestamp": "2026-11-10T15:26:19.995Z",
+    "input": {
+      "url": "https://www.facebook.com/reel/1634870324219177",
+      "comments_sort": ""
+    }
+  }
+]

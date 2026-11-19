@@ -9,6 +9,10 @@
 # `accepts` lists the contract identity variants (by their keys) this endpoint can serve.
 # `route: false` keeps a verified adapter out of routing and the arena; its `miss` still judges
 # hit/miss evidence for this endpoint's own calls.
+# `soft` lists caller keys the provider takes only as a hint (a place written into a semantic
+# query): a routed answer names them in `_treg.ignored_filters` and X-Treg-Route-Strict-Filters
+# skips the provider, but they never rank it down. A parameter the endpoint row marks
+# `applied: soft` makes every key mapped into it soft too.
 #
 # Every adapter is VERIFIED at catalog load against the endpoint's `test_request` (in) and its
 # captured `example_response` (out): one that cannot round-trip its fixture does not become a
@@ -38,7 +42,7 @@ adapters:
     out: {email: email, first_name: info.firstname, last_name: info.lastname,
           verified: "qualification == 'valid'"}
     miss: "email == null"
-  filtrat.people.email.find.resolve_catchall:
+  filtrat-finder.people.email.find:
     accepts: [[first_name, last_name, domain]]
     in: {first_name: body.first_name, last_name: body.last_name, domain: body.domain}
     const: {body.resolve_catchall: true}
@@ -46,6 +50,17 @@ adapters:
     # a guess; one the resolution could not settle still comes back with catchall_unverified: true.
     out: {email: found_email, confidence: "confidence / 100", verified: "catchall_unverified != true"}
     miss: "found_email == null"
+  filtrat-finder.companies.enrich:
+    accepts: [[linkedin_url]]
+    in: {linkedin_url: body.url}
+    const: {body.mode: json}
+    # Read live from the page; the extras (type, followers, specialties, locations, phone, social)
+    # ride in raw.
+    out: {name: company.name, domain: company.domain, website: company.website,
+          description: company.description, industry: company.industry,
+          employees: "coalesce(fmt('{}', company.employees), company.size)",
+          location: company.headquarters, linkedin_url: url}
+    miss: "status != 'found'"
   contactout.people.contact.work:
     accepts: [[linkedin_url]]
     in: {linkedin_url: queryParams.profile}
@@ -84,7 +99,6 @@ adapters:
     in:  {full_name: queryParams.full_name, domain: queryParams.domain}
     out: {email: data.email, confidence: "data.score / 100", first_name: data.first_name,
           last_name: data.last_name, verified: "data.verification.status == 'valid'"}
-    miss: "data.email == null"
   leadmagic.people.email.find:
     accepts: [[full_name, domain], [first_name, last_name, domain]]
     in:  {full_name: body.full_name, domain: body.domain}
@@ -612,6 +626,12 @@ adapters:
     # at_least takes the maximum of the two predicates (0/1): either failure is a miss.
     miss: "at_least(status_code != 200, coalesce(data.status) == null)"
     verdicts: {accept_all: catch_all}
+  crawl4ai.people.email.verify:
+    accepts: [[email]]
+    in: {email: queryParams.email}
+    out: {valid: "status == 'valid'", status: status}
+    miss: "status == null"
+    verdicts: {accept_all: catch_all}
   millionverifier.people.email.verify:
     accepts: [[email]]
     in:  {email: queryParams.email}
@@ -649,7 +669,6 @@ adapters:
     accepts: [[email]]
     in:  {email: queryParams.email}
     out: {valid: "data.status == 'valid'", status: data.status, score: data.score}
-    miss: "data.status == null"
     verdicts: {accept_all: catch_all, webmail: unknown, disposable: risky}
   limadata.people.email.verify:
     accepts: [[email]]
@@ -706,9 +725,6 @@ adapters:
     out: {full_name: data.name.fullName, first_name: data.name.givenName, last_name: data.name.familyName,
           title: data.employment.title, company: data.employment.name, company_domain: data.employment.domain,
           linkedin_url: "linkedin_url(data.linkedin.handle)", location: "coalesce(data.location, data.geo.country)"}
-    miss: "data.name.fullName == null"
-  # hunter.x.combined-find: no adapter — its captured example truncates data.person.name, so `out`
-  # cannot be fixture-verified; hunter.people.enrich covers the same identity.
   leadmagic.people.enrich:
     accepts: [[linkedin_url]]
     in:  {linkedin_url: body.profile_url}
@@ -924,7 +940,10 @@ adapters:
     const: {body.pagination.page: 1}
     out: {people: data.leads, count: data.total}
     miss: "data.leads == []"
-    row: {name: "join(first_name, last_name)", title: title, company: organization_name, location: "place(city, state, country)", profile_url: linkedin_url, email: email}
+    # A search row is locked until the lead is bought: its email is the address only once
+    # `emailUnlocked` says so, never a placeholder. Phones and the unlock flags stay in raw.
+    row: {name: "coalesce(fullName, join(firstName, lastName))", title: title, company: companyName,
+          profile_url: linkedinUrl, email: "choose(emailUnlocked, email, null)"}
   prospeo.people.search:
     accepts: [[q], [title, company_domain], [company_domain], [title]]
     in: {q: body.filters.person_name_or_job_title,
@@ -941,6 +960,8 @@ adapters:
     miss: "results == []"
     row: {name: person.full_name, title: person.current_job_title, company: company.name, company_domain: company.domain, location: "place(person.location.city, person.location.country)", profile_url: person.linkedin_url, email: person.email.email, email_status: person.email.status}
   wiza.people.search:
+    # Wiza refuses `size`, which the shared key pins to 1 so one row is one price.
+    route: false
     accepts: [[title]]
     in: {title: body.filters.job_title}
     in_expr: {body.filters.job_title: "choose(title, list(obj('v', title, 's', 'i')), null)"}
@@ -957,7 +978,11 @@ adapters:
     test_identity: {company_domain: example.com}
     out: {people: content, count: totalElements}
     miss: "content == []"
-    row: {name: profile.full_name, title: profile.title, company: company.name, company_domain: company.domain, location: "place(location.city, location.country)", profile_url: link.linkedin}
+    # The employer sits under company.summary and company.link.
+    row: {name: profile.full_name, title: profile.title, company: company.summary.name,
+          company_domain: company.link.domain,
+          location: "coalesce(location.default, place(location.city, location.state, location.country))",
+          profile_url: link.linkedin, summary: profile.headline}
   exa.people.search:
     accepts: [[q]]
     in:  {q: body.query}
@@ -966,11 +991,13 @@ adapters:
     # `summary` length; the place rides in the passage query, so the lines that name it come back.
     # The company rides in the text, so a {company_domain, q} request reaches the semantic search
     # (the router counts it as scoped only when the caller wrote `q`).
-    # A title and place the caller sent beside `q` ride in the text too (`phrase` skips what q
-    # already says, or what q was built from), so the search keeps the caller's role and place.
-    in_expr: {body.query: "join(phrase(q, title, location, country_name(country)), company_domain, csv(keywords))", body.numResults: limit,
+    # A title, place and company the caller sent beside `q` ride in the text too (`phrase` skips
+    # what q already says, or what q was built from), so the search keeps the caller's role and place.
+    in_expr: {body.query: "join(phrase(q, title, location, country_name(country), company_domain), csv(keywords))", body.numResults: limit,
               body.contents.highlights.query: "join(phrase(q, title, location, country_name(country)), csv(keywords))"}
     const: {body.category: people, body.contents.highlights.maxCharacters: 1000}
+    # The company and place reach the semantic search as words: rows elsewhere still come back.
+    soft: [company_domain, location, country]
     out: {people: results, count: "len(results)"}
     miss: "results == []"
     # The current role is the undated-end one, not the history's first item: Exa sometimes lists an
@@ -984,8 +1011,10 @@ adapters:
   parallel.people.search:
     accepts: [[q]]
     in: {q: body.objective}
-    in_expr: {body.objective: "join(q, company_domain, csv(keywords))", body.match_limit: "at_least(at_most(limit, 100), 5)"}
+    in_expr: {body.objective: "join(phrase(q, company_domain), csv(keywords))", body.match_limit: "at_least(at_most(limit, 100), 5)"}
     const: {body.entity_type: people}
+    # The company and place reach the objective as words (the place through treg's stand-in text).
+    soft: [company_domain, location, country]
     out: {people: entities, count: "len(entities)"}
     miss: "coalesce(entities, []) == []"
     row: {name: name, profile_url: url, summary: description}
@@ -1004,14 +1033,21 @@ adapters:
     in_expr: {body.domains: "list(company_domain)", body.positionQuery: "list(title)", body.pageSize: limit, body.page: "1"}
     out: {people: items, count: totalItems}
     miss: "items == []"
-    row: {name: name, title: position, location: location.address, profile_url: socials.linkedin_url}
+    # The employer is the experience the search matched (else the current one), as a company
+    # object or a bare companyName.
+    row: {name: name, title: position, location: location.address, profile_url: socials.linkedin_url,
+          company: "coalesce(get(flagged(experiences, 'isMatched', 'isCurrent'), 'company.name'), get(flagged(experiences, 'isMatched', 'isCurrent'), 'companyName'))",
+          company_domain: "get(flagged(experiences, 'isMatched', 'isCurrent'), 'company.domain')"}
   hunter.companies.emails:
     accepts: [[company_domain]]
     in:  {company_domain: queryParams.domain}
     in_expr: {queryParams.limit: limit}
+    max: {limit: 100}
     out: {people: data.emails, count: meta.results}
-    miss: "data.emails == []"
-    row: {name: "join(first_name, last_name)", title: position, profile_url: linkedin, email: value, email_status: verification.status}
+    # A domain search lists addresses found at the domain (or one Hunter links to it): the row's own
+    # address names its domain, so it is read there, not echoed from the request.
+    row: {name: "join(first_name, last_name)", title: position, company_domain: "email_domain(value)",
+          profile_url: linkedin, email: value, email_status: verification.status}
   leadmagic.x.employee-finder:
     accepts: [[company_domain]]
     in:  {company_domain: body.company_domain}
@@ -1025,6 +1061,7 @@ adapters:
     in_expr: {body.filters.contacts.include.jobTitles: "list(title)", body.pagination.size: "at_least(limit, 10)", body.pagination.page: "0"}
     out: {people: results, count: pagination.total}
     miss: "results == []"
+    position: {page0: body.pagination.page}
     row: {name: "join(firstName, lastName)", title: jobTitle.title, company: company.name, company_domain: company.domain, location: "place(location.city, location.state, location.country)", profile_url: socialLinks.linkedin}
   oceanio.people.search:
     accepts: [[company_domain]]
@@ -1056,7 +1093,6 @@ adapters:
     out: {username: "[0].account", user_id: "[0].id", full_name: "[0].full_name", followers: "[0].followers",
           following: "[0].following", posts_count: "[0].posts_count", is_verified: "[0].is_verified",
           is_private: "[0].is_private", biography: "[0].biography"}
-    miss: "[0].account == null"
   brightdata.x.tiktok-profiles:
     accepts: [[username]]
     in:  {}
@@ -1067,7 +1103,6 @@ adapters:
     out: {username: "[0].account_id", user_id: "[0].id", sec_uid: "[0].secu_id", nickname: "[0].nickname",
           followers: "[0].followers", following: "[0].following", likes: "[0].likes", videos_count: "[0].videos_count",
           is_verified: "[0].is_verified", biography: "[0].biography"}
-    miss: "[0].account_id == null"
   brightdata.x.instagram-posts:
     accepts: [[url]]
     in:  {url: body.url}
@@ -1075,7 +1110,6 @@ adapters:
     const: {queryParams.dataset_id: gd_lk5ns7kz21pck8jpis, queryParams.format: json}
     out: {id: "[0].post_id", shortcode: "[0].shortcode", caption: "[0].description", likes: "[0].likes",
           comments: "[0].num_comments", owner_username: "[0].user_posted"}
-    miss: "[0].post_id == null"
   lusha.people.enrich:
     accepts: [[first_name, last_name, domain], [full_name, domain]]
     in:  {}
@@ -1184,7 +1218,6 @@ adapters:
     out: {name: data.name, domain: data.domain, description: data.description, industry: data.category.industry,
           employees: data.metrics.employees, founded: data.foundedYear, location: data.location,
           linkedin_url: "fmt('https://www.linkedin.com/{}', data.linkedin.handle)"}
-    miss: "data.name == null"
   tomba.companies.enrich:
     accepts: [[domain]]
     in:  {domain: queryParams.domain}
@@ -1381,7 +1414,6 @@ adapters:
     accepts: [[q]]
     in:  {q: body.query}
     out: {companies: data, count: meta.results}
-    miss: "data == []"
   aviato.companies.search:
     accepts: [[name]]
     in:  {}
@@ -1420,6 +1452,7 @@ adapters:
     in_expr: {body.filters.companies.include.domains: "list(domain)", body.pagination.size: "at_least(limit, 10)", body.pagination.page: "0"}
     out: {companies: results, count: pagination.total}
     miss: "results == []"
+    position: {page0: body.pagination.page}
   fiber-ai.companies.search:
     accepts: [[domain]]
     in:  {}
@@ -1518,7 +1551,6 @@ adapters:
     out: {full_name: "[0].name", first_name: "[0].first_name", last_name: "[0].last_name", headline: "[0].position",
           location: "[0].city", followers: "[0].followers", connections: "[0].connections", about: "[0].about",
           linkedin_url: "[0].url"}
-    miss: "[0].name == null"
   fiber-ai.linkedin.user.profile:
     accepts: [[linkedin_handle]]
     in:  {linkedin_handle: body.identifier}
@@ -1762,24 +1794,121 @@ adapters:
     out: {results: local_results}
     miss: "local_results == []"
 
+  # ---- companies.jobs.search / companies.jobs -------------------------------------------------
+  # A job index answers a title search, or one company's open jobs by name. Only an index that
+  # matches the whole company name takes a name, on either contract; one that takes a company
+  # also serves treg.companies.jobs (same filters) where its fixture names a company.
+  mobiusengine-jobs.jobs.search:
+    # Title searches only: its company filter is a substring ('ramp' also finds LiveRamp), so it
+    # never takes a company name; its company row is no routed child for the same reason.
+    accepts: [[title]]
+    in: {title: queryParams.title}
+    in_expr:
+      queryParams.countries: "upper(country)"
+      queryParams.locations: location
+      queryParams.work_mode: "choose(remote == true, 'Remote Solely', null)"
+      queryParams.posted_within_days: posted_within_days
+      queryParams.limit: limit
+    max: {limit: 100}
+    # Priced per 1,000 jobs, billed per job: the plan's block rounding would quote 1,000 jobs.
+    cost_units: "coalesce(limit, 1)"
+    out: {jobs: jobs, next_cursor: next_cursor}
+  jobspipe.jobs.search:
+    # Title searches only: company_name_or is a prefix match ('Nationwide' also finds Nationwide
+    # Legal), so it never takes a company name.
+    accepts: [[title]]
+    in: {title: body.job_title_or}
+    in_expr:
+      body.job_title_or: "list(title)"
+      body.job_country_code_or: "list(upper(country))"
+      body.job_location_or: "list(location)"
+      body.remote: "choose(remote == true, true, null)"
+      body.posted_at_max_age_days: posted_within_days
+      body.limit: limit
+    max: {limit: 100}
+    out: {jobs: data, count: metadata.total_results, next_cursor: metadata.next_cursor}
+  hirebase.jobs.search:
+    additional_capabilities: [companies.jobs]
+    accepts: [[title, domain], [title, name], [title], [domain], [name]]
+    in: {title: body.job_titles, domain: body.company_domain}
+    in_expr:
+      body.company_name: "choose(domain, null, name)"
+      body.job_titles: "list(title)"
+      body.geo_locations: "list(obj('city', choose(lower(location) == 'remote', null, location), 'country', country_name(country)))"
+      body.location_types: "choose(remote == true, list('Remote'), choose(lower(location) == 'remote', list('Remote'), null))"
+      body.days_ago: posted_within_days
+      body.limit: limit
+    max: {limit: 100}
+    out: {jobs: jobs, count: total_count}
   theirstack.jobs.search:
-    accepts: [[domain], [name]]
-    in: {domain: body.company_domain_or}
+    additional_capabilities: [companies.jobs]
+    accepts: [[title, domain], [title, name], [title], [domain], [name]]
+    in: {domain: body.company_domain_or, title: body.job_title_or}
     in_expr:
       body.company_domain_or: "list(domain)"
       body.company_name_or: "choose(domain, null, list(name))"
+      body.job_title_or: "list(title)"
+      body.job_country_code_or: "list(upper(country))"
+      body.workplace_types_or: "choose(remote == true, list('remote'), null)"
+      # No open/closed flag: a recent window keeps a company's old postings out.
+      body.posted_at_max_age_days: "coalesce(posted_within_days, 30)"
       body.limit: limit
     const: {body.page: 0}
     max: {limit: 100}
     out: {jobs: data}
     miss: "data == []"
   crustdata.companies.jobs.search:
+    # A name match is the company's whole posting history; newest first puts live roles on page one.
     accepts: [[name]]
     in:  {name: body.filters.value}
     in_expr: {body.filters: "obj('field', 'company.basic_info.name', 'type', '=', 'value', name)", body.limit: limit}
-    const: {body.fields: [job_details.title, job_details.url]}
+    const: {body.fields: [job_details.title, job_details.url], body.sorts: [{field: metadata.date_added, order: desc}]}
     out: {jobs: job_listings, count: total_count, next_cursor: next_cursor}
     miss: "job_listings == []"
+  # Free employer boards (treg.companies.jobs): each takes only the board the caller named on its
+  # own system (the contract derives `<ats>_board` from ats + board). Every row is anonymous and
+  # free; a list never asks for descriptions it can leave out (Greenhouse content, Workable details)
+  # and pages that take a size ask at most 100, so a board fits the routed 8 MiB read. Ashby has
+  # no size or paging: a board past 8 MiB is that attempt's error and the route moves on.
+  greenhouse.companies.jobs:
+    accepts: [[greenhouse_board]]
+    in: {greenhouse_board: pathParams.board_token}
+    test_identity: {ats: greenhouse, board: discord}
+    out: {jobs: jobs, count: meta.total}
+  lever.postings.list:
+    accepts: [[lever_board]]
+    in: {lever_board: pathParams.site}
+    in_expr: {queryParams.limit: "at_most(limit, 100)"}
+    const: {queryParams.mode: json}
+    test_identity: {ats: lever, board: spotify}
+    out: {jobs: "."}
+  lever.eu.postings.list:
+    accepts: [[lever_eu_board]]
+    in: {lever_eu_board: pathParams.site}
+    in_expr: {queryParams.limit: "at_most(limit, 100)"}
+    const: {queryParams.mode: json}
+    test_identity: {ats: lever_eu, board: leverdemo}
+    out: {jobs: "."}
+  ashby.companies.jobs:
+    accepts: [[ashby_board]]
+    in: {ashby_board: pathParams.board}
+    test_identity: {ats: ashby, board: ramp}
+    out: {jobs: jobs}
+  smartrecruiters.company.postings:
+    accepts: [[smartrecruiters_board]]
+    in: {smartrecruiters_board: pathParams.companyIdentifier}
+    in_expr:
+      queryParams.limit: "at_most(limit, 100)"
+      queryParams.country: "lower(country)"
+      queryParams.locationType: "choose(remote == true, 'REMOTE', null)"
+    test_identity: {ats: smartrecruiters, board: Canva}
+    out: {jobs: content, count: totalFound}
+  workable.account.jobs:
+    accepts: [[workable_board]]
+    in: {workable_board: pathParams.subdomain}
+    test_identity: {ats: workable, board: huggingface}
+    out: {jobs: jobs}
+
   leadmagic.x.jobs-search-v3:
     accepts: [[domain]]
     in:  {domain: body.companies.include}
@@ -2094,7 +2223,6 @@ adapters:
     const: {queryParams.dataset_id: gd_mf0urb782734ik94dz, queryParams.format: json}
     test_identity: {url: "https://www.facebook.com/facebook"}
     out: {name: "[0].name", id: "[0].id", url: "[0].url"}
-    miss: "[0].name == null"
   scrapecreators.x.v1-facebook-profile:
     accepts: [[url]]
     in:  {url: queryParams.url}
@@ -2258,9 +2386,13 @@ adapters:
     miss: "[0] == null"
 
   predictleads.companies.job_openings:
+    # One flat price for up to 1,000 rows; at most 500 keeps a large board inside the 8 MiB buffer.
+    # active_only: not closed and seen in the last 5 days, not the company's posting history.
+    additional_capabilities: [companies.jobs]
     accepts: [[domain]]
     in:  {domain: pathParams.company_id_or_domain}
-    in_expr: {queryParams.limit: limit}
+    in_expr: {queryParams.limit: "at_most(limit, 500)", queryParams.location: "country_name(country)"}
+    const: {queryParams.active_only: "true"}
     out: {jobs: data}
     miss: "data == []"
   # threads.user.profile / post.detail, tiktok.music.videos, x.trending.topics, weibo.search.posts (tikhub alone;
@@ -2484,6 +2616,7 @@ adapters:
     in:  {q: queryParams.keyword}
     const: {queryParams.page: "1", queryParams.order: general}
     out: {videos: data.data.result, count: data.data.numResults}
+    position: {page: queryParams.page}   # a page number declared as a string
   tikhub.x.bilibili-app-fetch-search-by-type:
     accepts: [[q]]
     in:  {q: queryParams.keyword}
@@ -2532,6 +2665,8 @@ adapters:
     test_identity: {company_domain: stripe.com}
     out: {people: output.data, next_cursor: output.nextCursor}
     miss: "output.data == []"
+    row: {name: name, title: current_job.title, company: current_job.company_name, location: locality,
+          profile_url: url, summary: headline}
   # hunter.x.multi-domain-search: not routed — free, but answers MASKED rows without names (a reveal teaser)
   # and ignores `limit` (live 2026-08-29: 100 unnamed rows for a 2-row ask); callable by id.
   leadmagic.x.role-finder:
@@ -2545,6 +2680,7 @@ adapters:
     in:  {company_domain: body.companyDomains.include}
     in_expr: {body.companyDomains.include: "list(company_domain)", body.limit: limit, body.keywords.include: "list(keywords)"}
     out: {people: leads, next_cursor: cursor}
+    paging: {cursor: queryParams.cursor}
     miss: "leads == []"
     row: {name: "join(firstName, lastName)", title: jobTitle, company_domain: company.domain, location: "place(location.city, location.state, location.country)"}
   findymail.search.employees:
@@ -2561,6 +2697,9 @@ adapters:
     const: {body.include_contact_details: false}
     out: {people: people, count: count, next_cursor: next_cursor}
     miss: "people == []"
+    row: {name: contact_full_name, title: contact_job_title, company: contact_company_name, company_domain: company_domain,
+          location: "place(contact_city, contact_state_code, contact_country_code)", profile_url: contact_linkedin_url,
+          summary: contact_linkedin_headline}
   findymail.search.domain:
     accepts: [[company_domain]]
     in:  {company_domain: body.domain}
@@ -2596,7 +2735,6 @@ adapters:
     out: {full_name: data.person.name.fullName, first_name: data.person.name.givenName, last_name: data.person.name.familyName,
           title: data.person.employment.title, company: data.company.name, company_domain: data.company.domain,
           location: data.person.location}
-    miss: "data.person.name.fullName == null"
 
   fiber-ai.people.contacts.turbo:
     accepts: [[linkedin_url]]
@@ -2663,13 +2801,13 @@ adapters:
     in: {company_domain: body.where.company.domain, title: body.where.person.title, full_name: body.where.person.name, q: body.q}
     in_expr:
       body.where.person.title: "scalar(title)"
-      body.where.company.country: "country_code(country)"
-      body.where.company.city: location
+      body.where.person.country: "country_code(country)"
+      body.where.person.city: location
       body.limit: limit
     max: {limit: 100}
     out: {people: data, count: "len(data)"}
     miss: "coalesce(data, []) == []"
-    row: {name: name, title: title, company: company.name, company_domain: company.domain, location: insight.location, profile_url: "coalesce(linkedin, source_url)", email: email.value, email_status: email.status, summary: insight.summary}
+    row: {name: name, title: title, company: company.name, company_domain: company.domain, location: "coalesce(place(location.city, location.country_code), insight.location)", profile_url: "coalesce(linkedin, source_url)", email: email.value, email_status: email.status, summary: insight.summary}
   quickenrich.people.search:
     accepts: [[title, company_domain], [company_domain], [title]]
     in: {company_domain: body.company_url.include, title: body.title.include}
@@ -2682,6 +2820,7 @@ adapters:
     out: {people: data, count: "len(data)", next_cursor: meta.next_cursor}
     miss: "coalesce(data, []) == []"
     row: {name: "join(first_name, last_name)", title: title, company: company_name, company_domain: "host(company_url)", location: "place(city, region_code, country_code)", profile_url: employee_linkedin}
+    paging: {cursor: body.cursor}
   quickenrich.companies.search:
     accepts: [[domain], [name], [industry]]
     in: {domain: body.company_url, name: body.company_name.include, industry: body.industry.include}
@@ -2811,41 +2950,35 @@ adapters:
     row: {name: "join(firstName, lastName)", title: "currentPositions[0].title", company: "currentPositions[0].companyName", location: location.linkedinText, profile_url: linkedinUrl, summary: summary}
 
   # ---- AnyAPI (PR #398) --------------------------------------------------------------------------
-  # One envelope for every SKU: `output.found` + `output.data`, exact charge in `costUsd`. A
-  # profile miss is `found: false, data: null`; a search miss is `found: true` with an empty list,
-  # so list rows test `coalesce(list, []) == []`. AnyAPI BILLS a miss on profile and post rows
-  # (2026-09-19 probe); `reported_charge` settles that charge ahead of the miss rule, as HarvestAPI.
-  # Left out on purpose: linkedin.email (a $0.011 billed miss in a waterfall of free misses),
-  # tiktok.profile_videos (contract identity is sec_uid, the row takes a handle).
+  # One envelope for every SKU: `output.found` + `output.data`, exact charge in `costUsd`. The rows
+  # hold the miss rules (a profile miss is `found: false, data: null`; a search miss is `found: true`
+  # with an empty list); these adapters only map fields. Left out on purpose: linkedin.email (a
+  # $0.011 billed miss in a waterfall of free misses), tiktok.profile_videos (contract identity is
+  # sec_uid, the row takes a handle).
   anyapi.x.search.posts:
     accepts: [[q]]
     in:  {q: body.query}
     out: {posts: output.data.items, next_cursor: output.data.nextCursor}
-    miss: "coalesce(output.data.items, []) == []"
   anyapi.x.user.posts:
     accepts: [[username]]
     in:  {username: body.handle}
     out: {posts: output.data.tweets, next_cursor: output.data.nextCursor}
-    miss: "coalesce(output.data.tweets, []) == []"
   anyapi.x.user.posts.timeline:
     accepts: [[username]]
     in:  {username: body.handle}
     out: {posts: output.data.tweets, next_cursor: output.data.nextCursor}
-    miss: "coalesce(output.data.tweets, []) == []"
   anyapi.x.user.profile:
     accepts: [[username]]
     in:  {username: body.handle}
     out: {username: output.data.handle, name: output.data.displayName, followers: output.data.followers,
           following: output.data.following, posts_count: output.data.tweets,
           is_verified: output.data.verified, description: output.data.bio}
-    miss: "output.found == false"
   anyapi.x.post.comments:
     accepts: [[tweet_id]]
     in:  {}
     in_expr: {body.url: "fmt('https://x.com/i/status/{}', tweet_id)"}
     test_identity: {tweet_id: "20"}
     out: {comments: output.data.items, next_cursor: output.data.nextCursor}
-    miss: "coalesce(output.data.items, []) == []"
   anyapi.tiktok.user.profile:
     accepts: [[username]]
     in:  {username: body.handle}
@@ -2853,65 +2986,53 @@ adapters:
           nickname: output.data.displayName, followers: output.data.followers, following: output.data.following,
           likes: output.data.likes, videos_count: output.data.videos, is_verified: output.data.verified,
           biography: output.data.bio}
-    miss: "output.found == false"
   anyapi.tiktok.search.videos:
     accepts: [[q]]
     in:  {q: body.query}
     out: {videos: output.data.videos, next_cursor: output.data.nextCursor}
-    miss: "coalesce(output.data.videos, []) == []"
   anyapi.tiktok.search.users:
     accepts: [[q]]
     in:  {q: body.query}
     out: {users: output.data.users, next_cursor: output.data.nextCursor}
-    miss: "coalesce(output.data.users, []) == []"
   anyapi.tiktok.video.comments:
     accepts: [[url]]
     in:  {url: body.url}
     out: {comments: output.data.comments, next_cursor: output.data.nextCursor}
-    miss: "coalesce(output.data.comments, []) == []"
   anyapi.instagram.user.posts:
     accepts: [[username]]
     in:  {username: body.handle}
     out: {posts: output.data.posts, next_cursor: output.data.nextCursor}
-    miss: "coalesce(output.data.posts, []) == []"
   anyapi.instagram.user.reels:
     accepts: [[username]]
     in:  {username: body.handle}
     out: {reels: output.data.reels, next_cursor: output.data.nextCursor}
-    miss: "coalesce(output.data.reels, []) == []"
   anyapi.instagram.post.detail:
     accepts: [[url]]
     in:  {url: body.url}
     out: {id: output.data.id, shortcode: output.data.shortcode, likes: output.data.likes,
           owner_username: output.data.owner}
-    miss: "output.found == false"
   anyapi.instagram.post.comments:
     accepts: [[url]]
     in:  {url: body.url}
     out: {comments: output.data.comments, next_cursor: output.data.nextCursor}
-    miss: "coalesce(output.data.comments, []) == []"
   anyapi.instagram.hashtag.posts:
     accepts: [[hashtag]]
     in:  {hashtag: body.hashtag}
     out: {posts: output.data.posts, next_cursor: output.data.nextCursor}
-    miss: "coalesce(output.data.posts, []) == []"
   anyapi.instagram.search.reels:
     accepts: [[q]]
     in:  {q: body.query}
     out: {reels: output.data.reels, next_cursor: output.data.nextCursor}
-    miss: "coalesce(output.data.reels, []) == []"
   anyapi.facebook.user.posts:
     accepts: [[url]]
     in:  {url: body.url}
     out: {posts: output.data.posts, next_cursor: output.data.nextCursor}
-    miss: "coalesce(output.data.posts, []) == []"
   anyapi.linkedin.user.profile:
     accepts: [[linkedin_url]]
     in:  {linkedin_url: body.url}
     out: {full_name: output.data.name, headline: output.data.headline, location: output.data.location,
           followers: output.data.followers, about: output.data.about,
           linkedin_url: "fmt('https://www.linkedin.com/in/{}', output.data.publicIdentifier)"}
-    miss: "output.found == false"
   anyapi.linkedin.user.profile.full:
     accepts: [[linkedin_url]]
     in:  {linkedin_url: body.url}
@@ -2919,7 +3040,6 @@ adapters:
           last_name: output.data.lastName, headline: output.data.headline, location: output.data.location,
           followers: output.data.followerCount, connections: output.data.connectionsCount,
           about: output.data.about, linkedin_url: output.data.url}
-    miss: "output.found == false"
   crawl4ai.google.serp.organic:
     accepts: [[q]]
     in: {q: queryParams.q}
@@ -2932,24 +3052,20 @@ adapters:
     in:  {q: body.query}
     in_expr: {body.gl: "lower(country)", body.hl: language, body.limit: limit}
     out: {results: output.data.results, count: "len(output.data.results)"}
-    miss: "coalesce(output.data.results, []) == []"
   anyapi.google.serp.news:
     accepts: [[q]]
     in:  {q: body.query}
     in_expr: {body.gl: "lower(country)", body.hl: language, body.limit: limit}
     out: {results: output.data.items, count: "len(output.data.items)"}
-    miss: "coalesce(output.data.items, []) == []"
   anyapi.google.serp.maps.place:
     accepts: [[q]]
     in:  {q: body.query}
     out: {places: output.data.items, count: "len(output.data.items)"}
-    miss: "coalesce(output.data.items, []) == []"
   anyapi.google.keywords.ideas:
     accepts: [[keyword]]
     in:  {keyword: body.query}
     in_expr: {body.gl: "lower(country)", body.hl: language}
     out: {keywords: output.data.suggestions, count: "len(output.data.suggestions)"}
-    miss: "coalesce(output.data.suggestions, []) == []"
 
   # ---- open web -----------------------------------------------------------------------------
   bravesearch.web.search:
@@ -3003,6 +3119,7 @@ adapters:
     miss: "coalesce(organic, []) == []"
   search1api.web.search:
     accepts: [[q]]
+    max: {limit: 50}
     in: {q: body.query}
     in_expr: {body.max_results: limit}
     out: {results: results, count: "len(results)"}
@@ -3026,30 +3143,33 @@ adapters:
   # ---- ai-search.chatgpt.scrape and ai-search.gemini.scrape: the live answer page ------------
   # cloro gives Markdown only when include.markdown is set (free). DataForSEO gives no plain text.
   cloro.ai-search.chatgpt.scrape:
-    accepts: [[prompt]]
-    in: {prompt: body.prompt}
-    in_expr: {body.country: "upper(country_code(country))"}
+    accepts: [[q]]
+    in: {q: body.prompt}
+    in_expr: {body.country: "upper(country_code(coalesce(country, 'US')))"}
     const: {body.include.markdown: true}
-    out: {answer: result.text, markdown: result.markdown, sources: result.sources}
-    miss: "coalesce(result.text, '') == ''"
+    out: {answer: "coalesce(result.text, result.markdown)", markdown: result.markdown, sources: result.sources}
+    miss: "coalesce(result.text, result.markdown, null) == null"
   dataforseo.x.ai-optimization-chat-gpt-llm-scraper-live-advanced:
-    accepts: [[prompt]]
-    in: {prompt: body.keyword}
-    in_expr: {body.location_code: "dfs_location(country)", body.language_code: language}
+    accepts: [[q]]
+    in_expr: {body.keyword: "dfs_keyword(q)", body.location_code: "dfs_location(country)", body.language_code: language}
+    in_read: {q: "dfs_keyword_text(body.keyword)", country: "dfs_country(body.location_code, body.location_name)"}
+    test_identity: {q: albert einstein}
+    const: {body.force_web_search: true}
     body_array: true
     out: {answer: "tasks[0].result[0].markdown", markdown: "tasks[0].result[0].markdown",
           sources: "tasks[0].result[0].sources"}
   cloro.ai-search.gemini.scrape:
-    accepts: [[prompt]]
-    in: {prompt: body.prompt}
-    in_expr: {body.country: "upper(country_code(country))"}
+    accepts: [[q]]
+    in: {q: body.prompt}
+    in_expr: {body.country: "upper(country_code(coalesce(country, 'US')))"}
     const: {body.include.markdown: true}
-    out: {answer: result.text, markdown: result.markdown, sources: result.sources}
-    miss: "coalesce(result.text, '') == ''"
+    out: {answer: "coalesce(result.text, result.markdown)", markdown: result.markdown, sources: result.sources}
+    miss: "coalesce(result.text, result.markdown, null) == null"
   dataforseo.x.ai-optimization-gemini-llm-scraper-live-advanced:
-    accepts: [[prompt]]
-    in: {prompt: body.keyword}
-    in_expr: {body.location_code: "dfs_location(country)", body.language_code: language}
+    accepts: [[q]]
+    in_expr: {body.keyword: "dfs_keyword(q)", body.location_code: "dfs_location(country)", body.language_code: language}
+    in_read: {q: "dfs_keyword_text(body.keyword)", country: "dfs_country(body.location_code, body.location_name)"}
+    test_identity: {q: albert einstein}
     body_array: true
     out: {answer: "tasks[0].result[0].markdown", markdown: "tasks[0].result[0].markdown",
           sources: "tasks[0].result[0].sources"}
@@ -3068,6 +3188,7 @@ adapters:
     miss: "coalesce(results.web, []) == []"
   valyu.web.search:
     accepts: [[q]]
+    max: {limit: 10}
     in: {q: body.query}
     in_expr: {body.max_num_results: limit}
     const: {body.search_type: web, body.max_price: 1.5, body.response_length: short}
@@ -3081,6 +3202,7 @@ adapters:
     miss: "coalesce(results, []) == []"
   keenable.web.search:
     accepts: [[q]]
+    max: {limit: 50}
     in: {q: body.query}
     in_expr: {body.max_results: limit}
     const: {body.mode: pro}
@@ -3092,16 +3214,15 @@ adapters:
     in_expr: {body.max_results: limit}
     const: {body.search_depth: basic, body.include_usage: true}
     out: {results: results, count: "len(results)"}
-    miss: "coalesce(results, []) == []"
   tavily.web.search.news:
     accepts: [[q]]
     in: {q: body.query}
     in_expr: {body.max_results: limit}
     const: {body.topic: news, body.search_depth: basic, body.include_usage: true}
     out: {results: results, count: "len(results)"}
-    miss: "coalesce(results, []) == []"
   linkup.web.search:
     accepts: [[q]]
+    max: {limit: 20}
     in: {q: body.q}
     in_expr: {body.maxResults: limit}
     const: {body.depth: flash, body.outputType: searchResults}
@@ -3119,6 +3240,7 @@ adapters:
     miss: "coalesce(results, []) == []"
   olostep.web.search:
     accepts: [[q]]
+    max: {limit: 25}
     in: {q: body.query}
     in_expr: {body.limit: limit}
     const: {body.fast_mode: true}
@@ -3126,6 +3248,7 @@ adapters:
     miss: "coalesce(result.links, []) == []"
   scrapegraphai.web.search:
     accepts: [[q]]
+    max: {limit: 20}
     in: {q: body.query}
     in_expr: {body.numResults: limit}
     const: {body.format: markdown, body.allowedTypes: [text/html]}
@@ -3141,6 +3264,7 @@ adapters:
     miss: "coalesce(organic, []) == []"
   spidercloud.web.search:
     accepts: [[q]]
+    max: {limit: 10}
     in: {q: body.search}
     in_expr: {body.search_limit: limit}
     const: {body.fetch_page_content: false}
@@ -3166,6 +3290,7 @@ adapters:
     miss: "coalesce(results, []) == []"
   firecrawl.web.search:
     accepts: [[q]]
+    max: {limit: 10}
     in: {q: body.query}
     in_expr: {body.limit: limit}
     out: {results: data.web, count: "len(data.web)"}
@@ -3181,7 +3306,7 @@ adapters:
     accepts: [[url]]
     in: {url: body.url}
     out: {pages: "list(results)", count: "len(list(results))"}
-    miss: "coalesce(results.content, '') == ''"
+    miss: "choose(wall_page(results.content), true, coalesce(results.content, '') == '')"
   you.web.contents:
     accepts: [[url]]
     in_expr: {body.urls: "list(url)"}
@@ -3212,7 +3337,7 @@ adapters:
     out: {pages: results, count: "len(results)"}
     # One page decides alone. With several, an explicitly empty usage[] is the free miss; an
     # absent usage field is unobserved and keeps the base-price fallback.
-    miss: "choose(results[1] == null, coalesce(results[0].full_content, results[0].excerpts, '') == '', usage == [])"
+    miss: "choose(results[1] == null, choose(wall_page(results[0].full_content), true, coalesce(results[0].full_content, results[0].excerpts, '') == ''), usage == [])"
   olostep.web.scrape:
     accepts: [[url]]
     in: {url: body.url_to_scrape}
@@ -3225,21 +3350,20 @@ adapters:
     test_identity: {url: "https://example.com"}
     const: {body.formats: [{type: markdown}], body.allowedTypes: [text/html]}
     out: {pages: "results.markdown.data", count: "len(results.markdown.data)"}
-    miss: "coalesce(results.markdown.data[0], '') == ''"
+    miss: "choose(wall_page(results.markdown.data), true, coalesce(results.markdown.data[0], '') == '')"
   tavily.web.extract:
     accepts: [[url]]
     in_expr: {body.urls: "list(url)"}
     test_identity: {url: "https://example.com"}
     const: {body.extract_depth: basic}
     out: {pages: results, count: "len(results)"}
-    miss: "coalesce(results[0].raw_content, '') == ''"
   linkup.web.fetch:
     accepts: [[url]]
     in: {url: body.url}
     test_identity: {url: "https://example.com"}
     const: {body.mode: standard, body.renderJs: false}
     out: {pages: "list(.)", count: "len(list(.))"}
-    miss: "coalesce(markdown, '') == ''"
+    miss: "choose(wall_page(markdown), true, coalesce(markdown, '') == '')"
   keenable.web.fetch:
     accepts: [[url]]
     in: {url: queryParams.url}
@@ -3258,8 +3382,6 @@ adapters:
     test_identity: {url: "https://example.com"}
     const: {body.formats: [markdown], body.onlyMainContent: false}
     out: {pages: "list(output.data)", count: "len(list(output.data))"}
-    # output.data.statusCode is the TARGET's status: a 4xx/5xx is the site's error page, not the page
-    miss: "choose(http_error(output.data.statusCode), true, coalesce(output.data.markdown, '') == '')"
   crawl4ai.web.extract.structured:
     accepts: [[url, schema, instruction], [url, schema], [url, instruction]]
     in: {url: body.url, schema: body.schema, instruction: body.instruction}
@@ -3285,19 +3407,19 @@ adapters:
     in: {url: body.url}
     const: {body.format: md}
     out: {pages: "list(.)", count: "len(list(.))"}
-    miss: "coalesce(text_len, markdown, 0) == 0"
+    miss: "choose(wall_page(markdown), true, coalesce(text_len, markdown, 0) == 0)"
   firecrawl.web.scrape:
     accepts: [[url]]
     in: {url: body.url}
     const: {body.formats: [markdown], body.parsers: []}
     out: {pages: "list(data)", count: "len(list(data))"}
-    miss: "coalesce(data.markdown, '') == ''"
+    miss: "choose(wall_page(data.markdown), true, coalesce(data.markdown, '') == '')"
   branddev.web.scrape:
     accepts: [[url]]
     in: {url: body.url}
     const: {body.formats: {markdown: true}}
     out: {pages: "list(.)", count: "len(list(.))"}
-    miss: "coalesce(markdown.data, '') == ''"
+    miss: "choose(wall_page(markdown.data), true, coalesce(markdown.data, '') == '')"
 
   search1api.web.sitemap:
     accepts: [[url]]
@@ -3311,13 +3433,13 @@ adapters:
     in_expr: {body.limit: limit}
     test_identity: {url: "https://www.iana.org", q: domain}
     out: {results: output.data.results, count: "len(output.data.results)"}
-    miss: "coalesce(output.data.results, []) == []"
   tavily.web.map:
     accepts: [[url], [url, q]]
     in: {url: body.url, q: body.instructions}
     in_expr: {body.limit: limit}
+    max: {limit: 20}
+    cost_units: "1"
     out: {results: results, count: "len(results)"}
-    miss: "coalesce(results, []) == []"
   olostep.web.map.search:
     accepts: [[url, q]]
     in: {url: body.url, q: body.search_query}
@@ -3344,7 +3466,6 @@ adapters:
     in: {url: body.url}
     in_expr: {body.limit: limit}
     out: {pages: output.data.items, count: "len(output.data.items)"}
-    miss: "coalesce(output.data.items, []) == []"
 
   # ---- Fetchin LinkedIn reads ---------------------------------------------------------------
   fetchinio.linkedin.user.profile:
@@ -3426,6 +3547,22 @@ adapters:
     out: {platform: result.platform, username: result.username, url: result.url, full_name: result.fullname, followers: result.followers}
     miss: "result.platform == null"
 
+  # Judge-only: per_success settle zeros on an empty technologies list (no detection, no credit).
+  findymail.technologies:
+    route: false
+    accepts: [[domain]]
+    in: {domain: body.domain}
+    out: {technologies: technologies, count: "len(coalesce(technologies, []))"}
+    miss: "coalesce(technologies, []) == []"
+
+  # Judge-only: per_success settle zeros on an empty emails list (Aviato bills only a hit).
+  aviato.people.contact.get:
+    route: false
+    accepts: [[linkedin_url]]
+    in: {linkedin_url: queryParams.linkedinURL}
+    out: {emails: emails, count: "len(coalesce(emails, []))"}
+    miss: "coalesce(emails, []) == []"
+
   # Judge-only: per_success settle zeros when every social URL is null (the documented miss body).
   enrichlayer.contacts.reverse-phone:
     route: false
@@ -3454,6 +3591,8 @@ adapters:
 
   # Search returns profile URLs; full profile enrichment remains a direct provider option.
   enrichlayer.people.search:
+    # A routed row would be a bare profile URL at three credits; cheaper children cover every variant.
+    route: false
     # name, role and company are independent query filters: send every one the caller gave.
     accepts: [[full_name, title, company_domain], [full_name, company_domain], [full_name, title], [full_name],
               [title, company_domain], [company_domain], [title]]
@@ -3598,6 +3737,9 @@ adapters:
     out: {places: rows, count: "len(rows)"}
     miss: "coalesce(rows, []) == []"
   crawl4ai.instagram.user.profile:
+    # evidence only: its recipe never fills biography or external_url (both null on every row, with or
+    # without full_profile), so a routed hit here would hand back a profile without its bio
+    route: false
     accepts: [[username]]
     in: {username: body.username}
     out: {username: "rows[0].username", user_id: "rows[0].user_id", full_name: "rows[0].full_name",
@@ -3647,7 +3789,6 @@ adapters:
     in: {place_id: body.placeId}
     in_expr: {body.limit: "at_most(limit, 100)", body.sort: sort}
     out: {reviews: output.data.items, count: "len(output.data.items)"}
-    miss: "coalesce(output.data.items, []) == []"
   litescrape.google.maps.reviews:
     accepts: [[place_id]]
     in: {place_id: queryParams.place_id}
@@ -3666,7 +3807,6 @@ adapters:
     in: {page_id: body.pageId, company_name: body.companyName}
     out: {ads: output.data.ads, page_id: "output.data.ads[0].pageId", count: "len(output.data.ads)",
           next_cursor: output.data.nextCursor}
-    miss: "coalesce(output.data.ads, []) == []"
   adyntel.meta-ads.library.advertiser:
     accepts: [[company_domain]]
     in: {company_domain: body.company_domain}
@@ -3713,17 +3853,40 @@ adapters:
 
   # BlitzAPI shares these lookup and search contracts. Its other routes need a company LinkedIn
   # URL, a provider-specific cascade, or a result shape that no current contract accepts.
+  crawl4ai.people.email.find:
+    accepts: [[linkedin_url], [linkedin_handle], [full_name, domain]]
+    in: {linkedin_url: queryParams.linkedin, linkedin_handle: queryParams.linkedin, full_name: queryParams.name,
+         domain: queryParams.domain}
+    out: {email: data.email.value, verified: "data.email.status == 'valid'"}
+    miss: "data.email.value == null"
   blitzapi.people.email.find:
     accepts: [[linkedin_url]]
     in: {linkedin_url: body.person_linkedin_url}
     # `found` reports a hit, not a deliverability check; the body carries no verification status.
     out: {email: email}
     miss: "found == false"
+  crawl4ai.people.phone.find:
+    # evidence only: Lead holds a phone for very few of the people routed here, so as a routed step it
+    # spends time and finds nothing; the direct endpoint stays callable
+    route: false
+    accepts: [[linkedin_url], [linkedin_handle], [email], [full_name, domain]]
+    in: {linkedin_url: queryParams.linkedin, linkedin_handle: queryParams.linkedin, email: queryParams.email,
+         full_name: queryParams.name, domain: queryParams.domain}
+    out: {phone: data.phone.value, line_type: data.phone.line}
+    miss: "data.phone.value == null"
   blitzapi.people.phone.find:
     accepts: [[linkedin_url]]
     in: {linkedin_url: body.person_linkedin_url}
     out: {phone: phone}
     miss: "found == false"
+  crawl4ai.people.enrich:
+    accepts: [[email], [linkedin_url], [linkedin_handle], [full_name, domain]]
+    in: {email: queryParams.email, linkedin_url: queryParams.linkedin, linkedin_handle: queryParams.linkedin,
+         full_name: queryParams.name, domain: queryParams.domain}
+    out: {full_name: data.name, first_name: data.first_name, last_name: data.last_name, title: data.title,
+          company: data.company.name, company_domain: data.company.domain, linkedin_url: data.linkedin_url,
+          location: "join(data.location.city, data.location.country_code)"}
+    miss: "data == null"
   blitzapi.people.enrich:
     accepts: [[linkedin_url]]
     in: {linkedin_url: body.person_linkedin_url}
@@ -3755,6 +3918,7 @@ adapters:
               body.people.location.country_code: "list(country)",
               body.max_results: "at_most(limit, 50)"}
     out: {people: results, count: total_results, next_cursor: cursor}
+    paging: {cursor: body.cursor}
     miss: "results == []"
     row: {name: full_name, title: "coalesce(experiences[0].job_title, headline)", company: "experiences[0].company_name", company_domain: "experiences[0].company_domain", location: "place(location.city, location.country_code)", profile_url: linkedin_url, summary: headline}
   blitzapi.companies.search:
@@ -3809,8 +3973,13 @@ adapters:
     # Each returned person uses a search record, so larger requests use another routed provider.
     max: {limit: 10}
     in: {company_domain: queryParams.domain, title: queryParams.title, q: queryParams.q}
-    in_expr: {queryParams.limit: limit}
+    # country takes ISO alpha-2 codes. city holds city keywords only, comma-separated (OR): a
+    # location in one part goes there; one in several parts ("London, United Kingdom", "Oregon,
+    # United States") has no faithful field, so it is reported ignored rather than cut to a city.
+    in_expr: {queryParams.limit: limit, queryParams.country: "upper(country_code(country))",
+              queryParams.city: "one_place(location)"}
     out: {people: data, count: meta.total, next_cursor: meta.nextCursor}
+    paging: {cursor: queryParams.cursor}
     miss: "data == []"
     # The person sits under profile_data, the current job under contact_data: without name and url a
     # merge cannot tell a repeat from a new row, and without the rest it keeps only those two.
@@ -3818,7 +3987,8 @@ adapters:
           title: "coalesce(contact_data.contact_current_experiences[0].job_title, profile_data.profile_headline)",
           company: "contact_data.contact_current_experiences[0].company_name",
           company_domain: "contact_data.contact_current_experiences[0].company_domain",
-          location: "place(profile_data.profile_address.city, profile_data.profile_address.country)",
+          location: "place(profile_data.profile_address.city, profile_data.profile_address.state,
+                           coalesce(profile_data.profile_address.country, profile_data.profile_address.country_code))",
           summary: profile_data.profile_headline}
   leadocean.companies.search:
     accepts: [[domain], [name], [industry], [q]]
@@ -3826,3 +3996,246 @@ adapters:
     in_expr: {queryParams.limit: "at_most(limit, 25)"}
     out: {companies: data, count: meta.total, next_cursor: meta.nextCursor}
     miss: "data == []"
+
+  # ---- jobs.salary.benchmark --------------------------------------------------------------------
+  # Both over a 90-day window of posted pay. JobsPipe stops at the country (USD); Hirebase also
+  # takes a city or region and answers in the place's currency.
+  jobspipe.jobs.salary.benchmark:
+    accepts: [[title]]
+    in: {title: body.title}
+    in_expr: {body.country: "upper(country)"}
+    out: {p50: percentiles.p50, p10: percentiles.p10, p25: percentiles.p25, p75: percentiles.p75,
+          p90: percentiles.p90, currency: currency, count: count}
+  hirebase.jobs.salary.insights:
+    accepts: [[title]]
+    in: {title: body.job_titles}
+    in_expr:
+      body.job_titles: "list(title)"
+      body.geo_locations: "list(obj('city', coalesce(city, one_place(location)), 'region', region, 'country', country_name(country)))"
+    const: {body.days_ago: 90}
+    out: {p50: salary.p50, p25: salary.p25, p75: salary.p75, p90: salary.p90, currency: salary.currency,
+          count: salary.count}
+
+  # ---- linkedin.search.people (call events only) ----
+  crawl4ai.linkedin.search.people:
+    route: false
+    accepts: [[first_name, last_name]]
+    in: {first_name: body.first_name, last_name: body.last_name}
+    out: {people: rows}
+    miss: "rows == []"
+  harvestapi.linkedin.profile.search:
+    route: false
+    # `search` is documented as a name search; firstName/lastName are its split form.
+    accepts: [[full_name], [first_name, last_name]]
+    in: {full_name: queryParams.search, first_name: queryParams.firstName,
+         last_name: queryParams.lastName, title: queryParams.title}
+    out: {people: elements}
+    position: {page: queryParams.page}
+    miss: "elements == []"
+
+  # ---- linkedin.search.posts (call events only) ----
+  harvestapi.linkedin.post.search:
+    route: false
+    accepts: [[q]]
+    in: {q: queryParams.search, date_posted: queryParams.postedLimit, sort: queryParams.sortBy}
+    out: {posts: elements}
+    miss: "elements == []"
+
+  # ---- linkedin.search.jobs (call events only) ----
+  apify.linkedin.search.jobs:
+    route: false
+    accepts: [[q]]
+    in: {q: body.jobTitles, location: body.locations}
+    in_expr: {body.jobTitles: "list(q)", body.locations: "list(location)"}
+    out: {jobs: "."}
+    miss: ". == []"
+  crawl4ai.linkedin.search.jobs:
+    route: false
+    accepts: [[q]]
+    in: {q: body.query, location: body.location}
+    out: {jobs: rows}
+    miss: "rows == []"
+  harvestapi.linkedin.search.jobs:
+    route: false
+    accepts: [[q]]
+    in: {q: queryParams.search, location: queryParams.location}
+    out: {jobs: elements}
+    miss: "elements == []"
+
+  # ---- linkedin.job.detail (call events only) ----
+  harvestapi.linkedin.job.get:
+    route: false
+    accepts: [[job_id], [url]]
+    in: {job_id: queryParams.jobId, url: queryParams.url}
+    out: {job: element}
+    miss: "element == null"
+  # ---- meta-ads.library.search (call events only) ----
+  adyntel.meta-ads.library.search:
+    route: false
+    accepts: [[q]]
+    in: {q: body.keyword, country: body.country_code}
+    out: {ads: results}
+    miss: "coalesce(results, []) == []"
+    position: {cursor: body.continuation_token}
+  crawl4ai.meta-ads.library.search:
+    route: false
+    accepts: [[q]]
+    in: {q: body.query, country: body.country}
+    out: {ads: rows}
+    miss: "coalesce(rows, []) == []"
+
+  # ---- google.serp.ai_mode (call events only) ----
+  cloro.google.serp.ai_mode:
+    route: false
+    accepts: [[q]]
+    in: {q: body.prompt, country: body.gl}
+    out: {answer: "coalesce(result.markdown, result.text)", sources: result.sources}
+    miss: "coalesce(result.markdown, result.text, null) == null"
+  crawl4ai.google.serp.ai_mode:
+    route: false
+    accepts: [[q]]
+    in: {q: queryParams.q, country: queryParams.gl}
+    const: {queryParams.deep: "0"}
+    out: {answer: answer.text}
+    miss: "coalesce(answer.text, null) == null"
+  serpapi.x.google-ai-mode:
+    route: false
+    accepts: [[q]]
+    in: {q: queryParams.q}
+    const: {queryParams.engine: google_ai_mode}
+    out: {answer: reconstructed_markdown, sources: references}
+    # an answer may come as text blocks alone; only neither is a miss
+    miss: "coalesce(reconstructed_markdown, text_blocks, null) == null"
+
+  # ---- ai-search.chatgpt.scrape (call events only) ----
+  crawl4ai.ai-search.chatgpt.scrape:
+    route: false
+    accepts: [[q]]
+    in: {q: body.prompt, country: body.country}
+    out: {answer: "coalesce(rows[0].answer, rows[0].answer_text)", sources: "rows[0].sources"}
+    miss: "coalesce(rows[0].answer, rows[0].answer_text, null) == null"
+
+  # ---- web.answer (call events only) ----
+  crawl4ai.web.answer:
+    route: false
+    accepts: [[q]]
+    in: {q: queryParams.q}
+    out: {answer: answer.text, sources: answer.sources}
+    miss: "coalesce(answer.text, null) == null"
+  exa.web.answer:
+    route: false
+    accepts: [[q]]
+    in: {q: body.query}
+    out: {answer: answer, sources: citations}
+    miss: "coalesce(answer, null) == null"
+  olostep.web.answer:
+    route: false
+    accepts: [[q]]
+    in: {q: body.task}
+    out: {answer: result.json_content, sources: result.sources}
+    miss: "coalesce(result.json_content, null) == null"
+  perplexity.web.answer.fast:
+    route: false
+    accepts: [[q]]
+    in: {q: body.input}
+    const: {body.preset: fast}
+    out: {answer: "output[0].content[0].text", sources: "output[0].content[0].annotations"}
+    miss: "coalesce(output[0].content[0].text, null) == null"
+  perplexity.web.answer.low:
+    route: false
+    accepts: [[q]]
+    in: {q: body.input}
+    const: {body.preset: low}
+    out: {answer: "output[0].content[0].text", sources: "output[0].content[0].annotations"}
+    miss: "coalesce(output[0].content[0].text, null) == null"
+  # ---- people.search.count (call events only) ----
+  dropleads.people.search.count:
+    route: false
+    accepts: [[company_domain, title], [company_domain], [title]]
+    in: {company_domain: body.filters.companyDomains, title: body.filters.jobTitles}
+    in_expr: {body.filters.companyDomains: "list(company_domain)", body.filters.jobTitles: "list(title)"}
+    out: {count: count}
+    miss: "count == 0"
+  icypeas.people.search.count:
+    route: false
+    accepts: [[company_domain, title], [company_domain], [title]]
+    in: {company_domain: body.query.currentCompanyWebsite.include, title: body.query.currentJobTitle.include}
+    in_expr: {body.query.currentCompanyWebsite.include: "list(company_domain)",
+              body.query.currentJobTitle.include: "list(title)"}
+    out: {count: total}
+    miss: "total == 0"
+  leadocean.people.search.count:
+    route: false
+    accepts: [[company_domain, title], [company_domain], [title]]
+    in: {company_domain: queryParams.domain, title: queryParams.title}
+    const: {queryParams.count: true, queryParams.limit: 1}
+    out: {count: meta.total}
+    miss: "meta.total == 0"
+  leadsforge.people.search.count:
+    route: false
+    accepts: [[company_domain, title], [company_domain], [title]]
+    in: {company_domain: body.companyDomains.include, title: body.leadJobTitles.include}
+    in_expr: {body.companyDomains.include: "list(company_domain)", body.leadJobTitles.include: "list(title)"}
+    out: {count: totalCount}
+    miss: "totalCount == 0"
+
+  # ---- companies.emails.list (call events only) ----
+  anymailfinder.companies.emails.list:
+    route: false
+    accepts: [[domain]]
+    in: {domain: body.domain}
+    out: {emails: emails}
+    # A blacklisted domain is a refusal, not an empty answer.
+    miss: "email_status == 'not_found'"
+  tomba.companies.emails.list:
+    route: false
+    accepts: [[domain]]
+    in: {domain: queryParams.domain}
+    out: {emails: data.emails}
+    miss: "data.emails == []"
+
+  # ---- people.decision_makers (call events only) ----
+  anymailfinder.people.decision_makers:
+    route: false
+    accepts: [[company_domain]]
+    in: {company_domain: body.domain}
+    # One decision maker per answer: the body is the row.
+    out: {people: "list(.)"}
+    miss: "email_status == 'not_found'"
+
+  # ---- reddit.search.posts (call events only) ----
+  crawl4ai.reddit.search.posts:
+    route: false
+    accepts: [[q]]
+    in: {q: body.query, sort: body.sort}
+    out: {posts: rows}
+    miss: "coalesce(rows, []) == []"
+  scrapecreators.reddit.search.posts:
+    route: false
+    accepts: [[q]]
+    in: {q: queryParams.query, sort: queryParams.sort}
+    out: {posts: posts}
+
+  # ---- reddit.post.comments (call events only) ----
+  brightdata.x.reddit-comments:
+    route: false
+    accepts: [[url]]
+    in: {url: body.url}
+    in_read: {post_id: "reddit_post_id(body.url)"}
+    body_array: true
+    const: {queryParams.dataset_id: gd_lvzdpsdlw09j6t702, queryParams.format: json}
+    out: {comments: "."}
+  crawl4ai.reddit.post.comments:
+    route: false
+    accepts: [[url]]
+    in: {url: body.url}
+    # body.url takes the post's page or its bare id.
+    in_read: {post_id: "reddit_post_id(body.url)"}
+    out: {comments: rows}
+    miss: "coalesce(rows, []) == []"
+  tikhub.x.reddit-app-fetch-post-comments:
+    route: false
+    accepts: [[post_id]]
+    in: {post_id: queryParams.post_id}
+    in_read: {post_id: "reddit_post_id(queryParams.post_id)"}
+    out: {comments: data.postInfoById.commentForest.trees}

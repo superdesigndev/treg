@@ -22,6 +22,9 @@ SCENARIOS = {
     "binary_ok": [Canned(200, {"Content-Type": "image/png", "X-Treg-Cost-Micro": "1000000"}, b"\x89PNG\r\n\x1a\n\x00\x01")],
     "empty_204": [Canned(204, {}, b"")],
     "relayed_404": [Canned(404, {"X-Treg-Call-Id": "c4"}, b'{"error":"nope"}')],
+    "review_pending": [Canned(403, {"X-Treg-Call-Id": "c5", "X-Treg-Review-Pending": "pages_manage_engagement",
+                                     "X-Treg-Review-Pending-Text": "Pending Meta App Review: not approved yet."},
+                              b'{"error":{"code":200}}')],
     "relayed_binary_500": [Canned(500, {"Content-Type": "application/octet-stream"}, b"\x00\x01")],
     "treg_refusal": [Canned(403, {"X-Treg-Error": "1"}, b'{"detail":"this tool is denied for the team"}')],
     "saturated": [Canned(503, {"Retry-After": "5"}, b'{"treg_saturated":true,"detail":"busy"}')],
@@ -75,7 +78,7 @@ def _assert_same(py, go):
     assert normalize(py.err) == normalize(go.err), (py.err, go.err)
 
 
-IGNORED = {"user-agent", "accept-encoding", "connection", "host", "x-treg-client-version",
+IGNORED = {"user-agent", "accept-encoding", "connection", "host", "x-treg-client-version", "x-treg-hints",
            "x-treg-session", "x-treg-agent"}
 
 
@@ -169,6 +172,19 @@ def test_rejected_env_token(fake, tmp_path, go_bin):
     fake.route("/call/auth", Canned(401, {"X-Treg-Error": "1"}, b'{"detail":"invalid token"}'))
     py, go, *_ = _both(fake, tmp_path, go_bin, ["call", "auth"], env={"TREG_TOKEN": "env-token"})
     _assert_same(py, go)
+
+
+@pytest.mark.parametrize("env,runtime", [
+    ({"COPILOT_CLI": "1", "COPILOT_AGENT_SESSION_ID": "94be"}, "copilot-cli"),
+    ({"COPILOT_AGENT": "1"}, "copilot-vscode"),
+])
+def test_only_the_binary_names_copilot(fake, tmp_path, go_bin, env, runtime):
+    """A documented difference (cli-binary.md): the frozen Python CLI calls a command Copilot runs `cli`."""
+    fake.route("/call/hdr", Canned(200, {}, b"{}"))
+    py, go, py_seen, go_seen = _both(fake, tmp_path, go_bin, ["call", "hdr"], env={"TREG_TELEMETRY": "1", **env})
+    _assert_same(py, go)
+    assert py_seen[0].headers.get("x-treg-client") == "cli"
+    assert go_seen[0].headers.get("x-treg-client") == runtime
 
 
 def test_org_override_and_session_headers(fake, tmp_path, go_bin):

@@ -35,13 +35,32 @@ def _arguments():
         parsed = urlsplit(os.environ.get(key, ""))
         if parsed.hostname not in {"127.0.0.1", "localhost", "::1"}:
             parser.error(f"{key} must explicitly name a disposable loopback service")
+        if parsed.query:
+            parser.error(f"{key} must not carry query parameters: they can override its target")
     if not urlsplit(os.environ["TREG_TEST_DB_URL"]).path.lstrip("/").startswith("treg_admission_test"):
         parser.error("test database name must start with treg_admission_test")
+    # A configured secret source outranks environment variables in Settings, so it could point
+    # the registry at a database other than the one validated above.
+    os.environ.pop("TREG_AWS_SECRET_ID", None)
     os.environ.update(
         TREG_DATABASE_URL=os.environ["TREG_TEST_DB_URL"], TREG_READ_DATABASE_URL="",
         TREG_KV_URL=os.environ["TREG_TEST_KV_URL"], TREG_TELEMETRY="0", TREG_POSTHOG_KEY="",
     )
     return args
+
+
+def _require_disposable(engine) -> None:
+    """Refuse unless the DRIVER will connect to the loopback test database.
+
+    The URL's host and path are not what it connects to: query parameters such as `?host=` and
+    `?database=` override both, so the check reads the dialect's resolved connection arguments.
+    """
+    target = engine.dialect.create_connect_args(engine.url)[1]
+    database = target.get("database")
+    if (target.get("host") not in {"127.0.0.1", "localhost", "::1"} or not isinstance(database, str)
+            or not database.startswith("treg_admission_test") or "dsn" in target):
+        raise SystemExit("the database connection resolves to something other than the disposable "
+                         "loopback test database; refusing to touch it")
 
 
 async def _main(args):
@@ -55,6 +74,8 @@ async def _main(args):
     from treg.infra.money_session import money_session
     from treg.models import Org
 
+    # The engine the registry built, not the URL asked for: reset_db() below deletes its rows.
+    _require_disposable(session_maker.kw["bind"].sync_engine)
     settings = get_settings()
     settings.platform_margin = 0
     settings.money_admission_org_ids = []
@@ -101,6 +122,7 @@ async def _main(args):
                             work.append((org_id, call_id))
                     engine = create_async_engine(os.environ["TREG_TEST_DB_URL"],
                                                  pool_size=args.pool_size, max_overflow=0)
+                    _require_disposable(engine.sync_engine)
                     sessions = async_sessionmaker(engine, expire_on_commit=False)
                     # Warm the full pool symmetrically, so connection establishment does not
                     # distort the off/on comparison. All actual settlement work remains timed.

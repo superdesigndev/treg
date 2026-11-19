@@ -155,7 +155,7 @@ def test_an_entity_hold_counts_the_one_declared_entity_field(spec):
     ({"cost": {"type": "quota_rows", "value": 1}}, "quota_rows"),
     ({"cost": {"type": "per_success", "value": 1, "settle": "modifiers"}}, "plugin"),
     ({"cost": {"type": "per_result", "value": 1}}, "a person picks its reserve"),
-    ({"cost": {"type": "per_success", "value": 1, "tavily_rates": {}}}, "single-provider key"),
+    ({"cost": {"type": "per_success", "value": 1, "octen_rates": {}}}, "single-provider key"),
     ({"observed_cost": 0.1}, "a priced row needs provenance"),
     ({"cost": {"type": "per_success", "value": 1}, "miss": {"status": 404, "means": "x"}}, "one `miss` rule"),
 ])
@@ -347,6 +347,14 @@ def test_a_fallback_beside_its_equal_value_folds_its_note_into_the_price():
     assert change.keys["price"] == {"value": "0.0005", "note": "Settles at usage.cost. a small ceiling"}
     with pytest.raises(codemod.Refused, match="cost.fallback beside a different cost.value"):
         codemod.rewrite({"id": "demo.x", "cost": {**cost, "value": 0.001}}, provider="demo", check_branches=False)
+
+
+def test_a_worst_case_moves_beside_its_settle_form():
+    cost = {"type": "per_call", "value": 0.0005, "settle": "usage", "worst_case": 0.01,
+            "usage": {"path": "usage.cost", "unit": "usd"}, "source": "docs",
+            "source_url": "https://example.com", "checked": "2026-09-23", "confidence": "verified"}
+    change = codemod.rewrite({"id": "demo.x", "cost": cost}, provider="demo", check_branches=False)
+    assert change.keys["settle"] == {"usage": {"unit": "usd", "path": "response.usage.cost"}, "worst_case": "0.01"}
 
 
 @pytest.mark.parametrize("provider", ["hunter", "tikhub"])

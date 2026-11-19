@@ -40,7 +40,7 @@ CATALOG = ROOT / "src" / "treg" / "catalog"
 BRANCH_SOURCES = (ROOT / "src/treg/application/call/settle.py", ROOT / "src/treg/application/call/resolve.py",
                   ROOT / "src/treg/domain/catalog/results.py")
 PROVIDER_KEYS = ("call_fee", "call_fee_per", "contactout", "sumble", "enrichlayer", "octen_rates",
-                 "tavily_rates", "bills_miss", "miss_units", "ceiling_param")
+                 "bills_miss", "miss_units", "ceiling_param")
 PLUGIN_SETTLES = ("quantity", "base", "modifiers", "terminal_presence")
 # The 2xx error envelope today's result judge reads on every result-aware row (`results.classify`).
 ENVELOPE = {"any": [{"path": "response.error", "op": "present"}, {"path": "response.errors", "op": "present"}]}
@@ -360,6 +360,10 @@ def _cost(row: dict, provider: str, out: Rewrite, check_branches: bool) -> tuple
         keys["settle"] = {"usage": {"unit": usage["unit"], **(
             {"terms": [{"path": response_path(t["path"]), "rate": money(t["rate"])} for t in usage["terms"]]}
             if usage.get("terms") else {"path": response_path(usage["path"])})}}
+    if cost.get("worst_case") is not None:
+        if "reported" not in keys.get("settle", {}) and "usage" not in keys.get("settle", {}):
+            raise Refused("cost.worst_case beside neither a reported charge nor a usage settle")
+        keys["settle"]["worst_case"] = money(cost["worst_case"])
     bill: dict = {}
     if kind in ("per_call", "per_result"):
         # Today only a per_success row frees a miss or a failed `expect`; the others bill by their

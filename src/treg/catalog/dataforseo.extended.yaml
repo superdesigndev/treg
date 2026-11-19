@@ -260,6 +260,74 @@ endpoints:
   price: {value: '0.104', currency: USD, per: 1, unit: call}
   provenance: {source: observed, checked: '2026-07-28', confidence: verified}
   capability: ai-search.mentions.multi_target
+- id: dataforseo.x.ai-optimization-llm-mentions-cross-aggregated-metrics-live
+  verified: '2026-11-16'
+  example_response: examples/dataforseo.x.ai-optimization-llm-mentions-cross-aggregated-metrics-live.json
+  added: '2026-11-16'
+  platform: ai-search
+  method: POST
+  path: /ai_optimization/llm_mentions/cross_aggregated_metrics/live
+  name: "Compare LLM mention metrics across brands (older path)"
+  summary: 'Mention metrics for 2 to 10 target groups side by side, one result per `aggregation_key`. The older path of dataforseo.x.ai-optimization-llm-mentions-multi-target-metrics-live, which DataForSEO still serves with no end date; it takes the older request fields shown here.'
+  docs_url: https://docs.dataforseo.com/v3/ai_optimization/llm_mentions/cross_aggregated_metrics/live/
+  input:
+    bodyType: json
+    body:
+      targets:
+        type: array
+        required: true
+        note: 'up to 10 groups, each {"aggregation_key": "<label>", "target": [<entities as in the target field of the single-target routes>]}'
+        example:
+        - aggregation_key: hubspot
+          target:
+          - domain: hubspot.com
+        - aggregation_key: salesforce
+          target:
+          - domain: salesforce.com
+      location_code:
+        type: integer
+        required: false
+        note: default 2840 (United States); with platform chat_gpt only 2840 is valid (task status 40501 otherwise)
+        example: 2840
+      language_code:
+        type: string
+        required: false
+        note: default en; with platform chat_gpt only en is valid
+        example: en
+      platform:
+        type: string
+        required: false
+        note: google (AI Overviews, the default) or chat_gpt
+        example: google
+      initial_dataset_filters:
+        type: array
+        required: false
+      internal_list_limit:
+        type: integer
+        required: false
+        note: elements per internal array, 1-10, default 5
+        example: 3
+    note: the POST body is a JSON array holding exactly one task object with these fields; a live route rejects extra tasks with status 40000 "You can set only one task at a time"
+  test_request:
+    body:
+    - targets:
+      - aggregation_key: hubspot
+        target:
+        - domain: hubspot.com
+      - aggregation_key: salesforce
+        target:
+        - domain: salesforce.com
+      platform: google
+      location_code: 2840
+      language_code: en
+      internal_list_limit: 3
+    bodyType: json
+  price: {value: '0.1', currency: USD, per: 1, unit: call, note: '$0.1 per request + $0.001 per returned row, the same rate as dataforseo.x.ai-optimization-llm-mentions-multi-target-metrics-live; the response `cost` is the exact charge and settles the call'}
+  provenance:
+    source: rate_card_api
+    source_url: https://api.dataforseo.com/v3/appendix/user_data
+    checked: '2026-11-16'
+    confidence: verified
 - id: dataforseo.x.ai-optimization-llm-mentions-search-mentions-live
   platform: ai-search
   method: POST
@@ -361,6 +429,75 @@ endpoints:
   price: {value: '0.103', currency: USD, per: 1, unit: call}
   provenance: {source: observed, checked: '2026-07-28', confidence: verified}
   capability: ai-search.mentions.search
+- id: dataforseo.x.ai-optimization-llm-mentions-search-live
+  verified: '2026-11-16'
+  example_response: examples/dataforseo.x.ai-optimization-llm-mentions-search-live.json
+  added: '2026-11-16'
+  platform: ai-search
+  method: POST
+  path: /ai_optimization/llm_mentions/search/live
+  name: "Search LLM mentions of a keyword or domain (older path)"
+  summary: 'Mentions of a keyword or domain in AI answers, with their metrics. The older path of dataforseo.x.ai-optimization-llm-mentions-search-mentions-live, which DataForSEO still serves with no end date; it takes the older request fields shown here.'
+  docs_url: https://docs.dataforseo.com/v3/ai_optimization/llm_mentions/search/live/
+  input:
+    bodyType: json
+    body:
+      target:
+        type: array
+        required: true
+        note: 'up to 10 entities, each one domain ({"domain": "hubspot.com", "search_filter": "include|exclude", "search_scope": ["any|sources|search_results"], "include_subdomains": false}) or one keyword ({"keyword": "crm", "search_filter": "include|exclude", "search_scope": ["any|question|answer|brand_entities|fan_out_queries"], "match_type": "word_match|partial_match"}); all entities are AND-combined into one filter'
+        example:
+        - domain: hubspot.com
+      location_code:
+        type: integer
+        required: false
+        note: default 2840 (United States); with platform chat_gpt only 2840 is valid (task status 40501 otherwise)
+        example: 2840
+      language_code:
+        type: string
+        required: false
+        note: default en; with platform chat_gpt only en is valid
+        example: en
+      platform:
+        type: string
+        required: false
+        note: google (AI Overviews, the default) or chat_gpt
+        example: google
+      limit:
+        type: integer
+        required: false
+        note: rows returned, default 100, max 1000; each row costs $0.001
+        example: 3
+      offset:
+        type: integer
+        required: false
+      filters:
+        type: array
+        required: false
+      order_by:
+        type: array
+        required: false
+        example:
+        - ai_search_volume,desc
+      search_after_token:
+        type: string
+        required: false
+    note: the POST body is a JSON array holding exactly one task object with these fields; a live route rejects extra tasks with status 40000 "You can set only one task at a time"
+  test_request:
+    body:
+    - target:
+      - domain: hubspot.com
+      platform: google
+      location_code: 2840
+      language_code: en
+      limit: 3
+    bodyType: json
+  price: {value: '0.1', currency: USD, per: 1, unit: call, note: '$0.1 per request + $0.001 per returned row, the same rate as dataforseo.x.ai-optimization-llm-mentions-search-mentions-live; the response `cost` is the exact charge and settles the call'}
+  provenance:
+    source: rate_card_api
+    source_url: https://api.dataforseo.com/v3/appendix/user_data
+    checked: '2026-11-16'
+    confidence: verified
 - id: dataforseo.x.ai-optimization-llm-mentions-target-metrics-live
   platform: ai-search
   method: POST
@@ -444,6 +581,65 @@ endpoints:
   price: {value: '0.101', currency: USD, per: 1, unit: call}
   provenance: {source: observed, checked: '2026-07-28', confidence: verified}
   capability: ai-search.mentions.summary
+- id: dataforseo.x.ai-optimization-llm-mentions-aggregated-metrics-live
+  verified: '2026-11-16'
+  example_response: examples/dataforseo.x.ai-optimization-llm-mentions-aggregated-metrics-live.json
+  added: '2026-11-16'
+  platform: ai-search
+  method: POST
+  path: /ai_optimization/llm_mentions/aggregated_metrics/live
+  name: "LLM mention metrics for a keyword or domain (older path)"
+  summary: 'Aggregated mention metrics for the target, grouped by location, language, platform, sources and search-results domains. The older path of dataforseo.x.ai-optimization-llm-mentions-target-metrics-live, which DataForSEO still serves with no end date; it takes the older request fields shown here.'
+  docs_url: https://docs.dataforseo.com/v3/ai_optimization/llm_mentions/aggregated_metrics/live/
+  input:
+    bodyType: json
+    body:
+      target:
+        type: array
+        required: true
+        note: 'up to 10 entities, each one domain ({"domain": "hubspot.com", "search_filter": "include|exclude", "search_scope": ["any|sources|search_results"], "include_subdomains": false}) or one keyword ({"keyword": "crm", "search_filter": "include|exclude", "search_scope": ["any|question|answer|brand_entities|fan_out_queries"], "match_type": "word_match|partial_match"}); all entities are AND-combined into one filter'
+        example:
+        - domain: hubspot.com
+      location_code:
+        type: integer
+        required: false
+        note: default 2840 (United States); with platform chat_gpt only 2840 is valid (task status 40501 otherwise)
+        example: 2840
+      language_code:
+        type: string
+        required: false
+        note: default en; with platform chat_gpt only en is valid
+        example: en
+      platform:
+        type: string
+        required: false
+        note: google (AI Overviews, the default) or chat_gpt
+        example: google
+      initial_dataset_filters:
+        type: array
+        required: false
+        note: filters applied to the raw mentions before aggregation, up to 8
+      internal_list_limit:
+        type: integer
+        required: false
+        note: elements per internal array (sources_domain, search_results_domain), 1-20
+        example: 3
+    note: the POST body is a JSON array holding exactly one task object with these fields; a live route rejects extra tasks with status 40000 "You can set only one task at a time"
+  test_request:
+    body:
+    - target:
+      - domain: hubspot.com
+      platform: google
+      location_code: 2840
+      language_code: en
+      internal_list_limit: 3
+    bodyType: json
+  price: {value: '0.1', currency: USD, per: 1, unit: call, note: '$0.1 per request + $0.001 per returned row, the same rate as dataforseo.x.ai-optimization-llm-mentions-target-metrics-live; the response `cost` is the exact charge and settles the call'}
+  provenance:
+    source: rate_card_api
+    source_url: https://api.dataforseo.com/v3/appendix/user_data
+    checked: '2026-11-16'
+    confidence: verified
 - id: dataforseo.x.ai-optimization-llm-mentions-target-metrics-lite-live
   platform: ai-search
   method: POST
@@ -1510,6 +1706,74 @@ endpoints:
   price: {value: '0.103', currency: USD, per: 1, unit: call}
   provenance: {source: observed, checked: '2026-07-28', confidence: verified}
   capability: ai-search.mentions.top_pages
+- id: dataforseo.x.ai-optimization-llm-mentions-top-pages-live
+  verified: '2026-11-16'
+  example_response: examples/dataforseo.x.ai-optimization-llm-mentions-top-pages-live.json
+  added: '2026-11-16'
+  platform: ai-search
+  method: POST
+  path: /ai_optimization/llm_mentions/top_pages/live
+  name: "Pages most cited in LLM mentions (older path)"
+  summary: 'The pages AI answers cite most for the target, with mention metrics per page. The older path of dataforseo.x.ai-optimization-llm-mentions-top-mentioned-pages-live, which DataForSEO still serves with no end date; it takes the older request fields shown here.'
+  docs_url: https://docs.dataforseo.com/v3/ai_optimization/llm_mentions/top_pages/live/
+  input:
+    bodyType: json
+    body:
+      target:
+        type: array
+        required: true
+        note: 'up to 10 entities, each one domain ({"domain": "hubspot.com", "search_filter": "include|exclude", "search_scope": ["any|sources|search_results"], "include_subdomains": false}) or one keyword ({"keyword": "crm", "search_filter": "include|exclude", "search_scope": ["any|question|answer|brand_entities|fan_out_queries"], "match_type": "word_match|partial_match"}); all entities are AND-combined into one filter'
+        example:
+        - domain: hubspot.com
+      location_code:
+        type: integer
+        required: false
+        note: default 2840 (United States); with platform chat_gpt only 2840 is valid (task status 40501 otherwise)
+        example: 2840
+      language_code:
+        type: string
+        required: false
+        note: default en; with platform chat_gpt only en is valid
+        example: en
+      platform:
+        type: string
+        required: false
+        note: google (AI Overviews, the default) or chat_gpt
+        example: google
+      links_scope:
+        type: string
+        required: false
+        note: sources (default) or search_results
+      initial_dataset_filters:
+        type: array
+        required: false
+      items_list_limit:
+        type: integer
+        required: false
+        note: pages returned, 1-10, default 5; the newer path ignores this field and returns up to `limit` (default 100) rows instead
+        example: 3
+      internal_list_limit:
+        type: integer
+        required: false
+        note: elements per internal array, 1-10, default 5
+        example: 3
+    note: the POST body is a JSON array holding exactly one task object with these fields; a live route rejects extra tasks with status 40000 "You can set only one task at a time"
+  test_request:
+    body:
+    - target:
+      - domain: hubspot.com
+      platform: google
+      location_code: 2840
+      language_code: en
+      items_list_limit: 3
+      internal_list_limit: 3
+    bodyType: json
+  price: {value: '0.1', currency: USD, per: 1, unit: call, note: '$0.1 per request + $0.001 per returned row, the same rate as dataforseo.x.ai-optimization-llm-mentions-top-mentioned-pages-live; the response `cost` is the exact charge and settles the call'}
+  provenance:
+    source: rate_card_api
+    source_url: https://api.dataforseo.com/v3/appendix/user_data
+    checked: '2026-11-16'
+    confidence: verified
 - id: dataforseo.x.ai-optimization-llm-mentions-top-mentioned-pages-lite-live
   platform: ai-search
   method: POST
@@ -4164,6 +4428,24 @@ endpoints:
   price: {value: '0.0292488', currency: USD, per: 1, unit: call}
   provenance: {source: observed, checked: '2026-07-28', confidence: verified}
   capability: ai-search.chatgpt.answer
+- id: dataforseo.x.ai-optimization-chat-gpt-llm-responses-models
+  verified: '2026-11-16'
+  example_response: examples/dataforseo.x.ai-optimization-chat-gpt-llm-responses-models.json
+  added: '2026-11-16'
+  kind: utility
+  platform: ai-search
+  method: GET
+  path: /ai_optimization/chat_gpt/llm_responses/models
+  price:
+    value: '0'
+    currency: USD
+    unit: call
+    note: DataForSEO documents this route as free ("Your account will not be charged for using this API")
+  expect: null
+  name: "ChatGPT model names for LLM responses"
+  summary: The ChatGPT models dataforseo.x.ai-optimization-chat-gpt-llm-responses-live accepts in `model_name`, with whether each supports web search and reasoning.
+  docs_url: https://docs.dataforseo.com/v3/ai_optimization/chat_gpt/llm_responses/models/
+  test_request: {queryParams: {}}
 - id: dataforseo.x.ai-optimization-chat-gpt-llm-scraper-live-advanced
   platform: ai-search
   method: POST
@@ -4216,8 +4498,156 @@ endpoints:
   example_response: examples/dataforseo.x.ai-optimization-chat-gpt-llm-scraper-live-advanced.json
   price: {value: '0.004', currency: USD, per: 1, unit: call}
   provenance: {source: observed, checked: '2026-07-28', confidence: verified}
-  miss: {when: {path: response.tasks.0.result.0.markdown, op: absent}}
+  miss:
+    when:
+      any:
+        - {path: response.tasks.0.result.0.markdown, op: absent}
+        - {path: response.tasks.0.result.0.markdown, op: empty}
   capability: ai-search.chatgpt.scrape
+- id: dataforseo.x.ai-optimization-chat-gpt-llm-scraper-task-get-advanced
+  added: '2026-11-16'
+  platform: ai-search
+  kind: utility
+  method: GET
+  path: /ai_optimization/chat_gpt/llm_scraper/task_get/advanced/{id}
+  name: ChatGPT search results for a keyword (task result)
+  summary: 'The result of a task submitted with dataforseo.x.ai-optimization-chat-gpt-llm-scraper-task-post: free, readable only by the team that submitted it, for 30 days.'
+  docs_url: https://docs.dataforseo.com/v3/ai_optimization/chat_gpt/llm_scraper/task_get/advanced/
+  input:
+    pathParams:
+      id:
+        type: string
+        required: true
+        note: tasks[].id from the submission's answer
+        example: 00000000-0000-0000-0000-000000000000
+  price:
+    value: '0'
+    currency: USD
+    unit: call
+    note: DataForSEO does not bill task_get; the submission paid for the task
+  expect: null
+  resource_ownership:
+    requires:
+      kind: poll:dataforseo.x.ai-optimization-chat-gpt-llm-scraper-task-get-advanced
+      param: id
+- id: dataforseo.x.ai-optimization-chat-gpt-llm-scraper-task-post
+  verified: '2026-11-16'
+  added: '2026-11-16'
+  example_response: examples/dataforseo.x.ai-optimization-chat-gpt-llm-scraper-task-post.json
+  platform: ai-search
+  method: POST
+  path: /ai_optimization/chat_gpt/llm_scraper/task_post
+  name: ChatGPT search results for a keyword (async task)
+  summary: 'The Standard-queue form of dataforseo.x.ai-optimization-chat-gpt-llm-scraper-live-advanced: up to 100 tasks per request, results in minutes, about a third of the live price.'
+  docs_url: https://docs.dataforseo.com/v3/ai_optimization/chat_gpt/llm_scraper/task_post/
+  input:
+    bodyType: json
+    body:
+      keyword:
+        type: string
+        required: false
+        note: '<em>keyword</em><br><strong>required field</strong><br>you can specify <strong>up to 2000 characters</strong> in the <code>keyword</code> field<br>all %## will be decoded (plus character ‘+’ will be decoded to a space character)<br>if you need to use the “%” character for your <code>keyword</code>, '
+        example: albert einstein
+      location_name:
+        type: string
+        required: false
+        note: <em>full name of search engine location</em><br><strong>required field if you don't specify</strong> <code>location_code</code><br><strong>if you use this field, you don't need to specify <code>location_code</code></strong><br>you can receive the list of available locations of the search engine with
+      location_code:
+        type: integer
+        required: false
+        note: '<em>search engine location code</em><br><strong>required field if you don''t specify</strong> <code>location_name</code><br><strong>if you use this field, you don''t need to specify <code>location_name</code></strong><br>you can receive the list of available locations of the search engines with their '
+        example: 2840
+      language_name:
+        type: string
+        required: false
+        note: <em>full name of search engine language</em><br><strong>required field if you don't specify <code>language_code</code>;</strong><br>if you use this field, you don't need to specify <code>language_code</code>;<br>you can receive the list of available languages of the search engine with their <code>la
+      language_code:
+        type: string
+        required: false
+        note: <em>search engine language code</em><br><strong>required field if you don't specify <code>language_name</code>;</strong><br>if you use this field, you don't need to specify <code>language_name</code>;<br>you can receive the list of available languages of the search engine with their <code>language_c
+        example: en
+      force_web_search:
+        type: boolean
+        required: false
+        note: '<em>force AI agent to use web search</em><br>optional field<br>when enabled, the AI model is forced to access and cite current web information;<br>default value: <code>false</code>;<br><strong>Note:</strong> even if the parameter is set to <code>true</code>, there is no guarantee web sources will be'
+      tag:
+        type: string
+        required: false
+        note: <em>user-defined task identifier</em><br>optional field<br><em>the character limit is 255</em><br>you can use this parameter to identify the task and match it with the result<br>you will find the specified <code>tag</code> value in the <code>data</code> object of the response
+      priority:
+        type: integer
+        required: false
+        note: 1 = normal (default, the listed price); 2 = high priority, billed about twice the listed price
+    note: the POST body is a JSON array of up to 100 task objects with these fields, one per task; read each task's result (tasks[].id) with dataforseo.x.ai-optimization-chat-gpt-llm-scraper-task-get-advanced, which only the submitting team can read
+  test_request:
+    body:
+    - language_code: en
+      location_code: 2840
+      keyword: albert einstein
+    bodyType: json
+  price:
+    value: '0.0012'
+    currency: USD
+    per: 1
+    unit: call
+    note: Standard queue, per results page. The hold covers every task in the array; the envelope `cost` DataForSEO reports for the submission is the bill.
+  provenance:
+    source: observed
+    source_url: https://dataforseo.com/pricing/ai-optimization/llm-scraper
+    checked: '2026-11-16'
+    confidence: verified
+  reserve:
+    entities:
+      from: body.*
+      max: 100
+  expect:
+    path: response.tasks.0.status_code
+    op: equals
+    value: 20100
+  resource_ownership:
+    produces:
+    - kind: poll:dataforseo.x.ai-optimization-chat-gpt-llm-scraper-task-get-advanced
+      path: tasks.*.id
+  async:
+    id_from: tasks.0.id
+    poll:
+      endpoint: dataforseo.x.ai-optimization-chat-gpt-llm-scraper-task-get-advanced
+      param:
+        in: pathParams
+        name: id
+    status:
+      path: tasks.0.status_code
+      progress:
+      - 20100
+      - 40601
+      - 40602
+      success:
+      - 20000
+      failure: []
+      billed_failure:
+      - 40101
+      - 40102
+      - 40103
+      - 40106
+      - 40400
+      - 40401
+      - 40402
+      - 40403
+      - 40404
+      - 40405
+      - 40408
+      - 50000
+      - 50001
+      - 50301
+      - 50302
+      - 50303
+      - 50304
+      - 50401
+      - 50402
+    result:
+      path: tasks.0.result
+      ttl_note: 30 days
+    interval: 20
 - id: dataforseo.x.ai-optimization-chat-gpt-llm-scraper-locations-country
   added: '2026-07-28'
   kind: utility
@@ -4333,6 +4763,24 @@ endpoints:
     note: 'DataForSEO bills the model''s tokens, so the price moves with prompt and answer length: over the 14 days to 2026-10-02 real charges ran $0.0245 median, $0.056 at p90 and $0.29 at the top. Cap it with `max_output_tokens`. The response `cost` is the exact charge and settles the call.'
   provenance: {source: observed, checked: '2026-10-02', confidence: verified}
   capability: ai-search.claude.answer
+- id: dataforseo.x.ai-optimization-claude-llm-responses-models
+  verified: '2026-11-16'
+  example_response: examples/dataforseo.x.ai-optimization-claude-llm-responses-models.json
+  added: '2026-11-16'
+  kind: utility
+  platform: ai-search
+  method: GET
+  path: /ai_optimization/claude/llm_responses/models
+  price:
+    value: '0'
+    currency: USD
+    unit: call
+    note: DataForSEO documents this route as free ("Your account will not be charged for using this API")
+  expect: null
+  name: "Claude model names for LLM responses"
+  summary: The Claude models dataforseo.x.ai-optimization-claude-llm-responses-live accepts in `model_name`, with whether each supports web search and reasoning.
+  docs_url: https://docs.dataforseo.com/v3/ai_optimization/claude/llm_responses/models/
+  test_request: {queryParams: {}}
 - id: dataforseo.x.ai-optimization-gemini-llm-responses-live
   platform: ai-search
   method: POST
@@ -4416,6 +4864,24 @@ endpoints:
   price: {value: '0.036256', currency: USD, per: 1, unit: call}
   provenance: {source: observed, checked: '2026-07-28', confidence: verified}
   capability: ai-search.gemini.answer
+- id: dataforseo.x.ai-optimization-gemini-llm-responses-models
+  verified: '2026-11-16'
+  example_response: examples/dataforseo.x.ai-optimization-gemini-llm-responses-models.json
+  added: '2026-11-16'
+  kind: utility
+  platform: ai-search
+  method: GET
+  path: /ai_optimization/gemini/llm_responses/models
+  price:
+    value: '0'
+    currency: USD
+    unit: call
+    note: DataForSEO documents this route as free ("Your account will not be charged for using this API")
+  expect: null
+  name: "Gemini model names for LLM responses"
+  summary: The Gemini models dataforseo.x.ai-optimization-gemini-llm-responses-live accepts in `model_name`, with whether each supports web search and reasoning.
+  docs_url: https://docs.dataforseo.com/v3/ai_optimization/gemini/llm_responses/models/
+  test_request: {queryParams: {}}
 - id: dataforseo.x.ai-optimization-gemini-llm-scraper-live-advanced
   platform: ai-search
   method: POST
@@ -4468,8 +4934,156 @@ endpoints:
   example_response: examples/dataforseo.x.ai-optimization-gemini-llm-scraper-live-advanced.json
   price: {value: '0.004', currency: USD, per: 1, unit: call}
   provenance: {source: observed, checked: '2026-07-28', confidence: verified}
-  miss: {when: {path: response.tasks.0.result.0.markdown, op: absent}}
+  miss:
+    when:
+      any:
+        - {path: response.tasks.0.result.0.markdown, op: absent}
+        - {path: response.tasks.0.result.0.markdown, op: empty}
   capability: ai-search.gemini.scrape
+- id: dataforseo.x.ai-optimization-gemini-llm-scraper-task-get-advanced
+  added: '2026-11-16'
+  platform: ai-search
+  kind: utility
+  method: GET
+  path: /ai_optimization/gemini/llm_scraper/task_get/advanced/{id}
+  name: Gemini search results for a keyword (task result)
+  summary: 'The result of a task submitted with dataforseo.x.ai-optimization-gemini-llm-scraper-task-post: free, readable only by the team that submitted it, for 30 days.'
+  docs_url: https://docs.dataforseo.com/v3/ai_optimization/gemini/llm_scraper/task_get/advanced/
+  input:
+    pathParams:
+      id:
+        type: string
+        required: true
+        note: tasks[].id from the submission's answer
+        example: 00000000-0000-0000-0000-000000000000
+  price:
+    value: '0'
+    currency: USD
+    unit: call
+    note: DataForSEO does not bill task_get; the submission paid for the task
+  expect: null
+  resource_ownership:
+    requires:
+      kind: poll:dataforseo.x.ai-optimization-gemini-llm-scraper-task-get-advanced
+      param: id
+- id: dataforseo.x.ai-optimization-gemini-llm-scraper-task-post
+  verified: '2026-11-16'
+  added: '2026-11-16'
+  example_response: examples/dataforseo.x.ai-optimization-gemini-llm-scraper-task-post.json
+  platform: ai-search
+  method: POST
+  path: /ai_optimization/gemini/llm_scraper/task_post
+  name: Gemini search results for a keyword (async task)
+  summary: 'The Standard-queue form of dataforseo.x.ai-optimization-gemini-llm-scraper-live-advanced: up to 100 tasks per request, results in minutes, about a third of the live price.'
+  docs_url: https://docs.dataforseo.com/v3/ai_optimization/gemini/llm_scraper/task_post/
+  input:
+    bodyType: json
+    body:
+      keyword:
+        type: string
+        required: false
+        note: '<em>keyword</em><br><strong>required field</strong><br>you can specify <strong>up to 2000 characters</strong> in the <code>keyword</code> field<br>all %## will be decoded (plus character ‘+’ will be decoded to a space character)<br>if you need to use the “%” character for your <code>keyword</code>, '
+        example: albert einstein
+      location_name:
+        type: string
+        required: false
+        note: <em>full name of search engine location</em><br><strong>required field if you don't specify</strong> <code>location_code</code> or <code>location_coordinate</code><br><strong>if you use this field, you don't need to specify <code>location_code</code> or <code>location_coordinate</code></strong><br>y
+      location_code:
+        type: integer
+        required: false
+        note: <em>search engine location code</em><br><strong>required field if you don't specify</strong> <code>location_name</code> or <code>location_coordinate</code><br><strong>if you use this field, you don't need to specify <code>location_name</code> or <code>location_coordinate</code></strong><br>you can r
+        example: 2840
+      location_coordinate:
+        type: string
+        required: false
+        note: <p><em>GPS coordinates of a location</em><p><strong>required field if you don't specify</strong> <code>location_name</code>&nbsp;or <code>location_code</code><p><strong>if you use this field, you don't need to specify <code>location_name</code> or <code>location_code</code></strong><p><code>location
+      language_name:
+        type: string
+        required: false
+        note: <em>full name of search engine language</em><br>required field if you don't specify <code>language_code</code>;<br>if you use this field, you don't need to specify <code>language_code</code>;<br>you can receive the list of available languages of the search engine with their <code>language_name</code
+      language_code:
+        type: string
+        required: false
+        note: <em>search engine language code</em><br>required field if you don't specify <code>language_name</code>;<br>if you use this field, you don't need to specify <code>language_name</code>;<br>you can receive the list of available languages of the search engine with their <code>language_code</code>_by mak
+        example: en
+      tag:
+        type: string
+        required: false
+        note: <em>user-defined task identifier</em><br>optional field<br><em>the character limit is 255</em><br>you can use this parameter to identify the task and match it with the result<br>you will find the specified <code>tag</code> value in the <code>data</code> object of the response
+      priority:
+        type: integer
+        required: false
+        note: 1 = normal (default, the listed price); 2 = high priority, billed about twice the listed price
+    note: the POST body is a JSON array of up to 100 task objects with these fields, one per task; read each task's result (tasks[].id) with dataforseo.x.ai-optimization-gemini-llm-scraper-task-get-advanced, which only the submitting team can read
+  test_request:
+    body:
+    - language_code: en
+      location_code: 2840
+      keyword: albert einstein
+    bodyType: json
+  price:
+    value: '0.0012'
+    currency: USD
+    per: 1
+    unit: call
+    note: Standard queue, per results page. The hold covers every task in the array; the envelope `cost` DataForSEO reports for the submission is the bill.
+  provenance:
+    source: observed
+    source_url: https://dataforseo.com/pricing/ai-optimization/llm-scraper
+    checked: '2026-11-16'
+    confidence: verified
+  reserve:
+    entities:
+      from: body.*
+      max: 100
+  expect:
+    path: response.tasks.0.status_code
+    op: equals
+    value: 20100
+  resource_ownership:
+    produces:
+    - kind: poll:dataforseo.x.ai-optimization-gemini-llm-scraper-task-get-advanced
+      path: tasks.*.id
+  async:
+    id_from: tasks.0.id
+    poll:
+      endpoint: dataforseo.x.ai-optimization-gemini-llm-scraper-task-get-advanced
+      param:
+        in: pathParams
+        name: id
+    status:
+      path: tasks.0.status_code
+      progress:
+      - 20100
+      - 40601
+      - 40602
+      success:
+      - 20000
+      failure: []
+      billed_failure:
+      - 40101
+      - 40102
+      - 40103
+      - 40106
+      - 40400
+      - 40401
+      - 40402
+      - 40403
+      - 40404
+      - 40405
+      - 40408
+      - 50000
+      - 50001
+      - 50301
+      - 50302
+      - 50303
+      - 50304
+      - 50401
+      - 50402
+    result:
+      path: tasks.0.result
+      ttl_note: 30 days
+    interval: 20
 - id: dataforseo.x.business-data-google-extended-reviews-task-get
   added: '2026-10-15'
   platform: google
@@ -7618,7 +8232,7 @@ endpoints:
       country:
         type: string
         required: true
-        note: "ISO 3166-1 alpha-2 country code, lowercase (e.g. de). The list for a large country can be longer than treg's 8 MiB response limit; that call is refused with 502 response_buffer_limit and not charged. Most data routes also accept location_name (e.g. \"Germany\") instead of a code."
+        note: "ISO 3166-1 alpha-2 country code, lowercase (e.g. de). The list for a large country runs to several MiB and is relayed whole. Most data routes also accept location_name (e.g. \"Germany\") instead of a code."
         example: de
   untestable: the OpenAPI spec ships no example request body for this route, so no test request could be generated
 - id: dataforseo.x.keywords-data-google-trends-explore-live
@@ -8650,6 +9264,174 @@ endpoints:
   example_response: examples/dataforseo.x.serp-google-ai-mode-live-advanced.json
   price: {value: '0.004', currency: USD, per: 1, unit: call}
   provenance: {source: observed, checked: '2026-07-28', confidence: verified}
+- id: dataforseo.x.serp-google-ai-mode-task-get-advanced
+  added: '2026-11-16'
+  platform: google
+  kind: utility
+  method: GET
+  path: /serp/google/ai_mode/task_get/advanced/{id}
+  name: Google AI Mode results for a keyword (task result)
+  summary: 'The result of a task submitted with dataforseo.x.serp-google-ai-mode-task-post: free, readable only by the team that submitted it, for 30 days.'
+  docs_url: https://docs.dataforseo.com/v3/serp/google/ai_mode/task_get/advanced/
+  input:
+    pathParams:
+      id:
+        type: string
+        required: true
+        note: tasks[].id from the submission's answer
+        example: 00000000-0000-0000-0000-000000000000
+  price:
+    value: '0'
+    currency: USD
+    unit: call
+    note: DataForSEO does not bill task_get; the submission paid for the task
+  expect: null
+  resource_ownership:
+    requires:
+      kind: poll:dataforseo.x.serp-google-ai-mode-task-get-advanced
+      param: id
+- id: dataforseo.x.serp-google-ai-mode-task-post
+  verified: '2026-11-16'
+  added: '2026-11-16'
+  example_response: examples/dataforseo.x.serp-google-ai-mode-task-post.json
+  platform: google
+  method: POST
+  path: /serp/google/ai_mode/task_post
+  name: Google AI Mode results for a keyword (async task)
+  summary: 'The Standard-queue form of dataforseo.x.serp-google-ai-mode-live-advanced: up to 100 tasks per request, results in minutes, about a third of the live price.'
+  docs_url: https://docs.dataforseo.com/v3/serp/google/ai_mode/task_post/
+  input:
+    bodyType: json
+    body:
+      keyword:
+        type: string
+        required: false
+        note: <p><em>keyword</em><p><strong>required field</strong><p>you can specify <strong>up to 700 characters</strong> in the <code>keyword</code> field<p>all %## will be decoded (plus character ‘+’ will be decoded to a space character)<p>if you need to use the “%” character for your <code>keyword</code>, pl
+        example: what is google ai mode
+      location_code:
+        type: integer
+        required: false
+        note: '<p><em>search engine location code</em><p><strong>required field if you don''t specify</strong> <code>location_name</code>&nbsp;or <code>location_coordinate</code><p><strong>if you use this field, you don''t need to specify <code>location_name</code> or <code>location_coordinate</code></strong><p>you '
+        example: 2840
+      language_code:
+        type: string
+        required: false
+        note: <p><em>search engine language code</em><p>required field if you don't specify <code>language_name</code>;<p>if you use this field, you don't need to specify <code>language_name</code>;<p>you can receive the list of available languages of the search engine with their <code>language_code</code>&nbsp;b
+        example: en
+      device:
+        type: string
+        required: false
+        note: '<p><em>device type</em><p>optional field<p>return results for a specific device type<p>can take the values:<code>desktop</code>, <code>mobile</code><p>default value: <code>desktop</code></p>'
+      location_name:
+        type: string
+        required: false
+        note: <p><em>full name of search engine location</em><p><strong>required field if you don't specify</strong> <code>location_code</code> or <code>location_coordinate</code><p><strong>if you use this field, you don't need to specify <code>location_code</code> or <code>location_coordinate</code></strong><p>y
+      language_name:
+        type: string
+        required: false
+        note: <p><em>full name of search engine language</em><p>required field if you don't specify <code>language_code</code>;<p>if you use this field, you don't need to specify <code>language_code</code>;<p>you can receive the list of available languages of the search engine with their <code>language_name</code
+      os:
+        type: string
+        required: false
+        note: '<p><em>device operating system</em><p>optional field<p>if you specify <code>desktop</code> in the <code>device</code> field, choose from the following values: <code>windows</code>, <code>macos</code><p>default value: <code>windows</code><p>if you specify <code>mobile</code> in the <code>device</code'
+      tag:
+        type: string
+        required: false
+        note: <p><em>user-defined task identifier</em><p>optional field<p><em>the character limit is 255</em><p>you can use this parameter to identify the task and match it with the result<p>you will find the specified <code>tag</code> value in the <code>data</code> object of the response</p>
+      calculate_rectangles:
+        type: boolean
+        required: false
+        note: <p><em>calculate pixel rankings for SERP elements in advanced results</em><p>optional field<p>pixel ranking refers to the distance between the result snippet and top left corner of the screen;<p><a href="https://dataforseo.com/help-center/pixel-ranking-in-serp-api">Visit Help Center to learn more&gt
+      browser_screen_width:
+        type: integer
+        required: false
+        note: '<p><em>browser screen width</em><p>optional field<p>you can set a custom browser screen width to calculate pixel rankings for a particular device;<p>can be specified within the following range: <code>240-9999</code>;<p>by default, the parameter is set to:<p><code>1920</code> for <code>desktop</code>'
+      browser_screen_height:
+        type: integer
+        required: false
+        note: '<p><em>browser screen height</em><p>optional field<p>you can set a custom browser screen height to calculate pixel rankings for a particular device;<p>can be specified within the following range: <code>240-9999</code>;<p>by default, the parameter is set to:<p><code>1080</code> for <code>desktop</cod'
+      browser_screen_resolution_ratio:
+        type: integer
+        required: false
+        note: '<p><em>browser screen resolution ratio</em><p>optional field<p>you can set a custom browser screen resolution ratio to calculate pixel rankings for a particular device;<p>can be specified within the following range: <code>0.5-3</code>;<p>by default, the parameter is set to:<p><code>1</code> for <cod'
+      location_coordinate:
+        type: string
+        required: false
+        note: <p><em>GPS coordinates of a location</em><p><strong>required field if you don't specify</strong> <code>location_name</code>&nbsp;or <code>location_code</code><p><strong>if you use this field, you don't need to specify <code>location_name</code> or <code>location_code</code></strong><p><code>location
+      priority:
+        type: integer
+        required: false
+        note: 1 = normal (default, the listed price); 2 = high priority, billed about twice the listed price
+    note: the POST body is a JSON array of up to 100 task objects with these fields, one per task; read each task's result (tasks[].id) with dataforseo.x.serp-google-ai-mode-task-get-advanced, which only the submitting team can read
+  test_request:
+    body:
+    - language_code: en
+      location_code: 2840
+      keyword: what is google ai mode
+    bodyType: json
+  price:
+    value: '0.0012'
+    currency: USD
+    per: 1
+    unit: call
+    note: Standard queue, per SERP. The hold covers every task in the array; the envelope `cost` DataForSEO reports for the submission is the bill.
+  provenance:
+    source: observed
+    source_url: https://dataforseo.com/pricing/serp/google-ai-mode-serp-api
+    checked: '2026-11-16'
+    confidence: verified
+  reserve:
+    entities:
+      from: body.*
+      max: 100
+  expect:
+    path: response.tasks.0.status_code
+    op: equals
+    value: 20100
+  resource_ownership:
+    produces:
+    - kind: poll:dataforseo.x.serp-google-ai-mode-task-get-advanced
+      path: tasks.*.id
+  async:
+    id_from: tasks.0.id
+    poll:
+      endpoint: dataforseo.x.serp-google-ai-mode-task-get-advanced
+      param:
+        in: pathParams
+        name: id
+    status:
+      path: tasks.0.status_code
+      progress:
+      - 20100
+      - 40601
+      - 40602
+      success:
+      - 20000
+      failure: []
+      billed_failure:
+      - 40101
+      - 40102
+      - 40103
+      - 40106
+      - 40400
+      - 40401
+      - 40402
+      - 40403
+      - 40404
+      - 40405
+      - 40408
+      - 50000
+      - 50001
+      - 50301
+      - 50302
+      - 50303
+      - 50304
+      - 50401
+      - 50402
+    result:
+      path: tasks.0.result
+      ttl_note: 30 days
+    interval: 20
 - id: dataforseo.x.serp-google-autocomplete-live-advanced
   platform: google
   method: POST
@@ -9458,7 +10240,7 @@ endpoints:
       country:
         type: string
         required: true
-        note: "ISO 3166-1 alpha-2 country code, lowercase (e.g. de). The list for a large country can be longer than treg's 8 MiB response limit; that call is refused with 502 response_buffer_limit and not charged. Most data routes also accept location_name (e.g. \"Germany\") instead of a code."
+        note: "ISO 3166-1 alpha-2 country code, lowercase (e.g. de). The list for a large country runs to several MiB and is relayed whole. Most data routes also accept location_name (e.g. \"Germany\") instead of a code."
         example: de
   untestable: the OpenAPI spec ships no example request body for this route, so no test request could be generated
 - id: dataforseo.x.serp-google-maps-live-advanced
@@ -9547,6 +10329,178 @@ endpoints:
     when:
       - {path: response.tasks.0.result.0.items, op: present}
       - {path: response.tasks.0.result.0.items, op: empty}
+- id: dataforseo.x.serp-google-maps-task-get-advanced
+  added: '2026-11-16'
+  platform: google
+  kind: utility
+  method: GET
+  path: /serp/google/maps/task_get/advanced/{id}
+  name: Google Maps results for a keyword (task result)
+  summary: 'The result of a task submitted with dataforseo.x.serp-google-maps-task-post: free, readable only by the team that submitted it, for 30 days.'
+  docs_url: https://docs.dataforseo.com/v3/serp/google/maps/task_get/advanced/
+  input:
+    pathParams:
+      id:
+        type: string
+        required: true
+        note: tasks[].id from the submission's answer
+        example: 00000000-0000-0000-0000-000000000000
+  price:
+    value: '0'
+    currency: USD
+    unit: call
+    note: DataForSEO does not bill task_get; the submission paid for the task
+  expect: null
+  resource_ownership:
+    requires:
+      kind: poll:dataforseo.x.serp-google-maps-task-get-advanced
+      param: id
+- id: dataforseo.x.serp-google-maps-task-post
+  verified: '2026-11-16'
+  added: '2026-11-16'
+  example_response: examples/dataforseo.x.serp-google-maps-task-post.json
+  platform: google
+  method: POST
+  path: /serp/google/maps/task_post
+  name: Google Maps results for a keyword (async task)
+  summary: 'The Standard-queue form of dataforseo.x.serp-google-maps-live-advanced: up to 100 tasks per request, results in minutes, about a third of the live price.'
+  docs_url: https://docs.dataforseo.com/v3/serp/google/maps/task_post/
+  input:
+    bodyType: json
+    body:
+      keyword:
+        type: string
+        required: false
+        note: <p><em>keyword</em><p><strong>required field</strong><p>you can specify <strong>up to 700 characters</strong> in the <code>keyword</code> field<p>all %## will be decoded (plus character '+' will be decoded to a space character)<p>if you need to use the "%" character for your <code>keyword</code>, pl
+        example: albert einstein
+      location_code:
+        type: integer
+        required: false
+        note: search engine location code. Required field if you don't specify location_coordinate; 2840 = United States. Use location_code or location_coordinate; Live Maps rejects location_name with 40501 Invalid Field even though vendor docs list it.
+        example: 2840
+      language_code:
+        type: string
+        required: false
+        note: <p><em>search engine language code</em><p><strong>required field if you don't specify</strong> <code>language_name</code><p><strong>if you use this field, you don't need to specify <code>language_name</code></strong><p>you can receive the list of available languages of the search engine with their <
+        example: en
+      depth:
+        type: integer
+        required: false
+        note: '<p><em>parsing depth</em><p>optional field<p>number of results in SERP<p>default value: <code>100</code><p>max value: <code>700</code></p><br><strong>Your account will be billed per each SERP containing up to 100 results;</strong><p>Setting depth above 100 may result in additional charges <a href="h'
+      device:
+        type: string
+        required: false
+        note: '<p><em>device type</em><p>optional field<p>return results for a specific device type<p>can take the values:<code>desktop</code>, <code>mobile</code><p>default value: <code>desktop</code><p><strong>note:</strong> for <code>mobile</code> device, only 20 results are returned for every SERP</p>'
+      language_name:
+        type: string
+        required: false
+        note: <p><em>full name of search engine language</em><p><strong>required field if you don't specify</strong> <code>language_code</code><p><strong>if you use this field, you don't need to specify <code>language_code</code></strong><p>you can receive the list of available languages of the search engine with
+      os:
+        type: string
+        required: false
+        note: '<p><em>device operating system</em><p>optional field<p>if you specify <code>desktop</code> in the <code>device</code> field, choose from the following values: <code>windows</code>, <code>macos</code><p>default value: <code>windows</code><p>if you specify <code>mobile</code> in the <code>device</code'
+      tag:
+        type: string
+        required: false
+        note: <p><em>user-defined task identifier</em><p>optional field<p><em>the character limit is 255</em><p>you can use this parameter to identify the task and match it with the result<p>you will find the specified <code>tag</code> value in the <code>data</code> object of the response</p>
+      max_crawl_pages:
+        type: integer
+        required: false
+        note: '<p><em>page crawl limit</em><p>optional field<p>number of search results pages to crawl<p>max value: <code>100</code><p><strong>Note:</strong> the <code>max_crawl_pages</code> and <code>depth</code> parameters complement each other;<p>learn more at <a href="https://dataforseo.com/help-center/what-is'
+      url:
+        type: string
+        required: false
+        note: <p><em>direct URL of the search query</em><p>optional field<p>you can specify a direct URL and we will sort it out to the necessary fields. Note that this method is the most difficult for our API to process and also requires you to specify the exact language and location in the URL. In most cases, w
+      location_coordinate:
+        type: string
+        required: false
+        note: GPS coordinates of a location. Required field if you don't specify location_code. Use location_code or location_coordinate; Live Maps rejects location_name with 40501 Invalid Field even though vendor docs list it.
+      se_domain:
+        type: string
+        required: false
+        note: <p><em>search engine domain</em><p>optional field<p>we choose the relevant search engine domain automatically according to the location and language you specify<p>however, you can set a custom search engine domain in this field<p>example:<p><code><em>google.co.uk</em></code>, <code><em>google.com.au
+      search_this_area:
+        type: boolean
+        required: false
+        note: '<p><em>show results from the displayed area</em><p>optional field<p>can take the values:<code>true</code>, <code>false</code><p>default value: <code>true</code></p><br><p>if set to <code>false</code>, the <code>search_this_area</code> mode will be turned off</p><br><p><strong>Note:</strong> if the <'
+      search_places:
+        type: boolean
+        required: false
+        note: <p><em>search places mode</em><p>optional field<p>the search places mode allows to obtain Google Maps results on a certain place (e.g., Apple Store in New York)<p>however, due to the pecularities of our data mining algorithm, this mode might interfere with some local-intent queries - and display res
+      priority:
+        type: integer
+        required: false
+        note: 1 = normal (default, the listed price); 2 = high priority, billed about twice the listed price
+    note: the POST body is a JSON array of up to 100 task objects with these fields, one per task; read each task's result (tasks[].id) with dataforseo.x.serp-google-maps-task-get-advanced, which only the submitting team can read
+  test_request:
+    body:
+    - language_code: en
+      location_code: 2840
+      keyword: albert einstein
+    bodyType: json
+  price:
+    value: '0.0006'
+    currency: USD
+    per: 1
+    unit: call
+    note: Standard queue, per SERP. The hold covers every task in the array; the envelope `cost` DataForSEO reports for the submission is the bill.
+  provenance:
+    source: observed
+    source_url: https://dataforseo.com/pricing/serp/google-maps-serp-api
+    checked: '2026-11-16'
+    confidence: verified
+  reserve:
+    entities:
+      from: body.*
+      max: 100
+  expect:
+    path: response.tasks.0.status_code
+    op: equals
+    value: 20100
+  resource_ownership:
+    produces:
+    - kind: poll:dataforseo.x.serp-google-maps-task-get-advanced
+      path: tasks.*.id
+  async:
+    id_from: tasks.0.id
+    poll:
+      endpoint: dataforseo.x.serp-google-maps-task-get-advanced
+      param:
+        in: pathParams
+        name: id
+    status:
+      path: tasks.0.status_code
+      progress:
+      - 20100
+      - 40601
+      - 40602
+      success:
+      - 20000
+      failure: []
+      billed_failure:
+      - 40101
+      - 40102
+      - 40103
+      - 40106
+      - 40400
+      - 40401
+      - 40402
+      - 40403
+      - 40404
+      - 40405
+      - 40408
+      - 50000
+      - 50001
+      - 50301
+      - 50302
+      - 50303
+      - 50304
+      - 50401
+      - 50402
+    result:
+      path: tasks.0.result
+      ttl_note: 30 days
+    interval: 20
 - id: dataforseo.x.serp-google-news-live-advanced
   capability: google.serp.news
   platform: google
@@ -9790,6 +10744,239 @@ endpoints:
     when:
       - {path: response.tasks.0.result.0.items, op: present}
       - {path: response.tasks.0.result.0.items, op: empty}
+- id: dataforseo.x.serp-google-organic-task-get-advanced
+  added: '2026-11-16'
+  platform: google
+  kind: utility
+  method: GET
+  path: /serp/google/organic/task_get/advanced/{id}
+  name: Google organic results for a keyword (task result)
+  summary: 'The result of a task submitted with dataforseo.x.serp-google-organic-task-post: free, readable only by the team that submitted it, for 30 days.'
+  docs_url: https://docs.dataforseo.com/v3/serp/google/organic/task_get/advanced/
+  input:
+    pathParams:
+      id:
+        type: string
+        required: true
+        note: tasks[].id from the submission's answer
+        example: 00000000-0000-0000-0000-000000000000
+  price:
+    value: '0'
+    currency: USD
+    unit: call
+    note: DataForSEO does not bill task_get; the submission paid for the task
+  expect: null
+  resource_ownership:
+    requires:
+      kind: poll:dataforseo.x.serp-google-organic-task-get-advanced
+      param: id
+- id: dataforseo.x.serp-google-organic-task-post
+  verified: '2026-11-16'
+  added: '2026-11-16'
+  example_response: examples/dataforseo.x.serp-google-organic-task-post.json
+  platform: google
+  method: POST
+  path: /serp/google/organic/task_post
+  name: Google organic results for a keyword (async task)
+  summary: 'The Standard-queue form of dataforseo.x.serp-google-organic-live-advanced: up to 100 tasks per request, results in minutes, about a third of the live price.'
+  docs_url: https://docs.dataforseo.com/v3/serp/google/organic/task_post/
+  input:
+    bodyType: json
+    body:
+      keyword:
+        type: string
+        required: false
+        note: <p><em>keyword</em><p><strong>required field</strong><p>you can specify <strong>up to 700 characters</strong> in the <code>keyword</code> field<p>all %## will be decoded (plus character ‘+’ will be decoded to a space character)<p>if you need to use the “%” character for your <code>keyword</code>, pl
+        example: albert einstein
+      location_code:
+        type: integer
+        required: false
+        note: '<p><em>search engine location code</em><p><strong>required field if you don''t specify</strong> <code>location_name</code>&nbsp;or <code>location_coordinate</code><p><strong>if you use this field, you don''t need to specify <code>location_name</code> or <code>location_coordinate</code></strong><p>you '
+        example: 2840
+      language_code:
+        type: string
+        required: false
+        note: <p><em>search engine language code</em><p>optional field if you specify <code>language_name</code><p><strong>if you use this field, you don't need to specify <code>language_name</code></strong><p>you can receive the list of available languages of the search engine with their <code>language_code</cod
+        example: en
+      depth:
+        type: integer
+        required: false
+        note: '<p><em>parsing depth</em><p>optional field<p>number of results in SERP<p><strong>default value: <code>10</code></strong><p>max value: <code>200</code></p><br><strong>Your account will be billed per each SERP containing up to 10 results;</strong><p>Setting depth above 10 may result in additional char'
+      device:
+        type: string
+        required: false
+        note: '<p><em>device type</em><p>optional field<p>return results for a specific device type<p>can take the values:<code>desktop</code>, <code>mobile</code><p>default value: <code>desktop</code></p>'
+      load_async_ai_overview:
+        type: boolean
+        required: false
+        note: '<p><em>load asynchronous ai overview</em><p>optional field<p>set to <code>true</code> to obtain <code>ai_overview</code> items is SERPs even if they are loaded asynchronously;<p>if set to <code>false</code>, you will only obtain <code>ai_overview</code> items from cache;<p>default value: <code>false'
+      location_name:
+        type: string
+        required: false
+        note: <p><em>full name of search engine location</em><p><strong>required field if you don't specify</strong> <code>location_code</code> or <code>location_coordinate</code><p><strong>if you use this field, you don't need to specify <code>location_code</code> or <code>location_coordinate</code></strong><p>y
+      language_name:
+        type: string
+        required: false
+        note: <p><em>full name of search engine language</em><p>optional field if you specify <code>language_code</code><p><strong>if you use this field, you don't need to specify <code>language_code</code></strong><p>you can receive the list of available languages of the search engine with their <code>language_n
+      os:
+        type: string
+        required: false
+        note: '<p><em>device operating system</em><p>optional field<p>if you specify <code>desktop</code> in the <code>device</code> field, choose from the following values: <code>windows</code>, <code>macos</code><p>default value: <code>windows</code><p>if you specify <code>mobile</code> in the <code>device</code'
+      tag:
+        type: string
+        required: false
+        note: <p><em>user-defined task identifier</em><p>optional field<p><em>the character limit is 255</em><p>you can use this parameter to identify the task and match it with the result<p>you will find the specified <code>tag</code> value in the <code>data</code> object of the response</p>
+      stop_crawl_on_match:
+        type: array
+        required: false
+        note: 'array of targets to stop crawling optional field if specified, the response will contain SERP results up to and including the specified match_value; you can specify up to 10 target values in this array example: "stop_crawl_on_match":[{"match_value":"dataforseo.com","match_type":"with_subdomains"}] l'
+      match_type:
+        type: string
+        required: false
+        note: <p><em>target match type</em><p><strong>required field if <code>stop_crawl_on_match</code> is specified</strong><p>type of match for the <code>match_value</code><p>possible values:<p><code>domain</code> – specific domain or subdomain<p><code>with_subdomains</code> – main domain and subdomains<p><cod
+      match_value:
+        type: string
+        required: false
+        note: '<p><em>target domain, subdomain, or wildcard value</em><p><strong>required field if <code>stop_crawl_on_match</code> is specified</strong><p>specify a target domain, subdomain, or wildcard value;<p><strong>Note:</strong> domain or subdomain must be specified without a request protocol;<p>example: <c'
+      max_crawl_pages:
+        type: integer
+        required: false
+        note: '<p><em>page crawl limit</em><p>optional field<p>number of search results pages to crawl<p>max value: <code>100</code><p><strong>Note:</strong> you will be charged for each page crawled (10 organic results per page);<p>learn more about pricing on our <a href="https://dataforseo.com/pricing/serp/googl'
+      search_param:
+        type: string
+        required: false
+        note: <p><em>additional parameters of the search query</em><p>optional field<p><a href="https://dataforseo.com/help-center/google-search-engine-parameters-and-how-to-use-them">get the list of available parameters and additional details here</a></p><br><strong>Note:</strong> the following search engine par
+      remove_from_url:
+        type: array
+        required: false
+        note: '<p><em>remove specific parameters from URLs</em><p>optional field<p>using this field, you can specify up to 10 parameters to remove from URLs in the result<p>example:<p><code>"remove_from_url": ["srsltid"]</code><p><strong>Note:</strong> if the <code>target</code> field is specified, the specified U'
+      people_also_ask_click_depth:
+        type: integer
+        required: false
+        note: '<p><em>clicks on the corresponding element</em><p>optional field<p>specify the click depth on the <code>people_also_ask</code> element to get additional <code>people_also_ask_element</code> items;<p><strong>Note</strong> your account will be billed $0.00015 extra for each click;<p>if the element is '
+      group_organic_results:
+        type: boolean
+        required: false
+        note: <p><em>display related results</em><p>optional field<p>if set to <code>true</code>, the <code>related_result</code> element in the response will be provided as a snippet of its parent organic result;<p>if set to <code>false</code>, the <code>related_result</code> element will be provided as a separa
+      calculate_rectangles:
+        type: boolean
+        required: false
+        note: <p><em>calcualte pixel rankings for SERP elements in advanced results</em><p>optional field<p>pixel ranking refers to the distance between the result snippet and top left corner of the screen;<p><a href="https://dataforseo.com/help-center/pixel-ranking-in-serp-api">Visit Help Center to learn more&gt
+        example: true
+      browser_screen_width:
+        type: integer
+        required: false
+        note: '<p><em>browser screen width</em><p>optional field<p>you can set a custom browser screen width to calculate pixel rankings for a particular device;<p>can be specified within the following range: <code>240-9999</code>;<p>by default, the parameter is set to:<p><code>1920</code> for <code>desktop</code>'
+      browser_screen_height:
+        type: integer
+        required: false
+        note: '<p><em>browser screen height</em><p>optional field<p>you can set a custom browser screen height to calculate pixel rankings for a particular device;<p>can be specified within the following range: <code>240-9999</code>;<p>by default, the parameter is set to:<p><code>1080</code> for <code>desktop</cod'
+      browser_screen_resolution_ratio:
+        type: integer
+        required: false
+        note: '<p><em>browser screen resolution ratio</em><p>optional field<p>you can set a custom browser screen resolution ratio to calculate pixel rankings for a particular device;<p>can be specified within the following range: <code>0.5-3</code>;<p>by default, the parameter is set to:<p><code>1</code> for <cod'
+      url:
+        type: string
+        required: false
+        note: <p><em>direct URL of the search query</em><p>optional field<p>you can specify a direct URL and we will sort it out to the necessary fields. Note that this method is the most difficult for our API to process and also requires you to specify the exact language and location in the URL. In most cases, w
+      location_coordinate:
+        type: string
+        required: false
+        note: <p><em>GPS coordinates of a location</em><p>optional field if you specify <code>location_name</code>&nbsp;or <code>location_code</code><p><strong>if you use this field, you don't need to specify <code>location_name</code> or <code>location_code</code></strong><p><code>location_coordinate</code> para
+      se_domain:
+        type: string
+        required: false
+        note: <p><em>search engine domain</em><p>optional field<p>we choose the relevant search engine domain automatically according to the location and language you specify<p>however, you can set a custom search engine domain in this field<p>example:<p><em>google.co.uk</em>, <code><code></code></code><em>google
+      target:
+        type: string
+        required: false
+        note: <p><em>target domain, subdomain, or webpage to get results for</em><p>optional field<p>a domain or a subdomain should be specified without <code>https://</code> and <code>www.</code><p>note that the results of <code>target</code>-specific tasks will only include SERP elements that contain a <code>ur
+      target_search_mode:
+        type: string
+        required: false
+        note: '<p><em>target matching mode</em><p>optional field<p>to enable this parameter, <code>stop_crawl_on_match</code> must also be enabled<p>defines how the crawl should stop when multiple targets are specified in <code>stop_crawl_on_match</code><p>possible values: <code>all</code>, <code>any</code><p><cod'
+      find_targets_in:
+        type: array
+        required: false
+        note: <p><em>SERP element types to check for targets</em><p>optional field<p>to enable this parameter, <code>stop_crawl_on_match</code> must also be enabled<p>specifies which SERP element types should be checked for target matches<p>if not specified, all first-level elements with <code>url</code> and <cod
+      ignore_targets_in:
+        type: array
+        required: false
+        note: '<p><em>SERP element types to exclude from target search</em><p>optional field<p>to enable this parameter, <code>stop_crawl_on_match</code> must also be enabled<p>specifies which SERP element types should be excluded when searching for target matches<p>possible values: <code>organic</code>, <code>pai'
+      priority:
+        type: integer
+        required: false
+        note: 1 = normal (default, the listed price); 2 = high priority, billed about twice the listed price
+    note: the POST body is a JSON array of up to 100 task objects with these fields, one per task; read each task's result (tasks[].id) with dataforseo.x.serp-google-organic-task-get-advanced, which only the submitting team can read
+  test_request:
+    body:
+    - language_code: en
+      location_code: 2840
+      keyword: albert einstein
+    bodyType: json
+  price:
+    value: '0.0006'
+    currency: USD
+    per: 1
+    unit: call
+    note: 'Standard queue, per SERP of 10 results: a larger `depth` bills each started 10 results. The hold covers every task in the array; the envelope `cost` DataForSEO reports for the submission is the bill.'
+  provenance:
+    source: observed
+    source_url: https://dataforseo.com/pricing/serp/google-organic-serp-api
+    checked: '2026-11-16'
+    confidence: verified
+  reserve:
+    entities:
+      from: body.*
+      max: 100
+  expect:
+    path: response.tasks.0.status_code
+    op: equals
+    value: 20100
+  resource_ownership:
+    produces:
+    - kind: poll:dataforseo.x.serp-google-organic-task-get-advanced
+      path: tasks.*.id
+  async:
+    id_from: tasks.0.id
+    poll:
+      endpoint: dataforseo.x.serp-google-organic-task-get-advanced
+      param:
+        in: pathParams
+        name: id
+    status:
+      path: tasks.0.status_code
+      progress:
+      - 20100
+      - 40601
+      - 40602
+      success:
+      - 20000
+      failure: []
+      billed_failure:
+      - 40101
+      - 40102
+      - 40103
+      - 40106
+      - 40400
+      - 40401
+      - 40402
+      - 40403
+      - 40404
+      - 40405
+      - 40408
+      - 50000
+      - 50001
+      - 50301
+      - 50302
+      - 50303
+      - 50304
+      - 50401
+      - 50402
+    result:
+      path: tasks.0.result
+      ttl_note: 30 days
+    interval: 20
 - id: dataforseo.x.serp-google-search-by-image-task-get-advanced
   added: '2026-10-15'
   platform: google
@@ -10916,6 +12103,24 @@ endpoints:
   error: {when: {any: [{path: response.error, op: present}, {path: response.errors, op: present}]}}
   miss: {when: {path: response.tasks.0.result.0.items.0.sections.0.text, op: absent}}
   capability: ai-search.perplexity.answer
+- id: dataforseo.x.ai-optimization-perplexity-llm-responses-models
+  verified: '2026-11-16'
+  example_response: examples/dataforseo.x.ai-optimization-perplexity-llm-responses-models.json
+  added: '2026-11-16'
+  kind: utility
+  platform: ai-search
+  method: GET
+  path: /ai_optimization/perplexity/llm_responses/models
+  price:
+    value: '0'
+    currency: USD
+    unit: call
+    note: DataForSEO documents this route as free ("Your account will not be charged for using this API")
+  expect: null
+  name: "Perplexity model names for LLM responses"
+  summary: The Perplexity models dataforseo.x.ai-optimization-perplexity-llm-responses-live accepts in `model_name`, with whether each supports web search and reasoning.
+  docs_url: https://docs.dataforseo.com/v3/ai_optimization/perplexity/llm_responses/models/
+  test_request: {queryParams: {}}
 - id: dataforseo.x.serp-seznam-locations-country
   added: '2026-07-28'
   kind: utility
@@ -12605,6 +13810,24 @@ endpoints:
   example_response: examples/dataforseo.x.backlinks-timeseries-summary-live.json
   price: {value: '0.024108', currency: USD, per: 1, unit: call}
   provenance: {source: observed, checked: '2026-07-28', confidence: verified}
+- id: dataforseo.x.business-data-business-listings-categories
+  verified: '2026-11-16'
+  example_response: examples/dataforseo.x.business-data-business-listings-categories.json
+  added: '2026-11-16'
+  kind: utility
+  platform: web
+  method: GET
+  path: /business_data/business_listings/categories
+  price:
+    value: '0'
+    currency: USD
+    unit: call
+    note: DataForSEO documents this route as free ("Your account will not be charged for using this API")
+  expect: null
+  name: "Business Listings categories"
+  summary: Every category the Business Listings API knows, with its business count; the values `categories` filters in dataforseo.x.business-data-business-listings-search-live accept.
+  docs_url: https://docs.dataforseo.com/v3/business_data/business_listings/categories/
+  test_request: {queryParams: {}}
 - id: dataforseo.x.business-data-business-listings-categories-aggregation-live
   platform: web
   method: POST
@@ -14433,8 +15656,15 @@ endpoints:
   docs_url: https://docs.dataforseo.com/v3/on_page/lighthouse/audits/
   untestable: the OpenAPI spec ships no example request body for this route, so no test request could be generated
 - id: dataforseo.x.on-page-lighthouse-live-json
+  verified: '2026-11-16'
+  example_response: examples/dataforseo.x.on-page-lighthouse-live-json.json
   added: '2026-07-28'
-  price: null
+  price: {value: '0.005', currency: USD, per: 1, unit: call, note: '$0.005 per audited page, Live and Standard alike; asking for fewer categories or audits does not lower it. The response `cost` is the exact charge and settles the call'}
+  provenance:
+    source: rate_card_api
+    source_url: https://api.dataforseo.com/v3/appendix/user_data
+    checked: '2026-11-16'
+    confidence: verified
   expect: null
   platform: web
   method: POST
@@ -14508,7 +15738,13 @@ endpoints:
         note: <em>user-defined task identifier</em><br>optional field<br><em>the character limit is 255</em><br>you can use this parameter to identify the task and match it with the result<br>you will find the specified <code>tag</code> value in the <code>data</code> object of the response
         example: some_string_123
     note: the POST body is a JSON array holding exactly one task object with these fields; a live route rejects extra tasks with status 40000 "You can set only one task at a time"
-  untestable: needs the id of a completed on_page crawl (task_post plus polling); the one-shot route of this family is verified via dataforseo.x.on-page-instant-pages
+  test_request:
+    body:
+    - url: https://dataforseo.com
+      for_mobile: false
+      categories:
+      - performance
+    bodyType: json
 - id: dataforseo.x.on-page-links
   added: '2026-07-28'
   platform: web
@@ -14672,7 +15908,7 @@ endpoints:
     source_url: https://api.dataforseo.com/v3/appendix/user_data
     checked: '2026-08-07'
     confidence: verified
-  reserve: {entities: {from: body.*, max: 1}}
+  reserve: {entities: {from: body.*, max: 20}}
   expect: null
   name: "Full-page screenshot of any URL"
   summary: Using this endpoint, you can capture a full high-quality screenshot of any webpage.
@@ -14725,7 +15961,7 @@ endpoints:
         type: string
         required: false
         note: 'proxy pool optional field you can choose a location of the proxy pool that will be used to obtain the requested data; the parameter can be used if page content is inaccessible in one of the locations, resulting in occasional site_unreachable errors possible values: us, de'
-    note: the POST body is a JSON array holding exactly one task object with these fields
+    note: the POST body is a JSON array of up to 20 task objects with these fields, one per task
   untestable: needs the id of a completed on_page crawl (task_post plus polling); the one-shot route of this family is verified via dataforseo.x.on-page-instant-pages
 - id: dataforseo.x.on-page-pages
   added: '2026-07-28'
@@ -15813,3 +17049,34 @@ endpoints:
   example_response: examples/dataforseo.x.serp-youtube-video-subtitles-live-advanced.json
   price: {value: '0.006', currency: USD, per: 1, unit: call}
   provenance: {source: observed, checked: '2026-07-28', confidence: verified}
+- id: dataforseo.x.appendix-goto-url-converter
+  verified: '2026-11-16'
+  example_response: examples/dataforseo.x.appendix-goto-url-converter.json
+  added: '2026-11-16'
+  kind: utility
+  platform: google
+  method: POST
+  path: /appendix/goto_url_converter
+  price:
+    value: '0'
+    currency: USD
+    unit: call
+    note: free; the route is missing from DataForSEO's public docs, OpenAPI spec and rate card, so the response `cost` settles the call if that ever changes
+  expect: null
+  name: "Resolve Google goto redirect URLs"
+  summary: The real page behind each google.com/goto URL that Google SERP results carry, returned as `result[] = {goto, url}`; a URL it cannot resolve comes back with no `url`.
+  input:
+    bodyType: json
+    body:
+      goto_urls:
+        type: array
+        required: true
+        note: up to 100 google.com/goto URLs, taken as they appear in a SERP result; match the answer by `goto`, not by order (duplicates are answered once each)
+        example:
+        - https://www.google.com/goto?url=CAESABoA
+    note: the POST body is a JSON array holding one task object
+  test_request:
+    body:
+    - goto_urls:
+      - https://www.google.com/goto?url=CAESABoA
+    bodyType: json

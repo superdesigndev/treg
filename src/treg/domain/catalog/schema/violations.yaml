@@ -10,7 +10,6 @@ endpoint_keys:
   authorization_paths: {provider: instagram}
   caller_email: {provider: crawl4ai}
   observed_from: {provider: crawl4ai}
-  platform_auth: {provider: financialdatasets}
   required_resource: {provider: instagram}
   required_scopes: {provider: instagram}
   spooled_response: {provider: google-ai}
@@ -25,7 +24,6 @@ cost_keys:
   octen_rates: {provider: octen}
   quantity: {provider: crawl4ai}
   sumble: {provider: sumble}
-  tavily_rates: {provider: tavily}
 
 # Rows (or a file header's queryParams) whose parameter specs use JSON Schema words nothing
 # reads, until the provider's batch rewrites them.

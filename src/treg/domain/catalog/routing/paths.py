@@ -7,6 +7,7 @@ import json
 
 import re
 from typing import Any
+from urllib.parse import unquote_plus
 
 _MISSING = object()
 _INDEX = re.compile(r"^(\w+)\[(\d+)\]$")
@@ -69,6 +70,14 @@ def split_last(name: Any) -> str | None:
     return parts[-1] if len(parts) > 1 else None
 
 
+def one_place(v: Any) -> str | None:
+    """`one_place('Dublin')` → 'Dublin'; None for a place in several parts ('London, United Kingdom',
+    'Oregon, United States'), which a provider's single city field cannot hold without changing it."""
+    if not isinstance(v, str) or "," in v:
+        return None
+    return v.strip() or None
+
+
 def join(*parts: Any) -> str | None:
     words = [str(p).strip() for p in parts if isinstance(p, str) and p.strip()]
     return " ".join(words) if words else None
@@ -82,10 +91,38 @@ def phrase(*parts: Any) -> str | None:
     for p in parts:
         if not (isinstance(p, str) and p.strip()):
             continue
-        said = re.search(rf"(?<!\w){re.escape(p.strip())}(?!\w)", " ".join(words), re.IGNORECASE)
-        if not said:
+        if not _says(" ".join(words), p.strip()):
             words.append(p.strip())
     return " ".join(words) if words else None
+
+
+def _says(text: str, part: str) -> bool:
+    """Whether `text` holds `part` as whole words, case-insensitive. A domain ('example.com') is
+    whole only as the entire host: 'example.com.au' and 'sub.example.com' do not say it."""
+    if re.fullmatch(r"[\w-]+(?:\.[\w-]+)+", part):
+        pattern = rf"(?<![\w.-]){re.escape(part)}(?![\w-]|\.[\w-])"
+    else:
+        pattern = rf"(?<!\w){re.escape(part)}(?!\w)"
+    return re.search(pattern, text, re.IGNORECASE) is not None
+
+
+def people_text(full_name: Any, title: Any, company_domain: Any, location: Any, country: Any) -> str | None:
+    """`people_text('Jane Doe', 'CTO', 'stripe.com', 'Dublin', 'Ireland')` → "Jane Doe, CTO at
+    stripe.com in Dublin, Ireland": who (the name, the title, both, or "people" when only the
+    company is known), at the company, in the place, as a profile search reads a brief. The country
+    follows the location unless the location already says it. A title listing several roles stays
+    as written. None when it names no person, role or company; a part not a string is left out."""
+    said = lambda v: v.strip() if isinstance(v, str) and v.strip() else None  # noqa: E731
+    name, role, domain = said(full_name), said(title), said(company_domain)
+    if not (name or role or domain):
+        return None
+    text = ", ".join(w for w in (name, role) if w) or "people"
+    if domain:
+        text += f" at {domain}"
+    where = said(location)
+    if (land := said(country)) and not (where and _says(where, land)):
+        where = f"{where}, {land}" if where else land
+    return f"{text} in {where}" if where else text
 
 
 def place(*parts: Any) -> str | None:
@@ -120,6 +157,26 @@ def dfs_location(country: Any) -> int | None:
     code = _country_code(country if country not in (None, "") else "us")
     numeric = _table("country_numeric.json").get(code or "")
     return 2000 + int(numeric) if numeric else None
+
+
+def dfs_country(location_code: Any, location_name: Any) -> str | None:
+    """Read a country-level DataForSEO location as ISO alpha-2; cities and coordinates have no such code."""
+    if location_code is None:
+        return upper(iso_country(location_name))
+    code = str(location_code)
+    if len(code) != 4 or not code.startswith("2"):
+        return None
+    return next((alpha.upper() for alpha, numeric in _table("country_numeric.json").items()
+                 if numeric == code[1:]), None)
+
+
+def dfs_keyword(text: Any) -> str | None:
+    """DataForSEO decodes '+' and percent escapes in a JSON keyword."""
+    return text.replace("%", "%25").replace("+", "%2B") if isinstance(text, str) else None
+
+
+def dfs_keyword_text(keyword: Any) -> str | None:
+    return unquote_plus(keyword) if isinstance(keyword, str) else None
 
 
 def seranking_source(country: Any) -> str:
@@ -290,6 +347,16 @@ def _country_code(v: Any) -> str | None:
     if key in names:
         return key
     return next((code for code, name in names.items() if name.lower() == key), None)
+
+
+def iso_country(v: Any) -> str | None:
+    """`TH`, `th`, `Thailand` or `uk` -> `th`/`gb`; None when the value names no ISO country."""
+    return _country_code(v)
+
+
+def country_names() -> frozenset[str]:
+    """Every ISO 3166 country's common name, lower-cased."""
+    return frozenset(n.lower() for n in _table("countries.json").values())
 
 
 def country_code(v: Any) -> Any:
@@ -464,6 +531,17 @@ def current_role(history: Any) -> dict | None:
     return max(pool, key=start)  # max keeps the first of equal starts
 
 
+def flagged(items: Any, *flags: Any) -> dict | None:
+    """`flagged(experiences, 'isMatched', 'isCurrent')` — the first object whose first flag is true;
+    when none has it, the first whose next flag is true, and so on. None when no flag is set."""
+    rows = [r for r in items if isinstance(r, dict)] if isinstance(items, list) else []
+    for flag in flags:
+        hit = next((r for r in rows if get_path(r, str(flag)) is True), None)
+        if hit is not None:
+            return hit
+    return None
+
+
 def past_titles(history: Any) -> list | None:
     """`past_titles(workHistory)` — the titles of the roles a person has left (items whose `dates`
     carry a `to`), latest ended first, each once, at most five: what a profile matched on when its
@@ -620,17 +698,137 @@ def http_error(v: Any) -> bool:
         return False
 
 
+def x_post_id(v: Any) -> str | None:
+    """`https://x.com/jack/status/20` (or twitter.com, `/i/web/status/`) → `20`; bare digits pass."""
+    if isinstance(v, int) and not isinstance(v, bool):
+        return str(v)
+    if not isinstance(v, str) or not v.strip():
+        return None
+    v = v.strip()
+    if v.isdigit():
+        return v
+    m = re.search(r"(?:x|twitter)\.com/(?:[^/?#]+|i/web)/status(?:es)?/(\d+)", v, re.I)
+    return m.group(1) if m else None
+
+
+def linkedin_job_id(v: Any) -> str | None:
+    """`linkedin.com/jobs/view/software-engineer-at-pave-4310512612/`, `.../jobs/view/4442669023`
+    or a `currentJobId=` search link → the numeric job id; bare digits pass."""
+    if isinstance(v, int) and not isinstance(v, bool):
+        return str(v)
+    if not isinstance(v, str) or not v.strip():
+        return None
+    v = v.strip()
+    if v.isdigit():
+        return v
+    if not re.search(r"linkedin\.com/", v, re.I):
+        return None
+    m = re.search(r"[?&]currentJobId=(\d+)", v) or re.search(r"/jobs/view/(?:[^/?#]*-)?(\d+)(?:[/?#]|$)", v)
+    return m.group(1) if m else None
+
+
+def reddit_post_id(v: Any) -> str | None:
+    """`reddit.com/r/rust/comments/1w38wm2/...`, `redd.it/1w38wm2`, `1w38wm2` or `t3_1w38wm2` →
+    `t3_1w38wm2`, the post's fullname."""
+    if not isinstance(v, str) or not v.strip():
+        return None
+    v = v.strip()
+    m = (re.search(r"reddit\.com/(?:r/[^/]+/)?comments/([a-z0-9]+)", v, re.I)
+         or re.search(r"redd\.it/([a-z0-9]+)", v, re.I) or re.fullmatch(r"(?:t3_)?([a-z0-9]{4,12})", v, re.I))
+    return f"t3_{m.group(1).lower()}" if m else None
+
+
+_URL = re.compile(r"(?:https?:)?//\S+|www\.\S+", re.I)
+_WALL_READ_MAX = 20_000    # characters of text: a wall is never this long, so a longer page is not read further
+_WALL_SCAN_MAX = 256_000   # characters plus one per node, links and markup included, before the page is left unjudged
+_WALL_NODES_MAX = 50_000   # values visited, strings or not, before the page is left unjudged
+_WALL_URL_MAX = 4096       # a longer string is not a bare link
+_WALL_CHARS_MAX = 1000     # a wall page is short: past this, a phrase is the page talking about it
+_WALL_GENERIC_WORDS = 25   # two common phrases decide only on a page this short, or a real page saying them stays a page
+_WALL_GENERIC_ONE = 15     # one common phrase decides only on a page shorter still
+# Said only by an interstitial (a captcha or a browser check standing in for the page).
+_WALL_PHRASES = tuple(_fold(p) for p in (
+    "verify you are human", "verify that you are human", "verifying you are human",
+    "confirm you are human", "confirm you are a human", "prove you are human",
+    "recaptcha requires verification", "complete the captcha", "solve the captcha",
+    "checking your browser", "pardon our interruption", "complete the security check",
+    "needs to review the security of your connection", "click the button below to continue shopping"))
+# Also said by real pages (a profile with a sign-in line, a form with "I'm not a robot").
+_WALL_GENERIC = tuple(_fold(p) for p in (
+    "are you a robot", "not a robot", "human verification", "security checkpoint", "verify your browser",
+    "attention required", "access to this page has been denied", "you have been blocked", "request was blocked",
+    "access denied", "access restricted", "enable javascript", "enable js", "javascript is disabled",
+    "javascript is required", "turn on javascript", "enable cookies", "cookies are disabled",
+    "cookies must be enabled", "accept cookies to continue", "sign in to continue", "log in to continue",
+    "login to continue", "sign in to view", "log in to view", "sign up to view", "join to view",
+    "create an account to", "create a free account to", "you must be logged in", "please log in",
+    "please sign in"))
+_WALL_SECONDARY = (_fold("forgot password"),)   # counted only beside a common phrase, never alone
+
+
+def wall_page(page: Any) -> bool:
+    """True when an extracted page (a page object, a list whose first item is one, or its text) is
+    not content: its text, links and markup left out, says it is a wall. An
+    interstitial's phrase (a captcha, a browser check) decides on a page of at most 1,000
+    characters; phrases real pages also carry (sign in to view, not a robot, access denied, enable
+    JavaScript or cookies) only on a short page: two of them under twenty-five words, one alone
+    under fifteen. A short answer is not a wall for
+    being short ("OK", an address, a price). A structured answer (text starting with `{` or `[`), a
+    page past 20,000 characters of text, 256,000 characters in all or 50,000 values (never read
+    further) and a blank page are never walls: emptiness is the row's own miss rule."""
+    if isinstance(page, list):
+        page = page[0] if page else None
+    parts, size, seen, nodes = [], 0, 0, 0
+    stack = [iter((page,))]
+    while stack:
+        v = next(stack[-1], _MISSING)
+        if v is _MISSING:
+            stack.pop()
+            continue
+        nodes += 1
+        seen += len(v) + 1 if isinstance(v, str) else 1
+        if nodes > _WALL_NODES_MAX or seen > _WALL_SCAN_MAX:
+            return False
+        if isinstance(v, (dict, list)):
+            if nodes + len(v) > _WALL_NODES_MAX:   # every item would be visited: stop before it
+                return False
+            stack.append(iter(v.values() if isinstance(v, dict) else v))
+        elif isinstance(v, str):
+            if v[:64].lstrip().startswith("<") or (len(v) <= _WALL_URL_MAX and _URL.fullmatch(v.strip())):
+                continue
+            size += len(v)
+            if size > _WALL_READ_MAX:
+                return False
+            parts.append(v)
+    if not parts:
+        return False
+    raw = _URL.sub(" ", " ".join(parts)).strip()
+    if not raw or raw[:1] in ("{", "["):
+        return False
+    text = f" {_fold(raw)} "
+    if len(raw) <= _WALL_CHARS_MAX and any(f" {p} " in text for p in _WALL_PHRASES):
+        return True
+    said = sum(f" {p} " in text for p in _WALL_GENERIC)
+    if not said:
+        return False
+    said += sum(f" {p} " in text for p in _WALL_SECONDARY)
+    words = len(re.findall(r"\w+", raw))
+    return words < (_WALL_GENERIC_WORDS if said > 1 else _WALL_GENERIC_ONE)
+
+
 def starts_with(v: Any, prefix: Any) -> bool:
     return isinstance(v, str) and prefix is not None and v.startswith(str(prefix))
 
 
-TRANSFORMS = {"values": values, "get": get_path, "null_if": null_if, "choose": choose, "split_first": split_first, "split_last": split_last, "join": join, "phrase": phrase, "place": place, "texts": texts, "has_type": has_type, "len": length,
+TRANSFORMS = {"values": values, "get": get_path, "null_if": null_if, "choose": choose, "split_first": split_first, "split_last": split_last, "one_place": one_place, "join": join, "phrase": phrase, "people_text": people_text, "place": place, "texts": texts, "has_type": has_type, "len": length,
+              "dfs_country": dfs_country, "dfs_keyword": dfs_keyword, "dfs_keyword_text": dfs_keyword_text,
               "dfs_location": dfs_location, "seranking_source": seranking_source, "lower": lower, "upper": upper,
               "list": as_list, "at_least": at_least, "at_most": at_most, "ceil_to": ceil_to, "linkedin_handle": linkedin_handle, "linkedin_url": linkedin_url,
+              "x_post_id": x_post_id, "linkedin_job_id": linkedin_job_id, "reddit_post_id": reddit_post_id,
               "email_domain": email_domain, "host": host, "fmt": fmt, "obj": obj, "tca_filter": tca_filter, "csv": csv, "country_name": country_name, "country_code": country_code,
-              "e164_digits": e164_digits, "key": key, "starts_with": starts_with, "http_error": http_error, "lost_path": lost_path, "no_result_on_site": no_result_on_site, "quoted_absent": quoted_absent, "with_country_code": with_country_code,
+              "e164_digits": e164_digits, "key": key, "starts_with": starts_with, "http_error": http_error, "wall_page": wall_page, "lost_path": lost_path, "no_result_on_site": no_result_on_site, "quoted_absent": quoted_absent, "with_country_code": with_country_code,
               "count_with": count_with, "role_seniority": role_seniority, "role_department": role_department,
-              "scalar": scalar, "instagram_handles": instagram_handles, "current_role": current_role, "past_titles": past_titles}
+              "scalar": scalar, "instagram_handles": instagram_handles, "current_role": current_role, "flagged": flagged, "past_titles": past_titles}
 
 _CALL = re.compile(r"^(\w+)\((.*)\)$")
 _DIV = re.compile(r"^(.+?)\s*/\s*(\d+(?:\.\d+)?)$")

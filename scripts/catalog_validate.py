@@ -430,6 +430,10 @@ def check_platform_request(rule: object, input_schema: object, where: str,
         return
     fields = _input_fields(input_schema)
     for path, value in rule.items():
+        if value is None:
+            if not isinstance(path, str) or not path.startswith("queryParams.") or path == "queryParams.":
+                fail(errors, where, "platform_request null (must be absent) applies to a query parameter only")
+            continue
         spec = fields.get(path) if isinstance(path, str) else None
         if (not isinstance(path, str)
                 or not path.startswith(("body.", "headers.", "queryParams.")) or spec is None):
@@ -538,30 +542,6 @@ def check_cost_settle_count(cost: dict, example: object, where: str, errors: lis
         fail(errors, where, f"cost.settle.count.path '{count['path']}' is not a list in the example_response")
 
 
-TAVILY_RATE_KEYS = {
-    "tavily.web.search": {"basic", "fast", "ultra_fast", "advanced"},
-    "tavily.web.extract": {"basic", "advanced"},
-    "tavily.web.map": {"regular", "instructions"},
-    "tavily.web.crawl": {
-        "basic", "basic_instructions", "advanced", "advanced_instructions",
-    },
-}
-
-
-def check_tavily_rates(endpoint_id: str, cost: dict, where: str,
-                        errors: list[str]) -> None:
-    """Tavily's provider-specific formulas require a complete positive finite mode table."""
-    expected = TAVILY_RATE_KEYS.get(endpoint_id)
-    if expected is None:
-        return
-    rates = cost.get("tavily_rates")
-    if not isinstance(rates, dict) or set(rates) != expected:
-        fail(errors, where, "cost.tavily_rates must contain exactly " + ", ".join(sorted(expected)))
-        return
-    if any(not _finite_number(value) or value <= 0 for value in rates.values()):
-        fail(errors, where, "cost.tavily_rates values must be positive finite numbers")
-
-
 OCTEN_RATE_KEYS = {
     "octen.web.search": {"call", "full_content_extra"},
     "octen.web.search.broad": {"subquery", "full_content_extra"},
@@ -654,9 +634,19 @@ def check_platform_auth(ep: dict, where: str, errors: list[str]) -> None:
         fail(errors, where, "platform_auth anonymous cannot create or retrieve shared async resources")
 
 
+def check_public_provider_row(ep: dict, provider, where: str, errors: list[str]) -> None:
+    """A public provider (`auth_kind="public"`) has nothing to connect, so a row it does not serve
+    keyless is unreachable: every one is `platform_auth: anonymous` (and so, by `check_platform_auth`,
+    a verified free read-only GET)."""
+    if getattr(provider, "auth_kind", "") == "public" and ep.get("platform_auth") != "anonymous":
+        fail(errors, where, "a public provider's every row must be platform_auth: anonymous")
+
+
 def check_cost_table(cost: dict, input_schema: object, where: str, errors: list[str],
-                     provider: str | None = None) -> None:
-    """Validate a first-match AIGC price table and its explicit reserve upper bound."""
+                     provider: str | None = None, *, needs_default: bool = True) -> None:
+    """Validate a first-match AIGC price table and its explicit reserve upper bound. A v2 table
+    (`needs_default=False`) may compare an optional field without a default: an equality on an
+    absent field does not hold, so a later row or the fallback prices that request."""
     table = cost.get("table")
     if not isinstance(table, list) or not table:
         fail(errors, where, "cost.table must be a non-empty list")
@@ -685,7 +675,7 @@ def check_cost_table(cost: dict, input_schema: object, where: str, errors: list[
                 spec = fields.get(str(field))
                 if spec is None:
                     fail(errors, rwhere, f"when field '{field}' is not declared in input")
-                elif spec.get("required") is not True and "default" not in spec:
+                elif needs_default and spec.get("required") is not True and "default" not in spec:
                     fail(errors, rwhere, f"when field '{field}' must be required or declare a default")
                 elif isinstance(expected, (dict, list)) or expected is None:
                     fail(errors, rwhere, f"when field '{field}' must compare a scalar value")
@@ -1264,6 +1254,7 @@ def check_cost(cost: dict, where: str, errors: list[str], warnings: list[str],
             # the reserve, the reply's `usage.path` the charge (sync body or async terminal document).
             check_cost_fallback(cost, "cost.settle 'usage'", where, errors)
         check_usage_block(cost, settle, where, errors, provider)
+    check_cost_worst_case(cost, where, errors, warnings)
     modifiers = cost.get("modifiers")
     if modifiers is not None:
         if not isinstance(modifiers, dict) or not modifiers:
@@ -1337,6 +1328,28 @@ def check_cost(cost: dict, where: str, errors: list[str], warnings: list[str],
         fail(errors, where, f"cost.checked '{checked}' is not an ISO date (YYYY-MM-DD)")
     else:
         check_fresh(day, "cost.checked", where, warnings)
+
+
+def check_cost_worst_case(cost: dict, where: str, errors: list[str], warnings: list[str]) -> None:
+    """`cost.worst_case` raises the hold of a row whose provider-reported figure settles the call
+    (`settle: usage`, `reported_charge`) to the most one call can cost; without it the hold is the
+    estimate, and calls in flight together may settle above what the team holds."""
+    settle, worst = cost.get("settle"), cost.get("worst_case")
+    if worst is None:
+        if settle == "usage" and cost.get("type") != "free":
+            warnings.append(f"{where}: settle: usage without cost.worst_case holds only the estimate; "
+                            "declare the most one call can cost")
+        return
+    if settle != "usage" and "reported_charge" not in cost:
+        fail(errors, where, "cost.worst_case belongs beside settle: usage or reported_charge")
+        return
+    if not _finite_number(worst) or worst <= 0:
+        fail(errors, where, "cost.worst_case must be a positive number in the cost's currency")
+        return
+    bound = (cost.get("fallback") or {}).get("value") if ("table" in cost or settle == "usage") \
+        else cost.get("value")
+    if _finite_number(bound) and worst < bound:
+        fail(errors, where, f"cost.worst_case {worst} is below the hold it raises ({bound})")
 
 
 def check_fresh(day: dt.date, key: str, where: str, warnings: list[str]) -> None:
@@ -1558,6 +1571,10 @@ def check_v2_cost(row: schema.V2Row, ep: dict, provider: str, where: str, errors
                                               rule.unit):
             fail(errors, where, f"{name}.unit '{rule.unit}' is not usd, credit or an fx.yaml "
                                 f"unit_rates_usd meter of '{provider}'")
+    if settle is not None and settle.worst_case is not None and price is not None:
+        bound = price.value if price.value is not None else (price.fallback.value if price.fallback else None)
+        if bound is not None and settle.worst_case < bound:
+            fail(errors, where, f"settle.worst_case {settle.worst_case} is below the hold it raises ({bound})")
     if settle is not None and settle.usage is not None and settle.usage.terms and settle.usage.unit != "usd":
         fail(errors, where, "settle.usage.terms rates are USD per unit; its unit must be usd")
     if reserve is not None and reserve.rows is not None and reserve.rows.param is not None:
@@ -1573,7 +1590,8 @@ def check_v2_cost(row: schema.V2Row, ep: dict, provider: str, where: str, errors
         return
     view = schema.served(row, inp)["cost"]
     if "table" in view:
-        check_cost_table({"table": view["table"], "fallback": view["fallback"]}, inp, where, errors, provider)
+        check_cost_table({"table": view["table"], "fallback": view["fallback"]}, inp, where, errors, provider,
+                         needs_default=False)
         return
     for index, entry in enumerate(price.table):
         for path in [leaf.path for leaf in leaves(entry.when)] + [entry.times] * bool(entry.times):
@@ -1581,15 +1599,31 @@ def check_v2_cost(row: schema.V2Row, ep: dict, provider: str, where: str, errors
                 fail(errors, f"{where}:price.table[{index}]", f"'{path}' is not a declared input field")
 
 
-def check_routing(errors: list[str]) -> None:
-    """contracts.yaml and adapters.yaml parse whole, every expression in them included."""
-    from treg.domain.catalog.routing.contracts import parse_adapters, parse_contracts
+def check_routing(errors: list[str], endpoints: dict[str, dict] | None = None,
+                  warnings: list[str] | None = None) -> None:
+    """contracts.yaml and adapters.yaml parse whole, every expression in them included, and an
+    adapter's `soft:` names its contract's keys."""
+    from treg.domain.catalog.routing.contracts import (parse_adapters, parse_contracts, retired_contract_keys,
+                                                        soft_problems, soft_unrouted)
 
+    parsed = {}
     for name, parse in (("contracts.yaml", parse_contracts), ("adapters.yaml", parse_adapters)):
         try:
-            parse(schema.read_yaml(CATALOG / name) or {})
+            doc = schema.read_yaml(CATALOG / name) or {}
+            parsed[name] = parse(doc)
         except (ValueError, TypeError, AttributeError) as exc:
             fail(errors, name, f"does not parse: {exc}")
+            continue
+        if name == "contracts.yaml":
+            # The loader skips a retired key so an older catalog still loads; the shipped one may not carry it.
+            for problem in retired_contract_keys(doc):
+                fail(errors, name, problem)
+    if len(parsed) == 2:
+        capability_of = {eid: str(ep.get("capability") or "") for eid, ep in (endpoints or {}).items()}
+        for problem in soft_problems(parsed["adapters.yaml"], parsed["contracts.yaml"], capability_of):
+            fail(errors, "adapters.yaml", problem)
+        if warnings is not None:
+            warnings += soft_unrouted(parsed["adapters.yaml"], parsed["contracts.yaml"], endpoints or {})
 
 
 def check_manifests(errors: list[str]) -> None:
@@ -1725,6 +1759,9 @@ def main(argv: list[str]) -> int:
             if not legacy:
                 check_v2_row(ep, service, tier, adapter_rows, where, errors)
                 check_v2_cost(row, ep, service, where, errors)
+                if row.settle is not None and row.settle.usage is not None and row.settle.worst_case is None:
+                    warnings.append(f"{where}: settle.usage without settle.worst_case holds only the "
+                                    "estimate; declare the most one call can cost")
                 if row.provenance is not None and (day := _as_date(row.provenance.checked)) is not None:
                     check_fresh(day, "provenance.checked", where, warnings)
             if extended_file != (tier == "extended"):
@@ -1800,6 +1837,7 @@ def main(argv: list[str]) -> int:
             check_strict_body(ep, where, errors)
             check_body_allowlist(ep, where, errors)
             check_platform_auth(ep, where, errors)
+            check_public_provider_row(ep, REGISTRY.get(service), where, errors)
             if "platform_request" in ep:
                 check_platform_request(ep["platform_request"], inp, where, errors)
             if "team_label" in ep:
@@ -1826,8 +1864,6 @@ def main(argv: list[str]) -> int:
                     elif ("reserve" not in cost and eid not in UNDECLARED_RESERVE
                           and cost.get("type") == "per_result" and cost.get("unit") in _ENTITY_UNITS):
                         fail(errors, where, "a per_result price in an entity unit needs cost.reserve")
-                    if service == "tavily":
-                        check_tavily_rates(eid, cost, where, errors)
                     if service == "octen":
                         check_octen_rates(eid, cost, where, errors)
                     if service == "enrichlayer":
@@ -1919,7 +1955,7 @@ def main(argv: list[str]) -> int:
         fail(errors, eid, "in UNDECLARED_RESERVE but not in the catalog")
     if not only:
         errors += violations.audit(uses, docs, hits)
-        check_routing(errors)
+        check_routing(errors, endpoint_index, warnings)
         check_manifests(errors)
 
     for e in errors:

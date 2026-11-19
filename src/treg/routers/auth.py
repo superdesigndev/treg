@@ -2,10 +2,12 @@
 
 from __future__ import annotations
 
+import base64
+import binascii
 import hashlib
 import hmac
 import re
-from urllib.parse import parse_qsl, urlencode, urlsplit
+from urllib.parse import parse_qsl, unquote_plus, urlencode, urlsplit
 
 from cryptography.fernet import InvalidToken
 from fastapi import APIRouter, Cookie, Depends, Form, Header, HTTPException, Query, Request, Response
@@ -28,8 +30,10 @@ from ..domain.identity import mcp_oauth
 from ..domain.identity import session as sess
 from ..domain.identity.access import require_identity, require_person
 from ..models import User
-from .auth_helpers import _is_https, _remember_oauth_return, _same_origin, require_managed_cli
-from .web import _esc_html
+from .auth_helpers import (
+    _is_https, _remember_oauth_return, _same_origin, require_managed_cli, trusted_public_base,
+)
+from .signup_cookies import REFERRAL_COOKIE
 
 app = APIRouter()
 email_router = app
@@ -160,31 +164,70 @@ _norm_pair_code = auth_use_cases._norm_pair_code
 _orgs_brief = auth_use_cases._orgs_brief
 
 
+# The dashboard's tokens (frontend/src/styles/base.css, DESIGN.md): light by default, dark when the
+# dashboard's stored theme says so.
 _AUTH_HEAD = (
     '<!doctype html><html><head><meta charset="utf-8">'
-    '<meta name="viewport" content="width=device-width,initial-scale=1"><title>tools-registry</title>'
+    '<meta name="viewport" content="width=device-width,initial-scale=1"><title>treg</title>'
+    '<link rel="icon" href="/favicon.svg" type="image/svg+xml">'
+    "<script>try{if(localStorage.getItem('treg-theme')==='dark')document.documentElement.dataset.theme='dark'}catch(e){}</script>"
     '<link rel="preconnect" href="https://fonts.googleapis.com">'
     '<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>'
-    '<link href="https://fonts.googleapis.com/css2?family=Geist+Pixel&family=DM+Mono:wght@400;500&display=swap" rel="stylesheet">'
+    '<link href="https://fonts.googleapis.com/css2?family=DM+Mono:wght@400;500&display=swap" rel="stylesheet">'
     "<style>"
-    ':root{--bg:#151412;--panel:#1c1b19;--ink:#f2efe8;--muted:rgba(242,239,232,.55);'
-    '--line:rgba(255,255,255,.1);--accent:#19D0E8;'
-    '--mono:"DM Mono",ui-monospace,"SF Mono",Menlo,Consolas,monospace}'
-    "html,body{margin:0;height:100%;background:var(--bg);color:var(--ink);font-family:var(--mono)}"
-    "body{background:radial-gradient(90% 50% at 50% -10%,rgba(255,255,255,.04),transparent 60%),var(--bg)}"
-    ".wrap{min-height:100%;display:flex;align-items:center;justify-content:center;padding:24px}"
-    ".card{background:linear-gradient(180deg,#201f1d,#171614);border:1px solid var(--line);border-radius:20px;"
-    "padding:34px 40px;max-width:440px;text-align:center;"
-    "box-shadow:rgba(255,255,255,.08) 0 1px 0 inset, 0 30px 70px rgba(0,0,0,.5)}"
-    ".logo{color:var(--accent);font-size:15px;letter-spacing:.5px;margin-bottom:18px}"
-    ".mark{font-size:34px;line-height:1;margin-bottom:14px}"
-    'h1{font-family:"Geist Pixel",var(--mono);font-size:22px;margin:0 0 8px;font-weight:400;letter-spacing:0}'
-    "p{color:var(--muted);font-size:13.5px;line-height:1.55;margin:0}"
-    ".pbtn{display:inline-block;background:linear-gradient(180deg,#fdfcf7,#eae7de);color:#1c1b19;border:0;"
-    "border-radius:999px;padding:12px 24px;font:500 14px var(--mono);cursor:pointer;"
-    "box-shadow:rgba(178,168,165,.2) -1.3px -1.3px 2.5px 0, rgba(0,0,0,.4) 2px 2px 1.5px 0}"
+    ":root{--bg:#f4f4f1;--surface:#fff;--panel2:#f0f0ee;--ink:#1a1a1a;--muted:#6b6b6b;--muted2:#8a8a8a;"
+    "--line:#2626231a;--line2:#25252233;--hover:#2a2a250a;--green:#118453;--amber:#ba6603;--red:#c0362f;"
+    "--inverse:#1a1a1a;--inverse-ink:#f8f8f7;"
+    "--shadow:0 1px 2px -1px #0000000a,0 4px 6px -1px #0000000f,0 8px 16px #0000000a;"
+    "--ease:cubic-bezier(.2,.72,.25,1);--ease-out:cubic-bezier(.22,1,.36,1);"
+    '--sans:ui-sans-serif,-apple-system,system-ui,"Segoe UI",Roboto,Helvetica,Arial,"PingFang SC",'
+    '"Hiragino Sans GB","Microsoft YaHei",sans-serif;'
+    '--mono:"DM Mono",ui-monospace,"SF Mono",Menlo,Consolas,monospace;color-scheme:light}'
+    "[data-theme=dark]{--bg:#161518;--surface:#1e1d20;--panel2:#28272b;--ink:#f0f0ee;--muted:#a5a5a0;"
+    "--muted2:#7f807b;--line:#f3f3f512;--line2:#f3f3f524;--hover:#f4f4f50a;--green:#45e39e;--amber:#f0c249;"
+    "--red:#f08a84;--inverse:#f8f8f7;--inverse-ink:#1a1a1a;"
+    "--shadow:0 1px 2px -1px #0000003d,0 4px 6px -1px #00000052,0 8px 16px #00000052;color-scheme:dark}"
+    "*{box-sizing:border-box}"
+    "html,body{margin:0;min-height:100%;background:var(--bg);color:var(--ink);"
+    "font:14px/1.5 var(--sans);-webkit-font-smoothing:antialiased}"
+    ".wrap{min-height:100vh;display:flex;align-items:center;justify-content:center;padding:24px 16px}"
+    ".card{width:min(400px,100%);background:var(--surface);border-radius:20px;padding:32px 28px 28px;"
+    "text-align:center;box-shadow:var(--shadow)}"
+    ".brand{display:inline-flex;align-items:center;gap:8px;font-weight:600;font-size:15px;color:var(--ink);"
+    "margin-bottom:22px}"
+    ".glyph{display:grid;place-items:center;width:28px;height:28px;border-radius:8px;"
+    "background:var(--inverse);color:var(--inverse-ink)}"
+    ".glyph svg{width:57%;height:57%;display:block;fill:currentColor}"
+    ".status{display:grid;place-items:center;width:44px;height:44px;border-radius:999px;margin:0 auto 14px}"
+    ".status svg{width:22px;height:22px;display:block}"
+    ".status.ok{color:var(--green);background:color-mix(in srgb,var(--green) 13%,transparent)}"
+    ".status.bad{color:var(--amber);background:color-mix(in srgb,var(--amber) 13%,transparent)}"
+    "h1{font-size:22px;font-weight:600;line-height:1.25;letter-spacing:-.015em;margin:0 0 6px;"
+    "overflow-wrap:anywhere}"
+    "p{color:var(--muted);font-size:14px;line-height:1.5;margin:0}"
+    "b{color:var(--ink);font-weight:600}"
+    "code{font-family:var(--mono);font-size:.9em;background:var(--panel2);color:var(--ink);"
+    "padding:1px 6px;border-radius:6px}"
+    "a{color:var(--ink);text-underline-offset:3px;text-decoration-color:var(--line2)}"
+    "a:hover{text-decoration-color:var(--muted)}"
+    ":focus-visible{outline:0;box-shadow:0 0 0 2px var(--surface),0 0 0 3.5px var(--ink)}"
+    ".pbtn{display:inline-flex;align-items:center;justify-content:center;gap:8px;min-height:46px;"
+    "padding:0 26px;border:0;border-radius:999px;background:var(--inverse);color:var(--inverse-ink);"
+    "font:500 14px var(--sans);cursor:pointer;"
+    "transition:opacity .18s var(--ease),transform .12s var(--ease-out)}"
+    ".pbtn:hover{opacity:.88}.pbtn:active{transform:scale(.98)}"
+    "@media (prefers-reduced-motion:reduce){*{transition:none!important}}"
     '</style><script src="/adtrack.js" defer></script></head>'
 )
+
+# Same geometry as src/treg/web/favicon.svg and the dashboard's BrandMark.vue.
+_BRAND = ('<div class="brand"><span class="glyph" aria-hidden="true"><svg viewBox="0 0 290 290">'
+          '<rect width="140.5" height="140.5" rx="20"/><rect x="149.5" y="149.5" width="140.5" height="140.5" rx="20"/>'
+          '</svg></span>treg</div>')
+_ICON_OK = ('<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" '
+            'stroke-linejoin="round"><path d="M5 12.5l4.5 4.5L19 7.5"/></svg>')
+_ICON_BAD = ('<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round">'
+             '<path d="M12 7v6"/><path d="M12 17h.01"/></svg>')
 
 
 def _login_callback_base(request: Request) -> str:
@@ -194,10 +237,7 @@ def _login_callback_base(request: Request) -> str:
     cutover deploy, with its state cookie and provider registration both on the old name) must
     keep building the OLD host's callback. Any recognized alias Host therefore wins — in BOTH
     directions, so a login minted on treg.to also survives a TREG_PUBLIC_URL rollback."""
-    host = request.headers.get("host", "").split(":")[0].rstrip(".").lower()
-    if host in get_settings().public_host_aliases:
-        return f"https://{host}"
-    return get_settings().public_url.rstrip("/")
+    return trusted_public_base(request)
 
 
 app = APIRouter()
@@ -250,7 +290,7 @@ def _auth_page(headline: str, sub: str = "", *, ok: bool = True, status: int = 2
     sub_html = f"<p>{sub}</p>" if sub else ""
     html = (
         f'{_AUTH_HEAD}<body><div class="wrap"><div class="card">'
-        f'<div class="logo">▚ tools-registry</div><div class="mark">{"✅" if ok else "⚠️"}</div>'
+        f'{_BRAND}<div class="status {"ok" if ok else "bad"}">{_ICON_OK if ok else _ICON_BAD}</div>'
         f"<h1>{headline}</h1>{sub_html}</div></div></body></html>"
     )
     return HTMLResponse(html, status_code=status)
@@ -380,11 +420,11 @@ async def auth_social_check_page(request: Request):
         return RedirectResponse("/app", status_code=302)
     name = _SOCIAL_NAMES[door]
     html = (
-        f"{_AUTH_HEAD.replace('</style>', '.pbtn:disabled{opacity:.55;cursor:progress}</style>')}"
+        f"{_AUTH_HEAD.replace('</style>', '.pbtn{width:100%}.pbtn:disabled{opacity:.55;cursor:progress}</style>')}"
         f'<body><div class="wrap"><form class="card" id="go" method="post" action="/auth/social/check">'
-        f'<div class="logo">▚ tools-registry</div><h1>Almost there</h1>'
+        f'{_BRAND}<h1>Almost there</h1>'
         f'<input type="hidden" name="captcha_token" value="">'
-        f'<p id="msg" style="margin-bottom:18px">{name} confirmed your address. One quick browser check finishes signing you in.</p>'
+        f'<p id="msg" style="margin-bottom:22px">{name} confirmed your address. One quick browser check finishes signing you in.</p>'
         f'<button class="pbtn" id="btn" type="submit" data-captcha="social_start">Continue</button></form></div>'
         f'<script src="/captcha.js"></script><script>{_SOCIAL_CHECK_JS}</script></body></html>'
     )
@@ -558,116 +598,143 @@ def _login_page_html(login_id: str, *, session_email: str | None, github: bool, 
     is HTML-escaped (it's the only other interpolated value)."""
     # A pairing-code block sits above everything: whichever door the user takes, approve() won't complete
     # the CLI handshake until the code shown in their own terminal is echoed back (phishing guard — a
-    # login they didn't start has no matching code). A `treg login` link carries the code in the URL
-    # fragment, so the JS swaps this input for a read-only display the user just visually confirms;
-    # the typed input remains the fallback for links without one. #orgpick is ALWAYS present (filled by loadOrgs when a
+    # login they didn't start has no matching code). The user always types the code: the page never
+    # takes it from the link, so a link alone can never carry a login through. #orgpick is ALWAYS present (filled by loadOrgs when a
     # session exists at load, and after the email door signs in). #doors holds the sign-in options; the
     # divider only shows when a session pre-exists.
     parts: list[str] = [
-        '<div id="pcbox"><div class="pklabel">Enter the code shown in your terminal:</div>'
+        '<div id="pcbox" class="pair"><label class="pklabel" for="paircode">Enter the code shown in your terminal</label>'
         '<input id="paircode" autocomplete="off" autocapitalize="characters" spellcheck="false" '
-        'inputmode="latin" placeholder="e.g. 7F3K" maxlength="9"></div>',
+        'inputmode="latin" placeholder="7F3K" maxlength="9" autofocus></div>',
         '<div id="orgpick"></div>',
     ]
     # With a live session the doors are noise — the user is one click from done. Collapse them behind
     # the divider (an accordion); a click expands. No session → no divider, doors always visible.
     if session_email:
-        parts.append('<div class="div acc" id="other-acct" onclick="toggleDoors()" role="button" tabindex="0" '
-                     'onkeydown="if(event.key===\'Enter\')toggleDoors()">'
-                     'use a different account <span id="acc-caret">▸</span></div>')
-    doors: list[str] = []
-    if github:
-        doors.append(f'<a class="btn" href="/auth/github?cli={login_id}">Sign in with GitHub</a>')
-    if google:
-        doors.append(f'<a class="btn" href="/auth/google?cli={login_id}">Sign in with Google</a>')
-    doors.append(
+        parts.append('<button type="button" class="div acc" id="other-acct" onclick="toggleDoors()" '
+                     'aria-expanded="false" aria-controls="doors">Use a different account'
+                     '<svg viewBox="0 0 16 16" aria-hidden="true"><path d="M6 4l4 4-4 4"/></svg></button>')
+    doors: list[str] = [
         '<div id="email-door">'
-        '<div id="email-row"><input id="em" type="email" data-captcha="email_start" placeholder="you@company.com" autocomplete="email">'
-        '<button class="btn" onclick="sendCode()">Email me a code</button></div>'
-        '<div id="code-row" style="display:none"><input id="code" inputmode="numeric" placeholder="6-digit code">'
-        '<button class="btn primary" onclick="verifyCode()">Verify</button></div>'
-        '<div class="hint" id="hint"></div></div>')
+        '<div id="email-row"><label class="lbl" for="em">Email</label>'
+        '<input id="em" type="email" data-captcha="email_start" placeholder="you@work.com" autocomplete="email" '
+        'onkeyup="if(event.key===\'Enter\')sendCode()">'
+        '<button class="btn primary" onclick="sendCode()"><img class="ico" src="/media/signin/mail.svg" alt="">'
+        'Email me a sign-in code</button></div>'
+        '<div class="hint" id="hint"></div>'
+        '<div id="code-row" style="display:none"><input id="code" inputmode="numeric" autocomplete="one-time-code" '
+        'placeholder="6-digit code" onkeyup="if(event.key===\'Enter\')verifyCode()">'
+        '<button class="btn primary" onclick="verifyCode()">Sign in</button></div></div>']
+    if github or google:
+        doors.append('<div class="div">or sign in with</div>')
+    if github:
+        doors.append(f'<a class="btn" href="/auth/github?cli={login_id}">'
+                     '<img class="ico mono" src="/media/recruit/github.svg" alt="">GitHub</a>')
+    if google:
+        doors.append(f'<a class="btn" href="/auth/google?cli={login_id}">'
+                     '<img class="ico" src="/media/aeo/logos/google.svg" alt="">Google</a>')
     doors_style = ' style="display:none"' if session_email else ''
     parts.append(f'<div id="doors" class="stack"{doors_style}>{"".join(doors)}</div>')
     has_session = "true" if session_email else "false"
     return (
         f"{_AUTH_HEAD.replace('</style>', _LOGIN_CSS + '</style>')}"
-        f'<body><div class="wrap"><div class="card" id="card">'
-        f'<div class="logo">▚ tools-registry</div><h1>Sign in</h1>'
-        f'<p>to connect the <b>treg</b> CLI to your account</p>'
-        f'<div class="stack">{"".join(parts)}</div><div class="err" id="err"></div>'
-        f"</div></div>"
+        f'<body><div class="wrap"><main class="card" id="card">'
+        f'{_BRAND}<h1>Sign in to treg</h1>'
+        f'<p>Connect the treg CLI to your account.</p>'
+        f'<div class="stack">{"".join(parts)}</div><div class="err" id="err" role="alert"></div>'
+        f"</main></div>"
         f'<script src="/captcha.js" defer></script>'
-        f"<script>const HAS_SESSION={has_session};{_LOGIN_JS.replace('__LOGIN_ID__', login_id)}</script></body></html>"
+        f"<script>const HAS_SESSION={has_session};{_LOGIN_JS.replace('__LOGIN_ID__', login_id).replace('__ICON_OK__', _ICON_OK)}</script></body></html>"
     )
 
 
 _LOGIN_CSS = (
-    ".btn{display:block;width:100%;box-sizing:border-box;padding:11px 14px;border-radius:9px;"
-    "border:1px solid var(--line);background:#332d23;color:var(--ink);font-family:var(--mono);"
-    "font-size:13.5px;cursor:pointer;text-decoration:none;text-align:center}"
-    ".btn:hover{border-color:var(--accent)}"
-    ".btn.primary{background:var(--accent);border-color:var(--accent);color:#211d16;font-weight:700}"
-    ".stack{display:flex;flex-direction:column;gap:10px;margin-top:18px}"
+    ".stack{display:flex;flex-direction:column;gap:10px;margin-top:24px;text-align:left}"
     ".stack>div{display:flex;flex-direction:column;gap:10px}"
-    ".div{display:flex;flex-direction:row!important;align-items:center;gap:10px;color:var(--muted);font-size:12px;margin:6px 0 0}"
-    ".div:before,.div:after{content:'';flex:1;border-top:1px solid var(--line)}"
-    ".div.acc{cursor:pointer;user-select:none}.div.acc:hover{color:var(--ink)}"
+    ".stack>div:empty,.hint:empty,.err:empty{display:none}"
+    ".stack .stack{margin-top:10px}"
+    ".btn{display:flex;align-items:center;justify-content:center;gap:9px;width:100%;min-height:46px;"
+    "padding:0 18px;border-radius:999px;border:1px solid var(--line2);background:var(--surface);color:var(--ink);"
+    "font:500 14px var(--sans);cursor:pointer;text-decoration:none;"
+    "transition:background-color .18s var(--ease),border-color .18s var(--ease),opacity .18s var(--ease),"
+    "transform .12s var(--ease-out)}"
+    ".btn:hover{background:var(--hover);border-color:var(--muted2)}"
+    ".btn:active{transform:scale(.98)}"
+    ".btn:disabled{opacity:.55;cursor:progress}"
+    ".btn.primary{background:var(--inverse);border-color:var(--inverse);color:var(--inverse-ink)}"
+    ".btn.primary:hover{background:var(--inverse);opacity:.88}"
+    ".ico{width:17px;height:17px;flex:none}"
+    ".btn.primary .ico{filter:invert(1)}"
+    "[data-theme=dark] .btn.primary .ico{filter:none}"
+    "[data-theme=dark] .btn:not(.primary) .ico.mono{filter:invert(1)}"
+    ".div,.stack>.div{display:flex;flex-direction:row;align-items:center;gap:12px;color:var(--muted2);font-size:12.5px;margin:8px 0 2px}"
+    ".div:before,.div:after{content:'';flex:1;height:1px;background:var(--line)}"
+    "button.div{width:100%;padding:4px 0;border:0;background:none;font:inherit;font-size:12.5px;"
+    "color:var(--muted);cursor:pointer;border-radius:6px}"
+    "button.div:hover{color:var(--ink)}"
+    "button.div svg{width:12px;height:12px;fill:none;stroke:currentColor;stroke-width:1.8;stroke-linecap:round;"
+    "stroke-linejoin:round;margin-left:-6px;transition:transform .18s var(--ease)}"
+    "button.div[aria-expanded=true] svg{transform:rotate(90deg)}"
     "#email-row,#code-row{display:flex;flex-direction:column;gap:10px}"
-    "input{width:100%;box-sizing:border-box;padding:11px 12px;border-radius:9px;border:1px solid var(--line);"
-    "background:#1c1913;color:var(--ink);font-family:var(--mono);font-size:13.5px}"
-    ".err{color:#d78f6c;font-size:12.5px;margin-top:10px;min-height:1em}"
-    ".hint{color:var(--muted);font-size:12px}"
+    ".lbl{font-size:13px;font-weight:500;color:var(--ink);margin-bottom:-4px}"
+    "input{width:100%;min-height:46px;padding:0 14px;border-radius:12px;border:1px solid var(--line2);"
+    "background:var(--surface);color:var(--ink);font:14px var(--sans);"
+    "transition:border-color .18s var(--ease)}"
+    "input::placeholder{color:var(--muted2)}"
+    "input:focus,input:focus-visible{outline:0;border-color:var(--ink);"
+    "box-shadow:0 0 0 3px color-mix(in srgb,var(--ink) 9%,transparent)}"
+    ".err{color:var(--red);font-size:13px;line-height:1.45;margin-top:14px}"
+    ".hint{color:var(--muted);font-size:12.5px;text-align:center}"
     ".muted{color:var(--muted)}"
-    ".team{display:flex;justify-content:space-between;align-items:center;gap:10px;text-align:left}"
-    ".team .tn{display:flex;flex-direction:column;gap:2px;min-width:0}"
-    ".team .tnm{font-weight:700;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}"
-    ".team .tm{font-size:11px;color:var(--muted)}"
-    ".team.primary .tm{color:#211d16;opacity:.8}"
-    ".pklabel{font-size:12px;color:var(--muted);margin:2px 0 2px}"
-    "#paircode-show{font-size:22px;font-weight:700;letter-spacing:8px;text-align:center;color:var(--accent);"
-    "padding:10px 12px 10px 20px;border:1px dashed var(--line);border-radius:9px;background:#1c1913}"
+    ".team{justify-content:space-between;gap:12px;min-height:56px;padding:9px 18px;border-radius:14px;"
+    "text-align:left}"
+    ".team .tn{display:flex;flex-direction:column;gap:1px;min-width:0}"
+    ".team .tnm{font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}"
+    ".team .tm{font-size:12px;font-weight:400;color:var(--muted)}"
+    ".team.primary .tm{color:var(--inverse-ink);opacity:.7}"
+    ".pair{align-items:center;padding:16px;border-radius:16px;background:var(--panel2);text-align:center}"
+    ".pklabel{font-size:12.5px;color:var(--muted)}"
+    "#paircode{font-family:var(--mono);font-size:28px;font-weight:500;line-height:1.2;"
+    "letter-spacing:.24em;text-indent:.24em;text-align:center;color:var(--ink);font-variant-numeric:tabular-nums}"
+    "#paircode{min-height:52px;text-transform:uppercase;background:var(--surface)}"
+    "#paircode::placeholder{color:var(--muted2);opacity:.5}"
+    ".pick{font-size:12.5px;color:var(--muted);text-align:center}"
 )
 
 # The page's whole brain: every door funnels into approve(), which completes the CLI handshake.
 # done() builds DOM via textContent (the email came over JSON — never trust it into innerHTML).
 _LOGIN_JS = """
 const LID='__LOGIN_ID__';
-// `treg login` puts the pairing code in the URL FRAGMENT (#code=…) — it never reaches the server on
-// the GET. When present, show it read-only for a visual match against the terminal instead of making
-// the user type it; approve() still sends it for full server-side validation. No fragment (an old CLI,
-// or a link someone stripped it from) → the typed-input fallback below stays.
-const PAIR=(()=>{const m=/[#&]code=([A-Za-z0-9-]{1,16})/.exec(location.hash||'');return m?m[1].toUpperCase():''})();
-if(PAIR){const box=document.getElementById('pcbox');if(box){box.innerHTML='';
- const l=document.createElement('div');l.className='pklabel';l.textContent='Check this code matches your terminal:';box.appendChild(l);
- const c=document.createElement('div');c.id='paircode-show';c.textContent=PAIR;box.appendChild(c);}}
-const pairCode=()=>PAIR||((document.getElementById('paircode')||{}).value||'');
+const pairCode=()=>((document.getElementById('paircode')||{}).value||'');
 // Signed-in users see the doors collapsed behind the "use a different account" divider.
 function toggleDoors(){const d=document.getElementById('doors');if(!d)return;
  const open=d.style.display==='none';d.style.display=open?'':'none';
- const c=document.getElementById('acc-caret');if(c)c.textContent=open?'\\u25be':'\\u25b8'}
+ const b=document.getElementById('other-acct');if(b)b.setAttribute('aria-expanded',open)}
 const err=m=>{document.getElementById('err').textContent=m||''};
 async function post(p,b){const r=await fetch(p,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(b)});
  let d={};try{d=await r.json()}catch(e){}
  if(!r.ok)throw new Error(d.detail||('error '+r.status));return d}
-function done(email){const c=document.getElementById('card');c.innerHTML='';
+function done(email){const c=document.getElementById('card');const brand=c.querySelector('.brand');c.innerHTML='';
  const mk=(t,cls,txt)=>{const e=document.createElement(t);if(cls)e.className=cls;if(txt)e.textContent=txt;c.appendChild(e);return e};
- mk('div','logo','\\u259a tools-registry');mk('div','mark','\\u2705');
- mk('h1',null,email?('Logged in as '+email):'Logged in');
- mk('p',null,'Return to your terminal. The CLI is finishing up.');
+ if(brand)c.appendChild(brand);
+ mk('div','status ok').innerHTML='__ICON_OK__';
+ mk('h1',null,'You\\u2019re signed in');
+ const sub=mk('p');
+ if(email){sub.append('Signed in as ');const b=document.createElement('b');b.textContent=email;sub.append(b,'. ')}
+ sub.append('Return to your terminal. The CLI is finishing up.');
  // Don't strand the tab: the approve() above set a session cookie, so /app works. Count down to
  // Getting started, but let a click beat the clock — and a second click on "stay" cancel it.
- const row=mk('p','hint','');let left=10;
+ const row=mk('p','hint','');row.style.marginTop='18px';let left=10;
  const go=document.createElement('a');go.href='/app#start';go.textContent='Open Getting started now \\u2192';
- go.style.color='var(--accent)';row.appendChild(go);
+ row.appendChild(go);
  const cnt=document.createElement('span');row.appendChild(cnt);
  const stay=document.createElement('a');stay.href='#';stay.textContent='stay here';stay.className='muted';
- stay.style.marginLeft='8px';stay.style.textDecoration='underline';row.appendChild(stay);
+ row.appendChild(stay);
  const tick=()=>{cnt.textContent=' \\u00b7 auto in '+left+'s \\u00b7 '};tick();
  const timer=setInterval(()=>{left--;if(left<=0){clearInterval(timer);location.href='/app#start'}else tick()},1000);
  stay.onclick=e=>{e.preventDefault();clearInterval(timer);row.textContent='';
   const a=document.createElement('a');a.href='/app#start';a.textContent='Open Getting started \\u2192';
-  a.style.color='var(--accent)';row.appendChild(a)}}
+  row.appendChild(a)}}
 async function approve(org){err('');
  const pc=pairCode();
  if(!pc.trim()){err('Enter the code shown in your terminal to continue.');const el=document.getElementById('paircode');if(el)el.focus();return}
@@ -676,7 +743,7 @@ let CREATED_ORG=null;  // remember a just-created team so a retry (e.g. after a 
 async function createTeam(){err('');
  const pc=pairCode();
  if(!pc.trim()){err('Enter the code shown in your terminal to continue.');const el=document.getElementById('paircode');if(el)el.focus();return}
- const inp=document.getElementById('newteam');const name=(inp&&inp.value||'').trim();if(!name)return err('give your team a name');
+ const inp=document.getElementById('newteam');const name=(inp&&inp.value||'').trim();if(!name)return err('Give your team a name.');
  try{if(!CREATED_ORG){const o=await post('/orgs',{name:name});CREATED_ORG=o.org;}await approve(CREATED_ORG);}catch(e){err(e.message)}}
 // Render the team picker into #orgpick once a session exists (fetched, so it also runs after the
 // email door signs in). One team → a single "Continue as" button; many → a labelled list.
@@ -684,11 +751,11 @@ async function loadOrgs(){const box=document.getElementById('orgpick');if(!box)r
  let d;try{d=await(await fetch('/auth/cli/orgs',{credentials:'include'})).json()}catch(e){return}
  const orgs=d.orgs||[];box.innerHTML='';
  if(!orgs.length){  // brand-new user: no team yet → make them NAME one (never finish the CLI login team-less)
-  const l=document.createElement('div');l.className='pklabel';l.textContent='Name your team to finish signing in'+(d.email?(' ('+d.email+')'):'')+':';box.appendChild(l);
+  const l=document.createElement('label');l.className='lbl';l.htmlFor='newteam';l.textContent='Name your team to finish signing in';box.appendChild(l);
   const inp=document.createElement('input');inp.id='newteam';inp.placeholder='Team name, e.g. Superdesign';inp.autocomplete='off';box.appendChild(inp);
   const b=document.createElement('button');b.className='btn primary';b.textContent='Create team \\u2192';b.onclick=createTeam;box.appendChild(b);
   inp.addEventListener('keyup',e=>{if(e.key==='Enter')createTeam()});inp.focus();return}
- if(orgs.length>1){const l=document.createElement('div');l.className='pklabel';l.textContent='Continue as '+d.email+' — pick a team:';box.appendChild(l)}
+ if(orgs.length>1){const l=document.createElement('div');l.className='pick';l.textContent='Signed in as '+d.email+'. Pick a team';box.appendChild(l)}
  orgs.forEach((o,i)=>{const b=document.createElement('button');b.className='btn team'+((i===0&&orgs.length>1)?' primary':'');b.onclick=()=>approve(o.slug);
   const tn=document.createElement('div');tn.className='tn';
   const nm=document.createElement('div');nm.className='tnm';nm.textContent=o.name+(o.personal?' (personal)':'');
@@ -697,15 +764,20 @@ async function loadOrgs(){const box=document.getElementById('orgpick');if(!box)r
   if(orgs.length===1){const c=document.createElement('span');c.textContent='→';b.appendChild(c)}
   box.appendChild(b)});
  if(orgs.length===1){box.firstChild.classList.add('primary')}}
-async function sendCode(){err('');const em=document.getElementById('em').value.trim();if(!em)return err('enter your email');
+async function sendCode(){err('');const em=document.getElementById('em').value.trim();if(!em)return err('Enter your email address.');
  const b=document.querySelector('#email-row button');if(b.disabled)return;b.disabled=true;
  try{const t=window.tregCaptcha?await window.tregCaptcha.token('email_start'):'';  // /captcha.js
   const d=await post('/auth/email/start',{email:em,captcha_token:t});
+  document.getElementById('email-row').style.display='none';
   document.getElementById('code-row').style.display='';
-  document.getElementById('hint').textContent=d.dev_code?('dev code: '+d.dev_code):('code sent to '+d.email);
+  const h=document.getElementById('hint');h.textContent=(d.dev_code?('Dev code: '+d.dev_code):('Code sent to '+d.email))+' \\u00b7 ';
+  const ch=document.createElement('a');ch.href='#';ch.textContent='change';h.appendChild(ch);
+  ch.onclick=e=>{e.preventDefault();h.textContent='';document.getElementById('code-row').style.display='none';
+   document.getElementById('email-row').style.display='';document.getElementById('em').focus()};
+  document.getElementById('code').focus();
  }catch(e){err(e.message)}finally{b.disabled=false}}
 async function verifyCode(){err('');const em=document.getElementById('em').value.trim(),co=document.getElementById('code').value.trim();
- if(!co)return err('enter the code');
+ if(!co)return err('Enter the 6-digit code from the email.');
  try{await post('/auth/email/verify',{email:em,code:co,cli_pairing:true});
   // The email door just set a session cookie — hide the doors and show the team picker.
   const d=document.getElementById('doors');if(d)d.style.display='none';
@@ -770,86 +842,36 @@ _live_invite_by_email_token = auth_use_cases._live_invite_by_email_token
 
 
 @app.get("/auth/invite-signin")
-async def auth_invite_signin(
-    request: Request, code: str = "", t: str = "",
-    treg_session: str = Cookie(default=""),
-):
-    """Landing for an invite email link. Two secrets, two very different trust levels:
-
-    `t` (email_token) exists ONLY in the emailed link — possession proves inbox access, the same bar
-    as the emailed OTP — so it may sign the invitee in. But not on this GET: corporate mail scanners
-    (Outlook SafeLinks etc.) prefetch GET links and would consume a one-time credential before the
-    human ever clicks. So the GET only renders a confirm page whose button POSTs the token back;
-    the POST below mints the session.
-
-    `code` (legacy + out-of-band) is also returned to the admin who created the invite, so it can
-    NEVER be an authentication factor — holding it lets you JOIN (POST /invites/accept), not log in.
-    Links carrying ?code= (emails sent before the split, or relayed by an admin) keep their old
-    behavior: validate and bounce to the SPA login with the email prefilled; the invitee proves the
-    email through a real door (OTP / GitHub / Google) and the invite auto-appears via /invites/mine.
-    An invalid/expired secret of either kind just lands on the site."""
-    from urllib.parse import quote
-    try:
-        landing = await auth_use_cases.invite_signin_landing(t, code, treg_session)
-    except auth_use_cases.InviteSigninError as exc:
-        if exc.kind != "expired":
-            raise
-        return RedirectResponse("/?invite_expired=1", status_code=303)
-    if isinstance(landing, auth_use_cases.InviteEmailConfirmation):
-        # Already signed in as someone ELSE? Warn — continuing replaces that browser session.
-        switch_note = ""
-        if landing.switch_email is not None:
-            switch_note = (f"<p>You're currently signed in as <b>{_esc_html(landing.switch_email)}</b> — "
-                           f"continuing switches this browser to <b>{_esc_html(landing.email)}</b>.</p>")
-        return HTMLResponse(
-            f'{_AUTH_HEAD}<body><div class="wrap"><div class="card">'
-            f'<div class="logo">▚ tools-registry</div><div class="mark">👋</div>'
-            f'<h1>Join {_esc_html(landing.org_name)}</h1>'
-            f'<p><b>{_esc_html(landing.invited_by)}</b> invited '
-            f'<b>{_esc_html(landing.email)}</b> as {_esc_html(landing.role)}.</p>{switch_note}'
-            f'<form method="post" action="/auth/invite-signin" style="margin-top:18px">'
-            f'<input type="hidden" name="t" value="{_esc_html(t.strip())}">'
-            f'<button type="submit" class="pbtn">'
-            f'Continue as {_esc_html(landing.email)} →</button></form>'
-            f"</div></div></body></html>"
-        )
-    # Code path: same redirect whether or not the email already has an account — the code is a
-    # convenience that prefills the sign-in email, never an authentication factor. A suspended
-    # account is caught at the real login door, the only place the code path can mint a session.
-    return RedirectResponse(f"/?invite={quote(landing.email)}", status_code=303)
+async def auth_invite_signin(code: str = "", t: str = ""):
+    """Landing for an invite email link. Neither secret signs anyone in: the emailed `t` and the
+    admin-visible `code` only prefill the invitee's address on the SPA login, where they prove it
+    through a real door (OTP / GitHub / Google) and the invite appears via /invites/mine. An
+    invalid/expired secret lands on the site with the expired banner."""
+    return await _invite_link_redirect(t, code)
 
 
 @app.post("/auth/invite-signin")
 async def auth_invite_signin_confirm(request: Request):
-    """The confirm page's POST: the emailed one-time token signs the invitee in. Mirrors the OTP
-    door (auth_email_verify) — find-or-create the user, refuse the suspended, set the session
-    cookie — because the trust source is identical: only the inbox saw this secret. The token is
-    consumed here (one-time) so a link floating in a forwarded thread can't be replayed; the invite
-    itself stays PENDING — acceptance happens in the dashboard, where a multi-team invitee can
-    accept several at once. Body is parsed by hand (urlencoded form) to avoid the python-multipart
-    dependency FastAPI's Form() would pull in."""
+    """The confirm button of invite pages rendered before links stopped signing in. Treated like
+    the GET: prefill, never a session. Body is parsed by hand (urlencoded form) to avoid the
+    python-multipart dependency FastAPI's Form() would pull in."""
     from urllib.parse import parse_qs
     try:
         form = parse_qs((await request.body()).decode("utf-8", "replace"))
     except Exception:  # noqa: BLE001 — any junk body = no token
         form = {}
-    t = (form.get("t", [""])[0] or "").strip()
+    return await _invite_link_redirect((form.get("t", [""])[0] or "").strip(), "")
+
+
+async def _invite_link_redirect(t: str, code: str) -> RedirectResponse:
+    from urllib.parse import quote
     try:
-        proof = await auth_use_cases.confirm_invite_signin(t)
+        landing = await auth_use_cases.invite_signin_landing(t, code)
     except auth_use_cases.InviteSigninError as exc:
-        if exc.kind == "expired":
-            return RedirectResponse("/?invite_expired=1", status_code=303)
-        if exc.kind == "machine_identity":
-            raise HTTPException(status_code=403, detail="this address cannot be used to sign in") from exc
-        if exc.kind == "suspended":
-            return _auth_page("Account suspended", "This account has been suspended.", ok=False, status=403)
-        if exc.kind == "blocked_domain":
-            return _auth_page("Sign-in refused", "This address cannot be used to sign in.", ok=False, status=403)
-        raise
-    resp = RedirectResponse(proof.destination, status_code=303)
-    resp.set_cookie(sess.COOKIE, proof.session_cookie, httponly=True,
-                    samesite="lax", secure=_is_https(request), max_age=sess.TTL_SECONDS)
-    return resp
+        if exc.kind != "expired":
+            raise
+        return RedirectResponse("/?invite_expired=1", status_code=303)
+    return RedirectResponse(f"/?invite={quote(landing.email)}", status_code=303)
 
 
 app = APIRouter()
@@ -901,26 +923,33 @@ async def oauth_register(body: OAuthClientRegistration) -> JSONResponse:
 _resolve_oauth_client = auth_use_cases._resolve_oauth_client
 AUTH_CODE_TTL_S = auth_use_cases.AUTH_CODE_TTL_S
 _CONSENT_CSS = """
-.consent{max-width:460px;text-align:left}
+.consent{width:min(460px,100%);text-align:left}
+.consent .brand{margin-bottom:20px}
 .consent h1{font-size:20px;margin:0 0 4px}
-.consent .who{color:var(--ink55,#8a8a8a);font-size:13.5px;margin:0 0 18px}
-.consent .grants{list-style:none;padding:0;margin:0 0 18px}
-.consent .grants li{padding:7px 0 7px 22px;position:relative;font-size:13.5px;line-height:1.45}
-.consent .grants li:before{content:"›";position:absolute;left:6px;color:#e0703f}
-.consent label{display:block;font-size:12px;text-transform:uppercase;letter-spacing:.06em;
-  color:var(--ink55,#8a8a8a);margin:0 0 6px}
-.consent select{width:100%;padding:9px 10px;border-radius:8px;font:inherit;font-size:14px;
-  background:#1a1a1a;color:inherit;border:1px solid #333;margin-bottom:16px}
+.consent .who{color:var(--muted);font-size:13.5px;margin:0 0 18px;overflow-wrap:anywhere}
+.consent .grants{list-style:none;padding:14px 16px;margin:0 0 20px;background:var(--panel2);border-radius:16px}
+.consent .grants li{padding:6px 0 6px 26px;position:relative;font-size:13.5px;line-height:1.45}
+.consent .grants li:before{content:"";position:absolute;left:4px;top:11px;width:10px;height:6px;
+  border-left:2px solid var(--muted);border-bottom:2px solid var(--muted);transform:rotate(-45deg)}
+.consent label{display:block;font-size:13px;font-weight:500;color:var(--ink);margin:0 0 6px}
+.consent select{width:100%;min-height:46px;padding:0 12px;border-radius:12px;font:14px var(--sans);
+  background:var(--surface);color:var(--ink);border:1px solid var(--line2);margin-bottom:18px}
+.consent .newteam{min-height:46px;padding:12px;border-radius:12px;font-size:13.5px;line-height:1.45;
+  box-sizing:border-box;background:var(--surface);color:var(--ink);border:1px solid var(--line2);margin:0 0 18px}
 .consent .row{display:flex;gap:10px}
-.consent button{flex:1;padding:10px 14px;border-radius:8px;font:inherit;font-size:14px;cursor:pointer;
-  border:1px solid #333;background:#1a1a1a;color:inherit}
-.consent button.primary{background:#e0703f;border-color:#e0703f;color:#161310;font-weight:600}
-.consent .fine{color:var(--ink55,#8a8a8a);font-size:12px;margin:14px 0 0;line-height:1.5}
+.consent button{flex:1;min-height:46px;padding:0 18px;border-radius:999px;font:500 14px var(--sans);cursor:pointer;
+  border:1px solid var(--line2);background:var(--surface);color:var(--ink);
+  transition:background-color .18s var(--ease),opacity .18s var(--ease),transform .12s var(--ease-out)}
+.consent button:hover{background:var(--hover)}
+.consent button:active{transform:scale(.98)}
+.consent button.primary{background:var(--inverse);border-color:var(--inverse);color:var(--inverse-ink)}
+.consent button.primary:hover{opacity:.88}
+.consent .fine{color:var(--muted);font-size:12.5px;margin:14px 0 0;line-height:1.5}
 """
 
 
 def _consent_page(*, client_name: str, client_uri: str, user_email: str, teams: list,
-                  hidden: dict, unverified: bool) -> HTMLResponse:
+                  hidden: dict, unverified: bool, scope: str, new_team: str = "") -> HTMLResponse:
     """The one place a human sees what they are granting — so it says it in words, not scopes.
 
     Deliberately plain about the two things that cost money or leak data: this client will be able to
@@ -951,6 +980,21 @@ def _consent_page(*, client_name: str, client_uri: str, user_email: str, teams: 
     fields = "".join(
         f'<input type="hidden" name="{_h.escape(k)}" value="{_h.escape(str(v))}"/>'
         for k, v in hidden.items())
+    held = mcp_oauth.mcp_permissions(scope)
+    grants = "".join(f"<li>{line}</li>" for perm, line in (
+        (mcp_oauth.CATALOG_SCOPE, "Search the catalog and read prices"),
+        (mcp_oauth.CALL_SCOPE, "Call tools on your team's behalf — <b>this spends the team's balance</b>"),
+        (mcp_oauth.CALL_SCOPE, "Use the API keys and connections your team has registered, without seeing them"),
+        (mcp_oauth.READ_SCOPE, "Read the team's balance, its own tools and the provider resources it owns"),
+    ) if perm in held)
+    if teams:
+        picker = (f'<label for="org_id">Which team?</label>'
+                  f'<select id="org_id" name="org_id" required>{opts}</select>')
+    else:
+        picker = ('<label>Team</label>'
+                  f'<p class="newteam">Allowing creates your team, <b>{_h.escape(new_team)}</b>. '
+                  'You can rename it in the dashboard.</p>'
+                  '<input type="hidden" name="org_id" value="0"/>')
     who = _h.escape(client_name or "An application")
     where = (f' <span class="who">({_h.escape(client_uri)})</span>' if client_uri else "")
     warn = ("" if not unverified else
@@ -959,18 +1003,12 @@ def _consent_page(*, client_name: str, client_uri: str, user_email: str, teams: 
     return HTMLResponse(
         f"{_AUTH_HEAD.replace('</style>', _CONSENT_CSS + '</style>')}"
         f'<body><div class="wrap"><div class="card consent">'
-        f'<div class="logo">▚ tools-registry</div>'
+        f'{_BRAND}'
         f"<h1>{who} wants to use treg</h1>{where}"
         f'<p class="who">Signed in as {_h.escape(user_email)}</p>'
-        f'<ul class="grants">'
-        f"<li>Search the catalog and read prices</li>"
-        f"<li>Call tools on your team's behalf — <b>this spends the team's balance</b></li>"
-        f"<li>Use the API keys and connections your team has registered, without seeing them</li>"
-        f"<li>Read the team's balance</li>"
-        f"</ul>"
+        f'<ul class="grants">{grants}</ul>'
         f'<form method="post" action="/oauth/authorize">{fields}'
-        f'<label for="org_id">Which team?</label>'
-        f'<select id="org_id" name="org_id" required>{opts}</select>'
+        f"{picker}"
         f'<div class="row">'
         f'<button type="submit" name="decision" value="deny">Cancel</button>'
         f'<button type="submit" name="decision" value="allow" class="primary">Allow</button>'
@@ -990,7 +1028,7 @@ def _sheets_consent_page(*, user_email: str, teams: list, hidden: dict) -> HTMLR
     return HTMLResponse(
         f"{_AUTH_HEAD.replace('</style>', _CONSENT_CSS + '</style>')}"
         f'<body><div class="wrap"><div class="card consent">'
-        f'<div class="logo">▚ tools-registry</div>'
+        f'{_BRAND}'
         f"<h1>treg for Sheets wants to use your treg account</h1>"
         f'<p class="who">Signed in as {_h.escape(user_email)}</p>'
         f'<ul class="grants">'
@@ -1086,18 +1124,20 @@ async def oauth_authorize(
         return {
             "client": {"client_id": view.client_id, "name": view.client_name,
                        "uri": view.client_uri, "kind": view.client_kind},
-            "redirect_uri": redirect_uri, "scope": scope, "resource": resource,
+            "redirect_uri": redirect_uri, "scope": view.scope, "resource": resource,
             "user": view.user_email,
             # The team picker. A person may belong to several, and which one this client may spend
             # from is a decision for the human here — not something resolved per call later.
             "teams": view.teams,
+            "new_team": view.new_team or None,
             "approve_with": "POST /oauth/authorize with the same parameters plus org_id",
         }
     if view.client_id == mcp_oauth.SHEETS_CLIENT_ID:
         return _sheets_consent_page(user_email=view.user_email, teams=view.teams, hidden=hidden)
     return _consent_page(client_name=view.client_name, client_uri=view.client_uri,
                          user_email=view.user_email, teams=view.teams, hidden=hidden,
-                         unverified=(view.client_kind == "dcr"))
+                         unverified=(view.client_kind == "dcr"), scope=view.scope,
+                         new_team=view.new_team)
 
 
 @app.post("/oauth/authorize", include_in_schema=False)
@@ -1134,6 +1174,9 @@ async def oauth_authorize_approve(
             resource=resource,
             org_id=org_id,
             session_cookie=treg_session,
+            ad_cookie=request.cookies.get("treg_ad") or "",
+            utm_cookie=request.cookies.get("treg_utm") or "",
+            referral_cookie=request.cookies.get(REFERRAL_COOKIE) or "",
         )
     except auth_use_cases.OAuthServerError as exc:
         return _oauth_server_failure(exc, redirect_uri, state)
@@ -1162,18 +1205,38 @@ async def oauth_revoke(token: str = Form(default="")) -> JSONResponse:
     return JSONResponse({"ok": True})
 
 
+def _basic_client_credentials(authorization: str) -> tuple[str, str] | None:
+    """`client_secret_basic` (RFC 6749 2.3.1): both halves are form-urlencoded before base64."""
+    scheme, _, value = authorization.partition(" ")
+    if scheme.lower() != "basic" or not value.strip():
+        return None
+    try:
+        decoded = base64.b64decode(value.strip(), validate=True).decode()
+    except (binascii.Error, UnicodeDecodeError):
+        return None
+    client_id, sep, secret = decoded.partition(":")
+    return (unquote_plus(client_id), unquote_plus(secret)) if sep else None
+
+
 @app.post("/oauth/token", include_in_schema=False)
 async def oauth_token(
     grant_type: str = Form(default=""), code: str = Form(default=""),
     redirect_uri: str = Form(default=""), client_id: str = Form(default=""),
     code_verifier: str = Form(default=""), resource: str = Form(default=""),
-    refresh_token: str = Form(default=""),
+    refresh_token: str = Form(default=""), client_secret: str = Form(default=""),
+    authorization: str = Header(default=""),
 ):
     """Exchange a code for an access token.
 
     Errors here are JSON, not redirects: this is a back-channel call from the client itself, and
     there is no browser to send anywhere.
     """
+    basic = _basic_client_credentials(authorization)
+    if basic is not None:
+        if (client_id and client_id != basic[0]) or client_secret:
+            return _oauth_json_error(auth_use_cases.OAuthServerError(
+                "invalid_request", "use one client authentication method"))
+        client_id, client_secret = basic
     try:
         token = await auth_use_cases.exchange_oauth_token(
             grant_type=grant_type,
@@ -1183,9 +1246,13 @@ async def oauth_token(
             code_verifier=code_verifier,
             resource=resource,
             refresh_token=refresh_token,
+            client_secret=client_secret,
         )
     except auth_use_cases.OAuthServerError as exc:
-        return _oauth_json_error(exc)
+        response = _oauth_json_error(exc)
+        if exc.error == "invalid_client" and basic is not None:
+            response.headers["WWW-Authenticate"] = 'Basic realm="treg"'
+        return response
     return JSONResponse(token, headers={"Cache-Control": "no-store", "Pragma": "no-cache"})
 
 

@@ -170,7 +170,11 @@ async def test_no_fallback_or_charge_when_call_is_ineligible(
     monkeypatch.setattr(O, "_send", _orthogonal([(200, ENVELOPE)], seen))
     before = await _balance(clients)
     response = await clients.post(f"/call/{SEARCH}", json=_body(limit=2))
-    assert response.status_code == status and response.content == error
+    if case == "opt_out":  # treg's own account is out: its refusal, not the vendor's 402
+        assert response.status_code == 503
+        assert response.json()["detail"]["error"] == "provider_capacity_unavailable"
+    else:
+        assert response.status_code == status and response.content == error
     assert seen == [] and before == await _balance(clients) and await _holds() == []
 
 

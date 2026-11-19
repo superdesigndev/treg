@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import hashlib
 import re
 
 import json
@@ -16,6 +15,7 @@ from ... import plugins
 from .. import outcome
 from ..schema.v2 import is_v2
 from . import paths as P
+from .segments import SEGMENTERS
 
 _HTTP_URL = TypeAdapter(AnyHttpUrl)
 
@@ -53,6 +53,10 @@ class Contract:
     # (`question_miss`), so the route moves on. Empty = none. Used where only the question can say
     # an answer is off target (a `site:` search whose rows are all on other sites).
     question_miss: str = ""
+    # True = an answer `question_miss` rules out is kept like a weak hit and the walk asks at most
+    # MAX_WEAK_FALLBACKS more providers (every provider returns the same wall page). False = the
+    # walk goes on to the end, as a `site:` search needs (the next provider may hold the site).
+    question_miss_bound: bool = False
     default_max_cost_usd: float | None = None  # the per-call ceiling when the caller sends none
     # One sentence the router attaches as `_treg.advice` to a HIT whose `output.verified` is not
     # true — a found contact the provider did not confirm deliverable, which an agent should verify
@@ -63,7 +67,8 @@ class Contract:
     # One sentence the router attaches as `_treg.advice` when a hit's email domain does not match
     # the domain the caller asked for (`_treg.domain_match: false`). Disclose only — the answer is
     # not altered. Empty = flag only, no advice. A LinkedIn-only child often returns a former
-    # employer when the caller also sent a domain.
+    # employer when the caller also sent a domain. Set = the contract also takes
+    # `X-Treg-Route-Domain-Match: strict`, which looks past such a hit (route.py).
     advice_domain_mismatch: str = ""
     # False = the contract exists so the archive can judge found/empty (`results.has_result_rules`
     # needs a verified adapter, and an adapter verifies only against a contract); no
@@ -87,13 +92,10 @@ class Contract:
     # ahead of `prefer`. Cost per hit is one number for every domain, but a finder's coverage
     # differs by country.
     prefer_by_domain_suffix: dict[str, tuple[str, ...]] = field(default_factory=dict)
-    # (sent keys, provider order) pairs: the first whose keys the caller all sent replaces `prefer`.
-    # One order does not fit every question - a free-text `{q}` is answered best by a semantic
-    # search that a `{company_domain, title}` lookup can never reach. A rule with a third item, a
-    # percent, applies only to that share of teams (`in_rollout`), so a new order can be compared
-    # with the old one on live traffic before every team gets it; the other teams fall through to
-    # the next rule.
-    prefer_when: tuple[tuple, ...] = ()
+    # Providers asked, on treg's key, after the other treg-key candidates of the same health when
+    # the caller sends no `X-Treg-Route-Prefer`: a free provider that is often refused would
+    # otherwise lead on price. A team's own key is never reordered by it.
+    ask_last: tuple[str, ...] = ()
     # Identity key sets on which the caller's own `limit` is a target, not a cap: when the caller
     # sent exactly one of these sets and a `limit`, the route defaults to `X-Treg-Route-Min-Results:
     # <limit>` plus `X-Treg-Route-Merge: 1`, so a short answer goes on to the next provider and the
@@ -152,20 +154,17 @@ class Contract:
     # people search can answer a `{title}` request). A provider that can take the caller's own
     # fields never sees it, so its request is unchanged.
     stand_in: dict[str, str] = field(default_factory=dict)
+    # Stand-in key -> the caller's identity keys and filters its text carries (`q`: [title,
+    # company_domain, country]). A provider sent the stand-in counts as sending these, so scoping
+    # keeps it and the filters are not ignored. A key the expression reads but this leaves out
+    # keeps its scoping guard.
+    stand_in_carries: dict[str, tuple[str, ...]] = field(default_factory=dict)
     # Identity key -> what to put in it, shown to the caller beside the key (`q`: describe the
     # person in words). Without one a key reads only "identity", and an agent guesses its shape.
     identity_notes: dict[str, str] = field(default_factory=dict)
-
-    def prefer_for(self, given, org_id: int | None = None) -> tuple[str, ...]:
-        """The default provider order for a caller who sent the identity and filter keys `given`."""
-        for rule in self.prefer_when:
-            sent, order, percent = rule[0], rule[1], (rule[2] if len(rule) > 2 else None)
-            if not set(sent) <= set(given or ()):
-                continue
-            if percent is not None and not in_rollout(self.capability, org_id, percent):
-                continue
-            return order
-        return self.prefer
+    # The segment set (`segments.SEGMENTERS`) whose categories of the request a call event records
+    # in `input_meta` and a route rule may match on. Empty = none.
+    segments: str = ""
 
     def fill_target(self, given) -> int | None:
         """The row count a routed answer should reach for the request body `given`: its `limit`,
@@ -226,6 +225,19 @@ class Adapter:
     filter_max: dict[str, int] = field(default_factory=dict)  # `max:` a filter this provider caps (`limit: 8`); a request above it skips the provider
     additional_capabilities: tuple[str, ...] = ()  # opt-in reuse of the same request/output mapping
     route: bool = True                        # False: hit/miss evidence only, never a router candidate
+    # Caller keys the provider takes only as a hint (a place folded into a semantic query, a domain
+    # list its index does not enforce): the request carries them, the rows need not match them.
+    # `soft:` here, plus every key whose mapped parameter the endpoint row marks `applied: soft`.
+    soft: tuple[str, ...] = ()
+    # `{cursor: <upstream path>}`: where the provider takes back the `next_cursor` its answer carried.
+    # Cursor only: a page number over a provider whose order changes between calls (Dropleads)
+    # repeats and skips rows.
+    paging: dict[str, str] = field(default_factory=dict)
+    # `{page | page0 | offset | cursor: <expression over the provider request>}` (`page0`: a page
+    # number counted from 0): which page of the
+    # answer a request asks for. Read by call events only, so a later page is a different
+    # question from the first (`input_id`), never a retry of it.
+    position: dict[str, str] = field(default_factory=dict)
     verified_capabilities: tuple[str, ...] = ()
     verified: bool = False
     verify_note: str = ""
@@ -330,9 +342,7 @@ class Adapter:
         if endpoint is None:
             from ..store import load
             endpoint = load().by_id.get(self.endpoint_id) or {}
-        raw = json.dumps(provider_body).encode() if provider_body is not None else b""
-        return outcome.miss_holds(endpoint, provider_body,
-                                  answer=plugins.Answer(status=200, headers={}, raw=raw, body=provider_body))
+        return outcome.miss_holds(endpoint, provider_body, answer=answer_of(provider_body))
 
     @property
     def records_verdict(self) -> bool:
@@ -377,12 +387,26 @@ def _variants(raw) -> tuple[tuple[str, ...], ...]:
 
 CONTRACT_KEYS = frozenset({
     "summary", "identity", "derive", "filters", "output", "miss", "idempotent", "default_max_cost_usd",
-    "advice_unverified", "advice_domain_mismatch", "routed", "scoping", "carried_by", "fill_rows", "prefer", "prefer_by_domain_suffix", "check", "confirm",
-    "empty_is_failure", "one_subject", "complete", "verdict", "question_miss", "row", "stand_in",
-    "prefer_when", "fill_limit_when", "identity_notes"})
+    "advice_unverified", "advice_domain_mismatch", "routed", "scoping", "carried_by", "fill_rows", "prefer", "prefer_by_domain_suffix", "ask_last", "check", "confirm",
+    "empty_is_failure", "one_subject", "complete", "verdict", "question_miss", "question_miss_bound", "row", "stand_in",
+    "stand_in_carries", "fill_limit_when", "identity_notes", "segments"})
+# Contract keys that no longer do anything, with what replaced them. `prefer_when` ordered
+# providers by the keys a caller sent; an order for one kind of request is now a published route
+# rule, reviewed by a person and observed after it goes live (docs/context/architecture/route-rules.md).
+RETIRED_CONTRACT_KEYS = {"prefer_when": "publish a route rule for that order"}
+
+
+def retired_contract_keys(doc: dict) -> list[str]:
+    """`contract <capability>: <key> is retired; <what to do>` for each retired key in `doc`."""
+    return [f"contract {cap}: {key} is retired; {why}"
+            for cap, c in (doc.get("contracts") or {}).items() if isinstance(c, dict)
+            for key, why in RETIRED_CONTRACT_KEYS.items() if key in c]
+
+
 ADAPTER_KEYS = frozenset({
     "accepts", "in", "in_expr", "in_read", "body_array", "test_identity", "cost_units", "max",
-    "additional_capabilities", "route", "const", "out", "miss", "verdict", "verdicts", "row"})
+    "additional_capabilities", "route", "const", "out", "miss", "verdict", "verdicts", "row", "paging",
+    "position", "soft"})
 # The longest text a mapped row field keeps: a row is read by an agent, and one provider's
 # multi-page bio would otherwise cost more tokens than the rest of the answer.
 ROW_TEXT_MAX = 300
@@ -422,7 +446,9 @@ def _expressions(what: str, *exprs: object) -> None:
 def parse_contracts(doc: dict) -> dict[str, Contract]:
     out = {}
     for cap, c in (doc.get("contracts") or {}).items():
-        _known_keys(f"contract {cap}", c, CONTRACT_KEYS)
+        # A retired key is skipped, so a catalog written before it was retired still loads; the
+        # catalog validator refuses it in the shipped catalog (`retired_contract_keys`).
+        _known_keys(f"contract {cap}", c, CONTRACT_KEYS | RETIRED_CONTRACT_KEYS.keys())
         _expressions(f"contract {cap}", *(c.get("derive") or {}).values(), *(c.get("stand_in") or {}).values(),
                      *([c["miss"]] if c.get("miss") else []),
                      *([c["question_miss"]] if c.get("question_miss") else []),
@@ -446,6 +472,12 @@ def parse_contracts(doc: dict) -> dict[str, Contract]:
                     # must fail loudly, never quietly emit an identifier as a plain value.
                     raise ValueError(f"contract {cap}: {section}.{k} analytics must be key, value or skip "
                                      f"(filters: value or skip), got {mode!r}")
+        for k, spec in (c.get("filters") or {}).items():
+            if isinstance(spec, dict) and ("min" in spec or "max" in spec) and (
+                    spec.get("type") != "int" or type(spec.get("min")) is not int or spec["min"] < 1
+                    or ("max" in spec and (type(spec["max"]) is not int or spec["max"] < spec["min"]))):
+                raise ValueError(f"contract {cap}: filters.{k} range needs type int, a whole min of at least 1 "
+                                 f"and, when declared, a whole max of at least min, got {spec!r}")
         out[cap] = Contract(
             capability=cap, summary=str(c.get("summary") or ""), identity=_variants(c.get("identity")),
             identity_types=types, derive=dict(c.get("derive") or {}),
@@ -453,6 +485,7 @@ def parse_contracts(doc: dict) -> dict[str, Contract]:
             output={k: (v if isinstance(v, dict) else {"type": str(v)}) for k, v in (c.get("output") or {}).items()},
             miss=str(c.get("miss") or ""), idempotent=bool(c.get("idempotent", True)),
             question_miss=str(c.get("question_miss") or ""),
+            question_miss_bound=bool(c.get("question_miss_bound")),
             default_max_cost_usd=(float(c["default_max_cost_usd"]) if c.get("default_max_cost_usd") is not None else None),
             advice_unverified=str(c.get("advice_unverified") or ""),
             advice_domain_mismatch=str(c.get("advice_domain_mismatch") or ""),
@@ -461,7 +494,7 @@ def parse_contracts(doc: dict) -> dict[str, Contract]:
             carried_by=_parse_carried_by(cap, c.get("carried_by"), types, scoping),
             prefer=tuple(str(p).lower() for p in c.get("prefer") or ()),
             prefer_by_domain_suffix=_parse_prefer_by_domain_suffix(cap, c.get("prefer_by_domain_suffix"), types),
-            prefer_when=_parse_prefer_when(cap, c.get("prefer_when"), {**types, **(c.get("filters") or {})}),
+            ask_last=tuple(str(p).lower() for p in c.get("ask_last") or ()),
             fill_limit_when=_parse_fill_limit_when(cap, c.get("fill_limit_when"), types, c),
             fill_rows=_parse_fill_rows(cap, c.get("fill_rows"), c),
             check=_parse_check(cap, c.get("check"), c.get("output") or {}),
@@ -470,37 +503,21 @@ def parse_contracts(doc: dict) -> dict[str, Contract]:
             one_subject=bool(c.get("one_subject", False)),
             complete=_parse_complete(cap, c.get("complete"), c.get("output") or {}),
             stand_in={str(k): str(v) for k, v in (c.get("stand_in") or {}).items()},
+            stand_in_carries=_parse_stand_in_carries(cap, c.get("stand_in_carries"), c.get("stand_in") or {},
+                                                     {*types, *(c.get("filters") or {})}),
             identity_notes=_parse_identity_notes(cap, c.get("identity_notes"), types),
+            segments=_parse_segments(cap, c.get("segments")),
             **_parse_row(cap, c.get("row"), c.get("output") or {}, types),
             **_parse_verdict(cap, c.get("verdict")))
     return out
 
 
-def _parse_prefer_when(cap: str, raw, types: dict) -> tuple[tuple[tuple[str, ...], tuple[str, ...]], ...]:
+def _parse_segments(cap: str, raw) -> str:
     if raw is None:
-        return ()
-    if not isinstance(raw, list) or not raw:
-        raise ValueError(f"contract {cap}: prefer_when lists one or more {{sent, prefer}} rules")
-
-    def names(v) -> bool:
-        return isinstance(v, list) and bool(v) and all(isinstance(x, str) and x.strip() for x in v)
-    out = []
-    for rule in raw:
-        # A bare string would be read letter by letter (`prefer: exa` -> e, x, a) and reorder nothing.
-        if (not isinstance(rule, dict) or not {"sent", "prefer"} <= set(rule) <= {"sent", "prefer", "percent"}
-                or not names(rule["sent"]) or not names(rule["prefer"])
-                or any(k.strip() not in types for k in rule["sent"])):
-            raise ValueError(f"contract {cap}: prefer_when rule must be {{sent: [identity or filter keys], "
-                             f"prefer: [provider names], percent?: 1-99}}, got {rule!r}")
-        pair = (tuple(k.strip() for k in rule["sent"]), tuple(p.strip().lower() for p in rule["prefer"]))
-        if "percent" in rule:
-            pct = rule["percent"]
-            # 0 and 100 are not rollouts: delete the rule, or drop its percent.
-            if isinstance(pct, bool) or not isinstance(pct, int) or not 1 <= pct <= 99:
-                raise ValueError(f"contract {cap}: prefer_when percent is a whole number from 1 to 99, got {pct!r}")
-            pair = (*pair, pct)
-        out.append(pair)
-    return tuple(out)
+        return ""
+    if raw not in SEGMENTERS:
+        raise ValueError(f"contract {cap}: segments names one of {sorted(SEGMENTERS)}, got {raw!r}")
+    return raw
 
 
 def _parse_carried_by(cap: str, raw, types: dict, scoping: list) -> dict[str, tuple[str, ...]]:
@@ -510,6 +527,18 @@ def _parse_carried_by(cap: str, raw, types: dict, scoping: list) -> dict[str, tu
             or any(k not in scoping or not isinstance(v, list) or not v or any(x not in types or x == k for x in v)
                    for k, v in raw.items())):
         raise ValueError(f"contract {cap}: carried_by maps scoping keys to other identity keys, got {raw!r}")
+    return {k: tuple(v) for k, v in raw.items()}
+
+
+def _parse_stand_in_carries(cap: str, raw, stand_in: dict, keys: set) -> dict[str, tuple[str, ...]]:
+    if raw is None:
+        return {}
+    if (not isinstance(raw, dict) or not raw
+            or any(k not in stand_in or not isinstance(v, list) or not v
+                   or any(x not in keys or x == k or not re.search(rf"\b{re.escape(str(x))}\b", stand_in[k]) for x in v)
+                   for k, v in raw.items())):
+        raise ValueError(f"contract {cap}: stand_in_carries maps stand_in keys to the identity keys and "
+                         f"filters their expression reads, got {raw!r}")
     return {k: tuple(v) for k, v in raw.items()}
 
 
@@ -562,20 +591,11 @@ def _parse_prefer_by_domain_suffix(cap: str, raw, types: dict) -> dict[str, tupl
     return out
 
 
-def in_rollout(capability: str, org_id: int | None, percent: int) -> bool:
-    """Whether a team is in the first `percent` of 100 stable buckets for this capability: the
-    same team always gets the same answer, so its calls are comparable over a week. A call with no
-    team is never in a partial rollout."""
-    if org_id is None:
-        return False
-    bucket = int.from_bytes(hashlib.sha256(f"prefer_when:{capability}:{org_id}".encode()).digest()[:8], "big") % 100
-    return bucket < percent
-
-
-def default_prefer(contract: Contract, identity: dict[str, Any], given=None, org_id: int | None = None) -> list[str]:
+def default_prefer(contract: Contract, identity: dict[str, Any]) -> list[str]:
     """The provider order a caller who sent no `X-Treg-Route-Prefer` gets: the providers named for
-    the longest suffix of the identity's `domain`, then the contract's `prefer` for the identity
-    keys `given` (`prefer_when`)."""
+    the longest suffix of the identity's `domain`, then the contract's `prefer`. An order for one
+    kind of request is a published route rule (`application/call/route_rules.py`), never a contract
+    field."""
     first: tuple[str, ...] = ()
     domain = identity.get("domain")
     if contract.prefer_by_domain_suffix and isinstance(domain, str):
@@ -583,7 +603,7 @@ def default_prefer(contract: Contract, identity: dict[str, Any], given=None, org
         matches = [s for s in contract.prefer_by_domain_suffix if host == s or host.endswith("." + s)]
         if matches:
             first = contract.prefer_by_domain_suffix[max(matches, key=len)]
-    return [*first, *(p for p in contract.prefer_for(given, org_id) if p not in first)]
+    return [*first, *(p for p in contract.prefer if p not in first)]
 
 
 def _parse_row(cap: str, raw, output: dict, types: dict) -> dict:
@@ -659,12 +679,44 @@ def _parse_verdict(cap: str, raw) -> dict:
             "verdict_decisive": decisive}
 
 
+def _paging(eid: str, raw, out: dict) -> dict[str, str]:
+    """`paging: {cursor: <body. or queryParams. path>}`, beside the `out.next_cursor` it pages with."""
+    if not raw:
+        return {}
+    if (not isinstance(raw, dict) or list(raw) != ["cursor"]
+            or not str(raw["cursor"]).startswith(("body.", "queryParams."))):
+        raise ValueError(f"adapter {eid}: paging is {{cursor: <body. or queryParams. path>}}")
+    if "next_cursor" not in out:
+        raise ValueError(f"adapter {eid}: paging.cursor needs out.next_cursor")
+    return {str(k): str(v) for k, v in raw.items()}
+
+
+POSITION_KINDS = ("page", "page0", "offset", "cursor")
+
+
+def _position(eid: str, raw) -> dict[str, str]:
+    """`position: {page: queryParams.page}`: one kind, read from one expression."""
+    if not raw:
+        return {}
+    if not isinstance(raw, dict) or len(raw) != 1 or next(iter(raw)) not in POSITION_KINDS:
+        raise ValueError(f"adapter {eid}: position is {{page | page0 | offset | cursor: <expression>}}")
+    return {str(k): str(v) for k, v in raw.items()}
+
+
+def _soft(eid: str, raw) -> tuple[str, ...]:
+    if raw is None:
+        return ()
+    if not isinstance(raw, list) or not all(isinstance(k, str) and k for k in raw):
+        raise ValueError(f"adapter {eid}: soft is a list of key names")
+    return tuple(raw)
+
+
 def parse_adapters(doc: dict) -> dict[str, Adapter]:
     out = {}
     for eid, a in (doc.get("adapters") or {}).items():
         _known_keys(f"adapter {eid}", a, ADAPTER_KEYS)
         _expressions(f"adapter {eid}", *(a.get("in_expr") or {}).values(), *(a.get("in_read") or {}).values(),
-                     *(a.get("out") or {}).values(),
+                     *(a.get("out") or {}).values(), *_position(eid, a.get("position")).values(),
                      *(a.get("row") or {}).values(), *(a[k] for k in ("miss", "verdict") if a.get(k)))
         out[eid] = Adapter(
             endpoint_id=eid, accepts=_variants(a.get("accepts")), in_map=dict(a.get("in") or {}),
@@ -675,6 +727,9 @@ def parse_adapters(doc: dict) -> dict[str, Adapter]:
             filter_max={str(k): int(v) for k, v in (a.get("max") or {}).items()},
             additional_capabilities=tuple(a.get("additional_capabilities") or ()),
             route=a.get("route", True) is not False,
+            soft=_soft(eid, a.get("soft")),
+            paging=_paging(eid, a.get("paging"), a.get("out") or {}),
+            position=_position(eid, a.get("position")),
             const=dict(a.get("const") or {}), out_map=dict(a.get("out") or {}), miss=str(a.get("miss") or ""),
             row_map={str(k): str(v) for k, v in (a.get("row") or {}).items()},
             verdict=str(a.get("verdict") or ""),
@@ -852,6 +907,20 @@ def adapter_accepts(adapter: Adapter, identity: dict[str, Any]) -> tuple[str, ..
     return found
 
 
+def answer_of(provider_body: Any) -> plugins.Answer:
+    """A parsed 2xx provider body as the answer an outcome plugin reads."""
+    raw = json.dumps(provider_body).encode() if provider_body is not None else b""
+    return plugins.Answer(status=200, headers={}, raw=raw, body=provider_body)
+
+
+def _found_nothing(endpoint: dict, example: Any) -> bool:
+    """Beside a status-only miss rule, a v2 row's `error` rule says what a 2xx that found nothing
+    looks like, so an example it judges an error is the miss today's adapter expression read."""
+    rule = endpoint.get("miss")
+    return (is_v2(endpoint) and isinstance(rule, dict) and "status" in rule
+            and outcome.judge(endpoint, 200, example, answer=answer_of(example)).state == "error")
+
+
 def verify(adapter: Adapter, contract: Contract, endpoint: dict, example: Any) -> tuple[bool, str]:
     """Fixture round-trip: `in` must reproduce the endpoint's own `test_request` from the contract's
     view of it, and `out` must fill every required core field from the example response (or the
@@ -898,7 +967,7 @@ def verify(adapter: Adapter, contract: Contract, endpoint: dict, example: Any) -
             return False, f"in: body.{k} → {b.get(k)!r}, test_request has {v!r}"
     if example is None:
         return False, "no example_response to verify `out` against"
-    if adapter.is_miss(example, endpoint):
+    if adapter.is_miss(example, endpoint) or _found_nothing(endpoint, example):
         return True, "example is a miss; out unverified on a hit"
     core = adapter.from_upstream(example)
     missing = [k for k in contract.required_output if core.get(k) in (None, "")]
@@ -914,6 +983,66 @@ def verify(adapter: Adapter, contract: Contract, endpoint: dict, example: Any) -
         if not rows or any(not any(r.get(k) for k in contract.row_needs) for r in rows):
             return False, f"row: every example row must fill one of {list(contract.row_needs)}"
     return True, ""
+
+
+def _soft_targets(endpoint: dict) -> set[str]:
+    """The provider parameters (`queryParams.location`, `body.include_domains`) the endpoint row
+    marks `applied: soft`."""
+    inp = endpoint.get("input") or {}
+    body = inp.get("body") if isinstance(inp.get("body"), dict) else {}
+    if isinstance(body.get("properties"), dict):
+        body = body["properties"]
+    return {f"{where}.{name}" for where, params in (("queryParams", inp.get("queryParams")), ("body", body))
+            if isinstance(params, dict)
+            for name, spec in params.items() if isinstance(spec, dict) and spec.get("applied") == "soft"}
+
+
+def _soft_keys(adapter: Adapter, endpoint: dict, contract: Contract) -> tuple[str, ...]:
+    """The adapter's own `soft:` keys plus each contract filter it sends into a parameter marked soft."""
+    targets, filters = _soft_targets(endpoint), set(contract.filters or ())
+    keys = list(adapter.soft)
+    for k, target in adapter.in_map.items():
+        if target in targets and k in filters:
+            keys.append(k)
+    for target, expr in (adapter.in_expr or {}).items():
+        if target in targets:
+            keys += [n for n in re.findall(r"[A-Za-z_]\w*", expr) if n in filters]
+    return tuple(dict.fromkeys(keys))
+
+
+def soft_unrouted(adapters: dict[str, Adapter], contracts: dict[str, Contract],
+                  endpoints: dict[str, dict]) -> list[str]:
+    """Parameters an endpoint row marks `applied: soft` that no contract filter is mapped into:
+    the mark changes only what `catalog get` says, never a routed plan."""
+    out = []
+    for eid, ep in endpoints.items():
+        targets = _soft_targets(ep)
+        if not targets:
+            continue
+        ad, contract = adapters.get(eid), contracts.get(str(ep.get("capability") or ""))
+        filters = set(contract.filters or ()) if contract is not None else set()
+        routed = set()
+        if ad is not None:
+            routed |= {t for k, t in ad.in_map.items() if k in filters}
+            routed |= {t for t, e in (ad.in_expr or {}).items() if set(re.findall(r"[A-Za-z_]\w*", e)) & filters}
+        out += [f"{eid}: {t} is applied: soft but no contract filter maps into it; only catalog get shows it"
+                for t in sorted(targets - routed)]
+    return out
+
+
+def soft_problems(adapters: dict[str, Adapter], contracts: dict[str, Contract],
+                  capability_of: dict[str, str]) -> list[str]:
+    """An adapter's `soft:` names only its contract's filter or scoping keys."""
+    problems = []
+    for eid, ad in adapters.items():
+        contract = contracts.get(capability_of.get(eid) or "")
+        if not ad.soft or contract is None:
+            continue
+        known = set(contract.filters or ()) | set(contract.scoping)
+        if unknown := [k for k in ad.soft if k not in known]:
+            problems.append(f"adapter {eid}: soft names {', '.join(unknown)}, not a filter or scoping key "
+                            f"of {capability_of[eid]}")
+    return problems
 
 
 def load_routing(directory: Path, endpoints_by_id: dict[str, dict], read_yaml, read_example) -> tuple[dict[str, Contract], dict[str, Adapter]]:
@@ -946,5 +1075,5 @@ def load_routing(directory: Path, endpoints_by_id: dict[str, dict], read_yaml, r
                 if extra_ok:
                     additional.append(capability)
         verified[eid] = Adapter(**{**ad.__dict__, "verified": ok, "verify_note": note,
-                                   "verified_capabilities": tuple(additional)})
+                                   "verified_capabilities": tuple(additional), "soft": _soft_keys(ad, ep, contract)})
     return contracts, verified

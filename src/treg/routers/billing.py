@@ -11,7 +11,7 @@ from ..domain.identity.access import Caller, _role_at_least, require_member
 from ..infra.db import get_session
 from ..models import Org
 from . import view
-from .auth_helpers import _is_https
+from .auth_helpers import trusted_public_base
 from .orgs import _require_admin_of
 from .views import account as account_views
 
@@ -78,6 +78,9 @@ async def org_balance(
         ],
         "entries": {
             "limit": limit, "offset": offset,
+            # True when `items` is empty because the caller is below admin, so a client never reads a
+            # withheld ledger as "nothing has been spent"
+            "withheld": not detailed,
             "items": [] if not detailed else [
                 {"id": e.id, "kind": e.kind, "amount_micro": e.amount_micro,
                  "amount_usd": ledger.usd(e.amount_micro), "block_id": e.block_id,
@@ -135,12 +138,8 @@ def _billing_org(caller: Caller) -> Org:
 
 
 def _return_base(request: Request) -> str:
-    """Where Stripe sends the payer back — the deployment they were actually using, not whatever
-    `public_url` says, so a local or preview server returns to itself."""
-    host = request.headers.get("host", "")
-    if not host:
-        return ""
-    return f"{'https' if _is_https(request) else request.url.scheme}://{host}"
+    """Where Stripe sends the payer back: this deployment, on the alias they were using."""
+    return trusted_public_base(request)
 
 
 @app.get("/billing")

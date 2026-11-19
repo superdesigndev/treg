@@ -203,6 +203,21 @@ def test_the_loader_reads_both_spellings_into_one_resolved_row(tmp_path):
     assert cat.platform_eligible(kept) and json.dumps(cat.by_id["next.web.kept"])
 
 
+def test_a_price_table_serves_its_floor_whether_or_not_its_conditions_can_be_shown(tmp_path):
+    table = ("    input: {body: {mode: {type: string, required: true}, note: {type: string}}}\n"
+             "    price:\n      currency: USD\n      table:\n"
+             "        - {when: [{path: body.mode, op: equals, value: a}], value: '0.2'}\n"
+             "        - {when: [%s], value: '0.1'}\n"
+             "      fallback: {value: '0.4', note: ceiling}\n")
+    cat = _catalog(tmp_path, {"demo.yaml": "provider: demo\n" + V2_DEFAULTS + "endpoints:\n"
+                              + ROW.format(name="shown") + table % "{path: body.mode, op: equals, value: b}"
+                              + ROW.format(name="hidden") + table % "{path: body.note, op: absent}"})
+    shown, hidden = cat.by_id["demo.web.shown"]["cost"], cat.by_id["demo.web.hidden"]["cost"]
+    assert len(shown["table"]) == 2 and "table" not in hidden
+    assert shown["table_min"] == hidden["table_min"] == 0.1
+    assert cat.cost_view(hidden, "demo")["usd_min"] == 0.1 and cat.cost_view(hidden, "demo")["usd"] == 0.4
+
+
 def test_a_legacy_row_keeps_its_cost_ceiling_param_and_its_own_response_retention(tmp_path):
     cat = _catalog(tmp_path, {"demo.yaml": "provider: demo\nendpoints:\n" + ROW.format(name="old")
                               + "    response_retention: forbidden\n"

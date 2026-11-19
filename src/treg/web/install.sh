@@ -133,7 +133,7 @@ if [ -z "$PRIOR_VERSION" ] && [ "$BINARY_PERCENT" -gt 0 ] 2>/dev/null; then
 fi
 report started
 
-printf '\n\033[38;5;173m▚ tools-registry\033[0m - installing the treg CLI…\n\n'
+printf '\n\033[38;5;173m▚ treg\033[0m - installing the treg CLI…\n\n'
 
 if [ "$ARM" = binary ]; then
   install_binary && exit 0

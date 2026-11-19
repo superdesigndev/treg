@@ -108,6 +108,7 @@ class Cost(Model):
         | SettleCount | None = None
     usage: Usage | None = None
     reported_charge: ReportedCharge | None = None
+    worst_case: Number | None = None
     presence: Presence | None = None
     modifiers: dict[str, Modifier] | None = None
     quantity: Quantity | None = None

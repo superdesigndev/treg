@@ -102,10 +102,11 @@ async def test_managed_key_migration_backfills_human_and_agent_hashes():
             org = Org(id=org_id, name="Before upgrade", slug="before-upgrade")
             human_id = await _insert_user_at_revision(session, "human@example.dev")
             agent_id = await _insert_user_at_revision(session, "worker@agents.treg.local")
-            session.add(Membership(user_id=human_id, org_id=org.id, role="owner",
-                                   token_hash=human_hash))
-            session.add(Membership(user_id=agent_id, org_id=org.id, role="member",
-                                   token_hash=agent_hash, created_by="human@example.dev"))
+            await _insert_at_revision(session, Membership, user_id=human_id, org_id=org.id,
+                                      role="owner", token_hash=human_hash)
+            await _insert_at_revision(session, Membership, user_id=agent_id, org_id=org.id,
+                                      role="member", token_hash=agent_hash,
+                                      created_by="human@example.dev")
             await session.commit()
 
         await _upgrade_to("head")

@@ -21,10 +21,11 @@ from __future__ import annotations
 import time
 from datetime import datetime, timedelta, timezone
 
-from sqlalchemy import delete
+from sqlalchemy import delete, update
 from sqlalchemy.dialects import postgresql, sqlite
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from . import client_ip
 from .models import Ephemeral
 
 
@@ -104,16 +105,67 @@ async def kv_take(db: AsyncSession, ns: str, k: str) -> dict | None:
     return row.v
 
 
+async def kv_claim(db: AsyncSession, ns: str, k: str, ttl_s: float, v: dict | None = None) -> bool:
+    """Write (ns, k) only if no live row holds it: True for the one caller that claimed it. A
+    single-use token's claim; an expired row is swept first so its key can be claimed again."""
+    now = _utcnow_naive()
+    await db.execute(delete(Ephemeral).where(
+        Ephemeral.ns == ns, Ephemeral.k == k, Ephemeral.expires_at < now))
+    insert = postgresql.insert if db.get_bind().dialect.name == "postgresql" else sqlite.insert
+    stmt = insert(Ephemeral).values(
+        ns=ns, k=k, v=v or {}, expires_at=now + timedelta(seconds=ttl_s)).on_conflict_do_nothing(
+        index_elements=[Ephemeral.ns, Ephemeral.k])
+    return (await db.execute(stmt)).rowcount == 1
+
+
+def ip_limit(ip: str, max_hits: int, key: str | None = None) -> list[tuple[str, int]]:
+    """The per-address entry of a `rate_check` limits list, keyed by `key` (default: the address
+    itself). Empty for an address the deployment exempts, so the other entries still decide."""
+    if client_ip.exempt(ip):
+        return []
+    return [(key or ip, max_hits)]
+
+
+async def _locked_hits(db: AsyncSession, ns: str, k: str, ttl_s: float) -> list[float]:
+    """Create (ns, k) if absent, or lock it, in one statement, and return its hits. The row stays
+    locked until the transaction ends (PostgreSQL holds the conflicting row's lock on DO UPDATE)."""
+    insert = postgresql.insert if db.get_bind().dialect.name == "postgresql" else sqlite.insert
+    stmt = insert(Ephemeral).values(
+        ns=ns, k=k, v={}, expires_at=_utcnow_naive() + timedelta(seconds=ttl_s))
+    stmt = stmt.on_conflict_do_update(
+        index_elements=[Ephemeral.ns, Ephemeral.k],
+        set_={"expires_at": stmt.excluded.expires_at}).returning(Ephemeral.v)
+    v = (await db.execute(stmt)).scalar_one()
+    return list((v or {}).get("hits", []))
+
+
 async def rate_check(
-    db: AsyncSession, ns: str, limits: list[tuple[str, int]], window_s: float
+    db: AsyncSession, ns: str, limits: list[tuple[str, int]], window_s: float,
+    *, atomic: bool = False,
 ) -> bool:
     """All-or-nothing sliding-window limiter over the (ns, key) rows. `limits` is a list of
     (key, max_hits): the request is allowed only if EVERY key has fewer than its cap of hits within
     the last `window_s`. On allow, one hit (now) is appended under every key and the rows are
     persisted with a fresh expiry; on reject, nothing is written. Each key's expired timestamps are
-    pruned before the check. Wall-clock timestamps so the window is comparable across processes."""
-    now = time.time()
+    pruned before the check. Wall-clock timestamps so the window is comparable across processes.
+
+    `atomic` locks every key's row (in key order, so concurrent checks cannot deadlock) until the
+    caller commits, so concurrent checks of one key count every hit; without it two concurrent
+    checks may both read the same list and one hit is lost."""
     pruned: dict[str, list[float]] = {}
+    if atomic:
+        locked = {key: await _locked_hits(db, ns, key, window_s) for key, _ in sorted(limits)}
+        now = time.time()
+        for key, hits in locked.items():
+            pruned[key] = [t for t in hits if now - t < window_s]
+        ok = all(len(pruned[key]) < mx for key, mx in limits)
+        if ok:
+            for key, _ in limits:
+                await db.execute(update(Ephemeral).where(Ephemeral.ns == ns, Ephemeral.k == key)
+                                 .values(v={"hits": [*pruned[key], now]}, expires_at=_utcnow_naive()
+                                         + timedelta(seconds=window_s)))
+        return ok
+    now = time.time()
     for key, _ in limits:
         row = await db.get(Ephemeral, (ns, key))
         hits = (row.v or {}).get("hits", []) if row is not None else []

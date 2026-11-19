@@ -76,13 +76,13 @@ async def _rows(model):
         return (await db.execute(select(model))).scalars().all()
 
 
-async def test_off_by_default_the_vendor_402_is_relayed_unchanged(clients: AsyncClient, platform_on, monkeypatch):
+async def test_off_by_default_the_vendor_402_is_treg_capacity_refusal(clients: AsyncClient, platform_on, monkeypatch):
     await _route()
     monkeypatch.setattr(call_service, "relay", _fake_relay(402, b'{"detail":"Insufficient balance"}'))
     seen = []
     monkeypatch.setattr(O, "_send", _orthogonal([(200, {})], seen))
     r = await clients.get(f"/call/{EP}?aweme_id=7")
-    assert r.status_code == 402 and seen == [] and "X-Treg-Served-Via" not in r.headers
+    assert r.status_code == 503 and r.json()["detail"]["error"] == "provider_capacity_unavailable" and seen == [] and "X-Treg-Served-Via" not in r.headers
 
 
 @pytest.fixture
@@ -260,7 +260,7 @@ async def test_aggregator_402_releases_the_child_marks_it_unhealthy_and_answers_
     assert seen[-1].json["provider"] == "tikhub" and r2.headers["X-Treg-Cost-Micro"] == "2000"
 
 
-async def test_contract_refusal_falls_back_to_the_vendor_answer(clients: AsyncClient, overflow_on, monkeypatch):
+async def test_contract_refusal_falls_back_to_treg_capacity_refusal(clients: AsyncClient, overflow_on, monkeypatch):
     await _route()
     monkeypatch.setattr(call_service, "relay", _fake_relay(402, b'{"detail":"nope"}'))
     seen = []
@@ -268,11 +268,11 @@ async def test_contract_refusal_falls_back_to_the_vendor_answer(clients: AsyncCl
                                                         "_orthogonal": {"error": "orthogonal_endpoint_contract", "message": "company required"}})], seen))
     before = await _balance(clients)
     r = await clients.get(f"/call/{EP}?aweme_id=7")
-    assert r.status_code == 402 and r.text == '{"detail":"nope"}'
+    assert r.status_code == 503 and r.json()["detail"]["error"] == "provider_capacity_unavailable" and "nope" not in r.text
     assert await _balance(clients) == before and await _holds() == []
 
 
-async def test_adapter_parse_crash_falls_back_to_vendor_answer_and_releases_child_hold(
+async def test_adapter_parse_crash_falls_back_to_capacity_refusal_and_releases_child_hold(
     clients: AsyncClient, overflow_on, monkeypatch,
 ):
     await _route()
@@ -290,8 +290,8 @@ async def test_adapter_parse_crash_falls_back_to_vendor_answer_and_releases_chil
 
     response = await clients.get(f"/call/{EP}?aweme_id=7")
 
-    assert response.status_code == 402
-    assert response.content == b'{"detail":"vendor out"}'
+    assert response.status_code == 503
+    assert response.json()["detail"]["error"] == "provider_capacity_unavailable"
     assert len(seen) == 1
     assert not any(hold.call_id.endswith(":overflow") for hold in await _holds())
     spend = await _rows(OverflowSpend)
@@ -359,7 +359,7 @@ async def test_budget_crossing_skips_overflow(clients: AsyncClient, overflow_on,
     seen = []
     monkeypatch.setattr(O, "_send", _orthogonal([(200, {})], seen))
     r = await clients.get(f"/call/{EP}?aweme_id=7")
-    assert r.status_code == 402 and seen == [] and await _holds() == []
+    assert r.status_code == 503 and r.json()["detail"]["error"] == "provider_capacity_unavailable" and seen == [] and await _holds() == []
 
 
 async def test_caller_400_and_own_key_never_overflow(clients: AsyncClient, overflow_on, monkeypatch):
@@ -374,7 +374,7 @@ async def test_caller_400_and_own_key_never_overflow(clients: AsyncClient, overf
     assert seen == []
 
 
-async def test_shadow_mode_probes_records_spend_and_returns_the_vendor_error(clients: AsyncClient, overflow_on, monkeypatch):
+async def test_shadow_mode_probes_records_spend_and_returns_the_capacity_refusal(clients: AsyncClient, overflow_on, monkeypatch):
     monkeypatch.setenv("TREG_OVERFLOW_MODE", "shadow")
     get_settings.cache_clear()
     await _route(price_micro=3_000)
@@ -383,7 +383,7 @@ async def test_shadow_mode_probes_records_spend_and_returns_the_vendor_error(cli
     monkeypatch.setattr(O, "_send", _orthogonal([(200, {"success": True, "data": VENDOR_BODY, "priceCents": 0.3})], seen))
     before = await _balance(clients)
     r = await clients.get(f"/call/{EP}?aweme_id=7")
-    assert r.status_code == 402 and "X-Treg-Served-Via" not in r.headers and r.headers["X-Treg-Cost-Micro"] == "0"
+    assert r.status_code == 503 and r.json()["detail"]["error"] == "provider_capacity_unavailable" and "X-Treg-Served-Via" not in r.headers
     assert len(seen) == 1 and await _balance(clients) == before and await _holds() == []
     spend = await _rows(OverflowSpend)
     assert len(spend) == 1 and spend[0].cost_micro == 3_000 and spend[0].calls == 1
@@ -590,7 +590,7 @@ async def test_org_opt_out_is_honoured_before_any_aggregator_is_contacted(client
     seen = []
     monkeypatch.setattr(O, "_send", _orthogonal([(200, {"success": True, "data": VENDOR_BODY, "priceCents": 0.3})], seen))
     r = await clients.get(f"/call/{EP}?aweme_id=7")
-    assert r.status_code == 402 and seen == [] and await _holds() == []
+    assert r.status_code == 503 and r.json()["detail"]["error"] == "provider_capacity_unavailable" and seen == [] and await _holds() == []
     # exhausted view + route: the opted-out team gets the typed 503, not a relay
     from datetime import timedelta
     now = utcnow_naive()
@@ -665,7 +665,7 @@ async def test_apollo_out_of_credits_on_a_per_call_endpoint_is_never_billed_to_t
     monkeypatch.setattr(call_service, "relay", _fake_relay(422, APOLLO_OUT_OF_CREDITS))
     before = await _balance(clients)
     r = await clients.post(f"/call/{APOLLO_SEARCH}", json={"q_organization_name": "x"})
-    assert r.status_code == 422 and r.content == APOLLO_OUT_OF_CREDITS
+    assert r.status_code == 503 and r.json()["detail"]["error"] == "provider_capacity_unavailable", "treg's account, not the caller's input"
     assert await _balance(clients) == before and await _holds() == []
     entries = [e for e in await _rows(LedgerEntry) if e.kind != "grant"]
     assert sorted(e.kind for e in entries) == ["release", "reserve"]
@@ -710,11 +710,11 @@ async def test_aggregator_relaying_the_vendors_own_out_of_credits_dialect_is_the
     assert lock.is_active(), "the aggregator's own Apollo account is dry: skip it for a while"
     assert whole is None, "for Apollo only - hunter and lusha still overflow through Orthogonal"
     # ...and the next Apollo call honours the mark: Orthogonal is not contacted, the only route
-    # is out, so the vendor's own (unbilled) answer stands
+    # is out, so treg's own refusal stands
     again = []
     monkeypatch.setattr(O, "_send", _orthogonal([], again))
     r2 = await clients.post(f"/call/{APOLLO_SEARCH}", json={"q_organization_name": "x"})
-    assert r2.status_code == 422 and again == [] and "X-Treg-Served-Via" not in r2.headers
+    assert r2.status_code == 503 and again == [] and "X-Treg-Served-Via" not in r2.headers
 
 
 APOLLO_ROUTE = dict(endpoint_id=APOLLO_SEARCH, provider="apollo", method="POST", path=APOLLO_SEARCH_PATH,
@@ -798,7 +798,9 @@ CONTRACT_REFUSAL = (400, {"success": False, "error": "x",
     (False, b'{"detail":"Insufficient balance"}', OK_ANSWER, 200,
      {"outcome": "ok", "tier": "platform-overflow", "served_via": "overflow:orthogonal",
       "capacity_signal": "balance"}),
-    (False, b'{"detail":"nope"}', CONTRACT_REFUSAL, 402, {"outcome": "vendor_error", "tier": "platform"}),
+    # Not rescued: the caller gets treg's typed 503; the event keeps what the vendor answered.
+    (False, b'{"detail":"nope"}', CONTRACT_REFUSAL, 503,
+     {"status_code": 402, "outcome": "vendor_error", "tier": "platform", "capacity_signal": "balance"}),
 ], ids=["skip-direct-rescued", "skip-direct-not-rescued", "vendor-402-rescued", "vendor-402-not-rescued"])
 async def test_an_overflow_attempt_is_one_event_saying_what_the_caller_got(
     clients: AsyncClient, overflow_on, monkeypatch, posthog_events,
@@ -814,7 +816,7 @@ async def test_an_overflow_attempt_is_one_event_saying_what_the_caller_got(
     assert r.status_code == status
     (e,) = await posthog_events()
     p = e["properties"]
-    assert p["status_code"] == status
+    assert p["status_code"] == props.get("status_code", status)
     assert {k: p[k] for k in props} == props
     if "served_via" in props:
         assert r.headers["X-Treg-Served-Via"] == props["served_via"]
@@ -980,7 +982,7 @@ async def test_orthogonals_own_400_is_request_scoped_and_never_strikes_the_aggre
     clients: AsyncClient, overflow_on, monkeypatch,
 ):
     """The old wrong outcome: the vendor 402 became a typed 503, overflow:orthogonal went unhealthy
-    for 15 minutes for every org. Now: the vendor's own answer stands, nothing charged, no mark, and
+    for 15 minutes for every org. Now: the caller gets the refusal for treg's own account, nothing charged, no mark, and
     the very next call reaches Orthogonal again."""
     await _route(price_micro=3_000)
     monkeypatch.setattr(call_service, "relay", _fake_relay(402, b'{"detail":"nope"}'))
@@ -989,7 +991,7 @@ async def test_orthogonals_own_400_is_request_scoped_and_never_strikes_the_aggre
                                                  (200, {"success": True, "data": VENDOR_BODY, "priceCents": 0.3})], seen))
     before = await _balance(clients)
     r = await clients.get(f"/call/{EP}?aweme_id=7")
-    assert r.status_code == 402 and r.text == '{"detail":"nope"}', "the vendor's answer, not the relay's envelope"
+    assert r.status_code == 503 and r.json()["detail"]["error"] == "provider_capacity_unavailable" and "nope" not in r.text, "treg's refusal, not the relay's envelope"
     assert "X-Treg-Served-Via" not in r.headers
     assert await _balance(clients) == before and await _holds() == []
     lock = await _orthogonal_lock()
@@ -1118,7 +1120,7 @@ async def test_icypeas_out_of_credits_200_is_never_billed_and_strikes_the_breake
     before = await _balance(clients)
     r = await clients.post("/call/icypeas.people.search",
                            json={"query": {"currentJobTitle": {"include": ["CEO"]}}, "pagination": {"size": 50}})
-    assert r.status_code == 200 and r.content == ICYPEAS_OUT_OF_CREDITS, "the vendor's answer, relayed as is"
+    assert r.status_code == 503 and r.json()["detail"]["error"] == "provider_capacity_unavailable", "treg's refusal, never a 200 with the vendor's error inside"
     assert await _balance(clients) == before and await _holds() == []
     entries = [e for e in await _rows(LedgerEntry) if e.kind != "grant"]
     assert sorted(e.kind for e in entries) == ["release", "reserve"]
@@ -1141,12 +1143,42 @@ async def test_hlrlookup_insufficient_credit_200_is_never_billed_and_strikes_the
     before = await _balance(clients)
     r = await clients.post("/call/hlrlookup.people.phone.verify", json={
         "telephone_number": "447540822872", "save_to_cache": "PRIVATE", "cache_days_global": 0, "cache_days_private": 0})
-    assert r.status_code == 200 and r.content == out, "the vendor's answer, relayed as is"
+    assert r.status_code == 503 and r.json()["detail"]["error"] == "provider_capacity_unavailable", "treg's refusal, never a 200 with the vendor's error inside"
     assert await _balance(clients) == before and await _holds() == []
     entries = [e for e in await _rows(LedgerEntry) if e.kind != "grant"]
     assert sorted(e.kind for e in entries) == ["release", "reserve"]
     async with session_maker() as db:
         lock = Lock.from_json(await ratestore.kv_get(db, LOCK_NS, "hlrlookup"))
+    assert lock.strikes == 1
+    get_settings.cache_clear()
+
+
+async def test_dataforseo_cost_limit_200_is_never_billed_and_strikes_the_breaker(
+        clients: AsyncClient, monkeypatch):
+    """DataForSEO's spent account cost limit is HTTP 200 with its own `status_code` 40203, on the
+    envelope or on the task. Treg's account, not the caller's: released, and a strike on the breaker."""
+    from treg.domain.capacity import signatures as S
+    msg = "The money limit per day has been exceeded: 1000.0984 >= 1000."
+    task = {"version": "0.1", "status_code": 20000, "tasks": [{"status_code": 40203, "status_message": msg}]}
+    assert S.is_exhausting(S.classify("dataforseo", 200, None, json.dumps(task).encode()))
+    assert S.classify("dataforseo", 200, None, b'{"status_code": 40202}') is None, "a per-minute rate limit"
+    assert S.classify("dataforseo", 200, None, b'{"tasks": [{"status_code": 40501}]}') is None, "a caller's error"
+    monkeypatch.setenv("TREG_PLATFORM_KEY_DATAFORSEO", "login:password")
+    monkeypatch.setenv("TREG_PLATFORM_PROVIDERS", "dataforseo")
+    get_settings.cache_clear()
+    out = json.dumps({"version": "0.1", "status_code": 40203, "status_message": msg, "cost": 0,
+                      "tasks_count": 0, "tasks_error": 0, "tasks": None}).encode()
+    monkeypatch.setattr(call_service, "relay", _fake_relay(200, out))
+    before = await _balance(clients)
+    r = await clients.post("/call/dataforseo.google.serp.organic",
+                           json=[{"keyword": "coffee", "location_code": 2840, "language_code": "en"}])
+    assert r.status_code == 503 and r.json()["detail"]["error"] == "provider_capacity_unavailable", r.text
+    assert "40203" not in r.text and "money limit" not in r.text
+    assert await _balance(clients) == before and await _holds() == []
+    release = next(e for e in await _rows(LedgerEntry) if e.kind == "release")
+    assert release.meta.get("reason") == "capacity_balance"
+    async with session_maker() as db:
+        lock = Lock.from_json(await ratestore.kv_get(db, LOCK_NS, "dataforseo"))
     assert lock.strikes == 1
     get_settings.cache_clear()
 
@@ -1208,3 +1240,23 @@ async def test_icypeas_people_search_overflows_at_orthogonals_flat_fee(clients: 
     assert before - await _balance(clients) == 10_000
     assert seen[0].json == {"api": "icypeas", "path": "/api/find-people", "body": body}
     assert await _holds() == []
+
+
+async def test_an_overflow_only_spend_refusal_gives_back_the_call_slot(clients: AsyncClient, overflow_on, monkeypatch):
+    await _route(price_micro=3_000)
+    await _exhausted()
+    org_id = (await clients.get("/auth/me")).json()["org_id"]
+    r = await clients.post(f"/orgs/{org_id}/agents",
+                           json={"name": "rep-overflow", "daily_call_cap": 1, "daily_spend_cap_micro": 0})
+    assert r.status_code == 200, r.text
+    agent = r.json()
+    seen = []
+    monkeypatch.setattr(O, "_send", _orthogonal([(200, {"success": True, "data": VENDOR_BODY, "priceCents": 0.3})], seen))
+    for n in (1, 2, 3):
+        r = await clients.get(f"/call/{EP}?aweme_id={n}", headers={"X-Treg-Token": agent["token"]})
+        assert r.status_code == 429 and r.json()["detail"]["error"] == "member_spend_cap_reached", r.text
+    assert seen == []
+    await clients.patch(f"/orgs/{org_id}/members/{agent['user_id']}/spend-cap",
+                        json={"daily_spend_cap_micro": -1})
+    r = await clients.get(f"/call/{EP}?aweme_id=4", headers={"X-Treg-Token": agent["token"]})
+    assert r.status_code == 200 and r.headers["X-Treg-Served-Via"] == "overflow:orthogonal", r.text

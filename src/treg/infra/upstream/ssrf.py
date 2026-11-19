@@ -2,8 +2,10 @@
 
 from __future__ import annotations
 
+import asyncio
 import ipaddress
 import socket
+from concurrent.futures import ThreadPoolExecutor
 from urllib.parse import urlsplit
 
 
@@ -13,7 +15,7 @@ def _is_public_ip(ip: ipaddress.IPv4Address | ipaddress.IPv6Address) -> bool:
     return ip.is_global and not ip.is_multicast and not ip.is_reserved
 
 
-def safe_webhook_url(url: str | None) -> bool:
+def safe_webhook_url(url: str | None, *, fold_trailing_dot: bool = True) -> bool:
     """Allow only globally routable unicast addresses for HTTP(S) webhook targets.
 
     DNS names are checked at call time; local names and non-public literals are refused here
@@ -28,6 +30,8 @@ def safe_webhook_url(url: str | None) -> bool:
     if u.scheme not in ("http", "https") or not u.hostname:
         return False
     host = u.hostname.lower()
+    if fold_trailing_dot:
+        host = host.rstrip(".")
     if host == "localhost" or host.endswith(".local") or host.endswith(".internal"):
         return False
     try:
@@ -61,3 +65,39 @@ def host_is_public(host: str) -> bool:
         if not _is_public_ip(ip):
             return False
     return True
+
+
+_executor: ThreadPoolExecutor | None = None
+_inflight: dict[str, asyncio.Future] = {}
+
+
+def _lookup_executor() -> ThreadPoolExecutor:
+    global _executor
+    if _executor is None:
+        from ...config import get_settings
+        _executor = ThreadPoolExecutor(
+            max_workers=max(1, get_settings().ssrf_lookup_threads), thread_name_prefix="treg-ssrf-dns")
+    return _executor
+
+
+async def host_is_public_async(host: str, check=None) -> bool:
+    """host_is_public off the event loop, on a small dedicated pool. At most one lookup per host is in
+    flight; a caller arriving meanwhile awaits the same answer. No verdict is kept once it lands."""
+    if not host:
+        return False
+    fut = _inflight.get(host)
+    if fut is None:
+        loop = asyncio.get_running_loop()
+        fut = loop.run_in_executor(_lookup_executor(), check or host_is_public, host)
+        _inflight[host] = fut
+        fut.add_done_callback(lambda f, h=host: _inflight.pop(h, None) if _inflight.get(h) is f else None)
+    return await asyncio.shield(fut)
+
+
+async def url_host_is_public(url: object) -> bool:
+    """host_is_public for a whole URL (a str or an httpx.URL), resolved off the event loop."""
+    try:
+        host = urlsplit(str(url)).hostname or ""
+    except ValueError:
+        return False
+    return await host_is_public_async(host)

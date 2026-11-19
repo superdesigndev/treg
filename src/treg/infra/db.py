@@ -9,8 +9,10 @@ from collections.abc import AsyncIterator
 from functools import cache
 from importlib import import_module
 
+from asyncpg.exceptions import CannotConnectNowError, TooManyConnectionsError
 from sqlalchemy import bindparam, event, inspect, text
-from sqlalchemy.exc import DBAPIError
+from sqlalchemy.exc import DBAPIError, InterfaceError, OperationalError
+from sqlalchemy.exc import TimeoutError as PoolTimeoutError
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 from sqlmodel import SQLModel
 
@@ -54,6 +56,7 @@ BACKGROUND_CONSUMERS: dict[str, int] = {
     "archive.refresh_worker": 1,
     "catalog observation refresh": 1,   # singleflight, one task per process
     "api_keys last used": 1,      # throttled best-effort managed-key display metadata
+    "allowance_sweep.worker": 1,  # one idle allowance hold at a time
 }
 
 _PRIMARY_POOL_NAMES = ("api", "admin", "background")
@@ -97,6 +100,33 @@ def _apply_overrides(specs: dict[str, dict[str, int]], raw: str) -> dict[str, di
 
 if _overrides := get_settings().db_pool_overrides:
     POOL_SPECS = _apply_overrides(POOL_SPECS, _overrides)
+
+
+# The database refusing a NEW connection (its connection slots are all taken, or it is not accepting
+# connections yet) is the same condition as an exhausted local pool: treg is busy, the caller retries.
+# SQLAlchemy's asyncpg dialect does not translate a connect-time error, so it arrives raw.
+DB_BUSY_ERRORS = (PoolTimeoutError, TooManyConnectionsError, CannotConnectNowError)
+# The SQLAlchemy wrappers a refused connection can arrive in; an IntegrityError or a
+# ProgrammingError never carries one.
+DB_BUSY_WRAPPERS = (OperationalError, InterfaceError)
+
+
+def is_db_busy(exc: BaseException) -> bool:
+    """True when `exc`, or the driver error a SQLAlchemy wrapper carries, is one of `DB_BUSY_ERRORS`."""
+    seen: set[int] = set()
+    while exc is not None and id(exc) not in seen:
+        if isinstance(exc, DB_BUSY_ERRORS):
+            return True
+        seen.add(id(exc))
+        exc = getattr(exc, "orig", None) or exc.__cause__
+    return False
+
+
+def answers_db_busy(exc: BaseException) -> bool:
+    """True when the application-wide handlers answer `exc` with the typed busy 503: one of
+    `DB_BUSY_ERRORS`, or a `DB_BUSY_WRAPPERS` wrapper carrying one. Any other error type, even one
+    caused by a refused connection, stays a server error."""
+    return isinstance(exc, DB_BUSY_ERRORS + DB_BUSY_WRAPPERS) and is_db_busy(exc)
 
 
 def connection_budget(workers: int | None = None) -> dict[str, int]:
@@ -236,6 +266,19 @@ def _schema_info() -> tuple[str, frozenset[str]]:
     return head, known
 
 
+def _is_newer_revision(revision: str) -> bool:
+    """A stamp a later release of this project wrote: all digits and past this build's head.
+    Another Alembic project's id or a typo is not one."""
+    head, _ = _schema_info()
+    return revision.isdigit() and head.isdigit() and int(revision) > int(head)
+
+
+async def stamped_newer_than_build() -> bool:
+    async with _engine.connect() as connection:
+        revision = await connection.run_sync(_current_revision)
+    return revision is not None and _is_newer_revision(revision)
+
+
 def _current_revision(sync_connection) -> str | None:
     inspector = inspect(sync_connection)
     if "alembic_version" not in inspector.get_table_names():
@@ -273,6 +316,12 @@ async def verify_db() -> None:
 
     head, known = _schema_info()
     if revision not in known:
+        if not _is_newer_revision(revision):
+            raise RuntimeError(
+                f"Database revision {revision} is not one this build knows, nor a later "
+                f"numbered revision than its head ({head}): this is not a treg database, or "
+                "alembic_version holds a typo. Refusing to start."
+            )
         logging.getLogger("treg").warning(
             "Database revision %s is unknown to this build; running code is older than the schema; "
             "additive revisions tolerate this, a contract revision does not.",
@@ -425,6 +474,48 @@ def _report_slots() -> asyncio.Semaphore:
     if _report_gate is None or _report_gate[0] is not loop:
         _report_gate = (loop, asyncio.Semaphore(_REPORT_SLOTS))
     return _report_gate[1]
+
+
+_ADMIN_REPORT_SLOTS = 1
+_ADMIN_REPORT_WAIT_S = 1.0
+_ADMIN_REPORT_STATEMENT_TIMEOUT_MS = 60_000
+_admin_report_gate: tuple[object, asyncio.Semaphore] | None = None
+
+
+def _admin_report_slots() -> asyncio.Semaphore:
+    global _admin_report_gate
+    loop = asyncio.get_running_loop()
+    if _admin_report_gate is None or _admin_report_gate[0] is not loop:
+        _admin_report_gate = (loop, asyncio.Semaphore(_ADMIN_REPORT_SLOTS))
+    return _admin_report_gate[1]
+
+
+async def get_admin_report_session() -> AsyncIterator[AsyncSession]:
+    """Whole-window admin aggregates (archive read-out, reconcile): the configured reader,
+    otherwise the admin pool, one at a time per process, each statement capped at
+    `_ADMIN_REPORT_STATEMENT_TIMEOUT_MS`. A taken slot or a timeout raises `ReportBusy`. The
+    statement timeout is what stops the query: a client that gives up does not cancel it.
+    Authorization must finish on `get_admin_session` first."""
+    slots = _admin_report_slots()
+    try:
+        async with asyncio.timeout(_ADMIN_REPORT_WAIT_S):
+            await slots.acquire()
+    except TimeoutError as exc:
+        raise ReportBusy("busy") from exc
+    try:
+        maker = read_session_maker if _read_db_url else admin_session_maker
+        async with maker() as session:
+            if session.get_bind().dialect.name == "postgresql":
+                await session.execute(text(
+                    f"SET LOCAL statement_timeout = {_ADMIN_REPORT_STATEMENT_TIMEOUT_MS}"))
+            try:
+                yield session
+            except DBAPIError as exc:
+                if _canceled_by_timeout(exc):
+                    raise ReportBusy("timeout") from exc
+                raise
+    finally:
+        slots.release()
 
 
 def _canceled_by_timeout(exc: BaseException) -> bool:

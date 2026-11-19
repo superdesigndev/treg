@@ -9,7 +9,7 @@ import pytest
 from treg import analytics
 from treg.application import cli_releases
 from treg.config import get_settings
-from treg.infra import github_releases
+from treg.infra import github_releases, release_checksums
 from treg.routers import cli_client
 
 INSTALL_ID = "0b6f2b1e-7d1c-4c55-9a43-5d0c1f6a2b3c"
@@ -36,8 +36,9 @@ async def test_events_keep_only_the_vocabulary(clients, relay_on):
         _event(command="call", exit_code=0, success=True, duration_ms=12, session="abc", agent="claude-code",
                cli_version="1.0.0", os="Darwin", arch="arm64", tool="tikhub.tiktok.user.profile",
                status_class="2xx", options=["--bogus", "not an option"], email="a@b.c", argv=["call", "x"],
-               tool_url="https://x"),
-        _event(command="Bad Name!", exit_code="0"),
+               tool_url="https://x", in_command="org", missing_command="org_budgets", unknown_command="frob-it"),
+        _event(command="Bad Name!", exit_code="0", missing_command="treg claude --resume",
+               unknown_command="sk-live-4f9a"),
         {"event": "something_else", "distinct_id": INSTALL_ID, "properties": {}},
         {"event": "cli_command_completed", "distinct_id": "not-a-uuid", "properties": {}},
     ]})
@@ -47,6 +48,7 @@ async def test_events_keep_only_the_vocabulary(clients, relay_on):
     assert first == {"command": "call", "exit_code": 0, "success": True, "duration_ms": 12, "session": "abc",
                      "agent": "claude-code", "cli_version": "1.0.0", "os": "Darwin", "arch": "arm64",
                      "tool": "tikhub.tiktok.user.profile", "status_class": "2xx", "options": ["--bogus"],
+                     "in_command": "org", "missing_command": "org_budgets", "unknown_command": "frob-it",
                      "$process_person_profile": False, "$geoip_disable": True, "$lib": "treg-cli"}
     assert second == {"$process_person_profile": False, "$geoip_disable": True, "$lib": "treg-cli"}
     assert relay_on[0]["uuid"] == "11111111-2222-4333-8444-555555555555"
@@ -65,10 +67,28 @@ async def test_install_step_vocabulary(clients, relay_on):
         "event": "cli_install_step", "distinct_id": INSTALL_ID,
         "properties": {"install_step": "installed", "reason": "", "method": "binary", "version": "1.0.0",
                        "prior_version": "0.30.0", "on_path": True, "os": "Linux", "arch": "x86_64",
-                       "ad_link": False, "with_token": True, "channel": "beta", "token": "secret"}}]})
+                       "ad_link": False, "with_token": True, "channel": "beta", "token": "secret",
+                       "source": "mirror", "detail": "curl_35", "mirror_detail": "could not reach x.example",
+                       "seconds": 4}}]})
     assert r.status_code == 204
     props = relay_on[0]["properties"]
     assert "token" not in props and props["channel"] == "beta" and props["on_path"] is True
+    assert (props["source"], props["detail"], props["seconds"]) == ("mirror", "curl_35", 4)
+    assert "mirror_detail" not in props
+
+
+async def test_update_result_vocabulary(clients, relay_on):
+    r = await clients.post("/cli/events", json={"events": [{
+        "event": "cli_update_completed", "distinct_id": INSTALL_ID,
+        "properties": {"outcome": "failed", "reason": "download", "from_version": "1.0.0-beta.2",
+                       "to_version": "1.0.0-beta.3", "source": "github", "detail": "timeout",
+                       "mirror_detail": "http_404", "seconds": 31, "os": "Windows", "arch": "amd64",
+                       "channel": "stable", "path": "C:\\Users\\a"}}]})
+    assert r.status_code == 204
+    props = relay_on[0]["properties"]
+    assert props["outcome"] == "failed" and props["to_version"] == "1.0.0-beta.3"
+    assert (props["detail"], props["mirror_detail"], props["seconds"]) == ("timeout", "http_404", 31)
+    assert "source" not in props and "path" not in props
 
 
 @pytest.mark.parametrize("body", [b"not json", b'{"events": "x"}', b"[]",
@@ -104,6 +124,7 @@ def release_settings(monkeypatch):
     monkeypatch.setattr(s, "cli_stable_version", "", raising=False)
     monkeypatch.setattr(s, "cli_beta_version", "", raising=False)
     monkeypatch.setattr(s, "cli_download_base_url", "https://dl.example/v{version}", raising=False)
+    monkeypatch.setattr(s, "cli_mirror_base_url", "", raising=False)
     github_releases._cache.clear()
     return s
 
@@ -119,6 +140,47 @@ async def test_latest_answers_each_channel_from_settings(clients, release_settin
                       "signature_url": "https://dl.example/v1.2.0/SHA256SUMS.minisig"}
     beta = (await clients.get("/cli/latest", params={"channel": "beta", "os": "windows", "arch": "amd64"})).json()
     assert beta["version"] == "1.3.0" and beta["archive"] == "treg_1.3.0_windows_amd64.zip"
+
+
+def _published_sums(monkeypatch, status: int, body: str) -> list[str]:
+    """The release's SHA256SUMS as the registry reads it; returns the URLs it asked."""
+    asked: list[str] = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        asked.append(str(request.url))
+        return httpx.Response(status, text=body)
+
+    real = httpx.AsyncClient
+    monkeypatch.setattr(release_checksums.httpx, "AsyncClient",
+                        lambda **kw: real(transport=httpx.MockTransport(handler), **kw))
+    release_checksums._sums.clear()
+    release_checksums._failed.clear()
+    return asked
+
+
+async def test_latest_names_the_mirror_with_the_archives_sum(clients, release_settings, monkeypatch):
+    release_settings.cli_stable_version = "1.2.0"
+    release_settings.cli_mirror_base_url = "https://mirror.example/cli/v{version}/"
+    asked = _published_sums(monkeypatch, 200, "a" * 64 + "  treg_1.2.0_linux_arm64.tar.gz\n"
+                                              + "B" * 64 + " *treg_1.2.0_windows_amd64.zip\n")
+    m = (await clients.get("/cli/latest", params={"os": "linux", "arch": "arm64"})).json()
+    assert m["url"] == "https://dl.example/v1.2.0/treg_1.2.0_linux_arm64.tar.gz" and m["sha256"] == "a" * 64
+    assert (m["mirror_url"], m["mirror_checksums_url"], m["mirror_signature_url"]) == (
+        "https://mirror.example/cli/v1.2.0/treg_1.2.0_linux_arm64.tar.gz",
+        "https://mirror.example/cli/v1.2.0/SHA256SUMS", "https://mirror.example/cli/v1.2.0/SHA256SUMS.minisig")
+    w = (await clients.get("/cli/latest", params={"os": "windows", "arch": "amd64"})).json()
+    assert w["sha256"] == "b" * 64
+    assert asked == ["https://dl.example/v1.2.0/SHA256SUMS"]
+
+
+async def test_without_the_releases_sums_there_is_no_mirror(clients, release_settings, monkeypatch):
+    release_settings.cli_stable_version = "1.2.0"
+    release_settings.cli_mirror_base_url = "https://mirror.example/cli/v{version}/"
+    asked = _published_sums(monkeypatch, 503, "unavailable")
+    for _ in range(2):
+        m = (await clients.get("/cli/latest", params={"os": "linux", "arch": "arm64"})).json()
+        assert "sha256" not in m and "mirror_url" not in m and m["url"].startswith("https://dl.example/")
+    assert len(asked) == 1
 
 
 async def test_latest_falls_back_to_github_and_ignores_python_versions(clients, release_settings, monkeypatch):

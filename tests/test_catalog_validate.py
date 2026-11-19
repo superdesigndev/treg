@@ -457,6 +457,9 @@ def test_cost_table_when_fields_need_required_or_default_and_times_needs_max():
     optional["body"]["duration"].pop("default")
     errors = _table_errors(_valid_table(), optional)
     assert any("must be required or declare a default" in error for error in errors)
+    v2: list[str] = []
+    validator.check_cost_table(_valid_table(), optional, "demo.yaml:submit", v2, needs_default=False)
+    assert v2 == [], "a v2 table's equality on an absent optional field just does not hold"
 
     no_max = _valid_input()
     no_max["body"]["duration"].pop("max")
@@ -591,6 +594,25 @@ def _flat_usage_cost() -> dict:
             "checked": "2026-09-23", "confidence": "documented"}
 
 
+@pytest.mark.parametrize(("mutate", "error", "warned"), [
+    ({}, None, True),
+    ({"worst_case": 0.01}, None, False),
+    ({"worst_case": 0.0001}, "below the hold it raises", False),
+    ({"worst_case": -1}, "must be a positive number", False),
+    ({"worst_case": 0.01, "settle": None, "usage": None, "fallback": None,
+      "reported_charge": {"path": "cost", "unit": "usd"}}, None, False),
+    ({"worst_case": 0.01, "settle": None, "usage": None, "fallback": None},
+     "belongs beside settle: usage or reported_charge", False),
+])
+def test_a_usage_row_declares_the_worst_case_its_hold_covers(mutate, error, warned):
+    cost = {k: v for k, v in (_flat_usage_cost() | mutate).items() if v is not None}
+    errors: list[str] = []
+    warnings: list[str] = []
+    validator.check_cost(cost, "x", errors, warnings, provider="openrouter")
+    assert (error is None and errors == []) or any(error in e for e in errors)
+    assert any("worst_case" in w for w in warnings) is warned
+
+
 def test_flat_price_usage_settlement_is_accepted():
     """A synchronous per-call price may settle the reply's own charge (`_platform_settle` hands
     the buffered body to the usage basis), so no async descriptor or table is required."""
@@ -697,6 +719,9 @@ def test_reported_credit_charge_requires_a_provider_fx_rate():
     ({'queryParams.realtime': True}, False),
     ({'queryParams.memory': 1024}, True),
     ({'queryParams.memory': '1024'}, False),
+    ({'queryParams.type': None}, True),     # null: must be absent, declared or not
+    ({'body.realtime': None}, False),       # absence applies to query parameters only
+    ({'headers.x-key': None}, False),
     ({}, False),
 ])
 def test_platform_request_requires_declared_fixed_body_value(rule, valid):
@@ -760,35 +785,6 @@ def test_a_quantity_price_is_bounded_and_settles_at_what_was_bought(patch, valid
     errors = []
     validator.check_cost_quantity(cost, _LABEL_INPUT, 'test', errors)
     assert (not errors) is valid
-
-
-def test_tavily_rates_require_complete_positive_finite_endpoint_tables():
-    cat = catalog_store.load()
-    for endpoint_id, expected in validator.TAVILY_RATE_KEYS.items():
-        cost = cat.by_id[endpoint_id]["cost"]
-        errors = []
-        validator.check_tavily_rates(endpoint_id, cost, endpoint_id, errors)
-        assert errors == []
-        assert set(cost["tavily_rates"]) == expected
-
-    valid = cat.by_id["tavily.web.search"]["cost"]["tavily_rates"]
-    broken = [
-        None,
-        {},
-        {key: value for key, value in valid.items() if key != "advanced"},
-        valid | {"typo": 1},
-        valid | {"basic": 0},
-        valid | {"basic": -1},
-        valid | {"basic": True},
-        valid | {"basic": "1"},
-        valid | {"basic": float("nan")},
-        valid | {"basic": float("inf")},
-    ]
-    for rates in broken:
-        errors = []
-        validator.check_tavily_rates(
-            "tavily.web.search", {"tavily_rates": rates}, "test", errors)
-        assert errors
 
 
 def test_octen_rate_table_matches_displayed_base_and_requires_every_meter():
@@ -1524,3 +1520,44 @@ def test_a_respelt_row_fails_unless_the_migration_label_allows_it(tmp_path, monk
         in capsys.readouterr().out.splitlines()
     assert validator.main(["--base", "main", "--allow-respelling", "tikhub"]) == 0
     assert f"WARN {line} (catalog-migration)" in capsys.readouterr().out.splitlines()
+
+
+def test_a_public_providers_every_row_is_anonymous():
+    from types import SimpleNamespace
+    public, key = SimpleNamespace(auth_kind="public"), SimpleNamespace(auth_kind="key")
+    errors = []
+    validator.check_public_provider_row({"platform_auth": "anonymous"}, public, "ok", errors)
+    validator.check_public_provider_row({}, key, "keyed", errors)
+    assert errors == []
+    validator.check_public_provider_row({}, public, "bad", errors)
+    assert errors == ["bad: a public provider's every row must be platform_auth: anonymous"]
+
+
+def test_an_adapters_soft_list_must_name_its_contracts_keys(tmp_path, monkeypatch):
+    monkeypatch.setattr(validator, "CATALOG", tmp_path)
+    (tmp_path / "contracts.yaml").write_text(
+        "contracts:\n  x.search:\n    identity: [{q: str}]\n    filters: {country: {type: str}}\n"
+        "    output: {results: {type: list, required: true}}\n    miss: 'results == []'\n")
+    adapter = "adapters:\n  p.x.search: {accepts: [[q]], in: {q: body.q}, out: {results: r}, miss: 'r == []', soft: %s}\n"
+    for soft, problem in (("[country]", None), ("[countyr]", "soft names countyr"), ("country", "soft is a list")):
+        (tmp_path / "adapters.yaml").write_text(adapter % soft)
+        errors: list[str] = []
+        validator.check_routing(errors, {"p.x.search": {"capability": "x.search"}})
+        assert (problem is None and errors == []) or any(problem in e for e in errors), (soft, errors)
+
+
+def test_a_soft_parameter_no_contract_filter_reaches_is_a_warning(tmp_path, monkeypatch):
+    monkeypatch.setattr(validator, "CATALOG", tmp_path)
+    (tmp_path / "contracts.yaml").write_text(
+        "contracts:\n  x.search:\n    identity: [{q: str}]\n    filters: {country: {type: str}}\n"
+        "    output: {results: {type: list, required: true}}\n    miss: 'results == []'\n")
+    (tmp_path / "adapters.yaml").write_text(
+        "adapters:\n  p.x.search: {accepts: [[q]], in: {q: queryParams.q, country: queryParams.gl}, "
+        "out: {results: r}, miss: 'r == []'}\n")
+    soft = {"type": "string", "applied": "soft"}
+    row = {"capability": "x.search", "input": {"queryParams": {"q": {"type": "string"}, "gl": soft, "sites": soft}}}
+    errors: list[str] = []
+    warnings: list[str] = []
+    validator.check_routing(errors, {"p.x.search": row}, warnings)
+    assert errors == [] and warnings == [
+        "p.x.search: queryParams.sites is applied: soft but no contract filter maps into it; only catalog get shows it"]

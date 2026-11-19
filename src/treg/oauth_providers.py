@@ -77,6 +77,8 @@ class OAuthProvider:
     #            is the natural unit (Slack): our app can't be installed into their workspace on
     #            their behalf, and a shared app would put treg between them and their own data.
     #            Setup is a form, not a redirect, so the provider carries the instructions.
+    # "public" — a keyless public API: nothing to connect or verify. Its catalog rows are served
+    #            only as `platform_auth: anonymous`; the provider is left out of the Connect listing.
     auth_kind: str = "oauth"
     token_label: str = ""  # "Bot token"
     token_placeholder: str = ""  # "xoxb-…"
@@ -198,6 +200,13 @@ class OAuthProvider:
     connect_default_capability_name: str = ""
     # Method used while the semantic default method is still behind a registry review key.
     review_fallback_authorization_method: str = ""
+    # Scopes the provider refuses for accounts without a role on treg's app until its app review
+    # is approved, keyed by the review key in `TREG_OAUTH_REVIEW_PENDING`; a grant still lists
+    # them. `review_refusal` is the JSON path of the provider's error code and the codes it uses
+    # for that refusal; `app_reviewer` is the company that runs the review.
+    review_scopes: tuple[tuple[str, tuple[str, ...]], ...] = ()
+    review_refusal: tuple[str, tuple[int, ...]] = ("", ())
+    app_reviewer: str = ""
     # Method assigned to grants created before explicit method identity existed. Empty means the
     # provider's normal default. This keeps compatibility policy in provider metadata.
     legacy_authorization_method: str = ""
@@ -955,6 +964,10 @@ _FB_READ = ["pages_show_list", "pages_read_engagement", "read_insights", "busine
 # discover_id_field/label_field read both listings.
 _META_BIZ_PAGE_LISTS = ("owned_pages.data", "client_pages.data")
 
+# Graph API error codes 10 and 200 mean the app itself lacks the permission, whatever the token
+# holds. https://developers.facebook.com/docs/graph-api/guides/error-handling
+_META_PERMISSION_REFUSAL = ("error.code", (10, 200))
+
 FACEBOOK = OAuthProvider(
     service="facebook",
     display_name="Facebook Pages",
@@ -981,6 +994,12 @@ FACEBOOK = OAuthProvider(
     client_id_setting="meta_client_id",
     client_secret_setting="meta_client_secret",
     appsecret_proof=True,
+    review_scopes=(
+        ("page-engagement", ("pages_manage_engagement", "pages_read_user_content")),
+        ("page-messages", ("pages_messaging",)),
+    ),
+    review_refusal=_META_PERMISSION_REFUSAL,
+    app_reviewer="Meta",
     category="Social media",
     summary=(
         "Your Pages' posts, comments and reach — and publishing to them."
@@ -1061,6 +1080,15 @@ INSTAGRAM = OAuthProvider(
     long_lived_exchange_style="instagram",
     default_capability_name="manage",
     review_fallback_authorization_method="facebook-page",
+    review_scopes=(
+        ("instagram-login", (
+            "instagram_business_content_publish", "instagram_business_manage_comments",
+            "instagram_business_manage_messages",
+        )),
+        ("page-messages", ("instagram_manage_messages", "pages_messaging")),
+    ),
+    review_refusal=_META_PERMISSION_REFUSAL,
+    app_reviewer="Meta",
     legacy_authorization_method="facebook-page",
     authorization_methods=(
         OAuthAuthorizationMethod(
@@ -1374,7 +1402,7 @@ MOBIUSENGINE_JOBS = OAuthProvider(
     setup_url="https://jobs.mobiusengine.ai/login?utm_source=treg&utm_medium=connect",
     setup_action_label="Get your MobiusEngine.ai Jobs Data API key",
     setup_steps=(
-        "Open jobs.mobiusengine.ai and sign in with Google. New accounts start with a $1 credit.",
+        "Open jobs.mobiusengine.ai and sign in with Google. New accounts start with a 10 cent credit; add your LinkedIn profile on the account page, or the key answers 403 profile_required.",
         "Copy the API key shown on your first sign-in (it is shown once; more can be made under API keys).",
         "Add funds on your account page (jobs.mobiusengine.ai/app) when the credit is used: calls are charged per job from that balance.",
     ),
@@ -1387,6 +1415,21 @@ MOBIUSENGINE_JOBS = OAuthProvider(
     base_url="https://jobs-api.arihaan.ai",
     docs_url="https://jobs.mobiusengine.ai/docs?utm_source=treg&utm_medium=docs",
     probe_path="/v1/balance",  # free; a bad or missing key gets HTTP 401 {"error": {"code": "unauthorized", ...}}
+)
+
+# Keyless: the Job Board API answers every GET without authentication, so there is nothing to
+# connect or probe. Rows are `platform_auth: anonymous`; no EU host is listed.
+GREENHOUSE = OAuthProvider(
+    service="greenhouse",
+    display_name="Greenhouse Job Board",
+    auth_kind="public",
+    auth_uri="", token_uri="",
+    scopes={},
+    client_id_setting="", client_secret_setting="",
+    category="Jobs data",
+    summary="List a company's open jobs, departments and offices from its Greenhouse job board, with pay ranges and application questions.",
+    base_url="https://boards-api.greenhouse.io/v1",
+    docs_url="https://docs.greenhouse.io/job-board.html",
 )
 
 ANYAPI = OAuthProvider(
@@ -2614,6 +2657,24 @@ THEIRSTACK = OAuthProvider(
 )
 
 
+JOBSPIPE = OAuthProvider(
+    service="jobspipe", display_name="JobsPipe", auth_kind="key",
+    token_label="API key", token_placeholder="your JobsPipe API key (jp_live_…)",
+    token_header="Authorization", token_format="Bearer {secret}",
+    setup_url="https://jobspipe.dev/signup",
+    setup_action_label="Get your JobsPipe API key",
+    setup_steps=("Sign up at JobsPipe (new accounts get 1,000 free credits, once).",
+                 "Open the dashboard, create an API key and copy it."),
+    setup_note="Each job costs a credit the first time your account pulls it in a month; repeats, empty pages, counts and company suggestions are free.",
+    auth_uri="", token_uri="", scopes={}, client_id_setting="", client_secret_setting="",
+    category="Jobs data",
+    summary="Search job postings with full descriptions and pay, poll for new ones, benchmark salaries by country and read company technologies.",
+    base_url="https://api.jobspipe.dev",
+    docs_url="https://jobspipe.dev/docs",
+    probe_path="/v1/account",  # free; a bad key gets 401
+)
+
+
 AVIATO = OAuthProvider(
     service="aviato",
     display_name="Aviato",
@@ -2901,6 +2962,23 @@ BRAVESEARCH = OAuthProvider(
     base_url="https://api.search.brave.com/res",
     docs_url="https://api-dashboard.search.brave.com/documentation",
     probe_path="/v1/web/search?q=example.com&count=1",
+)
+
+LOCALFALCON = OAuthProvider(
+    service="localfalcon", display_name="Local Falcon", auth_kind="key",
+    token_label="API key", token_placeholder="your Local Falcon API key",
+    token_header="Authorization", token_format="Bearer {secret}",
+    setup_url="https://www.localfalcon.com/api/credentials/",
+    setup_action_label="Get your Local Falcon API key",
+    setup_steps=("Enable On-Demand API access on your Local Falcon account.",
+                 "Copy your API key from the API Credentials page and paste it here."),
+    setup_note="Connecting checks the key with the free grid-points endpoint.",
+    auth_uri="", token_uri="", scopes={}, client_id_setting="", client_secret_setting="",
+    category="SEO",
+    summary="Check where a business ranks in Google Maps across a grid of points, and search Maps by keyword.",
+    base_url="https://api.localfalcon.com",
+    docs_url="https://docs.localfalcon.com/",
+    probe_path="/v1/grid/?lat=40.7484&lng=-73.9857&grid_size=3&radius=1&measurement=mi",
 )
 
 LITESCRAPE = OAuthProvider(
@@ -3202,6 +3280,33 @@ COMPANYENRICH = OAuthProvider(
     # here, so none of token_verify_field / token_ok_field / token_reject_field is needed, and the
     # default reject-on-status behavior is correct.
     probe_path="/me",
+)
+
+
+FUNDABLE = OAuthProvider(
+    service="fundable",
+    display_name="Fundable",
+    auth_kind="key",
+    token_label="API key",
+    token_placeholder="your Fundable API key",
+    token_header="Authorization",
+    token_format="Bearer {secret}",
+    setup_url="https://www.tryfundable.ai/api-access/",
+    setup_action_label="Get your Fundable API key",
+    setup_steps=(
+        "Sign up for a Fundable account.",
+        "Open API Access and create an API key.",
+        "Copy the key and paste it here.",
+    ),
+    auth_uri="", token_uri="",
+    scopes={},
+    client_id_setting="", client_secret_setting="",
+    category="Enrichment",
+    summary="Search companies, funding rounds, investors and people, and retrieve their funding histories.",
+    base_url="https://www.tryfundable.ai/api/v1",
+    docs_url="https://docs.tryfundable.ai",
+    # Free industry search rejects a bogus key with HTTP 401 INVALID_API_KEY.
+    probe_path="/industry/search?name=software",
 )
 
 
@@ -3541,6 +3646,23 @@ FILTRAT = OAuthProvider(
     docs_url="https://filtrat.io/v1/docs",
     probe_path="/credits/balance",  # free; a bad key gets 401
 )
+
+FILTRAT_FINDER = OAuthProvider(
+    service="filtrat-finder", display_name="Filtrat Email Finder", auth_kind="key",
+    token_label="API key", token_placeholder="your Filtrat API key (ak_…)",
+    token_header="Authorization", token_format="Bearer {secret}",
+    setup_url="https://filtrat.io/app/api",
+    setup_action_label="Get your Filtrat API key",
+    setup_steps=("Sign in to Filtrat and open API & Integrations.", "Create an API key and copy it."),
+    setup_note="Found emails spend credits; not-found answers and the account check are free.",
+    auth_uri="", token_uri="", scopes={}, client_id_setting="", client_secret_setting="",
+    category="Enrichment",
+    summary="Find work emails from a name and company domain, confirmed on catch-all domains too.",
+    base_url="https://filtrat.io/v1",
+    docs_url="https://filtrat.io/v1/docs",
+    probe_path="/credits/balance",  # free; a bad key gets 401
+)
+
 
 
 DROPCONTACT = OAuthProvider(
@@ -4256,6 +4378,95 @@ CORPOAPI = OAuthProvider(
     probe_path="/v1/usage",
 )
 
+
+ASHBY = OAuthProvider(
+    service="ashby",
+    display_name="Ashby job boards",
+    auth_kind="public",
+    auth_uri="", token_uri="",
+    scopes={},
+    client_id_setting="", client_secret_setting="",
+    category="Jobs data",
+    summary="Every open job on a company's Ashby job board, with full descriptions and posted pay.",
+    base_url="https://api.ashbyhq.com",
+    docs_url="https://developers.ashbyhq.com/docs/public-job-posting-api",
+)
+
+
+WORKABLE = OAuthProvider(
+    service="workable",
+    display_name="Workable",
+    auth_kind="public",
+    auth_uri="", token_uri="",
+    scopes={},
+    client_id_setting="", client_secret_setting="",
+    category="Jobs data",
+    summary="List a company's open jobs from its Workable careers page, with descriptions. Free, no key.",
+    # Workable documents www.workable.com/api/accounts/{subdomain}; that answers 302 to this host,
+    # and the relay never follows redirects, so the catalog targets the redirect's host directly.
+    base_url="https://apply.workable.com",
+    docs_url="https://workable.readme.io/reference/jobs-1",
+)
+
+
+SMARTRECRUITERS = OAuthProvider(
+    service="smartrecruiters",
+    display_name="SmartRecruiters",
+    auth_kind="public",
+    auth_uri="", token_uri="",
+    scopes={},
+    client_id_setting="", client_secret_setting="",
+    category="Jobs data",
+    summary="Open job postings from employers hiring on SmartRecruiters: search one company's board and read full job ads. Free, no key.",
+    base_url="https://api.smartrecruiters.com",
+    docs_url="https://developers.smartrecruiters.com/docs/posting-api",
+)
+
+
+HIREBASE = OAuthProvider(
+    service="hirebase",
+    display_name="Hirebase",
+    auth_kind="key",
+    token_label="API key",
+    token_placeholder="hb_...",
+    # The key rides in x-api-key; the header keeps it out of logged URLs.
+    token_header="x-api-key",
+    token_format="{secret}",
+    setup_url="https://www.hirebase.org/signup",
+    setup_action_label="Get your Hirebase API key",
+    setup_steps=(
+        "Create an account at hirebase.org/signup.",
+        "Copy your key from Profile, then API Key (it starts with hb_).",
+        "The Free plan includes 500 jobs, 50 companies, 25 insights and 3 salary benchmarks a month; paid plans raise them.",
+    ),
+    setup_note="Billed per job or company returned from a monthly allowance; insights and salary benchmarks are counted per call. An empty job or company page is free; an insights call is counted even when it finds nothing.",
+    auth_uri="", token_uri="",
+    scopes={},
+    client_id_setting="", client_secret_setting="",
+    category="Jobs data",
+    summary="Search fresh job postings read from employers' own career pages, match jobs to a candidate profile, list a company's open jobs and get salary percentiles for a role and place.",
+    base_url="https://api.hirebase.org/v2",
+    docs_url="https://www.hirebase.org/docs",
+    probe_path="/billing/usage/summary",  # free; a bad key gets HTTP 401 {"detail": "Invalid API key"}
+)
+
+
+# Lever's Postings API serves every published posting without a key. The API key Lever documents
+# applies only to the application POST, which is not listed.
+LEVER = OAuthProvider(
+    service="lever",
+    display_name="Lever",
+    auth_kind="public",
+    auth_uri="", token_uri="",
+    scopes={},
+    client_id_setting="", client_secret_setting="",
+    category="Jobs data",
+    summary="List a company's open jobs on its Lever careers site, with full descriptions, or read one posting.",
+    base_url="https://api.lever.co",
+    catalog_targets=(CatalogTarget(host="api.eu.lever.co", base_url="https://api.eu.lever.co"),),
+    docs_url="https://github.com/lever/postings-api",
+)
+
 REGISTRY: dict[str, OAuthProvider] = {
     p.service: p
     for p in (
@@ -4263,7 +4474,7 @@ REGISTRY: dict[str, OAuthProvider] = {
         GOOGLE_ADS, YOUTUBE,
         LINKEDIN, SLACK, X, TIKTOK, FACEBOOK, INSTAGRAM, META_ADS,
         # API-key providers
-        ANYAPI, APOLLO, PDL, AKTA, HUNTER, MOBIUSENGINE_JOBS, SUMBLE, MOLTSETS, OPENMART, HARVESTAPI, FETCHINIO, SIXTYFOUR, LEADOCEAN, BLITZAPI, DROPLEADS,
+        ANYAPI, APOLLO, PDL, AKTA, HUNTER, MOBIUSENGINE_JOBS, GREENHOUSE, SUMBLE, MOLTSETS, OPENMART, HARVESTAPI, FETCHINIO, SIXTYFOUR, LEADOCEAN, BLITZAPI, DROPLEADS, ASHBY, WORKABLE, SMARTRECRUITERS, HIREBASE, LEVER,
         QUICKENRICH, PROSPEO, AIARK, WIZA, LIMADATA, GETLEADSIO, SCRUBBY, ZEROBOUNCE, DATAGMA,
         TRYKITT, CONTACTOUT, MILLIONVERIFIER, ORBISEARCH, BOUNCEBAN, CRUNCHBASE, MINIMAX, FISHAUDIO,
         OPENROUTER,
@@ -4273,10 +4484,10 @@ REGISTRY: dict[str, OAuthProvider] = {
         SCRAPECREATORS,
         # SEO API-key providers
         DATAFORSEO, SERANKING, MOZ, MAJESTIC, SERPSTAT, EXA, SEARCH1API, TAVILY, OCTEN, LINKUP, PARALLEL, YOU, VALYU, KEENABLE, OLOSTEP, FIRECRAWL, CRAWL4AI, SPIDERCLOUD, PERPLEXITY,
-        SCRAPEGRAPHAI, SERPER, BRAVESEARCH, LITESCRAPE, CLORO,
+        SCRAPEGRAPHAI, SERPER, BRAVESEARCH, LITESCRAPE, CLORO, LOCALFALCON,
         # more Enrichment API-key providers
-        LUSHA, CORESIGNAL, DIFFBOT, THECOMPANIESAPI, LEADMAGIC, ENRICHLAYER, FIBER_AI, CRUSTDATA, THEIRSTACK, AVIATO,
-        COMPANYENRICH, CORPOAPI, OCEANIO, ADYNTEL, TOMBA, TRESTLEIQ, HLRLOOKUP, PREDICTLEADS, FINDYMAIL, ANYMAILFINDER, ENROW, FILTRAT, DROPCONTACT, BRANDDEV, ICYPEAS, LEADSFORGE,
+        LUSHA, CORESIGNAL, DIFFBOT, THECOMPANIESAPI, LEADMAGIC, ENRICHLAYER, FIBER_AI, CRUSTDATA, THEIRSTACK, JOBSPIPE, AVIATO,
+        COMPANYENRICH, FUNDABLE, CORPOAPI, OCEANIO, ADYNTEL, TOMBA, TRESTLEIQ, HLRLOOKUP, PREDICTLEADS, FINDYMAIL, ANYMAILFINDER, ENROW, FILTRAT, FILTRAT_FINDER, DROPCONTACT, BRANDDEV, ICYPEAS, LEADSFORGE,
         INFLUENCERSCLUB, VILLAGE,
         # Places: intent-scored local search
         ATLY,
@@ -4534,6 +4745,57 @@ def scope_label(scope: str) -> str:
     return SCOPE_LABELS.get(scope, scope)
 
 
+def review_pending_scopes(provider: OAuthProvider | None, granted: list[str]) -> list[str]:
+    """Granted scopes the provider still refuses because treg's app review is pending."""
+    if provider is None:
+        return []
+    return connection_authorization.review_pending_scopes(
+        provider.review_scopes, granted, get_settings().oauth_review_pending_set,
+    )
+
+
+def review_pending_note(provider: OAuthProvider, scopes: list[str]) -> str:
+    """The connection's note: these granted scopes wait for the provider's review of treg's app."""
+    reviewer = provider.app_reviewer or provider.display_name
+    return (
+        f"Pending {reviewer} App Review: {provider.display_name} refuses {', '.join(scopes)} "
+        "for accounts without a role on treg's app until the review is approved. Reconnecting "
+        "does not change this."
+    )
+
+
+def review_refusal_note(provider: OAuthProvider, scopes: list[str]) -> str:
+    """A refused call's note. The refusal code is also the provider's general permission error,
+    so it says what may be the reason, not what is."""
+    reviewer = provider.app_reviewer or provider.display_name
+    return (
+        f"This may be because {reviewer} has not yet approved {', '.join(scopes)} for treg's "
+        "app; if the call needs one of these, reconnecting will not help."
+    )
+
+
+def review_refusal_scopes(
+    provider: OAuthProvider | None, granted: list[str], body: object,
+    endpoint: dict | None = None, stored_method: str = "",
+) -> list[str]:
+    """Review-pending scopes behind a provider error body that says the app lacks a permission.
+
+    When the catalog declares the called endpoint's scopes, only those are named, and none when
+    the endpoint needs no pending scope."""
+    if provider is None:
+        return []
+    path, codes = provider.review_refusal
+    if not connection_authorization.is_review_refusal(path, codes, body):
+        return []
+    pending = review_pending_scopes(provider, granted)
+    if not endpoint or not endpoint.get("required_scopes"):
+        return pending
+    method_name = provider.authorization_method_name(stored_method)
+    method = next((m for m in provider.authorization_methods if m.name == method_name), None)
+    needed = set(connection_authorization.required_scopes(endpoint, method))
+    return [scope for scope in pending if scope in needed]
+
+
 def listing() -> list[dict]:
     """Every known provider, flagged with whether this deployment can actually run its flow."""
     pending_reviews = get_settings().oauth_review_pending_set
@@ -4597,6 +4859,8 @@ def listing() -> list[dict]:
             "supports_discovery": p.supports_discovery,
             "has_identity": p.has_identity,
             "auth_kind": p.auth_kind,
+            # whether this server serves the provider's keyless rows (its allow-list)
+            "enabled": get_settings().platform_provider_enabled(p.service),
             "token_label": p.token_label,
             "token_placeholder": p.token_placeholder,
             "setup_url": p.setup_url,
@@ -4624,7 +4888,7 @@ def listing() -> list[dict]:
         # Grouped first, alphabetical within a shelf — so the dashboard can render the shelves by
         # walking the list once instead of re-sorting what the registry already knows.
         for p in sorted(
-            (p for p in REGISTRY.values() if not is_paused(p.service)),
+            (p for p in REGISTRY.values() if not is_paused(p.service) and p.auth_kind != "public"),
             key=lambda p: (
                 CATEGORY_ORDER.index(p.category) if p.category in CATEGORY_ORDER else len(CATEGORY_ORDER),
                 p.display_name,

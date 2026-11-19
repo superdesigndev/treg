@@ -10,6 +10,7 @@ from httpx import AsyncClient
 from toon_format import decode
 
 from treg import crypto
+from treg.api import app
 from treg.domain.catalog import store as catalog_store
 from treg.infra.db import session_maker
 from treg.models import Secret
@@ -33,6 +34,9 @@ async def _view(c: AsyncClient, path: str, *, status: int = 200, method: str = "
 @pytest.mark.parametrize("path", ["/catalog/platforms", "/catalog/platforms/tiktok", "/catalog/search?q=tiktok+comments",
                                   "/catalog/endpoints/tikhub.tiktok.video.comments", "/home", "/feedback/404"])
 async def test_data_is_the_routes_own_answer_byte_for_byte(clients: AsyncClient, path):
+    # `observed_pending` follows the observation cache's refresh, so let it settle before comparing.
+    await clients.get(path)
+    await app.state.endpoint_observation_reader.wait_for_idle()
     plain = await clients.get(path)
     viewed = await clients.get(path, headers=VIEW)
     assert "X-Treg-View" not in plain.headers
@@ -219,6 +223,7 @@ AUTOTOPUP_ON = {"enabled": True, "amount_micro": 20_000_000, "threshold_micro": 
     (BALANCE, AUTOTOPUP_ON),
     (BALANCE, {"enabled": False, "disabled_reason": "the card was declined"}),
     ({**BALANCE, "blocks": [], "holds": [], "entries": {"items": []}}, None),
+    ({**BALANCE, "blocks": [], "holds": [], "entries": {"items": [], "withheld": True}}, None),
 ])
 def test_balance_text_is_what_the_python_cli_prints(monkeypatch, capsys, body, auto):
     """The Python CLI prints `treg balance` itself; the registry's text must not drift from it."""

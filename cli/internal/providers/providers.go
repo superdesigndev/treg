@@ -510,8 +510,12 @@ func ScanEnv(text string, catalog []Entry) []Detection {
 	return dets
 }
 
-func Slug(provider string) string {
+func LegacySlug(provider string) string {
 	return strings.ReplaceAll(strings.ToLower(provider), " ", "-")
+}
+
+func Slug(provider string) string {
+	return strings.ReplaceAll(LegacySlug(provider), ".", "-")
 }
 
 // BuildBinding turns an auth shape into a tool binding, or nil when it has none (oauth2, a query
@@ -620,7 +624,7 @@ func PlanActions(dets []Detection) []*Action {
 			user, pass := BasicParts(d.Vars)
 			if user != "" && pass != "" {
 				actions = append(actions, &Action{Detection: d, Supported: true, BaseURL: d.BaseURL, ToolName: Slug(d.Provider),
-					SecretName: strings.ToUpper(strings.ReplaceAll(Slug(d.Provider), "-", "_")) + "_BASIC",
+					SecretName: strings.ToUpper(strings.ReplaceAll(LegacySlug(d.Provider), "-", "_")) + "_BASIC",
 					Binding:    BuildBinding(ojson.Ordered("shape", "basic")), Combine: []string{user, pass}})
 			} else {
 				actions = append(actions, &Action{Detection: d, BaseURL: d.BaseURL, ToolName: Slug(d.Provider), Reason: "incomplete Basic pair"})

@@ -5,6 +5,10 @@ sources:
   - src/treg/infra/upstream/injectors.py
   - src/treg/infra/upstream/ssrf.py
   - src/treg/crypto.py
+  - src/treg/infra/credential_cipher.py
+  - src/treg/application/credential_reencrypt.py
+  - src/treg/application/fernet_rotation.py
+  - src/treg/alembic/versions/0108_secret_refreshable.py
   - src/treg/oauth.py
   - src/treg/domain/connections/__init__.py
   - src/treg/domain/connections/authorization.py
@@ -86,18 +90,55 @@ never be used for an upstream that signs or hashes raw body bytes (non-negotiabl
 whose `format` has no `{secret}` placeholder is a protocol constant (`required_headers`) and is
 excluded from secret-evidence scrubbing.
 
-## Encryption (`crypto.py`)
+## Encryption (`infra/credential_cipher.py`, `crypto.py`)
 
-Secret values are Fernet-encrypted at rest with `TREG_SECRET_KEY`; unset, an ephemeral key is used,
+Stored credentials (`Secret.value`, `PendingOAuth.client_secret`) go through `credential_cipher`.
+Without KMS settings it is Fernet with `TREG_SECRET_KEY`, as before; unset, an ephemeral key is used,
 so secrets do not survive a restart (`verify_db` refuses that on a real database). Caller tokens are
 stored only as SHA-256 hashes. Values are never returned to clients, with one exception below.
+
+With `TREG_KMS_KEY_ID` (a KMS key or alias ARN) a process can open KMS-sealed values; with
+`TREG_KMS_ENCRYPT_NEW` as well it seals every new write with KMS. A sealed value is
+`kms1:<wrapped data key>.<nonce + ciphertext>`: one AES-256-GCM data key per value, wrapped by KMS
+under the encryption context `{"treg:purpose": "credential", "treg:org": "<org id>"}`, which is also
+the cipher's associated data. A value copied to another team's row does not open, and every open is
+one KMS `Decrypt` naming the team in the provider's audit log. Any value without the prefix is a
+Fernet token and still opens locally, so the two formats coexist until every row is re-sealed.
+
+- **Rollout order.** Every process that reads credentials gets `TREG_KMS_KEY_ID` first; only then
+  does any get `TREG_KMS_ENCRYPT_NEW`. A process without the key refuses a KMS value loudly rather
+  than guessing. `treg-worker admin reencrypt-credentials` then re-seals the remaining Fernet rows in
+  id batches, opening and sealing with no transaction held and writing each row only if its value is
+  unchanged; it refuses to run while new writes are still Fernet, and `--dry-run` calls no KMS.
+- **No connection waits on KMS.** KMS calls are network I/O run in a worker thread, and every
+  path ends its transaction before opening or sealing (AGENTS.md, non-negotiable 3): a bundle
+  import seals all its credentials before its single write transaction.
+- **Once per call.** A call opens each credential once, after its database phase ends
+  (`open_for_call` in a per-call `call_scope`); injection (`relay`), error masking (`evidence`),
+  the sandbox and refresh read that copy. The health run scopes the same way per run.
+- **Listing never opens.** `Secret.refreshable` is recorded with every oauth write, so connection
+  lists and expiry state read a column instead of opening every credential. A null on a Fernet row
+  written before the column opens locally; the re-encryption job fills it.
+- **What stays Fernet.** Short-lived state (sign-in return cookies, enterprise SSO state, CLI
+  pairing rows), Arena payloads, and the published placeholder values seeded into demo and
+  sandbox teams, which would otherwise put a KMS call behind every anonymous sandbox visit. The
+  echo key `/onboard/seed-tool` puts in a real team is sealed like any other credential.
+- **Rotating the Fernet key.** `TREG_SECRET_KEY` takes a comma-separated list: the first key
+  encrypts, every key decrypts. Deploy `old,new` everywhere first, so every running process can
+  open what the next step writes; then `new,old` everywhere; then run `treg-worker admin rotate-fernet`
+  (`--dry-run` first): it re-encrypts Arena payloads and every stored credential still on Fernet
+  (all of them without KMS) under the first key with a compare-and-set write. Demo and sandbox
+  seeds are not rotated; they stop opening once the old key is dropped.
+  Without `TREG_SESSION_SECRET` the session signature falls back to the whole setting, so a
+  rotation signs everyone out; set a session secret first.
 
 ## OAuth freshness (`domain/connections/refresh.py`)
 
 `is_refreshable(blob)` (has `refresh_token`, `client_id`, `client_secret`) picks auto or manual mode;
 a bare uploaded token is injected as-is and re-uploaded on expiry. `ensure_fresh` is the one refresh
 path for the call runtime, health, resource discovery and resource selection; none of them
-implements its own lock, exchange or write.
+implements its own lock, exchange or write. It opens and seals through a `CredentialPort` the caller
+passes in, and ends its read transaction before either.
 
 - The read transaction commits before token-endpoint I/O, and the write opens a new short
   transaction, so provider latency holds no pooled connection.
@@ -209,6 +250,13 @@ header, a query parameter or JSON fields (`token_*` fields), with `token_encode=
 `login:password` into a Basic blob; the injector's `ensure_base64` re-applies that at call time, so a
 raw pair stored by `treg secret add` (which never probes) renders the same header.
 
+A keyless public API registers with `auth_kind="public"`: nothing to paste or consent to, so it is
+left out of the Connect listing and both connect paths refuse it. Its catalog rows are all
+`platform_auth: anonymous` ([catalog](catalog.md)). Resolution and the router skip the credential
+tier for it, so a team secret that only shares its name never stands in for a credential; a team's own registered tool still wins.
+Its refusal names the true reason (`_anonymous_refusal`): "not enabled" only while the provider is off
+the allow-list; a demo or sandbox team, or a row that is not a verified free anonymous one, says so.
+
 The connect probe hits `base_url` + `probe_path` or an absolute `probe_url`, and is free unless
 declared otherwise. Many upstreams answer 200 to a bad key, so validity comes from declarative
 metadata, never provider branches: HTTP status, `token_verify_field`, `token_ok_field` /
@@ -250,7 +298,8 @@ breaks, but nothing schedules it by default. Bump the version in all four places
 
 A provider's platform key is `TREG_PLATFORM_KEY_<PROVIDER>`; a paired half has its own setting.
 `TREG_PLATFORM_ACCOUNTS` adds labelled accounts behind a provider, and a malformed value refuses to
-start. Values live only in the environment: a binding names a setting and account label, never a
+start. Values live only in the process's settings (the environment, or the Secrets Manager secret
+`TREG_AWS_SECRET_ID` names, see [deploy](../ops/deploy.md)): a binding names a setting and account label, never a
 value, and the async worker builds the same bindings as the call path, so keys never reach task
 records, logs or archive evidence ([proxy model](proxy-model.md)).
 
@@ -276,7 +325,8 @@ records, logs or archive evidence ([proxy model](proxy-model.md)).
   client secret and a replayable `state`.
 - `_notify()` posts invalid credentials to the owner's `webhook_url`, searching all the owner's
   memberships, then a current org owner's. `webhook_url` is user-set, so `safe_webhook_url` rejects
-  non-http(s) and non-globally-routable targets at set time and again before POST (blind-SSRF guard),
+  non-http(s) and non-globally-routable targets at set time and again before POST, and the host is
+  resolved before POST and refused when non-public (`url_host_is_public`, blind-SSRF guard),
   including CGNAT `100.64.0.0/10` and NAT64 prefixes mapping non-global IPv4; see
   [proxy target guards](proxy-model.md#resolution-and-relay-guards).
 
@@ -300,5 +350,8 @@ member call cannot read someone else's key.
 A tool's `base_url` is checked against the internal-address block-list (including numeric IP
 encodings) at registration, and the proxy re-resolves the host at call time
 (`infra.upstream.ssrf.host_is_public`, gated by `proxy_ssrf_check`), so DNS rebinding does not
-bypass it. `routers.resources._require_public_base_url` also rejects a `base_url` pointing back at
+bypass it. The health probe and the OAuth token endpoint (refresh and code exchange) get the same
+resolve check before sending; a token answer without `access_token` is reported without its body,
+naming only a standard OAuth error code (`invalid_grant`) when the answer carries one.
+`routers.resources._require_public_base_url` also rejects a `base_url` pointing back at
 treg itself, so a team uses treg's tools by id instead of proxying treg through treg.

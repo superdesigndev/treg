@@ -4,8 +4,15 @@ status: shipped
 sources:
   - src/treg/call_events.py
   - src/treg/application/call_events.py
+  - src/treg/domain/catalog/routing/segments.py
+  - src/treg/domain/catalog/routing/contracts.py
+  - src/treg/domain/catalog/routing/paths.py
   - src/treg/catalog/contracts.yaml
+  - src/treg/application/call/call_errors.py
+  - scripts/call_events_actionable_errors.sql
   - tests/test_call_events.py
+  - tests/test_request_segments.py
+  - tests/test_call_errors.py
 ---
 
 # Call events
@@ -66,8 +73,9 @@ through unbuffered has no answer columns, as it has no `hit` in `callrecord`.
 ## Linking
 
 `call_ref` is the call's `X-Treg-Call-Id`. A child's ref is its parent's plus a step
-(`:rN` waterfall attempt N, `:v` the check, `:pN` a routed poll, `:sN` a hub step); events carry
-`parent_ref`, `step` and `waterfall_position` parsed from it. An async task's submission
+(`:rN` waterfall attempt N, `:v` the check, `:u` the upgrade, `:pN` a routed poll, `:sN` a hub
+step, `:sN.M` item M of a hub `for_each` step); events carry `parent_ref`, `step` and
+`waterfall_position` parsed from it. An async task's submission
 (`async_submit`) and its outcome (`async_terminal`) share the submission's `call_ref`; the terminal
 event carries `hit`, `verdict`, `cost_charged_micro` (what the task settled at; the submission's
 is null), `async_outcome` (`success`, `failure`, `billed_failure`,
@@ -96,10 +104,27 @@ The stream has no map type; they travel as JSON objects (`json` columns):
   `first_name`+`last_name` derives `full_name`, so `{full_name, domain}` and
   `{first_name, last_name, domain}` asked of a direct finder, a routed child or the routed parent
   give one `input_id`.
+  A request for a later page than the first is another question: its position joins the hash, so
+  page 2 never reads as a retry of page 1, and a repeat of page 2 still does. A direct call's
+  position is read through its adapter's `position` (`{page | page0 | offset | cursor:
+  <expression over the request>}`, `page0` a page number counted from 0), else the path its
+  `paging.cursor` names, else a top-level parameter named `cursor`, `page_token`, `pageToken`,
+  `next_page_token`, `after`, `page`, `offset`, `start` or `skip` that the endpoint declares with
+  a type it can be: a number for a page or an offset (crawl4ai's Facebook `page` is a page name), a
+  string or a number for a cursor. A declared page with `default: 0`, or `min: 0` and no default
+  of 1, counts from 0 (aiark, TheirStack). A routed parent's position is the caller's `cursor`,
+  `page` or `offset`, kept in its route summary. A page number or an offset counts only as a
+  whole number. No page, `page` 1, `page0` 0, `offset` 0 and an empty or `0` cursor are the
+  first page and leave `input_id` as it was.
+  On an admission-only contract, an identity field typed `list` (a count over several companies)
+  is its values' set, each normalized, sorted and joined, so the same companies in another order
+  hash the same and other companies do not.
 - `input_keys`: `{field: hmac}` for every identity field present after derivation.
 - `input_meta`: non-sensitive segments: `domain_class` (`company`, `webmail`, `edu`, `gov`) and
   `tld` of the input domain (or the email's), `calling_code` of an international input phone
-  (`44`, `1`), plus any filter declared `analytics: value`. A routed
+  (`44`, `1`), plus any filter declared `analytics: value`, plus the categories of the contract's
+  segment set (`segments:` on the contract, below), plus `page_kind` and, for a page number or an
+  offset, `page` on a later page (a cursor is opaque and not recorded). A routed
   parent also carries `route_order` and `route_retry_order` (what decided its order) and, with published rules on,
   `route_rules_version` and `route_rule` ([route-rules.md](route-rules.md)).
 - `answer_keys`: `{field: hmac}` for output fields declared `analytics: key`.
@@ -108,11 +133,108 @@ The stream has no map type; they travel as JSON objects (`json` columns):
   keyed phone (`phone_calling_code`), so a number's country is known when its provider names none.
   A direct call's answer is read as the Arena reads it (`safe_output`), except that a recorded
   field the contract types `bool`, `int` or `float` keeps its value (`name_match`, `ported`).
+  A contract with a segment set that judges answers adds its row counts here (`rows`,
+  `rows_company_match`, below) with `segments_version`.
 - `answer_flags`: derived from email-shaped keys: `is_role`, `free_mail`, and `domain_match`
   when the input named a domain (prefixed `<field>_` for a field other than `email`). The same
   `domain_match` comparison is disclosed to callers on a routed email-find hit as
   `_treg.domain_match` / `X-Treg-Domain-Match` (see [catalog.md](catalog.md)); this event flag
   stays the analytics form.
+
+## Admission-only contracts
+
+A capability gets `input_*` and a decided `hit` only when it has a contract and its endpoint a
+verified adapter. A capability nobody routes still gets both from a contract declared
+`routed: false`, which never mints a `treg.<capability>` row, with `route: false` adapters, which
+never enter routing or the arena. The adapter's `miss` then decides `hit` on every direct call. It
+also decides cache admission (an empty answer is not cached), and on a `per_success` endpoint
+settle charges nothing for a miss. The identity names the question, so two providers asked it
+hash the same:
+
+| Family | Identity | Hit |
+| --- | --- | --- |
+| Searches (`linkedin.search.*`, `reddit.search.posts`, `meta-ads.library.search`) | the query (`q`), or a person's name | at least one result row |
+| Lists about one subject (`companies.emails.list`, `people.decision_makers`, `reddit.post.comments`) | the domain, or the post (`post_id`, derived from its URL) | at least one row |
+| One object (`x.post.detail`, `linkedin.job.detail`) | its id, derived from its URL (`x_post_id`, `linkedin_job_id`) | the object is returned |
+| Answers (`web.answer`, `google.serp.ai_mode`) | the question or prompt (`q`) | answer text is returned |
+| Counts (`people.search.count`) | company domain and title | a count above zero |
+
+When a capability gains a routed endpoint, keep its existing identity first so direct and routed
+calls for the same question continue to produce the same `input_id`.
+
+Scoping filters (country, date window, sort, location) stay out of `input_id`; the ones declared
+`analytics: value` go to `input_meta`, so analysis can split by them. A status poll
+(`video-gen.task.status`) gets neither: repeating it is how it works, so an `input_id` would make
+every poll a retry, and a running task is neither a hit nor a miss. Its outcome belongs to the
+generation it polls.
+
+## Request segments
+
+A contract may name a segment set (`segments: people_search`), defined once in
+`domain/catalog/routing/segments.py`. Its function reads the identity and filters after derivation
+and returns categories, each a word from the set's fixed vocabulary; `segment` adds them to
+`input_meta` with `segments_version`, the set's version, which moves whenever a rule or a
+vocabulary changes. No title, query, name, place or domain is recorded, only the category it falls
+in. A filter already recorded as a value (`country`) keeps its own spelling; the set only adds
+keys. A direct or child call's request is read back through its adapter (`vendor_identity`). A
+filter whose provider representation needs decoding can declare an `in_read` expression.
+Besides the `in` map, every field an `in_expr` sends where it can be found is read back
+(`field_paths`): each expression is run on placeholder values, and a field is read from the
+place its placeholder lands whole, provided it lands there alone, no other field's placeholder
+reaches that expression, and none fills the place when the field is not sent. Text placeholders
+are several upper-case words, so a lossy transform (`split_first(full_name)`) never reads back as
+the whole field; a number is tried at sizes on both sides of the usual page-size clamps. So
+`list(country)`, `obj('include', list(upper(country)))`, `list(obj('domain', company_domain))`,
+`at_most(limit, 10)` and `at_least(limit, 10)` read back, and `coalesce(location,
+country_name(country))` or a `join` of several fields do not. A name sent as
+`split_first(full_name)` plus `split_last(full_name)` reads back as those two words joined, which
+is exactly what the provider was asked. An `in` entry whose place holds an object (`{v: title}`)
+gives way to the field's path inside it. A routed child therefore lands in its parent's segment for whatever it
+sent; a filter its provider takes nowhere reads as not sent, and a clamped limit as the value sent.
+Its `country_raw_case` is the spelling it sent the provider; group routed calls by the parent's
+(`parent_ref`) for the caller's question. Categories need the request to read back into a complete
+variant (`canonical_identity`; a list of titles counts); otherwise filters are not attached either,
+so it records none rather than "none sent". The same function serves the event and the route rule's match, so a measured segment and
+a routed segment cannot disagree; the patterns are module constants, so an offline analysis can
+import them instead of keeping its own copy.
+
+`people_search` (version 2, which added `company_given`), each key always present unless noted:
+
+| Key | Vocabulary | From |
+| --- | --- | --- |
+| `title_class` | `none`, `leader`, `function`, `multi`, `other` | `multi`: several titles in one string (`,` `/` `\|` `;` ` or `); `leader`: function `executive` (CEO, founder, owner, president, managing director, partner, Geschäftsführer, directeur général, amministratore delegato, director general) |
+| `title_function` | `sales`, `marketing`, `product`, `data`, `engineering`, `it_security`, `hr_talent`, `finance`, `operations`, `customer`, `legal`, `design`, `education`, `healthcare`, `real_estate`, `executive`, `other`, `none` | first matching pattern in `TITLE_FUNCTIONS` |
+| `title_seniority` | `c_level_founder`, `vp`, `head_director`, `manager_lead`, `individual`, `none` | first matching pattern in `TITLE_SENIORITIES`; `president` after `vice` is a VP |
+| `title_lang`, `q_lang` | `en`, `non_en`, `none` | a non-ASCII letter or a listed non-English role word |
+| `title_words` | `1-2`, `3-4`, `5+`, `none` | words in the title |
+| `has_country` | `true`, `false` | |
+| `country_iso2` | an upper-case ISO 3166 alpha-2 code; absent when the value names none | `us`, `US`, `United States`, `uk` -> `US`, `GB` |
+| `country_raw_case` | `upper`, `lower`, `name`, `other`, `none` | how the caller spelled it (`US`, `us`, `Germany`, `Us`) |
+| `has_location` | `true`, `false` | |
+| `location_kind` | `city`, `region`, `country_name`, `unknown`, `none` | short place lists and region words (`Greater`, `area`, `county`) |
+| `limit_bucket` | `<=5`, `6-10`, `11-25`, `>25`, `none` | the effective limit, the contract default when none is sent |
+| `q_words` | `1-3`, `4-8`, `9+`, `none` | |
+| `q_has_place` | `true`, `false`, `none` | a country, region or major city named in `q` |
+| `name_given` | `true`, `false` | `full_name` present after derivation |
+| `company_given` | `true`, `false` | `company_domain` present after derivation; tells `{q, title}` from `{q, title, company_domain}`, both recorded as `input_type: q` |
+| `has_keywords` | `true`, `false` | |
+
+A set may also count how an answer's rows fit the question; `people_search` writes these to
+`answer_values` as decimal strings, beside `segments_version`. Nothing from a row leaves, only the
+counts. A direct call is counted over every row its adapter mapped, in the contract's row shape,
+not the Arena's shorter reading; a routed parent over the answer it returned, an empty one
+included, so a routed miss records `rows: 0`. A check the question
+gives nothing to judge by is absent, not zero; a request that cannot be read back still records
+`rows`, `rows_with_profile_url` and `rows_dup`.
+
+| Key | Counts | Present when |
+| --- | --- | --- |
+| `rows` | rows in `people` | the answer has a `people` list |
+| `rows_with_profile_url` | rows with an `http(s)` profile URL on a dotted host | always with `rows` |
+| `rows_dup` | rows repeating an earlier row's person (same LinkedIn handle or URL, else same name and company) | always with `rows` |
+| `rows_company_match` | rows whose company domain is the asked `company_domain` (or a subdomain of it); a row with no domain, when its name minus a legal form (`Inc`, `GmbH`) is exactly the domain's first label (`MetaMask` is not meta.com) | `company_domain` was asked |
+| `rows_title_match` | rows whose title has the asked title's `title_function` (a leader asked: an `executive` row) | the asked title has a function other than `other` |
+| `rows_country_match` | rows whose location names the asked country (by name, a US state, never a two-letter part) | the asked country is an ISO code or name |
 
 Where an output field goes is declared on the contract (`contracts.yaml`), default `skip`:
 
@@ -136,3 +258,55 @@ value: names, company names, descriptions, `about` text, follower counts, lists.
 Normalization before hashing: emails lower-cased; domains without scheme, path or `www.`;
 LinkedIn URLs and handles reduced to the lower-cased handle; other text case-folded with spaces
 collapsed. So a find's `answer_keys['email']` equals a later verify's `input_keys['email']`.
+
+## Failed calls
+
+Every failed call (status 400 or above) also writes one `call_error` line on the `treg.call_errors`
+logger: `call_error` followed by JSON. `call_errors.emit` runs where an attempt's outcome is final,
+so each attempt logs once; the router's fallback covers a root nothing audited and `execute_call`
+a child. It is a log line, not a column.
+
+| Field | Value |
+| --- | --- |
+| `org_id`, `call_ref`, `step` | the team, the `X-Treg-Call-Id`, and `r2`/`v`/`u`/`p1`/`s1` on a child, `s1.0` on a hub `for_each` item (null on a root) |
+| `road` | `catalog`, `routed` (the routed parent), `own_tool`, `hub`, `unresolved` |
+| `endpoint_id`, `provider`, `tier` | a catalog id (null when the name is not one), and the credential tier |
+| `status`, `refused_by` | the status of this attempt, and treg's refusal mechanism as the event's `refused_by` |
+| `by` | `upstream` when the provider answered or failed to (timeout, dropped connection), else `treg` |
+| `error_class` | `caller_input`, `caller_balance_or_cap`, `caller_policy`, `caller_auth`, `caller_provider_account`, `not_found`, `rate_limit`, `timeout`, `upstream_error`, `treg_capacity`, `treg_policy`, `our_provider_account`, `treg_error`, `payment_required` (an agent-payments 402 that asks a keyless caller to pay or prove its wallet, `refused_by: payment`), `other` |
+| `caller_side` | `true` for `caller_auth`, `caller_balance_or_cap`, `caller_policy`, `caller_provider_account` and `payment_required` |
+| `kind` | the failure kind treg raised, or its internal `log_kind` when it has one |
+| `signal` | the provider's documented error read from its answer, per `domain/capacity/signatures.py` |
+| `parameter`, `rule` | for treg's own refusal of a request: the field (`queryParams.limit`, `body.urls.0`, or `undeclared`) and the rule it broke (`required`, `type`, `enum`, `range`, `repeat`, `undeclared`, `json`, `fixed`, `platform`, `authorization_method`, `unsupported`) |
+
+`call_errors.classify` reads the class from the failure kind (`types.FAILURE_KINDS`), else
+`refused_by`, else the provider's documented error, else the status; `tests/test_call_errors.py`
+is its table. A provider account error belongs to whoever holds the account: an upstream 401/403 is
+`caller_provider_account` on the `credential` and `tool` tiers, and a credit error (a 402 or an
+out-of-credit answer) is the caller's only when the caller pays the provider, so treg's own key and
+its pay-per-use OAuth app are `our_provider_account`. On treg's key an upstream 401 is
+`our_provider_account` but a 403 is `upstream_error`, unless it is a documented out-of-credit
+answer: scrapers and APIs answer 403 for the page or record they were asked for, not for treg's
+account.
+
+No request or answer value, header, credential or message text is logged. The answer is read only
+for its documented error code. A parameter is named only when every part looks like a field name
+or a short index, so an email or a long number used as a field name logs as `undeclared`; a name
+shaped like a word is logged even when the caller made it up.
+
+A default error view leaves `caller_side` out. A routed call or hub run logs its parent and each
+failed child, so a count of calls keeps only root lines (`step` empty); a direct attempt that
+overflow served is still a root line. In Loki, with the deployment's own stream selector:
+
+```logql
+sum by (error_class, by) (count_over_time({<stream>} |~ "^call_error "
+  | pattern "call_error <payload>" | line_format "{{.payload}}" | json | __error__=""
+  | step="" | caller_side="false" [1h]))
+```
+
+The full count drops `| caller_side="false"`; a count of attempts drops `| step=""`.
+
+`scripts/call_events_actionable_errors.sql` is the same view over the events. An event has only
+`status_code`, `refused_by` and `credential_tier`, so the query's class is coarser where a failure
+kind or a documented error code decides; its header lists where. Own tools write no event, so their
+errors are only in the log line.

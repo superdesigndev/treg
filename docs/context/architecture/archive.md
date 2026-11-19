@@ -79,7 +79,10 @@ endpoint ids to an operator freshness ceiling, and `TREG_ARCHIVE_HIT_REPEAT_PRIC
    written once on the provider YAML header and overridable per endpoint. Absent takes
    `archive_default_policy` (`transient`, flippable to `forbidden` by env). A judged `forbidden`
    is always respected and a missing entry is never stored. A judged entry must carry its quote,
-   source and date (`tests/test_archive.py`).
+   source and date (`tests/test_archive.py`). A deployment can also name providers in
+   `no_cache_providers` (env, read at catalog load): their endpoints load as
+   `cache: forbidden` and `response_retention: forbidden`, whatever the YAML says, so the
+   choice stays in the deployment's config rather than the public catalog.
 3. **Body in hand.** A metered answer is already buffered for the settle, so recording adds no
    latency. An own-key catalog answer is read whole only when it fits the size cap ("Own-key
    answers"). Own-tool calls (no catalog entry) are never touched.
@@ -92,7 +95,8 @@ Gates 1 and 2 are `archive.policy(entry)`. Also never recorded or served:
   resource. The serve path skips such rows (`_only_submits`) unless `terminal_on_submission`;
 - a body failing the endpoint's `expect` rule (lookup reports `result_error` for one already
   stored);
-- free final fetches that stream (`streamable_free_result`) and `spooled_response` answers: no
+- free final fetches and free `utility` lists that stream (`streamable_free_result`) and
+  `spooled_response` answers: no
   buffered body, so no empty or partial hash is recorded. A body over the 8 MiB settlement buffer
   fails before recording.
 
@@ -279,7 +283,9 @@ endpoints with a verified adapter and a nonempty hit/miss expression (`has_resul
 a 4xx status), judged by its outcome declaration ([catalog-schema](catalog-schema.md)); a capability that must never be routed can opt in through a
 `routed: false` contract ([catalog](catalog.md)). A 2xx failing the `expect` success rule is `error` /
 `expect_failed` before any adapter reads it, but a value listed in the rule's `misses` is judged by
-the adapter. Strict per-endpoint validators live in `results.py`.
+the adapter. Strict per-endpoint validators live in `results.py` for rows in today's spelling; a v2
+row that needs one names an `error` plugin, so an answer the plugin rejects is `error`, which the
+archive treats as it treats `unknown`.
 
 `ArchiveKey.result_state` / `result_snapshot_id` track the last decisive found or empty
 observation, separately from the newest snapshot; `result_observed_version` marks the newest
@@ -462,7 +468,9 @@ admission, learning, storage or serving, and is disabled by
 
 `GET /admin/archive` reports totals and per-endpoint rows from the running totals.
 `GET /admin/archive/panel` serves a data-free page shell, deliberately unauthenticated: every
-number arrives by fetch with the admin token the operator pastes. `/admin/archive/keys` reads
+number arrives by fetch with the admin token the operator pastes, kept in `sessionStorage` for that
+tab only. Every stored value it shows (the question, endpoint ids, versions) is escaped as text, never
+inserted as markup, since a question holds caller-chosen URL text. `/admin/archive/keys` reads
 versions in one columns-only query (`body IS NOT NULL`), never loading bodies.
 
 ## What the archive must never touch

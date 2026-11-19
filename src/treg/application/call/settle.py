@@ -14,7 +14,7 @@ from collections.abc import Callable
 from dataclasses import dataclass
 
 from sqlalchemy import update
-from sqlalchemy.exc import DBAPIError, TimeoutError as PoolTimeoutError
+from sqlalchemy.exc import DBAPIError
 
 from ... import adsconv, archive
 from ...config import get_settings
@@ -27,7 +27,7 @@ from ...domain import money as ledger
 from ...domain.asynctasks import json_path
 from ...domain.money import settlement as settlement_basis
 from ...domain.catalog import store as catalog_store
-from ...infra.db import session_maker
+from ...infra.db import DB_BUSY_ERRORS, is_db_busy, session_maker
 from ...infra import money_admission
 from ...infra.money_session import money_session
 from ...infra.money_timing import observe_money
@@ -35,6 +35,7 @@ from ...infra.money_trace import mark_money, money_stage
 from ...models import Org
 from ...timeutil import utcnow_naive as _utcnow_naive
 from .idempotency import _release_idempotent_claim
+from . import allowance as allowance_runtime
 from . import cost as call_cost
 from . import keyslots
 from .resolve import MarketplaceCall, _openmart_credits, _usd_to_micro
@@ -100,48 +101,6 @@ def _platform_billable(status_code: int, cost_type: str) -> bool:
 
 
 _PLATFORM_BODY_MAX = 8 * 1024 * 1024  # complete response evidence ceiling; free final downloads stream
-def _brightdata_record_count(body: bytes) -> int | None:
-    """How many RECORDS a Bright Data Web Scraper response delivered, or None for "settle at the
-    estimate". Bright Data bills $1.50/1000 records *delivered* and reports no charge field, so the
-    response body is the only bill we will ever see.
-
-    Shapes, per docs + live traffic:
-      - sync /scrape and /snapshot downloads, format=json → a JSON ARRAY, one element per record;
-      - the >60s sync fallback and /trigger → a JSON OBJECT carrying `snapshot_id` — zero records
-        HERE; the job's records bill when the snapshot is downloaded (its catalog entry is priced
-        per_result for exactly that reason);
-      - format=ndjson → one JSON object per line; format=csv → header line + one line per record.
-    A body that STARTS like JSON but does not parse is invalid or incomplete evidence:
-    return None and settle at the estimate, never a line-count guess over a partial payload. Any other unrecognised shape → None for the same
-    reason: when we cannot count, the estimate is the honest number."""
-    if body[:2] == b"\x1f\x8b":  # compress=true gzips the download — we can't count, estimate wins
-        return None
-    text = body.decode("utf-8", "replace").strip()
-    if not text:
-        return 0
-    try:
-        doc = json.loads(text)
-    except ValueError:
-        lines = [ln for ln in text.splitlines() if ln.strip()]
-        try:  # ndjson: every line is its own record — EVERY line must parse, or it isn't ndjson
-            for ln in lines:
-                json.loads(ln)
-            return len(lines)
-        except ValueError:
-            pass
-        if text[0] in "[{":  # Invalid JSON must never be guessed as CSV
-            return None
-        return len(lines) - 1 if len(lines) > 1 else None  # csv: header + rows
-    if isinstance(doc, list):
-        return len(doc)
-    if isinstance(doc, dict):
-        # Zero records delivered, whatever the object says: the async handoff (`snapshot_id` — the
-        # records bill at the snapshot download), an early download's {"status": "running"}, or any
-        # other envelope. Pay-per-success means an answer with no records costs nothing.
-        return 0
-    return None
-
-
 def _openmart_record_count(endpoint_id: str, doc: object) -> int | None:
     """Count only the response containers verified for Openmart's synchronous data reads."""
     if endpoint_id in (
@@ -162,24 +121,6 @@ def _openmart_record_count(endpoint_id: str, doc: object) -> int | None:
         "openmart.businesses.lookup.google-place",
     ):
         return sum(item is not None for item in doc.values()) if isinstance(doc, dict) else None
-    return None
-
-
-def _tavily_result_count(endpoint_id: str, doc: object) -> int | None:
-    """Count only Tavily's documented successful result shapes."""
-    if not isinstance(doc, dict) or not isinstance(doc.get("results"), list):
-        return None
-    results = doc["results"]
-    if endpoint_id == "tavily.web.map":
-        return len(results) if all(isinstance(item, str) and item.strip() for item in results) else None
-    if endpoint_id in ("tavily.web.extract", "tavily.web.crawl"):
-        valid = all(
-            isinstance(item, dict)
-            and isinstance(item.get("url"), str)
-            and bool(item["url"].strip())
-            for item in results
-        )
-        return len(results) if valid else None
     return None
 
 
@@ -282,43 +223,6 @@ def _rows_billed_micro(mk: MarketplaceCall, ep: dict | None, rows: int | None,
         except (InvalidOperation, ValueError):
             return None
     return min(rows * per_row, mk.estimate_micro)
-
-
-def _tavily_requested_result_limit(mk: MarketplaceCall) -> int:
-    """The request-bound maximum frozen before relay; malformed evidence keeps the 20-page cap."""
-    request = mk.request_data.get("body") if isinstance(mk.request_data, dict) else None
-    request = request if isinstance(request, dict) else {}
-    if mk.endpoint_id == "tavily.web.extract":
-        urls = request.get("urls")
-        if isinstance(urls, list) and urls:
-            return min(len(urls), 20)
-    elif mk.endpoint_id in ("tavily.web.map", "tavily.web.crawl"):
-        limit = request.get("limit")
-        if type(limit) is int and 1 <= limit <= 20:
-            return limit
-    return 20
-
-
-def _tavily_cost_micro(mk: MarketplaceCall, doc: object) -> int | None:
-    """Settle Search from per-request usage and other Tavily tools from returned successes."""
-    if not isinstance(doc, dict) or mk.unit_micro <= 0:
-        return None
-    if mk.endpoint_id == "tavily.web.search":
-        usage = doc.get("usage")
-        amount = usage.get("credits") if isinstance(usage, dict) else None
-        if isinstance(amount, (int, float)) and not isinstance(amount, bool):
-            try:
-                credits = Decimal(str(amount))
-                if credits.is_finite() and credits >= 0:
-                    return int((credits * mk.unit_micro).quantize(
-                        Decimal("1"), rounding=ROUND_HALF_UP))
-            except (InvalidOperation, ValueError, OverflowError):
-                pass
-        return None
-    count = _tavily_result_count(mk.endpoint_id, doc)
-    if count is None:
-        return None
-    return min(count, _tavily_requested_result_limit(mk)) * mk.unit_micro
 
 
 def _quickenrich_present(value) -> bool:
@@ -460,12 +364,6 @@ def _observed_cost_micro(mk: MarketplaceCall, body: bytes, headers=None) -> int 
         bare `{}` on enrich, an empty `organizations` page on search) and charges nothing for it, so
         status-based billing alone would bill the caller for a response Apollo gave away. The body
         says whether the charged thing came back; when it didn't, the call settles at 0.
-      - hunter (domain search): DERIVED too, and for the opposite reason — its price is not
-        per row but one whole SEARCH credit per 10 emails returned, rounded up, with an empty
-        domain free. `data.emails` is the only place that number exists.
-      - hunter (email finder): DERIVED, the flat case — one whole SEARCH credit when an email is
-        found, nothing on a miss ("a miss is free", per Hunter's own pricing), yet a miss still
-        answers HTTP 200, so the estimate billed the full credit for a name Hunter had nothing on.
 
       - crustdata / cloro / aiark: REPORTED in credits in a response HEADER (`_CREDIT_HEADERS`),
         the only place the charge exists. AI Ark reports debits as negative `X-Credit` values; its
@@ -519,11 +417,6 @@ def _observed_cost_micro(mk: MarketplaceCall, body: bytes, headers=None) -> int 
             charged_credits = -1
         if math.isfinite(charged_credits) and charged_credits >= 0 and rate:
             return _usd_to_micro(charged_credits * rate)
-    if provider == "brightdata" and mk.cost_type == "per_result" and mk.unit_micro > 0:
-        # DERIVED by counting records — Bright Data's bill is per record delivered and the body is
-        # the only place that number exists (see _brightdata_record_count for the shapes).
-        n = _brightdata_record_count(body)
-        return None if n is None else n * mk.unit_micro
     if not body:
         return 0 if provider == "contactout" else None
     try:
@@ -568,10 +461,6 @@ def _observed_cost_micro(mk: MarketplaceCall, body: bytes, headers=None) -> int 
     if provider == "openmart" and mk.cost_type == "per_result" and mk.unit_micro > 0:
         records = _openmart_record_count(mk.endpoint_id, doc)
         return None if records is None else _openmart_credits(records) * mk.unit_micro
-    if provider == "tavily":
-        # Extract, Map and Crawl intentionally ignore account-grouped usage.credits. Their unit
-        # was frozen from the caller's request mode and only this response's valid results count.
-        return _tavily_cost_micro(mk, doc)
     if provider == "octen":
         from . import octen
         rates = mk.settlement_basis.get("octen_rates_micro")
@@ -787,28 +676,6 @@ def _observed_cost_micro(mk: MarketplaceCall, body: bytes, headers=None) -> int 
             size = meta.get("pageSize") if isinstance(meta, dict) else None
             if type(size) is int and size > 0 and mk.unit_micro > 0:
                 return ((size + 9) // 10) * mk.unit_micro
-        return None
-    if provider == "hunter" and mk.endpoint_id == "hunter.companies.emails":
-        # DERIVED, like apollo. Hunter's domain search does not bill per row at all: it takes ONE
-        # whole search credit per 10 emails RETURNED, rounded up, and a domain it knows nobody at is
-        # free. Neither half survives being flattened into the catalog's per-row price, so settling
-        # at the estimate is wrong in both directions. The returned list is the bill.
-        data = doc.get("data")
-        emails = data.get("emails") if isinstance(data, dict) else None
-        rate = catalog_store.load().credit_rates.get("hunter")
-        if isinstance(emails, list) and rate:
-            credits = -(-len(emails) // 10)  # whole credits, rounded up; no emails = no charge
-            return int(credits * rate * 1_000_000 + 0.5)
-        return None
-    if provider == "hunter" and mk.endpoint_id == "hunter.people.email.find":
-        # DERIVED, the flat case of the same family: the finder takes ONE whole search credit when
-        # it finds an email and nothing when it doesn't, yet a miss still answers HTTP 200 with
-        # `email: null`. A body without the `email` key (an error shape) still falls back to the
-        # estimate.
-        data = doc.get("data")
-        rate = catalog_store.load().credit_rates.get("hunter")
-        if isinstance(data, dict) and "email" in data and rate:
-            return int(rate * 1_000_000 + 0.5) if data["email"] else 0
         return None
     if provider == "apollo":
         # Only the shapes whose billing rule is documented and body-decidable: company enrichment
@@ -1287,6 +1154,21 @@ async def _platform_settle(
     # the caller because the aggregator's prepaid account still incurred the cost.
     call_id, mk.call_id = mk.call_id, None  # closing is once-only, even if two paths try
     charged = 0
+    if mk.allowance_epoch is not None:
+        # Reserved from the team's allowance: there is no hold to close. The charge is queued
+        # and the unused part goes back to the counter; a release writes nothing at all.
+        epoch, mk.allowance_epoch = mk.allowance_epoch, None
+        charged = await allowance_runtime.finish(
+            mk.payer_org_id, call_id, epoch, mk.reserved_micro or 0, endpoint_id=mk.endpoint_id,
+            billable=billable, actual_micro=actual, archive_use=archive_use if billable else None,
+            meta={"provider": mk.provider, "status_code": status_code, "cost_type": mk.cost_type,
+                  "cost_source": ("provider" if observed is not None else
+                                  mk.settlement_basis.get("amount", {}).get("kind", "estimate")),
+                  **({"cached": True, "cache_price_percent": repeat_percent if cached_repeat else 100}
+                     if cached_hit else {})})
+        if finalized is not None:
+            finalized()
+        return charged, observed
     if (mk.deferred is not None and billable and overflow_spend is None and observed_override is None
             and status_code is not None):
         # A routed child: the parent decides whether the caller pays (a routed call that fails
@@ -1353,19 +1235,26 @@ async def _platform_settle(
                         with money_stage(db, "overflow_spend"):
                             await overflow_spend_ledger.add_in_transaction(
                                 db, overflow_spend[0], overflow_spend[1], overflow_spend[2])
+                    overran = await allowance_runtime.overran(
+                        db, mk.payer_org_id, charged, mk.reserved_micro)
                 with timing.phase("commit"):
                     await db.commit()
+                frozen = allowance_runtime.freeze(mk.payer_org_id) if overran else None
                 if finalized is not None:
                     finalized()
-                return charged
+            if frozen is not None:
+                await asyncio.shield(frozen)
+            return charged
 
     try:
         try:
             charged = await _close()
-        except (PoolTimeoutError, DBAPIError) as exc:
+        except (*DB_BUSY_ERRORS, DBAPIError) as exc:
             # asyncpg deadlocks arrive as SQLAlchemy DBAPIError with SQLSTATE on its orig wrapper.
-            # Retry only 40P01, never an error-message match or an arbitrary database failure.
-            if isinstance(exc, DBAPIError) and getattr(exc.orig, "sqlstate", None) != "40P01":
+            # Retry only 40P01 and a refused connection (raised before any statement ran), never
+            # an error-message match or an arbitrary database failure.
+            if (isinstance(exc, DBAPIError) and getattr(exc.orig, "sqlstate", None) != "40P01"
+                    and not is_db_busy(exc)):
                 raise
             # _close has exited its session, rolling back all staged money/overflow writes.
             # One fresh transaction gets the same bounded retry as a pool timeout; another failure
@@ -1445,8 +1334,16 @@ async def close_deferred(items: list[DeferredSettle], *, charge: bool, why: str 
                     if uses:
                         with money_stage(db, "archive_use"):
                             await archive.note_org_uses_in_transaction(db, uses)
+                    overran = sorted({
+                        d.payer_org_id for d, amount in zip(pending, amounts)
+                        if await allowance_runtime.overran(
+                            db, d.payer_org_id, amount, d.reserved_micro)})
                 with timing.phase("commit"):
                     await db.commit()
+                frozen = [allowance_runtime.freeze(org_id) for org_id in overran]
+        for tried in frozen:
+            if tried is not None:
+                await asyncio.shield(tried)
     except Exception as exc:
         logging.getLogger("treg.ledger").error(
             "closing %d deferred routed holds (charge=%s) failed: %s", len(pending), charge, exc,
@@ -1492,6 +1389,16 @@ async def _finish_cancelled_call(
                     ) if possible])
         if mk is not None and mk.metered:
             mk.call_id = None
+        if mk is not None and mk.allowance_epoch is not None:
+            # The parent reserved from the allowance, so it has no hold: return the take (or
+            # charge it, when the purchase was already sent). An overflow child keeps its hold.
+            epoch, mk.allowance_epoch = mk.allowance_epoch, None
+            hold_ids = [hold_id for hold_id in hold_ids if hold_id != call_ref]
+            await allowance_runtime.finish(
+                mk.payer_org_id, call_ref, epoch, mk.reserved_micro or 0,
+                endpoint_id=mk.endpoint_id, billable=charge_hold,
+                meta={"provider": mk.provider, "cost_type": mk.cost_type, "status_code": None,
+                      "reason": "call_cancelled_after_purchase_sent"})
         if hold_ids:
             # `ledger.reserve` may have committed without returning, so `mk.call_id` is not an
             # authority here. The pre-reserve call_ref is the hold id in either outcome, and release

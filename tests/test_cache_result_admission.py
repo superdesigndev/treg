@@ -169,21 +169,20 @@ async def test_result_and_admission_telemetry(clients, cache_on, monkeypatch):
     for raw in (EMPTY, EMPTY, b'{}', b'{"error":"temporary"}', FOUND, FOUND):
         await _call(clients, monkeypatch, raw)
     props = [p for event, p in events if event == 'tool_called']
-    assert [p['result_state'] for p in props] == ['empty', 'empty', 'unknown', 'error', 'found', 'found']
+    assert [p['result_state'] for p in props] == ['empty', 'empty', 'error', 'error', 'found', 'found']
     assert [p.get('hit') for p in props] == [False, False, None, None, True, True]
     assert props[1]['cache_outcome'] == 'result_empty'
     assert props[-1]['cache_outcome'] == 'hit'
-    assert props[2]['cache_admission'] == 'unknown'
+    assert props[2]['cache_admission'] == 'error'
     assert props[3]['result_reason'] == 'provider_error'
     assert all('body' not in p and 'key_hash' not in p for p in props)
 
 
 @pytest.mark.parametrize('ep,status,body,state', [
     (EP, 201, {'data': {'emails': []}}, 'empty'),
-    (EP, 201, {'data': {}}, 'unknown'),
-    (EP, 201, {'data': {'emails': [None]}}, 'unknown'),
-    (EP, 201, {'data': {'emails': [{'value': ''}]}}, 'unknown'),
-    (EP, 201, {'errors': [{'id': 'rate_limit'}], 'data': {'emails': []}}, 'error'),
+    (EP, 201, {'data': {}}, 'error'),
+    (EP, 201, {'data': {'emails': [None]}}, 'error'),
+    (EP, 201, {'data': {'emails': [{'value': ''}]}}, 'error'),
     ('leadmagic.x.employee-finder', 201, {'data': []}, 'empty'),
     ('leadmagic.x.employee-finder', 201, {'data': [{'full_name': 'Person', 'has_email': False}]}, 'found'),
     ('leadmagic.x.employee-finder', 201, {'data': [{'full_name': None}]}, 'unknown'),
@@ -201,9 +200,10 @@ async def test_result_and_admission_telemetry(clients, cache_on, monkeypatch):
     ('leadsforge.people.email.find', 200, {'status':'not_found','email':'person@example.com'}, 'unknown'),
     ('leadsforge.people.email.find', 200, {'email':'person@example.com'}, 'unknown'),
     ('leadsforge.people.email.find', 200, {'status':'succeeded','email':' person@example.com'}, 'unknown'),
-    ('hunter.people.email.find', 200, {}, 'unknown'),
-    ('hunter.people.email.find', 200, {'data': {}}, 'unknown'),
-    ('hunter.people.email.find', 200, {'data': None}, 'unknown'),
+    ('hunter.people.email.find', 200, {}, 'error'),
+    ('hunter.people.email.find', 200, {'data': {}}, 'error'),
+    ('hunter.people.email.find', 200, {'data': None}, 'error'),
+    ('hunter.people.email.find', 200, {'data': {'email': 'not an address'}}, 'error'),
     ('hunter.people.email.find', 200, {'data': {'email': None}}, 'empty'),
     ('findymail.search.name', 200, {}, 'unknown'),
     ('findymail.search.name', 200, {'contact': {}}, 'unknown'),
@@ -221,6 +221,12 @@ def test_conservative_result_rules(ep, status, body, state):
     result = classify(ep, status, json.dumps(body).encode())
     assert result.state == state
     assert result.hit == {'found': True, 'empty': False}.get(state)
+
+
+def test_an_error_envelope_beside_an_empty_list_is_an_error_that_found_nothing():
+    from treg.domain.catalog.results import classify
+    result = classify(EP, 201, json.dumps({'errors': [{'id': 'rate_limit'}], 'data': {'emails': []}}).encode())
+    assert (result.state, result.hit) == ('error', False)
 
 
 async def test_old_writer_cannot_leave_a_stale_positive_pointer(clients, cache_on, monkeypatch):
@@ -277,7 +283,7 @@ async def test_endpoint_without_hit_miss_keeps_original_cache_and_learning(clien
     assert r.headers.get('x-treg-cache') == 'hit' and r.content == raw
 
 
-async def test_existing_verified_adapter_also_rejects_misses(clients, cache_on, monkeypatch):
+async def test_existing_verified_adapter_also_rejects_answers_without_a_record(clients, cache_on, monkeypatch):
     ep = 'hunter.companies.enrich'
     monkeypatch.setattr(get_settings(), 'archive_serve_endpoints', ep)
     raw = b'{"data":{"name":null}}'
@@ -287,7 +293,7 @@ async def test_existing_verified_adapter_also_rejects_misses(clients, cache_on, 
         assert r.status_code == 200 and r.content == raw
         assert 'x-treg-cache' not in r.headers
         await archive.drain()
-    assert (await _key()).result_state == 'empty'
+    assert (await _key()).result_state == 'unknown'
 
 
 async def test_unverified_hit_miss_does_not_enable_new_policy(clients, cache_on, monkeypatch):

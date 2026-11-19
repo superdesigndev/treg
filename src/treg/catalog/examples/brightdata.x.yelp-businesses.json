@@ -1,0 +1,72 @@
+[
+  {
+    "business_id": "katzs-delicatessen-new-york",
+    "yelp_biz_id": "V7lXZKBDzScDeGB8JmnzSA",
+    "name": "Katz's Delicatessen",
+    "updates_from_business": [
+      "Updated 1 month ago"
+    ],
+    "overall_rating": 4.1,
+    "reviews_count": 17130,
+    "is_claimed": true,
+    "categories": [
+      "Delis",
+      "American"
+    ],
+    "website": "https://www.katzsdelicatessen.com",
+    "phone_number": "(212) 254-2246",
+    "opening_hours": {
+      "Fri": "8:00 AM - 11:30 PM",
+      "Mon": "8:00 AM - 11:00 PM",
+      "Sat": "Open 24 hours",
+      "Sun": "12:00 AM - 11:00 PM",
+      "Thu": "8:00 AM - 11:00 PM",
+      "Tue": "8:00 AM - 11:00 PM",
+      "Wed": "8:00 AM - 11:00 PM"
+    },
+    "address": {
+      "City": "New York",
+      "Country": "US",
+      "State": "NY",
+      "zip_code": "10002"
+    },
+    "address:zip_code": "10002",
+    "full_address": "205 E Houston St, New York, NY 10002",
+    "amenities": [
+      {
+        "name": "Offers delivery",
+        "available": true
+      },
+      {
+        "name": "Offers take-out",
+        "available": true
+      },
+      {
+        "name": "Takes reservations",
+        "available": false
+      }
+    ],
+    "about_the_business": "New York&#x27;s oldest delicatessen. Famous for our legendary pastrami, matzoh ball soup, and classic NYC atmosphere.",
+    "highlights": [
+      "Locally owned & operated",
+      "Grab-and-go",
+      "Outdoor seating"
+    ],
+    "url": "https://www.yelp.com/biz/katzs-delicatessen-new-york",
+    "price_range": "$$",
+    "latitude": 40.72228,
+    "longitude": -73.987385,
+    "city": "New York",
+    "state": "NY",
+    "country": "US",
+    "zip_code": "10002",
+    "images_videos_urls": null,
+    "is_closed": false,
+    "owner_name": "Jake D.",
+    "from_the_business": "Specialties New York&#x27;s oldest delicatessen. Famous for our legendary pastrami, matzoh ball soup, and classic NYC atmosphere.\nHistory Established in 1888. Katz&#x27;s has been serving Jewish delicatessen favorites for over 125 years, and we plan to continue this tradition for the next 125!\nMeet ",
+    "timestamp": "2026-11-10T15:30:25.925Z",
+    "input": {
+      "url": "https://www.yelp.com/biz/katzs-delicatessen-new-york"
+    }
+  }
+]

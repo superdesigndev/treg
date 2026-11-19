@@ -248,7 +248,7 @@ async def mint_ad_link(raw_cookie: str, *, address: str) -> str | None:
     code = "".join(secrets.choice(_AD_LINK_ALPHABET) for _ in range(6))
     per_address, window_s = AD_LINK_PER_ADDRESS
     async with session_maker() as db:
-        if not await ratestore.rate_check(db, "ad_link_ip", [(address, per_address)], window_s):
+        if not await ratestore.rate_check(db, "ad_link_ip", ratestore.ip_limit(address, per_address), window_s):
             await db.rollback()
             raise SignupError("too_many_links")
         await ratestore.sweep(db, AD_LINK_NS)

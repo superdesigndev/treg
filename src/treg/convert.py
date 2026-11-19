@@ -19,22 +19,41 @@ _SECRET_DIRS = (".secret", ".secrets")
 _RECIPE_FILES = ("SKILL.md", "skill.md", "README.md")
 
 
+class SecretPathError(ValueError):
+    """A contract `file:` path that leaves the skill folder."""
+
+
+def _inside(base: Path, path: Path) -> bool:
+    root, target = base.resolve(), path.resolve()
+    return target == root or root in target.parents
+
+
 def resolve_secret_path(base: Path, rel: str) -> Path:
     """Resolve a contract `file:` path tolerantly. The `.secret`/`.secrets` spelling drifts between
     machines (both are gitignored, so each person creates their own) — so a treg.json written against
     `.secret/token.json` must still find `.secrets/token.json` and vice versa. The exact path wins;
     otherwise swap the leading secret-dir segment. Returns the exact (maybe-missing) path if nothing
-    matches, so callers' error messages stay meaningful."""
+    matches, so callers' error messages stay meaningful.
+
+    The path comes from the contract, which is uploaded content on the server and a stranger's file
+    in a downloaded skill, and its bytes become a secret. So it must name a file inside `base` after
+    symlinks resolve: an absolute path, `..` or a link out raises SecretPathError."""
+    if not isinstance(rel, str) or not rel or Path(rel).is_absolute() or "\0" in rel:
+        raise SecretPathError(f"secret file {rel!r} must be a path inside the skill folder")
     exact = base / rel
+    if not _inside(base, exact):
+        raise SecretPathError(f"secret file {rel!r} must be a path inside the skill folder")
     if exact.exists():
         return exact
     parts = Path(rel).parts
     if parts and parts[0] in _SECRET_DIRS:
         for sd in _SECRET_DIRS:
             alt = base.joinpath(sd, *parts[1:])
-            if alt.exists():
+            if alt.exists() and _inside(base, alt):
                 return alt
     return exact
+
+
 CONTRACT_FILE = "treg.json"  # the sidecar contract a skill can carry so treg auto-registers it
 
 # Hosts that are documentation, not the upstream API — never a base_url.

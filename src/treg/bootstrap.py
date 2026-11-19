@@ -17,14 +17,14 @@ import httpx
 from fastapi import FastAPI
 from fastapi.routing import APIRoute, request_response
 from fastapi.staticfiles import StaticFiles
-from sqlalchemy.exc import TimeoutError as PoolTimeoutError
 from starlette.exceptions import HTTPException as StarletteHTTPException
+from starlette.responses import RedirectResponse
 from starlette.routing import BaseRoute, Mount
 
 from . import adsconv, analytics, archive, audit, call_events
 from .application.call import route as routed_call
-from .application import arena, find_index, media
-from . import bootstrap_handlers, policy
+from .application import arena, find_index, images, media
+from . import bootstrap_handlers, page_media, policy
 from .bootstrap_http import (
     _BodyDecodeMiddleware,
     _DevTitleMiddleware,
@@ -36,7 +36,7 @@ from .config import TREG_USER_AGENT, get_settings
 from .infra import kv, money_timing, org_traffic, turnstile
 from .infra.loop_stall import start_loop_stall_watch, stop_loop_stall_watch
 from .infra.money_trace_runner import start_money_trace, stop_money_trace
-from .infra.db import ReportBusy, background_session_maker, verify_db
+from .infra.db import DB_BUSY_ERRORS, DB_BUSY_WRAPPERS, ReportBusy, background_session_maker, verify_db
 from .infra.catalog_observations import (
     CachedEndpointObservationReader,
     PostgresEndpointObservationReader,
@@ -115,6 +115,8 @@ _CONTROL_ROUTE_KEYS: frozenset[RouteKey] = frozenset({
     ('/feedback', ('POST',), 'submit_feedback'),
     ('/reviews', ('POST',), 'submit_review'),
     ('/admin/reviews', ('GET',), 'admin_reviews'),
+    ('/marks', ('POST',), 'submit_mark'),
+    ('/admin/marks', ('GET',), 'admin_marks'),
     ('/feedback/{feedback_id}', ('GET',), 'get_feedback'),
     ('/media', ('POST',), 'host_media'),
     ('/m/{token}', ('GET',), 'serve_media'),
@@ -186,6 +188,7 @@ _CONTROL_ROUTE_KEYS: frozenset[RouteKey] = frozenset({
     ('/skills/recruit/SKILL.md', ('GET',), 'recruit_skill_md'),
     ('/skills/jev-memory/SKILL.md', ('GET',), 'jev_memory_skill_md'),
     ('/skills/rea-growth/SKILL.md', ('GET',), 'rea_growth_skill_md'),
+    ('/skills/ai-ugc-video/SKILL.md', ('GET',), 'ai_ugc_video_skill_md'),
     ('/feedback.md', ('GET',), 'feedback_md'),
     ('/favicon.ico', ('GET',), 'favicon'),
     ('/favicon.svg', ('GET',), 'favicon'),
@@ -195,6 +198,7 @@ _CONTROL_ROUTE_KEYS: frozenset[RouteKey] = frozenset({
     ('/privacy', ('GET',), 'privacy_page'),
     ('/sheets', ('GET',), 'sheets_page'),
     ('/connectors/claude', ('GET',), 'claude_connector_page'),
+    ('/plugins/claude', ('GET',), 'claude_plugin_page'),
     ('/adtrack.js', ('GET',), 'adtrack_js'),
     ('/captcha.js', ('GET',), 'captcha_js'),
     ('/agent-setup.js', ('GET',), 'agent_setup_js'),
@@ -209,6 +213,7 @@ _CONTROL_ROUTE_KEYS: frozenset[RouteKey] = frozenset({
     ('/astra', ('GET',), 'astra_page'),
     ('/gpt6', ('GET',), 'gpt6_page'),
     ('/ugc', ('GET',), 'ugc_page'),
+    ('/aigc', ('GET',), 'aigc_page'),
     ('/aeo', ('GET',), 'aeo_page'),
     ('/rea-growth', ('GET',), 'rea_growth_page'),
     ('/rea-growth.md', ('GET',), 'rea_growth_md'),
@@ -247,6 +252,7 @@ _CONTROL_ROUTE_KEYS: frozenset[RouteKey] = frozenset({
     ('/people-search', ('GET',), 'people_search_page'),
     ('/start', ('GET',), 'start_page'),
     ('/leads-signals', ('GET',), 'leads_signals_page'),
+    ('/jobs-api', ('GET',), 'jobs_api_page'),
     ('/recruit', ('GET',), 'recruit_page'),
     ('/web-access', ('GET',), 'web_access_page'),
     ('/gtm-engineering', ('GET',), 'gtm_engineering_page'),
@@ -319,6 +325,7 @@ _CONTROL_ROUTE_KEYS: frozenset[RouteKey] = frozenset({
     ('/referrals/code', ('POST',), 'mint_referral_code'),
     ('/billing/stripe/webhook', ('POST',), 'billing_stripe_webhook'),
     ('/orgs/{org_id}/sso', ('GET',), 'sso_status'),
+    ('/orgs/{org_id}/sso/domains', ('GET',), 'sso_domains'),
     ('/orgs/{org_id}/sso/blocked', ('GET',), 'sso_blocked_members'),
     ('/orgs/{org_id}/sso/blocked/{user_id}/restore', ('POST',), 'sso_restore_member'),
     ('/orgs/{org_id}/sso/checkout', ('POST',), 'sso_checkout'),
@@ -327,6 +334,7 @@ _CONTROL_ROUTE_KEYS: frozenset[RouteKey] = frozenset({
     ('/orgs/{org_id}/sso/invite-it', ('POST',), 'sso_invite_it'),
     ('/orgs/{org_id}/sso/setup/{intent}', ('POST',), 'sso_setup'),
     ('/orgs/{org_id}/members/{user_id}/cap', ('PATCH',), 'set_member_cap'),
+    ('/orgs/{org_id}/members/{user_id}/spend-cap', ('PATCH',), 'set_member_spend_cap'),
     ('/orgs/{org_id}/members/{user_id}/access', ('PATCH',), 'set_member_access'),
     ('/usage/me', ('GET',), 'my_usage'),
     ('/orgs/{org_id}/members/{user_id}', ('DELETE',), 'remove_member'),
@@ -440,6 +448,7 @@ _CONTROL_ROUTE_KEYS: frozenset[RouteKey] = frozenset({
 })
 _DATAPLANE_ROUTE_KEYS: frozenset[RouteKey] = frozenset({
     ("/call/{rest:path}", ("DELETE", "GET", "HEAD", "OPTIONS", "PATCH", "POST", "PUT"), "call_tool"),
+    ("/agentpay/credit", ("GET",), "agent_payment_credit"),
     ("/catalog/call/{rest:path}",
      ("DELETE", "GET", "HEAD", "OPTIONS", "PATCH", "POST", "PUT"),
      "call_catalog_endpoint"),
@@ -457,9 +466,9 @@ _DATAPLANE_ROUTE_KEYS: frozenset[RouteKey] = frozenset({
 ROLE_BACKGROUND_TASKS: dict[AppRole, tuple[str, ...]] = {
     # Arena statistics are built by `treg-worker arena insights` (a cron) walking `callrecord`, so
     # web processes never compete for its cursor row. Only `/arena/insights` (a snapshot read) is here.
-    "all": ("treg.adsconv.worker",),
+    "all": ("treg.adsconv.worker", "treg.application.allowance_sweep.worker"),
     "dataplane": (),
-    "control": ("treg.adsconv.worker",),
+    "control": ("treg.adsconv.worker", "treg.application.allowance_sweep.worker"),
 }
 ROLE_STARTUP_CHECKS: dict[AppRole, tuple[str, ...]] = {
     "all": (
@@ -509,10 +518,20 @@ class _MediaStatic(StaticFiles):
     """Page media under stable, unversioned names (`/media/<page>/...`). With no Cache-Control a
     browser applies a heuristic lifetime and never revalidates, so a page's edited script or
     stylesheet would keep running old code against new HTML. Code and text therefore revalidate
-    on every use (`no-cache`; the ETag makes that a 304), and images, video and fonts, which a page
-    only ever swaps by renaming, keep a day's cache like the logos."""
+    on every use (`no-cache`; the ETag makes that a 304), and images and fonts, which a page only
+    ever swaps by renaming, keep a day's cache like the logos.
+
+    Video is not here: `page_media` names its copy in the public media bucket, and the path
+    redirects there. The redirect is short-lived because the copy's key changes with its bytes."""
 
     _REVALIDATE = frozenset({".js", ".mjs", ".css", ".html", ".json", ".md", ".txt"})
+
+    async def get_response(self, path, scope):
+        key = page_media.manifest().get(Path(path).as_posix())
+        if key:
+            return RedirectResponse(images.public_url(key), status_code=302,
+                                    headers={"Cache-Control": "public, max-age=300"})
+        return await super().get_response(path, scope)
 
     def file_response(self, full_path, *args, **kwargs):
         response = super().file_response(full_path, *args, **kwargs)
@@ -720,6 +739,46 @@ def configure_provider_labels() -> None:
     catalog_store.configure_provider_labels(label)
 
 
+def configure_agent_payments() -> None:
+    """Composition seam: the payment rails the settings turn on. The protocol SDKs load only here,
+    and only when the feature is on (docs/context/architecture/agent-payments.md)."""
+    from urllib.parse import urlsplit
+
+    from .application import agent_payments
+
+    s = get_settings()
+    s.check_agent_payments()
+    rails = []
+    if s.agent_payments_enabled:
+        if s.agent_payments_mpp_enabled:
+            from .infra.agent_payments.tempo import MppTempoRail
+
+            rails.append(MppTempoRail(
+                secret=s.agent_payments_secret,
+                realm=s.agent_payments_realm or urlsplit(s.public_url).hostname or "treg",
+                recipient=s.agent_payments_tempo_recipient,
+                chain_id=s.agent_payments_tempo_chain_id,
+                rpc_url=s.agent_payments_tempo_rpc_url,
+                rpc_api_key=s.agent_payments_tempo_rpc_api_key,
+                currency=s.agent_payments_tempo_currency,
+                challenge_ttl_s=s.agent_payments_mpp_challenge_ttl_s,
+                store=agent_payments.ReplayStore()))
+        if s.agent_payments_x402_enabled:
+            from .infra.agent_payments.x402 import X402Rail
+
+            rails.append(X402Rail(
+                pay_to=s.agent_payments_x402_pay_to, network=s.agent_payments_x402_network,
+                asset=s.agent_payments_x402_asset, asset_name=s.agent_payments_x402_asset_name,
+                asset_version=s.agent_payments_x402_asset_version,
+                facilitator_url=s.agent_payments_x402_facilitator_url,
+                max_timeout_s=s.agent_payments_x402_max_timeout_s,
+                rpc_url=s.agent_payments_x402_rpc_url,
+                cdp_api_key_id=s.agent_payments_x402_cdp_api_key_id,
+                cdp_api_key_secret=s.agent_payments_x402_cdp_api_key_secret,
+                block_tag=s.agent_payments_x402_block_tag, origin=s.public_url))
+    agent_payments.configure(rails)
+
+
 def configure_archive_object_store(store) -> None:
     """Composition seam shared by startup and in-memory tests. Find's card vectors share the store."""
     from . import archive_bodies
@@ -757,11 +816,17 @@ def _lifespan(role: AppRole):
             # serving, so a new worker's first calls do not fall back to the YAML order.
             from .application.call import route_rules as route_rules_app
             await route_rules_app.warm()
+            # Targeted review invitations read their per-endpoint counts once before serving.
+            from .application import review_targets
+            await review_targets.warm()
 
-            limits = httpx.Limits(max_keepalive_connections=100, max_connections=200)
+            _s = get_settings()
+            limits = httpx.Limits(max_keepalive_connections=_s.upstream_max_keepalive_connections,
+                                  max_connections=_s.upstream_max_connections)
             app.state.http = httpx.AsyncClient(
                 limits=limits,
-                timeout=httpx.Timeout(float(get_settings().call_timeout_s)),
+                timeout=httpx.Timeout(float(_s.call_timeout_s), connect=_s.upstream_connect_timeout_s,
+                                      pool=_s.upstream_pool_timeout_s),
                 # what a provider sees when no caller header says otherwise, never python-httpx/x
                 headers={"User-Agent": TREG_USER_AGENT},
             )
@@ -771,6 +836,13 @@ def _lifespan(role: AppRole):
                 else None
             )
             gauge_task = asyncio.create_task(pool_gauge()) if analytics.enabled() else None
+            # Idle allowance holds go back to the balance (money.md "Allowance"). Runs wherever
+            # background work runs, listed teams or not: a hold outlives its team's listing.
+            from .application import allowance_sweep
+            allowance_task = (
+                asyncio.create_task(allowance_sweep.worker())
+                if ROLE_BACKGROUND_TASKS[role] else None
+            )
             # Local transaction diagnostics run even when the analytics transport is disabled.
             trace_runner = start_money_trace(role=role)
             stall_watch = start_loop_stall_watch()
@@ -830,6 +902,7 @@ def _lifespan(role: AppRole):
                 try:
                     workers = [task for task in (
                         gauge_task, ads_task, archive_task, prune_task, find_task, rate_task,
+                        allowance_task,
                     ) if task is not None]
                     for task in workers:
                         task.cancel()
@@ -882,6 +955,7 @@ def create_app(role: AppRole = "all", *, archive_object_store=None) -> FastAPI:
 
     keyslots.check_accounts()  # an unusable TREG_PLATFORM_ACCOUNTS entry refuses to start
     configure_provider_labels()
+    configure_agent_payments()
 
     expose_docs = role != "dataplane"
     app = FastAPI(
@@ -909,7 +983,10 @@ def create_app(role: AppRole = "all", *, archive_object_store=None) -> FastAPI:
         app.add_middleware(_DevTitleMiddleware)
     app.add_exception_handler(OverflowError, api_module._id_out_of_range)
     bootstrap_handlers._stamp_call_exit = call_routes._stamp_call_exit
-    app.add_exception_handler(PoolTimeoutError, bootstrap_handlers._pool_saturated)
+    for busy in DB_BUSY_ERRORS:
+        app.add_exception_handler(busy, bootstrap_handlers._pool_saturated)
+    for wrapper in DB_BUSY_WRAPPERS:
+        app.add_exception_handler(wrapper, bootstrap_handlers._db_error)
     app.add_exception_handler(ReportBusy, bootstrap_handlers._report_busy)
     app.add_exception_handler(StarletteHTTPException, bootstrap_handlers._mark_treg_own_errors)
 
@@ -917,9 +994,9 @@ def create_app(role: AppRole = "all", *, archive_object_store=None) -> FastAPI:
     _install_head_and_openapi(app)
 
     if role != "control" and _mcp is not None:
+        # Claude removes the final slash and does not follow redirects. Normalize before any mount.
+        app.add_middleware(_mcp.NormalizeMCPPath)
         if get_settings().claude_connector_enabled:
-            # Claude can remove the final slash. Normalize before the parent V1 mount can match.
-            app.add_middleware(_mcp.NormalizeDirectoryMCPPath)
             # Register the nested mount first so the /mcp parent does not consume it.
             app.mount("/mcp/v2", _mcp.directory_mcp_app)
         app.mount("/mcp", _mcp.mcp_app)

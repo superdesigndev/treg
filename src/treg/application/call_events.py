@@ -45,6 +45,7 @@ from ..domain.arena import safe_output
 from ..domain.catalog import store as catalog_store
 from ..domain.catalog.routing import paths as P
 from ..domain.catalog.routing.contracts import Adapter, Contract, canonical_identity
+from ..domain.catalog.routing.segments import SEGMENTERS
 
 SCHEMA_VERSION = 1
 ANALYTICS_MODES = ("key", "value", "skip")
@@ -60,7 +61,7 @@ COLUMNS = (
     "answer_values", "answer_flags",
 )
 
-_STEP = re.compile(r"^(?P<parent>.+):(?P<step>r(?P<n>\d+)|v|p\d+|s\d+)$")
+_STEP = re.compile(r"^(?P<parent>.+):(?P<step>r(?P<n>\d+)|v|u|p\d+|s\d+(?:\.\d+)?)$")
 _DOMAIN_KEYS = ("domain", "company_domain", "website")
 _ROLE_LOCALS = frozenset({
     "admin", "billing", "careers", "contact", "enquiries", "hello", "help", "hr", "info",
@@ -68,6 +69,9 @@ _ROLE_LOCALS = frozenset({
     "support", "team", "webmaster",
 })
 _VALUE_MAX = 256
+# `limit` or `country_code(country)`: an `in_expr` a filter's value can be read back through.
+_field_paths: dict[int, tuple[Adapter, Contract, tuple]] = {}
+_NAME_HALF = re.compile(r"split_(first|last)\(\s*([a-z_][a-z0-9_]*)\s*\)")
 _SCALAR_TYPES = {"bool": bool, "int": (int,), "float": (int, float)}
 _fingerprints: dict[int, tuple[Adapter, str]] = {}
 
@@ -131,7 +135,8 @@ def _stringify(value: Any) -> str | None:
 
 
 def ref_parts(call_ref: str | None) -> tuple[str | None, str | None, int | None]:
-    """`X:r2` -> (`X`, `r2`, 2); `X:v` -> (`X`, `v`, None); a root ref -> (None, None, None)."""
+    """`X:r2` -> (`X`, `r2`, 2); `X:v` -> (`X`, `v`, None); `X:s1.4` (a `for_each` item) ->
+    (`X`, `s1.4`, None); a root ref -> (None, None, None)."""
     m = _STEP.match(call_ref or "")
     if m is None:
         return None, None, None
@@ -146,6 +151,7 @@ def adapter_fingerprint(adapter: Adapter) -> str:
         return cached[1]
     spec = {"accepts": adapter.accepts, "in": adapter.in_map, "in_expr": adapter.in_expr,
             **({"in_read": adapter.in_read} if adapter.in_read else {}),
+            **({"position": adapter.position} if adapter.position else {}),
             "const": adapter.const, "out": adapter.out_map, "miss": adapter.miss,
             "verdict": adapter.verdict, "verdicts": adapter.verdicts}
     digest = hashlib.sha256(json.dumps(spec, sort_keys=True, default=str).encode()).hexdigest()[:12]
@@ -158,27 +164,189 @@ def is_eval(org_id: int | None) -> bool:
     return org_id is not None and str(org_id) in {p.strip() for p in raw.split(",") if p.strip()}
 
 
-def vendor_identity(adapter: Adapter, contract: Contract, query_items: Iterable[tuple[str, str]],
-                    body: bytes | None) -> dict:
-    """The contract identity a vendor-shaped request expresses, read back through the adapter's
-    `in` map (the fixture verifier's reading). Path parameters travel as query values."""
+def _descend(node: Any, steps: tuple) -> Any:
+    for step in steps:
+        if isinstance(step, int):
+            node = node[step] if isinstance(node, list) and step < len(node) else None
+        else:
+            node = node.get(step) if isinstance(node, dict) else None
+    return node
+
+
+def _locate(node: Any, want: Any, at: tuple = ()) -> list[tuple]:
+    if isinstance(node, dict):
+        return [p for k, v in node.items() for p in _locate(v, want, (*at, k))]
+    if isinstance(node, list):
+        return [p for i, v in enumerate(node) for p in _locate(v, want, (*at, i))]
+    return [at] if node == want and type(node) is type(want) else []
+
+
+def field_paths(adapter: Adapter, contract: Contract) -> tuple[tuple[str, str, tuple], ...]:
+    """(field, request target, steps inside the value there) for every field an adapter's
+    `in_expr` sends where it can be read back: found by evaluating each expression on placeholder
+    values. A place counts only when it holds that filter's placeholder alone, no other field's
+    placeholder reaches the expression, and none fills the place when the filter is not sent, so
+    `list(country)`, `obj('include', list(upper(country)))` and `at_most(limit, 50)` read back,
+    and `coalesce(location, country_name(country))` or a `join` of several fields do not."""
+    cached = _field_paths.get(id(adapter))
+    if cached is not None and cached[0] is adapter and cached[1] is contract:
+        return cached[2]
+    fields = [*contract.identity_types, *(contract.filters or {})]
+    kinds = {k: str(((contract.filters or {}).get(k) or {}).get("type") or contract.identity_types.get(k, "str"))
+             for k in fields}
+    # Several upper-case words: case and country transforms pass a placeholder through whole,
+    # while a lossy one (`split_first(full_name)`) returns part of it, which is never found.
+    marks: dict[str, Any] = {}
+    for i, k in enumerate(fields):
+        text = "ZQX%d QZX%d WXQ%d" % (i, i, i)
+        marks[k] = 900 + i if kinds[k] == "int" else [text] if kinds[k] == "list" else text
+    out = []
+    for field_name in fields:
+        if kinds[field_name] == "bool":
+            continue
+        # A number is tried at sizes on both sides of the usual page-size clamps
+        # (`at_most(limit, 10)`, `at_least(limit, 10)`), so one of them passes through untouched.
+        tries = (7, 37, 900) if kinds[field_name] == "int" else (marks[field_name],)
+        others = {(m[0] if isinstance(m, list) else m) for k, m in marks.items() if k != field_name}
+        for target, expr in (adapter.in_expr or {}).items():
+            if not isinstance(expr, str):
+                continue
+            hit = None
+            for value in tries:
+                env = {**marks, field_name: value}
+                mark = value[0] if isinstance(value, list) else value
+                try:
+                    full = P.evaluate(expr, env)
+                    without = P.evaluate(expr, {k: v for k, v in marks.items() if k != field_name})
+                except Exception:  # noqa: BLE001 - an expression this probe cannot run is not read back
+                    break
+                found = _locate(full, mark)
+                if any(_locate(full, o) for o in others):
+                    break
+                if len(found) == 1 and not any(_locate(_descend(without, found[0]), o) for o in others):
+                    hit = found[0]
+                    break
+            if hit is not None:
+                out.append((field_name, target, hit))
+                break
+    result = tuple(out)
+    _field_paths[id(adapter)] = (adapter, contract, result)
+    return result
+
+
+def _request_doc(query_items: Iterable[tuple[str, str]], body: bytes | None) -> dict:
+    """A vendor request as adapters read it: `{queryParams, body, pathParams}`. Path parameters
+    travel as query values; a body sent as a one-item array (DataForSEO) is read as that item."""
     query = {k: v for k, v in query_items}
     doc_body: Any = {}
     if body:
         try:
             doc_body = json.loads(body)
-        except (ValueError, UnicodeDecodeError):
+        except (ValueError, UnicodeDecodeError, RecursionError):
             doc_body = {}
     if isinstance(doc_body, list):
         doc_body = doc_body[0] if doc_body and isinstance(doc_body[0], dict) else {}
     if not isinstance(doc_body, dict):
         doc_body = {}
-    doc = {"queryParams": query, "body": doc_body, "pathParams": query}
+    return {"queryParams": query, "body": doc_body, "pathParams": query}
+
+
+# A position value that names the first page: no page sent, `page` 1, `page0` (a page number
+# counted from 0) 0, `offset` 0, an empty cursor or `0`.
+_FIRST_PAGE = {"page": {"", "1"}, "page0": {"", "0"}, "offset": {"", "0"}, "cursor": {"", "0"}}
+# Request parameters that name a page wherever a provider uses them, read at the top level of the
+# query or the body when the adapter declares no `position`. `pages` (how many) is not one.
+_POSITION_PARAMS = (("cursor", "cursor"), ("page_token", "cursor"), ("pageToken", "cursor"),
+                    ("next_page_token", "cursor"), ("after", "cursor"), ("page", "page"),
+                    ("offset", "offset"), ("start", "offset"), ("skip", "offset"))
+_NUMBER_TYPES = ("integer", "number")
+_COUNTED = ("page", "page0", "offset")
+
+
+def _declared_param(endpoint_id: str, section: str, name: str) -> dict | None:
+    spec = (((catalog_store.load().by_id.get(endpoint_id) or {}).get("input") or {})
+            .get(section) or {}).get(name)
+    return spec if isinstance(spec, dict) else None
+
+
+def _by_name(adapter: Adapter, doc: dict) -> tuple[str, Any] | None:
+    """The first top-level paging parameter the endpoint declares with a type that can be one: a
+    page number or an offset must be declared a number (crawl4ai's Facebook `page` is a page
+    name), a cursor a string or a number. A page declared from 0 (`default: 0`, or `min: 0` with no default
+    of 1) is `page0`."""
+    for name, kind in _POSITION_PARAMS:
+        for section in ("queryParams", "body"):
+            v = doc[section].get(name)
+            if v in (None, ""):
+                continue
+            spec = _declared_param(adapter.endpoint_id, section, name)
+            if spec is None:
+                continue
+            if kind == "cursor":
+                if spec.get("type") in ("string", *_NUMBER_TYPES):
+                    return kind, v
+                continue
+            if spec.get("type") not in _NUMBER_TYPES:
+                continue
+            if kind == "page" and (spec.get("default") == 0
+                                   or (spec.get("min") == 0 and spec.get("default") != 1)):
+                kind = "page0"
+            return kind, v
+    return None
+
+
+def page_position(adapter: Adapter | None, query_items: Iterable[tuple[str, str]] = (),
+                  body: bytes | None = None, identity: dict | None = None) -> tuple[str, str] | None:
+    """(`page` | `page0` | `offset` | `cursor`, value) when a call asks for a later page than the
+    first; None for the first page or when the request says nothing about pages. A direct call is
+    read through its adapter's `position` (else the request path its `paging.cursor` names); a
+    routed parent from the caller's own `cursor`, `page` or `offset`. An adapter that declares
+    neither is read by parameter name, as its endpoint declares the parameter (`_by_name`). A page
+    number or an offset counts only as a non-negative whole number; anything else is no position."""
+    found: tuple[str, Any] | None = None
+    if identity is not None:
+        found = next(((k, identity[k]) for k in ("cursor", "page", "offset") if k in identity), None)
+    elif adapter is not None:
+        doc = _request_doc(query_items, body)
+        if adapter.position or adapter.paging.get("cursor"):
+            kind, expr = next(iter(adapter.position.items())) if adapter.position \
+                else ("cursor", adapter.paging["cursor"])
+            try:
+                found = (kind, P.evaluate(expr, doc))
+            except (TypeError, ValueError, AttributeError, IndexError, KeyError):
+                return None  # an unreadable position reads as the first page, never a failed event
+        else:
+            found = _by_name(adapter, doc)
+    if found is None:
+        return None
+    kind, v = found
+    if isinstance(v, bool) or v is None:
+        return None
+    text = str(v).strip() if isinstance(v, (str, int, float)) else None
+    if text is None:
+        return None
+    if kind in _COUNTED:
+        if not text.isdigit():
+            return None
+        text = str(int(text))
+    if text in _FIRST_PAGE[kind]:
+        return None
+    return kind, text
+
+
+def vendor_identity(adapter: Adapter, contract: Contract, query_items: Iterable[tuple[str, str]],
+                    body: bytes | None) -> dict:
+    """The contract identity a vendor-shaped request expresses, read back through the adapter's
+    `in` map (the fixture verifier's reading). Path parameters travel as query values."""
+    doc = _request_doc(query_items, body)
+    query, doc_body = doc["queryParams"], doc["body"]
     given: dict = {}
     for field_name, target in adapter.in_map.items():
         v = P.get_path(doc, target)
         if isinstance(v, list) and len(v) == 1 and contract.identity_types.get(field_name, "str") != "list":
             v = v[0]
+        if isinstance(v, dict) and contract.identity_types.get(field_name) != "object":
+            continue  # the field sits inside this object (`{v: title, s: i}`): read by its path below
         if v not in (None, ""):
             given[field_name] = v
     # An expression that is just an identity field (`body.url: linkedin_url`, used where the
@@ -188,9 +356,30 @@ def vendor_identity(adapter: Adapter, contract: Contract, query_items: Iterable[
             v = P.get_path(doc, target)
             if isinstance(v, (str, int)) and not isinstance(v, bool) and v != "":
                 given[expr] = v
+    # Any other field, filters included, is read back from wherever its expression puts it
+    # (`field_paths`: `list(obj('domain', company_domain))`, `at_most(limit, 50)`): the value
+    # sent, which is the field's category, though not always its caller's spelling.
+    for field_name, target, steps in field_paths(adapter, contract):
+        if field_name not in given:
+            v = _descend(P.get_path(doc, target), steps)
+            if isinstance(v, (str, int)) and not isinstance(v, bool) and v != "":
+                given[field_name] = v
+    # A name sent as its first and last word (`split_first(full_name)`, `split_last(full_name)`)
+    # reads back as those two words: exactly what the provider was asked, never one word alone.
+    halves: dict[str, dict[str, Any]] = {}
+    for target, expr in (adapter.in_expr or {}).items():
+        if isinstance(expr, str) and (m := _NAME_HALF.fullmatch(expr.strip())):
+            halves.setdefault(m.group(2), {})[m.group(1)] = P.get_path(doc, target)
+    for field_name, got in halves.items():
+        first, last = got.get("first"), got.get("last")
+        if field_name in contract.identity_types and field_name not in given \
+                and isinstance(first, str) and first.strip():
+            given[field_name] = f"{first.strip()} {last.strip()}" if isinstance(last, str) and last.strip() \
+                else first.strip()
+    readable = {**contract.identity_types, **(contract.filters or {})}
     # A field the provider takes reshaped is read back by the adapter's own `in_read` rule.
     for field_name, expr in (adapter.in_read or {}).items():
-        if field_name in contract.identity_types:
+        if field_name in readable:
             try:
                 v = P.evaluate(expr, doc)
             except (TypeError, ValueError, AttributeError, IndexError):
@@ -201,7 +390,7 @@ def vendor_identity(adapter: Adapter, contract: Contract, query_items: Iterable[
     # while a direct caller of the same finder may send `first_name` + `last_name`. A request
     # parameter named exactly like an identity field means that field; derivation then joins
     # the shapes, so both direct calls get the routed call's `input_id`.
-    for field_name in contract.identity_types:
+    for field_name in readable:
         if field_name in given:
             continue
         v = doc_body.get(field_name, query.get(field_name))
@@ -210,15 +399,32 @@ def vendor_identity(adapter: Adapter, contract: Contract, query_items: Iterable[
     return given
 
 
+def _listed(contract: Contract, field: str) -> bool:
+    """A `list` identity field of an admission-only contract (a count over several companies). A
+    routed contract's list fields stay unrecorded: its published route rules match the segments
+    its calls were recorded in."""
+    return not contract.routed and contract.identity_types.get(field) == "list"
+
+
+def _normalize_field(contract: Contract, field: str, value: Any) -> str | None:
+    """`normalize`, except that a listed field is its values' set: each normalized, sorted and
+    joined, so `[b.com, a.com]` and `[A.com, b.com]` are one question and `[a.com]` another."""
+    if not _listed(contract, field):
+        return normalize(field, value)
+    items = value if isinstance(value, list) else [value]
+    parts = sorted({n for v in items if (n := normalize(field, v)) is not None})
+    return "\x1e".join(parts) or None
+
+
 def segment(contract: Contract, given: dict) -> tuple[str | None, dict[str, str], dict]:
     """(`input_type`, `input_meta`, the normalized identity): the segment a call is in, with no
     hashing, so published route rules match calls exactly as their events record them."""
-    identity, _ = canonical_identity(contract, given or {})
+    identity, supplied = canonical_identity(contract, given or {})
     norm = {k: n for k in contract.identity_types
-            if (n := normalize(k, identity.get(k))) is not None}
+            if (n := _normalize_field(contract, k, identity.get(k))) is not None}
     variant = next((v for v in contract.identity if all(k in norm for k in v)), None)
     meta: dict[str, str] = {}
-    domain = next((norm[k] for k in _DOMAIN_KEYS if k in norm), None)
+    domain = next((norm[k] for k in _DOMAIN_KEYS if k in norm and not _listed(contract, k)), None)
     if domain is None and "@" in norm.get("email", ""):
         domain = norm["email"].rsplit("@", 1)[1]
     # `acme.fr.` is acme.fr written with the DNS root.
@@ -231,6 +437,13 @@ def segment(contract: Contract, given: dict) -> tuple[str | None, dict[str, str]
     for k, spec in (contract.filters or {}).items():
         if (spec or {}).get("analytics") == "value" and (s := _stringify(identity.get(k))) is not None:
             meta[k] = s
+    if supplied is not None and (segmenter := SEGMENTERS.get(contract.segments)) is not None:
+        # Categories only: the raw title, query, name or place never reaches the event. A value
+        # a filter already records (`country`) keeps its own spelling. A request read back into
+        # no complete variant carries no filters either, so its categories would claim "none
+        # sent" for what was only unreadable: it records none.
+        meta.update({k: v for k, v in segmenter.compute(identity).items() if k not in meta})
+        meta["segments_version"] = segmenter.version
     return ("+".join(variant) if variant else None), meta, norm
 
 
@@ -287,16 +500,28 @@ def segment_checks(contract: Contract) -> dict:
     for k, spec in (contract.filters or {}).items():
         if (spec or {}).get("analytics") == "value":
             checks[k] = lambda v: True
+    if (segmenter := SEGMENTERS.get(contract.segments)) is not None:
+        for k, vocab in segmenter.vocab.items():
+            checks.setdefault(k, vocab if callable(vocab) else vocab.__contains__)
     return checks
 
 
-def input_columns(contract: Contract, given: dict) -> tuple[dict, dict]:
-    """(input columns, the normalized identity) for what the caller asked."""
+def input_columns(contract: Contract, given: dict,
+                  position: tuple[str, str] | None = None) -> tuple[dict, dict]:
+    """(input columns, the normalized identity) for what the caller asked. `position` (a later
+    page, `page_position`) joins `input_id`, so page 2 is not a retry of page 1, and is named in
+    `input_meta` (`page_kind`, and `page` for a page number or an offset; a cursor is opaque)."""
     input_type, meta, norm = segment(contract, given)
     variant = tuple(input_type.split("+")) if input_type else None
+    parts = [f"{k}={norm[k]}" for k in variant] if variant else []
+    if parts and position is not None:
+        parts.append(f"\x1eposition={position[0]}:{position[1]}")
+        meta["page_kind"] = position[0]
+        if position[0] != "cursor":
+            meta["page"] = position[1][:_VALUE_MAX]
     cols = {
         "input_type": input_type,
-        "input_id": (keyed("\x1f".join(f"{k}={norm[k]}" for k in variant)) if variant else None),
+        "input_id": keyed("\x1f".join(parts)) if parts else None,
         "input_keys": {k: keyed(v) for k, v in norm.items()} or None,
         "input_meta": meta or None,
     }
@@ -320,6 +545,10 @@ def adapter_output(adapter: Adapter | None, capability: str, status: int | None,
     # the rest as likely masking flags. A field the contract records and declares `bool`, `int` or
     # `float` is the provider's verdict (`name_match`, `ported`), kept when it has that type.
     contract = catalog_store.load().contracts.get(capability)
+    if contract and contract.segments and contract.row_of and isinstance(raw.get(contract.row_of), list):
+        # The segment set counts every row the adapter mapped, in the contract's row shape; the
+        # Arena's reading keeps the first few and drops the profile and company keys it judges.
+        core[contract.row_of] = raw[contract.row_of]
     for field_name, spec in (contract.output if contract else {}).items():
         spec = spec or {}
         kind = _SCALAR_TYPES.get(str(spec.get("type")))
@@ -330,7 +559,10 @@ def adapter_output(adapter: Adapter | None, capability: str, status: int | None,
     return core
 
 
-def answer_columns(contract: Contract, output: dict, input_norm: dict | None = None) -> dict:
+def answer_columns(contract: Contract, output: dict, input_norm: dict | None = None,
+                   asked: dict | None = None) -> dict:
+    """`asked` (the identity and filters after derivation) lets the contract's segment set count
+    how the rows fit the question (`rows_company_match`); counts only, never a row's value."""
     keys: dict[str, str] = {}
     values: dict[str, str] = {}
     flags: dict[str, bool] = {}
@@ -357,6 +589,13 @@ def answer_columns(contract: Contract, output: dict, input_norm: dict | None = N
                     flags[f"{p}domain_match"] = dom == input_domain
         elif mode == "value" and (s := _stringify(v)) is not None:
             values[field_name] = s
+    segmenter = SEGMENTERS.get(contract.segments)
+    if segmenter is not None and segmenter.answer is not None:
+        # Without the question (a request that cannot be read back) the row counts still hold;
+        # only the checks against it are absent.
+        if counts := segmenter.answer(asked or {}, output):
+            values.update(counts)
+            values["segments_version"] = segmenter.version
     return {"answer_keys": keys or None, "answer_values": values or None,
             "answer_flags": flags or None}
 
@@ -417,19 +656,24 @@ def _derived(endpoint_id, capability, query, request_body, identity, answer_stat
         out["adapter_fingerprint"] = adapter_fingerprint(adapter)
     if contract is None:
         return out
+    position = None
     if identity is not None:
         given = identity
+        position = page_position(None, identity=identity)
     elif adapter is not None and (query or request_body):
         given = vendor_identity(adapter, contract, query, request_body)
+        position = page_position(adapter, query, request_body)
     else:
         given = {}
     norm: dict = {}
+    asked: dict | None = None
     if given:
-        cols, norm = input_columns(contract, given)
+        cols, norm = input_columns(contract, given, position)
         out.update(cols)
+        asked, _ = canonical_identity(contract, given)
     if answers_allowed:
         core = output if output is not None else adapter_output(adapter, contract.capability,
                                                                 answer_status, answer_body)
         if core:
-            out.update(answer_columns(contract, core, norm))
+            out.update(answer_columns(contract, core, norm, asked))
     return out

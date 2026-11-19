@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"net/http"
 	"os"
 	"regexp"
 	"strings"
@@ -24,6 +25,12 @@ import (
 // Exit statuses are a contract: 0 success, 1 a refusal or failed request, 2 a usage error.
 const usageError = 2
 
+// startFlush sends earlier invocations' queued events while this one runs. Tests that read the
+// queue replace it: the flush claims the queue file by renaming it while it sends.
+var startFlush = func(registry string, transport http.RoundTripper) {
+	go telemetry.Flush(context.Background(), registry, transport)
+}
+
 func Main(argv []string, stderr io.Writer) int {
 	api.UseSystemProxy()
 	argv = append([]string(nil), argv...)
@@ -38,7 +45,7 @@ func Main(argv []string, stderr io.Writer) int {
 	env := commands.NewEnv(cfg, json, org)
 	background := len(argv) > 0 && strings.HasPrefix(argv[0], "__")
 	if !background {
-		go telemetry.Flush(context.Background(), api.RegistryURL(cfg), api.Transport())
+		startFlush(api.RegistryURL(cfg), api.Transport())
 		if exe, err := update.Executable(); err == nil {
 			update.RemoveLeftover(exe)
 			if len(argv) == 0 || argv[0] != "update" {
@@ -98,7 +105,56 @@ func commandName(ran *cobra.Command) string {
 	return strings.NewReplacer(" ", "_", "-", "_").Replace(path)
 }
 
-var optionName = regexp.MustCompile(`(--[A-Za-z][\w-]{0,40}|-[A-Za-z])`)
+var (
+	optionName     = regexp.MustCompile(`(?:^|[\s'"])(--[A-Za-z][\w-]{0,40}|-[A-Za-z])`)
+	unknownCommand = regexp.MustCompile(`^unknown command "([^"]+)" for "[^"]+"`)
+	invalidChoice  = regexp.MustCompile(`^argument <subcommand>: invalid choice: "([^"]+)"`)
+	commandWord    = regexp.MustCompile(`^[a-z][a-z-]{0,23}$`)
+)
+
+// pythonOnly maps the Python CLI commands this binary lacks, and the programs `treg <program>`
+// runs there, to their telemetry name: a usage error names one of these, never what was typed.
+var pythonOnly = map[string]string{
+	"add": "add", "admin": "admin", "agents": "agents", "cli": "cli", "hub": "hub", "onboard": "onboard",
+	"run": "run", "runs": "runs", "serve": "serve", "setup-local-run": "setup_local_run", "shell": "shell",
+	"with": "with",
+	"bun":  "with", "cargo": "with", "claude": "with", "codex": "with", "cursor": "with", "deno": "with",
+	"gemini": "with", "go": "with", "node": "with", "npm": "with", "npx": "with", "pnpm": "with",
+	"python": "with", "python3": "with", "uv": "with", "yarn": "with",
+	"org access": "org_access", "org archive": "org_archive", "org budget-rm": "org_budget_rm",
+	"org budget-set": "org_budget_set", "org budgets": "org_budgets", "org delete": "org_delete",
+	"org deny": "org_deny", "org deny-ls": "org_deny_ls", "org deny-rm": "org_deny_rm",
+	"org invite": "org_invite", "org invites": "org_invites", "org leave": "org_leave",
+	"org overflow": "org_overflow", "org pin": "org_pin", "org pins": "org_pins",
+	"org project-new": "org_project_new", "org project-rm": "org_project_rm", "org projects": "org_projects",
+	"org rename": "org_rename", "org revoke": "org_revoke", "org set-role": "org_set_role",
+	"org unpin": "org_unpin",
+	"skill add": "skill_add", "skill init": "skill_init", "skill push": "skill_push", "skill rm": "skill_rm",
+	"skill scaffold": "skill_scaffold",
+}
+
+// rejectedCommand reads a usage error that refused a word as a subcommand of ran: the Python-only
+// command it asked for, or else the word itself when it has a command's shape. A leaf refuses an
+// extra argument with the same message, so only a command with subcommands is read.
+func rejectedCommand(ran *cobra.Command, err error) (missing, unknown string) {
+	if ran == nil || !ran.HasSubCommands() {
+		return "", ""
+	}
+	m := unknownCommand.FindStringSubmatch(err.Error())
+	if m == nil {
+		m = invalidChoice.FindStringSubmatch(err.Error())
+	}
+	if m == nil {
+		return "", ""
+	}
+	if name, ok := pythonOnly[strings.TrimSpace(strings.TrimPrefix(ran.CommandPath(), "treg")+" "+m[1])]; ok {
+		return name, ""
+	}
+	if commandWord.MatchString(m[1]) {
+		return "", m[1]
+	}
+	return "", ""
+}
 
 func record(env *commands.Env, ran *cobra.Command, err error, code int, took time.Duration) {
 	notes := map[string]any{}
@@ -112,13 +168,31 @@ func record(env *commands.Env, ran *cobra.Command, err error, code int, took tim
 	}
 	if code == usageError && err != nil {
 		if _, ok := errors.AsType[*output.Exit](err); !ok {
-			name = "usage_error"
-			if found := optionName.FindAllString(err.Error(), 10); len(found) > 0 {
-				notes = map[string]any{"options": found}
-			} else {
-				notes = map[string]any{}
+			in := commandName(ran)
+			name, notes = "usage_error", map[string]any{}
+			var found []string
+			for _, m := range optionName.FindAllStringSubmatch(err.Error(), 10) {
+				found = append(found, m[1])
+			}
+			if len(found) > 0 {
+				notes["options"] = found
+			}
+			if ran != nil && ran.HasParent() {
+				notes["in_command"] = in
+			}
+			missing, unknown := rejectedCommand(ran, err)
+			if missing != "" {
+				notes["missing_command"] = missing
+			}
+			if unknown != "" {
+				notes["unknown_command"] = unknown
 			}
 		}
+	}
+	// A call notes the status class of any answer and the kind of any transport failure, so one
+	// that failed with neither stopped at its own arguments before a request.
+	if name == "call" && code == 1 && notes["status_class"] == nil && notes["error"] == nil {
+		notes["error"] = "bad_input"
 	}
 	telemetry.Command(name, code, took, notes, env.Cfg.Channel)
 }

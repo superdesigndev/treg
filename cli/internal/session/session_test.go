@@ -31,3 +31,29 @@ func TestResolveMatchesThePythonCLI(t *testing.T) {
 		t.Fatalf("the idle window id changed: %+v %+v", idle, again)
 	}
 }
+
+// The trees and variables as Copilot CLI 1.0.112 and VS Code's Copilot agent terminal leave them.
+func TestResolveNamesCopilot(t *testing.T) {
+	cfg := filepath.Join(t.TempDir(), "config.json")
+	copilot := []Proc{{PID: 30, Name: "bash", Started: 5}, {PID: 31, Name: "copilot", Started: 4},
+		{PID: 32, Name: "node", Started: 3}, {PID: 33, Name: "claude", Started: 2}}
+	cliEnv := map[string]string{"COPILOT_CLI": "1", "COPILOT_AGENT_SESSION_ID": "94be", "CLAUDECODE": "1"}
+	vscode := []Proc{{PID: 40, Name: "zsh", Started: 7}, {PID: 41, Name: "code helper", Started: 6}}
+	cases := []struct {
+		name  string
+		env   map[string]string
+		procs []Proc
+		want  Session
+	}{
+		{"copilot cli nearer than the claude that started it", cliEnv, copilot, Session{hash("copilot-cli", "94be"), "copilot-cli"}},
+		{"copilot cli without a tree", map[string]string{"COPILOT_CLI": "1", "COPILOT_AGENT_SESSION_ID": "94be"}, nil, Session{hash("copilot-cli", "94be"), "copilot-cli"}},
+		{"vs code agent terminal", map[string]string{"COPILOT_AGENT": "1"}, vscode, Session{hash("copilot-vscode", idleWindowID(cfg)), "copilot-vscode"}},
+		{"an agent on the tree wins over the vs code mark", map[string]string{"COPILOT_AGENT": "1", "CLAUDE_CODE_SESSION_ID": "s3"},
+			append([]Proc{{PID: 50, Name: "claude", Started: 8}}, vscode...), Session{hash("claude-code", "s3"), "claude-code"}},
+	}
+	for _, c := range cases {
+		if got := Resolve(cfg, c.env, c.procs); got != c.want {
+			t.Errorf("%s: got %+v want %+v", c.name, got, c.want)
+		}
+	}
+}
