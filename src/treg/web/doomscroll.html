@@ -724,6 +724,8 @@
   @media (max-width: 860px) { .wn-steps { grid-template-columns: minmax(0, 1fr); max-width: 460px; } }
 
   /* ---------- phones ---------- */
+  .m-br { display: none; }
+  @media (max-width: 640px) { .m-br { display: inline; } }
   @media (max-width: 760px) { .xr { min-height: 0; } }
   @media (max-width: 640px) {
     .xr { padding: 92px 16px 22px; } .xr-in { padding-top: 6px; }
@@ -754,7 +756,7 @@
 <header class="xr" id="top">
   <div class="xr-in">
     <p class="xr-eye"><span>/doomscroll skill</span></p>
-    <h1 class="xr-t"><span class="w"><span>What people posted on</span></span><br><span class="w"><span><span class="xr-socials"><img src="logos/platforms/x.svg" alt="X" title="X"><img src="logos/platforms/reddit.svg" alt="Reddit" title="Reddit"><img src="logos/platforms/youtube.svg" alt="YouTube" title="YouTube"><img src="logos/platforms/tiktok.svg" alt="TikTok" title="TikTok"><img src="logos/platforms/hackernews.svg" alt="Hacker News" title="Hacker News"><img src="logos/platforms/producthunt-kitty.png" alt="Product Hunt" title="Product Hunt"></span> <span class="xr-rot since"><span class="xr-b on">--since 6h</span><span class="xr-b">--since 24h</span><span class="xr-b">--since 3d</span><span class="xr-b">--since 1w</span></span></span></span></h1>
+    <h1 class="xr-t"><span class="w"><span>Let AI doomscroll <br class="m-br">for you on</span></span><br><span class="w"><span><span class="xr-socials"><img src="logos/platforms/x.svg" alt="X" title="X"><img src="logos/platforms/reddit.svg" alt="Reddit" title="Reddit"><img src="logos/platforms/youtube.svg" alt="YouTube" title="YouTube"><img src="logos/platforms/tiktok.svg" alt="TikTok" title="TikTok"><img src="logos/platforms/hackernews.svg" alt="Hacker News" title="Hacker News"><img src="logos/platforms/producthunt-kitty.png" alt="Product Hunt" title="Product Hunt"></span> <span class="xr-rot since"><span class="xr-b on">--since 6h</span><span class="xr-b">--since 24h</span><span class="xr-b">--since 3d</span><span class="xr-b">--since 1w</span></span></span></span></h1>
     <p class="sub">Name a topic and a time window. Your agent reads <strong>X, TikTok, YouTube, Reddit, Hacker News and Product Hunt</strong>, drops what's old or repeated, and hands back the posts worth seeing, with links. Pay per run, no plan. <strong>Real run: 272 posts read for $0.02</strong></p>
     <div class="xr-cta"><a class="xr-btn" href="/app?ref=doomscroll" id="ctaHero">Set up treg <span>→</span></a><a class="xr-link" href="#install" id="ctaCopy">Copy prompt ↓</a></div>
   </div>
