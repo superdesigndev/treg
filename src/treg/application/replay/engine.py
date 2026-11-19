@@ -112,7 +112,8 @@ def _settle(mk: MarketplaceCall, status: int, raw: bytes, headers: httpx.Headers
 def _outcome(endpoint_id: str, status: int, raw: bytes) -> dict:
     result = catalog_results.classify(endpoint_id, status, raw)
     return {"state": result.state, "reason": result.reason, "hit": result.hit,
-            "verdict": catalog_results.verdict(endpoint_id, status, raw)}
+            "verdict": catalog_results.verdict(endpoint_id, status, raw),
+            "judged": catalog_results.judged_outcome(endpoint_id, status, raw)}
 
 
 def _adapter(ep: dict, status: int, raw: bytes) -> dict | None:
@@ -148,7 +149,7 @@ def _stats(endpoint_id: str, status: int, settle: dict | None, outcome: dict | N
         status_code=status, created_at=_FOLDED_AT, duration_ms=None,
         hit=(outcome or {}).get("hit"), cost_observed_micro=(settle or {}).get("observed_micro"),
         refused_by=None, verdict=(outcome or {}).get("verdict"),
-        empty_fails=catalog_store.empty_is_failure(endpoint_id))
+        empty_fails=catalog_store.empty_is_failure(endpoint_id), outcome=(outcome or {}).get("judged"))
     return {"counted": counted, "moved": [c for c in _COUNTERS if getattr(tally, c)]}
 
 

@@ -7,6 +7,7 @@ import json
 
 import re
 from typing import Any
+from urllib.parse import unquote_plus
 
 _MISSING = object()
 _INDEX = re.compile(r"^(\w+)\[(\d+)\]$")
@@ -156,6 +157,26 @@ def dfs_location(country: Any) -> int | None:
     code = _country_code(country if country not in (None, "") else "us")
     numeric = _table("country_numeric.json").get(code or "")
     return 2000 + int(numeric) if numeric else None
+
+
+def dfs_country(location_code: Any, location_name: Any) -> str | None:
+    """Read a country-level DataForSEO location as ISO alpha-2; cities and coordinates have no such code."""
+    if location_code is None:
+        return upper(iso_country(location_name))
+    code = str(location_code)
+    if len(code) != 4 or not code.startswith("2"):
+        return None
+    return next((alpha.upper() for alpha, numeric in _table("country_numeric.json").items()
+                 if numeric == code[1:]), None)
+
+
+def dfs_keyword(text: Any) -> str | None:
+    """DataForSEO decodes '+' and percent escapes in a JSON keyword."""
+    return text.replace("%", "%25").replace("+", "%2B") if isinstance(text, str) else None
+
+
+def dfs_keyword_text(keyword: Any) -> str | None:
+    return unquote_plus(keyword) if isinstance(keyword, str) else None
 
 
 def seranking_source(country: Any) -> str:
@@ -800,6 +821,7 @@ def starts_with(v: Any, prefix: Any) -> bool:
 
 
 TRANSFORMS = {"values": values, "get": get_path, "null_if": null_if, "choose": choose, "split_first": split_first, "split_last": split_last, "one_place": one_place, "join": join, "phrase": phrase, "people_text": people_text, "place": place, "texts": texts, "has_type": has_type, "len": length,
+              "dfs_country": dfs_country, "dfs_keyword": dfs_keyword, "dfs_keyword_text": dfs_keyword_text,
               "dfs_location": dfs_location, "seranking_source": seranking_source, "lower": lower, "upper": upper,
               "list": as_list, "at_least": at_least, "at_most": at_most, "ceil_to": ceil_to, "linkedin_handle": linkedin_handle, "linkedin_url": linkedin_url,
               "x_post_id": x_post_id, "linkedin_job_id": linkedin_job_id, "reddit_post_id": reddit_post_id,

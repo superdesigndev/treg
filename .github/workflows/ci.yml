@@ -80,8 +80,8 @@ jobs:
         if: steps.docs.outputs.only != 'true'
         run: shellcheck .github/scripts/*.sh
       - name: Validate the catalog
-        if: steps.docs.outputs.only != 'true'
-        # The whole catalog, not the slices the tests exercise: a catalog data PR is gated here.
+        # The required unchanged check validates the full catalog on pull requests and merge groups.
+        if: github.event_name == 'push' && steps.docs.outputs.only != 'true'
         run: uv run --locked python scripts/catalog_validate.py
       - name: Run tests
         if: steps.docs.outputs.only != 'true'
@@ -147,6 +147,7 @@ jobs:
           tests/test_ledger.py
           tests/test_ledger_claim_review.py
           tests/test_money_lock_order.py
+          tests/test_money_allowance.py
           tests/test_money_admission.py
           tests/test_money_admission_application.py
           tests/test_money_admission_postgres.py

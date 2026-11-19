@@ -80,12 +80,11 @@ treg call fishaudio.voices.discover --query self=false --query licensed=false --
 treg resources list --provider fishaudio --kind voice
 ```
 
-With your own Fish key, requests remain an unrestricted, unmetered upstream relay and Fish owns the
-account boundary.
+With your own Fish key, requests are an unmetered upstream relay and Fish owns the account boundary.
 
 A client written for a provider's own API can switch by its base URL alone: `https://treg.to/call/<provider>` in place of the provider's base URL (`https://api.dataforseo.com/v3` → `https://treg.to/call/dataforseo`) runs the catalog tool on that method and path exactly as `/call/<id>` would; a path the catalog does not list is a 404, never relayed.
 
-Catalog tool inputs are described by `treg catalog get <id>`. Tools marked `strict_query` reject undeclared or repeated query parameters, unsupported values and request bodies. Send each declared single-valued parameter once, and a row count such as `limit` as a whole number within its stated maximum: a tool that enforces this answers a 400 `catalog_parameter_invalid` naming the parameter, and nothing is charged.
+Catalog tool inputs are described by `treg catalog get <id>`. Tools marked `strict_query` reject undeclared or repeated query parameters, unsupported values and request bodies. Send each declared parameter within its declared type, allowed values and range, each single-valued one once, and a row count such as `limit` as a whole number within its stated maximum: a tool that enforces this answers a 400 `catalog_parameter_invalid` naming the parameter, and nothing is charged. Undeclared fields are forwarded as sent.
 
 Your token identifies you on every call (`X-Treg-Token` header) and is the same for all tools.
 Discover what your team has shared: `treg tool ls` · check credential health: `treg health`.
@@ -113,6 +112,7 @@ Ready-made recipes your agent runs end to end, every call through treg:
 | [`web-access`](skills/web-access/SKILL.md) | When your agent's own web tools fall short, read the live web without local scrapers: free search and page reads first, then the right platform job for social, stores, reviews, maps and papers, with treg falling back to the next vendor when one fails |
 | [`lead-signals`](skills/lead-signals/SKILL.md) | Find in-market buyers from public signals (complaints, job changes, hiring, funding, tool adoption) and monitor a topic, competitor or account list for them ([treg.to/leads-signals](https://treg.to/leads-signals)) |
 | [`recruit`](skills/recruit/SKILL.md) | Turn a LinkedIn job post into a ranked shortlist: criteria from the post, people search, filters with reasons, one line on why each fits, cited evidence (posts, GitHub, talks, tenure, job change) under a per-candidate spend cap, then a checked personal email and phone, with a run file of counts, evidence and the vendor trail per candidate |
+| [`doomscroll`](skills/doomscroll/SKILL.md) | Catch up on any topic over the last hours: the best posts, clips and reactions from X, TikTok, YouTube, Reddit, Hacker News and Product Hunt, grouped into stories with links, only what is new since the last scroll |
 | [`make-ugc`](skills/make-ugc/SKILL.md) | Make AI UGC videos: trending hooks, a presenter, talking-head clips, captions ([treg.to/ugc](https://treg.to/ugc)) |
 | [`jev-memory`](skills/jev-memory/SKILL.md) | Give Claude Code a memory: a Claude Code mod where Jev judges each prompt after the turn and keeps your lasting preferences, installed ready-made or built from one prompt ([the mod](examples/claude-code-mods/jev-memory)) |
 

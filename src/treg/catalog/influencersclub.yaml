@@ -123,7 +123,7 @@ endpoints:
     input:
       body:
         platform: {type: string, required: true, note: "the platform all the creators are on", example: "instagram"}
-        creators: {type: "array[string]", required: true, note: "2 to 10 handles", example: ["nasa", "spacex"]}
+        creators: {type: array, items: {type: string}, required: true, note: "2 to 10 handles", example: ["nasa", "spacex"]}
       note: "returns per-creator overlap and unique-audience percentages plus report totals (total_followers, total_unique_followers). The body echoes credits_cost and credits_left. One flat credit whether you compare 2 creators or 10 — batch the comparison"
     test_request:
       body: {platform: "instagram", creators: ["nasa", "spacex"]}

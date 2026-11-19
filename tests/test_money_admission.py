@@ -825,16 +825,16 @@ async def test_metrics_are_fixed_dimension_and_execution_excludes_wait_and_clean
 async def test_non_reserve_keeps_waiting_past_the_reserve_budget_for_the_lease(gate, operation):
     settings, store = gate
     settings.money_admission_wait_s = 0.02
-    store.values["money-admission:org:7"] = ("another-owner", time.monotonic() + 0.1)
+    store.values["money-admission:org:7"] = ("another-owner", time.monotonic() + 0.15)
     started = time.monotonic()
     async with admission.admit([7], operation=operation):
-        assert time.monotonic() - started >= 0.09
+        assert time.monotonic() - started >= 0.14
         assert store.values["money-admission:org:7"][0] != "another-owner"
     assert not store.values
     [row] = completed()
     assert row["mode"] == "redis" and row["operation"] == operation
     assert row["fallback_wait_timeout"] == 0
-    assert row["wait_max_ms"] >= 90 and row["wait_bucket_le_100_ms"] == 0
+    assert row["wait_max_ms"] >= 140 and row["wait_bucket_le_100_ms"] == 0
 
 
 @pytest.mark.parametrize("operation", ["close", "deferred", "release", "async", "hub"])
@@ -874,6 +874,18 @@ async def test_caller_cap_is_a_hard_bound_on_the_extended_wait(gate, max_wait_s,
     assert floor <= elapsed < settings.money_admission_wait_s
     [row] = completed()
     assert row["mode"] == "fallback" and row["fallback_wait_timeout"] == 1
+
+
+async def test_a_caller_that_can_come_back_is_refused_at_its_cap_instead_of_falling_back(gate):
+    settings, store = gate
+    store.values["money-admission:org:7"] = ("another-owner", time.monotonic() + 10)
+    with pytest.raises(admission.AdmissionTimeout, match="wait_timeout"):
+        async with admission.admit([7], operation="close", max_wait_s=0.05,
+                                   refuse_on_timeout=True):
+            pytest.fail("a refused wait must not enter its money session")
+    assert store.values["money-admission:org:7"][0] == "another-owner"
+    [row] = completed()
+    assert row["rejected"] == 1 and row["failed"] == row["fallback_wait_timeout"] == 0
 
 
 async def test_settlement_wait_leaves_half_the_hold_grace_for_the_session(gate):
