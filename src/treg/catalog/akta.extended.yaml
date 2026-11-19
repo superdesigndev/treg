@@ -24,6 +24,7 @@ endpoints:
         example: canva.com
       products:
         type: array
+        items: {type: string}
         required: false
         note: product_id values to fetch reviews for (repeat the param per id); omitted → returns the free product list only, no reviews
       limit:

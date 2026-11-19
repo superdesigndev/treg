@@ -35,8 +35,8 @@ endpoints:
     input:
       bodyType: json
       body:
-        url_to_scrape: {type: string, required: true, format: uri, example: "https://example.com"}
-        formats: {type: "array[string]", required: false, minItems: 1, maxItems: 4, enum: [html, markdown, text, screenshot], example: [markdown], note: "Structured parsers, JSON extraction and llm_extract are deliberately excluded because they have separate variable credit prices."}
+        url_to_scrape: {type: string, required: true, format: url, example: "https://example.com"}
+        formats: {type: array, items: {type: string, enum: [html, markdown, text, screenshot]}, required: false, minItems: 1, maxItems: 4, example: [markdown], note: "Structured parsers, JSON extraction and llm_extract are deliberately excluded because they have separate variable credit prices."}
         max_age: {type: integer, required: false, default: 0, min: 0, max: 604800, note: "Reuse an Olostep scrape no older than this many seconds; 0 requests a fresh scrape."}
         remove_images: {type: boolean, required: false, default: false}
         transformer: {type: string, required: false, enum: [postlight, none]}
@@ -45,8 +45,8 @@ endpoints:
           required: false
           properties:
             query_to_order_links_by: {type: string, required: false}
-            include_links: {type: "array[string]", required: false}
-            exclude_links: {type: "array[string]", required: false}
+            include_links: {type: array, items: {type: string}, required: false}
+            exclude_links: {type: array, items: {type: string}, required: false}
       note: "This is the fixed one-credit surface. Olostep parsers and LLM extraction are not accepted by this catalog tool; a team can call them directly through its own raw Olostep tool."
     test_request:
       body: {url_to_scrape: "https://example.com", formats: [markdown], max_age: 604800}
@@ -82,8 +82,8 @@ endpoints:
       body:
         query: {type: string, required: true, example: "Olostep API documentation"}
         limit: {type: integer, required: false, default: 12, min: 1, max: 25, example: 5}
-        include_domains: {type: "array[string]", required: false, maxItems: 20}
-        exclude_domains: {type: "array[string]", required: false, maxItems: 20}
+        include_domains: {type: array, items: {type: string}, required: false, maxItems: 20}
+        exclude_domains: {type: array, items: {type: string}, required: false, maxItems: 20}
         fast_mode: {type: boolean, required: false, default: false}
       note: "The five-credit base search is exposed. scrape_options is deliberately excluded because it adds one or more scrape credits for every returned page."
     test_request:
@@ -152,12 +152,12 @@ endpoints:
     input:
       bodyType: json
       body:
-        url: {type: string, required: true, format: uri, example: "https://docs.olostep.com"}
+        url: {type: string, required: true, format: url, example: "https://docs.olostep.com"}
         search_query: {type: string, required: true, example: "billing and credit documentation"}
         top_n: {type: integer, required: true, min: 1, max: 1000, example: 10, note: "The 1,000-URL cap keeps this request inside Olostep's first one-credit map band."}
         include_subdomain: {type: boolean, required: false, default: true}
-        include_urls: {type: "array[string]", required: false}
-        exclude_urls: {type: "array[string]", required: false}
+        include_urls: {type: array, items: {type: string}, required: false}
+        exclude_urls: {type: array, items: {type: string}, required: false}
       note: "Olostep bills one credit for the first 1,000 returned URLs and another credit per additional 1,000. Requiring top_n <= 1,000 makes the platform hold exact. Unbounded mapping is available through a team's own raw Olostep tool."
     test_request:
       body: {url: "https://docs.olostep.com", search_query: "billing and credits", top_n: 3}
@@ -183,12 +183,12 @@ endpoints:
     input:
       bodyType: json
       body:
-        start_url: {type: string, required: true, format: uri, example: "https://example.com"}
+        start_url: {type: string, required: true, format: url, example: "https://example.com"}
         max_pages: {type: integer, required: true, min: 1, max: 100, example: 10, note: "treg reserves this many one-credit pages before submission; shared-key crawls are capped at 100 pages ($0.20 at the platform rate)."}
         max_depth: {type: integer, required: false, min: 0, max: 10, example: 2}
         follow_robots_txt: {type: boolean, required: true, enum: [true], note: "Catalog crawls always respect robots.txt."}
-        include_urls: {type: "array[string]", required: false}
-        exclude_urls: {type: "array[string]", required: false}
+        include_urls: {type: array, items: {type: string}, required: false}
+        exclude_urls: {type: array, items: {type: string}, required: false}
         include_external: {type: boolean, required: false, default: false}
         include_subdomain: {type: boolean, required: false, default: false}
         search_query: {type: string, required: false}
@@ -198,7 +198,7 @@ endpoints:
           type: object
           required: false
           properties:
-            formats: {type: "array[string]", required: false, minItems: 1, maxItems: 4, enum: [html, markdown, text, screenshot]}
+            formats: {type: array, items: {type: string, enum: [html, markdown, text, screenshot]}, required: false, minItems: 1, maxItems: 4}
       note: "Webhooks, follow_robots_txt=false and structured parsers are deliberately excluded. Use olostep.web.crawl.results with formats=markdown or html to read completed content."
     test_request:
       body: {start_url: "https://example.com", max_pages: 1, max_depth: 0, follow_robots_txt: true}
@@ -262,7 +262,7 @@ endpoints:
         cursor: {type: integer, required: false, min: 0}
         limit: {type: integer, required: false, min: 1, max: 50, example: 10}
         search_query: {type: string, required: false}
-        formats: {type: "array[string]", required: false, minItems: 1, maxItems: 2, enum: [html, markdown], example: [markdown], note: "Olostep marks inline formats deprecated in favor of /v1/retrieve, but this owned read keeps shared-account content accessible without exposing untracked retrieve_ids."}
+        formats: {type: array, items: {type: string, enum: [html, markdown]}, required: false, minItems: 1, maxItems: 2, example: [markdown], note: "Olostep marks inline formats deprecated in favor of /v1/retrieve, but this owned read keeps shared-account content accessible without exposing untracked retrieve_ids."}
       note: "Use cursor until it is absent. The 50-row page cap plus Olostep's own 10 MB response cap bounds each read."
     test_request:
       pathParams: {crawl_id: "crawl_wp3m5fl4sf"}

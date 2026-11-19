@@ -88,7 +88,7 @@ endpoints:
     summary: Return one page of LinkedIn ads for one company or LinkedIn page.
     input:
       body:
-        company_domain: {type: string, required: true, example: hubspot.com}
+        company_domain: {type: string, required: false, example: hubspot.com}
         linkedin_page_id: {type: string, required: false}
         continuation_token: {type: string, required: false}
         extract: {type: string, required: false, enum: [number_of_ads]}

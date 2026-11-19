@@ -3419,7 +3419,6 @@ adapters:
     in: {url: body.url}
     const: {body.formats: {markdown: true}}
     out: {pages: "list(.)", count: "len(list(.))"}
-    miss: "choose(wall_page(markdown.data), true, coalesce(markdown.data, '') == '')"
 
   search1api.web.sitemap:
     accepts: [[url]]
