@@ -39,7 +39,7 @@ def test_decisions_catalog_contract():
     endpoint = catalog.by_id[ENDPOINT]
     assert endpoint["capability"] == "ai-judge.decide"
     assert (endpoint["method"], endpoint["path"]) == ("POST", "/v1/decisions")
-    assert endpoint["input"]["body"]["state"]["type"] == "any"
+    assert endpoint["input"]["body"]["state"]["type"] == ["array", "boolean", "number", "object", "string"]
     assert endpoint["input"]["body"]["questions"]["type"] == "object"
     assert endpoint["input"]["body"]["include_excerpts"]["default"] is True
     assert endpoint["cost"]["value"] == 0.001

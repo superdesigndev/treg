@@ -20,7 +20,7 @@ endpoints:
     input:
       bodyType: json
       body:
-        state: {type: any, required: true, example: {company: "Parallel", website: "https://parallel.ai"}, note: "Any JSON value shared by all questions. State plus the largest question is limited to 32,000 estimated input tokens."}
+        state: {type: [array, boolean, number, object, string], items: {type: [array, boolean, number, object, string]}, required: true, example: {company: "Parallel", website: "https://parallel.ai"}, note: "Any JSON value shared by all questions. State plus the largest question is limited to 32,000 estimated input tokens."}
         questions: {type: object, required: true, example: {has_api: {type: noul, instructions: "Does Parallel offer an API?"}}, note: "1–100 names matching [A-Za-z0-9_-]+. Each value has type noul, choice or score and instructions. Noul may include criteria {true, false}; choice requires 2–255 named option descriptions; score requires 2–10 ordered level descriptions. Each rendered question is limited to 5,000 characters."}
         mode: {type: string, required: false, default: fast, enum: [fast], note: "Only fast mode is currently supported."}
         include_excerpts: {type: boolean, required: false, default: true, note: "False keeps citation URLs and titles but returns empty excerpts arrays."}
