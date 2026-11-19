@@ -10,7 +10,7 @@ from pathlib import Path
 import pytest
 
 from treg import archive, archive_bodies, bootstrap
-from treg.application import billing, asynctasks as task_app
+from treg.application import billing, asynctasks as task_app, compare as compare_app
 from treg.application.hub import runner as hub_runner
 from treg.application.call import allowance as call_allowance
 from treg.application.call import authorize, overflow, reserve, route, service, settle
@@ -173,6 +173,12 @@ _DATAPLANE_DERIVED_WRITES = {
         (call_allowance._ChargeWriter._write_team, "allowance.record_charges"),
         (call_allowance._ChargeWriter._write_team, "archive.note_org_uses_in_transaction"),
     ),
+    # A successful routed answer that samples in for a pairwise comparison leaves a short-lived
+    # marker in the shared store (one bounded write, no database); the hourly worker reads it.
+    "comparison_marker": (
+        (service._execute_call, "compare_app.mark_eligible"),
+        (compare_app.mark_eligible, "store.set_flag"),
+    ),
 }
 _EXPECTED_DATAPLANE_WRITES = frozenset({
     "org_endpoint_quota",
@@ -198,6 +204,7 @@ _EXPECTED_DATAPLANE_WRITES = frozenset({
     "allowance_counter",
     "allowance_hold_refill",
     "allowance_call_charge",
+    "comparison_marker",
 })
 _DERIVED_WRITE_FILES = {
     _SRC / "application" / "asynctasks.py": {"money_admission.admit"},
@@ -242,7 +249,9 @@ _DERIVED_WRITE_FILES = {
     },
     _SRC / "domain" / "capacity" / "rate_observe.py": {"provider_rate.admit", "provider_rate.release"},
     _SRC / "infra" / "provider_rate.py": {"store.rate_window", "store.release_slot"},
+    _SRC / "application" / "compare.py": {"store.set_flag"},
     _SRC / "application" / "call" / "service.py": {
+        "compare_app.mark_eligible",
         "org_endpoint_quota.admit",
         "fair_share.acquire",
         "rate_observe.observe",
@@ -264,6 +273,11 @@ _DERIVED_WRITE_FILES = {
     _SRC / "domain" / "money" / "__init__.py": {"reap_stale_holds", "release", "MemberSpend"},
 }
 _EXPECTED_DERIVED_WRITE_SITES = {
+    ("application/call/service.py", "_execute_call", "compare_app.mark_eligible"),
+    ("application/compare.py", "mark_eligible", "store.set_flag"),
+    # off the call path: the worker's ready flag, and the API's look after clearing it
+    ("application/compare.py", "_one", "store.set_flag"),
+    ("application/compare.py", "_flag_after_none", "store.set_flag"),
     ("application/call/allowance.py", "_drain", "allowance.close_allowance_in_transaction"),
     ("application/call/allowance.py", "_drain", "money_admission.admit"),
     ("application/call/allowance.py", "_drain", "store.allowance_drop"),

@@ -86,27 +86,30 @@ async def _org_id(clients) -> int:
 
 
 async def _routed_call(org_id: int, q: str, *, a: str = "tavily", answer: dict | None = None,
-                       tier: str = "platform", minutes_ago: float = 5, archived: bool = True) -> str:
-    """A routed web.search parent and its served child, with the child's request and answer in
-    the archive, as a real routed call leaves them."""
+                       tier: str = "platform", minutes_ago: float = 5, archived: bool = True,
+                       capability: str = "web.search", given: dict | None = None,
+                       marked: bool = True) -> str:
+    """A routed parent and its served child, with the child's request and answer in the archive,
+    and the call path's eligibility marker, as a real sampled routed call leaves them."""
     cat = catalog_store.load()
-    eid = f"{a}.web.search"
+    eid = next(e["id"] for e in cat.for_capability(capability)
+               if e["provider"] == a and e["id"] in cat.adapters)
     adapter = cat.adapters[eid]
-    identity, _ = canonical_identity(cat.contracts["web.search"], {"q": q})
+    identity, _ = canonical_identity(cat.contracts[capability], given or {"q": q})
     query, body = adapter.to_upstream(identity, adapter_accepts(adapter, identity))
     ref = uuid.uuid4().hex
     at = utcnow_naive() - timedelta(minutes=minutes_ago)
     async with session_maker() as db:
-        db.add(CallRecord(org_id=org_id, user_email="tim@superdesign.dev", tool_name="treg.web.search",
-                          method="POST", path="/search", status_code=200, endpoint_id="treg.web.search",
+        db.add(CallRecord(org_id=org_id, user_email="tim@superdesign.dev", tool_name=f"treg.{capability}",
+                          method="POST", path="/x", status_code=200, endpoint_id=f"treg.{capability}",
                           provider="treg", credential_tier="routed", call_ref=ref, created_at=at))
         child = CallRecord(org_id=org_id, user_email="tim@superdesign.dev", tool_name=eid, method="POST",
-                           path="/search", status_code=200, endpoint_id=eid, provider=a,
+                           path="/x", status_code=200, endpoint_id=eid, provider=a,
                            credential_tier=tier, call_ref=f"{ref}:r1", created_at=at)
         db.add(child)
         if archived:
             key = ArchiveKey(key_hash=f"key-{ref}", endpoint_id=eid,
-                             req_url=f"https://api.{a}.example/search?{urlencode(query)}",
+                             req_url=f"https://api.{a}.example/x?{urlencode(query)}",
                              req_body=json.dumps(body).encode())
             db.add(key)
             await db.flush()
@@ -114,6 +117,8 @@ async def _routed_call(org_id: int, q: str, *, a: str = "tavily", answer: dict |
                                    body=json.dumps(answer or {"tavily": TAVILY_HIT, "exa": EXA_HIT}[a]).encode()))
             child.archive_key_hash, child.archive_content_hash = key.key_hash, f"body-{ref}"
         await db.commit()
+    if marked:
+        await kv.store().set_flag(compare.marker_key(ref), compare.MARKER_TTL_S)
     return ref
 
 
@@ -188,10 +193,10 @@ async def test_a_recent_routed_call_gets_a_ready_pair(clients, search_on, monkey
 
 @pytest.mark.parametrize("case", ["opt_out", "demo", "deny_rule", "tool_acl", "pinned_member",
                                   "capability_pin", "not_in_pair", "own_key", "not_archived",
-                                  "too_old", "not_sampled"])
+                                  "too_old", "no_marker", "store_down", "suspended", "paused",
+                                  "expression_field"])
 async def test_calls_that_are_never_compared(clients, search_on, monkeypatch, case):
-    _compare_on(monkeypatch, pairs={"web.search": [["tavily", "parallel"]]} if case == "not_in_pair" else PAIR,
-                compare_rate=0.0001 if case == "not_sampled" else 1.0)
+    _compare_on(monkeypatch, pairs={"web.search": [["tavily", "parallel"]]} if case == "not_in_pair" else PAIR)
     sent = _relay_b(monkeypatch)
     org_id = await _org_id(clients)
     async with session_maker() as db:
@@ -211,10 +216,38 @@ async def test_calls_that_are_never_compared(clients, search_on, monkeypatch, ca
         elif case == "capability_pin":
             db.add(CapabilityPin(org_id=org_id, capability="web.search", provider="tavily"))
         await db.commit()
+    if case == "store_down":
+        async def unknown(key):
+            return False  # what `has_flag` answers when the store cannot
+        monkeypatch.setattr(kv.store(), "has_flag", unknown)
+    if case in ("suspended", "paused"):
+        # Revoked after the run picked the call, before it is sent: checked again right then.
+        real = compare._b_target
+
+        def then_revoke(*a, **kw):
+            nonlocal_state.append(True)
+            return real(*a, **kw)
+        nonlocal_state: list = []
+        monkeypatch.setattr(compare, "_b_target", then_revoke)
+        if case == "suspended":
+            async with session_maker() as db:
+                (await db.get(Org, org_id)).suspended = True
+                await db.commit()
+        else:
+            from treg.infra import org_flow_control
+
+            async def paused(org, ref=None):
+                raise org_flow_control.PauseRejected(retry_after_s=60, version=1)
+            monkeypatch.setattr(org_flow_control, "check", paused)
     await _routed_call(org_id, f"never {case}", tier="credential" if case == "own_key" else "platform",
-                       archived=case != "not_archived", minutes_ago=600 if case == "too_old" else 5)
+                       archived=case != "not_archived", minutes_ago=600 if case == "too_old" else 5,
+                       marked=case != "no_marker",
+                       # `max_results` comes from `limit` by expression: a request it cannot be read back from
+                       given={"q": "never expression", "limit": 5} if case == "expression_field" else None)
     result = await _collect()
     assert sent == [] and await _rows() == [], result
+    if case in ("suspended", "paused"):
+        assert nonlocal_state, "the call got as far as the last check"
 
 
 async def test_per_run_and_per_day_limits(clients, search_on, monkeypatch):
@@ -313,31 +346,72 @@ async def test_a_team_deleted_during_the_run_gets_no_row(clients, search_on, mon
     assert len(sent) == 1 and await _rows() == []
 
 
-async def test_a_row_inserted_as_the_team_goes_is_taken_back(clients, monkeypatch):
+async def test_a_row_settled_as_the_team_goes_is_taken_back(clients, monkeypatch):
     from contextlib import asynccontextmanager
 
-    from treg.domain.governance import teams
-
     org_id = await _org_id(clients)
+    values = dict(org_id=org_id, user_email="x@example.com", call_ref="racing", capability="web.search",
+                  a_endpoint="tavily.web.search", a_provider="tavily", b_provider="exa")
+    assert await compare._claim(session_maker, values, compare._day(), 5) == "claimed"
     opened = [0]
 
     @asynccontextmanager
     async def sessions():
         opened[0] += 1
-        if opened[0] == 2:  # the team is deleted between the insert and the look after it
+        if opened[0] == 2:  # the team row goes between the settle and the look after it
             async with session_maker() as db:
-                await teams.cascade_delete_org(await db.get(Org, org_id), db)
+                from sqlalchemy import text
+                await db.execute(text("DELETE FROM membership WHERE org_id = :o"), {"o": org_id})
+                await db.execute(text("DELETE FROM org WHERE id = :o"), {"o": org_id})
                 await db.commit()
         async with session_maker() as db:
             yield db
-    values = dict(org_id=org_id, user_email="x@example.com", call_ref="racing", capability="web.search",
-                  a_endpoint="tavily.web.search", a_provider="tavily", b_provider="exa")
-    assert not await compare._insert(sessions, values)
+    assert not await compare._finish(sessions, org_id, "racing", {"status": "failed"})
     assert await _rows() == []
 
 
-async def test_rows_of_a_deleted_team_are_removed_by_the_next_run(clients, search_on, monkeypatch):
+async def test_concurrent_runs_send_once(clients, search_on, monkeypatch):
+    import asyncio
+
     _compare_on(monkeypatch)
+    sent = _relay_b(monkeypatch)
+    await _routed_call(await _org_id(clients), "two runs at once")
+    await asyncio.gather(_collect(), _collect())
+    assert len(sent) == 1 and len(await _rows()) == 1
+
+
+async def test_a_claim_left_by_a_crash_is_never_resent_and_still_counts(clients, search_on, monkeypatch):
+    _compare_on(monkeypatch, compare_max_per_day=1)
+    sent = _relay_b(monkeypatch)
+    org_id = await _org_id(clients)
+    ref = await _routed_call(org_id, "crashed after the claim")
+    values = dict(org_id=org_id, user_email="x@example.com", call_ref=ref, capability="web.search",
+                  a_endpoint="tavily.web.search", a_provider="tavily", b_provider="exa")
+    assert await compare._claim(session_maker, values, compare._day(), 1) == "claimed"
+    await _routed_call(org_id, "the next call")
+    assert (await _collect())["status"] == "at_limit"
+    assert sent == [] and [r.status for r in await _rows()] == ["pending"]
+
+
+async def test_deleting_a_team_gives_no_quota_back(clients, search_on, monkeypatch):
+    from treg.domain.governance import teams
+
+    _compare_on(monkeypatch, compare_max_per_day=1)
+    sent = _relay_b(monkeypatch)
+    other = (await clients.post("/orgs", json={"name": "Leaving team"})).json()
+    await _routed_call(other["org_id"], "the day's one call")
+    assert (await _collect())["called"] == 1
+    async with session_maker() as db:
+        await teams.cascade_delete_org(await db.get(Org, other["org_id"]), db)
+        await db.commit()
+    assert await _rows() == []
+    await _routed_call(await _org_id(clients), "after the deletion")
+    assert (await _collect())["status"] == "at_limit" and len(sent) == 1
+
+
+@pytest.mark.parametrize("off", [{}, {"compare_pairs": ""}, {"compare_max_per_day": 0}])
+async def test_rows_of_a_deleted_team_are_removed_by_every_run(clients, search_on, monkeypatch, off):
+    _compare_on(monkeypatch, **off)
     _relay_b(monkeypatch)
     async with session_maker() as db:
         db.add(CallComparison(org_id=987654, user_email="gone@example.com", call_ref="orphan",
@@ -571,3 +645,106 @@ async def test_the_worker_command_runs_one_collect(clients, monkeypatch, capsys)
     monkeypatch.setattr(compare, "collect", collect)
     assert await worker._compare_collect(argparse.Namespace(max_seconds=5.0)) == 0
     assert asked == [{"max_seconds": 5.0}] and json.loads(capsys.readouterr().out) == {"status": "off"}
+
+
+
+# The call path's marker
+
+@pytest.mark.parametrize("header", [None, "X-Treg-Route-Exclude", "X-Treg-Route-Prefer",
+                                    "X-Treg-Route-Max-Cost", "X-Treg-Route-Waterfall", "X-Treg-Route-Anything"])
+async def test_a_routed_call_is_marked_only_without_route_headers(clients, search_on, monkeypatch, header):
+    from test_routing import _relay_by_provider
+
+    _compare_on(monkeypatch)
+    monkeypatch.setattr(call_service, "relay", _relay_by_provider(
+        {"tavily": [(200, TAVILY_HIT)] * 3, "exa": [(200, EXA_HIT)] * 3}, []))
+    value = {"X-Treg-Route-Exclude": "parallel", "X-Treg-Route-Prefer": "tavily,exa",
+             "X-Treg-Route-Max-Cost": "0.5", "X-Treg-Route-Waterfall": "1"}.get(header, "x")
+    response = await clients.post("/call/treg.web.search", json={"q": f"marked {header}"},
+                                  headers={header: value} if header else {})
+    assert response.status_code == 200, response.text
+    assert "compare" not in response.text
+    marked = await kv.store().has_flag(compare.marker_key(response.headers["X-Treg-Call-Id"]))
+    assert marked is (header is None)
+
+
+async def test_the_marker_is_off_with_the_feature_and_follows_the_sample(clients, search_on, monkeypatch):
+    from test_routing import _relay_by_provider
+
+    monkeypatch.setattr(call_service, "relay", _relay_by_provider(
+        {"tavily": [(200, TAVILY_HIT)] * 3, "exa": [(200, EXA_HIT)] * 3}, []))
+    off = await clients.post("/call/treg.web.search", json={"q": "feature off"})
+    assert not await kv.store().has_flag(compare.marker_key(off.headers["X-Treg-Call-Id"]))
+    _compare_on(monkeypatch, compare_rate=0.0)
+    unsampled = await clients.post("/call/treg.web.search", json={"q": "not sampled"})
+    assert not await kv.store().has_flag(compare.marker_key(unsampled.headers["X-Treg-Call-Id"]))
+
+
+async def test_a_store_fault_on_the_marker_never_touches_the_answer(clients, search_on, monkeypatch):
+    from test_routing import _relay_by_provider
+
+    _compare_on(monkeypatch)
+    monkeypatch.setattr(call_service, "relay", _relay_by_provider(
+        {"tavily": [(200, TAVILY_HIT)] * 3, "exa": [(200, EXA_HIT)] * 3}, []))
+
+    async def broken(*a, **kw):
+        raise RuntimeError("store down")
+    monkeypatch.setattr(kv.store(), "set_flag", broken)
+    response = await clients.post("/call/treg.web.search", json={"q": "store down"})
+    assert response.status_code == 200 and response.json()["output"]["results"]
+
+
+async def test_a_json_credential_vendor_through_the_real_relay(monkeypatch, fake_getaddrinfo):
+    """B's key goes in the JSON body (`location: json`): the real relay injects it from the body
+    the worker hands over (`body_read`), and only the network is stubbed. No routed capability
+    pairs this vendor today, so B's target and its one request are exercised directly."""
+    monkeypatch.setenv("TREG_PLATFORM_KEY_ADYNTEL", "PLATFORM-ADYNTEL")
+    monkeypatch.setenv("TREG_PLATFORM_PROVIDERS", "adyntel")
+    get_settings.cache_clear()
+    try:
+        cat = catalog_store.load()
+        contract = cat.contracts["meta-ads.library.advertiser"]
+        identity, _ = canonical_identity(contract, {"company_domain": "bakery.example"})
+        # Its account also needs the email setting: without it B is skipped, never half-sent.
+        assert compare._b_target(contract, identity, "adyntel") is None
+        monkeypatch.setenv("TREG_PLATFORM_EMAIL_ADYNTEL", "ops@example.com")
+        get_settings.cache_clear()
+        fake_getaddrinfo({"api.adyntel.com": ["93.184.215.14"]})
+        seen = []
+
+        async def vendor(request: httpx.Request) -> httpx.Response:
+            seen.append((request, await request.aread()))
+            body = json.dumps({"results": [{"page_name": "Bakery", "ad": "Fresh bread"}]}).encode()
+            return httpx.Response(200, headers={"content-type": "application/json"},
+                                  stream=httpx.ByteStream(body))
+        target = compare._b_target(contract, identity, "adyntel")
+        assert target is not None and target.ep["id"] == "adyntel.meta-ads.library.advertiser"
+        async with httpx.AsyncClient(transport=httpx.MockTransport(vendor)) as client:
+            status, raw = await compare._ask_b(target, client)
+        assert status == 200
+        (request, content), = seen
+        assert request.url.host == "api.adyntel.com"
+        sent = json.loads(content)
+        assert sent["company_domain"] == "bakery.example" and sent["api_key"] == "PLATFORM-ADYNTEL"
+        assert sent["email"] == "ops@example.com"
+        output = compare._output(target.ep, contract, target.adapter, status, raw, identity)
+        assert output["ads"] == [{"page_name": "Bakery", "ad": "Fresh bread"}]
+    finally:
+        get_settings.cache_clear()
+
+
+async def test_a_relay_error_fails_one_comparison_and_the_run_goes_on(clients, search_on, monkeypatch):
+    _compare_on(monkeypatch)
+    calls = []
+
+    async def relay(request, upstream_url, *a, **kw):
+        calls.append(upstream_url)
+        if len(calls) == 1:
+            raise ValueError("credential injection failed")
+        raise httpx.ConnectError("down")
+    monkeypatch.setattr(compare, "relay", relay)
+    org_id = await _org_id(clients)
+    await _routed_call(org_id, "first")
+    await _routed_call(org_id, "second")
+    result = await _collect()
+    assert (result["called"], result["failed"]) == (2, 2) and len(calls) == 2

@@ -190,7 +190,7 @@ class Settings(BaseSettings):
     mark_hint_texts: list[str] = Field(default_factory=list)
     # Pairwise comparisons (application/compare.py, docs feedback.md "Pairwise comparisons"): the
     # hourly `treg-worker compare collect` run asks the other vendor of a configured pair the input
-    # of a sampled recent routed call, on treg's key, and the team's agent is later invited to judge
+    # of a recent routed call the call path marked as sampled, on treg's key, and the team's agent is later invited to judge
     # the two answers blinded. Off unless pairs are set and `compare_max_per_day` is above 0.
     # JSON: capability -> list of unordered provider pairs, e.g.
     # {"web.search": [["provider-a", "provider-b"]]}.
@@ -199,8 +199,9 @@ class Settings(BaseSettings):
     # Second-vendor calls one run makes, and all runs of one UTC day together (counted in the table).
     compare_max_per_run: int = Field(default=20, ge=0)
     compare_max_per_day: int = Field(default=0, ge=0)
-    # How far back a run looks for routed calls.
-    compare_lookback_hours: int = Field(default=2, ge=1, le=72)
+    # How far back a run looks for routed calls; never past the life of a call's eligibility
+    # marker (`compare.MARKER_TTL_S`, two hours).
+    compare_lookback_hours: int = Field(default=2, ge=1, le=2)
     # Compare invitations a team receives per hour.
     compare_budget_per_hour: int = Field(default=3, ge=1)
     # A team holding this many comparisons of one capability and pair in the window is not sampled.
