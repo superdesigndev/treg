@@ -143,7 +143,7 @@ export default {
     },
     // The landing page's first-screen glyph field (/media/landing/hero-particles.js), mounted on
     // this page area and driven from this page's frame loop, so both first screens share one
-    // implementation. Without WebGL the field declines and the gradient behind it remains.
+    // implementation. Without hardware WebGL the field declines and the gradient behind it remains.
     mountField(){
       const mount=()=>{
         if(this._isUnmounted || !this.$refs.stage) return;

@@ -33,6 +33,7 @@ sources:
   - src/treg/web/media/landing/command-beam.js
   - src/treg/web/media/landing/SOURCES.md
   - frontend/e2e/landing.spec.ts
+  - frontend/e2e/landing-software-gl.spec.ts
   - src/treg/web/terms.html
   - src/treg/web/usecase-seo.html
   - src/treg/web/usecase-company.html
@@ -90,7 +91,7 @@ describes one grant per new verified account, not per team
 |---|---|
 | `/robots.txt` | Bundled, `{BASE}`-templated. Disallows `/app`, `/login`, `/auth/`, `/oauth/`, `/connect-demo`, `/call/`, `/mcp`, `/admin`, `/docs/api`; names the sitemap. `Disallow: /app` is a prefix rule: it also blocks any future public path starting with `/app` (e.g. `/apps`) unless a longer `Allow:` line is added. |
 | `/sitemap.xml` | Generated. Static pages take `lastmod` from file mtime, shelves from the newest mtime under `src/treg/catalog/`. |
-| `/` | Server-rendered `web/landing.html`; visuals under `web/media/landing/` (`SOURCES.md` pins the design reference and library versions; Three.js and Lenis load from version-pinned jsDelivr URLs). Reduced motion is static; WebGL or module-download failure (`gateway-loader.js`, outside the module graph) reveals the static mark; BFCache `pageshow` resumes animation. Signed-in visitors see **Open dashboard**. Session-dependent HTML is `private, no-store` with `Vary: Cookie`. `frontend/e2e/landing.spec.ts`. |
+| `/` | Server-rendered `web/landing.html`; visuals under `web/media/landing/` (`SOURCES.md` pins the design reference and library versions; Three.js and Lenis load from version-pinned jsDelivr URLs). Reduced motion is static; WebGL or module-download failure (`gateway-loader.js`, outside the module graph) reveals the static mark. A CPU-emulated GPU (`failIfMajorPerformanceCaveat`, or a SwiftShader, llvmpipe or Basic Render renderer) gets the static mark without downloading Three.js and no particle fields, since their shaders would run on the main thread at a few frames a second; BFCache `pageshow` resumes animation. Signed-in visitors see **Open dashboard**. Session-dependent HTML is `private, no-store` with `Vary: Cookie`. `frontend/e2e/landing.spec.ts`, `frontend/e2e/landing-software-gl.spec.ts`. |
 | `/catalog`, `/catalog/<slug>`, `/catalog/<slug>/<key>` | The dashboard SPA in public mode (below). `<key>` is a capability two or more providers serve on that shelf (`Catalog.compared`, `_comparison_paths`); a single-provider capability is a 404. All are sitemapped and each is fetched for a 200 in `tests/test_catalog_api.py`. |
 | `/tools/<service>` | One server-rendered page per provider (`_page`, no SPA), counts and prices live from `catalog_store`. No provider index page. Safe from shadowing the API (`/tools`, `/tools/by-name/...`). A signed-out `GET /app/marketplace/<service>` 302s here. |
 | `/agents`, `/agents/<agent>` | Agent pages (below). |
