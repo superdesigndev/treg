@@ -190,7 +190,7 @@ endpoints:
     bodyType: json
     body:
       title:
-        type: object
+        type: [object, string]
         required: false
         example:
           include:
@@ -214,7 +214,7 @@ endpoints:
           exclude: []
         note: Include/exclude string arrays; OR within include, AND across dimensions.
       company_url:
-        type: object
+        type: [object, string]
         required: false
         example:
           include:

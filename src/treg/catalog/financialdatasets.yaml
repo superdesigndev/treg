@@ -246,7 +246,7 @@ endpoints:
       queryParams:
         ticker: {type: string, required: false, note: "US stock ticker; supply ticker or cik. If availability is uncertain, call financialdatasets.filings.tickers first", example: AAPL}
         cik: {type: string, required: false, note: "SEC Central Index Key; supply ticker or cik. If availability is uncertain, call financialdatasets.filings.ciks first"}
-        filing_type: {type: "array[string]", required: false, note: "repeatable filing type. Call financialdatasets.filings.types to list supported values"}
+        filing_type: {type: array, items: {type: string}, required: false, note: "repeatable filing type. Call financialdatasets.filings.types to list supported values"}
         limit: {type: integer, required: false, min: 1, note: "default 10"}
         cursor: {type: string, required: false, note: "opaque cursor from the response next_page_url; when supplied, omit the original filters because the cursor preserves them"}
     test_request: {queryParams: {ticker: AAPL, filing_type: [10-K], limit: 1}}
@@ -412,7 +412,7 @@ endpoints:
     summary: "Screen US public companies with supported company and financial-metric filters"
     input:
       body:
-        filters: {type: array, required: true, note: "filter objects: {field, operator, value}. Call financialdatasets.financials.search.screener.filters to discover supported fields, values and operators before constructing an unfamiliar filter", example: [{field: market_cap, operator: gte, value: 100000000000}]}
+        filters: {type: array, items: {type: object}, required: true, note: "filter objects: {field, operator, value}. Call financialdatasets.financials.search.screener.filters to discover supported fields, values and operators before constructing an unfamiliar filter", example: [{field: market_cap, operator: gte, value: 100000000000}]}
         limit: {type: integer, required: false, min: 1, note: "default 10"}
     test_request: {body: {filters: [{field: ticker, operator: in, value: [AAPL]}], limit: 1}}
     cost: *standard_cost

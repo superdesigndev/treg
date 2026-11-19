@@ -132,7 +132,7 @@ endpoints:
         prompt: {type: string, required: true, note: "1-10,000 characters", example: "best running shoes for flat feet"}
         country: {type: string, required: true, note: "ISO 3166-1 alpha-2. CN, CZ, HK, IR, MO, RU and VE are refused.", example: "US"}
         state: {type: string, required: false, note: "US state code for state-level targeting; adds 2 credits", example: "CA"}
-        legacy: {type: boolean, required: true, enum: [true], note: "the desktop UI, where ads and shopping render; free"}
+        legacy: {type: boolean, required: true, note: "the desktop UI, where ads and shopping render; free"}
         disableWebSearch: {type: boolean, required: false, note: "answer from the model alone, without a web search"}
         include:
           type: object

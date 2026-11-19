@@ -116,7 +116,7 @@ The stream has no map type; they travel as JSON objects (`json` columns):
   `page` or `offset`, kept in its route summary. A page number or an offset counts only as a
   whole number. No page, `page` 1, `page0` 0, `offset` 0 and an empty or `0` cursor are the
   first page and leave `input_id` as it was.
-  On an admission-only contract, an identity field typed `list` (a count over several companies)
+  On an admission-only contract, an identity field typed `array` (a count over several companies)
   is its values' set, each normalized, sorted and joined, so the same companies in another order
   hash the same and other companies do not.
 - `input_keys`: `{field: hmac}` for every identity field present after derivation.
@@ -132,7 +132,7 @@ The stream has no map type; they travel as JSON objects (`json` columns):
   (capped length), exactly as the adapter produced them, plus `<field>_calling_code` beside every
   keyed phone (`phone_calling_code`), so a number's country is known when its provider names none.
   A direct call's answer is read as the Arena reads it (`safe_output`), except that a recorded
-  field the contract types `bool`, `int` or `float` keeps its value (`name_match`, `ported`).
+  field the contract types `boolean`, `integer` or `number` keeps its value (`name_match`, `ported`).
   A contract with a segment set that judges answers adds its row counts here (`rows`,
   `rows_company_match`, below) with `segments_version`.
 - `answer_flags`: derived from email-shaped keys: `is_role`, `free_mail`, and `domain_match`
@@ -236,8 +236,8 @@ Where an output field goes is declared on the contract (`contracts.yaml`), defau
 
 ```yaml
 output:
-  email: {type: str, required: true, analytics: key}
-  verified: {type: bool, analytics: value}
+  email: {type: string, required: true, analytics: key}
+  verified: {type: boolean, analytics: value}
 ```
 
 The parser refuses any other word, and a filter can never be a `key`. The public catalog contract
@@ -273,7 +273,7 @@ a child. It is a log line, not a column.
 | `caller_side` | `true` for `caller_auth`, `caller_balance_or_cap`, `caller_policy`, `caller_provider_account` and `payment_required` |
 | `kind` | the failure kind treg raised, or its internal `log_kind` when it has one |
 | `signal` | the provider's documented error read from its answer, per `domain/capacity/signatures.py` |
-| `parameter`, `rule` | for treg's own refusal of a request: the field (`queryParams.limit`, `body.urls.0`, or `undeclared`) and the rule it broke (`required`, `type`, `enum`, `range`, `repeat`, `undeclared`, `json`, `fixed`, `platform`, `authorization_method`, `unsupported`) |
+| `parameter`, `rule` | for treg's own refusal of a request: the field (`queryParams.limit`, `body.urls.0`, or `undeclared`) and the rule it broke (`required`, `type`, `enum`, `range`, `repeat`, `undeclared`, `json`, `fixed`, `platform`, `authorization_method`, `unsupported`, and the parameter check's `length`, `array_length` and `items:<rule>` when it refuses) |
 
 `call_errors.classify` reads the class from the failure kind (`types.FAILURE_KINDS`), else
 `refused_by`, else the provider's documented error, else the status; `tests/test_call_errors.py`

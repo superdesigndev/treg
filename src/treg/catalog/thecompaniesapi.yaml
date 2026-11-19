@@ -78,13 +78,13 @@ endpoints:
         size: {type: integer, required: false, note: "results per page, 1-100, default 10 — THIS IS THE PRICE DIAL: 1 credit per company returned", example: 1}
         page: {type: integer, required: false, note: "1-based page number, default 1"}
         search: {type: string, required: false, note: "extra free-text match on company name or domain"}
-        searchFields: {type: "array[string]", required: false, note: "which fields `search` applies to, e.g. domain, name"}
+        searchFields: {type: array, items: {type: string}, required: false, note: "which fields `search` applies to, e.g. domain, name"}
         simplified: {type: boolean, required: false, note: "reduced records for ZERO credits — always preview a new query this way before paying for it", example: true}
         domainsToExclude: {type: string, required: false, note: "comma-separated domains to drop from the results"}
         linkedinToExclude: {type: string, required: false, note: "comma-separated LinkedIn URLs to drop"}
         sortKey: {type: string, required: false, note: "field to sort by, e.g. meta.score, about.name"}
         sortOrder: {type: string, required: false, note: "asc | desc"}
-        sortFields: {type: "array[object]", required: false, note: "multiple sort criteria, stringified and URL-encoded"}
+        sortFields: {type: array, items: {type: object}, required: false, note: "multiple sort criteria, stringified and URL-encoded"}
         actionId: {type: integer, required: false, note: "scope the search to a saved action"}
       note: "POST /companies takes the identical fields as a JSON body, which is easier when the condition array is long. `searchFields` accepts about.name and domain.domain. Always set an explicit small `size` — the default of 10 bills for 10 companies. GET /companies/count returns just the match count and is widely treated as free, though that is not published"
     cost:
