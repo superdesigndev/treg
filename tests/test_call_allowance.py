@@ -659,8 +659,9 @@ async def test_a_teams_freeze_does_not_wait_for_another_teams_write(org_id, stor
     monkeypatch.setattr(runtime._ChargeWriter, "_write_team", staticmethod(second_fails))
     rows = [(allowance.Charge("over", org_id, "e.metered", 900, None, 600, epoch), None),
             (allowance.Charge("other", later_team, "e.metered", 100, None, 100, None), None)]
-    with pytest.raises(ConnectionError):
+    with pytest.raises(runtime._Unwritten) as unwritten:
         await runtime._ChargeWriter._write(rows)
+    assert unwritten.value.orgs == {later_team}
     counter = store.counters[org_id]
     assert counter["frozen"] != counter["thawed"] and await _queued(org_id) == 1
 
@@ -712,9 +713,73 @@ async def test_a_freeze_the_store_refuses_one_team_does_not_keep_another_teams_c
     monkeypatch.setattr(store, "allowance_freeze", refuses)
     rows = [(allowance.Charge("over", earlier_team, "e.metered", 900, None, 600, None), None),
             (allowance.Charge("plain", org_id, "e.metered", 100, None, 100, epoch), None)]
-    with pytest.raises(ConnectionError):
+    with pytest.raises(runtime._Unwritten) as unwritten:
         await runtime._ChargeWriter._write(rows)
+    assert unwritten.value.orgs == {earlier_team}, "the team whose freeze was not taken"
     assert await _queued(earlier_team) == 1 and await _queued(org_id) == 1
+
+
+async def test_one_teams_failed_write_leaves_another_teams_calls_confirmed(
+        org_id, store, monkeypatch):
+    """Two teams' charges share a batch and one team's write keeps failing. The other team's
+    rows are committed: its call is told so, and answers with what the ledger took, while only
+    the failing team's rows are kept to be written again."""
+    later_team = org_id + 1
+    write_team, attempts = runtime._ChargeWriter._write_team, []
+
+    async def later_team_fails(team, rows, again):
+        attempts.append((team, again))
+        if team == later_team:
+            raise ConnectionError("database away")
+        return await write_team(team, rows, again)
+
+    monkeypatch.setattr(runtime._ChargeWriter, "_write_team", staticmethod(later_team_fails))
+    monkeypatch.setattr(runtime._ChargeWriter, "_retry", lambda self: asyncio.sleep(0))
+    await _instantly(monkeypatch)
+    epoch = await runtime.take(org_id, 100)
+    writer = runtime._charges
+    ours = writer.submit(allowance.Charge("ours", org_id, "e.metered", 100, None, 100, epoch), None)
+    theirs = writer.submit(
+        allowance.Charge("theirs", later_team, "e.metered", 100, None, 100, None), None)
+    assert ((await ours).confirmed, (await theirs).confirmed) == (True, False)
+    assert ours.done() and not (await ours).took_from_balance
+    assert attempts == [(org_id, False), (later_team, False), (later_team, True)], (
+        "only the team that failed is written again")
+    assert [charge.call_id for charge, _ in writer._unconfirmed] == ["theirs"]
+    assert writer.owed == 1 and await _queued(org_id) == 1
+
+
+async def test_the_retry_writes_the_teams_it_can_and_keeps_the_rest(org_id, store, monkeypatch):
+    """Unconfirmed rows of two teams: one team's write works again, the other's still fails.
+    The first is written and forgotten; the second stays, behind anything else waiting."""
+    later_team = org_id + 1
+    write_team, failing = runtime._ChargeWriter._write_team, [True]
+
+    async def later_team_fails(team, rows, again):
+        if team == later_team and failing[0]:
+            raise ConnectionError("database away")
+        return await write_team(team, rows, again)
+
+    monkeypatch.setattr(runtime._ChargeWriter, "_write_team", staticmethod(later_team_fails))
+    await _instantly(monkeypatch)
+    async with session_maker() as db:
+        db.add(Org(id=later_team, name="later", slug=uuid4().hex))
+        await db.commit()
+    writer = runtime._charges
+    writer._unconfirmed = [
+        (allowance.Charge("theirs", later_team, "e.metered", 100, None, 100, None), None),
+        (allowance.Charge("ours", org_id, "e.metered", 100, None, 100, None), None)]
+    writer.owed = 2
+    retry = asyncio.create_task(writer._retry())
+    for _ in range(200):
+        await asyncio.sleep(0)
+        if await _queued(org_id) == 1:
+            break
+    assert await _queued(org_id) == 1 and writer.owed == 1
+    assert [charge.call_id for charge, _ in writer._unconfirmed] == ["theirs"]
+    failing[0] = False
+    await retry
+    assert writer._unconfirmed == [] and writer.owed == 0 and await _queued(later_team) == 1
 
 
 async def test_the_writer_holds_one_teams_hold_at_a_time(org_id, store):
@@ -1055,6 +1120,30 @@ async def test_a_call_finishing_beside_an_overrun_is_told_what_the_ledger_took(
         entries = {e.call_id: e for e in await ledger.entries_of(db, org_id) if e.kind == "settle"}
     assert entries["second"].amount_micro == 0
     assert entries["second"].meta["block_shortfall_micro"] == 2_000_000
+
+
+async def test_a_call_beside_an_overrun_reads_the_ledger_even_once_the_freeze_is_lifted(
+        org_id, store, monkeypatch):
+    """The same two calls, written in one batch. A refill folds both and lifts the freeze
+    before the second call is told its charge is written, so the counter no longer says that
+    the team's credit ran short. The writer does: the second call still answers 0."""
+    monkeypatch.setattr(get_settings(), "money_allowance_chunk_micro", GRANT)
+    first = await runtime.take(org_id, 3_000_000)
+    second = await runtime.take(org_id, 2_000_000)
+    freeze = store.allowance_freeze
+
+    async def frozen_then_lifted(org, **kwargs):
+        frozen = await freeze(org, **kwargs)
+        store.counters[org]["thawed"] = frozen
+        return frozen
+
+    monkeypatch.setattr(store, "allowance_freeze", frozen_then_lifted)
+    told = await asyncio.gather(
+        _finish(org_id, "first", first, 3_000_000, billable=True, actual_micro=GRANT),
+        _finish(org_id, "second", second, 2_000_000, billable=True))
+    counter = store.counters[org_id]
+    assert counter["frozen"] == counter["thawed"], "nothing in the counter says to look"
+    assert told == [GRANT, 0]
 
 
 async def test_a_call_waits_for_another_process_to_apply_its_charge(org_id, store, monkeypatch):

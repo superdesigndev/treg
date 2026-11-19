@@ -354,9 +354,15 @@ money moved, the purchased-credit gate.
   within `money_allowance_linger_ms` share one insert, with the archive's paid-question marks,
   and each call waits for its batch to commit before it answers. The charge is queued before
   anything is awaited, so a cancel cannot lose it. A write that raises twice proves nothing
-  about whether it committed, so such a batch is never treated as "not charged": the call is
-  told the charge, its money stays out of the counter, and the writer keeps writing the batch in
-  the background until it lands (recording a call twice charges it once). The rewrite marks
+  about whether it committed, so such rows are never treated as "not charged": the call is
+  told the charge, its money stays out of the counter, and the writer keeps writing them in
+  the background until they land (recording a call twice charges it once). A batch is answered
+  a team at a time: only the teams whose write or freeze failed are written again and reported
+  unconfirmed, and a team whose rows are committed has its calls confirmed at once, without
+  waiting for another team's retry. With the confirmation the writer says whether a charge of
+  the team in that batch took from the balance; a call told so answers with what the ledger
+  took for it even when the counter is no longer frozen, since a refill can fold the queue and
+  lift the freeze before the call is told. The rewrite marks
   the paid question of each row that was new to it and whose call has no `settle` entry yet (a
   row is also new when the first attempt's row was applied and deleted since, and that attempt
   marked it). While any charge is unconfirmed the process admits no new call to the allowance.
@@ -394,7 +400,7 @@ money moved, the purchased-credit gate.
   to contradict; and it freezes a team's counter as soon as that team's rows are committed,
   not when the whole batch is. A team whose write or freeze fails does not stop the others in
   the batch from being written. A freeze
-  that does not reach the store leaves the batch unconfirmed, to be gone through again. A
+  that does not reach the store leaves that team's rows unconfirmed, to be gone through again. A
   refill of a frozen counter folds the whole queue, not one batch. And a refill that then finds
   the balance below zero adds nothing and drains the counter back to the balance, so the exact
   path's balance gate decides: the stop the next reserve is after an overrun there. Each refill
