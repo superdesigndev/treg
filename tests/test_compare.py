@@ -89,7 +89,7 @@ async def _org_id(clients) -> int:
 async def _routed_call(org_id: int, q: str, *, a: str = "tavily", answer: dict | None = None,
                        tier: str = "platform", minutes_ago: float = 5, archived: bool = True,
                        capability: str = "web.search", given: dict | None = None,
-                       marked: bool = True) -> str:
+                       marked: bool = True, cached: bool = False) -> str:
     """A routed parent and its served child, with the child's request and answer in the archive,
     and the call path's eligibility marker, as a real sampled routed call leaves them."""
     cat = catalog_store.load()
@@ -106,7 +106,7 @@ async def _routed_call(org_id: int, q: str, *, a: str = "tavily", answer: dict |
                           provider="treg", credential_tier="routed", call_ref=ref, created_at=at))
         child = CallRecord(org_id=org_id, user_email="tim@superdesign.dev", tool_name=eid, method="POST",
                            path="/x", status_code=200, endpoint_id=eid, provider=a,
-                           credential_tier=tier, call_ref=f"{ref}:r1", created_at=at)
+                           credential_tier=tier, call_ref=f"{ref}:r1", created_at=at, cached=cached)
         db.add(child)
         if archived:
             key = ArchiveKey(key_hash=f"key-{ref}", endpoint_id=eid,
@@ -173,6 +173,16 @@ async def test_off_by_default(clients, search_on, monkeypatch):
     sent = _relay_b(monkeypatch)
     await _routed_call(await _org_id(clients), "default off")
     assert (await _collect())["status"] == "off"
+    assert sent == [] and await _rows() == []
+
+
+async def test_an_archive_served_answer_is_not_compared(clients, search_on, monkeypatch):
+    """A cached A is stale next to a live B: the parent is skipped and B is never asked."""
+    _compare_on(monkeypatch)
+    sent = _relay_b(monkeypatch)
+    org_id = await _org_id(clients)
+    await _routed_call(org_id, "who makes the best espresso", cached=True)
+    await _collect()
     assert sent == [] and await _rows() == []
 
 

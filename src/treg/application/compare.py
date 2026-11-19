@@ -329,14 +329,18 @@ async def _eligible_teams(session_factory, org_ids: set[int], capabilities: set[
 
 
 async def _served_child(db, parent: CallRecord) -> CallRecord | None:
-    """The routed parent's credited child: its latest successful attempt, never an async poll."""
+    """The routed parent's credited child: its latest successful attempt, never an async poll. An
+    archive-served (cached) answer is stale next to a live B, so such a parent is not compared."""
     escaped = parent.call_ref.replace("/", "//").replace("%", "/%").replace("_", "/_")
-    return (await db.execute(select(CallRecord).where(
+    child = (await db.execute(select(CallRecord).where(
         CallRecord.org_id == parent.org_id,
         CallRecord.call_ref.startswith(f"{parent.call_ref}:r", autoescape=True),
         CallRecord.call_ref.not_like(f"{escaped}:r%:%", escape="/"),
         CallRecord.status_code >= 200, CallRecord.status_code < 300,
     ).order_by(CallRecord.id.desc()).limit(1))).scalar_one_or_none()
+    if child is not None and child.cached:
+        return None
+    return child
 
 
 async def _still_eligible(session_factory, org_id: int) -> bool:
