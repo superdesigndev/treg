@@ -3562,6 +3562,7 @@ _SITEMAP_PAGES: tuple[tuple[str, str, str], ...] = (
     ("/jobs-api", "jobs-api.html", "0.8"),
     ("/recruit", "recruit.html", "0.8"),
     ("/web-access", "web-access.html", "0.8"),
+    ("/doomscroll", "doomscroll.html", "0.8"),
     ("/grokbot", "grokbot.html", "0.8"),
     ("/fable", "fable-gtm.html", "0.8"),
     ("/gpt6", "astra.html", "0.8"),
@@ -3898,6 +3899,13 @@ async def recruit_skill_md():
     stage counts and per-candidate vendor trails. Bundled like lead-signals; `.agents/skills/recruit`
     links to it."""
     return _serve_md("skills/recruit/SKILL.md")
+
+
+@app.get("/skills/doomscroll/SKILL.md", include_in_schema=False)
+async def doomscroll_skill_md():
+    """The doomscroll skill: a topic and a window in, the posts worth seeing across platforms out,
+    grouped into stories, with its merge script inline. Bundled like lead-signals."""
+    return _serve_md("skills/doomscroll/SKILL.md")
 
 
 @app.get("/skills/jev-memory/SKILL.md", include_in_schema=False)
@@ -4244,6 +4252,13 @@ async def web_access_page(request: Request):
     return _static_page("web-access.html", request)
 
 
+@app.get("/doomscroll", include_in_schema=False)
+async def doomscroll_page(request: Request):
+    """Landing page for the doomscroll skill ("Let Your Agent Doomscroll for You"). Served like /leads-signals;
+    its demo rows are real posts bundled in the page."""
+    return _static_page("doomscroll.html", request)
+
+
 @app.get("/gtm-engineering", include_in_schema=False)
 async def gtm_engineering_page(request: Request):
     """The GTM-engineering hub: the seven jobs a GTM engineer runs, each linked to its existing
@@ -4355,6 +4370,8 @@ async def jev_xboost_judge(request: Request, db: AsyncSession = Depends(get_sess
 # chronological (newest first), not alphabetical.
 _BLOG_LAUNCHES: list[tuple[str, str, str, str]] = [
     # (slug, title, date, one-line blurb)
+    ("/doomscroll", "Let Your Agent Doomscroll for You", "2026-11-19",
+     "Name a topic and a time window; your agent reads six platforms and hands back the posts worth seeing."),
     ("/aigc", "AI Video Generation for Your Agent", "2026-11-11",
      "Seedance, Veo, Wan, Hailuo and Kling with one token; pay per finished clip."),
     ("/social", "Put Your Social Media on Autopilot", "2026-11-04",
@@ -4730,7 +4747,8 @@ async def well_known_skills_index():
     entries = []
     for name, path in (("treg", "skill.md"), ("make-ugc", "skills/make-ugc/SKILL.md"),
                        ("lead-signals", "skills/lead-signals/SKILL.md"),
-                       ("web-access", "skills/web-access/SKILL.md"), ("recruit", "skills/recruit/SKILL.md")):
+                       ("web-access", "skills/web-access/SKILL.md"), ("recruit", "skills/recruit/SKILL.md"),
+                       ("doomscroll", "skills/doomscroll/SKILL.md")):
         fm = _skill_frontmatter(path)
         entry = {"name": fm.get("name", name), "description": fm.get("description", ""), "files": ["SKILL.md"]}
         if summary := (fm.get("metadata") or {}).get("summary"):
@@ -4770,6 +4788,12 @@ async def well_known_web_access_md():
 async def well_known_recruit_md():
     """The fifth entry `index.json` promises; the same file as /skills/recruit/SKILL.md."""
     return _serve_md("skills/recruit/SKILL.md")
+
+
+@app.get("/.well-known/skills/doomscroll/SKILL.md", include_in_schema=False)
+async def well_known_doomscroll_md():
+    """The sixth entry `index.json` promises; the same file as /skills/doomscroll/SKILL.md."""
+    return _serve_md("skills/doomscroll/SKILL.md")
 
 
 @app.get("/connect-demo", include_in_schema=False)

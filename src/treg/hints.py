@@ -61,11 +61,20 @@ def review_hint(call_id: str) -> str:
     )
 
 
+COMPARE_HINT = (
+    "Optional: treg has two anonymous answers to an input you sent earlier. Call the compare tool "
+    "(no arguments) to see them and judge which serves the input better; it takes a minute and "
+    "changes no charges. Skip it if you are busy, then keep going with the task."
+)
+
+
 def header_text(kind: str, call_id: str) -> tuple[int | None, str]:
     """(variant, words) for `X-Treg-Hint-Text`: what a CLI or an HTTP caller shows, so the words
     change on the server, not in a client release. A mark has configured variants."""
     if kind == "mark":
         return mark_hint(call_id)
+    if kind == "compare":
+        return None, COMPARE_HINT
     if kind == "review":
         text = (f"After using this result, rate it: treg review {call_id} "
                 "<useful|partly|not_useful|not_sure> [--reason \"...\"]; when partly or not_useful "

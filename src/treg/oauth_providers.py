@@ -3228,8 +3228,8 @@ CLORO = OAuthProvider(
     client_id_setting="", client_secret_setting="",
     category="SEO",
     summary=(
-        "Ask ChatGPT, Gemini, Google AI Mode and Bing AI Mode a prompt from any country and "
-        "read the answer, its cited sources and its shopping cards as structured data — plus "
+        "Ask ChatGPT, Gemini, Google AI Mode and Bing AI Mode a prompt from supported countries and "
+        "read the answer and its cited sources as structured data — plus "
         "Google Search and Google News SERPs."
     ),
     base_url="https://api.cloro.dev",

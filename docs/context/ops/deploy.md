@@ -86,7 +86,16 @@ tasks. If `TREG_SECRET_KEY` is empty on a non-SQLite database, `verify_db()` rai
   state. `0078` drops `onboardingprofile`; code older than it touches that table only while a
   `TREG_ONBOARDING_V2*` setting is on, so keep those off on any rollback past it. `0106` rebuilds
   `agentpayer` with a per-network key; code older than it writes that table only while
-  `TREG_AGENT_PAYMENTS_ENABLED` is on, so keep it off on any rollback past it.
+  `TREG_AGENT_PAYMENTS_ENABLED` is on, so keep it off on any rollback past it. `0114` removes
+  queued call charges whose call is already settled, because a fold now applies every row it
+  claims. With the database at `0114`, code may go back no further than the build whose charge
+  writer takes back a re-queued settled call; that build and later ones run unchanged on what
+  is left. An earlier writer can queue such a row again, and `0114`, already recorded, does not
+  run on the next upgrade. If an earlier writer has run, then before a build with the new fold
+  starts: stop writes, let transactions in flight end, and run the revision's statement by hand
+  (`DELETE FROM callcharge WHERE EXISTS (SELECT 1 FROM ledgerentry WHERE ledgerentry.call_id =
+  callcharge.call_id AND ledgerentry.org_id = callcharge.org_id AND ledgerentry.kind =
+  'settle')`).
 - **Revision-only schema.** An autogenerate drift guard requires Alembic head and
   `SQLModel.metadata` to match exactly. `reset_db()` uses `create_all` only to build a missing test
   schema and stamps it at head.
@@ -322,6 +331,19 @@ security test or a probe that must not be throttled, list its addresses in
 `TREG_CALL_EVENTS_HMAC_SECRET` on every process that serves calls or settles async tasks. Keep the
 secret stable: changing it breaks every join across the change.
 
+**Pairwise comparisons** ([feedback](../architecture/feedback.md), "Pairwise comparisons") run as
+`treg-worker compare collect`, meant for an hourly cron job with the archive and platform-key
+settings of the web service; every run also removes rows a team deletion missed, so that latency is
+one run. Sampling is off unless `TREG_COMPARE_PAIRS` is set and `TREG_COMPARE_MAX_PER_DAY` is above
+0; the call path then marks sampled calls (`TREG_COMPARE_RATE`) in `TREG_KV_URL`'s store, which the
+job and the web service must share. `TREG_COMPARE_LOOKBACK_HOURS` is at most 2, the marker's life,
+so the job must run at least that often. Each run makes at most `TREG_COMPARE_MAX_PER_RUN` calls on
+treg's key, sequentially; a day's spend is at most `TREG_COMPARE_MAX_PER_DAY` times the paired
+vendors' price per call only where that price is the request's maximum cost. The calls bypass the
+shared provider limiter: check each pilot vendor's price and capacity before enabling a pair.
+Rollback is `TREG_COMPARE_MAX_PER_DAY=0` with the cron kept: it then calls nobody and only
+removes orphaned rows, which removing the cron would stop.
+
 **Provider client codes.** A provider file's `client_header` is filled only once
 `TREG_CLIENT_ID_SECRET` is set on the processes that relay calls. Turn it on after the provider is
 ready to read the header, and keep the secret stable: changing it gives every team a new code at
@@ -378,7 +400,16 @@ background loop (`application/allowance_sweep.py`) applies queued charges to the
 closes idle allowances. It runs in the `all` and `control` roles and is one more consumer of
 the `background` pool, which is one connection larger per process for it; request processes do
 not fold, so a deployment that turns the allowance on must run at least one process in one of
-those roles. The
+those roles. A queued charge is applied as it stands: a fold does not ask the ledger whether
+its call was settled before. What makes that true is the charge writer, which takes back a
+charge it re-queued for a settled call, so an upgrade to this behaviour from a build whose
+writer did not do that is done in this order: stop every process of the earlier build and let
+its transactions in flight end; run `python -m treg upgrade` (revision `0114` removes any such
+row left queued); start the new build. The order matters: an earlier process still serving
+calls after `0114` has run can queue another such row, the revision does not run a second
+time, and the new build's fold would charge that call twice. Where every process already runs
+a build with the writer's cleanup, no such row can be queued any more and the upgrade needs no
+stop. The
 allowance trusts the store to keep the writes it acknowledged. A store that can go back to an
 earlier state (a restore from an older snapshot, a replica promoted before it caught up) can
 admit the same money twice, with no bound on amount or time while the allowance stays on, and

@@ -637,11 +637,9 @@ async def create_topup_checkout(
     which is what a finance team actually accepts. It is post-purchase — the invoice appears once the
     payment succeeds, not when the session opens — so nothing here changes what the payer sees.
 
-    `billing_address_collection` + `customer_update` are what put a real address on that invoice. The
-    address is asked for on the Checkout page and written back to the Customer, so the NEXT top-up —
-    and every portal-rendered invoice — already has it. Without `customer_update` Stripe collects the
-    address for the payment and then throws it away, which is the failure mode that looks like it
-    works.
+    `billing_address_collection` asks for the address, and `customer_update.address` saves it on the
+    Customer for this and later invoices. Leave `customer_update.name` unset: the Checkout payer can
+    be a cardholder whose personal name differs from the team's billing name on the Customer.
 
     `allow_promotion_codes` shows the "Add promotion code" field. Note what a discount does downstream:
     the webhook credits `amount_total`, i.e. what Stripe actually collected, so 20% off means the payer
@@ -691,11 +689,10 @@ async def create_topup_checkout(
                 "metadata": {"treg_org_id": str(org.id), "treg_kind": "topup"},
             },
         },
-        # Billing identity for that invoice (see docstring). "required" asks every payer, not only the
-        # ones whose payment method forces it; `customer_update` is what persists the answer onto the
-        # Customer instead of onto this one payment.
+        # "required" asks every payer for an address; persist only that address. Stripe would copy
+        # the cardholder's Checkout name onto the team's Customer if name were set to "auto".
         billing_address_collection="required",
-        customer_update={"address": "auto", "name": "auto"},
+        customer_update={"address": "auto"},
         # The promotion-code field. Codes themselves are created in the Stripe dashboard, so a campaign
         # needs no deploy here.
         allow_promotion_codes=True,

@@ -64,6 +64,9 @@ EXPECTED_MAKERS: dict[str, set[str]] = {
 
     # Synchronous intake, and the catalog's five-minute verdict fold; admin reads use get_admin_session.
     "application/feedback.py": {API},
+    # Comparisons: request-path reads and one verdict write; `treg-worker compare collect` runs only in
+    # the worker process (same reasoning as `worker.py`), and holds no session across a vendor call.
+    "application/compare.py": {API},
     # One small aggregate of callreview per worker every ten minutes (targeted review invitations).
     "application/review_targets.py": {API},
     "application/media.py": {API},  # `treg host`: one short write, one short read, no upstream wait

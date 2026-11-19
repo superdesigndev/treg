@@ -267,6 +267,8 @@ async def test_topup_creates_a_usd_checkout_and_never_credits(c: AsyncClient, mo
     # card above. The org travels onto the invoice so one found in Stripe resolves to a team.
     assert session_kw["invoice_creation"]["enabled"] is True
     assert session_kw["invoice_creation"]["invoice_data"]["metadata"]["treg_org_id"] == str(org_id)
+    assert session_kw["billing_address_collection"] == "required"
+    assert session_kw["customer_update"] == {"address": "auto"}
     after = (await c.get(f"/orgs/{org_id}/balance", headers=_h(owner))).json()["balance_micro"]
     assert after == before, "creating a Checkout session must not move the balance"
 

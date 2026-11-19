@@ -376,6 +376,23 @@
   {
     "kind": "APIRoute",
     "methods": [
+      "GET",
+      "HEAD"
+    ],
+    "name": "next_comparison",
+    "path": "/comparisons/next"
+  },
+  {
+    "kind": "APIRoute",
+    "methods": [
+      "POST"
+    ],
+    "name": "submit_comparison",
+    "path": "/comparisons"
+  },
+  {
+    "kind": "APIRoute",
+    "methods": [
       "POST"
     ],
     "name": "cli_events",
@@ -938,6 +955,15 @@
       "GET",
       "HEAD"
     ],
+    "name": "doomscroll_skill_md",
+    "path": "/skills/doomscroll/SKILL.md"
+  },
+  {
+    "kind": "APIRoute",
+    "methods": [
+      "GET",
+      "HEAD"
+    ],
     "name": "jev_memory_skill_md",
     "path": "/skills/jev-memory/SKILL.md"
   },
@@ -1253,6 +1279,15 @@
       "GET",
       "HEAD"
     ],
+    "name": "doomscroll_page",
+    "path": "/doomscroll"
+  },
+  {
+    "kind": "APIRoute",
+    "methods": [
+      "GET",
+      "HEAD"
+    ],
     "name": "gtm_engineering_page",
     "path": "/gtm-engineering"
   },
@@ -1502,6 +1537,15 @@
     ],
     "name": "well_known_recruit_md",
     "path": "/.well-known/skills/recruit/SKILL.md"
+  },
+  {
+    "kind": "APIRoute",
+    "methods": [
+      "GET",
+      "HEAD"
+    ],
+    "name": "well_known_doomscroll_md",
+    "path": "/.well-known/skills/doomscroll/SKILL.md"
   },
   {
     "kind": "APIRoute",
