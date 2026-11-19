@@ -117,12 +117,19 @@ class Folded(NamedTuple):
         return self.calls + self.duplicates + self.orphaned
 
 
-async def _lock_allowance(db: AsyncSession, org_id: int) -> Hold | None:
-    # The first lock every allowance operation takes, before blocks and the org row: the order
-    # settle uses, and what makes two folds of one team run one after the other.
+async def _lock_allowance(db: AsyncSession, org_id: int, *, keeps: bool = False) -> Hold | None:
+    """The first lock every allowance operation takes, before blocks and the org row: the order
+    settle uses, and what makes two folds of one team run one after the other.
+
+    `keeps` is for an operation that only updates the row (a fold, a refill): it asks for the
+    lock an update takes (NO KEY UPDATE), which the charge writer's key-share lock does not
+    conflict with. PostgreSQL lets a later sharer pass a waiting exclusive lock, so under a
+    steady stream of charge writes a fold asking for the full row lock would wait for a gap
+    between them, holding its connection. An operation that may delete the row asks for the
+    full lock and waits for the writes in progress."""
     with money_stage(db, "lock_allowance"):
         return (await db.execute(
-            select(Hold).where(Hold.id == allowance_id(org_id)).with_for_update()
+            select(Hold).where(Hold.id == allowance_id(org_id)).with_for_update(key_share=keeps)
             .execution_options(populate_existing=True))).scalar_one_or_none()
 
 
@@ -137,7 +144,7 @@ async def fold_charges_in_transaction(db: AsyncSession, org_id: int, *,
     once per transaction: a second fold would lock the blocks again (see `_apply_charges`).
     """
     mark_money(db, "fold", org_id=org_id)
-    return await _fold(db, org_id, await _lock_allowance(db, org_id), limit)
+    return await _fold(db, org_id, await _lock_allowance(db, org_id, keeps=True), limit)
 
 
 async def _claim_charges(db: AsyncSession, org_id: int, limit: int) -> list:
@@ -232,16 +239,18 @@ def hold_created_at(epoch: int | None) -> datetime | None:
 
 
 async def holds_behind(db: AsyncSession, org_ids: Sequence[int]) -> dict[int, int]:
-    """The epoch of each team's allowance hold, for teams that have one, under a shared lock on
-    the hold rows. For the transaction that queues charges: a close of the hold waits for it,
-    so a charge found to have its own hold here is still applied to that hold, and one found
-    without it is known to owe the balance."""
+    """The epoch of each team's allowance hold, for teams that have one, under a key-share lock
+    on the hold rows. For the transaction that queues charges: a close that deletes the hold
+    waits for it, so a charge found to have its own hold here is still applied to that hold,
+    and one found without it is known to owe the balance. A fold or a refill only updates the
+    row and neither waits for this lock nor is waited for: the epoch read here is the row's
+    creation instant, which no update changes."""
     if not org_ids:
         return {}
     with money_stage(db, "lock_allowance"):
         rows = (await db.execute(
             select(Hold).where(Hold.id.in_([allowance_id(org_id) for org_id in org_ids]))
-            .order_by(Hold.id).with_for_update(read=True))).scalars().all()
+            .order_by(Hold.id).with_for_update(read=True, key_share=True))).scalars().all()
     return {hold.org_id: _epoch(hold) for hold in rows}
 
 
@@ -368,7 +377,7 @@ async def refill_allowance_in_transaction(
     """
     mark_money(db, "refill", org_id=org_id)
     add = max(0, int(add_micro))
-    hold = await _lock_allowance(db, org_id)
+    hold = await _lock_allowance(db, org_id, keeps=True)
     if hold is not None and counter_epoch is not None and counter_epoch > _epoch(hold):
         # The store's counter names a later epoch than the hold: the hold's counter was retired
         # (by a deletion of the team that did not commit) and nothing can be published for it
@@ -392,7 +401,7 @@ async def refill_allowance_in_transaction(
             id=allowance_id(org_id), org_id=org_id, endpoint_id="", amount_micro=0,
             created_at=now, purchased_only=False, allowance=True, heartbeat_at=now,
         ).on_conflict_do_nothing(index_elements=[Hold.id]))).rowcount == 1
-        hold = await _lock_allowance(db, org_id)
+        hold = await _lock_allowance(db, org_id, keeps=True)
     folded = (await _apply_charges(db, org_id, hold, await _claim_all_charges(db, org_id))
               if fold_all else await _fold(db, org_id, hold, fold_limit))
     over_cap = False
