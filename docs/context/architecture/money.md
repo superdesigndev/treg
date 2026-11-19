@@ -891,8 +891,10 @@ money. Invoice creation may be priced separately by Stripe, and Stripe invoice e
 dashboard's "Successful payments" customer-email setting; treg's receipt email is independent.
 
 The invoice address needs `billing_address_collection="required"` **plus**
-`customer_update={"address": "auto", "name": "auto"}` on the same session: the first asks, the second
-persists the answer onto the Customer. Collecting without `customer_update` stores nothing.
+`customer_update={"address": "auto"}` on the same session: the first asks, the second persists the
+address onto the Customer. `customer_update.name` stays unset so a payer's Checkout name cannot
+replace the team's billing name on the Customer. Stripe copies the Customer name to an invoice when
+it finalizes; changing the Customer later does not change that finalized invoice.
 
 **A promotion code discounts the price, it does not bonus the balance.** `allow_promotion_codes=True`
 puts the field on Checkout, and the webhook credits `amount_total`, what Stripe collected. A 100%-off
