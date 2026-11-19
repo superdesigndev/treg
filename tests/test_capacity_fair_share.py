@@ -659,3 +659,45 @@ async def test_a_place_a_store_applies_late_after_a_stall_longer_than_the_lease_
     (await gate.acquire("p", 2, 3)).release()  # the store answers again
     await _turns()
     assert shared.held("p") == 0
+
+
+async def test_a_long_release_again_list_drains_a_few_requests_at_a_time(shared):
+    provider_concurrency._unanswered.clear()
+    flight = peak = 0
+    release = shared.release_slot
+
+    async def release_slot(key, token):
+        nonlocal flight, peak
+        flight += 1
+        peak = max(peak, flight)
+        await asyncio.sleep(0)
+        flight -= 1
+        return await release(key, token)
+
+    shared.release_slot = release_slot
+    for _ in range(400):
+        provider_concurrency._unanswered.append(provider_concurrency.Lease(shared, "p"))
+    (await FairShare().acquire("p", 1, 5)).release()  # the store answers: one drain starts
+    for _ in range(600):
+        await asyncio.sleep(0)
+    assert not provider_concurrency._unanswered
+    assert 0 < peak <= provider_concurrency._DRAIN_WORKERS + 1  # plus the call's own release
+
+
+async def test_the_drain_stops_at_the_first_request_the_store_does_not_answer(shared):
+    provider_concurrency._unanswered.clear()
+    calls = 0
+
+    async def release_slot(key, token):
+        nonlocal calls
+        calls += 1
+        return "unavailable"
+
+    shared.release_slot = release_slot
+    for _ in range(400):
+        provider_concurrency._unanswered.append(provider_concurrency.Lease(shared, "p"))
+    (await FairShare().acquire("p", 1, 5)).release()
+    for _ in range(100):
+        await asyncio.sleep(0)
+    assert calls <= provider_concurrency._DRAIN_WORKERS + 1
+    assert len(provider_concurrency._unanswered) >= 399

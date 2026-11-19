@@ -88,12 +88,41 @@ async def _drop_after(attempt: asyncio.Future, lease: Lease) -> None:
     await lease._release(quiet=True)
 
 
+_DRAIN_WORKERS = 4
+_draining: asyncio.Task | None = None
+
+
 def _release_unanswered() -> None:
     """The store answers again: release the tokens that got no answer once more. Every one is
     released, however old: the store stamps a late acquire with its own clock at recovery, so it
-    holds the place a full lease from then, and a token already gone just answers not owned."""
-    while _unanswered:
-        _background(_unanswered.popleft()._release(quiet=True))
+    holds the place a full lease from then, and a token already gone just answers not owned.
+    One background drain with a few requests at a time, so a long list never crowds the shared
+    client's connections that other callers need; it stops at the first request the store does
+    not answer and keeps the rest for the next answer."""
+    global _draining
+    loop = asyncio.get_running_loop()
+    if not _unanswered or (_draining is not None and not _draining.done()
+                           and _draining.get_loop() is loop):
+        return
+    _draining = loop.create_task(_drain())
+
+
+async def _drain() -> None:
+    stopped = False
+
+    async def worker() -> None:
+        nonlocal stopped
+        while _unanswered and not stopped:
+            lease = _unanswered.popleft()
+            try:
+                outcome = await lease.store.release_slot(lease.key, lease.token)
+            except Exception:  # noqa: BLE001 - a store fault keeps the lease for later
+                outcome = "unavailable"
+            if outcome == "unavailable":
+                _unanswered.appendleft(lease)
+                stopped = True
+
+    await asyncio.gather(*(worker() for _ in range(_DRAIN_WORKERS)))
 
 
 async def try_acquire(account: str, cap: int) -> Lease | None | Literal["busy"]:
