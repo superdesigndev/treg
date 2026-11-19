@@ -58,6 +58,8 @@ sources:
   - src/treg/alembic/versions/0065_call_verdict.py
   - src/treg/alembic/versions/0066_endpointdaystat_verdicts.py
   - src/treg/alembic/versions/0112_callrecord_outcome.py
+  - src/treg/alembic/versions/0116_stamped_baseline_indexes.py
+  - tests/test_stamped_baseline_indexes_migration.py
   - src/treg/alembic/versions/0070_api_key_spend_rollup.py
   - src/treg/alembic/versions/0072_callrecord_call_ref_index.py
   - src/treg/alembic/versions/0073_org_flow_control_version.py
@@ -254,9 +256,10 @@ such scan queues every other query and the API pool empties into `503 treg_satur
   find the rows after the cursor.
 - Watermark walks state the bound as `created_at >= w AND (created_at > w OR id > w_id)`, never as
   one OR: inside an OR Postgres bounds the scan only from above and walks from the oldest row.
-- A database that predates Alembic was stamped at the baseline and may lack baseline indexes
-  (`ix_callrecord_call_ref` is the known case, rebuilt by `0072`). Check `pg_indexes` before
-  relying on one.
+- A database that predates Alembic was stamped at the baseline and lacked every baseline index on a
+  column the old `init_db` added by `ALTER TABLE ... ADD COLUMN`. `0072` builds
+  `ix_callrecord_call_ref`; `0116` builds the ones on `org`, `invite`, `denyrule`, `secret` and
+  `tool`. Check `pg_indexes` before relying on one.
 - A covering index on `callrecord` for reports was rejected: it would copy wide string columns and
   slow every audit insert. Reports read rollups instead.
 

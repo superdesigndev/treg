@@ -38,6 +38,11 @@ class Org(SQLModel, table=True):
     Verified sign-in creates only a user; the user explicitly creates or joins a team.
     """
 
+    # Stripe's payment-method events name only the card. Partial: most teams never save one.
+    __table_args__ = (Index("ix_org_stripe_default_pm", "stripe_default_pm",
+                            postgresql_where=text("stripe_default_pm IS NOT NULL"),
+                            sqlite_where=text("stripe_default_pm IS NOT NULL")),)
+
     id: int | None = Field(default=None, primary_key=True)
     name: str
     slug: str = Field(index=True, unique=True)
