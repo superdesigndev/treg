@@ -265,12 +265,23 @@ async def has_allowance(db: AsyncSession, org_id: int) -> bool:
         select(Hold.id).where(Hold.id == allowance_id(org_id)))).first() is not None
 
 
-async def settled_calls(db: AsyncSession, call_ids: Sequence[str]) -> set[str]:
-    """Which of these calls already have a `settle` entry."""
+async def drop_settled_charges(db: AsyncSession, call_ids: Sequence[str]) -> set[str]:
+    """Of the calls a rewrite has just queued, the ones that already have a `settle` entry: the
+    first attempt's row was committed and has been folded since. Their new rows are taken out
+    of the queue again, in the transaction that put them there, so a rewrite never leaves a
+    settled call queued. Returns those calls.
+
+    Only a rewrite can queue a call twice, and a row it has just inserted is its own until it
+    commits. The insert waits for a fold of the first row that is still in progress, so the
+    settle entry, if there is one, was committed before the insert succeeded.
+    """
     if not call_ids:
         return set()
-    return set((await db.execute(select(LedgerEntry.call_id).where(
+    settled = set((await db.execute(select(LedgerEntry.call_id).where(
         LedgerEntry.call_id.in_(list(call_ids)), LedgerEntry.kind == "settle"))).scalars())
+    if settled:
+        await db.execute(delete(CallCharge).where(CallCharge.call_id.in_(sorted(settled))))
+    return settled
 
 
 async def settled_micro(db: AsyncSession, org_id: int, call_id: str) -> int | None:

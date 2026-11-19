@@ -150,8 +150,13 @@ and returns nothing from it, and leaves its deadline where it was: calls admitte
 retiring still stand on that money. The team's calls take the exact path until the idle sweep
 closes the hold, and the refill after that opens a new one. A
 queue row's primary key stops
-a second recording only until the row is folded, so the fold also drops any claimed row whose call
-already has a `settle` entry. The daily counter moves as it does at `settle`: consumed goes in, and
+a second recording only until the row is folded. Only a rewrite of charges whose first write went
+unconfirmed can record a call twice, and it takes back, in its own transaction, any row it has
+just queued whose call already has a `settle` entry (`drop_settled_charges`): the entry was
+committed before that insert could succeed, and the new row is the rewrite's own until it
+commits (its insert waits for a fold of the first row that is still in progress). The fold and
+the readers of the queue (`committed_today`, `_queued_unbacked`) still leave out any row whose
+call already has a `settle` entry: a process that does not yet write this way can leave one. The daily counter moves as it does at `settle`: consumed goes in, and
 the covered part comes out only when the hold was opened today.
 
 The allowance runs on PostgreSQL only (`enabled_for` is false elsewhere). It leans on row locks

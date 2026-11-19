@@ -1401,7 +1401,8 @@ async def test_a_charge_rewritten_after_it_was_applied_does_not_mark_its_questio
     await _fold(org_id)
     await runtime._ChargeWriter._write(rows, again=True)
     assert marked == [(org_id, "question-a")]
-    assert (await _fold(org_id)).duplicates == 1
+    assert await _queued(org_id) == 0, "and its row is not left queued for a second charge"
+    assert await _fold(org_id) == allowance.Folded()
 
 
 # ---- keeping up with the queue -----------------------------------------------------------------
