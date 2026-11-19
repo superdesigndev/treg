@@ -50,6 +50,7 @@ from . import agents as _agents
 from . import cli_analytics, cli_session, client_notice
 from . import jsontext
 from .capacity_notice import CAPACITY_HEADER, EXHAUSTED, account_out_notice, is_balance_refusal
+from .call_response_headers import attach_selected_upstream_headers, selected_upstream_header_lines
 from .feedback_contract import FEEDBACK_CATEGORIES, FEEDBACK_DESCRIPTION, REVIEW_USEFULNESS, REVIEW_DESCRIPTION
 # One source of truth for the proxy's default port (help text below). Importing the module is cheap —
 # it pulls only stdlib plus httpx, which the CLI already has; `cryptography` stays lazy inside it.
@@ -405,6 +406,7 @@ def _show(resp: httpx.Response) -> None:
         print(json.dumps(body, indent=2))
     except Exception:  # noqa: BLE001 - a walkthrough must survive an unreachable registry
         print(resp.text)
+    _show_selected_response_headers(resp)
     if resp.status_code < 400:
         _show_charge_line(resp)
         _show_hint_line(resp)
@@ -425,6 +427,17 @@ def _show(resp: httpx.Response) -> None:
                 print("(no valid active team — pick one with `treg org use <slug>`; see `treg org ls`)",
                       file=sys.stderr)
         sys.exit(1)
+
+
+def _show_selected_response_headers(resp: httpx.Response) -> None:
+    """Allowlisted upstream response headers (at least Location) on stderr.
+
+    stdout stays the exact body, including when that body is empty — the
+    session URL of a resumable upload lives in `Location`, not in the body.
+    Cookie and credential headers are never printed.
+    """
+    for line in selected_upstream_header_lines(getattr(resp, "headers", {}) or {}):
+        print(line, file=sys.stderr)
 
 
 def _show_charge_line(resp: httpx.Response) -> None:
@@ -2717,6 +2730,7 @@ def _call_envelope(response: httpx.Response, content_type: str) -> dict:
         meta["hint"] = kind
     if routed := headers.get("X-Treg-Routed-Tool"):
         meta["routed_tool"] = routed
+    attach_selected_upstream_headers(meta, headers)
     return {"result": result, "_treg": meta}
 
 
@@ -2754,6 +2768,7 @@ def _show_call_response(response: httpx.Response) -> None:
             and not content_type.startswith("text/"):
         sys.stdout.buffer.write(response.content)
         sys.stdout.buffer.flush()
+        _show_selected_response_headers(response)
         if response.status_code >= 400:
             _show_failure_diagnostics(response)
             raise SystemExit(1)

@@ -67,6 +67,7 @@ from .application import catalog_search as search_app
 from .application import search_experiment
 from .domain.catalog import store as catalog_store
 from .capacity_notice import is_admission_refusal, is_balance_refusal
+from .call_response_headers import attach_selected_upstream_headers
 from .client_identity import printable_ascii
 from .config import get_settings
 from .feedback_contract import (
@@ -618,6 +619,7 @@ class CallOut(TypedDict, total=False):
     served_via: str | None          # "overflow:<aggregator>" when a treg-owned relay account served
                                     # the call at ITS price (X-Treg-Served-Via); absent on a direct call
     whose_error: str | None         # "treg" or "provider" — who to blame, and whether to retry
+    response_headers: dict[str, str] | None  # selected upstream headers (e.g. Location); never cookies or credentials
     hint: str | None
     did_you_mean: list[str] | None  # real ids close to one that missed
     routed_tool: str | None
@@ -1556,7 +1558,10 @@ async def _catalog_get_impl(
         "'render/v1/services' — or a HUB tool by its id '<team-slug>.<name>' (a maker's tool made of "
         "tools; `params` are its inputs, see catalog_get for them). treg injects the credential "
         "server-side and relays the provider's "
-        "response unchanged, so you never hold an API key. Catalog calls on treg's key are metered "
+        "response unchanged, so you never hold an API key. When the useful output is a "
+        "response header (for example a resumable upload's `Location` session URL), the "
+        "result includes `response_headers` with a small allowlist of those headers; cookie "
+        "and credential headers are never included. Catalog calls on treg's key are metered "
         "from the team's prepaid balance; a team's own tool is never metered. Tell the human the "
         "price (from catalog_get) before calling anything that costs more than a cent.\n\n"
         "`idempotency_key`: pass the SAME key when you are repeating a call whose answer you did "
@@ -1862,6 +1867,7 @@ async def _call_impl(endpoint_id: str, params: dict | list | None = None,
         r = await client.request(method, _call_url(route, endpoint_id), **kw)
 
     out: dict[str, Any] = {"status": r.status_code, "endpoint_id": endpoint_id, "body": _body(r)}
+    attach_selected_upstream_headers(out, r.headers)
     if retry_after := r.headers.get("Retry-After"):
         out["retry_after"] = retry_after
     if call_id := r.headers.get("X-Treg-Call-Id"):

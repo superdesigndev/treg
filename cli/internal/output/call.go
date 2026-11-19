@@ -6,6 +6,7 @@ import (
 	"encoding/json/jsontext"
 	"encoding/json/v2"
 	"fmt"
+	"net/http"
 	"os"
 	"strconv"
 	"strings"
@@ -44,6 +45,7 @@ func (p *Printer) ShowCall(r *api.Response) error {
 	}
 	if ctype != "" && !isJSONType(ctype) && !strings.HasPrefix(ctype, "text/") {
 		p.Out.Write(r.Body)
+		p.selectedResponseHeaderLines(r)
 		if r.Status >= 400 {
 			p.failureDiagnostics(r)
 			return &Exit{Code: 1}
@@ -62,6 +64,42 @@ func mediaType(ctype string) string {
 
 func isJSONType(t string) bool {
 	return t == "application/json" || strings.HasSuffix(t, "+json")
+}
+
+// Allowlisted upstream response headers official clients may surface. Keep in
+// sync with src/treg/call_response_headers.py. Cookie and credential headers
+// are never included.
+var safeUpstreamResponseHeaders = []struct{ name, canon string }{
+	{"Location", "Location"},
+	{"Content-Location", "Content-Location"},
+	{"Content-Range", "Content-Range"},
+}
+
+func selectedUpstreamHeaders(h http.Header) *ojson.Object {
+	if h == nil {
+		return nil
+	}
+	var m *ojson.Object
+	for _, item := range safeUpstreamResponseHeaders {
+		if v := strings.TrimSpace(h.Get(item.name)); v != "" {
+			if m == nil {
+				m = ojson.NewObject()
+			}
+			m.Set(strings.ToLower(item.name), v)
+		}
+	}
+	return m
+}
+
+func (p *Printer) selectedResponseHeaderLines(r *api.Response) {
+	if r == nil || r.Header == nil {
+		return
+	}
+	for _, item := range safeUpstreamResponseHeaders {
+		if v := strings.TrimSpace(r.Header.Get(item.name)); v != "" {
+			fmt.Fprintf(p.Err, "treg: %s: %s\n", item.canon, v)
+		}
+	}
 }
 
 type callEnvelope struct {
@@ -132,6 +170,9 @@ func envelope(r *api.Response, ctype string) callEnvelope {
 	}
 	if v := h.Get("X-Treg-Routed-Tool"); v != "" {
 		m.Set("routed_tool", v)
+	}
+	if selected := selectedUpstreamHeaders(h); selected != nil {
+		m.Set("response_headers", selected)
 	}
 	return callEnvelope{Result: result, Treg: m}
 }

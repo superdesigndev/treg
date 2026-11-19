@@ -97,6 +97,7 @@ func (p *Printer) Show(r *api.Response) error {
 		p.Out.Write(r.Body)
 	}
 	fmt.Fprintln(p.Out)
+	p.selectedResponseHeaderLines(r)
 	if r.Status < 400 {
 		p.chargeLine(r)
 		p.hintLine(r)
