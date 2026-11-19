@@ -1599,14 +1599,18 @@ def check_v2_cost(row: schema.V2Row, ep: dict, provider: str, where: str, errors
                 fail(errors, f"{where}:price.table[{index}]", f"'{path}' is not a declared input field")
 
 
-def check_routing(errors: list[str]) -> None:
-    """contracts.yaml and adapters.yaml parse whole, every expression in them included."""
-    from treg.domain.catalog.routing.contracts import parse_adapters, parse_contracts, retired_contract_keys
+def check_routing(errors: list[str], endpoints: dict[str, dict] | None = None,
+                  warnings: list[str] | None = None) -> None:
+    """contracts.yaml and adapters.yaml parse whole, every expression in them included, and an
+    adapter's `soft:` names its contract's keys."""
+    from treg.domain.catalog.routing.contracts import (parse_adapters, parse_contracts, retired_contract_keys,
+                                                        soft_problems, soft_unrouted)
 
+    parsed = {}
     for name, parse in (("contracts.yaml", parse_contracts), ("adapters.yaml", parse_adapters)):
         try:
             doc = schema.read_yaml(CATALOG / name) or {}
-            parse(doc)
+            parsed[name] = parse(doc)
         except (ValueError, TypeError, AttributeError) as exc:
             fail(errors, name, f"does not parse: {exc}")
             continue
@@ -1614,6 +1618,12 @@ def check_routing(errors: list[str]) -> None:
             # The loader skips a retired key so an older catalog still loads; the shipped one may not carry it.
             for problem in retired_contract_keys(doc):
                 fail(errors, name, problem)
+    if len(parsed) == 2:
+        capability_of = {eid: str(ep.get("capability") or "") for eid, ep in (endpoints or {}).items()}
+        for problem in soft_problems(parsed["adapters.yaml"], parsed["contracts.yaml"], capability_of):
+            fail(errors, "adapters.yaml", problem)
+        if warnings is not None:
+            warnings += soft_unrouted(parsed["adapters.yaml"], parsed["contracts.yaml"], endpoints or {})
 
 
 def check_manifests(errors: list[str]) -> None:
@@ -1945,7 +1955,7 @@ def main(argv: list[str]) -> int:
         fail(errors, eid, "in UNDECLARED_RESERVE but not in the catalog")
     if not only:
         errors += violations.audit(uses, docs, hits)
-        check_routing(errors)
+        check_routing(errors, endpoint_index, warnings)
         check_manifests(errors)
 
     for e in errors:

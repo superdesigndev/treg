@@ -66,7 +66,7 @@ from .application import catalog_find as find_app
 from .application import catalog_search as search_app
 from .application import search_experiment
 from .domain.catalog import store as catalog_store
-from .capacity_notice import account_out_notice, is_admission_refusal, is_balance_refusal
+from .capacity_notice import is_admission_refusal, is_balance_refusal
 from .client_identity import printable_ascii
 from .config import get_settings
 from .feedback_contract import (
@@ -259,6 +259,7 @@ _V1_TOOL_SCOPES = {
     "feedback": "treg:catalog", "review": "treg:catalog", "mark": "treg:catalog",
     "call": "treg:call", "call_media": "treg:call", "hub_create": "treg:call", "hub_update": "treg:call",
     "balance": "treg:read", "my_tools": "treg:read", "resources_list": "treg:read", "hub_mine": "treg:read",
+    "call_result": "treg:read",
 }
 _V2_TOOL_SCOPES = {
     "catalog_search": "treg:catalog", "catalog_get": "treg:catalog", "catalog_request": "treg:catalog",
@@ -631,6 +632,14 @@ class ResourcesOut(TypedDict, total=False):
     source: str | None
     count: int | None
     resources: list[dict[str, Any]] | None
+    error: str | None
+    detail: Any
+
+
+class CallResultOut(TypedDict, total=False):
+    team: str | None
+    calls: list[dict[str, Any]] | None  # without call_id: the team's latest calls, newest first
+    result: dict[str, Any] | None       # with call_id: what that call asked and what came back
     error: str | None
     detail: Any
 
@@ -1556,7 +1565,9 @@ async def _catalog_get_impl(
         "nothing the second time; the result carries `replayed: true`. Use a NEW key (or none) for "
         "genuinely new work, even when the parameters are identical: repeating a search to see "
         "what changed is a new call, not a retry, and reusing the key would hand you the old answer. "
-        "Reusing one key for a DIFFERENT request is refused rather than answered.\n\n"
+        "Reusing one key for a DIFFERENT request is refused rather than answered. If a call timed "
+        "out on your side and you sent no key, do not call again: `call_result` lists the team's "
+        "latest calls and returns a finished call's stored answer.\n\n"
         "For requests `params` can't express, the explicit slots mirror the CLI's flags: `query` "
         "is ALWAYS the query string (a list value expands to repeated keys), `body` is ALWAYS the "
         "request body (object/array → JSON; a STRING is sent raw, with `content_type` naming what "
@@ -1904,15 +1915,11 @@ async def _call_impl(endpoint_id: str, params: dict | list | None = None,
     if r.status_code >= 400:
         # Whose fault it was matters to an agent deciding whether to retry elsewhere.
         out["whose_error"] = "treg" if r.headers.get("X-Treg-Error") else "provider"
+        review = r.headers.get("X-Treg-Review-Pending-Text")
+        if review and surface is not _DIRECTORY_SURFACE:
+            out["hint"] = review
     admitted_no = r.status_code == 403 and is_admission_refusal(r.headers, out.get("body"))
-    if notice := account_out_notice(r.headers):
-        # treg's own account for this tool is out: not the caller's balance, not theirs to fix. The
-        # provider's words would name its wallet and top-up page, so they are left out; the call id
-        # stays for support.
-        out.pop("body", None)
-        out["whose_error"] = "treg"
-        out["hint"] = notice
-    elif r.status_code == 402 or admitted_no:
+    if r.status_code == 402 or admitted_no:
         # States the fact and stops. No link, and `topup_url` is stripped from the relayed body, so
         # nothing on this path points a user at a payment page. A 403 admission refusal names the
         # same remedy and gets the same treatment.
@@ -2057,6 +2064,53 @@ async def resources_list(
     ctx: Context, provider: str = "", kind: str = "",
 ) -> ResourcesOut:
     return await _resources_list_impl(provider, kind, ctx, surface=_TEAM_SURFACE)
+
+
+_RECENT_CALL_FIELDS = ("call_ref", "endpoint_id", "status_code", "cost_charged_micro", "has_result",
+                       "created_at", "async_task")
+
+
+async def _call_result_impl(call_id: str, limit: int, ctx: Context) -> CallResultOut:
+    token = _bearer(ctx)
+    if not token:
+        return _need_token()
+    url = _segment_url("/calls", call_id) if call_id else None
+    if call_id and url is None:
+        return {"error": "call_id must be the call_id a call returned, or a row id from this list"}
+    async with _api(token) as client:
+        org_id, slug, problem = await _resolve_org(client)
+        if problem:
+            return problem
+        headers = {"X-Treg-Org": slug or ""}
+        if url is not None:
+            r = await client.get(f"{url}/result", headers=headers)
+        else:
+            r = await client.get("/calls", params={"limit": max(1, min(limit, 50))}, headers=headers)
+    body = _body(r)
+    if r.status_code != 200:
+        return {"error": "could not read the call" if call_id else "could not list recent calls",
+                "detail": body}
+    if url is not None:
+        return {"team": slug, "result": body}
+    rows = body if isinstance(body, list) else []
+    return {"team": slug, "calls": [
+        {"call_id": c.get("call_ref"), **{k: c.get(k) for k in _RECENT_CALL_FIELDS if k != "call_ref"}}
+        for c in rows]}
+
+
+@mcp.tool(
+    description=(
+        "Recover a call you already made, typically one whose answer never reached you (your client "
+        "timed out or the connection dropped while treg finished it). Without `call_id`: this team's "
+        "latest calls, newest first, each with its call_id, endpoint, status, charge and whether an "
+        "answer is stored (`has_result`). With `call_id`: what that call asked and what came back. "
+        "Reading costs nothing; check here before calling again, so a finished call is not paid twice."
+    ),
+    annotations=_READS,
+    structured_output=True
+)
+async def call_result(ctx: Context, call_id: str = "", limit: int = 10) -> CallResultOut:
+    return await _call_result_impl(call_id, limit, ctx)
 
 
 @mcp.tool(
@@ -2374,21 +2428,25 @@ def _allowed_origins(resource_version: str = "v1") -> list[str]:
     return sorted(dict.fromkeys(origins))
 
 
-class NormalizeDirectoryMCPPath:
-    """Make the directory transport accept its URL with or without the final slash.
+class NormalizeMCPPath:
+    """Make each MCP transport accept its URL with or without the final slash.
 
-    Starlette mounts match ``/mcp/v2/`` but not the exact no-slash path. Hosted Claude removes the
-    slash before its first POST, so the request otherwise falls through to the team ``/mcp``
-    mount, discovers V1 OAuth metadata, obtains a V1 token, and then receives a 404. Rewriting the
-    ASGI path before route matching keeps both spellings on the same V2 transport and audience.
+    Starlette mounts match ``/mcp/`` and ``/mcp/v2/`` but not the exact no-slash paths. Hosted
+    Claude removes the slash before its first request and does not follow redirects. On ``/mcp``
+    the mount's 307 makes the custom-connector check report the server as not found. On
+    ``/mcp/v2`` the request falls through to the team ``/mcp`` mount, discovers V1 OAuth metadata,
+    obtains a V1 token, and then receives a 404. Rewriting the ASGI path before route matching
+    keeps both spellings of each URL on the same transport and audience.
     """
+
+    _PATHS = {"/mcp": "/mcp/", "/mcp/v2": "/mcp/v2/"}
 
     def __init__(self, app):
         self.app = app
 
     async def __call__(self, scope, receive, send):
-        if scope["type"] == "http" and scope.get("path") == "/mcp/v2":
-            scope = dict(scope, path="/mcp/v2/", raw_path=b"/mcp/v2/")
+        if scope["type"] == "http" and (path := self._PATHS.get(scope.get("path"))):
+            scope = dict(scope, path=path, raw_path=path.encode())
         return await self.app(scope, receive, send)
 
 

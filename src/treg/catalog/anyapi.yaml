@@ -82,10 +82,13 @@ queryParams:
     note: 'jq expression over the result envelope; its output replaces `output`. A failed expression returns the full result with `jqError`.'
 pricing_url: https://getanyapi.com/catalog
 proposed_capabilities:
-# Both tiers. The answer's `costUsd` is the bill, zero included, whatever the answer found; a 2xx
-# without a readable one settles at the hold, or at nothing when the row's miss rule holds.
+# Both tiers. The answer's `costUsd` is the bill, zero included, whatever the answer found, so a
+# miss is billed (`per_call`); a 2xx without a readable one settles at the hold, or at nothing when
+# the row's `free_when` holds. A row whose provider reports no charge for a miss opts out with its
+# own `bill`.
 defaults:
   settle: {reported: {path: response.costUsd, unit: usd}}
+  bill: {miss: charged}
 endpoints:
 - id: anyapi.x.search.posts
   capability: x.search.posts
@@ -139,7 +142,7 @@ endpoints:
     value: '0.00075'
     currency: USD
     unit: call
-    note: 'One source bills per result, so a small `limit` can cost less than the listed price. 4 sources serve this, cheapest first; a failed attempt retries on the next, up to $0.0154 at the dearest. The charge follows the answer''s `costUsd`, not the listed price. Send X-Treg-Route-Max-Cost to refuse any source dearer than your ceiling. A `found: false` answer is still charged.'
+    note: 'One source bills per result, so a small `limit` can cost less than the listed price. 4 sources serve this, cheapest first; a failed attempt retries on the next, up to $0.0154 at the dearest. The charge follows the answer''s `costUsd`, not the listed price. Send X-Treg-Route-Max-Cost to refuse any source dearer than your ceiling. A not-found or empty answer is billed too, at its own `costUsd`.'
   provenance:
     source: observed
     source_url: https://api.getanyapi.com/v1/apis/twitter.search
@@ -147,6 +150,7 @@ endpoints:
     confidence: verified
   bill:
     error: charged
+    miss: charged
     free_when:
       - {path: response.costUsd, op: absent}
       - any: [{path: response.output.data.items, op: absent}, {path: response.output.data.items, op: empty}]
@@ -183,7 +187,7 @@ endpoints:
     value: '0.00022'
     currency: USD
     unit: call
-    note: 'The listed price is the cheapest source''s; a failover to a dearer one costs more. 5 sources serve this, cheapest first; a failed attempt retries on the next, up to $0.0012 at the dearest. The charge follows the answer''s `costUsd`, not the listed price. Send X-Treg-Route-Max-Cost to refuse any source dearer than your ceiling. A `found: false` answer is still charged.'
+    note: 'The listed price is the cheapest source''s; a failover to a dearer one costs more. 5 sources serve this, cheapest first; a failed attempt retries on the next, up to $0.0012 at the dearest. The charge follows the answer''s `costUsd`, not the listed price. Send X-Treg-Route-Max-Cost to refuse any source dearer than your ceiling. A not-found or empty answer is billed too, at its own `costUsd`.'
   provenance:
     source: rate_card_api
     source_url: https://api.getanyapi.com/v1/apis/twitter.profile
@@ -191,6 +195,7 @@ endpoints:
     confidence: verified
   bill:
     error: charged
+    miss: charged
     free_when:
       - {path: response.costUsd, op: absent}
       - {path: response.output.found, op: equals, value: false}
@@ -234,7 +239,7 @@ endpoints:
     value: '0.0015'
     currency: USD
     unit: call
-    note: 2 sources serve this, cheapest first; a failed attempt retries on the next, up to $0.0024 at the dearest. The charge follows the answer's `costUsd`, not the listed price. Send X-Treg-Route-Max-Cost to refuse any source dearer than your ceiling.
+    note: 2 sources serve this, cheapest first; a failed attempt retries on the next, up to $0.0024 at the dearest. The charge follows the answer's `costUsd`, not the listed price. Send X-Treg-Route-Max-Cost to refuse any source dearer than your ceiling. A not-found or empty answer is billed too, at its own `costUsd`.
   provenance:
     source: observed
     source_url: https://api.getanyapi.com/v1/apis/instagram.reels_search
@@ -242,6 +247,7 @@ endpoints:
     confidence: verified
   bill:
     error: charged
+    miss: charged
     free_when:
       - {path: response.costUsd, op: absent}
       - any: [{path: response.output.data.reels, op: absent}, {path: response.output.data.reels, op: empty}]
@@ -338,7 +344,7 @@ endpoints:
     value: '0.0009'
     currency: USD
     unit: call
-    note: 'Flat per request whatever the result count. One source serves this, at up to $0.0009 a call. The charge follows the answer''s `costUsd`, not the listed price. Send X-Treg-Route-Max-Cost to refuse any source dearer than your ceiling. A `found: false` answer is still charged.'
+    note: 'Flat per request whatever the result count. One source serves this, at up to $0.0009 a call. The charge follows the answer''s `costUsd`, not the listed price. Send X-Treg-Route-Max-Cost to refuse any source dearer than your ceiling. A not-found or empty answer is billed too, at its own `costUsd`.'
   provenance:
     source: observed
     source_url: https://api.getanyapi.com/v1/apis/google.search
@@ -346,6 +352,7 @@ endpoints:
     confidence: verified
   bill:
     error: charged
+    miss: charged
     free_when:
       - {path: response.costUsd, op: absent}
       - any: [{path: response.output.data.results, op: absent}, {path: response.output.data.results, op: empty}]
@@ -398,7 +405,7 @@ endpoints:
     value: '0.002'
     currency: USD
     unit: call
-    note: 'The cheap source charges about $0.0012 and the failover source about $0.008. 2 sources serve this, cheapest first; a failed attempt retries on the next, up to $0.018 at the dearest. The charge follows the answer''s `costUsd`, not the listed price. Send X-Treg-Route-Max-Cost to refuse any source dearer than your ceiling. A `found: false` answer is still charged.'
+    note: 'The cheap source charges about $0.0012 and the failover source about $0.008. 2 sources serve this, cheapest first; a failed attempt retries on the next, up to $0.018 at the dearest. The charge follows the answer''s `costUsd`, not the listed price. Send X-Treg-Route-Max-Cost to refuse any source dearer than your ceiling. A not-found or empty answer is billed too, at its own `costUsd`.'
   provenance:
     source: observed
     source_url: https://api.getanyapi.com/v1/apis/linkedin.search_posts
@@ -452,7 +459,7 @@ endpoints:
     value: '0.0005'
     currency: USD
     unit: call
-    note: One source bills per result, so a small `limit` can cost less than the listed price. 4 sources serve this, cheapest first; a failed attempt retries on the next, up to $0.22 at the dearest. The charge follows the answer's `costUsd`, not the listed price. Send X-Treg-Route-Max-Cost to refuse any source dearer than your ceiling.
+    note: One source bills per result, so a small `limit` can cost less than the listed price. 4 sources serve this, cheapest first; a failed attempt retries on the next, up to $0.22 at the dearest. The charge follows the answer's `costUsd`, not the listed price. Send X-Treg-Route-Max-Cost to refuse any source dearer than your ceiling. A not-found or empty answer is billed too, at its own `costUsd`.
   provenance:
     source: observed
     source_url: https://api.getanyapi.com/v1/apis/twitter.user_tweets
@@ -460,6 +467,7 @@ endpoints:
     confidence: verified
   bill:
     error: charged
+    miss: charged
     free_when:
       - {path: response.costUsd, op: absent}
       - any: [{path: response.output.data.tweets, op: absent}, {path: response.output.data.tweets, op: empty}]
@@ -564,7 +572,7 @@ endpoints:
     value: '0.0005'
     currency: USD
     unit: call
-    note: '2 sources serve this, cheapest first; a failed attempt retries on the next, up to $0.00066 at the dearest. The charge follows the answer''s `costUsd`, not the listed price. Send X-Treg-Route-Max-Cost to refuse any source dearer than your ceiling. A `found: false` answer is still charged.'
+    note: '2 sources serve this, cheapest first; a failed attempt retries on the next, up to $0.00066 at the dearest. The charge follows the answer''s `costUsd`, not the listed price. Send X-Treg-Route-Max-Cost to refuse any source dearer than your ceiling. A not-found or empty answer is billed too, at its own `costUsd`.'
   provenance:
     source: observed
     source_url: https://api.getanyapi.com/v1/apis/linkedin.jobs_thin
@@ -601,7 +609,7 @@ endpoints:
     value: '0.0012'
     currency: USD
     unit: call
-    note: '2 sources serve this, cheapest first; a failed attempt retries on the next, up to $0.0012 at the dearest. The charge follows the answer''s `costUsd`, not the listed price. Send X-Treg-Route-Max-Cost to refuse any source dearer than your ceiling. A `found: false` answer is still charged.'
+    note: '2 sources serve this, cheapest first; a failed attempt retries on the next, up to $0.0012 at the dearest. The charge follows the answer''s `costUsd`, not the listed price. Send X-Treg-Route-Max-Cost to refuse any source dearer than your ceiling. A not-found or empty answer is billed too, at its own `costUsd`.'
   provenance:
     source: observed
     source_url: https://api.getanyapi.com/v1/apis/tiktok.profile
@@ -609,6 +617,7 @@ endpoints:
     confidence: verified
   bill:
     error: charged
+    miss: charged
     free_when:
       - {path: response.costUsd, op: absent}
       - {path: response.output.found, op: equals, value: false}
@@ -646,7 +655,7 @@ endpoints:
     value: '0.0012'
     currency: USD
     unit: call
-    note: '2 sources serve this, cheapest first; a failed attempt retries on the next, up to $0.0012 at the dearest. The charge follows the answer''s `costUsd`, not the listed price. Send X-Treg-Route-Max-Cost to refuse any source dearer than your ceiling. A `found: false` answer is still charged.'
+    note: '2 sources serve this, cheapest first; a failed attempt retries on the next, up to $0.0012 at the dearest. The charge follows the answer''s `costUsd`, not the listed price. Send X-Treg-Route-Max-Cost to refuse any source dearer than your ceiling. A not-found or empty answer is billed too, at its own `costUsd`.'
   provenance:
     source: observed
     source_url: https://api.getanyapi.com/v1/apis/linkedin.profile_thin
@@ -654,6 +663,7 @@ endpoints:
     confidence: verified
   bill:
     error: charged
+    miss: charged
     free_when:
       - {path: response.costUsd, op: absent}
       - {path: response.output.found, op: equals, value: false}
@@ -740,7 +750,7 @@ endpoints:
     value: '0.00175'
     currency: USD
     unit: call
-    note: 'The cheapest source charges $0.00175 and serves most calls; the two failover sources are far dearer. 3 sources serve this, cheapest first; a failed attempt retries on the next, up to $0.116 at the dearest. The charge follows the answer''s `costUsd`, not the listed price. Send X-Treg-Route-Max-Cost to refuse any source dearer than your ceiling. A `found: false` answer is still charged.'
+    note: 'The cheapest source charges $0.00175 and serves most calls; the two failover sources are far dearer. 3 sources serve this, cheapest first; a failed attempt retries on the next, up to $0.116 at the dearest. The charge follows the answer''s `costUsd`, not the listed price. Send X-Treg-Route-Max-Cost to refuse any source dearer than your ceiling. A not-found or empty answer is billed too, at its own `costUsd`.'
   provenance:
     source: rate_card_api
     source_url: https://api.getanyapi.com/v1/apis/maps.search
@@ -845,7 +855,7 @@ endpoints:
     value: '0.0143'
     currency: USD
     unit: call
-    note: '3 sources serve this, cheapest first; a failed attempt retries on the next, up to $0.194 at the dearest. The charge follows the answer''s `costUsd`, not the listed price. Send X-Treg-Route-Max-Cost to refuse any source dearer than your ceiling. A `found: false` answer is still charged.'
+    note: '3 sources serve this, cheapest first; a failed attempt retries on the next, up to $0.194 at the dearest. The charge follows the answer''s `costUsd`, not the listed price. Send X-Treg-Route-Max-Cost to refuse any source dearer than your ceiling. A not-found or empty answer is billed too, at its own `costUsd`.'
   provenance:
     source: observed
     source_url: https://api.getanyapi.com/v1/apis/linkedin.search_posts_full
@@ -892,7 +902,7 @@ endpoints:
     value: '0.0015'
     currency: USD
     unit: call
-    note: '2 sources serve this, cheapest first; a failed attempt retries on the next, up to $0.0015 at the dearest. The charge follows the answer''s `costUsd`, not the listed price. Send X-Treg-Route-Max-Cost to refuse any source dearer than your ceiling. A `found: false` answer is still charged.'
+    note: '2 sources serve this, cheapest first; a failed attempt retries on the next, up to $0.0015 at the dearest. The charge follows the answer''s `costUsd`, not the listed price. Send X-Treg-Route-Max-Cost to refuse any source dearer than your ceiling. A not-found or empty answer is billed too, at its own `costUsd`.'
   provenance:
     source: observed
     source_url: https://api.getanyapi.com/v1/apis/instagram.post
@@ -900,6 +910,7 @@ endpoints:
     confidence: verified
   bill:
     error: charged
+    miss: charged
     free_when:
       - {path: response.costUsd, op: absent}
       - {path: response.output.found, op: equals, value: false}
@@ -944,7 +955,7 @@ endpoints:
     value: '0.002'
     currency: USD
     unit: call
-    note: 5 sources serve this, cheapest first; a failed attempt retries on the next, up to $0.0036 at the dearest. The charge follows the answer's `costUsd`, not the listed price. Send X-Treg-Route-Max-Cost to refuse any source dearer than your ceiling.
+    note: 5 sources serve this, cheapest first; a failed attempt retries on the next, up to $0.0036 at the dearest. The charge follows the answer's `costUsd`, not the listed price. Send X-Treg-Route-Max-Cost to refuse any source dearer than your ceiling. A not-found or empty answer is billed too, at its own `costUsd`.
   provenance:
     source: observed
     source_url: https://api.getanyapi.com/v1/apis/instagram.user_reels
@@ -952,6 +963,7 @@ endpoints:
     confidence: verified
   bill:
     error: charged
+    miss: charged
     free_when:
       - {path: response.costUsd, op: absent}
       - any: [{path: response.output.data.reels, op: absent}, {path: response.output.data.reels, op: empty}]
@@ -993,7 +1005,7 @@ endpoints:
     value: '0.0024'
     currency: USD
     unit: call
-    note: 5 sources serve this, cheapest first; a failed attempt retries on the next, up to $0.0036 at the dearest. The charge follows the answer's `costUsd`, not the listed price. Send X-Treg-Route-Max-Cost to refuse any source dearer than your ceiling.
+    note: 5 sources serve this, cheapest first; a failed attempt retries on the next, up to $0.0036 at the dearest. The charge follows the answer's `costUsd`, not the listed price. Send X-Treg-Route-Max-Cost to refuse any source dearer than your ceiling. A not-found or empty answer is billed too, at its own `costUsd`.
   provenance:
     source: observed
     source_url: https://api.getanyapi.com/v1/apis/instagram.user_posts
@@ -1001,6 +1013,7 @@ endpoints:
     confidence: verified
   bill:
     error: charged
+    miss: charged
     free_when:
       - {path: response.costUsd, op: absent}
       - any: [{path: response.output.data.posts, op: absent}, {path: response.output.data.posts, op: empty}]
@@ -1040,7 +1053,7 @@ endpoints:
     value: '0.0042'
     currency: USD
     unit: call
-    note: '2 sources serve this, cheapest first; a failed attempt retries on the next, up to $0.0042 at the dearest. The charge follows the answer''s `costUsd`, not the listed price. Send X-Treg-Route-Max-Cost to refuse any source dearer than your ceiling. A `found: false` answer is still charged.'
+    note: '2 sources serve this, cheapest first; a failed attempt retries on the next, up to $0.0042 at the dearest. The charge follows the answer''s `costUsd`, not the listed price. Send X-Treg-Route-Max-Cost to refuse any source dearer than your ceiling. A not-found or empty answer is billed too, at its own `costUsd`.'
   provenance:
     source: observed
     source_url: https://api.getanyapi.com/v1/apis/linkedin.profile
@@ -1048,6 +1061,7 @@ endpoints:
     confidence: verified
   bill:
     error: charged
+    miss: charged
     free_when:
       - {path: response.costUsd, op: absent}
       - {path: response.output.found, op: equals, value: false}
@@ -1089,7 +1103,7 @@ endpoints:
     value: '0.00075'
     currency: USD
     unit: call
-    note: '3 sources serve this, cheapest first; a failed attempt retries on the next, up to $0.0021 at the dearest. The charge follows the answer''s `costUsd`, not the listed price. Send X-Treg-Route-Max-Cost to refuse any source dearer than your ceiling. A `found: false` answer is still charged.'
+    note: '3 sources serve this, cheapest first; a failed attempt retries on the next, up to $0.0021 at the dearest. The charge follows the answer''s `costUsd`, not the listed price. Send X-Treg-Route-Max-Cost to refuse any source dearer than your ceiling. A not-found or empty answer is billed too, at its own `costUsd`.'
   provenance:
     source: observed
     source_url: https://api.getanyapi.com/v1/apis/twitter.user_posts
@@ -1097,6 +1111,7 @@ endpoints:
     confidence: verified
   bill:
     error: charged
+    miss: charged
     free_when:
       - {path: response.costUsd, op: absent}
       - any: [{path: response.output.data.tweets, op: absent}, {path: response.output.data.tweets, op: empty}]
@@ -1165,7 +1180,7 @@ endpoints:
     value: '0.002'
     currency: USD
     unit: call
-    note: '2 sources serve this, cheapest first; a failed attempt retries on the next, up to $0.00312 at the dearest. The charge follows the answer''s `costUsd`, not the listed price. Send X-Treg-Route-Max-Cost to refuse any source dearer than your ceiling. A `found: false` answer is still charged.'
+    note: '2 sources serve this, cheapest first; a failed attempt retries on the next, up to $0.00312 at the dearest. The charge follows the answer''s `costUsd`, not the listed price. Send X-Treg-Route-Max-Cost to refuse any source dearer than your ceiling. A not-found or empty answer is billed too, at its own `costUsd`.'
   provenance:
     source: observed
     source_url: https://api.getanyapi.com/v1/apis/instagram.search_hashtag
@@ -1173,6 +1188,7 @@ endpoints:
     confidence: verified
   bill:
     error: charged
+    miss: charged
     free_when:
       - {path: response.costUsd, op: absent}
       - any: [{path: response.output.data.posts, op: absent}, {path: response.output.data.posts, op: empty}]
@@ -1215,7 +1231,7 @@ endpoints:
     value: '0.0012'
     currency: USD
     unit: call
-    note: 3 sources serve this, cheapest first; a failed attempt retries on the next, up to $0.0036 at the dearest. The charge follows the answer's `costUsd`, not the listed price. Send X-Treg-Route-Max-Cost to refuse any source dearer than your ceiling.
+    note: 3 sources serve this, cheapest first; a failed attempt retries on the next, up to $0.0036 at the dearest. The charge follows the answer's `costUsd`, not the listed price. Send X-Treg-Route-Max-Cost to refuse any source dearer than your ceiling. A not-found or empty answer is billed too, at its own `costUsd`.
   provenance:
     source: observed
     source_url: https://api.getanyapi.com/v1/apis/tiktok.profile_videos
@@ -1255,7 +1271,7 @@ endpoints:
     value: '0.00144'
     currency: USD
     unit: call
-    note: 4 sources serve this, cheapest first; a failed attempt retries on the next, up to $0.018 at the dearest. The charge follows the answer's `costUsd`, not the listed price. Send X-Treg-Route-Max-Cost to refuse any source dearer than your ceiling.
+    note: 4 sources serve this, cheapest first; a failed attempt retries on the next, up to $0.018 at the dearest. The charge follows the answer's `costUsd`, not the listed price. Send X-Treg-Route-Max-Cost to refuse any source dearer than your ceiling. A not-found or empty answer is billed too, at its own `costUsd`.
   provenance:
     source: observed
     source_url: https://api.getanyapi.com/v1/apis/instagram.post_comments
@@ -1263,6 +1279,7 @@ endpoints:
     confidence: verified
   bill:
     error: charged
+    miss: charged
     free_when:
       - {path: response.costUsd, op: absent}
       - any: [{path: response.output.data.comments, op: absent}, {path: response.output.data.comments, op: empty}]
@@ -1318,7 +1335,7 @@ endpoints:
     value: '0.002'
     currency: USD
     unit: call
-    note: 2 sources serve this, cheapest first; a failed attempt retries on the next, up to $0.0036 at the dearest. The charge follows the answer's `costUsd`, not the listed price. Send X-Treg-Route-Max-Cost to refuse any source dearer than your ceiling.
+    note: 2 sources serve this, cheapest first; a failed attempt retries on the next, up to $0.0036 at the dearest. The charge follows the answer's `costUsd`, not the listed price. Send X-Treg-Route-Max-Cost to refuse any source dearer than your ceiling. A not-found or empty answer is billed too, at its own `costUsd`.
   provenance:
     source: observed
     source_url: https://api.getanyapi.com/v1/apis/tiktok.search_top
@@ -1358,7 +1375,7 @@ endpoints:
     value: '0.002'
     currency: USD
     unit: call
-    note: 2 sources serve this, cheapest first; a failed attempt retries on the next, up to $0.0036 at the dearest. The charge follows the answer's `costUsd`, not the listed price. Send X-Treg-Route-Max-Cost to refuse any source dearer than your ceiling.
+    note: 2 sources serve this, cheapest first; a failed attempt retries on the next, up to $0.0036 at the dearest. The charge follows the answer's `costUsd`, not the listed price. Send X-Treg-Route-Max-Cost to refuse any source dearer than your ceiling. A not-found or empty answer is billed too, at its own `costUsd`.
   provenance:
     source: observed
     source_url: https://api.getanyapi.com/v1/apis/tiktok.video_comments
@@ -1366,6 +1383,7 @@ endpoints:
     confidence: verified
   bill:
     error: charged
+    miss: charged
     free_when:
       - {path: response.costUsd, op: absent}
       - any: [{path: response.output.data.comments, op: absent}, {path: response.output.data.comments, op: empty}]
@@ -1418,7 +1436,7 @@ endpoints:
     value: '0.002'
     currency: USD
     unit: call
-    note: 2 sources serve this, cheapest first; a failed attempt retries on the next, up to $0.0036 at the dearest. The charge follows the answer's `costUsd`, not the listed price. Send X-Treg-Route-Max-Cost to refuse any source dearer than your ceiling.
+    note: 2 sources serve this, cheapest first; a failed attempt retries on the next, up to $0.0036 at the dearest. The charge follows the answer's `costUsd`, not the listed price. Send X-Treg-Route-Max-Cost to refuse any source dearer than your ceiling. A not-found or empty answer is billed too, at its own `costUsd`.
   provenance:
     source: observed
     source_url: https://api.getanyapi.com/v1/apis/facebook.group_posts
@@ -1462,7 +1480,7 @@ endpoints:
     value: '0.002'
     currency: USD
     unit: call
-    note: 2 sources serve this, cheapest first; a failed attempt retries on the next, up to $0.0036 at the dearest. The charge follows the answer's `costUsd`, not the listed price. Send X-Treg-Route-Max-Cost to refuse any source dearer than your ceiling.
+    note: 2 sources serve this, cheapest first; a failed attempt retries on the next, up to $0.0036 at the dearest. The charge follows the answer's `costUsd`, not the listed price. Send X-Treg-Route-Max-Cost to refuse any source dearer than your ceiling. A not-found or empty answer is billed too, at its own `costUsd`.
   provenance:
     source: observed
     source_url: https://api.getanyapi.com/v1/apis/facebook.profile_posts
@@ -1470,6 +1488,7 @@ endpoints:
     confidence: verified
   bill:
     error: charged
+    miss: charged
     free_when:
       - {path: response.costUsd, op: absent}
       - any: [{path: response.output.data.posts, op: absent}, {path: response.output.data.posts, op: empty}]
@@ -1507,7 +1526,7 @@ endpoints:
     value: '0.002'
     currency: USD
     unit: call
-    note: 2 sources serve this, cheapest first; a failed attempt retries on the next, up to $0.0036 at the dearest. The charge follows the answer's `costUsd`, not the listed price. Send X-Treg-Route-Max-Cost to refuse any source dearer than your ceiling.
+    note: 2 sources serve this, cheapest first; a failed attempt retries on the next, up to $0.0036 at the dearest. The charge follows the answer's `costUsd`, not the listed price. Send X-Treg-Route-Max-Cost to refuse any source dearer than your ceiling. A not-found or empty answer is billed too, at its own `costUsd`.
   provenance:
     source: observed
     source_url: https://api.getanyapi.com/v1/apis/facebook.post
@@ -1576,7 +1595,7 @@ endpoints:
     value: '0.0012'
     currency: USD
     unit: call
-    note: 3 sources serve this, cheapest first; a failed attempt retries on the next, up to $0.0036 at the dearest. The charge follows the answer's `costUsd`, not the listed price. Send X-Treg-Route-Max-Cost to refuse any source dearer than your ceiling.
+    note: 3 sources serve this, cheapest first; a failed attempt retries on the next, up to $0.0036 at the dearest. The charge follows the answer's `costUsd`, not the listed price. Send X-Treg-Route-Max-Cost to refuse any source dearer than your ceiling. A not-found or empty answer is billed too, at its own `costUsd`.
   provenance:
     source: observed
     source_url: https://api.getanyapi.com/v1/apis/tiktok.search_keyword
@@ -1584,6 +1603,7 @@ endpoints:
     confidence: verified
   bill:
     error: charged
+    miss: charged
     free_when:
       - {path: response.costUsd, op: absent}
       - any: [{path: response.output.data.videos, op: absent}, {path: response.output.data.videos, op: empty}]
@@ -1620,7 +1640,7 @@ endpoints:
     value: '0.002'
     currency: USD
     unit: call
-    note: 2 sources serve this, cheapest first; a failed attempt retries on the next, up to $0.036 at the dearest. The charge follows the answer's `costUsd`, not the listed price. Send X-Treg-Route-Max-Cost to refuse any source dearer than your ceiling.
+    note: 2 sources serve this, cheapest first; a failed attempt retries on the next, up to $0.036 at the dearest. The charge follows the answer's `costUsd`, not the listed price. Send X-Treg-Route-Max-Cost to refuse any source dearer than your ceiling. A not-found or empty answer is billed too, at its own `costUsd`.
   provenance:
     source: observed
     source_url: https://api.getanyapi.com/v1/apis/tiktok.video_transcript
@@ -1689,7 +1709,7 @@ endpoints:
     value: '0.00099'
     currency: USD
     unit: call
-    note: One source serves this, at up to $0.00099 a call. The charge follows the answer's `costUsd`, not the listed price. Send X-Treg-Route-Max-Cost to refuse any source dearer than your ceiling.
+    note: One source serves this, at up to $0.00099 a call. The charge follows the answer's `costUsd`, not the listed price. Send X-Treg-Route-Max-Cost to refuse any source dearer than your ceiling. A not-found or empty answer is billed too, at its own `costUsd`.
   provenance:
     source: observed
     source_url: https://api.getanyapi.com/v1/apis/google.news
@@ -1697,6 +1717,7 @@ endpoints:
     confidence: verified
   bill:
     error: charged
+    miss: charged
     free_when:
       - {path: response.costUsd, op: absent}
       - any: [{path: response.output.data.items, op: absent}, {path: response.output.data.items, op: empty}]
@@ -1746,7 +1767,7 @@ endpoints:
     value: '0.0005'
     currency: USD
     unit: call
-    note: The listed price is the cheapest source's; a failover to a dearer one costs more. 4 sources serve this, cheapest first; a failed attempt retries on the next, up to $0.0138 at the dearest. The charge follows the answer's `costUsd`, not the listed price. Send X-Treg-Route-Max-Cost to refuse any source dearer than your ceiling.
+    note: The listed price is the cheapest source's; a failover to a dearer one costs more. 4 sources serve this, cheapest first; a failed attempt retries on the next, up to $0.0138 at the dearest. The charge follows the answer's `costUsd`, not the listed price. Send X-Treg-Route-Max-Cost to refuse any source dearer than your ceiling. A not-found or empty answer is billed too, at its own `costUsd`.
   provenance:
     source: rate_card_api
     source_url: https://api.getanyapi.com/v1/apis/twitter.replies
@@ -1754,6 +1775,7 @@ endpoints:
     confidence: verified
   bill:
     error: charged
+    miss: charged
     free_when:
       - {path: response.costUsd, op: absent}
       - any: [{path: response.output.data.items, op: absent}, {path: response.output.data.items, op: empty}]
@@ -1811,6 +1833,7 @@ endpoints:
     source_url: https://api.getanyapi.com/v1/apis/linkedin.company_employees
     checked: '2026-09-11'
     confidence: verified
+  bill: {miss: free}
   note: 'A company that does not exist answers 200 with `output.found: false`.'
   example_response: examples/anyapi.linkedin.company.people.json
   verified: '2026-09-19'
@@ -1879,7 +1902,7 @@ endpoints:
     value: '0.0018'
     currency: USD
     unit: call
-    note: '2 sources serve this, cheapest first; a failed attempt retries on the next, up to $0.00336 at the dearest. The charge follows the answer''s `costUsd`, not the listed price. Send X-Treg-Route-Max-Cost to refuse any source dearer than your ceiling. A `found: false` answer is still charged.'
+    note: '2 sources serve this, cheapest first; a failed attempt retries on the next, up to $0.00336 at the dearest. The charge follows the answer''s `costUsd`, not the listed price. Send X-Treg-Route-Max-Cost to refuse any source dearer than your ceiling. A not-found or empty answer is billed too, at its own `costUsd`.'
   provenance:
     source: observed
     source_url: https://api.getanyapi.com/v1/apis/google.ai_overview
@@ -2011,7 +2034,7 @@ endpoints:
     value: '0.0286'
     currency: USD
     unit: call
-    note: 'One source serves this, at up to $0.0286 a call. The charge follows the answer''s `costUsd`, not the listed price. Send X-Treg-Route-Max-Cost to refuse any source dearer than your ceiling. A `found: false` answer is still charged.'
+    note: 'One source serves this, at up to $0.0286 a call. The charge follows the answer''s `costUsd`, not the listed price. Send X-Treg-Route-Max-Cost to refuse any source dearer than your ceiling. A not-found or empty answer is billed too, at its own `costUsd`.'
   provenance:
     source: rate_card_api
     source_url: https://api.getanyapi.com/v1/apis/linkedin.jobs
@@ -2052,7 +2075,7 @@ endpoints:
     value: '0.0012'
     currency: USD
     unit: call
-    note: 3 sources serve this, cheapest first; a failed attempt retries on the next, up to $0.0036 at the dearest. The charge follows the answer's `costUsd`, not the listed price. Send X-Treg-Route-Max-Cost to refuse any source dearer than your ceiling.
+    note: 3 sources serve this, cheapest first; a failed attempt retries on the next, up to $0.0036 at the dearest. The charge follows the answer's `costUsd`, not the listed price. Send X-Treg-Route-Max-Cost to refuse any source dearer than your ceiling. A not-found or empty answer is billed too, at its own `costUsd`.
   provenance:
     source: observed
     source_url: https://api.getanyapi.com/v1/apis/tiktok.search_users
@@ -2060,6 +2083,7 @@ endpoints:
     confidence: verified
   bill:
     error: charged
+    miss: charged
     free_when:
       - {path: response.costUsd, op: absent}
       - any: [{path: response.output.data.users, op: absent}, {path: response.output.data.users, op: empty}]
@@ -2135,7 +2159,7 @@ endpoints:
     value: '0.0035'
     currency: USD
     unit: call
-    note: 'The three sources are priced an order of magnitude apart and one bills per review returned, so the charge varies widely with the source and the count. 3 sources serve this, cheapest first; a failed attempt retries on the next, up to $0.0441 at the dearest. The charge follows the answer''s `costUsd`, not the listed price. Send X-Treg-Route-Max-Cost to refuse any source dearer than your ceiling. A `found: false` answer is still charged.'
+    note: 'The three sources are priced an order of magnitude apart and one bills per review returned, so the charge varies widely with the source and the count. 3 sources serve this, cheapest first; a failed attempt retries on the next, up to $0.0441 at the dearest. The charge follows the answer''s `costUsd`, not the listed price. Send X-Treg-Route-Max-Cost to refuse any source dearer than your ceiling. A not-found or empty answer is billed too, at its own `costUsd`.'
   provenance:
     source: rate_card_api
     source_url: https://api.getanyapi.com/v1/apis/maps.reviews
@@ -2143,6 +2167,7 @@ endpoints:
     confidence: verified
   bill:
     error: charged
+    miss: charged
     free_when:
       - {path: response.costUsd, op: absent}
       - any: [{path: response.output.data.items, op: absent}, {path: response.output.data.items, op: empty}]
@@ -2224,7 +2249,7 @@ endpoints:
     value: '0.00175'
     currency: USD
     unit: call
-    note: The listed price is the cheapest source's; a failover to a dearer one costs more. 3 sources serve this, cheapest first; a failed attempt retries on the next, up to $0.0099 at the dearest. The charge follows the answer's `costUsd`, not the listed price. Send X-Treg-Route-Max-Cost to refuse any source dearer than your ceiling.
+    note: The listed price is the cheapest source's; a failover to a dearer one costs more. 3 sources serve this, cheapest first; a failed attempt retries on the next, up to $0.0099 at the dearest. The charge follows the answer's `costUsd`, not the listed price. Send X-Treg-Route-Max-Cost to refuse any source dearer than your ceiling. A not-found or empty answer is billed too, at its own `costUsd`.
   provenance:
     source: rate_card_api
     source_url: https://api.getanyapi.com/v1/apis/maps.place
@@ -2232,6 +2257,7 @@ endpoints:
     confidence: verified
   bill:
     error: charged
+    miss: charged
     free_when:
       - {path: response.costUsd, op: absent}
       - any: [{path: response.output.data.items, op: absent}, {path: response.output.data.items, op: empty}]
@@ -2280,7 +2306,7 @@ endpoints:
     value: '0.00099'
     currency: USD
     unit: call
-    note: 'One source serves this, at up to $0.00099 a call. The charge follows the answer''s `costUsd`, not the listed price. Send X-Treg-Route-Max-Cost to refuse any source dearer than your ceiling. A `found: false` answer is still charged.'
+    note: 'One source serves this, at up to $0.00099 a call. The charge follows the answer''s `costUsd`, not the listed price. Send X-Treg-Route-Max-Cost to refuse any source dearer than your ceiling. A not-found or empty answer is billed too, at its own `costUsd`.'
   provenance:
     source: observed
     source_url: https://api.getanyapi.com/v1/apis/google.autocomplete
@@ -2288,6 +2314,7 @@ endpoints:
     confidence: verified
   bill:
     error: charged
+    miss: charged
     free_when:
       - {path: response.costUsd, op: absent}
       - any: [{path: response.output.data.suggestions, op: absent}, {path: response.output.data.suggestions, op: empty}]

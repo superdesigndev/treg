@@ -1599,3 +1599,12 @@ async def test_fresh_caller_keeps_key_attribution_and_rechecks_key_controls(clie
         await arena._fresh_caller(snapshot)
     # Browser sessions do not inherit the Default key's lifecycle.
     assert (await arena._fresh_caller(browser)).api_key_id is None
+
+
+
+@pytest.mark.parametrize("status, outcome, state", [
+    (200, "hit", "hit"), (200, "miss", "miss"), (200, "weak", "miss"), (200, "pending", "pending"),
+    (502, "hit", "error"), (502, None, "error")])
+def test_a_routed_weak_answer_is_a_miss_in_the_arena(status, outcome, state):
+    """A weak routed answer (a wall page returned because nothing better turned up) found nothing."""
+    assert arena.routed_state(status, {"outcome": outcome} if outcome else {}) == state

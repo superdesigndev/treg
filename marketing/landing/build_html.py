@@ -525,7 +525,7 @@ TEMPLATE = """<!doctype html>
 <body data-page="{page_id}">
 
 <div class="navwrap"><nav class="nav">
-  <a class="brand" href="/"><span class="glyph">&#9626;</span> treg.to</a>
+  <a class="brand" href="/"><span class="glyph" aria-hidden="true"><svg viewBox="0 0 290 290"><rect width="140.5" height="140.5" rx="20"/><rect x="149.5" y="149.5" width="140.5" height="140.5" rx="20"/></svg></span> treg</a>
   <div class="links">
     <a class="hidem" href="/tutorial">docs</a>
     <a class="hidem" href="https://github.com/superdesigndev/treg" target="_blank" rel="noopener">repo</a>
@@ -537,7 +537,7 @@ TEMPLATE = """<!doctype html>
 
 <footer>
   <div class="foot-in">
-    <a class="brand" href="/"><span class="glyph">&#9626;</span> treg.to</a>
+    <a class="brand" href="/"><span class="glyph" aria-hidden="true"><svg viewBox="0 0 290 290"><rect width="140.5" height="140.5" rx="20"/><rect x="149.5" y="149.5" width="140.5" height="140.5" rx="20"/></svg></span> treg</a>
     <span class="note">100% open source</span>
     <span class="sp"></span>
     <a href="/resources">resources</a><a href="/tutorial">docs</a><a href="/llms.txt">llms.txt</a>
@@ -717,7 +717,7 @@ HUB = """<!doctype html>
 <body data-page="hub">
 
 <div class="navwrap"><nav class="nav">
-  <a class="brand" href="/"><span class="glyph">&#9626;</span> treg.to</a>
+  <a class="brand" href="/"><span class="glyph" aria-hidden="true"><svg viewBox="0 0 290 290"><rect width="140.5" height="140.5" rx="20"/><rect x="149.5" y="149.5" width="140.5" height="140.5" rx="20"/></svg></span> treg</a>
   <div class="links">
     <a class="hidem" href="/tutorial">docs</a>
     <a class="hidem" href="https://github.com/superdesigndev/treg" target="_blank" rel="noopener">repo</a>
@@ -752,7 +752,7 @@ HUB = """<!doctype html>
 
 <footer>
   <div class="foot-in">
-    <a class="brand" href="/"><span class="glyph">&#9626;</span> treg.to</a>
+    <a class="brand" href="/"><span class="glyph" aria-hidden="true"><svg viewBox="0 0 290 290"><rect width="140.5" height="140.5" rx="20"/><rect x="149.5" y="149.5" width="140.5" height="140.5" rx="20"/></svg></span> treg</a>
     <span class="note">100% open source</span>
     <span class="sp"></span>
     <a href="/resources">resources</a><a href="/tutorial">docs</a><a href="/llms.txt">llms.txt</a>

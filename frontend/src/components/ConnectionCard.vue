@@ -48,6 +48,8 @@ export default {
       {{a.pasted ? authLabel(a.p) : (caps || 'Connected account')}}</template>
     <template v-if="owner"> · added by {{short(owner)}}</template>
   </p>
+  <!-- Granted, but refused by the provider until its review of the app is approved. -->
+  <p v-if="a.c && a.c.review_note && a.st.key!=='paused'" class="cn-what cn-review">{{a.c.review_note}}</p>
 
   <!-- A named key: remove it. Pasting one through the provider's button replaces it in use. -->
   <div v-if="a.s" class="cn-acts">

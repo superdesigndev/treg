@@ -27,6 +27,7 @@ class ParamSpec(Model):
     item_required_all: list[str] | None = None
     item_required_any: list[str] | None = None
     authorization_methods: list[str] | None = None
+    applied: Literal["soft"] | None = None
     # JSON Schema words nothing reads; each row using one is on the shrink-only list
     description: str | None = None
     examples: list[Json] | None = None

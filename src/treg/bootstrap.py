@@ -17,7 +17,6 @@ import httpx
 from fastapi import FastAPI
 from fastapi.routing import APIRoute, request_response
 from fastapi.staticfiles import StaticFiles
-from sqlalchemy.exc import TimeoutError as PoolTimeoutError
 from starlette.exceptions import HTTPException as StarletteHTTPException
 from starlette.responses import RedirectResponse
 from starlette.routing import BaseRoute, Mount
@@ -37,7 +36,7 @@ from .config import TREG_USER_AGENT, get_settings
 from .infra import kv, money_timing, org_traffic, turnstile
 from .infra.loop_stall import start_loop_stall_watch, stop_loop_stall_watch
 from .infra.money_trace_runner import start_money_trace, stop_money_trace
-from .infra.db import ReportBusy, background_session_maker, verify_db
+from .infra.db import DB_BUSY_ERRORS, DB_BUSY_WRAPPERS, ReportBusy, background_session_maker, verify_db
 from .infra.catalog_observations import (
     CachedEndpointObservationReader,
     PostgresEndpointObservationReader,
@@ -467,9 +466,9 @@ _DATAPLANE_ROUTE_KEYS: frozenset[RouteKey] = frozenset({
 ROLE_BACKGROUND_TASKS: dict[AppRole, tuple[str, ...]] = {
     # Arena statistics are built by `treg-worker arena insights` (a cron) walking `callrecord`, so
     # web processes never compete for its cursor row. Only `/arena/insights` (a snapshot read) is here.
-    "all": ("treg.adsconv.worker",),
+    "all": ("treg.adsconv.worker", "treg.application.allowance_sweep.worker"),
     "dataplane": (),
-    "control": ("treg.adsconv.worker",),
+    "control": ("treg.adsconv.worker", "treg.application.allowance_sweep.worker"),
 }
 ROLE_STARTUP_CHECKS: dict[AppRole, tuple[str, ...]] = {
     "all": (
@@ -837,6 +836,13 @@ def _lifespan(role: AppRole):
                 else None
             )
             gauge_task = asyncio.create_task(pool_gauge()) if analytics.enabled() else None
+            # Idle allowance holds go back to the balance (money.md "Allowance"). Runs wherever
+            # background work runs, listed teams or not: a hold outlives its team's listing.
+            from .application import allowance_sweep
+            allowance_task = (
+                asyncio.create_task(allowance_sweep.worker())
+                if ROLE_BACKGROUND_TASKS[role] else None
+            )
             # Local transaction diagnostics run even when the analytics transport is disabled.
             trace_runner = start_money_trace(role=role)
             stall_watch = start_loop_stall_watch()
@@ -896,6 +902,7 @@ def _lifespan(role: AppRole):
                 try:
                     workers = [task for task in (
                         gauge_task, ads_task, archive_task, prune_task, find_task, rate_task,
+                        allowance_task,
                     ) if task is not None]
                     for task in workers:
                         task.cancel()
@@ -976,7 +983,10 @@ def create_app(role: AppRole = "all", *, archive_object_store=None) -> FastAPI:
         app.add_middleware(_DevTitleMiddleware)
     app.add_exception_handler(OverflowError, api_module._id_out_of_range)
     bootstrap_handlers._stamp_call_exit = call_routes._stamp_call_exit
-    app.add_exception_handler(PoolTimeoutError, bootstrap_handlers._pool_saturated)
+    for busy in DB_BUSY_ERRORS:
+        app.add_exception_handler(busy, bootstrap_handlers._pool_saturated)
+    for wrapper in DB_BUSY_WRAPPERS:
+        app.add_exception_handler(wrapper, bootstrap_handlers._db_error)
     app.add_exception_handler(ReportBusy, bootstrap_handlers._report_busy)
     app.add_exception_handler(StarletteHTTPException, bootstrap_handlers._mark_treg_own_errors)
 
@@ -984,9 +994,9 @@ def create_app(role: AppRole = "all", *, archive_object_store=None) -> FastAPI:
     _install_head_and_openapi(app)
 
     if role != "control" and _mcp is not None:
+        # Claude removes the final slash and does not follow redirects. Normalize before any mount.
+        app.add_middleware(_mcp.NormalizeMCPPath)
         if get_settings().claude_connector_enabled:
-            # Claude can remove the final slash. Normalize before the parent V1 mount can match.
-            app.add_middleware(_mcp.NormalizeDirectoryMCPPath)
             # Register the nested mount first so the /mcp parent does not consume it.
             app.mount("/mcp/v2", _mcp.directory_mcp_app)
         app.mount("/mcp", _mcp.mcp_app)

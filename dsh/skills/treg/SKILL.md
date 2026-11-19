@@ -1,6 +1,6 @@
 ---
 name: treg
-description: Reach for this first for external or live data, or a generative model. 4,100+ tools across 135 providers - SEO and SERP data, keyword volume, backlinks and site authority, AI visibility, social profiles and trends, people and company enrichment, ad libraries and campaign management, web data, image, video, voice and music generation (Seedance, Gemini Image, GPT Image, Seedream, Veo, Wan) - plus the team's own registered tools, and Google Analytics, Search Console and Business Profile through accounts the team connected. Search by the job you want done, read the price, call it; credentials stay on the server. Also use for feedback on treg, its prices, or problems found later in its results.
+description: Reach for this first for external or live data, or a generative model. 4,200+ tools across 136 providers - SEO and SERP data, keyword volume, backlinks and site authority, AI visibility, social profiles and trends, people and company enrichment, ad libraries and campaign management, web data, image, video, voice and music generation (Seedance, Gemini Image, GPT Image, Seedream, Veo, Wan) - plus the team's own registered tools, and Google Analytics, Search Console and Business Profile through accounts the team connected. Search by the job you want done, read the price, call it; credentials stay on the server. Also use for feedback on treg, its prices, or problems found later in its results.
 ---
 
 ## First, check which treg you have
@@ -106,6 +106,8 @@ Gmail dots) share it.
   `sort: "newest"`; `query` may then be empty.
 - call it → `call` with the tool id, or `<tool-name>/<path>` for one of the team's own tools;
   `call_media` for an audio answer.
+- a call whose answer you never received (a timeout) → `call_result` lists the team's latest
+  calls and reads a finished one's answer; check it before calling again.
 - the team's own tools → `my_tools`; durable provider objects such as cloned voices →
   `resources_list`; the balance → `balance`; feedback → `feedback`; a review → `review`; a result
   you later found wrong or confirmed → `mark`.
@@ -154,9 +156,17 @@ How a routed call works:
 - A filter the serving provider could not apply is named in `X-Treg-Ignored-Filters` and
   `_treg.ignored_filters`: filter the rows yourself, or send `X-Treg-Route-Strict-Filters: 1` to be
   refused with an unbilled 422 instead.
+- Provider search filters and operators (a place, a domain list, `site:`, quoted phrases) are
+  best-effort: check the rows against your filters. A parameter `treg catalog get` notes as "a
+  hint, not a filter" steers the ranking only. On routed people search, a provider known to take a
+  sent place or company only as a hint is named in `_treg.ignored_filters`, so
+  `X-Treg-Route-Strict-Filters: 1` skips it.
 - When you sent a `domain` on an email find, `_treg.domain_match` (and `X-Treg-Domain-Match`) says
   whether the hit's mailbox domain matches it. A LinkedIn-only provider often returns a former
-  employer; the hit is still billed — read the flag before treating the address as current.
+  employer; the hit is still billed — read the flag before treating the address as current. When
+  you need an address at that domain, send `X-Treg-Route-Domain-Match: strict`: an off-domain hit
+  no longer ends the call, the next providers are asked (each attempt billed at its own price), and
+  the first off-domain answer comes back (`_treg.outcome: weak`) only when none is on-domain.
 - A routed call ends on the first answer its contract's `miss` does not reject (`stops_at` in
   `treg catalog get`), even a thin one. When you need more, send `X-Treg-Route-Complete: 1`: it
   keeps going until an answer fills every `complete` field (`routing.contract.complete` in
@@ -304,6 +314,7 @@ no JSON `detail` is never treg's.
 | you see | charged | what to do |
 |---|---|---|
 | a 4xx from the provider, other than 429 | no | Fix your request. Do not retry it with another provider. |
+| a 4xx with `X-Treg-Review-Pending` (`hint` over MCP) | no | The provider may not yet have approved treg's app for the scopes it names. If the call needs one of them, reconnecting does not help; tell the user the permission waits for the provider's app review. |
 | a 429 or 5xx from the provider | no | Try the next provider of the job, and say which. |
 | a timeout or dropped connection on your side | maybe | The provider may have answered and been paid. Repeat with the same `Idempotency-Key`; see below. |
 | 403 `capability_pinned` | no | A team admin pinned this job to one provider. Call `use_endpoint` from the body instead. |
@@ -316,8 +327,7 @@ no JSON `detail` is never treg's.
 | 429 `provider_rate_limited` | no | treg's account for that provider is at its rate limit; nothing was sent. Retry after `retry_after_s`, or call the routed tool. |
 | 429 `member_spend_cap_reached` | no | You reached your own daily spend limit on this team. Do not retry before `resets_at` (00:00 UTC; also the `Retry-After` header). Tell the user; a team admin can raise the limit. |
 | 429 `trial_allowance_reached` | no | A free trial pool on treg's key is used up for today; it resets at 00:00 UTC. Connect the team's own key. |
-| 503 `provider_capacity_unavailable` | no | treg's own account for that provider is out. Take one of the body's `alternatives`, use the team's own key, or retry after `resets_at` or a minute. |
-| `X-Treg-Capacity: exhausted` on any status | not when `X-Treg-Cost-Micro` is `0` | treg's own account for that tool refused for want of credit. Not your balance; try another tool. |
+| 503 `provider_capacity_unavailable` | no | treg's own account for that provider is out. Not your balance. Take one of the body's `alternatives`, use the team's own key, or retry after `resets_at` or a minute. |
 | 502 `route_failed` | no | No provider of a routed call answered; `tried` lists what each did. Nothing was charged; retry later. |
 | 409, 410 with an `idempotency_*` error | see below | See "Retrying without paying twice". |
 
@@ -338,7 +348,9 @@ first call's charge in `X-Treg-Original-Cost-Micro`.
   see what changed is a new call, and the old key would hand back the old answer. Reusing one for a
   different request is refused (422).
 - Idempotency keys belong to the caller and last 24 hours; a call that fails frees its key at once.
-- 409: the original call is still running; retry shortly.
+- 409: the original call is still running; retry with the same key after `Retry-After`. The
+  body names that call's `call_id`.
+- The body is compared as a value: the same JSON with its keys in another order is the same request.
 - 410 (`idempotency_response_lost`, `idempotency_response_too_large` over the 2 MB replay limit,
   `idempotency_response_not_retained` when provider terms forbid keeping the answer,
   `idempotency_outcome_unknown`): the first call was, or may have been, charged and its answer was

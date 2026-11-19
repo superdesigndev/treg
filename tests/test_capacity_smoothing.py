@@ -138,11 +138,11 @@ async def test_no_retry_for_a_post_a_long_retry_after_or_a_quota_429(clients: As
     assert r.status_code == 429 and len(seen) == 1, "a POST is never re-sent"
     seen.clear()
     monkeypatch.setattr(call_service, "relay", _relay_script([(429, ((b"retry-after", b"90"),), b"x")], seen))
-    assert (await clients.get(f"/call/{EP}?aweme_id=7")).status_code == 429 and len(seen) == 1
+    assert (await clients.get(f"/call/{EP}?aweme_id=7")).status_code == 503 and len(seen) == 1
     seen.clear()
     monkeypatch.setattr(call_service, "relay", _relay_script([(429, ((b"retry-after", b"7200"),), b"quota")], seen))
     r = await clients.get(f"/call/{EP}?aweme_id=7")
-    assert r.status_code == 429 and len(seen) == 1 and "retry=" not in r.headers.get("X-Treg-Smoothed", "")
+    assert r.status_code == 503 and len(seen) == 1 and "retry=" not in r.headers.get("X-Treg-Smoothed", "")
 
 
 async def test_own_key_calls_are_never_smoothed(clients: AsyncClient, platform_on, monkeypatch):

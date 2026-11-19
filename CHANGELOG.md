@@ -24,6 +24,12 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
   address is returned either way, with `_treg.confirmation` and `X-Treg-Route-Confirmed` saying
   whether another provider agreed. Without the header nothing changes.
 
+- **`X-Treg-Route-Domain-Match: strict` on `treg.people.email.find`.** An opt-in header: when you
+  sent a `domain`, a hit at another mail domain no longer ends the call. The next providers are
+  asked, each billed at its own price inside `X-Treg-Route-Max-Cost`, for at most two more
+  off-domain hits; the first on-domain hit wins, else the first off-domain answer comes back as
+  `weak` with `_treg.domain_match: false`. Without the header nothing changes.
+
 - **`X-Treg-Route-Decisive` on `treg.people.email.verify`.** An opt-in header: an answer counts only
   when it says `valid` or `invalid`. Unknown, catch-all or risky sends the check on to at most two
   more providers, each billed at its own price inside `X-Treg-Route-Max-Cost`, asked in order of

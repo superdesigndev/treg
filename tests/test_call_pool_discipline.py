@@ -28,17 +28,20 @@ from sqlalchemy.ext.asyncio import create_async_engine
 from treg import api as A
 from treg.application import catalog_stats
 from treg.application.call import service as call_service
+from treg.routers import call as call_routes
 from treg import audit
 from treg.domain import money as ledger
 from treg.domain.identity import api_keys as managed_keys
 from treg.config import get_settings
-from treg.infra.db import _background_engine, _engine, session_maker
+from treg.infra.db import _background_engine, _engine, answers_db_busy, is_db_busy, session_maker
 from treg.infra.upstream.relay import relay as upstream_relay
 from treg.models import EndpointDayStat, Hold
 
 from test_marketplace_call import EP, EP_MICRO, platform_on  # noqa: F401 — fixture reuse
 from test_mcp import _call_tool, mcp_session
 
+from asyncpg.exceptions import CannotConnectNowError, TooManyConnectionsError
+from sqlalchemy.exc import IntegrityError, InterfaceError, OperationalError
 from sqlalchemy.exc import TimeoutError as PoolTimeoutError
 
 
@@ -141,6 +144,71 @@ async def test_a_saturated_pool_answers_a_typed_503_not_an_anonymous_500(
     assert r.status_code == 503, r.text
     assert r.json()["treg_saturated"] is True
     assert r.headers.get("Retry-After") == "2"
+
+
+@pytest.mark.parametrize("make", [
+    lambda: TooManyConnectionsError("sorry, too many clients already"),
+    lambda: TooManyConnectionsError("remaining connection slots are reserved for roles with SUPERUSER"),
+    lambda: CannotConnectNowError("the database system is starting up"),
+    lambda: OperationalError("connect", {}, TooManyConnectionsError("too many clients")),
+])
+async def test_a_refused_database_connection_answers_the_typed_503(clients: AsyncClient, monkeypatch, make):
+    async def _refused(*args, **kwargs):
+        raise make()
+
+    monkeypatch.setattr(call_service, "_resolve_call", _refused)
+    r = await clients.get(f"/call/{EP}?aweme_id=7")
+    assert r.status_code == 503, r.text
+    assert r.json()["treg_saturated"] is True
+    assert r.headers.get("Retry-After") == "2"
+
+
+async def test_another_error_caused_by_a_refused_connection_is_stamped_as_a_server_error(
+    clients: AsyncClient, monkeypatch,
+):
+    # Only the types the application-wide handlers catch may skip the router's own stamp; any other
+    # type reaches Starlette's bare 500, so the router must write its exit first.
+    stamped = []
+    original = call_routes._stamp_call_exit
+
+    async def _spy(request, response, status, **kwargs):
+        stamped.append((status, kwargs.get("failure_kind")))
+        return await original(request, response, status, **kwargs)
+
+    async def _wrapped(*args, **kwargs):
+        raise RuntimeError("wrapped") from TooManyConnectionsError("too many clients")
+
+    monkeypatch.setattr(call_routes, "_stamp_call_exit", _spy)
+    monkeypatch.setattr(call_service, "_resolve_call", _wrapped)
+    with pytest.raises(RuntimeError, match="wrapped"):
+        await clients.get(f"/call/{EP}?aweme_id=7")
+    assert (500, "unexpected_exception") in stamped
+
+
+def test_other_database_errors_are_not_busy():
+    assert not is_db_busy(OperationalError("select", {}, RuntimeError("syntax")))
+    assert not is_db_busy(ValueError("x"))
+    assert not answers_db_busy(IntegrityError("insert", {}, TooManyConnectionsError("x")))
+    assert answers_db_busy(InterfaceError("connect", {}, CannotConnectNowError("starting up")))
+
+
+async def test_a_settle_whose_connection_is_refused_once_retries_and_still_charges(
+    clients: AsyncClient, platform_on, monkeypatch,
+):
+    original = ledger.settle_in_transaction
+    calls = 0
+
+    async def _refused_once(*args, **kwargs):
+        nonlocal calls
+        calls += 1
+        if calls == 1:
+            raise TooManyConnectionsError("remaining connection slots are reserved")
+        return await original(*args, **kwargs)
+
+    monkeypatch.setattr(ledger, "settle_in_transaction", _refused_once)
+    r = await clients.get(f"/call/{EP}?aweme_id=7")
+    assert r.status_code == 200 and calls == 2
+    assert r.headers.get("X-Treg-Cost-Micro") == str(EP_MICRO)
 
 
 @pytest.mark.skipif(

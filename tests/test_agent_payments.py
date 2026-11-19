@@ -730,7 +730,8 @@ async def test_treg_own_balance_refusal_is_a_503_on_the_paid_path(anon: AsyncCli
     assert "payment-required" not in r.headers and "www-authenticate" not in r.headers
 
 
-async def test_a_vendor_402_is_relayed_verbatim(anon: AsyncClient, payments_on, monkeypatch):
+async def test_a_vendor_402_on_tregs_key_is_tregs_capacity_refusal(anon: AsyncClient, payments_on, monkeypatch):
+    """The vendor's 402 on treg's key is treg's account out, never a payment challenge to answer."""
     vendor = b'{"vendor":"out of credit"}'
     monkeypatch.setattr(call_service, "relay", _fake_relay(
         402, vendor, headers=((b"www-authenticate", b'Payment id="vendor"'),
@@ -738,9 +739,8 @@ async def test_a_vendor_402_is_relayed_verbatim(anon: AsyncClient, payments_on, 
     challenge = await anon.get(f"/call/{EP}?aweme_id=7")
     credential, _ = _x402_credential(challenge)
     r = await anon.get(f"/call/{EP}?aweme_id=7", headers={"PAYMENT-SIGNATURE": credential})
-    assert r.status_code == 402 and r.content == vendor
-    assert r.headers.get_list("www-authenticate") == ['Payment id="vendor"']
-    assert "X-Treg-Error" not in r.headers and "payment-required" not in r.headers
+    assert r.status_code == 503 and r.json()["detail"]["error"] == "provider_capacity_unavailable"
+    assert "www-authenticate" not in r.headers and "payment-required" not in r.headers
     # treg's own headers only: which money paid, never a receipt on a non-2xx answer.
     assert r.headers["X-Treg-Payment"] == "paid" and "payment-response" not in r.headers
 
@@ -2024,6 +2024,8 @@ async def test_an_mpp_check_spends_the_cap_once_at_its_first_rpc(monkeypatch):
         return httpx.Response(200, json={"jsonrpc": "2.0", "id": 1,
                                          "result": hex(42431) if method == "eth_chainId" else None})
 
+    # The node is handed over at construction: httpx routes requests through the environment's proxy
+    # (on macOS, the system proxy) and past a `_transport` swapped in afterwards.
     class Node(httpx.AsyncClient):
         def __init__(self, **kwargs):
             super().__init__(transport=httpx.MockTransport(answer), **kwargs)

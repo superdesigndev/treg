@@ -11,14 +11,12 @@ from types import SimpleNamespace
 from urllib.parse import parse_qsl, quote, urlencode, urlsplit
 
 import httpx
-from sqlalchemy.exc import TimeoutError as PoolTimeoutError
 
 from ... import analytics, archive, audit, jsontext, oauth, oauth_providers
 from ...application import hub as hub_app
 from ...application.hub import runner as hub_runner
 from ...application.hub import limits as hub_limits
 from ... import sandbox as demo_sandbox
-from ...capacity_notice import CAPACITY_HEADER, EXHAUSTED
 from ...client_identity import _norm_client, mcp_host
 from ...config import get_settings
 from ...domain.catalog import outcome as catalog_outcome
@@ -28,7 +26,7 @@ from ...domain.catalog import schema, store as catalog_store
 from ...domain.money import with_margin
 from ...domain import provider_resources
 from ...infra import credential_cipher, money_admission, org_endpoint_quota
-from ...infra.db import session_maker
+from ...infra.db import answers_db_busy, session_maker
 from ...models import Secret
 from ...sandbox_identity import visitor_name
 from ...domain.capacity import marks as capacity_marks
@@ -182,11 +180,11 @@ async def execute_call(context: CallContext, upstream_client: httpx.AsyncClient)
     except CallFailure as exc:
         _log_unaudited_child(request, exc.status_code, failure=exc)
         raise
-    except PoolTimeoutError:
-        _log_unaudited_child(request, 503, kind="db_pool")
-        raise
-    except Exception:
-        _log_unaudited_child(request, 500, kind="unexpected_exception")
+    except Exception as exc:
+        if answers_db_busy(exc):
+            _log_unaudited_child(request, 503, kind="db_pool")
+        else:
+            _log_unaudited_child(request, 500, kind="unexpected_exception")
         raise
     finally:
         if request.lease is not None:
@@ -760,6 +758,39 @@ def _set_response_header(response: UpstreamResponse, name: str, value: str) -> N
     response.raw_headers = tuple(
         (key, old) for key, old in response.raw_headers if key.lower() != wanted
     ) + ((wanted, value.encode("latin-1")),)
+
+
+def _note_review_refusal(response: UpstreamResponse, secrets: dict, body: bytes,
+                         charged: int, endpoint_id: str | None) -> None:
+    """Name the review-pending scopes behind a provider's "the app lacks this permission" error.
+
+    The body stays the provider's; the two headers tell the caller the grant is not at fault."""
+    if response.status < 400:
+        return
+    candidates = [
+        (provider, secret) for secret in secrets.values()
+        if (provider := oauth_providers.get(secret.provider) if secret.provider else None)
+        and provider.review_scopes and provider.review_refusal[0]
+    ]
+    if not candidates:
+        return
+    identity = _decompress_for_scan(body, _response_header(response, "content-encoding"))
+    try:
+        parsed = json.loads(identity) if identity else None
+    except (ValueError, RecursionError):
+        return
+    entry = catalog_store.load().by_id.get(endpoint_id or "")
+    for provider, secret in candidates:
+        scopes = oauth_providers.review_refusal_scopes(
+            provider, (secret.granted_scopes or "").split(), parsed,
+            entry, secret.authorization_method or "")
+        if scopes:
+            note = oauth_providers.review_refusal_note(provider, scopes)
+            if not charged:
+                note += " This call was not charged."
+            _set_response_header(response, "X-Treg-Review-Pending", " ".join(scopes))
+            _set_response_header(response, "X-Treg-Review-Pending-Text", note)
+            return
 
 
 async def _relay_live_demo(
@@ -1514,7 +1545,8 @@ async def _execute_call(request: _ApplicationRequest, upstream_client: httpx.Asy
         refusal_secrets = _safe_secret_renderings(tool, secrets)
         request.context.finalization = FinalizationState.PENDING
         try:
-            await _platform_reserve(mk, caller, meta=meta, call_ref=call_ref, allow_holdless=True)
+            await _platform_reserve(mk, caller, meta=meta, call_ref=call_ref, allow_holdless=True,
+                                    allow_allowance=not idem_key)
             request.context.finalization = FinalizationState.OPEN
         except asyncio.CancelledError:
             await _finish_cancelled_call(request, mk, call_ref)
@@ -2115,6 +2147,19 @@ async def _execute_call(request: _ApplicationRequest, upstream_client: httpx.Asy
                 _capture(_overflow_event(pending, outcome, charged))
             else:
                 _capture(pending)  # the vendor's own answer stands
+        if may_overflow and not served_via and not charged \
+                and capacity_signal in capacity_signatures.EXHAUSTING_KINDS:
+            # treg's own account is out of money or out of its period allowance. The provider's
+            # answer (a 2xx with the error inside, a 401 that reads as the caller's key) stays in
+            # the call's error evidence; the caller gets treg's typed refusal, uncharged.
+            await response.close()
+            request.state.call_cost_micro = 0
+            from .resolve import _provider_capacity_unavailable
+            raise _provider_capacity_unavailable(
+                _catalog_endpoint_for(mk.endpoint_id) or {"id": mk.endpoint_id},
+                mk.provider, capacity_view.exhausted_until(
+                    mk.provider, mk.endpoint_id, keyslots.capacity_slot(mk.key_slot),
+                    metered=capacity_marks.spends_balance(mk.cost_type)))
         # Mask credentials echoed in error bodies after settlement and capacity processing (which
         # need the original body) but before the body reaches the caller or the replay store.
         if response.status >= 400 and spooled_bytes is None:
@@ -2153,6 +2198,8 @@ async def _execute_call(request: _ApplicationRequest, upstream_client: httpx.Asy
         # read as "free" rather than "not applicable".
         _set_response_header(response, "X-Treg-Cost-Micro", str(charged))
         _set_response_header(response, "X-Treg-Call-Id", call_ref)
+        if not served_via and spooled_bytes is None:
+            _note_review_refusal(response, secrets, body, charged, mk.endpoint_id)
         if served_via:
             _set_response_header(response, "X-Treg-Served-Via", served_via)
         elif (200 <= response.status < 300 and spooled_bytes is None and not deferred
@@ -2161,10 +2208,6 @@ async def _execute_call(request: _ApplicationRequest, upstream_client: httpx.Asy
             # DataForSEO task status other than 20000). The body is relayed as any 2xx is and the
             # charge is what the provider reported; this header is how the caller learns it.
             _set_response_header(response, "X-Treg-Upstream-Failed", upstream_failed)
-        if not served_via and capacity_signal in capacity_signatures.EXHAUSTING_KINDS:
-            # treg's own account is out. The body stays the provider's; this header lets every
-            # surface tell the caller it is not their balance and not theirs to fix.
-            _set_response_header(response, CAPACITY_HEADER, EXHAUSTED)
         if smoothed:
             _set_response_header(response, "X-Treg-Smoothed", " ".join(smoothed))
         return response
@@ -2209,6 +2252,7 @@ async def _execute_call(request: _ApplicationRequest, upstream_client: httpx.Asy
                 await _finish_cancelled_call(request, mk, call_ref, response)
                 raise
     _set_response_header(response, "X-Treg-Call-Id", call_ref)
+    _note_review_refusal(response, secrets, body, 0, mk.endpoint_id if mk else None)
     if free_poll:
         _set_response_header(response, "X-Treg-Cost-Micro", "0")
         if smoothed:

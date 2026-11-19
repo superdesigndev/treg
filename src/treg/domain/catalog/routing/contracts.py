@@ -53,6 +53,10 @@ class Contract:
     # (`question_miss`), so the route moves on. Empty = none. Used where only the question can say
     # an answer is off target (a `site:` search whose rows are all on other sites).
     question_miss: str = ""
+    # True = an answer `question_miss` rules out is kept like a weak hit and the walk asks at most
+    # MAX_WEAK_FALLBACKS more providers (every provider returns the same wall page). False = the
+    # walk goes on to the end, as a `site:` search needs (the next provider may hold the site).
+    question_miss_bound: bool = False
     default_max_cost_usd: float | None = None  # the per-call ceiling when the caller sends none
     # One sentence the router attaches as `_treg.advice` to a HIT whose `output.verified` is not
     # true — a found contact the provider did not confirm deliverable, which an agent should verify
@@ -63,7 +67,8 @@ class Contract:
     # One sentence the router attaches as `_treg.advice` when a hit's email domain does not match
     # the domain the caller asked for (`_treg.domain_match: false`). Disclose only — the answer is
     # not altered. Empty = flag only, no advice. A LinkedIn-only child often returns a former
-    # employer when the caller also sent a domain.
+    # employer when the caller also sent a domain. Set = the contract also takes
+    # `X-Treg-Route-Domain-Match: strict`, which looks past such a hit (route.py).
     advice_domain_mismatch: str = ""
     # False = the contract exists so the archive can judge found/empty (`results.has_result_rules`
     # needs a verified adapter, and an adapter verifies only against a contract); no
@@ -87,6 +92,10 @@ class Contract:
     # ahead of `prefer`. Cost per hit is one number for every domain, but a finder's coverage
     # differs by country.
     prefer_by_domain_suffix: dict[str, tuple[str, ...]] = field(default_factory=dict)
+    # Providers asked, on treg's key, after the other treg-key candidates of the same health when
+    # the caller sends no `X-Treg-Route-Prefer`: a free provider that is often refused would
+    # otherwise lead on price. A team's own key is never reordered by it.
+    ask_last: tuple[str, ...] = ()
     # Identity key sets on which the caller's own `limit` is a target, not a cap: when the caller
     # sent exactly one of these sets and a `limit`, the route defaults to `X-Treg-Route-Min-Results:
     # <limit>` plus `X-Treg-Route-Merge: 1`, so a short answer goes on to the next provider and the
@@ -216,6 +225,10 @@ class Adapter:
     filter_max: dict[str, int] = field(default_factory=dict)  # `max:` a filter this provider caps (`limit: 8`); a request above it skips the provider
     additional_capabilities: tuple[str, ...] = ()  # opt-in reuse of the same request/output mapping
     route: bool = True                        # False: hit/miss evidence only, never a router candidate
+    # Caller keys the provider takes only as a hint (a place folded into a semantic query, a domain
+    # list its index does not enforce): the request carries them, the rows need not match them.
+    # `soft:` here, plus every key whose mapped parameter the endpoint row marks `applied: soft`.
+    soft: tuple[str, ...] = ()
     # `{cursor: <upstream path>}`: where the provider takes back the `next_cursor` its answer carried.
     # Cursor only: a page number over a provider whose order changes between calls (Dropleads)
     # repeats and skips rows.
@@ -374,8 +387,8 @@ def _variants(raw) -> tuple[tuple[str, ...], ...]:
 
 CONTRACT_KEYS = frozenset({
     "summary", "identity", "derive", "filters", "output", "miss", "idempotent", "default_max_cost_usd",
-    "advice_unverified", "advice_domain_mismatch", "routed", "scoping", "carried_by", "fill_rows", "prefer", "prefer_by_domain_suffix", "check", "confirm",
-    "empty_is_failure", "one_subject", "complete", "verdict", "question_miss", "row", "stand_in",
+    "advice_unverified", "advice_domain_mismatch", "routed", "scoping", "carried_by", "fill_rows", "prefer", "prefer_by_domain_suffix", "ask_last", "check", "confirm",
+    "empty_is_failure", "one_subject", "complete", "verdict", "question_miss", "question_miss_bound", "row", "stand_in",
     "stand_in_carries", "fill_limit_when", "identity_notes", "segments"})
 # Contract keys that no longer do anything, with what replaced them. `prefer_when` ordered
 # providers by the keys a caller sent; an order for one kind of request is now a published route
@@ -393,7 +406,7 @@ def retired_contract_keys(doc: dict) -> list[str]:
 ADAPTER_KEYS = frozenset({
     "accepts", "in", "in_expr", "in_read", "body_array", "test_identity", "cost_units", "max",
     "additional_capabilities", "route", "const", "out", "miss", "verdict", "verdicts", "row", "paging",
-    "position"})
+    "position", "soft"})
 # The longest text a mapped row field keeps: a row is read by an agent, and one provider's
 # multi-page bio would otherwise cost more tokens than the rest of the answer.
 ROW_TEXT_MAX = 300
@@ -472,6 +485,7 @@ def parse_contracts(doc: dict) -> dict[str, Contract]:
             output={k: (v if isinstance(v, dict) else {"type": str(v)}) for k, v in (c.get("output") or {}).items()},
             miss=str(c.get("miss") or ""), idempotent=bool(c.get("idempotent", True)),
             question_miss=str(c.get("question_miss") or ""),
+            question_miss_bound=bool(c.get("question_miss_bound")),
             default_max_cost_usd=(float(c["default_max_cost_usd"]) if c.get("default_max_cost_usd") is not None else None),
             advice_unverified=str(c.get("advice_unverified") or ""),
             advice_domain_mismatch=str(c.get("advice_domain_mismatch") or ""),
@@ -480,6 +494,7 @@ def parse_contracts(doc: dict) -> dict[str, Contract]:
             carried_by=_parse_carried_by(cap, c.get("carried_by"), types, scoping),
             prefer=tuple(str(p).lower() for p in c.get("prefer") or ()),
             prefer_by_domain_suffix=_parse_prefer_by_domain_suffix(cap, c.get("prefer_by_domain_suffix"), types),
+            ask_last=tuple(str(p).lower() for p in c.get("ask_last") or ()),
             fill_limit_when=_parse_fill_limit_when(cap, c.get("fill_limit_when"), types, c),
             fill_rows=_parse_fill_rows(cap, c.get("fill_rows"), c),
             check=_parse_check(cap, c.get("check"), c.get("output") or {}),
@@ -688,6 +703,14 @@ def _position(eid: str, raw) -> dict[str, str]:
     return {str(k): str(v) for k, v in raw.items()}
 
 
+def _soft(eid: str, raw) -> tuple[str, ...]:
+    if raw is None:
+        return ()
+    if not isinstance(raw, list) or not all(isinstance(k, str) and k for k in raw):
+        raise ValueError(f"adapter {eid}: soft is a list of key names")
+    return tuple(raw)
+
+
 def parse_adapters(doc: dict) -> dict[str, Adapter]:
     out = {}
     for eid, a in (doc.get("adapters") or {}).items():
@@ -704,6 +727,7 @@ def parse_adapters(doc: dict) -> dict[str, Adapter]:
             filter_max={str(k): int(v) for k, v in (a.get("max") or {}).items()},
             additional_capabilities=tuple(a.get("additional_capabilities") or ()),
             route=a.get("route", True) is not False,
+            soft=_soft(eid, a.get("soft")),
             paging=_paging(eid, a.get("paging"), a.get("out") or {}),
             position=_position(eid, a.get("position")),
             const=dict(a.get("const") or {}), out_map=dict(a.get("out") or {}), miss=str(a.get("miss") or ""),
@@ -961,6 +985,66 @@ def verify(adapter: Adapter, contract: Contract, endpoint: dict, example: Any) -
     return True, ""
 
 
+def _soft_targets(endpoint: dict) -> set[str]:
+    """The provider parameters (`queryParams.location`, `body.include_domains`) the endpoint row
+    marks `applied: soft`."""
+    inp = endpoint.get("input") or {}
+    body = inp.get("body") if isinstance(inp.get("body"), dict) else {}
+    if isinstance(body.get("properties"), dict):
+        body = body["properties"]
+    return {f"{where}.{name}" for where, params in (("queryParams", inp.get("queryParams")), ("body", body))
+            if isinstance(params, dict)
+            for name, spec in params.items() if isinstance(spec, dict) and spec.get("applied") == "soft"}
+
+
+def _soft_keys(adapter: Adapter, endpoint: dict, contract: Contract) -> tuple[str, ...]:
+    """The adapter's own `soft:` keys plus each contract filter it sends into a parameter marked soft."""
+    targets, filters = _soft_targets(endpoint), set(contract.filters or ())
+    keys = list(adapter.soft)
+    for k, target in adapter.in_map.items():
+        if target in targets and k in filters:
+            keys.append(k)
+    for target, expr in (adapter.in_expr or {}).items():
+        if target in targets:
+            keys += [n for n in re.findall(r"[A-Za-z_]\w*", expr) if n in filters]
+    return tuple(dict.fromkeys(keys))
+
+
+def soft_unrouted(adapters: dict[str, Adapter], contracts: dict[str, Contract],
+                  endpoints: dict[str, dict]) -> list[str]:
+    """Parameters an endpoint row marks `applied: soft` that no contract filter is mapped into:
+    the mark changes only what `catalog get` says, never a routed plan."""
+    out = []
+    for eid, ep in endpoints.items():
+        targets = _soft_targets(ep)
+        if not targets:
+            continue
+        ad, contract = adapters.get(eid), contracts.get(str(ep.get("capability") or ""))
+        filters = set(contract.filters or ()) if contract is not None else set()
+        routed = set()
+        if ad is not None:
+            routed |= {t for k, t in ad.in_map.items() if k in filters}
+            routed |= {t for t, e in (ad.in_expr or {}).items() if set(re.findall(r"[A-Za-z_]\w*", e)) & filters}
+        out += [f"{eid}: {t} is applied: soft but no contract filter maps into it; only catalog get shows it"
+                for t in sorted(targets - routed)]
+    return out
+
+
+def soft_problems(adapters: dict[str, Adapter], contracts: dict[str, Contract],
+                  capability_of: dict[str, str]) -> list[str]:
+    """An adapter's `soft:` names only its contract's filter or scoping keys."""
+    problems = []
+    for eid, ad in adapters.items():
+        contract = contracts.get(capability_of.get(eid) or "")
+        if not ad.soft or contract is None:
+            continue
+        known = set(contract.filters or ()) | set(contract.scoping)
+        if unknown := [k for k in ad.soft if k not in known]:
+            problems.append(f"adapter {eid}: soft names {', '.join(unknown)}, not a filter or scoping key "
+                            f"of {capability_of[eid]}")
+    return problems
+
+
 def load_routing(directory: Path, endpoints_by_id: dict[str, dict], read_yaml, read_example) -> tuple[dict[str, Contract], dict[str, Adapter]]:
     """Parse both files and verify every adapter against its endpoint's fixtures."""
     contracts = parse_contracts(read_yaml(directory / "contracts.yaml") or {})
@@ -991,5 +1075,5 @@ def load_routing(directory: Path, endpoints_by_id: dict[str, dict], read_yaml, r
                 if extra_ok:
                     additional.append(capability)
         verified[eid] = Adapter(**{**ad.__dict__, "verified": ok, "verify_note": note,
-                                   "verified_capabilities": tuple(additional)})
+                                   "verified_capabilities": tuple(additional), "soft": _soft_keys(ad, ep, contract)})
     return contracts, verified
