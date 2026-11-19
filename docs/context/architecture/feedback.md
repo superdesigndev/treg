@@ -176,7 +176,14 @@ so for them `hint_attached` counts an invitation the agent never saw.
   target the rate climbs linearly from `review_sample_rate` toward `review_target_rate` (an
   endpoint with none); at the target it is the base rate. It is the same deterministic draw
   (`hints.sampled_at`), and the team budget still caps how many invitations a team receives, so
-  targeting moves invitations toward short endpoints rather than adding work per team. `invited`
+  targeting moves invitations toward short endpoints rather than adding work per team. The same
+  snapshot keeps each team's own count per endpoint: a team already holding
+  `review_target_team_cap` reviews of an endpoint is not invited there again (rate 0) until older
+  ones leave the window, since the ranking counts no more per team, so its budget goes to
+  endpoints where its review still counts; a team holding none is invited at least at
+  `review_target_new_team_rate` (0 = no floor), because a ranking needs many teams per endpoint.
+  Both act on the snapshot, so a team can receive a few more invitations in the minutes before
+  the next refresh. `invited`
   on a review recomputes with the snapshot of its moment, so near an endpoint's target it can
   disagree with the invitation sent; `hint_attached` is the exact record.
 - **Mark**: a successful, non-replayed, non-cached catalog call on any credential tier, a routed
