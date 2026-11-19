@@ -906,6 +906,16 @@ class Settings(BaseSettings):
     # legacy EC PEM key.
     agent_payments_x402_cdp_api_key_id: str = ""
     agent_payments_x402_cdp_api_key_secret: str = ""
+    # Nano (`nano:mainnet`, exact): the payer sends XNO to `pay_to` and presents the block hash;
+    # treg reads the block from `node_url` (block_info) and credits it once. Off by default. Prices
+    # stay micro-USD: a payment is the offer at `xno_per_usd` (a decimal the operator sets, e.g.
+    # "1.25"), in raw (10**30 per XNO), rounded up. No key or seed: treg only reads blocks.
+    agent_payments_nano_enabled: bool = False
+    agent_payments_nano_pay_to: str = ""
+    agent_payments_nano_node_url: str = ""
+    agent_payments_nano_xno_per_usd: str = ""
+    # How long a Nano challenge's order is valid for a send block.
+    agent_payments_nano_challenge_ttl_s: int = Field(default=600, ge=60, le=3600)
     # Where settled payments land. `wallet`: the recipient addresses above are treg's own wallet.
     # `stripe`: they are Stripe crypto deposit addresses (`treg-worker agentpay stripe-address`);
     # payments are whole cents and the worker records each one as a Stripe PaymentIntent.
@@ -946,6 +956,19 @@ class Settings(BaseSettings):
             value = getattr(self, name)
             if value and not re.fullmatch(r"0x[0-9a-fA-F]{40}", value):
                 problems.append(f"TREG_{name.upper()} as a 0x-prefixed 20-byte address")
+        if self.agent_payments_nano_pay_to or self.agent_payments_nano_xno_per_usd:
+            from .infra.agent_payments import nano
+
+            if self.agent_payments_nano_pay_to:
+                try:
+                    nano.public_key_of(self.agent_payments_nano_pay_to)
+                except ValueError:
+                    problems.append("TREG_AGENT_PAYMENTS_NANO_PAY_TO as a nano_ address with a valid checksum")
+            if self.agent_payments_nano_xno_per_usd:
+                try:
+                    nano.parse_rate(self.agent_payments_nano_xno_per_usd)
+                except ValueError:
+                    problems.append("TREG_AGENT_PAYMENTS_NANO_XNO_PER_USD as a positive decimal")
         if bool(self.agent_payments_x402_cdp_api_key_id) != bool(self.agent_payments_x402_cdp_api_key_secret):
             problems.append("both TREG_AGENT_PAYMENTS_X402_CDP_API_KEY_ID and _SECRET, or neither")
         if self.agent_payments_enabled:
@@ -959,9 +982,18 @@ class Settings(BaseSettings):
         if len(self.agent_payments_secret) < 32:
             problems.append("TREG_AGENT_PAYMENTS_SECRET of 32+ characters")
         mpp, x402 = self.agent_payments_mpp_enabled, self.agent_payments_x402_enabled
-        if not (mpp or x402):
-            problems.append("TREG_AGENT_PAYMENTS_MPP_ENABLED or TREG_AGENT_PAYMENTS_X402_ENABLED")
+        nano = self.agent_payments_nano_enabled
+        if not (mpp or x402 or nano):
+            problems.append("TREG_AGENT_PAYMENTS_MPP_ENABLED, TREG_AGENT_PAYMENTS_X402_ENABLED or "
+                            "TREG_AGENT_PAYMENTS_NANO_ENABLED")
         stripe = self.agent_payments_settlement == "stripe"
+        if nano:
+            for name in ("agent_payments_nano_pay_to", "agent_payments_nano_node_url",
+                         "agent_payments_nano_xno_per_usd"):
+                if not getattr(self, name):
+                    problems.append(f"TREG_{name.upper()}")
+            if stripe:
+                problems.append("TREG_AGENT_PAYMENTS_SETTLEMENT=wallet (Nano does not settle to Stripe)")
         if stripe and not self.agent_payments_stripe_key:
             problems.append("TREG_AGENT_PAYMENTS_STRIPE_SECRET_KEY or TREG_STRIPE_SECRET_KEY (settlement stripe)")
         if mpp:

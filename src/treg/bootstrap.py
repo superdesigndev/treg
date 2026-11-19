@@ -776,6 +776,14 @@ def configure_agent_payments() -> None:
                 cdp_api_key_id=s.agent_payments_x402_cdp_api_key_id,
                 cdp_api_key_secret=s.agent_payments_x402_cdp_api_key_secret,
                 block_tag=s.agent_payments_x402_block_tag, origin=s.public_url))
+        if s.agent_payments_nano_enabled:
+            from .infra.agent_payments.nano import NanoRail
+
+            rails.append(NanoRail(
+                pay_to=s.agent_payments_nano_pay_to, secret=s.agent_payments_secret,
+                xno_per_usd=s.agent_payments_nano_xno_per_usd,
+                node_url=s.agent_payments_nano_node_url,
+                challenge_ttl_s=s.agent_payments_nano_challenge_ttl_s))
     agent_payments.configure(rails)
 
 
