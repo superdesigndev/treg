@@ -159,8 +159,8 @@ to order a refill, a fold, a charge write and a team's deletion, and on a team's
 being given to another team; SQLite offers neither.
 
 A team's allowance is one `Hold` row (`allowance:<org id>`, `allowance` true; revision 0110), so the
-invariant below counts it like any other hold. `allowance.refill_allowance_in_transaction` folds a
-batch, then moves an amount from the balance into that row with `reserve`'s conditional UPDATE and
+invariant below counts it like any other hold. `allowance.refill_allowance_in_transaction` folds
+what its caller asks for (`fold_limit`, or the whole queue with `fold_all`), then moves an amount from the balance into that row with `reserve`'s conditional UPDATE and
 a `reserve` entry, opening the row when there is none (an insert that ignores a conflict decides
 between two openers). A balance that cannot cover the amount adds nothing and raises nothing: the
 fold stands and the caller reads `added_micro == 0`. The row keeps its `created_at` for life, and
@@ -318,8 +318,17 @@ money moved, the purchased-credit gate.
   left for the exact path, and the refill then queued behind them on the money admission lease:
   the exact path serves one call at a time, so the team stayed there.
 - **refill.** Under the money admission lease, like a reserve: reap stale holds, then
-  `refill_allowance_in_transaction` folds queued charges and brings the counter up to
-  `money_allowance_chunk_micro`; after the commit, `store.allowance_add`. A team with a daily cap
+  `refill_allowance_in_transaction` brings the counter up to `money_allowance_chunk_micro`;
+  after the commit, `store.allowance_add`. A refill does not fold: calls wait on it, and the
+  queue is the background loop's. Only a frozen counter's refill folds, and then the whole
+  queue, so the balance it reads is the true one. What a refill may add is judged as an exact
+  reserve judges it, against the balance less what the queue will take from it
+  (`_queued_unbacked`), read after the debit: a charge queued for more than its call set aside
+  is owed from the moment it is queued, and its freeze can reach the counter after the next
+  refill. A refill that finds the balance short of that undoes its debit exactly (the day's
+  counter is taken back from the day it was counted on, not by the clock), adds nothing, and
+  the counter is drained.
+  A team with a daily cap
   gets no refill that could take the day past it. The number a cap is checked against is
   `allowance.committed_today`, one statement over the rows themselves: today's counter, plus all
   of an allowance hold opened on an earlier day (it is not in today's counter, only what a fold
@@ -416,20 +425,31 @@ money moved, the purchased-credit gate.
   started beside itself commits after the call has its take, so the reserve hands it the ask
   and it is made, in a task of its own, once that refill has committed and given up the lease.
 
-- **The queue is kept short, in short transactions.** A fold keeps the team's lease and the
-  hold's row lock for as long as its transaction runs, and a refill waits for both. Applying a
-  charge costs a ledger lookup and a ledger insert, so the time grows with the batch: a refill
-  folds a small batch and a background fold a somewhat larger one, both far below the most a
-  single statement may claim. One refill folds one batch, a chunk can pay for more calls than
-  a batch holds, and a chunk of cheap calls lasts a long time between refills. So a background
-  fold for the team is started by a refill that folded a full batch, and by the charge writer
-  each time the charges this process wrote for the team since its last fold fill a batch: a batch per transaction under the close lease, one process at a time, until the queue
-  is shorter than a batch. Calls keep taking from the counter meanwhile, since a fold moves
-  only money their takes already removed from it. The idle sweep's worker also folds, each
-  pass, the queue of any team with a charge older than a pass: a team no longer listed, a
-  charge written after its hold was closed. A call's `settle` entry, and every report read from
-  the ledger, therefore trails the call by about a batch of the team's calls while it is busy and
-  by about a sweep pass otherwise.
+- **One place folds the queue.** `application/allowance_sweep.py` runs a loop wherever
+  background work runs. Each pass goes through every team with queued charges, listed or
+  not, a page of teams at a time in the order of their numbers, and folds them a team at a time, a batch per transaction (`fold_queued_once`), on the background
+  pool; a pass that folded something is followed by the next at once, an idle one by a short
+  pause. Request processes only queue charges: neither a refill nor the charge writer folds.
+  So the connections folding uses are one per process running the loop, whatever the traffic
+  and however many teams are busy, and none of them comes from the pool requests use. A team
+  another process is working on (its lease is taken) is skipped, not waited for; so is a team
+  whose other money sessions hold the admission lease (the fold asks `admit` to refuse after a
+  short wait instead of falling back), and the next pass comes back to it. The idle sweep
+  waits no longer than that either: it runs first in the same loop, and it too goes through
+  every idle hold a page of teams at a time. A pass
+  leaves a team after a few batches so one long queue does not keep the others waiting. Calls
+  keep taking from the counter meanwhile, since a fold moves only money their takes already
+  removed from it: until its charge is folded, a call's money stays in the hold. A call's
+  `settle` entry, and every report read from the ledger (today's spend among them), therefore
+  trails the call by about a pass, longer while a team queues faster than a batch is applied.
+  A daily cap does not trail: `committed_today` counts the queue. Three folds run outside the
+  loop, on the request pool, each because the next step needs the balance with every charge
+  applied: a call that finishes on a frozen counter and must answer with what the ledger took
+  for it (`_settled`); a frozen counter's refill; and a drain, which folds the team's whole
+  queue before it returns the counter's money to the balance (a refill found no room, by
+  balance or daily cap, and the team goes back to the exact path). A long queue makes that one
+  request slow; the order, fold then return, is what keeps the returned money from being spent
+  twice.
 
 - **One money session per team.** A refill, a drain, a fold and the sweep's close each read the
   hold and then write it. All of them hold one lease in the store for the team
@@ -444,8 +464,8 @@ the store did not apply, or a counter lost with the store leaves money in the al
 no counter offers: unavailable, not spent and not charged, until the hold is closed. Nothing here
 offers money the hold does not have.
 
-**The idle sweep** (`application/allowance_sweep.py`, a background task wherever background work
-runs, listed teams or not) is what returns that money. A refill writes on the hold the instant
+**The idle sweep** (the same loop in `application/allowance_sweep.py`, once every sweep interval,
+listed teams or not) is what returns that money. A refill writes on the hold the instant
 until which calls may take from the counter and publishes that same instant to the counter, and
 a call lives at most `hold_ttl_s()`, so a hold whose instant passed that long ago, plus a margin,
 has nobody spending from it. The margin covers only the difference between clocks (the
@@ -594,7 +614,9 @@ admit wraps the session; nothing inside calls `admit` again. It changes no commi
   answers this same 429 rather than asking the next provider (catalog.md § Routing). Every other
   operation, on a missing identity, unavailable Redis, store error, lease loss or expired budget,
   releases partial gates and runs the original database path; it never raises, because settlement
-  and cleanup must run.
+  and cleanup must run. One caller opts out: work that can simply come back later (the allowance
+  fold loop) passes `refuse_on_timeout` and gets `AdmissionTimeout` at its own `max_wait_s`
+  before the database, counted as `rejected`.
 - **Wait bounds.** Non-reserve operations wait `max(money_admission_wait_s, 2 * lease)` (a dead
   holder keeps its lease for one TTL), but never more than half of `hold_grace_s`, and never past
   the reaper age of the oldest affected hold: the call records a monotonic `reserved_at` before

@@ -136,7 +136,7 @@ class _Observation:
             with _metrics_lock:
                 row = _windows.setdefault((self.operation, self.mode), _Window())
                 row.completed += 1
-                rejected = isinstance(exc, ReserveAdmissionTimeout)
+                rejected = isinstance(exc, AdmissionTimeout)
                 row.rejected += rejected
                 row.failed += exc is not None and not rejected
                 row.cancelled += isinstance(exc, asyncio.CancelledError)
@@ -298,7 +298,11 @@ class AdmissionRefused(Exception):
     """Reserve or release refused before checkout: no positive org id. Not an HTTP status."""
 
 
-class ReserveAdmissionTimeout(Exception):
+class AdmissionTimeout(Exception):
+    """The acquisition budget expired and the caller asked not to fall back. Not a store failure."""
+
+
+class ReserveAdmissionTimeout(AdmissionTimeout):
     """The reserve acquisition budget expired before checkout. Not a store failure."""
 
 
@@ -346,8 +350,11 @@ def _wait_budget(operation: str, settings, max_wait_s: float | None) -> float:
 
 @asynccontextmanager
 async def admit(org_ids: Iterable[int | None], *, operation: str,
-                max_wait_s: float | None = None) -> AsyncIterator[None]:
-    """`max_wait_s` caps a non-reserve wait for a caller with its own deadline."""
+                max_wait_s: float | None = None,
+                refuse_on_timeout: bool = False) -> AsyncIterator[None]:
+    """`max_wait_s` caps a non-reserve wait for a caller with its own deadline.
+    `refuse_on_timeout` is for work that can come back later: a non-reserve wait that runs out
+    raises `AdmissionTimeout` before the database, as a reserve's does, instead of falling back."""
     raw = list(org_ids)
     if operation in _BALANCE_OPS and (not raw or any(_invalid_org(org_id) for org_id in raw)):
         # Do not yield. `async with admit(), session()` must not open the session.
@@ -378,7 +385,8 @@ async def admit(org_ids: Iterable[int | None], *, operation: str,
                     observation.kv_errors += 1
                     reason = "gate_error"
                 if reason:
-                    reject = operation == "reserve" and reason == "wait_timeout"
+                    reject = ((operation == "reserve" or refuse_on_timeout)
+                              and reason == "wait_timeout")
                     if not reject:
                         observation.reason = reason
                     mode = "fallback"
@@ -399,7 +407,8 @@ async def admit(org_ids: Iterable[int | None], *, operation: str,
                     gate = None
                     if reject:
                         # Cleanup precedes rejection; never yield into a reserve DB session.
-                        raise ReserveAdmissionTimeout("wait_timeout")
+                        raise (ReserveAdmissionTimeout if operation == "reserve"
+                               else AdmissionTimeout)("wait_timeout")
                 else:
                     mode = "redis"
         observation.enter(mode)
