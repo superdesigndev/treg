@@ -18,6 +18,7 @@ treg's own marketplace also offers ready workflow skills as separate plugins. Af
 - `lead-signals`
 - `make-ugc`
 - `rea-growth`
+- `rea-marketing`
 - `recruit`
 - `web-access`
 
