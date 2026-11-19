@@ -75,6 +75,10 @@ is self-teaching. This fragment holds only what the code and help cannot say. Th
   diagnostic stderr lines: a script that merged the streams once discarded every result it had paid
   for. Exit status is unchanged (1 on HTTP >= 400). `--json` and `--org` are stripped in `main` and
   last for one `main()` call.
+- **Selected response headers.** A small allowlist of upstream response headers (`Location`,
+  `Content-Location`, `Content-Range` — never cookies or credentials) is printed on stderr as
+  `treg: Location: …`, and under `--json` as `_treg.response_headers`. That is how a resumable
+  upload's session URL reaches `treg call`.
 - **stdout is the exact body.** Everything treg adds goes to stderr: on HTTP >= 400 one diagnostic
   line (`_show_failure_diagnostics`) with the status, whose answer it is (`X-Treg-Error: 1` = treg
   refused, absent = relayed provider answer), the call id and any charge. treg's saturation 503

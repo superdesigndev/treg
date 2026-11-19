@@ -111,6 +111,38 @@ def test_call_output(fake, tmp_path, go_bin, name, json_flag):
     _assert_same_request(py_seen, go_seen)
 
 
+SESSION = (
+    "https://www.googleapis.com/upload/youtube/v3/videos"
+    "?uploadType=resumable&upload_id=EXAMPLE"
+)
+
+
+@pytest.mark.parametrize("json_flag", [False, True])
+def test_call_surfaces_location_and_drops_cookies(fake, tmp_path, go_bin, json_flag):
+    """A resumable init is an empty 200 whose session URL lives only in Location."""
+    fake.route("/call/youtube.youtube.video.upload", Canned(200, {
+        "Location": SESSION,
+        "Set-Cookie": "sid=secret",
+        "Authorization": "Bearer secret",
+        "Cookie": "a=b",
+        "X-Treg-Call-Id": "c-loc",
+    }, b""))
+    argv = (["--json"] if json_flag else []) + ["call", "youtube.youtube.video.upload"]
+    py, go, py_seen, go_seen = _both(fake, tmp_path, go_bin, argv)
+    _assert_same(py, go)
+    _assert_same_request(py_seen, go_seen)
+    blob = py.text + py.err
+    assert "sid=secret" not in blob and "Bearer secret" not in blob
+    if json_flag:
+        payload = json.loads(py.text)
+        assert payload["result"] == ""
+        assert payload["_treg"]["response_headers"]["location"] == SESSION
+        assert py.err == ""
+    else:
+        assert SESSION not in py.text
+        assert f"treg: Location: {SESSION}" in py.err
+
+
 def test_waf_retry(fake, tmp_path, go_bin):
     blocked = Canned(403, {"Content-Type": "text/html"}, b"<html>blocked</html>")
     ok = Canned(200, {}, b'{"ok":1}')
