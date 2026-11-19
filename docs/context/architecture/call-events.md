@@ -156,8 +156,11 @@ hash the same:
 | Searches (`linkedin.search.*`, `reddit.search.posts`, `meta-ads.library.search`) | the query (`q`), or a person's name | at least one result row |
 | Lists about one subject (`companies.emails.list`, `people.decision_makers`, `reddit.post.comments`) | the domain, or the post (`post_id`, derived from its URL) | at least one row |
 | One object (`x.post.detail`, `linkedin.job.detail`) | its id, derived from its URL (`x_post_id`, `linkedin_job_id`) | the object is returned |
-| Answers (`web.answer`, `google.serp.ai_mode`, `ai-search.*.scrape`) | the question or prompt (`q`) | answer text is returned |
+| Answers (`web.answer`, `google.serp.ai_mode`) | the question or prompt (`q`) | answer text is returned |
 | Counts (`people.search.count`) | company domain and title | a count above zero |
+
+When a capability gains a routed endpoint, keep its existing identity first so direct and routed
+calls for the same question continue to produce the same `input_id`.
 
 Scoping filters (country, date window, sort, location) stay out of `input_id`; the ones declared
 `analytics: value` go to `input_meta`, so analysis can split by them. A status poll
@@ -173,7 +176,8 @@ and returns categories, each a word from the set's fixed vocabulary; `segment` a
 `input_meta` with `segments_version`, the set's version, which moves whenever a rule or a
 vocabulary changes. No title, query, name, place or domain is recorded, only the category it falls
 in. A filter already recorded as a value (`country`) keeps its own spelling; the set only adds
-keys. A direct or child call's request is read back through its adapter (`vendor_identity`).
+keys. A direct or child call's request is read back through its adapter (`vendor_identity`). A
+filter whose provider representation needs decoding can declare an `in_read` expression.
 Besides the `in` map, every field an `in_expr` sends where it can be found is read back
 (`field_paths`): each expression is run on placeholder values, and a field is read from the
 place its placeholder lands whole, provided it lands there alone, no other field's placeholder

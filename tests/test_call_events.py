@@ -358,6 +358,43 @@ def test_a_trestle_country_hint_reads_a_national_number_in_that_country():
     assert key([("phone", "+442079460958"), ("phone.country_hint", "GB")]) not in (None, us)
 
 
+@pytest.mark.parametrize("engine,slug", [("chatgpt", "chat-gpt"), ("gemini", "gemini")])
+def test_llm_scrape_keyword_roundtrips_to_the_original_question(engine, slug, events_on):
+    cat = catalog_store.load()
+    contract = cat.contracts[f"ai-search.{engine}.scrape"]
+    adapter = cat.adapters[f"dataforseo.x.ai-optimization-{slug}-llm-scraper-live-advanced"]
+    question = "How do Disney+ and C++ handle %2B or 20%?"
+    identity, _ = C.canonical_identity(contract, {"prompt": question, "country": "FR"})
+    _, body = adapter.to_upstream(identity, C.adapter_accepts(adapter, identity))
+    assert body[0]["keyword"] == "How do Disney%2B and C%2B%2B handle %252B or 20%25?"
+    assert body[0]["location_code"] == 2250
+    direct = ev.vendor_identity(adapter, contract, [], json.dumps(body).encode())
+    assert direct["q"] == question
+    parent, _ = ev.input_columns(contract, {"prompt": question, "country": "FR"})
+    child, _ = ev.input_columns(contract, direct)
+    historical, _ = ev.input_columns(contract, {"q": question, "country": "FR"})
+    assert child["input_keys"] == parent["input_keys"] == historical["input_keys"]
+    assert child["input_id"] and child["input_id"] == parent["input_id"] == historical["input_id"]
+    assert child["input_type"] == parent["input_type"] == "q"
+    assert child["input_meta"] == parent["input_meta"] == {"country": "FR"}
+
+
+@pytest.mark.parametrize("location,expected", [
+    ({"location_name": "France"}, {"country": "FR"}),
+    ({"location_name": "Paris,France"}, None),
+    ({"location_code": 1006094}, None),
+    ({"location_coordinate": "48.8566,2.3522,200"}, None),
+])
+def test_direct_llm_scrape_reports_only_an_identifiable_country(location, expected):
+    cat = catalog_store.load()
+    contract = cat.contracts["ai-search.gemini.scrape"]
+    adapter = cat.adapters["dataforseo.x.ai-optimization-gemini-llm-scraper-live-advanced"]
+    body = json.dumps([{"keyword": "best+streaming%2B", **location}]).encode()
+    given = ev.vendor_identity(adapter, contract, [], body)
+    assert given["q"] == "best streaming+"
+    assert ev.segment(contract, given)[1] == (expected or {})
+
+
 def test_a_read_back_rule_is_part_of_the_adapter_fingerprint():
     hlr = catalog_store.load().adapters["hlrlookup.people.phone.verify"]
     assert ev.adapter_fingerprint(hlr) != ev.adapter_fingerprint(replace(hlr, in_read={}))

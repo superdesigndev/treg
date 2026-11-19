@@ -2541,6 +2541,39 @@ def test_keywords_are_a_filter_so_they_reach_every_provider_that_can_express_the
     assert "keywords" in ignored_filters(cat.adapters["aviato.people.search"], contract, ident)
 
 
+@pytest.mark.parametrize(("minimum", "providers", "charged"), [
+    (None, ["cloro"], 2_400),
+    ("2", ["cloro", "dataforseo"], 6_400),
+])
+async def test_scalar_answer_with_no_citations_counts_as_one_result(
+    clients, platform_on, monkeypatch, minimum, providers, charged,
+):
+    monkeypatch.setenv("TREG_PLATFORM_KEY_CLORO", "PLATFORM-CLORO-KEY")
+    monkeypatch.setenv("TREG_PLATFORM_PROVIDERS", "cloro,dataforseo")
+    get_settings.cache_clear()
+    cloro = _example("cloro.ai-search.gemini.scrape")
+    dataforseo = _example("dataforseo.x.ai-optimization-gemini-llm-scraper-live-advanced")
+    seen = []
+    monkeypatch.setattr(call_service, "relay", _relay_by_provider({
+        "cloro": [(200, cloro)], "dataforseo": [(200, dataforseo)],
+    }, seen))
+    headers = {"X-Treg-Route-Prefer": "cloro"}
+    if minimum:
+        headers["X-Treg-Route-Min-Results"] = minimum
+    before = await _balance(clients)
+    response = await clients.post("/call/treg.ai-search.gemini.scrape",
+                                  json={"prompt": "what is a stock split"}, headers=headers)
+    assert response.status_code == 200, response.text
+    assert [provider for provider, *_ in seen] == providers
+    result = response.json()
+    assert result["_treg"]["charged_micro"] == before - await _balance(clients) == charged
+    if minimum:
+        assert result["output"]["sources"] == dataforseo["tasks"][0]["result"][0]["sources"]
+    else:
+        assert result["output"]["sources"] == []
+        assert result["output"]["answer"] == cloro["result"]["text"]
+
+
 async def test_a_thin_hit_does_not_end_the_waterfall_when_the_caller_set_min_results(
     clients: AsyncClient, enrichment_on, monkeypatch
 ):

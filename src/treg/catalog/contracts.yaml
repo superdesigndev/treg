@@ -1508,6 +1508,38 @@ contracts:
     miss: "answer == null"
     idempotent: true
 
+  ai-search.chatgpt.scrape:
+    summary: "Get the answer that the live ChatGPT page shows a user for a prompt, from a chosen country: the answer text, its Markdown and its cited sources"
+    identity:
+      - {q: string}
+      - {prompt: string}
+    derive: {q: prompt, prompt: q}
+    filters:
+      country: {type: string, analytics: value, note: "ISO 3166-1 alpha-2, defaults to US"}
+      language: {type: string, default: en, note: "DataForSEO accepts a language code"}
+    output:
+      answer: {type: string, required: true, note: "the answer text; Markdown when the provider returns no plain text"}
+      markdown: {type: string, note: "the answer in Markdown"}
+      sources: {type: array, items: {type: object}, note: "the provider's own cited-source objects; raw is the same body"}
+    miss: "answer == null"
+    idempotent: true
+
+  ai-search.gemini.scrape:
+    summary: "Get the answer that the live Gemini page shows a user for a prompt, from a chosen country: the answer text, its Markdown and its cited sources"
+    identity:
+      - {q: string}
+      - {prompt: string}
+    derive: {q: prompt, prompt: q}
+    filters:
+      country: {type: string, analytics: value, note: "ISO 3166-1 alpha-2, defaults to US"}
+      language: {type: string, default: en, note: "DataForSEO accepts a language code"}
+    output:
+      answer: {type: string, required: true, note: "the answer text; Markdown when the provider returns no plain text"}
+      markdown: {type: string, note: "the answer in Markdown"}
+      sources: {type: array, items: {type: object}, note: "the provider's own cited-source objects; raw is the same body"}
+    miss: "answer == null"
+    idempotent: true
+
   web.search:
     summary: "Search the open web — provider-native result rows in `results`"
     identity:
@@ -1712,32 +1744,6 @@ contracts:
 
   google.serp.ai_mode:
     summary: "Google AI Mode's answer to a query — its text in `answer`; call events only, never routed"
-    routed: false
-    identity:
-      - {q: string}
-    filters:
-      country: {type: string, analytics: value}
-    output:
-      answer: {type: string, required: true}
-      sources: {type: array, items: {type: object}}
-    miss: "answer == null"
-    idempotent: true
-
-  ai-search.chatgpt.scrape:
-    summary: "ChatGPT's answer to a prompt, scraped — its text in `answer`; call events only, never routed"
-    routed: false
-    identity:
-      - {q: string}
-    filters:
-      country: {type: string, analytics: value}
-    output:
-      answer: {type: string, required: true}
-      sources: {type: array, items: {type: object}}
-    miss: "answer == null"
-    idempotent: true
-
-  ai-search.gemini.scrape:
-    summary: "Gemini's answer to a prompt, scraped — its text in `answer`; call events only, never routed"
     routed: false
     identity:
       - {q: string}

@@ -4604,6 +4604,11 @@ endpoints:
   example_response: examples/dataforseo.x.ai-optimization-chat-gpt-llm-scraper-live-advanced.json
   price: {value: '0.004', currency: USD, per: 1, unit: call}
   provenance: {source: observed, checked: '2026-07-28', confidence: verified}
+  miss:
+    when:
+      any:
+        - {path: response.tasks.0.result.0.markdown, op: absent}
+        - {path: response.tasks.0.result.0.markdown, op: empty}
   capability: ai-search.chatgpt.scrape
 - id: dataforseo.x.ai-optimization-chat-gpt-llm-scraper-task-get-advanced
   added: '2026-11-16'
@@ -5037,6 +5042,11 @@ endpoints:
   example_response: examples/dataforseo.x.ai-optimization-gemini-llm-scraper-live-advanced.json
   price: {value: '0.004', currency: USD, per: 1, unit: call}
   provenance: {source: observed, checked: '2026-07-28', confidence: verified}
+  miss:
+    when:
+      any:
+        - {path: response.tasks.0.result.0.markdown, op: absent}
+        - {path: response.tasks.0.result.0.markdown, op: empty}
   capability: ai-search.gemini.scrape
 - id: dataforseo.x.ai-optimization-gemini-llm-scraper-task-get-advanced
   added: '2026-11-16'

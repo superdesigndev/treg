@@ -1692,10 +1692,12 @@ async def _run_routed(parent: CallContext, ep: dict, body_bytes: bytes, get_head
         # how many rows make an answer; below it the waterfall keeps going and the best result so
         # far is kept, so a weak first provider can still win if nothing better turns up.
         n_rows = outcome.rows
+        list_field = _list_field(plan.contract)
+        have = n_rows if list_field else max(1, n_rows)
         # Under a merge the distinct rows of every answer so far are what the caller gets, so
         # they, not this answer alone, decide whether to keep looking.
-        have = (len(_merge_rows(lf, [*answers, (cand, doc, core, raw)]))
-                if options.merge and (lf := _list_field(plan.contract)) else n_rows)
+        if options.merge and list_field:
+            have = len(_merge_rows(list_field, [*answers, (cand, doc, core, raw)]))
         weak = options.waterfall and have < options.min_results
         # `X-Treg-Route-Complete`: an answer carrying under half the contract's output fields is
         # weak like a short list (the fullest one wins if nothing better turns up), and an answer

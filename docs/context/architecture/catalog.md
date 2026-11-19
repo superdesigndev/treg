@@ -1134,8 +1134,8 @@ returned and never documented as stable. An output field may say where it lands 
 ### Adapters (`adapters.yaml`)
 
 One per endpoint: `accepts` (identity variants), `in` (contract field to `queryParams.x` /
-`body.x`), `in_expr`, `in_read` (identity field to an expression over the provider request, for
-call events to read back a field the provider takes reshaped; it wins over `in`), `const`, `filters` (always sent), `out` (core field to expression), `miss`
+`body.x`), `in_expr`, `in_read` (an expression that recovers an identity field or filter from the
+provider request for call events, taking precedence over `in`), `const`, `filters` (always sent), `out` (core field to expression), `miss`
 (none on a v2 row's adapter: the row's own `miss` rule judges), `test_identity`, `row` (row field to
 expression over one provider row, for a contract with a `row`), and `route: false` for a judge-only adapter (results, stats, cache admission;
 never routing or arena). `verdicts` maps provider words (lower case, spaces and hyphens to `_`) to
@@ -1249,6 +1249,7 @@ an invalid extra never disables the primary.
     `X-Treg-Route-Waterfall: 0` stops at the first miss. `X-Treg-Route-Min-Results: N` marks a thin
     answer `weak` and continues at most `MAX_WEAK_FALLBACKS` times, returning the fullest answer:
     unbounded, it would pay the whole ladder on lookups whose honest answer is one row.
+    A complete scalar answer satisfies the default minimum of one even when its citations are empty.
     Under `X-Treg-Route-Merge` the distinct rows of every answer so far, not the latest answer
     alone, are compared with `N`, so the walk stops once the union reaches it.
   - **The routed read is bounded.** The router parses each child's answer, so it reads at most

@@ -379,7 +379,7 @@ def vendor_identity(adapter: Adapter, contract: Contract, query_items: Iterable[
     readable = {**contract.identity_specs, **(contract.filters or {})}
     # A field the provider takes reshaped is read back by the adapter's own `in_read` rule.
     for field_name, expr in (adapter.in_read or {}).items():
-        if field_name in contract.identity_specs:
+        if field_name in readable:
             try:
                 v = P.evaluate(expr, doc)
             except (TypeError, ValueError, AttributeError, IndexError):
