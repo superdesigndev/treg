@@ -11,7 +11,7 @@ from sqlmodel import select
 
 from treg import audit, policy
 from treg.domain import money as ledger
-from treg.infra.db import _engine, session_maker
+from treg.infra.db import session_maker
 from treg.models import Hold, LedgerEntry
 
 from test_marketplace_call import EP, EP_MICRO, _balance, platform_on  # noqa: F401 - fixture reuse
@@ -23,12 +23,13 @@ SIGNUP_EMAIL = "tim@superdesign.dev"  # the `clients` fixture's verified owner
 
 
 @pytest.fixture
-def admission(monkeypatch):
-    """A registered handler that records what it was asked and answers `state["decision"]`."""
+def admission(monkeypatch, connections_held_here):
+    """A registered handler that records what it was asked, with how many pooled connections the
+    asking call holds, and answers `state["decision"]`."""
     state = {"decision": policy.CallDecision.ALLOW, "raise": None, "asked": []}
 
     async def handler(ctx):
-        state["asked"].append((ctx, _engine.pool.checkedout()))
+        state["asked"].append((ctx, connections_held_here()))
         if state["raise"] is not None:
             raise state["raise"]
         return state["decision"]
