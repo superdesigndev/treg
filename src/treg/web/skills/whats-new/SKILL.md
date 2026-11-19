@@ -1,13 +1,13 @@
 ---
-name: doomscroll
+name: whats-new
 description: Use when the user wants to know what people are posting about a topic right now or since a recent point in time - the last few hours, today, since a launch, since their last check - such as the best clips, tips, reactions, launches, drama or sentiment on X, TikTok, YouTube, Reddit, Hacker News or Product Hunt. Also for "catch me up on X", "what's the internet saying about X", "what did I miss", or keeping up with a live event.
 metadata:
   summary: Scrolls X, TikTok, YouTube, Reddit, Hacker News and Product Hunt for a topic over the last hours, keeps what is new and worth seeing, and hands back the best posts grouped into stories, with links and the cost of the run.
 ---
 
-# Doomscroll
+# whats-new
 
-Your agent doomscrolls so you don't. Answer one question: **what is worth seeing about this topic
+Your agent scrolls so you do not have to. Answer one question: **what is worth seeing about this topic
 from the last N hours** (default 24h), across platforms, ranked, with links.
 
 Runs on treg, through its MCP tools or the `treg` CLI; either is enough. Over MCP, `treg catalog
@@ -28,8 +28,8 @@ otherwise tell them how and stop.
 3. **Scroll.** Call every platform below that fits, in parallel. Search the catalog by the job;
    the vendors are who answers today, not a list to stick to.
 4. **Merge.** With the CLI, save each answer to a file and run the merge script at the end of
-   this file (save it once as `doomscroll.py`):
-   `python3 doomscroll.py --since 24h --seen ~/.doomscroll/<topic-slug>.json x=x1.json tiktok=tt.json ...`.
+   this file (save it once as `whats_new.py`):
+   `python3 whats_new.py --since 24h --seen ~/.whats-new/<topic-slug>.json x=x1.json tiktok=tt.json ...`.
    It finds the rows in any provider's answer, drops posts older than the window, duplicates and
    posts shown in an earlier run, and ranks the rest by engagement within the platform, absolute
    reach and freshness. Over MCP only, apply the same rules by hand to the rows you got.
@@ -91,7 +91,7 @@ No section headers beyond these, no list of sources at the end: every claim carr
 ## The merge script
 
 Standard library only. Each argument is `SOURCE=FILE`, the JSON a `treg call` printed;
-`python3 doomscroll.py --selftest` checks it.
+`python3 whats_new.py --selftest` checks it.
 
 ```python
 import json, math, re, sys, time
@@ -194,7 +194,7 @@ def main(argv):
     for a in it:
         if a in opt: opt[a] = next(it)
         elif "=" in a: pairs.append(a.split("=", 1))
-        else: sys.exit("usage: doomscroll.py [--since 24h] [--top 60] [--seen FILE] SOURCE=FILE ...")
+        else: sys.exit("usage: whats_new.py [--since 24h] [--top 60] [--seen FILE] SOURCE=FILE ...")
     m = re.fullmatch(r"(\d+)([hdw])", opt["--since"])
     if not m: sys.exit("--since takes 6h, 2d or 1w")
     span, now = int(m.group(1)) * {"h": 3600, "d": 86400, "w": 604800}[m.group(2)], time.time()
