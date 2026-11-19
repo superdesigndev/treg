@@ -1,0 +1,107 @@
+[
+  {
+    "id": "1075399789",
+    "locationId": 5572598,
+    "businessName": "Ostra",
+    "businessUrl": "https://www.tripadvisor.com/Restaurant_Review-g60745-d5572598-Reviews-Ostra-Boston_Massachusetts.html",
+    "rating": 5,
+    "title": "Fantastic food and impeccable service",
+    "text": "Excellent food and service but the wine pricing is outlandish!",
+    "publishedDate": "August 29, 2026",
+    "dateVisited": "August 2026",
+    "tripType": "Couples",
+    "author": {
+      "displayName": "Johnny B",
+      "hometown": null,
+      "totalContributions": 2,
+      "helpfulVotes": null,
+      "avatarUrl": "https://dynamic-media-cdn.tripadvisor.com/media/photo-o/1a/f6/ed/00/default-avatar-2020-4.jpg?w=150&h=150&s=1",
+      "profileUrl": "https://www.tripadvisor.com/Profile/P7577HWjohnnyb",
+      "userId": "3206B42FB8156039BAA36730AC4ED384",
+      "isVerified": false,
+      "username": "P7577HWjohnnyb"
+    },
+    "subratings": [
+      {
+        "label": "Value",
+        "value": 4
+      },
+      {
+        "label": "Service",
+        "value": 5
+      },
+      {
+        "label": "Food",
+        "value": 5
+      },
+      {
+        "label": "Atmosphere",
+        "value": 4
+      }
+    ],
+    "photos": [],
+    "ownerResponse": null,
+    "helpfulVotes": 0,
+    "scrapedAt": "2026-10-18T22:00:23.602Z",
+    "reviewUrl": "https://www.tripadvisor.com/ShowUserReviews-g60745-d5572598-r1075399789-Ostra-Boston_Massachusetts.html",
+    "placeType": "EATERY",
+    "accommodationCategory": null,
+    "isTranslated": false,
+    "isPinned": false,
+    "tipText": null,
+    "createdDate": "2026-08-29",
+    "publishedDateISO": "2026-08-29",
+    "dateVisitedISO": "2026-08-01",
+    "language": "en",
+    "originalLanguage": "en",
+    "status": "PUBLISHED",
+    "publishPlatform": null,
+    "translationType": null,
+    "reviewTips": [],
+    "ownerResponseDetail": null
+  },
+  {
+    "id": "1072835025",
+    "locationId": 5572598,
+    "businessName": "Ostra",
+    "businessUrl": "https://www.tripadvisor.com/Restaurant_Review-g60745-d5572598-Reviews-Ostra-Boston_Massachusetts.html",
+    "rating": 5,
+    "title": "Fantastic seafood",
+    "text": "Ostra is a refined restaurant but was bustling and has a good atmosphere. Our party all had different dishes. The quality of the seafood was outstanding. My sea bream is probably the best fish I have ever tasted. The service was very good although initially we felt a bit hurried. Overall it was a fantastic experience and will remember for a long time.",
+    "publishedDate": "August 12, 2026",
+    "dateVisited": "August 2026",
+    "tripType": "Family",
+    "author": {
+      "displayName": "Andy B",
+      "hometown": "Gullane, United Kingdom",
+      "totalContributions": 24,
+      "helpfulVotes": null,
+      "avatarUrl": null,
+      "profileUrl": "https://www.tripadvisor.com/Profile/J1917QLandyb",
+      "userId": "3A489D8D4578F5ECFED31A47EB8602AF",
+      "isVerified": false,
+      "username": "J1917QLandyb"
+    },
+    "subratings": [],
+    "photos": [],
+    "ownerResponse": null,
+    "helpfulVotes": 0,
+    "scrapedAt": "2026-10-18T22:00:23.602Z",
+    "reviewUrl": "https://www.tripadvisor.com/ShowUserReviews-g60745-d5572598-r1072835025-Ostra-Boston_Massachusetts.html",
+    "placeType": "EATERY",
+    "accommodationCategory": null,
+    "isTranslated": false,
+    "isPinned": false,
+    "tipText": null,
+    "createdDate": "2026-08-12",
+    "publishedDateISO": "2026-08-12",
+    "dateVisitedISO": "2026-08-01",
+    "language": "en",
+    "originalLanguage": "en",
+    "status": "PUBLISHED",
+    "publishPlatform": null,
+    "translationType": null,
+    "reviewTips": [],
+    "ownerResponseDetail": null
+  }
+]

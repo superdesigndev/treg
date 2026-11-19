@@ -1,0 +1,282 @@
+[
+  {
+    "recordType": "symbol",
+    "status": "complete",
+    "failedSections": [],
+    "symbol": "AAPL",
+    "quote": null,
+    "profile": null,
+    "financials": null,
+    "chart": {
+      "meta": {
+        "currency": "USD",
+        "symbol": "AAPL",
+        "exchangeName": "NMS",
+        "fullExchangeName": "NasdaqGS",
+        "instrumentType": "EQUITY",
+        "firstTradeDate": 345479400,
+        "regularMarketTime": 1792180801,
+        "hasPrePostMarketData": true,
+        "gmtoffset": -14400,
+        "timezone": "EDT",
+        "exchangeTimezoneName": "America/New_York",
+        "regularMarketPrice": 343.46,
+        "regularMarketChangePercent": 0.427,
+        "fulldayPrice": 343.46,
+        "fulldayChange": 0.62,
+        "fulldayChangePercent": 0.181,
+        "fiftyTwoWeekHigh": 348.15,
+        "fiftyTwoWeekLow": 243.42,
+        "regularMarketDayHigh": 347.82,
+        "regularMarketDayLow": 340.46,
+        "regularMarketVolume": 59946368,
+        "longName": "Apple Inc.",
+        "shortName": "Apple Inc.",
+        "chartPreviousClose": 333.69,
+        "priceHint": 2,
+        "currentTradingPeriod": {
+          "pre": {
+            "timezone": "EDT",
+            "end": 1792157400,
+            "start": 1792137600,
+            "gmtoffset": -14400
+          },
+          "regular": {
+            "timezone": "EDT",
+            "end": 1792180800,
+            "start": 1792157400,
+            "gmtoffset": -14400
+          },
+          "post": {
+            "timezone": "EDT",
+            "end": 1792195200,
+            "start": 1792180800,
+            "gmtoffset": -14400
+          }
+        },
+        "dataGranularity": "1d",
+        "range": "",
+        "validRanges": [
+          "1d",
+          "5d",
+          "1mo",
+          "3mo",
+          "6mo",
+          "1y",
+          "2y",
+          "5y",
+          "10y",
+          "ytd",
+          "max"
+        ]
+      },
+      "series": [
+        {
+          "timestamp": 1791207000,
+          "date": "2026-10-05T13:30:00.000Z",
+          "open": 332.82000732421875,
+          "high": 336.2099914550781,
+          "low": 331.6499938964844,
+          "close": 332.8900146484375,
+          "volume": 34400900,
+          "adjclose": 332.8900146484375
+        },
+        {
+          "timestamp": 1791293400,
+          "date": "2026-10-06T13:30:00.000Z",
+          "open": 332.2799987792969,
+          "high": 334.3800048828125,
+          "low": 330.6199951171875,
+          "close": 333.6300048828125,
+          "volume": 30449000,
+          "adjclose": 333.6300048828125
+        },
+        {
+          "timestamp": 1791379800,
+          "date": "2026-10-07T13:30:00.000Z",
+          "open": 336.9599914550781,
+          "high": 338.6700134277344,
+          "low": 332.7799987792969,
+          "close": 336.6700134277344,
+          "volume": 34147900,
+          "adjclose": 336.6700134277344
+        }
+      ]
+    },
+    "news": null,
+    "recommendations": null,
+    "insights": null,
+    "priceInsights": null,
+    "options": null,
+    "ownership": null,
+    "analyst": null,
+    "analystConsensus": null,
+    "ratings": null,
+    "technicalEvents": null,
+    "keyStatistics": null,
+    "calendarEvents": null,
+    "scheduledEvents": null,
+    "marketSummary": [
+      {
+        "fullExchangeName": "SNP",
+        "symbol": "^GSPC",
+        "fulldayChangePercent": {
+          "raw": -1.09271,
+          "fmt": "-1.09%"
+        },
+        "gmtOffSetMilliseconds": -14400000,
+        "fulldayChange": {
+          "raw": -84.62012,
+          "fmt": "-84.62"
+        },
+        "language": "en-US",
+        "regularMarketTime": {
+          "raw": 1792183328,
+          "fmt": "4:42PM EDT"
+        },
+        "regularMarketChangePercent": {
+          "raw": -1.09271,
+          "fmt": "-1.09%"
+        },
+        "quoteType": "INDEX",
+        "typeDisp": "Index",
+        "tradeable": false,
+        "regularMarketPreviousClose": {
+          "raw": 7744.06,
+          "fmt": "7,744.06"
+        },
+        "exchangeTimezoneName": "America/New_York",
+        "regularMarketChange": {
+          "raw": -84.62012,
+          "fmt": "-84.62"
+        },
+        "cryptoTradeable": false,
+        "firstTradeDateMilliseconds": -1325583000000,
+        "exchangeDataDelayedBy": 0,
+        "exchangeTimezoneShortName": "EDT",
+        "fulldayPrice": {
+          "raw": 7659.44,
+          "fmt": "7,659.44"
+        },
+        "hasPrePostMarketData": false,
+        "regularMarketPrice": {
+          "raw": 7659.44,
+          "fmt": "7,659.44"
+        },
+        "marketState": "CLOSED",
+        "customPriceAlertConfidence": "LOW",
+        "market": "us_market",
+        "quoteSourceName": "Delayed Quote",
+        "priceHint": 2,
+        "sourceInterval": 15,
+        "exchange": "SNP",
+        "shortName": "S&P 500",
+        "region": "US",
+        "triggerable": false,
+        "longName": "S&P 500"
+      },
+      {
+        "fullExchangeName": "DJI",
+        "symbol": "^DJI",
+        "fulldayChangePercent": {
+          "raw": -0.33594632,
+          "fmt": "-0.34%"
+        },
+        "gmtOffSetMilliseconds": -14400000,
+        "fulldayChange": {
+          "raw": -175.28906,
+          "fmt": "-175.29"
+        },
+        "language": "en-US",
+        "regularMarketTime": {
+          "raw": 1792183329,
+          "fmt": "4:42PM EDT"
+        },
+        "regularMarketChangePercent": {
+          "raw": -0.33594632,
+          "fmt": "-0.34%"
+        },
+        "quoteType": "INDEX",
+        "typeDisp": "Index",
+        "tradeable": false,
+        "regularMarketPreviousClose": {
+          "raw": 52177.7,
+          "fmt": "52,177.70"
+        },
+        "exchangeTimezoneName": "America/New_York",
+        "regularMarketChange": {
+          "raw": -175.28906,
+          "fmt": "-175.29"
+        },
+        "cryptoTradeable": false,
+        "firstTradeDateMilliseconds": 694362600000,
+        "exchangeDataDelayedBy": 0,
+        "exchangeTimezoneShortName": "EDT",
+        "fulldayPrice": {
+          "raw": 52002.41,
+          "fmt": "52,002.41"
+        },
+        "hasPrePostMarketData": false,
+        "regularMarketPrice": {
+          "raw": 52002.41,
+          "fmt": "52,002.41"
+        },
+        "marketState": "CLOSED",
+        "customPriceAlertConfidence": "LOW",
+        "market": "us_market",
+        "quoteSourceName": "Delayed Quote",
+        "priceHint": 2,
+        "sourceInterval": 120,
+        "exchange": "DJI",
+        "shortName": "Dow 30",
+        "region": "US",
+        "triggerable": false,
+        "longName": "Dow Jones Industrial Average"
+      }
+    ],
+    "sectors": {
+      "marketCap": {
+        "raw": 87627069915136,
+        "fmt": "87.627T",
+        "longFmt": "87,627,069,915,136"
+      },
+      "sectorsCount": 11,
+      "description": "Sectors represent large sections of the economy and include multiple companies. Explore different sector performances below to analyze the economy as a whole.",
+      "industriesCount": 145,
+      "list": [
+        {
+          "regMarketChangePercent": {
+            "raw": 0.0012615921,
+            "fmt": "0.13%"
+          },
+          "name": "All Sectors",
+          "ytdReturn": {
+            "raw": 0.13862729,
+            "fmt": "13.86%"
+          },
+          "marketWeight": {
+            "raw": 1,
+            "fmt": "100.00%"
+          }
+        },
+        {
+          "symbol": "^YH311",
+          "regMarketChangePercent": {
+            "raw": -0.00019345235,
+            "fmt": "-0.02%"
+          },
+          "name": "Technology",
+          "ytdReturn": {
+            "raw": 0.21711448,
+            "fmt": "21.71%"
+          },
+          "marketWeight": {
+            "raw": 0.3236814,
+            "fmt": "32.37%"
+          },
+          "key": "technology"
+        }
+      ]
+    }
+  }
+]
