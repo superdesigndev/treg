@@ -73,7 +73,7 @@ from ..timeutil import as_naive as _as_naive
 from ..timeutil import utcnow_naive as _utcnow_naive
 from . import view
 from .auth_helpers import require_managed_cli, trusted_public_base
-from .signup_cookies import REFERRAL_COOKIE, _client_country, _take_affiliate_click, _take_partner_code
+from .signup_cookies import REFERRAL_COOKIE, _client_country, _forget_affiliate, _take_affiliate_click, _take_partner_code
 from .views import account as account_views
 from .views import toon
 
@@ -453,6 +453,7 @@ async def create_org(
             ref_code=body.ref or _take_partner_code(request), client_country=_client_country(request),
         )
         response.headers["Cache-Control"] = "no-store"
+        _forget_affiliate(response)
         return result
     except signup_use_cases.SignupError as exc:
         raise _signup_http_error(exc) from exc

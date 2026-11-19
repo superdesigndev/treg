@@ -17,7 +17,7 @@ from ..domain.identity.access import (
 from ..models import User
 from .auth_helpers import require_managed_cli
 from .orgs import _require_admin_of, _owned_team_limit_error, _signup_http_error
-from .signup_cookies import REFERRAL_COOKIE, _client_country, _take_affiliate_click, _take_partner_code
+from .signup_cookies import REFERRAL_COOKIE, _client_country, _forget_affiliate, _take_affiliate_click, _take_partner_code
 from ..domain.governance.teams import OwnedTeamLimitReached
 
 
@@ -115,6 +115,7 @@ async def onboard_team(
     except OwnedTeamLimitReached as exc:
         raise _owned_team_limit_error() from exc
     response.headers["Cache-Control"] = "no-store"
+    _forget_affiliate(response)
     return result
 
 

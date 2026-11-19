@@ -75,7 +75,8 @@ async def track_lead(client: httpx.AsyncClient, *, api_key: str, click_id: str,
 
     Dub deduplicates on (customerExternalId, eventName), so a retry after an ambiguous outcome is
     safe. `customerEmail` is what Dub's risk monitoring compares with the partner's own email. The
-    response's `link.partnerId` names the partner credited; it is null on a deduplicated repeat.
+    response's `link.partnerId` names the partner credited; it is null on a deduplicated repeat
+    (`customer_partner` answers then).
     """
     body: dict = {"clickId": click_id, "eventName": event_name,
                   "customerExternalId": customer_external_id}
@@ -112,6 +113,33 @@ async def partner_for_code(client: httpx.AsyncClient, *, api_key: str, link_doma
     if not partner_id:
         return Outcome(ok=False, retry=False, status=422, detail=f"Dub link {code} belongs to no partner")
     return Outcome(ok=True, retry=False, status=info.status_code, partner_id=partner_id)
+
+
+async def customer_partner(client: httpx.AsyncClient, *, api_key: str,
+                           customer_external_id: str) -> Outcome:
+    """`GET /customers?externalId=`: the partner Dub credited for a customer it already holds. The
+    answer a deduplicated `track/lead` leaves out. `partner_id` is "" when no partner brought it."""
+    try:
+        resp = await client.get(f"{API_URL}/customers", timeout=TIMEOUT_S,
+                                params={"externalId": customer_external_id,
+                                        "includeExpandedFields": "true"},
+                                headers={"Authorization": f"Bearer {api_key}"})
+    except httpx.HTTPError as exc:
+        return _transport_failure(exc)
+    outcome = _outcome(resp.status_code, resp.text)
+    if not outcome.ok:
+        return outcome
+    try:
+        rows = resp.json()
+    except ValueError:
+        rows = None
+    if not isinstance(rows, list):
+        return Outcome(ok=False, retry=True, status=resp.status_code, detail="unexpected customers body")
+    if not rows or not isinstance(rows[0], dict):
+        return Outcome(ok=False, retry=True, status=resp.status_code, detail="customer not found yet")
+    partner = rows[0].get("partner") or {}
+    return Outcome(ok=True, retry=False, status=resp.status_code,
+                   partner_id=str(partner.get("id") or "") if isinstance(partner, dict) else "")
 
 
 async def partner_email(client: httpx.AsyncClient, *, api_key: str, partner_id: str) -> Outcome:

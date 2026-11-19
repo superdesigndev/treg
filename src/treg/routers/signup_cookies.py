@@ -73,6 +73,13 @@ def _take_partner_code(request: Request) -> str:
     return dub.valid_partner_code((request.cookies.get(PARTNER_CODE_COOKIE) or "").strip('"'))
 
 
+def _forget_affiliate(resp) -> None:
+    """Drop the parked click and partner code once a team is made: a partner earns on the person
+    they brought, not on every team that browser makes in the next 90 days."""
+    resp.delete_cookie(AFFILIATE_COOKIE)
+    resp.delete_cookie(PARTNER_CODE_COOKIE)
+
+
 def _client_country(request: Request) -> str:
     """Cloudflare's view of the caller's country, when the request came through it."""
     return request.headers.get("cf-ipcountry", "")

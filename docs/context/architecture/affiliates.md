@@ -37,7 +37,9 @@ together with any tracking-only parameter in `web._SHARE_LINK_PARAMS` (`via`, ad
 
 - Team creation (`signup.create_org`, reached by `POST /orgs`, `POST /onboard/team` and the OAuth
   first team) stages one `AffiliateLead` in the team's own transaction (`affiliates.stage_lead`).
-  The unique `org_id` makes it once per team.
+  The unique `org_id` makes it once per team, and `affiliates.brought_before` makes it once per
+  person: a partner earns on the person they brought, so a later team the same user makes stages no
+  lead (the CLI's `settleRef` and the cleared cookies below say the same thing client side).
 - An affiliate click wins over a friend code: a team with a staged lead skips `_redeem_referral`, so
   one signup is never paid by both programs.
 - `affiliates.worker` drains due rows every `DRAIN_INTERVAL_S` with `POST /track/lead`
@@ -64,7 +66,8 @@ the browser sign-in that `treg login` opens carries it as `/login?ref=`, which p
 CLI forgets the code once its owner is in a team. A typed code is only ever a Dub partner's link key
 (`dub.PARTNER_CODE_RE`, `signup._partner_code`): one that equals a treg friend-referral code
 (`User.referral_code`) is ignored, as is any code while Dub is off. The friend referral comes only
-from the `?ref=` link cookie, unchanged. A link click wins over a typed code.
+from the `?ref=` link cookie, unchanged. A link click wins over a typed code. `POST /orgs` and
+`POST /onboard/team` clear both `treg_dub` and `treg_partner` (`_forget_affiliate`) once they answer.
 
 That code is staged as a code-only `AffiliateLead` (`partner_code`, and `country` from `CF-IPCountry`,
 else `dub_default_country`: Dub requires one for this lead; the check constraint keeps exactly one
@@ -92,8 +95,10 @@ Gmail dots ignored), in `affiliates._is_self`.
   `/track/lead` response afterwards and keeps it (`partner_id`). A match marks the row
   `self_referral` (uploaded and failed). A failed partner lookup leaves the row uploaded but not
   verified, retried with backoff on the partner check alone (the lead is never sent twice), so a
-  Dub outage cannot skip the check. The response names no partner on a deduplicated repeat; that row
-  is verified and left to Dub's own risk monitoring.
+  Dub outage cannot skip the check. The response names no partner on a deduplicated repeat (the
+  retry after a reply that timed out), so the check asks Dub's customer record instead
+  (`GET /customers?externalId=`, `dub.customer_partner`); a customer Dub cannot find yet is
+  re-checked, and one with no partner is verified with nothing to pay.
 
 ## Sales and refunds
 
@@ -102,14 +107,27 @@ Dub's Stripe app reads them. treg only tags a verified team's Stripe objects wit
 (`billing.get_or_create_customer`) and on the top-up Checkout Session. The lookup reads on billing's
 own session, and billing ends that read transaction before each Stripe call, so neither a second
 pool connection nor an open transaction waits on Stripe.
-A lead still in flight tags nothing. After the drain records outcomes, `affiliates._sync_stripe` brings an existing Customer in
+Dub credits only a payment that already carries the tag when it is made (a tag added afterwards
+links the customer but pays nothing for earlier payments: checked on Dub staging). So
+`stripe_metadata` resolves the team's own pending lead on the spot (`affiliates._check_now`), before
+billing creates the Customer or the Checkout: it claims the row like a worker, ends the
+transaction, runs the same Dub calls bounded by `CHECK_NOW_S`, and records the result. A row another
+process holds, one waiting out a retry, a timeout or a Dub outage leaves the lead to the drain and
+that payment untagged; the payment itself never waits on more than `CHECK_NOW_S` and never fails
+for it. After the drain records outcomes, `affiliates._sync_stripe` brings an existing Customer in
 line (`Customer.modify`, which Dub sees as `customer.updated`): tagged when its lead is verified,
-untagged on a self-referral; `stripe_synced_at` marks it done and a failed Stripe call retries next
-drain. A lead whose team has no Customer yet stays unsynced until one exists, so a Customer billing
+untagged on a self-referral; `stripe_synced_at` marks it done. Stripe refusing the request itself
+(`InvalidRequestError`, such as a deleted Customer) settles the row with the error; any other failure
+waits out the same growing delay in `next_attempt_at`, and rows go oldest first, so a few broken
+Customers never hold up the rest. A lead whose team has no Customer yet stays unsynced until one exists, so a Customer billing
 commits while the lead is being verified is still tagged on a later drain. No connection is held during the Stripe call either. Manual top-ups complete a
 Checkout with `invoice_creation`, and auto top-ups are paid invoices, so both reach Dub as
 `checkout.session.completed` / `invoice.paid`, and their refunds and disputes as `charge.*`. A team
 no affiliate brought carries no Dub key. Team deletion removes its `AffiliateLead`.
+
+The reward's 6-month window is Dub's: it starts at the customer's first sale of any kind, an
+enterprise SSO payment on the same Customer included, so `/terms` counts it from the first payment.
+Commissions Dub records on SSO payments are cancelled in Dub's review.
 
 ## Not built
 
