@@ -838,7 +838,11 @@ for one. The org is found by the customer's `treg_org_id` metadata when present.
 with no database connection open, `attempt_auto_topup` checks that the stored card is still
 attached to the customer, so a late or lost detach event never charges a removed card; a Stripe
 error there charges nothing and is not a failed attempt. The webhook endpoint must subscribe to
-both events. A row from before `stripe_default_pm_at` has no time, so its first timed choice wins.
+both events. A row from before `stripe_default_pm_at` has no time, so its first timed choice wins. A portal
+change made before treg handled `customer.updated` sends nothing later; `treg-worker admin card-sync
+--org <id> [--apply]` (`sync_card_from_stripe`) adopts the Stripe default only when it is attached, a
+different physical card (fingerprint) and created after the stored card, reports without `--apply`,
+and writes through `_set_default_pm` as a portal choice made now.
 
 Before a new charge, `attempt_auto_topup` pages the customer's invoices (listing, not Stripe's delayed
 search index) since one day before the last credited automatic top-up, or the full history before

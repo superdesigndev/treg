@@ -14,6 +14,7 @@ test secret, so the signature check is exercised for real rather than stubbed ou
 
 from __future__ import annotations
 
+import argparse
 import hashlib
 import hmac
 import json
@@ -2726,3 +2727,98 @@ async def test_a_refund_of_fully_spent_credit_is_still_recorded(c: AsyncClient, 
     assert r["held_micro"] == 0
     history = (await c.get("/billing/history", headers=_h(owner))).json()["items"]
     assert history[0]["refunded_micro"] == 10_000_000
+
+
+# ---- operator: adopt a newer portal card treg missed --------------------------------------------
+def _card_sync_sdk(default: str | None, cards: dict):
+    async def sdk(fn, /, **kw):
+        if fn == billing.stripe_adapter.CUSTOMER_RETRIEVE:
+            return {"id": kw["id"], "invoice_settings": {"default_payment_method": default}}
+        if fn == billing.stripe_adapter.PAYMENT_METHOD_RETRIEVE:
+            if kw["id"] not in cards:
+                raise stripe.InvalidRequestError("No such PaymentMethod", param="id",
+                                                 code="resource_missing", http_status=404)
+            return {"id": kw["id"], **cards[kw["id"]]}
+        raise AssertionError(f"card-sync must only read Stripe: {fn}")
+    return sdk
+
+
+def _pm(created: int, fingerprint: str, customer: str | None = "cus_armed") -> dict:
+    return {"created": created, "customer": customer, "card": {"fingerprint": fingerprint}}
+
+
+async def test_card_sync_adopts_a_newer_portal_card_only_with_apply(c: AsyncClient, monkeypatch):
+    org_id, owner = await _org(c)
+    await _armed(org_id, autotopup_enabled=False, autotopup_disabled_reason="no_card")
+    monkeypatch.setattr(billing, "_sdk", _card_sync_sdk(
+        "pm_portal", {"pm_armed": _pm(100, "fp_old", None), "pm_portal": _pm(200, "fp_new")}))
+    report = await billing.sync_card_from_stripe(org_id)
+    assert report["action"] == "adopt" and report["applied"] is False
+    assert report["stored_attached"] is False and await _stored_pm(org_id) == "pm_armed"
+    applied = await billing.sync_card_from_stripe(org_id, apply=True)
+    assert applied["applied"] is True and applied["changed"] is True
+    assert await _stored_pm(org_id) == "pm_portal"
+    state = (await c.get("/billing", headers=_h(owner))).json()["autotopup"]
+    assert state["enabled"] is True and state["disabled_reason"] is None
+    # A second run finds nothing left to do.
+    assert (await billing.sync_card_from_stripe(org_id, apply=True))["reason"] == \
+        "already the stored card"
+
+
+@pytest.mark.parametrize("default, cards, reason", [
+    (None, {}, "no Stripe default card"),
+    ("pm_portal", {"pm_armed": _pm(100, "fp_a"), "pm_portal": _pm(200, "fp_a")},
+     "same physical card"),
+    ("pm_portal", {"pm_armed": _pm(300, "fp_a"), "pm_portal": _pm(200, "fp_b")},
+     "stored card is the newer choice"),
+    ("pm_portal", {"pm_armed": _pm(100, "fp_a"), "pm_portal": _pm(200, "fp_b", None)},
+     "Stripe default is not attached"),
+    ("pm_portal", {"pm_portal": _pm(200, "fp_b")}, "stored card is gone; check by hand"),
+], ids=["no_default", "same_card", "stored_newer", "default_detached", "stored_gone"])
+async def test_card_sync_leaves_the_stored_card_when_it_is_not_clearly_older(
+        c: AsyncClient, monkeypatch, default, cards, reason):
+    org_id, _ = await _org(c)
+    await _armed(org_id)
+    monkeypatch.setattr(billing, "_sdk", _card_sync_sdk(default, cards))
+    result = await billing.sync_card_from_stripe(org_id, apply=True)
+    assert result["action"] == "none" and result["reason"] == reason
+    assert await _stored_pm(org_id) == "pm_armed"
+
+
+async def test_card_sync_does_not_overwrite_a_card_saved_while_it_checked(c: AsyncClient,
+                                                                          monkeypatch):
+    org_id, _ = await _org(c)
+    await _armed(org_id)
+    reads = _card_sync_sdk("pm_portal", {"pm_armed": _pm(100, "fp_a"),
+                                         "pm_portal": _pm(200, "fp_b")})
+
+    async def sdk(fn, /, **kw):
+        result = await reads(fn, **kw)
+        if fn == billing.stripe_adapter.CUSTOMER_RETRIEVE:
+            await _set_org(org_id, stripe_default_pm="pm_saved_meanwhile")
+        return result
+
+    monkeypatch.setattr(billing, "_sdk", sdk)
+    result = await billing.sync_card_from_stripe(org_id, apply=True)
+    assert result["reason"] == "stored card changed since the check"
+    assert await _stored_pm(org_id) == "pm_saved_meanwhile"
+
+
+async def test_card_sync_worker_reports_each_team_and_fails_on_an_error(c: AsyncClient,
+                                                                        monkeypatch, capsys):
+    from treg import worker
+    org_id, _ = await _org(c)
+    await _armed(org_id)
+
+    async def sync(team, *, apply):
+        if team != org_id:
+            raise stripe.APIConnectionError("down")
+        return {"org_id": team, "action": "none", "applied": apply}
+
+    monkeypatch.setattr(billing, "sync_card_from_stripe", sync)
+    args = argparse.Namespace(org=[org_id, org_id + 1], apply=False)
+    assert await worker._admin_card_sync(args) == 1
+    lines = [json.loads(line) for line in capsys.readouterr().out.splitlines()
+             if line.startswith("{")]
+    assert lines == [{"action": "none", "applied": False, "org_id": org_id},
+                     {"action": "error", "error": "APIConnectionError", "org_id": org_id + 1}]

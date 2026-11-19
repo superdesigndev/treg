@@ -2037,6 +2037,58 @@ async def revoke_refunded_payment(pi_id: str) -> dict:
                                      source="operator")
 
 
+async def sync_card_from_stripe(org_id: int, *, apply: bool = False) -> dict:
+    """The operator's road for a team whose newer card choice treg never heard of: a portal change
+    made before treg handled `customer.updated`. Adopts the Stripe customer's default card only
+    when it is still attached, is a different physical card from the stored one, and was created
+    after it. Reads Stripe with no database connection open; `apply=False` reports and writes
+    nothing. The write goes through `_set_default_pm` as a portal choice made now, so it is atomic
+    and re-arms a policy that was waiting for a card."""
+    if not configured():
+        raise BillingNotConfigured("Stripe is not configured")
+    async with _db.session_maker() as db:
+        org = await db.get(Org, org_id)
+        if org is None:
+            return {"org_id": org_id, "action": "none", "reason": "no such team"}
+        customer_id, stored = org.stripe_customer_id, org.stripe_default_pm
+    result: dict = {"org_id": org_id, "stored_card": stored}
+    if not customer_id:
+        return {**result, "action": "none", "reason": "no Stripe customer"}
+    customer = await _sdk(stripe_adapter.CUSTOMER_RETRIEVE, id=customer_id)
+    default = (None if customer.get("deleted") else
+               _stripe_id((customer.get("invoice_settings") or {}).get("default_payment_method")))
+    result["stripe_default"] = default
+    if not default:
+        return {**result, "action": "none", "reason": "no Stripe default card"}
+    if default == stored:
+        return {**result, "action": "none", "reason": "already the stored card"}
+    chosen = await _sdk(stripe_adapter.PAYMENT_METHOD_RETRIEVE, id=default)
+    if _stripe_id(chosen.get("customer")) != customer_id:
+        return {**result, "action": "none", "reason": "Stripe default is not attached"}
+    if stored:
+        try:
+            current = await _sdk(stripe_adapter.PAYMENT_METHOD_RETRIEVE, id=stored)
+        except stripe_adapter.InvalidRequestError as e:
+            if getattr(e, "code", None) != "resource_missing":
+                raise
+            return {**result, "action": "none", "reason": "stored card is gone; check by hand"}
+        fingerprint = (current.get("card") or {}).get("fingerprint")
+        if fingerprint and fingerprint == (chosen.get("card") or {}).get("fingerprint"):
+            return {**result, "action": "none", "reason": "same physical card"}
+        if int(chosen.get("created") or 0) <= int(current.get("created") or 0):
+            return {**result, "action": "none", "reason": "stored card is the newer choice"}
+        result["stored_attached"] = _stripe_id(current.get("customer")) == customer_id
+    if not apply:
+        return {**result, "action": "adopt", "applied": False}
+    async with _db.session_maker() as db:
+        org = await db.get(Org, org_id)
+        if org is None or org.stripe_default_pm != stored:
+            return {**result, "action": "none", "reason": "stored card changed since the check"}
+        changed = await _set_default_pm(db, org_id, default, chosen_at=int(time.time()),
+                                        tell_stripe=False, portal=True)
+    return {**result, "action": "adopt", "applied": True, "changed": changed}
+
+
 async def _on_payment_failed(db: AsyncSession, pi: dict) -> dict:
     """A top-up PaymentIntent failed. Only the AUTOMATIC ones need bookkeeping: a human who saw a
     decline on the hosted page can just try again, but an unattended charge that keeps failing has to
