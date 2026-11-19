@@ -8,6 +8,9 @@ import stripe as stripe_sdk
 
 
 CUSTOMER_CREATE = "Customer.create"
+CUSTOMER_RETRIEVE = "Customer.retrieve"
+CUSTOMER_MODIFY = "Customer.modify"
+PAYMENT_METHOD_RETRIEVE = "PaymentMethod.retrieve"
 PAYMENT_INTENT_RETRIEVE = "PaymentIntent.retrieve"
 EVENT_LIST = "Event.list"
 CHECKOUT_SESSION_CREATE = "checkout.Session.create"
@@ -34,6 +37,9 @@ StripeError = stripe_sdk.StripeError
 def _operation(name: str) -> Callable:
     operations = {
         CUSTOMER_CREATE: stripe_sdk.Customer.create,
+        CUSTOMER_RETRIEVE: stripe_sdk.Customer.retrieve,
+        CUSTOMER_MODIFY: stripe_sdk.Customer.modify,
+        PAYMENT_METHOD_RETRIEVE: stripe_sdk.PaymentMethod.retrieve,
         PAYMENT_INTENT_RETRIEVE: stripe_sdk.PaymentIntent.retrieve,
         EVENT_LIST: stripe_sdk.Event.list,
         CHECKOUT_SESSION_CREATE: stripe_sdk.checkout.Session.create,

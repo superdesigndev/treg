@@ -73,6 +73,9 @@ class Org(SQLModel, table=True):
     # not card data: treg never sees a PAN, so there is nothing here to leak beyond a token that only
     # works with our own secret key. Null = no card on file → auto-top-up cannot be armed.
     stripe_default_pm: str | None = Field(default=None)
+    # When the payer chose that card, as the Stripe event's `created` time (Unix seconds), so a
+    # choice delivered late never replaces a newer one. Null = chosen before treg recorded it.
+    stripe_default_pm_at: int | None = Field(default=None, sa_type=BigInteger)
     # Auto-top-up: refill the balance without a human when it dips below the threshold. Off unless the
     # org explicitly turned it on AND recorded consent — an off-session charge with no mandate is an
     # unauthorized charge under PSD2/SCA, so `autotopup_consented_at` gates the charge, not the UI.
