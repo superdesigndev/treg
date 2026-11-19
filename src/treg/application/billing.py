@@ -377,7 +377,8 @@ async def get_or_create_customer(db: AsyncSession, org: Org, *, email: str = "")
 
 async def _set_default_pm(db: AsyncSession, org_id: int, payment_method: str | None, *,
                           paid: bool = False, chosen_at: int | None = None,
-                          tell_stripe: bool = True, portal: bool = False) -> bool:
+                          tell_stripe: bool = True, portal: bool = False,
+                          replacing: tuple[str | None] | None = None) -> bool:
     """Record the payer's choice of card to charge off-session. An opaque `pm_…` reference — no
     card data ever reaches our database. Returns True when the stored card changed.
 
@@ -386,7 +387,8 @@ async def _set_default_pm(db: AsyncSession, org_id: int, payment_method: str | N
     `customer.updated`), so an older choice that arrives late never replaces a newer one; on a tie
     the portal wins. The comparison and the write are one UPDATE, so two deliveries racing cannot
     both win. `tell_stripe`: the choice also becomes the Stripe customer's default, so the portal
-    shows the card treg charges. The transaction ends before that Stripe call."""
+    shows the card treg charges. The transaction ends before that Stripe call. `replacing`: write
+    only while the stored card is still that one, in the same UPDATE."""
     if not payment_method:
         return False
     org = await db.get(Org, org_id)
@@ -398,6 +400,10 @@ async def _set_default_pm(db: AsyncSession, org_id: int, payment_method: str | N
         newer = (or_(latest.is_(None), latest <= chosen_at) if portal else
                  or_(latest.is_(None), latest < chosen_at,
                      and_(latest == chosen_at, Org.stripe_default_pm == payment_method)))
+        if replacing is not None:
+            expected = replacing[0]
+            newer = and_(newer, Org.stripe_default_pm.is_(None) if expected is None
+                         else Org.stripe_default_pm == expected)
         won = await db.execute(
             update(Org).where(Org.id == org_id, newer)
             .values(stripe_default_pm=payment_method, stripe_default_pm_at=chosen_at)
@@ -2081,12 +2087,11 @@ async def sync_card_from_stripe(org_id: int, *, apply: bool = False) -> dict:
     if not apply:
         return {**result, "action": "adopt", "applied": False}
     async with _db.session_maker() as db:
-        org = await db.get(Org, org_id)
-        if org is None or org.stripe_default_pm != stored:
-            return {**result, "action": "none", "reason": "stored card changed since the check"}
         changed = await _set_default_pm(db, org_id, default, chosen_at=int(time.time()),
-                                        tell_stripe=False, portal=True)
-    return {**result, "action": "adopt", "applied": True, "changed": changed}
+                                        tell_stripe=False, portal=True, replacing=(stored,))
+    if not changed:
+        return {**result, "action": "none", "reason": "stored card changed since the check"}
+    return {**result, "action": "adopt", "applied": True, "changed": True}
 
 
 async def _on_payment_failed(db: AsyncSession, pi: dict) -> dict:

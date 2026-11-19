@@ -2804,11 +2804,36 @@ async def test_card_sync_does_not_overwrite_a_card_saved_while_it_checked(c: Asy
     assert await _stored_pm(org_id) == "pm_saved_meanwhile"
 
 
+async def test_card_sync_write_is_conditioned_on_the_stored_card(c: AsyncClient, monkeypatch):
+    """A card change committed after the check but before the write must win: the stored-card
+    test is part of the UPDATE itself."""
+    org_id, _ = await _org(c)
+    await _armed(org_id)
+    monkeypatch.setattr(billing, "_sdk", _card_sync_sdk(
+        "pm_portal", {"pm_armed": _pm(100, "fp_a"), "pm_portal": _pm(200, "fp_b")}))
+    real = billing._set_default_pm
+
+    async def webhook_lands_first(db, *args, **kwargs):
+        await _set_org(org_id, stripe_default_pm="pm_webhook")
+        return await real(db, *args, **kwargs)
+
+    monkeypatch.setattr(billing, "_set_default_pm", webhook_lands_first)
+    result = await billing.sync_card_from_stripe(org_id, apply=True)
+    assert result["reason"] == "stored card changed since the check"
+    assert await _stored_pm(org_id) == "pm_webhook"
+
+
 async def test_card_sync_worker_reports_each_team_and_fails_on_an_error(c: AsyncClient,
                                                                         monkeypatch, capsys):
     from treg import worker
+    from treg.infra import db as treg_db
     org_id, _ = await _org(c)
     await _armed(org_id)
+
+    async def no_check():
+        return None
+
+    monkeypatch.setattr(treg_db, "verify_db", no_check)
 
     async def sync(team, *, apply):
         if team != org_id:
