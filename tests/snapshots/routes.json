@@ -1359,6 +1359,15 @@
       "GET",
       "HEAD"
     ],
+    "name": "blog_jobspipe_and_treg",
+    "path": "/blog/jobspipe-and-treg"
+  },
+  {
+    "kind": "APIRoute",
+    "methods": [
+      "GET",
+      "HEAD"
+    ],
     "name": "blog_work_email_finding_bench",
     "path": "/blog/work-email-finding-bench"
   },
