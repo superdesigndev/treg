@@ -1436,6 +1436,26 @@ async def test_a_pass_folds_a_few_batches_of_a_team_and_comes_back_for_the_rest(
     assert await _state(org_id) == (GRANT - CHUNK, CHUNK - 50)
 
 
+async def test_a_pass_reaches_every_team_however_many_have_charges_queued(
+        org_id, store, monkeypatch):
+    """Teams are listed a page at a time. A pass that only ever read the first page would never
+    reach the teams after it while the first ones keep queueing."""
+    monkeypatch.setattr(allowance_sweep, "_TEAMS_PER_PAGE", 1)
+    async with session_maker() as db:
+        others = [Org(id=org_id + offset, name="later", slug=uuid4().hex) for offset in (1, 2)]
+        db.add_all(others)
+        await db.flush()
+        for other in others:
+            await ledger.grant(db, other.id, amount_micro=GRANT)
+        await allowance.record_charges(db, [
+            allowance.Charge(f"queued-{team}", team, "e.metered", 400, reserved_micro=400)
+            for team in (org_id, org_id + 1, org_id + 2)])
+        await db.commit()
+    assert await allowance_sweep.fold_queued_once(session_maker) == 3
+    for team in (org_id, org_id + 1, org_id + 2):
+        assert await _queued(team) == 0 and (await _state(team))[0] == GRANT - 400
+
+
 async def test_the_background_loop_folds_a_queue_whether_or_not_its_team_is_listed(
         org_id, store, monkeypatch):
     epoch = await runtime.take(org_id, 600)

@@ -419,8 +419,8 @@ money moved, the purchased-credit gate.
   and it is made, in a task of its own, once that refill has committed and given up the lease.
 
 - **One place folds the queue.** `application/allowance_sweep.py` runs a loop wherever
-  background work runs. Each pass lists the teams with queued charges, listed or not, and
-  folds them a team at a time, a batch per transaction (`fold_queued_once`), on the background
+  background work runs. Each pass goes through every team with queued charges, listed or
+  not, a page of teams at a time in the order of their numbers, and folds them a team at a time, a batch per transaction (`fold_queued_once`), on the background
   pool; a pass that folded something is followed by the next at once, an idle one by a short
   pause. Request processes only queue charges: neither a refill nor the charge writer folds.
   So the connections folding uses are one per process running the loop, whatever the traffic

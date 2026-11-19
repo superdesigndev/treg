@@ -507,10 +507,12 @@ async def stale_allowance_orgs(db: AsyncSession, stale_before: datetime, *,
 
 
 async def orgs_with_queued_charges(db: AsyncSession, queued_before: datetime, *,
-                                   limit: int = 50) -> list[int]:
-    """Teams with a charge queued before `queued_before`."""
+                                   after: int = 0, limit: int = 50) -> list[int]:
+    """Teams with a charge queued before `queued_before`, in the order of their numbers, a page
+    at a time: `after` is the last team of the page before."""
     return list((await db.execute(
-        select(CallCharge.org_id).where(CallCharge.created_at < queued_before)
+        select(CallCharge.org_id)
+        .where(CallCharge.created_at < queued_before, CallCharge.org_id > after)
         .distinct().order_by(CallCharge.org_id).limit(limit))).scalars())
 
 

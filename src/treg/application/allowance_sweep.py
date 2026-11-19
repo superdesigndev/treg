@@ -44,6 +44,7 @@ _FENCE_TTL_MS = 24 * 3600 * 1000
 # others waiting; the next pass comes back to it.
 _FOLD_BATCH = 100
 _FOLD_BATCHES_PER_PASS = 10
+_TEAMS_PER_PAGE = 50
 _LEASE_MS = 5000
 
 
@@ -108,30 +109,44 @@ async def sweep_once(session_maker) -> int:
 
 async def fold_queued_once(session_maker) -> int:
     """Fold the queue of every team that has charges queued, listed or not: a queue outlives
-    its team's listing and its hold. Returns how many charges were folded."""
-    async with session_maker() as db:
-        org_ids = await allowance.orgs_with_queued_charges(db, utcnow_naive())
+    its team's listing and its hold. A pass goes through all of them, a page of teams at a
+    time, so a team is reached however many others keep queueing. Returns how many charges
+    were folded."""
+    total, after, queued_before = 0, 0, utcnow_naive()
+    while True:
+        async with session_maker() as db:
+            org_ids = await allowance.orgs_with_queued_charges(
+                db, queued_before, after=after, limit=_TEAMS_PER_PAGE)
+        for org_id in org_ids:
+            total += await _fold_team(session_maker, org_id)
+        if len(org_ids) < _TEAMS_PER_PAGE:
+            return total
+        after = org_ids[-1]
+
+
+async def _fold_team(session_maker, org_id: int) -> int:
+    """A few batches of one team's queue. 0 when another process has the team, or on a fault:
+    one team failing does not stop the pass."""
     total = 0
-    for org_id in org_ids:
-        try:
-            for _ in range(_FOLD_BATCHES_PER_PASS):
-                async with _team_lease(org_id) as free:
-                    if not free:
-                        break
-                    async with (
-                        money_lock(org_id),
-                        money_admission.admit(
-                            money_admission.require_balance_orgs([org_id]), operation="close"),
-                        money_session(session_maker()) as db,
-                    ):
-                        folded = await allowance.fold_charges_in_transaction(
-                            db, org_id, limit=_FOLD_BATCH)
-                        await db.commit()
-                total += folded.calls
-                if folded.claimed < _FOLD_BATCH:
+    try:
+        for _ in range(_FOLD_BATCHES_PER_PASS):
+            async with _team_lease(org_id) as free:
+                if not free:
                     break
-        except Exception:
-            log.error("folding the queued charges of org %s failed", org_id, exc_info=True)
+                async with (
+                    money_lock(org_id),
+                    money_admission.admit(
+                        money_admission.require_balance_orgs([org_id]), operation="close"),
+                    money_session(session_maker()) as db,
+                ):
+                    folded = await allowance.fold_charges_in_transaction(
+                        db, org_id, limit=_FOLD_BATCH)
+                    await db.commit()
+            total += folded.calls
+            if folded.claimed < _FOLD_BATCH:
+                break
+    except Exception:
+        log.error("folding the queued charges of org %s failed", org_id, exc_info=True)
     return total
 
 
