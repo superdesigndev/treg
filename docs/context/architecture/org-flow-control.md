@@ -215,6 +215,11 @@ Normal call-id, `X-Treg-Error` and refusal-audit handling applies; `mcp._call_im
 Every Redis failure (initialization, read, acquisition, timeout) allows new work without a
 confirmed token or slot; none becomes an HTTP 503.
 
+Optional work treg starts on its own, not a caller's request, asks the opposite question:
+`confirmed_unpaused(org_id)` is true only when flow control is off or a fresh read finds no
+publication or no pause in force; a failed or timed-out read and an invalid publication are false
+(the pairwise comparison run, [feedback](feedback.md)).
+
 ## Evidence and recovery boundaries
 
 Structured single-line events: `org_flow_control_version_observed`, `org_flow_control_paused`,
