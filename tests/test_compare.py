@@ -127,6 +127,17 @@ async def _collect() -> dict:
         return await compare.collect(client=client)
 
 
+async def _claim(values: dict, limit: int, team_cap: int = 10) -> str:
+    now = utcnow_naive()
+    return await compare._claim(session_maker, values, limit, team_cap=team_cap,
+                                since=now - timedelta(days=14), ready_since=now - timedelta(days=3))
+
+
+def _claim_values(org_id: int, call_ref: str) -> dict:
+    return dict(org_id=org_id, user_email="x@example.com", call_ref=call_ref, capability="web.search",
+                a_endpoint="tavily.web.search", a_provider="tavily", b_provider="exa")
+
+
 async def _rows() -> list[CallComparison]:
     async with session_maker() as db:
         return list((await db.execute(select(CallComparison).order_by(CallComparison.id))).scalars())
@@ -194,6 +205,7 @@ async def test_a_recent_routed_call_gets_a_ready_pair(clients, search_on, monkey
 @pytest.mark.parametrize("case", ["opt_out", "demo", "deny_rule", "tool_acl", "pinned_member",
                                   "capability_pin", "not_in_pair", "own_key", "not_archived",
                                   "too_old", "no_marker", "store_down", "suspended", "paused",
+                                  "flow_unavailable", "flow_raises", "flow_invalid",
                                   "expression_field"])
 async def test_calls_that_are_never_compared(clients, search_on, monkeypatch, case):
     _compare_on(monkeypatch, pairs={"web.search": [["tavily", "parallel"]]} if case == "not_in_pair" else PAIR)
@@ -220,7 +232,8 @@ async def test_calls_that_are_never_compared(clients, search_on, monkeypatch, ca
         async def unknown(key):
             return False  # what `has_flag` answers when the store cannot
         monkeypatch.setattr(kv.store(), "has_flag", unknown)
-    if case in ("suspended", "paused"):
+    late = ("suspended", "paused", "flow_unavailable", "flow_raises", "flow_invalid")
+    if case in late:
         # Revoked after the run picked the call, before it is sent: checked again right then.
         real = compare._b_target
 
@@ -234,11 +247,18 @@ async def test_calls_that_are_never_compared(clients, search_on, monkeypatch, ca
                 (await db.get(Org, org_id)).suspended = True
                 await db.commit()
         else:
-            from treg.infra import org_flow_control
+            # The flow-control read itself, from the store: a pause, or any state it cannot confirm.
+            monkeypatch.setattr(get_settings(), "org_flow_control_enabled", True)
+            pause = (utcnow_naive() + timedelta(hours=1)).isoformat(timespec="seconds") + "Z"
+            published = json.dumps({"org_id": org_id, "version": 1, "config": {
+                "schema_version": 1, "pause_until": pause, "rate_limit": None, "concurrency_limit": None}})
 
-            async def paused(org, ref=None):
-                raise org_flow_control.PauseRejected(retry_after_s=60, version=1)
-            monkeypatch.setattr(org_flow_control, "check", paused)
+            async def read(org):
+                if case == "flow_raises":
+                    raise ConnectionError("store down")
+                return {"paused": published, "flow_invalid": "{not json",
+                        "flow_unavailable": kv.FlowControlReadFailure.UNAVAILABLE}[case]
+            monkeypatch.setattr(kv.store(), "read_org_flow_control", read)
     await _routed_call(org_id, f"never {case}", tier="credential" if case == "own_key" else "platform",
                        archived=case != "not_archived", minutes_ago=600 if case == "too_old" else 5,
                        marked=case != "no_marker",
@@ -246,7 +266,7 @@ async def test_calls_that_are_never_compared(clients, search_on, monkeypatch, ca
                        given={"q": "never expression", "limit": 5} if case == "expression_field" else None)
     result = await _collect()
     assert sent == [] and await _rows() == [], result
-    if case in ("suspended", "paused"):
+    if case in late:
         assert nonlocal_state, "the call got as far as the last check"
 
 
@@ -352,7 +372,7 @@ async def test_a_row_settled_as_the_team_goes_is_taken_back(clients, monkeypatch
     org_id = await _org_id(clients)
     values = dict(org_id=org_id, user_email="x@example.com", call_ref="racing", capability="web.search",
                   a_endpoint="tavily.web.search", a_provider="tavily", b_provider="exa")
-    assert await compare._claim(session_maker, values, compare._day(), 5) == "claimed"
+    assert await _claim(values, 5) == "claimed"
     opened = [0]
 
     @asynccontextmanager
@@ -387,7 +407,7 @@ async def test_a_claim_left_by_a_crash_is_never_resent_and_still_counts(clients,
     ref = await _routed_call(org_id, "crashed after the claim")
     values = dict(org_id=org_id, user_email="x@example.com", call_ref=ref, capability="web.search",
                   a_endpoint="tavily.web.search", a_provider="tavily", b_provider="exa")
-    assert await compare._claim(session_maker, values, compare._day(), 1) == "claimed"
+    assert await _claim(values, 1) == "claimed"
     await _routed_call(org_id, "the next call")
     assert (await _collect())["status"] == "at_limit"
     assert sent == [] and [r.status for r in await _rows()] == ["pending"]
@@ -748,3 +768,66 @@ async def test_a_relay_error_fails_one_comparison_and_the_run_goes_on(clients, s
     await _routed_call(org_id, "second")
     result = await _collect()
     assert (result["called"], result["failed"]) == (2, 2) and len(calls) == 2
+
+
+
+async def test_an_unpaused_team_is_confirmed_only_by_a_fresh_read(monkeypatch):
+    from treg.infra import org_flow_control
+
+    assert await org_flow_control.confirmed_unpaused(5)  # flow control off: no pause exists
+    monkeypatch.setattr(get_settings(), "org_flow_control_enabled", True)
+    answers = iter([None, kv.FlowControlReadFailure.UNAVAILABLE, json.dumps({"org_id": 5, "version": 1, "config": {
+        "schema_version": 1, "pause_until": "2000-01-01T00:00:00Z", "rate_limit": None,
+        "concurrency_limit": None}})])
+
+    async def read(org):
+        return next(answers)
+    monkeypatch.setattr(kv.store(), "read_org_flow_control", read)
+    assert await org_flow_control.confirmed_unpaused(5)          # no publication
+    assert not await org_flow_control.confirmed_unpaused(5)      # unavailable
+    assert await org_flow_control.confirmed_unpaused(5)          # an expired pause
+
+
+async def test_claims_count_on_the_day_they_are_made(clients, monkeypatch):
+    org_id = await _org_id(clients)
+    days = iter(["20261119", "20261120"])
+    monkeypatch.setattr(compare, "_day", lambda: next(days))
+    assert await _claim(_claim_values(org_id, "before-midnight"), 1) == "claimed"
+    assert await _claim(_claim_values(org_id, "after-midnight"), 1) == "claimed"  # a new day's slot
+    async with session_maker() as db:
+        from treg.domain.feedback import comparisons
+        assert (await comparisons.attempts(db, "20261119"), await comparisons.attempts(db, "20261120")) == (1, 1)
+
+
+async def test_the_team_cap_is_read_again_inside_the_claim(clients, monkeypatch):
+    org_id = await _org_id(clients)
+    async with session_maker() as db:
+        db.add(CallComparison(org_id=org_id, user_email="x@example.com", call_ref="decided-one",
+                              capability="web.search", a_endpoint="exa.web.search", a_provider="exa",
+                              b_provider="tavily", status="decided", choice="a"))
+        await db.commit()
+    results = [await _claim(_claim_values(org_id, ref), 50, team_cap=2) for ref in ("call-a", "call-b")]
+    assert results == ["claimed", "capped"]
+    assert sorted(r.call_ref for r in await _rows()) == ["call-a", "decided-one"]
+
+
+async def test_the_last_slot_of_the_day_goes_to_one_claim(clients, monkeypatch):
+    import asyncio
+
+    org_id = await _org_id(clients)
+    assert await _claim(_claim_values(org_id, "first"), 2) == "claimed"
+    results = await asyncio.gather(*(_claim(_claim_values(org_id, ref), 2) for ref in ("second", "third")))
+    assert sorted(results) == ["at_limit", "claimed"]
+    async with session_maker() as db:
+        from treg.domain.feedback import comparisons
+        assert await comparisons.attempts(db, compare._day()) == 2
+    assert len(await _rows()) == 2
+
+
+@pytest.mark.parametrize("status", ["pending", "failed"])
+async def test_a_verdict_on_a_pair_not_shown_is_refused(clients, monkeypatch, status):
+    _compare_on(monkeypatch)
+    cid = await _seed(await _org_id(clients), first="a", call_ref=f"not-shown-{status}", status=status)
+    response = await clients.post("/comparisons", json={"comparison_id": cid, "choice": "1"})
+    assert response.status_code == 404
+    assert (await _rows())[0].status == status

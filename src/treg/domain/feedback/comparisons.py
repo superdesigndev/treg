@@ -5,7 +5,8 @@ name. A verdict names 1, 2, tie or both_bad and is mapped back to a and b here."
 from datetime import datetime
 
 from sqlalchemy import func, or_, update
-from sqlalchemy.exc import IntegrityError
+from sqlalchemy.dialects.postgresql import insert as pg_insert
+from sqlalchemy.dialects.sqlite import insert as sqlite_insert
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlmodel import select
 
@@ -22,25 +23,25 @@ def add(db: AsyncSession, **values) -> CallComparison:
 
 
 async def take_attempt(db: AsyncSession, day: str, limit: int) -> bool:
-    """Count one second-vendor call against the UTC day's `limit`; False (nothing counted) at the
-    limit. The day's row is locked, so concurrent runs count one at a time."""
-    row = (await db.execute(select(CompareAttemptDay).where(CompareAttemptDay.day == day)
-                            .with_for_update())).scalar_one_or_none()
-    if row is None:
-        if limit < 1:
-            return False
-        nested = await db.begin_nested()
-        try:
-            db.add(CompareAttemptDay(day=day, attempts=1))
-            await db.flush()
-            return True
-        except IntegrityError:
-            await nested.rollback()
-            return await take_attempt(db, day, limit)
-    if row.attempts >= limit:
+    """Count one second-vendor call against the UTC day's `limit` with one conditional update
+    (the day's first with an insert that yields to a concurrent one); False, nothing counted, at
+    the limit. Correct without a prior row lock, on SQLite too."""
+    if limit < 1:
         return False
-    row.attempts += 1
-    return True
+
+    async def bump() -> bool:
+        done = await db.execute(update(CompareAttemptDay).where(
+            CompareAttemptDay.day == day, CompareAttemptDay.attempts < limit,
+        ).values(attempts=CompareAttemptDay.attempts + 1).execution_options(synchronize_session=False))
+        return done.rowcount == 1
+
+    if await bump():
+        return True
+    dialect = (await db.connection()).dialect.name
+    insert = pg_insert if dialect == "postgresql" else sqlite_insert
+    created = await db.execute(insert(CompareAttemptDay).values(day=day, attempts=1)
+                               .on_conflict_do_nothing(index_elements=["day"]))
+    return created.rowcount == 1 or await bump()
 
 
 async def attempts(db: AsyncSession, day: str) -> int:

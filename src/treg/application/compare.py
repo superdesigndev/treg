@@ -348,24 +348,29 @@ async def _still_eligible(session_factory, org_id: int) -> bool:
         org = await db.get(Org, org_id)
         if org is None or org.suspended:
             return False
-    try:
-        await org_flow_control.check(org_id, None)
-    except Exception:  # noqa: BLE001 - a pause, or a state that cannot be read: not now
+    if not await org_flow_control.confirmed_unpaused(org_id):
         return False
     return org_id in await _eligible_teams(session_factory, {org_id}, set(pairs()))
 
 
-async def _claim(session_factory, values: dict, day: str, limit: int) -> str:
-    """In one short transaction, the comparison row as `pending` (its unique call id stops a second
-    run) and one attempt on the day's count. `claimed`, `taken`, `gone` or `at_limit`."""
+async def _claim(session_factory, values: dict, limit: int, *, team_cap: int, since, ready_since) -> str:
+    """In one short transaction, one attempt on the current UTC day's count (taken first: on
+    Postgres its row lock orders concurrent claims), the team and pair cap read again under it, and
+    the comparison row as `pending` (its unique call id stops a second run). `claimed`, `taken`,
+    `gone`, `capped` or `at_limit`."""
     async with session_factory() as db:
         if await db.get(Org, values["org_id"]) is None:
             return "gone"
         if await comparisons.by_call_ref(db, values["call_ref"]) is not None:
             return "taken"
-        if not await comparisons.take_attempt(db, day, limit):
+        if not await comparisons.take_attempt(db, _day(), limit):
             await db.rollback()
             return "at_limit"
+        if await comparisons.counted(db, values["org_id"], values["capability"],
+                                     (values["a_provider"], values["b_provider"]),
+                                     since=since, ready_since=ready_since) >= team_cap:
+            await db.rollback()
+            return "capped"
         comparisons.add(db, status=comparisons.PENDING, **values)
         try:
             await db.commit()
@@ -437,9 +442,8 @@ async def collect(*, max_seconds: float = 110.0, session_factory=session_maker,
     settings = get_settings()
     if not configured() or settings.compare_rate <= 0:
         return {"status": "off", **totals}
-    day = _day()
     async with session_factory() as db:
-        if await comparisons.attempts(db, day) >= settings.compare_max_per_day:
+        if await comparisons.attempts(db, _day()) >= settings.compare_max_per_day:
             return {"status": "at_limit", **totals}
     now = utcnow_naive()
     lookback = timedelta(hours=min(settings.compare_lookback_hours, MARKER_TTL_S // 3600))
@@ -462,7 +466,7 @@ async def collect(*, max_seconds: float = 110.0, session_factory=session_maker,
             if totals["called"] >= settings.compare_max_per_run or time.monotonic() >= deadline:
                 break
             try:
-                outcome = await _one(cand, cat, now, day, session_factory, client, store, totals,
+                outcome = await _one(cand, cat, now, session_factory, client, store, totals,
                                      canonical_identity, request_identity, _evidence)
             except Exception:
                 log.warning("comparison for %s failed", cand.record.call_ref, exc_info=True)
@@ -476,7 +480,7 @@ async def collect(*, max_seconds: float = 110.0, session_factory=session_maker,
     return {"status": "ran", **totals}
 
 
-async def _one(cand, cat, now, day, session_factory, client, store, totals,
+async def _one(cand, cat, now, session_factory, client, store, totals,
                canonical_identity, request_identity, _evidence) -> str:
     """One candidate, to `ready`, `failed`, `skipped` or `at_limit`."""
     settings = get_settings()
@@ -513,7 +517,9 @@ async def _one(cand, cat, now, day, session_factory, client, store, totals,
         org_id=parent.org_id, user_email=parent.user_email, call_ref=parent.call_ref,
         capability=cand.capability, a_endpoint=child.endpoint_id, a_provider=a_ep["provider"],
         b_endpoint=target.ep["id"], b_provider=b_provider, b_cost_micro=target.price_micro),
-        day, settings.compare_max_per_day)
+        settings.compare_max_per_day, team_cap=settings.compare_team_cap,
+        since=now - timedelta(days=settings.compare_window_days),
+        ready_since=now - timedelta(days=READY_DAYS))
     if claimed == "at_limit":
         return "at_limit"
     if claimed != "claimed":
@@ -608,7 +614,7 @@ async def submit(org_id: int, *, pinned: bool, comparison_id: int, choice: str,
         raise ComparisonNotFound
     async with session_maker() as db:
         row = await comparisons.get(db, comparison_id, org_id)
-        if row is None or row.status == comparisons.FAILED:
+        if row is None or row.status not in (comparisons.READY, comparisons.DECIDED):
             raise ComparisonNotFound
         inserted = await comparisons.decide(db, row, choice=choice, reason=reason, client=client,
                                             at=utcnow_naive())

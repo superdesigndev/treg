@@ -292,13 +292,17 @@ the capability, and logs the rest. Each run:
    primary account, retention allowed, priced, with no second host or path parameter. B's adapter
    builds the request (`to_upstream`).
 8. Right before sending, the team is read again: it still exists, is not suspended, has no active
-   flow-control pause (`org_flow_control.check`; a state that cannot be read also skips), and still
-   has no access policy and no archive opt-out.
-9. The claim, in one short transaction: the comparison row as `pending` (its unique `call_ref`
-   stops a second run, concurrent or later) and one attempt on the day's `compareattemptday` row
-   (locked, so concurrent runs count one at a time; at the limit nothing is written and the run
-   stops). A crash after the claim leaves `pending`: it still counts and is never resent. The day's
-   count is no team's row, so deleting a team gives no quota back.
+   flow-control pause (`org_flow_control.confirmed_unpaused`: a fresh read; a read that fails, an
+   invalid publication or a pause in force all skip, unlike admission, which allows on failure),
+   and still has no access policy and no archive opt-out.
+9. The claim, in one short transaction: one attempt on the current UTC day's `compareattemptday`
+   row, read at the claim, so a run crossing midnight counts on the new day (one conditional
+   `UPDATE ... SET attempts = attempts + 1 WHERE attempts < limit`, the day's first row inserted
+   on conflict do nothing; at the limit nothing is written and the run stops), then the team and
+   pair cap read again (on Postgres the day row's lock, taken by that update, orders concurrent
+   claims), then the comparison row as `pending` (its unique `call_ref` stops a second run,
+   concurrent or later). A crash after the claim leaves `pending`: it still counts and is never
+   resent. The day's count is no team's row, so deleting a team gives no quota back.
 10. One request, through the relay alone (`infra.upstream.relay.relay`) on treg's primary key
     (`platform_bindings`), with `body_read` as the call path offers it (a key that goes in the JSON
     body is injected from it) and treg's User-Agent: no router, no fallback, no overflow, no hold,
@@ -339,9 +343,10 @@ next pair with an instruction line, or submits with `comparison_id` and `choice`
 pairs, e.g. `{"web.search": [["provider-a", "provider-b"]]}`), `TREG_COMPARE_RATE`,
 `TREG_COMPARE_MAX_PER_RUN`, `TREG_COMPARE_MAX_PER_DAY`, `TREG_COMPARE_LOOKBACK_HOURS`,
 `TREG_COMPARE_BUDGET_PER_HOUR` (compare invitations per team per hour), `TREG_COMPARE_TEAM_CAP`,
-`TREG_COMPARE_WINDOW_DAYS`, `TREG_COMPARE_MAX_ANSWER_BYTES`. Rollback: `TREG_COMPARE_RATE=0` (or
-`TREG_COMPARE_MAX_PER_DAY=0`) stops new comparisons; stored ones stay and waiting ones are still
-offered until they age out.
+`TREG_COMPARE_WINDOW_DAYS`, `TREG_COMPARE_MAX_ANSWER_BYTES`. Rollback: `TREG_COMPARE_MAX_PER_DAY=0` with the cron kept:
+no marker is written and no vendor is called, while each run still removes orphaned rows (removing
+the cron stops that cleanup too). Stored comparisons stay and waiting ones are still offered until
+they age out.
 
 ## Published verdicts
 

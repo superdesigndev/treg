@@ -341,7 +341,8 @@ so the job must run at least that often. Each run makes at most `TREG_COMPARE_MA
 treg's key, sequentially; a day's spend is at most `TREG_COMPARE_MAX_PER_DAY` times the paired
 vendors' price per call only where that price is the request's maximum cost. The calls bypass the
 shared provider limiter: check each pilot vendor's price and capacity before enabling a pair.
-Rollback is `TREG_COMPARE_RATE=0`.
+Rollback is `TREG_COMPARE_MAX_PER_DAY=0` with the cron kept: it then calls nobody and only
+removes orphaned rows, which removing the cron would stop.
 
 **Provider client codes.** A provider file's `client_header` is filled only once
 `TREG_CLIENT_ID_SECRET` is set on the processes that relay calls. Turn it on after the provider is
