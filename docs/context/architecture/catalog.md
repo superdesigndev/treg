@@ -855,6 +855,16 @@ bill when treg's own account is out.
 
 ### Rules for the published numbers
 
+- **A v2 row's own declaration decides before the status** (`stats.decided`). The call records what
+  the row judged (`CallRecord.outcome`, from `results.judged_outcome`): `hit` succeeds, `miss` fails
+  where the contract is `empty_is_failure` and succeeds elsewhere, a declared 4xx miss included, and
+  `not_found` (the target itself does not exist) decides nothing. `error` decides nothing either: a
+  2xx failing `expect` or matching `error` is no success, but those rules hold the caller's
+  mistakes (a refused field) beside the provider's failures, so it is held against nobody, as a
+  4xx is, unless it also found nothing on an `empty_is_failure` contract, which fails as below. Rows in today's spelling,
+  async submissions, spooled or streamed answers, a non-2xx the declaration does not decide and
+  rows written before the column keep the rules below. Moving a provider to v2 is what moves it to
+  its own declaration; no provider is named in the stats code.
 - **A 4xx never counts against the provider**; only 2xx versus 5xx decides the rate. **405 is the
   exception**: `/call/` refuses a method mismatch before relay, so a provider 405 says the RECORDED
   method is stale and counts against the endpoint.
@@ -1029,7 +1039,9 @@ returned and never documented as stable. An output field may say where it lands 
   values is left unjudged without being read further. The contract rule does not change a child's
   charge; a `per_success` child stops billing such a page only where its own adapter `miss` also
   calls `wall_page` on its text field, and only those adapters count a wall against measured
-  reliability.
+  reliability. A v2 row's miss calls it through its plugin (`branddev.scrape_miss`), with the
+  same effect on reliability, but a row settled by `settle.reported` still bills the charge the
+  provider reported for the wall (Context.dev consumes a credit), once the route answers.
 - `scoping` names identity keys that scope the answer (`company_domain`): a candidate whose adapter
   never sends a supplied one is dropped from the plan, not ranked down, because a title-only search
   asked for one company's CEO bills title-matched strangers as a hit.
