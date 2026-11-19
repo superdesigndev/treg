@@ -46,7 +46,16 @@ def upgrade() -> None:
     op.create_index("ix_affiliatelead_stripe_synced_at", "affiliatelead", ["stripe_synced_at"])
     op.create_index("ix_affiliatelead_next_attempt_at", "affiliatelead", ["next_attempt_at"])
     op.create_index("ix_affiliatelead_failed_at", "affiliatelead", ["failed_at"])
+    op.create_table(
+        "affiliateclaim",
+        sa.Column("id", sa.Integer(), primary_key=True),
+        sa.Column("inbox", sa.String(), nullable=False),
+        sa.Column("user_id", sa.Integer(), nullable=False),
+        sa.Column("created_at", sa.DateTime(), nullable=False),
+    )
+    op.create_index("ix_affiliateclaim_inbox", "affiliateclaim", ["inbox"])
 
 
 def downgrade() -> None:
+    op.drop_table("affiliateclaim")
     op.drop_table("affiliatelead")

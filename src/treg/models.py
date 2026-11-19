@@ -930,6 +930,18 @@ class AffiliateLead(SQLModel, table=True):
     error: str = Field(default="")
 
 
+class AffiliateClaim(SQLModel, table=True):
+    """A person a partner already brought, by inbox (`promotions.promo_inbox`): a partner earns on
+    the person, once. Staged with the team's `AffiliateLead`; it has no `org_id` and outlives the
+    team and the user, so deleting a team never makes its creator attributable again. Not unique:
+    two teams racing for one inbox leave two rows, never a failed signup."""
+
+    id: int | None = Field(default=None, primary_key=True)
+    inbox: str = Field(index=True)
+    user_id: int
+    created_at: NaiveUTC = Field(default_factory=_now)
+
+
 class Tool(SQLModel, table=True):
     """A registered capability: a name + an upstream base + a LIST of credential bindings.
 

@@ -38,8 +38,9 @@ together with any tracking-only parameter in `web._SHARE_LINK_PARAMS` (`via`, ad
 - Team creation (`signup.create_org`, reached by `POST /orgs`, `POST /onboard/team` and the OAuth
   first team) stages one `AffiliateLead` in the team's own transaction (`affiliates.stage_lead`).
   The unique `org_id` makes it once per team, and `affiliates.brought_before` makes it once per
-  person: a partner earns on the person they brought, so a later team the same user makes stages no
-  lead (the CLI's `settleRef` and the cleared cookies below say the same thing client side).
+  person: a partner earns on the person they brought, so a later team the same user, or the same
+  inbox under an alias, makes stages no lead. An `AffiliateClaim` row (the `promo_inbox`) is staged
+  with the lead and outlives team deletion, as `SignupPromoClaim` does (the CLI's `settleRef` and the cleared cookies below say the same thing client side).
 - An affiliate click wins over a friend code: a team with a staged lead skips `_redeem_referral`, so
   one signup is never paid by both programs.
 - `affiliates.worker` drains due rows every `DRAIN_INTERVAL_S` with `POST /track/lead`

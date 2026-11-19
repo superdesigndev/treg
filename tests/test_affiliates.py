@@ -27,7 +27,7 @@ from treg.domain.identity.promotions import promo_inbox
 from treg.infra import dub
 from treg.infra import stripe as stripe_adapter
 from treg.infra.db import reset_db, session_maker
-from treg.models import AffiliateLead, Org, Referral
+from treg.models import AffiliateClaim, AffiliateLead, Org, Referral
 from treg.timeutil import utcnow_naive
 from treg.routers.signup_cookies import AFFILIATE_COOKIE, PARTNER_CODE_COOKIE, REFERRAL_COOKIE
 
@@ -816,3 +816,23 @@ async def test_making_a_team_clears_the_parked_click_and_code(c):
     cleared = [h for h in r.headers.get_list("set-cookie") if "Max-Age=0" in h or "max-age=0" in h.lower()]
     assert any(h.startswith(f"{AFFILIATE_COOKIE}=") for h in cleared)
     assert any(h.startswith(f"{PARTNER_CODE_COOKIE}=") for h in cleared)
+
+
+async def test_deleting_the_team_never_makes_its_creator_attributable_again(c):
+    from conftest import verified_identity
+    token = await verified_identity(c, "bob@superdesign.dev")
+    click = _cookies(**{AFFILIATE_COOKIE: "cm3w8x2abc"})
+    first = await c.post("/orgs", json={"name": "Bob"}, headers={**click, "X-Treg-Token": token})
+    assert first.status_code == 200
+    from treg.domain.governance import teams
+    async with session_maker() as db:
+        await teams.cascade_delete_org(await db.get(Org, first.json()["org_id"]), db)
+        await db.commit()
+    assert await _leads() == []
+    again = await c.post("/orgs", json={"name": "Bob again", "ref": "jane-doe"},
+                         headers={**click, "X-Treg-Token": token})
+    assert again.status_code == 200, again.text
+    assert await _leads() == []
+    async with session_maker() as db:
+        claims = (await db.execute(select(AffiliateClaim))).scalars().all()
+    assert [claim.inbox for claim in claims] == [promo_inbox("bob@superdesign.dev")]

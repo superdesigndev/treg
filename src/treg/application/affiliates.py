@@ -24,7 +24,7 @@ from ..domain.identity.promotions import promo_inbox
 from ..infra import dub
 from ..infra import stripe as stripe_adapter
 from ..infra.db import background_session_maker
-from ..models import AffiliateLead, Membership, Org, User
+from ..models import AffiliateClaim, AffiliateLead, Membership, Org, User
 from ..timeutil import utcnow_naive
 
 log = logging.getLogger("treg")
@@ -64,6 +64,8 @@ def stage_lead(db: AsyncSession, *, org: Org, user: User, click_id: str = "",
     db.add(AffiliateLead(org_id=org.id, user_id=user.id, click_id=click_id or None,
                          partner_code=partner_code or None,
                          country=country_of(country) if partner_code else ""))
+    if user.email:
+        db.add(AffiliateClaim(inbox=promo_inbox(user.email), user_id=user.id))
     return True
 
 
@@ -78,12 +80,18 @@ async def attributed(db: AsyncSession, org_id: int | None) -> bool:
     return row.first() is not None
 
 
-async def brought_before(db: AsyncSession, user_id: int | None) -> bool:
+async def brought_before(db: AsyncSession, user: User) -> bool:
     """A partner already brought this person: a partner earns on the person they brought, so a
-    later team the same person makes is not a second lead."""
-    if user_id is None:
+    later team the same person makes is not a second lead, even after the first team is deleted.
+    Inbox aliases count as one person, as for the signup credit."""
+    if user.id is not None:
+        row = await db.execute(select(AffiliateLead.id).where(AffiliateLead.user_id == user.id).limit(1))
+        if row.first() is not None:
+            return True
+    if not user.email:
         return False
-    row = await db.execute(select(AffiliateLead.id).where(AffiliateLead.user_id == user_id).limit(1))
+    row = await db.execute(select(AffiliateClaim.id).where(
+        AffiliateClaim.inbox == promo_inbox(user.email)).limit(1))
     return row.first() is not None
 
 
