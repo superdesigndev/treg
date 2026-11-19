@@ -901,7 +901,8 @@ class AffiliateLead(SQLModel, table=True):
 
     Written in the team-creation transaction, uploaded later by `application.affiliates`. One per
     team: the unique org id makes every redelivery and retry idempotent. The row is also the
-    durable record that the team is attributed, which billing reads to tag its Stripe customer.
+    durable record that the team is attributed. Billing tags the team's Stripe customer only once
+    the lead is `verified_at`: Dub accepted it and its partner is not the team's own owner.
 
     Exactly one source: a link click (`click_id`, from the `?dub_id=` cookie) or a partner code
     typed at a CLI or agent signup (`partner_code`, with the `country` Dub requires for that lead).
@@ -913,13 +914,16 @@ class AffiliateLead(SQLModel, table=True):
     )
 
     id: int | None = Field(default=None, primary_key=True)
-    org_id: int = Field(foreign_key="org.id")
+    org_id: int
     user_id: int = Field(index=True)
     click_id: str | None = None
     partner_code: str | None = None
     country: str = Field(default="")
+    partner_id: str | None = None
     created_at: NaiveUTC = Field(default_factory=_now)
     uploaded_at: NaiveUTC | None = Field(default=None, index=True)
+    verified_at: NaiveUTC | None = Field(default=None, index=True)
+    stripe_synced_at: NaiveUTC | None = Field(default=None, index=True)
     next_attempt_at: NaiveUTC | None = Field(default=None, index=True)
     failed_at: NaiveUTC | None = Field(default=None, index=True)
     attempts: int = Field(default=0)

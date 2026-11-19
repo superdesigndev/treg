@@ -4,7 +4,8 @@ Revision ID: 0118
 Revises: 0117
 Create Date: 2026-11-19
 
-A new outbox table, one row per attributed team. Additive: no existing row changes.
+A new outbox table, one row per attributed team. Additive: no existing row changes. No foreign
+key: team deletion removes the row in code (`ORG_SCOPED_MODELS`).
 """
 from collections.abc import Sequence
 
@@ -21,13 +22,16 @@ def upgrade() -> None:
     op.create_table(
         "affiliatelead",
         sa.Column("id", sa.Integer(), primary_key=True),
-        sa.Column("org_id", sa.Integer(), sa.ForeignKey("org.id"), nullable=False),
+        sa.Column("org_id", sa.Integer(), nullable=False),
         sa.Column("user_id", sa.Integer(), nullable=False),
         sa.Column("click_id", sa.String(), nullable=True),
         sa.Column("partner_code", sa.String(), nullable=True),
         sa.Column("country", sa.String(), nullable=False, server_default=""),
+        sa.Column("partner_id", sa.String(), nullable=True),
         sa.Column("created_at", sa.DateTime(), nullable=False),
         sa.Column("uploaded_at", sa.DateTime(), nullable=True),
+        sa.Column("verified_at", sa.DateTime(), nullable=True),
+        sa.Column("stripe_synced_at", sa.DateTime(), nullable=True),
         sa.Column("next_attempt_at", sa.DateTime(), nullable=True),
         sa.Column("failed_at", sa.DateTime(), nullable=True),
         sa.Column("attempts", sa.Integer(), nullable=False),
@@ -38,6 +42,8 @@ def upgrade() -> None:
     )
     op.create_index("ix_affiliatelead_user_id", "affiliatelead", ["user_id"])
     op.create_index("ix_affiliatelead_uploaded_at", "affiliatelead", ["uploaded_at"])
+    op.create_index("ix_affiliatelead_verified_at", "affiliatelead", ["verified_at"])
+    op.create_index("ix_affiliatelead_stripe_synced_at", "affiliatelead", ["stripe_synced_at"])
     op.create_index("ix_affiliatelead_next_attempt_at", "affiliatelead", ["next_attempt_at"])
     op.create_index("ix_affiliatelead_failed_at", "affiliatelead", ["failed_at"])
 

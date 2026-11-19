@@ -361,14 +361,15 @@ async def get_or_create_customer(db: AsyncSession, org: Org, *, email: str = "")
         return org.stripe_customer_id
     if not email:
         email = await owner_email(db, org.id)
+    affiliate = await affiliates.stripe_metadata(db, org.id)
+    await db.commit()  # end the read transaction: no connection waits on Stripe
     customer = await _sdk(
         stripe_adapter.CUSTOMER_CREATE,
         name=org.name or org.slug,
         **({"email": email} if email else {}),
         # The org id travels with the customer so a Stripe-side investigation ("who is this charge
         # for?") resolves without a lookup table. Dub's Stripe app reads its key from the same map.
-        metadata={"treg_org_id": str(org.id), "treg_org_slug": org.slug,
-                  **await affiliates.stripe_metadata(db, org.id)},
+        metadata={"treg_org_id": str(org.id), "treg_org_slug": org.slug, **affiliate},
     )
     org.stripe_customer_id = customer["id"]
     db.add(org)
@@ -655,6 +656,8 @@ async def create_topup_checkout(
     amount = validate_topup_usd(amount_usd)
     amount_micro = usd_to_micro(amount)
     customer = await get_or_create_customer(db, org, email=email)
+    affiliate = await affiliates.stripe_metadata(db, org.id)
+    await db.commit()  # end the read transaction: no connection waits on Stripe
     base = (return_base or get_settings().public_url).rstrip("/")
     session = await _sdk(
         stripe_adapter.CHECKOUT_SESSION_CREATE,
@@ -699,8 +702,7 @@ async def create_topup_checkout(
         allow_promotion_codes=True,
         # Idempotent per (org, amount, minute): a double-clicked "Add funds" reuses the same session
         # instead of opening a second one the payer might also complete.
-        metadata={"treg_org_id": str(org.id), "treg_kind": "topup", **attribution,
-                  **await affiliates.stripe_metadata(db, org.id)},
+        metadata={"treg_org_id": str(org.id), "treg_kind": "topup", **attribution, **affiliate},
         integration_identifier=INTEGRATION_ID,
         success_url=f"{base}/app?topup=success#billing",
         cancel_url=f"{base}/app?topup=cancelled#billing",

@@ -11,6 +11,8 @@ referral comes only from the `?ref=` link cookie.
 
 from __future__ import annotations
 
+from datetime import datetime
+
 import httpx
 import pytest
 from httpx import ASGITransport, AsyncClient
@@ -21,9 +23,12 @@ from conftest import make_upstream, verified_signup
 from treg.api import app
 from treg.application import affiliates, billing
 from treg.config import get_settings
+from treg.domain.identity.promotions import promo_inbox
 from treg.infra import dub
+from treg.infra import stripe as stripe_adapter
 from treg.infra.db import reset_db, session_maker
 from treg.models import AffiliateLead, Org, Referral
+from treg.timeutil import utcnow_naive
 from treg.routers.signup_cookies import AFFILIATE_COOKIE, PARTNER_CODE_COOKIE, REFERRAL_COOKIE
 
 
@@ -129,6 +134,19 @@ async def test_a_click_cookie_does_nothing_while_dub_is_off(c, monkeypatch):
         assert len((await db.execute(select(Referral))).scalars().all()) == 1
 
 
+_IDLE = {"sent": 0, "retried": 0, "failed": 0}
+
+
+async def _drain(client, stripe_calls: list | None = None) -> dict:
+    """One drain with Stripe faked; the Stripe sync count is checked where it matters."""
+    async def stripe_call(op, **kw):
+        (stripe_calls if stripe_calls is not None else []).append((op, kw))
+        return {}
+    result = await affiliates.drain_once(client, session_factory=session_maker, stripe_call=stripe_call)
+    result.pop("synced", None)
+    return result
+
+
 def _dub_transport(status: int, seen: list):
     def handler(request: httpx.Request) -> httpx.Response:
         seen.append(request)
@@ -146,8 +164,8 @@ async def test_drain_uploads_the_lead(c):
     org_id = await _attributed_team(c)
     seen: list[httpx.Request] = []
     async with httpx.AsyncClient(transport=_dub_transport(200, seen)) as client:
-        assert await affiliates.drain_once(client, session_factory=session_maker) == {"sent": 1, "retried": 0, "failed": 0}
-        assert await affiliates.drain_once(client, session_factory=session_maker) == {"sent": 0}
+        assert await _drain(client) == {"sent": 1, "retried": 0, "failed": 0}
+        assert await _drain(client) == _IDLE
     assert len(seen) == 1
     assert str(seen[0].url) == "https://api.dub.co/track/lead"
     assert seen[0].headers["authorization"] == "Bearer dub_test_suite"
@@ -162,8 +180,8 @@ async def test_a_server_error_retries_later(c):
     await _attributed_team(c)
     seen: list = []
     async with httpx.AsyncClient(transport=_dub_transport(503, seen)) as client:
-        assert await affiliates.drain_once(client, session_factory=session_maker) == {"sent": 0, "retried": 1, "failed": 0}
-        assert await affiliates.drain_once(client, session_factory=session_maker) == {"sent": 0}, "not due until the backoff passes"
+        assert await _drain(client) == {"sent": 0, "retried": 1, "failed": 0}
+        assert await _drain(client) == _IDLE, "not due until the backoff passes"
     lead = (await _leads())[0]
     assert lead.next_attempt_at is not None and lead.failed_at is None and lead.attempts == 1
 
@@ -171,7 +189,7 @@ async def test_a_server_error_retries_later(c):
 async def test_an_unknown_click_is_dead_lettered(c):
     await _attributed_team(c)
     async with httpx.AsyncClient(transport=_dub_transport(404, [])) as client:
-        assert await affiliates.drain_once(client, session_factory=session_maker) == {"sent": 0, "retried": 0, "failed": 1}
+        assert await _drain(client) == {"sent": 0, "retried": 0, "failed": 1}
     lead = (await _leads())[0]
     assert lead.failed_at is not None and lead.error.startswith("404")
 
@@ -192,8 +210,38 @@ async def _stripe_calls(monkeypatch) -> list:
     return calls
 
 
+async def test_a_first_top_up_calls_stripe_checkout_holding_no_transaction(c, monkeypatch):
+    org_id = await _attributed_team(c)
+    async with httpx.AsyncClient(transport=_click_transport("pn_1", "jane@partner.example", [])) as client:
+        await _drain(client)
+    held: dict = {}
+    async with session_maker() as db:
+        async def sdk(fn, **kw):
+            held[fn] = db.in_transaction()
+            return {"id": "cs_1" if fn == stripe_adapter.CHECKOUT_SESSION_CREATE else "cus_1",
+                    "url": "https://checkout.stripe.test/cs_1"}
+        monkeypatch.setattr(billing, "_sdk", sdk)
+        org = await db.get(Org, org_id)
+        await billing.create_topup_checkout(db, org, 10)
+    assert held == {stripe_adapter.CUSTOMER_CREATE: False, stripe_adapter.CHECKOUT_SESSION_CREATE: False}, \
+        "billing's session holds no transaction while Stripe is called"
+
+
+async def test_a_pending_lead_tags_nothing_until_it_is_verified(c, monkeypatch):
+    org_id = await _attributed_team(c)
+    calls = await _stripe_calls(monkeypatch)
+    async with session_maker() as db:
+        assert await affiliates.stripe_metadata(db, org_id) == {}
+    async with session_maker() as db:
+        org = await db.get(Org, org_id)
+        await billing.create_topup_checkout(db, org, 10)
+    assert all("dubCustomerExternalId" not in kw.get("metadata", {}) for _, kw in calls)
+
+
 async def test_an_attributed_team_tags_its_stripe_customer_and_checkout(c, monkeypatch):
     org_id = await _attributed_team(c)
+    async with httpx.AsyncClient(transport=_click_transport("pn_1", "jane@partner.example", [])) as client:
+        assert await _drain(client) == {"sent": 1, "retried": 0, "failed": 0}
     calls = await _stripe_calls(monkeypatch)
     async with session_maker() as db:
         org = await db.get(Org, org_id)
@@ -314,11 +362,15 @@ async def test_cli_login_page_parks_the_partner_code_not_the_friend_cookie(c):
     assert PARTNER_CODE_COOKIE not in r.cookies
 
 
-def _code_transport(info_status: int, commission_status: int, seen: list, partner_id: str = "pn_1"):
+def _code_transport(info_status: int, commission_status: int, seen: list, partner_id: str = "pn_1",
+                    partner_email: str = "jane@partner.example", partner_status: int = 200):
     def handler(request: httpx.Request) -> httpx.Response:
         seen.append(request)
         if request.url.path == "/links/info":
             return httpx.Response(info_status, json={"partnerId": partner_id} if info_status == 200 else {})
+        if request.url.path.startswith("/partners/"):
+            return httpx.Response(partner_status, json={"id": partner_id, "email": partner_email}
+                                  if partner_status == 200 else {"error": "no"})
         return httpx.Response(commission_status, json={"success": True} if commission_status == 200 else {})
     return httpx.MockTransport(handler)
 
@@ -328,11 +380,12 @@ async def test_drain_resolves_a_code_to_its_partner_and_creates_the_lead(c, monk
     org_id = (await _orgs_with_ref(c, "jane-doe", headers={"CF-IPCountry": "AU"})).json()["org_id"]
     seen: list[httpx.Request] = []
     async with httpx.AsyncClient(transport=_code_transport(200, 200, seen)) as client:
-        assert await affiliates.drain_once(client, session_factory=session_maker) == {"sent": 1, "retried": 0, "failed": 0}
+        assert await _drain(client) == {"sent": 1, "retried": 0, "failed": 0}
     import json
     assert dict(seen[0].url.params) == {"domain": "treg.dub.link", "key": "jane-doe"}
-    assert str(seen[1].url) == "https://api.dub.co/commissions"
-    assert json.loads(seen[1].content) == {"type": "lead", "partnerId": "pn_1", "customer": {
+    assert str(seen[1].url) == "https://api.dub.co/partners/pn_1"
+    assert str(seen[2].url) == "https://api.dub.co/commissions"
+    assert json.loads(seen[2].content) == {"type": "lead", "partnerId": "pn_1", "customer": {
         "externalId": str(org_id), "country": "AU", "email": "bob@superdesign.dev"}}
 
 
@@ -340,7 +393,7 @@ async def test_an_unknown_code_is_dead_lettered_and_tags_no_stripe_customer(c, m
     monkeypatch.setattr(get_settings(), "dub_link_domain", "treg.dub.link")
     org_id = (await _orgs_with_ref(c, "nobody")).json()["org_id"]
     async with httpx.AsyncClient(transport=_code_transport(404, 200, [])) as client:
-        assert await affiliates.drain_once(client, session_factory=session_maker) == {"sent": 0, "retried": 0, "failed": 1}
+        assert await _drain(client) == {"sent": 0, "retried": 0, "failed": 1}
     lead = (await _leads())[0]
     assert lead.failed_at is not None and "no Dub link" in lead.error
     async with session_maker() as db:
@@ -351,7 +404,7 @@ async def test_a_code_lead_waits_for_the_link_domain(c):
     await _orgs_with_ref(c, "jane-doe")
     seen: list = []
     async with httpx.AsyncClient(transport=_code_transport(200, 200, seen)) as client:
-        assert await affiliates.drain_once(client, session_factory=session_maker) == {"sent": 0, "retried": 1, "failed": 0}
+        assert await _drain(client) == {"sent": 0, "retried": 1, "failed": 0}
     assert seen == []
     lead = (await _leads())[0]
     assert lead.failed_at is None and "dub_link_domain" in lead.error
@@ -361,6 +414,206 @@ async def test_a_code_lead_retries_on_a_server_error(c, monkeypatch):
     monkeypatch.setattr(get_settings(), "dub_link_domain", "treg.dub.link")
     await _orgs_with_ref(c, "jane-doe")
     async with httpx.AsyncClient(transport=_code_transport(200, 503, [])) as client:
-        assert await affiliates.drain_once(client, session_factory=session_maker) == {"sent": 0, "retried": 1, "failed": 0}
+        assert await _drain(client) == {"sent": 0, "retried": 1, "failed": 0}
     lead = (await _leads())[0]
     assert lead.failed_at is None and lead.error.startswith("503")
+
+
+async def _self_referral_lead(c, monkeypatch, partner_email: str):
+    monkeypatch.setattr(get_settings(), "dub_link_domain", "treg.dub.link")
+    org_id = (await _orgs_with_ref(c, "jane-doe")).json()["org_id"]
+    seen: list[httpx.Request] = []
+    async with httpx.AsyncClient(transport=_code_transport(200, 200, seen, partner_email=partner_email)) as client:
+        result = await _drain(client)
+    return org_id, seen, result
+
+
+async def test_a_partner_code_on_the_partners_own_team_is_dead_lettered(c, monkeypatch):
+    org_id, seen, result = await _self_referral_lead(c, monkeypatch, "bob@superdesign.dev")
+    assert result == {"sent": 0, "retried": 0, "failed": 1}
+    assert [r.url.path for r in seen] == ["/links/info", "/partners/pn_1"], "no lead is created"
+    lead = (await _leads())[0]
+    assert lead.failed_at is not None and lead.error == "self_referral" and lead.uploaded_at is None
+    async with session_maker() as db:
+        assert await affiliates.stripe_metadata(db, org_id) == {}
+
+
+async def test_self_referral_sees_through_inbox_aliases(c, monkeypatch):
+    _, _, result = await _self_referral_lead(c, monkeypatch, "Bob+affiliate@SuperDesign.dev")
+    assert result["failed"] == 1 and (await _leads())[0].error == "self_referral"
+
+
+def test_gmail_dot_aliases_are_one_inbox():
+    owner = {promo_inbox("jane.doe@gmail.com")}
+    assert affiliates._is_self(dub.Outcome(ok=True, retry=False, status=200, email="janedoe+x@googlemail.com"), owner)
+    assert not affiliates._is_self(dub.Outcome(ok=True, retry=False, status=200, email="jane@other.example"), owner)
+    assert not affiliates._is_self(dub.Outcome(ok=False, retry=True, status=503), owner)
+
+
+async def test_a_partner_lookup_failure_retries_rather_than_blocking(c, monkeypatch):
+    monkeypatch.setattr(get_settings(), "dub_link_domain", "treg.dub.link")
+    await _orgs_with_ref(c, "jane-doe")
+    seen: list[httpx.Request] = []
+    async with httpx.AsyncClient(transport=_code_transport(200, 200, seen, partner_status=503)) as client:
+        assert await _drain(client) == {"sent": 0, "retried": 1, "failed": 0}
+    assert all(r.url.path != "/commissions" for r in seen)
+    lead = (await _leads())[0]
+    assert lead.failed_at is None and lead.error.startswith("503: partner lookup")
+
+
+def _click_transport(partner_id: str | None, partner_email: str, seen: list):
+    def handler(request: httpx.Request) -> httpx.Response:
+        seen.append(request)
+        if request.url.path == "/track/lead":
+            return httpx.Response(200, json={"click": {"id": "x"}, "customer": {},
+                                             "link": {"partnerId": partner_id} if partner_id else None})
+        return httpx.Response(200, json={"id": partner_id, "email": partner_email})
+    return httpx.MockTransport(handler)
+
+
+async def test_a_click_from_the_partners_own_link_leaves_the_team_untagged(c):
+    org_id = await _attributed_team(c)
+    seen: list[httpx.Request] = []
+    async with httpx.AsyncClient(transport=_click_transport("pn_1", "bob@superdesign.dev", seen)) as client:
+        assert await _drain(client) == {"sent": 0, "retried": 0, "failed": 1}
+    lead = (await _leads())[0]
+    assert lead.error == "self_referral" and lead.uploaded_at is not None, "Dub has the lead; treg tags nothing"
+    async with session_maker() as db:
+        assert await affiliates.stripe_metadata(db, org_id) == {}
+
+
+async def test_a_click_from_another_partner_is_sent(c):
+    org_id = await _attributed_team(c)
+    seen: list[httpx.Request] = []
+    async with httpx.AsyncClient(transport=_click_transport("pn_1", "jane@partner.example", seen)) as client:
+        assert await _drain(client) == {"sent": 1, "retried": 0, "failed": 0}
+    async with session_maker() as db:
+        assert await affiliates.stripe_metadata(db, org_id) == {"dubCustomerExternalId": str(org_id)}
+
+
+async def _set_customer(org_id: int, customer_id: str) -> None:
+    async with session_maker() as db:
+        org = await db.get(Org, org_id)
+        org.stripe_customer_id = customer_id
+        db.add(org)
+        await db.commit()
+
+
+async def test_a_customer_made_before_verification_is_tagged_by_the_drain(c):
+    org_id = await _attributed_team(c)
+    await _set_customer(org_id, "cus_early")
+    stripe_calls: list = []
+    async with httpx.AsyncClient(transport=_click_transport("pn_1", "jane@partner.example", [])) as client:
+        await _drain(client, stripe_calls)
+        await _drain(client, stripe_calls)
+    assert stripe_calls == [("Customer.modify", {
+        "api_key": "sk_test_suite", "id": "cus_early",
+        "metadata": {"dubCustomerExternalId": str(org_id)}})], "tagged once, never again"
+    assert (await _leads())[0].stripe_synced_at is not None
+
+
+async def test_a_customer_committed_after_verification_is_still_tagged(c):
+    org_id = await _attributed_team(c)
+    stripe_calls: list = []
+    async with httpx.AsyncClient(transport=_click_transport("pn_1", "jane@partner.example", [])) as client:
+        await _drain(client, stripe_calls)
+        assert stripe_calls == [] and (await _leads())[0].stripe_synced_at is None, "no customer yet: stays pending"
+        await _set_customer(org_id, "cus_late")
+        await _drain(client, stripe_calls)
+    assert stripe_calls == [("Customer.modify", {
+        "api_key": "sk_test_suite", "id": "cus_late",
+        "metadata": {"dubCustomerExternalId": str(org_id)}})]
+    assert (await _leads())[0].stripe_synced_at is not None
+
+
+async def test_a_self_referral_untags_an_existing_customer(c):
+    org_id = await _attributed_team(c)
+    await _set_customer(org_id, "cus_self")
+    stripe_calls: list = []
+    async with httpx.AsyncClient(transport=_click_transport("pn_1", "bob@superdesign.dev", [])) as client:
+        await _drain(client, stripe_calls)
+    assert stripe_calls == [("Customer.modify", {
+        "api_key": "sk_test_suite", "id": "cus_self", "metadata": {"dubCustomerExternalId": ""}})]
+
+
+async def test_a_failed_stripe_sync_is_retried(c):
+    org_id = await _attributed_team(c)
+    await _set_customer(org_id, "cus_retry")
+    attempts: list = []
+
+    async def flaky(op, **kw):
+        attempts.append(op)
+        if len(attempts) == 1:
+            raise RuntimeError("stripe down")
+        return {}
+    async with httpx.AsyncClient(transport=_click_transport("pn_1", "jane@partner.example", [])) as client:
+        await affiliates.drain_once(client, session_factory=session_maker, stripe_call=flaky)
+        assert (await _leads())[0].stripe_synced_at is None
+        await affiliates.drain_once(client, session_factory=session_maker, stripe_call=flaky)
+    assert len(attempts) == 2 and (await _leads())[0].stripe_synced_at is not None
+
+
+async def test_a_click_whose_partner_check_fails_is_rechecked_not_acknowledged(c):
+    org_id = await _attributed_team(c)
+    state = {"partner_status": 503}
+    seen: list[httpx.Request] = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        seen.append(request)
+        if request.url.path == "/track/lead":
+            return httpx.Response(200, json={"click": {"id": "x"}, "link": {"partnerId": "pn_1"}})
+        if state["partner_status"] != 200:
+            return httpx.Response(state["partner_status"], json={"error": "down"})
+        return httpx.Response(200, json={"id": "pn_1", "email": "bob@superdesign.dev"})
+    async with httpx.AsyncClient(transport=httpx.MockTransport(handler)) as client:
+        assert await _drain(client) == {"sent": 0, "retried": 1, "failed": 0}
+        lead = (await _leads())[0]
+        assert lead.uploaded_at is not None and lead.verified_at is None and lead.partner_id == "pn_1"
+        async with session_maker() as db:
+            assert await affiliates.stripe_metadata(db, org_id) == {}
+            row = await db.get(AffiliateLead, lead.id)
+            row.next_attempt_at = None
+            db.add(row)
+            await db.commit()
+        state["partner_status"] = 200
+        assert await _drain(client) == {"sent": 0, "retried": 0, "failed": 1}
+    assert [r.url.path for r in seen].count("/track/lead") == 1, "the lead is never sent twice"
+    assert (await _leads())[0].error == "self_referral"
+
+
+def test_the_lead_table_has_no_foreign_key():
+    assert not AffiliateLead.__table__.foreign_keys
+
+
+async def test_two_drains_never_work_the_same_lead(c):
+    await _attributed_team(c)
+    now = utcnow_naive()
+    async with session_maker() as first:
+        claimed_first = await affiliates._due(first, now)
+    async with session_maker() as second:
+        claimed_second = await affiliates._due(second, now)
+    assert len(claimed_first) == 1 and claimed_second == [], "the claim keeps a second worker off the lead"
+
+
+async def test_a_self_referral_found_after_another_drain_verified_it_untags_stripe(c, monkeypatch):
+    org_id = await _attributed_team(c)
+    await _set_customer(org_id, "cus_raced")
+
+    async def raced_send(client, settings, lead, *, email, inboxes):
+        # Another worker resent the lead, Dub deduplicated it, and that worker verified and tagged.
+        async with session_maker() as db:
+            row = await db.get(AffiliateLead, lead.id)
+            row.verified_at = row.stripe_synced_at = row.uploaded_at = datetime(2026, 1, 1)
+            db.add(row)
+            await db.commit()
+        return affiliates._Result(dub.Outcome(ok=True, retry=False, status=200), recorded=True, partner_id="pn_1",
+                                  self_referral=True)
+    monkeypatch.setattr(affiliates, "_send", raced_send)
+    stripe_calls: list = []
+    await _drain(None, stripe_calls)
+    lead = (await _leads())[0]
+    assert lead.error == "self_referral" and lead.verified_at is None
+    assert stripe_calls == [("Customer.modify", {
+        "api_key": "sk_test_suite", "id": "cus_raced", "metadata": {"dubCustomerExternalId": ""}})]
+    async with session_maker() as db:
+        assert await affiliates.stripe_metadata(db, org_id) == {}

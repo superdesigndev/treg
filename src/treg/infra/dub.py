@@ -31,6 +31,8 @@ class Outcome:
     retry: bool
     status: int
     detail: str = ""
+    partner_id: str = ""  # the partner Dub credited (track/lead) or resolved (links/info)
+    email: str = ""       # a partner's own email (GET /partners/{id})
 
 
 def valid_click_id(value: str) -> str:
@@ -54,13 +56,26 @@ def _outcome(status: int, text: str) -> Outcome:
     return Outcome(ok=False, retry=status not in _PERMANENT, status=status, detail=text[:300])
 
 
+def _json(resp: httpx.Response) -> dict:
+    try:
+        body = resp.json()
+    except ValueError:
+        return {}
+    return body if isinstance(body, dict) else {}
+
+
+def _transport_failure(exc: httpx.HTTPError) -> Outcome:
+    return Outcome(ok=False, retry=True, status=0, detail=f"{type(exc).__name__}: {exc}"[:300])
+
+
 async def track_lead(client: httpx.AsyncClient, *, api_key: str, click_id: str,
                      customer_external_id: str, event_name: str,
                      customer_email: str = "") -> Outcome:
     """`POST /track/lead`: tie a customer to the click they came from.
 
     Dub deduplicates on (customerExternalId, eventName), so a retry after an ambiguous outcome is
-    safe. `customerEmail` is what Dub's risk monitoring compares with the partner's own email.
+    safe. `customerEmail` is what Dub's risk monitoring compares with the partner's own email. The
+    response's `link.partnerId` names the partner credited; it is null on a deduplicated repeat.
     """
     body: dict = {"clickId": click_id, "eventName": event_name,
                   "customerExternalId": customer_external_id}
@@ -70,43 +85,62 @@ async def track_lead(client: httpx.AsyncClient, *, api_key: str, click_id: str,
         resp = await client.post(f"{API_URL}/track/lead", json=body, timeout=TIMEOUT_S,
                                  headers={"Authorization": f"Bearer {api_key}"})
     except httpx.HTTPError as exc:
-        return Outcome(ok=False, retry=True, status=0, detail=f"{type(exc).__name__}: {exc}"[:300])
-    return _outcome(resp.status_code, resp.text)
+        return _transport_failure(exc)
+    outcome = _outcome(resp.status_code, resp.text)
+    if not outcome.ok:
+        return outcome
+    link = _json(resp).get("link") or {}
+    return Outcome(ok=True, retry=False, status=resp.status_code,
+                   partner_id=str(link.get("partnerId") or "") if isinstance(link, dict) else "")
 
 
-async def lead_from_code(client: httpx.AsyncClient, *, api_key: str, link_domain: str, code: str,
-                         customer_external_id: str, country: str,
-                         customer_email: str = "") -> Outcome:
-    """Tie a customer to the partner whose link key is `code`, with no click (a CLI or agent signup).
-
-    `GET /links/info` names the partner behind the key; `POST /commissions` with `type: lead` then
-    creates the customer under that partner, so later Stripe sales for the customer's external id
-    pay the partner. Dub requires `customer.country` on this call.
-    """
+async def partner_for_code(client: httpx.AsyncClient, *, api_key: str, link_domain: str,
+                           code: str) -> Outcome:
+    """`GET /links/info`: the partner behind the link key `code` (a CLI or agent signup)."""
     if not link_domain:
         return Outcome(ok=False, retry=True, status=0, detail="dub_link_domain is not configured")
-    headers = {"Authorization": f"Bearer {api_key}"}
     try:
         info = await client.get(f"{API_URL}/links/info", params={"domain": link_domain, "key": code},
-                                timeout=TIMEOUT_S, headers=headers)
+                                timeout=TIMEOUT_S, headers={"Authorization": f"Bearer {api_key}"})
     except httpx.HTTPError as exc:
-        return Outcome(ok=False, retry=True, status=0, detail=f"{type(exc).__name__}: {exc}"[:300])
+        return _transport_failure(exc)
     if info.status_code == 404:
         return Outcome(ok=False, retry=False, status=404, detail=f"no Dub link {link_domain}/{code}")
     if not 200 <= info.status_code < 300:
         return _outcome(info.status_code, info.text)
-    try:
-        partner_id = (info.json() or {}).get("partnerId") or ""
-    except ValueError:
-        partner_id = ""
+    partner_id = str(_json(info).get("partnerId") or "")
     if not partner_id:
         return Outcome(ok=False, retry=False, status=422, detail=f"Dub link {code} belongs to no partner")
+    return Outcome(ok=True, retry=False, status=info.status_code, partner_id=partner_id)
+
+
+async def partner_email(client: httpx.AsyncClient, *, api_key: str, partner_id: str) -> Outcome:
+    """`GET /partners/{id}`: the partner's own email, which the self-referral check compares."""
+    try:
+        resp = await client.get(f"{API_URL}/partners/{partner_id}", timeout=TIMEOUT_S,
+                                headers={"Authorization": f"Bearer {api_key}"})
+    except httpx.HTTPError as exc:
+        return _transport_failure(exc)
+    outcome = _outcome(resp.status_code, resp.text)
+    if not outcome.ok:
+        return outcome
+    return Outcome(ok=True, retry=False, status=resp.status_code, partner_id=partner_id,
+                   email=str(_json(resp).get("email") or ""))
+
+
+async def lead_for_partner(client: httpx.AsyncClient, *, api_key: str, partner_id: str,
+                           customer_external_id: str, country: str,
+                           customer_email: str = "") -> Outcome:
+    """`POST /commissions` with `type: lead`: create the customer under `partner_id` with no click,
+    so later Stripe sales for the customer's external id pay the partner. Dub requires
+    `customer.country` on this call."""
     customer: dict = {"externalId": customer_external_id, "country": country}
     if customer_email:
         customer["email"] = customer_email
     try:
-        resp = await client.post(f"{API_URL}/commissions", timeout=TIMEOUT_S, headers=headers,
+        resp = await client.post(f"{API_URL}/commissions", timeout=TIMEOUT_S,
+                                 headers={"Authorization": f"Bearer {api_key}"},
                                  json={"type": "lead", "partnerId": partner_id, "customer": customer})
     except httpx.HTTPError as exc:
-        return Outcome(ok=False, retry=True, status=0, detail=f"{type(exc).__name__}: {exc}"[:300])
+        return _transport_failure(exc)
     return _outcome(resp.status_code, resp.text)

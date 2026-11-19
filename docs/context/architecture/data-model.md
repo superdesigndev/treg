@@ -187,7 +187,9 @@ Rollups and analytics tables are optional read models: they never determine a mo
 - **`AffiliateLead`**: one per team (unique `org_id`), staged in the team-creation transaction; it is
   both the Dub lead outbox and the record that the team is affiliate-attributed
   ([affiliates](affiliates.md)). A check constraint keeps exactly one source: `click_id` (a link
-  click) or `partner_code` (a typed code, with the `country` Dub requires for it).
+  click) or `partner_code` (a typed code, with the `country` Dub requires for it). Only a
+  `verified_at` row attributes; `stripe_synced_at` records that an existing Stripe customer was
+  brought in line. No foreign key to `org`: team deletion removes it in code.
 - **`DenyRule`**: an empty field means any, so a rule with only `method="DELETE"` blocks every
   delete. `delete_project` sweeps rules naming the project.
 - **`Tool.bindings`** is a list and a request applies all of them (google-ads is an OAuth bearer
