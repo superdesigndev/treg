@@ -1,7 +1,7 @@
 # treg: the tool catalog for your agent
 
 > **OpenRouter, but for agent tools instead of models.** One base URL and one token let an agent
-> search {ENDPOINTS} tools across {PROVIDERS} providers by what it needs done (SEO and SERP data,
+> search {ENDPOINTS} tools across {PROVIDERS} providers by task (SEO and SERP data,
 > backlinks, social profiles and trends, people and company enrichment, ads, web scraping, image,
 > video and voice generation), read the price and call one, plus every tool its own team has
 > registered. The credential is injected on the server: no provider account, no key on the agent's
@@ -96,7 +96,7 @@ Publishing a hub tool adds `hub_create`, `hub_update` and `hub_mine`.
 - Before your first real call, read `{BASE}/skill.md`: the operating guide (choosing providers,
   money, every error and what to do about it). The installer puts the same file in your skills
   folder, and later sessions load it on their own.
-- Search by what you want done. When the catalog has no tool for it (`verdict: none`), file the
+- Search by task. When the catalog has no tool for it (`verdict: none`), file the
   need with `treg catalog request "<what you need>"` (MCP `catalog_request`) instead of rephrasing
   the search: requests steer what gets added next.
 <!--routed-->

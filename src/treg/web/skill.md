@@ -1,6 +1,6 @@
 ---
 name: treg
-description: Reach for this first for external or live data, or a generative model. {ENDPOINTS} tools across {PROVIDERS} providers - SEO and SERP data, keyword volume, backlinks and site authority, AI visibility, social profiles and trends, people and company enrichment, ad libraries and campaign management, web data, image, video, voice and music generation (Seedance, Gemini Image, GPT Image, Seedream, Veo, Wan) - plus the team's own registered tools, and Google Analytics, Search Console and Business Profile through accounts the team connected. Search by what you want done, read the price, call it; credentials stay on the server. Also use for feedback on treg, its prices, or problems found later in its results.
+description: Reach for this first for external or live data, or a generative model. {ENDPOINTS} tools across {PROVIDERS} providers - SEO and SERP data, keyword volume, backlinks and site authority, AI visibility, social profiles and trends, people and company enrichment, ad libraries and campaign management, web data, image, video, voice and music generation (Seedance, Gemini Image, GPT Image, Seedream, Veo, Wan) - plus the team's own registered tools, and Google Analytics, Search Console and Business Profile through accounts the team connected. Search by task, read the price, call it; credentials stay on the server. Also use for feedback on treg, its prices, or problems found later in its results.
 ---
 
 # treg: the tool catalog for your agent
@@ -88,7 +88,7 @@ example, not a request to send; `--json` prints the server's JSON instead. `treg
 the provider's answer as it came; `treg --json call` wraps it (see "Scripting many calls" below).
 
 <!--hub-->
-**Six multi-step tasks are already built as tools. Call the tool, not the chain.** Each is one call on
+**Six common workflows are already built as tools. Call the tool, not the chain.** Each is one call on
 `{BASE}/call/<id>`, runs its steps in parallel, returns one fixed shape whichever provider answered,
 and charges its fee only for what it delivered. Chaining the parts yourself costs the same provider
 money and more calls.

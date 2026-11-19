@@ -464,7 +464,7 @@ def _show_hint_line(resp: httpx.Response) -> None:
     if kind is None and headers.get("X-Treg-Review") == "requested":
         kind = "review"
     if routed := headers.get("X-Treg-Routed-Tool"):
-        print(f"treg: {routed} routes this capability and picks the provider, with fallback; "
+        print(f"treg: {routed} does the same and picks the provider, with fallback; "
               "prefer it unless you need options only this provider has.", file=sys.stderr)
     if not call_id:
         return

@@ -1836,7 +1836,7 @@ async def _call_impl(endpoint_id: str, params: dict | list | None = None,
             out["hint"] = hints.HINT
     if routed := r.headers.get("X-Treg-Routed-Tool"):
         out["routed_tool"] = routed
-        out["suggestion"] = (f"{routed} routes this capability: treg picks the provider, falls back when one "
+        out["suggestion"] = (f"{routed} does the same: treg picks the provider, falls back when one "
                              "fails or misses, and charges only the answer. Prefer it next time unless "
                              "you need options only this provider has.")
     if r.status_code >= 400:
