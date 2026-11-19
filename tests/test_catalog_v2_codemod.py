@@ -69,14 +69,21 @@ def test_a_coalesce_miss_reads_as_today_on_every_list_or_missing_value(names):
 @pytest.mark.parametrize("expr", ["coalesce(" + " ," * 50_000 + ") == []", "coalesce(a," + " " * 50_000 + "x) == []",
                                   "coalesce(" + ", [" * 30_000 + ") == []", "coalesce(" + "a," * 50_000 + "[]) == []"])
 def test_a_long_adversarial_coalesce_is_judged_in_linear_time(expr):
+    import gc
     import time
 
-    started = time.perf_counter()
+    # CPU time with no collection: a loaded runner once took 1.08 s of wall time for ~20 ms of work.
+    gc.collect()
+    gc.disable()
     try:
-        codemod.predicate(expr, [])
-    except codemod.Refused:
-        pass
-    assert time.perf_counter() - started < 1
+        started = time.process_time()
+        try:
+            codemod.predicate(expr, [])
+        except codemod.Refused:
+            pass
+        assert time.process_time() - started < 1
+    finally:
+        gc.enable()
 
 
 @pytest.mark.parametrize("expr", ["coalesce(a, [], []) == []", "coalesce(, []) == []", "coalesce([]) == []",

@@ -180,7 +180,6 @@ test('a dialog takes its first field and hands focus back, even when its code ar
   await expect(opener).toBeFocused()
 })
 
-// The suite's sign-ins sit at the per-IP code limit, so the Try it tests share one.
 test.describe('Try it', () => {
   let page: Page
   test.beforeAll(async ({ browser }, info) => {
