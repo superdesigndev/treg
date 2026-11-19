@@ -424,11 +424,12 @@ endpoints:
     scope: any_account
     method: POST
     path: /models/{model}:generateContent
+    platform_request: {pathParams.model: [gemini-3.8-flash]}
     name: "Google: Gemini 3.8 Flash (video understanding)"
     summary: "Answer a prompt about a public video with Gemini 3.8 Flash on Google's own API, from a https video URL or a public YouTube URL; the answer is text or JSON."
     input:
       pathParams:
-        model: {type: string, required: true, enum: [gemini-3.8-flash], example: gemini-3.8-flash}
+        model: {type: string, required: true, example: gemini-3.8-flash, note: "treg's key runs only gemini-3.8-flash; your own key can name another model."}
       body:
         contents:
           type: array

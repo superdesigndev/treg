@@ -465,6 +465,21 @@ def check_platform_request(rule: object, input_schema: object, where: str,
                                 "type, or for a path or query field a non-empty list of them")
 
 
+def check_path_enum_pins(ep: dict, where: str, errors: list[str]) -> None:
+    """A path enum on a row treg's key can serve is that key's pin, so it is written as a
+    `platform_request` path pin; the enum alone binds treg's key only once the parameter check
+    refuses."""
+    if (ep.get("scope") == "own_account" or ep.get("kind") == "account"
+            or ep.get("platform_blocked") or ep.get("status")):
+        return
+    pins = ep.get("platform_request") if isinstance(ep.get("platform_request"), dict) else {}
+    path_params = (ep.get("input") or {}).get("pathParams") or {}
+    for name, spec in path_params.items() if isinstance(path_params, dict) else ():
+        if isinstance(spec, dict) and "enum" in spec and f"pathParams.{name}" not in pins:
+            fail(errors, where, f"pathParams.{name} declares an enum without a platform_request "
+                                f"pathParams.{name} pin for treg's key")
+
+
 def check_team_label(rule: object, input_schema: object, where: str, errors: list[str]) -> None:
     """Fields that must carry the calling team's label on treg's key: declared string fields."""
     fields = _input_fields(input_schema)
@@ -1878,6 +1893,7 @@ def main(argv: list[str]) -> int:
             check_public_provider_row(ep, REGISTRY.get(service), where, errors)
             if "platform_request" in ep:
                 check_platform_request(ep["platform_request"], inp, where, errors)
+            check_path_enum_pins(ep, where, errors)
             if "team_label" in ep:
                 check_team_label(ep["team_label"], inp, where, errors)
             if "caller_email" in ep:

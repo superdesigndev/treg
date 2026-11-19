@@ -763,6 +763,22 @@ def test_platform_request_pins_a_value_its_field_declares(rule, valid):
     assert (not errors) is valid
 
 
+_PATH_ENUM_INPUT = {'pathParams': {'model': {'type': 'string', 'required': True, 'enum': ['stable']}}}
+
+
+@pytest.mark.parametrize('extra,valid', [
+    ({}, False),                                                   # treg's key would run any model
+    ({'platform_request': {'pathParams.model': ['stable']}}, True),
+    ({'platform_request': {'body.mode': 'sync'}}, False),          # a pin on another field
+    ({'scope': 'own_account'}, True),                              # treg's key never serves it
+    ({'platform_blocked': True}, True),
+])
+def test_a_path_enum_on_a_row_treg_serves_is_a_platform_pin(extra, valid):
+    errors = []
+    validator.check_path_enum_pins({'input': _PATH_ENUM_INPUT, **extra}, 'test', errors)
+    assert (not errors) is valid
+
+
 _LABEL_INPUT = {'body': {'agent': {'type': 'string'}, 'credits': {'type': 'integer'}},
                 'pathParams': {'label': {'type': 'string'}}, 'headers': {'x-agent': {'type': 'string'}}}
 

@@ -464,7 +464,8 @@ cost:
   treg's key needs is pinned here and left out of the declaration, which every tier is held to. A
   path or query pin may list the values allowed: `pathParams.model: [a, b]` names the models a row
   prices (a stable model and its alias), so treg's key runs no other model at that row's rates, while
-  the declaration lets a team's own key name any. A `queryParams.*` pin must appear exactly once and
+  the declaration lets a team's own key name any. The validator refuses a `pathParams` enum on a row
+  treg's key can serve without such a pin. A `queryParams.*` pin must appear exactly once and
   is read as the pinned value's type, so a run option such as a spend cap can bound one call's cost.
   A `queryParams.*` pin of `null` means the parameter must be absent (it need not be declared), so a
   run mode the row does not price, such as a discovery switch, is refused on the shared credential.
