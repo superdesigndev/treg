@@ -1,5 +1,6 @@
 """Targeted review invitations: endpoints short of reviews are invited more often."""
 import asyncio
+import itertools
 from types import SimpleNamespace
 
 import pytest
@@ -27,17 +28,24 @@ def targeting(monkeypatch):
     return settings
 
 
-async def add_reviews(clients, endpoint_id: str, *, teams: int, each: int):
-    for t in range(teams):
+_team_no = itertools.count()
+
+
+async def add_reviews(clients, endpoint_id: str, *, teams: int, each: int) -> list[int]:
+    org_ids = []
+    for _ in range(teams):
         async with session_maker() as db:
-            org = Org(name=f'Reviewer {endpoint_id} {t}', slug=f'rv-{endpoint_id.replace(".", "-")}-{t}')
+            n = next(_team_no)
+            org = Org(name=f'Reviewer {endpoint_id} {n}', slug=f'rv-{endpoint_id.replace(".", "-")}-{n}')
             db.add(org)
             await db.flush()
             for i in range(each):
                 db.add(CallReview(org_id=org.id, user_email='tim@superdesign.dev',
-                                  call_id=f'{endpoint_id}-{t}-{i}', endpoint_id=endpoint_id,
+                                  call_id=f'{endpoint_id}-{n}-{i}', endpoint_id=endpoint_id,
                                   usefulness='useful'))
             await db.commit()
+            org_ids.append(org.id)
+    return org_ids
 
 
 async def test_rate_climbs_as_an_endpoint_lacks_reviews_and_one_team_counts_at_most_its_cap(
@@ -49,6 +57,24 @@ async def test_rate_climbs_as_an_endpoint_lacks_reviews_and_one_team_counts_at_m
     assert review_targets.rate('one-team.search') == pytest.approx(0.2 + 0.8 * 0.9)
     assert review_targets.rate('unreviewed.search') == pytest.approx(1.0)
     assert review_targets.rate(None) == pytest.approx(0.2)
+
+
+async def test_a_team_at_its_cap_is_not_invited_again_and_a_new_team_gets_the_floor(
+        clients, targeting, monkeypatch):
+    monkeypatch.setattr(targeting, 'review_target_new_team_rate', 0.6)
+    full, = await add_reviews(clients, 'busy.search', teams=1, each=12)
+    partial, = await add_reviews(clients, 'busy.search', teams=1, each=4)
+    await add_reviews(clients, 'busy.search', teams=9, each=10)  # the endpoint is at its target
+    await review_targets.warm()
+    assert review_targets.rate('busy.search', full) == 0
+    assert review_targets.rate('busy.search', partial) == pytest.approx(0.2)  # already counted
+    assert review_targets.rate('busy.search', 10**9) == pytest.approx(0.6)  # a new team
+    assert review_targets.rate('busy.search') == pytest.approx(0.2)  # no team known
+    # Short endpoint: a new team takes the higher of the boost and the floor.
+    assert review_targets.rate('unreviewed.search', 10**9) == pytest.approx(1.0)
+    # The team at its cap on one endpoint is still invited on another.
+    assert review_targets.rate('unreviewed.search', full) == pytest.approx(1.0)
+    assert not any(review_targets.sampled(f'c{i}', 'busy.search', full) for i in range(200))
 
 
 async def test_off_or_before_the_first_read_every_endpoint_gets_the_base_rate(clients, targeting,
@@ -71,6 +97,29 @@ async def test_a_short_endpoint_is_invited_and_a_full_one_falls_back_to_base(cli
     await add_reviews(clients, 'example.search', teams=10, each=10)
     await review_targets.warm()
     response = await clients.get('/call/example.search')
+    assert response.headers.get('X-Treg-Hint') is None
+
+
+async def test_a_team_that_filled_an_endpoint_gets_no_invitation_there(clients, targeting,
+                                                                        monkeypatch):
+    _platform_call(monkeypatch)
+    monkeypatch.setattr(targeting, 'review_sample_rate', 1.0)
+    monkeypatch.setattr(targeting, 'feedback_hint_rate', 0)
+    monkeypatch.setattr(targeting, 'review_budget_per_hour', 100)
+    await review_targets.warm()
+    response = await clients.get('/call/example.search')
+    assert response.headers.get('X-Treg-Hint') == 'review'
+    from sqlalchemy import select as _select
+    async with session_maker() as db:  # the caller's team is the only one signed up
+        org_id, = (await db.execute(_select(Org.id))).scalars().all()
+    async with session_maker() as db:
+        for i in range(10):
+            db.add(CallReview(org_id=org_id, user_email='tim@superdesign.dev', call_id=f'own-{i}',
+                              endpoint_id='example.search', usefulness='useful'))
+        await db.commit()
+    await review_targets.warm()
+    response = await clients.get('/call/example.search')
+    assert response.status_code == 200
     assert response.headers.get('X-Treg-Hint') is None
 
 

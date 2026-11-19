@@ -367,6 +367,65 @@ async def test_a_settled_call_queued_again_does_not_count_twice_toward_today(org
         assert await allowance.committed_today(db, org_id) == 1_000
 
 
+async def test_a_rewrite_takes_a_settled_call_out_of_the_queue_again(org_id):
+    """A rewrite queues a call whose first row was folded and deleted. Left there, it would be
+    counted toward today again and be charged again by the next fold."""
+    await _record(org_id, 1_000)
+    async with session_maker() as db:
+        await allowance.fold_charges_in_transaction(db, org_id)
+        await db.commit()
+    async with session_maker() as db:
+        new = await allowance.record_charges(db, [allowance.Charge("call-0", org_id, "e", 1_000),
+                                                  allowance.Charge("later", org_id, "e", 300)])
+        assert new == {"call-0", "later"}
+        assert await allowance.drop_settled_charges(db, sorted(new)) == {"call-0"}
+        await db.commit()
+        assert await allowance.committed_today(db, org_id) == 1_000 + 300
+        queued = (await db.execute(select(CallCharge.call_id).where(
+            CallCharge.org_id == org_id))).scalars().all()
+    assert queued == ["later"]
+
+
+@postgres_only
+async def test_a_rewrite_beside_a_fold_of_the_same_call_charges_it_once(org_id):
+    """The first write's row is being folded while the rewrite runs. The rewrite's insert
+    waits for the fold, queues the call again once the fold has deleted its row, and takes it
+    out again: the call ends with one settle entry and no row queued."""
+    from sqlalchemy import text
+
+    await _open(org_id, 10_000)
+    await _record(org_id, 400)
+    async with session_maker() as fold, session_maker() as rewrite, session_maker() as watch:
+        await allowance.fold_charges_in_transaction(fold, org_id)
+        pid = (await rewrite.execute(text("select pg_backend_pid()"))).scalar()
+
+        async def write_again() -> set[str]:
+            new = await allowance.record_charges(
+                rewrite, [allowance.Charge("call-0", org_id, "e.metered", 400)])
+            new -= await allowance.drop_settled_charges(rewrite, sorted(new))
+            await rewrite.commit()
+            return new
+
+        writing = asyncio.create_task(write_again())
+        for _ in range(100):
+            blocked = (await watch.execute(
+                text("select cardinality(pg_blocking_pids(:pid))"), {"pid": pid})).scalar()
+            await watch.rollback()
+            if blocked:
+                break
+            await asyncio.sleep(0.05)
+        assert blocked and not writing.done(), "the rewrite is waiting for the fold"
+        await fold.commit()
+        assert await asyncio.wait_for(writing, 5) == set()
+    async with session_maker() as db:
+        folded = await allowance.fold_charges_in_transaction(db, org_id)
+        await db.commit()
+        assert (await db.execute(select(CallCharge.call_id))).scalars().all() == []
+        settled = (await db.execute(select(LedgerEntry.amount_micro).where(
+            LedgerEntry.call_id == "call-0", LedgerEntry.kind == "settle"))).scalars().all()
+    assert folded == allowance.Folded() and settled == [-400]
+
+
 async def test_closing_returns_what_is_left_and_deletes_the_hold(org_id):
     await _refill(org_id, 30_000)
     await _record(org_id, 4_000)

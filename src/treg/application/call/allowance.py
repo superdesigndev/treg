@@ -41,9 +41,8 @@ _REFILL_LEASE_MS = 5000
 _REFILL_WAIT_S = 1.0
 # How long a refill asked for ahead of the deadline keeps trying for the team's lease.
 _REFRESH_WAIT_S = 10.0
-# Charges one refill folds, and one batch of the background fold. Each is a transaction that
-# keeps the team's lease: kept short, so a refill never waits long behind a fold.
-_REFILL_FOLD = 50
+# One batch of the fold a frozen call asks for (`_settled`). A transaction that keeps the
+# team's lease: kept short, so a refill never waits long behind it.
 _BACKLOG_FOLD = 100
 _SETTLED_TRIES = 20
 # Long enough that a counter outlives any pause in refills that still leaves its hold open.
@@ -262,9 +261,13 @@ async def _current_daily_cap(org_id: int, db) -> int:
 
 
 async def _refill(org_id: int, need_micro: int, daily_cap_micro: int) -> bool:
-    """Fold queued charges and bring the counter up to a chunk. False when the counter still
-    cannot cover `need_micro`; the allowance is then drained back to the balance so the exact
-    path sees all of the team's money."""
+    """Bring the counter up to a chunk. False when the counter still cannot cover `need_micro`;
+    the allowance is then drained back to the balance so the exact path sees all of the team's
+    money.
+
+    Queued charges are the background loop's to fold (`allowance_sweep`), not a refill's: calls
+    wait on a refill. The one exception is a frozen counter, where the whole queue is folded
+    here so the balance read after it is the true one."""
     store, settings = kv.store(), get_settings()
     state = await store.allowance_state(org_id)
     if state is None:
@@ -285,7 +288,7 @@ async def _refill(org_id: int, need_micro: int, daily_cap_micro: int) -> bool:
             # queued charge is applied and the balance read after that, not after one batch.
             result = await allowance.refill_allowance_in_transaction(
                 db, org_id, max(0, target - available), daily_cap_micro=daily_cap_micro,
-                fold_limit=_REFILL_FOLD, fold_all=seen_frozen != thawed,
+                fold_limit=0, fold_all=seen_frozen != thawed,
                 counter_epoch=counter_epoch, fresh_add_micro=target,
                 current_daily_cap=functools.partial(_current_daily_cap, org_id))
             await db.commit()
@@ -296,10 +299,6 @@ async def _refill(org_id: int, need_micro: int, daily_cap_micro: int) -> bool:
         # what it showed goes with it.
         available = 0
     _refills[org_id] = _refills.get(org_id, 0) + 1
-    if result.folded.claimed >= _REFILL_FOLD:
-        # A full batch: more is queued than one refill folds. A chunk can pay for more calls
-        # than that, so without this the queue of a busy team would only grow.
-        _fold_in_background(org_id)
     log.info("allowance_refill org_id=%s added=%s hold=%s counter_before=%s folded=%s duplicates=%s",
              org_id, result.added_micro, result.amount_micro, available,
              result.folded.calls, result.folded.duplicates)
@@ -326,20 +325,11 @@ async def _refill(org_id: int, need_micro: int, daily_cap_micro: int) -> bool:
     return True
 
 
-_folding: dict[int, asyncio.Task] = {}
-
-
-def _fold_in_background(org_id: int) -> None:
-    task = _folding.get(org_id)
-    loop = asyncio.get_running_loop()
-    if task is None or task.done() or task.get_loop() is not loop:
-        _folding[org_id] = loop.create_task(_fold_backlog(org_id), name="treg-allowance-fold")
-
-
 async def _fold_backlog(org_id: int) -> None:
-    """Fold a team's queued charges, a batch per transaction, until the queue is short. One
-    process at a time per team; calls keep taking from the counter meanwhile, since a fold
-    moves only money their takes already removed from it."""
+    """Fold a team's queued charges now, a batch per transaction, until the queue is short. For
+    a call that must know what the ledger took for it (`_settled`); everything else is left to
+    the background loop. One process at a time per team; calls keep taking from the counter
+    meanwhile, since a fold moves only money their takes already removed from it."""
     store, key, token = kv.store(), money_key(org_id), uuid.uuid4().hex
     try:
         while True:
@@ -408,7 +398,6 @@ class _ChargeWriter:
         self._unconfirmed: list[tuple[allowance.Charge, tuple[int, str] | None]] = []
         self._task: asyncio.Task | None = None
         self._retry_task: asyncio.Task | None = None
-        self._since_fold: dict[int, int] = {}
         self.owed = 0
 
     def submit(self, charge: allowance.Charge,
@@ -481,16 +470,8 @@ class _ChargeWriter:
 
     def _committed(self, rows: list) -> None:
         """The rows are in the database and their teams' freezes with the store: count the rows
-        as written and start folds that are due."""
+        as written."""
         self.owed = max(0, self.owed - len(rows))
-        for charge, _ in rows:
-            count = self._since_fold.get(charge.org_id, 0) + 1
-            if count >= _BACKLOG_FOLD:
-                # Refills fold too, but a chunk of cheap calls lasts a long time between
-                # refills, and the queue must not wait for one.
-                count = 0
-                _fold_in_background(charge.org_id)
-            self._since_fold[charge.org_id] = count
 
     @staticmethod
     async def _write(rows: list, *, again: bool = False) -> None:
@@ -547,9 +528,10 @@ class _ChargeWriter:
                 holds = await allowance.holds_behind(db, [org_id])
             # A row that was already there was committed by an earlier attempt, which marked its
             # paid question too. On a rewrite, so was a row that is new only because the earlier
-            # attempt's row has been applied and deleted since: its call has a settle entry.
+            # attempt's row has been applied and deleted since: its call has a settle entry, and
+            # the row just written is taken out again.
             if again and new:
-                new -= await allowance.settled_calls(db, sorted(new))
+                new -= await allowance.drop_settled_charges(db, sorted(new))
             uses = [use for charge, use in rows if use is not None and charge.call_id in new]
             if uses:
                 await archive.note_org_uses_in_transaction(db, uses)

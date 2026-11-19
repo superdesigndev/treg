@@ -96,7 +96,7 @@ endpoints:
         backlinks_status_type: {type: string, required: false, note: "all | live | lost; default live"}
         internal_list_limit: {type: integer, required: false, note: "max elements per internal breakdown array, 10-1000; default 10", example: 10}
         rank_scale: {type: string, required: false, note: "one_hundred | one_thousand; default one_thousand"}
-        backlinks_filters: {type: array, required: false, note: "narrow the backlink set the aggregates are computed over"}
+        backlinks_filters: {type: array, items: {type: [array, boolean, number, string]}, required: false, note: "narrow the backlink set the aggregates are computed over"}
       note: "POST body is a JSON array that must contain exactly one task object. This live route rejects extra elements with per-task status 40000 \"You can set only one task at a time\" ($0 on the rejected tasks) — one domain per call. For many targets in one request use dataforseo.web.url.metrics (/backlinks/bulk_ranks/live), which takes up to 1000 targets inside a single task."
     test_request:
       body:
@@ -138,8 +138,8 @@ endpoints:
         backlinks_status_type: {type: string, required: false, note: "all | live | lost; default live"}
         include_subdomains: {type: boolean, required: false, note: "default true"}
         exclude_internal_backlinks: {type: boolean, required: false, note: "default true"}
-        filters: {type: array, required: false, note: "max 8 conditions"}
-        order_by: {type: array, required: false, note: "max 3 rules, e.g. [\"rank,desc\"]"}
+        filters: {type: array, items: {type: [array, boolean, number, string]}, required: false, note: "max 8 conditions"}
+        order_by: {type: array, items: {type: string}, required: false, note: "max 3 rules, e.g. [\"rank,desc\"]"}
       note: "POST body is an array with exactly 1 task object (Live endpoints do not support multi-task arrays)"
     test_request:
       body:
@@ -184,8 +184,8 @@ endpoints:
         backlinks_status_type: {type: string, required: false, note: "all | live | lost; default live"}
         include_subdomains: {type: boolean, required: false, note: "default true"}
         exclude_internal_backlinks: {type: boolean, required: false, note: "default true"}
-        filters: {type: array, required: false}
-        order_by: {type: array, required: false}
+        filters: {type: array, items: {type: [array, boolean, number, string]}, required: false}
+        order_by: {type: array, items: {type: string}, required: false}
       note: "POST body is an array with exactly 1 task object (Live endpoints do not support multi-task arrays)"
     test_request:
       body:
@@ -224,8 +224,8 @@ endpoints:
         internal_list_limit: {type: integer, required: false, note: "max elements per internal breakdown array, 1-1000; default 10"}
         backlinks_status_type: {type: string, required: false, note: "all | live | lost; default live"}
         include_subdomains: {type: boolean, required: false, note: "default true"}
-        filters: {type: array, required: false}
-        order_by: {type: array, required: false}
+        filters: {type: array, items: {type: [array, boolean, number, string]}, required: false}
+        order_by: {type: array, items: {type: string}, required: false}
       note: "POST body is an array with exactly 1 task object (Live endpoints do not support multi-task arrays)"
     test_request:
       body:
@@ -268,7 +268,7 @@ endpoints:
     input:
       bodyType: json
       body:
-        targets: {type: array, required: true, note: "up to 1000 domains/subdomains (no scheme, no www) or full page URLs", example: ["moz.com"]}
+        targets: {type: array, items: {type: string}, required: true, note: "up to 1000 domains/subdomains (no scheme, no www) or full page URLs", example: ["moz.com"]}
         rank_scale: {type: string, required: false, note: "one_hundred (0-100, comparable to Moz DA) | one_thousand (default)"}
       note: "POST body is an array with exactly 1 task object (Live endpoints do not support multi-task arrays)"
     test_request:
@@ -312,8 +312,8 @@ endpoints:
         offset: {type: integer, required: false, note: "default 0"}
         exclude_large_domains: {type: boolean, required: false, note: "drop hub domains (facebook.com etc); default true"}
         main_domain: {type: boolean, required: false, note: "return main domains only; default false"}
-        filters: {type: array, required: false}
-        order_by: {type: array, required: false}
+        filters: {type: array, items: {type: [array, boolean, number, string]}, required: false}
+        order_by: {type: array, items: {type: string}, required: false}
       note: "POST body is an array with exactly 1 task object (Live endpoints do not support multi-task arrays)"
     test_request:
       body:
@@ -399,7 +399,7 @@ endpoints:
     input:
       bodyType: json
       body:
-        keywords: {type: array, required: true, note: "up to 1000 keywords, each max 80 chars / 10 words; lowercased by the API", example: ["coffee"]}
+        keywords: {type: array, items: {type: string}, required: true, note: "up to 1000 keywords, each max 80 chars / 10 words; lowercased by the API", example: ["coffee"]}
         location_code: {type: integer, required: false, note: "2840 = United States; omitting it returns worldwide volume", example: 2840}
         language_code: {type: string, required: false, note: "e.g. \"en\"", example: "en"}
         search_partners: {type: boolean, required: false, note: "include Google search partners; default false"}
@@ -494,11 +494,11 @@ endpoints:
         language_code: {type: string, required: true, note: "one of language_code | language_name; must be a language available for that location (pair from GET /v3/dataforseo_labs/locations_and_languages, free). Invalid Field language_code usually means an unsupported pair — e.g. 2076+fr fails (Brazil is pt); Morocco French is 2504+fr (also ar)", example: "en"}
         limit: {type: integer, required: false, note: "1-1000; default 100", example: 2}
         offset: {type: integer, required: false, note: "default 0"}
-        item_types: {type: array, required: false, note: "SERP element types to count as ranking, e.g. [\"organic\",\"paid\",\"featured_snippet\"]"}
+        item_types: {type: array, items: {type: string}, required: false, note: "SERP element types to count as ranking, e.g. [\"organic\",\"paid\",\"featured_snippet\"]"}
         historical_serp_mode: {type: string, required: false, note: "live (default) | lost | all"}
         load_rank_absolute: {type: boolean, required: false, note: "include absolute SERP position; default false"}
-        filters: {type: array, required: false, note: "max 8 conditions"}
-        order_by: {type: array, required: false, note: "max 3 rules. Flat array of comma-separated \"field,direction\" strings (asc or desc). Field names match filters. Nested [[\"field\",\"desc\"]] (the filters-array shape) returns 40501 Invalid Field: 'order_by'.", example: ["keyword_data.keyword_info.search_volume,desc"]}
+        filters: {type: array, items: {type: [array, boolean, number, string]}, required: false, note: "max 8 conditions"}
+        order_by: {type: array, items: {type: string}, required: false, note: "max 3 rules. Flat array of comma-separated \"field,direction\" strings (asc or desc). Field names match filters. Nested [[\"field\",\"desc\"]] (the filters-array shape) returns 40501 Invalid Field: 'order_by'.", example: ["keyword_data.keyword_info.search_volume,desc"]}
       note: "POST body is an array with exactly 1 task object (Live endpoints do not support multi-task arrays). Supported location+language pairs: https://docs.dataforseo.com/v3/dataforseo_labs/locations_and_languages/. A limit near 1000 on a large domain can answer more than treg's 8 MiB response limit: that call is refused with 502 response_buffer_limit and not charged, so page with a smaller limit and offset"
     test_request:
       body:

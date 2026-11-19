@@ -3444,7 +3444,7 @@ endpoints:
         required: true
         note: Search query for users
       cursor:
-        type: number
+        type: [number, string]
         required: false
         note: Cursor to get more users. Get 'cursor' from previous response.
         example: 10

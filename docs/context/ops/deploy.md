@@ -293,6 +293,10 @@ meaning is not obvious from the field:
   `TREG_FIND_ENGINE` ([find](../architecture/find.md)) are their own kill switches.
 - `TREG_REQUIRED_EXTENSIONS` names installed [policy extensions](../architecture/policy-extensions.md)
   so a build that lost one fails to start instead of serving without it.
+- `TREG_PARAM_CHECK` is `log` (the default; any value but `refuse` reads as it) or `refuse`. Log
+  mode relays a catalog request that breaks a declared type, enum or range as before and logs a
+  `catalog_parameter_would_refuse` line; read those lines before turning on `refuse`, which answers
+  them 400 ([proxy model](../architecture/proxy-model.md#catalog-request-checks)).
 
 Credentials stay in the deployment secret store.
 
@@ -369,9 +373,12 @@ a standing allowance instead of one hold per call ([money](../architecture/money
 it needs `TREG_KV_URL` and PostgreSQL, and is ignored on SQLite. `TREG_MONEY_ALLOWANCE_CHUNK_MICRO` is what a refill brings the counter up
 to, `TREG_MONEY_ALLOWANCE_FRESH_S` how long a refill keeps admitting calls, and
 `TREG_MONEY_ALLOWANCE_LINGER_MS` how long finished calls wait to share one insert. Removing an id
-returns that org's new calls to the hold path at once; no migration is needed. The idle sweep
-(`application/allowance_sweep.py`) runs in the `all` and `control` roles and is one more
-consumer of the `background` pool, which is one connection larger per process for it. The
+returns that org's new calls to the hold path at once; no migration is needed. The allowance's
+background loop (`application/allowance_sweep.py`) applies queued charges to the ledger and
+closes idle allowances. It runs in the `all` and `control` roles and is one more consumer of
+the `background` pool, which is one connection larger per process for it; request processes do
+not fold, so a deployment that turns the allowance on must run at least one process in one of
+those roles. The
 allowance trusts the store to keep the writes it acknowledged. A store that can go back to an
 earlier state (a restore from an older snapshot, a replica promoted before it caught up) can
 admit the same money twice, with no bound on amount or time while the allowance stays on, and

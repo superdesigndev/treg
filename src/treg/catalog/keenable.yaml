@@ -61,7 +61,7 @@ endpoints:
     summary: Fetch an indexed or live webpage as Markdown, optionally reduced by an extraction instruction.
     input:
       queryParams:
-        url: {type: string, required: true, format: uri, example: "https://docs.keenable.ai/"}
+        url: {type: string, required: true, format: url, example: "https://docs.keenable.ai/"}
         max_chars: {type: integer, required: false, default: 50000, min: 1, example: 5000, note: "Longer content is truncated and a notice is appended after the cut."}
         live: {type: boolean, required: false, default: false, note: "Fetch directly from the source instead of using the indexed copy; also supports URLs absent from the index."}
         prompt: {type: string, required: false, maxLength: 2000, example: "List the API endpoints.", note: "Return only the extraction requested here instead of the full page."}

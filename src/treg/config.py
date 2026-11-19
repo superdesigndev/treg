@@ -140,11 +140,14 @@ class Settings(BaseSettings):
     # Targeted review invitations (application/review_targets.py): an endpoint holding fewer than
     # `review_target_reviews` reviews in the last `review_target_window_days` (at most
     # `review_target_team_cap` counted per team) is invited more often, up to `review_target_rate`
-    # when it has none. 0 = off: every call is sampled at `review_sample_rate`.
+    # when it has none. 0 = off: every call is sampled at `review_sample_rate`. A team holding
+    # `review_target_team_cap` reviews of an endpoint is not invited there again; a team holding
+    # none is invited at least at `review_target_new_team_rate` (0 = no such floor).
     review_target_reviews: int = Field(default=0, ge=0)
     review_target_rate: float = Field(default=1.0, ge=0, le=1)
     review_target_window_days: int = Field(default=14, ge=1)
     review_target_team_cap: int = Field(default=10, ge=1)
+    review_target_new_team_rate: float = Field(default=0, ge=0, le=1)
     # The share of team-MCP credentials whose `call` tool shows `prior` (a review of the caller's
     # previous call, sent along with the next one). 0 = nobody, the tool as before.
     mcp_prior_review_rate: float = Field(default=0, ge=0, le=1)
@@ -264,6 +267,11 @@ class Settings(BaseSettings):
             v = "postgresql+asyncpg://" + v[len("postgresql://") :]
         return v
 
+    @field_validator("param_check", mode="before")
+    @classmethod
+    def _param_check_mode(cls, value: object) -> str:
+        return "refuse" if str(value).strip().lower() == "refuse" else "log"
+
     @field_validator("rate_limit_exempt_ips")
     @classmethod
     def _exempt_ips_parse(cls, v: str) -> str:
@@ -374,6 +382,11 @@ class Settings(BaseSettings):
     # provider's own charge from (domain/catalog/reported_charge.py), after settlement and outcome;
     # a call sending X-Treg-Keep-Reported-Charge keeps it. The archive keeps the answer whole.
     strip_reported_charge: bool = False
+    # The parameter check (domain/catalog/params.py) on catalog calls and routed calls: `log` (the
+    # default) relays a request that breaks a declared type, enum or range as before and logs one
+    # `catalog_parameter_would_refuse` line; `refuse` answers 400 catalog_parameter_invalid before
+    # any hold. Any other value reads as log.
+    param_check: str = "log"
     # Fair share of a provider's concurrency on treg's own keys (domain/capacity/fair_share.py):
     # how long a call waits in line for a place before a routed job moves on and a direct call is
     # refused, not charged. 0 turns the gate off (TREG_FAIR_SHARE_WAIT_S=0).

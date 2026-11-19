@@ -1,0 +1,15 @@
+{
+  "$schema": "https://agent-plugins.org/schemas/1.0.0/plugin.schema.json",
+  "name": "treg",
+  "version": "0.31.0",
+  "description": "Search a catalog of external data tools and generative models from Copilot and call them through one hosted MCP server: SEO and SERP data, people and company enrichment, ad libraries, social and web data, image and video generation, plus the API keys your team registered. Sign-in is OAuth. Calls on treg's keys spend a prepaid treg balance; calls on your own keys are not billed.",
+  "author": {
+    "name": "Superdesign dev, Inc.",
+    "email": "jason@superdesign.dev",
+    "url": "https://treg.to"
+  },
+  "homepage": "https://treg.to",
+  "repository": "https://github.com/superdesigndev/treg/tree/main/plugins/copilot",
+  "license": "Apache-2.0",
+  "keywords": ["mcp", "oauth", "seo", "serp", "enrichment", "web-data", "scraping", "api-keys"]
+}

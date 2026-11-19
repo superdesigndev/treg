@@ -73,6 +73,9 @@ class Org(SQLModel, table=True):
     # not card data: treg never sees a PAN, so there is nothing here to leak beyond a token that only
     # works with our own secret key. Null = no card on file → auto-top-up cannot be armed.
     stripe_default_pm: str | None = Field(default=None)
+    # When the payer chose that card, as the Stripe event's `created` time (Unix seconds), so a
+    # choice delivered late never replaces a newer one. Null = chosen before treg recorded it.
+    stripe_default_pm_at: int | None = Field(default=None, sa_type=BigInteger)
     # Auto-top-up: refill the balance without a human when it dips below the threshold. Off unless the
     # org explicitly turned it on AND recorded consent — an off-session charge with no mandate is an
     # unauthorized charge under PSD2/SCA, so `autotopup_consented_at` gates the charge, not the UI.
@@ -674,6 +677,12 @@ class CallRecord(SQLModel, table=True):
     # NULL = the contract records no verdict, the answer carried none, or the provider used a
     # word its adapter does not map. Never content: one word from a closed list.
     verdict: str | None = Field(default=None)
+    # What a v2 row's own declaration judged this answer (`results.judged_outcome`): `hit`,
+    # `miss`, `error` or `not_found`. Reliability reads it before the status code, so a 2xx error
+    # is no success and the target's own 404 counts against nobody.
+    # NULL = a row in today's spelling, an async submission, a non-2xx the declaration does not
+    # decide, or a row written before the column existed; those keep the status rule.
+    outcome: str | None = Field(default=None)
 
 
 class RunRecord(SQLModel, table=True):

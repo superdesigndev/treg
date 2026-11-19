@@ -21,6 +21,7 @@
     treg-worker admin purge-ad-clicks                      # delete email-to-click stash rows past 90 days
     treg-worker admin erase-archive --org <id>             # erase what an opted-out team stored in the archive
     treg-worker admin revoke-refund <payment_intent>       # revoke a refunded top-up's unspent credit now
+    treg-worker admin card-sync --org <id> [--org <id>] [--apply]  # adopt a newer portal card treg missed
     treg-worker admin reencrypt-credentials [--dry-run]    # re-seal stored Fernet credentials under KMS
     treg-worker admin rotate-fernet [--dry-run]            # re-encrypt Fernet payloads under the first key
     treg-worker admin erase-archive --org <id> --dry-run   # count what that would remove; delete nothing
@@ -632,6 +633,24 @@ async def _admin_revoke_refund(args) -> int:
     return 0
 
 
+async def _admin_card_sync(args) -> int:
+    """Adopt each team's newer Stripe default card that treg never heard of. Reports only unless
+    `--apply`; one JSON line per team."""
+    from .application import billing
+    from .infra.db import verify_db
+
+    await verify_db()
+    failed = 0
+    for org_id in args.org:
+        try:
+            result = await billing.sync_card_from_stripe(org_id, apply=args.apply)
+        except Exception as e:  # noqa: BLE001 — one team's Stripe error must not stop the rest
+            failed += 1
+            result = {"org_id": org_id, "action": "error", "error": type(e).__name__}
+        print(json.dumps(result, sort_keys=True))
+    return 1 if failed else 0
+
+
 async def _enterprise_reconcile(args) -> int:
     """Bounded full-roster repair; run periodically, independent of webhook delivery."""
     import time
@@ -958,6 +977,12 @@ def main(argv: list[str] | None = None) -> int:
     revoke = adminsub.add_parser("revoke-refund", help="revoke a refunded top-up's unspent credit")
     revoke.add_argument("payment_intent", help="the refunded top-up's Stripe PaymentIntent id (pi_...)")
     revoke.set_defaults(fn=_admin_revoke_refund)
+    cardsync = adminsub.add_parser("card-sync",
+                                   help="adopt a team's newer Stripe default card that treg missed")
+    cardsync.add_argument("--org", type=_positive_int, action="append", required=True,
+                          help="team id; repeat for several")
+    cardsync.add_argument("--apply", action="store_true", help="write the change (default: report only)")
+    cardsync.set_defaults(fn=_admin_card_sync)
     enterprise = sub.add_parser("enterprise", help="enterprise identity maintenance")
     enterprisesub = enterprise.add_subparsers(dest="cmd", required=True)
     reconcile = enterprisesub.add_parser("reconcile", help="repair missed WorkOS Directory Sync changes")

@@ -14,8 +14,7 @@ from treg.application.call import service as call_service
 from treg.application.call.types import UpstreamResponse
 from treg.config import get_settings
 from treg.domain import provider_resources
-from treg.domain.identity import api_keys as managed_keys
-from treg.infra.db import _engine, session_maker
+from treg.infra.db import session_maker
 from treg.models import ProviderResource
 
 
@@ -84,16 +83,13 @@ async def test_voice_create_is_private_and_becomes_an_org_resource(
 
 
 async def test_unified_voice_list_uses_byok_and_normalizes_without_holding_db(
-    clients: AsyncClient, fishaudio_platform_on, monkeypatch,
+    clients: AsyncClient, fishaudio_platform_on, monkeypatch, connections_held_here,
 ):
     await clients.post("/secrets", json={"name": "fishaudio", "value": "OWN-FISH-KEY"})
-    await audit.drain()
-    # SQLite shares this pool with key metadata writes; finish them before sampling it.
-    await managed_keys.drain_last_used()
     checked_out = []
 
     async def relay(*args, **kwargs):
-        checked_out.append(_engine.pool.checkedout())
+        checked_out.append(connections_held_here())
         return _response(200, b'{"items":[{"_id":"account-voice","title":"Account narrator",'
                               b'"state":"created","created_at":"2026-09-22T00:00:00Z"}]}')
 
@@ -167,13 +163,13 @@ async def test_platform_resource_source_never_substitutes_byok_account_rows(
 
 
 async def test_voice_create_holds_no_db_connection_during_fish_io(
-    clients: AsyncClient, fishaudio_platform_on, monkeypatch,
+    clients: AsyncClient, fishaudio_platform_on, monkeypatch, connections_held_here,
 ):
     await audit.drain()
     checked_out = []
 
     async def relay(*args, **kwargs):
-        checked_out.append(_engine.pool.checkedout())
+        checked_out.append(connections_held_here())
         return _response(201, b'{"_id":"voice-no-held-session"}')
 
     monkeypatch.setattr(call_service, "relay", relay)
@@ -278,21 +274,14 @@ async def test_tts_checks_every_voice_in_an_array(
 
 
 async def test_tts_accepts_a_live_verified_public_community_voice_without_holding_db(
-    clients: AsyncClient, fishaudio_platform_on, monkeypatch,
+    clients: AsyncClient, fishaudio_platform_on, monkeypatch, connections_held_here,
 ):
-    await audit.drain()
-    # SQLite tests share the API engine with the best-effort managed-key metadata writer.
-    # Finish the writer scheduled by fixture login before inspecting the global pool count.
-    await managed_keys.drain_last_used()
-    # Auth on this call can schedule another optional display-metadata write. Keep the pool
-    # assertion scoped to the call runtime whose transaction boundary this test guards.
-    monkeypatch.setattr(managed_keys, "touch", lambda *args, **kwargs: None)
     calls = []
     checked_out = []
 
     async def relay(request, upstream_url, *args, **kwargs):
         calls.append((request.method, upstream_url))
-        checked_out.append(_engine.pool.checkedout())
+        checked_out.append(connections_held_here())
         if request.method == "GET":
             return _response(
                 200,
@@ -317,13 +306,13 @@ async def test_tts_accepts_a_live_verified_public_community_voice_without_holdin
 
 @pytest.mark.parametrize("licensed", ["true", "false"])
 async def test_public_voice_discovery_is_a_free_platform_action(
-    clients: AsyncClient, fishaudio_platform_on, monkeypatch, licensed,
+    clients: AsyncClient, fishaudio_platform_on, monkeypatch, licensed, connections_held_here,
 ):
     await audit.drain()
     observed = []
 
     async def relay(request, upstream_url, *args, **kwargs):
-        observed.append((upstream_url, dict(request.query_items), _engine.pool.checkedout()))
+        observed.append((upstream_url, dict(request.query_items), connections_held_here()))
         return _response(
             200,
             b'{"total":1,"items":[{"_id":"public-voice","visibility":"public",'

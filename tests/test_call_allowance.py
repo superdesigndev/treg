@@ -422,15 +422,20 @@ async def test_takes_racing_an_empty_counter_refill_it_once(org_id, store):
     assert await _state(org_id) == (GRANT - CHUNK, CHUNK)
 
 
-async def test_a_refill_tops_the_counter_back_up_and_folds_what_was_queued(org_id, store):
+async def test_a_refill_tops_the_counter_back_up_and_leaves_the_queue_to_the_background_loop(
+        org_id, store):
+    """Calls wait on a refill, so it does not apply queued charges. Their money stays in the
+    hold until the loop applies them."""
     epoch = await runtime.take(org_id, CHUNK)
     await _finish(org_id, "call-1", epoch, CHUNK, billable=True, actual_micro=CHUNK - 100)
     assert store.counters[org_id]["avail"] == 100
     assert await runtime.take(org_id, 500) == epoch
     assert store.counters[org_id]["avail"] == CHUNK - 500
+    assert await _queued(org_id) == 1
+    assert await _state(org_id) == (GRANT - 2 * CHUNK + 100, 2 * CHUNK - 100)
+    assert await allowance_sweep.fold_queued_once(session_maker) == 1
+    assert await _queued(org_id) == 0
     assert await _state(org_id) == (GRANT - 2 * CHUNK + 100, CHUNK)
-    async with session_maker() as db:
-        assert (await db.execute(select(CallCharge))).first() is None
 
 
 @pytest.mark.parametrize("left", [CHUNK, 600, 0])
@@ -527,8 +532,45 @@ async def test_the_charge_writer_decides_a_charges_hold_inside_a_real_transactio
     if infra_db._is_sqlite:
         assert insert < hold
     else:
-        assert hold < insert and seen[hold].endswith("for share")
+        assert hold < insert and seen[hold].endswith("for key share")
         assert any("idle_in_transaction_session_timeout" in text for text in seen[:hold])
+
+
+@pytest.mark.skipif(infra_db._is_sqlite, reason="needs row locks")
+async def test_a_fold_and_a_refill_do_not_wait_for_a_charge_write_in_progress(org_id, store):
+    """PostgreSQL lets a later sharer pass a waiting exclusive lock, so under a steady stream of
+    charge writes a fold asking for the full row lock would wait for a gap between them."""
+    epoch = await runtime.take(org_id, 600)
+    await _finish(org_id, "queued", epoch, 600, billable=True, actual_micro=400)
+    store.expire()
+    async with session_maker() as writer:
+        assert await allowance.holds_behind(writer, [org_id]) == {org_id: epoch}
+        async with session_maker() as db:
+            folded = await asyncio.wait_for(allowance.fold_charges_in_transaction(db, org_id), 5)
+            await db.commit()
+        assert folded.calls == 1
+        assert await asyncio.wait_for(runtime.take(org_id, 100), 5), "the refill went through"
+
+
+@pytest.mark.skipif(infra_db._is_sqlite, reason="needs row locks")
+async def test_a_close_that_deletes_the_hold_waits_for_a_charge_write_in_progress(org_id, store):
+    """The write found the charge's own hold: the hold is still there when the write commits."""
+    epoch = await runtime.take(org_id, 600)
+    async with session_maker() as writer:
+        assert await allowance.holds_behind(writer, [org_id]) == {org_id: epoch}
+
+        async def close() -> None:
+            async with session_maker() as db:
+                await allowance.close_allowance_in_transaction(db, org_id, reason="test")
+                await db.commit()
+
+        closing = asyncio.create_task(close())
+        await asyncio.sleep(0.3)
+        assert not closing.done(), "waiting for the write"
+        await writer.commit()
+    await asyncio.wait_for(closing, 5)
+    async with session_maker() as db:
+        assert await db.get(Hold, allowance.allowance_id(org_id)) is None
 
 
 async def test_deleting_a_team_locks_its_allowance_hold_before_its_queued_charges(org_id, store):
@@ -985,7 +1027,6 @@ async def test_a_frozen_counter_is_reopened_only_after_the_whole_queue_is_applie
     """More is queued than one batch, and the charge that froze the counter is in a later
     batch. A refill that applied one batch would read a balance without it."""
     monkeypatch.setattr(allowance, "FOLD_BATCH", 2)
-    monkeypatch.setattr(runtime, "_fold_in_background", lambda org_id: None)
     async with session_maker() as db:
         await allowance.refill_allowance_in_transaction(db, org_id, 1_000)
         await allowance.record_charges(db, [
@@ -993,10 +1034,7 @@ async def test_a_frozen_counter_is_reopened_only_after_the_whole_queue_is_applie
             for index in range(5)] + [
             allowance.Charge("zz-overrun", org_id, "e", GRANT * 2, reserved_micro=10)])
         await db.commit()
-    assert await runtime.take(org_id, 100) is None  # no counter yet: this refill only opens it
-    store.counters.setdefault(org_id, {"epoch": 1, "avail": 0})
     await store.allowance_freeze(org_id)
-    monkeypatch.setattr(runtime, "_refused_until", {})
     assert await runtime.take(org_id, 100) is None
     assert await _queued(org_id) == 0, "every queued charge was applied before deciding"
     balance, _ = await _state(org_id)
@@ -1363,60 +1401,206 @@ async def test_a_charge_rewritten_after_it_was_applied_does_not_mark_its_questio
     await _fold(org_id)
     await runtime._ChargeWriter._write(rows, again=True)
     assert marked == [(org_id, "question-a")]
-    assert (await _fold(org_id)).duplicates == 1
+    assert await _queued(org_id) == 0, "and its row is not left queued for a second charge"
+    assert await _fold(org_id) == allowance.Folded()
 
 
 # ---- keeping up with the queue -----------------------------------------------------------------
-async def test_a_busy_teams_queue_does_not_outgrow_what_a_refill_folds(org_id, store, monkeypatch):
-    """A chunk pays for more calls than one refill folds. The queue must still come back down."""
-    monkeypatch.setattr(runtime, "_REFILL_FOLD", 5)
-    monkeypatch.setattr(runtime, "_BACKLOG_FOLD", 5)
-    monkeypatch.setattr(get_settings(), "money_allowance_chunk_micro", 2_000)
-    monkeypatch.setattr(runtime, "_folding", {})
-    backlog = []
-    for round_ in range(4):
-        for index in range(20):  # twenty calls of 100 spend one chunk
-            epoch = await runtime.take(org_id, 100)
-            await _finish(org_id, f"r{round_}-{index}", epoch, 100, billable=True)
-        epoch = await runtime.take(org_id, 100)  # the counter is empty: this one refills
-        await _finish(org_id, f"r{round_}-refill", epoch, 100, billable=False)
-        if runtime._folding.get(org_id):
-            await runtime._folding[org_id]
-        backlog.append(await _queued(org_id))
-    assert max(backlog) < 5, backlog
-    assert store.leases == {}
+async def test_request_processes_queue_charges_and_the_background_loop_applies_them(org_id, store):
+    """Neither a refill nor the charge writer folds: the connections folding uses must not grow
+    with traffic. However long the queue, one pass of the loop brings it down."""
+    for round_ in range(3):
+        for index in range(20):
+            epoch = await runtime.take(org_id, CHUNK // 20)  # twenty calls spend one chunk
+            await _finish(org_id, f"r{round_}-{index}", epoch, CHUNK // 20, billable=True)
+    assert runtime.refills(org_id) == 3 and await _queued(org_id) == 60
+    assert await allowance_sweep.fold_queued_once(session_maker) == 60
+    assert await _queued(org_id) == 0 and store.leases == {}
     balance, hold = await _state(org_id)
-    assert store.counters[org_id]["avail"] <= hold
+    assert balance == GRANT - 3 * CHUNK and store.counters[org_id]["avail"] <= hold
 
 
-async def test_cheap_calls_that_never_empty_the_counter_are_still_folded(org_id, store, monkeypatch):
-    """One chunk pays for all of these, so no refill comes to fold them."""
-    monkeypatch.setattr(runtime, "_REFILL_FOLD", 5)
-    monkeypatch.setattr(runtime, "_BACKLOG_FOLD", 5)
-    monkeypatch.setattr(runtime, "_folding", {})
-    backlog = []
-    for index in range(23):
+async def test_a_pass_folds_a_few_batches_of_a_team_and_comes_back_for_the_rest(
+        org_id, store, monkeypatch):
+    """One long queue must not keep the other teams waiting."""
+    monkeypatch.setattr(allowance_sweep, "_FOLD_BATCH", 2)
+    monkeypatch.setattr(allowance_sweep, "_FOLD_BATCHES_PER_PASS", 2)
+    for index in range(5):
         epoch = await runtime.take(org_id, 10)
         await _finish(org_id, f"cheap-{index}", epoch, 10, billable=True)
-        if runtime._folding.get(org_id):
-            await runtime._folding[org_id]
-        backlog.append(await _queued(org_id))
-    assert runtime.refills(org_id) == 1 and max(backlog) <= 5 and backlog[-1] == 3, backlog
-    assert await _state(org_id) == (GRANT - CHUNK, CHUNK - 200)
+    assert await allowance_sweep.fold_queued_once(session_maker) == 4
+    assert await allowance_sweep.fold_queued_once(session_maker) == 1
+    assert await allowance_sweep.fold_queued_once(session_maker) == 0
+    assert await _state(org_id) == (GRANT - CHUNK, CHUNK - 50)
 
 
-async def test_the_sweep_folds_a_queue_nothing_else_is_folding(org_id, store, monkeypatch):
+async def test_a_pass_reaches_every_team_however_many_have_charges_queued(
+        org_id, store, monkeypatch):
+    """Teams are listed a page at a time. A pass that only ever read the first page would never
+    reach the teams after it while the first ones keep queueing."""
+    monkeypatch.setattr(allowance_sweep, "_TEAMS_PER_PAGE", 1)
+    async with session_maker() as db:
+        others = [Org(id=org_id + offset, name="later", slug=uuid4().hex) for offset in (1, 2)]
+        db.add_all(others)
+        await db.flush()
+        for other in others:
+            await ledger.grant(db, other.id, amount_micro=GRANT)
+        await allowance.record_charges(db, [
+            allowance.Charge(f"queued-{team}", team, "e.metered", 400, reserved_micro=400)
+            for team in (org_id, org_id + 1, org_id + 2)])
+        await db.commit()
+    assert await allowance_sweep.fold_queued_once(session_maker) == 3
+    for team in (org_id, org_id + 1, org_id + 2):
+        assert await _queued(team) == 0 and (await _state(team))[0] == GRANT - 400
+
+
+async def test_a_team_whose_money_sessions_are_busy_does_not_hold_up_the_teams_behind_it(
+        org_id, store, monkeypatch):
+    """The pass does not wait its turn behind a team's other money sessions: it leaves that
+    team's queue for the next pass and goes on to the next team."""
+    monkeypatch.setattr(get_settings(), "money_admission_enabled", True)
+    monkeypatch.setattr(allowance_sweep, "_ADMISSION_WAIT_S", 0.05)
+    async with session_maker() as db:
+        db.add(Org(id=org_id + 1, name="later", slug=uuid4().hex))
+        await db.flush()
+        await ledger.grant(db, org_id + 1, amount_micro=GRANT)
+        await allowance.record_charges(db, [
+            allowance.Charge(f"queued-{team}", team, "e.metered", 400, reserved_micro=400)
+            for team in (org_id, org_id + 1)])
+        await db.commit()
+    store.leases[f"money-admission:org:{org_id}"] = "an exact settle"
+    assert await allowance_sweep.fold_queued_once(session_maker) == 1
+    assert (await _queued(org_id), await _queued(org_id + 1)) == (1, 0)
+    del store.leases[f"money-admission:org:{org_id}"]
+    assert await allowance_sweep.fold_queued_once(session_maker) == 1
+    assert await _queued(org_id) == 0
+
+
+async def test_an_idle_allowance_whose_team_is_busy_does_not_hold_up_another_teams_charges(
+        org_id, store, monkeypatch):
+    """The sweep runs before the fold in a pass. A team it cannot close yet is left for the next
+    sweep, and the charges queued behind it are applied in this pass."""
+    monkeypatch.setattr(get_settings(), "money_admission_enabled", True)
+    monkeypatch.setattr(allowance_sweep, "_ADMISSION_WAIT_S", 0.05)
+    assert await runtime.take(org_id, 100)
+    await _age_heartbeat(org_id, allowance_sweep.idle_after_s() + 5)
+    async with session_maker() as db:
+        db.add(Org(id=org_id + 1, name="later", slug=uuid4().hex))
+        await db.flush()
+        await ledger.grant(db, org_id + 1, amount_micro=GRANT)
+        await allowance.record_charges(db, [
+            allowance.Charge("queued", org_id + 1, "e.metered", 400, reserved_micro=400)])
+        await db.commit()
+    store.leases[f"money-admission:org:{org_id}"] = "an exact settle"
+    started = time.monotonic()
+    assert await allowance_sweep.run_once(session_maker, sweep=True) == 1
+    assert time.monotonic() - started < 2
+    assert await _queued(org_id + 1) == 0 and (await _state(org_id))[1] > 0, "not closed yet"
+    del store.leases[f"money-admission:org:{org_id}"]
+    assert await allowance_sweep.sweep_once(session_maker) == 1
+    assert await _state(org_id) == (GRANT, 0)
+
+
+async def test_a_sweep_reaches_an_idle_team_behind_one_it_cannot_close_yet(
+        org_id, store, monkeypatch):
+    """Idle holds are listed a page at a time. A sweep that only ever read the first page would
+    never return the money of the teams after it while the first ones stay busy."""
+    monkeypatch.setattr(get_settings(), "money_admission_enabled", True)
+    monkeypatch.setattr(allowance_sweep, "_ADMISSION_WAIT_S", 0.05)
+    monkeypatch.setattr(allowance_sweep, "_TEAMS_PER_PAGE", 1)
+    async with session_maker() as db:
+        db.add(Org(id=org_id + 1, name="later", slug=uuid4().hex))
+        await db.flush()
+        await ledger.grant(db, org_id + 1, amount_micro=GRANT)
+        await db.commit()
+    for team in (org_id, org_id + 1):
+        assert await runtime.take(team, 100)
+        await _age_heartbeat(team, allowance_sweep.idle_after_s() + 5)
+    store.leases[f"money-admission:org:{org_id}"] = "an exact settle"
+    assert await allowance_sweep.sweep_once(session_maker) == 1
+    assert (await _state(org_id))[1] > 0 and await _state(org_id + 1) == (GRANT, 0)
+    del store.leases[f"money-admission:org:{org_id}"]
+    assert await allowance_sweep.sweep_once(session_maker) == 1
+    assert await _state(org_id) == (GRANT, 0)
+
+
+async def test_a_refill_refused_across_midnight_leaves_the_new_days_spend_alone(
+        org_id, store, monkeypatch):
+    """The debit counted on one day and the refusal came on the next. Taking it back by the
+    clock would open the new day's counter below zero, and a daily cap would let more through."""
+    async with session_maker() as db:
+        await allowance.refill_allowance_in_transaction(db, org_id, 1_000)
+        await allowance.record_charges(db, [
+            allowance.Charge("overrun", org_id, "e", GRANT * 2, reserved_micro=10)])
+        await db.commit()
+    now, unbacked, tomorrow = ledger._now, allowance._queued_unbacked, []
+
+    def read_after_midnight(team):
+        tomorrow.append(True)
+        return unbacked(team)
+
+    monkeypatch.setattr(allowance, "_queued_unbacked", read_after_midnight)
+    monkeypatch.setattr(ledger, "_now", lambda: now() + timedelta(days=len(tomorrow)))
+    async with session_maker() as db:
+        before = (await db.execute(select(
+            Org.spent_today_micro, Org.spent_today_day).where(Org.id == org_id))).one()
+        result = await allowance.refill_allowance_in_transaction(db, org_id, 500, fold_limit=0)
+        await db.commit()
+        after = (await db.execute(select(
+            Org.spent_today_micro, Org.spent_today_day).where(Org.id == org_id))).one()
+    assert tomorrow and result.added_micro == 0 and result.overdrawn
+    assert tuple(after) == tuple(before) and after[0] >= 0
+
+
+async def test_a_refill_does_not_hand_out_what_a_queued_overrun_already_owes(
+        org_id, store):
+    """A call cost more than it set aside. Its charge is committed and the counter's freeze has
+    not arrived. The balance still shows the money the overrun will take, and a refill that
+    went by the balance alone would let the next call spend it."""
+    assert await runtime.take(org_id, 100)
+    async with session_maker() as db:
+        await allowance.record_charges(db, [
+            allowance.Charge("overrun", org_id, "e", GRANT * 2, reserved_micro=100)])
+        await db.commit()
+    store.expire()
+    assert await runtime.take(org_id, 100) is None
+    assert store.counters[org_id]["avail"] == 0
+    assert await _state(org_id) == (0, 0) and await _queued(org_id) == 0, (
+        "nothing was added, and what the counter held went to the overrun")
+
+
+async def test_the_background_loop_folds_a_queue_whether_or_not_its_team_is_listed(
+        org_id, store, monkeypatch):
     epoch = await runtime.take(org_id, 600)
     await _finish(org_id, "old-1", epoch, 600, billable=True, actual_micro=450)
-    assert await allowance_sweep.fold_queued_once(session_maker) == 0, "queued a moment ago"
-    async with session_maker() as db:
-        await db.execute(update(CallCharge).values(
-            created_at=ledger._now() - timedelta(seconds=allowance_sweep._SWEEP_EVERY_S + 5)))
-        await db.commit()
     monkeypatch.setattr(get_settings(), "money_allowance_org_ids", [])  # no longer listed
     assert await allowance_sweep.fold_queued_once(session_maker) == 1
     assert await _queued(org_id) == 0
     assert await _state(org_id) == (GRANT - CHUNK, CHUNK - 450)
+
+
+async def test_the_background_loop_pauses_only_when_it_found_nothing_to_fold(monkeypatch):
+    passes, pauses, sweeps = iter([3, 2, 0]), [], []
+
+    async def fold(session_maker) -> int:
+        try:
+            return next(passes)
+        except StopIteration:
+            raise asyncio.CancelledError from None
+
+    async def sweep(session_maker) -> int:
+        sweeps.append(len(pauses))
+        return 0
+
+    async def pause(seconds: float) -> None:
+        pauses.append(seconds)
+
+    monkeypatch.setattr(allowance_sweep, "fold_queued_once", fold)
+    monkeypatch.setattr(allowance_sweep, "sweep_once", sweep)
+    monkeypatch.setattr(allowance_sweep.asyncio, "sleep", pause)
+    with pytest.raises(asyncio.CancelledError):
+        await allowance_sweep.worker(fold_every_s=1.5, sweep_every_s=3_600)
+    assert pauses == [1.5] and sweeps == [0], "one pause, after the empty pass; one sweep so far"
 
 
 # ---- one money session per team, across processes ---------------------------------------------
@@ -1476,6 +1660,7 @@ async def test_an_allowance_carried_over_midnight_cannot_take_the_day_past_its_c
         await _finish(org_id, f"today-{index}", taken, CHUNK // 4, billable=True)
     assert store.counters[org_id]["avail"] == 0
     assert await runtime.take(org_id, 1_000, daily_cap_micro=cap) is None
+    assert await allowance_sweep.fold_queued_once(session_maker) == 4
     async with session_maker() as db:
         assert await ledger.spent_today(db, org_id) == cap
     assert await _state(org_id) == (GRANT - CHUNK, 0)
@@ -1551,7 +1736,6 @@ async def test_many_calls_at_once_on_a_real_store_are_each_charged_once(org_id, 
     monkeypatch.setattr(runtime, "_charges", runtime._ChargeWriter())
     monkeypatch.setattr(get_settings(), "money_allowance_chunk_micro", 20_000)
     monkeypatch.setattr(runtime, "_refreshing", {})
-    monkeypatch.setattr(runtime, "_folding", {})
     caller = await _caller(org_id)
 
     in_flight = asyncio.Semaphore(40)  # a scratch Redis accepts few connections
@@ -1576,7 +1760,7 @@ async def test_many_calls_at_once_on_a_real_store_are_each_charged_once(org_id, 
         assert set(paid) == {450} and len(paid) == sum(
             1 for index in range(300) if index % 10 and index % 7)
         # A refill asked for ahead of the deadline moves the deadline on when it lands.
-        await asyncio.gather(*runtime._refreshing.values(), *runtime._folding.values())
+        await asyncio.gather(*runtime._refreshing.values())
         await _age_heartbeat(org_id, allowance_sweep.idle_after_s() + 5)
         assert await allowance_sweep.sweep_once(session_maker) == 1
         assert await _state(org_id) == (GRANT - 450 * len(paid), 0)
@@ -1661,22 +1845,11 @@ async def test_a_call_gives_up_on_a_lease_held_too_long(org_id, store, monkeypat
 @pytest.mark.skipif(infra_db._is_sqlite, reason="timed against a database that takes writers at once")
 async def test_steady_calls_stay_on_the_allowance_while_folds_keep_the_lease(
         org_id, store, monkeypatch):
-    """A fold batch that takes a while, a counter that lapses every second, and calls that never
-    stop: the shape that once sent every call to the exact path, where the refill then queued
-    behind them. No call after the first may leave the allowance."""
+    """A counter that lapses every second and calls that never stop: the shape that once sent
+    every call to the exact path, where the refill then queued behind them. No call after the
+    first may leave the allowance."""
     monkeypatch.setattr(runtime, "_ahead", _AHEAD)
     monkeypatch.setattr(get_settings(), "money_allowance_fresh_s", 1)
-    monkeypatch.setattr(runtime, "_REFILL_FOLD", 5)
-    monkeypatch.setattr(runtime, "_BACKLOG_FOLD", 20)
-    monkeypatch.setattr(runtime, "_folding", {})
-    fold = allowance.fold_charges_in_transaction
-
-    async def slow_fold(db, org, **kwargs):
-        folded = await fold(db, org, **kwargs)
-        await asyncio.sleep(0.4)
-        return folded
-
-    monkeypatch.setattr(allowance, "fold_charges_in_transaction", slow_fold)
     refill, in_line = runtime._refill, [0]
 
     async def counted_refill(*args):
@@ -1700,9 +1873,15 @@ async def test_steady_calls_stay_on_the_allowance_while_folds_keep_the_lease(
             index += 1
             await asyncio.sleep(0.005)
 
-    await asyncio.gather(*(caller(name) for name in range(12)))
-    await asyncio.gather(*runtime._refreshing.values(), *runtime._folding.values())
+    loop = asyncio.create_task(allowance_sweep.worker(fold_every_s=0.05))
+    try:
+        await asyncio.gather(*(caller(name) for name in range(12)))
+    finally:
+        loop.cancel()
+        await asyncio.gather(loop, return_exceptions=True)
+    await asyncio.gather(*runtime._refreshing.values())
     assert left == [] and served[0] > 100, (len(left), served[0])
+    assert await _queued(org_id) < served[0] / 2, "the background loop kept applying the queue"
     assert in_line == [1], "only the first call, which found no counter, refilled in line"
     assert runtime.refills(org_id) >= 4, "each window asked for its own refill"
     balance, hold = await _state(org_id)

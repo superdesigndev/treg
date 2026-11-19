@@ -173,7 +173,7 @@ def test_a_value_price_holds_whole_per_blocks_when_it_rounds_up():
 ])
 def test_a_request_repeating_a_single_value_or_with_an_unreadable_count_is_refused(query, body, refused):
     from treg.application.call.types import ResolutionFailed
-    input_schema = {"queryParams": {"q": {"type": "string"}, "tags": {"type": "array[string]"},
+    input_schema = {"queryParams": {"q": {"type": "string"}, "tags": {"type": "array", "items": {"type": "string"}},
                                     "limit": {"type": "integer"}}}
     ep = row(input_schema, price={"value": "1", "currency": "credit", "per": 10, "round": "up"},
              reserve={"rows": {"param": "query.limit", "default": {"value": 10, "source": "docs"}, "max": 100}})

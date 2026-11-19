@@ -75,7 +75,7 @@ endpoints:
     input:
       bodyType: json
       body:
-        ids: {type: "array[string]", required: true, note: "1-100 Lusha company ids from a prior prospecting search — CORRECTED at verify time: the field is `ids`, not `companyIds` as the doc prose paraphrases it", example: ["16303253"]}
+        ids: {type: array, items: {type: string}, required: true, note: "1-100 Lusha company ids from a prior prospecting search — CORRECTED at verify time: the field is `ids`, not `companyIds` as the doc prose paraphrases it", example: ["16303253"]}
         tableId: {type: string, required: false, note: "persist results into a Lusha Table"}
       note: "the id-based sibling of lusha.companies.enrich (which takes domain/name); use this once you already hold ids from POST /v3/companies/prospecting"
     test_request:
@@ -147,8 +147,8 @@ endpoints:
     input:
       bodyType: json
       body:
-        contactIds: {type: "array[string]", required: true, note: "up to 100 Lusha contact ids", example: ["12345"]}
-        signalTypes: {type: "array[string]", required: false, note: "promotion | companyChange | allSignals"}
+        contactIds: {type: array, items: {type: string}, required: true, note: "up to 100 Lusha contact ids", example: ["12345"]}
+        signalTypes: {type: array, items: {type: string}, required: false, note: "promotion | companyChange | allSignals"}
         startDate: {type: string, required: false, note: "ISO date; only signals on/after this date"}
         tableId: {type: string, required: false, note: "persist results into a Lusha Table's Signals column"}
       note: "standalone alternative to the signals filter on the search/prospecting endpoints"
@@ -169,8 +169,8 @@ endpoints:
     input:
       bodyType: json
       body:
-        companyIds: {type: "array[string]", required: true, note: "up to 100 Lusha company ids", example: ["12345"]}
-        signalTypes: {type: "array[string]", required: false, note: "e.g. headcountIncrease1m, surgeInHiring, websiteTrafficIncrease, itSpendIncrease, riskNews, allSignals — see lusha.x.company-signal-types"}
+        companyIds: {type: array, items: {type: string}, required: true, note: "up to 100 Lusha company ids", example: ["12345"]}
+        signalTypes: {type: array, items: {type: string}, required: false, note: "e.g. headcountIncrease1m, surgeInHiring, websiteTrafficIncrease, itSpendIncrease, riskNews, allSignals — see lusha.x.company-signal-types"}
         startDate: {type: string, required: false, note: "ISO date; only signals on/after this date"}
         tableId: {type: string, required: false, note: "persist results into a Lusha Table's Signals column"}
       note: "standalone alternative to the signals filter on the search/prospecting endpoints"
@@ -262,7 +262,7 @@ endpoints:
     input:
       bodyType: json
       body:
-        companies: {type: "array[object]", required: true, note: "up to 25 entries; each needs exactly one of domain (resolved server-side) or id (encrypted vN.… Lusha company id). Optional clientReferenceId echoes back per company. The key is `domain` INSIDE each entry — a top-level domain / company_domain / website / company_name is rejected with 'property … should not exist' (all four seen live 2026-09-02)", example: [{"domain": "lusha.com"}]}
+        companies: {type: array, items: {type: object}, required: true, note: "up to 25 entries; each needs exactly one of domain (resolved server-side) or id (encrypted vN.… Lusha company id). Optional clientReferenceId echoes back per company. The key is `domain` INSIDE each entry — a top-level domain / company_domain / website / company_name is rejected with 'property … should not exist' (all four seen live 2026-09-02)", example: [{"domain": "lusha.com"}]}
       note: "contactsLimit and personas were documented here but never honoured on this path (400 'property <name> should not exist' since Lusha removed it 2026-08-12). Returned previews (name, title, company, location, LinkedIn, seniority, department) grouped per company; every preview row costs 1 credit - see cost. Retired: see status_note. Use lusha.x.buying-group."
     test_request:
       body: {companies: [{domain: "lusha.com"}]}
@@ -285,8 +285,8 @@ endpoints:
     input:
       bodyType: json
       body:
-        companies: {type: "array[object]", required: true, note: "1-25 entries (V3BuyingGroupCompanyItem); each needs exactly one of `domain` (resolved server-side) or `id` (Lusha company id, vN.… form, e.g. from lusha.companies.search). Optional `clientReferenceId` is echoed back on the matching result. The key is `domain` INSIDE each entry - a top-level domain / company_domain / website / company_name is rejected with 'property … should not exist' (seen live on the retired sibling path 2026-09-02)", example: [{"domain": "lusha.com"}]}
-        personas: {type: "array[string]", required: false, enum: [decision_maker, potential_champion, end_user], note: "filter to buying-committee roles: decision_maker (budget or sign-off authority) | potential_champion (likely internal advocate) | end_user (likely day-to-day user); omit for all three", example: ["decision_maker"]}
+        companies: {type: array, items: {type: object}, required: true, note: "1-25 entries (V3BuyingGroupCompanyItem); each needs exactly one of `domain` (resolved server-side) or `id` (Lusha company id, vN.… form, e.g. from lusha.companies.search). Optional `clientReferenceId` is echoed back on the matching result. The key is `domain` INSIDE each entry - a top-level domain / company_domain / website / company_name is rejected with 'property … should not exist' (seen live on the retired sibling path 2026-09-02)", example: [{"domain": "lusha.com"}]}
+        personas: {type: array, items: {type: string, enum: [decision_maker, potential_champion, end_user]}, required: false, note: "filter to buying-committee roles: decision_maker (budget or sign-off authority) | potential_champion (likely internal advocate) | end_user (likely day-to-day user); omit for all three", example: ["decision_maker"]}
         contactsLimit: {type: integer, required: false, note: "THE SPEND CAP: maximum contacts returned PER COMPANY, minimum 1, default 60, and every contact returned costs 1 credit - so the bill is at most companies × contactsLimit credits. Lusha's default is 60, i.e. an uncapped single-company call can cost 60 credits ($7.49 at the catalog rate) and a 25-company call 1,500. Always set it", example: 5}
         pagination: {type: object, required: false, note: "optional {page, size}; page >= 0 (default 0), size 10-100 (default 100). Pages across the ranked contacts; contactsLimit still bounds what one company can return", example: {"page": 0, "size": 100}}
       note: "contactsLimit is the only spend control on this route and Lusha defaults it to 60 contacts per company, so set it on every call. Returns previews (name, title, company, location, social links, `has`/`canReveal` data-point flags, persona `roles`, relevance `score` 0-1) grouped per company under `results[].contacts`; call lusha.people.contacts.enrich on the returned contact ids for emails/phones (a further 1 credit per email, 5 per phone). NOT free: every preview row costs 1 credit - see cost. Successor of the retired lusha.x.decision-makers path (removed by Lusha 2026-08-12, changelog 2.9.0); this is the only operation that accepts contactsLimit and personas"
@@ -310,7 +310,7 @@ endpoints:
     input:
       bodyType: json
       body:
-        domains: {type: "array[string]", required: true, note: "must already be configured for visitor tracking in the Lusha dashboard — an untracked domain 400s"}
+        domains: {type: array, items: {type: string}, required: true, note: "must already be configured for visitor tracking in the Lusha dashboard — an untracked domain 400s"}
         dateRange: {type: object, required: false, note: "start/end dates; span limited to <= 3 months"}
         limit: {type: integer, required: false, note: "1-150", example: 1}
       note: "account-specific: the domains must be pre-configured as tracked sites in the caller's own Lusha dashboard, which no bare key can do"
@@ -345,7 +345,7 @@ endpoints:
       bodyType: json
       body:
         defaults: {type: object, required: false, note: "shared entityType/signalTypes/url applied to every subscription entry that omits its own", example: {entityType: "company", signalTypes: ["headcountIncrease1m"], url: "https://example.com/webhooks/lusha"}}
-        subscriptions: {type: "array[object]", required: true, note: "up to 25 per request; each needs entityId (a real contact or company id owned by this account) plus name; entityType/signalTypes/url come from `defaults` unless overridden per entry", example: [{entityId: "16303253", name: "My Test Webhook"}]}
+        subscriptions: {type: array, items: {type: object}, required: true, note: "up to 25 per request; each needs entityId (a real contact or company id owned by this account) plus name; entityType/signalTypes/url come from `defaults` unless overridden per entry", example: [{entityId: "16303253", name: "My Test Webhook"}]}
       note: "deliveries are signed with HMAC-SHA256 (X-Lusha-Signature, X-Lusha-Timestamp) and must be acknowledged within 10s with a 2xx + {received, timestamp, webhookId} body. NOT free-standing — each subscription is bound to one entityId, so it needs a real contact/company id on hand (e.g. from lusha.companies.search)"
     test_request:
       body: {defaults: {entityType: "company", signalTypes: ["headcountIncrease1m"], url: "https://example.com/webhooks/lusha-catalog-test"}, subscriptions: [{entityId: "v1.A1gXjPYd63SSPjSvxO4uwqXqE5ilJV9S", name: "catalog-verify-test"}]}
@@ -399,7 +399,7 @@ endpoints:
     input:
       bodyType: json
       body:
-        ids: {type: "array[string]", required: true, note: "subscription ids to delete; duplicates deduped", example: ["000000000000000000000000"]}
+        ids: {type: array, items: {type: string}, required: true, note: "subscription ids to delete; duplicates deduped", example: ["000000000000000000000000"]}
       note: "idempotent and safe to probe blind: an id that does not exist is reported per-item as NOT_FOUND inside a 200, not an error, which is what the test_request below deliberately exercises"
     test_request:
       body: {ids: ["000000000000000000000000"]}
