@@ -14,10 +14,13 @@ Run it only once no process whose charge writer leaves such a row queued is stil
 calls: one that queues another after this has run is not cleaned up after, since a revision
 runs once.
 
-Rollback floor: code older than this revision runs unchanged on what is left, since it dropped
-these same rows itself, so a code rollback needs no downgrade. What a rollback must not do is
-run a build whose charge writer does not take back a re-queued settled call beside a build whose
-fold applies every row it claims.
+Rollback floor: with the database at this revision, code may go back no further than the build
+whose charge writer takes back a re-queued settled call. That build and every later one run
+unchanged on what is left, so such a rollback needs no downgrade. An earlier writer can leave a
+settled call queued again, and this revision, already recorded, does not run again on the next
+upgrade: a fold that applies every row it claims would then charge that call twice. If an
+earlier writer has run, stop writes, let transactions in flight end, and delete those rows
+again (the statement below) before a build with such a fold starts.
 """
 from collections.abc import Sequence
 
