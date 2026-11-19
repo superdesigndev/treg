@@ -938,6 +938,24 @@
       "GET",
       "HEAD"
     ],
+    "name": "audio_brief_skill_md",
+    "path": "/.well-known/skills/audio-brief/SKILL.md"
+  },
+  {
+    "kind": "APIRoute",
+    "methods": [
+      "GET",
+      "HEAD"
+    ],
+    "name": "audio_brief_skill_md",
+    "path": "/skills/audio-brief/SKILL.md"
+  },
+  {
+    "kind": "APIRoute",
+    "methods": [
+      "GET",
+      "HEAD"
+    ],
     "name": "jev_memory_skill_md",
     "path": "/skills/jev-memory/SKILL.md"
   },

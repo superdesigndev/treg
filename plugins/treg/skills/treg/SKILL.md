@@ -12,6 +12,7 @@ In Claude Code, treg's marketplace also offers ready workflow skills as separate
 described in `/plugin`:
 
 - `ai-ugc-video`
+- `audio-brief`
 - `jev-memory`
 - `lead-signals`
 - `make-ugc`

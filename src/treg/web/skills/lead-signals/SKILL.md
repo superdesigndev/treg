@@ -27,6 +27,8 @@ Default for "find buyers for X" or "monitor Y": search posts about the pain on L
 read the comments and reactions on the best posts → keep people whose title fits → roll them up by
 company and score → decision makers and emails at the top companies.
 
+If the user wants to listen before a meeting, pass the completed findings and their source links to the [audio-brief skill]({BASE}/skills/audio-brief/SKILL.md). It uses the team’s TTS Buddy account.
+
 ## Signals
 
 The vendors are examples of who answers today, not a list to stick to: search, and take whatever

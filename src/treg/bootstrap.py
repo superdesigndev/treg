@@ -186,6 +186,8 @@ _CONTROL_ROUTE_KEYS: frozenset[RouteKey] = frozenset({
     ('/skills/lead-signals/SKILL.md', ('GET',), 'lead_signals_skill_md'),
     ('/skills/web-access/SKILL.md', ('GET',), 'web_access_skill_md'),
     ('/skills/recruit/SKILL.md', ('GET',), 'recruit_skill_md'),
+    ('/.well-known/skills/audio-brief/SKILL.md', ('GET',), 'audio_brief_skill_md'),
+    ('/skills/audio-brief/SKILL.md', ('GET',), 'audio_brief_skill_md'),
     ('/skills/jev-memory/SKILL.md', ('GET',), 'jev_memory_skill_md'),
     ('/skills/rea-growth/SKILL.md', ('GET',), 'rea_growth_skill_md'),
     ('/skills/ai-ugc-video/SKILL.md', ('GET',), 'ai_ugc_video_skill_md'),

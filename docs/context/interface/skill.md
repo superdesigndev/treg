@@ -9,6 +9,7 @@ sources:
   - src/treg/web/skills/lead-signals/SKILL.md
   - src/treg/web/skills/web-access/SKILL.md
   - src/treg/web/skills/recruit/SKILL.md
+  - src/treg/web/skills/audio-brief/SKILL.md
   - src/treg/web/skills/jev-memory/SKILL.md
   - src/treg/web/skills/rea-growth/SKILL.md
   - src/treg/web/skills/ai-ugc-video/SKILL.md
@@ -110,6 +111,8 @@ one line and never tells the agent to stop and ask: it runs before sign-in, so `
 `skill.md` put that question after the first call that returns real data. Workflow skills name search words
 or routed `treg.*` jobs rather than per-provider endpoint ids where the catalog moves weekly; the
 catalog row's price and parameters win over anything a skill states.
+
+The `audio-brief` skill uses a team-owned TTS Buddy endpoint. It turns a completed report into an MP3 with the report's sources and can resume a saved narration job.
 
 The installer only overwrites a SKILL.md it owns: a missing one, one whose sha256 matches its
 ledger (`~/.treg/skills.json`), or an unledgered copy that names the skill and links this registry.

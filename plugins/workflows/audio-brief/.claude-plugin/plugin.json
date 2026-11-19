@@ -1,0 +1,13 @@
+{
+  "name": "audio-brief",
+  "version": "0.31.0",
+  "description": "Use when someone asks to listen to a completed report, hear the top buying signals before a meeting, or get a narrated research summary with sources. Uses the team's own TTS Buddy tool.",
+  "author": {
+    "name": "Superdesign dev, Inc.",
+    "email": "jason@superdesign.dev",
+    "url": "https://treg.to"
+  },
+  "homepage": "https://treg.to",
+  "repository": "https://github.com/superdesigndev/treg",
+  "license": "Apache-2.0"
+}
