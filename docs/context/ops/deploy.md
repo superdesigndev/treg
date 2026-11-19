@@ -86,7 +86,16 @@ tasks. If `TREG_SECRET_KEY` is empty on a non-SQLite database, `verify_db()` rai
   state. `0078` drops `onboardingprofile`; code older than it touches that table only while a
   `TREG_ONBOARDING_V2*` setting is on, so keep those off on any rollback past it. `0106` rebuilds
   `agentpayer` with a per-network key; code older than it writes that table only while
-  `TREG_AGENT_PAYMENTS_ENABLED` is on, so keep it off on any rollback past it.
+  `TREG_AGENT_PAYMENTS_ENABLED` is on, so keep it off on any rollback past it. `0114` removes
+  queued call charges whose call is already settled, because a fold now applies every row it
+  claims. With the database at `0114`, code may go back no further than the build whose charge
+  writer takes back a re-queued settled call; that build and later ones run unchanged on what
+  is left. An earlier writer can queue such a row again, and `0114`, already recorded, does not
+  run on the next upgrade. If an earlier writer has run, then before a build with the new fold
+  starts: stop writes, let transactions in flight end, and run the revision's statement by hand
+  (`DELETE FROM callcharge WHERE EXISTS (SELECT 1 FROM ledgerentry WHERE ledgerentry.call_id =
+  callcharge.call_id AND ledgerentry.org_id = callcharge.org_id AND ledgerentry.kind =
+  'settle')`).
 - **Revision-only schema.** An autogenerate drift guard requires Alembic head and
   `SQLModel.metadata` to match exactly. `reset_db()` uses `create_all` only to build a missing test
   schema and stamps it at head.
@@ -378,7 +387,16 @@ background loop (`application/allowance_sweep.py`) applies queued charges to the
 closes idle allowances. It runs in the `all` and `control` roles and is one more consumer of
 the `background` pool, which is one connection larger per process for it; request processes do
 not fold, so a deployment that turns the allowance on must run at least one process in one of
-those roles. The
+those roles. A queued charge is applied as it stands: a fold does not ask the ledger whether
+its call was settled before. What makes that true is the charge writer, which takes back a
+charge it re-queued for a settled call, so an upgrade to this behaviour from a build whose
+writer did not do that is done in this order: stop every process of the earlier build and let
+its transactions in flight end; run `python -m treg upgrade` (revision `0114` removes any such
+row left queued); start the new build. The order matters: an earlier process still serving
+calls after `0114` has run can queue another such row, the revision does not run a second
+time, and the new build's fold would charge that call twice. Where every process already runs
+a build with the writer's cleanup, no such row can be queued any more and the upgrade needs no
+stop. The
 allowance trusts the store to keep the writes it acknowledged. A store that can go back to an
 earlier state (a restore from an older snapshot, a replica promoted before it caught up) can
 admit the same money twice, with no bound on amount or time while the allowance stays on, and

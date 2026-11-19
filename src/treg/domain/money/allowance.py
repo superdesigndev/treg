@@ -103,19 +103,18 @@ async def record_charges(db: AsyncSession, charges: Sequence[Charge]) -> set[str
 
 class Folded(NamedTuple):
     """One fold: `calls` settle entries written for `charged_micro`, `consumed_micro` of it drawn
-    from blocks, `duplicates` charges dropped because their call was already settled, and
-    `orphaned` charges dropped because the team they were admitted for is gone."""
+    from blocks, and `orphaned` charges dropped because the team they were admitted for is
+    gone."""
 
     calls: int = 0
     charged_micro: int = 0
     consumed_micro: int = 0
-    duplicates: int = 0
     orphaned: int = 0
 
     @property
     def claimed(self) -> int:
         """How many queue rows this fold took: a full batch means more may be queued."""
-        return self.calls + self.duplicates + self.orphaned
+        return self.calls + self.orphaned
 
 
 async def _lock_allowance(db: AsyncSession, org_id: int, *, keeps: bool = False) -> Hold | None:
@@ -182,21 +181,10 @@ async def _apply_charges(db: AsyncSession, org_id: int, hold: Hold | None, claim
     """
     if not claimed:
         return Folded()
-    # A queue row is gone once folded, so its primary key no longer stops the same call being
-    # recorded again. The call's settle entry is the lasting record that it was charged.
-    settled: set[str] = set()
-    ids = [row.call_id for row in claimed]
-    with money_stage(db, "settled_charges"):
-        for start in range(0, len(ids), FOLD_BATCH):
-            settled.update((await db.execute(select(LedgerEntry.call_id).where(
-                LedgerEntry.call_id.in_(ids[start:start + FOLD_BATCH]),
-                LedgerEntry.org_id == org_id, LedgerEntry.kind == "settle"))).scalars())
-    charges = sorted((row for row in claimed if row.call_id not in settled),
-                     key=lambda row: (row.created_at, row.call_id))
-    duplicates = len(claimed) - len(charges)
+    charges = sorted(claimed, key=lambda row: (row.created_at, row.call_id))
     if charges and not await team_exists(db, org_id):
         charges = []
-    orphaned = len(claimed) - duplicates - len(charges)
+    orphaned = len(claimed) - len(charges)
     if orphaned:
         log.error("allowance_charges_orphaned org_id=%s dropped=%s: the team they were admitted "
                   "for has been deleted", org_id, orphaned)
@@ -227,7 +215,7 @@ async def _apply_charges(db: AsyncSession, org_id: int, hold: Hold | None, claim
     counted = covered if hold is not None and hold.created_at >= _day_start() else 0
     if covered != consumed or consumed != counted:
         await _add_balance(db, org_id, covered - consumed, spent_delta_micro=consumed - counted)
-    return Folded(len(charges), charged, consumed, duplicates, orphaned)
+    return Folded(len(charges), charged, consumed, orphaned)
 
 
 async def team_exists(db: AsyncSession, org_id: int) -> bool:
@@ -269,7 +257,8 @@ async def drop_settled_charges(db: AsyncSession, call_ids: Sequence[str]) -> set
     """Of the calls a rewrite has just queued, the ones that already have a `settle` entry: the
     first attempt's row was committed and has been folded since. Their new rows are taken out
     of the queue again, in the transaction that put them there, so a rewrite never leaves a
-    settled call queued. Returns those calls.
+    settled call queued: a fold applies every row it claims, and the queue's readers count
+    every row, without looking any of them up in the ledger. Returns those calls.
 
     Only a rewrite can queue a call twice, and a row it has just inserted is its own until it
     commits. The insert waits for a fold of the first row that is still in progress, so the
@@ -334,14 +323,12 @@ async def committed_today(db: AsyncSession, org_id: int) -> int:
     earlier day, all of it; what queued charges owe the balance outright (their overruns, and
     all of a charge whose own hold is gone); and what queued charges may take from the hold
     beyond what it has left. All are read from the rows themselves, so the figure is right whether or not the
-    team's allowance is switched on. A queued charge whose call already has a `settle` entry is
-    left out, as a fold will drop it.
+    team's allowance is switched on. Every queued row is a charge still to be applied: a
+    rewrite never leaves a settled call queued (`drop_settled_charges`).
     """
     hold_id = allowance_id(org_id)
     from_hold, outright = _charge_parts(org_id)
-    unsettled = (CallCharge.org_id == org_id, ~select(LedgerEntry.id).where(
-        LedgerEntry.call_id == CallCharge.call_id, LedgerEntry.org_id == org_id,
-        LedgerEntry.kind == "settle").exists())
+    unsettled = (CallCharge.org_id == org_id,)
     row = (await db.execute(select(
         Org.spent_today_micro, Org.spent_today_day,
         select(Hold.amount_micro).where(Hold.id == hold_id).scalar_subquery(),

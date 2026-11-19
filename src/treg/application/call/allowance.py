@@ -299,9 +299,8 @@ async def _refill(org_id: int, need_micro: int, daily_cap_micro: int) -> bool:
         # what it showed goes with it.
         available = 0
     _refills[org_id] = _refills.get(org_id, 0) + 1
-    log.info("allowance_refill org_id=%s added=%s hold=%s counter_before=%s folded=%s duplicates=%s",
-             org_id, result.added_micro, result.amount_micro, available,
-             result.folded.calls, result.folded.duplicates)
+    log.info("allowance_refill org_id=%s added=%s hold=%s counter_before=%s folded=%s",
+             org_id, result.added_micro, result.amount_micro, available, result.folded.calls)
     if (result.epoch is None or result.over_cap or result.overdrawn or result.retired
             or available + result.added_micro < need_micro):
         _refused_until[org_id] = time.monotonic() + _REFUSAL_COOLDOWN_S
