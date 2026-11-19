@@ -31,7 +31,7 @@ covers (frontmatter `sources:`). Regenerate this index with
 | [Money - prepaid balance, the ledger, Stripe, and the reports that check it](architecture/money.md) | shipped | policy.py, tavily.yaml, tinyfish.yaml, test_tinyfish.py, … |
 | [Multi-tenancy - orgs, memberships, invites, per-org scoping](architecture/multi-tenancy.md) | shipped | access.py, 0042_pinned_read_scope.py, test_pinned_read_scope.py, models.py, … |
 | [Exact organization and endpoint call allowances](architecture/org-endpoint-quota.md) | shipped | org_endpoint_quota.py, service.py, types.py, route.py, … |
-| [Org admission - published pause, rate and concurrency limits](architecture/org-flow-control.md) | shipped | org_flow_control.py, org_concurrency.py, structured_logging.py, kv.py, … |
+| [Org admission - published pause, rate and concurrency limits, with optional defaults](architecture/org-flow-control.md) | shipped | org_flow_control.py, org_concurrency.py, structured_logging.py, kv.py, … |
 | [Process-local organization traffic logs](architecture/org-traffic.md) | shipped | org_traffic.py, structured_logging.py, bootstrap.py, call.py, … |
 | [Policy extensions - decision points a private abuse policy can plug into](architecture/policy-extensions.md) | shipped | policy.py, bootstrap.py, signup.py, admission.py, … |
 | [The proxy - faithful credential-injecting relay + tool resolution](architecture/proxy-model.md) | shipped | relay.py, pathsegment.py, jsontext.py, ssrf.py, … |

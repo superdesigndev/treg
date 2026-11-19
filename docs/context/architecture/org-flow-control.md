@@ -1,5 +1,5 @@
 ---
-title: Org admission - published pause, rate and concurrency limits
+title: Org admission - published pause, rate and concurrency limits, with optional defaults
 status: shipped
 sources:
   - src/treg/infra/org_flow_control.py
@@ -15,6 +15,7 @@ sources:
   - tests/test_org_rate_limit_redis.py
   - tests/test_org_concurrency.py
   - tests/test_org_concurrency_redis.py
+  - tests/test_org_flow_control_default.py
   - tests/fixtures/org-flow-control/generate.ts
 related:
   - architecture/org-endpoint-quota.md
@@ -27,7 +28,8 @@ related:
 # Org admission - published pause, rate and concurrency limits
 
 An operator publishes a per-Org snapshot to Redis; every Web worker reads it lazily and applies
-**pause, rate and concurrency** to new root requests. This is an availability guard, not a
+**pause, rate and concurrency** to new root requests. Optional default rate and concurrency limits
+cover every Org that has no published snapshot. This is an availability guard, not a
 durable cap or a billing quota. Exact one-time org/endpoint call allowances are a separate
 [quota store](org-endpoint-quota.md) with its own failure policy; nothing below applies to them.
 
@@ -48,8 +50,9 @@ on every credential tier (own-key calls included, billing unchanged).
   It bounds root requests, not provider fanout or database connections.
 
 An active pause rejects first. Otherwise a non-null `rate_limit` and/or
-`concurrency_limit.max_in_flight` is applied; each null field disables only that limit, with no
-environment or process-local fallback. Already accepted work is never checked again: streams,
+`concurrency_limit.max_in_flight` is applied; each null field of a published snapshot disables
+only that limit, with no environment or process-local fallback. An Org without one gets the
+defaults below. Already accepted work is never checked again: streams,
 settlement, release and cancellation cleanup finish through their existing paths.
 
 ## Configuration, migration and rollback
@@ -73,9 +76,40 @@ Review already published non-null rate and concurrency values before enabling, s
 workers enforce all three controls.
 
 To lift one Org's limit, publish a higher version with that field null. To disable everything,
-turn the flag off through a normal deploy; accepted work finishes, and no key deletion or
-migration is needed. Enabling, disabling and refresh are not atomic across workers. Lowering a
+turn the flag off through a normal deploy, removing any `TREG_ORG_FLOW_CONTROL_DEFAULT_*` values in
+that same deploy (a default without the flag refuses to boot); accepted work finishes, and no key
+deletion or migration is needed. Enabling, disabling and refresh are not atomic across workers. Lowering a
 limit stops new admissions until occupancy falls below it; it never evicts accepted work.
+
+## Default limits
+
+```sh
+# Leave a variable unset (not empty) to disable it; an empty value fails to parse.
+# TREG_ORG_FLOW_CONTROL_DEFAULT_MAX_IN_FLIGHT=<positive integer>
+# TREG_ORG_FLOW_CONTROL_DEFAULT_RPS=<positive number>     # only together with BURST
+# TREG_ORG_FLOW_CONTROL_DEFAULT_BURST=<positive integer>
+```
+
+Unmetered root calls (a team's own key, its own registered tools) never pass money admission, so
+without a default one team's burst of them is bounded by nothing but process capacity: held long
+enough on a saturated worker, its requests can fill the per-process database pools every other
+team needs. The defaults bound every team's in-flight roots and rate without a publication.
+
+- They apply only when a healthy read confirms the Org's key is **missing** (version zero). A
+  Redis failure, a full snapshot cache, or an invalid publication with no previous valid one
+  allows the call, as before; an unknown state never borrows the default.
+- A published snapshot replaces the defaults whole. A published null field means "no limit" for
+  that field, not "use the default": publishing nulls is how an operator exempts one Org, and
+  publishing a higher value raises it. Deleting the key returns the Org to the defaults.
+- Both use the same cluster-wide Redis slots and bucket as a published limit, so a refusal is the
+  same `org_concurrency_limit` or `org_rate_limit` 429, with `config_version` 0. The keys do not
+  depend on version, so moving between default and published limits keeps occupied slots and the
+  bucket's tokens.
+- The limit counts roots across every worker, not per process: it caps a team's share of the
+  whole fleet, and a team's slots can still land unevenly on one worker.
+- Setting a default without `TREG_ORG_FLOW_CONTROL_ENABLED=true`, or a rate with only one of
+  `RPS` and `BURST`, refuses to boot. Values follow the publication limits below (positive; rps
+  finite, fractions allowed).
 
 ## Publication contract
 
@@ -163,8 +197,8 @@ money locks, reserve or settlement.
 
 ## Refusals and failures
 
-Only a valid unexpired pause, an exhausted bucket, or contention under a published concurrency
-limit rejects. All three are HTTP 429 with `Retry-After`, and a body carrying `retry_after_s` and
+Only a valid unexpired pause, an exhausted bucket, or contention under a published or default
+concurrency limit rejects. All three are HTTP 429 with `Retry-After`, and a body carrying `retry_after_s` and
 `config_version`:
 
 | `detail.error` | `Retry-After` |
@@ -172,6 +206,8 @@ limit rejects. All three are HTTP 429 with `Retry-After`, and a body carrying `r
 | `org_traffic_paused` | remaining pause seconds, rounded up |
 | `org_rate_limit` | token deficit divided by `rps`, rounded up, at least 1 |
 | `org_concurrency_limit` | 1 |
+
+`config_version` 0 means the refusal came from a default limit.
 
 Normal call-id, `X-Treg-Error` and refusal-audit handling applies; `mcp._call_impl` and
 `mcp._call_media_impl` carry the guidance as `retry_after`. Retry guidance reserves nothing.

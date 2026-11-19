@@ -167,15 +167,25 @@ async def test_a_calls_overrun_comes_out_of_the_balance_and_leaves_the_hold_to_o
     assert await _daily_counter_agrees(org_id) == 1_500 + 400
 
 
-async def test_a_call_recorded_again_after_its_fold_is_not_charged_twice(org_id):
+async def test_a_call_rewritten_after_its_fold_is_not_charged_twice(org_id):
+    """A fold applies every row it claims. What keeps a folded call from being charged again
+    is the rewrite, which takes its row back out of the queue."""
     await _open(org_id, 10_000)
-    for _ in range(2):
-        await _record(org_id, 400)
-        async with session_maker() as db:
-            folded = await allowance.fold_charges_in_transaction(db, org_id)
-            await db.commit()
-    assert folded == allowance.Folded(duplicates=1)
-    assert len(await _settles(org_id)) == 1
+    await _record(org_id, 400)
+    async with session_maker() as db:
+        await allowance.fold_charges_in_transaction(db, org_id)
+        await db.commit()
+    async with session_maker() as db:
+        new = await allowance.record_charges(
+            db, [allowance.Charge("call-0", org_id, "e.metered", 400)])
+        assert await allowance.drop_settled_charges(db, sorted(new)) == {"call-0"}
+        await db.commit()
+    async with session_maker() as db:
+        folded = await allowance.fold_charges_in_transaction(db, org_id)
+        await db.commit()
+        settled = (await db.execute(select(LedgerEntry.amount_micro).where(
+            LedgerEntry.call_id == "call-0", LedgerEntry.kind == "settle"))).scalars().all()
+    assert folded == allowance.Folded() and settled == [-400]
     assert await _invariant(org_id) == GRANT - 10_000
     async with session_maker() as db:
         assert sum(b.remaining_micro for b in await ledger.blocks_of(db, org_id)) == GRANT - 400
@@ -355,16 +365,6 @@ async def test_a_queued_overrun_is_not_there_for_another_reserve_to_set_aside(or
         await db.commit()
         assert await ledger.balance_of(db, org_id) == 0
     await _invariant(org_id)
-
-
-async def test_a_settled_call_queued_again_does_not_count_twice_toward_today(org_id):
-    await _record(org_id, 1_000)
-    async with session_maker() as db:
-        await allowance.fold_charges_in_transaction(db, org_id)
-        await db.commit()
-    await _record(org_id, 1_000)  # the same call, written again after its fold
-    async with session_maker() as db:
-        assert await allowance.committed_today(db, org_id) == 1_000
 
 
 async def test_a_rewrite_takes_a_settled_call_out_of_the_queue_again(org_id):
@@ -672,8 +672,13 @@ async def test_folds_racing_recordings_charge_every_call_once(org_id):
     await _refill(org_id, 100_000)
 
     async def record(batch: int) -> None:
-        await _record(org_id, *([10] * 20), prefix=f"batch-{batch}")
-        await _record(org_id, *([10] * 20), prefix=f"batch-{batch}")
+        # The second write is a rewrite of the first: the only way a call is recorded twice.
+        ids = await _record(org_id, *([10] * 20), prefix=f"batch-{batch}")
+        async with session_maker() as db:
+            new = await allowance.record_charges(
+                db, [allowance.Charge(call_id, org_id, "e.metered", 10) for call_id in ids])
+            await allowance.drop_settled_charges(db, sorted(new))
+            await db.commit()
 
     async def fold() -> None:
         for _ in range(5):
@@ -681,7 +686,10 @@ async def test_folds_racing_recordings_charge_every_call_once(org_id):
 
     await asyncio.gather(*(record(batch) for batch in range(10)), *(fold() for _ in range(4)))
     await _refill(org_id, 0)
-    assert len(await _settles(org_id)) == 200
+    async with session_maker() as db:
+        settled = (await db.execute(select(LedgerEntry.call_id).where(
+            LedgerEntry.org_id == org_id, LedgerEntry.kind == "settle"))).scalars().all()
+    assert len(settled) == len(set(settled)) == 200
     async with session_maker() as db:
         assert [h.amount_micro for h in await ledger.open_holds_of(db, org_id)] == [98_000]
     assert await _invariant(org_id) == GRANT - 100_000
