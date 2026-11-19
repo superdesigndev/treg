@@ -56,7 +56,7 @@ BACKGROUND_CONSUMERS: dict[str, int] = {
     "archive.refresh_worker": 1,
     "catalog observation refresh": 1,   # singleflight, one task per process
     "api_keys last used": 1,      # throttled best-effort managed-key display metadata
-    "allowance_sweep.worker": 1,  # one idle allowance hold at a time
+    "allowance_sweep.worker": 1,  # one fold or one idle close at a time
 }
 
 _PRIMARY_POOL_NAMES = ("api", "admin", "background")
