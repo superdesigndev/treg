@@ -209,10 +209,10 @@ endpoints:
       requires: {kind: job, param: job_id}
     input:
       pathParams:
-        job_id: {type: string, required: true, note: "the id mapsdata.web.scrape.job.start returned", example: "6f1c2a3b-0000-0000-0000-000000000000"}
+        job_id: {type: string, required: true, note: "the id mapsdata.web.scrape.job.start returned", example: "30f7ada6-f1b0-4ffc-a2d2-837b1805018d"}
       note: "status is queued, running, cancelling, cancelled, completed or failed; results can be fetched once it is completed. On a completed or cancelled job, email_count is the number of credits it spent; a failed job spent none."
     test_request:
-      pathParams: {job_id: "6f1c2a3b-0000-0000-0000-000000000000"}
+      pathParams: {job_id: "30f7ada6-f1b0-4ffc-a2d2-837b1805018d"}
     price: {value: '0', currency: USD, unit: call, note: "Free."}
 
   - id: mapsdata.web.scrape.job.results
@@ -229,13 +229,13 @@ endpoints:
       requires: {kind: job, param: job_id}
     input:
       pathParams:
-        job_id: {type: string, required: true, note: "the id mapsdata.web.scrape.job.start returned", example: "6f1c2a3b-0000-0000-0000-000000000000"}
+        job_id: {type: string, required: true, note: "the id mapsdata.web.scrape.job.start returned", example: "30f7ada6-f1b0-4ffc-a2d2-837b1805018d"}
       queryParams:
         format: {type: string, required: false, default: csv, enum: [csv, xlsx], example: "csv"}
         scope: {type: string, required: false, default: emails, enum: [emails, all, filtered], note: "emails: leads with an email. all: every lead scraped. filtered: the output of a filter already run on the list in the MapsData app", example: "emails"}
       note: "Answers a JSON {url, expires_at, filename}; fetch the url without the Authorization header within 15 minutes, and ask again rather than reusing an expired one."
     test_request:
-      pathParams: {job_id: "6f1c2a3b-0000-0000-0000-000000000000"}
+      pathParams: {job_id: "30f7ada6-f1b0-4ffc-a2d2-837b1805018d"}
       queryParams: {format: "csv", scope: "emails"}
     price: {value: '0', currency: USD, unit: call, note: "Free; the job's leads were charged when it finished."}
 
@@ -253,7 +253,7 @@ endpoints:
       requires: {kind: job, param: job_id}
     input:
       pathParams:
-        job_id: {type: string, required: true, note: "the id mapsdata.web.scrape.job.start returned", example: "6f1c2a3b-0000-0000-0000-000000000000"}
+        job_id: {type: string, required: true, note: "the id mapsdata.web.scrape.job.start returned", example: "30f7ada6-f1b0-4ffc-a2d2-837b1805018d"}
       note: "A finished job answers 409 job_not_cancellable."
     price: {value: '0', currency: USD, unit: call, note: "Free; cancelling a queued scrape costs nothing, and a running one keeps the charge for the leads already delivered."}
 
