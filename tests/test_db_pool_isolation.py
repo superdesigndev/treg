@@ -64,6 +64,9 @@ EXPECTED_MAKERS: dict[str, set[str]] = {
 
     # Synchronous intake, and the catalog's five-minute verdict fold; admin reads use get_admin_session.
     "application/feedback.py": {API},
+    # Comparisons: request-path reads and one verdict write; `treg-worker compare collect` runs only in
+    # the worker process (same reasoning as `worker.py`), and holds no session across a vendor call.
+    "application/compare.py": {API},
     # One small aggregate of callreview per worker every ten minutes (targeted review invitations).
     "application/review_targets.py": {API},
     "application/media.py": {API},  # `treg host`: one short write, one short read, no upstream wait
@@ -80,6 +83,7 @@ EXPECTED_MAKERS: dict[str, set[str]] = {
     "application/call/reserve.py": {API}, "application/call/resolve.py": {API},
     "application/call/route.py": {API}, "application/call/service.py": {API},
     "application/call/settle.py": {API},
+    "application/call/allowance.py": {API},  # refills and charge inserts are part of the call that needs them
     "application/hub/runner.py": {API},   # a run lives inside the caller's /call/; its record write is part of that request
     "domain/capacity/marks.py": {API}, "domain/capacity/routes_view.py": {API},
     "domain/capacity/view.py": {API},
@@ -106,6 +110,7 @@ EXPECTED_MAKERS: dict[str, set[str]] = {
     "application/fernet_rotation.py": {API},
     # Off-request writers.
     "audit.py": {BACKGROUND},
+    "application/allowance_sweep.py": {BACKGROUND},
     # Request-shaped: the owner delete route and `treg-worker admin erase-archive`, in short
     # transactions with the connection released around object I/O (archive.md, "Opting out").
     "application/archive_erasure.py": {API},
@@ -221,6 +226,7 @@ BACKGROUND_SITES = {
     "archive_bodies.py:_db_fallback": "archive._store/_touch",
     "archive.py:prune_once": "archive.prune_worker",
     "archive.py:refresh_once": "archive.refresh_worker",
+    "application/allowance_sweep.py:worker": "allowance_sweep.worker",
 }
 
 

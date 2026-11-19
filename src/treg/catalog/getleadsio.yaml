@@ -26,10 +26,11 @@ endpoints:
     input:
       body:
         items:
-          type: 'array[object]'
+          type: array
+          items: {type: object}
           required: true
-          min: 1
-          max: 1
+          minItems: 1
+          maxItems: 1
           example: [{email: nobody-treg-20260916@example.invalid}]
           note: Each item needs an email string.
       note: Exactly one item is accepted. One credit is charged when that result has success=true.
@@ -64,10 +65,11 @@ endpoints:
     input:
       body:
         items:
-          type: 'array[object]'
+          type: array
+          items: {type: object}
           required: true
-          min: 1
-          max: 1
+          minItems: 1
+          maxItems: 1
           example: [{linkedin_url: https://www.linkedin.com/in/example}]
           note: Each item needs linkedin_url.
         limit_per_item: {type: integer, required: false, default: 1, min: 1, max: 10}
@@ -95,10 +97,11 @@ endpoints:
     input:
       body:
         items:
-          type: 'array[object]'
+          type: array
+          items: {type: object}
           required: true
-          min: 1
-          max: 1
+          minItems: 1
+          maxItems: 1
           example: [{first_name: Jane, last_name: Doe, email_domain: example.com}]
           note: Each item needs first_name and last_name plus company_name or email_domain.
       note: Exactly one item is accepted. One credit is charged when that result has success=true.
@@ -156,7 +159,7 @@ endpoints:
       body:
         email_domain: {type: string, required: false, example: stripe.com}
         linkedin_company_url: {type: string, required: false, example: https://www.linkedin.com/company/stripe/}
-        job_titles: {type: 'array[string]', required: false, example: [Engineer]}
+        job_titles: {type: array, items: {type: string}, required: false, example: [Engineer]}
         limit_per_item: {type: integer, required: false, default: 100, min: 1, max: 5000}
         offset: {type: integer, required: false, default: 0, min: 0}
       note: Provide email_domain or linkedin_company_url, not both. Continue with next_offset while has_more is true. One credit per returned record.
@@ -224,8 +227,8 @@ endpoints:
         limit: {type: integer, required: false, default: 1000, min: 1, max: 5000}
         offset: {type: integer, required: false, default: 0, min: 0}
         max_per_company: {type: integer, required: false, min: 1, max: 50}
-        columns: {type: 'array[string]', required: false}
-        where_sql: {type: string, required: false, max: 4000, note: Advanced predicate over the provider's internal columns. Use dedicated filters when possible.}
+        columns: {type: array, items: {type: string}, required: false}
+        where_sql: {type: string, required: false, maxLength: 4000, note: Advanced predicate over the provider's internal columns. Use dedicated filters when possible.}
       note: Paginate with next_offset while has_more is true. Offset walks are reliable only below 50,000 matches. Run getleadsio.people.search.count first. One credit per returned record.
     test_request:
       body: {filters: {domains: [treg-nonexistent-20260916.invalid], email_status: [VALID]}, limit: 1, offset: 0}
@@ -250,7 +253,7 @@ endpoints:
     input:
       body:
         filters: {type: object, required: true, example: {countries: [Ireland], seniority: [C-Team]}}
-        where_sql: {type: string, required: false, max: 4000}
+        where_sql: {type: string, required: false, maxLength: 4000}
       note: At least one filter or where_sql is required. The count is exact and has no result cap.
     test_request:
       body: {filters: {domains: [stripe.com], email_status: [VALID]}}
@@ -307,7 +310,7 @@ endpoints:
         limit: {type: integer, required: false, default: 50, min: 1, max: 200, example: 1}
         since: {type: string, required: false, note: YYYY-MM-DD}
         min_confidence: {type: number, required: false, default: 0.5, min: 0, max: 1, example: 0.5}
-        region: {type: string, required: false, enum: [US, EU, GLOBAL]}
+        region: {type: string, required: false}
       note: Each request fetches feeds live and can take 15-45 seconds. One credit per returned record.
     test_request:
       queryParams: {limit: 1, min_confidence: 0.5}

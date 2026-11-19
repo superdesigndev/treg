@@ -8,7 +8,7 @@ from __future__ import annotations
 
 import json
 import logging
-from datetime import timedelta
+from datetime import datetime, timedelta
 
 import pytest
 from httpx import AsyncClient
@@ -70,12 +70,26 @@ def _relay(status: int, body: bytes, headers=()):
     return relay
 
 
+def _counting(relay):
+    """The relay, counting the calls that reached the vendor: a probe and a refusal before any
+    hold both answer the typed 503, and only this tells them apart."""
+    async def counted(*a, **k):
+        counted.calls += 1
+        return await relay(*a, **k)
+    counted.calls = 0
+    return counted
+
+
+def _capacity_503(r) -> bool:
+    return r.status_code == 503 and r.json()["detail"]["error"] == "provider_capacity_unavailable"
+
+
 async def _lock_by_two_signals(clients: AsyncClient, monkeypatch, relay=None) -> Lock:
     monkeypatch.setattr(capacity_marks, "STRIKE_MIN_GAP", timedelta(0))  # two calls, seconds apart
     monkeypatch.setattr(call_service, "relay", relay or _fake_relay(402, OUT))
-    assert (await clients.get(f"/call/{EP}?aweme_id=7")).status_code in (402, 429)
+    assert _capacity_503(await clients.get(f"/call/{EP}?aweme_id=7"))
     assert not (await _lock("tikhub") or await _lock(EP)).is_active(), "one strike never locks"
-    assert (await clients.get(f"/call/{EP}?aweme_id=7")).status_code in (402, 429)
+    assert _capacity_503(await clients.get(f"/call/{EP}?aweme_id=7"))
     lock = await _lock("tikhub") or await _lock(EP)
     assert lock.is_active()
     return lock
@@ -138,9 +152,8 @@ async def test_one_signature_is_a_strike_that_a_2xx_erases(clients: AsyncClient,
     monkeypatch.setattr(call_service, "relay", _fake_relay(402, OUT))
     before = await _balance(clients)
     r = await clients.get(f"/call/{EP}?aweme_id=7")
-    assert r.status_code == 402, "the vendor's answer relays unchanged"
-    assert "X-Treg-Error" not in r.headers
-    assert r.headers["X-Treg-Cost-Micro"] == "0" and await _balance(clients) == before
+    assert _capacity_503(r), "treg's typed refusal, not the vendor's 402"
+    assert "Insufficient balance" not in r.text and await _balance(clients) == before
     lock = await _lock("tikhub")
     assert lock.strikes == 1 and not lock.is_active()
     monkeypatch.setattr(call_service, "relay", _fake_relay(200, b'{"ok":true}'))
@@ -171,10 +184,12 @@ async def test_a_probe_a_minute_goes_through_and_its_2xx_clears_the_lock(clients
 
 async def test_a_probe_that_fails_again_keeps_the_lock(clients: AsyncClient, platform_on, monkeypatch):
     lock = await _lock_by_two_signals(clients, monkeypatch)
+    relay = _counting(_fake_relay(402, OUT))
+    monkeypatch.setattr(call_service, "relay", relay)
     capacity_marks._last_probe.clear()
-    assert (await clients.get(f"/call/{EP}?aweme_id=7")).status_code == 402, "the probe relays"
+    assert _capacity_503(await clients.get(f"/call/{EP}?aweme_id=7")) and relay.calls == 1, "the probe is sent"
     assert (await _lock(lock.key)).lock_id == lock.lock_id
-    assert (await clients.get(f"/call/{EP}?aweme_id=7")).status_code == 503
+    assert _capacity_503(await clients.get(f"/call/{EP}?aweme_id=7")) and relay.calls == 1
 
 
 @pytest.fixture
@@ -192,7 +207,7 @@ async def test_events_name_each_transition_once_and_never_the_body(
         clients: AsyncClient, platform_on, monkeypatch, capacity_events_log):
     lock = await _lock_by_two_signals(clients, monkeypatch, _fake_relay(402, b'{"detail":"Insufficient balance","q":"secret-query"}'))
     capacity_marks._last_probe.clear()
-    assert (await clients.get(f"/call/{EP}?aweme_id=7")).status_code == 402, "a probe that fails again"
+    assert _capacity_503(await clients.get(f"/call/{EP}?aweme_id=7")), "a probe that fails again"
     assert (await clients.get(f"/call/{EP}?aweme_id=7")).status_code == 503
     monkeypatch.setattr(call_service, "relay", _fake_relay(200, b'{"ok":true}'))
     capacity_marks._last_probe.clear()
@@ -213,7 +228,7 @@ async def test_a_lock_is_aged_from_its_opening_not_its_first_strike(
     await capacity_marks.strike("tikhub", endpoint_id=EP, kind="balance", resets_at=None,
                                 now=utcnow_naive() - timedelta(minutes=8))
     monkeypatch.setattr(call_service, "relay", _fake_relay(402, OUT))
-    assert (await clients.get(f"/call/{EP}?aweme_id=7")).status_code == 402
+    assert _capacity_503(await clients.get(f"/call/{EP}?aweme_id=7"))
     lock = await _lock("tikhub")
     assert lock.is_active() and lock.opened_at - lock.first_signal_at >= timedelta(minutes=7)
     monkeypatch.setattr(call_service, "relay", _fake_relay(200, b'{"ok":true}'))
@@ -226,14 +241,84 @@ async def test_a_lock_is_aged_from_its_opening_not_its_first_strike(
 async def test_a_vendor_500_or_caller_400_neither_strikes_nor_clears(clients: AsyncClient, platform_on, monkeypatch):
     monkeypatch.setattr(capacity_marks, "STRIKE_MIN_GAP", timedelta(0))
     monkeypatch.setattr(call_service, "relay", _fake_relay(402, OUT))
-    assert (await clients.get(f"/call/{EP}?aweme_id=7")).status_code == 402
+    assert _capacity_503(await clients.get(f"/call/{EP}?aweme_id=7"))
     for status, body in ((500, b"down"), (400, b'{"detail":"bad aweme_id"}'), (429, b'{"detail":"slow down"}')):
         monkeypatch.setattr(call_service, "relay", _fake_relay(status, body))
         assert (await clients.get(f"/call/{EP}?aweme_id=7")).status_code == status
         assert (await _lock("tikhub")).strikes == 1, "only a 2xx is evidence of capacity"
     monkeypatch.setattr(call_service, "relay", _fake_relay(402, OUT))
-    assert (await clients.get(f"/call/{EP}?aweme_id=7")).status_code == 402
+    assert _capacity_503(await clients.get(f"/call/{EP}?aweme_id=7"))
     assert (await _lock("tikhub")).is_active(), "402, 500, 402 is still two strikes in a row"
+
+
+async def test_an_account_out_refusal_tells_clients_when_to_retry(clients: AsyncClient, platform_on, monkeypatch):
+    """The replaced answer is a 503, which many clients retry at once: it says when to come back,
+    the lock's reset when one is known, else a minute."""
+    monkeypatch.setattr(capacity_marks, "STRIKE_MIN_GAP", timedelta(0))
+    monkeypatch.setattr(call_service, "relay", _fake_relay(402, OUT))
+    r = await clients.get(f"/call/{EP}?aweme_id=7")
+    assert _capacity_503(r) and r.headers["Retry-After"] == "60", "no reset known yet"
+    monkeypatch.setattr(call_service, "relay", _relay(429, b'{"detail":"quota"}', [(b"retry-after", b"7200")]))
+    assert _capacity_503(await clients.get(f"/call/{EP}?aweme_id=7"))
+    r = await clients.get(f"/call/{EP}?aweme_id=7")
+    assert _capacity_503(r)
+    capacity_marks._last_probe.clear()
+    r = await clients.get(f"/call/{EP}?aweme_id=7")  # the probe meets the same quota
+    assert _capacity_503(r) and 7000 < int(r.headers["Retry-After"]) <= 7200, r.headers
+
+
+async def test_a_refusal_before_any_hold_tells_clients_when_to_retry(clients: AsyncClient, platform_on):
+    await _publish("tikhub", exhausted=True)
+    r = await clients.get(f"/call/{EP}?aweme_id=7")
+    assert _capacity_503(r)
+    resets = datetime.fromisoformat(r.json()["detail"]["resets_at"].rstrip("Z"))
+    wait = (resets - utcnow_naive()).total_seconds()
+    assert wait - 5 <= int(r.headers["Retry-After"]) <= wait + 5, "the seconds until the reset"
+
+
+async def test_steady_traffic_while_dry_never_extends_the_lock_and_a_probe_lifts_it(
+        clients: AsyncClient, platform_on, monkeypatch):
+    """Ten minutes of twenty calls a minute while the account stays dry: only one probe a minute
+    reaches the provider, nothing is charged and the lock keeps its end. After a top-up the next
+    probe lifts it for everyone."""
+    lock = await _lock_by_two_signals(clients, monkeypatch)
+    before = await _balance(clients)
+    dry = _counting(_fake_relay(402, OUT))
+    monkeypatch.setattr(call_service, "relay", dry)
+    for _ in range(10):
+        capacity_marks._last_probe.clear()  # a minute passes
+        for _ in range(20):
+            assert _capacity_503(await clients.get(f"/call/{EP}?aweme_id=7"))
+        now = await _lock(lock.key)
+        assert now.lock_id == lock.lock_id and now.until == lock.until, "never extended"
+    assert dry.calls == 10 and await _balance(clients) == before
+    monkeypatch.setattr(call_service, "relay", _fake_relay(200, b'{"ok":true}'))
+    capacity_marks._last_probe.clear()
+    assert [(await clients.get(f"/call/{EP}?aweme_id=7")).status_code for _ in range(20)] == [200] * 20
+    assert await _lock(lock.key) is None
+
+
+async def test_a_quota_lock_ends_at_its_reset_without_a_probe(clients: AsyncClient, platform_on, monkeypatch):
+    relay = _relay(429, b'{"detail":"quota"}', [(b"retry-after", b"7200")])
+    await _lock_by_two_signals(clients, monkeypatch, relay)
+    later = utcnow_naive() + timedelta(hours=2, minutes=1)
+    monkeypatch.setattr(capacity_marks, "utcnow_naive", lambda: later)
+    capacity_view.invalidate()
+    ok = _counting(_fake_relay(200, b'{"ok":true}'))
+    monkeypatch.setattr(call_service, "relay", ok)
+    assert [(await clients.get(f"/call/{EP}?aweme_id=7")).status_code for _ in range(10)] == [200] * 10
+    assert ok.calls == 10
+
+
+async def test_a_retry_with_the_same_idempotency_key_after_the_refusal_is_served(
+        clients: AsyncClient, platform_on, monkeypatch):
+    """The refusal is not stored under the key: once the account serves again, the same key gets
+    the answer, not a replay of the 503."""
+    headers = {"Idempotency-Key": "account-out-retry"}
+    monkeypatch.setattr(call_service, "relay", _fake_relay(402, OUT))
+    assert _capacity_503(await clients.get(f"/call/{EP}?aweme_id=7", headers=headers))
+    monkeypatch.setattr(call_service, "relay", _fake_relay(200, b'{"ok":true}'))
+    assert (await clients.get(f"/call/{EP}?aweme_id=7", headers=headers)).status_code == 200
 
 
 async def test_quota_429_locks_the_endpoint_only_until_the_reset(clients: AsyncClient, platform_on, monkeypatch):
@@ -334,11 +419,12 @@ async def test_a_sweep_reading_admits_a_probe_a_minute_and_its_2xx_lifts_it(clie
 
 
 async def test_a_probe_through_a_sweep_reading_that_fails_keeps_it(clients: AsyncClient, platform_on, monkeypatch):
-    monkeypatch.setattr(call_service, "relay", _fake_relay(402, OUT))
+    relay = _counting(_fake_relay(402, OUT))
+    monkeypatch.setattr(call_service, "relay", relay)
     await _publish("tikhub", exhausted=True, ago=timedelta(minutes=2))
-    assert (await clients.get(f"/call/{EP}?aweme_id=7")).status_code == 402, "the probe relays"
+    assert _capacity_503(await clients.get(f"/call/{EP}?aweme_id=7")) and relay.calls == 1, "the probe is sent"
     assert (await _state("tikhub")).exhausted_until is not None
-    assert (await clients.get(f"/call/{EP}?aweme_id=7")).status_code == 503, "one probe a minute"
+    assert _capacity_503(await clients.get(f"/call/{EP}?aweme_id=7")) and relay.calls == 1, "one probe a minute"
 
 
 async def test_a_probe_never_lifts_a_newer_sweep_reading(clients: AsyncClient, platform_on):
@@ -365,8 +451,7 @@ async def test_a_failed_strike_never_fails_the_call(clients: AsyncClient, platfo
         raise RuntimeError("db gone")
     monkeypatch.setattr(call_settle.capacity_marks, "strike", boom)
     # strike itself swallows; simulate the seam above it raising to prove the guard
-    r = await clients.get(f"/call/{EP}?aweme_id=7")
-    assert r.status_code == 402 and r.headers["X-Treg-Cost-Micro"] == "0"
+    assert _capacity_503(await clients.get(f"/call/{EP}?aweme_id=7"))
 
 
 DL_PHONE, DL_SEARCH = "dropleads.people.phone.find", "dropleads.people.search"  # per_success / free
@@ -398,11 +483,11 @@ async def test_a_free_route_neither_lifts_nor_is_held_by_a_balance_mark(clients:
     monkeypatch.setattr(call_service, "relay", _by_path({
         "/mobile-finder": (402, DL_OUT), "/leads/search": (200, b'{"data":[]}')}))
     try:
-        assert (await _dl(clients, DL_PHONE)).status_code == 402
+        assert _capacity_503(await _dl(clients, DL_PHONE))
         assert (await _lock("dropleads")).strikes == 1
         assert (await _dl(clients, DL_SEARCH)).status_code == 200
         assert (await _lock("dropleads")).strikes == 1, "a free 2xx keeps the paid route's strike"
-        assert (await _dl(clients, DL_PHONE)).status_code == 402
+        assert _capacity_503(await _dl(clients, DL_PHONE))
         assert (await _lock("dropleads")).is_active(), "the second strike locks"
         assert (await _dl(clients, DL_PHONE)).status_code == 503
         capacity_marks._last_probe.clear()
@@ -413,8 +498,8 @@ async def test_a_free_route_neither_lifts_nor_is_held_by_a_balance_mark(clients:
         await _publish("dropleads", exhausted=True, ago=timedelta(minutes=2))
         assert (await _dl(clients, DL_SEARCH)).status_code == 200
         assert (await _state("dropleads")).exhausted_until is not None, "nor lifts the sweep's zero"
-        assert (await _dl(clients, DL_PHONE)).status_code == 402, "the paid probe still relays"
-        assert (await _dl(clients, DL_PHONE)).status_code == 503
+        assert _capacity_503(await _dl(clients, DL_PHONE)), "the paid probe is sent and fails"
+        assert _capacity_503(await _dl(clients, DL_PHONE))
     finally:
         get_settings.cache_clear()
 
@@ -437,11 +522,11 @@ async def test_a_wiza_200_between_two_credit_errors_keeps_the_lock_closed(client
         "/company_enrichments": (400, WIZA_OUT),
         "/individual_reveals": (200, b'{"data":{"id":910001,"status":"queued"}}')}))
     try:
-        assert (await clients.post(f"/call/{WIZA_ENRICH}", json={"company_domain": "example.com"})).status_code == 400
+        assert _capacity_503(await clients.post(f"/call/{WIZA_ENRICH}", json={"company_domain": "example.com"}))
         assert (await _lock("wiza")).strikes == 1, "the credit error is a strike"
         assert (await clients.post(f"/call/{WIZA_EMAIL}", json=WIZA_EMAIL_BODY)).status_code == 200
         assert await _lock("wiza") is None, "the find's 200 erases the strike"
-        assert (await clients.post(f"/call/{WIZA_ENRICH}", json={"company_domain": "example.com"})).status_code == 400
+        assert _capacity_503(await clients.post(f"/call/{WIZA_ENRICH}", json={"company_domain": "example.com"}))
         lock = await _lock("wiza")
         assert lock.strikes == 1 and not lock.is_active(), "400, 200, 400 does not lock"
     finally:

@@ -45,7 +45,13 @@ stamped at a revision this build does not know is also refused, because an expli
 cross the rollback floor.
 
 `python -m treg` runs the same upgrade phase, bootstraps the single local user when enabled, and
-serves `treg.api:app` on `$PORT` (default 18790). Both pre-Uvicorn paths dispose the async engine
+serves `treg.api:app` on `$PORT` (default 18790). On a database stamped at a revision this build
+does not know (`maintenance.SchemaNewerThanBuild`) and that reads as a later revision of this
+project (all digits and above this build's head, `db.stamped_newer_than_build`) it logs a warning,
+skips the release tasks and serves anyway, as the ASGI entry (`verify_db`) does: a newer release
+whose upgrade committed one revision and then failed on the next leaves such a stamp, and the old
+release must still restart on it. Any other unknown stamp (another Alembic project's id, a typo)
+is still refused. Both pre-Uvicorn paths dispose the async engine
 before their `asyncio.run()` loop closes, so the serving loop never receives connections bound to a
 closed loop; calling `maintenance.upgrade()` directly does not dispose it. `python -m treg keygen`
 prints a Fernet key for `TREG_SECRET_KEY`.
@@ -68,8 +74,9 @@ out of the environment but retrievable for as long as a database backup from bef
 can still be restored.
 
 The lifespan and every worker command call read-only `verify_db()`: an unstamped database or a known
-revision behind head is refused; an unknown newer revision (code older than schema) warns and serves,
-because additive revisions tolerate rollback. Startup never creates tables, stamps or runs release
+revision behind head is refused; an unknown newer revision (code older than schema: all digits and
+above this build's head) warns and serves, because additive revisions tolerate rollback; any other
+unknown stamp is refused. Startup never creates tables, stamps or runs release
 tasks. If `TREG_SECRET_KEY` is empty on a non-SQLite database, `verify_db()` raises.
 
 ## Schema upgrade safety
@@ -79,7 +86,16 @@ tasks. If `TREG_SECRET_KEY` is empty on a non-SQLite database, `verify_db()` rai
   state. `0078` drops `onboardingprofile`; code older than it touches that table only while a
   `TREG_ONBOARDING_V2*` setting is on, so keep those off on any rollback past it. `0106` rebuilds
   `agentpayer` with a per-network key; code older than it writes that table only while
-  `TREG_AGENT_PAYMENTS_ENABLED` is on, so keep it off on any rollback past it.
+  `TREG_AGENT_PAYMENTS_ENABLED` is on, so keep it off on any rollback past it. `0114` removes
+  queued call charges whose call is already settled, because a fold now applies every row it
+  claims. With the database at `0114`, code may go back no further than the build whose charge
+  writer takes back a re-queued settled call; that build and later ones run unchanged on what
+  is left. An earlier writer can queue such a row again, and `0114`, already recorded, does not
+  run on the next upgrade. If an earlier writer has run, then before a build with the new fold
+  starts: stop writes, let transactions in flight end, and run the revision's statement by hand
+  (`DELETE FROM callcharge WHERE EXISTS (SELECT 1 FROM ledgerentry WHERE ledgerentry.call_id =
+  callcharge.call_id AND ledgerentry.org_id = callcharge.org_id AND ledgerentry.kind =
+  'settle')`).
 - **Revision-only schema.** An autogenerate drift guard requires Alembic head and
   `SQLModel.metadata` to match exactly. `reset_db()` uses `create_all` only to build a missing test
   schema and stamps it at head.
@@ -177,7 +193,14 @@ per-pool peak, capacity and headroom: resize from measurements, one pool at a ti
 does not repair a slow scan, lock queue or missing index.
 
 A request that gets no slot within `pool_timeout` receives `503 {"treg_saturated": true}` with
-`Retry-After: 2` (`bootstrap_handlers._pool_saturated`). SQLite aliases all three makers to one
+`Retry-After: 2` (`bootstrap_handlers._pool_saturated`). The database refusing a new connection
+(asyncpg `TooManyConnectionsError`, including "remaining connection slots are reserved", and
+`CannotConnectNowError`, raw or inside a SQLAlchemy `OperationalError` or `InterfaceError`, the
+`DB_BUSY_WRAPPERS`) is the same condition and gets the same response; `infra/db.py` `DB_BUSY_ERRORS`,
+`is_db_busy` and `answers_db_busy` name it. Any other error type, even one whose cause is a refused
+connection, stays a server error the call router stamps itself. A settle that meets it retries
+once on a fresh session, like a pool timeout, because the error arises before any statement runs.
+SQLite aliases all three makers to one
 engine: it has file-level write locks it cannot share, so separate engines would only manufacture
 lock failures.
 
@@ -236,6 +259,20 @@ and keep writes, cursor advancement and concurrency control on the primary. `con
 covers only primary pools: budget the read pool against its own target, and add both when they share
 a server. Schema upgrades, startup verification and test resets target the primary.
 
+### Connection budget
+
+Per process, the primary connections are the sum over `api`, `admin` and `background` of
+`pool_size + max_overflow` (`connection_budget()["per_process"]`). The ceiling to stay under is
+`per_process * processes alive at once`, where processes alive is `WEB_CONCURRENCY * instances`, doubled
+for the rolling-deploy overlap (`deploy_peak`), plus every worker, cron and admin process, all measured
+against the database `max_connections` minus its reserved slots. Pools open lazily and a healthy
+database holds far fewer than the capacity, but a slow database keeps connections checked out and the
+peak approaches it. Do not shrink the `api` overflow to fit: a smaller api pool turns a short database
+slowdown into saturation 503s. Before adding web workers or instances, put a connection pooler in
+transaction mode between the services and the database (the code uses only `SET LOCAL` and
+transaction-level advisory locks; asyncpg then needs its statement caches off). `python -m treg
+upgrade` and Alembic use session-level settings and must keep a direct database URL, never the pooler's.
+
 ## Configuration (`config.py`)
 
 `Settings` uses the `TREG_` prefix, reads `.env`, and is cached by `get_settings()`. Settings whose
@@ -265,6 +302,10 @@ meaning is not obvious from the field:
   `TREG_FIND_ENGINE` ([find](../architecture/find.md)) are their own kill switches.
 - `TREG_REQUIRED_EXTENSIONS` names installed [policy extensions](../architecture/policy-extensions.md)
   so a build that lost one fails to start instead of serving without it.
+- `TREG_PARAM_CHECK` is `log` (the default; any value but `refuse` reads as it) or `refuse`. Log
+  mode relays a catalog request that breaks a declared type, enum or range as before and logs a
+  `catalog_parameter_would_refuse` line; read those lines before turning on `refuse`, which answers
+  them 400 ([proxy model](../architecture/proxy-model.md#catalog-request-checks)).
 
 Credentials stay in the deployment secret store.
 
@@ -289,6 +330,19 @@ security test or a probe that must not be throttled, list its addresses in
 **Call events** ([call-events](../architecture/call-events.md)) need `TREG_CALL_EVENTS_URL` and
 `TREG_CALL_EVENTS_HMAC_SECRET` on every process that serves calls or settles async tasks. Keep the
 secret stable: changing it breaks every join across the change.
+
+**Pairwise comparisons** ([feedback](../architecture/feedback.md), "Pairwise comparisons") run as
+`treg-worker compare collect`, meant for an hourly cron job with the archive and platform-key
+settings of the web service; every run also removes rows a team deletion missed, so that latency is
+one run. Sampling is off unless `TREG_COMPARE_PAIRS` is set and `TREG_COMPARE_MAX_PER_DAY` is above
+0; the call path then marks sampled calls (`TREG_COMPARE_RATE`) in `TREG_KV_URL`'s store, which the
+job and the web service must share. `TREG_COMPARE_LOOKBACK_HOURS` is at most 2, the marker's life,
+so the job must run at least that often. Each run makes at most `TREG_COMPARE_MAX_PER_RUN` calls on
+treg's key, sequentially; a day's spend is at most `TREG_COMPARE_MAX_PER_DAY` times the paired
+vendors' price per call only where that price is the request's maximum cost. The calls bypass the
+shared provider limiter: check each pilot vendor's price and capacity before enabling a pair.
+Rollback is `TREG_COMPARE_MAX_PER_DAY=0` with the cron kept: it then calls nobody and only
+removes orphaned rows, which removing the cron would stop.
 
 **Provider client codes.** A provider file's `client_header` is filled only once
 `TREG_CLIENT_ID_SECRET` is set on the processes that relay calls. Turn it on after the provider is
@@ -335,6 +389,46 @@ semantics are in [money](../architecture/money.md#optional-admission-before-the-
 `TREG_HOLDLESS_FREE_ORG_IDS` (default `[]`) lists orgs whose untagged free platform calls skip
 the $0 hold, and with it money admission ([money](../architecture/money.md), "holdless"). Removing
 an id restores the hold path for that org's new calls; no migration is needed.
+
+`TREG_MONEY_ALLOWANCE_ORG_IDS` (default `[]`) lists orgs whose eligible metered calls spend from
+a standing allowance instead of one hold per call ([money](../architecture/money.md), "Allowance");
+it needs `TREG_KV_URL` and PostgreSQL, and is ignored on SQLite. `TREG_MONEY_ALLOWANCE_CHUNK_MICRO` is what a refill brings the counter up
+to, `TREG_MONEY_ALLOWANCE_FRESH_S` how long a refill keeps admitting calls, and
+`TREG_MONEY_ALLOWANCE_LINGER_MS` how long finished calls wait to share one insert. Removing an id
+returns that org's new calls to the hold path at once; no migration is needed. The allowance's
+background loop (`application/allowance_sweep.py`) applies queued charges to the ledger and
+closes idle allowances. It runs in the `all` and `control` roles and is one more consumer of
+the `background` pool, which is one connection larger per process for it; request processes do
+not fold, so a deployment that turns the allowance on must run at least one process in one of
+those roles. A queued charge is applied as it stands: a fold does not ask the ledger whether
+its call was settled before. What makes that true is the charge writer, which takes back a
+charge it re-queued for a settled call, so an upgrade to this behaviour from a build whose
+writer did not do that is done in this order: stop every process of the earlier build and let
+its transactions in flight end; run `python -m treg upgrade` (revision `0114` removes any such
+row left queued); start the new build. The order matters: an earlier process still serving
+calls after `0114` has run can queue another such row, the revision does not run a second
+time, and the new build's fold would charge that call twice. Where every process already runs
+a build with the writer's cleanup, no such row can be queued any more and the upgrade needs no
+stop. The
+allowance trusts the store to keep the writes it acknowledged. A store that can go back to an
+earlier state (a restore from an older snapshot, a replica promoted before it caught up) can
+admit the same money twice, with no bound on amount or time while the allowance stays on, and
+what a team's credit cannot cover is the platform's cost. After such an event, empty the
+list, and list a team again only when all of these can be seen:
+
+- every process that serves calls has restarted on the empty list (the list is read per
+  process, so one still running the old value keeps admitting from the counter);
+- calls admitted before that have ended and their charges are written. A process that still
+  runs logs when it could not confirm call charges and when they are written; the team having
+  no `callcharge` rows shows only that the queue in the database is empty. A process that
+  exited with unconfirmed charges took them with it, and no later log or row shows that:
+  compare the team's calls with its `settle` entries for the interval;
+- the team has no `hold` row with `allowance` set (the idle sweep closes it once no refill has
+  stamped it for the hold lifetime plus its margin);
+- the team's counter in the store has been retired or has expired. With the list empty no
+  call reaches a refill, so nothing else removes it; the sweep retires it after closing the
+  hold, and that write is not retried. A counter still there when the team is listed again is
+  replaced by the first refill, which does not count what it shows.
 
 Raising `TREG_MONEY_ADMISSION_WAIT_S` lengthens no other timeout: Redis command budgets, the
 upstream `call_timeout_s`, hold age (`call_timeout_s + hold_grace_s`), CLI, local-proxy and MCP
@@ -462,7 +556,12 @@ job's credentials. `treg-worker --help` lists them; what follows is what a sched
   [capacity](capacity.md); verify must be followed by sync. The sweep reads
   `TREG_PLATFORM_OPENROUTER_MANAGEMENT_KEY` and `TREG_PLATFORM_FISHAUDIO_WORKSPACE_ID` when those
   balances should be observed.
-- **`asynctasks settle`** completes durable holds for asynchronous upstream operations.
+- **`asynctasks settle`** completes durable holds for asynchronous upstream operations. Where
+  teams spend from an allowance it needs `TREG_KV_URL` too: a task that settles past its hold
+  freezes its team's counter, and without the store the job cannot. Every worker command
+  waits a bounded time before it exits for the freezes it owes (a hub check settles child calls
+  too), waking any that were pausing before another attempt, and says on stderr how many it
+  lost.
 - **`billing reconcile`** checks the top-ups Stripe collected against the ledger
   ([money](../architecture/money.md), "Reconciliation against Stripe"); run it at least daily with an
   overlapping `--hours`. It exits 1 on a gap and posts to `TREG_OPS_SLACK_WEBHOOK_URL` when set.

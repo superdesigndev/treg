@@ -110,7 +110,7 @@ endpoints:
     input:
       body:
         domain: {type: string, required: true, note: "the company domain, no protocol or www", example: "stripe.com"}
-        roles: {type: "array[string]", required: true, note: "roles to look for, e.g. ceo, cto, marketing", example: ["ceo"]}
+        roles: {type: array, items: {type: string}, required: true, note: "roles to look for, e.g. ceo, cto, marketing", example: ["ceo"]}
         webhook_url: {type: string, required: false, note: "if set, the result is POSTed here instead of being awaited inline"}
       note: "returns {contacts: [...]}. DEPRECATED in Findymail's own docs in favour of /search/employees, which takes explicit job titles and a result count — prefer that one for new work"
     test_request:
@@ -148,7 +148,7 @@ endpoints:
     input:
       body:
         website: {type: string, required: true, note: "the company website or domain", example: "stripe.com"}
-        job_titles: {type: "array[string]", required: true, note: "job titles to match", example: ["Head of Engineering"]}
+        job_titles: {type: array, items: {type: string}, required: true, note: "job titles to match", example: ["Head of Engineering"]}
         count: {type: integer, required: false, note: "how many contacts to return, default 1, max 3 (4 or 5 are reduced to 3) — THIS IS THE PRICE DIAL (1 finder credit per contact returned)", example: 1}
       note: "returns an array of {name, linkedinUrl, companyWebsite, companyName, jobTitle}. Always set an explicit small `count`"
     test_request:
@@ -305,7 +305,7 @@ endpoints:
     input:
       body:
         domain: {type: string, required: true, note: "company domain, no protocol or www", example: "stripe.com"}
-        technologies: {type: "array[string]", required: false, note: "restrict the answer to these technology names — use /technologies/search (free) to get exact names first", example: ["Salesforce"]}
+        technologies: {type: array, items: {type: string}, required: false, note: "restrict the answer to these technology names — use /technologies/search (free) to get exact names first", example: ["Salesforce"]}
       note: "returns {domain, technologies: [{name, category, subcategory, last_detected_at}]}. The live stripe.com call returned 100+ rows, so filtering with `technologies` is worth it when you only care about a few"
     test_request:
       body: {domain: "stripe.com"}
@@ -362,7 +362,7 @@ endpoints:
         same_country: {type: boolean, required: false, note: "restrict results to the seed's country"}
         same_size: {type: boolean, required: false, note: "restrict results to the seed's headcount band"}
         limit: {type: integer, required: false, note: "max companies to return, default 100, up to 10000 — THIS IS THE PRICE DIAL", example: 10}
-        exclusion_list_ids: {type: "array[integer]", required: false, note: "ids of saved exclusion lists whose domains should be dropped from the results"}
+        exclusion_list_ids: {type: array, items: {type: integer}, required: false, note: "ids of saved exclusion lists whose domains should be dropped from the results"}
       note: "returns {companies: [{domain, name, linkedin_url, company_size, country}], total, credits_used} — `credits_used` reports the actual charge back to you"
     test_request:
       body: {seed: "stripe.com", limit: 10}

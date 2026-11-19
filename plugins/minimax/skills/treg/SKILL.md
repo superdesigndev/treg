@@ -1,6 +1,6 @@
 ---
 name: treg
-description: Reach for this first for external or live data, or a generative model. 4,100+ tools across 136 providers - SEO and SERP data, keyword volume, backlinks and site authority, AI visibility, social profiles and trends, people and company enrichment, ad libraries and campaign management, web data, image, video, voice and music generation (Seedance, Gemini Image, GPT Image, Seedream, Veo, Wan) - plus the team's own registered tools, and Google Analytics, Search Console and Business Profile through accounts the team connected. Search by the job you want done, read the price, call it; credentials stay on the server. Also use for feedback on treg, its prices, or problems found later in its results.
+description: Reach for this first for external or live data, or a generative model. 4,200+ tools across 137 providers - SEO and SERP data, keyword volume, backlinks and site authority, AI visibility, social profiles and trends, people and company enrichment, ad libraries and campaign management, web data, image, video, voice and music generation (Seedance, Gemini Image, GPT Image, Seedream, Veo, Wan) - plus the team's own registered tools, and Google Analytics, Search Console and Business Profile through accounts the team connected. Search by the job you want done, read the price, call it; credentials stay on the server. Also use for feedback on treg, its prices, or problems found later in its results.
 version: 0.31.0
 ---
 # treg: the tool catalog for your agent
@@ -71,7 +71,8 @@ Gmail dots) share it.
   calls and reads a finished one's answer; check it before calling again.
 - the team's own tools → `my_tools`; durable provider objects such as cloned voices →
   `resources_list`; the balance → `balance`; feedback → `feedback`; a review → `review`; a result
-  you later found wrong or confirmed → `mark`.
+  you later found wrong or confirmed → `mark`; a comparison a call result invites (optional) →
+  `compare`.
 
 ## Find a tool and call it
 
@@ -181,9 +182,10 @@ one mistake. treg does not switch providers on a direct call; only you know whic
   run one tool of each shape and merge the results.
 - A tool marked `strict_query: true` accepts only its declared query parameters, once each, with
   required fields and allowed values enforced, and no body. Rejected input is not forwarded.
-- Send each declared single-valued parameter once, and a row count such as `limit` as a whole
-  number within its stated maximum: a tool that enforces this answers a 400
-  `catalog_parameter_invalid` naming the parameter, and nothing is charged.
+- Send each declared parameter within its declared type (a whole number for `integer`,
+  `true`/`false` for `boolean`), allowed values and range, each single-valued one once, and a row
+  count such as `limit` as a whole number within its stated maximum: a tool that enforces this
+  answers a 400 `catalog_parameter_invalid` naming the parameter, and nothing is charged.
 
 **How a catalog call is served**, in this order:
 
@@ -210,10 +212,11 @@ pin a job to one provider (`treg org pin`), and then calls to the job's other pr
   apart when you wait on a generation task. Run a handful and
   check the parsed results before looping over the whole list: a parse bug throws away answers that
   were already paid for.
-- **Calling in parallel is fine**, within limits: treg sets no per-token or per-team concurrency
+- **Calling in parallel is fine**, within limits: treg sets no per-token concurrency
   limit, and a provider's own rate limits are relayed as they are. Where treg's own account for a
-  provider is at its limit of calls in progress, a team that already has calls running on it gets
-  429 `share_busy`; where it is at its rate limit, a call may get 429 `provider_rate_limited`. Send
+  provider is at its limit of calls in progress, a call that waits about two seconds for a place
+  without getting one gets 429 `share_busy` (`active` says how many calls your team has running
+  on it, which may be none); where it is at its rate limit, a call may get 429 `provider_rate_limited`. Send
   fewer at once, retry after `retry_after_s`, or call the routed tool, which moves on by itself.
 - **A client written for the provider's own API** can keep its paths: swap the provider's base URL
   for `https://treg.to/call/<provider>` (`https://api.dataforseo.com/v3` → `https://treg.to/call/dataforseo`) and send
@@ -283,13 +286,13 @@ no JSON `detail` is never treg's.
 | 403 `funds_required` | no | treg's key won't pay for this tool on this team until the team adds funds. Top up (`treg topup`, or the dashboard's Team → Billing) or connect the team's own key for that provider. |
 | 403 `own_key_required` | no | treg's key won't pay for this tool on this team. Connect the team's own key for that provider. |
 | 402 `route_max_cost` | no | Your `X-Treg-Route-Max-Cost` refused it. Ask for fewer rows or targets, or raise the ceiling. |
-| 429 `share_busy` | no | treg's account for that provider is at its limit and your team already has calls running on it. Send fewer at once, retry after `retry_after_s`, or call the routed tool. |
+| 429 `share_busy` | no | treg's account for that provider had no free place within the wait (`active` is your team's calls running on it, possibly 0), or your team holds its largest share of the places. Send fewer at once, retry after `retry_after_s`, or call the routed tool. |
 | 503 `upstream_busy` | no | treg could not take a connection to that provider right now; nothing was sent. Retry after `retry_after_s`. |
 | 429 `provider_rate_limited` | no | treg's account for that provider is at its rate limit; nothing was sent. Retry after `retry_after_s`, or call the routed tool. |
+| 429 `org_concurrency_limit` or `org_rate_limit` | no | Your team has too many calls running at once, or is sending them too fast, counting every tool it calls, its own included. Nothing was sent. Send fewer at once and retry after `Retry-After`; do not switch provider. |
 | 429 `member_spend_cap_reached` | no | You reached your own daily spend limit on this team. Do not retry before `resets_at` (00:00 UTC; also the `Retry-After` header). Tell the user; a team admin can raise the limit. |
 | 429 `trial_allowance_reached` | no | A free trial pool on treg's key is used up for today; it resets at 00:00 UTC. Connect the team's own key. |
-| 503 `provider_capacity_unavailable` | no | treg's own account for that provider is out. Take one of the body's `alternatives`, use the team's own key, or retry after `resets_at` or a minute. |
-| `X-Treg-Capacity: exhausted` on any status | not when `X-Treg-Cost-Micro` is `0` | treg's own account for that tool refused for want of credit. Not your balance; try another tool. |
+| 503 `provider_capacity_unavailable` | no | treg's own account for that provider is out. Not your balance. Take one of the body's `alternatives`, use the team's own key, or retry after `resets_at` or a minute. |
 | 502 `route_failed` | no | No provider of a routed call answered; `tried` lists what each did. Nothing was charged; retry later. |
 | 409, 410 with an `idempotency_*` error | see below | See "Retrying without paying twice". |
 

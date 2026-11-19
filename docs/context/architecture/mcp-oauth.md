@@ -109,10 +109,13 @@ shadowed by a same-named team tool. A change is incomplete if only one MCP test 
 - `call_media`, `resources_list` and `call_result` exist only on `/mcp/`. `call_result` (scope
   `treg:read`) is the recovery road for a call whose answer never reached the agent: the team's
   latest calls from `GET /calls`, or one call's stored answer from `GET /calls/{id}/result`.
-- `feedback` and `review` exist only on `/mcp/`, so V2 never renders the invitation `/call/` decided
-  on (`_SurfacePolicy.invites`); `/call/` still decides and records it ([feedback](feedback.md)).
+- `feedback`, `review`, `mark` and `compare` exist only on `/mcp/`, so V2 never renders the invitation
+  `/call/` decided on (`_SurfacePolicy.invites`); `/call/` still decides and records it
+  ([feedback](feedback.md)). Only the team surface lists `compare` in `X-Treg-Hints`, so `/call/`
+  never decides a comparison invitation for V2. `compare` needs `treg:read`: it shows the team's
+  past inputs and answers, as `call_result` does.
 - **OpenAI clients** (`openai-mcp/` for ChatGPT and its plugin reviewer, `codex-mcp-client/` for Codex,
-  by User-Agent) are not offered `review`: `_OpenAIClientGate` drops it from `tools/list` and the
+  by User-Agent) are not offered `review`, `mark` or `compare`: `_OpenAIClientGate` drops them from `tools/list` and the
   instructions, and their call results carry no invitation, because that review reads
   agent-initiated rating as analytics collection.
 

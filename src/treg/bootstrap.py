@@ -17,7 +17,6 @@ import httpx
 from fastapi import FastAPI
 from fastapi.routing import APIRoute, request_response
 from fastapi.staticfiles import StaticFiles
-from sqlalchemy.exc import TimeoutError as PoolTimeoutError
 from starlette.exceptions import HTTPException as StarletteHTTPException
 from starlette.responses import RedirectResponse
 from starlette.routing import BaseRoute, Mount
@@ -37,7 +36,7 @@ from .config import TREG_USER_AGENT, get_settings
 from .infra import kv, money_timing, org_traffic, turnstile
 from .infra.loop_stall import start_loop_stall_watch, stop_loop_stall_watch
 from .infra.money_trace_runner import start_money_trace, stop_money_trace
-from .infra.db import ReportBusy, background_session_maker, verify_db
+from .infra.db import DB_BUSY_ERRORS, DB_BUSY_WRAPPERS, ReportBusy, background_session_maker, verify_db
 from .infra.catalog_observations import (
     CachedEndpointObservationReader,
     PostgresEndpointObservationReader,
@@ -118,6 +117,8 @@ _CONTROL_ROUTE_KEYS: frozenset[RouteKey] = frozenset({
     ('/admin/reviews', ('GET',), 'admin_reviews'),
     ('/marks', ('POST',), 'submit_mark'),
     ('/admin/marks', ('GET',), 'admin_marks'),
+    ('/comparisons/next', ('GET',), 'next_comparison'),
+    ('/comparisons', ('POST',), 'submit_comparison'),
     ('/feedback/{feedback_id}', ('GET',), 'get_feedback'),
     ('/media', ('POST',), 'host_media'),
     ('/m/{token}', ('GET',), 'serve_media'),
@@ -187,6 +188,7 @@ _CONTROL_ROUTE_KEYS: frozenset[RouteKey] = frozenset({
     ('/skills/lead-signals/SKILL.md', ('GET',), 'lead_signals_skill_md'),
     ('/skills/web-access/SKILL.md', ('GET',), 'web_access_skill_md'),
     ('/skills/recruit/SKILL.md', ('GET',), 'recruit_skill_md'),
+    ('/skills/doomscroll/SKILL.md', ('GET',), 'doomscroll_skill_md'),
     ('/skills/jev-memory/SKILL.md', ('GET',), 'jev_memory_skill_md'),
     ('/skills/rea-growth/SKILL.md', ('GET',), 'rea_growth_skill_md'),
     ('/skills/ai-ugc-video/SKILL.md', ('GET',), 'ai_ugc_video_skill_md'),
@@ -256,6 +258,7 @@ _CONTROL_ROUTE_KEYS: frozenset[RouteKey] = frozenset({
     ('/jobs-api', ('GET',), 'jobs_api_page'),
     ('/recruit', ('GET',), 'recruit_page'),
     ('/web-access', ('GET',), 'web_access_page'),
+    ('/doomscroll', ('GET',), 'doomscroll_page'),
     ('/gtm-engineering', ('GET',), 'gtm_engineering_page'),
     ('/gtm-engineering.md', ('GET',), 'gtm_engineering_md'),
     ('/jev', ('GET',), 'jev_page'),
@@ -276,6 +279,7 @@ _CONTROL_ROUTE_KEYS: frozenset[RouteKey] = frozenset({
     ('/.well-known/skills/lead-signals/SKILL.md', ('GET',), 'well_known_lead_signals_md'),
     ('/.well-known/skills/web-access/SKILL.md', ('GET',), 'well_known_web_access_md'),
     ('/.well-known/skills/recruit/SKILL.md', ('GET',), 'well_known_recruit_md'),
+    ('/.well-known/skills/doomscroll/SKILL.md', ('GET',), 'well_known_doomscroll_md'),
     ('/connect-demo', ('GET',), 'connect_demo_page'),
     ('/connect-demo/callback', ('GET',), 'connect_demo_callback'),
     ('/help', ('GET',), 'support_page'),
@@ -467,9 +471,9 @@ _DATAPLANE_ROUTE_KEYS: frozenset[RouteKey] = frozenset({
 ROLE_BACKGROUND_TASKS: dict[AppRole, tuple[str, ...]] = {
     # Arena statistics are built by `treg-worker arena insights` (a cron) walking `callrecord`, so
     # web processes never compete for its cursor row. Only `/arena/insights` (a snapshot read) is here.
-    "all": ("treg.adsconv.worker",),
+    "all": ("treg.adsconv.worker", "treg.application.allowance_sweep.worker"),
     "dataplane": (),
-    "control": ("treg.adsconv.worker",),
+    "control": ("treg.adsconv.worker", "treg.application.allowance_sweep.worker"),
 }
 ROLE_STARTUP_CHECKS: dict[AppRole, tuple[str, ...]] = {
     "all": (
@@ -837,6 +841,13 @@ def _lifespan(role: AppRole):
                 else None
             )
             gauge_task = asyncio.create_task(pool_gauge()) if analytics.enabled() else None
+            # Idle allowance holds go back to the balance (money.md "Allowance"). Runs wherever
+            # background work runs, listed teams or not: a hold outlives its team's listing.
+            from .application import allowance_sweep
+            allowance_task = (
+                asyncio.create_task(allowance_sweep.worker())
+                if ROLE_BACKGROUND_TASKS[role] else None
+            )
             # Local transaction diagnostics run even when the analytics transport is disabled.
             trace_runner = start_money_trace(role=role)
             stall_watch = start_loop_stall_watch()
@@ -896,6 +907,7 @@ def _lifespan(role: AppRole):
                 try:
                     workers = [task for task in (
                         gauge_task, ads_task, archive_task, prune_task, find_task, rate_task,
+                        allowance_task,
                     ) if task is not None]
                     for task in workers:
                         task.cancel()
@@ -976,7 +988,10 @@ def create_app(role: AppRole = "all", *, archive_object_store=None) -> FastAPI:
         app.add_middleware(_DevTitleMiddleware)
     app.add_exception_handler(OverflowError, api_module._id_out_of_range)
     bootstrap_handlers._stamp_call_exit = call_routes._stamp_call_exit
-    app.add_exception_handler(PoolTimeoutError, bootstrap_handlers._pool_saturated)
+    for busy in DB_BUSY_ERRORS:
+        app.add_exception_handler(busy, bootstrap_handlers._pool_saturated)
+    for wrapper in DB_BUSY_WRAPPERS:
+        app.add_exception_handler(wrapper, bootstrap_handlers._db_error)
     app.add_exception_handler(ReportBusy, bootstrap_handlers._report_busy)
     app.add_exception_handler(StarletteHTTPException, bootstrap_handlers._mark_treg_own_errors)
 

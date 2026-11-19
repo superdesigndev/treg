@@ -252,8 +252,8 @@ per-team slot; [hub](../architecture/hub.md)). `* /catalog/call/{rest}` (hidden 
 OpenAPI) requires an exact catalog id and skips own-tool resolution, so a same-named team tool
 cannot shadow the catalog endpoint; from the credential ladder on it is the same call.
 
-A pool with no slot within 5 s answers `503 {"treg_saturated": true}` with `Retry-After: 2`
-(`_pool_saturated`), still captured as a `db_pool` fault and a `tool_called` event, and releases an
+A pool with no slot within 5 s, or a database that refuses a new connection (`DB_BUSY_ERRORS`),
+answers `503 {"treg_saturated": true}` with `Retry-After: 2` (`_pool_saturated`), still captured as a `db_pool` fault and a `tool_called` event, and releases an
 acquired idempotency label so a retry is not a false 409. A `platform_auth: anonymous` endpoint
 relays through a virtual tool with no bindings when no team credential exists (a public provider has
 none: a same-named team secret is ignored): no platform key, no
@@ -271,7 +271,6 @@ the provider.
 | `X-Treg-Served-Via` | `overflow:<aggregator>` when served through an overflow relay ([proxy-model](../architecture/proxy-model.md), Overflow); MCP results carry `served_via`. |
 | `X-Treg-Upstream-Failed` | `<json_path>=<value>` on a metered 2xx failing the endpoint's `expect` rule. Body untouched, settlement unchanged, never archived or counted found. |
 | `X-Treg-Review-Pending`, `X-Treg-Review-Pending-Text` | On a relayed 4xx whose body carries the provider's declared "app lacks this permission" code (`review_refusal`) while the connection holds scopes still in app review (`review_scopes` under `TREG_OAUTH_REVIEW_PENDING`): the scopes (only the endpoint's own `required_scopes` when declared), and one sentence saying the pending review may be the reason. Body untouched; MCP puts the sentence in `hint`, both CLIs on stderr. |
-| `X-Treg-Capacity: exhausted` | A platform-tier answer the capacity table reads as treg's own account out, set from the same signal that strikes the breaker. Absent on own keys, treg's refusals, overflow, replays. |
 | `X-Treg-Smoothed` | `wait=`, `retry=1` or `share_wait=` when treg spaced or re-sent a platform call ([capacity](../ops/capacity.md)). Informational. |
 | `X-Treg-Cache`, `X-Treg-Fetched-At`, `X-Treg-Age` | An archive hit ([archive](../architecture/archive.md)). |
 
@@ -279,10 +278,10 @@ the provider.
 
 | Status, `detail.error` | Contract |
 |---|---|
-| 503 `provider_capacity_unavailable` | treg's own account cannot serve now; refused before any hold, names `alternatives` and `resets_at`, never calls one for the caller. A team's own key is unaffected. `platform_overflow: false` in team settings opts into this instead of an overflow relay. |
+| 503 `provider_capacity_unavailable` | treg's own account cannot serve now; refused before any hold, names `alternatives` and `resets_at`, never calls one for the caller. Also replaces, uncharged, a platform answer the capacity table reads as treg's account out (any status, a 2xx included) that overflow did not serve. Both carry `Retry-After`: the seconds until `resets_at` when known, else 60. A team's own key is unaffected. `platform_overflow: false` in team settings opts into this instead of an overflow relay. |
 | 503 `provider_paused` | `TREG_PAUSED_PROVIDERS` lists the provider; refused before any hold, token refresh or upstream request, on catalog ids, connection tools and URL passthrough alike. Discovery leaves its endpoints out, connect routes refuse, existing connections are never changed (listed with `paused: true`), and `GET /meta` carries `paused_providers`. |
-| 429 `org_*` | Published org flow-control refusals ([org-flow-control](../architecture/org-flow-control.md)). |
-| 429 `share_busy` | Waited too long for a fair-share place; not charged. |
+| 429 `org_traffic_paused`, `org_concurrency_limit`, `org_rate_limit` | Org flow-control refusals, from a published snapshot or the default limits (`config_version` 0) ([org-flow-control](../architecture/org-flow-control.md)); nothing sent, not charged, `Retry-After` and `retry_after_s` set. |
+| 429 `share_busy` | Waited too long for a fair-share place, or the team holds its ceiling of the account's places (its own message); not charged. |
 | 503 `upstream_busy` | No upstream connection was free within the pool wait, or the provider is at its in-flight cap on `TREG_UPSTREAM_INFLIGHT_MODE=enforce` ([capacity](../ops/capacity.md)); nothing sent, not charged, `Retry-After` set. |
 | 429 `provider_rate_limited` | On a bucket listed in `TREG_PROVIDER_RATE_ENFORCE`, the shared rate window is full ([capacity](../ops/capacity.md)); refused before it is sent, not charged, `detail` carries `provider`, `endpoint_id`, `retry_after_s`, with `Retry-After` the same. An enabled overflow route may serve it instead. A routed job skips the candidate without spending its error budget and answers this itself only when every candidate was skipped. |
 | 429 `money_admission_timeout` | Money admission exhausted its reserve wait; no hold, no upstream request, `Retry-After` jittered between `money_admission_retry_after_s` and twice that. Not stored under `Idempotency-Key`, so the same key can retry. |

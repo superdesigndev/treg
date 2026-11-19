@@ -34,11 +34,11 @@ endpoints:
       pathParams:
         property_id: {type: string, required: true, note: "numeric GA4 property id (the digits only — the admin API returns it as 'properties/123456789')", example: "123456789"}
       body:
-        dateRanges: {type: array, required: true, note: "up to 4 ranges. Use 'yesterday' or 'NdaysAgo', not 'today' — today is a partial day and always reads low", example: [{"startDate": "28daysAgo", "endDate": "yesterday"}]}
-        dimensions: {type: array, required: false, note: "[{name: …}] — e.g. pagePath, sessionSource, sessionDefaultChannelGroup, country, deviceCategory, date", example: [{"name": "pagePath"}]}
-        metrics: {type: array, required: false, note: "[{name: …}] — e.g. screenPageViews, sessions, activeUsers, conversions, engagementRate", example: [{"name": "screenPageViews"}]}
+        dateRanges: {type: array, items: {type: object}, required: true, note: "up to 4 ranges. Use 'yesterday' or 'NdaysAgo', not 'today' — today is a partial day and always reads low", example: [{"startDate": "28daysAgo", "endDate": "yesterday"}]}
+        dimensions: {type: array, items: {type: object}, required: false, note: "[{name: …}] — e.g. pagePath, sessionSource, sessionDefaultChannelGroup, country, deviceCategory, date", example: [{"name": "pagePath"}]}
+        metrics: {type: array, items: {type: object}, required: false, note: "[{name: …}] — e.g. screenPageViews, sessions, activeUsers, conversions, engagementRate", example: [{"name": "screenPageViews"}]}
         dimensionFilter: {type: object, required: false, note: "e.g. {\"filter\":{\"fieldName\":\"pagePath\",\"stringFilter\":{\"matchType\":\"CONTAINS\",\"value\":\"/blog/\"}}}"}
-        orderBys: {type: array, required: false, note: "e.g. [{\"metric\":{\"metricName\":\"sessions\"},\"desc\":true}]"}
+        orderBys: {type: array, items: {type: object}, required: false, note: "e.g. [{\"metric\":{\"metricName\":\"sessions\"},\"desc\":true}]"}
         limit: {type: integer, required: false, note: "default 10000, max 250000", example: 100}
         offset: {type: integer, required: false, example: 0}
         keepEmptyRows: {type: boolean, required: false}
@@ -69,9 +69,9 @@ endpoints:
       pathParams:
         property_id: {type: string, required: true, example: "123456789"}
       body:
-        dimensions: {type: array, required: false, note: "realtime has its OWN smaller dimension set — unifiedScreenName, country, deviceCategory, audienceName; pagePath is not among them", example: [{"name": "unifiedScreenName"}]}
-        metrics: {type: array, required: true, note: "activeUsers, screenPageViews, conversions", example: [{"name": "activeUsers"}]}
-        minuteRanges: {type: array, required: false, note: "windows within the last 30 minutes, e.g. [{\"startMinutesAgo\":29,\"endMinutesAgo\":0}]"}
+        dimensions: {type: array, items: {type: object}, required: false, note: "realtime has its OWN smaller dimension set — unifiedScreenName, country, deviceCategory, audienceName; pagePath is not among them", example: [{"name": "unifiedScreenName"}]}
+        metrics: {type: array, items: {type: object}, required: true, note: "activeUsers, screenPageViews, conversions", example: [{"name": "activeUsers"}]}
+        minuteRanges: {type: array, items: {type: object}, required: false, note: "windows within the last 30 minutes, e.g. [{\"startMinutesAgo\":29,\"endMinutesAgo\":0}]"}
         limit: {type: integer, required: false, example: 20}
       bodyType: json
       note: "covers the last 30 minutes only, and takes NO dateRanges — passing one is an error. Reusing a standard-report dimension name here is the usual failure"

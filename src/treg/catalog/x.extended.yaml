@@ -242,6 +242,7 @@ endpoints:
     queryParams:
       ids:
         type: array
+        items: {type: string}
         required: true
 - id: x.x.get-activity-subscriptions
   added: '2026-07-28'
@@ -1323,6 +1324,7 @@ endpoints:
         required: false
       endpoints:
         type: array
+        items: {type: string}
         required: false
       max_results:
         type: integer
@@ -1480,6 +1482,7 @@ endpoints:
         note: A base32hex-encoded pagination token.
       event_types:
         type: array
+        items: {type: string}
         required: false
   capability: x.dm.events.list
 - id: x.x.create-direct-messages-by-participant-id
@@ -1587,6 +1590,7 @@ endpoints:
         note: A base32hex-encoded pagination token.
       event_types:
         type: array
+        items: {type: string}
         required: false
   capability: x.dm.events.list
 - id: x.x.get-direct-messages-events
@@ -1622,6 +1626,7 @@ endpoints:
         note: A base32hex-encoded pagination token.
       event_types:
         type: array
+        items: {type: string}
         required: false
   capability: x.dm.events.list
 - id: x.x.delete-direct-messages-events
@@ -1758,22 +1763,27 @@ endpoints:
         note: YYYY-MM-DDTHH:mm:ssZ. The latest UTC timestamp to which the Posts will be provided.
       like_with_tweet_author.fields:
         type: array
+        items: {type: string}
         required: false
         note: A comma separated list of LikeWithTweetAuthor fields to display.
       expansions:
         type: array
+        items: {type: string}
         required: false
         note: A comma separated list of fields to expand.
       media.fields:
         type: array
+        items: {type: string}
         required: false
         note: A comma separated list of Media fields to display.
       user.fields:
         type: array
+        items: {type: string}
         required: false
         note: A comma separated list of User fields to display.
       tweet.fields:
         type: array
+        items: {type: string}
         required: false
         note: A comma separated list of Tweet fields to display.
 - id: x.x.stream-likes-sample10
@@ -1817,22 +1827,27 @@ endpoints:
         note: YYYY-MM-DDTHH:mm:ssZ. The latest UTC timestamp to which the Posts will be provided.
       like_with_tweet_author.fields:
         type: array
+        items: {type: string}
         required: false
         note: A comma separated list of LikeWithTweetAuthor fields to display.
       expansions:
         type: array
+        items: {type: string}
         required: false
         note: A comma separated list of fields to expand.
       media.fields:
         type: array
+        items: {type: string}
         required: false
         note: A comma separated list of Media fields to display.
       user.fields:
         type: array
+        items: {type: string}
         required: false
         note: A comma separated list of User fields to display.
       tweet.fields:
         type: array
+        items: {type: string}
         required: false
         note: A comma separated list of Tweet fields to display.
 - id: x.x.create-lists
@@ -2155,6 +2170,7 @@ endpoints:
     queryParams:
       media_keys:
         type: array
+        items: {type: string}
         required: true
   capability: x.media.detail
 - id: x.x.get-media-analytics
@@ -2182,6 +2198,7 @@ endpoints:
     queryParams:
       media_keys:
         type: array
+        items: {type: string}
         required: true
       start_time:
         type: string
@@ -2728,6 +2745,7 @@ endpoints:
     queryParams:
       ids:
         type: array
+        items: {type: string}
         required: true
   capability: x.space.detail
 - id: x.x.get-spaces-by-creator-ids
@@ -2756,6 +2774,7 @@ endpoints:
     queryParams:
       user_ids:
         type: array
+        items: {type: string}
         required: true
   capability: x.space.by_creator
 - id: x.x.search-spaces
@@ -2948,6 +2967,7 @@ endpoints:
     queryParams:
       ids:
         type: array
+        items: {type: string}
         required: true
   capability: x.post.detail
 - id: x.x.get-posts-analytics
@@ -2975,6 +2995,7 @@ endpoints:
     queryParams:
       ids:
         type: array
+        items: {type: string}
         required: true
       start_time:
         type: string
@@ -3162,26 +3183,32 @@ endpoints:
         note: The number of minutes of backfill requested.
       tweet.fields:
         type: array
+        items: {type: string}
         required: false
         note: A comma separated list of Tweet fields to display.
       expansions:
         type: array
+        items: {type: string}
         required: false
         note: A comma separated list of fields to expand.
       media.fields:
         type: array
+        items: {type: string}
         required: false
         note: A comma separated list of Media fields to display.
       poll.fields:
         type: array
+        items: {type: string}
         required: false
         note: A comma separated list of Poll fields to display.
       user.fields:
         type: array
+        items: {type: string}
         required: false
         note: A comma separated list of User fields to display.
       place.fields:
         type: array
+        items: {type: string}
         required: false
         note: A comma separated list of Place fields to display.
       partition:
@@ -3225,26 +3252,32 @@ endpoints:
         note: The number of minutes of backfill requested.
       tweet.fields:
         type: array
+        items: {type: string}
         required: false
         note: A comma separated list of Tweet fields to display.
       expansions:
         type: array
+        items: {type: string}
         required: false
         note: A comma separated list of fields to expand.
       media.fields:
         type: array
+        items: {type: string}
         required: false
         note: A comma separated list of Media fields to display.
       poll.fields:
         type: array
+        items: {type: string}
         required: false
         note: A comma separated list of Poll fields to display.
       user.fields:
         type: array
+        items: {type: string}
         required: false
         note: A comma separated list of User fields to display.
       place.fields:
         type: array
+        items: {type: string}
         required: false
         note: A comma separated list of Place fields to display.
       partition:
@@ -3288,26 +3321,32 @@ endpoints:
         note: The number of minutes of backfill requested.
       tweet.fields:
         type: array
+        items: {type: string}
         required: false
         note: A comma separated list of Tweet fields to display.
       expansions:
         type: array
+        items: {type: string}
         required: false
         note: A comma separated list of fields to expand.
       media.fields:
         type: array
+        items: {type: string}
         required: false
         note: A comma separated list of Media fields to display.
       poll.fields:
         type: array
+        items: {type: string}
         required: false
         note: A comma separated list of Poll fields to display.
       user.fields:
         type: array
+        items: {type: string}
         required: false
         note: A comma separated list of User fields to display.
       place.fields:
         type: array
+        items: {type: string}
         required: false
         note: A comma separated list of Place fields to display.
       partition:
@@ -3351,26 +3390,32 @@ endpoints:
         note: The number of minutes of backfill requested.
       tweet.fields:
         type: array
+        items: {type: string}
         required: false
         note: A comma separated list of Tweet fields to display.
       expansions:
         type: array
+        items: {type: string}
         required: false
         note: A comma separated list of fields to expand.
       media.fields:
         type: array
+        items: {type: string}
         required: false
         note: A comma separated list of Media fields to display.
       poll.fields:
         type: array
+        items: {type: string}
         required: false
         note: A comma separated list of Poll fields to display.
       user.fields:
         type: array
+        items: {type: string}
         required: false
         note: A comma separated list of User fields to display.
       place.fields:
         type: array
+        items: {type: string}
         required: false
         note: A comma separated list of Place fields to display.
       partition:
@@ -3414,26 +3459,32 @@ endpoints:
         note: The number of minutes of backfill requested.
       tweet.fields:
         type: array
+        items: {type: string}
         required: false
         note: A comma separated list of Tweet fields to display.
       expansions:
         type: array
+        items: {type: string}
         required: false
         note: A comma separated list of fields to expand.
       media.fields:
         type: array
+        items: {type: string}
         required: false
         note: A comma separated list of Media fields to display.
       poll.fields:
         type: array
+        items: {type: string}
         required: false
         note: A comma separated list of Poll fields to display.
       user.fields:
         type: array
+        items: {type: string}
         required: false
         note: A comma separated list of User fields to display.
       place.fields:
         type: array
+        items: {type: string}
         required: false
         note: A comma separated list of Place fields to display.
       partition:
@@ -3513,26 +3564,32 @@ endpoints:
         note: The number of minutes of backfill requested.
       tweet.fields:
         type: array
+        items: {type: string}
         required: false
         note: A comma separated list of Tweet fields to display.
       expansions:
         type: array
+        items: {type: string}
         required: false
         note: A comma separated list of fields to expand.
       media.fields:
         type: array
+        items: {type: string}
         required: false
         note: A comma separated list of Media fields to display.
       poll.fields:
         type: array
+        items: {type: string}
         required: false
         note: A comma separated list of Poll fields to display.
       user.fields:
         type: array
+        items: {type: string}
         required: false
         note: A comma separated list of User fields to display.
       place.fields:
         type: array
+        items: {type: string}
         required: false
         note: A comma separated list of Place fields to display.
 - id: x.x.stream-posts-sample10
@@ -3564,26 +3621,32 @@ endpoints:
         note: The number of minutes of backfill requested.
       tweet.fields:
         type: array
+        items: {type: string}
         required: false
         note: A comma separated list of Tweet fields to display.
       expansions:
         type: array
+        items: {type: string}
         required: false
         note: A comma separated list of fields to expand.
       media.fields:
         type: array
+        items: {type: string}
         required: false
         note: A comma separated list of Media fields to display.
       poll.fields:
         type: array
+        items: {type: string}
         required: false
         note: A comma separated list of Poll fields to display.
       user.fields:
         type: array
+        items: {type: string}
         required: false
         note: A comma separated list of User fields to display.
       place.fields:
         type: array
+        items: {type: string}
         required: false
         note: A comma separated list of Place fields to display.
       partition:
@@ -3742,26 +3805,32 @@ endpoints:
         note: YYYY-MM-DDTHH:mm:ssZ. The latest UTC timestamp to which the Posts will be provided.
       tweet.fields:
         type: array
+        items: {type: string}
         required: false
         note: A comma separated list of Tweet fields to display.
       expansions:
         type: array
+        items: {type: string}
         required: false
         note: A comma separated list of fields to expand.
       media.fields:
         type: array
+        items: {type: string}
         required: false
         note: A comma separated list of Media fields to display.
       poll.fields:
         type: array
+        items: {type: string}
         required: false
         note: A comma separated list of Poll fields to display.
       user.fields:
         type: array
+        items: {type: string}
         required: false
         note: A comma separated list of User fields to display.
       place.fields:
         type: array
+        items: {type: string}
         required: false
         note: A comma separated list of Place fields to display.
   capability: x.post.stream
@@ -3791,6 +3860,7 @@ endpoints:
     queryParams:
       ids:
         type: array
+        items: {type: string}
         required: false
       max_results:
         type: integer
@@ -4066,6 +4136,7 @@ endpoints:
         note: A base32hex-encoded pagination token.
       exclude:
         type: array
+        items: {type: string}
         required: false
   capability: x.post.quotes
 - id: x.x.get-posts-reposted-by
@@ -4224,6 +4295,7 @@ endpoints:
     queryParams:
       ids:
         type: array
+        items: {type: string}
         required: true
   capability: x.user.profile
 - id: x.x.get-users-by-usernames
@@ -4251,6 +4323,7 @@ endpoints:
     queryParams:
       usernames:
         type: array
+        items: {type: string}
         required: true
   capability: x.user.profile
 - id: x.x.stream-users-compliance
@@ -4342,6 +4415,7 @@ endpoints:
     queryParams:
       ids:
         type: array
+        items: {type: string}
         required: true
 - id: x.x.get-users-reposts-of-me
   added: '2026-07-28'
@@ -5542,6 +5616,7 @@ endpoints:
         required: false
       exclude:
         type: array
+        items: {type: string}
         required: false
   capability: x.user.timeline
 - id: x.x.unfollow-user

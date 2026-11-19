@@ -100,7 +100,7 @@ endpoints:
     summary: Purchase B-Roll Videos
     input:
       body:
-        video_ids: {type: array, minItems: 1, maxItems: 50, required: true, note: "1–50 clip UUIDs", example: ["1166a85d-b967-4fb0-8ed8-6d2f2d22f23b"]}
+        video_ids: {type: array, items: {type: string}, minItems: 1, maxItems: 50, required: true, note: "1–50 clip UUIDs", example: ["1166a85d-b967-4fb0-8ed8-6d2f2d22f23b"]}
         expected_total_cents: {type: integer, required: false, note: "the confirmed total in hundredths of a credit. A call without it (or with a stale value) charges nothing and answers 409 with requiresConfirmation and expectedTotalCents (e.g. 1100 for one video); repeat the call with that value to buy", example: 1100}
         customer_email: {type: string, required: false, note: "your end customer, for your own billing reconciliation"}
       bodyType: json

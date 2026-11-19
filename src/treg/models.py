@@ -12,7 +12,7 @@ from datetime import date, datetime, timezone
 from typing import Annotated
 
 from pydantic import NaiveDatetime
-from sqlalchemy import BigInteger, Boolean, JSON, CheckConstraint, Column, Index, Integer, String, UniqueConstraint, text
+from sqlalchemy import BigInteger, Boolean, JSON, CheckConstraint, Column, Index, Integer, String, Text, UniqueConstraint, text
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlmodel import Field, SQLModel
 
@@ -73,6 +73,9 @@ class Org(SQLModel, table=True):
     # not card data: treg never sees a PAN, so there is nothing here to leak beyond a token that only
     # works with our own secret key. Null = no card on file → auto-top-up cannot be armed.
     stripe_default_pm: str | None = Field(default=None)
+    # When the payer chose that card, as the Stripe event's `created` time (Unix seconds), so a
+    # choice delivered late never replaces a newer one. Null = chosen before treg recorded it.
+    stripe_default_pm_at: int | None = Field(default=None, sa_type=BigInteger)
     # Auto-top-up: refill the balance without a human when it dips below the threshold. Off unless the
     # org explicitly turned it on AND recorded consent — an off-session charge with no mandate is an
     # unauthorized charge under PSD2/SCA, so `autotopup_consented_at` gates the charge, not the UI.
@@ -674,6 +677,12 @@ class CallRecord(SQLModel, table=True):
     # NULL = the contract records no verdict, the answer carried none, or the provider used a
     # word its adapter does not map. Never content: one word from a closed list.
     verdict: str | None = Field(default=None)
+    # What a v2 row's own declaration judged this answer (`results.judged_outcome`): `hit`,
+    # `miss`, `error` or `not_found`. Reliability reads it before the status code, so a 2xx error
+    # is no success and the target's own 404 counts against nobody.
+    # NULL = a row in today's spelling, an async submission, a non-2xx the declaration does not
+    # decide, or a row written before the column existed; those keep the status rule.
+    outcome: str | None = Field(default=None)
 
 
 class RunRecord(SQLModel, table=True):
@@ -1121,8 +1130,8 @@ class Hold(SQLModel, table=True):
     purchased_only: bool = Field(
         default=False, sa_column=Column(Boolean, nullable=False, server_default=text("false")),
     )
-    # A team's standing allowance rather than one call's reservation, and when its holder last
-    # renewed it. Nothing sets either yet.
+    # A team's standing allowance rather than one call's reservation, and the instant until
+    # which calls may be admitted against it (set by each refill).
     allowance: bool = Field(
         default=False, sa_column=Column(Boolean, nullable=False, server_default=text("false")),
     )
@@ -1141,6 +1150,13 @@ class CallCharge(SQLModel, table=True):
     org_id: int = Field(index=True)
     endpoint_id: str = Field(default="")
     amount_micro: int = Field(sa_type=BigInteger)  # what the team owes for the call, margin applied
+    # The part of `amount_micro` the call never set aside: owed to the balance, not to the
+    # allowance hold, which still stands behind other calls.
+    overrun_micro: int = Field(
+        default=0, sa_column=Column(BigInteger, nullable=False, server_default=text("0")))
+    # `created_at` of the allowance hold the call set its money aside from. Only that hold pays
+    # for what the call set aside: one opened since stands behind other calls.
+    hold_created_at: NaiveUTC | None = Field(default=None)
     meta: dict = Field(default_factory=dict, sa_column=Column(JSON, nullable=False))
     created_at: NaiveUTC = Field(default_factory=_now)
 
@@ -1876,6 +1892,56 @@ class CallMark(SQLModel, table=True):
     tags: dict | None = Field(default=None, sa_column=Column("tags", JSON, nullable=True))
     content_hash: str
     created_at: NaiveUTC = Field(default_factory=_now)
+
+
+class CallComparison(SQLModel, table=True):
+    """Two vendors' answers to one routed call's input, and the team's agent's blinded verdict.
+
+    A is the answer the team was served; B is the other vendor of a configured pair, asked later by
+    `treg-worker compare collect` on treg's key (application/compare.py). `first` is which of the
+    two is shown as answer 1. Bodies are stored truncated; `input` is the capability input,
+    truncated. Written only by `domain/feedback/comparisons.py`.
+    """
+
+    __table_args__ = (
+        Index("ix_callcomparison_org_id_status_created_at", "org_id", "status", "created_at"),
+        Index("ix_callcomparison_org_id_capability_created_at", "org_id", "capability", "created_at"),
+        Index("ix_callcomparison_created_at", "created_at"),
+    )
+
+    id: int | None = Field(default=None, primary_key=True)
+    # No foreign keys (AGENTS.md): team deletion clears these rows (ORG_SCOPED_MODELS), and every
+    # `treg-worker compare collect` run removes any it missed.
+    org_id: int
+    user_email: str
+    call_ref: str = Field(unique=True, index=True)
+    capability: str
+    a_endpoint: str
+    a_provider: str
+    b_endpoint: str | None = Field(default=None)
+    b_provider: str
+    b_call_ref: str | None = Field(default=None)
+    b_cost_micro: int = Field(default=0, sa_type=BigInteger)
+    input: str = Field(default="", sa_type=Text)
+    a_body: str = Field(default="", sa_type=Text)
+    b_body: str = Field(default="", sa_type=Text)
+    # The parts stored cut at their limit: a comma list of input, a, b ("" = none).
+    truncated: str = Field(default="")
+    first: str = Field(default="a")      # a | b: which answer is shown as answer 1
+    status: str = Field(default="ready")  # pending | ready | failed | decided
+    choice: str | None = Field(default=None)  # a | b | tie | both_bad
+    reason: str | None = Field(default=None)
+    client: str = Field(default="")
+    created_at: NaiveUTC = Field(default_factory=_now)
+    decided_at: NaiveUTC | None = Field(default=None)
+
+
+class CompareAttemptDay(SQLModel, table=True):
+    """Second-vendor calls the comparison worker claimed on one UTC day (`YYYYMMDD`): the daily
+    limit's count. Not a team's row, so deleting a team gives no quota back."""
+
+    day: str = Field(primary_key=True)
+    attempts: int = Field(default=0)
 
 
 class Media(SQLModel, table=True):

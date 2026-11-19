@@ -57,6 +57,7 @@ sources:
   - src/treg/alembic/versions/0056_searchlog_verdict.py
   - src/treg/alembic/versions/0065_call_verdict.py
   - src/treg/alembic/versions/0066_endpointdaystat_verdicts.py
+  - src/treg/alembic/versions/0112_callrecord_outcome.py
   - src/treg/alembic/versions/0070_api_key_spend_rollup.py
   - src/treg/alembic/versions/0072_callrecord_call_ref_index.py
   - src/treg/alembic/versions/0073_org_flow_control_version.py
@@ -280,6 +281,8 @@ so (`ready: false`) instead of guessing. Team deletion clears a team's rollup ro
 - `upstream_ms`: from sending the request until the answer is read (or headers arrive, when it
   streams on); excludes token refresh, archive lookup, retry sleeps and treg's work.
 - `verdict`: one word from the contract's closed list, never content ([catalog](catalog.md)).
+- `outcome`: what a v2 row's own declaration judged the answer (`hit`, `miss`, `error`,
+  `not_found`); null where the status rule decides. Reliability reads it first ([catalog](catalog.md)).
 - `archive_key_hash` / `archive_content_hash`: the link for `GET /calls/{id}/result`
   ([archive](archive.md)).
 
@@ -370,7 +373,8 @@ The request session commits before the relay ([proxy-model](proxy-model.md)).
   `timeutil.as_naive`.
 - `verify_db()` is the read-only lifespan and worker guard: it refuses a missing Fernet key on a
   real database, requires the stamp at head, refuses a known older revision, and warns but serves
-  on an unknown newer one so an additive release can roll back.
+  on an unknown newer one (all digits and above this build's head, `db._is_newer_revision`) so an
+  additive release can roll back; any other unknown stamp is refused.
 - `dispose_engine()` closes pooled connections before a maintenance event loop exits, so a later
   loop never inherits connections bound to a closed one.
 - `reset_db()` is test-only: it deletes every row, rewinds Postgres sequences and stamps head,

@@ -37,18 +37,18 @@ endpoints:
     input:
       bodyType: json
       body:
-        job_title_or: {type: 'array[string]', required: false, example: [data engineer]}
-        description_or: {type: 'array[string]', required: false, note: "every word of any one phrase, in any order"}
-        job_country_code_or: {type: 'array[string]', required: false, note: "ISO alpha-2 codes", example: [US]}
-        region_or: {type: 'array[string]', required: false, note: "US states and Canadian provinces as ISO 3166-2, e.g. US-TX"}
-        city_or: {type: 'array[string]', required: false}
+        job_title_or: {type: array, items: {type: string}, required: false, example: [data engineer]}
+        description_or: {type: array, items: {type: string}, required: false, note: "every word of any one phrase, in any order"}
+        job_country_code_or: {type: array, items: {type: string}, required: false, note: "ISO alpha-2 codes", example: [US]}
+        region_or: {type: array, items: {type: string}, required: false, note: "US states and Canadian provinces as ISO 3166-2, e.g. US-TX"}
+        city_or: {type: array, items: {type: string}, required: false}
         remote: {type: boolean, required: false}
-        job_seniority_or: {type: 'array[string]', required: false}
-        skills_or: {type: 'array[string]', required: false, note: "skill slugs, e.g. python"}
+        job_seniority_or: {type: array, items: {type: string}, required: false}
+        skills_or: {type: array, items: {type: string}, required: false, note: "skill slugs, e.g. python"}
         min_salary_usd: {type: integer, required: false, note: "posted annual pay; jobs without posted pay never match"}
-        company_name_or: {type: 'array[string]', required: false, note: "matches every company whose name starts with the text; use company_key_or for one company"}
-        company_key_or: {type: 'array[string]', required: false, note: "keys from jobspipe.companies.suggest"}
-        source_or: {type: 'array[string]', required: false, note: "linkedin, indeed, cvlibrary, resumelibrary, ycombinator, arbeitnow, himalayas, jobicy, themuse, remoteok, workingnomads, landingjobs, remotive, rise, bayt, eures, jobtech, greenhouse, workday, ashby, lever, workable, recruitee, personio, smartrecruiters, breezy, paylocity, manatal, jobscore, teamtailor, pinpoint, hirehive. A value outside this list returns no jobs and no error.", example: [greenhouse]}
+        company_name_or: {type: array, items: {type: string}, required: false, note: "matches every company whose name starts with the text; use company_key_or for one company"}
+        company_key_or: {type: array, items: {type: string}, required: false, note: "keys from jobspipe.companies.suggest"}
+        source_or: {type: array, items: {type: string}, required: false, note: "linkedin, indeed, cvlibrary, resumelibrary, ycombinator, arbeitnow, himalayas, jobicy, themuse, remoteok, workingnomads, landingjobs, remotive, rise, bayt, eures, jobtech, greenhouse, workday, ashby, lever, workable, recruitee, personio, smartrecruiters, breezy, paylocity, manatal, jobscore, teamtailor, pinpoint, hirehive. A value outside this list returns no jobs and no error.", example: [greenhouse]}
         posted_at_max_age_days: {type: integer, required: false, max: 365, example: 7}
         include_technologies: {type: boolean, required: false, default: false, note: "adds the technologies each job names, one more credit per job that names any"}
         include_total_results: {type: boolean, required: false}
@@ -87,10 +87,10 @@ endpoints:
       bodyType: json
       body:
         delta_cursor: {type: string, required: true, note: "metadata.next_delta_cursor from the last page of jobspipe.jobs.search, or from the previous poll"}
-        job_title_or: {type: 'array[string]', required: false, note: "send the same filters as the search that issued the cursor", example: [data engineer]}
-        job_country_code_or: {type: 'array[string]', required: false, example: [US]}
-        company_key_or: {type: 'array[string]', required: false}
-        source_or: {type: 'array[string]', required: false, note: "same values as jobspipe.jobs.search; an unknown value returns no jobs and no error"}
+        job_title_or: {type: array, items: {type: string}, required: false, note: "send the same filters as the search that issued the cursor", example: [data engineer]}
+        job_country_code_or: {type: array, items: {type: string}, required: false, example: [US]}
+        company_key_or: {type: array, items: {type: string}, required: false}
+        source_or: {type: array, items: {type: string}, required: false, note: "same values as jobspipe.jobs.search; an unknown value returns no jobs and no error"}
         include_technologies: {type: boolean, required: false, default: false, note: "adds the technologies each job names, one more credit per job that names any"}
         limit: {type: integer, required: false, default: 25, min: 1, max: 500, note: "cut to the plan's page size: 100 on treg's key", example: 2}
       note: "Accepts every jobspipe.jobs.search filter. The next poll's cursor is metadata.next_delta_cursor; it is null until the last page of the current answer."
@@ -124,7 +124,7 @@ endpoints:
     input:
       bodyType: json
       body:
-        job_id_or: {type: 'array[string]', required: true, note: "the id a search returned, the posting's native id on its board (Greenhouse number, Lever or Ashby UUID), or JobsPipe's 16-character id. job_ids is the same list and the two are merged", example: ['4489510612']}
+        job_id_or: {type: array, items: {type: string}, required: true, note: "the id a search returned, the posting's native id on its board (Greenhouse number, Lever or Ashby UUID), or JobsPipe's 16-character id. job_ids is the same list and the two are merged", example: ['4489510612']}
         status: {type: string, required: false, enum: [active, closed, any], default: active, note: "a closed posting is found only with closed or any", example: any}
         include_technologies: {type: boolean, required: false, default: false, note: "adds the technologies each job names, one more credit per job that names any"}
         limit: {type: integer, required: false, default: 25, min: 1, max: 500, note: "jobs to return, and the hold: send the number of ids you look up. Cut to the plan's page size: 100 on treg's key", example: 1}
@@ -158,8 +158,8 @@ endpoints:
     input:
       bodyType: json
       body:
-        company_key_or: {type: 'array[string]', required: true, note: "the company's key from jobspipe.companies.suggest (free)", example: ['10154656179566200712']}
-        source_or: {type: 'array[string]', required: false, note: "same values as jobspipe.jobs.search, e.g. greenhouse; an unknown value returns no jobs and no error"}
+        company_key_or: {type: array, items: {type: string}, required: true, note: "the company's key from jobspipe.companies.suggest (free)", example: ['10154656179566200712']}
+        source_or: {type: array, items: {type: string}, required: false, note: "same values as jobspipe.jobs.search, e.g. greenhouse; an unknown value returns no jobs and no error"}
         status: {type: string, required: false, enum: [active, closed, any], default: active}
         include_technologies: {type: boolean, required: false, default: false, note: "adds the technologies each job names, one more credit per job that names any"}
         limit: {type: integer, required: false, default: 25, min: 1, max: 500, note: "cut to the plan's page size: 100 on treg's key", example: 2}
@@ -195,10 +195,10 @@ endpoints:
     input:
       bodyType: json
       body:
-        job_title_or: {type: 'array[string]', required: false, example: [data engineer]}
-        job_country_code_or: {type: 'array[string]', required: false, example: [US]}
-        company_key_or: {type: 'array[string]', required: false}
-        source_or: {type: 'array[string]', required: false}
+        job_title_or: {type: array, items: {type: string}, required: false, example: [data engineer]}
+        job_country_code_or: {type: array, items: {type: string}, required: false, example: [US]}
+        company_key_or: {type: array, items: {type: string}, required: false}
+        source_or: {type: array, items: {type: string}, required: false}
         posted_at_max_age_days: {type: integer, required: false, example: 7}
       note: "Accepts every jobspipe.jobs.search filter. rows stops at 10,000, and rows_approximate is true when it comes from a short count. balance is the account's spendable credits."
     test_request:
@@ -240,8 +240,8 @@ endpoints:
     input:
       bodyType: json
       body:
-        job_title_or: {type: 'array[string]', required: false, example: [data engineer]}
-        job_country_code_or: {type: 'array[string]', required: false, example: [US]}
+        job_title_or: {type: array, items: {type: string}, required: false, example: [data engineer]}
+        job_country_code_or: {type: array, items: {type: string}, required: false, example: [US]}
         posted_at_max_age_days: {type: integer, required: false, example: 7}
         limit: {type: integer, required: false, default: 25, min: 1, max: 500, note: "cut to the plan's page size: 100 on treg's key", example: 1}
         cursor: {type: string, required: false}

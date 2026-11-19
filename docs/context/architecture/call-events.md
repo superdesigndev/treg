@@ -116,7 +116,7 @@ The stream has no map type; they travel as JSON objects (`json` columns):
   `page` or `offset`, kept in its route summary. A page number or an offset counts only as a
   whole number. No page, `page` 1, `page0` 0, `offset` 0 and an empty or `0` cursor are the
   first page and leave `input_id` as it was.
-  On an admission-only contract, an identity field typed `list` (a count over several companies)
+  On an admission-only contract, an identity field typed `array` (a count over several companies)
   is its values' set, each normalized, sorted and joined, so the same companies in another order
   hash the same and other companies do not.
 - `input_keys`: `{field: hmac}` for every identity field present after derivation.
@@ -132,7 +132,7 @@ The stream has no map type; they travel as JSON objects (`json` columns):
   (capped length), exactly as the adapter produced them, plus `<field>_calling_code` beside every
   keyed phone (`phone_calling_code`), so a number's country is known when its provider names none.
   A direct call's answer is read as the Arena reads it (`safe_output`), except that a recorded
-  field the contract types `bool`, `int` or `float` keeps its value (`name_match`, `ported`).
+  field the contract types `boolean`, `integer` or `number` keeps its value (`name_match`, `ported`).
   A contract with a segment set that judges answers adds its row counts here (`rows`,
   `rows_company_match`, below) with `segments_version`.
 - `answer_flags`: derived from email-shaped keys: `is_role`, `free_mail`, and `domain_match`
@@ -156,8 +156,11 @@ hash the same:
 | Searches (`linkedin.search.*`, `reddit.search.posts`, `meta-ads.library.search`) | the query (`q`), or a person's name | at least one result row |
 | Lists about one subject (`companies.emails.list`, `people.decision_makers`, `reddit.post.comments`) | the domain, or the post (`post_id`, derived from its URL) | at least one row |
 | One object (`x.post.detail`, `linkedin.job.detail`) | its id, derived from its URL (`x_post_id`, `linkedin_job_id`) | the object is returned |
-| Answers (`web.answer`, `google.serp.ai_mode`, `ai-search.*.scrape`) | the question or prompt (`q`) | answer text is returned |
+| Answers (`web.answer`, `google.serp.ai_mode`) | the question or prompt (`q`) | answer text is returned |
 | Counts (`people.search.count`) | company domain and title | a count above zero |
+
+When a capability gains a routed endpoint, keep its existing identity first so direct and routed
+calls for the same question continue to produce the same `input_id`.
 
 Scoping filters (country, date window, sort, location) stay out of `input_id`; the ones declared
 `analytics: value` go to `input_meta`, so analysis can split by them. A status poll
@@ -173,7 +176,8 @@ and returns categories, each a word from the set's fixed vocabulary; `segment` a
 `input_meta` with `segments_version`, the set's version, which moves whenever a rule or a
 vocabulary changes. No title, query, name, place or domain is recorded, only the category it falls
 in. A filter already recorded as a value (`country`) keeps its own spelling; the set only adds
-keys. A direct or child call's request is read back through its adapter (`vendor_identity`).
+keys. A direct or child call's request is read back through its adapter (`vendor_identity`). A
+filter whose provider representation needs decoding can declare an `in_read` expression.
 Besides the `in` map, every field an `in_expr` sends where it can be found is read back
 (`field_paths`): each expression is run on placeholder values, and a field is read from the
 place its placeholder lands whole, provided it lands there alone, no other field's placeholder
@@ -236,8 +240,8 @@ Where an output field goes is declared on the contract (`contracts.yaml`), defau
 
 ```yaml
 output:
-  email: {type: str, required: true, analytics: key}
-  verified: {type: bool, analytics: value}
+  email: {type: string, required: true, analytics: key}
+  verified: {type: boolean, analytics: value}
 ```
 
 The parser refuses any other word, and a filter can never be a `key`. The public catalog contract
@@ -273,7 +277,7 @@ a child. It is a log line, not a column.
 | `caller_side` | `true` for `caller_auth`, `caller_balance_or_cap`, `caller_policy`, `caller_provider_account` and `payment_required` |
 | `kind` | the failure kind treg raised, or its internal `log_kind` when it has one |
 | `signal` | the provider's documented error read from its answer, per `domain/capacity/signatures.py` |
-| `parameter`, `rule` | for treg's own refusal of a request: the field (`queryParams.limit`, `body.urls.0`, or `undeclared`) and the rule it broke (`required`, `type`, `enum`, `range`, `repeat`, `undeclared`, `json`, `fixed`, `platform`, `authorization_method`, `unsupported`) |
+| `parameter`, `rule` | for treg's own refusal of a request: the field (`queryParams.limit`, `body.urls.0`, or `undeclared`) and the rule it broke (`required`, `type`, `enum`, `range`, `repeat`, `undeclared`, `json`, `fixed`, `platform`, `authorization_method`, `unsupported`, and the parameter check's `length`, `array_length` and `items:<rule>` when it refuses) |
 
 `call_errors.classify` reads the class from the failure kind (`types.FAILURE_KINDS`), else
 `refused_by`, else the provider's documented error, else the status; `tests/test_call_errors.py`
