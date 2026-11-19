@@ -2637,6 +2637,9 @@ def await_async_task(descriptor: dict, submission: httpx.Response, call_fn, cloc
                     pending_document = None
                 if _is_pending_response(descriptor, response.status_code, pending_document):
                     failures = 0
+                    _clock_report(clock, f"async task {_shown(task_id)}: "
+                                         f"{_shown(descriptor['pending_response']['equals'])} "
+                                         f"({int(clock.monotonic() - start)}s elapsed)")
                     continue
             if response.status_code >= 500:
                 failures += 1

@@ -25,6 +25,8 @@ descriptors"). `/tasks/{call_id}` lets a client follow that task by the call id 
 (`X-Treg-Call-Id`) while the registry does the reading: the descriptor is interpreted only by
 `domain.asynctasks`, server-side, so a client in another language never ports it. The Go CLI's
 `call --await` is built on it; the frozen Python CLI still reads `X-Treg-Async` and polls `/call/`.
+`poll_view` recognizes an exact descriptor `pending_response` HTTP envelope as pending for these
+clients; an unrelated non-2xx remains a poll failure.
 
 ## The record
 

@@ -345,6 +345,23 @@ async def test_a_refused_or_failed_poll_is_reported_as_the_polls_answer(
     get_settings.cache_clear()
 
 
+async def test_declared_pending_http_poll_keeps_task_open(
+    clients: AsyncClient, monkeypatch, replicate_platform, descriptor,
+):
+    descriptor(pending_response={"status": 404, "path": "error_code", "equals": "result_pending"})
+    submitted = await _submit(clients, monkeypatch, Script(
+        {"id": "t-pending"}, (404, {"error_code": "result_pending"}),
+        {"id": "t-pending", "status": "succeeded", "output": ["https://example.invalid/a.png"]}))
+    call_id = submitted.headers["X-Treg-Call-Id"]
+    pending = await clients.get(f"/tasks/{call_id}")
+    view = pending.json()
+    assert pending.status_code == 200 and pending.headers["Retry-After"] == "2"
+    assert view["state"] == "pending" and view["status"] == "result_pending"
+    assert view["error"] is None and view["response"]["http_status"] == 404
+    done = (await clients.get(f"/tasks/{call_id}")).json()
+    assert done["state"] == "succeeded"
+
+
 def test_a_result_strict_json_cannot_carry_is_left_to_its_text():
     task = CallTask(call_id="c", org_id=1, endpoint_id=EP, descriptor=_descriptor(), task_id="t")
     view = tasks_app.poll_view(task, _response(200, {}), b'{"status":"succeeded","output":NaN}', False, "p")
