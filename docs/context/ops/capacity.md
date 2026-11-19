@@ -224,6 +224,33 @@ lease; expiry cannot stop a request already sent. When the store fails the proce
 and skips the store briefly; without `TREG_KV_URL` each process enforces the cap alone. Choosing an
 account (`keyslots`) reads only this process's places.
 
+The fewest-first choice is per process, so across processes a light team is not ahead of a heavy
+one: a freed place goes to whichever process's request lands first. `TREG_FAIR_SHARE_TEAM_CEILING_PERCENT`
+(0, off, by default) bounds that: with the shared store, one team holds at most `ceil(cap x percent
+/ 100)` places of an account across every process, counted on a second lease key per account and
+team (`<account>:team:<org id>`) through the same lease scripts. A call over its team's ceiling
+leaves at once as `share_busy` (`ShareBusy.reason` "team_ceiling", its own message: "your team
+holds its largest share of <provider>'s places"), so the remaining places stay for other teams;
+other teams are not affected. The team request's time comes out of the same `fair_share_wait_s`
+budget, so a slow store never makes a call wait past it. A cap whose ceiling would equal the cap, a store that fails, and no store leave the
+account's own rule alone. The team request runs only while the account's last store request got an
+answer (`_Pool.store_answered`). A team request that gets no answer clears `store_answered`, and
+its call takes its place from this process's count, as inside the store-down window, instead of
+also waiting on the account request; it never opens or extends that window, which the account
+request alone owns. So a store that stops answering costs each call one wait at most. After
+recovery, the ceiling returns from the second call in each process: the first asks the account and
+sets `store_answered` again.
+
+A lease whose acquire or release the store did not answer (a stall) is kept in a bounded list
+(`provider_concurrency._unanswered`) and released again once the store answers a later request,
+however old: after an outage longer than a lease the store still runs a queued acquire and stamps
+it with its own clock. A release the store dropped would otherwise leave its place counted until
+the lease ends; this holds for the account's places as well as the team's.
+
+The list is drained by one background task (`provider_concurrency._drain`) with 4 requests at a
+time, so a long list never crowds the shared client's connection pool. It stops at the first
+request the store does not answer, keeps the rest, and starts again on the next answered acquire.
+
 ## Upstream connections: a bounded wait and a cap per provider
 
 Every relayed call shares one pooled HTTP client per process (`bootstrap._lifespan`). A provider

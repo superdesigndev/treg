@@ -391,6 +391,9 @@ class Settings(BaseSettings):
     # how long a call waits in line for a place before a routed job moves on and a direct call is
     # refused, not charged. 0 turns the gate off (TREG_FAIR_SHARE_WAIT_S=0).
     fair_share_wait_s: float = Field(default=2.0, ge=0, le=30)
+    # With the shared store, the most places of one capped account (percent of its cap, rounded
+    # up) one team holds across every process; a call over it gets `share_busy`. 0 is off.
+    fair_share_team_ceiling_percent: int = Field(default=0, ge=0, le=99)
     # A shared rate window on treg's own keys (domain/capacity/rate_observe.py). `observe` asks it
     # about every platform call that goes upstream and logs its verdicts; the buckets named in
     # `provider_rate_enforce` (comma-separated, `view.rate_bucket` keys without the `#account`
