@@ -87,7 +87,8 @@ async def invitation(context: CallContext, status: int, *, replayed: bool,
     platform = marketplace is not None and getattr(marketplace, "tier", None) == "platform"
     routed = marketplace is None and context.route_summary is not None
     if ("review" in accepts and (platform or routed)
-            and review_targets.sampled(context.call_ref, review_endpoint(context))):
+            and review_targets.sampled(context.call_ref, review_endpoint(context),
+                                          context.input.caller.org_id)):
         if await kv.store().take(budget_key(context.input.caller.org_id),
                                  get_settings().review_budget_per_hour, BUDGET_WINDOW_S):
             return "review"
