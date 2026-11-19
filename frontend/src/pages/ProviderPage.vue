@@ -34,8 +34,11 @@ export default { components: { ToolDrawer, ProviderLogo, ConnectionCard }, setup
             </div>
             <p class="pl-lede">{{mkProvider.summary}}</p>
             <div class="pv-acts">
-              <button class="pl-btn" :disabled="!mkProvider.configured || connBusy" @click="startConnect(mkProvider)">
+              <button v-if="mkProvider.auth_kind!=='public'" class="pl-btn" :disabled="!mkProvider.configured || connBusy" @click="startConnect(mkProvider)">
                 {{connectLabel(mkProvider, mkAccounts.length)}}</button>
+              <span v-else class="mk-notice">{{mkProvider.enabled===false
+                ? 'A public API with nothing to connect; this server has not enabled it, so its calls are refused unless your team registered its own tool for its host.'
+                : 'A public API: free, no key, nothing to connect.'}}</span>
               <a v-if="mkProvider.docs_url" class="pl-btn ghost" :href="mkProvider.docs_url" target="_blank" rel="noopener">API docs ↗</a>
             </div>
             <!-- Shown everywhere Connect can be clicked, before the consent popup opens. -->

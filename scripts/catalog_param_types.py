@@ -39,6 +39,7 @@ from pathlib import Path
 
 import yaml
 from treg.domain.catalog import params
+from treg.domain.catalog.schema.common import ParamSpec
 from treg.domain.catalog.schema.files import _Loader
 
 ROOT = Path(__file__).resolve().parent.parent
@@ -47,11 +48,7 @@ TYPES = ("string", "integer", "number", "boolean", "array", "object")
 WORDS = {"str": "string", "text": "string", "int": "integer", "float": "number", "bool": "boolean",
          "dict": "object", "any": "object", "list": "array", "file": "string"}
 UNIONS = {"string_or_array": ["array", "string"]}
-SPEC_KEYS = frozenset({
-    "type", "required", "note", "example", "enum", "default", "min", "max", "minItems", "maxItems",
-    "properties", "item_required_all", "item_required_any", "authorization_methods", "description",
-    "examples", "minimum", "maximum", "minLength", "maxLength", "format", "items", "anyOf",
-    "additionalProperties"})
+SPEC_KEYS = frozenset(ParamSpec.model_fields)
 # Item types no example shows in full: a DataForSEO filter is a flat condition (`["field", ">", 1]`)
 # or conditions joined by `and`/`or` (`[[...], "and", [...]]`).
 POLYMORPHIC = {("dataforseo", re.compile(r"(^|_)filters$")): ["array", "boolean", "number", "string"]}
@@ -512,7 +509,8 @@ class File:
                 self.contract_field(v, f"{cap}.row.{name}", ("row", cap, name))
 
     def apply(self) -> str:
-        edits = sorted(self.edits, key=lambda e: (e.start, e.end))
+        # A YAML alias (`*jobs_filters`) visits its anchored node again, asking for the same edit.
+        edits = sorted({(e.start, e.end, e.text): e for e in self.edits}.values(), key=lambda e: (e.start, e.end))
         for a, b in zip(edits, edits[1:]):
             if b.start < a.end:
                 raise SystemExit(f"{self.path.name}: overlapping edits at {a.start}-{a.end} and {b.start}-{b.end}")

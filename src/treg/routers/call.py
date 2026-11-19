@@ -6,14 +6,15 @@ import json
 import uuid
 from urllib.parse import urlsplit
 
-from fastapi import APIRouter, Depends, HTTPException, Request
-from fastapi.responses import Response, StreamingResponse
-from sqlalchemy.exc import TimeoutError as PoolTimeoutError
+from fastapi import APIRouter, Cookie, Depends, Header, HTTPException, Request
+from fastapi.responses import JSONResponse, Response, StreamingResponse
 from starlette.background import BackgroundTask
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from .. import analytics
 from .. import audit
+from .. import hints
+from ..application import agent_payments
 from .. import sandbox as demo_sandbox
 from ..application.call import call_errors
 from ..application.call.access import catalog_endpoint_access as get_catalog_endpoint_access
@@ -30,7 +31,7 @@ from ..application.call.service import (
     create_call_context,
     execute_call,
 )
-from ..application.call.invite import invitation
+from ..application.call.invite import accepted_kinds, catalog_endpoint, invitation
 from ..application.call.intake import (
     META_HEADER,
     CallMeta,
@@ -45,7 +46,7 @@ from ..domain.governance import access as access_policy
 from ..domain.governance import publicdemo as publicdemo_policy
 from ..domain.governance import usage as usage_policy
 from ..domain.identity.access import Caller, require_member
-from ..infra.db import get_session
+from ..infra.db import answers_db_busy, get_session
 from ..infra import org_concurrency, org_flow_control, org_traffic
 from ..models import Tool
 from .auth import _client_ip
@@ -237,6 +238,7 @@ async def _stamp_call_exit(
     status_code: int,
     *,
     failure_kind: str | None = None,
+    refused_by: str | None = None,
 ) -> None:
     """Give one call-surface exit the three things every other exit gets: the id that joins the response
     to the audit row, the row itself, and the release of any idempotency label the request took.
@@ -254,10 +256,11 @@ async def _stamp_call_exit(
         key_id, key_name, key_prefix = getattr(request.state, "call_key", (None, None, None))
         context = getattr(request.state, "call_context", None)
         rest = _call_rest(request, context)
+        refused_by = refused_by or _refusal_kind(status_code)
         audit.record_call(
             org_id=org_id, user_email=email, tool_name=rest.split("/", 1)[0] or "—",
             method=request.method, path=request.url.path, status_code=status_code,
-            client=_client_of(request), refused_by=_refusal_kind(status_code),
+            client=_client_of(request), refused_by=refused_by,
             api_key_id=key_id, api_key_name=key_name, api_key_prefix=key_prefix,
             telemetry={"call_ref": call_ref, "tags": getattr(request.state, "call_pins", None)})
         failure = getattr(request.state, "call_failure", None)
@@ -268,7 +271,7 @@ async def _stamp_call_exit(
                   else "own_tool" if getattr(context, "target", None) is not None else "unresolved"),
             endpoint_id=getattr(marketplace, "endpoint_id", None),
             provider=getattr(marketplace, "provider", None),
-            tier=getattr(marketplace, "tier", None), refused_by=_refusal_kind(status_code),
+            tier=getattr(marketplace, "tier", None), refused_by=refused_by,
             failure=failure, kind=failure_kind,
             billed_oauth=bool(getattr(marketplace, "billed_oauth", False)), answered=False)
         if failure_kind:
@@ -294,15 +297,34 @@ async def catalog_endpoint_access(
     except CallFailure as exc:
         raise _translate_call_failure(exc) from exc
 
-def _capture_hint(request: Request, context, kind: str) -> None:
+_INVITATION_HEADERS = ("X-Treg-Hint", "X-Treg-Hint-Text", "X-Treg-Review")
+
+
+def _capture_hint(request: Request, context, kind: str, variant: int | None = None) -> None:
     """One event per invitation actually sent, on every surface: the response-rate denominator.
     Attachment is not display; the surface's `X-Treg-Client` says who was asked."""
-    marketplace = context.marketplace
     slug = context.input.caller.org.slug
     analytics.capture(analytics.SERVER_DISTINCT_ID, "hint_attached", {
         "kind": kind, "call_id": context.call_ref, "client": _client_of(request),
-        "endpoint_id": marketplace.endpoint_id if marketplace is not None else None,
+        "endpoint_id": catalog_endpoint(context),
+        **({"variant": variant} if variant is not None else {}),
     }, groups={"team": slug} if slug else None)
+
+
+async def member_or_payer(
+    request: Request,
+    x_treg_token: str = Header(default=""),
+    x_treg_org: str = Header(default=""),
+    treg_session: str = Cookie(default=""),
+    db: AsyncSession = Depends(get_session),
+) -> Caller | None:
+    """`require_member`, except that a `/call/` request carrying no treg credential at all (no
+    token header, even an empty one, and no session cookie) returns None for the agent-payments
+    path while that feature is on. Any credential, valid or not, takes the account path."""
+    if (agent_payments.enabled() and "x-treg-token" not in request.headers
+            and "treg_session" not in request.cookies):
+        return None
+    return await require_member(request, x_treg_token, x_treg_org, treg_session, db)
 
 
 @app.api_route(
@@ -312,25 +334,147 @@ def _capture_hint(request: Request, context, kind: str) -> None:
 async def call_tool(
     rest: str,
     request: Request,
-    caller: Caller = Depends(require_member),
+    caller: Caller | None = Depends(member_or_payer),
 ):
+    if caller is None:
+        return await _paid_call(rest, request)
     prefix = "/catalog/call/" if getattr(request.state, "catalog_only", False) else "/call/"
     return await run_call_surface(rest, request, caller, prefix=prefix, finish=_relay_answer)
+
+
+async def _paid_call(rest: str, request: Request) -> Response:
+    """A keyless call that pays for itself (docs/context/architecture/agent-payments.md). A call
+    the payment path does not serve answers exactly as an unauthenticated call always has."""
+    if reason := agent_payments.unserved(rest, request.method):
+        raise HTTPException(status_code=401, detail=agent_payments.NotServed(reason).detail)
+    try:
+        await agent_payments.limit_request(request.headers, _client_ip(request))
+    except agent_payments.RateLimited as exc:
+        return await _payment_refusal(request, 429, exc.detail, [("Retry-After", "60")])
+    body = await _capped_body(request) if _may_have_body(request) else b""
+    raw_path = request.scope.get("raw_path")
+    try:
+        paid = await agent_payments.open_call(
+            rest=rest, method=request.method,
+            path=raw_path.decode("ascii", "replace") if raw_path else request.url.path,
+            query=request.url.query or "", query_items=tuple(request.query_params.multi_items()),
+            body=body, headers=request.headers, raw_headers=request.headers.raw)
+    except agent_payments.NotServed as exc:
+        raise HTTPException(status_code=401, detail=exc.detail) from None
+    except agent_payments.RateLimited as exc:
+        return await _payment_refusal(request, 429, exc.detail, [("Retry-After", "60")])
+    except agent_payments.PaymentChallenge as exc:
+        return await _payment_refusal(request, 402, exc.detail, exc.headers)
+    except agent_payments.PaymentPending as exc:
+        return await _payment_refusal(request, 503, exc.detail, [])
+    except agent_payments.PayerSuspended as exc:
+        return await _payment_refusal(request, 403, exc.detail, [])
+    try:
+        response = await run_call_surface(rest, request, paid.caller, prefix="/call/",
+                                          finish=_relay_answer, headers=paid.headers)
+    except HTTPException as exc:
+        if exc.status_code == 402 and paid.admission.settlement is None:
+            # The credit was spent by another call between the check and the hold: ask this
+            # wallet to pay, as a payment client expects of a 402.
+            challenge = await agent_payments.credit_short(paid.paid, int(paid.caller.org.id))
+            return await _payment_refusal(request, 402, challenge.detail, challenge.headers)
+        if exc.status_code == 402:
+            # A payment client answers every 402 with a payment; treg's own balance refusal is
+            # not a payment challenge.
+            exc.status_code = 503
+        exc.headers = {"Cache-Control": "private", **(exc.headers or {}),
+                       **dict(await paid.answer_headers())}
+        raise
+    for name, value in await paid.answer_headers():
+        response.headers[name] = value
+    for name, value in paid.receipt_headers(response.status_code):
+        response.headers.append(name, value)
+    response.headers.setdefault("Cache-Control", "private")
+    return response
+
+
+@app.get(agent_payments.CREDIT_PATH, include_in_schema=False)
+async def agent_payment_credit(request: Request) -> Response:
+    """A keyless wallet's credit on one network, after a zero-amount proof
+    (docs/context/architecture/agent-payments.md). Not found while the feature is off."""
+    if not agent_payments.enabled():
+        raise HTTPException(status_code=404, detail="Not Found")
+    try:
+        await agent_payments.limit_request(request.headers, _client_ip(request))
+        view = await agent_payments.credit_of(request.headers)
+    except agent_payments.NotEnabled:
+        raise HTTPException(status_code=404, detail="Not Found") from None
+    except agent_payments.RateLimited as exc:
+        return _credit_refusal(429, exc.detail, [("Retry-After", "60")])
+    except agent_payments.PaymentChallenge as exc:
+        return _credit_refusal(402, exc.detail, exc.headers)
+    return JSONResponse(view, headers={"Cache-Control": "no-store"})
+
+
+def _credit_refusal(status: int, detail: dict, headers: list[tuple[str, str]]) -> Response:
+    resp = JSONResponse({"detail": detail}, status_code=status)
+    for name, value in headers:
+        resp.headers.append(name, value)
+    resp.headers["Cache-Control"] = "no-store"
+    resp.headers["X-Treg-Error"] = "1"
+    return resp
+
+
+async def _capped_body(request: Request) -> bytes:
+    limit = agent_payments.MAX_BODY_BYTES
+    declared = request.headers.get("content-length", "")
+    if declared.isdigit() and int(declared) > limit:
+        raise HTTPException(status_code=413, detail="request body too large")
+    chunks, size = [], 0
+    async for chunk in request.stream():
+        size += len(chunk)
+        if size > limit:
+            raise HTTPException(status_code=413, detail="request body too large")
+        chunks.append(chunk)
+    body = b"".join(chunks)
+    # Starlette serves a later `request.body()` / `request.stream()` from `_body` once the stream
+    # has been consumed; the call road reads the body again through those.
+    request._body = body
+    return body
+
+
+async def _payment_refusal(request: Request, status: int, detail: dict,
+                           headers: list[tuple[str, str]]) -> Response:
+    resp = JSONResponse({"detail": detail}, status_code=status)
+    for name, value in headers:
+        resp.headers.append(name, value)
+    resp.headers["Cache-Control"] = "no-store"
+    resp.headers["X-Treg-Error"] = "1"
+    # A 402 here asks a keyless caller to pay or prove a wallet: a step of the payment, not a
+    # balance refusal.
+    await _stamp_call_exit(request, resp, status, refused_by="payment" if status == 402 else None)
+    return resp
 
 
 async def _relay_answer(request: Request, context, upstream: UpstreamResponse, rest: str) -> Response:
     """`/call/`'s ending: the provider's answer, streamed unchanged, with the optional invitation."""
     _attach_async_descriptor(upstream, context, rest)
     response = _http_upstream_response(upstream)
+    # The invitation headers are treg's alone. An upstream (or a team's own tool) sending them
+    # would put its words in the slot clients show as treg's (AGENTS.md, non-negotiable 4).
+    for name in _INVITATION_HEADERS:
+        del response.headers[name]
     try:
         # Optional invitation, decided before the body streams (application/call/invite.py).
         kind = await invitation(context, response.status_code,
-                                replayed=bool(response.headers.get("X-Treg-Idempotent-Replay")))
+                                replayed=bool(response.headers.get("X-Treg-Idempotent-Replay")),
+                                accepts=accepted_kinds(request.headers.get("X-Treg-Hints")))
         if kind is not None:
             response.headers["X-Treg-Hint"] = kind
             if kind == "review":
                 response.headers["X-Treg-Review"] = "requested"  # read by CLI <= 0.18
-            _capture_hint(request, context, kind)
+            variant = None
+            # Words only for a client that declared what it shows: an older one prints its own
+            # line, and these name flags (`--rows`) its release may not have.
+            if kind == "mark" or request.headers.get("X-Treg-Hints") is not None:
+                variant, text = hints.header_text(kind, context.call_ref)
+                response.headers["X-Treg-Hint-Text"] = text
+            _capture_hint(request, context, kind, variant)
     except Exception:  # noqa: BLE001 - a fault here can only lose the hint header
         pass  # A fault here can only lose the header; the answer is already built.
     if routed := _routed_alternative(context, response.status_code):
@@ -359,7 +503,7 @@ async def run_call_surface(rest: str, request: Request, caller: Caller, *, prefi
     which turns the answer into the HTTP response, differs. `finish(request, context, upstream,
     rest)` runs inside the same try, so a fault there is audited and released like any other.
     `headers`, when given, replaces the request's raw headers for the upstream call (`/table/` asks
-    the provider for uncompressed bytes); `/call/` never passes it."""
+    the provider for uncompressed bytes; a paid `/call/` drops its payment credential)."""
     enter_call(request, caller)
     # Faithful-relay: use the RAW request path, not Starlette's decoded path param. Decoding is
     # lossy — an encoded slash (`%2f`) in `rest` would become a real `/` and change the upstream
@@ -438,10 +582,10 @@ async def run_call_input(request: Request, caller: Caller, call_input: CallInput
     except CallFailure as exc:
         request.state.call_failure = exc
         raise _translate_call_failure(exc) from exc
-    except PoolTimeoutError:
-        # The application-wide handler owns the typed 503 and its db_pool event.
-        raise
-    except Exception:
+    except Exception as exc:
+        if answers_db_busy(exc):
+            # The application-wide handler owns the typed 503 and its db_pool event.
+            raise
         # Starlette still owns the bare 500 response. Record the attempted call before re-raising so
         # this treg-owned failure is represented once in the same funnel as normal call outcomes.
         request.state.idem_claim = context.idempotency

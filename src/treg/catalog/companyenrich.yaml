@@ -39,7 +39,6 @@ pricing_url: https://companyenrich.com/pricing
 #     so the poll endpoints below are the honest interface. They are free, so polling is free.
 
 proposed_capabilities:
-  companies.autocomplete: "Autocomplete a company by partial domain or name"
   companies.enrich.bulk.start: "Queue a bulk company-enrichment job"
   companies.enrich.bulk.status: "Check a bulk company-enrichment job"
   companies.enrich.bulk.list: "List your bulk company-enrichment jobs"

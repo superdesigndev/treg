@@ -35,6 +35,7 @@ class ParamSpec(Model):
     # Spelled min and max now; parsed so a catalog written before still loads, refused by the validator
     minimum: int | float | None = None
     maximum: int | float | None = None
+    applied: Literal["soft"] | None = None
     # JSON Schema words nothing reads; each row using one is on the shrink-only list
     description: str | None = None
     examples: list[Json] | None = None

@@ -38,7 +38,7 @@ holds those accounts and bills a fraction of a cent per call.
   skills in one line without installing them; do not stop to ask about them here.
 
       curl -fsSL {BASE}/install.sh | sh
-      treg login    # browser sign-in: GitHub, Google or an emailed code
+      treg login    # browser sign-in; tell the human the short code it prints, to type on that page
       treg          # check: account, team, balance, own tools, next commands
 
   Handed a token? `curl -fsSL {BASE}/install.sh | sh -s -- --token <token>` does all of it without a
@@ -67,6 +67,16 @@ mention treg's other skills (the ones the installer named; each is described in
 to star the project: `gh api -X PUT user/starred/superdesigndev/treg`,
 or open https://github.com/superdesigndev/treg.
 
+<!--agentpay-->
+**No account? Pay per call with a wallet.** An agent with a stablecoin wallet can call a priced
+catalog tool with no signup and no token: send `{BASE}/call/<id>` over HTTP without
+`X-Treg-Token`, and treg answers 402 with a payment challenge (the body's `protocols` names MPP,
+x402 or both). Pay it and send the same request again; what the call does not use stays as the
+wallet's credit for its next calls, and is never paid back as money. Let a client do it: pympp
+(Python) or the mppx library (`Mppx.create`). The `mppx` command line (0.20.1) cannot yet pay
+from a wallet with no credit. The skill's "Pay with a wallet" section has the rules.
+
+<!--/agentpay-->
 **The loop: search, read, call.**
 
     treg catalog search "backlinks for a domain"   # tools that do the job, with prices
@@ -79,10 +89,14 @@ tools is `{BASE}/call/<tool-name>/<path>`, or its upstream URL behind the prefix
 `{BASE}/call/https://api.stripe.com/v1/charges`. A team token (an agent token or a dashboard API
 key) carries its team; with a personal sign-in token, also send `X-Treg-Org: <team-slug>`. Method,
 path, query and body reach the provider unchanged, and its answer comes back verbatim.
+A client already written against a provider can keep its paths: `{BASE}/call/<provider>/<path>`,
+with the path relative to the provider's base URL (`{BASE}/call/dataforseo/serp/google/organic/live/advanced`
+for `https://api.dataforseo.com/v3/serp/...`), runs the catalog tool on that path exactly as its id
+would; a path no catalog tool lists is a 404 with `X-Treg-Error: 1`, never relayed.
 
 The MCP server at `{BASE}/mcp/` takes a bearer header or OAuth, and offers `catalog_search`,
-`catalog_get`, `call`, `call_media` (audio), `resources_list`, `balance`, `my_tools`,
-`catalog_request`, `feedback` and `review`.
+`catalog_get`, `call`, `call_media` (audio), `call_result`, `resources_list`, `balance`,
+`my_tools`, `catalog_request`, `feedback`, `review` and `mark`.
 <!--hub-->
 Publishing a hub tool adds `hub_create`, `hub_update` and `hub_mine`.
 <!--/hub-->
@@ -99,7 +113,12 @@ Publishing a hub tool adds `hub_create`, `hub_update` and `hub_mine`.
 - For a common job (scraping a page, web search, Google results, finding or verifying an email, a
   social profile), call the routed `treg.<capability>` tool rather than a provider you remember:
   treg picks the provider, falls back when one fails or misses, and bills only the answer it
-  returns. Name a provider only when you need fields only it has.
+  returns. Name a provider only when you need fields only it has. To page a list, send
+  `output.next_cursor` back as `cursor` with the same body; `_treg.paging` says when to ask another provider.
+- Provider search filters and operators (a place, a domain list, `site:`, quoted phrases) are
+  best-effort: check the rows against your filters, and on routed people search send
+  `X-Treg-Route-Strict-Filters: 1` to skip providers known to take a sent place or company only as a
+  hint.
 <!--/routed-->
 - Choosing a provider yourself: first the one whose inputs match what you hold, then measured
   reliability, then price. `treg catalog get <id>` compares the job's ten most reliable and cheapest
@@ -111,15 +130,20 @@ Publishing a hub tool adds `hub_create`, `hub_update` and `hub_mine`.
   `X-Treg-Route-Max-Cost` header caps each call, not the loop.
 - A 4xx from the provider (other than 429) is about your request: fix it rather than retrying it with
   another provider. After a 429 or a 5xx, try the next provider of the job and say which one you
-  switched to. treg's own refusals say in their body what to do.
+  switched to. treg's own refusals say in their body what to do. A 4xx carrying
+  `X-Treg-Review-Pending` names Meta scopes still waiting for app review of treg's app; if the call
+  needs one of them, reconnecting will not help.
 - A found email or phone number is the provider's best match, not a confirmed one: verify it before
   anyone sends to it. On an email find where you sent a domain, also read `_treg.domain_match` —
-  a LinkedIn-only provider often returns a former employer.
+  a LinkedIn-only provider often returns a former employer. `X-Treg-Route-Domain-Match: strict`
+  keeps asking providers past an off-domain hit, each attempt at its own price.
 - Never ask for a provider key or paste one into code. Register it with treg once, and every agent
   on the team calls it without holding it.
 - When an answer or an error names a next step (a hint, `_treg.advice`, an error body), follow it.
 - If a result invites a review, rate that call with `treg review` or MCP `review`. Report anything
   confusing, wrong or slow with `treg feedback submit` or MCP `feedback`, then carry on.
+- When you learn a result was wrong (a bounce, another source, the user's correction), or confirm
+  it was right, say which rows with `treg mark` or MCP `mark` ({BASE}/feedback.md).
 
 **Building treg into a product** that bills its own users is allowed and encouraged, with no special
 agreement: tag each call with your customer ids from your backend, cap and invoice per customer from

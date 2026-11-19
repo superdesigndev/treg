@@ -38,7 +38,7 @@ endpoints:
     host: api.search.tinyfish.ai
     path: /
     name: Search the open web
-    summary: Search the web by keyword or meaning, with domain, language, location, and date filters.
+    summary: Search the web by keyword or meaning, with domain, language and date filters and a target country.
     input:
       # TinyFish's OpenAPI types include_domains/exclude_domains as one comma-separated string
       # (not repeated keys). Keep array[string] for callers; encode the list as CSV on the wire.
@@ -47,7 +47,7 @@ endpoints:
         query: {type: string, required: true, example: "TinyFish API documentation"}
         domain_type: {type: string, required: true, default: web, example: web}
         purpose: {type: string, required: false, note: "Describe what the results will be used for."}
-        location: {type: string, required: false, note: "ISO 3166-1 alpha-2 country code for geo-targeted results.", example: US}
+        location: {type: string, required: false, applied: soft, note: "ISO 3166-1 alpha-2 country code the ranking targets: rows from other countries come back, so check each row.", example: US}
         language: {type: string, required: false, example: en}
         include_domains: {type: array, items: {type: string}, required: false, note: "domains to restrict results to; sent comma-separated on the wire", example: ["github.com", "arxiv.org"]}
         exclude_domains: {type: array, items: {type: string}, required: false, note: "domains to drop from results; sent comma-separated on the wire", example: ["pinterest.com", "quora.com"]}
@@ -74,16 +74,16 @@ endpoints:
     host: api.search.tinyfish.ai
     path: /
     name: Search recent news
-    summary: Search TinyFish's news index with optional recency, date, domain, language, and location filters.
+    summary: Search TinyFish's news index with optional recency, date and language filters, steered toward chosen domains and a country.
     input:
       queryArrayEncoding: comma
       queryParams:
         query: {type: string, required: true, example: "AI browser agents"}
         domain_type: {type: string, required: true, default: news, enum: [news], example: news}
         purpose: {type: string, required: false}
-        location: {type: string, required: false, note: "ISO 3166-1 alpha-2 country code for geo-targeted results.", example: US}
+        location: {type: string, required: false, applied: soft, note: "ISO 3166-1 alpha-2 country code the ranking targets: rows from other countries come back, so check each row.", example: US}
         language: {type: string, required: false, example: en}
-        include_domains: {type: array, items: {type: string}, required: false, note: "domains to restrict results to; sent comma-separated on the wire", example: ["github.com", "arxiv.org"]}
+        include_domains: {type: array, items: {type: string}, required: false, applied: soft, note: "domains to favour: rows from other domains come back, and a narrow list can answer total_results 0; sent comma-separated on the wire", example: ["github.com", "arxiv.org"]}
         exclude_domains: {type: array, items: {type: string}, required: false, note: "domains to drop from results; sent comma-separated on the wire", example: ["pinterest.com", "quora.com"]}
         after_date: {type: string, required: false, note: "YYYY-MM-DD", example: "2024-01-01"}
         before_date: {type: string, required: false, note: "YYYY-MM-DD", example: "2024-12-31"}

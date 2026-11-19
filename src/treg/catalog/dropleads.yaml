@@ -188,6 +188,10 @@ endpoints:
     method: POST
     path: /api/v2/prime-db/leads/enrich
     name: Enrich a person with verified email
+    miss:
+      status: 400
+      when: "error_code == 'ENRICHMENT_FAILED'"
+      means: "no email that passes the asked email_verification_type for this person (400 ENRICHMENT_FAILED) — a normal, free outcome, not a bad request; valid_only misses more often than valid_and_catchall. Other 400 bodies stay real request errors."
     summary: Enrich one person and return an email with Dropleads verification metadata.
     input: &verified_person_input
       bodyType: json

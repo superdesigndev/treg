@@ -250,6 +250,10 @@ def render(variant: str) -> str:
     #    TREG_HUB_TEAMS: so the plugin never carries it. A member of such a team gets the section
     #    from the server itself (`treg skill bootstrap` signed in, or /skill.md with their key).
     out = re.sub(r"<!--hub-->.*?<!--/hub-->\n?", "", out, flags=re.S)
+    # 6. `<!--agentpay-->` / `<!--/agentpay-->` delimit the keyless wallet road, which the server
+    #    keeps only while agent payments are on. A plugin user signs in, and a static copy could
+    #    outlive the switch, so the plugin never carries it; a keyless agent reads /skill.md.
+    out = re.sub(r"<!--agentpay-->.*?<!--/agentpay-->\n?", "", out, flags=re.S)
     # `{ENDPOINTS}` / `{PROVIDERS}`: the server fills these per request from the loaded catalog; a
     # static plugin copy gets the numbers as of generation, refreshed with every release.
     endpoints, providers = catalog_store.headline_counts(catalog_store.load())

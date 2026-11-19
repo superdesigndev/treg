@@ -22,7 +22,7 @@ def _used_keys(adapter: Adapter) -> set[str]:
 
 
 def ignored_filters(adapter: Adapter, contract: Contract, identity: dict[str, Any],
-                    given: set[str] | frozenset[str] | None = None) -> tuple[str, ...]:
+                    given: set[str] | frozenset[str] | None = None, *, soft: bool = True) -> tuple[str, ...]:
     """Filters the caller supplied that this adapter has no place for — the provider will answer a
     LOOSER question than the one asked. Pure, and knowable before the call, so ranking can use it.
 
@@ -38,14 +38,20 @@ def ignored_filters(adapter: Adapter, contract: Contract, identity: dict[str, An
     `limit` is a page size, not a filter: an adapter without one answers the same question, and its
     price already reflects the rows it bills. The contract defaults it, so counting it ranked every
     limit-less child last, so a free-on-miss role finder fell behind a search that bills its empty
-    answers."""
+    answers.
+
+    A key the adapter declares soft (`Adapter.soft`) reaches the provider only as a hint, so its rows
+    need not match it: it counts as not applied, a scoping key the caller sent included. `soft=False`
+    leaves those keys out: what ranking reads, so a declaration discloses without reordering."""
     used = _used_keys(adapter)
     # A filter written into a stand-in's text (`q` "… in Germany") reaches the provider there.
     for k in _stand_in_sent(adapter, identity):
         used |= _carried(contract, k, identity)
-    return tuple(k for k in (contract.filters or ()) if k != "limit"
+    soft = set(getattr(adapter, "soft", None) or ()) if soft else set()
+    keys = (*(contract.filters or ()), *(k for k in contract.scoping if k in soft))
+    return tuple(k for k in dict.fromkeys(keys) if k != "limit"
                  and identity.get(k) not in (None, "") and (given is None or k in given)
-                 and (k not in used or _unmappable(adapter, k, identity)))
+                 and (k not in used or k in soft or _unmappable(adapter, k, identity)))
 
 
 def _unmappable(adapter: Adapter, key: str, identity: dict[str, Any]) -> bool:
@@ -53,12 +59,22 @@ def _unmappable(adapter: Adapter, key: str, identity: dict[str, Any]) -> bool:
     every one of them yields nothing for this value."""
     if key in adapter.in_map:
         return False
-    unary = re.compile(rf"^(?:\w+\()+{re.escape(key)}\)+$")
     exprs = [e.replace(" ", "") for e in (adapter.in_expr or {}).values() if re.search(rf"\b{re.escape(key)}\b", e)]
-    if not exprs or not all(unary.match(e) for e in exprs):
+    chains = []  # each place `key` appears, as the `f(g(key))` call chain wrapping it there
+    for e in exprs:
+        for m in re.finditer(rf"\b{re.escape(key)}\b", e):
+            if e[:m.start()].count("'") % 2:  # a string literal ('country' as a field name), not the key
+                continue
+            start, end, depth = m.start(), m.end(), 0
+            while (call := re.search(r"\w+\($", e[:start])) is not None:
+                start, depth = call.start(), depth + 1
+            if depth == 0 or e[end:end + depth] != ")" * depth:
+                return False  # sent as given somewhere (`obj('x', key)`, `choose(key, …)`)
+            chains.append(e[start:end + depth])
+    if not chains:
         return False
-    try:
-        return all(P.evaluate(e, identity) in (None, "", []) for e in exprs)
+    try:  # a chain nested in a larger value (`list(obj('country', country_name(country)))`) counts too
+        return all(P.evaluate(c, identity) in (None, "", []) for c in chains)
     except Exception:  # noqa: BLE001 - ranking must never crash on an expression
         return False
 
@@ -129,6 +145,11 @@ def unscoped(adapter: Adapter, contract: Contract, identity: dict[str, Any]) -> 
             used.add(k)
         else:
             used.discard(k)
+    # Any other scoping key is asked by a key the contract says carries it (a company's domain by
+    # its name): the matched variant sending that key answers the same question.
+    for k, by in contract.carried_by.items():
+        if k not in stand_in and variant & set(by):
+            used.add(k)
     return tuple(k for k in contract.scoping if identity.get(k) not in (None, "") and k not in used)
 
 
@@ -216,6 +237,7 @@ class Candidate:
     exhausted: bool = False
     note: str = ""
     ignored: tuple[str, ...] = ()     # caller filters this adapter cannot express (ranks it down)
+    hinted: tuple[str, ...] = ()      # of `ignored`, those it sends only as a hint: named, never ranked down
     # What one miss costs (`miss_charge_micro`, or an overflow route's price). None: the full
     # price when the child's cost bills a miss, else 0.
     miss_micro: int | None = None
@@ -288,7 +310,8 @@ def sampled_provider_allowed(provider: str, percentages: dict[str, int], *, org_
 
 def rank(candidates: list[Candidate], *, prefer: list[str] | None = None, exclude: list[str] | None = None,
          given: set[str] | frozenset[str] | None = None, derive: dict[str, str] | None = None,
-         one_subject: bool = False, caller_prefer: bool = False) -> list[Candidate]:
+         one_subject: bool = False, caller_prefer: bool = False,
+         last: tuple[str, ...] | list[str] = ()) -> list[Candidate]:
     """`given` = the identity keys the CALLER actually sent; `derive` = the contract's derive rules.
     `one_subject` (the contract's flag): every variant names the same person, so expected cost per
     hit leads and specificity only breaks ties. Specificity first sent `{linkedin_url, full_name,
@@ -298,8 +321,12 @@ def rank(candidates: list[Candidate], *, prefer: list[str] | None = None, exclud
     variant names, or one it was derived from (`first_name`/`last_name` cover a supplied
     `full_name`; `domain` covers a supplied `email`). So `{first_name, last_name, domain}` and
     `{full_name, domain}` are equally specific for a caller who sent a full name and a domain, and
-    price decides between hunter and apollo — while a domain-only variant still ranks below both."""
+    price decides between hunter and apollo — while a domain-only variant still ranks below both.
+    `last` (the contract's `ask_last`) ranks those providers, on treg's key only, after the other
+    healthy treg-key candidates unless they are named in `prefer`; a caller's own prefer ignores it,
+    and a team's own key is never reordered by it."""
     prefer = [p.lower() for p in prefer or []]
+    last = set() if caller_prefer else {p.lower() for p in last} - set(prefer)
     given = set(given or ())
     derive = derive or {}
 
@@ -327,11 +354,19 @@ def rank(candidates: list[Candidate], *, prefer: list[str] | None = None, exclud
         # non-empty answer to the looser question still counts as a hit — so it must never win on
         # price alone. It stays reachable, just last among equals.
         cost = c.expected_cost_per_hit
-        lead = (len(c.ignored), cost, specificity) if one_subject else (specificity, len(c.ignored), cost)
+        missed = len(c.ignored) - len(c.hinted)
+        lead = (missed, cost, specificity) if one_subject else (specificity, missed, cost)
         # A child failing or slow right now is asked after the healthy ones of its tier, whatever
         # order a contract default or a published rule gives it. Only the caller's own prefer
         # (`caller_prefer`) outranks health, and a team's own key is never asked later for it.
         unwell = 0 if c.health == "ok" else 1 if c.health == "slow" else 2
+        # A contract default or a published rule orders only children that ask the whole question:
+        # one that ignores a sent filter loses its place in it, so it never answers a looser question
+        # ahead of one that asks the real one. The caller's own prefer still places it.
+        if missed and not caller_prefer:
+            pref = len(prefer)
+        if tier == 2 and c.endpoint["provider"].lower() in last:
+            pref = len(prefer) + 1
         order = (pref, unwell) if caller_prefer else (unwell, pref)
         return (tier, *order, *lead,
                 c.p50_ms if c.p50_ms is not None else 10**9,

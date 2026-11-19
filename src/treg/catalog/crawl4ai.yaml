@@ -125,7 +125,8 @@ endpoints:
         proxy: {type: string, required: false, enum: [none, isp, residential], default: none, note: "Costs more: isp 0.30 credits, residential 0.60 (plain page 0.15). Use only for a site that blocked a plain request, and try isp before residential."}
         country: {type: string, required: false, note: "Two-letter exit country for isp or residential, e.g. us, gb. A country without isp addresses is served through residential at 0.60."}
         parse: {type: object, required: false, note: "true for all, or pick {links, media, metadata, tables}"}
-      note: "Most pages answer in 1-2 s; a page that needs a real browser takes 10-30 s, and a failed page ends within about 55 s. A PDF URL returns the PDF's text as Markdown. Images and other binary files answer 422 binary-body within about a second, free. Blocked (403), unreachable (502) and fleet-busy (503) answers are free; retry a 503 after a few seconds."
+        timeout: {type: number, required: false, min: 5, max: 120, example: 25, note: "Seconds, 5 to 120: answer within this time. Send a little less than your client's limit (25 for a 30 s client): the answer is the page, 403 blocked or 504 timeout, never a dropped call. Neither failure is charged."}
+      note: "Most pages answer in 1-2 s; a page that needs a real browser takes 10-30 s. Without timeout a hard page can take up to 90 s; with it the answer comes within that time. A PDF URL returns the PDF's text as Markdown. Images and other binary files answer 422 binary-body within about a second, free. Blocked (403), unreachable (502) and fleet-busy (503) answers are free; retry a 503 after a few seconds."
     test_request: {body: {url: "https://example.com", format: md}}
     cost:
       type: per_success
@@ -155,7 +156,7 @@ endpoints:
     summary: "Live web search across several engines, ranked and cleaned: each result has a title, URL and snippet. When the live web returns fewer than 10 results, results from the Crawl4AI index fill the list. For follow-up questions, related queries and an entity card, use crawl4ai.web.search.rich."
     input:
       queryParams:
-        q: {type: string, required: true, note: "max 512 characters", example: "rust web crawler"}
+        q: {type: string, required: true, note: "max 512 characters. site: and quoted phrases are read as hints, not filters: check each row's URL and snippet against them", example: "rust web crawler"}
       note: "For follow-up questions, related queries, an entity card, videos and news, use crawl4ai.web.search.rich."
     test_request: {queryParams: {q: "rust web crawler"}}
     cost:
@@ -186,7 +187,7 @@ endpoints:
     summary: "Web search plus a rich block: follow-up questions, related queries, an entity card, videos, news and discussions."
     input:
       queryParams:
-        q: {type: string, required: true, note: "max 512 characters", example: "why is the sky blue"}
+        q: {type: string, required: true, note: "max 512 characters. site: and quoted phrases are read as hints, not filters: check each row's URL and snippet against them", example: "why is the sky blue"}
         rich: {type: integer, required: true, enum: [1], example: 1}
     test_request: {queryParams: {q: "why is the sky blue", rich: 1}}
     cost:
@@ -331,7 +332,7 @@ endpoints:
     strict_query: true
     input:
       queryParams:
-        q: {type: string, required: true, note: "the query, up to 512 characters", example: "best crm software"}
+        q: {type: string, required: true, note: "the query, up to 512 characters. Google's own page (source gg) reads site: and quoted phrases as hints, not filters: check each row's link and text against them", example: "best crm software"}
         country: {type: string, required: false, note: "two-letter Google country (gl), default us"}
         language: {type: string, required: false, note: "Google interface language (hl), e.g. en or pt-br; default en"}
         location: {type: string, required: false, note: "a city or region, e.g. Austin, TX; an unknown place answers 400 with the closest names"}
@@ -386,11 +387,12 @@ endpoints:
       unit: call
       settle: usage
       usage: {path: summary.cost, unit: credit}
+      worst_case: 92.5
       source: observed
       source_url: https://api.crawl4ai.com/v1/prices
       checked: '2026-11-12'
       confidence: verified
-      note: "Each URL costs like a scrape on treg's account (0.25 credits, 3.70 at the hard effort) and its line carries that cost; the closing summary line carries the total, which settles the call. The 6.25-credit hold is 25 URLs at 0.25."
+      note: "Each URL costs like a scrape on treg's account (0.25 credits, 3.70 at the hard effort) and its line carries that cost; the closing summary line carries the total, which settles the call. The hold is 92.5 credits, 25 URLs at the hard effort; what the summary does not use goes back."
     verified: '2026-10-05'
     added: '2026-10-06'
     docs_url: https://crawl4ai.com/llms.txt
@@ -1923,15 +1925,15 @@ endpoints:
           example: newest
     cost:
       type: per_success
-      value: 0.15
+      value: 0.14
       currency: credit
       per: 1
       unit: call
       source: observed
       source_url: https://api.crawl4ai.com/recipes
-      checked: '2026-10-31'
+      checked: '2026-11-16'
       confidence: verified
-      note: 'treg''s account price: 0.15 credits a call whatever pages the run fetched, second-source records included;
+      note: 'treg''s account price: 0.14 credits a call whatever pages the run fetched, second-source records included;
         a reply with no rows, a refused input and a failed run are free. The x-c4-cost header settles the actual charge.'
     docs_url: https://crawl4ai.com/llms.txt
     test_request:
@@ -2441,8 +2443,8 @@ endpoints:
     method: POST
     path: /recipes/instagram-profile
     name: Profile of an Instagram account
-    summary: 'Get one public Instagram account: full name, biography, follower, following and post counts, verified
-      flag and external link.'
+    summary: 'Get one public Instagram account: full name, follower and post counts and verified flag.'
+    note: 'biography and external_url are null on every answer: for the bio or link use treg.instagram.user.profile.'
     body_allowlist: true
     input:
       bodyType: json
@@ -2459,15 +2461,15 @@ endpoints:
           example: nasa
     cost:
       type: per_success
-      value: 0.9
+      value: 0.84
       currency: credit
       per: 1
       unit: call
       source: observed
       source_url: https://api.crawl4ai.com/recipes
-      checked: '2026-10-31'
+      checked: '2026-11-16'
       confidence: verified
-      note: 'treg''s account price: 0.9 credits a call whatever pages the run fetched, second-source records included;
+      note: 'treg''s account price: 0.84 credits a call whatever pages the run fetched, second-source records included;
         a reply with no rows, a refused input and a failed run are free. The x-c4-cost header settles the actual charge.'
     docs_url: https://crawl4ai.com/llms.txt
     test_request:
@@ -4503,15 +4505,15 @@ endpoints:
           example: nasa
     cost:
       type: per_success
-      value: 0.2
+      value: 0.19
       currency: credit
       per: 1
       unit: call
       source: observed
       source_url: https://api.crawl4ai.com/recipes
-      checked: '2026-10-31'
+      checked: '2026-11-16'
       confidence: verified
-      note: 'treg''s account price: 0.2 credits a call whatever pages the run fetched, second-source records included;
+      note: 'treg''s account price: 0.19 credits a call whatever pages the run fetched, second-source records included;
         a reply with no rows, a refused input and a failed run are free. The x-c4-cost header settles the actual charge.'
     docs_url: https://crawl4ai.com/llms.txt
     test_request:
@@ -5169,8 +5171,8 @@ endpoints:
       (`where.person.title`: words in any order, VP = Vice President, Head = Director), by department or seniority
       (department: marketing, sales, engineering,
       product, finance, hr, operations, legal, it, design, executive; seniority: owner_founder, c_level, vp, director,
-      manager; decision_role for decision makers), by a person''s name (`where.person.name`), by company country,
-      city or industry, or by a free-text brief (`q`). `limit` is how many people (default 10, up to 100), each
+      manager; decision_role for decision makers), by a person''s name (`where.person.name`), by where the
+      person is (`where.person.country`, `city`), by company country, city or industry, or by a free-text brief (`q`). `limit` is how many people (default 10, up to 100), each
       person returned priced. An empty answer is free. About 0.2 s.'
     body_allowlist: true
     input:
@@ -5180,7 +5182,7 @@ endpoints:
           type: object
           required: false
           example: {company: {domain: stripe.com}, person: {department: [engineering]}}
-          note: "company: domain, country (two-letter code: gb, us, de), city, industry; person: title, name, seniority (one of owner_founder, c_level, vp, director, manager, senior, individual, intern, unknown), department, decision_role"
+          note: "company: domain, country (two-letter code: gb, us, de), city, industry; person: country (two-letter code), city, title, name, seniority (one of owner_founder, c_level, vp, director, manager, senior, individual, intern, unknown), department, decision_role"
         q:
           type: string
           required: false

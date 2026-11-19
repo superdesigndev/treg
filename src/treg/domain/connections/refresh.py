@@ -25,6 +25,11 @@ class OAuthRefreshPort(Protocol):
     def exchange(self, blob: dict) -> Awaitable[dict]: ...
 
 
+class CredentialPort(Protocol):
+    def open(self, secret: Secret) -> Awaitable[str]: ...
+    def seal(self, plaintext: str, org_id: int | None) -> Awaitable[str]: ...
+
+
 def _expires_at(blob: dict) -> float | None:
     if "expires_at" in blob:
         try:
@@ -89,11 +94,24 @@ def expiry_state(expires_at: datetime | None, refreshable: bool, now: datetime |
     return "fresh"
 
 
+def refreshable_flag(kind: str, plaintext: str) -> bool | None:
+    """The `Secret.refreshable` value to store with a credential written as `plaintext`."""
+    if kind != "oauth":
+        return None
+    try:
+        return is_refreshable(json.loads(plaintext))
+    except (ValueError, TypeError, AttributeError):
+        return False
+
+
 def secret_is_refreshable(secret: Secret) -> bool:
-    """Whether treg can renew this credential unattended. Decrypts server-side; the blob never
-    leaves this function. A non-oauth secret is never auto-renewable."""
+    """Whether treg can renew this credential unattended. A non-oauth secret never is."""
     if secret.kind != "oauth":
         return False
+    if secret.refreshable is not None:
+        return secret.refreshable
+    # A row stored before `refreshable` existed is a local Fernet token; every KMS-sealed write
+    # records the flag, so this fallback never opens a credential over the network.
     try:
         return is_refreshable(json.loads(crypto.decrypt(secret.value)))
     except Exception:  # noqa: BLE001 — an unreadable blob is reported as not-refreshable, not a 500
@@ -144,12 +162,13 @@ def _restore(fresh: dict, stored: dict, keys: tuple[str, ...]) -> dict:
 
 async def ensure_fresh(
     secret: Secret, db: AsyncSession, port: OAuthRefreshPort, platform: PlatformRefresh | None = None,
+    *, credentials: CredentialPort,
 ) -> None:
     """If `secret` is a stale oauth credential, refresh + persist it before it's used. No-op for
     non-oauth kinds and for still-valid tokens. Raises on a failed refresh (caller decides)."""
     if secret.kind != "oauth":
         return
-    blob = json.loads(crypto.decrypt(secret.value))
+    blob = json.loads(await credentials.open(secret))
     if not is_refreshable(blob):
         return  # MANUAL mode — inject the uploaded token as-is (user manages freshness)
     if not is_stale(blob):
@@ -160,12 +179,12 @@ async def ensure_fresh(
     async with _locks[secret.id]:
         await db.refresh(secret)  # another worker may have just refreshed it
         old_value = secret.value
-        blob = json.loads(crypto.decrypt(old_value))
+        # Opening the credential and asking the token endpoint are external work. End the read
+        # transaction first so neither occupies a shared pool slot.
+        await db.commit()
+        blob = json.loads(await credentials.open(secret))
         if not is_stale(blob):
             return
-        # The token endpoint is external work. End the read transaction first so a slow provider
-        # never occupies a shared pool slot while this use case waits on the network.
-        await db.commit()
         outgoing = platform(secret.provider, secret.authorization_method, blob) if platform else None
         try:
             fresh = await port.exchange(outgoing or blob)
@@ -182,10 +201,12 @@ async def ensure_fresh(
         # Cross-process safety: the in-process lock only serializes THIS worker. Write conditionally
         # on the ciphertext we refreshed from, so a second worker that already rotated the
         # refresh_token can't be clobbered with our now-stale token; then reload whichever won.
+        sealed = await credentials.seal(json.dumps(fresh), secret.org_id)
         await db.execute(
             update(Secret).where(Secret.id == secret.id, Secret.value == old_value)
             .values(
-                value=crypto.encrypt(json.dumps(fresh)),
+                value=sealed,
+                refreshable=is_refreshable(fresh),
                 expires_at=expiry_of(fresh),
                 last_refresh_at=datetime.now(timezone.utc).replace(tzinfo=None),
                 last_error="",

@@ -870,7 +870,11 @@ async def test_a_transient_failure_never_empties_a_working_allow_list(treg):
     client = treg.client()
     try:
         task = asyncio.create_task(lp.refresh_hosts_forever(cfg, client, interval=0))
-        await asyncio.sleep(0.05)
+
+        async def the_next_poll_after_the_500():
+            while len(treg.seen) < 2:
+                await asyncio.sleep(0)
+        await asyncio.wait_for(the_next_poll_after_the_500(), 2)
         task.cancel()
     finally:
         await client.aclose()

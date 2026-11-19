@@ -41,6 +41,7 @@ sources:
   - src/treg/web/usecase-ads.html
   - src/treg/web/people-search.html
   - src/treg/web/leads-signals.html
+  - src/treg/web/jobs-api.html
   - src/treg/web/recruit.html
   - src/treg/web/web-access.html
   - src/treg/web/gtm-engineering.html
@@ -96,7 +97,7 @@ describes one grant per new verified account, not per team
 | `/use-cases`, `/use-cases/<job>`, `/resources` | Use-case pages and hubs (below). |
 | `/workflows`, `/workflows/<slug>`, `/workflows/<slug>.csv` | Workflow pages (below). |
 | `/blog`, `/blog/<post>` | Hand-kept index (`_BLOG_LAUNCHES`, `_BLOG_POSTS`). Posts carry `BlogPosting` (`_blog_posting_ld`) beside breadcrumbs. `/agents/grok-bot` 301s to `/grokbot`. |
-| Launch landings (`/people-search`, `/leads-signals`, `/web-access`, `/recruit`, `/grokbot`, `/fable`, `/ugc`, `/aeo`, `/rea-growth`, `/social`, `/gpt6`, `/jev`) | Bundled files through `_static_page` (placeholders filled, no-cache, ETag revalidation to 304), canonical, OG, sitemapped. `/astra` 301s to `/gpt6` keeping the query (campaign attribution). `ugc.html` uses relative asset paths, which only resolve while the route stays slashless. `/web-access` reads current prices from `/web-arena/api/leaderboard` with a bundled snapshot fallback and deliberately shows no hit-rate board (each vendor sees different traffic; that stays on `/web-arena`). Copy on `/leads-signals` and the Hermes guide must not imply treg schedules or diffs: the agent does. `/rea-growth.md` is `noindex` via `_serve_md`. |
+| Launch landings (`/people-search`, `/leads-signals`, `/jobs-api`, `/web-access`, `/recruit`, `/grokbot`, `/fable`, `/ugc`, `/aeo`, `/rea-growth`, `/social`, `/gpt6`, `/jev`) | Bundled files through `_static_page` (placeholders filled, no-cache, ETag revalidation to 304), canonical, OG, sitemapped. `/astra` 301s to `/gpt6` keeping the query (campaign attribution). `ugc.html` uses relative asset paths, which only resolve while the route stays slashless. `/web-access` reads current prices from `/web-arena/api/leaderboard` with a bundled snapshot fallback and deliberately shows no hit-rate board (each vendor sees different traffic; that stays on `/web-arena`). Copy on `/leads-signals` and the Hermes guide must not imply treg schedules or diffs: the agent does. `/rea-growth.md` is `noindex` via `_serve_md`. |
 | `/jev` | `/jev/xboost.json` serves the document `treg-worker jev xboost` stores (Ephemeral `jev`/`xboost`), else `media/jev/xboost-seed.json` flagged `snapshot: true`. `POST /jev/xboost/judge` is rate-limited per IP and fleet-wide through ratestore, answers 503 until `jev_treg_token` and `ai_gateway_api_key` are set, and its entries survive the daily run. `application/jev_xboost.py` calls `/call/` with the demo team's token, so the receipt is a real bill. Bundled recipe runs have every email address replaced. `tests/test_jev.py`. |
 | `/start` | Paid-traffic landing. Hosted-only, `noindex` (meta and `X-Robots-Tag`), no canonical, not sitemapped. `?job=` picks copy from a fixed table; unknown values (including `constructor`, `__proto__`) get the general page. `sitetrack.js` loads before the page script so `start_viewed` is not dropped; copy events fire only after a fulfilled clipboard write. `tests/test_start_page.py`. |
 | `/gtm-engineering` (+ `.md`) | Hand-written (not `_page()`) because only hand-written pages load `sitetrack.js`. Its original studies publish results, never rows: the test fails if a catalog provider is named in a study block, a headline figure leaves its section, or a study FAQ answer drifts from its JSON-LD; raw data stays out of the repo. The `.md` twin is hand-kept and `tests/test_gtm_engineering_page.py` fails on a missing chapter heading. Hosted-only. |
@@ -325,4 +326,7 @@ key for its provider (`platform_key_for`, the same two halves as MCP's `no_key_n
 provider's page reads as own-key, and only platform prices inform the starting price. OAuth rows use
 account-connection language. The kicker reads `_observed_or_empty`. Own-account providers where
 search demand is for "<provider> mcp" (`_MCP_INTENT_PROVIDERS`) lead title and H1 with MCP.
+A public provider (`auth_kind: public`, keyless upstream) counts its `platform_auth: anonymous`
+rows as served once the provider is allow-listed (`anonymous_served`), prices them as free and says
+only what is true of it: free, no key, nothing to connect; no metering, key or injected-credential copy.
 `tests/test_provider_pages.py`.

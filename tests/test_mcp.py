@@ -116,7 +116,8 @@ async def test_the_server_lists_the_shared_tools(clients):
         names = {t["name"] for t in r.json()["result"]["tools"]}
     # The hub tools are listed only where the hub is on for the caller (test_hub_tools_are_listed_*).
     assert names == {"catalog_search", "catalog_get", "call", "call_media", "resources_list",
-                     "balance", "my_tools", "catalog_request", "feedback", "review"}
+                     "balance", "my_tools", "catalog_request", "feedback", "review", "mark",
+                     "call_result"}
 
 
 async def test_openai_clients_get_no_review_tool_or_review_instruction(clients):
@@ -139,10 +140,11 @@ async def test_openai_clients_get_no_review_tool_or_review_instruction(clients):
 
     for ua in ("openai-mcp/1.0.0", "codex-mcp-client/0.160.1"):
         instructions, names = await surface(ua)
-        assert "review" not in names and "catalog_search" in names, ua
-        assert "review(" not in instructions and "catalog_search" in instructions, ua
+        assert not {"review", "mark"} & names and "catalog_search" in names, ua
+        assert "review(" not in instructions and "mark(" not in instructions, ua
+        assert "catalog_search" in instructions, ua
     instructions, names = await surface("claude-code/2.1.291 (cli)")
-    assert "review" in names and "review(" in instructions
+    assert {"review", "mark"} <= names and "review(" in instructions and "mark(" in instructions
 
 
 async def _tool_names(clients, token):
@@ -479,9 +481,10 @@ async def test_every_tool_declares_what_it_can_do(clients):
 
     ann = {t.name: t.annotations for t in await server.list_tools()}
     assert set(ann) == {"catalog_search", "catalog_get", "call", "call_media", "resources_list", "balance", "my_tools",
-                        "catalog_request", "feedback", "review", "hub_create", "hub_update", "hub_mine"}
+                        "catalog_request", "feedback", "review", "mark", "hub_create", "hub_update", "hub_mine",
+                        "call_result"}
     assert all(a.title is None for a in ann.values())
-    for name in ("catalog_search", "catalog_get", "resources_list", "balance", "my_tools"):
+    for name in ("catalog_search", "catalog_get", "resources_list", "balance", "my_tools", "call_result"):
         a = ann[name]
         assert a and a.read_only_hint is True, name
         assert a.destructive_hint is False and a.open_world_hint is False, name
@@ -491,7 +494,7 @@ async def test_every_tool_declares_what_it_can_do(clients):
         assert a.destructive_hint is True and a.open_world_hint is True
     # These write nothing upstream and spend nothing, but their text reaches the treg team (and a
     # review's reason may be quoted on a public catalog page), so they are open world.
-    for name in ("catalog_request", "feedback", "review"):
+    for name in ("catalog_request", "feedback", "review", "mark"):
         a = ann[name]
         assert a.read_only_hint is False, name
         assert a.destructive_hint is False and a.open_world_hint is True, name
@@ -634,6 +637,18 @@ async def test_structured_content_VALIDATES_against_the_advertised_schema(client
             structured = (r.json().get("result") or {}).get("structuredContent")
             assert structured is not None, f"{tool} returned no structuredContent: {r.text[:200]}"
             jsonschema.validate(structured, schemas[tool])  # raises on any mismatch
+
+
+def test_mcp_gzip_uses_a_fast_level_because_it_runs_on_the_event_loop():
+    from starlette.middleware.gzip import GZipMiddleware
+
+    import treg.mcp as mcp_module
+
+    for transport_app in (mcp_module.mcp_app, mcp_module.directory_mcp_app):
+        layer = transport_app
+        while not isinstance(layer, GZipMiddleware):
+            layer = layer.app
+        assert layer.compresslevel == mcp_module.MCP_GZIP_LEVEL == 1
 
 
 async def test_large_mcp_responses_are_gzipped_AT_THE_ORIGIN(clients):
@@ -930,43 +945,13 @@ async def test_a_list_is_refused_for_a_GET_with_a_clear_reason(clients):
     assert "must be an object, not a list" in json.dumps(out), out
 
 
-def test_stripping_the_link_keeps_the_DIAGNOSIS(clients):
-    """Removing the invitation to pay must not remove the explanation. An agent still needs to know
-    it ran out of money, how short it was, and that its own key is an alternative — otherwise the
-    refusal is indistinguishable from a broken endpoint."""
-    from treg.mcp import _without_purchase_pointers
-
-    real = {"detail": {
-        "error": "insufficient_balance",
-        "message": ("akta.companies.enrich would cost ~$0.875 and this team's balance is $0.5765."
-                    "\n  add funds:      https://treg.to/app#billing"
-                    "\n  or use your own key: treg connections connect --provider akta"),
-        "balance_micro": 576500, "estimated_cost_micro": 875000}}
-    out = _without_purchase_pointers(real)
-    blob = json.dumps(out)
-    assert "insufficient_balance" in blob and "would cost" in blob
-    assert "connections connect" in blob, "the own-key alternative must survive"
-    assert out["detail"]["balance_micro"] == 576500
-
-
-def test_the_strip_does_not_depend_on_which_host_we_run_as(clients):
-    """A first version matched `public_url`, which differs per environment — so it stripped nothing
-    anywhere except production, and the local test passed while the deployed behaviour was wrong."""
-    from treg.mcp import _without_purchase_pointers
-
-    for host in ("https://treg.ngrok.app", "http://127.0.0.1:18790", "https://anything.example"):
-        out = _without_purchase_pointers({"m": f"pay here: {host}/app#billing"})
-        assert "http" not in json.dumps(out), host
-
-
-async def test_a_402_THROUGH_THE_CALL_TOOL_carries_no_link(clients, monkeypatch):
-    """The test the helper-level ones above cannot be. They exercise `_without_purchase_pointers`
-    directly and would pass even with the strip DELETED from `call` - the helper works and nothing
-    connects it to the response a user sees.
-
-    This drives the real path: drain the balance, call a metered endpoint through the MCP tool, and
-    assert on what comes back.
-    """
+@pytest.mark.parametrize("public_url", ["https://treg.ngrok.app", "http://127.0.0.1:18790",
+                                        "https://anything.example"])
+async def test_a_402_THROUGH_THE_CALL_TOOL_carries_no_link(clients, monkeypatch, public_url):
+    """Drain the balance, call a metered endpoint through the MCP tool, and assert on what comes
+    back: no link out, whichever host this deployment runs as, and the diagnosis intact. An agent
+    still needs to know it ran out of money, how short it was, and that its own key is an
+    alternative; otherwise the refusal is indistinguishable from a broken endpoint."""
     from sqlmodel import select
 
     from treg.config import get_settings
@@ -975,6 +960,7 @@ async def test_a_402_THROUGH_THE_CALL_TOOL_carries_no_link(clients, monkeypatch)
 
     monkeypatch.setenv("TREG_PLATFORM_KEY_TIKHUB", "PLATKEY")
     monkeypatch.setenv("TREG_PLATFORM_PROVIDERS", "tikhub")
+    monkeypatch.setenv("TREG_PUBLIC_URL", public_url)
     get_settings.cache_clear()
 
     token = (await verified_signup(clients, json={"email": "broke402@superdesign.dev"})).json()["token"]
@@ -1000,6 +986,10 @@ async def test_a_402_THROUGH_THE_CALL_TOOL_carries_no_link(clients, monkeypatch)
     assert "http://" not in blob and "https://" not in blob, f"a link out survived: {blob}"
     assert "topup_url" not in blob, blob
     assert "not enough for this call" in blob, "the diagnosis must survive"
+    detail = out["body"]["detail"]
+    assert detail["error"] == "insufficient_balance" and "would cost" in detail["message"]
+    assert "connections connect" in detail["message"], "the own-key alternative must survive"
+    assert detail["balance_micro"] == 0 and detail["estimated_cost_micro"] > 0
 
 
 async def test_a_402_THROUGH_CALL_MEDIA_carries_no_link_either(clients, monkeypatch):

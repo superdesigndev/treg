@@ -830,19 +830,6 @@ def test_cmd_run_allows_vendor_flags_after_the_separator(monkeypatch):
     assert "before the tool name" not in str(e.value.code).lower()          # guard did NOT trip
 
 
-async def test_run_slot_caps_concurrent_runs_per_user():
-    from treg import runner
-    import contextlib
-    async with contextlib.AsyncExitStack() as stack:
-        for _ in range(runner.MAX_CONCURRENT_RUNS_PER_USER):        # fill this user's slots
-            await stack.enter_async_context(runner.run_slot("u@x"))
-        with pytest.raises(runner.RunBusy):                          # one more → busy
-            await stack.enter_async_context(runner.run_slot("u@x"))
-    # slots released on exit → a fresh run works again
-    async with runner.run_slot("u@x"):
-        pass
-
-
 def test_run_server_timeout_exits_nonzero(monkeypatch):
     from treg import cli as cli_mod
     fake = _FakeClient({"/run": _FakeResp(200, {"stdout": "", "stderr": "", "exit_code": 0, "timed_out": True})})

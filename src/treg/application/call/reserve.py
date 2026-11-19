@@ -1,5 +1,6 @@
 """Reservation and spend-cap helpers for metered calls."""
 
+import functools
 import logging
 import random
 import time
@@ -15,6 +16,7 @@ from ...application import billing
 from ...caller_metadata import TAG_DEFAULT
 from ...config import get_settings
 from ...domain import money as ledger
+from ...domain.money import allowance as money_allowance
 from ...domain.catalog import store as catalog_store
 from ...domain.governance import budgets as budget_policy
 from ...domain.governance.usage import _day_start_utc
@@ -25,6 +27,7 @@ from ...infra.money_session import money_session
 from ...infra.money_timing import observe_money
 from ...infra.money_trace import mark_money, money_stage
 from ...models import CallRecord, Org, TagBudget
+from . import allowance as allowance_runtime
 from .intake import CallMeta, _NO_META
 from .resolve import MarketplaceCall
 from .types import ReservationFailed
@@ -146,7 +149,9 @@ async def _enforce_platform_daily_cap(caller: Caller, add_micro: int, db: AsyncS
     if cap <= 0:  # no limit applies: the balance (and the auto-top-up monthly cap) is the bound
         return
     try:
-        spent = await ledger.spent_today(db, caller.org_id)
+        # Today's counter plus what an allowance can still spend today outside it. Read from
+        # the rows, not from the allowance switch: a hold and its queued charges outlive it.
+        spent = await money_allowance.committed_today(db, caller.org_id)
     except Exception as exc:  # cannot verify the ceiling ⇒ do not spend
         logging.getLogger("treg.ledger").warning(
             "platform daily-cap check failed for org %s: %s", caller.org_id, exc)
@@ -329,6 +334,40 @@ async def _holdless_reserve(mk: MarketplaceCall, caller: Caller) -> None:
             await _enforce_platform_daily_cap(caller, 0, db)
 
 
+def _allowance_eligible(mk: MarketplaceCall, caller: Caller, meta: CallMeta,
+                        call_ref: str | None) -> bool:
+    """A call the team's allowance may pay for: a direct, synchronous, untagged call on treg's
+    platform key, by a member with no spend limit, on an endpoint any credit may pay for.
+
+    Everything else keeps its own hold, because something reads that hold: a tag or member row
+    written with it, an async task or a routed parent that closes it later, the purchased-credit
+    gate. A child call's reference is its parent's plus a `:suffix`.
+    """
+    return bool(
+        call_ref and ":" not in call_ref and (mk.reserved_micro or 0) > 0
+        and allowance_runtime.enabled_for(caller.org_id)
+        and not meta.tags and not mk.billed_oauth and mk.deferred is None
+        and mk.async_owner_call_id is None and not mk.async_descriptor
+        and mk.provider not in catalog_store.load().trial_pools
+        and budget_policy.member_daily_spend_cap(caller.membership, caller.org) is None
+        and not _purchased_only(mk.endpoint_id))
+
+
+async def _schedule_autotopup_after(org_id: int) -> None:
+    """Let auto top-up see the balance a committed reservation just moved. The conditional UPDATE
+    bypasses any ORM instance, so this reloads the org on its own session, outside every lease.
+    The money is committed; a failed read must not fail the call."""
+    org = None
+    try:
+        async with session_maker() as read_db:
+            org = await read_db.get(Org, org_id)
+    except Exception as exc:  # noqa: BLE001
+        logging.getLogger("treg.ledger").warning(
+            "auto top-up read after reserve failed for org %s: %s", org_id, exc)
+    if org is not None:
+        billing.maybe_schedule_autotopup(org)
+
+
 def wallet_and_alternative(mk: MarketplaceCall) -> tuple[str, str]:
     """Whose money a metered call spends, and the line naming the way off that meter."""
     wallet = f"treg's {mk.provider} " + ("app (pay-per-use)" if mk.billed_oauth else "key")
@@ -341,7 +380,8 @@ def wallet_and_alternative(mk: MarketplaceCall) -> tuple[str, str]:
 
 
 async def _platform_reserve(mk: MarketplaceCall, caller: Caller, meta: CallMeta = _NO_META,
-                            call_ref: str | None = None, *, allow_holdless: bool = False) -> None:
+                            call_ref: str | None = None, *, allow_holdless: bool = False,
+                            allow_allowance: bool = False) -> None:
     """Withhold this call's estimated cost BEFORE a byte goes upstream, and record the hold on `mk`.
     Insufficient balance is a 402 whose body an agent can act on without reading prose.
 
@@ -353,13 +393,22 @@ async def _platform_reserve(mk: MarketplaceCall, caller: Caller, meta: CallMeta 
     `allow_holdless` admits a `holdless_eligible` call from an untagged caller in an org listed in
     `holdless_free_org_ids` without a hold: a $0 reserve and its release only queued on the org's
     balance row. A tagged call keeps its hold,
-    because the tag rows written with it count toward `calls_per_day`."""
+    because the tag rows written with it count toward `calls_per_day`.
+
+    `allow_allowance` lets an eligible call (`_allowance_eligible`) of a team listed in
+    `money_allowance_org_ids` reserve from the team's allowance counter instead: no hold, no
+    balance row. Whenever the allowance cannot serve it, the call takes its own hold below.
+
+    The hold is the estimate, or the row's declared worst case when that is higher: a settle that
+    reads the provider's figure may exceed the estimate, and calls in flight together all passed
+    the balance gate already, so only a hold that covers the worst case bounds them."""
     if (allow_holdless and mk.holdless_eligible and not meta.tags
             and caller.org_id in get_settings().holdless_free_org_ids):
         await _holdless_reserve(mk, caller)
         return
     mk.holdless = False
-    charged = ledger.with_margin(mk.estimate_micro)
+    held = max(mk.estimate_micro, mk.worst_case_micro)
+    charged = ledger.with_margin(held)
     mk.payer_org_id = caller.org_id
     mk.reserved_micro = max(0, charged)
     mk.reserved_at = time.monotonic()
@@ -375,6 +424,22 @@ async def _platform_reserve(mk: MarketplaceCall, caller: Caller, meta: CallMeta 
     # attribute load while constructing the refusal would otherwise escape the application session.
     auto_on = bool(caller.org.autotopup_enabled and caller.org.autotopup_consented_at)
     prefs = billing.autotopup_prefs(caller.org) if auto_on else None
+    mk.allowance_epoch = None
+    if allow_allowance and _allowance_eligible(mk, caller, meta, call_ref):
+        before = allowance_runtime.refills(caller.org_id)
+        epoch = await allowance_runtime.take(
+            caller.org_id, mk.reserved_micro,
+            daily_cap_micro=budget_policy._effective_daily_cap(caller.org),
+            after_refill=(
+                functools.partial(_schedule_autotopup_after, caller.org_id) if auto_on else None))
+        if epoch:
+            # Recorded on the call before anything else is awaited: a cancel from here on
+            # finds the take and returns it.
+            mk.call_id, mk.allowance_epoch = call_ref, epoch
+        if auto_on and allowance_runtime.refills(caller.org_id) != before:
+            await _schedule_autotopup_after(caller.org_id)
+        if epoch:
+            return
     # Loaded inside the session, scheduled only after the lease is gone. The refill task opens
     # its own session and may call Stripe; that work is not part of this reserve.
     refused_org = None
@@ -390,14 +455,14 @@ async def _platform_reserve(mk: MarketplaceCall, caller: Caller, meta: CallMeta 
                 # The builder's own per-tag ceilings first: a refusal that belongs to ONE of their users
                 # must not surface as the team-wide balance error, which names the builder's private numbers.
                 with timing.phase("preflight"), money_stage(db, "preflight"):
-                    await _enforce_tag_budgets(caller, meta, db, add_micro=mk.estimate_micro)
+                    await _enforce_tag_budgets(caller, meta, db, add_micro=held)
                     member_id = await _enforce_member_spend_cap(caller, charged, db)
-                    await _enforce_platform_daily_cap(caller, mk.estimate_micro, db)
+                    await _enforce_platform_daily_cap(caller, held, db)
                     await _enforce_trial_allowance(caller, mk.provider, mk.endpoint_id, db)
                 try:
                     with timing.phase("ledger"):
                         mk.call_id = await ledger.reserve_in_transaction(
-                            db, caller.org_id, mk.endpoint_id, mk.estimate_micro,
+                            db, caller.org_id, mk.endpoint_id, held,
                             meta={"tier": "oauth" if mk.billed_oauth else "platform",
                                   "provider": mk.provider, "cost_type": mk.cost_type},
                             tags=meta.tags, call_id=call_ref,
@@ -414,13 +479,8 @@ async def _platform_reserve(mk: MarketplaceCall, caller: Caller, meta: CallMeta 
                     raise
                 with timing.phase("commit"):
                     await db.commit()
-                # The conditional UPDATE bypasses an ORM instance. Reload after commit so auto-top-up sees
-                # the balance crossing that triggered this reservation.
-                mark_money(db, "reserve_post_commit", org_id=caller.org_id, call_id=call_ref)
-                with timing.phase("post_commit"), money_stage(db, "post_commit_read"):
-                    org = await db.get(Org, caller.org_id)
-            if org is not None:
-                billing.maybe_schedule_autotopup(org)
+        if auto_on:
+            await _schedule_autotopup_after(caller.org_id)
     except ledger.PurchasedCreditShort as exc:
         if refused_org is not None:
             billing.maybe_schedule_autotopup(refused_org)

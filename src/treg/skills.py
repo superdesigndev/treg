@@ -150,6 +150,14 @@ def cli_preview(det: SkillDetection, catalog: list[dict] | None = None) -> dict 
             "verified": bool(prov_cli.get("verified")), "enabled": False}
 
 
+def secret_file_present(d: Path, rel: str) -> bool:
+    """Whether a contract secret file exists inside the skill folder; a path outside never counts."""
+    try:
+        return convert.resolve_secret_path(d, rel).is_file()
+    except convert.SecretPathError:
+        return False
+
+
 def _classify(d: Path, catalog: list[dict], env_names: set[str]) -> SkillDetection:
     name = d.name
     # (1) an existing, complete treg.json wins — use it verbatim (its secrets are local files).
@@ -166,8 +174,8 @@ def _classify(d: Path, catalog: list[dict], env_names: set[str]) -> SkillDetecti
         # Validate readiness (a contract is not inherently trustworthy — a missing file or an env var
         # absent on THIS machine must surface as a gap, so `ready` doesn't lie across machines).
         for s in contract.get("secrets", []):
-            if s.get("file") and not convert.resolve_secret_path(d, s["file"]).exists():
-                det.gaps.append(f"treg.json secret file missing: {s['file']}")
+            if s.get("file") and not secret_file_present(d, s["file"]):
+                det.gaps.append(f"treg.json secret file missing or outside the skill folder: {s['file']}")
             elif s.get("env") and s["env"] not in env_names:
                 det.gaps.append(f"needs env var {s['env']} — not found in the env")
         if not contract.get("bindings") and not contract.get("cli"):

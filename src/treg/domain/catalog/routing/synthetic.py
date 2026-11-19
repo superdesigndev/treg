@@ -87,7 +87,8 @@ def routed_endpoint(contract: Contract, children: list[dict], adapters: dict[str
                            "X-Treg-Route-* headers, never body fields. The answer is {output, raw, _treg}; "
                            "X-Treg-Served-By names the provider."
                            + (" When you sent a domain, _treg.domain_match says whether the hit's mailbox domain "
-                              "matches it." if contract.advice_domain_mismatch else "")
+                              "matches it; X-Treg-Route-Domain-Match: strict keeps looking past an off-domain hit, "
+                              "each attempt at its own price." if contract.advice_domain_mismatch else "")
                            + (f" X-Treg-Route-Verify: true also checks a hit with {contract.check.endpoint}, "
                               "at that call's own price, in _treg.verification." if contract.check else "")
                            + (f" X-Treg-Route-Confirm: true counts a hit only once a second provider returns the same "

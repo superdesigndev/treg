@@ -42,7 +42,6 @@ proposed_capabilities:
   companies.emails.role: "Find a company's role-based email addresses (contact@, support@, info@)"
   people.profile.url: "Find a person's professional profile URL from their name and company"
   companies.profile.url: "Find a company's professional profile URL from its name or domain"
-  people.job.start: "Start a bulk contact-data job over many rows"
   people.job.results: "Collect the finished rows of a contact-data job"
   people.job.status: "Check how far a bulk contact-data job has got"
 
@@ -214,8 +213,8 @@ endpoints:
     path: /bulk-search
     resource_ownership:
       produces: [{kind: bulk_file, path: file}]
-    name: "Start a bulk email job (up to 5,000 rows)"
-    summary: "Queue up to 5,000 rows of email discovery, email verification or domain scanning in one call"
+    name: "Bulk verify or find emails: a list of up to 5,000 in one job"
+    summary: "Bulk email verification of a list of addresses (or email finding from names, or domain scanning): up to 5,000 per call instead of one call per address"
     input:
       body:
         name: {type: string, required: true, note: "your label for the job — how you find it later", example: "Q3 prospect list"}

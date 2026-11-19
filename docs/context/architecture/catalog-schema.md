@@ -135,9 +135,11 @@ defaults and type coercion. A usage meter is one value: no `*` and no root filte
 `domain/catalog/outcome.py` judges one answer to a v2 row from its one declaration: a non-2xx is a
 miss when a `miss` rule lists its status and its `when` or `plugin` holds, else an error; a 2xx is
 an error when `expect` does not hold or `error` holds, a miss when it is a 204 or a status-less
-`miss` rule holds, else a hit. Billing reads it in the settlement order; `results.classify` (stats,
-cache admission) reads it for a row that declares a `miss` rule, for a 2xx or a 4xx status, beside
-a verified adapter, in today's result reasons; routing's `child_outcome` reads it too, keeping its
+`miss` rule holds, else a hit. Billing reads it in the settlement order; `results.judged_outcome`
+records it on each call with `not_found` ahead of it, and reliability counts that word before the
+status ([catalog](catalog.md)); `results.classify` (the hit verdict, cache admission) reads it for a
+row that declares a `miss` rule, for a 2xx or a 4xx status, beside a verified adapter, in today's
+result reasons; routing's `child_outcome` reads it too, keeping its
 own checks (declared miss, `not_found`, non-JSON body, empty required output) on top: a 2xx it
 judges an error is a miss with reason `provider_error`, a 204 a miss with `adapter_miss`. A v2 row's
 adapter only maps fields: `Adapter.is_miss` reads the row's rule, so every reader of an adapter's
@@ -192,6 +194,16 @@ field without a default: an equality on an absent field does not hold, so a late
 fallback prices that request. A
 `provenance.checked` older than 90 days warns, as `cost.checked` does.
 
+**The worst case a hold covers.** A row whose provider-reported figure settles the call may declare
+the most one call can cost: `cost.worst_case` (a number in the cost's currency, beside `settle:
+usage` or `reported_charge`) or `settle.worst_case` (money in the price's currency, beside
+`settle.usage` or `settle.reported`; the model refuses it elsewhere, since a count or plugin settle is
+already capped). The hold is the higher of the estimate and the worst case
+([money](money.md)); a missing figure still settles at the estimate. The validator refuses a worst
+case below the hold it raises (the fallback beside a usage settle or a table, else the value) and
+warns on a usage-settled row without one. A v2 row serves it as `cost.worst_case`, and the codemod
+moves `cost.worst_case` to `settle.worst_case`.
+
 ## Provider defaults and the one merge rule
 
 An endpoint file header may carry `defaults:`, any endpoint-level key its provider's rows inherit,
@@ -211,6 +223,11 @@ A row has two prose fields, and each caveat has one home.
 - **A caveat goes to its most specific home first:** a parameter's `input.*.note`, then the charge's
   `cost.note` (`price.note` on a v2 row), then the row's `note`. Maintainer context is a YAML
   comment; evidence (dates, sample sizes, how a price was measured) is the pull request body.
+- **A filter the provider takes only as a hint** carries `applied: soft` beside its note, which
+  says what comes back instead. `treg catalog get` opens that parameter's note with "a hint, not a
+  filter". Routing counts a key mapped into it as not applied only when the endpoint's contract has
+  that filter; otherwise the mark changes only the `catalog get` text, and the validator warns
+  ([catalog](catalog.md)).
 
 The writing rules no check can judge:
 

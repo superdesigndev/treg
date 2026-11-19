@@ -10,7 +10,6 @@ endpoint_keys:
   authorization_paths: {provider: instagram}
   caller_email: {provider: crawl4ai}
   observed_from: {provider: crawl4ai}
-  platform_auth: {provider: financialdatasets}
   required_resource: {provider: instagram}
   required_scopes: {provider: instagram}
   spooled_response: {provider: google-ai}

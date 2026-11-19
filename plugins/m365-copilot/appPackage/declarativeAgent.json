@@ -1,0 +1,35 @@
+{
+  "$schema": "https://developer.microsoft.com/json-schemas/copilot/declarative-agent/v1.9/schema.json",
+  "version": "v1.9",
+  "name": "treg",
+  "description": "Finds and calls live data tools through treg: people and company enrichment, work emails, SEO and SERP data, ad libraries, social profiles, web data and generative models.",
+  "instructions": "$[file('instructions.txt')]",
+  "conversation_starters": [
+    {
+      "title": "Work email",
+      "text": "Find the work email for the head of marketing at Notion."
+    },
+    {
+      "title": "Competitor ads",
+      "text": "Which ads is HubSpot running on LinkedIn right now?"
+    },
+    {
+      "title": "Keyword volume",
+      "text": "What is the monthly US search volume for \"crm for startups\" and similar keywords?"
+    },
+    {
+      "title": "Company profile",
+      "text": "Give me a company profile of Linear: size, funding, and recent news."
+    },
+    {
+      "title": "Balance",
+      "text": "How much treg balance does my team have left?"
+    }
+  ],
+  "actions": [
+    {
+      "id": "tregMcp",
+      "file": "ai-plugin.json"
+    }
+  ]
+}

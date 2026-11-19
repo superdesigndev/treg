@@ -16,7 +16,6 @@ from treg.application.call import resolve as call_resolution
 from treg.application.call import service as call_service
 from treg.application.call.types import ResolutionFailed, UpstreamResponse
 from treg.config import get_settings
-from treg.domain import money as ledger
 from treg.domain.catalog import store as catalog_store
 
 EP = "crawl4ai.test.budget"
@@ -81,11 +80,7 @@ async def test_a_budget_is_charged_exactly_once_even_when_the_provider_reports_z
     label = call_resolution.team_label(org_id)
     r = await clients.post(f"/call/{EP}?label={label}", json={"credits": 1000, "ref": "p1"})
     assert r.status_code == 200, r.text
-    cv = catalog_store.load().cost_view(COST, "crawl4ai")
-    expected = ledger.with_margin(call_resolution._platform_estimate_micro(
-        cv, None, json.dumps({"credits": 1000, "ref": "p1"}).encode()))
-    assert expected > 0
-    assert before - (await _team(clients))[1] == expected
+    assert before - (await _team(clients))[1] == 1_000_000, "1000 credits at $0.001"
     assert seen and seen[0].endswith(f"/monitors/agents/{label}/budget")
 
 
@@ -202,11 +197,8 @@ async def test_a_purchase_cancelled_after_it_was_sent_is_charged_and_its_retry_i
     label = call_resolution.team_label(org_id)
     with pytest.raises(asyncio.CancelledError):
         await clients.post(f"/call/{EP}?label={label}", json={"credits": 100, "ref": "p9"})
-    cv = catalog_store.load().cost_view(COST, "crawl4ai")
-    expected = ledger.with_margin(call_resolution._platform_estimate_micro(
-        cv, None, json.dumps({"credits": 100, "ref": "p9"}).encode()))
     after_cancel = (await _team(clients))[1]
-    assert before - after_cancel == expected
+    assert before - after_cancel == 100_000, "100 credits at $0.001"
     seen: list = []
     monkeypatch.setattr(call_service, "relay", _relay(200, seen, added=False))
     r = await clients.post(f"/call/{EP}?label={label}", json={"credits": 100, "ref": "p9"})

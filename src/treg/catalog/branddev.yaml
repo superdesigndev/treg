@@ -384,23 +384,32 @@ endpoints:
         url: {type: string, required: true, format: url, example: "https://example.com"}
         formats: {type: object, required: true, enum: [{markdown: true}, {html: true}, {images: true}, {screenshot: true}], example: {markdown: true}, note: "Choose one basic output; charged JSON, highlights, product and PDF OCR options are excluded."}
         maxAgeMs: {type: integer, required: false, min: 0, max: 31536000000, note: "Maximum cache age in milliseconds; 0 fetches fresh."}
-      note: "The curated request permits one basic format. Browser actions and charged extraction options require an own raw tool. A target 404 may still consume the base credit."
+      note: "The curated request permits one basic format. Browser actions and charged extraction options require an own raw tool. A page that answers 404 is charged the credit Context.dev consumes for it; a blocked page or a hostname that does not exist is free."
     test_request: {body: {url: "https://example.com", formats: {markdown: true}}}
-    cost:
-      type: per_success
-      value: 1
-      fallback: {value: 1, note: "The curated request allows one basic output and no charged extras."}
+    price:
+      value: '1'
       currency: credit
       per: 1
       unit: call
-      settle: usage
-      usage: {path: key_metadata.credits_consumed, unit: credit}
+      note: "One basic request of any format consumed one credit live, a page that answered 404 included. The call costs the credits Context.dev reports. The curated request allows one basic output and no charged extras."
+    provenance:
       source: observed
       source_url: https://docs.context.dev/account/credits
-      checked: '2026-09-28'
+      checked: '2026-11-18'
       confidence: verified
-      note: "One basic Markdown request consumed one credit live; the current rate card prices the other basic formats at the same base. Settle from reported credits."
-    verified: '2026-09-28'
+    # Context.dev's own count decides whatever the outcome: a 404 page consumes a credit although it
+    # is a miss, a blocked page or a missing hostname consumes none.
+    settle: {reported: {path: response.key_metadata.credits_consumed, unit: credit}, worst_case: '1'}
+    error: {when: {any: [{path: response.error, op: present}, {path: response.errors, op: present}]}}
+    miss: {plugin: branddev.scrape_miss, means: "no format carries a page, or the Markdown is a captcha, bot check, login or cookie wall"}
+    not_found:
+      status: [200]
+      when: {any: [{path: response.markdown.error_code, op: in, value: [NOT_FOUND, WEBSITE_NOT_FOUND]},
+                   {path: response.html.error_code, op: in, value: [NOT_FOUND, WEBSITE_NOT_FOUND]},
+                   {path: response.images.error_code, op: in, value: [NOT_FOUND, WEBSITE_NOT_FOUND]},
+                   {path: response.screenshot.error_code, op: in, value: [NOT_FOUND, WEBSITE_NOT_FOUND]}]}
+      means: "the page answered 404 or its hostname does not exist"
+    verified: '2026-11-18'
     added: '2026-09-28'
     example_response: examples/branddev.web.scrape.json
     docs_url: https://docs.context.dev/api-reference/web-scraping/scrape

@@ -238,3 +238,24 @@ def capability_presentation(
             *details.get(capability, []),
         ]
     return labels, intros, details
+
+
+def review_pending_scopes(
+    review_scopes: tuple[tuple[str, tuple[str, ...]], ...], granted: list[str],
+    pending: frozenset[str],
+) -> list[str]:
+    """Return granted scopes whose provider app review is still pending, in grant order."""
+    waiting = {scope for key, scopes in review_scopes if key in pending for scope in scopes}
+    return [scope for scope in dict.fromkeys(granted) if scope in waiting]
+
+
+def is_review_refusal(path: str, codes: tuple[int, ...], body: object) -> bool:
+    """Whether a parsed provider error body carries one of the declared permission-refusal codes."""
+    if not path or not codes:
+        return False
+    node = body
+    for part in path.split("."):
+        if not isinstance(node, dict):
+            return False
+        node = node.get(part)
+    return type(node) is int and node in codes

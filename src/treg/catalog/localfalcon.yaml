@@ -1,0 +1,162 @@
+provider: localfalcon
+source:
+  docs: https://docs.localfalcon.com/
+  openapi: https://docs.localfalcon.com/openapi.yaml
+  curated: '2026-11-16'
+pricing_url: https://www.localfalcon.com/pricing/
+limits: "On-Demand API: $199/month subscription plus $0.0032 per request. Rate limit undocumented (429 'Rate limit exceeded'); 50 concurrent grid calls passed. No key-readable usage or balance endpoint."
+cache:
+  mode: forbidden
+  license_quote: "Resell, sublicense, or redistribute access to the Service without authorization."
+  source_url: https://www.localfalcon.com/terms-of-use/
+  checked: '2026-11-16'
+proposed_capabilities:
+  google.maps.grid_points: "Compute the coordinates of a square geo-grid around a point"
+  google.maps.rank: "Get a business's Google Maps rank for a keyword at one coordinate"
+  google.maps.rank_grid: "Scan a business's Google Maps rank for a keyword across a geo-grid"
+
+# Only the stateless On-Demand endpoints. Local Falcon's account-scoped routes (saved locations,
+# reports, campaigns, credit-funded /v2/run-scan/) are never listed on the shared key.
+# All rows are GET with query parameters: on POST a form body overrides the query, and treg's price
+# table reads query parameters, so a GET row keeps the scan's grid_size and its price in step.
+defaults:
+  expect: {path: response.success, op: equals, value: true}
+  bill: {miss: charged}
+  provenance: {source: docs, source_url: 'https://www.localfalcon.com/pricing/', checked: '2026-11-16', confidence: documented}
+
+endpoints:
+  - id: localfalcon.google.maps.grid_points
+    added: '2026-11-16'
+    verified: '2026-11-16'
+    example_response: examples/localfalcon.google.maps.grid_points.json
+    kind: utility
+    capability: google.maps.grid_points
+    platform: google
+    domain: search
+    scope: any_account
+    method: GET
+    path: /v1/grid/
+    name: Compute geo-grid points (Local Falcon)
+    summary: Compute the latitude and longitude of every point in a square grid around a center point.
+    input:
+      queryParams:
+        lat: {type: number, required: true, example: 40.7484}
+        lng: {type: number, required: true, example: -73.9857}
+        grid_size: {type: string, required: true, enum: ['3', '5', '7', '9', '11', '13', '15', '17', '19', '21'], example: '3', note: "Points per side; the answer has grid_size squared points."}
+        radius: {type: number, required: true, min: 0.1, max: 100, example: 1, note: "Distance from the center to the grid's edge, in measurement units."}
+        measurement: {type: string, required: true, enum: [mi, km], example: mi}
+    strict_query: true
+    test_request: {queryParams: {lat: 40.7484, lng: -73.9857, grid_size: '3', radius: 1, measurement: mi}}
+    price: {value: '0', currency: USD, unit: call}
+    docs_url: https://docs.localfalcon.com/
+
+  - id: localfalcon.google.serp.maps.places
+    added: '2026-11-16'
+    verified: '2026-11-16'
+    example_response: examples/localfalcon.google.serp.maps.places.json
+    capability: google.serp.maps
+    platform: google
+    domain: search
+    scope: any_account
+    method: GET
+    path: /v1/places/
+    name: Find a business on Google Maps (Local Falcon)
+    summary: Find businesses on Google Maps by name, with place_id, coordinates, address, rating, reviews, categories and phone.
+    input:
+      queryParams:
+        query: {type: string, required: true, example: "Katz's Delicatessen", note: "Business name or search phrase."}
+        near: {type: string, required: false, example: "New York, NY", note: "City, address or postal code to search around."}
+      note: "Use a suggestion's place_id and lat/lng as the input to the rank and rank-grid tools. When the answer is an empty suggestions list after a slow (10 s+) reply, retry once: a live probe answered empty, then 2 matches 30 s later. Both answers are billed."
+    strict_query: true
+    test_request: {queryParams: {query: "Katz's Delicatessen", near: "New York, NY"}}
+    price: {value: '6.40', currency: USD, per: 1000, unit: call, note: "treg's price per call, one data point. Local Falcon exposes no per-call meter."}
+    miss: {when: {any: [{path: response.data.suggestions, op: absent}, {path: response.data.suggestions, op: empty}]}}
+    docs_url: https://docs.localfalcon.com/
+
+  - id: localfalcon.google.serp.maps
+    added: '2026-11-16'
+    verified: '2026-11-16'
+    example_response: examples/localfalcon.google.serp.maps.json
+    capability: google.serp.maps
+    platform: google
+    domain: search
+    scope: any_account
+    method: GET
+    path: /v1/search/
+    name: Search Google Maps at a point (Local Falcon)
+    summary: Get the top 20 Google Maps results for a keyword as seen from one coordinate, with place_id, address, rating and reviews.
+    input:
+      queryParams:
+        lat: {type: number, required: true, example: 40.722233, note: "Not validated upstream: a malformed value answers with another city's results and is billed."}
+        lng: {type: number, required: true, example: -73.987429}
+        keyword: {type: string, required: true, example: deli}
+        zoom: {type: integer, required: false, min: 0, max: 18, default: 13, note: "Google Maps zoom level of the simulated search."}
+    strict_query: true
+    test_request: {queryParams: {lat: 40.722233, lng: -73.987429, keyword: deli}}
+    price: {value: '6.40', currency: USD, per: 1000, unit: call, note: "treg's price per call, one data point. Local Falcon exposes no per-call meter."}
+    miss: {when: {any: [{path: response.data.results, op: absent}, {path: response.data.results, op: empty}]}}
+    docs_url: https://docs.localfalcon.com/
+
+  - id: localfalcon.google.maps.rank
+    added: '2026-11-16'
+    verified: '2026-11-16'
+    example_response: examples/localfalcon.google.maps.rank.json
+    capability: google.maps.rank
+    platform: google
+    domain: search
+    scope: any_account
+    method: GET
+    path: /v1/result/
+    name: Google Maps rank of a business at a point
+    summary: Get a business's Google Maps rank for a keyword at one coordinate, with the top 20 results seen there.
+    input:
+      queryParams:
+        lat: {type: number, required: true, example: 40.722233, note: "Not validated upstream: a malformed value answers with another city's results and is billed."}
+        lng: {type: number, required: true, example: -73.987429}
+        keyword: {type: string, required: true, example: deli}
+        place_id: {type: string, required: false, example: ChIJCar0f49ZwokR6ozLV-dHNTE, note: "Google place_id of the business to rank. Without it, data.found and data.rank are false."}
+        zoom: {type: integer, required: false, min: 0, max: 18, default: 13, note: "Google Maps zoom level of the simulated search."}
+      note: "Result items name the place id map_id_encoded. data.raw repeats the 20 results."
+    strict_query: true
+    test_request: {queryParams: {lat: 40.722233, lng: -73.987429, keyword: deli, place_id: ChIJCar0f49ZwokR6ozLV-dHNTE}}
+    price: {value: '6.40', currency: USD, per: 1000, unit: call, note: "treg's price per call, one data point. Local Falcon exposes no per-call meter."}
+    docs_url: https://docs.localfalcon.com/
+
+  - id: localfalcon.google.maps.rank_grid
+    added: '2026-11-16'
+    verified: '2026-11-16'
+    example_response: examples/localfalcon.google.maps.rank_grid.json
+    capability: google.maps.rank_grid
+    platform: google
+    domain: search
+    scope: any_account
+    method: GET
+    path: /v1/scan/
+    name: Google Maps rank grid scan for a business
+    summary: Scan a business's Google Maps rank for a keyword at every point of a geo-grid, with average rank (ARP, ATRP), share of local voice (SoLV) and each point's top 20.
+    input:
+      queryParams:
+        place_id: {type: string, required: true, example: ChIJCar0f49ZwokR6ozLV-dHNTE, note: "Google place_id of the business. An unknown id still answers success with found 0 and is billed."}
+        keyword: {type: string, required: true, example: deli}
+        lat: {type: number, required: true, example: 40.722233, note: "Grid center."}
+        lng: {type: number, required: true, example: -73.987429}
+        grid_size: {type: string, required: true, enum: ['3', '5', '7', '9', '11', '13', '15'], example: '3', note: "Points per side. Grid 3 answers in about 10 s, grid 5 in about 40 s and grid 15 in about 110 s with a 2 MB body; start small, since a client that gives up first is still billed by Local Falcon."}
+        radius: {type: number, required: true, min: 0.1, max: 100, example: 0.5, note: "Distance from the center to the grid's edge, in measurement units."}
+        measurement: {type: string, required: true, enum: [mi, km], example: mi}
+      note: "A point where the business is absent has found false and counts as rank 21 in arp and atrp."
+    strict_query: true
+    test_request: {queryParams: {place_id: ChIJCar0f49ZwokR6ozLV-dHNTE, keyword: deli, lat: 40.722233, lng: -73.987429, grid_size: '3', radius: 0.5, measurement: mi}}
+    price:
+      table:
+        - {when: [{path: query.grid_size, op: equals, value: '3'}], value: '0.0576'}
+        - {when: [{path: query.grid_size, op: equals, value: '5'}], value: '0.16'}
+        - {when: [{path: query.grid_size, op: equals, value: '7'}], value: '0.3136'}
+        - {when: [{path: query.grid_size, op: equals, value: '9'}], value: '0.5184'}
+        - {when: [{path: query.grid_size, op: equals, value: '11'}], value: '0.7744'}
+        - {when: [{path: query.grid_size, op: equals, value: '13'}], value: '1.0816'}
+        - {when: [{path: query.grid_size, op: equals, value: '15'}], value: '1.44'}
+      fallback: {value: '1.44', note: "The grid 15 price, the largest scan."}
+      currency: USD
+      unit: call
+      note: "treg's price: $0.0064 per grid point (grid_size squared; one data point per grid point). Local Falcon exposes no per-call meter."
+    docs_url: https://docs.localfalcon.com/

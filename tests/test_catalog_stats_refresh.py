@@ -36,12 +36,12 @@ def _now() -> datetime:
 
 async def _record(endpoint_id: str | None, status: int, ms: int | None = 100, *, ago: timedelta,
                   refused_by: str | None = None, hit: bool | None = None, cost: int | None = None,
-                  verdict: str | None = None) -> int:
+                  verdict: str | None = None, outcome: str | None = None) -> int:
     async with session_maker() as db:
         row = CallRecord(org_id=1, user_email="a@b.c", tool_name=endpoint_id or "plain", method="GET",
                          path="/x", status_code=status, endpoint_id=endpoint_id, duration_ms=ms,
                          refused_by=refused_by, hit=hit, cost_observed_micro=cost, verdict=verdict,
-                         created_at=_now() - ago)
+                         outcome=outcome, created_at=_now() - ago)
         db.add(row)
         await db.commit()
         return row.id
@@ -486,6 +486,65 @@ async def test_an_empty_answer_counts_against_a_strict_capability_on_both_paths(
     assert folded[strict]["ok_rate"] == live[strict]["ok_rate"] == round(4 / 6, 4)
     assert folded[strict]["p50_ms"] == live[strict]["p50_ms"]
     assert folded[plain]["ok_rate"] == live[plain]["ok_rate"] == 1.0
+
+
+async def test_a_rows_own_outcome_decides_before_its_status_on_both_paths(clients):
+    """A v2 row's `outcome` is read before the status: a 4xx it declares a miss is judged as a
+    miss, and a 2xx it declares an error is no success but, like a 4xx, is not held against the
+    provider; `not_found` decides nothing. Rows without it keep the status rule, so the fold and
+    the live query agree on a window that mixes both."""
+    from treg.domain.catalog import store as catalog_store
+    strict, plain = "branddev.web.scrape", EP
+    assert catalog_store.empty_is_failure(strict) and not catalog_store.empty_is_failure(plain)
+    old = timedelta(days=2)
+    for _ in range(3):
+        await _record(strict, 200, 100, ago=old, hit=True, outcome="hit")
+    await _record(strict, 200, 100, ago=old, hit=False, outcome="miss")       # blocked: fails here
+    await _record(strict, 200, 100, ago=old, hit=False, outcome="not_found")  # the target's 404
+    await _record(strict, 200, 100, ago=old, outcome="error")                 # maybe the caller's
+    await _record(strict, 200, 100, ago=old, hit=False, outcome="error")      # and found nothing
+    await _record(strict, 400, 100, ago=old, hit=False, outcome="miss")       # a declared 4xx miss
+    await _record(strict, 200, 100, ago=old, hit=False)                       # before the column
+    await _record(strict, 429, 100, ago=old)                                  # undecided status
+    for _ in range(4):
+        await _record(plain, 200, 100, ago=old, hit=True, outcome="hit")
+    await _record(plain, 404, 100, ago=old, hit=False, outcome="miss")        # nothing found: answered
+    await _record(plain, 200, 100, ago=old, outcome="error")
+    assert (await catalog_stats.refresh(session_maker, now=_now()))["caught_up"]
+
+    live = await _live([strict, plain])
+    folded = await PostgresEndpointObservationReader(session_maker).get_many([strict, plain])
+    assert folded == live
+    assert live[strict]["samples"] == 10 and live[strict]["decided"] == 7
+    assert live[strict]["ok_rate"] == round(3 / 7, 4)
+    assert live[plain]["samples"] == 6 and live[plain]["decided"] == 5
+    assert live[plain]["ok_rate"] == 1.0
+
+
+def test_a_declaration_judges_only_v2_rows_and_only_what_it_decides():
+    """`judged_outcome` speaks for a v2 row's declaration and for nothing else: a row in today's
+    spelling and a status the declaration does not name stay with the status rule."""
+    import json
+
+    from treg.domain.catalog.results import judged_outcome
+    scrape = "branddev.web.scrape"
+
+    def answer(fmt: str, **part) -> bytes:
+        empty = {"requested": False, "success": None, "data": None}
+        doc = {f: dict(empty) for f in ("markdown", "html", "images", "screenshot")}
+        doc[fmt] = {"requested": True, **part}
+        return json.dumps(doc).encode()
+
+    assert judged_outcome(scrape, 200, answer("markdown", success=True, data="# page")) == "hit"
+    assert judged_outcome(scrape, 200, answer("screenshot", success=True, data="data:image/png;base64,AA")) == "hit"
+    assert judged_outcome(scrape, 200, answer("html", success=False, error_code="NOT_FOUND")) == "not_found"
+    assert judged_outcome(scrape, 200, answer("markdown", success=False, error_code="WEBSITE_NOT_FOUND")) == "not_found"
+    assert judged_outcome(scrape, 200, answer("markdown", success=False, error_code="WEBSITE_BLOCKED")) == "miss"
+    assert judged_outcome(scrape, 200, b'{"error": "bad key"}') == "error"
+    assert judged_outcome(scrape, 429, b'{"message": "slow down"}') is None
+    assert judged_outcome("greenhouse.companies.jobs", 404, b'{"status": 404}') == "miss"   # declared
+    assert judged_outcome("greenhouse.companies.jobs", 500, b'{}') is None
+    assert judged_outcome("tinyfish.web.fetch", 200, b'{"results": []}') is None
 
 
 def test_an_error_named_inside_a_200_is_a_miss_for_the_hit_verdict():

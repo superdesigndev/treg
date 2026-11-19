@@ -18,8 +18,8 @@ related:
 
 A member runs a vendor CLI (`stripe`, `gh`, `gcloud`, ...) on their own machine while the credential
 stays in treg custody. The goal: **no other program of the same user may read the credential** while
-the CLI runs. Server-side CLI execution is disabled for every caller (`POST /run` is denied
-unconditionally, see AGENTS.md); `server_runnable` in the tool view is always false.
+the CLI runs. The server holds no CLI execution code (`POST /run` answers 503 for every caller,
+see AGENTS.md); `server_runnable` in the tool view is always false.
 
 ## Why a dedicated user
 

@@ -20,7 +20,6 @@ proposed_capabilities:
   companies.acquisitions: "List acquisitions made by a company"
   companies.investments: "List investments received by a company"
   companies.outbound_investments: "List investments made by a company"
-  people.contact.get: "Get a person's contact information"
 
 endpoints:
   - id: aviato.companies.enrich
