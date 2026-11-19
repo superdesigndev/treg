@@ -511,12 +511,13 @@ async def close_stale_allowance_in_transaction(
 
 
 async def stale_allowance_orgs(db: AsyncSession, stale_before: datetime, *,
-                               limit: int = 50) -> list[int]:
-    """Teams whose allowance hold stopped admitting calls before `stale_before`. A read; the
+                               after: int = 0, limit: int = 50) -> list[int]:
+    """Teams whose allowance hold stopped admitting calls before `stale_before`, in the order of
+    their numbers, a page at a time: `after` is the last team of the page before. A read; the
     close re-checks under the lock."""
     return list((await db.execute(
         select(Hold.org_id).where(
-            Hold.allowance.is_(True),
+            Hold.allowance.is_(True), Hold.org_id > after,
             func.coalesce(Hold.heartbeat_at, Hold.created_at) < stale_before)
         .order_by(Hold.org_id).limit(limit))).scalars())
 

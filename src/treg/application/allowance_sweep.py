@@ -76,39 +76,51 @@ def idle_after_s() -> int:
 
 
 async def sweep_once(session_maker) -> int:
-    """Close every allowance hold idle for `idle_after_s()`. Returns how many were closed."""
+    """Close every allowance hold idle for `idle_after_s()`, a page of teams at a time, so a
+    team is reached however many before it cannot be closed yet. Returns how many were closed."""
     stale_before = utcnow_naive() - timedelta(seconds=idle_after_s())
-    async with session_maker() as db:
-        org_ids = await allowance.stale_allowance_orgs(db, stale_before)
-    closed = 0
-    for org_id in org_ids:
-        try:
-            async with _team_lease(org_id) as free:
-                if not free:
-                    continue
-                async with (
-                    money_lock(org_id),
-                    money_admission.admit(
-                        money_admission.require_balance_orgs([org_id]), operation="release",
-                        max_wait_s=_ADMISSION_WAIT_S, refuse_on_timeout=True),
-                    money_session(session_maker()) as db,
-                ):
-                    result = await allowance.close_stale_allowance_in_transaction(
-                        db, org_id, stale_before=stale_before, reason="idle")
-                    await db.commit()
-            if result is None:
-                continue
-            closed += 1
-            # After the commit: the hold is gone, so its counter must not be added to again. The
-            # counter stopped admitting takes long ago; this only refuses a late writer.
-            await kv.store().allowance_retire(org_id, result.epoch, _FENCE_TTL_MS)
-            log.info("allowance_closed org_id=%s released=%s folded=%s",
-                     org_id, result.released_micro, result.folded.calls)
-        except money_admission.AdmissionTimeout:
-            continue  # the team's money sessions are busy: the next sweep comes back
-        except Exception:
-            log.error("closing the idle allowance of org %s failed", org_id, exc_info=True)
-    return closed
+    closed, after = 0, 0
+    while True:
+        async with session_maker() as db:
+            org_ids = await allowance.stale_allowance_orgs(
+                db, stale_before, after=after, limit=_TEAMS_PER_PAGE)
+        for org_id in org_ids:
+            closed += await _close_idle(session_maker, org_id, stale_before)
+        if len(org_ids) < _TEAMS_PER_PAGE:
+            return closed
+        after = org_ids[-1]
+
+
+async def _close_idle(session_maker, org_id: int, stale_before) -> bool:
+    """Close one team's idle hold. False when another process has the team, its money sessions
+    are busy, the hold is no longer idle, or on a fault: the next sweep comes back."""
+    try:
+        async with _team_lease(org_id) as free:
+            if not free:
+                return False
+            async with (
+                money_lock(org_id),
+                money_admission.admit(
+                    money_admission.require_balance_orgs([org_id]), operation="release",
+                    max_wait_s=_ADMISSION_WAIT_S, refuse_on_timeout=True),
+                money_session(session_maker()) as db,
+            ):
+                result = await allowance.close_stale_allowance_in_transaction(
+                    db, org_id, stale_before=stale_before, reason="idle")
+                await db.commit()
+        if result is None:
+            return False
+        # After the commit: the hold is gone, so its counter must not be added to again. The
+        # counter stopped admitting takes long ago; this only refuses a late writer.
+        await kv.store().allowance_retire(org_id, result.epoch, _FENCE_TTL_MS)
+        log.info("allowance_closed org_id=%s released=%s folded=%s",
+                 org_id, result.released_micro, result.folded.calls)
+        return True
+    except money_admission.AdmissionTimeout:
+        return False
+    except Exception:
+        log.error("closing the idle allowance of org %s failed", org_id, exc_info=True)
+        return False
 
 
 async def fold_queued_once(session_maker) -> int:

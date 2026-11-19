@@ -1500,6 +1500,29 @@ async def test_an_idle_allowance_whose_team_is_busy_does_not_hold_up_another_tea
     assert await _state(org_id) == (GRANT, 0)
 
 
+async def test_a_sweep_reaches_an_idle_team_behind_one_it_cannot_close_yet(
+        org_id, store, monkeypatch):
+    """Idle holds are listed a page at a time. A sweep that only ever read the first page would
+    never return the money of the teams after it while the first ones stay busy."""
+    monkeypatch.setattr(get_settings(), "money_admission_enabled", True)
+    monkeypatch.setattr(allowance_sweep, "_ADMISSION_WAIT_S", 0.05)
+    monkeypatch.setattr(allowance_sweep, "_TEAMS_PER_PAGE", 1)
+    async with session_maker() as db:
+        db.add(Org(id=org_id + 1, name="later", slug=uuid4().hex))
+        await db.flush()
+        await ledger.grant(db, org_id + 1, amount_micro=GRANT)
+        await db.commit()
+    for team in (org_id, org_id + 1):
+        assert await runtime.take(team, 100)
+        await _age_heartbeat(team, allowance_sweep.idle_after_s() + 5)
+    store.leases[f"money-admission:org:{org_id}"] = "an exact settle"
+    assert await allowance_sweep.sweep_once(session_maker) == 1
+    assert (await _state(org_id))[1] > 0 and await _state(org_id + 1) == (GRANT, 0)
+    del store.leases[f"money-admission:org:{org_id}"]
+    assert await allowance_sweep.sweep_once(session_maker) == 1
+    assert await _state(org_id) == (GRANT, 0)
+
+
 async def test_a_refill_refused_across_midnight_leaves_the_new_days_spend_alone(
         org_id, store, monkeypatch):
     """The debit counted on one day and the refusal came on the next. Taking it back by the

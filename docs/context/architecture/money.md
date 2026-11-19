@@ -435,7 +435,8 @@ money moved, the purchased-credit gate.
   another process is working on (its lease is taken) is skipped, not waited for; so is a team
   whose other money sessions hold the admission lease (the fold asks `admit` to refuse after a
   short wait instead of falling back), and the next pass comes back to it. The idle sweep
-  waits no longer than that either: it runs first in the same loop. A pass
+  waits no longer than that either: it runs first in the same loop, and it too goes through
+  every idle hold a page of teams at a time. A pass
   leaves a team after a few batches so one long queue does not keep the others waiting. Calls
   keep taking from the counter meanwhile, since a fold moves only money their takes already
   removed from it: until its charge is folded, a call's money stays in the hold. A call's
