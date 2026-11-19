@@ -1,6 +1,13 @@
-"""Close the allowance of a team that has stopped spending from it.
+"""The allowance's background work: apply queued charges to the ledger, and close the allowance
+of a team that has stopped spending from it.
 
-Each refill writes on the hold the instant until which calls may take from the team's counter, and
+**Folding.** A finished call's charge waits in a queue (`CallCharge`). This loop is what applies
+the queue: a team at a time, a batch per transaction, on the background pool. Request processes
+do not fold, so the connections folding uses do not grow with traffic or with the number of
+busy teams: one per process running this loop. A team another process is working on is skipped,
+not waited for.
+
+**Closing.** Each refill writes on the hold the instant until which calls may take from the team's counter, and
 publishes that same instant to the counter. A call lives at most `hold_ttl_s()`. So a hold whose
 instant passed that long ago has nobody spending from it, and all of it can go back to the
 balance: what the counter still held, and whatever a crashed call or a lost give-back left behind.
@@ -11,6 +18,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
+import time
 import uuid
 from contextlib import asynccontextmanager
 from datetime import timedelta
@@ -29,11 +37,13 @@ log = logging.getLogger("treg.money_allowance")
 # Clock differences between processes and a refill slow to reach the counter.
 _SLACK_S = 30
 _SWEEP_EVERY_S = 60.0
+_FOLD_EVERY_S = 1.0
 _FENCE_TTL_MS = 24 * 3600 * 1000
 # A batch is one transaction under the team's lease, which a refill may be waiting for: short
-# batches, and enough of them that a pass still clears a long queue.
+# batches. A pass moves on to the next team after a few, so one long queue does not keep the
+# others waiting; the next pass comes back to it.
 _FOLD_BATCH = 100
-_FOLD_BATCHES_PER_PASS = 100
+_FOLD_BATCHES_PER_PASS = 10
 _LEASE_MS = 5000
 
 
@@ -97,12 +107,10 @@ async def sweep_once(session_maker) -> int:
 
 
 async def fold_queued_once(session_maker) -> int:
-    """Fold the queue of every team that has a charge older than a sweep interval. A busy
-    team's refills fold its queue; this is for a queue nothing else is folding: a team no longer
-    listed, a charge written after its hold was closed. Returns how many charges were folded."""
-    queued_before = utcnow_naive() - timedelta(seconds=_SWEEP_EVERY_S)
+    """Fold the queue of every team that has charges queued, listed or not: a queue outlives
+    its team's listing and its hold. Returns how many charges were folded."""
     async with session_maker() as db:
-        org_ids = await allowance.orgs_with_queued_charges(db, queued_before)
+        org_ids = await allowance.orgs_with_queued_charges(db, utcnow_naive())
     total = 0
     for org_id in org_ids:
         try:
@@ -127,20 +135,29 @@ async def fold_queued_once(session_maker) -> int:
     return total
 
 
-async def run_once(session_maker) -> None:
-    """One pass of both jobs, one after the other: never more than one connection."""
-    await sweep_once(session_maker)
-    await fold_queued_once(session_maker)
+async def run_once(session_maker, *, sweep: bool) -> int:
+    """One pass: the idle sweep when it is due, then the fold, one after the other, so never
+    more than one connection. Returns how many charges were folded."""
+    if sweep:
+        await sweep_once(session_maker)
+    return await fold_queued_once(session_maker)
 
 
-async def worker(*, every_s: float = _SWEEP_EVERY_S) -> None:
-    """Sweep forever on the background pool, one connection at a time. A bad pass never kills
-    the loop."""
+async def worker(*, fold_every_s: float = _FOLD_EVERY_S,
+                 sweep_every_s: float = _SWEEP_EVERY_S) -> None:
+    """Fold and sweep forever on the background pool. A pass that folded something is followed
+    by the next at once; an idle one by a pause. A bad pass never kills the loop."""
+    next_sweep = 0.0
     while True:
+        folded = 0
+        sweep = time.monotonic() >= next_sweep
+        if sweep:
+            next_sweep = time.monotonic() + sweep_every_s
         try:
-            await run_once(background_session_maker)
+            folded = await run_once(background_session_maker, sweep=sweep)
         except asyncio.CancelledError:
             raise
         except Exception:
-            log.error("allowance sweep pass failed", exc_info=True)
-        await asyncio.sleep(every_s)
+            log.error("allowance background pass failed", exc_info=True)
+        if not folded:
+            await asyncio.sleep(fold_every_s)
