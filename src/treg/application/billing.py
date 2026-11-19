@@ -377,44 +377,50 @@ async def get_or_create_customer(db: AsyncSession, org: Org, *, email: str = "")
 
 async def _set_default_pm(db: AsyncSession, org_id: int, payment_method: str | None, *,
                           paid: bool = False, chosen_at: int | None = None,
-                          tell_stripe: bool = True) -> bool:
+                          tell_stripe: bool = True, portal: bool = False) -> bool:
     """Record the payer's choice of card to charge off-session. An opaque `pm_…` reference — no
     card data ever reaches our database. Returns True when the stored card changed.
 
-    `paid`: this card just paid. `chosen_at`: the Stripe event's `created` time. A card can be
-    chosen in treg (Checkout, card setup) or in the Customer Portal (`customer.updated`); the event
-    times are on one clock, so an older choice that arrives late never replaces a newer one. On a
-    tie the portal's choice wins. `tell_stripe`: a choice made in treg also becomes the Stripe
-    customer's default, so the portal shows it and a later portal pick of the old card is a change
-    Stripe reports."""
+    `paid`: this card just paid. `chosen_at`: when the payer chose it, on Stripe's clock. A card
+    can be chosen in treg (Checkout, card setup) or in the Customer Portal (`portal`, from
+    `customer.updated`), so an older choice that arrives late never replaces a newer one; on a tie
+    the portal wins. The comparison and the write are one UPDATE, so two deliveries racing cannot
+    both win. `tell_stripe`: the choice also becomes the Stripe customer's default, so the portal
+    shows the card treg charges. The transaction ends before that Stripe call."""
     if not payment_method:
         return False
     org = await db.get(Org, org_id)
     if org is None:
         return False
-    latest = org.stripe_default_pm_at
-    if chosen_at is not None and latest is not None and (
-            chosen_at < latest
-            or (chosen_at == latest and tell_stripe and org.stripe_default_pm != payment_method)):
-        return False
-    changed = org.stripe_default_pm != payment_method
-    org.stripe_default_pm = payment_method
-    newer = chosen_at is not None and (latest is None or chosen_at > latest)
-    if newer:
-        org.stripe_default_pm_at = chosen_at
+    before = org.stripe_default_pm
+    if chosen_at is not None:
+        latest = Org.stripe_default_pm_at
+        newer = (or_(latest.is_(None), latest <= chosen_at) if portal else
+                 or_(latest.is_(None), latest < chosen_at,
+                     and_(latest == chosen_at, Org.stripe_default_pm == payment_method)))
+        won = await db.execute(
+            update(Org).where(Org.id == org_id, newer)
+            .values(stripe_default_pm=payment_method, stripe_default_pm_at=chosen_at)
+            .execution_options(synchronize_session=False))
+        if won.rowcount != 1:
+            await db.rollback()
+            return False
+        await db.refresh(org)
+    else:
+        org.stripe_default_pm = payment_method
+    changed = before != payment_method
     # A card arriving is what a consented-but-cardless policy was waiting for, whichever door it came
     # through: the dashboard's top-up modal records consent and then relies on the top-up Checkout to
     # save the card, so the PAYMENT webhook has to arm it, not only the setup one. Checked even when
     # the pm is unchanged (a redelivered webhook after a crash between the two commits). Declines
     # re-arm on a card that just paid or a newly saved one. A manual payment also resolves a 3DS
     # pause; merely saving a card does not. A deliberate off stays off.
-    armed = _arm_if_waiting_for_card(org, card_proven=paid or changed, paid=paid)
+    _arm_if_waiting_for_card(org, card_proven=paid or changed, paid=paid)
     customer_id = org.stripe_customer_id
-    if changed or armed or newer:
-        db.add(org)
-        await db.commit()
+    db.add(org)
+    await db.commit()
     if tell_stripe and customer_id:
-        await _make_customer_default(customer_id, payment_method)
+        await _make_customer_default(customer_id, payment_method, chosen_at)
     return changed
 
 
@@ -423,10 +429,17 @@ class CardSyncPending(RuntimeError):
     it, and the redelivery sets the default again unless a newer choice has arrived since."""
 
 
-async def _make_customer_default(customer_id: str, payment_method: str) -> None:
+async def _make_customer_default(customer_id: str, payment_method: str,
+                                 chosen_at: int | None) -> None:
+    """Set the Stripe customer's default card. The metadata names the card and when it was chosen:
+    Stripe reports this write as a `customer.updated` stamped now, and `_on_customer_updated` reads
+    the metadata so treg's own write keeps the time of the choice instead of beating a portal choice
+    made in between."""
+    params: dict = {"invoice_settings": {"default_payment_method": payment_method}}
+    if chosen_at is not None:
+        params["metadata"] = {"treg_card": payment_method, "treg_card_chosen_at": str(chosen_at)}
     try:
-        await _sdk(stripe_adapter.CUSTOMER_MODIFY, id=customer_id,
-                   invoice_settings={"default_payment_method": payment_method})
+        await _sdk(stripe_adapter.CUSTOMER_MODIFY, id=customer_id, **params)
     except stripe_adapter.InvalidRequestError as e:
         # Stripe refuses this card for good (not attached to the customer); a retry cannot help,
         # and the charge-time attachment check stops it being charged.
@@ -452,26 +465,47 @@ async def _card_attached(customer_id: str, payment_method: str) -> bool:
     return _stripe_id(pm.get("customer")) == customer_id
 
 
-async def _org_for_customer(db: AsyncSession, customer_id: str | None) -> Org | None:
+async def _org_for_customer(db: AsyncSession, customer_id: str | None,
+                            metadata: dict | None = None) -> Org | None:
+    """The org a Stripe customer belongs to. The customer's `treg_org_id` metadata, written when
+    treg created it, is a primary-key read; the customer id is the fallback."""
     if not customer_id:
         return None
+    try:
+        org_id = int((metadata or {}).get("treg_org_id") or 0)
+    except (TypeError, ValueError):
+        org_id = 0
+    if org_id:
+        org = await db.get(Org, org_id)
+        return org if org is not None and org.stripe_customer_id == customer_id else None
     return (await db.execute(select(Org).where(Org.stripe_customer_id == customer_id)
                              .limit(1))).scalars().first()
 
 
 async def _on_customer_updated(db: AsyncSession, customer: dict, previous: dict,
                                created: int | None) -> dict:
-    """The default card changed, usually in the Customer Portal, which sends nothing else."""
+    """The default card changed: in the Customer Portal, which sends nothing else, or by treg's
+    own write (`_make_customer_default`), which keeps the time of the choice it carries."""
     if "default_payment_method" not in ((previous or {}).get("invoice_settings") or {}):
         return {"handled": False, "reason": "default card unchanged"}
     after = _stripe_id((customer.get("invoice_settings") or {}).get("default_payment_method"))
     if not after:
         # Cleared because the card was detached; `payment_method.detached` handles that.
         return {"handled": False, "reason": "no default card"}
-    org = await _org_for_customer(db, customer.get("id"))
+    meta = customer.get("metadata") or {}
+    org = await _org_for_customer(db, customer.get("id"), meta)
     if org is None:
         return {"handled": False, "reason": "not a treg customer"}
-    changed = await _set_default_pm(db, org.id, after, chosen_at=created, tell_stripe=False)
+    if "metadata" in (previous or {}) and meta.get("treg_card") == after:
+        try:
+            chosen_at = int(meta.get("treg_card_chosen_at") or "")
+        except ValueError:
+            return {"handled": False, "reason": "treg's own write"}
+        changed = await _set_default_pm(db, org.id, after, chosen_at=chosen_at, tell_stripe=False)
+        return {"handled": True, "changed": changed, "own_write": True}
+    # A portal choice is written back with its time, which repairs Stripe's default if treg's
+    # write of an older choice landed after it.
+    changed = await _set_default_pm(db, org.id, after, chosen_at=created, portal=True)
     return {"handled": True, "changed": changed}
 
 
@@ -1463,11 +1497,16 @@ async def _card_gone(db: AsyncSession, org_id: int, payment_method: str) -> dict
     Both the card and the switch may have changed while Stripe was answering: a card saved since
     is already the fix, and a deliberate off must stay one that no future card can undo."""
     log.warning("billing: auto top-up card for org %s is no longer usable", org_id)
-    org = await db.get(Org, org_id)
-    if org is None or org.stripe_default_pm != payment_method:
+    # One UPDATE, so a card chosen by a delivery running alongside is never the one cleared.
+    forgot = await db.execute(
+        update(Org).where(Org.id == org_id, Org.stripe_default_pm == payment_method)
+        .values(stripe_default_pm=None, autotopup_failures=0)
+        .execution_options(synchronize_session=False))
+    org = await db.get(Org, org_id) if forgot.rowcount == 1 else None
+    if org is None:
+        await db.rollback()
         return {"ok": False, "reason": "no_card"}
-    org.stripe_default_pm = None
-    org.autotopup_failures = 0
+    await db.refresh(org)
     if org.autotopup_enabled:
         await _disable_autotopup(db, org, "no_card")
     else:

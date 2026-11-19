@@ -798,18 +798,22 @@ midnight or an uncertain Stripe reply.
 **The card it charges is the payer's latest choice.** A card is chosen in treg (top-up Checkout,
 card setup) or in the Customer Portal, which changes the customer's
 `invoice_settings.default_payment_method` and reports it only as `customer.updated`. Every choice
-goes through `_set_default_pm` with its Stripe event's `created` time, kept in
-`stripe_default_pm_at`: an older choice that arrives late or again never replaces a newer one, and
-on a tie the portal wins. A choice made in treg also becomes the Stripe customer's default, so the
-portal shows it and a later portal pick of the old card is a change Stripe reports; a transient
-failure fails the delivery (`CardSyncPending`) so Stripe redelivers it, and a redelivery older than
-a newer choice sends nothing. An automatic top-up's own payment is no new choice.
-`payment_method.detached` forgets the stored card (`no_card`), and a portal card re-arms a policy
-waiting for one. Before charging, with no database connection open, `attempt_auto_topup` checks that
-the stored card is still attached to the customer, so a late or lost detach event never charges a
-removed card; a Stripe error there charges nothing and is not a failed attempt. The webhook
-endpoint must subscribe to both events. A row from before `stripe_default_pm_at` has no time, so
-its first timed choice wins.
+goes through `_set_default_pm` with its time on Stripe's clock, kept in `stripe_default_pm_at`. The
+comparison and the write are one conditional UPDATE: an older choice that arrives late, again or
+alongside never replaces a newer one, and on a tie the portal wins. Each accepted choice is then
+written to the Stripe customer's default, after the transaction ends, with metadata naming the card
+and its time (`treg_card`, `treg_card_chosen_at`). Stripe reports that write as a
+`customer.updated` stamped later; the metadata keeps the time of the choice, so treg's own write
+never beats a portal choice made in between, and writing a portal choice back repairs Stripe's
+default if an older treg write landed after it. A transient failure fails the delivery
+(`CardSyncPending`) so Stripe redelivers it; a redelivery older than a newer choice sends nothing.
+An automatic top-up's own payment is no new choice. `payment_method.detached` forgets the stored
+card (`no_card`) with an UPDATE conditioned on that card, and a portal card re-arms a policy waiting
+for one. The org is found by the customer's `treg_org_id` metadata when present. Before charging,
+with no database connection open, `attempt_auto_topup` checks that the stored card is still
+attached to the customer, so a late or lost detach event never charges a removed card; a Stripe
+error there charges nothing and is not a failed attempt. The webhook endpoint must subscribe to
+both events. A row from before `stripe_default_pm_at` has no time, so its first timed choice wins.
 
 Before a new charge, `attempt_auto_topup` pages the customer's invoices (listing, not Stripe's delayed
 search index) since one day before the last credited automatic top-up, or the full history before

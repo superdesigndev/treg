@@ -1216,11 +1216,13 @@ def _modify_sdk(error: Exception | None = None):
     async def sdk(fn, /, **kw):
         assert fn == billing.stripe_adapter.CUSTOMER_MODIFY, fn
         sdk.calls.append(kw["invoice_settings"]["default_payment_method"])
+        sdk.metadata.append(kw.get("metadata"))
         if error is not None:
             raise error
         return {"id": kw["id"]}
 
     sdk.calls = []
+    sdk.metadata = []
     return sdk
 
 
@@ -1229,9 +1231,11 @@ async def test_a_portal_card_change_is_the_card_auto_top_up_charges(c: AsyncClie
     stored card kept billing the card the payer had replaced."""
     org_id, _ = await _org(c)
     await _armed(org_id, stripe_default_pm_at=100)
-    monkeypatch.setattr(billing, "_sdk", _no_sdk)  # a portal choice is not written back to Stripe
+    sync = _modify_sdk()
+    monkeypatch.setattr(billing, "_sdk", sync)
     r = await _deliver(c, _customer_updated("cus_armed", "pm_portal", 200))
     assert r.json()["handled"] is True and r.json()["changed"] is True
+    assert sync.metadata == [{"treg_card": "pm_portal", "treg_card_chosen_at": "200"}]
     sdk = _invoice_sdk(payment_method="pm_portal")
     monkeypatch.setattr(billing, "_sdk", sdk)
     assert (await _attempt(org_id))["ok"] is True
@@ -1257,17 +1261,72 @@ async def test_the_newest_card_choice_wins_whatever_order_events_arrive(c: Async
     # Portal at 300, then a late treg save from 200: the portal card stays, Stripe is not touched.
     await _deliver(c, _customer_updated("cus_armed", "pm_portal", 300))
     r = await _deliver(c, _setup_event(org_id, "pm_treg_old", 200))
-    assert r.json()["changed"] is False and sdk.calls == []
+    assert r.json()["changed"] is False and sdk.calls == ["pm_portal"]
     # A late portal event from 250 loses too.
     await _deliver(c, _customer_updated("cus_armed", "pm_older_portal", 250, before="pm_x"))
-    assert await _stored_pm(org_id) == "pm_portal"
+    assert await _stored_pm(org_id) == "pm_portal" and sdk.calls == ["pm_portal"]
     # A newer treg save wins and becomes Stripe's default.
     await _deliver(c, _setup_event(org_id, "pm_treg_new", 400))
-    assert await _stored_pm(org_id) == "pm_treg_new" and sdk.calls == ["pm_treg_new"]
+    assert await _stored_pm(org_id) == "pm_treg_new" and sdk.calls[-1] == "pm_treg_new"
     # On a tie the portal wins.
     await _deliver(c, _customer_updated("cus_armed", "pm_tie_portal", 400, before="pm_treg_new"))
     await _deliver(c, _setup_event(org_id, "pm_tie_treg", 400))
     assert await _stored_pm(org_id) == "pm_tie_portal"
+
+
+def _own_write(customer: str, card: str, chosen_at: int, created: int) -> dict:
+    """The `customer.updated` Stripe sends for treg's own write of the default card."""
+    event = _customer_updated(customer, card, created, before="pm_x")
+    event["data"]["object"]["metadata"] = {"treg_card": card,
+                                           "treg_card_chosen_at": str(chosen_at)}
+    event["data"]["previous_attributes"]["metadata"] = {"treg_card": None}
+    return event
+
+
+@pytest.mark.parametrize("own_write_first", [True, False])
+async def test_treg_own_stripe_write_keeps_the_time_of_the_choice(c: AsyncClient, monkeypatch,
+                                                                  own_write_first):
+    """A treg save from 100 arrives late and is written to Stripe at 200, while the payer's portal
+    choice from 150 is still on its way. The echo of treg's write must not count as a choice at
+    200, or the portal choice loses."""
+    org_id, _ = await _org(c)
+    await _armed(org_id, stripe_default_pm_at=50)
+    monkeypatch.setattr(billing, "_sdk", _modify_sdk())
+    await _deliver(c, _setup_event(org_id, "pm_treg", 100))
+    echo, portal = (_own_write("cus_armed", "pm_treg", 100, 200),
+                    _customer_updated("cus_armed", "pm_portal", 150, before="pm_armed"))
+    for event in ((echo, portal) if own_write_first else (portal, echo)):
+        assert (await _deliver(c, event)).status_code == 200
+    assert await _stored_pm(org_id) == "pm_portal"
+
+
+async def test_no_database_transaction_is_open_during_the_stripe_write(c: AsyncClient,
+                                                                         monkeypatch):
+    org_id, _ = await _org(c)
+    await _armed(org_id, stripe_default_pm_at=100)
+    async with session_maker() as db:
+        async def sdk(fn, /, **kw):
+            assert not db.in_transaction(), "a Stripe call must not hold a database connection"
+            return {"id": kw["id"]}
+
+        monkeypatch.setattr(billing, "_sdk", sdk)
+        assert await billing._set_default_pm(db, org_id, "pm_new", chosen_at=200) is True
+        # A redelivery changes nothing and still releases the connection before Stripe.
+        assert await billing._set_default_pm(db, org_id, "pm_new", chosen_at=200) is False
+
+
+async def test_a_customer_is_found_by_its_treg_org_metadata(c: AsyncClient, monkeypatch):
+    org_id, _ = await _org(c)
+    await _armed(org_id)
+    monkeypatch.setattr(billing, "_sdk", _modify_sdk())
+    event = _customer_updated("cus_armed", "pm_portal", 200)
+    event["data"]["object"]["metadata"] = {"treg_org_id": str(org_id)}
+    assert (await _deliver(c, event)).json()["changed"] is True
+    # Metadata naming an org whose customer is another one is not trusted.
+    event = _customer_updated("cus_other", "pm_elsewhere", 300, before="pm_portal")
+    event["data"]["object"]["metadata"] = {"treg_org_id": str(org_id)}
+    assert (await _deliver(c, event)).json()["handled"] is False
+    assert await _stored_pm(org_id) == "pm_portal"
 
 
 async def test_a_failed_stripe_default_sync_is_retried_by_redelivery(c: AsyncClient, monkeypatch):
