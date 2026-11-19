@@ -4,6 +4,9 @@ Covered: the landing parks only a well-formed `dub_id` and only when Dub is conf
 created with the click queues one lead and is never also paid the friend referral; without the
 click the friend referral is untouched; the drain uploads, retries and dead-letters by Dub's
 answer; and the Stripe customer and Checkout carry `dubCustomerExternalId` for that team alone.
+A code typed at a CLI or agent signup (`ref`) is only ever a Dub partner's link key: queued as a
+code-only lead that the drain resolves to the partner. A typed friend code is ignored; the friend
+referral comes only from the `?ref=` link cookie.
 """
 
 from __future__ import annotations
@@ -21,7 +24,7 @@ from treg.config import get_settings
 from treg.infra import dub
 from treg.infra.db import reset_db, session_maker
 from treg.models import AffiliateLead, Org, Referral
-from treg.routers.signup_cookies import AFFILIATE_COOKIE, REFERRAL_COOKIE
+from treg.routers.signup_cookies import AFFILIATE_COOKIE, PARTNER_CODE_COOKIE, REFERRAL_COOKIE
 
 
 @pytest.fixture
@@ -207,3 +210,157 @@ async def test_a_team_no_affiliate_brought_is_not_tagged(c, monkeypatch):
         org = await db.get(Org, r.json()["org_id"])
         await billing.create_topup_checkout(db, org, 10)
     assert all("dubCustomerExternalId" not in kw.get("metadata", {}) for _, kw in calls)
+
+
+def test_partner_codes_and_countries_are_allowlisted():
+    assert dub.valid_partner_code(" Jane-Doe ") == "jane-doe"
+    for bad in ("", "ab", "-jane", "jane_doe", "a" * 33, "jane doe"):
+        assert dub.valid_partner_code(bad) == ""
+    assert dub.valid_country("au") == "AU"
+    for bad in ("", "XX", "T1", "AUS", "1"):
+        assert dub.valid_country(bad) == ""
+    assert affiliates.country_of("XX") == "US"
+
+
+async def _orgs_with_ref(c, ref: str, *, headers: dict | None = None):
+    from conftest import verified_identity
+    token = await verified_identity(c, "bob@superdesign.dev")
+    return await c.post("/orgs", json={"name": "Bob", "ref": ref},
+                        headers={**(headers or {}), "X-Treg-Token": token})
+
+
+async def test_a_partner_code_queues_a_code_only_lead_with_the_callers_country(c):
+    r = await _orgs_with_ref(c, "Jane-Doe", headers={"CF-IPCountry": "au"})
+    assert r.status_code == 200, r.text
+    leads = await _leads()
+    assert [(lead.org_id, lead.click_id, lead.partner_code, lead.country) for lead in leads] == [
+        (r.json()["org_id"], None, "jane-doe", "AU")]
+    async with session_maker() as db:
+        assert (await db.execute(select(Referral))).scalars().all() == []
+
+
+async def test_a_friends_code_typed_at_signup_is_ignored(c):
+    code = await _referrer_code(c)
+    r = await _orgs_with_ref(c, code)
+    assert r.status_code == 200, r.text
+    assert await _leads() == []
+    async with session_maker() as db:
+        assert (await db.execute(select(Referral))).scalars().all() == []
+
+
+async def test_a_link_click_wins_over_a_typed_code(c):
+    r = await _orgs_with_ref(c, "jane-doe", headers=_cookies(**{AFFILIATE_COOKIE: "cm3w8x2abc"}))
+    assert [(lead.click_id, lead.partner_code) for lead in await _leads()] == [("cm3w8x2abc", None)]
+    assert r.status_code == 200
+
+
+async def test_a_typed_partner_code_skips_the_parked_friend_referral(c):
+    code = await _referrer_code(c)
+    await _orgs_with_ref(c, "jane-doe", headers=_cookies(**{REFERRAL_COOKIE: code}))
+    assert [lead.partner_code for lead in await _leads()] == ["jane-doe"]
+    async with session_maker() as db:
+        assert (await db.execute(select(Referral))).scalars().all() == []
+
+
+async def test_a_web_ref_link_that_is_no_friends_code_does_nothing(c):
+    r = await verified_signup(c, json={"email": "bob@superdesign.dev"},
+                              headers=_cookies(**{REFERRAL_COOKIE: "jane-doe"}))
+    assert r.status_code == 200, r.text
+    assert await _leads() == []
+    async with session_maker() as db:
+        assert (await db.execute(select(Referral))).scalars().all() == []
+
+
+async def test_the_parked_partner_code_is_read_when_the_body_has_none(c):
+    r = await _orgs_with_ref(c, "", headers=_cookies(**{PARTNER_CODE_COOKIE: "jane-doe"}))
+    assert r.status_code == 200, r.text
+    assert [lead.partner_code for lead in await _leads()] == ["jane-doe"]
+
+
+async def test_a_malformed_code_is_ignored(c):
+    r = await _orgs_with_ref(c, "x;drop")
+    assert r.status_code == 200, r.text
+    assert await _leads() == []
+
+
+async def test_a_partner_code_does_nothing_while_dub_is_off(c, monkeypatch):
+    monkeypatch.setattr(get_settings(), "dub_api_key", "")
+    r = await _orgs_with_ref(c, "jane-doe")
+    assert r.status_code == 200, r.text
+    assert await _leads() == []
+
+
+async def test_the_first_run_door_takes_the_code_too(c):
+    from conftest import verified_identity
+    token = await verified_identity(c, "bob@superdesign.dev")
+    r = await c.post("/onboard/team", json={"ref": "jane-doe"}, headers={"X-Treg-Token": token})
+    assert r.status_code == 200, r.text
+    assert [lead.partner_code for lead in await _leads()] == ["jane-doe"]
+
+
+async def test_the_first_run_door_still_takes_no_body(c):
+    from conftest import verified_identity
+    token = await verified_identity(c, "bob@superdesign.dev")
+    r = await c.post("/onboard/team", headers={"X-Treg-Token": token})
+    assert r.status_code == 200, r.text
+    assert await _leads() == []
+
+
+async def test_cli_login_page_parks_the_partner_code_not_the_friend_cookie(c):
+    r = await c.get("/login?cli=abcdefgh12&ref=Jane-Doe")
+    assert r.cookies.get(PARTNER_CODE_COOKIE) == "jane-doe"
+    assert REFERRAL_COOKIE not in r.cookies
+    r = await c.get("/login?cli=abcdefgh12&ref=bad%20code")
+    assert PARTNER_CODE_COOKIE not in r.cookies
+
+
+def _code_transport(info_status: int, commission_status: int, seen: list, partner_id: str = "pn_1"):
+    def handler(request: httpx.Request) -> httpx.Response:
+        seen.append(request)
+        if request.url.path == "/links/info":
+            return httpx.Response(info_status, json={"partnerId": partner_id} if info_status == 200 else {})
+        return httpx.Response(commission_status, json={"success": True} if commission_status == 200 else {})
+    return httpx.MockTransport(handler)
+
+
+async def test_drain_resolves_a_code_to_its_partner_and_creates_the_lead(c, monkeypatch):
+    monkeypatch.setattr(get_settings(), "dub_link_domain", "treg.dub.link")
+    org_id = (await _orgs_with_ref(c, "jane-doe", headers={"CF-IPCountry": "AU"})).json()["org_id"]
+    seen: list[httpx.Request] = []
+    async with httpx.AsyncClient(transport=_code_transport(200, 200, seen)) as client:
+        assert await affiliates.drain_once(client, session_factory=session_maker) == {"sent": 1, "retried": 0, "failed": 0}
+    import json
+    assert dict(seen[0].url.params) == {"domain": "treg.dub.link", "key": "jane-doe"}
+    assert str(seen[1].url) == "https://api.dub.co/commissions"
+    assert json.loads(seen[1].content) == {"type": "lead", "partnerId": "pn_1", "customer": {
+        "externalId": str(org_id), "country": "AU", "email": "bob@superdesign.dev"}}
+
+
+async def test_an_unknown_code_is_dead_lettered_and_tags_no_stripe_customer(c, monkeypatch):
+    monkeypatch.setattr(get_settings(), "dub_link_domain", "treg.dub.link")
+    org_id = (await _orgs_with_ref(c, "nobody")).json()["org_id"]
+    async with httpx.AsyncClient(transport=_code_transport(404, 200, [])) as client:
+        assert await affiliates.drain_once(client, session_factory=session_maker) == {"sent": 0, "retried": 0, "failed": 1}
+    lead = (await _leads())[0]
+    assert lead.failed_at is not None and "no Dub link" in lead.error
+    async with session_maker() as db:
+        assert await affiliates.stripe_metadata(db, org_id) == {}
+
+
+async def test_a_code_lead_waits_for_the_link_domain(c):
+    await _orgs_with_ref(c, "jane-doe")
+    seen: list = []
+    async with httpx.AsyncClient(transport=_code_transport(200, 200, seen)) as client:
+        assert await affiliates.drain_once(client, session_factory=session_maker) == {"sent": 0, "retried": 1, "failed": 0}
+    assert seen == []
+    lead = (await _leads())[0]
+    assert lead.failed_at is None and "dub_link_domain" in lead.error
+
+
+async def test_a_code_lead_retries_on_a_server_error(c, monkeypatch):
+    monkeypatch.setattr(get_settings(), "dub_link_domain", "treg.dub.link")
+    await _orgs_with_ref(c, "jane-doe")
+    async with httpx.AsyncClient(transport=_code_transport(200, 503, [])) as client:
+        assert await affiliates.drain_once(client, session_factory=session_maker) == {"sent": 0, "retried": 1, "failed": 0}
+    lead = (await _leads())[0]
+    assert lead.failed_at is None and lead.error.startswith("503")

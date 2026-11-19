@@ -1,5 +1,5 @@
 ---
-title: Affiliate program on Dub Partners - click, lead outbox, Stripe tag
+title: Affiliate program on Dub Partners - click or code, lead outbox, Stripe tag
 status: shipped
 sources:
   - src/treg/application/affiliates.py
@@ -50,6 +50,26 @@ together with any tracking-only parameter in `web._SHARE_LINK_PARAMS` (`via`, ad
   drains the backlog. Dub deduplicates leads on (`customerExternalId`, `eventName`), which makes a
   retry after an ambiguous outcome safe; it is also why `dub_lead_event` must not change after launch.
 
+## Code (CLI and agent signups)
+
+A signup in a terminal never clicks a link. An affiliate partner's code typed instead (`treg login
+--ref`, `treg org create --ref`, `TREG_REF`, or `install.sh --ref`, which leaves it in `~/.treg/ref`
+for the CLI) reaches team creation as the `ref` body field of `POST /orgs` or `POST /onboard/team`;
+the browser sign-in that `treg login` opens carries it as `/login?ref=`, which parks it in its own
+`treg_partner` cookie (`_remember_partner_code`), read by the team doors when the body has none. The
+CLI forgets the code once its owner is in a team. A typed code is only ever a Dub partner's link key
+(`dub.PARTNER_CODE_RE`, `signup._partner_code`): one that equals a treg friend-referral code
+(`User.referral_code`) is ignored, as is any code while Dub is off. The friend referral comes only
+from the `?ref=` link cookie, unchanged. A link click wins over a typed code.
+
+That code is staged as a code-only `AffiliateLead` (`partner_code`, and `country` from `CF-IPCountry`,
+else `dub_default_country`: Dub requires one for this lead; the check constraint keeps exactly one
+of `click_id` and `partner_code`). The drain resolves it with `GET /links/info` on `dub_link_domain`,
+then creates the customer under that partner with `POST /commissions` (`type: lead`), which is what
+lets later Stripe sales for the org id pay the partner (`dub.lead_from_code`). An unknown code (404)
+or a link with no partner dead-letters; an unset `dub_link_domain` retries. A dead-lettered lead
+attributes nothing: `affiliates.attributed` ignores it, so its team gets no Stripe tag.
+
 ## Sales and refunds
 
 Dub's Stripe app reads them. treg only tags an attributed team's Stripe objects with
@@ -61,5 +81,5 @@ no affiliate brought carries no Dub key. Team deletion removes its `AffiliateLea
 
 ## Not built
 
-The in-app partner dashboard (Dub embed), CLI and agent attribution (`--ref`), the application
-webhook and approval rules, and moving existing applicants into Dub.
+The in-app partner dashboard (Dub embed), the application webhook and approval rules, and moving
+existing applicants into Dub.

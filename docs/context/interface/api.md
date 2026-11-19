@@ -515,6 +515,11 @@ tags and the tracking-only parameters in `web._SHARE_LINK_PARAMS` (Dub's `via`, 
 counts as parameterless. The code is parked in `treg_ref` (httponly, lax, 30 days), revalidated
 on read because a cookie is attacker-supplied and reaches a query; an affiliate's Dub click id is
 parked in `treg_dub` the same way ([affiliates](../architecture/affiliates.md)).
+A terminal signup can name an affiliate partner instead: `POST /orgs` and `POST /onboard/team` take an
+optional `ref` body field, a Dub partner's link key only (allowlisted; ignored when it is a treg
+friend-referral code or Dub is off), and `/login?cli=…&ref=CODE` parks it in its own `treg_partner`
+cookie, which those doors read when the body has none. The friend referral comes only from
+`treg_ref`.
 
 Redemption happens at team creation, right after the signup credit grant and with the same
 swallow-and-log posture: a referral must never be why someone cannot make a team. A failed grant

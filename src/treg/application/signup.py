@@ -20,6 +20,7 @@ from ..domain import referrals
 from ..domain.governance.teams import _make_org_membership, _slugify, reserved_reason
 from ..domain.identity.access import _email_domain, _is_blocked_email, _is_machine_email, _norm_email
 from ..domain.identity.promotions import claim_signup_promo, promo_inbox, signup_promo_email
+from ..infra import dub
 from ..infra.db import session_maker
 from ..models import AdClickStash, Membership, Org, User
 from ..timeutil import utcnow_naive as _utcnow_naive
@@ -382,10 +383,25 @@ async def _redeem_referral(
         logging.getLogger("treg").warning("referral attribution failed for org %s: %s", org_id, exc)
 
 
+async def _partner_code(db: AsyncSession, code: str) -> str:
+    """A typed code as a Dub partner's link key, or "" when Dub is off, the code is malformed, or it
+    is a treg friend-referral code. A friend referral comes only from the `?ref=` link, never from
+    a typed code."""
+    code = dub.valid_partner_code(code)
+    if not code or not affiliates.enabled():
+        return ""
+    if await referrals.user_by_code(db, code):
+        logging.getLogger("treg").info("typed code is a friend-referral code; ignored")
+        return ""
+    return code
+
+
 async def create_org(
     *, user: User, name: str, ad_cookie: str, utm_cookie: str, referral_cookie: str,
-    affiliate_cookie: str = "",
+    affiliate_cookie: str = "", ref_code: str = "", client_country: str = "",
 ) -> dict:
+    """`ref_code` is a Dub partner's code typed at a CLI or agent signup; a Dub link click
+    (`affiliate_cookie`) wins over it. The friend referral comes only from `referral_cookie`."""
     async with session_maker() as db:
         if demo_sandbox.is_sandbox_user(user):  # anonymous sandbox visitors cannot mint real teams
             raise SignupError("sandbox_user")
@@ -396,6 +412,7 @@ async def create_org(
             raise SignupError("reserved_name")
         click_field, gclid, landing = _ad_attribution_from(
             await _ad_cookie_for(db, user.email, ad_cookie))
+        partner_code = await _partner_code(db, ref_code)
         for _ in range(3):  # a concurrent create can claim the slug before commit; retry a fresh lookup
             org, token = await _make_org_membership(
                 db, user, name=name, slug_base=_slugify(name), role="owner",
@@ -410,7 +427,8 @@ async def create_org(
                 await _forget_ad_click(db, user.email)  # inside the loop: a rollback undoes it
             _stamp_utm(org, utm_cookie)
             db.add(org)
-            affiliate = affiliates.stage_lead(db, org=org, user=user, click_id=affiliate_cookie)
+            affiliate = affiliates.stage_lead(db, org=org, user=user, click_id=affiliate_cookie,
+                                              partner_code=partner_code, country=client_country)
             try:
                 await db.commit()
                 break

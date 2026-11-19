@@ -55,6 +55,29 @@ def _remember_affiliate_click(resp, request: Request) -> None:
                         secure=_is_https(request), max_age=AFFILIATE_COOKIE_MAX_AGE)
 
 
+PARTNER_CODE_COOKIE = "treg_partner"
+
+
+def _remember_partner_code(resp, request: Request, code: str) -> None:
+    """Park the partner code `treg login --ref` carried into the browser sign-in, so the team made
+    from that sign-in is attributed to the partner. Never the friend-referral cookie: a typed code
+    is only ever a Dub partner's code."""
+    code = dub.valid_partner_code(code)
+    if code and affiliates.enabled():
+        resp.set_cookie(PARTNER_CODE_COOKIE, code, httponly=True, samesite="lax",
+                        secure=_is_https(request), max_age=AFFILIATE_COOKIE_MAX_AGE)
+
+
+def _take_partner_code(request: Request) -> str:
+    """The parked partner code, revalidated: a cookie is attacker-supplied."""
+    return dub.valid_partner_code((request.cookies.get(PARTNER_CODE_COOKIE) or "").strip('"'))
+
+
+def _client_country(request: Request) -> str:
+    """Cloudflare's view of the caller's country, when the request came through it."""
+    return request.headers.get("cf-ipcountry", "")
+
+
 def _take_affiliate_click(request: Request) -> str:
     """The parked click id, revalidated: a cookie is attacker-supplied."""
     return dub.valid_click_id(request.cookies.get(AFFILIATE_COOKIE) or "")

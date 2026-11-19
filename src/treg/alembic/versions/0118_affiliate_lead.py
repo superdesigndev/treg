@@ -1,4 +1,4 @@
-"""affiliatelead - the Dub lead owed for a team that arrived through an affiliate link
+"""affiliatelead - the Dub lead owed for a team an affiliate brought (link click or partner code)
 
 Revision ID: 0118
 Revises: 0117
@@ -23,7 +23,9 @@ def upgrade() -> None:
         sa.Column("id", sa.Integer(), primary_key=True),
         sa.Column("org_id", sa.Integer(), sa.ForeignKey("org.id"), nullable=False),
         sa.Column("user_id", sa.Integer(), nullable=False),
-        sa.Column("click_id", sa.String(), nullable=False),
+        sa.Column("click_id", sa.String(), nullable=True),
+        sa.Column("partner_code", sa.String(), nullable=True),
+        sa.Column("country", sa.String(), nullable=False, server_default=""),
         sa.Column("created_at", sa.DateTime(), nullable=False),
         sa.Column("uploaded_at", sa.DateTime(), nullable=True),
         sa.Column("next_attempt_at", sa.DateTime(), nullable=True),
@@ -31,6 +33,8 @@ def upgrade() -> None:
         sa.Column("attempts", sa.Integer(), nullable=False),
         sa.Column("error", sa.String(), nullable=False),
         sa.UniqueConstraint("org_id", name="uq_affiliatelead_org"),
+        sa.CheckConstraint("(click_id IS NULL) <> (partner_code IS NULL)",
+                           name="ck_affiliatelead_one_source"),
     )
     op.create_index("ix_affiliatelead_user_id", "affiliatelead", ["user_id"])
     op.create_index("ix_affiliatelead_uploaded_at", "affiliatelead", ["uploaded_at"])

@@ -40,19 +40,31 @@ def external_id(org_id: int) -> str:
     return str(org_id)
 
 
-def stage_lead(db: AsyncSession, *, org: Org, user: User, click_id: str) -> bool:
-    """Add the team's lead to the caller's transaction. False when there is nothing to record."""
+def country_of(raw: str) -> str:
+    """The country Dub records for a code-only lead: the request's, else the configured fallback."""
+    return dub.valid_country(raw) or dub.valid_country(get_settings().dub_default_country) or "US"
+
+
+def stage_lead(db: AsyncSession, *, org: Org, user: User, click_id: str = "",
+               partner_code: str = "", country: str = "") -> bool:
+    """Add the team's lead to the caller's transaction. False when there is nothing to record.
+    A link click wins over a typed partner code."""
     click_id = dub.valid_click_id(click_id)
-    if not enabled() or not click_id or org.id is None or org.demo or org.public_demo:
+    partner_code = "" if click_id else dub.valid_partner_code(partner_code)
+    if not enabled() or not (click_id or partner_code) or org.id is None or org.demo or org.public_demo:
         return False
-    db.add(AffiliateLead(org_id=org.id, user_id=user.id, click_id=click_id))
+    db.add(AffiliateLead(org_id=org.id, user_id=user.id, click_id=click_id or None,
+                         partner_code=partner_code or None,
+                         country=country_of(country) if partner_code else ""))
     return True
 
 
 async def attributed(db: AsyncSession, org_id: int | None) -> bool:
     if not enabled() or org_id is None:
         return False
-    row = await db.execute(select(AffiliateLead.id).where(AffiliateLead.org_id == org_id).limit(1))
+    # A dead-lettered lead (an unknown partner code) never reached Dub, so it attributes nothing.
+    row = await db.execute(select(AffiliateLead.id).where(
+        AffiliateLead.org_id == org_id, AffiliateLead.failed_at.is_(None)).limit(1))
     return row.first() is not None
 
 
@@ -68,15 +80,16 @@ def _retry_delay(attempts: int) -> timedelta:
     return timedelta(seconds=min(_RETRY_BASE_S * (2 ** exponent), _RETRY_CAP_S))
 
 
-async def _due(db: AsyncSession, now) -> list[tuple[int, int, str, str]]:
+async def _due(db: AsyncSession, now) -> list[tuple]:
     rows = (await db.execute(
-        select(AffiliateLead.id, AffiliateLead.org_id, AffiliateLead.click_id, User.email)
+        select(AffiliateLead.id, AffiliateLead.org_id, AffiliateLead.click_id, User.email,
+               AffiliateLead.partner_code, AffiliateLead.country)
         .join(User, User.id == AffiliateLead.user_id, isouter=True)
         .where(AffiliateLead.uploaded_at.is_(None), AffiliateLead.failed_at.is_(None),
                or_(AffiliateLead.next_attempt_at.is_(None), AffiliateLead.next_attempt_at <= now))
         .order_by(AffiliateLead.created_at, AffiliateLead.id)
         .limit(_BATCH))).all()
-    return [(r[0], r[1], r[2], r[3] or "") for r in rows]
+    return [(r[0], r[1], r[2] or "", r[3] or "", r[4] or "", r[5] or "") for r in rows]
 
 
 async def drain_once(client, *, session_factory) -> dict:
@@ -89,11 +102,18 @@ async def drain_once(client, *, session_factory) -> dict:
     if not due:
         return {"sent": 0}
     outcomes: dict[int, dub.Outcome] = {}
-    for row_id, org_id, click_id, email in due:
-        outcomes[row_id] = await dub.track_lead(
-            client, api_key=settings.dub_api_key, click_id=click_id,
-            customer_external_id=external_id(org_id), event_name=settings.dub_lead_event,
-            customer_email="" if _is_machine_email(email) else email)
+    for row_id, org_id, click_id, email, partner_code, country in due:
+        email = "" if _is_machine_email(email) else email
+        if click_id:
+            outcomes[row_id] = await dub.track_lead(
+                client, api_key=settings.dub_api_key, click_id=click_id,
+                customer_external_id=external_id(org_id), event_name=settings.dub_lead_event,
+                customer_email=email)
+        else:
+            outcomes[row_id] = await dub.lead_from_code(
+                client, api_key=settings.dub_api_key, link_domain=settings.dub_link_domain,
+                code=partner_code, customer_external_id=external_id(org_id),
+                country=country_of(country), customer_email=email)
     sent = retried = failed = 0
     now = utcnow_naive()
     async with session_factory() as db:

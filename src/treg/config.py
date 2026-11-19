@@ -1235,6 +1235,13 @@ class Settings(BaseSettings):
     # The lead event name Dub records at team creation. Dub deduplicates leads on
     # (customerExternalId, eventName), so changing it after launch re-opens every team to a lead.
     dub_lead_event: str = "Sign up"
+    # The program's referral-link domain on Dub (the short-link host partners share). A partner code
+    # given with `treg login --ref`/`treg org create --ref` is the key of a link on this domain. Empty
+    # = code-only leads wait in the outbox, retrying, until it is set.
+    dub_link_domain: str = ""
+    # Dub requires a country on a lead created without a click. The request's `CF-IPCountry` is used
+    # when present; this is the fallback. It shapes Dub's partner analytics only, never money.
+    dub_default_country: str = "US"
 
     linkedin_client_id: str = ""
     linkedin_client_secret: str = ""

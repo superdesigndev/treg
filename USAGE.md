@@ -51,6 +51,7 @@ present a per-org token directly.
 | `treg login` | _(none)_ | GitHub browser sign-in (register-or-login), stores one identity token |
 | `treg login` | `--email EMAIL` | email one-time-code sign-in (register-or-login); prompts for the code. A server that requires a browser check finishes the sign-in in the browser instead |
 | `treg login` | `--token TOKEN` | agents/CI: use a per-org token directly |
+| `treg login` | `--ref CODE` | binary CLI only. An affiliate partner's code: kept for the first team you create, and spent once you are in a team. Also read from `TREG_REF`, or left by `install.sh --ref CODE` |
 | `treg logout` | — | clear your stored credentials |
 | `treg onboard` | `--path catalog\|setup\|access\|demo` · `--source local\|global\|both` · `--yes` · `--reset` | guided first-run: **catalog** (find a tool and call it with no key), **setup** (share this project's or your global agent skills and keys), **access** (pull your team's shared skills, then a test call) or **demo**; asked when `--path` is omitted. Offered `[Y/n]` after your first login; `--reset` removes demo teams and example teammates |
 
@@ -77,7 +78,7 @@ only what they created; admin/owner manage anything in the org; admin+ can invit
 
 | Command | Options | What it does |
 |---|---|---|
-| `treg org create` | `"NAME"` | create a new org; you become its owner (new token, auto-active) |
+| `treg org create` | `"NAME"`, `--ref CODE` (optional, binary CLI only) | create a new org; you become its owner (new token, auto-active). `--ref` (default: `TREG_REF`, or the code `treg login --ref` kept) credits an affiliate partner for the new team. A friend's referral code works only as a `?ref=` link, not here |
 | `treg org ls` | — | list your orgs (marks the active one) |
 | `treg org use` | `SLUG` | switch the active org |
 | `treg org rename` | `--name "NAME"`, `--slug SLUG` | (admin+) rename the active org and/or change its slug; existing keys keep working |

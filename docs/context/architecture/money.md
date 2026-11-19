@@ -1410,8 +1410,9 @@ reserve entry outlives the hold and proves ownership for `/calls/{call_ref}` whe
 symmetric credit bonuses (`config.referral_*`). Cash payouts and a platform-wide payout budget are not
 implemented, so the per-referrer cap does not bound platform-wide exposure.
 
-- A team that arrived through an affiliate's Dub link is not redeemed at all: the affiliate click
-  wins, so one signup is never paid by both programs ([affiliates](affiliates.md)).
+- A team that arrived through an affiliate's Dub link, or with a typed Dub partner's code, is not
+  redeemed at all, so one signup is never paid by both programs
+  ([affiliates](affiliates.md)).
 - A referral is redeemed at first team creation and qualifies when cumulative purchased credit
   reaches `referral_min_topup_micro`. `qualify` checks referrer availability, the card fingerprint
   against earlier qualified/paid referrals, and the referrer's lifetime cap. A default-false

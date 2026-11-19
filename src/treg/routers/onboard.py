@@ -17,7 +17,7 @@ from ..domain.identity.access import (
 from ..models import User
 from .auth_helpers import require_managed_cli
 from .orgs import _require_admin_of, _owned_team_limit_error, _signup_http_error
-from .signup_cookies import REFERRAL_COOKIE, _take_affiliate_click
+from .signup_cookies import REFERRAL_COOKIE, _client_country, _take_affiliate_click, _take_partner_code
 from ..domain.governance.teams import OwnedTeamLimitReached
 
 
@@ -88,9 +88,14 @@ async def onboard_reset(
     return await onboard_use_cases.reset(user_id=user.id)
 
 
+class OnboardTeamIn(BaseModel):
+    ref: str = ""  # as `OrgIn.ref`: a Dub partner's link key
+
+
 @app.post("/onboard/team")
 async def onboard_team(
     request: Request, response: Response,
+    body: OnboardTeamIn | None = None,
     user: User = Depends(require_identity),
 ) -> dict:
     """A new account's first team, named for it, so the dashboard never asks for a name.
@@ -103,6 +108,7 @@ async def onboard_team(
             utm_cookie=request.cookies.get("treg_utm") or "",
             referral_cookie=request.cookies.get(REFERRAL_COOKIE) or "",
             affiliate_cookie=_take_affiliate_click(request),
+            ref_code=(body.ref if body else "") or _take_partner_code(request), client_country=_client_country(request),
         )
     except signup_use_cases.SignupError as exc:
         raise _signup_http_error(exc) from exc
