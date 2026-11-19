@@ -47,7 +47,7 @@ import re
 from contextlib import asynccontextmanager
 from contextvars import ContextVar
 from dataclasses import asdict, dataclass, replace
-from typing import Annotated, Any, TypedDict
+from typing import Annotated, Any, Literal, TypedDict
 
 from pydantic import BaseModel, ConfigDict, Field, ValidationError
 from urllib.parse import parse_qsl, quote, unquote, urlencode, urlsplit
@@ -260,6 +260,8 @@ _V1_TOOL_SCOPES = {
     "call": "treg:call", "call_media": "treg:call", "hub_create": "treg:call", "hub_update": "treg:call",
     "balance": "treg:read", "my_tools": "treg:read", "resources_list": "treg:read", "hub_mine": "treg:read",
     "call_result": "treg:read",
+    # Shows the team's past inputs and answers, like `call_result`, whether it reads or votes.
+    "compare": "treg:read",
 }
 _V2_TOOL_SCOPES = {
     "catalog_search": "treg:catalog", "catalog_get": "treg:catalog", "catalog_request": "treg:catalog",
@@ -276,7 +278,7 @@ _HUB_TOOL_NAMES = frozenset({"hub_create", "hub_update", "hub_mine"})
 # results, as collecting behavioral data for analytics. Those clients get neither; every other client
 # keeps both. `/call/` still decides and records an invitation, this surface just does not show it.
 _OPENAI_UA_PREFIXES = ("openai-mcp/", "codex-mcp-client/")
-_OPENAI_HIDDEN_TOOLS = frozenset({"review", "mark"})
+_OPENAI_HIDDEN_TOOLS = frozenset({"review", "mark", "compare"})
 
 
 def _is_openai_client(headers: Any) -> bool:
@@ -286,8 +288,8 @@ def _is_openai_client(headers: Any) -> bool:
 
 
 class _OpenAIClientGate:
-    """For OpenAI's clients only: no `review` or `mark` tool and no sentence about them in the
-    instructions."""
+    """For OpenAI's clients only: no `review`, `mark` or `compare` tool and no sentence about them
+    in the instructions."""
 
     async def __call__(
         self, ctx: ServerRequestContext[Any, Any], call_next: CallNext
@@ -415,7 +417,8 @@ _BASE_INSTRUCTIONS = (
 _REVIEW_INSTRUCTION = (
     "If a call result invites a review, rate that one call with review(call_id, usefulness, "
     "reason?) after using it, then continue. If you later learn a result was wrong (a bounce, "
-    "another source, the user's correction), mark(call_id, basis, items) says which rows."
+    "another source, the user's correction), mark(call_id, basis, items) says which rows. If one "
+    "invites a comparison, compare() shows two anonymous answers to judge; it is optional."
 )
 
 mcp = MCPServer(
@@ -871,9 +874,11 @@ async def _api(token: str, *, client_name: str = "mcp"):
         timeout=_TIMEOUT,
         # X-Treg-Client is attribution, not auth: without it every MCP-originated call lands
         # in the audit trail as client="", indistinguishable from unreported CLI traffic.
-        # Every invitation kind: this surface renders each into the hint slot (`_call_impl`).
+        # Every invitation kind this surface renders into the hint slot (`_call_impl`); only the
+        # team surface has the `compare` tool that answers a comparison invitation.
         headers={**await _internal_auth(token), "X-Treg-Client": client_name,
-                 "X-Treg-Hints": "review,mark,feedback", **host,
+                 "X-Treg-Hints": ("review,mark,feedback,compare" if client_name == _TEAM_SURFACE.client_name
+                                  else "review,mark,feedback"), **host,
                  **client_ip.forwarding_headers(_caller_ip.get())},
     ) as client:
         yield client
@@ -1347,6 +1352,62 @@ async def mark(
     body.update({key: value for key, value in optional.items() if value is not None})
     async with _api(_bearer(ctx)) as client:
         response = await client.post("/marks", json=body)
+    return _body(response)
+
+
+COMPARE_DESCRIPTION = (
+    "Judge two anonymous answers to an input your team sent earlier, when a call result invites a "
+    "comparison. Optional, changes no charges. Without choice: returns the next pair (input, "
+    "answer_1, answer_2). Then call again with comparison_id and choice='1', '2', 'tie' or "
+    "'both_bad' (both fail the input) and a one-line reason. Judge what the input asked for, not "
+    "length or style. Private to treg."
+)
+COMPARE_INSTRUCTION = (
+    "Judge which answer better serves the input; reply with compare(comparison_id, "
+    "choice='1'|'2'|'tie'|'both_bad', reason='...')"
+)
+
+
+class CompareOut(TypedDict, total=False):
+    comparison_id: int | None
+    capability: str | None
+    input: str | None
+    answer_1: str | None
+    answer_2: str | None
+    truncated: bool | None            # true when the input or an answer was cut to its stored size
+    truncated_parts: list[str] | None  # which: input, answer_1, answer_2
+    instruction: str | None
+    choice: str | None
+    status: str | None
+    detail: Any
+
+
+@mcp.tool(
+    description=COMPARE_DESCRIPTION,
+    annotations=ToolAnnotations(read_only_hint=False, destructive_hint=False, open_world_hint=True,
+                                idempotent_hint=True),
+    structured_output=True,
+)
+async def compare(
+    ctx: Context, choice: Literal["1", "2", "tie", "both_bad"] | None = None,
+    comparison_id: int | None = None, reason: str | None = None,
+) -> CompareOut:
+    async with _api(_bearer(ctx)) as client:
+        if choice is None:
+            response = await client.get("/comparisons/next")
+            if response.status_code == 204:
+                return {"status": "none", "detail": "no comparison is waiting; keep going with the task"}
+            out = _body(response)
+            if response.status_code == 200 and isinstance(out, dict):
+                out["instruction"] = COMPARE_INSTRUCTION
+            return out
+        if comparison_id is None:
+            return {"status": "error",
+                    "detail": "comparison_id is required with choice; call compare() first to get one"}
+        body = {"comparison_id": comparison_id, "choice": choice}
+        if reason:
+            body["reason"] = reason
+        response = await client.post("/comparisons", json=body)
     return _body(response)
 
 
@@ -1903,7 +1964,7 @@ async def _call_impl(endpoint_id: str, params: dict | list | None = None,
         kind = r.headers.get("X-Treg-Hint")
         if kind == "review" and out.get("call_id"):
             out["hint"] = hints.review_hint(out["call_id"])
-        elif kind == "mark" and r.headers.get("X-Treg-Hint-Text"):
+        elif kind in ("mark", "compare") and r.headers.get("X-Treg-Hint-Text"):
             out["hint"] = r.headers["X-Treg-Hint-Text"]
         elif kind == "feedback":
             out["hint"] = hints.HINT

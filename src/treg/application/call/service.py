@@ -13,6 +13,7 @@ from urllib.parse import parse_qsl, quote, urlencode, urlsplit
 import httpx
 
 from ... import analytics, archive, audit, jsontext, oauth, oauth_providers
+from ...application import compare as compare_app
 from ...application import hub as hub_app
 from ...application.hub import runner as hub_runner
 from ...application.hub import limits as hub_limits
@@ -1096,6 +1097,8 @@ async def _execute_call(request: _ApplicationRequest, upstream_client: httpx.Asy
             request.state.idem_claim = None
         if not routed_pending:
             _set_response_header(response, "X-Treg-Cost-Micro", str(charged))
+            if 200 <= response.status < 300:
+                await compare_app.mark_eligible(call_ref, ep.get("capability"), request.context.input.raw_headers)
         _set_response_header(response, "X-Treg-Call-Id", call_ref)
         return response
     if ep is not None:

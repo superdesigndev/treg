@@ -268,6 +268,29 @@ class Reader:
 _reader = Reader()
 
 
+async def confirmed_unpaused(org_id: int) -> bool:
+    """True only when the team is known to have no active pause right now: flow control is off,
+    or a fresh read finds no publication or one with no pause in force. A read that fails or times
+    out, or an invalid publication, is not a confirmation. For optional work that must not run on
+    doubt; admission (`check`) keeps its own allow-on-failure rule."""
+    if not get_settings().org_flow_control_enabled:
+        return True
+    try:
+        async with asyncio.timeout(_READ_TIMEOUT_S):
+            raw = await kv.store().read_org_flow_control(org_id)
+    except Exception:  # noqa: BLE001 - an unread state confirms nothing
+        return False
+    if isinstance(raw, kv.FlowControlReadFailure):
+        return False
+    if raw is None:
+        return True
+    try:
+        snapshot = _parse(raw, org_id)
+    except (ValueError, TypeError, RecursionError, OverflowError):
+        return False
+    return snapshot.pause_until is None or snapshot.pause_until <= _utcnow()
+
+
 def reset() -> None:
     """Drop snapshots only when no admissions are active, including between isolated tests."""
     global _reader

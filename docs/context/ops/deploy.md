@@ -331,6 +331,19 @@ security test or a probe that must not be throttled, list its addresses in
 `TREG_CALL_EVENTS_HMAC_SECRET` on every process that serves calls or settles async tasks. Keep the
 secret stable: changing it breaks every join across the change.
 
+**Pairwise comparisons** ([feedback](../architecture/feedback.md), "Pairwise comparisons") run as
+`treg-worker compare collect`, meant for an hourly cron job with the archive and platform-key
+settings of the web service; every run also removes rows a team deletion missed, so that latency is
+one run. Sampling is off unless `TREG_COMPARE_PAIRS` is set and `TREG_COMPARE_MAX_PER_DAY` is above
+0; the call path then marks sampled calls (`TREG_COMPARE_RATE`) in `TREG_KV_URL`'s store, which the
+job and the web service must share. `TREG_COMPARE_LOOKBACK_HOURS` is at most 2, the marker's life,
+so the job must run at least that often. Each run makes at most `TREG_COMPARE_MAX_PER_RUN` calls on
+treg's key, sequentially; a day's spend is at most `TREG_COMPARE_MAX_PER_DAY` times the paired
+vendors' price per call only where that price is the request's maximum cost. The calls bypass the
+shared provider limiter: check each pilot vendor's price and capacity before enabling a pair.
+Rollback is `TREG_COMPARE_MAX_PER_DAY=0` with the cron kept: it then calls nobody and only
+removes orphaned rows, which removing the cron would stop.
+
 **Provider client codes.** A provider file's `client_header` is filled only once
 `TREG_CLIENT_ID_SECRET` is set on the processes that relay calls. Turn it on after the provider is
 ready to read the header, and keep the secret stable: changing it gives every team a new code at

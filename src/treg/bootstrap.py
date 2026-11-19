@@ -117,6 +117,8 @@ _CONTROL_ROUTE_KEYS: frozenset[RouteKey] = frozenset({
     ('/admin/reviews', ('GET',), 'admin_reviews'),
     ('/marks', ('POST',), 'submit_mark'),
     ('/admin/marks', ('GET',), 'admin_marks'),
+    ('/comparisons/next', ('GET',), 'next_comparison'),
+    ('/comparisons', ('POST',), 'submit_comparison'),
     ('/feedback/{feedback_id}', ('GET',), 'get_feedback'),
     ('/media', ('POST',), 'host_media'),
     ('/m/{token}', ('GET',), 'serve_media'),

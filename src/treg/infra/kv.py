@@ -6,7 +6,8 @@ flow-control reader also reads externally published
 snapshots without changing their contents or TTL. Each caller owns its unavailable policy. Socket I/O
 uses `_TIMEOUT_S`; optional counters and health probes have their own shorter outer deadline.
 
-Review-invitation budgets fail closed; money admission leases report unavailability explicitly
+Review-invitation budgets fail closed, and so do the comparison ready flags (an unread flag
+invites nobody); money admission leases report unavailability explicitly
 so the caller can retain PostgreSQL's original correctness path. New tenants add narrow methods,
 not a generic get/set surface. Local counters do not pretend to provide distributed leases.
 """
@@ -472,6 +473,15 @@ class Store(Protocol):
                                 buckets: list[int]) -> dict[str, tuple[int, int, int]] | None:
         """Per endpoint, (calls, failed, slow) summed over `buckets`; None when the store cannot answer."""
 
+    async def set_flag(self, key: str, ttl_s: int) -> bool:
+        """Set a flag for `ttl_s`; False when the store cannot answer."""
+
+    async def has_flag(self, key: str) -> bool:
+        """Whether a flag is set; False when the store cannot answer (an unread flag is unset)."""
+
+    async def clear_flag(self, key: str) -> None:
+        """Clear a flag. Best-effort: a fault leaves it to expire."""
+
     async def aclose(self) -> None: ...
 
 
@@ -481,6 +491,29 @@ class LocalStore:
     def __init__(self) -> None:
         self._windows: dict[str, tuple[float, int]] = {}
         self._health: dict[tuple[str, int], tuple[float, list[int]]] = {}
+        self._values: dict[str, tuple[float, int]] = {}
+
+    def _live_value(self, key: str) -> int | None:
+        expires, value = self._values.get(key, (0.0, 0))
+        return value if expires > time.monotonic() else None
+
+    def _put_value(self, key: str, value: int, ttl_s: int) -> None:
+        now = time.monotonic()
+        if key not in self._values and len(self._values) >= _LOCAL_MAX_KEYS:
+            self._values = {k: v for k, v in self._values.items() if v[0] > now}
+            if len(self._values) >= _LOCAL_MAX_KEYS:
+                self._values.clear()
+        self._values[key] = (now + ttl_s, value)
+
+    async def set_flag(self, key: str, ttl_s: int) -> bool:
+        self._put_value(key, 1, ttl_s)
+        return True
+
+    async def has_flag(self, key: str) -> bool:
+        return self._live_value(key) is not None
+
+    async def clear_flag(self, key: str) -> None:
+        self._values.pop(key, None)
 
     async def take(self, key: str, limit: int, ttl_s: int) -> bool:
         now = time.monotonic()
@@ -522,6 +555,7 @@ class LocalStore:
     async def aclose(self) -> None:
         self._windows.clear()
         self._health.clear()
+        self._values.clear()
 
     async def note_route_health(self, endpoint_id: str, bucket: int, *, failed: bool, slow: bool,
                                 ttl_s: int) -> None:
@@ -615,6 +649,30 @@ class RedisStore:
         except Exception as exc:  # noqa: BLE001 — a store fault is a spent budget, never a call fault
             _note_fault(exc)
             return False
+
+    async def set_flag(self, key: str, ttl_s: int) -> bool:
+        try:
+            async with asyncio.timeout(_OPTIONAL_TIMEOUT_S):
+                await self._client.set(key, "1", ex=ttl_s)
+            return True
+        except Exception as exc:  # noqa: BLE001
+            _note_fault(exc)
+            return False
+
+    async def has_flag(self, key: str) -> bool:
+        try:
+            async with asyncio.timeout(_OPTIONAL_TIMEOUT_S):
+                return bool(await self._client.exists(key))
+        except Exception as exc:  # noqa: BLE001 - an unread flag invites nobody
+            _note_fault(exc)
+            return False
+
+    async def clear_flag(self, key: str) -> None:
+        try:
+            async with asyncio.timeout(_OPTIONAL_TIMEOUT_S):
+                await self._client.delete(key)
+        except Exception as exc:  # noqa: BLE001 - the flag expires on its own
+            _note_fault(exc)
 
     async def read_org_flow_control(self, org_id: int) -> FlowControlReadResult:
         if type(org_id) is not int or not 0 < org_id <= 2147483647:

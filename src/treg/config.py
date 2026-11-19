@@ -113,6 +113,35 @@ def _blocked_email_domains(raw: str) -> frozenset[str]:
 TREG_USER_AGENT = "treg/1.0 (+https://treg.to)"
 
 
+_PROVIDER_NAME = re.compile(r"[a-z0-9][a-z0-9-]*")
+_CAPABILITY_NAME = re.compile(r"[a-z0-9][a-z0-9_.-]*")
+
+
+def _parse_compare_pairs(raw: str) -> dict[str, list[tuple[str, str]]]:
+    if not raw.strip():
+        return {}
+    try:
+        parsed = json.loads(raw)
+    except ValueError:
+        raise ValueError("compare_pairs must be a JSON object") from None
+    message = ("compare_pairs must map capabilities to lists of two different lowercase providers, "
+               'e.g. {"web.search": [["provider-a", "provider-b"]]}')
+    if not isinstance(parsed, dict):
+        raise ValueError(message)
+    out: dict[str, list[tuple[str, str]]] = {}
+    for capability, pairs in parsed.items():
+        if not (isinstance(capability, str) and _CAPABILITY_NAME.fullmatch(capability)
+                and isinstance(pairs, list)):
+            raise ValueError(message)
+        for pair in pairs:
+            if not (isinstance(pair, list) and len(pair) == 2
+                    and all(isinstance(p, str) and _PROVIDER_NAME.fullmatch(p) for p in pair)
+                    and pair[0] != pair[1]):
+                raise ValueError(message)
+        out[capability] = [(a, b) for a, b in pairs]
+    return out
+
+
 class Settings(BaseSettings):
     # Most of these values are credentials: a validation error names the field, never the value.
     model_config = SettingsConfigDict(env_file=".env", env_prefix="TREG_", extra="ignore",
@@ -159,6 +188,26 @@ class Settings(BaseSettings):
     mark_hint_capabilities: list[str] = Field(default_factory=list)
     mark_hint_per_hour: int = Field(default=3, ge=1)
     mark_hint_texts: list[str] = Field(default_factory=list)
+    # Pairwise comparisons (application/compare.py, docs feedback.md "Pairwise comparisons"): the
+    # hourly `treg-worker compare collect` run asks the other vendor of a configured pair the input
+    # of a recent routed call the call path marked as sampled, on treg's key, and the team's agent is later invited to judge
+    # the two answers blinded. Off unless pairs are set and `compare_max_per_day` is above 0.
+    # JSON: capability -> list of unordered provider pairs, e.g.
+    # {"web.search": [["provider-a", "provider-b"]]}.
+    compare_pairs: str = ""
+    compare_rate: float = Field(default=0, ge=0, le=1)
+    # Second-vendor calls one run makes, and all runs of one UTC day together (counted in the table).
+    compare_max_per_run: int = Field(default=20, ge=0)
+    compare_max_per_day: int = Field(default=0, ge=0)
+    # How far back a run looks for routed calls; never past the life of a call's eligibility
+    # marker (`compare.MARKER_TTL_S`, two hours).
+    compare_lookback_hours: int = Field(default=2, ge=1, le=2)
+    # Compare invitations a team receives per hour.
+    compare_budget_per_hour: int = Field(default=3, ge=1)
+    # A team holding this many comparisons of one capability and pair in the window is not sampled.
+    compare_team_cap: int = Field(default=10, ge=1)
+    compare_window_days: int = Field(default=14, ge=1)
+    compare_max_answer_bytes: int = Field(default=65536, ge=1024)
     # The shared key-value store (Redis protocol). Empty = an in-process fallback; see infra/kv.py.
     kv_url: str = ""
 
@@ -1293,6 +1342,22 @@ class Settings(BaseSettings):
         ):
             raise ValueError("route_provider_sample_pct must map lowercase providers to integer percentages from 0 to 100")
         return v
+
+    @field_validator("compare_pairs")
+    @classmethod
+    def _compare_pairs_shape(cls, v: str) -> str:
+        _parse_compare_pairs(v)  # raises ValueError on a malformed value
+        return v
+
+    @property
+    def compare_pair_map(self) -> dict[str, list[tuple[str, str]]]:
+        """`compare_pairs` parsed: capability -> unordered provider pairs."""
+        return _parse_compare_pairs(self.compare_pairs)
+
+    @property
+    def compare_configured(self) -> bool:
+        """Pairs and a daily limit above 0: what a comparison run needs at all."""
+        return bool(self.compare_pairs.strip() and self.compare_max_per_day > 0)
 
     @property
     def route_provider_sample_percentages(self) -> dict[str, int]:
