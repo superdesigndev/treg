@@ -140,11 +140,14 @@ class Settings(BaseSettings):
     # Targeted review invitations (application/review_targets.py): an endpoint holding fewer than
     # `review_target_reviews` reviews in the last `review_target_window_days` (at most
     # `review_target_team_cap` counted per team) is invited more often, up to `review_target_rate`
-    # when it has none. 0 = off: every call is sampled at `review_sample_rate`.
+    # when it has none. 0 = off: every call is sampled at `review_sample_rate`. A team holding
+    # `review_target_team_cap` reviews of an endpoint is not invited there again; a team holding
+    # none is invited at least at `review_target_new_team_rate` (0 = no such floor).
     review_target_reviews: int = Field(default=0, ge=0)
     review_target_rate: float = Field(default=1.0, ge=0, le=1)
     review_target_window_days: int = Field(default=14, ge=1)
     review_target_team_cap: int = Field(default=10, ge=1)
+    review_target_new_team_rate: float = Field(default=0, ge=0, le=1)
     # The share of team-MCP credentials whose `call` tool shows `prior` (a review of the caller's
     # previous call, sent along with the next one). 0 = nobody, the tool as before.
     mcp_prior_review_rate: float = Field(default=0, ge=0, le=1)
