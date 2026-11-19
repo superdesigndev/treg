@@ -1598,8 +1598,15 @@ async def use_case_job_page(request: Request, job: str,
                       '<h2>What people actually struggle with</h2>'
                       f'<p>{_esc_html(spec.get("voices_intro", ""))}</p>{voices_html}</div></section>'
                       if spec.get("voices") else "")
-    notes = "".join(f'<h4>{_esc_html(x.split(".")[0])}.</h4><p>{_esc_html(x.split(".", 1)[1].strip())}</p>'
-                    if "." in x else f"<p>{_esc_html(x)}</p>" for x in spec["notes"])
+    note_blocks = []
+    for note in spec["notes"]:
+        first, *rest = re.split(r"(?<=\.)\s+", note, maxsplit=1)
+        tag = "h4" if first.endswith(".") else "p"
+        note_blocks.append(f"<{tag}>{_esc_html(first)}</{tag}>")
+        if rest and rest[0]:
+            note_blocks.append(f"<p>{_esc_html(rest[0])}</p>")
+    notes = "".join(note_blocks)
+
     def _related_card(lbl: str) -> str:
         href, owner = _related_link(lbl, agent_slug)
         return (f'<a class="card" href="{href}"><h4>{_esc_html(lbl)}</h4>'
