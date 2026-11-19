@@ -146,6 +146,7 @@ async def store(monkeypatch):
     monkeypatch.setattr(kv, "store", lambda: fake)
     monkeypatch.setattr(kv, "configured", lambda: True)
     monkeypatch.setattr(runtime, "_refused_until", {})
+    monkeypatch.setattr(runtime._ChargeWriter, "_frozen", set())
     monkeypatch.setattr(runtime, "_charges", runtime._ChargeWriter())
     monkeypatch.setattr(runtime, "_in_flight", [0])
     # The allowance is PostgreSQL only; its logic is still tested on whatever the suite runs on.
@@ -1494,6 +1495,68 @@ async def test_a_charge_rewritten_after_it_was_applied_does_not_mark_its_questio
     assert await _fold(org_id) == allowance.Folded()
 
 
+async def test_a_teams_freeze_delivered_by_a_failed_batch_is_not_sent_again_on_retry(
+        org_id, store, monkeypatch):
+    """One team's overrun was committed and its freeze delivered; the next team's write then
+    failed. A fold and refill thaws the first team's counter. The rewrite must not freeze
+    it again."""
+    epoch = await runtime.take(org_id, 600)
+    later_team = org_id + 1
+    async with session_maker() as db:
+        db.add(Org(id=later_team, name="later", slug=uuid4().hex))
+        await db.commit()
+    write_team = runtime._ChargeWriter._write_team
+
+    async def second_fails(team, rows, again):
+        if team == later_team:
+            raise ConnectionError("database away")
+        return await write_team(team, rows, again)
+
+    monkeypatch.setattr(runtime._ChargeWriter, "_write_team", staticmethod(second_fails))
+    rows = [(allowance.Charge("over", org_id, "e.metered", 900, None, 600, epoch), None),
+            (allowance.Charge("other", later_team, "e.metered", 100, None, 100, None), None)]
+    with pytest.raises(runtime._Unwritten):
+        await runtime._ChargeWriter._write(rows)
+    assert store.counters[org_id]["frozen"] == 1
+
+    # Between the attempts: fold applies the overrun to balance, and a refill thaws.
+    await _fold(org_id)
+    store.expire()
+    epoch2 = await runtime.take(org_id, 100)
+    assert epoch2 and store.counters[org_id]["frozen"] == store.counters[org_id]["thawed"]
+
+    # Now rewrite the batch with the second team succeeding.
+    monkeypatch.setattr(runtime._ChargeWriter, "_write_team", write_team)
+    await runtime._ChargeWriter._write(rows, again=True)
+
+    # The freeze was already delivered, so the thawed counter is not frozen again.
+    assert store.counters[org_id]["frozen"] == store.counters[org_id]["thawed"]
+
+
+async def test_a_teams_freeze_not_delivered_by_a_failed_batch_is_sent_on_retry(
+        org_id, store, monkeypatch):
+    """The first attempt committed the overrun but the store refused the freeze. A fold applies
+    the overrun to balance between the attempts. The rewrite must deliver the freeze."""
+    epoch = await runtime.take(org_id, 600)
+    freeze, refused = store.allowance_freeze, [True]
+
+    async def refuses_first(org, **kwargs):
+        if refused[0]:
+            return None
+        return await freeze(org, **kwargs)
+
+    monkeypatch.setattr(store, "allowance_freeze", refuses_first)
+    rows = [(allowance.Charge("over", org_id, "e.metered", 900, None, 600, epoch), None)]
+    with pytest.raises(runtime._Unwritten):
+        await runtime._ChargeWriter._write(rows)
+    assert store.counters.get(org_id, {}).get("frozen", 0) == 0
+
+    await _fold(org_id)
+    refused[0] = False
+    await runtime._ChargeWriter._write(rows, again=True)
+    assert store.counters[org_id]["frozen"] == 1
+
+
 # ---- keeping up with the queue -----------------------------------------------------------------
 async def test_request_processes_queue_charges_and_the_background_loop_applies_them(org_id, store):
     """Neither a refill nor the charge writer folds: the connections folding uses must not grow
@@ -1822,6 +1885,7 @@ async def test_many_calls_at_once_on_a_real_store_are_each_charged_once(org_id, 
     monkeypatch.setattr(kv, "store", lambda: real)
     monkeypatch.setattr(kv, "configured", lambda: True)
     monkeypatch.setattr(runtime, "_refused_until", {})
+    monkeypatch.setattr(runtime._ChargeWriter, "_frozen", set())
     monkeypatch.setattr(runtime, "_charges", runtime._ChargeWriter())
     monkeypatch.setattr(get_settings(), "money_allowance_chunk_micro", 20_000)
     monkeypatch.setattr(runtime, "_refreshing", {})
