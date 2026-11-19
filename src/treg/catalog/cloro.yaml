@@ -59,7 +59,7 @@ endpoints:
     method: GET
     path: /v1/states
     name: "List supported US states"
-    summary: "Lists the US states available for state-level geo-targeting on the ChatGPT and Gemini endpoints. Only US is supported; any other country returns an empty array."
+    summary: "Lists the US states available for state-level geo-targeting on the ChatGPT, Gemini and Bing AI Mode endpoints. Only US is supported; any other country returns an empty array."
     input:
       queryParams:
         country: {type: string, required: false, note: "ISO 3166-1 alpha-2 country code", example: "US"}
@@ -556,7 +556,7 @@ endpoints:
     input:
       body:
         prompt: {type: string, required: true, note: "at most 3,500 characters after URL encoding, so fewer for non-Latin scripts", example: "best running shoes for flat feet"}
-        country: {type: string, required: true, note: "ISO 3166-1 alpha-2. BY, CN, IR, RU, SY and VE are refused.", example: "US"}
+        country: {type: string, required: true, note: "ISO 3166-1 alpha-2. CN, KR and RU are refused; use cloro.account.coverage.countries for the current list.", example: "US"}
         state: {type: string, required: false, note: "US state code for state-level targeting; adds 2 credits", example: "CA"}
         include:
           type: object
@@ -569,7 +569,7 @@ endpoints:
         country: "US"
         include: {markdown: true, html: true}
       bodyType: json
-    added: '2026-11-07'
+    added: '2026-11-19'
     example_response: examples/cloro.bing.serp.ai_mode.json
     cost:
       type: per_success
