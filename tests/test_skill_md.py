@@ -26,7 +26,7 @@ async def test_well_known_skills_index_advertises_the_skill(clients):
     assert r.status_code == 200
     skills = r.json()["skills"]
     assert [s["name"] for s in skills] == ["treg", "make-ugc", "lead-signals", "web-access", "recruit",
-                                         "whats-new"]
+                                         "doomscroll"]
     entry = skills[0]
     assert entry["name"] == "treg"
     assert entry["files"] == ["SKILL.md"]
@@ -94,19 +94,19 @@ async def test_recruit_skill_is_served_and_advertised(clients):
     assert f"description: {idx['description']}" in r.text
 
 
-async def test_whats_new_skill_is_served_with_a_working_merge_script(clients, tmp_path):
+async def test_doomscroll_skill_is_served_with_a_working_merge_script(clients, tmp_path):
     """Served and indexed like recruit, and the script it carries inline runs: every install channel
     ships SKILL.md alone, so the script travels inside it."""
     import subprocess
     import sys
-    r = await clients.get("/skills/whats-new/SKILL.md")
-    assert r.status_code == 200 and r.text.startswith("---\nname: whats-new")
+    r = await clients.get("/skills/doomscroll/SKILL.md")
+    assert r.status_code == 200 and r.text.startswith("---\nname: doomscroll")
     assert "{BASE}" not in r.text
-    wk = await clients.get("/.well-known/skills/whats-new/SKILL.md")
+    wk = await clients.get("/.well-known/skills/doomscroll/SKILL.md")
     assert wk.text == r.text
     idx = (await clients.get("/.well-known/skills/index.json")).json()["skills"][5]
     assert f"description: {idx['description']}" in r.text
-    script = tmp_path / "whats_new.py"
+    script = tmp_path / "doomscroll.py"
     script.write_text(r.text.split("```python\n", 1)[1].split("\n```", 1)[0])
     run = subprocess.run([sys.executable, "-I", str(script), "--selftest"], capture_output=True, text=True)
     assert run.returncode == 0 and run.stdout.strip() == "ok", run.stderr
@@ -120,12 +120,12 @@ async def test_web_access_landing_page_installs_the_skill(clients):
     assert "/web-arena/api/leaderboard" in r.text
 
 
-async def test_whats_new_landing_page_installs_the_skill(clients):
-    """The /whats-new page is served with its placeholders filled and points at the skill it sells."""
-    r = await clients.get("/whats-new")
+async def test_doomscroll_landing_page_installs_the_skill(clients):
+    """The /doomscroll page is served with its placeholders filled and points at the skill it sells."""
+    r = await clients.get("/doomscroll")
     assert r.status_code == 200 and "{BASE}" not in r.text and "{ENDPOINTS}" not in r.text
-    assert "npx skills add superdesigndev/treg --skill whats-new" in r.text
-    assert "/app?ref=whats-new" in r.text and 'rel="canonical" href="https://treg.to/whats-new"' in r.text
+    assert "npx skills add superdesigndev/treg --skill doomscroll" in r.text
+    assert "/app?ref=doomscroll" in r.text and 'rel="canonical" href="https://treg.to/doomscroll"' in r.text
 
 
 async def test_rea_growth_skill_is_served_but_opt_in(clients):

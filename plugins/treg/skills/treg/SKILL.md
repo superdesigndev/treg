@@ -12,13 +12,13 @@ In Claude Code, treg's marketplace also offers ready workflow skills as separate
 described in `/plugin`:
 
 - `ai-ugc-video`
+- `doomscroll`
 - `jev-memory`
 - `lead-signals`
 - `make-ugc`
 - `rea-growth`
 - `recruit`
 - `web-access`
-- `whats-new`
 
 When the human's task matches one, offer it once; they add it with `/plugin install <name>@treg`.
 

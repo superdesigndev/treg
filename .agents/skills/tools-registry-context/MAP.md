@@ -630,6 +630,7 @@ Regenerate via `scripts/build-map.py`.
 | `src/treg/web/catalog.css` | interface/seo.md |
 | `src/treg/web/claude-connector.html` | architecture/mcp-oauth.md |
 | `src/treg/web/connect-demo.html` | architecture/mcp-oauth.md |
+| `src/treg/web/doomscroll.html` | interface/seo.md |
 | `src/treg/web/enrich-arena.html` | interface/enrich-arena.md |
 | `src/treg/web/enrich-arena/arena.css` | interface/enrich-arena.md |
 | `src/treg/web/enrich-arena/arena.js` | interface/enrich-arena.md |
@@ -698,13 +699,13 @@ Regenerate via `scripts/build-map.py`.
 | `src/treg/web/sitetrack.js` | architecture/data-model.md, interface/api.md, interface/enrich-arena.md, interface/onboarding.md |
 | `src/treg/web/skill.md` | architecture/hub.md, interface/skill.md |
 | `src/treg/web/skills/ai-ugc-video/SKILL.md` | interface/skill.md |
+| `src/treg/web/skills/doomscroll/SKILL.md` | interface/skill.md |
 | `src/treg/web/skills/jev-memory/SKILL.md` | interface/skill.md |
 | `src/treg/web/skills/lead-signals/SKILL.md` | interface/skill.md |
 | `src/treg/web/skills/make-ugc/SKILL.md` | interface/skill.md |
 | `src/treg/web/skills/rea-growth/SKILL.md` | interface/skill.md |
 | `src/treg/web/skills/recruit/SKILL.md` | interface/skill.md |
 | `src/treg/web/skills/web-access/SKILL.md` | interface/skill.md |
-| `src/treg/web/skills/whats-new/SKILL.md` | interface/skill.md |
 | `src/treg/web/social-search.html` | interface/seo.md |
 | `src/treg/web/start.html` | interface/seo.md |
 | `src/treg/web/support.html` | interface/seo.md |
@@ -722,7 +723,6 @@ Regenerate via `scripts/build-map.py`.
 | `src/treg/web/web-arena.html` | interface/web-arena.md |
 | `src/treg/web/web-arena/arena.css` | interface/web-arena.md |
 | `src/treg/web/web-arena/arena.js` | interface/web-arena.md |
-| `src/treg/web/whats-new.html` | interface/seo.md |
 | `src/treg/worker.py` | architecture/agent-payments.md, architecture/composition.md, architecture/hub.md, architecture/multi-tenancy.md, interface/web-arena.md, ops/capacity.md, ops/deploy.md |
 | `tests/callmatrix/test_hub_run.py` | architecture/hub.md |
 | `tests/cli_go/agent_sandbox.py` | interface/cli-binary.md |
@@ -929,7 +929,7 @@ Regenerate via `scripts/build-map.py`.
 | `interface/enrich-arena.md` | `arena.py`, `arena.py`, `arena.py`, `models.py`, `0027_enrich_arena.py`, `teams.py`, `auth.py`, `bootstrap.py`, `enrich-arena.html`, `arena.js`, `bench.js`, `arena.css`, `index.ts`, `arena_verification_insights.py`, `0029_arena_verification_snapshot.py`, `import_arena_verification.py`, `test_arena_verification_insights.py`, `arena_insights.py`, `arena_insights.py`, `0028_arena_insights.py`, `test_arena_insights.py`, `apollo.svg`, `branddev.svg`, `companyenrich.svg`, `findymail.svg`, `hunter.svg`, `icypeas.svg`, `leadmagic.svg`, `leadsforge.svg`, `lusha.svg`, `pdl.svg`, `predictleads.svg`, `thecompaniesapi.svg`, `tomba.svg`, `sitetrack.js`, `test_enrich_arena.py` |
 | `interface/env-import.md` | `providers.py`, `skills.py` |
 | `interface/onboarding.md` | `auth.py`, `__init__.py`, `demo.py`, `first_run.py`, `sitetrack.js`, `cli.py`, `auth.py`, `onboard.py`, `onboarding.js`, `onboardingComputed.js`, `GettingStartedPage.vue` |
-| `interface/seo.md` | `api.py`, `web.py`, `agent_pages.py`, `compare_pages.py`, `compare.py`, `og_images.py`, `compare.css`, `signin.js`, `robots.txt`, `catalog.css`, `usecase.css`, `index.html`, `App.vue`, `PublicNavigation.vue`, `boot.js`, `landing.html`, `product-theme.css`, `refinement.css`, `gateway.css`, `hero-opening.js`, `refinement.js`, `catalog-drum.js`, `gateway.js`, `gateway-loader.js`, `gateway-3d.js`, `gateway-model.js`, `gateway-intro.js`, `hero-particles.js`, `command-beam.js`, `SOURCES.md`, `landing.spec.ts`, `terms.html`, `usecase-seo.html`, `usecase-company.html`, `usecase-enrichment.html`, `usecase-social.html`, `usecase-ads.html`, `people-search.html`, `leads-signals.html`, `jobs-api.html`, `recruit.html`, `web-access.html`, `whats-new.html`, `gtm-engineering.html`, `grokbot.html`, `fable-gtm.html`, `ugc.html`, `aeo.html`, `rea-growth.html`, `rea-growth.md`, `social-search.html`, `start.html`, `jev.html`, `showcase.html`, `rankings.html`, `rankings.py`, `wall.json`, `jev_xboost.py`, `house_calls.py`, `xboost-seed.json`, `triage.json`, `signals.json`, `astra.html`, `page.css`, `page.js`, `signin-sso.js`, `SignInDialog.vue`, `llms.txt`, `indexnow_submit.py`, `support.html`, `og-card.html` |
+| `interface/seo.md` | `api.py`, `web.py`, `agent_pages.py`, `compare_pages.py`, `compare.py`, `og_images.py`, `compare.css`, `signin.js`, `robots.txt`, `catalog.css`, `usecase.css`, `index.html`, `App.vue`, `PublicNavigation.vue`, `boot.js`, `landing.html`, `product-theme.css`, `refinement.css`, `gateway.css`, `hero-opening.js`, `refinement.js`, `catalog-drum.js`, `gateway.js`, `gateway-loader.js`, `gateway-3d.js`, `gateway-model.js`, `gateway-intro.js`, `hero-particles.js`, `command-beam.js`, `SOURCES.md`, `landing.spec.ts`, `terms.html`, `usecase-seo.html`, `usecase-company.html`, `usecase-enrichment.html`, `usecase-social.html`, `usecase-ads.html`, `people-search.html`, `leads-signals.html`, `jobs-api.html`, `recruit.html`, `web-access.html`, `doomscroll.html`, `gtm-engineering.html`, `grokbot.html`, `fable-gtm.html`, `ugc.html`, `aeo.html`, `rea-growth.html`, `rea-growth.md`, `social-search.html`, `start.html`, `jev.html`, `showcase.html`, `rankings.html`, `rankings.py`, `wall.json`, `jev_xboost.py`, `house_calls.py`, `xboost-seed.json`, `triage.json`, `signals.json`, `astra.html`, `page.css`, `page.js`, `signin-sso.js`, `SignInDialog.vue`, `llms.txt`, `indexnow_submit.py`, `support.html`, `og-card.html` |
 | `interface/shell.md` | `shell.py`, `cli.py` |
 | `interface/skill.md` | `skill.md`, `integrate.md`, `install.sh`, `SKILL.md`, `SKILL.md`, `SKILL.md`, `SKILL.md`, `SKILL.md`, `SKILL.md`, `SKILL.md`, `SKILL.md`, `jev-memory.mjs`, `web.py`, `mcp_install.py`, `build_plugin.py`, `marketplace.json`, `plugin.json`, `marketplace.json`, `plugin.json`, `plugin.json`, `plugin.json`, `mcp.json`, `package.json`, `cordis.patch.yml`, `index.js`, `plugin.json`, `marketplace.json`, `minimax_plugin.py`, `server.json`, `mcp-registry.yml` |
 | `interface/web-arena.md` | `web_arena.py`, `web_arena_scores.py`, `web_arena.py`, `web_arena_quality.py`, `web_arena_publications.py`, `web_arena_calls.py`, `web_arena.py`, `enterprise_sso.py`, `models.py`, `0057_web_arena.py`, `0058_web_arena_call_stats.py`, `0059_web_arena_seed_start.py`, `0060_web_arena_seed_progress.py`, `config.py`, `bootstrap.py`, `worker.py`, `web-arena.html`, `arena.js`, `arena.css`, `test_web_arena.py`, `test_web_arena_calls.py` |

@@ -9,7 +9,7 @@ sources:
   - src/treg/web/skills/lead-signals/SKILL.md
   - src/treg/web/skills/web-access/SKILL.md
   - src/treg/web/skills/recruit/SKILL.md
-  - src/treg/web/skills/whats-new/SKILL.md
+  - src/treg/web/skills/doomscroll/SKILL.md
   - src/treg/web/skills/jev-memory/SKILL.md
   - src/treg/web/skills/rea-growth/SKILL.md
   - src/treg/web/skills/ai-ugc-video/SKILL.md
@@ -125,7 +125,7 @@ catalog row's price and parameters win over anything a skill states.
 
 Every door ships one file per skill: the well-known index lists `files: ["SKILL.md"]` and the
 installer, `npx skills` and the plugins copy only that. A skill that needs code carries it inline
-as a fenced block the agent saves and runs (`whats-new`'s merge script);
+as a fenced block the agent saves and runs (`doomscroll`'s merge script);
 `tests/test_skill_md.py` extracts and runs its self-test so the copy that ships is the one tested.
 
 The installer only overwrites a SKILL.md it owns: a missing one, one whose sha256 matches its

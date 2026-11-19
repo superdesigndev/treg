@@ -938,8 +938,8 @@
       "GET",
       "HEAD"
     ],
-    "name": "whats_new_skill_md",
-    "path": "/skills/whats-new/SKILL.md"
+    "name": "doomscroll_skill_md",
+    "path": "/skills/doomscroll/SKILL.md"
   },
   {
     "kind": "APIRoute",
@@ -1262,8 +1262,8 @@
       "GET",
       "HEAD"
     ],
-    "name": "whats_new_page",
-    "path": "/whats-new"
+    "name": "doomscroll_page",
+    "path": "/doomscroll"
   },
   {
     "kind": "APIRoute",
@@ -1527,8 +1527,8 @@
       "GET",
       "HEAD"
     ],
-    "name": "well_known_whats_new_md",
-    "path": "/.well-known/skills/whats-new/SKILL.md"
+    "name": "well_known_doomscroll_md",
+    "path": "/.well-known/skills/doomscroll/SKILL.md"
   },
   {
     "kind": "APIRoute",
