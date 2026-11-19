@@ -74,9 +74,9 @@ async def test_separate_processes_never_exceed_the_account_cap(redis_url):
 async def test_a_long_release_again_list_does_not_crowd_the_shared_client(redis_url, monkeypatch):
     from treg.infra import provider_concurrency as pc
 
-    monkeypatch.setenv("TREG_KV_URL", redis_url)
-    kv.reset() if hasattr(kv, "reset") else None
-    store = kv.store()
+    store = kv.RedisStore(redis_url)
+    monkeypatch.setattr(kv, "configured", lambda: True)
+    monkeypatch.setattr(kv, "store", lambda: store)
     try:
         pc._unanswered.clear()
         for _ in range(400):
@@ -103,4 +103,4 @@ async def test_a_long_release_again_list_does_not_crowd_the_shared_client(redis_
         assert not errors and not pc._unanswered
         assert max(lat) < 1.0
     finally:
-        await kv.close()
+        await store.aclose()
