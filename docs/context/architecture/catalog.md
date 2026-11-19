@@ -1039,7 +1039,9 @@ returned and never documented as stable. An output field may say where it lands 
   values is left unjudged without being read further. The contract rule does not change a child's
   charge; a `per_success` child stops billing such a page only where its own adapter `miss` also
   calls `wall_page` on its text field, and only those adapters count a wall against measured
-  reliability.
+  reliability. A v2 row's miss calls it through its plugin (`branddev.scrape_miss`), with the
+  same effect on reliability, but a row settled by `settle.reported` still bills the charge the
+  provider reported for the wall (Context.dev consumes a credit), once the route answers.
 - `scoping` names identity keys that scope the answer (`company_domain`): a candidate whose adapter
   never sends a supplied one is dropped from the plan, not ranked down, because a title-only search
   asked for one company's CEO bills title-matched strangers as a hit.
