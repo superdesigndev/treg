@@ -184,6 +184,9 @@ Rollups and analytics tables are optional read models: they never determine a mo
   can lag while reads still enforce expiry.
 - **`AdConversion`**: unique `(org_id, action)` is the sole idempotency mechanism, not a
   check-then-insert; rows are written synchronously in the firing transaction, unlike audit.
+- **`AffiliateLead`**: one per team (unique `org_id`), staged in the team-creation transaction; it is
+  both the Dub lead outbox and the record that the team is affiliate-attributed
+  ([affiliates](affiliates.md)).
 - **`DenyRule`**: an empty field means any, so a rule with only `method="DELETE"` blocks every
   delete. `delete_project` sweeps rules naming the project.
 - **`Tool.bindings`** is a list and a request applies all of them (google-ads is an OAuth bearer

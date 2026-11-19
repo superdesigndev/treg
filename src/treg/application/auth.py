@@ -1154,6 +1154,7 @@ async def approve_oauth_authorization(
     *, decision: str, client_id: str, redirect_uri: str, response_type: str, scope: str,
     code_challenge: str, code_challenge_method: str, resource: str, org_id: int,
     session_cookie: str, ad_cookie: str = "", utm_cookie: str = "", referral_cookie: str = "",
+    affiliate_cookie: str = "",
 ) -> str:
     async with database.session_maker() as db:
         client = await _authorize_request(
@@ -1179,7 +1180,8 @@ async def approve_oauth_authorization(
         # Outside the session above: the first run opens and commits its own.
         try:
             made = await first_run.first_team(user, ad_cookie=ad_cookie, utm_cookie=utm_cookie,
-                                              referral_cookie=referral_cookie)
+                                              referral_cookie=referral_cookie,
+                                              affiliate_cookie=affiliate_cookie)
         except signup.SignupError as exc:
             raise _redirect_refusal("access_denied", f"could not create your team ({exc.kind})") from exc
         org_id = made.get("org_id") or 0

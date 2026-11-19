@@ -896,6 +896,28 @@ class AdConversion(SQLModel, table=True):
     error: str = Field(default="")
 
 
+class AffiliateLead(SQLModel, table=True):
+    """A team that arrived through an affiliate's Dub link: the lead Dub is owed (an outbox row).
+
+    Written in the team-creation transaction, uploaded later by `application.affiliates`. One per
+    team: the unique org id makes every redelivery and retry idempotent. The row is also the
+    durable record that the team is attributed, which billing reads to tag its Stripe customer.
+    """
+
+    __table_args__ = (UniqueConstraint("org_id", name="uq_affiliatelead_org"),)
+
+    id: int | None = Field(default=None, primary_key=True)
+    org_id: int = Field(foreign_key="org.id")
+    user_id: int = Field(index=True)
+    click_id: str
+    created_at: NaiveUTC = Field(default_factory=_now)
+    uploaded_at: NaiveUTC | None = Field(default=None, index=True)
+    next_attempt_at: NaiveUTC | None = Field(default=None, index=True)
+    failed_at: NaiveUTC | None = Field(default=None, index=True)
+    attempts: int = Field(default=0)
+    error: str = Field(default="")
+
+
 class Tool(SQLModel, table=True):
     """A registered capability: a name + an upstream base + a LIST of credential bindings.
 

@@ -305,9 +305,11 @@ Regenerate via `scripts/build-map.py`.
 | `src/treg/alembic/versions/0115_callcomparison.py` | architecture/feedback.md |
 | `src/treg/alembic/versions/0116_stamped_baseline_indexes.py` | architecture/data-model.md |
 | `src/treg/alembic/versions/0117_callrecord_drop_unused_indexes.py` | architecture/data-model.md |
+| `src/treg/alembic/versions/0118_affiliate_lead.py` | architecture/affiliates.md |
 | `src/treg/analytics.py` | architecture/data-model.md, architecture/org-endpoint-quota.md |
 | `src/treg/api.py` | architecture/archive.md, architecture/money.md, architecture/multi-tenancy.md, architecture/proxy-model.md, architecture/super-admin.md, interface/api.md, interface/seo.md |
 | `src/treg/application/__init__.py` | architecture/import-boundaries.md |
+| `src/treg/application/affiliates.py` | architecture/affiliates.md |
 | `src/treg/application/agent_payments.py` | architecture/agent-payments.md |
 | `src/treg/application/allowance_sweep.py` | architecture/money.md |
 | `src/treg/application/archive_erasure.py` | architecture/archive.md |
@@ -533,6 +535,7 @@ Regenerate via `scripts/build-map.py`.
 | `src/treg/infra/catalog_stat_dirty.py` | architecture/catalog.md, architecture/data-model.md |
 | `src/treg/infra/credential_cipher.py` | architecture/auth-secrets.md |
 | `src/treg/infra/db.py` | architecture/data-model.md, architecture/multi-tenancy.md, ops/deploy.md |
+| `src/treg/infra/dub.py` | architecture/affiliates.md |
 | `src/treg/infra/embed.py` | architecture/find.md |
 | `src/treg/infra/github_releases.py` | interface/cli-binary.md |
 | `src/treg/infra/imaging.py` | architecture/showcase.md |
@@ -614,7 +617,7 @@ Regenerate via `scripts/build-map.py`.
 | `src/treg/routers/referrals.py` | architecture/composition.md, architecture/money.md, interface/api.md |
 | `src/treg/routers/resources.py` | architecture/auth-secrets.md, architecture/composition.md, architecture/multi-tenancy.md, interface/api.md |
 | `src/treg/routers/showcase.py` | architecture/showcase.md |
-| `src/treg/routers/signup_cookies.py` | interface/api.md |
+| `src/treg/routers/signup_cookies.py` | architecture/affiliates.md, interface/api.md |
 | `src/treg/routers/table.py` | architecture/org-traffic.md, architecture/table.md |
 | `src/treg/routers/tasks.py` | architecture/tasks.md |
 | `src/treg/routers/view.py` | interface/api.md |
@@ -900,6 +903,7 @@ Regenerate via `scripts/build-map.py`.
 | Fragment | Sources |
 |---|---|
 | `architecture/ads-conversions.md` | `adsconv.py`, `signup.py`, `settle.py`, `adtrack.js`, `gtag.js`, `auth.py`, `0075_ad_click_stash.py` |
+| `architecture/affiliates.md` | `affiliates.py`, `dub.py`, `signup_cookies.py`, `0118_affiliate_lead.py` |
 | `architecture/agent-payments.md` | `agent_payments.py`, `__init__.py`, `tempo.py`, `x402.py`, `evm.py`, `stripe.py`, `worker.py`, `call.py`, `catalog.py`, `bootstrap.py`, `config.py`, `models.py`, `teams.py`, `access.py`, `api_keys.py`, `resolve.py`, `0104_agent_payments.py`, `0106_agentpayer_per_network.py`, `ratestore.py`, `test_agent_payments.py`, `test_agentpayer_network_migration.py` |
 | `architecture/archive.md` | `archive.py`, `hunter.yaml`, `results.py`, `0031_archive_result_admission.py`, `test_cache_result_admission.py`, `test_archive_batch.py`, `test_archive_batch_postgres.py`, `archive_bodies.py`, `config.py`, `object_store.py`, `0032_archive_body_storage.py`, `test_archive_r2.py`, `fake_object_store.py`, `smoke_archive_r2.py`, `0002_archive_tables.py`, `0003_callrecord_cached.py`, `0004_archivekey_request_shape.py`, `0011_callrecord_archive_link.py`, `service.py`, `settle.py`, `0039_archive_own_key_and_repeat_pricing.py`, `backfill_call_archive_links.py`, `api.py`, `bootstrap.py`, `admin.py`, `asynctasks.py`, `archive_erasure.py`, `0067_org_archive_opt_out.py`, `test_archive_opt_out.py` |
 | `architecture/auth-secrets.md` | `injectors.py`, `ssrf.py`, `crypto.py`, `credential_cipher.py`, `credential_reencrypt.py`, `fernet_rotation.py`, `0108_secret_refreshable.py`, `oauth.py`, `__init__.py`, `authorization.py`, `oauth_flow.py`, `refresh.py`, `oauth_exchange.py`, `oauth_refresh.py`, `oauth_providers.py`, `session.js`, `keys.js`, `TeamPage.vue`, `health.py`, `connect.py`, `0051_context_dev_tool_host.py`, `connections.py`, `resources.py`, `__init__.py`, `bindings.py`, `bundles.py`, `api_keys.py`, `access.py`, `api_keys.py`, `test_api_keys.py`, `test_oauth_refresh.py`, `test_key_providers.py`, `config.py` |

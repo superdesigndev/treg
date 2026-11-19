@@ -29,7 +29,7 @@
   <div class="eyebrow">Legal</div>
   <h1>Treg Privacy Policy</h1>
   <div class="stamp">
-    <span>Last updated: 18 November 2026</span>
+    <span>Last updated: 19 November 2026</span>
     <span>Effective: 22 July 2026</span>
   </div>
 
@@ -205,6 +205,7 @@
     <tr><td>Resend</td><td>Your email address and the message body</td><td>Sends sign-in codes and invitations</td><td>USA</td></tr>
     <tr><td>Google Fonts</td><td>Your IP address, when you load a treg web page</td><td>Serves the site's typefaces</td><td>USA</td></tr>
     <tr><td>Upstream APIs you connect</td><td>Whatever your call sends them</td><td>The call you asked us to make</td><td>Varies by provider</td></tr>
+    <tr><td>Dub</td><td>Only if you arrived through an affiliate's link: the click id, your team's id, your email address, and your team's payments as Stripe reports them</td><td>Runs our affiliate program: credits and pays the affiliate who sent you</td><td>USA</td></tr>
     <tr><td>Google Ads</td><td>A conversion event (signup, first call, or first payment) with your click id if you arrived via a Google Ads click, and a SHA-256 hash of your email address (Enhanced Conversions for Leads); never the address itself</td><td>Measures whether the ad that brought you converted</td><td>USA</td></tr>
   </table></div>
   <p><b>Referrals.</b> If you sign up through someone's referral link, <b>your email address is
@@ -232,6 +233,9 @@
   after a sign-in detour (a few minutes). The second holds a referral code if you arrived through
   someone's invite link, so we can credit them when you create a team (30 days). Neither identifies
   you, and neither is used for advertising.</p>
+  <p><code>treg_dub</code>: HTTP-only with the same flags, set only when you arrive through an
+  affiliate's link. It holds the click id that link added to the address, so the affiliate can be
+  credited when you create a team (90 days). It is not used for advertising.</p>
   <p><code>treg_utm</code>: set by our own <code>/sitetrack.js</code> on your first page — if the link
   you arrived by carried campaign tags (<code>utm_*</code>) or a referring site, it remembers that source
   so we can tell which links bring people to treg, retained for <b>90 days</b>. It holds no identifier.</p>

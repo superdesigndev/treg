@@ -509,10 +509,12 @@ which individual approved an operation; the reason is context, not authenticated
 (`referrer_user_id == caller.id`), never filtered afterwards, and pinned by a test. `privacy.html`
 discloses this.
 
-**`/?ref=CODE` is the one query string the landing route serves.** `GET /` otherwise treats any
-query string as the SPA's. A `ref` alone or with only `utm_*` tags counts as parameterless, and the
-code is parked in `treg_ref` (httponly, lax, 30 days), revalidated on read because a cookie is
-attacker-supplied and reaches a query.
+**`/?ref=CODE` and `/?dub_id=CLICK` are the query strings the landing route serves.** `GET /`
+otherwise treats any query string as the SPA's. A `ref` and/or `dub_id`, alone or with only `utm_*`
+tags and the tracking-only parameters in `web._SHARE_LINK_PARAMS` (Dub's `via`, ad-click ids),
+counts as parameterless. The code is parked in `treg_ref` (httponly, lax, 30 days), revalidated
+on read because a cookie is attacker-supplied and reaches a query; an affiliate's Dub click id is
+parked in `treg_dub` the same way ([affiliates](../architecture/affiliates.md)).
 
 Redemption happens at team creation, right after the signup credit grant and with the same
 swallow-and-log posture: a referral must never be why someone cannot make a team. A failed grant

@@ -73,7 +73,7 @@ from ..timeutil import as_naive as _as_naive
 from ..timeutil import utcnow_naive as _utcnow_naive
 from . import view
 from .auth_helpers import require_managed_cli, trusted_public_base
-from .signup_cookies import REFERRAL_COOKIE
+from .signup_cookies import REFERRAL_COOKIE, _take_affiliate_click
 from .views import account as account_views
 from .views import toon
 
@@ -446,6 +446,7 @@ async def create_org(
             ad_cookie=request.cookies.get("treg_ad") or "",
             utm_cookie=request.cookies.get("treg_utm") or "",
             referral_cookie=request.cookies.get(REFERRAL_COOKIE) or "",
+            affiliate_cookie=_take_affiliate_click(request),
         )
         response.headers["Cache-Control"] = "no-store"
         return result

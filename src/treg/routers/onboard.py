@@ -17,7 +17,7 @@ from ..domain.identity.access import (
 from ..models import User
 from .auth_helpers import require_managed_cli
 from .orgs import _require_admin_of, _owned_team_limit_error, _signup_http_error
-from .signup_cookies import REFERRAL_COOKIE
+from .signup_cookies import REFERRAL_COOKIE, _take_affiliate_click
 from ..domain.governance.teams import OwnedTeamLimitReached
 
 
@@ -102,6 +102,7 @@ async def onboard_team(
             ad_cookie=request.cookies.get("treg_ad") or "",
             utm_cookie=request.cookies.get("treg_utm") or "",
             referral_cookie=request.cookies.get(REFERRAL_COOKIE) or "",
+            affiliate_cookie=_take_affiliate_click(request),
         )
     except signup_use_cases.SignupError as exc:
         raise _signup_http_error(exc) from exc

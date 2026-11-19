@@ -13,6 +13,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlmodel import select
 
 from .. import adsconv, analytics, crypto, policy, ratestore, sandbox as demo_sandbox
+from . import affiliates
 from ..config import get_settings
 from ..domain import money as ledger
 from ..domain import referrals
@@ -383,6 +384,7 @@ async def _redeem_referral(
 
 async def create_org(
     *, user: User, name: str, ad_cookie: str, utm_cookie: str, referral_cookie: str,
+    affiliate_cookie: str = "",
 ) -> dict:
     async with session_maker() as db:
         if demo_sandbox.is_sandbox_user(user):  # anonymous sandbox visitors cannot mint real teams
@@ -408,6 +410,7 @@ async def create_org(
                 await _forget_ad_click(db, user.email)  # inside the loop: a rollback undoes it
             _stamp_utm(org, utm_cookie)
             db.add(org)
+            affiliate = affiliates.stage_lead(db, org=org, user=user, click_id=affiliate_cookie)
             try:
                 await db.commit()
                 break
@@ -425,5 +428,6 @@ async def create_org(
             "token": token,
         }
         await _grant_signup_promo(db, org, user_id=user.id)
-        await _redeem_referral(db, referral_cookie, user, org)
+        if not affiliate:
+            await _redeem_referral(db, referral_cookie, user, org)
         return response

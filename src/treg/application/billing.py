@@ -58,7 +58,7 @@ from ..config import get_settings
 from ..infra import stripe as stripe_adapter
 from ..models import CreditBlock, EnterpriseSSO, EnterpriseSSOIdentity, EnterpriseDirectoryUser, LedgerEntry, Membership, Org, User
 from ..infra.db import session_maker
-from . import enterprise_sso
+from . import affiliates, enterprise_sso
 
 
 
@@ -366,8 +366,9 @@ async def get_or_create_customer(db: AsyncSession, org: Org, *, email: str = "")
         name=org.name or org.slug,
         **({"email": email} if email else {}),
         # The org id travels with the customer so a Stripe-side investigation ("who is this charge
-        # for?") resolves without a lookup table.
-        metadata={"treg_org_id": str(org.id), "treg_org_slug": org.slug},
+        # for?") resolves without a lookup table. Dub's Stripe app reads its key from the same map.
+        metadata={"treg_org_id": str(org.id), "treg_org_slug": org.slug,
+                  **await affiliates.stripe_metadata(db, org.id)},
     )
     org.stripe_customer_id = customer["id"]
     db.add(org)
@@ -698,7 +699,8 @@ async def create_topup_checkout(
         allow_promotion_codes=True,
         # Idempotent per (org, amount, minute): a double-clicked "Add funds" reuses the same session
         # instead of opening a second one the payer might also complete.
-        metadata={"treg_org_id": str(org.id), "treg_kind": "topup", **attribution},
+        metadata={"treg_org_id": str(org.id), "treg_kind": "topup", **attribution,
+                  **await affiliates.stripe_metadata(db, org.id)},
         integration_identifier=INTEGRATION_ID,
         success_url=f"{base}/app?topup=success#billing",
         cancel_url=f"{base}/app?topup=cancelled#billing",

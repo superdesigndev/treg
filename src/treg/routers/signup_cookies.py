@@ -2,7 +2,9 @@
 
 from fastapi import Request
 
+from ..application import affiliates
 from ..domain import referrals
+from ..infra import dub
 from .auth_helpers import _is_https
 
 
@@ -37,3 +39,22 @@ def _take_referral(request: Request) -> str:
     allowlist, so anything odd becomes "" and the signup simply proceeds unreferred.
     """
     return referrals.normalize_code((request.cookies.get(REFERRAL_COOKIE) or "").strip('"'))
+
+
+AFFILIATE_COOKIE = "treg_dub"
+# Dub's own client script keeps the click for 90 days by default; the server-side cookie matches it.
+AFFILIATE_COOKIE_MAX_AGE = 90 * 24 * 3600
+
+
+def _remember_affiliate_click(resp, request: Request) -> None:
+    """Park Dub's `?dub_id=` click id until the visitor creates a team. Last click wins, as Dub's
+    default attribution model does."""
+    click_id = dub.valid_click_id(request.query_params.get("dub_id", ""))
+    if click_id and affiliates.enabled():
+        resp.set_cookie(AFFILIATE_COOKIE, click_id, httponly=True, samesite="lax",
+                        secure=_is_https(request), max_age=AFFILIATE_COOKIE_MAX_AGE)
+
+
+def _take_affiliate_click(request: Request) -> str:
+    """The parked click id, revalidated: a cookie is attacker-supplied."""
+    return dub.valid_click_id(request.cookies.get(AFFILIATE_COOKIE) or "")

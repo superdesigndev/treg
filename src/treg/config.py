@@ -1227,6 +1227,15 @@ class Settings(BaseSettings):
     # leads; until then Google rejects the identifiers and the rows would dead-letter.
     ads_conv_user_data: bool = False
 
+    # Dub Partners, the affiliate program (docs/context/architecture/affiliates.md). The workspace API
+    # key: a `dub_test_` key from the staging workspace in test environments, a `dub_` key in
+    # production. Empty = the whole feature is OFF: no click cookie, no lead upload, no Stripe
+    # metadata, and the friend referral behaves as before.
+    dub_api_key: str = Field(default="", repr=False)
+    # The lead event name Dub records at team creation. Dub deduplicates leads on
+    # (customerExternalId, eventName), so changing it after launch re-opens every team to a lead.
+    dub_lead_event: str = "Sign up"
+
     linkedin_client_id: str = ""
     linkedin_client_secret: str = ""
 

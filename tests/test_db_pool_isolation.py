@@ -111,6 +111,7 @@ EXPECTED_MAKERS: dict[str, set[str]] = {
     # Off-request writers.
     "audit.py": {BACKGROUND},
     "application/allowance_sweep.py": {BACKGROUND},
+    "application/affiliates.py": {BACKGROUND},
     # Request-shaped: the owner delete route and `treg-worker admin erase-archive`, in short
     # transactions with the connection released around object I/O (archive.md, "Opting out").
     "application/archive_erasure.py": {API},
@@ -227,6 +228,7 @@ BACKGROUND_SITES = {
     "archive.py:prune_once": "archive.prune_worker",
     "archive.py:refresh_once": "archive.refresh_worker",
     "application/allowance_sweep.py:worker": "allowance_sweep.worker",
+    "application/affiliates.py:worker": "affiliates.worker",
 }
 
 

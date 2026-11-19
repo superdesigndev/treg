@@ -33,7 +33,7 @@ from ..models import User
 from .auth_helpers import (
     _is_https, _remember_oauth_return, _same_origin, require_managed_cli, trusted_public_base,
 )
-from .signup_cookies import REFERRAL_COOKIE
+from .signup_cookies import REFERRAL_COOKIE, _take_affiliate_click
 
 app = APIRouter()
 email_router = app
@@ -1177,6 +1177,7 @@ async def oauth_authorize_approve(
             ad_cookie=request.cookies.get("treg_ad") or "",
             utm_cookie=request.cookies.get("treg_utm") or "",
             referral_cookie=request.cookies.get(REFERRAL_COOKIE) or "",
+            affiliate_cookie=_take_affiliate_click(request),
         )
     except auth_use_cases.OAuthServerError as exc:
         return _oauth_server_failure(exc, redirect_uri, state)
