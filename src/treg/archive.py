@@ -1667,20 +1667,27 @@ async def note_org_use_in_transaction(db, org_id: int, key_hash: str) -> None:
 # row's lock, each holding a connection while it waits.
 _TOUCH_EVERY_S = 60.0
 _MAX_TOUCHED = 4096
-_touched: dict[str, float] = {}
+_touched: dict[str, float] = {}  # key -> when its touch was scheduled, oldest first
+_clock = time.monotonic
 
 
 def _touch(key_hash: str) -> None:
     """Note that a stored answer was actually wanted (last_requested_at) — fire-and-forget, the
     demand signal the refresh worker (PR 5) will read. A served hit is NOT a recording: it adds
     no snapshot and no change statistics, because nothing new was observed."""
-    now = time.monotonic()
+    now = _clock()
     if now - _touched.get(key_hash, float("-inf")) < _TOUCH_EVERY_S:
         return
     if len(_pending) >= _MAX_PENDING:
         return
+    _touched.pop(key_hash, None)
     if len(_touched) >= _MAX_TOUCHED:
-        _touched.clear()
+        # Marks whose interval is over go first. Still full, only the oldest goes: that key may
+        # write once early, and every other key keeps its mark.
+        for stale in [key for key, at in _touched.items() if now - at >= _TOUCH_EVERY_S]:
+            del _touched[stale]
+        if len(_touched) >= _MAX_TOUCHED:
+            del _touched[next(iter(_touched))]
     _touched[key_hash] = now
     task = asyncio.create_task(asyncio.wait_for(_touch_write(key_hash), timeout=_STORE_TIMEOUT_S))
     _pending.add(task)
@@ -1703,6 +1710,10 @@ async def _touch_write(key_hash: str) -> None:
             await s.execute(update(ArchiveKey).where(ArchiveKey.key_hash == key_hash)
                             .values(last_requested_at=_utcnow()))
             await s.commit()
+    except asyncio.CancelledError:
+        # `_touch` bounds the write with a timeout, which ends it by cancelling it.
+        _touched.pop(key_hash, None)
+        raise
     except Exception:  # noqa: BLE001
         _touched.pop(key_hash, None)
         _log.error("archive touch dropped", exc_info=True)
