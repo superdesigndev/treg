@@ -247,6 +247,10 @@ however old: after an outage longer than a lease the store still runs a queued a
 it with its own clock. A release the store dropped would otherwise leave its place counted until
 the lease ends; this holds for the account's places as well as the team's.
 
+The list is drained by one background task (`provider_concurrency._drain`) with 4 requests at a
+time, so a long list never crowds the shared client's connection pool. It stops at the first
+request the store does not answer, keeps the rest, and starts again on the next answered acquire.
+
 ## Upstream connections: a bounded wait and a cap per provider
 
 Every relayed call shares one pooled HTTP client per process (`bootstrap._lifespan`). A provider
