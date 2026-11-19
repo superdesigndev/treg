@@ -361,9 +361,14 @@ money moved, the purchased-credit gate.
   while it waited changes nothing, and a charge written late freezes when it lands. The
   writer freezes the same way for a charge its own hold no longer backs, whatever it cost: that
   charge too comes out of the balance. It learns which in the transaction that writes the
-  rows, reading the teams' hold rows under a shared lock first (`allowance.holds_behind`), so
-  a close of the hold waits for the write and applies the charge to its own hold, or is done
-  and the charge is known to owe the balance. On SQLite, which has no row locks and begins a
+  rows, reading the teams' hold rows under a key-share lock first (`allowance.holds_behind`), so
+  a close that deletes the hold waits for the write and applies the charge to its own hold, or
+  is done and the charge is known to owe the balance. A fold and a refill only update the row
+  and take the lock an update takes (NO KEY UPDATE), which that key-share lock does not
+  conflict with: PostgreSQL lets a later sharer pass a waiting exclusive lock, so a fold asking
+  for the full row lock under a steady stream of charge writes would wait for a gap between
+  them, holding its connection, and every charge write would wait for each fold. What the
+  write reads is the hold's creation instant, which no update changes. On SQLite, which has no row locks and begins a
   transaction only at its first write, the rows are inserted first and the holds read under
   the write lock that took. The write runs in a money session, so a writer that stalls
   holding hold rows is ended like any stalled money transaction; and a team's deletion locks

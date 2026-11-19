@@ -527,8 +527,45 @@ async def test_the_charge_writer_decides_a_charges_hold_inside_a_real_transactio
     if infra_db._is_sqlite:
         assert insert < hold
     else:
-        assert hold < insert and seen[hold].endswith("for share")
+        assert hold < insert and seen[hold].endswith("for key share")
         assert any("idle_in_transaction_session_timeout" in text for text in seen[:hold])
+
+
+@pytest.mark.skipif(infra_db._is_sqlite, reason="needs row locks")
+async def test_a_fold_and_a_refill_do_not_wait_for_a_charge_write_in_progress(org_id, store):
+    """PostgreSQL lets a later sharer pass a waiting exclusive lock, so under a steady stream of
+    charge writes a fold asking for the full row lock would wait for a gap between them."""
+    epoch = await runtime.take(org_id, 600)
+    await _finish(org_id, "queued", epoch, 600, billable=True, actual_micro=400)
+    store.expire()
+    async with session_maker() as writer:
+        assert await allowance.holds_behind(writer, [org_id]) == {org_id: epoch}
+        async with session_maker() as db:
+            folded = await asyncio.wait_for(allowance.fold_charges_in_transaction(db, org_id), 5)
+            await db.commit()
+        assert folded.calls == 1
+        assert await asyncio.wait_for(runtime.take(org_id, 100), 5), "the refill went through"
+
+
+@pytest.mark.skipif(infra_db._is_sqlite, reason="needs row locks")
+async def test_a_close_that_deletes_the_hold_waits_for_a_charge_write_in_progress(org_id, store):
+    """The write found the charge's own hold: the hold is still there when the write commits."""
+    epoch = await runtime.take(org_id, 600)
+    async with session_maker() as writer:
+        assert await allowance.holds_behind(writer, [org_id]) == {org_id: epoch}
+
+        async def close() -> None:
+            async with session_maker() as db:
+                await allowance.close_allowance_in_transaction(db, org_id, reason="test")
+                await db.commit()
+
+        closing = asyncio.create_task(close())
+        await asyncio.sleep(0.3)
+        assert not closing.done(), "waiting for the write"
+        await writer.commit()
+    await asyncio.wait_for(closing, 5)
+    async with session_maker() as db:
+        assert await db.get(Hold, allowance.allowance_id(org_id)) is None
 
 
 async def test_deleting_a_team_locks_its_allowance_hold_before_its_queued_charges(org_id, store):
