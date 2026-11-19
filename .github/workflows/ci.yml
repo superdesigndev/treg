@@ -147,6 +147,7 @@ jobs:
           tests/test_ledger.py
           tests/test_ledger_claim_review.py
           tests/test_money_lock_order.py
+          tests/test_money_allowance.py
           tests/test_money_admission.py
           tests/test_money_admission_application.py
           tests/test_money_admission_postgres.py
