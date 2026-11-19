@@ -825,16 +825,16 @@ async def test_metrics_are_fixed_dimension_and_execution_excludes_wait_and_clean
 async def test_non_reserve_keeps_waiting_past_the_reserve_budget_for_the_lease(gate, operation):
     settings, store = gate
     settings.money_admission_wait_s = 0.02
-    store.values["money-admission:org:7"] = ("another-owner", time.monotonic() + 0.1)
+    store.values["money-admission:org:7"] = ("another-owner", time.monotonic() + 0.15)
     started = time.monotonic()
     async with admission.admit([7], operation=operation):
-        assert time.monotonic() - started >= 0.09
+        assert time.monotonic() - started >= 0.14
         assert store.values["money-admission:org:7"][0] != "another-owner"
     assert not store.values
     [row] = completed()
     assert row["mode"] == "redis" and row["operation"] == operation
     assert row["fallback_wait_timeout"] == 0
-    assert row["wait_max_ms"] >= 90 and row["wait_bucket_le_100_ms"] == 0
+    assert row["wait_max_ms"] >= 140 and row["wait_bucket_le_100_ms"] == 0
 
 
 @pytest.mark.parametrize("operation", ["close", "deferred", "release", "async", "hub"])
