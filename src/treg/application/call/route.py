@@ -91,8 +91,8 @@ from ...domain.catalog.schema.v2 import is_v2
 from ...domain.catalog.routing.contracts import (canonical_identity, default_prefer, declared_miss, declared_not_found,
                                                  flags_off, invalid_identity, miss_status)
 from ...domain.catalog.routing.plan import (
-    MAX_ERROR_FALLBACKS, Candidate, Plan, candidates_for, cost_at, ignored_filters, miss_charge_micro, rank,
-    sampled_provider_allowed, unscoped,
+    MAX_ERROR_FALLBACKS, Candidate, Explore, Plan, candidates_for, cost_at, explore_draw, ignored_filters,
+    miss_charge_micro, rank, sampled_provider_allowed, unscoped,
 )
 from ... import oauth_providers
 from ... import sandbox as demo_sandbox
@@ -103,7 +103,7 @@ from . import route_rules as route_rules_app
 from . import cost as call_cost
 from .intake import _tag_telemetry
 from .resolve import _anonymous_offer, _anonymous_refusal, _host_of, _marketplace_secret
-from .settle import close_deferred
+from .settle import cap_deferred, close_deferred
 from .types import CallContext, CallFailure, GatewayFailed, ResolutionFailed, UpstreamResponse
 
 log = logging.getLogger("treg.route")
@@ -675,11 +675,12 @@ def _table_price(cat, ep: dict, adapter, identity: dict, variant) -> int | None:
 
 
 async def build_plan(ep: dict, identity_given: dict, caller, options: RouteOptions, *,
-                     probe: bool = False) -> Plan:
+                     probe: bool = False, call_ref: str | None = None) -> Plan:
     """Candidates for this org: adapters that accept the identity, own keys first, exhausted
     providers dropped, ranked by expected cost per hit. Reads only; nothing reserved. `probe`: this
     plan will be run, so it may take a failing child's probe turn (`route_health.probe`); a
-    preview never does."""
+    preview never does. `call_ref`: the call this plan runs, which draws its exploration arm
+    (`_explore`); a preview has none and always shows the router's own order."""
     cat = catalog_store.load()
     contract = cat.contracts.get(ep["capability"])
     if contract is None:
@@ -858,8 +859,47 @@ async def build_plan(ep: dict, identity_given: dict, caller, options: RouteOptio
             ruled = ordered([*rule.order, *(p for p in default if p not in rule.order)])
             orders["rule"] = _endpoints(ruled)
             ranked = ruled
+    explore = None
+    if call_ref is not None and not options.prefer:
+        ranked, explore = _explore(contract, ranked, options, call_ref, route_rule)
+        if explore is not None:
+            orders["explore"] = _endpoints(ranked)
     return Plan(contract=contract, identity=identity, variant=variant, candidates=ranked, dropped=dropped,
-                route_rule=route_rule, orders=orders, health=health)
+                route_rule=route_rule, orders=orders, health=health, explore=explore)
+
+
+def _explore(contract, ranked: list[Candidate], options: RouteOptions, call_ref: str,
+             route_rule: dict[str, str]) -> tuple[list[Candidate], Explore | None]:
+    """The exploration split (route-explore.md). A call the split may touch records its arm in
+    `route_explore`: the drawn provider, or `default`. A drawn provider goes first; the rest keeps
+    the router's order, so a miss or failure there still falls through to everyone else.
+
+    The split touches only a call whose answer it cannot make worse or dearer: the router picks the
+    order (no quality or decisive reordering), the waterfall is on, the contract is safe to retry,
+    and the router's first pick is on treg's key (a team's own key is never moved). A provider it
+    may draw is on treg's key too, called directly (no overflow aggregator, no async task), and
+    expresses every filter the caller sent."""
+    split = get_settings().route_explore_split.get(contract.capability)
+    if (split is None or not ranked or not options.waterfall or options.quality or options.decisive
+            or not contract.idempotent or ranked[0].tier != "platform"):
+        return ranked, None
+    percent, allowed = split
+    drawable = {c.endpoint["provider"]: c for c in ranked
+                if c.tier == "platform" and not c.exhausted and not c.note and not c.ignored
+                and not c.endpoint.get("async") and c.price_micro is not None}
+    providers = [p for p in allowed if p in drawable]
+    if not providers:
+        return ranked, None
+    drawn = explore_draw(call_ref, salt=get_settings().route_explore_salt, percent=percent, providers=providers)
+    route_rule["route_explore"] = drawn or "default"
+    if drawn is None or drawable[drawn] is ranked[0]:
+        return ranked, None   # the router's own first pick: nothing moves and nothing is capped
+    first = drawable[drawn]
+    # The caller pays for an explored hit what a hit by the router's own first pick costs. An
+    # allow-list of providers no dearer than that first pick keeps treg's share at zero.
+    cap = ranked[0].price_micro if ranked[0].price_micro is not None else \
+        min(c.price_micro for c in ranked if c.price_micro is not None)
+    return [first, *(c for c in ranked if c is not first)], Explore(first.endpoint["id"], drawn, cap)
 
 
 _GUARDED_TIERS = ("platform", "anonymous")   # a team's own key is never skipped or reordered for health
@@ -1243,7 +1283,8 @@ async def _run_routed(parent: CallContext, ep: dict, body_bytes: bytes, get_head
     await capacity_view.load()
     if get_settings().overflow_mode != "off":
         await overflow_routes_view.load()
-    plan = await build_plan(ep, given, parent.input.caller, options, probe=True)
+    plan = await build_plan(ep, given, parent.input.caller, options, probe=True,
+                            call_ref=None if resume else parent.call_ref)
     if resume:
         plan.candidates = [c for c in plan.candidates if c.endpoint["id"] == resume[0]]
         if not plan.candidates:
@@ -1290,6 +1331,32 @@ async def _run_routed(parent: CallContext, ep: dict, body_bytes: bytes, get_head
     quality = await _route_quality(ep["capability"]) if options.decisive or options.quality else None
     ordered_on: str | None = None
     queue = list(enumerate(plan.candidates))
+    # The exploration split (route-explore.md): `plan.explore` put a drawn provider first. That one
+    # attempt never ends the call and never spends the waterfall's allowances: once it is over, an
+    # attempt that did not answer is set aside (`aside`) and the rest runs as the router's own order
+    # would have. It bills only an answer, at most `explore.cap_micro`; treg absorbs the rest.
+    explore = plan.explore
+    explore_open = explore is not None
+    explore_ref = f"{parent.call_ref}:r0"
+    absorbed = 0
+    aside: Attempt | None = None
+
+    def close_explore() -> None:
+        nonlocal explore_open, spent, absorbed, aside, errors, too_large, cost_capped
+        explore_open = False
+        first = tried[0]
+        if first.outcome not in ("hit", "weak") and first.charged_micro and _unbill(pending, explore_ref):
+            spent -= first.charged_micro
+            absorbed += first.charged_micro
+            first.charged_micro = 0
+        if first.outcome not in ("hit", "weak", "miss"):
+            aside = first
+            errors = too_large = 0
+            cost_capped = False
+            for kept in (rate_waits, admission_refusals, team_busy, errored):
+                kept.clear()
+            rejected_by.clear()
+        _note_absorbed(parent, absorbed)
     # X-Treg-Route-Quality: the whole plan in order of measured answer quality for this identity,
     # the unrated behind in price order. A caller's own X-Treg-Route-Prefer order stands.
     if options.quality and not options.prefer and quality:
@@ -1300,6 +1367,9 @@ async def _run_routed(parent: CallContext, ep: dict, body_bytes: bytes, get_head
         except Exception:  # a bad number keeps the price order
             log.warning("route quality ordering failed", exc_info=True)
     while queue:
+        if explore_open and tried:
+            close_explore()
+        exploring = explore_open and not tried
         # A caller's own X-Treg-Route-Prefer order stands; quality orders only the router's own choice.
         if options.decisive and not options.prefer and any(t.outcome != "skipped" for t in tried):
             on = "catch_all" if "catch_all" in undecided_words else "all"
@@ -1311,7 +1381,8 @@ async def _run_routed(parent: CallContext, ep: dict, body_bytes: bytes, get_head
                     quality = None
                 ordered_on = on
         n, cand = queue.pop(0)
-        if options.max_cost_micro is not None and spent + (cand.price_micro or 0) > options.max_cost_micro:
+        price = min(cand.price_micro or 0, explore.cap_micro) if exploring else cand.price_micro or 0
+        if options.max_cost_micro is not None and spent + price > options.max_cost_micro:
             tried.append(Attempt(cand.endpoint["id"], cand.endpoint["provider"], "skipped", None, 0, "would exceed max cost"))
             cost_capped = True
             continue
@@ -1367,6 +1438,13 @@ async def _run_routed(parent: CallContext, ep: dict, body_bytes: bytes, get_head
             continue
         except CallFailure as exc:
             _note_call(parent, plan, cand, child, tried)
+            if exploring:
+                # Whatever refused the explored provider (its larger hold against the balance or a
+                # ceiling, a policy, its own 4xx) is that provider's: the router's order runs next.
+                _unbill(pending, child.call_ref)
+                tried.append(Attempt(cand.endpoint["id"], cand.endpoint["provider"], "skipped",
+                                     exc.status_code, 0, f"explored first; {exc.kind}"))
+                continue
             if exc.kind == "route_max_cost":
                 held = (exc.detail or {}).get("estimated_cost_micro") if isinstance(exc.detail, dict) else None
                 tried.append(Attempt(cand.endpoint["id"], cand.endpoint["provider"], "skipped", None, 0,
@@ -1457,6 +1535,12 @@ async def _run_routed(parent: CallContext, ep: dict, body_bytes: bytes, get_head
         _note_health(cand, child, failed=health_rules.failed_status(response.status),
                      slow=bound_s is not None and loop.time() - started >= bound_s / 2)
         charged = int(_header(response, "X-Treg-Cost-Micro") or 0)
+        if exploring and charged:
+            capped = cap_deferred(pending, child.call_ref, explore.cap_micro)
+            if capped is not None and capped < charged:
+                absorbed += charged - capped
+                charged = capped
+                _note_absorbed(parent, absorbed)
         descriptor = cand.endpoint.get("async")
         async_outcome = ""
         if (descriptor and 200 <= response.status < 300
@@ -1552,6 +1636,12 @@ async def _run_routed(parent: CallContext, ep: dict, body_bytes: bytes, get_head
                 continue
             winner = (cand, {}, {}, raw)
             break
+        if exploring and outcome.kind in ("not_found", "rejected"):
+            # One provider's word that the target does not exist, or its refusal of the request,
+            # does not end an explored call: the router's own order is asked as it would have been.
+            tried.append(Attempt(cand.endpoint["id"], cand.endpoint["provider"], "error", response.status, charged,
+                                 f"explored first; {outcome.kind}: " + raw[:100].decode("utf-8", "replace")))
+            continue
         if outcome.kind == "not_found":
             # The provider reports that the TARGET does not exist (the scraped site answered 404 or
             # 410). Every other provider can only find the same nothing, or answer an empty page that
@@ -1721,6 +1811,11 @@ async def _run_routed(parent: CallContext, ep: dict, body_bytes: bytes, get_head
         answers.append((cand, doc, core, raw))
         winner = (cand, doc, core, raw)
         break
+    if explore_open and tried:
+        close_explore()
+    # What decides a call nobody answered is judged without a set-aside explored attempt, so it
+    # ends as the router's own order would have ended it.
+    judged = [t for t in tried if t is not aside]
     if winner is None and unconfirmed:
         winner = unconfirmed[0][1]   # nobody agreed: the first hit, marked unconfirmed
     if winner is None and undecided:
@@ -1730,7 +1825,7 @@ async def _run_routed(parent: CallContext, ep: dict, body_bytes: bytes, get_head
     if winner is None and off_domain:
         winner = off_domain[0]    # nothing on-domain: the first off-domain answer, already paid for, still flagged
     if winner is None:
-        if tried and len(rate_waits) == len(tried):
+        if judged and len(rate_waits) == len(judged):
             wait = min(rate_waits)
             _summarize(parent, tried_count=len(tried))
             _audit_parent(parent, ep, 429, 0, audit_client)
@@ -1739,18 +1834,18 @@ async def _run_routed(parent: CallContext, ep: dict, body_bytes: bytes, get_head
                 "tried": [t.view() for t in tried],
                 "message": f"every candidate for {ep['id']} is at treg's rate limit; nothing was "
                            f"charged, try again in {wait} s"}, retry_after_s=wait)
-        if team_busy and all(t.outcome == "skipped" for t in tried):
+        if team_busy and all(t.outcome == "skipped" for t in judged):
             # Only treg's own busy refusals stopped the call: answer that, with its Retry-After,
             # rather than a route_failed that blames the providers.
             _summarize(parent, tried_count=len(tried))
             _audit_parent(parent, ep, team_busy[-1].status_code, 0, audit_client)
             raise team_busy[-1]
-        if admission_refusals and all(t.outcome == "skipped" for t in tried):
+        if admission_refusals and all(t.outcome == "skipped" for t in judged):
             # Nothing ran: the refusal names a remedy, unlike a cost ceiling the caller may never have set.
             _summarize(parent, tried_count=len(tried))
             _audit_parent(parent, ep, 403, 0, audit_client)
             raise admission.routed_refusal(ep["id"], admission_refusals, [t.view() for t in tried])
-        if tried and all(t.outcome == "skipped" for t in tried):
+        if judged and all(t.outcome == "skipped" for t in judged):
             raise ResolutionFailed("route_max_cost", status_code=402, detail={
                 "error": "route_max_cost", "endpoint_id": ep["id"],
                 "max_cost_micro": options.max_cost_micro, "charged_micro": spent,
@@ -1761,8 +1856,8 @@ async def _run_routed(parent: CallContext, ep: dict, body_bytes: bytes, get_head
         # least one provider answered a miss, the call is a miss, marked `incomplete` when a
         # provider on the way failed (its attempt says which), so a caller can ask again later.
         # Only a call where no provider answered at all is `route_failed`.
-        outcome = "miss" if any(t.outcome == "miss" for t in tried) else "error"
-        incomplete = outcome == "miss" and any(t.outcome == "error" for t in tried)
+        outcome = "miss" if any(t.outcome == "miss" for t in judged) else "error"
+        incomplete = outcome == "miss" and any(t.outcome == "error" for t in judged)
         if incomplete:
             spent = _refund_errors(errored, pending, spent)
         if outcome == "miss":
@@ -1790,7 +1885,7 @@ async def _run_routed(parent: CallContext, ep: dict, body_bytes: bytes, get_head
             # every attempt made was cut by treg's own read cap (the rest were skipped, never asked):
             # treg's limit, as on a direct call
             log_kind="response_buffer_limit"
-            if too_large and too_large == sum(t.outcome != "skipped" for t in tried) else None)
+            if too_large and too_large == sum(t.outcome != "skipped" for t in judged) else None)
     cand, doc, output, raw = winner
     served = cand.endpoint["id"]
     winner_attempt = next(t for t in reversed(tried)
@@ -2088,13 +2183,21 @@ def _note_call(parent: CallContext, plan: Plan, cand: Candidate, child: CallCont
     if not plan.orders:
         source = "header"  # the caller's own X-Treg-Route-Prefer order
     else:
-        source = "default" if called == next_in("default") else "rule" if called == next_in("rule") else "quality"
+        source = ("default" if called == next_in("default") else "rule" if called == next_in("rule")
+                  else "explore" if called == next_in("explore") else "quality")
     if "route_order" not in route:
         route["route_order"] = source
     elif source not in ("default", "header") and "route_retry_order" not in route:
         route["route_retry_order"] = source
     else:
         return
+    _summarize(parent, route_rule=route)
+
+
+def _note_absorbed(parent: CallContext, absorbed: int) -> None:
+    """What treg took off the caller's bill on an explored call (route-explore.md), for its event."""
+    route = dict((parent.route_summary or {}).get("route_rule") or {})
+    route["route_explore_absorbed_micro"] = str(absorbed)
     _summarize(parent, route_rule=route)
 
 

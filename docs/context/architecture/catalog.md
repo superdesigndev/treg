@@ -805,7 +805,9 @@ whose contract is a canonical schema ("Routing" below).
 that percentage of provider, org, capability and canonical-question hashes; a retry of the same question
 gets the same decision. A missing or empty setting leaves all providers eligible. Unlisted
 providers, direct calls and a team's own credential are unaffected. This gates eligibility, not
-the eventual share of served calls or the provider's direct-call volume.
+the eventual share of served calls or the provider's direct-call volume. To measure providers on the same
+questions, `TREG_ROUTE_EXPLORE` instead asks a drawn provider first on a random share of calls
+([route-explore.md](route-explore.md)).
 
 What treg supplies is what only it sees: **success rate, p50/p95 latency, last success and sample
 size** per endpoint from folded `CallRecord` evidence, on `/catalog/endpoints/{id}` for the endpoint

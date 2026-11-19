@@ -126,7 +126,8 @@ The stream has no map type; they travel as JSON objects (`json` columns):
   segment set (`segments:` on the contract, below), plus `page_kind` and, for a page number or an
   offset, `page` on a later page (a cursor is opaque and not recorded). A routed
   parent also carries `route_order` and `route_retry_order` (what decided its order) and, with published rules on,
-  `route_rules_version` and `route_rule` ([route-rules.md](route-rules.md)).
+  `route_rules_version` and `route_rule` ([route-rules.md](route-rules.md)), and with the exploration
+  split on, `route_explore` and `route_explore_absorbed_micro` ([route-explore.md](route-explore.md)).
 - `answer_keys`: `{field: hmac}` for output fields declared `analytics: key`.
 - `answer_values`: `{field: value}` for output fields declared `analytics: value`, as strings
   (capped length), exactly as the adapter produced them, plus `<field>_calling_code` beside every

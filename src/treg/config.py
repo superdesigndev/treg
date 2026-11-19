@@ -108,6 +108,37 @@ def _blocked_email_domains(raw: str) -> frozenset[str]:
     )
 
 
+_NAME = re.compile(r"[a-z0-9][a-z0-9.-]*")
+
+
+@lru_cache(maxsize=8)
+def _route_explore(raw: str) -> dict[str, tuple[float, tuple[str, ...]]]:
+    """Parse `TREG_ROUTE_EXPLORE` once per distinct value. Every capability names a percent from 0
+    to 100 and at least one distinct lowercase provider; nothing else is accepted, so a typo fails
+    the deploy instead of exploring something nobody approved."""
+    if not raw.strip():
+        return {}
+    try:
+        parsed = json.loads(raw)
+    except ValueError:
+        raise ValueError("route_explore must be a JSON object") from None
+    if not isinstance(parsed, dict):
+        raise ValueError("route_explore must be a JSON object")
+    out: dict[str, tuple[float, tuple[str, ...]]] = {}
+    for capability, split in parsed.items():
+        if not (isinstance(capability, str) and _NAME.fullmatch(capability)
+                and isinstance(split, dict) and set(split) == {"percent", "providers"}):
+            raise ValueError("route_explore maps a lowercase capability to {percent, providers}")
+        percent, providers = split["percent"], split["providers"]
+        if isinstance(percent, bool) or not isinstance(percent, (int, float)) or not 0 <= percent <= 100:
+            raise ValueError(f"route_explore {capability}: percent must be a number from 0 to 100")
+        if (not isinstance(providers, list) or not providers or len(set(providers)) != len(providers)
+                or not all(isinstance(p, str) and _NAME.fullmatch(p) for p in providers)):
+            raise ValueError(f"route_explore {capability}: providers must be distinct lowercase names")
+        out[capability] = (float(percent), tuple(providers))
+    return out
+
+
 # How treg introduces itself to a provider: on every call on its shared key (the relay's rewrite 5)
 # and as the default of the clients it calls providers with, never a library's own default.
 TREG_USER_AGENT = "treg/1.0 (+https://treg.to)"
@@ -573,6 +604,14 @@ class Settings(BaseSettings):
     # Optional percent of routed requests on which each shared-key provider may be considered.
     # Empty leaves routing unchanged; direct calls and own-key candidates are unaffected.
     route_provider_sample_pct: str = ""
+    # The exploration split (docs/context/architecture/route-explore.md): per routed capability, the
+    # percent of routed calls, chosen by a salted hash of the call id, that ask one provider drawn
+    # uniformly from `providers` first. The rest of the order is the router's own; the caller pays at
+    # most what the default order would have charged. Empty (the default) explores nothing. JSON:
+    # capability -> {percent, providers}, e.g. people.email.find at 5 percent over hunter and tomba.
+    route_explore: str = ""
+    # Changing the salt reshuffles which calls explore; a fixed one keeps the split reproducible.
+    route_explore_salt: str = "treg-route-explore-v1"
     # Routed child guards (application/call/route_health.py, docs catalog.md "Child guards").
     # `on` skips a treg-key child failing now and asks a slow one after the others; `observe`
     # records and reports the verdict without acting on it; `off` neither records nor reads.
@@ -1271,6 +1310,24 @@ class Settings(BaseSettings):
     @property
     def route_provider_sample_percentages(self) -> dict[str, int]:
         return json.loads(self.route_provider_sample_pct) if self.route_provider_sample_pct.strip() else {}
+
+    @field_validator("route_explore")
+    @classmethod
+    def _route_explore_shape(cls, v: str) -> str:
+        _route_explore(v)
+        return v
+
+    @field_validator("route_explore_salt")
+    @classmethod
+    def _route_explore_salt_shape(cls, v: str) -> str:
+        if not v.strip():
+            raise ValueError("route_explore_salt must not be empty")
+        return v
+
+    @property
+    def route_explore_split(self) -> dict[str, tuple[float, tuple[str, ...]]]:
+        """capability -> (percent, allow-listed providers); empty explores nothing."""
+        return _route_explore(self.route_explore)
 
     @property
     def fixed_login_code_hashes(self) -> dict[str, str]:
