@@ -19,6 +19,7 @@ treg's own marketplace also offers ready workflow skills as separate plugins. Af
 - `rea-growth`
 - `recruit`
 - `web-access`
+- `whats-new`
 
 When the human's task matches one, offer it once.
 
