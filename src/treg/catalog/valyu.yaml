@@ -138,16 +138,11 @@ endpoints:
         enum:
         - short
       included_sources:
-        type: array[string]
+        type: array
+        items: {type: string, enum: &id001 [valyu/valyu-arxiv, valyu/valyu-pubmed, valyu/valyu-medrxiv, valyu/valyu-biorxiv, valyu/valyu-chemrxiv]}
         required: true
         minItems: 1
         maxItems: 5
-        enum: &id001
-        - valyu/valyu-arxiv
-        - valyu/valyu-pubmed
-        - valyu/valyu-medrxiv
-        - valyu/valyu-biorxiv
-        - valyu/valyu-chemrxiv
         example: *id001
     note: The selected Valyu sources are fixed for shared-key calls; use a Valyu own tool for arbitrary source mixes.
   test_request:
@@ -224,12 +219,11 @@ endpoints:
         enum:
         - short
       included_sources:
-        type: array[string]
+        type: array
+        items: {type: string, enum: &id002 [valyu/valyu-stocks]}
         required: true
         minItems: 1
         maxItems: 1
-        enum: &id002
-        - valyu/valyu-stocks
         example: *id002
     note: The selected Valyu sources are fixed for shared-key calls; use a Valyu own tool for arbitrary source mixes.
   test_request:
@@ -306,12 +300,11 @@ endpoints:
         enum:
         - short
       included_sources:
-        type: array[string]
+        type: array
+        items: {type: string, enum: &id003 [valyu/valyu-crypto]}
         required: true
         minItems: 1
         maxItems: 1
-        enum: &id003
-        - valyu/valyu-crypto
         example: *id003
     note: The selected Valyu sources are fixed for shared-key calls; use a Valyu own tool for arbitrary source mixes.
   test_request:
@@ -388,12 +381,11 @@ endpoints:
         enum:
         - short
       included_sources:
-        type: array[string]
+        type: array
+        items: {type: string, enum: &id004 [valyu/valyu-forex]}
         required: true
         minItems: 1
         maxItems: 1
-        enum: &id004
-        - valyu/valyu-forex
         example: *id004
     note: The selected Valyu sources are fixed for shared-key calls; use a Valyu own tool for arbitrary source mixes.
   test_request:
@@ -470,12 +462,11 @@ endpoints:
         enum:
         - short
       included_sources:
-        type: array[string]
+        type: array
+        items: {type: string, enum: &id005 [valyu/valyu-sec-filings]}
         required: true
         minItems: 1
         maxItems: 1
-        enum: &id005
-        - valyu/valyu-sec-filings
         example: *id005
     note: The selected Valyu sources are fixed for shared-key calls; use a Valyu own tool for arbitrary source mixes.
   test_request:
@@ -552,12 +543,11 @@ endpoints:
         enum:
         - short
       included_sources:
-        type: array[string]
+        type: array
+        items: {type: string, enum: &id006 [valyu/valyu-insider-transactions-US]}
         required: true
         minItems: 1
         maxItems: 1
-        enum: &id006
-        - valyu/valyu-insider-transactions-US
         example: *id006
     note: The selected Valyu sources are fixed for shared-key calls; use a Valyu own tool for arbitrary source mixes.
   test_request:
@@ -634,13 +624,11 @@ endpoints:
         enum:
         - short
       included_sources:
-        type: array[string]
+        type: array
+        items: {type: string, enum: &id007 [valyu/valyu-commodities, valyu/valyu-market-movers-US]}
         required: true
         minItems: 1
         maxItems: 2
-        enum: &id007
-        - valyu/valyu-commodities
-        - valyu/valyu-market-movers-US
         example: *id007
     note: The selected Valyu sources are fixed for shared-key calls; use a Valyu own tool for arbitrary source mixes.
   test_request:
@@ -717,13 +705,11 @@ endpoints:
         enum:
         - short
       included_sources:
-        type: array[string]
+        type: array
+        items: {type: string, enum: &id008 [valyu/valyu-polymarket, valyu/valyu-kalshi]}
         required: true
         minItems: 1
         maxItems: 2
-        enum: &id008
-        - valyu/valyu-polymarket
-        - valyu/valyu-kalshi
         example: *id008
     note: The selected Valyu sources are fixed for shared-key calls; use a Valyu own tool for arbitrary source mixes.
   test_request:
@@ -800,12 +786,11 @@ endpoints:
         enum:
         - short
       included_sources:
-        type: array[string]
+        type: array
+        items: {type: string, enum: &id009 [valyu/valyu-clinical-trials]}
         required: true
         minItems: 1
         maxItems: 1
-        enum: &id009
-        - valyu/valyu-clinical-trials
         example: *id009
     note: The selected Valyu sources are fixed for shared-key calls; use a Valyu own tool for arbitrary source mixes.
   test_request:
@@ -882,13 +867,11 @@ endpoints:
         enum:
         - short
       included_sources:
-        type: array[string]
+        type: array
+        items: {type: string, enum: &id010 [valyu/valyu-drug-labels, valyu/valyu-who-gho]}
         required: true
         minItems: 1
         maxItems: 2
-        enum: &id010
-        - valyu/valyu-drug-labels
-        - valyu/valyu-who-gho
         example: *id010
     note: The selected Valyu sources are fixed for shared-key calls; use a Valyu own tool for arbitrary source mixes.
   test_request:
@@ -965,13 +948,11 @@ endpoints:
         enum:
         - short
       included_sources:
-        type: array[string]
+        type: array
+        items: {type: string, enum: &id011 [valyu/valyu-bls, valyu/valyu-worldbank-indicators]}
         required: true
         minItems: 1
         maxItems: 2
-        enum: &id011
-        - valyu/valyu-bls
-        - valyu/valyu-worldbank-indicators
         example: *id011
     note: The selected Valyu sources are fixed for shared-key calls; use a Valyu own tool for arbitrary source mixes.
   test_request:
@@ -1022,7 +1003,8 @@ endpoints:
     bodyType: json
     body:
       urls:
-        type: array[string]
+        type: array
+        items: {type: string}
         required: true
         minItems: 1
         maxItems: 1
@@ -1098,7 +1080,8 @@ endpoints:
         - proprietary
         - news
       included_sources:
-        type: array[string]
+        type: array
+        items: {type: string}
         required: false
       data_max_price:
         type: number
@@ -1155,12 +1138,11 @@ endpoints:
         - max
         example: fast
       output_formats:
-        type: array[string]
+        type: array
+        items: {type: string, enum: [markdown]}
         required: true
         minItems: 1
         maxItems: 1
-        enum:
-        - markdown
         example:
         - markdown
       research_strategy:

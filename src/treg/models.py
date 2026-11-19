@@ -12,7 +12,7 @@ from datetime import date, datetime, timezone
 from typing import Annotated
 
 from pydantic import NaiveDatetime
-from sqlalchemy import BigInteger, Boolean, JSON, CheckConstraint, Column, Index, Integer, String, UniqueConstraint, text
+from sqlalchemy import BigInteger, Boolean, JSON, CheckConstraint, Column, Index, Integer, String, Text, UniqueConstraint, text
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlmodel import Field, SQLModel
 
@@ -37,6 +37,11 @@ class Org(SQLModel, table=True):
     """A tenant (team). Owns secrets/tools/bundles; resources are scoped by `org_id`.
     Verified sign-in creates only a user; the user explicitly creates or joins a team.
     """
+
+    # Stripe's payment-method events name only the card. Partial: most teams never save one.
+    __table_args__ = (Index("ix_org_stripe_default_pm", "stripe_default_pm",
+                            postgresql_where=text("stripe_default_pm IS NOT NULL"),
+                            sqlite_where=text("stripe_default_pm IS NOT NULL")),)
 
     id: int | None = Field(default=None, primary_key=True)
     name: str
@@ -73,6 +78,9 @@ class Org(SQLModel, table=True):
     # not card data: treg never sees a PAN, so there is nothing here to leak beyond a token that only
     # works with our own secret key. Null = no card on file → auto-top-up cannot be armed.
     stripe_default_pm: str | None = Field(default=None)
+    # When the payer chose that card, as the Stripe event's `created` time (Unix seconds), so a
+    # choice delivered late never replaces a newer one. Null = chosen before treg recorded it.
+    stripe_default_pm_at: int | None = Field(default=None, sa_type=BigInteger)
     # Auto-top-up: refill the balance without a human when it dips below the threshold. Off unless the
     # org explicitly turned it on AND recorded consent — an off-session charge with no mandate is an
     # unauthorized charge under PSD2/SCA, so `autotopup_consented_at` gates the charge, not the UI.
@@ -585,7 +593,7 @@ class CallRecord(SQLModel, table=True):
     # The RUNTIME that made the call — "claude-code", "codex", "cursor", … — self-reported by the
     # treg CLI via X-Treg-Client (attribution, NOT authentication: anything holding the token can
     # claim any name). "" = unreported. What makes the observed-agents roster possible.
-    client: str = Field(default="", index=True)
+    client: str = Field(default="")
     # The key snapshot used for this call. Historical rows before managed-key tracking keep NULL.
     # Logical reference only: Activity must survive key and membership lifecycle changes.
     api_key_id: int | None = Field(default=None)
@@ -596,8 +604,8 @@ class CallRecord(SQLModel, table=True):
     # expected it to cost vs what the provider said it cost, and how big/slow the answer was. The
     # money itself is NOT here — it landed synchronously in the ledger (see domain/money); this table is
     # analytics and is allowed to lose rows.
-    endpoint_id: str | None = Field(default=None, index=True)
-    provider: str | None = Field(default=None, index=True)
+    endpoint_id: str | None = Field(default=None)
+    provider: str | None = Field(default=None)
     # tool | credential | platform — which rung of the credential ladder served it. "platform" is the
     # only one that spends treg's own money, so this is what a spend audit groups by.
     credential_tier: str | None = Field(default=None)
@@ -612,7 +620,7 @@ class CallRecord(SQLModel, table=True):
     # The hash itself never carries a body, so it is safe to keep forever; it is the future cache key
     # and the repeat-rate signal. For the ONE case where a body IS retained, see
     # `error_request` below — it is deliberately narrow and does not weaken this column's guarantee.
-    params_hash: str | None = Field(default=None, index=True)
+    params_hash: str | None = Field(default=None)
     # Failure evidence (NULL unless a relayed call failed).
     # The only place treg retains request or response CONTENT, and the exception to "bodies are not
     # stored". Written on failed catalog, own-key, and plain own-tool calls: production failures
@@ -633,18 +641,18 @@ class CallRecord(SQLModel, table=True):
     # or endpoint) | request (malformed pre-relay: wrong method, missing param, bad body). What
     # separates "the provider failed" from "we said no" — without it a paywall 402 is
     # indistinguishable from a provider error, and provider stats absorb our own refusals.
-    refused_by: str | None = Field(default=None, index=True)
+    refused_by: str | None = Field(default=None)
     # Caller tags (X-Treg-Meta).
     # A builder reselling treg tags each call with their OWN ids ("customer=cust_8123,
     # workspace=ws_9") so they can attribute, budget and invoice their users. `tags` is the whole
-    # bag; `budget_dim`/`budget_val` are the indexed copy of the org's PRIMARY dimension, which is
+    # bag; `budget_dim`/`budget_val` are the flat copy of the org's PRIMARY dimension, which is
     # what a per-tag report groups by without folding JSON (see TagSpend for the money side).
     # "" — never NULL — because NULLs are distinct in a unique index on both engines.
     # Echoed to the caller as X-Treg-Call-Id and used as the ledger call_id on a metered call, so a
     # builder can join this row, the money rows and their OWN records on one value.
     call_ref: str = Field(default="", index=True)
     budget_dim: str = Field(default="")
-    budget_val: str = Field(default="", index=True)
+    budget_val: str = Field(default="")
     tags: dict | None = Field(default=None, sa_column=Column("tags", JSON, nullable=True))
     created_at: NaiveUTC = Field(default_factory=_now)
     # True when the archive served this answer instead of the vendor (X-Treg-Cache: hit).
@@ -1889,6 +1897,56 @@ class CallMark(SQLModel, table=True):
     tags: dict | None = Field(default=None, sa_column=Column("tags", JSON, nullable=True))
     content_hash: str
     created_at: NaiveUTC = Field(default_factory=_now)
+
+
+class CallComparison(SQLModel, table=True):
+    """Two vendors' answers to one routed call's input, and the team's agent's blinded verdict.
+
+    A is the answer the team was served; B is the other vendor of a configured pair, asked later by
+    `treg-worker compare collect` on treg's key (application/compare.py). `first` is which of the
+    two is shown as answer 1. Bodies are stored truncated; `input` is the capability input,
+    truncated. Written only by `domain/feedback/comparisons.py`.
+    """
+
+    __table_args__ = (
+        Index("ix_callcomparison_org_id_status_created_at", "org_id", "status", "created_at"),
+        Index("ix_callcomparison_org_id_capability_created_at", "org_id", "capability", "created_at"),
+        Index("ix_callcomparison_created_at", "created_at"),
+    )
+
+    id: int | None = Field(default=None, primary_key=True)
+    # No foreign keys (AGENTS.md): team deletion clears these rows (ORG_SCOPED_MODELS), and every
+    # `treg-worker compare collect` run removes any it missed.
+    org_id: int
+    user_email: str
+    call_ref: str = Field(unique=True, index=True)
+    capability: str
+    a_endpoint: str
+    a_provider: str
+    b_endpoint: str | None = Field(default=None)
+    b_provider: str
+    b_call_ref: str | None = Field(default=None)
+    b_cost_micro: int = Field(default=0, sa_type=BigInteger)
+    input: str = Field(default="", sa_type=Text)
+    a_body: str = Field(default="", sa_type=Text)
+    b_body: str = Field(default="", sa_type=Text)
+    # The parts stored cut at their limit: a comma list of input, a, b ("" = none).
+    truncated: str = Field(default="")
+    first: str = Field(default="a")      # a | b: which answer is shown as answer 1
+    status: str = Field(default="ready")  # pending | ready | failed | decided
+    choice: str | None = Field(default=None)  # a | b | tie | both_bad
+    reason: str | None = Field(default=None)
+    client: str = Field(default="")
+    created_at: NaiveUTC = Field(default_factory=_now)
+    decided_at: NaiveUTC | None = Field(default=None)
+
+
+class CompareAttemptDay(SQLModel, table=True):
+    """Second-vendor calls the comparison worker claimed on one UTC day (`YYYYMMDD`): the daily
+    limit's count. Not a team's row, so deleting a team gives no quota back."""
+
+    day: str = Field(primary_key=True)
+    attempts: int = Field(default=0)
 
 
 class Media(SQLModel, table=True):

@@ -38,10 +38,10 @@ endpoints:
         mode: {type: string, required: true, enum: [json], note: "json; without it Lever answers HTML", example: json}
         limit: {type: integer, required: false, min: 1, note: "postings per page; no limit returns the whole board. Pass 100 or fewer on large boards", example: 5}
         skip: {type: integer, required: false, min: 0, note: "postings to skip, for the next page"}
-        location: {type: "array[string]", required: false, note: "exact location name (repeat to OR several; case-sensitive)"}
-        commitment: {type: "array[string]", required: false, note: "exact commitment such as Full-time (repeat to OR several; case-sensitive)"}
-        team: {type: "array[string]", required: false, note: "exact team name (repeat to OR several; case-sensitive)"}
-        department: {type: "array[string]", required: false, note: "exact department name (repeat to OR several; case-sensitive)"}
+        location: {type: array, items: {type: string}, required: false, note: "exact location name (repeat to OR several; case-sensitive)"}
+        commitment: {type: array, items: {type: string}, required: false, note: "exact commitment such as Full-time (repeat to OR several; case-sensitive)"}
+        team: {type: array, items: {type: string}, required: false, note: "exact team name (repeat to OR several; case-sensitive)"}
+        department: {type: array, items: {type: string}, required: false, note: "exact department name (repeat to OR several; case-sensitive)"}
         level: {type: string, required: false, note: "exact level name"}
     test_request: {pathParams: {site: spotify}, queryParams: {mode: json, limit: 1}}
     note: "Filters match the exact category text a posting carries: read it from categories in an unfiltered page first. The answer has no total count; page until a page is shorter than limit."
@@ -76,10 +76,10 @@ endpoints:
         mode: {type: string, required: true, enum: [json], note: "json; without it Lever answers HTML", example: json}
         limit: {type: integer, required: false, min: 1, note: "postings per page; no limit returns the whole board", example: 5}
         skip: {type: integer, required: false, min: 0, note: "postings to skip, for the next page"}
-        location: {type: "array[string]", required: false, note: "exact location name (repeat to OR several; case-sensitive)"}
-        commitment: {type: "array[string]", required: false, note: "exact commitment (repeat to OR several; case-sensitive)"}
-        team: {type: "array[string]", required: false, note: "exact team name (repeat to OR several; case-sensitive)"}
-        department: {type: "array[string]", required: false, note: "exact department name (repeat to OR several; case-sensitive)"}
+        location: {type: array, items: {type: string}, required: false, note: "exact location name (repeat to OR several; case-sensitive)"}
+        commitment: {type: array, items: {type: string}, required: false, note: "exact commitment (repeat to OR several; case-sensitive)"}
+        team: {type: array, items: {type: string}, required: false, note: "exact team name (repeat to OR several; case-sensitive)"}
+        department: {type: array, items: {type: string}, required: false, note: "exact department name (repeat to OR several; case-sensitive)"}
         level: {type: string, required: false, note: "exact level name"}
     test_request: {pathParams: {site: leverdemo}, queryParams: {mode: json, limit: 1}}
     note: "For sites hosted on jobs.eu.lever.co. The US and EU instances are separate: a name can be a different company's board on each, so use the instance the company's jobs page links to."

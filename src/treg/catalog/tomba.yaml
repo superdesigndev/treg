@@ -365,7 +365,7 @@ endpoints:
     input:
       queryParams:
         domain: {type: string, required: true, note: "company domain, no protocol or www", example: "stripe.com"}
-        limit: {type: integer, required: false, note: "Start with 10 (the default): 1 and 10 both cost 1 credit. Non-empty pages cost ceil(limit/10) credits even when partially filled. Tested values: 1, 10, 20, 50; 30 is rejected. Check meta.total before requesting more pages", example: 10}
+        limit: {type: [integer, string], required: false, note: "Start with 10 (the default): 1 and 10 both cost 1 credit. Non-empty pages cost ceil(limit/10) credits even when partially filled. Tested values: 1, 10, 20, 50; 30 is rejected. Check meta.total before requesting more pages", example: 10}
         page: {type: integer, required: false, note: "1-based page number"}
         department: {type: string, required: false, note: "filter by department, e.g. engineering, sales, executive"}
         type: {type: string, required: false, note: "personal | generic — generic means role addresses like sales@"}

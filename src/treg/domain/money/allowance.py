@@ -29,6 +29,7 @@ from . import (
     _entry,
     _lock_blocks,
     _now,
+    _queued_unbacked,
     _spent_today_values,
     with_margin,
 )
@@ -102,19 +103,18 @@ async def record_charges(db: AsyncSession, charges: Sequence[Charge]) -> set[str
 
 class Folded(NamedTuple):
     """One fold: `calls` settle entries written for `charged_micro`, `consumed_micro` of it drawn
-    from blocks, `duplicates` charges dropped because their call was already settled, and
-    `orphaned` charges dropped because the team they were admitted for is gone."""
+    from blocks, and `orphaned` charges dropped because the team they were admitted for is
+    gone."""
 
     calls: int = 0
     charged_micro: int = 0
     consumed_micro: int = 0
-    duplicates: int = 0
     orphaned: int = 0
 
     @property
     def claimed(self) -> int:
         """How many queue rows this fold took: a full batch means more may be queued."""
-        return self.calls + self.duplicates + self.orphaned
+        return self.calls + self.orphaned
 
 
 async def _lock_allowance(db: AsyncSession, org_id: int, *, keeps: bool = False) -> Hold | None:
@@ -167,6 +167,8 @@ async def _claim_all_charges(db: AsyncSession, org_id: int) -> list:
 
 
 async def _fold(db: AsyncSession, org_id: int, hold: Hold | None, limit: int) -> Folded:
+    if limit <= 0:
+        return Folded()
     return await _apply_charges(db, org_id, hold, await _claim_charges(db, org_id, limit))
 
 
@@ -179,21 +181,10 @@ async def _apply_charges(db: AsyncSession, org_id: int, hold: Hold | None, claim
     """
     if not claimed:
         return Folded()
-    # A queue row is gone once folded, so its primary key no longer stops the same call being
-    # recorded again. The call's settle entry is the lasting record that it was charged.
-    settled: set[str] = set()
-    ids = [row.call_id for row in claimed]
-    with money_stage(db, "settled_charges"):
-        for start in range(0, len(ids), FOLD_BATCH):
-            settled.update((await db.execute(select(LedgerEntry.call_id).where(
-                LedgerEntry.call_id.in_(ids[start:start + FOLD_BATCH]),
-                LedgerEntry.org_id == org_id, LedgerEntry.kind == "settle"))).scalars())
-    charges = sorted((row for row in claimed if row.call_id not in settled),
-                     key=lambda row: (row.created_at, row.call_id))
-    duplicates = len(claimed) - len(charges)
+    charges = sorted(claimed, key=lambda row: (row.created_at, row.call_id))
     if charges and not await team_exists(db, org_id):
         charges = []
-    orphaned = len(claimed) - duplicates - len(charges)
+    orphaned = len(claimed) - len(charges)
     if orphaned:
         log.error("allowance_charges_orphaned org_id=%s dropped=%s: the team they were admitted "
                   "for has been deleted", org_id, orphaned)
@@ -224,7 +215,7 @@ async def _apply_charges(db: AsyncSession, org_id: int, hold: Hold | None, claim
     counted = covered if hold is not None and hold.created_at >= _day_start() else 0
     if covered != consumed or consumed != counted:
         await _add_balance(db, org_id, covered - consumed, spent_delta_micro=consumed - counted)
-    return Folded(len(charges), charged, consumed, duplicates, orphaned)
+    return Folded(len(charges), charged, consumed, orphaned)
 
 
 async def team_exists(db: AsyncSession, org_id: int) -> bool:
@@ -262,12 +253,24 @@ async def has_allowance(db: AsyncSession, org_id: int) -> bool:
         select(Hold.id).where(Hold.id == allowance_id(org_id)))).first() is not None
 
 
-async def settled_calls(db: AsyncSession, call_ids: Sequence[str]) -> set[str]:
-    """Which of these calls already have a `settle` entry."""
+async def drop_settled_charges(db: AsyncSession, call_ids: Sequence[str]) -> set[str]:
+    """Of the calls a rewrite has just queued, the ones that already have a `settle` entry: the
+    first attempt's row was committed and has been folded since. Their new rows are taken out
+    of the queue again, in the transaction that put them there, so a rewrite never leaves a
+    settled call queued: a fold applies every row it claims, and the queue's readers count
+    every row, without looking any of them up in the ledger. Returns those calls.
+
+    Only a rewrite can queue a call twice, and a row it has just inserted is its own until it
+    commits. The insert waits for a fold of the first row that is still in progress, so the
+    settle entry, if there is one, was committed before the insert succeeded.
+    """
     if not call_ids:
         return set()
-    return set((await db.execute(select(LedgerEntry.call_id).where(
+    settled = set((await db.execute(select(LedgerEntry.call_id).where(
         LedgerEntry.call_id.in_(list(call_ids)), LedgerEntry.kind == "settle"))).scalars())
+    if settled:
+        await db.execute(delete(CallCharge).where(CallCharge.call_id.in_(sorted(settled))))
+    return settled
 
 
 async def settled_micro(db: AsyncSession, org_id: int, call_id: str) -> int | None:
@@ -320,14 +323,12 @@ async def committed_today(db: AsyncSession, org_id: int) -> int:
     earlier day, all of it; what queued charges owe the balance outright (their overruns, and
     all of a charge whose own hold is gone); and what queued charges may take from the hold
     beyond what it has left. All are read from the rows themselves, so the figure is right whether or not the
-    team's allowance is switched on. A queued charge whose call already has a `settle` entry is
-    left out, as a fold will drop it.
+    team's allowance is switched on. Every queued row is a charge still to be applied: a
+    rewrite never leaves a settled call queued (`drop_settled_charges`).
     """
     hold_id = allowance_id(org_id)
     from_hold, outright = _charge_parts(org_id)
-    unsettled = (CallCharge.org_id == org_id, ~select(LedgerEntry.id).where(
-        LedgerEntry.call_id == CallCharge.call_id, LedgerEntry.org_id == org_id,
-        LedgerEntry.kind == "settle").exists())
+    unsettled = (CallCharge.org_id == org_id,)
     row = (await db.execute(select(
         Org.spent_today_micro, Org.spent_today_day,
         select(Hold.amount_micro).where(Hold.id == hold_id).scalar_subquery(),
@@ -413,25 +414,39 @@ async def refill_allowance_in_transaction(
         over_cap = exposed > daily_cap_micro
         if exposed + add > daily_cap_micro:
             add = 0
-    balance = (await db.execute(select(Org.balance_micro).where(Org.id == org_id))).scalar() or 0
-    overdrawn = balance < 0
-    if overdrawn:
-        add = 0
+    debited, counted = False, {}
+    if hold is not None and add:
+        counted = _spent_today_values(add) if hold.created_at >= _day_start() else {}
+        with money_stage(db, "reserve_balance"):
+            debited = (await db.execute(
+                update(Org).where(Org.id == org_id, Org.balance_micro >= add)
+                .values(balance_micro=Org.balance_micro - add, **counted))).rowcount == 1
+    # What the balance has free of the queue's claims, read after the debit as `reserve` does:
+    # the debit holds the team's row, so the two belong to one moment. A charge queued for more
+    # than its call set aside is owed by the balance from the moment it is queued, folded or not.
+    with money_stage(db, "reserve_queue"):
+        free = int((await db.execute(
+            select(Org.balance_micro - _queued_unbacked(org_id)).where(Org.id == org_id)
+        )).scalar() or 0)
+    if debited and free < 0:
+        # Undo the debit as it was made. The day's counter is taken back from the day the debit
+        # counted it on, whatever the clock says now: a midnight between the two must not open
+        # the new day below zero.
+        uncounted = {"spent_today_micro": Org.spent_today_micro - add} if counted else {}
+        with money_stage(db, "update_balance"):
+            await db.execute(update(Org).where(Org.id == org_id).values(
+                balance_micro=Org.balance_micro + add, **uncounted))
+        free, debited = free + add, False
+    overdrawn = free < 0
     if hold is None:
         return Allowance(None, 0, 0, folded, over_cap, overdrawn)
     added = 0
-    if add:
-        counted = _spent_today_values(add) if hold.created_at >= _day_start() else {}
-        with money_stage(db, "reserve_balance"):
-            result = await db.execute(
-                update(Org).where(Org.id == org_id, Org.balance_micro >= add)
-                .values(balance_micro=Org.balance_micro - add, **counted))
-        if result.rowcount == 1:
-            added = add
-            hold.amount_micro += add
-            await _entry(db, org_id=org_id, kind="reserve", amount_micro=-add, call_id=hold.id,
-                         meta={"allowance": True, "charged_micro": add,
-                               "hold_micro": hold.amount_micro})
+    if debited:
+        added = add
+        hold.amount_micro += add
+        await _entry(db, org_id=org_id, kind="reserve", amount_micro=-add, call_id=hold.id,
+                     meta={"allowance": True, "charged_micro": add,
+                           "hold_micro": hold.amount_micro})
     if opened and not added:
         await db.delete(hold)
         return Allowance(None, 0, 0, folded, over_cap, overdrawn)
@@ -494,21 +509,24 @@ async def close_stale_allowance_in_transaction(
 
 
 async def stale_allowance_orgs(db: AsyncSession, stale_before: datetime, *,
-                               limit: int = 50) -> list[int]:
-    """Teams whose allowance hold stopped admitting calls before `stale_before`. A read; the
+                               after: int = 0, limit: int = 50) -> list[int]:
+    """Teams whose allowance hold stopped admitting calls before `stale_before`, in the order of
+    their numbers, a page at a time: `after` is the last team of the page before. A read; the
     close re-checks under the lock."""
     return list((await db.execute(
         select(Hold.org_id).where(
-            Hold.allowance.is_(True),
+            Hold.allowance.is_(True), Hold.org_id > after,
             func.coalesce(Hold.heartbeat_at, Hold.created_at) < stale_before)
         .order_by(Hold.org_id).limit(limit))).scalars())
 
 
 async def orgs_with_queued_charges(db: AsyncSession, queued_before: datetime, *,
-                                   limit: int = 50) -> list[int]:
-    """Teams with a charge queued since before `queued_before`: a queue nothing is folding."""
+                                   after: int = 0, limit: int = 50) -> list[int]:
+    """Teams with a charge queued before `queued_before`, in the order of their numbers, a page
+    at a time: `after` is the last team of the page before."""
     return list((await db.execute(
-        select(CallCharge.org_id).where(CallCharge.created_at < queued_before)
+        select(CallCharge.org_id)
+        .where(CallCharge.created_at < queued_before, CallCharge.org_id > after)
         .distinct().order_by(CallCharge.org_id).limit(limit))).scalars())
 
 

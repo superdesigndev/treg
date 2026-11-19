@@ -9,6 +9,7 @@ sources:
   - src/treg/web/skills/lead-signals/SKILL.md
   - src/treg/web/skills/web-access/SKILL.md
   - src/treg/web/skills/recruit/SKILL.md
+  - src/treg/web/skills/doomscroll/SKILL.md
   - src/treg/web/skills/jev-memory/SKILL.md
   - src/treg/web/skills/rea-growth/SKILL.md
   - src/treg/web/skills/ai-ugc-video/SKILL.md
@@ -21,10 +22,13 @@ sources:
   - .agents/plugins/marketplace.json
   - plugin/.codex-plugin/plugin.json
   - plugins/treg/.cursor-plugin/plugin.json
+  - plugins/copilot/plugin.json
+  - plugins/copilot/mcp.json
   - package.json
   - dsh/cordis.patch.yml
   - dsh/index.js
   - plugins/minimax/.minimax-plugin/plugin.json
+  - .github/plugin/marketplace.json
   - scripts/minimax_plugin.py
   - server.json
   - .github/workflows/mcp-registry.yml
@@ -69,6 +73,7 @@ other two: a static file cannot follow a team list or a switch.
 | bare skill | generated `skills/treg/SKILL.md` at the repo root, the served page unchanged plus `version:` | `npx skills add superdesigndev/treg -s treg`, ClawHub |
 | Claude Code / Cursor plugin | `.claude-plugin/marketplace.json` and `.cursor-plugin/marketplace.json` -> `plugins/treg/`; workflow skills as optional plugins in `plugins/workflows/<name>/` | `/plugin marketplace add superdesigndev/treg`, the Cursor marketplace |
 | Codex/ChatGPT plugin | `plugin/.codex-plugin/` + `CODEX_SKILL`, via `.agents/plugins/marketplace.json` | the ChatGPT/Codex directory, `codex plugin marketplace add superdesigndev/treg` |
+| GitHub Copilot plugin | `plugins/copilot/` (Agent Plugins 1.0.0: `plugin.json`, `mcp.json`, generated skill) | `copilot plugin marketplace add superdesigndev/treg`, then `copilot plugin install treg@treg` (through `.github/plugin/marketplace.json`, which Copilot CLI reads before `.claude-plugin/`); the awesome-copilot marketplace (external-plugin submission pinned to a commit) |
 | DeepSeek Harness | root `package.json` (`dsh.bundle`) + `dsh/cordis.patch.yml` + generated `dsh/skills/treg/SKILL.md` | `dsh plugin --profile <name> add github:superdesigndev/treg` ([DSH-PLUGIN.md](../../DSH-PLUGIN.md)) |
 | MiniMax plugin | `plugins/minimax/` (skills-only), ZIP built by `scripts/minimax_plugin.py` | MiniMax Plugin Marketplace ([MINIMAX-PLUGIN.md](../../MINIMAX-PLUGIN.md)) |
 | MCP Registry (server only, no skill) | root `server.json`, published by `.github/workflows/mcp-registry.yml` on each `v0.*` tag | the official MCP Registry, which GitHub's MCP Registry and VS Code's `@mcp` gallery read |
@@ -87,6 +92,13 @@ Constraints the hosts impose, which the code cannot explain:
 - The Claude Code and Cursor plugins declare the MCP server URL-only (the Claude manifest needs
   `type: "http"`, which Claude Code rejects without); the host runs OAuth. A
   `${env:TREG_TOKEN}` header made hosts demand the variable before sign-in.
+- The Copilot plugin has its own root because Agent Plugins 1.0.0 fixes the MCP config at the
+  plugin root's `mcp.json` in a closed schema (`$schema`, `type: "streamable-http"`) that no manifest
+  field can point elsewhere, while Cursor reads `plugins/treg/mcp.json` in its own documented shape.
+- Copilot CLI looks for a repo marketplace in `.github/plugin/` before `.claude-plugin/`, so the
+  same `treg@treg` installs `plugins/copilot/` there and `plugins/treg/` in Claude Code. The two
+  files list the same workflow plugins. Copilot CLI marks direct installs (`owner/repo:path`, a local
+  path) deprecated, so the marketplace is the documented install.
 - OpenAI's plugin review refuses a skill that downloads or runs code outside the package, so the
   Codex plugin carries a connector-only skill (`CODEX_SKILL`) with no CLI and no `install.sh`.
 - dsh reads no manifest and its MCP client sends a static header with no OAuth, so its MCP row is
@@ -110,6 +122,11 @@ one line and never tells the agent to stop and ask: it runs before sign-in, so `
 `skill.md` put that question after the first call that returns real data. Workflow skills name search words
 or routed `treg.*` jobs rather than per-provider endpoint ids where the catalog moves weekly; the
 catalog row's price and parameters win over anything a skill states.
+
+Every door ships one file per skill: the well-known index lists `files: ["SKILL.md"]` and the
+installer, `npx skills` and the plugins copy only that. A skill that needs code carries it inline
+as a fenced block the agent saves and runs (`doomscroll`'s merge script);
+`tests/test_skill_md.py` extracts and runs its self-test so the copy that ships is the one tested.
 
 The installer only overwrites a SKILL.md it owns: a missing one, one whose sha256 matches its
 ledger (`~/.treg/skills.json`), or an unledgered copy that names the skill and links this registry.

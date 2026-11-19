@@ -37,10 +37,10 @@ endpoints:
       body:
         startDate: {type: string, required: true, note: "YYYY-MM-DD; data lags ~2 days, so 'today' is always empty", example: "2026-06-01"}
         endDate: {type: string, required: true, example: "2026-06-28"}
-        dimensions: {type: array, required: false, note: "any of query, page, country, device, date, searchAppearance. OMIT for a site TOTAL — summing a dimension does NOT equal the total, because rows below the privacy threshold are withheld", example: ["query"]}
+        dimensions: {type: array, items: {type: string}, required: false, note: "any of query, page, country, device, date, searchAppearance. OMIT for a site TOTAL — summing a dimension does NOT equal the total, because rows below the privacy threshold are withheld", example: ["query"]}
         rowLimit: {type: integer, required: false, note: "1–25000, default 1000", example: 100}
         startRow: {type: integer, required: false, note: "pagination offset", example: 0}
-        dimensionFilterGroups: {type: array, required: false, note: "filters, e.g. [{\"filters\":[{\"dimension\":\"page\",\"operator\":\"contains\",\"expression\":\"/blog/\"}]}]"}
+        dimensionFilterGroups: {type: array, items: {type: object}, required: false, note: "filters, e.g. [{\"filters\":[{\"dimension\":\"page\",\"operator\":\"contains\",\"expression\":\"/blog/\"}]}]"}
         type: {type: string, required: false, note: "web (default) | image | video | news | discover | googleNews", example: "web"}
         dataState: {type: string, required: false, note: "final (default) | all — 'all' includes fresh, still-incomplete data", example: "final"}
       bodyType: json

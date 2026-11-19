@@ -13,6 +13,7 @@ from urllib.parse import parse_qsl, quote, urlencode, urlsplit
 import httpx
 
 from ... import analytics, archive, audit, jsontext, oauth, oauth_providers
+from ...application import compare as compare_app
 from ...application import hub as hub_app
 from ...application.hub import runner as hub_runner
 from ...application.hub import limits as hub_limits
@@ -1096,6 +1097,8 @@ async def _execute_call(request: _ApplicationRequest, upstream_client: httpx.Asy
             request.state.idem_claim = None
         if not routed_pending:
             _set_response_header(response, "X-Treg-Cost-Micro", str(charged))
+            if 200 <= response.status < 300:
+                await compare_app.mark_eligible(call_ref, ep.get("capability"), request.context.input.raw_headers)
         _set_response_header(response, "X-Treg-Call-Id", call_ref)
         return response
     if ep is not None:
@@ -1110,6 +1113,7 @@ async def _execute_call(request: _ApplicationRequest, upstream_client: httpx.Asy
                 resolve_call=_resolve_call,
                 request_headers=request.headers,
                 authorization_method=request.headers.get(AUTHORIZATION_METHOD_HEADER, ""),
+                log_would_refuse=not request.context.input.routed_child,
             ), request, call_ref)
         except CallFailure as mkexc:
             # Catalog resolution is allowed to fall through from a named miss, but its own 404 must
@@ -1702,15 +1706,21 @@ async def _execute_call(request: _ApplicationRequest, upstream_client: httpx.Asy
                         # Each of treg's accounts has its own places (`keyslots.capacity_key`).
                         share_slot = await fair_share.acquire(
                             keyslots.capacity_key(share_pool, mk.key_slot), caller.org_id, cap,
-                            max_wait_s=wait_s)
+                            max_wait_s=wait_s,
+                            team_ceiling_percent=get_settings().fair_share_team_ceiling_percent)
                     except ShareBusy as busy:
                         raise GatewayFailed("share_busy", status_code=429, detail={
                             "error": "share_busy", "provider": mk.provider,
                             "endpoint_id": mk.endpoint_id, "active": busy.active,
                             "retry_after_s": RETRY_AFTER_SHARE_S,
-                            "message": f"{mk.provider} is fully used and your team already has "
-                                       f"{busy.active} calls in progress on it; not charged, "
-                                       f"try again in {RETRY_AFTER_SHARE_S} s"}) from None
+                            "message": (
+                                f"your team holds its largest share of {mk.provider}'s places; "
+                                f"not charged, try again shortly" if busy.reason == "team_ceiling"
+                                else f"{mk.provider} is fully used"
+                                + (f" and your team already has {busy.active} calls in "
+                                   f"progress on it" if busy.active else "")
+                                + f"; not charged, try again in {RETRY_AFTER_SHARE_S} s")},
+                            retry_after_s=RETRY_AFTER_SHARE_S) from None
                     if share_slot.waited_ms:
                         smoothed.append(f"share_wait={share_slot.waited_ms}")
                 if mk is not None:

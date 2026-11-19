@@ -61,11 +61,11 @@ endpoints:
       bodyType: json
       body:
         company_linkedin_url: {type: string, required: true, example: "https://www.linkedin.com/company/blitz-api"}
-        country_code: {type: "array[string]", required: false, note: "ISO two-letter codes or WORLD."}
-        continent: {type: "array[string]", required: false}
-        sales_region: {type: "array[string]", required: false}
-        job_level: {type: "array[string]", required: false}
-        job_function: {type: "array[string]", required: false}
+        country_code: {type: array, items: {type: string}, required: false, note: "ISO two-letter codes or WORLD."}
+        continent: {type: array, items: {type: string}, required: false}
+        sales_region: {type: array, items: {type: string}, required: false}
+        job_level: {type: array, items: {type: string}, required: false}
+        job_function: {type: array, items: {type: string}, required: false}
         min_connections_count: {type: integer, required: false}
         is_recent_hire: {type: boolean, required: false}
         max_results: {type: integer, required: false, default: 10, min: 1, max: 50, example: 1}
@@ -91,7 +91,7 @@ endpoints:
       bodyType: json
       body:
         company_linkedin_url: {type: string, required: true, example: "https://www.linkedin.com/company/blitz-api"}
-        cascade: {type: "array[object]", required: true, minItems: 1, maxItems: 10, note: "Each tier requires include_title and may set exclude_title, location and current-job options."}
+        cascade: {type: array, items: {type: object}, required: true, minItems: 1, maxItems: 10, note: "Each tier requires include_title and may set exclude_title, location and current-job options."}
         max_results: {type: integer, required: false, default: 10, min: 1, max: 100, example: 1}
         profile_min_connections: {type: integer, required: false}
     test_request: {body: {company_linkedin_url: "https://www.linkedin.com/company/blitz-api", cascade: [{include_title: [Founder]}], max_results: 1}}

@@ -163,6 +163,7 @@ USE_CASES: tuple[tuple[str, tuple[tuple[str, tuple[str, ...]], ...]], ...] = (
         ("List backlinks and find link gaps", ("web.backlinks.list", "web.backlinks.intersect")),
         ("How AI answers mention your brand", ("ai-search.mentions.summary",
                                                 "ai-search.chatgpt.answer",
+                                                "ai-search.chatgpt.scrape",
                                                 "ai-search.perplexity.answer")),
         ("Search Console: clicks, impressions and top queries", ("search-console.performance",)),
         ("Is this page indexed, and why not", ("search-console.url_inspection",)),
@@ -2420,16 +2421,17 @@ USE_CASE_PAGES["how-ai-answers-mention-your-brand"] = {
     "lede": (
         "Every AI visibility tool sells the same loop: run a set of prompts through ChatGPT and "
         "Perplexity, note who gets named, repeat next week. Your agent can run that loop itself. "
-        "One provider serves it through treg.to, as live answers to a prompt and as aggregated "
-        "mention metrics for a keyword or domain, priced per call from {cheapest}, with no "
+        "Choose the live ChatGPT page, a ChatGPT or Perplexity model API answer, or aggregated "
+        "mention metrics for a keyword or domain. Prices start at {cheapest}, with no "
         "subscription and no dashboard to pay for."),
-    "prompt": "Using treg, run these 12 buyer prompts through ChatGPT and Perplexity, US, web search "
-              "on, and tell me for each one whether treg.to or any of Composio, Pipedream or Zapier "
-              "is named, and in what position. Show me the total price before you start.",
+    "prompt": "Using treg, run these 12 buyer prompts on the live ChatGPT page and through "
+              "Perplexity's Sonar API from the US. Tell me for each one whether treg.to or any of "
+              "Composio, Pipedream or Zapier is named, and in what position. Show me the estimated "
+              "cost before you start.",
     "prompt_why": [
         ("Fix the prompt set first", "The check is only comparable week to week if the prompts do not move."),
         ("Name the competitors", "Presence on its own says little; share of the answer against named rivals is the number."),
-        ("Ask for the price up front", "The two answer endpoints differ five times in price; the metrics call is dearer again."),
+        ("Ask for the price up front", "The ChatGPT website scrape and model API have different rates. Price the one you intend to use."),
         ("Run it more than once", "Answers vary run to run. Two passes on the same day show you the noise floor."),
     ],
     "result_noun": "answer",
@@ -2444,17 +2446,15 @@ USE_CASE_PAGES["how-ai-answers-mention-your-brand"] = {
         "charge a monthly subscription for running the prompts and charting the result; the "
         "underlying data is a call to the model and a count."),
     "notes": [
-        "There are two kinds of endpoint here and they answer different questions. The two live "
-        "answer endpoints send your prompt to ChatGPT or Perplexity, with web search on if you ask "
-        "for it and a country to search from, and return the answer as data for your agent to read: "
-        "that is the check. The two mention-metrics endpoints return aggregated counts of how often "
+        "There are two kinds of check here. For an individual answer, send your prompt to the live "
+        "ChatGPT page, the ChatGPT model API or Perplexity's Sonar API. Keep the source fixed "
+        "across runs so you can compare them. The mention-metrics tools return counts of how often "
         "a keyword or a domain appears across a platform's answers, which is the trend line. Run "
         "the first on your prompt set and the second on your domain.",
-        "The prices are not alike. On the catalog's verified rates a Perplexity answer is about "
-        "half a cent, a ChatGPT answer about three cents, and a mention-metrics call about a dime. "
-        "A weekly run of fifty prompts on both engines is therefore under two dollars, which is the "
-        "argument against a subscription; a daily run across many domains is where the metrics "
-        "call starts to matter.",
+        "At the catalog rates, a ChatGPT website answer through cloro or DataForSEO costs about "
+        "$0.003 to $0.004. The DataForSEO example using the ChatGPT model "
+        "API cost about $0.029. For the prompt above, estimate 12 website scrapes and 12 Perplexity "
+        "API calls at the rates for the tools you choose. Budget for any additional attempts.",
         "The answer is a sample, not a fact. The same prompt to the same model on the same day can "
         "name a different set of brands, and every engine changes what it cites without notice. "
         "Nothing on this page smooths that, and no tool that charts it can either. What the "
@@ -2463,9 +2463,10 @@ USE_CASE_PAGES["how-ai-answers-mention-your-brand"] = {
     ],
     "faq": [
         ("Is this a scrape of the ChatGPT website?",
-         "No. The provider calls the model's own API with web search enabled and returns the "
-         "answer as structured data. You choose the model name and the country to search from. "
-         "It is the same generated answer, without a browser."),
+         "The scrape returns what a user sees on the live ChatGPT page from the country you "
+         "choose, including any sources the answer cites. The ChatGPT model API lets you choose "
+         "a model. Web search is off by default. Enable it on a supported model to set a search "
+         "country."),
         ("Can it tell me how to get mentioned?",
          "No. It tells you whether you are named, in which answers, and how that count moves. "
          "Earning the mention is a content and citation problem, and the neighbouring pages on "
@@ -2509,8 +2510,7 @@ USE_CASE_PAGES["how-ai-answers-mention-your-brand"] = {
          "r/aeo", "https://www.reddit.com/r/aeo/comments/1vwuthp/i_ran_1564_real_chatgpt_answers_through_the/",
          "A self-built run with web search on, cut short at seven of ten categories when the "
          "per-call cost overran. That is the case for seeing the price before the run: the agent "
-         "shows the total for the prompt set first, and a thousand ChatGPT answers here is a known "
-         "figure, not an estimate."),
+         "can estimate the cost of a thousand prompts for the ChatGPT source you choose."),
     ],
     "related": ("Google results for a keyword", "Keywords a domain ranks for",
                 "Backlink profile of a domain", "Search Console: clicks, impressions and top queries"),

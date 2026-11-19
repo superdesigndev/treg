@@ -56,12 +56,12 @@ endpoints:
     input:
       bodyType: json
       body:
-        targets: {type: "array[string]", required: true, note: "1-50 URLs or domains; a bare domain is treated as that page", example: ["moz.com"]}
+        targets: {type: array, items: {type: string}, required: true, note: "1-50 URLs or domains; a bare domain is treated as that page", example: ["moz.com"]}
         distributions: {type: boolean, required: false, note: "adds link distribution histograms; +1 row", example: false}
-        daily_history_deltas: {type: "array[string]", required: false, note: "metrics to return 60d daily gains/losses for; +1 row per entry"}
-        daily_history_values: {type: "array[string]", required: false, note: "metrics to return 60d daily values for; +1 row per entry"}
-        monthly_history_deltas: {type: "array[string]", required: false, note: "as daily_history_deltas, over 32 months; +1 row per entry"}
-        monthly_history_values: {type: "array[string]", required: false, note: "as daily_history_values, over 32 months; +1 row per entry"}
+        daily_history_deltas: {type: array, items: {type: string}, required: false, note: "metrics to return 60d daily gains/losses for; +1 row per entry"}
+        daily_history_values: {type: array, items: {type: string}, required: false, note: "metrics to return 60d daily values for; +1 row per entry"}
+        monthly_history_deltas: {type: array, items: {type: string}, required: false, note: "as daily_history_deltas, over 32 months; +1 row per entry"}
+        monthly_history_values: {type: array, items: {type: string}, required: false, note: "as daily_history_values, over 32 months; +1 row per entry"}
       note: "history params accept count metrics (pages_to_page, …), page_authority, domain_authority; you cannot select which base metrics come back — all are returned per target"
     test_request:
       body: {targets: ["moz.com"]}
@@ -92,7 +92,7 @@ endpoints:
     input:
       bodyType: json
       body:
-        targets: {type: "array[string]", required: true, note: "1-50 URLs or domains", example: ["moz.com"]}
+        targets: {type: array, items: {type: string}, required: true, note: "1-50 URLs or domains", example: ["moz.com"]}
         distributions: {type: boolean, required: true, note: "must be true for the aggregate histograms that make this a backlink summary", example: true}
       note: "Moz has no dedicated backlink-summary endpoint — url_metrics IS the summary: it returns pages_to_root_domain, root_domains_to_root_domain, nofollow/redirect/deleted splits etc. This entry is the same path called with distributions:true, which adds METRIC_by_MEASURE histograms (bucketed by root_domains, domain_authority, spam_score). Use moz.web.url.metrics when you only need DA/PA/Spam Score."
     test_request:
@@ -131,7 +131,7 @@ endpoints:
         anchor_text: {type: string, required: false, note: "only links whose normalised anchor text equals this; \"\\u0000\" matches empty anchor text"}
         source_root_domain: {type: string, required: false, note: "only links from this source root domain"}
         source_scope: {type: string, required: false, note: "page | subdomain | root_domain (default page) — at subdomain/root_domain returns only the best link per source"}
-        subdomains_limited_to_one: {type: "array[string]", required: false, note: "return only the best link from each listed subdomain"}
+        subdomains_limited_to_one: {type: array, items: {type: string}, required: false, note: "return only the best link from each listed subdomain"}
         limit: {type: number, required: false, note: "1-50, default 25 — this is the cost dial", example: 1}
         next_token: {type: string, required: false, note: "cursor from a previous response's next_token"}
       note: "not every sort/filter works with anchor_text, source_root_domain or subdomains_limited_to_one — see the Parameter Compatibility table in the docs"
@@ -243,10 +243,10 @@ endpoints:
         scope: {type: string, required: false, note: "subdomain | root_domain (default root_domain)", example: "root_domain"}
         sort: {type: string, required: false, note: "page_authority (default) | root_domains_to_page | external_pages_to_page"}
         filter: {type: string, required: false, note: "all (default) | status_200 | status_301 | status_302 | status_4xx | status_5xx — filter status_4xx surfaces broken pages that still have links"}
-        daily_history_deltas: {type: "array[string]", required: false, note: "as in url_metrics, applied to each result"}
-        daily_history_values: {type: "array[string]", required: false}
-        monthly_history_deltas: {type: "array[string]", required: false}
-        monthly_history_values: {type: "array[string]", required: false}
+        daily_history_deltas: {type: array, items: {type: string}, required: false, note: "as in url_metrics, applied to each result"}
+        daily_history_values: {type: array, items: {type: string}, required: false}
+        monthly_history_deltas: {type: array, items: {type: string}, required: false}
+        monthly_history_values: {type: array, items: {type: string}, required: false}
         limit: {type: number, required: false, note: "1-50, default 25", example: 1}
         next_token: {type: string, required: false}
     test_request:
@@ -280,7 +280,7 @@ endpoints:
       bodyType: json
       body:
         target: {type: string, required: true, example: "moz.com/blog"}
-        sources: {type: "array[string]", required: true, note: "up to 50 sources; the response's `exists` array is in the same order", example: ["twitter.com"]}
+        sources: {type: array, items: {type: string}, required: true, note: "up to 50 sources; the response's `exists` array is in the same order", example: ["twitter.com"]}
         target_scope: {type: string, required: false, note: "page | subdomain | root_domain (default page)"}
         source_scope: {type: string, required: false, note: "page | subdomain | root_domain (default page)", example: "root_domain"}
       note: "the cheapest way to answer 'did my outreach link go live?' without pulling the whole backlink list"
@@ -314,8 +314,8 @@ endpoints:
     input:
       bodyType: json
       body:
-        positive_targets: {type: "array[object]", required: true, note: "objects of {target, scope}; scope is page|subdomain|root_domain; max 6 targets across positive+negative", example: [{target: "moz.com", scope: "root_domain"}]}
-        negative_targets: {type: "array[object]", required: false, note: "same shape; sources linking to any of these are excluded"}
+        positive_targets: {type: array, items: {type: object}, required: true, note: "objects of {target, scope}; scope is page|subdomain|root_domain; max 6 targets across positive+negative", example: [{target: "moz.com", scope: "root_domain"}]}
+        negative_targets: {type: array, items: {type: object}, required: false, note: "same shape; sources linking to any of these are excluded"}
         min_matching_targets: {type: number, required: false, note: "only return sources matching at least this many positive targets"}
         source_scope: {type: string, required: false, note: "page (default) | root_domain"}
         sort: {type: string, required: false, note: "matching_target_count (default) | source_domain_authority | source_spam_score"}

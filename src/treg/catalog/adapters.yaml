@@ -2941,9 +2941,13 @@ adapters:
     miss: "element.id == null"
   # Lead search is the only Harvest people search whose rows carry names and profile URLs:
   # profile-search hides out-of-network members (no name, no URL), so it stays unrouted.
+  # NOTE: HarvestAPI's currentCompanies expects LinkedIn company URLs or numeric IDs (e.g.
+  # https://www.linkedin.com/company/google), NOT bare domains. Bare domains return empty results
+  # but are still billed. So this adapter accepts title-only queries; callers with a LinkedIn
+  # company URL can call harvestapi.linkedin.leads.search directly by id.
   harvestapi.linkedin.leads.search:
-    accepts: [[company_domain, title], [company_domain], [title]]
-    in: {company_domain: queryParams.currentCompanies, title: queryParams.currentJobTitles}
+    accepts: [[title]]
+    in: {title: queryParams.currentJobTitles}
     in_expr: {queryParams.locations: "coalesce(location, country_name(country))", queryParams.search: "csv(keywords)"}
     out: {people: elements, count: pagination.totalElements}
     miss: "coalesce(elements, []) == []"
@@ -3140,6 +3144,39 @@ adapters:
     body_array: true
     out: {answer: "tasks[0].result[0].items[0].sections[0].text",
           sources: "tasks[0].result[0].items[0].sections[0].annotations", source_kind: "'model_api'"}
+  # ---- ai-search.chatgpt.scrape and ai-search.gemini.scrape: the live answer page ------------
+  # cloro gives Markdown only when include.markdown is set (free). DataForSEO gives no plain text.
+  cloro.ai-search.chatgpt.scrape:
+    accepts: [[q]]
+    in: {q: body.prompt}
+    in_expr: {body.country: "upper(country_code(coalesce(country, 'US')))"}
+    const: {body.include.markdown: true}
+    out: {answer: "coalesce(result.text, result.markdown)", markdown: result.markdown, sources: result.sources}
+    miss: "coalesce(result.text, result.markdown, null) == null"
+  dataforseo.x.ai-optimization-chat-gpt-llm-scraper-live-advanced:
+    accepts: [[q]]
+    in_expr: {body.keyword: "dfs_keyword(q)", body.location_code: "dfs_location(country)", body.language_code: language}
+    in_read: {q: "dfs_keyword_text(body.keyword)", country: "dfs_country(body.location_code, body.location_name)"}
+    test_identity: {q: albert einstein}
+    const: {body.force_web_search: true}
+    body_array: true
+    out: {answer: "tasks[0].result[0].markdown", markdown: "tasks[0].result[0].markdown",
+          sources: "tasks[0].result[0].sources"}
+  cloro.ai-search.gemini.scrape:
+    accepts: [[q]]
+    in: {q: body.prompt}
+    in_expr: {body.country: "upper(country_code(coalesce(country, 'US')))"}
+    const: {body.include.markdown: true}
+    out: {answer: "coalesce(result.text, result.markdown)", markdown: result.markdown, sources: result.sources}
+    miss: "coalesce(result.text, result.markdown, null) == null"
+  dataforseo.x.ai-optimization-gemini-llm-scraper-live-advanced:
+    accepts: [[q]]
+    in_expr: {body.keyword: "dfs_keyword(q)", body.location_code: "dfs_location(country)", body.language_code: language}
+    in_read: {q: "dfs_keyword_text(body.keyword)", country: "dfs_country(body.location_code, body.location_name)"}
+    test_identity: {q: albert einstein}
+    body_array: true
+    out: {answer: "tasks[0].result[0].markdown", markdown: "tasks[0].result[0].markdown",
+          sources: "tasks[0].result[0].sources"}
   perplexity.web.search.fast:
     accepts: [[q]]
     in: {q: body.query}
@@ -4074,26 +4111,12 @@ adapters:
     miss: "coalesce(reconstructed_markdown, text_blocks, null) == null"
 
   # ---- ai-search.chatgpt.scrape (call events only) ----
-  cloro.ai-search.chatgpt.scrape:
-    route: false
-    accepts: [[q]]
-    in: {q: body.prompt, country: body.country}
-    out: {answer: "coalesce(result.markdown, result.text)", sources: result.sources}
-    miss: "coalesce(result.markdown, result.text, null) == null"
   crawl4ai.ai-search.chatgpt.scrape:
     route: false
     accepts: [[q]]
     in: {q: body.prompt, country: body.country}
     out: {answer: "coalesce(rows[0].answer, rows[0].answer_text)", sources: "rows[0].sources"}
     miss: "coalesce(rows[0].answer, rows[0].answer_text, null) == null"
-
-  # ---- ai-search.gemini.scrape (call events only) ----
-  cloro.ai-search.gemini.scrape:
-    route: false
-    accepts: [[q]]
-    in: {q: body.prompt, country: body.country}
-    out: {answer: "coalesce(result.markdown, result.text)", sources: result.sources}
-    miss: "coalesce(result.markdown, result.text, null) == null"
 
   # ---- web.answer (call events only) ----
   crawl4ai.web.answer:
