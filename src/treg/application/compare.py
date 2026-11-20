@@ -79,15 +79,19 @@ def configured() -> bool:
 
 
 async def mark_eligible(call_ref: str, capability: str | None, raw_headers,
-                        given: dict | None = None, *, archive_opted_out: bool = False) -> None:
+                        route_summary: dict | None = None, *, archive_opted_out: bool = False) -> None:
     """On the call path, after a successful routed answer: mark the call for a comparison run when
     it samples in, its capability is paired, the caller sent no `X-Treg-Route-*` header (a caller
     that chose vendors or routing is left alone) and its team keeps an archive. The marker holds
-    the contract input the caller sent (`given`, at most `MARKER_INPUT_MAX_BYTES`), so the run asks
-    B exactly that question instead of reading it back from A's request. One short store write,
-    no database, nothing raised, nothing about the answer changed."""
+    the contract input the caller sent (`route_summary["identity"]`, at most
+    `MARKER_INPUT_MAX_BYTES`), so the run asks B exactly that question instead of reading it back
+    from A's request. A page continuation (`cursor` in the summary) is no fresh question, since B
+    would be asked page one, so it is never marked. One short store write, no database, nothing
+    raised, nothing about the answer changed."""
     try:
         settings = get_settings()
+        summary = route_summary or {}
+        given = None if "cursor" in summary else summary.get("identity")
         if (archive_opted_out or not isinstance(given, dict) or not settings.compare_configured
                 or capability not in pairs()
                 or any(bytes(name).lower().startswith(_ROUTE_HEADER_PREFIX) for name, _ in raw_headers)

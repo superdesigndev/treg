@@ -1100,7 +1100,7 @@ async def _execute_call(request: _ApplicationRequest, upstream_client: httpx.Asy
             if 200 <= response.status < 300:
                 await compare_app.mark_eligible(
                     call_ref, ep.get("capability"), request.context.input.raw_headers,
-                    (request.context.route_summary or {}).get("identity"),
+                    request.context.route_summary,
                     archive_opted_out=request.context.input.caller.org.archive_opt_out_at is not None)
         _set_response_header(response, "X-Treg-Call-Id", call_ref)
         return response

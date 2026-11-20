@@ -247,14 +247,15 @@ which serves it better. It separates vendors a usefulness score cannot, and the 
 Results are internal; nothing here is published or changes routing.
 
 **The marker, on the call path.** After a successful routed answer, `application.call.service`
-calls `compare.mark_eligible(call_ref, capability, raw_headers, given, archive_opted_out=...)`:
+calls `compare.mark_eligible(call_ref, capability, raw_headers, route_summary, archive_opted_out=...)`:
 when the feature is configured (`compare_pairs` set, `compare_max_per_day` above 0), the capability
 has a valid pair, the request carried no `X-Treg-Route-*` header (a caller that chose vendors or
 routing is left alone), the team keeps an archive and `hints.sampled_at("compare", call_ref,
 compare_rate)` samples it in, it writes `compare-ok:<call_ref>` in the shared store for two hours
 (`MARKER_TTL_S`), inside a short timeout. The value is the contract input the caller sent
 (`route_summary["identity"]`, the body minus a page cursor) as JSON, at most
-`MARKER_INPUT_MAX_BYTES`; a larger input writes no marker. A team opted out of the archive gets no
+`MARKER_INPUT_MAX_BYTES`; a larger input writes no marker. A page continuation (a `cursor` in
+the summary) is never marked: B would be asked page one against A's later page. A team opted out of the archive gets no
 marker, so its input never sits in the store. No database, no change to the answer, nothing raised: a lost marker only means the call is
 never compared. It is the only work on the call path.
 

@@ -711,6 +711,17 @@ async def test_a_routed_call_is_marked_only_without_route_headers(clients, searc
         assert marker is None
 
 
+async def test_a_page_continuation_gets_no_marker(monkeypatch):
+    """A continuation resumes a later page; B would be asked page one, so it is never marked."""
+    _compare_on(monkeypatch)
+    monkeypatch.setattr(hints, "sampled_at", lambda *_: True)
+    await compare.mark_eligible("page-two", "web.search", [],
+                                {"identity": {"q": "paged"}, "cursor": "c2"})
+    await compare.mark_eligible("page-one", "web.search", [], {"identity": {"q": "paged"}})
+    assert await kv.store().get_text(compare.marker_key("page-two")) is None
+    assert json.loads(await kv.store().get_text(compare.marker_key("page-one"))) == {"q": "paged"}
+
+
 async def test_an_archive_opted_out_team_gets_no_marker(clients, search_on, monkeypatch):
     """Its input never sits in the store, even for the marker's two hours."""
     from test_routing import _relay_by_provider
