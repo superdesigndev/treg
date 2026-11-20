@@ -975,7 +975,7 @@ newly saved). A deliberate off (reason `None`, consent on file) stays off; a red
 not switch it back on.
 
 **Auto top-up is guarded in depth**: recorded consent (the PSD2/SCA mandate, a compliance
-requirement), a monthly cap, a cooldown stamped in the DB *before* the charge, a consecutive-failure
+requirement), a monthly cap when the team set one, a cooldown stamped in the DB *before* the charge, a consecutive-failure
 limit, and an idempotency key from the threshold crossing, so a burst of calls that all notice the
 low balance produces ONE charge.
 
@@ -989,8 +989,8 @@ read is logged without failing the call.
   call. Without it, losers got 409s that counted as failures and switched auto top-up off while the
   real payment went through. A 409 that still arrives (`stripe_busy`) is logged, not a failure.
 - The monthly cap counts automatic top-ups only (`monthly_autotopup_spend`) and refuses a charge that
-  would pass it (`autotopup_cap_reached`). A stored 0 resolves to `TOPUP_MAX_USD` (the default); a cap
-  below one refill is refused. The cap is the team's own limit, validated by `validate_monthly_cap_usd`
+  would pass it (`autotopup_cap_reached`). A stored 0 is no cap, which is the default: nothing holds the
+  month's automatic charges but the per-hour limit; a chosen cap below one refill is refused. The cap is the team's own limit, validated by `validate_monthly_cap_usd`
   with no business ceiling: `AUTOTOPUP_MONTHLY_CAP_MAX_USD` only keeps micro-USD exact and inside
   `BIGINT`. `TOPUP_MAX_USD` bounds one refill, not the month.
 - The wait between charges (`billing.autotopup_wait_s`) is `autotopup_cooldown_s` after a failed
@@ -1095,8 +1095,8 @@ dashboard and refuses an org without `stripe_customer_id` rather than minting on
 
 `_enforce_platform_daily_cap` is a per-org, per-UTC-day limit on platform spend, applied only when
 one is set. When it applies it is **fail-closed**, unlike the per-user call cap: a query that cannot
-answer refuses the call. When none applies, the prepaid balance and the auto-top-up monthly cap bound
-spend. An endpoint with an unknown price never reaches this path (`platform_eligible` requires a
+answer refuses the call. When none applies, the prepaid balance bounds spend, and auto top-up refills
+it at the team's per-hour limit, up to its monthly cap if it set one. An endpoint with an unknown price never reaches this path (`platform_eligible` requires a
 computable `usd`, see [catalog](catalog.md)).
 
 `budget_policy._effective_daily_cap` is the team's `Org.daily_cap_micro` when set, else the

@@ -226,7 +226,7 @@ def validate_topup_usd(amount_usd) -> int:
 def validate_monthly_cap_usd(amount_usd) -> int:
     """Validate the auto top-up monthly cap. Returns whole dollars; raises `TopupRejected` on error.
 
-    Accepts 0 (resets to default), rejects negative, non-finite or fractional values.
+    Accepts 0 (no cap), rejects negative, non-finite or fractional values.
     """
     try:
         value = float(amount_usd)
@@ -280,19 +280,21 @@ async def _sdk(fn, /, **kwargs):
 def autotopup_prefs(org: Org) -> dict:
     """The org's effective auto-top-up numbers in micro-USD. A stored 0 means "we never chose", so it
     resolves to the deployment default — which is what lets the default move for everyone who never
-    set their own, without a data migration."""
+    set their own, without a data migration. The monthly cap has no default: 0 is no cap."""
     s = get_settings()
     return {
         "threshold_micro": int(org.autotopup_threshold_micro or usd_to_micro(s.autotopup_default_threshold_usd)),
         "amount_micro": int(org.autotopup_amount_micro or usd_to_micro(s.autotopup_default_amount_usd)),
-        "monthly_cap_micro": int(org.autotopup_monthly_cap_micro or usd_to_micro(TOPUP_MAX_USD)),
+        "monthly_cap_micro": int(org.autotopup_monthly_cap_micro or 0),
         "per_hour": int(org.autotopup_max_per_hour or s.autotopup_default_per_hour),
     }
 
 
 def autotopup_cap_reached(prefs: dict, month_spend_micro: int) -> bool:
-    """Whether the next automatic charge would pass the monthly cap, so none fires."""
-    return month_spend_micro + prefs["amount_micro"] > prefs["monthly_cap_micro"]
+    """Whether the next automatic charge would pass the team's monthly cap, so none fires. A team
+    that set no cap (0) is never held."""
+    cap = prefs["monthly_cap_micro"]
+    return bool(cap) and month_spend_micro + prefs["amount_micro"] > cap
 
 
 def autotopup_wait_s(org: Org) -> int:
@@ -2210,13 +2212,13 @@ async def set_autotopup(
     if amount_usd is not None:
         org.autotopup_amount_micro = usd_to_micro(validate_topup_usd(amount_usd))
     if monthly_cap_usd is not None:
-        # 0 clears a chosen cap back to the default (`autotopup_prefs`); validate_monthly_cap_usd
-        # accepts 0 and has its own higher ceiling (AUTOTOPUP_MONTHLY_CAP_MAX_USD).
+        # 0 clears a chosen cap (no monthly limit); validate_monthly_cap_usd accepts 0 and has its
+        # own higher ceiling (AUTOTOPUP_MONTHLY_CAP_MAX_USD).
         org.autotopup_monthly_cap_micro = usd_to_micro(validate_monthly_cap_usd(monthly_cap_usd))
     if per_hour is not None:
         org.autotopup_max_per_hour = validate_per_hour(per_hour)
     prefs = autotopup_prefs(org)
-    if prefs["monthly_cap_micro"] < prefs["amount_micro"]:
+    if prefs["monthly_cap_micro"] and prefs["monthly_cap_micro"] < prefs["amount_micro"]:
         raise TopupRejected(f"the monthly limit (${ledger.usd(prefs['monthly_cap_micro']):g}) is below one "
                             f"refill (${ledger.usd(prefs['amount_micro']):g}), so auto top-up could never charge")
     if enabled:

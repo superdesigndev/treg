@@ -4473,8 +4473,9 @@ def cmd_balance(args, cfg) -> None:
     # failing — so it gets said even though it costs a second request.
     auto = _billing_autotopup(cfg)
     if auto and auto.get("enabled"):
+        cap = f"cap {_usd(auto['monthly_cap_micro'])}/mo" if auto.get("monthly_cap_micro") else "no monthly cap"
         print(f"  {_M}auto top-up{_R}  on — add {_usd(auto['amount_micro'])} when it drops "
-              f"below {_usd(auto['threshold_micro'])}  {_M}(cap {_usd(auto['monthly_cap_micro'])}/mo, "
+              f"below {_usd(auto['threshold_micro'])}  {_M}({cap}, "
               f"{_usd(auto['month_spend_micro'])} used){_R}")
     elif auto and auto.get("disabled_reason"):
         print(f"  {_AM}auto top-up off — {auto['disabled_reason']}. Run `treg topup --auto on` after "
@@ -4605,8 +4606,11 @@ def _topup_auto(args, cfg) -> None:
     print(f"\n  {_G}Auto top-up is on.{_R} Add {_usd(auto.get('amount_micro') or 0)} whenever the "
           f"balance drops below {_usd(auto.get('threshold_micro') or 0)}, at most "
           f"{auto.get('per_hour') or 5} times per hour.")
-    print(f"  {_M}Monthly ceiling {_usd(auto.get('monthly_cap_micro') or 0)} — we stop there, "
-          f"whatever happens.{_R}\n")
+    if auto.get("monthly_cap_micro"):
+        print(f"  {_M}Monthly ceiling {_usd(auto['monthly_cap_micro'])} — we stop there, "
+              f"whatever happens.{_R}\n")
+    else:
+        print(f"  {_M}No monthly ceiling. Set one with --cap.{_R}\n")
 
 
 def _confirm_consent() -> bool:
@@ -7018,7 +7022,7 @@ def build_parser() -> argparse.ArgumentParser:
                     help="with --auto on: how many dollars to add on each automatic refill")
     tu.add_argument("--cap", dest="auto_cap", type=float, default=None,
                     help="with --auto on: the most auto top-up may charge in a calendar month "
-                         "(default 2000; 0 restores the default)")
+                         "(default: no cap; 0 removes one)")
     tu.add_argument("--per-hour", dest="auto_per_hour", type=int, default=None,
                     help="with --auto on: how many automatic refills may run in one hour (1-60, default 5)")
     tu.set_defaults(fn=cmd_topup)
