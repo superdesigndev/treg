@@ -66,8 +66,8 @@ sources:
   - src/treg/alembic/versions/0070_api_key_spend_rollup.py
   - src/treg/alembic/versions/0072_callrecord_call_ref_index.py
   - src/treg/alembic/versions/0073_org_flow_control_version.py
-  - src/treg/alembic/versions/0115_call_record_id_references_bigint.py
-  - src/treg/alembic/versions/0116_call_record_partitioned_table.py
+  - src/treg/alembic/versions/0122_call_record_id_references_bigint.py
+  - src/treg/alembic/versions/0123_call_record_partitioned_table.py
   - src/treg/application/call_record_partitions.py
   - tests/test_call_record_partitions.py
   - tests/test_org_flow_control_schema.py
@@ -336,11 +336,11 @@ as large as they were. The replacement is a table partitioned by month on `creat
 `bigint` id, built beside the live one and filled before anything reads it. Readers still read
 the plain `callrecord`; this section is the preparation only.
 
-1. `0115` widens the columns that store a call record id to `bigint`: the rollup cursors
+1. `0122` widens the columns that store a call record id to `bigint`: the rollup cursors
    (`callusagecursor`, `endpointstatcursor`, `shadowcursor`, `webarenacallcursor`,
    `arenainsightstate`, `webarenaseedprogress`) and `shadowpair.call_id`. `arenaobservation.id`
    is still `integer`; it must be widened before call record ids pass the 32-bit range.
-2. `0116` creates the empty partitioned table `callrecord_partitioned` with the same columns,
+2. `0123` creates the empty partitioned table `callrecord_partitioned` with the same columns,
    `id bigint` on the same id sequence (changed to `bigint`, so ids continue and every cursor
    stays valid), primary key `(id, created_at)` (a unique constraint on a partitioned table must
    include the partition column), the same indexes, and no foreign key to `org` (it would lock

@@ -593,7 +593,7 @@ async def _admin_callrecord_partitions(args) -> int:
 
 async def _admin_callrecord_backfill(args) -> int:
     """Copy `--days` of call records into the partitioned table. No `verify_db()`: it may run
-    from a checkout of a later release while the schema is still at alembic 0116."""
+    from a checkout of a later release while the schema is still at alembic 0123."""
     from .application import call_record_partitions
 
     result = await call_record_partitions.backfill(
