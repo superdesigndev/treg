@@ -1,7 +1,7 @@
 {
-  "text": "Efficiency is key. Teams streamline collaboration. The framework facilitates work and streamlines collaboration across teams to deliver value to stakeholders, it does this by facilitating efficiency, in turn enables the framework to deliver value, making it efficient. Streamlining collaboration across teams is a key aspect of this process. Stakeholders benefit from the framework; it delivers value.",
+  "text": "Stakeholders benefit from the framework, which facilitates efficiency; teams collaborate effectively with it; the framework does this. Efficiency is achieved because the framework streamlines collaboration across teams and has robust tooling, enables teams to work effectively, it delivers value to stakeholders and teams. They work well together using it. The framework is efficient.",
   "scoreBefore": 21,
-  "scoreAfter": 82,
+  "scoreAfter": 65,
   "bandBefore": "reads like one-pass model prose",
   "bandAfter": "reads human",
   "labelBefore": "reads like one-pass model prose",
@@ -9,13 +9,20 @@
   "tooShortBefore": false,
   "tooShortAfter": false,
   "bandBasisBefore": "full",
-  "bandBasisAfter": "full",
+  "bandBasisAfter": "short",
   "textStatusAfter": null,
   "llm": "@cf/meta/llama-3.3-70b-instruct-fp8-fast",
-  "retries": 5,
+  "retries": 4,
   "pieces": 1,
-  "diag": [],
+  "short_input": true,
+  "budget_ms": 20000,
+  "diag": [
+    "fluency: fragment-list 6 of 6 sentences have no verb",
+    "fluency: fragment-list 4 of 6 sentences have no verb"
+  ],
   "fallback": false,
+  "fallback_reason": "",
+  "accepted_draws": 2,
   "remaining": [],
   "hidden_chars_removed": 0,
   "homoglyphs_folded": 0,
@@ -25,5 +32,5 @@
   "facts_changed": [],
   "fact_rejects": 0,
   "words_debited": 32,
-  "words_remaining": 146
+  "words_remaining": 168
 }

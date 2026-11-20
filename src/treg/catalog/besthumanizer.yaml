@@ -75,7 +75,7 @@ endpoints:
     path: /api/humanize
     name: "Rewrite text to read human"
     summary: "Rewrite prose so it reads less machine-written and return the rewrite with the style score and band before and after."
-    note: "A rewrite takes up to about 30 seconds. Text under five sentences is still rewritten and charged, but its before and after scores carry no band."
+    note: "A rewrite takes up to about 30 seconds. Text under five sentences is still rewritten and charged, but its before and after scores carry no band. fallback_reason says whether a real rewrite happened (''), only the filler swap ('mechanical-only'), the filler swap plus a sentence split ('mechanical-plus-surgery') or a rewrite that still reads like model prose ('below-band'); accepted_draws counts the model rewrites that made it into the shipped text."
     input:
       bodyType: json
       body:
