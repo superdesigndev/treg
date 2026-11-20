@@ -16,21 +16,31 @@ PostgreSQL, one ALTER TABLE in this revision's transaction: drop the `id` primar
 `id` default and NOT NULL, drop `uq_archive_key_org`, and attach 0118's unique index as the new
 primary key (`ADD PRIMARY KEY USING INDEX`, which renames the index and scans nothing because both
 columns are already NOT NULL). Every step changes the catalog only; the table is not rewritten.
-It takes an ACCESS EXCLUSIVE lock for the length of that catalog change. env.py's `lock_timeout`
-makes it give up rather than queue settles behind it, and `maintenance` retries the upgrade, which
-resumes at this revision.
+It holds an ACCESS EXCLUSIVE lock until the revision commits, and the commit deletes the files of
+the two dropped indexes (`id`'s primary key and `uq_archive_key_org`), a step that grows with
+their size. env.py's `lock_timeout` makes it give up rather than queue settles behind it, and
+`maintenance` retries the upgrade, which resumes at this revision.
 
 `id` stays as a nullable column with its sequence still owned by it, so code older than this
 revision keeps working during a rolling deploy: it still assigns `id` from the sequence and reads
-it only as an existence probe, which a NULL `id` on a row new code wrote still satisfies.
-Dropping the column and the sequence is a later contract revision, once no older code runs.
+it only as an existence probe, which a NULL `id` on a row new code wrote still satisfies. While
+older instances still serve, each repeat of a mark that new code wrote takes one sequence number,
+because the older statement's `COALESCE(<the row's id>, nextval(...))` finds a NULL `id`. If the
+sequence is near its limit, restart it at its negative minimum before the deploy
+(`ALTER SEQUENCE archivekeyorg_id_seq MINVALUE -2147483648 RESTART WITH -2147483648`, safe for this
+table only, because nothing orders, pages or compares ranges by its `id`). Dropping the column and
+the sequence is a later contract revision, once no older code runs.
 
 SQLite: the table is rebuilt with the new primary key (batch mode).
 
-Rollback floor: none for code. Code older than this revision runs on this schema, as above, so a
-code rollback does not need the downgrade. The downgrade numbers every row new code wrote from
-the sequence, restores the `id` primary key and `uq_archive_key_org`, and builds both indexes
-under the table lock, so it scans and locks the whole table.
+Rollback floor: a hard floor (`contract = True`). Once this revision has run, a build that does
+not know it cannot be deployed again: its pre-deploy upgrade stops with `SchemaNewerThanBuild`.
+Instances of the older build that still serve keep working, as above. The downgrade numbers every
+row new code wrote from the sequence, restores the `id` primary key and `uq_archive_key_org`, and
+builds both indexes while it holds ACCESS EXCLUSIVE on `archivekeyorg`. On a large table every
+mark waits for minutes, and the index builds can run past the 120 s statement timeout env.py sets,
+so the downgrade fails after holding the lock that long. Recovery after this deploy is a new
+deploy forward, not the downgrade; deploy this revision in a release of its own.
 """
 from collections.abc import Sequence
 
