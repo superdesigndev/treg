@@ -1102,7 +1102,8 @@ def _decide_legacy(mk: MarketplaceCall, status_code: int | None, body: bytes, he
     terminal = None
     if billable and (mk.settlement_basis.get("amount") or {}).get("kind") == "usage" and body:
         terminal = _usage_document(body)
-    actual = ((0 if observed == 0 else settlement_basis.settle(
+    actual = ((observed_override if observed_override is not None else
+               0 if observed == 0 else settlement_basis.settle(
         mk.settlement_basis, {"observed_micro": observed, "terminal": terminal})) if billable else None)
     return billable, reason, observed, actual
 

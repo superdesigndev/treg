@@ -748,6 +748,9 @@ stay in catalog YAML. `table_amount_micro` bounds a `times` multiplier by the fi
   The validator warns on a usage row with no worst case. The unit's
   micro-USD worth is frozen as `amount.unit_micro` at reserve, so a later rate edit never re-prices a
   task in flight; a non-USD basis without a frozen rate settles at the reserve.
+  A row may declare `cost.non_deferred_charge: {path, value}` for a useful 2xx answer that
+  starts no trackable task. A truthy response path settles that frozen charge immediately;
+  a deferred task still settles from its terminal usage meter.
 
 For a tier-4 endpoint carrying `async`, a successful submission keeps its hold and writes an
 `AsyncTaskRecord` whose `settlement_basis` freezes the price rule with its request, so settlement

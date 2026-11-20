@@ -161,6 +161,12 @@ def derive_basis(
             amount = {"kind": "table", "cost": cost, "input": input_schema,
                       "request": request, "unit_micro": unit_micro}
             reserve = table_amount_micro(cost, request, input_schema, unit_micro)
+        if cost.get("non_deferred_charge"):
+            rule = cost["non_deferred_charge"]
+            amount["non_deferred_charge"] = {
+                "path": rule["path"],
+                "micro": _micro(float(rule["value"]), unit_micro),
+            }
         return {"when": "terminal" if terminal else "response", "amount": amount,
                 "fallback_micro": fallback,
                 "reserve_micro": reserve}
@@ -235,6 +241,12 @@ def usage_evidence(basis: dict, evidence: dict[str, Any]) -> float | None:
         total += number * float(term["rate"])
         seen = True
     return total if seen else None
+
+
+def non_deferred_charge_micro(basis: dict, document: object) -> int:
+    """A frozen charge for a useful 2xx answer that starts no trackable async task."""
+    rule = (basis.get("amount") or {}).get("non_deferred_charge") or {}
+    return int(rule.get("micro") or 0) if _path(document, str(rule.get("path") or "")) else 0
 
 
 def settle(basis: dict, evidence: dict[str, Any]) -> int:

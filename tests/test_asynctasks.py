@@ -692,6 +692,36 @@ async def test_apollo_platform_phone_no_task_releases_hold(clients: AsyncClient,
         get_settings.cache_clear()
 
 
+async def test_apollo_platform_phone_matched_without_pending_job_charges_person_enrichment(
+    clients: AsyncClient, monkeypatch,
+):
+    monkeypatch.setenv("TREG_PLATFORM_KEY_APOLLO", "PLATFORM-APOLLO-KEY")
+    monkeypatch.setenv("TREG_PLATFORM_PROVIDERS", "apollo")
+    get_settings.cache_clear()
+    try:
+        async def matched(*args, **kwargs):
+            return _response(200, {
+                "person": {"id": "example-person-id", "match_confidence": "high"},
+                "phone_enrichment": {"status": "not_attempted"},
+            })
+
+        monkeypatch.setattr(call_service, "relay", matched)
+        sent = await clients.post(
+            "/call/apollo.people.phone.find?name=Example%20Person&domain=example.com"
+            "&reveal_phone_number=true&poll_only=true")
+        assert sent.status_code == 200, sent.text
+        assert sent.headers["X-Treg-Cost-Micro"] == "26000"
+        call_id = sent.headers["X-Treg-Call-Id"]
+        async with session_maker() as db:
+            assert await db.get(AsyncTaskRecord, call_id) is None
+            assert await db.get(Hold, call_id) is None
+            entries = (await db.execute(select(LedgerEntry).where(
+                LedgerEntry.call_id == call_id, LedgerEntry.kind == "settle"))).scalars().all()
+            assert len(entries) == 1
+    finally:
+        get_settings.cache_clear()
+
+
 async def test_apollo_platform_phone_validation_reserves_plan_ceiling_and_settles_usage(
     clients: AsyncClient, monkeypatch,
 ):
