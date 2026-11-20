@@ -83,7 +83,7 @@ endpoints:
     summary: "Your whole removal ledger as CSV, Markdown or JSON: each case's person, broker, status, filing and deadline dates, last check and broker reference."
     input:
       queryParams:
-        format: {type: string, required: false, enum: [csv, md, json], default: csv, note: "an unknown value answers 200 with CSV, not an error", example: json}
+        format: {type: string, required: false, enum: [csv, md, json], default: csv, note: "an unknown value answers 400 problem+json listing the valid formats", example: json}
     test_request: {queryParams: {format: json}}
     price: {value: '0', currency: USD, unit: call, note: "included in the household plan; exports keep working after the trial lapses"}
     expect: {path: response.cases, op: present}
