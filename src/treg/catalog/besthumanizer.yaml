@@ -10,8 +10,10 @@ source:
 # (POST /api/humanize) draws the pasted words from the account's monthly balance (three per word for
 # a premium rewrite on Free and Pro) and reports the draw in words_debited, which settles the call;
 # 402 means the balance is too low. A key comes from POST /api/agent/keys with no browser; a bad key
-# answers 401 on GET /api/me. The X scorer reads X timelines, which X throttles per IP: a throttled
-# or unknown handle answers 503 x_unavailable, which is released, not billed.
+# answers 401 {"error":"invalid api key"} (no key at all: 401 "not signed in"). The X scorer reads X
+# timelines: a malformed handle answers 400 invalid handle and an account that does not exist 404;
+# only X throttling or an upstream failure answers 503 x_unavailable with retry_after_s, which is
+# released, not billed.
 limits: "Rewrite: 10,000 words a call. Scoring: no published cap. Free account: 200 words a month. X scoring is cached; a cold handle takes a few seconds and a 503 x_unavailable carries retry_after_s."
 pricing_url: https://besthumanizer.app/pricing
 
@@ -104,7 +106,7 @@ endpoints:
     path: /api/x/score
     name: "Score an X account's writing style"
     summary: "Score the recent original posts of a public X account on the same 0-100 style index: overall score, median, mean, a band histogram and per-post scores with links."
-    note: "Posts under five sentences are counted as too short to read and left out of the median."
+    note: "Short posts are pooled into one corpus read (the pooled field: score, band, posts, sentences, words); when even the pool is too short the answer says insufficient text instead of a zero."
     input:
       queryParams:
         handle: {type: string, required: true, note: "the X handle, with or without @", example: NousResearch}
