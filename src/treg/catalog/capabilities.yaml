@@ -111,6 +111,9 @@ platforms:
   slack: {label: "Slack", category: "Community", featured: 1, summary: "Read channels and post messages in your own Slack workspace via your bot token."}
   telegram: {label: "Telegram", category: "Community", featured: 2, summary: "Channel and chat data from Telegram."}
 
+  # --- Communication: phone numbers, calls and text messages ----------------------------------
+  phone: {label: "Phone calls & SMS", category: "Communication", featured: 1, summary: "Give an AI agent its own phone number, then have it place and answer calls and send texts."}
+
   # --- Advertising: own-account ad platforms ---------------------------------------------------
   microsoft-ads: {label: "Microsoft Advertising (Bing Ads)", category: "Advertising", summary: "Your Microsoft Advertising campaigns, spend and performance on the Bing network."}
   tiktok-ads: {label: "TikTok Ads", category: "Advertising", summary: "Your TikTok Ads campaigns and reporting, plus TikTok's public ad library."}
