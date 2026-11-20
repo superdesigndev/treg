@@ -308,21 +308,29 @@ def _ceiling_query(mk: MarketplaceCall | None, query_items: tuple[tuple[str, str
     A caller who already sent the parameter keeps their value. The pair is absent from the
     inbound query, so it does not enter params_hash or the archive key.
     """
-    if mk is None or mk.max_cost_micro is None or mk.max_cost_micro < 0:
+    if mk is None:
+        return ()
+    return ceiling_query(mk.endpoint_id, mk.provider, mk.max_cost_micro, query_items)
+
+
+def ceiling_query(endpoint_id: str, provider: str | None, max_cost_micro: int | None,
+                  query_items: tuple[tuple[str, str], ...]) -> tuple[tuple[str, str], ...]:
+    """`_ceiling_query` for one endpoint and ceiling, without a resolved call."""
+    if max_cost_micro is None or max_cost_micro < 0:
         return ()
     cat = catalog_store.load()
-    ep = cat.by_id.get(mk.endpoint_id) or {}
+    ep = cat.by_id.get(endpoint_id) or {}
     cost = ep.get("cost") if isinstance(ep.get("cost"), dict) else {}
     rule = cost.get("ceiling_param")
     if not isinstance(rule, dict):
-        rule = cat.ceiling_params.get(str(ep.get("provider") or mk.provider or ""))
+        rule = cat.ceiling_params.get(str(ep.get("provider") or provider or ""))
     name = rule.get("name") if isinstance(rule, dict) else None
     if (not isinstance(rule, dict) or rule.get("in") != "query" or rule.get("unit") != "usd"
             or not isinstance(name, str) or not name):
         return ()
     if any(key == name for key, _ in query_items):
         return ()
-    return ((name, _format_ceiling_usd(_provider_ceiling_micro(mk.max_cost_micro))),)
+    return ((name, _format_ceiling_usd(_provider_ceiling_micro(max_cost_micro))),)
 
 
 def _client_name(request: _ApplicationRequest) -> str:

@@ -30,7 +30,7 @@ from sqlalchemy.exc import IntegrityError
 from sqlmodel import select
 
 from .. import hints, jsontext, oauth_providers
-from ..config import TREG_USER_AGENT, get_settings
+from ..config import get_settings
 from ..domain.catalog import store as catalog_store
 from ..domain.feedback import comparisons
 from ..infra import kv
@@ -181,7 +181,8 @@ def _truncate(text: str, limit: int) -> tuple[str, bool]:
 
 @dataclass(frozen=True)
 class Target:
-    """B's endpoint and the provider request its adapter builds from the contract input."""
+    """B's endpoint and the provider request its adapter builds from the contract input, as the
+    router's child call would send it: the adapter's own values, unformatted, and its JSON body."""
     ep: dict
     adapter: Any
     query: dict
@@ -190,17 +191,17 @@ class Target:
 
 
 def _b_target(contract, identity: dict, provider: str) -> Target | None:
-    """B's endpoint for this input when treg's own key can serve it: a verified adapter that takes
-    and scopes the identity (`route: true` is not needed), not paused, platform-eligible with a
+    """B's endpoint for this input when treg's own key can serve it: one the router would ask for
+    this input (`plan.candidates_for` and `build_plan`'s cap, declaration and scope checks; a
+    judge-only `route: false` adapter builds no request), not paused, platform-eligible with a
     key, not exhausted on treg's primary account, retention allowed, a computable price and no
     second host or path parameter to resolve."""
     from httpx import QueryParams
 
     from ..domain.capacity.marks import spends_balance
-    from ..domain.catalog.routing.contracts import adapter_accepts
-    from ..domain.catalog.routing.plan import unscoped
-    from .call import keyslots
-    from .call.resolve import _marketplace_pricing
+    from ..domain.catalog.routing.plan import candidates_for, unscoped
+    from .call import keyslots, route
+    from .call.resolve import _marketplace_pricing, param_check_refuses
 
     cat = catalog_store.load()
     settings = get_settings()
@@ -210,24 +211,24 @@ def _b_target(contract, identity: dict, provider: str) -> Target | None:
             or not all(settings.platform_credential(b["platform_setting"], b.get("account"))
                        for b in oauth_providers.platform_bindings(registered) if b.get("platform_setting"))):
         return None
-    for ep in cat.for_capability(contract.capability):
-        if (ep["provider"] != provider or ep.get("status") or ep.get("async") or ep.get("host")
-                or ep.get("platform_auth") == "anonymous" or "{" in str(ep.get("path") or "")):
+    mine = [ep for ep in cat.for_capability(contract.capability) if ep["provider"] == provider]
+    for ep, adapter, variant in candidates_for(contract, mine, cat.adapters, identity)[0]:
+        if (ep.get("async") or ep.get("host") or ep.get("platform_auth") == "anonymous"
+                or "{" in str(ep.get("path") or "")):
             continue
-        adapter = cat.adapters.get(ep["id"])
-        if adapter is None or not adapter.verified:
+        if any(route._above(identity.get(k), m) for k, m in (getattr(adapter, "filter_max", None) or {}).items()):
             continue
-        accepted = adapter_accepts(adapter, identity)
-        if accepted is None or unscoped(adapter, contract, identity):
+        if route._declaration_refusal(ep, adapter, identity, variant) and param_check_refuses():
+            continue
+        if unscoped(adapter, contract, identity):
             continue
         if catalog_store.paused(ep) or _retention_forbidden(ep["id"]) or not cat.platform_eligible(ep):
             continue
         if keyslots.exhausted(provider, ep["id"], None,
                               metered=spends_balance((ep.get("cost") or {}).get("type"))):
             continue
-        query, body = adapter.to_upstream(identity, accepted)
-        payload = (json.dumps(body).encode()
-                   if ep["method"] in ("POST", "PUT", "PATCH") and body is not None else b"")
+        query, body = adapter.to_upstream(identity, variant)
+        payload = route._child_body(ep, body)
         cost = cat.cost_view(ep.get("cost"), provider)
         if not cost or cost.get("usd") is None:
             continue
@@ -236,23 +237,33 @@ def _b_target(contract, identity: dict, provider: str) -> Target | None:
     return None
 
 
-async def _ask_b(target: Target, client: httpx.AsyncClient) -> tuple[int, bytes]:
+async def _ask_b(target: Target, client: httpx.AsyncClient, org_id: int) -> tuple[int, bytes]:
     """One request to B's endpoint on treg's primary key, through the relay alone: (status, body),
-    status 0 when no answer came."""
+    status 0 when no answer came. The request is the one the router's first child call sends for
+    the team's question on treg's key (`route._child_input`, then the call path's rewrites:
+    treg's `User-Agent`, the provider's client header, its ceiling parameter at the router's
+    default ceiling)."""
+    from ..infra.upstream.relay import identify_as_treg, tag_shared_client
     from ..models import Tool
+    from .call import route
     from .call.resolve import QueryValues, _marketplace_upstream
+    from .call.service import ceiling_query
     from .call.types import UpstreamRequest
     from .connect import _host_of
 
-    provider = oauth_providers.get(target.ep["provider"])
-    items = tuple((str(k), str(v)) for k, v in target.query.items())
-    upstream, consumed = _marketplace_upstream(target.ep, provider, QueryValues(items))
-    tool = Tool(org_id=None, name=target.ep["id"], owner="compare", base_url=provider.base_url,
+    ep = target.ep
+    provider = oauth_providers.get(ep["provider"])
+    items = tuple(target.query.items())
+    upstream, consumed = _marketplace_upstream(ep, provider, QueryValues(items))
+    tool = Tool(org_id=org_id, name=ep["id"], owner="compare", base_url=provider.base_url,
                 host=_host_of(provider.base_url), bindings=oauth_providers.platform_bindings(provider))
-    headers = [(b"user-agent", TREG_USER_AGENT.encode())]
+    headers = tag_shared_client(identify_as_treg(()),
+                                catalog_store.load().client_headers.get(ep["provider"]),
+                                ep["provider"], org_id)
     if target.body:
-        headers += [(b"content-type", b"application/json"),
-                    (b"content-length", str(len(target.body)).encode())]
+        headers += ((b"content-type", b"application/json"),
+                    (b"content-length", str(len(target.body)).encode()))
+    items += ceiling_query(ep["id"], ep["provider"], route.DEFAULT_MAX_COST_MICRO, items)
 
     async def body_stream():
         if target.body:
@@ -263,13 +274,13 @@ async def _ask_b(target: Target, client: httpx.AsyncClient) -> tuple[int, bytes]
 
     # `body_read`, as the call path offers it: a provider whose key goes in the JSON body
     # (`location: json`) is injected by reading the body whole.
-    request = UpstreamRequest(method=target.ep["method"], raw_headers=tuple(headers),
-                              query_items=tuple(i for i in items if i[0] not in consumed),
+    request = UpstreamRequest(method=ep["method"], raw_headers=headers, query_items=items,
                               body_stream=body_stream, has_body=bool(target.body),
                               body_read=body_read if target.body else None)
     try:
         async with asyncio.timeout(CALL_TIMEOUT_S):
-            response = await relay(request, upstream, tool, {}, client, force_identity=True)
+            response = await relay(request, upstream, tool, {}, client,
+                                   drop_params=consumed or None, force_identity=True)
             try:
                 chunks, size = [], 0
                 async for chunk in response.body_stream:
@@ -284,11 +295,17 @@ async def _ask_b(target: Target, client: httpx.AsyncClient) -> tuple[int, bytes]
     return response.status, b"".join(chunks)
 
 
-def _output(ep: dict, contract, adapter, status: int, raw: bytes, identity: dict):
-    """The contract output of one vendor's answer, read as the router reads a child; None unless a hit."""
+def _judged(ep: dict, contract, adapter, status: int, raw: bytes, identity: dict):
+    """One vendor's answer as the router judges a child on treg's key (`route.child_outcome`,
+    with the plan's canonical identity)."""
     from .call import route
 
-    outcome = route.child_outcome(ep, contract, adapter, status, raw, tier="platform", identity=identity)
+    return route.child_outcome(ep, contract, adapter, status, raw, tier="platform", identity=identity)
+
+
+def _output(ep: dict, contract, adapter, status: int, raw: bytes, identity: dict):
+    """The contract output of one vendor's answer, read as the router reads a child; None unless a hit."""
+    outcome = _judged(ep, contract, adapter, status, raw, identity)
     return outcome.core if outcome.kind == "hit" and outcome.core else None
 
 
@@ -556,13 +573,15 @@ async def _one(cand, cat, now, session_factory, client, store, totals,
     totals["called"] += 1
     totals["estimate_micro"] += target.price_micro
     try:
-        status, raw = await _ask_b(target, client)
+        status, raw = await _ask_b(target, client, parent.org_id)
     except Exception:
         log.warning("compare call %s for %s failed", target.ep["id"], parent.call_ref, exc_info=True)
         status, raw = 0, b""
-    log.info("compare call %s for %s: status %s, catalog price %s micro-USD",
-             target.ep["id"], parent.call_ref, status, target.price_micro)
-    b_output = _output(target.ep, contract, target.adapter, status, raw, identity) if status else None
+    judged = _judged(target.ep, contract, target.adapter, status, raw, identity) if status else None
+    log.info("compare call %s for %s: status %s, read as %s%s, catalog price %s micro-USD",
+             target.ep["id"], parent.call_ref, status, judged.kind if judged else "no answer",
+             f" ({', '.join(judged.why)})" if judged and judged.why else "", target.price_micro)
+    b_output = judged.core if judged is not None and judged.kind == "hit" and judged.core else None
     if b_output is None:
         values = {"status": comparisons.FAILED}
     else:

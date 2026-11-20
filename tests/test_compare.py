@@ -356,7 +356,10 @@ async def test_b_is_skipped_without_its_key_paused_or_exhausted(clients, search_
     assert sent == [] and await _rows() == []
 
 
-async def test_b_need_not_be_routable(clients, search_on, monkeypatch):
+async def test_a_judge_only_adapter_never_builds_b(clients, search_on, monkeypatch):
+    """A `route: false` adapter only judges its endpoint's own answers; the router never sends the
+    request it would build (cloro's Google organic one has no `gl`, which cloro requires), so it is
+    never B."""
     import dataclasses
 
     cat = catalog_store.load()
@@ -365,9 +368,139 @@ async def test_b_need_not_be_routable(clients, search_on, monkeypatch):
     _compare_on(monkeypatch)
     sent = _relay_b(monkeypatch)
     await _routed_call(await _org_id(clients), "exa is not routed")
-    await _collect()
-    assert [c["tool"].name for c in sent] == ["exa.web.search"]
-    assert (await _rows())[0].status == "ready"
+    result = await _collect()
+    assert sent == [] and await _rows() == []
+    assert result["skip_reasons"] == {"b_unavailable": 1}
+    monkeypatch.setenv("TREG_PLATFORM_KEY_CLORO", "PLATFORM-CLORO")
+    monkeypatch.setenv("TREG_PLATFORM_PROVIDERS", "cloro")
+    get_settings.cache_clear()
+    contract = cat.contracts["google.serp.organic"]
+    identity, _ = canonical_identity(contract, {"q": "espresso grinders"})
+    assert cat.adapters["cloro.google.serp.organic"].route is False
+    assert compare._b_target(contract, identity, "cloro") is None
+
+
+# B's request is the router's: the same canonical identity sent as a routed call on treg's key and
+# asked of B by the run reach the vendor as the same bytes (credentials masked).
+B_ENDPOINTS = [
+    ("keenable", "keenable.web.fetch", "web.extract", {"url": "https://docs.example.com/guide"}),
+    ("dataforseo", "dataforseo.google.serp.organic", "google.serp.organic", {"q": "espresso grinders"}),
+    ("crawl4ai", "crawl4ai.web.search", "web.search", {"q": "espresso grinders"}),
+    ("parallel", "parallel.web.search", "web.search", {"q": "espresso grinders"}),
+    ("exa", "exa.web.search", "web.search", {"q": "espresso grinders"}),
+    ("anyapi", "anyapi.google.serp.organic", "google.serp.organic", {"q": "espresso grinders"}),
+]
+_SECRET_HEADERS = {"authorization", "x-api-key"}
+
+
+def _on_the_wire(request: httpx.Request, content: bytes) -> dict:
+    return {"method": request.method, "url": str(request.url), "body": content.decode(),
+            "headers": sorted((k, "***" if k in _SECRET_HEADERS else v)
+                              for k, v in request.headers.multi_items())}
+
+
+def _vendor(seen: list, answer: bytes = b"{}"):
+    async def vendor(request: httpx.Request) -> httpx.Response:
+        seen.append(_on_the_wire(request, await request.aread()))
+        return httpx.Response(200, headers={"content-type": "application/json"},
+                              stream=httpx.ByteStream(answer))
+    return httpx.AsyncClient(transport=httpx.MockTransport(vendor))
+
+
+def _platform(monkeypatch, *providers):
+    for p in providers:
+        monkeypatch.setenv(f"TREG_PLATFORM_KEY_{p.upper()}", f"PLATFORM-{p.upper()}")
+    monkeypatch.setenv("TREG_PLATFORM_PROVIDERS", ",".join(providers))
+    monkeypatch.setenv("TREG_CLIENT_ID_SECRET", "client-id-secret")
+    get_settings.cache_clear()
+    monkeypatch.setattr(get_settings(), "proxy_ssrf_check", False)
+
+
+@pytest.mark.parametrize("provider,endpoint,capability,given", B_ENDPOINTS)
+async def test_b_sends_what_the_router_sends(clients, monkeypatch, provider, endpoint, capability, given):
+    from treg.infra.upstream.relay import relay as real_relay
+
+    _platform(monkeypatch, provider)
+    seen = []
+    async with _vendor(seen) as vendor:
+        async def relay(request, url, tool, secrets, client, **kw):
+            return await real_relay(request, url, tool, secrets, vendor, **kw)
+        monkeypatch.setattr(call_service, "relay", relay)
+        monkeypatch.setattr(compare, "relay", relay)
+        org_id = await _org_id(clients)
+        contract = catalog_store.load().contracts[capability]
+        identity, _ = canonical_identity(contract, given)
+        target = compare._b_target(contract, identity, provider)
+        assert target is not None and target.ep["id"] == endpoint
+        assert (await compare._ask_b(target, vendor, org_id))[0] == 200
+        routed = await clients.post(f"/call/treg.{capability}", json=given,
+                                    headers={"X-Treg-Route-Prefer": endpoint})
+    assert routed.status_code == 200, routed.text
+    assert routed.json()["_treg"]["tried"][0]["endpoint_id"] == endpoint
+    b, child = seen[:2]
+    assert b == child
+    # What the run once sent differently: Python's `False` in the query, no client header, no ceiling.
+    if provider == "keenable":
+        assert "live=false" in b["url"]
+    if provider == "crawl4ai":
+        assert dict(b["headers"])["x-c4-client"].startswith("t_")
+    if provider == "anyapi":
+        assert "max_cost_usd=" in b["url"]
+
+
+def _example(endpoint_id: str) -> bytes:
+    return catalog_store.example_path(endpoint_id).read_bytes()
+
+
+# A configured pair's A and B, each answering with its captured example: stored `ready`.
+READY_PAIRS = [
+    ("google.serp.organic", "anyapi", "dataforseo", {"q": "espresso grinders"}),
+    ("web.extract", "crawl4ai", "keenable", {"url": "https://docs.example.com/guide"}),
+    ("web.search", "exa", "crawl4ai", {"q": "espresso grinders"}),
+    ("web.search", "crawl4ai", "exa", {"q": "espresso grinders"}),
+    ("web.search", "tinyfish", "parallel", {"q": "espresso grinders"}),
+]
+
+
+@pytest.mark.parametrize("capability,a,b,given", READY_PAIRS)
+async def test_a_vendor_example_answer_is_stored_ready(clients, monkeypatch, capability, a, b, given):
+    _platform(monkeypatch, a, b)
+    _compare_on(monkeypatch, pairs={capability: [[a, b]]})
+    cat = catalog_store.load()
+    a_endpoint = next(e["id"] for e in cat.for_capability(capability)
+                      if e["provider"] == a and e["id"] in cat.adapters)
+    b_endpoint = next(e["id"] for e in cat.for_capability(capability)
+                      if e["provider"] == b and e["id"] in cat.adapters)
+    org_id = await _org_id(clients)
+    await _routed_call(org_id, given.get("q", ""), a=a, capability=capability, given=given,
+                       answer=json.loads(_example(a_endpoint)))
+    seen = []
+    async with _vendor(seen, _example(b_endpoint)) as vendor:
+        result = await compare.collect(client=vendor)
+    assert (result["called"], result["ready"]) == (1, 1), result
+    row, = await _rows()
+    assert (row.status, row.b_endpoint) == ("ready", b_endpoint)
+    assert json.loads(row.b_body) and json.loads(row.a_body)
+
+
+async def test_an_off_question_answer_is_failed_as_the_router_reads_it(clients, monkeypatch, caplog):
+    """A `site:` question answered with no row on that site is the router's miss (`question_miss`),
+    so the pair fails even on a 200: why a DataForSEO answer to such a question was never a hit."""
+    _platform(monkeypatch, "anyapi", "dataforseo")
+    _compare_on(monkeypatch, pairs={"google.serp.organic": [["anyapi", "dataforseo"]]})
+    org_id = await _org_id(clients)
+    given = {"q": "espresso grinders site:nowhere.example"}
+    a_answer = json.loads(_example("anyapi.google.serp.organic"))
+    for row in a_answer["output"]["data"]["results"]:
+        row["url"] = "https://nowhere.example/grinders"
+    await _routed_call(org_id, given["q"], a="anyapi", capability="google.serp.organic", given=given,
+                       answer=a_answer)
+    caplog.set_level("INFO", logger="treg.application.compare")
+    async with _vendor([], _example("dataforseo.google.serp.organic")) as vendor:
+        result = await compare.collect(client=vendor)
+    assert (result["called"], result["failed"]) == (1, 1), result
+    assert (await _rows())[0].status == "failed"
+    assert "status 200, read as miss (question_miss)" in caplog.text
 
 
 async def test_a_team_deleted_during_the_run_gets_no_row(clients, search_on, monkeypatch):
@@ -804,7 +937,7 @@ async def test_a_json_credential_vendor_through_the_real_relay(monkeypatch, fake
         target = compare._b_target(contract, identity, "adyntel")
         assert target is not None and target.ep["id"] == "adyntel.meta-ads.library.advertiser"
         async with httpx.AsyncClient(transport=httpx.MockTransport(vendor)) as client:
-            status, raw = await compare._ask_b(target, client)
+            status, raw = await compare._ask_b(target, client, 1)
         assert status == 200
         (request, content), = seen
         assert request.url.host == "api.adyntel.com"

@@ -288,11 +288,12 @@ the capability, and logs the rest. Each run:
    an input (an older one) is skipped. A's answer comes from the archive record of that child
    (`arena_insights._evidence`), read through A's adapter (`route.child_outcome`); only a hit goes
    on.
-7. B's target: an endpoint of the capability whose verified adapter takes and scopes the input
-   (`route: true` is not needed), on a provider with a pasted-key credential shape, not paused,
-   platform-eligible with every platform credential its bindings name, not exhausted on treg's
-   primary account, retention allowed, priced, with no second host or path parameter. B's adapter
-   builds the request (`to_upstream`).
+7. B's target: an endpoint the router itself would ask for this input (`plan.candidates_for`, so
+   a routing adapter: a judge-only `route: false` adapter builds no request; then `build_plan`'s
+   filter cap, declaration and scope checks), on a provider with a pasted-key credential shape, not
+   paused, platform-eligible with every platform credential its bindings name, not exhausted on
+   treg's primary account, retention allowed, priced, with no second host or path parameter. B's
+   adapter builds the request (`to_upstream`) with the router's variant.
 8. Right before sending, the team is read again: it still exists, is not suspended, has no active
    flow-control pause (`org_flow_control.confirmed_unpaused`: a fresh read; a read that fails, an
    invalid publication or a pause in force all skip, unlike admission, which allows on failure),
@@ -306,11 +307,19 @@ the capability, and logs the rest. Each run:
    concurrent or later). A crash after the claim leaves `pending`: it still counts and is never
    resent. The day's count is no team's row, so deleting a team gives no quota back.
 10. One request, through the relay alone (`infra.upstream.relay.relay`) on treg's primary key
-    (`platform_bindings`), with `body_read` as the call path offers it (a key that goes in the JSON
-    body is injected from it) and treg's User-Agent: no router, no fallback, no overflow, no hold,
-    no ledger entry, no archive record, no capacity mark. Calls are `CALL_GAP_S` apart. The catalog
-    price of the request is logged and stored as `b_cost_micro`.
-11. B's answer is read through B's adapter, so both are contract `output`. The row is settled to
+    (`platform_bindings`): the request the router's first child call on treg's key sends for the
+    team's question. The adapter's values go to the relay unformatted (a `false` reaches the vendor
+    as `false`), the body as `route._child_body`, path parameters dropped as the call path drops
+    them, with the call path's rewrites: treg's User-Agent, the provider's client header for the
+    team (`tag_shared_client`) and its ceiling parameter at the router's default ceiling
+    (`service.ceiling_query`). `body_read` is offered as the call path offers it (a key that goes in
+    the JSON body is injected from it). No router, no fallback, no overflow, no hold, no ledger
+    entry, no archive record, no capacity mark. Calls are `CALL_GAP_S` apart. The catalog price of
+    the request is logged and stored as `b_cost_micro`.
+11. B's answer is read through B's adapter as the router reads a child on treg's key
+    (`route.child_outcome` with the canonical identity: a `question_miss`, such as no row on a
+    `site:` the question names, is a miss), so both are contract `output`; the log line names the
+    outcome and its reasons, never the body. The row is settled to
     `ready` only on a hit; anything else (an error, no answer, a miss) settles it `failed`, with no
     bodies, and nothing else is called. If the team was deleted meanwhile, the row is taken back.
 
