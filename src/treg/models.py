@@ -2360,7 +2360,7 @@ class ArchiveKeyOrg(SQLModel, table=True):
 
     The primary key is (org, key_hash), so a mark takes no number from a sequence. `id` is the
     retired surrogate key: nullable, without a default, written only by code older than revision
-    0112 during a rolling deploy, and read by nothing (`archive.md`, "Pricing a hit").
+    0119 during a rolling deploy, and read by nothing (`archive.md`, "Pricing a hit").
     """
 
     id: int | None = Field(default=None)

@@ -1,14 +1,14 @@
-"""archivekeyorg: the unique index that 0112 turns into the primary key
+"""archivekeyorg: the unique index that 0119 turns into the primary key
 
-Revision ID: 0111
-Revises: 0110
+Revision ID: 0118
+Revises: 0117
 Create Date: 2026-11-18
 
-0112 makes (org_id, key_hash) the primary key of `archivekeyorg`, so a first paid mark no longer
+0119 makes (org_id, key_hash) the primary key of `archivekeyorg`, so a first paid mark no longer
 takes a number from the table's 32-bit serial sequence inside the settle transaction. PostgreSQL
 can attach an existing unique index as a primary key without a scan (`ADD PRIMARY KEY USING
 INDEX`), but not an index a constraint already owns, and `uq_archive_key_org` is a constraint's
-index. This revision makes sure a second unique index on the same columns exists for 0112.
+index. This revision makes sure a second unique index on the same columns exists for 0119.
 
 A large table's index is built by hand before the deploy, never by this revision: a concurrent
 build of it can outlast a deploy's time limit, and one stopped half way leaves an INVALID index
@@ -25,7 +25,7 @@ that the next deploy would have to rebuild from the start. So this revision:
 
 A lock timeout during the small build (a concurrent build waits for every older snapshot in the
 database) is raised as a plain error, not as the database error `maintenance` retries: a retry
-would start the build again from zero. SQLite: nothing to do, 0112 rebuilds the table there.
+would start the build again from zero. SQLite: nothing to do, 0119 rebuilds the table there.
 
 Rollback floor (pro forma, like 0072): the expand-safety linter counts the autocommit block and
 the invalid-index drop as non-additive. Older code ignores the extra index.
@@ -36,8 +36,8 @@ import sqlalchemy as sa
 from alembic import op
 from sqlalchemy.exc import DBAPIError
 
-revision: str = "0111"
-down_revision: str | Sequence[str] | None = "0110"
+revision: str = "0118"
+down_revision: str | Sequence[str] | None = "0117"
 branch_labels: str | Sequence[str] | None = None
 depends_on: str | Sequence[str] | None = None
 contract = True  # pro forma, see the rollback floor note: the operation adds an index
@@ -54,7 +54,7 @@ _MANUAL_STEPS = (
     f"  SELECT indisvalid FROM pg_index WHERE indexrelid = '{NAME}'::regclass;  -- must be true")
 
 MANUAL_BUILD = (
-    f"Refusing migration 0111: archivekeyorg holds more than {BUILD_IN_MIGRATION_MAX_ROWS} rows and "
+    f"Refusing migration 0118: archivekeyorg holds more than {BUILD_IN_MIGRATION_MAX_ROWS} rows and "
     f"the unique index {NAME} is missing or INVALID. Build it by hand before deploying. "
     + _MANUAL_STEPS)
 
@@ -127,7 +127,7 @@ def upgrade() -> None:
             if not _is_lock_timeout(exc):
                 raise
             raise RuntimeError(
-                f"Migration 0111 gave up building {NAME}: a transaction open longer than the lock "
+                f"Migration 0118 gave up building {NAME}: a transaction open longer than the lock "
                 "timeout held the build back. End that transaction and deploy again, or build the "
                 "index by hand. " + _MANUAL_STEPS) from exc
         finally:
