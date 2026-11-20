@@ -21,7 +21,9 @@
 
 adapters:
   # ---- people.email.find --------------------------------------------------------------------
+  # Not a router candidate: every miss is billed and its hit rate is low on both identity variants.
   orbisearch.people.email.find:
+    route: false
     accepts: [[first_name, last_name, domain], [linkedin_url]]
     in: {first_name: body.first_name, last_name: body.last_name,
          domain: body.domain, linkedin_url: body.linkedin_url}
@@ -2919,7 +2921,9 @@ adapters:
           followers: element.followerCount, connections: element.connectionsCount, about: element.about,
           linkedin_url: element.linkedinUrl}
     miss: "element.id == null"
+  # Not a router candidate: every lookup is billed, a miss included.
   harvestapi.linkedin.user.profile.email:
+    route: false
     accepts: [[linkedin_handle]]
     in: {linkedin_handle: queryParams.publicIdentifier}
     const: {queryParams.findEmail: "true"}
