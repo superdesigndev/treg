@@ -90,6 +90,21 @@ async def test_jobspipe_balance_reads_the_free_export_estimate(monkeypatch):
         _refused(await _balance(monkeypatch, "jobspipe", client, "test-key"), "no valid credit balance")
 
 
+async def test_besthumanizer_balance_reads_words_remaining_from_the_free_account_call(monkeypatch):
+    def probe(request):
+        assert request.method == "GET"
+        assert str(request.url) == "https://besthumanizer.app/api/me"
+        assert request.headers["authorization"] == "Bearer test-key"
+        return httpx.Response(200, json={"plan": "pro", "words_remaining": 14210, "monthly_grant": 15000})
+
+    async with httpx.AsyncClient(transport=httpx.MockTransport(probe)) as client:
+        row = await _balance(monkeypatch, "besthumanizer", client, "test-key")
+    assert row["value"] == 14210 and row["unit"] == "words"
+    async with httpx.AsyncClient(transport=httpx.MockTransport(
+            lambda _: httpx.Response(200, json={"words_remaining": None}))) as client:
+        _refused(await _balance(monkeypatch, "besthumanizer", client, "test-key"), "no valid word balance")
+
+
 @pytest.mark.parametrize("field,value", [
     ("api_credits", None), ("api_credits", True), ("api_credits", "5200"),
     ("api_credits", -1), ("api_credits", 10.5),

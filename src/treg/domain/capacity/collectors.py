@@ -1038,6 +1038,15 @@ async def _jobspipe(c, key):
     return {"value": credits, "unit": "credits", "note": "spendable credits from the free export estimate"}
 
 
+async def _besthumanizer(c, key):
+    # GET /api/me is free and answers the words left this month (401 for a bad key).
+    d = await _get(c, "https://besthumanizer.app/api/me", headers={"Authorization": f"Bearer {key}"})
+    words = d.get("words_remaining") if isinstance(d, dict) else None
+    if type(words) is not int or words < 0:
+        raise ValueError("BestHumanizer returned no valid word balance")
+    return {"value": words, "unit": "words", "note": f"of {d.get('monthly_grant')} a month, plan {d.get('plan')}"}
+
+
 async def _enrichlayer(c, key):
     d = await _get(c, "https://enrichlayer.com/api/v2/credit-balance",
                    headers={"Authorization": f"Bearer {key}"})
@@ -1123,6 +1132,7 @@ BALANCE_ROUTES = {
     "dropcontact": _dropcontact,
     "theirstack": _theirstack,
     "jobspipe": _jobspipe,
+    "besthumanizer": _besthumanizer,
     "anyapi": _anyapi,
     "cloro": _cloro,
     "openrouter": _openrouter,

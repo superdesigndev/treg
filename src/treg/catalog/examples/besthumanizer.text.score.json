@@ -1,0 +1,26 @@
+{
+  "score": {
+    "styleIndex": 53,
+    "humanProbability": 53
+  },
+  "metrics": {
+    "words": 28,
+    "sentences": 5,
+    "burstiness": 1,
+    "emdash_per_100w": 0,
+    "tic_opener_ratio": 0,
+    "triple_series_density": 0,
+    "nominal_per_100w": 0
+  },
+  "findings": [],
+  "band": "reads like one-pass model prose",
+  "label": "reads like one-pass model prose",
+  "tooShort": false,
+  "bandBasis": "full",
+  "textStatus": null,
+  "caveat": "style only; does not prove a model wrote it",
+  "topFinds": [],
+  "hidden_chars_removed": 0,
+  "homoglyphs_folded": 0,
+  "injection_shapes": []
+}

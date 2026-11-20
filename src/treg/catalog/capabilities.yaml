@@ -28,6 +28,9 @@ platforms:
   # --- AI judgment: a typed decision over evidence, not text generation ---------------------------
   ai-judge: {label: "AI judgment", category: "AI generation", summary: "A label, a score or a yes/no probability over evidence you supply. A judge, not a writer: classify, route, verify, rank."}
 
+  # --- Writing style: a measured read of prose, and a rewrite toward a human style ---------------
+  text: {label: "Writing style", category: "AI generation", summary: "Score how machine-written prose reads and rewrite it to read human, with the score before and after."}
+
   # --- AI generation: generated media modalities ------------------------------------------------
   # purchased_credit_only: a call on this platform is paid from purchased credit only; free credit
   # (promotional, referral, bonus, earned) does not cover it.
@@ -253,6 +256,7 @@ capabilities:
   youtube.search.videos: "Search videos by keyword"
   x.user.profile: "Get a user's public profile"
   x.user.posts: "List a user's recent posts"
+  x.user.writing-style: "Score the writing style of a public X account's recent original posts: median, spread and per-post scores"
   xiaohongshu.note.detail: "Get a note's content & stats"
   xiaohongshu.user.notes: "List a user's recent notes"
   xiaohongshu.search.notes: "Search notes by keyword"
@@ -891,6 +895,9 @@ capabilities:
   # --- taxonomy-fill 2026-07-28 -----------------------------------------------------------------
   # ai-search
   ai-judge.decide: "Judge evidence: a label with probabilities, a rubric score, or a yes/no probability"
+  text.style.score: "Score a passage's writing style 0-100 (how human it reads), with the measurements and the patterns behind the number"
+  text.style.analyze: "Score a passage's writing style with every detected pattern listed and a mechanical clean-up of the text"
+  text.humanize: "Rewrite prose so it reads less machine-written, with the style score before and after the rewrite"
   ai-search.brave.answer: "Get Brave's AI answer"
   ai-search.chatgpt.answer: "Get a ChatGPT answer"
   ai-search.chatgpt.scrape: "Scrape a live ChatGPT answer page for a keyword"
@@ -1318,6 +1325,10 @@ capability_titles:
   people.email.verify: "Verify an email address"
   people.job.start: "Bulk verify or find emails"
   people.search: "Find people by role, company or location"
+  text.style.score: "Score a passage's writing style"
+  text.style.analyze: "List the writing patterns in a passage"
+  text.humanize: "Rewrite text to read human"
+  x.user.writing-style: "Score an X account's writing style"
   people.search.count: "Count a people search before paying"
   people.search.filters: "List people-search filter values"
   creators.search: "Find creators by niche and audience"
