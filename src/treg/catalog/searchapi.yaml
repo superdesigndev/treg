@@ -1,0 +1,122 @@
+provider: searchapi
+source:
+  docs: https://www.searchapi.io/docs/google
+  openapi: null
+  curated: '2026-11-20'
+limits: "Billed per search from a monthly plan allowance; the free account grants 100 searches. GET /me is free and reports remaining_searches and the hourly rate limit."
+pricing_url: https://www.searchapi.io/pricing
+proposed_capabilities:
+  google.serp.scholar: "Get Google Scholar publications for a query"
+
+defaults:
+  provenance:
+    source: docs
+    source_url: https://www.searchapi.io/pricing
+    checked: '2026-11-20'
+    confidence: documented
+
+endpoints:
+  - id: searchapi.web.search
+    capability: web.search
+    platform: web
+    domain: search
+    scope: any_account
+    method: GET
+    path: /search
+    name: Search the open web with Google
+    summary: Search Google and return organic results with position, title, link, snippet and domain, plus the answer box, knowledge graph, related questions and related searches when Google shows them.
+    input:
+      queryParams:
+        engine: {type: string, required: true, enum: [google], note: "the engine selector; this tool is the google engine", example: google}
+        q: {type: string, required: true, note: "Google search operators such as site: and quoted phrases work here.", example: "OpenAI API documentation"}
+        location: {type: string, required: false, note: "Canonical Google location name for the origin of the search.", example: "Austin, Texas, United States"}
+        gl: {type: string, required: false, default: us, note: "Two-letter country code.", example: us}
+        hl: {type: string, required: false, default: en, note: "Google interface language code.", example: en}
+        page: {type: integer, required: false, default: 1, min: 1, note: "1-based page of ten results; the only way to get more results."}
+        device: {type: string, required: false, default: desktop, enum: [desktop, mobile, tablet]}
+        time_period: {type: string, required: false, note: "Restricts results by date: last_hour, last_day, last_week, last_month or last_year.", example: last_month}
+      note: "Answers arrive in organic_results, ten per page; page is the only paging control. Some links are google.com/goto redirects to the destination URL."
+    test_request: {queryParams: {engine: google, q: "OpenAI API documentation", gl: us, hl: en}}
+    price: {value: '0.004', currency: USD, per: 1, unit: call}
+    bill: {miss: charged}
+    miss: {when: {path: response.organic_results, op: absent}, means: "Google returned no results; the response carries error in place of organic_results and the search is still charged."}
+    verified: '2026-11-20'
+    added: '2026-11-20'
+    example_response: examples/searchapi.web.search.json
+    docs_url: https://www.searchapi.io/docs/google
+
+  - id: searchapi.google.serp.news
+    capability: google.serp.news
+    platform: google
+    domain: search
+    scope: any_account
+    method: GET
+    path: /search
+    name: Search Google News
+    summary: Search Google News and return ranked articles with source, date, iso_date, snippet and thumbnail, plus top stories when Google shows them.
+    input:
+      queryParams:
+        engine: {type: string, required: true, enum: [google_news], note: "the engine selector; this tool is the google_news engine", example: google_news}
+        q: {type: string, required: true, example: "OpenAI"}
+        location: {type: string, required: false, note: "Canonical Google location name for the origin of the search.", example: "Austin, Texas, United States"}
+        gl: {type: string, required: false, default: us, note: "Two-letter country code.", example: us}
+        hl: {type: string, required: false, default: en, note: "Google interface language code.", example: en}
+        page: {type: integer, required: false, default: 1, min: 1}
+        sort_by: {type: string, required: false, enum: [most_recent], note: "Relevance order unless set to most_recent."}
+        time_period: {type: string, required: false, note: "Restricts results by date: last_hour, last_day, last_week, last_month or last_year.", example: last_week}
+      note: "Answers arrive in organic_results. Each article's link comes with a link_token for SearchApi's free Google Resolve API, which returns the destination URL."
+    test_request: {queryParams: {engine: google_news, q: "OpenAI", gl: us, hl: en}}
+    price: {value: '0.004', currency: USD, per: 1, unit: call}
+    bill: {miss: charged}
+    miss: {when: {path: response.organic_results, op: absent}, means: "Google returned no results; the response carries error in place of organic_results and the search is still charged."}
+    verified: '2026-11-20'
+    added: '2026-11-20'
+    example_response: examples/searchapi.google.serp.news.json
+    docs_url: https://www.searchapi.io/docs/google-news
+
+  - id: searchapi.google.serp.scholar
+    capability: google.serp.scholar
+    platform: google
+    domain: search
+    scope: any_account
+    method: GET
+    path: /search
+    name: Search Google Scholar
+    summary: Search Google Scholar for publications with title, authors, publication, snippet, citation count, versions and the PDF or HTML resource link.
+    input:
+      queryParams:
+        engine: {type: string, required: true, enum: [google_scholar], note: "the engine selector; this tool is the google_scholar engine", example: google_scholar}
+        q: {type: string, required: true, example: "attention is all you need"}
+        hl: {type: string, required: false, default: en, note: "Google interface language code.", example: en}
+        num: {type: integer, required: false, default: 10, min: 1, max: 20, note: "Results per page."}
+        page: {type: integer, required: false, default: 1, min: 1}
+        as_ylo: {type: integer, required: false, note: "Earliest publication year.", example: 2017}
+        as_yhi: {type: integer, required: false, note: "Latest publication year.", example: 2026}
+      note: "Answers arrive in organic_results; cited_by counts sit in each row's inline_links."
+    test_request: {queryParams: {engine: google_scholar, q: "attention is all you need", hl: en}}
+    price: {value: '0.004', currency: USD, per: 1, unit: call}
+    bill: {miss: charged}
+    miss: {when: {path: response.organic_results, op: absent}, means: "Google Scholar returned no results; the response carries error in place of organic_results and the search is still charged."}
+    verified: '2026-11-20'
+    added: '2026-11-20'
+    example_response: examples/searchapi.google.serp.scholar.json
+    docs_url: https://www.searchapi.io/docs/google-scholar
+
+  - id: searchapi.account.usage
+    kind: account
+    capability: account.usage
+    platform: account
+    scope: own_account
+    method: GET
+    path: /me
+    name: SearchApi plan allowance and usage
+    summary: Check the calling account's monthly allowance, searches used this month, remaining searches and the hourly rate limit.
+    input:
+      queryParams: {}
+      note: "No parameters beyond the injected key. Returns account.remaining_searches and api_usage.hourly_rate_limit; the right call before a batch."
+    test_request: {queryParams: {}}
+    price: {value: '0', currency: USD, per: 1, unit: call}
+    verified: '2026-11-20'
+    added: '2026-11-20'
+    example_response: examples/searchapi.account.usage.json
+    docs_url: https://www.searchapi.io/docs/account
