@@ -3550,6 +3550,7 @@ _SITEMAP_PAGES: tuple[tuple[str, str, str], ...] = (
     ("/resources", "resources.html", "0.8"),
     ("/blog", "", "0.7"),
     ("/blog/work-email-finding-bench", "", "0.6"),
+    ("/blog/jobspipe-and-treg", "", "0.6"),
     ("/blog/people-search-bench", "", "0.6"),
     ("/blog/security-incident-2026-10-23", "", "0.6"),
     ("/vendor-listing", "vendor-listing.md", "0.5"),
@@ -4410,6 +4411,9 @@ _BLOG_LAUNCHES: list[tuple[str, str, str, str]] = [
 # have their own top-level routes), but they sit prominently on the /blog index above launches.
 _BLOG_POSTS: list[tuple[str, str, str, str]] = [
     # (slug under /blog/, title, date, one-line blurb)
+    ("jobspipe-and-treg", "JobsPipe and treg: hiring signals, people search and job data in one agent",
+     "2026-11-20",
+     "Hiring signals from JobsPipe, people and work emails from treg. Prompts and costs for sales, recruiting and job search."),
     ("security-incident-2026-10-23", "23 Oct 2026 Treg security incident report", "2026-10-25",
      "What happened, what may be affected, and what to rotate. Investigation ongoing."),
     ("work-email-finding-bench", "Work Email Finding: a 292 Person Receipt", "2026-09-16",
@@ -4560,6 +4564,27 @@ async def blog_security_incident_2026_10_23():
     return _page(f"{title} | treg.to",
                  "On October 23, 2026 we confirmed unauthorized access to part of treg's production "
                  "systems. What may be affected, what we have done, and what you need to do.",
+                 f"/blog/{slug}", body, ld)
+
+
+@app.get("/blog/jobspipe-and-treg", include_in_schema=False)
+async def blog_jobspipe_and_treg():
+    """Partner post with JobsPipe: job data from JobsPipe, people and emails from treg. The body is
+    its own HTML file, like the incident report, so copy can change without touching route code."""
+    if not _hosted():
+        raise HTTPException(status_code=404, detail="not found")
+    base = get_settings().public_url.rstrip("/")
+    slug = "jobspipe-and-treg"
+    title = next(p[1] for p in _BLOG_POSTS if p[0] == slug)
+    body = (_WEB_DIR / f"blog-{slug}.html").read_text(encoding="utf-8")
+    ld = [_blog_posting_ld(slug, base),
+          {"@context": "https://schema.org", "@type": "BreadcrumbList", "itemListElement": [
+        {"@type": "ListItem", "position": 1, "name": "treg.to", "item": base + "/"},
+        {"@type": "ListItem", "position": 2, "name": "Blog", "item": base + "/blog"},
+        {"@type": "ListItem", "position": 3, "name": title, "item": f"{base}/blog/{slug}"}]}]
+    return _page(f"{title} | treg.to",
+                 "Hiring signals from JobsPipe and people search, emails and company data from treg. "
+                 "Prompts for sales, recruiting and job search, with what each run costs.",
                  f"/blog/{slug}", body, ld)
 
 
