@@ -41,6 +41,12 @@ class FakeStore:
         self.leases: dict[str, str] = {}
         self.until_ms = 0
         self.lease_answer: str | None = None
+        self.run = "run1"
+
+    def restart(self) -> None:
+        """The store's server starts again: every counter built before is gone."""
+        self.run += "x"
+        self.counters.clear()
 
     def expire(self) -> None:
         """Move the clock past the deadline: takes stop until an add sets a later one."""
@@ -82,7 +88,9 @@ class FakeStore:
         counter["avail"] += amount
         return True
 
-    async def allowance_add(self, org_id, epoch, amount, *, until_ms, ttl_ms, seen_frozen):
+    async def allowance_add(self, org_id, epoch, amount, *, until_ms, ttl_ms, seen_frozen, run):
+        if run != self.run:
+            return "stale"
         counter = self.counters.get(org_id)
         if counter is not None and counter.get("epoch", 0) > epoch:
             return "stale"
@@ -101,7 +109,7 @@ class FakeStore:
     async def allowance_state(self, org_id):
         counter = self.counters.get(org_id, {})
         return (counter.get("avail", 0), counter.get("frozen", 0), counter.get("thawed", 0),
-                counter.get("epoch", 0))
+                counter.get("epoch", 0), self.run)
 
     async def allowance_drop(self, org_id, epoch):
         counter = self.counters.get(org_id)
@@ -966,6 +974,50 @@ async def test_a_team_too_poor_for_a_chunk_is_served_by_the_exact_path(org_id, s
     assert mk.allowance_epoch is None and await _per_call_holds(org_id) == ["c-1"]
     assert await call_settle._platform_settle(mk, 200, observed_override=450) == (450, 450)
     assert await _state(org_id) == (GRANT - 450, 0)
+
+
+async def test_a_refill_the_store_restarted_under_offers_nothing(org_id, store, monkeypatch):
+    """The store restarts between the refill's commit and its publish. A freeze sent since the
+    refill read the team's debts would be gone with the counter, so the money stays in the hold
+    and the next refill, which reads the debts again, builds the counter."""
+    refill = allowance.refill_allowance_in_transaction
+
+    async def then_the_store_restarts(*args, **kwargs):
+        result = await refill(*args, **kwargs)
+        store.restart()
+        return result
+
+    monkeypatch.setattr(allowance, "refill_allowance_in_transaction", then_the_store_restarts)
+    assert await runtime.take(org_id, 600) is None
+    assert org_id not in store.counters
+    assert await _state(org_id) == (GRANT - CHUNK, CHUNK), "committed, and offered to no call"
+    monkeypatch.setattr(allowance, "refill_allowance_in_transaction", refill)
+    assert await runtime.take(org_id, 600)
+    assert store.counters[org_id]["avail"] == CHUNK - 600
+    assert await _state(org_id) == (GRANT - 2 * CHUNK, 2 * CHUNK)
+
+
+async def test_a_hold_no_refill_can_rebuild_a_counter_for_keeps_its_deadline(
+        org_id, store, monkeypatch):
+    """The store restarted and all the team's credit is in its hold: no refill can add the
+    chunk a new counter is built from. Trying must not move the hold's deadline on, or calls
+    that keep arriving keep the sweep from ever returning the money."""
+    monkeypatch.setattr(get_settings(), "money_allowance_chunk_micro", GRANT)
+    epoch = await runtime.take(org_id, 600)
+    assert await _finish(org_id, "unbilled", epoch, 600, billable=False) == 0
+    assert await _state(org_id) == (0, GRANT)
+    async with session_maker() as db:
+        stamped = next(h for h in await ledger.open_holds_of(db, org_id) if h.allowance).heartbeat_at
+    store.restart()
+    for _ in range(3):
+        monkeypatch.setattr(runtime, "_refused_until", {})
+        assert await runtime.take(org_id, 600) is None
+    async with session_maker() as db:
+        hold = next(h for h in await ledger.open_holds_of(db, org_id) if h.allowance)
+        assert hold.heartbeat_at == stamped
+    await _age_heartbeat(org_id, 3600)
+    assert await allowance_sweep.sweep_once(session_maker) == 1
+    assert await _state(org_id) == (GRANT, 0)
 
 
 # ---- the idle sweep ----------------------------------------------------------------------------

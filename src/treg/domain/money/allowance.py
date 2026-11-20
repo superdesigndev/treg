@@ -358,7 +358,8 @@ async def refill_allowance_in_transaction(
     cannot cover it adds nothing and raises nothing: the fold still stands, and `added_micro`
     of 0 tells the caller to stop spending from the allowance. `add_micro` is money, not a
     provider cost: no margin is applied. Writes on the hold (`heartbeat_at`) the instant until
-    which calls may be admitted against it: now plus `money_allowance_fresh_s`.
+    which calls may be admitted against it: now plus `money_allowance_fresh_s`. A refill
+    that adds nothing to a hold whose counter is gone leaves that instant where it was.
 
     `add_micro` is what the caller's counter is short of, and a counter speaks only for the
     hold it was built for. With `fresh_add_micro`, a hold whose epoch is not `counter_epoch` (a
@@ -390,7 +391,8 @@ async def refill_allowance_in_transaction(
                   if fold_all else await _fold(db, org_id, hold, fold_limit))
         return Allowance(_epoch(hold), hold.amount_micro, 0, folded,
                          admit_until=hold.heartbeat_at, retired=True)
-    if fresh_add_micro is not None and (hold is None or _epoch(hold) != counter_epoch):
+    rebuilding = fresh_add_micro is not None and (hold is None or _epoch(hold) != counter_epoch)
+    if rebuilding:
         add = max(0, int(fresh_add_micro))
     opened = False
     if hold is None and add:
@@ -450,6 +452,9 @@ async def refill_allowance_in_transaction(
     if opened and not added:
         await db.delete(hold)
         return Allowance(None, 0, 0, folded, over_cap, overdrawn)
+    if rebuilding and not added:
+        return Allowance(_epoch(hold), hold.amount_micro, 0, folded, over_cap, overdrawn,
+                         hold.heartbeat_at)
     # Never earlier than one already published: the store keeps the latest too, and a sweep
     # must be able to trust this row whatever freshness the process that wrote it was running.
     admit_until = _now() + timedelta(seconds=get_settings().money_allowance_fresh_s)

@@ -212,7 +212,7 @@ built the hash. The operations are atomic scripts:
   admitted until an add whose caller read the count after this. A freeze that finds no hash
   leaves one holding only the count: a refill may have committed and not yet published, and
   the counter its add builds then starts frozen.
-- `allowance_state` reads `avail` and the two counts, for a refill.
+- `allowance_state` reads `avail`, the two counts and the store's run, for a refill.
 - `allowance_drop` empties the counter of a given epoch, returns what it held and freezes it,
   keeping the epoch: that figure can be released from the hold of that epoch, which stays
   while calls already admitted keep theirs. The release names the epoch too
@@ -232,12 +232,26 @@ run that built it (`run`), and every operation first removes, in its own atomic 
 that names another run or none. A counter from before a restart is therefore a lost one:
 takes find nothing, a refill reads no counter, adds a whole chunk to the hold and builds the
 counter from that alone, and what the old counter had not spent stays in the hold until a
-close. The freeze a restart undid is not needed by that refill, which hands out nothing a
-queued overrun owes (`_queued_unbacked`), and a freeze sent after it lands on the new hash. A
-store that cannot report its run answers no operation, and calls take the hold path.
+close. A refill that starts after the restart does not need the freezes it undid: its
+transaction reads what queued overruns owe (`_queued_unbacked`), and a freeze sent after it
+lands on the new hash. A refill that read the counter BEFORE the restart does need them: a
+freeze sent after its transaction read the debts went with the counter, and its add would
+build an unfrozen one. So `allowance_state` reports the run with the counter, the add names
+it, and an add that arrives in another run is refused as `"stale"`: the money stays in the
+hold, and the next refill reads the debts again. A store that cannot report its run answers
+no operation, and calls take the hold path.
 
-What this does not see is a server that goes back to older data without starting again (a
-reload in place). There the old reasoning stands, and nothing bounds it: calls in flight
+A refill that finds no counter for its hold and can add nothing leaves the hold's deadline
+where it was. There is no counter to keep fresh, calls admitted earlier are covered by the
+stamp they were admitted under, and a deadline moved on by every failed attempt would keep
+the sweep from returning the money for as long as calls arrive. That is the team whose
+credit was all in its hold when the counter went: until the sweep closes the hold its calls
+see only the balance.
+
+What this does not see is a server that goes back to older data without starting again: a
+reload in place, or one that kept running, took older data from another primary and became
+primary again, where the hashes it built before still name it. Nor does a process of a
+build from before this check anything. There the old reasoning stands, and nothing bounds it: calls in flight
 under the same epoch still give back to the stale hash, refills still add to it and move
 `until` on, a refill takes back only what the counter holds above the whole hold, and a
 charge the team's credit blocks cannot cover is taken only as far as they go

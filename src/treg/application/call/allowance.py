@@ -275,7 +275,7 @@ async def _refill(org_id: int, need_micro: int, daily_cap_micro: int) -> bool:
         return False
     # Read BEFORE the transaction: the add below may thaw only the freezes counted here. One
     # that lands later was raised by a charge this transaction may not have folded.
-    available, seen_frozen, thawed, counter_epoch = state
+    available, seen_frozen, thawed, counter_epoch, run = state
     target = max(settings.money_allowance_chunk_micro, need_micro)
     try:
         async with (
@@ -313,7 +313,7 @@ async def _refill(org_id: int, need_micro: int, daily_cap_micro: int) -> bool:
     until_ms = (result.admit_until - datetime(1970, 1, 1)) // timedelta(milliseconds=1)
     added = await store.allowance_add(
         org_id, result.epoch, result.added_micro, until_ms=until_ms, ttl_ms=_COUNTER_TTL_MS,
-        seen_frozen=seen_frozen)
+        seen_frozen=seen_frozen, run=run)
     if not isinstance(added, int):
         return False
     if added > result.amount_micro:

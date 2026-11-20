@@ -202,6 +202,7 @@ local function counts(base)
 end
 """
 _ALLOWANCE_ADD = _ALLOWANCE_RUN + _ALLOWANCE_COUNTS + """
+if ARGV[7] ~= run then return -1 end
 local stored = redis.call('HGET', KEYS[1], 'epoch')
 if stored and tonumber(stored) > tonumber(ARGV[1]) then return -1 end
 counts(ARGV[6])
@@ -238,7 +239,7 @@ _ALLOWANCE_STATE = _ALLOWANCE_RUN + """
 return {tonumber(redis.call('HGET', KEYS[1], 'avail') or '0'),
         tonumber(redis.call('HGET', KEYS[1], 'frozen') or '0'),
         tonumber(redis.call('HGET', KEYS[1], 'thawed') or '0'),
-        tonumber(redis.call('HGET', KEYS[1], 'epoch') or '0')}
+        tonumber(redis.call('HGET', KEYS[1], 'epoch') or '0'), run}
 """
 # Only the counter of the caller's epoch: the figure returned is taken out of that hold, and a
 # caller that arrives late must not empty the counter of a later one. The hash stays, emptied,
@@ -442,15 +443,17 @@ class Store(Protocol):
         store cannot answer."""
 
     async def allowance_add(self, org_id: int, epoch: int, amount_micro: int, *,
-                            until_ms: int, ttl_ms: int,
-                            seen_frozen: int) -> int | Literal["stale"] | None:
+                            until_ms: int, ttl_ms: int, seen_frozen: int,
+                            run: str) -> int | Literal["stale"] | None:
         """Add to a team's counter after the same amount was committed to its hold. Takes are
         admitted until `until_ms` (epoch milliseconds; an earlier value than the one stored
         changes nothing), and the counter expires after `ttl_ms`. An amount of 0 only renews
         both. `seen_frozen` is the freeze count the caller read before its database transaction:
         the counter is thawed up to it and no further, so a freeze that landed since stays in
         force; a count that is not one of this counter's own thaws nothing. A counter of an older epoch is replaced, not added to. "stale" when the stored
-        epoch is newer: this writer's hold has been closed since, and nothing is added.
+        epoch is newer: this writer's hold has been closed since, and nothing is added. "stale"
+        too when the store is no longer in `run`, the run `allowance_state` reported before the
+        caller's transaction: freezes sent since that reading may be gone with the restart.
         Otherwise what is now available; None when the store cannot answer."""
 
     async def allowance_freeze(self, org_id: int, *, ttl_ms: int = 86_400_000) -> int | None:
@@ -459,10 +462,11 @@ class Store(Protocol):
         for `ttl_ms`, and the counter an add then builds starts frozen. Returns the new count;
         None when the store cannot answer."""
 
-    async def allowance_state(self, org_id: int) -> tuple[int, int, int, int] | None:
-        """(available, freezes, freezes thawed, epoch) of a team's counter, zeros when absent.
-        A reading, already old when it returns: size a refill with it, for the hold of that
-        epoch only, and hand its freeze count to `allowance_add`; never admit a call on it.
+    async def allowance_state(self, org_id: int) -> tuple[int, int, int, int, str] | None:
+        """(available, freezes, freezes thawed, epoch) of a team's counter, zeros when absent,
+        and the run of the store's server. A reading, already old when it returns: size a
+        refill with it, for the hold of that epoch only, and hand its freeze count and run to
+        `allowance_add`; never admit a call on it.
         None when the store cannot answer."""
 
     async def allowance_drop(self, org_id: int, epoch: int) -> int | None:
@@ -623,14 +627,14 @@ class LocalStore:
         return None
 
     async def allowance_add(self, org_id: int, epoch: int, amount_micro: int, *,
-                            until_ms: int, ttl_ms: int,
-                            seen_frozen: int) -> int | Literal["stale"] | None:
+                            until_ms: int, ttl_ms: int, seen_frozen: int,
+                            run: str) -> int | Literal["stale"] | None:
         return None
 
     async def allowance_freeze(self, org_id: int, *, ttl_ms: int = 86_400_000) -> int | None:
         return None
 
-    async def allowance_state(self, org_id: int) -> tuple[int, int, int, int] | None:
+    async def allowance_state(self, org_id: int) -> tuple[int, int, int, int, str] | None:
         return None
 
     async def allowance_drop(self, org_id: int, epoch: int) -> int | None:
@@ -766,9 +770,14 @@ class RedisStore:
             return RateWindowResult("unavailable")
         return RateWindowResult("admit") if admitted else RateWindowResult("over", wait_ms)
 
-    async def _allowance_eval(self, script: str, org_id: int, *args: int) -> int | None:
+    async def _allowance_eval(self, script: str, org_id: int, *args: int,
+                              run: str | None = None) -> int | None:
         if any(type(value) is not int or value < 0 for value in (org_id, *args)):
             raise ValueError("allowance counter arguments are non-negative integers")
+        if run is not None:
+            if type(run) is not str or not run.isalnum():
+                raise ValueError("a store run is the identifier `allowance_state` reported")
+            args = (*args, run)
         try:
             async with asyncio.timeout(_TIMEOUT_S):
                 return int(await self._client.eval(script, 1, _allowance_key(org_id), *args))
@@ -791,22 +800,23 @@ class RedisStore:
         return None if result is None else bool(result)
 
     async def allowance_add(self, org_id: int, epoch: int, amount_micro: int, *,
-                            until_ms: int, ttl_ms: int,
-                            seen_frozen: int) -> int | Literal["stale"] | None:
+                            until_ms: int, ttl_ms: int, seen_frozen: int,
+                            run: str) -> int | Literal["stale"] | None:
         result = await self._allowance_eval(
             _ALLOWANCE_ADD, org_id, epoch, amount_micro, until_ms, ttl_ms, seen_frozen,
-            _new_counts())
+            _new_counts(), run=run)
         return "stale" if result == -1 else result
 
     async def allowance_freeze(self, org_id: int, *, ttl_ms: int = 86_400_000) -> int | None:
         return await self._allowance_eval(_ALLOWANCE_FREEZE, org_id, ttl_ms, _new_counts())
 
-    async def allowance_state(self, org_id: int) -> tuple[int, int, int, int] | None:
+    async def allowance_state(self, org_id: int) -> tuple[int, int, int, int, str] | None:
         try:
             async with asyncio.timeout(_TIMEOUT_S):
-                avail, frozen, thawed, epoch = await self._client.eval(
+                avail, frozen, thawed, epoch, run = await self._client.eval(
                     _ALLOWANCE_STATE, 1, _allowance_key(org_id))
-            return int(avail), int(frozen), int(thawed), int(epoch)
+            return (int(avail), int(frozen), int(thawed), int(epoch),
+                    run.decode() if isinstance(run, bytes) else str(run))
         except Exception as exc:  # noqa: BLE001 - the caller falls back to the database path
             _note_fault(exc)
             return None
