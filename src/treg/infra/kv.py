@@ -146,7 +146,16 @@ return {1, 0}
 # a call giving its money back): the pause is for a counter that stays low. An add that brought
 # money ends the pause too: the refill worked.
 _ALLOWANCE_ASK_AGAIN_MS = 2000
-_ALLOWANCE_TAKE = """
+# Redis and Valkey: `run_id` is new for every start of the server process, a promoted replica
+# has its own, and INFO may be called from a script. A hash names the run that built it.
+_ALLOWANCE_RUN = """
+local run = string.match(redis.call('INFO', 'server'), 'run_id:(%w+)')
+if not run then return redis.error_reply('allowance: the store reports no run_id') end
+if redis.call('EXISTS', KEYS[1]) == 1 and redis.call('HGET', KEYS[1], 'run') ~= run then
+    redis.call('DEL', KEYS[1])
+end
+"""
+_ALLOWANCE_TAKE = _ALLOWANCE_RUN + """
 local avail = tonumber(redis.call('HGET', KEYS[1], 'avail'))
 if not avail or avail < tonumber(ARGV[1]) then return 0 end
 if (redis.call('HGET', KEYS[1], 'frozen') or '0') ~= (redis.call('HGET', KEYS[1], 'thawed') or '0')
@@ -171,7 +180,7 @@ if near or avail < low then
 end
 return epoch
 """
-_ALLOWANCE_GIVE_BACK = """
+_ALLOWANCE_GIVE_BACK = _ALLOWANCE_RUN + """
 if redis.call('HGET', KEYS[1], 'epoch') ~= ARGV[1] then return 0 end
 redis.call('HINCRBY', KEYS[1], 'avail', ARGV[2])
 return 1
@@ -189,10 +198,10 @@ return 1
 _ALLOWANCE_COUNTS = """
 local function counts(base)
     if redis.call('HEXISTS', KEYS[1], 'frozen') == 1 then return end
-    redis.call('HSET', KEYS[1], 'frozen', base, 'thawed', base)
+    redis.call('HSET', KEYS[1], 'frozen', base, 'thawed', base, 'run', run)
 end
 """
-_ALLOWANCE_ADD = _ALLOWANCE_COUNTS + """
+_ALLOWANCE_ADD = _ALLOWANCE_RUN + _ALLOWANCE_COUNTS + """
 local stored = redis.call('HGET', KEYS[1], 'epoch')
 if stored and tonumber(stored) > tonumber(ARGV[1]) then return -1 end
 counts(ARGV[6])
@@ -200,7 +209,8 @@ if stored ~= ARGV[1] then
     local frozen = redis.call('HGET', KEYS[1], 'frozen')
     local thawed = redis.call('HGET', KEYS[1], 'thawed')
     redis.call('DEL', KEYS[1])
-    redis.call('HSET', KEYS[1], 'epoch', ARGV[1], 'avail', '0', 'frozen', frozen, 'thawed', thawed)
+    redis.call('HSET', KEYS[1], 'epoch', ARGV[1], 'avail', '0', 'frozen', frozen, 'thawed', thawed,
+               'run', run)
 end
 local avail = redis.call('HINCRBY', KEYS[1], 'avail', ARGV[2])
 if tonumber(ARGV[2]) > 0 then redis.call('HDEL', KEYS[1], 'asked') end
@@ -217,14 +227,14 @@ return avail
 """
 # Takes what is there when the counter holds less than asked: the caller found the counter
 # above its hold.
-_ALLOWANCE_TAKE_UP_TO = """
+_ALLOWANCE_TAKE_UP_TO = _ALLOWANCE_RUN + """
 if redis.call('HGET', KEYS[1], 'epoch') ~= ARGV[1] then return 0 end
 local avail = tonumber(redis.call('HGET', KEYS[1], 'avail') or '0')
 local taken = math.min(avail, tonumber(ARGV[2]))
 if taken > 0 then redis.call('HINCRBY', KEYS[1], 'avail', string.format('%.0f', -taken)) end
 return taken
 """
-_ALLOWANCE_STATE = """
+_ALLOWANCE_STATE = _ALLOWANCE_RUN + """
 return {tonumber(redis.call('HGET', KEYS[1], 'avail') or '0'),
         tonumber(redis.call('HGET', KEYS[1], 'frozen') or '0'),
         tonumber(redis.call('HGET', KEYS[1], 'thawed') or '0'),
@@ -234,7 +244,7 @@ return {tonumber(redis.call('HGET', KEYS[1], 'avail') or '0'),
 # caller that arrives late must not empty the counter of a later one. The hash stays, emptied,
 # so its epoch keeps fencing writers that arrive later. It is frozen
 # too: what calls in flight give back afterwards is not offered until a refill has looked at it.
-_ALLOWANCE_DROP = """
+_ALLOWANCE_DROP = _ALLOWANCE_RUN + """
 if redis.call('HGET', KEYS[1], 'epoch') ~= ARGV[1] then return 0 end
 local avail = redis.call('HGET', KEYS[1], 'avail')
 if not avail then return 0 end
@@ -245,7 +255,7 @@ return tonumber(avail)
 # With no hash yet, the freeze is kept in one that holds only the counts, for ARGV[1]: an add on
 # its way from a transaction that did not see this freeze builds the counter on top of it, and
 # cannot thaw it.
-_ALLOWANCE_FREEZE = _ALLOWANCE_COUNTS + """
+_ALLOWANCE_FREEZE = _ALLOWANCE_RUN + _ALLOWANCE_COUNTS + """
 local fresh = redis.call('EXISTS', KEYS[1]) == 0
 counts(ARGV[2])
 local frozen = redis.call('HINCRBY', KEYS[1], 'frozen', 1)
@@ -253,7 +263,7 @@ if fresh then redis.call('PEXPIRE', KEYS[1], ARGV[1]) end
 return frozen
 """
 # ARGV[2] is the next epoch, computed by the caller: a script cannot print one exactly.
-_ALLOWANCE_RETIRE = _ALLOWANCE_COUNTS + """
+_ALLOWANCE_RETIRE = _ALLOWANCE_RUN + _ALLOWANCE_COUNTS + """
 local stored = redis.call('HGET', KEYS[1], 'epoch')
 if stored and tonumber(stored) > tonumber(ARGV[1]) then return 0 end
 local avail = 0
@@ -262,7 +272,8 @@ counts(ARGV[4])
 local frozen = redis.call('HGET', KEYS[1], 'frozen')
 local thawed = redis.call('HGET', KEYS[1], 'thawed')
 redis.call('DEL', KEYS[1])
-redis.call('HSET', KEYS[1], 'epoch', ARGV[2], 'avail', '0', 'frozen', frozen, 'thawed', thawed)
+redis.call('HSET', KEYS[1], 'epoch', ARGV[2], 'avail', '0', 'frozen', frozen, 'thawed', thawed,
+           'run', run)
 redis.call('PEXPIRE', KEYS[1], ARGV[3])
 return avail
 """

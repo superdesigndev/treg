@@ -410,11 +410,19 @@ calls after `0114` has run can queue another such row, the revision does not run
 time, and the new build's fold would charge that call twice. Where every process already runs
 a build with the writer's cleanup, no such row can be queued any more and the upgrade needs no
 stop. The
-allowance trusts the store to keep the writes it acknowledged. A store that can go back to an
-earlier state (a restore from an older snapshot, a replica promoted before it caught up) can
-admit the same money twice, with no bound on amount or time while the allowance stays on, and
-what a team's credit cannot cover is the platform's cost. After such an event, empty the
-list, and list a team again only when all of these can be seen:
+allowance trusts the store to keep the writes it acknowledged for as long as the server
+runs. A server that starts again (a restart that dropped its last writes, a restore from a
+snapshot, a promoted replica) is recognised by its `run_id`, and every counter built before
+is discarded and rebuilt by the next refill; nothing needs doing. The store's user must be
+allowed `INFO` (ACL category `@dangerous`), which the counter's scripts call; without it no
+counter operation answers and every call takes the hold path. While processes of a build
+from before this share the store with newer ones, a counter an older process builds is
+discarded by the next newer one that touches it: each time, a chunk waits in the hold for
+the idle close, and nothing is offered twice. A server that goes back to older data WITHOUT
+starting again (a reload in place) is not recognised: it can admit the same money twice, with
+no bound on amount or time while the allowance stays on, and what a team's credit cannot
+cover is the platform's cost. After such an event, empty the list, and list a team again
+only when all of these can be seen:
 
 - every process that serves calls has restarted on the empty list (the list is read per
   process, so one still running the old value keeps admitting from the counter);

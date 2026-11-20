@@ -296,6 +296,72 @@ async def test_retiring_with_no_counter_still_leaves_the_fence(counter):
     assert await store.allowance_add(org_id, 7, 100, until_ms=_soon(), ttl_ms=60_000, seen_frozen=0) == 'stale'
 
 
+async def _restart(store, org_id):
+    """What a restart of the store leaves: the hash as it was written to disk, and a server
+    whose run is not the one that built it."""
+    await store._client.hset(kv._allowance_key(org_id), 'run', '0' * 40)
+
+
+@real_redis
+@pytest.mark.parametrize("touch, answer", [
+    (lambda store, org_id: store.allowance_take(org_id, 100), 0),
+    (lambda store, org_id: store.allowance_give_back(org_id, 7, 50), False),
+    (lambda store, org_id: store.allowance_take_up_to(org_id, 7, 50), 0),
+    (lambda store, org_id: store.allowance_drop(org_id, 7), 0),
+    (lambda store, org_id: store.allowance_state(org_id), (0, 0, 0, 0)),
+])
+async def test_a_counter_built_before_the_store_restarted_is_a_lost_one(counter, touch, answer):
+    """A store that restarts can come back without the last writes it acknowledged, the takes
+    and freezes of that interval undone. What it shows of a counter is then no figure to spend
+    from: the counter is gone, as one the store lost is."""
+    store, org_id = counter
+    await store.allowance_add(org_id, 7, 1_000, until_ms=_soon(), ttl_ms=60_000, seen_frozen=0)
+    assert await store.allowance_take(org_id, 100) == 7
+    await _restart(store, org_id)
+    assert await touch(store, org_id) == answer
+    assert not await store._client.exists(kv._allowance_key(org_id))
+
+
+@real_redis
+async def test_a_refill_after_a_restart_builds_the_counter_from_what_it_brings(counter):
+    store, org_id = counter
+    await store.allowance_add(org_id, 7, 900, until_ms=_soon(), ttl_ms=60_000, seen_frozen=0)
+    await _restart(store, org_id)
+    assert await store.allowance_add(
+        org_id, 7, 250, until_ms=_soon(), ttl_ms=60_000, seen_frozen=0) == 250
+    assert [await store.allowance_take(org_id, 250), await store.allowance_take(org_id, 1)] == [7, 0]
+    await _restart(store, org_id)
+    assert await store.allowance_retire(org_id, 7, 60_000) == 0, "nothing of it is returned"
+    assert (await store.allowance_state(org_id))[3] == 8
+
+
+@real_redis
+async def test_a_freeze_after_a_restart_holds_the_counter_built_next(counter):
+    store, org_id = counter
+    await store.allowance_add(org_id, 7, 900, until_ms=_soon(), ttl_ms=60_000, seen_frozen=0)
+    seen = (await store.allowance_state(org_id))[1]
+    await _restart(store, org_id)
+    await store.allowance_freeze(org_id)
+    await store.allowance_add(org_id, 7, 250, until_ms=_soon(), ttl_ms=60_000, seen_frozen=seen)
+    assert await store.allowance_state(org_id) == (250, *(await _counts(store, org_id)), 7)
+    assert await store.allowance_take(org_id, 10) == 0
+
+
+@real_redis
+async def test_a_counter_that_names_no_run_is_one_of_an_earlier_run(counter):
+    """A hash written by a build that did not name the run."""
+    store, org_id = counter
+    await store.allowance_add(org_id, 7, 900, until_ms=_soon(), ttl_ms=60_000, seen_frozen=0)
+    await store._client.hdel(kv._allowance_key(org_id), 'run')
+    assert await store.allowance_take(org_id, 100) == 0
+
+
+async def _counts(store, org_id):
+    frozen, thawed = await store._client.hmget(kv._allowance_key(org_id), 'frozen', 'thawed')
+    assert int(frozen) == int(thawed) + 1
+    return int(frozen), int(thawed)
+
+
 async def test_a_store_fault_reads_as_unavailable_and_takes_nothing(monkeypatch):
     faults = []
     monkeypatch.setattr(kv, '_note_fault', faults.append)
