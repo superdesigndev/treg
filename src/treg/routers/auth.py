@@ -1052,6 +1052,37 @@ def _sheets_consent_page(*, user_email: str, teams: list, hidden: dict) -> HTMLR
         f"</div></div></body></html>")
 
 
+def _vendor_console_consent_page(*, user_email: str, teams: list, new_team: str,
+                                 hidden: dict) -> HTMLResponse:
+    """The consent page of the vendor console. No team picker: it reads who signed in and which
+    teams they belong to, and the vendor picks the team inside the console."""
+    import html as _h
+    fields = "".join(
+        f'<input type="hidden" name="{_h.escape(k)}" value="{_h.escape(str(v))}"/>'
+        for k, v in hidden.items())
+    teams_line = (f"Your teams: {', '.join(_h.escape(t['slug']) for t in teams)}." if teams else
+                  f"Continuing creates your team, <b>{_h.escape(new_team)}</b>. "
+                  "You can rename it in the dashboard.")
+    return HTMLResponse(
+        f"{_AUTH_HEAD.replace('</style>', _CONSENT_CSS + '</style>')}"
+        f'<body><div class="wrap"><div class="card consent">'
+        f'{_BRAND}'
+        f"<h1>Sign in to the treg vendor console</h1>"
+        f'<p class="who">Signed in as {_h.escape(user_email)}</p>'
+        f'<ul class="grants">'
+        f"<li>See your email address</li>"
+        f"<li>See your teams and your role in each (so you can apply for one of them)</li>"
+        f"</ul>"
+        f'<form method="post" action="/oauth/authorize">{fields}'
+        f'<input type="hidden" name="org_id" value="0"/>'
+        f'<div class="row">'
+        f'<button type="submit" name="decision" value="deny">Cancel</button>'
+        f'<button type="submit" name="decision" value="allow" class="primary">Continue</button>'
+        f"</div></form>"
+        f'<p class="fine">It cannot call tools, spend a balance or see your keys. {teams_line}</p>'
+        f"</div></div></body></html>")
+
+
 _wrong_resource = auth_use_cases._wrong_resource
 _effective_mcp_resource = auth_use_cases._effective_mcp_resource
 _same_mcp_resource = auth_use_cases._same_mcp_resource
@@ -1139,6 +1170,9 @@ async def oauth_authorize(
         }
     if view.client_id == mcp_oauth.SHEETS_CLIENT_ID:
         return _sheets_consent_page(user_email=view.user_email, teams=view.teams, hidden=hidden)
+    if view.client_id == mcp_oauth.VENDOR_CONSOLE_CLIENT_ID:
+        return _vendor_console_consent_page(user_email=view.user_email, teams=view.teams,
+                                            new_team=view.new_team, hidden=hidden)
     return _consent_page(client_name=view.client_name, client_uri=view.client_uri,
                          user_email=view.user_email, teams=view.teams, hidden=hidden,
                          unverified=(view.client_kind == "dcr"), scope=view.scope,
@@ -1352,6 +1386,18 @@ async def oauth_grant_set_team(family_id: str, body: GrantTeamIn,
         )
     except auth_use_cases.OAuthGrantError as exc:
         raise HTTPException(status_code=404, detail=exc.detail) from exc
+
+
+@app.get("/vendor-console/me", include_in_schema=False)
+async def vendor_console_me(authorization: str = Header(default="")) -> JSONResponse:
+    """Who signed in to the vendor console, and their teams. Only a vendor console token works
+    here, and it works nowhere else."""
+    bearer = authorization[7:].strip() if authorization[:7].lower() == "bearer " else ""
+    identity = await auth_use_cases.vendor_console_identity(bearer)
+    if identity is None:
+        raise HTTPException(status_code=401, detail="invalid or expired access token",
+                            headers={"WWW-Authenticate": 'Bearer error="invalid_token"'})
+    return JSONResponse(identity, headers={"Cache-Control": "no-store"})
 
 
 app = APIRouter()

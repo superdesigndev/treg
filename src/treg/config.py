@@ -962,6 +962,11 @@ class Settings(BaseSettings):
     # same value entered in that agent's Microsoft OAuth registration. Empty = the client does not
     # exist.
     m365_client_secret: str = ""
+    # The vendor console's OAuth client (`treg-vendor-console`): a separate service where API vendors
+    # sign in with their treg account to apply for a listing. Its secret, and its one redirect URI
+    # (matched exactly). Either empty = the client does not exist.
+    vendor_console_client_secret: str = ""
+    vendor_console_redirect_uri: str = ""
 
     # Agent payments (docs/context/architecture/agent-payments.md): a caller with no treg
     # credential pays a catalog call with MPP (Tempo charge) or x402 (`exact`). Off by default.
