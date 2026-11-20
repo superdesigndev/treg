@@ -442,7 +442,8 @@ async def collect(*, max_seconds: float = 110.0, session_factory=session_maker,
     from .arena_insights import _evidence
 
     totals = {"read": 0, "eligible": 0, "called": 0, "ready": 0, "failed": 0, "skipped": 0,
-              "removed": await _remove_orphans(session_factory), "estimate_micro": 0}
+              "removed": await _remove_orphans(session_factory), "estimate_micro": 0,
+              "skip_reasons": {}}
     settings = get_settings()
     if not configured() or settings.compare_rate <= 0:
         return {"status": "off", **totals}
@@ -474,10 +475,14 @@ async def collect(*, max_seconds: float = 110.0, session_factory=session_maker,
                                      canonical_identity, request_identity, _evidence)
             except Exception:
                 log.warning("comparison for %s failed", cand.record.call_ref, exc_info=True)
-                outcome = "skipped"
+                outcome = "skipped:error"
             if outcome == "at_limit":
                 break
+            outcome, _, reason = outcome.partition(":")
             totals[outcome] += 1
+            if reason:
+                reasons = totals["skip_reasons"]
+                reasons[reason] = reasons.get(reason, 0) + 1
     finally:
         if own_client:
             await client.aclose()
@@ -486,13 +491,14 @@ async def collect(*, max_seconds: float = 110.0, session_factory=session_maker,
 
 async def _one(cand, cat, now, session_factory, client, store, totals,
                canonical_identity, request_identity, _evidence) -> str:
-    """One candidate, to `ready`, `failed`, `skipped` or `at_limit`."""
+    """One candidate, to `ready`, `failed`, `skipped:<reason>` or `at_limit`. The reasons are
+    counted in the run's output (`skip_reasons`), so an empty run says where candidates stopped."""
     settings = get_settings()
     parent = cand.record
     # The call path wrote this marker: the call sampled in, on a paired capability, with no
     # `X-Treg-Route-*` header. No marker, or a store that cannot say, is no comparison.
     if not await store.has_flag(marker_key(parent.call_ref)):
-        return "skipped"
+        return "skipped:no_marker"
     async with session_factory() as db:
         child = await _served_child(db, parent)
         a_ep = cat.by_id.get(child.endpoint_id or "") if child is not None else None
@@ -501,22 +507,40 @@ async def _one(cand, cat, now, session_factory, client, store, totals,
             db, parent.org_id, cand.capability, (a_ep["provider"], b_provider),
             since=now - timedelta(days=settings.compare_window_days),
             ready_since=now - timedelta(days=READY_DAYS)) if b_provider else 0
-    if (child is None or b_provider is None or child.credential_tier != "platform"
-            or not child.archive_key_hash or _retention_forbidden(child.endpoint_id)
-            or counted >= settings.compare_team_cap):
-        return "skipped"
+    if child is None:
+        return "skipped:no_served_child"
+    if b_provider is None:
+        return "skipped:a_not_on_a_pair"
+    if child.credential_tier != "platform":
+        return "skipped:a_not_on_treg_key"
+    if not child.archive_key_hash:
+        return "skipped:a_not_archived"
+    if _retention_forbidden(child.endpoint_id):
+        return "skipped:a_retention_forbidden"
+    if counted >= settings.compare_team_cap:
+        return "skipped:team_pair_cap"
     got = (await _evidence([child], session_factory)).get(child.id)
     contract, a_adapter = cat.contracts.get(cand.capability), cat.adapters.get(child.endpoint_id)
-    if got is None or got[2] is None or contract is None or a_adapter is None:
-        return "skipped"
+    if got is None:
+        return "skipped:a_archive_unreadable"
+    if got[2] is None:
+        return "skipped:a_answer_missing"
+    if contract is None or a_adapter is None:
+        return "skipped:no_contract_or_adapter"
     query, body, answer = got
     identity, variant = canonical_identity(contract, request_identity(a_adapter, query, body))
-    if variant is None or not _same_request(a_adapter, identity, query, body):
-        return "skipped"
+    if variant is None:
+        return "skipped:input_not_recovered"
+    if not _same_request(a_adapter, identity, query, body):
+        return "skipped:input_not_whole"
     a_output = _output(a_ep, contract, a_adapter, 200, json.dumps(answer).encode(), identity)
     target = _b_target(contract, identity, b_provider)
-    if a_output is None or target is None or not await _still_eligible(session_factory, parent.org_id):
-        return "skipped"
+    if a_output is None:
+        return "skipped:a_output_unreadable"
+    if target is None:
+        return "skipped:b_unavailable"
+    if not await _still_eligible(session_factory, parent.org_id):
+        return "skipped:team_no_longer_eligible"
     claimed = await _claim(session_factory, dict(
         org_id=parent.org_id, user_email=parent.user_email, call_ref=parent.call_ref,
         capability=cand.capability, a_endpoint=child.endpoint_id, a_provider=a_ep["provider"],
@@ -527,7 +551,7 @@ async def _one(cand, cat, now, session_factory, client, store, totals,
     if claimed == "at_limit":
         return "at_limit"
     if claimed != "claimed":
-        return "skipped"
+        return f"skipped:claim_{claimed}"
     if totals["called"]:
         await asyncio.sleep(CALL_GAP_S)
     totals["called"] += 1
@@ -555,7 +579,7 @@ async def _one(cand, cat, now, session_factory, client, store, totals,
                       truncated=",".join(p for p, cut in (("input", input_cut), ("a", a_cut),
                                                           ("b", b_cut)) if cut))
     if not await _finish(session_factory, parent.org_id, parent.call_ref, values):
-        return "skipped"
+        return "skipped:team_deleted"
     if b_output is None:
         return "failed"
     await store.set_flag(ready_key(parent.org_id), READY_TTL_S)

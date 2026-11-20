@@ -277,6 +277,17 @@ async def test_calls_that_are_never_compared(clients, search_on, monkeypatch, ca
                        given={"q": "never expression", "limit": 5} if case == "expression_field" else None)
     result = await _collect()
     assert sent == [] and await _rows() == [], result
+    # A candidate that reached `_one` is counted under the reason it stopped at.
+    expected = {"not_in_pair": "b_unavailable", "own_key": "a_not_on_treg_key",
+                "not_archived": "a_not_archived", "no_marker": "no_marker",
+                "store_down": "no_marker", "suspended": "team_no_longer_eligible",
+                "paused": "team_no_longer_eligible", "flow_unavailable": "team_no_longer_eligible",
+                "flow_raises": "team_no_longer_eligible", "flow_invalid": "team_no_longer_eligible",
+                "expression_field": "input_not_whole"}.get(case)
+    if expected:
+        assert result["skip_reasons"] == {expected: 1}, result
+    else:
+        assert result["skip_reasons"] == {}, result
     if case in late:
         assert nonlocal_state, "the call got as far as the last check"
 
