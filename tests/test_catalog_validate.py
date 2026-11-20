@@ -323,6 +323,14 @@ def test_async_descriptor_rejects_unknown_keys_and_invalid_json_paths():
     assert any("value_from must be a dotted" in error for error in errors)
 
 
+def test_async_descriptor_validates_pending_response_shape():
+    descriptor = _valid_async()
+    descriptor["pending_response"] = {"status": 404, "path": "error_code", "equals": "result_pending"}
+    assert _async_errors(descriptor) == []
+    descriptor["pending_response"] = {"status": 200, "path": "error_code", "equals": "result_pending"}
+    assert any("pending_response needs" in error for error in _async_errors(descriptor))
+
+
 def test_resource_ownership_contract_validates_ids_and_declared_parameters():
     errors: list[str] = []
     validator.check_resource_ownership(
@@ -933,7 +941,9 @@ def test_price_table_may_disclose_its_validated_maximum_only():
 
 
 @pytest.mark.parametrize('patch,valid', [
-    ({}, True), ({'strict_query': 'yes'}, False), ({'method': 'POST'}, False),
+    ({}, True), ({'strict_query': 'yes'}, False), ({'method': 'POST'}, True),
+    ({'method': 'POST', 'input': {'queryParams': {'mode': {'type': 'string'}},
+                                 'body': {'extra': {'type': 'string'}}}}, False),
     ({'path': '/{id}'}, False),
     ({'input': {'queryParams': {'mode': 'string'}}}, False),
 ])

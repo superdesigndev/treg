@@ -2554,6 +2554,7 @@ from .domain.asynctasks import classify_terminal as _classify_terminal  # noqa: 
 from .domain.asynctasks import finished_on_submission as _finished_on_submission  # noqa: E402
 from .domain.asynctasks import max_age as _async_max_age  # noqa: E402
 from .domain.asynctasks import json_path as _json_path  # noqa: E402
+from .domain.asynctasks import is_pending_response as _is_pending_response  # noqa: E402
 
 
 def _async_param(rule: dict) -> tuple[str, str]:
@@ -2629,6 +2630,17 @@ def await_async_task(descriptor: dict, submission: httpx.Response, call_fn, cloc
                     return {"code": 3, "task_id": str(task_id), "recovery": recovery,
                             "error": f"polling failed five consecutive times: {exc}"}
                 continue
+            if response.status_code >= 400:
+                try:
+                    pending_document = response.json()
+                except ValueError:
+                    pending_document = None
+                if _is_pending_response(descriptor, response.status_code, pending_document):
+                    failures = 0
+                    _clock_report(clock, f"async task {_shown(task_id)}: "
+                                         f"{_shown(descriptor['pending_response']['equals'])} "
+                                         f"({int(clock.monotonic() - start)}s elapsed)")
+                    continue
             if response.status_code >= 500:
                 failures += 1
                 _clock_report(clock, f"async poll retry {failures}/5 after HTTP {response.status_code}")

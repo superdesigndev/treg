@@ -748,6 +748,11 @@ stay in catalog YAML. `table_amount_micro` bounds a `times` multiplier by the fi
   The validator warns on a usage row with no worst case. The unit's
   micro-USD worth is frozen as `amount.unit_micro` at reserve, so a later rate edit never re-prices a
   task in flight; a non-USD basis without a frozen rate settles at the reserve.
+  A row may declare `cost.non_deferred_charge: {path, value}` for data present in a 2xx
+  submission. A truthy response path settles that frozen charge immediately when no task starts;
+  for a deferred usage task it is frozen in `submission_charge_micro` and added to an observed
+  terminal meter. An unobserved terminal meter still settles at the reserve, which already
+  includes the submission estimate.
 
 For a tier-4 endpoint carrying `async`, a successful submission keeps its hold and writes an
 `AsyncTaskRecord` whose `settlement_basis` freezes the price rule with its request, so settlement
@@ -771,7 +776,8 @@ The worker selects due rows, takes provider/global concurrency slots, then claim
 `POLL_TIMEOUT_S` total deadline including body consumption, use the normal credential injector (a
 static poll's parameter rides as `query_items` or a declared, percent-encoded path substitution; the
 relay forwards no URL-embedded query), cap the body at `MAX_POLL_BODY_BYTES`, and take terminal
-evidence only from a 2xx. HTTP errors, invalid JSON and timeouts back off
+evidence only from a 2xx. A non-2xx matching the descriptor's `pending_response` stays in progress;
+other HTTP errors, invalid JSON and timeouts back off
 (`next_failure_check`: 2, 4, 8, then 15 minutes); there is no provider-wide circuit breaker. The
 worker never lets one row abort a tick, and loads the catalog once in a thread before polling so the
 poll timeout measures the provider alone. **At the deadline (`MAX_AGE`, or the descriptor's shorter

@@ -88,6 +88,7 @@ from .settle import (
     _note_capacity_recovery,
     _note_capacity_signal,
     _observed_cost_micro,
+    rejected_submission_charge_micro,
     _peek_stream_head,
     _platform_settle,
     _read_whole_if_small,
@@ -2028,9 +2029,11 @@ async def _execute_call(request: _ApplicationRequest, upstream_client: httpx.Asy
             elif rejected:
                 # An async endpoint answered 2xx with no accepted task to track (an error
                 # envelope, a WAF page, a changed schema): nothing to poll. Closed now, not parked
-                # for 24 hours, at what the provider reported charging, else zero. A batch whose
-                # first task was refused can still carry accepted, billed tasks the caller owns.
-                reported = _observed_cost_micro(mk, body, httpx.Headers(response.raw_headers))
+                # for 24 hours, at what the provider reported charging or the row declares for
+                # a useful non-deferred answer, else zero. A batch whose first task was refused
+                # can still carry accepted, billed tasks the caller owns.
+                reported = rejected_submission_charge_micro(
+                    mk, body, httpx.Headers(response.raw_headers))
                 logging.getLogger("treg.asynctasks").warning(
                     "call %s on %s: 2xx but not an accepted submission (%s); settled at %s",
                     call_ref, mk.endpoint_id, rejected, reported or 0)

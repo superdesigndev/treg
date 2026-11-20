@@ -2960,14 +2960,31 @@ def test_oceanio_platform_person_enrich_refuses_separately_billed_reveals(field)
       for v in ('true', '1', 'False', '')],
     ('webhook_url', 'https://hooks.example/apollo'), ('webhook_url', 'false'),
 ])
-def test_apollo_platform_person_enrich_refuses_webhook_channels(name, value):
-    ep = catalog_store.load().by_id['apollo.people.enrich']
+@pytest.mark.parametrize('endpoint', ['apollo.people.enrich', 'apollo.people.bulk_enrich'])
+def test_apollo_platform_person_enrich_refuses_webhook_channels(endpoint, name, value):
+    ep = catalog_store.load().by_id[endpoint]
     call_resolution._enforce_platform_request(
         ep, b'', query=call_resolution.QueryValues((('email', 'a@stripe.com'), ('reveal_personal_emails', 'true'))))
     with pytest.raises(ResolutionFailed) as exc:
         call_resolution._enforce_platform_request(
             ep, b'', query=call_resolution.QueryValues((('email', 'a@stripe.com'), (name, value))))
     assert exc.value.detail['parameter'] == f'queryParams.{name}'
+
+
+def test_apollo_phone_tool_accepts_only_the_priced_poll_only_request():
+    ep = catalog_store.load().by_id['apollo.people.phone.find']
+    assert catalog_store.load().platform_eligible(ep)
+    valid = (('name', 'Example Person'), ('domain', 'example.com'),
+             ('reveal_phone_number', 'true'), ('poll_only', 'true'))
+    call_resolution._enforce_catalog_query(ep, call_resolution.QueryValues(valid), False)
+    for additions in ((('run_waterfall_phone', 'true'),), (('webhook_url', 'https://example.com'),),
+                      (('poll_only', 'false'),), (('reveal_phone_number', 'false'),)):
+        pairs = valid + additions if additions[0][0] not in {'poll_only', 'reveal_phone_number'} else (
+            tuple((k, v) for k, v in valid if k != additions[0][0]) + additions)
+        with pytest.raises(ResolutionFailed):
+            call_resolution._enforce_catalog_query(ep, call_resolution.QueryValues(pairs), False)
+    with pytest.raises(ResolutionFailed):
+        call_resolution._enforce_catalog_query(ep, call_resolution.QueryValues(valid), True)
 
 
 @pytest.mark.parametrize('name', ['reveal_phone_number', 'poll_only',
