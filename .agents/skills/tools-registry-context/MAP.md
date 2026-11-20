@@ -57,6 +57,7 @@ Regenerate via `scripts/build-map.py`.
 | `cli/internal/commands/mcp.go` | interface/cli-binary.md |
 | `cli/internal/commands/mediatype.go` | interface/cli-binary.md |
 | `cli/internal/commands/org.go` | interface/cli-binary.md |
+| `cli/internal/commands/ref.go` | interface/cli-binary.md |
 | `cli/internal/commands/resources.go` | interface/cli-binary.md |
 | `cli/internal/commands/review.go` | interface/cli-binary.md |
 | `cli/internal/commands/root.go` | interface/cli-binary.md |
@@ -305,9 +306,11 @@ Regenerate via `scripts/build-map.py`.
 | `src/treg/alembic/versions/0115_callcomparison.py` | architecture/feedback.md |
 | `src/treg/alembic/versions/0116_stamped_baseline_indexes.py` | architecture/data-model.md |
 | `src/treg/alembic/versions/0117_callrecord_drop_unused_indexes.py` | architecture/data-model.md |
+| `src/treg/alembic/versions/0118_affiliate_lead.py` | architecture/affiliates.md |
 | `src/treg/analytics.py` | architecture/data-model.md, architecture/org-endpoint-quota.md |
 | `src/treg/api.py` | architecture/archive.md, architecture/money.md, architecture/multi-tenancy.md, architecture/proxy-model.md, architecture/super-admin.md, interface/api.md, interface/seo.md |
 | `src/treg/application/__init__.py` | architecture/import-boundaries.md |
+| `src/treg/application/affiliates.py` | architecture/affiliates.md |
 | `src/treg/application/agent_payments.py` | architecture/agent-payments.md |
 | `src/treg/application/allowance_sweep.py` | architecture/money.md |
 | `src/treg/application/archive_erasure.py` | architecture/archive.md |
@@ -533,6 +536,7 @@ Regenerate via `scripts/build-map.py`.
 | `src/treg/infra/catalog_stat_dirty.py` | architecture/catalog.md, architecture/data-model.md |
 | `src/treg/infra/credential_cipher.py` | architecture/auth-secrets.md |
 | `src/treg/infra/db.py` | architecture/data-model.md, architecture/multi-tenancy.md, ops/deploy.md |
+| `src/treg/infra/dub.py` | architecture/affiliates.md |
 | `src/treg/infra/embed.py` | architecture/find.md |
 | `src/treg/infra/github_releases.py` | interface/cli-binary.md |
 | `src/treg/infra/imaging.py` | architecture/showcase.md |
@@ -614,7 +618,7 @@ Regenerate via `scripts/build-map.py`.
 | `src/treg/routers/referrals.py` | architecture/composition.md, architecture/money.md, interface/api.md |
 | `src/treg/routers/resources.py` | architecture/auth-secrets.md, architecture/composition.md, architecture/multi-tenancy.md, interface/api.md |
 | `src/treg/routers/showcase.py` | architecture/showcase.md |
-| `src/treg/routers/signup_cookies.py` | interface/api.md |
+| `src/treg/routers/signup_cookies.py` | architecture/affiliates.md, interface/api.md |
 | `src/treg/routers/table.py` | architecture/org-traffic.md, architecture/table.md |
 | `src/treg/routers/tasks.py` | architecture/tasks.md |
 | `src/treg/routers/view.py` | interface/api.md |
@@ -902,6 +906,7 @@ Regenerate via `scripts/build-map.py`.
 | Fragment | Sources |
 |---|---|
 | `architecture/ads-conversions.md` | `adsconv.py`, `signup.py`, `settle.py`, `adtrack.js`, `gtag.js`, `auth.py`, `0075_ad_click_stash.py` |
+| `architecture/affiliates.md` | `affiliates.py`, `dub.py`, `signup_cookies.py`, `0118_affiliate_lead.py` |
 | `architecture/agent-payments.md` | `agent_payments.py`, `__init__.py`, `tempo.py`, `x402.py`, `evm.py`, `stripe.py`, `worker.py`, `call.py`, `catalog.py`, `bootstrap.py`, `config.py`, `models.py`, `teams.py`, `access.py`, `api_keys.py`, `resolve.py`, `0104_agent_payments.py`, `0106_agentpayer_per_network.py`, `ratestore.py`, `test_agent_payments.py`, `test_agentpayer_network_migration.py` |
 | `architecture/archive.md` | `archive.py`, `hunter.yaml`, `results.py`, `0031_archive_result_admission.py`, `test_cache_result_admission.py`, `test_archive_batch.py`, `test_archive_batch_postgres.py`, `archive_bodies.py`, `config.py`, `object_store.py`, `0032_archive_body_storage.py`, `test_archive_r2.py`, `fake_object_store.py`, `smoke_archive_r2.py`, `0002_archive_tables.py`, `0003_callrecord_cached.py`, `0004_archivekey_request_shape.py`, `0011_callrecord_archive_link.py`, `service.py`, `settle.py`, `0039_archive_own_key_and_repeat_pricing.py`, `backfill_call_archive_links.py`, `api.py`, `bootstrap.py`, `admin.py`, `asynctasks.py`, `archive_erasure.py`, `0067_org_archive_opt_out.py`, `test_archive_opt_out.py` |
 | `architecture/auth-secrets.md` | `injectors.py`, `ssrf.py`, `crypto.py`, `credential_cipher.py`, `credential_reencrypt.py`, `fernet_rotation.py`, `0108_secret_refreshable.py`, `oauth.py`, `__init__.py`, `authorization.py`, `oauth_flow.py`, `refresh.py`, `oauth_exchange.py`, `oauth_refresh.py`, `oauth_providers.py`, `session.js`, `keys.js`, `TeamPage.vue`, `health.py`, `connect.py`, `0051_context_dev_tool_host.py`, `connections.py`, `resources.py`, `__init__.py`, `bindings.py`, `bundles.py`, `api_keys.py`, `access.py`, `api_keys.py`, `test_api_keys.py`, `test_oauth_refresh.py`, `test_key_providers.py`, `config.py` |
@@ -935,7 +940,7 @@ Regenerate via `scripts/build-map.py`.
 | `architecture/tasks.md` | `tasks.py`, `tasks.py`, `asynctasks.py`, `0098_call_task.py`, `await.go`, `test_tasks.py`, `test_await_parity.py` |
 | `architecture/workbench-storage.md` | `models.py`, `0077_workbench_table_metadata.py`, `teams.py`, `test_workbench_table_schema.py`, `workbench_store.py`, `test_workbench_store.py`, `test_workbench_store_lifecycle.py` |
 | `interface/api.md` | `key_spend.py`, `media.py`, `page_media.py`, `media-videos.json`, `sitetrack.js`, `api.py`, `bootstrap_handlers.py`, `bootstrap_http.py`, `call_surface.py`, `caller_metadata.py`, `client_identity.py`, `auth.py`, `provider_resources.py`, `access.py`, `authorize.py`, `idempotency.py`, `intake.py`, `resolve.py`, `reserve.py`, `settle.py`, `evidence.py`, `service.py`, `types.py`, `relay.py`, `connect.py`, `__init__.py`, `sandbox.py`, `referrals.py`, `signup.py`, `__init__.py`, `activity.py`, `admin.py`, `auth.py`, `auth_helpers.py`, `billing.py`, `call.py`, `catalog.py`, `connections.py`, `onboard.py`, `orgs.py`, `provider_resources.py`, `api_keys.py`, `resources.py`, `referrals.py`, `signup_cookies.py`, `view.py`, `view_context.py`, `web.py`, `access.py`, `api_keys.py`, `teams.py`, `access.py`, `budgets.py`, `publicdemo.py`, `sandbox.py`, `usage.py`, `mcp_oauth.py`, `session.py`, `sandbox.py`, `sandbox_identity.py`, `timeutil.py`, `store.py`, `email.py`, `ratestore.py`, `test_cli_pairing.py` |
-| `interface/cli-binary.md` | `.goreleaser.yaml`, `main.go`, `agents.go`, `mcp.go`, `client.go`, `failure.go`, `failure_unix.go`, `failure_windows.go`, `proxy.go`, `proxy_darwin.go`, `proxy_other.go`, `proxy_parse.go`, `proxy_windows.go`, `url.go`, `view.go`, `app.go`, `buildinfo.go`, `account.go`, `args.go`, `audit.go`, `await.go`, `balance.go`, `call.go`, `catalog.go`, `connections.go`, `env.go`, `feedback.go`, `feedback_get.go`, `health.go`, `help.go`, `helpers.go`, `home.go`, `host.go`, `invites.go`, `mcp.go`, `mediatype.go`, `org.go`, `resources.go`, `review.go`, `root.go`, `secret.go`, `skills.go`, `tool.go`, `topup.go`, `update.go`, `upload.go`, `mark.go`, `upload_clis.go`, `upload_env.go`, `upload_llm.go`, `upload_skills.go`, `usage.go`, `config.go`, `minisign.go`, `call.go`, `output.go`, `view.go`, `hidden_other.go`, `hidden_unix.go`, `prompt.go`, `termios_darwin.go`, `termios_linux.go`, `catalog.json`, `providers.go`, `ojson.go`, `proc_darwin.go`, `proc_linux.go`, `proc_other.go`, `session.go`, `cliprofile.go`, `skillscan.go`, `telemetry.go`, `term.go`, `detach_unix.go`, `detach_windows.go`, `legacy.go`, `method.go`, `update.go`, `check-beta.sh`, `sign-release.sh`, `cli_releases.py`, `github_releases.py`, `release_checksums.py`, `cli_client.py`, `install-bin.sh`, `install.ps1`, `cli_go_harness.py`, `cli_go_live.py`, `agent_sandbox.py` |
+| `interface/cli-binary.md` | `.goreleaser.yaml`, `main.go`, `agents.go`, `mcp.go`, `client.go`, `failure.go`, `failure_unix.go`, `failure_windows.go`, `proxy.go`, `proxy_darwin.go`, `proxy_other.go`, `proxy_parse.go`, `proxy_windows.go`, `url.go`, `view.go`, `app.go`, `buildinfo.go`, `account.go`, `args.go`, `audit.go`, `await.go`, `balance.go`, `call.go`, `catalog.go`, `connections.go`, `env.go`, `feedback.go`, `ref.go`, `feedback_get.go`, `health.go`, `help.go`, `helpers.go`, `home.go`, `host.go`, `invites.go`, `mcp.go`, `mediatype.go`, `org.go`, `resources.go`, `review.go`, `root.go`, `secret.go`, `skills.go`, `tool.go`, `topup.go`, `update.go`, `upload.go`, `mark.go`, `upload_clis.go`, `upload_env.go`, `upload_llm.go`, `upload_skills.go`, `usage.go`, `config.go`, `minisign.go`, `call.go`, `output.go`, `view.go`, `hidden_other.go`, `hidden_unix.go`, `prompt.go`, `termios_darwin.go`, `termios_linux.go`, `catalog.json`, `providers.go`, `ojson.go`, `proc_darwin.go`, `proc_linux.go`, `proc_other.go`, `session.go`, `cliprofile.go`, `skillscan.go`, `telemetry.go`, `term.go`, `detach_unix.go`, `detach_windows.go`, `legacy.go`, `method.go`, `update.go`, `check-beta.sh`, `sign-release.sh`, `cli_releases.py`, `github_releases.py`, `release_checksums.py`, `cli_client.py`, `install-bin.sh`, `install.ps1`, `cli_go_harness.py`, `cli_go_live.py`, `agent_sandbox.py` |
 | `interface/cli.md` | `cli.py`, `__init__.py`, `toon.py`, `catalog.py`, `account.py`, `home.py`, `test_cli_account_flows.py`, `test_cli_key_compatibility.py`, `auth_helpers.py`, `cli_analytics.py`, `install.sh`, `client_notice.py`, `cli_session.py`, `convert.py`, `agents.py`, `api_keys.py`, `test_api_keys.py` |
 | `interface/dashboard.md` | `App.vue`, `TeamShowcase.vue`, `TeamAvatar.vue`, `UserAvatarDialog.vue`, `Avatar.vue`, `images.ts`, `views.ts`, `controller.js`, `agents.js`, `agentsComputed.js`, `credentialIssues.js`, `data.js`, `keys.js`, `session.js`, `team.js`, `TeamPage.vue`, `agents.test.ts`, `agents.spec.ts`, `catalog.js`, `boot.js`, `SignedOutPage.vue`, `base.css`, `layout.spec.ts`, `dashboard.css`, `web.py`, `tutorial.js`, `tour.js`, `TryEndpointDialog.vue`, `tryTool.js`, `TikTokPostForm.vue`, `tiktokPost.ts` |
 | `interface/enrich-arena.md` | `arena.py`, `arena.py`, `arena.py`, `models.py`, `0027_enrich_arena.py`, `teams.py`, `auth.py`, `bootstrap.py`, `enrich-arena.html`, `arena.js`, `bench.js`, `arena.css`, `index.ts`, `arena_verification_insights.py`, `0029_arena_verification_snapshot.py`, `import_arena_verification.py`, `test_arena_verification_insights.py`, `arena_insights.py`, `arena_insights.py`, `0028_arena_insights.py`, `test_arena_insights.py`, `apollo.svg`, `branddev.svg`, `companyenrich.svg`, `findymail.svg`, `hunter.svg`, `icypeas.svg`, `leadmagic.svg`, `leadsforge.svg`, `lusha.svg`, `pdl.svg`, `predictleads.svg`, `thecompaniesapi.svg`, `tomba.svg`, `sitetrack.js`, `test_enrich_arena.py` |

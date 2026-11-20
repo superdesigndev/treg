@@ -184,6 +184,16 @@ Rollups and analytics tables are optional read models: they never determine a mo
   can lag while reads still enforce expiry.
 - **`AdConversion`**: unique `(org_id, action)` is the sole idempotency mechanism, not a
   check-then-insert; rows are written synchronously in the firing transaction, unlike audit.
+- **`AffiliateLead`**: one per team (unique `org_id`), staged in the team-creation transaction; it is
+  both the Dub lead outbox and the record that the team is affiliate-attributed
+  ([affiliates](affiliates.md)). A check constraint keeps exactly one source: `click_id` (a link
+  click) or `partner_code` (a typed code, with the `country` Dub requires for it). Only a
+  `verified_at` row attributes; `stripe_synced_at` records that an existing Stripe customer was
+  brought in line. No foreign key to `org`: team deletion removes it in code.
+- **`AffiliateClaim`**: the person a partner brought, by `promo_inbox`, staged with the lead. No
+  `org_id` and no foreign key: like `SignupPromoClaim` it outlives the team and the user, so a deleted
+  team never makes its creator attributable again. Not unique, so a racing second team leaves a second
+  row rather than failing the signup.
 - **`DenyRule`**: an empty field means any, so a rule with only `method="DELETE"` blocks every
   delete. `delete_project` sweeps rules naming the project.
 - **`Tool.bindings`** is a list and a request applies all of them (google-ads is an OAuth bearer

@@ -36,7 +36,7 @@ from .catalog import (_endpoint_observation_reader, _observed_or_empty, _platfor
                       _platforms_payload)
 from ..domain.identity.access import _user_from_session
 from .auth_helpers import OAUTH_RETURN_COOKIE, _is_https, _same_origin, _take_oauth_return
-from .signup_cookies import _remember_referral
+from .signup_cookies import _remember_affiliate_click, _remember_referral
 
 
 def _dashboard_index() -> Path:
@@ -3342,6 +3342,9 @@ def _resume_parked_authorization(request: Request) -> RedirectResponse | None:
     return resume
 
 
+_SHARE_LINK_PARAMS = frozenset({"ref", "via", "dub_id", "gclid", "gbraid", "wbraid", "fbclid", "msclkid"})
+
+
 @app.get("/", include_in_schema=False)
 async def landing(request: Request, treg_session: str = Cookie(default=""),
                   db: AsyncSession = Depends(get_session)):
@@ -3352,13 +3355,15 @@ async def landing(request: Request, treg_session: str = Cookie(default=""),
     """
     page = _WEB_DIR / "landing.html"
     ref = referrals.normalize_code(request.query_params.get("ref", ""))
-    # An influencer's short link appends utm_* to the ref; those must not push it to the SPA, which
-    # never parks the code.
-    ref_only = all(k == "ref" or k.startswith("utm_") for k in request.query_params.keys())
+    dub_click = bool(request.query_params.get("dub_id"))
+    # Share links carry tracking-only parameters the SPA never reads: an influencer's short link
+    # appends utm_* to the ref, and Dub's partner redirect appends `via` (the partner's link key)
+    # and `dub_id` (the click), plus any ad-click ids the original link carried.
+    ref_only = all(k in _SHARE_LINK_PARAMS or k.startswith("utm_") for k in request.query_params.keys())
     sso_error = request.query_params.get("sso_error", "")
     sso_result = (sso_error in {"domain", "failed", "expired", "link"} and
                   set(request.query_params.keys()) <= {"sso_error", "team"})
-    if page.exists() and (not request.query_params or (ref and ref_only) or sso_result):
+    if page.exists() and (not request.query_params or ((ref or dub_click) and ref_only) or sso_result):
         signed_in = bool(treg_session and await _user_from_session(treg_session, db))
         # The email-code door signs in on the page that opened it and reloads there, and the
         # OAuth sign-in modal opens on `/`, so a parked authorization must resume here as well.
@@ -3377,6 +3382,7 @@ async def landing(request: Request, treg_session: str = Cookie(default=""),
         resp = HTMLResponse(html, headers={"Cache-Control": "private, no-store", "Vary": "Cookie"})
         if ref:
             _remember_referral(resp, request, ref)
+        _remember_affiliate_click(resp, request)
         return resp
     return await dashboard(request, treg_session, db)
 
@@ -3424,6 +3430,7 @@ async def dashboard(
     if not index.exists():
         raise HTTPException(503, "Dashboard not bundled")
     resp = HTMLResponse(_dashboard_document(index), headers={"Cache-Control": "private, no-store", "Vary": "Cookie"})
+    _remember_affiliate_click(resp, request)
     if owner is not None:
         resp.set_cookie(sess.COOKIE, sess.make_session(owner.id, token_version=owner.token_version),
                         httponly=True, samesite="lax",

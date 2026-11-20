@@ -9,6 +9,7 @@
 #   --token <t>    sign in non-interactively (also TREG_TOKEN) and register the MCP server
 #   --skills <s>   passed to `treg skill bootstrap`
 #   --channel <c>  stable or beta (default {CHANNEL})
+#   --ref <code>   an affiliate partner's code for the team created next (also TREG_REF)
 set -eu
 
 BASE="{BASE}"
@@ -16,6 +17,7 @@ AD_LINK="{AD_LINK}"
 CHANNEL="${TREG_CHANNEL:-{CHANNEL}}"
 TOKEN="${TREG_TOKEN:-}"
 SKILLS=""
+REF="${TREG_REF:-}"
 while [ $# -gt 0 ]; do
   case "$1" in
     --token) TOKEN="${2:-}"; shift 2 ;;
@@ -24,6 +26,8 @@ while [ $# -gt 0 ]; do
     --skills=*) SKILLS="${1#*=}"; shift ;;
     --channel) CHANNEL="${2:-}"; shift 2 ;;
     --channel=*) CHANNEL="${1#*=}"; shift ;;
+    --ref) REF="${2:-}"; [ $# -gt 1 ] && shift; shift ;;
+    --ref=*) REF="${1#*=}"; shift ;;
     *) printf 'treg install: unknown option %s\n' "$1" >&2; exit 2 ;;
   esac
 done
@@ -223,6 +227,11 @@ fi
 if [ -n "$AD_LINK" ]; then
   dir=$(config_dir)
   mkdir -p "$dir" && printf '%s' "$AD_LINK" > "$dir/ad-link" || true
+fi
+REF=$(printf '%s' "$REF" | tr '[:upper:]' '[:lower:]')
+if printf '%s' "$REF" | grep -qE '^[a-z0-9][a-z0-9-]{2,31}$'; then
+  dir=$(config_dir)
+  mkdir -p "$dir" && printf '%s\n' "$REF" > "$dir/ref" || true
 fi
 if [ -n "$SKILLS" ]; then
   "$BIN" skill bootstrap --skills "$SKILLS" || say "(skill bootstrap failed; run: treg skill bootstrap)"

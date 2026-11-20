@@ -53,9 +53,11 @@ _EXPECTED_ROUTES = {
     "control": [route for route in _ALL_ROUTES if route not in _DATAPLANE_ONLY],
 }
 _EXPECTED_BACKGROUND_TASKS = {
-    "all": ["treg.adsconv.worker", "treg.application.allowance_sweep.worker"],
+    "all": ["treg.adsconv.worker", "treg.application.affiliates.worker",
+                "treg.application.allowance_sweep.worker"],
     "dataplane": [],
-    "control": ["treg.adsconv.worker", "treg.application.allowance_sweep.worker"],
+    "control": ["treg.adsconv.worker", "treg.application.affiliates.worker",
+                "treg.application.allowance_sweep.worker"],
 }
 _READ_ONLY_STARTUP_CHECKS = {
     "all": (
