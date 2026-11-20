@@ -156,6 +156,7 @@ jobs:
           tests/test_money_bigint.py
           tests/test_topup_reconcile.py
           tests/test_kv.py
+          tests/test_kv_allowance.py
           tests/test_auth_email_postgres.py
           tests/test_kv_release_retry.py
           tests/test_kv_lease_diagnostics.py

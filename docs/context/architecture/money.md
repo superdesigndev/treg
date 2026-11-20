@@ -190,7 +190,8 @@ keeps it;
 
 The hold is the authority; the shared store (`infra/kv.py`) only mirrors what of it is still
 unspent, as one hash per team: `avail`, the hold's `epoch`, the instant `until` which takes are
-admitted, and two counts, `frozen` and `thawed`. The operations are atomic scripts:
+admitted, two counts, `frozen` and `thawed`, and `run`, the run of the store's server that
+built the hash. The operations are atomic scripts:
 
 - `allowance_take` subtracts an amount and returns the epoch, when the counter holds that much, is
   not frozen (`frozen == thawed`) and the store's clock is not past `until`.
@@ -211,7 +212,7 @@ admitted, and two counts, `frozen` and `thawed`. The operations are atomic scrip
   admitted until an add whose caller read the count after this. A freeze that finds no hash
   leaves one holding only the count: a refill may have committed and not yet published, and
   the counter its add builds then starts frozen.
-- `allowance_state` reads `avail` and the two counts, for a refill.
+- `allowance_state` reads `avail`, the two counts and the store's run, for a refill.
 - `allowance_drop` empties the counter of a given epoch, returns what it held and freezes it,
   keeping the epoch: that figure can be released from the hold of that epoch, which stays
   while calls already admitted keep theirs. The release names the epoch too
@@ -223,21 +224,47 @@ admitted, and two counts, `frozen` and `thawed`. The operations are atomic scrip
 
 The counter is only as good as the store's memory of it. A store that loses a hash is
 handled: the counts above, and a refill that rebuilds from the hold. A store that goes BACK to
-an earlier state of the same hash is not detected: one restored from an older snapshot, or a
-replica promoted before it received writes its primary had acknowledged. Takes and freezes
-from the lost interval are then undone, and that money can be admitted a second time.
+an earlier state of the same hash would undo the takes and freezes of the lost interval and
+offer that money a second time, and it does so by starting again: a restart can come back
+without the last writes it acknowledged, a restore from a snapshot starts a server on it, a
+promoted replica is another server. Each start is a new run (`run_id`), so a hash names the
+run that built it (`run`), and every operation first strips, in its own atomic step, a hash
+that names another run or none of what it offers (`avail`, `epoch`, `until`), leaving its
+two counts under the present run. A counter from before a restart is therefore a lost one:
+takes find nothing, a refill reads no counter, adds a whole chunk to the hold and builds the
+counter from that alone, and what the old counter had not spent stays in the hold until a
+close. The counts stay because a hash that names no run may be a freeze a process of an
+earlier build wrote a moment ago, in this run, after a refill had read the team's debts:
+an add that cleared it would publish over that debt. Keeping a freeze that is no longer
+needed costs one refill that folds the queue before it thaws.
+A refill that starts after the restart does not need the freezes it undid: its
+transaction reads what queued overruns owe (`_queued_unbacked`), and a freeze sent after it
+lands on the new hash. A refill that read the counter BEFORE the restart does need them: a
+freeze sent after its transaction read the debts may be among the writes the restart
+dropped, and its add would then build an unfrozen counter. So `allowance_state` reports the run with the counter, the add names
+it, and an add that arrives in another run is refused as `"stale"`: the money stays in the
+hold, and the next refill reads the debts again. A store that cannot report its run answers
+no operation, and calls take the hold path.
 
-Nothing in the design bounds that. What the stale hash offers is not the limit: calls in
-flight under the same epoch still give back to it, and refills still add to it and move
-`until` on. A refill takes back only what the counter holds above the whole hold, and the hold
-also stands behind calls in flight, so a counter below the hold can still offer more than is
-free; one refill does not show the counter is right again. Nor is the money sure to be
-collected: the counter meters what calls set aside, a call can cost more, and a charge the
-team's credit blocks cannot cover is taken only as far as they go (`block_shortfall_micro`),
-which leaves the platform paying the provider for the rest. The state ends only when the hold
-is closed and its counter retired. So a deployment whose store can roll acknowledged writes
-back takes its teams off the allowance after such an event, and puts them back once the
-conditions in [deploy](../ops/deploy.md) hold.
+A refill that leaves the counter with nothing to offer leaves the hold's deadline where it
+was: it added nothing, and the counter is gone or shows nothing. The deadline is until when
+calls may be admitted, and such a refill admits none; calls admitted earlier are covered by
+the stamp they were admitted under, and a deadline moved on by every failed attempt would
+keep the sweep from returning what is in the hold for as long as calls arrive. That is the
+team whose credit was all in its hold when the counter went, and it stays so after a refill
+that needed nothing (the one ahead of the deadline) has published an empty counter for the
+hold: until the sweep closes the hold its calls see only the balance.
+
+What this does not see is a server that goes back to older data without starting again: a
+reload in place, or one that kept running, took older data from another primary and became
+primary again, where the hashes it built before still name it. Nor does a process of a
+build from before this check anything. There the old reasoning stands, and nothing bounds it: calls in flight
+under the same epoch still give back to the stale hash, refills still add to it and move
+`until` on, a refill takes back only what the counter holds above the whole hold, and a
+charge the team's credit blocks cannot cover is taken only as far as they go
+(`block_shortfall_micro`), which leaves the platform paying the provider for the rest. That
+state ends only when the hold is closed and its counter retired; [deploy](../ops/deploy.md)
+has the conditions for listing a team again.
 
 A counter speaks only for the hold it was built for. A refill reads the counter's epoch with
 what it shows, and what it shows counts toward the refill only when the hold it then finds has

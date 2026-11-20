@@ -410,11 +410,28 @@ calls after `0114` has run can queue another such row, the revision does not run
 time, and the new build's fold would charge that call twice. Where every process already runs
 a build with the writer's cleanup, no such row can be queued any more and the upgrade needs no
 stop. The
-allowance trusts the store to keep the writes it acknowledged. A store that can go back to an
-earlier state (a restore from an older snapshot, a replica promoted before it caught up) can
-admit the same money twice, with no bound on amount or time while the allowance stays on, and
-what a team's credit cannot cover is the platform's cost. After such an event, empty the
-list, and list a team again only when all of these can be seen:
+allowance trusts the store to keep the writes it acknowledged for as long as the server
+runs. A server that starts again (a restart that dropped its last writes, a restore from a
+snapshot, a promoted replica) is recognised by its `run_id`: every counter built before is
+discarded and rebuilt by the next refill. Nothing needs doing then, on two conditions.
+Every process that serves calls runs a build with this check: an earlier one does not look
+at the run and spends from a counter that went back until a newer process touches it. And
+the store runs the counter's scripts, which call `INFO`: it must permit `INFO` inside a
+script (some managed offerings refuse it there whatever the ACL grants) and allow it to the
+store's user (ACL category `@dangerous`); where it does not, no counter operation answers
+and every call takes the hold path. After a restart a team whose credit was all in its hold
+is refused until the idle close returns it, since no refill can add the chunk a new counter
+is built from. While processes of an earlier build share the store with newer ones, a
+counter an earlier process builds is discarded by the next newer one that touches it: each
+time, a chunk waits in the hold for the idle close. A freeze an earlier process wrote is
+kept.
+
+Not recognised: a server that goes back to older data WITHOUT starting again (a reload in
+place; a server that kept running, took older data from another primary and became primary
+again), and a restart while processes of an earlier build still serve calls. Either can
+admit the same money twice, with no bound on amount or time while the allowance stays on,
+and what a team's credit cannot cover is the platform's cost. After such an event, empty
+the list, and list a team again only when all of these can be seen:
 
 - every process that serves calls has restarted on the empty list (the list is read per
   process, so one still running the old value keeps admitting from the counter);
