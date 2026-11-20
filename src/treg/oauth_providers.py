@@ -3854,6 +3854,24 @@ ATLY = OAuthProvider(
 )
 
 
+AGENTPASS = OAuthProvider(
+    service="agentpass",
+    display_name="AgentPass",
+    auth_kind="public",
+    auth_uri="", token_uri="",
+    scopes={},
+    client_id_setting="", client_secret_setting="",
+    category="SEO",
+    summary="Score how well AI agents can reach, read and operate any website: a 100-point agent-readiness score, grade, per-crawler reachability and ordered fix prompts. Free, no key.",
+    # The scan and report routes answer 200 to an anonymous GET and are free. AgentPass also issues
+    # self-serve bearer keys (ap_live_...), but those routes ignore the key and its one keyed read,
+    # /api/usage, accepts any well-formed ap_live_ key, so a connected key could not be verified.
+    # Listed as keyless: nothing to connect, nothing to bill.
+    base_url="https://agentpass.page",
+    docs_url="https://agentpass.page/api",
+)
+
+
 INFLUENCERSCLUB = OAuthProvider(
     service="influencersclub",
     display_name="influencers.club",
@@ -4492,6 +4510,8 @@ REGISTRY: dict[str, OAuthProvider] = {
         INFLUENCERSCLUB, VILLAGE,
         # Places: intent-scored local search
         ATLY,
+        # Agent-readiness scans of any website (keyless)
+        AGENTPASS,
         # Market data API-key providers
         COINGECKO, POLYGON, FINNHUB, TWELVEDATA, FMP, EODHD, MARKETSTACK, TIINGO,
         FINANCIALDATASETS,
