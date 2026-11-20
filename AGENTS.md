@@ -223,8 +223,8 @@ agents then built against a constitution that was wrong.
   read-only. See `docs/context/architecture/money.md`.
 - **The archive serves every tier, keyed by whose question it is.** Own-credential answers are
   recorded (bounded read, never a prefix) under an org-scoped key, or a connection-scoped key on
-  an `own_account` endpoint, and reach other teams only where the endpoint itself declares
-  `cache.sharing: public`; a provider's storage licence never decides that. A hit on an own key
+  an `own_account` endpoint or on a connection one of the team's customers made, and reach other
+  teams only where the endpoint itself declares `cache.sharing: public`; a provider's storage licence never decides that. A hit on an own key
   is free; a metered hit settles through the same hold, at `archive_hit_repeat_price_percent`
   once the team has paid for that question. A team that has opted out (`Org.archive_opt_out_at`)
   is neither served from nor recorded into the archive on any tier; erasing what it stored is a

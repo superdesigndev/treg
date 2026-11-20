@@ -16,7 +16,10 @@ from .. import crypto, health, oauth_providers
 from ..config import get_settings
 from ..domain.catalog import store as catalog_store
 from ..domain.connections import authorization as connection_authorization
+from ..domain.connections import customers as connection_customers
 from ..domain.connections import refresh as connection_refresh
+from ..domain.connections import return_link
+from ..domain.governance import budgets as budget_policy
 from ..domain.connections.oauth_flow import consent_url, is_loopback, pkce_challenge_hex
 from ..infra import credential_cipher
 from ..infra.db import session_maker
@@ -316,16 +319,51 @@ class ConnectError(Exception):
 @dataclass(frozen=True)
 class OAuthCallbackOutcome:
     kind: str
+    return_to: str = ""
+
+
+def _connect_customer(
+    *, customer: str | None, pinned_customer: str | None, primary_dim: str,
+) -> str | None:
+    """The customer a new connection belongs to: the one named, else the caller's pin."""
+    if customer is None or not customer.strip():
+        return pinned_customer
+    try:
+        _, value = budget_policy._validate_tag_pair(primary_dim, customer, where="customer")
+    except budget_policy.BudgetPolicyError as exc:
+        raise ConnectError("invalid_customer", exc.detail) from None
+    if pinned_customer is not None and value != pinned_customer:
+        raise ConnectError(
+            "customer_pin_mismatch",
+            f"this token is pinned to {primary_dim}={pinned_customer!r} and cannot connect for {value!r}",
+        )
+    return value
+
+
+def _return_target(return_to: str | None, allowed_origins: list | None) -> str | None:
+    if not return_to:
+        return None
+    try:
+        return return_link.check_return_to(
+            return_to, allowed_origins, allow_loopback_http=get_settings().local_dev)
+    except return_link.ReturnLinkError as exc:
+        raise ConnectError("return_to_not_allowed", f"return_to {exc}") from None
 
 
 async def start_oauth_connection(
     *, org_id: int, owner: str, name: str, provider_name: str | None,
     capability: str | None, connection_id: int | None, client_id: str,
     client_secret: str, auth_uri: str, token_uri: str, scopes: list[str],
-    redirect_uri: str | None,
+    redirect_uri: str | None, customer: str | None = None,
+    pinned_customer: str | None = None, primary_dim: str = budget_policy.DEFAULT_PRIMARY_DIM,
+    return_to: str | None = None, return_origins: list | None = None,
 ) -> dict:
     if name:
         name = _valid_tool_name(name)
+    return_to = _return_target(return_to, return_origins)
+    if connection_id is None:
+        customer = _connect_customer(
+            customer=customer, pinned_customer=pinned_customer, primary_dim=primary_dim)
     async with session_maker() as db:
         code_verifier, auth_params, auth_method = "", "", "client_secret_post"
         cid_param, scope_sep = "client_id", " "
@@ -412,8 +450,20 @@ async def start_oauth_connection(
             target = (await db.execute(select(Secret).where(
                 Secret.id == connection_id, Secret.org_id == org_id
             ))).scalars().first()
-            if target is None:
+            if target is None or (
+                    pinned_customer is not None
+                    and not connection_customers.is_visible(target, pinned_customer)):
                 raise ConnectError("unknown_connection", "unknown connection")
+            # A reconnect keeps the connection's owner: the team's stays the team's, a customer's
+            # stays that customer's.
+            if customer and customer.strip() != (target.customer or ""):
+                raise ConnectError(
+                    "invalid_customer",
+                    f"connection {connection_id} belongs to "
+                    + (f"customer {target.customer!r}" if target.customer else "the whole team")
+                    + "; a reconnect cannot move it",
+                )
+            customer = target.customer
             _refuse_paused(target.provider)
             if provider_name and target.provider != provider_name:
                 raise ConnectError(
@@ -451,7 +501,7 @@ async def start_oauth_connection(
             token_endpoint_auth_method=auth_method, client_id_param=cid_param,
             scope_separator=scope_sep, long_lived_exchange=long_lived,
             long_lived_exchange_style=long_lived_style if provider_name else "",
-            replaces_secret_id=replaces_id,
+            replaces_secret_id=replaces_id, customer=customer or None, return_to=return_to,
         )
         db.add(pending)
         await db.commit()
@@ -474,18 +524,19 @@ async def complete_oauth_connection(
         ).scalar_one_or_none()
         if pending is None:
             return OAuthCallbackOutcome("invalid")
+        back = pending.return_to or ""
         if pending.status != "pending":
             # A browser re-load re-hits this URL with a now-spent code; re-exchanging would fail and
             # flip a successful connect's status to "error". Return the terminal result without redoing it.
-            return OAuthCallbackOutcome("done" if pending.status == "done" else "already_failed")
+            return OAuthCallbackOutcome("done" if pending.status == "done" else "already_failed", back)
         if _as_naive(pending.created_at) < _utcnow_naive() - timedelta(minutes=health.OAUTH_PENDING_TTL_MIN):
             pending.status, pending.detail = "error", "expired"  # an old state must not stay redeemable
             await db.commit()
-            return OAuthCallbackOutcome("expired")
+            return OAuthCallbackOutcome("expired", back)
         if error or not code:
             pending.status, pending.detail = "error", (error or "no authorization code")[:200]
             await db.commit()
-            return OAuthCallbackOutcome("authorization_failed")
+            return OAuthCallbackOutcome("authorization_failed", back)
 
     try:
         client = client_factory()
@@ -508,7 +559,7 @@ async def complete_oauth_connection(
             if current is not None and current.status == "pending":
                 current.status, current.detail = "error", "token exchange failed"
                 await db.commit()
-        return OAuthCallbackOutcome("exchange_failed")
+        return OAuthCallbackOutcome("exchange_failed", back)
 
     reselect: tuple[int, str, str] | None = None
     sealed_blob = await credential_cipher.seal(json.dumps(blob), org_id=pending.org_id)
@@ -521,7 +572,7 @@ async def complete_oauth_connection(
         if pending is None:
             return OAuthCallbackOutcome("invalid")
         if pending.status != "pending":
-            return OAuthCallbackOutcome("done" if pending.status == "done" else "already_failed")
+            return OAuthCallbackOutcome("done" if pending.status == "done" else "already_failed", back)
         try:
             # A consent either REPLACES one named connection or ADDS another. `replaces_secret_id` says
             # which, decided back at /oauth/start where the user's intent was known.
@@ -537,6 +588,7 @@ async def complete_oauth_connection(
                     name=await _free_connection_name(pending.name, pending.org_id, db),
                     owner=pending.owner,
                     kind="oauth", value=sealed_blob, refreshable=connection_refresh.is_refreshable(blob),
+                    customer=pending.customer,
                 )
                 db.add(secret)
             else:
@@ -570,7 +622,10 @@ async def complete_oauth_connection(
                     or "The provider did not return a usable account. Confirm the account setup, then connect again."
                 )
             elif profile and profile.can_autoprovision:
-                await _autoprovision_provider_tool(profile, secret, pending, db)
+                # A tool is callable by name from every token of the team, so a customer's
+                # connection gets none: only calls tagged with that customer reach it.
+                if secret.customer is None:
+                    await _autoprovision_provider_tool(profile, secret, pending, db)
                 if identity is not None:
                     secret.health_status = "ok"
                     secret.health_detail = "The provider returned a usable account."
@@ -581,11 +636,11 @@ async def complete_oauth_connection(
             print(f"[oauth] connection storage failed for state {state}: {exc}")
             pending.status, pending.detail = "error", "connection storage failed"
             await db.commit()
-            return OAuthCallbackOutcome("exchange_failed")
+            return OAuthCallbackOutcome("exchange_failed", back)
     if reselect is not None:
         await _reselect_after_reconnect(*reselect, org_id=pending.org_id,
                                         client_factory=client_factory, provider=profile)
-    return OAuthCallbackOutcome("connected")
+    return OAuthCallbackOutcome("connected", back)
 
 
 async def _reselect_after_reconnect(
@@ -728,7 +783,8 @@ async def connect_with_pasted_secret(
     sealed = await credential_cipher.seal(token, org_id=org_id)
     async with session_maker() as db:
         secret = (await db.execute(
-            select(Secret).where(Secret.org_id == org_id, Secret.provider == provider.service)
+            select(Secret).where(Secret.org_id == org_id, Secret.provider == provider.service,
+                                 connection_customers.visible_to(""))
         )).scalars().first()
         if secret is None:
             secret = Secret(
@@ -783,16 +839,23 @@ async def get_oauth_status(*, state: str, org_id: int) -> dict:
             "secret_id": pending.secret_id,
             "detail": pending.detail,
             "name": pending.name,
+            "customer": pending.customer,
         }
 
 
-async def _owned_connection(secret_id: int, org_id: int, db: AsyncSession) -> Secret:
+async def _owned_connection(
+    secret_id: int, org_id: int, db: AsyncSession, customer_scope: str | None = None,
+) -> Secret:
+    """One connection of the team. A caller limited to one customer (`customer_scope`) finds only
+    the team's own connections and that customer's; another customer's is unknown to it."""
     secret = (
         await db.execute(
             select(Secret).where(Secret.id == secret_id, Secret.org_id == org_id)
         )
     ).scalars().first()
     if secret is None or (secret.kind != "oauth" and not secret.provider):
+        raise ConnectError("unknown_connection", "unknown connection")
+    if customer_scope is not None and not connection_customers.is_visible(secret, customer_scope):
         raise ConnectError("unknown_connection", "unknown connection")
     return secret
 
@@ -825,18 +888,19 @@ async def _enrich_resource_labels(provider, resources: list[dict], token: str, c
     await asyncio.gather(*(one(r) for r in resources if r.get("id")))
 
 
-async def list_connections(*, org_id: int) -> list[dict]:
+async def list_connections(*, org_id: int, customer_scope: str | None = None) -> list[dict]:
+    """Every connection of the team, or for a caller limited to one customer (`customer_scope`) the
+    team's own and that customer's."""
     async with session_maker() as db:
-        rows = (
-            await db.execute(
-                select(Secret).where(
-                    Secret.org_id == org_id,
-                    # A connection is "something a registry connect produced", NOT "an oauth blob".
-                    # Bring-your-own-token providers (Slack) store a plain string with kind "env".
-                    or_(Secret.kind == "oauth", Secret.provider != ""),
-                )
-            )
-        ).scalars().all()
+        query = select(Secret).where(
+            Secret.org_id == org_id,
+            # A connection is "something a registry connect produced", NOT "an oauth blob".
+            # Bring-your-own-token providers (Slack) store a plain string with kind "env".
+            or_(Secret.kind == "oauth", Secret.provider != ""),
+        )
+        if customer_scope is not None:
+            query = query.where(connection_customers.visible_to(customer_scope))
+        rows = (await db.execute(query)).scalars().all()
         out = []
         for s in rows:
             view = connection_refresh.connection_view(s)
@@ -887,11 +951,11 @@ async def list_connections(*, org_id: int) -> list[dict]:
 
 
 async def _connection_for_upstream(
-    *, secret_id: int, org_id: int, client,
+    *, secret_id: int, org_id: int, client, customer_scope: str | None = None,
 ) -> tuple[Secret, str]:
     """Load one connection and delegate freshness to the single domain implementation."""
     async with session_maker() as db:
-        secret = await _owned_connection(secret_id, org_id, db)
+        secret = await _owned_connection(secret_id, org_id, db, customer_scope)
         _refuse_paused(secret.provider)
         await db.commit()  # end the read before the credential opens over the network
         await connection_refresh.ensure_fresh(
@@ -908,11 +972,11 @@ def _with_appsecret_proof(provider, client_id: str, token: str, url: str) -> str
 
 
 async def list_connection_resources(
-    *, secret_id: int, org_id: int, client_factory,
+    *, secret_id: int, org_id: int, client_factory, customer_scope: str | None = None,
 ) -> dict:
     client = client_factory()
     secret, raw = await _connection_for_upstream(
-        secret_id=secret_id, org_id=org_id, client=client,
+        secret_id=secret_id, org_id=org_id, client=client, customer_scope=customer_scope,
     )
     provider = oauth_providers.get(secret.provider)
     if provider is not None:
@@ -1037,13 +1101,14 @@ async def list_connection_resources(
 
 async def select_connection_resource(
     *, secret_id: int, resource_ref: str, resource_name: str, org_id: int, client_factory,
+    customer_scope: str | None = None,
 ) -> dict:
     provider = None
     source_value = ""
     setup_fields: dict[str, str] | None = None
     client = client_factory()
     secret, _ = await _connection_for_upstream(
-        secret_id=secret_id, org_id=org_id, client=client,
+        secret_id=secret_id, org_id=org_id, client=client, customer_scope=customer_scope,
     )
     provider = oauth_providers.get(secret.provider) if secret.provider else None
     if provider is not None:
@@ -1267,11 +1332,16 @@ async def _run_resource_setup(
 
 
 async def supply_extra_credential(
-    *, secret_id: int, value: str, org_id: int, owner: str,
+    *, secret_id: int, value: str, org_id: int, owner: str, customer_scope: str | None = None,
 ) -> dict:
     async with session_maker() as db:
-        secret = await _owned_connection(secret_id, org_id, db)
+        secret = await _owned_connection(secret_id, org_id, db, customer_scope)
         _refuse_paused(secret.provider)
+        if secret.customer is not None:
+            raise ConnectError(
+                "customer_connection",
+                "a customer's connection has no tool, so it cannot take a second credential",
+            )
         provider = oauth_providers.get(secret.provider)
         if provider is None or not provider.needs_extra_credential:
             raise ConnectError("no_extra_credential", "this provider needs no extra credential")
@@ -1318,9 +1388,11 @@ async def supply_extra_credential(
         }
 
 
-async def revoke_connection(*, secret_id: int, org_id: int) -> dict:
+async def revoke_connection(
+    *, secret_id: int, org_id: int, customer_scope: str | None = None,
+) -> dict:
     async with session_maker() as db:
-        secret = await _owned_connection(secret_id, org_id, db)
+        secret = await _owned_connection(secret_id, org_id, db, customer_scope)
         provider_service = secret.provider
         removed_tools: list[str] = []
 
@@ -1384,14 +1456,16 @@ async def _rename_tools(
                 row.tool_access = [renames.get(n, n) for n in row.tool_access]  # reassign: JSON column
 
 
-async def rename_connection(*, secret_id: int, name: str, org_id: int) -> dict:
+async def rename_connection(
+    *, secret_id: int, name: str, org_id: int, customer_scope: str | None = None,
+) -> dict:
     """Rename a connected account, which renames the tool an agent types: instagram-2 -> instagram-acme.
 
     The connection's secret and the tools bound to it under its name (the main one and any companion
     `{name}-{suffix}`) move together, in one transaction, through `_rename_tools`."""
     name = _valid_tool_name(name)
     async with session_maker() as db:
-        secret = await _owned_connection(secret_id, org_id, db)
+        secret = await _owned_connection(secret_id, org_id, db, customer_scope)
         old = secret.name
         if name == old:
             return connection_refresh.connection_view(secret)
@@ -1451,9 +1525,14 @@ async def run_connection_health(
         return await health.run_all(db, client_factory(), org_id=org_id)
 
 
-async def list_connection_health(*, org_id: int, visible_ids_for) -> list[dict]:
+async def list_connection_health(
+    *, org_id: int, visible_ids_for, customer_scope: str | None = None,
+) -> list[dict]:
     async with session_maker() as db:
-        rows = (await db.execute(select(Secret).where(Secret.org_id == org_id))).scalars().all()
+        query = select(Secret).where(Secret.org_id == org_id)
+        if customer_scope is not None:
+            query = query.where(connection_customers.visible_to(customer_scope))
+        rows = (await db.execute(query)).scalars().all()
         visible = await visible_ids_for(db)
         if visible is not None:  # same visibility rule as /secrets — health mustn't leak hidden keys
             rows = [s for s in rows if s.id in visible]

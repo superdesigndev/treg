@@ -328,6 +328,35 @@ A `retired`/`broken` tombstone is refused with 410, its `status_note` and option
 `superseded_by`, before credentials are selected (audited `refused_by=retired`). An org's own tool
 named like the old id already resolved above and is not shadowed.
 
+### Choosing a connection
+
+Before the credential ladder, `_chosen_connection` picks the connection a catalog call names or
+the one its customer owns. C is the call's value for the team's primary tag dimension, from the
+pin or `X-Treg-Meta` (`CallMeta.primary_val`).
+
+- **`X-Treg-Connection: <name>`** restricts the call to that connection: the team's own, or C's
+  when C owns it, of the endpoint's provider and one of its grant methods. Anything else, a public
+  provider included, is `404 connection_not_found`, never another connection or treg's key. A team
+  connection's own tool still applies its ACL (403 when every tool bound to it is closed to the
+  caller). The header is consumed here and, like every `x-treg-*` header, never reaches the
+  upstream. A routed call drops it from its children (`_DROP_FROM_CHILD`): a route asks several
+  providers. Own-tool and URL-passthrough calls ignore it.
+- **Otherwise C's own connections** that fit the provider and the endpoint's grant methods come
+  first, over the team's tool and the team's credential. One serves the call (tier `credential`);
+  two or more are `409 connection_ambiguous` naming their names, resolved by the header. None
+  leaves the ladder as it was.
+- **The team's ladder sees only the team's connections.** `_provider_tool_grant` and
+  `_marketplace_secret` read rows with `customer` NULL, so an untagged call, or a call tagged with
+  another customer, never uses a customer's connection, on either catalog branch; with no team
+  credential the call goes on to the anonymous and platform tiers as before. Newest-wins among the
+  team's own connections is unchanged.
+
+A customer's connection has no tool, so nothing resolves it by name on the own-tool path. Its
+answers are archived under its connection scope on every endpoint ([archive](archive.md)), and
+`/catalog/endpoints/{id}/access` reads `X-Treg-Meta` and `X-Treg-Connection` the same way. An
+unpinned caller's tag is attribution it chooses freely, so any token without a pin can act for
+any customer; a token pinned to C acts only for C ([multi-tenancy](multi-tenancy.md#caller-tags-and-pinned-read-scopes)).
+
 ### Catalog request checks
 
 The parameter check holds every declared parameter a catalog call sends to its declaration, on

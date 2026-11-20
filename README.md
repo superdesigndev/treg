@@ -516,6 +516,7 @@ that's calling our API, not redistributing our software.
 For a restricted customer agent, `treg org agent-new bot --pin customer=cust_A` enforces attribution
 and scopes call/run history, archived results and shared-provider async ownership to that pin.
 Foreign or unattributed ids return 404; an unpinned operator keeps the org-wide view and shared
-balance. BYOK account access and public media URLs retain their existing permissions. See the
+balance. A connection started with `customer` on `POST /oauth/start` is used only by calls tagged
+with that customer, and a token pinned to another customer never sees it. BYOK account access and public media URLs retain their existing permissions. See the
 [multi-tenancy contract](docs/context/architecture/multi-tenancy.md#caller-tags-and-pinned-read-scopes)
 for multiple pins, migration and replay behavior.

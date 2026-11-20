@@ -284,6 +284,8 @@ async def _stamp_call_exit(
 @app.get("/catalog/endpoints/{endpoint_id}/access", include_in_schema=False)
 async def catalog_endpoint_access(
     endpoint_id: str, authorization_method: str = "",
+    x_treg_meta: str | None = Header(default=None),
+    x_treg_connection: str = Header(default=""),
     caller: Caller = Depends(require_member), db: AsyncSession = Depends(get_session)
 ) -> dict:
     """Translate the catalog access use case into HTTP."""
@@ -293,6 +295,8 @@ async def catalog_endpoint_access(
             authorization_method=authorization_method,
             caller=caller,
             db=db,
+            meta_header=x_treg_meta,
+            connection=x_treg_connection,
         )
     except CallFailure as exc:
         raise _translate_call_failure(exc) from exc

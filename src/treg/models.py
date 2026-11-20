@@ -163,6 +163,10 @@ class Org(SQLModel, table=True):
     # The team's picture: a media key (`img/team_avatar/<sha256>.webp`) in the public media bucket, or
     # NULL for initials. Set by owners and admins through `application.images`. Appended last.
     avatar_key: str | None = Field(default=None)
+    # Exact https origins an OAuth connect may return the browser to (`return_to` on
+    # /oauth/start). NULL = none. Set by owners and admins through PATCH /orgs/{id}. Appended last.
+    oauth_return_origins: list | None = Field(
+        default=None, sa_column=Column("oauth_return_origins", JSON, nullable=True))
 
 
 class OrgFlowControlVersion(SQLModel, table=True):
@@ -805,6 +809,11 @@ class PendingOAuth(SQLModel, table=True):
     secret_id: int | None = Field(default=None)
     detail: str = Field(default="")
     created_at: NaiveUTC = Field(default_factory=_now)
+    # The team's customer the resulting connection belongs to (the value of the org's primary tag
+    # dimension), or None for a connection of the whole team. Appended last.
+    customer: str | None = Field(default=None)
+    # Where the callback sends the browser when it finishes, on an origin the team allowed.
+    return_to: str | None = Field(default=None)
 
 
 class Secret(SQLModel, table=True):
@@ -849,6 +858,10 @@ class Secret(SQLModel, table=True):
     refreshable: bool | None = Field(default=None)
 
     created_at: NaiveUTC = Field(default_factory=_now)
+    # A connection one of the team's customers made (the value of the org's primary tag dimension):
+    # only calls tagged with that customer use it, and it has no tool. None = the whole team's.
+    # Appended last.
+    customer: str | None = Field(default=None)
 
 
 class AdClickStash(SQLModel, table=True):

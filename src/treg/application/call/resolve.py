@@ -25,6 +25,7 @@ from ...domain.capacity.routes_view import view as overflow_routes_view
 from ...domain.capacity.view import view as capacity_view
 from ...domain.catalog import params, schema, store as catalog_store
 from ...domain.connections import authorization as connection_authorization
+from ...domain.connections import customers as connection_customers
 from ...domain.connections.refresh import expiry_state
 from ...domain.governance import access as access_policy
 from ...domain.identity.access import Caller
@@ -45,6 +46,7 @@ _param_log = logging.getLogger("treg.param_check")
 
 
 AUTHORIZATION_METHOD_HEADER = "X-Treg-Authorization-Method"
+CONNECTION_HEADER = "X-Treg-Connection"
 
 
 @dataclass(frozen=True)
@@ -335,14 +337,85 @@ def _authorization_method(secret: Secret) -> str:
     )
 
 
+def _serves(secret: Secret, service: str, methods: tuple[str, ...]) -> bool:
+    """Whether `secret` is a credential for `service` under one of the endpoint's methods."""
+    if not (secret.provider == service or (not secret.provider and secret.name == service)):
+        return False
+    return not methods or _authorization_method(secret) in methods
+
+
+async def _customer_connections(
+    service: str, org_id: int, customer: str, db: AsyncSession, methods: tuple[str, ...] = (),
+) -> list[Secret]:
+    """`customer`'s own connections that can serve this provider, newest first."""
+    if not customer:
+        return []
+    rows = (await db.execute(
+        select(Secret).where(
+            Secret.org_id == org_id, Secret.customer == customer,
+            or_(Secret.provider == service, Secret.name == service),
+        ).order_by(Secret.id.desc())
+    )).scalars().all()
+    return [row for row in rows if _serves(row, service, methods)]
+
+
+async def _chosen_connection(
+    service: str, methods: tuple[str, ...], *, customer: str, connection: str,
+    caller: Caller, db: AsyncSession,
+) -> tuple[Tool | None, Secret] | None:
+    """The connection a call names (`X-Treg-Connection`), else its customer's own one, else None
+    for the team's ladder. A named connection must be one this call may use; a customer with
+    several that fit must name one. Neither ever falls back to another credential."""
+    if connection:
+        secret = (await db.execute(select(Secret).where(
+            Secret.org_id == caller.org_id, Secret.name == connection.strip(),
+            connection_customers.visible_to(customer),
+        ))).scalars().first()
+        provider = oauth_providers.get(service)
+        if (secret is None or (provider is not None and provider.auth_kind == "public")
+                or not _serves(secret, service, methods)):
+            raise ResolutionFailed("connection_not_found", status_code=404, detail={
+                "error": "connection_not_found", "connection": connection.strip(), "provider": service,
+                "message": f"no {service} connection named {connection.strip()!r} that this call may use",
+            })
+        if secret.customer is not None:
+            return None, secret
+        return await _team_connection_tool(secret, caller, db), secret
+    found = await _customer_connections(service, caller.org_id, customer, db, methods)
+    if len(found) > 1:
+        raise ResolutionFailed("connection_ambiguous", status_code=409, detail={
+            "error": "connection_ambiguous", "provider": service,
+            "candidates": sorted(row.name for row in found),
+            "message": f"several {service} connections belong to this customer",
+            "hint": f"choose one with the {CONNECTION_HEADER} header",
+        })
+    return (None, found[0]) if found else None
+
+
+async def _team_connection_tool(secret: Secret, caller: Caller, db: AsyncSession) -> Tool | None:
+    """The team connection's own tool, when the caller may use it; a 403 when every tool bound to
+    it is closed to the caller; None when no tool binds it."""
+    bound = [tool for tool in (await db.execute(select(Tool).where(Tool.org_id == caller.org_id))).scalars()
+             if any(binding.get("secret_id") == secret.id for binding in tool.bindings or [])]
+    usable = [tool for tool in bound if access_policy._tool_usable(caller, tool)]
+    if bound and not usable:
+        raise ResolutionFailed(
+            "tool_access_denied", status_code=403,
+            detail=f"the {secret.name!r} connection exists, but you do not have access to its tool",
+        )
+    return next((tool for tool in usable if tool.name == secret.name), None)
+
+
 async def _marketplace_secret(
     service: str, org_id: int, db: AsyncSession, methods: tuple[str, ...] = (),
 ) -> Secret | None:
     """Tier 2's credential: an org secret tagged with this provider (registry connects), else one
-    NAMED exactly for it (`treg secret add tikhub …`). Newest wins — a reconnect supersedes."""
+    NAMED exactly for it (`treg secret add tikhub …`). Newest wins — a reconnect supersedes.
+    Only the team's own connections: a customer's is reached through `_chosen_connection`."""
+    team_wide = connection_customers.visible_to("")
     if methods:
         tagged_rows = (await db.execute(
-            select(Secret).where(Secret.org_id == org_id, Secret.provider == service)
+            select(Secret).where(Secret.org_id == org_id, Secret.provider == service, team_wide)
             .order_by(Secret.id.desc())
         )).scalars().all()
         # Rows are newest first. Preserve the first row for each method; assigning every row into
@@ -355,13 +428,13 @@ async def _marketplace_secret(
                 return by_method[method]
         return None
     tagged = (await db.execute(
-        select(Secret).where(Secret.org_id == org_id, Secret.provider == service)
+        select(Secret).where(Secret.org_id == org_id, Secret.provider == service, team_wide)
         .order_by(Secret.id.desc())
     )).scalars().first()
     if tagged is not None:
         return tagged
     return (await db.execute(
-        select(Secret).where(Secret.org_id == org_id, Secret.name == service)
+        select(Secret).where(Secret.org_id == org_id, Secret.name == service, team_wide)
         .order_by(Secret.id.desc())
     )).scalars().first()
 
@@ -393,6 +466,8 @@ class MarketplaceCall:
     # credential is genuinely the org's own (tier 1/2), but the upstream bill is ours, so the call
     # is metered anyway. Set by `_billed_marketplace` after the bound secrets are known.
     billed_oauth: bool = False
+    # The credential is one of the team's customers' connections: its answers stay with it.
+    customer_connection: bool = False
     unit_micro: int = 0             # RAW per-resource price for a per_result settle-by-count
     reported_charge_unit_micro: int = 0  # RAW value of one response-reported provider credit
     # treg's own account is marked exhausted AND an overflow route is enabled: skip the direct
@@ -2319,6 +2394,7 @@ async def _provider_tool_grant(
     tools = (await db.execute(select(Tool).where(Tool.org_id == caller.org_id))).scalars().all()
     secrets = (await db.execute(select(Secret).where(
         Secret.org_id == caller.org_id, Secret.provider == service,
+        connection_customers.visible_to(""),
     ))).scalars().all()
     secrets_by_id = {secret.id: secret for secret in secrets}
     provider = oauth_providers.get(service)
@@ -2532,6 +2608,8 @@ async def _resolve_catalog_tier(
     would: list[tuple[str, str]],
     request_headers=None,
     authorization_method: str = "",
+    customer: str = "",
+    connection: str = "",
 ) -> MarketplaceCall:
     """Resolve a catalog call, selecting an explicit OAuth grant before host matching.
 
@@ -2573,15 +2651,21 @@ async def _resolve_catalog_tier(
     chosen_tool: Tool | None = None
     chosen_secret: Secret | None = None
     chosen_method = ""
+    chosen = await _chosen_connection(
+        service, methods, customer=customer, connection=connection, caller=caller, db=db)
+    if chosen is not None:
+        chosen_tool, chosen_secret = chosen
+        chosen_method = _authorization_method(chosen_secret) if methods else ""
     if methods:
         authorization = None
-        grant = await _provider_tool_grant(service, methods, caller, db, endpoint=ep)
-        if grant is not None:
-            chosen_tool, chosen_secret, chosen_method = grant
-        else:
-            chosen_secret = await _marketplace_secret(service, caller.org_id, db, methods)
-            if chosen_secret is not None:
-                chosen_method = _authorization_method(chosen_secret)
+        if chosen_secret is None:
+            grant = await _provider_tool_grant(service, methods, caller, db, endpoint=ep)
+            if grant is not None:
+                chosen_tool, chosen_secret, chosen_method = grant
+            else:
+                chosen_secret = await _marketplace_secret(service, caller.org_id, db, methods)
+                if chosen_secret is not None:
+                    chosen_method = _authorization_method(chosen_secret)
         if chosen_secret is None:
             required_method = methods[0]
             authorization = connection_authorization.method_spec(provider, required_method)
@@ -2637,7 +2721,7 @@ async def _resolve_catalog_tier(
     if chosen_tool is not None:
         return MarketplaceCall(tool=chosen_tool, tier="tool", **common)
 
-    if not methods:
+    if not methods and chosen_secret is None:
         for candidate in provider.tool_lookup_urls(upstream):
             try:  # tier 1 - the org registered this provider: their tool, their bindings, their ACLs
                 target = await resolve_call(candidate, caller, db)
@@ -2657,7 +2741,8 @@ async def _resolve_catalog_tier(
             base_url=provider.base_url, host=_host_of(provider.base_url),
             bindings=_provider_bindings(provider, secret),
         )
-        return MarketplaceCall(tool=virtual, tier="credential", **common)
+        return MarketplaceCall(tool=virtual, tier="credential",
+                               customer_connection=secret.customer is not None, **common)
 
     # Generic public-upstream fallback. It comes after both own-key tiers, so a team's credential
     # still wins, and before tier 4 because no treg provider credential or money is needed. The
@@ -2877,6 +2962,8 @@ async def resolve_marketplace_target(
     request_headers=None,
     authorization_method: str = "",
     log_would_refuse: bool = True,
+    customer: str = "",
+    connection: str = "",
 ) -> MarketplaceCall:
     if oauth_providers.is_paused(ep.get("provider")):
         raise provider_paused(ep["provider"], ep["id"])
@@ -2899,6 +2986,8 @@ async def resolve_marketplace_target(
             request_headers=request_headers,
             authorization_method=authorization_method,
             log_would_refuse=log_would_refuse,
+            customer=customer,
+            connection=connection,
         )
 
 

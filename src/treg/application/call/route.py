@@ -104,8 +104,8 @@ from . import route_rules as route_rules_app
 from . import cost as call_cost
 from .intake import _tag_telemetry
 from .resolve import (QueryValues, _anonymous_offer, _anonymous_refusal, _body_refusal, _host_of,
-                      _marketplace_secret, _parameter_refused, _query_refusal, param_check_refuses,
-                      would_refuse)
+                      _customer_connections, _marketplace_secret, _parameter_refused, _query_refusal,
+                      param_check_refuses, would_refuse)
 from .settle import close_deferred
 from .types import CallContext, CallFailure, GatewayFailed, ResolutionFailed, UpstreamResponse
 
@@ -221,6 +221,8 @@ _DROP_FROM_CHILD = frozenset({b"content-length", b"content-type", b"transfer-enc
                               b"x-treg-route-decisive", b"x-treg-route-quality",
                               b"x-treg-route-upgrade", b"x-treg-route-complete",
                               b"x-treg-route-domain-match", b"host",
+                              # a connection belongs to one provider; a route asks several
+                              b"x-treg-connection",
                               # the child's answer is parsed here: the relay then asks for identity
                               b"accept-encoding"})
 _CALLER_FAULT = frozenset({400, 401, 403, 404, 405, 409, 422})
@@ -691,7 +693,7 @@ def _table_price(cat, ep: dict, adapter, identity: dict, variant) -> int | None:
 
 
 async def build_plan(ep: dict, identity_given: dict, caller, options: RouteOptions, *,
-                     probe: bool = False) -> Plan:
+                     probe: bool = False, customer: str = "") -> Plan:
     """Candidates for this org: adapters that accept the identity, own keys first, exhausted
     providers dropped, ranked by expected cost per hit. Reads only; nothing reserved. `probe`: this
     plan will be run, so it may take a failing child's probe turn (`route_health.probe`); a
@@ -768,7 +770,9 @@ async def build_plan(ep: dict, identity_given: dict, caller, options: RouteOptio
                 registered = oauth_providers.get(service)
                 if registered is not None and registered.auth_kind == "public":
                     continue  # nothing to connect: a same-named secret is not its credential
-                if caller.org_id is not None and await _marketplace_secret(service, caller.org_id, db) is not None:
+                if caller.org_id is not None and (
+                        await _marketplace_secret(service, caller.org_id, db) is not None
+                        or await _customer_connections(service, caller.org_id, customer, db)):
                     own.add(service)
     # A `false` flag asks for nothing (`contents: false` is the default answer), so it is not sent.
     given = {k for k, v in (identity_given or {}).items() if v not in (None, "") and v is not False}
@@ -1287,7 +1291,8 @@ async def _run_routed(parent: CallContext, ep: dict, body_bytes: bytes, get_head
     await capacity_view.load()
     if get_settings().overflow_mode != "off":
         await overflow_routes_view.load()
-    plan = await build_plan(ep, given, parent.input.caller, options, probe=True)
+    plan = await build_plan(ep, given, parent.input.caller, options, probe=True,
+                            customer=parent.meta.primary_val)
     for drop in plan.would_drop:
         would_refuse(drop["endpoint_id"], drop["parameter"], drop["rule"], drop["tier"], "routed_plan")
     if resume:

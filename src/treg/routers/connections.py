@@ -1,13 +1,22 @@
 """Credential connection HTTP routes and presentation translation."""
 
 from fastapi import APIRouter, Depends, HTTPException, Request
+from fastapi.responses import RedirectResponse
 from pydantic import BaseModel
 
 from .. import oauth_providers
 from ..application import connect as connect_use_cases
+from ..domain.connections import return_link
+from ..domain.connections.customers import pinned_customer
+from ..domain.governance.budgets import _primary_dim_of
 from ..domain.identity.access import Caller, _require_can_register, require_member
 from .auth import _auth_page
 from .resources import _visible_secret_ids
+
+
+def _customer_scope(caller: Caller) -> str | None:
+    """The one customer a pinned token acts for, or None for a token that sees every connection."""
+    return pinned_customer(caller.membership.pinned_tags, _primary_dim_of(caller))
 
 
 class OAuthStartIn(BaseModel):
@@ -26,6 +35,11 @@ class OAuthStartIn(BaseModel):
     token_uri: str = "https://oauth2.googleapis.com/token"
     scopes: list[str] = []
     redirect_uri: str | None = None  # defaults to treg's public callback
+    # The team's customer this connection belongs to (a value of the team's primary tag dimension).
+    # Only calls tagged with it use the connection. A pinned token's own pin when omitted.
+    customer: str | None = None
+    # Where the browser goes when the connect finishes, on one of the team's return origins.
+    return_to: str | None = None
 
 
 class TokenConnectIn(BaseModel):
@@ -68,6 +82,10 @@ _CONNECT_HTTP_ERRORS = {
     "name_taken": 409,
     "name_in_use": 409,
     "provider_paused": 503,
+    "invalid_customer": 422,
+    "customer_pin_mismatch": 403,
+    "customer_connection": 422,
+    "return_to_not_allowed": 400,
 }
 
 
@@ -104,6 +122,11 @@ async def oauth_start(
             redirect_uri=body.redirect_uri,
             org_id=caller.org_id,
             owner=caller.email,
+            customer=body.customer,
+            pinned_customer=_customer_scope(caller),
+            primary_dim=_primary_dim_of(caller),
+            return_to=body.return_to,
+            return_origins=caller.org.oauth_return_origins,
         )
     except connect_use_cases.ConnectError as exc:
         raise _connect_http_error(exc) from exc
@@ -116,6 +139,12 @@ async def oauth_callback(
     outcome = await connect_use_cases.complete_oauth_connection(
         state=state, code=code, error=error, client_factory=lambda: request.app.state.http,
     )
+    if outcome.return_to:
+        # The product's page is told only the state and whether it worked; it reads the rest
+        # from /oauth/status/{state} with its own token.
+        status = "done" if outcome.kind in ("done", "connected") else "error"
+        return RedirectResponse(
+            return_link.with_outcome(outcome.return_to, state=state, status=status), status_code=302)
     if outcome.kind == "invalid":
         return _auth_page("Connect failed", "Invalid or expired authorization link.", ok=False, status=404)
     if outcome.kind == "done":
@@ -179,7 +208,8 @@ async def list_connections(
     caller: Caller = Depends(require_member),
 ) -> list[dict]:
     """Every OAuth credential in the org, with health AND expiry. Metadata only — no token material."""
-    return await connect_use_cases.list_connections(org_id=caller.org_id)
+    return await connect_use_cases.list_connections(
+        org_id=caller.org_id, customer_scope=_customer_scope(caller))
 
 
 @resources_router.get("/connections/{secret_id}/resources")
@@ -196,6 +226,7 @@ async def connection_resources(
             secret_id=secret_id,
             org_id=caller.org_id,
             client_factory=lambda: request.app.state.http,
+            customer_scope=_customer_scope(caller),
         )
     except connect_use_cases.ConnectError as exc:
         raise _connect_http_error(exc) from exc
@@ -213,6 +244,7 @@ async def set_connection_resource(
             resource_name=body.resource_name,
             org_id=caller.org_id,
             client_factory=lambda: request.app.state.http,
+            customer_scope=_customer_scope(caller),
         )
     except connect_use_cases.ConnectError as exc:
         raise _connect_http_error(exc) from exc
@@ -239,6 +271,7 @@ async def set_extra_credential(
             value=body.value,
             org_id=caller.org_id,
             owner=caller.email,
+            customer_scope=_customer_scope(caller),
         )
     except connect_use_cases.ConnectError as exc:
         raise _connect_http_error(exc) from exc
@@ -255,6 +288,7 @@ async def rename_connection(
     try:
         return await connect_use_cases.rename_connection(
             secret_id=secret_id, name=body.name, org_id=caller.org_id,
+            customer_scope=_customer_scope(caller),
         )
     except connect_use_cases.ConnectError as exc:
         raise _connect_http_error(exc) from exc
@@ -273,7 +307,7 @@ async def revoke_connection(
     _require_can_register(caller)
     try:
         return await connect_use_cases.revoke_connection(
-            secret_id=secret_id, org_id=caller.org_id,
+            secret_id=secret_id, org_id=caller.org_id, customer_scope=_customer_scope(caller),
         )
     except connect_use_cases.ConnectError as exc:
         raise _connect_http_error(exc) from exc
@@ -305,4 +339,5 @@ async def get_health(
     return await connect_use_cases.list_connection_health(
         org_id=caller.org_id,
         visible_ids_for=lambda db: _visible_secret_ids(caller, db),
+        customer_scope=_customer_scope(caller),
     )

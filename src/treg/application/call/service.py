@@ -66,6 +66,7 @@ from .intake import META_HEADER, _parse_call_meta, _tag_telemetry, prepare_call_
 from .reserve import _enforce_tag_budgets, _platform_reserve
 from .resolve import (
     AUTHORIZATION_METHOD_HEADER,
+    CONNECTION_HEADER,
     MarketplaceCall,
     QueryValues,
     _billed_marketplace,
@@ -1125,11 +1126,14 @@ async def _execute_call(request: _ApplicationRequest, upstream_client: httpx.Asy
                 request_headers=request.headers,
                 authorization_method=request.headers.get(AUTHORIZATION_METHOD_HEADER, ""),
                 log_would_refuse=not request.context.input.routed_child,
+                customer=meta.primary_val,
+                connection=request.headers.get(CONNECTION_HEADER, ""),
             ), request, call_ref)
         except CallFailure as mkexc:
             # Catalog resolution is allowed to fall through from a named miss, but its own 404 must
             # not discard the useful fact discovered there: this org already has a nearby own tool.
-            if mkexc.status_code == 404 and own_tool_miss is not None:
+            if (mkexc.status_code == 404 and own_tool_miss is not None
+                    and mkexc.kind != "connection_not_found"):
                 mkexc.detail = {
                     "error": mkexc.detail,
                     "hint": own_tool_miss["hint"],
@@ -1667,13 +1671,13 @@ async def _execute_call(request: _ApplicationRequest, upstream_client: httpx.Asy
             # connection on an `own_account` endpoint, by keying it. The tags are the scopes this
             # caller may READ, most specific first; the first is where its answer is recorded.
             own_credential = mk is not None and mk.tier in ("tool", "credential")
-            cache_scopes = archive.scope_tags(
-                archive.sharing(catalog_store.load().by_id.get(mk.endpoint_id) if mk else None,
-                                own_credential=own_credential),
-                caller.org_id, secrets) if mk is not None else [""]
+            sharing = (archive.SHARING_CONNECTION if mk is not None and mk.customer_connection
+                       else archive.sharing(
+                           catalog_store.load().by_id.get(mk.endpoint_id) if mk else None,
+                           own_credential=own_credential))
+            cache_scopes = archive.scope_tags(sharing, caller.org_id, secrets) if mk is not None else [""]
             if mk is not None:
-                cache_diagnostics["cache_sharing"] = archive.sharing(
-                    catalog_store.load().by_id.get(mk.endpoint_id), own_credential=own_credential)
+                cache_diagnostics["cache_sharing"] = sharing
             # A probe must reach the vendor: an archived answer proves nothing about capacity.
             if (mk is not None and mk.probe_lock_id is None and archive.serving()
                     and not archive_opted_out and not _only_submits(mk)

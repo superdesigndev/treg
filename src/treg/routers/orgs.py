@@ -25,6 +25,7 @@ from ..application import signup as signup_use_cases
 from ..caller_metadata import TAG_DEFAULT, _MAX_BUDGET_DIMS, _META_KEY_RE, _client_of, _norm_client
 from ..config import get_settings
 from ..domain import money as ledger
+from ..domain.connections import return_link
 from ..domain.governance import budgets as budget_policy
 from ..domain.governance import access as access_policy
 from ..domain.governance import usage as usage_policy
@@ -329,6 +330,8 @@ async def _usage_rollup(db: AsyncSession, org_id: int, since: datetime,
 class OrgPatchIn(BaseModel):
     name: str | None = None
     slug: str | None = None
+    # Exact https origins `return_to` on /oauth/start may name ([] clears them).
+    oauth_return_origins: list[str] | None = None
 
 
 class OrgSettingsIn(BaseModel):
@@ -1552,16 +1555,23 @@ async def rename_org(
     org_id: int, body: OrgPatchIn,
     caller: Caller = Depends(require_member), db: AsyncSession = Depends(get_session),
 ) -> dict:
-    """Change the team's display name and/or slug. Admin+.
+    """Change the team's display name, slug and/or OAuth return origins. Admin+.
 
     The old slug is kept as an alias (`Org.previous_slug`): copied keys, `~/.treg` and MCP pins
     that name it keep working. Stripe metadata and the analytics group key are not rewritten.
     """
     _require_admin_of(org_id, caller)
-    if body.name is None and body.slug is None:
-        raise HTTPException(status_code=422, detail="send name and/or slug")
+    if body.name is None and body.slug is None and body.oauth_return_origins is None:
+        raise HTTPException(status_code=422, detail="send name, slug and/or oauth_return_origins")
     org = caller.org
     old_slug = org.slug
+    if body.oauth_return_origins is not None:
+        try:
+            origins = return_link.normalize_origins(
+                body.oauth_return_origins, allow_loopback_http=get_settings().local_dev)
+        except return_link.ReturnLinkError as exc:
+            raise HTTPException(status_code=400, detail=f"oauth_return_origins: {exc}") from exc
+        org.oauth_return_origins = origins or None
     try:
         await teams.rename_org(db, org, name=body.name, slug=body.slug,
                                reserved=signup_use_cases.reserved_team_names(),
@@ -1574,7 +1584,9 @@ async def rename_org(
         raise HTTPException(status_code=409, detail="slug is taken") from exc
     analytics.capture(caller.email, "org_renamed", {
         "org_id": org.id, "slug_changed": org.slug != old_slug})
-    return {"org_id": org.id, "org": org.slug, "previous_slug": org.previous_slug, "name": org.name}
+    return {"org_id": org.id, "org": org.slug, "previous_slug": org.previous_slug, "name": org.name,
+            **({"oauth_return_origins": org.oauth_return_origins or []}
+               if body.oauth_return_origins is not None else {})}
 
 
 @app.get("/orgs/{org_id}/settings")
@@ -1594,7 +1606,8 @@ async def get_org_settings(
             # The archive opt-out (archive.md, "Opting out"): the moment the team objected, or None.
             "archive": org.archive_opt_out_at is None,
             "archive_opt_out_at": org.archive_opt_out_at.isoformat() if org.archive_opt_out_at else None,
-            "budget_dims": _budget_dims_of(org), "primary_dim": _primary_dim_of(caller)}
+            "budget_dims": _budget_dims_of(org), "primary_dim": _primary_dim_of(caller),
+            "oauth_return_origins": org.oauth_return_origins or []}
 
 
 @app.patch("/orgs/{org_id}/settings")

@@ -1641,7 +1641,10 @@ async def _catalog_get_impl(
         "Query values are sent the way HTTP spells them: booleans as `true`/`false`, nested "
         "objects as compact JSON. A null query value is OMITTED from the query string — if an "
         "upstream distinguishes an absent parameter from an empty one, send the empty string "
-        "explicitly rather than null."
+        "explicitly rather than null.\n\n"
+        "`connection`: the name of the connected account a catalog call uses, when the team or "
+        "the customer this call is tagged for has several on one provider (two Instagram "
+        "accounts). A name this call may not use is refused, never replaced by another account."
     ),
     annotations=_CALLS,
     structured_output=True
@@ -1652,6 +1655,7 @@ async def call(endpoint_id: str, params: dict | list | None = None,
                headers: dict | None = None, content_type: str | None = None,
                form: dict | None = None, uploads: list[dict] | None = None,
                authorization_method: str | None = None,
+               connection: str | None = None,
                prior: Annotated[Any, Field(description=PRIOR_DESCRIPTION)] = None,
                ctx: Context = None) -> CallOut:  # type: ignore[assignment]
     # `prior` takes any value and is parsed here, so a malformed one (a string, a list, a bad
@@ -1667,7 +1671,7 @@ async def call(endpoint_id: str, params: dict | list | None = None,
         endpoint_id, params=params, method=method, idempotency_key=idempotency_key,
         query=query, body=body, headers=headers, content_type=content_type,
         form=form, uploads=uploads,
-        authorization_method=authorization_method, ctx=ctx,
+        authorization_method=authorization_method, connection=connection, ctx=ctx,
         catalog_only=False, surface=_TEAM_SURFACE, allowed_methods=None,
     )
 
@@ -1729,6 +1733,7 @@ async def _call_impl(endpoint_id: str, params: dict | list | None = None,
                      headers: dict | None = None, content_type: str | None = None,
                      form: dict | None = None, uploads: list[dict] | None = None,
                      authorization_method: str | None = None,
+                     connection: str | None = None,
                      ctx: Context = None, *, catalog_only: bool,
                      allowed_methods: frozenset[str] | None,
                      surface: _SurfacePolicy) -> CallOut:
@@ -1820,9 +1825,11 @@ async def _call_impl(endpoint_id: str, params: dict | list | None = None,
     extra_headers = {k: str(v) for k, v in (headers or {}).items()
                      if k.lower() not in ("x-treg-token", "x-treg-org", "authorization",
                                           "idempotency-key", "x-treg-meta",
-                                          "x-treg-authorization-method")}
+                                          "x-treg-authorization-method", "x-treg-connection")}
     if authorization_method:
         extra_headers["X-Treg-Authorization-Method"] = authorization_method
+    if connection:
+        extra_headers["X-Treg-Connection"] = connection
     if isinstance(the_body, str):
         # A raw string body travels as-is. Content-Type: explicit wins, else sniff JSON — the
         # CLI's rule, because upstreams that require `application/json` reject a JSON body
