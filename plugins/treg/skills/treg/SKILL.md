@@ -17,6 +17,7 @@ described in `/plugin`:
 - `lead-signals`
 - `make-ugc`
 - `rea-growth`
+- `rea-marketing`
 - `recruit`
 - `web-access`
 
