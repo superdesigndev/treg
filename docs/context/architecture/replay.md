@@ -38,13 +38,14 @@ the path that still calls it:
 |---|---|---|
 | `call.resolve.price_call` | `_resolve_marketplace_call` | the estimate, per-row and per-credit units, the frozen settlement basis, the request evidence |
 | `call.settle.decide_settle` | `_platform_settle`, everything before the ledger | billable, reason, observed, raw actual (after the repeat price and the routed-child free rule), charged after margin |
+| `call.settle.rejected_submission_charge_micro` | the call use case's rejected submission branch | provider-reported or catalog-declared charge for a 2xx answer that started no trackable task |
 | `call.route.child_outcome` | the routed child loop in `_run_routed` | `declared_miss`, `not_found`, `rejected`, `error`, `adapter_error`, `miss` (with its reasons) or `hit` (with its rows) |
 | `call.service.submission_state` | the call use case, before settling | whether a `when: terminal` 2xx is a pending task, and why one is not an accepted submission |
 | `asynctasks.terminal_judgement` | `_finish_terminal` | the hit and verdict word a terminal outcome records |
 | `call.cost.settle_terminal` | the worker's `_finish` | what a `success` or `billed_failure` terminal answer settles at, by the frozen basis or a v2 row's frozen terms |
 
-The engine itself only mirrors the call site's arguments (the `provider_failed_<status>` reason,
-the observed override of a rejected submission) and composes the existing pure functions below.
+The engine itself only mirrors the call site's arguments (including the
+`provider_failed_<status>` reason) and composes the existing pure functions below.
 
 ## What one replay runs
 

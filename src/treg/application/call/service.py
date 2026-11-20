@@ -24,7 +24,7 @@ from ...domain.catalog import outcome as catalog_outcome
 from ...domain.catalog import reported_charge
 from ...domain.catalog import results as catalog_results
 from ...domain.catalog import schema, store as catalog_store
-from ...domain.money import settlement as settlement_basis, with_margin
+from ...domain.money import with_margin
 from ...domain import provider_resources
 from ...infra import credential_cipher, money_admission, org_endpoint_quota
 from ...infra.db import answers_db_busy, session_maker
@@ -88,6 +88,7 @@ from .settle import (
     _note_capacity_recovery,
     _note_capacity_signal,
     _observed_cost_micro,
+    rejected_submission_charge_micro,
     _peek_stream_head,
     _platform_settle,
     _read_whole_if_small,
@@ -2031,14 +2032,8 @@ async def _execute_call(request: _ApplicationRequest, upstream_client: httpx.Asy
                 # for 24 hours, at what the provider reported charging or the row declares for
                 # a useful non-deferred answer, else zero. A batch whose first task was refused
                 # can still carry accepted, billed tasks the caller owns.
-                reported = _observed_cost_micro(mk, body, httpx.Headers(response.raw_headers))
-                if (mk.settlement_basis.get("amount") or {}).get("non_deferred_charge"):
-                    try:
-                        submission_doc = json.loads(body)
-                    except (ValueError, UnicodeDecodeError):
-                        submission_doc = None
-                    reported = settlement_basis.non_deferred_charge_micro(
-                        mk.settlement_basis, submission_doc)
+                reported = rejected_submission_charge_micro(
+                    mk, body, httpx.Headers(response.raw_headers))
                 logging.getLogger("treg.asynctasks").warning(
                     "call %s on %s: 2xx but not an accepted submission (%s); settled at %s",
                     call_ref, mk.endpoint_id, rejected, reported or 0)

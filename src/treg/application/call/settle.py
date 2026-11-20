@@ -711,6 +711,14 @@ def _observed_cost_micro(mk: MarketplaceCall, body: bytes, headers=None) -> int 
     return None
 
 
+def rejected_submission_charge_micro(mk: MarketplaceCall, body: bytes, headers) -> int:
+    """The amount a 2xx response with no accepted task settles at on the call path."""
+    if (mk.settlement_basis.get("amount") or {}).get("non_deferred_charge"):
+        return settlement_basis.non_deferred_charge_micro(
+            mk.settlement_basis, call_cost.document(body))
+    return _observed_cost_micro(mk, body, headers) or 0
+
+
 def _dig(doc, dotted: str):
     """The one dotted-path reader (`domain.asynctasks.json_path`), under the name settle grew up
     with: an `expect` rule means at settle time exactly what it meant at verification time."""
