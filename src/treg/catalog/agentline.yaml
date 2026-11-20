@@ -103,6 +103,7 @@ endpoints:
 
   - id: agentline.agents.get
     added: '2026-11-20'
+    untestable: "Needs the id of an agent on the calling account; create one with agentline.agents.create first."
     kind: account
     capability: phone.agents.get
     platform: phone
@@ -120,6 +121,7 @@ endpoints:
 
   - id: agentline.agents.update
     added: '2026-11-20'
+    untestable: "Needs the id of an agent on the calling account; create one with agentline.agents.create first."
     kind: action
     capability: phone.agents.update
     platform: phone
@@ -153,6 +155,7 @@ endpoints:
 
   - id: agentline.agents.delete
     added: '2026-11-20'
+    untestable: "Deletes an agent; run it only on one made by agentline.agents.create."
     kind: action
     capability: phone.agents.delete
     platform: phone
@@ -170,6 +173,7 @@ endpoints:
 
   - id: agentline.numbers.buy
     added: '2026-11-20'
+    untestable: "Buys a phone number: a real, recurring charge."
     kind: action
     capability: phone.numbers.buy
     platform: phone
@@ -209,6 +213,7 @@ endpoints:
 
   - id: agentline.numbers.release
     added: '2026-11-20'
+    untestable: "Gives up a phone number for good."
     kind: action
     capability: phone.numbers.release
     platform: phone
@@ -227,6 +232,7 @@ endpoints:
 
   - id: agentline.calls.create
     added: '2026-11-20'
+    untestable: "Needs an agent that has a phone number; then to_number +15555550100 is the free test line."
     kind: action
     capability: phone.calls.create
     platform: phone
@@ -264,6 +270,7 @@ endpoints:
 
   - id: agentline.calls.get
     added: '2026-11-20'
+    untestable: "Needs the id of a call on the calling account."
     kind: utility
     capability: phone.calls.get
     platform: phone
@@ -282,6 +289,7 @@ endpoints:
 
   - id: agentline.calls.transcript
     added: '2026-11-20'
+    untestable: "Needs the id of a call on the calling account."
     capability: phone.calls.transcript
     platform: phone
     scope: any_account
@@ -317,6 +325,7 @@ endpoints:
 
   - id: agentline.calls.hangup
     added: '2026-11-20'
+    untestable: "Needs a call in progress."
     kind: action
     capability: phone.calls.hangup
     platform: phone
@@ -334,6 +343,7 @@ endpoints:
 
   - id: agentline.messages.send
     added: '2026-11-20'
+    untestable: "Needs an agent that has a phone number; then to_number +15555550100 is the free test line."
     kind: action
     capability: phone.sms.send
     platform: phone
@@ -376,6 +386,7 @@ endpoints:
 
   - id: agentline.knowledge.remember
     added: '2026-11-20'
+    untestable: "Needs the id of an agent on the calling account; create one with agentline.agents.create first."
     kind: action
     capability: phone.knowledge.remember
     platform: phone
@@ -401,6 +412,7 @@ endpoints:
 
   - id: agentline.knowledge.search
     added: '2026-11-20'
+    untestable: "Needs the id of an agent on the calling account; create one with agentline.agents.create first."
     capability: phone.knowledge.search
     platform: phone
     scope: any_account
@@ -419,6 +431,7 @@ endpoints:
 
   - id: agentline.knowledge.list
     added: '2026-11-20'
+    untestable: "Needs the id of an agent on the calling account; create one with agentline.agents.create first."
     kind: account
     capability: phone.knowledge.list
     platform: phone
@@ -439,6 +452,7 @@ endpoints:
 
   - id: agentline.contacts.create
     added: '2026-11-20'
+    untestable: "Needs the id of an agent on the calling account; create one with agentline.agents.create first."
     kind: action
     capability: phone.contacts.create
     platform: phone
@@ -461,6 +475,7 @@ endpoints:
 
   - id: agentline.contacts.list
     added: '2026-11-20'
+    untestable: "Needs the id of an agent on the calling account; create one with agentline.agents.create first."
     capability: phone.contacts.list
     platform: phone
     scope: any_account
@@ -483,6 +498,7 @@ endpoints:
 
   - id: agentline.contact_facts.set
     added: '2026-11-20'
+    untestable: "Needs the id of an agent on the calling account; create one with agentline.agents.create first."
     kind: action
     capability: phone.contact_facts.set
     platform: phone

@@ -189,7 +189,7 @@ async def test_calls_are_not_placed_on_treg_key(
 async def test_own_key_places_calls_without_ownership_checks(
     clients: AsyncClient, agentline_platform_on, monkeypatch,
 ):
-    await clients.post("/secrets", json={"name": "agentline", "value": "al_live_OWN-KEY"})
+    await clients.post("/secrets", json={"name": "agentline", "value": "OWN-AGENTLINE-KEY"})
     seen = []
 
     async def relay(request, upstream_url, tool, secrets, client, **kwargs):
