@@ -303,8 +303,17 @@ class Settings(BaseSettings):
     # Optional SQLite / PostgreSQL datasource for explicitly opted-in, lag-tolerant reads.
     # Empty keeps read_session_maker on the existing primary pool.
     read_database_url: str = ""
+    # Schema upgrades (`python -m treg upgrade`, Alembic) connect here when set, else to
+    # `database_url`. They use session-level settings and statements outside a transaction, which a
+    # transaction-mode connection pooler cannot carry, so with a pooler in `database_url` this must
+    # name the database directly.
+    migration_database_url: str = ""
+    # asyncpg's and SQLAlchemy's prepared-statement caches. Their named statements live on one
+    # server connection; a transaction-mode pooler that does not track protocol-level prepared
+    # statements hands the next transaction another one. False sends every statement unnamed.
+    db_statement_cache: bool = True
 
-    @field_validator("database_url", "read_database_url")
+    @field_validator("database_url", "read_database_url", "migration_database_url")
     @classmethod
     def _async_pg_driver(cls, v: str) -> str:
         # Some hosts inject a bare `postgres://`/`postgresql://` URL, but
