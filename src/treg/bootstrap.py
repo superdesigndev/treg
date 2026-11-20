@@ -208,6 +208,7 @@ _CONTROL_ROUTE_KEYS: frozenset[RouteKey] = frozenset({
     ('/gtag.js', ('GET',), 'gtag_js'),
     ('/resources', ('GET',), 'resources_page'),
     ('/blog', ('GET',), 'blog_index'),
+    ('/blog/jobspipe-and-treg', ('GET',), 'blog_jobspipe_and_treg'),
     ('/blog/people-search-bench', ('GET',), 'blog_people_search_bench'),
     ('/blog/security-incident-2026-10-23', ('GET',), 'blog_security_incident_2026_10_23'),
     ('/blog/work-email-finding-bench', ('GET',), 'blog_work_email_finding_bench'),
