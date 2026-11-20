@@ -31,7 +31,7 @@ sources:
   - src/treg/alembic/versions/0053_idempotentcall_membership_expires_index.py
   - src/treg/alembic/versions/0099_idempotentcall_archive_link.py
   - src/treg/alembic/versions/0100_idempotentcall_archive_live_index.py
-  - src/treg/alembic/versions/0113_archive_retention_cursor.py
+  - src/treg/alembic/versions/0120_archive_retention_cursor.py
   - src/treg/alembic/versions/0054_callrecord_org_id_id.py
   - src/treg/alembic/versions/0061_remove_redundant_unique_indexes.py
   - src/treg/alembic/versions/0091_remove_prefix_covered_indexes.py

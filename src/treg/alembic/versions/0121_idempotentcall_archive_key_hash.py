@@ -1,8 +1,8 @@
 """partial index on idempotentcall (archive_key_hash) WHERE archive_content_hash IS NOT NULL - the
 archive row-retention job asks whether a live retry row still replays from a key
 
-Revision ID: 0114
-Revises: 0113
+Revision ID: 0121
+Revises: 0120
 Create Date: 2026-11-18
 
 `treg-worker archive retain` keeps a key an unexpired trimmed retry row replays from, and asks
@@ -28,8 +28,8 @@ import sqlalchemy as sa
 from alembic import op
 from sqlalchemy.exc import DBAPIError
 
-revision: str = "0114"
-down_revision: str | Sequence[str] | None = "0113"
+revision: str = "0121"
+down_revision: str | Sequence[str] | None = "0120"
 branch_labels: str | Sequence[str] | None = None
 depends_on: str | Sequence[str] | None = None
 contract = True  # pro forma - see the rollback floor note; the operation is one additive index
@@ -49,7 +49,7 @@ _MANUAL_STEPS = (
     f"  SELECT indisvalid FROM pg_index WHERE indexrelid = '{NAME}'::regclass;  -- must be true")
 
 MANUAL_BUILD = (
-    f"Refusing migration 0114: {_TABLE} holds more than {BUILD_IN_MIGRATION_MAX_ROWS} rows and the "
+    f"Refusing migration 0121: {_TABLE} holds more than {BUILD_IN_MIGRATION_MAX_ROWS} rows and the "
     f"index {NAME} is missing or INVALID. Build it by hand before deploying. " + _MANUAL_STEPS)
 
 _VALIDITY = sa.text(
@@ -93,7 +93,7 @@ def upgrade() -> None:
             if not _is_lock_timeout(exc):
                 raise
             raise RuntimeError(
-                f"Migration 0114 gave up building {NAME}: a transaction open longer than the lock "
+                f"Migration 0121 gave up building {NAME}: a transaction open longer than the lock "
                 "timeout held the build back. End that transaction and deploy again, or build the "
                 "index by hand. " + _MANUAL_STEPS) from exc
         finally:

@@ -1,7 +1,7 @@
 """archive row retention cursor - where the retention job has got to in archivekey
 
-Revision ID: 0113
-Revises: 0112
+Revision ID: 0120
+Revises: 0119
 Create Date: 2026-11-18
 
 `archiveretentioncursor` holds one row: the last `archivekey.id` the row-retention job
@@ -15,8 +15,8 @@ from collections.abc import Sequence
 import sqlalchemy as sa
 from alembic import op
 
-revision: str = "0113"
-down_revision: str | Sequence[str] | None = "0112"
+revision: str = "0120"
+down_revision: str | Sequence[str] | None = "0119"
 branch_labels: str | Sequence[str] | None = None
 depends_on: str | Sequence[str] | None = None
 

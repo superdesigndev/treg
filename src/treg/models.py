@@ -1703,7 +1703,7 @@ class IdempotentCall(SQLModel, table=True):
               postgresql_where=text("archive_content_hash IS NOT NULL"),
               sqlite_where=text("archive_content_hash IS NOT NULL")),
         # Only rows that dropped their copy: archive row retention's "a live retry replays from
-        # this key" check (Alembic 0114).
+        # this key" check (Alembic 0121).
         Index("ix_idempotentcall_archive_key_hash", "archive_key_hash",
               postgresql_where=text("archive_content_hash IS NOT NULL"),
               sqlite_where=text("archive_content_hash IS NOT NULL")),
