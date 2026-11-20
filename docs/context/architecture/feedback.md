@@ -272,7 +272,9 @@ the capability, and logs the rest. Each run:
    `created_at` within `compare_lookback_hours` (at most two, the marker's life), newest first, at
    most `SCAN_PER_CAPABILITY` (one ordered range of the `(endpoint_id, created_at)` index each), 2xx
    and `credential_tier` routed; drops calls already compared.
-4. Keeps calls of eligible teams only: not opted out of the archive, not a demo, and holding no
+4. Keeps calls of eligible teams only: not opted out of the archive, not a demo, with at least one
+   review in `compare_window_days` (a team whose agents never answer an invitation would leave its
+   pairs unjudged, and busy batch teams would take the day's budget), and holding no
    access policy at all (a member or project tool ACL, a member pinned to tags, a deny rule, or a
    capability pin on a paired capability). A team with any is skipped, so the run never has to
    emulate a team's authorization.

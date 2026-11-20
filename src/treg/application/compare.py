@@ -36,7 +36,8 @@ from ..domain.feedback import comparisons
 from ..infra import kv
 from ..infra.db import session_maker
 from ..infra.upstream.relay import relay
-from ..models import CallComparison, CallRecord, CapabilityPin, DenyRule, Membership, Org
+from ..models import (CallComparison, CallRecord, CallReview, CapabilityPin, DenyRule, Membership,
+                      Org)
 from ..timeutil import utcnow_naive
 
 log = logging.getLogger(__name__)
@@ -334,16 +335,22 @@ async def _recent(session_factory, since: datetime) -> list[Candidate]:
     return out
 
 
-async def _eligible_teams(session_factory, org_ids: set[int], capabilities: set[str]) -> set[int]:
-    """Teams a comparison may run for: in the archive, not a demo, and holding no access policy at
-    all (no member or project tool ACL, no pin to a tag, no deny rule, no capability pin on a
-    paired capability), so B's call never needs the team's authorization emulated."""
+async def _eligible_teams(session_factory, org_ids: set[int], capabilities: set[str],
+                          since: datetime | None = None) -> set[int]:
+    """Teams a comparison may run for: in the archive, not a demo, that wrote at least one review
+    since `since` (a team whose agents never answer an invitation would leave its pairs unjudged,
+    and busy batch teams would take the whole budget), and holding no access policy at all (no
+    member or project tool ACL, no pin to a tag, no deny rule, no capability pin on a paired
+    capability), so B's call never needs the team's authorization emulated."""
     if not org_ids:
         return set()
     async with session_factory() as db:
         teams = set((await db.execute(select(Org.id).where(
             Org.id.in_(org_ids), Org.archive_opt_out_at.is_(None), Org.demo.is_(False),
             Org.public_demo.is_(False)))).scalars())
+        if teams and since is not None:
+            teams &= set((await db.execute(select(CallReview.org_id).where(
+                CallReview.org_id.in_(teams), CallReview.created_at >= since).distinct())).scalars())
         if not teams:
             return set()
         # JSON columns: an unset value may read back as JSON null, so they are judged here.
@@ -467,7 +474,8 @@ async def collect(*, max_seconds: float = 110.0, session_factory=session_maker,
     async with session_factory() as db:
         done = set((await db.execute(select(CallComparison.call_ref).where(
             CallComparison.call_ref.in_([c.record.call_ref for c in found])))).scalars()) if found else set()
-    teams = await _eligible_teams(session_factory, {c.record.org_id for c in found}, set(pairs()))
+    teams = await _eligible_teams(session_factory, {c.record.org_id for c in found}, set(pairs()),
+                                 since=now - timedelta(days=settings.compare_window_days))
     found = [c for c in found if c.record.org_id in teams and c.record.call_ref not in done]
     totals["eligible"] = len(found)
     cat = catalog_store.load()
