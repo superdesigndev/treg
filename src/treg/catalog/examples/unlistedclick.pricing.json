@@ -1,0 +1,24 @@
+{
+  "google": true,
+  "stripe": true,
+  "price": {
+    "monthly": 9,
+    "yearly": 79,
+    "currency": "USD",
+    "trialDays": 14,
+    "seats": 5,
+    "blurb": "One plan. $9/month, or $79/year. Your whole household, up to 5 people."
+  },
+  "brokers": 33,
+  "live": 30,
+  "captcha": 13,
+  "auto": [
+    "peopleconnect",
+    "syncme",
+    "… 2 more item(s) truncated"
+  ],
+  "site": {
+    "name": "Unlisted",
+    "domain": "unlisted.click"
+  }
+}

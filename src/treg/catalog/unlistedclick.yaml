@@ -1,0 +1,111 @@
+provider: unlistedclick
+source:
+  docs: https://unlisted.click/llms.txt
+  openapi: https://unlisted.click/openapi.json
+  curated: '2026-11-19'
+# unlisted.click keeps a household's data-broker removal ledger: one case per broker, the
+# statutory clock, a 45-day re-check and an exportable ledger. Two routes are public and keyless
+# (the broker catalogue and the pricing config), so those rows relay anonymously. The account
+# routes take the `ul_` token as `Authorization: Bearer`, answer 401 problem+json without a valid
+# one, and are billed by the household plan ($9/month or $79/year), never per call.
+limits: "No published per-route rate limit. One household plan per account covers up to 5 people; after the 14-day trial lapses, reads and exports keep working and writes answer 402 trial_ended."
+pricing_url: https://unlisted.click/pricing
+
+defaults:
+  provenance: {source: observed, source_url: 'https://unlisted.click/api/config', checked: '2026-11-19', confidence: verified}
+
+endpoints:
+  - id: unlistedclick.brokers
+    platform_auth: anonymous
+    domain: brokers
+    capability: privacy.brokers.list
+    platform: privacy
+    scope: any_account
+    method: GET
+    path: /api/brokers
+    name: "Data-broker opt-out catalogue"
+    summary: "Every data broker the service files against, grouped, with its official opt-out URL, channel, privacy inbox, captcha type and a filing note, plus the state data-broker registries."
+    note: "The catalogue is one fixed list; the route takes no filter, so read it once and pick brokers by slug."
+    test_request: {queryParams: {}}
+    price: {value: '0', currency: USD, unit: call}
+    expect: {path: response.brokers, op: present}
+    miss: {status: [404], means: "The route moved; the body is problem+json titled no_route. Read https://unlisted.click/openapi.json for the current paths."}
+    verified: '2026-11-19'
+    added: '2026-11-20'
+    example_response: examples/unlistedclick.brokers.json
+    docs_url: https://unlisted.click/openapi.json
+
+  - id: unlistedclick.pricing
+    platform_auth: anonymous
+    domain: pricing
+    capability: privacy.removal.pricing
+    platform: privacy
+    scope: any_account
+    method: GET
+    path: /api/config
+    name: "Plan price and broker coverage"
+    summary: "The plan price (monthly and yearly, in USD), trial days, household seats, broker counts and which brokers the service can file automatically."
+    test_request: {queryParams: {}}
+    price: {value: '0', currency: USD, unit: call}
+    expect: {path: response.price, op: present}
+    miss: {status: [404], means: "The route moved; the body is problem+json titled no_route. Read https://unlisted.click/openapi.json for the current paths."}
+    verified: '2026-11-19'
+    added: '2026-11-20'
+    example_response: examples/unlistedclick.pricing.json
+    docs_url: https://unlisted.click/openapi.json
+
+  - id: unlistedclick.board
+    domain: ledger
+    capability: privacy.removal.board
+    platform: privacy
+    scope: own_account
+    method: GET
+    path: /api/board
+    name: "Your removal board"
+    summary: "Your household's people and every removal case with its status, filing date, statutory deadline and last re-check, plus counts by status."
+    note: "A new account answers 200 with empty people and cases arrays; that is an empty ledger, not an error."
+    test_request: {queryParams: {}}
+    price: {value: '0', currency: USD, unit: call, note: "included in the household plan; a read, so it keeps working after the trial lapses"}
+    expect: {path: response.summary, op: present}
+    verified: '2026-11-19'
+    added: '2026-11-20'
+    example_response: examples/unlistedclick.board.json
+    docs_url: https://unlisted.click/openapi.json
+
+  - id: unlistedclick.ledger.export
+    domain: ledger
+    capability: privacy.removal.export
+    platform: privacy
+    scope: own_account
+    method: GET
+    path: /api/export
+    name: "Export your removal ledger"
+    summary: "Your whole removal ledger as CSV, Markdown or JSON: each case's person, broker, status, filing and deadline dates, last check and broker reference."
+    input:
+      queryParams:
+        format: {type: string, required: false, enum: [csv, md, json], default: csv, note: "an unknown value answers 200 with CSV, not an error", example: json}
+    test_request: {queryParams: {format: json}}
+    price: {value: '0', currency: USD, unit: call, note: "included in the household plan; exports keep working after the trial lapses"}
+    expect: {path: response.cases, op: present}
+    verified: '2026-11-19'
+    added: '2026-11-20'
+    example_response: examples/unlistedclick.ledger.export.json
+    docs_url: https://unlisted.click/openapi.json
+
+  - id: unlistedclick.filing.queue
+    domain: ledger
+    capability: privacy.removal.queue
+    platform: privacy
+    scope: own_account
+    method: GET
+    path: /api/filing/queue
+    name: "Removals due to be filed"
+    summary: "The queued removal cases that are due to be filed next, with a count, for a filing runner or an agent to work through."
+    note: "An empty queue answers 200 with count 0 and an empty items array."
+    test_request: {queryParams: {}}
+    price: {value: '0', currency: USD, unit: call, note: "included in the household plan"}
+    expect: {path: response.items, op: present}
+    verified: '2026-11-19'
+    added: '2026-11-20'
+    example_response: examples/unlistedclick.filing.queue.json
+    docs_url: https://unlisted.click/openapi.json
