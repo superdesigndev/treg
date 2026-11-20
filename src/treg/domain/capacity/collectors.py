@@ -172,6 +172,21 @@ async def _serper(c, key):
                  else "account rate limit unavailable")
     return {"value": float(balance), "unit": "credits", "note": rate_note}
 
+async def _searchapi(c, key):
+    # GET /me is free: it reports the plan's remaining searches and the hourly rate limit.
+    d = await _get(c, "https://www.searchapi.io/api/v1/me",
+                   headers={"Authorization": f"Bearer {key}"})
+    account = d.get("account") if isinstance(d, dict) else None
+    remaining = account.get("remaining_searches") if isinstance(account, dict) else None
+    if type(remaining) is not int or remaining < 0:
+        raise ValueError("SearchApi returned no valid remaining_searches balance")
+    usage = d.get("api_usage") if isinstance(d, dict) else None
+    rate = usage.get("hourly_rate_limit") if isinstance(usage, dict) else None
+    rate_note = (f"hourly rate limit {rate} searches"
+                 if type(rate) is int and rate >= 0 else "hourly rate limit unavailable")
+    return {"value": remaining, "unit": "searches", "note": rate_note}
+
+
 
 async def _litescrape(c, key):
     d = await _get(c, "https://api.litescrape.com/api/keys/status",
@@ -1216,6 +1231,7 @@ BALANCE_ROUTES = {
     "linkup": _linkup,
     "you": _you,
     "serper": _serper,
+    "searchapi": _searchapi,
     "litescrape": _litescrape,
     "olostep": _olostep,
     "firecrawl": _firecrawl,

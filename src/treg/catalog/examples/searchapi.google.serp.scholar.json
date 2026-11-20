@@ -1,0 +1,109 @@
+{
+  "search_metadata": {
+    "id": "search_W19X7MebbAtLObdnxe68NbDz",
+    "status": "Success",
+    "created_at": "2026-11-20T14:30:11Z",
+    "request_time_taken": 0.92,
+    "parsing_time_taken": 0.02,
+    "total_time_taken": 0.94,
+    "request_url": "https://scholar.google.com/scholar?q=attention+is+all+you+need&hl=en",
+    "html_url": "https://www.searchapi.io/api/v1/searches/search_W19X7MebbAtLObdnxe68NbDz.html",
+    "json_url": "https://www.searchapi.io/api/v1/searches/search_W19X7MebbAtLObdnxe68NbDz"
+  },
+  "search_parameters": {
+    "engine": "google_scholar",
+    "q": "attention is all you need",
+    "hl": "en"
+  },
+  "search_information": {
+    "query_displayed": "attention is all you need",
+    "total_results": 9780000,
+    "page": 1,
+    "time_taken_displayed": 0.09
+  },
+  "organic_results": [
+    {
+      "position": 1,
+      "title": "Attention is all you need",
+      "data_cid": "5Gohgn6QFikJ",
+      "link": "https://proceedings.neurips.cc/paper_files/paper/7181-attention-is",
+      "publication": "A Vaswani, N Shazeer, N Parmar… - Advances in neural …, 2017 - proceedings.neurips.cc",
+      "snippet": "… to attend to all positions in the decoder up to and including that position. We need to prevent … We implement this inside of scaled dot-product attention by masking out (setting to −∞) …",
+      "inline_links": {
+        "cited_by": {
+          "cites_id": "2960712678066186980",
+          "total": 283149,
+          "link": "https://scholar.google.com/scholar?cites=2960712678066186980&as_sdt=2005&sciodt=0,5&hl=en"
+        },
+        "versions": {
+          "cluster_id": "2960712678066186980",
+          "total": 26,
+          "link": "https://scholar.google.com/scholar?cluster=2960712678066186980&hl=en&as_sdt=0,5"
+        },
+        "related_articles_link": "https://scholar.google.com/scholar?q=related:5Gohgn6QFikJ:scholar.google.com/&scioq=attention+is+all+you+need&hl=en&as_sdt=0,5",
+        "cached_page_link": "https://scholar.googleusercontent.com/scholar?q=cache:5Gohgn6QFikJ:scholar.google.com/+attention+is+all+you+need&hl=en&as_sdt=0,5"
+      },
+      "resource": {
+        "name": "[PDF]",
+        "link": "https://scholar.google.comjavascript:void(0)"
+      },
+      "authors": [
+        {
+          "name": "A Vaswani",
+          "id": "oR9sCGYAAAAJ",
+          "link": "https://scholar.google.com/citations?user=oR9sCGYAAAAJ&hl=en&oi=sra"
+        },
+        {
+          "name": "N Shazeer",
+          "id": "wsGvgA8AAAAJ",
+          "link": "https://scholar.google.com/citations?user=wsGvgA8AAAAJ&hl=en&oi=sra"
+        },
+        "… 1 more item(s) truncated"
+      ]
+    },
+    {
+      "position": 2,
+      "title": "Is Attention All You Need?",
+      "data_cid": "QEhbjTxy5DIJ",
+      "link": "https://link.springer.com/chapter/10.1007/978-3-031-84300-6_13",
+      "publication": "P Mineault - From Human Attention to Computational Attention: A …, 2025 - Springer",
+      "snippet": "… We show how transformers and attention have opened up new dimensions of inquiry in … [10], who first introduced what they called intra-attention, what we now call self-attention. …",
+      "inline_links": {
+        "cited_by": {
+          "cites_id": "3667181600981600320",
+          "total": 16,
+          "link": "https://scholar.google.com/scholar?cites=3667181600981600320&as_sdt=2005&sciodt=0,5&hl=en"
+        },
+        "versions": {
+          "cluster_id": "3667181600981600320",
+          "total": 3,
+          "link": "https://scholar.google.com/scholar?cluster=3667181600981600320&hl=en&as_sdt=0,5"
+        },
+        "related_articles_link": "https://scholar.google.com/scholar?q=related:QEhbjTxy5DIJ:scholar.google.com/&scioq=attention+is+all+you+need&hl=en&as_sdt=0,5"
+      },
+      "authors": [
+        {
+          "name": "P Mineault",
+          "id": "gpQg9uQAAAAJ",
+          "link": "https://scholar.google.com/citations?user=gpQg9uQAAAAJ&hl=en&oi=sra"
+        }
+      ]
+    },
+    "… 8 more item(s) truncated"
+  ],
+  "pagination": {
+    "current": 1,
+    "next": "https://scholar.google.com/scholar?start=10&q=attention+is+all+you+need&hl=en&as_sdt=0,5",
+    "other_pages": {
+      "2": "https://scholar.google.com/scholar?start=10&q=attention+is+all+you+need&hl=en&as_sdt=0,5",
+      "3": "https://scholar.google.com/scholar?start=20&q=attention+is+all+you+need&hl=en&as_sdt=0,5",
+      "4": "https://scholar.google.com/scholar?start=30&q=attention+is+all+you+need&hl=en&as_sdt=0,5",
+      "5": "https://scholar.google.com/scholar?start=40&q=attention+is+all+you+need&hl=en&as_sdt=0,5",
+      "6": "https://scholar.google.com/scholar?start=50&q=attention+is+all+you+need&hl=en&as_sdt=0,5",
+      "7": "https://scholar.google.com/scholar?start=60&q=attention+is+all+you+need&hl=en&as_sdt=0,5",
+      "8": "https://scholar.google.com/scholar?start=70&q=attention+is+all+you+need&hl=en&as_sdt=0,5",
+      "9": "https://scholar.google.com/scholar?start=80&q=attention+is+all+you+need&hl=en&as_sdt=0,5",
+      "10": "https://scholar.google.com/scholar?start=90&q=attention+is+all+you+need&hl=en&as_sdt=0,5"
+    }
+  }
+}

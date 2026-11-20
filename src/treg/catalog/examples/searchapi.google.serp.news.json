@@ -1,0 +1,75 @@
+{
+  "search_metadata": {
+    "id": "search_JoY68Me7qNsdXQ798v0axRVb",
+    "status": "Success",
+    "created_at": "2026-11-20T14:30:05Z",
+    "request_time_taken": 5.87,
+    "parsing_time_taken": 0.02,
+    "total_time_taken": 5.89,
+    "request_url": "https://www.google.com/search?q=OpenAI&oq=OpenAI&gl=us&hl=en&tbm=nws&ie=UTF-8",
+    "html_url": "https://www.searchapi.io/api/v1/searches/search_JoY68Me7qNsdXQ798v0axRVb.html",
+    "json_url": "https://www.searchapi.io/api/v1/searches/search_JoY68Me7qNsdXQ798v0axRVb"
+  },
+  "search_parameters": {
+    "engine": "google_news",
+    "q": "OpenAI",
+    "device": "desktop",
+    "hl": "en",
+    "gl": "us"
+  },
+  "search_information": {
+    "query_displayed": "OpenAI",
+    "total_results": 12400000,
+    "time_taken_displayed": 0.28,
+    "detected_location": "Tarrant County, Texas",
+    "has_no_results_for": false
+  },
+  "organic_results": [
+    {
+      "position": 1,
+      "title": "Microsoft Nears $500 Million Deal to Sell AI to ByteDance, Irking OpenAI",
+      "link": "https://www.google.com/goto?url=CAESpQEBxCJF11rOY9TZ5r5zmgYNLKzvz-fYFoYsvS09UnUnC2rCprUtonIPIg9wnwGTm_6mzSKovUYIKXYN1odaFbGRRmB-K0zEssp4OMoVAhhfGkvQ9EV3323_mqd-ksqJUMXk3TeFS8J-cQCxbovJwhPcWwWb1FwBSyCF3SGlpKLbbgZdHhRFkw04nr62oSMxw0m5oCDWrjNOz37KXe13qmHIx01CPiM&gsessionid=nrSNlNMPWw6R8kDn74kCLMVrIQy8NG9zrQTabG_lbboQN9pN6NE0KA",
+      "link_token": "UNJSDhQAonryhO7kJ8f4WFuJtOs-JtmhD8SlzSHq-lV55IeYie86BA155ajRGT6onPop8AWXEfNUjOaW2AkMQs0XlC3E9E1kFv5CRAlEXCFN14M7Kev7HLQdZAsvn-FZCJ6lOi7QTpIZx9Op6Li5qVJQ7zQrXPBUn5IN8MTTxONdk9r88EY2m7iO7e7_V5-oKbvw9Haq4ezkQh-VegRdLU77cCMPoPpUjj9fAlV8__xKNokA_2c5M97lRYsXPAJdwC98fmAsH_TVYTI-_vjWtKiBaXapJokVI53fegxOXJ51ZIzA0FyPEGmT1FKbYcQ--ahC6iIEPlinqSoTI--1M2BfXn3P7yqp3xsw8orIw",
+      "source": "The Information",
+      "date": "2 days ago",
+      "iso_date": "2026-11-18T14:00:00Z",
+      "snippet": "ByteDance is in advanced talks to spend an additional roughly $500 million on cloud services from Microsoft, primarily to use OpenAI models...",
+      "favicon": "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAABAAAAAQCAYAAAAf8/9hAAABvklEQVQ4jY2SvW8TQRDFfzN3Z8cfkkGRSxpEFSMk5IaCwtBRUZhDlEhIKWn4B/hHqOgwDUL0lpDSmQLnA4kmvZFsEey7+G53KJw49oHlTLO72vfevH2zQqEMhE4noNm0/mgkAJ1m0xiNhH7fCViRs07eUkWMrF4ImLXieurdrgUlL+YEwCQwcXPdiWq/5Pv76QXPAHQp1d4PAWbYC1U9dZYNHf6Hw504nx2q6unUJV0A63SCS1q4FEjHAiBm1VKpimRpI8djJpRFCaMd5vNZFWBwdrZ0fuXgqJUDiNPPaXb+OMe/uURlZq/TPHkUaPQFoD0Y5P9ksJoDwHSvez8S/WYYqNwrD3vDImbdwULNft55UgYIjF0VyMzjPQ0Aa+9HxTGuCQDMy/VFuqGODahFFTDbOt7lE1bPs7tPb01bzz6d73… [694 chars total]",
+      "thumbnail": "data:image/webp;base64,UklGRkICAABXRUJQVlA4IDYCAAAQDgCdASpcAFwAPwlCwmEroqurlxFwIQllAM4AD+2z5mSwZv/3bDchP/7JquTdeCe/Y1oYx0JTvoJDXaFILVmu26wmQ+Zzib/8k0WDVIkJqIbdlinoaJ1t8UvfKeVhK24MSbgZgPEofdjinh12mUxQwulY2xAyHXoAAP704LJqB3ibm8SAmf3Cu7gvxh8MvwZU0+XpM0AHfwrej2apCpTKBrwMOaGcl1WBH+zUhhPkuwXxV0Z4b7AZa5Y2zz5NsRRGmaLgsAG+QXPTP+K9PFJE97VrJbsiVolAXoVHxY7VBT76235icxmsLFCPgZXwn5kgo0reTKPE33nUYNCNA2xo46SlLmHosLMpOF3HyYuDFUd8HBpJmNHdsMVKcEZx1j1hcJ4E6bLGAbdf0mQeuFeZqDPakKqWI7Vb6iS8qCPLHPa+kIXWW5BXaFbZ+/PFoQnIp… [807 chars total]"
+    },
+    {
+      "position": 2,
+      "title": "Arizona says it is investigating OpenAI, other firms over possible rogue agents",
+      "link": "https://www.google.com/goto?url=CAESxAEBxCJF14Jx7YDHXlbk92YbAQLca9FH9PVKiP9MGyWq_gREcAivVpeh8Du2NJMKGhYH7twoAZ-wnmA4rspVP0DxfXNXMingiaSmagP89rhPxrA5BiHKkUcBn2agfqaWO_lO2MO48fifMIzELempZQz2RJKSQUOgYnuBJBLI-2QDP8dLav9wW7KAhrsyteU7KtEzToiPhQPiw65K2FkEN7kqB6pQvVVxjPRnyccOITlfVxJAXJRTe7Lp0EQQKtG5isub2HVH&gsessionid=nrSNlNMPWw6R8kDn74kCLMVrIQy8NG9zrQTabG_lbboQN9pN6NE0KA",
+      "link_token": "CimPqGYatqD7v5_Wfrq5vnAh0YbrhKmehgm3Vnh8_JfiGZfPtZREQcVPc9x234axglzNJJl-u8nx4MODV_n-fwLLIy0Qd43aWcEh6RaIP8A25oG6ReOztTZMr3oGe0sHIvWMVRRohOXFqNsT_n5sOjmc1SrgitW7ICx9Cn2EOIPF4YbB9nELizEUt30JUkqMZKGbaKXY6wMQVtOJqYC-7TY3YduEpCFvsh4Rou0dtiVl43GiAzmhoGWIq211uAwlK0OKjr7mS4d8LCueuF_ecR_ILRnL8LV4QPT1nTJTJoUl60v24NKV7_RPQBSz3PV6_s6pSMOlPcRMCsnJ6us71HOSG32DPjQy3ISoQjjTqzGN-xqSUjG8Uw--EbmnehVlau9U8xU0--qn3Sg0rEHagZixSuaTRaeg",
+      "source": "Reuters",
+      "date": "1 day ago",
+      "iso_date": "2026-11-19T01:45:00Z",
+      "snippet": "The state of Arizona has opened a criminal investigation into OpenAI and other AI companies relating to the \"apparent ​infiltration of banks...",
+      "favicon": "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAA8AAAAQCAMAAAD+iNU2AAAANlBMVEVHcEzWQADWQADWQADVQADWQADVQADVQADVQADTQADWQADWQADWQADWQADWQADVQADWQADWQADYUPXYAAAAEXRSTlMAk+tzG2YlES0ISDu2gc5XpQRdj/kAAACLSURBVAiZTU9bEgMhCIsKCr52vf9lG5x2pvyQkBAUYNUmp3bFr+ZC8p1dLlv1NmnzWIDRgAS6yyaSRdbJnbb9wF7gfWhzg+QCD/kGmAbJynOXM14ztEJvLBhiBaIQv/IwMDIdQedDfGUuD7TRuT5xGsUIsjOpBozTnM1nlZgPyPc/edupJeGvyrd/AOjAA6sGw87FAAAAAElFTkSuQmCC",
+      "thumbnail": "data:image/webp;base64,UklGRmwCAABXRUJQVlA4IGACAAAwEgCdASpcAFwAPy1Ky2Wuq66umAHQJYljAMyUc9tzXvsw4RygTwt+nE6KVYMjVf4Lz4QPibQgTOdEjGS9YvCU9Jcs3HWOrqIUCCuNXE9Kk2OfutCtpL1kqlPUj7dw2QUGtq9g14Rh9b/+BRGCx2XxfWvGfKvjs0ABOGEI3PFOrYyiYQGGhT0p3OP6JQ/cJg0NRST/9vLSVLaAAP7xxMRHQtR42MPpPjiqFrI4UFTdSPlNLltUwqeV+TZr6bHZQQ5AYpCBHcyI2IJAAYxz0mfg/mJ0KudM+dBa7KT3F/dVJ1w6VHyGywhqUjdd9omDTuZV58eIhCnplyqXB+nheumrgd4Fx2naFoyLJF3B3bTO+NAp0G1kt61ln39ozN8p0FRIz9M2xq8h3bwVfarPq3jUlwCZFA0ZMa0kXwfpKeb7xoziZyHDY9dRfFwKIuWYpkImB… [863 chars total]"
+    },
+    "… 7 more item(s) truncated"
+  ],
+  "top_stories": [
+    {
+      "title": "OpenAI tried to ruin Anthropic's IPO. It backfired.",
+      "link": "https://www.google.com/goto?url=CAESjAEBxCJF17P5FEtXNVAex3FLCvhvrvdq6ObBazWFk4pZ7ahUDKk5YEFA31FajU4ZXwzQPO5uI9-TMy1YrjqX3zZ7Y8m8CtZXMvNRZnWfJBPtJm0WZgkmTyIQzWIq2aYcbd9zyRsLDlzJI6Aq_9yBubWPn_bokWTDaDsU_e8MXGBvLv8Gz7yObTUn9xtPyQ&gsessionid=nrSNlNMPWw6R8kDn74kCLMVrIQy8NG9zrQTabG_lbboQN9pN6NE0KA",
+      "link_token": "CRh2jIxkhBkZCPNQmt4gQelTo0rLXHbn6L-N2bPIJxKjw5D_CtC8x2u461CrsL2xEJ58oNqP0cWyffqZr4t7JTUZWWjcDKicBlc9fkgfBieDelN26t-y-lDf74fPHMvGhcrgp_sx8IWRL63BqXQWN1Cc5699S4nk3u1m0D6WFAbRrt1mmGUrv2ZPThRSpSqenNMQBCkUbBjjQmZT11wUZvrIXOZ11RRU32k_0IuJL5emFrNnxPRg-NGQEwmp0oC2UDFnqKDyhSJRoyX0EF4--d7aTJ2MhS4lzAWSk--L2fHoHOl0rIijhVZSFyb1Q",
+      "source": "Yahoo Finance",
+      "date": "3 hours ago",
+      "iso_date": "2026-11-20T12:00:00Z",
+      "thumbnail": "data:image/webp;base64,UklGRqAFAABXRUJQVlA4IJQFAAAwGgCdASpcAFwAP3l03m81pLW1ljKwLwlsALlTx5ZEpq596EKHuBudicoakSPjuU03Ri+Oy/8RV5GqEBWFjWnaahjbjWZxm/mFGxapmWVb9iY0RO+kwhPJBNA3kvm99HAAinQRt+3oc3yw/Pwwk2AyXk5hDpUHj6stGvlPOZGE6mzbdk2NVvlhRFPKijUS4wrXGUMAeLE6zjOQuGKi9iKXVMY0v4EMRThozy82PGBLMkeTpTTLd/seVid4MBATXs54z1HtPC0G7rc6S/rjAd4CXbsj6Uubw152AAD5Qn7PVaKgCItqZX6nwkMOHqrCmpi2lq2whulSutyn3uV1pqv59G3yoQiI2Ybl9tQVzZEw9IwnRMFSeha2VHvls8DOAHbbaxjQn8uJQl+S4mOGrnTM9mV+uF34KqmUAIdITUpVtuVLPwLWuua8FxRw4mvY/+c/b… [1955 chars total]"
+    },
+    {
+      "title": "OpenAI CEO Sam Altman on potential IPO: 'We plan to be public'",
+      "link": "https://www.google.com/goto?url=CAESsQEBxCJF1-f82RKtiI17ubjbwgO_UfMg9AdM6cW-hytCbRGM0AMV72jbgJZ9EQKQaPpgaa6y8Iy1vV40kjd_AUlaQRUpxxNgciy-hA-Ntl-ai_uESI5xT05LOMUYobgaHFh7sIckYBskhcVet7yukG0KYEYAdVNnmGMTh2G6Vhl-46OJWjpHLaw2scGH05scNQdQ2KW9Oin5F88sLCcbJwe0sQA7glZcXZlpWDlM2VaPkTg&gsessionid=nrSNlNMPWw6R8kDn74kCLMVrIQy8NG9zrQTabG_lbboQN9pN6NE0KA",
+      "link_token": "g7rlJ0fYmYcLZMbsbs1W1YNOz7dwtxMC8aL6sRMTs7Ie24pQxxOyWV36O61-aEAxdDJ-wni2_IkmluvoutIOODB9Sl5UtMpaYMVynMxr6GDT7xaH0J6_xzzP4zTdj9uZVPZLvUX8qlcGbFHixAXHb11WAFB0_QMbILobltkJmCIO9PJHhdzlzH7q2u2cVa9zTAinMQxFk9sOuKJXjgpUpqhohvwQlSPnRWzQsv2m1NzHtOQX3WZWfQiNyFUESfJd-otxPlY5BxcfrftsJn6UZGa2h9H9Idnl0TPtdB2eCoPDEW1AtGuoGkquzMoi2uGm1H6HImhWnd_A4ykahXk3--deGiPEpCasTAZ07T--to76j-k8p4DDzTV3agMLAg",
+      "source": "Yahoo Finance",
+      "date": "1 day ago",
+      "iso_date": "2026-11-18T18:43:33Z",
+      "thumbnail": "data:image/webp;base64,UklGRiIDAABXRUJQVlA4IBYDAACQEQCdASpcAFwAP0FS0GgvqK+vl4HwKAlkAMGInYtIU9ncM90O9ZKPkr7tX3bJubRJqEYjx6CQSUXQFKE0pi0/ZNSGmFvXekNoXP+hyiDBJWpP/9oUHSsG8bVlwJ5pMTTcq6tkRu8ibq3E0kRqMzggCdXpYwGo2myy5zaway8jaBZUKu3vvARUQK3lpPVxOlRmzekzYAD+8AcEP7U+evvYx/yynpEQkFYsH71BoHvQf2CnG9aXL4UGhv91+G2iBbNKh4MluxhqmV/9+jWEPe7fMxSYVVnyYcLBTxNBMpYjIlA7zlACvGT2Q4PA+OvAgVBsi71JfYOweRr++kT3wEcJPpWXAVBuh74TX0cKnEZBLsDWDXGqr2eyJ0+wzJxc8NhcKqqWG+JKZBKFXd1pCEhRegSd0nPgmgtOfVCUPqMZ5ql6E32/R0notorGIfE9/OZC7… [1103 chars total]"
+    },
+    "… 2 more item(s) truncated"
+  ]
+}
