@@ -1,10 +1,10 @@
 """the partitioned call record table takes the name `callrecord`
 
-Revision ID: 0117
-Revises: 0116
+Revision ID: 0124
+Revises: 0123
 Create Date: 2026-11-18
 
-After this revision `callrecord` is the monthly-partitioned, 64-bit table that 0116 built, and the
+After this revision `callrecord` is the monthly-partitioned, 64-bit table that 0123 built, and the
 table it replaces is `callrecord_legacy`, which nothing writes any more. No reader changes: the
 name, the columns and the index names are the same, and the new table already holds the history
 the readers use.
@@ -74,8 +74,8 @@ import sqlalchemy as sa
 from alembic import op
 from sqlalchemy.exc import DBAPIError
 
-revision: str = "0117"
-down_revision: str | Sequence[str] | None = "0116"
+revision: str = "0124"
+down_revision: str | Sequence[str] | None = "0123"
 branch_labels: str | Sequence[str] | None = None
 depends_on: str | Sequence[str] | None = None
 contract = True  # replaces a table; see the rollback floor note

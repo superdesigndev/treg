@@ -38,7 +38,7 @@ from ..timeutil import utcnow_naive
 
 TABLE = "callrecord"
 STAGED = "callrecord_partitioned"   # the partitioned table alembic 0123 builds, filled by `backfill`
-LEGACY = "callrecord_legacy"        # the plain table after alembic 0117
+LEGACY = "callrecord_legacy"        # the plain table after alembic 0124
 DROP_LEGACY_LOCK_TIMEOUT = "1s"
 DROP_LEGACY_ATTEMPTS = 10
 MONTHS_AHEAD = 3
@@ -188,7 +188,7 @@ async def analyze_if_stale(*, session_factory=session_maker) -> list[str]:
     """ANALYZE the partitioned `callrecord` when its own row estimate is below 90 % of its
     partitions' -> the tables analyzed. Autovacuum analyzes each partition but never the
     partitioned parent, whose statistics the planner uses for queries over all months. The staged
-    table before the swap is analyzed by the swap itself (alembic 0117), not here."""
+    table before the swap is analyzed by the swap itself (alembic 0124), not here."""
     analyzed = []
     async with session_factory() as db:
         for table in (TABLE,):
@@ -317,8 +317,8 @@ async def backfill(days: int, *, batch_rows: int = BACKFILL_BATCH_ROWS, max_seco
     -> {phase, copied, batches, reached, done, deleted_orphans, replica_waits, resynced}, with
     `busy: True` and nothing done when another backfill holds the lock.
 
-    Before the swap (alembic at 0116, `phase: "before_swap"`) the source is `callrecord` and the
-    target is `callrecord_partitioned`, which nothing reads yet; 0117 refuses to swap a large
+    Before the swap (alembic at 0123, `phase: "before_swap"`) the source is `callrecord` and the
+    target is `callrecord_partitioned`, which nothing reads yet; 0124 refuses to swap a large
     table until this has run, and again when this last ran long ago. After the swap
     (`phase: "after_swap"`) the source is `callrecord_legacy` and the target is `callrecord`, for
     history older than was copied first; the orphan sweep and the resync are before-swap steps.
