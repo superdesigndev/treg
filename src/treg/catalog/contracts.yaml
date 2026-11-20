@@ -108,7 +108,8 @@ contracts:
     summary: "List recent posts under an Instagram hashtag — provider-native post objects in `posts`"
     identity:
       - {hashtag: string}
-    filters: {}
+    filters:
+      cursor: {type: string, default: null, note: "the next page: the previous answer's output.next_cursor, sent with the same body otherwise. The page comes from the provider that served the first one; null there means no next page"}
     output:
       posts: {type: array, items: {type: object}, required: true, note: "the provider's own post objects — shapes differ per provider; raw is the same body"}
       count: {type: integer}
@@ -905,11 +906,12 @@ contracts:
     advice_unverified: "To find a niche's best-known creators, also search influencer directories and list pages: treg.web.search with contents: true ('top fitness influencers Brazil TikTok') returns the names they list."
 
   tiktok.search.videos:
-    summary: "Search TikTok videos by keyword, first page only — provider-native video rows in `videos`; to page deeper, call the provider named in X-Treg-Served-By directly with its offset or cursor"
+    summary: "Search TikTok videos by keyword — provider-native video rows in `videos`"
     identity:
       - {q: string}
     filters:
       limit: {type: integer, default: 10, note: "videos per page where the provider takes a count"}
+      cursor: {type: string, default: null, note: "the next page: the previous answer's output.next_cursor, sent with the same body otherwise. The page comes from the provider that served the first one; null there means no next page"}
     output:
       videos: {type: array, items: {type: object}, required: true}
       next_cursor: {type: string}
@@ -1093,7 +1095,8 @@ contracts:
     summary: "Search X (Twitter) posts by keyword — provider-native rows in `posts`"
     identity:
       - {q: string}
-    filters: {}
+    filters:
+      cursor: {type: string, default: null, note: "the next page: the previous answer's output.next_cursor, sent with the same body otherwise. The page comes from the provider that served the first one; null there means no next page"}
     output:
       posts: {type: array, items: {type: object}, required: true}
       next_cursor: {type: string}

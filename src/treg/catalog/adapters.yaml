@@ -340,15 +340,18 @@ adapters:
     accepts: [[hashtag]]
     in:  {hashtag: queryParams.keyword}
     out: {posts: data.data.items, count: data.data.count, next_cursor: data.pagination_token}
+    paging: {cursor: queryParams.pagination_token}
   scrapecreators.x.v1-instagram-search-hashtag:
     accepts: [[hashtag]]
     in:  {hashtag: queryParams.hashtag}
     out: {posts: posts, count: "len(posts)", next_cursor: cursor}
+    paging: {cursor: queryParams.cursor}
   justoneapi.x.instagram-search-hashtag-posts-v1:
     accepts: [[hashtag]]
     in:  {hashtag: queryParams.hashtag}
     out: {posts: data.data.hashtag.edge_hashtag_to_media.edges, count: data.data.hashtag.edge_hashtag_to_media.count,
           next_cursor: data.data.hashtag.edge_hashtag_to_media.page_info.end_cursor}
+    paging: {cursor: queryParams.endCursor}
 
   # ---- x.user.posts -------------------------------------------------------------------------
   tikhub.x.user.posts:
@@ -1947,17 +1950,19 @@ adapters:
   justoneapi.tiktok.search.videos:
     accepts: [[q]]
     in:  {q: queryParams.keyword}
-    const: {queryParams.offset: "0"}
     out: {videos: data.aweme_list, next_cursor: data.cursor, has_more: data.has_more}
+    paging: {cursor: queryParams.offset}
   scrapecreators.tiktok.search.videos:
     accepts: [[q]]
     in:  {q: queryParams.query}
     out: {videos: search_item_list, next_cursor: cursor, has_more: has_more}
+    paging: {cursor: queryParams.cursor}
   tikhub.tiktok.search.videos:
     accepts: [[q]]
     in:  {q: queryParams.keyword}
     in_expr: {queryParams.count: limit}
     out: {videos: data.search_item_list, next_cursor: data.cursor, has_more: data.has_more}
+    paging: {cursor: queryParams.offset}
 
   justoneapi.x.instagram-get-post-comments-v1:
     accepts: [[shortcode]]
@@ -2971,6 +2976,7 @@ adapters:
     accepts: [[q]]
     in:  {q: body.query}
     out: {posts: output.data.items, next_cursor: output.data.nextCursor}
+    paging: {cursor: body.cursor}
   anyapi.x.user.posts:
     accepts: [[username]]
     in:  {username: body.handle}
@@ -3004,6 +3010,7 @@ adapters:
     accepts: [[q]]
     in:  {q: body.query}
     out: {videos: output.data.videos, next_cursor: output.data.nextCursor}
+    paging: {cursor: body.cursor}
   anyapi.tiktok.search.users:
     accepts: [[q]]
     in:  {q: body.query}
@@ -3035,6 +3042,7 @@ adapters:
     accepts: [[hashtag]]
     in:  {hashtag: body.hashtag}
     out: {posts: output.data.posts, next_cursor: output.data.nextCursor}
+    paging: {cursor: body.cursor}
   anyapi.instagram.search.reels:
     accepts: [[q]]
     in:  {q: body.query}
