@@ -423,7 +423,8 @@ and every call takes the hold path. After a restart a team whose credit was all 
 is refused until the idle close returns it, since no refill can add the chunk a new counter
 is built from. While processes of an earlier build share the store with newer ones, a
 counter an earlier process builds is discarded by the next newer one that touches it: each
-time, a chunk waits in the hold for the idle close.
+time, a chunk waits in the hold for the idle close. A freeze an earlier process wrote is
+kept.
 
 Not recognised: a server that goes back to older data WITHOUT starting again (a reload in
 place; a server that kept running, took older data from another primary and became primary

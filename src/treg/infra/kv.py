@@ -152,7 +152,12 @@ _ALLOWANCE_RUN = """
 local run = string.match(redis.call('INFO', 'server'), 'run_id:(%w+)')
 if not run then return redis.error_reply('allowance: the store reports no run_id') end
 if redis.call('EXISTS', KEYS[1]) == 1 and redis.call('HGET', KEYS[1], 'run') ~= run then
-    redis.call('DEL', KEYS[1])
+    if redis.call('HEXISTS', KEYS[1], 'frozen') == 1 then
+        redis.call('HDEL', KEYS[1], 'avail', 'epoch', 'until', 'asked', 'asked_for')
+        redis.call('HSET', KEYS[1], 'run', run)
+    else
+        redis.call('DEL', KEYS[1])
+    end
 end
 """
 _ALLOWANCE_TAKE = _ALLOWANCE_RUN + """

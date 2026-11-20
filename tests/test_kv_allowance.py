@@ -318,18 +318,22 @@ async def _restart(store, org_id):
     (lambda store, org_id: store.allowance_give_back(org_id, 7, 50), False),
     (lambda store, org_id: store.allowance_take_up_to(org_id, 7, 50), 0),
     (lambda store, org_id: store.allowance_drop(org_id, 7), 0),
-    (lambda store, org_id: _state(store, org_id), (0, 0, 0, 0)),
+    (lambda store, org_id: store.allowance_state(org_id), None),
 ])
-async def test_a_counter_built_before_the_store_restarted_is_a_lost_one(counter, touch, answer):
+async def test_a_counter_built_before_the_store_restarted_offers_nothing(counter, touch, answer):
     """A store that restarts can come back without the last writes it acknowledged, the takes
     and freezes of that interval undone. What it shows of a counter is then no figure to spend
-    from: the counter is gone, as one the store lost is."""
+    from: nothing of it is left but its freezes, which a refill reads before it thaws them."""
     store, org_id = counter
     await _add(store, org_id, 7, 1_000, until_ms=_soon(), ttl_ms=60_000, seen_frozen=0)
     assert await store.allowance_take(org_id, 100) == 7
+    await store.allowance_freeze(org_id)
+    frozen, thawed = await _counts(store, org_id)
     await _restart(store, org_id)
-    assert await touch(store, org_id) == answer
-    assert not await store._client.exists(kv._allowance_key(org_id))
+    if answer is not None:
+        assert await touch(store, org_id) == answer
+    assert await _state(store, org_id) == (0, frozen, thawed, 0)
+    assert 0 < await store._client.pttl(kv._allowance_key(org_id)) <= 60_000
 
 
 @real_redis
@@ -359,8 +363,11 @@ async def test_a_refill_that_read_the_counter_before_a_restart_publishes_nothing
         org_id, 7, 1_000, until_ms=_soon(), ttl_ms=60_000, seen_frozen=seen,
         run='0' * 40) == "stale"
     assert await store.allowance_take(org_id, 10) == 0
-    assert await _state(store, org_id) == (0, 0, 0, 0)
-    assert await _add(store, org_id, 7, 500, until_ms=_soon(), ttl_ms=60_000, seen_frozen=0) == 500
+    assert (await _state(store, org_id))[0] == 0
+    _, seen, _, _, run = await store.allowance_state(org_id)
+    assert await store.allowance_add(
+        org_id, 7, 500, until_ms=_soon(), ttl_ms=60_000, seen_frozen=seen, run=run) == 500
+    assert await store.allowance_take(org_id, 10) == 7, "a refill that read the freeze thaws it"
     with pytest.raises(ValueError):
         await store.allowance_add(
             org_id, 7, 1, until_ms=_soon(), ttl_ms=60_000, seen_frozen=0, run="not a run")
@@ -385,6 +392,20 @@ async def test_a_counter_that_names_no_run_is_one_of_an_earlier_run(counter):
     await _add(store, org_id, 7, 900, until_ms=_soon(), ttl_ms=60_000, seen_frozen=0)
     await store._client.hdel(kv._allowance_key(org_id), 'run')
     assert await store.allowance_take(org_id, 100) == 0
+
+
+@real_redis
+async def test_a_freeze_written_by_a_build_that_names_no_run_holds_the_counter_built_on_it(counter):
+    """While builds are mixed, a process of the earlier one settles an overrun after a refill
+    read the team's debts, and freezes a counter that is not there yet. The hash it leaves
+    names no run. The refill's add must build on that freeze, not clear it away."""
+    store, org_id = counter
+    _, seen, _, _, run = await store.allowance_state(org_id)
+    await store._client.hset(kv._allowance_key(org_id), mapping={'frozen': 5, 'thawed': 4})
+    assert await store.allowance_add(
+        org_id, 7, 250, until_ms=_soon(), ttl_ms=60_000, seen_frozen=seen, run=run) == 250
+    assert await _state(store, org_id) == (250, 5, 4, 7)
+    assert await store.allowance_take(org_id, 10) == 0
 
 
 async def _counts(store, org_id):

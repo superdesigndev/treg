@@ -228,15 +228,20 @@ an earlier state of the same hash would undo the takes and freezes of the lost i
 offer that money a second time, and it does so by starting again: a restart can come back
 without the last writes it acknowledged, a restore from a snapshot starts a server on it, a
 promoted replica is another server. Each start is a new run (`run_id`), so a hash names the
-run that built it (`run`), and every operation first removes, in its own atomic step, a hash
-that names another run or none. A counter from before a restart is therefore a lost one:
+run that built it (`run`), and every operation first strips, in its own atomic step, a hash
+that names another run or none of what it offers (`avail`, `epoch`, `until`), leaving its
+two counts under the present run. A counter from before a restart is therefore a lost one:
 takes find nothing, a refill reads no counter, adds a whole chunk to the hold and builds the
 counter from that alone, and what the old counter had not spent stays in the hold until a
-close. A refill that starts after the restart does not need the freezes it undid: its
+close. The counts stay because a hash that names no run may be a freeze a process of an
+earlier build wrote a moment ago, in this run, after a refill had read the team's debts:
+an add that cleared it would publish over that debt. Keeping a freeze that is no longer
+needed costs one refill that folds the queue before it thaws.
+A refill that starts after the restart does not need the freezes it undid: its
 transaction reads what queued overruns owe (`_queued_unbacked`), and a freeze sent after it
 lands on the new hash. A refill that read the counter BEFORE the restart does need them: a
-freeze sent after its transaction read the debts went with the counter, and its add would
-build an unfrozen one. So `allowance_state` reports the run with the counter, the add names
+freeze sent after its transaction read the debts may be among the writes the restart
+dropped, and its add would then build an unfrozen counter. So `allowance_state` reports the run with the counter, the add names
 it, and an add that arrives in another run is refused as `"stale"`: the money stays in the
 hold, and the next refill reads the debts again. A store that cannot report its run answers
 no operation, and calls take the hold path.
