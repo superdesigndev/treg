@@ -1,0 +1,31 @@
+{
+  "pagination": {
+    "totalElements": 1000,
+    "totalPages": 100,
+    "pageNumber": 1,
+    "previousElements": 0,
+    "pageSize": 10,
+    "totalResultCount": 118572
+  },
+  "elements": [
+    {
+      "id": "1234567890",
+      "linkedinUrl": "https://example.com/synthetic-record",
+      "name": "Synthetic example",
+      "members": "Synthetic example",
+      "summary": "Synthetic example",
+      "primaryActions": [
+        {
+          "label": "Synthetic example",
+          "value": "Synthetic example"
+        }
+      ]
+    }
+  ],
+  "status": 200,
+  "retries": 0,
+  "payments": [
+    "linkedinGroupSearch"
+  ],
+  "cost": 0.002
+}

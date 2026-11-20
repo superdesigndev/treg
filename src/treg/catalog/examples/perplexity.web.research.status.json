@@ -1,0 +1,18 @@
+{
+  "id": "resp_00000000-0000-4000-8000-000000000001",
+  "object": "response",
+  "background": true,
+  "status": "completed",
+  "output": [{
+    "type": "message",
+    "role": "assistant",
+    "status": "completed",
+    "content": [{"type": "output_text", "text": "Both domains are reserved for documentation examples.[1][2]", "annotations": []}]
+  }],
+  "usage": {
+    "input_tokens": 10225,
+    "output_tokens": 1000,
+    "total_tokens": 11225,
+    "cost": {"currency": "USD", "total_cost": 0.00433}
+  }
+}

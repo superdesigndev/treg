@@ -1,0 +1,25 @@
+{
+  "id": "1wx564bxd9rmy0d0krz9ye328g",
+  "model": "openai/gpt-image-2",
+  "version": "hidden",
+  "input": {
+    "aspect_ratio": "1:1",
+    "number_of_images": 1,
+    "output_format": "webp",
+    "prompt": "A clean editorial illustration of a paper airplane.",
+    "quality": "low"
+  },
+  "logs": "",
+  "output": null,
+  "data_removed": false,
+  "error": null,
+  "source": "api",
+  "status": "starting",
+  "created_at": "2026-09-14T04:48:10.602Z",
+  "urls": {
+    "cancel": "https://api.replicate.com/v1/predictions/1wx564bxd9rmy0d0krz9ye328g/cancel",
+    "get": "https://api.replicate.com/v1/predictions/1wx564bxd9rmy0d0krz9ye328g",
+    "stream": "https://stream.replicate.com/v1/files/jbxs-vpkb6kvjoagmzvwruuiawzgbxmbxbyljns5snmrtn5z7il27jyza",
+    "web": "https://replicate.com/p/1wx564bxd9rmy0d0krz9ye328g"
+  }
+}

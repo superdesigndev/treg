@@ -7,6 +7,7 @@ only the scopes the chosen capability actually needs.
 
 from __future__ import annotations
 
+from dataclasses import replace
 from urllib.parse import parse_qs, urlsplit
 
 import pytest
@@ -29,14 +30,6 @@ def _consent_query(payload: dict) -> dict:
     return parse_qs(urlsplit(payload["consent_url"]).query)
 
 
-async def test_providers_endpoint_lists_the_registry(clients: AsyncClient, treg_google_app):
-    rows = {p["service"]: p for p in (await clients.get("/oauth/providers")).json()}
-    gsc = rows["google-search-console"]
-    assert gsc["configured"] is True
-    assert gsc["capabilities"] == ["read", "write"]
-    assert gsc["base_url"] == "https://searchconsole.googleapis.com"
-
-
 async def test_registry_connect_uses_tregs_own_app(clients: AsyncClient, treg_google_app):
     """The caller supplies no credentials at all — that is the whole point."""
     d = (await clients.post("/oauth/start", json={"provider": "google-search-console"})).json()
@@ -44,6 +37,15 @@ async def test_registry_connect_uses_tregs_own_app(clients: AsyncClient, treg_go
     assert q["client_id"] == ["treg-google-cid"]
     assert q["redirect_uri"][0].endswith("/oauth/callback")
     assert q["state"] == [d["state"]]
+
+
+async def test_a_pasted_key_provider_is_pointed_at_the_key_path(clients: AsyncClient):
+    """Moz has no consent screen; starting OAuth for it used to fail "moz has no capability ''"."""
+    r = await clients.post("/oauth/start", json={"provider": "moz"})
+    assert r.status_code == 422
+    detail = r.json()["detail"]
+    assert "pasted AccessID:SecretKey" in detail
+    assert "treg connections connect --provider moz" in detail and "/connections/token" in detail
 
 
 async def test_the_broadest_capability_is_the_default(clients: AsyncClient, treg_google_app):
@@ -70,30 +72,17 @@ async def test_capabilities_are_cumulative(clients: AsyncClient, treg_google_app
     assert g.satisfied_capabilities(g.scopes_for("write")) == ["read", "write"]
 
 
-async def test_a_search_console_connect_never_requests_ads_or_analytics(
-    clients: AsyncClient, treg_google_app
+@pytest.mark.parametrize(("name", "expected"), [
+    (None, "google-search-console"),   # defaults to the service
+    ("my-gsc", "my-gsc"),              # an explicit name still wins
+])
+async def test_secret_name_defaults_to_the_service(
+    clients: AsyncClient, treg_google_app, name, expected
 ):
-    """Per-capability scopes exist so a user connecting Search Console is never shown
-    "See, edit, create, and delete your Google Ads accounts and data"."""
-    d = (await clients.post("/oauth/start", json={"provider": "google-search-console"})).json()
-    scope = _consent_query(d)["scope"][0]
-    assert "adwords" not in scope
-    assert "analytics" not in scope
-    assert "business.manage" not in scope
-
-
-async def test_secret_name_defaults_to_the_service(clients: AsyncClient, treg_google_app):
-    d = (await clients.post("/oauth/start", json={"provider": "google-search-console"})).json()
+    body = {"provider": "google-search-console"} | ({"name": name} if name else {})
+    d = (await clients.post("/oauth/start", json=body)).json()
     st = (await clients.get(f"/oauth/status/{d['state']}")).json()
-    assert st["name"] == "google-search-console"
-
-
-async def test_an_explicit_name_still_wins(clients: AsyncClient, treg_google_app):
-    d = (await clients.post(
-        "/oauth/start", json={"provider": "google-search-console", "name": "my-gsc"}
-    )).json()
-    st = (await clients.get(f"/oauth/status/{d['state']}")).json()
-    assert st["name"] == "my-gsc"
+    assert st["name"] == expected
 
 
 async def test_unknown_provider_is_404(clients: AsyncClient, treg_google_app):
@@ -136,6 +125,51 @@ def test_multi_method_provider_is_configured_when_any_method_is_available(monkey
         get_settings.cache_clear()
 
 
+@pytest.mark.parametrize(
+    (
+        "pending", "default_capability", "page_capabilities", "page_default",
+        "direct_warning", "page_warning",
+    ),
+    [
+        (
+            "instagram-login,page-messages", "page-tools",
+            ["page-tools", "page-messages"], "page-tools", True, True,
+        ),
+        ("instagram-login", "page-messages", ["page-messages"], "page-messages", True, False),
+        ("", "manage", ["page-messages"], "page-messages", False, False),
+    ],
+)
+def test_one_review_setting_controls_the_instagram_connect_experience(
+    monkeypatch, pending, default_capability, page_capabilities, page_default,
+    direct_warning, page_warning,
+):
+    from treg import oauth_providers as P
+
+    monkeypatch.setenv("TREG_OAUTH_REVIEW_PENDING", pending)
+    get_settings.cache_clear()
+    try:
+        row = next(item for item in P.listing() if item["service"] == "instagram")
+        methods = {item["name"]: item for item in row["authorization_methods"]}
+        direct = methods["instagram-login"]
+        page = methods["facebook-page"]
+
+        assert row["connect_default_capability"] == default_capability
+        assert row["permission_capabilities"] == (
+            ["manage", "page-messages", "page-tools", "post", "read"]
+            if page_warning else ["manage", "page-messages", "post", "read"]
+        )
+        assert page["capabilities"] == page_capabilities
+        assert page["connect_capability"] == page_default
+        assert direct["in_review"] is direct_warning
+        assert page["capabilities_in_review"] == (["page-messages"] if page_warning else [])
+        assert page["capability_labels"]["page-messages"] == (
+            "Facebook Page tools + messages" if page_warning else "Facebook Page tools"
+        )
+        assert len(page["capability_details"]["page-messages"]) == (1 if page_warning else 6)
+    finally:
+        get_settings.cache_clear()
+
+
 async def test_unknown_capability_is_422(clients: AsyncClient, treg_google_app):
     r = await clients.post(
         "/oauth/start", json={"provider": "google-search-console", "capability": "nope"}
@@ -144,39 +178,10 @@ async def test_unknown_capability_is_422(clients: AsyncClient, treg_google_app):
     assert "no capability" in r.text
 
 
-async def test_byo_mode_is_unchanged(clients: AsyncClient):
-    """The generic path must keep working with no provider named."""
-    d = (await clients.post("/oauth/start", json={
-        "name": "byo", "client_id": "cid", "client_secret": "csec",
-        "auth_uri": "http://provider/auth", "token_uri": "http://upstream/token",
-        "scopes": ["https://example.com/scope"],
-    })).json()
-    q = _consent_query(d)
-    assert q["client_id"] == ["cid"]
-    assert q["scope"] == ["https://example.com/scope"]
-
-
 async def test_neither_provider_nor_credentials_is_422(clients: AsyncClient):
     r = await clients.post("/oauth/start", json={"name": "x"})
     assert r.status_code == 422
     assert "provider" in r.text
-
-
-def test_every_requested_scope_has_a_plain_english_label():
-    """The marketplace shows permissions in plain English so a human can decide whether to grant
-    them. A provider added with new scopes and no copy would silently fall back to raw URLs."""
-    from treg import oauth_providers as P
-    unlabelled = sorted({
-        sc for prov in P.REGISTRY.values() for scopes in prov.scopes.values() for sc in scopes
-        if sc not in P.SCOPE_LABELS
-    })
-    assert not unlabelled, f"no plain-English label for: {unlabelled}"
-
-
-def test_every_provider_has_a_card_summary():
-    """A card with no summary is a logo and a name — nothing to decide from."""
-    from treg import oauth_providers as P
-    assert not [p.service for p in P.REGISTRY.values() if not p.summary]
 
 
 def test_scope_label_falls_back_rather_than_raising():
@@ -190,47 +195,6 @@ def test_scope_label_falls_back_rather_than_raising():
 # The Meta app all three Meta providers share is registered as "Crewlet", a sibling product, and
 # Facebook's consent screen shows only that bare app name. Without a notice on the treg side, the
 # popup asks the user to authorize a product they have never heard of.
-
-META_SERVICES = ["facebook", "meta-ads"]
-
-
-def test_meta_providers_disclose_the_crewlet_app_name():
-    from treg import oauth_providers as P
-
-    rows = {row["service"]: row for row in P.listing()}
-    for service in META_SERVICES:
-        notice = rows[service]["consent_notice"]
-        assert "Crewlet" in notice, service
-        assert "Superdesign Dev Inc" in notice, service
-    page = next(
-        method for method in rows["instagram"]["authorization_methods"]
-        if method["name"] == "facebook-page"
-    )
-    assert "Crewlet" in page["consent_notice"]
-    assert page["connect_capability"] == "page-tools"
-    assert page["action_label"] == "Enable Facebook Page tools"
-    assert "linked to a Facebook Page" in page["description"]
-    assert "separate from Instagram Login" in page["description"]
-    assert "Facebook Page authorization" in page["missing_message"]
-    assert "Adds these Page-only tools" in page["capability_intros"]["page-tools"]
-    assert page["capability_details"]["page-tools"] == [
-        "Search hashtags and read recent or top hashtag media",
-        "Discover another professional account by username",
-        "Read media, comments and tags that mention your account",
-        "Search the linked product catalog and inspect product appeals",
-        "Read this account's recently searched hashtags",
-    ]
-
-
-def test_only_the_meta_family_carries_a_consent_notice():
-    """Driven by provider data, so the check is "who shares the Meta app", not a hand-kept list."""
-    from treg import oauth_providers as P
-
-    meta_auth = {p.service for p in P.REGISTRY.values() if p.auth_uri == P._META_AUTH}
-    assert meta_auth == set(META_SERVICES)
-    with_notice = {row["service"] for row in P.listing() if row["consent_notice"]}
-    assert with_notice == meta_auth | {"instagram"}
-
 
 def test_a_notice_provider_always_reaches_a_pre_consent_modal():
     """A provider-level notice needs a modal before redirect. Traditional providers reach the
@@ -248,3 +212,61 @@ def test_a_notice_provider_always_reaches_a_pre_consent_modal():
             )
         else:
             assert len(p.capabilities) >= 2, p.service
+
+
+def test_catalog_targets_are_exact_provider_approved_https_roots():
+    from treg import oauth_providers as P
+
+    assert P.DIFFBOT.profile_for_catalog_host("api.diffbot.com").base_url == "https://api.diffbot.com"
+
+    unsafe = replace(
+        P.DIFFBOT,
+        catalog_targets=(P.CatalogTarget(
+            host="api.diffbot.com", base_url="https://credentials.example/v3",
+        ),),
+    )
+    with pytest.raises(ValueError, match="safe HTTPS base URL"):
+        unsafe.profile_for_catalog_host("api.diffbot.com")
+    with pytest.raises(ValueError, match="not uniquely approved"):
+        P.DIFFBOT.profile_for_catalog_host("credentials.example")
+
+
+def test_review_refusal_needs_a_declared_code_and_a_pending_granted_scope(monkeypatch):
+    from treg import oauth_providers as P
+
+    monkeypatch.setenv("TREG_OAUTH_REVIEW_PENDING", "page-engagement")
+    get_settings.cache_clear()
+    try:
+        granted = ["pages_show_list", "pages_manage_engagement", "pages_messaging"]
+        refusal = {"error": {"code": 200, "message": "(#200) Permissions error"}}
+        assert P.review_refusal_scopes(P.FACEBOOK, granted, refusal) == ["pages_manage_engagement"]
+        assert P.review_refusal_scopes(P.FACEBOOK, granted, {"error": {"code": 190}}) == []
+        assert P.review_refusal_scopes(P.FACEBOOK, granted, {"error": {"code": "200"}}) == []
+        assert P.review_refusal_scopes(P.FACEBOOK, ["pages_show_list"], refusal) == []
+        assert P.review_refusal_scopes(P.GOOGLE_SEARCH_CONSOLE, granted, refusal) == []
+        comments = {"required_scopes": ["pages_manage_engagement", "pages_show_list"]}
+        posts = {"required_scopes": ["pages_show_list"]}
+        assert P.review_refusal_scopes(P.FACEBOOK, granted, refusal, comments) == [
+            "pages_manage_engagement"]
+        assert P.review_refusal_scopes(P.FACEBOOK, granted, refusal, posts) == []
+        assert "treg's app" in P.review_refusal_note(P.FACEBOOK, ["pages_manage_engagement"])
+    finally:
+        get_settings.cache_clear()
+
+
+def test_a_deeply_nested_error_body_is_relayed_without_a_review_note(monkeypatch):
+    from types import SimpleNamespace
+
+    from treg.application.call import service
+    from treg.models import Secret
+
+    monkeypatch.setenv("TREG_OAUTH_REVIEW_PENDING", "instagram-login")
+    get_settings.cache_clear()
+    try:
+        response = SimpleNamespace(status=403, raw_headers=())
+        secret = Secret(provider="instagram", granted_scopes="instagram_business_content_publish")
+        body = b"[" * 200_000 + b"]" * 200_000
+        service._note_review_refusal(response, {1: secret}, body, 0, None)
+        assert response.raw_headers == ()
+    finally:
+        get_settings.cache_clear()

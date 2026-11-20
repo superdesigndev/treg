@@ -20,21 +20,18 @@ say()  { printf '  %-34s %s\n' "$1" "$2"; }
 
 echo "treg fresh-test reset"
 
-# ---- CLI state --------------------------------------------------------------
 if [ -d "$HOME/.treg" ]; then
   rm -rf "$HOME/.treg" && say "~/.treg" "removed (login + proxy state)"
 else
   say "~/.treg" "not present"
 fi
 
-# ---- agent skill ------------------------------------------------------------
 if [ -d "$HOME/.claude/skills/treg" ]; then
   rm -rf "$HOME/.claude/skills/treg" && say "~/.claude/skills/treg" "removed"
 else
   say "~/.claude/skills/treg" "not present"
 fi
 
-# ---- MCP registrations ------------------------------------------------------
 if command -v claude >/dev/null 2>&1; then
   if claude mcp get treg >/dev/null 2>&1; then
     claude mcp remove treg >/dev/null 2>&1 && say "claude mcp (treg)" "removed"
@@ -53,7 +50,6 @@ if command -v codex >/dev/null 2>&1; then
   fi
 fi
 
-# ---- the binary -------------------------------------------------------------
 # Try each installer that could own it; the package is named tools-registry on
 # PyPI but treg in Homebrew. Loop because more than one can be present at once.
 removed_binary=""
@@ -81,7 +77,6 @@ else
   say "treg binary" "not installed"
 fi
 
-# ---- verdict ----------------------------------------------------------------
 echo
 leftover=0
 [ -d "$HOME/.treg" ] && leftover=1

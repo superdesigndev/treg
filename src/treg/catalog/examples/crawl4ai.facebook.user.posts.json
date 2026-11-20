@@ -1,0 +1,53 @@
+{
+  "meta": {
+    "blocked": [],
+    "elapsed_ms": 0,
+    "from_cache": true,
+    "llm_calls": 0,
+    "pages_fetched": 0,
+    "partial": false,
+    "warnings": [
+      "module: facebook-page-posts: nasa · 1 post(s) · 1 data block(s) · public"
+    ]
+  },
+  "recipe": "facebook-page-posts",
+  "usage": {
+    "boxes": [
+      "gate"
+    ],
+    "cache": "hit",
+    "engine": "recipe",
+    "lines": [
+      {
+        "about": "the call",
+        "boxes": [
+          "gate"
+        ],
+        "cache": "miss",
+        "call": "recipes",
+        "engine": "gate",
+        "units": 1
+      }
+    ],
+    "remaining_before": {
+      "concurrent": 99,
+      "requests": 199,
+      "search": 3000
+    },
+    "units": 1
+  },
+  "version": 1,
+  "rows": [
+    {
+      "comments": 129,
+      "id": "1652244896270880",
+      "page_id": "54971236771",
+      "page_name": "NASA - National Aeronautics and Space Administration",
+      "posted": "2026-10-09T20:54:33Z",
+      "reactions": 6065,
+      "shares": 647,
+      "text": "Brewing up baby stars ⭐\n\nNASA's James Webb Space Telescope's unique view reveals many previously hidden stars in this nebula. By using Webb's highly sensitive infrared light vision to peer through the dust here, we can study mature stars (center) and baby stars (right, in the red cloud).",
+      "url": "https://www.facebook.com/NASA/posts/pfbid02hEuWYm22r26umDrApde8A3zDy5mLFG2EWakNSMj5JZx4LWGwB1BXccm2NgbZGus3l"
+    }
+  ]
+}

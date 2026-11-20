@@ -1,0 +1,37 @@
+{
+  "output": {
+    "found": true,
+    "data": {
+      "ads": [
+        {
+          "adType": "Single Image Ad",
+          "advertiser": "Microsoft",
+          "advertiserLinkedinPage": "https://www.linkedin.com/company/1035",
+          "cta": "S’inscrire",
+          "description": "Participez au Microsoft AI Tour à Paris pour une journée pratique : développez et déboguez des applications d’IA et des agents, découvrez les outils et SDK en détail, et échangez avec des développeurs… [605 chars]",
+          "destinationUrl": "https://aitour.microsoft.com/flow/microsoft/paris27/citylanding/page/cityhome?wt.mc_id=3084764_QSG_PD_SCL_675239_imga&trk=ad_library_ad_preview_headline_content",
+          "endDate": "2026-09-19T00:00:00.000Z",
+          "headline": "Moins de code répétitif, plus de livraisons | AI Tour Paris",
+          "id": "1564155084",
+          "startDate": "2026-09-17T00:00:00.000Z",
+          "totalImpressions": "< 1k"
+        },
+        "… 23 more item(s) truncated"
+      ],
+      "nextCursor": "1564163394-1789637069422",
+      "totalAds": 27235
+    }
+  },
+  "provider": "AnyAPI",
+  "costUsd": 0.0012,
+  "items": 24,
+  "replayed": false,
+  "source": {
+    "id": "anonymous-giraffe",
+    "name": "Giraffe",
+    "kind": "anonymous",
+    "artworkKey": "giraffe"
+  },
+  "hint": "large_result: this response is ~23 KB. To keep future runs from flooding your context, re-run with `fields` (keep only the keys you need), `max_items` (cap rows), `summary=true` (outline only), or `jq… [309 chars]",
+  "resultId": "a38723fc-fff8-437c-8d20-966b62bc9ca8"
+}

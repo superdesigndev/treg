@@ -1,0 +1,24 @@
+{
+  "id": "5c2d0e2a-a9c3-497b-a4f0-a7f8023d9a80",
+  "raw": null,
+  "json": {
+    "title": "Example Domain",
+    "purpose": "This domain is for use in documentation examples without needing permission. Avoid use in operations."
+  },
+  "usage": {
+    "promptTokens": 332,
+    "completionTokens": 202
+  },
+  "metadata": {
+    "chunker": {
+      "chunks": [
+        {
+          "size": 42
+        }
+      ]
+    },
+    "fetch": {
+      "contentType": "text/html"
+    }
+  }
+}

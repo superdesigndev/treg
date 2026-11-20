@@ -1,0 +1,27 @@
+{
+  "output": {
+    "found": true,
+    "data": {
+      "items": [
+        {
+          "createdUtc": 1789737120,
+          "id": "3988926672702811976",
+          "mediaUrl": "https://scontent-nrt1-2.cdninstagram.com/o1/v/t2/f2/m78/AQO7iudYjaIZpXglm5viJxvHhqeovZTL6Wo3RJb1pU_byX8R5-SB6MggL3bdPg5ehfid_GOPYKPSCMl6joHOLs-dDWnJzfgvJsgQ9xg.mp4?_nc_cat=107&_nc_sid=5e9851&_nc_ht=sc… [1057 chars]",
+          "permalink": "https://www.instagram.com/reel/Ddbg6yxiC9I/",
+          "username": "natgeo"
+        }
+      ]
+    }
+  },
+  "provider": "AnyAPI",
+  "costUsd": 0.0015,
+  "items": 1,
+  "replayed": false,
+  "source": {
+    "id": "anonymous-lynx",
+    "name": "Lynx",
+    "kind": "anonymous",
+    "artworkKey": "lynx"
+  },
+  "resultId": "cc219dd0-44fd-42bf-87a0-407613d8c65d"
+}

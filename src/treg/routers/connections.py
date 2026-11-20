@@ -42,11 +42,16 @@ class ExtraCredentialIn(BaseModel):
     value: str
 
 
+class ConnectionRenameIn(BaseModel):
+    name: str
+
+
 _CONNECT_HTTP_ERRORS = {
     "unknown_provider": 404,
     "unknown_connection": 404,
     "invalid_provider": 422,
     "invalid_token_provider": 422,
+    "pasted_secret_provider": 422,
     "invalid_token": 422,
     "provider_unreachable": 502,
     "unknown_state": 404,
@@ -59,6 +64,10 @@ _CONNECT_HTTP_ERRORS = {
     "no_extra_credential": 422,
     "extra_credential_required": 422,
     "all_orgs_forbidden": 403,
+    "invalid_name": 422,
+    "name_taken": 409,
+    "name_in_use": 409,
+    "provider_paused": 503,
 }
 
 
@@ -230,6 +239,22 @@ async def set_extra_credential(
             value=body.value,
             org_id=caller.org_id,
             owner=caller.email,
+        )
+    except connect_use_cases.ConnectError as exc:
+        raise _connect_http_error(exc) from exc
+
+
+@management_router.patch("/connections/{secret_id}")
+async def rename_connection(
+    secret_id: int, body: ConnectionRenameIn,
+    caller: Caller = Depends(require_member),
+) -> dict:
+    """Rename a connected account. The name is the tool name an agent calls, so with several
+    accounts on one provider this is how `instagram-2` becomes `instagram-acme`."""
+    _require_can_register(caller)
+    try:
+        return await connect_use_cases.rename_connection(
+            secret_id=secret_id, name=body.name, org_id=caller.org_id,
         )
     except connect_use_cases.ConnectError as exc:
         raise _connect_http_error(exc) from exc

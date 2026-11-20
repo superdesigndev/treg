@@ -1,0 +1,14 @@
+{
+  "email": "support@orbisearch.com",
+  "status": "invalid",
+  "substatus": "mailbox_not_found",
+  "explanation": "Email address doesn't exist. Do not send - your email will bounce.",
+  "email_provider": "Google Workspace",
+  "mx_record": "aspmx.l.google.com",
+  "is_domain_catch_all": false,
+  "is_secure_email_gateway": false,
+  "is_disposable": false,
+  "is_role_account": true,
+  "is_free": false,
+  "confidence": null
+}

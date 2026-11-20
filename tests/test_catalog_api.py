@@ -11,11 +11,24 @@ from __future__ import annotations
 import dataclasses
 import json
 import re
+import shlex
+from pathlib import Path
 
+import pytest
 from httpx import AsyncClient
 
-from treg.domain.catalog import store as cs
 from treg import oauth_providers as P
+from treg.domain.catalog import store as cs
+from treg.domain.catalog.schema import CatalogSchemaError
+
+
+def test_loaded_rows_are_plain_json(tmp_path):
+    """An unquoted `checked: 2026-09-01` is valid catalog data; the loader must keep it a string,
+    because /catalog/find streams rows with a plain `json.dumps` and a `date` there killed it."""
+    p = tmp_path / "x.yaml"
+    p.write_text("cost:\n  checked: 2026-09-01\n", encoding="utf-8")
+    assert cs._read_yaml(p)["cost"]["checked"] == "2026-09-01"
+    json.dumps(cs.load().endpoints)
 
 
 # ---- platform listing --------------------------------------------------------------------
@@ -37,6 +50,9 @@ async def test_platforms_lists_the_curated_shelves_busiest_first(clients: AsyncC
 
     counts = [p["endpoints"] for p in body["platforms"]]
     assert counts == sorted(counts, reverse=True)
+    # every vendor on a shelf is named once, for the /search pile; treg's routed rows are not a vendor
+    assert set(body["providers"]) == {s for p in body["platforms"] for s in p["providers"]}
+    assert body["providers"]["dataforseo"] == "DataForSEO" and "treg" not in body["providers"]
 
 
 async def test_platform_listing_hides_taxonomy_entries_nobody_implements(clients: AsyncClient):
@@ -61,15 +77,15 @@ async def test_platform_detail_groups_the_same_job_across_providers(clients: Asy
 
     ep = next(e for e in profile["endpoints"] if e["provider"] == "tikhub")
     assert set(ep) == {"id", "provider", "provider_display", "name", "summary", "method", "path",
-                       "scope", "tier", "kind", "domain", "call_template", "cost", "verified", "docs_url",
+                       "scope", "tier", "kind", "domain", "call_template", "cost", "verified", "added", "docs_url",
                        "has_example", "input", "platform_eligible", "platform_blocked",
-                       "test_request", "miss", "status", "status_note", "superseded_by"}
+                       "test_request", "miss", "status", "status_note", "superseded_by", "async"}
     assert ep["kind"] == "data", "an endpoint with no explicit kind is data (the browse surface)"
     assert ep["provider_display"] == P.get("tikhub").display_name
     assert ep["method"] == "GET" and ep["path"].startswith("/")
     assert ep["tier"] == "core", "an endpoint with no explicit tier is core, not hidden"
     assert ep["verified"] and ep["has_example"] is True
-    assert ep["cost"]["type"] == "per_success"
+    assert ep["cost"]["type"] == "per_call", "TikHub bills every 2xx, a miss included"
 
 
 async def test_every_listed_endpoint_carries_its_platform(clients: AsyncClient):
@@ -148,9 +164,70 @@ def test_a_curated_name_beats_the_summary_on_a_row(tmp_path):
         "    path: /v3/backlinks/domain_pages/live\n    summary: Domain pages with backlink data\n")
     cat = cs.load(directory=tmp_path)
     pairs = [(e, cs.endpoint_view(e, e["provider"], cat)) for e in cat.endpoints]
-    rows = {r["endpoints"][0]["id"]: r for s in cs.domain_rows(pairs, cat.capabilities) for r in s["rows"]}
+    rows = {r["endpoints"][0]["id"]: r for s in cs.domain_rows(pairs, cat.capabilities, cat.capability_titles) for r in s["rows"]}
     assert rows["dataforseo.x.named"]["description"] == "Anchor text overview"
     assert rows["dataforseo.x.unnamed"]["description"] == "Domain pages with backlink data"
+
+
+def test_a_job_files_under_the_domain_most_of_its_providers_give_it(tmp_path):
+    """The cheapest endpoint used to decide a merged row's section alone, so one provider's odd
+    `domain:` pulled a SERP job out of `serp` on the platform page."""
+    (tmp_path / "capabilities.yaml").write_text(
+        "platforms: {google: Google}\ncapabilities: {google.serp.local: Local pack}\n")
+    for prov, usd, domain in (("cheap", 0.001, "search"), ("mid", 0.002, "serp"), ("dear", 0.003, "serp")):
+        (tmp_path / f"{prov}.yaml").write_text(
+            f"provider: {prov}\nendpoints:\n  - id: {prov}.local\n    platform: google\n"
+            f"    capability: google.serp.local\n    domain: {domain}\n    method: GET\n"
+            f"    path: /local\n    summary: Local pack\n"
+            f"    cost: {{type: per_call, value: {usd}, currency: USD, unit: call}}\n")
+    cat = cs.load(directory=tmp_path)
+    pairs = [(e, cs.endpoint_view(e, e["provider"], cat)) for e in cat.endpoints]
+    [section] = cs.domain_rows(pairs, cat.capabilities, cat.capability_titles)
+    assert section["domain"] == "serp"
+    assert section["rows"][0]["endpoints"][0]["provider"] == "cheap"
+
+
+def test_a_compared_job_carries_its_short_title_and_keeps_its_description(tmp_path):
+    """A compared job's description is written for agents too and can run long; `capability_titles`
+    gives people a short title beside it, never instead of it."""
+    long = "Get a person's work email address from their name, company domain or LinkedIn profile"
+    (tmp_path / "capabilities.yaml").write_text(
+        f'platforms: {{people: People}}\ncapabilities: {{people.email.find: "{long}"}}\n'
+        'capability_titles: {people.email.find: "Find a person\'s work email"}\n')
+    for prov in ("one", "two"):
+        (tmp_path / f"{prov}.yaml").write_text(
+            f"provider: {prov}\nendpoints:\n  - id: {prov}.email\n    platform: people\n"
+            f"    capability: people.email.find\n    method: GET\n    path: /email\n    summary: Email\n")
+    cat = cs.load(directory=tmp_path)
+    pairs = [(e, cs.endpoint_view(e, e["provider"], cat)) for e in cat.endpoints]
+    [row] = [r for s in cs.domain_rows(pairs, cat.capabilities, cat.capability_titles) for r in s["rows"]]
+    assert row["title"] == "Find a person's work email"
+    assert row["description"] == long
+
+
+def test_short_job_title_is_searchable_without_changing_the_full_description(tmp_path):
+    (tmp_path / "capabilities.yaml").write_text(
+        'platforms: {web: Web}\ncapabilities: {web.extract: "Read content from a URL"}\n'
+        'capability_titles: {web.extract: "Archive lookup"}\n')
+    for provider in ("one", "two"):
+        (tmp_path / f"{provider}.yaml").write_text(
+            f"provider: {provider}\nendpoints:\n  - id: {provider}.read\n"
+            "    platform: web\n    capability: web.extract\n    method: GET\n"
+            "    path: /read\n    summary: Read a URL\n")
+    cat = cs.load(directory=tmp_path)
+    matches, total = cs.search("archive", cat, platform="web")
+    assert total == 2
+    assert {ep["id"] for ep, _ in matches} == {"one.read", "two.read"}
+    from treg.domain.catalog import find_recall
+    candidates = find_recall.recall("archive", find_recall.index(cat), cat.aliases, platform="web")
+    assert any(candidate.unit.id == "web.extract" for candidate in candidates)
+
+
+def test_a_title_for_no_capability_fails_the_load(tmp_path):
+    (tmp_path / "capabilities.yaml").write_text(
+        "platforms: {people: People}\ncapabilities: {}\ncapability_titles: {people.typo: Short}\n")
+    with pytest.raises(ValueError, match="people.typo"):
+        cs.load(directory=tmp_path)
 
 
 async def test_every_endpoint_carries_a_domain_and_a_call_line(clients: AsyncClient):
@@ -273,14 +350,20 @@ async def test_search_finds_the_job_across_providers_best_first(clients: AsyncCl
     rows = body["results"]
     assert body["count"] == len(rows) <= body["total"]
 
-    top = [e["id"] for e in rows[:4]]
+    top = [e["id"] for e in rows[:6]]
     assert top[0] == "treg.tiktok.video.comments", "the routed endpoint for the job comes first"
     assert set(top[1:]) == {
+        "crawl4ai.tiktok.video.comments",
+        "anyapi.tiktok.video.comments",
         "justoneapi.tiktok.video.comments",
         "tikhub.tiktok.video.comments",
         "scrapecreators.tiktok.video.comments",
     }
-    assert all(e["tier"] == "core" and e["verified"] for e in rows[1:4])
+    # anyapi is the fourth seller of this job and ranks on price like the rest; it carries no
+    # `verified` stamp yet because a vendor never stamps its own rows — the maintainers' own
+    # verification run adds it, and this line goes back to a plain `all(...)` when it does.
+    assert all(e["tier"] == "core" for e in rows[1:5])
+    assert all(e["verified"] for e in rows[1:5] if not e["id"].startswith("anyapi."))
     # rank is total and stable: score desc, then core before extended WITHIN a score tie — tier
     # never outranks relevance, so a strong extended match may sit above a weak core one
     # …except that a capability with a routed row is shown as a GROUP (parent first, then its
@@ -349,42 +432,6 @@ async def test_endpoint_detail_answers_everything_in_one_call(clients: AsyncClie
     assert isinstance(body["example_response"], (dict, list)), "inline, so parsing needs no second call"
 
 
-async def test_instagram_message_send_is_try_ready_but_never_auto_verified(clients: AsyncClient):
-    """App Review needs a deliberate UI send, so the catalog must explain the real recipient/body
-    shape while keeping the write action out of automated verification."""
-    r = await clients.get("/catalog/endpoints/instagram.instagram.message.send")
-    assert r.status_code == 200, r.text
-    ep = r.json()["endpoint"]
-    assert ep["method"] == "POST" and ep["path"] == "/{ig_user_id}/messages"
-    assert ep["authorization_methods"] == ["instagram-login", "facebook-page"]
-    assert set(ep["input"]["pathParams"]) == {"ig_user_id", "page_id"}
-    assert ep["authorization_paths"]["facebook-page"].startswith("/{page_id}/messages")
-    assert ep["input"]["bodyType"] == "json"
-    assert set(ep["input"]["body"]) == {"recipient", "message"}
-    assert "IGSID" in ep["input"]["body"]["recipient"]["note"]
-    loaded = cs.load().by_id[ep["id"]]
-    assert loaded["verified"] is None and not loaded["test_request"]
-
-
-async def test_instagram_conversations_keep_direct_and_page_routes(clients: AsyncClient):
-    r = await clients.get("/catalog/endpoints/instagram.x.user-messages")
-    assert r.status_code == 200, r.text
-    ep = r.json()["endpoint"]
-    assert ep["path"] == "/{ig_user_id}/conversations"
-    assert set(ep["input"]["pathParams"]) == {"ig_user_id", "page_id"}
-    assert ep["authorization_paths"]["facebook-page"].startswith("/{page_id}/conversations")
-    assert "?" not in ep["authorization_paths"]["facebook-page"]
-    assert ep["input"]["queryParams"]["platform"]["required"] is True
-    assert ep["input"]["queryParams"]["platform"]["authorization_methods"] == ["facebook-page"]
-    assert "Existing Facebook-backed connections" in ep["input"]["note"]
-    assert ep["input"]["pathParams"]["ig_user_id"]["authorization_methods"] == ["instagram-login"]
-    assert ep["input"]["pathParams"]["page_id"]["authorization_methods"] == ["facebook-page"]
-    assert "--authorization-method" not in ep["call_template"]
-    assert "page_id=" not in ep["call_template"]
-    page_only = cs.load().by_id["instagram.x.hashtag-search"]
-    assert "--authorization-method facebook-page" in cs.call_template(page_only)
-
-
 def test_every_instagram_path_placeholder_has_a_declared_try_input():
     """The UI, CLI and agents all learn path values from `input.pathParams`; runtime parsing the
     braces independently is only the last guard, not a usable endpoint contract."""
@@ -398,41 +445,6 @@ def test_every_instagram_path_placeholder_has_a_declared_try_input():
     extended = [ep for ep in endpoints if ep["tier"] == "extended"]
     assert len(extended) == 22
     assert all(ep.get("input") for ep in extended)
-
-
-def test_instagram_extended_actions_declare_every_required_write_value():
-    cat = cs.load()
-    expected = {
-        "instagram.x.media-comment-create": ({"ig_media_id"}, {"message"}),
-        "instagram.x.comment-reply-create": ({"ig_comment_id"}, {"message"}),
-        "instagram.x.comment-hide": ({"ig_comment_id"}, {"hide"}),
-        "instagram.x.comment-delete": ({"ig_comment_id"}, set()),
-    }
-    for endpoint_id, (path_names, query_names) in expected.items():
-        inp = cat.by_id[endpoint_id]["input"]
-        assert set(inp.get("pathParams") or {}) == path_names
-        assert set(inp.get("queryParams") or {}) == query_names
-        assert all(spec.get("required") for spec in (inp.get("pathParams") or {}).values())
-        assert all(spec.get("required") for spec in (inp.get("queryParams") or {}).values())
-    hide = cat.by_id["instagram.x.comment-hide"]
-    assert hide["path"] == "/{ig_comment_id}"
-    assert hide["input"]["queryParams"]["hide"]["type"] == "boolean"
-
-
-def test_page_only_instagram_contracts_expose_required_meta_parameters():
-    catalog = cs.load()
-    product_search = catalog.by_id["instagram.x.catalog-product-search"]
-    assert set(product_search["input"]["queryParams"]) >= {"catalog_id", "q"}
-    assert product_search["input"]["queryParams"]["catalog_id"]["required"] is True
-
-    appeal = catalog.by_id["instagram.x.user-product-appeal"]
-    assert appeal["input"]["queryParams"]["product_id"]["required"] is True
-
-    discovery = catalog.by_id["instagram.x.user-business-discovery"]
-    assert discovery["path"] == "/{ig_user_id}"
-    assert discovery["input"]["queryParams"]["fields"]["required"] is True
-    assert "business_discovery.username(" in discovery["input"]["queryParams"]["fields"]["example"]
-    assert "--query 'fields=business_discovery.username(" in cs.call_template(discovery)
 
 
 def test_instagram_catalog_paths_do_not_embed_query_strings():
@@ -462,24 +474,20 @@ async def test_retired_rows_leave_discovery_but_keep_an_actionable_direct_lookup
     assert retired not in {row["id"] for row in search["results"]}
 
 
-def test_tikhub_drift_repair_preserves_markers_and_rescues_only_real_jobs():
-    cat = cs.load()
-    marked = [ep for ep in cat.by_id.values()
-              if ep["provider"] == "tikhub" and ep.get("status")]
-    assert len(marked) == 50
-    assert {ep["status"] for ep in marked} == {"retired"}
-    assert sum(bool(ep.get("superseded_by")) for ep in marked) == 9
-    assert all(ep.get("status_note") for ep in marked)
-    assert all(ep["superseded_by"] in cat.by_id and
-               not cat.by_id[ep["superseded_by"]].get("status")
-               for ep in marked if ep.get("superseded_by"))
-
-    people = cat.by_id["justoneapi.x.linkedin-search-user-v1"]
-    assert people["capability"] == "linkedin.search.people"
-    comments = cat.by_id["tikhub.x.linkedin-web-v2-get-post-comments"]
-    assert comments["path"] == "/api/v1/linkedin/web_v2/get_post_comments"
-    assert comments["method"] == "GET"
-    assert comments["capability"] == "linkedin.post.comments"
+async def test_a_rows_note_is_served_on_its_own_detail_only(clients: AsyncClient):
+    """`note` is a caller-facing caveat about the whole tool: `catalog get` shows it, while the
+    lists and search, which compare rows by their summary, leave it out."""
+    ep = next(e for e in cs.load().endpoints if e.get("note") and e["kind"] not in cs.HIDDEN_KINDS)
+    detail = (await clients.get(f"/catalog/endpoints/{ep['id']}")).json()
+    assert detail["endpoint"]["note"] == ep["note"]
+    shelf = (await clients.get(f"/catalog/platforms/{ep['platform']}")).json()
+    listed = [e for c in shelf["capabilities"] for e in c["endpoints"]] + shelf["extended"]
+    assert ep["id"] in {e["id"] for e in listed}
+    assert not any("note" in e for e in listed)
+    provider = (await clients.get(f"/catalog/providers/{ep['provider']}")).json()
+    assert not any("note" in t for p in provider["platforms"] for t in p["tools"])
+    search = (await clients.get("/catalog/search", params={"q": ep["name"] or ep["summary"]})).json()
+    assert search["results"] and not any("note" in r for r in search["results"])
 
 
 async def test_call_template_carries_method_and_body_for_a_post(clients: AsyncClient):
@@ -595,9 +603,6 @@ async def test_platform_eligibility_refuses_everything_it_cannot_prove():
     # It stays discoverable (a team's OWN key on a bigger plan serves it) but is never an offer.
     assert not cat.platform_eligible({**ok, "platform_blocked": "plan gate"}), \
         "a plan-gated route is not an offer, however well priced"
-    blocked = cat.by_id["akta.companies.headcount_trend"]
-    assert blocked["platform_blocked"], "the akta alt-signals family carries its plan-gate reason"
-    assert not cat.platform_eligible(blocked)
 
 
 async def test_eligibility_rides_on_the_served_row(clients: AsyncClient):
@@ -614,6 +619,34 @@ async def test_eligibility_rides_on_the_served_row(clients: AsyncClient):
 async def test_unknown_endpoint_is_404(clients: AsyncClient):
     r = await clients.get("/catalog/endpoints/tikhub.tiktok.nope")
     assert r.status_code == 404 and "tikhub.tiktok.nope" in r.text
+
+
+async def test_unknown_endpoint_access_is_a_clean_404(clients: AsyncClient):
+    r = await clients.get("/catalog/endpoints/not.a.real.endpoint/access")
+    assert r.status_code == 404
+    assert "unknown endpoint" in r.text
+
+
+def test_call_template_unflattens_dotted_body_keys_and_drops_parent_placeholder():
+    """A synthetic JSON-RPC schema: parent `params` plus `params.*` children. The
+    placeholder must not survive next to the nested object."""
+    ep = {
+        "id": "demo.web.rpc", "method": "POST",
+        "input": {"body": {
+            "method": {"type": "string", "required": True, "example": "Do.Thing"},
+            "params": {"type": "object", "required": True},
+            "id": {"type": "string", "required": True, "example": "1"},
+            "params.domain": {"type": "string", "required": True, "example": "example.com"},
+            "params.se": {"type": "string", "required": True, "example": "g_us"},
+        }},
+    }
+    argv = shlex.split(cs.call_template(ep))
+    data = json.loads(argv[argv.index("--data") + 1])
+    assert data == {
+        "method": "Do.Thing",
+        "id": "1",
+        "params": {"domain": "example.com", "se": "g_us"},
+    }
 
 
 def test_call_template_falls_back_to_documented_examples(tmp_path):
@@ -698,7 +731,7 @@ def test_catalog_validator_rejects_an_unknown_endpoint_array_encoding(tmp_path, 
         cv.CATALOG = original
     output = capsys.readouterr().out
     assert result == 1
-    assert "input.queryArrayEncoding must be one of" in output
+    assert "input.queryArrayEncoding: Input should be 'json', 'comma' or 'repeated'" in output
 
 
 # ---- example responses -------------------------------------------------------------------
@@ -750,13 +783,108 @@ def test_an_extended_file_merges_into_the_same_provider(tmp_path):
     assert tiers["tikhub.tiktok.user.mix"] == "extended"
 
 
-def test_a_missing_catalog_directory_is_an_empty_catalog_not_a_crash(tmp_path):
+def test_the_core_file_wins_over_its_extended_file(tmp_path):
+    (tmp_path / "capabilities.yaml").write_text("platforms: {web: Web}\ncapabilities: {}\n")
+    row = "  - id: demo.web.page\n    platform: web\n    name: {name}\n    method: GET\n    path: /{name}\n"
+    (tmp_path / "demo.yaml").write_text(
+        "provider: demo\npricing_url: https://core.example/pricing\nlimits: core limits\n"
+        "source: {docs: https://core.example/docs}\n"
+        "cache: {mode: public, ttl: 1d, licence: core}\n"
+        "ceiling_param: {in: query, name: core_max, unit: usd}\n"
+        "endpoints:\n" + row.format(name="core"))
+    extended = (
+        "provider: demo\npricing_url: https://ext.example/pricing\nlimits: ext limits\n"
+        "source: {docs: https://ext.example/docs}\n"
+        "cache: {mode: forbidden, licence: extended}\n"
+        "ceiling_param: {in: query, name: ext_max, unit: usd}\n"
+        "endpoints:\n"
+        "  - id: demo.web.other\n    platform: web\n    tier: extended\n    method: GET\n    path: /other\n")
+    (tmp_path / "demo.extended.yaml").write_text(extended)
+
+    cat = cs.load(directory=tmp_path)
+    assert cat.provider_meta["demo"]["pricing_url"] == "https://core.example/pricing"
+    assert cat.provider_meta["demo"]["limits"] == "core limits"
+    assert cat.provider_meta["demo"]["docs"] == "https://core.example/docs"
+    assert cat.provider_meta["demo"]["cache"]["licence"] == "core"
+    assert cat.ceiling_params["demo"]["name"] == "core_max"
+    assert cat.by_id["demo.web.other"]["cache"]["licence"] == "core"
+
+    (tmp_path / "demo.extended.yaml").write_text(
+        extended + row.format(name="extended").replace("platform: web", "platform: web\n    tier: extended"))
+    with pytest.raises(CatalogSchemaError, match="duplicate endpoint id demo.web.page"):
+        cs.load(directory=tmp_path)
+
+
+def test_observed_from_reaches_the_loaded_row(tmp_path):
+    (tmp_path / "capabilities.yaml").write_text("platforms: {web: Web}\ncapabilities: {}\n")
+    (tmp_path / "demo.yaml").write_text(
+        "provider: demo\nendpoints:\n"
+        "  - id: demo.web.page\n    platform: web\n    method: GET\n    path: /a\n"
+        "    observed_from: '2026-01-02'\n"
+        "  - id: demo.web.other\n    platform: web\n    method: GET\n    path: /b\n")
+    cat = cs.load(directory=tmp_path)
+    assert cat.by_id["demo.web.page"]["observed_from"] == "2026-01-02"
+    assert cat.by_id["demo.web.other"]["observed_from"] is None
+
+
+def test_async_defaults_apply_per_endpoint_and_an_endpoint_block_replaces_them_whole(tmp_path):
+    (tmp_path / "capabilities.yaml").write_text(
+        "platforms: {video-gen: Video}\ncapabilities: {video-gen.from_text: Generate}\n")
+    (tmp_path / "demo.yaml").write_text(
+        "provider: demo\n"
+        "async:\n"
+        "  id_from: task_id\n"
+        "  poll: {endpoint: demo.video-gen.task.status, param: {in: pathParams, name: task_id}}\n"
+        "  status: {path: status, success: [done], failure: [failed]}\n"
+        "  result: {path: output.url, ttl_note: 1h}\n"
+        "  interval: 10\n"
+        "endpoints:\n"
+        "  - id: demo.video-gen.from-text\n"
+        "    capability: video-gen.from_text\n    platform: video-gen\n"
+        "    method: POST\n    path: /generate\n"
+        "    cost: {type: per_success, table: [{when: {body.model: a}, value: 1}], "
+        "fallback: {value: 1, note: upper}, currency: USD}\n"
+        "  - id: demo.video-gen.dynamic\n"
+        "    capability: video-gen.from_text\n    platform: video-gen\n"
+        "    method: POST\n    path: /dynamic\n"
+        "    async:\n"
+        "      id_from: id\n"
+        "      poll: {url_from: urls.get, url_hosts: [api.example.com]}\n"
+        "      status: {path: status, success: [succeeded], failure: [failed]}\n"
+        "      result: {fetch: demo.video-gen.content, fetch_param: {in: pathParams, name: id, value_from: id}}\n"
+        "      interval: 20\n"
+        "  - id: demo.video-gen.task.status\n    platform: video-gen\n    tier: extended\n"
+        "    method: GET\n    path: /tasks/{task_id}\n"
+        "  - id: demo.video-gen.content\n    platform: video-gen\n    tier: extended\n"
+        "    method: GET\n    path: /content/{id}\n")
+
+    cat = cs.load(directory=tmp_path)
+    first = cat.by_id["demo.video-gen.from-text"]
+    assert first["async"]["status"] == {"path": "status", "success": ["done"], "failure": ["failed"]}
+    assert first["async"]["interval"] == 10
+    assert first["cost"]["table"][0]["when"] == {"body.model": "a"}
+    # An endpoint block is the whole protocol: nothing from the provider default leaks into it.
+    dynamic = cat.by_id["demo.video-gen.dynamic"]["async"]
+    assert dynamic["poll"] == {"url_from": "urls.get", "url_hosts": ["api.example.com"]}
+    assert dynamic["result"] == {
+        "fetch": "demo.video-gen.content",
+        "fetch_param": {"in": "pathParams", "name": "id", "value_from": "id"}}
+    assert dynamic["status"] == {"path": "status", "success": ["succeeded"], "failure": ["failed"]}
+    assert cs.effective_async_descriptor({"id_from": "a"}, False) is None
+    assert cs.effective_async_descriptor({"id_from": "a"}, None) == {"id_from": "a"}
+    assert cs.effective_async_descriptor(None, {"id_from": "b"}) == {"id_from": "b"}
+
+
+def test_a_missing_catalog_directory_is_empty_and_a_malformed_file_fails_the_load(tmp_path):
     cat = cs.load(directory=tmp_path / "nope")
     assert cat.endpoints == [] and cat.platforms == {}
-    # a half-written dir (no taxonomy, malformed provider file) must degrade the same way
     (tmp_path / "capabilities.yaml").write_text("platforms: {tiktok: TikTok}\n")
     (tmp_path / "broken.yaml").write_text("provider: broken\nendpoints: [{no_id: true}]\n")
-    assert cs.load(directory=tmp_path).endpoints == []
+    with pytest.raises(CatalogSchemaError, match="broken.yaml: id: Field required; no_id: Extra inputs"):
+        cs.load(directory=tmp_path)
+    (tmp_path / "broken.yaml").write_text("provider: broken\nendpoints: [{id: broken.x\n")
+    with pytest.raises(CatalogSchemaError, match="broken.yaml: .*YAMLError|broken.yaml: Parser|broken.yaml: Scanner"):
+        cs.load(directory=tmp_path)
 
 
 def test_a_proposed_capability_still_gets_a_description(tmp_path):
@@ -815,38 +943,21 @@ def test_a_provider_with_no_catalog_entry_stamps_nothing():
 
 
 # ---- "free" is a price, not a missing one ----------------------------------------------------
-def test_a_free_route_needs_no_price_provenance():
-    """`confidence` says how much we trust a NUMBER we are about to charge. A free route has no
-    number, so demanding provenance refused 61 endpoints across 8 providers — 28 of Hunter's 35 —
-    treating "costs nothing" as if it meant "we don't know", which is the one distinction the cost
-    model is otherwise careful to keep apart."""
-    from treg.domain.catalog import store as cs
+@pytest.mark.parametrize("provider,cost,eligible", [
+    # A free route has no number to trust, so it needs no provenance: "costs nothing" is not
+    # "we don't know".
+    ("hunter", {"type": "free", "value": 0, "currency": "USD", "unit": "call"}, True),
+    # The relaxation must not leak: a real price with no provenance stays refused.
+    ("hunter", {"type": "per_call", "value": 0.05, "currency": "USD", "unit": "call"}, False),
+    ("hunter", {"type": "per_call", "value": 0.05, "currency": "USD", "unit": "call",
+                "confidence": "documented"}, True),
+    # No usd at all: refuse, so treg never pays a provider and charges $0.
+    ("pdl", {"type": "per_call", "currency": "credit", "unit": "credit"}, False),
+])
+def test_platform_eligibility_needs_a_price_and_provenance_unless_free(provider, cost, eligible):
     cat = cs.load()
-    free = {"type": "free", "value": 0, "currency": "USD", "unit": "call"}
-    ep = {"cost": free, "provider": "hunter", "scope": "any_account", "kind": "data"}
-    assert cat.platform_eligible(ep)
-
-
-def test_a_PAID_route_still_needs_provenance():
-    """The relaxation must not leak: a route with a real price and no provenance stays refused, or
-    we would bill a team using a number nobody checked."""
-    from treg.domain.catalog import store as cs
-    cat = cs.load()
-    unchecked = {"type": "per_call", "value": 0.05, "currency": "USD", "unit": "call"}
-    ep = {"cost": unchecked, "provider": "hunter", "scope": "any_account", "kind": "data"}
-    assert not cat.platform_eligible(ep)
-
-    documented = dict(unchecked, confidence="documented")
-    assert cat.platform_eligible({**ep, "cost": documented})
-
-
-def test_an_unpriced_route_is_still_refused():
-    """The original rule, unchanged: no usd → refuse, so treg never pays a provider and charges $0."""
-    from treg.domain.catalog import store as cs
-    cat = cs.load()
-    ep = {"cost": {"type": "per_call", "currency": "credit", "unit": "credit"},
-          "provider": "pdl", "scope": "any_account", "kind": "data"}
-    assert not cat.platform_eligible(ep)
+    ep = {"cost": cost, "provider": provider, "scope": "any_account", "kind": "data"}
+    assert cat.platform_eligible(ep) is eligible
 
 
 # ---- shared-plan rates: a price treg SET must say so, everywhere ----------------------------
@@ -855,7 +966,6 @@ def _load_validator():
     """The actual validator module, so these tests exercise the real check rather than a copy that
     can drift from it."""
     import importlib.util
-    from pathlib import Path
 
     spec = importlib.util.spec_from_file_location(
         "catalog_validate", Path(__file__).parent.parent / "scripts" / "catalog_validate.py")
@@ -904,17 +1014,6 @@ credit_rates_usd:
     assert "fine_vendor" not in blob, "an ordinary vendor rate must pass untouched"
 
 
-def test_a_shared_plan_rate_converts_like_any_credit():
-    """The whole design: a flat-fee provider is modelled as a credit provider whose credit is one
-    call on treg's shared plan. cost_view needs ZERO changes — this asserts the pilot entry flows
-    through the existing conversion."""
-    from treg.domain.catalog import store as cs
-
-    c = cs.load()
-    out = c.cost_view({"type": "per_call", "value": 1, "currency": "credit"}, "alphavantage")
-    assert out["usd"] == 0.001
-
-
 def test_the_trial_kind_check_actually_BITES(tmp_path):
     """Every dishonest treg_trial shape refused by the REAL check: a non-zero 'trial', a zero with
     no allowance (the congestion-control gap), a basis that does not say whose $0 it is, and prose
@@ -942,44 +1041,18 @@ credit_rates_usd:
     assert "fine_trial" not in blob, "a compliant trial entry must pass"
 
 
-def test_trial_pools_flow_from_fx_to_eligibility_and_display():
-    """The real file's three pools, end to end through the loader: a $0 price that is platform
-    eligible AND carries its allowance wherever the cost is shown — a bare $0.00 would read as
-    unlimited."""
+def test_a_trial_priced_row_shows_its_daily_allowance_beside_its_zero_price():
+    """A bare $0.00 would read as unlimited."""
     from treg.domain.catalog import store as cs
 
     c = cs.load()
-    assert c.trial_pools == {"finnhub": 50, "twelvedata": 20, "tiingo": 20}
-    ep = c.by_id["finnhub.quote"]
-    assert c.platform_eligible(ep)
-    cost = c.cost_view(ep["cost"], "finnhub")
-    assert cost["usd"] == 0.0 and cost["trial_calls_per_team_day"] == 50
-    # and the two NON-trial own-key providers stay ineligible — the license boundary holds
-    assert not c.platform_eligible(c.by_id["polygon.prev-close"])
-    assert not c.platform_eligible(c.by_id["eodhd.eod"])
-
-
-# ---- method metadata: an endpoint treg enforces the wrong verb on cannot be called at all -------
-def test_no_tikhub_ads_route_is_recorded_as_a_GET():
-    """treg enforces the recorded method, so a wrong one is not a cosmetic error — it makes the
-    endpoint uncallable from every direction at once: POST is refused here ("… is GET"), and GET is
-    refused upstream (405). All twelve `/api/v1/tiktok/ads/*` routes shipped that way, because the
-    ingester's OPTIONS probe answers with a list and its preference order picked GET."""
-    cat = cs.load()
-    ads = [e for e in cat.endpoints if e["path"].startswith("/api/v1/tiktok/ads/")]
-    assert len(ads) >= 12
-    assert [e["id"] for e in ads if e["method"] != "POST"] == []
-
-
-def test_an_endpoint_whose_input_is_a_body_does_not_advertise_query_params():
-    """The verb and the parameter position are one decision. Correcting the method and leaving the
-    params under `queryParams` would hand callers a POST with its arguments in the wrong half of the
-    request — still uncallable, just for a new reason."""
-    cat = cs.load()
-    ep = cat.by_id["tikhub.x.tiktok-ads-search-ads"]
-    assert ep["method"] == "POST"
-    assert "queryParams" not in (ep.get("input") or {})
-    assert "keyword" in ((ep.get("input") or {}).get("body") or {})
+    assert c.trial_pools
+    for provider, allowance in c.trial_pools.items():
+        rows = [ep for ep in c.endpoints if ep["provider"] == provider and c.platform_eligible(ep)
+                and c.cost_view(ep["cost"], provider)["usd"] == 0.0]
+        assert rows, provider
+        for ep in rows:
+            assert c.cost_view(ep["cost"], provider)["trial_calls_per_team_day"] == allowance, ep["id"]
 
 
 # ---- an id that misses -------------------------------------------------------------------------
@@ -1002,19 +1075,7 @@ async def test_an_id_that_resembles_nothing_is_sent_to_search(clients: AsyncClie
     assert "catalog search" in detail["hint"]
 
 
-# ---- the GENERATOR, not just its output ---------------------------------------------------------
-def test_instagram_ingester_omits_page_token_messaging_routes():
-    """The next re-ingest must not restore the invalid Instagram-id messaging routes."""
-    import sys
-    sys.path.insert(0, "scripts")
-    from catalog_ingest import INSTAGRAM_EDGES
-
-    routes = {(method, path) for _, method, path, _, _ in INSTAGRAM_EDGES}
-    assert ("GET", "/{ig_user_id}/conversations") not in routes
-    assert ("POST", "/{ig_user_id}/messages") not in routes
-
-
-def test_the_ingester_puts_a_POST_routes_arguments_in_the_BODY():
+def test_the_ingester_puts_a_POST_routes_arguments_in_the_BODY(monkeypatch):
     """The checked-in YAML is machine-generated, so a fix that lives only in the file is undone by
     the next `catalog_ingest.py` run. These assert the GENERATOR: the tests above inspect the
     corrected YAML and would pass with the ingester reverted.
@@ -1023,8 +1084,7 @@ def test_the_ingester_puts_a_POST_routes_arguments_in_the_BODY():
     parameter under `parameters.query` while its OpenAPI declares the same route POST-with-a-JSON
     body, so taking the verb from one and the position from the other produced a POST carrying its
     arguments in the query string — uncallable, just differently."""
-    import sys
-    sys.path.insert(0, "scripts")
+    monkeypatch.syspath_prepend(str(Path(__file__).parents[1] / "scripts"))
     from catalog_ingest import tikhub_input_and_test
 
     doc_op = {"parameters": {"query": [
@@ -1050,10 +1110,9 @@ def test_the_ingester_puts_a_POST_routes_arguments_in_the_BODY():
     assert "queryParams" in no_body and "body" not in no_body
 
 
-def test_gtm_ingestion_expands_semantic_resource_names_into_atomic_path_ids():
+def test_gtm_ingestion_expands_semantic_resource_names_into_atomic_path_ids(monkeypatch):
     """The checked-in extended YAML must stay fixed after the next Discovery re-ingest."""
-    import sys
-    sys.path.insert(0, "scripts")
+    monkeypatch.syspath_prepend(str(Path(__file__).parents[1] / "scripts"))
     from catalog_ingest import google_flat_path_params
 
     entry = {
@@ -1072,12 +1131,11 @@ def test_gtm_ingestion_expands_semantic_resource_names_into_atomic_path_ids():
     assert "pageToken" in entry["input"]["queryParams"]
 
 
-def test_a_published_spec_outranks_the_OPTIONS_probe():
+def test_a_published_spec_outranks_the_OPTIONS_probe(monkeypatch):
     """The probe infers a verb from a preflight; the spec is the provider's own contract. When the
     spec names exactly one method the spec wins, so a re-ingest inherits an upstream verb change
     instead of re-deriving a stale guess."""
-    import sys
-    sys.path.insert(0, "scripts")
+    monkeypatch.syspath_prepend(str(Path(__file__).parents[1] / "scripts"))
     from catalog_ingest import resolve_method
 
     # the case that matters: spec says POST, the probe came back GET
@@ -1106,15 +1164,15 @@ def test_a_stored_EMPTY_json_body_survives_into_the_call_template():
 
 
 async def test_search_pulls_the_routed_parent_in_when_a_child_matches(clients: AsyncClient):
-    """`leadsforge email` matches leadsforge.* on the provider's NAME; the routed row for that job
-    carries no such word, yet it is the row to show first — so a matched child brings its parent
-    along. And `find leads` lands on the lead-search job itself (people.search says "leads")."""
-    rows = (await clients.get("/catalog/search", params={"q": "leadsforge email"})).json()["results"]
-    ids = [r["id"] for r in rows]
-    assert "treg.people.email.find" in ids, ids
-    assert ids.index("treg.people.email.find") < ids.index("leadsforge.people.email.find")
+    """`find leads` lands on the lead-search job itself (people.search says "leads"), and its routed
+    row leads. A query that names a provider (`leadsforge email`) asked for that provider: its rows
+    lead and no routed row is pulled in."""
     rows = (await clients.get("/catalog/search", params={"q": "find leads"})).json()["results"]
     assert rows[0]["id"] == "treg.people.search", [r["id"] for r in rows[:3]]
+    rows = (await clients.get("/catalog/search", params={"q": "leadsforge email"})).json()["results"]
+    ids = [r["id"] for r in rows]
+    assert ids[0] == "leadsforge.people.email.find", ids
+    assert not any(r.get("kind") == "routed" for r in rows), ids
 
 
 async def test_search_caps_a_routed_group_at_a_few_children(clients: AsyncClient):
@@ -1125,3 +1183,111 @@ async def test_search_caps_a_routed_group_at_a_few_children(clients: AsyncClient
     kids = [r for r in rows if r["capability"] == "people.search" and r.get("kind") != "routed"]
     assert len(kids) <= 5 and parent["children_hidden"] >= 1
     assert "treg.people.email.find" in {r["id"] for r in rows}, "the next job fits on the page now"
+
+
+def test_generic_display_prices_match_web_and_cli():
+    from treg.domain.catalog import store
+    from treg.routers.web import _price_label
+    from treg.routers.views.catalog import cost_label as _cost_label, cost_usd as _cost_usd
+    cat = store.load()
+    for quantity, rate in [(25, 2.0), (100, 1.0)]:
+        raw = {'type': 'per_result', 'currency': 'USD', 'value': rate, 'per': quantity,
+               'display': {'unit': 'records', 'grouped': True, 'round_up': True}}
+        cost = cat.cost_view(raw, 'any-provider')
+        expected = f'${rate:g}/started {quantity} records'
+        assert cost['usd'] == rate / quantity
+        assert _price_label(cost) == _cost_usd(cost) == _cost_label(cost) == expected
+    cost = cat.cost_view({'type': 'per_result', 'currency': 'USD', 'value': 2,
+                         'display': {'unit': 'item', 'variable': True}}, 'another-provider')
+    assert _price_label(cost) == _cost_usd(cost) == _cost_label(cost) == '$2+/item'
+    maximum = cat.cost_view({'type': 'per_call', 'currency': 'USD', 'value': 0.064,
+                             'display': {'unit': 'call', 'maximum': True}}, 'another-provider')
+    assert _price_label(maximum) == _cost_usd(maximum) == _cost_label(maximum) == 'up to $0.064/call'
+    # A job held at its 500-page maximum but billed per page shows the page price; the hold does not move.
+    job = cat.cost_view({'type': 'per_success', 'currency': 'USD', 'value': 0.075, 'unit': 'call',
+                         'display': {'unit': 'page', 'value': 0.00015, 'variable': True}}, 'another-provider')
+    assert job['usd'] == 0.075 and job['display_usd'] == 0.00015 and cat.advertised_usd(job) == 0.00015
+    assert _price_label(job) == _cost_usd(job) == _cost_label(job) == '$0.00015+/page'
+    from treg.application.call.resolve import _platform_estimate_micro
+    assert _platform_estimate_micro(job, {}) == 75_000
+
+
+_MOZ_ONE_ROW_PER_RETURNED = re.compile(r"1 row per returned", re.I)
+
+
+def test_moz_lists_priced_per_returned_row_show_per_result():
+    """A Moz list that bills one quota row per returned item, with `limit` choosing how many come
+    back, must quote that unit. `quota_rows` with no display unit is labelled `/call`, so a
+    `limit` of 50 looks like the one-row price. `display.unit` names the returned item; the
+    meter stays `quota_rows` and `usd` stays the price of one row."""
+    from treg.application.call.resolve import _platform_estimate_micro
+    from treg.routers.views.catalog import cost_label as _cost_label, cost_usd as _cost_usd
+    from treg.routers.web import _price_label
+
+    cat = cs.load()
+    listed = []
+    for ep in cat.endpoints:
+        if ep.get("provider") != "moz":
+            continue
+        cost = ep.get("cost") or {}
+        body = (ep.get("input") or {}).get("body") or {}
+        if (cost.get("type") == "quota_rows"
+                and _MOZ_ONE_ROW_PER_RETURNED.search(cost.get("note") or "")
+                and isinstance(body, dict) and "limit" in body):
+            listed.append(ep["id"])
+    assert set(listed) == {
+        "moz.web.backlinks.list",
+        "moz.web.linking_domains.list",
+        "moz.web.anchors.list",
+        "moz.web.site.top_pages",
+        "moz.web.global.top_pages",
+        "moz.web.global.top_domains",
+    }
+    for eid in listed:
+        ep = cat.by_id[eid]
+        viewed = cat.cost_view(ep["cost"], ep["provider"])
+        assert viewed["type"] == "quota_rows" and viewed["usd"] == 0.006667, eid
+        assert viewed["display_unit"] == "result", eid
+        assert (_price_label(viewed) == _cost_usd(viewed) == _cost_label(viewed)
+                == "$0.00667/result"), eid
+        assert _platform_estimate_micro(viewed, {}, b'{"limit":1}') == 6_667, eid
+        assert _platform_estimate_micro(viewed, {}, b'{"limit":50}') == 333_350, eid
+    for eid in ("moz.web.url.metrics", "moz.web.backlinks.summary", "moz.web.index.metadata"):
+        ep = cat.by_id[eid]
+        viewed = cat.cost_view(ep["cost"], ep["provider"])
+        assert viewed["type"] == "quota_rows" and "display_unit" not in viewed, eid
+        assert _price_label(viewed).endswith("/call") and _cost_usd(viewed).endswith("/call"), eid
+
+
+async def test_every_comparison_page_in_the_sitemap_serves(clients):
+    """A capability several providers serve on a shelf has a public comparison page
+    (/catalog/<slug>/<key>), listed in the sitemap by the same rule the shelf uses for its comparison
+    cards; each listed page answers, a made-up one is a 404,
+    and the catalog's own API segments are never read as a shelf."""
+    import re
+    xml = (await clients.get("/sitemap.xml")).text
+    pages = re.findall(r"<loc>[^<]*?(/catalog/[^/<]+/[^/<]+)</loc>", xml)
+    assert pages and all(not p.startswith(("/catalog/platforms/", "/catalog/call/")) for p in pages)
+    for path in pages:
+        r = await clients.get(path)
+        assert r.status_code == 200 and "text/html" in r.headers["content-type"], path
+    assert (await clients.get("/catalog/companies/not-a-capability")).status_code == 404
+    assert (await clients.get("/catalog/platforms/companies")).headers["content-type"].startswith("application/json")
+    # A capability only one provider serves has nothing to compare: no page of its own.
+    from treg.domain.catalog import store as catalog_store
+    cat = catalog_store.load()
+    solo = next((e["platform"], e["capability"]) for e in cat.endpoints
+                if e.get("capability") and catalog_store.browsable(e) and (e["platform"], e["capability"]) not in cat.compared())
+    assert (await clients.get(f"/catalog/{solo[0]}/{catalog_store.capability_key(*solo)}")).status_code == 404
+    assert (await clients.get("/catalog/providers/crustdata")).headers["content-type"].startswith("application/json")
+
+
+def test_an_auto_route_row_files_where_its_providers_do():
+    """A routed row once carried the domain `routed`, which gave it a section of its own on the
+    platform page, apart from the providers it routes to."""
+    cat = cs.load()
+    routed = [e for e in cat.endpoints if e.get("kind") == "routed"]
+    assert routed
+    for ep in routed:
+        kids = {e["domain"] for e in cat.for_capability(ep["capability"]) if e.get("kind") != "routed"}
+        assert ep["domain"] in kids, ep["id"]

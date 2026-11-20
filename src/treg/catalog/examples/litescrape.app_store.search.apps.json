@@ -1,0 +1,62 @@
+{
+  "search_metadata": {
+    "id": "df8540f06cf70d60779fc508",
+    "status": "Success",
+    "created_at": "2026-09-29T13:58:58.877152+00:00",
+    "processed_at": "2026-09-29T13:58:59.670138+00:00",
+    "json_endpoint": "https://api.litescrape.com/api/apple/app-store/search?country=us&term=Duolingo&lang=en-us&num=10&disallow_explicit=false&device=mobile",
+    "apple_app_store_url": "https://itunes.apple.com/search?media=software&term=Duolingo&country=us&lang=en-us&explicit=yes&limit=10",
+    "total_time_taken": 0.793
+  },
+  "search_parameters": {
+    "country": "us",
+    "term": "Duolingo",
+    "lang": "en-us",
+    "num": 10,
+    "disallow_explicit": false,
+    "device": "mobile"
+  },
+  "search_information": {
+    "results_count": 9
+  },
+  "organic_results": [
+    {
+      "position": 1,
+      "id": 570060128,
+      "title": "Duolingo: Language Lessons",
+      "bundle_id": "com.duolingo.DuolingoMobile",
+      "version": "7.142.0",
+      "vpp_license": true,
+      "age_rating": "4+",
+      "release_note": "Our mascot owl, Duo, is trading in his usual diet of mice for bugs this week. Yup, we’re squashing those pesky bugs to make the experience better for all of you.\n\nFor more Duolingo news, contests and product releases, follow us on Facebook, Twitter, and Instagram @duolingo.",
+      "seller_link": "https://www.duolingo.com",
+      "minimum_os_version": "17.0",
+      "description": "Learn a new language, chess & more with the world's most downloaded education app! Duolingo is the fun, free app for learning 40+ languages through quick, bite-…",
+      "game_center_enabled": false,
+      "link": "https://apps.apple.com/us/app/duolingo-language-lessons/id570060128?uo=4",
+      "supported_languages": [
+        "AR",
+        "BN"
+      ]
+    },
+    {
+      "position": 2,
+      "id": 829587759,
+      "title": "Babbel - Language Learning",
+      "bundle_id": "com.babbel.babbelMulti",
+      "version": "22.16.1",
+      "vpp_license": true,
+      "age_rating": "12+",
+      "release_note": "It's time to update your Babbel app! Why? Because we've added new learning content that will help you reach your goal even faster! And yep, we also removed a few bugs. Enjoy this latest version and thanks for learning with us!\n\nQuestions? Email us at support-mobile@babbel.com",
+      "seller_link": "https://www.babbel.com",
+      "minimum_os_version": "17.0",
+      "description": "Speak a new language with real-life conversations. Babbel is the award-winning language learning app with courses tailored to your native language, built by 200…",
+      "game_center_enabled": false,
+      "link": "https://apps.apple.com/us/app/babbel-language-learning/id829587759?uo=4",
+      "supported_languages": [
+        "EN",
+        "FR"
+      ]
+    }
+  ]
+}

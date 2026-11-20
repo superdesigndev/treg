@@ -1,0 +1,11 @@
+[
+  {
+    "url": "https://example.com",
+    "metadata": {
+      "site_name": "",
+      "favicon_url": "https://api.ydc-index.io/favicon?domain=example.com&size=128"
+    },
+    "markdown": "This domain is for use in documentation examples without needing permission. Avoid use in operations.\n\nLearn more",
+    "title": "Example Domain"
+  }
+]

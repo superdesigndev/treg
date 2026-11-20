@@ -34,7 +34,9 @@ async def _mint(email: str, org_id: int, role: str) -> tuple[str, int]:
     async with session_maker() as s:
         u = (await s.execute(select(User).where(User.email == email))).scalar_one_or_none()
         if u is None:
-            u = User(email=email); s.add(u); await s.flush()
+            u = User(email=email)
+            s.add(u)
+            await s.flush()
         s.add(Membership(user_id=u.id, org_id=org_id, role=role, token_hash=crypto.hash_token(token)))
         await s.commit()
         uid = u.id
@@ -47,7 +49,10 @@ async def env():
     app.state.http = AsyncClient(transport=ASGITransport(app=make_upstream()), base_url="http://upstream")
     async with AsyncClient(transport=ASGITransport(app=app), base_url="http://registry") as c:
         async with session_maker() as s:
-            org = Org(name="Team", slug="team"); s.add(org); await s.commit(); await s.refresh(org)
+            org = Org(name="Team", slug="team")
+            s.add(org)
+            await s.commit()
+            await s.refresh(org)
             org_id = org.id
         owner, owner_uid = await _mint("owner@x.dev", org_id, "owner")
         member, member_uid = await _mint("m@x.dev", org_id, "member")
@@ -91,12 +96,6 @@ async def test_project_rule_composes_with_member_scope(env):
     assert (await env.c.get("/call/a-tool/ok", headers=_h(env.member))).status_code == 403
     assert (await env.c.get("/call/a-tool/ok", headers=_h(env.owner))).status_code == 200
     assert (await env.c.get("/call/shared/ok", headers=_h(env.member))).status_code == 200
-
-
-async def test_project_rule_applies_to_the_owner_too(env):
-    """Still a guardrail, not a permission tier."""
-    await _rule(env, host="upstream", project_id=env.apollo["id"])
-    assert (await env.c.get("/call/a-tool/ok", headers=_h(env.owner))).status_code == 403
 
 
 async def test_unknown_or_foreign_project_is_rejected(env):

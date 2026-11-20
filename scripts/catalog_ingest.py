@@ -16,7 +16,8 @@ Properties this script guarantees (they are why it exists instead of a one-off s
   - **core wins**: any (method, path) already in the provider's core yaml is skipped, never duplicated.
   - **cached**: downloads land in ~/.cache/treg-catalog-ingest (override TREG_INGEST_CACHE);
     `--refresh` re-fetches. Nothing is cached inside the repo.
-  - **credential-free**: no source below needs auth, so no secret can reach a committed file.
+  - **secret-safe**: generated files never contain credentials. Replicate's official collection
+    requires `REPLICATE_API_TOKEN`; the token is used only as a request header.
 
 See docs/context/architecture/catalog.md for the extended-entry schema.
 """
@@ -31,14 +32,27 @@ import subprocess
 import sys
 import time
 from concurrent.futures import ThreadPoolExecutor
-from datetime import date
+from datetime import UTC, date, datetime
+from decimal import Decimal
 from pathlib import Path
 
 import yaml
+from treg.domain.catalog.schema import spelling
 
 ROOT = Path(__file__).resolve().parent.parent
 CATALOG = ROOT / "src" / "treg" / "catalog"
 CACHE = Path(os.environ.get("TREG_INGEST_CACHE") or (Path.home() / ".cache" / "treg-catalog-ingest"))
+
+def pricing_evidence_file(name: str) -> Path:
+    """Read operator-supplied evidence without depending on a private checkout."""
+    directory = os.environ.get("TREG_CATALOG_EVIDENCE_DIR")
+    if not directory:
+        raise ValueError("Set TREG_CATALOG_EVIDENCE_DIR to your pricing evidence directory")
+    path = Path(directory).expanduser() / name
+    if not path.is_file():
+        raise FileNotFoundError(f"Missing pricing evidence: {path}")
+    return path
+
 
 CJK = re.compile("[　-鿿＀-￯]")
 
@@ -49,10 +63,8 @@ class _TolerantLoader(yaml.SafeLoader):
 
 
 _TolerantLoader.add_constructor("tag:yaml.org,2002:value", lambda loader, node: node.value)
-
-
-# ---------------------------------------------------------------------------------------------
-# plumbing
+# ...and an example date the spec writes as an impossible timestamp (month 13) stays a string.
+_TolerantLoader.add_constructor("tag:yaml.org,2002:timestamp", lambda loader, node: node.value)
 
 
 def fetch(url: str, key: str, *, refresh: bool = False, headers: dict[str, str] | None = None) -> bytes:
@@ -108,7 +120,7 @@ def clean(s: str) -> str:
 
 
 def english(s: str) -> str:
-    """TikHub summaries are '中文描述/English description' — keep the English half."""
+    """TikHub summaries contain Chinese text followed by English text; keep the English half."""
     s = clean(s)
     parts = s.split("/")
     for i in range(len(parts)):
@@ -156,20 +168,26 @@ def core_routes(provider: str) -> set[tuple[str, str]]:
     }
 
 
-def carry_verification(provider: str, endpoints: list[dict]) -> int:
-    """Re-attach reviewed and live-verified fields from the file being replaced.
+def carry_verification(provider: str, endpoints: list[dict], *, carry_capability: bool = True,
+                       carry_input: bool = True, fresh_price_note: bool = False) -> int:
+    """Re-attach reviewed fields from the extended file being replaced.
 
     Those fields are the only ones NOT derived from upstream: verification stamps are the result
-    of an actual paid call made by scripts/catalog_verify_extended.py, and `capability` is a
-    reviewed mapping into the capabilities.yaml taxonomy (2026-07-28 batch onwards). `name` (the
-    short display title) and `kind` (data | action | account | utility — a reviewed judgement the
-    ingest cannot re-derive) are carried on the same guard: ingest generates a title where the spec
-    offers one, but a reviewed/hand-set title or kind must survive a re-ingest like a capability.
+    of an actual paid call made by scripts/catalog_verify_extended.py.
+
+    `carry_input=False` for a provider that publishes a machine-readable request schema. Carrying
+    `input` freezes a generated row's parameters at the revision that first created it, and no
+    later re-ingest can refresh them: 36 AnyAPI rows lost `cursor` that way and could not be
+    paginated from the catalog, while sibling rows generated later carried it. `name` (the short display
+    title) and `kind` (data | action | account | utility - a reviewed judgement the ingest cannot
+    re-derive) are carried on the same guard. A provider may also carry reviewed `capability`
+    mappings; AIGC coverage ingesters disable that option because comparison membership belongs
+    only in core.
     Regenerating the file must not silently discard them, so they are carried across by id, as long as the
     route itself (method + path) still matches — a route that moved is a different endpoint and
     its old result means nothing.
 
-    A carried `capability` brings its `platform` with it: the validator requires platform ==
+    When enabled, a carried `capability` brings its `platform` with it: the validator requires platform ==
     the capability's first segment, and review sometimes refines the ingest guess (e.g. douyin ->
     douyin-xingtu, tiktok -> tiktok-shop), so regenerating the guess over the reviewed platform
     would break validation on the next run.
@@ -180,28 +198,73 @@ def carry_verification(provider: str, endpoints: list[dict]) -> int:
     the top of a proven request would drop the stamp on the next ingest and re-bill the call to
     learn what the file already knew. `--refresh` re-fetches the docs; re-verifying is what
     replaces a proven request, not re-ingesting.
+
+    A generated `cost.note` is the exception inside a carried `cost`: it describes today's rate
+    card, so the fresh one is written over the carried one. With `fresh_price_note` the same holds
+    for a carried v2 `price` (AnyAPI's note names its sources and failover ceiling); every other
+    provider keeps its reviewed `price` whole, note included.
     """
     old_file = CATALOG / f"{provider}.extended.yaml"
-    if not old_file.is_file():
-        return 0
-    old = {ep["id"]: ep for ep in (yaml.safe_load(old_file.read_text()) or {}).get("endpoints") or []}
+    old = ({ep["id"]: ep for ep in (yaml.safe_load(old_file.read_text()) or {}).get("endpoints") or []}
+           if old_file.is_file() else {})
+    added = catalog_added_dates()
+    today = datetime.now(UTC).date().isoformat()
     kept = 0
     for ep in endpoints:
+        # `added` is carried by id from ANY catalog file, and before the route check below: a tool
+        # whose route moved, or that was promoted to core and back, is still the tool that reached
+        # main that day. Only an id the catalog has never had gets today's UTC date.
+        ep["added"] = added.get(ep["id"], today)
         prev = old.get(ep["id"])
-        if not prev:
+        if not prev or prev.get("method") != ep.get("method") or prev.get("path") != ep.get("path"):
+            place_added(ep)
             continue
-        if prev.get("method") != ep.get("method") or prev.get("path") != ep.get("path"):
-            continue
-        for field in (
-            "verified", "example_response", "unverified", "capability", "name", "kind",
+        fresh_notes = {key: ep[key].get("note") for key in (("cost", "price") if fresh_price_note else ("cost",))
+                       if isinstance(ep.get(key), dict)}
+        carried_fields = [
+            "verified", "example_response", "unverified", "name", "kind", "platform_blocked",
+            # Reviewed per-row facts no spec carries: a price read from the provider's own bill
+            # (`cost`, the verifier's `observed_cost`), the success rule (`expect`), why a row
+            # cannot be tested, and a retired/broken `status`. Dropping them on a re-ingest
+            # silently un-prices, un-checks and un-retires rows.
+            "cost", "observed_cost", "expect", "untestable", "status",
+            # A caller-facing caveat about the whole tool, written by a reviewer: no ingest writes one.
+            "note",
             # Meta publishes no machine-readable request schema or grant matrix. These contracts
             # are reviewed against its HTML docs and must survive the next deterministic ingest.
-            "input", "authorization_method", "authorization_methods", "authorization_paths",
+            "authorization_method", "authorization_methods", "authorization_paths",
             "required_scopes", "required_resource", "token_type",
-        ):
+        ]
+        if spelling(prev) == "v2":
+            # A row in the v2 spelling carries its reviewed cost and its outcome rules, which hold
+            # the miss its adapter no longer does.
+            carried_fields += ["reserve", "settle", "bill", "error", "miss", "not_found"]
+            if prev.get("price") is not None:
+                # A price and its provenance are one reviewed fact: an absent provenance inherits the
+                # provider's default and a null one opts the row out, whatever the fresh entry says.
+                ep["price"] = prev["price"]
+                if "provenance" in prev:
+                    ep["provenance"] = prev["provenance"]
+                else:
+                    ep.pop("provenance", None)
+            for key in ("price", "expect", "reserve", "settle", "bill", "error", "miss", "not_found"):
+                if key in prev and prev[key] is None:
+                    ep[key] = None  # a reviewed opt-out of the provider's default
+        if carry_input:
+            carried_fields.append("input")
+        if carry_capability:
+            carried_fields.append("capability")
+        for field in carried_fields:
+            if field == "platform_blocked" and (ep.get("resource_ownership") or {}).get("requires"):
+                # The block stood in for ownership the row could not express; declared ownership
+                # supersedes it, and carrying it would keep a now-owned reader off the shared key.
+                continue
             if prev.get(field) is not None:
                 ep[field] = prev[field]
-        if prev.get("capability") is not None and prev.get("platform"):
+        for key, note in fresh_notes.items():
+            if note and isinstance(ep.get(key), dict):
+                ep[key] = {**ep[key], "note": note}
+        if carry_capability and prev.get("capability") is not None and prev.get("platform"):
             # the reviewed platform (capability's first segment) wins over the ingest guess
             ep["platform"] = prev["platform"]
         if prev.get("verified"):
@@ -209,11 +272,39 @@ def carry_verification(provider: str, endpoints: list[dict]) -> int:
             if prev.get("test_request") is not None:
                 ep["test_request"] = prev["test_request"]
                 ep.pop("untestable", None)
+        place_added(ep)
     return kept
 
 
-def write_extended(provider: str, source: dict, endpoints: list[dict], notes: list[str]) -> Path:
-    carried = carry_verification(provider, endpoints)
+def catalog_added_dates() -> dict[str, str]:
+    """id -> `added` over every catalog file, core and extended."""
+    out = {}
+    for path in CATALOG.glob("*.yaml"):
+        doc = yaml.safe_load(path.read_text())
+        for ep in (doc.get("endpoints") or []) if isinstance(doc, dict) else []:
+            if isinstance(ep, dict) and ep.get("id") and ep.get("added"):
+                out[str(ep["id"])] = str(ep["added"])
+    return out
+
+
+def place_added(ep: dict) -> None:
+    """Move `added` next to `verified` (after `id` when unverified), where catalog_added.py puts it,
+    so a re-ingest does not reorder rows the backfill or the helper wrote."""
+    day = ep.pop("added")
+    anchor = "verified" if "verified" in ep else "id"
+    items = list(ep.items())
+    ep.clear()
+    for key, value in items:
+        ep[key] = value
+        if key == anchor:
+            ep["added"] = day
+
+
+def write_extended(provider: str, source: dict, endpoints: list[dict], notes: list[str],
+                   *, carry_capability: bool = True, carry_input: bool = True,
+                   fresh_price_note: bool = False) -> Path:
+    carried = carry_verification(provider, endpoints, carry_capability=carry_capability,
+                                 carry_input=carry_input, fresh_price_note=fresh_price_note)
     if carried:
         print(f"  carried {carried} verification stamp(s) forward", file=sys.stderr)
     endpoints = sorted(endpoints, key=lambda e: (e["platform"], e["path"], e["method"]))
@@ -223,11 +314,16 @@ def write_extended(provider: str, source: dict, endpoints: list[dict], notes: li
             raise SystemExit(f"{provider}: duplicate generated id {ep['id']}")
         seen.add(ep["id"])
     out = CATALOG / f"{provider}.extended.yaml"
+    carry_note = (
+        "# `capability` mappings (with their platform correction) are added later and carried across"
+        if carry_capability else
+        "# names and kinds are added later and carried across; capability mappings stay in core"
+    )
     header = [
-        f"# {provider} — EXTENDED tier: the provider's full endpoint surface, machine-generated by",
+        f"# {provider} - EXTENDED tier: the provider's full endpoint surface, machine-generated by",
         "# scripts/catalog_ingest.py. Do not hand-edit; re-run the script instead. Entries start with",
-        "# no capability, no verification and no example response — verification stamps and reviewed",
-        "# `capability` mappings (with their platform correction) are added later and carried across",
+        "# no capability, no verification and no example response - verification stamps and reviewed",
+        carry_note,
         f"# re-ingests by id via carry_verification. Routes curated in core {provider}.yaml are excluded here.",
     ]
     header += [f"# {n}" if n else "#" for n in notes]
@@ -239,24 +335,32 @@ def write_extended(provider: str, source: dict, endpoints: list[dict], notes: li
         default_flow_style=False,
     )
     out.write_text("\n".join(header) + "\n\n" + body)
+    one_vocabulary(out)
     return out
 
 
-# ---------------------------------------------------------------------------------------------
-# tikhub
+def one_vocabulary(path: Path) -> None:
+    """Rewrite a generated file's parameter declarations into the one type vocabulary, by the
+    rules `scripts/catalog_param_types.py` applies to the catalog."""
+    try:
+        from catalog_param_types import File, Report  # type: ignore[import-not-found]
+    except ModuleNotFoundError:
+        from scripts.catalog_param_types import File, Report
+    samples: dict = {}
+    File(path, Report(), samples).collect()
+    path.write_text(File(path, Report(), samples).rewrite(), encoding="utf-8")
+
 
 # path segment after /api/v1/ → platform slug. Absent = use the segment as-is.
-TIKHUB_PLATFORM = {"twitter": "x", "net_ease_cloud_music": "netease-music", "hybrid": "web"}
+TIKHUB_PLATFORM = {"twitter": "x", "hybrid": "web"}
 TIKHUB_PLATFORM.update({k: k.replace("_", "-") for k in ("wechat_channels", "wechat_mp", "wechat_search")})
 # utility families, not data: solved captchas, throwaway inboxes, the account's own meter, the
 # iOS-shortcut installer, the MCP bridge and the Sora2 video generator.
 TIKHUB_SKIP = {"captcha", "temp_mail", "ios_shortcut", "mcp", "sora2", "tikhub", "health", "downloader"}
 
 
-# --- TikHub parameter documentation -----------------------------------------------------------
-#
-# api.tikhub.io/openapi.json is served truncated at 842001 bytes (see the note in ingest_tikhub),
-# which costs us the parameter block of ~78% of the routes. TikHub's published docs are an Apifox
+# api.tikhub.io/openapi.json is served truncated (see the note in ingest_tikhub),
+# which costs us the parameter block of most routes. TikHub's published docs are an Apifox
 # site, and Apifox serves the same project as JSON through the API its own front-end calls — no
 # auth, no truncation, and richer than the OpenAPI: every parameter carries a `sampleValue`, the
 # working example value TikHub themselves demo the endpoint with. That is what makes a generated
@@ -526,14 +630,12 @@ def tikhub_input_and_test(op: dict, defs: dict, *, method: str = "GET",
     # different documents. Apifox lists every TikTok-Ads parameter under `parameters.query` while
     # the OpenAPI declares the same route POST-with-a-JSON-body, so the generator emitted a POST
     # whose arguments sat in the query string — still uncallable, just for a new reason, and a
-    # plain re-ingest would silently undo the hand correction of 2026-08-17. When the spec says
+    # plain re-ingest would silently undo the hand correction. When the spec says
     # this method carries a JSON body and Apifox gave us no body of its own, the documented
     # "query" parameters ARE that body's fields.
     # `not _spec_declares_query`: relocate only where the spec puts EVERYTHING in the body. A route
     # that genuinely takes both — TikHub's zhihu scholar search is the one live example — keeps its
     # query string, and moving those params into the body would break a currently-correct endpoint.
-    # Latent rather than live today (that route's docs supply a body, so `body is None` already
-    # blocked it), which is exactly why it is worth closing before it isn't.
     if (method not in ("GET", "HEAD", "DELETE") and body is None
             and _spec_wants_json_body(spec_op, method)
             and not _spec_declares_query(spec_op, method) and qs):
@@ -617,14 +719,6 @@ def ingest_tikhub(refresh: bool) -> tuple[Path, dict]:
         # provider's own published contract, and it was wrong to rank it below an OPTIONS probe
         # that infers a verb from a preflight (a route answering with a list walks the preference
         # order below and comes out `GET`, whatever the handler actually takes).
-        #
-        # This is a hardening, NOT the cause of the 2026-08-17 TikTok-Ads breakage — the first
-        # write-up of that fix said otherwise and was wrong. Those routes were GET when ingested:
-        # the July spec says `get`, and the captured example_response is a real billed 200 from a
-        # GET on 2026-07-27. TikHub MOVED them to POST afterwards. The catalog did not mis-read the
-        # provider; it went stale, and nothing re-checks a provider's spec for drift. Preferring the
-        # spec narrows the window (a re-ingest now inherits the change) but does not close it —
-        # only re-ingesting does, and only if the cached spec is refreshed.
         method = resolve_method(spec_op=op, probed=methods.get(uri),
                                 documented=(doc_op or {}).get("method", ""))
         if (method, uri) in skip:
@@ -642,24 +736,24 @@ def ingest_tikhub(refresh: bool) -> tuple[Path, dict]:
             tail = uri.strip("/").split("/")[3:]
             where = "/".join(tail[:-1])
             summary = f"{label}: {titlecase(tail[-1]).lower()}" + (f" ({where})" if where else "")
-        cost = float(row.get("endpoint_cost") or 0)
+        cost = Decimal(str(row.get("endpoint_cost") or 0))
         entry = {
             "id": slug_id("tikhub", uri.replace("/api/v1/", "")),
-            "tier": "extended",
             "platform": platform,
             "method": method,
             "path": uri,
             "summary": summary,
         }
-        # Apifox gives every documented op a human title ("中文/Get TikHub user info") distinct
+        # Apifox gives every documented operation a bilingual human title distinct
         # from the openapi summary — the English half is the display `name`.
         title = short_name((doc_op or {}).get("name") or "", summary)
         if title:
             entry["name"] = title
-        entry["cost"] = (
-            {"type": "free", "value": 0.0, "currency": "USD"} if cost == 0
-            else {"type": "per_success", "value": cost, "currency": "USD"}
-        )
+        # The provenance and the billing rule are the `defaults:` of tikhub.yaml.
+        if cost == 0:
+            entry["price"], entry["provenance"] = {"value": "0", "currency": "USD", "unit": "call"}, None
+        else:
+            entry["price"] = {"value": format(cost.normalize(), "f"), "currency": "USD", "per": 1, "unit": "call"}
         if doc_op is not None:
             documented += 1
             inp, test, reason = tikhub_input_and_test(doc_op, docs_defs, method=method, spec_op=op)
@@ -673,8 +767,8 @@ def ingest_tikhub(refresh: bool) -> tuple[Path, dict]:
         else:
             # A route the rate card lists but the docs never describe is not usable inventory:
             # no parameter spec exists anywhere TikHub publishes, and spot checks 404 ("ghost
-            # routes" the server enumerates but no longer serves). Dropped rather than catalogued —
-            # 399 such routes on 2026-07-28; they return automatically if TikHub ever documents them.
+            # routes" the server enumerates but no longer serves). Dropped rather than catalogued;
+            # they return automatically if TikHub ever documents them.
             dropped_undocumented += 1
             continue
         endpoints.append(entry)
@@ -753,9 +847,6 @@ def tikhub_methods(paths: list[str], *, refresh: bool) -> dict[str, str]:
     return {k: v for k, v in known.items() if v}
 
 
-# ---------------------------------------------------------------------------------------------
-# dataforseo
-
 # /v3/<family>/<sub>/… → the platform the data is ABOUT (not the API family it lives under).
 DFS_PLATFORM = {
     ("serp", "google"): "google", ("serp", "bing"): "bing", ("serp", "yahoo"): "yahoo",
@@ -781,6 +872,70 @@ DFS_PLUMBING = {
     "models", "versions", "user_data", "force_stop", "task_get",
 }
 DFS_DOCS = re.compile(r"https://docs\.dataforseo\.com/[^'\s\"]+")
+# A /task_post-only family's result reader, in order of preference: one per family, never html
+# (a raw page, not data) and never the account-wide tasks_ready (it lists every team's tasks on
+# treg's shared account).
+DFS_TASK_GET = ("task_get/advanced/{id}", "task_get/{id}", "task_get/regular/{id}")
+# DataForSEO's per-task status codes (docs.dataforseo.com/v3/appendix/errors) as a task_get reads
+# them. 20100/40601/40602 mean created, handed to the engine, in the queue. DataForSEO bills a task
+# when it is POSTED, so an error the finished task reports is still a billed answer: the descriptor
+# settles it at the charge the submission reported, never at zero (the provider decides).
+DFS_TASK_PROGRESS = [20100, 40601, 40602]
+# A task_post answers 20100, task created, where every other route answers the provider's 20000.
+DFS_TASK_POSTED = {"path": "response.tasks.0.status_code", "op": "equals", "value": 20100}
+DFS_TASK_FAILED = [40101, 40102, 40103, 40106, 40400, 40401, 40402, 40403, 40404, 40405, 40408,
+                   50000, 50001, 50301, 50302, 50303, 50304, 50401, 50402]
+# The on-page crawl's readers take the crawl's task id: in the path (summary) or in a one-element
+# task array. The submitting team owns the id; a reader on treg's key checks it.
+DFS_ON_PAGE_TASK = "on_page_task"
+DFS_ON_PAGE_READERS = frozenset(f"/on_page/{name}" for name in (
+    "content_parsing", "duplicate_content", "duplicate_tags", "keyword_density", "links",
+    "microdata", "non_indexable", "pages", "pages_by_resource", "raw_html", "redirect_chains",
+    "resources", "summary/{id}", "uncrawlable_resources", "waterfall"))
+
+
+def dfs_task_get_row(post: dict, get_path: str, op: dict) -> dict:
+    """The reader of one submission-only family: free, owned by the team that submitted the task."""
+    path = get_path.removeprefix("/v3")
+    endpoint_id = slug_id("dataforseo", path.removesuffix("/{id}"))
+    desc = clean(op.get("description") or "")
+    docs = DFS_DOCS.search(desc)
+    row = {
+        "id": endpoint_id,
+        "platform": post["platform"],
+        "kind": "utility",
+        "method": "GET",
+        "path": path,
+        "name": f"Result of: {post.get('name') or post['id']}"[:60],
+        "summary": ("Read the result of a task submitted with " + post["id"] + ". Free; only the "
+                    "team that submitted the task can read it, for 30 days."),
+        "input": {"pathParams": {"id": {
+            "type": "string", "required": True,
+            "note": "tasks[].id from the submission's answer",
+            "example": "00000000-0000-0000-0000-000000000000"}}},
+        "price": {"value": "0", "currency": "USD", "unit": "call",
+                  "note": "DataForSEO does not bill task_get; the submission paid for the task"},
+        # a task_get answers 20000 only once its task is done; the async status words judge it
+        "expect": None,
+        "resource_ownership": {"requires": {"kind": f"poll:{endpoint_id}", "param": "id"}},
+    }
+    if docs:
+        row["docs_url"] = docs.group(0).rstrip("',.").split("?")[0]
+    return row
+
+
+def dfs_submission(post: dict, reader_id: str) -> None:
+    """Make a /task_post row an async submission whose tasks the submitting team owns."""
+    post["expect"] = DFS_TASK_POSTED
+    post["resource_ownership"] = {"produces": [{"kind": f"poll:{reader_id}", "path": "tasks.*.id"}]}
+    post["async"] = {
+        "id_from": "tasks.0.id",
+        "poll": {"endpoint": reader_id, "param": {"in": "pathParams", "name": "id"}},
+        "status": {"path": "tasks.0.status_code", "progress": DFS_TASK_PROGRESS,
+                   "success": [20000], "failure": [], "billed_failure": DFS_TASK_FAILED},
+        "result": {"path": "tasks.0.result", "ttl_note": "30 days"},
+        "interval": 20,
+    }
 
 
 def ingest_dataforseo(refresh: bool) -> tuple[Path, dict]:
@@ -805,10 +960,16 @@ def ingest_dataforseo(refresh: bool) -> tuple[Path, dict]:
         stem = "/".join(seg[: seg.index("live")]) if "live" in seg else (
             "/".join(seg[:-1]) if seg[-1] == "task_post" else path)
         families.setdefault(stem, []).append(path)
+    # A task_post already listed beside its live twin was added on purpose (the cheaper Standard
+    # queue); keep it, or a regeneration drops it and its reader.
+    current = CATALOG / "dataforseo.extended.yaml"
+    listed = {ep.get("path") for ep in (yaml.safe_load(current.read_text()) or {}).get("endpoints") or []
+              } if current.is_file() else set()
     chosen: list[str] = []
     for paths in families.values():
         live = [p for p in paths if "/live" in p]
-        chosen += live or paths
+        kept = [p for p in paths if p.endswith("/task_post") and p.removeprefix("/v3") in listed]
+        chosen += (live + kept) if live else paths
 
     skip = core_routes("dataforseo")
     endpoints = []
@@ -826,15 +987,14 @@ def ingest_dataforseo(refresh: bool) -> tuple[Path, dict]:
             summary = titlecase(seg[-1])
         entry = {
             "id": slug_id("dataforseo", path.replace("/v3/", "")),
-            "tier": "extended",
             "platform": platform,
             "method": method,
-            # base_url already ends in /v3 — a verbatim spec path would relay to /v3/v3/… (404 on
-            # all 216 extended routes; found live 2026-07-30). Core files store /v3-less paths too.
+            # base_url already ends in /v3 - a verbatim spec path would relay to /v3/v3/… (404).
+            # Core files store /v3-less paths too.
             "path": path.removeprefix("/v3"),
             "summary": summary[:400],
         }
-        # DataForSEO's spec has NO per-op summary/title field (checked 2026-07-28: 0 of 570 ops)
+        # DataForSEO's spec has NO per-op summary/title field
         # — the only short handle is the CamelCase operationId ("GoogleOrganicLiveRegular"),
         # which de-camels into a serviceable display title.
         title = short_name(re.sub(r"(?<=[a-z0-9])(?=[A-Z])", " ", op.get("operationId") or ""), summary)
@@ -843,6 +1003,32 @@ def ingest_dataforseo(refresh: bool) -> tuple[Path, dict]:
         if docs:
             entry["docs_url"] = docs.group(0).rstrip("',.").split("?")[0]
         endpoints.append(entry)
+
+    # A submission-only family needs its reader on the same key, or a paid task is unreadable.
+    readers = []
+    for post in endpoints:
+        if not post["path"].endswith("/task_post"):
+            continue
+        stem = "/v3" + post["path"].removesuffix("task_post")
+        get_path = next((stem + tail for tail in DFS_TASK_GET if stem + tail in ops), None)
+        if get_path is not None:
+            reader = dfs_task_get_row(post, get_path, ops[get_path][1])
+            dfs_submission(post, reader["id"])
+            readers.append(reader)
+        elif post["path"] == "/on_page/task_post":
+            post["expect"] = DFS_TASK_POSTED
+            post["resource_ownership"] = {
+                "produces": [{"kind": DFS_ON_PAGE_TASK, "path": "tasks.*.id"}]}
+    endpoints += readers
+    for entry in endpoints:
+        if entry["path"] in DFS_ON_PAGE_READERS:
+            if "{id}" in entry["path"]:
+                entry.setdefault("input", {"pathParams": {"id": {
+                    "type": "string", "required": True,
+                    "note": "tasks[].id from dataforseo.x.on-page-task-post"}}})
+            entry["resource_ownership"] = {"requires": {
+                "kind": DFS_ON_PAGE_TASK, "param": "id",
+                **({"in": "body"} if entry["method"] == "POST" else {})}}
 
     source = {
         "method": "openapi",
@@ -865,9 +1051,6 @@ def ingest_dataforseo(refresh: bool) -> tuple[Path, dict]:
     return write_extended("dataforseo", source, endpoints, notes), {}
 
 
-# ---------------------------------------------------------------------------------------------
-# justoneapi
-
 # Just One API's own x-platform-id values are marketing names ("douyin-tiktok-china"); normalise
 # them onto the slugs the rest of the catalog already uses so a platform page shows every provider.
 JOA_PLATFORM = {
@@ -889,6 +1072,10 @@ JOA_PLATFORM = {
 }
 
 
+def _money(value: float) -> str:
+    return format(Decimal(str(value)).normalize(), "f")
+
+
 def ingest_justoneapi(refresh: bool) -> tuple[Path, dict]:
     sitemap = fetch("https://docs.justoneapi.com/en/sitemap.xml", "justoneapi_sitemap.xml",
                     refresh=refresh).decode()
@@ -904,7 +1091,7 @@ def ingest_justoneapi(refresh: bool) -> tuple[Path, dict]:
                 f"justoneapi_{platform}__{endpoint}.json", refresh=refresh,
             )
             return rel, json.loads(blob)
-        except Exception:
+        except Exception:  # noqa: BLE001 - one unreadable spec page must not stop the ingest
             return rel, None
 
     todo = [p for p in pages if not p.endswith("/")]
@@ -913,9 +1100,8 @@ def ingest_justoneapi(refresh: bool) -> tuple[Path, dict]:
         specs = dict(pool.map(load, todo))
 
     skip = core_routes("justoneapi")
-    # Prices are dashboard-only (no public price API); scripts/data/justoneapi_prices.json is a
-    # hand-exported snapshot of the dashboard's Pricing page — re-export + rerun to refresh.
-    prices_file = Path(__file__).parent / "data" / "justoneapi_prices.json"
+    # Dashboard prices are supplied explicitly by the operator.
+    prices_file = pricing_evidence_file("justoneapi_prices.json")
     joa_prices: dict[str, float] = {}
     if prices_file.is_file():
         joa_prices = json.loads(prices_file.read_text()).get("prices", {})
@@ -941,7 +1127,6 @@ def ingest_justoneapi(refresh: bool) -> tuple[Path, dict]:
                 summary = re.split(r"(?<=[.!?])\s+", desc)[0] if desc else spec["info"].get("title", rel)
                 entry = {
                     "id": slug_id("justoneapi", path.replace("/api/", "")),
-                    "tier": "extended",
                     "platform": platform,
                     "method": method,
                     "path": path,
@@ -954,10 +1139,13 @@ def ingest_justoneapi(refresh: bool) -> tuple[Path, dict]:
                                    summary)
                 if title:
                     entry["name"] = title
+                # The provenance and the success rule are the `defaults:` of justoneapi.yaml.
                 price = joa_prices.get(path)
                 if price is not None:
-                    entry["cost"] = {"type": "per_success", "value": price, "currency": "CNY",
-                                     "note": "billed only on success (code 0); errors free"}
+                    entry["price"] = {"value": _money(price), "currency": "CNY", "per": 1, "unit": "call",
+                                      "note": "billed only on success (code 0); errors free"}
+                else:
+                    entry["provenance"] = None
                 endpoints.append(entry)
 
     source = {
@@ -974,7 +1162,7 @@ def ingest_justoneapi(refresh: bool) -> tuple[Path, dict]:
         "at /openapi/<platform>/<endpoint>-en.json, enumerated here from the English sitemap.",
         "`platform` comes from the spec's own x-platform-id tag, falling back to the docs URL segment.",
         "Endpoints whose docs page carries a `-deprecated` slug are kept — the provider still serves",
-        "them — and are visible as such in the id. Prices come from scripts/data/justoneapi_prices.json,",
+        "them — and are visible as such in the id. Prices come from the operator-supplied pricing evidence,",
         "a hand-exported snapshot of the logged-in dashboard's Pricing page (CNY per successful request);",
         "an endpoint without a cost was absent from that export (e.g. not activated for the account).",
     ]
@@ -983,10 +1171,519 @@ def ingest_justoneapi(refresh: bool) -> tuple[Path, dict]:
     return write_extended("justoneapi", source, endpoints, notes), {"missing": len(missing)}
 
 
-INGESTERS = {"tikhub": ingest_tikhub, "dataforseo": ingest_dataforseo, "justoneapi": ingest_justoneapi}
+def core_body_models(provider: str, method: str, path: str) -> set[str]:
+    """Fixed body.model values curated in core for one shared generation route."""
+    core = CATALOG / f"{provider}.yaml"
+    if not core.is_file():
+        return set()
+    doc = yaml.safe_load(core.read_text()) or {}
+    models: set[str] = set()
+    for ep in doc.get("endpoints") or []:
+        if str(ep.get("method") or "").upper() != method or ep.get("path") != path:
+            continue
+        model = (((ep.get("input") or {}).get("body") or {}).get("model") or {})
+        values = model.get("enum") or []
+        if len(values) == 1:
+            models.add(str(values[0]))
+    return models
 
 
-# =============================================================================================
+def _openrouter_price(model: dict) -> dict:
+    """A generated row's v2 cost keys, written against the `defaults:` of openrouter.yaml: the rate
+    card provenance and the terminal usage.cost settle are inherited, so a priced row carries only
+    its price."""
+    model_id = str(model["id"])
+    skus = model.get("pricing_skus") or {}
+    unsupported = (
+        "video_tokens", "cents_per_image_input", "cents_per_megapixel_second", "reference_images",
+    )
+    if any(str(name).startswith(unsupported) for name in skus):
+        return {
+            "price": {"value": None, "note": "The live rate card includes a token, image-input, reference-image, or megapixel-second dimension that the request schema cannot bound with one declarative times field; this row remains BYOK-only."},
+            "provenance": {"source": "rate_card_api", "source_url": "https://openrouter.ai/api/v1/videos/models",
+                           "checked": "2026-09-02", "confidence": "unknown"},
+            "settle": None,
+        }
+    durations = [int(v) for v in (model.get("supported_durations") or []) if isinstance(v, int)]
+    duration_max = max(durations, default=30)
+    grouped: dict[tuple, dict] = {}
+    maxima: list[float] = []
+    minimum = 0.0
+    for sku, raw in sorted(skus.items()):
+        try:
+            value = float(raw)
+        except (TypeError, ValueError):
+            continue
+        if str(sku).startswith("minimum_cents_per_generation"):
+            minimum = max(minimum, value / 100)
+            continue
+        if str(sku).startswith("cents_per_"):
+            value /= 100
+        when: dict[str, object] = {"body.model": model_id}
+        row: dict[str, object] = {"when": when, "value": value}
+        if sku == "generate":
+            maxima.append(value)
+        else:
+            resolution = next((r for r in (model.get("supported_resolutions") or [])
+                               if str(r).lower() in str(sku).lower()), None)
+            if resolution:
+                when["body.resolution"] = resolution
+            if "with_audio" in str(sku) and "without_audio" not in str(sku):
+                when["body.generate_audio"] = True
+            elif "without_audio" in str(sku):
+                when["body.generate_audio"] = False
+            row["times"] = "body.duration"
+            maxima.append(value * duration_max)
+        key = (tuple(sorted(when.items())), row.get("times"))
+        previous = grouped.get(key)
+        if previous is None or float(previous["value"]) < value:
+            grouped[key] = row
+    rows = list(grouped.values())
+    rows.sort(key=lambda row: (-len(row["when"]), sorted(row["when"].items())))
+    upper = max([minimum, *maxima], default=0.0)
+    table = [{"when": [{"path": k, "op": "equals", "value": v} for k, v in row["when"].items()],
+              "value": _money(row["value"]), **({"times": row["times"]} if "times" in row else {})}
+             for row in rows or [{"when": {"body.model": model_id}, "value": 0.0}]]
+    return {"price": {
+        "table": table,
+        "fallback": {
+            "value": _money(round(upper + 0.000000001, 9)),
+            "note": "The highest live SKU multiplied by the model's maximum duration is the global usage-settlement reservation ceiling.",
+        },
+        "currency": "USD",
+        "note": "Table rows quote the live rate card. Indistinguishable mode-specific SKUs collapse to the highest rate. The matched row is reserved and the terminal usage.cost settles; observed charges can include a minimum or fee absent from pricing_skus, so a settle may exceed its reserve (reconcile lists overruns).",
+    }}
+
+
+def ingest_openrouter(refresh: bool) -> tuple[Path, dict]:
+    url = "https://openrouter.ai/api/v1/videos/models"
+    models = json.loads(fetch(url, "openrouter_video_models.json", refresh=refresh))["data"]
+    endpoints = []
+    curated_models = core_body_models("openrouter", "POST", "/videos")
+    for model in sorted(models, key=lambda row: str(row.get("id") or "")):
+        model_id = str(model.get("id") or "").strip()
+        if not model_id or model_id in curated_models:
+            continue
+        durations = [int(v) for v in (model.get("supported_durations") or []) if isinstance(v, int)]
+        resolutions = [str(v) for v in (model.get("supported_resolutions") or [])]
+        body = {
+            "model": {"type": "string", "required": True, "enum": [model_id], "example": model_id},
+            "prompt": {"type": "string", "required": True, "example": "A paper boat crosses a quiet pond at sunrise."},
+            "duration": {"type": "integer", "required": False, "default": min(durations, default=5),
+                         "max": max(durations, default=30)},
+        }
+        if resolutions:
+            body["resolution"] = {"type": "string", "required": False,
+                                  "default": resolutions[0], "enum": resolutions}
+        if model.get("supported_aspect_ratios"):
+            ratios = [str(v) for v in model["supported_aspect_ratios"]]
+            body["aspect_ratio"] = {"type": "string", "required": False,
+                                    "default": ratios[0], "enum": ratios}
+        sku_names = [str(name) for name in (model.get("pricing_skus") or {})]
+        if isinstance(model.get("generate_audio"), bool) or any("_audio" in name for name in sku_names):
+            body["generate_audio"] = {"type": "boolean", "required": False,
+                                      "default": bool(model.get("generate_audio", False))}
+        ep = {
+            "id": slug_id("openrouter", model_id),
+            "platform": "video-gen",
+            "domain": "models",
+            "method": "POST",
+            "path": "/videos",
+            "name": str(model.get("name") or model_id)[:60],
+            "summary": clean(
+                str(model.get("description") or f"Generate video with {model_id}.")
+            ).replace("\N{EM DASH}", "-")[:400],
+            "input": {"body": body, "bodyType": "json"},
+            **_openrouter_price(model),
+            "docs_url": f"https://openrouter.ai/{model_id}",
+        }
+        endpoints.append(ep)
+    source = {"spec_urls": [url], "ingested": "2026-09-02"}
+    out = write_extended("openrouter", source, endpoints, [
+        "Generated from the live video model rate card. Each row fixes one model on POST /videos.",
+        "pricing_skus become a first-match reserve table; terminal usage.cost remains authoritative.",
+    ], carry_capability=False)
+    return out, {"models": len(endpoints)}
+
+
+def _replicate_schema(model: dict) -> dict:
+    schema = (((model.get("latest_version") or {}).get("openapi_schema") or {})
+              .get("components", {}).get("schemas", {}).get("Input", {}))
+    required = set(schema.get("required") or [])
+    properties = {}
+    for name, raw in sorted((schema.get("properties") or {}).items(),
+                            key=lambda item: (item[1].get("x-order", 9999), item[0])):
+        field = {key: raw[key] for key in ("type", "description", "default", "minimum", "maximum", "enum")
+                 if key in raw}
+        if "minimum" in field:
+            field["min"] = field.pop("minimum")
+        if "maximum" in field:
+            field["max"] = field.pop("maximum")
+        field["required"] = name in required
+        properties[name] = field
+    return {"type": "object", "required": True, "properties": properties}
+
+
+def ingest_replicate(refresh: bool) -> tuple[Path, dict]:
+    token = os.environ.get("REPLICATE_API_TOKEN", "").strip()
+    if not token:
+        raise SystemExit("replicate ingest requires REPLICATE_API_TOKEN")
+    headers = {"Authorization": f"Bearer {token}"}
+    collections: dict[tuple[str, str], tuple[dict, set[str]]] = {}
+    urls = []
+    for slug in ("text-to-image", "text-to-video", "image-to-video"):
+        url = f"https://api.replicate.com/v1/collections/{slug}"
+        urls.append(url)
+        data = json.loads(fetch(url, f"replicate_{slug}.json", refresh=refresh, headers=headers))
+        for model in data.get("models") or []:
+            if not model.get("is_official"):
+                continue
+            key = (str(model.get("owner") or ""), str(model.get("name") or ""))
+            if not all(key):
+                continue
+            collections.setdefault(key, (model, set()))[1].add(slug)
+    skip = core_routes("replicate")
+    endpoints = []
+    for (owner, name), (model, groups) in sorted(collections.items()):
+        path = f"/models/{owner}/{name}/predictions"
+        if ("POST", path) in skip:
+            continue
+        platform = "video-gen" if groups & {"text-to-video", "image-to-video"} else "image-gen"
+        ep = {
+            "id": slug_id("replicate", f"{owner}/{name}"),
+            "tier": "extended",
+            "platform": platform,
+            "domain": "models",
+            "method": "POST",
+            "path": path,
+            "name": f"{owner}/{name}"[:60],
+            "summary": clean(str(model.get("description") or f"Run the official {owner}/{name} model."))[:400],
+            "input": {"body": {"input": _replicate_schema(model)}, "bodyType": "json"},
+            "cost": {"type": "per_success", "value": None, "confidence": "unknown",
+                     "note": "Replicate does not expose this model's price in the collection API; the generated row is BYOK-only."},
+            "docs_url": str(model.get("url") or f"https://replicate.com/{owner}/{name}"),
+        }
+        endpoints.append(ep)
+    async_default = {
+        "id_from": "id",
+        "poll": {"url_from": "urls.get", "url_hosts": ["api.replicate.com"]},
+        "status": {"path": "status", "success": ["succeeded"],
+                   "failure": ["failed", "canceled"]},
+        "result": {"path": "output"},
+        "interval": 2,
+    }
+    out = write_extended("replicate", {"spec_urls": urls, "ingested": "2026-09-01"}, endpoints, [
+        "Generated from Replicate's maintained text-to-image, text-to-video, and image-to-video collections.",
+        "Only official models are included. Input fields come from latest_version.openapi_schema.",
+        "Generated rows intentionally carry no price; an unpriced row is BYOK-only.",
+    ], carry_capability=False)
+    generated = yaml.safe_load(out.read_text())
+    doc = {"provider": generated["provider"], "source": generated["source"],
+           "async": async_default, "endpoints": generated["endpoints"]}
+    header, _, _ = out.read_text().partition("provider:")
+    out.write_text(header + yaml.safe_dump(doc, sort_keys=False, allow_unicode=True, width=4096))
+    one_vocabulary(out)
+    return out, {"models": len(endpoints)}
+
+
+
+# AnyAPI's SKU prefix -> treg platform slug. Absent = the prefix is already a platform slug.
+# The left-hand side is the first dotted segment of an AnyAPI SKU id (`twitter.profile`).
+ANYAPI_PLATFORM = {
+    "twitter": "x",
+    "rednote": "xiaohongshu",
+    "appstore": "app-store",
+    "playstore": "google-play",
+    "maps": "google",
+    "tiktok_shop": "tiktok-shop",
+    "google_ads": "google-ads",
+    "google_shopping": "google",
+    "google_finance": "stocks",
+    "yahoo_finance": "stocks",
+    "coinmarketcap": "crypto",
+    "dexscreener": "crypto",
+    "web": "web",
+    # AI answer engines already have a shelf.
+    "chatgpt": "ai-search", "gemini": "ai-search", "perplexity": "ai-search",
+    # people/company enrichment shelves
+    "company": "companies", "person": "people", "social": "people",
+}
+
+# Excluded from the listing by AnyAPI. Mostly an explicit id list, because the excluded set does
+# not line up with SKU prefixes; three families do, and are excluded by prefix.
+#
+# `seo.`, `ahrefs.` and `semrush.` are AnyAPI's resale of SEO tooling - keyword volume,
+# ranked keywords, domain overviews, backlinks. Every shelf they would land on in this repo
+# (google.keywords.*, google.domain.*, web.backlinks.*) is already held by the primary vendor
+# of that data, dataforseo, semrush, seranking, serpstat, spyfu and ahrefs among them, so a
+# reseller row there adds a dearer copy of a price a buyer can already compare. AnyAPI does
+# not list them.
+ANYAPI_EXCLUDE_PREFIX = ("apollo.", "seo.", "ahrefs.", "semrush.")
+ANYAPI_EXCLUDE = frozenset({
+    "company_enrichment.lusha", "company_enrichment.crustdata_v3", "company_enrichment.prospeo",
+    "company_enrichment.peopledatalabs", "company_search.ai_ark", "company_search.crustdata_v3",
+    "company_search.quickenrich", "company_search.prospeo", "company_search.fullenrich",
+    "company_search.peopledatalabs", "company_search.theirstack", "email_finding.dropleads",
+    "email_finding.hunter_count", "email.verify", "email.find", "email_finding.icypeas",
+    "email_finding.zerobounce", "email_finding.quickenrich", "email_finding.hunter_domain",
+    "email_verification.allegrow", "email_verification.bounceban", "email_verification.icypeas",
+    "email_finding.zerobounce_domain", "email_verification.zerobounce_activity",
+    "email_verification.zerobounce", "job_search.theirstack", "mobile_phone.leadmagic",
+    "people_search.crustdata_v3", "people_search.ai_ark", "mobile_phone.ai_ark",
+    "people_search.fullenrich", "people_search.peopledatalabs", "people_search.quickenrich",
+    "people_search.lusha", "people_search.prospeo", "people_search.quickenrich_company",
+    "person_enrichment.fullenrich_bulk", "person_enrichment.aviato",
+    "person_enrichment.bettercontact", "person_enrichment.lusha",
+    "person_enrichment.fullenrich_reverse_email", "person_enrichment.prospeo",
+    "person_enrichment.peopledatalabs", "person_enrichment.quickenrich",
+    "technographics.theirstack",
+})
+
+# Two SKUs held back because neither of their sources answers the canonical example:
+# socialcrawl returns HTTP 503 "instagram is temporarily unavailable" and scraper.tech returns
+# not-found on the canonical example. Listing them would put two endpoints that return nothing on
+# a public shelf and fail our own verify pass. This is about whether an answer comes back, not
+# about price. Re-ingest them once either source serves the canonical example again.
+ANYAPI_EXCLUDE_DEAD = frozenset({
+    "instagram.followers", "instagram.following",
+})
+
+# PLATFORMS THE EXTENDED TIER LISTS. Every other platform's rows are dropped.
+#
+# The line is a measured break in AnyAPI's own production request volume, not a chosen
+# threshold: the rows below that break are rarely called, and listing an endpoint
+# nobody calls costs a reader attention and costs us a verify pass, so the tail is not listed.
+#
+# The first six are the same platforms anyapi.yaml curates in core; the last four are the next
+# busiest. Re-measure and re-run if the traffic shape changes.
+ANYAPI_KEEP_PLATFORMS = frozenset({
+    "tiktok", "linkedin", "facebook", "google", "x", "instagram",
+    "reddit", "youtube", "web", "tiktok-shop",
+})
+
+# Routing controls, not data inputs: they change which source serves and what it costs, never the
+# shape of the answer. Carrying them into every one of 300+ entries would bury the real parameters.
+ANYAPI_SKIP_PARAMS = {"preferLatencyUnderMs", "requireCursor", "requireSinglePage"}
+
+ANYAPI_RATE_CARD = "https://api.getanyapi.com/v1/apis?limit=1000"
+ANYAPI_OPENAPI = "https://api.getanyapi.com/openapi.json"
+# Bumped by hand when the rate card is re-read, so a re-run with no price change is byte-identical.
+ANYAPI_CHECKED = "2026-10-02"
+
+# Measured pricing evidence is supplied by the operator, outside the public checkout.
+_ANYAPI_MEASURED: dict[str, dict] | None = None
+
+# CORE-TIER SHELF ROWS WHOSE SOURCES CHARGE DIFFERENT PRICES FOR THE SAME RESULT COUNT.
+#
+# For these the p90 measures lane spread, not work done, so it is not the price a buyer will pay.
+# A blended percentile can overstate the cheapest advertised source for the same result count.
+#
+# So these rows list the CHEAPEST ADVERTISED price instead - `pricing.from.maxUsd`, the cheapest
+# source's price at the input maximum - and keep `source: rate_card_api`, because that is what the
+# number now is. They UNDER-reserve by design: a rescue on a dearer source settles above the
+# listing, which domain/money/settlement.py:133-134 accepts and reports in reconcile, and
+# `costUsd` (the settle default in anyapi.yaml) is what actually settles either way.
+#
+# This applies ONLY to core rows on the comparison shelf. Extended rows are not shelf-ranked, so a
+# lower number there would be a smaller reserve with no upside. It also does NOT apply to a
+# single-source per-result row like linkedin.company_employees or linkedin.jobs, where the price at
+# the input maximum is HIGHER than the measured p90 and switching would raise the shelf price.
+ANYAPI_CORE_ROWS_PRICED_AT_CHEAPEST_SOURCE = {
+    "maps.search",
+    "maps.place",
+    "maps.reviews",
+    "twitter.profile",
+    "twitter.replies",
+}
+
+
+def _anyapi_measured() -> dict[str, dict]:
+    global _ANYAPI_MEASURED
+    if _ANYAPI_MEASURED is None:
+        path = pricing_evidence_file("anyapi_measured_charges.json")
+        _ANYAPI_MEASURED = json.loads(path.read_text()).get("skus", {})
+    return _ANYAPI_MEASURED
+
+
+def _anyapi_input(schema: dict, example: dict) -> dict:
+    """AnyAPI publishes one strict JSON Schema per SKU; carry it across verbatim minus the
+    routing controls, so a generated `test_request` is built from the vendor's own examples. AnyAPI
+    takes the shared `fields` query parameter as one comma-separated value, so a list is joined."""
+    required = set(schema.get("required") or [])
+    body = {}
+    for name, spec in (schema.get("properties") or {}).items():
+        if name in ANYAPI_SKIP_PARAMS or not isinstance(spec, dict):
+            continue
+        field = {"type": spec.get("type", "string"), "required": name in required}
+        note = clean(str(spec.get("description") or ""))
+        if note:
+            field["note"] = note[:300]
+        for src, dst in (("default", "default"), ("minimum", "min"), ("maximum", "max"),
+                         ("enum", "enum")):
+            if src in spec:
+                field[dst] = spec[src]
+        if name in example:
+            field["example"] = example[name]
+        body[name] = field
+    return {"body": body, "bodyType": "json", "queryArrayEncoding": "comma"}
+
+
+def _anyapi_price(api: dict) -> dict:
+    """What a caller really pays for one request: the p90 of AnyAPI's own measured charges, as the
+    row's `price` and `provenance`; the reported settle on `costUsd` is the `defaults:` of anyapi.yaml.
+
+    `price.value` is the 90th percentile of every charge AnyAPI billed for this SKU over the
+    trailing 60 days (ANYAPI_MEASURED_FILE), so the shelf price is what nine calls in ten settle at
+    or below. That replaces the rate card's `pricing.from.maxUsd` - the CHEAPEST source's price at
+    the input maximum - which is wrong in both directions wherever the ledger can check it: it
+    reads far LOW on a multi-source SKU whose cheap source rarely wins (ebay.search lists $0.0005
+    against a $0.03795 median real charge), far HIGH on a per-result SKU nobody calls at the input
+    maximum (instagram.hashtag_analytics lists $0.0385 against a $0.00297 p90), and it drifts every
+    time a source is quarantined and `pricing.from` recomputes. `maxUsd` is still the fallback for
+    a SKU with fewer than 5 charged calls in the window, where there is nothing to measure,
+    and for the named ANYAPI_CORE_ROWS_PRICED_AT_CHEAPEST_SOURCE, where the p90 measures
+    which source won rather than how much work the call did.
+
+    A p90 is deliberately NOT a ceiling. About one call in ten settles above the reserve, which
+    domain/money/settlement.py already designs for: the charge may exceed the reserve, the ledger
+    takes the difference from the balance, and the next reserve is the gate. Measured across the
+    same 60 days under the OLD, much-worse prices, that overrun was $18.66 on $695.05 settled -
+    2.7%. The listing prices for the buyer comparing shelves, not for the reserve.
+
+    A measured price is clamped to `failoverMaxUsd` at BOTH ends. The floor is _anyapi_flat_floor
+    below. The ceiling is the dearest source's price at the input maximum, so no request can settle
+    above it: a p90 that lands higher is quoting a source AnyAPI has since withdrawn, and the row
+    would otherwise say "$0.0036 ... up to a $0.0012 ceiling" in one sentence. That was 21 of the
+    201 rows in an earlier revision of this branch, the worst at 3x its own ceiling.
+
+    `source: observed` is this catalog's own word for a price seen being billed rather than read
+    off a page (domain/catalog/store.COST_SOURCES); the rate-card fallback keeps `rate_card_api`.
+    Every row settles on `costUsd` either way: it is the only number that knows which source served
+    and how many rows came back.
+    """
+    measured = (None if api["id"] in ANYAPI_CORE_ROWS_PRICED_AT_CHEAPEST_SOURCE
+                else _anyapi_measured().get(api["id"]))
+    price = measured["p90_usd"] if measured else api["pricing"]["from"]["maxUsd"]
+    if measured:
+        price = max(price, _anyapi_flat_floor(api))
+        price = min(price, api["pricing"].get("failoverMaxUsd") or price)
+    return {
+        "price": {"value": _money(price), "currency": "USD", "unit": "call",
+                  "note": anyapi_cost_note(len(api.get("lanes") or []), api["pricing"]["failoverMaxUsd"])},
+        "provenance": {"source": "observed" if measured else "rate_card_api",
+                       "source_url": f"https://api.getanyapi.com/v1/apis/{api['id']}",
+                       "checked": ANYAPI_CHECKED, "confidence": "verified"},
+    }
+
+
+def _anyapi_flat_floor(api: dict) -> float:
+    """Today's true per-call floor for a FLAT-priced SKU, or 0 when there is no such floor.
+
+    A measured p90 is a statistic over the trailing 60 days, so it can sit BELOW the price the
+    catalog charges today: when a source is retired or quarantined, `pricing.from` recomputes
+    upward and every historical charge was cheaper than anything now on offer. Measured against
+    the live rate card, that is 13 rows, all at exactly 1.20x - one supplier's $0.001 lane went
+    away and $0.0012 is now the cheapest anyone can pay (tiktok.profile, and the weibo, zhihu and
+    douyin families). A ledger run caught it on tiktok.profile: claimed $0.001, metered $0.0012.
+
+    Only `model: flat` qualifies. On a per-result SKU `pricing.from.maxUsd` is the price at the
+    INPUT MAXIMUM rather than a floor - instagram.hashtag_analytics advertises $0.0385 against a
+    $0.00297 p90 - so clamping to it there would reinstate exactly the overstatement the measured
+    prices exist to remove.
+    """
+    pricing = (api.get("pricing") or {}).get("from") or {}
+    return pricing.get("maxUsd", 0.0) if pricing.get("model") == "flat" else 0.0
+
+
+def anyapi_cost_note(lanes: int, ceiling: float) -> str:
+    """The row's `price.note`: how far a failover can take one charge, what settles it, how a
+    caller caps it, and that a miss is billed (the `bill` default in anyapi.yaml). A caller reads it; how the listed price was measured stays in `_anyapi_price`.
+    The hand-curated core rows in anyapi.yaml use the same sentences."""
+    serve = (f"{lanes} sources serve this, cheapest first; a failed attempt retries on the next, up "
+             f"to ${ceiling:g} at the dearest." if lanes > 1 else
+             f"One source serves this, at up to ${ceiling:g} a call.")
+    return (f"{serve} The charge follows the answer's `costUsd`, not the listed price. Send "
+            "X-Treg-Route-Max-Cost to refuse any source dearer than your ceiling. A not-found or "
+            "empty answer is billed too, at its own `costUsd`.")
+
+
+def ingest_anyapi(refresh: bool = False):
+    """Every AnyAPI SKU on a kept platform, except those curated in core and those AnyAPI excludes.
+
+    Two sources, both the vendor's own: the OpenAPI document for request shapes (public, no key)
+    and the rate card for prices (needs any AnyAPI key in `ANYAPI_API_KEY` — `POST
+    https://api.getanyapi.com/agent/signup` mints a free one with no account).
+    """
+    key = os.environ.get("ANYAPI_API_KEY", "")
+    if not key:
+        raise SystemExit("anyapi: set ANYAPI_API_KEY (POST /agent/signup returns a free one)")
+    spec = json.loads(fetch(ANYAPI_OPENAPI, "anyapi_openapi.json", refresh=refresh))
+    catalog = json.loads(fetch(ANYAPI_RATE_CARD, "anyapi_rate_card.json", refresh=refresh,
+                               headers={"X-API-Key": key}))["apis"]
+    skip = core_routes("anyapi")
+    endpoints, unknown_platform = [], set()
+    for api in sorted(catalog, key=lambda a: a["id"]):
+        sku = api["id"]
+        if (sku in ANYAPI_EXCLUDE or sku in ANYAPI_EXCLUDE_DEAD
+                or sku.startswith(ANYAPI_EXCLUDE_PREFIX)):
+            continue
+        path = api["path"]
+        if (api["method"].upper(), path) in skip:
+            continue
+        op = ((spec.get("paths") or {}).get(path) or {}).get(api["method"].lower())
+        if not op:
+            continue
+        content = (op.get("requestBody") or {}).get("content", {}).get("application/json", {})
+        example = content.get("example") or {}
+        prefix = sku.split(".")[0]
+        platform = ANYAPI_PLATFORM.get(prefix, prefix)
+        if platform not in ANYAPI_KEEP_PLATFORMS:
+            continue
+        ep = {
+            "id": f"anyapi.{sku}",
+            "platform": platform,
+            "domain": sku.split(".", 1)[1].split("_")[0],
+            "method": api["method"].upper(),
+            "path": path,
+            "name": clean(api["name"])[:60],
+            "summary": clean(api["description"])[:400],
+            "input": _anyapi_input(content.get("schema") or {}, example),
+            **_anyapi_price(api),
+            # One public page per SKU: live price, source routing and measured 30-day uptime.
+            "docs_url": ("https://getanyapi.com/api/"
+                         f"{prefix.replace('_', '-')}/{sku.split('.', 1)[1].replace('_', '-')}"),
+        }
+        # No `test_request` here: a freshly ingested entry has never been called, and the vendor's
+        # own example values already ride on each input field for the verify pass to build one from.
+        endpoints.append(ep)
+        unknown_platform.add(platform)
+    source = {"method": "openapi + provider rate card", "ingested": ANYAPI_CHECKED,
+              "spec_urls": [ANYAPI_OPENAPI, ANYAPI_RATE_CARD]}
+    out = write_extended("anyapi", source, endpoints, [
+        "Every SKU AnyAPI publishes on its ten busiest platforms, minus the routes curated in",
+        "anyapi.yaml and the SKUs AnyAPI excludes from this listing (ANYAPI_KEEP_PLATFORMS and",
+        "ANYAPI_EXCLUDE in scripts/catalog_ingest.py).",
+        "Prices are MEASURED: price.value is the p90 of what AnyAPI actually billed for that SKU",
+        "over the 60 days to the ingest date (operator-supplied pricing evidence), so it is",
+        "what nine calls in ten settle at or below rather than the cheapest source's list price. A",
+        "SKU with too few charged calls to measure keeps the rate card's cheapest-source price",
+        "(provenance.source: rate_card_api vs observed). One call in ten settles ABOVE the reserve",
+        "by design; every response reports its exact charge as costUsd, which the settle default in",
+        "anyapi.yaml settles on. price.note tells the caller the failover ceiling and how to cap it.",
+    ], carry_capability=True, carry_input=False, fresh_price_note=True)
+    return out, {"endpoints": len(endpoints)}
+
+
+INGESTERS = {
+    "anyapi": ingest_anyapi,
+    "tikhub": ingest_tikhub,
+    "dataforseo": ingest_dataforseo,
+    "justoneapi": ingest_justoneapi,
+    "openrouter": ingest_openrouter,
+    "replicate": ingest_replicate,
+}
+
+
 # FIRST-PARTY OAUTH PROVIDERS
 #
 # The scraper providers above sell breadth, and their extended tier reads as a menu. These nine
@@ -1025,7 +1722,6 @@ def _oauth_source(method: str, urls: list[str]) -> dict:
     return {"method": method, "ingested": str(date.today()), "spec_urls": urls}
 
 
-# --- Google discovery documents ----------------------------------------------------------------
 # Every Google REST API publishes a machine-readable Discovery document describing every method:
 # httpMethod, flatPath (the URL relative to the service host), a description, the full parameter
 # list with types/required flags/enums, and the OAuth scopes the method accepts.
@@ -1172,8 +1868,6 @@ FREE_QUOTA = {"type": "free", "value": 0.0, "currency": "USD", "unit": "call",
               "note": "no per-call charge; billed against the API's daily quota"}
 
 
-# --- google-search-console ---------------------------------------------------------------------
-
 def ingest_google_search_console(refresh: bool) -> tuple[Path, dict]:
     provider = "google-search-console"
     doc = google_discovery("searchconsole", "v1", refresh)
@@ -1211,8 +1905,6 @@ def ingest_google_search_console(refresh: bool) -> tuple[Path, dict]:
         ["https://searchconsole.googleapis.com/$discovery/rest?version=v1"],
     ), endpoints, notes), {"scope_gaps": gaps}
 
-
-# --- google-analytics --------------------------------------------------------------------------
 
 def ingest_google_analytics(refresh: bool) -> tuple[Path, dict]:
     provider = "google-analytics"
@@ -1260,8 +1952,6 @@ def ingest_google_analytics(refresh: bool) -> tuple[Path, dict]:
     ), endpoints, notes), {"scope_gaps": gaps, "admin": admin}
 
 
-# --- google-tag-manager ------------------------------------------------------------------------
-
 def ingest_google_tag_manager(refresh: bool) -> tuple[Path, dict]:
     provider = "google-tag-manager"
     granted = {
@@ -1303,7 +1993,6 @@ def ingest_google_tag_manager(refresh: bool) -> tuple[Path, dict]:
     ), endpoints, notes), {"scope_gaps": gaps}
 
 
-# --- google-business-profile -------------------------------------------------------------------
 # Google retired the single "My Business API v4" into SIX narrow services, each on its own host.
 # base_url is the account-management one, so only that family is callable through the provisioned
 # tool; the rest carry `host:`. Reviews never made the migration and still live on the legacy v4
@@ -1395,7 +2084,6 @@ def ingest_google_business_profile(refresh: bool) -> tuple[Path, dict]:
     ), endpoints, notes), {"off_host": off_host}
 
 
-# --- youtube -----------------------------------------------------------------------------------
 # Quota, not money, is what runs out on the YouTube Data API: a project gets 10,000 units a day and
 # a single search.list costs 100 of them. The per-method costs below are the published quota table
 # (developers.google.com/youtube/v3/determine_quota_cost) — the discovery document does not carry
@@ -1477,7 +2165,6 @@ def ingest_youtube(refresh: bool) -> tuple[Path, dict]:
     ), endpoints, notes), {"scope_gaps": gaps, "quota_units": units}
 
 
-# --- google-ads --------------------------------------------------------------------------------
 # The Google Ads API has no discovery document or OpenAPI spec worth ingesting: apart from a
 # handful of mutate services, ONE endpoint (googleAds:searchStream) answers everything, and what
 # varies is the GAQL `FROM` clause. So the unit of coverage here is the RESOURCE, not the route —
@@ -1589,8 +2276,6 @@ def ingest_google_ads(refresh: bool) -> tuple[Path, dict]:
     ), endpoints, notes), {}
 
 
-# --- x ------------------------------------------------------------------------------------------
-
 X_OPENAPI = "https://api.twitter.com/2/openapi.json"
 # treg's X app requests these across its read + write capabilities. Anything else is a scope gap.
 X_GRANTED = {"tweet.read", "tweet.write", "users.read", "offline.access"}
@@ -1655,7 +2340,7 @@ X_FALLBACK_READ, X_FALLBACK_WRITE = "posts", "post_create"
 # route's resource type is a judgement call (a route returning the users who liked a post could be
 # read as User: Read or Like: Read — it takes the dearer reading, since treg pays the difference).
 X_ROUTE_RATES: list[tuple[str, str, str, str]] = [
-    # --- writes: the specific actions first -----------------------------------------------------
+    # Writes: the specific actions first.
     ("POST",            r"^/2/lists$",                              "list_create", "documented"),
     ("PUT|DELETE",      r"^/2/lists/\{[^}]+\}$",                    "list_manage", "documented"),
     ("POST|DELETE",     r"^/2/lists/\{[^}]+\}/members",             "list_manage", "documented"),
@@ -1673,7 +2358,7 @@ X_ROUTE_RATES: list[tuple[str, str, str, str]] = [
     ("DELETE",          r"^/2/tweets/\{[^}]+\}$",                   "int_delete",  "inferred"),
     ("PUT",             r"^/2/tweets/\{[^}]+\}/hidden$",            "content",     "documented"),
     ("POST|DELETE",     r"^/2/(notes|articles|broadcasts)",          "content",     "inferred"),
-    # --- reads: per-resource rows ---------------------------------------------------------------
+    # Reads: per-resource rows.
     ("GET",             r"^/2/tweets/counts/recent$",               "counts_recent", "documented"),
     ("GET",             r"^/2/tweets/counts/all$",                  "counts_all",  "documented"),
     ("GET",             r"^/2/trends/",                             "trends",      "documented"),
@@ -1829,7 +2514,6 @@ def ingest_x(refresh: bool) -> tuple[Path, dict]:
     ), endpoints, notes), {"scope_gaps": gaps}
 
 
-# --- Meta Graph API: facebook / instagram / meta-ads --------------------------------------------
 # Meta publishes NO machine-readable spec for the Graph API — no OpenAPI, no discovery document,
 # nothing versioned we could diff. The only source is the HTML reference index, one page per node
 # type. Transcribing hundreds of routes from HTML is precisely what catalog.md step 1 warns
@@ -1838,7 +2522,7 @@ def ingest_x(refresh: bool) -> tuple[Path, dict]:
 # the official reference page for that node. Accuracy over volume.
 #
 # Every path is relative to base_url, which already ends in /v25.0 — do NOT prefix the version.
-# Tuple: (slug, method, path, summary, scope_gap or "")
+# Each tuple holds slug, method, path, summary, then scope_gap or an empty string.
 
 META_GRAPH_DOCS = "https://developers.facebook.com/docs/graph-api/reference"
 
@@ -1910,7 +2594,7 @@ INSTAGRAM_EDGES: list[tuple[str, str, str, str, str]] = [
     ("user-mentioned-comment", "GET", "/{ig_user_id}/mentioned_comment",
      "A comment that @-mentions this account, with its thread", ""),
     ("user-content-publishing-limit", "GET", "/{ig_user_id}/content_publishing_limit",
-     "How many of the 24-hour posting quota (50 posts) this account has already used", ""),
+     "How many of the 100 API-published posts per 24-hour moving period (carousels count as one) this account has already used", ""),
     ("user-business-discovery", "GET", "/{ig_user_id}",
      "Read ANOTHER public professional account's followers, media count and recent posts", ""),
     ("user-recently-searched-hashtags", "GET", "/{ig_user_id}/recently_searched_hashtags",

@@ -1,0 +1,179 @@
+{
+  "search_metadata": {
+    "id": "ce1e0673f910e2765111e160",
+    "status": "Success",
+    "json_endpoint": "https://api.litescrape.com/api/yelp/reviews?place_id=dDz2erKJ_Z2HMur0tQ_iJA&yelp_domain=www.yelp.com&hl=en&sortby=relevance_desc&not_recommended=False&start=0&num=10",
+    "created_at": "2026-09-29 13:58:49 UTC",
+    "processed_at": "2026-09-29 13:58:49 UTC",
+    "provider_url": "https://www.yelp.com/gql/batch",
+    "total_time_taken": 1.262
+  },
+  "search_parameters": {
+    "place_id": "dDz2erKJ_Z2HMur0tQ_iJA",
+    "yelp_domain": "www.yelp.com",
+    "hl": "en",
+    "sortby": "relevance_desc",
+    "not_recommended": false,
+    "start": 0,
+    "num": 10
+  },
+  "search_information": {
+    "total_results": 740,
+    "business": "Cosmic",
+    "rating": 4.6,
+    "rating_distribution": [
+      {
+        "rating": 1,
+        "count": 21
+      },
+      {
+        "rating": 2,
+        "count": 13
+      }
+    ]
+  },
+  "reviews": [
+    {
+      "position": 1,
+      "id": "JUzNWN90g9H0li6R0pgm_Q",
+      "link": "https://www.yelp.com/biz/cosmic-austin?hrid=JUzNWN90g9H0li6R0pgm_Q",
+      "user": {
+        "name": "Karla D.",
+        "user_id": "6Ki3bAL0wx9ymbdJqbSWMA",
+        "link": "https://www.yelp.com/user_details?userid=6Ki3bAL0wx9ymbdJqbSWMA",
+        "thumbnail": "https://s3-media0.fl.yelpcdn.com/photo/ft2CQh_YWLNDyJV3rVrW2A/180s.jpg",
+        "address": "Austin, TX",
+        "friends": 278,
+        "photos": 24791,
+        "reviews": 4047,
+        "elite_year": "26"
+      },
+      "comment": {
+        "text": "*this was meant to be 5 stars and for some reason I must have hit 4.\nUpdating for that purpose only.\nYeah so, I was updating a lengthy review but it seems to ha…",
+        "language": "en"
+      },
+      "date": "2026-06-14T20:12:13Z",
+      "local_date": "2026-06-14T15:12:13-05:00",
+      "rating": 5,
+      "photos": [
+        {
+          "id": "ZtRL4khyzNktfU3kKn1b5w",
+          "link": "https://s3-media0.fl.yelpcdn.com/bphoto/ZtRL4khyzNktfU3kKn1b5w/o.jpg",
+          "thumbnail": "https://s3-media0.fl.yelpcdn.com/bphoto/ZtRL4khyzNktfU3kKn1b5w/348s.jpg",
+          "helpful": 0
+        },
+        {
+          "id": "GUVYrbs4hDFv1Do5SknLBg",
+          "link": "https://s3-media0.fl.yelpcdn.com/bphoto/GUVYrbs4hDFv1Do5SknLBg/o.jpg",
+          "thumbnail": "https://s3-media0.fl.yelpcdn.com/bphoto/GUVYrbs4hDFv1Do5SknLBg/348s.jpg",
+          "caption": "Koi",
+          "helpful": 0
+        }
+      ],
+      "feedback": {
+        "useful": 3,
+        "funny": 0,
+        "cool": 2
+      },
+      "reactions": [
+        {
+          "type": "HELPFUL",
+          "label": "Helpful",
+          "count": 2
+        },
+        {
+          "type": "THANKS",
+          "label": "Thanks",
+          "count": 0
+        }
+      ],
+      "owner_replies": [
+        {
+          "owner": {
+            "name": null,
+            "id": null,
+            "thumbnail": null,
+            "role": null
+          },
+          "comment": "Thank you so much for taking the time to leave a review. We’re glad you enjoy both locations and really appreciate your continued support. It’s great to hear yo…",
+          "date": "2026-06-26T17:11:32Z",
+          "id": "PmcXx7AX2F9ifD1ndUCD9A"
+        }
+      ]
+    },
+    {
+      "position": 2,
+      "id": "vPTQLsM2DLFC7-fUtJoDLw",
+      "link": "https://www.yelp.com/biz/cosmic-austin?hrid=vPTQLsM2DLFC7-fUtJoDLw",
+      "user": {
+        "name": "Genesis M.",
+        "user_id": "u3sx7DKeo7lbvBuFp-mc1g",
+        "link": "https://www.yelp.com/user_details?userid=u3sx7DKeo7lbvBuFp-mc1g",
+        "thumbnail": "https://s3-media0.fl.yelpcdn.com/photo/6LgtdEC2PpfaVO-9VbJevA/180s.jpg",
+        "address": "Austin, TX",
+        "friends": 149,
+        "photos": 346,
+        "reviews": 170,
+        "elite_year": "26"
+      },
+      "comment": {
+        "text": "This place is great has ample space probably a few different major group groups could meet there. There's also food trucks on the gravel side and I believe they…",
+        "language": "en"
+      },
+      "date": "2026-06-06T03:44:47Z",
+      "local_date": "2026-06-05T22:44:47-05:00",
+      "rating": 5,
+      "photos": [
+        {
+          "id": "nIJtVjxjP-6m6TVKSa3cag",
+          "link": "https://s3-media0.fl.yelpcdn.com/bphoto/nIJtVjxjP-6m6TVKSa3cag/o.jpg",
+          "thumbnail": "https://s3-media0.fl.yelpcdn.com/bphoto/nIJtVjxjP-6m6TVKSa3cag/348s.jpg",
+          "helpful": 0
+        }
+      ],
+      "feedback": {
+        "useful": 0,
+        "funny": 0,
+        "cool": 0
+      },
+      "reactions": [
+        {
+          "type": "HELPFUL",
+          "label": "Helpful",
+          "count": 0
+        },
+        {
+          "type": "THANKS",
+          "label": "Thanks",
+          "count": 0
+        }
+      ],
+      "owner_replies": [
+        {
+          "owner": {
+            "name": null,
+            "id": null,
+            "thumbnail": null,
+            "role": null
+          },
+          "comment": "Glad to hear you had a great time at Cosmic Pickle! We love seeing people enjoy the space, grab a drink, and hang out comfortably. Thanks for stopping by.",
+          "date": "2026-06-12T16:10:08Z",
+          "id": "7dNKu6KJKjIZkCjtV9gFaw"
+        }
+      ]
+    }
+  ],
+  "review_languages": [
+    {
+      "hl": "en",
+      "count": 740
+    },
+    {
+      "hl": "es",
+      "count": 1
+    }
+  ],
+  "pagination": {
+    "next": "https://api.litescrape.com/api/yelp/reviews?place_id=dDz2erKJ_Z2HMur0tQ_iJA&yelp_domain=www.yelp.com&hl=en&sortby=relevance_desc&not_recommended=False&start=10&num=10"
+  }
+}

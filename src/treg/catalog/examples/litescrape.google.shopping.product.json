@@ -1,0 +1,78 @@
+{
+  "search_metadata": {
+    "id": "582dd3e3150d2b36de7a3076",
+    "status": "Success",
+    "json_endpoint": "https://api.litescrape.com/api/google/shopping/product?gpcid=3753285529675071078&headline_offer_docid=2823574139643882398&image_docid=5002652757944012799&q=coffee+maker&google_domain=google.com&hl=en&device=desktop",
+    "created_at": "2026-09-29 13:58:34 UTC",
+    "processed_at": "2026-09-29 13:58:34 UTC",
+    "total_time_taken": 1.172,
+    "google_shopping_product_url": "https://www.google.com/search?ibp=oshop&q=coffee+maker&prds=gpcid%3A3753285529675071078%2CheadlineOfferDocid%3A2823574139643882398%2CimageDocid%3A5002652757944012799%2Cpvt%3Ahg%2Cpvo%3A3&hl=en&udm=28",
+    "transport_time_taken": 1.165
+  },
+  "search_parameters": {
+    "gpcid": "3753285529675071078",
+    "headline_offer_docid": "2823574139643882398",
+    "image_docid": "5002652757944012799",
+    "q": "coffee maker",
+    "google_domain": "google.com",
+    "hl": "en",
+    "device": "desktop"
+  },
+  "product_result": {
+    "gpcid": "3753285529675071078",
+    "headline_offer_docid": "2823574139643882398",
+    "image_docid": "5002652757944012799",
+    "title": "Starfrit 10-Cup Drip Coffee Maker",
+    "variant": "Select option(s) to continueColor: Any Color",
+    "description": "Immerse yourself in an invigorating day with the Starfrit 10-Cup Coffee Maker, a must-have companion for coffee lovers. Featuring a modern plastic design with m…",
+    "thumbnail": "https://encrypted-tbn0.gstatic.com/shopping?q=tbn:ANd9GcTXbaY_2dlHR-tdxSCvElmBeJsBHWowUkIq7-6b9o4k3MZpyfchcIqCLX3aiPT5GXTxht6cY8ogXeUxjMyPetUtIzxjkipGJUuGO_Gxv8PbnjMGV98YRfSzCw",
+    "thumbnails": [
+      "https://encrypted-tbn0.gstatic.com/shopping?q=tbn:ANd9GcTXbaY_2dlHR-tdxSCvElmBeJsBHWowUkIq7-6b9o4k3MZpyfchcIqCLX3aiPT5GXTxht6cY8ogXeUxjMyPetUtIzxjkipGJUuGO_Gxv8PbnjMGV98YRfSzCw",
+      "https://encrypted-tbn1.gstatic.com/shopping?q=tbn:ANd9GcQEGqrrUSbBG3c7-d0McwcuuZOrLIE684EtzUXEkr4T44RmKa4EmIR9hffJOay4JFfllY21HdFsqsfNJA7JDTmJHhssb6PGM38Xzy6tGpZy0vpjI4pBUOmwzSQ"
+    ],
+    "specifications": [
+      {
+        "name": "Capacity",
+        "value": "10 cups"
+      },
+      {
+        "name": "Carafe Capacity",
+        "value": "10 cups"
+      }
+    ]
+  },
+  "offers": [
+    {
+      "merchant": "oboxliquidation.com",
+      "title": "Starfrit 10-cup 900W coffee maker",
+      "extracted_price": 26,
+      "price": "$26.00",
+      "extracted_old_price": 32,
+      "old_price": "$32",
+      "link": "https://oboxliquidation.com/en/products/cafetiere-starfrit-10-tasses-900w?variant=50587910570277&country=US&currency=USD&utm_medium=product_sync&utm_source=google&utm_content=sag_organic&utm_campaign=sag_organic&srsltid=AU7gw4WaZtwo3KNLSHQiyROo5iyK0gAKGuxEhbTrVvTk4MbFFIk3DaGFVNw",
+      "availability": "In stock online",
+      "delivery": "Delivery $29.49",
+      "returns": "30-day returns",
+      "details": [
+        "Delivery $29.49",
+        "30-day returns"
+      ],
+      "position": 1
+    },
+    {
+      "merchant": "BRS Battery",
+      "title": "Starfrit 10-Cup Coffee Maker – Keep Warm Function – Reusable Filter Basket – Easy to clean – 900W – Black All In One Marketplace Canada",
+      "extracted_price": 46.88,
+      "price": "$46.88",
+      "link": "https://brsbattery.com/products/starfrit-10-cup-coffee-maker-keep-warm-function-reusable-filter-basket-easy-to-clean-900w-black-%F0%9F%8D%81-all-in-one-marketpl…",
+      "availability": "In stock online",
+      "delivery": "Free delivery between Oct 6 – 13",
+      "returns": "30-day returns",
+      "details": [
+        "Free delivery between Oct 6 – 13",
+        "30-day returns"
+      ],
+      "position": 2
+    }
+  ]
+}

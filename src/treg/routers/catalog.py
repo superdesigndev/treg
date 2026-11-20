@@ -6,26 +6,44 @@ import json
 import logging
 
 from fastapi import APIRouter, Depends, HTTPException, Request
-from fastapi.responses import Response
+from fastapi.responses import Response, StreamingResponse
 
 from .. import audit, oauth_providers
+from sqlalchemy.ext.asyncio import AsyncSession
+
+from ..application import agent_payments
+from ..application import catalog_find as find
+from ..application import feedback as feedback_app
+from ..application import view_context
 from ..config import get_settings
+from ..infra.db import get_session
+from ..domain.capacity.routes_view import view as overflow_routes_view
 from ..domain.catalog import store as catalog_store
 from ..domain.catalog import stats as endpoint_stats
+from . import view
+from .views import account as account_views
+from .views import catalog as catalog_views
+from .views import toon
 
 
-# The app alias preserves the moved handlers' original @app.get decorator text byte-for-byte.
 app = APIRouter()
 public_router = app
 
-# ---- endpoint catalog (what you can DO once connected) ------------------------------------
-# The credential registry above answers "how do I connect Moz?"; these answer "and then what can I
+# What you can DO once connected. /providers.json answers "how do I connect Moz?"; these answer "and then what can I
 # call?" — platform-grouped operations with cost, verification date and captured example responses.
 # Open like /providers.json: the data is curated public documentation, no org's anything is in it.
 # See docs/context/architecture/catalog.md.
 def _provider_display(service: str) -> str:
     p = oauth_providers.get(service)
     return p.display_name if p else service
+
+
+def _run_hint(ep: dict) -> str:
+    auth = (
+        "no provider key required" if ep.get("platform_auth") == "anonymous"
+        else "key injected server-side"
+    )
+    return f"{catalog_store.call_template(ep)}   # run it — {auth}"
 
 
 def _platform_rows() -> list[dict]:
@@ -37,8 +55,9 @@ def _platform_rows() -> list[dict]:
         # The census counts the BROWSE surface only: account/utility ("management") endpoints are
         # real inventory but they are not what a marketplace tile advertises, so they never inflate
         # the endpoint/capability/verified counts or the "from …" price. They still ship in the
-        # platform-detail list (with `kind` set) — see catalog_platform's ?include_hidden.
-        eps = [e for e in cat.for_platform(slug) if e["kind"] not in catalog_store.HIDDEN_KINDS]
+        # platform-detail list (with `kind` set) — see catalog_platform's ?include_hidden. Routed
+        # rows are out too (`browsable`): they double-count their children and are treg's, not a vendor's.
+        eps = [e for e in cat.for_platform(slug) if catalog_store.browsable(e)]
         if not eps:  # a taxonomy entry no provider implements (or only plumbing) is grid noise
             continue
         rows.append({
@@ -67,21 +86,38 @@ def _platform_rows() -> list[dict]:
     return rows
 
 
+def _platforms_payload() -> dict:
+    """The `/catalog/platforms` body. Public catalog pages embed the same dict in their HTML, so the
+    app's first render already has the shelves instead of fetching them after boot."""
+    rows = _platform_rows()
+    names = {s: _provider_display(s) for s in sorted({s for r in rows for s in r["providers"]})}
+    return {"platforms": rows, "providers": names, "generated_from": "catalog"}
+
+
+def _endpoint_observation_reader(request: Request) -> endpoint_stats.EndpointObservationReader:
+    return request.app.state.endpoint_observation_reader
+
+
 @app.get("/catalog/platforms")
 async def catalog_platforms() -> dict:
-    """Open: the platform shelves of the endpoint catalog, busiest first."""
-    return {"platforms": _platform_rows(), "generated_from": "catalog"}
+    """Open: the platform shelves of the endpoint catalog, busiest first, and the display name of
+    every vendor on them (the /search page's pile is one tile per vendor)."""
+    return _platforms_payload()
 
 
 @app.get("/catalog/platforms/{slug}")
-async def catalog_platform(slug: str, include_hidden: int = 0) -> dict:
+async def catalog_platform(slug: str, include_hidden: int = 0,
+                           observations: endpoint_stats.EndpointObservationReader | None = Depends(
+                               _endpoint_observation_reader)) -> dict:
     """Open: one platform's operations, grouped by capability so the same job across providers sits
     on one row — that grouping is what makes comparison (and a future failover router) possible.
 
     By default the account/utility ("management") endpoints are dropped from every shape below — the
     browse view is data + action. `?include_hidden=1` returns the whole surface (each endpoint still
     carries `kind`, so a client can file the plumbing behind an expander); `hidden_count` always
-    reports how many were set aside so a caller can label that expander without a second request."""
+    reports how many were set aside so a caller can label that expander without a second request.
+    Each endpoint carries `observed`, what its served calls say, so the shelf can lead with what
+    agents actually use; `observations=None` (the server-rendered page) leaves it out."""
     cat = catalog_store.load()
     eps = cat.for_platform(slug)
     if not eps:
@@ -92,13 +128,17 @@ async def catalog_platform(slug: str, include_hidden: int = 0) -> dict:
     # The BROWSE view steers too — it sorts the routed parent to the top of its capability group —
     # so it honours the same switch as search. Otherwise a deployment with routed discovery off
     # would hide the row in search and still lead with it one click later.
-    if str(get_settings().routed_discovery).strip().lower() in ("off", "0", "false", "no"):
+    if not catalog_store.routed_discovery_on():
         eps = [e for e in eps if e.get("kind") != "routed"]
     grouped: dict[str, list[dict]] = {}
     extended: list[dict] = []
     pairs: list[tuple[dict, dict]] = []
+    verdicts = await _verdicts_or_empty()
+    stats = await _observed_or_empty(observations, [ep["id"] for ep in eps]) if observations else {}
     for ep in eps:
-        view = catalog_store.endpoint_view(ep, _provider_display(ep["provider"]), cat)
+        view = _with_reviews(catalog_store.endpoint_view(ep, _provider_display(ep["provider"]), cat), verdicts)
+        if ep["id"] in stats:
+            view["observed"] = stats[ep["id"]]
         pairs.append((ep, view))
         if ep["capability"]:
             grouped.setdefault(ep["capability"], []).append(view)
@@ -124,23 +164,101 @@ async def catalog_platform(slug: str, include_hidden: int = 0) -> dict:
         # ?include_hidden=1 they are already folded into the shapes above (tagged by `kind`).
         "hidden_count": hidden_count,
         # The ledger the platform page renders: sections by subject, ordered and merged server-side
-        # so every client shows the same page (see `catalog_store.domain_rows`).
-        "domains": catalog_store.domain_rows(pairs, cat.capabilities),
+        # so every client shows the same page (see `catalog_store.domain_rows`). A row that is a
+        # compared capability (`Catalog.compared`) carries `compare`, its URL key.
+        "domains": _mark_compared(catalog_store.domain_rows(pairs, cat.capabilities, cat.capability_titles), slug, cat),
         # Provider-wide facts (limits, pricing page, docs), once per provider rather than copied onto
         # every row — an expanded endpoint needs them and shouldn't cost a second request.
         "providers": {
             service: {"service": service, "display_name": _provider_display(service),
-                      **cat.provider_meta.get(service, {})}
+                      **cat.provider_meta.get(service, {}),
+                      "auth_kind": getattr(oauth_providers.get(service), "auth_kind", None),
+                      # whether this server serves the provider's keyless rows (its allow-list)
+                      "enabled": get_settings().platform_provider_enabled(service),
+                      "metered": bool(getattr(oauth_providers.get(service), "platform_billed", False)
+                                      and service in get_settings().oauth_billed_set)}
             for service in sorted({ep["provider"] for ep in eps})
         },
     }
 
 
-def _plan_row(c) -> dict:
+def _mark_compared(domains: list[dict], slug: str, cat) -> list[dict]:
+    compared = cat.compared()
+    for sec in domains:
+        for row in sec["rows"]:
+            if row["kind"] == "merged" and (slug, row["capability"]) in compared:
+                row["compare"] = catalog_store.capability_key(slug, row["capability"])
+    return domains
+
+
+@app.get("/catalog/providers/{service}")
+async def catalog_provider(service: str) -> dict:
+    """Open: every tool one provider serves, filed by platform. A tool that is one of several
+    providers doing the same capability on its platform (`Catalog.compared`) carries `compare`: the capability, its
+    URL key and how many providers do it, so a page listing a provider's tools can link to the
+    comparison. Plumbing is listed, tagged by `kind`."""
+    cat = catalog_store.load()
+    eps = [e for e in cat.for_provider(service) if e.get("kind") != "routed"]
+    if not eps:
+        raise HTTPException(status_code=404, detail=f"unknown provider {service!r}")
+    verdicts = await _verdicts_or_empty()
+    display = _provider_display(service)
+    shelves: dict[str, list[dict]] = {}
+    compared = cat.compared()
+    for ep in eps:
+        view = _with_reviews(catalog_store.endpoint_view(ep, display, cat), verdicts)
+        cap, plat = ep.get("capability"), ep["platform"]
+        if catalog_store.browsable(ep) and (plat, cap) in compared:
+            view["compare"] = {"capability": cap, "key": catalog_store.capability_key(plat, cap),
+                               "providers": len(compared[(plat, cap)]), "description": cat.capabilities.get(cap, "")}
+        shelves.setdefault(plat, []).append(view)
+    return {
+        "provider": {"service": service, "display_name": display, **cat.provider_meta.get(service, {}),
+                     # the dashboard's provider page reads a public provider from here: it is not in
+                     # the Connect listing (there is nothing to connect)
+                     **({"auth_kind": "public", "summary": reg.summary or "", "docs_url": reg.docs_url or "",
+                         "enabled": get_settings().platform_provider_enabled(service)}
+                        if (reg := oauth_providers.get(service)) is not None and reg.auth_kind == "public"
+                        else {})},
+        "platforms": [
+            {"slug": slug, "label": cat.platforms.get(slug, {}).get("label", slug),
+             "tools": sorted(tools, key=lambda v: (v["kind"] in catalog_store.HIDDEN_KINDS, v["name"] or v["summary"] or v["id"]))}
+            for slug, tools in sorted(shelves.items(), key=lambda kv: (-len(kv[1]), kv[0]))
+        ],
+    }
+
+
+def _quote_skip(ep: dict, cat) -> str | None:
+    """Why the router would not call this child on treg's key, in `route.py`'s words; None if it would."""
+    from ..application.call.resolve import _anonymous_refusal, anonymous_served
+    if catalog_store.paused(ep):
+        return f"{ep['provider']} is paused on this deployment"
+    if anonymous_served(ep) is not None:  # the keyless tier: free, no key on this deployment needed
+        return None
+    if (ep.get("platform_auth") == "anonymous"  # a public provider's row not served here: its true reason
+            and getattr(oauth_providers.get(ep["provider"]), "auth_kind", "") == "public"):
+        return f"{ep['provider']} {_anonymous_refusal(ep, None)}"
+    if not cat.platform_eligible(ep):
+        return "not platform-eligible and no own key"
+    if not get_settings().platform_key_for(ep["provider"]):
+        return f"no {ep['provider']} key on this deployment and no own key"
+    return None
+
+
+def _route_max_cost(contract) -> float:
+    """The ceiling a routed call gets without `X-Treg-Route-Max-Cost`, as `route.py` applies it."""
+    from ..application.call.route import DEFAULT_MAX_COST_MICRO
+    return (contract.default_max_cost_usd if contract and contract.default_max_cost_usd
+            else DEFAULT_MAX_COST_MICRO / 1_000_000)
+
+
+def _plan_row(c, cat) -> dict:
     """One quote line, token-frugal: what an agent needs to pick or set a ceiling. Measured rates
-    ride only when they exist; the unmeasured case says nothing rather than four nulls."""
+    ride only when they exist; the unmeasured case says nothing rather than four nulls. `cost` says
+    per what the child bills, so a per-success one reads as billing no miss."""
     row = {"endpoint_id": c.endpoint["id"], "accepts": [list(v) for v in c.adapter.accepts],
-           "usd": (c.price_micro / 1_000_000) if c.price_micro is not None else None}
+           "usd": (c.price_micro / 1_000_000) if c.price_micro is not None else None,
+           "cost": catalog_store.quote_cost(catalog_store.cost_row(c.endpoint, cat))}
     if c.hit_rate is not None:
         row["hit_rate"] = c.hit_rate
         row["usd_per_hit"] = c.expected_cost_per_hit / 1_000_000
@@ -152,8 +270,28 @@ def _plan_row(c) -> dict:
 
 
 
-def _endpoint_observation_reader(request: Request) -> endpoint_stats.EndpointObservationReader:
-    return request.app.state.endpoint_observation_reader
+async def _overflow_disclosure(ep: dict, cat) -> dict:
+    """What a platform-eligible endpoint bills when treg's own account is out and the deployment's
+    overflow relay serves it instead: the enabled route's aggregator price, on the row, so a "free"
+    endpoint is never silently a paid one. Same admission facts as the call path (`application.call.
+    overflow`: mode on, a key for the aggregator, an enabled route, Orthogonal first) minus the
+    per-process health marks, which change by the minute and are not a price. Empty when the
+    deployment cannot relay this endpoint at all; the route view is a 60 s in-process copy."""
+    settings = get_settings()
+    if settings.overflow_mode != "on" or not cat.platform_eligible(ep):
+        return {}
+    try:
+        await overflow_routes_view.load()
+    except Exception:
+        logging.getLogger("treg.catalog").warning("overflow routes unavailable", exc_info=True)
+        return {}
+    for route in overflow_routes_view.for_endpoint(ep["id"]):
+        if not settings.overflow_key_for(route.aggregator) or route.agg_price_micro is None:
+            continue
+        return {"overflow_price_usd": route.agg_price_micro / 1_000_000,
+                "overflow_price_unit": route.agg_unit or "call",
+                "overflow_via": route.aggregator}
+    return {}
 
 
 async def _observed_or_empty(
@@ -166,35 +304,98 @@ async def _observed_or_empty(
     """
     try:
         return await reader.get_many(endpoint_ids)
-    except Exception:  # noqa: BLE001
+    except Exception:
         logging.getLogger("treg.catalog").warning("endpoint stats unavailable", exc_info=True)
         return {}
 
 
+def _observation_pending(reader: endpoint_stats.EndpointObservationReader, endpoint_ids: list[str]) -> bool:
+    try:
+        return reader.pending(endpoint_ids)
+    except Exception:  # noqa: BLE001 - an enrichment hint, like the numbers themselves
+        return False
+
+
+def _with_reviews(view: dict, verdicts: dict[str, dict], *, quotes: bool = True) -> dict:
+    """What agents said after using this endpoint's result (`domain.feedback.verdicts`), on the
+    views that carry it: absent where no team has said anything quotable yet."""
+    if view.get("id") in verdicts:
+        review = verdicts[view["id"]]
+        view["reviews"] = review if quotes else {k: v for k, v in review.items() if k != "samples"}
+    return view
+
+
+async def _verdicts_or_empty() -> dict[str, dict]:
+    """What agents said after using each endpoint's result — or `{}`, for the same reason as
+    `_observed_or_empty`: an enrichment must never take the catalog down."""
+    try:
+        return await feedback_app.endpoint_verdicts()
+    except Exception:
+        logging.getLogger("treg.catalog").warning("endpoint verdicts unavailable", exc_info=True)
+        return {}
+
+
+def _wallet(ep: dict) -> dict:
+    """Whether a caller with no treg account can pay for this tool with a wallet, while agent
+    payments are on (docs/context/architecture/agent-payments.md)."""
+    view = agent_payments.wallet_view(ep)
+    return {"wallet": view} if view is not None else {}
+
+
 @app.get("/catalog/search")
-async def catalog_search(q: str = "", limit: int = 25,
+async def catalog_search(request: Request, q: str = "", limit: int = 25,
+                         added_within_days: int | None = None, sort: str = "", engine: str = "",
                          observations: endpoint_stats.EndpointObservationReader = Depends(
-                             _endpoint_observation_reader)) -> dict:
+                             _endpoint_observation_reader),
+                         db: AsyncSession = Depends(get_session)) -> dict:
     """Open: free-text search across the whole catalog — the DISCOVER half of the loop.
 
     An agent that knows what it wants ("tiktok comments") shouldn't have to guess which platform
     shelf hides it. Ranking is plain token matching (see `catalog_store.search`) so results are
     reproducible and explainable; equal scores — the common case, not the edge — then break on what
     treg has MEASURED and on price, so the cut stops being file order. `hints` carries the next
-    command, since finding the endpoint is never the goal — inspecting or calling it is."""
+    command, since finding the endpoint is never the goal — inspecting or calling it is.
+
+    `added_within_days` and `sort=newest` (catalog.md "`added`") list recently added tools, with or
+    without words; absent, this route answers exactly as it did before them.
+
+    `engine=agent` answers with the search an agent's `catalog_search` gets (the same use case, the
+    judged answer where it runs, the same records), in this route's row shape: the CLI's search.
+    Absent, the route is the plain keyword search it always was."""
     cat = catalog_store.load()
     limit = max(1, min(limit, 100))
+    try:
+        opts = catalog_store.added_options(added_within_days, sort)
+    except catalog_store.AddedOptionError as e:
+        raise HTTPException(status_code=400, detail=str(e)) from None
+    if opts.active:
+        return await _added_search(request, q, limit, opts, cat, observations, db)
+    if engine == "agent" and q.strip():
+        return await _agent_search(request, q, limit, cat, observations)
     # Rank a WIDER band than the page: collapsing a routed group (below) frees rows, and the next
     # jobs down the ranking should fill them rather than the page coming up short.
     ranked, total, tie_truncated = catalog_store.rank_band(q, cat, min(100, limit * 4))
     stats = await _observed_or_empty(observations, [ep["id"] for ep, _ in ranked])
     ranked = catalog_store.rerank(ranked, stats, cat)
+    # Listed hub tools: scored with the same tokens and idf, merged
+    # by score with no boost; their evidence is the 30-day ok rate of runs by others.
+    from ..application import hub as hub_app
+    from .hub_gate import reader
+    slug, email = await reader(request, db)
+    hub_ranked, hub_stats = await hub_app.search_listed(db, q, cat, org_slug=slug, email=email)
+    if hub_ranked:
+        stats = {**stats, **hub_stats}
+        ranked = catalog_store.merge_by_score(ranked, hub_ranked)
+        total += len(hub_ranked)
+    led = catalog_store.led_by(q, cat)   # a named provider leads: its rows' scores carry the lead
     results = [
-        catalog_store.endpoint_view(ep, _provider_display(ep["provider"]), cat)
-        | catalog_store.endpoint_context(ep, cat)
         # The evidence that decided the order, shown rather than merely applied: a caller comparing
         # two rows should be able to see WHY one is above the other.
-        | {"score": score, "observed": stats.get(ep["id"])}
+        (dict(ep) | {"score": None if led else score, "observed": stats.get(ep["id"])}) if ep.get("kind") == "hub" else
+        (catalog_store.endpoint_view(ep, _provider_display(ep["provider"]), cat)
+         | catalog_store.endpoint_context(ep, cat)
+         | {"score": None if led else score, "observed": stats.get(ep["id"])}
+         | _wallet(ep))
         for ep, score in ranked
     ]
     results = catalog_store.group_routed(results, max_children=catalog_store.MAX_ROUTED_CHILDREN)[:limit]
@@ -210,8 +411,13 @@ async def catalog_search(q: str = "", limit: int = 25,
                  "still missing? POST /tool-requests {\"capability\": \"<what you need>\"} — "
                  "requests steer which provider gets added next"]
     else:
-        hints = [f"treg catalog get {results[0]['id']}   # params, cost and an example response",
-                 f"{catalog_store.call_template(cat.by_id.get(results[0]['id'], ranked[0][0]))}   # run it — key injected server-side"]
+        top = results[0]
+        # A hub tool has no catalog row and no provider key: its call line is the tool id, and the
+        # maker's own keys serve its steps.
+        run_hint = (f"treg call {top['id']} --data '{{...}}'   # run it — the maker's keys serve it"
+                    if top.get("kind") == "hub"
+                    else _run_hint(cat.by_id.get(top['id'], ranked[0][0])))
+        hints = [f"treg catalog get {top['id']}   # params, cost and an example response", run_hint]
         routed_row = next((r for r in results if r.get("kind") == "routed"), None)
         if routed_row is not None:
             hints.insert(1, f"{routed_row['id']} is ROUTED: treg picks among {len(routed_row.get('routed_children') or [])} "
@@ -226,6 +432,8 @@ async def catalog_search(q: str = "", limit: int = 25,
             hints.append(f"{q!r} matches too broadly to rank on measured reliability past the first "
                          f"{catalog_store.RERANK_BAND} equally-scoring rows — add a word to narrow it")
     out = {"query": q, "count": len(results), "total": total, "results": results, "hints": hints}
+    if led:
+        out["led_by"] = sorted(led)   # the providers the query named; their rows come first
     if not results and q.strip():
         # the rows that JUST missed the admission gate and which words they missed — an agent (or
         # the CLI display) turns this straight into the corrected query
@@ -236,6 +444,130 @@ async def catalog_search(q: str = "", limit: int = 25,
             hints.insert(1, f"nearest: {first['endpoint_id']} matches "
                             f"{', '.join(first['matches'])} but not {', '.join(first['missing'])}")
     return out
+
+
+async def _agent_search(request: Request, q: str, limit: int, cat,
+                        observations: endpoint_stats.EndpointObservationReader) -> dict:
+    """`/catalog/search?engine=agent`: `application.catalog_search.search`, the use case behind an
+    agent's `catalog_search`, shaped as this route's rows plus the answer's verdict and jobs.
+
+    The judge and the embedding are awaited inside the use case, so nothing here may hold a
+    database connection across it: the hub's reader and the caller are each resolved in a session
+    of their own, closed at once, and the route's session is never touched. A caller who is not
+    signed in (or whose token does not resolve) is capped by address, not in one shared bucket."""
+    from ..application import catalog_search as search_app
+    from ..application import search_experiment
+    from ..domain.identity import access
+    from ..infra.db import session_maker
+    from .auth import _client_ip   # auth imports web, which imports this module
+    from .hub_gate import reader
+
+    token = request.headers.get("x-treg-token", "")
+    auth = request.headers.get("authorization", "")
+    if not token and auth.lower().startswith("bearer "):
+        token = auth[7:].strip()
+
+    async def identify() -> tuple[str | None, int | None, str | None]:
+        key = search_experiment.caller_key(token)
+        if not token:
+            return key, None, None
+        try:
+            async with session_maker() as s:
+                member = await access.require_member(request, x_treg_token=token, treg_session="", db=s,
+                                                     x_treg_org=request.headers.get("x-treg-org", ""))
+        except Exception:  # noqa: BLE001 - who is asking is attribution, never a reason to fail a search
+            return key, None, None
+        return key, (member.org.id if member.org is not None else None), member.email
+
+    async with session_maker() as s:
+        slug, email = await reader(request, s)
+    page = await search_app.search(
+        q, limit, cat=cat, source="cli", caller=search_app.Caller(hub_slug=slug, hub_email=email),
+        observed=lambda ids: _observed_or_empty(observations, ids), identify=identify,
+        provider_display=_provider_display, client_ip=_client_ip(request))
+    led = catalog_store.led_by(q, cat)
+    results = [
+        (dict(ep) | {"score": None, "observed": page.stats.get(ep["id"])}) if ep.get("kind") == "hub" else
+        (catalog_store.endpoint_view(ep, _provider_display(ep["provider"]), cat)
+         | catalog_store.endpoint_context(ep, cat)
+         | {"score": None if page.judged or led else score, "observed": page.stats.get(ep["id"])})
+        for ep, score in page.rows
+    ]
+    results = catalog_store.group_routed(results, max_children=catalog_store.MAX_ROUTED_CHILDREN)[:limit]
+    out = {"query": q, "count": len(results), "total": page.total, "results": results, "engine": "agent"}
+    if page.verdict is not None:
+        out["verdict"] = page.verdict
+        if page.reason:
+            out["reason"] = page.reason
+        out["jobs"] = [{"capability": j.capability, "providers": j.providers, "shown": j.shown} for j in page.jobs]
+    if not results:
+        near = catalog_store.near_misses(q, cat)
+        if near and page.verdict != find.NONE:
+            out["near"] = near
+    return out
+
+
+async def _added_search(request: Request, q: str, limit: int, opts: catalog_store.AddedOptions, cat,
+                        observations: endpoint_stats.EndpointObservationReader, db: AsyncSession) -> dict:
+    """`/catalog/search` with a recently-added option: a flat list of tools, each with its `added`
+    day and provider (`application.catalog_search.added_page`)."""
+    from ..application import catalog_search as search_app
+    from .hub_gate import reader
+    slug, email = await reader(request, db)
+    page = await search_app.added_page(
+        q, cat, limit, opts, caller=search_app.Caller(hub_slug=slug, hub_email=email),
+        observed=lambda ids: _observed_or_empty(observations, ids))
+    results = [
+        (dict(ep) | {"score": score, "observed": page.stats.get(ep["id"])}) if ep.get("kind") == "hub" else
+        (catalog_store.endpoint_view(ep, _provider_display(ep["provider"]), cat)
+         | catalog_store.endpoint_context(ep, cat)
+         | {"score": score, "observed": page.stats.get(ep["id"])})
+        for ep, score in page.rows
+    ]
+    window = f"in the last {opts.days} days" if opts.days else "yet"
+    hints = ([f"treg catalog get {results[0]['id']}   # params, cost and an example response"] if results
+             else [f"no tool{' matching ' + repr(q) if q.strip() else ''} was added {window}"])
+    if page.total > len(results):
+        hints.append(f"{page.total - len(results)} more — raise limit (max 100)")
+    out = {"query": q, "count": len(results), "total": page.total, "results": results, "hints": hints,
+           "sort": "newest" if opts.newest or not q.strip() else "best"}
+    if opts.days is not None:
+        out["added_within_days"] = opts.days
+    if opts.capped:
+        out["capped_at_days"] = catalog_store.ADDED_DAYS_MAX
+        hints.insert(0, f"added_within_days is capped at {catalog_store.ADDED_DAYS_MAX}")
+    return out
+
+
+@app.get("/catalog/find")
+async def catalog_find(request: Request, q: str = "", platform: str = "",
+                       observations: endpoint_stats.EndpointObservationReader = Depends(
+                           _endpoint_observation_reader)):
+    """Open, rate limited: find the endpoints that can do a described JOB (application.catalog_find).
+
+    Streams newline-delimited JSON, two events: `candidates` (the lexical recall, immediately) and
+    `judged` (the relevance judge's kept rows and a verdict, when it answers). The pages that call
+    this animate the gap between them. `?platform=<slug>` scopes it to one shelf, for that shelf's
+    own search box. Agents keep `/catalog/search` and MCP `catalog_search`."""
+    from .auth import _client_ip   # auth imports web, which imports this module
+
+    query = find.clean_query(q)
+    if not query:
+        raise HTTPException(status_code=400, detail="describe the job in ?q=")
+    if platform and not catalog_store.load().for_platform(platform):
+        raise HTTPException(status_code=404, detail=f"unknown platform {platform!r}")
+    if not find.configured():
+        raise HTTPException(status_code=503, detail="finding tools by description is not configured on this server")
+    if not await find.admit(_client_ip(request)):
+        raise HTTPException(status_code=429, detail="too many searches from here this hour; try again later or use /catalog/search")
+
+    async def lines():
+        async for event in find.stream(query, _provider_display, platform or None,
+                                       evidence=lambda ids: _observed_or_empty(observations, ids)):
+            yield json.dumps(event) + "\n"
+
+    return StreamingResponse(lines(), media_type="application/x-ndjson",
+                             headers={"Cache-Control": "no-store", "X-Accel-Buffering": "no"})
 
 
 def _related_capabilities(ep: dict, cat) -> list[dict]:
@@ -260,11 +592,29 @@ def _related_capabilities(ep: dict, cat) -> list[dict]:
     return sorted(out, key=lambda r: r["capability"])[:5]
 
 
+async def _your_values(request: Request, db: AsyncSession, ep: dict) -> dict:
+    """The values only this reader may send for a row's `team_label` and `caller_email` fields, so
+    a signed-in agent gets its first call right. The route stays open: an anonymous reader, or one
+    whose token does not resolve to a team, gets nothing extra. Not cached at the edge."""
+    caller = await view.optional_caller(request, db)
+    if caller is None:
+        return {}
+    from ..application.call.resolve import team_label
+    values = {path: team_label(caller.org_id) for path in ep.get("team_label") or ()}
+    values |= {path: caller.email for path in ep.get("caller_email") or ()}
+    return {"your_values": values,
+            "your_values_note": "On treg's key send these exactly: the label is your team's own; "
+                                "an alert email may only be yours."}
+
+
 @app.get("/catalog/endpoints/{endpoint_id}")
 async def catalog_endpoint(
+    request: Request,
+    response: Response,
     endpoint_id: str,
     observations: endpoint_stats.EndpointObservationReader = Depends(
         _endpoint_observation_reader),
+    db: AsyncSession = Depends(get_session),
 ) -> dict:
     """Open: everything about ONE endpoint — the INSPECT half of the loop.
 
@@ -275,16 +625,35 @@ async def catalog_endpoint(
     cat = catalog_store.load()
     ep = cat.by_id.get(endpoint_id)
     if ep is None:
+        # A hub tool (a maker's tool made of tools) answers here too, so an agent that holds the
+        # id reads its contract the same way it reads a catalog endpoint. Unlisted: never in
+        # search, only by id. Flag off ⇒ the branch does not exist.
+        from .hub_gate import reader
+        slug, email = await reader(request, db)
+        hub_view = await _hub_endpoint_view(endpoint_id, db, observations, org_slug=slug, email=email)
+        if hub_view is not None:
+            return hub_view
         # Name the near misses. An id that is one segment off is the common miss, and a bare 404
         # ends the search → get → call loop at its first step with nothing to try next.
         raise HTTPException(status_code=404, detail={
             "error": f"unknown endpoint {endpoint_id!r}",
             "hint": catalog_store.unknown_id_hint(endpoint_id, cat),
             "did_you_mean": catalog_store.near_ids(endpoint_id, cat)})
-    view = (catalog_store.endpoint_view(ep, _provider_display(ep["provider"]), cat)
+    if catalog_store.paused(ep):
+        # Out of search while paused, but a held id is told why instead of "unknown endpoint".
+        raise HTTPException(status_code=503, detail=oauth_providers.paused_detail(
+            ep["provider"], endpoint_id))
+    view = (catalog_store.endpoint_view(ep, _provider_display(ep["provider"]), cat, detail=True)
             | catalog_store.endpoint_context(ep, cat))
+    if ep.get("team_label") or ep.get("caller_email"):
+        personal = await _your_values(request, db, ep)
+        if personal:
+            # One reader's label and email: never stored by a shared cache, never served to another.
+            response.headers["Cache-Control"] = "private, no-store"
+            response.headers["Vary"] = "Authorization, X-Treg-Token, X-Treg-Org, Cookie"
+        view |= personal
     siblings = [
-        catalog_store.endpoint_view(other, _provider_display(other["provider"]), cat)
+        catalog_store.sibling_view(other, _provider_display(other["provider"]), cat)
         for other in sorted(cat.for_capability(ep["capability"]), key=lambda e: e["id"])
         if other["id"] != ep["id"]
     ]
@@ -296,51 +665,111 @@ async def catalog_endpoint(
         except (OSError, ValueError):
             example = None
     # What the calls we have already served say about this endpoint and its alternatives — the half
-    # of "compare providers" that only treg can answer (see endpoint_stats + CAPABILITY-CHOICE-PLAN).
+    # of "compare providers" that only treg can answer (see endpoint_stats).
     # Attached to the SAME response because the choice is made here; a second round-trip to compare
     # reliability is a round-trip an agent will skip.
-    stats = await _observed_or_empty(observations, [endpoint_id] + [s["id"] for s in siblings])
-    view = view | {"observed": stats.get(endpoint_id)}
-    siblings = [s | {"observed": stats.get(s["id"])} for s in siblings]
+    observed_ids = [endpoint_id] + [s["id"] for s in siblings]
+    stats = await _observed_or_empty(observations, observed_ids)
+    overflow = await _overflow_disclosure(ep, cat)
+    # And what other teams' agents said after using each of them (`reviews`, where there are any):
+    # the other half of the choice, attached here for the same reason as `observed`.
+    verdicts = await _verdicts_or_empty()
+    view = _with_reviews(view | {"observed": stats.get(endpoint_id)} | overflow | _wallet(ep),
+                         verdicts)
+    siblings = [_with_reviews(s | {"observed": stats.get(s["id"])}, verdicts, quotes=False) for s in siblings]
+    # Hub tools treg approved for this job sit beside its providers, with a seeded success rate while they are new. Shown for comparison only: they are
+    # never a routed child (AGENTS.md non-negotiable 4).
+    from ..application import hub as hub_app
+    from .hub_gate import reader
+    slug, email = await reader(request, db)
+    siblings += await hub_app.capability_siblings(db, ep.get("capability") or "", org_slug=slug, email=email)
 
     routing = None
     if ep.get("kind") == "routed":
         # The QUOTE (routing plan §3.5): the contract and the ranked children on treg's key, priced
         # at a one-row lookup. Own keys rank first at call time (this route is open, so it cannot
         # know the caller's); nothing is reserved here.
-        from ..domain.catalog.routing.plan import Candidate, cost_at, rank
+        from ..application.call.resolve import anonymous_served
+        from ..domain.catalog.routing.plan import Candidate, cost_at, miss_charge_micro, rank
         contract = cat.contracts.get(ep["capability"])
         kids = [cat.by_id[i] for i in ep.get("routed_children") or [] if i in cat.by_id]
         cands = []
         for k in kids:
             st = stats.get(k["id"]) or {}
             ad = cat.adapters.get(k["id"])
-            cands.append(Candidate(k, ad, ad.accepts[0] if ad and ad.accepts else (), "platform",
-                                   cost_at(cat.cost_view(k.get("cost"), k["provider"]), {}), st.get("hit_rate"),
-                                   st.get("ok_rate"), st.get("p50_ms"), st.get("last_ok_days")))
+            cv = cat.cost_view(k.get("cost"), k["provider"])
+            # Tiered as `route.build_plan` tiers it for a team with no own key: keyless rows first, free.
+            anonymous = anonymous_served(k) is not None
+            price = 0 if anonymous else cost_at(cv, {}, ad)
+            cands.append(Candidate(k, ad, ad.accepts[0] if ad and ad.accepts else (),
+                                   "anonymous" if anonymous else "platform",
+                                   price, st.get("hit_rate"),
+                                   st.get("ok_rate"), st.get("p50_ms"), st.get("last_ok_days"),
+                                   miss_micro=0 if anonymous else
+                                   miss_charge_micro(cv, {}, ad, price) if price is not None else None))
         routing = {
-            "contract": {"identity": [list(v) for v in contract.identity], "output": contract.output,
-                         "miss": contract.miss, "derive": contract.derive} if contract else None,
-            "plan": [_plan_row(c) for c in rank(cands)],
+            "contract": {"identity": [list(v) for v in contract.identity], "output": {
+                             # `analytics` is treg's own event mapping, not part of the answer.
+                             k: {a: b for a, b in (v or {}).items() if a != "analytics"}
+                             for k, v in contract.output.items()},
+                         "miss": contract.miss, "derive": contract.derive,
+                         **({"complete": list(contract.complete)} if contract.complete else {})} if contract else None,
+            # A child the router would not call on treg's key (`route.py` drops it the same way)
+            # stays in the plan for its `accepts`, ranked after the rest and saying why.
+            "plan": [_plan_row(c, cat) for c in rank([c for c in cands if not _quote_skip(c.endpoint, cat)])]
+                    + [_plan_row(c, cat) | {"skipped": _quote_skip(c.endpoint, cat)}
+                       for c in rank([c for c in cands if _quote_skip(c.endpoint, cat)])],
             # The same job from providers whose adapter is not (yet) verified: not chosen by the
             # router, still callable by id — the search page groups them under this row, so the
-            # page it points at must name them too (found 2026-08-28: "+18 more" led to a list of 6).
-            "also": [{"endpoint_id": s["id"], "usd": ((s.get("cost") or {}).get("usd"))}
+            # page it points at must name them too.
+            "also": [{"endpoint_id": s["id"], "usd": ((s.get("cost") or {}).get("usd")), "cost": catalog_store.quote_cost(s.get("cost"))}
                      for s in siblings if s["id"] not in set(ep.get("routed_children") or [])],
+            "max_cost_usd": _route_max_cost(contract),
             "headers": {"X-Treg-Route-Waterfall": "on by default: a miss tries the next provider; 0 = stop at the first miss",
-                        "X-Treg-Route-Max-Cost": "USD ceiling for the whole call (default 1.00)",
-                        "X-Treg-Route-Prefer": "provider[,…]", "X-Treg-Route-Exclude": "provider[,…]"},
+                        "X-Treg-Route-Max-Cost": f"USD ceiling for the whole call (default {_route_max_cost(contract):.2f})",
+                        "X-Treg-Route-Prefer": "provider[,…], the name before an id's first dot (quickenrich), not an endpoint id",
+                        "X-Treg-Route-Exclude": "provider[,…], the name before an id's first dot (quickenrich), not an endpoint id",
+                        "X-Treg-Route-Strict-Filters": "1 = never call a provider that cannot apply a filter you sent (answers 422, nothing charged); off by default — the answer names what was ignored in X-Treg-Ignored-Filters",
+                        **({"X-Treg-Route-Complete": "1 = keep going until an answer fills every field in "
+                                                     "routing.contract.complete, asking pricier providers if needed; "
+                                                     "the fullest answer wins if none does"}
+                           if contract and contract.complete else {}),
+                        **({"X-Treg-Route-Verify": f"true = check a hit with {contract.check.endpoint} in the same call, at its own price, "
+                                                   "inside X-Treg-Route-Max-Cost; the answer is _treg.verification "
+                                                   "{verdict, checked, served_by, cost_micro}; when the check is still "
+                                                   "running also pending, call_id and async (task_id + poll) — "
+                                                   "cost_micro is then a hold settled later (GET /calls/{{call_id}})"}
+                           if contract and contract.check else {}),
+                        **({"X-Treg-Route-Domain-Match": "strict (or true) = when you sent a domain, an email hit at another domain does not "
+                                                         "end the call: the waterfall goes on (at most two more such hits), each "
+                                                         "attempt at its own price, inside X-Treg-Route-Max-Cost; the first "
+                                                         "off-domain answer comes back (outcome weak, domain_match false) only when "
+                                                         "nothing on-domain turns up"} if contract and contract.advice_domain_mismatch else {}),
+                        **({"X-Treg-Route-Confirm": f"true = a hit counts only once a second provider returns the same {contract.confirm}; "
+                                                    "each attempt at its own price, inside X-Treg-Route-Max-Cost; the answer is "
+                                                    "_treg.confirmation {field, confirmed, confirmed_by}"} if contract and contract.confirm else {}),
+                        **({"X-Treg-Route-Decisive": "true = an answer counts only when its verdict decides ("
+                                                     + ", ".join(contract.verdict_decisive) + "); otherwise up to two more providers, "
+                                                     "best measured quality first, each at its own price; the answer is "
+                                                     "_treg.decision {decided, decided_by, ordered_by}"} if contract and contract.verdict_decisive else {})},
         }
     return {
         "endpoint": view | ({"routed_children": ep.get("routed_children")} if ep.get("kind") == "routed" else {}),
         "provider": {"service": ep["provider"], "display_name": _provider_display(ep["provider"]),
                      **cat.provider_meta.get(ep["provider"], {})},
         "siblings": siblings,
+        # The observation cache had not read some of these yet: ask again shortly for the numbers.
+        **({"observed_pending": True} if _observation_pending(observations, observed_ids) else {}),
         **({"related_capabilities": rel} if (rel := _related_capabilities(ep, cat)) else {}),
         **({"routing": routing} if routing is not None else {}),
         "call_template": catalog_store.call_template(ep),
         "example_response": example,
-        "hints": [f"{catalog_store.call_template(ep)}   # run it — key injected server-side"]
+        "hints": [_run_hint(ep)]
+                 + ([f"when treg's own {ep['provider']} account is out this may be served through the "
+                     f"overflow relay ({overflow['overflow_via']}) and bill "
+                     f"${overflow['overflow_price_usd']:g} per {overflow['overflow_price_unit']} instead "
+                     f"of the direct price; the answer says so (X-Treg-Served-Via / served_via)"]
+                    if overflow else [])
                  + ([f"treg catalog get {siblings[0]['id']}   # the same job from {siblings[0]['provider']}"]
                     if siblings else []),
     }
@@ -356,3 +785,184 @@ async def catalog_example(endpoint_id: str) -> Response:
     if path is None or not path.is_file():
         raise HTTPException(status_code=404, detail=f"no example response for {endpoint_id!r}")
     return Response(content=path.read_bytes(), media_type="application/json")
+
+
+async def _hub_endpoint_view(endpoint_id: str, db: AsyncSession,
+                             observations: endpoint_stats.EndpointObservationReader | None = None,
+                             *, org_slug: str | None = None, email: str | None = None) -> dict | None:
+    """The public contract of one hub tool, in the shape `treg catalog get` and `catalog_get`
+    already print: `endpoint` (with `kind: "hub"`), `provider` (the maker's team). Hides the
+    script, the maker's tools and every key."""
+    from ..application import hub as hub_app
+    from ..domain.hub import PAY_NOTE as HUB_PAY_NOTE, fees_label as hub_fees_label, price_label as hub_price_label
+    from ..models import HubListing, Org
+    if not hub_app.visible_to(org_slug, email) or not hub_app.is_hub_id_shape(endpoint_id):
+        return None
+    row = await hub_app.tool_for(db, endpoint_id, caller_slug=org_slug, caller_email=email)
+    if row is None:
+        return None
+    org = await db.get(Org, row.org_id)
+    # a listed tool's `added` is the UTC day treg approved it for search; an unlisted one has none
+    listing = await db.get(HubListing, row.tool_id)
+    added = (listing.decided_at.date().isoformat()
+             if listing is not None and listing.state == "approved" and listing.decided_at else None)
+    from ..application.hub.health import health_of
+    health = await health_of(db, row.tool_id, row.version, row.check_result)
+    base = get_settings().public_url.rstrip("/")
+    m = row.manifest
+    inputs = m.get("inputs", {})
+    example = {k: v.get("example", v.get("default")) for k, v in inputs.items()
+               if "example" in v or "default" in v}
+    example = {k: v for k, v in example.items() if v not in ("", None, 0)}
+    rng = (await hub_app.price_ranges(db, {row.tool_id: m})).get(row.tool_id)
+    # An approved job puts the tool beside that job's providers, and them beside it: the same
+    # comparison catalog_get gives a provider row. Its own numbers carry the seed.
+    capability = await hub_app.approved_capability(db, row.tool_id)
+    cat = catalog_store.load()
+    siblings = [catalog_store.sibling_view(o, _provider_display(o["provider"]), cat)
+                for o in sorted(cat.for_capability(capability), key=lambda e: e["id"])] if capability else []
+    if siblings and observations is not None:
+        stats = await _observed_or_empty(observations, [s["id"] for s in siblings])
+        siblings = [s | {"observed": stats.get(s["id"])} for s in siblings]
+    siblings += await hub_app.capability_siblings(db, capability, exclude=row.tool_id, org_slug=org_slug, email=email)
+    mine = next(iter(await hub_app.capability_siblings(db, capability, org_slug=org_slug, email=email) if capability else []), None)
+    mine = mine if mine and mine["id"] == row.tool_id else None
+    return {
+        "endpoint": {
+            "id": row.tool_id, "kind": "hub", "hub": True, "version": row.version,
+            "name": row.name, "summary": row.summary, "provider": org.slug if org else "",
+            "provider_display": org.slug if org else "", "method": "POST",
+            "path": f"/call/{row.tool_id}", "added": added,
+            "inputs": inputs, "output": m.get("output", {}), "writes": row.writes,
+            "recipe": "script" if row.kind == "script" else "steps",
+            "limits": m.get("limits", {}),
+            "cost": {"type": "per_success", "usd": hub_app.worst_usd(m, row.price_micro, rng), "currency": "USD",
+                     "unit": "run", "note": "the most a successful run has cost recently, provider fees and the maker's price together (`price_range` is the observed low–high); the maker's own price is `price_line`"},
+            "price_line": "seller " + hub_price_label(m) + hub_fees_label(m, rng),
+            "pay_note": HUB_PAY_NOTE,
+            **hub_app.with_range(m, rng),
+            "made_of": len(m.get("uses", [])),
+            "sends_inputs_to": await hub_app.own_hosts(db, row),
+            "status": row.status,
+            "health": health.state, "fails_in_a_row": health.fails_in_a_row,
+            "check": {"status": (row.check_result or {}).get("status"),
+                      "checked_at": (row.check_result or {}).get("checked_at")},
+            "call_template": {
+                "cli": f"treg call {row.tool_id} --data '{json.dumps(example)}'",
+                "http": f"POST {base}/call/{row.tool_id}",
+                "body": example,
+                "headers": {"X-Treg-Token": "<your token>", "Content-Type": "application/json"},
+            },
+            "page": f"{base}/hub/{row.tool_id}",
+            "readme": row.readme,
+            "capability": capability or None,
+            "capability_description": cat.capabilities.get(capability, "") if capability else "",
+            **({"observed": mine["observed"]} if mine else {}),
+        },
+        "provider": {"display_name": org.slug if org else "", "kind": "hub maker"},
+        "siblings": siblings,
+    }
+
+
+def _refusal_text(answer: view.Answer) -> str:
+    return catalog_views.failure_text(
+        catalog_views.refusal(answer.status, answer.object(), answer.body.decode("utf-8", "replace")))
+
+
+async def _held(request: Request) -> set[str]:
+    caller = await view.quietly(view.caller_of(request))
+    if caller is None:
+        return set()
+    return await view.quietly(view_context.connected_providers(caller), set())
+
+
+def _limit(request: Request) -> int | None:
+    try:
+        return int(request.query_params["limit"])
+    except (KeyError, ValueError):
+        return None
+
+
+@view.renders(catalog_platforms)
+async def _platforms_view(answer: view.Answer) -> str:
+    if answer.status != 200:
+        return _refusal_text(answer)
+    return toon.printed(*catalog_views.platforms(answer.object()))
+
+
+@view.renders(catalog_platform)
+async def _platform_view(answer: view.Answer) -> str:
+    if answer.status != 200:
+        return _refusal_text(answer)
+    return toon.printed(*catalog_views.platform(answer.object(), await _held(answer.request)))
+
+
+@view.renders(catalog_search)
+async def _search_view(answer: view.Answer) -> str:
+    if answer.status != 200:
+        return _refusal_text(answer)
+    params, body = answer.request.query_params, answer.object()
+    days = params.get("added_within_days")
+    held = await _held(answer.request) if body.get("results") else set()
+    return toon.printed(*catalog_views.search(body, query=params.get("q", ""), days=None if days is None else int(days),
+                                              sort=params.get("sort") or "best", connected=lambda: held))
+
+
+@view.renders(catalog_endpoint)
+async def _endpoint_view(answer: view.Answer) -> str | view.Rendered:
+    request = answer.request
+    endpoint_id = request.path_params["endpoint_id"]
+    if answer.status == 404:
+        job = await _job_view(request, endpoint_id, _limit(request))
+        return job or catalog_views.failure_text(catalog_views.unknown_endpoint(endpoint_id, answer.object()))
+    if answer.status != 200:
+        return _refusal_text(answer)
+    return await _endpoint_text(request, answer.object(), endpoint_id, _limit(request))
+
+
+async def _endpoint_text(request: Request, body: dict, endpoint_id: str, limit: int | None) -> str:
+    e = body["endpoint"]
+    if e.get("kind") == "hub":
+        return toon.printed(catalog_views.head(e) | catalog_views.hub(e))
+
+    async def facts(db: AsyncSession, caller) -> tuple[str | None, str | None]:
+        access = None if e.get("kind") == "routed" else \
+            await view.quietly(view_context.endpoint_access(db, caller, endpoint_id))
+        return access, await view.quietly(view_context.pinned_provider(db, caller, e.get("capability")))
+
+    access, pin = await view.quietly(view.with_caller(request, facts)) or (None, None)
+    page, help_lines = catalog_views.endpoint(body, access=access, pinned=lambda capability: pin, limit=limit,
+                                              base_url=get_settings().public_url)
+    return toon.printed(page, help_lines, catalog_views.GET_GROUPS)
+
+
+async def _job_view(request: Request, job_id: str, limit: int | None) -> view.Rendered | None:
+    """`catalog get <job>`, the way the CLI resolved a job before the registry rendered it: the
+    job's routed id answers as that endpoint; a job without one lists every provider of it."""
+    status, raw = await view.get(request, f"/catalog/platforms/{job_id.split('.', 1)[0]}", "include_hidden=1")
+    capabilities = (json.loads(raw).get("capabilities") or []) if status == 200 else []
+    cap = next((x for x in capabilities if x.get("id") == job_id), None)
+    if not cap or not cap.get("endpoints"):
+        return None
+    if routed := catalog_views.routed_member(cap):
+        status, raw = await view.get(request, f"/catalog/endpoints/{routed}")
+        if status != 200:
+            return None
+        return view.Rendered(await _endpoint_text(request, json.loads(raw), routed, limit), raw, 200)
+    status, raw = await view.get(request, f"/catalog/endpoints/{cap['endpoints'][0]['id']}")
+    if status != 200:
+        return None
+
+    async def pin(db: AsyncSession, caller) -> str | None:
+        return await view_context.pinned_provider(db, caller, job_id)
+
+    page, help_lines = catalog_views.job(job_id, cap.get("description"), json.loads(raw),
+                                         await view.quietly(view.with_caller(request, pin)))
+    return view.Rendered(toon.printed(page, help_lines), toon.render_json(page, help_lines).encode(), 200)
+
+
+async def tool_request_view(answer: view.Answer) -> str:
+    """`POST /tool-requests`'s view; the route itself lives in the legacy API module."""
+    if answer.status != 200:
+        return account_views.as_json(answer.json())
+    return catalog_views.tool_request((json.loads(answer.sent).get("capability") or "").strip())

@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from datetime import datetime, timezone
 from functools import lru_cache
+import hashlib
 import html as _html
 import html as html_mod
 import json
@@ -12,24 +13,54 @@ import re
 from urllib.parse import quote, urlsplit
 
 from fastapi import APIRouter, Cookie, Depends, HTTPException, Request
+from starlette.convertors import Convertor, register_url_convertor
 from fastapi.responses import (FileResponse, HTMLResponse, JSONResponse, PlainTextResponse,
                                RedirectResponse, Response)
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlmodel import select
+import yaml
 
-from .. import adsconv, agent_pages, oauth_providers
+from ..timeutil import utcnow_naive as _utcnow_naive
+from .. import adsconv, agent_pages, client_ip, oauth_providers
 from ..domain import referrals
 from ..domain.catalog import store as catalog_store
 from ..domain.identity import session as sess
 from ..config import PUBLIC_HOST_ALIASES, get_settings
+from ..application import agent_payments
+from ..application import signup as signup_use_cases
 from ..infra.db import get_session
 from ..models import User
 from ..domain.catalog import stats as endpoint_stats
 from .catalog import (_endpoint_observation_reader, _observed_or_empty, _platform_rows,
-                      _provider_display, catalog_platform)
+                      _provider_display, catalog_platform,
+                      _platforms_payload)
 from ..domain.identity.access import _user_from_session
-from .auth_helpers import OAUTH_RETURN_COOKIE, _is_https, _take_oauth_return
+from .auth_helpers import OAUTH_RETURN_COOKIE, _is_https, _same_origin, _take_oauth_return
 from .signup_cookies import _remember_referral
+
+
+def _dashboard_index() -> Path:
+    """The compiled Dashboard's index. Local frontend development swaps in Vite's source entry."""
+    settings = get_settings()
+    if settings.frontend_dev:
+        host = urlsplit(settings.public_url).hostname
+        if "sqlite" not in settings.database_url or host not in {"localhost", "127.0.0.1", "::1"}:
+            raise RuntimeError("TREG_FRONTEND_DEV requires local SQLite and a loopback public URL")
+        return Path(__file__).resolve().parents[3] / "frontend" / "index.html"
+    return _WEB_DIR / "dashboard" / "index.html"
+
+
+def _dashboard_document(index: Path) -> str:
+    document = index.read_text(encoding="utf-8")
+    if get_settings().frontend_dev and index.parent.name == "frontend":
+        host = urlsplit(get_settings().public_url).hostname
+        origin = "http://[::1]:5173" if host == "::1" else f"http://{host}:5173"
+        document = document.replace(
+            '<script type="module" src="/src/main.ts"></script>',
+            f'<script type="module" src="{origin}/app/ui/@vite/client"></script>'
+            f'<script type="module" src="{origin}/app/ui/src/main.ts"></script>',
+        )
+    return document
 
 
 LOCAL_USER_EMAIL = "you@local.treg"   # the single-user identity; a real address is never needed
@@ -46,25 +77,27 @@ async def _local_owner(db: AsyncSession) -> User | None:
 _WEB_DIR = Path(__file__).parent.parent / "web"
 
 
-# The app alias preserves the moved handlers' original @app.get decorator text byte-for-byte.
 catalog_pages_router = APIRouter()
 app = catalog_pages_router
 
 
-# ---- the crawlable catalog: /catalog and /catalog/<slug> -------------------------------------
-#
-# The JSON routes above are what agents and the dashboard read. These two render the SAME data as
-# server-side HTML, because until now none of it had a URL: the dashboard browses platforms through
-# hash routes (/app#platform/<slug>) behind a login, so ~2,600 endpoints across 80 shelves were
-# invisible to every crawler and every AI answer engine. No JavaScript here on purpose — the text IS
-# the product surface, and it has to be readable by something that will not run a script or click.
+# The crawlable catalog: /catalog and /catalog/<slug>. The JSON routes are what agents and the
+# dashboard read; these two render the SAME data as server-side HTML, because the dashboard browses
+# platforms through hash routes (/app#platform/<slug>) behind a login, which no crawler or AI answer
+# engine can read. No JavaScript here on purpose - the text IS the product surface, and it has to be
+# readable by something that will not run a script or click.
 #
 # `/catalog/<slug>` is registered after the JSON routes so /catalog/platforms, /catalog/search,
 # /catalog/endpoints/… and /catalog/examples/… keep matching first. Registration order alone is a
-# thin guarantee, so the reserved names are also refused explicitly below.
-_CATALOG_RESERVED = {"platforms", "search", "endpoints", "examples"}
+# thin guarantee, so the reserved names are also refused explicitly below, and the comparison page's
+# convertor (`_ShelfSlug`) never matches them. Every `/catalog/<segment>` API prefix belongs here.
+_CATALOG_RESERVED = frozenset({"platforms", "search", "find", "endpoints", "examples", "call", "providers"})
 
 _GH = "https://github.com/superdesigndev/treg"
+# The brand mark: same geometry as web/favicon.svg and the dashboard's BrandMark.vue, so it follows
+# the theme instead of depending on a font's quadrant glyph.
+_GLYPH = ('<span class="glyph" aria-hidden="true"><svg viewBox="0 0 290 290"><rect width="140.5" height="140.5" rx="20"/>'
+          '<rect x="149.5" y="149.5" width="140.5" height="140.5" rx="20"/></svg></span>')
 
 
 def _usd_short(usd: float) -> str:
@@ -82,6 +115,9 @@ def _price_label(cost: dict | None) -> str:
     whole CLI in for one string (see `_treg_version`)."""
     if not isinstance(cost, dict):
         return ""
+    if cost.get("display_unit") and cost.get("display_usd") is not None:
+        return (cost.get("display_prefix", "") + _usd_short(cost["display_usd"]) + cost.get("display_suffix", "")
+                + "/" + cost["display_unit"])
     usd = cost.get("usd")
     if usd is None:
         return "own account"     # no rate published — never invent a dollar figure
@@ -89,6 +125,9 @@ def _price_label(cost: dict | None) -> str:
         return "free"
     unit = {"per_call": "call", "per_result": "result", "per_success": "success"}.get(
         cost.get("type"), "call")
+    low = cost.get("usd_min")  # a price table: cheapest row up to the validated ceiling
+    if isinstance(low, (int, float)) and low < usd:
+        return f"{_usd_short(low)}-{_usd_short(usd)}/{unit}"
     return f"{_usd_short(usd)}/{unit}"
 
 
@@ -121,6 +160,30 @@ def _serp_desc(text: str, limit: int = 155) -> str:
 _TITLE_MAX = 65
 
 
+_OG_DEFAULT_ALT = "treg.to: one key for the whole tool catalog, priced per call"
+
+
+def og_image(base: str, path: str, alt: str = "") -> tuple[str, str]:
+    """The page's share image and its alt text: its own card when `scripts/og_images.py` wrote
+    `media/og/<path>.jpg`, else the site-wide `/media/og.png`."""
+    rel = _og_cards().get(path.rstrip("/") or "/")
+    if rel:
+        return f"{base}/media/{rel}", alt or _OG_DEFAULT_ALT
+    return f"{base}/media/og.png", _OG_DEFAULT_ALT
+
+
+@lru_cache(maxsize=1)
+def _og_cards() -> dict[str, str]:
+    """Page path -> `og/<path>.jpg` for every card on disk. The lookup never builds a file path
+    from the request."""
+    root = _MEDIA_DIR / "og"
+    cards = {}
+    for f in sorted(root.rglob("*.jpg")) if root.is_dir() else ():
+        page = f.relative_to(root).with_suffix("").as_posix()
+        cards["/" if page == "index" else "/" + page] = "og/" + f.relative_to(root).as_posix()
+    return cards
+
+
 def _page(title: str, description: str, path: str, body: str, ld: list[dict],
           *, nav_current: str = "", head_extra: str = "", css: str = "catalog.css") -> HTMLResponse:
     """The shared shell for every server-rendered page. One place that owns <title>, the meta
@@ -145,6 +208,7 @@ def _page(title: str, description: str, path: str, body: str, ld: list[dict],
     the app keeps them and opens sign-in in place (see the boot in index.html), and the page that
     produced the signup is recorded."""
     base = get_settings().public_url.rstrip("/")
+    og_url, og_alt = og_image(base, path, title)
     ref = quote(path.strip("/").replace("/", "-") or "home", safe="")
     t, d = _esc_html(title), _esc_html(description)
     url = _esc_html(base + path)  # `path` reaches attribute context — escape it like title/description
@@ -156,13 +220,20 @@ def _page(title: str, description: str, path: str, body: str, ld: list[dict],
         + json.dumps(b, separators=(",", ":")).replace("<", "\\u003c")
         + "</script>"
         for b in ld)
+    compare_col = ""
+    if _hosted():
+        from .. import compare_pages as cp
+        compare_col = ('\n      <div class="foot-col"><div class="lab">Compare</div>\n        '
+                       + "".join(f'<a href="/compare/{cp.page_slug(k)}">treg vs {_esc_html(cp.short(k))}</a>'
+                                 for k in cp.FOOTER) + '<a href="/compare">All comparisons →</a></div>')
     def navlink(href: str, label: str, extra: str = "") -> str:
         cur = ' aria-current="page"' if href == nav_current else ""
         return f'<a href="{href}"{cur}{extra}>{label}</a>'
     # The job, workflow and agent pages exist on the hosted deployment only (`_hosted`): a
     # self-hosted registry must not put three 404s in its own footer.
     hub_links = ('<a href="/use-cases">Use cases</a><a href="/workflows">Workflows</a>'
-                 '<a href="/agents">Agents</a>' if _hosted() else "")
+                 '<a href="/gtm-engineering">GTM engineering</a><a href="/showcase">Showcase</a><a href="/rankings">Rankings</a>'
+                 '<a href="/agents">Agents</a><a href="/blog">Blog</a>' if _hosted() else "")
     return HTMLResponse(f"""<!doctype html>
 <html lang="en">
 <head>
@@ -177,14 +248,14 @@ def _page(title: str, description: str, path: str, body: str, ld: list[dict],
 <meta property="og:url" content="{url}"/>
 <meta property="og:title" content="{t}"/>
 <meta property="og:description" content="{d}"/>
-<meta property="og:image" content="{base}/media/og.png"/>
+<meta property="og:image" content="{_esc_html(og_url)}"/>
 <meta property="og:image:width" content="1200"/>
 <meta property="og:image:height" content="630"/>
-<meta property="og:image:alt" content="treg.to: one key for the whole tool catalog, priced per call"/>
+<meta property="og:image:alt" content="{_esc_html(og_alt)}"/>
 <meta name="twitter:card" content="summary_large_image"/>
 <meta name="twitter:title" content="{t}"/>
 <meta name="twitter:description" content="{d}"/>
-<meta name="twitter:image" content="{base}/media/og.png"/>
+<meta name="twitter:image" content="{_esc_html(og_url)}"/>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Geist+Pixel&family=Inter:wght@400;450;500;600;650;700&family=DM+Mono:ital,wght@0,400;0,500&display=swap" rel="stylesheet">
@@ -194,7 +265,7 @@ def _page(title: str, description: str, path: str, body: str, ld: list[dict],
 </head>
 <body>
 <div class="navwrap"><nav class="nav">
-  <a class="brand" href="/"><span class="glyph">▚</span> treg</a>
+  <a class="brand" href="/">{_GLYPH} treg</a>
   <div class="links">
     {navlink("/catalog", "Catalog")}
     {navlink("/tutorial", "Tutorial")}
@@ -207,7 +278,7 @@ def _page(title: str, description: str, path: str, body: str, ld: list[dict],
 <footer>
   <div class="foot-in">
     <div class="foot-brand">
-      <div class="brand"><span class="glyph">▚</span> treg</div>
+      <div class="brand">{_GLYPH} treg</div>
       <div class="note">100% open source</div>
     </div>
     <nav class="foot-cols" aria-label="Site">
@@ -218,11 +289,12 @@ def _page(title: str, description: str, path: str, body: str, ld: list[dict],
         ><a href="{_GH}" target="_blank" rel="noopener">GitHub ↗</a></div>
       <div class="foot-col"><div class="lab">Company</div>
         <a href="/resources">Resources</a><a href="/support">Support</a
-        ><a href="/terms">Terms</a><a href="/privacy">Privacy</a></div>
+        ><a href="/terms">Terms</a><a href="/privacy">Privacy</a></div>{compare_col}
     </nav>
   </div>
 </footer>
 <script src="/adtrack.js"></script>
+<script src="/gtag.js"></script>
 </body>
 </html>""", headers={"Cache-Control": "public, max-age=600"})
 
@@ -242,16 +314,17 @@ def _spa_catalog_page(title: str, description: str, path: str, ld: list[dict],
     1. **The head.** The SPA ships one bare `<title>treg</title>`. Every catalog URL needs its own
        title, description, canonical, og/twitter card and JSON-LD, so they are substituted in here —
        the same trick `_spa_with_og` uses for shared skill/tool links.
-    2. **A no-JS fallback.** Vue compiles `#app`'s own innerHTML as its template, so prerendered
-       markup cannot go inside it. `#prerender` is therefore a SIBLING, removed by the app on boot.
-       It is deliberately plainer than the Vue view — the ledger's row-merging is a chain of
-       client-side computeds, and reproducing it server-side would recreate exactly the duplicate
-       implementation this design avoids. It carries the TEXT (names, summaries, providers, prices),
-       which is what a crawler that does not run scripts is here for.
+    2. **A no-JS fallback.** Vue replaces `#app`'s content on mount, so prerendered markup cannot
+       go inside it. `#prerender` is therefore a SIBLING, removed by the app on boot. It carries the
+       TEXT (names, summaries, providers, prices) for readers that run no script (most AI crawlers
+       and agent fetchers), and is visually hidden: shown to people, a plain list that the app then
+       swapped for its own layout read as a second, older page flashing past.
+    3. **The shelves.** The `/catalog/platforms` body rides along as JSON (`#catalog-platforms`), so
+       the app's first render already has every platform instead of fetching them after boot.
     """
-    index = _WEB_DIR / "index.html"
+    index = _dashboard_index()
     if not index.exists():
-        return HTMLResponse("<h3>tools-registry API. Dashboard not bundled.</h3>")
+        return HTMLResponse("<h3>treg API. Dashboard not bundled.</h3>")
     base = get_settings().public_url.rstrip("/")
     t, d = _esc_html(title), _esc_html(description)
     # `path` carries the {slug} from the URL. Today an unknown slug 404s in catalog_platform before
@@ -259,6 +332,7 @@ def _spa_catalog_page(title: str, description: str, path: str, ld: list[dict],
     # not a guarantee this function makes. Escape it where it is used, so a future "slug not found →
     # suggestions" page cannot turn a canonical tag into a reflected XSS.
     url = _esc_html(base + path)
+    og_url, _ = og_image(base, path, title)
     blocks = "\n".join(
         '<script type="application/ld+json">'
         + json.dumps(b, separators=(",", ":")).replace("<", "\\u003c") + "</script>"
@@ -273,16 +347,16 @@ def _spa_catalog_page(title: str, description: str, path: str, ld: list[dict],
         f'<meta property="og:url" content="{url}"/>\n'
         f'<meta property="og:title" content="{t}"/>\n'
         f'<meta property="og:description" content="{d}"/>\n'
-        f'<meta property="og:image" content="{base}/media/og.png"/>\n'
+        f'<meta property="og:image" content="{_esc_html(og_url)}"/>\n'
         f'<meta property="og:image:width" content="1200"/>\n'
         f'<meta property="og:image:height" content="630"/>\n'
         f'<meta name="twitter:card" content="summary_large_image"/>\n'
         f'<meta name="twitter:title" content="{t}"/>\n'
         f'<meta name="twitter:description" content="{d}"/>\n'
-        f'<meta name="twitter:image" content="{base}/media/og.png"/>\n'
+        f'<meta name="twitter:image" content="{_esc_html(og_url)}"/>\n'
         + blocks
     )
-    html = index.read_text(encoding="utf-8")
+    html = _dashboard_document(index)
     # index.html carries `robots: noindex` for the authenticated app; these URLs are public, and the
     # `index, follow` in `meta` only wins if the noindex is gone. Stripped BEFORE `meta` is spliced
     # in, so this scan only ever runs over the static bundle — never over a string carrying a
@@ -295,30 +369,19 @@ def _spa_catalog_page(title: str, description: str, path: str, ld: list[dict],
                          flags=re.IGNORECASE | re.DOTALL)
     if not hits:
         html = html.replace("<head>", "<head>\n" + meta, 1)
+    shelves = json.dumps(_platforms_payload(), separators=(",", ":")).replace("<", "\\u003c")
     marker = '<div id="app"'
     if marker in html:
-        html = html.replace(marker, f'<div id="prerender">{prerender}</div>\n{marker}', 1)
-    return HTMLResponse(html, headers={"Cache-Control": "public, max-age=600"})
+        html = html.replace(marker, f'{_PRERENDER_HIDDEN}<div id="prerender">{prerender}</div>\n'
+                            f'<script id="catalog-platforms" type="application/json">{shelves}</script>\n'
+                            f'{marker}', 1)
+    return HTMLResponse(html, headers={"Cache-Control": "private, no-store", "Vary": "Cookie"})
 
 
-# The fallback's own skin. Scoped to #prerender and written against the dashboard's OWN tokens
-# (already defined in index.html), so it reads as the same product for the moment it is on screen.
-_PRERENDER_CSS = """<style>
-#prerender{max-width:1100px;margin:0 auto;padding:38px 26px 60px;font-family:var(--sans,system-ui);
-  color:var(--ink,#1a1a1a)}
-#prerender h1{font-size:30px;letter-spacing:-.01em;margin:0 0 8px}
-#prerender .lede{color:var(--muted,#7c7c7c);margin:0 0 20px;max-width:64ch}
-#prerender h2{font-size:13px;text-transform:uppercase;letter-spacing:.05em;
-  color:var(--muted2,#989898);margin:26px 0 10px;padding-bottom:8px;
-  border-bottom:1px solid var(--line,#26262322)}
-#prerender ul{list-style:none;margin:0;padding:0}
-#prerender li{padding:9px 0;border-bottom:1px solid var(--line,#26262322)}
-#prerender li b{font-weight:600}
-#prerender li i{font-style:normal;color:var(--muted,#7c7c7c);display:block;font-size:13.5px}
-#prerender .m{font-family:var(--mono,ui-monospace);font-size:11.5px;
-  color:var(--muted2,#989898);margin-top:3px;display:block}
-#prerender a{color:var(--teal,#1a7da6);text-decoration:none}
-</style>"""
+# Crawler-only: kept in the document for readers that run no script, but never painted. The
+# page's own markup still styles the text (the `h1`/`ul` structure is what a crawler reads).
+_PRERENDER_HIDDEN = ("<style>#prerender{position:absolute;width:1px;height:1px;overflow:hidden;"
+                     "clip-path:inset(50%);white-space:nowrap}</style>")
 
 
 @app.get("/catalog", include_in_schema=False)
@@ -331,7 +394,7 @@ async def catalog_index():
     # this page would quietly contradict the number on the landing.
     cat = catalog_store.load()
     total_eps = len(cat.endpoints)
-    providers = sorted({e["provider"] for e in cat.endpoints})
+    providers = sorted({e["provider"] for e in cat.endpoints if e["kind"] != "routed"})   # treg is no vendor
 
     cats: dict[str, list[dict]] = {}
     for row in rows:
@@ -351,25 +414,24 @@ async def catalog_index():
         sections.append(f"<h2>{_esc_html(name)}</h2><ul>{''.join(lis)}</ul>")
 
     # The provider links live HERE, in the crawlable prerender, rather than on an index page of
-    # their own: /providers earned no searches and made a second "browse everything" URL beside
-    # this one. The /tools pages still get their internal links; there is just one index.
+    # their own. The /tools pages still get their internal links; there is just one index.
     prov_rows = _provider_rows()
     prov_links = " · ".join(
         f'<a href="/tools/{_esc_html(r["service"])}">{_esc_html(r["display"])}</a>'
         for r in prov_rows)
-    prerender = (_PRERENDER_CSS
-                 + "<h1>The tool catalog</h1>"
+    prerender = ("<h1>The tool catalog</h1>"
                  + f'<p class="lede">{total_eps:,} endpoints across {len(rows)} platforms and '
                    f"{len(providers)} providers — every tool your agent can call through one key, "
                    "priced up front and billed per call, with no provider signup.</p>"
-                 # The two hubs are linked from HERE as well as the nav: this prerender is the page
-                 # Google crawls most, and before this line the job and workflow pages were reachable
-                 # only from the sitemap — "URL is unknown to Google" on every one of them.
+                 # The two hubs are linked from HERE as well as the nav, so the job and workflow
+                 # pages are reachable from more than the sitemap.
                  + ('<p>Looking for a job rather than a platform? <a href="/use-cases">The use cases</a> '
                     'compare the providers that do one job, <a href="/workflows">the workflows</a> '
                     'chain several jobs into one prompt with the price of each step, and '
                     '<a href="/agents">the agent pages</a> show the whole menu for one '
-                    'agent.</p>' if _hosted() else "")
+                    'agent, <a href="/blog">the blog</a> carries the measured receipts and '
+                    'launch notes, and <a href="/compare">the comparisons</a> set treg beside other '
+                    'tool gateways for agents.</p>' if _hosted() else "")
                  + "".join(sections)
                  + f"<h2>The providers</h2><p>{len(prov_rows)} vendors serve this catalog, each "
                    f"with its own page: {prov_links}</p>")
@@ -394,6 +456,27 @@ async def catalog_index():
         "/catalog", ld, prerender)
 
 
+@app.get("/search", include_in_schema=False)
+async def search_page():
+    """Find tools by describing the job: the Dashboard's public find view over `/catalog/find`."""
+    rows = _platform_rows()
+    # Until the page's script runs, a visitor sees the page's own ground and nothing else: a
+    # different first screen that swaps out would read as a loading step. The words are for readers
+    # that never run the script, so they are visually hidden rather than drawn.
+    prerender = ('<style>#prerender{position:fixed;inset:0;z-index:100;background:#f4f4f1;'
+                 'width:auto;height:auto;clip-path:none}'
+                 '#prerender>div{position:absolute;width:1px;height:1px;overflow:hidden;clip-path:inset(50%)}</style>'
+                 "<div><h1>What does your agent need to do?</h1>"
+                 '<p>Describe the job in plain words and see which tools in the treg catalog can do it, '
+                 f'across {len(rows)} platforms. Prefer to browse? <a href="/catalog">The catalog</a> '
+                 "lists every platform.</p></div>")
+    return _spa_catalog_page(
+        "Find tools for your agent | treg",
+        "Describe the job in plain words and see which tools in the treg catalog can do it, "
+        "priced per call, callable through one key.",
+        "/search", [], prerender)
+
+
 @app.get("/catalog/{slug}", include_in_schema=False)
 async def catalog_page(slug: str):
     """One platform shelf — the marketplace's platform view, on a public, indexable URL."""
@@ -403,7 +486,8 @@ async def catalog_page(slug: str):
     # endpoints are real inventory and the page files them in their own section rather than hiding
     # them. Asking for a different population than the view that is about to replace this would put
     # two different endpoint counts on one URL.
-    detail = await catalog_platform(slug, include_hidden=1)
+    detail = await catalog_platform(slug, include_hidden=1, observations=None)
+    compared = catalog_store.load().compared()
     base = get_settings().public_url.rstrip("/")
     plat = detail["platform"]
     label, category = plat["label"], plat["category"]
@@ -431,15 +515,14 @@ async def catalog_page(slug: str):
         blocks.append(f'<h2>{_esc_html(cap["description"] or cap["id"])}</h2><ul>{"".join(lis)}</ul>')
 
     provs = ", ".join(p["display_name"] for p in detail["providers"].values())
-    prerender = (_PRERENDER_CSS
-                 + f'<p class="m"><a href="/catalog">← Catalog</a> · {_esc_html(category)}</p>'
+    prerender = (f'<p class="m"><a href="/catalog">← Catalog</a> · {_esc_html(category)}</p>'
                  + f"<h1>{_esc_html(label)}</h1>"
                  + f'<p class="lede">{_esc_html(summary)} {len(eps)} endpoints from '
                    f"{_esc_html(provs)}"
                  + (f", from {_esc_html(cheapest)} per call" if cheapest else "")
-                 + ". Jobs that several providers do sit on one row, so you can compare price and "
-                   "coverage before you spend a call — <b>choosing is yours</b>; treg does not route "
-                   "between providers automatically.</p>"
+                 + ". A job several providers do has its own page comparing them by price, measured "
+                   "success and agents' verdicts; where treg offers a routed tool for it, treg can "
+                   "pick the provider for you.</p>"
                  + "".join(blocks))
 
     desc = (f"{len(eps)} {label.lower()} API endpoints from "
@@ -452,33 +535,79 @@ async def catalog_page(slug: str):
          "numberOfItems": len(caps),
          "itemListElement": [
              {"@type": "ListItem", "position": i, "name": cap["description"] or cap["id"],
-              "url": f"{base}/catalog/{slug}#{cap['id']}"}
+              "url": (f"{base}/catalog/{slug}/{catalog_store.capability_key(slug, cap['id'])}"
+                      if (slug, cap["id"]) in compared else f"{base}/catalog/{slug}#{cap['id']}")}
              for i, cap in enumerate(caps, 1)]},
         {"@context": "https://schema.org", "@type": "BreadcrumbList", "itemListElement": [
-            {"@type": "ListItem", "position": 1, "name": "treg", "item": base + "/"},
+            {"@type": "ListItem", "position": 1, "name": "treg.to", "item": base + "/"},
             {"@type": "ListItem", "position": 2, "name": "Catalog", "item": base + "/catalog"},
             {"@type": "ListItem", "position": 3, "name": label, "item": f"{base}/catalog/{slug}"}]},
     ]
-    return _spa_catalog_page(f"{label} API — {len(eps)} endpoints, priced per call | treg",
+    # The shelf title leads with "{platform} api pricing"; the copy carries no em-dash.
+    return _spa_catalog_page(f"{label} API pricing: {len(eps)} endpoints priced per call | treg.to",
                              desc[:300], f"/catalog/{slug}", ld, prerender)
 
 
-# --------------------------------------------------------------------------- /agents/<agent>
+class _ShelfSlug(Convertor):
+    """A platform slug that is never one of the catalog's own API segments (`_CATALOG_RESERVED`).
+    `/catalog/call/<id>` and friends share the `/catalog/<a>/<b>` shape with the comparison page, and route
+    order across the app roles is not something this page should depend on: the path simply does
+    not match them."""
+    regex = rf"(?!(?:{'|'.join(sorted(_CATALOG_RESERVED))})(?:/|$))[^/]+"
+
+    def convert(self, value: str) -> str:
+        return value
+
+    def to_string(self, value: str) -> str:
+        return value
+
+
+register_url_convertor("shelf", _ShelfSlug())
+
+
+@app.get("/catalog/{slug:shelf}/{key}", include_in_schema=False)
+async def catalog_comparison_page(slug: str, key: str):
+    """One capability on a shelf, compared: the providers that do it, side by side. `key` is the
+    capability id without its platform prefix (`enrich` for `companies.enrich`), or the whole id when
+    it is filed under another prefix. Same SPA as the shelf; the head and the no-JS text name it."""
+    cat = catalog_store.load()
+    cap_id = catalog_store.compared_capability(cat, slug, key)
+    if cap_id is None:
+        raise HTTPException(status_code=404, detail=f"no comparison {key!r} on {slug!r}")
+    base = get_settings().public_url.rstrip("/")
+    label = cat.platforms.get(slug, {}).get("label", slug)
+    does = cat.capabilities.get(cap_id) or cap_id
+    eps = [catalog_store.endpoint_view(e, _provider_display(e["provider"]), cat)
+           for e in cat.for_platform(slug) if e["capability"] == cap_id and catalog_store.browsable(e)]
+    provs = sorted({e["provider_display"] for e in eps})
+    lis = "".join(
+        f'<li><b>{_esc_html(e["provider_display"])}</b> <i>{_esc_html(e.get("summary") or "")}</i>'
+        f'<span class="m">{_esc_html(_price_label(e.get("cost")) or "")} · {_esc_html(e["id"])}</span></li>'
+        for e in eps)
+    path = f"/catalog/{slug}/{key}"
+    prerender = (f'<p class="m"><a href="/catalog">Catalog</a> / <a href="/catalog/{_esc_html(slug)}">'
+                 f"{_esc_html(label)}</a></p><h1>{_esc_html(does)}</h1>"
+                 f'<p class="lede">{len(provs)} providers do this through one treg key: '
+                 f"{_esc_html(', '.join(provs))}.</p><ul>{lis}</ul>")
+    ld = [{"@context": "https://schema.org", "@type": "BreadcrumbList", "itemListElement": [
+        {"@type": "ListItem", "position": 1, "name": "Catalog", "item": base + "/catalog"},
+        {"@type": "ListItem", "position": 2, "name": label, "item": f"{base}/catalog/{slug}"},
+        {"@type": "ListItem", "position": 3, "name": does, "item": base + path}]}]
+    return _spa_catalog_page(f"{does}: {len(provs)} APIs compared | treg.to",
+                             f"{does}. Compare {', '.join(provs[:4])} and more by price, measured "
+                             "success and agents' verdicts; call any of them through one treg key."[:300],
+                             path, ld, prerender)
+
 
 def _hosted() -> bool:
-    """True on the reference deployment only. The agent pages describe treg.to's own listings (the
+    """True on the hosted service only. The agent pages describe treg.to's own listings (the
     ChatGPT Connector, the OAuth connector, the free grant), none of which is true of a self-hosted
     registry, so off these hosts the pages do not exist rather than lie."""
     host = (urlsplit(get_settings().public_url).hostname or "").lower()
     return host in PUBLIC_HOST_ALIASES
 
 
-def _pub(e: dict) -> bool:
-    """An endpoint the PUBLIC pages may count or list: hidden utility kinds out, and the
-    `kind: routed` meta-rows (PR #242) out with them — a routed row delegates to children that
-    are already on the page, so anywhere public it double-counts and surfaces a provider named
-    "treg", which the brand rules say must never appear as a vendor."""
-    return e["kind"] not in catalog_store.HIDDEN_KINDS and e.get("kind") != "routed"
+_pub = catalog_store.browsable
 
 
 def _catalog_census() -> tuple[int, int]:
@@ -545,14 +674,11 @@ def _use_case_caps(label: str) -> tuple[str, ...]:
     return ()
 
 
-# ---- the reverse index: which job pages use a provider, which workflows use a job -------------
-#
-# Every job page already links DOWN to the catalog and every workflow step links down to its job
-# page. Nothing linked UP: a provider page did not name the jobs it serves, and a job page did not
-# name the workflows that chain it. The result was measurable — the 38 job pages and both workflow
-# pages had zero impressions and "URL is unknown to Google", while /tools/<provider> (linked from
-# /catalog) was indexed. These two indexes are computed once per process from the same tables the
-# pages render from, so a new job or workflow is cross-linked the moment it is routed.
+# The reverse index: which job pages use a provider, which workflows use a job. Job pages link DOWN
+# to the catalog and workflow steps down to their job page; these link UP, so a provider page names
+# the jobs it serves and a job page names the workflows that chain it. Computed once per process from
+# the same tables the pages render from, so a new job or workflow is cross-linked the moment it is
+# routed.
 
 @lru_cache(maxsize=1)
 def _jobs_by_provider() -> dict[str, list[tuple[str, str]]]:
@@ -628,6 +754,33 @@ document.querySelectorAll('button[data-copy]').forEach(function(b){
 _MD_ALT = '<link rel="alternate" type="text/markdown" href="{href}"/>'
 
 
+def _guide_md(fragment: str) -> str:
+    """Hand-written page sections (an agent's `guide`, a workflow's `sections`) as Markdown for the
+    `.md` twin. The fragments use a small fixed vocabulary (p, table, pre/code, ul/li, a, b, code), so
+    this maps that and strips the rest; a table becomes a pipe table rather than run-together cells."""
+    def _table(m: re.Match) -> str:  # one Markdown table per <table>, header row then a separator
+        rows = [[re.sub(r"<[^>]+>", "", c).strip()
+                 for c in re.findall(r"<t[hd][^>]*>(.*?)</t[hd]>", tr, flags=re.S)]
+                for tr in re.findall(r"<tr[^>]*>(.*?)</tr>", m.group(0), flags=re.S)]
+        rows = [r for r in rows if r]
+        if not rows:
+            return ""
+        out = ["| " + " | ".join(rows[0]) + " |", "|" + "---|" * len(rows[0])]
+        out += ["| " + " | ".join(r) + " |" for r in rows[1:]]
+        return "\n" + "\n".join(out) + "\n\n"
+    s = re.sub(r"<table[^>]*>.*?</table>", _table, fragment, flags=re.S)
+    s = re.sub(r"<pre><code>(.*?)</code></pre>", lambda m: f"\n```\n{m.group(1)}\n```\n", s, flags=re.S)
+    s = re.sub(r'<a href="([^"]+)">(.*?)</a>',
+               lambda m: f"[{m.group(2)}]({get_settings().public_url.rstrip('/')}{m.group(1)})"
+               if m.group(1).startswith("/") else f"[{m.group(2)}]({m.group(1)})", s)
+    s = re.sub(r"</?b>", "**", s)
+    s = re.sub(r"</?code>", "`", s)
+    s = re.sub(r"<li>", "- ", s)
+    s = re.sub(r"</li>|</p>", "\n", s)
+    s = re.sub(r"<[^>]+>", "", s)
+    return html_mod.unescape(re.sub(r"\n{3,}", "\n\n", s)).strip()
+
+
 @app.get("/agents", include_in_schema=False)
 async def agents_hub():
     """The hub the agent pages hang from. Until this existed the nav's "Agents" link pointed at one
@@ -640,14 +793,16 @@ async def agents_hub():
     n, p = f"{n_eps:,}", str(n_plats)
     def _blurb(defn: str) -> str:
         # The card answers "which client, and does it install as a plugin or an MCP server" — the
-        # definition's opening clause. The counts already live on the meta line; printing the whole
-        # definition put them on every card twice and cut it mid-word at the length cap.
+        # definition's opening clause. The counts already live on the meta line.
         head = defn.split(" that gives ")[0]
         if head == defn and len(defn) > 140:  # a future definition without the clause still fits
             head = defn[:140].rsplit(" ", 1)[0]
         return head.rstrip(".") + "."
+    def _agent_href(slug: str) -> str:
+        # grok-bot links to the launch page at /grokbot
+        return "/grokbot" if slug == "grok-bot" else f"/agents/{slug}"
     cards = "".join(
-        f'<a class="pcard" href="/agents/{slug}"><h3>{_esc_html(spec["name"])}</h3>'
+        f'<a class="pcard" href="{_agent_href(slug)}"><h3>{_esc_html(spec["name"])}</h3>'
         f'<p>{_esc_html(_blurb(spec["definition"].format(n=n, p=p)))}</p>'
         f'<div class="meta">{n} tools &middot; {p} platforms</div></a>'
         for slug, spec in agent_pages.AGENTS.items())
@@ -683,6 +838,10 @@ async def agent_page(request: Request, agent: str):
     `/agents/<agent>.md` is the same page as Markdown, for agents and answer engines."""
     as_md = request.url.path.endswith(".md")
     raw = agent[:-3] if agent.endswith(".md") else agent
+    # grok-bot redirects to the launch page at /grokbot: the launch page is what people expect
+    # when they click "Grok Bot", and the /agents/grok-bot URL was never the primary destination.
+    if raw.lower() == "grok-bot":
+        return RedirectResponse("/grokbot", status_code=301)
     # Resolve to the dict's OWN key, never the request's bytes: `agent` is interpolated into the
     # canonical, the rel=alternate href and the JSON-LD breadcrumb below, and a path parameter
     # must not reach those unescaped (CodeQL py/reflective-xss). The lookup is case-insensitive,
@@ -704,11 +863,23 @@ async def agent_page(request: Request, agent: str):
     definition = spec["definition"].format(n=n, p=p)
     menu = [(category, agent_pages.CATEGORY_PROMPTS.get(category, ""), _menu_rows(cat, category, jobs))
             for category, jobs in agent_pages.USE_CASES]
+    # An agent with `focus` gets those categories in full, in that order, and the rest as one index
+    # row each that links to the job guides, so agent pages do not all reprint the same tables. An
+    # agent without `focus` keeps the whole menu.
+    focus = spec.get("focus") or ()
+    rest: list = []
+    if focus:
+        by_cat = {m[0]: m for m in menu}
+        rest = [m for m in menu if m[0] not in focus]
+        menu = [by_cat[c] for c in focus if c in by_cat]
+    guide = spec.get("guide") or []
     steps_text = [re.sub(r"<[^>]+>", "", st).format(n=n) for st in spec["install_steps"]]
 
     if as_md:
         md = [f"# {title}", "", definition, "", f"## Install in {name}", ""]
         md += [f"{i}. {html_mod.unescape(st)}" for i, st in enumerate(steps_text, 1)]
+        for g in guide:
+            md += ["", f"## {g['h2']}", "", _guide_md(g["html"])]
         if agent_pages.WORKFLOWS:
             md += ["", f"## Sequences {name} can run from one prompt", ""]
             md += [f"- [{wspec['sentence']}]({base}/workflows/{ws}), {len(wspec.get('steps', ()))} steps, "
@@ -730,6 +901,12 @@ async def agent_page(request: Request, agent: str):
                 link = f"{base}{r['page']}" if r["page"] else f"{base}/catalog/{r['platforms'][0]['slug']}"
                 md.append(f"- [{r['label']}]({link}): {plats}. {r['providers']} provider{'s' if r['providers'] != 1 else ''}, {price}.")
             md.append("")
+        if rest:
+            md += [f"### Everything else {name} can call", ""]
+            for category, _prompt, rows in rest:
+                md.append(f"- [{category}]({base}/use-cases#{agent_pages.category_slug(category)}): "
+                          f"{len(rows)} jobs. {agent_pages.CATEGORY_BLURBS.get(category, '')}")
+            md.append("")
         md += ["## Questions", ""]
         for q, a in spec["faq"]:
             md += [f"**{q}** {a}", ""]
@@ -739,8 +916,9 @@ async def agent_page(request: Request, agent: str):
 
     # Only the FIRST role is server-rendered, on the roleline under the H1 — the H1 itself carries
     # the term and the promise, never a persona. The rest ride in a JSON block for the script.
-    roles = f'<span class="ri on">{_esc_html(agent_pages.ROLES[0])}</span>'
-    more_roles = json.dumps(list(agent_pages.ROLES[1:])).replace("<", "\\u003c")
+    role_list = spec.get("roles") or agent_pages.ROLES  # a focused page names its own readers
+    roles = f'<span class="ri on">{_esc_html(role_list[0])}</span>'
+    more_roles = json.dumps(list(role_list[1:])).replace("<", "\\u003c")
     steps = "".join(
         f'<div class="steplabel"><span class="n">{i}</span><b>{st.format(n=n)}</b></div>'
         for i, st in enumerate(spec["install_steps"], 1))
@@ -796,7 +974,7 @@ async def agent_page(request: Request, agent: str):
             by_label[r["label"]] = row_html
             body_rows.append(row_html)
         # A category with sub-headings orders its rows by group and prints a divider row before
-        # each. Enrichment is 25 jobs and the groups are how a buyer reads them; they are NOT
+        # each. The groups are how a buyer reads a large category; they are NOT
         # categories, because find / contacts / enrich are stages of one motion and would have
         # committed four more URL segments to a distinction that only exists in a practitioner's head.
         groups = agent_pages.CATEGORY_GROUPS.get(category)
@@ -815,18 +993,48 @@ async def agent_page(request: Request, agent: str):
               '<th>From</th></tr></thead><tbody>'
             + "".join(body_rows) + '</tbody></table></div></div></section>')
 
+    if rest:
+        cards.append(f'<a class="card" href="#more"><h4>Everything else</h4>'
+                     f'<p>{len(rest)} more categories, from search and ads to e-commerce.</p>'
+                     f'<p style="font-family:var(--mono);font-size:11.5px;color:var(--muted2)">'
+                     f'{sum(len(r) for _c, _p, r in rest)} jobs</p></a>')
+        rest_rows = []
+        for category, _prompt, rows in rest:
+            priced = [r["from_usd"] for r in rows if r["from_usd"]]
+            frm = (_esc_html(_usd_short(min(priced))) if priced
+                   else '<span style="color:var(--green)">free, your account</span>')
+            # The row keeps the category's own id, so a link to /agents/<agent>#<category> that
+            # worked when the full table was here still lands on that category.
+            rest_rows.append(
+                f'<tr id="{_esc_html(_anchor(category))}"><td><a href="/use-cases#{agent_pages.category_slug(category)}">'
+                f'<b>{_esc_html(category)}</b></a></td>'
+                f'<td style="color:var(--muted)">{_esc_html(agent_pages.CATEGORY_BLURBS.get(category, ""))}</td>'
+                f'<td>{len(rows)}</td><td>{frm}</td></tr>')
+        sections.append(
+            '<section id="more"><div class="wrap"><div class="seclab">Everything else</div>'
+            f'<h2>What else {_esc_html(name)} can call</h2>'
+            '<div class="tablewrap"><table><thead><tr><th>Category</th><th>What</th><th>Jobs</th>'
+            '<th>From</th></tr></thead><tbody>' + "".join(rest_rows) + '</tbody></table></div>'
+            '<p style="margin-top:20px"><a href="/use-cases">Every job, with its guide &rarr;</a></p>'
+            '</div></section>')
+
+    # Hand-written sections only this agent's page carries, between the install steps and the menu.
+    guide_html = "".join(
+        f'<section id="{_esc_html(g["id"])}" class="guide"><div class="wrap"><div class="seclab">{_esc_html(g["seclab"])}</div>'
+        f'<h2>{_esc_html(g["h2"])}</h2>{g["html"]}</div></section>' for g in guide)
+
     faq_html = "".join(f'<h3>{_esc_html(q)}</h3><p>{_esc_html(a)}</p>' for q, a in spec["faq"])
+    h1 = (spec["h1"].format(n=n, p=p) if spec.get("h1")
+          else f'The {name} {spec.get("h1_noun", "plugin")}: call {n} APIs without keys')
 
     body = (
         '<div class="hero"><div class="wrap">'
         f'<div class="trust" style="margin:0 0 18px"><a href="/">treg.to</a> / '
         f'<a href="/agents/{_esc_html(agent)}">{_esc_html(name)}</a></div>'
         f'<div class="kicker">{n} endpoints &middot; {p} platforms &middot; $0.000 markup</div>'
-        # The H1 carries the measured term and the promise, never a persona — a crawler was reading
-        # "The ChatGPT Connector for SEO experts" as if that were the audience. The rotating role
-        # wheel stays, one line down.
-        f'<h1>The {_esc_html(name)} {_esc_html(spec.get("h1_noun", "plugin"))}: '
-        f'call {n} APIs without keys</h1>'
+        # The H1 carries the measured term and the promise, never a persona, which a crawler would
+        # read as the audience. The rotating role wheel stays, one line down.
+        f'<h1>{_esc_html(h1)}</h1>'
         f'<div class="roleline">for <span class="roleslot" id="roleslot">'
         f'<span class="rw" id="rolewheel">{roles}</span></span></div>'
         f'<script type="application/json" id="roles-more">{more_roles}</script>'
@@ -834,7 +1042,7 @@ async def agent_page(request: Request, agent: str):
         '<div class="ctas">'
         f'<a class="candy" href="/app?ref=agents-{_esc_html(agent)}">Start free</a>'
         '<a class="ghostbtn" href="#use-cases">See what it can do</a></div>'
-        '<div class="trust">$1.00 of free credit on every new team &middot; no provider signup &middot; no card</div>'
+        '<div class="trust">$1.00 of free credit once per new verified account &middot; no provider signup &middot; no card</div>'
         f'<div class="subline">Your own keys always win and are never metered. '
         f'{_esc_html(name)} sees the price before it spends.</div>'
         + (f'<div class="provstrip"><div class="pl">a few of the {p} platforms</div>'
@@ -844,7 +1052,9 @@ async def agent_page(request: Request, agent: str):
         f'<section id="install"><div class="wrap"><div class="seclab">Get started</div>'
         f'<h2>Install in {_esc_html(name)}</h2>{steps}{shot}</div></section>'
 
-        '<section id="use-cases"><div class="wrap"><div class="seclab">The menu</div>'
+        + guide_html
+
+        + '<section id="use-cases"><div class="wrap"><div class="seclab">The menu</div>'
         f'<h2>What {_esc_html(name)} can do now</h2>'
         '<p>By job, not by endpoint. The price is the lowest provider&rsquo;s own rate with $0.000 added by '
         'treg.to; <b>free</b> means the job runs on an account you already own and is never metered. Where '
@@ -855,8 +1065,7 @@ async def agent_page(request: Request, agent: str):
 
         # The workflows: several jobs from the menu chained into one prompt, each with a receipt from
         # a real run. Linked from every agent page so the page that describes what an agent can do
-        # also names the sequences it can run; before this the workflow pages were reachable from
-        # the hub alone.
+        # also names the sequences it can run.
         + (f'<section id="workflows"><div class="wrap"><div class="seclab">Workflows</div>'
            f'<h2>Sequences {_esc_html(name)} can run from one prompt</h2>'
            '<p>Several jobs from the menu, chained. Each step is priced from the catalog and the page '
@@ -865,7 +1074,7 @@ async def agent_page(request: Request, agent: str):
                      f'<p>{len(wspec.get("steps", ()))} steps, each a metered call, with the price shown before '
                      f'{_esc_html(name)} spends it.</p></a>'
                      for ws, wspec in agent_pages.WORKFLOWS.items())
-           + f'</div><p style="margin-top:20px"><a href="/workflows">All workflows &rarr;</a></p></div></section>'
+           + '</div><p style="margin-top:20px"><a href="/workflows">All workflows &rarr;</a></p></div></section>'
            if agent_pages.WORKFLOWS else "")
 
         + "".join(sections)
@@ -913,7 +1122,7 @@ async def agent_page(request: Request, agent: str):
          "url": base + "/", "description": desc,
          "offers": {"@type": "Offer", "price": "0", "priceCurrency": "USD",
                     "description": "Free to install. Calls are metered per call from a prepaid balance at the "
-                                   "provider's own rate with no markup; every new team starts with $1.00 free."}},
+                                   "provider's own rate with no markup; your first team starts with $1.00 free."}},
         {"@context": "https://schema.org", "@type": "BreadcrumbList", "itemListElement": [
             {"@type": "ListItem", "position": 1, "name": "treg.to", "item": base + "/"},
             {"@type": "ListItem", "position": 2, "name": "Agents", "item": base + "/agents"},
@@ -965,15 +1174,13 @@ def _uc_providers(cat, eps: list[dict], obs: dict) -> list[dict]:
                     if isinstance(v, dict) and k not in ins:
                         ins.append(k)
         slug = plat
-        # "no dollar price" and "free" are different facts and were rendering as one. Semrush
-        # prices this job in pre-bought API units, so its cost_view has no USD, and the price cell
-        # read "free, your own account" for the dearest option on the page.
+        # "no dollar price" and "free" are different facts: a provider priced in pre-bought API
+        # units (Semrush) has no USD in its cost_view, and is not free.
         free = any((e.get("cost") or {}).get("type") == "free" for e in peps)
         # A $0 trial row is a third fact again: served on treg.to's own free-tier key with a daily
         # allowance per team (catalog.trial_pools), so neither "free, your own account" nor a price
         # is true of it. Carry the allowance so the cell can state it.
-        # `default=0`: a row with no cost at all (TikHub's LinkedIn comments v2 carries none)
-        # has no cost_view, and an empty max() took the whole page down with a 500.
+        # `default=0`: a row with no cost at all has no cost_view, and an empty max() raises.
         trial = max(((cv.get("trial_calls_per_team_day") or 0) for e in peps
                      if (cv := cat.cost_view(e.get("cost"), e.get("provider")))), default=0)
         out.append({
@@ -1010,8 +1217,7 @@ async def use_case_job_page_nested(category: str, job: str):
     answers is free, and a moved URL that does not is the whole cost of a taxonomy change."""
     md = job.endswith(".md")
     slug = job[:-3] if md else job
-    # A renamed slug must keep redirecting from its nested shape too — this handler used to
-    # reject it before consulting the map, which turned the promised 301 into a 404.
+    # A renamed slug must keep redirecting from its nested shape too, so the map is consulted first.
     slug = agent_pages.USE_CASE_REDIRECTS.get(slug.lower(), slug)
     if slug not in agent_pages.USE_CASE_PAGES:
         raise HTTPException(status_code=404, detail="unknown use case")
@@ -1039,17 +1245,8 @@ async def use_case_job_page(request: Request, job: str,
     # so serve them before anything else; `_USE_CASES` stays the one source for which they are.
     legacy = _USE_CASES.get(raw.strip("/").lower())
     if legacy and not as_md:
-        page = _WEB_DIR / legacy
-        if not page.exists():
-            raise HTTPException(status_code=404, detail=f"{legacy} not bundled")
-        # Read-and-substitute rather than a bare FileResponse: {BASE} is templated for the
-        # canonical/og:url so each page names the serving host, not hardcoded treg.to.
-        base = get_settings().public_url.rstrip("/")
-        content = page.read_text(encoding="utf-8").replace("{BASE}", base)
-        # no-cache: these are edited against live campaign data and must never serve stale.
-        return HTMLResponse(content, headers={"Cache-Control": "no-cache"})
-    # Possessive slugs that shipped before GSC indexing: redirect to the clean slug with 301 so
-    # the canonical stays clean and search engines update before indexing the old URL.
+        return _static_page(legacy, request)
+    # Possessive slugs redirect to the clean slug with 301.
     redirect_to = agent_pages.USE_CASE_REDIRECTS.get(raw.lower())
     if redirect_to:
         return RedirectResponse(f"/use-cases/{redirect_to}" + (".md" if as_md else ""), status_code=301)
@@ -1088,8 +1285,7 @@ async def use_case_job_page(request: Request, job: str,
     noun = spec.get("result_noun", "result")
 
     # Cheapest is claimed PER BILLING UNIT. A per-call endpoint that returns a thousand rows is not
-    # dearer than a per-result one, and ranking them together names the wrong winner: 38 of the 66
-    # jobs on the menu mix units.
+    # dearer than a per-result one, and ranking them together names the wrong winner.
     cheapest_by_unit: dict[str, dict] = {}
     for pr in provs:
         u = pr["unit"]
@@ -1124,10 +1320,8 @@ async def use_case_job_page(request: Request, job: str,
     title = spec.get("title", "{sentence}: {n} providers | treg.to").format(
         sentence=spec["sentence"], n=n, agent=agent_name,
         cheapest=money(headline["usd"]) if headline else free_words)
-    # The number goes in the title. Search Console shows the pricing phrasing is what reaches this
-    # site, and a title that already names the cheapest price is the one fact a vendor's own page
-    # cannot carry. Only the compare form has a price to name; a hand-written title that already
-    # carries one is left alone.
+    # The number goes in the title. Only the compare form has a price to name; a hand-written title
+    # that already carries one is left alone.
     if form == "compare" and headline and "$" not in title and title.endswith(" | treg.to"):
         head = title[: -len(" | treg.to")]
         if head.endswith(" compared"):  # "5 verifiers compared" -> "5 verifiers, from $0.0019"
@@ -1140,7 +1334,7 @@ async def use_case_job_page(request: Request, job: str,
     bits_desc = [spec["sentence"] + "."]
     # A single provider is one of three facts, not two: an own-account connection (free), a metered
     # row on treg.to's key, or a trial pool (no USD, a daily allowance on treg.to's free-tier key,
-    # then the reader's own key). The trial case fell into `metered_single` and claimed a bill.
+    # then the reader's own key).
     trial_single = form == "short" and not provs[0]["free"] and bool(provs[0]["trial"])
     metered_single = form == "short" and not provs[0]["free"] and not trial_single
     if trial_single:
@@ -1224,14 +1418,18 @@ async def use_case_job_page(request: Request, job: str,
                 md += [f"**{head}**", "", f'> "{quote}" ({who}: {url})', "",
                        f"What this page can do about it: {answer}", ""]
         md += ["", "## What actually differs", ""] + [f"- {x}" for x in spec["notes"]]
-        md += ["", f"## {spec.get('what_is_heading', 'What is this?')}", "", spec["what_is"], "", "## Questions", ""]
+        md += ["", f"## {spec.get('what_is_heading', 'What is this?')}", "", spec["what_is"]]
+        if spec.get("failure_modes"):
+            md += ["", "## Where it goes wrong", ""]
+            for h, p in spec["failure_modes"]:
+                md += [f"**{h}** {p}", ""]
+        md += ["", "## Questions", ""]
         for q, a in spec["faq"]:
             md += [f"**{q}** {a}", ""]
         md += [f"HTML version: {base}/use-cases/{job_slug}"]
         return PlainTextResponse("\n".join(md), media_type="text/markdown; charset=utf-8",
                                  headers={"Cache-Control": "public, max-age=600"})
 
-    # ---------------------------------------------------------------- html (landing-page skin)
     ptiles = "".join(
         f'<span class="ptile" title="{_esc_html(p["name"])}">{_logo(p["domain"], p["name"])}</span>'
         for p in provs[:12] if p["domain"])
@@ -1400,15 +1598,32 @@ async def use_case_job_page(request: Request, job: str,
                       '<h2>What people actually struggle with</h2>'
                       f'<p>{_esc_html(spec.get("voices_intro", ""))}</p>{voices_html}</div></section>'
                       if spec.get("voices") else "")
-    notes = "".join(f'<h4>{_esc_html(x.split(".")[0])}.</h4><p>{_esc_html(x.split(".", 1)[1].strip())}</p>'
-                    if "." in x else f"<p>{_esc_html(x)}</p>" for x in spec["notes"])
+    note_blocks = []
+    for note in spec["notes"]:
+        first, *rest = re.split(r"(?<=\.)\s+", note, maxsplit=1)
+        tag = "h4" if first.endswith(".") else "p"
+        note_blocks.append(f"<{tag}>{_esc_html(first)}</{tag}>")
+        if rest and rest[0]:
+            note_blocks.append(f"<p>{_esc_html(rest[0])}</p>")
+    notes = "".join(note_blocks)
+
     def _related_card(lbl: str) -> str:
         href, owner = _related_link(lbl, agent_slug)
         return (f'<a class="card" href="{href}"><h4>{_esc_html(lbl)}</h4>'
                 f'<p>Another job in {_esc_html((owner or cat_label).lower())}.</p></a>')
 
+    def _extra_link_card(lbl: str, href: str, desc: str) -> str:
+        return (f'<a class="card" href="{_esc_html(href)}"><h4>{_esc_html(lbl)}</h4>'
+                f'<p>{_esc_html(desc)}</p></a>')
+
     related = "".join(_related_card(lbl) for lbl in spec.get("related", ()))
+    related += "".join(_extra_link_card(lbl, href, desc)
+                       for lbl, href, desc in spec.get("extra_links", ()))
     faq_html = "".join(f'<h3>{_esc_html(q)}</h3><p>{_esc_html(a)}</p>' for q, a in spec["faq"])
+    # Optional on a use-case page (a workflow page always has one): the same "Where it goes wrong"
+    # block, between the background and the FAQ.
+    failures = "".join(f'<h3>{_esc_html(h)}</h3><p>{_esc_html(p)}</p>'
+                       for h, p in spec.get("failure_modes", ()))
 
     # The "instead of" anchor: what the same job costs on subscriptions from the providers on this
     # page whose plan prices are recorded in marketing/landing/_facts.md, against a real run here.
@@ -1453,7 +1668,7 @@ async def use_case_job_page(request: Request, job: str,
         '<div class="ctas">'
         f'<a class="candy" href="/app?ref=uc-{_esc_html(job_slug)}">Start free</a>'
         '<a class="ghostbtn" href="#bts">See the comparison</a></div>'
-        f'<div class="trust">$1.00 of free credit on every new team &middot; no provider signup &middot; no card</div>'
+        f'<div class="trust">$1.00 of free credit once per new verified account &middot; no provider signup &middot; no card</div>'
         f'<div class="subline">{n_ver} of {len(eps)} endpoints on this page are live-verified against the provider.</div>'
         f'{provstrip}</div></div>'
 
@@ -1462,7 +1677,7 @@ async def use_case_job_page(request: Request, job: str,
         f'<h2>What&rsquo;s the best way to ask {_esc_html(agent_name)}?</h2>'
         f'<div class="steplabel"><span class="n">1</span><b>Set your agent up, once</b></div>'
         + promptbox("in your agent's chat", setup)
-        + f'<div class="steplabel"><span class="n">2</span><b>Ask for the job</b></div>'
+        + '<div class="steplabel"><span class="n">2</span><b>Ask for the job</b></div>'
         + promptbox("the prompt", spec["prompt"])
         + f'<div class="provstrip"><div class="pl">works in</div><div class="ptiles">{agent_icons}</div></div>'
         + f'<h3>Why this prompt works</h3><div class="cards">{why_cards}</div>'
@@ -1484,13 +1699,16 @@ async def use_case_job_page(request: Request, job: str,
           f'<h2>{_esc_html(spec.get("what_is_heading", "What is this?"))}</h2>'
           f'<p>{_esc_html(spec["what_is"])}</p></div></section>'
 
+        + (f'<section id="failures"><div class="wrap"><div class="seclab">The detail</div>'
+           f'<h2>Where it goes wrong</h2>{failures}</div></section>' if failures else "")
+
         + f'<section id="faq"><div class="wrap"><div class="seclab">Questions</div>'
           f'<h2>Before you start</h2>{faq_html}</div></section>'
 
         + (f'<section id="related"><div class="wrap"><div class="seclab">Related</div>'
            f'<h2>Other jobs your agent can do</h2><div class="cards">{related}</div></div></section>' if related else "")
-        + (f'<section id="workflows"><div class="wrap"><div class="seclab">Run the full sequence</div>'
-           f'<h2>Workflows that use this job</h2><div class="cards">'
+        + ('<section id="workflows"><div class="wrap"><div class="seclab">Run the full sequence</div>'
+           '<h2>Workflows that use this job</h2><div class="cards">'
            + "".join(f'<a class="card" href="/workflows/{_esc_html(ws)}"><h3>{_esc_html(wsent)}</h3>'
                      f'<p>One prompt, every step priced, with the receipt from a real run.</p></a>'
                      for ws, wsent in job_workflows)
@@ -1551,7 +1769,8 @@ async def use_cases_hub():
         '</div>' + blocks
         + '<section class="cat"><h2>Everything else</h2><div class="cap"><p style="margin:0">These are the jobs '
           'written up so far. The full menu is on the agent pages, and the whole catalog is at '
-          '<a href="/catalog">/catalog</a>. The multi-step versions are at <a href="/workflows">/workflows</a>.'
+          '<a href="/catalog">/catalog</a>. The multi-step versions are at <a href="/workflows">/workflows</a>, '
+          'and the whole sequence, chapter by chapter, is the <a href="/gtm-engineering">GTM engineering playbook</a>.'
           '</p></div></section></main>')
     ld = [{"@context": "https://schema.org", "@type": "BreadcrumbList", "itemListElement": [
         {"@type": "ListItem", "position": 1, "name": "treg.to", "item": base + "/"},
@@ -1561,8 +1780,6 @@ async def use_cases_hub():
                  "every provider that does it, compared. One treg.to key, no markup.",
                  "/use-cases", body, ld)
 
-
-# ------------------------------------------------------------------ /workflows/<slug>
 
 def _wf_use_case_link(cap: str, agent_slug: str) -> str:
     """Where a workflow step links: the use-case page for the menu row that carries this
@@ -1581,6 +1798,16 @@ async def _wf_steps(cat, observations: endpoint_stats.EndpointObservationReader,
     price per billing unit, how many providers do the step, and the observed stats when any."""
     out = []
     for name, cap, asks, ep_id, why in spec["steps"]:
+        if cap == "decision":
+            # A judgement on rows already fetched (jev), priced from DECISION_STEPS, not the catalog.
+            dec = agent_pages.DECISION_STEPS[ep_id]
+            out.append({
+                "name": name, "cap": cap, "asks": asks, "why": why, "ep": None, "ep_id": ep_id,
+                "provider": dec["provider"], "provider_name": dec["provider_name"],
+                "domain": dec["domain"], "usd": dec["usd"], "unit": dec["unit"], "providers": 1,
+                "ok_rate": None, "p50": None, "samples": 0, "link": dec["link"], "decision": True,
+            })
+            continue
         eps = [e for e in cat.for_capability(cap) if _pub(e)]
         used = next((e for e in eps if e["id"] == ep_id), None)
         cv = cat.cost_view(used.get("cost"), used.get("provider")) if used else None
@@ -1596,7 +1823,7 @@ async def _wf_steps(cat, observations: endpoint_stats.EndpointObservationReader,
             "ok_rate": st.get("ok_rate") if st.get("samples") else None,
             "p50": st.get("p50_ms") if st.get("samples") else None,
             "samples": st.get("samples") or 0,
-            "link": _wf_use_case_link(cap, agent_slug),
+            "link": _wf_use_case_link(cap, agent_slug), "decision": False,
         })
     return out
 
@@ -1649,6 +1876,8 @@ async def workflow_page(request: Request, slug: str,
     cat = catalog_store.load()
     base = get_settings().public_url.rstrip("/")
     agent_slug, agent_name = _uc_agent()
+    if spec.get("agent") in agent_pages.AGENTS:  # a workflow may name its own example agent
+        agent_slug, agent_name = spec["agent"], agent_pages.AGENTS[spec["agent"]]["name"]
     steps = await _wf_steps(cat, observations, spec, agent_slug)
     run = spec["run"]
     n_steps = len(steps)
@@ -1671,8 +1900,10 @@ async def workflow_page(request: Request, slug: str,
 
     title = spec["title"].format(n=n_steps, steps=n_steps)
     lede = spec["lede"].format(n=n_steps, steps=n_steps)
-    desc = _serp_desc(f"{spec['sentence']}. {n_steps} steps through one treg.to key, priced before "
+    desc = _serp_desc(spec.get("description") or
+                      f"{spec['sentence']}. {n_steps} steps through one treg.to key, priced before "
                       f"each call, with a real run's receipt.")
+    sections = spec.get("sections") or []
 
     if as_md:
         md = [f"# {spec['sentence']}", "", lede, "",
@@ -1684,15 +1915,18 @@ async def workflow_page(request: Request, slug: str,
                "| # | Step | What the agent asks | Provider used | Price | Success rate |", "|---|---|---|---|---|---|"]
         for i, s in enumerate(steps, 1):
             price = f"{money(s['usd'])} per {s['unit']}" if s["usd"] else "no dollar rate published"
-            rel = f"{pct(s['ok_rate'])} over {s['samples']} calls, {ms(s['p50'])} median" if s["samples"] else "not yet measured"
+            rel = (f"{pct(s['ok_rate'])} over {s['samples']} calls, {ms(s['p50'])} median" if s["samples"]
+                   else "a verdict on rows already fetched" if s["decision"] else "not yet measured")
             md.append(f"| {i} | {s['name']} | {s['asks']} | {s['provider_name']} (`{s['ep_id']}`, {s['providers']} providers, "
                       f"{base}{s['link']}) | {price} | {rel} |")
         md += [""] + [f"- {s['name']}: {s['why']}" for s in steps]
         md += ["", f"At the rates above, {rows_in} rows where every call hits comes to ${worst:,.2f}. The receipt below is what it actually cost, and why it differs.", ""]
-        md += [f"## What it actually cost", "", f"Run on {run['date']}.", ""]
+        md += ["## What it actually cost", "", f"Run on {run['date']}.", ""]
         md += [f"- {k}: {v}" for k, v in run["receipt"]]
         md += [""] + list(run["narrative"])
         md += ["", f"Download the CSV of this run: {base}{run['csv']}", ""]
+        for sec in sections:
+            md += [f"## {sec['h2']}", "", _guide_md(sec["html"]), ""]
         md += ["## Why go through treg.to", ""] + [f"- **{t}** {d}" for t, d in agent_pages.WHY_TREG]
         md += ["", "## Where it goes wrong", ""]
         for h, p in spec["failure_modes"]:
@@ -1708,7 +1942,6 @@ async def workflow_page(request: Request, slug: str,
         return PlainTextResponse("\n".join(md), media_type="text/markdown; charset=utf-8",
                                  headers={"Cache-Control": "public, max-age=600"})
 
-    # ---------------------------------------------------------------- html (use-case skin)
     seen, ptiles = set(), []
     for s in steps:
         if s["domain"] and s["provider"] not in seen:
@@ -1738,6 +1971,8 @@ async def workflow_page(request: Request, slug: str,
         return '<span style="color:var(--muted2)">no dollar rate published</span>'
 
     def rel_cell(s: dict) -> str:
+        if s["decision"]:
+            return '<span style="color:var(--muted2)">a verdict on rows already fetched</span>'
         if not s["samples"]:
             return '<span style="color:var(--muted2)">not yet measured</span>'
         return (f'{pct(s["ok_rate"])} <span style="color:var(--muted2)">({s["samples"]} calls'
@@ -1769,7 +2004,14 @@ async def workflow_page(request: Request, slug: str,
         href, owner = _related_link(lbl, agent_slug)
         return (f'<a class="card" href="{href}"><h4>{_esc_html(lbl)}</h4>'
                 f'<p>One step of this workflow, on its own{(", in " + _esc_html(owner.lower())) if owner else ""}.</p></a>')
+
+    def _extra_link_card(lbl: str, href: str, desc: str) -> str:
+        return (f'<a class="card" href="{_esc_html(href)}"><h4>{_esc_html(lbl)}</h4>'
+                f'<p>{_esc_html(desc)}</p></a>')
+
     related = "".join(_related_card(lbl) for lbl in spec.get("related", ()))
+    related += "".join(_extra_link_card(lbl, href, desc)
+                       for lbl, href, desc in spec.get("extra_links", ()))
 
     body = (
         '<div class="hero"><div class="wrap">'
@@ -1781,14 +2023,14 @@ async def workflow_page(request: Request, slug: str,
         '<div class="ctas">'
         f'<a class="candy" href="/app?ref=wf-{_esc_html(wf_slug)}">Start free</a>'
         '<a class="ghostbtn" href="#run">See the receipt</a></div>'
-        '<div class="trust">$1.00 of free credit on every new team &middot; no provider signup &middot; no card</div>'
+        '<div class="trust">$1.00 of free credit once per new verified account &middot; no provider signup &middot; no card</div>'
         f'{provstrip}</div></div>'
 
         '<section id="ask"><div class="wrap"><div class="seclab">Try it</div>'
         f'<h2>One prompt runs the whole thing</h2>'
         f'<div class="steplabel"><span class="n">1</span><b>Set your agent up, once</b></div>'
         + promptbox("in your agent's chat", setup)
-        + f'<div class="steplabel"><span class="n">2</span><b>Ask for the list</b></div>'
+        + '<div class="steplabel"><span class="n">2</span><b>Ask for the list</b></div>'
         + promptbox("the prompt", spec["prompt"])
         + f'<div class="provstrip"><div class="pl">works in</div><div class="ptiles">{agent_icons}</div></div>'
         + f'<h3>Why this prompt works</h3><div class="cards">{why_cards}</div>'
@@ -1802,10 +2044,15 @@ async def workflow_page(request: Request, slug: str,
 
         + '<section id="run"><div class="wrap"><div class="seclab">The receipt</div>'
           '<h2>What it actually cost</h2>'
-          f'<p style="color:var(--muted)">Run on {_esc_html(run["date"])}, {rows_in} companies in.</p>'
+          f'<p style="color:var(--muted)">Run on {_esc_html(run["date"])}, {rows_in} {_esc_html(run.get("rows_noun", "companies"))} in.</p>'
           f'<dl class="receipt">{receipt}</dl>{narrative}'
           f'<p><a class="ghostbtn" href="{_esc_html(run["csv"])}">Download the CSV of this run</a></p>'
           '</div></section>'
+
+        # Hand-written sections from the spec (trusted static HTML), after the receipt they quote.
+        + "".join(f'<section id="{_esc_html(sec["id"])}" class="guide"><div class="wrap">'
+                  f'<div class="seclab">{_esc_html(sec["seclab"])}</div><h2>{_esc_html(sec["h2"])}</h2>'
+                  f'{sec["html"]}</div></section>' for sec in sections)
 
         + '<section id="why"><div class="wrap"><div class="seclab">Why treg.to</div>'
           '<h2>Why go through treg.to</h2>'
@@ -1870,7 +2117,8 @@ async def workflows_hub(observations: endpoint_stats.EndpointObservationReader =
         f'</div><section class="cat"><div class="grid">{"".join(cards)}</div></section>'
         '<section class="cat"><h2>Everything else</h2><div class="cap"><p style="margin:0">The single-job '
         'versions are at <a href="/use-cases">/use-cases</a>, and the whole catalog is at '
-        '<a href="/catalog">/catalog</a>.</p></div></section></main>')
+        '<a href="/catalog">/catalog</a>. How the workflows fit together is the '
+        '<a href="/gtm-engineering">GTM engineering playbook</a>.</p></div></section></main>')
     ld = [{"@context": "https://schema.org", "@type": "BreadcrumbList", "itemListElement": [
         {"@type": "ListItem", "position": 1, "name": "treg.to", "item": base + "/"},
         {"@type": "ListItem", "position": 2, "name": "Workflows", "item": base + "/workflows"}]}]
@@ -1922,6 +2170,13 @@ _AGENTS = [("ChatGPT", "openai.png"), ("Claude", "claude-color.png"),
 
 _AGENT_CDN = "https://unpkg.com/@lobehub/icons-static-png@latest/light/"
 
+# Own-account providers whose titles/H1s lead with MCP intent instead of the generic "connect your
+# own account" pattern.
+_MCP_INTENT_PROVIDERS = {
+    "google-search-console", "google-analytics", "semrush",  # SEO and analytics
+    "snapchat-ads", "pinterest-ads", "meta-ads", "tiktok-ads", "facebook",  # ads and social
+}
+
 
 def _agent_ptiles() -> str:
     return "".join(
@@ -1967,8 +2222,342 @@ details.tl li.more a{color:var(--link);text-decoration:none}
 </style>"""
 
 
+# The hub's public share page.
+
+# Scoped to the hub page: the public stylesheet styles cards and pre blocks by their own class
+# names, so a hub page defines its few shapes here on the SAME variables (light-only, like every
+# public page). Every wide thing scrolls inside its own box; the body never scrolls sideways.
+_HUB_PAGE_CSS = """
+.hubpage h1{font-size:clamp(28px,4vw,44px);margin:6px 0 10px}
+.hubpage h2{font-family:var(--sans);font-weight:600;font-size:17px;margin:30px 0 10px}
+.hubpage h2 .muted{font-weight:400}
+.hubpage p{line-height:1.55}
+.hubpage code{font-family:var(--mono);font-size:.92em;background:var(--panel2);padding:1px 5px;border-radius:5px}
+.hubpage pre{margin:10px 0;background:var(--panel);border:1px solid var(--line);border-radius:var(--rb);padding:12px 14px;
+  font-family:var(--mono);font-size:12.5px;line-height:1.55;color:var(--ink);overflow-x:auto;white-space:pre}
+.hubpage pre code{background:none;padding:0;font-size:inherit}
+.hubpage .pricecard{display:inline-block;background:var(--surface);border:1px solid var(--line);border-radius:var(--r);
+  padding:14px 18px;margin:10px 0 6px;box-shadow:var(--shadow-sm);min-width:280px}
+.hubpage .pricecard .big{font-size:17px;font-weight:600}
+.hubpage .pill{display:inline-block;padding:1px 8px;border-radius:999px;font-size:11px;letter-spacing:.04em;
+  border:1px solid var(--teal);color:var(--teal);vertical-align:middle}
+.hubpage .scroll{overflow-x:auto;border:1px solid var(--line);border-radius:var(--rb);background:var(--surface)}
+.hubpage table{width:100%;border-collapse:collapse;font-size:13px;font-variant-numeric:tabular-nums}
+.hubpage th{font-family:var(--sans);font-weight:500;font-size:11px;letter-spacing:.06em;text-transform:uppercase;color:var(--muted);
+  text-align:left;padding:9px 12px;border-bottom:1px solid var(--line);white-space:nowrap}
+.hubpage td{padding:9px 12px;border-bottom:1px solid var(--line);vertical-align:top}
+.hubpage tr:last-child td{border-bottom:0}
+.hubpage .readme h2,.hubpage .readme h3,.hubpage .readme h4{font-size:15px;margin:16px 0 6px}
+.hubpage .readme ul{padding-left:20px}
+.hubpage ul.facts{padding-left:18px;line-height:1.7}
+.hubpage .bars{display:flex;align-items:flex-end;gap:3px;height:52px;padding-top:6px;border-bottom:1px solid var(--line)}
+.hubpage .bars i{flex:1;display:block;min-width:3px;background:var(--accent, #b9552c);opacity:.55;border-radius:2px 2px 0 0}
+.hubpage .bars i:last-child{opacity:1}
+.hubpage .axis{display:flex;justify-content:space-between;font-size:11px;color:var(--muted);margin:4px 0 10px;font-variant-numeric:tabular-nums}
+.hubpage td.num,.hubpage th.num{text-align:right}
+.hubpage .ok{color:var(--ok, #3f7a4a);font-weight:500}.hubpage .bad{color:var(--bad, #b8322a);font-weight:500}
+.hubpage .hidden{border:1px dashed var(--line2);padding:10px 14px;border-radius:var(--rb);max-width:62ch;font-size:12.5px;color:var(--muted);margin-top:22px}
+"""
+
+
+_MD_CODE = re.compile(r"`([^`]+)`")
+_MD_BOLD = re.compile(r"\*\*([^*]+)\*\*")
+
+
+def _md_lite(text: str) -> str:
+    """A maker's README as HTML: paragraphs, `#` headings, `-` lists, `code`, **bold**. Everything
+    is escaped first; no raw HTML, no images, no scripts survive. Deliberately small: the readme is
+    at most 4,000 characters of plain markdown, not a document engine."""
+    out: list[str] = []
+    para: list[str] = []
+    in_list = False
+
+    def inline(s: str) -> str:
+        s = _esc_html(s)
+        s = _MD_CODE.sub(r"<code>\1</code>", s)
+        return _MD_BOLD.sub(r"<b>\1</b>", s)
+
+    def flush() -> None:
+        nonlocal para
+        if para:
+            out.append("<p>" + inline(" ".join(para)) + "</p>")
+            para = []
+
+    for line in text.splitlines():
+        s = line.rstrip()
+        if s.startswith("#"):
+            flush()
+            if in_list:
+                out.append("</ul>"); in_list = False
+            level = min(len(s) - len(s.lstrip("#")), 3)
+            out.append(f"<h{level + 1}>{inline(s.lstrip('#').strip())}</h{level + 1}>")
+        elif s.lstrip().startswith("- "):
+            flush()
+            if not in_list:
+                out.append("<ul>"); in_list = True
+            out.append("<li>" + inline(s.lstrip()[2:]) + "</li>")
+        elif not s.strip():
+            flush()
+            if in_list:
+                out.append("</ul>"); in_list = False
+        else:
+            if in_list:
+                out.append("</ul>"); in_list = False
+            para.append(s.strip())
+    flush()
+    if in_list:
+        out.append("</ul>")
+    return "\n".join(out)
+
+
+async def _hub_recent_runs(db: AsyncSession, tool_id: str, maker_org_id: int, *, last: int = 20) -> dict:
+    """The public run log: the last `last` runs by
+    OTHERS and runs per day for 30 days. Per run: when, outcome, duration, steps, units (a
+    per_unit tool's count), the price paid. Never who called, never the inputs, never the output;
+    `units` is the one integer read out of the stored output, nothing else leaves it."""
+    from datetime import timedelta
+    from sqlalchemy import func, select as _select
+    from ..models import HubRun
+    now = _utcnow_naive()
+    since = now - timedelta(days=30)
+    where = (HubRun.tool_id == tool_id, HubRun.caller_org_id != maker_org_id,
+             HubRun.version > 0, HubRun.started_at >= since)
+    rows = (await db.execute(
+        _select(HubRun.started_at, HubRun.status, HubRun.duration_ms, HubRun.steps, HubRun.price_micro, HubRun.output)
+        .where(*where).order_by(HubRun.started_at.desc()).limit(last))).all()
+    day = func.date(HubRun.started_at)
+    per_day = {str(d): int(n) for d, n in (await db.execute(
+        _select(day, func.count(HubRun.id)).where(*where).group_by(day))).all()}
+    totals = {str(s): int(n) for s, n in (await db.execute(
+        _select(HubRun.status, func.count(HubRun.id)).where(*where).group_by(HubRun.status))).all()}
+    days = [(since + timedelta(days=i + 1)).date().isoformat() for i in range(30)]
+    counts = [per_day.get(d, 0) for d in days]
+    runs = []
+    for started, status, ms, steps, price, output in rows:
+        units = output.get("units") if isinstance(output, dict) else None
+        runs.append({"when": started.strftime("%Y-%m-%d %H:%M"), "ok": status == "ok",
+                     "ms": int(ms or 0), "steps": int(steps or 0),
+                     "units": units if isinstance(units, int) and not isinstance(units, bool) else None,
+                     "price_micro": int(price or 0)})
+    n = sum(counts)
+    return {"runs": runs, "per_day": counts, "days": days, "total": n,
+            "ok": totals.get("ok", 0), "failed": n - totals.get("ok", 0)}
+
+
+async def _hub_reliability(db: AsyncSession, tool_id: str, maker_org_id: int) -> dict:
+    """Runs by OTHERS, 30 days: count, success share, median duration. Counts only; never who."""
+    from datetime import timedelta
+    from sqlalchemy import select as _select
+    from ..models import HubRun
+    since = _utcnow_naive() - timedelta(days=30)
+    rows = (await db.execute(
+        _select(HubRun.status, HubRun.duration_ms)
+        .where(HubRun.tool_id == tool_id, HubRun.caller_org_id != maker_org_id,
+               HubRun.version > 0, HubRun.started_at >= since))).all()
+    n = len(rows)
+    ok = sum(1 for s, _ in rows if s == "ok")
+    durs = sorted(d for _, d in rows if d)
+    median = durs[len(durs) // 2] if durs else 0
+    return {"runs": n, "ok": ok, "ok_pct": round(100 * ok / n) if n else None, "median_ms": median}
+
+
+@app.get("/hub/{tool_id}.md", include_in_schema=False)
+@app.get("/hub/{tool_id}", include_in_schema=False)
+async def hub_page(request: Request, tool_id: str, db: AsyncSession = Depends(get_session)):
+    """One hub tool, for a person or an agent that was handed the id: summary, readme, inputs,
+    output, the price line, health, version, the exact call line, the check trace. Never the
+    script, the maker's tools, or a key. `.md` serves the same page as Markdown. Readable without
+    sign-in; calling needs a token and balance. Not in the sitemap and `noindex`: a hub tool is
+    shared by its id, not found by search (round 1 q7)."""
+    from ..application import hub as hub_app
+    from ..models import Org
+    as_md = request.url.path.endswith(".md")
+    raw = tool_id[:-3] if tool_id.endswith(".md") else tool_id
+    from .hub_gate import hub_visible
+    visible, reader = await hub_visible(request, db)
+    if not visible:
+        raise HTTPException(status_code=404, detail="Not Found")
+    row = await hub_app.tool_for(db, raw, caller_slug=reader[0], caller_email=reader[1])
+    if row is None:
+        if await hub_app.is_rejected(db, hub_app.split_id(raw)[0]):
+            raise HTTPException(status_code=410, detail=(
+                "treg's review rejected this hub tool: it cannot be called by other teams"))
+        raise HTTPException(status_code=404, detail="no such hub tool")
+    org = await db.get(Org, row.org_id)
+    maker = org.slug if org else ""
+    base = get_settings().public_url.rstrip("/")
+    m = row.manifest
+    inputs = m.get("inputs", {})
+    out = m.get("output", {})
+    fields = out.get("fields") if isinstance(out, dict) and "fields" in out else list(out)
+    example = {k: v.get("example", v.get("default")) for k, v in inputs.items() if "example" in v or "default" in v}
+    example = {k: v for k, v in example.items() if v not in ("", None, 0)}
+    example_json = json.dumps(example)
+    from ..domain.hub import PAY_NOTE as HUB_PAY_NOTE, fees_label as hub_fees_label, price_label as hub_price_label, stored_pricing
+    pricing = stored_pricing({"price_usd": row.price_micro / 1_000_000, **m})
+    hosts = await hub_app.own_hosts(db, row)
+    raw_rng = (await hub_app.price_ranges(db, {row.tool_id: m})).get(row.tool_id)
+    price_usd = hub_app.worst_usd(m, row.price_micro, raw_rng) or 0.0             # the most a run has cost, for the Offer
+    label = hub_price_label(m)
+    fees = any("." in u for u in m.get("uses", []))
+    if pricing["mode"] == "charge":
+        price_line = f"seller {label}" + hub_fees_label(m, raw_rng)
+        per_k = "the script sets each run's price, never above the cap"
+    else:
+        p_usd = pricing["price_usd"]
+        price_line = (f"seller ${p_usd:.6g}" if p_usd else "free") + hub_fees_label(m, raw_rng)
+        per_k = f"${p_usd * 1000:,.2f} per 1,000 runs" if p_usd else "no seller price"
+    rng = hub_app.with_range(m, raw_rng)
+    price_range = rng["price_range"]
+    range_note = (f"what {rng['price_samples']} recent run{'s' if rng['price_samples'] != 1 else ''} cost, provider fees and the seller's price together"
+                  if rng["price_samples"] else ("no run yet: the seller's price, plus the provider fees" if fees else "no run yet"))
+    chk = row.check_result or {}
+    checked_at = str(chk.get("checked_at") or "")[:16].replace("T", " ")
+    rel = await _hub_reliability(db, row.tool_id, row.org_id)
+    runlog = await _hub_recent_runs(db, row.tool_id, row.org_id) if getattr(row, "public_log", True) else None
+    caps = m.get("limits", {})
+    kind = "script, sandboxed" if row.kind == "script" else f"{len(m.get('steps', []))} steps"
+    older = await _hub_older_versions(db, row)
+    title = f"{row.name} · a hub tool by {maker}"
+    desc = _serp_desc(row.summary)
+
+    from ..application.hub.health import health_of
+    hstate = (await health_of(db, row.tool_id, row.version, row.check_result)).state
+    health_word = ("failing (the last 3 runs failed)" if hstate == "failing"
+                   else "healthy" if chk.get("status") == "passed" and row.status == "live" else row.status)
+    if as_md:
+        md = [f"# {row.name}", "", f"`{row.tool_id}` · a hub tool by **{maker}** · v{row.version} · {row.status}", "",
+              row.summary, "", f"**Price:** {price_range} — {range_note}. {price_line} ({per_k}); {HUB_PAY_NOTE}.", "",
+              "## Call it", "", "```", f"treg call {row.tool_id} --data '{example_json}'", "",
+              f"POST {base}/call/{row.tool_id}    X-Treg-Token · Content-Type: application/json · body {example_json}", "```", "",
+              f"Your agent: `catalog_get(\"{row.tool_id}\")` then `call`. Needs a treg token and balance.", "",
+              "## Inputs", "", "| name | type | default | example | note |", "|---|---|---|---|---|"]
+        for k, v in inputs.items():
+            dflt = json.dumps(v["default"]) if "default" in v else "required"
+            md.append(f"| {k} | {v.get('type', '')}{(' ≤ ' + str(v['max'])) if 'max' in v else ''} | {dflt} | {v.get('example', '')} | {v.get('note', '')} |")
+        md += ["", "## Output", "", ", ".join(f"`{f}`" for f in fields), "",
+               "## About", "", row.readme, "",
+               "## Health", "", f"{health_word} · check {chk.get('status') or '-'}{(' at ' + checked_at) if checked_at else ''} · "
+               f"{rel['runs']} runs by others in 30 days" + (f", {rel['ok_pct']}% ok, {rel['median_ms']} ms median" if rel["runs"] else ""), "",
+               "## Made of", "", f"made of {len(m.get('uses', []))} tool(s) (catalog tools and the maker's own; names and keys hidden) · {kind} · "
+               + (f"sends your inputs to the maker's own server at {', '.join(hosts)} · " if hosts else "")
+               + f"{caps.get('wall_s', 120)} s · {caps.get('steps', 20)} calls max", ""]
+        if runlog is not None:
+            md += [f"## Recent runs (30 days: {runlog['total']} runs, {runlog['ok']} ok, {runlog['failed']} failed)", "",
+                   "| when | outcome | ms | steps | units | price_usd |", "|---|---|---|---|---|---|"]
+            md += [f"| {r['when']} | {'ok' if r['ok'] else 'failed'} | {r['ms']} | {r['steps']} | "
+                   f"{r['units'] if r['units'] is not None else '-'} | {r['price_micro'] / 1e6:.6g} |" for r in runlog["runs"]]
+            md += ["", "Never shown: who called, the inputs, the output.", ""]
+        if older:
+            md += ["## Versions", ""] + [f"- v{v['version']} callable as `{row.tool_id}@{v['version']}` until {v['until']}" for v in older] + [""]
+        md += ["This page never shows the script, the maker's tools, or any key. A caller sees the trace of their own run only.", ""]
+        return PlainTextResponse("\n".join(md), media_type="text/markdown; charset=utf-8",
+                                 headers={"X-Robots-Tag": "noindex"})
+
+    e = _esc_html
+    rows_html = "".join(
+        f"<tr><td><code>{e(k)}</code></td><td>{e(v.get('type', ''))}{(' ≤ ' + e(str(v['max']))) if 'max' in v else ''}</td>"
+        f"<td>{e(json.dumps(v['default'])) if 'default' in v else '<span class=\"muted\">required</span>'}</td>"
+        f"<td>{e(str(v.get('example', '')))}</td><td>{e(str(v.get('note', '')))}</td></tr>"
+        for k, v in inputs.items())
+    # The check trace shows the SHAPE of the run (waves, steps, outcome, cost, time), never what
+    # each step called: a catalog id or an own-tool name is the maker's recipe.
+    def _what(call: str) -> str:
+        return "a catalog tool" if "." in call.split("/", 1)[0] else "the maker's own tool"
+    trace_html = "".join(
+        f"<tr><td>{e(str(s.get('wave', '')))}</td><td>{e(str(s.get('name', '')))}</td><td>{e(_what(str(s.get('call', ''))))}</td>"
+        f"<td>{e(str(s.get('outcome', '')))} {e(str(s.get('status') or ''))}</td><td>{e(str(s.get('cost_micro', 0)))} µ$</td><td>{e(str(s.get('ms', '')))} ms</td></tr>"
+        for s in (chk.get("trace") or []))
+    older_html = "".join(f"<li>v{v['version']} callable as <code>{e(row.tool_id)}@{v['version']}</code> until {v['until']}</li>" for v in older)
+    body = f"""
+<main class="hubpage" style="max-width:900px;margin:0 auto;padding:24px 22px 60px">
+  <p class="muted" style="font-size:13px"><code>{e(row.tool_id)}</code> · <span class="pill">HUB</span> · by <b>{e(maker)}</b> · v{row.version}</p>
+  <h1 style="margin:4px 0 8px">{e(row.name)}</h1>
+  <p style="max-width:66ch">{e(row.summary)}</p>
+  <div class="pricecard">
+    <div class="big">{e(price_range)}</div>
+    <div class="muted" style="font-size:12px">{e(range_note)}</div>
+    <div class="muted" style="font-size:12px">{e(price_line)} · {e(per_k)} · {e(HUB_PAY_NOTE)}</div>
+    <div style="margin-top:8px;font-size:13px">{e(health_word)}{(' · checked ' + e(checked_at)) if checked_at else ''}</div>
+  </div>
+
+  <h2>Call it</h2>
+  <pre><code>treg call {e(row.tool_id)} --data '{e(example_json)}'
+
+curl -X POST {e(base)}/call/{e(row.tool_id)} \\
+  -H "X-Treg-Token: $TREG_TOKEN" -H "Content-Type: application/json" \\
+  -d '{e(example_json)}'</code></pre>
+  <p class="muted" style="font-size:13px">Needs a treg token and balance. Your agent: <code>catalog_get("{e(row.tool_id)}")</code> then <code>call</code>. This page as text: <a href="/hub/{e(row.tool_id)}.md">/hub/{e(row.tool_id)}.md</a>.</p>
+
+  <h2>Inputs</h2>
+  <div class="scroll"><table><tr><th>Name</th><th>Type</th><th>Default</th><th>Example</th><th>Note</th></tr>{rows_html}</table></div>
+
+  <h2>Output</h2>
+  <p>{", ".join(f"<code>{e(f)}</code>" for f in fields)}</p>
+
+  <h2>About</h2>
+  <div class="readme" style="max-width:66ch">{_md_lite(row.readme)}</div>
+
+  <h2>The check <span class="muted" style="font-size:12px">(run at publish, for real)</span></h2>
+  {('<div class="scroll"><table><tr><th>Wave</th><th>Step</th><th>Called</th><th>Result</th><th>Cost</th><th>ms</th></tr>' + trace_html + '</table></div>') if trace_html else '<p class="muted">no trace recorded</p>'}
+  <p class="muted" style="font-size:12px">{e(chk.get('status') or '-')}{(' at ' + e(checked_at)) if checked_at else ''}</p>
+
+  {_hub_runlog_html(runlog)}
+  <h2>Made of</h2>
+  <ul class="facts">
+    <li>made of {len(m.get('uses', []))} tool(s) <span class="muted">(catalog tools and the maker's own; names and keys hidden)</span></li>
+    {f'<li>sends your inputs to the maker&#39;s own server at <b>{e(", ".join(hosts))}</b>; what answers there can change without a new version</li>' if hosts else ''}
+    <li>{e(kind)} · {caps.get('wall_s', 120)} s · {caps.get('steps', 20)} calls max</li>
+    {('<li>data uploaded with the tool: ' + str(max(0, row.data.count(chr(10)) + (0 if row.data.endswith(chr(10)) else 1) - 1)) + ' rows</li>') if getattr(row, 'data', None) else ''}
+    <li>Reliability, 30 days: {rel['runs']} runs by others{(' · ' + str(rel['ok_pct']) + '% ok · ' + str(rel['median_ms']) + ' ms median') if rel['runs'] else ''}</li>
+    {('<li>Older versions: <ul>' + older_html + '</ul></li>') if older_html else ''}
+  </ul>
+  <p class="hidden">This page never shows the script, the maker's tools, or any key. A caller sees the trace of their own run only.</p>
+</main>"""
+    ld = [{"@context": "https://schema.org", "@type": "SoftwareApplication", "name": row.name,
+           "description": row.summary, "applicationCategory": "DeveloperApplication",
+           "offers": {"@type": "Offer", "price": f"{price_usd:.6g}", "priceCurrency": "USD"}}]
+    return _page(title, desc, f"/hub/{row.tool_id}", body, ld, nav_current="",
+                 head_extra='<meta name="robots" content="noindex"/>\n<style>' + _HUB_PAGE_CSS + '</style>')
+
+
+def _hub_runlog_html(runlog: dict | None) -> str:
+    """The recent-runs section of the public page; empty when the maker switched the log off."""
+    if runlog is None:
+        return ""
+    e = _esc_html
+    peak = max(runlog["per_day"] or [0]) or 1
+    bars = "".join(f'<i style="height:{max(4, round(100 * c / peak)) if c else 0}%"></i>' for c in runlog["per_day"])
+    rows = "".join(
+        f"<tr><td>{e(r['when'])}</td><td>{'<span class=\"ok\">ok</span>' if r['ok'] else '<span class=\"bad\">failed</span>'}</td>"
+        f"<td class=\"num\">{r['ms']:,}</td><td class=\"num\">{r['steps']}</td>"
+        f"<td class=\"num\">{r['units'] if r['units'] is not None else '—'}</td>"
+        f"<td class=\"num\">${r['price_micro'] / 1e6:.6g}</td></tr>" for r in runlog["runs"])
+    table = (f'<div class="scroll"><table><tr><th>When (UTC)</th><th>Outcome</th><th class="num">ms</th>'
+             f'<th class="num">Steps</th><th class="num">Units</th><th class="num">Price paid</th></tr>{rows}</table></div>'
+             if rows else '<p class="muted">no runs by others in the last 30 days</p>')
+    return (f'<h2>Recent runs <span class="muted" style="font-size:12px">(30 days: {runlog["total"]} runs, '
+            f'{runlog["ok"]} ok, {runlog["failed"]} failed)</span></h2>'
+            f'<div class="bars">{bars}</div><div class="axis"><span>{e(runlog["days"][0])}</span><span>runs per day</span><span>today</span></div>'
+            f'{table}'
+            f'<p class="muted" style="font-size:12.5px">Never shown: who called, the inputs, the output. A failed run pays the seller nothing.</p>')
+
+
+async def _hub_older_versions(db: AsyncSession, row) -> list[dict]:
+    from datetime import timedelta
+    from sqlalchemy import select as _select
+    from ..application import hub as hub_app
+    from ..models import HubTool
+    olds = (await db.execute(_select(HubTool).where(HubTool.tool_id == row.tool_id, HubTool.status == "live",
+                                                    HubTool.version < row.version).order_by(HubTool.version.desc()))).scalars().all()
+    return [{"version": o.version, "until": (row.created_at + timedelta(days=hub_app.OLD_VERSION_DAYS)).date().isoformat()}
+            for o in olds]
+
+
 @app.get("/tools/{service}", include_in_schema=False)
-async def tools_provider(service: str, db: AsyncSession = Depends(get_session)):
+async def tools_provider(service: str, db: AsyncSession = Depends(get_session),
+                         observations: endpoint_stats.EndpointObservationReader = Depends(
+                             _endpoint_observation_reader)):
     """One provider's public page, in the use-case pages' skin (usecase.css): hero on the two
     measured terms — "{provider} api pricing" (what Search Console shows people typing) and
     "{provider} mcp" — the agent->treg->provider flow, setup (agent one-liner first), a prompt
@@ -1978,15 +2567,17 @@ async def tools_provider(service: str, db: AsyncSession = Depends(get_session)):
     all_eps = cat.for_provider(service)
     if not all_eps:
         raise HTTPException(status_code=404, detail=f"unknown provider {service!r}")
+    # Full provider inventory includes helpers and account management; the browse census
+    # deliberately excludes them. Access labels below distinguish platform offers from BYOK.
     # Fresh name on purpose: from here on the page prints the CATALOG's spelling of the provider,
     # never the request's. (Same idiom as the use-case pages; it is also what reads as a taint
     # kill to CodeQL, which cannot see _esc_html as a sanitizer.)
     svc = all_eps[0]["provider"]
-    eps = [e for e in all_eps if _pub(e)] or [e for e in all_eps if e.get("kind") != "routed"]
+    eps = [e for e in all_eps if e.get("kind") != "routed" and not e.get("status")]
     if not eps:
-        # The first-party "treg" pseudo-provider is nothing but routed meta-rows. Without this a
-        # self-referential /tools/treg page rendered (and reached the sitemap) — the fallback above
-        # resurrects hidden kinds for providers whose real rows are all utility, never routed ones.
+        # The first-party "treg" pseudo-provider is nothing but routed meta-rows and gets no page:
+        # the fallback above resurrects hidden kinds for providers whose real rows are all utility,
+        # never routed ones.
         raise HTTPException(status_code=404, detail=f"unknown provider {service!r}")
     display = _provider_display(svc)
     esc_d = _esc_html(display)
@@ -1996,11 +2587,28 @@ async def tools_provider(service: str, db: AsyncSession = Depends(get_session)):
     blurb = (getattr(reg, "summary", "") or "") if reg else ""
     base_api = (getattr(reg, "base_url", "") or "") if reg else ""
     docs_url = (getattr(reg, "docs_url", "") or "") if reg else ""
-    prices = [c for e in eps if (c := cat.cost_view(e.get("cost"), e.get("provider"))) and c["usd"]]
-    # Own-account vs metered is read off the INVENTORY, not the credential registry: nearly every
-    # provider is in oauth_providers (that is how a team registers its own key), but only a
-    # provider with no priced endpoint at all is genuinely connect-your-own-account.
-    is_oauth = not prices
+    # Both halves of tier 4, as `no_key_needed` in mcp.py: a priceable row is servable only where this
+    # deploy holds an enabled key for the provider; an eligible-but-keyless row refuses at call time.
+    served = bool(get_settings().platform_key_for(svc))
+    # An anonymous row needs no key, only the provider allow-list (`anonymous_served`).
+    from ..application.call.resolve import anonymous_served
+    public = bool(reg and reg.auth_kind == "public")
+    # Keyless rows run with no key at all (resolve tries them before treg's key), so they are never
+    # counted as treg's key; for a public provider they are its whole served surface.
+    keyless_eps = [e for e in eps if anonymous_served(e) is not None]
+    platform_eps = (keyless_eps if public else
+                    [e for e in eps if e not in keyless_eps and cat.platform_eligible(e) and served])
+    byok_only = len(eps) - len(platform_eps) - (0 if public else len(keyless_eps))
+    key_auth = bool(reg and reg.auth_kind == "key")
+    oauth_metered = bool(reg and reg.platform_billed and svc in get_settings().oauth_billed_set)
+    mixed = bool(platform_eps and byok_only and key_auth)
+    prices = [c for e in platform_eps if (c := cat.cost_view(e.get("cost"), e.get("provider"))) and c["usd"]]
+    # Published prices do not remove the OAuth account-connection requirement.
+    # A public provider has no account to connect even where this server has not enabled it. A key
+    # provider without its key reads as own-key, as on main; its keyless rows carry their own label.
+    is_oauth = bool(reg and reg.auth_kind == "oauth") or (not platform_eps and not public)
+    # A public provider this server has not allow-listed: nothing to connect, but nothing callable either.
+    public_off = public and not platform_eps
     cheapest = _price_label(min(prices, key=lambda c: c["usd"])) if prices else ""
     verified = len([e for e in eps if e["verified"]])
     plat_label = {sl: pl["label"] for sl, pl in cat.platforms.items()}
@@ -2023,12 +2631,12 @@ async def tools_provider(service: str, db: AsyncSession = Depends(get_session)):
         task_lines.append(d[0].lower() + d[1:])
         if len(task_lines) == 3:
             break
-    sample_eps = sorted([e for e in eps if e["verified"]], key=lambda e: len(e["id"])) or eps
+    sample_eps = sorted([e for e in (platform_eps or eps) if e["verified"]], key=lambda e: len(e["id"])) or platform_eps or eps
     sample_id = sample_eps[0]["id"]
-    badge = "YOUR ACCOUNT" if is_oauth else "NO SIGNUP"
+    badge = "PLATFORM + BYOK" if mixed else ("YOUR ACCOUNT" if is_oauth else "NO SIGNUP")
     # The measured line: what treg.to has actually observed calling this provider. It is the one
     # thing a vendor's own pricing page cannot print, and it goes above the fold for that reason.
-    obs = await _observed_or_empty(db, [e["id"] for e in eps])
+    obs = await _observed_or_empty(observations, [e["id"] for e in eps])
     o_samples = sum(int(o.get("samples") or 0) for o in obs.values())
     # The provider-wide rate weights each endpoint's published rate by the calls that DECIDED it
     # (2xx + 5xx). `samples` still counts callers' 4xx, so weighting by it would let one team's
@@ -2056,18 +2664,44 @@ async def tools_provider(service: str, db: AsyncSession = Depends(get_session)):
         if len(demo_eps) == 3:
             break
 
-    kicker = (f"{len(eps)} tools · your own account · never metered" if is_oauth
-              else f"{len(eps)} tools · from {_esc_html(cheapest)} · $0.000 markup")
+    kicker = (f"{len(eps)} tools · not enabled on this server" if public_off
+              else f"{len(eps)} tools · your own account · never metered"
+              + (f" · {len(keyless_eps)} free, no key" if keyless_eps else "") if is_oauth
+              else f"{len(eps)} tools · " + (f"from {_esc_html(cheapest)}" if cheapest else "free") + " · $0.000 markup")
     if measured:
         kicker += f" · {_esc_html(measured)}"
-    lede = (f"{_esc_html(blurb)} Connect your own {esc_d} account once and your agent uses it "
+    mcp_intent = svc in _MCP_INTENT_PROVIDERS
+    lede = (f"{_esc_html(blurb)} One MCP server for the whole catalog. Connect your own {esc_d} "
+            "account once and your agent uses it from then on. Calls on your own connection are never metered."
+            if is_oauth and mcp_intent else
+            f"{_esc_html(blurb)} Connect your own {esc_d} account once and your agent uses it "
             "from then on, through one treg.to token. Calls on your own connection are never metered."
             if is_oauth else
+            f"{_esc_html(blurb)} {esc_d} is a public API with no key and nothing to connect; this server "
+            "has not enabled it, so its tools are not callable here unless your team registers its own tool for its host."
+            if public_off else
+            f"{_esc_html(blurb)} {len(eps)} tools for your agent through one treg.to key. {esc_d} is a "
+            "public API: free, no key, nothing to connect."
+            if public else
             f"{_esc_html(blurb)} {len(eps)} tools for your agent through one treg.to key, priced "
             f"at the provider's own rate{' from ' + _esc_html(cheapest) if cheapest else ''}, with no {esc_d} signup.")
-    h1_text = (f"{esc_d}: connect your own account" if is_oauth
+    h1_text = (f"{esc_d} MCP: connect your own account" if is_oauth and mcp_intent
+               else f"{esc_d}: connect your own account" if is_oauth
                else (f"{esc_d}: {len(eps)} tools from {_esc_html(cheapest)}" if cheapest
                      else f"{esc_d}: {len(eps)} tools"))
+    if mixed:
+        kicker = (f"{len(eps)} tools · {len(platform_eps)} platform + BYOK · {byok_only} BYOK only"
+                  + (f" · {len(keyless_eps)} free, no key" if keyless_eps else ""))
+        h1_text = f"{esc_d}: {len(eps)} tools, platform or your own key"
+        lede = (f"{_esc_html(blurb)} {len(platform_eps)} tools support treg's platform key. "
+                f"All {len(eps)} support your own {esc_d} key; {byok_only} require it. "
+                "Your own key always wins and treg does not meter those calls.")
+    if oauth_metered:
+        kicker = f"{len(eps)} tools · OAuth connection · metered"
+        # The H1 above still says "MCP" for an MCP-intent provider, so the lede must too.
+        lede = (f"{_esc_html(blurb)} {'One MCP server for the whole catalog. ' if mcp_intent else ''}"
+                f"Connect your own {esc_d} account. "
+                "Calls through treg's OAuth app are metered under this server's billing policy.")
     hero = (
         '<div class="hero"><div class="wrap">'
         '<div class="trust" style="margin:0 0 18px"><a href="/">treg.to</a> / '
@@ -2079,28 +2713,32 @@ async def tools_provider(service: str, db: AsyncSession = Depends(get_session)):
         f'<a class="ghostbtn" href="#tools">See all {len(eps)} tools</a>'
         + (f'<a class="ghostbtn" href="{_esc_html(docs_url)}" target="_blank" rel="noopener">API docs ↗</a>'
            if docs_url else "") + "</div>"
-        '<div class="trust">$1.00 of free credit on every new team · no provider signup · no card</div>'
+        '<div class="trust">$1.00 of free credit once per new verified account · no card · platform tools need no provider signup</div>'
         + (f'<div class="subline">{verified} of {len(eps)} tools on this page are live-verified '
            "against the provider.</div>" if verified else "")
         + f'<div class="provstrip"><div class="pl">works in</div><div class="ptiles">{_agent_ptiles()}</div></div>'
         "</div></div>")
 
     flow = (
-        '<section id="flow"><div class="wrap"><div class="seclab">What your agent can now do</div>'
+        '<section id="flow"><div class="wrap"><div class="seclab">'
+        + ("What your agent could do once this server enables it" if public_off else "What your agent can now do")
+        + "</div>"
         f"<h2>{esc_d}, one prompt away</h2>"
         '<div class="fx">'
         '<div class="fp"><div class="tag">AGENT</div>'
         f'<div class="agrow">{_agent_ptiles()}</div>'
-        + "".join(f'<div class="t"><span>{_esc_html(t)}</span><i>✓</i></div>' for t in task_lines)
+        + "".join(f'<div class="t"><span>{_esc_html(t)}</span>' + ("" if public_off else "<i>✓</i>") + "</div>"
+                  for t in task_lines)
         + "</div>"
         '<div class="ar">→</div>'
         '<div class="fp dk"><div class="b"><span>▚</span> treg</div>'
         + "".join(
             f'<div class="c">$ treg call <em>{_esc_html(e["id"])}</em></div>'
-            f'<div class="cr"><i>✓ 200</i>'
-            + (f" · {_esc_html(pl)}"
-               if (pl := _price_label(cat.cost_view(e.get("cost"), e.get("provider")))) else "")
-            + "</div>"
+            + ('<div class="cr"><i>✗ refused</i> · not enabled on this server</div>' if public_off else
+               '<div class="cr"><i>✓ 200</i>'
+               + (f" · {_esc_html(pl)}"
+                  if (pl := _price_label(cat.cost_view(e.get("cost"), e.get("provider")))) else "")
+               + "</div>")
             for e in demo_eps)
         + '<div class="c" style="opacity:.55">$ _</div></div>'
         '<div class="ar">→</div>'
@@ -2110,7 +2748,8 @@ async def tools_provider(service: str, db: AsyncSession = Depends(get_session)):
         f'<b>{esc_d}</b><span class="bdg">{badge}</span></div>'
         f'<div class="sm">{_esc_html(blurb) or esc_d + " through one treg.to token."}</div>'
         f'<div class="ct">⚒ {len(eps)} TOOLS'
-        + ("" if is_oauth else " · metered per call") + "</div></div>"
+        + (" · platform + BYOK" if mixed else "" if is_oauth else " · not enabled on this server" if public_off else " · free, no key" if public
+           else " · metered per call") + "</div></div>"
         "</div>"
         + (f'<p style="font-size:12.5px;color:var(--muted);margin-top:12px">{_esc_html(category)}'
            f"{' · ' if category and base_api else ''}<code>{_esc_html(base_api)}</code></p>"
@@ -2139,7 +2778,7 @@ async def tools_provider(service: str, db: AsyncSession = Depends(get_session)):
         f"<code>{_esc_html(base)}/mcp</code> (HTTP transport).</p></div>"
         f'<div class="card"><h4>CLI</h4><p><code>curl -fsSL {_esc_html(base)}/install.sh | sh</code></p></div>'
         '<div class="card"><h4>Plain HTTP</h4><p>LangChain, CrewAI or any code: '
-        "<code>/call/&lt;tool-id&gt;</code> with a Bearer token. No SDK.</p></div>"
+        "<code>/call/&lt;tool-id&gt;</code> + <code>X-Treg-Token: &lt;token&gt;</code>. No SDK.</p></div>"
         "</div></div></section>")
 
     prompt = (f"Using treg, {task_lines[0]}. Show me the price first." if task_lines
@@ -2152,9 +2791,9 @@ async def tools_provider(service: str, db: AsyncSession = Depends(get_session)):
         f"<pre>{_esc_html(prompt)}</pre></div>"
         '<h3>Run one directly</h3>'
         '<div class="sample"><div class="sbar">'
-        + ("a live-verified call" if sample_eps[0]["verified"] else "a call") + "</div>"
-        "<pre>curl -H \"Authorization: Bearer $TREG_TOKEN\" \\\n"
-        f"  \"{_esc_html(base)}/call/{_esc_html(sample_id)}\"</pre></div>"
+        + ("a call this server refuses until it enables this provider" if public_off else
+           "a live-verified call" if sample_eps[0]["verified"] else "a call") + "</div>"
+        f"<pre>{_esc_html(catalog_store.call_template(sample_eps[0]).replace('https://treg.to', base))}</pre></div>"
         "</div></section>")
 
     alt_names = sorted({e["provider"] for e in cat.endpoints
@@ -2166,34 +2805,73 @@ async def tools_provider(service: str, db: AsyncSession = Depends(get_session)):
         + ("<div class=\"card\"><h4>Your account, held safely</h4><p>Connect once; treg.to keeps the "
            "credential server-side and injects it per call. No key on any machine.</p></div>"
            if is_oauth else
+           f"<div class=\"card\"><h4>No {esc_d} signup</h4><p>Its tools need no key: "
+           "there is nothing to connect.</p></div>"
+           if public_off else
+           f"<div class=\"card\"><h4>No {esc_d} signup</h4><p>Its tools are free and need no key: "
+           "there is nothing to connect.</p></div>"
+           if public else
            f"<div class=\"card\"><h4>No {esc_d} signup</h4><p>Eligible tools run on treg.to's key, "
            "metered per call from a prepaid balance.</p></div>")
-        + '<div class="card"><h4>Price before the call</h4><p>The provider&#x27;s own rate, $0.000 '
-        'markup. <a href="/pricing">How billing works</a>.</p></div>'
-        '<div class="card"><h4>No subscription, no seats</h4><p>Charged per call. $1.00 free per '
-        "new team, no card to start.</p></div>"
-        f'<div class="card"><h4>Your own {esc_d} key is free</h4><p>Register it and those calls are '
-        "never metered. Your key always wins.</p></div>"
-        '<div class="card"><h4>Switch by changing a word</h4><p>Another provider is a different '
+        + ('<div class="card"><h4>Not enabled here</h4><p>This server has not enabled these tools, '
+           'so calls are refused unless your team registers its own tool for its host.</p></div>' if public_off else
+           '<div class="card"><h4>Free</h4><p>No charge per call and no markup.</p></div>' if public else
+           '<div class="card"><h4>Price before the call</h4><p>The provider&#x27;s own rate, $0.000 '
+           'markup. <a href="/pricing">How billing works</a>.</p></div>')
+        + ('<div class="card"><h4>Account billing</h4><p>'
+           + ("Calls through treg's OAuth app are metered under this server's billing policy."
+              if oauth_metered else "Calls through your own connection are not metered by treg.")
+           + '</p></div>' if is_oauth else
+           '<div class="card"><h4>No subscription, no seats</h4><p>Once this server enables it, a free '
+           'treg.to account is all it takes: no card, and no account with the provider.</p></div>'
+           if public_off else
+           '<div class="card"><h4>No subscription, no seats</h4><p>A free treg.to account is all it '
+           'takes: no card, and no account with the provider.</p></div>' if public else
+           '<div class="card"><h4>No subscription, no seats</h4><p>Platform calls are charged per call. '
+           '$1.00 free per new team, no card to start.</p></div>')
+        + (f'<div class="card"><h4>Your own {esc_d} key is free</h4><p>Register it and those calls are '
+           "never metered. Your key always wins.</p></div>" if key_auth else
+           f'<div class="card"><h4>Nothing to connect</h4><p>{esc_d} is a public API: '
+           "no account, no key.</p></div>" if public else
+           '<div class="card"><h4>Your account connection</h4><p>'
+           + ("Calls through treg's OAuth app are metered under this server's billing policy."
+              if oauth_metered else "Connect your account with the provider's supported authentication method.")
+           + '</p></div>')
+        + '<div class="card"><h4>Switch by changing a word</h4><p>Another provider is a different '
         "word in the prompt, not a new integration.</p></div>"
         '<div class="card"><h4>One key, the whole catalog</h4><p>The same token calls '
         + (_esc_html(", ".join(_provider_display(a) for a in alt_names[:3])) if alt_names
            else "every provider in the catalog")
-        + f" and {_catalog_census()[0] - len(eps):,} other tools.</p></div>"
+        + f" and {_catalog_census()[0] - sum(_pub(e) for e in eps):,} other tools.</p></div>"
         "</div></div></section>")
 
     tool_blocks = []
-    max_shown = 8
+    max_shown = len(eps) if len(eps) <= 50 else 8
     for i, (slug, items) in enumerate(sorted(groups.items(), key=lambda kv: (-len(kv[1]), kv[0]))):
         lis = []
         shown = sorted(items, key=lambda e: (not e.get("verified"), e["id"]))[:max_shown]
         for e in shown:
             price = _price_label(cat.cost_view(e.get("cost"), e.get("provider")))
-            bits = [b for b in ("live-verified" if e.get("verified") else "", _esc_html(price)) if b]
+            eligible = e in platform_eps
+            if reg and reg.auth_kind == "oauth":
+                access = "OAuth connection · metered" if oauth_metered else "OAuth connection"
+            elif key_auth and e in keyless_eps:
+                access = "Free, no key"
+            elif key_auth:
+                access = "Platform + BYOK" if eligible else "BYOK only"
+                if not eligible:
+                    price = "No treg charge; upstream " + price
+            else:
+                access = ("Free, no key" if eligible and public else "Platform access" if eligible else
+                          "Not enabled on this server" if public else "Own connection required")
+            kind = "account management" if e.get("kind") == "account" else ("helper" if e.get("kind") == "utility" else "")
+            bits = [b for b in (access, kind, "live-verified" if e.get("verified") else "", _esc_html(price)) if b]
             lis.append(f"<li><b>{_esc_html(e['name'])}</b>"
                        + (f" · <small>{' · '.join(bits)}</small>" if bits else "")
                        + f"<br/><small>{_esc_html(e.get('summary') or '')} "
-                         f"<code>{_esc_html(e['id'])}</code></small></li>")
+                         f"<code>{_esc_html(e['id'])}</code></small>"
+                       + (f"<br/><small>{_esc_html(e['cost']['note'])}</small>"
+                          if (e.get("cost") or {}).get("note") else "") + "</li>")
         if len(items) > max_shown:
             lis.append(f'<li class="more"><a href="/catalog/{_esc_html(slug)}">See all {len(items)} '
                        f'{_esc_html(plat_label.get(slug, slug))} tools on the catalog →</a></li>')
@@ -2205,7 +2883,7 @@ async def tools_provider(service: str, db: AsyncSession = Depends(get_session)):
         '<section id="tools"><div class="wrap"><div class="seclab">The shelf</div>'
         f"<h2>All {len(eps)} {esc_d} tools</h2>{''.join(tool_blocks)}"
         '<p style="font-size:12.5px;color:var(--muted)">Reliability badges come from live traffic '
-        "through treg.to, not a controlled benchmark.</p></div></section>")
+        "through treg.to. Live-verified means a successful provider check; it does not verify every request variant.</p></div></section>")
 
     alt_sec = ""
     if alt_names:
@@ -2229,6 +2907,14 @@ async def tools_provider(service: str, db: AsyncSession = Depends(get_session)):
              f"Yes. This is an own-account connection: you sign in to {display} once and your "
              "agent uses that connection through your treg.to token. Calls on it are never metered."),
         ]
+    elif public:
+        faq_items = [
+            (f"Do I need a {display} account?",
+             f"No. {display} is a public API with no key: there is nothing to connect."),
+            ("What does a call cost?", "Nothing. treg.to does not charge for these calls."
+             if not public_off else "This server has not enabled these tools, so calls are refused unless "
+             "your team registers its own tool for the provider's host."),
+        ]
     else:
         faq_items = [
             (f"Do I need a {display} account?",
@@ -2241,6 +2927,14 @@ async def tools_provider(service: str, db: AsyncSession = Depends(get_session)):
              f"from a prepaid balance. It is not {display}'s subscription pricing, which is on "
              "their own site. New teams start with $1.00 of free credit."),
         ]
+    if oauth_metered:
+        faq_items[0] = (f"Do I need a {display} account?",
+                        f"Yes. Connect your {display} account through OAuth. Calls through treg's "
+                        "OAuth app are metered under this server's billing policy.")
+    if mixed:
+        faq_items[0] = (f"Do I need a {display} account?",
+                        f"For {len(platform_eps)} platform tools, no. The other {byok_only} require your own "
+                        f"{display} key. All {len(eps)} accept your own key, and treg never meters BYOK calls.")
     faq_items += [
         (f"How do I add {display} to Claude Code?",
          f"Run: claude mcp add --transport http treg {base}/mcp. One MCP server carries "
@@ -2249,6 +2943,10 @@ async def tools_provider(service: str, db: AsyncSession = Depends(get_session)):
          "Anything that speaks MCP (Claude Code, Claude Desktop, ChatGPT, Codex, Cursor, Grok) "
          "and anything that can make an HTTP request (LangChain, CrewAI, LlamaIndex, plain code)."),
         (f"Is this the official {display} MCP server?",
+         "No. " + ("Once this server enables it, " if public_off else "")
+         + f"treg.to relays {display}'s real public API: the request is the provider's own, no "
+         f"credential is added, and the answer is relayed verbatim. The official {display} channels "
+         "are linked above." if public else
          f"No. treg.to serves {display}'s real API through its own metered proxy: the request "
          f"is the provider's own, the credential is injected server-side, and the answer is "
          f"relayed verbatim. The official {display} channels are linked above."),
@@ -2263,8 +2961,7 @@ async def tools_provider(service: str, db: AsyncSession = Depends(get_session)):
                "b.dataset.copy);b.textContent='copied';setTimeout(function(){b.textContent='copy'},1400)"
                "}catch(e){}})});</script>")
 
-    # "Used in": the job pages this provider answers. Contextual, intent-matched links from a page
-    # Google already indexes into the ones it had never fetched (see `_jobs_by_provider`).
+    # "Used in": the job pages this provider answers (see `_jobs_by_provider`).
     used_sec = ""
     if used_in:
         used_sec = ('<section id="used-in"><div class="wrap"><div class="seclab">Used in</div>'
@@ -2275,29 +2972,67 @@ async def tools_provider(service: str, db: AsyncSession = Depends(get_session)):
                               f"measured success rate and speed.</p></a>" for js, jsent in used_in)
                     + "</div></div></section>")
 
-    body = _TOOLS_CSS + hero + flow + setup + tryit + why + tools_sec + used_sec + alt_sec + faq + copy_js
+    cmp_sec = ""
+    if _hosted():
+        from .. import compare_pages as cp
+        if cmp_key := cp.for_provider(svc):
+            cmp_short = _esc_html(cp.short(cmp_key))
+            cmp_sec = (
+                '<section id="compare"><div class="wrap"><div class="seclab">Compare</div>'
+                f"<h2>treg vs {cmp_short}</h2>"
+                f"<p>Calling {esc_d} through treg, or using {cmp_short} on its own? The comparison "
+                "reads both products' public pages side by side: billing, keys, access and limits. "
+                f'<a href="/compare/{cp.page_slug(cmp_key)}">Read treg vs {cmp_short}</a>.</p>'
+                "</div></section>")
+    if public_off:  # nothing here is callable until this server enables it: no prompt to try
+        tryit = ""
+    body = (_TOOLS_CSS + hero + flow + setup + tryit + why + tools_sec + used_sec + alt_sec + cmp_sec
+            + faq + copy_js)
 
     if is_oauth:
-        title = f"{display}: connect your own account | treg.to"
-        desc = (f"Use {display} from Claude Code, ChatGPT or any MCP agent: {len(eps)} tools "
-                "through one treg.to token. Calls on your own connection are never metered.")
+        if mcp_intent:
+            title = f"{display} MCP: connect your own account | treg.to"
+            desc = (f"{display} MCP server: connect your own account and call {len(eps)} tools "
+                    "through treg.to, one MCP for the whole catalog. Never metered on your connection.")
+        else:
+            title = f"{display}: connect your own account | treg.to"
+            desc = (f"Use {display} from Claude Code, ChatGPT or any MCP agent: {len(eps)} tools "
+                    "through one treg.to token. Calls on your own connection are never metered.")
     else:
-        # The title leads with the pricing intent: Search Console shows "{provider} api pricing" is
-        # what reaches these pages ("linkedin api pricing", "1688 api pricing" — the site's one
-        # non-brand click), and the number is the part no vendor page prints.
-        # `cheapest` already names its unit ("$0.00245/result"), so the title does not say "per
-        # call" beside it — a per-result price is not a per-call one.
+        # Title matches H1: `{Provider}: {n} tools from {price}`.
         # `cheapest` carries its own billing unit ("$0.00245/result", "$0.0089/call"), so the copy
         # never says "per call" next to it: a per-result or per-success rate is not a per-call one.
-        title = (f"{display} API pricing: from {cheapest}, no signup | treg.to" if cheapest
-                 else f"{display} API pricing, no signup | treg.to")
+        title = (f"{display}: {len(eps)} tools from {cheapest} | treg.to" if cheapest
+                 else f"{display}: {len(eps)} tools | treg.to")
         if len(title) > _TITLE_MAX:
-            title = (f"{display} API pricing: from {cheapest} | treg.to" if cheapest
-                     else f"{display} API pricing | treg.to")
-        desc = (f"{display} API pricing at the provider's own rate, with no {display} signup: {len(eps)} tools "
+            # Both branches must be shorter than the primary; the H1 still starts with `display`.
+            title = (f"{display}: from {cheapest} | treg.to" if cheapest
+                     else f"{display} | treg.to")
+        desc = (f"{display} public API with no key and nothing to connect; not enabled on this server."
+                if public_off else
+                f"{display} public API, free, with no key and nothing to connect: {len(eps)} tools through one "
+                f"treg.to key or MCP server{', ' + measured if measured else ''}. Use it from Claude Code, "
+                "ChatGPT or any agent." if public else
+                f"{display} API pricing at the provider's own rate, with no {display} signup: {len(eps)} tools "
                 f"{'from ' + cheapest + ' ' if cheapest else ''}through one treg.to key or MCP server"
                 f"{', ' + measured if measured else ''}. Use it from Claude Code, ChatGPT or any agent.")
 
+    if mixed:
+        # Title matches H1: `{Provider}: {n} tools, platform or your own key`.
+        title = f"{display}: {len(eps)} tools, platform or your own key | treg.to"
+        if len(title) > _TITLE_MAX:
+            title = f"{display}: {len(eps)} tools, platform + BYOK | treg.to"
+        if len(title) > _TITLE_MAX:
+            title = f"{display}: platform + BYOK | treg.to"
+        desc = (f"{display} on treg: {len(platform_eps)} tools with platform or your own key, "
+                f"{byok_only} BYOK only. Compare access, billing units and live verification for every tool.")
+    if oauth_metered:
+        # Same shape as the H1/title: an MCP-intent provider keeps "MCP" in its description.
+        desc = (f"{display} MCP server: connect your own account and call {len(eps)} tools through "
+                "treg.to. Calls through treg's OAuth app are metered under this server's billing policy."
+                if mcp_intent else
+                f"Use {display} through your OAuth connection. Calls through treg's OAuth app "
+                "are metered under this server's billing policy.")
     ld = [
         {"@context": "https://schema.org", "@type": "BreadcrumbList", "itemListElement": [
             {"@type": "ListItem", "position": 1, "name": "treg.to", "item": base + "/"},
@@ -2324,7 +3059,8 @@ async def tools_provider(service: str, db: AsyncSession = Depends(get_session)):
              {"@type": "HowToStep", "position": 2, "name": "Or add the MCP server yourself",
               "text": f"claude mcp add --transport http treg {base}/mcp"},
              {"@type": "HowToStep", "position": 3, "name": f"Call {display}",
-              "text": f"Ask your agent, or call {base}/call/{sample_id} over HTTP."}]},
+              "text": f"Ask your agent, or call {base}/call/{sample_id} over HTTP"
+                      + (" once this server enables it." if public_off else ".")}]},
     ]
     return _page(title, _serp_desc(desc), f"/tools/{svc}", body, ld,
                  nav_current="/catalog", css="usecase.css")
@@ -2335,10 +3071,17 @@ _PV_CSS = """<style>
 .pv-ctas{display:flex;gap:10px;flex-wrap:wrap;margin-bottom:16px}
 .pv-btn{border-radius:10px;padding:10px 18px;font-weight:600;font-size:14px;text-decoration:none;display:inline-block}
 .pv-btn.p{background:#191917;color:#fff}
-.pv-btn.g{border:1px solid var(--line,#e6e6df);background:#fff;color:inherit;font-family:var(--mono,ui-monospace);font-weight:500;font-size:12.5px}
+.pv-btn.g{border:1px solid var(--line2,#25252233);padding:9px 17px;background:#fff;color:var(--ink,#1a1a1a);font-weight:500}
 .pv-why{display:grid;grid-template-columns:repeat(auto-fit,minmax(240px,1fr));gap:12px;margin:14px 0}
 .pv-why div{background:#fff;border:1px solid var(--line,#e6e6df);border-radius:12px;padding:14px 16px;font-size:13.5px;color:#4a4a46}
 .pv-why b{display:block;margin-bottom:5px;color:#191917;font-size:14px}
+.pv-receipts{display:grid;grid-template-columns:repeat(auto-fit,minmax(280px,1fr));gap:16px;margin:18px 0}
+.pv-receipt{background:#fff;border:1px solid var(--line,#e6e6df);border-radius:12px;padding:16px 18px}
+.pv-receipt h4{margin:0 0 8px;font-size:14px;color:#191917}
+.pv-receipt .date{font-size:12px;color:var(--muted,#6b6b66);margin-bottom:10px}
+.pv-receipt ul{margin:0;padding:0 0 0 16px;font-size:13px;color:#4a4a46;line-height:1.6}
+.pv-receipt .total{margin-top:10px;font-weight:600;color:#191917;font-size:13.5px}
+.pv-receipt a{color:inherit;text-decoration:underline;text-underline-offset:2px}
 </style>"""
 
 
@@ -2367,6 +3110,14 @@ async def pricing_page():
          "Anything that is yours: calls on your team's own provider keys (your key always wins), "
          "your team's own registered tools and skills, and your own connected accounts (Google "
          "Analytics, Search Console, Google Ads, Business Profile and the rest)."),
+        ("What is the difference between call cost and usable-result cost?",
+         "A raw API call is one charge at the provider's rate. A usable result (like a verified "
+         "deliverable lead) often takes multiple calls and filters out misses, so the per-result "
+         "cost is higher. The receipts above show both: the total metered and the per-usable-row cost."),
+        ("Are own-key calls billed?",
+         "No. Register your team's provider key and treg.to uses it instead of the shared key. "
+         "Those calls are never metered. The receipts still show the shared-key rate for comparison, "
+         "as in the Meta Ad Library example where the team's own Apify key made the Meta calls free."),
         ("What happens when the balance runs out?",
          "Metered calls stop with a clear error until you top up. Calls on your own keys and your "
          "own tools are unaffected."),
@@ -2399,6 +3150,49 @@ async def pricing_page():
             "connected accounts are yours; calls on them are never metered.</div>"
             "<div><b>Runs dry, fails loud</b>When the balance is empty, metered calls stop with a "
             "clear error until you top up. Your own-key calls keep working.</div></div>"
+            "<h2>Understanding costs</h2>"
+            "<p>Every workflow receipt on this site comes from a real run, not a rate card. "
+            "Four patterns that show what genuinely costs.</p>"
+            '<div class="pv-why">'
+            "<div><b>Billing unit</b>Metered per catalog call (or per success where the provider "
+            "bills that way) at the provider's own rate, no markup. Prepaid balance, $1.00 free to start.</div>"
+            "<div><b>Call cost vs usable-result cost</b>A raw API call is one charge; a deliverable "
+            "row can cost more when multi-step work filters out misses. The receipts below show both.</div>"
+            "<div><b>Misses</b>Invalid, empty, or catch-all outcomes. On per-success tools, a miss "
+            "settles at $0.00. On per-call tools, every call costs regardless of what comes back.</div>"
+            "<div><b>BYOK (bring your own key)</b>Register your team's provider key and treg.to uses "
+            "it instead. Calls on your own key are never metered. Receipts still show the shared-key "
+            "rate for comparison.</div></div>"
+            "<h2>Receipts from real runs</h2>"
+            "<p>These figures are what the ledger settled, not rate-card estimates.</p>"
+            '<div class="pv-receipts">'
+            '<div class="pv-receipt"><h4>Enrichment: verified lead list</h4>'
+            '<div class="date">2026-09-23 · <a href="/workflows/find-and-verify-a-lead-list">workflow</a></div>'
+            "<ul><li>50 companies in, 27 kept by a jev gate before any paid step, 20 verified deliverable leads out</li>"
+            "<li>$2.33 total metered ($0.12 per deliverable lead); the first run of the same filter without the gate was $3.62 for 27</li>"
+            "<li>Miss handling: Hunter, Kitt and LeadMagic settled every miss at $0.00 "
+            "(per-success, no hit); Findymail billed all 27 calls at list rate, 7 misses included</li></ul>"
+            '<div class="total">Multi-step cost: $0.05 per row, $0.12 per usable lead</div></div>'
+            '<div class="pv-receipt"><h4>SEO: keyword demand</h4>'
+            '<div class="date">2026-09-14 · <a href="/workflows/keyword-demand-to-ad-budget">workflow</a></div>'
+            "<ul><li>50 keywords expanded, volume and trend priced</li>"
+            "<li>$0.11 total: $0.018 ideas, $0.09 volume (batch), $0.0012 trend</li>"
+            "<li>Volume call billed per request, not per keyword (50 keywords cost one fee)</li></ul>"
+            '<div class="total">Three calls, $0.11</div></div>'
+            '<div class="pv-receipt"><h4>Ad library: Meta and Google ads</h4>'
+            '<div class="date">2026-09-14 · <a href="/workflows/mine-competitor-meta-ads-as-creative-pack">workflow</a></div>'
+            "<ul><li>20 Meta ads and 17 Google ads pulled for Notion</li>"
+            "<li>Meta calls ran on team's own Apify key (not metered)</li>"
+            "<li>Google call metered: $0.015 on treg.to's shared key</li>"
+            "<li>Shared-key rate for Meta if needed: $0.105 for probe and 20 ads</li></ul>"
+            '<div class="total">BYOK in action: own key $0, shared key $0.12</div></div>'
+            '<div class="pv-receipt"><h4>Creator discovery: Instagram</h4>'
+            '<div class="date">2026-09-14 · <a href="/workflows/discover-creators-in-a-niche">workflow</a></div>'
+            "<ul><li>25 fitness creators discovered, profiles and posts pulled</li>"
+            "<li>$0.20 total: $0.15 discovery, $0.025 profiles, $0.024 posts</li>"
+            "<li>Discovery billed per creator returned; a zero-match page costs nothing</li></ul>"
+            '<div class="total">Per-creator cost: $0.008</div></div>'
+            "</div>"
             "<h2>Example rates, by platform</h2>"
             "<p>Rendered from the live catalog; every tool page carries its own rate.</p>"
             f"<ul>{lis}</ul>"
@@ -2420,17 +3214,16 @@ async def pricing_page():
                  "/pricing", body, ld)
 
 
-# ---- the API reference ------------------------------------------------------------------------
-# Prose first, because the schema cannot say the load-bearing part: what /call/ actually does. Kept
-# short and factual — the tutorial teaches, this page is the reference a reader lands on from search.
+# The API reference. Prose first, because the schema cannot say the load-bearing part: what /call/
+# actually does. Kept short and factual - the tutorial teaches, this page is the reference.
 _DOCS_INTRO = """
 <h2>How a call works</h2>
 <p>You make the <b>real upstream request</b> — the provider's own path, its own parameters, its own
 response. treg injects the credential server-side and relays the answer verbatim. Nothing here
 models a provider's API, which is why an upstream change does not break us and why the caller never
 holds a secret.</p>
-<pre class="call">curl -H "Authorization: Bearer $TREG_TOKEN" \\
-  "{BASE}/call/moz.web.url.metrics"</pre>
+<pre class="call">curl -X POST -H "X-Treg-Token: $TREG_TOKEN" -H "content-type: application/json" \\
+  -d '{"targets":["moz.com"]}' "{BASE}/call/moz.web.url.metrics"</pre>
 <p>Prefix any catalogued endpoint id with <code>/call/</code>. If your team has its own key for that
 provider, treg uses it and the call is <b>not metered</b>; otherwise eligible endpoints are served on
 treg's key and metered against your prepaid balance at the provider's own rate.</p>
@@ -2443,14 +3236,16 @@ does not route between providers automatically and does not fail over.</p>
 <p>The whole catalog is also browsable as pages: <a href="/catalog">/catalog</a>.</p>
 
 <h2>Other ways in</h2>
-<p><a href="/llms.txt">/llms.txt</a> is the file to point a coding agent at — it teaches the whole
-protocol in one fetch. <code>curl -fsSL {BASE}/install.sh | sh</code> installs the CLI. The MCP
+<p><a href="/llms.txt">/llms.txt</a> is the file to point a coding agent at: it sets the agent up
+and links <a href="/skill.md">/skill.md</a>, the guide to calls, prices, errors and retries. <code>curl -fsSL {BASE}/install.sh | sh</code> installs the CLI. The MCP
 endpoint is at <code>{BASE}/mcp</code>. An interactive console for everything below lives at
 <a href="/docs/api">/docs/api</a>.</p>
 
 <h2>Endpoints</h2>
-<p>Authenticated requests carry <code>Authorization: Bearer &lt;token&gt;</code> (or
-<code>X-Treg-Token</code>). The catalog routes are open and need no token.</p>
+<p>Authenticated requests carry <code>X-Treg-Token: &lt;token&gt;</code>. <code>Authorization: Bearer</code>
+authenticates only the MCP endpoint; REST ignores it (<code>401 not authenticated</code>), and
+<code>/call/</code> relays it to the provider like any other header, so never put your treg token there.
+The catalog routes need no token.</p>
 """
 
 
@@ -2470,7 +3265,7 @@ async def docs_page():
         impression of the API on a page built to be someone's search result."""
         return (0 if path.startswith("/call/") else 1 if path.startswith("/catalog") else 2, path)
 
-    # Auth travels the same way on every route; naming it on all 135 rows is noise, and the page
+    # Auth travels the same way on every route; naming it on every row is noise, and the page
     # says it once above. `/admin/*` is super-admin only — still in openapi.json, not advertised here.
     _PLUMBING = {"x-treg-token", "treg_session", "authorization"}
     ops = []
@@ -2478,7 +3273,7 @@ async def docs_page():
         if path.startswith("/admin"):
             continue
         for method, op in sorted(schema["paths"][path].items()):
-            if method.lower() == "head":     # implied by GET; see `_openapi_without_head`
+            if method.lower() == "head":     # implied by GET; see `_install_head_and_openapi`
                 continue
             params = ", ".join(p["name"] for p in op.get("parameters", []) or []
                                if p["name"].lower() not in _PLUMBING)
@@ -2493,15 +3288,16 @@ async def docs_page():
                 + (f'<div class="params">{_esc_html(params)}</div>' if params else "")
                 + "</div>")
 
+    n_endpoints, _ = catalog_store.headline_counts(catalog_store.load())
     body = f"""<main class="wrap">
 <div class="phead">
   <div class="crumbs"><a href="/">treg</a> / api</div>
   <h1>API reference</h1>
   <p class="lede">One base URL, one token. Call any of {len(ops)} documented operations, or proxy a
-  real request to any of 2,630 catalogued provider endpoints through <code>/call/</code>.</p>
+  real request to any of {n_endpoints} catalogued provider endpoints through <code>/call/</code>.</p>
   <div class="facts">
     <span>base <b>{_esc_html(base)}</b></span>
-    <span><b>Bearer</b> token auth</span>
+    <span><b>X-Treg-Token</b> header auth</span>
     <span><a href="/openapi.json">openapi.json</a></span>
     <span><a href="/docs/api">interactive console</a></span>
   </div>
@@ -2513,10 +3309,10 @@ async def docs_page():
 </main>"""
     ld = [{"@context": "https://schema.org", "@type": "TechArticle",
            "headline": "treg API reference",
-           "description": "How to call 2,630 provider API endpoints through one treg token.",
+           "description": f"How to call {n_endpoints} provider API endpoints through one treg.to token.",
            "url": f"{base}/docs"}]
     return _page("API reference — call any tool through one endpoint | treg",
-                 "The treg HTTP API: proxy a real request to any of 2,630 catalogued provider "
+                 f"The treg.to HTTP API: proxy a real request to any of {n_endpoints} catalogued provider "
                  "endpoints through /call/, with the credential injected server-side. Plus the "
                  "catalog, org, billing and tool-management routes.",
                  "/docs", body, ld, nav_current="/docs")
@@ -2537,40 +3333,68 @@ def _esc_html(s: str) -> str:
     return _html.escape(str(s), quote=True)
 
 
+def _resume_parked_authorization(request: Request) -> RedirectResponse | None:
+    """Send a signed-in browser back to its parked `/oauth/authorize` request, consuming the cookie."""
+    if (parked := _take_oauth_return(request)) is None:
+        return None
+    resume = RedirectResponse(parked, status_code=302)
+    resume.delete_cookie(OAUTH_RETURN_COOKIE)
+    return resume
+
+
 @app.get("/", include_in_schema=False)
 async def landing(request: Request, treg_session: str = Cookie(default=""),
                   db: AsyncSession = Depends(get_session)):
-    """Serve the marketing landing at the root. Any query string (invite links, OAuth returns,
-    tour deep-links) belongs to the SPA, so those requests fall through to the dashboard —
-    the landing is only the clean, parameterless front door. A signed-in visitor belongs on
-    the dashboard, so a live session redirects to /app instead of re-showing the pitch.
+    """Serve the homepage with session-aware entry points.
 
-    `?ref=<code>` is the ONE exception, and it has to be: a referral link's whole job is to show a
-    stranger the pitch. Falling through to the SPA would send someone who has never heard of treg
-    to an empty dashboard shell — so a lone `ref` counts as parameterless, and the code is parked in
-    a cookie on the way past. It is only redeemed much later, when they create their first team.
+    Query links go to the SPA, except referral links and SSO sign-in results, which use
+    controls on the landing page.
     """
     page = _WEB_DIR / "landing.html"
     ref = referrals.normalize_code(request.query_params.get("ref", ""))
-    # Only `ref` may be present. Anything else alongside it belongs to the SPA, and a referral code
-    # is not a reason to hijack an invite or an OAuth return.
-    ref_only = set(request.query_params.keys()) <= {"ref"}
-    if page.exists() and (not request.query_params or (ref and ref_only)):
-        if treg_session and await _user_from_session(treg_session, db):
-            return RedirectResponse("/app", status_code=302)
-        # Read-and-substitute rather than a bare FileResponse: the canonical, og:url and og:image
-        # are `{BASE}`-templated so they name the serving host. Hardcoded, a self-hosted registry
-        # would tell crawlers its front page really lives on treg.to.
-        html = page.read_text(encoding="utf-8").replace(
+    # An influencer's short link appends utm_* to the ref; those must not push it to the SPA, which
+    # never parks the code.
+    ref_only = all(k == "ref" or k.startswith("utm_") for k in request.query_params.keys())
+    sso_error = request.query_params.get("sso_error", "")
+    sso_result = (sso_error in {"domain", "failed", "expired", "link"} and
+                  set(request.query_params.keys()) <= {"sso_error", "team"})
+    if page.exists() and (not request.query_params or (ref and ref_only) or sso_result):
+        signed_in = bool(treg_session and await _user_from_session(treg_session, db))
+        # The email-code door signs in on the page that opened it and reloads there, and the
+        # OAuth sign-in modal opens on `/`, so a parked authorization must resume here as well.
+        if signed_in and (resume := _resume_parked_authorization(request)) is not None:
+            return resume
+        # Canonical and social URLs use the serving origin.
+        html = _fill_headline(page.read_text(encoding="utf-8")).replace(
             "{BASE}", get_settings().public_url.rstrip("/"))
+        html = html.replace("{SIGNED_IN}", "true" if signed_in else "false")
+        html = html.replace("{START_LABEL}", "Open dashboard" if signed_in else "Start free")
+        if signed_in:
+            html = re.sub(r"<!--signed-out-->.*?<!--/signed-out-->", "", html, flags=re.S)
         # The footer's hub links point at hosted-only pages; a self-hosted landing drops them.
         if not _hosted():
             html = re.sub(r"<!--hosted-->.*?<!--/hosted-->", "", html, flags=re.S)
-        resp = HTMLResponse(html, headers={"Cache-Control": "no-cache"})
+        resp = HTMLResponse(html, headers={"Cache-Control": "private, no-store", "Vary": "Cookie"})
         if ref:
             _remember_referral(resp, request, ref)
         return resp
     return await dashboard(request, treg_session, db)
+
+
+def _dashboard_asset(directory: Path, name: str) -> FileResponse:
+    # Select a file discovered inside the build directory; never construct a path from a URL.
+    root = directory.resolve()
+    assets = {p.relative_to(root).as_posix(): p for p in root.rglob("*")
+              if p.is_file() and p.resolve().is_relative_to(root)}
+    asset = assets.get(name)
+    if asset is None:
+        raise HTTPException(404)
+    return FileResponse(asset, headers={"Cache-Control": "public, max-age=31536000, immutable"})
+
+
+@app.get("/app/ui/assets/{name}", include_in_schema=False)
+async def dashboard_asset(name: str):
+    return _dashboard_asset(_WEB_DIR / "dashboard" / "assets", name)
 
 
 @app.get("/app", include_in_schema=False)
@@ -2578,7 +3402,7 @@ async def dashboard(
     request: Request, treg_session: str = Cookie(default=""),
     db: AsyncSession = Depends(get_session),
 ):
-    """Serve the single-file dashboard (same-origin, so it calls this API directly).
+    """Serve the compiled dashboard (same-origin, so it calls this API directly).
 
     Also the place a parked OAuth authorization resumes. Every browser sign-in door — GitHub, Google,
     the email code — ends here, so honouring the cookie at this ONE point covers all of them, rather
@@ -2590,35 +3414,32 @@ async def dashboard(
     an account. Only reachable when `single_user_ok` holds (local sqlite + loopback URL), so this
     can never hand a session to a stranger on a real deploy.
     """
-    index = _WEB_DIR / "index.html"
-    if not index.exists():
-        return HTMLResponse("<h3>tools-registry API. Dashboard not bundled.</h3>")
     signed_in = await _user_from_session(treg_session, db)
     # A parked authorization resumes here, but ONLY once the user is actually signed in — otherwise
     # this would bounce them back to /oauth/authorize, which would bounce them here again.
-    if signed_in and (parked := _take_oauth_return(request)) is not None:
-        resume = RedirectResponse(parked, status_code=302)
-        resume.delete_cookie(OAUTH_RETURN_COOKIE)
+    if signed_in and (resume := _resume_parked_authorization(request)) is not None:
         return resume
-    resp = FileResponse(index, headers={"Cache-Control": "no-cache"})
-    if not signed_in:
-        owner = await _local_owner(db)
-        if owner is not None:
-            resp.set_cookie(sess.COOKIE, sess.make(owner.id, token_version=owner.token_version),
-                            httponly=True, samesite="lax",
-                            secure=_is_https(request),
-                            max_age=sess.TTL_SECONDS)
+    owner = await _local_owner(db) if not signed_in else None
+    index = _dashboard_index()
+    if not index.exists():
+        raise HTTPException(503, "Dashboard not bundled")
+    resp = HTMLResponse(_dashboard_document(index), headers={"Cache-Control": "private, no-store", "Vary": "Cookie"})
+    if owner is not None:
+        resp.set_cookie(sess.COOKIE, sess.make_session(owner.id, token_version=owner.token_version),
+                        httponly=True, samesite="lax",
+                        secure=_is_https(request),
+                        max_age=sess.TTL_SECONDS)
     return resp
 
 
 def _spa_with_og(kind: str, name: str):
     """Serve the SPA at a shareable detail path (/app/skills/x, /app/tools/x) with per-resource
     og/twitter meta so link unfurls show what was shared. The meta echoes only the URL's own
-    name segment — no DB read, so an unauthenticated crawler learns nothing it didn't send."""
-    index = _WEB_DIR / "index.html"
+    name segment and never exposes resource contents."""
+    index = _dashboard_index()
     if not index.exists():
-        return HTMLResponse("<h3>tools-registry API. Dashboard not bundled.</h3>")
-    label = "skill" if kind == "skills" else "tool"
+        return HTMLResponse("<h3>treg API. Dashboard not bundled.</h3>")
+    label = {"skills": "skill", "runs": "run"}.get(kind, "tool")
     safe = _esc_html(name)
     meta = (
         f"<title>{safe} · Treg</title>\n"
@@ -2627,20 +3448,18 @@ def _spa_with_og(kind: str, name: str):
         f'Sign in to preview it and get the one-command install."/>\n'
         f'<meta name="twitter:card" content="summary"/>'
     )
-    # Match WHATEVER title the page carries, not one exact string. It was pinned to
-    # `<title>tools-registry</title>`, the page says `<title>treg</title>`, so the replacement
-    # silently did nothing and every shared link unfurled blank — a rename in the dashboard must
+    # Match WHATEVER title the page carries, not one exact string: a rename in the dashboard must
     # not be able to switch this off without a word.
-    html, hits = re.subn(r"<title>.*?</title>", lambda _m: meta, index.read_text(encoding="utf-8"),
+    html, hits = re.subn(r"<title>.*?</title>", lambda _m: meta, _dashboard_document(index),
                          count=1, flags=re.IGNORECASE | re.DOTALL)
     if not hits:  # no title at all: still emit the meta rather than serve a bare page
         html = html.replace("<head>", "<head>\n" + meta, 1)
-    return HTMLResponse(html, headers={"Cache-Control": "no-cache"})
+    return HTMLResponse(html, headers={"Cache-Control": "private, no-store", "Vary": "Cookie"})
 
 
 @app.get("/app/marketplace/{service}", include_in_schema=False)
 async def dashboard_marketplace(
-    service: str, request: Request, treg_session: str = Cookie(default=""),  # noqa: ARG001 — the SPA reads the path itself
+    service: str, request: Request, treg_session: str = Cookie(default=""),
     db: AsyncSession = Depends(get_session),
 ):
     """One integration's page. Served as the plain SPA: unlike /app/skills/<x> there is no og meta
@@ -2668,16 +3487,24 @@ async def dashboard_tool_page(name: str):
     return _spa_with_og("tools", name)
 
 
+@app.get("/app/runs/{run_id}", include_in_schema=False)
+async def dashboard_run_page(run_id: str):
+    """The caller's (or maker's) run page: the app opens `/hub/runs/<id>` on load."""
+    return _spa_with_og("runs", run_id)
+
+
 @app.get("/llms.txt", include_in_schema=False)
-async def llms_txt():
+async def llms_txt(request: Request, db: AsyncSession = Depends(get_session)):
     """Agent-readable overview (llms.txt convention) — an AI agent that fetches this learns the
     whole registry: the call protocol, discovery, auth, CLI, skills, and links to the tutorial/docs.
     The serving domain is templated in so links stay correct across deploys."""
     f = _WEB_DIR / "llms.txt"
     if not f.exists():
         raise HTTPException(status_code=404, detail="llms.txt not bundled")
+    from .hub_gate import hub_visible
+    hub_on = (await hub_visible(request, db))[0]
     base = get_settings().public_url.rstrip("/")
-    return PlainTextResponse(_strip_routed(f.read_text(encoding="utf-8")).replace("{BASE}", base),
+    return PlainTextResponse(_strip_hosted(_fill_headline(_strip_routed(f.read_text(encoding="utf-8"), hub_on))).replace("{BASE}", base),
                              media_type="text/plain; charset=utf-8")
 
 
@@ -2721,12 +3548,32 @@ _SITEMAP_PAGES: tuple[tuple[str, str, str], ...] = (
     ("/tutorial", "tutorial.html", "0.8"),
     ("/docs", "", "0.7"),
     ("/resources", "resources.html", "0.8"),
+    ("/blog", "", "0.7"),
+    ("/blog/work-email-finding-bench", "", "0.6"),
+    ("/blog/jobspipe-and-treg", "", "0.6"),
+    ("/blog/people-search-bench", "", "0.6"),
+    ("/blog/security-incident-2026-10-23", "", "0.6"),
     ("/vendor-listing", "vendor-listing.md", "0.5"),
     ("/support", "support.html", "0.4"),
     ("/connectors/claude", "claude-connector.html", "0.6"),
+    ("/plugins/claude", "claude-plugin.html", "0.6"),
+    ("/sheets", "sheets.html", "0.6"),
     ("/people-search", "people-search.html", "0.8"),
+    ("/leads-signals", "leads-signals.html", "0.8"),
+    ("/jobs-api", "jobs-api.html", "0.8"),
+    ("/recruit", "recruit.html", "0.8"),
+    ("/web-access", "web-access.html", "0.8"),
+    ("/doomscroll", "doomscroll.html", "0.8"),
     ("/grokbot", "grokbot.html", "0.8"),
     ("/fable", "fable-gtm.html", "0.8"),
+    ("/gpt6", "astra.html", "0.8"),
+    ("/ugc", "ugc.html", "0.8"),
+    ("/aigc", "aigc.html", "0.8"),
+    ("/aeo", "aeo.html", "0.8"),
+    ("/rankings", "rankings.html", "0.8"),
+    ("/rea-growth", "rea-growth.html", "0.8"),
+    ("/social", "social-search.html", "0.8"),
+    ("/jev", "jev.html", "0.8"),
     ("/terms", "terms.html", "0.2"),
     ("/privacy", "privacy.html", "0.2"),
     # The outcome pages. Listed WITHOUT a trailing slash on purpose: `/use-cases/<slug>/` 307s to
@@ -2748,13 +3595,18 @@ def _catalog_mtime() -> str:
     for f in (Path(catalog_store.__file__).parent / "catalog").rglob("*.yaml"):
         try:
             newest = max(newest, f.stat().st_mtime)
-        except OSError:  # noqa: PERF203 -- a file vanishing mid-scan is not worth failing the sitemap
+        except OSError:
             continue
     return _iso_day(newest)
 
 
 def _iso_day(ts: float) -> str:
     return datetime.fromtimestamp(ts, tz=timezone.utc).date().isoformat() if ts else ""
+
+
+def _comparison_paths() -> list[tuple[str, str]]:
+    """Every public comparison page (`Catalog.compared`), keyed the way its URL is."""
+    return sorted((plat, catalog_store.capability_key(plat, cap)) for plat, cap in catalog_store.load().compared())
 
 
 @app.get("/sitemap.xml", include_in_schema=False)
@@ -2783,6 +3635,8 @@ async def sitemap_xml():
         add(path, day, priority)
     for row in _platform_rows():
         add(f"/catalog/{row['slug']}", cat_day, "0.6")
+    for slug, key in _comparison_paths():
+        add(f"/catalog/{slug}/{key}", cat_day, "0.6")
     for prow in _provider_rows():
         add(f"/tools/{prow['service']}", cat_day, "0.5")
     # The agent pages exist only on the hosted deployment (see `_hosted`); their lastmod follows the
@@ -2791,6 +3645,8 @@ async def sitemap_xml():
         copy_day = _iso_day(Path(agent_pages.__file__).stat().st_mtime)
         add("/agents", copy_day, "0.8")
         for slug in agent_pages.AGENTS:
+            if slug == "grok-bot":
+                continue  # redirects to /grokbot; list only the canonical
             add(f"/agents/{slug}", copy_day, "0.8")
         add("/use-cases", copy_day, "0.8")
         for j in agent_pages.USE_CASE_PAGES:
@@ -2798,6 +3654,12 @@ async def sitemap_xml():
         add("/workflows", copy_day, "0.8")
         for w in agent_pages.WORKFLOWS:
             add(f"/workflows/{w}", copy_day, "0.7")
+        hub = _WEB_DIR / "gtm-engineering.html"
+        add("/gtm-engineering", _iso_day(hub.stat().st_mtime) if hub.exists() else "", "0.8")
+        add("/showcase", _iso_day((_WEB_DIR / "showcase.html").stat().st_mtime), "0.8")
+        from . import compare  # imports this module; a top-level import would be circular
+        for path, day in compare.sitemap_paths():
+            add(path, day, "0.7")
     out.append("</urlset>")
     return Response("\n".join(out), media_type="application/xml; charset=utf-8",
                     headers={"Cache-Control": "max-age=3600"})
@@ -2816,16 +3678,69 @@ async def indexnow_key():
                     headers={"Cache-Control": "public, max-age=86400"})
 
 
-@app.get("/install.sh", include_in_schema=False)
-async def install_sh():
-    """`curl -fsSL {BASE}/install.sh | sh` — installs the treg CLI and points it at this server.
-    The serving domain is templated in so it targets whichever host is live (dev box or the real
-    domain after deploy)."""
-    f = _WEB_DIR / "install.sh"
+def _install_script(ad_link: str = "", channel: str = "") -> PlainTextResponse:
+    """The install script with the serving domain templated in, so it targets whichever host is
+    live (dev box or the real domain after deploy), and the short-link code when fetched as
+    `/i/<code>` (empty on the plain URL). `channel=beta` serves the binary CLI's installer."""
+    f = _WEB_DIR / ("install-bin.sh" if channel == "beta" else "install.sh")
     if not f.exists():
         raise HTTPException(status_code=404, detail="install.sh not bundled")
+    settings = get_settings()
+    base = settings.public_url.rstrip("/")
+    text = (f.read_text(encoding="utf-8").replace("{BASE}", base).replace("{AD_LINK}", ad_link)
+            .replace("{CHANNEL}", channel or "stable")
+            .replace("{POSTHOG_KEY}", settings.posthog_key)
+            .replace("{POSTHOG_HOST}", settings.posthog_host.rstrip("/"))
+            .replace("{BINARY_PERCENT}", str(settings.cli_binary_install_percent)))
+    return PlainTextResponse(text, media_type="text/x-shellscript; charset=utf-8")
+
+
+@app.get("/install.sh", include_in_schema=False)
+async def install_sh(channel: str = ""):
+    """`curl -fsSL {BASE}/install.sh | sh`: installs the treg CLI and points it at this server.
+    `?channel=beta` installs the binary CLI's beta channel instead."""
+    return _install_script(channel="beta" if channel == "beta" else "")
+
+
+@app.get("/install.ps1", include_in_schema=False)
+async def install_ps1(channel: str = ""):
+    """`irm {BASE}/install.ps1 | iex`: installs the binary treg CLI on Windows."""
+    f = _WEB_DIR / "install.ps1"
+    if not f.exists():
+        raise HTTPException(status_code=404, detail="install.ps1 not bundled")
     base = get_settings().public_url.rstrip("/")
-    return PlainTextResponse(f.read_text(encoding="utf-8").replace("{BASE}", base), media_type="text/x-shellscript; charset=utf-8")
+    text = (f.read_text(encoding="utf-8").replace("{BASE}", base)
+            .replace("{CHANNEL}", "beta" if channel == "beta" else "stable"))
+    return PlainTextResponse(text, media_type="text/plain; charset=utf-8")
+
+
+@app.get("/i/{code}", include_in_schema=False)
+async def install_sh_linked(code: str):
+    """`curl -fsSL {BASE}/i/<code> | sh` — the install script the ad landing page hands out, with the
+    code the script leaves for `treg login` (see `signup.mint_ad_link`). Any well-formed code is
+    served: an unknown one installs exactly like `/install.sh`, and the sign-in simply restores
+    nothing, so a stale link never breaks an install."""
+    if not signup_use_cases.AD_LINK_RE.fullmatch(code):
+        raise HTTPException(status_code=404)
+    return _install_script(code)
+
+
+@app.post("/i", include_in_schema=False)
+async def ad_link_mint(request: Request) -> dict:
+    """The landing page asks for a code when the visitor's browser holds an ad click (`treg_ad`).
+    `{"code": null}` when there is no click or capture is off, so the page keeps the plain command."""
+    if not _same_origin(request):
+        raise HTTPException(status_code=403, detail="cross-origin mint rejected")
+    raw = request.cookies.get("treg_ad") or ""
+    if not raw or not adsconv.enabled():
+        return {"code": None}
+    try:
+        code = await signup_use_cases.mint_ad_link(raw, address=client_ip.of(request))
+    except signup_use_cases.SignupError as exc:
+        if exc.kind != "too_many_links":
+            raise
+        raise HTTPException(status_code=429, detail="too many install links; try again in a few minutes") from exc
+    return {"code": code}
 
 
 @app.get("/selfhost.sh", include_in_schema=False)
@@ -2844,27 +3759,58 @@ async def selfhost_sh():
 
 
 def routed_discovery_on() -> bool:
-    """`TREG_ROUTED_DISCOVERY` — see catalog_store.group_routed. The agent-facing files honour it
-    too: a deployment that hides routed rows from search must not keep TEACHING agents to call
-    them, or the docs and the catalog disagree and the agent trusts the docs."""
-    return str(get_settings().routed_discovery).strip().lower() not in ("off", "0", "false", "no")
+    """`TREG_ROUTED_DISCOVERY` — the one switch, read in catalog_store (see group_routed)."""
+    return catalog_store.routed_discovery_on()
 
 
-def _strip_routed(text: str) -> str:
-    """Remove the `<!--routed-->…<!--/routed-->` blocks (and, when kept, just the markers)."""
-    if routed_discovery_on():
-        return text.replace("<!--routed-->\n", "").replace("\n<!--/routed-->", "")
-    return re.sub(r"<!--routed-->.*?<!--/routed-->\n?", "", text, flags=re.S)
+def _hub_app_visible(slug: str | None) -> bool:
+    from ..application import hub as hub_app
+    return hub_app.visible_to(slug)
 
 
-def _serve_md(name: str) -> PlainTextResponse:
+def _strip_routed(text: str, hub_on: bool | None = None) -> str:
+    """Remove the `<!--routed-->…<!--/routed-->` blocks (and, when kept, just the markers), the
+    `<!--agentpay-->…<!--/agentpay-->` blocks the same way behind agent payments, and the
+    `<!--hub-->…<!--/hub-->` blocks behind `hub_enabled`: an agent-facing file must never describe
+    what this deployment has not switched on (AGENTS.md: do not document what is not built)."""
+    text = _keep_block(text, "routed", routed_discovery_on())
+    text = _keep_block(text, "agentpay", agent_payments.enabled())
+    # The hub sections follow the reader: while TREG_HUB_TEAMS limits the hub, only a reader acting
+    # for a listed team gets them (`hub_on`, from the route); with no reader, the public answer.
+    return _keep_block(text, "hub", hub_on if hub_on is not None else _hub_app_visible(None))
+
+
+def _keep_block(text: str, name: str, keep: bool) -> str:
+    if keep:
+        return text.replace(f"<!--{name}-->\n", "").replace(f"\n<!--/{name}-->", "")
+    return re.sub(rf"<!--{name}-->.*?<!--/{name}-->\n?", "", text, flags=re.S)
+
+
+def _fill_headline(text: str) -> str:
+    """`{ENDPOINTS}` and `{PROVIDERS}` in a served document come from the loaded catalog, like
+    `{BASE}` comes from settings: the front-door files quote the catalog's size and a typed number
+    was always stale (see `catalog_store.headline_counts`)."""
+    endpoints, providers = catalog_store.headline_counts(catalog_store.load())
+    return text.replace("{ENDPOINTS}", endpoints).replace("{PROVIDERS}", str(providers))
+
+
+def _strip_hosted(text: str) -> str:
+    """`<!--hosted-->…<!--/hosted-->` marks links to pages that exist only on the hosted deployment
+    (`_hosted`). Hosted, the markers go and the content stays; self-hosted, the whole block goes, so a
+    bundled page or agent-facing file never sends a reader to a 404 on the registry serving it."""
+    if _hosted():
+        return re.sub(r"<!--/?hosted-->\n?", "", text)
+    return re.sub(r"<!--hosted-->.*?<!--/hosted-->\n?", "", text, flags=re.S)
+
+
+def _serve_md(name: str, hub_on: bool | None = None) -> PlainTextResponse:
     """Serve a bundled markdown file as inline text (so "open in new tab" shows it, not a download),
     with the serving domain templated in. Backs the 'copy markdown' buttons on the docs pages."""
     f = _WEB_DIR / name
     if not f.exists():
         raise HTTPException(status_code=404, detail=f"{name} not bundled")
     base = get_settings().public_url.rstrip("/")
-    return PlainTextResponse(_strip_routed(f.read_text(encoding="utf-8")).replace("{BASE}", base),
+    return PlainTextResponse(_fill_headline(_strip_routed(f.read_text(encoding="utf-8"), hub_on)).replace("{BASE}", base),
                              media_type="text/plain; charset=utf-8")
 
 
@@ -2920,10 +3866,77 @@ async def integrate_md():
 
 
 @app.get("/skill.md", include_in_schema=False)
-async def skill_md():
+async def skill_md(request: Request, db: AsyncSession = Depends(get_session)):
     """The OFFICIAL treg Claude skill (3 personas), {BASE}-templated to this server.
     install.sh drops it into ~/.claude/skills/treg/ so agents learn treg at CLI install."""
-    return _serve_md("skill.md")
+    from .hub_gate import hub_visible
+    return _serve_md("skill.md", (await hub_visible(request, db))[0])
+
+
+@app.get("/skills/ugc/SKILL.md", include_in_schema=False)
+async def make_ugc_skill_md():
+    """The make-ugc orchestrator skill: the /ugc workflow as a file an agent can follow. Served from
+    the bundled copy (`.agents/skills/make-ugc` is a symlink to it) so the two never drift."""
+    return _serve_md("skills/make-ugc/SKILL.md")
+
+
+@app.get("/skills/lead-signals/SKILL.md", include_in_schema=False)
+async def lead_signals_skill_md():
+    """The lead-signals skill: the /leads-signals workflow (detect, qualify, contact, keep watching)
+    as a file an agent can follow. Bundled like make-ugc; `.agents/skills/lead-signals` links to it."""
+    return _serve_md("skills/lead-signals/SKILL.md")
+
+
+@app.get("/skills/web-access/SKILL.md", include_in_schema=False)
+async def web_access_skill_md():
+    """The web-access skill: when to search, read, map or call a platform job, free first, with the
+    routed fallbacks steered by headers. Bundled like lead-signals; `.agents/skills/web-access` links to it."""
+    return _serve_md("skills/web-access/SKILL.md")
+
+
+@app.get("/skills/recruit/SKILL.md", include_in_schema=False)
+async def recruit_skill_md():
+    """The recruit skill: a job post in, a ranked and contactable shortlist out, with a run file of
+    stage counts and per-candidate vendor trails. Bundled like lead-signals; `.agents/skills/recruit`
+    links to it."""
+    return _serve_md("skills/recruit/SKILL.md")
+
+
+@app.get("/skills/doomscroll/SKILL.md", include_in_schema=False)
+async def doomscroll_skill_md():
+    """The doomscroll skill: a topic and a window in, the posts worth seeing across platforms out,
+    grouped into stories, with its merge script inline. Bundled like lead-signals."""
+    return _serve_md("skills/doomscroll/SKILL.md")
+
+
+@app.get("/skills/jev-memory/SKILL.md", include_in_schema=False)
+async def jev_memory_skill_md():
+    """The jev-memory skill: install (or build) the Claude Code mod in
+    `examples/claude-code-mods/jev-memory`, where Jev judges each prompt after the turn and the
+    lasting preferences are remembered. Opt-in: kept out of the well-known index, so
+    `treg skill bootstrap` (install.sh) never installs it unasked."""
+    return _serve_md("skills/jev-memory/SKILL.md")
+
+
+@app.get("/skills/rea-growth/SKILL.md", include_in_schema=False)
+async def rea_growth_skill_md():
+    """The rea-growth skill: the /rea-growth flow (a company's growth moves, its content per channel,
+    the plays to copy) as a file an agent can follow. Opt-in like jev-memory: kept out of the
+    well-known index, so `treg skill bootstrap` (install.sh) never installs it unasked."""
+    return _serve_md("skills/rea-growth/SKILL.md")
+
+
+@app.get("/skills/ai-ugc-video/SKILL.md", include_in_schema=False)
+async def ai_ugc_video_skill_md():
+    """The ai-ugc-video skill: the /aigc flow (viral reference, locked assets, voices, shoot plan,
+    Seedance takes, finish) as a file an agent can follow. Opt-in like rea-growth: kept out of the
+    well-known index, so `treg skill bootstrap` (install.sh) never installs it unasked."""
+    return _serve_md("skills/ai-ugc-video/SKILL.md")
+
+
+@app.get("/feedback.md", include_in_schema=False)
+async def feedback_md():
+    return _serve_md("feedback.md")
 
 
 @app.get("/favicon.svg", include_in_schema=False)
@@ -2959,37 +3972,71 @@ async def legal_css():
     return FileResponse(f, media_type="text/css", headers={"Cache-Control": "no-cache"})
 
 
-def _legal_page(name: str) -> HTMLResponse:
+def _static_page(name: str, request: Request) -> Response:
+    """A bundled HTML page with its placeholders filled: `{BASE}` so each page's canonical and
+    og:url name the host actually serving it (a hardcoded treg.to would tell a self-hosted
+    registry's crawler that the real page lives on someone else's domain), and `{ENDPOINTS}` /
+    `{PROVIDERS}` so the catalog's size is read from the catalog, never typed.
+
+    no-cache: a page must not be served stale after we publish an update. The ETag keeps the
+    revalidation a 304, as it was when these pages were plain FileResponses."""
     page = _WEB_DIR / name
     if not page.exists():
         raise HTTPException(status_code=404, detail=f"{name} not bundled")
-    # `{BASE}`-substituted rather than sent as a plain FileResponse, so each page's canonical and
-    # og:url name the host actually serving it. A hardcoded treg.to would tell a self-hosted
-    # registry's crawler that the real page lives on someone else's domain.
     base = get_settings().public_url.rstrip("/")
-    html = page.read_text(encoding="utf-8").replace("{BASE}", base)
-    # no-cache: a legal page must not be served stale after we publish an update.
-    return HTMLResponse(html, headers={"Cache-Control": "no-cache"})
+    html = _strip_hosted(_fill_headline(page.read_text(encoding="utf-8"))).replace("{BASE}", base)
+    etag = '"' + hashlib.sha256(html.encode("utf-8")).hexdigest()[:32] + '"'
+    headers = {"Cache-Control": "no-cache", "ETag": etag}
+    # An edge that compresses the body weakens the tag (W/"..."), so compare the opaque part.
+    sent = {tag.strip().removeprefix("W/") for tag in request.headers.get("if-none-match", "").split(",")}
+    if etag in sent:
+        return Response(status_code=304, headers=headers)
+    return HTMLResponse(html, headers=headers)
 
 
 @app.get("/terms", include_in_schema=False)
-async def terms_page():
+async def terms_page(request: Request):
     """Terms of Service for the HOSTED registry (self-hosted instances are governed by LICENSE)."""
-    return _legal_page("terms.html")
+    return _static_page("terms.html", request)
 
 
 @app.get("/privacy", include_in_schema=False)
-async def privacy_page():
+async def privacy_page(request: Request):
     """Privacy policy. Also the URL given to OAuth providers at app-registration/verification time
     (Google requires a reachable privacy policy carrying the Limited Use disclosure), so this path
     is effectively public API — don't rename it without updating the provider consoles."""
-    return _legal_page("privacy.html")
+    return _static_page("privacy.html", request)
 
 
 @app.get("/connectors/claude", include_in_schema=False)
-async def claude_connector_page():
+async def claude_connector_page(request: Request):
     """Setup, scope, billing, privacy, and removal instructions for the Claude connector."""
-    return _legal_page("claude-connector.html")
+    return _static_page("claude-connector.html", request)
+
+
+@app.get("/plugins/claude", include_in_schema=False)
+async def claude_plugin_page(request: Request):
+    """Install, scope, billing, privacy, and removal instructions for the Claude plugin. The plugin
+    manifest's documentationUrl points here, so the Claude directory listing links to this path."""
+    return _static_page("claude-plugin.html", request)
+
+
+@app.get("/sheets", include_in_schema=False)
+async def sheets_page(request: Request):
+    """What the Google Sheets add-on does, how it is paid for, and where its data goes. Given to
+    Google at Marketplace review, so this path is effectively public API, like /privacy."""
+    return _static_page("sheets.html", request)
+
+
+@app.get("/agent-setup.js", include_in_schema=False)
+async def agent_setup_js():
+    """The onboarding widgets for the standalone Enrich Arena page. The Dashboard imports their
+    source (`frontend/src/agent-setup/`) directly; the frontend build compiles the same source into
+    this classic script, which exposes `window.TregAgentSetup` on the page's global Vue build."""
+    f = _WEB_DIR / "dashboard" / "agent-setup.js"
+    if not f.exists():
+        raise HTTPException(status_code=404, detail="agent-setup.js not built")
+    return FileResponse(f, media_type="application/javascript", headers={"Cache-Control": "no-cache"})
 
 
 @app.get("/adtrack.js", include_in_schema=False)
@@ -3006,6 +4053,41 @@ async def adtrack_js():
         raise HTTPException(status_code=404, detail="adtrack.js not bundled")
     # no-cache, same reasoning as tutorial.js: served as a bare `<script src="/adtrack.js">` with no
     # version query, so without this header a browser would keep an ad-window-stale copy after a fix.
+    return FileResponse(f, media_type="application/javascript", headers=headers)
+
+
+@app.get("/captcha.js", include_in_schema=False)
+async def captcha_js(request: Request):
+    """`window.tregCaptcha` for every email sign-in form, with this deployment's public Turnstile
+    site key filled in. Without both Turnstile keys the key is empty and every token is ''."""
+    f = _WEB_DIR / "captcha.js"
+    if not f.exists():
+        raise HTTPException(status_code=404, detail="captcha.js not bundled")
+    s = get_settings()
+    key = s.turnstile_site_key if s.turnstile_secret else ""
+    body = f.read_text().replace('"__TREG_TURNSTILE_SITE_KEY__"', json.dumps(key), 1)
+    # no-cache: a bare include with no version query, and the key changes with configuration; the
+    # ETag turns every page view's revalidation into a 304.
+    etag = '"' + hashlib.sha256(body.encode()).hexdigest()[:16] + '"'
+    headers = {"Cache-Control": "no-cache", "ETag": etag}
+    # The compression middleware weakens the ETag (W/"..."), and browsers send that form back.
+    if etag in [t.strip().removeprefix("W/") for t in request.headers.get("if-none-match", "").split(",")]:
+        return Response(status_code=304, headers=headers)
+    return Response(content=body, media_type="application/javascript", headers=headers)
+
+
+@app.get("/gtag.js", include_in_schema=False)
+async def gtag_js():
+    """Google Ads conversion tracking via gtag.js. Loads the base tag (AW-18392771132) on every
+    page; the signup conversion (AW-18392771132/0usqCIeQrO0cELzUrcJE) fires from the dashboard
+    on first team creation for a new user. Like adtrack.js, returns empty for unconfigured or
+    self-hosted deployments that don't want external Google requests."""
+    headers = {"Cache-Control": "no-cache"}
+    if not adsconv.enabled():
+        return Response(content="", media_type="application/javascript", headers=headers)
+    f = _WEB_DIR / "gtag.js"
+    if not f.exists():
+        raise HTTPException(status_code=404, detail="gtag.js not bundled")
     return FileResponse(f, media_type="application/javascript", headers=headers)
 
 
@@ -3029,51 +4111,626 @@ async def sitetrack_js():
 
 
 @app.get("/grokbot", include_in_schema=False)
-async def grokbot_page():
+async def grokbot_page(request: Request):
     """Landing page for the treg plugin inside Grok Bot ("Grok Bot for Outreach") — a scroll
     animatic of the Bot working a lead list through treg. Indexed like /people-search: canonical,
     OG meta, listed in the sitemap."""
-    page = _WEB_DIR / "grokbot.html"
-    if not page.exists():
-        raise HTTPException(status_code=404, detail="grokbot.html not bundled")
-    return FileResponse(page, headers={"Cache-Control": "no-cache"})
+    return _static_page("grokbot.html", request)
 
 
 @app.get("/fable", include_in_schema=False)
-async def fable_page():
+async def fable_page(request: Request):
     """Landing page for the Claude Fable 5.1 + treg launch ("Run your GTM from the terminal"):
     one prompt, the market read, four agents, four results, then the catalog and the bill.
     Indexed like /grokbot: canonical, in the sitemap, no-cache so edits land on refresh."""
-    page = _WEB_DIR / "fable-gtm.html"
-    if not page.exists():
-        raise HTTPException(status_code=404, detail="fable-gtm.html not bundled")
-    return FileResponse(page, headers={"Cache-Control": "no-cache"})
+    return _static_page("fable-gtm.html", request)
+
+
+@app.get("/astra", include_in_schema=False)
+async def astra_page(request: Request):
+    """Keep launch links and their campaign attribution when moving to /gpt6."""
+    query = request.url.query
+    return RedirectResponse("/gpt6" + (f"?{query}" if query else ""), status_code=301)
+
+
+@app.get("/gpt6", include_in_schema=False)
+async def gpt6_page(request: Request):
+    """GPT-6 launch destination, with the Codex demo and direct plugin listing."""
+    return _static_page("astra.html", request)
+
+
+@app.get("/ugc", include_in_schema=False)
+async def ugc_page(request: Request):
+    """Landing page for the AI-generated UGC workflow article: the five steps (trend pull,
+    JSON-prompt character, Seedance 2.5 talking head, phone demo + cloned voice, hooks at scale)
+    with the generated clips and the bill. Indexed like /people-search: canonical, OG meta,
+    in the sitemap, no-cache so edits land on refresh. Asset paths are relative (media/ugc/…)."""
+    return _static_page("ugc.html", request)
+
+
+@app.get("/aigc", include_in_schema=False)
+async def aigc_page(request: Request):
+    """AI video launch page: one video in four steps (viral reference, locked assets, voices,
+    the Seedance take) with each step's endpoint and price, then the ai-ugc-video skill prompt."""
+    return _static_page("aigc.html", request)
+
+
+@app.get("/aeo", include_in_schema=False)
+async def aeo_page(request: Request):
+    """Landing page for the AEO workflow article: getting AI answers to recommend a product in four
+    steps (what customers ask, who AI recommends, the sites AI cites, getting onto them) and the
+    one meta prompt that runs them. Indexed like /ugc: canonical, OG meta, in the sitemap,
+    no-cache. Asset paths are relative (media/aeo/…)."""
+    return _static_page("aeo.html", request)
+
+
+@app.get("/rea-growth", include_in_schema=False)
+async def rea_growth_page(request: Request):
+    """REA for growth: reverse engineer how a company grows. The agent walks the target's path
+    from first touch to sharing through treg (traffic, search, ads, posts, pages, links, job
+    openings) and returns plays marked seen or inferred, each with the ask that runs it. Served
+    like /aeo: canonical, in the sitemap, no-cache, relative asset paths."""
+    return _static_page("rea-growth.html", request)
+
+
+@app.get("/social", include_in_schema=False)
+async def social_search_page(request: Request):
+    """Social media on autopilot: the agent spots viral posts, tracks their creators, decodes the
+    structure, reads the comments, posts and A/B tests on connected
+    accounts. The page follows the launch film's design. Served
+    like /rea-growth: canonical, in the sitemap, no-cache."""
+    return _static_page("social-search.html", request)
+
+
+@app.get("/rea-growth.md", include_in_schema=False)
+async def rea_growth_md():
+    """The full Lovable report behind /rea-growth as Markdown: what the page's "Copy the playbook"
+    button copies, and what agents read instead of the rendered page. `noindex`: the HTML page is
+    the indexed copy."""
+    resp = _serve_md("rea-growth.md")
+    resp.headers["X-Robots-Tag"] = "noindex"
+    return resp
+
+
+@app.get("/showcase", include_in_schema=False)
+async def showcase_page(request: Request):
+    """The gallery of products built on treg: each app, its maker and the maker's launch post,
+    then a one-off snapshot of posts about treg on X (media/showcase/wall.json). Relative asset
+    paths (media/showcase/…). Hosted only, like /gtm-engineering: the apps run on treg.to itself."""
+    if not _hosted():
+        raise HTTPException(status_code=404, detail="not found")
+    return _static_page("showcase.html", request)
 
 
 @app.get("/people-search", include_in_schema=False)
-async def people_search_page():
+async def people_search_page(request: Request):
     """Landing page for the people-search launch ("Claude for people search") — the destination the
     launch film points viewers at. A first-class page: canonical, in the sitemap, indexed. Its asset
     paths are RELATIVE (media/…, logos/…) so the same file previews from file:// — which only works
     while this route stays slashless; a /people-search/ variant would re-root them."""
-    page = _WEB_DIR / "people-search.html"
-    if not page.exists():
-        raise HTTPException(status_code=404, detail="people-search.html not bundled")
-    return FileResponse(page, headers={"Cache-Control": "no-cache"})
+    return _static_page("people-search.html", request)
+
+
+@app.get("/start", include_in_schema=False)
+async def start_page(request: Request):
+    """The paid-traffic landing page. It only sells: use data in your agent, drop the monthly
+    subscriptions, one action (Start free → sign in → /app). `?job=` comes from the ad group so the
+    headline, the real run and the bill arrive matched to the search. Hosted-only (it quotes treg.to's
+    free credit and vendor plans), `noindex` and out of the sitemap: an ad destination, not a search page."""
+    if not _hosted():
+        raise HTTPException(status_code=404)
+    resp = _static_page("start.html", request)
+    resp.headers["X-Robots-Tag"] = "noindex"
+    return resp
+
+
+@app.get("/leads-signals", include_in_schema=False)
+async def leads_signals_page(request: Request):
+    """Landing page for the buyer-signals launch ("Claude for Monitor Leads Signal"). Built from the
+    /people-search page and served the same way: canonical, in the sitemap, relative asset paths."""
+    return _static_page("leads-signals.html", request)
+
+
+@app.get("/jobs-api", include_in_schema=False)
+async def jobs_api_page(request: Request):
+    """Landing page for the Jev × treg Jobs API launch ("One API to any job data"). Built from the
+    /leads-signals page and served the same way: canonical, in the sitemap, relative asset paths."""
+    return _static_page("jobs-api.html", request)
+
+
+@app.get("/recruit", include_in_schema=False)
+async def recruit_page(request: Request):
+    """Landing page for the recruiter launch ("OpenSource LinkedIn Recruiter") — the destination the
+    launch film points viewers at, and the page that sells the recruit skill. Served like
+    /leads-signals: canonical, in the sitemap, relative asset paths."""
+    return _static_page("recruit.html", request)
+
+
+@app.get("/web-access", include_in_schema=False)
+async def web_access_page(request: Request):
+    """Landing page for the web-access launch ("Free WebAccess for agents"). Served like /leads-signals;
+    its benchmark and price comparison read /web-arena/api/leaderboard and fall back to a bundled snapshot."""
+    return _static_page("web-access.html", request)
+
+
+@app.get("/doomscroll", include_in_schema=False)
+async def doomscroll_page(request: Request):
+    """Landing page for the doomscroll skill ("Let Your Agent Doomscroll for You"). Served like /leads-signals;
+    its demo rows are real posts bundled in the page."""
+    return _static_page("doomscroll.html", request)
+
+
+@app.get("/gtm-engineering", include_in_schema=False)
+async def gtm_engineering_page(request: Request):
+    """The GTM-engineering hub: the seven jobs a GTM engineer runs, each linked to its existing
+    page, the workflows as playbooks with their receipts, and the GitHub skills people install
+    next to the catalog job that covers their data step. Hand-written like the launch pages, so it
+    loads sitetrack.js and its reading is measurable; the facts on it are dated in the copy.
+    Hosted only, like the workflows it links to: its runs and credit describe treg.to itself."""
+    if not _hosted():
+        raise HTTPException(status_code=404, detail="not found")
+    return _static_page("gtm-engineering.html", request)
+
+
+@app.get("/gtm-engineering.md", include_in_schema=False)
+async def gtm_engineering_md():
+    """The playbook as Markdown, for agents and answer engines that read text rather than render
+    pages. Hand-kept beside the HTML; `tests/test_gtm_engineering_page.py` fails if a chapter
+    heading on one is missing from the other. `noindex`: the HTML page is the indexed copy and
+    names this one with `rel=alternate`."""
+    if not _hosted():
+        raise HTTPException(status_code=404, detail="not found")
+    resp = _serve_md("gtm-engineering.md")
+    resp.headers["X-Robots-Tag"] = "noindex"
+    return resp
+
+
+@app.get("/jev", include_in_schema=False)
+async def jev_page(request: Request):
+    """Landing page for jev + treg ("jev for GTM engineers"): three agent recipes, each with a prompt
+    to copy and a demo under it. The X launch-radar demo is live (`/jev/xboost.json`, judged daily by
+    `treg-worker jev xboost`, plus visitor-submitted posts); the signup-triage and signal-leads demos
+    replay bundled, anonymised runs. Indexed like /ugc: canonical, OG meta, in the sitemap, no-cache."""
+    return _static_page("jev.html", request)
+
+
+_JEV_JUDGE_NS = "jev_judge"
+
+
+@app.get("/jev/xboost.json", include_in_schema=False)
+async def jev_xboost_json(db: AsyncSession = Depends(get_session)):
+    """The latest launch-radar run: the worker's stored document, else the bundled snapshot so the
+    page renders on a fresh or unconfigured server."""
+    from ..application import jev_xboost
+
+    run = await _xboost_run(db)
+    run["live"] = jev_xboost.configured()
+    return JSONResponse(run, headers={"Cache-Control": "no-cache"})
+
+
+async def _xboost_run(db: AsyncSession) -> dict:
+    """The worker's stored run, else the bundled snapshot marked `snapshot: true`."""
+    from .. import ratestore
+    from ..application import jev_xboost
+
+    run = await ratestore.kv_get(db, jev_xboost.KV_NS, jev_xboost.KV_KEY)
+    if run is None:
+        seed = _MEDIA_DIR / "jev" / "xboost-seed.json"
+        run = json.loads(seed.read_text(encoding="utf-8")) if seed.exists() else {"posts": [], "manual": []}
+        run["snapshot"] = True
+    return run
+
+
+@app.post("/jev/xboost/judge", include_in_schema=False)
+async def jev_xboost_judge(request: Request, db: AsyncSession = Depends(get_session)):
+    """A visitor pastes a post link; the same forensics + jev run on it and the verdict joins the
+    board. Unauthenticated, so per-IP and global sliding-window limits (ratestore) bound the spend:
+    every judge is a few treg calls on the demo team's token plus one jev call."""
+    from .. import ratestore
+    from ..application import jev_xboost
+    from .auth import _client_ip
+
+    if not jev_xboost.configured():
+        raise HTTPException(status_code=503, detail="the live demo is not configured on this server")
+    try:
+        body = await request.json()
+    except ValueError:
+        body = {}
+    url = (body or {}).get("url") if isinstance(body, dict) else None
+    try:
+        jev_xboost.parse_post_url(url or "")
+    except jev_xboost.XboostError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from None
+    # A post already on the board (daily run or an earlier visitor) answers from the store: no
+    # second fetch, no second bill, no duplicate card.
+    _, post_id = jev_xboost.parse_post_url(url)
+    run = await _xboost_run(db)
+    for known in [*(run.get("manual") or []), *(run.get("posts") or [])]:
+        if str(known.get("id")) == post_id:
+            return {**known, "cached": True}
+    ip = _client_ip(request)
+    ok = await ratestore.rate_check(
+        db, _JEV_JUDGE_NS, [*ratestore.ip_limit(ip, 5, key=f"ip:{ip}"), ("all", 60)], window_s=3600)
+    await db.commit()
+    if not ok:
+        raise HTTPException(status_code=429, detail="that is enough for this hour; the daily run continues")
+    try:
+        judged = await jev_xboost.judge_url(request.app.state.http, url)
+    except jev_xboost.XboostError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from None
+    # A visitor may judge before the first daily run: keep the snapshot's board under their card.
+    run = await _xboost_run(db)
+    await ratestore.kv_put(db, jev_xboost.KV_NS, jev_xboost.KV_KEY, jev_xboost.with_manual(run, judged),
+                           ttl_s=jev_xboost.KV_TTL_S)
+    await db.commit()
+    return judged
+
+
+# The launch pages grouped into a thin index. Routes stay where they are; this is a directory, not
+# a move. The list is hand-maintained because each launch has its own framing and the order is
+# chronological (newest first), not alphabetical.
+_BLOG_LAUNCHES: list[tuple[str, str, str, str]] = [
+    # (slug, title, date, one-line blurb)
+    ("/doomscroll", "Let Your Agent Doomscroll for You", "2026-11-19",
+     "Name a topic and a time window; your agent reads six platforms and hands back the posts worth seeing."),
+    ("/aigc", "AI Video Generation for Your Agent", "2026-11-11",
+     "Seedance, Veo, Wan, Hailuo and Kling with one token; pay per finished clip."),
+    ("/social", "Put Your Social Media on Autopilot", "2026-11-04",
+     "Spot what goes viral, decode it, auto-post and A/B test. One treg key."),
+    ("/rea-growth", "REA for Growth", "2026-10-29",
+     "Name a company; your agent takes its distribution apart and hands you plays to copy."),
+    ("/aeo", "How to Get AI to Recommend Your Product", "2026-10-17",
+     "Four steps and one prompt: what customers ask, who AI recommends, the sites it cites, getting on them."),
+    ("/recruit", "OpenSource LinkedIn Recruiter", "2026-10-17",
+     "Paste a job post; your agent ranks candidates and finds personal email and mobile for $0.19 each."),
+    ("/web-access", "Free WebAccess for agents", "2026-10-15",
+     "Free web search and page reads for your agent; when free fails, the next vendor answers."),
+    ("/showcase", "Built with treg", "2026-10-12",
+     "Apps whose agents reach the outside world through treg, the people who made them, and their launch posts."),
+    ("/gtm-engineering", "The GTM Engineering Playbook", "2026-09-30",
+     "16 chapters from ICP to rollout: a prompt and a rule in each, and the data steps tested on recorded runs."),
+    ("/jobs-api", "Jev × treg Jobs API", "2026-11-16",
+     "One API to any job data: find and rank open roles, reach the hiring manager, and check real posted pay."),
+    ("/leads-signals", "Claude for Monitor Leads Signal", "2026-09-28",
+     "Your agent checks hiring, funding, job changes and social chatter on a schedule, and reports what's new."),
+    ("/jev", "How to use Jev", "2026-09-20",
+     "What Jev is and how to use it: live examples, use cases, code, and GTM automation recipes."),
+    ("/ugc", "AI UGC Videos for $0.67 a Clip", "2026-09-15",
+     "The five-step workflow: trending hooks, a JSON-prompt character, Seedance 2.5, a cloned voice."),
+    ("/gpt6", "GPT-6 and treg.to", "2026-09-08",
+     "Codex demo: one prompt, the market read, and the catalog of tools it called."),
+    ("/fable", "Claude Fable 5.1 + treg.to", "2026-09-02",
+     "Run your GTM from the terminal: one prompt, four agents, four results."),
+    ("/grokbot", "Grok Bot for Outreach", "2026-09-01",
+     "A scroll animatic of Grok Bot working a lead list through treg.to."),
+    ("/people-search", "People Search Launch", "2026-09-01",
+     "Give your agent 1B+ contacts. The destination the launch film points at."),
+]
+
+# Identity/receipt posts: thin announcements that live under /blog/. These are not launches (which
+# have their own top-level routes), but they sit prominently on the /blog index above launches.
+_BLOG_POSTS: list[tuple[str, str, str, str]] = [
+    # (slug under /blog/, title, date, one-line blurb)
+    ("jobspipe-and-treg", "JobsPipe and treg: hiring signals, people search and job data in one agent",
+     "2026-11-20",
+     "Hiring signals from JobsPipe, people and work emails from treg. Prompts and costs for sales, recruiting and job search."),
+    ("security-incident-2026-10-23", "23 Oct 2026 Treg security incident report", "2026-10-25",
+     "What happened, what may be affected, and what to rotate. Investigation ongoing."),
+    ("work-email-finding-bench", "Work Email Finding: a 292 Person Receipt", "2026-09-16",
+     "Quality tie across vendors. Cost is the gap: $0.0056 vs $0.0395 per correct."),
+    ("people-search-bench", "#1 on People Search Bench", "2026-09-14",
+     "treg.to scores 80.0% on recruiting, 78.2% on B2B prospecting. 119 real tasks, same agent."),
+]
+
+
+def _blog_posting_ld(slug: str, base: str) -> dict:
+    """BlogPosting schema for one entry of `_BLOG_POSTS`: a dated, bylined article. The posts are
+    first-party measurements, and a named author with a visible date is what earns the validation
+    click and the AI citation; breadcrumbs alone describe a page, not a piece of writing."""
+    _, title, date, blurb = next(p for p in _BLOG_POSTS if p[0] == slug)
+    return {"@context": "https://schema.org", "@type": "BlogPosting", "headline": title,
+            "description": blurb, "datePublished": date, "dateModified": date,
+            "mainEntityOfPage": f"{base}/blog/{slug}", "url": f"{base}/blog/{slug}",
+            "author": {"@type": "Person", "name": "Jason Zhou", "url": "https://github.com/JayZeeDesign"},
+            "publisher": {"@type": "Organization", "name": "treg.to", "url": base + "/"}}
+
+
+@app.get("/blog", include_in_schema=False)
+async def blog_index():
+    """Thin index of launch pages and notes. The launches stay at their existing routes; this page
+    links to them without moving files or creating /blog/grokbot clones. Indexed, canonical, in
+    the sitemap. Blog posts (identity/receipt announcements) sit above launches."""
+    if not _hosted():
+        raise HTTPException(status_code=404, detail="not found")
+    base = get_settings().public_url.rstrip("/")
+
+    # Blog posts (identity/receipt announcements) come first, prominently
+    post_cards = "".join(
+        f'<a class="pcard" href="/blog/{_esc_html(slug)}">'
+        f'<h3>{_esc_html(title)}</h3>'
+        f'<p>{_esc_html(blurb)}</p>'
+        f'<div class="meta">{_esc_html(date)}</div></a>'
+        for slug, title, date, blurb in _BLOG_POSTS
+    )
+
+    launch_cards = "".join(
+        f'<a class="pcard" href="{_esc_html(slug)}">'
+        f'<h3>{_esc_html(title)}</h3>'
+        f'<p>{_esc_html(blurb)}</p>'
+        f'<div class="meta">{_esc_html(date)}</div></a>'
+        for slug, title, date, blurb in _BLOG_LAUNCHES
+    )
+
+    body = (
+        '<main class="wrap"><div class="phead">'
+        '<div class="crumbs"><a href="/">treg.to</a> / <a href="/blog">Blog</a></div>'
+        '<h1>Launches and Notes</h1>'
+        '<p class="lede">Product launches, partner posts and notes from the treg.to team. '
+        'Each launch page shows a real run with the catalog and the bill.</p>'
+        '</div>'
+        + (f'<section class="cat"><h2>Posts</h2><div class="grid">{post_cards}</div></section>'
+           if _BLOG_POSTS else '')
+        + '<section class="cat"><h2>Launches</h2>'
+        f'<div class="grid">{launch_cards}</div></section>'
+        '</main>'
+    )
+
+    ld = [{"@context": "https://schema.org", "@type": "BreadcrumbList", "itemListElement": [
+        {"@type": "ListItem", "position": 1, "name": "treg.to", "item": base + "/"},
+        {"@type": "ListItem", "position": 2, "name": "Blog", "item": base + "/blog"}]}]
+
+    return _page("Launches and Notes | treg.to",
+                 "Product launches, partner posts and notes from the treg.to team. "
+                 "Each launch page shows a real run with the catalog and the bill.",
+                 "/blog", body, ld)
+
+
+@app.get("/blog/people-search-bench", include_in_schema=False)
+async def blog_people_search_bench():
+    """Identity/receipt post: treg.to is #1 on People Search Bench by LessieAI. Links to /grokbot#bench
+    for the interactive chart. Numbers from the benchmark: 119 real tasks, % answered correctly."""
+    if not _hosted():
+        raise HTTPException(status_code=404, detail="not found")
+    base = get_settings().public_url.rstrip("/")
+
+    # The benchmark numbers (from /grokbot#bench and the LessieAI chart)
+    scores = [
+        ("Recruiting", "80.0%"),
+        ("B2B prospecting", "78.2%"),
+        ("Deterministic", "76.3%"),
+        ("Influencer", "62.9%"),
+    ]
+    score_rows = "".join(
+        f'<tr><td>{_esc_html(cat)}</td><td style="text-align:right;font-weight:600">{_esc_html(pct)}</td></tr>'
+        for cat, pct in scores
+    )
+
+    body = (
+        '<main class="wrap" style="max-width:680px">'
+        '<div class="phead">'
+        '<div class="crumbs"><a href="/">treg.to</a> / <a href="/blog">Blog</a> / '
+        '<a href="/blog/people-search-bench">#1 on People Search Bench</a></div>'
+        '<h1>#1 on People Search Bench</h1>'
+        '<p class="lede">treg.to scores highest on People Search Bench by LessieAI: '
+        '119 real tasks, same agent, with and without the plugin.</p>'
+        '</div>'
+        '<section class="cat">'
+        '<p>People Search Bench tests whether an agent can answer real recruiting, B2B prospecting, '
+        'deterministic lookup and influencer discovery questions. The benchmark runs the same agent '
+        'with and without the treg.to plugin, measuring % answered correctly across 119 tasks.</p>'
+        '<table style="width:100%;margin:24px 0;border-collapse:collapse">'
+        '<thead><tr style="border-bottom:1px solid var(--border)">'
+        '<th style="text-align:left;padding:8px 0">Category</th>'
+        '<th style="text-align:right;padding:8px 0">treg.to score</th>'
+        '</tr></thead>'
+        f'<tbody style="font-size:1.1em">{score_rows}</tbody>'
+        '</table>'
+        '<p style="color:var(--muted);font-size:0.9em">Source: People Search Bench by LessieAI, 119 real tasks, '
+        '% answered correctly. Same agent, with and without the plugin.</p>'
+        '<p style="margin-top:24px"><a href="/grokbot#bench" style="font-weight:600">'
+        'See the interactive chart on the Grok Bot launch page &rarr;</a></p>'
+        '</section>'
+        '</main>'
+    )
+
+    ld = [_blog_posting_ld("people-search-bench", base),
+          {"@context": "https://schema.org", "@type": "BreadcrumbList", "itemListElement": [
+        {"@type": "ListItem", "position": 1, "name": "treg.to", "item": base + "/"},
+        {"@type": "ListItem", "position": 2, "name": "Blog", "item": base + "/blog"},
+        {"@type": "ListItem", "position": 3, "name": "#1 on People Search Bench",
+         "item": base + "/blog/people-search-bench"}]}]
+
+    return _page("#1 on People Search Bench | treg.to",
+                 "treg.to scores 80.0% on recruiting, 78.2% on B2B prospecting on People Search Bench "
+                 "by LessieAI. 119 real tasks, same agent with and without the plugin.",
+                 "/blog/people-search-bench", body, ld)
+
+
+@app.get("/blog/security-incident-2026-10-23", include_in_schema=False)
+async def blog_security_incident_2026_10_23():
+    """Customer-facing incident report. The body lives in its own HTML file so the report can be
+    updated without touching route code."""
+    if not _hosted():
+        raise HTTPException(status_code=404, detail="not found")
+    base = get_settings().public_url.rstrip("/")
+    slug = "security-incident-2026-10-23"
+    title = next(p[1] for p in _BLOG_POSTS if p[0] == slug)
+    body = (_WEB_DIR / f"blog-{slug}.html").read_text(encoding="utf-8")
+    ld = [_blog_posting_ld(slug, base),
+          {"@context": "https://schema.org", "@type": "BreadcrumbList", "itemListElement": [
+        {"@type": "ListItem", "position": 1, "name": "treg.to", "item": base + "/"},
+        {"@type": "ListItem", "position": 2, "name": "Blog", "item": base + "/blog"},
+        {"@type": "ListItem", "position": 3, "name": title, "item": f"{base}/blog/{slug}"}]}]
+    return _page(f"{title} | treg.to",
+                 "On October 23, 2026 we confirmed unauthorized access to part of treg's production "
+                 "systems. What may be affected, what we have done, and what you need to do.",
+                 f"/blog/{slug}", body, ld)
+
+
+@app.get("/blog/jobspipe-and-treg", include_in_schema=False)
+async def blog_jobspipe_and_treg():
+    """Partner post with JobsPipe: job data from JobsPipe, people and emails from treg. The body is
+    its own HTML file, like the incident report, so copy can change without touching route code."""
+    if not _hosted():
+        raise HTTPException(status_code=404, detail="not found")
+    base = get_settings().public_url.rstrip("/")
+    slug = "jobspipe-and-treg"
+    title = next(p[1] for p in _BLOG_POSTS if p[0] == slug)
+    body = (_WEB_DIR / f"blog-{slug}.html").read_text(encoding="utf-8")
+    ld = [_blog_posting_ld(slug, base),
+          {"@context": "https://schema.org", "@type": "BreadcrumbList", "itemListElement": [
+        {"@type": "ListItem", "position": 1, "name": "treg.to", "item": base + "/"},
+        {"@type": "ListItem", "position": 2, "name": "Blog", "item": base + "/blog"},
+        {"@type": "ListItem", "position": 3, "name": title, "item": f"{base}/blog/{slug}"}]}]
+    return _page(f"{title} | treg.to",
+                 "Hiring signals from JobsPipe and people search, emails and company data from treg. "
+                 "Prompts for sales, recruiting and job search, with what each run costs.",
+                 f"/blog/{slug}", body, ld)
+
+
+@app.get("/blog/work-email-finding-bench", include_in_schema=False)
+async def blog_work_email_finding_bench():
+    """Receipt post: work-email finding across vendors on a 292-person list with published answers.
+    Measured 2026-09-16. Quality is a tie; cost is the gap."""
+    if not _hosted():
+        raise HTTPException(status_code=404, detail="not found")
+    base = get_settings().public_url.rstrip("/")
+
+    body = (
+        '<main class="wrap" style="max-width:780px">'
+        '<div class="phead">'
+        '<div class="crumbs"><a href="/">treg.to</a> / <a href="/blog">Blog</a> / '
+        '<a href="/blog/work-email-finding-bench">Work Email Finding</a></div>'
+        '<h1>Work Email Finding: a 292 Person Receipt</h1>'
+        '<p class="lede">Measured 2026-09-16. Quality is a tie across vendors. Cost is the gap.</p>'
+        '</div>'
+        '<section class="cat">'
+        '<p>We ran a 292-person list (88 orgs, 16 industries, name + domain only) through five '
+        'aggregators and compared the returned emails against each org&#x27;s published team-page address. '
+        'Every person had a public team-page email, so find rates are inflated vs. a cold list; '
+        'cost per row and exact-match rate are the clean comparisons.</p>'
+        '<h2 style="margin-top:32px;font-size:1.1em">The run</h2>'
+        '<p><code>treg.people.email.find</code> routed across catalog providers that answered '
+        '(QuickEnrich ~61%, Kitt ~36%, plus Tomba, DropLeads, Hunter, Findymail). The other columns '
+        'represent alternative aggregators, not the underlying providers.</p>'
+        '<div style="overflow-x:auto">'
+        '<table style="width:100%;margin:24px 0;border-collapse:collapse;font-size:0.95em">'
+        '<thead><tr style="border-bottom:1px solid var(--border)">'
+        '<th style="text-align:left;padding:8px 0"></th>'
+        '<th style="text-align:right;padding:8px 12px">treg.to</th>'
+        '<th style="text-align:right;padding:8px 12px">Clay</th>'
+        '<th style="text-align:right;padding:8px 12px">Freckle</th>'
+        '<th style="text-align:right;padding:8px 12px">Deepline</th>'
+        '</tr></thead>'
+        '<tbody>'
+        '<tr><td style="padding:6px 0">Found</td>'
+        '<td style="text-align:right;padding:6px 12px">289</td>'
+        '<td style="text-align:right;padding:6px 12px">280</td>'
+        '<td style="text-align:right;padding:6px 12px">281</td>'
+        '<td style="text-align:right;padding:6px 12px">266</td></tr>'
+        '<tr><td style="padding:6px 0">Exact match</td>'
+        '<td style="text-align:right;padding:6px 12px">264</td>'
+        '<td style="text-align:right;padding:6px 12px">262</td>'
+        '<td style="text-align:right;padding:6px 12px">263</td>'
+        '<td style="text-align:right;padding:6px 12px">253</td></tr>'
+        '<tr><td style="padding:6px 0">Success (exact/292)</td>'
+        '<td style="text-align:right;padding:6px 12px;font-weight:600">90.4%</td>'
+        '<td style="text-align:right;padding:6px 12px">89.7%</td>'
+        '<td style="text-align:right;padding:6px 12px">90.1%</td>'
+        '<td style="text-align:right;padding:6px 12px">86.6%</td></tr>'
+        '<tr><td style="padding:6px 0">Precision (exact/found)</td>'
+        '<td style="text-align:right;padding:6px 12px">91.3%</td>'
+        '<td style="text-align:right;padding:6px 12px">93.6%</td>'
+        '<td style="text-align:right;padding:6px 12px">93.6%</td>'
+        '<td style="text-align:right;padding:6px 12px">95.1%</td></tr>'
+        '<tr><td style="padding:6px 0">Off-domain</td>'
+        '<td style="text-align:right;padding:6px 12px">5</td>'
+        '<td style="text-align:right;padding:6px 12px">4</td>'
+        '<td style="text-align:right;padding:6px 12px">4</td>'
+        '<td style="text-align:right;padding:6px 12px">0</td></tr>'
+        '<tr style="border-top:1px solid var(--border)"><td style="padding:6px 0">Cost (finding only)</td>'
+        '<td style="text-align:right;padding:6px 12px;font-weight:600">$1.49</td>'
+        '<td style="text-align:right;padding:6px 12px">$10.34</td>'
+        '<td style="text-align:right;padding:6px 12px">$11.22</td>'
+        '<td style="text-align:right;padding:6px 12px">$23.38</td></tr>'
+        '<tr><td style="padding:6px 0">Per row</td>'
+        '<td style="text-align:right;padding:6px 12px;font-weight:600">$0.0051</td>'
+        '<td style="text-align:right;padding:6px 12px">$0.0354</td>'
+        '<td style="text-align:right;padding:6px 12px">$0.0384</td>'
+        '<td style="text-align:right;padding:6px 12px">$0.0801</td></tr>'
+        '<tr><td style="padding:6px 0">Per correct</td>'
+        '<td style="text-align:right;padding:6px 12px;font-weight:600">$0.0056</td>'
+        '<td style="text-align:right;padding:6px 12px">$0.0395</td>'
+        '<td style="text-align:right;padding:6px 12px">$0.0427</td>'
+        '<td style="text-align:right;padding:6px 12px">$0.0924</td></tr>'
+        '<tr><td style="padding:6px 0">Hit latency (median)</td>'
+        '<td style="text-align:right;padding:6px 12px">0.44s</td>'
+        '<td style="text-align:right;padding:6px 12px">11.2s</td>'
+        '<td style="text-align:right;padding:6px 12px">65s</td>'
+        '<td style="text-align:right;padding:6px 12px;color:var(--muted)">batch</td></tr>'
+        '</tbody>'
+        '</table>'
+        '</div>'
+        '<p style="color:var(--muted);font-size:0.85em;margin-top:8px">'
+        'Freckle = LeadMagic&rarr;Findymail. Deepline = ZeroBounce-first play. '
+        'Clay dollars are at Clay&#x27;s Launch data-credit list price ($0.05/credit on 2026-09-16).</p>'
+        '<h2 style="margin-top:32px;font-size:1.1em">What the numbers say</h2>'
+        '<ul style="margin:16px 0;padding-left:24px">'
+        '<li style="margin:8px 0"><strong>Quality is a tie.</strong> treg.to, Clay and Freckle land at '
+        '264, 262 and 263 exact matches; the difference is noise.</li>'
+        '<li style="margin:8px 0"><strong>Different-from-published is mostly not invalid.</strong> '
+        'Many returned addresses are valid aliases. Exact-match is a floor, not a ceiling.</li>'
+        '<li style="margin:8px 0"><strong>Cost is structural.</strong> Credit-based waterfalls run '
+        '7x to 16x treg.to per correct row. Deepline is an outlier because ZeroBounce fires on every '
+        'pattern guess.</li>'
+        '<li style="margin:8px 0"><strong>Latency only matters for per-call paths.</strong> '
+        'treg.to (0.44s) is per-call; do not rank batch tools on speed.</li>'
+        '<li style="margin:8px 0"><strong>Aggregator columns are routes, not products.</strong> '
+        'Each column represents how that aggregator dispatched the query to its underlying providers.</li>'
+        '</ul>'
+        '<h2 style="margin-top:32px;font-size:1.1em">When to choose Clay</h2>'
+        '<p>Choose Clay when you want a visual table, the broader Clay ecosystem for GTM orchestration, '
+        'or a seat that already includes enrichment inside a bigger workflow. Spreadsheet-native teams '
+        'may prefer the Clay UI over API calls.</p>'
+        '<p>Choose treg.to when you want a metered catalog call with a known provider price and a dated '
+        'receipt. See <a href="/pricing">how billing works</a>.</p>'
+        '<h2 style="margin-top:32px;font-size:1.1em">Disclosures</h2>'
+        '<ul style="margin:16px 0;padding-left:24px;color:var(--muted);font-size:0.9em">'
+        '<li style="margin:6px 0"><strong>List bias:</strong> every person had a published team-page '
+        'email, so find rates are inflated vs. a cold list.</li>'
+        '<li style="margin:6px 0"><strong>MillionVerifier re-verify:</strong> we re-verified addresses '
+        'with MillionVerifier after Kitt ran out of credits. MV served 0 cache hits. Kitt is also in '
+        'the treg.to catalog, so its hits are not independent for the treg.to column.</li>'
+        '<li style="margin:6px 0"><strong>treg.to bug:</strong> 3 rows returned HTTP 502 (route_failed) '
+        'and were scored as misses. $0 charged for those rows.</li>'
+        '</ul>'
+        '<p style="margin-top:24px">Related: '
+        '<a href="/people-search">People Search</a>, '
+        '<a href="/workflows/find-and-verify-a-lead-list">Build a Verified Lead List</a>, '
+        '<a href="/use-cases/lead-enrichment-for-ai-agents">Waterfall Enrichment</a>.</p>'
+        '</section>'
+        '</main>'
+    )
+
+    ld = [_blog_posting_ld("work-email-finding-bench", base),
+          {"@context": "https://schema.org", "@type": "BreadcrumbList", "itemListElement": [
+        {"@type": "ListItem", "position": 1, "name": "treg.to", "item": base + "/"},
+        {"@type": "ListItem", "position": 2, "name": "Blog", "item": base + "/blog"},
+        {"@type": "ListItem", "position": 3, "name": "Work Email Finding",
+         "item": base + "/blog/work-email-finding-bench"}]}]
+
+    return _page("Work Email Finding: 292 Person Bench | treg.to",
+                 "Quality tie across vendors, cost is the gap. Measured 2026-09-16: "
+                 "treg.to $0.0056/correct vs Clay $0.0395/correct on 292 people.",
+                 "/blog/work-email-finding-bench", body, ld)
 
 
 @app.get("/resources", include_in_schema=False)
-async def resources_page():
+async def resources_page(request: Request):
     """The hub for the outcome pages. It exists for two reasons beyond navigation: without it the
     `/use-cases/*` pages are orphans that no crawler reaches, and it gives the footer one durable
     link instead of five that grow every time a page is added."""
-    page = _WEB_DIR / "resources.html"
-    if not page.exists():
-        raise HTTPException(status_code=404, detail="resources.html not bundled")
-    # Read-and-substitute for {BASE} templating like the use-case pages.
-    base = get_settings().public_url.rstrip("/")
-    content = page.read_text(encoding="utf-8").replace("{BASE}", base)
-    return HTMLResponse(content, headers={"Cache-Control": "no-cache"})
+    return _static_page("resources.html", request)
 
 
 @app.get("/usecase.css", include_in_schema=False)
@@ -3091,20 +4748,17 @@ public_docs_router = APIRouter()
 app = public_docs_router
 
 
-def _skill_frontmatter() -> dict[str, str]:
-    """The bundled skill's frontmatter, read at request time rather than duplicated in code — the
+def _skill_frontmatter(name: str = "skill.md") -> dict:
+    """The bundled skill's frontmatter, read at request time rather than duplicated in code. The
     description is what drives discovery in every registry, and a second copy of it would drift."""
-    f = _WEB_DIR / "skill.md"
+    f = _WEB_DIR / name
     if not f.exists():
-        raise HTTPException(status_code=404, detail="skill.md not bundled")
-    text = f.read_text(encoding="utf-8")
+        raise HTTPException(status_code=404, detail=f"{name} not bundled")
+    text = _fill_headline(f.read_text(encoding="utf-8"))
     if not text.startswith("---"):
-        raise HTTPException(status_code=404, detail="skill.md has no frontmatter")
-    out: dict[str, str] = {}
-    for line in text.split("---", 2)[1].strip().splitlines():
-        key, _, value = line.partition(":")
-        out[key.strip()] = value.strip()
-    return out
+        raise HTTPException(status_code=404, detail=f"{name} has no frontmatter")
+    fm = yaml.safe_load(text.split("---", 2)[1])
+    return fm if isinstance(fm, dict) else {}
 
 
 @app.get("/.well-known/skills/index.json", include_in_schema=False)
@@ -3115,24 +4769,60 @@ async def well_known_skills_index():
     treg from treg.to directly, with no directory, no review queue and no third party in the middle
     — the same skill the plugins ship and `install.sh` drops, reached by whoever asks the domain.
     """
-    fm = _skill_frontmatter()
-    return JSONResponse({"skills": [{
-        "name": fm.get("name", "treg"),
-        "description": fm.get("description", ""),
-        "files": ["SKILL.md"],
-    }]})
+    entries = []
+    for name, path in (("treg", "skill.md"), ("make-ugc", "skills/make-ugc/SKILL.md"),
+                       ("lead-signals", "skills/lead-signals/SKILL.md"),
+                       ("web-access", "skills/web-access/SKILL.md"), ("recruit", "skills/recruit/SKILL.md"),
+                       ("doomscroll", "skills/doomscroll/SKILL.md")):
+        fm = _skill_frontmatter(path)
+        entry = {"name": fm.get("name", name), "description": fm.get("description", ""), "files": ["SKILL.md"]}
+        if summary := (fm.get("metadata") or {}).get("summary"):
+            entry["summary"] = summary
+        entries.append(entry)
+    return JSONResponse({"skills": entries})
 
 
 @app.get("/.well-known/skills/treg/SKILL.md", include_in_schema=False)
-async def well_known_skill_md():
+async def well_known_skill_md(request: Request, db: AsyncSession = Depends(get_session)):
     """The skill itself, at the path `index.json` promises. Deliberately the same `_serve_md` the
     canonical `/skill.md` uses, so `{BASE}` is templated to the serving host here too — a self-hosted
     registry advertises ITSELF, not treg.to."""
-    return _serve_md("skill.md")
+    from .hub_gate import hub_visible
+    return _serve_md("skill.md", (await hub_visible(request, db))[0])
+
+
+@app.get("/.well-known/skills/make-ugc/SKILL.md", include_in_schema=False)
+async def well_known_make_ugc_md():
+    """The second entry `index.json` promises; the same file as /skills/ugc/SKILL.md."""
+    return _serve_md("skills/make-ugc/SKILL.md")
+
+
+@app.get("/.well-known/skills/lead-signals/SKILL.md", include_in_schema=False)
+async def well_known_lead_signals_md():
+    """The third entry `index.json` promises; the same file as /skills/lead-signals/SKILL.md."""
+    return _serve_md("skills/lead-signals/SKILL.md")
+
+
+@app.get("/.well-known/skills/web-access/SKILL.md", include_in_schema=False)
+async def well_known_web_access_md():
+    """The fourth entry `index.json` promises; the same file as /skills/web-access/SKILL.md."""
+    return _serve_md("skills/web-access/SKILL.md")
+
+
+@app.get("/.well-known/skills/recruit/SKILL.md", include_in_schema=False)
+async def well_known_recruit_md():
+    """The fifth entry `index.json` promises; the same file as /skills/recruit/SKILL.md."""
+    return _serve_md("skills/recruit/SKILL.md")
+
+
+@app.get("/.well-known/skills/doomscroll/SKILL.md", include_in_schema=False)
+async def well_known_doomscroll_md():
+    """The sixth entry `index.json` promises; the same file as /skills/doomscroll/SKILL.md."""
+    return _serve_md("skills/doomscroll/SKILL.md")
 
 
 @app.get("/connect-demo", include_in_schema=False)
-async def connect_demo_page():
+async def connect_demo_page(request: Request):
     """A page that PRETENDS to be someone else's app, so the OAuth flow can be seen end to end.
 
     It uses only public endpoints — register, authorize, token, revoke, and /mcp/ — with nothing
@@ -3142,26 +4832,26 @@ async def connect_demo_page():
     """
     if not get_settings().connect_demo_enabled:
         raise HTTPException(status_code=404, detail="connect demo is not enabled")
-    return _legal_page("connect-demo.html")
+    return _static_page("connect-demo.html", request)
 
 
 @app.get("/connect-demo/callback", include_in_schema=False)
-async def connect_demo_callback():
+async def connect_demo_callback(request: Request):
     """Where treg sends the browser back. Hands the code to the opener and closes."""
     if not get_settings().connect_demo_enabled:
         raise HTTPException(status_code=404, detail="connect demo is not enabled")
-    return _legal_page("connect-demo-callback.html")
+    return _static_page("connect-demo-callback.html", request)
 
 
 @app.get("/support", include_in_schema=False)
 @app.get("/contact", include_in_schema=False)
 @app.get("/help", include_in_schema=False)
-async def support_page():
+async def support_page(request: Request):
     """How to get help. Three paths for one page because people guess differently, and because a
     plugin-directory listing must give a Support URL that resolves — a 404 there reads as an
     abandoned product. Like `/privacy`, this path is effectively public API once it is filed with a
     directory or an OAuth console: don't rename it without updating them."""
-    return _legal_page("support.html")
+    return _static_page("support.html", request)
 
 
 @app.get("/tutorial", include_in_schema=False)
@@ -3172,7 +4862,7 @@ async def tutorial_page():
         return HTMLResponse("<h3>Tutorial not bundled.</h3>")
     # Stamp the tutorial.js URL with the bundle version. `no-cache` alone is not enough: a browser
     # that cached the file BEFORE that header existed applies a heuristic lifetime and never
-    # revalidates, so an edited tutorial silently keeps serving the old steps (cost an hour to find).
+    # revalidates, so an edited tutorial silently keeps serving the old steps.
     js = _WEB_DIR / "tutorial.js"
     stamp = int(js.stat().st_mtime) if js.exists() else 0   # tutorial.js's OWN mtime: _app_version()
     html = page.read_text(encoding="utf-8").replace(       # hashes index.html and would not move
@@ -3197,12 +4887,8 @@ _MEDIA_DIR = _WEB_DIR / "media"
 _TOUR_DIR = _WEB_DIR / "tour"
 
 
-# Third-party front-end libraries, vendored rather than pulled from a CDN at page load. The
-# dashboard is a single hand-written Vue file with no bundler, so Vue arrives as a plain <script>
-# — and while that script came from unpkg.com, any network that cannot reach unpkg rendered the
-# signed-in dashboard as a blank page (issue #137: a mainland-China visitor, ERR_CONNECTION_CLOSED,
-# then `Vue is not defined`). Serving it ourselves means the dashboard depends on exactly one
-# origin: whoever served the page can serve its runtime. It also closes the supply-chain hole in
-# the old floating `vue@3` tag, which let whatever npm published next run in an authed session.
-# Filenames carry their version, so a bump is a visible one-line change and caches never collide.
+# Third-party front-end libraries served from this origin rather than a CDN at page load, so a page
+# depends on exactly one origin (whoever served the page can serve its runtime) and never on a
+# floating tag. Filenames carry their version, so a bump is a visible one-line change and caches
+# never collide.
 _VENDOR_DIR = _WEB_DIR / "vendor"

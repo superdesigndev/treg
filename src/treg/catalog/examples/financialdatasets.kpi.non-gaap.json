@@ -1,0 +1,125 @@
+{
+  "kpi_non_gaap": [
+    {
+      "gaap_equivalent": "Average price per fuel gallon",
+      "key_adjustments": "MTM adjustments and settlements on hedges",
+      "metric_name": "Adjusted Average Fuel Price per Gallon",
+      "period": "Q2 2026",
+      "period_type": "quarterly",
+      "source_text": "Average fuel price per gallon",
+      "source_url": "https://www.sec.gov/Archives/edgar/data/27904/000002790426000029/deltaairlinesannouncesjune.htm#:~:text=Average%20fuel%20price%20per%20gallon,3.93",
+      "ticker": "DAL",
+      "unit": "USD",
+      "value": 3.93
+    },
+    {
+      "gaap_equivalent": "Diluted earnings per share",
+      "key_adjustments": "MTM adjustments on investments and hedges, loss on extinguishment of debt",
+      "metric_name": "Adjusted Diluted EPS",
+      "period": "Q2 2026",
+      "period_type": "quarterly",
+      "source_text": "Diluted earnings per share",
+      "source_url": "https://www.sec.gov/Archives/edgar/data/27904/000002790426000029/deltaairlinesannouncesjune.htm#:~:text=Diluted%20earnings%20per%20share,1.56",
+      "ticker": "DAL",
+      "unit": "USD",
+      "value": 1.56
+    },
+    {
+      "gaap_equivalent": "Aircraft fuel and related taxes",
+      "key_adjustments": "MTM adjustments and settlements on hedges",
+      "metric_name": "Adjusted Fuel Expense",
+      "period": "Q2 2026",
+      "period_type": "quarterly",
+      "source_text": "Total fuel expense, adjusted",
+      "source_url": "https://www.sec.gov/Archives/edgar/data/27904/000002790426000029/deltaairlinesannouncesjune.htm#:~:text=Total%20fuel%20expense%2C%20adjusted,4%2C410",
+      "ticker": "DAL",
+      "unit": "USD",
+      "value": 4410000000
+    },
+    {
+      "gaap_equivalent": "Debt and finance lease obligations",
+      "key_adjustments": "Plus sale-leaseback and operating lease liabilities, less cash and restricted cash",
+      "metric_name": "Adjusted Net Debt",
+      "period": "Q2 2026",
+      "period_type": "quarterly",
+      "source_text": "Adjusted net debt",
+      "source_url": "https://www.sec.gov/Archives/edgar/data/27904/000002790426000029/deltaairlinesannouncesjune.htm#:~:text=Adjusted%20net%20debt,13%2C591",
+      "ticker": "DAL",
+      "unit": "USD",
+      "value": 13591000000
+    },
+    {
+      "gaap_equivalent": "Net income",
+      "key_adjustments": "MTM adjustments on investments and hedges, loss on extinguishment of debt",
+      "metric_name": "Adjusted Net Income",
+      "period": "Q2 2026",
+      "period_type": "quarterly",
+      "source_text": "Net income",
+      "source_url": "https://www.sec.gov/Archives/edgar/data/27904/000002790426000029/deltaairlinesannouncesjune.htm#:~:text=Net%20income,1%2C027",
+      "ticker": "DAL",
+      "unit": "USD",
+      "value": 1027000000
+    },
+    {
+      "gaap_equivalent": "Total operating expense",
+      "key_adjustments": "Excludes fuel, third-party refinery sales, MRO expense, profit sharing",
+      "metric_name": "Adjusted Non-Fuel Cost",
+      "period": "Q2 2026",
+      "period_type": "quarterly",
+      "source_text": "Non-Fuel Cost",
+      "source_url": "https://www.sec.gov/Archives/edgar/data/27904/000002790426000029/deltaairlinesannouncesjune.htm#:~:text=Non-Fuel%20Cost,11%2C091",
+      "ticker": "DAL",
+      "unit": "USD",
+      "value": 11091000000
+    },
+    {
+      "gaap_equivalent": "Net cash provided by operating activities",
+      "key_adjustments": "Net cash flows related to certain airport construction projects and other",
+      "metric_name": "Adjusted Operating Cash Flow",
+      "period": "Q2 2026",
+      "period_type": "quarterly",
+      "source_text": "Operating cash flow, adjusted",
+      "source_url": "https://www.sec.gov/Archives/edgar/data/27904/000002790426000029/deltaairlinesannouncesjune.htm#:~:text=Operating%20cash%20flow%2C%20adjusted,1%2C651",
+      "ticker": "DAL",
+      "unit": "USD",
+      "value": 1651000000
+    },
+    {
+      "gaap_equivalent": "Total operating expense",
+      "key_adjustments": "Excludes third-party refinery sales, MTM hedge adjustments",
+      "metric_name": "Adjusted Operating Expense",
+      "period": "Q2 2026",
+      "period_type": "quarterly",
+      "source_text": "Operating expense, adjusted",
+      "source_url": "https://www.sec.gov/Archives/edgar/data/27904/000002790426000029/deltaairlinesannouncesjune.htm#:~:text=Operating%20expense%2C%20adjusted,16%2C102",
+      "ticker": "DAL",
+      "unit": "USD",
+      "value": 16102000000
+    },
+    {
+      "gaap_equivalent": "Operating income",
+      "key_adjustments": "MTM adjustments and settlements on hedges",
+      "metric_name": "Adjusted Operating Income",
+      "period": "Q2 2026",
+      "period_type": "quarterly",
+      "source_text": "Operating income, adjusted",
+      "source_url": "https://www.sec.gov/Archives/edgar/data/27904/000002790426000029/deltaairlinesannouncesjune.htm#:~:text=Operating%20income%2C%20adjusted,1%2C563",
+      "ticker": "DAL",
+      "unit": "USD",
+      "value": 1563000000
+    },
+    {
+      "gaap_equivalent": "Operating margin",
+      "key_adjustments": "Third-party refinery sales, MTM adjustments and settlements on hedges",
+      "metric_name": "Adjusted Operating Margin",
+      "period": "Q2 2026",
+      "period_type": "quarterly",
+      "source_text": "Operating margin, adjusted",
+      "source_url": "https://www.sec.gov/Archives/edgar/data/27904/000002790426000029/deltaairlinesannouncesjune.htm#:~:text=Operating%20margin%2C%20adjusted,8.8",
+      "ticker": "DAL",
+      "unit": "%",
+      "value": 8.8
+    }
+  ],
+  "next_page_url": "https://api.financialdatasets.ai/kpi/non-gaap?cursor=1mN5sN5Xq4Eb52pUqQxFcP3UsEO8S9JTCSx23dyFH7CLqU2uuPUp6XNPERzuNDabSqxtCoaxkQKSADewD1vizkpu7tnEigziiPEybDHtRgoe5q6nK5nzlxC7pHDXgLpQ1l6rwxTJHY"
+}

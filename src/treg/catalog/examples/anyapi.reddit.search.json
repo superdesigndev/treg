@@ -1,0 +1,35 @@
+{
+  "output": {
+    "data": {
+      "nextCursor": "mW2Z6jumGnieC1SRBsVpv7v6LLH9nw7yTzuMMKbW3QoiCtVM0hsHaqN_TbLJ35krQ6UZtAYcxoNDe8bRt5rOahSBhx8i8vi4pYupFqWfeFa3wwiLk8SdECVCJlYQ-hkn5pdaHiIGo92w9ifxGEC9WV4fc_8tG_Ubfj0lCjs",
+      "posts": [
+        {
+          "author": "Wonderful-Bee4266",
+          "createdUtc": 1789393661,
+          "id": "1wg3xm9",
+          "numComments": 680,
+          "permalink": "/r/MechanicalKeyboards/comments/1wg3xm9/really_regret_buying_a_60_keyboard/",
+          "score": 1168,
+          "selftext": "When I was looking for a keyboard I didn't really know much and all i did was game and sit on my computer after 3 months I started regretting my purchase because having to switch between arrow keys an… [768 chars]",
+          "subreddit": "MechanicalKeyboards",
+          "title": "REALLY regret buying a 60% keyboard",
+          "url": "https://www.reddit.com/r/MechanicalKeyboards/comments/1wg3xm9/really_regret_buying_a_60_keyboard/"
+        },
+        "… 24 more item(s) truncated"
+      ]
+    },
+    "found": true
+  },
+  "provider": "AnyAPI",
+  "costUsd": 0.00038,
+  "items": 25,
+  "replayed": false,
+  "source": {
+    "id": "anonymous-bison-9321fc54",
+    "name": "Bison",
+    "kind": "anonymous",
+    "artworkKey": "bison"
+  },
+  "hint": "large_result: this response is ~39 KB. To keep future runs from flooding your context, re-run with `fields` (keep only the keys you need), `max_items` (cap rows), `summary=true` (outline only), or `jq… [309 chars]",
+  "resultId": "2c4cd29b-e9cf-440f-89b6-ee6c43cd5e53"
+}

@@ -1,0 +1,28 @@
+{
+  "output": {
+    "data": {
+      "nextCursor": "fz1XDcAt3rBE2tWenFuozlEQ6_PKnXthdF0x8bU3OTfC0SRfONf4NSxMPP4pSb4rmcsiCj0rUmeCKbEJebwWtRIQdZ-6xt_J5g-JsPZtTMAGNrYON2haHuaFWsChIpmrxEw90J-3LmK1BplE7Vs",
+      "query": "best coffee maker",
+      "results": [
+        {
+          "link": "https://www.bonappetit.com/story/best-drip-coffee-makers?srsltid=AU7gw4VMxHIXQBWE_CG9QXrvOZxzbJTSQgGPcSbeE80v_A0qlZrhQftM",
+          "position": 1,
+          "snippet": "May 12, 2026 — The best drip coffee maker overall: Fellow Aiden A Fellow . The best simple drip coffee maker: Ratio Six (Series 2) Noah Kaufman The best large ...",
+          "title": "The Best Drip Coffee Makers for When You Need a Good ..."
+        }
+      ]
+    },
+    "found": true
+  },
+  "provider": "AnyAPI",
+  "costUsd": 0.0004,
+  "items": 1,
+  "replayed": false,
+  "source": {
+    "id": "anonymous-ibex",
+    "name": "Ibex",
+    "kind": "anonymous",
+    "artworkKey": "ibex"
+  },
+  "resultId": "5a774f5e-ea4d-4658-8c60-f6475da34282"
+}

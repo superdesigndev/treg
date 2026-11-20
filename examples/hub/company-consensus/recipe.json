@@ -1,0 +1,43 @@
+{
+  "name": "company-consensus",
+  "summary": "One company's details from two independent sources, and whether they agree, field by field. Routing gives one answer; this gives a second opinion and a confidence score.",
+  "capability": "companies.enrich",
+  "inputs": {
+    "domain": {
+      "type": "string",
+      "example": "stripe.com",
+      "note": "the company's website domain"
+    },
+    "sources": {
+      "type": "string",
+      "default": "",
+      "example": "thecompaniesapi, hunter, dropleads",
+      "note": "two or three of: thecompaniesapi, hunter, dropleads. Default: thecompaniesapi and hunter"
+    }
+  },
+  "uses": [
+    "dropleads.companies.enrich",
+    "thecompaniesapi.companies.enrich",
+    "hunter.companies.enrich",
+    "openrouter.ai-judge.decide"
+  ],
+  "script": "run.js",
+  "output": {
+    "fields": [
+      "domain",
+      "company",
+      "agreement",
+      "confidence",
+      "sources",
+      "answered",
+      "compared",
+      "agreed",
+      "judged_by",
+      "summary"
+    ]
+  },
+  "limits": {
+    "cost_usd": 0.2
+  },
+  "pricing": { "max_price_usd": 0.05 }
+}

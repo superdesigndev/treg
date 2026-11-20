@@ -25,6 +25,7 @@ limits: "default project quota is low and must be raised by request"
 pricing_url: https://developers.google.com/my-business/content/limits
 endpoints:
   - id: google-business-profile.accounts
+    added: '2026-07-28'
     capability: google-business.accounts
     platform: google-business
     scope: own_account
@@ -42,6 +43,7 @@ endpoints:
     docs_url: https://developers.google.com/my-business/reference/accountmanagement/rest/v1/accounts/list
 
   - id: google-business-profile.locations
+    added: '2026-07-28'
     capability: google-business.locations
     platform: google-business
     scope: own_account
@@ -62,6 +64,7 @@ endpoints:
     docs_url: https://developers.google.com/my-business/reference/businessinformation/rest/v1/accounts.locations/list
 
   - id: google-business-profile.reviews
+    added: '2026-07-28'
     capability: google-business.reviews
     platform: google-business
     scope: own_account
@@ -82,6 +85,7 @@ endpoints:
     docs_url: https://developers.google.com/my-business/reference/rest/v4/accounts.locations.reviews/list
 
   - id: google-business-profile.review.reply
+    added: '2026-07-28'
     kind: action
     capability: google-business.review.reply
     platform: google-business

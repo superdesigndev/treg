@@ -37,6 +37,7 @@ source:
   - https://developers.google.com/my-business/reference/rest/v4/accounts.locations.reviews
 endpoints:
 - id: google-business-profile.x.accountmanagement-mybusinessaccountmanagement-accounts-create
+  added: '2026-07-28'
   kind: account
   tier: extended
   platform: google-business
@@ -59,6 +60,7 @@ endpoints:
       required: true
       note: JSON body — the Account resource; see the method's API reference for its fields
 - id: google-business-profile.x.accountmanagement-mybusinessaccountmanagement-accounts-get
+  added: '2026-07-28'
   kind: account
   tier: extended
   platform: google-business
@@ -77,6 +79,7 @@ endpoints:
         note: Required. The name of the account to fetch.
   capability: google-business.accounts
 - id: google-business-profile.x.accountmanagement-mybusinessaccountmanagement-accounts-patch
+  added: '2026-07-28'
   kind: account
   tier: extended
   platform: google-business
@@ -108,6 +111,7 @@ endpoints:
       required: true
       note: JSON body — the Account resource; see the method's API reference for its fields
 - id: google-business-profile.x.accountmanagement-mybusinessaccountmanagement-accounts-admins-list
+  added: '2026-07-28'
   kind: account
   tier: extended
   platform: google-business
@@ -125,6 +129,7 @@ endpoints:
         required: true
         note: Required. The name of the account from which to retrieve a list of admins. `accounts/{account_id}/admins`.
 - id: google-business-profile.x.accountmanagement-mybusinessaccountmanagement-accounts-admins-create
+  added: '2026-07-28'
   kind: account
   tier: extended
   platform: google-business
@@ -147,6 +152,7 @@ endpoints:
       required: true
       note: JSON body — the Admin resource; see the method's API reference for its fields
 - id: google-business-profile.x.accountmanagement-mybusinessaccountmanagement-accounts-admins-delete
+  added: '2026-07-28'
   kind: account
   tier: extended
   platform: google-business
@@ -164,6 +170,7 @@ endpoints:
         required: true
         note: Required. The resource name of the admin to remove from the account. `accounts/{account_id}/admins/{admin_id}`.
 - id: google-business-profile.x.accountmanagement-mybusinessaccountmanagement-accounts-admins-patch
+  added: '2026-07-28'
   kind: account
   tier: extended
   platform: google-business
@@ -191,6 +198,7 @@ endpoints:
       required: true
       note: JSON body — the Admin resource; see the method's API reference for its fields
 - id: google-business-profile.x.accountmanagement-mybusinessaccountmanagement-accounts-invitations-list
+  added: '2026-07-28'
   kind: account
   tier: extended
   platform: google-business
@@ -213,6 +221,7 @@ endpoints:
         required: false
         note: Optional. Filtering the response is supported via the Invitation.target_type field.
 - id: google-business-profile.x.accountmanagement-mybusinessaccountmanagement-accounts-invitations-accept
+  added: '2026-07-28'
   kind: account
   tier: extended
   platform: google-business
@@ -235,6 +244,7 @@ endpoints:
       required: true
       note: JSON body — the AcceptInvitationRequest resource; see the method's API reference for its fields
 - id: google-business-profile.x.accountmanagement-mybusinessaccountmanagement-accounts-invitations-decline
+  added: '2026-07-28'
   kind: account
   tier: extended
   platform: google-business
@@ -257,6 +267,7 @@ endpoints:
       required: true
       note: JSON body — the DeclineInvitationRequest resource; see the method's API reference for its fields
 - id: google-business-profile.x.businessinformation-mybusinessbusinessinformation-accounts-locations-create
+  added: '2026-07-28'
   kind: action
   tier: extended
   platform: google-business
@@ -289,6 +300,7 @@ endpoints:
       required: true
       note: JSON body — the Location resource; see the method's API reference for its fields
 - id: google-business-profile.x.notifications-mybusinessnotifications-accounts-getnotificationsetting
+  added: '2026-07-28'
   kind: account
   tier: extended
   platform: google-business
@@ -307,6 +319,7 @@ endpoints:
         required: true
         note: Required. The resource name of the notification setting we are trying to fetch.
 - id: google-business-profile.x.notifications-mybusinessnotifications-accounts-updatenotificationsetting
+  added: '2026-07-28'
   kind: account
   tier: extended
   platform: google-business
@@ -335,6 +348,7 @@ endpoints:
       required: true
       note: JSON body — the NotificationSetting resource; see the method's API reference for its fields
 - id: google-business-profile.x.businessinformation-mybusinessbusinessinformation-attributes-list
+  added: '2026-07-28'
   kind: utility
   tier: extended
   platform: google-business
@@ -378,6 +392,7 @@ endpoints:
         note: Optional. If set to true, metadata for all available attributes are returned, disregarding `parent` and `category_name` fields. `language_code` and `region_code` are required when `show_all` is set to true.
   capability: google-business.attributes.catalog
 - id: google-business-profile.x.businessinformation-mybusinessbusinessinformation-categories-list
+  added: '2026-07-28'
   kind: utility
   tier: extended
   platform: google-business
@@ -421,6 +436,7 @@ endpoints:
         - FULL
   capability: google-business.categories
 - id: google-business-profile.x.businessinformation-mybusinessbusinessinformation-categories-batchget
+  added: '2026-07-28'
   kind: utility
   tier: extended
   platform: google-business
@@ -456,6 +472,7 @@ endpoints:
         - FULL
   capability: google-business.categories
 - id: google-business-profile.x.businessinformation-mybusinessbusinessinformation-chains-get
+  added: '2026-07-28'
   tier: extended
   platform: google-business
   method: GET
@@ -474,6 +491,7 @@ endpoints:
         note: Required. The chain's resource name, in the format `chains/{chain_place_id}`.
   capability: google-business.chains
 - id: google-business-profile.x.businessinformation-mybusinessbusinessinformation-chains-search
+  added: '2026-07-28'
   tier: extended
   platform: google-business
   method: GET
@@ -496,6 +514,7 @@ endpoints:
         note: The maximum number of matched chains to return from this query. The default is 10. The maximum possible value is 500.
   capability: google-business.chains
 - id: google-business-profile.x.businessinformation-mybusinessbusinessinformation-googlelocations-search
+  added: '2026-07-28'
   tier: extended
   platform: google-business
   method: POST
@@ -514,6 +533,7 @@ endpoints:
       note: JSON body — the SearchGoogleLocationsRequest resource; see the method's API reference for its fields
   capability: google-business.locations.search
 - id: google-business-profile.x.businessinformation-mybusinessbusinessinformation-locations-delete
+  added: '2026-07-28'
   kind: action
   tier: extended
   platform: google-business
@@ -532,6 +552,7 @@ endpoints:
         required: true
         note: Required. The name of the location to delete.
 - id: google-business-profile.x.businessinformation-mybusinessbusinessinformation-locations-get
+  added: '2026-07-28'
   tier: extended
   platform: google-business
   method: GET
@@ -555,6 +576,7 @@ endpoints:
         note: Required. Read mask to specify what fields will be returned in the response.
   capability: google-business.locations
 - id: google-business-profile.x.businessinformation-mybusinessbusinessinformation-locations-patch
+  added: '2026-07-28'
   kind: action
   tier: extended
   platform: google-business
@@ -587,6 +609,7 @@ endpoints:
       required: true
       note: JSON body — the Location resource; see the method's API reference for its fields
 - id: google-business-profile.x.verifications-mybusinessverifications-locations-getvoiceofmerchantstate
+  added: '2026-07-28'
   tier: extended
   platform: google-business
   method: GET
@@ -605,6 +628,7 @@ endpoints:
         note: Required. Resource name of the location.
   capability: google-business.verification.status
 - id: google-business-profile.x.accountmanagement-mybusinessaccountmanagement-locations-admins-list
+  added: '2026-07-28'
   kind: account
   tier: extended
   platform: google-business
@@ -622,6 +646,7 @@ endpoints:
         required: true
         note: Required. The name of the location to list admins of. `locations/{location_id}/admins`.
 - id: google-business-profile.x.accountmanagement-mybusinessaccountmanagement-locations-admins-create
+  added: '2026-07-28'
   kind: account
   tier: extended
   platform: google-business
@@ -644,6 +669,7 @@ endpoints:
       required: true
       note: JSON body — the Admin resource; see the method's API reference for its fields
 - id: google-business-profile.x.accountmanagement-mybusinessaccountmanagement-locations-admins-delete
+  added: '2026-07-28'
   kind: account
   tier: extended
   platform: google-business
@@ -661,6 +687,7 @@ endpoints:
         required: true
         note: Required. The resource name of the admin to remove from the location.
 - id: google-business-profile.x.accountmanagement-mybusinessaccountmanagement-locations-admins-patch
+  added: '2026-07-28'
   kind: account
   tier: extended
   platform: google-business
@@ -688,6 +715,7 @@ endpoints:
       required: true
       note: JSON body — the Admin resource; see the method's API reference for its fields
 - id: google-business-profile.x.businessinformation-mybusinessbusinessinformation-locations-getattributes
+  added: '2026-07-28'
   tier: extended
   platform: google-business
   method: GET
@@ -706,6 +734,7 @@ endpoints:
         note: Required. Google identifier for this location in the form of `locations/{location_id}/attributes`.
   capability: google-business.attributes
 - id: google-business-profile.x.businessinformation-mybusinessbusinessinformation-locations-updateattributes
+  added: '2026-07-28'
   kind: action
   tier: extended
   platform: google-business
@@ -734,6 +763,7 @@ endpoints:
       required: true
       note: JSON body — the Attributes resource; see the method's API reference for its fields
 - id: google-business-profile.x.businessinformation-mybusinessbusinessinformation-locations-attributes-getgoogleupdated
+  added: '2026-07-28'
   tier: extended
   platform: google-business
   method: GET
@@ -751,6 +781,7 @@ endpoints:
         required: true
         note: Required. Google identifier for this location in the form of `locations/{location_id}/attributes`.
 - id: google-business-profile.x.placeactions-mybusinessplaceactions-locations-placeactionlinks-list
+  added: '2026-07-28'
   tier: extended
   platform: google-business
   method: GET
@@ -782,6 +813,7 @@ endpoints:
         note: Optional. If specified, returns the next page of place action links.
   capability: google-business.actionlinks
 - id: google-business-profile.x.placeactions-mybusinessplaceactions-locations-placeactionlinks-create
+  added: '2026-07-28'
   kind: action
   tier: extended
   platform: google-business
@@ -805,6 +837,7 @@ endpoints:
       required: true
       note: JSON body — the PlaceActionLink resource; see the method's API reference for its fields
 - id: google-business-profile.x.placeactions-mybusinessplaceactions-locations-placeactionlinks-delete
+  added: '2026-07-28'
   kind: action
   tier: extended
   platform: google-business
@@ -823,6 +856,7 @@ endpoints:
         required: true
         note: Required. The resource name of the place action link to remove from the location.
 - id: google-business-profile.x.placeactions-mybusinessplaceactions-locations-placeactionlinks-get
+  added: '2026-07-28'
   tier: extended
   platform: google-business
   method: GET
@@ -840,6 +874,7 @@ endpoints:
         required: true
         note: Required. The name of the place action link to fetch.
 - id: google-business-profile.x.placeactions-mybusinessplaceactions-locations-placeactionlinks-patch
+  added: '2026-07-28'
   kind: action
   tier: extended
   platform: google-business
@@ -868,6 +903,7 @@ endpoints:
       required: true
       note: JSON body — the PlaceActionLink resource; see the method's API reference for its fields
 - id: google-business-profile.x.qanda-mybusinessqanda-locations-questions-list
+  added: '2026-07-28'
   tier: extended
   platform: google-business
   method: GET
@@ -907,6 +943,7 @@ endpoints:
         note: Optional. If specified, the next page of questions is retrieved.
   capability: google-business.qanda
 - id: google-business-profile.x.qanda-mybusinessqanda-locations-questions-create
+  added: '2026-07-28'
   kind: action
   tier: extended
   platform: google-business
@@ -930,6 +967,7 @@ endpoints:
       required: true
       note: JSON body — the Question resource; see the method's API reference for its fields
 - id: google-business-profile.x.qanda-mybusinessqanda-locations-questions-delete
+  added: '2026-07-28'
   kind: action
   tier: extended
   platform: google-business
@@ -948,6 +986,7 @@ endpoints:
         required: true
         note: Required. The name of the question to delete.
 - id: google-business-profile.x.qanda-mybusinessqanda-locations-questions-patch
+  added: '2026-07-28'
   kind: action
   tier: extended
   platform: google-business
@@ -976,6 +1015,7 @@ endpoints:
       required: true
       note: JSON body — the Question resource; see the method's API reference for its fields
 - id: google-business-profile.x.qanda-mybusinessqanda-locations-questions-answers-list
+  added: '2026-07-28'
   tier: extended
   platform: google-business
   method: GET
@@ -1006,6 +1046,7 @@ endpoints:
         required: false
         note: Optional. If specified, the next page of answers is retrieved.
 - id: google-business-profile.x.qanda-mybusinessqanda-locations-questions-answers-delete
+  added: '2026-07-28'
   kind: action
   tier: extended
   platform: google-business
@@ -1024,6 +1065,7 @@ endpoints:
         required: true
         note: Required. The name of the question to delete an answer for.
 - id: google-business-profile.x.qanda-mybusinessqanda-locations-questions-answers-upsert
+  added: '2026-07-28'
   kind: action
   tier: extended
   platform: google-business
@@ -1048,6 +1090,7 @@ endpoints:
       note: JSON body — the UpsertAnswerRequest resource; see the method's API reference for its fields
   capability: google-business.qanda.answer
 - id: google-business-profile.x.businessprofileperformance-businessprofileperformance-locations-searchkeywords-impressions-monthly-list
+  added: '2026-07-28'
   tier: extended
   platform: google-business
   method: GET
@@ -1099,6 +1142,7 @@ endpoints:
         note: Optional. A token indicating the next paginated result to be returned.
   capability: google-business.insights.keywords
 - id: google-business-profile.x.verifications-mybusinessverifications-locations-verifications-list
+  added: '2026-07-28'
   tier: extended
   platform: google-business
   method: GET
@@ -1125,6 +1169,7 @@ endpoints:
         required: false
         note: If specified, returns the next page of verifications.
 - id: google-business-profile.x.verifications-mybusinessverifications-locations-verifications-complete
+  added: '2026-07-28'
   kind: action
   tier: extended
   platform: google-business
@@ -1148,6 +1193,7 @@ endpoints:
       required: true
       note: JSON body — the CompleteVerificationRequest resource; see the method's API reference for its fields
 - id: google-business-profile.x.businessprofileperformance-businessprofileperformance-locations-fetchmultidailymetricstimeseries
+  added: '2026-07-28'
   tier: extended
   platform: google-business
   method: GET
@@ -1208,6 +1254,7 @@ endpoints:
         note: Year of the date. Must be from 1 to 9999, or 0 to specify a date without a year.
   capability: google-business.insights
 - id: google-business-profile.x.verifications-mybusinessverifications-locations-fetchverificationoptions
+  added: '2026-07-28'
   tier: extended
   platform: google-business
   method: POST
@@ -1230,6 +1277,7 @@ endpoints:
       required: true
       note: JSON body — the FetchVerificationOptionsRequest resource; see the method's API reference for its fields
 - id: google-business-profile.x.businessprofileperformance-businessprofileperformance-locations-getdailymetricstimeseries
+  added: '2026-07-28'
   tier: extended
   platform: google-business
   method: GET
@@ -1319,6 +1367,7 @@ endpoints:
         note: Seconds of a minute. Must be greater than or equal to 0 and typically must be less than or equal to 59. An API may allow the value 60 if it allows leap-seconds.
   capability: google-business.insights
 - id: google-business-profile.x.businessinformation-mybusinessbusinessinformation-locations-getgoogleupdated
+  added: '2026-07-28'
   tier: extended
   platform: google-business
   method: GET
@@ -1342,6 +1391,7 @@ endpoints:
         note: Required. Read mask to specify what fields will be returned in the response.
   capability: google-business.locations.live
 - id: google-business-profile.x.accountmanagement-mybusinessaccountmanagement-locations-transfer
+  added: '2026-07-28'
   kind: action
   tier: extended
   platform: google-business
@@ -1364,6 +1414,7 @@ endpoints:
       required: true
       note: JSON body — the TransferLocationRequest resource; see the method's API reference for its fields
 - id: google-business-profile.x.verifications-mybusinessverifications-locations-verify
+  added: '2026-07-28'
   kind: action
   tier: extended
   platform: google-business
@@ -1387,6 +1438,7 @@ endpoints:
       required: true
       note: JSON body — the VerifyLocationRequest resource; see the method's API reference for its fields
 - id: google-business-profile.x.placeactions-mybusinessplaceactions-placeactiontypemetadata-list
+  added: '2026-07-28'
   kind: utility
   tier: extended
   platform: google-business
@@ -1417,6 +1469,7 @@ endpoints:
         required: false
         note: Optional. If specified, the next page of place action type metadata is retrieved. The `pageToken` is returned when a call to `placeActionTypeMetadata.list` returns more results than can fit into the requested page size.
 - id: google-business-profile.x.verifications-mybusinessverifications-verificationtokens-generate
+  added: '2026-07-28'
   kind: utility
   tier: extended
   platform: google-business
@@ -1435,6 +1488,7 @@ endpoints:
       required: true
       note: JSON body — the GenerateInstantVerificationTokenRequest resource; see the method's API reference for its fields
 - id: google-business-profile.x.v4-localposts-list
+  added: '2026-07-28'
   tier: extended
   platform: google-business
   method: GET
@@ -1447,6 +1501,7 @@ endpoints:
   docs_url: https://developers.google.com/my-business/reference/rest/v4/accounts.locations.reviews
   capability: google-business.posts
 - id: google-business-profile.x.v4-localposts-create
+  added: '2026-07-28'
   kind: action
   tier: extended
   platform: google-business
@@ -1460,6 +1515,7 @@ endpoints:
   docs_url: https://developers.google.com/my-business/reference/rest/v4/accounts.locations.reviews
   capability: google-business.posts.create
 - id: google-business-profile.x.v4-media-list
+  added: '2026-07-28'
   tier: extended
   platform: google-business
   method: GET
@@ -1472,6 +1528,7 @@ endpoints:
   docs_url: https://developers.google.com/my-business/reference/rest/v4/accounts.locations.reviews
   capability: google-business.media
 - id: google-business-profile.x.v4-media-create
+  added: '2026-07-28'
   kind: action
   tier: extended
   platform: google-business
@@ -1485,6 +1542,7 @@ endpoints:
   docs_url: https://developers.google.com/my-business/reference/rest/v4/accounts.locations.reviews
   capability: google-business.media.upload
 - id: google-business-profile.x.v4-reviews-get
+  added: '2026-07-28'
   tier: extended
   platform: google-business
   method: GET
@@ -1497,6 +1555,7 @@ endpoints:
   docs_url: https://developers.google.com/my-business/reference/rest/v4/accounts.locations.reviews
   capability: google-business.reviews
 - id: google-business-profile.x.v4-reviews-deletereply
+  added: '2026-07-28'
   kind: action
   tier: extended
   platform: google-business
@@ -1509,6 +1568,7 @@ endpoints:
   cost: *id001
   docs_url: https://developers.google.com/my-business/reference/rest/v4/accounts.locations.reviews
 - id: google-business-profile.x.v4-reviews-batchget
+  added: '2026-07-28'
   tier: extended
   platform: google-business
   method: GET

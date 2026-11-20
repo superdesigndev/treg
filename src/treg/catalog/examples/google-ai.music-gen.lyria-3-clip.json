@@ -1,0 +1,36 @@
+{
+  "candidates": [
+    {
+      "content": {
+        "parts": [
+          {
+            "text": "<instrumental>"
+          },
+          {
+            "inlineData": {
+              "mimeType": "audio/mpeg",
+              "data": "SUQzAwAAAAAvM0dFT0IAABepAAAAYXBwbGljYXRpb24vYzJwYQBjMnBhAGMycGEgbWFuaWZlc3Qgc3RvcmUAAAAXfmp1bWIAAAAeanVtZGMycGEAEQAQgAAAqgA4m3EDYzJwYQAAABdYanVtYgAAAEdqdW1kYzJtYQARABCAAACqADibcQN1cm46YzJwYTo4ZGZiYjg2Mi1jYTgxLTk3NjEtZDE0YS00ODVmMjQ2YzUyZjEAAAATAWp1bWIAAAAoanVtZGMyY3MAEQAQgAAAqgA4m3EDYzJwYS5zaWduYXR1cmUAAAAS0WNib3LShFkGKqIBJhghglkDPjCCAzowggLAoAMCAQICFACnM2wMN+ADb/eB7Bj02g/DtN1iMAoGCCqGSM49BAMDMFExCzAJBgNVBAYTAlVTMRMwEQYDVQQKDApHb29nbGUgTExDMS0wKwYDVQQDDCRHb29nbGUgQzJQQSBNZWRpYSBTZXJ2aWNlcyAxUCBJ… [924268 chars total]"
+            }
+          }
+        ],
+        "role": "model"
+      },
+      "finishReason": "STOP",
+      "index": 0
+    }
+  ],
+  "usageMetadata": {
+    "promptTokenCount": 18,
+    "candidatesTokenCount": 314,
+    "totalTokenCount": 332,
+    "promptTokensDetails": [
+      {
+        "modality": "TEXT",
+        "tokenCount": 18
+      }
+    ],
+    "serviceTier": "standard"
+  },
+  "modelVersion": "lyria-3-clip-preview",
+  "responseId": "Beu7arrzKa-jjuMPu8uK2A8"
+}

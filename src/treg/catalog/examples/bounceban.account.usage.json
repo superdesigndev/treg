@@ -1,0 +1,14 @@
+{
+  "owner_email": "owner@example.com",
+  "available_credits": 9997,
+  "rate_limit": [
+    {"api": "/verify/single", "limit": "100 per second"},
+    {"api": "/verify/single/status", "limit": "100 per second"},
+    {"api": "/verify/bulk", "limit": "5 per second"},
+    {"api": "/verify/bulk/status", "limit": "25 per second"},
+    {"api": "/verify/bulk/emails", "limit": "25 per second"},
+    {"api": "/verify/bulk/export", "limit": "25 per second"},
+    {"api": "/verify/bulk/dump", "limit": "25 per second"},
+    {"api": "/account", "limit": "5 per second"}
+  ]
+}

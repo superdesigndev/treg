@@ -1,0 +1,55 @@
+{
+  "meta": {
+    "blocked": [],
+    "elapsed_ms": 0,
+    "from_cache": true,
+    "llm_calls": 0,
+    "pages_fetched": 0,
+    "partial": false,
+    "warnings": [
+      "module: youtube-video: Rick Astley - Never Gonna Give You Up (Official Video) (4K Remaster) · Rick Astley"
+    ]
+  },
+  "recipe": "youtube-video",
+  "usage": {
+    "boxes": [
+      "gate"
+    ],
+    "cache": "hit",
+    "engine": "recipe",
+    "lines": [
+      {
+        "about": "the call",
+        "boxes": [
+          "gate"
+        ],
+        "cache": "miss",
+        "call": "recipes",
+        "engine": "gate",
+        "units": 1
+      }
+    ],
+    "remaining_before": {
+      "concurrent": 99,
+      "requests": 151,
+      "search": 3000
+    },
+    "units": 1
+  },
+  "version": 1,
+  "rows": [
+    {
+      "category": "Music",
+      "channel": "Rick Astley",
+      "channel_id": "UCuAXFkgsw1L7xaCfnd5JJOw",
+      "description": "The official video for “Never Gonna Give You Up” by Rick Astley. \n\nNever: The Autobiography 📚 OUT NOW! \nFollow this link to get your copy and listen to Rick’s ‘Never’ playlist ❤️ #RickAstleyNever\nhttps://linktr.ee/rickastleynever\n\n“Never Gonna Give You Up” was a global smash on its release in July 1…",
+      "keywords": "rick astley, Never Gonna Give You Up, nggyu, never gonna give you up lyrics, rick rolled, Rick Roll, rick astley official, rickrolled, Fortnite song, Fortnite event, Fortnite dance, fortnite never gonna give you up, rick roll, rickrolling, rick rolling, never gonna give you up, 80s music, rick astle…",
+      "length_s": 213,
+      "likes": 19483300,
+      "published": "2009-10-24T23:57:33-07:00",
+      "title": "Rick Astley - Never Gonna Give You Up (Official Video) (4K Remaster)",
+      "url": "https://www.youtube.com/watch?v=dQw4w9WgXcQ",
+      "views": 1825427194
+    }
+  ]
+}

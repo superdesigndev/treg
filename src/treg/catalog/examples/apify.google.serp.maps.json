@@ -1,0 +1,35 @@
+[
+  {
+    "place_id": "ChIJ1S_Bov20RIYRe7MiR8tYawY",
+    "name": "Jo's Coffee – South Congress",
+    "address": "1300 S Congress Ave, Austin, TX 78704, United States",
+    "phone": "+1 512-852-2300",
+    "website": "https://www.joscoffee.com/south-congress-jos",
+    "emails": [],
+    "email_type": null,
+    "rating": 4.4,
+    "review_count": null,
+    "categories": [
+      "Coffee shop",
+      "Cafe",
+      "Takeout restaurant",
+      "Sandwich shop"
+    ],
+    "hours": null,
+    "latitude": 30.2510458,
+    "longitude": -97.7493717,
+    "google_maps_url": "https://www.google.com/maps/place/?q=place_id:ChIJ1S_Bov20RIYRe7MiR8tYawY",
+    "social_links": {},
+    "reviews": [],
+    "images": [],
+    "neighborhood": "Bouldin Creek",
+    "timezone": "America/Chicago",
+    "country_code": "US",
+    "business_photo": "https://lh3.googleusercontent.com/-1zxyRQYl56U/AAAAAAAAAAI/AAAAAAAAAAA/4v4AgNFZBgo/s44-p-k-no-ns-nd/photo.jpg",
+    "open_status": "Open · Closes 7 PM",
+    "business_status": null,
+    "price_level": null,
+    "popular_times": null,
+    "scraped_at": "2026-09-23T17:16:11+00:00"
+  }
+]

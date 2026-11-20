@@ -1,0 +1,30 @@
+{
+  "output": {
+    "data": {
+      "nextCursor": "SRwkEwTLf4AcQI9Ausyp8MFhT4NZH_6ZnR-OrD9wO86o3Cvt-euKxloON5H2viA_hGtKR54HRKO7KKUZbfvgTCNSf6QI2AgdXfSy6BfHcduJuEcZGLKbWr0Q4BACHVSiaNyY2xWD9jDlIFQV4Vg-g_37KszGtTdW6EkaONvG1lYz6dHw_Zo-8SwUGYSKgzBzx_7PIzcV… [407 chars]",
+      "shorts": [
+        {
+          "contentType": "short",
+          "id": "GXoVU6_UwkM",
+          "title": "Top 6 Funny Cat Moments #cat #shortscat #catvideos #cats #usa",
+          "url": "https://www.youtube.com/watch?v=GXoVU6_UwkM",
+          "views": 12000,
+          "viewsAvailable": true
+        },
+        "… 37 more item(s) truncated"
+      ]
+    },
+    "found": true
+  },
+  "provider": "AnyAPI",
+  "costUsd": 0.0012,
+  "items": 38,
+  "replayed": false,
+  "source": {
+    "id": "anonymous-giraffe",
+    "name": "Giraffe",
+    "kind": "anonymous",
+    "artworkKey": "giraffe"
+  },
+  "resultId": "4ef27aa2-3b86-44e8-a576-bc825b3e361e"
+}

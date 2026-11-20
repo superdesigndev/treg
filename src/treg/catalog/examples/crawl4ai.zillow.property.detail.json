@@ -1,0 +1,89 @@
+{
+  "meta": {
+    "blocked": [],
+    "elapsed_ms": 0,
+    "from_cache": true,
+    "llm_calls": 0,
+    "pages_fetched": 0,
+    "partial": false,
+    "warnings": []
+  },
+  "recipe": "zillow-property",
+  "usage": {
+    "boxes": [
+      "gate"
+    ],
+    "cache": "hit",
+    "engine": "recipe",
+    "lines": [
+      {
+        "about": "the call",
+        "boxes": [
+          "gate"
+        ],
+        "cache": "miss",
+        "call": "recipes",
+        "engine": "gate",
+        "units": 1
+      }
+    ],
+    "remaining_before": {
+      "concurrent": 99,
+      "requests": 150,
+      "search": 3000
+    },
+    "units": 1
+  },
+  "version": 1,
+  "rows": [
+    {
+      "address": {
+        "city": "Austin",
+        "state": "TX",
+        "street": "12572 Wethersby Way",
+        "zip": "78753"
+      },
+      "bathrooms": 3.0,
+      "bedrooms": 4.0,
+      "currency": "USD",
+      "description": "Thoughtfully upgraded with quality materials and carefully maintained, this home features beautiful natural quartzite countertops in the kitchen and primary bath, complemented by eucalyptus hardwood flooring throughout the downstairs and Cali luxury vinyl flooring in Castaway Oak in the kitchen and …",
+      "facts": [
+        {
+          "name": "Type",
+          "value": "Single Family Residence"
+        },
+        {
+          "name": "Year Built",
+          "value": "1999"
+        }
+      ],
+      "home_type": "single_family",
+      "latitude": 30.398346,
+      "listing": {
+        "broker": "Central Metro Realty",
+        "mls_id": "3809430",
+        "mls_name": "Unlock MLS"
+      },
+      "living_area_sqft": 2257.0,
+      "longitude": -97.656906,
+      "lot_size_sqft": 10293.0,
+      "photos": [
+        "https://photos.zillowstatic.com/fp/bc88e644592631692fc16431d2c4bd20-cc_ft_1536.jpg",
+        "https://photos.zillowstatic.com/fp/0a7c4583f475d690fd0d4d340830505a-cc_ft_1536.jpg"
+      ],
+      "price": 424924.0,
+      "price_history": [
+        {
+          "date": "2026-09-30",
+          "event": null,
+          "price": 424924.0
+        }
+      ],
+      "status": "for_sale",
+      "url": "https://www.zillow.com/homedetails/12572-Wethersby-Way-Austin-TX-78753/29437674_zpid/",
+      "year_built": 1999,
+      "zestimate": null,
+      "zpid": "29437674"
+    }
+  ]
+}

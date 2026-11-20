@@ -1,0 +1,48 @@
+{
+  "output": {
+    "found": true,
+    "data": {
+      "items": [
+        {
+          "address": "4107 E Yager Ln, Austin, TX 78754",
+          "category": "Coffee shop",
+          "cid": "17816494422704613308",
+          "city": "Austin",
+          "countryCode": "US",
+          "emails": [],
+          "facebooks": [],
+          "image": "https://lh3.googleusercontent.com/gps-cs-s/AHRPTWmJ6LTYAAnlUdoRzGMm1myC1dAw6A6VF_7wwlK8o1UyPY_C-4w-E0wPkyptupBrRXWFvulX-VFhBJKhC9OW9hSO9aRdpd5n43X6pybCkgwy7tvQl70DhHkh1zdJzn3DU3MbyLDxfR_Nvtwg=w513-h24… [206 chars]",
+          "instagrams": [],
+          "latitude": 30.3748424,
+          "linkedIns": [],
+          "longitude": -97.6281609,
+          "name": "Starbucks",
+          "phone": "+15125660742",
+          "phones": [],
+          "placeId": "ChIJQULZeADJRIYRvGcJGEjnQPc",
+          "postalCode": "78754",
+          "rating": 4.9,
+          "reviewCount": 37,
+          "state": "Texas",
+          "tiktoks": [],
+          "twitters": [],
+          "url": "https://www.google.com/maps/search/?api=1&query=Starbucks&query_place_id=ChIJQULZeADJRIYRvGcJGEjnQPc",
+          "website": "https://www.starbucks.com/",
+          "youtubes": []
+        },
+        "… 2 more item(s) truncated"
+      ]
+    }
+  },
+  "provider": "AnyAPI",
+  "costUsd": 0.01491,
+  "items": 3,
+  "replayed": false,
+  "source": {
+    "id": "anonymous-octopus",
+    "name": "Octopus",
+    "kind": "anonymous",
+    "artworkKey": "octopus"
+  },
+  "resultId": "29cc0c37-a67e-4ece-93a3-f4cd169060df"
+}

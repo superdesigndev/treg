@@ -53,10 +53,13 @@ code{font-family:var(--mono);font-size:.9em;background:var(--panel2);
   font-size:15px;color:var(--ink)}
 .brand:hover{text-decoration:none}
 .brand .glyph{display:grid;place-items:center;width:28px;height:28px;border-radius:8px;
-  background:var(--inverse);color:var(--inverse-ink);font-size:14px}
+  background:var(--inverse);color:var(--inverse-ink)}
+/* the SVG mark, same geometry as favicon.svg and the dashboard's BrandMark */
+.glyph svg{width:57%;height:57%;display:block;fill:currentColor}
 .nav .links{margin-left:auto;display:flex;align-items:center;gap:22px}
-.nav .links a{font-size:13.5px;font-weight:500;color:var(--muted)}
-.nav .links a:hover{color:var(--ink);text-decoration:none}
+/* :not(.candy): the CTA sits in .links too, and this selector outranks .candy's colour */
+.nav .links a:not(.candy){font-size:13.5px;font-weight:500;color:var(--muted)}
+.nav .links a:not(.candy):hover{color:var(--ink);text-decoration:none}
 @media(max-width:640px){.nav .links a.hidem{display:none}}
 
 /* ---------- buttons ---------- */
@@ -141,6 +144,12 @@ table.compare td:nth-child(3){color:var(--ink)}
   text-transform:uppercase;color:#8a8a86}
 .promptbox pre{margin:0;font-family:var(--mono);font-size:13px;line-height:1.65;
   color:var(--inverse-ink);white-space:pre-wrap;word-break:break-word}
+/* hand-written agent-page sections (`guide` in agent_pages.AGENTS): commands and prompts */
+.guide pre{margin:18px 0;border-radius:var(--r);background:var(--inverse);padding:16px 18px;
+  font-family:var(--mono);font-size:13px;line-height:1.65;color:var(--inverse-ink);
+  white-space:pre-wrap;word-break:break-word}
+.guide pre code{background:none;padding:0;font-size:inherit;color:inherit}
+.guide ul{padding-left:20px}.guide li{margin:8px 0}
 .copybtn{margin-left:auto;flex:none;border:1px solid #ffffff33;background:transparent;
   color:#d9d9d6;font-family:var(--sans);font-weight:500;font-size:11.5px;letter-spacing:.04em;
   border-radius:7px;padding:6px 13px;cursor:pointer;transition:color .12s,border-color .12s}

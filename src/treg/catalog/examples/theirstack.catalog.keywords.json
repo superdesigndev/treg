@@ -1,0 +1,10 @@
+{
+  "data": [
+    {
+      "name": "Snowflake",
+      "category": "Data Warehousing",
+      "slug": "snowflake",
+      "category_slug": "data-warehousing"
+    }
+  ]
+}

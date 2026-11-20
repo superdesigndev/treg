@@ -1,0 +1,47 @@
+{
+  "data": {
+    "id": "p_example",
+    "name": "Alex Example",
+    "first_name": "Alex",
+    "last_name": "Example",
+    "title": "Head of Growth",
+    "linkedin": "alex-example",
+    "linkedin_url": "https://www.linkedin.com/in/alex-example",
+    "location": {
+      "city": "San Francisco",
+      "country_code": "US"
+    },
+    "company": {
+      "name": "Example Company",
+      "domain": "example.com",
+      "industry": "Software",
+      "country": "US"
+    },
+    "email": {
+      "value": "alex@example.com",
+      "status": "valid",
+      "verified": true,
+      "checked_at": "2026-11-13T02:10:00Z",
+      "kind": "work"
+    },
+    "phone": {
+      "value": "+14155550100",
+      "kind": "direct",
+      "line": "mobile"
+    },
+    "insight": {
+      "seniority": "director",
+      "department": "marketing",
+      "decision_role": "decision_maker",
+      "location": "San Francisco, US",
+      "summary": "Leads growth at Example Company.",
+      "topics": [
+        "growth",
+        "b2b"
+      ]
+    }
+  },
+  "meta": {
+    "took_ms": 7
+  }
+}

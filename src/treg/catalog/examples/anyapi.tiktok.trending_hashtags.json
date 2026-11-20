@@ -1,0 +1,50 @@
+{
+  "output": {
+    "found": true,
+    "data": {
+      "items": [
+        {
+          "hashtag": "bloodhoundq50",
+          "hashtagId": "7353794005546565663",
+          "industryIds": [
+            23000000000
+          ],
+          "popularity": [
+            {
+              "atUtc": 1789084800,
+              "value": 0
+            },
+            "… 6 more item(s) truncated"
+          ],
+          "posts": 22396,
+          "rank": 1,
+          "topCreators": [
+            {
+              "countryCode": "US",
+              "followers": 163586,
+              "handle": "etlspark.jr",
+              "image": "https://p16-common-sign.tiktokcdn.com/tos-maliva-avt-0068/766fdf5abe084628f3ed78f03a7c332f~tplv-tiktokx-cropcenter:300:300.jpeg",
+              "nickname": "41K Man",
+              "rank": 1,
+              "userId": "7188949573850629163"
+            },
+            "… 2 more item(s) truncated"
+          ],
+          "views": 335719268
+        },
+        "… 2 more item(s) truncated"
+      ]
+    }
+  },
+  "provider": "AnyAPI",
+  "costUsd": 0.0012,
+  "items": 3,
+  "replayed": false,
+  "source": {
+    "id": "anonymous-tiger",
+    "name": "Tiger",
+    "kind": "anonymous",
+    "artworkKey": "tiger"
+  },
+  "resultId": "702e63a2-3b4d-42cc-8a47-f2409c67953e"
+}

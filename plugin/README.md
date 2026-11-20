@@ -4,13 +4,11 @@ A **distribution wrapper**, not a second product. It ships the same skill that
 `treg skill bootstrap` already installs into `~/.codex/skills/`, packaged so people find treg by
 searching the plugin directory that ChatGPT and Codex share.
 
-> **One of five shop windows.** The Claude Code plugin lives at the **repo root**
-> (`.claude-plugin/` + `skills/treg/`) and declares **no connector in its manifest**, so it installs
-> with no token and nothing about it waits on a review queue — its skill wires up the CLI and the MCP
-> tools at first run instead. Cursor is the same bootstrap in Cursor's own layout
-> (`plugins/treg/`), and DeepSeek Harness is an npm bundle (`package.json` + `dsh/`) whose MCP row is
-> disabled until there is a token. All of them are rendered by the same `scripts/build_plugin.py`
-> from the same source; they differ only in the prepended bootstrap. See
+> **One of five shop windows.** Claude Code and Cursor install one folder, `plugins/treg/`, which
+> declares the same remote MCP server, so it installs with no token and the host runs OAuth. The bare
+> skill at the repo root (`skills/treg/`) serves `npx skills add` and ClawHub, and DeepSeek Harness is
+> an npm bundle (`package.json` + `dsh/`) whose MCP row is disabled until there is a token.
+> All of them are rendered by the same `scripts/build_plugin.py` from the same source; they differ only in the prepended bootstrap. See
 > [`docs/CLAUDE-PLUGIN.md`](../docs/CLAUDE-PLUGIN.md), [`docs/DSH-PLUGIN.md`](../docs/DSH-PLUGIN.md)
 > and [`docs/MINIMAX-PLUGIN.md`](../docs/MINIMAX-PLUGIN.md) (skills-only, from `plugins/minimax/`).
 

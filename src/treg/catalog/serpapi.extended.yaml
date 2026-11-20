@@ -12,7 +12,7 @@ endpoints:
   method: GET
   path: /search
   name: "Google Maps place results for a query — rating, address"
-  summary: Live Google Maps place results for a keyword and location — position, place_id, rating, address, phone, website
+  summary: Live Google Maps place results for a keyword and location, or a Google place_id lookup — position, place_id, rating, address, phone, website
   input:
     queryParams:
       engine:
@@ -22,12 +22,12 @@ endpoints:
       type:
         type: string
         required: true
-        note: search (keyword search) or place (single place lookup)
+        note: 'search (keyword list) or place (single-place lookup via place_id). Prefer type=place with place_id. Upstream does not require type when place_id is set (https://serpapi.com/google-maps-api); Treg still requires type — send type=place for a place_id lookup.'
         example: search
       q:
         type: string
         required: true
-        note: search keyword
+        note: 'required for type=search (keyword). For a place_id lookup, Treg still requires q — send the place name, or the same place_id as q, alongside place_id.'
         example: pizza
       ll:
         type: string
@@ -39,7 +39,12 @@ endpoints:
         required: false
         note: pagination offset, increments of 20
         example: 0
-    note: answers arrive in `local_results`.
+      place_id:
+        type: string
+        required: false
+        note: 'Google place_id for a single-place lookup / NAP (name, address, phone, website). Prefer with type=place. Upstream accepts place_id without other optional params (https://serpapi.com/google-maps-api); Treg still requires type and q, so send type=place and a q (place name, or place_id as q) alongside place_id.'
+        example: ChIJifIePKtZwokRVZ-UdRGkZzs
+    note: 'Keyword search answers arrive in `local_results`; a place_id lookup answers in `place_results`. Search: engine=google_maps type=search q=pizza ll=@…. Place lookup: engine=google_maps type=place q=<place name or place_id> place_id=ChIJifIePKtZwokRVZ-UdRGkZzs.'
   cost:
     type: per_success
     value: 0.015
@@ -59,6 +64,7 @@ endpoints:
       ll: '@40.7455096,-74.0083012,14z'
   docs_url: https://serpapi.com/google-maps-api
   verified: '2026-07-28'
+  added: '2026-07-28'
   example_response: examples/serpapi.x.google-maps.json
   observed_time: 1.95
 - id: serpapi.x.google-shopping
@@ -109,6 +115,7 @@ endpoints:
       hl: en
   docs_url: https://serpapi.com/google-shopping-api
   verified: '2026-07-28'
+  added: '2026-07-28'
   example_response: examples/serpapi.x.google-shopping.json
   observed_time: 1.98
 - id: serpapi.x.google-scholar
@@ -145,6 +152,7 @@ endpoints:
       q: biology
   docs_url: https://serpapi.com/google-scholar-api
   verified: '2026-07-28'
+  added: '2026-07-28'
   example_response: examples/serpapi.x.google-scholar.json
   observed_time: 6.55
 - id: serpapi.x.google-trends
@@ -169,7 +177,7 @@ endpoints:
       data_type:
         type: string
         required: false
-        note: TIMESERIES (default) | GEO_MAP | GEO_MAP_0 | RELATED_TOPICS | RELATED_QUERIES
+        note: 'TIMESERIES (default; single or multiple queries) | GEO_MAP (compared breakdown by region; multiple comma-separated q only) | GEO_MAP_0 (interest by region; single query only) | RELATED_TOPICS (single query only) | RELATED_QUERIES (single query only)'
         example: TIMESERIES
       geo:
         type: string
@@ -181,7 +189,7 @@ endpoints:
         required: false
         note: e.g. "today 12-m", "now 7-d"
         example: today 12-m
-    note: 'result key depends on data_type: interest_over_time / compared_breakdown_by_region / interest_by_region / related_topics / related_queries.'
+    note: 'result key depends on data_type: TIMESERIES interest_over_time (single or multiple q); GEO_MAP compared_breakdown_by_region (multiple q only); GEO_MAP_0 interest_by_region (single q); RELATED_TOPICS related_topics (single q); RELATED_QUERIES related_queries (single q).'
   cost:
     type: per_success
     value: 0.015
@@ -200,6 +208,7 @@ endpoints:
       geo: US
   docs_url: https://serpapi.com/google-trends-api
   verified: '2026-07-28'
+  added: '2026-07-28'
   example_response: examples/serpapi.x.google-trends.json
   observed_time: 7.14
 - id: serpapi.x.google-news
@@ -252,6 +261,7 @@ endpoints:
       hl: en
   docs_url: https://serpapi.com/google-news-api
   verified: '2026-07-28'
+  added: '2026-07-28'
   example_response: examples/serpapi.x.google-news.json
   observed_time: 2.11
 - id: serpapi.x.google-images
@@ -288,6 +298,7 @@ endpoints:
       q: coffee
   docs_url: https://serpapi.com/google-images-api
   verified: '2026-07-28'
+  added: '2026-07-28'
   example_response: examples/serpapi.x.google-images.json
   observed_time: 3.63
 - id: serpapi.x.google-jobs
@@ -342,6 +353,7 @@ endpoints:
       hl: en
   docs_url: https://serpapi.com/google-jobs-api
   verified: '2026-07-28'
+  added: '2026-07-28'
   example_response: examples/serpapi.x.google-jobs.json
   observed_time: 2.85
 - id: serpapi.x.google-finance
@@ -389,6 +401,7 @@ endpoints:
       window: 1Y
   docs_url: https://serpapi.com/google-finance-api
   verified: '2026-07-28'
+  added: '2026-07-28'
   example_response: examples/serpapi.x.google-finance.json
   observed_time: 1.41
 - id: serpapi.x.google-patents
@@ -444,6 +457,7 @@ endpoints:
       num: 10
   docs_url: https://serpapi.com/google-patents-api
   verified: '2026-07-28'
+  added: '2026-07-28'
   example_response: examples/serpapi.x.google-patents.json
   observed_time: 1.59
 - id: serpapi.x.google-flights
@@ -507,6 +521,7 @@ endpoints:
       type: '2'
   docs_url: https://serpapi.com/google-flights-api
   verified: '2026-07-28'
+  added: '2026-07-28'
   example_response: examples/serpapi.x.google-flights.json
   observed_time: 2.45
 - id: serpapi.x.google-hotels
@@ -560,6 +575,7 @@ endpoints:
       adults: 2
   docs_url: https://serpapi.com/google-hotels-api
   verified: '2026-07-28'
+  added: '2026-07-28'
   example_response: examples/serpapi.x.google-hotels.json
   observed_time: 7.59
 - id: serpapi.x.google-local
@@ -610,6 +626,7 @@ endpoints:
       location: New York, New York, United States
   docs_url: https://serpapi.com/google-local-api
   verified: '2026-07-28'
+  added: '2026-07-28'
   example_response: examples/serpapi.x.google-local.json
   observed_time: 11.29
 - id: serpapi.x.google-lens
@@ -652,6 +669,7 @@ endpoints:
       type: visual_matches
   docs_url: https://serpapi.com/google-lens-api
   verified: '2026-07-28'
+  added: '2026-07-28'
   example_response: examples/serpapi.x.google-lens.json
   observed_time: 4.1
 - id: serpapi.x.google-videos
@@ -688,6 +706,7 @@ endpoints:
       q: coffee
   docs_url: https://serpapi.com/google-videos-api
   verified: '2026-07-28'
+  added: '2026-07-28'
   example_response: examples/serpapi.x.google-videos.json
   observed_time: 3.62
 - id: serpapi.x.google-events
@@ -732,6 +751,7 @@ endpoints:
       q: concerts in austin
   docs_url: https://serpapi.com/google-events-api
   verified: '2026-07-28'
+  added: '2026-07-28'
   example_response: examples/serpapi.x.google-events.json
   observed_time: 1.57
 - id: serpapi.x.google-ads
@@ -764,7 +784,7 @@ endpoints:
         required: true
         note: city-level origin of the search — confirmed REQUIRED live (a bare gl/hl call 400s with "Missing `location` parameter")
         example: Austin, Texas, United States
-    note: answers arrive in `ads_results`.
+    note: answers arrive in `ads` (not `ads_results`).
   cost:
     type: per_success
     value: 0.015
@@ -783,6 +803,7 @@ endpoints:
       location: Austin, Texas, United States
   docs_url: https://serpapi.com/google-ads-api
   verified: '2026-07-28'
+  added: '2026-07-28'
   example_response: examples/serpapi.x.google-ads.json
 - id: serpapi.x.google-light
   tier: extended
@@ -827,6 +848,7 @@ endpoints:
       q: coffee
   docs_url: https://serpapi.com/google-light-api
   verified: '2026-07-28'
+  added: '2026-07-28'
   example_response: examples/serpapi.x.google-light.json
   observed_time: 0.75
 - id: serpapi.x.google-ai-mode
@@ -864,8 +886,10 @@ endpoints:
       q: best coffee brewing method
   docs_url: https://serpapi.com/google-ai-mode-api
   verified: '2026-07-30'
+  added: '2026-07-28'
   example_response: examples/serpapi.x.google-ai-mode.json
 - id: serpapi.x.google-ai-overview
+  added: '2026-07-28'
   tier: extended
   platform: google
   method: GET
@@ -939,6 +963,7 @@ endpoints:
       mkt: en-US
   docs_url: https://serpapi.com/bing-search-api
   verified: '2026-07-28'
+  added: '2026-07-28'
   example_response: examples/serpapi.x.bing-search.json
   observed_time: 11.83
   capability: bing.serp.organic
@@ -976,6 +1001,7 @@ endpoints:
       q: coffee
   docs_url: https://serpapi.com/bing-news-api
   verified: '2026-07-28'
+  added: '2026-07-28'
   example_response: examples/serpapi.x.bing-news.json
   observed_time: 1.14
   capability: bing.serp.news
@@ -1013,6 +1039,7 @@ endpoints:
       q: coffee
   docs_url: https://serpapi.com/bing-images-api
   verified: '2026-07-28'
+  added: '2026-07-28'
   example_response: examples/serpapi.x.bing-images.json
   observed_time: 1.85
   capability: bing.serp.images
@@ -1050,6 +1077,7 @@ endpoints:
       q: coffee
   docs_url: https://serpapi.com/bing-videos-api
   verified: '2026-07-28'
+  added: '2026-07-28'
   example_response: examples/serpapi.x.bing-videos.json
   observed_time: 2.36
   capability: bing.serp.videos
@@ -1087,6 +1115,7 @@ endpoints:
       q: coffee maker
   docs_url: https://serpapi.com/bing-shopping-api
   verified: '2026-07-28'
+  added: '2026-07-28'
   example_response: examples/serpapi.x.bing-shopping.json
   observed_time: 3.02
   capability: bing.serp.shopping
@@ -1124,6 +1153,7 @@ endpoints:
       q: what is the capital of france
   docs_url: https://serpapi.com/bing-copilot-api
   verified: '2026-07-30'
+  added: '2026-07-28'
   example_response: examples/serpapi.x.bing-copilot.json
 - id: serpapi.x.baidu-search
   tier: extended
@@ -1163,6 +1193,7 @@ endpoints:
       q: coffee
   docs_url: https://serpapi.com/baidu-search-api
   verified: '2026-07-28'
+  added: '2026-07-28'
   example_response: examples/serpapi.x.baidu-search.json
   observed_time: 19.5
   capability: baidu.serp.organic
@@ -1200,6 +1231,7 @@ endpoints:
       q: coffee
   docs_url: https://serpapi.com/baidu-news-api
   verified: '2026-07-28'
+  added: '2026-07-28'
   example_response: examples/serpapi.x.baidu-news.json
   observed_time: 2.89
   capability: baidu.serp.news
@@ -1244,6 +1276,7 @@ endpoints:
       kl: us-en
   docs_url: https://serpapi.com/duckduckgo-search-api
   verified: '2026-07-28'
+  added: '2026-07-28'
   example_response: examples/serpapi.x.duckduckgo-search.json
   observed_time: 6.88
   capability: duckduckgo.serp.organic
@@ -1281,6 +1314,7 @@ endpoints:
       q: apple
   docs_url: https://serpapi.com/duckduckgo-news-api
   verified: '2026-07-28'
+  added: '2026-07-28'
   example_response: examples/serpapi.x.duckduckgo-news.json
   observed_time: 5.19
   capability: duckduckgo.serp.news
@@ -1318,6 +1352,7 @@ endpoints:
       q: apple
   docs_url: https://serpapi.com/duckduckgo-light-api
   verified: '2026-07-28'
+  added: '2026-07-28'
   example_response: examples/serpapi.x.duckduckgo-light.json
   observed_time: 1.88
   capability: duckduckgo.serp.organic
@@ -1355,6 +1390,7 @@ endpoints:
       q: pizza
   docs_url: https://serpapi.com/duckduckgo-maps-api
   verified: '2026-07-30'
+  added: '2026-07-28'
   example_response: examples/serpapi.x.duckduckgo-maps.json
 - id: serpapi.x.yahoo-search
   tier: extended
@@ -1397,6 +1433,7 @@ endpoints:
       vc: us
   docs_url: https://serpapi.com/yahoo-search-api
   verified: '2026-07-28'
+  added: '2026-07-28'
   example_response: examples/serpapi.x.yahoo-search.json
   observed_time: 3.17
   capability: yahoo.serp.organic
@@ -1434,6 +1471,7 @@ endpoints:
       p: coffee
   docs_url: https://serpapi.com/yahoo-images-api
   verified: '2026-07-28'
+  added: '2026-07-28'
   example_response: examples/serpapi.x.yahoo-images.json
   observed_time: 1.99
   capability: yahoo.serp.images
@@ -1471,6 +1509,7 @@ endpoints:
       p: coffee
   docs_url: https://serpapi.com/yahoo-videos-api
   verified: '2026-07-28'
+  added: '2026-07-28'
   example_response: examples/serpapi.x.yahoo-videos.json
   observed_time: 1.99
   capability: yahoo.serp.videos
@@ -1514,6 +1553,7 @@ endpoints:
       text: coffee
   docs_url: https://serpapi.com/yandex-search-api
   verified: '2026-07-28'
+  added: '2026-07-28'
   example_response: examples/serpapi.x.yandex-search.json
   observed_time: 2.01
   capability: yandex.serp.organic
@@ -1551,6 +1591,7 @@ endpoints:
       text: coffee
   docs_url: https://serpapi.com/yandex-images-api
   verified: '2026-07-28'
+  added: '2026-07-28'
   example_response: examples/serpapi.x.yandex-images.json
   observed_time: 2.15
   capability: yandex.serp.images
@@ -1588,6 +1629,7 @@ endpoints:
       text: coffee
   docs_url: https://serpapi.com/yandex-videos-api
   verified: '2026-07-28'
+  added: '2026-07-28'
   example_response: examples/serpapi.x.yandex-videos.json
   observed_time: 2.3
   capability: yandex.serp.videos
@@ -1630,6 +1672,7 @@ endpoints:
       query: paris
   docs_url: https://serpapi.com/naver-search-api
   verified: '2026-07-28'
+  added: '2026-07-28'
   example_response: examples/serpapi.x.naver-search.json
   observed_time: 2.97
   capability: naver.serp.organic
@@ -1667,6 +1710,7 @@ endpoints:
       query: coffee
   docs_url: https://serpapi.com/naver-ai-overview-api
   verified: '2026-07-30'
+  added: '2026-07-28'
   example_response: examples/serpapi.x.naver-ai-overview.json
 - id: serpapi.x.amazon-search
   tier: extended
@@ -1710,6 +1754,7 @@ endpoints:
       amazon_domain: amazon.com
   docs_url: https://serpapi.com/amazon-search-api
   verified: '2026-07-28'
+  added: '2026-07-28'
   example_response: examples/serpapi.x.amazon-search.json
   observed_time: 2.39
 - id: serpapi.x.amazon-product
@@ -1753,6 +1798,7 @@ endpoints:
       amazon_domain: amazon.com
   docs_url: https://serpapi.com/amazon-product-api
   verified: '2026-07-28'
+  added: '2026-07-28'
   example_response: examples/serpapi.x.amazon-product.json
   observed_time: 10.71
 - id: serpapi.x.ebay-search
@@ -1794,6 +1840,7 @@ endpoints:
       _nkw: Coffee
   docs_url: https://serpapi.com/ebay-search-api
   verified: '2026-07-28'
+  added: '2026-07-28'
   example_response: examples/serpapi.x.ebay-search.json
   observed_time: 4.72
   capability: ebay.search.products
@@ -1835,6 +1882,7 @@ endpoints:
       product_id: '305576857892'
   docs_url: https://serpapi.com/ebay-product-api
   verified: '2026-07-28'
+  added: '2026-07-28'
   example_response: examples/serpapi.x.ebay-product.json
   observed_time: 2.52
   capability: ebay.product.detail
@@ -1877,6 +1925,7 @@ endpoints:
       query: coffee maker
   docs_url: https://serpapi.com/walmart-search-api
   verified: '2026-07-28'
+  added: '2026-07-28'
   example_response: examples/serpapi.x.walmart-search.json
   observed_time: 47.47
   capability: walmart.search.products
@@ -1914,15 +1963,17 @@ endpoints:
       product_id: '147423982'
   docs_url: https://serpapi.com/walmart-product-api
   verified: '2026-07-28'
+  added: '2026-07-28'
   example_response: examples/serpapi.x.walmart-product.json
   observed_time: 5.15
   capability: walmart.product.detail
 - id: serpapi.x.home-depot-search
   tier: extended
-  platform: web
+  capability: home-depot.products.search
+  platform: home-depot
   method: GET
   path: /search
-  name: "Home Depot product search by keyword"
+  name: "Search Home Depot products"
   summary: Live Home Depot search results for a keyword
   input:
     queryParams:
@@ -1955,6 +2006,7 @@ endpoints:
       q: hammer
   docs_url: https://serpapi.com/home-depot-search-api
   verified: '2026-07-28'
+  added: '2026-07-28'
   example_response: examples/serpapi.x.home-depot-search.json
   observed_time: 13.05
 - id: serpapi.x.yelp-search
@@ -1998,6 +2050,7 @@ endpoints:
       find_desc: Coffee
   docs_url: https://serpapi.com/yelp-search-api
   verified: '2026-07-28'
+  added: '2026-07-28'
   example_response: examples/serpapi.x.yelp-search.json
   observed_time: 2.49
   capability: yelp.business.search
@@ -2041,6 +2094,7 @@ endpoints:
       ssrc: r
   docs_url: https://serpapi.com/tripadvisor-search-api
   verified: '2026-07-28'
+  added: '2026-07-28'
   example_response: examples/serpapi.x.tripadvisor-search.json
   observed_time: 0.87
   capability: tripadvisor.search.general
@@ -2079,6 +2133,7 @@ endpoints:
       profile_id: Modernatx
   docs_url: https://serpapi.com/facebook-profile-api
   verified: '2026-07-28'
+  added: '2026-07-28'
   example_response: examples/serpapi.x.facebook-profile.json
   observed_time: 0.79
   capability: facebook.user.profile
@@ -2122,6 +2177,7 @@ endpoints:
       profile_id: serpapicom
   docs_url: https://serpapi.com/instagram-profile-api
   verified: '2026-07-28'
+  added: '2026-07-28'
   example_response: examples/serpapi.x.instagram-profile.json
   observed_time: 4.84
 - id: serpapi.x.brave-ai-mode
@@ -2158,5 +2214,6 @@ endpoints:
       q: best coffee brewing method
   docs_url: https://serpapi.com/brave-ai-mode-api
   verified: '2026-07-30'
+  added: '2026-07-28'
   example_response: examples/serpapi.x.brave-ai-mode.json
   capability: ai-search.brave.answer

@@ -7,7 +7,9 @@
 Source files stay the single point of edit. `dist/` is generated — never edit it, it is
 overwritten on every run.
 """
-import re, sys, pathlib
+import re
+import sys
+import pathlib
 
 HERE = pathlib.Path(__file__).parent
 DIST = HERE / "dist"

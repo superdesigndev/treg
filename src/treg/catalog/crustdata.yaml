@@ -2,7 +2,7 @@ provider: crustdata
 source:
   docs: https://docs.crustdata.com
   openapi: null
-  curated: '2026-08-25'
+  curated: '2026-09-19'
 limits: "Current pay-as-you-go defaults: company/person enrich 15 requests/minute; company/person/job search and company identify 30/minute; company/person autocomplete 300/minute. The account dashboard is authoritative if a plan changes."
 pricing_url: https://docs.crustdata.com/general/pricing
 
@@ -13,9 +13,7 @@ pricing_url: https://docs.crustdata.com/general/pricing
 # sales-enabled routes are intentionally omitted.
 
 proposed_capabilities:
-  companies.jobs.search: "Search indexed job listings across companies"
-  companies.autocomplete: "Autocomplete company-search field values"
-  people.autocomplete: "Autocomplete person-search field values"
+  companies.search.filters: "List the accepted values for a company-search filter"
 
 endpoints:
   - id: crustdata.companies.search
@@ -25,22 +23,25 @@ endpoints:
     scope: any_account
     method: POST
     path: /company/search
-    name: "Search companies by firmographics or signals"
-    summary: "Search the indexed company dataset with structured filters"
+    name: "Search companies by firmographics or NL query"
+    summary: "Search the indexed company dataset with structured filters, a natural-language hybrid query, or both"
     input:
       bodyType: json
       body:
-        filters: {type: object, required: false, note: "one condition {field,type,value} or a nested {op:'and'|'or',conditions:[...]} group", example: {field: "basic_info.primary_domain", type: "=", value: "stripe.com"}}
-        fields: {type: "array[string]", required: false, note: "dot-path fields to return; specifying these keeps responses small", example: ["basic_info.name", "basic_info.primary_domain", "social_profiles.twitter_url"]}
-        sorts: {type: "array[object]", required: false, note: "each item is {column, order:'asc'|'desc'}"}
-        limit: {type: integer, required: false, note: "results per page, max 1000; this is the price dial", example: 1}
-        cursor: {type: string, required: false, note: "next_cursor from the previous response"}
+        filters: {type: object, required: false, note: "required when search is omitted; one condition {field,type,value} or a nested {op:'and'|'or',conditions:[...]} group. With ranked search, filters are hard constraints applied before retrieval", example: {field: "basic_info.primary_domain", type: "=", value: "stripe.com"}}
+        search: {type: object, required: false, note: "{query, mode?} for ranked NL search; mode hybrid|lexical|semantic default hybrid. Supply filters and/or search. When search is set, cursor and sorts are unsupported and limit max is 100", example: {query: "AI infrastructure companies building tools for model deployment and monitoring", mode: "hybrid"}}
+        fields: {type: array, items: {type: string}, required: false, note: "dot-path fields to return; specifying these keeps responses small", example: ["basic_info.name", "basic_info.primary_domain", "social_profiles.twitter_url"]}
+        sorts: {type: array, items: {type: object}, required: false, note: "filter-only; each item is {field, order:'asc'|'desc'}. Not supported with ranked search"}
+        limit: {type: integer, required: false, note: "results per page; max 1000 filter-only / max 100 with ranked search; this is the price dial", example: 1}
+        cursor: {type: string, required: false, note: "filter-only pagination; next_cursor from the previous response. Not supported with ranked search"}
+      note: "supply at least one of filters or search"
     test_request:
       body:
         filters: {field: "basic_info.primary_domain", type: "=", value: "stripe.com"}
         fields: ["basic_info.name", "basic_info.primary_domain"]
         limit: 1
     verified: '2026-08-25'
+    added: '2026-08-25'
     example_response: examples/crustdata.companies.search.json
     cost:
       type: per_result
@@ -57,7 +58,7 @@ endpoints:
 
   - id: crustdata.companies.autocomplete
     domain: companies
-    capability: companies.autocomplete
+    capability: companies.search.filters
     platform: companies
     scope: any_account
     method: POST
@@ -74,6 +75,7 @@ endpoints:
     test_request:
       body: {field: "basic_info.industries", query: "tech", limit: 5}
     verified: '2026-08-25'
+    added: '2026-08-25'
     example_response: examples/crustdata.companies.autocomplete.json
     cost: {type: free, value: 0, currency: USD, per: 1, unit: call}
     docs_url: https://docs.crustdata.com/company-docs/autocomplete/introduction
@@ -90,13 +92,14 @@ endpoints:
     input:
       bodyType: json
       body:
-        domains: {type: "array[string]", required: false, note: "company domains to resolve", example: ["stripe.com"]}
-        names: {type: "array[string]", required: false, note: "company names to resolve when a domain is unavailable"}
-        professional_network_profile_urls: {type: "array[string]", required: false, note: "company profile URLs"}
+        domains: {type: array, items: {type: string}, required: false, note: "company domains to resolve", example: ["stripe.com"]}
+        names: {type: array, items: {type: string}, required: false, note: "company names to resolve when a domain is unavailable"}
+        professional_network_profile_urls: {type: array, items: {type: string}, required: false, note: "company profile URLs"}
       note: "supply at least one supported identifier collection; domains are the least ambiguous"
     test_request:
       body: {domains: ["stripe.com"]}
     verified: '2026-08-24'
+    added: '2026-08-25'
     example_response: examples/crustdata.companies.identify.json
     cost: {type: free, value: 0, currency: USD, per: 1, unit: call}
     docs_url: https://docs.crustdata.com/company-docs/identify/introduction
@@ -113,14 +116,15 @@ endpoints:
     input:
       bodyType: json
       body:
-        domains: {type: "array[string]", required: false, note: "company domains", example: ["stripe.com"]}
-        professional_network_profile_urls: {type: "array[string]", required: false, note: "company profile URLs"}
-        names: {type: "array[string]", required: false, note: "company names; use a stronger identifier when possible"}
-        fields: {type: "array[string]", required: false, note: "field groups to return; technographics adds 2 credits when data is returned"}
+        domains: {type: array, items: {type: string}, required: false, note: "company domains", example: ["stripe.com"]}
+        professional_network_profile_urls: {type: array, items: {type: string}, required: false, note: "company profile URLs"}
+        names: {type: array, items: {type: string}, required: false, note: "company names; use a stronger identifier when possible"}
+        fields: {type: array, items: {type: string}, required: false, note: "field groups to return; technographics adds 2 credits when data is returned"}
       note: "supply one identifier family. Base enrichment is 2 credits per matched company; technographics can raise it to 4."
     test_request:
       body: {domains: ["stripe.com"]}
     verified: '2026-08-25'
+    added: '2026-08-25'
     example_response: examples/crustdata.companies.enrich.json
     cost:
       type: per_result
@@ -136,27 +140,32 @@ endpoints:
     docs_url: https://docs.crustdata.com/company-docs/enrichment/introduction
 
   - id: crustdata.people.search
+    cache:
+      ignore_paths: ["next_cursor", "profiles[*].metadata.updated_at"]
     domain: contacts
     capability: people.search
     platform: people
     scope: any_account
     method: POST
     path: /person/search
-    name: "Search people by role, company or location"
-    summary: "Search indexed professional profiles with structured filters"
+    name: "Search people by role, company, location or NL query"
+    summary: "Search indexed professional profiles with structured filters, a natural-language hybrid query, or both"
     input:
       bodyType: json
       body:
-        filters: {type: object, required: false, note: "one condition or nested and/or group", example: {field: "basic_profile.name", type: "=", value: "Satya Nadella"}}
-        fields: {type: "array[string]", required: false, note: "dot-path fields to return"}
-        sorts: {type: "array[object]", required: false, note: "each item is {column, order:'asc'|'desc'}"}
-        limit: {type: integer, required: false, note: "results per page; this is the price dial", example: 1}
-        cursor: {type: string, required: false, note: "next_cursor from the prior response"}
+        filters: {type: object, required: false, note: "required when search is omitted; one condition or nested and/or group. Can be combined with ranked search", example: {field: "basic_profile.name", type: "=", value: "Satya Nadella"}}
+        search: {type: object, required: false, note: "{query, mode?} for ranked NL search; mode hybrid|lexical|semantic default hybrid. Supply filters and/or search. When search is set, sorts are unsupported", example: {query: "founding engineers at developer tools startups", mode: "hybrid"}}
+        fields: {type: array, items: {type: string}, required: false, note: "dot-path fields to return"}
+        sorts: {type: array, items: {type: object}, required: false, note: "filter-only; each item is {field, order:'asc'|'desc'}. Not supported with ranked search"}
+        limit: {type: integer, required: false, note: "results per page, 1-1000; this is the price dial", example: 1}
+        cursor: {type: string, required: false, note: "next_cursor from the prior response; keep filters and search identical across pages"}
+      note: "supply at least one of filters or search"
     test_request:
       body:
         filters: {field: "basic_profile.name", type: "=", value: "Satya Nadella"}
         limit: 1
     verified: '2026-08-25'
+    added: '2026-08-25'
     example_response: examples/crustdata.people.search.json
     cost:
       type: per_result
@@ -173,7 +182,7 @@ endpoints:
 
   - id: crustdata.people.autocomplete
     domain: contacts
-    capability: people.autocomplete
+    capability: people.search.filters
     platform: people
     scope: any_account
     method: POST
@@ -190,6 +199,7 @@ endpoints:
     test_request:
       body: {field: "experience.employment_details.current.title", query: "VP", limit: 5}
     verified: '2026-08-25'
+    added: '2026-08-25'
     example_response: examples/crustdata.people.autocomplete.json
     cost: {type: free, value: 0, currency: USD, per: 1, unit: call}
     docs_url: https://docs.crustdata.com/person-docs/autocomplete/introduction
@@ -206,13 +216,14 @@ endpoints:
     input:
       bodyType: json
       body:
-        professional_network_profile_urls: {type: "array[string]", required: false, note: "public professional profile URLs", example: ["https://www.linkedin.com/in/satyanadella"]}
-        business_emails: {type: "array[string]", required: false, note: "business emails for reverse lookup"}
-        fields: {type: "array[string]", required: false, note: "optional field groups; email, phone and developer data add credits"}
+        professional_network_profile_urls: {type: array, items: {type: string}, required: false, note: "public professional profile URLs", example: ["https://www.linkedin.com/in/satyanadella"]}
+        business_emails: {type: array, items: {type: string}, required: false, note: "business emails for reverse lookup"}
+        fields: {type: array, items: {type: string}, required: false, note: "optional field groups; email, phone and developer data add credits"}
       note: "supply profile URLs or business emails. Base profile costs 1 credit; all add-ons can bring one record to 7."
     test_request:
       body: {professional_network_profile_urls: ["https://www.linkedin.com/in/satyanadella"]}
     verified: '2026-08-25'
+    added: '2026-08-25'
     example_response: examples/crustdata.people.enrich.json
     cost:
       type: per_result
@@ -240,17 +251,18 @@ endpoints:
       bodyType: json
       body:
         filters: {type: object, required: false, note: "one condition or nested condition group"}
-        fields: {type: "array[string]", required: false, note: "dot-path fields to include; always specify in production", example: ["job_details.title", "job_details.url", "company.basic_info.name"]}
-        sorts: {type: "array[object]", required: false, note: "each item is {column,order}"}
+        fields: {type: array, items: {type: string}, required: false, note: "dot-path fields to include; always specify in production", example: ["job_details.title", "job_details.url", "company.basic_info.name"]}
+        sorts: {type: array, items: {type: object}, required: false, note: "each item is {column,order}"}
         limit: {type: integer, required: false, note: "0-1000 rows; use 0 for aggregation-only requests", example: 1}
         cursor: {type: string, required: false}
-        aggregations: {type: "array[object]", required: false, note: "count or group_by requests"}
+        aggregations: {type: array, items: {type: object}, required: false, note: "count or group_by requests"}
     test_request:
       body:
         filters: {field: "company.basic_info.name", type: "=", value: "Stripe"}
         fields: ["job_details.title", "job_details.url", "company.basic_info.name"]
         limit: 1
     verified: '2026-08-25'
+    added: '2026-08-25'
     example_response: examples/crustdata.companies.jobs.search.json
     cost:
       type: per_result

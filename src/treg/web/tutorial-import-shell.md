@@ -21,11 +21,11 @@ happened and why it matters. Copy each command and follow along. The registry in
 - **A "tool" can be an HTTP API or a command-line program.** `treg call` proxies an API; `treg run` runs a
   vendor **CLI** (stripe, gh, gcloud, …) with the org credential injected, so you use it without owning the
   key. Auto-import and shell mode are both about the CLI kind.
-- **Two run tiers.** `--local` (default) runs the CLI on **your** machine; `--server` runs it on the
-  registry, so the key never reaches you. A tool can support both.
+- **CLI execution is local.** `--local` (default) runs the CLI on **your** machine. Server-side
+  execution is disabled for everyone: `--server` returns HTTP 503.
 - **Auto-import reads your machine.** `treg scan clis` looks at which catalog CLIs are actually installed
-  (and whether you are logged into them); `treg upload clis` registers each on the right tier — the key you
-  already have in your environment goes to the server-injected tier; a CLI you are logged into stays local.
+  (and whether you are logged into them); `treg upload clis` registers environment keys for injection or
+  uses the CLI's existing login. The scan's `server` label does not enable server-side execution.
   (`treg scan` = read-only preview, `treg upload` = register; `treg import` is the old name for `upload`.)
 - **Shell mode shadows CLIs on `PATH`.** `treg shell start` puts a private folder first on your `PATH` with
   one small wrapper (a "shim") named after each **registered** CLI. When you type `gh`, the shell finds our
@@ -42,7 +42,7 @@ happened and why it matters. Copy each command and follow along. The registry in
 # Part 1 — Auto-import: your installed CLIs become team tools
 
 You have `gh`, `stripe`, `gcloud`, and a dozen other CLIs installed and logged in already. Auto-import turns
-them into registered treg tools in one pass, choosing the safe run tier for each — no hand-writing a
+them into registered treg tools in one pass, detecting credentials for each — no hand-writing a
 `treg.json` per tool.
 
 ## Step 1 — Preview what would be registered (nothing is written)
@@ -73,9 +73,10 @@ Not supported:
 12 more catalog CLIs aren't installed. List them with: treg scan clis --status
 ```
 
-**Notice:** two groups. **Server tier** (`openai`, `stripe`) — their API key is in your environment, so
-treg can hold it and inject it; these can run on the server, where the key never touches a member's
-machine. **Local tier** (`gh`, `gcloud`, …) — you are logged into the CLI itself (its own config on disk),
+**Notice:** two groups. The scan's **server** label (`openai`, `stripe`) means their API key is in your
+environment and can be uploaded for injection; server-side execution is disabled. CLI execution is
+local, subject to tool and member permissions. **Local** (`gh`, `gcloud`, …) means you are logged into
+the CLI itself (its own config on disk),
 so treg registers the tool without any secret and just runs the CLI you already authenticated. `az` uses a
 browser/device login with no token to hand over, so it is reported as not supported, with the exact
 alternative.
@@ -107,8 +108,9 @@ Not supported:
 12 more catalog CLIs aren't installed. List them with: treg scan clis --status
 ```
 
-**Notice:** the server-tier CLIs uploaded their key (encrypted) and are now bound tools; the local-tier
-CLIs registered **secret-less** — internally their profile has `inject: []`, meaning "inject nothing, just
+**Notice:** the CLIs labelled server uploaded their key (encrypted) and are now bound tools; this does
+not enable server-side execution. The local-tier CLIs registered **secret-less** — internally their
+profile has `inject: []`, meaning "inject nothing, just
 run the program the member is already logged into." The report is deliberately plain text (no emojis, no
 colour) so it is easy to scan and paste.
 
@@ -151,8 +153,8 @@ treg upload clis --add mycli --env MYCLI_TOKEN --base-url https://api.mycli.com
 
 **Notice:** `--add` asks for the environment variable the CLI reads its key from (blank if it logs in on
 its own) and the API base URL, registers the tool, and prints a catalog-entry snippet you can share so the
-CLI is added for everyone. An off-catalog CLI is not on the server's allow-list, so it runs **locally**
-until an admin allow-lists its program name.
+CLI is added for everyone. CLI execution is **local**; adding a program to the server's allow-list
+does not enable server execution.
 
 ---
 
@@ -183,7 +185,8 @@ treg shell start
 
 **Notice:** you are now in a subshell. The prompt shows a `(treg)` marker. The banner lists the registered
 CLIs that are now "shadowed" — a private folder with one wrapper per CLI was put first on your `PATH`. The
-credential is **not** in this shell's environment; it is fetched per command.
+credential is **not** in this shell's environment; it is fetched per command. The legacy banner still
+mentions server execution, but no tool is advertised as server-runnable and all these shims run locally.
 
 ## Step 6 — Use a team CLI with no `treg run`
 
@@ -231,36 +234,35 @@ $ which gh
 removed and your `PATH` returns to normal, so `which gh` points at the real binary again. Nothing is left
 behind.
 
-## Step 9 — Route one CLI to the server, and set a time limit
+## Step 9 — Set a time limit for a local shell
 
-Two options on `start`. `--server-for <tools>` makes those CLIs run **on the registry** (the key never
-touches your machine); `--ttl <minutes>` closes the shell automatically.
+`--ttl <minutes>` closes the shell automatically. Registered CLIs run locally with the same tool and
+member permissions as `treg run`.
 
 ```bash
-treg shell start --server-for stripe --ttl 60
+treg shell start --ttl 60
 ```
 ```text
 ▚ treg shell — you're now in a shell where your team's CLIs just work.
   …
-  Injected here (8):  doctl  flyctl  gcloud  gh  openai  stripe (server)  supabase  vercel
+  Injected here (8):  doctl  flyctl  gcloud  gh  openai  stripe  supabase  vercel
   …
   This shell closes automatically in 60 min.
 ```
 Inside the shell:
 ```bash
-stripe --version      # runs on the server; output streamed back
+gh --version      # runs locally
 exit
-treg runs --limit 1
 ```
-```json
-[
-  { "tool": "stripe", "argv": ["--version"], "exit_code": 0, "duration_ms": 92, "where": "server" }
-]
+```text
+▸ gh · audit #60
+gh version 2.72.0 (2025-04-30)
+https://github.com/cli/cli/releases/tag/v2.72.0
 ```
 
-**Notice:** `stripe` is marked `(server)` in the banner and its run is recorded with `"where": "server"` in
-the run log — it executed on the registry, not your laptop, so the key never reached you. Local runs appear
-in the same log tagged `"where": "local"`.
+**Notice:** server-side execution is disabled. Existing `--server-for` requests warn and fall back to
+local because no tool is advertised as `server_runnable`. Local runs appear in `treg runs` tagged
+`"where": "local"`.
 
 > **Why no background "agent"?** An earlier design kept credentials in memory for the whole session. We
 > dropped it on purpose: fetching the credential fresh **per command** and running it under an isolated
@@ -371,15 +373,14 @@ because a run hands a credential to a machine).
 
 ## How this was tested
 
-Every claim above was verified live, not asserted:
+Historical checks below predate the server-execution disablement. Server execution is now disabled:
 
-- **Auto-import**: `treg scan clis` and `--replace` registered the real set (openai/stripe on
-  the server tier; gh/gcloud/etc. local), and `treg run gh -- --version` printed gh's version with no
+- **Auto-import**: `treg scan clis` and `--replace` registered the real set (openai/stripe labelled
+  server; gh/gcloud/etc. local), and `treg run gh -- --version` printed gh's version with no
   credential — confirming the local-tier fix.
 - **Shell mode**: inside `treg shell start`, `gh --version` produced an audit line (intercepted) while
-  `git --version` produced none (untouched); `exit` restored `which gh` to the real binary; a
-  `--server-for stripe` run appeared in `treg runs` as `"where": "server"`; tab-completion created no audit
-  rows.
+  `git --version` produced none (untouched); `exit` restored `which gh` to the real binary;
+  tab-completion created no audit rows.
 - **Isolation**: `treg run idtool` printed `uid=380(treg-run)`, and the member could not read that
   process's environment.
 - **Egress**: `treg-run` reached `api.github.com` (200) and was blocked from `example.com` (000), with the

@@ -7,27 +7,102 @@ The `clients` fixture also registers a user and authes the client by default.
 
 from __future__ import annotations
 
+import asyncio
+import atexit
+import glob
+import hashlib
+import hmac
+import json
+import logging
 import os
+import socket
 import tempfile
+import time
+from pathlib import Path
+
+# Tests and their CLI subprocesses must never emit production analytics.
+os.environ["TREG_TELEMETRY"] = "0"
+
+# A deployment's Secrets Manager source outranks the environment, so a shell that names one would
+# hand the suite production credentials and its database URL. Tests that need it set it themselves.
+os.environ.pop("TREG_AWS_SECRET_ID", None)
 
 # Isolate the test DB from any .env / running dev server BEFORE importing treg (the engine is
 # built at import time). A real env var overrides the .env file in pydantic-settings.
-# TREG_TEST_DB_URL (not TREG_DATABASE_URL — a stray production URL in a shell must never become the
-# test target) lets two suites run side by side: `reset_db()` DROPS tables, so two concurrent runs
-# against the same sqlite file tear down each other's schema mid-test.
-# Under pytest-xdist each worker process gets its OWN file (gw0, gw1, …) — twelve workers against
-# one sqlite file drop each other's tables mid-test (1,022 errors on the first parallel run). An
-# explicit TREG_TEST_DB_URL wins untouched, for single-process runs against something specific.
+# TREG_TEST_DB_URL (not TREG_DATABASE_URL - a stray production URL in a shell must never become the
+# test target) points the suite at a specific database, e.g. the Postgres CI job.
+# Otherwise every test process gets its OWN sqlite file, named by pid: processes sharing one file
+# wipe each other's rows mid-test, whether they are xdist workers of one run (1,022 errors on the
+# first parallel run) or two runs started side by side in one checkout.
 _worker = os.environ.get("PYTEST_XDIST_WORKER", "")
 # The files live under the system temp dir, NOT the repo root: sixteen 600 KB databases rewritten
 # on every run kept editors' file watchers busy re-indexing the working tree.
 _db_dir = os.path.join(tempfile.gettempdir(), "treg-tests")
 os.makedirs(_db_dir, exist_ok=True)
-_default = f"sqlite+aiosqlite:///{_db_dir}/treg-test{'-' + _worker if _worker else ''}.db"
-os.environ["TREG_DATABASE_URL"] = os.environ.get("TREG_TEST_DB_URL", _default)
+_db_file = os.path.join(_db_dir, f"treg-test-{os.getpid()}.db")
+atexit.register(lambda: [os.remove(p) for p in glob.glob(_db_file + "*")])
+_default = f"sqlite+aiosqlite:///{_db_file}"
+
+
+def _per_worker_postgres(url: str) -> str:
+    """An xdist worker against Postgres gets its own database (treg_test_gw0, ...), created on first
+    use: `reset_db()` empties every table, so workers sharing one database wipe each other's rows."""
+    import asyncio
+    import asyncpg
+    from sqlalchemy.engine import make_url
+
+    base = make_url(url)
+    name = f"{base.database}_{_worker}"
+
+    async def ensure() -> None:
+        dsn = base.set(drivername="postgresql").render_as_string(hide_password=False)
+        conn = await asyncpg.connect(dsn)
+        try:
+            if not await conn.fetchval("SELECT 1 FROM pg_database WHERE datname = $1", name):
+                await conn.execute(f'CREATE DATABASE "{name}"')
+        finally:
+            await conn.close()
+
+    asyncio.run(ensure())
+    return base.set(database=name).render_as_string(hide_password=False)
+
+
+_test_db_url = os.environ.get("TREG_TEST_DB_URL")
+if _test_db_url and _worker and _test_db_url.startswith("postgresql"):
+    # Resolved once per process: tests that import `tests.conftest` load this module a second time.
+    _test_db_url = os.environ.get("TREG_TEST_DB_URL_WORKER") or _per_worker_postgres(_test_db_url)
+    os.environ["TREG_TEST_DB_URL_WORKER"] = _test_db_url
+os.environ["TREG_DATABASE_URL"] = _test_db_url or _default
+# Replica tests opt in explicitly; never inherit a real replica from the shell or .env.
+os.environ["TREG_READ_DATABASE_URL"] = ""
+os.environ["TREG_WORKOS_API_KEY"] = ""
+os.environ["TREG_WORKOS_CLIENT_ID"] = ""
+os.environ["TREG_WORKOS_WEBHOOK_SECRET"] = ""
+os.environ["TREG_PUBLIC_URL"] = "https://treg.to"
+os.environ["TREG_OVERFLOW_MODE"] = "off"
+os.environ["TREG_PROVIDER_RATE_MODE"] = "off"
+os.environ["TREG_PROVIDER_RATE_ENFORCE"] = ""
+os.environ["TREG_OVERFLOW_KEY_ORTHOGONAL"] = ""
+os.environ["TREG_OVERFLOW_KEY_MONID"] = ""
+# A merged local .env can carry newly added funded platform keys that the fixed list below has not
+# learned yet. Blank their names without reading values into logs or exposing them to tests.
+_local_env = Path(__file__).resolve().parents[1] / ".env"
+_platform_names = {name for name in os.environ if name.startswith("TREG_PLATFORM_KEY_")}
+if _local_env.exists():
+    _platform_names.update(line.split("=", 1)[0].strip() for line in _local_env.read_text().splitlines()
+                           if line.startswith("TREG_PLATFORM_KEY_") and "=" in line)
+for _platform_name in _platform_names:
+    os.environ[_platform_name] = ""
+# Never let a developer's Redis URL or rollout settings turn tests into shared-store traffic.
+os.environ["TREG_KV_URL"] = ""
+os.environ["TREG_ORG_ENDPOINT_QUOTA_ENABLED"] = "false"
+os.environ["TREG_ORG_ENDPOINT_QUOTA_REDIS_URL"] = ""
+os.environ["TREG_MONEY_ADMISSION_ENABLED"] = "false"
+os.environ["TREG_MONEY_ADMISSION_ORG_IDS"] = "[]"
+os.environ["TREG_HOLDLESS_FREE_ORG_IDS"] = "[]"
+os.environ["TREG_ORG_FLOW_CONTROL_ENABLED"] = "false"
 os.environ["TREG_EMAIL_DEV_MODE"] = "true"  # tests need the returned OTP code (prod default is now False)
 os.environ["TREG_RESEND_API_KEY"] = ""  # never fire a real Resend send from the test suite (send_otp/send_invite skip when empty)
-os.environ["TREG_RUN_ALLOWED_BINS"] = "sh,echo,true,false,cat,sleep,treg-nonexistent-bin-xyz"  # allow the test CLIs for --server run tests
 os.environ["TREG_PROXY_SSRF_CHECK"] = "false"
 # The production default is OFF. The established connector tests and committed route snapshots test
 # the enabled product surface; dedicated tests below also prove the disabled deployment shape.
@@ -43,11 +118,20 @@ for _k in (
     "X_CLIENT_ID", "X_CLIENT_SECRET", "SLACK_CLIENT_ID", "SLACK_CLIENT_SECRET",
     "TIKTOK_CLIENT_KEY", "TIKTOK_CLIENT_SECRET",
     "META_CLIENT_ID", "META_CLIENT_SECRET",
+    "POSTHOG_KEY", "ADS_CONV_REFRESH_TOKEN",
     "INSTAGRAM_CLIENT_ID", "INSTAGRAM_CLIENT_SECRET",
     # …and the tier-4 platform keys + their allow-list. A developer's .env carries real, FUNDED keys:
     # without this a suite run on their laptop could resolve tier 4 and spend actual money on the
     # in-process upstream's echo. Tests that exercise tier 4 set both halves via monkeypatch.
-    "PLATFORM_PROVIDERS", "PLATFORM_KEY_TIKHUB", "PLATFORM_KEY_DATAFORSEO", "PLATFORM_KEY_SCRAPECREATORS",
+    "PLATFORM_KEY_TRYKITT", "PLATFORM_PROVIDERS", "PLATFORM_KEY_TIKHUB", "PLATFORM_KEY_DATAFORSEO", "PLATFORM_KEY_SCRAPECREATORS",
+    "PLATFORM_KEY_QUICKENRICH", "PLATFORM_KEY_PROSPEO", "PLATFORM_KEY_AIARK", "PLATFORM_KEY_WIZA",
+    "PLATFORM_KEY_SCRUBBY", "PLATFORM_KEY_ZEROBOUNCE", "PLATFORM_KEY_SUMBLE", "PLATFORM_KEY_MOLTSETS",
+    "PLATFORM_KEY_OPENMART", "PLATFORM_KEY_LIMADATA", "PLATFORM_KEY_HARVESTAPI", "PLATFORM_KEY_FETCHINIO",
+    "PLATFORM_KEY_DROPLEADS", "PLATFORM_KEY_BLITZAPI", "PLATFORM_KEY_ANYMAILFINDER",
+    "PLATFORM_KEY_FINANCIALDATASETS",
+    "PLATFORM_KEY_ADYNTEL", "PLATFORM_EMAIL_ADYNTEL",
+    "PLATFORM_KEY_KEENABLE", "PLATFORM_KEY_OLOSTEP",
+    "PLATFORM_KEY_SEARCH1API", "PLATFORM_KEY_BRAVESEARCH",
 ):
     os.environ[f"TREG_{_k}"] = ""  # the test upstream is an in-process ASGI transport, not real DNS
 
@@ -59,12 +143,59 @@ from httpx import ASGITransport, AsyncClient  # noqa: E402
 from treg import audit  # noqa: E402
 from treg.api import app  # noqa: E402
 from treg import archive  # noqa: E402
+from treg.config import get_settings  # noqa: E402
 from treg.infra.db import reset_db  # noqa: E402
+from treg.domain.identity import api_keys as managed_keys  # noqa: E402
+from treg.application import media as media_app  # noqa: E402
 
 
 # The OTP-start + sandbox throttles (and the OTP codes) now live in the DB's `ephemeral` table, not in
 # process-global dicts — so `reset_db()` (called by every client fixture) already clears them between
 # tests. No separate rate-limit reset fixture is needed.
+
+
+@pytest.fixture
+def fake_getaddrinfo(monkeypatch):
+    """Override named hosts only, leaving DB and other infrastructure DNS untouched.
+
+    An empty address list models an unresolvable host without querying external DNS.
+    """
+    original = socket.getaddrinfo
+
+    def install(addresses: dict[str, list[str]]) -> None:
+        def resolve(host, port, *args, **kwargs):
+            if host not in addresses:
+                return original(host, port, *args, **kwargs)
+            if not addresses[host]:
+                raise socket.gaierror(socket.EAI_NONAME, "unresolvable")
+            return [
+                (socket.AF_INET6 if ":" in address else socket.AF_INET,
+                 socket.SOCK_STREAM, 0, "",
+                 (address, port or 0, 0, 0) if ":" in address else (address, port or 0))
+                for address in addresses[host]
+            ]
+        monkeypatch.setattr(socket, "getaddrinfo", resolve)
+
+    return install
+
+
+STALL_PROOF_TIMEOUT_S = 30.0
+
+
+def pause_loop_once_in_flight(stores, calls: int, seconds: float) -> None:
+    """Block the event loop, as a GC pause does, once every Redis call is in flight."""
+    entered = 0
+    for store in stores:
+        evaluate = store._client.eval
+
+        async def paused(*args, evaluate=evaluate):
+            nonlocal entered
+            entered += 1
+            if entered == calls:
+                asyncio.get_running_loop().call_soon(time.sleep, seconds)
+            return await evaluate(*args)
+
+        store._client.eval = paused
 
 
 def make_upstream(hook_hits: list | None = None) -> FastAPI:
@@ -108,9 +239,25 @@ def make_upstream(hook_hits: list | None = None) -> FastAPI:
             return JSONResponse({"error": {"message": "invalid token"}}, status_code=401)
         return {"user_id": "17841400000000000", "username": "direct_ig"}
 
+    def _meta_proof_missing(request: Request) -> JSONResponse | None:
+        # treg's Meta app requires App Secret Proof: a token it issued (META-TOKEN, PAGE-TOKEN-*) is
+        # refused unless paired with HMAC-SHA256(app secret, token), as Graph does in production.
+        token = request.headers.get("authorization", "").removeprefix("Bearer ")
+        if token != "META-TOKEN" and not token.startswith("PAGE-TOKEN"):
+            return None
+        app_secret = os.environ.get("TREG_META_CLIENT_SECRET", "").encode()
+        want = hmac.new(app_secret, token.encode(), hashlib.sha256).hexdigest()
+        if request.query_params.get("appsecret_proof") == want:
+            return None
+        return JSONResponse({"error": {
+            "message": "API calls from the server require an appsecret_proof argument",
+            "type": "GraphMethodException", "code": 100}}, status_code=400)
+
     @up.get("/me/accounts")
     @up.get("/v25.0/me/accounts")
-    async def meta_pages(request: Request) -> dict:
+    async def meta_pages(request: Request):
+        if refused := _meta_proof_missing(request):
+            return refused
         # Meta's primary Page listing: what the user manages through a PERSONAL Page role. One row
         # carries both the facebook shape (id/name) and the instagram shape (nested professional
         # account), so both Meta providers can discover against the same stand-in.
@@ -125,6 +272,8 @@ def make_upstream(hook_hits: list | None = None) -> FastAPI:
     @up.get("/me/businesses")
     @up.get("/v25.0/me/businesses")
     async def meta_businesses(request: Request):
+        if refused := _meta_proof_missing(request):
+            return refused
         # Meta's Business walk (needs business_management): each business row nests owned_pages /
         # client_pages whose entries are shaped like /me/accounts rows. PAGE-DIRECT reappears here
         # (a personal-role Page is usually also Business-owned) to exercise dedup, and the
@@ -159,6 +308,8 @@ def make_upstream(hook_hits: list | None = None) -> FastAPI:
 
     @up.get("/v25.0/{page_id}/conversations")
     async def instagram_conversations(page_id: str, request: Request):
+        if refused := _meta_proof_missing(request):
+            return refused
         if request.headers.get("authorization") == "Bearer IG-LONG-TOKEN":
             return {
                 "auth": request.headers["authorization"],
@@ -176,8 +327,37 @@ def make_upstream(hook_hits: list | None = None) -> FastAPI:
             return {"data": []}
         return {"data": [{"id": "IG-CONVERSATION-1", "page_id": page_id}]}
 
+    @up.post("/v25.0/{ig_user_id}/media")
+    async def instagram_media_container(ig_user_id: str, request: Request):
+        # Graph's answer while the app lacks Advanced Access for publishing: the token holds the
+        # scope, the app does not.
+        return JSONResponse({"error": {
+            "message": "Application does not have permission for this action",
+            "type": "IGApiException", "code": 10, "fbtrace_id": "TRACE",
+        }}, status_code=403)
+
+    @up.get("/v25.0/{page_id}/posts")
+    async def facebook_page_posts(page_id: str, request: Request):
+        if refused := _meta_proof_missing(request):
+            return refused
+        # Meta's new Pages experience answers a user token on a Page edge with code 190 /
+        # subcode 2069032. Only the token of the Page in the path is accepted.
+        expected_token = {
+            "PAGE-DIRECT": "PAGE-TOKEN-DIRECT",
+            "PAGE-CLIENT": "PAGE-TOKEN-CLIENT",
+        }.get(page_id)
+        if request.headers.get("authorization") != f"Bearer {expected_token}":
+            return JSONResponse(
+                {"error": {"message": "A Page access token is required for this call",
+                           "code": 190, "error_subcode": 2069032}},
+                status_code=400,
+            )
+        return {"data": [{"id": f"{page_id}_POST-1", "message": "hello"}]}
+
     @up.post("/v25.0/{page_id}/subscribed_apps")
     async def instagram_subscribe(page_id: str, request: Request):
+        if refused := _meta_proof_missing(request):
+            return refused
         expected_token = {
             "PAGE-DIRECT": "PAGE-TOKEN-DIRECT",
             "PAGE-CLIENT": "PAGE-TOKEN-CLIENT",
@@ -279,8 +459,115 @@ def make_upstream(hook_hits: list | None = None) -> FastAPI:
     return up
 
 
-@pytest.fixture
-async def clients():
+async def verified_identity(client, email):
+    """Real OTP proof, capturing mail delivery even when Postgres hides dev codes."""
+    from unittest.mock import patch
+    import httpx
+    from treg import email as email_sender
+
+    delivered = {}
+
+    async def receive(email, code, **kwargs):
+        delivered[email] = code
+
+    previous_cookies = httpx.Cookies(client.cookies)
+    try:
+        with patch.object(email_sender, "send_otp", receive):
+            started = await client.post("/auth/email/start", json={"email": email})
+        assert started.status_code == 200, started.text
+        code = started.json().get("dev_code") or delivered[started.json()["email"]]
+        proof = await client.post("/auth/email/verify", json={"email": email, "code": code})
+        assert proof.status_code == 200, proof.text
+        return proof.json()["token"]
+    finally:
+        client.cookies = previous_cookies
+
+
+async def verified_signup(client, *, json, headers=None, cookies=None):
+    """Funded test identity through OTP and team creation, with fixture identity fields. `cookies`
+    reach the team creation, where attribution is read."""
+    import httpx
+    from sqlmodel import select
+    from treg.infra.db import session_maker
+    from treg.models import User
+
+    token = await verified_identity(client, json["email"])
+    email = json["email"].strip().lower()
+    response = await client.post("/orgs", json={"name": email},
+        headers={**(headers or {}), "X-Treg-Token": token}, cookies=cookies)
+    if response.status_code != 200:
+        return response
+    async with session_maker() as db:
+        user = (await db.execute(select(User).where(User.email == email))).scalar_one()
+        user_id = user.id
+    return httpx.Response(response.status_code,
+        json={**response.json(), "id": user_id, "email": email}, request=response.request)
+
+
+async def accept_with_code(client, *, json, headers=None):
+    """Redeem an invite code the way an invitee does: prove the invited email, then accept."""
+    token = await verified_identity(client, json["email"])
+    return await client.post("/invites/accept", json=json,
+                             headers={**(headers or {}), "X-Treg-Token": token})
+
+
+async def unproven_member(client, email):
+    """A member with no inbox proof, as the invite-code door created them before it required one."""
+    from treg.domain.identity import session as sess
+    from treg.domain.identity import api_keys as managed_keys
+    from treg.infra.db import session_maker
+    from treg.models import Membership, Org, User
+
+    org_id = (await client.get("/auth/me")).json()["org_id"]
+    async with session_maker() as db:
+        org = await db.get(Org, org_id)
+        user = User(email=email)
+        db.add(user)
+        await db.flush()
+        membership = Membership(user_id=user.id, org_id=org_id, role="member", token_hash="")
+        db.add(membership)
+        await db.flush()
+        default = await managed_keys.ensure_default_key(db, membership, user)
+        token = sess.make_identity(
+            user.id, user.token_version, org=org.slug,
+            key_generation=default.default_generation if default else None, scope=sess.TEAM_SCOPE,
+        )
+        await db.commit()
+    return {"org": org.slug, "org_id": org_id, "role": "member", "token": token}
+
+
+async def funded_user(client, email, *, micro=1_000_000):
+    """A per-org token whose team holds `micro` on top of any signup credit.
+    Returns the whole registration body, so `["token"]` and `["org_id"]` both work.
+    """
+    from treg.domain import money
+    from treg.infra.db import session_maker
+
+    body = (await verified_signup(client, json={"email": email})).json()
+    async with session_maker() as db:
+        await money.grant(db, body["org_id"], amount_micro=micro, kind="promotional")
+        await db.commit()
+    return body
+
+
+def mcp_text_result(name: str, payload: dict) -> dict:
+    """The text block a host shows, after checking that `structuredContent` (what a host may read
+    instead) carries every key it does: the output schema silently drops an undeclared one."""
+    result = payload.get("result") or {}
+    content = result.get("content") or []
+    if not (content and content[0].get("type") == "text"):
+        return payload
+    try:
+        text = json.loads(content[0]["text"])
+    except ValueError:
+        return {"_text": content[0]["text"]}
+    if isinstance(text, dict) and isinstance(result.get("structuredContent"), dict):
+        dropped = {k for k, v in text.items() if v is not None} - set(result["structuredContent"])
+        assert not dropped, f"{name}: structuredContent drops {sorted(dropped)}"
+    return text
+
+
+async def drain_background_writes():
     # Postgres needs a session-scoped event loop so asyncpg can safely pool connections. That also
     # lets fire-and-forget audit writes survive between tests, so drain both sides of reset_db():
     # before it, to keep an old write out of the new schema, and after the test, to finish its own.
@@ -290,6 +577,59 @@ async def clients():
     # forgives it) — the serial CI job hung exactly here, 5-minute faulthandler timeouts on
     # whichever archive test ran next (2026-08-28, twice).
     await archive.drain()
+    # And the managed-key last-used writer: ids restart with every reset_db(), so a write or a
+    # throttle claim left over from one test would land on, or suppress, the next test's key.
+    await managed_keys.drain_last_used()
+    managed_keys._last_used_claims.clear()
+    # And `treg host`'s background object deleter.
+    await media_app.drain()
+
+
+@pytest.fixture
+def connections_held_here():
+    """How many pooled connections the calling asyncio task holds right now, across every engine.
+
+    `pool.checkedout()` counts the whole process: a background write (audit, a key's last-used
+    stamp) holding a connection at that instant reads as the call's own, and on SQLite every engine
+    is one pool. This counts only checkouts made by the task that asks."""
+    from sqlalchemy import event
+    from treg.infra.db import _engines
+
+    held: dict[asyncio.Task | None, int] = {}
+
+    def checkout(_dbapi, record, _proxy):
+        task = record.info["held_by"] = asyncio.current_task()
+        held[task] = held.get(task, 0) + 1
+
+    def checkin(_dbapi, record):
+        if "held_by" in record.info:
+            task = record.info.pop("held_by")
+            held[task] -= 1
+
+    pools = {id(e.sync_engine.pool): e.sync_engine.pool for e in _engines}.values()
+    for pool in pools:
+        event.listen(pool, "checkout", checkout)
+        event.listen(pool, "checkin", checkin)
+    yield lambda: held.get(asyncio.current_task(), 0)
+    for pool in pools:
+        event.remove(pool, "checkout", checkout)
+        event.remove(pool, "checkin", checkin)
+
+
+@pytest.fixture(autouse=True)
+async def _drain_around_each_test():
+    """Every test starts and ends with no background write in flight. A fixture that calls
+    reset_db() itself (many do) would otherwise race the previous test's audit rows: a call record
+    committed between reset_db's delete of `callrecord` and its delete of `org` breaks the foreign
+    key, and one that lands after the reset attaches to the next test's rewound ids. Autouse
+    fixtures set up first and tear down last, so this brackets every other fixture's reset."""
+    await drain_background_writes()
+    yield
+    await drain_background_writes()
+
+
+@pytest.fixture
+async def clients():
     # The archive report's 30s server-side cache would outlive this reset and serve the previous
     # test's numbers — clear it with the schema.
     from treg.routers import admin as admin_routes
@@ -300,14 +640,21 @@ async def clients():
     app.state.http = AsyncClient(transport=ASGITransport(app=make_upstream(app.state.hook_hits)), base_url="http://upstream")
     try:
         async with AsyncClient(transport=ASGITransport(app=app), base_url="http://registry") as c:
-            r = await c.post("/users", json={"email": "tim@superdesign.dev"})  # open registration
+            r = await verified_signup(c, json={"email": "tim@superdesign.dev"})
             assert r.status_code == 200, r.text
             c.headers["X-Treg-Token"] = r.json()["token"]  # authed by default from here on
             yield c
     finally:
-        await audit.drain()
-        await archive.drain()
+        await drain_background_writes()
         await app.state.http.aclose()
+
+
+@pytest.fixture(autouse=True, scope="session")
+def _provider_labels():
+    """The provider display names search matches ("people data labs"), wired as `create_app` wires
+    them, for the tests that search without building an app."""
+    from treg import bootstrap
+    bootstrap.configure_provider_labels()
 
 
 @pytest.fixture(autouse=True)
@@ -315,29 +662,57 @@ def _reset_call_path_caches():
     """The call path keeps in-process copies of ratestore state (the capacity view: 'provider X is
     exhausted' for 60 s), the overflow route view and per-provider rate buckets. `reset_db()` wipes
     the tables, not process memory — so a test that relays a vendor 402 would otherwise leave the
-    NEXT test's tier-4 call refused with a 503 it never asked for (CI, xdist worker gw3, 2026-08-28).
-    Each cache is optional: the modules land in successive PRs of the capacity stack."""
+    NEXT test's tier-4 call refused with a 503 it never asked for (CI, xdist worker gw3, 2026-08-28)."""
     def _clear() -> None:
-        try:
-            from treg.domain.capacity.view import view as capacity_view
-            capacity_view.invalidate(); capacity_view._states = {}; capacity_view._locks = {}
-            from treg.domain.capacity import marks as capacity_marks
-            capacity_marks._last_probe.clear()
-        except ImportError:
-            pass
-        try:
-            from treg.domain.capacity.routes_view import view as routes_view
-            routes_view.invalidate(); routes_view._routes = []
-        except ImportError:
-            pass
-        try:
-            from treg.infra.upstream.limiter import limiter
-            limiter.reset()
-        except ImportError:
-            pass
+        from treg.domain.capacity.view import view as capacity_view
+        capacity_view.invalidate()
+        capacity_view._states = {}
+        capacity_view._locks = {}
+        from treg.domain.capacity import marks as capacity_marks
+        capacity_marks._last_probe.clear()
+        from treg.domain.capacity.routes_view import view as routes_view
+        routes_view.invalidate()
+        routes_view._routes = []
+        from treg.infra.upstream.limiter import limiter
+        limiter.reset()
+        from treg.application.call import keyslots
+        keyslots._rotation.clear()
+        from treg.application import review_targets
+        review_targets.reset()
+        # The shared store's in-process fallback (the review-invitation budget): org ids restart
+        # with every reset_db(), so a counter left over would ration the NEXT test's team.
+        from treg.infra import kv
+        kv._store = None
+        # Routed children's short-window health: a test that relays 5xx would otherwise skip that
+        # child in the NEXT test's routed call.
+        from treg.application.call import route_health
+        route_health.reset()
+        # Who a key is, for the hub's lists: remembered a minute, and keys repeat across resets.
+        from treg.routers import hub_gate
+        hub_gate._readers.clear()
+        # Teams at today's trial allowance: org ids restart with every reset_db().
+        from treg.application.call import reserve as call_reserve
+        call_reserve._spent_trials.clear()
+        # The catalog's agent verdicts: a five-minute fold of callreview, which reset_db() empties.
+        from treg.application import feedback
+        feedback.forget_endpoint_verdicts()
     _clear()
     yield
     _clear()
+
+
+@pytest.fixture
+def call_error_lines(caplog):
+    """`call_error_lines()` is every `call_error` line logged so far, parsed (call_errors.py)."""
+    from treg.application.call import call_errors
+
+    caplog.set_level(logging.INFO, logger=call_errors.log.name)
+    call_errors.log.addHandler(caplog.handler)
+    try:
+        yield lambda: [json.loads(r.getMessage().split(" ", 1)[1]) for r in caplog.records
+                       if r.name == call_errors.log.name and r.getMessage().startswith("call_error ")]
+    finally:
+        call_errors.log.removeHandler(caplog.handler)
 
 
 @pytest.fixture
@@ -372,3 +747,42 @@ def _no_ambient_treg_identity(monkeypatch):
     them beat any config). The suite must not change behavior because of who is running it."""
     for var in ("TREG_TOKEN", "TREG_ORG", "TREG_URL", "TREG_CLIENT"):
         monkeypatch.delenv(var, raising=False)
+
+
+@pytest.fixture
+def kitt_on(monkeypatch):
+    from treg.config import get_settings
+    monkeypatch.setenv('TREG_PLATFORM_KEY_TRYKITT', 'TEST-KITT-KEY')
+    monkeypatch.setenv('TREG_PLATFORM_PROVIDERS', 'trykitt')
+    get_settings.cache_clear()
+    yield
+    get_settings.cache_clear()
+
+
+# ---- ContactOut ----
+
+@pytest.fixture
+def contactout_platform(monkeypatch):
+    monkeypatch.setenv("TREG_PLATFORM_KEY_CONTACTOUT", "PLATFORM-TEST")
+    monkeypatch.setenv("TREG_PLATFORM_PROVIDERS", "contactout")
+    get_settings.cache_clear()
+    yield
+    get_settings.cache_clear()
+
+
+_SESSION_CWD = os.getcwd()
+
+
+@pytest.hookimpl(wrapper=True)
+def pytest_runtest_teardown(item, nextitem):
+    """Every test ends in the directory the run started in. A test that changes it (a bare
+    `os.chdir`, or product code that chdirs while a stub stands in for `exec`) makes later tests
+    fail on relative paths, far from the cause and only in some orders. Runs after every fixture
+    has torn down, so `monkeypatch.chdir` restores first; the leaking test errors here instead."""
+    result = yield
+    if os.getcwd() != _SESSION_CWD:
+        leaked = os.getcwd()
+        os.chdir(_SESSION_CWD)
+        raise AssertionError(f"{item.nodeid} left the working directory at {leaked}; "
+                             "use monkeypatch.chdir so it is restored")
+    return result

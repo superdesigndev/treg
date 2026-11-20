@@ -1,0 +1,15 @@
+{
+  "jobId": "REDACTED",
+  "email": "erol@trykitt.ai",
+  "validity": "valid",
+  "validIdentity": true,
+  "validSMTP": true,
+  "displayText": "valid",
+  "mxDomain": "aspmx.l.google.com",
+  "reason": null,
+  "reasonCode": null,
+  "credits": {
+    "jobCredits": 0.0015,
+    "remainingCredits": "10.00000"
+  }
+}

@@ -1,0 +1,9 @@
+{
+  "credits_charged": 0.2,
+  "input": {
+    "email": "person@example.com"
+  },
+  "email_status": "invalid",
+  "mx_domain": null,
+  "mx_host": null
+}

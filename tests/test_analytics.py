@@ -7,6 +7,8 @@ of those guarantees; the event payload shape (distinct_id / $groups / $lib) is p
 
 from __future__ import annotations
 
+import asyncio
+
 import logging
 
 import pytest
@@ -28,10 +30,9 @@ async def _clean():
         analytics.remove_fault_handler(analytics._installed_fault_handler)
     analytics._queue.clear()
     analytics._flusher = None
-    analytics._fault_buckets.clear()
-    analytics._fault_global = analytics._TokenBucket(
-        analytics._FAULT_GLOBAL_CAPACITY, analytics.time.monotonic())
+    analytics._fault_windows.clear()
     yield
+    analytics._fault_windows.clear()
     # Enabled tests inspect queued payloads but must never send them to a real PostHog host.
     analytics._queue.clear()
     await analytics.drain()
@@ -57,11 +58,11 @@ def posts(monkeypatch):
     return sent
 
 
-async def test_disabled_is_a_noop():
+async def test_disabled_is_a_noop(posts):
     # default settings: no key → capture must not even queue (self-hosters send nothing)
     analytics.capture("a@b.c", "tool_called", {"x": 1})
-    assert analytics._queue == []
-    assert analytics._flusher is None
+    await analytics.drain()
+    assert posts == []
 
 
 async def test_batch_shape_and_drain(enabled, posts):
@@ -79,11 +80,65 @@ async def test_batch_shape_and_drain(enabled, posts):
     assert "$groups" not in batch[1]["properties"]  # no groups passed → no key at all
 
 
-async def test_queue_is_bounded(enabled, monkeypatch):
+async def test_every_event_carries_build_and_archive_config(enabled, posts, monkeypatch):
+    monkeypatch.setattr(get_settings(), "build", "abc1234", raising=False)
+    analytics.capture("a@b.c", "tool_called", {"provider": "tikhub"})
+    analytics.capture("a@b.c", "topup_started", {"build": "caller-wins"})
+    await analytics.drain()
+    first, second = posts[0]
+    assert first["properties"]["build"] == "abc1234"
+    assert len(first["properties"]["archive_config"]) == 12
+    assert first["properties"]["archive_config"] == analytics.archive_config_id()
+    assert second["properties"]["build"] == "caller-wins"  # an explicit value is never overwritten
+
+
+def test_build_id_prefers_setting_then_host_commit_then_version(monkeypatch):
+    for name in analytics._COMMIT_ENV_NAMES:
+        monkeypatch.delenv(name, raising=False)
+    monkeypatch.setattr(get_settings(), "build", "", raising=False)
+    assert analytics.build_id().startswith("v")  # installed package version
+    monkeypatch.setenv("SOURCE_COMMIT", "f" * 50)
+    assert analytics.build_id() == "f" * 40
+    monkeypatch.setattr(get_settings(), "build", " explicit ", raising=False)
+    assert analytics.build_id() == "explicit"
+
+
+def test_archive_config_id_changes_with_serving_settings(monkeypatch):
+    before = analytics.archive_config_id()
+    monkeypatch.setattr(get_settings(), "archive_serve_endpoints", "one.endpoint,two.endpoint", raising=False)
+    changed = analytics.archive_config_id()
+    assert changed != before and len(changed) == 12
+    monkeypatch.setattr(get_settings(), "archive_hit_repeat_price_percent", 100, raising=False)
+    assert analytics.archive_config_id() not in (before, changed)
+
+
+@pytest.mark.parametrize('path', ['lookup', 'result', 'terminal'])
+def test_archive_config_id_identifies_body_read_rollout(monkeypatch, path):
+    setting = 'archive_body_read_' + path
+    monkeypatch.setattr(get_settings(), setting, 'db')
+    before = analytics.archive_config_id()
+    monkeypatch.setattr(get_settings(), setting, 'r2-first')
+    assert analytics.archive_config_id() != before
+
+
+async def test_service_started_reports_role_and_archive_settings(enabled, posts, monkeypatch):
+    monkeypatch.setattr(get_settings(), "archive_serve_endpoints", "a.b,c.d", raising=False)
+    analytics.capture_service_started("all")
+    await analytics.drain()
+    (event,) = posts[0]
+    assert event["event"] == "service_started" and event["distinct_id"] == "treg-server"
+    props = event["properties"]
+    assert props["role"] == "all" and props["archive_serve_entries"] == 2
+    assert props["archive_mode"] == get_settings().archive_mode
+    assert props["build"] == analytics.build_id() and props["archive_config"] == analytics.archive_config_id()
+
+
+async def test_queue_is_bounded_and_drops_the_newest_past_the_bound(enabled, posts, monkeypatch):
     monkeypatch.setattr(analytics, "_MAX_PENDING", 10)
     for i in range(25):
         analytics.capture("a@b.c", "e", {"i": i})
-    assert len(analytics._queue) == 10  # newest dropped past the bound, no growth
+    await analytics.drain()
+    assert [event["properties"]["i"] for batch in posts for event in batch] == list(range(10))
 
 
 async def test_oversized_drain_splits_batches(enabled, posts, monkeypatch):
@@ -101,7 +156,10 @@ async def test_post_failure_is_swallowed_and_capture_never_raises(enabled, monke
     monkeypatch.setattr(analytics, "_post", _boom)
     analytics.capture("a@b.c", "e")
     await analytics.drain()  # must return, not raise
-    assert analytics._queue == []  # the batch was dropped, not retried
+    retried = []
+    monkeypatch.setattr(analytics, "_post", lambda batch: retried.append(batch) or asyncio.sleep(0))
+    await analytics.drain()
+    assert retried == []  # the batch was dropped, not retried
 
     # capture() itself swallows internal failures — the never-raise contract call sites
     # (the Stripe webhook above all) depend on
@@ -129,7 +187,10 @@ def test_fault_payload_is_secret_minimal_and_truncated(enabled):
         }],
         "component": "scheduler",
         "fault_type": "RuntimeError",
+        "fault_occurrences": 1,
         "$lib": "treg-server",
+        "build": analytics.build_id(),
+        "archive_config": analytics.archive_config_id(),
     }
     assert "frames" not in str(event).lower()
     assert "traceback" not in str(event).lower()
@@ -146,37 +207,131 @@ def test_fault_value_redacts_query_credentials_before_capture(enabled):
     assert "api_key=" not in value
 
 
-def test_per_key_throttle_counts_drops_on_next_allowed_event(enabled, monkeypatch):
+def _occurrences() -> int:
+    """What a `sum(fault_occurrences)` query in PostHog would return."""
+    return sum(e["properties"]["fault_occurrences"] for e in _exception_events())
+
+
+def test_a_storm_costs_one_event_per_window_but_reports_every_occurrence(enabled, monkeypatch):
+    """The point of the rollup: cost is bounded, the COUNT is not approximated. The old token
+    bucket emitted ~10/minute and pinned the dashboard at its own refill rate, so the graph of a
+    two-hour incident was a flat line at the limiter."""
     now = [100.0]
     monkeypatch.setattr(analytics.time, "monotonic", lambda: now[0])
-    monkeypatch.setattr(analytics, "_MAX_PENDING", 20)
-    analytics._fault_global = analytics._TokenBucket(analytics._FAULT_GLOBAL_CAPACITY, now[0])
 
     for _ in range(100):
         analytics.capture_fault(PoolTimeoutError("pool full"), component="db_pool")
-    assert len(_exception_events()) == 10
-    analytics.capture("person@example.com", "normal_analytics")
-    assert len(analytics._queue) == 11  # the storm cannot evict an ordinary event
+    assert len(_exception_events()) == 1  # one event stands for the window
 
-    now[0] += 6.0  # ten per minute = one replenished token every six seconds
-    analytics.capture_fault(PoolTimeoutError("pool full"), component="db_pool")
-    assert len(_exception_events()) == 11
-    assert _exception_events()[-1]["properties"]["throttled_dropped"] == 90
+    now[0] += analytics._FAULT_WINDOW_S
+    analytics._emit_fault_summaries()
+    assert len(_exception_events()) == 2
+    assert _occurrences() == 100  # ...and nothing was approximated away
 
 
-def test_global_throttle_limits_many_distinct_faults(enabled, monkeypatch):
+def test_a_loud_fault_cannot_silence_an_unrelated_one(enabled, monkeypatch):
+    """The bug the global bucket had: one key exhausting a shared budget dropped every OTHER key,
+    including a first sighting — the highest-information event there is, and the one least likely
+    to recur and carry its own count out later."""
     now = [100.0]
     monkeypatch.setattr(analytics.time, "monotonic", lambda: now[0])
-    analytics._fault_global = analytics._TokenBucket(analytics._FAULT_GLOBAL_CAPACITY, now[0])
 
-    for i in range(70):
-        analytics.capture_fault(RuntimeError(str(i)), component=f"site-{i}")
-    assert len(_exception_events()) == 60
+    for _ in range(500):
+        analytics.capture_fault(PoolTimeoutError("pool full"), component="db_pool")
+    analytics.capture_fault(RuntimeError("something new"), component="scheduler")
 
-    now[0] += 1.0
-    analytics.capture_fault(RuntimeError("60"), component="site-60")
-    assert len(_exception_events()) == 61
-    assert _exception_events()[-1]["properties"]["throttled_dropped"] == 1
+    assert [e["properties"]["fault_type"] for e in _exception_events()] == [
+        "TimeoutError", "RuntimeError"]
+
+
+def test_the_key_ledger_is_bounded(enabled, monkeypatch):
+    """Cardinality is what caps the cost now that volume does not, so it must be finite."""
+    monkeypatch.setattr(analytics, "_FAULT_MAX_KEYS", 5)
+    for i in range(50):
+        analytics.capture_fault(RuntimeError("x"), component=f"site-{i}")
+    assert len(analytics._fault_windows) == 5
+
+
+def test_eviction_never_discards_a_count_that_was_never_reported(enabled, monkeypatch):
+    """Bounding the ledger must not reintroduce the loss this rewrite exists to remove: a window
+    holding occurrences nobody has seen is not eligible for eviction, even over the cap."""
+    monkeypatch.setattr(analytics, "_FAULT_MAX_KEYS", 3)
+    for i in range(3):
+        for _ in range(4):  # first reports, next three land in `pending`
+            analytics.capture_fault(RuntimeError("x"), component=f"loud-{i}")
+    for i in range(20):
+        analytics.capture_fault(RuntimeError("x"), component=f"quiet-{i}")
+
+    holding = {k: w.pending for k, w in analytics._fault_windows.items() if w.pending}
+    assert sorted(k[1] for k in holding) == ["loud-0", "loud-1", "loud-2"]
+    assert set(holding.values()) == {3}
+
+
+def test_a_full_ledger_still_rolls_up_a_newly_seen_key(enabled, monkeypatch):
+    """A new window is the only one with an empty count when every other key is holding one, so an
+    eviction scan looking for `not pending` picks the key it just created. That key then never
+    stays in the ledger: each occurrence opens a window, loses it, and reports on its own. The
+    rollup would be off exactly during a broad storm, which is the case the cap exists for."""
+    monkeypatch.setattr(analytics, "_FAULT_MAX_KEYS", 3)
+    for i in range(3):
+        for _ in range(2):
+            analytics.capture_fault(RuntimeError("x"), component=f"loud-{i}")
+    assert all(w.pending for w in analytics._fault_windows.values())  # ledger full, all holding
+
+    analytics._queue.clear()
+    for _ in range(50):
+        analytics.capture_fault(RuntimeError("newcomer"), component="new-site")
+
+    assert len(_exception_events()) == 1     # one report, 49 rolled up — not 50 reports
+    assert _occurrences() == 1
+    assert ("RuntimeError", "new-site") in analytics._fault_windows
+
+
+def test_a_summary_shares_the_fingerprint_of_the_event_it_summarises(enabled, monkeypatch):
+    """PostHog fingerprints on type + value. A summary carrying a LATER occurrence's message lands
+    in a different issue from its own first report, so `sum(fault_occurrences)` splits and anyone
+    filtering by issue — the normal way to read Error Tracking — gets a number that is quietly low.
+    Constant messages hide this; any `str(exc)` carrying an id, path or URL does not."""
+    now = [100.0]
+    monkeypatch.setattr(analytics.time, "monotonic", lambda: now[0])
+
+    for message in ("first for /a", "second for /b", "third for /c"):
+        analytics.capture_fault(RuntimeError(message), component="relay")
+    now[0] += analytics._FAULT_WINDOW_S
+    analytics._emit_fault_summaries()
+
+    values = [e["properties"]["$exception_list"][0]["value"] for e in _exception_events()]
+    assert values == ["first for /a", "first for /a"]
+    assert _occurrences() == 3
+
+
+async def test_a_shutdown_does_not_take_the_counts_with_it(enabled, posts, monkeypatch):
+    """A storm that stops, or a process that restarts mid-incident, used to lose its accumulated
+    count: the old code released it only on the back of the NEXT event for that key. Restarting is
+    what you do during an incident, so the counts died exactly when they were worth the most."""
+    now = [100.0]
+    monkeypatch.setattr(analytics.time, "monotonic", lambda: now[0])
+
+    for _ in range(30):
+        analytics.capture_fault(PoolTimeoutError("pool full"), component="db_pool")
+    analytics._queue.clear()  # the window's one reported event is already on its way
+
+    await analytics.drain()  # sweeps unconditionally: after this there is no later
+    sent = [e for batch in posts for e in batch if e["event"] == "$exception"]
+    assert [e["properties"]["fault_occurrences"] for e in sent] == [29]
+
+
+def test_faults_yield_to_analytics_only_when_the_queue_is_actually_backing_up(enabled, monkeypatch):
+    """The old rate limit shed at full speed against an empty queue — it fired on elapsed time,
+    while the resource it existed to protect was at ~1% of its bound."""
+    monkeypatch.setattr(analytics, "_MAX_PENDING", 10)
+    analytics.capture_fault(RuntimeError("first"), component="quiet")
+    assert len(_exception_events()) == 1  # queue empty: no reason to drop anything
+
+    for i in range(9):
+        analytics.capture("a@b.c", "tool_called", {"i": i})
+    analytics.capture_fault(RuntimeError("second"), component="congested")
+    assert len(_exception_events()) == 1  # past the share: counted, not queued
 
 
 def test_handler_recursion_guard_swallows_capture_failure(enabled, monkeypatch):

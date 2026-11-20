@@ -1,0 +1,92 @@
+{
+  "meta": {
+    "blocked": [],
+    "elapsed_ms": 0,
+    "from_cache": true,
+    "llm_calls": 0,
+    "pages_fetched": 0,
+    "partial": false,
+    "warnings": []
+  },
+  "recipe": "tiktok-user-videos",
+  "usage": {
+    "boxes": [
+      "gate"
+    ],
+    "cache": "hit",
+    "engine": "recipe",
+    "lines": [
+      {
+        "about": "the call",
+        "boxes": [
+          "gate"
+        ],
+        "cache": "miss",
+        "call": "recipes",
+        "engine": "gate",
+        "units": 1
+      }
+    ],
+    "remaining_before": {
+      "concurrent": 99,
+      "requests": 174,
+      "search": 3000
+    },
+    "units": 1
+  },
+  "version": 2,
+  "rows": [
+    {
+      "author": {
+        "followers": 2000000,
+        "name": "NASA",
+        "username": "nasa"
+      },
+      "cover": "https://p16-common-sign.tiktokcdn.com/tos-useast5-p-0068-tx/oYaQISsbXDAC6KA7AnF2DRqAGEvgvCByQGfeUE~tplv-tiktokx-origin.image?dr=14575&x-expires=1791867600&x-signature=CzJvUT%2Bo8FRuEN%2FEsQq%2FW5F5kSc%3D&t=4d5b0474&ps=13740610&shp=81f88b70&shcp=43f4a2f9&idc=my2",
+      "created_at": "2026-10-10T17:21:28Z",
+      "description": "NASA’s mission reached across the globe and beyond this week 🚀 ❄️ Inspiration Tour heads to Alaska 🌎 NASA leads at IAC in Antalya 🧑‍🚀 Crew-12 returns home 🌕 Artemis II science data released Here’s what's new in your NASA Minute!",
+      "duration_s": 122.0,
+      "hashtags": [],
+      "music": {
+        "author": "NASA",
+        "original": false,
+        "title": "original sound - NASA"
+      },
+      "post_id": "7695090484124929293",
+      "stats": {
+        "comments": 106,
+        "likes": 3466,
+        "plays": 33900,
+        "saves": 240,
+        "shares": 58
+      },
+      "url": "https://www.tiktok.com/@nasa/video/7695090484124929293"
+    },
+    {
+      "author": {
+        "followers": 2000000,
+        "name": "NASA",
+        "username": "nasa"
+      },
+      "cover": "https://p16-common-sign.tiktokcdn.com/tos-useast5-p-0068-tx/o8A3Eisuis4GBWBgZkAaKSEAAyrpDQD8AIiPU~tplv-tiktokx-origin.image?dr=14575&x-expires=1791867600&x-signature=aQ4smLjepHJxMl%2F5BuE%2BbaEVVFg%3D&t=4d5b0474&ps=13740610&shp=81f88b70&shcp=43f4a2f9&idc=my2",
+      "created_at": "2026-10-10T15:26:57Z",
+      "description": "We just released hundreds of new images and hours of new audio from our Artemis Il mission around the Moon this spring. Check out our link in bio for the Artemis II Preliminary Lunar Science Report.",
+      "duration_s": 43.0,
+      "hashtags": [],
+      "music": {
+        "author": "NASA",
+        "original": false,
+        "title": "original sound - NASA"
+      },
+      "post_id": "7695060950394703118",
+      "stats": {
+        "comments": 605,
+        "likes": 11200,
+        "plays": 107600,
+        "saves": 772,
+        "shares": 416
+      },
+      "url": "https://www.tiktok.com/@nasa/video/7695060950394703118"
+    }
+  ]
+}

@@ -1,0 +1,32 @@
+{
+  "output": {
+    "found": true,
+    "data": {
+      "query": "attention is all you need",
+      "results": [
+        {
+          "citedBy": 270417,
+          "id": "5Gohgn6QFikJ",
+          "link": "https://proceedings.neurips.cc/paper_files/paper/7181-attention-is",
+          "pdfUrl": "https://proceedings.neurips.cc/paper_files/paper/2017/file/3f5ee243547dee91fbd053c1c4a845aa-Paper.pdf?src_trk=em66c5166b7bad47.12959706424423622",
+          "publicationInfo": "A Vaswani, N Shazeer, N Parmar… - Advances in neural …, 2017 - proceedings.neurips.cc",
+          "snippet": "… to attend to all positions in the decoder up to and including that position. We need to prevent … We implement this inside of scaled dot-product attention by masking out (setting to −∞) …",
+          "title": "Attention is all you need",
+          "year": 2017
+        },
+        "… 9 more item(s) truncated"
+      ]
+    }
+  },
+  "provider": "AnyAPI",
+  "costUsd": 0.00099,
+  "items": 10,
+  "replayed": false,
+  "source": {
+    "id": "anonymous-meerkat",
+    "name": "Meerkat",
+    "kind": "anonymous",
+    "artworkKey": "meerkat"
+  },
+  "resultId": "b46ea6f0-18fc-4470-ba3c-146e103ab672"
+}

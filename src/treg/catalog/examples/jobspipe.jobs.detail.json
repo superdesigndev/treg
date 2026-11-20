@@ -1,0 +1,51 @@
+{
+  "metadata": {
+    "total_results": null,
+    "truncated_results": 2,
+    "total_companies": null,
+    "truncated_companies": 0,
+    "next_cursor": null,
+    "next_delta_cursor": "ZGMxOjIwMjYtMTEtMTMgMDA6MTY6MTF",
+    "credits_charged": 2,
+    "jobs_already_paid": 0,
+    "credits_remaining": 566,
+    "credits_allowance": 1000
+  },
+  "data": [
+    {
+      "id": "8857185002",
+      "job_title": "Associate Renewals Manager, SMB",
+      "company": "GitLab",
+      "company_domain": "about.gitlab.com",
+      "url": "https://job-boards.greenhouse.io/gitlab/jobs/8857185002",
+      "final_url": null,
+      "date_posted": "2026-09-29T22:06:03+00:00",
+      "discovered_at": "2026-09-30T00:07:16+00:00",
+      "status": "active",
+      "location": "Remote, Canada; Remote, United States",
+      "country_code": "CA",
+      "remote": true,
+      "work_arrangement": "remote",
+      "seniority": null,
+      "min_annual_salary_usd": 53760,
+      "max_annual_salary_usd": 105000,
+      "salary_currency": "USD",
+      "estimated_avg_annual_salary_usd": 108950,
+      "occupation_code": "1221",
+      "occupation_label": "Sales and Marketing Managers",
+      "technology_slugs": [
+        "gitlab"
+      ],
+      "description": "GitLab is the intelligent orchestration platform for DevSecOps. GitLab enables organizations to increase developer productivity, improve operational efficiency, reduce security and compliance risk, an…",
+      "sources": [
+        {
+          "provider": "greenhouse",
+          "url": "https://job-boards.greenhouse.io/gitlab/jobs/8857185002",
+          "seen_at": "2026-10-21T04:59:59.495703+00:00"
+        }
+      ],
+      "last_seen_at": "2026-11-13 18:18:56",
+      "ghost_score": 20
+    }
+  ]
+}

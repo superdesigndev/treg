@@ -1,0 +1,24 @@
+{
+  "output": {
+    "found": true,
+    "data": {
+      "items": [
+        {
+          "image": "https://api.apify.com/v2/key-value-stores/LhGYu8jdDaETnqcJ4/records/screenshot_https___example_com_c984d06aafbecf6bc55569f964148ea3?signature=180CTRTSsmnlYqkVvsYTP&disableRedirect=true",
+          "url": "https://example.com/"
+        }
+      ]
+    }
+  },
+  "provider": "AnyAPI",
+  "costUsd": 0.00174,
+  "items": 1,
+  "replayed": false,
+  "source": {
+    "id": "anonymous-octopus",
+    "name": "Octopus",
+    "kind": "anonymous",
+    "artworkKey": "octopus"
+  },
+  "resultId": "755cefe2-937c-48e5-87a4-e0e8eafe51b1"
+}

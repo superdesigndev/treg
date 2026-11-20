@@ -1,0 +1,33 @@
+{
+  "output": {
+    "data": {
+      "comments": [
+        {
+          "author": "spez",
+          "bodyPreview": "That was the thinking. Otherwise it would be easier to just replicate the UI. ",
+          "createdUtc": 1785965510,
+          "id": "p1wosm9",
+          "postId": "1vgbkge",
+          "postTitle": "Modernizing Reddit’s infrastructure with you",
+          "score": 14,
+          "subreddit": "u_spez"
+        },
+        "… 24 more item(s) truncated"
+      ],
+      "nextCursor": "loNv9EOk2Cqdnj-NPTh_w71FIgTdmsbThUaC1hFq8hir7KyJCUVA1R5-KFwICDCm73k2bG9sZoaUFuwJKlMqrkKiaZv1Ki5ZXaOTpjtaZzPm0jSHEXKDmx5UNAkV0se2lbU3G6wrESyHHKnXbLFff8bIRuxWuDzuzxEIZ1qA_BMiRqSNv_fgouyD"
+    },
+    "found": true
+  },
+  "provider": "AnyAPI",
+  "costUsd": 0.0006,
+  "items": 25,
+  "replayed": false,
+  "source": {
+    "id": "anonymous-bison-9321fc54",
+    "name": "Bison",
+    "kind": "anonymous",
+    "artworkKey": "bison"
+  },
+  "hint": "large_result: this response is ~11 KB. To keep future runs from flooding your context, re-run with `fields` (keep only the keys you need), `max_items` (cap rows), `summary=true` (outline only), or `jq… [309 chars]",
+  "resultId": "bf74ced4-c53e-4fb9-b4ce-b18b68204ac3"
+}

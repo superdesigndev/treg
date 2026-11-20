@@ -1,0 +1,12 @@
+{
+  "success": true,
+  "data": {
+    "markdown": "# Example Domain\n\nThis domain is for use in documentation examples.",
+    "metadata": {
+      "title": "Example Domain",
+      "sourceURL": "https://example.com",
+      "statusCode": 200,
+      "contentType": "text/html"
+    }
+  }
+}

@@ -1,0 +1,101 @@
+{
+  "income_statement_segments": [
+    {
+      "accession_number": "0000320193-25-000079",
+      "currency": "USD",
+      "filing_url": "https://www.sec.gov/Archives/edgar/data/320193/000032019325000079/0000320193-25-000079-index.htm",
+      "fiscal_period": "FY2025",
+      "operating_income": {
+        "segment": [
+          {
+            "label": "Americas",
+            "value": 72480000000
+          },
+          {
+            "label": "Europe",
+            "value": 47739000000
+          },
+          {
+            "label": "Greater China",
+            "value": 26917000000
+          },
+          {
+            "label": "Rest of Asia Pacific",
+            "value": 14586000000
+          },
+          {
+            "label": "Japan",
+            "value": 13955000000
+          }
+        ]
+      },
+      "period": "annual",
+      "report_period": "2025-09-27",
+      "revenue": {
+        "geography": [
+          {
+            "label": "Other countries",
+            "value": 199994000000
+          },
+          {
+            "label": "U.S.",
+            "value": 151790000000
+          },
+          {
+            "label": "China",
+            "value": 64377000000
+          }
+        ],
+        "product": [
+          {
+            "label": "Products",
+            "value": 307003000000
+          },
+          {
+            "label": "iPhone",
+            "value": 209586000000
+          },
+          {
+            "label": "Services",
+            "value": 109158000000
+          },
+          {
+            "label": "Wearables, Home and Accessories",
+            "value": 35686000000
+          },
+          {
+            "label": "Mac",
+            "value": 33708000000
+          },
+          {
+            "label": "iPad",
+            "value": 28023000000
+          }
+        ],
+        "segment": [
+          {
+            "label": "Americas",
+            "value": 178353000000
+          },
+          {
+            "label": "Europe",
+            "value": 111032000000
+          },
+          {
+            "label": "Greater China",
+            "value": 64377000000
+          },
+          {
+            "label": "Rest of Asia Pacific",
+            "value": 33696000000
+          },
+          {
+            "label": "Japan",
+            "value": 28703000000
+          }
+        ]
+      },
+      "ticker": "AAPL"
+    }
+  ]
+}

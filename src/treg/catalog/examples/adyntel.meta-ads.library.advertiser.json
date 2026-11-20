@@ -1,0 +1,26 @@
+{
+  "page_id": "redacted-live-id",
+  "country_code": "US",
+  "continuation_token": "redacted-live-token",
+  "platform": ["facebook"],
+  "media_types": "all",
+  "active_status": "active",
+  "is_result_complete": false,
+  "number_of_ads": 45,
+  "results": [
+    {
+      "ad_archive_id": "redacted-live-id",
+      "page_id": "redacted-live-id",
+      "page_name": "Nike",
+      "is_active": true,
+      "publisher_platform": ["FACEBOOK"],
+      "snapshot": {
+        "page_name": "Nike",
+        "caption": "NIKE.COM",
+        "cta_text": "Shop now",
+        "body": {"text": "Redacted live creative text."},
+        "link_url": "https://example.invalid/redacted"
+      }
+    }
+  ]
+}

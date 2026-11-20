@@ -2,15 +2,21 @@
 
 from __future__ import annotations
 
+import json
 import uuid
+from urllib.parse import urlsplit
 
-from fastapi import APIRouter, Depends, HTTPException, Request
-from fastapi.responses import Response, StreamingResponse
+from fastapi import APIRouter, Cookie, Depends, Header, HTTPException, Request
+from fastapi.responses import JSONResponse, Response, StreamingResponse
 from starlette.background import BackgroundTask
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from .. import analytics
 from .. import audit
+from .. import hints
+from ..application import agent_payments
 from .. import sandbox as demo_sandbox
+from ..application.call import call_errors
 from ..application.call.access import catalog_endpoint_access as get_catalog_endpoint_access
 from ..application.call.idempotency import (
     _release_idempotent_claim as release_idempotent_claim,
@@ -19,7 +25,13 @@ from ..application.call.resolve import (
     QueryValues,
     _may_have_body as may_have_body,
 )
-from ..application.call.service import create_call_context, execute_call, _refusal_kind
+from ..application.call.service import (
+    _refusal_kind,
+    _tool_called_props,
+    create_call_context,
+    execute_call,
+)
+from ..application.call.invite import accepted_kinds, catalog_endpoint, invitation
 from ..application.call.intake import (
     META_HEADER,
     CallMeta,
@@ -27,17 +39,19 @@ from ..application.call.intake import (
 )
 from ..application.call.types import CallerSnapshot, CallFailure, CallInput, UpstreamResponse
 from ..caller_metadata import _client_of
+from ..call_surface import split_call_path
 from ..config import get_settings
+from ..domain.catalog import store as catalog_store
 from ..domain.governance import access as access_policy
 from ..domain.governance import publicdemo as publicdemo_policy
+from ..domain.governance import usage as usage_policy
 from ..domain.identity.access import Caller, require_member
-from ..infra.db import get_session
+from ..infra.db import answers_db_busy, get_session
+from ..infra import org_concurrency, org_flow_control, org_traffic
 from ..models import Tool
 from .auth import _client_ip
-from .orgs import count_today
 
 
-# The app alias preserves the moved handlers' decorator text byte-for-byte.
 app = APIRouter()
 router = app
 
@@ -51,6 +65,23 @@ class _HttpRequestBody:
 
     async def read(self) -> bytes:
         return await self._request.body()
+
+
+class _LeasedStreamingResponse(StreamingResponse):
+    """Retain the root slot through send/disconnect errors as well as body iteration."""
+
+    def __init__(self, response: StreamingResponse, slot, close) -> None:
+        super().__init__(response.body_iterator, status_code=response.status_code,
+                         background=response.background)
+        self.raw_headers = response.raw_headers
+        self._slot = slot
+        self._close = close
+
+    async def __call__(self, scope, receive, send) -> None:
+        try:
+            await super().__call__(scope, receive, send)
+        finally:
+            await self._slot.finish(self._close)
 
 
 def _http_upstream_response(upstream: UpstreamResponse) -> StreamingResponse:
@@ -75,6 +106,25 @@ def _http_upstream_response(upstream: UpstreamResponse) -> StreamingResponse:
     return response
 
 
+def _attach_async_descriptor(upstream: UpstreamResponse, context, rest: str = "") -> None:
+    """Attach static catalog metadata before Starlette starts the upstream body stream.
+
+    An idempotent replay returns before marketplace resolution, so the endpoint is taken from the
+    path itself: a `--await` retry of a stored submission must still learn how to poll the task
+    that is already running, or it would print the body and stop."""
+    marketplace = context.marketplace
+    endpoint_id = marketplace.endpoint_id if marketplace is not None else rest.split("?", 1)[0]
+    endpoint = catalog_store.load().by_id.get(endpoint_id)
+    descriptor = endpoint.get("async") if endpoint else None
+    if not descriptor:
+        return
+    value = json.dumps(descriptor, ensure_ascii=True, separators=(",", ":")).encode("ascii")
+    upstream.raw_headers = tuple(
+        (name, existing) for name, existing in upstream.raw_headers
+        if name.lower() != b"x-treg-async"
+    ) + ((b"x-treg-async", value),)
+
+
 def _require_tool_use_http(caller: Caller, tool: Tool) -> None:
     try:
         access_policy._require_tool_use(caller, tool)
@@ -92,21 +142,21 @@ async def _enforce_public_demo_ip_cap(request: Request, db: AsyncSession) -> Non
 
 
 async def _enforce_daily_cap(caller: Caller, db: AsyncSession) -> None:
-    """Refuse a call/run once the caller has used their per-user daily cap for this org. `-1` (the
-    default) = unlimited, so unmetered members pay ZERO extra queries. The sandbox has its own limiter
-    and is exempt. Soft by design: the count reads best-effort `CallRecord`s, so under heavy load it
-    can lag slightly and fail OPEN (a few extra slip through) — never closed. See docs/USAGE-METERING-PLAN.md."""
-    cap = caller.membership.daily_call_cap
-    if cap < 0 or demo_sandbox.is_sandbox(caller.org):
-        return
-    used = await count_today(db, caller.org_id, caller.email)
-    if used >= cap:
-        raise HTTPException(status_code=429, detail=(
-            f"daily usage limit reached ({used}/{cap}) — ask an admin to raise your cap"))
+    """The run surfaces' door to the per-user daily cap - the SAME gate `/call/` goes through
+    (`application/call/authorize.py`), so a member cannot dodge the cap by switching path. Commits,
+    because the gate takes the slot with a write and this request's session is the only owner."""
+    try:
+        await usage_policy.enforce_daily_cap(
+            caller, db, sandbox=demo_sandbox.is_sandbox(caller.org))
+    except usage_policy.UsagePolicyError as exc:
+        await db.commit()
+        raise HTTPException(status_code=429, detail=exc.detail) from exc
+    await db.commit()
 
 
 def _translate_call_failure(exc: CallFailure) -> HTTPException:
-    return HTTPException(status_code=exc.status_code, detail=exc.detail)
+    headers = {"Retry-After": str(exc.retry_after_s)} if exc.retry_after_s is not None else None
+    return HTTPException(status_code=exc.status_code, detail=exc.detail, headers=headers)
 
 
 def _parse_call_meta(request: Request, caller: Caller | None = None) -> CallMeta:
@@ -130,8 +180,67 @@ def _may_have_body(request: Request) -> bool:
     return may_have_body(tuple(request.headers.raw))
 
 
-async def _stamp_call_exit(request: Request, resp: Response, status_code: int) -> None:
-    """Give one `/call/` exit the three things every other exit gets: the id that joins the response
+def _call_rest(request: Request, context: object | None) -> str:
+    rest = getattr(getattr(context, "input", None), "raw_rest", None)
+    if rest is not None:
+        return rest
+    call_path = split_call_path(request.url.path)
+    return call_path[1] if call_path else request.url.path.lstrip("/")
+
+
+def _capture_exceptional_call(
+    request: Request, *, call_ref: str, status_code: int, failure_kind: str,
+) -> None:
+    """Mirror a call that never reached the normal audit funnel without leaking request data."""
+    context = getattr(request.state, "call_context", None)
+    marketplace = getattr(context, "marketplace", None)
+    target = getattr(context, "target", None)
+    rest = _call_rest(request, context)
+    tool_name = (
+        getattr(marketplace, "endpoint_id", None)
+        or getattr(getattr(target, "tool", None), "name", None)
+        or rest.split("/", 1)[0]
+        or "-"
+    )
+    props = _tool_called_props(
+        request,
+        tool_name=tool_name,
+        status_code=status_code,
+        call_ref=call_ref,
+        own_tool=(False if marketplace is not None else True if target is not None else None),
+        refused_by=None,
+        answered=False,
+    ) | {"failure_kind": failure_kind, "provider": None, "endpoint_id": None}
+    if marketplace is not None:
+        props |= {
+            "provider": marketplace.provider,
+            "endpoint_id": marketplace.endpoint_id,
+            "tier": marketplace.tier,
+            "metered": marketplace.metered,
+            "cost_type": marketplace.cost_type,
+        }
+    elif target is not None:
+        props["provider"] = urlsplit(target.upstream).hostname or ""
+    org_id, email = getattr(request.state, "call_identity", (None, ""))
+    team_slug = getattr(request.state, "call_team_slug", "")
+    request.state.call_failure_kind = props["failure_kind"]
+    analytics.capture(
+        email or "anonymous",
+        "tool_called",
+        props,
+        groups={"team": team_slug} if org_id is not None and team_slug else None,
+    )
+
+
+async def _stamp_call_exit(
+    request: Request,
+    resp: Response,
+    status_code: int,
+    *,
+    failure_kind: str | None = None,
+    refused_by: str | None = None,
+) -> None:
+    """Give one call-surface exit the three things every other exit gets: the id that joins the response
     to the audit row, the row itself, and the release of any idempotency label the request took.
 
     Shared by the two handlers that answer a call without reaching `call_tool`'s own bookkeeping.
@@ -144,17 +253,31 @@ async def _stamp_call_exit(request: Request, resp: Response, status_code: int) -
         resp.headers["X-Treg-Cost-Micro"] = str(cost_micro)
     if not getattr(request.state, "call_audited", False):
         org_id, email = getattr(request.state, "call_identity", (None, ""))
-        rest = request.url.path[len("/call/"):]
+        key_id, key_name, key_prefix = getattr(request.state, "call_key", (None, None, None))
+        context = getattr(request.state, "call_context", None)
+        rest = _call_rest(request, context)
+        refused_by = refused_by or _refusal_kind(status_code)
         audit.record_call(
             org_id=org_id, user_email=email, tool_name=rest.split("/", 1)[0] or "—",
             method=request.method, path=request.url.path, status_code=status_code,
-            client=_client_of(request), refused_by=_refusal_kind(status_code),
-            telemetry={"call_ref": call_ref})
-    # A failed call must not keep its idempotency label. The claim is taken before the upstream
-    # call, and a request that dies anywhere after that — a bad parameter, a deny rule, an empty
-    # balance, a saturated pool — would otherwise hold the label for the whole window and answer
-    # every retry with 409. Worse than the problem this feature exists to solve, and found by the
-    # test for it.
+            client=_client_of(request), refused_by=refused_by,
+            api_key_id=key_id, api_key_name=key_name, api_key_prefix=key_prefix,
+            telemetry={"call_ref": call_ref, "tags": getattr(request.state, "call_pins", None)})
+        failure = getattr(request.state, "call_failure", None)
+        marketplace = getattr(context, "marketplace", None)
+        call_errors.emit(
+            status_code, org_id=org_id, call_ref=call_ref,
+            road=("catalog" if marketplace is not None
+                  else "own_tool" if getattr(context, "target", None) is not None else "unresolved"),
+            endpoint_id=getattr(marketplace, "endpoint_id", None),
+            provider=getattr(marketplace, "provider", None),
+            tier=getattr(marketplace, "tier", None), refused_by=refused_by,
+            failure=failure, kind=failure_kind,
+            billed_oauth=bool(getattr(marketplace, "billed_oauth", False)), answered=False)
+        if failure_kind:
+            _capture_exceptional_call(
+                request, call_ref=call_ref, status_code=status_code, failure_kind=failure_kind)
+        request.state.call_audited = True
     await _release_idempotent_claim(request)
 
 
@@ -174,6 +297,36 @@ async def catalog_endpoint_access(
     except CallFailure as exc:
         raise _translate_call_failure(exc) from exc
 
+_INVITATION_HEADERS = ("X-Treg-Hint", "X-Treg-Hint-Text", "X-Treg-Review")
+
+
+def _capture_hint(request: Request, context, kind: str, variant: int | None = None) -> None:
+    """One event per invitation actually sent, on every surface: the response-rate denominator.
+    Attachment is not display; the surface's `X-Treg-Client` says who was asked."""
+    slug = context.input.caller.org.slug
+    analytics.capture(analytics.SERVER_DISTINCT_ID, "hint_attached", {
+        "kind": kind, "call_id": context.call_ref, "client": _client_of(request),
+        "endpoint_id": catalog_endpoint(context),
+        **({"variant": variant} if variant is not None else {}),
+    }, groups={"team": slug} if slug else None)
+
+
+async def member_or_payer(
+    request: Request,
+    x_treg_token: str = Header(default=""),
+    x_treg_org: str = Header(default=""),
+    treg_session: str = Cookie(default=""),
+    db: AsyncSession = Depends(get_session),
+) -> Caller | None:
+    """`require_member`, except that a `/call/` request carrying no treg credential at all (no
+    token header, even an empty one, and no session cookie) returns None for the agent-payments
+    path while that feature is on. Any credential, valid or not, takes the account path."""
+    if (agent_payments.enabled() and "x-treg-token" not in request.headers
+            and "treg_session" not in request.cookies):
+        return None
+    return await require_member(request, x_treg_token, x_treg_org, treg_session, db)
+
+
 @app.api_route(
     "/call/{rest:path}",
     methods=["GET", "POST", "PUT", "PATCH", "DELETE", "HEAD", "OPTIONS"],
@@ -181,26 +334,190 @@ async def catalog_endpoint_access(
 async def call_tool(
     rest: str,
     request: Request,
-    caller: Caller = Depends(require_member),
+    caller: Caller | None = Depends(member_or_payer),
 ):
-    # Identity for the refusal fallback in `_mark_treg_own_errors`: a raise anywhere below (unknown
-    # tool, deny rule, daily cap) leaves this handler without an audit row, and the exception handler
-    # is the one place every such refusal passes through — but it has no Caller of its own.
-    request.state.call_identity = (caller.org_id, caller.email)
+    if caller is None:
+        return await _paid_call(rest, request)
+    prefix = "/catalog/call/" if getattr(request.state, "catalog_only", False) else "/call/"
+    return await run_call_surface(rest, request, caller, prefix=prefix, finish=_relay_answer)
+
+
+async def _paid_call(rest: str, request: Request) -> Response:
+    """A keyless call that pays for itself (docs/context/architecture/agent-payments.md). A call
+    the payment path does not serve answers exactly as an unauthenticated call always has."""
+    if reason := agent_payments.unserved(rest, request.method):
+        raise HTTPException(status_code=401, detail=agent_payments.NotServed(reason).detail)
+    try:
+        await agent_payments.limit_request(request.headers, _client_ip(request))
+    except agent_payments.RateLimited as exc:
+        return await _payment_refusal(request, 429, exc.detail, [("Retry-After", "60")])
+    body = await _capped_body(request) if _may_have_body(request) else b""
+    raw_path = request.scope.get("raw_path")
+    try:
+        paid = await agent_payments.open_call(
+            rest=rest, method=request.method,
+            path=raw_path.decode("ascii", "replace") if raw_path else request.url.path,
+            query=request.url.query or "", query_items=tuple(request.query_params.multi_items()),
+            body=body, headers=request.headers, raw_headers=request.headers.raw)
+    except agent_payments.NotServed as exc:
+        raise HTTPException(status_code=401, detail=exc.detail) from None
+    except agent_payments.RateLimited as exc:
+        return await _payment_refusal(request, 429, exc.detail, [("Retry-After", "60")])
+    except agent_payments.PaymentChallenge as exc:
+        return await _payment_refusal(request, 402, exc.detail, exc.headers)
+    except agent_payments.PaymentPending as exc:
+        return await _payment_refusal(request, 503, exc.detail, [])
+    except agent_payments.PayerSuspended as exc:
+        return await _payment_refusal(request, 403, exc.detail, [])
+    try:
+        response = await run_call_surface(rest, request, paid.caller, prefix="/call/",
+                                          finish=_relay_answer, headers=paid.headers)
+    except HTTPException as exc:
+        if exc.status_code == 402 and paid.admission.settlement is None:
+            # The credit was spent by another call between the check and the hold: ask this
+            # wallet to pay, as a payment client expects of a 402.
+            challenge = await agent_payments.credit_short(paid.paid, int(paid.caller.org.id))
+            return await _payment_refusal(request, 402, challenge.detail, challenge.headers)
+        if exc.status_code == 402:
+            # A payment client answers every 402 with a payment; treg's own balance refusal is
+            # not a payment challenge.
+            exc.status_code = 503
+        exc.headers = {"Cache-Control": "private", **(exc.headers or {}),
+                       **dict(await paid.answer_headers())}
+        raise
+    for name, value in await paid.answer_headers():
+        response.headers[name] = value
+    for name, value in paid.receipt_headers(response.status_code):
+        response.headers.append(name, value)
+    response.headers.setdefault("Cache-Control", "private")
+    return response
+
+
+@app.get(agent_payments.CREDIT_PATH, include_in_schema=False)
+async def agent_payment_credit(request: Request) -> Response:
+    """A keyless wallet's credit on one network, after a zero-amount proof
+    (docs/context/architecture/agent-payments.md). Not found while the feature is off."""
+    if not agent_payments.enabled():
+        raise HTTPException(status_code=404, detail="Not Found")
+    try:
+        await agent_payments.limit_request(request.headers, _client_ip(request))
+        view = await agent_payments.credit_of(request.headers)
+    except agent_payments.NotEnabled:
+        raise HTTPException(status_code=404, detail="Not Found") from None
+    except agent_payments.RateLimited as exc:
+        return _credit_refusal(429, exc.detail, [("Retry-After", "60")])
+    except agent_payments.PaymentChallenge as exc:
+        return _credit_refusal(402, exc.detail, exc.headers)
+    return JSONResponse(view, headers={"Cache-Control": "no-store"})
+
+
+def _credit_refusal(status: int, detail: dict, headers: list[tuple[str, str]]) -> Response:
+    resp = JSONResponse({"detail": detail}, status_code=status)
+    for name, value in headers:
+        resp.headers.append(name, value)
+    resp.headers["Cache-Control"] = "no-store"
+    resp.headers["X-Treg-Error"] = "1"
+    return resp
+
+
+async def _capped_body(request: Request) -> bytes:
+    limit = agent_payments.MAX_BODY_BYTES
+    declared = request.headers.get("content-length", "")
+    if declared.isdigit() and int(declared) > limit:
+        raise HTTPException(status_code=413, detail="request body too large")
+    chunks, size = [], 0
+    async for chunk in request.stream():
+        size += len(chunk)
+        if size > limit:
+            raise HTTPException(status_code=413, detail="request body too large")
+        chunks.append(chunk)
+    body = b"".join(chunks)
+    # Starlette serves a later `request.body()` / `request.stream()` from `_body` once the stream
+    # has been consumed; the call road reads the body again through those.
+    request._body = body
+    return body
+
+
+async def _payment_refusal(request: Request, status: int, detail: dict,
+                           headers: list[tuple[str, str]]) -> Response:
+    resp = JSONResponse({"detail": detail}, status_code=status)
+    for name, value in headers:
+        resp.headers.append(name, value)
+    resp.headers["Cache-Control"] = "no-store"
+    resp.headers["X-Treg-Error"] = "1"
+    # A 402 here asks a keyless caller to pay or prove a wallet: a step of the payment, not a
+    # balance refusal.
+    await _stamp_call_exit(request, resp, status, refused_by="payment" if status == 402 else None)
+    return resp
+
+
+async def _relay_answer(request: Request, context, upstream: UpstreamResponse, rest: str) -> Response:
+    """`/call/`'s ending: the provider's answer, streamed unchanged, with the optional invitation."""
+    _attach_async_descriptor(upstream, context, rest)
+    response = _http_upstream_response(upstream)
+    # The invitation headers are treg's alone. An upstream (or a team's own tool) sending them
+    # would put its words in the slot clients show as treg's (AGENTS.md, non-negotiable 4).
+    for name in _INVITATION_HEADERS:
+        del response.headers[name]
+    try:
+        # Optional invitation, decided before the body streams (application/call/invite.py).
+        kind = await invitation(context, response.status_code,
+                                replayed=bool(response.headers.get("X-Treg-Idempotent-Replay")),
+                                accepts=accepted_kinds(request.headers.get("X-Treg-Hints")))
+        if kind is not None:
+            response.headers["X-Treg-Hint"] = kind
+            if kind == "review":
+                response.headers["X-Treg-Review"] = "requested"  # read by CLI <= 0.18
+            variant = None
+            # Words only for a client that declared what it shows: an older one prints its own
+            # line, and these name flags (`--rows`) its release may not have.
+            if kind == "mark" or request.headers.get("X-Treg-Hints") is not None:
+                variant, text = hints.header_text(kind, context.call_ref)
+                response.headers["X-Treg-Hint-Text"] = text
+            _capture_hint(request, context, kind, variant)
+    except Exception:  # noqa: BLE001 - a fault here can only lose the hint header
+        pass  # A fault here can only lose the header; the answer is already built.
+    if routed := _routed_alternative(context, response.status_code):
+        response.headers["X-Treg-Routed-Tool"] = routed
+    return response
+
+
+def _routed_alternative(context, status: int) -> str | None:
+    """The routed `treg.<capability>` tool for a successful direct call to one provider's endpoint
+    of that capability, so the surfaces can point an agent to the tool that picks the provider and
+    falls back. Never on a routed call itself."""
+    marketplace = context.marketplace
+    if marketplace is None or not 200 <= status < 300 or marketplace.endpoint_id.startswith("treg."):
+        return None
+    by_id = catalog_store.load().by_id
+    capability = (by_id.get(marketplace.endpoint_id) or {}).get("capability")
+    routed = f"treg.{capability}" if capability else None
+    return routed if routed in by_id else None
+
+
+async def run_call_surface(rest: str, request: Request, caller: Caller, *, prefix: str, finish,
+                           headers=None) -> Response:
+    """One call through the whole call road: the caller's identity stashed for the refusal fallback,
+    the context built from the raw request, `execute_call`, and the same bookkeeping on every exit.
+    Every call surface (`/call/`, `/catalog/call/`, `/table/`) goes through here; only `finish`,
+    which turns the answer into the HTTP response, differs. `finish(request, context, upstream,
+    rest)` runs inside the same try, so a fault there is audited and released like any other.
+    `headers`, when given, replaces the request's raw headers for the upstream call (`/table/` asks
+    the provider for uncompressed bytes; a paid `/call/` drops its payment credential)."""
+    enter_call(request, caller)
     # Faithful-relay: use the RAW request path, not Starlette's decoded path param. Decoding is
     # lossy — an encoded slash (`%2f`) in `rest` would become a real `/` and change the upstream
     # route (npm's scoped publish `PUT /@scope%2fname` 404s as `/@scope/name`). httpx preserves
     # valid percent-escapes, so the original bytes travel through to the upstream one-to-one.
     raw_path = request.scope.get("raw_path")
     if raw_path:
-        call_prefix = "/catalog/call/" if getattr(request.state, "catalog_only", False) else "/call/"
-        _, sep, raw_rest = raw_path.decode("ascii", "replace").partition(call_prefix)
+        _, sep, raw_rest = raw_path.decode("ascii", "replace").partition(prefix)
         if sep:
             rest = raw_rest
     call_input = CallInput(
         method=request.method,
         raw_rest=rest,
-        raw_headers=tuple(request.headers.raw),
+        raw_headers=tuple(request.headers.raw) if headers is None else tuple(headers),
         query_items=tuple(request.query_params.multi_items()),
         raw_query=request.url.query or "",
         body=_HttpRequestBody(request),
@@ -208,19 +525,87 @@ async def call_tool(
         client_ip=_client_ip(request),
         catalog_only=bool(getattr(request.state, "catalog_only", False)),
     )
+    return await run_call_input(request, caller, call_input, finish=finish, rest=rest)
+
+
+def enter_call(request: Request, caller: Caller) -> None:
+    """Who is calling, stashed before anything can refuse: the root log and the refusal fallback."""
+    org_traffic.identify(request.scope, caller.org_id, enter=True,
+                         api_key_id=caller.api_key.id if caller.api_key else None)
+    # Identity for the refusal fallback in `_mark_treg_own_errors`: a raise anywhere below (unknown
+    # tool, deny rule, daily cap) leaves this handler without an audit row, and the exception handler
+    # is the one place every such refusal passes through - but it has no Caller of its own.
+    request.state.call_identity = (caller.org_id, caller.email)
+    # The pin too: a pinned caller's history is filtered on it, and a refusal (403 on a pin
+    # mismatch above all) is the row they most need to see while integrating.
+    request.state.call_pins = dict(caller.membership.pinned_tags or {}) or None
+    request.state.call_team_slug = caller.org.slug
+    request.state.call_key = (
+        caller.api_key.id if caller.api_key else None,
+        caller.api_key.name if caller.api_key else None,
+        caller.api_key.safe_prefix if caller.api_key else None,
+    )
+
+
+async def run_call_input(request: Request, caller: Caller, call_input: CallInput, *, finish,
+                         rest: str) -> Response:
+    """`run_call_surface` from an already built `CallInput`, after `enter_call`."""
     try:
         context = create_call_context(call_input)
     except CallFailure as exc:
+        request.state.call_failure = exc
         raise _translate_call_failure(exc) from exc
     request.state.call_ref = context.call_ref
+    request.state.call_context = context
+    slot = None
+    upstream = None
+    streaming = False
     try:
-        return _http_upstream_response(await execute_call(context, request.app.state.http))
+        # Caller is trusted; every root HTTP/MCP call enters here, routing children do not.
+        snapshot = await org_flow_control.check(caller.org_id, context.call_ref)
+        slot = await org_concurrency.acquire(
+            caller.org_id, limit=snapshot.max_in_flight if snapshot else None,
+            version=snapshot.version if snapshot else 0,
+            rate_limit=snapshot.rate_limit if snapshot else None)
+        upstream = await execute_call(context, request.app.state.http)
+        if slot is not None:
+            upstream.close = org_concurrency.cleanup_once(upstream.close)
+        response = await finish(request, context, upstream, rest)
+        if slot is not None and isinstance(response, StreamingResponse):
+            response = _LeasedStreamingResponse(response, slot, upstream.close)
+            streaming = True  # The ASGI response now owns cleanup and slot release.
+        return response
+    except (org_concurrency.AdmissionRejected, org_flow_control.PauseRejected) as exc:
+        request.state.call_failure = exc
+        raise HTTPException(status_code=exc.status_code, detail=exc.detail,
+                            headers={"Retry-After": str(exc.retry_after_s)}) from exc
     except CallFailure as exc:
+        request.state.call_failure = exc
         raise _translate_call_failure(exc) from exc
+    except Exception as exc:
+        if answers_db_busy(exc):
+            # The application-wide handler owns the typed 503 and its db_pool event.
+            raise
+        # Starlette still owns the bare 500 response. Record the attempted call before re-raising so
+        # this treg-owned failure is represented once in the same funnel as normal call outcomes.
+        request.state.idem_claim = context.idempotency
+        request.state.call_audited = context.audited
+        request.state.call_cost_micro = context.cost_micro
+        await _stamp_call_exit(
+            request, Response(status_code=500), 500, failure_kind="unexpected_exception")
+        context.idempotency = request.state.idem_claim
+        context.audited = request.state.call_audited
+        raise
     finally:
         request.state.idem_claim = context.idempotency
         request.state.call_audited = context.audited
         request.state.call_cost_micro = context.cost_micro
+        org_traffic.describe(request.scope, tool_name=context.tool_name,
+                             endpoint_id=context.endpoint_id, replay_of=context.replay_of,
+                             provider=context.provider, credential_tier=context.credential_tier,
+                             refused_by=context.refused_by)
+        if slot is not None and not streaming:
+            await slot.finish(upstream.close if upstream is not None else None)
 
 
 @app.api_route(
@@ -234,6 +619,8 @@ async def call_catalog_endpoint(
     caller: Caller = Depends(require_member),
 ):
     """Call one catalog endpoint through the same policy, billing, audit, and relay path as /call."""
+    org_traffic.identify(request.scope, caller.org_id,
+                         api_key_id=caller.api_key.id if caller.api_key else None)
     if not get_settings().claude_connector_enabled:
         raise HTTPException(status_code=404, detail="Claude catalog connector is not enabled")
     request.state.catalog_only = True

@@ -109,8 +109,8 @@ connect.
 
 ## 5. Point your agent at it
 
-An agent needn't learn treg. Point Claude Code (or Codex/Gemini) at **{BASE}/llms.txt** and it's fluent
-in the whole registry - or it just prefixes any upstream URL with the proxy and sends its token:
+An agent needn't learn treg. Point Claude Code (or Codex/Gemini) at **{BASE}/llms.txt** and it sets itself
+up, with **{BASE}/skill.md** as its guide - or it just prefixes any upstream URL with the proxy and sends its token:
 
 ```sh
 curl {BASE}/call/https://api.stripe.com/v1/charges \

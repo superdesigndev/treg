@@ -1,0 +1,21 @@
+row,followers,private,category,posts_sampled,avg_engagement_pct,keep
+1,244997,False,Digital creator,12,3.64,keep
+2,80554,False,,0,,skip
+3,75614,False,,12,11.55,keep
+4,79303,False,Coach,12,3.15,keep
+5,270074,False,Public figure,12,19.11,keep
+6,96800,False,Personal Coach,12,4.51,keep
+7,87682,False,,0,,skip
+8,96601,False,Personal blog,12,3.86,keep
+9,258701,False,Reel creator,12,10.5,keep
+10,,,,,,skip
+11,314712,False,,12,3.21,keep
+12,189475,False,Entrepreneur,0,,skip
+13,182051,False,Reel creator,12,55.38,keep
+14,125310,False,,12,16.74,keep
+15,402202,False,,12,6.08,keep
+16,49334,False,Fitness Model,12,15.69,keep
+17,,,,,,skip
+18,100720,False,Actor,12,3.61,keep
+19,449793,False,,12,4.47,keep
+20,95148,False,,0,,skip

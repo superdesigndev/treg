@@ -1,29 +1,85 @@
 ---
-title: Money — prepaid balance, the ledger, Stripe, and the reports that check it
+title: Money - prepaid balance, the ledger, Stripe, and the reports that check it
 status: shipped
 sources:
+  - src/treg/policy.py
+  - src/treg/catalog/tavily.yaml
+  - src/treg/catalog/tinyfish.yaml
+  - tests/test_tinyfish.py
   - src/treg/domain/money/__init__.py
+  - tests/test_free_credit_video.py
+  - src/treg/domain/money/settlement.py
+  - src/treg/domain/money/allowance.py
+  - tests/test_money_allowance.py
+  - src/treg/infra/kv.py
+  - tests/test_kv_allowance.py
+  - src/treg/application/call/allowance.py
+  - src/treg/application/allowance_sweep.py
+  - tests/test_call_allowance.py
+  - src/treg/domain/asynctasks/__init__.py
   - src/treg/models.py
   - src/treg/application/billing.py
+  - src/treg/routers/billing.py
+  - src/treg/infra/slack.py
+  - tests/test_topup_reconcile.py
+  - tests/test_member_spend_cap.py
+  - src/treg/alembic/versions/0102_member_daily_spend_cap.py
+  - frontend/src/state/billing.js
+  - frontend/src/state/data.js
+  - frontend/src/pages/TeamPage.vue
+  - src/treg/application/enterprise_billing.py
+  - src/treg/routers/enterprise_sso.py
   - src/treg/application/call/idempotency.py
   - src/treg/application/call/intake.py
   - src/treg/application/call/resolve.py
+  - src/treg/application/call/octen.py
+  - src/treg/application/call/service.py
+  - src/treg/application/call/async_bridge.py
+  - src/treg/application/call/route.py
   - src/treg/application/call/reserve.py
   - src/treg/application/call/settle.py
+  - src/treg/application/call/cost.py
+  - tests/test_catalog_v2_runtime.py
+  - src/treg/catalog/tomba.yaml
+  - src/treg/application/asynctasks.py
+  - src/treg/alembic/versions/0017_async_task_record.py
+  - src/treg/alembic/versions/0018_async_resource_ownership.py
+  - src/treg/alembic/versions/0019_async_poll_failures.py
   - src/treg/application/referrals.py
   - src/treg/domain/governance/budgets.py
   - src/treg/infra/__init__.py
+  - src/treg/infra/money_admission.py
+  - src/treg/alembic/versions/0109_callcharge.py
+  - src/treg/alembic/versions/0110_hold_allowance.py
+  - src/treg/alembic/versions/0111_callcharge_overrun.py
+  - src/treg/infra/money_session.py
+  - src/treg/application/hub/runner.py
   - src/treg/infra/stripe.py
   - src/treg/reconcile.py
+  - src/treg/application/key_spend_rollup.py
+  - src/treg/alembic/versions/0070_api_key_spend_rollup.py
+  - tests/test_key_spend_rollup.py
   - src/treg/domain/referrals.py
   - src/treg/api.py
   - src/treg/application/signup.py
+  - src/treg/domain/identity/promotions.py
+  - src/treg/alembic/versions/0033_signup_promo_eligibility.py
+  - src/treg/alembic/versions/0071_signup_promo_claim.py
   - src/treg/routers/admin.py
   - src/treg/routers/billing.py
   - src/treg/routers/call.py
   - src/treg/routers/orgs.py
   - src/treg/routers/referrals.py
   - tests/test_call_architecture.py
+  - tests/test_money_lock_order.py
+  - tests/test_money_admission.py
+  - tests/test_money_admission_application.py
+  - tests/test_money_admission_postgres.py
+  - tests/test_archive_batch_postgres.py
+  - scripts/bench_money_admission.py
+  - tests/test_marketplace_call.py
+  - tests/test_anyapi_cost_ceiling.py
+  - tests/test_asynctasks.py
 related:
   - architecture/catalog.md
   - architecture/proxy-model.md
@@ -33,809 +89,1499 @@ related:
 
 # Money
 
-A catalogued endpoint can be served on **treg's own key** — no provider signup for the caller — which
-means treg pays the provider and bills the team. That needs a balance, a way to top it up, and a way
-to prove afterwards that the numbers were real. Three modules, one job each:
+A catalogued endpoint can be served on **treg's own key**: treg pays the provider and bills the
+team's prepaid balance. Two wallets of treg's spend run through this machinery, and only these two:
+**tier-4 platform keys** (`TREG_PLATFORM_KEY_*`) and **oauth-billed apps**, providers whose upstream
+bills the app owner per use, so even a call on the team's own connection spends treg's credits
+(`MarketplaceCall.billed_oauth`; detection and rates in [auth-secrets](auth-secrets.md)). Both run
+the same reserve, relay, settle path, share the fail-closed daily cap, and are told apart in ledger
+meta by `tier: platform` vs `tier: oauth`. A team's own key on any other provider is never metered.
 
-Two wallets of treg's spend through this machinery, and only these two: **tier-4 platform keys**
-(`TREG_PLATFORM_KEY_*`) and **oauth-billed apps** — providers like X whose upstream bills the app
-owner per use, so even a call on the org's *own* connection spends treg's prepaid credits
-(`MarketplaceCall.billed_oauth`; detection and rates live in
-[auth-secrets](auth-secrets.md)). Both run the same reserve→relay→settle path in `routers/call.py`, share the
-fail-closed daily cap, and are distinguished in ledger meta by `tier: platform` vs `tier: oauth`.
-An org's own key/credential on any *other* provider is never metered — there the org's account pays.
+An endpoint declared `platform_auth: anonymous` is also unmetered: after the own-key tiers miss,
+`_anonymous_offer` relays its verified public route with no credential and creates no reserve,
+settle or release entry. These calls still pass authorization and any per-member daily call cap
+(default unlimited). Sandbox and public-demo teams cannot use the real anonymous fallback.
 
-On an oauth-billed provider a **`free` catalog price is a bug, never a fact**: the upstream charges us
-whatever the route costs, so a zero there means the entry is stale, not that the call is free. The
-estimator must fall through to the provider rate rather than reserve nothing — it used to rest on
-`0.0` being falsy, which read as both "no price recorded" and "the price is nothing", and let the
-catalog publish $0 while the balance lost the fallback. Whatever the catalog publishes for these
-providers is what the reserve takes, and a test walks the provider asserting the two agree.
+On an oauth-billed provider a **`free` catalog price is a bug, never a fact**: the upstream charges
+whatever the route costs. The estimator falls through to the provider rate rather than reserve
+nothing (a `0.0` price must not read as "no price recorded"), and a test asserts the published price
+equals the reserved one.
 
-| Module | Job | May it write money? |
-|---|---|---|
-| `domain/money` | the only code path that moves money | **yes — exclusively** |
-| `application/billing.py` | billing policy, transactions, and webhook orchestration | no (it calls `ledger.topup`) |
-| `infra/stripe.py` | the only Stripe SDK, signature verification, and network adapter | no |
-| `reconcile.py` | read-only reports that check the ledger against the world | no |
-
-The money seam is one function: `ledger.topup(org, amount_micro, payment_ref)`. Billing orchestration
-asks the Stripe adapter to authorize or verify a payment, then asks the ledger to stage the credit
-and owns the commit that lands it; neither adapter reaches into the ledger.
+Only `domain/money` writes money. `application/billing.py` owns billing policy, transactions and
+webhook orchestration and calls `ledger.topup`; `infra/stripe.py` is the only Stripe SDK user
+(signature verification, network); `reconcile.py` is read-only. Billing asks the Stripe adapter to
+authorize or verify a payment, then asks the ledger to stage the credit and owns the commit.
 
 ## Units: integer micro-USD, everywhere
 
-1 micro = 1e-6 USD. A catalog call costs ~600 micro ($0.0006), so **cents cannot represent one call**
-and floats cannot be summed for a year without drifting. The only float is the margin *rate*, turned
-into an integer immediately (`with_margin`). Stripe speaks integer **cents**, so 1 cent = 10,000
-micro and every crossing goes through `micro_to_cents` / `cents_to_micro` in `application/billing.py` — the one
-file where two unit systems meet. Whole dollars appear only in settings and in what a human types.
-Every `*_micro` value has a display-only `*_usd` twin: **never compute against the USD field.**
+1 micro = 1e-6 USD. A catalog call can cost a fraction of a cent, so **cents cannot represent one
+call** and floats drift when summed. The only float is the margin *rate*, turned into an integer
+immediately (`with_margin`). Stripe speaks integer cents (1 cent = 10,000 micro); every crossing goes
+through `micro_to_cents` / `cents_to_micro` in `application/billing.py`. Every `*_micro` value has a
+display-only `*_usd` twin: **never compute against the USD field.**
 
-## The four tables and the invariant
+## The money tables and the invariant
 
-`Org.balance_micro` (materialized) · `CreditBlock` (one funding event, and what is left of it) ·
-`Hold` (an open reservation) · `LedgerEntry` (append-only journal).
+`Org.balance_micro` (materialized), `CreditBlock` (one funding event and what is left of it), `Hold`
+(an open reservation), `LedgerEntry` (append-only journal).
+
+`CallCharge` (revision 0109) is a queue beside them: what one call cost, keyed by `call_id`, held
+until the transaction that applies it to the blocks deletes it. `allowance.record_charges`
+(`domain/money/allowance.py`) queues a batch in one statement, applies the margin (a call whose
+real cost was never learned is charged what it set aside, as at `settle`), and skips a `call_id`
+already queued. `allowance.fold_charges_in_transaction` applies up to a batch of one
+team's queued rows: it locks the team's allowance hold, deletes the rows it claims, draws each
+charge from the blocks in the usual order, and writes that call's `settle` entry stamped with the
+fold's instant (not the call's, so a reader that pages the ledger by time never has a row appear
+behind its cursor). What the calls set aside comes out of the allowance hold; their overruns, and what the hold
+cannot cover, come straight out of the balance, as an overrun does at `settle`. A charge names
+the hold its call set money aside from (`callcharge.hold_created_at`, revision 0111), and only
+that hold pays for it: a charge written late, after its hold was closed and another opened,
+comes out of the balance whole, because the hold in its place stands behind the calls it
+admitted. The balance gate of `reserve` and the daily figure count such a charge the same way
+before it is applied (`_charge_parts`). A charge can also land after its team was deleted.
+It is then nobody's (`allowance.team_exists`): the charge writer neither queues it nor
+writes its paid-question mark, and a fold drops one already queued (`Folded.orphaned`, logged)
+instead of writing a ledger entry for a team that is not there. A team's deletion also
+retires its counter in the shared store, which admits calls by the team's number alone. If
+the deletion then does not commit, the hold is still there and the store will take nothing
+more for it. A refill that sees a counter of a later epoch than the hold adds nothing to it
+and returns nothing from it, and leaves its deadline where it was: calls admitted before the
+retiring still stand on that money. The team's calls take the exact path until the idle sweep
+closes the hold, and the refill after that opens a new one. A
+queue row's primary key stops
+a second recording only until the row is folded. Only a rewrite of charges whose first write went
+unconfirmed can record a call twice, and it takes back, in its own transaction, any row it has
+just queued whose call already has a `settle` entry (`drop_settled_charges`): the entry was
+committed before that insert could succeed, and the new row is the rewrite's own until it
+commits (its insert waits for a fold of the first row that is still in progress). So a settled
+call is never left queued: a fold applies every row it claims, and the readers of the queue
+(`committed_today`, `_queued_unbacked`) count every row, with no lookup in the ledger. That
+lookup was one index probe per queued row on random call ids, the larger share of a fold's
+time. A row left queued by a build whose rewrite did not do this is removed by the upgrade
+(revision 0114); deploy.md states what an upgrade from such a build needs. The daily counter moves as it does at `settle`: consumed goes in, and
+the covered part comes out only when the hold was opened today.
+
+The allowance runs on PostgreSQL only (`enabled_for` is false elsewhere). It leans on row locks
+to order a refill, a fold, a charge write and a team's deletion, and on a team's number never
+being given to another team; SQLite offers neither.
+
+A team's allowance is one `Hold` row (`allowance:<org id>`, `allowance` true; revision 0110), so the
+invariant below counts it like any other hold. `allowance.refill_allowance_in_transaction` folds
+what its caller asks for (`fold_limit`, or the whole queue with `fold_all`), then moves an amount from the balance into that row with `reserve`'s conditional UPDATE and
+a `reserve` entry, opening the row when there is none (an insert that ignores a conflict decides
+between two openers). A balance that cannot cover the amount adds nothing and raises nothing: the
+fold stands and the caller reads `added_micro == 0`. The row keeps its `created_at` for life, and
+the refill returns it as the `epoch` an outside counter must carry. A hold opened on an earlier
+UTC day is not in today's counter, so its top-ups stay out too and its folds add what they
+consume. `allowance.close_allowance_in_transaction` folds everything queued and returns money with
+a `release` entry: all of it, deleting the row, or at most a given amount, keeping the row so
+calls already admitted finish against what is left. Every allowance operation locks the allowance
+hold first, then blocks, then the org row, and locks the blocks once: a close claims its whole
+backlog in batches and only then applies it, because locking the blocks again per batch could meet
+one funded in between, out of primary-key order, and deadlock with a settle that holds it. For the
+same reason a transaction folds once. `settle`, `release` and the stale-hold sweep skip a hold
+marked `allowance`. Each refill writes in `heartbeat_at` the instant until which calls may be
+admitted against the hold (now plus `money_allowance_fresh_s`, never earlier than the one
+already there). `allowance.close_stale_allowance_in_transaction` closes in full only a hold whose
+instant passed before a given one, checked under the hold's lock so a refill that lands first
+keeps it;
+`allowance.stale_allowance_orgs` lists the candidates.
+
+The hold is the authority; the shared store (`infra/kv.py`) only mirrors what of it is still
+unspent, as one hash per team: `avail`, the hold's `epoch`, the instant `until` which takes are
+admitted, two counts, `frozen` and `thawed`, and `run`, the run of the store's server that
+built the hash. The operations are atomic scripts:
+
+- `allowance_take` subtracts an amount and returns the epoch, when the counter holds that much, is
+  not frozen (`frozen == thawed`) and the store's clock is not past `until`.
+  Given a lead time and a low mark, it negates the epoch for one caller at a time once the
+  counter is that close to `until` or that low: the take stands, and the caller refills.
+  `asked` holds when it last did and `asked_for` the `until` it asked about; an add of more
+  than nothing clears `asked`.
+- `allowance_give_back` returns part of a take, only to a counter of the same epoch.
+- `allowance_add` adds what a refill just committed to the hold. It sets `until` from the instant
+  the refill wrote on the hold, never from when the add lands, and never moves it back: a refill
+  published late admits calls for less time or none. It thaws the counter only up to the freeze
+  count its caller read before its transaction, so a freeze that landed since stays in force,
+  and only when that count lies between the hash's own two counts. The counts of a new hash
+  start at a random number, not at zero: the store can lose a hash and build it again under
+  the same epoch, and a count read from the lost one is then not a count of the new one, so it
+  neither thaws a freeze of the new hash nor leaves it frozen for good. No clock is involved.
+- `allowance_freeze` raises the freeze count: what the counter holds is kept, but no call is
+  admitted until an add whose caller read the count after this. A freeze that finds no hash
+  leaves one holding only the count: a refill may have committed and not yet published, and
+  the counter its add builds then starts frozen.
+- `allowance_state` reads `avail`, the two counts and the store's run, for a refill.
+- `allowance_drop` empties the counter of a given epoch, returns what it held and freezes it,
+  keeping the epoch: that figure can be released from the hold of that epoch, which stays
+  while calls already admitted keep theirs. The release names the epoch too
+  (`close_allowance_in_transaction(epoch=)`) and is checked under the hold's lock, so a drain
+  that stalls between the two steps returns nothing from a hold opened since.
+- `allowance_take_up_to` takes an amount or all the counter holds when that is less.
+- `allowance_retire` ends the counter of a hold being deleted, returning what it held and leaving
+  the next epoch, with the old freezes, behind for a given time.
+
+The counter is only as good as the store's memory of it. A store that loses a hash is
+handled: the counts above, and a refill that rebuilds from the hold. A store that goes BACK to
+an earlier state of the same hash would undo the takes and freezes of the lost interval and
+offer that money a second time, and it does so by starting again: a restart can come back
+without the last writes it acknowledged, a restore from a snapshot starts a server on it, a
+promoted replica is another server. Each start is a new run (`run_id`), so a hash names the
+run that built it (`run`), and every operation first strips, in its own atomic step, a hash
+that names another run or none of what it offers (`avail`, `epoch`, `until`), leaving its
+two counts under the present run. A counter from before a restart is therefore a lost one:
+takes find nothing, a refill reads no counter, adds a whole chunk to the hold and builds the
+counter from that alone, and what the old counter had not spent stays in the hold until a
+close. The counts stay because a hash that names no run may be a freeze a process of an
+earlier build wrote a moment ago, in this run, after a refill had read the team's debts:
+an add that cleared it would publish over that debt. Keeping a freeze that is no longer
+needed costs one refill that folds the queue before it thaws.
+A refill that starts after the restart does not need the freezes it undid: its
+transaction reads what queued overruns owe (`_queued_unbacked`), and a freeze sent after it
+lands on the new hash. A refill that read the counter BEFORE the restart does need them: a
+freeze sent after its transaction read the debts may be among the writes the restart
+dropped, and its add would then build an unfrozen counter. So `allowance_state` reports the run with the counter, the add names
+it, and an add that arrives in another run is refused as `"stale"`: the money stays in the
+hold, and the next refill reads the debts again. A store that cannot report its run answers
+no operation, and calls take the hold path.
+
+A refill that leaves the counter with nothing to offer leaves the hold's deadline where it
+was: it added nothing, and the counter is gone or shows nothing. The deadline is until when
+calls may be admitted, and such a refill admits none; calls admitted earlier are covered by
+the stamp they were admitted under, and a deadline moved on by every failed attempt would
+keep the sweep from returning what is in the hold for as long as calls arrive. That is the
+team whose credit was all in its hold when the counter went, and it stays so after a refill
+that needed nothing (the one ahead of the deadline) has published an empty counter for the
+hold: until the sweep closes the hold its calls see only the balance.
+
+What this does not see is a server that goes back to older data without starting again: a
+reload in place, or one that kept running, took older data from another primary and became
+primary again, where the hashes it built before still name it. Nor does a process of a
+build from before this check anything. There the old reasoning stands, and nothing bounds it: calls in flight
+under the same epoch still give back to the stale hash, refills still add to it and move
+`until` on, a refill takes back only what the counter holds above the whole hold, and a
+charge the team's credit blocks cannot cover is taken only as far as they go
+(`block_shortfall_micro`), which leaves the platform paying the provider for the rest. That
+state ends only when the hold is closed and its counter retired; [deploy](../ops/deploy.md)
+has the conditions for listing a team again.
+
+A counter speaks only for the hold it was built for. A refill reads the counter's epoch with
+what it shows, and what it shows counts toward the refill only when the hold it then finds has
+that epoch; a hold it opens, or one the counter was never built for, gets a whole chunk, and
+publishing it replaces the old counter. So a counter the sweep could not retire (it closed
+the hold and the write did not reach the store) neither keeps a team off the allowance nor
+shrinks the next hold by a figure nothing stands behind.
+
+Epochs only grow (a later hold has a later `created_at`), and that is the fence: an add replaces
+a counter of an older epoch, and is refused as `"stale"` when the stored epoch is newer, so a
+refill whose add arrives after its hold was closed and another opened cannot put the closed hold's
+money back on offer. The fence lasts as long as the hash. Each operation returns `None` when the
+store cannot answer, and the in-process store always does: a per-process figure cannot be the one
+every process spends from. Add to the counter only after the refill's commit. In that order a
+failure between the two leaves money in the hold that no counter offers, which a close returns;
+the other order would offer money the hold does not have. The same is true of a counter that
+expired or was lost: its unspent part stays in the hold until a close.
 
     balance_micro == sum(block.remaining_micro) - sum(open hold.amount_micro)
 
-The balance is a column rather than a query because `reserve` has to be one conditional UPDATE (see
-below). Every operation writes its `LedgerEntry` **in the same transaction, synchronously,
-in-request**. Never route a ledger write through `audit.py`: it drops rows past its queue bound and
-swallows exceptions, which is right for analytics and fatal for money.
+The balance is a column because `reserve` must be one conditional UPDATE. Every operation writes its
+`LedgerEntry` **in the same transaction, synchronously, in-request**. Never route a ledger write
+through `audit.py`: it drops rows past its queue bound and swallows exceptions.
 
-## The five operations (`domain/money`)
+**Column width.** A Postgres `integer` holds at most $2,147.48 in micro-USD. Running totals and caps
+(`Org.balance_micro`, `daily_cap_micro`, the auto-top-up amounts, `CreditBlock.amount_micro` and
+`remaining_micro`, `Hold.amount_micro`, `TagBudget`'s caps, `spent_today_micro`) are `BIGINT`
+(revision 0093); `autotopup_monthly_cap_micro` is `BIGINT` (revision 0103). Per-row journal amounts
+(`LedgerEntry`, `CallRecord`, `TagSpend`) stay `integer`: one row holds one call's or one top-up's
+amount, which `billing.TOPUP_MAX_USD` keeps far below the limit, and changing a type there rewrites a
+very large table under an exclusive lock. A new column that sums or caps money is `BIGINT` from its
+first revision.
+
+`AsyncTaskRecord` is the durable owner of an existing hold after a metered asynchronous submission;
+it creates no other money movement. A `/tasks/` poll is an ordinary call and settles as one
+([tasks](tasks.md)).
+
+
+## Allowance: one hold for many calls
+
+Off by default: `money_allowance_org_ids` lists the teams, and the shared key-value store must be
+configured. For a listed team, an eligible call (`reserve._allowance_eligible`) reserves with one
+atomic take from the team's allowance counter and touches no balance row, so its calls no longer
+queue on the team's money lease twice each.
+
+Eligible: a direct call (not a child of a route, a hub run or overflow), synchronous, on treg's
+platform key, with no tags, no `Idempotency-Key`, a member with no daily spend limit, a provider
+outside the trial pools, an endpoint any credit may pay for, and a price above zero. Every other
+call keeps its own hold, because something reads that hold: the tag and member rows written with
+it, the async task or routed parent that closes it later, the idempotency check that asks whether
+money moved, the purchased-credit gate.
+
+`application/call/allowance.py` is the whole runtime:
+
+- **take.** `store.allowance_take`. On a miss, one process takes a short lease and refills; the
+  others retry the take for a bounded time. Anything else (the store cannot answer, the wait
+  ran out, the refill failed) returns the call to the exact path, which is always correct.
+- **A busy team is refilled before a call has to wait.** A take that leaves the counter within
+  half its lifetime of the deadline, or under a quarter of a chunk, answers its epoch negated:
+  the call has its money, and that one caller (the store asks one at a time, and again only
+  after a pause, which is for a counter that stays low or a refill that failed: a deadline it
+  has not asked about yet asks at once, since a refill opens a window that may be shorter than
+  the pause, and so does the take that brings the counter from at or above the low mark to
+  below it, or any low take after an add that brought money) starts a refill beside itself. Nobody waits on
+  that refill, so it waits for the team's lease far longer than a call does. It asks for no
+  amount of its own: it brings the counter back to a chunk, and a balance that cannot pay for
+  that leaves the counter with what it has, where an in-line refill that cannot serve its call
+  drains the allowance. The call that asked was served, so its price is no measure of the next
+  one, and setting it aside again would take that much out of every other call's reach. The
+  store asks one caller once, so the process must not lose an ask: one that arrives while the
+  team's refill is still running (it may already have published its add) is kept, and the same
+  task refills again when it is done; what follows a refill, the auto top-up read, runs on its
+  own and holds nothing back.
+- **A refill reads the daily cap again.** The cap a refill is handed is the one its call saw,
+  and a refill can wait some time for its turn. `refill_allowance_in_transaction` therefore
+  also reads the team's cap in its own transaction, where it reads the day's spend, and keeps
+  to the stricter of the two. The read locks the team's row, with the lock an update of it
+  takes and no stronger (`FOR NO KEY UPDATE`): the fold before it may already have updated the
+  row, and a top-up holds a key-share lock on it from its credit block's foreign key while it
+  waits to update the balance, so asking for the full row lock would have each wait for the
+  other. A cap change still open in
+  another transaction would otherwise be missed, because the refill's balance update waits for
+  that change and then checks only the balance. The row is the last lock in money's order
+  (hold, blocks, team), and the day's spend read after it is under the same lock. Without it every call of a busy team met a
+  lapsed counter at once each time the lifetime ran out, the ones that did not get the lease
+  left for the exact path, and the refill then queued behind them on the money admission lease:
+  the exact path serves one call at a time, so the team stayed there.
+- **refill.** Under the money admission lease, like a reserve: reap stale holds, then
+  `refill_allowance_in_transaction` brings the counter up to `money_allowance_chunk_micro`;
+  after the commit, `store.allowance_add`. A refill does not fold: calls wait on it, and the
+  queue is the background loop's. Only a frozen counter's refill folds, and then the whole
+  queue, so the balance it reads is the true one. What a refill may add is judged as an exact
+  reserve judges it, against the balance less what the queue will take from it
+  (`_queued_unbacked`), read after the debit: a charge queued for more than its call set aside
+  is owed from the moment it is queued, and its freeze can reach the counter after the next
+  refill. A refill that finds the balance short of that undoes its debit exactly (the day's
+  counter is taken back from the day it was counted on, not by the clock), adds nothing, and
+  the counter is drained.
+  A team with a daily cap
+  gets no refill that could take the day past it. The number a cap is checked against is
+  `allowance.committed_today`, one statement over the rows themselves: today's counter, plus all
+  of an allowance hold opened on an earlier day (it is not in today's counter, only what a fold
+  consumes from it is, yet all of it can be spent today), plus the overruns of queued charges,
+  plus what queued charges set aside beyond what the hold has left. The refill reads it after its fold, under the hold's lock, and adds the amount asked
+  for. The exact path's cap check reads the same number for every team, listed or not: a hold
+  and its queued charges outlive the switch. When the counter
+  still cannot cover
+  the call (balance or cap), or the worst case already exceeds the cap, the counter is emptied and that amount released back to the balance,
+  the call takes the exact path, and the team is not tried again for a few seconds. A team with
+  less than a chunk left is therefore served by the exact path.
+- **finish.** `_platform_settle` and the cancel cleanup end a take exactly once (`mk.allowance_epoch`
+  is cleared first). A billable call queues its charge, then gives back what it did not use; a
+  call that is not billable gives everything back and writes nothing. Charges of calls finishing
+  within `money_allowance_linger_ms` share one insert, with the archive's paid-question marks,
+  and each call waits for its batch to commit before it answers. The charge is queued before
+  anything is awaited, so a cancel cannot lose it. A write that raises twice proves nothing
+  about whether it committed, so such rows are never treated as "not charged": the call is
+  told the charge, its money stays out of the counter, and the writer keeps writing them in
+  the background until they land (recording a call twice charges it once). A batch is answered
+  a team at a time: only the teams whose write or freeze failed are written again and reported
+  unconfirmed, and a team whose rows are committed has its calls confirmed at once, without
+  waiting for another team's retry. With the confirmation the writer says whether a charge of
+  the team in that batch took from the balance; a call told so answers with what the ledger
+  took for it even when the counter is no longer frozen, since a refill can fold the queue and
+  lift the freeze before the call is told. The rewrite marks
+  the paid question of each row that was new to it and whose call has no `settle` entry yet (a
+  row is also new when the first attempt's row was applied and deleted since, and that attempt
+  marked it). While any charge is unconfirmed the process admits no new call to the allowance.
+  A call takes a place before its take is awaited and hands it to the writer, which keeps it
+  until the row is known written; a call is admitted only while places remain, so no admitted
+  call's charge is ever cut from a queue. The take is recorded on the call before anything else
+  is awaited, so a cancel finds it and returns it with its place. If the process dies first, the charge is lost and its money stays in
+  the hold until the hold is closed.
+- **A call that cost more than it set aside.** The charge row keeps that part apart
+  (`callcharge.overrun_micro`, revision 0111). A fold takes from the hold only what calls set
+  aside; an overrun comes out of the balance, as at `settle`, so the hold keeps what other calls
+  in flight set aside and a later give-back is still backed. The balance may not have it, so the
+  counter is frozen, and only a refill that has applied that charge and read the balance
+  afterwards may let calls spend again. Three things make that hold. The charge writer, not the
+  call, freezes the counter, after the charge is committed and before the call is told: a refill
+  may thaw only the freezes it read before its transaction, and only a transaction that starts
+  after the commit can have read this one, so it has the charge in front of it; a call cancelled
+  while it waited changes nothing, and a charge written late freezes when it lands. The
+  writer freezes the same way for a charge its own hold no longer backs, whatever it cost: that
+  charge too comes out of the balance. It learns which in the transaction that writes the
+  rows, reading the teams' hold rows under a key-share lock first (`allowance.holds_behind`), so
+  a close that deletes the hold waits for the write and applies the charge to its own hold, or
+  is done and the charge is known to owe the balance. A fold and a refill only update the row
+  and take the lock an update takes (NO KEY UPDATE), which that key-share lock does not
+  conflict with: PostgreSQL lets a later sharer pass a waiting exclusive lock, so a fold asking
+  for the full row lock under a steady stream of charge writes would wait for a gap between
+  them, holding its connection, and every charge write would wait for each fold. What the
+  write reads is the hold's creation instant, which no update changes. On SQLite, which has no row locks and begins a
+  transaction only at its first write, the rows are inserted first and the holds read under
+  the write lock that took. The write runs in a money session, so a writer that stalls
+  holding hold rows is ended like any stalled money transaction; and a team's deletion locks
+  the allowance hold before it deletes the team's queued charges, the writer's order
+  (`teams.lock_allowance_holds`). The writer writes one team per transaction, so it never
+  holds two teams' hold rows and no order between them exists for a deletion of several teams
+  to contradict; and it freezes a team's counter as soon as that team's rows are committed,
+  not when the whole batch is. A team whose write or freeze fails does not stop the others in
+  the batch from being written. A freeze
+  that does not reach the store leaves that team's rows unconfirmed, to be gone through again. A
+  refill of a frozen counter folds the whole queue, not one batch. And a refill that then finds
+  the balance below zero adds nothing and drains the counter back to the balance, so the exact
+  path's balance gate decides: the stop the next reserve is after an overrun there. Each refill
+  also compares the counter with the hold it just committed and takes back anything above it.
+- **A settlement outside the allowance that took more than its hold** (a tagged call, a routed
+  child, an async task) freezes the counter the same way, after its commit: it may have used
+  the team's last credit, and calls admitted from the counter would not meet the balance gate
+  its own next reserve does. Whether to freeze is read in the settlement's own transaction,
+  after its ledger write: the team has an allowance hold (`allowance.has_allowance`). The hold
+  row decides, not the process's list of teams, which two processes can read differently
+  while a setting rolls out; and a refill that has not committed yet waits for the same
+  balance row, so it reads the balance after the overrun. The freeze is owed from the line
+  after the commit: asking for it is not a coroutine, it hands the freeze to a task of its own
+  before the request awaits anything, so a cancelled request has still handed it over. The
+  task sends until the store has taken it, and the process admits no call from that team's
+  counter meanwhile. There is a task per team, so a team the store keeps refusing does not
+  hold up another's freeze; and a freeze asked while the task waits to try again is tried at
+  once, so the settlement that asked waits for one attempt, never for the pause. One freeze taken stands for every settlement that asked before it was
+  sent and for none that asked while it was on its way; those get another. A process that
+  dies first loses the freezes it owed.
+- **The exact path and a queued charge.** A charge that is committed and not yet folded has
+  not moved the balance. `reserve`'s gate subtracts what the queue will take from the balance
+  (overruns, and what was set aside beyond the hold), so a call on the exact path cannot set
+  that money aside again while the fold is pending.
+- **What a call is told it was charged.** Normally the charge: its money was set aside, so the
+  ledger will take exactly that. While the counter is frozen that may not be true, because the
+  team's credit may not cover every queued charge. A call that ends then (the one that overran,
+  and any other that reads the counter frozen once its charge is written) folds the team's queue
+  at once and answers with what its `settle` entry took, which is less than the charge when the
+  blocks ran out (`block_shortfall_micro`). When another process holds the team's lease it is
+  folding too, and the call waits a bounded time for its entry; past that, or when the entry
+  cannot be read, it answers with the charge and logs it. Once its charge is queued a call is
+  never answered as free because something later failed.
+- **Auto top-up** is asked after a refill, the only moment the balance moved. A refill a call
+  started beside itself commits after the call has its take, so the reserve hands it the ask
+  and it is made, in a task of its own, once that refill has committed and given up the lease.
+
+- **One place folds the queue.** `application/allowance_sweep.py` runs a loop wherever
+  background work runs. Each pass goes through every team with queued charges, listed or
+  not, a page of teams at a time in the order of their numbers, and folds them a team at a time, a batch per transaction (`fold_queued_once`), on the background
+  pool; a pass that folded something is followed by the next at once, an idle one by a short
+  pause. Request processes only queue charges: neither a refill nor the charge writer folds.
+  So the connections folding uses are one per process running the loop, whatever the traffic
+  and however many teams are busy, and none of them comes from the pool requests use. A team
+  another process is working on (its lease is taken) is skipped, not waited for; so is a team
+  whose other money sessions hold the admission lease (the fold asks `admit` to refuse after a
+  short wait instead of falling back), and the next pass comes back to it. The idle sweep
+  waits no longer than that either: it runs first in the same loop, and it too goes through
+  every idle hold a page of teams at a time. A pass
+  leaves a team after a few batches so one long queue does not keep the others waiting. Calls
+  keep taking from the counter meanwhile, since a fold moves only money their takes already
+  removed from it: until its charge is folded, a call's money stays in the hold. A call's
+  `settle` entry, and every report read from the ledger (today's spend among them), therefore
+  trails the call by about a pass, longer while a team queues faster than a batch is applied.
+  A daily cap does not trail: `committed_today` counts the queue. Three folds run outside the
+  loop, on the request pool, each because the next step needs the balance with every charge
+  applied: a call that finishes on a frozen counter and must answer with what the ledger took
+  for it (`_settled`); a frozen counter's refill; and a drain, which folds the team's whole
+  queue before it returns the counter's money to the balance (a refill found no room, by
+  balance or daily cap, and the team goes back to the exact path). A long queue makes that one
+  request slow; the order, fold then return, is what keeps the returned money from being spent
+  twice.
+
+- **One money session per team.** A refill, a drain, a fold and the sweep's close each read the
+  hold and then write it. All of them hold one lease in the store for the team
+  (`allowance.money_key`), and a per-team lock inside the process. PostgreSQL would make them
+  wait on the hold's row lock anyway; on SQLite, which has no row locks, the lease is what keeps
+  two processes from both reading before either writes. A session that outlives the lease is
+  still safe on PostgreSQL and is not on SQLite. When the store cannot answer nobody can take
+  the lease: the sweep still writes on PostgreSQL and puts the write off on SQLite.
+
+What can go wrong lands on one side only. A take the process never finishes (a crash), a give-back
+the store did not apply, or a counter lost with the store leaves money in the allowance hold that
+no counter offers: unavailable, not spent and not charged, until the hold is closed. Nothing here
+offers money the hold does not have.
+
+**The idle sweep** (the same loop in `application/allowance_sweep.py`, once every sweep interval,
+listed teams or not) is what returns that money. A refill writes on the hold the instant
+until which calls may take from the counter and publishes that same instant to the counter, and
+a call lives at most `hold_ttl_s()`, so a hold whose instant passed that long ago, plus a margin,
+has nobody spending from it. The margin covers only the difference between clocks (the
+processes' and the store's). The sweep reads the instant from the row and never recomputes it
+from its own settings, so processes running different `money_allowance_fresh_s` during a deploy
+agree, and a process that stalls between a refill's commit and its publish cannot widen the
+window. The sweep closes each
+such hold in full (`close_stale_allowance_in_transaction`, under the release lease), then retires
+its counter so a late writer is refused. A charge recorded after that still finds no hold and
+comes out of the balance. While a team keeps calling, its hold is never idle and what a crash left
+in it stays there; the team's balance is lower by up to a chunk plus that, and the hold is in
+`/balance`.
+
+## The six operations (`domain/money`)
 
 | Op | Effect |
 |---|---|
-| `grant` | new promotional block, balance up (org creation, the referral bonus, the top-up bonus) - staged; committed by the application (signup, billing) or the referrals saga checkpoint |
-| `topup` | new purchased block, balance up (after Stripe authorized) - staged; committed promptly by the application (billing) |
-| `reserve` / `reserve_in_transaction` | balance down by the estimate, `Hold` opened — committed by the compatibility wrapper or the call application |
-| `settle` / `settle_in_transaction` | blocks down by the observed cost, hold closed, difference refunded - committed by the compatibility wrapper or the call application |
-| `release` / `release_in_transaction` | hold closed, balance refunded in full - committed by the compatibility wrapper or the call application |
+| `grant` | new promotional block, balance up (org creation, referral bonus, top-up bonus) |
+| `topup` | new purchased block, balance up (after Stripe authorized); committed promptly by billing |
+| `reserve` / `reserve_in_transaction` | balance down by the estimate, `Hold` opened |
+| `settle` / `settle_in_transaction` | blocks down by the observed cost, hold closed, difference refunded |
+| `release` / `release_in_transaction` | hold closed, balance refunded in full |
+| `revoke_in_transaction` | a refunded payment's blocks down, balance down by the same, never below zero |
 
-All five primitives stage only: `grant`, `topup`, `reserve_in_transaction`, `settle_in_transaction`,
-and `release_in_transaction` never commit or roll back the caller's transaction. Commits are owned by
-the application (signup, billing, the call application) or by the two documented exceptions: the lazy
-stale-hold reap boundary (reserve's sweep calls the public committing `release`, so each old refund
-remains durable even if the new reservation returns 402), and the referrals saga checkpoints
-(`domain/referrals` commits at named recovery points - claim, stamp, qualify - on a session the
-application opened). `tests/test_call_architecture.py` enforces the no-commit boundary over the real
-bodies of all five, with a mutation self-check that proves an injected commit is still detected.
+The primitives stage only and never commit or roll back. Commits belong to the application (signup,
+billing, the call application) or the two documented exceptions: the lazy stale-hold reap (reserve's
+sweep calls the committing `release`, so each old refund stays durable even if the new reservation
+returns 402) and the referrals saga checkpoints (claim, stamp, qualify). `tests/test_call_architecture.py`
+enforces the no-commit boundary over the real bodies, with a mutation self-check.
 
-Release metadata distinguishes a failed call from a normal non-billable provider response, and says
-which side failed. A provider that answered 5xx releases as `provider_failed_<status>`; a call treg
-never got an answer for (timeout, connect error, SSRF refusal, a failed oauth refresh) releases as
-`call_failed_<status>`; excluded provider statuses such as a per-success 400 retain
-`not_billable_<status>`. Both failure kinds are usually a 502, so the prefix is what tells them
-apart — and it has to, because the error evidence that would otherwise explain the difference is
-purged after 14 days while the journal is permanent.
+Release metadata says which side failed: `provider_failed_<status>` for a provider 5xx,
+`call_failed_<status>` when treg got no answer (timeout, connect error, SSRF refusal, failed OAuth
+refresh), `not_billable_<status>` for excluded provider statuses. Both failure kinds are usually a
+502, and error evidence is purged after `ERROR_EVIDENCE_TTL_DAYS` while the journal is permanent, so
+the prefix is the lasting explanation.
 
-A caller or task cancelled after reserve releases as `call_cancelled`. Compensation runs under a
-shield before the cancellation is re-raised: it closes an acquired upstream response exactly once,
-releases the hold, and gives back any pending idempotency label. The release uses the call reference
-minted before reserve rather than the later `MarketplaceCall.call_id`, because a database commit may
-have succeeded before `reserve` returned to assign that field. The ledger's conditional hold claim
-makes both outcomes safe: a committed hold is refunded and a rolled-back reserve is a no-op. A DB
-failure still leaves the committed hold to the lazy reaper. The same shielded cleanup covers
-cancellation after an idempotency claim but before reserve; with no hold yet, it gives the label
-back immediately so the next attempt does not wait for claim expiry.
+A call cancelled after reserve releases as `call_cancelled`. Compensation runs under a shield before
+the cancellation is re-raised: it closes an acquired upstream response once, releases the hold and
+gives back any pending idempotency label. The release uses the call reference minted before reserve,
+because the commit may have succeeded before `reserve` returned; the conditional hold claim makes a
+committed hold refunded and a rolled-back reserve a no-op. A release that itself fails is logged and
+left to the reaper (`_platform_settle` never raises); the response still says `X-Treg-Cost-Micro: 0`,
+but the balance catches up only when the hold is reaped.
 
-A release that itself fails is logged and left to the reaper (`_platform_settle` never raises).
-The response still reports `X-Treg-Cost-Micro: 0`, which is what the call ends up costing — but the
-balance only catches up when the hold is reaped, so a caller reading its balance immediately after
-a failed call may still see the reserve withheld.
-
-**The gate is one statement**, which is the heart of the design:
+**The gate is one statement**:
 
 ```sql
 UPDATE org SET balance_micro = balance_micro - :est WHERE id = :org AND balance_micro >= :est
 ```
 
-The WHERE is the check and the SET is the debit, so the *database* decides who gets the last cent.
-`rowcount 0` means insufficient funds → `InsufficientBalance` → a 402 the agent can act on. No
-SELECT-then-UPDATE, no application lock, same behaviour on SQLite and Postgres: N concurrent callers
-against a balance that affords K get exactly K successes.
+The WHERE is the check and the SET the debit, so the database decides who gets the last cent.
+`rowcount 0` is `InsufficientBalance`, a 402 the agent can act on. No SELECT-then-UPDATE, no
+application lock: N concurrent callers against a balance that affords K get exactly K successes.
 
-**Block consumption order** is promotional-first, then oldest-purchased-first. Promo credit is a
-marketing expense and never refundable; purchased credit is a deferred-revenue liability and *is*
-refundable and disputable — so spending promo first keeps the refundable pool as small as possible
-for as long as possible.
+A team with an allowance can also owe money the balance column does not show yet: what its
+queued call charges (`CallCharge`, below) will take when they are applied, their overruns and
+what they set aside beyond what the allowance hold has left. A reserve must not set that aside
+a second time, and it must decide on a balance and a queue that belong to one moment. So the
+order is: the gate above debits, which also holds the team's row until the transaction ends;
+then the queue's team index is read once. With nothing queued, which is nearly every reserve,
+that is all. With something queued, one statement reads the debited balance less what the
+queue owes; below zero, the debit is put back in the same transaction and the reserve is
+refused with a 402 carrying what was free; a reserve of nothing (a call estimated at zero and
+charged what it turns out to cost) is checked the same way, and the gate's own refusal
+reports the same figure, the balance less what the queue owes. Reading the queue before the debit, or inside the
+debit's own statement, would not do: PostgreSQL's READ COMMITTED rechecks a row the statement
+waited for against the snapshot it began with, so the queue could be older than the balance,
+letting a reserve spend a refund that a queued overrun already owes, or refusing one because a
+fold was counted in both. A charge queued after the read is one the reserve was ahead of.
 
-**Margin is applied inside the module** (`with_margin`), at reserve AND settle, and the rate in force
-is recorded on every entry — so a rate change cannot retroactively rewrite what a call cost, and two
-call sites cannot disagree.
+**Block consumption order** follows `_KIND_ORDER`: the free kinds (promotional, referral, bonus)
+first, then `earned`, then purchased, oldest first within a kind. Promo
+credit is marketing spend and never refundable; purchased credit is a refundable, disputable
+liability, so spending promo first keeps the refundable pool small.
 
-**The hold reaper is lazy**, at the top of the shared reserve operation, scoped to the calling org. A crash between relay
-and settle would otherwise strand that money forever. A background timer would need a scheduler and
-leader election on a multi-instance deploy, and would still only run on a timer; sweeping one org's
-stale holds is paid by the caller who benefits from it, and an org that never calls again has no
-balance to strand. Each stale release commits independently before the new balance gate. A later 402
-rolls back only the failed reservation, never a refund the reaper already made durable.
+**Purchased-only holds.** A platform in `capabilities.yaml` declaring `purchased_credit_only: true`
+(none today; `video-gen` carries it as `false`) is paid from purchased credit alone:
+`_platform_reserve` passes `purchased_only=True` (`_purchased_only` in
+`application/call/reserve.py`), and `reserve_in_transaction` runs `_purchased_gate` before the
+balance gate. The gate locks the org's purchased blocks in primary-key order, subtracts its open
+`Hold.purchased_only` holds, and raises `PurchasedCreditShort` (an `InsufficientBalance`) when the
+rest cannot cover the charge; the call is refused with 402 `free_credit_excludes_video`, before any
+upstream request and with nothing held. The flag is stored on the hold, so every settle path (the
+call, the async worker, a batch close) draws only purchased blocks in `_consume_blocks`; an overrun
+past them is a recorded `block_shortfall_micro`, never taken from free credit. A $0 call passes the
+gate.
 
-**Idempotency on `topup` is enforced by the database.** `stripe_payment_intent` is UNIQUE, and `topup`
-FLUSHES its INSERT inside a SAVEPOINT, before the balance moves: the loser of a race rolls back only
-that savepoint - the caller's other staged work survives - and its re-SELECT returns the winner's
-committed block, the same answer as the sequential path. The loser's flush blocks until the winner's
-transaction commits, which is why the caller must commit promptly after `topup` returns. The
-application-level SELECT is an optimisation, not the guarantee — two concurrent deliveries of one
-PaymentIntent both miss it. (Fixed in #45; the unique constraint is part of the Alembic baseline
-schema — the legacy startup migration that once added it is deleted.)
+**Margin is applied inside the module** (`with_margin`) at reserve and settle, and the rate in force
+is recorded on every entry, so a rate change cannot rewrite what a call cost.
+
+**The hold reaper is lazy**: at the top of reserve, scoped to the calling org. A crash between relay
+and settle would otherwise strand money; sweeping one org's stale holds is paid by the caller who
+benefits, and needs no scheduler or leader election. Each stale release commits independently before
+the new balance gate. Pending `AsyncTaskRecord` holds are excluded; their worker always closes them.
+
+### Lock ordering
+
+`_consume_blocks` locks `CreditBlock` rows through `_lock_blocks` with `ORDER BY org_id, id FOR
+UPDATE`, refreshing objects already in the identity map so a stale read cannot overwrite a
+concurrent deduction; consumption priority is applied after locking. A single settlement updates
+Org only when the refund or daily-spend delta requires it; there is no general Org lock.
+
+Several closes in one transaction must use `close_holds_in_transaction` with `HoldClose` items: it
+claims all Hold ids in sorted order before any block or balance lock, locks all needed blocks once,
+and applies closes in Org id order. Querying blocks again after a balance update could lock a newly
+added block in reverse order. Duplicate Hold ids close once. Enter it before other money writes in
+the transaction. `close_deferred` uses it, then writes archive-use marks
+(`archive.note_org_uses_in_transaction`) in `(org_id, key_hash)` order in the same transaction.
+`settle_to_in_transaction` locks payer and payee Org rows in id order with `FOR NO KEY UPDATE`;
+referral payouts stage grants in Org id order. Real PostgreSQL tests exercise these compositions;
+they do not cover arbitrary transactions that write other tables first, and lock ordering does not
+bound how long a slow transaction holds a lock.
+
+`infra.money_trace` attaches transaction identity and stage labels to money entries without extra
+queries, so slow-transaction snapshots can tie a PostgreSQL blocker PID to an open money transaction
+([data-model](data-model.md#product-analytics-writer-analyticspy)). Tracing changes neither lock
+order nor accounting.
+
+Lock order does bound which rows wait, not for how long. Every transaction a `money_session` begins
+sets `idle_in_transaction_session_timeout` (`IDLE_IN_TRANSACTION_TIMEOUT`): a process that stops
+running between two statements (an event-loop stall) is disconnected by Postgres, its transaction
+rolls back and the team's org and credit-block rows are free again. The stalled request then fails
+as on any database error; a rolled-back settle leaves its hold open for the reaper, so each hold is
+still closed exactly once by its claim.
+
+### Optional admission before the settlement session
+
+`infra.money_admission.admit` optionally queues same-org balance work by payer Org before the
+application opens a database session, using a process-local lock plus a token-owned, expiring,
+renewed Redis lease (multi-org batches lease in sorted id order). Waiting holds no database
+connection. The lease spans session acquisition, ledger work, commit or rollback and session cleanup
+(`infra.money_session.money_session` joins close/rollback even under repeated cancellation). One
+admit wraps the session; nothing inside calls `admit` again. It changes no commit boundary.
+
+- **Operations** (by payer identity, which the application already knows from `MarketplaceCall`,
+  `DeferredSettle`, the async task snapshot, the Hub caller or the reserving org): `reserve`,
+  `close`, `deferred`, `async`, `hub`, `release`. Grants, top-ups, signup credit, referral payouts
+  and auto-top-up do not admit; a Hub payee is not an extra key. Skip-direct overflow reserves no
+  parent, so the authenticated caller's org is required before its child reserves and before its
+  cancellation cleanup. `require_balance_orgs` refuses an empty, missing or non-positive org before
+  checkout on every session that touches a balance row.
+- **Only `reserve` may shed load.** When its budget (`money_admission_wait_s`) expires it releases
+  partial gates and raises `ReserveAdmissionTimeout`, which `reserve.reserve_admission` maps to a 429
+  (`money_admission_timeout`, blame `treg`) with a randomized `Retry-After` between
+  `money_admission_retry_after_s` and twice it. No hold or upstream call starts. A routed call
+  answers this same 429 rather than asking the next provider (catalog.md § Routing). Every other
+  operation, on a missing identity, unavailable Redis, store error, lease loss or expired budget,
+  releases partial gates and runs the original database path; it never raises, because settlement
+  and cleanup must run. One caller opts out: work that can simply come back later (the allowance
+  fold loop) passes `refuse_on_timeout` and gets `AdmissionTimeout` at its own `max_wait_s`
+  before the database, counted as `rejected`.
+- **Wait bounds.** Non-reserve operations wait `max(money_admission_wait_s, 2 * lease)` (a dead
+  holder keeps its lease for one TTL), but never more than half of `hold_grace_s`, and never past
+  the reaper age of the oldest affected hold: the call records a monotonic `reserved_at` before
+  reserve on `MarketplaceCall` and each `DeferredSettle` (the Hub runner does the same for its price
+  hold), and close, deferred batches and cancellation pass `max_wait_s = hold_ttl_s() - oldest hold
+  age - hold_grace_s / 2`. The async worker passes what remains of the row's processing deadline. A
+  settlement that enters the database without the lease queues on the CreditBlock lock while
+  holding a pooled connection, which is why these bounds exist.
+- **A silent store costs one timeout, not one per operation.** After a store failure
+  (`kv_unavailable` or `gate_error`) the process skips the store for `_STORE_DOWN_S` (5 s, the
+  `fair_share` pattern) and every operation in that window takes the database path at once, counted
+  as `kv_store_down`. Only a real store failure opens or extends the window; a skip never does, or
+  steady traffic would keep one failure's window open until the process restarts. A
+  failed gate frees its process-local locks before the lease cleanup runs, and the cleanup runs as a
+  background task, so a stuck cleanup never holds the next operation; the lease TTL bounds a lease it
+  does not remove.
+- Renewal and deletion are owner-checked, so an old holder cannot extend or delete a newer owner's
+  lease. TTL cannot prove an old database transaction has stopped, which is why database locks stay
+  the correctness mechanism. Fallbacks preserve correctness but not isolation and are counted
+  separately.
+
+A holdless free call (below) never admits: it touches no balance row.
+
+This is best-effort contention isolation, not a global money concurrency cap, durable queue or FIFO.
+Serializing the whole session can lower hot-org throughput, and Redis round trips add latency.
+Default off; `money_admission_org_ids` selects an opt-in subset (all orgs when empty and enabled).
+Rollout and measurement: [deployment controls](../ops/deploy.md#optional-money-admission). Timing
+details live in `infra/money_admission.py` and its tests.
+
+## Signup credit eligibility
+
+`application.signup._grant_signup_promo` calls `identity.promotions.claim_signup_promo` for the
+creating user. A conditional UPDATE consumes `User.signup_promo_available` only for a verified,
+active, non-demo user, then inserts the user's inbox into `SignupPromoClaim`, whose primary key
+refuses a second claim for one mailbox. It commits with `ledger.grant(once=False)`; a failed commit
+rolls everything back. Meta records `source=signup` and the `user_id`. The per-org
+`grant(once=True)` check is not a concurrency arbiter.
+
+`User.email_verified_at` is set only by successful OTP, verified social login or an inbox-only
+invitation link; legacy `/users` and accounts the invite-code door created before it required sign-in prove nothing. An unverified account
+may create teams with zero credit. The sign-in that first verifies it
+(`find_or_create_user(..., proven=)`, then `signup.grant_signup_promo_on_proof` after that commit)
+offers the claim to the oldest eligible team it owns, or its first eligible team, without a second
+ad conversion. A failed or interrupted grant leaves the user eligible for their next team. The amount
+is `promo_grant_micro`; zero skips the claim as well as the credit.
+
+Before claiming, the `signup_credit` decision point ([policy extensions](policy-extensions.md)) may
+`defer`, which writes nothing and leaves the user eligible. Without an extension, or when one is slow
+or failing, it grants.
+
+Eligibility lives on the user, so team deletion, leaving and ownership changes cannot restore it;
+revision `0033` defaults historical users to ineligible and new users start eligible. The inbox is
+`promotions.promo_inbox(email)`: lowercased, trailing domain dots and `+tag` dropped for every
+domain, and for `gmail.com` / `googlemail.com` dots removed and the domain folded to `gmail.com`.
+Aliases remain separate logins; only the gift is shared, and a user whose inbox was already claimed
+loses eligibility in the same UPDATE. The claim row has no FK and outlives the user, so account
+deletion does not free an inbox. This stops one mailbox verifying many accounts, not someone holding
+many real mailboxes. Revision `0071` seeds the table from every verified, no-longer-eligible user and
+is a rollback floor: dropping it would reopen a gift to every alias of an already-gifted inbox.
+
+## Deferred asynchronous settlement
+
+`domain/money/settlement.py` is the single data-derived calculation seam. Reserve freezes a basis
+with `when: response|terminal` and `amount.kind: table|usage|observed|terminal_presence`;
+`settle(basis, evidence)` returns integer micro-USD and never writes the ledger. Provider differences
+stay in catalog YAML. `table_amount_micro` bounds a `times` multiplier by the field's declared range
+(always positive): an out-of-range value prices at the fallback.
+
+- An async row settles at the terminal answer when its price is a table, a `usage` meter, or a plain
+  `per_call` price (`observed`, fixed price as fallback). A provider that bills on submission has
+  its reported charge frozen into the basis (`submission_charge_micro`), used when the terminal
+  answer reports none, `billed_failure` included.
+- Async `per_success` rows without a table settle on the submission response unless they declare
+  `settle: terminal_presence` (catalog.md). An optional `presence.request_field` marks a supplied
+  billable input at submission. A missing or malformed terminal result settles the reserve; a
+  confirmed terminal failure releases.
+- `terminal_on_submission` with a success word already present is not deferred.
+- `settle: usage` reserves what the rate-card table says THIS request costs and settles the reported
+  figure, which may exceed the reserve: the ledger takes the difference, the next reserve is the
+  gate, and `reconcile.async_task_settlement` lists every `overrun` and every
+  `absorbed_shortfalls` settle (`block_shortfall_micro > 0`). The next reserve gates only calls in
+  sequence; calls in flight together all passed the balance gate already. So a row whose reported
+  figure can exceed the estimate declares its worst case (`cost.worst_case`, `settle.worst_case` in
+  v2; `Pricing.worst_case_micro`, `MarketplaceCall.worst_case_micro`), and `_platform_reserve` holds
+  the higher of the estimate and the worst case, through the tag, member and daily-cap gates as
+  well. The settle is unchanged and the unused part of the hold goes back. The estimate stays the
+  basis's `reserve_micro`: a success with no usage figure settles
+  at the reserve with `reconcile_review` and an ERROR alert, never at the ceiling or the worst case.
+  The validator warns on a usage row with no worst case. The unit's
+  micro-USD worth is frozen as `amount.unit_micro` at reserve, so a later rate edit never re-prices a
+  task in flight; a non-USD basis without a frozen rate settles at the reserve.
+
+For a tier-4 endpoint carrying `async`, a successful submission keeps its hold and writes an
+`AsyncTaskRecord` whose `settlement_basis` freezes the price rule with its request, so settlement
+replays from the row alone. BYOK creates neither hold nor row. A caller poll and the worker share
+`_finish_terminal`: terminal 2xx evidence settles the task once under its row lock; an unexpired
+success or billed failure without required usage only records result ownership; a failure or a
+state past the window releases. Only the winning finalizer archives terminal evidence. The same
+transaction stores the adapter hit verdict and verdict word on the task; the audit path copies them
+to the submission row whichever is written first. A 2xx that is not an accepted submission
+(`_submission_rejected`: not JSON, fails `expect`, no task id or an off-allow-list poll URL) never
+becomes a row and settles at the provider-reported charge, else zero. If the row cannot be
+persisted, the request path releases with `async_task_not_recorded` and an ERROR alert.
+
+Routed tools and Enrich Arena wait through the shared async bridge; every poll still uses the ordinary
+call path, so BYOK stays unmetered and platform polls enforce ownership. Server-created polls
+continue the admitted submission without another quota increment. A foreground timeout returns a
+pending result with the reservation open, and the worker later settles or releases it.
+
+The worker selects due rows, takes provider/global concurrency slots, then claims each still-due row;
+`attempts` fences stale workers, and `CLAIM_LEASE_S` exceeds `PROCESS_TIMEOUT_S`. Polls have a
+`POLL_TIMEOUT_S` total deadline including body consumption, use the normal credential injector (a
+static poll's parameter rides as `query_items` or a declared, percent-encoded path substitution; the
+relay forwards no URL-embedded query), cap the body at `MAX_POLL_BODY_BYTES`, and take terminal
+evidence only from a 2xx. HTTP errors, invalid JSON and timeouts back off
+(`next_failure_check`: 2, 4, 8, then 15 minutes); there is no provider-wide circuit breaker. The
+worker never lets one row abort a tick, and loads the catalog once in a thread before polling so the
+poll timeout measures the provider alone. **At the deadline (`MAX_AGE`, or the descriptor's shorter
+`max_age`) it releases the hold in full**, marks the row `timed_out` with `reconcile_review` and logs
+an ERROR: an outcome nobody observed is the platform's cost, never the customer's, and appears as
+`absorbed_timeouts` in `reconcile.async_task_settlement`.
+
+Platform poll and fetch calls are authorized against the caller org's row and any membership pins.
+`defer_submission` freezes effective tags on the task and `_remember_resource` propagates them;
+missing legacy tags fail closed for pinned readers. An authorized platform poll with an explicit
+`free` price and zero estimate is `MarketplaceCall.free_owned_poll`: it skips `_platform_reserve`
+and `_platform_settle` entirely (no new Hold, LedgerEntry or TagSpend) while authorization, limits
+and rate smoothing still apply. This does not cover fetch utilities, BYOK, billed OAuth or a zero
+estimate on a paid endpoint. An overflow child carries its own `observed` basis at the aggregator
+price.
+
+Any other direct platform call with an explicit `free` price and zero estimate is
+`MarketplaceCall.holdless_eligible` unless it is billed OAuth, a routed child, an owned poll, an
+async submission, a resource producer or usage-settled. For an org listed in
+`holdless_free_org_ids` (default `[]`: none; the money queue also brakes free bursts, so this rolls
+out per org until an explicit free-call rate limit exists) and with no caller tags (`X-Treg-Meta`
+or a pin), `_platform_reserve(allow_holdless=True)` sets `mk.holdless` instead of reserving: no Hold,
+LedgerEntry or TagSpend, no money admission, no balance-row lock. Only the platform daily-cap read
+runs, so a team past its cap is still refused. `_platform_settle` then writes nothing; a computed
+charge is logged and absorbed. A tagged call keeps its $0 hold because its settled tag rows count
+toward `calls_per_day`. Overflow children always reserve, since their aggregator spend is recorded
+in the settle transaction; `_child` never inherits the parent's flags. Cancellation of a holdless
+parent releases nothing unless `mk.overflow_hold_possible` (set before the child reserve starts),
+in which case it releases only `{call_ref}:overflow`.
+
+The audit row froze the reserve as `cost_charged_micro` at submission, so displays must not read it
+alone. `application.asynctasks.views_for` joins the org's tasks, loads archived terminal JSON and
+derives the artifact with `domain.asynctasks.artifact`; `/calls`, `/calls/{ref}`, `treg audit`, the
+dashboard Activity page and the CLI's `--await` all read this one view.
 
 ## Stripe (`application/billing.py` and `infra/stripe.py`)
 
 **Credit happens on the WEBHOOK, never on the browser's return from Checkout.** The success redirect
-is a URL the payer controls; treating it as proof of payment would let anyone mint balance by typing
-it. The one exception is the off-session auto-top-up charge, where the server itself holds the
-PaymentIntent's confirmed status — nothing attacker-supplied is involved — so it credits immediately
-and the webhook redelivery lands as a no-op.
+is a URL the payer controls. The one exception is the off-session auto-top-up charge, where the
+server itself holds the PaymentIntent's confirmed status; it credits immediately and the webhook
+redelivery is a no-op.
 
-The webhook lives at `POST /billing/stripe/webhook`, **deliberately separate from the landing demo's
-`/stripe/webhook`** and signed by a different secret: they are different Stripe accounts' events with
-different consequences, and sharing a path would let one secret authorize the other's effects. It
-**404s when unconfigured**, so a deploy without the secret exposes no unauthenticated POST surface.
-`verify_event` uses the SDK's `verify_header` (timestamp tolerance = replay protection, and it handles
-the several-signatures case during rotation) rather than `construct_event`, so a genuine event of a
-type this SDK version predates is accepted and then ignored, not rejected as forged. A handler failure
-returns 500 **on purpose**: that is how Stripe is told to retry.
+The dashboard reads the return's `?topup=` or `?card=` once and strips it (`followStripeReturn`). On
+`topup=success` it says the payment is being added, then re-reads `GET /billing` a bounded number of
+times (`TOPUP_POLLS`) until the balance rises above the one stored when the payer left for Checkout,
+and names the amount added. It never credits anything itself.
 
-The Stripe SDK is synchronous, so the application `_sdk()` seam delegates every call to
-`infra/stripe.py`, which runs it on a worker thread. A blocking network call on the event loop would
-stall every in-flight request, including the proxy's hot path. The adapter also converts the SDK's
-return value to a plain dict (`StripeObject.to_dict()`, which is deep): the SDK's objects stopped
-subclassing dict, so `.get()` on one raises, and every consumer —
-plus every test fake, which returns plain dicts through this same funnel — reads dict-style. Keep it
-that way: a consumer written against the object API would pass prod and break the fakes, and the
-last divergence shipped a webhook handler that 500'd on every live checkout while the suite was green.
+The webhook is `POST /billing/stripe/webhook` and **404s when unconfigured**, so a deploy without the
+secret exposes no unauthenticated POST surface. `verify_event` uses the SDK's `verify_header`
+(timestamp tolerance is replay protection, and it handles several signatures during rotation) rather
+than `construct_event`, so a genuine event of a type this SDK version predates is accepted and
+ignored, not rejected as forged. A handler failure returns 500 **on purpose**: that is how Stripe is
+told to retry.
 
-`_credit` also emits the `topup_completed` product-analytics event (`analytics.capture`, PostHog),
-riding the same `fresh` flag as the receipt email so a redelivery re-emits nothing. `capture` is
-synchronous and swallowing by construction — analytics is the one side effect in the webhook that is
-allowed to fail, and it must fail silently, because a raise here would 500 the handler and make Stripe
-retry a payment that already credited. Amounts travel as canonical integer `amount_micro`; the
-`amount_usd` on the event is display-only.
+The Stripe SDK is synchronous, so `infra/stripe.py` runs every call on a worker thread, and converts
+results to plain dicts (`StripeObject.to_dict()`): SDK objects no longer subclass dict, and test fakes
+return dicts through the same funnel, so a consumer written against the object API passes tests and
+breaks prod or vice versa. Keep every consumer dict-style.
 
-On the same `fresh` branch, `_credit` also queues a `paid` Google Ads conversion (`adsconv.queue`) when
-the org has a click to attribute to — but this one is **not** atomic with the credit: the credit is
-durable before the conversion is queued, and the conversion is a second, separate commit. A crash
-between the two loses the conversion permanently (the money is still correctly credited). Found in
-review and accepted deliberately (2026-08-17): coupling the credit's fate to the conversion commit
-would be backwards, because the credit must stand whatever happens after it; full reasoning and the
-cheap future fix in [ads-conversions](ads-conversions.md).
+**Idempotency on `topup` is enforced by the database.** `stripe_payment_intent` is UNIQUE, and `topup`
+flushes its INSERT inside a SAVEPOINT before the balance moves: the loser of a race rolls back only
+that savepoint and re-SELECTs the winner's block. The loser's flush blocks until the winner commits,
+which is why the caller must commit promptly after `topup` returns. The application-level SELECT is
+an optimisation, not the guarantee.
 
-**Invoices exist on the manual path only.** The top-up Checkout sets `invoice_creation`, so a
-one-off purchase produces a real Stripe Invoice — number, PDF, billing address, tax ID — which is the
-document a finance team accepts; Stripe's card receipt is not. Auto-top-up charges a bare off-session
-PaymentIntent and therefore has **no** invoice, only a receipt: attaching one would mean rebuilding
-the automatic charge as InvoiceItem + Invoice paid off-session, rewriting the money path and its
-idempotency guarantees for the minority of payments. Say "invoice" only about the manual path.
+On the `fresh` (first credit) branch, `_credit` also:
 
-The address on that invoice comes from `billing_address_collection="required"` **plus**
-`customer_update={"address": "auto", "name": "auto"}` on the same session. Both are needed: the first
-asks, the second persists the answer onto the Customer so the next top-up and the portal's invoice
-archive already have it. Collecting without `customer_update` looks like it works and stores nothing.
+- emits `topup_completed` (`analytics.capture`), which is synchronous and swallows errors by
+  construction: a raise would 500 the handler and make Stripe retry an already credited payment;
+- queues a `paid` Google Ads conversion when the org has a click. This is a separate commit after
+  the credit, deliberately: the credit must stand whatever happens after it, so a crash between the
+  two loses only the conversion ([ads-conversions](ads-conversions.md));
+- passes normalized product attribution (`entry_surface`, `checkout_source`, fixed surface names,
+  `unknown` when missing) from Session and PaymentIntent metadata into ledger meta and the event.
+  No query inputs, URLs, keys or provider results are copied.
+
+### Top-ups, invoices and auto top-up
+
+**Every top-up has an invoice.** Manual Checkout sets `invoice_creation`. Automatic top-up creates a
+USD draft invoice for the existing Customer, adds one item, finalizes with `auto_advance=false`
+(which disables Stripe's retries and dunning) and pays off-session; pending items and inherited
+discounts are excluded so the invoice charges exactly the refill. Each write has a deterministic
+idempotency key derived from the credited-purchase count and invoice generation, unchanged across
+midnight or an uncertain Stripe reply.
+
+**The card it charges is the payer's latest choice.** A card is chosen in treg (top-up Checkout,
+card setup) or in the Customer Portal, which changes the customer's
+`invoice_settings.default_payment_method` and reports it only as `customer.updated`. Every choice
+goes through `_set_default_pm` with its time on Stripe's clock, kept in `stripe_default_pm_at`. The
+comparison and the write are one conditional UPDATE: an older choice that arrives late, again or
+alongside never replaces a newer one, and on a tie the portal wins. Each accepted choice is then
+written to the Stripe customer's default, after the transaction ends, with metadata naming the card
+and its time (`treg_card`, `treg_card_chosen_at`). Stripe reports that write as a
+`customer.updated` stamped later; the metadata keeps the time of the choice, so treg's own write
+never beats a portal choice made in between, and writing a portal choice back repairs Stripe's
+default if an older treg write landed after it. Those writes run after commit and can finish out of
+order, so a `customer.updated` reporting a card other than the stored one, once it has lost, writes
+the stored choice back (`_repair_stripe_default`); that write's own echo matches and settles. A transient failure fails the delivery
+(`CardSyncPending`) so Stripe redelivers it; a redelivery older than a newer choice sends nothing.
+An automatic top-up's own payment is no new choice. `payment_method.detached` forgets the stored
+card (`no_card`), finding the org by that card because the event names no customer, with an UPDATE
+conditioned on that card, and a portal card re-arms a policy waiting
+for one. The org is found by the customer's `treg_org_id` metadata when present. Before charging,
+with no database connection open, `attempt_auto_topup` checks that the stored card is still
+attached to the customer, so a late or lost detach event never charges a removed card; a Stripe
+error there charges nothing and is not a failed attempt. The webhook endpoint must subscribe to
+both events. A row from before `stripe_default_pm_at` has no time, so its first timed choice wins. A portal
+change made before treg handled `customer.updated` sends nothing later; `treg-worker admin card-sync
+--org <id> [--apply]` (`sync_card_from_stripe`) adopts the Stripe default only when it is attached, a
+different physical card (fingerprint) and created after the stored card, reports without `--apply`,
+and writes through `_set_default_pm` as a portal choice made now.
+
+Before a new charge, `attempt_auto_topup` pages the customer's invoices (listing, not Stripe's delayed
+search index) since one day before the last credited automatic top-up, or the full history before
+the first, to recover a draft, open or paid attempt:
+
+- an unfinished automatic invoice with an older base key blocks while its payment may settle; a paid
+  invoice whose PaymentIntent has no ledger credit also blocks;
+- an open invoice whose PaymentIntent failed or was canceled is voided first; one requiring
+  authentication is voided when the saved card changed; a `processing` payment stays open and
+  blocks. Finalization's `requires_confirmation` PaymentIntent is safe to pay with the existing key;
+- an incomplete lookup counts toward the consecutive-failure limit without changing the key; at the
+  limit auto top-up pauses as `stripe_unconfirmed` with a banner and email. A confirmed automatic
+  payment (synchronous credit or webhook) re-arms it; a manual payment does not, and a manual
+  top-up does not advance the lookup boundary.
+- a Stripe refusal naming the payment method charged nothing: the card is forgotten and the policy
+  waits as `no_card`.
+- an authentication-required invoice is voided only after Stripe confirms the failure and the void;
+  auto top-up switches off and the customer is sent to a manual Checkout with bank verification. A
+  successful manual payment re-arms a policy paused for authentication; a delayed failed-payment
+  webhook for an already-void invoice cannot disable a re-armed policy. If the void cannot be
+  confirmed, the policy pauses as `stripe_unconfirmed`.
+
+The cooldown, cap, ledger crossing, last automatic credit and billing email are read first; the
+database transaction is then released, and no Stripe list, create, finalize or pay call holds a
+connection. An invoice-created PaymentIntent does not inherit invoice metadata, so a metadata-free
+payment webhook checks the customer against local orgs before `_invoice_metadata_for_payment`
+resolves the invoice through `InvoicePayment.list`; the PaymentIntent's ledger uniqueness makes the
+later path a no-op.
+
+Stripe emits `invoice.created` / `invoice.paid` for every top-up; `handle_webhook_event` drops them,
+because crediting on the invoice as well as the PaymentIntent would be a second door onto the same
+money. Invoice creation may be priced separately by Stripe, and Stripe invoice emails depend on the
+dashboard's "Successful payments" customer-email setting; treg's receipt email is independent.
+
+The invoice address needs `billing_address_collection="required"` **plus**
+`customer_update={"address": "auto"}` on the same session: the first asks, the second persists the
+address onto the Customer. `customer_update.name` stays unset so a payer's Checkout name cannot
+replace the team's billing name on the Customer. Stripe copies the Customer name to an invoice when
+it finalizes; changing the Customer later does not change that finalized invoice.
 
 **A promotion code discounts the price, it does not bonus the balance.** `allow_promotion_codes=True`
-puts the code field on the top-up Checkout (codes are created in the Stripe dashboard, so a campaign
-needs no deploy). Because the webhook credits `amount_total` — what Stripe actually collected — 20%
-off means $40 paid and $40 credited. "Pay $40, get $50" would be a `ledger.grant` on top and is not
-built. A 100%-off code collects nothing, so the session credits nothing: `_on_checkout_completed`
-drops it as `zero amount`. Grant free balance through `ledger.grant`, never through a Stripe coupon.
+puts the field on Checkout, and the webhook credits `amount_total`, what Stripe collected. A 100%-off
+code collects nothing and is dropped as `zero amount`. Grant free balance through `ledger.grant`,
+never a Stripe coupon.
 
-**The top-up bonus IS that `ledger.grant` on top — tiered, and manual only.** `topup_bonus_tiers`
-(`{10: 0, 50: 5, 100: 10, 200: 15}`, `{min_usd: percent}`) gives a manual top-up a `bonus` block
-worth the highest tier at or below the amount (`bonus_for_topup`: $99 earns the $50 rate, $250 the
-$200 rate; integer `amount * pct // 100`). It is granted inside `_credit`'s `fresh` branch — the one
-point that knows money moved for the first time, so a webhook redelivery grants nothing — as a
-**separate block** with `_KIND_ORDER` rank 0: it burns with promo and referral credit, before the
-purchased block, and the purchased block stays exactly what the card paid. That is the whole
-reason it is not folded into `ledger.topup`: purchased credit is a refundable liability, the bonus
-is marketing spend. Automatic refills (`auto=True`) earn nothing — they repeat a chosen amount, and
-a bonus there would be a permanent 9–15% margin cut on every refill rather than a reason to come
-back and buy bigger. A refund or dispute does **not** reverse it: like an already-granted referral
-bonus it is logged for a human (`_on_payment_reversed` → `bonus_blocks_flagged`), because the ledger
-has no path that drives a balance down and this is not the reason to add one. The grant entry's
-meta carries `payment_intent`, `pct` and `topup_block_id`; `topup_history` joins on it to show
-`bonus_micro` per payment, and the receipt says "$100 + $10 bonus" so a balance that rose $110 on a
-$100 charge reads as intended rather than as a mistake.
+**The top-up bonus is a separate `grant`, manual and automatic alike.** `topup_bonus_tiers`
+(`{min_usd: percent}`) gives a top-up a `bonus` block at the highest tier at or below the amount
+(`bonus_for_topup`, integer arithmetic, read at grant time). It burns with promo credit, so the
+purchased block stays exactly what the card paid: purchased credit is a refundable liability, the
+bonus is marketing spend. The billing page shows the bonus each refill earns and the next tier up.
+The grant's meta carries `payment_intent`, `pct` and `topup_block_id`, which `topup_history` joins
+to show `bonus_micro`.
 
-**The preselected amount climbs a ladder, capped.** `next_default_usd` looks at the org's last
-*manual* top-up and returns the first preset above it, never past `topup_default_cap_usd` ($50):
-$10 → $50, $50 → $50, nothing yet → `topup_default_usd`. Auto refills are skipped so the ladder
-cannot ratchet on its own. The dashboard modal preselects it (`GET /billing` → `topup.default_usd`,
-now per-org) and `POST /billing/topup` with no amount uses it — which is what `treg topup` sends.
-Presets are four (`[10, 50, 100, 200]`) plus "Other": with eight cards from $5 up nobody ever
-picked $100+ and repeat payers stayed flat; the minimum is $10 (fee math, and the referral
-qualifying amount). The threshold for auto top-up is validated separately (`validate_threshold_usd`,
-≥ $1): it is not a charge, so the top-up minimum must not apply to it — raising the minimum
-without that split would have rejected the default $5 threshold on every enable.
+`_grant_topup_bonus` grants per payment, not per first delivery: every delivery, and the inline
+auto-top-up credit, grants when no `topup_bonus` entry names the PaymentIntent. A lock on the
+purchased block (a no-op UPDATE, so SQLite serializes too) keeps two doors from both granting. A
+failed webhook grant still credits, then raises `BonusPending` (a 500) so Stripe redelivers; a failed
+inline grant only logs and the webhook grants it. Only a purchased block younger than Stripe's
+three-day retry window (`BONUS_HEAL_WINDOW`) is healed: an older gap may already have been paid by
+hand. A heal after a refund revokes the refunded share of the new bonus in the same transaction.
+`revoke_refunded` takes the same lock, after row-locking the purchased and bonus blocks in
+settlement's id order, so it neither misses a concurrent heal nor deadlocks a settlement. A refund
+revokes the unspent bonus in proportion (see "Refunds revoke unspent credit"); a dispute only logs
+it for a human (`bonus_blocks_flagged`).
 
-**A saved card arms a consented policy from either webhook.** The modal records consent first
-(`set_autotopup` → `no_card`) and relies on the top-up Checkout to save the card, so there is no
-SetupIntent in that flow: `_set_default_pm` — called by both `_on_checkout_completed` and
-`_on_setup_succeeded` — runs `_arm_if_waiting_for_card`, which turns the policy on only from the
-explicit `no_card` state. A decline, 3DS, or a deliberate off (reason `None`, consent still on
-file) stays off; a redelivered payment webhook must not switch a policy back on.
+**Reconciliation against Stripe** (`treg-worker billing reconcile`, `billing.reconcile_topups`). The
+webhook is the only door for a paid top-up, so a delivery that keeps failing is money paid and not
+credited, and nothing in the request path notices. The command lists Stripe's
+`payment_intent.succeeded` events in `[now - grace - hours, now - grace)`, by success rather than
+creation time because a bank debit can succeed days later. It keeps the treg top-ups by the
+webhook's `_topup_metadata` rule and reports `not_credited` (no purchased block),
+`credited_differently` (another org or amount) and `bonus_missing` (owed a bonus at the current
+tiers, so a tier change inside the window reports false gaps). Payments of deleted teams are
+skipped: deletion removed what they would match. It writes nothing: the fix is a Stripe event
+resend, which goes through the webhook's idempotency, while a hand credit pays twice if Stripe later
+delivers the event. A resend heals `bonus_missing` only inside `BONUS_HEAL_WINDOW`. It prints one
+JSON line, exits 1 on a gap, and with `TREG_OPS_SLACK_WEBHOOK_URL` set posts the gaps or its own
+failure to that Slack incoming webhook (`infra/slack.py`).
 
-Turning `invoice_creation` on makes Stripe emit `invoice.created` / `invoice.paid` for every top-up.
-`handle_webhook_event` drops them, deliberately: crediting on an invoice event as well as on the
-PaymentIntent would be a second door onto the same money. The invoice is a document; the
-PaymentIntent is the payment. Note also that `invoice_creation` on one-time Checkout is **priced
-separately** by Stripe, and invoice emails only go out with Customer emails → Successful payments
-enabled in the dashboard.
+**The preselected amount** (`next_default_usd`) is the first preset above the org's last *manual*
+top-up, capped at `topup_default_cap_usd`; auto refills are skipped so the ladder cannot ratchet on
+its own. `POST /billing/topup` with no amount uses it. The auto-top-up threshold is validated
+separately (`validate_threshold_usd`): it is not a charge, so the top-up minimum must not apply to it.
 
-**`list_payments` reads rows from us and documents from Stripe.** The payment list is built from our
-own `CreditBlock` rows — the same table the balance is computed from, so the history can never show a
-payment the balance disagrees with, and amounts and dates need no network call. Stripe is asked only
-for the links, in two list calls (`Charge.list` + `Invoice.list`, joined in memory) rather than two
-per row; a failure degrades to rows without links and reports `stripe_ok: false`, because a Stripe
-hiccup should cost the payer a download button, not their payment history. Both Stripe windows cap at
-100 payments, so a very old top-up on a busy account comes back link-less — the portal is the
-unbounded archive.
+**A saved card arms a consented policy from either webhook.** Consent is recorded first
+(`set_autotopup` to `no_card`) and the top-up Checkout saves the card; `_set_default_pm` (from
+checkout, setup and payment webhooks) runs `_arm_if_waiting_for_card`. It re-arms from `no_card`
+once a card exists, and from repeated declines only when the card is proven (it just paid, or is
+newly saved). A deliberate off (reason `None`, consent on file) stays off; a redelivered webhook must
+not switch it back on.
 
-**`create_portal_session` is the self-serve surface** for card, billing address, tax ID and the full
-invoice archive: hosted, because every one of those is a form we would otherwise own and the tax-ID
-rules go stale per country. It requires a portal configuration saved in the Stripe dashboard, and it
-refuses an org with no `stripe_customer_id` rather than minting one — a customer exists once someone
-has paid, and an empty portal has nothing to show. `billing_state.portal` is the flag the UI hides
-the button on, so a new team never sees a button that would 422.
+**Auto top-up is guarded in depth**: recorded consent (the PSD2/SCA mandate, a compliance
+requirement), a monthly cap, a cooldown stamped in the DB *before* the charge, a consecutive-failure
+limit, and an idempotency key from the threshold crossing, so a burst of calls that all notice the
+low balance produces ONE charge.
 
-**Auto-top-up is guarded in depth**, because it is the part that can go wrong expensively: recorded
-consent (the PSD2/SCA mandate, a compliance requirement rather than a checkbox), a monthly cap, a
-cooldown stamped in the DB *before* the charge so a second web worker sees it, a consecutive-failure
-limit, and an idempotency key derived from the threshold crossing — so a burst of concurrent calls
-that all notice the low balance produces exactly ONE charge.
+The call path asks for a refill after a reserve commits and after a refused one. Only for a team
+with auto top-up on, the committed path reloads the Org on its own session once the money lease is
+released and hands it to `maybe_schedule_autotopup`; a team without it pays no read, and a failed
+read is logged without failing the call.
 
-Authorization splits by WHAT, not by who. `_billing_org` (the `/billing/*` routes — cards, top-ups,
-auto-top-up policy, payment history, the portal) requires **admin or owner**: a card, a spend policy
-and an invoice archive are the org's money, not a member's preference.
+- The stamp is a compare-and-set on `autotopup_last_attempt_at`: `_lock` is per process, so only the
+  first process to match the value it read proceeds and the rest return `cooldown` before any Stripe
+  call. Without it, losers got 409s that counted as failures and switched auto top-up off while the
+  real payment went through. A 409 that still arrives (`stripe_busy`) is logged, not a failure.
+- The monthly cap counts automatic top-ups only (`monthly_autotopup_spend`) and refuses a charge that
+  would pass it (`autotopup_cap_reached`). A stored 0 resolves to `TOPUP_MAX_USD` (the default); a cap
+  below one refill is refused. The cap is the team's own limit, validated by `validate_monthly_cap_usd`
+  with no business ceiling: `AUTOTOPUP_MONTHLY_CAP_MAX_USD` only keeps micro-USD exact and inside
+  `BIGINT`. `TOPUP_MAX_USD` bounds one refill, not the month.
+- The wait between charges (`billing.autotopup_wait_s`) is `autotopup_cooldown_s` after a failed
+  charge, else an hour divided by the team's `autotopup_max_per_hour` (0 means
+  `autotopup_default_per_hour`). The number is part of the mandate text.
+- A call refused for balance also calls `maybe_schedule_autotopup` (one primary-key read), which
+  checks the wait in memory first, so a team at $0 refills without starting a task per refused call.
+- The inline credit emits `topup_completed` (`auto: true`); the following webhook emits nothing.
 
-`GET /orgs/{id}/balance` is different, and deliberately so. Any **member** sees the figure and the
-in-flight holds; the **funding detail** (credit blocks, the ledger) stays admin+. It used to be
-admin-only, which meant a machine identity could not read the balance it was spending — while every
-402 already hands the caller `balance_micro`, and both `llms.txt` and `skill.md` tell an agent to run
-`treg balance` after a call. Refusing the number there while shipping it in an error was incoherent.
-(Reported by Jason, 2026-08-07.)
+The 402 carries `autotopup_enabled` and an `auto top-up:` line: off gives the command that turns it
+on; on gives amount, threshold, charges per hour, monthly cap and the flags that raise the refill
+rate, because a team out of money with auto top-up on is being held by the cooldown or cap. The org
+fields are read **before** the reservation transaction, whose rollback cannot be a source afterwards.
+The MCP path scrubs the payment link from the body (ChatGPT digital-goods rule); the auto top-up line
+survives because it names a CLI command, not a URL.
 
-The 402 also carries `autotopup_enabled` and an `auto top-up:` line in `message`. Off → the one
-command that turns it on. On → the amount, threshold, cooldown and monthly cap, plus the flags that
-raise them — because a team that is out of money *with* auto top-up on is being held by the cooldown
-or the cap, and "add funds" alone reads as "auto top-up is broken" (cobl.ai, 2026-08-25: ~1,500
-refusals between hourly $20 refills against a $60/day burn). The org fields are read **before**
-the application reservation transaction: its rollback cannot be a source for refusal rendering after
-the session closes. The MCP path still scrubs the payment link from the same
-body (`mcp.py`, ChatGPT digital-goods rule) — the auto top-up line survives because it names a CLI
-command, not a URL.
+### Refunds revoke unspent credit
+
+A refund is made in the Stripe dashboard; treg follows it. `charge.refunded` hands the charge's
+cumulative `amount_refunded` to `billing.revoke_refunded`, which names the payment's purchased block
+and the bonus block its grant meta points at, and stages `money.revoke_in_transaction` with one
+cumulative target per block (the bonus target is `bonus * refunded // paid`).
+
+- **Only that payment.** Revoke locks the named blocks in id order, then the Org row (`FOR NO KEY
+  UPDATE`), the order settle takes them in, and never touches another block, so a refunded $20
+  refill leaves the $10 top-up beside it whole.
+- **Never below zero.** A take is bounded by the block's remaining credit and by the balance read
+  under the Org lock. What is not taken is `shortfall_micro` and is logged; the part still on the
+  block, held by calls in flight, is `held_micro`, which the operator's re-run takes once they
+  finish. Rare: it needs more in flight than the rest of the balance at the moment of refund.
+- **Cumulative, so idempotent.** What each block has given up is read from its own `revoke` entries
+  under the block lock. A redelivered or out-of-order event finds nothing owed and writes nothing;
+  a second partial refund takes the difference. An entry is written when something is taken or the
+  refunded total rises, so a refund of fully spent credit is still on record.
+- **Auto top-up goes off** (`payment_refunded`) in the revoke's own transaction when the refunded
+  total rises above every earlier one: the revoked balance can sit below the threshold, and the
+  next call would charge the refunded card again. Collecting held credit later is not a new refund
+  and leaves an owner's re-enabled auto top-up alone. It never re-arms by itself.
+- **The operator's retry** is `treg-worker admin revoke-refund <payment_intent>`
+  (`revoke_refunded_payment`): it reads `amount_refunded` from the PaymentIntent's latest charge and
+  runs the same use case, for a missed webhook or held credit.
+- A refund that later fails in Stripe leaves the credit revoked; there is no entry that reverses a
+  revoke, so a human grants it back.
+- Disputes stay out: a won dispute returns the money, and there is no entry that gives revoked
+  credit back.
+- History rows carry `refunded_micro` (the largest refunded total the block's revoke entries
+  recorded), which is what the card got back, not what was revoked. `topup_refunded` reaches
+  PostHog with both.
+
+### Who sees what, history and portal
+
+`_billing_org` (every `/billing/*` route) requires **admin or owner**: cards, spend policy and
+invoices are the org's money. `GET /orgs/{id}/balance` shows any **member** the figure and in-flight
+holds (a machine identity must read the balance it spends, and every 402 already carries
+`balance_micro`); credit blocks and the ledger stay admin+, and `entries.withheld` says when an
+empty ledger was withheld rather than empty.
+
+`get_payment_history` builds top-up rows from our own `CreditBlock` rows, so history can never show a
+payment the balance disagrees with. Stripe is asked only for links, in two list calls (`Charge.list`
++ `Invoice.list`), and a failure degrades to link-less rows with `stripe_ok: false`. Both windows cap
+at 100 payments; the portal is the unbounded archive. SSO subscription invoices
+(`_subscription_invoices`: the team's customer invoices whose subscription metadata names this team or
+whose id matches its current subscription) use Stripe's total, status and links, never add to the
+balance, and report failure as `subscription_invoices_ok: false`. A `kind` filter and per-source
+cursor build one newest-first page.
+
+`create_portal_session` is the self-serve surface for card, address, tax ID and invoices (hosted,
+because tax-ID rules go stale per country). It requires a portal configuration in the Stripe
+dashboard and refuses an org without `stripe_customer_id` rather than minting one;
+`billing_state.portal` hides the button for such teams.
+
+### Enterprise SSO subscription
+
+- Each offered plan needs a reusable, active, flat, monthly USD Stripe Price
+  (`TREG_ENTERPRISE_SSO_BUNDLE_PRICE_ID`; `TREG_ENTERPRISE_SSO_ONLY_PRICE_ID` when
+  `TREG_ENTERPRISE_SSO_BUNDLE_ONLY=false`). A pricing change creates a new Price ID for future
+  checkouts; existing subscriptions keep theirs unless migrated. Per-plan minimum prices hide and
+  reject a cheaper Price.
+- `billing.catalog` reads Prices outside any database session. `billing.status` does no Stripe I/O for
+  entitled teams and never fetches Prices for non-owners, so a Price API failure cannot hide setup or
+  cancellation controls. `billing.start_checkout` rejects a stale Price ID and re-verifies the Price
+  before Checkout. One pending reservation per team plus an idempotent Stripe session request stop
+  parallel subscriptions.
+- `TREG_ENTERPRISE_SSO_PROMO_ORG_IDS` optionally enables Stripe's promotion-code field for an
+  explicit comma-separated set of stable team IDs. It is empty by default, because any active,
+  unrestricted Stripe code could otherwise discount an SSO subscription. Operators must restrict
+  a pilot code to the SSO product and limit its redemptions in Stripe. A discount changes the
+  invoice, not the subscription's renewal or the WorkOS connection cost.
+- The signed billing webhook records subscription status; WorkOS setup and sign-in are gated on
+  `active`, `trialing` or `past_due` (Stripe is still retrying). A Checkout redirect grants nothing.
+  Subscription metadata binds the event to a team and plan, the Stripe customer must match, and
+  older events cannot restore an entitlement after a later cancellation.
+- Owners can schedule cancellation at period end. Cancellation removes only SSO-created memberships
+  and their keys. After the paid period ends, the cleanup worker deletes every WorkOS connection and
+  directory of the team's verified WorkOS organization, retrying failures and blocking new checkout
+  and team deletion until done, without holding a connection across WorkOS I/O. Team deletion waits
+  until the subscription has ended.
+- The subscription never credits or debits the prepaid balance. A paid invoice links its receipt
+  when its Charge has one; a missing receipt never hides the invoice.
 
 ## The spend ceiling (`application.call.reserve`)
 
-`_enforce_platform_daily_cap` is a per-org, per-UTC-day ceiling on platform spend, and it is
-**fail-closed** — unlike the per-user call cap, which may let a few extra through under load. A query
-that cannot answer refuses the call, because this one meters *our* money. The balance alone is not
-enough: auto-top-up refills it, so the cap is the blast radius of both a runaway agent and a pricing
-mistake in the catalog.
+`_enforce_platform_daily_cap` is a per-org, per-UTC-day limit on platform spend, applied only when
+one is set. When it applies it is **fail-closed**, unlike the per-user call cap: a query that cannot
+answer refuses the call. When none applies, the prepaid balance and the auto-top-up monthly cap bound
+spend. An endpoint with an unknown price never reaches this path (`platform_eligible` requires a
+computable `usd`, see [catalog](catalog.md)).
 
-An endpoint whose price is unknown never reaches this path at all: `catalog_store.platform_eligible`
-requires `cost_view(...)["usd"] is not None`, so "we don't know" is refused rather than served free —
-see [catalog](catalog.md).
+`budget_policy._effective_daily_cap` is the team's `Org.daily_cap_micro` when set, else the
+deployment's `platform_daily_cap_usd` (0 = no limit, the shipped default). The team sets any figure
+through `PATCH /orgs/{id}/settings` (0 = follow the default) and reads it with `GET`
+(`platform_default_micro` beside it). Nothing is clamped.
+
+`ledger.spent_today` runs on every metered call inside the reserve transaction, fail-closed, so it is
+ONE primary-key read of `Org.spent_today_micro` / `spent_today_day`. `domain/money` keeps that counter
+inside the same UPDATE that moves the balance: reserve adds the estimate, settle adds the consumed
+amount and removes the estimate, release removes the estimate, each only when the hold was opened
+today. The first movement of a new UTC day resets it (`_spent_today_values`). A journal aggregate
+cannot replace it: a busy org's rows touch most heap pages of the day, so no index makes the
+aggregate cheaper than reading the day. `spent_today_from_ledger` computes the same number for
+reconciliation, and `tests/test_daily_spend_counter.py` asserts they agree.
+
+### A daily spend limit per member
+
+`_enforce_member_spend_cap` limits what one member or agent may commit on treg's keys per UTC day.
+`budget_policy.member_daily_spend_cap` picks the figure: the member's own
+`Membership.daily_spend_cap_micro` (-1 = no limit), else the team default
+`Org.member_daily_spend_cap_micro`, which never applies to an owner or admin. NULL everywhere means
+no limit and no extra work on the call.
+
+When a limit applies, `_platform_reserve` passes `member_id` to `ledger.reserve_in_transaction`, which
+writes one `MemberSpend` row in the balance transaction. The row follows its hold like `TagSpend`:
+estimate in flight, consumed figure at settle (restamped to settle time), deleted on release. The
+check reads `ledger.member_spent_since` (one indexed aggregate) and compares it with the charged
+estimate. The refusal carries `resets_at` (the next 00:00 UTC) and a matching `Retry-After`, so an
+agent waits instead of retrying. It is fail-closed (`member_spend_cap_unavailable`) and soft like the tag caps: concurrent
+calls can overshoot by their estimates, and the org balance and platform daily cap stay the hard
+gates. An unlimited member writes no rows, so spend made before a limit applied does not count
+against it. Own-key calls never reach it. The hub seller's price hold is not attributed to a member;
+the hub's own steps are. A crashed call's expired hold still counts until it is reaped, and the
+reserve reaps only after this gate, so a refusal reaps the team's stale holds first and reads again.
+
+The member's call count (`Membership.daily_call_cap`) is taken earlier, in `authorize_call`. When
+this limit refuses the call, or cannot be checked, the call service gives that slot back
+(`usage.return_daily_slot`), on the direct path and on an overflow-only call alike, so a member stopped by dollars, or retrying an unavailable check, does
+not also lose calls. The slot goes back only to the UTC day it was taken on: a refusal after
+midnight never takes a slot from the new day. `memberspend` has no foreign keys; team deletion clears it with the team. The first limit reached stops the member.
+
+The team default is set with `PATCH /orgs/{id}/settings` (`member_daily_spend_cap_micro`, null
+clears it). Setting it means "this, for all": `budget_policy.reset_member_spend_caps` clears every
+member's and agent's own figure in the same transaction; owners and admins keep theirs. One
+member's figure is set with `PATCH /orgs/{id}/members/{user_id}/spend-cap`, an agent's at
+mint time. The roster and `GET /usage/me` show the figure in force and `spent_today_micro`.
 
 ## Checking the work (`reconcile.py`)
 
-Read-only, query-time, no scheduler. Three questions, each needing its own source of truth:
+Read-only, query-time, no scheduler:
 
-- **`price_drift`** — did the catalog's price stay true? Compares, per endpoint, the estimate
-  RESERVED against the cost the provider REPORTED, both on the same `CallRecord` row. Providers
-  re-price whenever they like; a silent 10% climb turns a positive margin negative with nothing on
-  fire, and this report is the only thing that notices.
-- **`provider_spend`** — reads the **ledger**, not the audit table, because it is the number a human
-  holds next to an invoice. Audit rows are fire-and-forget and may be missing; ledger rows may not.
-- **`repeat_rate`** — measurement only: how much of the bill was the same query twice. Answering it
-  first is what makes a cache a decision rather than a guess.
+- **`price_drift`**: estimate RESERVED against cost REPORTED on the same `CallRecord`, per endpoint. A
+  silent provider re-price turns margin negative with nothing on fire; this is what notices.
+- **`provider_spend`** reads the **ledger**, not audit rows, because it is the number held next to an
+  invoice and audit rows may be missing.
+- **`repeat_rate`**: how much of the bill was the same query twice.
+- **`shared_plan_recovery`** (`GET /admin/reconcile/shared-plans`): see "Shared-plan pricing".
 
-Two aggregations happen in Python rather than SQL on purpose — the ledger's provenance lives in a JSON
-`meta` column (portable JSON extraction across SQLite and Postgres is not worth a report), and these
-are admin-scale windows over a bounded number of metered calls, the same tradeoff `admin_stats` makes.
+Aggregations over the JSON `meta` column run in Python, because portable JSON extraction across
+SQLite and Postgres is not worth it for admin-scale windows.
 
-## Where a call's money actually moves
+## Spend per API key (`application/key_spend_rollup.py`)
 
-    resolve → _platform_offer (priced + eligible?) → application.call.reserve (spend caps)
-            → ledger.reserve_in_transaction (the UPDATE gate; 402 if short) → application commit
-            → relay upstream
-            → settle at the observed cost when the provider reports one
-              (dataforseo `cost`, scrapecreators `credits_charged`, akta `credits_consumed` —
-              the last is what makes akta's per-section enrich billable: the estimate is an
-              upper bound, the settle is the real charge; Crustdata reports `X-Credits-Used` in
-              a response header; Exa reports dollars as `costDollars.total` on every body —
-              the per-result rider beyond 10 and each contents type live only there), else at
-              the estimate;
-              release instead when the call was not billable
+Ledger `settle` entries are the only money; `CallRecord.call_ref` supplies only the key. A routed
+attempt (`<ref>:r1`) or overflow hold (`<ref>:overflow`) falls back to the part before the first
+colon, and the audit row must belong to the same team. A charge with no keyed audit row (dashboard
+session, MCP connector login, hub run, shed audit row) lands on the team's **not attributed** line;
+per-key lines plus that line equal the ledger.
 
-Two providers do not report a charge but have a rule the RESPONSE decides, so `_observed_cost_micro`
-derives it rather than letting the estimate stand: apollo answers a miss with 2xx and charges nothing
-(`organization: null`, an empty `organizations` page), and **hunter's domain search bills one whole
-search credit per 10 emails returned, rounded up, with an empty domain free**. Hunter is the case that
-shows why a per-row estimate is not a settlement: its catalog price has to be flattened to
-$0.00245/result (1 credit ÷ 10) for a price list, and settling on that number billed a zero-email
-search the 20-row default page — $0.0490 for results nobody got, 20x the published per-result price —
-while `limit=1` on a domain that did answer settled at a tenth of the credit Hunter actually took.
-Where a provider's real rule is "whole units, rounded up, free on a miss", only the body knows.
+`treg-worker spend rollup` folds new settle entries into `ApiKeySpendDay` (team + key, `0` = not
+attributed, + tool + UTC day: `spent_micro`, `charges`, where `charges` counts settle entries, not
+calls). The fold:
 
-The row-count signal for that estimate (`resolve._LIMIT_PARAMS` / `_body_limit`) reads the caller's
-`limit`/`count`/`size`/`per_page`… in the query or body, the camelCase spellings (`pageSize`,
-`numResults`, `perPage`, `maxResults`, lusha's per-company `contactsLimit`), a nested `pagination.{size,…}`, and — for providers that
-bill one row per listed item — the length of `targets`/`keywords`/`domains`/`urls`/`lookups`/
-`emails`. Each of those was a live overcharge first (2026-08-28: companyenrich `pageSize: 2`
-settled 20 rows, moz's one `targets` entry settled 20 quota rows; 2026-09-02: lusha decision-makers,
-catalogued FREE, answered 44 contacts for one domain and settled $5.49 from `billing.creditsCharged`
-with nothing reserved). Without any signal it is the
-20-row page, and a settle-at-estimate provider then charges that page (seranking url.metrics on a
-single `target` still does).
+- walks the ledger in `(created_at, id)` order from `ApiKeySpendCursor` (ledger ids are random), with
+  the watermark as the scan's lower bound (`created_at >= watermark AND (created_at > watermark OR
+  id > watermark_id)`), never inside one OR the planner cannot bound;
+- leaves entries younger than a few minutes, because the audit row naming the key is queued after
+  the settle;
+- reads small batches, each one transaction under the cursor row lock, so overlapping runs never fold
+  an entry twice;
+- starts 31 UTC days back, capped per run (`--max-rows`); until caught up once, pages say history is
+  being prepared.
 
-The same family carries two more derived rules. **Hunter's email finder** is the flat case: one whole
-search credit when an email comes back, nothing on a miss — Hunter documents a miss as free, but a
-miss still answers HTTP 200 with `email: null`, so the estimate billed the full $0.0245 for a name
-Hunter had nothing on (a customer measured exactly this against the catalog's own "a miss is free"
-note). **TikHub** reports billing in prose instead of a number: its envelope says whether the request
-incurs a charge. A 2xx whose payload is an embedded error ("dead_page", a job listing that
-redirected away) still says it will be charged, and TikHub really does charge us for it — verified
-live 2026-07-30 — so those settle at the estimate *faithfully*; only the explicit no-charge phrasing
-settles at zero. The distinction matters when a caller disputes a dead-page charge: for Hunter the
-old behaviour was an over-charge and is now fixed, for TikHub the charge is a passthrough of a real
-upstream cost, and the answer is to probe with a provider whose misses are free (scrapecreators
-404s cost nothing) before spending TikHub calls on unverified slugs.
+Once a UTC day, the last two complete days are recounted per team from the ledger and REPLACE that
+team's rows (late settles and late audit rows); a difference is logged. The recount is a lease on the
+cursor row: a run finding a live lease skips, each team is replaced in one transaction that re-checks
+the lease and records progress, and `--max-recount-seconds` bounds one run.
 
-**Bright Data** is the derived rule in the other direction — the UNDER-charge, and the largest one
-found: it bills $1.50 per 1000 records *delivered*, reports no charge field, and one call can
-deliver thousands of records, so settling per_result calls at the estimate billed a ~6,000-record
-Google Play reviews job as one record. Three weeks of traffic consumed $13.61 upstream and billed
-orgs $0.35 (2026-08-24, a 39x gap). `_brightdata_record_count` counts the response instead — a
-JSON array or csv/ndjson lines are the records; any JSON *object* is zero records (the >60s sync
-fallback's and /trigger's `snapshot_id` handoff, an early download's `status: running`), because
-the async job's records bill when `brightdata.web.scrape.job.results` downloads them (that
-endpoint's price moved from free to per_result for exactly this — which also means re-downloading
-a snapshot bills the caller again; the catalog note says to download once). A gzipped
-(`compress=true`) or buffer-truncated body settles at the estimate: when we cannot count, the
-estimate is the honest number. This needed `unit_micro` (the per-ROW price) to ride the
-`MarketplaceCall` on every tier, where before only oauth-billed calls carried it.
+## Call settlement and provider evidence
 
-**Aviato** adds another derived family without changing the relay: fixed route prices settle at the
-estimate; catalog `cost.modifiers` make observed preview, email and rescrape flags change the reserve
-before relay; synchronous bulk enrichment settles from the number of successful records in the response. Simple people search
-reserves its fixed 0.25-credit base and, when `enrich=true`, the documented one-credit-per-result
-add-on. Two multi-row `enrich=true` probes returned only id rows and each consumed the 0.25-credit
-base. The endpoint's catalog `settle: base` rule therefore releases the reserve rider after a
-successful response. The hold stays conservative while the final charge follows observed vendor
-behavior. Repeated balance probes also showed that company single and bulk rescrape, person single
-rescrape, and person bulk email riders listed on the authenticated price page are not charged.
-Person single email and person bulk rescrape riders are charged. The YAML models the measured rules
-with `reserve_only` on the documented but live-unbilled riders. The hold remains conservative;
-`settle: modifiers` releases those riders and charges only the measured combination. Crustdata differs because it
-reports the complete answer directly: `_platform_settle` passes response headers to
-`_observed_cost_micro`, which converts `X-Credits-Used` through the same `fx.yaml` rate used by the
-catalog.
+The metered path is `_platform_offer`, spend caps, `ledger.reserve_in_transaction`, application
+commit, relay, then settle or release. The request session must be committed before relay
+([connection discipline](proxy-model.md#connection-discipline-a-call-in-flight-holds-no-db-connection)).
+Two pure functions hold the arithmetic: `resolve.price_call` (estimate, units, frozen basis) and
+`settle.decide_settle` (charge or release, and how much); the replay engine calls the same two
+([replay](replay.md)).
 
-Closing the hold runs on its **own session** (the request's may be mid-rollback from the very error
-being released for) and **never raises** — the caller already has their answer, and a ledger hiccup
-must not turn a served call into a 500. A hold that fails to close is not lost money either: the
-reaper releases it, which errs in the org's favour. That "errs in the org's favour" is still forfeited
-revenue, so the one failure that is transient by nature — no pool slot within `pool_timeout`
-(`sqlalchemy.exc.TimeoutError`) — gets exactly one retry after 0.5 s before the log line; anything else
-falls straight through. The request session itself is committed before the relay precisely so this
-second session never has to wait on the first (see [proxy-model](proxy-model.md) § Connection
-discipline).
+Settlement prefers response evidence through `_observed_cost_micro` and falls back to the estimate
+only when evidence is unavailable; **the estimate is never a substitute for an available
+response-derived charge.** Generic evidence is declared on the catalog row (`reported_charge`, charge
+headers, `settle: usage | count | quantity | modifiers | base | terminal_presence`, an `expect` rule,
+a declared `miss`; [catalog](catalog.md#request--and-response-derived-billing-declarations)).
+Provider-specific readers in `settle.py` and `resolve.py` (row counts, result presence, credit fields
+in the body) exist only where the generic declarations cannot express the provider's bill; each such
+row's cost `note` states the rule. Their shared rules:
+
+- A response-derived row count is capped at the hold. An empty list is free where the provider bills
+  per returned row; a documented minimum (one credit on an empty page) is honoured.
+- Missing, malformed, negative or non-finite evidence keeps the frozen estimate for reconciliation;
+  it never settles as free and never as the ceiling.
+- Rates and credit conversions are frozen when the call resolves, so a later fx edit cannot re-price
+  it. `MarketplaceCall.unit_micro` is the raw per-row price, which on a `per_success` row is the whole
+  call, so a response-reported credit COUNT settles against `reported_charge_unit_micro` (one frozen
+  credit), never `unit_micro`.
+- A balance or account read (`remainingCredits`, a wallet total that updates late) is never per-call
+  evidence.
+- BYOK calls never enter this path.
+
+**Sizing the hold.** Without `cost.reserve`, the row-count signal (`resolve._LIMIT_PARAMS` /
+`_body_limit`) reads the caller's page-size fields in query or body (including camelCase spellings and
+a nested `pagination`), or for providers that bill per listed item the length of the target array;
+with no signal it is a 20-row page. A cap key only belongs there if the provider honours it as the
+spend cap; otherwise the reservation follows a cap the bill ignores. A `per_result`/`quota_rows` cost
+whose unit is an input entity (`resolve._ENTITY_UNITS`) is counted by `_entity_count` (repeated or
+comma-separated query values, a body array including a JSON-RPC `params`, one per task object, else
+one; capped at 10,000, not the page max), because on those providers nothing reports a cost
+afterwards: the reserve IS the charge, and a wrong count is a wrong bill. A row declaring
+`cost.reserve` skips that inference and its counted settle is capped at the hold.
+
+`_platform_settle` uses its own short session and never turns a served response into a 500. A pool
+timeout, a PostgreSQL deadlock (`DBAPIError` with `orig.sqlstate == "40P01"`, never message
+matching) or a refused connection (`DB_BUSY_ERRORS`) gets one retry of the whole settlement/release transaction, including overflow spend, in a fresh
+session. A second failure leaves the hold to the reaper and preserves the upstream response. No
+upstream retry or extra ledger operation is introduced.
+
+### What is never billable
+
+- **A 429**, under any cost type: capacity refusing a request is not the caller's bad input, and on a
+  shared key it is treg's own saturation.
+- **A relayed 405**: `_resolve_marketplace_call` rejects a caller method mismatch before relay, so a
+  provider 405 indicts treg's recorded method (`_NOT_THE_CALLERS_FAULT`).
+- **A caller-input 4xx (400/404/422) under `per_call`** bills only a non-zero charge the vendor itself
+  reports in the body; otherwise it releases as `rejected_unbilled_<status>`, because a rejection
+  served nothing (`test_a_4xx_bills_only_what_the_provider_reports`).
+- **A platform-tier 4xx that `signatures.classify` reads as OUR account running dry** releases as
+  `capacity_<kind>`, whatever its status; otherwise the caller would pay for treg's exhausted account,
+  and pay twice once overflow serves it (`tests/test_capacity_overflow.py`).
+- **HTTP 200 alone does not prove a billable success.** `settle.py` checks the catalog's `expect`
+  rule first, then the routing adapter, else the estimate; a value in `expect.misses` settles at zero
+  but stops the hit verdict calling a free miss a failure. `store.py` inherits provider-file `expect`
+  rules onto endpoints. An undecidable rule does not imply a free call.
+
+## Rows in the v2 spelling
+
+A row in the v2 spelling (architecture/catalog-schema.md) is priced and settled by
+`application/call/cost.py` through the same two seams. `price_call` returns its hold and its cost
+terms, frozen at resolve (`Pricing.terms`, carried as `MarketplaceCall.cost_terms`: the unit price,
+the reported unit's rate, the plugin rates and the row's outcome and bill rules), and
+`decide_settle` follows the v2 settlement order; no provider-specific settlement rule reads a v2
+row.
+
+- **The hold.** `price` gives the price of `per` units in its `currency` at the rate frozen at
+  resolve: `value`, or the first `table` row whose `when` holds on the request (input defaults
+  applied, values coerced by their declared type), times a bounded `times` field, else the
+  `fallback`; `rates` prices plugin quantities only, so the schema requires a `reserve.plugin` beside
+  it and refuses `bill.miss` in units. `reserve` gives the units: `rows` (the caller's integer from 1 to `max`, else
+  its default; with no default treg's key refuses a request without it), `entities` (list items,
+  comma-separated query values and scalars, added up, from one to `max`; treg's key refuses a
+  request naming more than `max` before any hold, `catalog_parameter_invalid` 400), or a `plugin` quantity
+  priced at the frozen rates and capped at `max`; absent, one unit. A reserve plugin that raises
+  or returns no quantity refuses the call before any hold (`catalog_price_invalid`, 503), and so
+  does treg's key on a row whose price, reported charge or usage meter is in a credit or meter
+  fx.yaml has no rate for (`require_rates`), whatever eligibility decided. `round:
+  up` bills whole `per` blocks, in the hold and in a count. Amounts round up to whole micro-USD.
+- **The request it can price.** On every tier, before anything is held, `price_call` refuses with
+  `catalog_parameter_invalid` (400) a query or path parameter sent more than once when its declared
+  type is not an array (an undeclared one is not judged), and a `reserve.rows` count the request
+  carries that is not a whole number from 1 to `max` (a JSON integer or ASCII digits; an absent one
+  takes the default). The refusal names the parameter, never its value.
+- **The order.** No answer, a 3xx and a 5xx release. A 4xx releases unless `settle.reported` reads
+  a charge above zero and the status is not one of `_NOT_THE_CALLERS_FAULT`; then that is the bill.
+  On a 2xx, `bill.free_when` makes the call free; a readable `settle.reported` (after `scale`,
+  zero included) is the charge, uncapped; otherwise the outcome picks `bill.error` or `bill.miss`
+  (free by default, `charged`, or a number of units at the unit price capped at the hold) and a hit
+  is charged. A free outcome with no settle evidence observes a charge of 0, as a row in today's
+  spelling records a free miss, so the call record and the stats fallback read it alike. A charged
+  answer costs its `count` (non-null items) or `plugin` quantity capped at the row's declared
+  maximum, not at the hold: `reserve.rows.max` or a declared `reserve.entities.max` units at the
+  unit price, or a reserve plugin's `max`; capped at the hold when the row declares none (no
+  `reserve`, or `reserve.entities` without `max`); its `usage` meters, which may exceed the
+  estimate, and are held up to a declared `settle.worst_case`; or the hold when there is no `settle` or no evidence. A `count` path is unreadable, so the hold, when it does not select a list: for a path
+  with `*` or a filter, when any list one of its `*` or filter steps iterates is missing or not a
+  list (an empty one counts 0). An answer that would be billed is released when it carries a
+  capacity signature.
+- **The frozen basis** keeps the vocabulary both spellings share, so either settles through the
+  same ledger code: a usage settle freezes its meters as today's `usage` basis, every other v2
+  settle is `observed` with the hold as its fallback. An async v2 row's terms ride its persisted
+  basis (`cost.persisted`); the worker settles a terminal answer through `cost.settle_terminal`: a
+  `billed_failure` by its `settle` form, a `success` by the order from `free_when` on. An async
+  row's `settle.reported` is the charge the provider reported on the submission, when it billed the
+  task (DataForSEO's task_post); the terminal answer's own figure is never read, as a row in today's
+  spelling settles an `observed` basis. Without a submission figure the outcome and `bill` decide.
+  This refines the settlement order for async rows: step 3 reads the submission's report, so a
+  provider that reports its charge only on the terminal answer needs its own declared change.
+- The served `cost` of a `rates` row carries the reserve `max` as its `fallback`, the most one
+  call is held at, so eligibility on treg's key reads a price for it.
+- `MarketplaceCall.unit_micro` is one `price.value` (a table's fallback) and
+  `reported_charge_unit_micro` one frozen credit, as for a row in today's spelling; quotes, the
+  access check and the arena price a v2 row through `cost.price` as well.
+
+## Pricing a cached hit
+
+A hit from the archive settles through the same hold as a live call. Per team and question
+(`ArchiveKeyOrg`, written inside the settle transaction) a team's first billed call pays full price
+whether the vendor or the archive answered; from its second, a hit settles at
+`archive_hit_repeat_price_percent` of the RAW amount (floor division), then margin. Another team's
+first hit is full price. The settle meta says `cached: true` and `cache_price_percent`. Own-key hits
+are never metered. No new entry kind: the hold settles for less and the rest is released.
+Detail in [archive](archive.md#pricing-a-hit).
 
 ## Shared-plan pricing: flat-fee providers, and the rate treg sets
 
-A flat-fee provider (a monthly subscription with a rate limit or unlimited calls) has no per-call
-vendor price, which kept every one of them out of the catalog. The ladder that admits them:
-
 | The provider sells | The price of one call |
 |---|---|
-| real credits | vendor price ÷ credits (the normal fx entry) |
-| a monthly request cap | fee ÷ cap — same arithmetic |
-| a rate limit only | fee ÷ theoretical max is the FLOOR; the rate sits above it at a stated break-even |
+| real credits | vendor price / credits (the normal fx entry) |
+| a monthly request cap | fee / cap |
+| a rate limit only | fee / theoretical max is the FLOOR; the rate sits above it at a stated break-even |
 | unlimited | a treg-set rate with the break-even printed |
 
-The honesty rule that makes the last two rungs defensible: **we never claim these are vendor
-prices.** What treg sells there is its own service — subscription custody, the key, a share of the
-rate limit — at a published rate whose fee and break-even are printed beside it (fx.yaml
-`kind: treg_shared_plan`; `check_fx` makes the marker impossible to carry dishonestly). The price is
-also congestion control: at $0, one looping agent exhausts a shared rate limit for every team at
-once.
+**We never claim the last two are vendor prices.** treg sells its own service (custody, the key, a
+share of the rate limit) at a published rate with fee and break-even beside it (`kind:
+treg_shared_plan`, enforced by `check_fx`). The price is also congestion control: at $0 one looping
+agent exhausts a shared rate limit for every team. Mechanically it is a credit provider whose credit
+is "one call on treg's plan"; holds, caps and settlement are unchanged.
 
-Mechanically a shared-plan provider is just a credit provider whose credit is "one call on treg's
-shared plan" — `cost_view`, holds, caps and settlement needed zero changes. What is new:
+`shared_plan_recovery` reports fee versus collected per treg-set rate, scaled to the report window,
+with `suggested_usd = fee / measured calls` and an action at plus or minus 50%. It REPORTS; a human
+edits fx.yaml monthly, because a rate card that moves on its own under an agent is not a rate card.
+`price_drift` never sees these providers (they report no charge); a test fires if an observed-cost
+parser is ever added for one, because drift would then police a price treg set.
 
-- **A 429 is never billable**, under any cost type. Capacity refusing a request is not the caller's
-  bad input, and on a shared key it is treg's own saturation. This also fixed a pre-existing wrong:
-  `per_call` used to bill upstream 429s, and no vendor bills a request it refused to accept.
-- **A relayed 405 is never billable**, under any cost type. A catalog caller cannot choose a stale
-  method: `_resolve_marketplace_call` rejects a mismatch before relay. The only method the provider
-  can reject is therefore treg's recorded method, so settling a `per_call` hold would charge the
-  team for catalog metadata treg owns. `_NOT_THE_CALLERS_FAULT` makes that path release the hold.
-- **A 4xx that the signature table reads as OUR account running dry is never billable**, whatever
-  its status: Apollo says "out of credits" with a 422, which `per_call` would otherwise charge to
-  the caller as an input error - and, once overflow serves the same request through an aggregator,
-  charge them twice. `_platform_settle` asks `signatures.classify` before settling any platform-tier
-  4xx and releases the hold with reason `capacity_<kind>` (`test_apollo_out_of_credits_on_a_per_call_
-  endpoint_*` in `tests/test_capacity_overflow.py`).
-- **`shared_plan_recovery`** (`GET /admin/reconcile/shared-plans`): fee versus collected per
-  treg-set rate, with `suggested_usd = fee ÷ measured calls` and an action at ±50% thresholds. It
-  REPORTS; a human edits fx.yaml monthly. An auto-adjusting price would move under an agent's feet,
-  and a rate card that moves on its own is not a rate card. The fee is scaled to the report's
-  window, so a 7-day report compares against a quarter of the fee.
-- **`price_drift` never sees these providers** — drift compares our estimate against the provider's
-  own reported charge, and a flat-fee provider never reports one. Pinned by a test that fires if an
-  observed-cost parser is ever added for one, because at that point the drift report would be
-  policing a price treg itself set.
+**Trial pools** (`kind: treg_trial`): $0 on treg's free-tier key, capped per team per UTC day by
+`_enforce_trial_allowance` (successful platform calls with a non-free catalog cost only, fail-closed,
+429 `trial_allowance_reached` with a connect-your-own-key hint). Free tools, failed calls and own-key
+calls never burn it; another org's usage never touches this org's pool. A hot pool is the buy signal
+for the provider's commercial tier. The count reads the team's whole audit day, so a team found at
+its allowance is remembered per process until 00:00 UTC, keyed with the team's creation time,
+and refused without counting again (a day's count only grows). Its `used_today` is then a lower
+bound, as the audit lag already made it.
 
-### Trial pools: the $0 rung
+## Idempotency and retries
 
-A third treg-set rate, `kind: treg_trial` (fx.yaml): a provider served on treg's own FREE-tier key
-at exactly $0, capped per team per day (`trial_calls_per_team_day`, enforced by
-`api._enforce_trial_allowance` — successes only, fail-closed, refusal 429 `trial_allowance_reached`
-with a connect-your-own-key hint). The strategy: the pool is the demand probe — a hot pool is the
-buy signal for the provider's commercial tier, negotiated with real volume numbers. Failed calls
-never burn allowance (the same line billability draws), and another org's usage never touches this
-org's pool (tested). At $0 the allowance is the only brake, so the validator refuses a trial entry
-without one.
+`application.call.idempotency` keeps a lost successful response from causing a second upstream
+charge. It must replay the response, not just remember the charge; skipping only our debit would
+still pay the provider twice.
 
-## Retries: a call must not be paid for twice
+- The caller supplies `Idempotency-Key` on `/call/`, or `idempotency_key` over MCP. No label means no
+  deduplication. Never derive a label from request contents: identical requests can be new work.
+- The key is `(membership_id, key)`, partitioned by the primary caller tag and every membership pin
+  (`_scoped_idempotency_key`). A global or org-wide key would not separate independent callers. On
+  treg's shared key, the label sent upstream is re-scoped per org and pin
+  (`scope_shared_idempotency_key`), so two customers' identical labels never resolve to one upstream
+  job; BYOK labels pass verbatim.
+- A short transaction claims a pending row before relay; the unique constraint arbitrates (loser
+  409, naming the holder's `call_id` with `Retry-After`); reusing a label with another fingerprint
+  is 422. A JSON body enters the fingerprint as its canonical serialization (`_canonical_json`), so
+  key order and whitespace do not make a retry a different request; a body over
+  `_CANONICAL_MAX_BYTES`, or one whose parse could merge two requests, keeps its raw bytes.
+- Metered successes keep status, body, charge and call id for 24 hours.
+  `response_retention: forbidden` keeps a body-free 410 receipt instead, for BYOK too. Uncharged
+  failures (including every routed failure), other BYOK calls and owned free polls release the label
+  at once.
+- Replays return `X-Treg-Idempotent-Replay: true`, `X-Treg-Cost-Micro: 0` and the first figure in
+  `X-Treg-Original-Cost-Micro`; MCP returns `replayed: true`.
+- Refusal and cancellation cleanup return an acquired label; expired entries are swept lazily per
+  caller at claim time, skipping locked rows.
+- A reserve admission 429 never reaches `_store_idempotent`; `_stamp_call_exit` releases its pending
+  claim (both MCP surfaces too). If that cleanup fails twice, the row stays pending until the
+  stale-claim resolver stores 410 `idempotency_outcome_unknown` when no money evidence exists.
 
-Prompted by a public question — *"how does result pricing handle retries, agents need idempotent
-billing before this works"* — and it matters more here than for a human-facing API, because agents
-retry far more than people do.
+## Tag-based billing - a builder reselling treg to their own users
 
-**Most retries were already free**, which is what makes the real gap narrow. `_platform_billable`
-never bills a 5xx, a 3xx, a timeout or a network error, and bills a 4xx only under `per_call` where
-the provider charges for accepting the request at all. Result pricing settles on the provider's own
-reported number (`_observed_cost_micro`), so a `per_success` lookup that finds nothing costs nothing.
-
-The gap is one case: treg reached the provider, the provider succeeded **and charged us**, and the
-response was lost on the way back. The agent retries and we pay twice.
-
-### Why remembering the charge is not enough
-
-The cheap fix is to note that a key was already billed and skip the second charge. It does not work:
-treg would still make the second upstream call, so we would still pay the provider and would simply
-move the double cost onto ourselves. The second request has to not reach the provider at all, which
-means storing the first response and replaying it.
-
-### The surface
-
-`application.call.idempotency` owns the claim and replay state behind `Idempotency-Key: <label>` on
-`/call/`, or the `idempotency_key` argument to the MCP `call` tool. A
-replay answers with `X-Treg-Idempotent-Replay: true` and `X-Treg-Cost-Micro` set to what the FIRST
-call cost, so a caller can report the charge honestly rather than implying a second one. Over MCP the
-result carries `replayed: true`.
-
-Nothing happens without it. A caller who sends no label sees byte-identical behaviour to before the
-feature existed, which is what made it safe to ship.
-
-### The key belongs to the caller
-
-`IdempotentCall` is keyed on `(membership_id, key)`. Every door — a personal token, an agent token,
-an OAuth grant — resolves to one `Membership`, so a single rule covers a human, an agent, and two
-agents in the same team: **the label belongs to whoever called**.
-
-Not `key` alone: clients choose their own labels, the same string will be picked twice, and that
-collision would serve one team's stored response to another. It is the only failure in this feature
-that leaks data rather than money. Not per-org either — two lazily written agents in one team both
-reach for `retry-1` and would collide for no reason.
-
-The key is never derived from the request. That was proposed and rejected: two identical searches an
-hour apart are new work, and treg cannot tell that from a retry. A server-invented key would turn a
-correctness feature into a 24-hour cache that quietly serves stale data.
-
-### What is stored, and for how long
-
-Metered successes, plus a routed waterfall's terminal failure after one or more paid children, for
-24 hours. A team calling on its **own** key is billed by the provider, so there is nothing to protect
-and no reason to hold their response. An uncharged failure frees its label immediately so the caller
-can retry; a partially charged routed failure stores the same status, `{"detail": ...}` body,
-`charged_micro` and call id, because rerunning its children would pay the providers twice.
-
-That is also what bounds storage: bodies are kept only for calls that actually cost money, for a day.
-
-### Concurrency, and giving the label back
-
-A `pending` row is written in an application-owned short transaction **before** the upstream call,
-and that row is the lock: two retries
-arriving together race on the unique constraint, and the loser is told to wait (409) instead of
-duplicating the spend. Same reasoning as the conditional UPDATE in `ledger.reserve` — where two paths
-can read before either writes, the database has to arbitrate.
-
-A request that dies after claiming must give the label back, or a single bad parameter would hold it
-for the full window and answer every retry with 409 — worse than the problem this solves. The release
-happens in the `StarletteHTTPException` handler, the one place every refusal passes through; the call
-handler has a dozen raise points and releasing at each would be a dozen chances to miss one.
-
-Expired rows are swept lazily at claim time, scoped to the calling caller, exactly like the hold
-reaper: no scheduler, no leader election on a multi-instance deploy.
-
-## Tag-based billing — a builder reselling treg to their own users
-
-A builder embeds treg in their product and bills their own users. treg's job is exactly three things:
-**attribution**, **enforcement**, **export**. treg never bills their end user, never holds their card
-and never sets their price; margin stays 0%.
-
-They run one org, one balance, one token, and tag each call with their own ids:
+treg's job for a builder is **attribution**, **enforcement** and **export**. It never bills their end
+user, holds their card or sets their price; margin stays 0%. One org, one balance, one token, and
+each call tagged:
 
 ```
 X-Treg-Meta: customer=cust_8123, workspace=ws_9, feature=email-finder
 ```
 
-Up to 5 pairs. It is a **header, never a tool argument** — a model asked to pass an id drops it
-somewhere in a chain, and a figure you cannot reconcile is worse than no figure. The builder's backend
-already sets `Authorization` on the request; this is the same call site. `application.call.intake` parses
-it **once** per request, before the idempotency block, and everything downstream reads that one
-object. A second parse site would be a second chance to disagree about who pays.
+It is a **header, never a tool argument**: a model asked to pass an id drops it somewhere in a chain.
+`application.call.intake` parses it **once** per request, before idempotency, and everything
+downstream reads that object. Validation refuses rather than repairs (an oversized value is a 422,
+never truncated, because a truncated id merges two of their users). Values containing `@` are refused
+outright: the ledger is append-only, so an email written today cannot be erased on request tomorrow.
+Limits live in `domain.governance.budgets`.
 
-Validation refuses rather than repairs: an oversized value is a 422, never a `[:128]`. A truncated id
-merges two of their users into one invoice line, and a dropped tag is usage nobody bills. Values
-containing `@` are refused outright — the ledger is append-only, so an email written today cannot be
-erased on request tomorrow.
+**Any tag can be reported; declared tags can be enforced.** Reporting groups by any key over a
+bounded window. Enforcement runs on every call and needs an indexed aggregate, so a key is budgetable
+only once the team **declares** it (`Org.budget_dims`, capped): each declared dimension is another
+row written per call. **Budgets stack**: every declared dimension is evaluated and the first breach
+in declaration order refuses, naming the dimension. `domain.governance.budgets` owns validation and
+dimension selection; `application.call.reserve` owns the call-side caps; a newly observed tag returns
+`created` without committing, and the caller commits.
 
-### Any tag can be reported; declared tags can be enforced
+**`TagSpend`**: `ledger.reserve` writes one row per tag in the balance transaction, each carrying the
+**full** call amount (cost-allocation-tag semantics: summing within a dimension reconciles to the org
+total, across dimensions double-counts, so every report names its key). `amount_micro` tracks the
+hold: estimate in flight, consumed figure at settle, deleted on release. Hence two deliberately
+separate reads: `tag_spent_since` (cap, counts in-flight work and errs toward refusing) and
+`tag_invoice_since` (invoice, settled rows only). Do not deduplicate them.
 
-The split is **reporting versus per-call enforcement**, not money versus counts.
+**Tag caps are SOFT and must never be sold as hard.** A per-tag total is an aggregate, so concurrent
+calls can each read a compliant figure; overshoot is bounded by concurrency times the estimate, which
+is acceptable only because the org balance and per-org daily cap sit behind it. Making it exact needs
+a second materialized authority with four new ways to disagree with `domain/money`.
 
-Reporting groups by any key with real money attached, because an invoice query runs occasionally over
-a bounded window at admin scale — the same reason `reconcile.provider_spend` folds in Python.
-Enforcement is different: it runs on *every* proxied call and must be an indexed aggregate, so a key
-only becomes budgetable when the team **declares** it (`Org.budget_dims`, capped at 3). Declaring a
-key is what buys it an index. The cap exists because each declared dimension is another row written
-per call and another place settle-vs-reserve correction can go wrong; a team budgeting on `session`
-would write an aggregate row per conversation.
+**Refusal bodies are not the org's.** A tag refusal is rendered to the builder's end user, so it
+shares no code with the org 402 (which carries `balance_micro` and a top-up URL): `{error, dim, val,
+spent_micro, cap_micro, period, estimated_cost_micro, message}`, ordered so it never falls through to
+the org 402.
 
-**Budgets stack.** `workspace=ws_9` at $50/day and `customer=cust_8123` at $5/day are two `TagBudget`
-rows and both apply to a call carrying both tags. Every declared dimension is evaluated and the first
-breach in declaration order refuses, so the outcome is deterministic. The refusal **names the
-dimension** — a builder running stacked budgets otherwise cannot tell a workspace breach from a
-per-user one.
-Validation and dimension selection share the `domain.governance.budgets` owner across the call and
-control surfaces. `application.call.reserve` owns the call-side spend caps and tag-budget lookup. A newly observed tag returns
-an explicit `created` result without committing; the call intake and governance router commit at the
-same boundary that makes the row visible.
+**Invoices read the ledger.** `GET /orgs/{id}/usage/by-tag` takes money from the ledger and counts
+from `CallRecord`, whose queue sheds rows under exactly a successful builder's load. The money query
+lives in `domain/money`. `unattributed_micro` is reported so `attributed + unattributed == settled
+spend` holds for any dimension.
 
-### `TagSpend` — why the money side is a table, not a JSON key
+**Tag for counting, token for control.** A tag is a label, not a boundary. A token that runs on an end
+user's machine is pinned (`Membership.pinned_tags`, `treg org agent-new --pin customer=cust_A`); the
+pin **beats the header**, and naming a different value is a 403. `reserve_in_transaction` writes
+`meta.tags` from its authoritative `tags` argument, overriding caller provenance; that append-only
+reserve entry outlives the hold and proves ownership for `/calls/{call_ref}` when audit was shed.
 
-`ledger.reserve` writes one `TagSpend` row per tag, in the same transaction as the balance movement.
-Each row carries the **full** call amount, so the same dollar appears under `customer` and under
-`workspace` — cost-allocation-tag semantics. Summing *within* a dimension reconciles to the org total;
-summing *across* dimensions deliberately double-counts, which is why every report names its key.
+## Referrals
 
-`amount_micro` tracks the hold: the estimate while in flight, rewritten to the consumed figure at
-settle, and deleted on release. So a cap counts in-flight work at its estimate and errs toward
-refusing — the right direction for money — while an invoice reads settled rows only, because an open
-hold is not spend and billing it would charge again when it settles. Hence two deliberately separate
-reads, `tag_spent_since` (cap) and `tag_invoice_since` (invoice), named so nobody "deduplicates" them.
+`domain/referrals.py` owns policy; credit moves only through `ledger.grant`. Rewards are flat,
+symmetric credit bonuses (`config.referral_*`). Cash payouts and a platform-wide payout budget are not
+implemented, so the per-referrer cap does not bound platform-wide exposure.
 
-### The caps are SOFT, and must never be sold as hard
-
-`ledger.reserve` is exact because the balance is a materialized column: its check and its debit are
-one conditional UPDATE. A per-tag total is an aggregate over rows, so N concurrent calls can each read
-a compliant figure and together exceed the cap. Overshoot is bounded by `concurrency × per-call
-estimate`, and that is acceptable **only** because the hard gates sit behind it — the org balance and
-the per-org daily cap.
-
-Making it exact would need a second materialized authority on spend: reset daily, decremented on
-release, corrected on settle divergence. Four new ways to disagree with `domain/money`, which is the one
-module allowed to move money. Not worth it. Never document these caps to builders as hard limits.
-
-### Refusal bodies are not the org's
-
-A tag refusal is the response a builder renders **to their own end user**. It shares no code with the
-org-level 402, which carries `balance_micro` and a top-up URL — the builder's private numbers. Shape:
-`{error, dim, val, spent_micro, cap_micro, period, estimated_cost_micro, message}`, and the checks are
-ordered so a tag refusal can never fall through to the org 402.
-
-### Invoices read the ledger. Always.
-
-`GET /orgs/{id}/usage/by-tag` takes **money from the ledger** and call counts from `CallRecord`. Audit
-rows are fire-and-forget and the queue sheds them under exactly the load a successful builder
-generates; an invoice built on them would under-bill silently and unrecoverably. The money query lives
-in `domain/money`, so presentation code cannot casually reach for `CallRecord`.
-
-The response reports **`unattributed_micro`** explicitly rather than dropping it. The identity a
-builder's books rest on is `attributed + unattributed == the org's settled spend for the window`, and
-it must hold whichever dimension they slice by.
-
-### Tag for counting, token for control
-
-A tag is a **label, not a boundary** — anyone holding the token can send any tag. That is fine when
-the only budgets and reports it touches are the builder's own. When a token will run on an end user's
-*own machine*, the builder mints an agent token pinned to that user (`Membership.pinned_tags`,
-`treg org agent-new --pin customer=cust_A`). The pin **beats the header**: naming a different value is
-a 403, because otherwise the holder could retag their calls and walk out of their own budget, which is
-the entire point of giving them a scoped token.
-
-### The per-org daily cap has two owners
-
-`Org.daily_cap_micro` is the team's own ceiling; `platform_daily_cap_usd` is ours (**$500/day**
-since 2026-08-29 — at $100 a normal agent workload tripped it while the team still held balance).
-The effective cap is
-`min(the two)` (`api._effective_daily_cap`). A team may lower theirs freely and see it at
-`GET /orgs/{id}/settings` — a limit nobody can see becomes a support ticket the first time an agent
-trips it. Raising past our ceiling is **refused, not clamped**: a builder who thinks they set $500/day
-and silently got the platform default discovers it as an outage mid-launch. That refusal is the commercial conversation,
-and it replaces editing one env var that would lift the blast-radius rail for every team at once.
-
-## Referrals — paying for growth out of the one margin we have
-
-`domain/referrals.py` decides; `domain/money` moves. The only crossing is `ledger.grant(...)`, exactly as
-`application/billing.py`'s only crossing is `ledger.topup(...)`.
-
-**Why a flat bounty and not a percentage.** `platform_margin` is 0.0 and "we add no markup" is a
-public promise (terms §08, landing 04), so there is no gross margin on a catalog call to share. The
-only thing treg actually keeps is the gap between what a team tops up and what it consumes. A
-percentage of top-ups would therefore be a permanent share of pass-through GMV — and, worse, it
-scales the reward with effort, which is the definition of a farmable incentive. Flat figures ($5 to
-each side, `config.referral_*`) are budgetable as CAC, bounded by construction, and not worth
-building a fake-account farm for. The two sides are deliberately SYMMETRIC: it makes the offer one
-sentence to explain, and neither party can feel short-changed by the other's share.
-
-**The qualifying event is a PAID TOP-UP, never a signup.** `promo_grant_micro` is granted per ORG
-and nothing caps orgs per user, so a signup-triggered bounty is a faucet pointed at itself.
-
-**The threshold is cumulative, and falling short is not fatal.** This first shipped as "the first
-top-up must clear the minimum, or the referral is rejected", and that was wrong in the one way that
-mattered: **$5 is the first preset on the billing page and the minimum is $10**, so the most obvious
-button silently destroyed the reward, permanently, with no way back even if the team added $100 the
-next day. It punished exactly the person the program exists to convert and removed their reason to
-add the rest. A short payment now leaves the row `pending`, counts toward the total, and the billing
-page keeps the offer up — asking for the REMAINDER, because repeating the full figure reads as
-though the money already paid did not count.
-
-This costs nothing in abuse terms: the money still has to arrive, so $5 + $5 buys a referral on
-exactly the terms $10 does, and the fingerprint and the cap are untouched. It also let the old
-"must be the first purchase" rule go — that existed to stop a second bounty, and `pending` already
-does it, since `qualify` only ever selects a pending row.
-
-**Referral credit burns first.** `_KIND_ORDER` gives `referral` the same rank as `promotional`,
-because both are marketing spend we can never be asked to return, and spending them first keeps the
-refundable/disputable purchased pool as small as possible. This is not cosmetic: an unrecognised
-kind sorts LAST (`.get(kind, 99)`), so omitting the entry would have made the bonus burn *after*
-money someone actually paid us. Pinned by a test.
-
-**The `Referral` row is the idempotency guard, not `grant(once=True)`.** `grant`'s `once` check is a
-SELECT with no backing unique index — fine for a signup promo that is merely retried, wrong for
-money owed to a third party, where two concurrent redemptions can both miss it. So every referral
-grant passes `once=False`, and two UNIQUE columns arbitrate instead: `referred_org_id` (an org is
-referred once, ever) and `qualifying_payment_intent` (one payment funds one qualification). Same
-reasoning as the conditional UPDATE in `reserve` and the unique `stripe_payment_intent` in `topup` —
-where two paths can read before either writes, the database has to be the one that says no.
-
-`_pay` **claims before it grants**: the row flips to `paid` in its own committed statement, and only
-then does credit move. The opposite order would mean the loser of a race had already granted. The
-cost is the mirror failure — a crash between claim and grant pays nobody and says otherwise — which
-is the right way round for money, is visible in `/admin/referrals` as a paid row with a null block
-id, and errs toward paying once rather than twice. The grants and the block-id stamp are then
-committed together, in one transaction after the separate claim commit.
-
-**The two sides are paid at different times, on purpose.** The REFEREE is credited the instant they
-qualify; only the REFERRER waits out `referral_hold_days` (7).
-
-They are not in the same position. The referrer has a Referrals page listing every invitation and
-what it is worth, so a pending reward there is legible. The referee has no such page — for them the
-**balance is the only feedback that exists**, and a bonus that is merely "coming" is
-indistinguishable from one that never happened. That is not hypothetical: it was reported exactly
-that way (topped up, saw the plain total, assumed it had failed), and an "earned, lands on <date>"
-banner was built and then discarded in favour of just paying them, because explaining a delay is
-worse than not having one.
-
-The price is half the clawback window, and it is worth paying: exposure is one bounty per card (the
-fingerprint gate still binds), the referee has just handed us the qualifying payment, and a
-chargeback already costs us that payment plus the dispute fee — against which $5 is marginal.
-`_grant_referee` is guarded on `referred_block_id`, which is both the once-only guard and the
-record, so `sweep`'s referee branch survives only as a fallback for a failed instant grant.
-
-**The hold is the only clawback window there is**, and it now covers the referrer's half alone. `charge.dispute.created` / `charge.refunded` — the first reversal events treg has ever
-handled — cancel a bonus still inside that window. Anything already granted is **logged for a human,
-never auto-reversed**: referral credit burns first and is usually spent by then, and reversing it
-would mean a second code path able to drive a balance negative. The clawback touches the *bonus*
-only; it never refunds the top-up, because that has always been a human decision.
-
-**The gates** (`qualify`): first top-up only, at or above the minimum; not a self-referral; the
-paying card's Stripe fingerprint has not already claimed a referral; and the referrer is under their
-lifetime cap. The fingerprint is the load-bearing one — an email address is free and a card is not —
-and it is read via `expand=["payment_method"]` on the `PaymentIntent.retrieve` that
-`_on_checkout_completed` was already making. It is not card data and it lives on the `referral` row
-alone, never on an `Org`.
-
-**There is deliberately no "the referrer must have topped up first" gate.** It was built and then
-removed, and the reasoning is worth keeping because it will be proposed again. A top-up is not a cost
-to a self-dealer — it converts into credit they keep — so the attack it appears to block survives it
-untouched: requiring one of the *referrer* too just adds a step that returns its own money. The cap
-is per-referrer and referrer accounts are free, so a farm's real constraint is CARDS, and the gate
-added roughly one card per twenty referrals: a ~5% tax. Against that it hid the link from every
-free-tier user, who on a product pitched as "$1.00 free, no card" are most of the userbase and the
-likeliest people to tell a friend — a ~90% tax on legitimate referrers. **Before adding any new
-eligibility rule here, price it against cards, not accounts.**
-
-The remaining ceiling to be aware of: because the cap is per-referrer and accounts are free, global
-exposure is bounded only by how many cards an attacker has. A platform-wide monthly payout budget is
-the fix if that ever matters; it is not built.
-
-A refusal is **recorded, not dropped**, and `capped` is deliberately distinct from `rejected`: one is
-"you ran out of self-serve allowance", the other is "a gate said no". "I referred someone and got
-nothing" is the ticket this program generates, and the answer has to be on the page.
-
-**No scheduler, as everywhere else.** `sweep()` runs from `billing._credit` (any top-up advances the
-queue) and the referral application journey for `GET /referrals` (someone checking on their reward is
-the one who makes it land), following the same lazy, caller-pays bargain as `reap_stale_holds`. It
-never raises: neither its Stripe webhook caller nor its page-load caller may fail over a bonus.
-
-The recovery paths have to honour that contract *in their own logging*: the rollback that contains a
-failed payout expires every ORM row the session tracks, and reading an expired attribute in an async
-session is implicit async I/O (MissingGreenlet) - so the warning line itself was the raise, exactly
-when it mattered. `_grant_referee` and `sweep` therefore copy the row ids to primitives before the
-try and log those (sweep copies the whole batch before the loop, since one rollback expires every
-due row), and the page journey (`application/referrals.py`) logs the `user_id` it was called with
-and revives the expired user row (`sa_inspect(...).expired` then `refresh`, the signup idiom) before
-rendering the summary.
-
-**The referee is told, on the screen where it changes their behaviour.** `offer_for_org` is the
-mirror of `summary`: a team that arrived through a link has a `pending` row and no idea a bonus
-exists. `GET /billing` carries a `referral_offer` (merged by the application journey so the referral
-domain remains separate) and the dashboard names the MINIMUM there. The qualifying presets say
-`+$5 bonus` on themselves; a note alone sits above the place the decision is actually made (the tier
-bonus and the referral bonus stack on the same card). The offer is returned only while `pending` - after qualifying the
-money is already on its way through `sweep`, and still advertising it would read as a second bonus —
-and it names the referrer MASKED (`mask_email`, `j•••@domain`). Not anonymous — "you were invited"
-with nobody attached reads as marketing copy, and someone who clicked a link off a tweet last week
-genuinely may not recall whose it was. Not in full either: **a referral link is public by design**,
-so the full address would publish one influencer's email to every stranger who signs up through it,
-a harvestable list at exactly the volume this program is built to produce. The domain survives the
-mask because it is what makes a real friend recognisable; the local part collapses to one character
-plus a FIXED bullet run, so the mask cannot leak its own length.
-
-Note the asymmetry against `summary`, which returns referee addresses in FULL: there the referrer has
-no other way to tell which of their invitations converted. Here the referee needs no identity at all
-to decide whether to add funds, so the same exposure would buy nothing. It is worth stating plainly
-that this protects the person who opted into the program and exposes the person who merely signed up
-— justified only by that attribution need, and not a precedent to extend.
-
-**Cash payouts are not built.** The self-serve program pays in credit only, and the cap refusal is
-the commercial conversation that replaces an uncapped percentage. When an influencer tier lands, it
-reads `/admin/referrals` — the same table, filtered — and the payout rail (and its W-9/1099
-obligations) is what gets bought rather than built.
+- A referral is redeemed at first team creation and qualifies when cumulative purchased credit
+  reaches `referral_min_topup_micro`. `qualify` checks referrer availability, the card fingerprint
+  against earlier qualified/paid referrals, and the referrer's lifetime cap. A default-false
+  `User.referral_affiliate` exempts only that last gate; revocation restores the configured cap,
+  counting all qualified/paid referrals including those earned while exempt. Historical `capped`
+  rows remain terminal and neither enabling nor revoking triggers grants or a sweep. Evaluate eligibility
+  against scarce payment instruments, not freely created accounts. The Stripe fingerprint is optional
+  and lives only on `Referral`; refusals stay recorded (`capped`, `rejected`).
+- `lock_referrer` serializes qualification and affiliate operations with a no-op user update on
+  PostgreSQL and SQLite. Qualification reloads the pending row after locking. PostgreSQL additionally
+  takes a transaction advisory lock derived from the card fingerprint so different referrers cannot
+  concurrently reuse one card; SQLite's write lock supplies that serialization.
+- Affiliate changes and `ReferralAffiliateEvent` are committed together by `application.referrals`.
+  Every accepted operation, including a no-op, advances the version. A UUID identifies a retry:
+  the same authenticated principal and exact operation return the original event plus current
+  state, so a delayed enable retry cannot undo a later revocation. History is keyed by user id and
+  creation timestamp because SQLite can reuse a deleted account's id. Events survive deletion.
+- The referee is credited on qualification; the referrer waits `referral_hold_days`. Uniqueness on
+  `referred_org_id` and `qualifying_payment_intent` prevents duplicate qualification. Grants use
+  `once=False` (`once=True` is a SELECT check, not a concurrency guard).
+- `_grant_referee`, `_pay` and `reject_for_payment` lock and refresh the referral before acting,
+  preventing stale instant-grant and dispute decisions from racing a sweep. `_pay` commits the
+  paid claim before granting, then commits grants and block-id stamps together. A
+  crash between them leaves a paid row with missing block ids (visible in `/admin/referrals`):
+  no double payout, but it needs reconciliation.
+- `charge.dispute.created` and `charge.refunded` cancel rewards still in the hold window; granted
+  rewards are flagged for review, never reversed. A refund also revokes the top-up's unspent credit
+  (`revoke_refunded`); a dispute does not.
+- `sweep` runs from the top-up and referral-page journeys without a scheduler and must not fail
+  either caller: copy identifiers before a rollback can expire ORM objects.
+- `offer_for_org` masks the referrer's email (one local-part character, fixed bullets, domain kept).
+  The referrer's own `summary` shows full referee emails for conversion attribution; that exception is
+  disclosed in the privacy policy and must not extend to the public referral-link flow. Routes:
+  [the API fragment](../interface/api.md#referrals).
 
 ## Not money: the capacity mark
 
-`application.call.settle._note_capacity_signal` writes a ratestore row (`capacity:lock:<key>`)
-after a tier-4 balance/quota signature, and `_note_capacity_recovery` removes it after a probe's
-2xx. Neither touches a balance, hold or ledger row - the lock is a hint for the NEXT caller's
-resolution - and both are listed in the dataplane write allowlist on their own
-(`capacity_exhausted_mark`), not under the money entries. See `ops/capacity.md`.
+`settle._note_capacity_signal` writes a ratestore row (`capacity:lock:<key>`) after a tier-4
+balance/quota signature and `_note_capacity_recovery` removes it after a probe's 2xx. Neither touches
+a balance, hold or ledger row; both are allowlisted on their own (`capacity_exhausted_mark`). See
+`ops/capacity.md`.
+
+## Caller cost ceilings
+
+`MarketplaceCall.max_cost_micro` carries the caller's remaining ceiling. `_platform_reserve` checks
+the actual estimate with margin before opening its transaction. Direct calls set it only from
+`X-Treg-Route-Max-Cost`; routed children (including a Route-Verify check) always inherit their
+route's remainder. A refusal is a 402 `route_max_cost` that moves no money. The route first drops
+a candidate whose bare plan price (`cost_at`, rows rounded up to the cost's `per` block) exceeds
+what is left; that price can be an upper bound, so margin is not added there. A child it admits
+is checked again at its reserve on the adapted request's own price with margin, and that
+refusal's skip in `_treg.tried` names the hold and the remainder. Overflow inherits the
+field and checks its own estimate; a preceding direct charge reduces the remainder.
+
+Before either reserve, the `call_admission` decision point ([policy extensions](policy-extensions.md))
+may refuse a call on treg's money with a 403 (`funds_required` or `own_key_required`); like the
+ceiling it moves no money.
+
+With a `ceiling_param` declared (AGENTS.md non-negotiable 4), the appended USD figure is the largest
+provider charge that still settles within the ceiling after `with_margin` (which rounds up); at margin
+0 it is the ceiling. The provider's refusal of a dearer source is a non-2xx uncharged relay, which a
+routed waterfall treats as a failed attempt. For every other provider the ceiling is a
+pre-reservation guard only: provider-reported settlement can still exceed the estimate it checked.
 
 ## Overflow money
 
 The overflow child (`application.call.overflow`) is an ordinary metered cycle on its own hold
-(`{call_ref}:overflow`): `_platform_reserve` at the route's aggregator price, `_platform_settle` with
-`observed_override` = the aggregator's in-band charge — the caller pays exactly that, 0% markup —
-and `cost_source: "aggregator"` + `served_via` in the ledger `meta`, so `reconcile` needs no join.
-`OverflowSpend` (per aggregator per UTC day) is updated inside that same settle transaction; it is
-accounting for the $20/day budget, not a balance. Shadow mode places no hold and charges nothing.
+(`{call_ref}:overflow`): reserve at the route's aggregator price, settle with `observed_override` =
+the aggregator's in-band charge (0% markup), and `cost_source: "aggregator"` + `served_via` in the
+ledger meta. `OverflowSpend` (per aggregator per UTC day) is updated in the same settle transaction;
+it is accounting for `TREG_OVERFLOW_DAILY_BUDGET_USD`, not a balance. Shadow mode places no hold.
+Skip-direct places no parent hold and leaves `payer_org_id` empty; child cancellation requires the
+authenticated caller and releases under that org.
 
-## A per_success miss the adapter cannot see (2026-08-29)
+The relay price is disclosed wherever a price is read: `X-Treg-Served-Via: overflow:<aggregator>`
+with the child's charge on `/call/`, `served_via` plus a `hint` in the MCP `call` result on both
+surfaces (MCP clients never see headers), and `overflow_price_usd` / `overflow_price_unit` /
+`overflow_via` on catalog detail when the deployment can relay, so a catalog-free endpoint is never
+silently a paid one. Not disclosed up front: *when* a free endpoint is diverted (the route enables
+whenever the aggregator price is at most `FREE_ROUTE_MAX_USD`); the caller learns it from the answer.
 
-`per_success` settles at the estimate unless something can say "this body is a miss". The routing
-adapter's predicate covers routed children — but **1330 of 1517** per_success endpoints have no
-adapter, and they are the scrapers, whose failure mode IS an HTTP 200 carrying an error code.
+An aggregator's own per-request refusal (a bare 400/422/404 with no vendor data) parses as `contract`
+and releases with `overflow_contract`, without marking the aggregator. Only a non-JSON body, a 5xx or
+a transport error is `malformed` (`AGGREGATOR_SIDE`), which marks the aggregator for every org.
 
-Those providers publish a success rule and the catalog already records it as `expect`
-(`{json_path, equals}`), read until now only by `scripts/catalog_verify.py`. `settle.py` consults it
-when no adapter applies, and `store.py` carries it onto the endpoint — including inherited from the
-provider FILE, the way `cache` already is, because a vendor's "HTTP 200 always, read `code`"
-convention is one fact about the whole provider and an ingest that adds routes must not ship them
-ruleless (33 of justoneapi's 260 were).
+## The hub seller's price (`earned`, `settle_to_in_transaction`)
 
-Found live: `justoneapi.x.linkedin-search-user-v1` answered `{"code": 301, "message": "COLLECT
-FAILED, SEND REQUEST AGAIN"}` — free on the vendor's own published terms ("only a code-0 response is
-billed") — and treg settled $0.0295 against the caller. Adapter first, `expect` second, estimate
-last; an undecidable rule still settles at the estimate rather than guessing in the caller's favour.
+The tool hub ([hub](hub.md)) adds one block kind and one primitive. `earned` is credit a maker's team
+received as a seller's price; it spends after the free kinds and before `purchased`.
+`settle_to_in_transaction` closes the payer's hold and grants the settled amount to the payee as an
+`earned` block in the same transaction: `actual_micro=None` settles the full hold (a flat price), a
+given `actual_micro` settles that and refunds the rest (a variable price capped by the declared
+maximum). The payer's `settle` meta names `payee_org_id`; the payee's `grant` meta names
+`payer_org_id` and the run. It does not commit (the hub runner owns the transaction) and is the only
+cross-team money movement in treg.
 
-STILL OPEN: tikhub's 919 per_success endpoints have neither an adapter nor an `expect` anywhere.
-That is the larger half of the exposure and needs its success convention verified against the
-vendor's docs before a file-level rule is written.
+## Agent payer top-ups
+
+A keyless caller that pays a catalog call (MPP or x402, [agent payments](agent-payments.md)) is a
+payer team per wallet address and network. A payment confirmed on chain is an ordinary `topup` on that team,
+`payment_ref = agentpay:<proof id>`, with `meta.source = agent_payment` and the settlement
+transaction; then the call reserves, settles or releases as any team's call. The topup is booked
+only after the chain or facilitator confirms the transfer, so the ledger never credits money treg
+has not received. A wallet whose existing credit covers the call proves itself instead of paying
+(MPP: a zero-amount proof; x402: a payment that is not settled) and books nothing. When the settlement answer never arrives, `treg-worker agentpay reconcile` reads the chain
+later and books the same topup (same reference, so at most once) only for a transfer that landed.
+No money entry is added. With `TREG_AGENT_PAYMENTS_SETTLEMENT=stripe` the transfers go to Stripe
+crypto deposit addresses and each settled payment is also recorded as a Stripe PaymentIntent; the
+ledger is the same.
+
+## Response evidence size and free final downloads
+
+Settlement evidence must be complete. The 8 MiB buffer raises a typed 502 on overflow and closes
+upstream; the call releases its hold and idempotency claim. Partial JSON never falls back to an
+estimate or settles as success.
+
+An authorized, explicitly free final result GET, or a free `utility` reference list with no
+ownership rule, has no body-evidence consumers and streams unbuffered
+(`MarketplaceCall.streamable_free_result`), closing its settlement with an explicit zero before
+returning the stream (a no-op for a holdless call, above). It is not stored for idempotent replay. MIME type never decides billability.
+
+A metered 2xx on a `spooled_response` endpoint settles in `_spool_response` from the paths its row
+reads before headers go out, so `X-Treg-Cost-Micro` stays exact. A completed answer whose evidence is
+missing or unparseable settles at the reserve (the media exists); an oversized or budget-refused body
+releases as `response_buffer_limit`. The label is released, so an idempotent retry is a new, billed
+generation.
+
+## Apify dataset-row settlement
+
+An Apify `per_result` row on the platform key requires `maxTotalChargeUsd` (above 0, at most $1), the
+spend cap Apify enforces; `maxItems` does not bind actors whose own input sets the row count. Only
+the run options `maxTotalChargeUsd`, `maxItems`, `memory` and `timeout` are accepted, each once and in
+plain ASCII, because a dataset-view option (`limit`, `offset`, `format`, `unwind`) would make the
+returned rows disagree with the events billed. `_marketplace_pricing` holds the cap plus
+`cost.call_fee` (the flat per-run charge), multiplied by the body arrays named in `cost.call_fee_per`
+for actors that bill a start per query. `_observed_cost_micro` settles returned rows times the row
+price plus the fee; within two rows of the hold the cap was reached and the hold is the bill (a run
+stops when its next event would pass the cap and may have billed an event it never pushed). The cap
+must cover `call_fee` plus three rows, or an empty answer would bill in full.
+
+`usageTotalUsd` trails a finished run by minutes, so it is not settlement evidence. A run that times
+out, FAILS or is ABORTED answers 400 `run-failed` with no rows and releases although Apify may have
+billed up to the cap; so does an answer over the evidence limit, and so does a caller who disconnects
+mid-run. The $1 ceiling bounds each loss. `timeout` is required and at most
+`min(90, call_timeout_s - 30)` seconds (`_apify_max_timeout`), because a run still going when Apify's synchronous wait, treg's upstream
+read timeout or an MCP client's timeout ends leaves an unbilled failed call while the run keeps
+billing. That failure body names the run, so **treg's Apify account must keep general resource
+access Restricted**: with public access anyone could read the unbilled run's dataset by id.

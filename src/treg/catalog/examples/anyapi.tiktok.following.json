@@ -1,0 +1,31 @@
+{
+  "output": {
+    "data": {
+      "following": [
+        {
+          "bio": "Two friends started making content and others joined, a breakdown #JakeSucks",
+          "displayName": "JomboyMedia",
+          "followers": 832634,
+          "handle": "jomboymedia",
+          "id": "6741719951310062598",
+          "region": "US",
+          "videos": 3073
+        },
+        "… 19 more item(s) truncated"
+      ],
+      "nextCursor": "6zoK1CgQSVD_ijlQ9VwDZpqic_FN8tKb9rCWltz1k_1t-VOZkM7Oqj_vxQtWO7ojJJq4knbgxSwpILttD3oNe3q9MeYh_vt8ORsOmmpJXaDi7b4IuJrgq3yXhxN06oDCrig9Uz9iyX8aBTJJ-edmTMrEVmhU31fOLiS9-KoY"
+    },
+    "found": true
+  },
+  "provider": "AnyAPI",
+  "costUsd": 0.0012,
+  "items": 20,
+  "replayed": false,
+  "source": {
+    "id": "anonymous-giraffe",
+    "name": "Giraffe",
+    "kind": "anonymous",
+    "artworkKey": "giraffe"
+  },
+  "resultId": "370c1819-f703-4695-9818-9d4668ad5cbc"
+}

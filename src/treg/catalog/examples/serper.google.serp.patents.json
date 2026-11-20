@@ -1,0 +1,52 @@
+{
+  "searchParameters": {
+    "q": "transformer neural network",
+    "type": "patents",
+    "engine": "google"
+  },
+  "organic": [
+    {
+      "title": "Error short-time prediction method for electronic transformer based on …",
+      "snippet": "The invention relates to a short-term prediction method for electronic transformer errors based on an intelligent algorithm, which belongs to the field of electric energy measurement. The method includes the following steps: S1: collecting electronic transformer data; S2: performing a …",
+      "link": "https://patents.google.com/patent/CN111537938B/en",
+      "priorityDate": "2020-03-31",
+      "filingDate": "2020-03-31",
+      "grantDate": "2022-12-09",
+      "publicationDate": "2022-12-09",
+      "inventor": "杨爱超",
+      "assignee": "国网江西省电力有限公司电力科学研究院",
+      "publicationNumber": "CN111537938B",
+      "language": "en",
+      "thumbnailUrl": "https://patentimages.storage.googleapis.com/de/2e/a0/ef0b73a06f3ed0/HDA0002433204380000011.png",
+      "pdfUrl": "https://patentimages.storage.googleapis.com/ee/08/77/27ec74872a9667/CN111537938B.pdf",
+      "figures": [
+        {
+          "imageUrl": "https://patentimages.storage.googleapis.com/3b/31/6f/01d667be1e89ee/HDA0002433204380000011.png",
+          "thumbnailUrl": "https://patentimages.storage.googleapis.com/14/1b/35/5cd240469901b5/HDA0002433204380000011.png"
+        },
+        {
+          "imageUrl": "https://patentimages.storage.googleapis.com/41/86/7d/af7f58c7febae5/HDA0002433204380000012.png",
+          "thumbnailUrl": "https://patentimages.storage.googleapis.com/e0/d9/ed/6453e83de30aa0/HDA0002433204380000012.png"
+        },
+        "… 5 more item(s) truncated"
+      ]
+    },
+    {
+      "title": "A point cloud data processing method based on transformer neural network",
+      "snippet": "1. A point cloud data processing method based on a transformer neural network, characterized in that it includes: Step S1: Construct a three-dimensional object symmetry detection model. The three-dimensional object symmetry detection model obtains the symmetry points of the input point cloud data …",
+      "link": "https://patents.google.com/patent/CN113870160B/en",
+      "priorityDate": "2021-09-10",
+      "filingDate": "2021-09-10",
+      "grantDate": "2024-02-27",
+      "publicationDate": "2024-02-27",
+      "inventor": "王旭",
+      "assignee": "北京交通大学",
+      "publicationNumber": "CN113870160B",
+      "language": "en",
+      "pdfUrl": "https://patentimages.storage.googleapis.com/0a/f0/31/3b9b15751939ef/CN113870160B.pdf",
+      "figures": []
+    },
+    "… 8 more item(s) truncated"
+  ],
+  "credits": 1
+}

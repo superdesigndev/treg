@@ -1,0 +1,344 @@
+{
+ "run_id": "7b07bed12cae421b8aeea291232bc324",
+ "tool_id": "treg-hub.domain-authority",
+ "version": 1,
+ "status": "ok",
+ "started_at": "2026-09-24T05:07:48.711060",
+ "finished_at": "2026-09-24T05:07:48.710981",
+ "duration_ms": 3542,
+ "steps": 3,
+ "inputs": {
+  "domain": "stripe.com",
+  "search_engine": "g_us"
+ },
+ "trace": [
+  {
+   "wave": 0,
+   "name": "call1",
+   "call": "serpstat.web.backlinks.summary",
+   "outcome": "ok",
+   "status": 200,
+   "ms": 1396,
+   "cost_micro": 2500,
+   "key": "treg"
+  },
+  {
+   "wave": 1,
+   "name": "call2",
+   "call": "serpstat.google.domain.ranked_keywords",
+   "outcome": "ok",
+   "status": 200,
+   "ms": 1422,
+   "cost_micro": 500,
+   "key": "treg"
+  },
+  {
+   "wave": 2,
+   "name": "call3",
+   "call": "serpstat.web.linking_domains.list",
+   "outcome": "ok",
+   "status": 200,
+   "ms": 3479,
+   "cost_micro": 500,
+   "key": "treg"
+  }
+ ],
+ "usage": {
+  "cost_micro": 3500,
+  "steps_micro": 3500,
+  "price_micro": 0
+ },
+ "you_are": "caller",
+ "kind": "maker's run",
+ "output": {
+  "domain": "stripe.com",
+  "search_engine": "g_us",
+  "verdict": "strong",
+  "report": {
+   "domain_rank": 79,
+   "backlinks": 2964471,
+   "backlinks_change": 5470,
+   "dofollow_backlinks": 2618772,
+   "referring_domains": 245836,
+   "referring_domains_change": -265,
+   "referring_ips": 89509,
+   "malicious_referring_domains": 20,
+   "keywords_ranked": 258650,
+   "keywords_top10": 19,
+   "estimated_monthly_traffic": 904052
+  },
+  "top_keywords": [
+   {
+    "keyword": "cost corporation",
+    "position": 12,
+    "monthly_searches": 20400000,
+    "traffic": 152923,
+    "difficulty": 27,
+    "url": "https://stripe.com/resources/more/delaware-incorporation-costs-and-fees-what-corporations-and-llcs-need-to-know"
+   },
+   {
+    "keyword": "credit carding",
+    "position": 2,
+    "monthly_searches": 1000000,
+    "traffic": 145427,
+    "difficulty": 44,
+    "url": "https://stripe.com/resources/more/what-is-carding-how-this-type-of-fraud-works-and-how-businesses-can-prevent-it"
+   },
+   {
+    "keyword": "stripe",
+    "position": 1,
+    "monthly_searches": 823000,
+    "traffic": 123388,
+    "difficulty": 56,
+    "url": "https://stripe.com/"
+   },
+   {
+    "keyword": "w9 9 form",
+    "position": 4,
+    "monthly_searches": 368000,
+    "traffic": 46896,
+    "difficulty": 66,
+    "url": "https://support.stripe.com/express/questions/what-is-a-form-w-9"
+   },
+   {
+    "keyword": "societes anonymes",
+    "position": 6,
+    "monthly_searches": 450000,
+    "traffic": 33733,
+    "difficulty": 27,
+    "url": "https://stripe.com/resources/more/societe-anonyme-sa-france"
+   },
+   {
+    "keyword": "soci\u00e9t\u00e9 anonyme",
+    "position": 7,
+    "monthly_searches": 450000,
+    "traffic": 33733,
+    "difficulty": 31,
+    "url": "https://stripe.com/fr/resources/more/societe-anonyme-sa-france"
+   },
+   {
+    "keyword": "w 9 9 form",
+    "position": 5,
+    "monthly_searches": 368000,
+    "traffic": 33103,
+    "difficulty": 79,
+    "url": "https://support.stripe.com/express/questions/what-is-a-form-w-9"
+   },
+   {
+    "keyword": "form of w 9",
+    "position": 5,
+    "monthly_searches": 368000,
+    "traffic": 33103,
+    "difficulty": 73,
+    "url": "https://support.stripe.com/express/questions/what-is-a-form-w-9"
+   },
+   {
+    "keyword": "w 9 taxpayer",
+    "position": 5,
+    "monthly_searches": 368000,
+    "traffic": 33103,
+    "difficulty": 79,
+    "url": "https://support.stripe.com/express/questions/what-is-a-form-w-9"
+   },
+   {
+    "keyword": "us w 9 form",
+    "position": 5,
+    "monthly_searches": 368000,
+    "traffic": 33103,
+    "difficulty": 74,
+    "url": "https://support.stripe.com/express/questions/what-is-a-form-w-9"
+   },
+   {
+    "keyword": "us w-9 form",
+    "position": 5,
+    "monthly_searches": 368000,
+    "traffic": 33103,
+    "difficulty": 74,
+    "url": "https://support.stripe.com/express/questions/what-is-a-form-w-9"
+   },
+   {
+    "keyword": "and llc",
+    "position": 4,
+    "monthly_searches": 201000,
+    "traffic": 25614,
+    "difficulty": 78,
+    "url": "https://stripe.com/resources/more/llc-vs-inc-differences-similarities-and-how-to-choose"
+   },
+   {
+    "keyword": "pre authorized debit agreement",
+    "position": 4,
+    "monthly_searches": 201000,
+    "traffic": 25614,
+    "difficulty": 27,
+    "url": "https://stripe.com/resources/more/pre-authorized-debits-in-canada-an-in-depth-guide"
+   },
+   {
+    "keyword": "standard entry class",
+    "position": 4,
+    "monthly_searches": 201000,
+    "traffic": 25614,
+    "difficulty": 31,
+    "url": "https://docs.stripe.com/payments/ach-direct-debit/sec-codes"
+   },
+   {
+    "keyword": "limited liability c",
+    "position": 4,
+    "monthly_searches": 201000,
+    "traffic": 25614,
+    "difficulty": 75,
+    "url": "https://stripe.com/guides/atlas/llc-vs-c-corp"
+   },
+   {
+    "keyword": "sign in stripe",
+    "position": 1,
+    "monthly_searches": 135000,
+    "traffic": 20239,
+    "difficulty": 10,
+    "url": "https://dashboard.stripe.com/login"
+   },
+   {
+    "keyword": "log into stripe",
+    "position": 1,
+    "monthly_searches": 135000,
+    "traffic": 20239,
+    "difficulty": 35,
+    "url": "https://dashboard.stripe.com/login"
+   },
+   {
+    "keyword": "login stripe",
+    "position": 1,
+    "monthly_searches": 135000,
+    "traffic": 20239,
+    "difficulty": 42,
+    "url": "https://dashboard.stripe.com/login"
+   },
+   {
+    "keyword": "log into stripe",
+    "position": 2,
+    "monthly_searches": 135000,
+    "traffic": 19632,
+    "difficulty": 35,
+    "url": "https://support.stripe.com/questions/log-in-to-stripe-with-a-google-account"
+   },
+   {
+    "keyword": "sign in stripe",
+    "position": 2,
+    "monthly_searches": 135000,
+    "traffic": 19632,
+    "difficulty": 10,
+    "url": "https://dashboard.stripe.com/register"
+   }
+  ],
+  "top_linking_domains": [
+   {
+    "domain": "twstore.ch",
+    "domain_rank": 8,
+    "linking_pages": 11991
+   },
+   {
+    "domain": "laujewellery.com",
+    "domain_rank": 8,
+    "linking_pages": 9757
+   },
+   {
+    "domain": "cocoapods.org",
+    "domain_rank": 55,
+    "linking_pages": 8578
+   },
+   {
+    "domain": "redsun.tf",
+    "domain_rank": 23,
+    "linking_pages": 7912
+   },
+   {
+    "domain": "storenvy.com",
+    "domain_rank": 56,
+    "linking_pages": 5818
+   },
+   {
+    "domain": "ribolovbg.com",
+    "domain_rank": 16,
+    "linking_pages": 5596
+   },
+   {
+    "domain": "fr.roomforday.com",
+    "domain_rank": 18,
+    "linking_pages": 4867
+   },
+   {
+    "domain": "officefurnituregb.co.uk",
+    "domain_rank": 27,
+    "linking_pages": 3778
+   },
+   {
+    "domain": "8flix.com",
+    "domain_rank": 30,
+    "linking_pages": 3282
+   },
+   {
+    "domain": "tidychoice.com",
+    "domain_rank": 41,
+    "linking_pages": 2681
+   },
+   {
+    "domain": "peuplenomade.com",
+    "domain_rank": 20,
+    "linking_pages": 2451
+   },
+   {
+    "domain": "fishlodges.com",
+    "domain_rank": 29,
+    "linking_pages": 2224
+   },
+   {
+    "domain": "ruach-music.com",
+    "domain_rank": 25,
+    "linking_pages": 2073
+   },
+   {
+    "domain": "ray-hosting.com",
+    "domain_rank": 8,
+    "linking_pages": 1969
+   },
+   {
+    "domain": "hussainchemists.co.uk",
+    "domain_rank": 12,
+    "linking_pages": 1889
+   },
+   {
+    "domain": "marshalltown.com",
+    "domain_rank": 46,
+    "linking_pages": 1889
+   },
+   {
+    "domain": "visegradinsight.eu",
+    "domain_rank": 47,
+    "linking_pages": 1583
+   },
+   {
+    "domain": "artezetastudio.it",
+    "domain_rank": 30,
+    "linking_pages": 1514
+   },
+   {
+    "domain": "supergeeklife.com",
+    "domain_rank": 5,
+    "linking_pages": 1358
+   },
+   {
+    "domain": "farwestranch.nc",
+    "domain_rank": 16,
+    "linking_pages": 1070
+   }
+  ],
+  "linking_domains_total": 299441,
+  "reports_answered": 3,
+  "failed": [],
+  "summary": "stripe.com: strong. Rank 79, 245836 referring domains, 258650 ranked keywords."
+ },
+ "caller_email": "maker@example.com",
+ "log": [
+  "stripe.com: rank 79, 245836 referring domains, 258650 keywords \u2192 strong"
+ ],
+ "error": null
+}

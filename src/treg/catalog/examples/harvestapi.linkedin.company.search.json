@@ -1,0 +1,32 @@
+{
+  "pagination": {
+    "totalElements": 1000,
+    "totalPages": 20,
+    "pageNumber": 1,
+    "previousElements": 0,
+    "pageSize": 50,
+    "totalResultCount": 3788
+  },
+  "elements": [
+    {
+      "id": "1234567890",
+      "universalName": "alex-example",
+      "linkedinUrl": "https://example.com/synthetic-record",
+      "name": "Synthetic example",
+      "industry": "Synthetic example",
+      "location": {
+        "linkedinText": "Synthetic example"
+      },
+      "followers": "Synthetic example",
+      "summary": null,
+      "logo": "https://example.com/synthetic-record"
+    }
+  ],
+  "status": 200,
+  "retries": 0,
+  "payments": [
+    "linkedinCompanySearch"
+  ],
+  "error": null,
+  "cost": 0.004
+}

@@ -1,0 +1,72 @@
+{
+  "meta": {
+    "blocked": [],
+    "elapsed_ms": 359,
+    "from_cache": false,
+    "llm_calls": 0,
+    "pages_fetched": 1,
+    "partial": false,
+    "warnings": [
+      "module: glassdoor-jobs: 'rust developer' · 30 jobs on the page of 1253"
+    ]
+  },
+  "recipe": "glassdoor-jobs",
+  "usage": {
+    "boxes": [
+      "gate",
+      "crawl"
+    ],
+    "cache": "miss",
+    "engine": "recipe",
+    "lines": [
+      {
+        "about": "the call",
+        "boxes": [
+          "gate"
+        ],
+        "cache": "miss",
+        "call": "recipes",
+        "engine": "gate",
+        "units": 1
+      },
+      {
+        "cache": "archive",
+        "call": "scrape",
+        "engine": "archive",
+        "units": 1,
+        "url": "https://www.glassdoor.com/Job/jobs.htm?sc.keyword=rust+developer"
+      }
+    ],
+    "remaining_before": {
+      "concurrent": 99,
+      "requests": 192,
+      "search": 3000
+    },
+    "units": 2
+  },
+  "version": 1,
+  "rows": [
+    {
+      "easy_apply": true,
+      "employer": "SciTec, Inc.",
+      "job_id": "1009971229853",
+      "location": "Boulder, CO",
+      "posted_days": 222,
+      "rating": 4.2,
+      "salary": "USD 102,000 - 157,000 per year (employer provided)",
+      "title": "Staff / Sr Staff C++ Software Engineer",
+      "url": "https://www.glassdoor.com/job-listing/staff-sr-staff-c-software-engineer-scitec-JV_IC1148112_KO0,34_KE35,41.htm?jl=1009971229853"
+    },
+    {
+      "easy_apply": false,
+      "employer": "Johns Hopkins University Applied Physics Laboratory",
+      "job_id": "1010281738173",
+      "location": "Laurel, MD",
+      "posted_days": 9,
+      "rating": 4.1,
+      "salary": "USD 100,000 - 245,000 per year (employer provided)",
+      "title": "Senior Embedded Systems Developer",
+      "url": "https://www.glassdoor.com/job-listing/senior-embedded-systems-developer-johns-hopkins-university-applied-physics-laboratory-JV_IC1153871_KO0,33_KE34,85.htm?jl=1010281738173"
+    }
+  ]
+}

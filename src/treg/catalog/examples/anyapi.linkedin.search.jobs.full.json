@@ -1,0 +1,82 @@
+{
+  "output": {
+    "found": true,
+    "data": {
+      "items": [
+        {
+          "applicants": 25,
+          "applyUrl": "https://jobs.lever.co/ttecdigital/76f5d6a9-f5c6-49e7-8bd7-f7c42a608a65/apply?lever-source=LinkedIn&source=LinkedIn&lever-source=LinkedInJobs&lever-origin=applied&lever-source%255B%255D=LinkedIn&_pc=193155&lever-source=LinkedInJobs",
+          "benefits": [],
+          "company": {
+            "linkedinUrl": "https://www.linkedin.com/company/ttec-digital",
+            "logo": "https://media.licdn.com/dms/image/v2/D4E0BAQFLkHzN27M66w/company-logo_400_400/B4EaCQwsCbG4AU-/0/1789135077887/ttec_digital_logo?e=1791417600&v=beta&t=pfi4-qHhvg4UrUZ2mExAijHqLUklhDRFg9dCiMYNm50",
+            "name": "TTEC Digital",
+            "universalName": "ttec-digital"
+          },
+          "createdUtc": 1789809972,
+          "descriptionText": "At TTEC Digital, we coach clients to ensure their employees feel valued, and fully supported, because an amazing customer experience is an employee first process. Our vision is the same, a place where employees know they can thrive.\n\nAs a Principal Consultant for Azure solutions, you will be leading medium-scale client engagements and complex project delivery. This position will focus on assisting with solution architecture and design, technical leadership and mentoring, with expertise in Azure,… [6388 chars total]",
+          "easyApplyUrl": "https://www.linkedin.com/job-apply/4460355762",
+          "employmentType": "full_time",
+          "experienceLevel": "Mid-Senior level",
+          "id": "4460355762",
+          "industries": [
+            "Business Consulting and Services",
+            "IT Services and IT Consulting",
+            "… 1 more item(s) truncated"
+          ],
+          "location": "Austin, TX",
+          "salary": {
+            "max": 200000,
+            "min": 170000,
+            "text": "170,000 - 200,000 USD"
+          },
+          "title": "Lead Software Engineer, Azure Solutions",
+          "url": "https://www.linkedin.com/jobs/view/4460355762/",
+          "workplaceType": "remote"
+        },
+        {
+          "applicants": 98,
+          "applyUrl": "https://grnh.se/27ao3f721us",
+          "benefits": [],
+          "company": {
+            "linkedinUrl": "https://www.linkedin.com/company/reddit-com",
+            "logo": "https://media.licdn.com/dms/image/v2/D560BAQFQPgrgVb19Kw/company-logo_400_400/company-logo_400_400/0/1701361977075/reddit_com_logo?e=1791417600&v=beta&t=sAeCQ3KYprh8CG28zhJqqKDmJ-gKh0U3zoIxuK94q6I",
+            "name": "Reddit, Inc.",
+            "universalName": "reddit-com"
+          },
+          "createdUtc": 1789789685,
+          "descriptionText": "Reddit is a community of communities. It's built on shared interests, passion, and trust, and is home to the most open and authentic conversations on the internet. Every day, Reddit users submit, vote, and comment on the topics they care most about. With 100,000+ active communities and approximately 130 million daily active unique visitors, Reddit is one of the internet's largest sources of information. For more information, visit www.redditinc.com.\n\nThis role is remote friendly. Reddit has a fl… [6435 chars total]",
+          "easyApplyUrl": "",
+          "employmentType": "full_time",
+          "experienceLevel": "",
+          "id": "4469293592",
+          "industries": [
+            "Social Networking Platforms"
+          ],
+          "location": "San Francisco, CA",
+          "salary": {
+            "max": 0,
+            "min": 0,
+            "text": ""
+          },
+          "title": "Software Engineer, Ingestion Platform",
+          "url": "https://www.linkedin.com/jobs/view/4469293592/",
+          "workplaceType": "remote"
+        },
+        "… 1 more item(s) truncated"
+      ]
+    }
+  },
+  "provider": "AnyAPI",
+  "costUsd": 0.0044,
+  "items": 3,
+  "replayed": false,
+  "source": {
+    "id": "anonymous-octopus",
+    "name": "Octopus",
+    "kind": "anonymous",
+    "artworkKey": "octopus"
+  },
+  "hint": "large_result: this response is ~18 KB. To keep future runs from flooding your context, re-run with `fields` (keep only the keys you need), `max_items` (cap rows), `summary=true` (outline only), or `jq` for arbitrary reshaping (e.g. `jq=.data.markdown[:2000]`) — these trim the response only, never the charge.",
+  "resultId": "67fd9de3-dd89-4b27-bec2-d0ee0840e5fa"
+}

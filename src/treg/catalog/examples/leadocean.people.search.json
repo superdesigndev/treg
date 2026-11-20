@@ -1,0 +1,23 @@
+{
+  "data": [
+    {
+      "profile_data": {
+        "profile_full_name": "Jane Doe",
+        "profile_url": "https://www.linkedin.com/in/routing-fixture"
+      },
+      "contact_data": {
+        "has_email": true
+      },
+      "meta": {
+        "source_ids": {
+          "person_id": "123"
+        }
+      }
+    }
+  ],
+  "meta": {
+    "credits": 1,
+    "total": 1,
+    "nextCursor": null
+  }
+}

@@ -1,9 +1,10 @@
 provider: branddev
 source:
-  docs: https://docs.brand.dev
-  openapi: null # no machine-readable spec is served for this REST surface; every path, parameter name and enum below was probed LIVE against https://api.brand.dev/v1 on 2026-08-20
-  curated: 2026-08-20
-# Brand.dev fills the catalog's BRAND-ASSETS gap: no other provider here turns a bare domain into
+  docs: https://docs.context.dev
+  openapi: https://docs.context.dev/openapi.json
+  curated: 2026-09-28
+# Context.dev retains the stable `branddev` provider id so existing connections and tool ids work.
+# Its brand tools turn a bare domain into
 # logos (CDN-hosted SVG/PNG, light/dark variants), a brand colour palette, the fonts a site loads,
 # a full design styleguide, the slogan and a one-paragraph description. The enrichment providers
 # already in the catalog return firmographics; none of them return anything you can put on a page.
@@ -16,8 +17,8 @@ source:
 # `key_metadata: {credits_consumed, credits_remaining}`, so each cost block below is `source:
 # observed, confidence: verified` — the number was read off the live charge, not transcribed.
 # Observed 2026-08-20: brand retrieval / styleguide / NAICS / AI routes 10 credits, fonts 5,
-# screenshot 1. Credits are consumed on SUCCESS only — every 400 input-validation response in
-# testing reported `credits_consumed: 0`. Credit -> USD lives in fx.yaml (branddev).
+# screenshot 1. Input-validation 400 responses in testing reported `credits_consumed: 0`;
+# target failures may still be billed. Credit -> USD lives in fx.yaml (branddev).
 #
 # Cost dials worth knowing: `maxSpeed=true` serves the cached record and returns in ~1s instead of
 # ~10s (same price, so it is a latency dial, not a money one); `maxAgeMs` caps how stale a cached
@@ -28,7 +29,7 @@ source:
 # credit is spent — as a JSON 400 on most routes and as a plain-text 405 on the retrieve-by-*
 # family. Both are free.
 limits: "60 API requests/minute on the entry paid tier (300 and 700/min on the higher tiers)"
-pricing_url: https://brand.dev/pricing
+pricing_url: https://www.context.dev/pricing
 endpoints:
   - id: branddev.brand.retrieve
     domain: companies
@@ -48,10 +49,11 @@ endpoints:
         force_language: {type: string, required: false, note: "return the description in this language; full language names, not codes ('english', 'french', 'japanese' …)", example: "english"}
       note: "exactly one lookup identifier per call — this route takes `domain`; use the sibling retrieve-by-* routes for name / email / ticker / ISIN. Calling it with NO parameters returns a free 400 and is the registry's probe."
     test_request: {queryParams: {domain: "stripe.com", maxSpeed: "true"}}
-    cost: {type: per_success, value: 10, currency: credit, per: 1, unit: call, source: observed, source_url: "https://brand.dev/pricing", checked: '2026-08-20', confidence: verified, note: "key_metadata.credits_consumed = 10 on the captured response; the pricing page's plan popovers say '10 credits per call' for brand retrieval. Failed/invalid calls consume 0"}
+    cost: {type: per_success, value: 10, currency: credit, per: 1, unit: call, source: observed, source_url: "https://www.context.dev/pricing", checked: '2026-08-20', confidence: verified, note: "key_metadata.credits_consumed = 10 on the captured response; the pricing page's plan popovers say '10 credits per call' for brand retrieval. Failed/invalid calls consume 0"}
     verified: '2026-08-20'
+    added: '2026-08-20'
     example_response: examples/branddev.brand.retrieve.json
-    docs_url: https://docs.brand.dev/api-reference/brand-intelligence/brand
+    docs_url: https://docs.context.dev/api-reference/brand-intelligence/brand
 
   - id: branddev.brand.retrieve-simplified
     domain: companies
@@ -69,10 +71,11 @@ endpoints:
         timeoutMS: {type: integer, required: false}
       note: "same price as the full record — pick this one for a smaller payload (about half the bytes), not to save money. Verified 2026-08-20: this route IGNORES maxSpeed (it is accepted on /brand/retrieve), so there is no latency dial here"
     test_request: {queryParams: {domain: "stripe.com"}}
-    cost: {type: per_success, value: 10, currency: credit, per: 1, unit: call, source: observed, source_url: "https://brand.dev/pricing", checked: '2026-08-20', confidence: verified, note: "observed credits_consumed = 10"}
+    cost: {type: per_success, value: 10, currency: credit, per: 1, unit: call, source: observed, source_url: "https://www.context.dev/pricing", checked: '2026-08-20', confidence: verified, note: "observed credits_consumed = 10"}
     verified: '2026-08-20'
+    added: '2026-08-20'
     example_response: examples/branddev.brand.retrieve-simplified.json
-    docs_url: https://docs.brand.dev/api-reference/brand-intelligence/brand
+    docs_url: https://docs.context.dev/api-reference/brand-intelligence/brand
 
   - id: branddev.brand.retrieve-by-name
     domain: companies
@@ -92,10 +95,11 @@ endpoints:
         timeoutMS: {type: integer, required: false}
       note: "a name shorter than 3 characters is refused free. This family answers bad input with a plain-text 405 rather than a JSON 400 — treat both as free validation failures, not as outages"
     test_request: {queryParams: {name: "Anthropic"}}
-    cost: {type: per_success, value: 10, currency: credit, per: 1, unit: call, source: observed, source_url: "https://brand.dev/pricing", checked: '2026-08-20', confidence: verified, note: "observed credits_consumed = 10"}
+    cost: {type: per_success, value: 10, currency: credit, per: 1, unit: call, source: observed, source_url: "https://www.context.dev/pricing", checked: '2026-08-20', confidence: verified, note: "observed credits_consumed = 10"}
     verified: '2026-08-20'
+    added: '2026-08-20'
     example_response: examples/branddev.brand.retrieve-by-name.json
-    docs_url: https://docs.brand.dev/api-reference/brand-intelligence/brand
+    docs_url: https://docs.context.dev/api-reference/brand-intelligence/brand
 
   - id: branddev.brand.retrieve-by-email
     domain: companies
@@ -114,10 +118,11 @@ endpoints:
         timeoutMS: {type: integer, required: false}
       note: "this enriches the COMPANY behind the address, never the person — no personal data is returned for the mailbox itself"
     test_request: {queryParams: {email: "support@stripe.com", maxSpeed: "true"}}
-    cost: {type: per_success, value: 10, currency: credit, per: 1, unit: call, source: observed, source_url: "https://brand.dev/pricing", checked: '2026-08-20', confidence: verified, note: "observed credits_consumed = 10"}
+    cost: {type: per_success, value: 10, currency: credit, per: 1, unit: call, source: observed, source_url: "https://www.context.dev/pricing", checked: '2026-08-20', confidence: verified, note: "observed credits_consumed = 10"}
     verified: '2026-08-20'
+    added: '2026-08-20'
     example_response: examples/branddev.brand.retrieve-by-email.json
-    docs_url: https://docs.brand.dev/api-reference/brand-intelligence/brand
+    docs_url: https://docs.context.dev/api-reference/brand-intelligence/brand
 
   - id: branddev.brand.retrieve-by-ticker
     domain: companies
@@ -136,10 +141,11 @@ endpoints:
         timeoutMS: {type: integer, required: false}
       note: "unrecognised query params are IGNORED rather than rejected, so a misspelled parameter fails silently and still costs a call — copy the names above exactly"
     test_request: {queryParams: {ticker: "NVDA", maxSpeed: "true"}}
-    cost: {type: per_success, value: 10, currency: credit, per: 1, unit: call, source: observed, source_url: "https://brand.dev/pricing", checked: '2026-08-20', confidence: verified, note: "observed credits_consumed = 10"}
+    cost: {type: per_success, value: 10, currency: credit, per: 1, unit: call, source: observed, source_url: "https://www.context.dev/pricing", checked: '2026-08-20', confidence: verified, note: "observed credits_consumed = 10"}
     verified: '2026-08-20'
+    added: '2026-08-20'
     example_response: examples/branddev.brand.retrieve-by-ticker.json
-    docs_url: https://docs.brand.dev/api-reference/brand-intelligence/brand
+    docs_url: https://docs.context.dev/api-reference/brand-intelligence/brand
 
   - id: branddev.brand.retrieve-by-isin
     domain: companies
@@ -158,10 +164,11 @@ endpoints:
         timeoutMS: {type: integer, required: false}
       note: "the finance-native sibling of retrieve-by-ticker — the one route here that speaks a securities identifier rather than a web one"
     test_request: {queryParams: {isin: "US0378331005", maxSpeed: "true"}}
-    cost: {type: per_success, value: 10, currency: credit, per: 1, unit: call, source: observed, source_url: "https://brand.dev/pricing", checked: '2026-08-20', confidence: verified, note: "observed credits_consumed = 10"}
+    cost: {type: per_success, value: 10, currency: credit, per: 1, unit: call, source: observed, source_url: "https://www.context.dev/pricing", checked: '2026-08-20', confidence: verified, note: "observed credits_consumed = 10"}
     verified: '2026-08-20'
+    added: '2026-08-20'
     example_response: examples/branddev.brand.retrieve-by-isin.json
-    docs_url: https://docs.brand.dev/api-reference/brand-intelligence/brand
+    docs_url: https://docs.context.dev/api-reference/brand-intelligence/brand
 
   - id: branddev.brand.transaction-identifier
     domain: companies
@@ -178,10 +185,11 @@ endpoints:
         timeoutMS: {type: integer, required: false}
       note: "the fintech route: 'TST* STARBUCKS SEATTLE' resolves to starbucks.com. Descriptors that match nothing return a brand record with a low-confidence domain rather than an error, so check the domain before trusting it"
     test_request: {queryParams: {transaction_info: "TST* STARBUCKS SEATTLE"}}
-    cost: {type: per_success, value: 10, currency: credit, per: 1, unit: call, source: observed, source_url: "https://brand.dev/pricing", checked: '2026-08-20', confidence: verified, note: "observed credits_consumed = 10"}
+    cost: {type: per_success, value: 10, currency: credit, per: 1, unit: call, source: observed, source_url: "https://www.context.dev/pricing", checked: '2026-08-20', confidence: verified, note: "observed credits_consumed = 10"}
     verified: '2026-08-20'
+    added: '2026-08-20'
     example_response: examples/branddev.brand.transaction-identifier.json
-    docs_url: https://docs.brand.dev/guides/enrich-transaction-codes
+    docs_url: https://docs.context.dev/guides/enrich-transaction-codes
 
   - id: branddev.brand.naics
     domain: companies
@@ -198,10 +206,11 @@ endpoints:
         timeoutMS: {type: integer, required: false}
       note: "returns one or more {code, name, confidence: high|medium|low} rows. Every brand record also carries an inline `industries.eic` tag pair, so call this only when you specifically need NAICS"
     test_request: {queryParams: {input: "stripe.com"}}
-    cost: {type: per_success, value: 10, currency: credit, per: 1, unit: call, source: observed, source_url: "https://brand.dev/pricing", checked: '2026-08-20', confidence: verified, note: "observed credits_consumed = 10"}
+    cost: {type: per_success, value: 10, currency: credit, per: 1, unit: call, source: observed, source_url: "https://www.context.dev/pricing", checked: '2026-08-20', confidence: verified, note: "observed credits_consumed = 10"}
     verified: '2026-08-20'
+    added: '2026-08-20'
     example_response: examples/branddev.brand.naics.json
-    docs_url: https://docs.brand.dev/guides/classification/NAICS
+    docs_url: https://docs.context.dev/guides/classification/NAICS
 
   - id: branddev.brand.styleguide
     domain: companies
@@ -219,10 +228,11 @@ endpoints:
         timeoutMS: {type: integer, required: false}
       note: "the programmatic-theming call: enough to render an app in a customer's brand without a designer. Values are measured off the rendered page, so a heavily JS-themed site can report the pre-hydration palette"
     test_request: {queryParams: {domain: "stripe.com"}}
-    cost: {type: per_success, value: 10, currency: credit, per: 1, unit: call, source: observed, source_url: "https://brand.dev/pricing", checked: '2026-08-20', confidence: verified, note: "observed credits_consumed = 10"}
+    cost: {type: per_success, value: 10, currency: credit, per: 1, unit: call, source: observed, source_url: "https://www.context.dev/pricing", checked: '2026-08-20', confidence: verified, note: "observed credits_consumed = 10"}
     verified: '2026-08-20'
+    added: '2026-08-20'
     example_response: examples/branddev.brand.styleguide.json
-    docs_url: https://docs.brand.dev/api-reference/brand-intelligence/styleguide
+    docs_url: https://docs.context.dev/api-reference/brand-intelligence/styleguide
 
   - id: branddev.brand.fonts
     domain: companies
@@ -240,10 +250,11 @@ endpoints:
         timeoutMS: {type: integer, required: false}
       note: "5 credits, the cheapest of the brand-asset routes (maxSpeed is ignored here). `fontLinks` gives the woff2 URL per weight, which is what makes the result actually usable in a rendered mock-up"
     test_request: {queryParams: {domain: "stripe.com"}}
-    cost: {type: per_success, value: 5, currency: credit, per: 1, unit: call, source: observed, source_url: "https://brand.dev/pricing", checked: '2026-08-20', confidence: verified, note: "observed credits_consumed = 5 — half the brand-retrieval price"}
+    cost: {type: per_success, value: 5, currency: credit, per: 1, unit: call, source: observed, source_url: "https://www.context.dev/pricing", checked: '2026-08-20', confidence: verified, note: "observed credits_consumed = 5 — half the brand-retrieval price"}
     verified: '2026-08-20'
+    added: '2026-08-20'
     example_response: examples/branddev.brand.fonts.json
-    docs_url: https://docs.brand.dev/api-reference/brand-intelligence/fonts
+    docs_url: https://docs.context.dev/api-reference/brand-intelligence/fonts
 
   - id: branddev.brand.screenshot
     domain: companies
@@ -263,10 +274,11 @@ endpoints:
         timeoutMS: {type: integer, required: false}
       note: "1 credit — the cheapest route on the provider. The response is a URL on the provider's media CDN, not image bytes, so the call stays small"
     test_request: {queryParams: {domain: "stripe.com"}}
-    cost: {type: per_success, value: 1, currency: credit, per: 1, unit: call, source: observed, source_url: "https://brand.dev/pricing", checked: '2026-08-20', confidence: verified, note: "observed credits_consumed = 1, for both the viewport and the fullScreenshot=true variant"}
+    cost: {type: per_success, value: 1, currency: credit, per: 1, unit: call, source: observed, source_url: "https://www.context.dev/pricing", checked: '2026-08-20', confidence: verified, note: "observed credits_consumed = 1, for both the viewport and the fullScreenshot=true variant"}
     verified: '2026-08-20'
+    added: '2026-08-20'
     example_response: examples/branddev.brand.screenshot.json
-    docs_url: https://docs.brand.dev/guides/take-webpage-screenshot
+    docs_url: https://docs.context.dev/guides/take-webpage-screenshot
 
   - id: branddev.brand.ai.query
     domain: companies
@@ -280,7 +292,7 @@ endpoints:
     input:
       body:
         domain: {type: string, required: true, note: "bare domain, no scheme", example: "stripe.com"}
-        data_to_extract: {type: "array[object]", required: true, note: "each item needs ALL FOUR of datapoint_name, datapoint_description, datapoint_example and datapoint_type; datapoint_type is one of text | number | date | boolean | list | url", example: [{datapoint_name: "pricing_model", datapoint_description: "How the company charges customers", datapoint_example: "per-transaction percentage fee", datapoint_type: "text"}]}
+        data_to_extract: {type: array, items: {type: object}, required: true, note: "each item needs ALL FOUR of datapoint_name, datapoint_description, datapoint_example and datapoint_type; datapoint_type is one of text | number | date | boolean | list | url", example: [{datapoint_name: "pricing_model", datapoint_description: "How the company charges customers", datapoint_example: "per-transaction percentage fee", datapoint_type: "text"}]}
         specific_pages: {type: object, required: false, note: "restrict the crawl to named page types instead of letting it pick"}
         timeoutMS: {type: integer, required: false}
       note: "one flat price whatever the number of datapoints, so batch every field you need into one call. The response echoes `urls_analyzed`, which is what makes an answer auditable"
@@ -289,10 +301,11 @@ endpoints:
         domain: "stripe.com"
         data_to_extract:
           - {datapoint_name: "pricing_model", datapoint_description: "How the company charges customers", datapoint_example: "per-transaction percentage fee", datapoint_type: "text"}
-    cost: {type: per_success, value: 10, currency: credit, per: 1, unit: call, source: observed, source_url: "https://brand.dev/pricing", checked: '2026-08-20', confidence: verified, note: "observed credits_consumed = 10 for a one-datapoint request; the pricing page prices structured extraction at 10 credits per call"}
+    cost: {type: per_success, value: 10, currency: credit, per: 1, unit: call, source: observed, source_url: "https://www.context.dev/pricing", checked: '2026-08-20', confidence: verified, note: "observed credits_consumed = 10 for a one-datapoint request; the pricing page prices structured extraction at 10 credits per call"}
     verified: '2026-08-20'
+    added: '2026-08-20'
     example_response: examples/branddev.brand.ai.query.json
-    docs_url: https://docs.brand.dev/api-reference/web-extraction/extract
+    docs_url: https://docs.context.dev/api-reference/web-extraction/extract
 
   - id: branddev.brand.ai.products
     domain: companies
@@ -311,10 +324,176 @@ endpoints:
       note: "the competitive-pricing call: it reads a public pricing page into rows you can diff over time. Returns a bare {products: [...]} object with no status wrapper"
     test_request:
       body: {domain: "stripe.com"}
-    cost: {type: per_success, value: 10, currency: credit, per: 1, unit: call, source: observed, source_url: "https://brand.dev/pricing", checked: '2026-08-20', confidence: verified, note: "observed credits_consumed = 10 regardless of how many products come back"}
+    cost: {type: per_success, value: 10, currency: credit, per: 1, unit: call, source: observed, source_url: "https://www.context.dev/pricing", checked: '2026-08-20', confidence: verified, note: "observed credits_consumed = 10 regardless of how many products come back"}
     verified: '2026-08-20'
+    added: '2026-08-20'
     example_response: examples/branddev.brand.ai.products.json
-    docs_url: https://docs.brand.dev/api-reference/web-extraction/products
+    docs_url: https://docs.context.dev/api-reference/web-extraction/products
+
+  - id: branddev.web.search
+    capability: web.search
+    platform: web
+    domain: search
+    scope: any_account
+    method: POST
+    path: /web/search
+    body_allowlist: true
+    name: Search the open web
+    summary: Find ranked web pages by query, with optional domain filters.
+    input:
+      bodyType: json
+      body:
+        query: {type: string, required: true, example: "site:docs.context.dev Context.dev API"}
+        numResults: {type: integer, required: true, enum: [10], example: 10, note: "The curated tool requests ten results at most, bounding the search at one credit."}
+        includeDomains: {type: array, items: {type: string}, required: false, maxItems: 20}
+        excludeDomains: {type: array, items: {type: string}, required: false, maxItems: 20}
+      note: "Inline Markdown, query fanout and larger searches are excluded because they change latency or price. Use an own raw tool for the full API."
+    test_request: {body: {query: "site:docs.context.dev Context.dev API", numResults: 10}}
+    cost:
+      type: per_success
+      value: 1
+      fallback: {value: 1, note: "The curated search requests exactly ten results and no charged extras."}
+      currency: credit
+      per: 1
+      unit: call
+      settle: usage
+      usage: {path: key_metadata.credits_consumed, unit: credit}
+      source: observed
+      source_url: https://docs.context.dev/account/credits
+      checked: '2026-09-28'
+      confidence: verified
+      note: "One credit per ten returned results; the curated ten-result request used one credit live. Settle from the provider's reported credits."
+    verified: '2026-09-28'
+    added: '2026-09-28'
+    example_response: examples/branddev.web.search.json
+    docs_url: https://docs.context.dev/api-reference/web-scraping/search
+
+  - id: branddev.web.scrape
+    capability: web.extract
+    platform: web
+    domain: extract
+    scope: any_account
+    method: POST
+    path: /web/scrape
+    body_allowlist: true
+    name: Scrape a web page
+    summary: Return one page as Markdown, HTML, images or a screenshot.
+    input:
+      bodyType: json
+      body:
+        url: {type: string, required: true, format: url, example: "https://example.com"}
+        formats: {type: object, required: true, enum: [{markdown: true}, {html: true}, {images: true}, {screenshot: true}], example: {markdown: true}, note: "Choose one basic output; charged JSON, highlights, product and PDF OCR options are excluded."}
+        maxAgeMs: {type: integer, required: false, min: 0, max: 31536000000, note: "Maximum cache age in milliseconds; 0 fetches fresh."}
+      note: "The curated request permits one basic format. Browser actions and charged extraction options require an own raw tool. A page that answers 404 is charged the credit Context.dev consumes for it; a blocked page or a hostname that does not exist is free."
+    test_request: {body: {url: "https://example.com", formats: {markdown: true}}}
+    price:
+      value: '1'
+      currency: credit
+      per: 1
+      unit: call
+      note: "One basic request of any format consumed one credit live, a page that answered 404 included. The call costs the credits Context.dev reports. The curated request allows one basic output and no charged extras."
+    provenance:
+      source: observed
+      source_url: https://docs.context.dev/account/credits
+      checked: '2026-11-18'
+      confidence: verified
+    # Context.dev's own count decides whatever the outcome: a 404 page consumes a credit although it
+    # is a miss, a blocked page or a missing hostname consumes none.
+    settle: {reported: {path: response.key_metadata.credits_consumed, unit: credit}, worst_case: '1'}
+    error: {when: {any: [{path: response.error, op: present}, {path: response.errors, op: present}]}}
+    miss: {plugin: branddev.scrape_miss, means: "no format carries a page, or the Markdown is a captcha, bot check, login or cookie wall"}
+    not_found:
+      status: [200]
+      when: {any: [{path: response.markdown.error_code, op: in, value: [NOT_FOUND, WEBSITE_NOT_FOUND]},
+                   {path: response.html.error_code, op: in, value: [NOT_FOUND, WEBSITE_NOT_FOUND]},
+                   {path: response.images.error_code, op: in, value: [NOT_FOUND, WEBSITE_NOT_FOUND]},
+                   {path: response.screenshot.error_code, op: in, value: [NOT_FOUND, WEBSITE_NOT_FOUND]}]}
+      means: "the page answered 404 or its hostname does not exist"
+    verified: '2026-11-18'
+    added: '2026-09-28'
+    example_response: examples/branddev.web.scrape.json
+    docs_url: https://docs.context.dev/api-reference/web-scraping/scrape
+
+  - id: branddev.web.map
+    capability: web.map
+    platform: web
+    domain: map
+    scope: any_account
+    method: GET
+    path: /web/urls
+    strict_query: true
+    name: Map a website
+    summary: Discover bounded lists of URLs on a domain without fetching page bodies.
+    input:
+      queryParams:
+        domain: {type: string, required: true, example: "docs.context.dev"}
+        maxLinks: {type: integer, required: true, enum: [10, 25, 50, 100], example: 10, note: "Choose 10, 25, 50 or 100 URLs to bound the response."}
+      note: "Search phrases cost an extra credit and are excluded from this curated tool. A team's raw tool can use the full URL inventory API."
+    test_request: {queryParams: {domain: "docs.context.dev", maxLinks: "10"}}
+    cost:
+      type: per_success
+      value: 1
+      fallback: {value: 1, note: "The curated map excludes the charged search option."}
+      currency: credit
+      per: 1
+      unit: call
+      settle: usage
+      usage: {path: key_metadata.credits_consumed, unit: credit}
+      source: observed
+      source_url: https://docs.context.dev/account/credits
+      checked: '2026-09-28'
+      confidence: verified
+      note: "A ten-URL map returned links and consumed one credit live. The priced search option is excluded; settle from reported credits."
+    verified: '2026-09-28'
+    added: '2026-09-28'
+    example_response: examples/branddev.web.map.json
+    docs_url: https://docs.context.dev/api-reference/web-scraping/map
+
+  - id: branddev.web.crawl
+    capability: web.crawl
+    platform: web
+    domain: crawl
+    scope: any_account
+    method: POST
+    path: /web/crawl
+    body_allowlist: true
+    name: Crawl a website
+    summary: Return Markdown from a bounded crawl of linked pages.
+    input:
+      bodyType: json
+      body:
+        url: {type: string, required: true, format: url, example: "https://example.com"}
+        maxPages: {type: integer, required: true, min: 1, max: 10, example: 1, note: "The shared key holds at most ten one-credit pages."}
+        maxDepth: {type: integer, required: false, min: 0, max: 10, example: 0}
+      note: "Crawl stops at maxPages. The reserved maximum is released down to the provider's actual successful-page charge."
+    test_request: {body: {url: "https://example.com", maxPages: 1, maxDepth: 0}}
+    cost:
+      type: per_success
+      table:
+        - {when: {body.maxPages: 1}, value: 1, times: body.maxPages}
+        - {when: {body.maxPages: 2}, value: 1, times: body.maxPages}
+        - {when: {body.maxPages: 3}, value: 1, times: body.maxPages}
+        - {when: {body.maxPages: 4}, value: 1, times: body.maxPages}
+        - {when: {body.maxPages: 5}, value: 1, times: body.maxPages}
+        - {when: {body.maxPages: 6}, value: 1, times: body.maxPages}
+        - {when: {body.maxPages: 7}, value: 1, times: body.maxPages}
+        - {when: {body.maxPages: 8}, value: 1, times: body.maxPages}
+        - {when: {body.maxPages: 9}, value: 1, times: body.maxPages}
+        - {when: {body.maxPages: 10}, value: 1, times: body.maxPages}
+      fallback: {value: 10, note: "The curated crawl is limited to ten pages."}
+      currency: credit
+      unit: page
+      settle: usage
+      usage: {path: key_metadata.credits_consumed, unit: credit}
+      source: observed
+      source_url: https://docs.context.dev/account/credits
+      checked: '2026-09-28'
+      confidence: verified
+      note: "The one-page live crawl consumed one credit. Context.dev charges one per successful page; hold the requested ceiling and settle actual reported usage."
+    verified: '2026-09-28'
+    added: '2026-09-28'
+    example_response: examples/branddev.web.crawl.json
+    docs_url: https://docs.context.dev/api-reference/web-scraping/crawl
 
 proposed_capabilities:
   # Brand assets are a genuine gap: the enrichment platform has companies.enrich for firmographics,
@@ -324,5 +503,4 @@ proposed_capabilities:
   companies.brand.fonts: "Detect the fonts a company's website uses"
   companies.website.screenshot: "Capture a screenshot of a company's website"
   companies.website.extract: "Extract named, caller-defined datapoints from a company's website"
-  companies.products: "Extract a company's products, plans and prices"
   companies.transaction.identify: "Identify the company behind a card or bank transaction descriptor"

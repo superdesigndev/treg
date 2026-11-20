@@ -10,6 +10,15 @@ from ...models import DenyRule, Tool
 from ..identity.access import Caller
 
 
+def pinned_tag_predicates(column, pinned_tags: dict | None) -> list:
+    """Match every server-enforced pin in SQL, before pagination or loading result bodies.
+
+    Missing/NULL tags fail closed. An unpinned reader retains the enclosing org scope.
+    JSON string extraction is portable across the supported SQLite and PostgreSQL engines.
+    """
+    return [column[key].as_string() == value for key, value in (pinned_tags or {}).items()]
+
+
 class AccessPolicyError(Exception):
     """A tool or project ACL refusal translated by the calling interface."""
 
@@ -46,6 +55,11 @@ def _project_allowed(caller: Caller, tool: Tool) -> bool:
         return True
     access = caller.membership.project_access
     return access is None or tool.project_id is None or tool.project_id in access
+
+
+def usable_tools(caller: Caller, tools) -> list[Tool]:
+    """The team's tools this caller may use: what `/tools` lists and bare `treg` names."""
+    return [t for t in tools if _tool_usable(caller, t)]
 
 
 def _tool_usable(caller: Caller, tool: Tool) -> bool:

@@ -24,6 +24,7 @@ source:
 pricing_url: https://developers.snap.com/api/marketing-api/Ads-API/introduction
 endpoints:
   - id: snapchat-ads.organizations
+    added: '2026-07-28'
     capability: snapchat-ads.organizations
     platform: snapchat-ads
     scope: own_account
@@ -39,6 +40,7 @@ endpoints:
     docs_url: https://developers.snap.com/api/marketing-api/Ads-API/organizations
 
   - id: snapchat-ads.accounts
+    added: '2026-07-28'
     capability: snapchat-ads.accounts
     platform: snapchat-ads
     scope: own_account
@@ -57,6 +59,7 @@ endpoints:
     docs_url: https://developers.snap.com/api/marketing-api/Ads-API/adaccounts
 
   - id: snapchat-ads.query
+    added: '2026-07-28'
     capability: snapchat-ads.query
     platform: snapchat-ads
     scope: own_account
@@ -80,6 +83,7 @@ endpoints:
     docs_url: https://developers.snap.com/api/marketing-api/Ads-API/measurement
 
   - id: snapchat-ads.campaigns
+    added: '2026-07-28'
     capability: snapchat-ads.campaigns
     platform: snapchat-ads
     scope: own_account
@@ -99,6 +103,7 @@ endpoints:
     docs_url: https://developers.snap.com/api/marketing-api/Ads-API/campaigns
 
   - id: snapchat-ads.campaign.stats
+    added: '2026-07-28'
     capability: snapchat-ads.campaign.stats
     platform: snapchat-ads
     scope: own_account
@@ -121,6 +126,7 @@ endpoints:
     docs_url: https://developers.snap.com/api/marketing-api/Ads-API/measurement
 
   - id: snapchat-ads.ads
+    added: '2026-07-28'
     capability: snapchat-ads.ads
     platform: snapchat-ads
     scope: own_account

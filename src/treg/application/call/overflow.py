@@ -1,4 +1,4 @@
-"""Overflow — the child cycle (docs/PROVIDER-CAPACITY-PLAN.md §4.3).
+"""Overflow — the child cycle.
 
 When treg's OWN account for a provider fails a tier-4 call (a balance/quota signature, a burst-429
 that smoothing could not absorb, a connect error), serve the SAME vendor endpoint through a
@@ -6,7 +6,10 @@ treg-owned aggregator account: reserve a child hold (own id `{call_ref}:overflow
 run, no DB open → settle the child at the aggregator's real price (0% markup) and fold the daily
 spend delta into that settle → return the vendor's body from the aggregator's envelope, disclosed via
 `X-Treg-Served-Via`. One hop: an aggregator that fails is data (child released, aggregator marked
-unhealthy 15 min, typed 503 with alternatives), never a second aggregator.
+unhealthy 15 min, typed 503 with alternatives), never a second aggregator. An aggregator's own
+per-request refusal (`contract`) is request-scoped: child released, nothing charged, no mark; the
+vendor's own answer stands, or - when the ladder skipped the direct attempt - the typed 503 names
+the refusal.
 
 Shadow mode (`overflow_mode=shadow`): everything except the child hold and the answer — the
 aggregator is called, status/shape/cost logged and the spend recorded (treg pays the probe, bounded
@@ -19,6 +22,7 @@ org that opted out (step F), or a route the worker has not enabled.
 from __future__ import annotations
 
 from datetime import timedelta
+from collections.abc import Awaitable, Callable
 import asyncio
 import json
 import logging
@@ -35,8 +39,9 @@ from ...domain.capacity import signatures as capacity_signatures
 from ...domain.capacity.routes_view import view as routes_view
 from ...domain.capacity.verify import shape
 from ...domain.capacity.view import view as capacity_view
-from ...infra.upstream.aggregators import (AGGREGATOR_SIDE, VENDOR_DRY, AggregatorRequest, AggregatorResult,
-                                            by_name, with_vendor_verdict)
+from ...infra.upstream.aggregators import (AGGREGATOR_SIDE, VENDOR_DRY, VENDOR_REFUSAL,
+                                            AggregatorRequest, AggregatorResult, by_name,
+                                            with_vendor_verdict)
 from ...timeutil import utcnow_naive
 from .resolve import MarketplaceCall
 from .reserve import _platform_reserve
@@ -94,9 +99,12 @@ async def _send(client: httpx.AsyncClient, req: AggregatorRequest) -> httpx.Resp
 
 
 async def _run(client: httpx.AsyncClient, aggregator: str, route, key: str, query, body: bytes | None,
-               path_params: dict | None, budget: _BudgetReservation | None = None) -> AggregatorResult:
+               path_params: dict | None, budget: _BudgetReservation | None = None,
+               before_outbound: Callable[[], Awaitable[None]] | None = None) -> AggregatorResult:
     adapter = by_name(aggregator)
     req = adapter.build(route, key, query, body, path_params)
+    if before_outbound is not None:
+        await before_outbound()
     if budget is not None:
         budget.outbound = True
     r = await _send(client, req)
@@ -111,10 +119,15 @@ async def _run(client: httpx.AsyncClient, aggregator: str, route, key: str, quer
 
 
 def _child(mk: MarketplaceCall, route) -> MarketplaceCall:
-    return replace(mk, tier="platform-overflow", call_id=None,
-                   estimate_micro=int(route.agg_price_micro or 0),
+    agg = int(route.agg_price_micro or 0)
+    # The child settles against ITS price: an aggregator that reports no cost settles at the
+    # aggregator reserve, never at the parent's direct price or table ceiling.
+    return replace(mk, tier="platform-overflow", call_id=None, estimate_micro=agg, worst_case_micro=0,
+                   holdless=False, overflow_hold_possible=False,
                    cost_type="per_call" if route.agg_unit == "call" else "per_result",
-                   unit_micro=int(route.agg_price_micro or 0))
+                   unit_micro=agg,
+                   settlement_basis={"when": "response", "amount": {"kind": "observed"},
+                                     "fallback_micro": agg, "reserve_micro": agg})
 
 
 def _response(res: AggregatorResult) -> UpstreamResponse:
@@ -223,6 +236,7 @@ async def _maybe_overflow_attempt(
     audit_client: str = "", force_trigger: str | None = None,
     reserved: list[MarketplaceCall],
     budget_reservations: list[_BudgetReservation],
+    before_outbound: Callable[[], Awaitable[None]] | None = None,
 ) -> OverflowOutcome | None:
     """After the primary's settle released — or, with `force_trigger`, INSTEAD of a direct attempt
     the resolver already knows would 402 (`mk.skip_direct`). None = nothing to do (the vendor's
@@ -264,12 +278,15 @@ async def _maybe_overflow_attempt(
     path_params = {k: v for k, v in query_items if k in mk.consumed}
     if mode == "on":
         # Child hold: own id, same call_ref family. Insufficient balance here is the normal 402.
+        # Marked first: a cancel can land after the reserve commits but before it returns.
+        mk.overflow_hold_possible = True
         await _platform_reserve(child, caller, meta=meta, call_ref=f"{call_ref}:overflow")
         reserved.append(child)
     res: AggregatorResult | None = None
     try:
         res = await _run(
             client, aggregator, route, key, query, caller_body or None, path_params, budget,
+            before_outbound,
         )
     except httpx.RequestError as exc:
         res = AggregatorResult(None, b"", None, "malformed", f"{type(exc).__name__}: {exc}")
@@ -277,13 +294,15 @@ async def _maybe_overflow_attempt(
     budget.actual_micro = int(res.cost_micro) if res.cost_micro is not None else None
     delta = (budget.actual_micro - budget.direct_micro
              if budget.actual_micro is not None else None)
-    # --- decide ---
-    if res.failure in AGGREGATOR_SIDE or res.failure == VENDOR_DRY:
+    if res.failure in AGGREGATOR_SIDE or res.failure in (VENDOR_DRY, VENDOR_REFUSAL):
         why_agg = res.failure
-        # The aggregator itself (key, account, host, envelope) is out for everyone; its account
-        # for THIS vendor being dry (a relayed 402 / Apollo 422 / period 429) is out for this
-        # provider only - one vendor's daily cap must not take hunter and lusha offline too.
-        mark_key = f"overflow:{aggregator}" if res.failure in AGGREGATOR_SIDE else f"overflow:{aggregator}:{mk.provider}"
+        # The aggregator's key or account being out is out for everyone. Everything else is scoped
+        # to THIS vendor: its account for the vendor being dry, a vendor-specific refusal, and a
+        # `malformed` answer too - a 5xx or transport timeout on one vendor's relay must not take
+        # every other provider's fallback offline. A dead aggregator host still ends up marked, one
+        # provider at a time.
+        mark_key = (f"overflow:{aggregator}" if res.failure in ("aggregator_auth", "aggregator_balance")
+                    else f"overflow:{aggregator}:{mk.provider}")
         await capacity_marks.strike(
             mark_key, endpoint_id=None, kind="balance", immediate=True,
             resets_at=utcnow_naive().replace(microsecond=0) + timedelta(seconds=AGGREGATOR_UNHEALTHY_S),
@@ -302,12 +321,15 @@ async def _maybe_overflow_attempt(
         else:
             await _record_shadow_budget(budget)
         log.warning("overflow via %s failed for %s: %s %s", aggregator, mk.endpoint_id, why_agg, res.detail)
-        _audit_child(mk, child, call_ref, aggregator, res, charged=0, client=audit_client, note=why_agg)
+        _audit_child(mk, child, caller, call_ref, aggregator, res, charged=0, client=audit_client, note=why_agg)
         return OverflowOutcome(False, None, aggregator=aggregator, note=why_agg,
                                failure=_capacity_503(mk, aggregator, why_agg) if mode == "on" else None)
     if res.failure == "contract" or res.failure == "pending":
-        # The aggregator's stricter schema refused (no vendor call, no charge): this route is wrong for
-        # this call; the vendor's own answer stands. Worth a log line — verify should have caught it.
+        # The aggregator's own per-request refusal (no vendor call, no charge, no strike): this route
+        # is wrong for this call. The vendor's own answer stands when there is one; on the skip-direct
+        # ladder there is none, so the caller gets treg's typed 503 naming the relay's refusal - never
+        # the aggregator's envelope dressed up as the vendor's answer. Worth a log line either way:
+        # verify should have caught it.
         if mode == "on":
             spend_adjustment = _overflow_spend_adjustment(budget)
             await _platform_settle(
@@ -321,8 +343,12 @@ async def _maybe_overflow_attempt(
         else:
             await _record_shadow_budget(budget)
         log.warning("overflow via %s refused %s: %s", aggregator, mk.endpoint_id, res.detail)
-        _audit_child(mk, child, call_ref, aggregator, res, charged=0, client=audit_client, note=res.failure)
-        return OverflowOutcome(False, None, aggregator=aggregator, note=res.failure)
+        _audit_child(mk, child, caller, call_ref, aggregator, res, charged=0, client=audit_client, note=res.failure)
+        failure = None
+        if mode == "on" and force_trigger is not None:
+            failure = _capacity_503(mk, aggregator, f"{res.failure}: it refused the request itself, "
+                                                    f"{res.detail or 'no detail'}")
+        return OverflowOutcome(False, None, aggregator=aggregator, note=res.failure, failure=failure)
     # The vendor answered through the aggregator.
     if mode == "shadow":
         try:
@@ -332,7 +358,7 @@ async def _maybe_overflow_attempt(
         log.info("overflow SHADOW %s via %s: vendor %s direct→%s relay, cost %s, delta %s, shape %s",
                  mk.endpoint_id, aggregator, status, res.upstream_status, res.cost_micro, delta, body_shape)
         await _record_shadow_budget(budget)
-        _audit_child(mk, child, call_ref, aggregator, res, charged=0, client=audit_client, note="shadow")
+        _audit_child(mk, child, caller, call_ref, aggregator, res, charged=0, client=audit_client, note="shadow")
         return OverflowOutcome(False, None, aggregator=aggregator, note="shadow")
     spend_adjustment = _overflow_spend_adjustment(budget)
     charged, observed = await _platform_settle(
@@ -344,7 +370,7 @@ async def _maybe_overflow_attempt(
     else:
         budget.finalized = True
     response = _response(res)
-    _audit_child(mk, child, call_ref, aggregator, res, charged=charged, client=audit_client)
+    _audit_child(mk, child, caller, call_ref, aggregator, res, charged=charged, client=audit_client)
     return OverflowOutcome(True, response, res.upstream_body, charged, observed, aggregator)
 
 
@@ -352,6 +378,7 @@ async def maybe_overflow(
     *, mk: MarketplaceCall, caller, meta, call_ref: str, status: int, headers, body: bytes,
     method: str, query_items: list[tuple[str, str]], caller_body: bytes, client: httpx.AsyncClient,
     audit_client: str = "", force_trigger: str | None = None,
+    before_outbound: Callable[[], Awaitable[None]] | None = None,
 ) -> OverflowOutcome | None:
     """Run one optional overflow attempt without letting its infrastructure replace the caller's
     existing vendor answer. A skip-direct caller interprets None as its original capacity 503."""
@@ -363,6 +390,7 @@ async def maybe_overflow(
             body=body, method=method, query_items=query_items, caller_body=caller_body,
             client=client, audit_client=audit_client, force_trigger=force_trigger,
             reserved=reserved, budget_reservations=budget_reservations,
+            before_outbound=before_outbound,
         )
     except asyncio.CancelledError:
         if budget_reservations:
@@ -375,17 +403,21 @@ async def maybe_overflow(
                     await _preserve_unknown_budget(budget_reservations[0])
                 else:
                     await _release_budget(budget_reservations[0])
-            except Exception:  # noqa: BLE001 - cancellation must remain the result
+            except Exception:
                 log.exception("overflow budget cleanup failed for cancelled %s", mk.endpoint_id)
         raise
     except CallFailure:
-        if budget_reservations:
-            try:
-                await _release_budget(budget_reservations[0])
-            except Exception:  # noqa: BLE001 - preserve the typed call failure
-                log.exception("overflow budget release failed for %s", mk.endpoint_id)
+        try:
+            if reserved:
+                await _platform_settle(reserved[0], None, reason="overflow_admission_refused")
+        finally:
+            if budget_reservations:
+                try:
+                    await _release_budget(budget_reservations[0])
+                except Exception:
+                    log.exception("overflow budget release failed for %s", mk.endpoint_id)
         raise
-    except Exception:  # noqa: BLE001 - overflow is advisory and must not replace the primary result
+    except Exception:
         log.exception("overflow attempt crashed for %s", mk.endpoint_id)
         if reserved:
             await _platform_settle(reserved[0], None, reason="overflow_crashed")
@@ -399,12 +431,12 @@ async def maybe_overflow(
                     await _preserve_unknown_budget(budget_reservations[0])
                 else:
                     await _release_budget(budget_reservations[0])
-            except Exception:  # noqa: BLE001 - the primary vendor answer still wins
+            except Exception:
                 log.exception("overflow budget release failed for crashed %s", mk.endpoint_id)
         return None
 
 
-def _audit_child(mk: MarketplaceCall, child: MarketplaceCall, call_ref: str, aggregator: str,
+def _audit_child(mk: MarketplaceCall, child: MarketplaceCall, caller, call_ref: str, aggregator: str,
                  res: AggregatorResult, *, charged: int, client: str, note: str = "") -> None:
     """The child's own audit row: same call_ref as the primary, credential_tier platform-overflow,
     provider = the vendor. Fire-and-forget like every audit row."""
@@ -412,6 +444,8 @@ def _audit_child(mk: MarketplaceCall, child: MarketplaceCall, call_ref: str, agg
         org_id=child.tool.org_id, user_email=child.tool.owner, tool_name=mk.endpoint_id,
         method="OVERFLOW", path=f"overflow:{aggregator}/{child.tool.name}",
         status_code=int(res.upstream_status or 0), client=client,
+        api_key_id=caller.api_key_id, api_key_name=caller.api_key_name,
+        api_key_prefix=caller.api_key_prefix,
         telemetry={"call_ref": call_ref, "endpoint_id": mk.endpoint_id, "provider": mk.provider,
                    "credential_tier": "platform-overflow", "cost_estimated_micro": child.estimate_micro,
                    "cost_observed_micro": res.cost_micro, "cost_charged_micro": charged,

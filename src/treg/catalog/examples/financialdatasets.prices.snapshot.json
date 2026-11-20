@@ -1,0 +1,10 @@
+{
+  "snapshot": {
+    "ticker": "AAPL",
+    "price": 334.48,
+    "day_change": 2.21,
+    "day_change_percent": 0.67,
+    "time": "2026-09-14T18:52:33Z",
+    "time_milliseconds": 1789411953668
+  }
+}

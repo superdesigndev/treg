@@ -1,0 +1,11 @@
+{
+  "type": "locations",
+  "results": [
+    {
+      "id": "synthetic-place-id",
+      "title": "Example Place",
+      "url": "https://example.com/place"
+    }
+  ],
+  "mixed": []
+}

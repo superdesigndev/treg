@@ -56,27 +56,7 @@
         "id": "6a90a52a889d6a0001983b19",
         "key": "6a90a52a889d6a0001983b19"
       },
-      {
-        "_id": "6a90a52a889d6a0001983b1b",
-        "created_at": null,
-        "current": false,
-        "degree": null,
-        "description": null,
-        "emails": null,
-        "end_date": "phone:4381f34da1",
-        "grade_level": null,
-        "kind": null,
-        "major": null,
-        "org_matched_by_name": false,
-        "organization_id": "55922bbbphone:a7974b79c6e00",
-        "organization_name": "Auctomatic",
-        "raw_address": null,
-        "start_date": "phone:d43572ba2a",
-        "title": "Cofounder",
-        "updated_at": null,
-        "id": "6a90a52a889d6a0001983b1b",
-        "key": "6a90a52a889d6a0001983b1b"
-      }
+      "… 1 more item(s) truncated"
     ],
     "street_address": "",
     "city": "San Francisco",
@@ -98,8 +78,7 @@
       "languages": [
         "English",
         "Spanish",
-        "French",
-        "Japanese"
+        "… 2 more item(s) truncated"
       ],
       "alexa_ranking": 200,
       "phone": "phone:4bfe7b83d2",
@@ -113,12 +92,12 @@
       "sic_codes": [
         "7375",
         "7374",
-        "7389"
+        "… 1 more item(s) truncated"
       ],
       "naics_codes": [
         "54151",
         "522320",
-        "518210"
+        "… 1 more item(s) truncated"
       ],
       "primary_phone": {
         "number": "phone:4bfe7b83d2",
@@ -130,23 +109,19 @@
       "keywords": [
         "payments",
         "developer tools",
-        "cloud infrastructure",
-        "credit cards",
-        "consumer internet",
-        "… 143 more item(s) truncated"
+        "… 4 more item(s) truncated"
       ],
       "organization_revenue_printed": "6.9B",
       "organization_revenue": 6935000000.0,
       "industries": [
         "information technology & services",
         "financial services",
-        "computer software",
-        "internet"
+        "… 2 more item(s) truncated"
       ],
       "secondary_industries": [
         "financial services",
         "computer software",
-        "internet"
+        "… 1 more item(s) truncated"
       ],
       "snippets_loaded": true,
       "industry_tag_id": "5567cdphone:dfdb76e720b10b0000",
@@ -183,43 +158,12 @@
           "industries": [
             "information technology & services",
             "financial services",
-            "internet"
+            "… 1 more item(s) truncated"
           ],
           "estimated_num_employees": 320,
           "country": "United States"
         },
-        {
-          "id": "5a9f2bd4a6da98d99780e5b0",
-          "name": "Indie Hackers",
-          "website_url": "http://www.indiehackers.com",
-          "industries": [
-            "online media"
-          ],
-          "estimated_num_employees": 14,
-          "country": "United States"
-        },
-        {
-          "id": "5d135a941b8b76095acb6e22",
-          "name": "Recko | A Stripe company",
-          "website_url": "http://www.recko.io",
-          "industries": [
-            "information technology & services",
-            "computer software"
-          ],
-          "estimated_num_employees": 14,
-          "country": "United States"
-        },
-        {
-          "id": "54a1293d69702d979c0d9501",
-          "name": "TOTEMS | Data Analytics",
-          "website_url": "http://www.totems.co",
-          "industries": [
-            "marketing & advertising"
-          ],
-          "estimated_num_employees": 2,
-          "country": "United States"
-        },
-        "… 17 more item(s) truncated"
+        "… 4 more item(s) truncated"
       ],
       "num_suborganizations": 22,
       "annual_revenue_printed": "6.9B",
@@ -246,42 +190,12 @@
           "investors": "",
           "currency": "$"
         },
-        {
-          "id": "669742ecf0b51c0001290e27",
-          "date": "phone:b6d75d49d1T00:00:00.000+00:00",
-          "news_url": null,
-          "type": "Other",
-          "investors": "Sequoia Capital, Brookfield Asset Management, Foresite Capital Management, LLC, Paradigm, Founders Circle Capital",
-          "amount": "694.2M",
-          "currency": "$"
-        },
-        {
-          "id": "6430aa5922d3bphone:0610760530f",
-          "date": "phone:7849c34baeT00:00:00.000+00:00",
-          "news_url": "https://stripe.com/en-in/newsroom/news/stripe-series-i-employee-liquidity",
-          "type": "Venture (Round not Specified)",
-          "investors": "Founders Fund, Temasek, Goldman Sachs Asset Management, GIC, Thrive Capital, MSD Partners, General Catalyst, Baillie Gifford, Andreessen Horowitz",
-          "amount": "6.5B",
-          "currency": "$"
-        },
-        {
-          "id": "6a74e67a0917ad00018bbf3a",
-          "date": "phone:a1683320d4T00:00:00.000+00:00",
-          "news_url": null,
-          "type": "Other",
-          "investors": "Shopify",
-          "amount": "350M",
-          "currency": "$"
-        },
-        "… 12 more item(s) truncated"
+        "… 4 more item(s) truncated"
       ],
       "technology_names": [
         ".NET",
         "1Password",
-        "3M 360 Encompass - Health Analytics Suite",
-        "AI",
-        "ANGEL LMS",
-        "… 416 more item(s) truncated"
+        "… 4 more item(s) truncated"
       ],
       "current_technologies": [
         {
@@ -294,22 +208,7 @@
           "name": "1Password",
           "category": "Security"
         },
-        {
-          "uid": "3m_360_encompass_health_analytics_suite",
-          "name": "3M 360 Encompass - Health Analytics Suite",
-          "category": "Analytics and Tracking"
-        },
-        {
-          "uid": "ai",
-          "name": "AI",
-          "category": "Other"
-        },
-        {
-          "uid": "angel_lms",
-          "name": "ANGEL LMS",
-          "category": "Education Management Software"
-        },
-        "… 416 more item(s) truncated"
+        "… 4 more item(s) truncated"
       ],
       "org_chart_root_people_ids": [
         "674aphone:932c7c9e06bdc579"

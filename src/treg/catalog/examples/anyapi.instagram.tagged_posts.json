@@ -1,0 +1,33 @@
+{
+  "output": {
+    "data": {
+      "nextCursor": "XZWx2dqi8jYkKSTSy9NP8wQF9fu-1hhxjKm2bKXYc1VGZzW3lAIEP77EsUrbDKKw9aVg3Sk1_LWnuxg4afEHfPHOA-2GxDJzI9qfV22eEpDl9GwJ5lQPC1_UWyfjPWhWz5Za8_gYMh70qQ4jCgHqUazmzpEvJ9O5MejlwwlDHxpCIOFV23UrkLVU-k6ARNENEH1Xb-C6… [371 chars]",
+      "posts": [
+        {
+          "author": "exoplanet_emma",
+          "avatarUrl": "https://scontent-lax3-2.cdninstagram.com/v/t51.2885-19/343267148_538566048451511_3430549884772983097_n.jpg?stp=dst-jpg_e0_s150x150_tt6&efg=eyJ2ZW5jb2RlX3RhZyI6InByb2ZpbGVfcGljLmRqYW5nby4xMDgwLmMyIn0&_… [562 chars]",
+          "caption": "Still on cloud 9 from this weekend 🚀✨\n\n📁 Astrophysics aerospace rocket launch exoplanets",
+          "comments": 8,
+          "createdUtc": 1788205763,
+          "id": "3976079382136818132",
+          "likes": 0,
+          "url": "https://www.instagram.com/p/Dct3yHDBQnU/"
+        },
+        "… 20 more item(s) truncated"
+      ]
+    },
+    "found": true
+  },
+  "provider": "AnyAPI",
+  "costUsd": 0.0015,
+  "items": 21,
+  "replayed": false,
+  "source": {
+    "id": "anonymous-lynx",
+    "name": "Lynx",
+    "kind": "anonymous",
+    "artworkKey": "lynx"
+  },
+  "hint": "large_result: this response is ~30 KB. To keep future runs from flooding your context, re-run with `fields` (keep only the keys you need), `max_items` (cap rows), `summary=true` (outline only), or `jq… [309 chars]",
+  "resultId": "1f99e19d-88e1-44ce-9eb8-964f01d536c4"
+}

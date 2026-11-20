@@ -32,6 +32,13 @@ STATE_TTL_S = 24 * 3600  # a published state outlives many sweeps; `latest_state
 log = logging.getLogger("treg.capacity")
 
 _FORBIDDEN_IN_NOTE = ("key", "token", "secret", "bearer", "sk_", "password")
+_CREDENTIAL_IN_URL = ("api_key=", "apikey=", "token=")
+
+
+def state_key(provider: str) -> str:
+    """The `capacity:state` key for a provider in either spelling: the account's Settings slot
+    (`fiber-ai` -> `fiber_ai`), the one the sweep publishes under."""
+    return platform_setting_name(provider).removeprefix("platform_key_")
 
 
 def _has_key(provider: str) -> bool:
@@ -44,7 +51,7 @@ def snapshot_from(provider: str, row: dict, observed_at=None) -> CapacitySnapsho
     """A collector's dict → the row. Never carries a credential: the note is clipped and checked."""
     note = str(row.get("note") or "")[:300]
     error = ""
-    if row.get("value") is None:
+    if row.get("value") is None and not row.get("informational"):
         if row.get("no_api"):
             error = "no_balance_api"
         elif row.get("no_key"):
@@ -54,11 +61,15 @@ def snapshot_from(provider: str, row: dict, observed_at=None) -> CapacitySnapsho
             note = ""
     if any(word in note.lower() for word in _FORBIDDEN_IN_NOTE):
         note = "(note withheld: looked like a credential)"
+    lowered = error.lower()
+    if (any(mark in lowered for mark in _CREDENTIAL_IN_URL)
+            or any(value in error for value in collectors.credential_values(provider))):
+        error = "collector failed (detail withheld: looked like a credential)"
     value = row.get("value")
     return CapacitySnapshot(
         provider=provider, observed_at=observed_at or utcnow_naive(),
         remaining=float(value) if isinstance(value, (int, float)) else None,
-        unit=str(row.get("unit") or ""), source="api", confidence="exact" if error == "" else "stale",
+        unit=str(row.get("unit") or ""), source="api", confidence=("informational" if row.get("informational") else "exact" if error == "" else "stale"),
         note=note, error=error,
     )
 
@@ -101,7 +112,7 @@ async def run_sweep(db: AsyncSession, *, client: httpx.AsyncClient | None = None
         snaps.append(snap)
         state = latest_state(policies[provider], snap, now)
         states[provider] = state
-        await ratestore.kv_put(db, STATE_NS, provider, state.to_json(), ttl_s=STATE_TTL_S)
+        await ratestore.kv_put(db, STATE_NS, state_key(provider), state.to_json(), ttl_s=STATE_TTL_S)
     await db.commit()
     for p in unknown:
         log.warning("capacity policy for %s imported as unknown — classify it", p)

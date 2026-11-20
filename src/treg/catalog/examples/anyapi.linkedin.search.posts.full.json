@@ -1,0 +1,87 @@
+{
+  "output": {
+    "data": {
+      "posts": [
+        {
+          "attachmentDescription": "Washington, District of Columbia, United States (Hybrid)",
+          "attachmentImage": "https://media.licdn.com/dms/image/v2/D4D0BAQGgMK8JlAbXww/company-logo_400_400/company-logo_400_400/0/1714534694222",
+          "attachmentSubtitle": "Job by AFL-CIO Tech Institute",
+          "attachmentTitle": "Senior Counsel/Advisor  ",
+          "attachmentType": "job",
+          "attachmentUrl": "https://www.linkedin.com/jobs/view/4461667646/",
+          "author": {
+            "headline": "Academic, Advisor, Attorney, Advocate, Commentator - Biden White House, Obama Acting Secretary and Deputy Secretary of Labor",
+            "id": "ACoAAAZe18wBfZJwZWikQAafGyAbMAuh4g3umTg",
+            "image": "https://media.licdn.com/dms/image/v2/C4E03AQHtvXiktol0Nw/profile-displayphoto-shrink_400_400/profile-displayphoto-shrink_400_400/0/1659726492963",
+            "name": "Seth Harris",
+            "profileUrl": "https://www.linkedin.com/in/sethdharris",
+            "publicIdentifier": "sethdharris",
+            "type": "person"
+          },
+          "createdUtc": 1789747578,
+          "engagement": {
+            "breakdown": [
+              {
+                "count": 22,
+                "type": "LIKE"
+              },
+              {
+                "count": 1,
+                "type": "PRAISE"
+              },
+              "… 2 more item(s) truncated"
+            ],
+            "comments": 2,
+            "reactions": 25,
+            "reposts": 4
+          },
+          "id": "7506745425815719937",
+          "pollOptions": [],
+          "text": "Hello network! This post is all about promoting an extraordinary and important job opportunity with my friends at the AFL-CIO Tech Institute under the leadership of Executive Director Lauren McFerran.\n\nArtificial intelligence is one of the top issues for working people, whether union or non-union. The Tech Institute is seeking a senior-level researcher, advocate, thinker, and analyst to dive into the issue with a particular focus on how collective bargaining ensures workers have a say in decisio… [1040 chars total]",
+          "url": "https://www.linkedin.com/posts/sethdharris_hello-network-this-post-is-all-about-promoting-activity-7506745425815719937-r0pc"
+        },
+        {
+          "author": {
+            "headline": "Add The Eddie Obeng Experience to Guarantee Your Entire Event, Ensure Take-Aways are Applied | New World Enterprise Polymath, Best-selling Author, TED Speaker, QUBE #VR Campus | Inspire-Educate-Provoke to Act |",
+            "id": "ACoAAAFTF5QB8oGrUHSZ2ZQq8E67xyLCsmN_pwY",
+            "image": "https://media.licdn.com/dms/image/v2/D4E03AQFQ0o0tvHUurg/profile-displayphoto-shrink_400_400/profile-displayphoto-shrink_400_400/0/1727717058915",
+            "name": "Eddie Obeng MBA, PhD, FAPM, PPL, Qubot",
+            "profileUrl": "https://www.linkedin.com/in/prof-eddie-obeng",
+            "publicIdentifier": "prof-eddie-obeng",
+            "type": "person"
+          },
+          "createdUtc": 1789627249,
+          "engagement": {
+            "breakdown": [
+              {
+                "count": 1,
+                "type": "LIKE"
+              }
+            ],
+            "comments": 3,
+            "reactions": 1,
+            "reposts": 1
+          },
+          "id": "7506240729669689344",
+          "pollOptions": [],
+          "text": "317 impressions\n\nThat's how you know you are in a psyop.",
+          "url": "https://www.linkedin.com/posts/prof-eddie-obeng_do-you-agree-with-nickhudson-that-the-correct-activity-7506240729669689344-hKgM"
+        },
+        "… 8 more item(s) truncated"
+      ]
+    },
+    "found": true
+  },
+  "provider": "AnyAPI",
+  "costUsd": 0.005,
+  "items": 10,
+  "replayed": false,
+  "source": {
+    "id": "anonymous-hedgehog-338ce087",
+    "name": "Hedgehog",
+    "kind": "anonymous",
+    "artworkKey": "hedgehog"
+  },
+  "hint": "large_result: this response is ~16 KB. To keep future runs from flooding your context, re-run with `fields` (keep only the keys you need), `max_items` (cap rows), `summary=true` (outline only), or `jq` for arbitrary reshaping (e.g. `jq=.data.markdown[:2000]`) — these trim the response only, never the charge.",
+  "resultId": "c4cadadf-c4fc-4545-a6e0-b9cf74596fa3"
+}

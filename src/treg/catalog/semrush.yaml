@@ -55,6 +55,7 @@ pricing_url: https://www.semrush.com/api-documentation/  # API units are bought 
 endpoints:
   # --- Domain & keyword reports (host root) -----------------------------------------------------
   - id: semrush.google.domain.ranked_keywords
+    added: '2026-07-28'
     capability: google.domain.ranked_keywords
     platform: google
     scope: any_account
@@ -91,6 +92,7 @@ endpoints:
     docs_url: https://developer.semrush.com/api/v3/analytics/domain-reports/#domain-organic-search-keywords
 
   - id: semrush.google.domain.paid_keywords
+    added: '2026-07-28'
     capability: google.domain.paid_keywords
     platform: google
     scope: any_account
@@ -126,6 +128,7 @@ endpoints:
     docs_url: https://developer.semrush.com/api/v3/analytics/domain-reports/#domain-paid-search-keywords
 
   - id: semrush.google.domain.competitors
+    added: '2026-07-28'
     capability: google.domain.competitors
     platform: google
     scope: any_account
@@ -157,6 +160,7 @@ endpoints:
     docs_url: https://developer.semrush.com/api/v3/analytics/domain-reports/#competitors-in-organic-search
 
   - id: semrush.google.keywords.volume
+    added: '2026-07-28'
     capability: google.keywords.volume
     platform: google
     scope: any_account
@@ -190,6 +194,7 @@ endpoints:
     docs_url: https://developer.semrush.com/api/v3/analytics/keyword-reports/#keyword-overview-one-database
 
   - id: semrush.google.keywords.ideas
+    added: '2026-07-28'
     capability: google.keywords.ideas
     platform: google
     scope: any_account
@@ -226,6 +231,7 @@ endpoints:
     docs_url: https://developer.semrush.com/api/v3/analytics/keyword-reports/#related-keywords
 
   - id: semrush.google.serp.organic
+    added: '2026-07-28'
     capability: google.serp.organic
     platform: google
     scope: any_account
@@ -266,6 +272,7 @@ endpoints:
   # Everything below lives on a DIFFERENT PATH from the reports above. Same host, same `key`,
   # same CSV, but `target` + `target_type` replace `domain` + `database`.
   - id: semrush.web.backlinks.summary
+    added: '2026-07-28'
     capability: web.backlinks.summary
     platform: web
     scope: any_account
@@ -295,6 +302,7 @@ endpoints:
     docs_url: https://developer.semrush.com/api/v3/analytics/backlinks/#backlinks-overview
 
   - id: semrush.web.backlinks.list
+    added: '2026-07-28'
     capability: web.backlinks.list
     platform: web
     scope: any_account
@@ -328,6 +336,7 @@ endpoints:
     docs_url: https://developer.semrush.com/api/v3/analytics/backlinks/#backlinks
 
   - id: semrush.web.linking_domains.list
+    added: '2026-07-28'
     capability: web.linking_domains.list
     platform: web
     scope: any_account
@@ -361,6 +370,7 @@ endpoints:
     docs_url: https://developer.semrush.com/api/v3/analytics/backlinks/#referring-domains
 
   - id: semrush.web.anchors.list
+    added: '2026-07-28'
     capability: web.anchors.list
     platform: web
     scope: any_account
@@ -394,6 +404,7 @@ endpoints:
     docs_url: https://developer.semrush.com/api/v3/analytics/backlinks/#anchors
 
   - id: semrush.web.backlinks.competitors
+    added: '2026-07-28'
     capability: web.backlinks.competitors
     platform: web
     scope: any_account

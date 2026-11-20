@@ -1,0 +1,12 @@
+{
+  "completes_by_ms": 1791804286606,
+  "job_id": "j_sin-dbc0f6896459ff48c40f86bff19b83f4",
+  "status": "pending",
+  "urls": 1,
+  "usage": {
+    "boxes": [
+      "jobs"
+    ],
+    "units": 1
+  }
+}

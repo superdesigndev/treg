@@ -1,7 +1,12 @@
 """Reservation and spend-cap helpers for metered calls."""
 
+import functools
 import logging
-from datetime import datetime, timezone
+import random
+import time
+from collections.abc import AsyncIterator
+from contextlib import asynccontextmanager
+from datetime import datetime, timedelta, timezone
 
 from sqlalchemy import func
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -11,59 +16,128 @@ from ...application import billing
 from ...caller_metadata import TAG_DEFAULT
 from ...config import get_settings
 from ...domain import money as ledger
+from ...domain.money import allowance as money_allowance
 from ...domain.catalog import store as catalog_store
 from ...domain.governance import budgets as budget_policy
 from ...domain.governance.usage import _day_start_utc
 from ...domain.identity.access import Caller
 from ...infra.db import session_maker
+from ...infra import money_admission
+from ...infra.money_session import money_session
+from ...infra.money_timing import observe_money
+from ...infra.money_trace import mark_money, money_stage
 from ...models import CallRecord, Org, TagBudget
+from . import allowance as allowance_runtime
 from .intake import CallMeta, _NO_META
 from .resolve import MarketplaceCall
 from .types import ReservationFailed
 
 
-async def _enforce_trial_allowance(caller: Caller, provider: str, db: AsyncSession) -> None:
+@asynccontextmanager
+async def reserve_admission(org_id: int) -> AsyncIterator[None]:
+    """Reject a contended reserve before its money session, after releasing partial gates."""
+    try:
+        async with money_admission.admit(
+            money_admission.require_balance_orgs([org_id]), operation="reserve",
+        ):
+            yield
+    except money_admission.ReserveAdmissionTimeout as exc:
+        # Money admission owns its retry floor, with integer-second jitter for Retry-After.
+        retry_base_s = get_settings().money_admission_retry_after_s
+        retry_after_s = random.randint(retry_base_s, 2 * retry_base_s)
+        try:
+            logging.getLogger("treg.money_admission").warning(
+                "money_admission_rejected operation=reserve org_id=%s reason=wait_timeout retry_after_s=%s",
+                org_id, retry_after_s)
+        except Exception:  # noqa: BLE001 - diagnostics cannot change the refusal
+            pass
+        raise ReservationFailed("money_admission_timeout", status_code=429, detail={
+            "error": "money_admission_timeout",
+            "message": "the team's money queue is busy; retry shortly. Nothing was reserved or charged.",
+        }, retry_after_s=retry_after_s) from exc
+
+
+async def _enforce_trial_allowance(caller: Caller, provider: str, endpoint_id: str,
+                                   db: AsyncSession) -> None:
     """Per-team, per-UTC-day call allowance for TRIAL-POOL providers (fx.yaml `kind: treg_trial`).
 
     A trial provider is served on treg's own FREE-tier key at a $0 price, so the price gives no
     brake at all — one looping agent would drain the shared vendor quota for every team at once.
     The allowance is the brake, and it lives in the same fx entry as the zero (catalog.trial_pools).
 
-    Counted from audit rows: successful (2xx) calls only, because a failed call produced nothing —
-    the same line billability draws. `tool_name` is the endpoint id, so the provider is its prefix.
-    The audit is written fire-and-forget, so the count can lag a call or two under load; for a free
-    trial that slack is acceptable and bounded. Own-key (tier 2) calls never reach this check — a
-    team with its own key is never throttled by the trial it does not use.
+    Counted from audit rows: successful (2xx) platform calls whose catalog cost is not `free`.
+    A free discovery call consumes no vendor credit, so it neither checks nor consumes this paid-call
+    allowance. The audit is written fire-and-forget, so the count can lag a call or two under load;
+    for a free trial that slack is acceptable and bounded. Own-key (tier 2) calls never reach this
+    check — a team with its own key is never throttled by the trial it does not use.
 
     FAIL-CLOSED like the platform cap: the quota being protected is the shared vendor key, and
-    serving blind when the count cannot be read is how the pool dies for everyone."""
-    allowance = catalog_store.load().trial_pools.get(provider)
+    serving blind when the count cannot be read is how the pool dies for everyone.
+
+    The count reads every audit row of the team's day, and a busy team has a large day. A day's
+    count only grows, so a team found at its allowance is remembered in this process until 00:00
+    UTC and refused without counting again; the calls that still count are the few below it. The
+    team is remembered with its creation time, since SQLite gives a deleted team's id to the next
+    one. `used_today` is the count when the team was found at its allowance: a lower bound, as the
+    audit lag already made it."""
+    catalog = catalog_store.load()
+    allowance = catalog.trial_pools.get(provider)
     if not allowance:
         return
+    endpoint = catalog.by_id.get(endpoint_id) or {}
+    if (endpoint.get("cost") or {}).get("type") == "free":
+        return
+    paid_endpoint_ids = [
+        ep["id"] for ep in catalog.for_provider(provider)
+        if (ep.get("cost") or {}).get("type") != "free"
+    ]
     day_start = datetime.now(timezone.utc).replace(hour=0, minute=0, second=0, microsecond=0,
                                                    tzinfo=None)
-    try:
-        used = (await db.execute(
-            select(func.count(CallRecord.id)).where(
-                CallRecord.org_id == caller.org_id,
-                CallRecord.tool_name.like(f"{provider}.%"),  # type: ignore[union-attr]
-                CallRecord.status_code >= 200, CallRecord.status_code < 300,
-                CallRecord.created_at >= day_start))).scalar_one()
-    except Exception as exc:  # noqa: BLE001 — cannot verify the pool ⇒ do not drain it
-        logging.getLogger("treg.ledger").warning(
-            "trial-allowance check failed for org %s / %s: %s", caller.org_id, provider, exc)
-        raise ReservationFailed("trial_allowance_unavailable", status_code=429, detail=(
-            f"cannot verify today's {provider} trial usage right now — retry shortly, or use "
-            "your own key: treg connections connect"))
+    spent_key = (caller.org_id, caller.org.created_at, provider, day_start.date().isoformat())
+    used = _spent_trials.get(spent_key, 0)
+    if used < allowance:
+        used = await _trial_calls_today(caller, provider, paid_endpoint_ids, day_start, db)
+        if used >= allowance:
+            _remember_spent_trial(spent_key, used)
     if used >= allowance:
         raise ReservationFailed("trial_allowance_reached", status_code=429, detail={
             "error": "trial_allowance_reached", "provider": provider,
             "allowance_per_day": allowance, "used_today": int(used),
             "message": (f"this team has used its free {provider} trial for today "
-                        f"({used}/{allowance} calls). It resets at 00:00 UTC — or connect your "
+                        f"(at least {used} of {allowance} calls). It resets at 00:00 UTC — or connect your "
                         f"own {provider} key for unmetered calls at your plan's limits: "
                         "treg connections connect"),
         })
+
+
+_spent_trials: dict[tuple[int, datetime, str, str], int] = {}
+_SPENT_TRIALS_KEPT = 10_000
+
+
+def _remember_spent_trial(key: tuple[int, datetime, str, str], used: int) -> None:
+    if len(_spent_trials) >= _SPENT_TRIALS_KEPT:
+        _spent_trials.clear()
+    for stale in [k for k in _spent_trials if k[3] != key[3]]:
+        del _spent_trials[stale]
+    _spent_trials[key] = used
+
+
+async def _trial_calls_today(caller: Caller, provider: str, paid_endpoint_ids: list[str],
+                             day_start: datetime, db: AsyncSession) -> int:
+    try:
+        return int((await db.execute(
+            select(func.count(CallRecord.id)).where(
+                CallRecord.org_id == caller.org_id,
+                CallRecord.credential_tier == "platform",
+                CallRecord.tool_name.in_(paid_endpoint_ids),  # type: ignore[union-attr]
+                CallRecord.status_code >= 200, CallRecord.status_code < 300,
+                CallRecord.created_at >= day_start))).scalar_one())
+    except Exception as exc:  # cannot verify the pool ⇒ do not drain it
+        logging.getLogger("treg.ledger").warning(
+            "trial-allowance check failed for org %s / %s: %s", caller.org_id, provider, exc)
+        raise ReservationFailed("trial_allowance_unavailable", status_code=429, detail=(
+            f"cannot verify today's {provider} trial usage right now — retry shortly, or use "
+            "your own key: treg connections connect")) from exc
 
 
 async def _enforce_platform_daily_cap(caller: Caller, add_micro: int, db: AsyncSession) -> None:
@@ -72,14 +146,18 @@ async def _enforce_platform_daily_cap(caller: Caller, add_micro: int, db: AsyncS
     cannot answer refuses the call. The cap is the blast radius of a runaway agent (and of a pricing
     mistake in the catalog) — the balance alone is not enough, because auto-top-up can refill it."""
     cap = budget_policy._effective_daily_cap(caller.org)
+    if cap <= 0:  # no limit applies: the balance (and the auto-top-up monthly cap) is the bound
+        return
     try:
-        spent = await ledger.spent_today(db, caller.org_id)
-    except Exception as exc:  # noqa: BLE001 — cannot verify the ceiling ⇒ do not spend
+        # Today's counter plus what an allowance can still spend today outside it. Read from
+        # the rows, not from the allowance switch: a hold and its queued charges outlive it.
+        spent = await money_allowance.committed_today(db, caller.org_id)
+    except Exception as exc:  # cannot verify the ceiling ⇒ do not spend
         logging.getLogger("treg.ledger").warning(
             "platform daily-cap check failed for org %s: %s", caller.org_id, exc)
         raise ReservationFailed("platform_cap_unavailable", status_code=429, detail=(
             "cannot verify today's platform spend right now — refusing to spend the team balance "
-            "(retry shortly, or use your own key: treg connections connect)"))
+            "(retry shortly, or use your own key: treg connections connect)")) from exc
     if spent + add_micro > cap:
         raise ReservationFailed("platform_daily_cap_reached", status_code=429, detail={
             "error": "platform_daily_cap_reached",
@@ -89,6 +167,46 @@ async def _enforce_platform_daily_cap(caller: Caller, add_micro: int, db: AsyncS
                         f"treg connections connect --provider <provider>"),
             "spent_today_micro": spent, "daily_cap_micro": cap, "estimated_cost_micro": add_micro,
         })
+
+
+async def _enforce_member_spend_cap(caller: Caller, add_micro: int, db: AsyncSession) -> int | None:
+    """Refuse a call that would take this member past their daily spend limit on treg's keys.
+    Returns the member id to attribute the hold to when a limit applies, else None.
+
+    FAIL-CLOSED, like the platform cap: it limits money. SOFT like the tag caps: the figure is an
+    aggregate over `MemberSpend`, so concurrent calls can each pass and together overshoot by at most
+    their estimates. The org balance and the platform daily cap are the hard gates behind it.
+    """
+    cap = budget_policy.member_daily_spend_cap(caller.membership, caller.org)
+    if cap is None:
+        return None
+    try:
+        spent = await ledger.member_spent_since(db, caller.membership.id, _day_start_utc())
+        # A crashed call's expired hold still counts here. `reserve_in_transaction` reaps those, but
+        # only after this gate, so a refusal reaps first and reads again.
+        if spent + add_micro > cap and await ledger.reap_stale_holds(db, org_id=caller.org_id):
+            spent = await ledger.member_spent_since(db, caller.membership.id, _day_start_utc())
+    except Exception as exc:  # cannot verify the limit => do not spend
+        logging.getLogger("treg.ledger").warning(
+            "member spend-cap check failed for membership %s: %s", caller.membership.id, exc)
+        raise ReservationFailed("member_spend_cap_unavailable", status_code=429, detail={
+            "error": "member_spend_cap_unavailable",
+            "message": "cannot verify your daily spend limit right now - retry shortly",
+        }) from exc
+    if spent + add_micro > cap:
+        resets_at = _day_start_utc() + timedelta(days=1)
+        wait_s = max(1, int((resets_at - datetime.now(timezone.utc).replace(tzinfo=None)).total_seconds()))
+        raise ReservationFailed("member_spend_cap_reached", status_code=429, retry_after_s=wait_s, detail={
+            "error": "member_spend_cap_reached",
+            "message": (f"you have reached your daily spend limit on this team "
+                        f"(${ledger.usd(spent):.2f} of ${ledger.usd(cap):.2f} today). It resets at "
+                        f"00:00 UTC, in {wait_s // 3600} h {wait_s % 3600 // 60} min. Ask a team "
+                        f"admin to raise your limit."),
+            "spent_today_micro": spent, "daily_spend_cap_micro": cap,
+            "estimated_cost_micro": add_micro,
+            "resets_at": resets_at.isoformat() + "Z", "retry_after_s": wait_s,
+        })
+    return caller.membership.id
 
 
 def _month_start_utc() -> datetime:
@@ -153,13 +271,13 @@ async def _enforce_tag_budgets(caller: Caller, meta: CallMeta, db: AsyncSession,
                     if isinstance(exc.detail, dict) else "tag_budget_unavailable")
             raise ReservationFailed(
                 kind, status_code=exc.status_code, detail=exc.detail) from exc
-        except Exception as exc:  # noqa: BLE001 — cannot verify a ceiling ⇒ do not spend
+        except Exception as exc:  # cannot verify a ceiling ⇒ do not spend
             logging.getLogger("treg.ledger").warning(
                 "tag budget check failed for org %s (%s=%s): %s", caller.org_id, dim, val, exc)
             raise ReservationFailed("tag_budget_unavailable", status_code=429, detail={
                 "error": "tag_budget_unavailable", "dim": dim, "val": val,
                 "message": "cannot verify this budget right now — retry shortly",
-            })
+            }) from exc
         if row is None:
             continue
         if add_micro is None:
@@ -170,9 +288,8 @@ async def _enforce_tag_budgets(caller: Caller, meta: CallMeta, db: AsyncSession,
                 })
             if row.calls_per_day is not None and row.calls_per_day >= 0:
                 # From the LEDGER's tag rows, never CallRecord: audit rows are shed under load, so a
-                # count cap would let a burst through exactly when it matters — and CallRecord only
-                # carries the PRIMARY dimension, so a cap on any other declared key matched nothing
-                # and never fired at all.
+                # count cap would let a burst through exactly when it matters - and CallRecord only
+                # carries the PRIMARY dimension, so a cap on any other declared key would never fire.
                 used = await ledger.tag_calls_since(
                     db, caller.org_id, dim, val, _day_start_utc())
                 if used >= row.calls_per_day:
@@ -199,57 +316,201 @@ async def _enforce_tag_budgets(caller: Caller, meta: CallMeta, db: AsyncSession,
                 })
 
 
+def _purchased_only(endpoint_id: str) -> bool:
+    """The endpoint's platform declares `purchased_credit_only` (capabilities.yaml)."""
+    catalog = catalog_store.load()
+    platform = (catalog.by_id.get(endpoint_id) or {}).get("platform")
+    return bool((catalog.platforms.get(platform) or {}).get("purchased_credit_only"))
+
+
+async def _holdless_reserve(mk: MarketplaceCall, caller: Caller) -> None:
+    """Admit a $0 call without a hold: the daily-cap read, no balance row, no money admission."""
+    mk.holdless = True  # before any await: a cancel during the cap read has no hold to release
+    mk.payer_org_id = caller.org_id
+    mk.reserved_micro = 0
+    mk.reserved_at = time.monotonic()
+    if budget_policy._effective_daily_cap(caller.org) > 0:
+        async with session_maker() as db:
+            await _enforce_platform_daily_cap(caller, 0, db)
+
+
+def _allowance_eligible(mk: MarketplaceCall, caller: Caller, meta: CallMeta,
+                        call_ref: str | None) -> bool:
+    """A call the team's allowance may pay for: a direct, synchronous, untagged call on treg's
+    platform key, by a member with no spend limit, on an endpoint any credit may pay for.
+
+    Everything else keeps its own hold, because something reads that hold: a tag or member row
+    written with it, an async task or a routed parent that closes it later, the purchased-credit
+    gate. A child call's reference is its parent's plus a `:suffix`.
+    """
+    return bool(
+        call_ref and ":" not in call_ref and (mk.reserved_micro or 0) > 0
+        and allowance_runtime.enabled_for(caller.org_id)
+        and not meta.tags and not mk.billed_oauth and mk.deferred is None
+        and mk.async_owner_call_id is None and not mk.async_descriptor
+        and mk.provider not in catalog_store.load().trial_pools
+        and budget_policy.member_daily_spend_cap(caller.membership, caller.org) is None
+        and not _purchased_only(mk.endpoint_id))
+
+
+async def _schedule_autotopup_after(org_id: int) -> None:
+    """Let auto top-up see the balance a committed reservation just moved. The conditional UPDATE
+    bypasses any ORM instance, so this reloads the org on its own session, outside every lease.
+    The money is committed; a failed read must not fail the call."""
+    org = None
+    try:
+        async with session_maker() as read_db:
+            org = await read_db.get(Org, org_id)
+    except Exception as exc:  # noqa: BLE001
+        logging.getLogger("treg.ledger").warning(
+            "auto top-up read after reserve failed for org %s: %s", org_id, exc)
+    if org is not None:
+        billing.maybe_schedule_autotopup(org)
+
+
+def wallet_and_alternative(mk: MarketplaceCall) -> tuple[str, str]:
+    """Whose money a metered call spends, and the line naming the way off that meter."""
+    wallet = f"treg's {mk.provider} " + ("app (pay-per-use)" if mk.billed_oauth else "key")
+    # For a billed OAuth call "connect your own key" is not the fix: the connection already exists,
+    # and the way off the meter is bringing your OWN developer app to /oauth/start.
+    alt = (f"  or bring your own {mk.provider} developer app (BYO OAuth) - those calls are never metered"
+           if mk.billed_oauth else
+           f"  or use your own key: treg connections connect --provider {mk.provider}")
+    return wallet, alt
+
+
 async def _platform_reserve(mk: MarketplaceCall, caller: Caller, meta: CallMeta = _NO_META,
-                            call_ref: str | None = None) -> None:
+                            call_ref: str | None = None, *, allow_holdless: bool = False,
+                            allow_allowance: bool = False) -> None:
     """Withhold this call's estimated cost BEFORE a byte goes upstream, and record the hold on `mk`.
     Insufficient balance is a 402 whose body an agent can act on without reading prose.
 
     `meta` is the caller's parsed X-Treg-Meta bag, passed explicitly rather than hung off `mk`:
     attribution decides who a reselling builder bills, and it belongs to the request, not to the
     endpoint match. The already-parsed object travels, never a bare dict — re-deriving the primary
-    dimension here would be a second place that could disagree about who pays."""
+    dimension here would be a second place that could disagree about who pays.
+
+    `allow_holdless` admits a `holdless_eligible` call from an untagged caller in an org listed in
+    `holdless_free_org_ids` without a hold: a $0 reserve and its release only queued on the org's
+    balance row. A tagged call keeps its hold,
+    because the tag rows written with it count toward `calls_per_day`.
+
+    `allow_allowance` lets an eligible call (`_allowance_eligible`) of a team listed in
+    `money_allowance_org_ids` reserve from the team's allowance counter instead: no hold, no
+    balance row. Whenever the allowance cannot serve it, the call takes its own hold below.
+
+    The hold is the estimate, or the row's declared worst case when that is higher: a settle that
+    reads the provider's figure may exceed the estimate, and calls in flight together all passed
+    the balance gate already, so only a hold that covers the worst case bounds them."""
+    if (allow_holdless and mk.holdless_eligible and not meta.tags
+            and caller.org_id in get_settings().holdless_free_org_ids):
+        await _holdless_reserve(mk, caller)
+        return
+    mk.holdless = False
+    held = max(mk.estimate_micro, mk.worst_case_micro)
+    charged = ledger.with_margin(held)
+    mk.payer_org_id = caller.org_id
+    mk.reserved_micro = max(0, charged)
+    mk.reserved_at = time.monotonic()
+    if mk.max_cost_micro is not None and charged > mk.max_cost_micro:
+        raise ReservationFailed("route_max_cost", status_code=402, detail={
+            "error": "route_max_cost", "endpoint_id": mk.endpoint_id, "provider": mk.provider,
+            "max_cost_micro": mk.max_cost_micro, "estimated_cost_micro": charged,
+            "message": (f"{mk.endpoint_id} would reserve ~${ledger.usd(charged):g} and "
+                        f"the remaining X-Treg-Route-Max-Cost is ${mk.max_cost_micro / 1_000_000:g}; "
+                        "nothing was charged for this attempt. Ask for fewer rows/targets or raise the ceiling."),
+        })
     # Read before `reserve_in_transaction`: the insufficient-balance path rolls back, and a lazy
     # attribute load while constructing the refusal would otherwise escape the application session.
     auto_on = bool(caller.org.autotopup_enabled and caller.org.autotopup_consented_at)
     prefs = billing.autotopup_prefs(caller.org) if auto_on else None
+    mk.allowance_epoch = None
+    if allow_allowance and _allowance_eligible(mk, caller, meta, call_ref):
+        before = allowance_runtime.refills(caller.org_id)
+        epoch = await allowance_runtime.take(
+            caller.org_id, mk.reserved_micro,
+            daily_cap_micro=budget_policy._effective_daily_cap(caller.org),
+            after_refill=(
+                functools.partial(_schedule_autotopup_after, caller.org_id) if auto_on else None))
+        if epoch:
+            # Recorded on the call before anything else is awaited: a cancel from here on
+            # finds the take and returns it.
+            mk.call_id, mk.allowance_epoch = call_ref, epoch
+        if auto_on and allowance_runtime.refills(caller.org_id) != before:
+            await _schedule_autotopup_after(caller.org_id)
+        if epoch:
+            return
+    # Loaded inside the session, scheduled only after the lease is gone. The refill task opens
+    # its own session and may call Stripe; that work is not part of this reserve.
+    refused_org = None
     try:
-        async with session_maker() as db:
-            # The builder's own per-tag ceilings first: a refusal that belongs to ONE of their users
-            # must not surface as the team-wide balance error, which names the builder's private numbers.
-            await _enforce_tag_budgets(caller, meta, db, add_micro=mk.estimate_micro)
-            await _enforce_platform_daily_cap(caller, mk.estimate_micro, db)
-            await _enforce_trial_allowance(caller, mk.provider, db)
-            try:
-                mk.call_id = await ledger.reserve_in_transaction(
-                    db, caller.org_id, mk.endpoint_id, mk.estimate_micro,
-                    meta={"tier": "oauth" if mk.billed_oauth else "platform",
-                          "provider": mk.provider, "cost_type": mk.cost_type},
-                    tags=meta.tags, call_id=call_ref)
-            except ledger.InsufficientBalance:
-                await db.rollback()
-                raise
-            await db.commit()
-            # The conditional UPDATE bypasses an ORM instance. Reload after commit so auto-top-up sees
-            # the balance crossing that triggered this reservation.
-            org = await db.get(Org, caller.org_id)
-            if org is not None:
-                billing.maybe_schedule_autotopup(org)
+        with observe_money("reserve", org_id=caller.org_id, call_id=call_ref) as timing:
+            # Admit before checkout. The lease covers this session only, including the lazy
+            # reaper's releases on the same org; upstream work happens after this returns.
+            async with (
+                reserve_admission(caller.org_id),
+                money_session(session_maker()) as db,
+            ):
+                mark_money(db, "reserve", org_id=caller.org_id, call_id=call_ref)
+                # The builder's own per-tag ceilings first: a refusal that belongs to ONE of their users
+                # must not surface as the team-wide balance error, which names the builder's private numbers.
+                with timing.phase("preflight"), money_stage(db, "preflight"):
+                    await _enforce_tag_budgets(caller, meta, db, add_micro=held)
+                    member_id = await _enforce_member_spend_cap(caller, charged, db)
+                    await _enforce_platform_daily_cap(caller, held, db)
+                    await _enforce_trial_allowance(caller, mk.provider, mk.endpoint_id, db)
+                try:
+                    with timing.phase("ledger"):
+                        mk.call_id = await ledger.reserve_in_transaction(
+                            db, caller.org_id, mk.endpoint_id, held,
+                            meta={"tier": "oauth" if mk.billed_oauth else "platform",
+                                  "provider": mk.provider, "cost_type": mk.cost_type},
+                            tags=meta.tags, call_id=call_ref,
+                            purchased_only=_purchased_only(mk.endpoint_id), member_id=member_id)
+                except ledger.InsufficientBalance:
+                    await db.rollback()
+                    # A refused call asks for a refill too, or a team at $0 with auto top-up on would stay
+                    # empty, refusing every call. One read by primary key, refusals only; the wait check in
+                    # `maybe_schedule_autotopup` keeps it from starting a task per call.
+                    if auto_on:
+                        mark_money(db, "reserve_refusal_read", org_id=caller.org_id, call_id=call_ref)
+                        with money_stage(db, "post_refusal_read"):
+                            refused_org = await db.get(Org, caller.org_id)
+                    raise
+                with timing.phase("commit"):
+                    await db.commit()
+        if auto_on:
+            await _schedule_autotopup_after(caller.org_id)
+    except ledger.PurchasedCreditShort as exc:
+        if refused_org is not None:
+            billing.maybe_schedule_autotopup(refused_org)
+        raise ReservationFailed("free_credit_excludes_video", status_code=402, detail={
+            "error": "free_credit_excludes_video",
+            "message": (f"Free credit does not cover video generation. {mk.endpoint_id} would cost "
+                        f"~${ledger.usd(exc.required_micro):g} and this team has "
+                        f"${ledger.usd(exc.purchased_micro):g} of purchased credit for it. "
+                        f"Add funds to the team's balance to use it: "
+                        f"{get_settings().public_url}/app#billing. Nothing was charged."),
+            "balance_micro": exc.balance_micro,
+            "purchased_balance_micro": exc.purchased_micro,
+            "estimated_cost_micro": exc.required_micro,
+            "topup_url": "/app#billing",
+            "provider": mk.provider,
+            "endpoint_id": mk.endpoint_id,
+        }) from exc
     except ledger.InsufficientBalance as exc:
-        wallet = f"treg's {mk.provider} " + ("app (pay-per-use)" if mk.billed_oauth else "key")
-        # For a billed OAuth call "connect your own key" is not the fix — the connection already
-        # exists; the way off the meter is bringing your OWN developer app to /oauth/start.
-        alt = (f"  or bring your own {mk.provider} developer app (BYO OAuth) — those calls are never metered"
-               if mk.billed_oauth else
-               f"  or use your own key: treg connections connect --provider {mk.provider}")
+        if refused_org is not None:
+            billing.maybe_schedule_autotopup(refused_org)
+        wallet, alt = wallet_and_alternative(mk)
         # A team that keeps hitting this by hand is the one that should hear about auto top-up; a team
         # that already has it on needs to know it is the cooldown/cap holding, not a missing card —
         # otherwise the natural reading of "add funds" is that auto top-up is broken.
         if auto_on:
             auto_line = (f"  auto top-up:    on — adds ${ledger.usd(prefs['amount_micro']):g} when the balance "
-                         f"drops below ${ledger.usd(prefs['threshold_micro']):g}, at most once per "
-                         f"{get_settings().autotopup_cooldown_s // 60} min and "
+                         f"drops below ${ledger.usd(prefs['threshold_micro']):g}, at most "
+                         f"{prefs['per_hour']} times per hour and "
                          f"${ledger.usd(prefs['monthly_cap_micro']):g}/month. Raise the amount or the "
-                         f"cap if your burn outruns it: treg topup --auto on --amount 50 --cap 500")
+                         f"refills per hour if your burn outruns it: treg topup --auto on --amount 50 --per-hour 10")
         else:
             auto_line = "  auto top-up:    off — refill automatically instead: treg topup --auto on --threshold 5 --amount 20"
         raise ReservationFailed("insufficient_balance", status_code=402, detail={
@@ -265,4 +526,4 @@ async def _platform_reserve(mk: MarketplaceCall, caller: Caller, meta: CallMeta 
             "autotopup_enabled": auto_on,
             "provider": mk.provider,
             "endpoint_id": mk.endpoint_id,
-        })
+        }) from exc

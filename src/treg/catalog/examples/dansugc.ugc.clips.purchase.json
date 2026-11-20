@@ -1,0 +1,14 @@
+{
+  "success": true,
+  "purchases": [],
+  "already_purchased": [
+    {
+      "video_id": "1166a85d-b967-4fb0-8ed8-6d2f2d22f23b",
+      "title": "Woman Reacting With Surprise While Online Shopping",
+      "download_url": "https://dansugc.com/api/broll/file?p=broll%2Foriginals%2F1166a85d-b967-4fb0-8ed8-6d2f2d22f23b.mp4&m=video&fn=Woman_Reacting_With_Surprise_While_Online_Shopping.mp4&exp=1793622374&sig=REDACTED"
+    }
+  ],
+  "not_found": [],
+  "total_amount": 0,
+  "remaining_balance": null
+}

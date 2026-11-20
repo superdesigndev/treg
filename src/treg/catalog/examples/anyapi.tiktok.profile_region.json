@@ -1,0 +1,21 @@
+{
+  "output": {
+    "found": true,
+    "data": {
+      "handle": "stoolpresidente",
+      "profileUrl": "https://www.tiktok.com/@stoolpresidente",
+      "region": "US"
+    }
+  },
+  "provider": "AnyAPI",
+  "costUsd": 0.0012,
+  "items": 0,
+  "replayed": false,
+  "source": {
+    "id": "anonymous-giraffe",
+    "name": "Giraffe",
+    "kind": "anonymous",
+    "artworkKey": "giraffe"
+  },
+  "resultId": "8bd81665-ed45-498a-9eec-2529b87cd356"
+}

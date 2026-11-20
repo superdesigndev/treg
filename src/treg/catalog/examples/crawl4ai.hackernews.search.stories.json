@@ -1,0 +1,64 @@
+{
+  "meta": {
+    "blocked": [],
+    "elapsed_ms": 0,
+    "from_cache": true,
+    "llm_calls": 0,
+    "pages_fetched": 0,
+    "partial": false,
+    "warnings": [
+      "module: hackernews-search: 'rust async' · 20 hits shown of 917"
+    ]
+  },
+  "recipe": "hackernews-search",
+  "usage": {
+    "boxes": [
+      "gate"
+    ],
+    "cache": "hit",
+    "engine": "recipe",
+    "lines": [
+      {
+        "about": "the call",
+        "boxes": [
+          "gate"
+        ],
+        "cache": "miss",
+        "call": "recipes",
+        "engine": "gate",
+        "units": 1
+      }
+    ],
+    "remaining_before": {
+      "concurrent": 99,
+      "requests": 185,
+      "search": 3000
+    },
+    "units": 1
+  },
+  "version": 1,
+  "rows": [
+    {
+      "author": "tazjin",
+      "comments": 482,
+      "created": "2021-03-10T02:16:55Z",
+      "hn_url": "https://news.ycombinator.com/item?id=26406989",
+      "id": "26406989",
+      "points": 603,
+      "text": null,
+      "title": "Why asynchronous Rust doesn't work",
+      "url": "https://theta.eu.org/2021/03/08/async-rust-2.html"
+    },
+    {
+      "author": "bcantrill",
+      "comments": 245,
+      "created": "2025-10-31T16:49:26Z",
+      "hn_url": "https://news.ycombinator.com/item?id=45774086",
+      "id": "45774086",
+      "points": 449,
+      "text": null,
+      "title": "Futurelock: A subtle risk in async Rust",
+      "url": "https://rfd.shared.oxide.computer/rfd/0609"
+    }
+  ]
+}

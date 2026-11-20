@@ -1,0 +1,34 @@
+{
+  "output": {
+    "found": true,
+    "data": {
+      "items": [
+        {
+          "bio": "Making the seemingly impossible, possible. ✨",
+          "followers": 104352624,
+          "following": 91,
+          "handle": "nasa",
+          "id": "528817151",
+          "image": "https://scontent-mia3-1.cdninstagram.com/v/t51.2885-19/29090066_159271188110124_1152068159029641216_n.jpg",
+          "name": "NASA",
+          "postsCount": 11,
+          "url": "https://www.instagram.com/nasa/",
+          "verified": true
+        },
+        "… 47 more item(s) truncated"
+      ]
+    }
+  },
+  "provider": "AnyAPI",
+  "costUsd": 0.0036,
+  "items": 48,
+  "replayed": false,
+  "source": {
+    "id": "anonymous-fox",
+    "name": "Fox",
+    "kind": "anonymous",
+    "artworkKey": "fox"
+  },
+  "hint": "large_result: this response is ~15 KB. To keep future runs from flooding your context, re-run with `fields` (keep only the keys you need), `max_items` (cap rows), `summary=true` (outline only), or `jq… [309 chars]",
+  "resultId": "f098e517-b82d-4431-a17b-539423a3cee8"
+}

@@ -1,0 +1,56 @@
+{
+  "success": true,
+  "result": {
+    "text": "**A stock split is when a company increases the number of its shares by dividing existing ones, lowering the price per share but keeping the overall value of the company the same.** For example, in a 2-for-1 split, each shareholder gets two shares for every one they owned, but each share is worth half as much. Your total investment value doesn’t change — you just own more shares at a lower price.  \n\n---\n\n## 🔎 How It Works\n- **Forward stock split:** The most common type. A company issues more sha… [2132 chars total]",
+    "sources": [
+      {
+        "position": 1,
+        "label": "Stock Splits: What Investors Should Know | Charles Schwab",
+        "url": "https://www.schwab.com/learn/story/what-are-stock-splits-and-why-do-stocks-split"
+      },
+      {
+        "position": 2,
+        "label": "Stock Splits Explained: Impact on Shares and Investors",
+        "url": "https://www.investopedia.com/articles/01/072501.asp"
+      },
+      "… 3 more item(s) truncated"
+    ],
+    "citationPills": [
+      {
+        "label": "Stock Splits: What Investors Should Know | Charles Schwab",
+        "citationPillId": 1,
+        "url": "https://www.schwab.com/learn/story/what-are-stock-splits-and-why-do-stocks-split",
+        "domain": "schwab.com",
+        "position": 1
+      },
+      {
+        "label": "Stock Splits Explained: Impact on Shares and Investors",
+        "citationPillId": 1,
+        "url": "https://www.investopedia.com/articles/01/072501.asp",
+        "domain": "investopedia.com",
+        "position": 2
+      },
+      "… 9 more item(s) truncated"
+    ],
+    "searchQueries": [
+      "stock split"
+    ],
+    "markdown": "**A stock split is when a company increases the number of its shares by dividing existing ones, lowering the price per share but keeping the overall value of the company the same.** For example, in a 2-for-1 split, each shareholder gets two shares for every one they owned, but each share is worth half as much. Your total investment value doesn’t change — you just own more shares at a lower price.[Stock Splits: What Investors Should Know | Charles Schwab](https://www.schwab.com/learn/story/what-a… [3538 chars total]",
+    "html": "https://cdn.cloro.dev/results/a9bebb46-e6bd-4781-9d3b-b7576f2bb5d0/page-1.html",
+    "rawResponse": [
+      {
+        "event": "connected",
+        "requestId": "7ab4d0777264dd399f6b78852c024d27",
+        "id": "0"
+      },
+      {
+        "event": "received",
+        "conversationId": "mk6kaz8RryFAHNww67vhW",
+        "messageId": "vTZGkBdLdBgxFa5JZuUfG",
+        "createdAt": "2026-09-07T06:20:53.4774765+00:00",
+        "id": "1"
+      },
+      "… 141 more item(s) truncated"
+    ]
+  }
+}

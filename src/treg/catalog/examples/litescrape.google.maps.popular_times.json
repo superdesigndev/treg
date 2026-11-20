@@ -1,0 +1,22 @@
+{
+  "search_metadata": {
+    "id": "e8723058880f92d070dbc4bd",
+    "status": "Success",
+    "json_endpoint": "https://api.litescrape.com/api/google/maps/popular-times?place_id=ChIJjQxOkUG3RIYRQvNw_5i6b8s&google_domain=google.com&hl=en",
+    "created_at": "2026-09-29 13:58:39 UTC",
+    "processed_at": "2026-09-29 13:58:43 UTC",
+    "total_time_taken": 3.514,
+    "google_maps_url": "https://www.google.com/maps/place/@30.2734697,-97.6901841,17z/data=!4m2!3m1!1s0x8644b741914e0c8d:0xcb6fba98ff70f342?hl=en"
+  },
+  "search_parameters": {
+    "place_id": "ChIJjQxOkUG3RIYRQvNw_5i6b8s",
+    "google_domain": "google.com",
+    "hl": "en"
+  },
+  "place": {
+    "title": "Hometown Coffee - East Austin",
+    "place_id": "ChIJjQxOkUG3RIYRQvNw_5i6b8s",
+    "data_id": "0x8644b741914e0c8d:0xcb6fba98ff70f342"
+  },
+  "popular_times": null
+}

@@ -1,0 +1,27 @@
+{
+  "advertiser_data": {
+    "nickname": "Gymshark",
+    "verified": true,
+    "follower_count": 6659762,
+    "id": "redacted-live-id",
+    "sec_uid": "redacted-live-id"
+  },
+  "handle": "gymshark",
+  "brand_ads": [
+    {
+      "aweme_id": "redacted-live-id",
+      "url": "https://example.invalid/redacted",
+      "desc": "Redacted live creative text.",
+      "is_ad": true,
+      "region": "GB",
+      "stats": {
+        "play_count": 1629260,
+        "digg_count": 247448,
+        "comment_count": 1047,
+        "share_count": 9269
+      }
+    }
+  ],
+  "continuation_tokens": {"brand_ads": "redacted-live-token"},
+  "cache": {"hit": false, "age_s": 0}
+}

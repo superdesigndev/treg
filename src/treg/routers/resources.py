@@ -15,10 +15,13 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlmodel import select
 
 from .. import convert as _convert
-from .. import crypto, health, sandbox as demo_sandbox
+from .. import health, sandbox as demo_sandbox
 from .. import providers as _providers
 from .. import skills as _skills
+from ..application import connect as connect_use_cases
 from ..config import get_settings
+from ..domain.connections import refresh as connection_refresh
+from ..infra import credential_cipher
 from ..infra.db import get_session
 from ..domain.governance import access as access_policy
 from ..domain.governance import sandbox as sandbox_policy
@@ -37,11 +40,9 @@ from ..models import Bundle, Secret, Tool
 from .orgs import _resolve_project
 
 
-# The app alias preserves the moved handlers' original decorator text byte-for-byte.
 app = APIRouter()
 crud_router = app
 
-# Moved helpers retain their api.py-relative provider import while Stage 3 preserves source bytes.
 sys.modules.setdefault("treg.routers.providers", _providers)
 sys.modules.setdefault("treg.routers.convert", _convert)
 sys.modules.setdefault("treg.routers.skills", _skills)
@@ -96,9 +97,12 @@ async def create_secret(
         raise HTTPException(status_code=422, detail=(
             f"the sandbox is limited to {exc.cap} {exc.noun} — sign up for more")) from exc
     await _validate_bundle_id(body.bundle_id, caller.org_id, db)
+    await db.commit()  # seal with no transaction held: KMS is network I/O
+    sealed = await credential_cipher.seal(body.value, org_id=caller.org_id)
     secret = Secret(
         org_id=caller.org_id, name=body.name, owner=caller.email, kind=body.kind,
-        value=crypto.encrypt(body.value), bundle_id=body.bundle_id,
+        value=sealed, bundle_id=body.bundle_id,
+        refreshable=connection_refresh.refreshable_flag(body.kind, body.value),
     )
     db.add(secret)
     await db.commit()
@@ -129,7 +133,12 @@ async def update_secret(
     if not _can_manage(caller, secret):
         raise HTTPException(status_code=403, detail="only the creator or an admin can edit this secret")
     _require_not_live_demo_secret(caller, secret)
+    await db.commit()  # open and seal with no transaction held: KMS is network I/O
     fields = body.model_dump(exclude_unset=True)
+    # A connection's name is also its tools' names; renaming only the secret strands them.
+    if secret.provider and fields.get("name", secret.name) != secret.name:
+        raise HTTPException(status_code=409, detail=(
+            f"{secret.name!r} is a connected account; rename it with PATCH /connections/{secret_id}"))
     for k in ("name", "value", "kind"):  # these map to NOT-NULL columns; explicit null is a 422, not a 500
         if k in fields and fields[k] is None:
             raise HTTPException(status_code=422, detail=f"{k} cannot be null")
@@ -137,14 +146,22 @@ async def update_secret(
     # JSON value (else the tool silently 502s later) and reset the now-meaningless health verdict.
     if "kind" in fields and fields["kind"] != secret.kind:
         if fields["kind"] in ("oauth", "secret_file"):
-            raw = fields["value"] if "value" in fields else crypto.decrypt(secret.value)
+            raw = (fields["value"] if "value" in fields
+                   else await credential_cipher.unseal(secret.value, org_id=secret.org_id))
             try:
                 json.loads(raw)
             except (ValueError, TypeError):
-                raise HTTPException(status_code=422, detail=f"kind {fields['kind']!r} needs a JSON value")
+                # from None: a JSONDecodeError keeps the whole document, here the decrypted secret
+                raise HTTPException(status_code=422, detail=f"kind {fields['kind']!r} needs a JSON value") from None
         secret.health_status, secret.health_detail, secret.health_checked_at = "unknown", "", None
+    if "kind" in fields or "value" in fields:
+        kind = fields.get("kind", secret.kind)
+        plaintext = (fields["value"] if "value" in fields else
+                     await credential_cipher.unseal(secret.value, org_id=secret.org_id)
+                     if kind == "oauth" else "")
+        secret.refreshable = connection_refresh.refreshable_flag(kind, plaintext)
     if "value" in fields:
-        fields["value"] = crypto.encrypt(fields["value"])  # re-encrypt on rotate
+        fields["value"] = await credential_cipher.seal(fields["value"], org_id=secret.org_id)
         # The value is exactly what health measures — a rotation invalidates the prior verdict.
         secret.health_status, secret.health_detail, secret.health_checked_at = "unknown", "", None
     for k, v in fields.items():
@@ -210,11 +227,12 @@ class ToolIn(BaseModel):
     secret_field: str = "access_token"
     health_check: dict | None = None  # {method, path, expect_status}
     examples: list[dict] | None = None  # [{method, path, note}]
-    cli: dict | None = None  # local-run profile for `treg run` (docs/CLI-RUN-PLAN.md)
+    cli: dict | None = None  # local-run profile for `treg run`
     project: str | int | None = None  # project slug or id; None = org-wide (the default)
 
 
 class ToolUpdate(BaseModel):
+    name: str | None = None  # a rename; a connection's tool renames the connection with it
     base_url: str | None = None
     bindings: list[dict] | None = None
     health_check: dict | None = None
@@ -226,8 +244,8 @@ class ToolUpdate(BaseModel):
 def _host_of(url: str) -> str:
     try:
         return urlsplit(url).netloc.lower()
-    except ValueError:  # e.g. unbalanced IPv6 brackets "http://[::1" → don't 500, reject the input
-        raise HTTPException(status_code=422, detail="base_url is not a valid URL")
+    except ValueError as exc:  # e.g. unbalanced IPv6 brackets "http://[::1" → don't 500, reject the input
+        raise HTTPException(status_code=422, detail="base_url is not a valid URL") from exc
 
 
 def _normalize_scheme(rest: str) -> str:
@@ -260,14 +278,24 @@ def _require_not_live_demo_tool(caller: Caller, tool: Tool) -> None:
             "the live stripe demo endpoint is part of the sandbox — add your own endpoints instead"))
 
 
+def _require_admin_for_dotted_names(caller: Caller, names) -> None:
+    if any("." in n for n in names) and not _role_at_least(caller.role, "admin"):
+        raise HTTPException(status_code=403, detail=(
+            "a tool name containing a dot needs the admin or owner role"))
+
+
 def _require_public_base_url(base_url: str) -> None:
     """A tool's base_url is fetched server-side by the proxy — reject internal / loopback / cloud-metadata
     targets so a member can't turn `treg call` into an SSRF (e.g. base_url=169.254.169.254). Reuses the
     same block-list the webhook path already uses. DNS names are allowed (best-effort)."""
-    if not health.safe_webhook_url(base_url):
+    if not health.safe_webhook_url(base_url, fold_trailing_dot=get_settings().proxy_ssrf_check):
         raise HTTPException(status_code=422, detail=(
             "base_url must be a public http(s) address — loopback, private, link-local, and cloud-"
             "metadata hosts are refused"))
+    from ..application import hub as hub_app
+    if hub_app.points_at_treg(base_url):
+        raise HTTPException(status_code=422, detail=(
+            "base_url may not be treg itself: call treg's tools by their ids, not through a tool of your own"))
 
 
 async def _require_secret_ownership(secret: Secret, caller: Caller) -> None:
@@ -311,22 +339,12 @@ async def _validate_cli_secrets(cli: dict | None, caller: Caller, db: AsyncSessi
         raise HTTPException(status_code=422, detail=exc.detail) from exc
 
 
-def _allowed_server_bins() -> set[str]:
-    """The commands `treg run --server` may execute: catalog-known CLIs + an admin allow-list. Blocks a
-    member naming `bash`/`python` to run arbitrary code as the server user (docs/CLI-RUN-PLAN.md Option A)."""
-    from . import providers as prov
-    bins = {(e.get("cli") or {}).get("bin") for e in prov.CATALOG}
-    bins.discard(None)
-    extra = get_settings().run_allowed_bins
-    bins |= {b.strip() for b in extra.split(",") if b.strip()}
-    return bins  # type: ignore[return-value]
-
-
 @app.post("/tools")
 async def create_tool(
     body: ToolIn, caller: Caller = Depends(require_member), db: AsyncSession = Depends(get_session)
 ) -> dict:
     _require_can_register(caller)
+    _require_admin_for_dotted_names(caller, [body.name])
     try:
         await sandbox_policy.enforce_sandbox_cap(
             sandbox=demo_sandbox.is_sandbox(caller.org), org_id=caller.org_id,
@@ -355,8 +373,8 @@ async def create_tool(
     db.add(tool)
     try:
         await db.commit()
-    except IntegrityError:
-        raise HTTPException(status_code=409, detail=f"tool name {body.name!r} already exists in this org")
+    except IntegrityError as exc:
+        raise HTTPException(status_code=409, detail=f"tool name {body.name!r} already exists in this org") from exc
     return _tool_view(tool)
 
 
@@ -366,7 +384,7 @@ async def list_tools(
 ) -> list[dict]:
     rows = (await db.execute(select(Tool).where(Tool.org_id == caller.org_id))).scalars().all()
     # The per-member tool ACL hides what it gates: a restricted member's listing shows only their tools.
-    return [_tool_view(t) for t in rows if access_policy._tool_usable(caller, t)]
+    return [_tool_view(t) for t in access_policy.usable_tools(caller, rows)]
 
 
 @app.get("/tools/by-name/{name}")
@@ -412,6 +430,17 @@ async def update_tool(
     if "cli" in fields:  # explicit null clears the profile (turns local runs off entirely)
         _validate_cli_profile(fields["cli"])
         await _validate_cli_secrets(fields["cli"], caller, db, grandfather)
+    if "name" in fields:
+        name = fields.pop("name")
+        if name is None:
+            raise HTTPException(status_code=422, detail="name cannot be null")
+        await db.commit()  # end this read transaction; the rename commits in its own session
+        try:
+            await connect_use_cases.rename_tool(tool_id=tool.id, name=name, org_id=caller.org_id)
+        except connect_use_cases.ConnectError as exc:
+            raise HTTPException(status_code=409 if exc.kind.startswith("name_") else 422,
+                                detail=exc.detail) from exc
+        await db.refresh(tool)
     if "project" in fields:  # slug/id in, column out; explicit null = back to org-wide
         project = await _resolve_project(fields.pop("project"), caller.org_id, db)
         tool.project_id = project.id if project else None
@@ -449,12 +478,7 @@ def _tool_view(t: Tool) -> dict:
         "health_check": t.health_check,
         "examples": t.examples or [],
         "cli": t.cli,
-        # Server-computed so the dashboard never guesses: a run needs a cli profile, an allow-listed bin
-        # (server config the client can't see), AND a server-injectable auth mechanism — a config_file /
-        # device CLI authenticates from the member's own machine, so it's local-only (default "env" keeps
-        # every pre-auth_mechanism tool server-runnable as before).
-        "server_runnable": (bool(t.cli) and (t.cli.get("bin") or t.name) in _allowed_server_bins()
-                            and (t.cli.get("auth_mechanism") or "env") in ("env", "argv")),
+        "server_runnable": False,
         "project_id": t.project_id,  # None = org-wide
         "bundle_id": t.bundle_id,
     }
@@ -462,7 +486,6 @@ def _tool_view(t: Tool) -> dict:
 
 class BundleUpdate(BaseModel):
     recipe: str | None = None  # edit the SKILL.md text of a recipe/skill bundle
-    # (Run metadata moved to Tool.cli — a tool with a cli profile is runnable.)
 
 
 class SkillSecretIn(BaseModel):
@@ -504,7 +527,6 @@ class SkillImportIn(BaseModel):
     env_values: dict[str, str] = {}  # user-filled values for env secrets missing from the upload
 
 
-# A second router keeps local grant/report between CRUD and skills in the legacy route order.
 app = APIRouter()
 skill_router = app
 
@@ -526,20 +548,26 @@ async def _register_skill_bundle(body: SkillIn, caller: Caller, db: AsyncSession
     _require_can_register(caller)
     if demo_sandbox.is_sandbox(caller.org):  # a skill import would create unlimited tools/secrets, past the cap
         raise HTTPException(status_code=403, detail="skill import is disabled in the sandbox")
+    _require_admin_for_dotted_names(caller, [t.name for t in body.tools])
     names = [s.local_name for s in body.secrets]  # bindings reference secrets by local_name
     dupes = sorted({n for n in names if names.count(n) > 1})
     if dupes:  # a duplicate would silently orphan the first secret (only the last id is kept)
         raise HTTPException(status_code=422, detail=f"duplicate secret local_name(s): {dupes}")
     files = _sanitize_bundle_files(body.files)  # drop unsafe paths / secrets before persisting
+    # Credentials are sealed with no transaction held (KMS is network I/O), so the bundle's rows
+    # still commit together below.
+    await db.commit()
+    sealed = [await credential_cipher.seal(s.value, org_id=caller.org_id) for s in body.secrets]
     bundle = Bundle(org_id=caller.org_id, name=body.name, owner=caller.email, recipe=body.recipe, files=files)
     db.add(bundle)
     await db.flush()  # assign bundle.id without committing yet
 
     local_to_id: dict[str, int] = {}
-    for s in body.secrets:
+    for s, value in zip(body.secrets, sealed):
         secret = Secret(
             org_id=caller.org_id, name=s.local_name, owner=caller.email, kind=s.kind,
-            value=crypto.encrypt(s.value), bundle_id=bundle.id,
+            value=value, bundle_id=bundle.id,
+            refreshable=connection_refresh.refreshable_flag(s.kind, s.value),
         )
         db.add(secret)
         await db.flush()
@@ -578,8 +606,8 @@ async def _register_skill_bundle(body: SkillIn, caller: Caller, db: AsyncSession
 
     try:
         await db.commit()
-    except IntegrityError:
-        raise HTTPException(status_code=409, detail="a tool name in this skill already exists in this org")
+    except IntegrityError as exc:
+        raise HTTPException(status_code=409, detail="a tool name in this skill already exists in this org") from exc
     return await _bundle_view(bundle.id, db)
 
 
@@ -658,7 +686,7 @@ async def analyze_skill_folder(
             for s in d.secrets:
                 if s.get("file"):
                     secs.append({"name": s["name"], "source": "file", "ref": s["file"],
-                                 "present": (Path(d.path) / s["file"]).is_file()})
+                                 "present": sk_mod.secret_file_present(Path(d.path), s["file"])})
                 elif s.get("env"):
                     secs.append({"name": s["name"], "source": "env", "ref": s["env"],
                                  "present": s["env"] in env_names})

@@ -1,0 +1,32 @@
+{
+  "output": {
+    "found": true,
+    "data": {
+      "items": [
+        {
+          "category": "Product/service",
+          "followers": 15481626,
+          "id": "100064933082327",
+          "image": "https://scontent-atl3-1.xx.fbcdn.net/v/t39.30808-1/352238800_1378999996006774_4240209247781423917_n.jpg",
+          "likes": 0,
+          "phone": "",
+          "title": "Nike Sportswear",
+          "url": "https://www.facebook.com/nikesportswear/",
+          "website": "http://nike.com/equality"
+        },
+        "… 2 more item(s) truncated"
+      ]
+    }
+  },
+  "provider": "AnyAPI",
+  "costUsd": 0.0374,
+  "items": 3,
+  "replayed": false,
+  "source": {
+    "id": "anonymous-octopus",
+    "name": "Octopus",
+    "kind": "anonymous",
+    "artworkKey": "octopus"
+  },
+  "resultId": "26839723-0ef9-4cd4-956f-923cf1ae3318"
+}

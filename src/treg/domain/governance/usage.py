@@ -1,14 +1,17 @@
 """Per-member usage policy shared by call and run surfaces."""
 
-from datetime import datetime
+import logging
+from datetime import date, datetime
 
-from sqlalchemy import func
+from sqlalchemy import case, func, update
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlmodel import select
 
-from ...models import CallRecord, RunRecord
+from ...models import CallRecord, Membership, RunRecord
 from ...timeutil import utcnow_naive
 from ..identity.access import Caller
+
+log = logging.getLogger("treg.usage")
 
 
 class UsagePolicyError(Exception):
@@ -25,8 +28,14 @@ def _day_start_utc() -> datetime:
 
 
 async def count_today(db: AsyncSession, org_id: int | None, user_email: str) -> int:
-    """How many usage events this user has produced in this org since midnight UTC: proxy calls +
-    local-run grants (both `CallRecord`) plus server runs (`RunRecord`). Two indexed COUNTs."""
+    """How many usage events this user has produced in this org since midnight UTC, from the JOURNAL:
+    proxy calls + local-run grants (both `CallRecord`) plus server runs (`RunRecord`).
+
+    NOT the cap's number and NOT on the call path. This is what `seed_counter` copies when a cap is
+    first set; the gate itself reads `Membership.calls_today` (`take_daily_slot`), and the pages
+    read the usage rollup. Two range COUNTs over `(org_id, user_email, created_at)` - O(this
+    member's rows today), too slow for a page a busy member reloads.
+    """
     since = _day_start_utc()
     calls = (await db.execute(select(func.count()).select_from(CallRecord).where(
         CallRecord.org_id == org_id, CallRecord.user_email == user_email, CallRecord.created_at >= since,
@@ -37,15 +46,73 @@ async def count_today(db: AsyncSession, org_id: int | None, user_email: str) -> 
     return calls + runs
 
 
-async def enforce_daily_cap(caller: Caller, db: AsyncSession, *, sandbox: bool) -> None:
+async def take_daily_slot(db: AsyncSession, membership_id: int, cap: int,
+                          today: date | None = None) -> bool:
+    """Admit one usage event against the member's cap, or say no. ONE conditional UPDATE.
+
+    The WHERE is the check and the SET is the count, so N concurrent calls cannot each read a
+    compliant figure and together overshoot - the same idiom as `money.reserve`. The first event
+    of a new UTC day resets the counter to 1 instead of adding to yesterday. A refused event is not
+    counted: the counter is "admitted today", so a capped member hammering the gate reads exactly
+    `cap`, not a runaway number. Does not commit; the caller's transaction owns it.
+    """
+    today = today or utcnow_naive().date()
+    # "Used today" is the counter only if it belongs to today; a stale or never-set day is 0. The
+    # same expression gates and counts, so a cap of 0 refuses even the day's first event.
+    used_today = case((Membership.calls_today_day == today, Membership.calls_today), else_=0)
+    result = await db.execute(
+        update(Membership)
+        .where(Membership.id == membership_id, used_today < cap)
+        .values(calls_today=used_today + 1, calls_today_day=today)
+    )
+    return result.rowcount == 1
+
+
+async def return_daily_slot(db: AsyncSession, membership_id: int, day: date) -> None:
+    """Give back one slot `take_daily_slot` admitted on `day`, for a call a later gate refused
+    before anything was spent. The counter moves only while it still counts `day`: a refusal after
+    midnight never takes a slot from the new day. Never below 0. Does not commit."""
+    await db.execute(
+        update(Membership)
+        .where(Membership.id == membership_id, Membership.calls_today_day == day,
+               Membership.calls_today > 0)
+        .values(calls_today=Membership.calls_today - 1)
+    )
+
+
+async def seed_counter(db: AsyncSession, membership: Membership, user_email: str) -> None:
+    """Start the counter from today's journal - called when a cap is set on a member who was
+    unlimited until now. Only capped members are counted on the call path, so without this a
+    member who already made 50k calls today would get a fresh allowance the moment they were capped.
+    One journal count, at cap-setting time, never per call."""
+    membership.calls_today = await count_today(db, membership.org_id, user_email)
+    membership.calls_today_day = utcnow_naive().date()
+
+
+async def enforce_daily_cap(caller: Caller, db: AsyncSession, *, sandbox: bool) -> date | None:
     """Refuse a call/run once the caller has used their per-user daily cap for this org. `-1` (the
     default) = unlimited, so unmetered members pay ZERO extra queries. The sandbox has its own limiter
-    and is exempt. Soft by design: the count reads best-effort `CallRecord`s, so under heavy load it
-    can lag slightly and fail OPEN (a few extra slip through) — never closed. See docs/USAGE-METERING-PLAN.md."""
+    and is exempt.
+
+    One conditional UPDATE of the member's row (`take_daily_slot`), exact under concurrency. Fails
+    OPEN if that statement cannot run: a cap is a courtesy limit an admin set on a colleague, and
+    the database being unavailable is not the colleague's fault - the money gates behind this one
+    are the ones that fail closed.
+
+    Returns the UTC day the slot was taken on, for `return_daily_slot`; None when none was taken.
+    """
     cap = caller.membership.daily_call_cap
     if cap < 0 or sandbox:
-        return
-    used = await count_today(db, caller.org_id, caller.email)
-    if used >= cap:
+        return None
+    today = utcnow_naive().date()
+    try:
+        admitted = await take_daily_slot(db, caller.membership.id, cap, today)
+    except Exception as exc:  # noqa: BLE001 - fail open, see docstring
+        log.warning("daily-cap check failed for membership %s: %s", caller.membership.id, exc)
+        return None
+    if not admitted:
+        used = (await db.execute(
+            select(Membership.calls_today).where(Membership.id == caller.membership.id))).scalar() or 0
         raise UsagePolicyError(
             f"daily usage limit reached ({used}/{cap}) — ask an admin to raise your cap")
+    return today

@@ -1,0 +1,30 @@
+{
+  "output": {
+    "data": {
+      "nextCursor": "bMlN8eE3HpfTU0b-TaWvCjekQX4SVsjIe5jZPupwRntN01C3h4t5xJwB22ox4fpyJZ2ZnI4M_pJHC_5a2dcIrtyTmc1FscAYqHulYGmI3pfIHiusnWXfMJQ6oUodxKTM0Jc_vxkTczBiPV0FA6-DYmRMga9foSPIAM_QliQCP0_wDaE3er4Y7vqfjDosZD_xmsQH_RNE… [2380 chars]",
+      "videos": [
+        {
+          "id": "ohqxP8EEumo",
+          "lengthText": "",
+          "publishedTime": "2 days ago",
+          "title": "iPhone 18 Pro Review: All About that Chip",
+          "url": "https://www.youtube.com/watch?v=ohqxP8EEumo",
+          "views": 10000000
+        },
+        "… 29 more item(s) truncated"
+      ]
+    },
+    "found": true
+  },
+  "provider": "AnyAPI",
+  "costUsd": 0.0005,
+  "items": 30,
+  "replayed": false,
+  "source": {
+    "id": "anonymous-badger",
+    "name": "Badger",
+    "kind": "anonymous",
+    "artworkKey": "badger"
+  },
+  "resultId": "87a09ac8-1e2d-4342-bcdd-6c9345cc00c4"
+}

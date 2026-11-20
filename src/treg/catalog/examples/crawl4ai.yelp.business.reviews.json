@@ -1,0 +1,70 @@
+{
+  "meta": {
+    "blocked": [],
+    "elapsed_ms": 0,
+    "from_cache": true,
+    "llm_calls": 0,
+    "pages_fetched": 0,
+    "partial": false,
+    "warnings": [
+      "module: step module: 36 null fields across 16 items"
+    ]
+  },
+  "recipe": "yelp-reviews",
+  "usage": {
+    "boxes": [
+      "gate"
+    ],
+    "cache": "hit",
+    "engine": "recipe",
+    "lines": [
+      {
+        "about": "the call",
+        "boxes": [
+          "gate"
+        ],
+        "cache": "miss",
+        "call": "recipes",
+        "engine": "gate",
+        "units": 1
+      }
+    ],
+    "remaining_before": {
+      "concurrent": 99,
+      "requests": 157,
+      "search": 3000
+    },
+    "units": 1
+  },
+  "version": 1,
+  "rows": [
+    {
+      "author": "[redacted]",
+      "business": "tartine-bakery-san-francisco",
+      "date": "2026-10-03",
+      "rating": 5.0,
+      "reactions": {
+        "helpful": 0,
+        "love_this": 0,
+        "oh_no": 0,
+        "thanks": 0
+      },
+      "review_id": "gNPtdsRSZECJcUeafQ91Bw",
+      "text": "This place is a must stop in SF. All baked in house, fresh pastries , bread and treats ! The aroma is so heavenly. It is extremely difficult to find a spot to eat your goods but a very busy and fun experience. My mom loved the coffee and bread pudding. My croissants were amazing. My brother's chocol…"
+    },
+    {
+      "author": "[redacted]",
+      "business": "tartine-bakery-san-francisco",
+      "date": "2026-08-27",
+      "rating": 4.0,
+      "reactions": {
+        "helpful": 1,
+        "love_this": 1,
+        "oh_no": 0,
+        "thanks": 1
+      },
+      "review_id": "40EmUvswKTCH1QNHb0urnA",
+      "text": "Hanging out in Dolores Park and getting a contact high? Looking for that sweet $$$ treat? Well, search no further, my friend. Welcome to Tartine. The baked goods are definitely tasty, but be prepared to pay for them. Quality comes at a price, and Tartine certainly isn't the cheap-and-cheerful option…"
+    }
+  ]
+}

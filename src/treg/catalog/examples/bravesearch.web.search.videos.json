@@ -1,0 +1,12 @@
+{
+  "type": "videos",
+  "query": {
+    "original": "example"
+  },
+  "results": [
+    {
+      "title": "Example video",
+      "url": "https://example.com/video"
+    }
+  ]
+}

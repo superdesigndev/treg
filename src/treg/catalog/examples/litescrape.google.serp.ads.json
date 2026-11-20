@@ -1,0 +1,206 @@
+{
+  "search_metadata": {
+    "id": "79788fd73ad5412e6e7054a8",
+    "status": "Success",
+    "created_at": "2026-09-29 13:58:30 +00:00",
+    "processed_at": "2026-09-29 13:58:30 +00:00",
+    "total_time_taken": 2.16,
+    "json_endpoint": "https://api.litescrape.com/api/google/ads?q=running+shoes&location=Austin%2C+Texas%2C+United+States&hl=en&device=desktop",
+    "google_ads_url": "https://www.google.com/search?q=running%20shoes&hl=en&gl=us"
+  },
+  "search_parameters": {
+    "engine": "google_ads",
+    "q": "running shoes",
+    "location_requested": "Austin, Texas, United States",
+    "location_used": "Austin, Texas, United States",
+    "google_domain": "google.com",
+    "hl": "en",
+    "device": "desktop",
+    "gl": "us"
+  },
+  "organic_results": [
+    {
+      "title": "The 15 Best Running Shoes of 2026",
+      "link": "https://www.runnersworld.com/gear/a19663621/best-running-shoes/",
+      "displayed_link": "https://www.runnersworld.com › ... › Running Shoes",
+      "source": "› ... › Running Shoes",
+      "snippet": "Aug 3, 2026 — For new runners we recommend a shoe like the Brooks Ghost or Nike Pegasus as a starting point. These shoes are moderately cushioned and offer ... Read more",
+      "favicon": "[inline image omitted]",
+      "date": "Aug 3, 2026",
+      "snippet_highlighted_words": [
+        "Brooks Ghost or Nike Pegasus"
+      ],
+      "position": 1,
+      "position_absolute": 1
+    },
+    {
+      "title": "Shop Men's Running Shoes",
+      "link": "https://www.roadrunnersports.com/category/mens/shoes/running?srsltid=AU7gw4WIIb7TQIBGfXyDWLfs7k926GKT0WwqpIKnc65qFZrG5QHNhbma",
+      "displayed_link": "https://www.roadrunnersports.com › Men's › Shoes",
+      "source": "› Men's › Shoes",
+      "snippet": "Buy men's running shoes from all the best brands at Road Runner Sports . Save with free shipping, 90-day returns, and cash rewards as a VIP member.",
+      "favicon": "[inline image omitted]",
+      "snippet_highlighted_words": [
+        "men's running shoes from all the best brands at Road Runner Sports"
+      ],
+      "position": 2,
+      "position_absolute": 2
+    }
+  ],
+  "related_searches": [
+    {
+      "query": "Running Shoes Nike",
+      "link": "https://www.google.com/search?sca_esv=94c45538e1e3e219&hl=en&gl=us&sxsrf=APpeQnsx6wMxG3hiFc_YL6a2HIY8NCnsJw:1790690310014&q=Running+Shoes+Nike&sa=X&ved=2ahUKEwi40tKe-ZOXAxVNfaQEHUZ5FT0Q1QJ6BAhREAE",
+      "block_position": 0
+    },
+    {
+      "query": "Running shoes Men",
+      "link": "https://www.google.com/search?sca_esv=94c45538e1e3e219&hl=en&gl=us&sxsrf=APpeQnsx6wMxG3hiFc_YL6a2HIY8NCnsJw:1790690310014&q=Running+shoes+Men&sa=X&ved=2ahUKEwi40tKe-ZOXAxVNfaQEHUZ5FT0Q1QJ6BAhfEAE",
+      "block_position": 1
+    }
+  ],
+  "related_questions": [
+    {
+      "question": "What shoe is best for running?"
+    },
+    {
+      "question": "What are the top 10 running shoes?"
+    }
+  ],
+  "perspectives": [
+    {
+      "title": "7 Best Daily Running Shoes in 2026",
+      "link": "https://runrepeat.com/guides/best-daily-running-running-shoes",
+      "author": "RunRepeat",
+      "date": "1 week ago",
+      "thumbnails": [
+        "https://encrypted-tbn0.gstatic.com/images?q=tbn:ANd9GcQbC1PdwFi0BBs0hxH0li08S5Id32BQiiyg_ggfmwiFU4JqZiFnIEE5H29Sqw&usqp=CAI&s"
+      ]
+    },
+    {
+      "title": "On's New Race Shoe Comes in Two Versions — We Tested Both",
+      "link": "https://www.youtube.com/shorts/oAHZJuKoxUY",
+      "author": "Believe in the Run · YouTube",
+      "author_description": "Running shoes reviewer",
+      "duration": "1:15",
+      "date": "5 days ago",
+      "extensions": [
+        "690.5K+ views"
+      ],
+      "thumbnails": [
+        "https://img.youtube.com/vi/oAHZJuKoxUY/hqdefault.jpg"
+      ],
+      "video": {
+        "link": "https://www.youtube.com/shorts/oAHZJuKoxUY"
+      }
+    }
+  ],
+  "immersive_products": [
+    {
+      "title": "Men's Nike Alphafly 3",
+      "category": "Popular products",
+      "source": "Running Warehouse US & more",
+      "extracted_price": 199.98,
+      "price": "$199.98",
+      "extracted_original_price": 295.0,
+      "original_price": "$295",
+      "rating": 4.4,
+      "reviews": 1100.0,
+      "extensions": [
+        "32% OFF"
+      ]
+    },
+    {
+      "title": "HOKA Men's Clifton 10 Road-Running Shoes Khaki 10.5",
+      "category": "Popular products",
+      "source": "REI",
+      "extracted_price": 99.87,
+      "price": "$99.87",
+      "extracted_original_price": 155.0,
+      "original_price": "$155",
+      "extensions": [
+        "35% OFF"
+      ]
+    }
+  ],
+  "search_information": {
+    "total_results": 282,
+    "time_taken_displayed": 0.54,
+    "query_displayed": "running shoes"
+  },
+  "pagination": {
+    "current": 1,
+    "next": "https://www.google.com/search?q=running+shoes&sca_esv=94c45538e1e3e219&hl=en&gl=us&sxsrf=APpeQnsx6wMxG3hiFc_YL6a2HIY8NCnsJw:1790690310014&ei=BsS7arg3zfqR1Q_G8tX…",
+    "other_pages": {
+      "2": "https://www.google.com/search?q=running+shoes&sca_esv=94c45538e1e3e219&hl=en&gl=us&sxsrf=APpeQnsx6wMxG3hiFc_YL6a2HIY8NCnsJw:1790690310014&ei=BsS7arg3zfqR1Q_G8tX…",
+      "3": "https://www.google.com/search?q=running+shoes&sca_esv=94c45538e1e3e219&hl=en&gl=us&sxsrf=APpeQnsx6wMxG3hiFc_YL6a2HIY8NCnsJw:1790690310014&ei=BsS7arg3zfqR1Q_G8tX…",
+      "4": "https://www.google.com/search?q=running+shoes&sca_esv=94c45538e1e3e219&hl=en&gl=us&sxsrf=APpeQnsx6wMxG3hiFc_YL6a2HIY8NCnsJw:1790690310014&ei=BsS7arg3zfqR1Q_G8tX…",
+      "5": "https://www.google.com/search?q=running+shoes&sca_esv=94c45538e1e3e219&hl=en&gl=us&sxsrf=APpeQnsx6wMxG3hiFc_YL6a2HIY8NCnsJw:1790690310014&ei=BsS7arg3zfqR1Q_G8tX…",
+      "6": "https://www.google.com/search?q=running+shoes&sca_esv=94c45538e1e3e219&hl=en&gl=us&sxsrf=APpeQnsx6wMxG3hiFc_YL6a2HIY8NCnsJw:1790690310014&ei=BsS7arg3zfqR1Q_G8tX…",
+      "7": "https://www.google.com/search?q=running+shoes&sca_esv=94c45538e1e3e219&hl=en&gl=us&sxsrf=APpeQnsx6wMxG3hiFc_YL6a2HIY8NCnsJw:1790690310014&ei=BsS7arg3zfqR1Q_G8tX…",
+      "8": "https://www.google.com/search?q=running+shoes&sca_esv=94c45538e1e3e219&hl=en&gl=us&sxsrf=APpeQnsx6wMxG3hiFc_YL6a2HIY8NCnsJw:1790690310014&ei=BsS7arg3zfqR1Q_G8tX…",
+      "9": "https://www.google.com/search?q=running+shoes&sca_esv=94c45538e1e3e219&hl=en&gl=us&sxsrf=APpeQnsx6wMxG3hiFc_YL6a2HIY8NCnsJw:1790690310014&ei=BsS7arg3zfqR1Q_G8tX…",
+      "10": "https://www.google.com/search?q=running+shoes&sca_esv=94c45538e1e3e219&hl=en&gl=us&sxsrf=APpeQnsx6wMxG3hiFc_YL6a2HIY8NCnsJw:1790690310014&ei=BsS7arg3zfqR1Q_G8tX…"
+    }
+  },
+  "shopping_results": [
+    {
+      "title": "Men's Nike Alphafly 3",
+      "source": "Running Warehouse US",
+      "extracted_price": 199.98,
+      "price": "$199.98",
+      "extracted_old_price": 295.0,
+      "old_price": "$295",
+      "rating": 4.4,
+      "reviews_original": "Rated 4.4 out of 5. 1.1K reviews.",
+      "reviews": 1100,
+      "extensions": [
+        "32% OFF"
+      ],
+      "product_id": "1979151172458556166",
+      "position": 1
+    },
+    {
+      "title": "New Balance Men's Fresh Foam X More v6",
+      "source": "New Balance",
+      "extracted_price": 127.99,
+      "price": "$127.99",
+      "extracted_old_price": 160.0,
+      "old_price": "$160",
+      "rating": 4.6,
+      "reviews_original": "Rated 4.6 out of 5. 862 reviews.",
+      "reviews": 862,
+      "extensions": [
+        "20% OFF"
+      ],
+      "product_id": "6968153638386815767",
+      "position": 2
+    }
+  ],
+  "filters": [
+    {
+      "input_type": "link",
+      "options": [
+        {
+          "text": "Men's",
+          "shoprs": "CAEYASoNcnVubmluZyBzaG9lczIVCAESBU1lbidzOgoIgKM-EIGjPjAFWMjCIGAC"
+        },
+        {
+          "text": "Women's",
+          "shoprs": "CAEYASoNcnVubmluZyBzaG9lczIXCAESB1dvbWVuJ3M6CgiAoz4QgqM-MAVYyMIgYAI"
+        }
+      ],
+      "type": "Department"
+    },
+    {
+      "input_type": "link",
+      "options": [
+        {
+          "text": "4 and up",
+          "shoprs": "CAESBWIDCJADGB4qDXJ1bm5pbmcgc2hvZXMyFQgeEgg0IGFuZCB1cCIFYgMIkANABGAC"
+        }
+      ],
+      "type": "Product Rating"
+    }
+  ]
+}

@@ -7,6 +7,8 @@ SEPARATE session — if the state were still a per-process dict, the second sess
 
 from __future__ import annotations
 
+from sqlalchemy.dialects import postgresql, sqlite
+
 from treg import ratestore
 from treg.infra.db import reset_db, session_maker
 from treg.models import Ephemeral
@@ -59,7 +61,7 @@ async def test_rate_check_sliding_window_all_or_nothing():
     await _fresh_db()
     async with session_maker() as db:
         # cap of 3 for the key; the 4th within the window is refused
-        for i in range(3):
+        for _ in range(3):
             assert await ratestore.rate_check(db, "otp_start", [("e:x", 3)], window_s=900) is True
             await db.commit()
         assert await ratestore.rate_check(db, "otp_start", [("e:x", 3)], window_s=900) is False
@@ -94,3 +96,58 @@ async def test_sweep_drops_expired_rows_only():
         await db.commit()
         assert await db.get(Ephemeral, ("sandbox_hit", "dead")) is None
         assert await db.get(Ephemeral, ("sandbox_hit", "live")) is not None
+
+
+async def test_kv_put_of_a_missing_key_is_an_upsert_on_both_backends():
+    """Two processes striking the same provider write the same lock key in the same millisecond; the
+    loser of a plain INSERT died on `ephemeral_pkey` (prod, 2026-09-06). The statement must carry
+    ON CONFLICT on both dialects so the last writer wins instead of raising."""
+    from datetime import datetime
+    for dialect in ("postgresql", "sqlite"):
+        stmt = ratestore._upsert(dialect, ns="capacity:lock", k="p", v={"a": 1},
+                                 expires_at=datetime(2026, 1, 1))
+        sql = str(stmt.compile(dialect=(postgresql.dialect() if dialect == "postgresql" else sqlite.dialect())))
+        assert "ON CONFLICT (ns, k) DO UPDATE" in sql, sql
+
+
+async def test_kv_put_overwrites_a_row_written_by_another_session():
+    async with session_maker() as other:
+        await ratestore.kv_put(other, "ns", "k", {"n": 1}, ttl_s=600)
+        await other.commit()
+    async with session_maker() as db:
+        # This session has never loaded (ns, k); its `get` sees the committed row and updates it.
+        await ratestore.kv_put(db, "ns", "k", {"n": 2}, ttl_s=600)
+        await db.commit()
+    async with session_maker() as db:
+        assert (await ratestore.kv_get(db, "ns", "k")) == {"n": 2}
+
+
+async def test_kv_take_returns_a_live_value_once():
+    await _fresh_db()
+    async with session_maker() as db:
+        await ratestore.kv_put(db, "code", "live", {"x": 1}, ttl_s=600)
+        await ratestore.kv_put(db, "code", "old", {"x": 2}, ttl_s=-1)
+        await db.commit()
+    async with session_maker() as db:
+        assert await ratestore.kv_take(db, "code", "live") == {"x": 1}
+        assert await ratestore.kv_take(db, "code", "live") is None
+        assert await ratestore.kv_take(db, "code", "old") is None  # expired: removed, not returned
+        await db.commit()
+    async with session_maker() as db:
+        assert await ratestore.kv_get(db, "code", "old") is None
+
+
+async def test_an_atomic_rate_check_counts_every_concurrent_hit():
+    await reset_db()
+    import asyncio
+
+    async def one() -> bool:
+        async with session_maker() as db:
+            ok = await ratestore.rate_check(db, "t", [("all", 5)], 60, atomic=True)
+            await db.commit()
+            return ok
+
+    results = await asyncio.gather(*(one() for _ in range(20)))
+    assert results.count(True) == 5
+    async with session_maker() as db:
+        assert len((await db.get(Ephemeral, ("t", "all"))).v["hits"]) == 5

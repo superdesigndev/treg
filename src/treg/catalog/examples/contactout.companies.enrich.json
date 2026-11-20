@@ -1,0 +1,82 @@
+{
+  "status_code": 200,
+  "companies": {
+    "contactout.com": {
+      "li_vanity": "https://www.linkedin.com/company/contactout",
+      "name": "ContactOut",
+      "domain": "contactout.com",
+      "description": "At ContactOut, we pride ourselves on being the most accurate contact data intelligence tool out there. Find emails and phone numbers for 300M professionals, including B2B data for 30M companies.\n\nOur platform is trusted by 1.4M sales, marketing, and recruitment professionals in over 76% of Fortune 500 companies like Google, Microsoft and Netflix.\n\nOur key features are designed with users in mind, so you can easily:\n1) Find quality prospects fast all in one place with our Search Portal\n2) Supercharge your LinkedIn prospecting with our Chrome Extension\n3) Personalize and automate their outbound messaging with our Email Campaign\n\nOur platform is the perfect way to take your business to the next level. With our powerful tools and accurate data, you'll be able to reach more prospects than ever before and see real results. \n\nTry for free today at www.contactout.com\n",
+      "website": "http://contactout.com",
+      "logo_url": "https://images.contactout.com/companies/25a15bc967bb55931fd47f7437aadbfe",
+      "type": "Privately Held",
+      "headquarter": "San Francisco, 94041, US",
+      "country": "United States",
+      "size": 51,
+      "founded_at": 2015,
+      "locations": [
+        "San Francisco, 94041, US"
+      ],
+      "industry": "Software Development",
+      "specialties": [],
+      "revenue": "$10.0M",
+      "employees": 95,
+      "followers": 50082,
+      "funding": {
+        "total_funding_usd": null,
+        "rounds": [
+          {
+            "funding_type": "Undisclosed",
+            "announced_date": "2016-01-01",
+            "investor_names": [],
+            "lead_investors": [],
+            "money_raised_usd": null,
+            "number_of_investors": null
+          }
+        ],
+        "funding_status": null,
+        "latest_date": "2016-01-01",
+        "number_of_funding_rounds": 1
+      },
+      "technologies": [
+        "Google Analytics",
+        "Google Maps",
+        "Cloudflare",
+        "Cloudflare Hosting",
+        "Cloudflare CDN",
+        "Slack",
+        "PayPal",
+        "Hotjar",
+        "Cloudflare DNS",
+        "Akamai",
+        "Amazon CloudFront",
+        "Stripe",
+        "Salesforce",
+        "Cloudflare Insights",
+        "Amazon Web Services",
+        "MonsterInsights",
+        "Google Optimize 360",
+        "Sendgrid",
+        "My Salesforce",
+        "Amazon SES",
+        "Mailgun",
+        "Mixpanel",
+        "Intercom",
+        "Drift",
+        "Wistia",
+        "Heap",
+        "BambooHR",
+        "Lever",
+        "Ultimate Social Media",
+        "Pipedrive",
+        "follow.it",
+        "URIports",
+        "WP User Frontend",
+        "SaaS Pricing Above $100 Per Month",
+        "Iconosquare",
+        "ACodez",
+        "Hinge",
+        "ExtraaEdge"
+      ]
+    }
+  }
+}

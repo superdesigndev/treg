@@ -1,0 +1,81 @@
+{
+  "search_metadata": {
+    "id": "d2ce487b2df90017687ce12b",
+    "status": "Success",
+    "created_at": "2026-09-29T13:58:54.682627+00:00",
+    "processed_at": "2026-09-29T13:58:55.776535+00:00",
+    "json_endpoint": "https://api.litescrape.com/api/google/play/books?hl=en&gl=us&q=Dune",
+    "google_play_url": "https://play.google.com/store/search?hl=en&gl=us&q=Dune&c=books",
+    "total_time_taken": 1.094
+  },
+  "search_parameters": {
+    "hl": "en",
+    "gl": "us",
+    "q": "Dune"
+  },
+  "organic_results": [
+    {
+      "title": "Series",
+      "see_more_link": "https://play.google.com/store/books/collection/cluster?gsr=SlBqLG5MeDVXOWtJR2lwd2NpWitVajFpeGQrQTNWazdoRk5XSHRza2tDWkkzTUE92gscCgREdW5lECwYASIAKgAwADgBQgZTZXJpZXNIALASAA%3D%3D:S:ANO1ljLBXAI",
+      "items": [
+        {
+          "title": "Dune",
+          "link": "https://play.google.com/store/books/series?id=av3XFwAAABC86M",
+          "product_id": "av3XFwAAABC86M",
+          "thumbnail": "https://play-lh.googleusercontent.com/DO9D9mcmQJ8OXHXGOFyfQWRKgzoTlKbw1Epd4kHRZmPP1G8v7vzCHT8XZGL6j4JfP3o4kmvXeK-ohgdt4-E",
+          "extension": "8 items",
+          "format": "Ebook series"
+        },
+        {
+          "title": "Dune",
+          "link": "https://play.google.com/store/books/series?id=mPnXFwAAABBO7M",
+          "product_id": "mPnXFwAAABBO7M",
+          "thumbnail": "https://play-lh.googleusercontent.com/ofs4XPMudPYM7c9pYmYLmk5vJMUtxwEV-NOaNwylrTdnf8W3mwfSavwzYDoE3iucMR65dQsOB6fAvyeJIYA",
+          "extension": "12 books",
+          "format": "Ebook series"
+        }
+      ],
+      "see_more_token": "eyJ2IjoxLCJvcGVyYXRpb24iOiJib29rcyIsImNvbnRleHQiOnsiaGwiOiJlbiIsImdsIjoidXMiLCJxIjoiRHVuZSJ9LCJraW5kIjoiY29sbGVjdGlvbiIsInRva2VuIjoiU2xCcUxHNU1lRFZYT1d0SlIybHdk…",
+      "litescrape_see_more_link": "https://api.litescrape.com/api/google/play/books?hl=en&gl=us&q=Dune&see_more_token=eyJ2IjoxLCJvcGVyYXRpb24iOiJib29rcyIsImNvbnRleHQiOnsiaGwiOiJlbiIsImdsIjoidXMiL…"
+    },
+    {
+      "title": "Ebooks",
+      "see_more_link": "https://play.google.com/store/books/collection/cluster?gsr=SmtqLHNrNUhBM1JQM1oyMHZ5N1FGR0ZMWkJhWXpBT1RBRU5ZQ3Izd0ZzTVczUXM92gs3CgREdW5lEAUYASIdKhtib29rc19zZXJpZXNfc2VhcmNoO2VwaXNvZGUqADAAOAFCBkVib29rc7ASAA%3D%3D:S:ANO1ljKUCNo",
+      "items": [
+        {
+          "title": "Dune Messiah Book 1",
+          "link": "https://play.google.com/store/books/details/Frank_Herbert_Dune_Messiah_Book_1?id=A2jEEQAAQBAJ",
+          "product_id": "A2jEEQAAQBAJ",
+          "author": "Frank Herbert",
+          "category": "Fiction & literature",
+          "thumbnail": "https://play.google.com/books/publisher/content/images/frontcover/A2jEEQAAQBAJ?fife",
+          "description": "A visually stunning graphic novel adaptation of Frank Herbert’s Dune Messiah , this volume brings one of science fiction’s most pivotal stories to life in a bol…",
+          "price": "$23.39",
+          "extracted_price": 23.39,
+          "currency": "USD"
+        },
+        {
+          "title": "Dune: Volume 1",
+          "link": "https://play.google.com/store/books/details/Frank_Herbert_Dune?id=p1MULH7JsTQC",
+          "product_id": "p1MULH7JsTQC",
+          "rating": 4.6559777,
+          "author": "Frank Herbert",
+          "category": "Science fiction",
+          "thumbnail": "https://play.google.com/books/content/images/frontcover/p1MULH7JsTQC?fife",
+          "description": "Frank Herbert’s classic masterpiece—a triumph of the imagination and one of the bestselling science fiction novels of all time. Set on the desert planet Arrakis…",
+          "extension": "Book 1",
+          "price": "$9.99",
+          "extracted_price": 9.99,
+          "currency": "USD"
+        }
+      ],
+      "litescrape_next_link": "https://api.litescrape.com/api/google/play/books?hl=en&gl=us&q=Dune&section_page_token=eyJ2IjoxLCJvcGVyYXRpb24iOiJib29rcyIsImNvbnRleHQiOnsiaGwiOiJlbiIsImdsIjoid…",
+      "section_page_token": "eyJ2IjoxLCJvcGVyYXRpb24iOiJib29rcyIsImNvbnRleHQiOnsiaGwiOiJlbiIsImdsIjoidXMiLCJxIjoiRHVuZSJ9LCJraW5kIjoic2VjdGlvbiIsInRva2VuIjoiSUFGaXJnRktQd285Q0JRUXV1NkVqQW9R…",
+      "see_more_token": "eyJ2IjoxLCJvcGVyYXRpb24iOiJib29rcyIsImNvbnRleHQiOnsiaGwiOiJlbiIsImdsIjoidXMiLCJxIjoiRHVuZSJ9LCJraW5kIjoiY29sbGVjdGlvbiIsInRva2VuIjoiU210cUxITnJOVWhCTTFKUU0xb3lN…",
+      "litescrape_see_more_link": "https://api.litescrape.com/api/google/play/books?hl=en&gl=us&q=Dune&see_more_token=eyJ2IjoxLCJvcGVyYXRpb24iOiJib29rcyIsImNvbnRleHQiOnsiaGwiOiJlbiIsImdsIjoidXMiL…"
+    }
+  ],
+  "litescrape_pagination": {
+    "current": "https://api.litescrape.com/api/google/play/books?hl=en&gl=us&q=Dune"
+  }
+}

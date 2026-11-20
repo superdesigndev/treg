@@ -1,0 +1,66 @@
+{
+  "meta": {
+    "blocked": [],
+    "elapsed_ms": 630,
+    "from_cache": false,
+    "llm_calls": 0,
+    "pages_fetched": 2,
+    "partial": false,
+    "warnings": [
+      "module: x-profile: @NASA · 92326237 followers · 74413 tweets"
+    ]
+  },
+  "recipe": "x-profile",
+  "usage": {
+    "boxes": [
+      "gate",
+      "recipe"
+    ],
+    "cache": "miss",
+    "engine": "recipe",
+    "lines": [
+      {
+        "about": "the call",
+        "boxes": [
+          "gate"
+        ],
+        "cache": "miss",
+        "call": "recipes",
+        "engine": "gate",
+        "units": 1
+      },
+      {
+        "attempts": 1,
+        "cache": "api",
+        "call": "scrape",
+        "engine": "api",
+        "proxy": "none",
+        "units": 1,
+        "url": "https://api.x.com/…"
+      }
+    ],
+    "remaining_before": {
+      "concurrent": 99,
+      "requests": 159,
+      "search": 3000
+    },
+    "units": 3
+  },
+  "version": 2,
+  "rows": [
+    {
+      "bio": "Making the seemingly impossible, possible. ✨",
+      "created": "2007-12-19T20:20:32Z",
+      "followers": 92326237,
+      "following": 115,
+      "image": "https://pbs.twimg.com/profile_images/1321163587679784960/0ZxKlEKB_400x400.jpg",
+      "location": "Pale Blue Dot",
+      "name": "NASA",
+      "tweets": 74413,
+      "user_id": "11348282",
+      "username": "NASA",
+      "verified": true,
+      "website": "http://www.nasa.gov/"
+    }
+  ]
+}

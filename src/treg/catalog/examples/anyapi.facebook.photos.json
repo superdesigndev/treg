@@ -1,0 +1,34 @@
+{
+  "output": {
+    "data": {
+      "nextCursor": "Cy3aXQJCZDGbGLzZcqVyhqiKlAA7k4A2ec2y-2JSDjXtLINHPWPsNiXzz-ZYlRCCyZB_ik5MiAMHcxlHcOISOiaVHtmZrcgpiSHZuA02sA_MTXGorUFxJEgzfVDXhe6UKSn_cohHzosysD4stgZ3M0s6xmfsber5GjfTBQ000NYjzb3V3kbY9T7DgpwPPX8WKkvHUBN5… [274 chars]",
+      "nextPageId": "YXBwX2NvbGxlY3Rpb246cGZiaWQwM3lzTWhrQXI2ZlpZWkpCaU1ETjR3UVN5cHhpaTcycUw2d0F2YnVjeTdDQkE3VHE0bVZBeUpDNVo1OUw0WDVpRVRidzduODNWaUwxRVJnNGJMVjZ4NVZtcXhlYmNs",
+      "photos": [
+        {
+          "caption": "May be an image of ‎basketball, basketball jersey and ‎text that says '‎ال FLEDGER LEDEER SPURS SPU 5‎'‎‎",
+          "id": "YXBwX2l0ZW06MTAwMDQ0NjM0NDUwMjA4OjIzMDUyNzI3MzI6NTo6MTYyMTgwNDk4NTk4Mzk2OA==",
+          "imageHeight": 3776,
+          "imageUrl": "https://scontent-lga3-1.xx.fbcdn.net/v/t39.99422-6/795188587_2407738733128636_1514163321761374138_n.png?stp=dst-jpg_tt6&cstp=mx2832x3776&ctp=s2832x3776&_nc_cat=103&ccb=1-7&_nc_sid=127cfc&_nc_ohc=kmP2R… [438 chars]",
+          "imageWidth": 2832,
+          "photoId": "1621804985983968",
+          "thumbnail": "https://scontent-lga3-1.xx.fbcdn.net/v/t39.99422-6/795188587_2407738733128636_1514163321761374138_n.png?stp=c0.312.2832.2832a_dst-jpg_tt6&cstp=mx2832x2832&ctp=s552x414&_nc_cat=103&ccb=1-7&_nc_sid=714c… [454 chars]",
+          "url": "https://www.facebook.com/photo.php?fbid=1621804985983968&set=pb.100044634450208.-2207520000&type=3"
+        },
+        "… 7 more item(s) truncated"
+      ]
+    },
+    "found": true
+  },
+  "provider": "AnyAPI",
+  "costUsd": 0.0012,
+  "items": 8,
+  "replayed": false,
+  "source": {
+    "id": "anonymous-giraffe",
+    "name": "Giraffe",
+    "kind": "anonymous",
+    "artworkKey": "giraffe"
+  },
+  "hint": "large_result: this response is ~11 KB. To keep future runs from flooding your context, re-run with `fields` (keep only the keys you need), `max_items` (cap rows), `summary=true` (outline only), or `jq… [309 chars]",
+  "resultId": "7df0603b-f0a4-49a2-8abe-467d2e2bc61d"
+}

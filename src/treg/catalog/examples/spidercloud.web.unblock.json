@@ -1,0 +1,23 @@
+[
+  {
+    "content": "Example Domain\nThis domain is for use in documentation examples without needing permission. This is not a service, avoid relying on it for testing and monitoring purposes.\n[Learn more](https://iana.org/help/example-domains)",
+    "costs": {
+      "ai_cost": 0.001,
+      "ai_cost_formatted": "0.0010",
+      "bytes_transferred_cost": 3.015e-08,
+      "bytes_transferred_cost_formatted": "0.0000000301500000000000014377",
+      "compute_cost": 1.2183333333333335e-06,
+      "compute_cost_formatted": "0.0000012183333333333332473836",
+      "file_cost": 1.0695e-06,
+      "file_cost_formatted": "0.0000010695000000000000079520",
+      "total_cost": 0.0010123179833333334,
+      "total_cost_formatted": "0.0010123179833333333338118847",
+      "transform_cost": 1e-05,
+      "transform_cost_formatted": "0.0000100000000000000005551115"
+    },
+    "duration_elasped_ms": 733,
+    "error": null,
+    "status": 200,
+    "url": "https://example.com/"
+  }
+]

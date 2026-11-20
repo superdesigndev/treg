@@ -1,0 +1,18 @@
+{
+  "success": true,
+  "query": "What is example.com?",
+  "results": [
+    {
+      "id": "https://en.wikipedia.org/wiki/Example.com",
+      "title": "example.com - Wikipedia",
+      "url": "https://en.wikipedia.org/wiki/Example.com",
+      "source": "web",
+      "price": 0.0015
+    }
+  ],
+  "results_by_source": {
+    "web": 1,
+    "proprietary": 0
+  },
+  "total_deduction_dollars": 0.0015
+}

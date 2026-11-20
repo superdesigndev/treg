@@ -1,0 +1,86 @@
+{
+  "meta": {
+    "blocked": [],
+    "elapsed_ms": 147,
+    "from_cache": false,
+    "llm_calls": 0,
+    "pages_fetched": 3,
+    "partial": false,
+    "warnings": [
+      "module: yahoo-quote: 3 of 3 symbols quoted"
+    ]
+  },
+  "recipe": "yahoo-quote",
+  "usage": {
+    "boxes": [
+      "gate",
+      "recipe"
+    ],
+    "cache": "miss",
+    "engine": "recipe",
+    "lines": [
+      {
+        "about": "the call",
+        "boxes": [
+          "gate"
+        ],
+        "cache": "miss",
+        "call": "recipes",
+        "engine": "gate",
+        "units": 1
+      },
+      {
+        "attempts": 1,
+        "cache": "api",
+        "call": "scrape",
+        "engine": "api",
+        "proxy": "none",
+        "units": 1,
+        "url": "https://query1.finance.yahoo.com/…"
+      }
+    ],
+    "remaining_before": {
+      "concurrent": 99,
+      "requests": 181,
+      "search": 3000
+    },
+    "units": 4
+  },
+  "version": 2,
+  "rows": [
+    {
+      "change": -3.78,
+      "change_pct": -1.11,
+      "currency": "USD",
+      "day_high": 338.61,
+      "day_low": 330.7,
+      "exchange": "NasdaqGS",
+      "market_state": "CLOSED",
+      "name": "Apple Inc.",
+      "previous_close": 340.42,
+      "price": 336.64,
+      "symbol": "AAPL",
+      "updated": "2026-10-09T20:00:00Z",
+      "volume": 37821157,
+      "week52_high": 345.34,
+      "week52_low": 243.42
+    },
+    {
+      "change": 12.46,
+      "change_pct": 2.38,
+      "currency": "USD",
+      "day_high": 537.22,
+      "day_low": 526.24,
+      "exchange": "NasdaqGS",
+      "market_state": "CLOSED",
+      "name": "Microsoft Corporation",
+      "previous_close": 522.61,
+      "price": 535.07,
+      "symbol": "MSFT",
+      "updated": "2026-10-09T20:00:01Z",
+      "volume": 17890995,
+      "week52_high": 553.72,
+      "week52_low": 349.2
+    }
+  ]
+}

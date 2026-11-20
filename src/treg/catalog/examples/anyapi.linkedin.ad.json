@@ -1,0 +1,30 @@
+{
+  "output": {
+    "found": true,
+    "data": {
+      "adType": "Video Ad",
+      "advertiser": "Microsoft 365",
+      "advertiserLinkedinPage": "https://www.linkedin.com/company/3509299",
+      "cta": "Sign Up",
+      "description": "Get ahead of what’s important with Copilot in Outlook.",
+      "destinationUrl": "",
+      "endDate": "",
+      "headline": "The apps you know go further with Copilot",
+      "id": "1487405616",
+      "image": "",
+      "startDate": "",
+      "totalImpressions": ""
+    }
+  },
+  "provider": "AnyAPI",
+  "costUsd": 0.0012,
+  "items": 0,
+  "replayed": false,
+  "source": {
+    "id": "anonymous-giraffe",
+    "name": "Giraffe",
+    "kind": "anonymous",
+    "artworkKey": "giraffe"
+  },
+  "resultId": "42b0275c-eab1-43f7-ba22-49ed09e9cb80"
+}

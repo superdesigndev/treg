@@ -1,0 +1,22 @@
+{
+  "task": {
+    "id": "example-task-id",
+    "model": "MiniMax-H3-Max",
+    "status": "succeeded",
+    "created_at": "1788318291",
+    "updated_at": "1788318317",
+    "content": {
+      "url": "https://example.invalid/generated-video.mp4"
+    },
+    "resolution": "480P",
+    "duration": "5",
+    "usage": {
+      "total_seconds": "5",
+      "input_seconds": "0",
+      "output_seconds": "5",
+      "input_image_count": "0"
+    },
+    "ratio": "16:9",
+    "task_type": "generation"
+  }
+}

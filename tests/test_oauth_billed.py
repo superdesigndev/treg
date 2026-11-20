@@ -19,7 +19,6 @@ from sqlalchemy import update
 
 from treg.application.call import resolve as call_resolution
 from treg.application.call import service as call_service
-from treg.routers import call as call_routes
 from treg import crypto
 from treg.config import get_settings
 from treg.infra.db import session_maker
@@ -56,11 +55,11 @@ async def _entries(clients: AsyncClient) -> list[dict]:
     return (await clients.get(f"/orgs/{await _org_id(clients)}/balance")).json()["entries"]["items"]
 
 
-async def _connect_x(clients: AsyncClient, *, provider: str = "x") -> None:
+async def _connect_x(clients: AsyncClient, *, provider: str = "x", org_id: int | None = None) -> None:
     """Plant what the connect callback produces: an oauth secret attributed to the provider plus
     the auto-provisioned tool bound to it. `provider=""` is a BYO connect (the caller's own X
     developer app) — the attribution, not the token shape, is what decides who X bills."""
-    org_id = await _org_id(clients)
+    org_id = await _org_id(clients) if org_id is None else org_id
     blob = {"access_token": "XTOK", "refresh_token": "RT", "client_id": "cid",
             "client_secret": "cs", "token_uri": "http://upstream/token",
             "expires_at": time.time() + 9999}
@@ -170,24 +169,19 @@ async def test_unmatched_passthrough_gets_the_default_read_rate(
 
 
 # ---- writes ------------------------------------------------------------------------------------
-async def test_post_create_is_per_call(clients: AsyncClient, billed_on, monkeypatch):
+@pytest.mark.parametrize("text, reply, micro", [
+    ("Shipping something new today.", b'{"data": {"id": "1", "text": "hi"}}', CREATE_MICRO),
+    # $0.015 -> $0.20 when the text carries a URL - the single biggest mispricing risk, sniffed
+    # from the body at estimate time.
+    ("read this: https://example.com/post", b'{"data": {"id": "1"}}', CREATE_LINK_MICRO),
+])
+async def test_post_create_is_per_call_and_a_link_prices_13x(clients: AsyncClient, billed_on,
+                                                              monkeypatch, text, reply, micro):
     await _connect_x(clients)
-    monkeypatch.setattr(call_service, "relay", _stub_relay(201, b'{"data": {"id": "1", "text": "hi"}}'))
-    r = await clients.post("/call/x.x.post.create",
-                           json={"text": "Shipping something new today."})
+    monkeypatch.setattr(call_service, "relay", _stub_relay(201, reply))
+    r = await clients.post("/call/x.x.post.create", json={"text": text})
     assert r.status_code == 201, r.text
-    assert int(r.headers["x-treg-cost-micro"]) == CREATE_MICRO
-
-
-async def test_post_with_url_prices_13x(clients: AsyncClient, billed_on, monkeypatch):
-    """$0.015 → $0.20 when the text carries a URL — the single biggest mispricing risk, sniffed
-    from the body at estimate time."""
-    await _connect_x(clients)
-    monkeypatch.setattr(call_service, "relay", _stub_relay(201, b'{"data": {"id": "1"}}'))
-    r = await clients.post("/call/x.x.post.create",
-                           json={"text": "read this: https://example.com/post"})
-    assert r.status_code == 201, r.text
-    assert int(r.headers["x-treg-cost-micro"]) == CREATE_LINK_MICRO
+    assert int(r.headers["x-treg-cost-micro"]) == micro
 
 
 # ---- the money fences --------------------------------------------------------------------------
@@ -236,3 +230,65 @@ def _stub_relay(status_code: int, body: bytes):
         return UpstreamResponse(status_code, (), _stream(), _close)
 
     return _relay
+
+
+# ---- the archive: an org token riding treg's app is metered, but the data is the org's ----------
+@pytest.fixture
+def archive_serve(billed_on, monkeypatch):
+    from treg.domain.catalog import store as catalog_store
+    monkeypatch.setattr(get_settings(), "archive_mode", "serve")
+    monkeypatch.setattr(get_settings(), "archive_serve_endpoints", "*")
+    monkeypatch.setattr(get_settings(), "archive_serve_percent", 100)
+    # Unjudged: the default `transient` keeps the answer, and an own-credential answer then
+    # serves only the team that fetched it.
+    monkeypatch.delitem(catalog_store.load().by_id[POSTS], "cache", raising=False)
+
+
+async def test_billed_oauth_answers_are_the_orgs_own_in_the_archive(
+        clients: AsyncClient, archive_serve, monkeypatch):
+    """Metered (treg's app pays X) but fetched with the org's OWN token: keyed to the org,
+    served back to the org at the repeat price, never to a stranger."""
+    from sqlalchemy import select
+    from conftest import verified_signup
+    from treg import archive
+    from treg.models import ArchiveSnapshot
+    await _connect_x(clients)
+    monkeypatch.setattr(call_service, "relay", _stub_relay(200, b'{"data": [{}, {}]}'))
+    r1 = await clients.get(f"/call/{POSTS}?id=42&max_results=10")
+    assert r1.status_code == 200 and int(r1.headers["x-treg-cost-micro"]) == 2 * POST_MICRO
+    await archive.drain()
+    async with session_maker() as db:
+        snap = (await db.execute(select(ArchiveSnapshot))).scalars().one()
+    assert snap.origin_org_id == await _org_id(clients)
+    r2 = await clients.get(f"/call/{POSTS}?id=42&max_results=10")
+    assert r2.headers["X-Treg-Cache"] == "hit" and r2.content == r1.content
+    assert int(r2.headers["x-treg-cost-micro"]) == 2 * POST_MICRO * 10 // 100   # metered: repeat
+    events = []
+    monkeypatch.setattr(call_service.analytics, "capture",
+                        lambda who, event, props, **kw: events.append((event, props)))
+    other = await verified_signup(clients, json={"email": "stranger@example.com"})
+    headers = {"X-Treg-Token": other.json()["token"]}
+    stranger_org = (await clients.get("/orgs", headers=headers)).json()[0]["org_id"]
+    await _connect_x(clients, org_id=stranger_org)             # their own token, same question
+    monkeypatch.setattr(call_service, "relay", _stub_relay(200, b'{"data": [{}]}'))
+    r3 = await clients.get(f"/call/{POSTS}?id=42&max_results=10", headers=headers)
+    assert r3.status_code == 200 and "x-treg-cache" not in r3.headers
+    assert int(r3.headers["x-treg-cost-micro"]) == POST_MICRO   # X answered them, at full price
+    props = [p for e, p in events if e == "tool_called"][-1]
+    assert props["cache_outcome"] == "key_missing"             # their org key has nothing
+    assert props["cache_sharing"] == "org"                      # any_account: the org's question
+
+
+async def test_billed_oauth_answer_echoing_the_token_is_never_recorded(
+        clients: AsyncClient, archive_serve, monkeypatch):
+    from sqlalchemy import select
+    from treg import archive
+    from treg.models import ArchiveSnapshot
+    await _connect_x(clients)
+    monkeypatch.setattr(call_service, "relay",
+                        _stub_relay(200, b'{"data": [{"token": "XTOK"}]}'))
+    r = await clients.get(f"/call/{POSTS}?id=42&max_results=10")
+    assert r.status_code == 200
+    await archive.drain()
+    async with session_maker() as db:
+        assert (await db.execute(select(ArchiveSnapshot))).scalars().all() == []

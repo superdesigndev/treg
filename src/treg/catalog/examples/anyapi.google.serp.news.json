@@ -1,0 +1,35 @@
+{
+  "output": {
+    "found": true,
+    "data": {
+      "items": [
+        {
+          "createdUtc": 1789739234,
+          "snippet": "",
+          "source": "CNBC",
+          "title": "Microsoft AI CEO: OpenAI's latest AI revelation a 'serious situation'",
+          "url": "https://www.cnbc.com/2026/09/18/microsoft-ai-ceo-openais-latest-ai-revelation-a-serious-situation.html"
+        },
+        {
+          "createdUtc": 1789638434,
+          "snippet": "",
+          "source": "The New York Times",
+          "title": "OpenAI Discloses Six New Incidents of ‘Concerning’ A.I. Behavior",
+          "url": "https://www.nytimes.com/2026/09/16/technology/openai-model-safety-guardrails.html"
+        },
+        "… 23 more item(s) truncated"
+      ]
+    }
+  },
+  "provider": "AnyAPI",
+  "costUsd": 0.00099,
+  "items": 25,
+  "replayed": false,
+  "source": {
+    "id": "anonymous-meerkat",
+    "name": "Meerkat",
+    "kind": "anonymous",
+    "artworkKey": "meerkat"
+  },
+  "resultId": "ce88e4ee-b226-42b6-814d-a16c69429a38"
+}

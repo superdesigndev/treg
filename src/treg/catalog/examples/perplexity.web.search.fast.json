@@ -1,0 +1,11 @@
+{
+  "id": "00000000-0000-4000-8000-000000000001",
+  "results": [
+    {
+      "title": "IANA-managed Reserved Domains",
+      "url": "https://www.iana.org/domains/reserved",
+      "snippet": "Certain domains are set aside, and nominally registered to “IANA”, for specific\npolicy or technical purposes.\n## Example domains\nAs described in RFC 2606 and RFC 6761, a number of domains such as example.com and example.org are maintained for documen",
+      "last_updated": "2026-09-25"
+    }
+  ]
+}

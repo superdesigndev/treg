@@ -1,0 +1,83 @@
+{
+  "age_s": 0,
+  "ai_overview": {
+    "sources": [
+      {
+        "title": "HubSpot CRM",
+        "url": "https://www.hubspot.com"
+      },
+      {
+        "title": "Salesforce Sales Cloud",
+        "url": "https://www.salesforce.com"
+      }
+    ],
+    "text": "The best CRM software depends on your company's size and goals, with HubSpot CRM leading for AI-driven sales and free tools, and Salesforce Sales Cloud leading for large-scale enterprise customization. Top CRM Software Choices HubSpot CRM: Best for AI-driven sales and growing small businesses due to"
+  },
+  "blocks": [
+    "ai_overview",
+    "organic",
+    "people_also_ask",
+    "related_searches"
+  ],
+  "cached": false,
+  "ms": 1045,
+  "pages": {
+    "asked": 1,
+    "got": 1,
+    "missing": []
+  },
+  "people_also_ask": [
+    "What is the #1 CRM platform?",
+    "Will CRM be replaced by AI?",
+    "What is the fastest growing CRM?"
+  ],
+  "related_searches": [
+    "Best CRM software for real estate",
+    "Top 10 CRM software for small business",
+    "Different CRM software"
+  ],
+  "results": [
+    {
+      "displayed_url": "https://www.salesforce.com",
+      "domain": "salesforce.com",
+      "position": 1,
+      "position_absolute": 2,
+      "snippet": "What is the #1 CRM in the world? Salesforce is consistently named the #1 CRM by IDC for providing world-class apps for every team and a unified platform that ...",
+      "title": "Choosing The Best CRM Software In 2026",
+      "url": "https://www.salesforce.com/crm/best-crm/"
+    },
+    {
+      "date": "Jan 5, 2026",
+      "displayed_url": "https://solutionsreview.com",
+      "domain": "solutionsreview.com",
+      "position": 2,
+      "position_absolute": 3,
+      "snippet": "The Best CRM Software Companies for 2026 · Act! · ActiveCampaign · Agile CRM · Apptivo · Bitrix24 · Brevo · Copper · Creatio. Description: ...",
+      "title": "27 of the Best CRM Software Companies to Know About for 2026",
+      "url": "https://solutionsreview.com/crm/2026/01/05/best-crm-companies-to-know-about/"
+    },
+    {
+      "date": "Jun 22, 2026",
+      "displayed_url": "https://zapier.com",
+      "domain": "zapier.com",
+      "position": 3,
+      "position_absolute": 5,
+      "snippet": "We put dozens of Salesforce alternatives through the wringer and came up with the 11 best CRM apps on the market.",
+      "title": "The 11 best CRM software in 2026",
+      "url": "https://zapier.com/blog/best-crm-app/"
+    }
+  ],
+  "search": {
+    "country": "us",
+    "device": "desktop",
+    "engine": "google",
+    "language": "en",
+    "location": null,
+    "num": 10,
+    "page": 1,
+    "q": "best crm software",
+    "time": null,
+    "type": "organic"
+  },
+  "source": "gg"
+}

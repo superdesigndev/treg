@@ -1,0 +1,14 @@
+{
+  "file": {
+    "file_id": "example-file-id",
+    "bytes": 273133,
+    "created_at": 1788247024,
+    "filename": "output.mp4",
+    "purpose": "video_generation",
+    "download_url": "https://example.invalid/generated-video.mp4"
+  },
+  "base_resp": {
+    "status_code": 0,
+    "status_msg": "success"
+  }
+}

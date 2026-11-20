@@ -1,5 +1,13 @@
-<svg viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="seranking">
-  <!-- Placeholder lettermark. Replace with the official seranking brand SVG. -->
-  <rect width="24" height="24" rx="5" fill="#5D3BE0"/>
-  <text x="12" y="12" fill="#fff" font-family="ui-sans-serif,system-ui,Arial,sans-serif" font-size="9" font-weight="700" text-anchor="middle" dominant-baseline="central">SE</text>
+<!-- Official vendor icon: https://seranking.com/wp-content/themes/se_theme/images/favicons/favicon_48x48.svg?v=2 ; retrieved 2026-09-24 -->
+<svg width="16" height="16" viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg">
+<g clip-path="url(#clip0_51_248)">
+<path d="M16 8C16 3.58172 12.4183 0 8 0C3.58172 0 0 3.58172 0 8C0 12.4183 3.58172 16 8 16C12.4183 16 16 12.4183 16 8Z" fill="#123AF8"/>
+<path d="M8.50946 7.53797L10.1086 5.93888C10.1943 5.85313 10.2425 5.73683 10.2425 5.61546V3.86447C10.2425 3.66601 10.0816 3.50512 9.88316 3.50512H8.13215C8.01078 3.50512 7.89449 3.55331 7.80873 3.63906L3.4314 8.01639H7.35449C7.78766 8.01639 8.2032 7.84423 8.50946 7.53797Z" fill="white"/>
+<path d="M7.30938 11.5546V13.4951L12.5686 8.23586H8.64549C8.21232 8.23586 7.79679 8.40802 7.49052 8.71428L5.00956 11.1953H6.95004C7.14849 11.1953 7.30938 11.3561 7.30938 11.5546Z" fill="white"/>
+</g>
+<defs>
+<clipPath id="clip0_51_248">
+<rect width="16" height="16" fill="white"/>
+</clipPath>
+</defs>
 </svg>

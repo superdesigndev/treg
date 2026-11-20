@@ -1,25 +1,59 @@
 ---
-title: Multi-tenancy — orgs, memberships, invites, per-org scoping
+title: Multi-tenancy - orgs, memberships, invites, per-org scoping
 status: shipped
 sources:
+  - src/treg/domain/governance/access.py
+  - src/treg/alembic/versions/0042_pinned_read_scope.py
+  - tests/test_pinned_read_scope.py
   - src/treg/models.py
   - src/treg/api.py
   - src/treg/caller_metadata.py
   - src/treg/application/auth.py
+  - src/treg/application/asynctasks.py
+  - src/treg/application/call/resolve.py
+  - src/treg/application/provider_resources.py
+  - src/treg/domain/provider_resources.py
+  - src/treg/routers/provider_resources.py
+  - src/treg/alembic/versions/0043_provider_resources.py
   - src/treg/application/signup.py
-  - src/treg/domain/governance/access.py
   - src/treg/domain/governance/budgets.py
   - src/treg/domain/governance/publicdemo.py
   - src/treg/domain/governance/teams.py
   - src/treg/domain/governance/usage.py
   - src/treg/domain/identity/access.py
+  - src/treg/domain/identity/api_keys.py
   - src/treg/domain/identity/session.py
+  - src/treg/application/enterprise_sso.py
+  - src/treg/alembic/versions/0079_enterprise_sso.py
+  - src/treg/alembic/versions/0080_enterprise_sso_audit.py
+  - src/treg/alembic/versions/0081_sso_manual_block.py
+  - src/treg/alembic/versions/0082_oauth_sso_provenance.py
+  - src/treg/alembic/versions/0083_enterprise_sso_safety.py
+  - src/treg/alembic/versions/0084_enterprise_workos_cleanup.py
+  - src/treg/alembic/versions/0085_enterprise_sso_blocks.py
+  - src/treg/worker.py
+  - src/treg/routers/enterprise_sso.py
+  - src/treg/infra/workos.py
+  - tests/test_enterprise_sso.py
+  - src/treg/domain/identity/promotions.py
+  - tests/test_team_limit.py
+  - tests/test_auth.py
+  - tests/test_token_revocation.py
   - src/treg/routers/auth.py
+  - src/treg/infra/turnstile.py
+  - src/treg/client_ip.py
+  - tests/test_client_ip.py
+  - src/treg/web/captcha.js
+  - tests/test_turnstile.py
+  - frontend/tests/captcha.test.ts
   - src/treg/routers/orgs.py
   - src/treg/routers/resources.py
+  - src/treg/application/connect.py
   - src/treg/domain/tools/bundles.py
   - src/treg/infra/db.py
-  - tests/test_router_dependencies.py
+  - src/treg/alembic/versions/0017_async_task_record.py
+  - src/treg/alembic/versions/0018_async_resource_ownership.py
+  - tests/test_asynctasks.py
 related:
   - architecture/data-model.md
   - architecture/proxy-model.md
@@ -28,226 +62,256 @@ related:
 
 # Multi-tenancy (orgs)
 
-The registry is **tenant-isolated**: an **Org** owns resources, a **User** is a global identity, and a
-**Membership** links them with a role and IS where the caller's token lives. A token = a `(user, org)`
-pair, so every list/create/mutation and the proxy are scoped to the caller's org. Design source:
-`docs/MULTI-TENANCY-PLAN.md` (standalone plan).
+An **Org** (team) owns resources, a **User** is a global identity, and a **Membership** links them
+with a role (owner > admin > member > viewer). A credential resolves to one membership, so every list,
+create, mutation and the proxy are scoped to the caller's org. Every list filters by `caller.org_id`,
+every create stamps `org_id` and `owner`, and `_resolve_call` scopes both the named lookup and the
+host passthrough to the org ([proxy-model](proxy-model.md)). Health runs take an `org_id` filter so
+`/health/run` never leaks other orgs' credentials.
 
-## The model (`models.py`)
-- **`Org`** — `id, name, slug (unique), suspended, demo, public_demo, created_at`. The tenant that owns
-  secrets/tools/bundles. **`public_demo`** marks a team whose member token is PUBLISHED (e.g. on the
-  landing page): non-admin members are locked to `/call` + reads and may never act as a user — enforced in
-  `require_member` / `require_identity`.
-- **`User`** — identity only: `id, email (unique), created_at`. No token, no role.
-- **`Membership`** — `user_id, org_id, role (owner|admin|member|viewer), token_hash (idx), webhook_url,
-  daily_call_cap` (per-user daily usage cap; `-1` = unlimited, admin-set — see the API fragment's
-  usage-metering section), **`tool_access`** (JSON; **NULL = ALL tools** — the default, so nobody is
-  restricted on upgrade — else the list of allowed tool NAMES) and **`local_run_enabled`** (bool, default
-  true); unique `(user_id, org_id)`. One person in N orgs has N memberships (N tokens). `ROLE_RANK` orders
-  owner > admin > member.
-- **`Invite`** — `org_id, email, role, code_hash (idx), status (pending|accepted|revoked), invited_by,
-  expires_at, email_token_hash (idx, nullable)`, plus **`tool_access` + `local_run_enabled`** (the access
-  to seed onto the membership when accepted — set access at invite time, edit later). Attached to an
-  **email**: redeem the one-time code, **or** prove that email (any identity door) and accept it code-free
-  — the code is a shortcut, not a requirement. `email_token_hash` is the inbox-only **second secret** in
-  the emailed link — it can sign the invitee in (`GET/POST /auth/invite-signin?t=`, one-time), while the
-  admin-visible code never can.
-- **`Project`** — an OPTIONAL sub-scope inside an org (`org_id`, `name`, `slug`, unique `(org_id, slug)`).
-  The org stays the hard isolation boundary; a project is a softer grouping on top. Deliberately a
-  **label + ACL scope, NOT a namespace**: `Tool.name` stays unique per `(org_id, name)`, so no unique
-  constraint had to be rebuilt (the flat-to-orgs migration had to do that once already, and SQLite cannot
-  alter constraints portably). `Tool.project_id` NULL = **org-wide**, which is every tool that predates
-  projects — so this shipped purely additive. Secrets stay org-level on purpose: one shared credential
-  legitimately backs tools in several projects.
-- **Machine identities** — a `User` on an **unroutable domain**, which is what makes it a machine
-  rather than a person. Two exist: the published demo token (`PUBLIC_DEMO_DOMAIN`) and an **agent**
-  (`AGENT_DOMAIN` = `agents.treg.local`). Both are minted by an admin and act ONLY by their token:
-  `_is_machine_email` gates them out of every login door and out of `require_identity` (below). An
-  agent needs **no new table and no migration** — it is a `Membership`, so it inherits `daily_call_cap`,
-  `tool_access`, `local_run_enabled` and per-identity audit for free, which is exactly what makes those
-  controls *per-agent*. NOTE: "agent" here is an IDENTITY; `agents.py` is the unrelated skill-directory
-  table ("where does each coding agent keep its skills").
-- Resource tables (`Secret`/`Tool`/`Bundle`/`CallRecord`/`PendingOAuth`) carry `org_id`; `owner`
-  (creator email) is kept for audit + the member role gate. `Tool.name` is unique **per `(org_id, name)`**
-  (`UniqueConstraint("org_id", "name")`), so two orgs may reuse a name.
+## The model
 
-## Enforcement (`domain.identity.access` and `domain.governance.access`)
-- **`require_member`** resolves `X-Treg-Token` → a `Membership` → a `Caller` (`membership, user, org`,
-  with `org_id`/`email`/`role` properties). 401 if the token matches no membership.
-- **`_role_at_least` + `_can_manage`**: admin/owner may manage any resource in the org; a member only
-  what they created (`resource.owner == caller.email`). Update/delete return 404 when the resource is in
-  another org, 403 when the role gate fails. **`_require_can_register`** gates create (secrets/tools/
-  skills/oauth): a **viewer** (rank below member) may `call` + list only, and gets 403 on any register.
-  `ROLE_RANK` orders owner > admin > member > viewer.
-- **Per-member tool ACL (the release feature).** `_require_tool_access(caller, tool.name)` gates **all**
-  use of a tool — the proxy `call_tool`, the server `run_tool_server`, AND the local `grant_local_run`:
-  allowed if the member's `tool_access` is NULL (all) or names the tool; the **owner is exempt**
-  (`_tool_allowed`), admins + members can be restricted. `_require_local_run(caller)` additionally gates the
-  LOCAL tier on `local_run_enabled` (off → server runs only). Set via `set_member_access`
-  (`PATCH /orgs/{id}/members/{user}/access`, admin+; an owner can't be restricted): `_normalize_tool_access`
-  validates the names against the org's tools (422 on unknown) and **collapses an all-tools selection back
-  to NULL** so a fully-checked member keeps auto-getting new tools. It's an **explicit allow-list**: a
-  *customized* member does NOT auto-get a newly-registered tool (the dashboard toasts a reminder). `Invite`
-  carries `tool_access`/`local_run_enabled` (validated at `create_invite`) → copied onto the membership at
-  both accept doors. `list_members` returns both fields. ACL refusal details originate as
-  `AccessPolicyError`; call, run, and resource HTTP surfaces translate them to the same 403 response.
-- **Agents (`create_agent` / `list_agents` / `revoke_agent`, `/orgs/{id}/agents`, admin+).** Mints a
-  member identity for a machine caller, reusing the `create_public_token` recipe (re-POST the same name
-  **rotates** — the old token dies there; revoke deletes the membership). Three invariants, each closing
-  a real hole:
-  1. **An agent token can never act as a USER.** `create_org` depends on `require_identity`, so without
-     the `_is_machine_email` refusal there an agent could create a fresh org **in which it is owner** —
-     and owners are exempt from `_require_tool_access` / `_require_local_run`, escaping every limit on it.
-  2. **An agent can never be an owner** — blocked in `create_agent` AND in `set_member_role`, for the
-     same exemption reason.
-  3. **The address is org-scoped** (`agent-{org.slug}-{name}@…`, mirroring `_public_demo_email`): two
-     orgs must each own an agent called `deploy` without sharing one `User` row, or a superadmin
-     suspending one tenant's agent would kill the other's. Agents are always looked up by
-     *(org + domain)*, never by recomputing the address, so an org rename can't orphan them.
-  Every identity door is blocked at the shared choke point `_find_or_create_user`, plus `register_user`
-  (which predates it and creates a `User` directly) and `auth_email_start` (refuse early, mint no code).
-  `list_members` carries `is_agent` so one roster can show people and machines apart.
-  **A rotate replaces the TOKEN, never the limits.** Because rotate is the same endpoint as create, an
-  absent optional field used to fall back to its permissive default — and the dashboard's Rotate button
-  sends only `{name, role, daily_call_cap}`, so a scoped agent silently became unrestricted
-  (`tool_access=None` = every tool) just by getting a new token: round-4 blocker #2. `create_agent` now
-  writes a field **only when the caller actually sent it** (`body.model_fields_set`, the shape
-  `set_member_access` already used for `project_access`); a brand-new agent, having nothing to keep,
-  still takes the documented defaults. `AgentIn` now DOES take `project_access` (slugs or ids, via
-  `_normalize_project_access`) so an agent can be project-scoped at mint time — under the same
-  sent-guard, so a rotate that omits it still preserves it. `Membership.created_by` (migration A23)
-  stamps the minting admin, giving every agent an owner in the roster.
-- **Observed agents (`GET /orgs/{id}/agents/observed`, admin+).** The OTHER half of the agents story:
-  the runtimes already calling under members' own tokens. The CLI fingerprints its host runtime
-  (`CLAUDECODE` → `claude-code`, `CODEX_*`, `CURSOR_*`, …; `TREG_CLIENT` overrides) and sends
-  `X-Treg-Client`; `_client_of` normalizes it (slug ≤32, versions stripped, unknown-but-well-formed
-  kept so a new runtime needs no release) onto `CallRecord.client` / `RunRecord.client` at all three
-  audit points. The endpoint aggregates 30 days into one row per (member, runtime), excluding
-  `''`/`cli` (a roster listing every human twice teaches nothing) and machine identities (already
-  attributed to themselves). **Attribution, never authentication** — anything holding the token can
-  claim any name, so nothing gates on it; scoping a detected agent for real = minting it a token
-  (the dashboard's "Scope this agent" promotion).
-- **Two ACL axes, composed as AND** (`_tool_usable` = `_tool_allowed` AND `_project_allowed`). The
-  project scope is the coarse dial, `tool_access` the fine one; both are NULL-means-everything and the
-  owner is exempt from both. `project_access` holds project **IDs**, not slugs, so the hot-path check is
-  a pure set test (no id→slug query per call) and a rename cannot strand an access list.
-  `project_access=[X]` with `tool_access=NULL` means "every tool in project X, **including ones added
-  later**" — the composition that makes the coarse dial useful alone. `_normalize_project_access`
-  accepts slugs or ids, 422s on an unknown one, and collapses an all-projects selection back to NULL
-  (mirroring `_normalize_tool_access`). Endpoints: `create_project` / `list_projects` (a scoped member
-  sees only their own) / `delete_project` (admin+) — deleting **frees** its tools back to org-wide rather
-  than hiding them, and drops the id from every member's scope, **storing an emptied list as `[]`, never
-  NULL**. NULL means *every project*, so collapsing `[]` would hand a member scoped to only the deleted
-  project the run of every OTHER project's tools — a privilege escalation fired by an unrelated delete
-  (round-4 blocker #1, `test_security_round4.py`). `[]` already carries the intended meaning (org-wide
-  tools only), and nobody is locked out because the **freed tools** are what they keep: whatever the
-  member could reach before the delete they can still reach after it. That, not a widened scope, is
-  what "never lock anyone out" rests on. Invites carry `project_access` onto the membership at both
-  accept doors, exactly as `tool_access` does.
-- Every list filters by `caller.org_id`; every create stamps `org_id = caller.org_id` +
-  `owner = caller.email`; `_resolve_call` scopes **both** the named lookup and the host/longest-prefix
-  passthrough to the org; `call_tool` loads only same-org secrets. See [proxy-model](proxy-model.md).
+- **`Org.public_demo`** marks a team whose member token is published: non-admin members are locked to
+  `/call` plus reads and may never act as a user (`require_member` / `require_identity`).
+- **`ApiKey`** resolves a credential to a membership; the membership stays the only source of role,
+  tool and project access, local-run permission, daily call cap, daily spend limit and billing
+  identity, so more keys never mean more quota. A known disabled or revoked key never falls back to `Membership.token_hash`
+  (legacy, left empty for new memberships). A signed Default token carries the row's team-local
+  generation; rotation increments it, invalidating the prior token without touching other teams.
+  After membership removal the detached, revoked Default row keeps the old token unauthorized.
+- **`Invite`** is attached to an email. Both accept doors require the caller to be signed in as that
+  email (`require_identity`): `POST /invites/accept` finds the invite by its one-time code,
+  `POST /invites/{id}/accept` by id; both run `_join_invited_team`. The code is returned to the
+  admin who created the invite, so it only names the invite: it never signs anyone in, never
+  creates a `User`, and never yields a token for an account the caller has not proven.
+  `email_token_hash` is the second secret in the emailed link; `/auth/invite-signin` resolves it
+  to the invitee's address and redirects to the login with it prefilled, never a session, because
+  an emailed secret is only as private as every system the mail passes through and any team admin
+  can make one be sent to any address. The link's host is `public_url` or a configured alias, never
+the request's raw `Host`. The invite carries the access (`tool_access`, `project_access`, `local_run_enabled`)
+  copied onto the membership at both accept doors.
+- **`Project`** is an optional label and ACL scope, not a namespace: `Tool.name` stays unique per
+  `(org_id, name)`, `Tool.project_id` NULL means org-wide, and secrets stay org-level because one
+  credential legitimately backs tools in several projects.
+- **Machine identities** are users on an unroutable domain: the published demo identity
+  (`PUBLIC_DEMO_DOMAIN`) and agents (`AGENT_DOMAIN`). They act only by token; `_is_machine_email`
+  keeps them out of every login door and `require_identity`. An agent is just a membership, which is
+  what makes cap, ACL and audit per-agent. (`agents.py` is the unrelated skill-directory table.)
+- [Enrich Arena](../interface/enrich-arena.md) runs require both the creating user and the active
+  team to match; team membership alone does not expose another member's results.
+- `OrgFlowControlVersion.org_id` intentionally has no foreign key; management writes must validate Org
+  existence and coordinate with deletion ([configuration storage](data-model.md#org-flow-control-configuration-storage)).
 
-`domain.identity.access` is the shared identity/access boundary: `Caller`, token/session/org resolution,
-dependencies, role comparison, and machine classification. Session signing and validation live in
-`domain.identity.session`.
-- **Registration is shared across doors:** `application.signup.find_or_create_user(db, email)` finds a user or creates them
-  — **the user ONLY, no auto personal org**. Every identity door calls
-  it (GitHub / Google callbacks, email OTP), so "first proof = registration" is identical. A brand-new
-  user therefore lands with **zero teams** and must name + create their first one (the dashboard's
-  mandatory welcome, or `treg org create`); their identity token is user-scoped so it works before any
-  org exists. **`create_org` uses `require_identity`, NOT `require_member`** — else a zero-org user could
-  never make their first team. See [api](../interface/api.md).
-- **Code-free invites:** `my_invites` (`GET /invites/mine`, `require_identity`) lists pending invites for
-  the caller's proven email; `accept_my_invite` (`POST /invites/{id}/accept`, `require_identity`) joins
-  with no code (403 if `invite.email != user.email`, 409 if already a member). The code path stays.
-- **Org management endpoints:** `register_user` (`POST /users`, legacy open-registration, used by the
-  test fixture) still creates the user + an org + owner membership via `_make_org_membership` (mints the
-  token) — NOT reached by the dashboard/CLI login doors, which no longer auto-make an org. Both this door
-  and `create_org` read the first-party ad-click cookie (`application.signup._ad_attribution_from`) and,
-  when enabled and present, stamp `Org.ad_gclid`/`ad_click_id_type`/`ad_landing`/`ad_click_at` on the
-  new org — preserving whether the click was a GCLID, GBRAID or WBRAID — see
-  [ads-conversions](ads-conversions.md). `create_org`
-  (`POST /orgs`, `require_identity`),
-  `list_orgs` (`GET /orgs`), `create_invite` (`POST /orgs/{id}/invites`, admin+), `accept_invite`
-  (`POST /invites/accept`, open + code-protected → registers the user if new, joins them to the invited
-  team, mints its token; a brand-new invitee joins the invited team **only** — no separate personal org),
-  `list_members`
-  / `remove_member` (`GET`/`DELETE /orgs/{id}/members[/{user}]`, admin+; owners cannot be removed).
-  `_require_admin_of(org_id, caller)` gates the admin endpoints (token must be for that org + role ≥ admin).
-- **An identity leaving takes its caller-owned state with it (`delete_membership`).** A `DenyRule` aimed at
-  one caller (`user_id` set) is meaningless once that caller is gone, and it lingers in the Policy
-  table naming a user id nobody can resolve. `remove_member`, `leave_org` and `revoke_agent` sweep the
-  rules for that `(user_id, org_id)`; `admin_delete_user` sweeps **every org's** rules for that user,
-  because `DenyRule.user_id` is a foreign key and a surviving row would dangle — Postgres rejects that
-  outright, while SQLite only hides it by not enforcing FKs (so the test suite alone cannot catch it).
-  ORG-wide rules (`user_id` NULL) are never touched: they are about the team, not about one caller.
-  The same helper deletes `IdempotentCall` rows keyed to the membership before deleting it; those are
-  replay caches, not audit history, and no valid caller remains after revocation. The foreign key also
-  uses `ON DELETE CASCADE` as a database-level backstop. This closes the production failure where
-  revoking an agent that had made an idempotent paid call returned 500 and rolled its token revocation
-  back. Mirrors how `delete_project` sweeps the id it deletes out of every `project_access`.
-- **Org administration:** `set_member_role` (`PATCH /orgs/{id}/members/{user}`, **owner-only** via
-  `_require_owner_of`; a `_count_owners` last-owner guard blocks demoting the sole owner — ownership
-  transfer = promote another to owner, then step down), `leave_org` (`POST /orgs/{id}/leave`, self-removal,
-  same last-owner guard), `delete_org` (`DELETE /orgs/{id}`, owner-only, cascades every org-scoped row
-  through `cascade_delete_org` / `ORG_SCOPED_MODELS` in `domain/governance/teams.py` - including any
-  pending `AdConversion`: a queued conversion belongs to the team it would be attributed to).
-  **That list is the only one.** Owner delete, admin force-delete, the landing-sandbox reaper and the
-  demo reset all go through it; `test_org_delete_clears_EVERY_org_scoped_table` walks the models module
-  for anything carrying `org_id` and also refuses a reaper that keeps a private copy. The sandbox reaper
-  did until 2026-09-02, its copy never learned about `IdempotentCall` (which references a Membership),
-  and every sandbox mint 500'd at the foreign key until it was fixed.
-- **Invites lifecycle:** one-time **and** time-bounded — `Invite.expires_at` (default `INVITE_TTL_DAYS`),
-  `accept_invite` returns `410` past expiry. `list_invites` (`GET /orgs/{id}/invites`, admin+) and
-  `revoke_invite` (`DELETE /orgs/{id}/invites/{invite}`, admin+); expired codes are garbage-collected by
-  `health.gc_expired_invites` (opportunistically on list, periodically in the health run).
+## Tokens
 
-## Hardening (invariants enforced)
-- **Email is a case-insensitive identity.** `_norm_email` (strip + lowercase) is applied at every
-  identity door and every invite comparison, so `Bob@X.com` and `bob@x.com` are one user/one personal
-  org and an invite is always redeemable regardless of the case typed.
-- **Invite hygiene.** `create_invite` refuses to invite an email that is already a member (409, no
-  dead-end invite) and **supersedes** any prior pending invite for that email (one live code per
-  invitee). `revoke_invite` only deletes a still-`pending` invite. An admin may not issue an `admin`
-  invite (owner-only, mirroring `set_member_role`). Suspended users/orgs can neither view nor accept.
-- **Governance never evaporates.** `admin_delete_user` promotes the earliest-joined survivor to owner
-  when it removes an org's sole owner; the accept/create paths return a clean `409` (not a 500) on the
-  membership/slug uniqueness race (`create_org` retries with a fresh `_unique_slug`).
-- **Slug vs id.** `_resolve_org` resolves `X-Treg-Org` by slug first (an all-digit slug like `2024` is
-  producible and must not be reinterpreted as a primary key).
+`domain.identity.session`: sessions and identity tokens share one HMAC key but carry a signed
+audience (`aud=session`, 7-day `exp`; `aud=identity`), and each reader rejects the other audience.
+`token_version` revokes either family. Signed human credentials declare `scp`: `scp=team` is a
+Default key whose `org` is authoritative (a conflicting `X-Treg-Org` is rejected, never charged to
+another team); `scp=bootstrap` is the 7-day org-less login credential that may list, create and join
+teams but is rejected by `require_member` even with `X-Treg-Org`.
 
-## Schema ownership
-Alembic owns the multi-tenant schema. The 0.14.x adoption release converted and stamped legacy
-databases; current releases refuse a non-empty unstamped database and direct the operator through that
-floor. `db.verify_db()` checks revision compatibility without creating or repairing tenancy tables.
+Legacy tokens predate `aud`: an `org` claim marks a team-pinned copied key, usable past its former
+`exp`; an untyped no-`exp` key is identity-only; an untyped org-less token with `exp` is
+indistinguishable from a browser session and works only until that timestamp.
 
-> Health (`run_all`) takes an `org_id` filter so `/health/run` never leaks other orgs' credentials, and
-> alerts resolve the owner's per-org membership webhook. See [auth-secrets](auth-secrets.md).
+`require_member` checks managed key state before the legacy hash fallback and returns 401 for a
+missing, disabled or revoked key. Last-used metadata is a throttled background write after the
+dependency commits; it never extends the auth transaction.
 
-## Caller tags are a label, not a tenancy boundary
+## Access control
 
-A builder reselling treg tags each call with their own ids (`X-Treg-Meta: customer=cust_8123,
-workspace=ws_9`) so they can attribute, budget and invoice their users. Those tags drive real money
-decisions — see [money](money.md) — but they change nothing about isolation.
+- **Roles.** Admin and owner manage any resource in the org; a member only what it created
+  (`resource.owner == caller.email`). Another org's resource is 404, a failed role gate 403. A viewer
+  may call and list only (`_require_can_register`). A tool name containing a dot is the shape of a
+  catalog or hub id, and an own tool of that name answers every call to the id in the team, so
+  choosing one needs admin or owner (`_require_admin_for_dotted_names`, on `POST /tools` and skill
+  registration); an OAuth connection name, like a rename, must pass `_valid_tool_name`.
+- **The roster is admin-only** (`list_members`); any member may read the team's human owners and
+  admins (`list_admins`, email and role only) so a member out of credit knows whom to ask.
+- **Two ACL axes, ANDed** (`_tool_usable` = `_tool_allowed` and `_project_allowed`). Both are
+  NULL-means-everything, and the owner is exempt from both. An all-selected list collapses back to
+  NULL so the member keeps getting new tools; a customized list is an explicit allow-list that does
+  not. `project_access` stores ids, not slugs, so the hot path is a set test and a rename cannot strand
+  it. `project_access=[X]` with `tool_access=NULL` means every tool in X, including later ones.
+  Deleting a project frees its tools to org-wide and removes its id from every member's scope, storing
+  an emptied list as `[]`, never NULL: NULL would grant every other project's tools.
+- `_require_local_run` gates the local tier on `local_run_enabled`. Server-side CLI execution is
+  disabled for every caller, owners included.
+- ACL refusals originate as `AccessPolicyError` and every HTTP surface translates them to the same 403.
 
-**The org remains the only hard boundary.** A tag is caller-asserted: anyone holding the token can
-send any value, exactly like `X-Treg-Client`. That is acceptable because every budget and every report
-a tag touches belongs to the team that sent it, so the only party who can mis-tag is the one who owns
-the consequences. It is *not* acceptable as a wall between mutually distrusting parties, and nothing
-in the codebase treats it as one.
+### Agents
 
-The rule to give builders: **tag for counting, token for control.** Start everyone on tags; mint a
-scoped agent token for the few who need real separation — different tool access, or a credential that
-runs on the end user's own machine. A pinned token (`Membership.pinned_tags`) is the one case where a
-tag stops being caller-asserted: the pin beats the header and a mismatch is a 403, because a token
-handed to one user must not be able to bill another.
+`/orgs/{id}/agents` (admin+) mints a machine member; re-POSTing a name rotates its token. Invariants:
 
-Two consequences worth stating plainly:
+1. An agent token can never act as a user (`create_org` uses `require_identity`, which refuses machine
+   emails); otherwise an agent could create an org it owns and escape every limit.
+2. An agent can never be an owner (`create_agent` and `set_member_role`), for the same exemption.
+3. The address is org-scoped (`agent-{org.slug}-{name}@...`) so two orgs' `deploy` agents never share
+   a `User`; agents are looked up by org and domain, and `_agent_name` strips the current or previous
+   slug so a rename orphans nothing.
+4. A rotate replaces the token, never the limits: `create_agent` writes only fields the caller sent
+   (`model_fields_set`), because the dashboard's Rotate sends only name, role and cap.
 
-- **`TagBudget` never grows a balance column.** One org, one balance. Budgets are ceilings on a shared
-  pot, not sub-accounts; per-user balances would be a second money authority and are out of scope.
-- **`TagSpend` and `TagBudget` are org-scoped** and registered in
-  `domain/governance/teams.py`'s `ORG_SCOPED_MODELS`, `TagSpend`
-  ahead of `LedgerEntry`/`Hold` because it references them. `tests/test_orgs.py` walks the models and
-  fails if a new `org_id` table is missed.
+**Observed agents** (`GET /orgs/{id}/agents/observed`) aggregate the CLI-reported `X-Treg-Client`
+runtime per member. This is attribution, never authentication: anything holding a token can claim any
+name, so nothing gates on it. Scoping a detected agent means minting it a token.
+
+## Sign-in doors
+
+- `application.signup.find_or_create_user` is the shared registration choke point for every identity
+  door; it creates the user only, so a new user has zero teams and must create one. `create_org`
+  therefore uses `require_identity`, not `require_member`. `create_org` stamps ad attribution
+  ([ads-conversions](ads-conversions.md)). A new invitee signs in first (zero teams), then
+  `accept_invite` joins them to the invited team only.
+- `find_or_create_user` reports ids it actually inserted, so `signup_completed` fires only for new
+  accounts and only after the door's commit.
+- **Email-domain blocklist.** `TREG_BLOCKED_EMAIL_DOMAINS` is the only list (unset blocks nothing) so a
+  new domain is a config edit, not a deploy. Rules, each because the obvious version is wrong: match
+  the domain only, never the address; walk parent domains by whole labels, never the bare TLD, or
+  `<random>.<listed>` bypasses it; drop dotless entries so a typed `com` cannot refuse the world;
+  refuse at sign-in as well as sign-up. `signup.blocked_email(email, door)` decides, logs
+  `event=signup_blocked_domain` (the only detection, since the refusal reveals nothing) and fails open
+  on a classifier error. Doors: `start_email_login`, `find_or_create_user` and `create_org`; invite acceptance creates no `User`, so sign-in guards it. Every refusal is the same
+  403 as a machine identity, so the caller learns nothing about the list. Live sessions keep working
+  until suspension.
+- **Client address.** Every per-IP limit keys on `client_ip.of(request)`: `TREG_CLIENT_IP_HEADER`
+  when set and valid, else the `X-Forwarded-For` entry `TREG_TRUSTED_PROXY_HOPS` from the right, else
+  the socket peer. Never the first `X-Forwarded-For` entry, which is the client's own claim. MCP tools
+  call the API in process and forward the resolved address (`client_ip.forwarding_headers`) so MCP
+  callers keep their own buckets. Every per-IP window is built with `ratestore.ip_limit`, which
+  drops the address entry for an address `TREG_RATE_LIMIT_EXEMPT_IPS` names (`client_ip.exempt`);
+  the per-email, per-user and deployment-wide entries beside it still decide, and no money cap is
+  touched. The list is parsed at startup, so a malformed entry refuses to boot.
+- **Turnstile on email start**, the only door minting an inbox proof from a bare HTTP call. Off unless
+  site key and secret are set. Every page posting to `/auth/email/start` loads `/captcha.js` and sends
+  `captcha_token` (a test enforces it); a script that cannot get a token sends `!blocked`, `!pending`
+  or `!error`, never forwarded to Cloudflare. `infra/turnstile.py` only classifies (`pass`, `missing`,
+  `invalid`, `unavailable`) and never raises; a rejected secret is `unavailable`, not every caller a
+  bot. The rate window runs and commits before the check so junk tokens cannot drive unbounded
+  siteverify calls and no connection waits on Cloudflare. `TREG_TURNSTILE_MODE=observe` (default) only
+  logs; `enforce` refuses `missing`/`invalid` with 400 and lets `unavailable` through, but a new user
+  created after a non-`pass` gets `signup_promo_available=false`. Captcha refusals carry
+  `X-Treg-Captcha: required` so `treg login --email` falls back to the browser handshake.
+  `TREG_FIXED_LOGIN_CODES` accounts skip the check.
+- **Turnstile on social sign-in**, because a provider proves an identity, not a person, and fresh
+  GitHub or Google accounts are cheap. The check runs where credit is decided: after the provider
+  callback, and only for an address no verified user holds yet. The callback parks the proven login
+  (encrypted, `HANDSHAKE_TTL`) under a nonce in the `treg_social_check` cookie and sends the browser
+  to `GET /auth/social/check`, which runs `social_start` and posts its token back. `POST` takes the
+  login once, classifies the token under a per-IP window (over it the token is not sent), and signs
+  in. Nothing is refused: in `enforce` a check that is not `pass` creates the user without credit,
+  or, for an unverified user this proof verifies first (an invitation-code member), withdraws its claim
+  (`find_or_create_user`, shared with the email door's outage case). Verified users sign in
+  without the check. Each first social proof logs `event=social_signup` with the outcome and, for
+  GitHub, the account age in days. `TREG_TURNSTILE_SOCIAL=false` skips the check on both social doors
+  (a new address signs in at once with credit, its log line reads `captcha=-`) while the email door
+  keeps its own.
+
+## Membership and team lifecycle
+
+- **Owned-team limit:** at most `MAX_OWNED_TEAMS` current owner memberships (demo and suspended teams
+  count). `require_owned_team_slot` locks the user (`lock_user`) through the write and commit; creation,
+  demo creation and owner promotion share it. It caps current ownership, not creation rate.
+- **Owner changes:** `set_member_role` is owner-only and an admin may not issue an `admin` invite; a
+  last-owner guard blocks demoting or leaving as sole owner (transfer = promote, then step down). Owners
+  cannot be removed. `admin_delete_user` promotes the earliest survivor when it removes a sole owner.
+- **`delete_membership`** (remove, leave, revoke agent) deletes that caller's `DenyRule`s and
+  `IdempotentCall` rows; `admin_delete_user` sweeps every org's rules for the user. Org-wide rules are
+  untouched. SQLite does not enforce FKs, so the suite alone cannot catch a dangling row here.
+- **`cascade_delete_org`** with `ORG_SCOPED_MODELS` (`domain/governance/teams.py`) is the only team
+  deletion path: owner delete, admin force-delete, reapers and demo reset all use it, and
+  `test_org_delete_clears_EVERY_org_scoped_table` refuses any table with `org_id` missing from the list
+  or a private copy. One named exception: it first deletes every `HubRun` whose `caller_org_id` is the
+  team, because a run belongs to its caller, and a maker's deletion leaves callers' history intact.
+  Workbench `TableDoc` rows go before their `TeamDatabase` ([workbench-storage](workbench-storage.md)).
+- **Invites** are one-time and expire after `INVITE_TTL_DAYS` (410). Inviting an existing member is
+  409; a new invite supersedes the prior pending one for that email. Suspended users and orgs can
+  neither view nor accept.
+- **Email** is case-insensitive (`_norm_email`) at every door and invite comparison.
+- **Slug resolution:** `X-Treg-Org` resolves by slug first (an all-digit slug must not be read as an
+  id), then `previous_slug`, then id. A rename moves the old slug to `previous_slug` instead of
+  revoking every copied key; it still resolves and no other team may take it. One alias only. `sbx-`
+  is reserved.
+- **Reserved names:** `teams.reserved_reason` refuses a name or slug that reads as treg, "official",
+  or a catalog provider or platform (a hub tool id is `<team slug>.<name>`), matching how text reads
+  (NFKC, lookalike letters, leetspeak, separators stripped). Checked at `create_org` and `rename_org`; a superadmin may bypass.
+- **Uniqueness races** on membership or slug return 409, never 500.
+
+## Agent payer teams
+
+`governance.teams.make_payer_team` creates the team of one agent-payments wallet address on one
+network: a machine user `<address>.<network slug>@payers.treg.local` (`identity.access.PAYER_DOMAIN`, counted by
+`_is_machine_email` and `api_keys.is_machine_email`, so no sign-in door and no signup credit), one
+`member` membership with an empty `token_hash`, and the `AgentPayer` row. No token or session can
+reach it; `routers.call._paid_call` acts for it only after a verified payment or proof from that
+address on that network
+([agent payments](agent-payments.md)). `AgentPayer` and `AgentPayment` are in
+`ORG_SCOPED_MODELS`, so a deleted payer team takes them with it.
+
+## Enterprise SSO
+
+WorkOS handles the customer's SAML or OIDC connection; treg keeps its own users, memberships, roles,
+sessions and keys. Rules a change must keep:
+
+- A WorkOS code exchange is accepted only when the returned organization is this team's stored WorkOS
+  organization and the connection is the one previously used. Email domain alone never grants access;
+  discovery only routes to a team link, and membership comes only from the state-checked callback.
+- A profile links by stable profile and IdP ids; later email changes need review, never silent
+  reassignment. A new account needs an email on a verified organization domain; an existing global
+  account needs a concurrent normal treg session for the same verified user before first linking.
+- After enforcement, non-owners need a signed SSO session for this team; an SSO session or derived
+  token reaches only that team. The owner keeps a regular-login recovery path. A regular session
+  cannot mint a Default key for an enforced team. Earlier non-owner bearer keys and pre-enforcement
+  OAuth grants stop authorizing the team. CLI pairing, OAuth issuance, exchange, refresh and use all
+  recheck SSO scope.
+- Directory Sync: once a directory is connected, sign-in requires a matching active roster user;
+  inactive or deleted users lose membership and keys. Only directories in the `linked` state count,
+  so a disconnected directory cannot authorize anyone. Groups never map to roles. WorkOS event ids
+  make redelivery harmless, and a worker can reconcile the full roster. `EnterpriseSSOBlock` (a manual
+  removal) beats active directory records until the owner restores access, across replacement
+  connections.
+- Access changes and their `EnterpriseSSOAudit` rows commit together.
+- `past_due` keeps SSO active while Stripe retries. When the subscription ends, enforcement lifts and
+  only SSO-created memberships are removed; the cleanup worker deletes the WorkOS directory and
+  connection and records completion before a new checkout can start.
+
+## Caller tags and pinned read scopes
+
+`X-Treg-Meta` tags are attribution labels an unpinned caller chooses freely. A membership's
+`pinned_tags` are enforced: a conflicting header is 403. `pinned_tag_predicates` requires every pinned
+key/value and is applied before pagination or loading archive bodies on `/calls`, `/calls/{id}/result`,
+`/calls/{call_ref}`, `/runs`, `/activity`, `POST /reviews` and feedback reads; a foreign or
+unattributed id is 404 like an unknown one. Matching is by pin, not current membership: identities
+sharing a pin share the view, and changing a pin does not relabel earlier records. Untagged historical
+rows are readable by unpinned members only; attribution is never inferred from current membership.
+
+Every audit writer stores the pin; async task and resource records snapshot submission tags in their
+own transaction, and resources found later inherit the task's tags. The reserve ledger entry freezes
+tags in `meta.tags`, so `/calls/{call_ref}` can serve ledger-only history when audit was shed. treg's
+replay key includes the full pin; on the shared key the forwarded idempotency label is partitioned by
+it too (unpinned and BYOK forwarding unchanged). Public media URLs stay bearer-by-possession. A
+`TagBudget` is a ceiling on the shared balance, never a sub-account.
+
+## Shared-provider objects are org-scoped
+
+- **Async ids.** A platform-key poll or result fetch must resolve its id through an org-owned
+  `AsyncTaskRecord` or `AsyncResourceRecord` before the upstream is contacted. Exactly one value is
+  read (query, or the declared `in: body` parameter); in a body array every element must name that
+  same id, so an owned first task cannot smuggle another team's id. A `produces` path may use `*`
+  to own every task of one submission.
+- **Durable resources.** A platform-key managed-resource call verifies every id against
+  `ProviderResource` first. A `use` tool may declare a read-only public lookup for ids absent from the
+  table, checked with no DB connection held; an id owned by another org or tombstoned is denied
+  locally and never looked up. Every member may manage the team's objects. The dashboard inventory
+  requests `source=platform` so a BYOK account never widens it.
+- BYOK calls keep access to the team's own provider account; these scopes never partition it.
+
+## Released CLI compatibility
+
+Released CLIs that would save a bootstrap token or keep the previous team's token after switching are
+stopped with 426 by `routers.auth_helpers.require_managed_cli` before email credentials are issued, a
+team is created or an invite consumed. Current CLIs send `X-Treg-Key-Protocol: 1`. The legacy hint
+(`python-httpx/` User-Agent plus `ngrok-skip-browser-warning: 1` without the marker) is a
+compatibility check, not an authorization boundary: forging or omitting it never relaxes token
+restrictions. `test_cli_key_compatibility` checks the refusal leaves credentials and the team unchanged.

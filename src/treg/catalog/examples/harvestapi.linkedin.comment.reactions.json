@@ -1,0 +1,29 @@
+{
+  "pagination": {
+    "totalElements": 2,
+    "totalPages": 1,
+    "pageNumber": 1,
+    "previousElements": 0,
+    "pageSize": 100
+  },
+  "elements": [
+    {
+      "id": "1234567890",
+      "reactionType": "LIKE",
+      "postId": "1234567890",
+      "actor": {
+        "id": "1234567890",
+        "name": "Synthetic example",
+        "linkedinUrl": "https://example.com/synthetic-record",
+        "position": "Synthetic example",
+        "pictureUrl": "https://example.com/synthetic-record"
+      }
+    }
+  ],
+  "status": 200,
+  "retries": 0,
+  "payments": [
+    "linkedinPostReactions"
+  ],
+  "cost": 0.004
+}

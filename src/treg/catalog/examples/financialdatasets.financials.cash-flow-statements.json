@@ -1,0 +1,33 @@
+{
+  "cash_flow_statements": [
+    {
+      "accession_number": "0000320193-25-000079",
+      "business_acquisitions_and_disposals": null,
+      "capital_expenditure": 12715000000,
+      "change_in_cash_and_equivalents": 5991000000,
+      "currency": "USD",
+      "depreciation_and_amortization": 11698000000,
+      "dividends_and_other_cash_distributions": 15421000000,
+      "effect_of_exchange_rate_changes": null,
+      "ending_cash_balance": 35934000000,
+      "filing_date": "2025-10-31",
+      "filing_datetime": "2025-10-31T10:01:26-04:00",
+      "filing_url": "https://www.sec.gov/Archives/edgar/data/320193/000032019325000079/0000320193-25-000079-index.htm",
+      "fiscal_period": "FY2025",
+      "form_type": "10-K",
+      "free_cash_flow": 98767000000,
+      "investment_acquisitions_and_disposals": -29390000000,
+      "issuance_or_purchase_of_equity_shares": -90711000000,
+      "issuance_or_repayment_of_debt_securities": -8483000000,
+      "net_cash_flow_from_financing": -120686000000,
+      "net_cash_flow_from_investing": 15195000000,
+      "net_cash_flow_from_operations": 111482000000,
+      "net_income": 112010000000,
+      "period": "annual",
+      "property_plant_and_equipment": -4154000000,
+      "report_period": "2025-09-27",
+      "share_based_compensation": 12863000000,
+      "ticker": "AAPL"
+    }
+  ]
+}

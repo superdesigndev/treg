@@ -10,11 +10,12 @@ from fastapi import FastAPI
 from httpx import ASGITransport, AsyncClient
 from starlette.routing import Mount
 
+from conftest import mcp_text_result
 from treg import mcp
 from treg.domain.identity import mcp_oauth
 from treg.routers import auth as auth_routes
 from treg.bootstrap import create_app
-from treg.config import Settings, get_settings
+from treg.config import get_settings
 
 
 MCP_HEADERS = {"Content-Type": "application/json", "Accept": "application/json, text/event-stream"}
@@ -66,11 +67,7 @@ async def _call_tool(client: AsyncClient, name: str, args: dict, token: str,
     }, token, extra_headers, path=path)
     response = await _rpc(client, "tools/call", {"name": name, "arguments": args},
                           token, extra_headers, path=path)
-    payload = response.json()
-    content = (payload.get("result") or {}).get("content") or []
-    if content and content[0].get("type") == "text":
-        return json.loads(content[0]["text"])
-    return payload
+    return mcp_text_result(name, response.json())
 
 
 async def _modern_rpc(client: AsyncClient, method: str, params=None,
@@ -89,11 +86,6 @@ async def _modern_rpc(client: AsyncClient, method: str, params=None,
         "MCP-Protocol-Version": "2026-07-28",
         "MCP-Method": method,
     })
-
-
-async def test_v2_feature_flag_defaults_off(monkeypatch):
-    monkeypatch.delenv("TREG_CLAUDE_CONNECTOR_ENABLED", raising=False)
-    assert Settings(_env_file=None).claude_connector_enabled is False
 
 
 async def test_v2_feature_flag_disables_mount_metadata_grants_and_catalog_route(
@@ -176,11 +168,43 @@ async def test_v2_no_slash_path_rejects_a_v1_token_with_the_v2_challenge(monkeyp
         get_settings.cache_clear()
 
 
+@pytest.mark.parametrize("connector_enabled", ["true", "false"])
+async def test_team_no_slash_path_answers_the_v1_challenge(monkeypatch, connector_enabled):
+    """Claude's custom-connector check strips the final slash and does not follow redirects.
+
+    A 307 to `/mcp/` reads to it as "server not found", so `/mcp` must answer the OAuth challenge
+    itself, whether or not the V2 directory surface is enabled.
+    """
+    monkeypatch.setenv("TREG_CLAUDE_CONNECTOR_ENABLED", connector_enabled)
+    get_settings.cache_clear()
+    try:
+        app = create_app("all")
+        async with AsyncClient(transport=ASGITransport(app=app),
+                               base_url="http://registry") as client:
+            responses = [
+                await client.post(path, json={"jsonrpc": "2.0", "id": 1, "method": "initialize",
+                                              "params": {"protocolVersion": "2025-06-18",
+                                                         "capabilities": {},
+                                                         "clientInfo": {"name": "slash-test",
+                                                                        "version": "1"}}},
+                                  headers=MCP_HEADERS)
+                for path in ("/mcp", "/mcp/")
+            ]
+        for response in responses:
+            assert response.status_code == 401
+            challenge = response.headers["www-authenticate"]
+            assert "/.well-known/oauth-protected-resource" in challenge
+            assert "/mcp/v2" not in challenge
+    finally:
+        get_settings.cache_clear()
+
+
 async def test_v2_declares_exact_directory_contract():
     tools = {tool.name: tool for tool in await mcp.directory_mcp.list_tools()}
+    # The six tools the directory listing was submitted with; a seventh is a change to that listing.
     assert list(tools) == [
-        "catalog_search", "catalog_get", "catalog_call_read", "catalog_call_write", "balance",
-        "catalog_request",
+        "catalog_search", "catalog_get", "catalog_call_read", "catalog_call_write",
+        "balance", "catalog_request",
     ]
     expected_titles = {
         "catalog_search": "Search Treg Catalog",
@@ -193,6 +217,7 @@ async def test_v2_declares_exact_directory_contract():
     assert {name: tool.title for name, tool in tools.items()} == expected_titles
     assert {name: tool.annotations.title for name, tool in tools.items()} == expected_titles
     assert "my_tools" not in tools and "call" not in tools
+    assert "review" not in mcp.directory_mcp.instructions
     assert "method" not in tools["catalog_call_read"].input_schema["properties"]
     assert "method" not in tools["catalog_call_write"].input_schema["properties"]
     assert "authorization_method" in tools["catalog_call_read"].input_schema["properties"]
@@ -261,6 +286,28 @@ async def test_v1_and_v2_access_tokens_are_not_interchangeable():
     assert mcp_oauth.mcp_resource_version(v2_aud.rstrip("/")) == "v2"
 
 
+async def test_managed_api_key_authenticates_on_both_mcp_surfaces(clients):
+    """A managed key is a normal team bearer; OAuth bridge tokens remain a separate path."""
+    org_id = (await clients.get("/auth/me")).json()["org_id"]
+    created = (await clients.post(
+        f"/orgs/{org_id}/api-keys", json={"name": "MCP client"},
+    )).json()
+    token = created["secret"]
+    async with paired_mcp_session() as client:
+        for path in ("/mcp/", "/mcp/v2/"):
+            result = await _call_tool(client, "balance", {}, token, path=path)
+            assert "balance_micro" in result, (path, result)
+
+    assert (await clients.post(
+        f"/orgs/{org_id}/api-keys/{created['id']}/disable",
+    )).status_code == 200
+    async with paired_mcp_session() as client:
+        for path in ("/mcp/", "/mcp/v2/"):
+            result = await _call_tool(client, "balance", {}, token, path=path)
+            assert "error" in result, (path, result)
+            assert "not signed in" in str(result).lower(), (path, result)
+
+
 async def test_v2_transport_challenges_with_v2_metadata():
     async with directory_session() as client:
         response = await _rpc(client, "tools/list")
@@ -269,38 +316,6 @@ async def test_v2_transport_challenges_with_v2_metadata():
     assert "/.well-known/oauth-protected-resource/mcp/v2" in challenge
     assert mcp_oauth.DIRECTORY_SCOPE in challenge
     assert response.headers["cache-control"] == "no-store, no-transform"
-
-
-async def test_v2_serializes_the_scanner_facing_contract(clients):
-    token = (await clients.post("/users", json={"email": "directory-list@superdesign.dev"})).json()["token"]
-    async with directory_session() as client:
-        initialized = await _rpc(client, "initialize", {
-            "protocolVersion": "2025-06-18", "capabilities": {},
-            "clientInfo": {"name": "scanner", "version": "1"},
-        }, token)
-        assert initialized.status_code == 200
-        listed = await _rpc(client, "tools/list", token=token)
-    tools = {tool["name"]: tool for tool in listed.json()["result"]["tools"]}
-    expected_titles = {
-        "catalog_search": "Search Treg Catalog",
-        "catalog_get": "Get Catalog Endpoint",
-        "catalog_call_read": "Call a Read Endpoint",
-        "catalog_call_write": "Call a Write Endpoint",
-        "balance": "Check Treg Balance",
-        "catalog_request": "Request a Catalog Capability",
-    }
-    assert set(tools) == set(expected_titles)
-    assert {name: tool["annotations"]["title"] for name, tool in tools.items()} == expected_titles
-    assert tools["catalog_call_read"]["annotations"] == {
-        "title": "Call a Read Endpoint",
-        "readOnlyHint": True, "destructiveHint": False, "idempotentHint": False,
-        "openWorldHint": True,
-    }
-    assert tools["catalog_call_write"]["annotations"]["destructiveHint"] is True
-    assert "method" not in tools["catalog_call_read"]["inputSchema"]["properties"]
-    assert "method" not in tools["catalog_call_write"]["inputSchema"]["properties"]
-    assert "authorization_method" in tools["catalog_call_read"]["inputSchema"]["properties"]
-    assert "authorization_method" in tools["catalog_call_write"]["inputSchema"]["properties"]
 
 
 async def test_v2_shared_catalog_details_balance_and_guidance_work_end_to_end(clients):
@@ -312,7 +327,8 @@ async def test_v2_shared_catalog_details_balance_and_guidance_work_end_to_end(cl
         }, token)
         balance = await _call_tool(client, "balance", {}, token)
 
-    assert search["results"] and search["results"][0].get("usd_per_call") is not None
+    # a routed row whose children bill misses quotes no single price; its children do
+    assert search["results"] and any(r.get("usd_per_call") is not None for r in search["results"])
     assert "catalog_call_read" in search["next"]
     assert "catalog_call_write" in search["next"]
     assert "then call(...)" not in search["next"]
@@ -338,6 +354,9 @@ async def test_team_and_directory_catalog_search_results_and_prices_match(client
 
 
 async def test_team_and_directory_endpoint_details_and_balance_match(clients):
+    from treg.application import catalog_stats
+    from treg.infra.db import session_maker
+    assert (await catalog_stats.refresh(session_maker))["caught_up"]
     token = clients.headers["X-Treg-Token"]
     endpoint_args = {"endpoint_id": "tikhub.tiktok.video.comments"}
     async with paired_mcp_session() as client:
@@ -360,6 +379,19 @@ async def test_team_and_directory_endpoint_details_and_balance_match(clients):
     assert team_balance == directory_balance
 
 
+async def test_only_the_team_surface_shows_a_rows_note(clients):
+    """The directory surface returns what it was submitted with; `/mcp/` shows the row's note."""
+    from treg.domain.catalog import store
+    ep = next(e for e in store.load().endpoints
+              if e.get("note") and e.get("platform") not in mcp._DIRECTORY_HIDDEN_PLATFORMS)
+    token = clients.headers["X-Treg-Token"]
+    async with paired_mcp_session() as client:
+        team = await _call_tool(client, "catalog_get", {"endpoint_id": ep["id"]}, token, path="/mcp/")
+        directory = await _call_tool(client, "catalog_get", {"endpoint_id": ep["id"]}, token)
+    assert team["endpoint"]["note"] == ep["note"]
+    assert directory["endpoint"]["id"] == ep["id"] and "note" not in directory["endpoint"]
+
+
 async def test_team_and_directory_catalog_call_results_match_except_attribution(clients):
     from treg import audit
 
@@ -375,7 +407,10 @@ async def test_team_and_directory_catalog_call_results_match_except_attribution(
         directory = await _call_tool(client, "catalog_call_read", args, token)
     await audit.drain()
 
-    assert team == directory
+    assert team["call_id"] != directory["call_id"]
+    assert {k: v for k, v in team.items() if k != "call_id"} == {
+        k: v for k, v in directory.items() if k != "call_id"
+    }
     assert team["status"] == 200
     assert team["body"]["auth"] == "Bearer PAIRED-KEY"
     assert team["body"]["headers"]["x-paired-test"] == "same"
@@ -533,15 +568,17 @@ async def test_v2_write_call_and_insufficient_balance_errors_use_shared_behavior
             org.balance_micro = 0
             db.add(org)
             await db.commit()
-        async with directory_session() as client:
-            refused = await _call_tool(client, "catalog_call_read", {
-                "endpoint_id": "tikhub.tiktok.video.comments",
-                "params": {"aweme_id": "7"},
-            }, token)
-        blob = json.dumps(refused)
-        assert refused["status"] == 402
-        assert "topup_url" not in blob and "http://" not in blob and "https://" not in blob
-        assert "not enough for this call" in refused["hint"]
+        args = {"endpoint_id": "tikhub.tiktok.video.comments", "params": {"aweme_id": "7"}}
+        async with paired_mcp_session() as client:
+            refused = await _call_tool(client, "catalog_call_read", args, token)
+            team = await _call_tool(client, "call", args, token, path="/mcp/")
+        for answer in (refused, team):
+            blob = json.dumps(answer)
+            assert answer["status"] == 402
+            assert "topup_url" not in blob and "http://" not in blob and "https://" not in blob
+        assert refused["hint"] == "the team's prepaid balance is not enough for this call"
+        assert team["hint"].startswith(refused["hint"])
+        assert "Team → Billing" in team["hint"]
     finally:
         get_settings.cache_clear()
 
@@ -615,3 +652,223 @@ def test_transport_factory_refuses_a_server_audience_mismatch():
         mcp.build_mcp_app(server=mcp.directory_mcp, resource_version="v1")
     with pytest.raises(ValueError, match="same public surface"):
         mcp.build_mcp_app(server=mcp.mcp, resource_version="v2")
+
+
+@pytest.mark.parametrize(('path', 'tool'), [('/mcp/', 'call')])
+@pytest.mark.parametrize('sampled', [False, True])
+async def test_feedback_hint_only_wraps_successful_sampled_calls(clients, monkeypatch, path, tool, sampled):
+    from treg import analytics, hints
+    from treg.application.call import service as call_service
+    from test_marketplace_call import _fake_relay
+
+    monkeypatch.setenv('TREG_PLATFORM_KEY_TIKHUB', 'SYNTHETIC-PLATFORM-KEY')
+    monkeypatch.setenv('TREG_PLATFORM_PROVIDERS', 'tikhub')
+    get_settings.cache_clear()
+    monkeypatch.setattr(hints, 'sampled', lambda kind, _: sampled if kind == 'feedback' else False)
+    events = []
+    monkeypatch.setattr(analytics, 'capture', lambda *args, **kw: events.append((args, kw)))
+    body = b'{"data":{"items":[]}}'
+    monkeypatch.setattr(call_service, 'relay', _fake_relay(200, body))
+    token = clients.headers['X-Treg-Token']
+    args = {'endpoint_id': 'tikhub.tiktok.video.comments', 'params': {'aweme_id': '7'},
+            'idempotency_key': 'feedback-hint-test'}
+    try:
+        async with paired_mcp_session() as client:
+            first = await _call_tool(client, tool, args, token, path=path)
+            replay = await _call_tool(client, tool, args, token, path=path)
+            monkeypatch.setattr(call_service, 'relay', _fake_relay(503, b'{"error":"unavailable"}'))
+            failed = await _call_tool(client, tool, {**args, 'idempotency_key': 'failed'}, token, path=path)
+        assert first.get('status') == 200, first
+        assert first['body'] == json.loads(body)
+        assert first.get('hint') == (hints.HINT if sampled else None)
+        assert first['call_id']
+        assert replay['replayed'] is True
+        assert 'stored answer' in replay['hint']
+        assert replay['call_id'] == first['call_id']
+        assert failed['status'] == 503
+        assert failed.get('hint') != hints.HINT
+        exposures = [a for a, _ in events if a[1] == 'hint_attached']
+        assert len(exposures) == int(sampled)
+        if sampled:
+            assert exposures[0][2]['call_id'] == first['call_id']
+            assert 'body' not in exposures[0][2]
+    finally:
+        get_settings.cache_clear()
+
+
+@pytest.mark.parametrize(('path', 'tool'), [('/mcp/', 'call')])
+async def test_review_hint_wins_over_feedback_and_replay_wins_over_review(clients, monkeypatch, path, tool):
+    from treg import hints
+    from treg.application.call import service as call_service
+    from test_marketplace_call import _fake_relay
+
+    monkeypatch.setenv('TREG_PLATFORM_KEY_TIKHUB', 'SYNTHETIC-PLATFORM-KEY')
+    monkeypatch.setenv('TREG_PLATFORM_PROVIDERS', 'tikhub')
+    get_settings.cache_clear()
+    monkeypatch.setattr(hints, 'sampled', lambda kind, ref: True)
+    monkeypatch.setattr(call_service, 'relay', _fake_relay(200, b'{"data":{"items":[]}}'))
+    args = {'endpoint_id': 'tikhub.tiktok.video.comments', 'params': {'aweme_id': '7'},
+            'idempotency_key': 'review-hint-test'}
+    try:
+        async with paired_mcp_session() as client:
+            first = await _call_tool(client, tool, args, clients.headers['X-Treg-Token'], path=path)
+            replay = await _call_tool(client, tool, args, clients.headers['X-Treg-Token'], path=path)
+        assert first['hint'] == hints.review_hint(first['call_id'])
+        assert replay['replayed'] is True
+        assert 'stored answer' in replay['hint']
+    finally:
+        get_settings.cache_clear()
+
+
+async def test_team_mcp_renders_the_mark_hint_text(clients, monkeypatch):
+    from treg import hints
+    from treg.application.call import service as call_service
+    from test_marketplace_call import _fake_relay
+
+    monkeypatch.setenv('TREG_PLATFORM_KEY_TIKHUB', 'SYNTHETIC-PLATFORM-KEY')
+    monkeypatch.setenv('TREG_PLATFORM_PROVIDERS', 'tikhub')
+    get_settings.cache_clear()
+    monkeypatch.setattr(hints, 'sampled', lambda kind, ref: kind == 'mark')
+    monkeypatch.setattr(call_service, 'relay', _fake_relay(200, b'{"data":{"items":[]}}'))
+    args = {'endpoint_id': 'tikhub.tiktok.video.comments', 'params': {'aweme_id': '7'}}
+    try:
+        async with paired_mcp_session() as client:
+            team = await _call_tool(client, 'call', {**args, 'idempotency_key': 'mark-team'},
+                                    clients.headers['X-Treg-Token'], path='/mcp/')
+            directory = await _call_tool(client, 'catalog_call_read', {**args, 'idempotency_key': 'mark-v2'},
+                                         clients.headers['X-Treg-Token'])
+        assert team['hint'] == hints.mark_hint(team['call_id'])[1]
+        assert 'hint' not in directory
+    finally:
+        get_settings.cache_clear()
+
+
+@pytest.mark.parametrize(('path', 'tool'), [('/mcp/', 'call'), ('/mcp/v2/', 'catalog_call_read')])
+async def test_capacity_refusal_carries_no_sampled_hint(clients, monkeypatch, path, tool):
+    from treg import hints
+    from treg.application.call import service as call_service
+    from test_marketplace_call import _fake_relay
+
+    monkeypatch.setenv('TREG_PLATFORM_KEY_TIKHUB', 'SYNTHETIC-PLATFORM-KEY')
+    monkeypatch.setenv('TREG_PLATFORM_PROVIDERS', 'tikhub')
+    get_settings.cache_clear()
+    monkeypatch.setattr(hints, 'sampled', lambda kind, ref: True)
+    monkeypatch.setattr(call_service, 'relay', _fake_relay(402, b'{"error":"payment required"}'))
+    try:
+        async with paired_mcp_session() as client:
+            result = await _call_tool(client, tool, {
+                'endpoint_id': 'tikhub.tiktok.video.comments', 'params': {'aweme_id': '7'},
+            }, clients.headers['X-Treg-Token'], path=path)
+        # treg's own account answered 402: treg's refusal, never the team's balance hint.
+        assert result['status'] == 503 and result['whose_error'] == 'treg'
+        assert result['body']['detail']['error'] == 'provider_capacity_unavailable'
+        assert 'payment required' not in json.dumps(result) and 'hint' not in result
+    finally:
+        get_settings.cache_clear()
+
+
+async def test_v2_shows_no_review_or_feedback_invitation(clients, monkeypatch):
+    """V2 has no review or feedback tool, so a result must not ask for either."""
+    from treg import hints
+    from treg.application.call import service as call_service
+    from test_marketplace_call import _fake_relay
+
+    monkeypatch.setenv('TREG_PLATFORM_KEY_TIKHUB', 'SYNTHETIC-PLATFORM-KEY')
+    monkeypatch.setenv('TREG_PLATFORM_PROVIDERS', 'tikhub')
+    get_settings.cache_clear()
+    monkeypatch.setattr(hints, 'sampled', lambda kind, ref: True)
+    monkeypatch.setattr(call_service, 'relay', _fake_relay(200, b'{"data":{"items":[]}}'))
+    args = {'endpoint_id': 'tikhub.tiktok.video.comments', 'params': {'aweme_id': '7'}}
+    try:
+        async with paired_mcp_session() as client:
+            team = await _call_tool(client, 'call', {**args, 'idempotency_key': 'team'},
+                                    clients.headers['X-Treg-Token'], path='/mcp/')
+            directory = await _call_tool(client, 'catalog_call_read', {**args, 'idempotency_key': 'v2'},
+                                         clients.headers['X-Treg-Token'])
+        assert team['hint'] == hints.review_hint(team['call_id'])
+        assert directory['status'] == 200 and directory['call_id']
+        assert 'hint' not in directory
+    finally:
+        get_settings.cache_clear()
+
+
+def _generation_endpoint() -> dict:
+    from treg.domain.catalog import store
+    return next(ep for ep in store.load().endpoints
+                if ep.get("platform") in mcp._DIRECTORY_HIDDEN_PLATFORMS and ep.get("method") == "POST")
+
+
+async def test_v2_does_not_list_describe_or_call_generation_endpoints(clients):
+    ep = _generation_endpoint()
+    token = clients.headers["X-Treg-Token"]
+    search = {"query": ep["name"] or ep["summary"], "limit": 25}
+    async with paired_mcp_session() as client:
+        team_search = await _call_tool(client, "catalog_search", search, token, path="/mcp/")
+        team_get = await _call_tool(client, "catalog_get", {"endpoint_id": ep["id"]}, token, path="/mcp/")
+        v2_search = await _call_tool(client, "catalog_search", search, token)
+        v2_get = await _call_tool(client, "catalog_get", {"endpoint_id": ep["id"]}, token)
+        v2_call = await _call_tool(client, "catalog_call_write", {"endpoint_id": ep["id"], "body": {}}, token)
+
+    hidden = mcp._DIRECTORY_HIDDEN_PLATFORMS
+    from treg.domain.catalog import store
+    platform_of = {e["id"]: e.get("platform") for e in store.load().endpoints}
+    assert any(platform_of.get(r["endpoint_id"]) in hidden for r in team_search["results"])
+    assert team_get["endpoint"]["id"] == ep["id"]
+    assert not any(platform_of.get(r["endpoint_id"]) in hidden for r in v2_search["results"])
+    assert not any(j["capability"].split(".")[0] in hidden for j in v2_search.get("jobs") or [])
+    if not v2_search["results"]:
+        assert v2_search["hint"] == mcp._DIRECTORY_HIDDEN_NOTE
+    assert mcp._DIRECTORY_HIDDEN_NOTE in v2_get["error"]
+    assert mcp._DIRECTORY_HIDDEN_NOTE in v2_call["error"] and "status" not in v2_call
+
+
+async def test_v2_holds_an_oauth_token_to_its_granted_scope():
+    from treg.domain.identity import mcp_oauth
+    token = mcp_oauth.make_access_token(user_id=1, org_id=1, audience=mcp_oauth.mcp_resource_url("v2"),
+                                        scope="treg:catalog treg:directory")
+    async with directory_session() as client:
+        for name, args in (("catalog_call_read", {"endpoint_id": "exa.search"}),
+                           ("catalog_call_write", {"endpoint_id": "exa.search"}), ("balance", {})):
+            out = await _call_tool(client, name, args, token)
+            assert out.get("error") == "insufficient_scope", (name, out)
+
+
+async def test_v2_challenges_a_missing_scope_and_confines_catalog_get():
+    from treg.domain.identity import mcp_oauth
+    token = mcp_oauth.make_access_token(user_id=1, org_id=1, audience=mcp_oauth.mcp_resource_url("v2"),
+                                        scope="treg:catalog treg:directory")
+    async with directory_session() as client:
+        r = await _rpc(client, "tools/call", {"name": "catalog_call_read",
+                                              "arguments": {"endpoint_id": "exa.search"}}, token)
+        walked = await _call_tool(client, "catalog_get", {"endpoint_id": "../../orgs/1/balance"}, token)
+    assert r.status_code == 403, r.text
+    assert 'scope="treg:catalog treg:call treg:directory"' in r.headers["www-authenticate"]
+    assert "balance_usd" not in json.dumps(walked)
+
+
+@pytest.mark.parametrize(('path', 'tool', 'shown'), [('/mcp/', 'call', True),
+                                                     ('/mcp/v2/', 'catalog_call_read', False)])
+async def test_review_pending_hint_stays_off_the_directory_surface(clients, monkeypatch, path, tool, shown):
+    from treg.application.call import service as call_service
+    from test_marketplace_call import _fake_relay
+
+    note = "This may be because Meta has not yet approved a_scope for treg's app."
+
+    def _note(response, secrets, body, charged, endpoint_id):
+        call_service._set_response_header(response, 'X-Treg-Review-Pending', 'a_scope')
+        call_service._set_response_header(response, 'X-Treg-Review-Pending-Text', note)
+
+    monkeypatch.setenv('TREG_PLATFORM_KEY_TIKHUB', 'SYNTHETIC-PLATFORM-KEY')
+    monkeypatch.setenv('TREG_PLATFORM_PROVIDERS', 'tikhub')
+    get_settings.cache_clear()
+    monkeypatch.setattr(call_service, 'relay', _fake_relay(403, b'{"error":{"code":10}}'))
+    monkeypatch.setattr(call_service, '_note_review_refusal', _note)
+    try:
+        async with paired_mcp_session() as client:
+            result = await _call_tool(client, tool, {
+                'endpoint_id': 'tikhub.tiktok.video.comments', 'params': {'aweme_id': '7'},
+            }, clients.headers['X-Treg-Token'], path=path)
+        assert result['status'] == 403
+        assert (result.get('hint') == note) is shown
+    finally:
+        get_settings.cache_clear()

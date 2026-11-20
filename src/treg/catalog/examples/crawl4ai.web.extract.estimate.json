@@ -1,0 +1,23 @@
+{
+  "endpoint": "scrape",
+  "max": "0.25",
+  "max_mc": 250,
+  "min": "0.25",
+  "min_mc": 250,
+  "parts": [
+    {
+      "count": 1,
+      "max_mc": 250,
+      "min_mc": 250,
+      "name": "pages already in our archive"
+    },
+    {
+      "count": 0,
+      "max_mc": 0,
+      "min_mc": 0,
+      "name": "pages to fetch",
+      "note": "light to heavy, by the effort each page needs"
+    }
+  ],
+  "text": "about 0.25 credits"
+}

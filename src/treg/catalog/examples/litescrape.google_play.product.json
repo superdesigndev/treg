@@ -1,0 +1,127 @@
+{
+  "search_metadata": {
+    "id": "8e62c7bd3bf8b0b9a676ab3a",
+    "status": "Success",
+    "created_at": "2026-09-29T13:58:55.237834+00:00",
+    "processed_at": "2026-09-29T13:58:56.334431+00:00",
+    "json_endpoint": "https://api.litescrape.com/api/google/play/product?hl=en&gl=us&product_id=com.duolingo&store=apps",
+    "google_play_url": "https://play.google.com/store/apps/details?id=com.duolingo&hl=en&gl=us",
+    "total_time_taken": 1.097
+  },
+  "search_parameters": {
+    "hl": "en",
+    "gl": "us",
+    "product_id": "com.duolingo",
+    "store": "apps"
+  },
+  "about_this_app": {
+    "snippet": "Learn a new language, chess & more with the world’s most downloaded education app! Duolingo is the fun, free app for learning 40+ languages through quick, bite-…",
+    "short_description": "Lessons to learn Spanish, French, German, English, Online Chess, Math & Music",
+    "in_app_purchases": "$0.99 - $239.99 per item",
+    "released_on": "May 29, 2013",
+    "updated_on": "Sep 28, 2026",
+    "downloads": "500,000,000+",
+    "content_rating": "Everyone",
+    "interactive_elements": "Users Interact, In-App Purchases",
+    "offered_by": "Duolingo"
+  },
+  "media": {
+    "images": [
+      "https://play-lh.googleusercontent.com/twmCellsRXWs4bZsSXRv19x-3BIp19FzlQPdu_Va-zE10aL468HHFKJBvEOXo0g67Xsvl3nkIKnpjY7L62OOiA",
+      "https://play-lh.googleusercontent.com/VtdxxfTA0xfkAgAj7iIr2DfvYJUoQctTvFDC_1xrX1NLm4d4av-xqaHMH8zqicW7AoXo56kT55LOQCW7gRFRyg"
+    ]
+  },
+  "badges": [
+    {
+      "name": "#1 top free education"
+    }
+  ],
+  "categories": [
+    {
+      "name": "Education",
+      "link": "https://play.google.com/store/apps/category/EDUCATION",
+      "category_id": "EDUCATION"
+    }
+  ],
+  "updated_on": "Sep 28, 2026",
+  "released_on": "May 29, 2013",
+  "data_safety": [
+    {
+      "text": "This app may share these data types with third parties",
+      "subtext": "App activity, App info and performance, and Device or other IDs"
+    },
+    {
+      "text": "This app may collect these data types",
+      "subtext": "Personal info, Financial info and 6 others"
+    }
+  ],
+  "what_s_new": {
+    "snippet": "Our mascot owl, Duo, is trading in his usual diet of mice for bugs this week. Yup, we’re squashing those pesky bugs to make the experience better for all of you. For more Duolingo news, contests and product releases, follow us on Facebook, Twitter, and Instagram @duolingo."
+  },
+  "developer_contact": {
+    "website": "https://www.duolingo.com/help/support-request",
+    "support_email": "super-support@duolingo.com",
+    "privacy_policy": "https://www.duolingo.com/privacy",
+    "name": "Duolingo, Inc.",
+    "alternative_email": "android@duolingo.com",
+    "address": "5900 Penn Ave\nPittsburgh, PA 15206\nUnited States",
+    "phone_number": "+1 412-567-6602"
+  },
+  "permissions": [
+    {
+      "name": "Identity",
+      "permissions": [
+        "find accounts on the device"
+      ]
+    },
+    {
+      "name": "Calendar",
+      "permissions": [
+        "read calendar events plus confidential information",
+        "add or modify calendar events and send email to guests without owners' knowledge"
+      ]
+    }
+  ],
+  "ratings": [
+    {
+      "stars": 1,
+      "count": 1026938
+    },
+    {
+      "stars": 2,
+      "count": 371815
+    }
+  ],
+  "product_info": {
+    "title": "Duolingo: Language Lessons",
+    "product_id": "com.duolingo",
+    "authors": [
+      {
+        "name": "Duolingo",
+        "link": "https://play.google.com/store/apps/dev?id=6957685454452609502"
+      }
+    ],
+    "thumbnail": "https://play-lh.googleusercontent.com/tw_coGKgk1K_zO-Ypf9zBKV1s-KT3dYN1MIUxIqtnbfmON5x_YmuoAr31gE4oSfJHNtA-aStTd-qe9R8S6NVyA",
+    "downloads": "500M+",
+    "download_count": 973391960,
+    "content_rating": {
+      "text": "Everyone",
+      "thumbnail": "https://play-lh.googleusercontent.com/IciOnDFecb5Xt50Q2jlcNC0LPI7LEGxNojroo-s3AozcyS-vDCwtq4fn7u3wZmRna8OewG9PBrWC-i7i"
+    },
+    "extensions": [
+      "Contains ads",
+      "In-app purchases"
+    ],
+    "offers": [
+      {
+        "text": "Install",
+        "link": "https://play.google.com/store/apps/details?id=com.duolingo&rdid=com.duolingo&feature=md&offerId",
+        "extracted_price": 0.0,
+        "currency": "USD"
+      }
+    ],
+    "rating": 4.7307334,
+    "reviews": 49227740,
+    "editors_choice": true
+  }
+}

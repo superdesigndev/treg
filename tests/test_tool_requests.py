@@ -9,11 +9,13 @@ its hint, in the API and over MCP.
 
 from __future__ import annotations
 
+import pytest
 from httpx import ASGITransport, AsyncClient
 from sqlmodel import select
 
 from treg import audit
 from treg.api import TOOLREQ_RATE_MAX, app
+from treg.config import get_settings
 from treg.infra.db import session_maker
 from treg.models import SearchMiss, ToolRequest
 
@@ -47,14 +49,9 @@ async def test_a_token_becomes_attribution_on_the_row(clients: AsyncClient):
     assert row.org_id is not None
 
 
-async def test_blank_capability_is_refused(clients: AsyncClient):
-    r = await clients.post("/tool-requests", json={"capability": "   "})
-    assert r.status_code == 422
-    assert await _fetch_rows() == []
-
-
-async def test_a_novel_capability_is_refused_when_too_long(clients: AsyncClient):
-    r = await clients.post("/tool-requests", json={"capability": "x" * 201})
+@pytest.mark.parametrize("capability", ["   ", "x" * 201], ids=["blank", "too-long"])
+async def test_a_blank_or_too_long_capability_is_refused(clients: AsyncClient, capability):
+    r = await clients.post("/tool-requests", json={"capability": capability})
     assert r.status_code == 422
     assert await _fetch_rows() == []
 
@@ -119,3 +116,11 @@ async def test_a_blank_search_logs_no_miss(clients: AsyncClient):
     assert r.status_code == 200
     await audit.drain()
     assert await _fetch_misses() == []
+
+
+async def test_an_exempt_address_is_not_rate_limited(clients: AsyncClient, monkeypatch):
+    monkeypatch.setattr(get_settings(), "rate_limit_exempt_ips", "127.0.0.1")
+    for i in range(TOOLREQ_RATE_MAX + 1):
+        r = await clients.post("/tool-requests", json={"capability": f"thing {i}"})
+        assert r.status_code == 200, r.text
+    assert len(await _fetch_rows()) == TOOLREQ_RATE_MAX + 1

@@ -1,0 +1,38 @@
+{
+  "output": {
+    "found": true,
+    "data": {
+      "categories": [
+        {
+          "categoryId": "601450",
+          "children": [
+            {
+              "categoryId": "849032",
+              "isLeaf": false,
+              "name": "Hand & Foot Care",
+              "slug": "hand-foot-care"
+            },
+            "… 11 more item(s) truncated"
+          ],
+          "image": "https://lf16-tiktok-common.tiktokcdn-us.com/obj/tiktok-web-common-tx/i18n_ecom_fe/tiktok_shop_web_mono/apps/homepage_desktop/static/image/beauty-personal.fdbc446c.png",
+          "isLeaf": false,
+          "name": "Beauty & Personal Care",
+          "slug": "beauty-personal-care"
+        },
+        "… 27 more item(s) truncated"
+      ]
+    }
+  },
+  "provider": "AnyAPI",
+  "costUsd": 0.0012,
+  "items": 28,
+  "replayed": false,
+  "source": {
+    "id": "anonymous-tiger",
+    "name": "Tiger",
+    "kind": "anonymous",
+    "artworkKey": "tiger"
+  },
+  "hint": "large_result: this response is ~27 KB. To keep future runs from flooding your context, re-run with `fields` (keep only the keys you need), `max_items` (cap rows), `summary=true` (outline only), or `jq… [309 chars]",
+  "resultId": "cbdc7ed5-90a4-4510-b9bb-4a3d2e6118a6"
+}

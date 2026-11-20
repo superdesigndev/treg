@@ -1,0 +1,24 @@
+[
+  {
+    "scraped_at": "2026-09-23T17:43:12+00:00",
+    "kind": "comment",
+    "comment_id": "5346458200000000",
+    "post_mid": "5346455516089405",
+    "root_id": null,
+    "is_reply": false,
+    "reply_to_id": null,
+    "floor_number": 89,
+    "created_at": "2026-09-23T23:47:27+08:00",
+    "text": "感谢全国农民！",
+    "text_raw": "感谢全国农民！",
+    "source": "来自 中国台湾",
+    "like_count": 12,
+    "reply_count": 0,
+    "liked_by_author": false,
+    "pic_num": 0,
+    "user_id": "1000000002",
+    "user_screen_name": "example_commenter",
+    "user_verified": false,
+    "user_verified_type": -1
+  }
+]

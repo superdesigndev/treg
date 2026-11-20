@@ -1,0 +1,30 @@
+{
+  "output": {
+    "found": true,
+    "data": {
+      "locations": [
+        {
+          "address": "Champ-de-Mars",
+          "city": "",
+          "id": "103912118089363",
+          "latitude": 48.85824768693,
+          "longitude": 2.2944650859978,
+          "name": "Eiffel Tower, Paris, France",
+          "shortName": "Eiffel Tower"
+        },
+        "… 29 more item(s) truncated"
+      ]
+    }
+  },
+  "provider": "AnyAPI",
+  "costUsd": 0.0024,
+  "items": 30,
+  "replayed": false,
+  "source": {
+    "id": "anonymous-tiger",
+    "name": "Tiger",
+    "kind": "anonymous",
+    "artworkKey": "tiger"
+  },
+  "resultId": "2b1b1ba6-0bc1-48ae-bd25-f7fa22b0ea0d"
+}

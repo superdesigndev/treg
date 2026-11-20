@@ -7,8 +7,9 @@ Thanks for your interest!
 ```bash
 git clone https://github.com/superdesigndev/treg
 cd treg
-uv sync                     # install deps (uv — https://docs.astral.sh/uv/)
-uv run pytest -q            # the full suite should pass before you start
+bash scripts/build-dashboard.sh # Node 22.12+ and npm; compile the browser app
+uv sync                     # install deps (uv >= 0.12, pinned in pyproject - https://docs.astral.sh/uv/)
+uv run --with pytest-xdist pytest -n auto -q   # daily local default (same shape as CI)
 ```
 
 No `.env` needed for dev — every setting has a working default (ephemeral encryption key, local
@@ -16,6 +17,18 @@ sqlite). The `TREG_*` knobs for persistence / a real deployment are documented i
 **Configuration** section (and `docs/context/ops/deploy.md`).
 
 A one-command local stack is in `scripts/dev-local.sh` (`up` / `logs` / `cli` / `reset`).
+It starts Python on :18790 and Vite on :5173; open `http://localhost:18790/app`.
+`TREG_DEV_DB=/absolute/path/to/dev.db` selects a separate local database without resetting another.
+
+The Dashboard source is in `frontend/src/`: `.vue` pages, components and dialogs, feature use cases
+in `state/`, and a typed JSON client in `api.ts`. `frontend/index.html` is only the document entry.
+Run `npm --prefix frontend test` for transport tests and `npm --prefix frontend run test:e2e` for
+browser flows against a disposable SQLite server. Install Chromium first with
+`cd frontend && npx playwright install chromium`.
+
+Before `uv build`, run `bash scripts/build-dashboard.sh`. The wheel and sdist include the resulting
+assets; installing a published package needs no Node runtime. Editable Python installs do not
+require a frontend build, so CLI and background-worker development remains independent.
 
 ## Project layout
 
@@ -29,7 +42,14 @@ A one-command local stack is in `scripts/dev-local.sh` (`up` / `logs` / `cli` / 
 1. Branch off `main`.
 2. Match the surrounding style — plain Python with type hints, no new dependencies without a reason.
    Commit messages follow Conventional Commits (`feat(scope): …`, `fix: …`, `docs: …`).
-3. Add or update tests; run `uv run pytest -q` (all green).
+3. Add or update tests; run `uv run --with pytest-xdist pytest -n auto -q` (all green).
+   Serial `uv run --frozen python -m pytest -q` is for debugging one test or order.
+   Against Postgres, set `TREG_TEST_DB_URL`; each xdist worker creates its own database from it.
+   Tests must pass in any order. To check, shuffle with a few seeds (pytest-randomly is not a
+   project dependency, so CI order stays fixed):
+   `uv run --with pytest-xdist --with pytest-randomly pytest -n auto -q -p randomly --randomly-seed=<n>`.
+   Restore whatever a test changes: `monkeypatch.chdir`, `monkeypatch.setenv`, `tmp_path`, and
+   repo files resolved from `Path(__file__).parents[1]`, not the working directory.
 4. If you changed a subsystem, update its fragment in `docs/context/` in the same PR.
 5. Open a PR. CI runs the tests + a secret scan; a maintainer reviews.
 

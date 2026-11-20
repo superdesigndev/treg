@@ -1,0 +1,60 @@
+{
+  "meta": {
+    "blocked": [],
+    "elapsed_ms": 0,
+    "from_cache": true,
+    "llm_calls": 0,
+    "pages_fetched": 0,
+    "partial": false,
+    "warnings": [
+      "module: arxiv-search: 'rust memory safety' · 20 papers"
+    ]
+  },
+  "recipe": "arxiv-search",
+  "usage": {
+    "boxes": [
+      "gate"
+    ],
+    "cache": "hit",
+    "engine": "recipe",
+    "lines": [
+      {
+        "about": "the call",
+        "boxes": [
+          "gate"
+        ],
+        "cache": "miss",
+        "call": "recipes",
+        "engine": "gate",
+        "units": 1
+      }
+    ],
+    "remaining_before": {
+      "concurrent": 99,
+      "requests": 186,
+      "search": 3000
+    },
+    "units": 1
+  },
+  "version": 1,
+  "rows": [
+    {
+      "abstract": "We present our ongoing work on developing an end-to-end verified Rust compiler based on CompCert. It provides two guarantees: one is semantics preservation from Rust to assembly, i.e., the behaviors of source code includes the behaviors of target code, with which the properties verified at the sourc…",
+      "authors": "Jinhua Wu, Yuting Wang, Liukun Yu, Linglong Meng",
+      "category": "cs.PL",
+      "pdf": "https://arxiv.org/pdf/2602.07455v1",
+      "published": "2026-02-07T09:15:35Z",
+      "title": "RustCompCert: A Verified and Verifying Compiler for a Sequential Subset of Rust",
+      "url": "http://arxiv.org/abs/2602.07455v1"
+    },
+    {
+      "abstract": "In Rust, unsafe code is the sole source of potential undefined behaviors. To avoid misuse, Rust developers should clarify the safety properties for each unsafe API. However, the community currently lacks a key standard for safety documentation: existing safety comments in the source code and safety …",
+      "authors": "Zihao Rao, Jiping Zhou, Hongliang Tian, Xin Wang, Hui Xu",
+      "category": "cs.PL",
+      "pdf": "https://arxiv.org/pdf/2504.21312v2",
+      "published": "2025-04-30T04:53:35Z",
+      "title": "Annotating and Auditing the Safety Properties of Unsafe Rust",
+      "url": "http://arxiv.org/abs/2504.21312v2"
+    }
+  ]
+}

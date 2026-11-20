@@ -1,0 +1,31 @@
+{
+  "data": {
+    "profile_data": {
+      "profile_full_name": "Jane Doe",
+      "profile_first_name": "Jane",
+      "profile_last_name": "Doe",
+      "profile_url": "https://www.linkedin.com/in/routing-fixture",
+      "profile_headline": "Engineer",
+      "profile_address": {
+        "city": "Example City",
+        "country": "US"
+      }
+    },
+    "contact_data": {
+      "contact_current_experiences": [
+        {
+          "company_name": "Example Inc",
+          "company_domain": "example.com",
+          "job_title": "Engineer"
+        }
+      ],
+      "has_email": false,
+      "has_phone": false
+    },
+    "resume_data": {},
+    "meta": {}
+  },
+  "meta": {
+    "credits": 1
+  }
+}

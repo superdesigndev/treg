@@ -48,17 +48,10 @@ pass the scan and both credit. That is acceptable for a human-driven ops script 
 terminal - and the fix if it ever stops being true is a unique column, not a smarter scan. Do not
 run two of these at once for the same comp.
 
-WHAT IT DOES TO PRODUCTION
---------------------------
-Prod Postgres keeps an EMPTY `ipAllowList`, so it opens a hole for this machine's /32, works, and
-closes it in a `finally` — then re-reads the resource to PROVE it closed, exactly as
-`usage_report.py` does. If you see "allowlist NOT closed", close it by hand before anything else.
-
-RUN IT FROM `main`, NOT FROM A FEATURE BRANCH
-----------------------------------------------
-Unlike `usage_report.py` (raw SQL, branch-proof), this one goes through the ORM, so it is bound to
-whatever `src/treg/models.py` the checkout has. A branch carrying an unmigrated column makes the
-query fail against prod — or worse, half-match. Check out `main` before running it against prod.
+DATABASE ACCESS
+---------------
+Uses the configured TREG_DATABASE_URL through treg's database infrastructure. Run from a checkout
+whose schema matches the target database. Hosted operators use their private maintenance runbook.
 """
 
 from __future__ import annotations
@@ -70,10 +63,8 @@ import sys
 from decimal import Decimal, InvalidOperation
 from pathlib import Path
 
-sys.path.insert(0, str(Path(__file__).resolve().parent))
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "src"))
 
-from usage_report import DB_ID, env, my_ip, render_api  # noqa: E402
 
 
 def usd(micro: int | None) -> str:
@@ -84,8 +75,8 @@ def to_micro(amount: str) -> int:
     """USD string -> integer micro-USD. Decimal, never float: `100.10 * 1_000_000` is 100099999.99."""
     try:
         value = Decimal(amount)
-    except InvalidOperation:
-        raise SystemExit(f"--amount-usd {amount!r} is not a number")
+    except InvalidOperation as exc:
+        raise SystemExit(f"--amount-usd {amount!r} is not a number") from exc
     if value <= 0:
         raise SystemExit("--amount-usd must be positive")
     micro = value * 1_000_000
@@ -94,69 +85,21 @@ def to_micro(amount: str) -> int:
     return int(micro)
 
 
-def prod_dsn() -> str:
-    """Render's external connection string, rewritten for SQLAlchemy's asyncpg driver.
-
-    `sslmode` is a libpq parameter that asyncpg rejects outright, so it is stripped here and the TLS
-    requirement is re-expressed as a connect_arg on the engine below.
-    """
-    from urllib.parse import parse_qsl, urlencode, urlsplit, urlunsplit
-
-    raw = render_api("GET", f"/postgres/{DB_ID}/connection-info")["externalConnectionString"]
-    parts = urlsplit(raw)
-    query = [(k, v) for k, v in parse_qsl(parts.query) if k != "sslmode"]
-    scheme = "postgresql+asyncpg" if parts.scheme in ("postgres", "postgresql") else parts.scheme
-    return urlunsplit((scheme, parts.netloc, parts.path, urlencode(query), parts.fragment))
-
-
 async def run(args) -> int:
-    from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
+    if not os.environ.get("TREG_DATABASE_URL"):
+        raise SystemExit("Set TREG_DATABASE_URL explicitly before running this maintenance tool")
     from sqlmodel import select
 
     from treg.domain import money
+    from treg.infra.db import dispose_engine, session_maker
     from treg.models import CreditBlock, LedgerEntry, Membership, Org, User
 
-    ip = my_ip()
-    print(f"opening prod allowlist for {ip}/32 ...", file=sys.stderr)
-    render_api("PATCH", f"/postgres/{DB_ID}",
-               {"ipAllowList": [{"cidrBlock": f"{ip}/32", "description": "manual_grant.py"}]})
     try:
-        engine = create_async_engine(prod_dsn(), connect_args={"ssl": "require"}, future=True)
-        maker = async_sessionmaker(engine, class_=AsyncSession, expire_on_commit=False)
-        try:
-            # Prove the connection BEFORE any money code runs, and ride out the two transient
-            # failures that mean nothing is wrong: the allowlist PATCH above takes a moment to take
-            # effect, and Render's Postgres hostname intermittently SERVFAILs. Without this the
-            # first attempt reliably dies with ConnectionDoesNotExistError (observed 2026-08-27).
-            # The `finally` below still closes the allowlist if every attempt fails.
-            for attempt, pause in enumerate((2, 5, 10, 0), start=1):
-                try:
-                    async with engine.connect():
-                        pass
-                    break
-                except Exception as exc:  # noqa: BLE001 — asyncpg raises several unrelated types
-                    if not pause:
-                        raise
-                    print(f"  connect attempt {attempt} failed ({type(exc).__name__}); "
-                          f"retrying in {pause}s", file=sys.stderr)
-                    await asyncio.sleep(pause)
-            async with maker() as db:
-                return await _work(db, args, money, User, Membership, Org, CreditBlock,
-                                   LedgerEntry, select)
-        finally:
-            await engine.dispose()
+        async with session_maker() as db:
+            return await _work(db, args, money, User, Membership, Org, CreditBlock,
+                               LedgerEntry, select)
     finally:
-        # Runs on success, on error and on Ctrl-C. The re-read is the point: a PATCH that 200s but
-        # leaves the list populated would quietly leave prod exposed until somebody noticed.
-        try:
-            render_api("PATCH", f"/postgres/{DB_ID}", {"ipAllowList": []})
-            still = render_api("GET", f"/postgres/{DB_ID}").get("ipAllowList")
-            if still:
-                print(f"!! allowlist NOT closed — still {still}. Close it by hand NOW.", file=sys.stderr)
-            else:
-                print("prod allowlist closed and verified.", file=sys.stderr)
-        except Exception as exc:  # noqa: BLE001 — never let a bug here leave prod open silently
-            print(f"!! could not close the allowlist ({exc}). Close it by hand NOW.", file=sys.stderr)
+        await dispose_engine()
 
 
 async def _work(db, args, money, User, Membership, Org, CreditBlock, LedgerEntry, select) -> int:
@@ -244,7 +187,6 @@ def main() -> None:
 
     if args.confirm and not all((args.org_id, args.amount_usd, args.ref, args.reason)):
         raise SystemExit("--confirm needs --org-id, --amount-usd, --ref and --reason")
-    env("RENDER_API_KEY")  # fail before touching the allowlist, not halfway through
     raise SystemExit(asyncio.run(run(args)))
 
 

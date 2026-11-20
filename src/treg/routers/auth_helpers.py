@@ -1,13 +1,31 @@
 """HTTP cookie helpers shared by authentication routes."""
 
-from fastapi import Request
+from urllib.parse import urlsplit
+
+from fastapi import HTTPException, Request
 
 from ..config import get_settings
 
 
 def _is_https(request: Request) -> bool:
-    # behind a reverse proxy (Render), TLS is terminated upstream and forwarded as http + X-Forwarded-Proto.
+    # behind a reverse proxy, TLS is terminated upstream and forwarded as http + X-Forwarded-Proto.
     return request.headers.get("x-forwarded-proto", "").lower() == "https" or request.url.scheme == "https"
+
+
+def trusted_public_base(request: Request) -> str:
+    """The base URL for a link treg hands to someone else (an email, a provider callback, a payment
+    return). `Host` is client-controlled, so it is honoured only when it names this deployment's
+    `public_url` host or a configured alias; anything else yields `public_url`."""
+    settings = get_settings()
+    public_url = settings.public_url.rstrip("/")
+    host = request.headers.get("host", "").split(":")[0].rstrip(".").lower()
+    if host and host in settings.public_host_aliases and host != _hostname(public_url):
+        return f"https://{host}"
+    return public_url
+
+
+def _hostname(url: str) -> str:
+    return (urlsplit(url).hostname or "").rstrip(".").lower()
 
 
 OAUTH_RETURN_COOKIE = "treg_oauth_return"
@@ -34,8 +52,7 @@ def _take_oauth_return(request: Request) -> str | None:
     "redirect me anywhere after login" primitive, which is a phishing aid rather than a feature.
     """
     # Starlette quotes a cookie value containing separators, and not every client strips the quotes
-    # back off. Tolerating them here costs nothing; assuming they are absent cost a failing test and
-    # would have cost a silently-dropped authorization in production.
+    # back off. Assuming they are absent would silently drop an authorization.
     target = (request.cookies.get(OAUTH_RETURN_COOKIE) or "").strip('"')
     return target if target.startswith("/oauth/authorize?") else None
 
@@ -54,9 +71,8 @@ def _same_origin(request: Request) -> bool:
         return True
     # `Origin: null` is a browser telling us the submitting document has an OPAQUE origin, which it
     # does after certain redirect chains — a consent form reached by way of a sign-in bounce through
-    # GitHub, for instance. It is not evidence of a cross-site request, and treating it as one made
-    # the OAuth consent screen fail intermittently: refused on the attempt that went through
-    # sign-in, accepted on the retry that did not.
+    # GitHub, for instance. It is not evidence of a cross-site request; treating it as one refuses
+    # the OAuth consent screen whenever it was reached through sign-in.
     #
     # `Sec-Fetch-Site` is the right corroboration. It is set by the browser and cannot be written by
     # script, so a page on another site cannot forge `same-origin` — which is exactly what Origin was
@@ -64,3 +80,27 @@ def _same_origin(request: Request) -> bool:
     if origin == "null" and request.headers.get("sec-fetch-site") in ("same-origin", "none"):
         return True
     return False
+
+
+def require_managed_cli(request: Request, *, team_change: bool = False) -> None:
+    """Stop known old CLI flows before they save an unusable token/team pair.
+
+    The released CLI uses httpx's default User-Agent and the ngrok header. Browsers
+    and generic API clients are not version-gated. This is a compatibility hint,
+    never an authorization check: all credential restrictions still apply if a
+    client omits these headers or claims support.
+    """
+    headers = request.headers
+    if (headers.get("X-Treg-Key-Protocol") == "1"
+            or headers.get("ngrok-skip-browser-warning") != "1"
+            or not headers.get("user-agent", "").startswith("python-httpx/")):
+        return
+    if team_change:
+        from ..domain.identity import session as sess
+        claims = sess.read_identity_claims(headers.get("X-Treg-Token", "")) or {}
+        if claims.get("scope") not in {sess.TEAM_SCOPE, sess.BOOTSTRAP_SCOPE}:
+            return  # Existing unscoped or opaque credentials keep their old behavior.
+    raise HTTPException(status_code=426, detail=(
+        "This CLI must be updated for managed API keys. Run `treg update`, then retry. "
+        "Your saved token and active team have not changed."
+    ), headers={"Cache-Control": "no-store", "X-Treg-Error": "1"})

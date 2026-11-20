@@ -1,0 +1,52 @@
+{
+  "id": "resp_00000000-0000-4000-8000-000000000001",
+  "object": "response",
+  "status": "completed",
+  "model": "openai/gpt-6-luna",
+  "output": [
+    {
+      "content": [
+        {
+          "annotations": [],
+          "text": "Example.com is a reserved domain used as a placeholder in documentation, tutorials, and sample code.[1]",
+          "type": "output_text"
+        }
+      ],
+      "id": "msg_a24f2fe9-9e78-46ac-bce4-d36e538ee1ae",
+      "role": "assistant",
+      "status": "completed",
+      "type": "message"
+    }
+  ],
+  "usage": {
+    "cost": {
+      "cache_creation_cost": 0.00029,
+      "cache_read_cost": 2e-05,
+      "currency": "USD",
+      "input_cost": 1e-05,
+      "output_cost": 1e-05,
+      "tool_calls_cost": 0.001,
+      "tool_calls_cost_details": {
+        "search_web": 0.001
+      },
+      "total_cost": 0.00133
+    },
+    "input_tokens": 4119,
+    "input_tokens_details": {
+      "cache_creation_input_tokens": 2336,
+      "cache_read_input_tokens": 1708,
+      "cached_tokens": 1708
+    },
+    "output_tokens": 25,
+    "output_tokens_details": {
+      "reasoning_tokens": 0
+    },
+    "tool_calls_details": {
+      "search_web": {
+        "cost_usd": 0.001,
+        "invocation": 1
+      }
+    },
+    "total_tokens": 4144
+  }
+}

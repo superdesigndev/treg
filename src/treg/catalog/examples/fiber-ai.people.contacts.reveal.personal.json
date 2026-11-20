@@ -1,0 +1,21 @@
+{
+  "output": {
+    "profile": {
+      "emails": [
+        {
+          "email": "routing-fixture@example.invalid",
+          "status": "valid",
+          "type": "personal"
+        }
+      ],
+      "phoneNumbers": [],
+      "success": true,
+      "linkedin_url": "https://www.linkedin.com/in/routing-fixture"
+    },
+    "done": true
+  },
+  "chargeInfo": {
+    "method": "charged-now",
+    "creditsCharged": 2
+  }
+}

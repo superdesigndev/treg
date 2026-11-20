@@ -1,0 +1,6 @@
+<svg viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="Economic indicators">
+  <path d="M3 19.5h18" fill="none" stroke="#436787" stroke-width="1.5" stroke-linecap="round"/>
+  <rect x="4" y="12" width="3.5" height="7" rx="1" fill="#6A99BD"/>
+  <rect x="10.25" y="8" width="3.5" height="11" rx="1" fill="#4C7FA9"/>
+  <rect x="16.5" y="4" width="3.5" height="15" rx="1" fill="#315F88"/>
+</svg>

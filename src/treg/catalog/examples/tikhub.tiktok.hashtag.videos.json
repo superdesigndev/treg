@@ -84,18 +84,7 @@
             "profileThumb": "",
             "title": "coffeew…"
           },
-          {
-            "coverLarger": "",
-            "coverMedium": "",
-            "coverThumb": "",
-            "desc": "We're c…",
-            "id": "14104",
-            "profileLarger": "https:/…",
-            "profileMedium": "https:/…",
-            "profileThumb": "https:/…",
-            "title": "coffee"
-          },
-          "… 4 mor…"
+          "… 2 more item(s) truncated"
         ],
         "collected": false,
         "contents": [
@@ -111,16 +100,7 @@
                 "subType": 0,
                 "type": 1
               },
-              {
-                "awemeId": "",
-                "end": 105,
-                "hashtagName": "coffee",
-                "isCommerce": false,
-                "start": 98,
-                "subType": 0,
-                "type": 1
-              },
-              "… 4 mor…"
+              "… 2 more item(s) truncated"
             ]
           }
         ],
@@ -196,16 +176,7 @@
             "subType": 0,
             "type": 1
           },
-          {
-            "awemeId": "",
-            "end": 105,
-            "hashtagName": "coffee",
-            "isCommerce": false,
-            "start": 98,
-            "subType": 0,
-            "type": 1
-          },
-          "… 4 mor…"
+          "… 2 more item(s) truncated"
         ],
         "textLanguage": "en",
         "textTranslatable": true,
@@ -219,8 +190,7 @@
             "UrlKey": "v12044g…",
             "UrlList": [
               "https:/…",
-              "https:/…",
-              "… 1 mor…"
+              "… 2 more item(s) truncated"
             ],
             "Width": 576
           },
@@ -243,39 +213,14 @@
                 "UrlKey": "v12044g…",
                 "UrlList": [
                   "https:/…",
-                  "https:/…",
-                  "… 1 mor…"
+                  "… 2 more item(s) truncated"
                 ],
                 "Width": 576
               },
               "QualityType": 20,
               "VideoExtra": "{\"PktOf…"
             },
-            {
-              "Bitrate": 1776323,
-              "BitrateFPS": 30,
-              "CodecType": "h265_hv…",
-              "Format": "mp4",
-              "GearName": "adapt_l…",
-              "MVMAF": "",
-              "PlayAddr": {
-                "DataSize": 6830851,
-                "FileCs": "c:0-266…",
-                "FileHash": "5e48eac…",
-                "Height": 1920,
-                "Uri": "v12044g…",
-                "UrlKey": "v12044g…",
-                "UrlList": [
-                  "https:/…",
-                  "https:/…",
-                  "… 1 mor…"
-                ],
-                "Width": 1080
-              },
-              "QualityType": 2,
-              "VideoExtra": "{\"PktOf…"
-            },
-            "… 3 mor…"
+            "… 2 more item(s) truncated"
           ],
           "claInfo": {
             "captionInfos": [
@@ -294,8 +239,7 @@
                 "url": "https:/…",
                 "urlList": [
                   "https:/…",
-                  "https:/…",
-                  "… 1 mor…"
+                  "… 2 more item(s) truncated"
                 ],
                 "variant": "default"
               }
@@ -352,358 +296,7 @@
           }
         }
       },
-      {
-        "AIGCDescription": "",
-        "CategoryType": 111,
-        "IsHDBitrate": false,
-        "ShowAIGC": true,
-        "author": {
-          "avatarLarger": "https:/…",
-          "avatarMedium": "https:/…",
-          "avatarThumb": "https:/…",
-          "commentSetting": 0,
-          "downloadSetting": 0,
-          "duetSetting": 0,
-          "ftc": false,
-          "id": "6804087…",
-          "isADVirtual": false,
-          "isEmbedBanned": false,
-          "nickname": "Caitlin…",
-          "openFavorite": false,
-          "privateAccount": false,
-          "relation": 0,
-          "secUid": "MS4wLjA…",
-          "secret": false,
-          "shortDramaCreator": {},
-          "signature": "Putting…",
-          "stitchSetting": 0,
-          "uniqueId": "cc.camp…",
-          "verified": true
-        },
-        "authorStats": {
-          "diggCount": 12500,
-          "followerCount": 1300000,
-          "followingCount": 241,
-          "friendCount": 0,
-          "heart": 36700000,
-          "heartCount": 36700000,
-          "videoCount": 1731
-        },
-        "authorStatsV2": {
-          "diggCount": "12500",
-          "followerCount": "1300000",
-          "followingCount": "241",
-          "friendCount": "0",
-          "heart": "3670000…",
-          "heartCount": "3670000…",
-          "videoCount": "1731"
-        },
-        "backendSourceEventTracking": "",
-        "challenges": [
-          {
-            "coverLarger": "https:/…",
-            "coverMedium": "https:/…",
-            "coverThumb": "https:/…",
-            "desc": "If word…",
-            "id": "1605577…",
-            "profileLarger": "https:/…",
-            "profileMedium": "https:/…",
-            "profileThumb": "https:/…",
-            "title": "coffeet…"
-          },
-          {
-            "coverLarger": "",
-            "coverMedium": "",
-            "coverThumb": "",
-            "desc": "",
-            "id": "1609974…",
-            "profileLarger": "",
-            "profileMedium": "",
-            "profileThumb": "",
-            "title": "pourove…"
-          },
-          "… 1 mor…"
-        ],
-        "collected": false,
-        "contents": [
-          {
-            "desc": "Reply t…",
-            "textExtra": [
-              {
-                "awemeId": "",
-                "end": 19,
-                "hashtagName": "",
-                "isCommerce": false,
-                "secUid": "MS4wLjA…",
-                "start": 9,
-                "subType": 2,
-                "type": 0,
-                "userId": "6637718…",
-                "userUniqueId": "ochapla…"
-              },
-              {
-                "awemeId": "",
-                "end": 57,
-                "hashtagName": "coffeet…",
-                "isCommerce": false,
-                "start": 47,
-                "subType": 0,
-                "type": 1
-              },
-              "… 2 mor…"
-            ]
-          }
-        ],
-        "createTime": 1649190720,
-        "desc": "Reply t…",
-        "digged": false,
-        "diversificationId": 10042,
-        "duetDisplay": 0,
-        "duetEnabled": true,
-        "forFriend": false,
-        "id": "7083220…",
-        "isAd": false,
-        "isReviewing": false,
-        "itemCommentStatus": 0,
-        "item_control": {
-          "can_repost": true
-        },
-        "music": {
-          "album": "A-O-K",
-          "authorName": "Tai Ver…",
-          "coverLarge": "https:/…",
-          "coverMedium": "https:/…",
-          "coverThumb": "https:/…",
-          "duration": 60,
-          "id": "6953851…",
-          "isCopyrighted": true,
-          "is_commerce_music": false,
-          "is_unlimited_music": false,
-          "original": false,
-          "playUrl": "https:/…",
-          "private": false,
-          "shoot_duration": 60,
-          "title": "A-O-K",
-          "tt2dsp": {
-            "tt_to_dsp_song_infos": [
-              {
-                "meta_song_id": "6953851…",
-                "platform": 1,
-                "song_id": "1565280…",
-                "token": {
-                  "apple_music_token": {
-                    "developer_token": "eyJhbGc…"
-                  }
-                }
-              },
-              {
-                "meta_song_id": "6953851…",
-                "platform": 3,
-                "song_id": "03hXZpi…"
-              }
-            ]
-          }
-        },
-        "officalItem": false,
-        "originalItem": false,
-        "privateItem": false,
-        "secret": false,
-        "shareEnabled": true,
-        "stats": {
-          "collectCount": 1157,
-          "commentCount": 229,
-          "diggCount": 15300,
-          "playCount": 244600,
-          "shareCount": 256
-        },
-        "statsV2": {
-          "collectCount": "1157",
-          "commentCount": "229",
-          "diggCount": "15300",
-          "playCount": "244600",
-          "repostCount": "0",
-          "shareCount": "256"
-        },
-        "stickersOnItem": [
-          {
-            "stickerText": [
-              "Pourove…"
-            ],
-            "stickerType": 9
-          }
-        ],
-        "stitchDisplay": 0,
-        "stitchEnabled": true,
-        "textExtra": [
-          {
-            "awemeId": "",
-            "end": 19,
-            "hashtagName": "",
-            "isCommerce": false,
-            "secUid": "MS4wLjA…",
-            "start": 9,
-            "subType": 2,
-            "type": 0,
-            "userId": "6637718…",
-            "userUniqueId": "ochapla…"
-          },
-          {
-            "awemeId": "",
-            "end": 57,
-            "hashtagName": "coffeet…",
-            "isCommerce": false,
-            "start": 47,
-            "subType": 0,
-            "type": 1
-          },
-          "… 2 mor…"
-        ],
-        "textLanguage": "en",
-        "textTranslatable": true,
-        "video": {
-          "PlayAddrStruct": {
-            "DataSize": 6697112,
-            "FileCs": "c:0-463…",
-            "FileHash": "05dbd52…",
-            "Height": 1024,
-            "Uri": "v09044g…",
-            "UrlKey": "v09044g…",
-            "UrlList": [
-              "https:/…",
-              "https:/…",
-              "… 1 mor…"
-            ],
-            "Width": 576
-          },
-          "VQScore": "67.25",
-          "bitrate": 969121,
-          "bitrateInfo": [
-            {
-              "Bitrate": 969121,
-              "BitrateFPS": 30,
-              "CodecType": "h264",
-              "Format": "mp4",
-              "GearName": "normal_…",
-              "MVMAF": "",
-              "PlayAddr": {
-                "DataSize": 6697112,
-                "FileCs": "c:0-463…",
-                "FileHash": "05dbd52…",
-                "Height": 1024,
-                "Uri": "v09044g…",
-                "UrlKey": "v09044g…",
-                "UrlList": [
-                  "https:/…",
-                  "https:/…",
-                  "… 1 mor…"
-                ],
-                "Width": 576
-              },
-              "QualityType": 20,
-              "VideoExtra": "{\"PktOf…"
-            },
-            {
-              "Bitrate": 695459,
-              "BitrateFPS": 30,
-              "CodecType": "h265_hv…",
-              "Format": "mp4",
-              "GearName": "adapt_l…",
-              "MVMAF": "",
-              "PlayAddr": {
-                "DataSize": 4805970,
-                "FileCs": "c:0-468…",
-                "FileHash": "917e631…",
-                "Height": 1280,
-                "Uri": "v09044g…",
-                "UrlKey": "v09044g…",
-                "UrlList": [
-                  "https:/…",
-                  "https:/…",
-                  "… 1 mor…"
-                ],
-                "Width": 720
-              },
-              "QualityType": 14,
-              "VideoExtra": "{\"PktOf…"
-            },
-            "… 3 mor…"
-          ],
-          "claInfo": {
-            "captionInfos": [
-              {
-                "captionFormat": "webvtt",
-                "claSubtitleID": "7083233…",
-                "expire": "1785383…",
-                "isAutoGen": true,
-                "isOriginalCaption": true,
-                "language": "eng-US",
-                "languageCode": "",
-                "languageID": "2",
-                "subID": "1290189…",
-                "subtitleType": "1",
-                "translationType": "0",
-                "url": "https:/…",
-                "urlList": [
-                  "https:/…",
-                  "https:/…",
-                  "… 1 mor…"
-                ],
-                "variant": "default"
-              }
-            ],
-            "captionsType": 1,
-            "enableAutoCaption": true,
-            "hasOriginalAudio": true,
-            "originalLanguageInfo": {
-              "canTranslateRealTimeNoCheck": true,
-              "language": "eng-US",
-              "languageCode": "",
-              "languageID": "2"
-            }
-          },
-          "codecType": "h264",
-          "cover": "https:/…",
-          "definition": "540p",
-          "downloadAddr": "https:/…",
-          "duration": 55,
-          "dynamicCover": "https:/…",
-          "encodeUserTag": "",
-          "encodedType": "normal",
-          "format": "mp4",
-          "height": 1024,
-          "id": "7083220…",
-          "originCover": "https:/…",
-          "playAddr": "https:/…",
-          "ratio": "540p",
-          "size": 6697112,
-          "subtitleInfos": [
-            {
-              "Format": "webvtt",
-              "LanguageCodeName": "eng-US",
-              "LanguageID": "2",
-              "Size": 2069,
-              "Source": "ASR",
-              "Url": "https:/…",
-              "UrlExpire": 1785383768,
-              "Version": "1"
-            }
-          ],
-          "videoID": "v09044g…",
-          "videoQuality": "normal",
-          "volumeInfo": {
-            "Loudness": -9.5,
-            "Peak": 1
-          },
-          "width": 576,
-          "zoomCover": {
-            "240": "https:/…",
-            "480": "https:/…",
-            "720": "https:/…",
-            "960": "https:/…"
-          }
-        }
-      },
-      "… 3 mor…"
+      "… 2 more item(s) truncated"
     ],
     "log_pb": {
       "impr_id": "2026072…"

@@ -1,0 +1,12 @@
+{
+  "domain": "example.com",
+  "company_name": "Example Company",
+  "format": "first.last",
+  "confidence": "high",
+  "did_you_mean": "",
+  "failure_reason": "",
+  "other_domain_formats": [
+    {"format": "firstlast", "confidence": "medium"},
+    {"format": "first", "confidence": "low"}
+  ]
+}

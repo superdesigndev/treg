@@ -7,10 +7,10 @@
 #
 # `treg-mcp` connects the hosted MCP server and registers its tools as
 # `mcp__treg__*`. It is DISABLED until `TREG_TOKEN` is in the environment,
-# because a connector registered without a token is five always-on tools that
-# 401 on every call - the same reason the Claude Code manifest declares no MCP
-# server (docs/CLAUDE-PLUGIN.md). Set the token and restart dsh and the tools
-# appear; until then the skill walks the human through getting one.
+# because dsh's MCP client sends a static header and runs no OAuth, so a row
+# registered without a token is five always-on tools that 401 on every call.
+# Set the token and restart dsh and the tools appear; until then the skill
+# walks the human through getting one.
 #
 # Row shape and the `!!js` evaluation: dsh's own dsh-base patch uses the same
 # `disabled: !!js ...` form for its platform-specific rows.

@@ -1,0 +1,30 @@
+{
+  "output": {
+    "found": true,
+    "data": {
+      "locations": [
+        {
+          "city": "Chicago",
+          "latitude": 41.894086,
+          "longitude": -87.763202,
+          "name": "Austin",
+          "pageId": "108120015875983",
+          "postalCode": "60644-1112",
+          "subtitle": "Austin, IL · 23,781 people checked in here"
+        },
+        "… 9 more item(s) truncated"
+      ]
+    }
+  },
+  "provider": "AnyAPI",
+  "costUsd": 0.0012,
+  "items": 10,
+  "replayed": false,
+  "source": {
+    "id": "anonymous-giraffe",
+    "name": "Giraffe",
+    "kind": "anonymous",
+    "artworkKey": "giraffe"
+  },
+  "resultId": "6fe55eb3-3e93-410a-aa49-2919e755fc8e"
+}

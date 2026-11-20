@@ -15,9 +15,9 @@ from sqlalchemy import select
 from ...infra.db import session_maker
 from ...models import Ephemeral
 from ...timeutil import utcnow_naive
-from .marks import LOCK_NS, Lock
-from .policy import _RATE_LIMITS, LatestState
-from .sweep import STATE_NS
+from .marks import LOCK_NS, Lock, lock_key
+from .policy import _CONCURRENCY, _ENDPOINT_CONCURRENCY, _ENDPOINT_RATE_LIMITS, _RATE_LIMITS, LatestState
+from .sweep import STATE_NS, state_key
 
 TTL_S = 60.0
 
@@ -43,38 +43,80 @@ class LatestStateView:
 
     def get(self, provider: str) -> LatestState | None:
         """The sweep's state; call `load()` first. Sync and I/O-free on purpose (resolve.py rule)."""
-        return self._states.get(provider)
+        return self._states.get(state_key(provider))
 
-    def locks(self, provider: str, endpoint_id: str | None = None) -> list[Lock]:
-        """The call path's rows for this call, pending or active: the endpoint's and the provider's."""
-        keys = [k for k in (endpoint_id, provider) if k]
+    def locks(self, provider: str, endpoint_id: str | None = None,
+              slot: str | None = None, *, metered: bool = True) -> list[Lock]:
+        """The call path's rows for this call, pending or active: the endpoint's and the provider's.
+        A further treg-owned account (`slot`) has its own rows (`marks.lock_key`). A free route
+        (`metered=False`, `marks.spends_balance`) spends no balance: only its endpoint's own row
+        (a quota) speaks for it, never the provider's balance row."""
+        keys = [lock_key(k, None, "", slot) for k in (endpoint_id, provider if metered else None) if k]
         return [lock for k in keys if (lock := self._locks.get(k)) is not None]
 
-    def active_lock(self, provider: str, endpoint_id: str | None = None) -> Lock | None:
-        return next((lock for lock in self.locks(provider, endpoint_id) if lock.is_active()), None)
+    def active_lock(self, provider: str, endpoint_id: str | None = None,
+                    slot: str | None = None, *, metered: bool = True) -> Lock | None:
+        return next((lock for lock in self.locks(provider, endpoint_id, slot, metered=metered)
+                     if lock.is_active()), None)
 
-    def is_exhausted(self, provider: str, endpoint_id: str | None = None) -> bool:
-        return self.exhausted_until(provider, endpoint_id) is not None
+    def is_exhausted(self, provider: str, endpoint_id: str | None = None,
+                     slot: str | None = None, *, metered: bool = True) -> bool:
+        return self.exhausted_until(provider, endpoint_id, slot, metered=metered) is not None
 
-    def exhausted_until(self, provider: str, endpoint_id: str | None = None):
-        """When this call serves again per whichever source refuses it now, else None."""
-        lock = self.active_lock(provider, endpoint_id)
+    def exhausted_until(self, provider: str, endpoint_id: str | None = None, slot: str | None = None,
+                        *, metered: bool = True):
+        """When this call serves again per whichever source refuses it now, else None. The sweep
+        reads only the provider's own account, so it never speaks for a further one, and only its
+        balance, so it never speaks for a free route."""
+        lock = self.active_lock(provider, endpoint_id, slot, metered=metered)
         if lock is not None:
             return lock.until
-        state = self._states.get(provider)
+        state = self._states.get(state_key(provider)) if slot is None and metered else None
         return state.exhausted_until if state and state.is_exhausted() else None
+
+    def rate_bucket(self, provider: str, endpoint_id: str | None,
+                    slot: str | None = None) -> tuple[str, int, float] | None:
+        """(bucket key, limit, window_s) smoothing this platform call, or None when unknown. An
+        endpoint with its own allowance (`_ENDPOINT_RATE_LIMITS`) is its own bucket; every other
+        endpoint shares the provider's. Each further treg-owned account (`slot`) has its own
+        allowance, so its own bucket. Sync, I/O-free."""
+        pair = _pair(_ENDPOINT_RATE_LIMITS.get(endpoint_id or ""))
+        key = endpoint_id
+        if not pair:
+            pair, key = self.rate_limit(provider), provider
+        if not pair:
+            return None
+        return (f"{key}#{slot}" if slot else key, *pair)
 
     def rate_limit(self, provider: str) -> tuple[int, float] | None:
         """(limit, window_s) for the provider's platform key, or None when unknown. Published by the
         sweep from the policy; the verified defaults apply before a sweep has run. Sync, I/O-free."""
-        state = self._states.get(provider)
-        rl = (state.rate_limit if state and state.rate_limit else None) or _RATE_LIMITS.get(provider)
-        if not rl or not rl.get("limit") or not rl.get("window_s"):
-            return None
-        return int(rl["limit"]), float(rl["window_s"])
+        state = self._states.get(state_key(provider))
+        return _pair((state.rate_limit if state and state.rate_limit else None)
+                     or _RATE_LIMITS.get(provider))
+
+    def concurrency(self, provider: str) -> int:
+        """Calls in progress the provider allows on its platform key, or 0 when unknown (no gate)."""
+        return _CONCURRENCY.get(provider, 0)
+
+    def concurrency_pool(self, provider: str, endpoint_id: str | None) -> tuple[str, int]:
+        """(places key, calls in progress allowed) for this platform call; the limit is 0 when
+        unknown (no gate). An endpoint family with its own allowance (`_ENDPOINT_CONCURRENCY`) has
+        its own places; every other endpoint shares the provider's. Sync, I/O-free."""
+        for family, row in _ENDPOINT_CONCURRENCY.items():
+            if endpoint_id in row["endpoints"]:
+                return family, int(row["limit"])
+        return provider, self.concurrency(provider)
 
     def invalidate(self) -> None:
         self._loaded_at = -1.0
+
+
+def _pair(rl: dict | None) -> tuple[int, float] | None:
+    """A rate-limit row as (limit, window_s), or None when it does not state both."""
+    if not rl or not rl.get("limit") or not rl.get("window_s"):
+        return None
+    return int(rl["limit"]), float(rl["window_s"])
 
 
 view = LatestStateView()

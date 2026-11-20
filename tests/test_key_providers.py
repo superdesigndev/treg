@@ -7,42 +7,357 @@ conftest (`/whoami` echoes; `/units` and `/units-bad` model Semrush's plain-text
 
 from __future__ import annotations
 
+import json
+import httpx
+from treg.api import app
 import dataclasses
+import pytest
 
 from httpx import AsyncClient
 
 from treg import oauth_providers as P
 
 
+async def test_anymailfinder_key_uses_free_account_probe(clients, monkeypatch):
+    def valid(request):
+        assert request.method == "GET"
+        assert request.url.path == "/v5.1/account"
+        assert request.headers["authorization"] == "own-key"
+        return httpx.Response(200, json={"credits_left": 0, "email": "account@example.com"})
+
+    async with AsyncClient(transport=httpx.MockTransport(valid)) as upstream:
+        monkeypatch.setattr(app.state, "http", upstream)
+        response = await clients.post(
+            "/connections/token", json={"provider": "anymailfinder", "token": "own-key"},
+        )
+    assert response.status_code == 200, response.text
+
+    async with AsyncClient(transport=httpx.MockTransport(
+            lambda request: httpx.Response(401, json={
+                "error": "unauthorized", "message": "Missing or invalid API key."}))) as upstream:
+        monkeypatch.setattr(app.state, "http", upstream)
+        rejected = await clients.post(
+            "/connections/token", json={"provider": "anymailfinder", "token": "bad-key"},
+        )
+    assert rejected.status_code == 422 and "rejected" in rejected.text
+
+
 # ---- registry shape ----------------------------------------------------------------------
 def test_key_providers_are_offerable_without_deployment_credentials():
     """The user brings the key, so treg holds no app of its own — a key provider must be offerable,
     not shown as 'not configured' the way an unset OAuth provider is."""
-    for svc in ("apollo", "pdl", "akta", "hunter", "crunchbase", "tikhub", "brightdata", "semrush",
-                "justoneapi", "dataforseo", "seranking", "moz", "majestic", "serpstat", "exa",
-                "lusha", "coresignal", "diffbot", "thecompaniesapi", "leadmagic", "fiber-ai",
-                "companyenrich", "oceanio", "tomba", "predictleads", "findymail", "branddev",
-                "icypeas", "leadsforge", "influencersclub", "crustdata", "aviato", "devmatch",
-                "spyfu", "apify", "meta-ad-library", "serpapi",
-                "coingecko", "polygon", "finnhub", "twelvedata", "fmp", "eodhd", "marketstack",
-                "tiingo"):
-        p = P.get(svc)
-        assert p is not None, svc
-        assert p.auth_kind == "key", svc
-        assert p.uses_pasted_secret is True, svc
-        assert p.is_token_kind is False, f"{svc}: an API key is not a Slack bot token"
-        assert P.is_configured(p) is True, svc
+    keyed = [p for p in P.REGISTRY.values() if p.auth_kind == "key"]
+    assert keyed
+    for p in keyed:
+        assert p.uses_pasted_secret is True, p.service
+        assert p.is_token_kind is False, f"{p.service}: an API key is not a Slack bot token"
+        assert P.is_configured(p) is True, p.service
 
 
-def test_key_providers_appear_in_the_marketplace_listing():
+async def test_spidercloud_key_uses_free_balance_probe(clients, monkeypatch):
+    def probe(request):
+        assert request.method == "GET"
+        assert request.url.path == "/data/credits"
+        assert request.headers["authorization"] == "Bearer own-key"
+        return httpx.Response(200, json={"data": {"credits": "250000.000000"}})
+
+    async with AsyncClient(transport=httpx.MockTransport(probe)) as upstream:
+        monkeypatch.setattr(app.state, "http", upstream)
+        response = await clients.post(
+            "/connections/token", json={"provider": "spidercloud", "token": "own-key"},
+        )
+    assert response.status_code == 200, response.text
+
+
+async def test_crawl4ai_key_uses_free_balance_probe(clients, monkeypatch):
+    def probe(request):
+        assert request.method == "GET"
+        assert request.url.path == "/v1/billing/balance"
+        assert request.headers["authorization"] == "Bearer own-key"
+        return httpx.Response(200, json={"credit": "37500.00", "credit_mc": 37500000, "tier": "supporter"})
+
+    async with AsyncClient(transport=httpx.MockTransport(probe)) as upstream:
+        monkeypatch.setattr(app.state, "http", upstream)
+        response = await clients.post(
+            "/connections/token", json={"provider": "crawl4ai", "token": "own-key"},
+        )
+    assert response.status_code == 200, response.text
+
+
+async def test_crawl4ai_rejects_a_key_its_balance_endpoint_refuses(clients, monkeypatch):
+    """The live answer to a bogus key, 2026-10-05: 401 {"error": "sign in"}."""
+    async with AsyncClient(transport=httpx.MockTransport(
+            lambda request: httpx.Response(401, json={"error": "sign in"}))) as upstream:
+        monkeypatch.setattr(app.state, "http", upstream)
+        response = await clients.post(
+            "/connections/token", json={"provider": "crawl4ai", "token": "sk_live_bogus"},
+        )
+    assert response.status_code == 422, response.text
+    assert "rejected" in response.text
+
+
+async def test_dropcontact_key_uses_credit_balance_probe(clients, monkeypatch):
+    def probe(request):
+        assert request.method == "POST"
+        assert request.url.path == "/v1/enrich/all"
+        assert request.headers["x-access-token"] == "own-key"
+        assert json.loads(request.content) == {"data": [{}]}
+        return httpx.Response(200, json={"credits_left": 4050})
+
+    async with AsyncClient(transport=httpx.MockTransport(probe)) as upstream:
+        monkeypatch.setattr(app.state, "http", upstream)
+        response = await clients.post(
+            "/connections/token", json={"provider": "dropcontact", "token": "own-key"},
+        )
+    assert response.status_code == 200, response.text
+
+
+async def test_dropcontact_rejects_unknown_account(clients, monkeypatch):
+    async with AsyncClient(transport=httpx.MockTransport(
+            lambda request: httpx.Response(401, json={"error": True, "reason": "Unknown account"}))) as upstream:
+        monkeypatch.setattr(app.state, "http", upstream)
+        response = await clients.post(
+            "/connections/token", json={"provider": "dropcontact", "token": "bogus-key"},
+        )
+    assert response.status_code == 422, response.text
+    assert "rejected" in response.text
+
+
+async def test_search1api_key_uses_free_usage_probe(clients, monkeypatch):
+    def probe(request):
+        assert request.method == "GET"
+        assert request.url.path == "/usage"
+        assert request.headers["authorization"] == "Bearer own-key"
+        return httpx.Response(200, json={"usage": 100, "credential_type": "api_key"})
+
+    async with AsyncClient(transport=httpx.MockTransport(probe)) as upstream:
+        monkeypatch.setattr(app.state, "http", upstream)
+        response = await clients.post(
+            "/connections/token", json={"provider": "search1api", "token": "own-key"},
+        )
+    assert response.status_code == 200, response.text
+
+
+async def test_parallel_key_uses_free_monitor_stats_probe(clients, monkeypatch):
+    def probe(request):
+        assert request.method == "GET"
+        assert request.url.path == "/v1/monitors/stats"
+        assert request.headers["x-api-key"] == "own-key"
+        return httpx.Response(200, json={"total": 0, "processor_counts": {}})
+
+    async with AsyncClient(transport=httpx.MockTransport(probe)) as upstream:
+        monkeypatch.setattr(app.state, "http", upstream)
+        response = await clients.post(
+            "/connections/token", json={"provider": "parallel", "token": "own-key"},
+        )
+    assert response.status_code == 200, response.text
+
+
+async def test_parallel_rejects_a_key_its_monitor_stats_refuse(clients, monkeypatch):
+    """The live answer to a bogus key, 2026-10-09."""
+    async with AsyncClient(transport=httpx.MockTransport(lambda request: httpx.Response(
+            401, json={"code": 16, "message": "Invalid API key (C.1)"}))) as upstream:
+        monkeypatch.setattr(app.state, "http", upstream)
+        response = await clients.post(
+            "/connections/token", json={"provider": "parallel", "token": "bogus-key"},
+        )
+    assert response.status_code == 422, response.text
+    assert "rejected" in response.text
+
+
+async def test_enrichlayer_key_uses_free_balance_probe(clients, monkeypatch):
+    def probe(request):
+        assert request.method == "GET"
+        assert request.url.path == "/api/v2/credit-balance"
+        assert request.headers["authorization"] == "Bearer own-key"
+        return httpx.Response(200, json={"credit_balance": 100})
+
+    async with AsyncClient(transport=httpx.MockTransport(probe)) as upstream:
+        monkeypatch.setattr(app.state, "http", upstream)
+        response = await clients.post(
+            "/connections/token", json={"provider": "enrichlayer", "token": "own-key"},
+        )
+    assert response.status_code == 200, response.text
+
+
+async def test_perplexity_key_uses_free_model_list_probe(clients, monkeypatch):
+    def probe(request):
+        assert request.method == "GET"
+        assert request.url.path == "/v1/models"
+        assert request.headers["authorization"] == "Bearer own-key"
+        return httpx.Response(200, json={"object": "list", "data": []})
+
+    async with AsyncClient(transport=httpx.MockTransport(probe)) as upstream:
+        monkeypatch.setattr(app.state, "http", upstream)
+        response = await clients.post(
+            "/connections/token", json={"provider": "perplexity", "token": "own-key"},
+        )
+    assert response.status_code == 200, response.text
+
+
+async def test_octen_key_uses_unbilled_validation_probe(clients, monkeypatch):
+    def probe(request):
+        assert request.method == "POST"
+        assert request.url.path == "/search"
+        assert json.loads(request.content) == {"query": ""}
+        assert request.headers["x-api-key"] == "own-key"
+        return httpx.Response(400, json={"code": 400, "msg": "Invalid params. Missing parameter query"})
+
+    async with AsyncClient(transport=httpx.MockTransport(probe)) as upstream:
+        monkeypatch.setattr(app.state, "http", upstream)
+        response = await clients.post(
+            "/connections/token", json={"provider": "octen", "token": "own-key"},
+        )
+    assert response.status_code == 200, response.text
+    assert response.json()["health"] == "unknown"
+
+
+async def test_adyntel_connect_collects_both_credentials_before_provisioning(clients, monkeypatch):
+    def probe(request):
+        assert request.method == "POST"
+        assert request.url.path == "/facebook"
+        assert json.loads(request.content) == {
+            "company_domain": "treg-credential-check.invalid",
+            "api_key": "own-key",
+        }
+        return httpx.Response(422, json={"detail": "email is required"})
+
+    async with AsyncClient(transport=httpx.MockTransport(probe)) as upstream:
+        monkeypatch.setattr(app.state, "http", upstream)
+        first = await clients.post(
+            "/connections/token", json={"provider": "adyntel", "token": "own-key"},
+        )
+        assert first.status_code == 200, first.text
+        connection = first.json()
+        assert connection["health"] == "unknown"
+        pending_tool = next(
+            t for t in (await clients.get("/tools")).json() if t["name"] == "adyntel"
+        )
+        assert [(b["location"], b["name"]) for b in pending_tool["bindings"]] == [
+            ("json", "api_key"),
+        ]
+        ready = await clients.post(
+            f"/connections/{connection['id']}/extra-credential",
+            json={"value": "owner@example.com"},
+        )
+        assert ready.status_code == 200, ready.text
+        assert ready.json()["ready"] is True
+
+    tool = next(t for t in (await clients.get("/tools")).json() if t["name"] == "adyntel")
+    assert [(b["location"], b["name"]) for b in tool["bindings"]] == [
+        ("json", "api_key"), ("json", "email"),
+    ]
+
+
+async def test_hlrlookup_connect_defers_the_key_until_the_secret_is_added(clients, monkeypatch):
+    def probe(request):
+        assert request.method == "POST"
+        assert request.url.path == "/apiv2/balance"
+        assert json.loads(request.content) == {"api_key": "own-key"}
+        # Live: the key alone answers 400 BAD_REQUEST whether it is valid or not.
+        return httpx.Response(400, json={"error": "BAD_REQUEST", "message": "Invalid parameters"})
+
+    async with AsyncClient(transport=httpx.MockTransport(probe)) as upstream:
+        monkeypatch.setattr(app.state, "http", upstream)
+        first = await clients.post(
+            "/connections/token", json={"provider": "hlrlookup", "token": "own-key"},
+        )
+        assert first.status_code == 200, first.text
+        connection = first.json()
+        assert connection["health"] == "unknown"
+        ready = await clients.post(
+            f"/connections/{connection['id']}/extra-credential", json={"value": "own-secret"},
+        )
+        assert ready.status_code == 200, ready.text
+
+    tool = next(t for t in (await clients.get("/tools")).json() if t["name"] == "hlrlookup")
+    assert [(b["location"], b["name"]) for b in tool["bindings"]] == [
+        ("json", "api_key"), ("json", "api_secret"),
+    ]
+
+
+async def test_hlrlookup_connect_rejects_a_wrong_pair(clients, monkeypatch):
+    def probe(request):
+        return httpx.Response(401, json={"error": "UNAUTHORIZED",
+                                         "message": "Invalid api_key or api_secret"})
+
+    async with AsyncClient(transport=httpx.MockTransport(probe)) as upstream:
+        monkeypatch.setattr(app.state, "http", upstream)
+        bad = await clients.post(
+            "/connections/token", json={"provider": "hlrlookup", "token": "bad-key"},
+        )
+    assert bad.status_code == 422, bad.text
+    assert "rejected" in bad.text
+
+
+def test_hlrlookup_platform_bindings_match_the_byok_pair():
+    provider = P.get("hlrlookup")
+    assert provider is not None
+    assert P.platform_bindings(provider) == [
+        {"platform_setting": "platform_key_hlrlookup", "injector": "env",
+         "location": "json", "name": "api_key", "format": "{secret}"},
+        {"platform_setting": "platform_key_hlrlookup_secret", "injector": "env",
+         "location": "json", "name": "api_secret", "format": "{secret}"},
+    ]
+
+
+def test_paid_key_verification_probe_is_typed_and_unique():
+    assert all(isinstance(p.probe_cost_micro, int) and p.probe_cost_micro >= 0
+               for p in P.REGISTRY.values())
     listing = {row["service"]: row for row in P.listing()}
-    assert listing["apollo"]["category"] == "Enrichment"
-    assert listing["apollo"]["auth_kind"] == "key"
-    assert listing["semrush"]["category"] == "SEO"
-    assert listing["tikhub"]["category"] == "Social media"
-    assert listing["coingecko"]["category"] == "Market data"
-    assert "Enrichment" in P.CATEGORY_ORDER
-    assert "Market data" in P.CATEGORY_ORDER
+    assert listing["trestleiq"]["probe_cost_micro"] == 15_000
+    assert listing["wiza"]["probe_cost_micro"] == 0
+
+
+async def test_trestleiq_paid_probe_rejects_bad_key_and_is_never_saved_as_health_check(
+    clients, monkeypatch,
+):
+    def probe(request):
+        assert request.url.path == "/3.0/phone_intel"
+        assert request.url.params["phone"] == "+13005550100"
+        assert request.url.params["is_sandbox"] == "true"
+        if request.headers["x-api-key"] == "bad":
+            return httpx.Response(403, json={"errorCode": "AUTHENTICATION_FAILED"})
+        return httpx.Response(200, json={"is_valid": False, "warnings": ["Invalid Input"]})
+
+    async with AsyncClient(transport=httpx.MockTransport(probe)) as upstream:
+        monkeypatch.setattr(app.state, "http", upstream)
+        bad = await clients.post("/connections/token", json={"provider": "trestleiq", "token": "bad"})
+        assert bad.status_code == 422
+        good = await clients.post(
+            "/connections/token", json={"provider": "trestleiq", "token": "own-key"})
+        assert good.status_code == 200, good.text
+    tool = next(t for t in (await clients.get("/tools")).json() if t["name"] == "trestleiq")
+    assert tool["health_check"] is None
+
+
+async def test_dropleads_connect_provisions_both_approved_hosts(clients, monkeypatch):
+    def probe(request):
+        assert request.url.host == "prime.dropleads.io"
+        assert request.url.path == "/api/v2/prime-db/credits/balance"
+        assert request.headers["x-api-key"] in ("bad", "own-key")
+        if request.headers["x-api-key"] == "bad":
+            return httpx.Response(401, json={"message": "Invalid API key"})
+        return httpx.Response(
+            200, json={"success": True, "credits": {"totalAvailable": 0}}
+        )
+
+    async with AsyncClient(transport=httpx.MockTransport(probe)) as upstream:
+        monkeypatch.setattr(app.state, "http", upstream)
+        bad = await clients.post(
+            "/connections/token", json={"provider": "dropleads", "token": "bad"}
+        )
+        assert bad.status_code == 422
+        good = await clients.post(
+            "/connections/token", json={"provider": "dropleads", "token": "own-key"}
+        )
+        assert good.status_code == 200, good.text
+
+    tools = {tool["name"]: tool for tool in (await clients.get("/tools")).json()}
+    assert set(tools) == {"dropleads", "dropleads-contact"}
+    assert tools["dropleads"]["base_url"] == "https://prime.dropleads.io"
+    assert tools["dropleads-contact"]["base_url"] == "https://api.dropleads.io"
+    assert tools["dropleads"]["bindings"] == tools["dropleads-contact"]["bindings"]
 
 
 # ---- connect-by-key ----------------------------------------------------------------------
@@ -175,18 +490,40 @@ async def test_basic_provider_accepts_a_ready_made_base64_blob(clients: AsyncCli
     assert echoed == "Basic " + blob, "a pasted Base64 blob must not be double-encoded"
 
 
-# ---- corrected probe shapes (regression guards for the 2026-08-13 connect-flow fixes) --------
-def test_brightdata_probe_is_a_real_route():
-    """The old /datasets/v3/datasets 404'd even for a valid token, refusing every real key. /status is
-    the free account check that answers 200 (valid) / 401 (bad)."""
-    assert P.get("brightdata").probe_path == "/status"
+async def test_secret_add_raw_basic_credential_encodes_at_injection(clients: AsyncClient, monkeypatch):
+    """Secrets added via `treg secret add dataforseo` bypass the connect flow and store the raw value.
+    The injector must detect and Base64-encode a raw `login:password` to produce a valid Basic header.
+
+    Regression test for feedback #294 / #276 / #280-282: DataForSEO Lighthouse returned 40100
+    (401 Unauthorized) through treg while the same credential worked via direct curl. The cause
+    was that `treg secret add dataforseo --env-var` stored raw `login:password`, but the injector
+    used it verbatim as `Basic login:password` instead of `Basic <base64(login:password)>`.
+    """
+    import base64
+    monkeypatch.setitem(P.REGISTRY, "dataforseo", dataclasses.replace(
+        P.REGISTRY["dataforseo"], base_url="http://upstream", probe_path="/whoami"))
+    # Add a raw secret directly, bypassing the /connections/token flow that would Base64-encode it
+    r = await clients.post("/secrets", json={"name": "dataforseo", "value": "login:pw"})
+    assert r.status_code == 200, r.text
+    # Call a DataForSEO catalog endpoint to trigger marketplace resolution with the named secret
+    # (the named-tool path won't find a tool; this exercises _marketplace_secret -> _provider_bindings)
+    echoed = (await clients.get("/call/dataforseo.account.usage")).json()["auth"]
+    expected = "Basic " + base64.b64encode(b"login:pw").decode()
+    assert echoed == expected, f"raw secret must be Base64-encoded at injection time, got {echoed!r}"
 
 
-def test_justoneapi_probe_uses_camelcase_uniqueid():
-    """snake_case unique_id made the API answer HTTP 400 ('must input one of them (uniqueId or
-    secUid)') and a VALID token was refused. The param is camelCase."""
-    assert "uniqueId=" in P.get("justoneapi").probe_path
-    assert "unique_id=" not in P.get("justoneapi").probe_path
+async def test_secret_add_already_encoded_basic_credential_not_double_encoded(clients: AsyncClient, monkeypatch):
+    """Secrets added with an already-encoded Base64 blob must not be double-encoded by the injector."""
+    import base64
+    blob = base64.b64encode(b"login:pw").decode()
+    monkeypatch.setitem(P.REGISTRY, "dataforseo", dataclasses.replace(
+        P.REGISTRY["dataforseo"], base_url="http://upstream", probe_path="/whoami"))
+    # Add an already-encoded secret directly
+    r = await clients.post("/secrets", json={"name": "dataforseo", "value": blob})
+    assert r.status_code == 200, r.text
+    # Call a DataForSEO catalog endpoint to trigger marketplace resolution with the named secret
+    echoed = (await clients.get("/call/dataforseo.account.usage")).json()["auth"]
+    assert echoed == "Basic " + blob, f"already-encoded secret must not be double-encoded, got {echoed!r}"
 
 
 async def test_probe_parses_json_body_labelled_text_plain(clients: AsyncClient, monkeypatch):
@@ -217,3 +554,419 @@ async def test_query_token_survives_alongside_a_probe_path_query(clients: AsyncC
         probe_path="/needs-query?field=title", token_verify_field=""))
     r = await clients.post("/connections/token", json={"provider": "spyfu", "token": "spyfu-secret"})
     assert r.status_code == 200, r.text
+
+
+# ---- ContactOut ----
+
+
+@pytest.mark.parametrize("status", [200, 402])
+async def test_financialdatasets_connect_accepts_only_valid_key_outcomes_without_health_probe(
+    clients, monkeypatch, status,
+):
+    """200 and 402 prove the key reached the prepaid account.
+
+    The absolute connect-only probe must also stay out of the saved Tool health metadata: replaying
+    a paid data request from recurring health would consume Credits.
+    """
+    def probe(request):
+        assert request.url.path == "/prices/snapshot"
+        assert request.url.params["ticker"] == "AAPL"
+        assert request.headers["X-API-KEY"] == "valid-empty-key"
+        return httpx.Response(status, json={"detail": "Insufficient credits"})
+
+    async with httpx.AsyncClient(transport=httpx.MockTransport(probe)) as upstream:
+        monkeypatch.setattr(app.state, "http", upstream)
+        response = await clients.post(
+            "/connections/token",
+            json={"provider": "financialdatasets", "token": "valid-empty-key"},
+        )
+        assert response.status_code == 200, response.text
+        tool = next(t for t in (await clients.get("/tools")).json()
+                    if t["name"] == "financialdatasets")
+        assert tool["health_check"] is None
+        assert tool["bindings"][0]["name"] == "X-API-KEY"
+
+
+async def test_public_provider_has_nothing_to_connect(clients, monkeypatch):
+    """A keyless public API (auth_kind="public") serves only anonymous catalog rows: it is left out
+    of the Connect listing and both connect paths refuse it instead of storing a meaningless key."""
+    public = dataclasses.replace(P.REGISTRY["financialdatasets"], service="public-demo", auth_kind="public")
+    monkeypatch.setitem(P.REGISTRY, "public-demo", public)
+    assert "public-demo" not in {p["service"] for p in P.listing()}
+    started = await clients.post("/oauth/start", json={"provider": "public-demo"})
+    assert started.status_code == 422 and "nothing to connect" in started.text
+    pasted = await clients.post("/connections/token", json={"provider": "public-demo", "token": "x"})
+    assert pasted.status_code == 422
+
+
+@pytest.fixture
+def fd_public(monkeypatch):
+    """Financial Datasets made a keyless public provider: its anonymous rows are the public rows."""
+    monkeypatch.setitem(P.REGISTRY, "financialdatasets", dataclasses.replace(
+        P.REGISTRY["financialdatasets"], auth_kind="public"))
+    return P.REGISTRY["financialdatasets"]
+
+
+async def test_public_provider_refusals_name_nothing_to_connect(clients, fd_public):
+    """Pasting a key for a public provider says there is nothing to connect, not "connected by
+    consent"; and the access preview offers no connect command for one."""
+    from tests.conftest import verified_signup
+    token = (await verified_signup(clients, json={"email": "keyless-paste@superdesign.dev"})).json()["token"]
+    pasted = await clients.post("/connections/token", json={"provider": "financialdatasets", "token": "x"},
+                                headers={"Authorization": f"Bearer {token}"})
+    assert pasted.status_code == 422 and "nothing to connect" in pasted.text, pasted.text
+
+    from treg.application.call.access import _missing_access
+    ep = {"id": "financialdatasets.prices.tickers", "provider": "financialdatasets"}
+    out = _missing_access(ep, fd_public, fd_public, (), "financialdatasets")
+    assert out["connect_command"] == "" and "keyless public API" in out["detail"]
+
+
+async def test_catalog_search_says_no_key_needed_for_an_allow_listed_anonymous_row(clients, monkeypatch):
+    """An anonymous row is served once its provider is allow-listed, with no key on this server:
+    catalog_search must say `no_key_needed: true` then, and false while the provider is not enabled."""
+    from tests.conftest import verified_signup
+    from tests.test_mcp import _call_tool, mcp_session
+    from treg.config import get_settings
+    from treg.domain.catalog import store as catalog_store
+    monkeypatch.setattr(get_settings(), "platform_key_financialdatasets", "")
+    token = (await verified_signup(clients, json={"email": "keyless-search@superdesign.dev"})).json()["token"]
+
+    async def flag():
+        async with mcp_session(clients) as c:
+            out = await _call_tool(c, "catalog_search", {"query": "financial datasets stock tickers", "limit": 8},
+                                   token=token)
+        anonymous = {e["id"] for e in catalog_store.load().endpoints if e.get("platform_auth") == "anonymous"}
+        rows = [r for r in out["results"] if r.get("endpoint_id") in anonymous]
+        assert rows, out["results"]
+        return {r["no_key_needed"] for r in rows}
+
+    assert await flag() == {False}
+    monkeypatch.setattr(get_settings(), "platform_providers", "financialdatasets")
+    assert await flag() == {True}
+
+
+def _capture_relay(monkeypatch, seen: dict):
+    from test_marketplace_call import _fake_relay
+    from treg.application.call import service as call_service
+    fake = _fake_relay(200, b'{"tickers":["AAPL"]}')
+
+    async def capture(*args, **kwargs):
+        seen["bindings"], seen["secrets"] = args[2].bindings, args[3]
+        return await fake(*args, **kwargs)
+    monkeypatch.setattr(call_service, "relay", capture)
+
+
+async def test_a_team_secret_named_like_a_public_provider_does_not_hijack_its_free_call(
+        clients: AsyncClient, monkeypatch, fd_public):
+    """A public provider has nothing to connect. A team secret that only shares its name (a vendor's
+    private-API key saved under it) is not its credential: the call still goes keyless, with no
+    binding and no secret, instead of injecting that secret."""
+    from treg.config import get_settings
+    monkeypatch.setattr(get_settings(), "platform_providers", "financialdatasets")
+    r = await clients.post("/secrets", json={"name": "financialdatasets", "value": "private-api-key"})
+    assert r.status_code == 200, r.text
+    seen = {}
+    _capture_relay(monkeypatch, seen)
+    called = await clients.get("/call/financialdatasets.prices.tickers")
+    assert called.status_code == 200, called.text
+    assert seen == {"bindings": [], "secrets": {}}, seen
+
+
+async def test_the_access_preview_never_offers_a_same_named_secret_for_a_public_provider(
+        clients: AsyncClient, monkeypatch, fd_public):
+    from treg.config import get_settings
+    monkeypatch.setattr(get_settings(), "platform_providers", "financialdatasets")
+    assert (await clients.post("/secrets", json={"name": "financialdatasets", "value": "k"})).status_code == 200
+    r = await clients.get("/catalog/endpoints/financialdatasets.prices.tickers/access")
+    assert r.status_code == 200, r.text
+    assert r.json().get("tier") != "credential", r.json()
+
+
+async def test_a_public_provider_this_server_has_not_enabled_says_so_and_offers_no_connect(
+        clients, monkeypatch, fd_public):
+    """The dead end for a keyless API names the server's allow-list, not a credential to connect."""
+    from treg.config import get_settings
+    monkeypatch.setattr(get_settings(), "platform_providers", "")
+    r = await clients.get("/call/financialdatasets.prices.tickers")
+    assert r.status_code == 404, r.text
+    assert "keyless public API that this server has not enabled" in r.text, r.text
+    assert "connections connect" not in r.text and "secret add" not in r.text
+
+
+async def test_an_allow_listed_public_provider_names_the_real_reason_a_tool_is_not_served(
+        clients, monkeypatch, fd_public):
+    """"Not enabled" is said only when the provider is not allow-listed. Allow-listed, a row that is
+    not a verified free anonymous row, or a demo team, is refused for that reason instead."""
+    from types import SimpleNamespace
+    from treg.application.call.access import _missing_access
+    from treg.application.call.resolve import _marketplace_no_credential
+    from treg.config import get_settings
+    monkeypatch.setattr(get_settings(), "platform_providers", "financialdatasets")
+    monkeypatch.setattr(get_settings(), "platform_key_financialdatasets", "")
+    ep_id = "financialdatasets.prices.snapshot"  # a paid row: never served keyless
+    r = await clients.get(f"/call/{ep_id}?ticker=AAPL")
+    assert r.status_code == 404, r.text
+    assert "not served keyless here" in r.text and "has not enabled" not in r.text, r.text
+    access = await clients.get(f"/catalog/endpoints/{ep_id}/access")
+    assert "not served keyless here" in access.json()["detail"], access.json()
+
+    from treg.domain.catalog import store as catalog_store
+    tickers = catalog_store.load().by_id["financialdatasets.prices.tickers"]
+    demo = SimpleNamespace(demo=False, slug="team", public_demo=True)
+    refused = _marketplace_no_credential("financialdatasets", tickers["id"], fd_public, tickers, demo)
+    assert "demo and sandbox teams" in refused.detail and "has not enabled" not in refused.detail
+    preview = _missing_access(tickers, fd_public, fd_public, (), "financialdatasets", org=demo)
+    assert "demo and sandbox teams" in preview["detail"], preview
+    monkeypatch.setattr(get_settings(), "platform_providers", "")
+    assert "has not enabled" in _missing_access(tickers, fd_public, fd_public, (), "financialdatasets",
+                                                org=demo)["detail"]
+
+
+async def test_a_routed_tool_with_a_keyless_child_is_quoted_and_listed_as_needing_no_key(clients, monkeypatch, fd_public):
+    """A routed child served on the anonymous tier is available, free and ranked as the router ranks
+    it (ahead of treg's key); the routed tool reads `no_key_needed: true` because of it alone."""
+    from tests.conftest import verified_signup
+    from tests.test_mcp import _call_tool, mcp_session
+    from treg.config import get_settings
+    from treg.domain.catalog import store as catalog_store
+    cat = catalog_store.load()
+    kid = "financialdatasets.prices.snapshot"
+    monkeypatch.setitem(cat.by_id[kid], "platform_auth", "anonymous")
+    monkeypatch.setitem(cat.by_id[kid], "cost", {"type": "free", "value": 0, "currency": "USD", "unit": "call"})
+    monkeypatch.setattr(get_settings(), "platform_key_financialdatasets", "")
+    monkeypatch.setattr(get_settings(), "platform_providers", "financialdatasets")
+    plan = (await clients.get("/catalog/endpoints/treg.stocks.quote.live")).json()["routing"]["plan"]
+    assert plan[0]["endpoint_id"] == kid and plan[0]["usd"] == 0 and "skipped" not in plan[0], plan
+    assert all("skipped" in row for row in plan[1:]), plan
+
+    token = (await verified_signup(clients, json={"email": "keyless-routed@superdesign.dev"})).json()["token"]
+
+    async def flag():
+        async with mcp_session(clients) as c:
+            out = await _call_tool(c, "catalog_search", {"query": "live stock quote price", "limit": 25},
+                                   token=token)
+        rows = [r for r in out["results"] if r.get("endpoint_id") == "treg.stocks.quote.live"]
+        assert rows, [r.get("endpoint_id") for r in out["results"]]
+        return rows[0]["no_key_needed"]
+
+    assert await flag() is True
+    monkeypatch.setattr(get_settings(), "platform_providers", "")
+    assert await flag() is False
+
+
+def test_a_refusal_names_a_keyless_alternative_as_callable_with_no_key(monkeypatch):
+    """The dead-end's alternatives list must not tell an agent a keyless public row needs a credential."""
+    from treg.application.call import resolve as R
+
+    keyless = {"id": "freeboard.jobs", "provider": "freeboard", "capability": "x.y", "platform_auth": "anonymous"}
+    keyed = {"id": "paidindex.jobs", "provider": "paidindex", "capability": "x.y"}
+    asked = {"id": "asked.jobs", "provider": "asked", "capability": "x.y"}
+
+    class Cat:
+        def for_capability(self, cap):
+            return [asked, keyless, keyed]
+
+        def cost_view(self, cost, provider):
+            return {"usd": 0 if provider == "freeboard" else 0.01}
+
+        def platform_eligible(self, ep):
+            return True
+
+    monkeypatch.setattr(R.catalog_store, "load", lambda: Cat())
+    monkeypatch.setattr(R.catalog_store, "paused", lambda ep: False)
+    monkeypatch.setattr(R, "anonymous_served", lambda ep: {"type": "free"} if ep is keyless else None)
+    lines = R._capability_alternatives(asked)
+    free_line = next(line for line in lines if "freeboard.jobs" in line)
+    assert "no key needed" in free_line and "credential" not in free_line, lines
+    assert any("paidindex.jobs" in line and "needs your own paidindex credential" in line for line in lines), lines
+
+
+def test_the_connect_listing_says_whether_this_server_serves_a_provider(monkeypatch):
+    """The dashboard labels a key provider's keyless rows from this listing: it must carry the
+    allow-list, or a row this server does not serve keyless reads as free."""
+    from treg.config import get_settings
+    monkeypatch.setattr(get_settings(), "platform_providers", "")
+    assert {p["service"]: p["enabled"] for p in P.listing()}["financialdatasets"] is False
+    monkeypatch.setattr(get_settings(), "platform_providers", "financialdatasets")
+    assert {p["service"]: p["enabled"] for p in P.listing()}["financialdatasets"] is True
+
+
+def test_every_public_providers_row_is_served_once_allow_listed(monkeypatch):
+    """A public provider has nothing to connect, so its pages and the dashboard read "allow-listed"
+    as "served". Every one of its rows must then really be served keyless (verified, free, eligible);
+    a row that is not would be refused while every surface calls it available."""
+    from treg.application.call.resolve import anonymous_served
+    from treg.config import get_settings
+    from treg.domain.catalog import store as catalog_store
+    public = sorted(s for s, p in P.REGISTRY.items() if p.auth_kind == "public")
+    monkeypatch.setattr(get_settings(), "platform_providers", ",".join(public))
+    cat = catalog_store.load()
+    unserved = [ep["id"] for ep in cat.endpoints if ep["provider"] in public and anonymous_served(ep) is None]
+    assert unserved == []
+
+
+def test_a_refusal_never_lists_a_public_api_this_server_does_not_serve(monkeypatch):
+    """Nothing the caller can connect or add would make it callable, so it is not an alternative."""
+    import dataclasses
+    from treg.application.call import resolve as R
+    monkeypatch.setitem(P.REGISTRY, "offboard", dataclasses.replace(P.REGISTRY["financialdatasets"],
+                                                                     service="offboard", auth_kind="public"))
+    off = {"id": "offboard.jobs", "provider": "offboard", "capability": "x.y", "platform_auth": "anonymous"}
+    keyed = {"id": "paidindex.jobs", "provider": "paidindex", "capability": "x.y"}
+    asked = {"id": "asked.jobs", "provider": "asked", "capability": "x.y"}
+
+    class Cat:
+        def for_capability(self, cap):
+            return [asked, off, keyed]
+
+        def cost_view(self, cost, provider):
+            return {"usd": 0 if provider == "offboard" else 0.01}
+
+        def platform_eligible(self, ep):
+            return True
+
+    monkeypatch.setattr(R.catalog_store, "load", lambda: Cat())
+    monkeypatch.setattr(R.catalog_store, "paused", lambda ep: False)
+    monkeypatch.setattr(R, "anonymous_served", lambda ep: None)
+    lines = R._capability_alternatives(asked)
+    assert not any("offboard.jobs" in line for line in lines), lines
+    assert any("paidindex.jobs" in line for line in lines), lines
+
+
+def test_a_public_provider_not_enabled_is_logged_as_treg_side(monkeypatch):
+    """Not allow-listed is this deployment's switch, not the caller's missing credential."""
+    import dataclasses
+    from treg.application.call import resolve as R
+    from treg.config import get_settings
+    from treg.domain.catalog import store as catalog_store
+    monkeypatch.setitem(P.REGISTRY, "financialdatasets", dataclasses.replace(
+        P.REGISTRY["financialdatasets"], auth_kind="public"))
+    monkeypatch.setattr(get_settings(), "platform_providers", "")
+    ep = catalog_store.load().by_id["financialdatasets.prices.snapshot"]
+    monkeypatch.setitem(ep, "platform_auth", "anonymous")
+    monkeypatch.setitem(ep, "cost", {"type": "free", "value": 0, "currency": "USD", "unit": "call"})
+    exc = R._marketplace_no_credential("financialdatasets", ep["id"], P.REGISTRY["financialdatasets"], ep)
+    assert exc.log_kind == "platform_key_missing", exc.log_kind
+
+
+def test_a_demo_teams_refusal_lists_no_keyless_alternative_it_cannot_call_and_logs_policy(monkeypatch):
+    """A demo or sandbox team is refused keyless tools: its refusal neither offers one as callable
+    nor blames a provider account it does not need."""
+    import dataclasses
+    from types import SimpleNamespace
+    from treg.application.call import resolve as R
+    from treg.config import get_settings
+    from treg.domain.catalog import store as catalog_store
+    monkeypatch.setitem(P.REGISTRY, "financialdatasets", dataclasses.replace(
+        P.REGISTRY["financialdatasets"], auth_kind="public"))
+    monkeypatch.setattr(get_settings(), "platform_providers", "financialdatasets")
+    demo = SimpleNamespace(public_demo=True, id=1)
+    monkeypatch.setattr(R.demo_sandbox, "is_sandbox", lambda org: False)
+    ep = catalog_store.load().by_id["financialdatasets.prices.snapshot"]
+    monkeypatch.setitem(ep, "platform_auth", "anonymous")
+    monkeypatch.setitem(ep, "cost", {"type": "free", "value": 0, "currency": "USD", "unit": "call"})
+    exc = R._marketplace_no_credential("financialdatasets", ep["id"], P.REGISTRY["financialdatasets"], ep, demo)
+    assert exc.log_kind == "admission_denied", exc.log_kind
+    assert "callable now, no key needed" not in str(exc.detail), exc.detail
+    # not enabled on this server: the message says so first, and the log names the same reason
+    monkeypatch.setattr(get_settings(), "platform_providers", "")
+    off = R._marketplace_no_credential("financialdatasets", ep["id"], P.REGISTRY["financialdatasets"], ep, demo)
+    assert "has not enabled" in str(off.detail) and off.log_kind == "platform_key_missing", (off.log_kind, off.detail)
+
+
+async def test_connecting_a_public_provider_not_enabled_says_so(clients, monkeypatch):
+    from treg.config import get_settings
+    monkeypatch.setitem(P.REGISTRY, "public-demo", dataclasses.replace(
+        P.MOBIUSENGINE_JOBS, service="public-demo", auth_kind="public", display_name="Public Demo"))
+    monkeypatch.setattr(get_settings(), "platform_providers", "")
+    r = await clients.post("/connections/token", json={"provider": "public-demo", "token": "x"})
+    assert r.status_code == 422 and "has not enabled it" in r.text and "call its catalog tools directly" not in r.text
+    monkeypatch.setattr(get_settings(), "platform_providers", "public-demo")
+    r = await clients.post("/connections/token", json={"provider": "public-demo", "token": "x"})
+    assert r.status_code == 422 and "call its catalog tools directly" in r.text
+
+
+@pytest.mark.parametrize("public_demo", [False, True])
+async def test_a_demo_teams_key_provider_refusal_offers_no_keyless_tool_it_is_refused(
+    clients, monkeypatch, public_demo,
+):
+    """Greenhouse and Ashby serve companies.jobs keyless, but not to a public demo team, so a
+    refusal for a missing Hirebase key must not offer them to one."""
+    from treg.config import get_settings
+    from treg.infra.db import session_maker
+    from treg.models import Org
+
+    monkeypatch.setenv("TREG_PLATFORM_PROVIDERS", "greenhouse,ashby")
+    get_settings.cache_clear()
+    async with session_maker() as db:
+        org = await db.get(Org, (await clients.get("/orgs")).json()[0]["org_id"])
+        org.public_demo = public_demo
+        await db.commit()
+    r = await clients.get("/call/hirebase.companies.jobs?company_slug=stripe")
+    get_settings.cache_clear()
+    assert r.status_code == 404 and "no hirebase credential" in r.text, r.text
+    offered = "greenhouse.companies.jobs  free  (callable now, no key needed)" in r.json()["detail"]
+    assert offered is not public_demo, r.text
+
+
+async def test_a_paused_public_provider_s_key_paste_says_it_is_paused(clients, monkeypatch):
+    from treg.config import get_settings
+    monkeypatch.setitem(P.REGISTRY, "public-demo", dataclasses.replace(
+        P.MOBIUSENGINE_JOBS, service="public-demo", auth_kind="public", display_name="Public Demo"))
+    monkeypatch.setattr(get_settings(), "platform_providers", "public-demo")
+    monkeypatch.setattr(get_settings(), "paused_providers", "public-demo")
+    r = await clients.post("/connections/token", json={"provider": "public-demo", "token": "x"})
+    assert "call its catalog tools directly" not in r.text and "paused" in r.text.lower(), (r.status_code, r.text)
+
+
+async def test_the_routed_access_preview_tries_each_child_s_own_test_identity(monkeypatch):
+    """A child gated on a real value (a board system) is not reached by placeholder identities; the
+    preview must still find it from the child's own verified test identity."""
+    from types import SimpleNamespace
+    from treg.application.call import access as A
+    sample = {"ats": "board-system", "board": "acme"}
+    route = {"id": "treg.x", "capability": "x.y", "routed_children": ["board.list"], "test_request": {"body": {}}}
+
+    async def fake_plan(ep, identity, caller, options):
+        hit = identity == sample
+        cand = SimpleNamespace(tier="anonymous", endpoint={"id": "board.list", "provider": "board"}, price_micro=0,
+                               variant=("ats", "board"), view=lambda: {"endpoint_id": "board.list", "tier": "anonymous"})
+        return SimpleNamespace(candidates=[cand] if hit else [], dropped=[], variant=("ats", "board"))
+    monkeypatch.setattr(A, "build_plan", fake_plan)
+    catalog = SimpleNamespace(contracts={"x.y": SimpleNamespace(identity=[["ats", "board"]])},
+                              adapters={"board.list": SimpleNamespace(test_identity=sample)})
+    out = await A._routed_access(route, SimpleNamespace(org_id=1, org=None), catalog)
+    assert out["tier"] == "routed" and "board.list" in out["detail"], out
+
+
+async def test_the_access_preview_finds_a_team_tool_on_a_row_s_own_host(clients):
+    """A row on an approved second host is called there, so the team's tool for that host serves it."""
+    sid = (await clients.post("/secrets", json={"name": "gate-key", "value": "v"})).json()["id"]
+    assert (await clients.post("/tools", json={"name": "our-gate", "base_url": "https://gate.crawl4ai.com",
+                                               "secret_id": sid})).status_code == 200
+    out = (await clients.get("/catalog/endpoints/crawl4ai.people.email.find/access")).json()
+    assert out["tier"] == "tool", out
+
+
+async def test_the_access_preview_keeps_a_provider_without_second_hosts_on_its_main_host(clients):
+    """A `host` on a provider that approves no second host does not move the call (resolve keeps it on
+    the main host), so the preview must not move either: a tool on that host is not what serves it."""
+    sid = (await clients.post("/secrets", json={"name": "ga-key", "value": "v"})).json()["id"]
+    assert (await clients.post("/tools", json={"name": "my-ga-admin", "base_url": "https://analyticsadmin.googleapis.com",
+                                               "secret_id": sid})).status_code == 200
+    out = (await clients.get("/catalog/endpoints/google-analytics.x.analyticsadmin-accountsummaries-list/access")).json()
+    assert out["tier"] != "tool", out
+
+
+async def test_the_access_preview_probes_a_second_host_row_at_that_host_s_own_base(clients):
+    """A row on another approved host is called at that host's base URL (its own path), so a team
+    tool registered there must be what the preview finds."""
+    from treg.domain.catalog import store as catalog_store
+    row = catalog_store.load().by_id["diffbot.x.extract-analyze"]
+    base = P.REGISTRY["diffbot"].profile_for_catalog_host(row["host"]).base_url.rstrip("/")
+    base += "/" + row["path"].lstrip("/").split("/")[0]  # a tool on the row's first path segment there
+    sid = (await clients.post("/secrets", json={"name": "db-key", "value": "v"})).json()["id"]
+    assert (await clients.post("/tools", json={"name": "our-db", "base_url": base, "secret_id": sid})).status_code == 200
+    out = (await clients.get("/catalog/endpoints/diffbot.x.extract-analyze/access")).json()
+    assert out["tier"] == "tool", (base, out)

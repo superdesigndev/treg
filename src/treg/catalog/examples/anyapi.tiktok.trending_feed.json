@@ -1,0 +1,34 @@
+{
+  "output": {
+    "found": true,
+    "data": {
+      "videos": [
+        {
+          "author": "itsgivingcutie",
+          "caption": "#japan #kimono ",
+          "comments": 782,
+          "createdUtc": 1783575898,
+          "id": "7660400105949842696",
+          "likes": 443429,
+          "region": "TH",
+          "shares": 39725,
+          "url": "https://www.tiktok.com/@itsgivingcutie/video/7660400105949842696",
+          "views": 2406197
+        },
+        "… 15 more item(s) truncated"
+      ]
+    }
+  },
+  "provider": "AnyAPI",
+  "costUsd": 0.0008,
+  "items": 16,
+  "replayed": false,
+  "source": {
+    "id": "anonymous-quokka",
+    "name": "Quokka",
+    "kind": "anonymous",
+    "artworkKey": "quokka"
+  },
+  "hint": "large_result: this response is ~9 KB. To keep future runs from flooding your context, re-run with `fields` (keep only the keys you need), `max_items` (cap rows), `summary=true` (outline only), or `jq`… [308 chars]",
+  "resultId": "ff7112ac-d620-4d0f-bb9f-fd4946989d02"
+}

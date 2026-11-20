@@ -1,0 +1,49 @@
+{
+  "id": "urn:li:fsd_company:1035",
+  "companyId": "1035",
+  "name": "Microsoft",
+  "publicIdentifier": "microsoft",
+  "url": "https://www.linkedin.com/company/microsoft/",
+  "websiteUrl": "https://news.microsoft.com/",
+  "domain": "news.microsoft.com",
+  "industry": "Software Development",
+  "industryV1": "Computer Software",
+  "employeeCount": 231791,
+  "employeeCountRange": {
+    "start": 10001
+  },
+  "headquarter": {
+    "line1": "1 Microsoft Way",
+    "city": "Redmond",
+    "geographicArea": "Washington",
+    "postalCode": "98052",
+    "country": "US",
+    "headquarter": true
+  },
+  "locations": [
+    {
+      "line1": "Pradiareň 1900",
+      "line2": "Svätoplukova 2A",
+      "city": "Bratislava",
+      "postalCode": "821 08",
+      "country": "SK"
+    },
+    {
+      "line1": "Thames Valley Park Drive",
+      "city": "Reading",
+      "geographicArea": "Berkshire",
+      "postalCode": "RG6 1WG",
+      "country": "GB"
+    },
+    "… 43 more item(s) truncated"
+  ],
+  "followerCount": 29160306,
+  "logoUrl": "https://media.licdn.com/dms/image/v2/D560BAQH32RJQCl3dDQ/company-logo_400_400/B56ZYQ0mrGGoAc-/0/1744038948046/microsoft_logo?e=1792022400&v=beta&t=7--yYnKRaITVGjZz-B2sKfI-UdhRxFcWyimbEhiuNtU",
+  "coverImageUrl": "https://media.licdn.com/dms/image/v2/D4E3DAQGWOa_gAs1qXg/image-scale_325_1920/B4EZ8ZTX5SJEAI-/0/1782835937311/microsoft_cover?e=1790877600&v=beta&t=0qdKCqqRENZJw3YCIDJy_YpxHs-E0EijObn7AT7vLdw",
+  "description": "Every company has a mission. What's ours? To empower every person and every organization to achieve more. We believe technology can and should be a force for good and that meaningful innovation contributes to a brighter world in the future and today. Our culture doesn’t just encourage curiosity; it embraces it. Each day we make progress together by showing up as our authentic selves. We show up with a learn-it-all mentality. We show up cheering on others, knowing their success doesn't diminish o… [747 chars total]",
+  "specialities": [
+    "Business Software",
+    "Developer Tools",
+    "… 21 more item(s) truncated"
+  ]
+}

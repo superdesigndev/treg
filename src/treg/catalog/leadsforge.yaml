@@ -36,6 +36,8 @@ pricing_url: https://www.leadsforge.ai/pricing
 endpoints:
   # --- people search (free) ----------------------------------------------------------------------
   - id: leadsforge.people.search
+    cache:
+      ignore_paths: ["cursor"]
     domain: contacts
     capability: people.search
     platform: people
@@ -53,7 +55,7 @@ endpoints:
         companyIndustries: {type: object, required: false, note: "{include/exclude}; EXACT values from leadsforge.people.search.filters.industries", example: {include: ["software development"]}}
         companyTypes: {type: object, required: false, note: "{include/exclude}; ids from leadsforge.people.search.filters.company_types", example: {include: ["PRIVATELY_HELD"]}}
         companyFundingRounds: {type: object, required: false, note: "{include/exclude}; ids from leadsforge.people.search.filters.funding_types", example: {include: ["SERIES_B"]}}
-        companyRevenueRanges: {type: array, required: false, note: "values from leadsforge.people.search.filters.revenue_ranges", example: ["small_upper"]}
+        companyRevenueRanges: {type: array, items: {type: string}, required: false, note: "values from leadsforge.people.search.filters.revenue_ranges", example: ["small_upper"]}
         companyEmployeeNumberRange: {type: object, required: false, note: "{min, max}", example: {min: 50, max: 500}}
         companyFoundedYearRange: {type: object, required: false, note: "{min, max}", example: {min: 2010, max: 2024}}
         companyYearsInBusinessRange: {type: object, required: false, note: "{min, max}"}
@@ -71,9 +73,9 @@ endpoints:
         leadIDs: {type: object, required: false, note: "{include/exclude} LeadsForge person ids"}
         limit: {type: integer, required: false, note: "page size", example: 2}
         maxContactsPerCompany: {type: integer, required: false, note: "cap results per company so one big employer cannot fill the page", example: 3}
-        excludeEmails: {type: array, required: false, note: "suppression list — emails you already own (documented in the route description, not in the schema)"}
-        excludeDomains: {type: array, required: false, note: "suppression list — company domains to skip"}
-        excludeLinkedInURLs: {type: array, required: false, note: "suppression list — LinkedIn profile URLs to skip"}
+        excludeEmails: {type: array, items: {type: string}, required: false, note: "suppression list — emails you already own (documented in the route description, not in the schema)"}
+        excludeDomains: {type: array, items: {type: string}, required: false, note: "suppression list — company domains to skip"}
+        excludeLinkedInURLs: {type: array, items: {type: string}, required: false, note: "suppression list — LinkedIn profile URLs to skip"}
       note: "returns person ids plus name, job title, location and firmographics — NOT email or phone. Feed the returned `id` into the enrichment routes as `personID` to reveal a contact channel."
     test_request:
       body: {companyDomains: {include: ["stripe.com"]}, leadSeniorities: {include: ["c_suite"]}, limit: 2}
@@ -89,6 +91,7 @@ endpoints:
       note: "credit balance was identical before and after this call (100 -> 100) on 2026-08-20; the pricing page prices only revealed contact channels, never the search"
     docs_url: https://api.leadsforge.ai/public/swagger/doc.json
     verified: '2026-08-20'
+    added: '2026-08-20'
     example_response: examples/leadsforge.people.search.json
 
   - id: leadsforge.people.search.count
@@ -119,6 +122,7 @@ endpoints:
       note: "balance unchanged across the call on 2026-08-20"
     docs_url: https://api.leadsforge.ai/public/swagger/doc.json
     verified: '2026-08-20'
+    added: '2026-08-20'
     example_response: examples/leadsforge.people.search.count.json
 
   # --- contact reveal: synchronous singles --------------------------------------------------------
@@ -156,6 +160,7 @@ endpoints:
       note: "1 credit on a hit, nothing on a miss. Confirmed live: balance 100 -> 99 on one successful call, and GET /balance reports emailEnrichmentPrice=1"
     docs_url: https://api.leadsforge.ai/public/swagger/doc.json
     verified: '2026-08-20'
+    added: '2026-08-20'
     example_response: examples/leadsforge.people.email.find.json
 
   - id: leadsforge.people.phone.find
@@ -192,6 +197,7 @@ endpoints:
       note: "10 credits on a hit, nothing on a miss. Confirmed live: balance 99 -> 89 on one successful call; GET /balance reports phoneNumberEnrichmentPrice=10"
     docs_url: https://api.leadsforge.ai/public/swagger/doc.json
     verified: '2026-08-20'
+    added: '2026-08-20'
     example_response: examples/leadsforge.people.phone.find.json
 
   # --- contact reveal: async batches --------------------------------------------------------------
@@ -204,12 +210,15 @@ endpoints:
     path: /enrichment/emails
     name: "Start a bulk work-email job"
     summary: "Request email finding."
+    resource_ownership:
+      produces:
+        - {kind: enrichment_job, path: jobID}
     input:
       headers:
         Idempotency-Key: {type: string, required: false, note: "a retried request with the same key returns the original job instead of charging again", example: "treg-emails-2026-08-20-1"}
       body:
-        people: {type: array, required: false, note: "max 500; each item is {linkedinURL} OR {firstName, lastName, company}, plus optional externalID (max 128 chars). Mutually exclusive with personIDs", example: [{firstName: "Patrick", lastName: "Collison", company: "Stripe", externalID: "crm-42"}]}
-        personIDs: {type: array, required: false, note: "ids from leadsforge.people.search; externalID is NOT supported in this mode", example: ["p_abc123", "p_def456"]}
+        people: {type: array, items: {type: object}, required: false, note: "max 500; each item is {linkedinURL} OR {firstName, lastName, company}, plus optional externalID (max 128 chars). Mutually exclusive with personIDs", example: [{firstName: "Patrick", lastName: "Collison", company: "Stripe", externalID: "crm-42"}]}
+        personIDs: {type: array, items: {type: string}, required: false, note: "ids from leadsforge.people.search; externalID is NOT supported in this mode", example: ["p_abc123", "p_def456"]}
         clientRequestID: {type: string, required: false, note: "your own correlation id — also the filter key on the jobs list", example: "my-request-123"}
         webhookURL: {type: string, required: false, note: "POSTed on completion/failure, retried up to 10 times with exponential backoff", example: "https://example.com/webhook"}
         saveToList: {type: boolean, required: false, note: "also persist the results as a list in the LeadsForge app"}
@@ -229,6 +238,7 @@ endpoints:
       note: "1 credit per email found; misses free. Credits are reserved at submit (job.reservedCredits) and settled on completion (job.consumedCredits). A person already revealed on this account re-resolves for 0 — observed 2026-08-20"
     docs_url: https://api.leadsforge.ai/public/swagger/doc.json
     verified: '2026-08-20'
+    added: '2026-08-20'
     example_response: examples/leadsforge.people.email.find.bulk.json
 
   - id: leadsforge.people.phone.find.bulk
@@ -240,12 +250,15 @@ endpoints:
     path: /enrichment/phones
     name: "Start a bulk phone-number job"
     summary: "Request phone number finding."
+    resource_ownership:
+      produces:
+        - {kind: enrichment_job, path: jobID}
     input:
       headers:
         Idempotency-Key: {type: string, required: false, note: "retry-safe; the original job is returned without re-charging", example: "treg-phones-2026-08-20-1"}
       body:
-        people: {type: array, required: false, note: "max 500; {linkedinURL} OR {firstName, lastName, company} (+ optional externalID). Mutually exclusive with personIDs", example: [{firstName: "Patrick", lastName: "Collison", company: "Stripe"}]}
-        personIDs: {type: array, required: false, note: "ids from leadsforge.people.search", example: ["p_abc123"]}
+        people: {type: array, items: {type: object}, required: false, note: "max 500; {linkedinURL} OR {firstName, lastName, company} (+ optional externalID). Mutually exclusive with personIDs", example: [{firstName: "Patrick", lastName: "Collison", company: "Stripe"}]}
+        personIDs: {type: array, items: {type: string}, required: false, note: "ids from leadsforge.people.search", example: ["p_abc123"]}
         clientRequestID: {type: string, required: false, example: "my-request-123"}
         webhookURL: {type: string, required: false, note: "completion callback"}
         saveToList: {type: boolean, required: false}
@@ -265,6 +278,7 @@ endpoints:
       note: "10 credits per number found; misses free; already-revealed people re-resolve for 0"
     docs_url: https://api.leadsforge.ai/public/swagger/doc.json
     verified: '2026-08-20'
+    added: '2026-08-20'
     example_response: examples/leadsforge.people.phone.find.bulk.json
 
   - id: leadsforge.people.identity.resolve.bulk
@@ -276,12 +290,15 @@ endpoints:
     path: /enrichment/linkedin
     name: "Start a bulk job — name + company to LinkedIn URL"
     summary: "Request linkedin profile finding."
+    resource_ownership:
+      produces:
+        - {kind: enrichment_job, path: jobID}
     input:
       headers:
         Idempotency-Key: {type: string, required: false, note: "retry-safe", example: "treg-li-2026-08-20-1"}
       body:
-        people: {type: array, required: false, note: "max 500; {firstName, lastName, company} (+ optional externalID) — resolve a name at a company to their LinkedIn profile URL", example: [{firstName: "Patrick", lastName: "Collison", company: "Stripe"}]}
-        personIDs: {type: array, required: false, note: "ids from leadsforge.people.search", example: ["p_abc123"]}
+        people: {type: array, items: {type: object}, required: false, note: "max 500; {firstName, lastName, company} (+ optional externalID) — resolve a name at a company to their LinkedIn profile URL", example: [{firstName: "Patrick", lastName: "Collison", company: "Stripe"}]}
+        personIDs: {type: array, items: {type: string}, required: false, note: "ids from leadsforge.people.search", example: ["p_abc123"]}
         clientRequestID: {type: string, required: false, example: "my-request-123"}
         webhookURL: {type: string, required: false}
         saveToList: {type: boolean, required: false}
@@ -301,6 +318,7 @@ endpoints:
       note: "1 credit per profile found; misses free. Observed live: reservedCredits 1 at submit, consumedCredits 1 on completion"
     docs_url: https://api.leadsforge.ai/public/swagger/doc.json
     verified: '2026-08-20'
+    added: '2026-08-20'
     example_response: examples/leadsforge.people.identity.resolve.bulk.json
 
   # --- enrichment job plumbing (free) -------------------------------------------------------------
@@ -308,11 +326,13 @@ endpoints:
     domain: contacts
     capability: people.enrich.job.status
     platform: people
-    scope: own_account
+    scope: any_account
     method: GET
     path: /enrichment/jobs/{jobID}
     name: "Check a bulk enrichment job"
     summary: "Fetch enrichment job status"
+    resource_ownership:
+      requires: {kind: enrichment_job, param: jobID}
     input:
       pathParams:
         jobID: {type: string, required: true, note: "the jobID returned by any /enrichment/{emails,phones,linkedin} start", example: "4cf14582-3878-4438-9797-e0b7919256bb"}
@@ -331,17 +351,20 @@ endpoints:
       note: "polling never moved the balance"
     docs_url: https://api.leadsforge.ai/public/swagger/doc.json
     verified: '2026-08-20'
+    added: '2026-08-20'
     example_response: examples/leadsforge.people.enrich.job.status.json
 
   - id: leadsforge.people.enrich.job.results
     domain: contacts
     capability: people.enrich.job.results
     platform: people
-    scope: own_account
+    scope: any_account
     method: GET
     path: /enrichment/jobs/{jobID}/results
     name: "Fetch bulk enrichment results"
     summary: "Fetch enrichment job results"
+    resource_ownership:
+      requires: {kind: enrichment_job, param: jobID}
     input:
       pathParams:
         jobID: {type: string, required: true, example: "4cf14582-3878-4438-9797-e0b7919256bb"}
@@ -364,6 +387,7 @@ endpoints:
       note: "results are already paid for by the job"
     docs_url: https://api.leadsforge.ai/public/swagger/doc.json
     verified: '2026-08-20'
+    added: '2026-08-20'
     example_response: examples/leadsforge.people.enrich.job.results.json
 
   - id: leadsforge.people.enrich.job.list
@@ -399,12 +423,13 @@ endpoints:
       confidence: verified
     docs_url: https://api.leadsforge.ai/public/swagger/doc.json
     verified: '2026-08-20'
+    added: '2026-08-20'
     example_response: examples/leadsforge.people.enrich.job.list.json
 
   # --- lookalike companies -------------------------------------------------------------------------
   - id: leadsforge.companies.lookalike.preview
     domain: companies
-    capability: companies.lookalike
+    capability: companies.similar
     platform: companies
     scope: any_account
     method: POST
@@ -413,11 +438,11 @@ endpoints:
     summary: "Free, uncharged preview of companies similar to the provided domains."
     input:
       body:
-        domains: {type: array, required: true, note: "seed company domains", example: ["stripe.com"]}
-        employeeRanges: {type: array, required: false, note: "values from leadsforge.companies.lookalike.filters.employee_ranges", example: ["201-500"]}
-        categories: {type: array, required: false, note: "industry categories"}
-        fundingStages: {type: array, required: false, note: "funding stage filter"}
-        locations: {type: array, required: false, note: "country ISO 3166-1 alpha-2 codes or region ids from leadsforge.companies.lookalike.filters.locations", example: [{id: "US", type: "country"}]}
+        domains: {type: array, items: {type: string}, required: true, note: "seed company domains", example: ["stripe.com"]}
+        employeeRanges: {type: array, items: {type: string}, required: false, note: "values from leadsforge.companies.lookalike.filters.employee_ranges", example: ["201-500"]}
+        categories: {type: array, items: {type: string}, required: false, note: "industry categories"}
+        fundingStages: {type: array, items: {type: string}, required: false, note: "funding stage filter"}
+        locations: {type: array, items: {type: object}, required: false, note: "country ISO 3166-1 alpha-2 codes or region ids from leadsforge.companies.lookalike.filters.locations", example: [{id: "US", type: "country"}]}
       note: "returns company metadata only — no people, no credits. Use it to shape the filter set before paying for the same query on the search route."
     test_request:
       body: {domains: ["stripe.com"], employeeRanges: ["201-500"]}
@@ -433,11 +458,12 @@ endpoints:
       note: "documented as free and confirmed live — balance unchanged at 89 across the call"
     docs_url: https://api.leadsforge.ai/public/swagger/doc.json
     verified: '2026-08-20'
+    added: '2026-08-20'
     example_response: examples/leadsforge.companies.lookalike.preview.json
 
   - id: leadsforge.companies.lookalike.search
     domain: companies
-    capability: companies.lookalike
+    capability: companies.similar
     platform: companies
     scope: any_account
     method: POST
@@ -448,11 +474,11 @@ endpoints:
       headers:
         Idempotency-Key: {type: string, required: false, note: "a retried request with the same key returns the original result without charging credits again", example: "treg-lookalike-2026-08-20-1"}
       body:
-        domains: {type: array, required: true, note: "seed company domains", example: ["stripe.com"]}
-        employeeRanges: {type: array, required: false, example: ["201-500"]}
-        categories: {type: array, required: false}
-        fundingStages: {type: array, required: false}
-        locations: {type: array, required: false, note: "ids from leadsforge.companies.lookalike.filters.locations"}
+        domains: {type: array, items: {type: string}, required: true, note: "seed company domains", example: ["stripe.com"]}
+        employeeRanges: {type: array, items: {type: string}, required: false, example: ["201-500"]}
+        categories: {type: array, items: {type: string}, required: false}
+        fundingStages: {type: array, items: {type: string}, required: false}
+        locations: {type: array, items: {type: object}, required: false, note: "ids from leadsforge.companies.lookalike.filters.locations"}
         page: {type: integer, required: false, note: "1-based, max 100", example: 1}
         pageSize: {type: integer, required: false, note: "max 100 — THIS IS THE PRICE DIAL: 1 credit per company returned", example: 1}
       note: "credits are reserved before the search and charged against actual results. Feed a returned domain into leadsforge.people.search companyDomains.include to turn a company into enrichable people."
@@ -471,6 +497,7 @@ endpoints:
       note: "1 credit per company returned (charged per company, not per lead). Confirmed live: pageSize=1 moved the balance 89 -> 88; GET /balance reports companyLookalikePrice=1"
     docs_url: https://api.leadsforge.ai/public/swagger/doc.json
     verified: '2026-08-20'
+    added: '2026-08-20'
     example_response: examples/leadsforge.companies.lookalike.search.json
 
   # --- LinkedIn company followers ------------------------------------------------------------------
@@ -483,17 +510,20 @@ endpoints:
     path: /company-followers/search
     name: "List a LinkedIn company page's followers (async job)"
     summary: "Starts an async company followers search for a LinkedIn company page"
+    resource_ownership:
+      produces:
+        - {kind: followers_job, path: jobID}
     input:
       headers:
         Idempotency-Key: {type: string, required: false, note: "if a job with this key already exists for the account, the existing job is returned as-is", example: "treg-followers-2026-08-20-1"}
       body:
         linkedinUrl: {type: string, required: true, note: "the company PAGE url", example: "https://www.linkedin.com/company/stripe"}
         limit: {type: integer, required: true, note: "how many followers to pull, capped at 50000 — THIS IS THE PRICE DIAL: 1 credit per follower returned", example: 1}
-        countries: {type: array, required: false, note: "values from leadsforge.linkedin.company.followers.filters.countries", example: ["United States", "Germany"]}
-        states: {type: array, required: false, note: "values from leadsforge.linkedin.company.followers.filters.states", example: ["California"]}
-        departments: {type: array, required: false, note: "values from leadsforge.linkedin.company.followers.filters.departments", example: ["Engineering"]}
-        jobTitles: {type: array, required: false, note: "values from leadsforge.linkedin.company.followers.filters.job_titles", example: ["Software Engineer"]}
-        levels: {type: array, required: false, note: "values from leadsforge.linkedin.company.followers.filters.levels", example: ["Director"]}
+        countries: {type: array, items: {type: string}, required: false, note: "values from leadsforge.linkedin.company.followers.filters.countries", example: ["United States", "Germany"]}
+        states: {type: array, items: {type: string}, required: false, note: "values from leadsforge.linkedin.company.followers.filters.states", example: ["California"]}
+        departments: {type: array, items: {type: string}, required: false, note: "values from leadsforge.linkedin.company.followers.filters.departments", example: ["Engineering"]}
+        jobTitles: {type: array, items: {type: string}, required: false, note: "values from leadsforge.linkedin.company.followers.filters.job_titles", example: ["Software Engineer"]}
+        levels: {type: array, items: {type: string}, required: false, note: "values from leadsforge.linkedin.company.followers.filters.levels", example: ["Director"]}
         clientRequestID: {type: string, required: false, example: "req_12345"}
         webhookURL: {type: string, required: false, note: "POSTed with {jobID, status, linkedinUrl, companyName, followerCount, total, processed, error} on completion/failure; retried up to 10 times"}
       note: "202 with a jobID; the 202 body already tells you the page's total followerCount, which is a free audience-size read before you commit to a limit. Poll the job — a limit of 1 took roughly a minute to complete."
@@ -512,17 +542,20 @@ endpoints:
       note: "1 credit per follower returned, with their LinkedIn URL. Confirmed live: limit=1 reserved 1 credit and settled at 87 -> 86; GET /balance reports companyFollowersPrice=1"
     docs_url: https://api.leadsforge.ai/public/swagger/doc.json
     verified: '2026-08-20'
+    added: '2026-08-20'
     example_response: examples/leadsforge.linkedin.company.followers.search.json
 
   - id: leadsforge.linkedin.company.followers.job.status
     domain: contacts
     capability: linkedin.company.followers.job.status
     platform: linkedin
-    scope: own_account
+    scope: any_account
     method: GET
     path: /company-followers/jobs/{jobID}
     name: "Check a company-followers job"
     summary: "Fetch company followers job status."
+    resource_ownership:
+      requires: {kind: followers_job, param: jobID}
     input:
       pathParams:
         jobID: {type: string, required: true, example: "33204458-df12-4d45-8e32-3a92dc6359be"}
@@ -540,17 +573,20 @@ endpoints:
       confidence: verified
     docs_url: https://api.leadsforge.ai/public/swagger/doc.json
     verified: '2026-08-20'
+    added: '2026-08-20'
     example_response: examples/leadsforge.linkedin.company.followers.job.status.json
 
   - id: leadsforge.linkedin.company.followers.job.results
     domain: contacts
     capability: linkedin.company.followers.job.results
     platform: linkedin
-    scope: own_account
+    scope: any_account
     method: GET
     path: /company-followers/jobs/{jobID}/results
     name: "Fetch company-followers results"
     summary: "Fetch company followers job results with pagination."
+    resource_ownership:
+      requires: {kind: followers_job, param: jobID}
     input:
       pathParams:
         jobID: {type: string, required: true, example: "33204458-df12-4d45-8e32-3a92dc6359be"}
@@ -572,6 +608,7 @@ endpoints:
       confidence: verified
     docs_url: https://api.leadsforge.ai/public/swagger/doc.json
     verified: '2026-08-20'
+    added: '2026-08-20'
     example_response: examples/leadsforge.linkedin.company.followers.job.results.json
 
   - id: leadsforge.linkedin.company.followers.job.list
@@ -606,6 +643,7 @@ endpoints:
       confidence: verified
     docs_url: https://api.leadsforge.ai/public/swagger/doc.json
     verified: '2026-08-20'
+    added: '2026-08-20'
     example_response: examples/leadsforge.linkedin.company.followers.job.list.json
 
   # --- filter-value discovery (all free) -----------------------------------------------------------
@@ -625,6 +663,7 @@ endpoints:
     cost: {type: free, value: 0, currency: USD, unit: call}
     docs_url: https://api.leadsforge.ai/public/swagger/doc.json
     verified: '2026-08-20'
+    added: '2026-08-20'
     example_response: examples/leadsforge.people.search.filters.seniorities.json
 
   - id: leadsforge.people.search.filters.departments
@@ -643,6 +682,7 @@ endpoints:
     cost: {type: free, value: 0, currency: USD, unit: call}
     docs_url: https://api.leadsforge.ai/public/swagger/doc.json
     verified: '2026-08-20'
+    added: '2026-08-20'
     example_response: examples/leadsforge.people.search.filters.departments.json
 
   - id: leadsforge.people.search.filters.industries
@@ -665,6 +705,7 @@ endpoints:
     cost: {type: free, value: 0, currency: USD, unit: call}
     docs_url: https://api.leadsforge.ai/public/swagger/doc.json
     verified: '2026-08-20'
+    added: '2026-08-20'
     example_response: examples/leadsforge.people.search.filters.industries.json
 
   - id: leadsforge.people.search.filters.company_types
@@ -683,6 +724,7 @@ endpoints:
     cost: {type: free, value: 0, currency: USD, unit: call}
     docs_url: https://api.leadsforge.ai/public/swagger/doc.json
     verified: '2026-08-20'
+    added: '2026-08-20'
     example_response: examples/leadsforge.people.search.filters.company_types.json
 
   - id: leadsforge.people.search.filters.funding_types
@@ -701,6 +743,7 @@ endpoints:
     cost: {type: free, value: 0, currency: USD, unit: call}
     docs_url: https://api.leadsforge.ai/public/swagger/doc.json
     verified: '2026-08-20'
+    added: '2026-08-20'
     example_response: examples/leadsforge.people.search.filters.funding_types.json
 
   - id: leadsforge.people.search.filters.revenue_ranges
@@ -719,6 +762,7 @@ endpoints:
     cost: {type: free, value: 0, currency: USD, unit: call}
     docs_url: https://api.leadsforge.ai/public/swagger/doc.json
     verified: '2026-08-20'
+    added: '2026-08-20'
     example_response: examples/leadsforge.people.search.filters.revenue_ranges.json
 
   - id: leadsforge.companies.lookalike.filters.departments
@@ -737,6 +781,7 @@ endpoints:
     cost: {type: free, value: 0, currency: USD, unit: call}
     docs_url: https://api.leadsforge.ai/public/swagger/doc.json
     verified: '2026-08-20'
+    added: '2026-08-20'
     example_response: examples/leadsforge.companies.lookalike.filters.departments.json
 
   - id: leadsforge.companies.lookalike.filters.employee_ranges
@@ -755,6 +800,7 @@ endpoints:
     cost: {type: free, value: 0, currency: USD, unit: call}
     docs_url: https://api.leadsforge.ai/public/swagger/doc.json
     verified: '2026-08-20'
+    added: '2026-08-20'
     example_response: examples/leadsforge.companies.lookalike.filters.employee_ranges.json
 
   - id: leadsforge.companies.lookalike.filters.locations
@@ -773,6 +819,7 @@ endpoints:
     cost: {type: free, value: 0, currency: USD, unit: call}
     docs_url: https://api.leadsforge.ai/public/swagger/doc.json
     verified: '2026-08-20'
+    added: '2026-08-20'
     example_response: examples/leadsforge.companies.lookalike.filters.locations.json
 
   - id: leadsforge.companies.lookalike.filters.seniorities
@@ -791,6 +838,7 @@ endpoints:
     cost: {type: free, value: 0, currency: USD, unit: call}
     docs_url: https://api.leadsforge.ai/public/swagger/doc.json
     verified: '2026-08-20'
+    added: '2026-08-20'
     example_response: examples/leadsforge.companies.lookalike.filters.seniorities.json
 
   - id: leadsforge.linkedin.company.followers.filters.countries
@@ -809,6 +857,7 @@ endpoints:
     cost: {type: free, value: 0, currency: USD, unit: call}
     docs_url: https://api.leadsforge.ai/public/swagger/doc.json
     verified: '2026-08-20'
+    added: '2026-08-20'
     example_response: examples/leadsforge.linkedin.company.followers.filters.countries.json
 
   - id: leadsforge.linkedin.company.followers.filters.states
@@ -827,6 +876,7 @@ endpoints:
     cost: {type: free, value: 0, currency: USD, unit: call}
     docs_url: https://api.leadsforge.ai/public/swagger/doc.json
     verified: '2026-08-20'
+    added: '2026-08-20'
     example_response: examples/leadsforge.linkedin.company.followers.filters.states.json
 
   - id: leadsforge.linkedin.company.followers.filters.departments
@@ -845,6 +895,7 @@ endpoints:
     cost: {type: free, value: 0, currency: USD, unit: call}
     docs_url: https://api.leadsforge.ai/public/swagger/doc.json
     verified: '2026-08-20'
+    added: '2026-08-20'
     example_response: examples/leadsforge.linkedin.company.followers.filters.departments.json
 
   - id: leadsforge.linkedin.company.followers.filters.levels
@@ -863,6 +914,7 @@ endpoints:
     cost: {type: free, value: 0, currency: USD, unit: call}
     docs_url: https://api.leadsforge.ai/public/swagger/doc.json
     verified: '2026-08-20'
+    added: '2026-08-20'
     example_response: examples/leadsforge.linkedin.company.followers.filters.levels.json
 
   - id: leadsforge.linkedin.company.followers.filters.job_titles
@@ -885,6 +937,7 @@ endpoints:
     cost: {type: free, value: 0, currency: USD, unit: call}
     docs_url: https://api.leadsforge.ai/public/swagger/doc.json
     verified: '2026-08-20'
+    added: '2026-08-20'
     example_response: examples/leadsforge.linkedin.company.followers.filters.job_titles.json
 
   # --- account ------------------------------------------------------------------------------------
@@ -905,15 +958,13 @@ endpoints:
     cost: {type: free, value: 0, currency: USD, unit: call}
     docs_url: https://api.leadsforge.ai/public/swagger/doc.json
     verified: '2026-08-20'
+    added: '2026-08-20'
     example_response: examples/leadsforge.account.usage.json
 
 proposed_capabilities:
-  people.search.count: "Count how many people match a filter set, without paging results"
-  people.search.filters: "List the accepted values for a people-search filter"
   people.enrich.job.status: "Check an async people-enrichment job"
   people.enrich.job.results: "Fetch an async people-enrichment job's results"
   people.enrich.job.list: "List your async people-enrichment jobs"
-  companies.lookalike: "Find companies similar to seed domains"
   companies.lookalike.filters: "List the accepted values for a company-lookalike filter"
   linkedin.company.followers: "List a company page's LinkedIn followers"
   linkedin.company.followers.job.status: "Check an async company-followers job"

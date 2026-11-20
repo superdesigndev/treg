@@ -1,0 +1,14 @@
+{
+  "id": null,
+  "is_valid": false,
+  "street_line_1": null,
+  "street_line_2": null,
+  "city": null,
+  "postal_code": null,
+  "zip4": null,
+  "state_code": null,
+  "country_code": null,
+  "lat_long": null,
+  "error": null,
+  "warnings": ["Invalid address"]
+}

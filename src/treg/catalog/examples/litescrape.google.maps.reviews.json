@@ -1,0 +1,118 @@
+{
+  "search_metadata": {
+    "id": "8ff3b711dbfc0838a402ff7f",
+    "status": "Success",
+    "json_endpoint": "https://api.litescrape.com/api/google/reviews?place_id=ChIJjQxOkUG3RIYRQvNw_5i6b8s&num=5&hl=en",
+    "created_at": "2026-09-29 13:58:37 UTC",
+    "processed_at": "2026-09-29 13:58:37 UTC",
+    "total_time_taken": 2.423,
+    "google_maps_reviews_url": "https://www.google.com/maps/place/data=!4m7!3m6!1s0x8644b741914e0c8d:0xcb6fba98ff70f342!5m2!4m1!1i2!9m1!1b1?hl=en"
+  },
+  "search_parameters": {
+    "place_id": "ChIJjQxOkUG3RIYRQvNw_5i6b8s",
+    "num": "5",
+    "hl": "en"
+  },
+  "reviews": [
+    {
+      "position": 1,
+      "review_id": "Ci9DQUlRQUNvZENodHljRjlvT2t4SE9HNTVlV3R0UmpReU5GZHNjREZMVDFkS2QxRRAB",
+      "rating": 5.0,
+      "user": {
+        "name": "John Mitchell Skinner",
+        "link": "https://www.google.com/maps/contrib/111306439848888344281?hl=en",
+        "contributor_id": "111306439848888344281",
+        "thumbnail": "https://lh3.googleusercontent.com/a/ACg8ocIVVkhDxfFCB3zmB_1CkNbvnOoQ-wUscK92aKT_kn0HrOCijaQ=s120-c-rp-mo-ba12-br100",
+        "local_guide": true,
+        "reviews": 24,
+        "photos": 20
+      },
+      "source": "Google",
+      "likes": 0,
+      "date": "5 months ago",
+      "iso_date": "2026-04-07T14:29:13Z",
+      "iso_date_of_last_edit": "2026-04-07T14:29:13Z",
+      "snippet": "Excited about this place! Coffee was good, and they had a lot of different and seasonal options. I had their Kanpai Latte which was a hit for sure! They also ha…",
+      "extracted_snippet": {
+        "original": "Excited about this place! Coffee was good, and they had a lot of different and seasonal options. I had their Kanpai Latte which was a hit for sure! They also ha…"
+      },
+      "details": {
+        "meal_type": "Other",
+        "price_per_person": "$1–10",
+        "food": 5,
+        "service": 5,
+        "atmosphere": 5,
+        "noise_level": "Quiet, easy to talk"
+      },
+      "subratings": {
+        "food": 5,
+        "service": 5,
+        "atmosphere": 5
+      },
+      "images": [
+        "https://lh3.googleusercontent.com/grass-cs/ACvplmMSz3j4pLzTkzSrK8Oi027rKoykV9ETqtRjrBUydP-pzQ_579TVROflqWhXonL0rRS6Q27CV2zu9-QjT8yGtWLZ42ek9YBuZlX16cqncG9uWDSrVYdd7eFBudOcXOfet0yOqTFoHf4WJdDZ=k-no",
+        "https://lh3.googleusercontent.com/grass-cs/ACvplmNYEMuGSW9GcOtYdgLYl3VoV970hQ3APAXe_ZFDIwnHpg6eZJVL7F2-nUl-MPvlFwbfjQV3_Aq52YjJi0jLJSTLHffV2ZFBvrdjWrbuik9hpjsrIPyQL2sAPknZXvk9bjJf0LnUyzZB_R5Y=k-no"
+      ]
+    },
+    {
+      "position": 2,
+      "review_id": "Ci9DQUlRQUNvZENodHljRjlvT205MWJUSkVkR3cxWW10dFIyZFVNV1JQVFdZd2JIYxAB",
+      "rating": 5.0,
+      "user": {
+        "name": "Charles Kessenich",
+        "link": "https://www.google.com/maps/contrib/113391676496407273893?hl=en",
+        "contributor_id": "113391676496407273893",
+        "thumbnail": "https://lh3.googleusercontent.com/a-/ALV-UjXjs0YxG-V0S1U_UJcvROF-gsB8Afd9Emk8YH10PCo1dXyMmTDH=s120-c-rp-mo-ba12-br100",
+        "local_guide": true,
+        "reviews": 27,
+        "photos": 4
+      },
+      "source": "Google",
+      "likes": 0,
+      "date": "4 months ago",
+      "iso_date": "2026-05-02T13:48:46Z",
+      "iso_date_of_last_edit": "2026-05-02T13:50:16Z",
+      "snippet": "Love this place! Great coffee. Great neighborhood vibe. The staff is always super friendly. Nothing but good vibes.",
+      "extracted_snippet": {
+        "original": "Love this place! Great coffee. Great neighborhood vibe. The staff is always super friendly. Nothing but good vibes."
+      },
+      "details": {
+        "food": 5,
+        "service": 5,
+        "atmosphere": 5
+      },
+      "subratings": {
+        "food": 5,
+        "service": 5,
+        "atmosphere": 5
+      },
+      "images": [
+        "https://lh3.googleusercontent.com/grass-cs/ACvplmPFbPkkwwcChLU2RdyaOB2C076L2SgAKKkPLaNxwDqGvaJ-0RTg3wrJkkkfmgN_YjofweScEp61Iyf-geZhgO81FY66ZpyHsGEHsV9uukSnLm2wI5yugAgJ4OJTZxGMudumrBABQuA5-WRM=k-no",
+        "https://lh3.googleusercontent.com/grass-cs/ACvplmOKFSoecMbvMCK57frf-tJb-jEnMxYfm8HGn8E9Z8yP6aAdY4Gj9umi9FUnJP0KirW8YjJ_x6L6hzeCCaom1tx4PFqyWTACH40bo27KPIGPDsj_R3ex644rrZ4guhvOvjJV0W3UBDJI5cwd=k-no"
+      ]
+    }
+  ],
+  "place_info": {
+    "title": "Hometown Coffee - East Austin",
+    "address": "1101 Springdale Rd, Austin, TX 78721",
+    "rating": 4.9,
+    "reviews": 87,
+    "type": "Coffee shop"
+  },
+  "topics": [
+    {
+      "keyword": "carrot cake latte",
+      "mentions": 5,
+      "id": "GD0xe9siF1w"
+    },
+    {
+      "keyword": "pup cups",
+      "mentions": 4,
+      "id": "EoxY7_JkKsU"
+    }
+  ],
+  "pagination": {
+    "next": "https://api.litescrape.com/api/google/reviews?place_id=ChIJjQxOkUG3RIYRQvNw_5i6b8s&num=5&hl=en&next_page_token=ls1.WyJDakVJQVJJcENnb0FQN19MQUgxSl9fX19FaEFNNElRbnFITWlIOTQyTlFVQUFBQUFHZ245MlFJQ1luTDI3WThZQUNJQTo1IiwicnlUVGlLTUZ0Y0ZqZmpTU2VtMlctIl0",
+    "next_page_token": "ls1.WyJDakVJQVJJcENnb0FQN19MQUgxSl9fX19FaEFNNElRbnFITWlIOTQyTlFVQUFBQUFHZ245MlFJQ1luTDI3WThZQUNJQTo1IiwicnlUVGlLTUZ0Y0ZqZmpTU2VtMlctIl0"
+  }
+}

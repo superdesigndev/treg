@@ -1,0 +1,1 @@
+{ "inputs": { "prompt": "what is the best email verification tool", "brand": "Hunter", "brand_domain": "hunter.io", "competitors": "ZeroBounce, NeverBounce" }, "fields": ["engines", "answered", "brand_mentioned_by", "summary"] }

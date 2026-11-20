@@ -1,0 +1,20 @@
+{
+  "output": {
+    "found": true,
+    "data": {
+      "html": "<!DOCTYPE html>\n<html lang=\"en\" id=\"facebook\" class=\"no_js\">\n<head><meta charset=\"utf-8\" /><meta name=\"referrer\" content=\"origin-when-crossorigin\" id=\"meta_referrer\" /><script nonce=\"i0Dztjun\">functio… [295544 chars]"
+    }
+  },
+  "provider": "AnyAPI",
+  "costUsd": 0.0012,
+  "items": 0,
+  "replayed": false,
+  "source": {
+    "id": "anonymous-giraffe",
+    "name": "Giraffe",
+    "kind": "anonymous",
+    "artworkKey": "giraffe"
+  },
+  "hint": "large_result: this response is ~330 KB. To keep future runs from flooding your context, re-run with `fields` (keep only the keys you need), `max_items` (cap rows), `summary=true` (outline only), or `j… [310 chars]",
+  "resultId": "85cbbf52-49ce-4a01-aa1d-5fc2102956ee"
+}

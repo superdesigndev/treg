@@ -1,0 +1,32 @@
+{
+  "pagination": {
+    "totalElements": 89126,
+    "totalPages": 3566,
+    "pageNumber": 1,
+    "previousElements": 0,
+    "pageSize": 25
+  },
+  "elements": [
+    {
+      "id": "1234567890",
+      "url": "https://example.com/synthetic-record",
+      "title": "Synthetic example",
+      "postedDate": "2026-09-09T19:44:58.000Z",
+      "company": {
+        "name": "Synthetic example",
+        "universalName": "alex-example",
+        "linkedinUrl": "https://example.com/synthetic-record"
+      },
+      "location": {
+        "linkedinText": "Synthetic example"
+      },
+      "easyApply": false
+    }
+  ],
+  "status": 200,
+  "retries": 0,
+  "payments": [
+    "linkedinJobSearch"
+  ],
+  "cost": 0.001
+}

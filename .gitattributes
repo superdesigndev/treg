@@ -1,0 +1,3 @@
+# Signed and recorded bytes: a checkout must not rewrite their line endings.
+cli/internal/minisign/testdata/** -text
+cli/internal/skillscan/testdata/** -text

@@ -1,6 +1,6 @@
 ---
 name: treg-integration
-description: Integrate treg into your own product — give your users ~2,600 external API tools without owning the keys, and bill each of your customers for what they used. Covers MCP, CLI and HTTP, per-customer attribution, spend limits, and invoicing.
+description: Integrate treg into your own product — give your users {ENDPOINTS} external API tools without owning the keys, and bill each of your customers for what they used. Covers MCP, CLI and HTTP, per-customer attribution, spend limits, and invoicing.
 ---
 
 # Integrating treg into your product
@@ -9,8 +9,8 @@ You are a coding agent. A human has pointed you at this file because they want *
 product. Read this whole file before writing code — the billing section changes how you write the
 plumbing, so writing the plumbing first means rewriting it.
 
-**What treg is:** one base URL and one token that reach ~2,600 external API endpoints (SEO, SERP,
-backlinks, social, enrichment, ads, scraping) across ~40 providers, plus whatever the team registered
+**What treg is:** one base URL and one token that reach {ENDPOINTS} external API endpoints (SEO, SERP,
+backlinks, social, enrichment, ads, scraping) across {PROVIDERS} providers, plus whatever the team registered
 themselves. treg holds the provider credentials and injects them server-side; your caller makes the
 real upstream request and gets the provider's real response back. Calls served on treg's own key are
 metered per call from a prepaid balance at cost — **0% markup**.
@@ -49,9 +49,27 @@ GET {BASE}/catalog/endpoints/<id>              # params, method, example
 Two response headers matter on every call:
 
 - **`X-Treg-Cost-Micro`** — what this call cost, in integer micro-USD (1e-6 USD). Present only on a
-  metered call; absent means it ran on the team's own key and was not billed.
+  metered call; absent means it ran on the team's own key and was not billed. An idempotent replay
+  reports `0` and puts the first call's charge in `X-Treg-Original-Cost-Micro`.
 - **`X-Treg-Call-Id`** — a stable id for this call. **Store it on your side.** It is how you join
   treg's records to yours later, and it resolves via `GET {BASE}/calls/<id>`.
+  `GET {BASE}/calls/<id>/result` returns the stored response of a successful catalog call, so an
+  answer your code threw away after paying for it can be recovered.
+
+Neither lives in the provider's body, which treg relays unchanged — including its errors. A 4xx/5xx
+from the provider costs nothing. One request header matters when you resell with a budget:
+
+- **`X-Treg-Route-Max-Cost: <usd>`** — a ceiling for this one call. If the reserve would exceed
+  it treg answers **402** `error: route_max_cost` with `max_cost_micro` and `estimated_cost_micro`,
+  and nothing is charged. Where the provider accepts a ceiling parameter, treg forwards the
+  remaining ceiling upstream so settlement cannot exceed it; a refusal from that parameter is a
+  non-2xx and costs nothing. For every other provider the header is a pre-reservation guard.
+  The reservation is the price at the requested size rounded up to the provider's billing block (one billed per 25 results holds a whole block for 5 rows), plus treg's margin, so catalog price × limit can fall short; when a provider's hold does not fit, `_treg.tried` names the hold and the ceiling left.
+  Direct calls have no default ceiling; only the header caps them.
+
+The catalog's `~$/call` figure is an estimate at the default page size: a `per_result` price with
+`unit: row` scales with your `limit`; with `unit: target` / `domain` / `keyword` it scales with how
+many of those the request names (one target is one unit). `X-Treg-Cost-Micro` is the settled truth.
 
 ### MCP
 
@@ -62,10 +80,10 @@ Point your client at `{BASE}/mcp/` with `Authorization: Bearer <token>`. Tools: 
 
 Tokens come in two kinds and the difference will cost you an afternoon:
 
-- **Org-scoped** (`treg org agent-new <name>`) — belongs to one team, works as a bare bearer.
-  **Use this in a product.**
+- **Org-scoped** (`treg org agent-new <name>`) — belongs to one team, needs no `X-Treg-Org`:
+  send it as `X-Treg-Token` (REST) or `Authorization: Bearer` (MCP). **Use this in a product.**
 - **Identity** (`treg login`) — belongs to a *person*, who may be in several teams. Recent versions
-  pin it to the active team so it also works bare; an older or unpinned one answers
+  pin it to the active team so it also works without `X-Treg-Org`; an older or unpinned one answers
   `400 choose an org (send X-Treg-Org)`. If you see that, either send `X-Treg-Org: <slug>` or mint an
   org-scoped token instead.
 
@@ -87,7 +105,7 @@ A malformed bag is a `422` **before** anything is relayed, so it costs nothing.
 
 Do **not** expose the tag as an argument your LLM fills in. A model will omit it somewhere in a long
 chain, and a number you cannot reconcile is worse than no number. Your backend already knows which
-user a request belongs to and already sets the `Authorization` header — set the tag at that same call
+user a request belongs to and already sets the `X-Treg-Token` header — set the tag at that same call
 site:
 
 ```ts
@@ -152,8 +170,8 @@ These carry nothing about your treg account — no balance, no top-up link — s
 ```
 
 **Never proxy a treg error body to your end user blindly.** The team-level ones (`402
-insufficient_balance`, `429 platform_daily_cap_reached`) contain *your* balance and a top-up URL.
-Handle those yourself.
+insufficient_balance`, `429 platform_daily_cap_reached`, `403 funds_required`) contain *your*
+balance or a top-up URL. Handle those yourself.
 
 > **Per-customer caps are advisory, not exact.** They are checked against an aggregate, so concurrent
 > calls can overshoot by roughly one call's estimate per in-flight request. Your prepaid balance is

@@ -1,0 +1,7 @@
+{
+  "base_url": "https://docs.tavily.com",
+  "results": ["https://docs.tavily.com/"],
+  "response_time": 0.07,
+  "usage": {"credits": 0},
+  "request_id": "redacted-live-request-id"
+}

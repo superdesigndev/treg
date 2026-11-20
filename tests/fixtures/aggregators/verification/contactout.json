@@ -1,0 +1,340 @@
+{
+  "verified_at": "2026-09-08 15:53:09.667897",
+  "note": "Live direct-vs-aggregator field shape comparison. No contact values retained. USD amounts are aggregator reported costs; phone changes Orthogonal contact price. Monid contact wrappers failed shape checks.",
+  "results": [
+    {
+      "endpoint_id": "contactout.people.contact.work",
+      "aggregator": "orthogonal",
+      "direct_status": 200,
+      "relay_status": 200,
+      "same_shape": true,
+      "cost_micro": 330000,
+      "failure": null,
+      "checked_at": "2026-09-08 15:50:39.929841",
+      "direct_keys": [
+        "status_code",
+        "profile"
+      ],
+      "relay_keys": [
+        "status_code",
+        "profile"
+      ],
+      "request_selectors": {
+        "email_type": "work",
+        "include_phone": false
+      }
+    },
+    {
+      "endpoint_id": "contactout.people.contact.personal",
+      "aggregator": "orthogonal",
+      "direct_status": 200,
+      "relay_status": 200,
+      "same_shape": true,
+      "cost_micro": 330000,
+      "failure": null,
+      "checked_at": "2026-09-08 15:50:42.667072",
+      "direct_keys": [
+        "status_code",
+        "profile"
+      ],
+      "relay_keys": [
+        "status_code",
+        "profile"
+      ],
+      "request_selectors": {
+        "email_type": "personal",
+        "include_phone": false
+      }
+    },
+    {
+      "endpoint_id": "contactout.people.contact.phone",
+      "aggregator": "orthogonal",
+      "direct_status": 200,
+      "relay_status": 200,
+      "same_shape": true,
+      "cost_micro": 550000,
+      "failure": null,
+      "checked_at": "2026-09-08 15:50:45.716836",
+      "direct_keys": [
+        "status_code",
+        "profile"
+      ],
+      "relay_keys": [
+        "status_code",
+        "profile"
+      ],
+      "request_selectors": {
+        "email_type": "none",
+        "include_phone": true
+      }
+    },
+    {
+      "endpoint_id": "contactout.people.linkedin.enrich",
+      "aggregator": "orthogonal",
+      "direct_status": 200,
+      "relay_status": 200,
+      "same_shape": true,
+      "cost_micro": 550000,
+      "failure": null,
+      "checked_at": "2026-09-08 15:50:49.080231",
+      "direct_keys": [
+        "status_code",
+        "profile"
+      ],
+      "relay_keys": [
+        "status_code",
+        "profile"
+      ],
+      "request_selectors": {
+        "profile_only": false
+      }
+    },
+    {
+      "endpoint_id": "contactout.people.enrich.work_email",
+      "aggregator": "orthogonal",
+      "direct_status": 200,
+      "relay_status": 200,
+      "same_shape": true,
+      "cost_micro": 550000,
+      "failure": null,
+      "checked_at": "2026-09-08 15:50:52.048001",
+      "direct_keys": [
+        "status_code",
+        "profile"
+      ],
+      "relay_keys": [
+        "status_code",
+        "profile"
+      ],
+      "request_selectors": {
+        "include": [
+          "work_email"
+        ]
+      }
+    },
+    {
+      "endpoint_id": "contactout.people.enrich.personal_email",
+      "aggregator": "orthogonal",
+      "direct_status": 200,
+      "relay_status": 200,
+      "same_shape": true,
+      "cost_micro": 550000,
+      "failure": null,
+      "checked_at": "2026-09-08 15:50:54.290333",
+      "direct_keys": [
+        "status_code",
+        "profile"
+      ],
+      "relay_keys": [
+        "status_code",
+        "profile"
+      ],
+      "request_selectors": {
+        "include": [
+          "personal_email"
+        ]
+      }
+    },
+    {
+      "endpoint_id": "contactout.companies.enrich",
+      "aggregator": "orthogonal",
+      "direct_status": 200,
+      "relay_status": 200,
+      "same_shape": true,
+      "cost_micro": 30000,
+      "failure": null,
+      "checked_at": "2026-09-08 15:50:57.539278",
+      "direct_keys": [
+        "status_code",
+        "companies"
+      ],
+      "relay_keys": [
+        "status_code",
+        "companies"
+      ]
+    },
+    {
+      "endpoint_id": "contactout.people.personal_email.available",
+      "aggregator": "monid",
+      "direct_status": 200,
+      "relay_status": 200,
+      "same_shape": true,
+      "cost_micro": 0,
+      "failure": null,
+      "checked_at": "2026-09-08 15:51:00.029258",
+      "direct_keys": [
+        "status_code",
+        "profile"
+      ],
+      "relay_keys": [
+        "status_code",
+        "profile"
+      ]
+    },
+    {
+      "endpoint_id": "contactout.people.work_email.available",
+      "aggregator": "monid",
+      "direct_status": 200,
+      "relay_status": 200,
+      "same_shape": true,
+      "cost_micro": 0,
+      "failure": null,
+      "checked_at": "2026-09-08 15:51:02.182040",
+      "direct_keys": [
+        "status_code",
+        "profile"
+      ],
+      "relay_keys": [
+        "status_code",
+        "profile"
+      ]
+    },
+    {
+      "endpoint_id": "contactout.people.phone.available",
+      "aggregator": "monid",
+      "direct_status": 200,
+      "relay_status": 200,
+      "same_shape": true,
+      "cost_micro": 0,
+      "failure": null,
+      "checked_at": "2026-09-08 15:51:05.507440",
+      "direct_keys": [
+        "status_code",
+        "profile"
+      ],
+      "relay_keys": [
+        "status_code",
+        "profile"
+      ]
+    },
+    {
+      "endpoint_id": "contactout.companies.enrich",
+      "aggregator": "monid",
+      "direct_status": 200,
+      "relay_status": 200,
+      "same_shape": true,
+      "cost_micro": 18000,
+      "failure": null,
+      "checked_at": "2026-09-08 15:51:08.329402",
+      "direct_keys": [
+        "status_code",
+        "companies"
+      ],
+      "relay_keys": [
+        "status_code",
+        "companies"
+      ]
+    },
+    {
+      "endpoint_id": "contactout.people.contact.work",
+      "aggregator": "orthogonal",
+      "direct_status": 200,
+      "relay_status": 200,
+      "same_shape": true,
+      "cost_micro": 550000,
+      "failure": null,
+      "checked_at": "2026-09-08 15:51:47.383127",
+      "direct_keys": [
+        "status_code",
+        "profile"
+      ],
+      "relay_keys": [
+        "status_code",
+        "profile"
+      ],
+      "request_selectors": {
+        "email_type": "work",
+        "include_phone": true
+      }
+    },
+    {
+      "endpoint_id": "contactout.people.contact.work",
+      "aggregator": "monid",
+      "direct_status": 200,
+      "relay_status": 200,
+      "same_shape": false,
+      "cost_micro": 230000,
+      "failure": null,
+      "checked_at": "2026-09-08 15:51:50.511990",
+      "direct_keys": [
+        "status_code",
+        "profile"
+      ],
+      "relay_keys": [
+        "status_code",
+        "profile",
+        "work_email_units",
+        "phone_units"
+      ],
+      "request_selectors": {
+        "email_type": "work",
+        "include_phone": true
+      }
+    },
+    {
+      "endpoint_id": "contactout.people.contact.personal",
+      "aggregator": "monid",
+      "direct_status": 200,
+      "relay_status": 200,
+      "same_shape": false,
+      "cost_micro": 330000,
+      "failure": null,
+      "checked_at": "2026-09-08 15:51:52.986057",
+      "direct_keys": [
+        "status_code",
+        "profile"
+      ],
+      "relay_keys": [
+        "status_code",
+        "profile",
+        "personal_email_units",
+        "phone_units"
+      ],
+      "request_selectors": {
+        "email_type": "personal",
+        "include_phone": true
+      }
+    },
+    {
+      "endpoint_id": "contactout.companies.search",
+      "aggregator": "monid",
+      "direct_status": 200,
+      "relay_status": 200,
+      "same_shape": true,
+      "cost_micro": 36000,
+      "failure": null,
+      "checked_at": "2026-09-08 15:51:56.052303",
+      "direct_keys": [
+        "status_code",
+        "metadata",
+        "companies"
+      ],
+      "relay_keys": [
+        "status_code",
+        "metadata",
+        "companies"
+      ]
+    },
+    {
+      "endpoint_id": "contactout.people.count",
+      "aggregator": "orthogonal",
+      "direct_status": 200,
+      "relay_status": 200,
+      "same_shape": true,
+      "cost_micro": 0,
+      "failure": null,
+      "checked_at": "2026-09-08 15:53:09.667897"
+    },
+    {
+      "endpoint_id": "contactout.people.count",
+      "aggregator": "monid",
+      "direct_status": 200,
+      "relay_status": 200,
+      "same_shape": true,
+      "cost_micro": 0,
+      "failure": null,
+      "checked_at": "2026-09-08 15:53:09.667897"
+    }
+  ],
+  "aggregator_reported_total_micro": 4054000
+}

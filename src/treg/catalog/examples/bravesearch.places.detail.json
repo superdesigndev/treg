@@ -1,0 +1,9 @@
+{
+  "type": "local_pois",
+  "results": [
+    {
+      "id": "synthetic-place-id",
+      "name": "Example Place"
+    }
+  ]
+}

@@ -1,0 +1,46 @@
+{
+  "datapoint_status": "ok",
+  "data": [
+    {
+      "id": "ctl_74836E1207AB2B52F97AFEFB63",
+      "type": "company",
+      "name": "Tesco Holdings Limited",
+      "person": null,
+      "company": {
+        "id": "co_62DA362AE9F74CD2A5400334CD",
+        "jurisdiction": "gb",
+        "company_number": "00243011",
+        "legal_name": "TESCO HOLDINGS LIMITED",
+        "status": "active",
+        "registration_date": "1929-10-16",
+        "address": {
+          "line1": "TESCO HOUSE, SHIRE PARK",
+          "city": "WELWYN GARDEN CITY",
+          "postcode": "AL7 1GA",
+          "region": null,
+          "country": "GB",
+          "raw": "TESCO HOUSE, SHIRE PARK, KESTREL WAY, WELWYN GARDEN CITY, UNITED KINGDOM, AL7 1GA"
+        },
+        "match_score": null,
+        "matched_on": null
+      },
+      "lead": null,
+      "ownership": {
+        "band": "75-100",
+        "lower_percentage": 75.0,
+        "upper_percentage": 100.0
+      },
+      "natures_of_control": [
+        "ownership-of-shares-75-to-100-percent",
+        "voting-rights-75-to-100-percent"
+      ],
+      "start_date": "2016-04-06",
+      "end_date": null,
+      "is_current": true,
+      "identity_verified": null
+    }
+  ],
+  "declared_ubo": [],
+  "calculated_ubo": [],
+  "statements": []
+}

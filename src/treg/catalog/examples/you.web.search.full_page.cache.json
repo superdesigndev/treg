@@ -1,0 +1,20 @@
+{
+  "results": {
+    "web": [
+      {
+        "url": "http://example.com/",
+        "title": "Example Domain",
+        "description": "This domain is for use in documentation examples without needing permission.",
+        "favicon_url": "https://you.com/favicon?domain=example.com&size=128",
+        "snippets": [],
+        "contents": {
+          "markdown": "This domain is for use in documentation examples without needing permission. This is not a service; avoid relying on it for testing and monitoring purposes.\n\nهذا النطاق مُخصص للاستخدام في أمثلة التوثيق دون الحاجة إلى إذن. هذه ليست خدمة، يُرجى تجنب الاعتماد عليها لأغراض الاختبار والمراقبة.\n\n该域名仅用于文档示例，无需获得许可。这并非一项服务，请勿将其用于测试和监控目的。\n\nL’usage de ce domaine est réservé à des exemples de documentation, "
+        }
+      }
+    ]
+  },
+  "metadata": {
+    "query": "site:example.com Example Domain",
+    "latency": 0.5458272350952029
+  }
+}

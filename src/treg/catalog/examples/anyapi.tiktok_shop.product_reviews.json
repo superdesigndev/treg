@@ -1,0 +1,34 @@
+{
+  "output": {
+    "found": true,
+    "data": {
+      "hasMore": true,
+      "rating": 4.4,
+      "reviews": [
+        {
+          "country": "US",
+          "createdUtc": 1785342792,
+          "id": "7667988866325907213",
+          "rating": 5,
+          "reviewerName": "Ash",
+          "sku": "Item: Default",
+          "text": "These nail clippers are really nice and work great.  I have always had trouble cutting my cats nails, he hates it, but with these it was easy and he actually sat calmly through the trimming. The safet… [336 chars]",
+          "verifiedPurchase": true
+        },
+        "… 9 more item(s) truncated"
+      ],
+      "totalReviews": 1207
+    }
+  },
+  "provider": "AnyAPI",
+  "costUsd": 0.0012,
+  "items": 10,
+  "replayed": false,
+  "source": {
+    "id": "anonymous-giraffe",
+    "name": "Giraffe",
+    "kind": "anonymous",
+    "artworkKey": "giraffe"
+  },
+  "resultId": "240c2ec7-dc0e-465d-b0b0-a5091fad13b5"
+}

@@ -16,6 +16,8 @@ from treg.bootstrap import ROLE_STARTUP_CHECKS, create_app
 _SNAPSHOT = Path(__file__).parent / "snapshots" / "routes.json"
 _CALL_ROUTE = "DELETE,GET,HEAD,OPTIONS,PATCH,POST,PUT /call/{rest:path}"
 _CATALOG_CALL_ROUTE = "DELETE,GET,HEAD,OPTIONS,PATCH,POST,PUT /catalog/call/{rest:path}"
+_TABLE_ROUTE = "DELETE,GET,HEAD,OPTIONS,PATCH,POST,PUT /table/{rest:path}"
+_TASK_ROUTES = ("POST /tasks/{call_id}", "GET,HEAD /tasks/{call_id}")
 
 
 def _all_routes() -> list[str]:
@@ -34,8 +36,13 @@ _ALL_ROUTES = _all_routes()
 _DATAPLANE_ONLY = (
     _CALL_ROUTE,
     _CATALOG_CALL_ROUTE,
+    _TABLE_ROUTE,
+    *_TASK_ROUTES,
+    "GET,HEAD /agentpay/credit",
     "GET,HEAD /.well-known/oauth-protected-resource/mcp",
+    "GET,HEAD /.well-known/oauth-protected-resource/mcp/",
     "GET,HEAD /.well-known/oauth-protected-resource/mcp/v2",
+    "GET,HEAD /.well-known/oauth-protected-resource/mcp/v2/",
     "MOUNT /mcp/v2",
     "MOUNT /mcp",
 )
@@ -46,9 +53,9 @@ _EXPECTED_ROUTES = {
     "control": [route for route in _ALL_ROUTES if route not in _DATAPLANE_ONLY],
 }
 _EXPECTED_BACKGROUND_TASKS = {
-    "all": ["treg.adsconv.worker"],
+    "all": ["treg.adsconv.worker", "treg.application.allowance_sweep.worker"],
     "dataplane": [],
-    "control": ["treg.adsconv.worker"],
+    "control": ["treg.adsconv.worker", "treg.application.allowance_sweep.worker"],
 }
 _READ_ONLY_STARTUP_CHECKS = {
     "all": (

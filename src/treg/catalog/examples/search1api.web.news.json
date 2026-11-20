@@ -1,0 +1,22 @@
+{
+  "searchParameters": {
+    "query": "OpenAI",
+    "search_service": "hackernews",
+    "max_results": 1,
+    "crawl_results": 0,
+    "image": false,
+    "include_sites": [],
+    "exclude_sites": []
+  },
+  "results": [
+    {
+      "title": "OpenAI's board has fired Sam Altman",
+      "link": "https://news.ycombinator.com/item?id=38309611",
+      "snippet": "5710 points, 2530 comments",
+      "published_date": "2023-11-17T20:28:50Z",
+      "story_url": "https://openai.com/blog/openai-announces-leadership-transition",
+      "points": 5710,
+      "num_comments": 2530
+    }
+  ]
+}

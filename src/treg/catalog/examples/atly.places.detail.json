@@ -1,0 +1,71 @@
+{
+  "place": {
+    "id": "NrSvxJcZJk0",
+    "name": "Embriago Coffee",
+    "address": "5 Rivington St, New York, NY 10002, USA",
+    "lat": 40.7212926,
+    "lon": -73.99295049999999,
+    "score": 9.7,
+    "category_scores": [
+      {
+        "category_id": "69e178cb-14be-11ee-a9cb-614c6a0a867a",
+        "name": "Coffee",
+        "score": 9.8,
+        "reviews": 280
+      },
+      {
+        "category_id": "69e178c4-14be-11ee-a9cb-614c6a0a867a",
+        "name": "Cafe",
+        "score": 9.8,
+        "reviews": 50
+      },
+      "… 38 more item(s) truncated"
+    ],
+    "reasons": [
+      {
+        "text": "I believed Embriago Coffee served the best cappuccino in the neighborhood.",
+        "kind": "Specific Drink",
+        "sentiment": "positive"
+      },
+      {
+        "text": "It was the best coffee I had while being in New York.",
+        "kind": "Specific Drink",
+        "sentiment": "positive"
+      },
+      "… 6 more item(s) truncated"
+    ],
+    "blurb": "Thoughtfully curated, sophisticated yet laid-back coffee shop with a speakeasy-inspired ambiance and comfortable seating.",
+    "place_type": "Coffee shop",
+    "review_count": 345,
+    "google_rating": 4.9,
+    "price": "$1 to $10",
+    "url": "https://www.atly.com/location/EmbriagoCoffee",
+    "timezone": "America/New_York",
+    "good_to_know": [
+      "Embriago Coffee offers a spacious seating area for customers.",
+      "Credit cards and mobile payments are accepted at Embriago Coffee.",
+      "… 3 more item(s) truncated"
+    ],
+    "business_status": "OPERATIONAL",
+    "maps_url": "https://www.google.com/maps/search/?api=1&query=Embriago+Coffee%2C+5+Rivington+St%2C+New+York%2C+NY+10002%2C+USA&query_place_id=ChIJIW02-Q5ZwokR3lDY6rBN29E",
+    "added_at": "2025-09-14T14:11:36.701Z",
+    "data_refreshed_at": "2026-03-19T19:20:19.756Z",
+    "open_now": true,
+    "hours_updated_at": "2025-09-14T14:11:36.681Z",
+    "hours": [
+      {
+        "day": "thu",
+        "open": "07:00",
+        "close": "17:00"
+      },
+      {
+        "day": "fri",
+        "open": "07:00",
+        "close": "17:00"
+      },
+      "… 5 more item(s) truncated"
+    ]
+  },
+  "doc_notes": "score is the overall Atly score; category_scores are the categories reviewers mention most (up to 40), each with how many reviews mention it and its score where enough do — a category absent here, or with no score, was mentioned too rarely to score. Quote reasons verbatim, and link url if present. hours_updated_at is over a year ago: say the hours may have changed and suggest checking with the place; open_now rests on them.",
+  "call_id": "361a89d5-de2d-4573-a6f9-97b6baf8853f"
+}

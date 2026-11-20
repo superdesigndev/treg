@@ -1,0 +1,41 @@
+{
+  "output": {
+    "data": {
+      "items": [
+        {
+          "actor": {
+            "image": "https://media.licdn.com/dms/image/v2/D4D03AQFG38rxIus6KA/profile-displayphoto-crop_800_800/B4DZj8tocHIgAQ-/0/1756586478725?e=1791417600&v=beta&t=9ehR22FUw_EIowerCW4aFjs2gzGHNRGU64iwdZOk12g",
+            "linkedinUrl": "https://www.linkedin.com/in/trishalhjohnson",
+            "name": "Trisha Johnson",
+            "position": "AISx Comprehensive Counselor Supporting Pre-Professional Athletes at Atlanta International School",
+            "type": "profile"
+          },
+          "commentary": "BEWARE! SCAM ALERT! STRIPE IS FRAUDULENT!\n\nStripe allowed me to create an account, bill a client, and accept a clients payment. Then Stripe cancelled my account because they will no longer suppport ed… [1048 chars]",
+          "createdUtc": 1786569458,
+          "edited": false,
+          "engagement": {
+            "comments": 0,
+            "likes": 0
+          },
+          "id": "7493415427058929664",
+          "pinned": false,
+          "url": "https://www.linkedin.com/feed/update/urn:li:ugcPost:7477791277128765440"
+        },
+        "… 9 more item(s) truncated"
+      ]
+    },
+    "found": true
+  },
+  "provider": "AnyAPI",
+  "costUsd": 0.005,
+  "items": 10,
+  "replayed": false,
+  "source": {
+    "id": "anonymous-hedgehog-338ce087",
+    "name": "Hedgehog",
+    "kind": "anonymous",
+    "artworkKey": "hedgehog"
+  },
+  "hint": "large_result: this response is ~11 KB. To keep future runs from flooding your context, re-run with `fields` (keep only the keys you need), `max_items` (cap rows), `summary=true` (outline only), or `jq… [309 chars]",
+  "resultId": "c36544f5-7a8e-463d-b734-cf959c571476"
+}

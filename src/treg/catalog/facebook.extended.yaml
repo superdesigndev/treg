@@ -31,6 +31,7 @@ source:
   - https://developers.facebook.com/docs/graph-api/reference
 endpoints:
 - id: facebook.x.comment-delete
+  added: '2026-07-28'
   kind: action
   tier: extended
   platform: facebook
@@ -49,6 +50,7 @@ endpoints:
   scope_gap: treg's OAuth app does not request this; needs pages_manage_engagement
   capability: facebook.comment.delete
 - id: facebook.x.comment-reply
+  added: '2026-07-28'
   kind: action
   tier: extended
   platform: facebook
@@ -67,6 +69,7 @@ endpoints:
   scope_gap: treg's OAuth app does not request this; needs pages_manage_engagement
   capability: facebook.comment.reply.create
 - id: facebook.x.comment-hide
+  added: '2026-07-28'
   kind: action
   tier: extended
   platform: facebook
@@ -85,6 +88,7 @@ endpoints:
   scope_gap: treg's OAuth app does not request this; needs pages_manage_engagement
   capability: facebook.comment.hide
 - id: facebook.x.page
+  added: '2026-07-28'
   tier: extended
   platform: facebook
   method: GET
@@ -101,6 +105,7 @@ endpoints:
   docs_url: https://developers.facebook.com/docs/graph-api/reference/page/
   capability: facebook.page.profile
 - id: facebook.x.page-albums
+  added: '2026-07-28'
   tier: extended
   platform: facebook
   method: GET
@@ -117,6 +122,7 @@ endpoints:
   docs_url: https://developers.facebook.com/docs/graph-api/reference/page/
   capability: facebook.page.albums
 - id: facebook.x.page-conversations
+  added: '2026-07-28'
   tier: extended
   platform: facebook
   method: GET
@@ -134,6 +140,7 @@ endpoints:
   scope_gap: treg's OAuth app does not request this; needs pages_messaging and pages_read_user_content
   capability: facebook.page.conversations
 - id: facebook.x.page-events
+  added: '2026-07-28'
   tier: extended
   platform: facebook
   method: GET
@@ -150,6 +157,7 @@ endpoints:
   docs_url: https://developers.facebook.com/docs/graph-api/reference/page/
   capability: facebook.page.events
 - id: facebook.x.page-feed
+  added: '2026-07-28'
   tier: extended
   platform: facebook
   method: GET
@@ -166,6 +174,7 @@ endpoints:
   docs_url: https://developers.facebook.com/docs/graph-api/reference/page/
   capability: facebook.page.feed
 - id: facebook.x.page-leadgen-forms
+  added: '2026-07-28'
   tier: extended
   platform: facebook
   method: GET
@@ -183,6 +192,7 @@ endpoints:
   scope_gap: treg's OAuth app does not request this; needs leads_retrieval
   capability: facebook.page.leadgen.forms
 - id: facebook.x.page-live-videos
+  added: '2026-07-28'
   tier: extended
   platform: facebook
   method: GET
@@ -199,6 +209,7 @@ endpoints:
   docs_url: https://developers.facebook.com/docs/graph-api/reference/page/
   capability: facebook.page.live.videos
 - id: facebook.x.page-photos
+  added: '2026-07-28'
   tier: extended
   platform: facebook
   method: GET
@@ -215,6 +226,7 @@ endpoints:
   docs_url: https://developers.facebook.com/docs/graph-api/reference/page/
   capability: facebook.page.photos
 - id: facebook.x.page-published-posts
+  added: '2026-07-28'
   tier: extended
   platform: facebook
   method: GET
@@ -231,6 +243,7 @@ endpoints:
   docs_url: https://developers.facebook.com/docs/graph-api/reference/page/
   capability: facebook.page.posts
 - id: facebook.x.page-ratings
+  added: '2026-07-28'
   tier: extended
   platform: facebook
   method: GET
@@ -247,6 +260,7 @@ endpoints:
   docs_url: https://developers.facebook.com/docs/graph-api/reference/page/
   capability: facebook.page.ratings
 - id: facebook.x.page-roles
+  added: '2026-07-28'
   tier: extended
   platform: facebook
   method: GET
@@ -264,6 +278,7 @@ endpoints:
   scope_gap: treg's OAuth app does not request this; needs pages_manage_metadata
   capability: facebook.page.roles
 - id: facebook.x.page-settings
+  added: '2026-07-28'
   tier: extended
   platform: facebook
   method: GET
@@ -280,6 +295,7 @@ endpoints:
   docs_url: https://developers.facebook.com/docs/graph-api/reference/page/
   capability: facebook.page.settings
 - id: facebook.x.page-tagged
+  added: '2026-07-28'
   tier: extended
   platform: facebook
   method: GET
@@ -296,6 +312,7 @@ endpoints:
   docs_url: https://developers.facebook.com/docs/graph-api/reference/page/
   capability: facebook.page.tagged
 - id: facebook.x.page-videos
+  added: '2026-07-28'
   tier: extended
   platform: facebook
   method: GET
@@ -312,6 +329,7 @@ endpoints:
   docs_url: https://developers.facebook.com/docs/graph-api/reference/page/
   capability: facebook.page.videos
 - id: facebook.x.page-instagram-accounts
+  added: '2026-07-28'
   tier: extended
   platform: facebook
   method: GET
@@ -328,6 +346,7 @@ endpoints:
   docs_url: https://developers.facebook.com/docs/graph-api/reference/page/
   capability: facebook.page.instagram.account
 - id: facebook.x.post-delete
+  added: '2026-07-28'
   kind: action
   tier: extended
   platform: facebook
@@ -345,6 +364,7 @@ endpoints:
   docs_url: https://developers.facebook.com/docs/graph-api/reference/page/
   capability: facebook.post.delete
 - id: facebook.x.post
+  added: '2026-07-28'
   tier: extended
   platform: facebook
   method: GET
@@ -361,6 +381,7 @@ endpoints:
   docs_url: https://developers.facebook.com/docs/graph-api/reference/page/
   capability: facebook.post.detail
 - id: facebook.x.post-update
+  added: '2026-07-28'
   kind: action
   tier: extended
   platform: facebook
@@ -378,6 +399,7 @@ endpoints:
   docs_url: https://developers.facebook.com/docs/graph-api/reference/page/
   capability: facebook.post.update
 - id: facebook.x.post-comments
+  added: '2026-07-28'
   tier: extended
   platform: facebook
   method: GET
@@ -394,6 +416,7 @@ endpoints:
   docs_url: https://developers.facebook.com/docs/graph-api/reference/page/
   capability: facebook.post.comments
 - id: facebook.x.post-insights
+  added: '2026-07-28'
   tier: extended
   platform: facebook
   method: GET
@@ -410,6 +433,7 @@ endpoints:
   docs_url: https://developers.facebook.com/docs/graph-api/reference/page/
   capability: facebook.post.insights
 - id: facebook.x.post-likes
+  added: '2026-07-28'
   tier: extended
   platform: facebook
   method: GET
@@ -426,6 +450,7 @@ endpoints:
   docs_url: https://developers.facebook.com/docs/graph-api/reference/page/
   capability: facebook.post.likes
 - id: facebook.x.post-reactions
+  added: '2026-07-28'
   tier: extended
   platform: facebook
   method: GET
@@ -442,6 +467,7 @@ endpoints:
   docs_url: https://developers.facebook.com/docs/graph-api/reference/page/
   capability: facebook.post.reactions
 - id: facebook.x.post-sharedposts
+  added: '2026-07-28'
   tier: extended
   platform: facebook
   method: GET

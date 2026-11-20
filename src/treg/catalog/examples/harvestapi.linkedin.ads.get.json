@@ -1,0 +1,45 @@
+{
+  "element": {
+    "id": "1234567890",
+    "variants": [
+      {
+        "advertiser": {
+          "name": "Synthetic example",
+          "linkedinUrl": "https://example.com/synthetic-record",
+          "imageUrl": "https://example.com/synthetic-record",
+          "headline": "Synthetic example"
+        },
+        "content": {
+          "description": "Synthetic example",
+          "imageUrl": null,
+          "videoThumbnailUrl": "https://example.com/synthetic-record",
+          "videoSource": [
+            {
+              "type": "video/mp4",
+              "src": "https://example.com/synthetic-record",
+              "bitrate": 1134637
+            }
+          ],
+          "targetUrl": null,
+          "headline": "Synthetic example",
+          "ctaLabel": null
+        },
+        "creativeType": "SPONSORED_VIDEO"
+      }
+    ],
+    "about": {
+      "format": "Video Ad",
+      "advertiserName": "Synthetic example",
+      "advertiserUrl": "https://example.com/synthetic-record",
+      "paidBy": "Synthetic example"
+    },
+    "impressions": null,
+    "targeting": null
+  },
+  "status": 200,
+  "retries": 0,
+  "payments": [
+    "linkedinAdSearch"
+  ],
+  "cost": 0.0016
+}

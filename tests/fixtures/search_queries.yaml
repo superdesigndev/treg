@@ -1,0 +1,57 @@
+# Search queries typed the way people and agents type them, each with what search must return.
+# tests/test_search_queries.py runs them offline on every push: no judge, no embeddings.
+#
+#   word_first  regex the word search's first row must match (the CLI's page on an older server,
+#               and the page every search falls back to when the judge does not answer)
+#   word_top5   regex one of the word search's first five rows must match
+#   recall      regex one of the jobs v2 recall seats for the judge must match (`find_recall`)
+#   provider    the provider the query names: with a judge that keeps `job`, its row leads the page
+#   job         the job such a judge keeps
+#
+# A query naming a provider tests that provider's lead; the others test that a job is found.
+cases:
+  # ---- a provider named with what is wanted from it ---------------------------------------------
+  - {q: "exa search", word_first: '^exa\.', provider: exa, job: web.search, recall: '^web\.search$'}
+  - {q: "exa contents fetch page text", provider: exa, job: web.extract, recall: '^web\.extract$'}
+  - {q: "people data labs company enrichment", word_first: '^pdl\.companies\.enrich$', provider: pdl,
+     job: companies.enrich, recall: '^companies\.enrich$'}
+  - {q: "people data labs person enrichment", word_first: '^pdl\.people\.enrich$', provider: pdl,
+     job: people.enrich, recall: '^people\.enrich$'}
+  - {q: "pdl company enrich", word_first: '^pdl\.companies\.enrich$', provider: pdl, job: companies.enrich,
+     recall: '^companies\.enrich$'}
+  - {q: "count how many emails hunter has for a domain", word_first: '^hunter\.x\.email-count$'}
+  - {q: "apollo company enrichment", word_first: '^apollo\.companies\.enrich$', provider: apollo,
+     job: companies.enrich, recall: '^companies\.enrich$'}
+  - {q: "apollo person enrichment", word_top5: '^apollo\.people\.enrich$', provider: apollo, job: people.enrich}
+  - {q: "you.com web search", word_first: '^you\.', provider: you, job: web.search, recall: '^web\.search$'}
+  - {q: "hunter email", word_first: '^hunter\.'}
+  - {q: "spider a website", word_first: '^spidercloud\.', word_top5: 'web\.crawl'}
+  # ---- a short word that is not a provider still starts longer words ("web" finds "website") ------
+  - {q: "web page screenshot", word_top5: 'web\.screenshot'}
+  # ---- a described job -----------------------------------------------------------------------------
+  - {q: "search the web for recent news about Nvidia earnings", recall: '^web\.search\.news$'}
+  - {q: "find companies using Shopify in Germany", recall: '^companies\.tech_stack\.users$'}
+  - {q: "search for people by job title at a company", recall: '^people\.search$'}
+  - {q: "instagram posts for an account", recall: '^instagram\.user\.posts$'}
+  # The judge keeps companies.employees.count and headcount_trend here, not companies.enrich: that
+  # job's description does not say it returns headcount. Only its seat in recall is checked.
+  - {q: "can you find a company's employee count", recall: '^companies\.enrich$'}
+  - {q: "extract the main text from a web page", word_top5: 'web\.extract'}
+  - {q: "find the work email of a person at a company", word_top5: 'people\.email\.find', recall: '^people\.email\.find$'}
+  - {q: "verify an email address", word_top5: 'people\.email\.verify', recall: '^people\.email\.verify$'}
+  - {q: "youtube video details", word_top5: 'youtube\.video\.detail'}
+  - {q: "tiktok profile", word_top5: 'tiktok\.user\.profile'}
+  - {q: "instagram posts of a user", word_top5: 'instagram\.user\.posts'}
+  - {q: "google search results", word_top5: 'google\.serp\.organic'}
+  - {q: "keyword search volume", word_top5: 'keywords\.volume'}
+  - {q: "backlinks of a domain", word_top5: 'web\.backlinks'}
+  - {q: "generate an image from a prompt", word_top5: 'image-gen'}
+  - {q: "generate a video from text", word_top5: 'video-gen'}
+  - {q: "text to speech", word_top5: 'voice-gen|tts'}
+  - {q: "stock price history", word_top5: 'stocks\.eod\.history|\.prices$'}
+  - {q: "job postings of a company", word_top5: 'companies\.jobs'}
+  - {q: "reverse phone lookup", word_top5: 'reverse-phone|people\.profile\.from_phone'}
+  - {q: "meta ad library", word_top5: 'meta-ads\.library'}
+  - {q: "crypto price", word_top5: 'crypto\.price'}
+  # ---- a provider-like word that is not a provider request -----------------------------------------
+  - {q: "does perplexity mention my brand when people ask about project management tools", recall: '^ai-search'}

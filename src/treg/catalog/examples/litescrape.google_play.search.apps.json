@@ -1,0 +1,133 @@
+{
+  "search_metadata": {
+    "id": "8c4c486bdb64fd52b49e49a7",
+    "status": "Success",
+    "created_at": "2026-09-29T13:58:52.180350+00:00",
+    "processed_at": "2026-09-29T13:58:52.843563+00:00",
+    "json_endpoint": "https://api.litescrape.com/api/google/play/apps?hl=en&gl=us&q=Duolingo",
+    "google_play_url": "https://play.google.com/store/search?hl=en&gl=us&q=Duolingo&c=apps",
+    "total_time_taken": 0.663
+  },
+  "search_parameters": {
+    "hl": "en",
+    "gl": "us",
+    "q": "Duolingo"
+  },
+  "organic_results": [
+    {
+      "items": [
+        {
+          "title": "Learn to Read - Duolingo ABC",
+          "link": "https://play.google.com/store/apps/details?id=com.duolingo.literacy",
+          "product_id": "com.duolingo.literacy",
+          "rating": 3.8784313,
+          "author": "Duolingo",
+          "category": "Education",
+          "downloads": "10,000,000+",
+          "thumbnail": "https://play-lh.googleusercontent.com/58s5lWO21lIB7GgF25qLz9DUZsi5BO-CXd9Yplcgc6eq6VC4h7VW3leUxUlAzSg-HeSAYFKymk4JT2gSXsE1Tg",
+          "description": "From the creators behind Duolingo, the world’s #1 education app, comes Duolingo ABC! Duolingo ABC is the fun, hands-on way for your child to learn to read and w…",
+          "screenshots": [
+            null,
+            null
+          ],
+          "extracted_price": 0.0,
+          "currency": "USD"
+        },
+        {
+          "title": "Duolingo English Test (DET)",
+          "link": "https://play.google.com/store/apps/details?id=com.duolingo.detmobile",
+          "product_id": "com.duolingo.detmobile",
+          "rating": 2.7297297,
+          "author": "Duolingo",
+          "category": "Education",
+          "downloads": "500,000+",
+          "thumbnail": "https://play-lh.googleusercontent.com/RXFYaehn9CDad1Q5RGI0RnMdfraiIfNBWSBtF3qKFynkRPTVderpuXRCaxykD8rzYHs2t7Y_yu4ZJ8yIy9GoSQ",
+          "description": "The Duolingo English Test (DET) mobile app provides a stable, secure test setup experience. It does not replace the desktop app for taking the test itself. Test…",
+          "screenshots": [
+            null,
+            null
+          ],
+          "extracted_price": 0.0,
+          "currency": "USD"
+        }
+      ],
+      "section_page_token": "eyJ2IjoxLCJvcGVyYXRpb24iOiJhcHBzIiwiY29udGV4dCI6eyJobCI6ImVuIiwiZ2wiOiJ1cyIsInEiOiJEdW9saW5nbyJ9LCJraW5kIjoic2VjdGlvbiIsInRva2VuIjoiSUFSaXZBRktRd285Q0JRUTA3aUpu…",
+      "litescrape_next_link": "https://api.litescrape.com/api/google/play/apps?hl=en&gl=us&q=Duolingo&section_page_token=eyJ2IjoxLCJvcGVyYXRpb24iOiJhcHBzIiwiY29udGV4dCI6eyJobCI6ImVuIiwiZ2wiOi…"
+    },
+    {
+      "title": "Similar apps",
+      "see_more_link": "https://play.google.com/store/apps/collection/cluster?gsr=OhIKCgoIRHVvbGluZ28QABgEIAJKJcICIgoQCgxjb20uZHVvbGluZ28QBxgKIgwKCER1b2xpbmdvEAA%3D:S:ANO1ljLqBnM",
+      "items": [
+        {
+          "title": "Snapchat",
+          "link": "https://play.google.com/store/apps/details?id=com.snapchat.android",
+          "product_id": "com.snapchat.android",
+          "rating": 4.2046576,
+          "author": "Snap Inc",
+          "category": "Communication",
+          "downloads": "1,000,000,000+",
+          "thumbnail": "https://play-lh.googleusercontent.com/nOJWJoDAzuRSHmlFfpzHXAj8UbTJwk_JGYf0uAPTKPtiiIX_2Y7r5ATO1ZtxHRqaFTqfIDZ40PnBK4hukeJh",
+          "description": "Snapchat is a fast and fun way to share the moment with your friends and family 👻 SNAP • Snapchat opens right to the Camera — just tap to take a photo, or press…",
+          "screenshots": [
+            null,
+            null
+          ],
+          "extracted_price": 0.0,
+          "currency": "USD"
+        },
+        {
+          "title": "ChatGPT",
+          "link": "https://play.google.com/store/apps/details?id=com.openai.chatgpt",
+          "product_id": "com.openai.chatgpt",
+          "rating": 4.780959,
+          "author": "OpenAI",
+          "category": "Productivity",
+          "downloads": "1,000,000,000+",
+          "thumbnail": "https://play-lh.googleusercontent.com/T9J8e9oxxPd600j_KPM4KK2GHfNpUpGBdTy8lHPXBXpOUfGusRuZXj0UMgFNrP8we6LVt9V-AibEgcLootE6VK4",
+          "description": "Introducing ChatGPT for Android: OpenAI’s latest advancements at your fingertips. This official app is free, syncs your history across devices, and brings you t…",
+          "screenshots": [
+            null,
+            null
+          ],
+          "extracted_price": 0.0,
+          "currency": "USD"
+        }
+      ],
+      "litescrape_next_link": "https://api.litescrape.com/api/google/play/apps?hl=en&gl=us&q=Duolingo&section_page_token=eyJ2IjoxLCJvcGVyYXRpb24iOiJhcHBzIiwiY29udGV4dCI6eyJobCI6ImVuIiwiZ2wiOi…",
+      "section_page_token": "eyJ2IjoxLCJvcGVyYXRpb24iOiJhcHBzIiwiY29udGV4dCI6eyJobCI6ImVuIiwiZ2wiOiJ1cyIsInEiOiJEdW9saW5nbyJ9LCJraW5kIjoic2VjdGlvbiIsInRva2VuIjoiSUFKaWJFcERDajBJRlJEZ2tyLVhD…",
+      "see_more_token": "eyJ2IjoxLCJvcGVyYXRpb24iOiJhcHBzIiwiY29udGV4dCI6eyJobCI6ImVuIiwiZ2wiOiJ1cyIsInEiOiJEdW9saW5nbyJ9LCJraW5kIjoiY29sbGVjdGlvbiIsInRva2VuIjoiT2hJS0Nnb0lSSFZ2YkdsdVoyOFFBQmdFSUFKS0pjSUNJZ29RQ2d4amIyMHVaSFZ2YkdsdVoyOFFCeGdLSWd3S0NFUjFiMnhwYm1kdkVBQT06UzpBTk8xbGpMcUJuTSJ9",
+      "litescrape_see_more_link": "https://api.litescrape.com/api/google/play/apps?hl=en&gl=us&q=Duolingo&see_more_token=eyJ2IjoxLCJvcGVyYXRpb24iOiJhcHBzIiwiY29udGV4dCI6eyJobCI6ImVuIiwiZ2wiOiJ1cy…"
+    }
+  ],
+  "app_highlight": {
+    "title": "Duolingo: Language Lessons",
+    "product_id": "com.duolingo",
+    "link": "https://play.google.com/store/apps/details?id=com.duolingo",
+    "rating": 4.7308197,
+    "reviews": 49227746,
+    "content_rating": {
+      "text": "Everyone",
+      "thumbnail": "https://play-lh.googleusercontent.com/IciOnDFecb5Xt50Q2jlcNC0LPI7LEGxNojroo-s3AozcyS-vDCwtq4fn7u3wZmRna8OewG9PBrWC-i7i"
+    },
+    "downloads": "500M+",
+    "download_count": 973391960,
+    "author": "Duolingo",
+    "description": "Lessons to learn Spanish, French, German, English, Online Chess, Math & Music",
+    "thumbnail": "https://play-lh.googleusercontent.com/tw_coGKgk1K_zO-Ypf9zBKV1s-KT3dYN1MIUxIqtnbfmON5x_YmuoAr31gE4oSfJHNtA-aStTd-qe9R8S6NVyA",
+    "images": [
+      "https://play-lh.googleusercontent.com/twmCellsRXWs4bZsSXRv19x-3BIp19FzlQPdu_Va-zE10aL468HHFKJBvEOXo0g67Xsvl3nkIKnpjY7L62OOiA",
+      "https://play-lh.googleusercontent.com/VtdxxfTA0xfkAgAj7iIr2DfvYJUoQctTvFDC_1xrX1NLm4d4av-xqaHMH8zqicW7AoXo56kT55LOQCW7gRFRyg"
+    ],
+    "offers": [
+      {
+        "text": "Install",
+        "link": "https://play.google.com/store/apps/details?id=com.duolingo&rdid=com.duolingo&feature=md&offerId",
+        "extracted_price": 0.0,
+        "currency": "USD"
+      }
+    ]
+  },
+  "litescrape_pagination": {
+    "current": "https://api.litescrape.com/api/google/play/apps?hl=en&gl=us&q=Duolingo"
+  }
+}

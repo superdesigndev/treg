@@ -1,0 +1,31 @@
+{
+  "output": {
+    "data": {
+      "nextCursor": "Bl463Wm4b14p6U_ccXNnYGqJs0-OzhSOX5BdQcvjWgSdr8xf5atGQYd2qH1Vlc7OeoVQ38sI6I5_LYFUOQSRBCVRQK_vpVR1z3vLqII6npm2KugmTDbCdNPicRoRTb_7_P4S80BSxL9aF717PvLAZWzAsxkct4D5wtOTTALdvSNgA2aYnB4iW11JOCTC99KHugRfEsF6… [411 chars]",
+      "videos": [
+        {
+          "channelTitle": "Top American Compilation",
+          "id": "MlkChzYHwhc",
+          "lengthText": "15:45",
+          "publishedTime": "4 weeks ago",
+          "title": "TRY NOT TO LAUGH 🤣 Best Funny Videos Compilation 😂😁😆 Memes PART 20",
+          "url": "https://www.youtube.com/watch?v=MlkChzYHwhc",
+          "views": 1448930
+        },
+        "… 3 more item(s) truncated"
+      ]
+    },
+    "found": true
+  },
+  "provider": "AnyAPI",
+  "costUsd": 0.0012,
+  "items": 4,
+  "replayed": false,
+  "source": {
+    "id": "anonymous-giraffe",
+    "name": "Giraffe",
+    "kind": "anonymous",
+    "artworkKey": "giraffe"
+  },
+  "resultId": "173e3e1c-fdcf-4368-a71e-905d45ab85a0"
+}

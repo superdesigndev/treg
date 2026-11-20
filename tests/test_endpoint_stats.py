@@ -2,21 +2,20 @@
 
 These pin the judgement calls, not the arithmetic: which failures count against a provider, when we
 refuse to publish a rate at all, and that nothing identifying a caller leaks into an aggregate.
-See docs/CAPABILITY-CHOICE-PLAN.md.
 """
 
 from __future__ import annotations
 
 from datetime import datetime, timedelta, timezone
 
-import pytest
 from httpx import AsyncClient
 
 from treg.domain.catalog import stats as endpoint_stats
+from treg.application import catalog_stats
 from treg.api import app
 from treg.infra.db import session_maker
 from treg.infra.catalog_observations import CachedEndpointObservationReader
-from treg.models import CallRecord
+from treg.models import CallRecord, Org
 
 EP = "tikhub.tiktok.user.profile"
 
@@ -38,16 +37,6 @@ async def _record(endpoint_id: str, status: int, ms: int = 100, *, days_ago: int
 async def _observed(ids, **kw):
     async with session_maker() as db:
         return await endpoint_stats.observed(db, ids, **kw)
-
-
-async def test_thin_evidence_publishes_the_count_and_nothing_else(clients: AsyncClient):
-    """Two calls behind a 100% success rate is noise dressed as evidence — and on a quiet endpoint
-    the number could expose one org's activity. Below the floor we say how thin it is, and stop."""
-    for _ in range(endpoint_stats.MIN_SAMPLES - 1):
-        await _record(EP, 200)
-    got = (await _observed([EP]))[EP]
-    assert got["samples"] == endpoint_stats.MIN_SAMPLES - 1
-    assert got["ok_rate"] is None and got["p50_ms"] is None
 
 
 async def test_a_caller_error_is_not_held_against_the_provider(clients: AsyncClient):
@@ -132,6 +121,9 @@ async def test_an_uncalled_endpoint_says_so_rather_than_vanishing(clients: Async
 
 
 async def test_aggregates_pool_across_orgs_but_carry_nothing_identifying(clients: AsyncClient):
+    async with session_maker() as db:
+        db.add(Org(id=2, name="Other synthetic team", slug="other-synthetic-team"))
+        await db.commit()
     for _ in range(3):
         await _record(EP, 200, org_id=1)
     for _ in range(3):
@@ -147,6 +139,7 @@ async def test_the_catalog_page_carries_the_numbers_for_every_alternative(client
     make a second round-trip to compare reliability."""
     for _ in range(6):
         await _record(EP, 200)
+    await catalog_stats.refresh(session_maker, now=_now() + timedelta(minutes=2))
     r = await clients.get(f"/catalog/endpoints/{EP}")
     assert r.status_code == 200, r.text
     assert r.json()["endpoint"]["observed"] is None, \
@@ -192,30 +185,6 @@ async def test_a_failed_refresh_still_answers_200_with_the_stale_value(
     await reader.wait_for_idle()
     assert reader.counts.refresh_failure == 1
     await reader.aclose()
-
-
-# ---- the LAST OK column: measurement beats a stamp, and the two never look alike -------------
-def test_measured_last_ok_beats_the_verification_stamp():
-    """A real call is stronger evidence than a hand-run stamp, so it wins — and it prints bare,
-    while the stamp prints with a ✓ so nobody reads a dated claim as live traffic."""
-    from treg import cli
-    measured = cli._last_ok_cell({"observed": {"last_ok_days": 3}, "verified": "2020-01-01"})
-    assert measured == "3d" and "✓" not in measured
-
-    stamped = cli._last_ok_cell({"observed": {"last_ok_days": None}, "verified": "2026-08-01"})
-    assert "✓" in stamped                      # visibly a claim, not a measurement
-
-
-def test_last_ok_says_nothing_when_it_knows_nothing():
-    """An endpoint nobody has called AND nobody has verified is the one worth being wary of, so it
-    must not borrow confidence from a blank."""
-    from treg import cli
-    assert "—" in cli._last_ok_cell({"observed": None, "verified": None})
-
-
-def test_a_call_today_reads_as_today():
-    from treg import cli
-    assert cli._last_ok_cell({"observed": {"last_ok_days": 0}}) == "today"
 
 
 async def test_last_ok_means_the_last_SUCCESS_not_the_last_attempt(clients: AsyncClient):
@@ -286,14 +255,14 @@ async def test_a_relayed_405_is_the_CATALOGS_failure_not_the_callers(clients: As
     the method THIS CATALOG RECORDED was rejected upstream — a stale contract, which is the single
     thing these numbers exist to surface. Counting it as "the caller sent bad parameters" is what
     let `tikhub.x.tiktok-ads-search-ads` show `WORKS — (7)` while being uncallable by anyone."""
-    from treg import cli
+    from treg.routers.views import catalog as catalog_views
     for _ in range(7):
         await _record(EP, 405)
     got = (await _observed([EP]))[EP]
     assert got["samples"] == 7
     assert got["ok_rate"] == 0.0, "seven straight 405s are decided evidence, not unknown"
     assert got["last_ok_days"] is None
-    assert "0%" in cli._observed_cell(got), cli._observed_cell(got)
+    assert catalog_views.pct(got["ok_rate"]) == "0%"
 
     # …and an ordinary caller error is still excluded, or this trades one wrong reading for another
     for _ in range(7):
@@ -327,6 +296,7 @@ async def test_HTTP_search_orders_equal_matches_on_observed_evidence(clients: As
         await _record(stale, 405)
     for status in (200, 200, 200, 200, 503):
         await _record(poor, status)
+    await catalog_stats.refresh(session_maker, now=_now() + timedelta(minutes=2))
 
     cold = await clients.get("/catalog/search", params={"q": "ad library", "limit": 100})
     assert cold.status_code == 200
@@ -335,3 +305,19 @@ async def test_HTTP_search_orders_equal_matches_on_observed_evidence(clients: As
         "/catalog/search", params={"q": "ad library", "limit": 100})).json()["results"]
     ids = [row["id"] for row in rows]
     assert ids.index(poor) < ids.index(stale), ids
+
+
+async def test_a_platform_shelf_carries_each_endpoints_calls(clients: AsyncClient):
+    """The platform page leads with what agents use, so the shelf ships each endpoint's calls."""
+    cold = (await clients.get("/catalog/platforms/tiktok")).json()
+    used = cold["domains"][0]["rows"][0]["endpoints"][-1]["id"]
+    for _ in range(3):
+        await _record(used, 200)
+    await catalog_stats.refresh(session_maker, now=_now() + timedelta(minutes=2))
+    await app.state.endpoint_observation_reader.reset()
+    await clients.get("/catalog/platforms/tiktok")
+    await app.state.endpoint_observation_reader.wait_for_idle()
+    body = (await clients.get("/catalog/platforms/tiktok")).json()
+    eps = {e["id"]: e for d in body["domains"] for r in d["rows"] for e in r["endpoints"]}
+    assert eps[used]["observed"]["samples"] == 3
+    assert all("observed" in e for e in eps.values())

@@ -1,0 +1,54 @@
+{
+  "output": {
+    "found": true,
+    "data": {
+      "author": {
+        "avatarUrl": "https://pbs.twimg.com/profile_images/1766132688316973056/LB-8W7_d_normal.jpg",
+        "bio": "Research and investments.",
+        "blueVerified": true,
+        "coverUrl": "https://pbs.twimg.com/profile_banners/1764631141926002689/1773416426",
+        "createdUtc": 1709555838,
+        "followers": 14012,
+        "following": 407,
+        "handle": "Decentralisedco",
+        "id": "1764631141926002689",
+        "location": "Subscribe →",
+        "name": "DCo",
+        "url": "https://x.com/Decentralisedco",
+        "verified": false
+      },
+      "contentBlocks": [
+        {
+          "entities": [],
+          "inlineStyles": [
+            "… {3 field(s) truncated}"
+          ],
+          "text": "Breaking down how crypto protocols approach revenue and cash flow",
+          "type": "unstyled"
+        },
+        "… 72 more item(s) truncated"
+      ],
+      "coverImage": "https://pbs.twimg.com/media/GnHXrznXUAEs-v5.jpg",
+      "createdUtc": 1743152472,
+      "id": "QXJ0aWNsZUVudGl0eToxOTA1NTQxMTM5MTQ0Mjk4NDk4",
+      "likes": 156,
+      "previewText": "Breaking down how crypto protocols approach revenue and cash flow\nThis is a summarised version of a newsletter issue published on Decentralised.co. We are actively collaborating with token",
+      "quotes": 8,
+      "replies": 16,
+      "title": "When Tokens Burn",
+      "views": 44360
+    }
+  },
+  "provider": "AnyAPI",
+  "costUsd": 0.00075,
+  "items": 73,
+  "replayed": false,
+  "source": {
+    "id": "anonymous-capybara",
+    "name": "Capybara",
+    "kind": "anonymous",
+    "artworkKey": "capybara"
+  },
+  "hint": "large_result: this response is ~16 KB. To keep future runs from flooding your context, re-run with `fields` (keep only the keys you need), `max_items` (cap rows), `summary=true` (outline only), or `jq… [309 chars]",
+  "resultId": "cbdf780f-23e7-49f7-948b-e73b4cc83106"
+}

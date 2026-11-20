@@ -1,0 +1,600 @@
+# LimaData Basic v2. Batch submission and result operations are omitted from the catalog.
+# Shared platform access is limited to synchronous operations whose full cost the generic money
+# model can bound before the call. BYOK always wins and is never metered by treg.
+provider: limadata
+source:
+  docs: https://api.limadata.com/docs/basic_v2
+  openapi: https://api.limadata.com/openapi/basic-v2.json
+  curated: '2026-09-17'
+pricing_url: https://limadata.com/
+limits: 'The default account limit is 1 request/second. The docs explicitly exempt several lookup, enrichment, research and search operations but publish no higher numeric ceiling.'
+proposed_capabilities:
+  people.database.autocomplete: List accepted values for a LimaData database filter
+  people.employees.search: Search employees at named companies
+  people.audience.resolve: Resolve a person to advertising audience identifiers
+  people.audience.email_hash: Resolve a person to hashed email identifiers
+  linkedin.company.from_domain: Find a company's LinkedIn page from its domain
+  people.identity.from_email: Resolve an email address to social profiles
+  web.research: Search and synthesize web research for a question
+endpoints:
+  - id: limadata.people.enrich
+    capability: people.enrich
+    platform: people
+    scope: any_account
+    domain: contacts
+    method: POST
+    path: /api/v1/enrich/person
+    name: Enrich a person
+    summary: Enrich a professional profile from an email, LinkedIn URL, or name and company.
+    input:
+      bodyType: json
+      body:
+        email: {type: string, required: false, example: person@example.com}
+        linkedin_url: {type: string, required: false, example: 'https://www.linkedin.com/in/example'}
+        name: {type: string, required: false, example: Example Person}
+        company_name: {type: string, required: false, example: Example Inc}
+        company_domain: {type: string, required: false, example: example.com}
+        include_work_email: {type: boolean, required: false, default: false}
+        include_phone: {type: boolean, required: false, default: false}
+      note: Provide an email, a LinkedIn URL, or a name plus company. Optional email and phone fields add credits only when found.
+    test_request: {body: {linkedin_url: 'https://www.linkedin.com/in/example'}}
+    cost:
+      type: per_success
+      value: 15
+      currency: credit
+      per: 1
+      unit: call
+      source: docs
+      source_url: https://api.limadata.com/docs/basic_v2
+      checked: '2026-09-17'
+      confidence: verified
+      note: BYOK only. Base lookup costs 1 credit for LinkedIn/work email, 2 for name plus company, or 5 for personal email; work email adds 1 and phone adds 10 when found. Fifteen is the documented maximum.
+    platform_blocked: Variable input and optional-result charges cannot be settled safely from the generic response contract; connect your own LimaData key.
+    docs_url: https://api.limadata.com/docs/basic_v2
+    verified: '2026-09-17'
+    added: '2026-09-17'
+    example_response: examples/limadata.people.enrich.json
+
+  - id: limadata.companies.enrich
+    capability: companies.enrich
+    platform: companies
+    scope: any_account
+    domain: companies
+    method: POST
+    path: /api/v1/enrich/company
+    name: Enrich a company
+    summary: Enrich a company from its domain or LinkedIn URL.
+    input:
+      bodyType: json
+      body:
+        domain: {type: string, required: false, example: example.com}
+        linkedin_url: {type: string, required: false, example: 'https://www.linkedin.com/company/example'}
+      note: Provide at least one identifier.
+    test_request: {body: {domain: example.com}}
+    cost: &one_credit_success
+      type: per_success
+      value: 1
+      currency: credit
+      per: 1
+      unit: call
+      source: docs
+      source_url: https://api.limadata.com/docs/basic_v2
+      checked: '2026-09-17'
+      confidence: verified
+      note: One credit on a successful response; HTTP errors are not charged.
+    docs_url: https://api.limadata.com/docs/basic_v2
+    verified: '2026-09-17'
+    added: '2026-09-17'
+    example_response: examples/limadata.companies.enrich.json
+
+  - id: limadata.database.autocomplete
+    capability: people.database.autocomplete
+    platform: people
+    scope: any_account
+    domain: contacts
+    kind: utility
+    method: POST
+    path: /api/v1/database/autocomplete
+    name: List database filter values
+    summary: List accepted enum values for a LimaData database filter.
+    input:
+      bodyType: json
+      body:
+        filter_type: {type: string, required: true, example: revenue_range}
+        query: {type: string, required: false, example: '1'}
+    test_request: {body: {filter_type: revenue_range, query: '1'}}
+    cost:
+      <<: *one_credit_success
+      source: observed
+      note: The docs omit a price. A successful live request consumed one credit.
+    docs_url: https://api.limadata.com/docs/basic_v2
+    verified: '2026-09-17'
+    added: '2026-09-17'
+    example_response: examples/limadata.database.autocomplete.json
+
+  - id: limadata.companies.count
+    capability: companies.search.count
+    platform: companies
+    scope: any_account
+    domain: companies
+    method: POST
+    path: /api/v1/database/count_companies
+    name: Count companies
+    summary: Count companies that match a prompt, structured filters, or a filter expression.
+    input: &count_input
+      bodyType: json
+      body:
+        ai_prompt: {type: string, required: false, example: Software companies in Canada}
+        filter_expression: {type: string, required: false, example: headquarters_country_name=Canada}
+        filters: {type: array, required: false, items: {type: object}}
+    test_request: {body: {filter_expression: company_name=treg-nonexistent-company}}
+    cost: &tenth_credit_success
+      type: per_success
+      value: 0.1
+      currency: credit
+      per: 1
+      unit: call
+      source: docs
+      source_url: https://api.limadata.com/docs/basic_v2
+      checked: '2026-09-17'
+      confidence: verified
+      note: 0.1 credit for a successful request; HTTP errors are not charged.
+    docs_url: https://api.limadata.com/docs/basic_v2
+    verified: '2026-09-17'
+    added: '2026-09-17'
+    example_response: examples/limadata.companies.count.json
+
+  - id: limadata.people.count
+    capability: people.search.count
+    platform: people
+    scope: any_account
+    domain: contacts
+    method: POST
+    path: /api/v1/database/count_people
+    name: Count people
+    summary: Count people that match a prompt, structured filters, or a filter expression.
+    input: *count_input
+    test_request: {body: {filter_expression: full_name=treg-nonexistent-person}}
+    cost: *tenth_credit_success
+    platform_blocked: LimaData's shared account does not have People Database API access; connect your own LimaData key on a plan that includes People Database access.
+    docs_url: https://api.limadata.com/docs/basic_v2
+    verified: '2026-09-17'
+    added: '2026-09-17'
+    example_response: examples/limadata.people.count.json
+
+  - id: limadata.companies.search
+    capability: companies.search
+    platform: companies
+    scope: any_account
+    domain: companies
+    method: POST
+    path: /api/v1/database/search_companies
+    name: Search companies
+    summary: Search the company database with a prompt, structured filters, or a filter expression.
+    input: &search_input
+      bodyType: json
+      body:
+        ai_prompt: {type: string, required: false, example: Software companies in Canada}
+        filter_expression: {type: string, required: false, example: headquarters_country_name=Canada}
+        filters: {type: array, required: false, items: {type: object}}
+        limit: {type: integer, required: false, min: 1, max: 10000, default: 10}
+        offset: {type: integer, required: false, min: 0, max: 10000, default: 0}
+    test_request: {body: {filter_expression: company_name=treg-nonexistent-company, limit: 1}}
+    cost: &database_search_cost
+      type: per_result
+      value: 0.1
+      currency: credit
+      per: 1
+      unit: record
+      source: docs
+      source_url: https://api.limadata.com/docs/basic_v2
+      checked: '2026-09-17'
+      confidence: verified
+      note: 0.1 credit per returned record, billed in whole-credit blocks of ten, with a one-credit minimum per request.
+    platform_blocked: Variable result charges and the minimum whole-credit rule cannot be settled safely from the generic response contract; connect your own LimaData key.
+    docs_url: https://api.limadata.com/docs/basic_v2
+    verified: '2026-09-17'
+    added: '2026-09-17'
+    example_response: examples/limadata.companies.search.json
+
+  - id: limadata.people.search
+    capability: people.search
+    platform: people
+    scope: any_account
+    domain: contacts
+    method: POST
+    path: /api/v1/database/search_people
+    name: Search people
+    summary: Search the people database with a prompt, structured filters, or a filter expression.
+    input: *search_input
+    test_request: {body: {filter_expression: full_name=treg-nonexistent-person, limit: 1}}
+    cost: *database_search_cost
+    platform_blocked: Variable result charges and the minimum whole-credit rule cannot be settled safely from the generic response contract; connect your own LimaData key.
+    docs_url: https://api.limadata.com/docs/basic_v2
+    verified: '2026-09-17'
+    added: '2026-09-17'
+    example_response: examples/limadata.people.search.json
+
+  - id: limadata.people.employees.search
+    capability: people.employees.search
+    platform: people
+    scope: any_account
+    domain: contacts
+    method: POST
+    path: /api/v1/database/search_people_employees
+    name: Search company employees
+    summary: Search employees at one or more companies, optionally by job-title keywords.
+    input:
+      bodyType: json
+      body:
+        company_domains: {type: array, required: false, items: {type: string}, example: [example.com]}
+        company_linkedins: {type: array, required: false, items: {type: string}}
+        job_titles: {type: array, required: false, items: {type: string}, example: [Engineer]}
+        limit: {type: integer, required: false, min: 1, max: 10000, default: 10}
+        offset: {type: integer, required: false, min: 0, max: 10000, default: 0}
+      note: Provide at least one company domain or LinkedIn URL.
+    test_request: {body: {company_domains: [example.com], limit: 1}}
+    cost: *database_search_cost
+    platform_blocked: Variable result charges and the minimum whole-credit rule cannot be settled safely from the generic response contract; connect your own LimaData key.
+    docs_url: https://api.limadata.com/docs/basic_v2
+    verified: '2026-09-17'
+    added: '2026-09-17'
+    example_response: examples/limadata.people.employees.search.json
+
+  - id: limadata.people.audience.resolve
+    capability: people.audience.resolve
+    platform: people
+    scope: any_account
+    domain: contacts
+    method: POST
+    path: /api/v1/find/ad_audience
+    name: Resolve advertising audience identifiers
+    summary: Resolve a LinkedIn profile or work email to hashed identifiers formatted for an ad network.
+    input:
+      bodyType: json
+      body:
+        linkedin_url: {type: string, required: false, example: 'https://www.linkedin.com/in/example'}
+        work_email: {type: string, required: false, example: person@example.com}
+        target_network: {type: string, required: false, enum: [meta, google, x, reddit, tiktok, linkedin, snapchat, pinterest, amazon, universal], default: universal}
+      note: Provide a LinkedIn URL or work email.
+    test_request: {body: {linkedin_url: 'https://www.linkedin.com/in/example', target_network: universal}}
+    cost: &three_credit_hit
+      type: per_success
+      value: 3
+      currency: credit
+      per: 1
+      unit: call
+      source: docs
+      source_url: https://api.limadata.com/docs/basic_v2
+      checked: '2026-09-17'
+      confidence: verified
+      note: Three credits only when a profile is found; a 404 miss is free.
+    docs_url: https://api.limadata.com/docs/basic_v2
+    verified: '2026-09-17'
+    added: '2026-09-17'
+    example_response: examples/limadata.people.audience.resolve.json
+
+  - id: limadata.people.audience.email-hash
+    capability: people.audience.email_hash
+    platform: people
+    scope: any_account
+    domain: contacts
+    method: POST
+    path: /api/v1/find/audience_identifiers
+    name: Find hashed email identifiers
+    summary: Resolve a LinkedIn profile or work email to normalized and original SHA-256 email hashes.
+    input: &profile_or_email
+      bodyType: json
+      body:
+        linkedin_url: {type: string, required: false, example: 'https://www.linkedin.com/in/example'}
+        work_email: {type: string, required: false, example: person@example.com}
+      note: Provide at least one identifier.
+    test_request: {body: {linkedin_url: 'https://www.linkedin.com/in/example'}}
+    cost: *one_credit_success
+    docs_url: https://api.limadata.com/docs/basic_v2
+    verified: '2026-09-17'
+    added: '2026-09-17'
+    example_response: examples/limadata.people.audience.email-hash.json
+
+  - id: limadata.people.email.find.personal
+    capability: people.email.find.personal
+    platform: people
+    scope: any_account
+    domain: contacts
+    method: POST
+    path: /api/v1/find/email_personal
+    name: Find a personal email
+    summary: Find a personal email from a work email or social profile URL.
+    input:
+      bodyType: json
+      body:
+        linkedin_url: {type: string, required: false}
+        github_url: {type: string, required: false}
+        x_url: {type: string, required: false}
+        work_email: {type: string, required: false, example: person@example.com}
+      note: Provide at least one identifier.
+    test_request: {body: {work_email: person@example.com}}
+    cost: &five_credit_hit
+      type: per_success
+      value: 5
+      currency: credit
+      per: 1
+      unit: call
+      source: docs
+      source_url: https://api.limadata.com/docs/basic_v2
+      checked: '2026-09-17'
+      confidence: verified
+      note: Five credits only when a result is found; a 404 miss is free.
+    docs_url: https://api.limadata.com/docs/basic_v2
+    verified: '2026-09-17'
+    added: '2026-09-17'
+    example_response: examples/limadata.people.email.find.personal.json
+    miss:
+      status: 404
+      means: "no personal email found for this identifier — a normal outcome (and free), not an API failure"
+
+  - id: limadata.people.email.verify
+    capability: people.email.verify
+    platform: people
+    scope: any_account
+    domain: contacts
+    method: POST
+    path: /api/v1/find/email_verify
+    name: Verify email — catch-all, disposable and role flags
+    summary: Check an email address for deliverability, risk, and mailbox evidence.
+    input:
+      bodyType: json
+      body:
+        email: {type: string, required: true, example: person@example.com}
+    test_request: {body: {email: treg-limadata-test-20260917@example.com}}
+    cost:
+      <<: *tenth_credit_success
+      value: 0.3
+      note: 0.3 credit for any successful verification outcome; HTTP errors are not charged.
+    docs_url: https://api.limadata.com/docs/basic_v2
+    verified: '2026-09-17'
+    added: '2026-09-17'
+    example_response: examples/limadata.people.email.verify.json
+
+  - id: limadata.people.email.find.name
+    capability: people.email.find
+    platform: people
+    scope: any_account
+    domain: contacts
+    method: POST
+    path: /api/v1/find/email_work
+    name: Find a work email by name
+    summary: Find a person's work email from full name and company domain.
+    input:
+      bodyType: json
+      body:
+        full_name: {type: string, required: true, example: Example Person}
+        company_domain: {type: string, required: true, example: example.com}
+    test_request: {body: {full_name: Example Person, company_domain: example.com}}
+    cost: *one_credit_success
+    miss:
+      status: 404
+      means: "no email found for this person — a normal outcome (and free), not an API failure"
+    docs_url: https://api.limadata.com/docs/basic_v2
+    verified: '2026-09-17'
+    added: '2026-09-17'
+    example_response: examples/limadata.people.email.find.name.json
+
+  - id: limadata.people.email.find.linkedin
+    capability: people.email.find
+    platform: people
+    scope: any_account
+    domain: contacts
+    method: POST
+    path: /api/v1/find/email_work_linkedin
+    name: Find a work email from LinkedIn
+    summary: Find a person's work email from a LinkedIn profile URL.
+    input:
+      bodyType: json
+      body:
+        linkedin_url: {type: string, required: true, example: 'https://www.linkedin.com/in/example'}
+    test_request: {body: {linkedin_url: 'https://www.linkedin.com/in/example'}}
+    cost: *three_credit_hit
+    miss:
+      status: 404
+      means: "no email found for this LinkedIn profile — a normal outcome (and free), not an API failure"
+    docs_url: https://api.limadata.com/docs/basic_v2
+    verified: '2026-09-17'
+    added: '2026-09-17'
+    example_response: examples/limadata.people.email.find.linkedin.json
+
+  - id: limadata.companies.linkedin.find
+    capability: linkedin.company.from_domain
+    platform: linkedin
+    scope: any_account
+    domain: companies
+    method: POST
+    path: /api/v1/find/pages_company
+    name: Find a company LinkedIn page
+    summary: Find a company's LinkedIn page from its domain.
+    input:
+      bodyType: json
+      body:
+        domain: {type: string, required: true, example: example.com}
+    test_request: {body: {domain: example.com}}
+    cost:
+      <<: *one_credit_success
+      source: observed
+      note: The docs omit a price. A successful live request reported one credit.
+    docs_url: https://api.limadata.com/docs/basic_v2
+    verified: '2026-09-17'
+    added: '2026-09-17'
+    example_response: examples/limadata.companies.linkedin.find.json
+
+  - id: limadata.people.phone.find
+    capability: people.phone.find
+    platform: people
+    scope: any_account
+    domain: contacts
+    method: POST
+    path: /api/v1/find/phone
+    name: Find phone numbers
+    summary: Find a person's phone numbers from LinkedIn or name and company.
+    input:
+      bodyType: json
+      body:
+        linkedin_url: {type: string, required: false}
+        name: {type: string, required: false, example: Example Person}
+        company_name: {type: string, required: false, example: Example Inc}
+        company_domain: {type: string, required: false, example: example.com}
+      note: Provide a LinkedIn URL or a name plus company.
+    test_request: {body: {linkedin_url: 'https://www.linkedin.com/in/example'}}
+    cost:
+      type: per_success
+      value: 10
+      currency: credit
+      per: 1
+      unit: call
+      source: docs
+      source_url: https://api.limadata.com/docs/basic_v2
+      checked: '2026-09-17'
+      confidence: verified
+      note: Ten credits only when at least one phone number is found; a 404 miss is free.
+    miss:
+      status: 404
+      means: "no phone number found for this person — a normal outcome (and free), not an API failure"
+    docs_url: https://api.limadata.com/docs/basic_v2
+    verified: '2026-09-17'
+    added: '2026-09-17'
+    example_response: examples/limadata.people.phone.find.json
+
+  - id: limadata.people.identity.resolve
+    capability: people.identity.resolve
+    platform: people
+    scope: any_account
+    domain: contacts
+    method: POST
+    path: /api/v1/find/profiles_person
+    name: Resolve a person's social profiles
+    summary: Find social profiles from a person's name and company or work email.
+    input:
+      bodyType: json
+      body:
+        full_name: {type: string, required: true, example: Example Person}
+        company_name: {type: string, required: false}
+        company_domain: {type: string, required: false, example: example.com}
+        email: {type: string, required: false, example: person@example.com}
+      note: Provide full name and at least one company or work-email identifier.
+    test_request: {body: {full_name: Treg Missing Person, company_domain: example.com}}
+    cost:
+      type: per_call
+      value: 2
+      currency: credit
+      per: 1
+      unit: call
+      source: docs
+      source_url: https://api.limadata.com/docs/basic_v2
+      checked: '2026-09-17'
+      confidence: verified
+      note: Two credits on every call, including a 404 miss. Live discovery confirmed the 404 charge.
+    platform_blocked: LimaData bills 404 misses, while the generic platform settlement releases holds on upstream errors; connect your own LimaData key.
+    docs_url: https://api.limadata.com/docs/basic_v2
+    verified: '2026-09-17'
+    added: '2026-09-17'
+    example_response: examples/limadata.people.identity.resolve.json
+
+  - id: limadata.people.identity.from-email
+    capability: people.identity.from_email
+    platform: people
+    scope: any_account
+    domain: contacts
+    method: POST
+    path: /api/v1/find/reverse_email_lookup
+    name: Resolve profiles from email
+    summary: Find LinkedIn, GitHub, and X profiles from an email address.
+    input:
+      bodyType: json
+      body:
+        email: {type: string, required: true, example: person@example.com}
+        require_linkedin: {type: boolean, required: false, default: true}
+        require_x: {type: boolean, required: false, default: false}
+    test_request: {body: {email: person@example.com, require_linkedin: true}}
+    cost: *five_credit_hit
+    docs_url: https://api.limadata.com/docs/basic_v2
+    verified: '2026-09-17'
+    added: '2026-09-17'
+    example_response: examples/limadata.people.identity.from-email.json
+
+  - id: limadata.web.extract
+    capability: web.extract
+    platform: web
+    scope: any_account
+    domain: web
+    method: POST
+    path: /api/v1/research/extract
+    name: Extract web pages
+    summary: Extract clean Markdown content, metadata, links, and images from up to ten URLs.
+    input:
+      bodyType: json
+      body:
+        urls: {type: array, required: true, minItems: 1, maxItems: 10, items: {type: string}, example: ['https://example.com']}
+        include_links: {type: boolean, required: false, default: false}
+        include_images: {type: boolean, required: false, default: false}
+        render_js: {type: boolean, required: false, default: false}
+    test_request: {body: {urls: ['https://example.com'], render_js: false}}
+    cost:
+      type: per_result
+      value: 0.2
+      currency: credit
+      per: 1
+      unit: page
+      source: docs
+      source_url: https://api.limadata.com/docs/basic_v2
+      checked: '2026-09-17'
+      confidence: verified
+      note: BYOK only. Each URL costs 0.1 credit without JavaScript rendering or 0.2 with it; 0.2 is the documented maximum.
+    platform_blocked: URL count and JavaScript rendering change the charge; connect your own LimaData key.
+    docs_url: https://api.limadata.com/docs/basic_v2
+    verified: '2026-09-17'
+    added: '2026-09-17'
+    example_response: examples/limadata.web.extract.json
+
+  - id: limadata.web.research
+    capability: web.research
+    platform: web
+    scope: any_account
+    domain: web
+    method: POST
+    path: /api/v1/research/search
+    name: Research the web
+    summary: Retrieve and synthesize web context for a natural-language question.
+    input:
+      bodyType: json
+      body:
+        query: {type: string, required: true, example: 'What does Example Inc make?'}
+        output_type: {type: string, required: false, enum: [SearchResults, Research], default: SearchResults}
+    test_request: {body: {query: treg limadata test, output_type: SearchResults}}
+    cost:
+      <<: *tenth_credit_success
+      value: 0.3
+      note: 0.3 credit per successful search.
+    docs_url: https://api.limadata.com/docs/basic_v2
+    verified: '2026-09-17'
+    added: '2026-09-17'
+    example_response: examples/limadata.web.research.json
+
+  - id: limadata.google.serp.organic
+    capability: google.serp.organic
+    platform: google
+    scope: any_account
+    domain: seo
+    method: POST
+    path: /api/v1/search/web
+    name: Search the web
+    summary: Return organic Google results for a query and page number.
+    input:
+      bodyType: json
+      body:
+        query: {type: string, required: true, example: example domain}
+        page: {type: integer, required: false, min: 0, default: 1}
+    test_request: {body: {query: treg limadata test, page: 1}}
+    cost: *tenth_credit_success
+    docs_url: https://api.limadata.com/docs/basic_v2
+    verified: '2026-09-17'
+    added: '2026-09-17'
+    example_response: examples/limadata.google.serp.organic.json

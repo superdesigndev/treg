@@ -1,0 +1,30 @@
+{
+  "output": {
+    "found": true,
+    "data": {
+      "items": [
+        {
+          "height": 1707,
+          "source": "blog.ollie.com",
+          "sourceUrl": "https://blog.ollie.com/breed-deets-golden-retriever/",
+          "thumbnailUrl": "https://encrypted-tbn0.gstatic.com/images?q=tbn:ANd9GcSe1mLcW_M8xRI0J5UcnG6soPw9kd8XQOgz7Y4sOLFZoA&s=10",
+          "title": "Golden Retriever: Pros, Cons & Diet Guide | Ollie",
+          "url": "https://blog.ollie.com/wp-content/uploads/250506_Livingroom_SHOT-10_0173_FR-scaled.jpg",
+          "width": 2560
+        },
+        "… 4 more item(s) truncated"
+      ]
+    }
+  },
+  "provider": "AnyAPI",
+  "costUsd": 0.00144,
+  "items": 5,
+  "replayed": false,
+  "source": {
+    "id": "anonymous-meerkat",
+    "name": "Meerkat",
+    "kind": "anonymous",
+    "artworkKey": "meerkat"
+  },
+  "resultId": "40d83a9d-7fc6-4b04-84ef-3e6e8fe95a19"
+}

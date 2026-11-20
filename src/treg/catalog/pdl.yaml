@@ -21,13 +21,14 @@ source:
 # Methods below come from PDL's own OpenAPI spec (https://docs.peopledatalabs.com/api-reference/
 # openapi.json), which is authoritative — PDL's prose docs contradict it in places (one page calls
 # company enrichment a POST; the spec says GET only). Both ENRICH endpoints are GET-only. Both
-# SEARCH endpoints accept GET or POST, and on person search that choice changes the limit: GET caps
-# `size` at 100, POST at 1000. Prefer POST for person search when you want a big page.
+# SEARCH endpoints accept GET or POST upstream; this catalog offers GET only. Person search GET
+# caps `size` at 100. The POST definitions remain in the retired extended catalog.
 #
-# Billing: PDL sells CREDITS against a plan and does not publish a $/credit (it is negotiated), so
-# `cost.value` is null and the credit rule is in `cost.note`. Enrichment charges 1 credit only when
-# a record comes back (HTTP 200); a miss (404) is free, and enriching the same person twice costs
-# twice. SEARCH is the expensive one: 1 credit PER RECORD returned, so `size` is the cost dial.
+# Billing: PDL sells CREDITS against separate plans. Person and company enrichment and search
+# use their respective Base $/credit prices; other rows use the provider credit conversion.
+# Enrichment charges 1 credit only when a record comes back (HTTP 200); a miss (404) is free,
+# and enriching the same person twice costs twice. SEARCH is the expensive one: 1 credit PER
+# RECORD returned, so `size` is the cost dial.
 # The Autocomplete API and the Cleaner APIs (/company/clean, /location/clean, /school/clean) are
 # free; note that /job_title/enrich, despite looking like a lookup utility, is NOT.
 
@@ -66,19 +67,20 @@ endpoints:
       queryParams: {email: "sean@peopledatalabs.com"}
     cost:
       type: per_success
-      value: 1
-      currency: credit
+      value: 0.28
+      currency: USD
       per: 1
       unit: call
       source: observed
       source_url: https://www.peopledatalabs.com/pricing
-      checked: '2026-07-31'
+      checked: '2026-10-21'
       confidence: verified
-      note: '1 PDL credit per person returned (HTTP 200); a 404 is free. OBSERVED live 2026-07-31 - the response carried x-call-credits-spent 1 and x-call-credits-type enrich. Enriching the same person twice costs 2 credits, PDL does not de-duplicate. cost.usd stays null because there is no public $/credit - the rate is plan-negotiated - so this is a verified CREDIT count, not a verified dollar figure.'
+      note: 'Person Base costs $0.28 per credit on this plan; PDL spends 1 credit per HTTP 200 match and none on a 404. Price this endpoint directly because other PDL products can have different credit rates.'
     miss:
       status: 404
       means: "no person matched (or none above min_likelihood) — an expected outcome (and free, per the cost note), not an API failure; do not retry the same identifiers"
     verified: 2026-07-31
+    added: '2026-07-28'
     example_response: examples/pdl.people.enrich.json
     docs_url: https://docs.peopledatalabs.com/docs/reference-person-enrichment-api
 
@@ -105,16 +107,17 @@ endpoints:
       queryParams: {sql: "SELECT * FROM person WHERE location_country='united states'", size: 1}
     cost:
       type: per_result
-      value: 1
-      currency: credit
+      value: 0.28
+      currency: USD
       per: 1
       unit: record
       source: docs
-      source_url: https://www.peopledatalabs.com/pricing
-      checked: '2026-07-28'
+      source_url: https://support.peopledatalabs.com/hc/en-us/articles/25794271805211-Pricing-credits
+      checked: '2026-10-21'
       confidence: documented
-      note: 1 PDL credit PER RECORD in the data array — a size=100 call costs 100 credits, a size=1000 POST costs 1000. A query matching nothing is free.
+      note: 'Configured price is $0.28 per returned profile. PDL spends 1 Person Search credit per profile; search uses a separate meter from Person Enrichment.'
     verified: 2026-07-31
+    added: '2026-07-28'
     example_response: examples/pdl.people.search.json
     docs_url: https://docs.peopledatalabs.com/docs/reference-person-search-api
 
@@ -146,16 +149,17 @@ endpoints:
       queryParams: {website: "peopledatalabs.com"}
     cost:
       type: per_success
-      value: 1
-      currency: credit
+      value: 0.10
+      currency: USD
       per: 1
       unit: call
-      source: docs
+      source: observed
       source_url: https://www.peopledatalabs.com/pricing
-      checked: '2026-07-28'
-      confidence: documented
-      note: 1 PDL credit per company returned; a 404 is free.
+      checked: '2026-10-21'
+      confidence: verified
+      note: 'Company Base costs $0.10 per credit on this plan; PDL spends 1 credit per HTTP 200 match and none on a 404.'
     verified: 2026-07-31
+    added: '2026-07-28'
     example_response: examples/pdl.companies.enrich.json
     docs_url: https://docs.peopledatalabs.com/docs/reference-company-enrichment-api
 
@@ -181,20 +185,24 @@ endpoints:
       queryParams: {sql: "SELECT * FROM company WHERE name='people data labs'", size: 1}
     cost:
       type: per_result
-      value: 1
-      currency: credit
+      value: 0.10
+      currency: USD
       per: 1
       unit: record
-      source: observed
-      source_url: https://www.peopledatalabs.com/pricing
-      checked: '2026-07-31'
-      confidence: verified
-      note: '1 PDL credit PER RECORD returned; `size` is the cost dial. OBSERVED live 2026-07-31 - a size=1 call returning 1 record carried x-call-credits-spent 1, x-call-credits-type search_company, and left the enrich allowance (x-totallimit-remaining) untouched: search bills a different meter.'
+      bills_miss: true
+      source: docs
+      source_url: https://support.peopledatalabs.com/hc/en-us/articles/25794271805211-Pricing-credits
+      checked: '2026-10-21'
+      confidence: documented
+      note: 'Configured price is $0.10 per returned profile. PDL spends 1 Company Search credit per profile; search uses a separate meter from Company Enrichment.'
     verified: 2026-07-31
+    added: '2026-07-28'
     example_response: examples/pdl.companies.search.json
     docs_url: https://docs.peopledatalabs.com/docs/reference-company-search-api
 
   - id: pdl.account.usage
+    status: retired
+    status_note: "Hidden from treg's PDL catalog; definition retained for later review."
     kind: utility
     capability: account.usage
     platform: account
@@ -215,5 +223,6 @@ endpoints:
       queryParams: {field: "title", text: "data", size: 5}
     cost: {type: free, value: 0, currency: USD, unit: call, note: 'free — PDL states all active keys have free access to Autocomplete, and a live call 2026-07-31 returned no x-call-credits-spent header at all, only the rate-limit ones. Rate-limited to 60/min and 1,000/day. The Cleaner APIs (/company/clean, /location/clean, /school/clean) are likewise free, 10,000/month'}
     verified: 2026-07-31
+    added: '2026-07-28'
     example_response: examples/pdl.account.usage.json
     docs_url: https://docs.peopledatalabs.com/docs/reference-autocomplete-api

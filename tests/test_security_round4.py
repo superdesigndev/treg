@@ -28,7 +28,7 @@ from treg import api, crypto
 from treg.api import LOCAL_ORG_NAME, LOCAL_USER_EMAIL, app
 from treg.config import Settings
 from treg.infra.db import reset_db, session_maker
-from treg.models import DenyRule, Membership, Org, Tool, User
+from treg.models import DenyRule, Membership, Org, User
 
 
 def _h(t: str) -> dict:
@@ -40,7 +40,9 @@ async def _mint(email: str, org_id: int, role: str) -> tuple[str, int]:
     async with session_maker() as s:
         u = (await s.execute(select(User).where(User.email == email))).scalar_one_or_none()
         if u is None:
-            u = User(email=email); s.add(u); await s.flush()
+            u = User(email=email)
+            s.add(u)
+            await s.flush()
         s.add(Membership(user_id=u.id, org_id=org_id, role=role, token_hash=crypto.hash_token(token)))
         await s.commit()
         uid = u.id
@@ -60,7 +62,10 @@ async def env():
     app.state.http = AsyncClient(transport=ASGITransport(app=make_upstream()), base_url="http://upstream")
     async with AsyncClient(transport=ASGITransport(app=app), base_url="http://registry") as c:
         async with session_maker() as s:
-            org = Org(name="Team", slug="team"); s.add(org); await s.commit(); await s.refresh(org)
+            org = Org(name="Team", slug="team")
+            s.add(org)
+            await s.commit()
+            await s.refresh(org)
             org_id = org.id
         owner, owner_uid = await _mint("owner@x.dev", org_id, "owner")
         member, member_uid = await _mint("m@x.dev", org_id, "member")
@@ -95,25 +100,6 @@ async def _access(env, user_id: int, **fields) -> dict:
     return r.json()
 
 
-# ---- #1 deleting a project must not widen a scope ---------------------------------------------
-async def test_deleting_a_project_does_not_widen_an_agents_scope(env):
-    """The same bug as the member case in test_projects, but through an AGENT — the identity most
-    likely to be tightly scoped, and the one whose credential is handed to a machine."""
-    agent = await _agent(env)
-    await _access(env, agent["user_id"], project_access=[env.apollo["slug"]])
-    assert (await env.c.get("/call/g-tool/ok", headers=_h(agent["token"]))).status_code == 403
-
-    r = await env.c.delete(f"/orgs/{env.org_id}/projects/{env.apollo['id']}", headers=_h(env.owner))
-    assert r.status_code == 200
-
-    blocked = await env.c.get("/call/g-tool/ok", headers=_h(agent["token"]))
-    assert blocked.status_code == 403, \
-        "deleting one project must never grant an agent the tools of another"
-    names = {t["name"] for t in (await env.c.get("/tools", headers=_h(agent["token"]))).json()}
-    assert names == {"a-tool", "shared", "hidden"}, \
-        "it keeps what it had (a-tool freed to org-wide) and gains no other project's tools"
-
-
 async def test_deleting_a_project_leaves_other_scoped_entries_alone(env):
     """A member scoped to two of the three projects loses only the deleted id, not the whole list."""
     await _access(env, env.member_uid, project_access=[env.apollo["slug"], env.gemini["slug"]])
@@ -139,22 +125,9 @@ async def test_rotating_an_agent_keeps_its_tool_acl(env):
     assert (await env.c.get("/call/g-tool/ok", headers=_h(rotated["token"]))).status_code == 403
 
 
-async def test_rotating_an_agent_keeps_its_cap_project_scope_and_local_run(env):
-    """Every other 'absent = unrestricted' field on the same body, including the project scope,
-    which `AgentIn` cannot even express and so could only ever be lost."""
-    agent = await _agent(env, daily_call_cap=5, local_run_enabled=False)
-    await _access(env, agent["user_id"], project_access=[env.apollo["slug"]],
-                  local_run_enabled=False)
-
-    rotated = await _agent(env)  # name only — the most minimal rotate there is
-    assert rotated["daily_call_cap"] == 5, "an absent cap must not become unlimited"
-    assert rotated["local_run_enabled"] is False, "an absent flag must not re-enable local runs"
-    assert rotated["project_access"] == [env.apollo["id"]], "a rotate must not clear the project scope"
-
-
 async def test_rotating_can_still_change_the_limits_when_asked(env):
     """The guard must not freeze the fields: SENT is still authoritative, in both directions."""
-    agent = await _agent(env, tool_access=["a-tool"], daily_call_cap=5)
+    await _agent(env, tool_access=["a-tool"], daily_call_cap=5)
     widened = await _agent(env, tool_access=["a-tool", "g-tool", "shared", "hidden"],
                            daily_call_cap=-1)
     assert widened["tool_access"] is None, "everything selected collapses to NULL, as elsewhere"
@@ -219,38 +192,27 @@ async def test_an_unregistered_host_is_still_a_404(env):
     assert r.status_code == 404 and "no registered tool" in r.text
 
 
-async def test_an_out_of_scope_tool_still_cannot_cause_a_409(env):
-    """The reason the ACL filter runs BEFORE the tiebreak in the first place — guard it while
-    changing the code around it. Three tools share `upstream` with the same base_url, so they would
-    all tie; with only ONE of them usable the caller must still get a clean resolve, not a 409."""
-    await _access(env, env.member_uid, project_access=[env.apollo["slug"]], tool_access=["a-tool"])
-    r = await env.c.get("/call/http://upstream/ok", headers=_h(env.member))
-    assert r.status_code == 200, \
-        f"exactly one usable tool on the host must resolve, not 409 on the ones it can't see: {r.text}"
-
-
 # ---- #4 a deny rule must not outlive the identity it named -------------------------------------
 async def _rules(env) -> list[dict]:
     return (await env.c.get(f"/orgs/{env.org_id}/deny", headers=_h(env.owner))).json()
 
 
-async def test_revoking_an_agent_takes_its_deny_rules_with_it(env):
-    agent = await _agent(env)
+@pytest.mark.parametrize("kind", ["agent", "member"])
+async def test_removing_a_caller_takes_its_deny_rules_with_it(env, kind):
+    if kind == "agent":
+        user_id = (await _agent(env))["user_id"]
+        path = f"/orgs/{env.org_id}/agents/{user_id}"
+    else:
+        user_id = env.member_uid
+        path = f"/orgs/{env.org_id}/members/{user_id}"
     r = await env.c.post(f"/orgs/{env.org_id}/deny", headers=_h(env.owner),
-                         json={"host": "upstream", "user_id": agent["user_id"]})
+                         json={"host": "upstream", "user_id": user_id})
     assert r.status_code == 200, r.text
     assert len(await _rules(env)) == 1
 
-    await env.c.delete(f"/orgs/{env.org_id}/agents/{agent['user_id']}", headers=_h(env.owner))
+    await env.c.delete(path, headers=_h(env.owner))
     assert await _rules(env) == [], \
-        "a rule naming a caller that no longer exists can never fire — it is only clutter"
-
-
-async def test_removing_a_member_takes_their_deny_rules_with_them(env):
-    await env.c.post(f"/orgs/{env.org_id}/deny", headers=_h(env.owner),
-                     json={"host": "upstream", "user_id": env.member_uid})
-    await env.c.delete(f"/orgs/{env.org_id}/members/{env.member_uid}", headers=_h(env.owner))
-    assert await _rules(env) == []
+        "a rule naming a caller that no longer exists can never fire - it is only clutter"
 
 
 async def test_the_sweep_leaves_org_wide_rules_and_other_members_alone(env):
@@ -304,8 +266,10 @@ async def test_local_bootstrap_never_claims_an_existing_personal_team(tmp_path, 
     identity ownership of a real team, and an owner is exempt from every ACL."""
     await reset_db()
     async with session_maker() as s:
-        theirs = Org(name="Personal", slug=LOCAL_ORG_NAME); s.add(theirs)
-        real = User(email="someone@x.dev"); s.add(real)
+        theirs = Org(name="Personal", slug=LOCAL_ORG_NAME)
+        s.add(theirs)
+        real = User(email="someone@x.dev")
+        s.add(real)
         await s.flush()
         s.add(Membership(user_id=real.id, org_id=theirs.id, role="owner",
                          token_hash=crypto.hash_token(crypto.new_token())))

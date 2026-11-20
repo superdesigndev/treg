@@ -3,8 +3,9 @@
 ![treg — the tool catalog for your agent](docs/assets/treg-hero.png)
 
 **OpenRouter, but for agent tools instead of models.** Point an agent at one base URL with one token
-and it can do the job: **2,896 catalogued endpoints across 60 providers** — SEO and backlinks,
-social and trends, people and company enrichment, ads, scraping — **priced per call, from a cent**,
+and it can do the job: **a curated catalog of thousands of endpoints across many providers** — SEO and backlinks,
+social and trends, people and company enrichment, ads, scraping, image and video generation —
+**priced per call, from a cent**,
 with no provider signup. Plus your own team's keys, skills and CLIs, callable by every teammate's
 agent without the credential ever leaving the server.
 
@@ -22,8 +23,10 @@ bills fractions of a cent per call.
 
 ## Two kinds of tool, one token
 
-- **The catalog** — external endpoints treg can serve **on its own key**, metered against your
-  team's prepaid balance (**$1.00 free** on every new team). No account with the provider needed.
+- **The catalog** — external endpoints treg can serve with its own key or through a verified public
+  route that needs no provider key. Own-key calls use the team's prepaid balance; anonymous calls
+  are free. No account with the provider is needed. New verified accounts receive **$1.00 free**
+  once, when they create an eligible team.
 - **Your own tools** — anything a teammate registered: a paid API account, an OAuth connection, a
   vendor CLI, a `SKILL.md`. **Your own key always wins over treg's, and those calls are never
   metered.**
@@ -66,6 +69,23 @@ treg balance                                     # exactly what that cost
 # (or `treg onboard` for the guided walkthrough)
 ```
 
+Fish Audio provides S2.1 Pro speech, public-voice discovery, and private voice cloning.
+Speech is binary stdout, so redirect it to a file. A discovered voice's `_id` or a team voice id is
+the TTS `reference_id`; voices created on treg's Fish account are durable team resources:
+
+```bash
+treg call fishaudio.tts.s2-1-pro --method POST --header model=s2.1-pro \
+  --data '{"text":"Hello from treg","format":"mp3"}' > speech.mp3
+treg call fishaudio.voices.discover --query self=false --query licensed=false --query language=en
+treg resources list --provider fishaudio --kind voice
+```
+
+With your own Fish key, requests are an unmetered upstream relay and Fish owns the account boundary.
+
+A client written for a provider's own API can switch by its base URL alone: `https://treg.to/call/<provider>` in place of the provider's base URL (`https://api.dataforseo.com/v3` → `https://treg.to/call/dataforseo`) runs the catalog tool on that method and path exactly as `/call/<id>` would; a path the catalog does not list is a 404, never relayed.
+
+Catalog tool inputs are described by `treg catalog get <id>`. Tools marked `strict_query` reject undeclared or repeated query parameters, unsupported values and request bodies. Send each declared parameter within its declared type, allowed values and range, each single-valued one once, and a row count such as `limit` as a whole number within its stated maximum: a tool that enforces this answers a 400 `catalog_parameter_invalid` naming the parameter, and nothing is charged. Undeclared fields are forwarded as sent.
+
 Your token identifies you on every call (`X-Treg-Token` header) and is the same for all tools.
 Discover what your team has shared: `treg tool ls` · check credential health: `treg health`.
 
@@ -76,21 +96,49 @@ Discover what your team has shared: `treg tool ls` · check credential health: `
 /plugin install treg@treg
 ```
 
-Installs with no token and no configuration. The skill loads as `treg:treg` and, on its first run,
-walks your agent through the rest — the CLI, sign-in, then `treg mcp install` — so you end up with
-the command line **and** treg's tools. Other agents: `npx skills add superdesigndev/treg -s treg`
-(the `-s` matters — without it you also get this repo's internal dev skills).
+Installs the treg skill and treg's tools with no token and no configuration. Run `/mcp`, pick
+treg and sign in; the tools appear after it. Other agents: `npx skills add superdesigndev/treg -s treg`
+(or see [Workflow skills](#workflow-skills) for the rest).
 See [docs/CLAUDE-PLUGIN.md](docs/CLAUDE-PLUGIN.md). MiniMax Code / MiniMax Agent users: the same
 skill ships via the MiniMax Plugin Marketplace ([docs/MINIMAX-PLUGIN.md](docs/MINIMAX-PLUGIN.md)).
+
+### Workflow skills
+
+Ready-made recipes your agent runs end to end, every call through treg:
+
+| Skill | What your agent can do |
+|---|---|
+| [`treg`](skills/treg/SKILL.md) | Find and call any tool in the catalog, plus your own tools |
+| [`web-access`](skills/web-access/SKILL.md) | When your agent's own web tools fall short, read the live web without local scrapers: free search and page reads first, then the right platform job for social, stores, reviews, maps and papers, with treg falling back to the next vendor when one fails |
+| [`lead-signals`](skills/lead-signals/SKILL.md) | Find in-market buyers from public signals (complaints, job changes, hiring, funding, tool adoption) and monitor a topic, competitor or account list for them ([treg.to/leads-signals](https://treg.to/leads-signals)) |
+| [`recruit`](skills/recruit/SKILL.md) | Turn a LinkedIn job post into a ranked shortlist: criteria from the post, people search, filters with reasons, one line on why each fits, cited evidence (posts, GitHub, talks, tenure, job change) under a per-candidate spend cap, then a checked personal email and phone, with a run file of counts, evidence and the vendor trail per candidate |
+| [`doomscroll`](skills/doomscroll/SKILL.md) | Catch up on any topic over the last hours: the best posts, clips and reactions from X, TikTok, YouTube, Reddit, Hacker News and Product Hunt, grouped into stories with links, only what is new since the last scroll |
+| [`make-ugc`](skills/make-ugc/SKILL.md) | Make AI UGC videos: trending hooks, a presenter, talking-head clips, captions ([treg.to/ugc](https://treg.to/ugc)) |
+| [`jev-memory`](skills/jev-memory/SKILL.md) | Give Claude Code a memory: a Claude Code mod where Jev judges each prompt after the turn and keeps your lasting preferences, installed ready-made or built from one prompt ([the mod](examples/claude-code-mods/jev-memory)) |
+
+`install.sh` installs only `treg` and names the others in one line; your agent offers them after
+sign-in and the first call. Name the ones you want with
+`sh -s -- --skills lead-signals,recruit` (or `--skills all`; the opt-in `jev-memory` and `rea-growth` are never in that set). In Claude Code each one is
+also its own plugin in treg's marketplace: `/plugin install recruit@treg`, or pick them from `/plugin`. To add
+them to an existing agent instead ([skills.sh](https://skills.sh) CLI):
+
+```bash
+npx skills add superdesigndev/treg                        # every public skill
+npx skills add superdesigndev/treg --skill lead-signals   # just one
+treg skill bootstrap --skills all                         # the installer's set, with the treg CLI you already have
+```
+
+The workflow skills run on treg, so set it up first (the Quickstart above, or point your agent at
+[treg.to/llms.txt](https://treg.to/llms.txt)).
 
 ### Claude.ai connector
 
 The Claude Connectors Directory surface is `https://treg.to/mcp/v2/`. It exposes only curated
-catalog endpoints and separates read calls from write calls so Claude receives accurate safety
-signals. The existing `/mcp/` surface remains available for catalog endpoints, team-owned tools,
+catalog endpoints, without image, video or audio generation, and separates read calls from write
+calls so Claude receives accurate safety signals. The existing `/mcp/` surface remains available for catalog endpoints, team-owned tools,
 and imported skills. See the [MCP and OAuth architecture](docs/context/architecture/mcp-oauth.md)
 for the boundary and implementation, and the
-[submission runbook](docs/CLAUDE-CONNECTOR-SUBMISSION.md) for release gates.
+[submission runbook](https://github.com/superdesigndev/treg-internal/blob/main/docs/distribution/CLAUDE-CONNECTOR-SUBMISSION.md) for release gates.
 
 ## Call a tool you don't have a key for
 
@@ -101,6 +149,7 @@ management and creative, measurement.
 ```bash
 treg catalog                                    # every platform, busiest first
 treg catalog search "find a work email"         # by the job, not the vendor
+treg catalog search --new                       # tools added in the last 30 days, newest first
 treg catalog get hunter.people.email.find       # params, PRICE, example response
 treg call hunter.people.email.find --query domain=reddit.com --query full_name="Alexis Ohanian"
 ```
@@ -108,24 +157,49 @@ treg call hunter.people.email.find --query domain=reddit.com --query full_name="
 **How a catalogued call is served** — the credential ladder, in order:
 
 1. your team registered its own tool for that provider → that tool, that key;
-2. your team stored a secret for the provider → injected through a virtual tool;
-3. neither → **treg's own key**, billed to the team's prepaid balance.
+2. your team stored a secret for the provider → injected through a virtual tool (never for a keyless
+   public API, which has nothing to connect);
+3. neither, and the endpoint has a verified public route → **no provider key**, free;
+4. otherwise → **treg's own key**, billed to the team's prepaid balance.
 
+The anonymous price assumes the caller does not send a provider credential header. The faithful
+relay preserves caller headers, so a caller-supplied provider key can use that key's credits.
 Your own credential always beats treg's, so connecting a key you already pay for makes those calls
 free of the balance rather than duplicating them. An endpoint treg has no published price for is
 **refused**, not served free — you are told to connect your own key instead. Where several providers
 serve one capability, `treg catalog search` shows them side by side with prices; **choosing is
 yours** — treg does not silently pick or fail over between providers for you. (When treg's own
 account for a provider is out it may serve the *same* endpoint through a treg-owned relay account,
-disclosed on the response; a team can opt out.) The exception you opt into: `treg.<capability>` routed endpoints, where treg picks the provider for you and names it.
+disclosed on the response; a team can opt out.) The exception you opt into: `treg.<capability>` routed endpoints, where treg picks the provider for you and names it. For common jobs (scraping a page, web search, Google results, finding an email) start with the routed endpoint, such as `treg.web.extract` or `treg.web.search`, rather than a provider you remember by name. On `treg.people.email.find` and `treg.people.phone.find`, `X-Treg-Route-Verify: true` also checks the found address or number in the same call, as its own charge, and says what the check found.
 
 ```bash
 treg balance          # credit left, calls in flight, recent spend
 treg topup            # add funds, or set up automatic top-ups
 ```
 
-Out of balance is an HTTP **402** carrying `balance_micro`, `estimated_cost_micro` and a `topup_url`,
+Out of balance is an HTTP **402** `error: insufficient_balance` carrying `balance_micro`, `estimated_cost_micro` and a `topup_url`,
 so an agent can act on it without reading prose.
+
+**No account at all?** When the operator switches agent payments on, an agent with a stablecoin
+wallet can pay for catalog calls one at a time over HTTP, with MPP (Tempo) or x402 (Base): a
+`/call/<id>` without a treg token answers 402 with the payment challenge, and a client such as pympp
+or the mppx library pays it and sends the call again. What the call does not use stays as that
+wallet's credit for its next calls; it is never paid back as money. The agent-facing rules are in
+the skill's "Pay with a wallet" section, the design in
+[agent payments](docs/context/architecture/agent-payments.md).
+
+**Enrich Arena** lives at `/enrich-arena`, outside the dashboard. Compare enrichment answers with each vendor’s cost and speed,
+vote for the best answer in one click, or watch a sequential waterfall. Capability-compatible
+async providers participate too; Arena handles submit and polling internally. Browsing is
+public; submitting requires login, and billable attempts use your team's credits. See the
+[Arena guide](docs/context/interface/enrich-arena.md).
+
+**Web Arena** compares Web Search, Web Fetch, and Sitemap providers at `/web-arena`.
+Battle calls selected providers for the same input; Waterfall tries them in order. The
+live leaderboard combines direct provider-call hit rates and response times with checked
+Web Arena quality results over a rolling 30-day window. The pages open when the feature
+is enabled. See the
+[Web Arena guide](docs/context/interface/web-arena.md).
 
 ## Share & use your own tools
 
@@ -179,12 +253,10 @@ hold the key or log in:
 ```bash
 treg run stripe -- get /v1/balance
 treg run gh -- pr list
-treg run --server agentmail-cli inboxes list   # runs on the registry server: the key never reaches you
 ```
 
-`--local` (default) runs on your machine; `--server` runs on the registry and streams output back.
-For a whole session, `treg shell start` opens a subshell where every registered CLI injects
-automatically — just use `stripe`, `gh`, … normally; `exit` reverts. `treg runs` is the audit log.
+`--local` (default) runs on your machine. Server-side CLI execution (`--server`) is disabled globally.
+`treg runs` is the audit log.
 
 ### 3. Skills
 
@@ -221,7 +293,14 @@ treg oauth connect gsc --client-secret client_secret.json \
 
 Full options for every command: [`USAGE.md`](USAGE.md).
 
+The CLI and its installer send anonymous usage to PostHog when using treg.to (which command ran and
+how it ended, never request content or credentials).
+Disable with `TREG_TELEMETRY=0` or `DO_NOT_TRACK=1`.
+See [analytics details](USAGE.md#anonymous-usage-analytics).
+
 ## Teams
+
+An account can own up to 10 teams. Joining other teams as a member does not count toward this limit.
 
 Everything is scoped to an **org**: a token = a `(user, org)` membership, and every secret, tool,
 and skill belongs to the active org. Roles: **owner / admin / member / viewer**.
@@ -229,16 +308,28 @@ and skill belongs to the active org. Roles: **owner / admin / member / viewer**.
 ```bash
 treg org create "Acme"                        # make a team, become owner
 treg org invite teammate@acme.com             # invite by email (pick role + tool access)
-treg org join <code> --email you@acme.com     # accept an invite (creates you if new)
+treg org join <code>                          # accept an invite (sign in as the invited email first)
 treg org ls | use <slug> | members            # switch orgs, see the roster
 treg org access <member> --tools a,b          # per-member tool access (admin+)
 ```
 
+Team owners can enable enterprise SSO from the dashboard's **Team → SSO** tab. WorkOS connects the
+company's identity provider; owners can invite their IT admin to finish setup. Employees can enter
+their work email in any sign-in dialog or use the team's direct sign-in link. treg keeps its team roles and API keys. The
+Directory Sync plan removes a deactivated employee's team access. See
+[enterprise SSO setup](docs/enterprise-sso.md).
+
 ## Going deeper
 
+- **Feedback:** `treg feedback submit friction "The pagination example is unclear."`
+  Share problems or suggestions without private information. See [feedback instructions](https://treg.to/feedback.md).
+- **Review:** `treg review CALL_ID useful`
+  Rate an invited catalog call after using its result; `not_sure` is fine. Omit private data and continue the task.
+
 - [`USAGE.md`](USAGE.md) — the full `treg` CLI reference.
-- [`/llms.txt`](https://treg.to/llms.txt) — the agent-onboarding file: call
-protocol, discovery, auth, CLI, skills. One fetch teaches an agent the whole registry.
+- [`/llms.txt`](https://treg.to/llms.txt): the agent entry point, in the [llms.txt](https://llmstxt.org)
+format: what treg is, setup for each kind of agent, the search-read-call loop and the rules, with
+links to [`/skill.md`](https://treg.to/skill.md), the operating guide, for everything else.
 - **The dashboard** at [treg.to](https://treg.to) — full CRUD, a guided
 tutorial (Help → Tutorial), and copyable setup instructions for your agents.
 - **The API** — everything the CLI does is plain HTTP; interactive OpenAPI docs live at `/docs`.
@@ -268,6 +359,7 @@ scripts/dev-local.sh reset       # wipe the dev DB + CLI sandbox for a fresh sta
 Or run the server directly, without tmux:
 
 ```bash
+bash scripts/build-dashboard.sh # Node 22.12+ and npm; build the Dashboard
 uv sync                        # create the venv from uv.lock (pulls the server deps for dev)
 uv run python -m treg upgrade  # prepare schema + run idempotent release tasks without serving
 uv run python -m treg          # serve on 0.0.0.0:18790 (add --reload for dev)
@@ -279,7 +371,8 @@ uv run python -m treg keygen   # print a fresh Fernet key for TREG_SECRET_KEY
 > database drivers, and encryption. `pip install tools-registry` alone gives just the `treg` command for
 > talking to an existing registry.
 
-The team instance is hosted on **Render** (web service + Postgres) at `treg.to`.
+The official hosted service is available at `treg.to`. Its production topology and live settings are
+maintained in the private [operator runbook](https://github.com/superdesigndev/treg-internal/blob/main/docs/production/deploy.md).
 
 ## Configuration
 
@@ -289,29 +382,54 @@ Environment variables (prefix `TREG_`, read from `.env`):
 | Var                                       | Default                         | Purpose                                                                                                                                                                    |
 | ----------------------------------------- | ------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `TREG_DATABASE_URL`                       | `sqlite+aiosqlite:///./treg.db` | DB URL (SQLite for dev, Postgres in prod)                                                                                                                                  |
-| `TREG_SECRET_KEY`                         | *(empty)*                       | Fernet key for secrets-at-rest; empty → an ephemeral key is minted (secrets won't survive a restart)                                                                       |
+| `TREG_READ_DATABASE_URL`                  | *(empty)*                       | Optional SQLite / PostgreSQL read datasource; empty reuses the primary. Requires callers to opt in; existing queries are unchanged. See [read datasource setup](docs/context/ops/deploy.md#optional-read-replica). |
+| `TREG_SECRET_KEY`                         | *(empty)*                       | Fernet key for secrets-at-rest; empty → an ephemeral key is minted (secrets won't survive a restart). During a rotation, a comma-separated list: the first key encrypts, every key decrypts                                                                       |
+| `TREG_AWS_SECRET_ID`                      | *(empty)*                       | ARN of an AWS Secrets Manager secret holding a JSON object of `TREG_*` settings, read once at startup and winning over the environment; AWS credentials come from the standard `AWS_*` variables |
+| `TREG_KMS_KEY_ID`                         | *(empty)*                       | KMS key or alias ARN for stored credentials: this process can open KMS-sealed values (AWS credentials from the standard `AWS_*` variables) |
+| `TREG_KMS_ENCRYPT_NEW`                    | `false`                         | also seal new credential writes with that key; set only once every process that reads credentials has `TREG_KMS_KEY_ID` |
 | `TREG_PUBLIC_URL`                         | `https://treg.to`  | treg's public base, used to build the OAuth callback URI                                                                                                                   |
 | `TREG_SESSION_SECRET`                     | *(empty)*                       | signs the dashboard session cookie; falls back to `TREG_SECRET_KEY`. Set a real value in prod                                                                              |
 | `TREG_GITHUB_CLIENT_ID` / `_SECRET`       | *(empty)*                       | GitHub OAuth sign-in (callback `<public_url>/auth/github/callback`); empty hides the button                                                                                |
 | `TREG_GOOGLE_CLIENT_ID` / `_SECRET`       | *(empty)*                       | Google OAuth sign-in (redirect `<public_url>/auth/google/callback`); empty hides the button                                                                                |
+| `TREG_WORKOS_API_KEY` / `_CLIENT_ID` / `_WEBHOOK_SECRET` | *(empty)* | WorkOS enterprise SSO; configure callback and signed directory webhook as described in [enterprise SSO setup](docs/enterprise-sso.md) |
+| `TREG_ENTERPRISE_SSO_BUNDLE_ONLY` | `true` | Show only the SSO + Directory Sync plan by default; set to `false` to offer both monthly plans. |
+| `TREG_ENTERPRISE_SSO_BUNDLE_PRICE_ID` / `TREG_ENTERPRISE_SSO_ONLY_PRICE_ID` | *(empty)* | Reusable monthly Stripe Price IDs in the same account as `TREG_STRIPE_SECRET_KEY`; an unset or unusable Price hides its plan. Stripe's Price supplies the displayed amount and Checkout charge. |
+| `TREG_ENTERPRISE_SSO_BUNDLE_MIN_PRICE_USD` / `TREG_ENTERPRISE_SSO_ONLY_MIN_PRICE_USD` | `0` | Optional whole-dollar minimum for each monthly Stripe Price; lower prices are hidden and rejected at Checkout. |
+| `TREG_AGENT_PAYMENTS_ENABLED` | `false` | Keyless callers pay per catalog call with MPP or x402. Startup checks the rest of the `TREG_AGENT_PAYMENTS_*` set (secret, rails, recipients, settlement) and names every problem; see [agent payments](docs/context/architecture/agent-payments.md#settings). |
 | `TREG_INSTAGRAM_CLIENT_ID` / `_SECRET`    | *(empty)*                       | Instagram App ID and secret for direct Instagram Login (redirect `<public_url>/oauth/callback`)                                                                           |
 | `TREG_META_CLIENT_ID` / `_SECRET`         | *(empty)*                       | Meta app credentials for Facebook Pages, Meta Ads, and optional Instagram `page-tools`                                                                                     |
+| `TREG_OAUTH_REVIEW_PENDING`               | `instagram-login,page-messages` | Comma-separated registry review keys whose capabilities must remain gated; hosted review state is maintained privately.                                                   |
 | `TREG_RESEND_API_KEY` / `TREG_EMAIL_FROM` | *(empty)*                       | transactional email via Resend (OTP codes + invites); From must be a Resend-verified sender                                                                                |
+| `TREG_BLOCKED_EMAIL_DOMAINS`              | *(empty)*                       | comma-separated email domains refused at every sign-up/sign-in door and at team creation (subdomains included, case-insensitive). Empty blocks nothing — no list ships in the code |
+| `TREG_CLIENT_IP_HEADER`                   | *(empty)*                       | a header only your edge can set, used as the client address for every per-IP limit (`cf-connecting-ip` behind Cloudflare) |
+| `TREG_TRUSTED_PROXY_HOPS`                 | `1`                             | without that header: the `X-Forwarded-For` entry this many hops from the RIGHT (the one your nearest proxy appended); `0` when clients connect directly. The first entry is client-written and never trusted |
+| `TREG_RATE_LIMIT_EXEMPT_IPS`              | *(empty)*                       | comma-separated addresses or CIDR blocks exempt from every per-IP limit (an authorized security test, a monitoring probe); per-email, per-user and deployment-wide limits still apply. A malformed entry refuses to start |
+| `TREG_REQUIRED_EXTENSIONS`                | *(empty)*                       | comma-separated policy extensions (`treg.extensions` entry points) that must be installed, else startup fails. treg.to runs a private abuse-policy extension this way; it can only restrict ([policy extensions](docs/context/architecture/policy-extensions.md)) |
+| `TREG_TURNSTILE_SITE_KEY` / `_SECRET`     | *(empty)*                       | Cloudflare Turnstile on every email sign-in form and on a new address's first GitHub/Google sign-in; either empty = off. The site key is served in `/captcha.js`, the secret only reaches siteverify |
+| `TREG_TURNSTILE_MODE`                     | `observe`                       | `observe` logs each outcome and changes nothing; `enforce` refuses a code to a missing or invalid token, gives no signup credit when Cloudflare cannot answer, and gives a new GitHub/Google user signup credit only on a passed check |
+| `TREG_TURNSTILE_SOCIAL`                   | `true`                          | `false` skips the check on a new address's first GitHub/Google sign-in, which then gets signup credit as with no widget; the email door is unchanged |
+| `TREG_TURNSTILE_HOSTNAMES`                | *(empty)*                       | comma-separated hosts a token must be solved on; empty = the `TREG_PUBLIC_URL` host (and its known aliases) |
 | `TREG_ADMIN_TOKEN`                        | *(empty)*                       | cross-tenant **super-admin** bearer; authorizes every `/admin/*` endpoint. Empty disables the env path (only `is_superadmin` users reach `/admin`). Keep it long + secret. |
 | `TREG_EMAIL_DEV_MODE`                     | `false`                         | when true, `/auth/email/start` returns the OTP in its response (no mail sender needed) — **dev/local only**, never in prod.                                                |
+| `TREG_KV_URL`                             | *(empty)*                       | shared key-value store (Redis protocol) for counters every worker must agree on, today the per-team review-invitation budget. Empty = an in-process fallback, fine for one worker |
 
 
 No `.env` is needed for local dev — every setting has a working default (ephemeral key, sqlite).
 
 > **⚠️ Back these up before moving or redeploying:** the Fernet key (`TREG_SECRET_KEY`) and the
 > database (Postgres in prod; `treg.db` for a local sqlite run). Lose the Fernet key and every
-> stored secret becomes unrecoverable.
+> stored secret it sealed becomes unrecoverable; the same holds for a KMS key that is deleted.
 
 ## Architecture
 
 **Request flow for `/call`:** resolve tool (by URL host + longest `base_url` prefix, or by name) →
 decrypt its secret(s) → apply each binding's injector → stream to the upstream → fire-and-forget
-audit record. The proxy does no business logic and never buffers the body.
+audit record. The infra relay streams bytes without business logic. The call application buffers
+responses needing settlement or ownership evidence up to 8 MiB; larger responses return a 502
+without charging instead of a truncated success. Endpoints that inline media (Gemini images)
+declare `spooled_response`: their metered answer is read to a temp file instead, settled from its
+reported usage, and relayed whole. Authorized free final downloads needing no body
+evidence stream in full, as do own-key and own-tool responses.
 
 **Module map** (`src/treg/`):
 
@@ -355,7 +473,8 @@ Deep design lives in [`docs/context/`](docs/context/README.md) (per-subsystem fr
 ## Tests
 
 ```bash
-uv run pytest -q     # 521 tests
+uv run --with pytest-xdist pytest -n auto -q   # daily local default (same shape as CI)
+uv run --frozen python -m pytest -q            # serial: debugging one test, or order
 ```
 
 Coverage: proxy walking-skeleton, all injector shapes, per-user auth + CRUD + audit, skill composer,
@@ -368,10 +487,9 @@ upload/scan, orgs + invites, the dashboard API, CLI.
 treg/
 ├── src/treg/            # the package (api, cli, proxy, injectors, oauth, health, convert, models, …)
 │   └── web/             # dashboard, landing, tutorial, llms.txt, skill.md, install.sh
-├── tests/               # 521 tests
+├── tests/               # pytest suite (CI + local default: pytest-xdist -n auto)
 ├── docs/
-│   ├── context/         # design fragments (codemap system) + generated index
-│   └── ONBOARDING.md    # first-time bootstrap
+│   └── context/         # design fragments (codemap system) + generated index
 ├── USAGE.md             # full treg CLI reference
 └── pyproject.toml
 ```
@@ -387,6 +505,17 @@ Loopni merge.
 ## License
 
 Apache 2.0 with additional terms ([`LICENSE`](LICENSE)): use it freely — including commercially,
-inside your own organization (self-hosting your own registry is encouraged) — but don't offer it
-to third parties as a hosted/managed service or embed it in a commercially distributed product
-without written permission (`jason@superdesign.dev`).
+inside your own organization (self-hosting your own registry is encouraged). The restriction: don't
+redistribute the code to third parties as a competing hosted/managed registry service without written
+permission (`jason@superdesign.dev`). **Using the hosted treg.to API** inside your own product —
+with pass-through billing via `X-Treg-Meta` and `usage/by-tag` — is allowed without permission;
+that's calling our API, not redistributing our software.
+
+### Pinned customer read scopes
+
+For a restricted customer agent, `treg org agent-new bot --pin customer=cust_A` enforces attribution
+and scopes call/run history, archived results and shared-provider async ownership to that pin.
+Foreign or unattributed ids return 404; an unpinned operator keeps the org-wide view and shared
+balance. BYOK account access and public media URLs retain their existing permissions. See the
+[multi-tenancy contract](docs/context/architecture/multi-tenancy.md#caller-tags-and-pinned-read-scopes)
+for multiple pins, migration and replay behavior.

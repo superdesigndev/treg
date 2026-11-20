@@ -1,53 +1,125 @@
 {
-  "version": "0.1.20260717",
+  "version": "0.1.20260917",
   "status_code": 20000,
   "status_message": "Ok.",
-  "time": "3.6255 sec.",
-  "cost": 0.005861,
+  "time": "3.1386 sec.",
+  "cost": 0.005941,
   "tasks_count": 1,
   "tasks_error": 0,
   "tasks": [
     {
-      "id": "07281334-2171-0612-0000-f7c42be4ce20",
+      "id": "10050954-2171-0612-0000-defa596d59c5",
       "status_code": 20000,
       "status_message": "Ok.",
-      "time": "3.6174 sec.",
-      "cost": 0.005861,
+      "time": "3.1320 sec.",
+      "cost": 0.005941,
       "result_count": 1,
       "path": [
         "v3",
-        "… 4 more item(s) truncated"
+        "ai_optimization",
+        "perplexity",
+        "llm_responses",
+        "live"
       ],
       "data": {
         "api": "ai_optimization",
         "function": "llm_responses",
         "se": "perplexity",
-        "system_message": "communicate as if we are in a business meeting",
-        "message_chain": [
-          {
-            "role": "user",
-            "message": "Hello, what’s up?"
-          },
-          "… 1 more item(s) truncated"
-        ],
-        "max_output_tokens": 200,
-        "temperature": 0.3,
-        "top_p": 0.5,
-        "web_search_country_iso_code": "FR",
+        "user_prompt": "best CRM for a small business",
         "model_name": "sonar",
-        "user_prompt": "provide information on how relevant the amusement park business is in France now"
+        "web_search_country_iso_code": "US"
       },
       "result": [
         {
           "model_name": "sonar",
-          "input_tokens": 62,
-          "output_tokens": 199,
+          "input_tokens": 13,
+          "output_tokens": 328,
           "reasoning_tokens": 0,
           "web_search": true,
-          "money_spent": 0.005261,
-          "datetime": "2026-07-28 13:34:24 +00:00",
+          "money_spent": 0.005341,
+          "datetime": "2026-10-05 09:54:45 +00:00",
           "items": [
-            "… {2 field(s) truncated}"
+            {
+              "type": "message",
+              "sections": [
+                {
+                  "type": "text",
+                  "text": "For most small businesses, **HubSpot CRM** is the best starting point: it offers a capable free tier, is easy to use, and can grow into marketing, sales, and customer service tools.[1][5]\n\n| CRM | Best for | Key consideration |\n|---|---|---|\n| **HubSpot CRM** | Best overall and best free option | Strong free entry point; paid features can become expensive as you add marketing and automation.[5] |\n| **Zoho CRM** | Best value and customization | Broad functionality at a relatively affordable price; better suited to businesses willing to configure the system.[7] |\n| **Pipedrive** | Best for straightforward sales pipelines | Simple, visual deal tracking; ideal for sales-focused teams.[7] |\n| **Less Annoying CRM** | Best for simplicity | Minimal learning curve and fewer unnecessary features.[7] |\n| **Salesforce Starter** | Best for future growth | Powerful scaling option, but typically more complex than a small business needs initially; listed at $25 per user monthly.[9] |\n\n**Quick recommendation:**\n- Choose **HubSpot** if you want to start free and may add marketing or support later.\n- Choose **Pipedrive** if your main need is managing leads and sales opportunities.\n- Choose **Zoho** if price, customization, and all-in-one features matter most.\n- Choose **Less Annoying CRM** if you want the simplest possible system.\n\nBefore choosing, confirm pricing for your number of users, email integration, reporting, automation, and data export.",
+                  "annotations": [
+                    {
+                      "title": "10 Best Small Business CRM Software Of 2026 - Forbes",
+                      "url": "https://www.forbes.com/advisor/business/software/best-crm-small-business/",
+                      "start_index": null,
+                      "end_index": null,
+                      "text": null
+                    },
+                    {
+                      "title": "The Best Small Business CRM Software We've Tested for 2026",
+                      "url": "https://www.pcmag.com/picks/the-best-small-business-crm-software",
+                      "start_index": null,
+                      "end_index": null,
+                      "text": null
+                    },
+                    {
+                      "title": "The Best CRM Software for 2026",
+                      "url": "https://uk.pcmag.com/crm-software/67398/the-best-crm-software",
+                      "start_index": null,
+                      "end_index": null,
+                      "text": null
+                    },
+                    {
+                      "title": "blog.salesflare.com › best-small-business-crm9 Best CRM Software for Small Businesses in 2026",
+                      "url": "https://blog.salesflare.com/best-small-business-crm",
+                      "start_index": null,
+                      "end_index": null,
+                      "text": null
+                    },
+                    {
+                      "title": "Best small business CRM software of 2026: Expert tested ... - ZDNET",
+                      "url": "https://www.zdnet.com/article/best-small-business-crm-software/",
+                      "start_index": null,
+                      "end_index": null,
+                      "text": null
+                    },
+                    {
+                      "title": "Best for project management",
+                      "url": "https://www.techradar.com/best/best-crm-for-small-business",
+                      "start_index": null,
+                      "end_index": null,
+                      "text": null
+                    },
+                    {
+                      "title": "6. Less Annoying Crm: Best...",
+                      "url": "https://www.zite.com/blog/best-crm-software-for-small-business",
+                      "start_index": null,
+                      "end_index": null,
+                      "text": null
+                    },
+                    {
+                      "title": "The 11 Best CRMs for Small Business in 2026",
+                      "url": "https://zapier.com/blog/best-crms-for-small-business/",
+                      "start_index": null,
+                      "end_index": null,
+                      "text": null
+                    },
+                    {
+                      "title": "Best Small Business CRM in 2026",
+                      "url": "https://www.salesforce.com/crm/crm-for-small-business/best-crm/?bc=OTH",
+                      "start_index": null,
+                      "end_index": null,
+                      "text": null
+                    },
+                    {
+                      "title": "HubSpot CRM: Best for small...",
+                      "url": "https://fitsmallbusiness.com/best-crm-for-small-business/",
+                      "start_index": null,
+                      "end_index": null,
+                      "text": null
+                    }
+                  ]
+                }
+              ]
+            }
           ],
           "fan_out_queries": null
         }

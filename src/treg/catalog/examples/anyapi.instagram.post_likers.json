@@ -1,0 +1,32 @@
+{
+  "output": {
+    "found": true,
+    "data": {
+      "likers": [
+        {
+          "avatarUrl": "https://scontent-cph2-1.cdninstagram.com/v/t51.82787-19/795247317_18483849340106751_7718321126636955517_n.jpg?stp=dst-jpg_e0_s150x150_tt6&efg=eyJ2ZW5jb2RlX3RhZyI6InByb2ZpbGVfcGljLmRqYW5nby4xMDgwLmMyIn… [565 chars]",
+          "displayName": "Gabriel Furtado",
+          "latestStoryUtc": 0,
+          "private": true,
+          "userId": "3240338750",
+          "username": "gabrielfurtado11",
+          "verified": false
+        },
+        "… 985 more item(s) truncated"
+      ],
+      "totalLikes": 7841
+    }
+  },
+  "provider": "AnyAPI",
+  "costUsd": 0.0024,
+  "items": 986,
+  "replayed": false,
+  "source": {
+    "id": "anonymous-tiger",
+    "name": "Tiger",
+    "kind": "anonymous",
+    "artworkKey": "tiger"
+  },
+  "hint": "large_result: this response is ~744 KB. To keep future runs from flooding your context, re-run with `fields` (keep only the keys you need), `max_items` (cap rows), `summary=true` (outline only), or `j… [310 chars]",
+  "resultId": "2532c90f-dafc-401e-a205-2fe616b60658"
+}

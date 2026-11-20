@@ -12,6 +12,7 @@ from treg.convert import (
     find_secret_file,
     generate_contract,
     load_contract,
+    SecretPathError,
     resolve_secret_path,
     scaffold_skill,
 )
@@ -190,3 +191,22 @@ def test_contract_env_sourced_secret_reads_from_environment(tmp_path, monkeypatc
                 "bindings": [{"secret": "render", "injector": "env"}]}
     payload = contract_to_skill_payload(d, contract)
     assert payload["secrets"][0]["value"] == "rnd-secret"
+
+
+@pytest.mark.parametrize("rel", ["/etc/hosts", "../outside.txt", "../../../../../../../../etc/hosts",
+                                 ".secret/../../outside.txt", ".secrets/link-out", "", "a\0b"])
+def test_a_secret_path_never_leaves_the_skill_folder(tmp_path, rel):
+    d = tmp_path / "skill"
+    (d / ".secrets").mkdir(parents=True)
+    (tmp_path / "outside.txt").write_text("server file")
+    (d / ".secrets" / "link-out").symlink_to(tmp_path / "outside.txt")
+    with pytest.raises(SecretPathError):
+        resolve_secret_path(d, rel)
+
+
+def test_a_link_that_stays_inside_the_skill_folder_resolves(tmp_path):
+    d = tmp_path / "skill"
+    (d / ".secrets").mkdir(parents=True)
+    (d / ".secrets" / "real").write_text("tok")
+    (d / ".secrets" / "alias").symlink_to(d / ".secrets" / "real")
+    assert resolve_secret_path(d, ".secret/alias").read_text() == "tok"

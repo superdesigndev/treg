@@ -52,7 +52,7 @@ def main() -> int:
     try:
         with urllib.request.urlopen(req, timeout=60) as r:
             print(f"IndexNow: HTTP {r.status}")
-    except urllib.error.HTTPError as e:  # noqa: PERF203
+    except urllib.error.HTTPError as e:
         print(f"IndexNow rejected the batch: HTTP {e.code} {e.read().decode()[:200]}", file=sys.stderr)
         return 1
 

@@ -1,0 +1,68 @@
+{
+  "meta": {
+    "blocked": [],
+    "elapsed_ms": 0,
+    "from_cache": true,
+    "llm_calls": 0,
+    "pages_fetched": 0,
+    "partial": false,
+    "warnings": [
+      "module: youtube-channel: Veritasium (UCHnyfMqiRRG1u-2MsSQLbXA) · 21.3M subscribers · 7 links"
+    ]
+  },
+  "recipe": "youtube-channel",
+  "usage": {
+    "boxes": [
+      "gate"
+    ],
+    "cache": "hit",
+    "engine": "recipe",
+    "lines": [
+      {
+        "about": "the call",
+        "boxes": [
+          "gate"
+        ],
+        "cache": "miss",
+        "call": "recipes",
+        "engine": "gate",
+        "units": 1
+      }
+    ],
+    "remaining_before": {
+      "concurrent": 99,
+      "requests": 156,
+      "search": 3000
+    },
+    "units": 1
+  },
+  "version": 1,
+  "rows": [
+    {
+      "avatar": "https://yt3.googleusercontent.com/7vCbvtCqtjQ3YLgsJt7Y952MQV1sBvhllSCSxHP8_sVZdcPCBrITfhkN2RdyCuwPnsByq-1GoA=s900-c-k-c0x00ffffff-no-rj",
+      "banner": "https://yt3.googleusercontent.com/sDCGwJYqtOxT-odxPiErdlwfq3jlzXh0TsYFXtSSD6rld0Be51ZUNcoE17di2u1OiCjQunbcqA=w2560-fcrop64=1,00005a57ffffa5a8-k-c0xffffffff-no-nd-rj",
+      "channel_id": "UCHnyfMqiRRG1u-2MsSQLbXA",
+      "country": "United States",
+      "description": "An element of truth - videos about science, education, and anything else we find interesting.",
+      "handle": "@veritasium",
+      "joined": "2010-07-21",
+      "links": [
+        {
+          "title": "Elements of Truth - The Game",
+          "url": "https://ve42.co/YTBio"
+        },
+        {
+          "title": "Buy SNATOMS",
+          "url": "https://snatoms.com/"
+        }
+      ],
+      "subscribers": 21300000,
+      "subscribers_text": "21.3M subscribers",
+      "title": "Veritasium",
+      "url": "https://www.youtube.com/channel/UCHnyfMqiRRG1u-2MsSQLbXA",
+      "verified": true,
+      "videos": 539,
+      "views": 4649364576
+    }
+  ]
+}

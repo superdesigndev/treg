@@ -1,0 +1,9 @@
+{
+  "success": true,
+  "extractParameters": {
+    "url": "https://example.com"
+  },
+  "results": {
+    "title": ""
+  }
+}

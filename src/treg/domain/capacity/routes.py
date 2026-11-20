@@ -20,8 +20,9 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from ...models import CapacityPolicy, OverflowRoute
 from ...timeutil import utcnow_naive
 
-MAX_RATIO = 4.0
-"""Caller pays the aggregator's real price; a route above this multiple of ours is never enabled."""
+MAX_RATIO = 4
+"""Maximum aggregator/direct price ratio per event. Fixed-fee discovery routes use the absolute
+`_FIXED_DISCOVERY_MAX_MICRO` ceiling instead (see `eligible` and `route_for`)."""
 VERIFY_MAX_AGE = timedelta(days=7)
 FREE_ROUTE_MAX_USD = 0.01
 """A FREE endpoint of ours has no ratio (÷0). Its account still runs dry — tomba's free
@@ -30,7 +31,32 @@ aggregator's price is at most this (disclosed like any other overflow charge).""
 AGGREGATOR_ORDER = ("orthogonal", "monid")
 SEED_PATH = Path(__file__).with_name("overflow_seed.json")
 
-# The vendor path-prefix normalizations the mapping run observed (plan §4.3): the aggregator writes
+# Orthogonal charges a fixed fee per request for these search routes while our direct account
+# pays per row: Influencers Club discovery $0.03 (/details); Icypeas find-people $0.01, charged
+# 1 cent live for 50 and for 200 leads. Admission is the absolute ceiling
+# below, never a ratio against the request's estimate. Keep this exception confined to the
+# verified contracts; other per-result/per-call mismatches still require their own evidence.
+# endpoint_id -> (provider, agg_slug, our path, aggregator path)
+_FIXED_DISCOVERY_PATHS = {
+    "influencersclub.creators.search": ("influencersclub", "influencers-club",
+                                        "/public/v1/discovery/", "/public/v1/discovery/"),
+    "influencersclub.creators.similar": ("influencersclub", "influencers-club",
+                                         "/public/v1/discovery/creators/similar/",
+                                         "/public/v1/discovery/creators/similar/"),
+    "icypeas.people.search": ("icypeas", "icypeas", "/find-people", "/api/find-people"),
+}
+_FIXED_DISCOVERY_MAX_MICRO = 30_000
+
+
+def request_priced(route: OverflowRoute) -> bool:
+    """Does this exact fixed-fee contract require a request estimate for price admission?"""
+    contract = _FIXED_DISCOVERY_PATHS.get(route.endpoint_id)
+    return bool(contract and route.aggregator == "orthogonal" and route.method == "POST"
+                and (route.provider, route.agg_slug, route.path, route.agg_path) == contract
+                and route.agg_unit == "call")
+
+
+# The vendor path-prefix normalizations the mapping run observed: the aggregator writes
 # the base path into the endpoint path where our catalog keeps it on the provider's base URL.
 _PREFIXES = ("/v2", "/api", "/v5", "/v1", "/v3")
 
@@ -92,16 +118,20 @@ def eligible(route: OverflowRoute, *, our_cost: dict | None, platform_eligible: 
     kind = our_unit_kind(our_cost)
     if kind is None:
         return Eligibility(False, "our price has no unit")
-    if route.agg_unit != kind and not (route.agg_unit == "result" and kind == "call"
-                                       and route.single_result):
+    per_request = request_priced(route) and kind == "result"
+    if route.agg_unit != kind and not per_request and not (route.agg_unit == "result" and kind == "call"
+                                                         and route.single_result):
         return Eligibility(False, f"unit mismatch: ours {kind}, aggregator {route.agg_unit}")
+    if per_request and (route.agg_price_micro is None
+                        or not 0 <= route.agg_price_micro <= _FIXED_DISCOVERY_MAX_MICRO):
+        return Eligibility(False, "fixed discovery price exceeds verified ceiling or is missing")
     agg_usd = (route.agg_price_micro or 0) / 1_000_000 if route.agg_price_micro is not None else None
     if our_usd == 0 and agg_usd is not None:
         if agg_usd > FREE_ROUTE_MAX_USD:
             return Eligibility(False, f"free for us, aggregator ${agg_usd:g} > ${FREE_ROUTE_MAX_USD}")
     elif route.ratio is None:
         return Eligibility(False, "no price on one side")
-    elif route.ratio > MAX_RATIO:
+    elif route.ratio > MAX_RATIO and not per_request:
         return Eligibility(False, f"ratio {route.ratio} > {MAX_RATIO}")
     if route.last_verified_at is None:
         return Eligibility(False, "never verified")
@@ -228,6 +258,9 @@ async def apply_sync(db: AsyncSession, candidates: list[dict], *, catalog, now: 
 
 
 def route_for(routes: list[OverflowRoute], endpoint_id: str) -> list[OverflowRoute]:
-    """Enabled routes for an endpoint in aggregator order — Orthogonal first (plan decision)."""
+    """Enabled routes for an endpoint in aggregator order — Orthogonal first (plan decision).
+
+    No per-request price check here. A fixed-fee discovery route already passed its absolute
+    ceiling in `eligible`. Three cents, disclosed, beats a refusal."""
     mine = [r for r in routes if r.endpoint_id == endpoint_id and r.enabled]
     return sorted(mine, key=lambda r: AGGREGATOR_ORDER.index(r.aggregator) if r.aggregator in AGGREGATOR_ORDER else 99)

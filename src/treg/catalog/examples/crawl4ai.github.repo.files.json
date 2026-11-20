@@ -1,0 +1,55 @@
+{
+  "meta": {
+    "blocked": [],
+    "elapsed_ms": 0,
+    "from_cache": true,
+    "llm_calls": 0,
+    "pages_fetched": 0,
+    "partial": false,
+    "warnings": [
+      "module: github-file: unclecode/crawl4ai main:README.md · 26913 bytes · text"
+    ]
+  },
+  "recipe": "github-file",
+  "usage": {
+    "boxes": [
+      "gate"
+    ],
+    "cache": "hit",
+    "engine": "recipe",
+    "lines": [
+      {
+        "about": "the call",
+        "boxes": [
+          "gate"
+        ],
+        "cache": "miss",
+        "call": "recipes",
+        "engine": "gate",
+        "units": 1
+      }
+    ],
+    "remaining_before": {
+      "concurrent": 99,
+      "requests": 197,
+      "search": 3000
+    },
+    "units": 1
+  },
+  "version": 2,
+  "rows": [
+    {
+      "content": "# 🚀🤖 Crawl4AI: the open-source web crawler for LLMs and AI agents\n\n<div align=\"center\">\n\n<a href=\"https://trendshift.io/repositories/11716\" target=\"_blank\"><img src=\"https://trendshift.io/api/badge/repositories/11716\" alt=\"unclecode%2Fcrawl4ai | Trendshift\" style=\"width: 250px; height: 55px;\" width=…",
+      "is_binary": false,
+      "is_truncated": false,
+      "language": "Markdown",
+      "path": "README.md",
+      "raw_url": "https://raw.githubusercontent.com/unclecode/crawl4ai/main/README.md",
+      "ref": "main",
+      "repository": "unclecode/crawl4ai",
+      "sha": "0c340ab12975b9f1634b6da0f1857e1d42bdae41",
+      "size": 26913,
+      "url": "https://github.com/unclecode/crawl4ai/blob/main/README.md"
+    }
+  ]
+}

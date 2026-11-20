@@ -1,0 +1,20 @@
+{
+  "jobs": [
+    {
+      "_id": "6aeb66811c3ad6ac028f7ed7",
+      "company_slug": "crfitnessholdingsllc",
+      "job_slug": "zumba-dance-fitness-instructor-b5e3cff8",
+      "date_expired": "2026-11-13"
+    },
+    {
+      "_id": "6aeb66811c3ad6ac028f7ebb",
+      "company_slug": "crfitnessholdingsllc",
+      "job_slug": "zumba-dance-fitness-instructor-4aa734b4",
+      "date_expired": "2026-11-13"
+    }
+  ],
+  "total_count": 117400,
+  "page": 1,
+  "limit": 2,
+  "total_pages": 58700
+}

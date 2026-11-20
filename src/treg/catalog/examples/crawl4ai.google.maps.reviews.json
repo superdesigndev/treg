@@ -1,0 +1,62 @@
+{
+  "meta": {
+    "blocked": [],
+    "elapsed_ms": 0,
+    "from_cache": true,
+    "llm_calls": 0,
+    "pages_fetched": 0,
+    "partial": false,
+    "warnings": []
+  },
+  "recipe": "google-maps-reviews",
+  "usage": {
+    "boxes": [
+      "gate"
+    ],
+    "cache": "hit",
+    "engine": "recipe",
+    "lines": [
+      {
+        "about": "the call",
+        "boxes": [
+          "gate"
+        ],
+        "cache": "miss",
+        "call": "recipes",
+        "engine": "gate",
+        "units": 1
+      }
+    ],
+    "remaining_before": {
+      "concurrent": 99,
+      "requests": 190,
+      "search": 3000
+    },
+    "units": 1
+  },
+  "version": 1,
+  "rows": [
+    {
+      "author": "[redacted]",
+      "date": "2026-08-11T15:58:45Z",
+      "likes": 1,
+      "owner_reply": null,
+      "place_id": "ChIJG-gJw2vKRIYROWi2uwOp8QE",
+      "rating": 5,
+      "review_id": "Ci9DQUlRQUNvZENodHljRjlvT2tSS1ZtOUdNMlZ6Wm05eVowWnFXa2RKVFdOdVNHYxAB",
+      "text": "A friend recommended Epoch Coffee on North Loop, so yesterday morning I made it the destination for my walk from East Austin—and I’m so glad I did!\n\nNestled near the border of Hyde Park, Epoch Coffee is an eclectic, cozy and wonderfully unpretentious Austin coffee shop. From the moment I walked in, …",
+      "url": "https://www.google.com/maps/reviews/data=!4m8!14m7!1m6!2m5!1sCi9DQUlRQUNvZENodHljRjlvT2tSS1ZtOUdNMlZ6Wm05eVowWnFXa2RKVFdOdVNHYxAB!2m1!1s0x0:0x1f1a903bbb66839!3m1!1s2@1:CAIQACodChtycF9oOkRKVm9GM2VzZm9yZ0ZqWkdJTWNuSGc%7C%7C?hl=en-US"
+    },
+    {
+      "author": "[redacted]",
+      "date": "2026-06-27T22:49:37Z",
+      "likes": 0,
+      "owner_reply": null,
+      "place_id": "ChIJG-gJw2vKRIYROWi2uwOp8QE",
+      "rating": 5,
+      "review_id": "Ci9DQUlRQUNvZENodHljRjlvT2pOYVN6aHVhblppV0hNdFltTjRZWEZoVFdkRE1GRRAB",
+      "text": "First impression they have friendly and welcoming baristas. Great menu with variety. I got a lemonade with peach syrup and hibiscus tea (so delicious!). My partner did a drip coffee which was also good.\nThe atmosphere is homey with mix matched furniture and funky decor.",
+      "url": "https://www.google.com/maps/reviews/data=!4m8!14m7!1m6!2m5!1sCi9DQUlRQUNvZENodHljRjlvT2pOYVN6aHVhblppV0hNdFltTjRZWEZoVFdkRE1GRRAB!2m1!1s0x0:0x1f1a903bbb66839!3m1!1s2@1:CAIQACodChtycF9oOjNaSzhuanZiWHMtYmN4YXFhTWdDMFE%7C%7C?hl=en-US"
+    }
+  ]
+}

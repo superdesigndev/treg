@@ -1,0 +1,62 @@
+{
+  "meta": {
+    "blocked": [],
+    "elapsed_ms": 0,
+    "from_cache": true,
+    "llm_calls": 0,
+    "pages_fetched": 0,
+    "partial": false,
+    "warnings": [
+      "module: reddit-post-comments: Hey Rustaceans! Got a question? Ask here (36/2026)! · 12 comments on Reddit"
+    ]
+  },
+  "recipe": "reddit-post-comments",
+  "usage": {
+    "boxes": [
+      "gate"
+    ],
+    "cache": "hit",
+    "engine": "recipe",
+    "lines": [
+      {
+        "about": "the call",
+        "boxes": [
+          "gate"
+        ],
+        "cache": "miss",
+        "call": "recipes",
+        "engine": "gate",
+        "units": 1
+      }
+    ],
+    "remaining_before": {
+      "concurrent": 99,
+      "requests": 191,
+      "search": 3000
+    },
+    "units": 1
+  },
+  "version": 2,
+  "rows": [
+    {
+      "author": "[redacted]",
+      "created": "2026-08-31T09:51:27Z",
+      "depth": 0,
+      "id": "p6y97ea",
+      "parent": "1w38wm2",
+      "score": 3,
+      "text": "Borrow checker finally clicked for me last week after fighting it for a month, now I feel like I've been let into a secret club",
+      "url": "https://www.reddit.com/r/rust/comments/1w38wm2/hey_rustaceans_got_a_question_ask_here_362026/p6y97ea/"
+    },
+    {
+      "author": "[redacted]",
+      "created": "2026-09-01T02:38:10Z",
+      "depth": 1,
+      "id": "p73tmi8",
+      "parent": "p6y97ea",
+      "score": 2,
+      "text": "Congratulations! Now do async",
+      "url": "https://www.reddit.com/r/rust/comments/1w38wm2/hey_rustaceans_got_a_question_ask_here_362026/p73tmi8/"
+    }
+  ]
+}

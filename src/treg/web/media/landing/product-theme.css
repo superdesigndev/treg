@@ -1,0 +1,404 @@
+/* Shared visual language sampled from treg-design.vercel.app/#start.
+   Keep layout/motion separate. Section grounds and card surfaces have one owner. */
+:root{
+ --bg:#f8f8f8;--surface:#fff;--panel:#f8f8f8;--panel2:#f0f0f0;
+ --ink:#1a1a1a;--muted:#7c7c7c;--muted2:#989898;
+ --line:rgba(0,0,0,.1);--line2:rgba(37,37,34,.2);
+ --inverse:#1a1a1a;--inverse-ink:#fff;--teal:#1a1a1a;
+ --r:20px;--rb:12px;--card-radius:32px;
+ --shadow-sm:0 2px 2px #00000008;
+ --shadow-md:0 2px 5px #00000007;
+ --shadow-lg:0 4px 18px #00000009;
+}
+html,body{background:var(--bg)}
+/* Content disappears beneath a white top veil; navigation stays above it. */
+body::before{
+ content:"";position:fixed;inset:0 0 auto;height:142px;z-index:45;
+ pointer-events:none;opacity:var(--top-veil-opacity,1);
+ background:linear-gradient(to bottom,#fff 0%,#fffffff5 24%,#ffffffc7 48%,#ffffff59 72%,#ffffff00 100%);
+}
+@media(max-width:640px){body::before{height:110px}}
+/* Pixel is for display hierarchy; reading/UI text keeps the sans/mono roles. */
+.hero .hero-h1,.hero .hero-h1 .l2,.zeroband h3,.close h2,.watermark{
+ font-family:var(--display);font-weight:400;letter-spacing:0;font-synthesis:none;
+}
+.hero,.roles,.bens,.close,footer,.foot{background:var(--bg);border-radius:0;box-shadow:none}
+/* A bounded hero glow cannot bleed into later sections or their reveal masks. */
+.hero{isolation:isolate}
+.hero::before{inset:0;z-index:-1;background:radial-gradient(ellipse at 50% 52%,#e9efec70,transparent 58%);border-radius:0}
+.nav{background:#ffffffeb;border-color:var(--line);box-shadow:var(--shadow-md)}
+.kicker{border-color:var(--line);background:var(--surface);color:var(--muted)}
+.kicker a,.hero-h1 .grad2,.bentext h3 .grad2{color:var(--ink)}
+.scene .aghead,.scene .htool{background:var(--surface);border:1px solid var(--line);border-radius:16px;box-shadow:var(--shadow-sm)}
+.scene .htool:hover,.scene .htool.route-active{background:#fff;border-color:#8dafa1;box-shadow:0 0 0 2px #4f8b7110,0 4px 12px #00000008}
+.scene .htool.more{background:none;border:0;box-shadow:none}
+.scene .hcli{background:#ffffffed;color:var(--muted);border-color:var(--line);box-shadow:none}
+.scene .hcore b,.scene .hcore .glyph{color:var(--ink)}
+.gateway-roles button{color:var(--muted)}
+.gateway-roles button[aria-pressed=true]{background:var(--inverse);color:var(--inverse-ink);border-color:var(--inverse)}
+.hero .givebox{background:var(--surface);border:1px solid var(--line);border-radius:24px;box-shadow:none}
+.hero .gb-cmd{background:var(--panel);border:1px solid #00000004;border-radius:14px;box-shadow:0 2px 2px #00000005}
+.hero .gb-cmd code{color:var(--ink)}.hero .gb-cmd .ps{color:var(--muted)}
+.givebox .gb-cmd button{background:var(--inverse);color:#fff;border-color:var(--inverse);border-radius:9px}
+.givebox .gb-cmd button:hover{background:#333;color:#fff;border-color:#333}
+.givebox .gb-cmd button.done{background:#1a1a1a;color:#adf0cf;border-color:#1a1a1a}
+.roles{isolation:isolate}
+.pcard{background:var(--surface);border:1px solid var(--line);border-radius:20px;box-shadow:none}
+.pcard:hover{background:var(--surface);border-color:var(--line2);box-shadow:var(--shadow-lg)}
+.pcard .ph{background:var(--panel);border-color:var(--line)}
+.pcard .pt{background:var(--surface)}
+.morewrap{background:transparent}
+.ben{border-color:var(--line)}
+.ben .keywall{background:var(--panel);border:1px solid var(--line);border-radius:var(--card-radius)}
+.ben .win{background:var(--surface);border:1px solid var(--line);border-radius:var(--card-radius);box-shadow:none;overflow:hidden}
+.win .wbar{background:var(--panel);border-color:var(--line)}
+.ben .cap,.ben .ledger{background:var(--surface)}
+.close{border-top:1px solid var(--line);padding-bottom:90px}
+/* Original footer margin exposed a separate coloured strip after the CTA. */
+footer{margin-top:0;background:var(--bg)}
+.motion-progress{background:var(--ink)}
+.motion-control{background:#ffffffed;color:var(--muted);border-color:var(--line);box-shadow:var(--shadow-sm)}
+.motion-control:hover{background:var(--panel);color:var(--ink)}
+.motion-control:focus-visible{outline-color:var(--ink)}
+@media(max-width:640px){.ben .keywall,.ben .win{border-radius:24px}.hero .givebox{border-radius:22px}}
+
+/* One broad, quiet material-coloured light field, not additional UI labels. */
+.hero .scene::before{
+ content:"";position:absolute;left:50%;top:50%;width:min(1100px,96vw);height:540px;
+ z-index:-1;pointer-events:none;border-radius:50%;
+ background:radial-gradient(ellipse at 39% 48%,#8bbbac70,transparent 55%),radial-gradient(ellipse at 63% 40%,#b8c9c46b,transparent 59%),radial-gradient(ellipse at 54% 66%,#4f8c7952,transparent 52%);
+ filter:blur(42px);transform:translate(-50%,-50%);
+ animation:gateway-aura 16s ease-in-out infinite alternate;
+}
+@keyframes gateway-aura{
+ from{transform:translate(calc(-50% - 16px),calc(-50% + 9px)) scale(.98)}
+ to{transform:translate(calc(-50% + 16px),calc(-50% - 9px)) scale(1.035)}
+}
+.hero .scene.gateway-paused::before{animation-play-state:paused}
+.hero .givebox{margin-top:54px}
+.motion-control{width:36px;height:36px;min-height:36px;padding:8px;opacity:.55}
+.motion-control:hover,.motion-control:focus-visible{opacity:1}
+.motion-control svg{display:block;width:100%;height:100%;fill:none;stroke:currentColor;stroke-width:1.6;stroke-linecap:round;stroke-linejoin:round}
+@media(max-width:640px){.hero .givebox{margin-top:20px}.hero .scene::before{width:110vw;height:450px;top:150px;filter:blur(28px)}}
+@media(prefers-reduced-motion:reduce){.hero .scene::before{animation:none}}
+.gateway-caustics{position:absolute;left:50%;top:50%;width:min(1250px,104vw);height:560px;transform:translate(-50%,-50%);z-index:-1;pointer-events:none;mask-image:radial-gradient(ellipse at center,#000 20%,transparent 72%);-webkit-mask-image:radial-gradient(ellipse at center,#000 20%,transparent 72%)}
+.hero .scene.caustics-ready::before{display:none}
+@media(max-width:640px){.gateway-caustics{width:120vw;height:440px;top:150px}}
+
+/* Dark closing chapter; scoped tokens do not affect the light main page. */
+.close,footer{
+ --bg:#000;--surface:#1b1b1b;--panel:#171717;--ink:#fff;
+ --muted:#b5b5b5;--muted2:#969696;--teal:#fff;
+ --line:#ffffff1a;--line2:#ffffff38;
+ background:#000;color:var(--ink);border-color:var(--line);
+}
+.close{padding-top:125px;padding-bottom:110px;overflow:hidden;isolation:isolate}
+.close::before{display:none}
+.close h2,.close h2 .grad,.close h2 .grad2{color:#f7f8f7}
+.close h2{translate:0 var(--end-drift,0px)}
+.close .sub,.close .listyours{color:var(--muted);translate:0 calc(var(--end-drift,0px) * .45)}
+.close .rv>div{translate:0 calc(var(--end-drift,0px) * .2)}
+.close .candy{background:#f7f8f7;color:#111312;box-shadow:none}
+.close .candy:hover{background:#fff;box-shadow:0 0 24px #ffffff12}
+.close .ghostbtn{background:transparent;border-color:#ffffff38;color:#f7f8f7}
+.close .ghostbtn:hover{background:#ffffff0b;border-color:#ffffff73}
+.close .listyours a{color:#f7f8f7;border-color:#ffffff50}
+.close .trustline{color:#929c96}.close .trustline b{color:#bfc7c2}
+footer .brand{color:#f7f8f7}footer .brand .glyph{background:#f7f8f7;color:#111312}
+footer .foot-in a:hover{color:#fff}
+footer .watermark{color:#ffffff0d;translate:0 var(--mark-drift,0px)}
+.close :focus-visible,footer :focus-visible{outline:2px solid #fff;outline-offset:5px}
+@media(max-width:640px){.close{padding-top:75px;padding-bottom:75px}}
+@media(prefers-reduced-motion:reduce){.close h2,.close .sub,.close .listyours,.close .rv>div,.close::before,footer .watermark{translate:none!important}}
+.motion-off .close h2,.motion-off .close .sub,.motion-off .close .listyours,.motion-off .close .rv>div,.motion-off .close::before,.motion-off footer .watermark{translate:none!important}
+
+/* The normal-flow wrapper is the moving reveal edge. The black chapter behind
+   it moves more slowly, then rejoins normal flow when its top reaches the top. */
+.ending-reveal{position:relative;overflow:clip;background:#000;isolation:isolate}
+.ending-layer{position:relative;transform:translateY(var(--reveal-offset,0px))}
+.ending-layer.has-particles{background:#000;isolation:isolate}
+.ending-particles{position:absolute;inset:0;width:100%;height:100%;z-index:0;pointer-events:none;contain:strict}
+.ending-layer.has-particles .close,.ending-layer.has-particles footer{position:relative;z-index:1;background:transparent}
+.ending-reveal .close{border-top:0}
+@media(max-width:640px),(prefers-reduced-motion:reduce){.ending-layer{transform:none!important}}
+.motion-off .ending-layer{transform:none!important}
+.ending-reveal::after{content:"";position:absolute;inset:0 0 auto;height:clamp(120px,18svh,220px);background:#f8f8f8;pointer-events:none;z-index:2;transform:translateY(calc(-100% * var(--curtain-open,1)))}
+.ending-reveal .close>.wrap{transform:translate3d(0,var(--closing-rise,0px),0)}
+.ending-reveal footer .foot-in{transform:translate3d(0,var(--footer-rise,0px),0)}
+.ending-reveal .rv{opacity:1;filter:none;transform:none;transition:none}
+@media(max-width:640px),(pointer:coarse),(prefers-reduced-motion:reduce){
+ .ending-reveal::after{display:none}
+ .ending-reveal .close>.wrap,.ending-reveal footer .foot-in{transform:none}
+}
+.motion-off .ending-reveal::after{display:none}
+.motion-off .ending-reveal .close>.wrap,.motion-off .ending-reveal footer .foot-in{transform:none}
+
+/* Full-width navigation, floating directly on the existing top white veil. */
+.navwrap{top:0;padding:0}
+.nav{width:100%;max-width:none;margin:0;padding:24px 40px;background:transparent;border:0;border-radius:0;box-shadow:none;backdrop-filter:none;-webkit-backdrop-filter:none}
+.nav .links{gap:28px}
+body[data-dark-nav] .nav{color:#fff}
+body[data-dark-nav] .nav .brand{color:#fff}
+body[data-dark-nav] .nav .brand .glyph{background:#fff;color:#000}
+body[data-dark-nav] .nav .links a{color:#d0d0d0}
+body[data-dark-nav] .nav .candy{background:#fff;color:#000;border-color:#fff}
+@media(max-width:800px){.nav{padding:20px 24px}.nav .links{gap:20px}}
+@media(max-width:640px){.nav{padding:16px;gap:12px}.nav .links{gap:12px}}
+
+.gateway-sculpture.model-ready{z-index:0;pointer-events:auto}
+.gateway-sculpture:not(.model-ready){visibility:hidden}
+.scene .hcell.mid .hcore{display:none}
+.gateway-sculpture.model-ready>img{visibility:hidden}
+.gateway-webgl{position:absolute;inset:0;width:100%;height:100%;display:block;cursor:grab;touch-action:pan-y}
+.gateway-webgl:active{cursor:grabbing}
+.gateway-webgl:focus-visible{outline:1px solid #769f8d;outline-offset:-8px;border-radius:24px}
+.scene .hcell.mid:has(.model-ready) .hcore{display:none}
+
+/* Background effect disabled for a clean performance comparison; no CSS fallback. */
+.hero::before,.hero .scene::before{display:none!important;animation:none!important;filter:none!important}
+
+/* More space for the physical object, quieter typography above it. */
+.hero .hero-h1{font-size:clamp(30px,3.7vw,49px)}
+.hero .hero-h1 .l2{font-size:clamp(22px,2.1vw,28px)}
+.hero .scene{min-height:350px}
+.hero .gateway-sculpture{inset:-22px -38px 0}
+@media(min-width:1000px) and (max-height:850px){
+ .hero .hero-h1{font-size:clamp(32px,3.6vw,46px)}
+ .hero .hero-h1 .l2{font-size:25px}
+ .hero .scene{min-height:290px}
+ .hero .givebox{margin-top:30px}
+}
+@media(max-width:640px){
+ .hero .hero-h1{font-size:28px}.hero .hero-h1 .l2{font-size:20px}
+ .hero .scene{min-height:0}.scene .hcell.mid{height:285px}
+ .hero .gateway-sculpture{inset:-18px 20px 0}
+}
+
+/* Three benefits share one editorial rhythm and equal desktop tracks. */
+/* Static feathered colour fields: no animated blur or extra canvas pass. */
+.hero .kicker,.hero .hero-h1{position:relative;top:24px}
+@media(max-width:640px){.hero .kicker,.hero .hero-h1{top:12px}}
+.hero-particles{position:absolute;inset:0;width:100%;height:100%;z-index:-1;pointer-events:none;contain:strict}
+.opening-pending .navwrap,.opening-pending .hero .kicker,.opening-pending .hero .hero-h1,
+.opening-pending .hero .hcell:not(.mid),.opening-pending .hero .givebox,
+.opening-pending .hero .hcli,.opening-pending .hero .gateway-routes,.opening-pending .hero-particles{opacity:0!important;pointer-events:none!important}
+.opening-stage .hero:after{content:"";position:absolute;inset:0;background:#f8f8f8;opacity:var(--opening-background,1);z-index:-2;pointer-events:none}
+.opening-stage .motion-control{opacity:0;pointer-events:none}
+.opening-pending .hero .givebox,.opening-pending .hero .hcli{visibility:hidden!important}
+.hero{
+ background:
+  radial-gradient(ellipse 38% 34% at 47% 53%,#8cdbc18c 0%,#b5e5d85c 42%,transparent 100%),
+  radial-gradient(ellipse 30% 31% at 72% 59%,#aed9e766 0%,transparent 100%),
+  radial-gradient(ellipse 28% 28% at 24% 57%,#d4e4b86b 0%,transparent 100%),var(--bg);
+}
+@media(min-width:901px){
+ .hero{min-height:100svh;padding:clamp(94px,10.8svh,128px) 0 clamp(32px,4svh,48px)}
+ .hero>.wrap{max-width:1400px;min-height:calc(100svh - clamp(94px,10.8svh,128px) - clamp(32px,4svh,48px));display:flex;flex-direction:column;align-items:center}
+ .hero .hero-h1{font-size:clamp(40px,3.8vw,56px);margin-top:24px;line-height:1.1}
+ .hero .hero-h1 .l2{font-size:clamp(21px,1.65vw,25px);margin-top:16px}
+ .hero .scene{width:100%;max-width:1280px;flex:1;min-height:clamp(280px,38svh,470px);margin-top:clamp(32px,4svh,48px);grid-template-columns:minmax(240px,1fr) minmax(320px,1.35fr) minmax(250px,1fr);gap:clamp(28px,3vw,48px)}
+ .hero .gateway-sculpture{inset:-8px -28px 0}
+ .hero .scene .aghead{max-width:none;padding:24px;gap:14px;font-size:16px}
+ .hero .scene .aghead img{width:44px;height:44px}
+ .hero .scene .aghead i{font-size:11px;line-height:1.6;margin-top:4px}
+ .hero .scene .sl{font-size:10px;margin-bottom:14px}
+ .hero .scene .hsteps{padding-top:22px;gap:9px}
+ .hero .scene .hst{font-size:13px;line-height:1.7;grid-template-columns:20px minmax(0,1fr) 12px}
+ .hero .scene .htoolrow{gap:12px}
+ .hero .scene .htool{min-height:84px;font-size:14px;line-height:1.45;gap:12px;padding:14px 10px}
+ .hero .scene .htool img{width:30px;height:30px}
+ .hero .scene .hfoot{font-size:10px;line-height:1.7;margin-top:10px}
+ .hero .scene .htool.more{min-height:0;padding:5px}
+ .hero .givebox{width:740px;max-width:100%;padding:18px 20px;margin-top:clamp(40px,5svh,60px)}
+ .hero .gb-h{font-size:14px;margin-bottom:14px}
+ .hero .gb-cmd{padding:16px 18px}
+ .hero .gb-cmd code{font-size:14px}
+}
+@media(min-width:901px) and (max-height:800px){
+ .hero{padding-top:84px;padding-bottom:22px}
+ .hero>.wrap{min-height:calc(100svh - 106px)}
+ .hero .hero-h1{font-size:42px;margin-top:18px}.hero .hero-h1 .l2{font-size:22px;margin-top:12px}
+ .hero .scene{margin-top:20px;min-height:260px}
+ .hero .scene .htool{min-height:66px;padding:9px;font-size:13px;gap:7px}
+ .hero .scene .htool img{width:27px;height:27px}
+ .hero .scene .htoolrow{gap:8px}
+ .hero .scene .sl{margin-bottom:10px}
+ .hero .scene .hfoot{margin-top:5px}
+ .hero .scene .aghead{padding:20px}
+ .hero .scene .hsteps{gap:6px;padding-top:18px}
+ .hero .givebox{margin-top:24px;padding:14px 18px}.hero .gb-h{margin-bottom:10px}.hero .gb-cmd{padding:12px 16px}
+}
+@media(min-width:641px) and (max-width:900px){
+ .hero .scene{margin-top:40px}.hero .givebox{margin-top:54px}
+}
+@media(max-width:640px){
+ .hero{background:radial-gradient(ellipse 75% 30% at 50% 65%,#a4ddcfa6,transparent 100%),var(--bg)}
+ .hero .givebox{margin-top:32px}.hero .scene{margin-top:48px}
+}
+
+/* Quieter role subtitle; clearer live command under the model. */
+.hero .scene .hcli{font-size:12px;line-height:1.65;padding:8px 12px;border-radius:9px;max-width:min(460px,100%)}
+@media(min-width:641px) and (max-width:900px){.hero .hero-h1 .l2{font-size:21px}}
+@media(max-width:640px){
+ .hero .hero-h1 .l2{font-size:18px}
+ .hero .scene .hcli{font-size:10px;padding:7px 10px;max-width:100%;white-space:normal;overflow-wrap:anywhere}
+}
+/* Dark command card: 8px inset on the command field's three outer edges. */
+.hero .givebox{background:#000;color:#fff;border-color:#303030;padding:8px;box-shadow:none}
+.hero .givebox .gb-h{color:#f5f7f6;padding:14px 8px 18px;margin:0}
+.hero .givebox .gb-cmd{background:#222;border-color:#ffffff0d;box-shadow:none;color:#fff}
+.hero .givebox .gb-cmd code{color:#f5f7f6}
+.hero .givebox .gb-cmd .ps{color:#a3a3a3}
+.hero .scene .aghead,.hero .scene .aghead *,
+.hero .scene .htool:not(.more),.hero .scene .htool:not(.more) *{-webkit-user-select:none;user-select:none}
+.hero .scene .aghead img,.hero .scene .htool:not(.more) img{-webkit-user-drag:none}
+.hero .scene .aghead[role="button"]{cursor:pointer;transition:background .55s ease,box-shadow .55s ease,scale .2s ease}
+.hero .scene .aghead[role="button"]:is(:hover,:focus-visible){
+ background:rgba(255,255,255,.82);
+ box-shadow:0 0 32px #b4edcf38,0 8px 24px #253f330c;
+}
+.hero .scene .aghead[role="button"]:active{scale:.985;background:rgba(255,255,255,.88)}
+@media(prefers-reduced-motion:reduce){
+ .hero .scene .aghead[role="button"]{transition:none}
+ .hero .scene .aghead[role="button"]:active{scale:1}
+}
+.hero .scene .aghead[role="button"]:focus-visible{outline:2px solid #2e8d77;outline-offset:4px}
+@media(min-width:1200px){
+ .hero .scene{max-width:1400px;gap:clamp(48px,5vw,80px)}
+}
+/* Inner beam: a fine rim plus a wider, softly diffused wash clipped inside the input. */
+.hero .givebox .gb-cmd{position:relative;isolation:isolate;overflow:hidden}
+.hero .givebox .gb-cmd>*{position:relative;z-index:2}
+.hero .givebox .gb-cmd>.command-beam{position:absolute;inset:0;width:100%;height:100%;z-index:0;pointer-events:none;opacity:0;transition:opacity .45s ease;overflow:hidden}
+.hero .givebox .gb-cmd:is(:hover,:focus-within)>.command-beam{opacity:1}
+.command-beam .beam-wash{filter:blur(10px);opacity:.29}
+.command-beam .beam-rim{opacity:.2}
+.command-beam path{fill:none;stroke-linecap:butt;animation:command-beam-travel var(--beam-duration) linear infinite paused,command-beam-palette 6s linear infinite paused}
+.gb-cmd:is(:hover,:focus-within) .command-beam path{animation-play-state:running}
+@keyframes command-beam-travel{from{stroke-dashoffset:var(--beam-start)}to{stroke-dashoffset:var(--beam-end)}}
+@keyframes command-beam-palette{0%,100%{stroke:var(--beam-color-a)}33.333%{stroke:var(--beam-color-b)}66.667%{stroke:var(--beam-color-c)}}
+@media(prefers-reduced-motion:reduce){
+ .command-beam path{animation:none}
+ .hero .givebox .gb-cmd>.command-beam{transition:none}
+}
+html.motion-off .command-beam path{animation:none}
+.hero .givebox .gb-cmd button{background:#f5f7f6;border-color:#f5f7f6;color:#171a18}
+.hero .givebox .gb-cmd button:hover{background:#e5e5e5;border-color:#e5e5e5;color:#000}
+.hero .givebox .gb-cmd button.done{background:#e5e5e5;border-color:#e5e5e5;color:#000}
+.hero .givebox .gb-cmd #copybtn{display:grid;place-items:center;min-width:104px;overflow:hidden}
+#copybtn .copy-idle,#copybtn .copy-result{grid-area:1/1;display:inline-flex;align-items:center;justify-content:center;gap:6px;white-space:nowrap;transition:opacity .24s ease,transform .32s cubic-bezier(.2,.7,.3,1)}
+#copybtn .copy-result{opacity:0;transform:translateY(9px)}
+#copybtn.copy-feedback .copy-idle{opacity:0;transform:translateY(-9px)}
+#copybtn.copy-feedback .copy-result{opacity:1;transform:translateY(0)}
+#copybtn .copy-check{width:14px;height:14px;fill:none;stroke:currentColor;stroke-width:1.6;stroke-linecap:round;stroke-linejoin:round;transform:scale(.75);transition:transform .4s cubic-bezier(.2,.7,.3,1)}
+#copybtn.copy-feedback .copy-check{transform:scale(1)}
+.hero .givebox .gb-cmd>.copy-status{position:absolute;width:1px;height:1px;padding:0;margin:-1px;overflow:hidden;clip-path:inset(50%);white-space:nowrap}
+@media(prefers-reduced-motion:reduce){#copybtn .copy-idle,#copybtn .copy-result,#copybtn .copy-check{transition:none;transform:none}}
+html.motion-off #copybtn .copy-idle,html.motion-off #copybtn .copy-result,html.motion-off #copybtn .copy-check{transition:none}
+.hero .givebox img[src$="hermesagent.svg"],.hero .givebox img[src$="opencode.svg"],.hero .givebox img[src$="pi.svg"]{filter:brightness(0) invert(1)}
+/* Compact copy panel on short laptops, with breathing room below the hero. */
+@media(min-width:901px) and (max-height:980px){
+ .hero{padding-top:80px;padding-bottom:56px}
+ .hero>.wrap{min-height:calc(100svh - 136px)}
+ .hero .hero-h1{margin-top:18px}
+ .hero .hero-h1 .l2{margin-top:12px}
+ .hero .scene{margin-top:22px}
+ .hero .givebox{width:640px;margin-top:48px}
+ .hero .givebox .gb-h{font-size:12px;gap:8px;padding:9px 6px 12px}
+ .hero .givebox .gb-h img{width:16px;height:16px}
+ .hero .givebox .gb-cmd{padding:10px 14px}
+ .hero .givebox .gb-cmd code{font-size:12px}
+ .hero .givebox .gb-cmd #copybtn{min-width:88px}
+}
+@media(max-width:900px){
+ .hero .givebox{width:600px;max-width:100%;margin-top:24px;padding:8px}
+ .hero .givebox .gb-h{font-size:12px;gap:7px;padding:9px 4px 12px}
+ .hero .givebox .gb-h img{width:16px;height:16px}
+ .hero .givebox .gb-cmd{padding:10px;min-width:0}
+ .hero .givebox .gb-cmd code{font-size:11px;min-width:0}
+ .hero .givebox .gb-cmd #copybtn{min-width:76px}
+}
+@media(min-width:641px) and (max-width:900px){
+ .hero .givebox{margin-top:48px}
+}
+/* Local frosted surfaces: keep the animated backdrop visible without a full-screen blur. */
+.hero .scene .aghead,.hero .scene .htool:not(.more){
+ background:rgba(255,255,255,.58);
+ backdrop-filter:blur(6px);-webkit-backdrop-filter:blur(6px);
+ border-color:rgba(255,255,255,.72);
+ box-shadow:inset 0 1px 0 #ffffff80,0 4px 16px #00000005;
+}
+.hero .scene .htool:not(.more):hover,.hero .scene .htool:not(.more).route-active{
+ background:rgba(255,255,255,.66);border-color:#8dafa199;
+ box-shadow:inset 0 1px 0 #ffffff99,0 0 0 2px #4f8b7110,0 4px 12px #00000008;
+}
+.hero .scene .htool.more{backdrop-filter:none;-webkit-backdrop-filter:none}
+@media(max-width:640px){
+ .hero .scene .aghead{font-size:12px;padding:15px 10px;gap:8px}
+ .hero .scene .aghead i{font-size:8px;line-height:1.6;margin-top:3px;overflow-wrap:anywhere}
+ .hero .scene .aghead img{width:28px;height:28px}
+ .hero .scene .hsteps{gap:6px;padding-top:14px}
+ .hero .scene .hst{font-size:9px;line-height:1.6}
+ .hero .scene .htool{min-height:65px;padding:9px 4px;font-size:10px;gap:8px}
+ .hero .scene .htool img{width:23px;height:23px}
+ .hero .scene .htool.more{min-height:0;padding:5px}
+}
+
+/* A one-viewport window onto the full catalog, driven by page scroll. */
+.roles.catalog-drum{padding:0;overflow:visible}
+.catalog-drum>.wrap{position:sticky;top:0;height:100svh;padding-top:84px;padding-bottom:12px;box-sizing:border-box}
+.catalog-drum .seclab{margin:0 0 14px;opacity:1;transform:none}
+.catalog-drum .catalog-window{height:calc(100svh - 126px);overflow:clip;mask-image:linear-gradient(transparent,#000 5%,#000 95%,transparent);-webkit-mask-image:linear-gradient(transparent,#000 5%,#000 95%,transparent)}
+.catalog-drum .catwrap{position:relative;max-width:1240px;will-change:transform}
+.catalog-drum .pcat{margin-top:42px;margin-bottom:20px;opacity:1;transition:none}
+.catalog-drum .pcat:first-child{margin-top:0}
+.catalog-drum .pgrid{gap:16px;transform:none;clip-path:none}
+.catalog-drum .pcard{min-height:82px;padding:18px 16px;backface-visibility:hidden;transform-origin:center;transition:background .25s,border-color .25s,box-shadow .25s}
+.catalog-drum .pcard .pt>span:first-child{white-space:normal;line-height:1.4}
+.catalog-drum .pcat,.catalog-drum .moreline{backface-visibility:hidden;transform-origin:center}
+.catalog-drum .moreline{margin-top:48px;padding-bottom:24px}
+.roles .moreline .ghostbtn{margin-top:20px}
+.bens{position:relative;isolation:isolate}
+.bens .wrap{max-width:1360px;position:relative;z-index:1}
+.bens .bennum{display:none}
+.benefit-particles{position:absolute;inset:0 0 auto;width:100%;pointer-events:none;z-index:0;opacity:0;transition:opacity 1.2s ease;contain:strict}
+.benefit-particles.field-visible{opacity:1}
+@media(prefers-reduced-motion:reduce){.benefit-particles{transition:none}}
+.bens .ben{
+ min-height:clamp(660px,74svh,790px);padding:76px 0;
+ grid-template-columns:minmax(0,1fr) minmax(0,1fr);
+ column-gap:clamp(56px,6vw,96px);align-items:center;
+}
+.bens .bentext{max-width:580px}
+.bens .zeroband{padding-bottom:clamp(140px,16svh,200px);transition:none}
+.zeroband.typing-complete .zcaret{visibility:hidden;animation:none}
+@media(max-width:640px){.bens .zeroband{padding-bottom:104px}}
+@media(min-width:901px) and (pointer:fine) and (prefers-reduced-motion:no-preference){
+ html:not(.motion-off) .zeroband.entrance-waiting{opacity:0}
+ html:not(.motion-off) .ben.entrance-waiting>.bentext,
+ html:not(.motion-off) .ben.entrance-waiting>.keywall,
+ html:not(.motion-off) .ben.entrance-waiting>.win{opacity:0}
+}
+.bens .ben h3{font-size:clamp(36px,3.4vw,48px);line-height:1.14;letter-spacing:-.035em;margin-top:20px;text-wrap:balance}
+.bens .ben p{font-size:16px;line-height:1.85;margin-top:26px}
+.bens .benmeta{margin-top:30px;gap:12px 24px;line-height:1.85;font-size:12px}
+.bens .ben .keywall{padding-top:44px;padding-bottom:40px;gap:30px}
+@media(min-width:901px){.bens .ben{height:clamp(660px,74svh,790px)}}
+@media(max-width:900px){
+ .bens .ben{min-height:0;height:auto;grid-template-columns:1fr;gap:44px;padding:72px 0}
+ .bens .ben.flip .bentext{order:0}.bens .bentext{max-width:640px}
+ .bens .ben h3{font-size:36px}.bens .ben p{font-size:16px;line-height:1.8;margin-top:22px}
+ .bens .benmeta{margin-top:26px}
+}
+@media(max-width:480px){.bens .ben{padding:60px 0;gap:36px}.bens .ben h3{font-size:32px}.bens .ben .keywall{padding-top:30px;padding-bottom:30px}}
+
+/* Show a monochrome fallback only after WebGL fails, never while it is loading. */
+.scene .hcell.mid:has(.gateway-sculpture[data-model-state="fallback"],.gateway-sculpture[data-model-state="context-lost"]) .hcore {
+ display:flex; position:absolute; inset:0; justify-content:center; align-items:center;
+ transform:none; gap:12px; opacity:1;
+}
+.scene .hcell.mid:has(.gateway-sculpture[data-model-state="fallback"],.gateway-sculpture[data-model-state="context-lost"]) .hcore .glyph {
+ width:48px; height:48px; font-size:0;
+ background:url('/media/brand/mark-black.svg') center / contain no-repeat;
+}
+.scene .hcell.mid:has(.gateway-sculpture[data-model-state="fallback"],.gateway-sculpture[data-model-state="context-lost"]) .hcore b { font-size:28px; }

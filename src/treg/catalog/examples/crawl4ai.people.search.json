@@ -1,0 +1,94 @@
+{
+ "data": [
+  {
+   "company": {
+    "domain": "stripe.com",
+    "industry": "Technology, Information and Internet",
+    "name": "Stripe"
+   },
+   "email": {
+    "kind": "personal",
+    "status": "unknown",
+    "value": "[email]"
+   },
+   "id": "[id]",
+   "insight": {
+    "decision_role": "unknown",
+    "department": "engineering",
+    "evidence": [
+     {
+      "insight": "title",
+      "quote": "I currently work as a Software Engineer for the finance company Klarna"
+     },
+     {
+      "insight": "email",
+      "quote": "Email: [email\u00a0protected]"
+     },
+     {
+      "insight": "linkedin",
+      "quote": "LinkedIn: kevinpetersde"
+     }
+    ],
+    "experience": [
+     "Software Engineer at Klarna",
+     "Fullstack Developer at 3YOURMIND GmbH"
+    ],
+    "hiring_manager": "unknown",
+    "languages": [],
+    "location": "Berlin",
+    "relations": [],
+    "seniority": "individual",
+    "signals": [
+     "public presence"
+    ],
+    "skills": [
+     "JavaScript",
+     "Vue.js",
+     "Django REST Framework"
+    ],
+    "status": "current",
+    "summary": "Develops software for Stripe.",
+    "topics": [
+     "software development",
+     "programming"
+    ]
+   },
+   "linkedin": "[linkedin]",
+   "name": "[name 1]",
+   "source_url": "[url]",
+   "title": "software engineer"
+  },
+  {
+   "company": {
+    "domain": "stripe.com",
+    "industry": "Technology, Information and Internet",
+    "name": "Stripe"
+   },
+   "email": {
+    "status": "unknown",
+    "value": "[email]"
+   },
+   "id": "[id]",
+   "insight": {
+    "decision_role": "unknown",
+    "department": "unknown",
+    "evidence": [],
+    "experience": [],
+    "languages": [],
+    "relations": [],
+    "seniority": "unknown",
+    "signals": [],
+    "skills": [],
+    "topics": []
+   },
+   "linkedin": "[linkedin]",
+   "name": "[name 2]",
+   "source_url": "[url]"
+  }
+ ],
+ "meta": {
+  "took_ms": 58,
+  "total": 10199
+ },
+ "next": "o2"
+}

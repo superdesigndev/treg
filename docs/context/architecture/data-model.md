@@ -2,6 +2,7 @@
 title: Data model — the registry tables, async DB, audit writer
 status: shipped
 sources:
+  - src/treg/alembic/versions/0042_pinned_read_scope.py
   - alembic.ini
   - src/treg/alembic/env.py
   - src/treg/alembic/versions/0001_baseline_current_schema.py
@@ -13,20 +14,100 @@ sources:
   - src/treg/alembic/versions/0007_overflow_spend.py
   - src/treg/alembic/versions/0008_org_platform_overflow_disabled.py
   - src/treg/alembic/versions/0009_callrecord_hit.py
+  - src/treg/alembic/versions/0017_async_task_record.py
+  - src/treg/alembic/versions/0018_async_resource_ownership.py
+  - src/treg/alembic/versions/0019_async_poll_failures.py
+  - src/treg/alembic/versions/0020_callrecord_created_at_indexes.py
+  - src/treg/alembic/versions/0021_ledgerentry_org_created_at_index.py
+  - src/treg/alembic/versions/0022_org_spent_today_counter.py
+  - src/treg/alembic/versions/0023_callrecord_org_user_created_at_index.py
+  - src/treg/alembic/versions/0024_membership_calls_today_counter.py
+  - src/treg/alembic/versions/0027_enrich_arena.py
+  - src/treg/alembic/versions/0028_arena_insights.py
+  - src/treg/alembic/versions/0029_arena_verification_snapshot.py
+
   - src/treg/alembic/versions/0011_callrecord_archive_link.py
   - src/treg/alembic/versions/0015_idempotentcall_membership_cascade.py
+  - src/treg/alembic/versions/0053_idempotentcall_membership_expires_index.py
+  - src/treg/alembic/versions/0099_idempotentcall_archive_link.py
+  - src/treg/alembic/versions/0100_idempotentcall_archive_live_index.py
+  - src/treg/alembic/versions/0054_callrecord_org_id_id.py
+  - src/treg/alembic/versions/0061_remove_redundant_unique_indexes.py
+  - src/treg/alembic/versions/0091_remove_prefix_covered_indexes.py
+  - src/treg/alembic/versions/0034_managed_api_keys.py
+  - src/treg/alembic/versions/0035_default_key_generation.py
+  - src/treg/alembic/versions/0036_activity_key_indexes.py
+  - src/treg/alembic/versions/0038_endpoint_day_stats.py
+  - src/treg/alembic/versions/0074_endpoint_stat_dirty.py
+  - src/treg/infra/catalog_stat_dirty.py
   - src/treg/maintenance.py
   - src/treg/web/sitetrack.js
   - src/treg/models.py
+  - src/treg/alembic/versions/0052_async_task_hit.py
+  - src/treg/alembic/versions/0031_archive_result_admission.py
+  - src/treg/alembic/versions/0032_archive_body_storage.py
+  - src/treg/alembic/versions/0039_archive_own_key_and_repeat_pricing.py
+  - src/treg/alembic/versions/0043_provider_resources.py
+  - src/treg/domain/provider_resources.py
+  - src/treg/routers/provider_resources.py
+  - src/treg/alembic/versions/0033_signup_promo_eligibility.py
+  - src/treg/alembic/versions/0071_signup_promo_claim.py
+  - src/treg/alembic/versions/0041_searchlog.py
+  - src/treg/alembic/versions/0055_find_v2_log.py
+  - src/treg/alembic/versions/0056_searchlog_verdict.py
+  - src/treg/alembic/versions/0065_call_verdict.py
+  - src/treg/alembic/versions/0066_endpointdaystat_verdicts.py
+  - src/treg/alembic/versions/0112_callrecord_outcome.py
+  - src/treg/alembic/versions/0116_stamped_baseline_indexes.py
+  - tests/test_stamped_baseline_indexes_migration.py
+  - src/treg/alembic/versions/0117_callrecord_drop_unused_indexes.py
+  - tests/test_callrecord_drop_unused_indexes_migration.py
+  - src/treg/alembic/versions/0070_api_key_spend_rollup.py
+  - src/treg/alembic/versions/0072_callrecord_call_ref_index.py
+  - src/treg/alembic/versions/0073_org_flow_control_version.py
+  - tests/test_org_flow_control_schema.py
+  - src/treg/alembic/versions/0096_route_rule_version.py
+  - src/treg/alembic/versions/0097_referral_affiliate.py
+  - tests/test_referral_affiliate_schema.py
+  - src/treg/alembic/versions/0075_ad_click_stash.py
+  - src/treg/alembic/versions/0079_enterprise_sso.py
+  - src/treg/alembic/versions/0082_oauth_sso_provenance.py
+  - src/treg/alembic/versions/0083_enterprise_sso_safety.py
+  - src/treg/alembic/versions/0084_enterprise_workos_cleanup.py
+  - src/treg/alembic/versions/0085_enterprise_sso_blocks.py
+  - src/treg/alembic/versions/0087_rankings_snapshot.py
+  - src/treg/alembic/versions/0088_call_usage_rollup.py
+  - src/treg/alembic/versions/0089_ledgerentry_settle_spend_index.py
+  - src/treg/alembic/versions/0090_ledgerentry_topup_index.py
+  - src/treg/alembic/versions/0095_ledgerentry_grant_index.py
+  - src/treg/application/call_usage_rollup.py
+  - src/treg/application/call_usage.py
+  - tests/test_call_usage_rollup.py
   - src/treg/timeutil.py
   - src/treg/infra/db.py
+  - src/treg/infra/money_timing.py
+  - src/treg/infra/money_admission.py
+  - src/treg/infra/kv.py
+  - src/treg/infra/money_admission_reporting.py
+  - src/treg/infra/money_trace.py
+  - src/treg/infra/money_trace_runner.py
   - src/treg/domain/referrals.py
   - src/treg/audit.py
+  - src/treg/application/evidence_retention.py
   - src/treg/analytics.py
+  - src/treg/bootstrap_handlers.py
   - src/treg/ratestore.py
   - src/treg/application/auth.py
   - tests/test_postgres_reset.py
   - tests/test_alembic_expand_safety.py
+  - tests/test_redundant_index_migration.py
+  - tests/test_api_keys.py
+  - tests/test_money_timing.py
+  - tests/test_money_admission_reporting.py
+  - tests/test_kv_lease_diagnostics.py
+  - tests/test_money_trace.py
+  - tests/test_money_trace_postgres.py
+  - tests/test_money_trace_runner.py
 related:
   - architecture/archive.md
   - architecture/proxy-model.md
@@ -36,391 +117,345 @@ related:
 
 # Data model
 
-## OAuth authorization method identity
+`src/treg/models.py` is authoritative for tables, columns, indexes and defaults, and its class
+docstrings explain each table. This fragment keeps only what a declaration cannot say: who may
+write a table, ordering and locking rules, and the database constraints that shape the code.
+[Multi-tenancy](multi-tenancy.md) defines org scoping, role gates and team deletion.
 
-Revision `0010` adds `authorization_method` to `PendingOAuth` and `Secret`, plus the pending
-long-lived exchange style. It backfills existing Instagram secrets as `facebook-page`. New direct
-Instagram grants use `instagram-login`. This lets one provider keep two separate grants without
-inferring their token type from encrypted data.
+## Ownership and behavior the schema cannot show
 
-SQLModel tables in `src/treg/models.py`. Kept minimal on purpose. Org multi-tenancy adds `Org`,
-`Membership`, `Invite` and an `org_id` on the resource nouns — the tenancy mechanics live in
-[multi-tenancy](multi-tenancy.md); this fragment is the table reference.
+Single writers (AGENTS.md lists the money, audit and showcase ones):
 
-- **`Org`** — the tenant that owns resources: `id, name, slug` (unique), `suspended` (admin lock),
-  `demo` (a sandbox team seeded by [onboarding](../interface/onboarding.md) — labeled + removable),
-  `public_demo` (a team whose member token is PUBLISHED, e.g. on the landing page — non-admin members
-  are locked to `/call` + reads and may never act as a user; gated in
-  `domain.identity.access.require_member` / `require_identity`), `created_at`.
-  **`ad_gclid`/`ad_click_id_type`/`ad_click_at`/`ad_landing`**
-  (migration A37, all nullable) — set once, at signup, from the first-party `treg_ad` cookie; never
-  overwritten. The historically named `ad_gclid` holds the click value; `ad_click_id_type` says
-  `gclid`/`gbraid`/`wbraid`, with NULL meaning a legacy GCLID. **`utm_source`/`utm_medium`/
-  `utm_campaign`/`utm_term`/`utm_content`/`utm_referrer`** (migration A40, all nullable) — first-touch
-  traffic source from the first-party `treg_utm` cookie (`web/sitetrack.js`, set on the visitor's
-  FIRST page, first touch wins, 90 days), persisted once at signup in both doors. This is the column
-  set that answers "how many teams did campaign X bring" — the `ad_*` columns only know Google
-  clicks. `utm_referrer` is the referring hostname, kept even when no `utm_*` tag was present.
-  **`first_call_at`** (same migration as `ad_*`) —
-  set once by a guarded UPDATE in the `/call/` handler,
-  deliberately NOT derived from `CallRecord` (which `audit.py` sheds under load, undercounting exactly
-  when traffic is highest). Both feed [ads-conversions](ads-conversions.md).
-- **`User`** — a **global identity** only: `email` (unique), `is_superadmin` + `suspended` (platform
-  flags, see [super-admin](super-admin.md)), `token_version` (bump to revoke every session cookie +
-  identity token this user holds — the signed token carries the `tv` it was minted at; see `sess.make`
-  / `auth_revoke_tokens`), `onboarded` (completed/skipped first-run), `demo` (a
-  fake onboarding teammate — can't log in, excluded from stats), `created_at`. (The token + role moved
-  to `Membership`; a user in N orgs has N memberships.)
-- **`Membership`** — links a user to an org: `user_id`, `org_id`, `role` (owner|admin|member),
-  `token_hash` (SHA-256 of the bearer token, shown once), `webhook_url` (health alerts POST here),
-  `daily_call_cap` (per-user, per-day usage cap; **-1 = unlimited**, the default — see
-  `api._enforce_daily_cap`); unique `(user_id, org_id)`. **A token = a `(user, org)` pair.** `ROLE_RANK`
-  orders the roles.
-- **`Invite`** — a one-time join code: `org_id, email, role, code_hash (idx), status`
-  (pending|accepted|revoked), `invited_by`. Carries a SECOND split secret, `email_token_hash (idx,
-  nullable)` — the inbox-only sign-in token embedded ONLY in the invite email's link (the
-  admin-visible code is join-only, never an auth factor); nulled on first use (one sign-in per link),
-  NULL on pre-split invites (they fall back to the prefilled-login flow). See `api.auth_invite_signin`.
-- **`Secret`** — a stored credential: `org_id` (FK, idx), `name`, `owner` (creator email), `kind`
-  (`env` | `secret_file` | `oauth` | `cli_auth` | `param`), `value` (**Fernet-encrypted at rest**, never
-  returned), `bundle_id` (FK), and health fields `health_status` (`unknown`|`ok`|`invalid`) /
-  `health_detail` / `health_checked_at`. `param` is a non-secret value (project/org id) injected like a
-  secret but never health-checked. **Connection metadata** (set for registry-minted OAuth connects — see
-  the OAuth marketplace / `oauth_providers.py`; empty for uploaded or bring-your-own-app credentials):
-  `provider` (**indexed** — which curated registry provider minted it), `granted_scopes` (space-joined,
-  what the user ACTUALLY consented to), `resource_ref` + `resource_name` (the chosen site/property/account
-  this connection acts on, plus its human label since upstream ids are opaque). **Expiry is a separate
-  axis from `health_status`** — `health` says "does it work", expiry says "how long will it keep working"
-  (a non-refreshable token stays healthy right up until it silently dies): `expires_at`, `last_refresh_at`,
-  `last_error`.
-- **`Tool`** — a callable capability: `org_id` (FK, idx), `name` (**unique per `(org_id, name)`**),
-  `owner`, `base_url`, `host` (netloc of base_url, **indexed** for URL-passthrough resolution),
-  `bindings` (a **JSON list** — see below), `health_check` (optional JSON), `examples` (optional JSON
-  list `[{method,path,note}]` surfaced in the dashboard), `cli` (optional JSON local-run profile for
-  `treg run --local` — see [local-run](local-run.md)), `bundle_id` (FK).
-- **`Bundle`** — a skill (pure packaging): `org_id` (FK), `name`, `owner`, `recipe` (the SKILL.md text),
-  **`files`** (JSON `{relpath: content}` — the rest of the folder: reference docs, scripts, nested subdirs,
-  minus secrets + binaries, so a WHOLE skill folder travels via `skill install`), grouping its secrets +
-  tool(s). Run config for **both** `treg run` tiers now lives on **`Tool.cli`** (the tool-side
-  unification, PR #3); the old bundle-side `runtime`/`package`/`entrypoint`/`runnable` columns were folded
-  into `Tool.cli` by a startup migration and are no longer declared (they may persist physically in old
-  DBs, unread).
+| Table(s) | Only writer |
+|---|---|
+| `EndpointDayStat`, `EndpointStatCursor` | `application/catalog_stats.py` (dirty markers: `infra/catalog_stat_dirty.py`) |
+| `ApiKeySpendDay`, `ApiKeySpendCursor` | `application/key_spend_rollup.py` (`treg-worker spend rollup`) |
+| `CallUsageDay`, `CallUsageCursor` | `application/call_usage_rollup.py` (`treg-worker usage rollup`) |
+| `CapacityPolicy`, `CapacitySnapshot` | `treg-worker capacity sweep`, never the call path ([capacity](../ops/capacity.md)) |
+| `OverflowRoute` | `treg-worker overflow sync`; read-only to the call path |
+| `OverflowSpend` | the overflow child's settle transaction (and the shadow probe); not a balance |
+| `ProviderResource` | `domain/provider_resources.py`, driven by the call runtime; BYOK objects are never written here |
+| `ArenaObservation`, `ArenaInsightState` | `application.arena_insights` |
+| `ArenaVerificationSnapshot` | `application.arena_verification_insights.publish_snapshot` |
+| `RankingsSnapshot` | `application.rankings.refresh`, replacing the row whole |
+| `AdClickStash` | `application.signup.stash_ad_click` |
+| `ArchiveKey`, `ArchiveSnapshot`, `ArchiveKeyOrg`, `ArchiveEndpointStat` | `archive.py` ([archive](archive.md)) |
+| `Media` | `application.media` ([media](media.md)) |
+| `Feedback` | `domain.feedback` inserts, `application.feedback` commits ([feedback](feedback.md)) |
+| `FeedbackHandling`, `FeedbackHandlingEvent` | the private admin service only |
+| `Referral`, `ReferralAffiliateEvent` | `domain/referrals.py`; its money goes through `ledger.grant` |
 
-- **`PendingOAuth`** — an in-flight connect flow: `org_id` (FK), `state` (unique, the CSRF/lookup key),
-  `client_id`, `client_secret` (encrypted), `auth_uri`, `token_uri`, `scopes`, `redirect_uri`, `status`
-  (`pending`|`done`|`error`), `secret_id` (the secret created on success), `detail`. **Marketplace/quirk
-  fields**, all defaulted, carried through the redirect so the callback exchanges the code exactly the way
-  the consent URL was built: `provider` (which curated registry provider this connect is for — `""` for a
-  bring-your-own-app connect), `code_verifier` (PKCE; `""` = unused), `auth_params` (JSON of extra
-  consent-URL query params), `token_endpoint_auth_method` (`client_secret_post` default),
-  `client_id_param` + `scope_separator` (TikTok spells the client id `client_key` and comma-joins scopes),
-  `long_lived_exchange` (Meta only — swap the short-lived token for a ~60-day one before storing), and
-  `replaces_secret_id` (which existing connection this consent REPLACES — null = add a new one, so the
-  callback no longer has to blanket-replace by provider).
-- **`CallRecord`** — the proxied-call audit row: `org_id`, `user_email`, `tool_name`, `method`, `path`,
-  `status_code`, `kind` (**`call`** = proxy `/call`, **`local_run`** = `/tools/{name}/grant`), `created_at`,
-  and `refused_by` (migration A29, nullable): set when **treg itself refused the call before anything went
-  upstream** — `auth` | `policy` | `balance` | `cap` | `resolution` | `request` — and NULL whenever the
-  provider actually answered. Every `/call/` refusal now leaves a row: the in-handler audits stamp their own
-  kind, and refusals that raise **before** the handler's audit exists (bad token, unknown tool, ACL, deny
-  rule, daily cap) are recorded by a fallback in the `X-Treg-Error` exception handler — the one place every
-  refusal passes through — using the identity stashed in `request.state` (a bad-token 401 records
-  anonymously). It is what tells "the provider failed" apart from "we said no": a paywall 402 must not read
-  as a provider error, and `endpoint_stats` excludes refused rows entirely.
-  It also carries **`error_request` / `error_response`** (migration A36, nullable) — redacted,
-  truncated evidence for a **failed relayed call**, and the one exception to "bodies are never
-  stored". PR #139's platform-only policy was deliberately reversed after production showed zero
-  evidence on own-tool failures. The fields are now written for marketplace calls at every tier and
-  for plain own tools, from three places: the response path (the provider's own body, since a relayed
-  non-2xx returns as a `Response` and is never raised, plus
-  an **allowlisted set of response headers** — `Retry-After`, `WWW-Authenticate`, the rate-limit
-  trio, request/trace ids — because an empty-bodied 401 or 429 is otherwise undiagnosable and those
-  headers *are* the answer); the `except HTTPException` branch (treg's own `detail`, covering
-  the 502s — upstream timeout, failed injection, SSRF refusal — where a bare status says least); and
-  the reserve refusal, where `detail` names **which** cap was hit, since every 429 collapses to
-  `refused_by='cap'` and that one value spans member, tag, org, platform and trial limits.
-  Never written for a success; `/calls` defers and omits both fields, keeping them admin-only.
-  Separate from that evidence, `archive_key_hash` + `archive_content_hash` (migration 0011, the
-  last two columns, nullable, no index) name the archived answer a metered platform 2xx call
-  received — `ArchiveKey.key_hash` and `ArchiveSnapshot.content_hash` — set by the call service
-  from what `archive.record()`/`archive.lookup()` return; the join behind the team-facing
-  `GET /calls/{id}/result` (see [archive](archive.md)). NULL on every other row.
-  Redaction is exact-match-first for every injected credential: platform settings and decrypted org
-  Secrets. OAuth/secret-file JSON masks the raw blob, injected field, `Bearer` form, and string values
-  under the sensitive-key allowlist (including the binding's `secret_field`), while diagnosis fields
-  such as `scope` and `token_type` survive. Only then do pattern rules run, because a provider quoting
-  the received key back in a 401 can defeat any regex. Masking happens **before** truncation, since
-  truncating first can leave a partial key that no longer matches. Exact matches cover every spelling
-  a provider can echo, not only what treg sent: percent-encoded in **both** cases (`quote()` emits
-  uppercase, servers echo lower), `quote_plus`, JSON-escaped, and — for the Basic-auth providers whose platform
-  value is *itself* the base64 of `login:password` (dataforseo, moz; see `config.py`) — the **decoded
-  credential and each half**, since a provider that decodes Basic and reports
-  `received_username`/`received_password` echoes the key in a form containing neither the blob nor
-  `Basic <blob>`. Any credential-rendering error replaces evidence with
-  `'<redacted: could not render credentials for masking>'` instead of risking unmasked content or a
-  500. Behind all of it sits a **fail-closed** check: after masking, a normalised copy
-  (percent-decoded, JSON-unescaped, lowercased) is re-scanned, and if a secret survived a transform
-  nobody anticipated the whole snippet is replaced. Losing a message beats leaking a credential.
-  Unmetered request bodies are cached only with a declared `Content-Length` at or below 64 KiB; failed
-  streaming responses contribute only their first 8 KiB and are replayed byte-for-byte to the caller.
-  Aged out to `'<expired>'` after 14 days by
-  `GET /admin/errors` — not on the request path, because `get_session` never commits and a lazy
-  marker written there would roll back, leaving the purge to run on every failed call.
-- **`IdempotentCall`** - a caller-scoped, 24-hour replay cache for metered successes, keyed by
-  `(membership_id, key)` and also carrying `org_id` for team cleanup. It is not an audit record: once
-  the membership is revoked there is no valid caller that can replay it. `delete_membership` removes
-  it explicitly and the `membership_id` foreign key uses `ON DELETE CASCADE` as the schema backstop
-  (Alembic `0015`), so a cached paid response can never turn token revocation into a 500.
-- **`ToolRequest`** — a "the catalog doesn't have X" report (`POST /tool-requests`, open + per-IP
-  rate-limited): `capability` (the headline, ≤200 chars), `query` (the search that came up empty —
-  auto-filled by agents, the dedup/priority signal), `note`, `contact`, `source` (`web` | `cli` |
-  `mcp` | `claude-connector` | `api`), `status` (`open` | `done` | `dismissed`, flipped by hand), and
-  **nullable**
-  `org_id`/`user_email` — identity is attribution when the caller happens to have one, never a
-  requirement, because the usual filer is an agent with zero results and no token. Reviewed by
-  querying the table; a Slack notifier may hang off the insert later, but the row is the record.
-- **`SearchMiss`** — a catalog search that returned **nothing**: `query` (capped to 300 chars),
-  `source` (`api` for the HTTP route that serves web + CLI + raw API; `mcp` for the team MCP; or
-  `claude-connector` for V2), `created_at`. The demand
-  signal one step before a `ToolRequest`: most agents that miss never file, so the query text is all
-  they leave. Written fire-and-forget through `audit.record_search_miss` (dropped rows cost
-  analytics, never a search) from both search paths — `GET /catalog/search` and the in-process MCP
-  `catalog_search` tool. Deliberately identity-free; surfaced by `scripts/usage_report.py`, which
-  reads misses against the catalog to split coverage gaps from naming/discovery failures.
-- **`RunRecord`** — the **server-side run** audit row (a `treg run --server` CLI execution — the "kind"
-  `server_run` in usage rollups): `org_id`, `user_email`, `bundle_name` (holds the **tool** name since the
-  tool-side run unification; column name is historical), `argv` (JSON — never carries a secret value;
-  secrets are injected via env, not the command line), `exit_code`, `duration_ms`, `created_at`. Written
-  off the request path like `CallRecord`. **Usage metering** (`GET /orgs/{id}/usage`, per-user daily caps)
-  counts `CallRecord` + `RunRecord` together — see [the API fragment](../interface/api.md).
-- **`AdConversion`** — the Google Ads conversion outbox: `org_id`, `action` (`signup`|`first_call`|
-  `paid`), `dedupe_key`, `value_usd_micro`, `created_at`, `uploaded_at` (NULL = not yet uploaded),
-  `next_attempt_at` (backoff), `failed_at` (terminal/dead-letter state), `attempts`, `error`. The
-  latter two timestamp columns are migration A38. A pending row has all three state timestamps NULL;
-  uploaded and failed are explicit, mutually exclusive terminal states. Unique on `(org_id, action)`
-  — the sole idempotency mechanism, not a check-then-insert. Durable by design (written synchronously
-  in the firing code's transaction, unlike `audit.py`/`analytics.py`, which are droppable); a
-  background worker uploads it later. Full chain and the one non-atomic fire site:
-  [ads-conversions](ads-conversions.md).
-- **`Ephemeral`** — short-lived key/value state that must **survive a restart and stay correct across
-  instances**: the emailed OTP code + its brute-force counter, and the auth rate-limit sliding windows.
-  Keyed by `(ns, k)` — a namespace (`otp` | `otp_start` | `sandbox_hit`) plus the key within it — with an
-  opaque JSON `v` and an `expires_at` (rows are swept lazily). This is the DB home for what used to be
-  per-process dicts in the auth HTTP layer (backlog #3): counters can no longer be reset by a redeploy,
-  and a per-IP / per-email cap can't be weakened by running more than one instance. The access helpers live in
-  `ratestore.py` (`kv_put`/`kv_get`/`kv_pop`, `rate_check` sliding-window, `sweep`). NOT the CLI-login
-  handshake — that is deliberately still in-process (`application.auth._cli_pending`, short-lived,
-  self-heals on retry).
+Rollups and analytics tables are optional read models: they never determine a money transaction.
 
-- **`DenyRule`** — org policy over what may be CALLED: `org_id`, nullable `user_id` (NULL = the whole
-  org, set = one member/agent), nullable `project_id` (NULL = any tool, set = only calls **through**
-  that project's tools — migration A22; `delete_project` sweeps the rules that named it, the same
-  dangling-FK reasoning as `_drop_member_deny_rules`), `host` / `path_prefix` / `method` (an empty
-  field means **any**, so a rule carrying only `method="DELETE"` blocks every delete), `verdict`,
-  `note`, `created_by`. The table itself is new, so `create_all` makes it. `verdict` is `deny` today
-  and exists so approval-required actions can land here later without a migration, mirroring the
-  `verdict` vocabulary `localrun.py` already uses. Enforcement: [proxy-model](proxy-model.md).
-- **Runtime attribution** — `CallRecord.client` + `RunRecord.client` (migration A23, `''` default):
-  which coding agent made the call (`X-Treg-Client`, self-reported by the CLI via env fingerprints;
-  attribution, never authentication). Feeds `GET /orgs/{id}/agents/observed` — one row per
-  (member, runtime), the auto-captured half of the agents story. `Membership.created_by` (same
-  step) names the admin who minted an agent; `''` for door/invite joins.
+- **`Org.first_call_at`** is set once by a guarded UPDATE in the call path, never derived from
+  `CallRecord`, because audit sheds rows exactly when traffic is highest. The `ad_*` and `utm_*`
+  columns are set once at signup and never overwritten ([ads-conversions](ads-conversions.md)).
+- **`ApiKey.last_used_at`** is throttled, best-effort display metadata, never written in the
+  authentication transaction. Revoked and rotated rows stay for audit; Activity rows keep their key
+  snapshot after rotation, revoke or membership removal.
+- **`Invite.email_token_hash`** keys the emailed link, which only prefills the login; neither it
+  nor the admin-visible code is an auth factor.
+- **`Secret`**: expiry (`expires_at`, `last_refresh_at`, `last_error`) is a separate axis from
+  `health_status`; a non-refreshable token stays healthy until it silently dies.
+  `authorization_method` selects a grant's method; never infer it from the token's shape.
+  `refreshable` is recorded with every oauth write so lists never open the credential
+  ([auth-secrets](auth-secrets.md), Encryption).
+- **`PendingOAuth`** carries every per-provider quirk through the redirect so the callback
+  exchanges the code exactly as the consent URL was built.
+- **`ProviderResource`** deletes tombstone the row, preserving retry authorization and audit.
+  `key_slot` on it, `AsyncTaskRecord` and `AsyncResourceRecord` names the treg-owned account the
+  object lives on; NULL means the primary ([proxy-model](proxy-model.md), "Several treg-owned
+  accounts").
+- **`AsyncTaskRecord`**: `attempts` doubles as a claim version, so an old worker cannot overwrite a
+  newer claim; caller polling can finalize independently and the terminal-state guard prevents a
+  double charge. The audit writer locks the task row before inserting the submission `CallRecord`,
+  so a poll finishing first still gives that row its `hit`/`verdict`; when the audit row wins, the
+  finalizer queues a background correction. Both key on the original `call_ref`.
+- **`CallTask`** names the provider task of every root async answer, on any tier, by the call id the
+  caller holds (a routed pending answer by its parent's). It is no money record; `/tasks/` reads
+  it by primary key ([tasks](tasks.md)).
+- **`EndpointStatDirty`**: marker writes never commit on their own; audit marks the day in the
+  same transaction as its terminal update, and the worker acknowledges only an unchanged revision.
+- **`Ephemeral`** is the DB home for state that must survive restarts and stay correct across
+  instances (OTPs, rate windows, CLI pairing); see [api](../interface/api.md), "CLI pairing".
+  `rate_check` reads and rewrites a key's hit list without a lock unless called with `atomic=True`
+  (agent payments), which locks the row through an upsert until the commit.
+  `_prune_handshakes` deletes at most 100 expired pairing rows per CLI start, so physical removal
+  can lag while reads still enforce expiry.
+- **`AdConversion`**: unique `(org_id, action)` is the sole idempotency mechanism, not a
+  check-then-insert; rows are written synchronously in the firing transaction, unlike audit.
+- **`DenyRule`**: an empty field means any, so a rule with only `method="DELETE"` blocks every
+  delete. `delete_project` sweeps rules naming the project.
+- **`Tool.bindings`** is a list and a request applies all of them (google-ads is an OAuth bearer
+  plus a `developer-token` header); injection is in [auth-secrets](auth-secrets.md).
+- **Enterprise SSO**: team deletion removes the team-scoped rows before the `Org`, and an active
+  subscription blocks team deletion until canceled. Keys issued before SSO enforcement carry no
+  issuance proof and cannot enter an enforced team. The cleanup-completed marker keeps cancellation
+  retries idempotent and blocks a new checkout while billable WorkOS resources may remain.
+  `EnterpriseSSOBlock` survives connection cleanup, leaves with the team or the erased user, and
+  holds no email or WorkOS identifiers.
+- **Signup credit**: `User.signup_promo_available` keeps a database default of false for old
+  writers; new users insert true. `SignupPromoClaim.user_id` has no FK and is staged with the
+  user-level claim ([money](money.md#signup-credit-eligibility)).
+- **Arena** tables have no audit foreign key because audit retention is independent; none stores
+  raw requests, responses, contacts or credentials. `RankingsSnapshot` holds no team, key or money,
+  so team deletion has nothing to remove.
 
-- **`CapacityPolicy` / `CapacitySnapshot`** — what each treg-owned vendor account (tier 4) meters and
-  how it is funded, and the append-only observations of what it has left. Written by the worker's
-  `treg-worker capacity sweep` only, never by the call path; the sweep also publishes a per-provider
-  latest state into `Ephemeral` under `capacity:state:<provider>`, which the dataplane reads on a
-  TTL beside its own breaker locks (`capacity:lock:<key>`, written by the call path only). Numbers
-  only - never a credential. See `ops/capacity.md`. Alembic revision `0005` creates these two tables.
-- **`OverflowRoute`** — one `(endpoint_id, aggregator)` pair: the same vendor endpoint served through a
-  treg-owned aggregator account, with the aggregator's price, the price ratio, verification stamp and a
-  DERIVED `enabled`. Filled by `treg-worker overflow sync` only (Alembic `0006`); read-only for the call
-  path. See `ops/capacity.md`.
-- `Org.platform_overflow_disabled` - the team's overflow opt-out (Alembic `0008`). See `ops/capacity.md`.
-- **`OverflowSpend`** — per aggregator per UTC day: calls, the aggregator's charge, the delta against
-  treg's direct price. Written inside the overflow child's settle transaction (and by the shadow probe);
-  the $20/day budget reads it. Alembic `0007`. Not a balance.
+- **`AgentPayer` / `AgentPayment`**: the payer team of one agent-payments wallet address on one
+  network (primary key `(network, address)`), and each payment it presented (`proof_id` UNIQUE,
+  status `credit|settling|settled|failed|expired`; an MPP zero-amount proof leaves no row). `asset`,
+  `pay_to` and `expires_at` let the reconciler find the transfer on chain; `stripe_payment_intent` is
+  set once a payment settled to Stripe is recorded there. `governance.teams.make_payer_team` stages
+  `AgentPayer`; `application.agent_payments` is the only writer of `AgentPayment`. Team deletion
+  removes both ([agent payments](agent-payments.md)).
 
-## Bindings (the multi-credential shape)
-`Tool.bindings` is a JSON list; each entry is
-`{secret_id, injector, location, name, format, secret_field}` — one credential injection. A request
-applies **all** of a tool's bindings (e.g. google-ads = an oauth bearer + a `developer-token` header).
-The API builds a single-binding tool from flat fields via `_flat_binding()`; injection is in
-[auth-secrets](auth-secrets.md).
+## Org flow control configuration storage
 
-## Async DB (`src/treg/infra/db.py`)
-One async SQLAlchemy engine (`_engine`, Postgres pool 5 + 10 overflow per instance, `pool_timeout=5`)
-+ a public `session_maker` (the audit writer opens its own session here; so do the post-relay
-bookkeeping steps of `/call/` — the request session is committed before the relay so none of them
-ever waits on it, see [proxy-model](proxy-model.md) § Connection discipline). The public
-`dispose_engine()` closes pooled connections before an explicit maintenance event loop exits, so a
-later server loop cannot inherit connections bound to the closed loop. `verify_db()` is the read-only
-lifespan and worker guard: it keeps the missing-Fernet-key refusal, requires a stamp at head, refuses a
-known older revision, and warns but serves on an unknown-newer revision for additive-era rollback.
-`reset_db()` is test-only: it disposes the loop-bound pool, recreates the SQLite schema or truncates
-application tables on Postgres, then writes the Alembic head stamp. Avoiding per-test Alembic runs and
-Postgres DDL keeps the suite fast without weakening the autogenerate drift guard. `get_session()` is the FastAPI
-dependency. SQLite locally (`aiosqlite`), Postgres on Render, same code. **Timestamps are
-naive UTC:** `_now()` (the `created_at` default) drops tzinfo because the columns are `TIMESTAMP WITHOUT
-TIME ZONE` and asyncpg rejects tz-aware values on Postgres; the app compares naive UTC throughout.
-Shared request-time conversions live in `timeutil.utcnow_naive` and `timeutil.as_naive`, re-exported
-temporarily as `api._utcnow_naive` and `api._as_naive` during the staged router migration. Query
-parameters compared with timestamp columns follow the same constraint as inserted or updated values.
+`OrgFlowControlVersion` is keyed by `(org_id, version)`; the schema enforces positive versions and
+valid publication metadata. Allocating increasing versions, validating the JSON and keeping
+snapshots immutable are the management writer's job; the schema does not prevent arbitrary SQL
+updates. `org_id` has no foreign key, keeping the table independent of locks on the balance table,
+so `cascade_delete_org` removes this history explicitly, and the writer must validate Org existence
+and coordinate saves with Org deletion. A schema downgrade deletes the saved history.
 
-## Alembic execution and the adoption floor
+## Route rule storage
 
-Alembic owns all production schema execution through `maintenance._upgrade_schema`. An empty or stamped
-database runs `alembic upgrade head`. A non-empty unstamped database is refused without inspection or
-writes and must pass through adoption release 0.14.x. Explicit upgrade also refuses an unknown-newer
-revision because it cannot safely migrate across a rollback floor.
+`RouteRuleVersion` is keyed by `version` alone: one global rule set. The schema enforces positive
+versions, a reviewer on every reviewed row, a publisher on every published row, and refuses any
+publication state on a version that is not approved. Allocating versions, validating the rule JSON
+and keeping snapshots immutable are the private admin's job; the call path never reads the table
+([route-rules.md](route-rules.md)). A schema downgrade deletes the saved history.
 
-Migration scripts live under `src/treg/alembic/`, inside the shipped wheel. The repo-root
-`alembic.ini` points there for developer CLI use, while `maintenance._alembic_config` resolves the
-installed package resource and supplies the configured database URL. Alembic commands run through
-`asyncio.to_thread` because the environment owns its own `asyncio.run`. On Postgres, `env.py` sets
-`lock_timeout = 5s` before migrations so lock contention fails the deploy cleanly.
+## `CallRecord` and `LedgerEntry`: indexes are throughput
 
-The authoritative drift guard upgrades to head, runs Alembic autogenerate against
-`SQLModel.metadata`, and requires an empty diff. Tests keep fast `create_all` fixtures through
-`reset_db()`, which stamps head in the same transaction. The drift guard runs on SQLite in the full
-suite and Postgres in `test-postgres` CI.
+`CallRecord` (audit) and `LedgerEntry` (append-only, never pruned) are the largest tables and both
+only grow. Every time-window question needs an index whose leading columns match the filter and
+end in `created_at`; otherwise the planner picks an index on the other column and filters the date
+in memory, reading a team's or an endpoint's whole history. All pools share one Postgres, so one
+such scan queues every other query and the API pool empties into `503 treg_saturated`
+([deploy](../ops/deploy.md), Database pools).
 
-`test_alembic_expand_safety.py` parses only each revision's `upgrade()` body and permits a closed
-set of additive Alembic operations. Any ALTER, DROP, raw execution, or unknown operation must set
-module-level `contract = True` and name its rollback floor in the module docstring. Revisions 0003,
-0004, and 0008 declare theirs: each adds a NOT NULL column and drops its server default, so older
-code can no longer insert rows.
+- Hot-path gates never aggregate these tables. The fail-closed daily spend cap reads
+  `Org.spent_today_micro` / `spent_today_day`, kept by `domain/money` inside the balance UPDATE
+  (`spent_today_from_ledger` survives for reconciliation); the per-member call cap reads
+  `Membership.calls_today`. A team's busiest rows sit on every page of the day, so even an
+  `(org_id, created_at)` index scan is too slow on the money path.
+- Partial indexes (`kind = 'settle'`, `kind = 'topup'`, `kind = 'grant'`, `kind = 'local_run'`)
+  are matched only when the query states the predicate as a constant, never a parameter. The
+  spend rollup's per-team recount (`key_spend_rollup`) and the billing reads state it with
+  `literal_column`.
+- `SELECT DISTINCT` over a team's rows in a large index reads every one of them: Postgres before 18
+  cannot skip through an index. The distinct values are walked instead, one probe per value
+  (`money.tag_dims`, a recursive CTE asking for the next value after the last).
+- A bound taken from a scalar subquery is unknown to the planner, which then estimates a team's
+  whole history and can spend longer compiling the statement (JIT) than running it. Where the
+  subquery must stay for snapshot consistency, the read turns JIT off for its transaction
+  (`call_usage.rows`). A constant read earlier is no substitute: a rollup rebuild moves the cursor
+  back.
+- Statistics end before today, so a `created_at >= today` bound is estimated at one row and picks
+  the `(org_id, created_at)` index even for a team with a full day behind it. The usage tail
+  (`call_usage.rows`) bounds itself by its UTC day expression instead, leaving `(org_id, id)` to
+  find the rows after the cursor.
+- Watermark walks state the bound as `created_at >= w AND (created_at > w OR id > w_id)`, never as
+  one OR: inside an OR Postgres bounds the scan only from above and walks from the oldest row.
+- A database that predates Alembic was stamped at the baseline and lacked every baseline index on a
+  column the old `init_db` added by `ALTER TABLE ... ADD COLUMN`. `0072` builds
+  `ix_callrecord_call_ref`; `0116` builds the ones on `org`, `invite`, `denyrule`, `secret` and
+  `tool`; `0117` drops the six single-column `callrecord` indexes no query used, so every database
+  matches the stamped ones. Check `pg_indexes` before relying on one.
+- A covering index on `callrecord` for reports was rejected: it would copy wide string columns and
+  slow every audit insert. Reports read rollups instead.
 
-## Audit writer (`audit.py`)
-`record_call(**fields)` (a `CallRecord`, now including `org_id`) and `record_run(**fields)` (a
-`RunRecord`) schedule an insert on their **own** session via `asyncio.create_task` so the response never
-waits on it (fire-and-forget). Tasks are held in `_pending` against GC; failures are swallowed (an audit
-hiccup must not break a call). `call_tool` records the **attempt** on its failure branches too (missing
-secret / refresh / upstream), not just successes. **Back-pressure:** each write opens a connection from
-the small pool shared with the request path, so a loop-bound semaphore caps concurrent audit writes at
-`_MAX_CONCURRENT_WRITES`, and under an extreme burst `_schedule` **sheds** load — it drops any row past
-`_MAX_PENDING` rather than grow unbounded — so best-effort logging can never starve real calls. `drain()`
-**loops until quiescent** (a call finishing during shutdown enqueues a new task
-after a one-shot snapshot would have gathered) on shutdown and in tests.
+**Rollups** (`EndpointDayStat`, `ApiKeySpendDay`, `CallUsageDay`) walk their source by primary key
+or a `(created_at, id)` watermark and move counts and cursor in one transaction. The cursor lock is
+a no-op UPDATE, because SQLite ignores `SELECT ... FOR UPDATE`. A new cursor deletes old day rows in
+the transaction that creates it, so a rebuild never adds to a previous history. Call usage has no
+recount: audit is lossy by design. A report reads folded rows and the rows after the cursor in one
+statement, so both halves share a snapshot. With no cursor row (the worker never ran, as on a small
+self-hosted registry) reports aggregate `callrecord` live; with a cursor still catching up they say
+so (`ready: false`) instead of guessing. Team deletion clears a team's rollup rows.
 
-## Product analytics writer (`analytics.py`)
-The same lossy discipline as `audit.py`, but the sink is PostHog's `/batch/` endpoint, not the DB.
-`capture(distinct_id, event, properties, groups=)` is synchronous and **never raises** (call sites sit
-inside the Stripe webhook, where an exception would 500 and trigger a retry of an already-credited
-payment); it queues up to `_MAX_PENDING` events (drop-newest past the bound) and one flusher task
-micro-batches them (`_BATCH_MAX` per POST, at most every `_FLUSH_INTERVAL_S`) via a per-flush httpx
-client — no semaphore, because HTTP to PostHog never touches the DB pool. **Empty `posthog_key` = the
-module is off** (self-hosters and the test suite send nothing). `$groups: {team: org_slug}` mirrors the
-browser's `posthog.group('team', slug)` and `distinct_id` is the user email, so server events join the
-same PostHog person/group the SPA identifies. Emitters: `call_tool`'s `_audit` funnel (`tool_called`,
-with the catalog `provider` as vendor or the upstream host for own tools; the field list is in
-[proxy-model](proxy-model.md)), `billing_topup`
-(`topup_started`), and `billing._credit` (`topup_completed`, gated on `fresh`). Drained in the lifespan
-`finally` after `audit.drain()`. The engine adds Postgres pool
-hygiene (`pool_pre_ping`/`pool_recycle`/sizing) for non-SQLite URLs, and `verify_db` refuses to start with
-no `TREG_SECRET_KEY` on a real DB (an ephemeral key would lose every stored secret on restart).
+**Columns that carry contracts:**
 
-Infrastructure faults use the same DB-independent queue through `capture_fault`: PostHog `$exception`
-events have the fixed `treg-server` identity and carry only the exception class, at most 500 characters
-of its string, an unhandled mechanism, and component/logger labels. URL query strings in the exception
-value are replaced with `?[redacted]` **before truncation**, so query-injected credentials cannot leak;
-frames, locals, request bodies, and user identity are never included. `FaultCaptureHandler` mirrors ERROR+
-records while analytics is enabled; it ignores the
-`treg.analytics` logger tree, marks records to prevent duplicate root/Uvicorn delivery, and uses a
-thread-local re-entry guard plus a never-raise `emit`. `_allow_fault` applies token buckets of 10/minute
-per `(fault type, logger/site)` and 60/minute process-wide; throttled events are dropped before the shared
-queue and the next allowed event for that key carries `throttled_dropped`. The lifespan installs the
-handler on root and directly on `uvicorn.error` (Uvicorn's default parent does not propagate to root),
-then removes it after shutdown drain. `bootstrap_handlers._pool_saturated` calls `capture_fault` directly
-because its typed 503 is handled before Uvicorn would log it.
+- `kind`: `call`, `local_run`, or `async_poll` (an authorized free status read, excluded from
+  `/calls` before pagination).
+- `refused_by`: a treg refusal's mechanism; null for an upstream answer (`payment` is an
+  agent-payments 402 asking a keyless caller to pay or prove its wallet). `endpoint_stats` excludes
+  refused rows.
+- `call_ref` is the `X-Treg-Call-Id` and the ledger's `call_id` on a metered call: one value joins
+  audit, money and the builder's records.
+- `upstream_ms`: from sending the request until the answer is read (or headers arrive, when it
+  streams on); excludes token refresh, archive lookup, retry sleeps and treg's work.
+- `verdict`: one word from the contract's closed list, never content ([catalog](catalog.md)).
+- `outcome`: what a v2 row's own declaration judged the answer (`hit`, `miss`, `error`,
+  `not_found`); null where the status rule decides. Reliability reads it first ([catalog](catalog.md)).
+- `archive_key_hash` / `archive_content_hash`: the link for `GET /calls/{id}/result`
+  ([archive](archive.md)).
 
-> **Tenancy:** every resource noun carries `org_id`; access is scoped to the caller's org. Details:
-> [multi-tenancy](multi-tenancy.md).
+**Failure evidence.** `error_request` / `error_response` hold redacted, truncated failure evidence
+on every tier; `/calls` never fetches them, `GET /admin/errors` reads them, and
+`application/evidence_retention.py` (the `treg-worker admin purge-evidence` cron) blanks them past
+retention. Purging never runs on a request. Captured provider headers use an allowlist. Unmetered
+uploads are buffered for evidence only with a declared `Content-Length` up to 64 KiB; a failed
+streaming response keeps at most the first 8 KiB while all bytes reach the caller.
 
-> **Tenant isolation shipped:** resources are scoped by `org_id` and a token = a `(user, org)` membership.
-> See [multi-tenancy](multi-tenancy.md). `owner` (creator email) is retained for audit + the role gate.
+Redaction in `application.call.evidence` is security-sensitive and order matters:
 
-## `CapabilityPin` — "for this job, our team uses this provider"
+1. Render every injected credential, including OAuth/secret-file JSON, sensitive leaf strings,
+   binding-selected fields and Bearer forms. Preserve non-secret diagnosis fields.
+2. Mask exact values and encoded forms: percent escapes in either case, form encoding,
+   JSON escaping, and decoded Basic-auth credentials plus their username/password halves.
+3. Apply pattern masking, then re-scan a percent-decoded, JSON-unescaped, lowercased copy.
+   A rendering failure or surviving secret replaces the whole snippet.
+4. Truncate only after masking, so a partial credential cannot escape exact matching.
 
-One row per `(org, capability)`. Deliberately **not** a `DenyRule`: a deny is negative and closed, so
-blocking eight of nine providers leaves the ninth allowed the day a tenth joins the catalog. A pin is
-positive and stays correct as the catalog grows.
+## `IdempotentCall`
 
-It is a gate, not a hint — a catalog call to a different provider of a pinned capability is refused
-in `_resolve_marketplace_call`, before anything is reserved, and the 403 carries `use_endpoint` so
-the caller is told what to use instead rather than just "no". Both halves are validated against the
-catalog when the pin is set, because a typo would otherwise block a job the team really uses and
-surface at 3am in an agent's log. See [catalog](catalog.md) and `docs/CAPABILITY-CHOICE-PLAN.md`.
+A caller-scoped replay cache keyed by `(membership_id, key)`. `delete_membership` removes it
+explicitly and the FK cascades as a backstop, so token revocation never 500s on a cached answer.
 
-## OAuth (the MCP authorization server)
-
-Four tables, all added with the MCP front door. See `architecture/mcp-oauth.md` for the reasoning.
-
-| Table | Holds | Note |
-|---|---|---|
-| `OAuthClient` | a client that may ask for a token | one row shape for both DCR and CIMD, so authorize/consent/token never ask how it arrived |
-| `OAuthCode` | a one-time authorization code | deleted on redemption, not flagged — a used code that still exists is a race |
-| `OAuthGrant` | mutable authority for one refresh family | `current_org_id` is where future tokens spend; `granted_at` is the stable consent time |
-| `OAuthRefresh` | a refresh token, **hashed** | `family_id` groups every descendant of one grant, so a replay can revoke all of them |
-
-`OAuthCode` and `OAuthRefresh` are org-scoped and therefore listed in `ORG_SCOPED_MODELS` (`domain/governance/teams.py`); `OAuthGrant`
-is cleared explicitly by `cascade_delete_org` (in `domain/governance/teams.py`) because its FK is intentionally named `current_org_id`.
-The cascade revokes the union of families that name the deleted team through current authority or
-any historical `OAuthRefresh.org_id`: deleting only a retired provenance row would erase the replay
-evidence while leaving its live descendants usable. `OAuthClient` is not org-scoped — a client is
-global, and nothing about it belongs to one team. Each `OAuthRefresh.org_id` is immutable issue
-provenance; moving a family updates only `OAuthGrant.current_org_id`.
+- `request_fingerprint` hashes method, path, query and body, a JSON body as its canonical
+  serialization (`_canonical_json`); a row stored with the raw-bytes fingerprint still matches
+  the same bytes (`_raw_request_fingerprint`). A 409 on a live `pending` row names its `call_ref`.
+- A `pending` row is a lease owned by one call's `call_ref`: the owner renews `created_at` every
+  `IDEMPOTENCY_LEASE_RENEW_S`, and every store, release and renewal is fenced on `call_ref`.
+- A lease older than `IDEMPOTENCY_STALE_PENDING_S` with no open hold or pending async task under
+  its `call_ref` (and children) is closed by compare-and-swap with a stored terminal 410
+  (`idempotency_response_lost` with the charge when the ledger shows one, else
+  `idempotency_outcome_unknown`). The key never runs again: a lapsed lease does not prove its
+  owner stopped. Rows without a `call_ref` answer 409 until they expire.
+- An answer over `archive_max_body_bytes` is not stored; a terminal 410
+  `idempotency_response_too_large` is kept instead.
+- The per-call expired-label sweep deletes at most `IDEMPOTENCY_SWEEP_BATCH` rows with
+  `FOR UPDATE SKIP LOCKED`, so a member's concurrent calls never queue on each other.
+- `treg-worker idempotency prune` (hourly) deletes expired completed rows for every team, then
+  `trim_archived_answers` drops `response_body` from a live `done` 2xx row whose call's archive answer
+  `archive.bytes_on_file` confirms and whose own sha256 matches. The row keeps `archive_key_hash` /
+  `archive_content_hash`; a replay reads the bytes with `archive.answer_bytes` after its session
+  closes, hash-checked, and answers 410 `idempotency_response_lost` if they are gone, never a new run.
 
 ## Caller tags (`X-Treg-Meta`)
 
-Two new tables and a handful of columns carry a reselling builder's attribution. The design rationale
-lives in [money](money.md); this is the shape.
+`TagSpend` and `MemberSpend` (one row per metered call of a member whose daily spend limit applies)
+are written only by `domain/money` inside the money transaction; `TagBudget` rows are
+auto-created on first sighting and bound tag cardinality. `RunRecord`, `AsyncTaskRecord`,
+`AsyncResourceRecord` and `CallTask` carry nullable `tags` snapshots; no historical ownership is inferred, so NULL
+snapshots are invisible to pinned readers. The reserve entry's `LedgerEntry.meta.tags` freezes
+attribution, allowing scoped ledger-only reads after audit loss. Design: [money](money.md).
 
-| Table | Row means | Written by |
-|---|---|---|
-| `TagSpend` | what one call cost, attributed to ONE of its tags | `domain/money` only, in the money transaction |
-| `TagBudget` | one builder-set limit on one `(dim, val)`, and the registry entry that bounds cardinality | `api.py` (auto-created on first sighting) |
+## OAuth (the MCP authorization server)
 
-`CallRecord` gains `call_ref` (the `X-Treg-Call-Id` echoed to the caller and used as the ledger's
-`call_id` on a metered call — one value joins the audit row, the money rows and the builder's own
-records), `budget_dim`/`budget_val` (the indexed copy of the primary pair) and `tags` (the whole bag).
+`OAuthCode` and `OAuthRefresh` are in `ORG_SCOPED_MODELS`; `OAuthGrant` is cleared explicitly by
+`cascade_delete_org` because its FK is named `current_org_id`. The cascade revokes the union of
+families that name the deleted team through current authority or any historical
+`OAuthRefresh.org_id`: deleting only a retired provenance row would erase the replay evidence
+while leaving live descendants usable. `OAuthRefresh.org_id` is immutable issue provenance; moving
+a family updates only `OAuthGrant.current_org_id`. A used code is deleted, not flagged. See
+[mcp-oauth](mcp-oauth.md).
 
-> `audit.record_call` splats its `telemetry` dict as `**kwargs` into `CallRecord()`, and `audit._write`
-> swallows every exception. **A telemetry key without a matching column used to silently kill every
-> audit write** — the table went dark with no error anywhere. Fixed alongside migration A36:
-> `_known_fields` filters telemetry against `CallRecord.model_fields`, so an unknown key now costs one
-> column and logs a warning naming it, and the surviving swallow in `_write` logs instead of passing.
-> Columns and telemetry keys should still land together — the guard makes a mismatch survivable and
-> visible, not correct.
+## `Referral`
 
-`Org` gains `budget_dims` (which keys may carry budgets, ≤3), `primary_dim` (the one that scopes
-idempotency) and `daily_cap_micro` (the team's own spend ceiling, 0 = follow the deployment default).
-`Membership` gains `pinned_tags`.
+Two UNIQUE columns arbitrate, not application code: `referred_org_id` (an org is referred once)
+and `qualifying_payment_intent` (one payment funds one qualification). Every terminal status is
+kept, never deleted. `User.referral_code` is on the user, not the org, because anyone may create
+unlimited orgs. `Referral.card_fingerprint` is Stripe's opaque per-card id, not card data, and
+lives only here so `Org` keeps its no-card-data posture.
 
-The columns are part of the Alembic baseline schema (the legacy startup migrations that once added
-them are deleted); `TagSpend` and `TagBudget` are ordinary baseline tables.
+`User.referral_affiliate` defaults false in both model and database; its version starts at zero.
+`ReferralAffiliateEvent` is durable operation history, committed with the flag, independent of
+best-effort call audit. It stores the authenticated principal, reason, old/new flag, operation UUID
+and version. User id plus user creation time identifies the account incarnation; no foreign key
+allows history to survive deletion without being attributed to a later SQLite account reusing its id.
 
-## `Referral` — one invitation, and what it owes
+## Async DB (`src/treg/infra/db.py`)
 
-Written by `domain/referrals.py`; the money it results in is granted through `ledger.grant`. See
-[money](money.md) for the policy and the gates. Two things about the SHAPE belong here:
+Three async engines against one database (`session_maker` for the API, `admin_session_maker`,
+`background_session_maker` for audit, archive writes and workers) form a bulkhead; sizes and
+timeouts are in [deploy](../ops/deploy.md), Database pools. On SQLite all three alias one engine.
+The request session commits before the relay ([proxy-model](proxy-model.md)).
 
-**Two UNIQUE columns do the arbitration, not application code.** `referred_org_id` (an org can be
-referred exactly once, ever) and `qualifying_payment_intent` (one payment funds one qualification).
-`ledger.grant(once=True)` was not enough: its check is a SELECT with no backing unique index, which
-survives a retry but not two concurrent redemptions — and this is money owed to a third party, not a
-signup promo. NULL is exempt from a unique index, so any number of `pending` rows coexist.
+- **Timestamps are naive UTC.** Columns are `TIMESTAMP WITHOUT TIME ZONE` and asyncpg rejects
+  tz-aware values, including query parameters compared with them. Use `timeutil.utcnow_naive` and
+  `timeutil.as_naive`.
+- `verify_db()` is the read-only lifespan and worker guard: it refuses a missing Fernet key on a
+  real database, requires the stamp at head, refuses a known older revision, and warns but serves
+  on an unknown newer one (all digits and above this build's head, `db._is_newer_revision`) so an
+  additive release can roll back; any other unknown stamp is refused.
+- `dispose_engine()` closes pooled connections before a maintenance event loop exits, so a later
+  loop never inherits connections bound to a closed one.
+- `reset_db()` is test-only: it deletes every row, rewinds Postgres sequences and stamps head,
+  rebuilding the schema only when its column-and-index fingerprint changed.
+- `TREG_READ_DATABASE_URL` adds `read_session_maker`, read-only by default (PostgreSQL read-only
+  transactions, SQLite `PRAGMA query_only`); these guard accidents, not deliberate SQL. Failures
+  never fall back to the primary. Authorization always stays on the primary. Replication and lag
+  are the operator's job ([deploy](../ops/deploy.md), Optional read replica).
 
-**`status` is a ladder and every terminal state is kept**, never deleted:
-`pending` (signed up, owes nothing) → `qualified` (friend paid, owes both bonuses after the hold) →
-`paid`; or `capped` (referrer out of self-serve allowance) / `rejected` (a gate said no, or the
-funding payment was reversed inside the hold — `reject_reason` says which). A deleted row cannot
-answer "why did I not get paid", which is the first question this feature generates.
+## Alembic execution and the adoption floor
 
-`User.referral_code` is on the USER, not the Org: a person refers a friend, and anyone may create
-unlimited orgs, so a per-org code would hand the same human unlimited codes to farm with. It is
-minted lazily on first visit to the Referrals page — NULL is the normal state.
+All production schema execution goes through `maintenance._upgrade_schema`. An empty or stamped
+database runs `alembic upgrade head`; a non-empty unstamped database is refused without inspection
+(it must pass through adoption release 0.14.x); an unknown newer revision is refused. Scripts ship
+inside the wheel; Alembic runs through `asyncio.to_thread` because `env.py` owns its own
+`asyncio.run`. On Postgres `env.py` sets `lock_timeout` from `TREG_MIGRATION_LOCK_TIMEOUT_S` (2 s) and
+commits each revision separately, so `maintenance`'s bounded retry resumes at the revision that
+timed out ([deploy](../ops/deploy.md), PostgreSQL lock queueing).
 
-`Referral.card_fingerprint` holds Stripe's stable per-card id. It is **not card data** (opaque
-outside our own Stripe account) and lives here alone, never on `Org`, which keeps
-`Org.stripe_default_pm`'s no-card-data posture intact.
+- The drift guard upgrades to head, autogenerates against `SQLModel.metadata` and requires an
+  empty diff (SQLite in the suite, Postgres in CI).
+- `test_alembic_expand_safety.py` permits a closed set of additive operations in `upgrade()`.
+  Anything else must set module-level `contract = True` and name its rollback floor in the
+  docstring.
+- Build indexes on large tables in a separate revision, `CONCURRENTLY` on Postgres, never while
+  holding column DDL locks; keep a valid existing index, rebuild INVALID debris from an
+  interrupted build, and restore the normal timeouts afterwards (`0036`, `0072` follow this).
+
+## Audit writer (`audit.py`)
+
+`record_call` and `record_run` schedule best-effort writes on `background_session_maker`; they
+never delay or fail a proxied response. A loop-bound semaphore limits active writes and
+`_MAX_PENDING` sheds excess rows. Write failures and shed rows log at ERROR. `drain` loops until the
+queue is empty, including tasks added during shutdown. `_known_fields` filters telemetry against
+model fields so one new field cannot discard a row; schema and telemetry changes still land
+together. Audit is lossy analytics and diagnostics: money must use the synchronous ledger.
+
+## Product analytics writer (`analytics.py`)
+
+The same lossy discipline, with PostHog's `/batch/` as the sink. `capture()` is synchronous and
+never raises (call sites sit inside the Stripe webhook, where an exception would 500 and retry an
+already-credited payment); it queues up to `_MAX_PENDING` and one flusher micro-batches. An empty
+`posthog_key` turns the module off. Every event carries `build` and `archive_config` (a digest of
+the archive settings that change what a call does) so an analysis can be bounded to one version or
+configuration. It drains last in the lifespan, after `audit.drain()` and `archive.drain()`, because
+those report their losses into it. Server events never carry URLs, search data, bodies or amounts
+beyond their declared fields; `funnel_surface` accepts only fixed names.
+
+**Faults.** `capture_fault` sends `$exception` with a fixed `treg-server` identity, the exception
+class and at most 500 characters of its string, with URL query strings replaced by `?[redacted]`
+before truncation; never frames, locals, bodies or user identity. `FaultCaptureHandler` mirrors
+ERROR+ records, ignores the `treg.analytics` tree, and is installed on root and directly on
+`uvicorn.error` (which does not propagate to root). Repeats roll up per `(fault type, site)` window:
+the first is reported at once and the count is released on the flusher's timer and in `drain()`,
+never on the next occurrence. A window's payload is fixed at construction because PostHog
+fingerprints on type plus value; `sum(fault_occurrences)` is the true total. Cost is bounded by key
+cardinality, not a global rate, so one loud key cannot silence others.
+
+**Losing data is ERROR, not WARNING.** `FaultCaptureHandler` starts at ERROR, so a loss logged
+below it is invisible to alerting. Degradations that cost nothing (an archive lookup falling back
+to a live call) stay at WARNING.
+
+**Money diagnostics** (`infra.money_timing`, `money_admission_reporting`, `infra.kv` lease
+diagnostics, `infra.money_trace` and its runner) are bounded, per-process, best-effort summaries.
+Their contract for anyone changing them: they issue no SQL, add no awaits to money operations,
+never change a transaction boundary or swallow an exception or cancellation, and carry no SQL text,
+parameters, amounts, exception messages, keys or tokens. Org and call ids appear only in bounded
+slow-operation logs, never as aggregate dimensions. A backend PID is reusable, so join trace records
+by `app_txn_id` and time interval. PostHog is a lossy diagnostic sink, never evidence that a charge
+committed; short-lived workers are verified from their local exit summary. The quota fail-open
+summary is described in [org-endpoint quotas](org-endpoint-quota.md#store-contract).
+
+## `CapabilityPin`
+
+A gate, not a hint: a catalog call to a different provider of a pinned capability is refused in
+`_resolve_marketplace_call` before anything is reserved, with `use_endpoint` in the 403. Both halves
+are validated against the catalog when the pin is set. See the model docstring and
+[catalog](catalog.md).

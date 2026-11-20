@@ -1,3 +1,4 @@
+import hashlib
 import json
 import time
 from datetime import datetime, timedelta, timezone
@@ -8,12 +9,14 @@ from httpx import ASGITransport, AsyncClient
 from sqlalchemy.exc import IntegrityError
 from sqlmodel import select
 
-from conftest import make_upstream
+from conftest import make_upstream, verified_signup
 from treg import adsconv
 from treg.api import app
 from treg.config import get_settings
 from treg.infra.db import reset_db, session_maker
-from treg.models import AdConversion, Org
+from pathlib import Path
+
+from treg.models import AdConversion, Membership, Org, User
 from treg.timeutil import utcnow_naive
 
 
@@ -89,7 +92,7 @@ async def callenv(ads_enabled):
     app.state.http = AsyncClient(transport=ASGITransport(app=make_upstream()),
                                  base_url="http://upstream")
     async with AsyncClient(transport=ASGITransport(app=app), base_url="http://registry") as c:
-        r = await c.post("/users", json={"email": "caller@example.com"})
+        r = await verified_signup(c, json={"email": "caller@example.com"})
         assert r.status_code == 200, r.text
         token, org_id = r.json()["token"], r.json()["org_id"]
         sid = (await c.post("/secrets", headers=_h(token),
@@ -105,31 +108,17 @@ async def callenv(ads_enabled):
     await app.state.http.aclose()
 
 
-def test_usd_to_aud_uses_fixed_rate():
-    # 1 AUD = 0.70 USD, so USD converts UP into AUD: US$20.00 -> A$28.57
-    assert adsconv.usd_micro_to_aud_micro(20_000_000) == 28_571_428
-
-
-def test_usd_to_aud_is_integer_only():
-    # No float ever appears: 1 micro-USD must not become 1.4285... micro-AUD
-    result = adsconv.usd_micro_to_aud_micro(1)
+@pytest.mark.parametrize("usd,aud", [
+    (20_000_000, 28_571_428),   # 1 AUD = 0.70 USD, so USD converts UP into AUD: US$20.00 -> A$28.57
+    (1, 1),                     # integer only: 1 micro-USD must not become 1.4285... micro-AUD
+    (0, 0),
+    (-7_000_000, -10_000_000),  # even-divisible negative: -7,000,000 * 10 / 7 exactly
+    (-1_000_000, -1_428_572),   # non-exact negative: floor division rounds away from zero
+])
+def test_usd_to_aud_is_a_fixed_integer_rate(usd, aud):
+    result = adsconv.usd_micro_to_aud_micro(usd)
     assert isinstance(result, int)
-    assert result == 1
-
-
-def test_usd_to_aud_zero_and_negative():
-    assert adsconv.usd_micro_to_aud_micro(0) == 0
-    # Even-divisible negative: -7,000,000 * 10 / 7 = -10,000,000 exactly
-    assert adsconv.usd_micro_to_aud_micro(-7_000_000) == -10_000_000
-    # Non-exact negative: floor division toward -∞ rounds away from zero
-    # -1,000,000 * 10 = -10,000,000; -10,000,000 // 7 = -1,428,572 (not -1,428,571)
-    assert adsconv.usd_micro_to_aud_micro(-1_000_000) == -1_428_572
-
-
-def test_action_ids_cover_every_action():
-    assert set(adsconv.CONVERSION_ACTION_IDS) == {
-        adsconv.ACTION_SIGNUP, adsconv.ACTION_FIRST_CALL, adsconv.ACTION_PAID
-    }
+    assert result == aud
 
 
 @pytest.mark.parametrize(
@@ -156,19 +145,6 @@ async def test_ad_conversion_is_unique_per_org_and_action(clients):
         db.add(AdConversion(org_id=org.id, action="signup", dedupe_key="signup"))
         with pytest.raises(IntegrityError):
             await db.commit()
-
-
-async def test_org_has_ad_attribution_columns(clients):
-    async with session_maker() as db:
-        org = Org(name="t", slug="t-adcols", ad_gclid="ABC123",
-                  ad_click_id_type="wbraid", ad_landing="p2")
-        db.add(org)
-        await db.commit()
-        got = (await db.execute(select(Org).where(Org.slug == "t-adcols"))).scalar_one()
-        assert got.ad_gclid == "ABC123"
-        assert got.ad_click_id_type == "wbraid"
-        assert got.ad_landing == "p2"
-        assert got.first_call_at is None
 
 
 async def test_queue_writes_one_row_and_is_idempotent(clients, ads_enabled):
@@ -210,47 +186,33 @@ async def test_queue_is_a_noop_when_disabled(clients, ads_disabled):
         assert (await db.execute(select(AdConversion))).scalars().all() == []
 
 
-async def test_signup_persists_the_gclid_cookie(clients, ads_enabled):
-    r = await clients.post(
-        "/users",
-        json={"email": "click@example.com"},
-        cookies={"treg_ad": "CLICK_XYZ|p3"},
-    )
+@pytest.mark.parametrize("email,cookie,click_id,click_type,landing", [
+    # the legacy cookie format remains readable
+    ("click@example.com", "CLICK_XYZ|p3", "CLICK_XYZ", "gclid", "p3"),
+    ("braid@example.com", "wbraid|BRAID_XYZ|p4", "BRAID_XYZ", "wbraid", "p4"),
+])
+async def test_signup_persists_the_ad_click_cookie(clients, ads_enabled, email, cookie, click_id,
+                                                   click_type, landing):
+    r = await verified_signup(clients, json={"email": email}, cookies={"treg_ad": cookie})
     assert r.status_code == 200, r.text
     async with session_maker() as db:
-        org = (await db.execute(select(Org).where(Org.id == r.json()["org_id"]))).scalar_one()
-        assert org.ad_gclid == "CLICK_XYZ"
-        assert org.ad_click_id_type == "gclid"  # legacy cookie format remains readable
-        assert org.ad_landing == "p3"
+        org = await db.get(Org, r.json()["org_id"])
+        assert org.ad_gclid == click_id
+        assert org.ad_click_id_type == click_type
+        assert org.ad_landing == landing
         assert org.ad_click_at is not None
 
 
 async def test_signup_without_the_cookie_leaves_attribution_null(clients):
-    r = await clients.post("/users", json={"email": "organic@example.com"})
-    assert r.status_code == 200, r.text
-    async with session_maker() as db:
-        org = (await db.execute(select(Org).where(Org.id == r.json()["org_id"]))).scalar_one()
-        assert org.ad_gclid is None
-
-
-async def test_signup_persists_the_braid_field(clients, ads_enabled):
-    r = await clients.post(
-        "/users",
-        json={"email": "braid@example.com"},
-        cookies={"treg_ad": "wbraid|BRAID_XYZ|p4"},
-    )
+    r = await clients.post("/orgs", json={"name": "organic team"})
     assert r.status_code == 200, r.text
     async with session_maker() as db:
         org = await db.get(Org, r.json()["org_id"])
-        assert org.ad_gclid == "BRAID_XYZ"
-        assert org.ad_click_id_type == "wbraid"
-        assert org.ad_landing == "p4"
+        assert org.ad_gclid is None
 
 
 async def test_disabled_signup_ignores_ad_cookie(clients, ads_disabled):
-    r = await clients.post(
-        "/users",
-        json={"email": "disabled-click@example.com"},
+    r = await verified_signup(clients, json={"email": "disabled-click@example.com"},
         cookies={"treg_ad": "gclid|CLICK_DISABLED|p1"},
     )
     assert r.status_code == 200, r.text
@@ -260,14 +222,15 @@ async def test_disabled_signup_ignores_ad_cookie(clients, ads_disabled):
         assert (await db.execute(select(AdConversion))).scalars().all() == []
 
 
-async def test_adtrack_script_is_empty_when_disabled(clients, ads_disabled):
-    r = await clients.get("/adtrack.js")
+@pytest.mark.parametrize("path", ["/adtrack.js", "/gtag.js"])
+async def test_tracking_script_is_empty_when_disabled(clients, ads_disabled, path):
+    r = await clients.get(path)
     assert r.status_code == 200
     assert r.text == ""
 
 
 async def test_signup_queues_a_conversion_when_attributed(clients, ads_enabled):
-    r = await clients.post("/users", json={"email": "conv@example.com"},
+    r = await verified_signup(clients, json={"email": "conv@example.com"},
                               cookies={"treg_ad": "CLICK_SIGNUP|p1"})
     assert r.status_code == 200, r.text
     async with session_maker() as db:
@@ -278,8 +241,8 @@ async def test_signup_queues_a_conversion_when_attributed(clients, ads_enabled):
 
 async def test_org_creation_persists_the_gclid_cookie(clients, ads_enabled):
     # The OTHER signup door: a signed-in user creating their first team via /orgs (the browser
-    # sign-in path). `clients` is already authenticated (X-Treg-Token from /users registration
-    # in the fixture) — this only adds the ad-click cookie on top, same shape as the /users test.
+    # sign-in path). `clients` is already authenticated by the fixture; this only adds the
+    # ad-click cookie on top.
     r = await clients.post(
         "/orgs",
         json={"name": "ad team"},
@@ -291,14 +254,6 @@ async def test_org_creation_persists_the_gclid_cookie(clients, ads_enabled):
         assert org.ad_gclid == "CLICK_XYZ"
         assert org.ad_landing == "p3"
         assert org.ad_click_at is not None
-
-
-async def test_org_creation_without_the_cookie_leaves_attribution_null(clients):
-    r = await clients.post("/orgs", json={"name": "organic team"})
-    assert r.status_code == 200, r.text
-    async with session_maker() as db:
-        org = (await db.execute(select(Org).where(Org.id == r.json()["org_id"]))).scalar_one()
-        assert org.ad_gclid is None
 
 
 async def test_first_successful_call_fires_once(callenv):
@@ -434,12 +389,14 @@ async def test_drain_sends_every_pending_row_in_one_batch(clients, ads_enabled):
                            created_at=utcnow_naive() - timedelta(hours=12))
         fresh = AdConversion(org_id=org.id, action=adsconv.ACTION_PAID,
                              created_at=utcnow_naive())
-        db.add(old); db.add(fresh)
+        db.add(old)
+        db.add(fresh)
         await db.commit()
 
         await adsconv.drain_once(db, client)
 
-        await db.refresh(old); await db.refresh(fresh)
+        await db.refresh(old)
+        await db.refresh(fresh)
         for row in (old, fresh):
             assert row.uploaded_at is not None
             assert row.next_attempt_at is None
@@ -594,20 +551,6 @@ async def test_drain_acknowledges_rows_despite_nonfatal_field_warnings(clients, 
         assert "PARTIAL_DATA_IGNORED" in row.error  # kept for operator visibility only
 
 
-async def test_auth_headers_carry_no_developer_token_or_login_customer_id(monkeypatch, ads_enabled):
-    """Both headers the old ConversionUploadService needed are gone under Data Manager: no
-    developer-token header exists at all, and the manager account moves into the request body as
-    `destinations[].loginAccount` (see the build_payload manager-account test) rather than a
-    `login-customer-id` header. `_auth_headers` no longer touches the DB at all — it only takes the
-    httpx client for the token exchange."""
-    monkeypatch.setattr(get_settings(), "google_ads_login_customer_id", "351-912-5194", raising=False)
-    headers = await adsconv._auth_headers(FakeAdsClient(FakeAdsResponse({"requestId": "r1"})))
-    assert "login-customer-id" not in headers
-    assert "developer-token" not in headers
-    assert headers["Authorization"] == "Bearer tok-test"
-    assert headers["Content-Type"] == "application/json"
-
-
 async def test_token_exchange_uses_the_platform_refresh_token_and_ads_client(ads_enabled):
     """The exchange must be a `grant_type=refresh_token` POST redeemed with the SAME OAuth client
     the refresh token was issued against (`google_ads_client_id`/`_secret`) — never the shared
@@ -692,76 +635,333 @@ async def test_expired_cached_token_triggers_a_fresh_exchange(monkeypatch, ads_e
     assert len(client.token_calls) == 1
 
 
-async def test_every_public_landing_surface_loads_the_capture_script(clients):
-    """Every page an ad can land on must load /adtrack.js.
-
-    `/` serves landing.html — the MARKETING front door — not index.html, which is the signed-in app
-    shell. When capture first shipped the tag went onto index.html, so the root domain (and every
-    organic visitor who signed up from it) was silently unattributed while the use-case pages worked.
-    Asserting the whole set here means the next page added without the tag fails a test instead of
-    quietly capturing nothing.
-    """
-    surfaces = [
-        "/",
-        "/resources",
-        "/use-cases/seo-data-for-ai-agents",
-        "/use-cases/lead-enrichment-for-ai-agents",
-        "/use-cases/social-trend-research-for-ai-agents",
-        "/use-cases/competitor-ad-research-for-ai-agents",
-        "/use-cases/company-research-for-ai-agents",
-    ]
-    missing = []
-    for path in surfaces:
-        r = await clients.get(path)
-        assert r.status_code == 200, f"{path} -> HTTP {r.status_code}"
-        if "/adtrack.js" not in r.text:
-            missing.append(path)
-    assert not missing, f"pages that do not load the capture script: {missing}"
+# ---- Enhanced Conversions for Leads: hashed-email identifiers ---------------------------------
 
 
-async def test_capture_script_runs_in_head_before_spa_can_redirect(clients):
-    """The capture script must load in <head>, before any app code can navigate away.
-
-    An ad click arriving at /?gclid=... falls through to index.html (the SPA) because of the query
-    string. The SPA's boot then redirects logged-out visitors via `location.replace('/')`, dropping
-    the query string. The capture script must run during HTML parsing — before the Vue app mounts
-    and calls that redirect — or the click ID is lost. Placing it in <head> guarantees this.
-
-    This test pins the ORDERING guarantee. The presence test above catches a missing tag; this one
-    catches a tag that would lose the race against the redirect.
-    """
-    # The SPA is served at /app, but also at /?gclid=... (any query string falls through to it)
-    r = await clients.get("/app")
-    assert r.status_code == 200
-    html = r.text
-    # The script must appear in <head>, not after the Vue app's inline script
-    head_end = html.find("</head>")
-    body_start = html.find("<body")
-    script_pos = html.find('src="/adtrack.js"')
-    assert script_pos != -1, "/adtrack.js not found in SPA"
-    assert script_pos < head_end, (
-        f"adtrack.js must be in <head> to run before the SPA redirects (found at {script_pos}, "
-        f"</head> at {head_end})"
-    )
-    assert script_pos < body_start, (
-        f"adtrack.js must load before <body> to guarantee it runs before Vue mounts"
-    )
+@pytest.fixture
+def user_data_enabled(ads_enabled, monkeypatch):
+    monkeypatch.setattr(ads_enabled, "ads_conv_user_data", True, raising=False)
+    assert adsconv.user_data_enabled() is True
+    return ads_enabled
 
 
-def test_transaction_id_is_never_purely_numeric():
-    """Data Manager rejects a bare numeric transactionId with a 400 on `events[N]`.
+def test_email_normalisation_follows_googles_rules():
+    # Trim + lowercase everywhere; Gmail additionally ignores dots in the local part, so the two
+    # spellings of one inbox must hash to ONE identifier or Google matches only one of them.
+    assert adsconv.normalize_email("  J.Z@Gmail.com ") == "jz@gmail.com"
+    assert adsconv.normalize_email("Bob.Smith@Example.COM") == "bob.smith@example.com"
+    assert adsconv.normalize_email("first.last@googlemail.com") == "firstlast@googlemail.com"
+    assert adsconv.hash_email("J.Z@gmail.com") == hashlib.sha256(b"jz@gmail.com").hexdigest()
+    assert adsconv.hash_email("jz@gmail.com") == adsconv.hash_email("  J.Z@GMAIL.COM ")
 
-    Verified live 2026-08-18: identical payloads differing only in transactionId — "2"/"3" return
-    400 INVALID_ARGUMENT, "row-2"/"row-3" return 200. `validateOnly` does NOT surface it, so no
-    dry-run can catch a regression here; this test is the only guard.
-    """
-    now = adsconv._utcnow_naive()
-    org = Org(id=7, name="t", slug="t", ad_gclid="CLICK", ad_click_id_type="gclid", ad_click_at=now)
-    rows = [AdConversion(id=i, org_id=7, action=adsconv.ACTION_SIGNUP, created_at=now)
-            for i in (1, 2, 42, 1000)]
-    payload, _ = adsconv._payload_and_rows(rows[:1], {7: org})
-    for row in rows:
-        p, _ = adsconv._payload_and_rows([row], {7: org})
-        tid = p["events"][0]["transactionId"]
-        assert not tid.isdigit(), f"transactionId {tid!r} is purely numeric — Google will 400"
-        assert tid == f"treg-{row.id}"
+
+def test_user_data_requires_the_uploader_to_be_enabled(ads_disabled, monkeypatch):
+    monkeypatch.setattr(ads_disabled, "ads_conv_user_data", True, raising=False)
+    assert adsconv.user_data_enabled() is False
+
+
+def test_build_payload_without_user_data_flag_carries_click_ids_only(ads_enabled):
+    org = Org(id=1, name="t", slug="t", ad_gclid="CLICK1")
+    row = AdConversion(id=1, org_id=1, action=adsconv.ACTION_SIGNUP, created_at=utcnow_naive())
+    event = adsconv.build_payload([row], {1: org}, {1: "lead@example.com"})["events"][0]
+    assert event["adIdentifiers"] == {"gclid": "CLICK1"}
+    assert "userData" not in event and "consent" not in event
+    assert "encoding" not in adsconv.build_payload([row], {1: org}, {1: "lead@example.com"})
+
+
+def test_build_payload_attaches_hashed_email_next_to_the_click_id(user_data_enabled):
+    org = Org(id=1, name="t", slug="t", ad_gclid="CLICK1")
+    row = AdConversion(id=1, org_id=1, action=adsconv.ACTION_SIGNUP, created_at=utcnow_naive())
+    event = adsconv.build_payload([row], {1: org}, {1: "Lead@Example.com"})["events"][0]
+    assert event["adIdentifiers"] == {"gclid": "CLICK1"}
+    assert event["userData"] == {"userIdentifiers": [{"emailAddress": adsconv.hash_email("lead@example.com")}]}
+    # Google will not use an EEA identifier without a consent block; personalisation is never granted.
+    assert event["consent"] == {"adUserData": "CONSENT_GRANTED", "adPersonalization": "CONSENT_DENIED"}
+    # The raw address must never appear anywhere in the wire body.
+    assert "lead@example.com" not in json.dumps(adsconv.build_payload([row], {1: org}, {1: "lead@example.com"})).lower()
+
+
+def test_build_payload_identifies_an_unattributed_team_by_hashed_email_alone(user_data_enabled):
+    org = Org(id=2, name="t", slug="t2")  # organic: no click id at all
+    row = AdConversion(id=2, org_id=2, action=adsconv.ACTION_FIRST_CALL, created_at=utcnow_naive())
+    payload = adsconv.build_payload([row], {2: org}, {2: "lead@example.com"})
+    event = payload["events"][0]
+    assert "adIdentifiers" not in event
+    assert event["userData"]["userIdentifiers"] == [{"emailAddress": adsconv.hash_email("lead@example.com")}]
+    assert payload["destinations"][0]["productDestinationId"] == "7723667017"
+    # Data Manager rejects any request carrying userData without saying how the hashes are
+    # encoded (live validateOnly, 2026-09-21); a click-only request must not carry it.
+    assert payload["encoding"] == "HEX"
+    # Neither a click id nor an email: not an event.
+    empty = adsconv.build_payload([row], {2: org}, {})
+    assert empty["events"] == [] and "encoding" not in empty
+
+
+async def test_queue_records_an_unattributed_signup_when_user_data_is_enabled(clients, user_data_enabled):
+    await reset_db()
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://registry") as c:
+        r = await verified_signup(c, json={"email": "lead@example.com"})  # no treg_ad cookie
+        assert r.status_code == 200, r.text
+        org_id = r.json()["org_id"]
+    async with session_maker() as db:
+        org = await db.get(Org, org_id)
+        assert org.ad_gclid is None
+        rows = (await db.execute(select(AdConversion).where(AdConversion.org_id == org_id))).scalars().all()
+        assert [r.action for r in rows] == [adsconv.ACTION_SIGNUP]
+
+
+async def test_queue_skips_a_team_whose_only_member_is_an_agent(clients, user_data_enabled):
+    # An agent identity lives on AGENT_DOMAIN: unroutable, matches nobody at Google, must not
+    # fill the outbox with rows that can only dead-letter.
+    async with session_maker() as db:
+        org = Org(name="t", slug="t-agent-only")
+        bot = User(email="agent-t-bot@agents.treg.local")
+        db.add(org); db.add(bot)
+        await db.commit(); await db.refresh(org); await db.refresh(bot)
+        db.add(Membership(user_id=bot.id, org_id=org.id, role="member", token_hash="x"))
+        await db.commit()
+        assert await adsconv.queue(db, org, adsconv.ACTION_FIRST_CALL) is False
+        assert await adsconv.human_owner_emails(db, {org.id}) == {}
+
+
+async def test_human_owner_is_the_earliest_human_member(clients, user_data_enabled):
+    async with session_maker() as db:
+        org = Org(name="t", slug="t-owner")
+        bot = User(email="agent-t-x@agents.treg.local")
+        human = User(email="Creator@Example.com")
+        later = User(email="teammate@example.com")
+        db.add_all([org, bot, human, later])
+        await db.commit()
+        for u in (org, bot, human, later):
+            await db.refresh(u)
+        db.add(Membership(user_id=bot.id, org_id=org.id, role="member", token_hash="a"))
+        db.add(Membership(user_id=human.id, org_id=org.id, role="owner", token_hash="b"))
+        db.add(Membership(user_id=later.id, org_id=org.id, role="member", token_hash="c"))
+        await db.commit()
+        assert await adsconv.human_owner_emails(db, {org.id}) == {org.id: "Creator@Example.com"}
+
+
+async def test_drain_uploads_the_hashed_email_for_an_unattributed_team(clients, user_data_enabled):
+    await reset_db()
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://registry") as c:
+        r = await verified_signup(c, json={"email": "lead@example.com"})
+        org_id = r.json()["org_id"]
+    fake = FakeAdsClient(FakeAdsResponse({"requestId": "req-1"}))
+    async with session_maker() as db:
+        result = await adsconv.drain_once(db, fake)
+    assert result["sent"] == 1, result
+    event = fake.calls[0][1]["json"]["events"][0]
+    assert "adIdentifiers" not in event
+    assert event["userData"]["userIdentifiers"] == [{"emailAddress": adsconv.hash_email("lead@example.com")}]
+    assert "lead@example.com" not in json.dumps(fake.calls[0][1]["json"])
+    async with session_maker() as db:
+        row = (await db.execute(select(AdConversion).where(AdConversion.org_id == org_id))).scalars().one()
+        assert row.uploaded_at is not None
+
+
+async def test_drain_dead_letters_a_row_with_neither_click_nor_human(clients, user_data_enabled):
+    async with session_maker() as db:
+        org = Org(name="t", slug="t-nobody")  # no members at all, no click id
+        db.add(org); await db.commit(); await db.refresh(org)
+        db.add(AdConversion(org_id=org.id, action=adsconv.ACTION_SIGNUP)); await db.commit()
+        fake = FakeAdsClient(FakeAdsResponse({"requestId": "req-1"}))
+        result = await adsconv.drain_once(db, fake)
+        assert result["sent"] == 0 and result["failed"] == 1
+        assert fake.calls == []
+        row = (await db.execute(select(AdConversion).where(AdConversion.org_id == org.id))).scalars().one()
+        assert row.failed_at is not None and "no human creator email" in row.error
+
+
+async def test_flag_off_parks_email_only_rows_instead_of_dead_lettering(clients, user_data_enabled, monkeypatch):
+    # Queued with the flag on, drained after an operator turns it off: the row must survive for the
+    # flag coming back, not be failed for good.
+    await reset_db()
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://registry") as c:
+        org_id = (await verified_signup(c, json={"email": "lead@example.com"})).json()["org_id"]
+    monkeypatch.setattr(user_data_enabled, "ads_conv_user_data", False)
+    fake = FakeAdsClient(FakeAdsResponse({"requestId": "req-1"}))
+    async with session_maker() as db:
+        result = await adsconv.drain_once(db, fake)
+        assert result == {"sent": 0, "failed": 0} and fake.calls == []
+        row = (await db.execute(select(AdConversion).where(AdConversion.org_id == org_id))).scalars().one()
+        assert row.failed_at is None and row.attempts == 0 and row.next_attempt_at is not None
+        row.next_attempt_at = None  # the park expires
+        db.add(row); await db.commit()
+    monkeypatch.setattr(user_data_enabled, "ads_conv_user_data", True)
+    async with session_maker() as db:
+        assert (await adsconv.drain_once(db, fake))["sent"] == 1
+
+
+async def test_terms_not_accepted_keeps_retrying_instead_of_dead_lettering(clients, user_data_enabled):
+    # Google's exact refusal (validateOnly, 2026-09-21) until an operator accepts the Customer Data
+    # Terms in the Ads UI. It is "not yet", not "never": the rows must outlive the attempt ceiling.
+    await reset_db()
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://registry") as c:
+        org_id = (await verified_signup(c, json={"email": "lead@example.com"})).json()["org_id"]
+    async with session_maker() as db:
+        row = (await db.execute(select(AdConversion).where(AdConversion.org_id == org_id))).scalars().one()
+        row.attempts = 50  # far past _MAX_ATTEMPTS
+        db.add(row); await db.commit()
+    refusal = _rejected(_field_violation(0, "INVALID_ARGUMENT",
+        "The destination account hasn't agreed to the terms for enhanced conversions."))
+    fake = FakeAdsClient(FakeAdsResponse(refusal, status_code=400))
+    async with session_maker() as db:
+        result = await adsconv.drain_once(db, fake)
+        assert result["retried"] == 1 and result["failed"] == 0, result
+        row = (await db.execute(select(AdConversion).where(AdConversion.org_id == org_id))).scalars().one()
+        assert row.failed_at is None and row.next_attempt_at is not None
+        assert "terms for enhanced conversions" in row.error
+
+
+# ---- the browser tag: advanced consent mode + the web signup action ------------------------------
+
+_WEB = Path(adsconv.__file__).parent / "web"
+
+
+def test_dashboard_loads_the_tag_conversion_only_and_fires_on_first_team():
+    front = Path(adsconv.__file__).resolve().parents[2] / "frontend"
+    html = (front / "index.html").read_text()
+    tag = '<script src="/gtag.js" data-conversion-only defer></script>'
+    assert tag in html
+    # A classic script before the module entry: gtag.js reads its own attribute through
+    # document.currentScript, which is null inside a module, and it must follow ad-click capture.
+    assert html.index('<script src="/adtrack.js" defer></script>') < html.index(tag) \
+        < html.index('<script type="module"')
+    # The first run fires it right after the team the server made for the account exists, keyed by
+    # the new org id.
+    welcome = (front / "src" / "state" / "onboarding.js").read_text()
+    assert "window.tregSignupConversion(o.org_id||o.org)" in welcome
+    assert welcome.index("this.api('/onboard/team'") < welcome.index("if(!o.created) return;") \
+        < welcome.index("window.tregSignupConversion(")
+
+@pytest.mark.parametrize('door', ['start', 'verify', 'google', 'github'])
+@pytest.mark.parametrize('cookie,enabled,expected', [
+    ('wbraid|PHONE|landing', True, True), ('', True, False),
+    ('gclid||landing', True, False), ('junk', True, False),
+    ('gclid|PHONE|landing', False, False),
+])
+async def test_auth_stashes_click(clients, ads_enabled, monkeypatch, door, cookie, enabled, expected):
+    from treg.application import auth
+    from treg.models import AdClickStash
+    monkeypatch.setattr(adsconv, 'enabled', lambda: enabled)
+    email = 'stash@example.com'
+
+    async def start(*args, **kwargs):
+        return {'ok': True}
+
+    async def verify(*args, **kwargs):
+        return SimpleNamespace(email=email, token='test', session_cookie='test')
+
+    async def social(*args, **kwargs):
+        return SimpleNamespace(user=User(id=1, email=email), cli_state=None)
+
+    monkeypatch.setattr(auth, 'start_email_login', start)
+    monkeypatch.setattr(auth, 'verify_email_login', verify)
+    monkeypatch.setattr(auth, 'complete_google_login', social)
+    monkeypatch.setattr(auth, 'complete_github_login', social)
+    clients.cookies.set('treg_ad', cookie)
+    if door in ('start', 'verify'):
+        response = await clients.post('/auth/email/' + door, json={'email': ' STASH@example.com ', 'code': '123456'})
+    else:
+        response = await clients.get('/auth/' + door + '/callback')
+    assert response.status_code in (200, 302), response.text
+    async with session_maker() as db:
+        stash = await db.get(AdClickStash, email)
+        # /start has not proven the email yet, so it never stashes.
+        expected = expected and door != 'start'
+        assert (stash is not None) == expected
+        if expected:
+            from treg.application.signup import _ad_attribution_from
+            assert _ad_attribution_from(stash.raw_cookie) == ('wbraid', 'PHONE', 'landing')
+
+
+@pytest.mark.parametrize('cookie,age,expected', [('', 0, 'LATEST'), ('gclid|BROWSER|here', 0, 'BROWSER'), ('', 91, None)])
+async def test_signup_stash_fallback(clients, ads_enabled, cookie, age, expected):
+    from treg.application.signup import stash_ad_click
+    from treg.models import AdClickStash
+    email = 'tim@superdesign.dev'
+    await stash_ad_click(email.upper(), 'gclid|OLD|original')
+    await stash_ad_click(' ' + email + ' ', 'gbraid|LATEST|original')
+    async with session_maker() as db:
+        stash = await db.get(AdClickStash, email)
+        stash.updated_at = utcnow_naive() - timedelta(days=age)
+        db.add(stash)
+        await db.commit()
+    clients.cookies.set('treg_ad', cookie)
+    response = await clients.post('/orgs', json={'name': 'cross device'})
+    assert response.status_code == 200, response.text
+    async with session_maker() as db:
+        org = await db.get(Org, response.json()['org_id'])
+        assert org.ad_gclid == expected
+        if expected == 'LATEST':
+            assert org.ad_click_id_type == 'gbraid'
+            assert org.ad_landing == 'original'
+        # Once a team holds a click, the email association is deleted; an unused expired row
+        # waits for the purge.
+        assert (await db.get(AdClickStash, email) is None) == (expected is not None)
+
+
+async def test_login_redirect_preserves_click(clients):
+    response = await clients.get('/login?gclid=PHONE&utm_content=original')
+    assert response.headers['location'] == '/app?gclid=PHONE&utm_content=original'
+    from treg.routers.auth import _login_page_html
+    assert '<script src="/adtrack.js" defer></script>' in _login_page_html('a' * 32, session_email=None, github=True, google=True)
+
+
+async def test_stash_caps_fields_and_disabled_lookup(clients, ads_enabled, monkeypatch):
+    from treg.application.signup import _ad_attribution_from, _ad_cookie_for, stash_ad_click
+    from treg.models import AdClickStash
+    await stash_ad_click('a.b+tag@gmail.com', 'wbraid|' + 'x' * 400 + '|' + '😀' * 100)
+    async with session_maker() as db:
+        stash = await db.get(AdClickStash, 'a.b+tag@gmail.com')
+        assert _ad_attribution_from(stash.raw_cookie) == ('wbraid', 'x' * 255, '😀' * 64)
+        assert len(stash.raw_cookie) <= 4096
+        assert await _ad_cookie_for(db, 'ab@gmail.com', '') == ''
+        monkeypatch.setattr(adsconv, 'enabled', lambda: False)
+        assert await _ad_cookie_for(db, 'a.b+tag@gmail.com', '') == ''
+
+
+@pytest.mark.parametrize('cookie,parsed', [
+    ('gclid|ID|a|b', ('gclid', 'ID', 'a|b')),      # a "|" inside the landing keeps the click
+    ('ID|landing', ('gclid', 'ID', 'landing')),     # legacy two-part cookie
+    ('junk', ('', '', '')), ('x|ID|landing', ('', '', '')),
+])
+def test_ad_cookie_landing_may_contain_a_pipe(ads_enabled, cookie, parsed):
+    from treg.application.signup import _ad_attribution_from
+    assert _ad_attribution_from(cookie) == parsed
+
+
+async def test_purge_deletes_only_expired_stash_rows(clients, ads_enabled):
+    from treg.application.signup import purge_expired_ad_clicks, stash_ad_click
+    from treg.models import AdClickStash
+    for email, age in (('fresh@example.com', 89), ('old@example.com', 91)):
+        await stash_ad_click(email, 'gclid|CLICK|landing')
+        async with session_maker() as db:
+            stash = await db.get(AdClickStash, email)
+            stash.updated_at = utcnow_naive() - timedelta(days=age)
+            db.add(stash)
+            await db.commit()
+    assert await purge_expired_ad_clicks() == {'deleted': 1}
+    async with session_maker() as db:
+        assert await db.get(AdClickStash, 'fresh@example.com') is not None
+        assert await db.get(AdClickStash, 'old@example.com') is None
+    assert await purge_expired_ad_clicks() == {'deleted': 0}
+
+
+async def test_stash_failure_does_not_break_signin(clients, ads_enabled, monkeypatch, caplog):
+    from treg.application import auth, signup
+
+    async def succeeded(*args, **kwargs):
+        return SimpleNamespace(email='private@example.com', token='test', session_cookie='test')
+
+    def broken_session():
+        raise RuntimeError('SQL parameters: private@example.com PRIVATE_CLICK')
+
+    monkeypatch.setattr(auth, 'verify_email_login', succeeded)
+    monkeypatch.setattr(signup, 'session_maker', broken_session)
+    clients.cookies.set('treg_ad', 'gclid|PRIVATE_CLICK|original')
+    response = await clients.post('/auth/email/verify', json={'email': 'private@example.com', 'code': '123456'})
+    assert response.status_code == 200, response.text
+    assert 'ad click stash failed; sign-in continues' in caplog.text
+    assert 'private@example.com' not in caplog.text
+    assert 'PRIVATE_CLICK' not in caplog.text

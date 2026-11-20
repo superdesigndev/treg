@@ -1,0 +1,20 @@
+{
+  "code": 0,
+  "msg": "success",
+  "data": {
+    "query": "IANA example domains",
+    "results": [
+      {
+        "title": "IANA-managed Reserved Domains",
+        "url": "https://www.iana.org/domains/reserved",
+        "highlight": "IANA maintains domains reserved for documentation and examples."
+      }
+    ]
+  },
+  "meta": {
+    "usage": {
+      "num_search_queries": 1,
+      "full_content_extra_count": 0
+    }
+  }
+}

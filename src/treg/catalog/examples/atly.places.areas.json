@@ -1,0 +1,24 @@
+{
+  "areas": [
+    {
+      "id": "canonical-area::c790a21e-65a4-5e5c-8061-64900cd3fd0e",
+      "name": "New York",
+      "level": "city",
+      "region": "New York",
+      "country": "United States",
+      "place_count": 86742,
+      "bbox": [
+        -74.30567959999999,
+        40.3463196,
+        "… 2 more item(s) truncated"
+      ],
+      "center": [
+        -74.00410345,
+        40.6255352
+      ]
+    }
+  ],
+  "total": 2,
+  "doc_notes": "Use an area id as the location in search. bbox is [west, south, east, north] when known; otherwise use center with a radius.",
+  "call_id": "5073c4fa-3574-437a-bd98-39ba24fd184e"
+}

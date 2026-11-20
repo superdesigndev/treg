@@ -1,0 +1,14 @@
+{
+  "search_metadata": {
+    "id": "5066ccaf183bbac2597820a3",
+    "status": "Success",
+    "json_endpoint": "https://api.litescrape.com/api/google/maps/posts?data_id=0x8644b741914e0c8d%3A0xcb6fba98ff70f342",
+    "created_at": "2026-09-29 13:58:41 UTC",
+    "processed_at": "2026-09-29 13:58:42 UTC",
+    "google_maps_posts_url": "https://www.google.com/maps/preview/localposts?authuser=0&hl=en&gl=us&pb=%211e2%217m2%211s%217e81%218s0x8644b741914e0c8d%3A0xcb6fba98ff70f342",
+    "total_time_taken": 1.135
+  },
+  "search_parameters": {
+    "data_id": "0x8644b741914e0c8d:0xcb6fba98ff70f342"
+  }
+}

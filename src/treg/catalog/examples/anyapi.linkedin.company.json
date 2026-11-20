@@ -1,0 +1,48 @@
+{
+  "output": {
+    "found": true,
+    "data": {
+      "companyType": "Privately Held",
+      "description": "Stripe builds programmable financial services. Millions of companies—from the world’s largest enterprises to the most ambitious startups—use Stripe to accept payments, grow their revenue, and accelera… [327 chars]",
+      "employeeCount": 16595,
+      "employeeCountRange": {
+        "end": 0,
+        "start": 0
+      },
+      "followerCount": 1713817,
+      "foundedOn": {
+        "year": 2010
+      },
+      "fundingData": {
+        "lastFundingType": "",
+        "numFundingRounds": 0
+      },
+      "industry": "Technology, Information and Internet",
+      "locations": [
+        "… {2 field(s) truncated}",
+        "… 13 more item(s) truncated"
+      ],
+      "logoUrl": "https://media.licdn.com/dms/image/v2/D560BAQE2ZfJyfn-VCg/company-logo_200_200/B56ZlyKwpUKIAI-/0/1758557047806/stripe_logo?e=2147483647&v=beta&t=En4Hm6NDGbDTYCoOQ0Ko5Ne2gylx0WRb0yL2GlOeXBQ",
+      "name": "Stripe",
+      "pageVerified": false,
+      "similarOrganizations": [
+        "… {6 field(s) truncated}",
+        "… 9 more item(s) truncated"
+      ],
+      "specialities": [],
+      "tagline": "Help increase the GDP of the internet.",
+      "…": "2 more field(s) truncated"
+    }
+  },
+  "provider": "AnyAPI",
+  "costUsd": 0.00143,
+  "items": 10,
+  "replayed": false,
+  "source": {
+    "id": "anonymous-octopus",
+    "name": "Octopus",
+    "kind": "anonymous",
+    "artworkKey": "octopus"
+  },
+  "resultId": "88d1301b-49fa-42a7-89ae-9c7b738f3352"
+}

@@ -1,0 +1,49 @@
+{
+  "meta": {
+    "blocked": [],
+    "elapsed_ms": 0,
+    "from_cache": true,
+    "llm_calls": 0,
+    "pages_fetched": 0,
+    "partial": false,
+    "warnings": []
+  },
+  "recipe": "chatgpt-answer",
+  "usage": {
+    "boxes": [
+      "gate"
+    ],
+    "cache": "hit",
+    "engine": "recipe",
+    "lines": [
+      {
+        "about": "the call",
+        "boxes": [
+          "gate"
+        ],
+        "cache": "miss",
+        "call": "recipes",
+        "engine": "gate",
+        "units": 1
+      }
+    ],
+    "remaining_before": {
+      "concurrent": 99,
+      "requests": 199,
+      "search": 3000
+    },
+    "units": 1
+  },
+  "version": 1,
+  "rows": [
+    {
+      "answer": "Best open-source web crawlers for LLM pipelines\n===============================================\n\nIf you're building a RAG system, a web-search agent, or a pipeline that turns websites into training or knowledge-base data, I'd start with Crawl4AI, Firecrawl, or Scrapy. The best choice depends on whet…",
+      "answer_text": "Best open-source web crawlers for LLM pipelines If you're building a RAG system, a web-search agent, or a pipeline that turns websites into training or knowledge-base data, I'd start with Crawl4AI, Firecrawl, or Scrapy . The best choice depends on whether you prioritize LLM-ready Markdown, a complet…",
+      "asked_at": "2026-10-11T05:12:51Z",
+      "citations": [],
+      "prompt": "What are the best open-source web crawlers for LLM pipelines?",
+      "sources": [],
+      "web_search_used": false
+    }
+  ]
+}

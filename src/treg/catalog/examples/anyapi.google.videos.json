@@ -1,0 +1,30 @@
+{
+  "output": {
+    "found": true,
+    "data": {
+      "query": "lofi hip hop",
+      "results": [
+        {
+          "image": "https://encrypted-tbn0.gstatic.com/images?q=tbn:ANd9GcSYgjOQSF4Cpubj0FV8ZckwNnCS2b9UbX6nkhaO0bBmA9D3iJGXze0WfQ&s",
+          "link": "https://www.youtube.com/watch?v=rFZHOHl-L8A",
+          "position": 1,
+          "snippet": "lofi hip hop radio beats to relax/study to · jazz lofi radio beats to chill/study to · Snoopy's Cozy Autumn Cafe ☕ Lofi Beats to Study, ...",
+          "source": "YouTube",
+          "title": "lofi hip hop radio beats to relax/study to"
+        },
+        "… 9 more item(s) truncated"
+      ]
+    }
+  },
+  "provider": "AnyAPI",
+  "costUsd": 0.00099,
+  "items": 10,
+  "replayed": false,
+  "source": {
+    "id": "anonymous-meerkat",
+    "name": "Meerkat",
+    "kind": "anonymous",
+    "artworkKey": "meerkat"
+  },
+  "resultId": "fe3a63bb-ff22-4e59-a2e4-68c28328b1c4"
+}

@@ -18,17 +18,8 @@ seo_terms:
     - "rank tracking api without a subscription"
     - "keyword volume api pay per call"
     - "backlink data api per call"
-ad_keywords:                       # bid here; do NOT optimize the page for these
-  - "semrush api alternative"
-  - "cheapest serp api"
-  - "keyword research api"
-  - "seo api for developers"
-  - "dataforseo alternative"
 capabilities: [google.keywords.volume, google.keywords.ideas, google.serp.organic, web.backlinks.summary]
-facts_used: [F-01, F-02, F-03, F-04, F-05, F-06, F-07, F-08, F-09, F-10, F-11, F-13, F-20, F-30, F-31, F-32, F-90, F-92]
-hypothesis: "Highest traffic, worst cost per first successful call: SEO buyers already own a tool. Predict this page is the one we stop paying for. RE-POINTED 2026-08-17: telemetry shows keyword research is ~1.3% of real usage while SERP scraping is ~22%, so the second workflow now leads on recurring result monitoring."
-verify_after: 2026-08-31
-status: proof populated from a real run 2026-08-17 ($0.012) · ready for build · revised against 30-day telemetry 2026-08-17
+facts_used: [F-01, F-02, F-03, F-04, F-05, F-06, F-07, F-08, F-09, F-10, F-11, F-13, F-20, F-30, F-31, F-32, F-92]
 ---
 
 # Page 1: SEO and keyword intelligence
@@ -104,7 +95,7 @@ The results endpoints are the most-used tools in the whole catalog, so their rec
 |---|---|---|---|---|
 | **Organic** | DataForSEO | $0.002 | **100% (2,075 calls)** | 5.5 s |
 | | ScrapeCreators | $0.00188 | 100% (343 calls) | 1.6 s |
-| | Serpstat | $0.0005 | 100% (77 calls) | 1.2 s |
+| | Serpstat | $0.0005 / row | 100% (77 calls) | 1.2 s |
 | | SerpApi | $0.015 |: |: |
 | **Maps / local** | DataForSEO | $0.002 | **100% (2,646 calls)** | 1.9 s |
 | **News** | DataForSEO | $0.002 | 100% (690 calls) | 9.0 s |
@@ -200,7 +191,7 @@ searchapi.io, you.com.
 
 **Price a content plan before you commit writers to it.**
 Hand the agent 200 candidate titles. It returns real monthly volume, difficulty and intent for each, and
-flags where the current top three are weaker than you are. At $0.0005 a keyword that is a few cents, not a
+flags where the current top three are weaker than you are. At $0.0005 a keyword that is about ten cents, not a
 month of Semrush.
 
 **Find out who actually earned the ranking.**
@@ -296,50 +287,4 @@ subscriptions, not the suite you read reports in.
 
 # Ad and creator kit
 
-### Responsive search ad headlines
-| Headline | Chars |
-|---|---|
-| `Real SEO Data for Agents` | 24 |
-| `Keyword Volume, Per Call` | 24 |
-| `No Semrush Seat Required` | 24 |
-
-### Search ad descriptions
-| Description | Chars |
-|---|---|
-| `Keyword volume, difficulty, results and backlinks through one key. $1.00 free to start.` | 87 |
-| `Pay per call, not per seat. Price shown before your agent calls. No provider signup.` | 84 |
-
-### Creator video hooks
-1. "I asked Claude Code for 50 keywords with real search volume. Watch what the run cost."
-2. "Five providers sell the same keyword data. One charges 180 times what another does."
-3. "Your agent can't do SEO because it can't see the data. Two-minute fix."
-
-### X post hook
-`Your agent writes confident SEO briefs off keyword data it invented. Here's how to give it the real numbers: volume, difficulty, live SERPs: for a fraction of a cent per call.`
-
-### High-intent keyword phrases
-`keyword volume api pay per call` · `serp api for claude code` · `seo data for ai agents` ·
-`keyword research api without subscription` · `backlink api per call`
-
-### Negative keywords
-`free` · `jobs` · `salary` · `course` · `certification` · `wordpress plugin` · `chrome extension` ·
-`agency near me` · `meaning` · `what is seo`
-
-### Demonstration a creator can reproduce
-Paste `set up treg — https://treg.to/llms.txt` into Claude Code, then paste the workflow prompt. Film the
-terminal end to end, and run `treg balance` before and after so the audience sees the actual cost of the
-run rather than a claim about it.
-
-### Measurable hypothesis
-Highest traffic of the five, worst cost per first successful call: SEO buyers usually already own a tool,
-so the pitch is a saving rather than a new capability. If day-14 CPFC is the worst of the five, stop
-paying for this page and move the budget to page 2 or 4. Secondary: Copy Prompt clicks predict first-call
-conversion better than account creations do.
-
----
-
-## Numbers used on this page
-
-`F-01` `F-02` `F-03` `F-04` `F-05` `F-06` `F-07` `F-08` `F-09` `F-10` `F-11` `F-13` `F-20` `F-30` `F-31`
-`F-32`: all defined in `_facts.md`, verified 2026-08-17. Re-verify with
-`treg catalog get <endpoint_id>` before publishing.
+Campaign material is maintained in treg-internal.

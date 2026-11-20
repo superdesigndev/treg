@@ -3,20 +3,20 @@
 import re
 from dataclasses import dataclass
 
-from sqlalchemy import func
+from sqlalchemy import func, update
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlmodel import select
 
-from ...caller_metadata import TAG_DEFAULT, _MAX_BUDGET_DIMS, _META_KEY_RE
+from ...caller_metadata import _MAX_BUDGET_DIMS, _META_KEY_RE
 from ...config import get_settings
-from ...models import Org, TagBudget
+from ...models import Membership, Org, TagBudget
 from ..identity.access import Caller
 
 
 _META_MAX_KEYS = 5
 _META_MAX_VALUE = 128
 # Tag VALUES become storage keys (the idempotency scope, a TagBudget row, a TagSpend row), so the
-# charset is an allowlist rather than a length check. See the collision note in `_parse_call_meta`.
+# charset is an allowlist rather than a length check.
 _META_VALUE_RE = re.compile(r"^[A-Za-z0-9._:-]{1,%d}$" % _META_MAX_VALUE)
 # The dimension that scopes idempotency and defaults reports, for a team that never declared one.
 DEFAULT_PRIMARY_DIM = "customer"
@@ -65,12 +65,6 @@ def _validate_tag_pair(key: str, value: str, *, where: str = "tag") -> tuple[str
             f"{where} value for {key!r} looks like an email — use an opaque id: these tags are "
             f"written to an append-only ledger and cannot be deleted afterwards"))
     if not _META_VALUE_RE.match(value):
-        # An ALLOWLIST, not a blocklist, and the reason is `_scoped_idempotency_key`: the primary
-        # value is joined to the caller's Idempotency-Key with \x1f, so a value permitted to
-        # contain that separator lets `customer="A", key="B\x1fC"` collide with
-        # `customer="A\x1fB", key="C"` — one of a builder's users reading another's cached
-        # response. Do not narrow this to "reject \x1f": the header parser is not a security
-        # boundary we control, and the next separator would reopen it.
         raise BudgetPolicyError(422, (
             f"{where} value for {key!r} may only contain letters, digits and . _ - : "
             f"(these ids are used as storage keys)"))
@@ -95,19 +89,50 @@ def _budget_dims_of(org: Org) -> list[str]:
 
 
 def _effective_daily_cap(org: Org) -> int:
-    """This team's ceiling on daily tier-4 spend: the LOWER of what they set and what we allow.
+    """This team's limit on daily tier-4 spend: their own figure, else the deployment default.
+    0 = no limit.
 
-    Two masters, which is why it is two numbers. The team's own figure protects them from a runaway
-    agent draining a balance that auto-top-up keeps refilling. The platform ceiling protects US from a
-    catalog mispricing, and only we can raise it — so onboarding a high-volume builder is a
-    conversation rather than an env-var edit that lifts the blast-radius rail for every team at once.
-
-    0 means "never set one", which follows the deployment default rather than freezing the team at
-    whatever that default happened to be the day they signed up.
+    The figure is the team's protection against a runaway agent draining a balance that auto-top-up
+    keeps refilling, so it is theirs to set in either direction. An `Org.daily_cap_micro` of 0 means
+    "never set one", which follows the deployment default (itself 0 = none, by default) rather than
+    freezing the team at whatever that default happened to be the day they signed up.
     """
-    ceiling = get_settings().platform_daily_cap_micro
     own = int(getattr(org, "daily_cap_micro", 0) or 0)
-    return min(own, ceiling) if own > 0 else ceiling
+    return own if own > 0 else get_settings().platform_daily_cap_micro
+
+
+MEMBER_SPEND_EXEMPT_ROLES = frozenset({"owner", "admin"})
+
+
+def member_daily_spend_cap(membership, org: Org) -> int | None:
+    """The daily spend limit on treg's keys that applies to one member, in micro-USD, or None.
+
+    The member's own figure wins (-1 = no limit). Without one, the team default applies to every
+    member and agent, but never to an owner or admin: the people who set limits are not held by them.
+    """
+    own = membership.daily_spend_cap_micro
+    if own is not None:
+        return None if own < 0 else int(own)
+    if membership.role in MEMBER_SPEND_EXEMPT_ROLES:
+        return None
+    team = org.member_daily_spend_cap_micro
+    return None if team is None or team < 0 else int(team)
+
+
+async def reset_member_spend_caps(db: AsyncSession, org_id: int) -> int:
+    """Put every member and agent of the team back on the team default; returns how many changed.
+
+    Setting the team default means "this, for all": each member's or agent's own figure (an amount
+    or -1) is cleared. Owners and admins keep theirs, because the team default never applies to
+    them. Does not commit.
+    """
+    result = await db.execute(
+        update(Membership)
+        .where(Membership.org_id == org_id,
+               Membership.role.not_in(MEMBER_SPEND_EXEMPT_ROLES),  # type: ignore[union-attr]
+               Membership.daily_spend_cap_micro.is_not(None))  # type: ignore[union-attr]
+        .values(daily_spend_cap_micro=None))
+    return int(result.rowcount or 0)
 
 
 async def _tag_budget(db: AsyncSession, org_id: int, dim: str, val: str,

@@ -1,0 +1,16 @@
+{
+  "model": "typesafe/jev-1.13-20260917",
+  "answers": {
+    "sky": {
+      "type": "noul",
+      "noul": 0.99
+    }
+  },
+  "usage": {
+    "input_tokens": 324,
+    "output_tokens": 20,
+    "cost": 0.000013608
+  },
+  "id": "gen-dec-1790503853-nev61vLvNawlPdkrv1nV",
+  "provider": "TypeSafe"
+}

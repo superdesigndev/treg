@@ -1,0 +1,31 @@
+{
+ "requestId": "routing-fixture",
+ "resolvedSearchType": "",
+ "results": [
+  {
+   "id": "https://directory1.example.com/coffee-creators",
+   "title": "Coffee creators to follow, list 1",
+   "url": "https://directory1.example.com/coffee-creators",
+   "highlights": [
+    "Our Instagram picks: @fixture.barista (12K followers) pours latte art daily; roaster notes at instagram.com/fixture_roaster/."
+   ],
+   "image": null
+  },
+  {
+   "id": "https://directory2.example.com/coffee-creators",
+   "title": "Coffee creators to follow, list 2",
+   "url": "https://directory2.example.com/coffee-creators",
+   "highlights": [
+    "Contact hello@example.org. Also on Instagram: @fixture.barista and instagram.com/433/."
+   ],
+   "image": null
+  }
+ ],
+ "searchTime": 307,
+ "costDollars": {
+  "total": 0.007,
+  "search": {
+   "neural": 0.007
+  }
+ }
+}

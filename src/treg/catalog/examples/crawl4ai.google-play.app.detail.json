@@ -1,0 +1,93 @@
+{
+  "meta": {
+    "blocked": [],
+    "elapsed_ms": 0,
+    "from_cache": true,
+    "llm_calls": 0,
+    "pages_fetched": 0,
+    "partial": false,
+    "warnings": [
+      "module: play-store-app: com.whatsapp · WhatsApp Messenger · 10,000,000,000+ installs"
+    ]
+  },
+  "recipe": "play-store-app",
+  "usage": {
+    "boxes": [
+      "gate"
+    ],
+    "cache": "hit",
+    "engine": "recipe",
+    "lines": [
+      {
+        "about": "the call",
+        "boxes": [
+          "gate"
+        ],
+        "cache": "miss",
+        "call": "recipes",
+        "engine": "gate",
+        "units": 1
+      }
+    ],
+    "remaining_before": {
+      "concurrent": 99,
+      "requests": 191,
+      "search": 3000
+    },
+    "units": 1
+  },
+  "version": 2,
+  "rows": [
+    {
+      "app_id": "com.whatsapp",
+      "category": "Communication",
+      "category_id": "COMMUNICATION",
+      "contains_ads": false,
+      "content_rating": "Everyone",
+      "currency": "USD",
+      "description": "WhatsApp from Meta is a FREE messaging and video calling app. It’s used by over 2B people in more than 180 countries. It’s simple, reliable, and private, so you can easily keep in touch with your friends and family. WhatsApp works across mobile and desktop even on slow connections, with no subscript…",
+      "developer": {
+        "address": "1 Meta Way\nMenlo Park, CA 94025-1444\nUnited States",
+        "email": "[email]",
+        "id": "5191370068110375942",
+        "legal_name": "Meta Platforms, Inc.",
+        "name": "WhatsApp LLC",
+        "phone": "[phone]",
+        "url": "https://play.google.com/store/apps/developer?id=WhatsApp+LLC",
+        "website": "http://www.whatsapp.com/"
+      },
+      "header_image": "https://play-lh.googleusercontent.com/eLX_xvno2Kq_zvpkkP8yPBRfo2TEQSrv7m7WrQ6xloPsDRJ85XQ28kGYuoR-_EBWh2Uoq2GMlDvlBEIxHRyhuSg",
+      "icon": "https://play-lh.googleusercontent.com/Gqxk4T0uZsDwFp07DE-508hkyvcNmgFuRwPiwTEfF7D7OzGv1FdHDzEyMxNsSBZLOJlGpe3ULvVM2RgrRAlBqA",
+      "in_app_price_range": "$0.40 - $199.99 per item",
+      "in_app_purchases": true,
+      "installs": "10,000,000,000+",
+      "installs_exact": 12389876017,
+      "installs_min": 10000000000,
+      "is_free": true,
+      "min_android": null,
+      "name": "WhatsApp Messenger",
+      "price": 0.0,
+      "privacy_policy": "https://www.whatsapp.com/legal/privacy-policy",
+      "rating": 4.62,
+      "rating_count": 245481708,
+      "rating_histogram": {
+        "1": 10902988,
+        "2": 3477562,
+        "3": 8946736,
+        "4": 21925941,
+        "5": 200228427
+      },
+      "released": "2010-10-18T20:58:53Z",
+      "review_count": 1951367,
+      "screenshots": [
+        "https://play-lh.googleusercontent.com/GQF4h3VL-kklOrVS_f1QRAJJZa2zQyVNcFbKdOIkvI_Pcu1op0Sy3uiryiTxpdcCDs7vEDA9eq0eWbxo0fx_wc8",
+        "https://play-lh.googleusercontent.com/Q042rTbs53V_jW_c5fMqnNLCf-FBKiO2KiFKJJACa65oMCkaxqDSFKPQ7TH8nYetS-js-fMV7ptXSsF-aCkvcw"
+      ],
+      "summary": "Simple. Reliable. Private.",
+      "updated": "2026-10-10T01:39:10Z",
+      "url": "https://play.google.com/store/apps/details?id=com.whatsapp",
+      "version": null,
+      "whats_new": "• You can now choose to share recent group history with new members when you add them to a group\n• Group calls now include the ability to transfer calls between mobile and desktop, add a waiting room for call links, and pin a participant to a bigger tile.\n\nThese features will roll out over the comin…"
+    }
+  ]
+}

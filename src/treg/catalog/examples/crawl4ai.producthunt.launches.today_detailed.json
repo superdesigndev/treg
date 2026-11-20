@@ -1,0 +1,60 @@
+{
+  "meta": {
+    "blocked": [],
+    "elapsed_ms": 0,
+    "from_cache": true,
+    "llm_calls": 0,
+    "pages_fetched": 0,
+    "partial": false,
+    "warnings": [
+      "step today: 3 null fields across 43 items"
+    ]
+  },
+  "recipe": "producthunt-today-detailed",
+  "usage": {
+    "boxes": [
+      "gate"
+    ],
+    "cache": "hit",
+    "engine": "recipe",
+    "lines": [
+      {
+        "about": "the call",
+        "boxes": [
+          "gate"
+        ],
+        "cache": "miss",
+        "call": "recipes",
+        "engine": "gate",
+        "units": 1
+      }
+    ],
+    "remaining_before": {
+      "concurrent": 99,
+      "requests": 193,
+      "search": 3000
+    },
+    "units": 1
+  },
+  "version": 3,
+  "rows": [
+    {
+      "category": "SaaS",
+      "name": "ReSO AI",
+      "pricing": "freemium",
+      "summary": "ReSO is a generative engine optimization platform that helps brands improve visibility and citations in AI search results.",
+      "tagline": "Get discovered & recommended when customers ask AI",
+      "url": "https://www.producthunt.com/products/reso",
+      "website": "https://resollm.ai/"
+    },
+    {
+      "category": "DevTools",
+      "name": "Onepin",
+      "pricing": "freemium",
+      "summary": "Onepin is a production layer for AI voiceover that corrects mispronounced names, prices, and dates in existing audio.",
+      "tagline": "AI voiceover with every name, price and date said right",
+      "url": "https://www.producthunt.com/products/onepin",
+      "website": "https://onepin.ai"
+    }
+  ]
+}

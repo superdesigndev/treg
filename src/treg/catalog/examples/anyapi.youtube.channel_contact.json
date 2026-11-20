@@ -1,0 +1,19 @@
+{
+  "output": {
+    "found": true,
+    "data": {
+      "email": "business@mkbhd.com"
+    }
+  },
+  "provider": "AnyAPI",
+  "costUsd": 0.0718,
+  "items": 0,
+  "replayed": false,
+  "source": {
+    "id": "anonymous-octopus",
+    "name": "Octopus",
+    "kind": "anonymous",
+    "artworkKey": "octopus"
+  },
+  "resultId": "3a7ddda5-cf7e-413b-aea7-f4a03807f9a0"
+}

@@ -1,0 +1,68 @@
+
+export default {
+async loadApiKeys(){ if(!this.activeOrgId) return; this.keyErr=''; const live=this.ticket('apiKeys');
+      try{ const keys=await this.api('/orgs/'+this.activeOrgId+'/api-keys'); if(live()) this.apiKeys=keys; }
+      catch(e){ if(live()) this.keyErr='Could not load keys: '+(e.detail||e.status); } },
+// Billed spend per key over the last 30 days, from the daily spend rollup. A failed read leaves
+// the column blank rather than replacing the key list's own error.
+async loadApiKeySpend(){ this.apiKeySpend=null; if(!this.activeOrgId) return; const live=this.ticket('apiKeySpend');
+      const spend=await this.api('/orgs/'+this.activeOrgId+'/api-keys/spend').catch(()=>null);
+      if(live()) this.apiKeySpend=spend; },
+// null = nothing to show yet (loading, failed, or the rollup has not caught up): the cell says "—".
+keySpend(k){ const s=this.apiKeySpend; if(!s || !s.ready) return null;
+      return (s.keys||[]).find(row=>row.id===k.id)||{id:k.id,spent_micro:0,charges:0}; },
+async loadDefaultToken(){ const live=this.ticket('defaultToken');
+      const issued=await this.api('/auth/cli-token').catch(()=>null);
+      if(!live()) return;
+      this._myTokenOrg=this.activeSlugNow;
+      this.defaultKeyId=issued&&issued.default_key_id;
+      this.defaultKeyState=issued&&issued.default_key_state;
+      this.myToken=(this.defaultKeyState==='disabled')?null:((issued&&issued.token)||null);
+    },
+async enableDefaultKey(){ if(!this.defaultKeyId) return; this.keyBusy=true; this.keyErr='';
+      try{ await this.api('/orgs/'+this.activeOrgId+'/api-keys/'+this.defaultKeyId+'/enable',{method:'POST'}); await this.loadDefaultToken(); await this.loadApiKeys(); }
+      catch(e){ this.keyErr='Could not enable key: '+(e.detail||e.status); } finally{ this.keyBusy=false; } },
+keyKind(kind){ return ({default_human:'Default',additional_human:'Additional',legacy_human:'Legacy',agent:'Agent'})[kind]||kind; },
+maskedKey(k){ return k.safe_prefix ? k.safe_prefix+'••••••••' : (k.kind==='legacy_human'?'prefix unavailable — older key':'prefix unavailable'); },
+async createApiKey(){ const name=(this.keyName||'').trim(); if(!name){ this.keyErr=''; this.keyNameInvalid=true; return; }
+      const issue=this.beginCredentialIssue('key'); if(!issue) return; const live=this.ticket('keyAction');
+      this.keyBusy=true; this.keyErr='';
+      try{ const r=await this.api('/orgs/'+issue.org_id+'/api-keys',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({name})});
+        await this.finishCredentialIssue(issue,r);
+        if(live()){ this.keyName=''; this.keyNameInvalid=false; }
+        if(this.view==='orgs' && this.credentialIssue===issue) await this.loadApiKeys(); }
+      catch(e){ this.failCredentialIssue(issue); } finally{ if(live()) this.keyBusy=false; } },
+async renameApiKey(k){ const name=(this.editKeyName||'').trim(); if(!name){ this.keyErr='Enter a key name.'; return; } this.keyBusy=true;
+      try{ await this.api('/orgs/'+this.activeOrgId+'/api-keys/'+k.id,{method:'PATCH',headers:{'content-type':'application/json'},body:JSON.stringify({name})}); this.editKey=null; await this.loadApiKeys(); }
+      catch(e){ this.keyErr='Could not rename key: '+(e.detail||e.status); } finally{ this.keyBusy=false; } },
+keyHasMore(k){ return k.can_rename||k.can_disable||k.can_enable||k.can_revoke||(k.can_hide&&k.state==='revoked'); },
+keyActionBlockReason(){ return this.credentialIssue
+      ? "Handle this team's retained key result first: save and close its card, or follow its status notice." : ''; },
+blockKeyAction(){ const reason=this.keyActionBlockReason(); if(!reason) return false;
+      this.keyErr=reason; return true; },
+toggleKeyMenu(k,e){ if(this.keyMenu&&this.keyMenu.key.id===k.id){ this.keyMenu=null; return; } const r=e.currentTarget.getBoundingClientRect(); this.keyMenu={key:k,top:r.bottom+6,right:Math.max(12,innerWidth-r.right)}; },
+requestKeyAction(k,action){ if(this.blockKeyAction()) return;
+      this.keyMenu=null; if(['rotate','disable','revoke','hide'].includes(action)){ this.keyConfirm={key:k,action}; return; } return this.keyAction(k,action); },
+confirmKeyAction(){ if(!this.keyConfirm || this.blockKeyAction()) return;
+      const c=this.keyConfirm; this.keyConfirm=null; return this.keyAction(c.key,c.action); },
+async keyAction(k,action){ if(this.blockKeyAction()) return;
+      const issue=action==='rotate'?this.beginCredentialIssue('key'):null;
+      if(action==='rotate' && !issue) return;
+      const orgId=this.activeOrgId, live=this.ticket('keyAction');
+      this.keyBusy=true; this.keyErr=''; this.keyMsg=null;
+      try{ const r=await this.api('/orgs/'+orgId+'/api-keys/'+k.id+'/'+action,{method:'POST'});
+        if(issue){
+          await this.finishCredentialIssue(issue,{...r, kind:k.kind, api_key_id:r.id, connected:false,
+            assigned_name:k.assigned_name, assigned_type:k.assigned_type, user_id:k.user_id, rotated:true});
+          if(this.view==='orgs' && this.credentialIssue===issue){ this.snipAgent=null; this.agentSnip='prompt'; await this.loadApiKeys(); }
+          return;
+        }
+        if(!live()) return;
+        if(r.agent_revoked) this.keyMsg={agent:true,text:k.assigned_name+' was removed from this team, and all its keys were revoked. Historical Activity remains available.'};
+        if(k.kind==='default_human' && action!=='rotate') await this.loadDefaultToken();
+        if(!live()) return;
+        if(r.agent_revoked) await this.loadOrgAdmin(); else await this.loadApiKeys(); }
+      catch(e){ if(issue) this.failCredentialIssue(issue); else if(live()) this.keyErr='Key action failed: '+(e.detail||e.status); } finally{ if(live()) this.keyBusy=false; } },
+// A key's Activity button opens its calls, with the key picked: '#activity/calls?key=<id>'.
+showKeyActivity(k){ this._tabRoute={view:'activity', tab:'feed', key:String(k.id)}; this.go('activity'); }
+}

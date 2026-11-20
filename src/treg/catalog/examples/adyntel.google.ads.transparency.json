@@ -1,0 +1,19 @@
+{
+  "ads": [
+    {
+      "advertiser_id": "redacted-live-id",
+      "advertiser_name": "Tesla Inc.",
+      "creative_id": "redacted-live-id",
+      "format": "Text",
+      "last_seen": "2026-09-21",
+      "original_url": "https://example.invalid/redacted",
+      "start": "2024-08-06",
+      "variants": [
+        {"content": "Redacted live creative content.", "height": 232.0, "width": 348.0}
+      ]
+    }
+  ],
+  "continuation_token": "redacted-live-token",
+  "country_code": "anywhere",
+  "total_ad_count": 5000
+}

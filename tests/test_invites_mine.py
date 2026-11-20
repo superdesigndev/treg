@@ -17,7 +17,7 @@ async def client():
     await reset_db()
     async with AsyncClient(
         transport=ASGITransport(app=app), base_url="http://registry",
-        headers={"ngrok-skip-browser-warning": "1"},
+        headers={"ngrok-skip-browser-warning": "1", "X-Treg-Key-Protocol": "1"},
     ) as c:
         yield c
 
@@ -38,8 +38,8 @@ async def _make_org_with_invite(c: AsyncClient, owner_email: str, invitee: str, 
     tok = await _otp(c, owner_email)
     # a fresh user has NO org — creating their first team needs only the identity token (no X-Treg-Org)
     org = (await c.post("/orgs", json={"name": "Superdesign"}, headers=_h(tok))).json()
-    await c.post(f"/orgs/{org['org_id']}/invites", json={"email": invitee, "role": role}, headers=_h(tok, org["org"]))
-    return tok, org
+    await c.post(f"/orgs/{org['org_id']}/invites", json={"email": invitee, "role": role}, headers=_h(org["token"]))
+    return org["token"], org
 
 
 async def test_invite_seen_and_accepted_without_code(client):
@@ -68,16 +68,11 @@ async def test_cannot_accept_someone_elses_invite(client):
     assert (await client.get("/invites/mine", headers=_h(mallory))).json() == []  # sees nothing
 
 
-async def test_mine_requires_auth(client):
-    r = await client.get("/invites/mine")
-    assert r.status_code == 401
-
-
 async def _invite_code(c: AsyncClient, owner_email: str, invitee: str, role: str = "member") -> str:
     tok = await _otp(c, owner_email)
     org = (await c.post("/orgs", json={"name": "Superdesign"}, headers=_h(tok))).json()
     r = await c.post(f"/orgs/{org['org_id']}/invites",
-                     json={"email": invitee, "role": role}, headers=_h(tok, org["org"]))
+                     json={"email": invitee, "role": role}, headers=_h(org["token"]))
     return r.json()["code"]
 
 
@@ -103,7 +98,7 @@ async def test_invite_signin_link_bad_code_lands_on_site(client):
     assert "treg_session" not in r.headers.get("set-cookie", "")
 
 
-# ---- the emailed link's SECOND secret (email_token): inbox-only, may sign the invitee in ----
+# ---- the emailed link's SECOND secret (email_token): prefills the login, never a session ----
 
 @pytest.fixture
 def sent_invites(monkeypatch):
@@ -114,7 +109,8 @@ def sent_invites(monkeypatch):
 
     async def _capture(email, inviter, org_name, role, code, email_token, expires_at="", link_base="",
                        shared=""):
-        sent.append({"email": email, "code": code, "email_token": email_token, "shared": shared})
+        sent.append({"email": email, "code": code, "email_token": email_token, "shared": shared,
+                     "link_base": link_base})
         return True
 
     monkeypatch.setattr(email_mod, "send_invite", _capture)
@@ -129,65 +125,49 @@ async def test_email_token_not_in_create_response_and_differs_from_code(client, 
     tok = await _otp(client, "tom@sd.io")
     org = (await client.post("/orgs", json={"name": "Superdesign"}, headers=_h(tok))).json()
     r = (await client.post(f"/orgs/{org['org_id']}/invites",
-                           json={"email": "bob@x.io", "role": "member"}, headers=_h(tok, org["org"]))).json()
+                           json={"email": "bob@x.io", "role": "member"}, headers=_h(org["token"]))).json()
     assert "email_token" not in r  # the admin must never see the inbox-only secret
     assert len(sent_invites) == 1
     assert sent_invites[0]["email_token"] and sent_invites[0]["email_token"] != r["code"]
 
 
-async def test_email_link_get_confirms_but_never_mints_a_session(client, sent_invites):
-    """Mail scanners prefetch GETs — the GET may only render the confirm page, never a session."""
+async def test_email_link_ignores_a_forged_host_header(client, sent_invites, monkeypatch):
+    from treg.config import get_settings
+    monkeypatch.setattr(get_settings(), "public_host_aliases", ("alias.example",))
+    tok = await _otp(client, "tom@sd.io")
+    org = (await client.post("/orgs", json={"name": "Superdesign"}, headers=_h(tok))).json()
+    for host in ("attacker.example", "alias.example"):
+        r = await client.post(f"/orgs/{org['org_id']}/invites", json={"email": "bob@x.io", "role": "member"},
+                              headers={**_h(org["token"]), "host": host})
+        assert r.status_code == 200
+    public = get_settings().public_url.rstrip("/")
+    assert [s["link_base"] for s in sent_invites] == [public, "https://alias.example"]
+
+
+async def test_email_link_get_prefills_login_and_never_mints_a_session(client, sent_invites):
     await _make_org_with_invite(client, "tom@sd.io", "bob@x.io", "member")
     t = sent_invites[0]["email_token"]
     async with await _fresh() as visitor:
         r = await visitor.get(f"/auth/invite-signin?t={t}", follow_redirects=False)
-        assert r.status_code == 200 and "Continue as bob@x.io" in r.text  # the POST-confirm page
+        assert r.status_code == 303 and "invite=bob%40x.io" in r.headers["location"]
         assert "treg_session" not in r.headers.get("set-cookie", "")
-        assert (await visitor.get("/invites/mine")).status_code == 401  # still anonymous
-        # …and the token is NOT consumed by the GET (a scanner prefetch must not burn the link)
+        assert (await visitor.get("/invites/mine")).status_code == 401
         r2 = await visitor.get(f"/auth/invite-signin?t={t}", follow_redirects=False)
-        assert r2.status_code == 200
+        assert r2.status_code == 303 and "invite=bob%40x.io" in r2.headers["location"]
 
 
-async def test_email_link_post_signs_in_once_and_lands_on_invite_org(client, sent_invites):
-    _, org = await _make_org_with_invite(client, "tom@sd.io", "bob@x.io", "member")
-    t = sent_invites[0]["email_token"]
-    async with await _fresh() as visitor:
-        r = await visitor.post("/auth/invite-signin", content=f"t={t}",
-                               headers={"content-type": "application/x-www-form-urlencoded"},
-                               follow_redirects=False)
-        assert r.status_code == 303 and f"invite_org={org['org_id']}" in r.headers["location"]
-        assert "treg_session" in r.headers.get("set-cookie", "")  # signed in (first click = registration)
-        mine = (await visitor.get("/invites/mine")).json()  # the cookie authenticates the session
-        assert [m["org_id"] for m in mine] == [org["org_id"]]  # invite still PENDING — accepted in the app
-    # one-time: a second POST (forwarded thread, replay) gets no session
-    async with await _fresh() as replayer:
-        r = await replayer.post("/auth/invite-signin", content=f"t={t}",
-                                headers={"content-type": "application/x-www-form-urlencoded"},
-                                follow_redirects=False)
-        assert r.status_code == 303 and "invite_expired=1" in r.headers["location"]
-        assert "treg_session" not in r.headers.get("set-cookie", "")
-
-
-async def test_email_link_post_refuses_suspended_user(client, sent_invites):
-    from sqlmodel import select as _select
-
-    from treg.infra.db import session_maker
-    from treg.models import User
-
-    await _otp(client, "bob@x.io")  # user exists…
-    async with session_maker() as db:
-        u = (await db.execute(_select(User).where(User.email == "bob@x.io"))).scalar_one()
-        u.suspended = True
-        await db.commit()
+async def test_email_link_post_never_signs_in_an_existing_or_new_user(client, sent_invites):
+    await _otp(client, "bob@x.io")  # an existing account must not be reachable through its inbox link
     await _make_org_with_invite(client, "tom@sd.io", "bob@x.io", "member")
-    t = sent_invites[0]["email_token"]
-    async with await _fresh() as visitor:
-        r = await visitor.post("/auth/invite-signin", content=f"t={t}",
-                               headers={"content-type": "application/x-www-form-urlencoded"},
-                               follow_redirects=False)
-        assert r.status_code == 403  # …but banned: may hold the link, gets no session
-        assert "treg_session" not in r.headers.get("set-cookie", "")
+    await _make_org_with_invite(client, "ann@sd.io", "new@x.io", "member")
+    for sent in sent_invites:
+        async with await _fresh() as visitor:
+            r = await visitor.post("/auth/invite-signin", content=f"t={sent['email_token']}",
+                                   headers={"content-type": "application/x-www-form-urlencoded"},
+                                   follow_redirects=False)
+            assert r.status_code == 303 and "invite=" in r.headers["location"]
+            assert "treg_session" not in r.headers.get("set-cookie", "")
+            assert (await visitor.get("/invites/mine")).status_code == 401
 
 
 async def test_email_link_dies_with_the_invite(client, sent_invites):
@@ -201,14 +181,27 @@ async def test_email_link_dies_with_the_invite(client, sent_invites):
         assert r.status_code == 303 and "invite_expired=1" in r.headers["location"]
 
 
-async def test_invites_mine_newest_first_with_created_at(client, sent_invites):
+@pytest.mark.parametrize("same_timestamp", [False, True])
+async def test_invites_mine_newest_first_with_created_at(client, sent_invites, same_timestamp):
     """Two teams invite the same email → /invites/mine lists the newest invite first (the one whose
     link was most likely just clicked) and carries created_at for the dashboard's sort."""
     _, org1 = await _make_org_with_invite(client, "tom@sd.io", "bob@x.io", "member")
     tok2 = await _otp(client, "ann@other.io")
     org2 = (await client.post("/orgs", json={"name": "Second Team"}, headers=_h(tok2))).json()
     await client.post(f"/orgs/{org2['org_id']}/invites",
-                      json={"email": "bob@x.io", "role": "viewer"}, headers=_h(tok2, org2["org"]))
+                      json={"email": "bob@x.io", "role": "viewer"}, headers=_h(org2["token"]))
+    # Control the ordering evidence rather than relying on wall-clock progression. Equal
+    # timestamps also occur on coarse clocks and need a stable newest-inserted tiebreaker.
+    from datetime import datetime, timedelta
+    from sqlmodel import select
+    from treg.infra.db import session_maker
+    from treg.models import Invite
+
+    async with session_maker() as db:
+        invites = (await db.execute(select(Invite).order_by(Invite.id))).scalars().all()
+        for index, invite in enumerate(invites):
+            invite.created_at = datetime(2026, 1, 1) + timedelta(seconds=0 if same_timestamp else index)
+        await db.commit()
     bob = await _otp(client, "bob@x.io")
     mine = (await client.get("/invites/mine", headers=_h(bob))).json()
     assert [m["org"] for m in mine] == [org2["org"], org1["org"]]  # newest first
@@ -229,15 +222,15 @@ SHARE_SKILL = {
 
 async def test_share_invite_landing_roundtrip_and_redirect(client, sent_invites):
     """An invite created with a landing page: surfaces in /invites/mine, scopes tool access,
-    flavours the email, and the emailed link's POST lands on the shared page (not the dashboard)."""
+    and flavours the email."""
     tok = await _otp(client, "tom@sd.io")
     org = (await client.post("/orgs", json={"name": "Superdesign"}, headers=_h(tok))).json()
-    await client.post("/skills", json=SHARE_SKILL, headers=_h(tok, org["org"]))
+    await client.post("/skills", json=SHARE_SKILL, headers=_h(org["token"]))
     r = await client.post(
         f"/orgs/{org['org_id']}/invites",
         json={"email": "bob@x.io", "role": "viewer", "landing": "/app/skills/intercom",
               "tool_access": ["intercom"], "local_run_enabled": False},
-        headers=_h(tok, org["org"]))
+        headers=_h(org["token"]))
     assert r.status_code == 200, r.text
     assert "the skill" in sent_invites[0]["shared"] and "intercom" in sent_invites[0]["shared"]
 
@@ -245,13 +238,6 @@ async def test_share_invite_landing_roundtrip_and_redirect(client, sent_invites)
     mine = (await client.get("/invites/mine", headers=_h(bob))).json()
     assert mine[0]["landing"] == "/app/skills/intercom"
 
-    t = sent_invites[0]["email_token"]
-    async with await _fresh() as visitor:
-        resp = await visitor.post("/auth/invite-signin", content=f"t={t}",
-                                  headers={"content-type": "application/x-www-form-urlencoded"},
-                                  follow_redirects=False)
-        assert resp.status_code == 303
-        assert resp.headers["location"] == f"/app/skills/intercom?invite_org={org['org_id']}"
 
 
 async def test_share_invite_landing_is_allowlisted(client):
@@ -261,9 +247,9 @@ async def test_share_invite_landing_is_allowlisted(client):
     for bad in ("https://evil.com", "//evil.com/x", "/app/skills/../../etc", "/app/other/x",
                 "/app/skills/", "/app/skills/a/b", "javascript:alert(1)"):
         r = await client.post(f"/orgs/{org['org_id']}/invites",
-                              json={"email": "bob@x.io", "landing": bad}, headers=_h(tok, org["org"]))
+                              json={"email": "bob@x.io", "landing": bad}, headers=_h(org["token"]))
         assert r.status_code == 422, f"{bad!r} should be rejected, got {r.status_code}"
     ok = await client.post(f"/orgs/{org['org_id']}/invites",
                            json={"email": "bob@x.io", "landing": "/app/tools/stripe-cli"},
-                           headers=_h(tok, org["org"]))
+                           headers=_h(org["token"]))
     assert ok.status_code == 200

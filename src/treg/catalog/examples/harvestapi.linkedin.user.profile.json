@@ -1,0 +1,190 @@
+{
+  "element": {
+    "id": "1234567890",
+    "publicIdentifier": "alex-example",
+    "linkedinUrl": "https://example.com/synthetic-record",
+    "firstName": "Alex",
+    "lastName": "Example",
+    "emails": [],
+    "headline": "Synthetic example",
+    "openToWork": false,
+    "hiring": false,
+    "premium": true,
+    "influencer": true,
+    "memorialized": false,
+    "creator": true,
+    "location": {
+      "linkedinText": "Synthetic example",
+      "countryCode": "US",
+      "parsed": {
+        "text": "Synthetic example",
+        "countryCode": "US",
+        "regionCode": null,
+        "country": "United States",
+        "countryFull": "Synthetic example",
+        "state": "Synthetic example",
+        "city": "Synthetic example"
+      }
+    },
+    "objectUrn": "1234567890",
+    "topSkills": null,
+    "connectionsCount": 8,
+    "followerCount": 40636473,
+    "about": "Synthetic example",
+    "currentPosition": [
+      {
+        "position": "Synthetic example",
+        "location": null,
+        "employmentType": null,
+        "workplaceType": null,
+        "companyName": "Synthetic example",
+        "companyLinkedinUrl": "https://example.com/synthetic-record",
+        "companyId": "1234567890",
+        "companyUniversalName": "Synthetic example",
+        "duration": null,
+        "description": null,
+        "skills": [],
+        "startDate": {
+          "month": null,
+          "year": 2000,
+          "text": "Synthetic example"
+        },
+        "endDate": {
+          "text": "Synthetic example"
+        },
+        "companyLogo": {
+          "url": "https://example.com/synthetic-record",
+          "sizes": []
+        }
+      }
+    ],
+    "profileTopEducation": [
+      {
+        "schoolName": "Synthetic example",
+        "schoolLinkedinUrl": "https://example.com/synthetic-record",
+        "schoolId": "1234567890",
+        "degree": null,
+        "fieldOfStudy": null,
+        "skills": [],
+        "description": null,
+        "insights": null,
+        "startDate": {
+          "month": null,
+          "year": 1973,
+          "text": "Synthetic example"
+        },
+        "endDate": {
+          "month": null,
+          "year": 1975,
+          "text": "Synthetic example"
+        },
+        "period": "Synthetic example",
+        "schoolLogo": {
+          "url": "https://example.com/synthetic-record",
+          "sizes": [
+            {
+              "url": "https://example.com/synthetic-record",
+              "width": 200,
+              "height": 200
+            }
+          ]
+        }
+      }
+    ],
+    "profileActions": [],
+    "profileLocales": [
+      {
+        "country": "US",
+        "language": "en"
+      }
+    ],
+    "primaryLocale": {
+      "country": "US",
+      "language": "en"
+    },
+    "multiLocaleHeadline": [
+      {
+        "headline": "Synthetic example",
+        "locale": "en"
+      }
+    ],
+    "services": null,
+    "experience": [
+      {
+        "position": "Synthetic example",
+        "location": null,
+        "employmentType": null,
+        "workplaceType": null,
+        "companyName": "Synthetic example",
+        "companyLinkedinUrl": "https://example.com/synthetic-record",
+        "companyId": "1234567890",
+        "companyUniversalName": "Synthetic example",
+        "duration": null,
+        "description": null,
+        "skills": [],
+        "startDate": {
+          "month": null,
+          "year": 2000,
+          "text": "Synthetic example"
+        },
+        "endDate": {
+          "text": "Synthetic example"
+        },
+        "companyLogo": {
+          "url": "https://example.com/synthetic-record",
+          "sizes": []
+        }
+      }
+    ],
+    "education": [
+      {
+        "schoolName": "Synthetic example",
+        "schoolLinkedinUrl": "https://example.com/synthetic-record",
+        "schoolId": "1234567890",
+        "degree": null,
+        "fieldOfStudy": null,
+        "skills": [],
+        "description": null,
+        "insights": null,
+        "startDate": {
+          "month": null,
+          "year": 1973,
+          "text": "Synthetic example"
+        },
+        "endDate": {
+          "month": null,
+          "year": 1975,
+          "text": "Synthetic example"
+        },
+        "period": "Synthetic example",
+        "schoolLogo": {
+          "url": "https://example.com/synthetic-record",
+          "sizes": [
+            {
+              "url": "https://example.com/synthetic-record",
+              "width": 200,
+              "height": 200
+            }
+          ]
+        }
+      }
+    ],
+    "certifications": [],
+    "projects": [],
+    "volunteering": [],
+    "receivedRecommendations": [],
+    "skills": [],
+    "publications": [],
+    "courses": [],
+    "honorsAndAwards": [],
+    "languages": [],
+    "causes": [],
+    "featured": null
+  },
+  "status": 200,
+  "retries": 0,
+  "payments": [
+    "linkedinProfile"
+  ],
+  "cost": 0.0064
+}

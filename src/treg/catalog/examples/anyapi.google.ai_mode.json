@@ -1,0 +1,22 @@
+{
+  "output": {
+    "found": true,
+    "data": {
+      "answer": "## You sent: 1 tab and said: What is AnyAPI at getanyapi.com, and what does it offer?\n\nGet the cheapest, most reliable data.\n\nWhat is AnyAPI at getanyapi.com, and what does it offer?\n\nAnyAPI (getanyap… [1824 chars]",
+      "answerMarkdown": "## You sent: 1 tab and said: What is AnyAPI at getanyapi.com, and what does it offer?\n\nGet the cheapest, most reliable data.\n\nWhat is AnyAPI at getanyapi.com, and what does it offer?\n\nAnyAPI (getanyap… [1824 chars]",
+      "citations": [],
+      "prompt": "What is AnyAPI at getanyapi.com, and what does it offer?"
+    }
+  },
+  "provider": "AnyAPI",
+  "costUsd": 0.0007,
+  "items": 0,
+  "replayed": false,
+  "source": {
+    "id": "anonymous-badger",
+    "name": "Badger",
+    "kind": "anonymous",
+    "artworkKey": "badger"
+  },
+  "resultId": "8da06773-3e75-4340-97ba-cd206440aa41"
+}

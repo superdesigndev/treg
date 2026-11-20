@@ -1,0 +1,36 @@
+{
+  "output": {
+    "data": {
+      "nextCursor": "Gh7ZBDciBL2HhYHDfhLoBB73slTKZPO0XY56mH_OpNJb56MqVvEBh-xW3E8VmzEsNOwH4xRb9dPg3qirprxud9TAFJEB-guB4qqhTCWXvK5BYDOIEiEeCOHjApImb-iQxBVy-929tEBevd01xqs",
+      "users": [
+        {
+          "followers": 3137071,
+          "following": 128,
+          "handle": "chefrush",
+          "nickname": "ChefRush",
+          "userId": "6659823863894097926"
+        },
+        {
+          "followers": 5436719,
+          "following": 89,
+          "handle": "chefpierce",
+          "nickname": "ChefPierce 👨🏾‍🍳",
+          "userId": "6798328481962279941"
+        },
+        "… 8 more item(s) truncated"
+      ]
+    },
+    "found": true
+  },
+  "provider": "AnyAPI",
+  "costUsd": 0.0007,
+  "items": 10,
+  "replayed": false,
+  "source": {
+    "id": "anonymous-bison-cb2f8f3c",
+    "name": "Bison",
+    "kind": "anonymous",
+    "artworkKey": "bison"
+  },
+  "resultId": "6835bbf7-a9ec-4613-9d78-f720502f2496"
+}

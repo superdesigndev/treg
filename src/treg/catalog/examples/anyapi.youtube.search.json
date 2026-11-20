@@ -1,0 +1,31 @@
+{
+  "output": {
+    "found": true,
+    "data": {
+      "videos": [
+        {
+          "channel": "Tasty",
+          "id": "Xx7sxWI9FNI",
+          "lengthText": "4:34",
+          "publishedTime": "8 years ago",
+          "title": "How To Cook Perfect Rice Every Time",
+          "url": "https://www.youtube.com/watch?v=Xx7sxWI9FNI",
+          "views": 13301175
+        },
+        "… 19 more item(s) truncated"
+      ]
+    }
+  },
+  "provider": "AnyAPI",
+  "costUsd": 0.0005,
+  "items": 20,
+  "replayed": false,
+  "source": {
+    "id": "anonymous-badger",
+    "name": "Badger",
+    "kind": "anonymous",
+    "artworkKey": "badger"
+  },
+  "hint": "paging_unavailable: this result came from a source that cannot return a nextCursor, so it may be incomplete and there is no way to continue from here. Re-run with `requireFields: [\"nextCursor\"]` to be… [272 chars]",
+  "resultId": "371ca516-3631-4ab7-a2e9-2c0f10e75b12"
+}

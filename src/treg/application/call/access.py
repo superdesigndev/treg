@@ -6,22 +6,30 @@ platform service tiers satisfy an endpoint.
 
 from __future__ import annotations
 
+from urllib.parse import urlsplit
+
+import json
+
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from ... import oauth_providers
 from ...config import get_settings
 from ...domain import money as ledger
-from ...domain.catalog import store as catalog_store
+from ...domain.catalog import schema, store as catalog_store
 from ...domain.connections import authorization as connection_authorization
 from ...domain.identity.access import Caller
 from .resolve import (
     _authorization_method,
+    _anonymous_offer,
+    _anonymous_refusal,
     _enforce_catalog_status,
+    _marketplace_pricing,
     _marketplace_secret,
     _platform_estimate_micro,
     _platform_offer,
     _provider_tool_grant,
     _resolve_call,
+    provider_paused,
     resolve_call_target,
 )
 from .route import RouteOptions, build_plan
@@ -41,6 +49,8 @@ async def catalog_endpoint_access(
         )
     _enforce_catalog_status(endpoint)
     service = endpoint["provider"]
+    if oauth_providers.is_paused(service):
+        raise provider_paused(service, endpoint_id)
     if endpoint.get("kind") == "routed":
         return await _routed_access(endpoint, caller, catalog)
 
@@ -53,7 +63,8 @@ async def catalog_endpoint_access(
         )
     except ValueError as exc:
         raise ResolutionFailed(
-            "catalog_parameter_invalid", status_code=400, detail=str(exc),
+            "catalog_parameter_invalid", status_code=400, rule="authorization_method",
+            detail=str(exc),
         ) from None
     provider = (
         registry_provider.profile_for_authorization(methods[0])
@@ -63,7 +74,9 @@ async def catalog_endpoint_access(
 
     if methods:
         try:
-            grant = await _provider_tool_grant(service, methods, caller, db)
+            grant = await _provider_tool_grant(
+                service, methods, caller, db, endpoint=endpoint,
+            )
         except CallFailure as exc:
             if exc.status_code == 403:
                 return {
@@ -74,7 +87,16 @@ async def catalog_endpoint_access(
                 }
             raise
         if grant is not None:
-            tool, _, grant_method = grant
+            tool, secret, grant_method = grant
+            specification = connection_authorization.method_spec(
+                registry_provider, grant_method,
+            )
+            required = connection_authorization.required_scopes(endpoint, specification)
+            if any(scope not in secret.granted_scopes.split() for scope in required):
+                return _missing_access(
+                    endpoint, registry_provider, provider, (grant_method,), service,
+                    existing=True,
+                )
             return {
                 "tier": "tool",
                 "authorization_method": grant_method,
@@ -94,19 +116,57 @@ async def catalog_endpoint_access(
         if direct is not None:
             return direct
 
+    anonymous = _anonymous_offer(endpoint, caller.org)
+    if anonymous is not None:
+        return {
+            "tier": "anonymous",
+            "metered": False,
+            "detail": "no provider key needed — the verified public upstream route is free",
+            "estimated_cost_micro": 0,
+            "estimated_cost_usd": 0,
+        }
+
     cost = _platform_offer(endpoint, provider, caller.org)
     if cost is not None:
-        estimate = _platform_estimate_micro(cost, {})
+        # The number is the honest per-call price at the DEFAULT page size — a `per_result`
+        # endpoint costs more or less depending on how many rows the caller asks for, so it is "~".
+        estimate = _platform_access_estimate(endpoint, service, cost)
+        low = cost.get("usd_min")  # a price table: the figure depends on model/resolution/duration
+        if isinstance(low, (int, float)) and low < ledger.usd(estimate):
+            price = (f"${low:g}-${ledger.usd(estimate):g} by model, resolution and duration (the "
+                     f"matching rate-card row is held; you pay the provider's reported cost, which "
+                     f"can exceed it)" if cost.get("settle") == "usage" else
+                     f"${low:g}-${ledger.usd(estimate):g} by model, resolution and duration (reserved "
+                     f"at the table row your request matches)")
+        elif isinstance(cost.get("display_usd"), (int, float)) and cost.get("display_unit"):
+            price = f"${cost['display_usd']:g}/{cost['display_unit']}"
+        else:
+            price = f"~${ledger.usd(estimate):g}/call"
         return {
             "tier": "platform",
-            "detail": (
-                f"no key needed — uses treg's {service} key, "
-                f"~${ledger.usd(estimate):g}/call from your team balance (treg balance)"
-            ),
+            "detail": (f"no key needed — uses treg's {service} key, {price} "
+                       f"from your team balance (treg balance)"),
             "estimated_cost_micro": estimate,
             "estimated_cost_usd": ledger.usd(estimate),
+            **({"estimated_cost_usd_min": low} if isinstance(low, (int, float)) else {}),
         }
-    return _missing_access(endpoint, registry_provider, provider, methods, service)
+    return _missing_access(endpoint, registry_provider, provider, methods, service, org=caller.org)
+
+
+def _platform_access_estimate(endpoint: dict, service: str, cost: dict) -> int:
+    """Estimate the catalog's runnable example, including provider-specific request pricing."""
+    if schema.is_v2(endpoint):
+        return _marketplace_pricing(service, endpoint["id"], cost, {}, b"")[0]
+    if service != "openmart":
+        return _platform_estimate_micro(cost, {})
+    test_request = endpoint.get("test_request") or {}
+    body_value = test_request.get("body")
+    body = json.dumps(body_value).encode() if body_value is not None else b""
+    query = dict(test_request.get("query") or {})
+    estimate, _unit = _marketplace_pricing(
+        service, endpoint["id"], cost, query, body,
+    )
+    return estimate
 
 
 async def _routed_access(endpoint: dict, caller: Caller, catalog) -> dict:
@@ -124,6 +184,18 @@ async def _routed_access(endpoint: dict, caller: Caller, catalog) -> dict:
                 plan = trial
                 break
     if not plan.candidates:
+        # a placeholder value cannot reach a child gated on a real one (a derive on a known board
+        # system): ask with each child's own verified test identity too
+        for child_id in endpoint.get("routed_children") or []:
+            adapter = catalog.adapters.get(child_id)
+            sample = dict(getattr(adapter, "test_identity", None) or {})
+            if not sample:
+                continue
+            trial = await build_plan(endpoint, sample, caller, options)
+            if trial.candidates:
+                plan = trial
+                break
+    if not plan.candidates:
         return {
             "tier": "none",
             "detail": (
@@ -135,6 +207,7 @@ async def _routed_access(endpoint: dict, caller: Caller, catalog) -> dict:
     how = (
         "your registered tool" if first.tier == "tool" else
         "your own credential" if first.tier == "credential" else
+        "a verified public upstream route, no provider key" if first.tier == "anonymous" else
         f"treg's {first.endpoint['provider']} key, ~${(first.price_micro or 0) / 1e6:g}"
     )
     dropped_note = ""
@@ -161,7 +234,8 @@ def _billed_note(endpoint: dict, provider, service: str, catalog) -> str:
     if not (provider.platform_billed and service in get_settings().oauth_billed_set):
         return ""
     cost = catalog.cost_view(endpoint.get("cost"), service) if endpoint.get("cost") else None
-    estimate = _platform_estimate_micro(cost, {}) if cost and cost.get("usd") else 0
+    estimate = ((_marketplace_pricing(service, endpoint["id"], cost, {}, b"")[0] if schema.is_v2(endpoint)
+                 else _platform_estimate_micro(cost, {})) if cost and cost.get("usd") else 0)
     if estimate:
         return (
             f" — metered from the team balance (~${ledger.usd(estimate):g}/call: "
@@ -174,25 +248,33 @@ async def _direct_access(
     endpoint: dict, provider, service: str, caller: Caller, db: AsyncSession,
     billed_note: str,
 ) -> dict | None:
-    probe = provider.base_url.rstrip("/") + "/" + (endpoint["path"] or "/").lstrip("/")
-    try:
-        target = await resolve_call_target(probe, caller, _resolve_call)
-        return {
-            "tier": "tool",
-            "metered": bool(billed_note),
-            "detail": (
-                f"will use this org's registered {target.tool.name!r} tool{billed_note}"
-            ),
-        }
-    except CallFailure as exc:
-        if exc.status_code == 403:
+    base = provider.base_url
+    if endpoint.get("host") and provider.catalog_targets:  # as resolve: only an approved second host moves the call
+        try:
+            base = provider.profile_for_catalog_host(endpoint["host"]).base_url
+        except ValueError:
+            base = urlsplit(base)._replace(netloc=endpoint["host"]).geturl()
+    probe = base.rstrip("/") + "/" + (endpoint["path"] or "/").lstrip("/")
+    for url in provider.tool_lookup_urls(probe):
+        try:
+            target = await resolve_call_target(url, caller, _resolve_call)
             return {
-                "tier": "restricted",
-                "detail": "a registered tool exists but your access is restricted — ask an admin",
+                "tier": "tool",
+                "metered": bool(billed_note),
+                "detail": (
+                    f"will use this org's registered {target.tool.name!r} tool{billed_note}"
+                ),
             }
-        if exc.status_code != 404:
-            raise
-    if await _marketplace_secret(service, caller.org_id, db) is not None:
+        except CallFailure as exc:
+            if exc.status_code == 403:
+                return {
+                    "tier": "restricted",
+                    "detail": "a registered tool exists but your access is restricted — ask an admin",
+                }
+            if exc.status_code != 404:
+                raise
+    if getattr(provider, "auth_kind", "") != "public" and (
+            await _marketplace_secret(service, caller.org_id, db) is not None):
         return {
             "tier": "credential",
             "metered": bool(billed_note),
@@ -203,24 +285,36 @@ async def _direct_access(
 
 def _missing_access(
     endpoint: dict, registry_provider, provider, methods: tuple[str, ...], service: str,
+    *, existing: bool = False, org=None,
 ) -> dict:
     specification = (
         connection_authorization.method_spec(registry_provider, methods[0]) if methods else None
     )
-    capability = specification.connect_capability if specification else ""
-    connect = f"treg connections connect --provider {service}"
-    if capability:
+    capability = connection_authorization.connect_capability(
+        registry_provider, endpoint, specification,
+    )
+    public = getattr(registry_provider, "auth_kind", "") == "public"
+    connect = "" if public else f"treg connections connect --provider {service}"
+    if capability and not public:
         connect += f" --capability {capability}"
     hint = (
         f"connect with: {connect}" if not provider.uses_pasted_secret else
         f"connect with: {connect}, or treg secret add {service} …"
+    )
+    detail = (
+        f"{endpoint['id']} {_anonymous_refusal(endpoint, org)}" if public else
+        f"the connected {service} authorization needs more access — reconnect with: {connect}"
+        if existing else f"no {service} credential in this org yet — {hint}"
     )
     return {
         "tier": "none",
         "authorization_method": methods[0] if methods else "",
         "connect_capability": capability,
         "connect_command": connect,
-        "action_label": specification.action_label if specification else "",
+        "action_label": (
+            connection_authorization.action_label(specification, capability)
+            if specification else ""
+        ),
         "missing_message": specification.missing_message if specification else "",
-        "detail": f"no {service} credential in this org yet — {hint}",
+        "detail": detail,
     }

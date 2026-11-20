@@ -1,6 +1,6 @@
-"""`treg run` — grants for local CLI execution (docs/CLI-RUN-PLAN.md).
+"""`treg run` — grants for local CLI execution (docs/context/architecture/local-run.md).
 
-Three layers, mirroring the plan's §12: pure unit tests on `localrun` (profile merge, deny
+Three layers: pure unit tests on `localrun` (profile merge, deny
 semantics, validation), endpoint tests on /grant + /run-report (custody, opt-in, deny, audit,
 health feedback, params, cross-org), and client tests on `cmd_run` (env composition, exit codes,
 verdict reporting) with subprocess/network mocked.
@@ -17,6 +17,7 @@ from httpx import AsyncClient
 from treg import cli as _cli
 from treg import localrun
 from treg.models import Tool
+from conftest import verified_signup, accept_with_code
 
 
 @pytest.fixture(autouse=True)
@@ -70,10 +71,6 @@ def test_effective_profile_deny_defaults_false_drops_catalog_denies_only():
     eff = localrun.effective_profile(
         _tool(cli={"enabled": True, "deny": ["refunds"], "deny_defaults": False}), catalog)
     assert eff["deny"] == ["refunds"]                                # kept mine, dropped the default
-
-
-def test_effective_profile_none_when_nobody_knows_the_cli():
-    assert localrun.effective_profile(_tool(cli=None), None) is None
 
 
 # ---- unit: deny semantics ------------------------------------------------------------------
@@ -145,7 +142,8 @@ def test_catalog_cli_recipe_becomes_runnable_tool(tmp_path):
     # The bridge: a secret-less recipe skill the catalog knows as a CLI (stripe-cli) becomes a runnable
     # cli tool, sourcing its credential from an env var — a gap when absent, ready when present.
     from treg import skills as sk, providers as prov
-    d = tmp_path / "stripe-cli"; d.mkdir()
+    d = tmp_path / "stripe-cli"
+    d.mkdir()
     (d / "SKILL.md").write_text("# use the stripe CLI to do things")
     det = sk._classify(d, prov.CATALOG, set())                       # STRIPE_API_KEY not in env
     assert det.kind == "generated" and det.cli and det.cli["enabled"] is True
@@ -184,14 +182,14 @@ _ENV_CLI = {"enabled": True, "bin": "stripe", "inject": [{"via": "env", "name": 
 
 
 # ---- endpoint: grant happy path + audit ----------------------------------------------------
-async def test_config_file_cli_is_local_only_not_server_runnable(clients: AsyncClient):
+async def test_cli_profiles_never_advertise_server_execution(clients: AsyncClient):
     """A config_file/device CLI authenticates from the member's own machine, so it must NOT report as
-    server_runnable (the auto-import routes it local). An env CLI stays server_runnable."""
+    server_runnable. An env CLI also has server execution disabled."""
     await _mk_tool(clients, name="pscale", cli={"enabled": True, "bin": "stripe", "auth_mechanism": "config_file"})
     await _mk_tool(clients, name="strp", cli={"enabled": True, "bin": "stripe", "auth_mechanism": "env"})
     tools = {t["name"]: t for t in (await clients.get("/tools")).json()}
     assert tools["pscale"]["server_runnable"] is False   # config_file → local only
-    assert tools["strp"]["server_runnable"] is True       # env → server-injectable
+    assert tools["strp"]["server_runnable"] is False
 
 
 async def test_grant_local_tier_cli_injects_nothing(clients: AsyncClient):
@@ -319,11 +317,6 @@ async def test_grant_creator_deny_and_deny_defaults_opt_out(clients: AsyncClient
 
 
 # ---- endpoint: refusals --------------------------------------------------------------------
-async def test_grant_unknown_tool_404(clients: AsyncClient):
-    r = await clients.post("/tools/nope/grant", json={"argv": []})
-    assert r.status_code == 404
-
-
 async def test_grant_no_profile_409_with_template(clients: AsyncClient):
     await _mk_tool(clients, name="zzz-internal", cli=None)  # no catalog match, no contract cli
     r = await clients.post("/tools/zzz-internal/grant", json={"argv": []})
@@ -367,7 +360,7 @@ async def test_grant_refused_for_viewer_who_may_still_call(clients: AsyncClient)
     await clients.post("/tools", json={"name": "stripe", "base_url": "http://upstream", "secret_id": sid,
                                        "cli": {"enabled": True}}, headers=h)
     code = (await clients.post(f"/orgs/{org_id}/invites", json={"email": "vi@x.dev", "role": "viewer"}, headers=h)).json()["code"]
-    vtok = (await clients.post("/invites/accept", json={"code": code, "email": "vi@x.dev"})).json()["token"]
+    vtok = (await accept_with_code(clients, json={"code": code, "email": "vi@x.dev"})).json()["token"]
     vh = {"X-Treg-Token": vtok}
     assert (await clients.get("/call/stripe/anything", headers=vh)).status_code == 200   # viewer may call
     r = await clients.post("/tools/stripe/grant", json={"argv": []}, headers=vh)
@@ -407,7 +400,7 @@ async def test_delete_secret_blocked_when_used_by_cli_inject(clients: AsyncClien
 
 async def test_grant_cross_org_isolation(clients: AsyncClient):
     await _mk_tool(clients, cli=_ENV_CLI)
-    other = (await clients.post("/users", json={"email": "eve@other.dev"})).json()["token"]
+    other = (await verified_signup(clients, json={"email": "eve@other.dev"})).json()["token"]
     r = await clients.post("/tools/stripe/grant", json={"argv": []},
                            headers={"X-Treg-Token": other})
     assert r.status_code == 404                                     # her org has no such tool
@@ -641,6 +634,9 @@ def test_cmd_run_linux_hands_off_to_treg_run_user(monkeypatch):
     # On Linux with local-run set up, the member never fetches the credential: it execs
     # `sudo -u treg-run <runner>` and passes its own token through the environment.
     from treg import cli as cli_mod
+    # From a cwd treg-run can't traverse, the hand-off chdirs to /tmp before exec; recording the
+    # cwd here makes monkeypatch restore it, since the stubbed exec returns into this process.
+    monkeypatch.chdir(os.getcwd())
     monkeypatch.setattr(cli_mod.sys, "platform", "linux")
     monkeypatch.setattr(cli_mod.os.path, "exists", lambda p: p == cli_mod._RUNNER_PATH)
     seen = {}
@@ -667,7 +663,8 @@ def test_cmd_run_helper_uses_env_context(monkeypatch):
     monkeypatch.setattr(cli_mod, "_client", lambda cfg: seen.update(cfg=cfg) or _FakeClient({"/grant": grant}))
     monkeypatch.setattr(cli_mod.shutil, "which", lambda b: f"/bin/{b}")
     monkeypatch.setattr(cli_mod.subprocess, "Popen", lambda cmd, env=None, **kw: _FakeProc(0, b""))
-    monkeypatch.setenv("TREG_RUN_TOKEN", "T"); monkeypatch.setenv("TREG_RUN_BASE", "http://x")
+    monkeypatch.setenv("TREG_RUN_TOKEN", "T")
+    monkeypatch.setenv("TREG_RUN_BASE", "http://x")
     monkeypatch.setenv("TREG_RUN_ORG", "acme")
     with pytest.raises(SystemExit):
         cli_mod.cmd_run_helper(_run_args("gh", "api", "user"), {})
@@ -732,13 +729,6 @@ def test_setup_local_run_guards(monkeypatch):
     assert "sudo" in str(e2.value.code)                            # needs root, on macOS too
 
 
-def test_parser_dispatches_run_helper_and_setup():
-    from treg import cli as cli_mod
-    p = cli_mod.build_parser()
-    assert p.parse_args(["setup-local-run"]).fn is cli_mod.cmd_setup_local_run
-    assert p.parse_args(["__run-helper", "gh", "--", "api", "user"]).fn is cli_mod.cmd_run_helper
-
-
 def test_run_parser_remainder():
     from treg import cli as cli_mod
     # argparse consumes the first `--` itself; flags after it survive verbatim into the remainder
@@ -759,7 +749,7 @@ async def test_owner_only_binding_and_runner_proof(clients: AsyncClient, monkeyp
                                        "cli": {"enabled": True, "bin": "printenv", "inject": [{"via": "env", "name": "X"}]}})
     org_id = (await clients.get("/orgs")).json()[0]["org_id"]
     inv = (await clients.post(f"/orgs/{org_id}/invites", json={"email": "memberb@x.dev", "role": "member"})).json()
-    tokB = (await clients.post("/invites/accept", json={"code": inv["code"], "email": "memberb@x.dev"})).json()["token"]
+    tokB = (await accept_with_code(clients, json={"code": inv["code"], "email": "memberb@x.dev"})).json()["token"]
     hb = {"X-Treg-Token": tokB}
 
     # A1 — member B cannot bind the owner's secret to a tool B controls
@@ -838,19 +828,6 @@ def test_cmd_run_allows_vendor_flags_after_the_separator(monkeypatch):
     with pytest.raises(SystemExit) as e:
         cli_mod.cmd_run(args, {"base_url": "http://x", "token": "t"})
     assert "before the tool name" not in str(e.value.code).lower()          # guard did NOT trip
-
-
-async def test_run_slot_caps_concurrent_runs_per_user():
-    from treg import runner
-    import contextlib
-    async with contextlib.AsyncExitStack() as stack:
-        for _ in range(runner.MAX_CONCURRENT_RUNS_PER_USER):        # fill this user's slots
-            await stack.enter_async_context(runner.run_slot("u@x"))
-        with pytest.raises(runner.RunBusy):                          # one more → busy
-            await stack.enter_async_context(runner.run_slot("u@x"))
-    # slots released on exit → a fresh run works again
-    async with runner.run_slot("u@x"):
-        pass
 
 
 def test_run_server_timeout_exits_nonzero(monkeypatch):

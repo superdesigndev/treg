@@ -26,19 +26,21 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import create_async_engine
 
 from treg import api as A
-from treg.domain.catalog import stats as catalog_stats
+from treg.application import catalog_stats
 from treg.application.call import service as call_service
 from treg.routers import call as call_routes
 from treg import audit
 from treg.domain import money as ledger
 from treg.config import get_settings
-from treg.infra.db import _engine, session_maker
+from treg.infra.db import _background_engine, _engine, answers_db_busy, is_db_busy, session_maker
 from treg.infra.upstream.relay import relay as upstream_relay
-from treg.models import CallRecord, Hold
+from treg.models import EndpointDayStat, Hold
 
 from test_marketplace_call import EP, EP_MICRO, platform_on  # noqa: F401 — fixture reuse
 from test_mcp import _call_tool, mcp_session
 
+from asyncpg.exceptions import CannotConnectNowError, TooManyConnectionsError
+from sqlalchemy.exc import IntegrityError, InterfaceError, OperationalError
 from sqlalchemy.exc import TimeoutError as PoolTimeoutError
 
 
@@ -50,39 +52,37 @@ async def dispose_exhausted_pool_on_its_own_loop():
     await _engine.dispose()
 
 
-def _relay_that_checks_the_pool(seen: list[int]):
-    """The real relay, with the pool's checked-out count sampled at the moment the upstream is
+def _relay_that_checks_the_pool(seen: list[int], held):
+    """The real relay, with the connections the call holds sampled at the moment the upstream is
     called. Recorded rather than asserted here: an assertion inside the relay would surface as a
     502, not a test failure."""
     original = upstream_relay
 
     async def _relay(*args, **kwargs):
-        seen.append(_engine.pool.checkedout())
+        seen.append(held())
         return await original(*args, **kwargs)
 
     return _relay
 
 
 async def test_a_metered_call_holds_no_db_connection_while_upstream_is_called(
-    clients: AsyncClient, platform_on, monkeypatch,
+    clients: AsyncClient, platform_on, monkeypatch, connections_held_here,
 ):
-    await audit.drain()  # an earlier test's fire-and-forget audit row must not be counted
     seen: list[int] = []
-    monkeypatch.setattr(call_service, "relay", _relay_that_checks_the_pool(seen))
+    monkeypatch.setattr(call_service, "relay", _relay_that_checks_the_pool(seen, connections_held_here))
     r = await clients.get(f"/call/{EP}?aweme_id=7")
     assert r.status_code == 200, r.text
     assert seen == [0], f"pooled connections held during the upstream round trip: {seen}"
 
 
 async def test_an_own_key_call_holds_no_db_connection_while_upstream_is_called(
-    clients: AsyncClient, monkeypatch,
+    clients: AsyncClient, monkeypatch, connections_held_here,
 ):
     """The unmetered path pins one too (the secret loads auto-begin a transaction), and it has no
     second session to deadlock against — it just eats a slot per in-flight call for nothing."""
     await clients.post("/secrets", json={"name": "tikhub", "value": "MKKEY"})
-    await audit.drain()
     seen: list[int] = []
-    monkeypatch.setattr(call_service, "relay", _relay_that_checks_the_pool(seen))
+    monkeypatch.setattr(call_service, "relay", _relay_that_checks_the_pool(seen, connections_held_here))
     r = await clients.get(f"/call/{EP}?aweme_id=7")
     assert r.status_code == 200 and r.json()["auth"] == "Bearer MKKEY"
     assert seen == [0], f"pooled connections held during the upstream round trip: {seen}"
@@ -139,6 +139,71 @@ async def test_a_saturated_pool_answers_a_typed_503_not_an_anonymous_500(
     assert r.headers.get("Retry-After") == "2"
 
 
+@pytest.mark.parametrize("make", [
+    lambda: TooManyConnectionsError("sorry, too many clients already"),
+    lambda: TooManyConnectionsError("remaining connection slots are reserved for roles with SUPERUSER"),
+    lambda: CannotConnectNowError("the database system is starting up"),
+    lambda: OperationalError("connect", {}, TooManyConnectionsError("too many clients")),
+])
+async def test_a_refused_database_connection_answers_the_typed_503(clients: AsyncClient, monkeypatch, make):
+    async def _refused(*args, **kwargs):
+        raise make()
+
+    monkeypatch.setattr(call_service, "_resolve_call", _refused)
+    r = await clients.get(f"/call/{EP}?aweme_id=7")
+    assert r.status_code == 503, r.text
+    assert r.json()["treg_saturated"] is True
+    assert r.headers.get("Retry-After") == "2"
+
+
+async def test_another_error_caused_by_a_refused_connection_is_stamped_as_a_server_error(
+    clients: AsyncClient, monkeypatch,
+):
+    # Only the types the application-wide handlers catch may skip the router's own stamp; any other
+    # type reaches Starlette's bare 500, so the router must write its exit first.
+    stamped = []
+    original = call_routes._stamp_call_exit
+
+    async def _spy(request, response, status, **kwargs):
+        stamped.append((status, kwargs.get("failure_kind")))
+        return await original(request, response, status, **kwargs)
+
+    async def _wrapped(*args, **kwargs):
+        raise RuntimeError("wrapped") from TooManyConnectionsError("too many clients")
+
+    monkeypatch.setattr(call_routes, "_stamp_call_exit", _spy)
+    monkeypatch.setattr(call_service, "_resolve_call", _wrapped)
+    with pytest.raises(RuntimeError, match="wrapped"):
+        await clients.get(f"/call/{EP}?aweme_id=7")
+    assert (500, "unexpected_exception") in stamped
+
+
+def test_other_database_errors_are_not_busy():
+    assert not is_db_busy(OperationalError("select", {}, RuntimeError("syntax")))
+    assert not is_db_busy(ValueError("x"))
+    assert not answers_db_busy(IntegrityError("insert", {}, TooManyConnectionsError("x")))
+    assert answers_db_busy(InterfaceError("connect", {}, CannotConnectNowError("starting up")))
+
+
+async def test_a_settle_whose_connection_is_refused_once_retries_and_still_charges(
+    clients: AsyncClient, platform_on, monkeypatch,
+):
+    original = ledger.settle_in_transaction
+    calls = 0
+
+    async def _refused_once(*args, **kwargs):
+        nonlocal calls
+        calls += 1
+        if calls == 1:
+            raise TooManyConnectionsError("remaining connection slots are reserved")
+        return await original(*args, **kwargs)
+
+    monkeypatch.setattr(ledger, "settle_in_transaction", _refused_once)
+    r = await clients.get(f"/call/{EP}?aweme_id=7")
+    assert r.status_code == 200 and calls == 2
+    assert r.headers.get("X-Treg-Cost-Micro") == str(EP_MICRO)
+
+
 @pytest.mark.skipif(
     not os.environ.get("TREG_TEST_DB_URL"), reason="requires the Postgres test database"
 )
@@ -153,36 +218,40 @@ async def test_a_catalog_search_storm_cannot_starve_calls_of_the_pool(
     old request-owned query filled every slot and the calls timed out with pool 503s. Search now
     returns from an empty/stale process cache while one task owns the only refresh connection.
     """
-    original = catalog_stats.observed
+    assert (await catalog_stats.refresh(session_maker))["caught_up"]
+    source = A.app.state.endpoint_observation_reader._source
+    original = source.get_many
     refresh_started = asyncio.Event()
     release_refresh = asyncio.Event()
     refresh_calls = 0
 
-    async def _slow_observed(db, endpoint_ids, **kwargs):
+    async def _slow_fold_read(endpoint_ids):
         nonlocal refresh_calls
         refresh_calls += 1
         # Force a real checkout before holding the refresh open. One connection is expected; one
         # per search request is the production defect this test reproduces.
-        await db.execute(select(CallRecord.id).limit(1))
-        refresh_started.set()
-        await asyncio.wait_for(release_refresh.wait(), timeout=15)
-        return await original(db, endpoint_ids, **kwargs)
+        async with source._session_factory() as db:
+            await db.execute(select(EndpointDayStat.endpoint_id).limit(1))
+            refresh_started.set()
+            await asyncio.wait_for(release_refresh.wait(), timeout=15)
+        return await original(endpoint_ids)
 
-    monkeypatch.setattr(catalog_stats, "observed", _slow_observed)
+    monkeypatch.setattr(source, "get_many", _slow_fold_read)
     searches = [asyncio.create_task(clients.get("/catalog/search?q=tiktok&limit=25"))
                 for _ in range(100)]
-    await asyncio.wait_for(refresh_started.wait(), timeout=5)
-    await asyncio.sleep(0.25)  # let the old path fill all 15 pool slots before calls arrive
-
+    # Each search ranks the catalog on the event loop before it asks for observations: 100 of them
+    # take 1.4 s on a laptop, and a CI runner shared by four workers was seen past the old 5 s
+    # (7 CI failures, never locally). The refresh starting late is not what this test is about.
+    await asyncio.wait_for(refresh_started.wait(), timeout=30)
     try:
-        calls = await asyncio.gather(*(
+        search_responses = await asyncio.wait_for(asyncio.gather(*searches), timeout=30)
+        calls = await asyncio.wait_for(asyncio.gather(*(
             clients.get(f"/call/{EP}?aweme_id=catalog-mix-{i}") for i in range(20)
-        ))
+        )), timeout=15)
     finally:
         release_refresh.set()
 
-    search_responses = await asyncio.gather(*searches)
-    await A.app.state.endpoint_observation_reader.wait_for_idle()
+    await asyncio.wait_for(A.app.state.endpoint_observation_reader.wait_for_idle(), timeout=10)
     assert [r.status_code for r in search_responses] == [200] * 100
     assert [r.status_code for r in calls] == [200] * 20, [
         (r.status_code, r.text) for r in calls
@@ -197,20 +266,23 @@ async def test_http_and_mcp_catalog_search_share_one_nonblocking_refresh(
     clients: AsyncClient, monkeypatch, dispose_exhausted_pool_on_its_own_loop,
 ):
     """The agent entry point must share HTTP's cache, task, and single refresh connection."""
-    original = catalog_stats.observed
+    assert (await catalog_stats.refresh(session_maker))["caught_up"]
+    source = A.app.state.endpoint_observation_reader._source
+    original = source.get_many
     refresh_started = asyncio.Event()
     release_refresh = asyncio.Event()
     refresh_calls = 0
 
-    async def _slow_observed(db, endpoint_ids, **kwargs):
+    async def _slow_fold_read(endpoint_ids):
         nonlocal refresh_calls
         refresh_calls += 1
-        await db.execute(select(CallRecord.id).limit(1))
-        refresh_started.set()
-        await asyncio.wait_for(release_refresh.wait(), timeout=15)
-        return await original(db, endpoint_ids, **kwargs)
+        async with source._session_factory() as db:
+            await db.execute(select(EndpointDayStat.endpoint_id).limit(1))
+            refresh_started.set()
+            await asyncio.wait_for(release_refresh.wait(), timeout=15)
+        return await original(endpoint_ids)
 
-    monkeypatch.setattr(catalog_stats, "observed", _slow_observed)
+    monkeypatch.setattr(source, "get_many", _slow_fold_read)
     token = clients.headers["X-Treg-Token"]
     async with mcp_session(clients) as mcp_client:
         http_search = asyncio.create_task(clients.get("/catalog/search?q=backlinks&limit=8"))
@@ -224,21 +296,28 @@ async def test_http_and_mcp_catalog_search_share_one_nonblocking_refresh(
             )
             assert http_response.status_code == 200, http_response.text
             assert mcp_response["results"]
-            assert _engine.pool.checkedout() == 1, (
+            # The refresh holds exactly one connection and it is NOT one of the API's. Before the
+            # pool split this read `_engine.pool.checkedout() == 1`, because the refresh ran on the
+            # request pool; now the same invariant is the stronger pair below. SQLite aliases all
+            # three engines, which is why this whole test is Postgres-only.
+            assert _engine.pool.checkedout() == 0, (
+                "a catalog search must hold no request-pool connection while the refresh runs"
+            )
+            assert _background_engine.pool.checkedout() == 1, (
                 "only the independent refresh session may hold a pooled connection"
             )
             assert refresh_calls == 1, "HTTP and MCP must join the same process refresh task"
         finally:
             release_refresh.set()
 
-    await A.app.state.endpoint_observation_reader.wait_for_idle()
+    await asyncio.wait_for(A.app.state.endpoint_observation_reader.wait_for_idle(), timeout=10)
 
 
 async def test_a_settle_that_loses_the_pool_once_retries_and_still_charges(
     clients: AsyncClient, platform_on, monkeypatch,
 ):
     """A settle that gives up forfeits real revenue (the hold is reaped in the org's favour), so a
-    transient pool wait gets exactly one retry — and nothing else does."""
+    transient pool wait gets exactly one retry (as does a PostgreSQL deadlock)."""
     original = ledger.settle_in_transaction
     calls = 0
 
@@ -282,3 +361,50 @@ async def test_auth_releases_a_single_slot_pool_before_an_application_session(
     finally:
         session_maker.kw["bind"] = original_bind
         await limited_engine.dispose()
+
+
+@pytest.mark.parametrize('sqlstate,failures,attempts', [('40P01', 1, 2), ('40P01', 2, 2),
+                                                     ('P0001', 1, 1)])
+async def test_wrapped_deadlock_retry_preserves_response_and_transaction(
+    clients, platform_on, monkeypatch, caplog, sqlstate, failures, attempts,
+):
+    """Inject after staged money writes to verify rollback and a fresh transaction on retry.
+
+    PostgreSQL raises the real driver exception with RAISE SQLSTATE; SQLite uses its observed
+    SQLAlchemy/asyncpg wrapper shape. Neither injection claims to reproduce a lock cycle.
+    An unrelated DB error with 'deadlock detected' in its message must not be retried.
+    """
+    from sqlalchemy import text
+    from sqlalchemy.exc import DBAPIError
+    from sqlalchemy.dialects.postgresql.asyncpg import AsyncAdapt_asyncpg_dbapi
+    from treg.models import LedgerEntry
+
+    original = ledger.settle_in_transaction
+    sessions = []
+    async def interrupted(db, *args, **kwargs):
+        sessions.append(db)
+        charged = await original(db, *args, **kwargs)
+        if len(sessions) <= failures:
+            if db.bind.dialect.name == 'postgresql':
+                await db.execute(text("DO $$ BEGIN RAISE EXCEPTION USING ERRCODE = '" + sqlstate
+                                      + "', MESSAGE = 'deadlock detected injection'; END $$"))
+            error = AsyncAdapt_asyncpg_dbapi.Error('deadlock detected injection')
+            error.sqlstate = sqlstate
+            raise DBAPIError(None, None, error)
+        return charged
+    monkeypatch.setattr(ledger, 'settle_in_transaction', interrupted)
+    org_id = (await clients.get('/orgs')).json()[0]['org_id']
+    before = (await clients.get(f'/orgs/{org_id}/balance')).json()['balance_micro']
+    response = await clients.get(f'/call/{EP}?aweme_id=7')
+    assert response.status_code == 200
+    assert len(sessions) == attempts and len({id(s) for s in sessions}) == attempts
+    succeeded = sqlstate == '40P01' and failures == 1
+    assert response.headers['X-Treg-Cost-Micro'] == str(EP_MICRO if succeeded else 0)
+    async with session_maker() as db:
+        holds = (await db.execute(select(Hold).where(Hold.org_id == org_id))).scalars().all()
+        entries = (await db.execute(select(LedgerEntry).where(
+            LedgerEntry.org_id == org_id, LedgerEntry.kind == 'settle'))).scalars().all()
+        assert len(holds) == (0 if succeeded else 1)
+        assert len(entries) == (1 if succeeded else 0)
+        assert await ledger.balance_of(db, org_id) == before - EP_MICRO
+    assert ('settle/release failed' in caplog.text) == (not succeeded)

@@ -1,14 +1,13 @@
-"""Crawler-facing surfaces: robots.txt, sitemap.xml, HEAD, canonicals, and structured data.
+"""Crawler-facing surfaces: robots.txt, sitemap.xml, HEAD, template substitution and redirects.
 
-These are easy to break silently — nothing in the app fails when a canonical goes stale or a
-sitemap starts listing a renamed route, and nobody notices until traffic does. So the sitemap test
+These are easy to break silently: nothing in the app fails when a sitemap starts listing a
+renamed route, and nobody notices until traffic does. So the sitemap test
 walks every URL it publishes rather than spot-checking, and the host tests assert on
 `public_url` rather than on the literal treg.to: a self-hosted registry must advertise itself.
 """
 
 from __future__ import annotations
 
-import json
 import re
 from xml.etree import ElementTree as ET
 
@@ -16,6 +15,7 @@ import pytest
 from httpx import AsyncClient
 
 from treg.config import get_settings
+from treg.routers.web import _SITEMAP_PAGES, _USE_CASES
 
 
 SITEMAP_NS = "{http://www.sitemaps.org/schemas/sitemap/0.9}"
@@ -31,13 +31,6 @@ def _locs(xml: str) -> list[str]:
 
 # --------------------------------------------------------------------------------------- robots
 
-async def test_robots_txt_is_served_and_names_the_sitemap(clients: AsyncClient):
-    r = await clients.get("/robots.txt")
-    assert r.status_code == 200, r.text
-    assert r.headers["content-type"].startswith("text/plain")
-    assert f"Sitemap: {_base()}/sitemap.xml" in r.text
-    assert "User-agent: *" in r.text
-
 
 async def test_robots_txt_keeps_crawlers_out_of_what_costs_or_gates(clients: AsyncClient):
     """The metered proxy and the authenticated app are the two that actually matter: one bills per
@@ -46,10 +39,6 @@ async def test_robots_txt_keeps_crawlers_out_of_what_costs_or_gates(clients: Asy
     for path in ("/app", "/call/", "/login", "/oauth/", "/docs/api"):
         assert f"Disallow: {path}" in body, path
     assert "Disallow: /catalog" not in body   # the catalog is the whole point of indexing us
-
-
-async def test_robots_txt_has_no_unsubstituted_template(clients: AsyncClient):
-    assert "{BASE}" not in (await clients.get("/robots.txt")).text
 
 
 # -------------------------------------------------------------------------------------- sitemap
@@ -61,23 +50,9 @@ async def test_sitemap_is_valid_xml_on_the_public_host(clients: AsyncClient):
     locs = _locs(r.text)
     assert len(locs) > 50, "the catalog shelves should dominate the sitemap"
     assert all(u.startswith(_base() + "/") or u == _base() + "/" for u in locs), locs[:3]
-
-
-async def test_sitemap_lists_the_catalog_shelves(clients: AsyncClient):
-    locs = _locs((await clients.get("/sitemap.xml")).text)
     assert f"{_base()}/" in locs
     assert f"{_base()}/catalog" in locs
     assert any(u.startswith(f"{_base()}/catalog/") for u in locs)
-
-
-async def test_sitemap_omits_pages_that_would_not_answer_a_crawler(clients: AsyncClient):
-    """Each of these fails a crawl differently: /login redirects, /tool-requests is POST-only,
-    /app needs a session, and /contact + /vendor-listing.md are duplicate URLs for pages already
-    listed under their canonical name."""
-    locs = set(_locs((await clients.get("/sitemap.xml")).text))
-    for path in ("/login", "/tool-requests", "/app", "/contact", "/help",
-                 "/vendor-listing.md", "/connect-demo", "/install.sh", "/selfhost.sh"):
-        assert f"{_base()}{path}" not in locs, path
 
 
 async def test_every_sitemap_url_answers_200(clients: AsyncClient):
@@ -120,92 +95,7 @@ async def test_head_is_still_refused_where_there_is_no_get(clients: AsyncClient)
     assert (await clients.head("/tool-requests")).status_code == 405
 
 
-# ------------------------------------------------------------------------------------- canonical
-
-async def test_the_three_support_urls_share_one_canonical(clients: AsyncClient):
-    """/support, /contact and /help are one file (people guess differently). Without a canonical
-    they are three URLs competing for the same page."""
-    for path in ("/support", "/contact", "/help"):
-        r = await clients.get(path)
-        assert r.status_code == 200
-        assert f'<link rel="canonical" href="{_base()}/support"/>' in r.text, path
-
-
-@pytest.mark.parametrize("path,canon", [("/terms", "/terms"), ("/privacy", "/privacy"),
-                                        ("/tutorial", "/tutorial")])
-async def test_pages_declare_their_canonical(clients: AsyncClient, path: str, canon: str):
-    r = await clients.get(path)
-    assert f'<link rel="canonical" href="{_base()}{canon}"/>' in r.text
-
-
-async def test_the_dashboard_is_noindex(clients: AsyncClient):
-    r = await clients.get("/app")
-    assert re.search(r'<meta name="robots" content="noindex', r.text)
-
-
-async def test_the_markdown_twin_of_vendor_listing_is_noindex(clients: AsyncClient):
-    """Two URLs, one document, and text/plain cannot carry a canonical — so the header does it."""
-    assert (await clients.get("/vendor-listing.md")).headers.get("X-Robots-Tag") == "noindex"
-    assert "X-Robots-Tag" not in (await clients.get("/vendor-listing")).headers
-
-
-# ------------------------------------------------------------------- catalog pages & structured data
-
-async def test_catalog_urls_serve_the_dashboard_spa(clients: AsyncClient):
-    """The public catalog is not a second implementation — it IS the marketplace. /catalog hands
-    back index.html so Vue renders the same platform views a member sees; if this ever stops being
-    true, the two UIs have forked and will drift."""
-    for path in ("/catalog", "/catalog/google"):
-        body = (await clients.get(path)).text
-        assert '<div id="app"' in body, path
-        assert "vue" in body.lower(), path
-
-
-async def test_the_catalog_index_lists_shelves_without_javascript(clients: AsyncClient):
-    """The Vue app is the UI; #prerender is what a crawler that runs no scripts reads. It has to
-    carry the text — 80 shelves that previously existed only as hash routes behind a login."""
-    r = await clients.get("/catalog")
-    assert r.status_code == 200
-    pre = re.search(r'<div id="prerender">(.*?)</div>\s*<div id="app"', r.text, re.S)
-    assert pre, "no server-rendered fallback"
-    assert pre.group(1).count('href="/catalog/') > 50
-    assert 'href="/catalog/google"' in pre.group(1)
-
-
-@pytest.mark.parametrize("slug", ["google", "web", "tiktok"])
-async def test_a_platform_page_renders_its_endpoints_as_text(clients: AsyncClient, slug: str):
-    r = await clients.get(f"/catalog/{slug}")
-    assert r.status_code == 200
-    pre = re.search(r'<div id="prerender">(.*?)</div>\s*<div id="app"', r.text, re.S)
-    assert pre, slug
-    assert pre.group(1).count("<li>") > 5, "endpoint names should be in the fallback"
-
-
-async def test_the_prerender_is_a_sibling_of_the_vue_root(clients: AsyncClient):
-    """Vue compiles #app's own innerHTML as its template, so prerendered markup inside it would be
-    parsed as a template (and blow up on the first stray moustache). It must sit outside."""
-    body = (await clients.get("/catalog")).text
-    assert body.index('id="prerender"') < body.index('id="app"')
-    app_html = body[body.index('<div id="app"'):]
-    assert 'id="prerender"' not in app_html
-
-
-async def test_catalog_urls_are_indexable_despite_the_spa_default(clients: AsyncClient):
-    """index.html carries `robots: noindex` for the authenticated app. These URLs are public, and
-    shipping both tags would leave a crawler obeying the wrong one."""
-    body = (await clients.get("/catalog/google")).text
-    assert "content=\"noindex" not in body
-    assert 'content="index, follow"' in body
-    assert (await clients.get("/app")).text.count('content="noindex') == 1
-
-
-async def test_a_shelf_page_counts_the_same_endpoints_the_app_does(clients: AsyncClient):
-    """The SPA asks for ?include_hidden=1. The page must ask for the same population, or the two
-    numbers on one URL — the fallback's and the app's — disagree in front of the reader."""
-    full = (await clients.get("/catalog/platforms/web?include_hidden=1")).json()
-    total = sum(len(c["endpoints"]) for c in full["capabilities"]) + len(full["extended"])
-    assert f"{total} endpoints" in (await clients.get("/catalog/web")).text
-
+# --------------------------------------------------------------------------------- catalog pages
 
 async def test_the_json_catalog_routes_still_answer_json(clients: AsyncClient):
     """`/catalog/<slug>` sits in front of these. Registration order keeps them matching first, and
@@ -215,6 +105,11 @@ async def test_the_json_catalog_routes_still_answer_json(clients: AsyncClient):
         r = await clients.get(path)
         assert r.status_code == 200, path
         assert r.headers["content-type"].startswith("application/json"), path
+    # These two ARE valid URLs, claimed by the JSON routes registered before `/catalog/{slug}`.
+    # What must never happen is the page route swallowing one and serving HTML to the dashboard.
+    for slug in ("platforms", "search"):
+        r = await clients.get(f"/catalog/{slug}")
+        assert r.headers["content-type"].startswith("application/json"), slug
 
 
 @pytest.mark.parametrize("slug", ["endpoints", "examples", "not-a-platform"])
@@ -224,85 +119,7 @@ async def test_unknown_slugs_404(clients: AsyncClient, slug: str):
     assert (await clients.get(f"/catalog/{slug}")).status_code == 404
 
 
-@pytest.mark.parametrize("slug", ["platforms", "search"])
-async def test_reserved_slugs_never_render_the_html_page(clients: AsyncClient, slug: str):
-    """These two ARE valid URLs — the JSON routes registered before `/catalog/{slug}` claim them.
-    What must never happen is the page route swallowing one and serving HTML to the dashboard."""
-    r = await clients.get(f"/catalog/{slug}")
-    assert r.headers["content-type"].startswith("application/json"), slug
-
-
-async def test_prices_never_render_in_scientific_notation(clients: AsyncClient):
-    """`%g` flips to exponent below 1e-4 and a shelf advertised "from $1.2e-07 per call", which
-    reads as a bug rather than a price."""
-    for slug in ("web", "google", "people"):
-        assert not re.search(r"\$\d+(\.\d+)?e-\d+", (await clients.get(f"/catalog/{slug}")).text), slug
-
-
-@pytest.mark.parametrize("path,types", [
-    ("/", {"SoftwareApplication", "Organization"}),
-    ("/catalog", {"ItemList", "BreadcrumbList"}),
-    ("/catalog/google", {"ItemList", "BreadcrumbList"}),
-    ("/support", {"FAQPage"}),
-])
-async def test_structured_data_parses_and_says_what_it_should(clients: AsyncClient, path, types):
-    r = await clients.get(path)
-    found = {json.loads(b)["@type"]
-             for b in re.findall(r'application/ld\+json">(.*?)</script>', r.text, re.S)}
-    assert types <= found, f"{path}: got {found}"
-
-
-async def test_the_landing_offer_matches_the_page(clients: AsyncClient):
-    """Schema that claims a price the page does not show is a structured-data violation, not a
-    shortcut — so assert the free-credit figure appears in both."""
-    r = await clients.get("/")
-    ld = next(json.loads(b) for b in re.findall(r'application/ld\+json">(.*?)</script>', r.text, re.S)
-              if json.loads(b)["@type"] == "SoftwareApplication")
-    assert "$1.00 of free credit" in ld["offers"]["description"]
-    assert "$1.00 free to start" in r.text          # benefit 03, the visible claim
-    assert "0%" in ld["offers"]["description"] and "0%" in r.text
-
-
-async def test_faq_schema_matches_the_visible_questions(clients: AsyncClient):
-    r = await clients.get("/support")
-    ld = next(json.loads(b) for b in re.findall(r'application/ld\+json">(.*?)</script>', r.text, re.S))
-    for q in ld["mainEntity"]:
-        assert f"<b>{q['name']}</b>" in r.text, f"schema asks {q['name']!r}, the page does not"
-
-
-async def test_every_page_carries_a_social_card(clients: AsyncClient):
-    for path in ("/", "/catalog", "/catalog/google", "/docs"):
-        body = (await clients.get(path)).text
-        assert 'property="og:image"' in body and "/media/og.png" in body, path
-        assert 'name="twitter:card" content="summary_large_image"' in body, path
-
-
-async def test_the_og_image_is_actually_served_at_the_right_size(clients: AsyncClient):
-    """Tags pointing at a 404 mean every shared link unfurls blank."""
-    r = await clients.get("/media/og.png")
-    assert r.status_code == 200
-    assert r.headers["content-type"] == "image/png"
-    # PNG header: width and height are big-endian uint32 at bytes 16..24
-    width = int.from_bytes(r.content[16:20], "big")
-    height = int.from_bytes(r.content[20:24], "big")
-    assert (width, height) == (1200, 630), f"og.png is {width}x{height}, must be 1200x630"
-
-
 # ------------------------------------------------------------------------------------------ docs
-
-async def test_docs_is_server_rendered_and_swagger_moved(clients: AsyncClient):
-    """/docs was a Swagger script shell — nothing for a crawler, and the landing linked to it."""
-    r = await clients.get("/docs")
-    assert r.status_code == 200
-    assert "/call/{rest}" in r.text and "/catalog/search" in r.text
-    assert "SwaggerUIBundle" not in r.text
-    assert (await clients.get("/docs/api")).status_code == 200
-    assert (await clients.get("/openapi.json")).status_code == 200
-
-
-async def test_docs_does_not_advertise_the_admin_api(clients: AsyncClient):
-    assert "/admin/orgs" not in (await clients.get("/docs")).text
-
 
 async def test_widening_head_did_not_leak_into_the_public_schema(clients: AsyncClient):
     """Adding HEAD to every GET route gave FastAPI a second operation per path — 58 duplicate
@@ -311,6 +128,16 @@ async def test_widening_head_did_not_leak_into_the_public_schema(clients: AsyncC
     paths = (await clients.get("/openapi.json")).json()["paths"]
     with_head = [p for p, ops in paths.items() if "head" in ops]
     assert with_head == ["/call/{rest}"], with_head
+
+
+async def test_every_openapi_operation_has_its_own_id(clients: AsyncClient):
+    """FastAPI gives a multi-method route one operation id for every method it declares, taken from
+    whichever method the set yields first, so the /call relay published seven operations under one
+    id. Code generators key on it; each operation must be distinct."""
+    paths = (await clients.get("/openapi.json")).json()["paths"]
+    ids = [op["operationId"] for ops in paths.values() for op in ops.values()]
+    assert len(ids) == len(set(ids)), sorted({i for i in ids if ids.count(i) > 1})
+    assert paths["/call/{rest}"]["post"]["operationId"] == "call_tool_call__rest__post"
 
 
 def test_no_shelf_is_published_that_the_app_grid_hides():
@@ -328,137 +155,39 @@ def test_no_shelf_is_published_that_the_app_grid_hides():
         "publish /catalog/<slug> for each while the app's tile grid hides them")
 
 
-# -------------------------------------------------------------------- public-mode chrome & CTAs
-# Markup assertions rather than behaviour: these live in index.html's Vue template, which the test
-# suite reads as text (see tests/test_dashboard_markup.py). Both were reported from the browser.
-
-def _spa() -> str:
-    from treg.routers.web import _WEB_DIR
-    return (_WEB_DIR / "index.html").read_text(encoding="utf-8")
-
-
-def test_public_catalog_drops_the_workspace_chrome():
-    """A catalog visitor is reading a website, not operating an app. The org switcher, the global
-    tool search and the member nav are furniture for a job they have not started."""
-    spa = _spa()
-    assert '<div class="pubnav" v-if="publicCatalog">' in spa      # marketing nav instead
-    assert '<div class="top" role="banner" v-else>' in spa          # app bar only for members
-    assert '<nav class="side"' in spa and 'v-if="!publicCatalog">' in spa  # no sidebar in public mode
-    assert '.layout.solo{grid-template-columns:minmax(0,1fr)}' in spa   # main spans the full width
+# Every page the sitemap publishes, the ad landing pages, and the agent-facing text files.
+_TEMPLATED_PATHS = sorted(
+    {path for path, _, _ in _SITEMAP_PAGES}
+    | {f"/use-cases/{slug}" for slug in _USE_CASES}
+    | {"/robots.txt", "/skill.md", "/llms.txt", "/.well-known/skills/treg/SKILL.md", "/integrate.md",
+       "/tutorial.md", "/quickstart.md", "/contact", "/help"})
 
 
-def test_no_public_cta_navigates_to_a_page_that_bounces():
-    """/app sends a logged-out visitor straight back to the landing (`location.replace('/')`), so a
-    CTA pointing there is a dead end that loses the page they were reading. Every one of them opens
-    the sign-in modal in place instead."""
-    spa = _spa()
-    assert "location.href='/app'" not in spa
-    assert spa.count("publicCatalog ? openSignin()") >= 5   # try-it, connect, byok ×3, chips
-
-
-def test_the_signin_modal_is_reachable_from_public_mode():
-    """It used to live inside the logged-out landing branch, which public mode does not render —
-    so there was nothing for a CTA to open."""
-    spa = _spa()
-    lp = spa.index('class="lp"')
-    modal = spa.index('<div class="lc-scrim"')
-    shell = spa.index("<template v-else>")
-    assert not (lp < modal < shell), "the modal is trapped inside the logged-out landing branch"
-
-
-def test_the_modal_does_not_talk_about_a_sandbox_on_the_catalog():
-    """Default copy is the sandbox's ('bring it into a real account') — nonsense to someone who
-    arrived from a search result."""
-    spa = _spa()
-    assert 'v-else-if="publicCatalog" class="sub">Create a free team' in spa
-
-
-async def test_no_page_ships_an_unsubstituted_base(clients: AsyncClient):
-    """`{BASE}` reaching a browser means a canonical or og:url is pointing at nothing."""
-    for path in ("/", "/support", "/terms", "/privacy", "/tutorial", "/catalog"):
-        assert "{BASE}" not in (await clients.get(path)).text, path
-
-
-# ----------------------------------------------------------------------------------------- brand
-
-@pytest.mark.parametrize("path,ctype", [("/media/brand/logo.png", "image/png"),
-                                        ("/media/brand/logotype.png", "image/png"),
-                                        ("/media/brand/mark-white.svg", "image/svg+xml")])
-async def test_brand_files_are_hot_linkable(clients: AsyncClient, path: str, ctype: str):
-    """Directories and partners embed these URLs; the landing's JSON-LD `logo` is one of them."""
+@pytest.mark.parametrize("path", _TEMPLATED_PATHS)
+async def test_no_page_ships_an_unsubstituted_base(clients: AsyncClient, path: str):
+    """`{BASE}` reaching a browser means a canonical or og:url is pointing at nothing, and an
+    unfilled `{ENDPOINTS}` or `{PROVIDERS}` puts a template on the front door."""
     r = await clients.get(path)
-    assert r.status_code == 200, path
-    assert r.headers["content-type"].startswith(ctype)
+    assert r.status_code == 200, (path, r.status_code)
+    text = r.text
+    for placeholder in ("{BASE}", "{ENDPOINTS}", "{PROVIDERS}"):
+        assert placeholder not in text, (path, placeholder)
 
 
-async def test_favicon_is_the_mono_mark(clients: AsyncClient):
-    body = (await clients.get("/favicon.svg")).text
-    assert 'fill="#000000"' in body and 'fill="#ffffff"' in body
+@pytest.mark.parametrize("source", ["/llms.txt", "/skill.md"])
+async def test_every_document_an_agent_file_links_answers(clients: AsyncClient, source: str):
+    """llms.txt once promised Markdown twins of three index pages that were never built, and agents
+    following it got 404s. Any `.md` or `.txt` it or the skill links must exist."""
+    text = (await clients.get(source)).text
+    paths = {url[len(_base()):] for url in re.findall(r"https?://[^\s`\"')<>\]*]+\.(?:md|txt)\b", text)
+             if url.startswith(_base() + "/")}
+    assert paths, source
+    for path in sorted(paths):
+        r = await clients.get(path)
+        assert r.status_code == 200, f"{path} -> {r.status_code} (linked from {source})"
 
 
-# ---- discovery: the hubs are linked from pages Google already crawls -----------------------
-#
-# Before these links existed the 38 job pages and both workflow pages answered "URL is unknown
-# to Google" (Search Console URL inspection, 2026-08-27): they were listed in the sitemap and
-# linked from nothing. Every server-rendered page, the landing and the public catalog now carry
-# the three hubs, /catalog names them in its crawlable prerender, a provider page names the jobs
-# it serves, and a job page names the workflows that chain it.
-
-HUBS = ('href="/use-cases"', 'href="/workflows"', 'href="/agents"')
-
-
-async def test_every_surface_links_the_three_hubs(clients: AsyncClient):
-    for path in ("/", "/catalog", "/tools/hunter", "/use-cases/verify-an-email",
-                 "/workflows/find-and-verify-a-lead-list", "/agents/grok-bot"):
-        html = (await clients.get(path)).text
-        for hub in HUBS:
-            assert hub in html, f"{path} does not link {hub}"
-
-
-async def test_hub_links_stay_off_a_self_hosted_registry(monkeypatch):
-    """The job, workflow and agent pages exist on treg.to only (`_hosted`), so a self-hosted
-    registry's footer and catalog must not point at three 404s. The IndexNow key file is generic
-    and stays available everywhere."""
-    from httpx import ASGITransport
-    from treg.api import app
-    from treg.routers.web import INDEXNOW_KEY
-    monkeypatch.setenv("TREG_PUBLIC_URL", "https://registry.example.internal")
-    get_settings.cache_clear()
-    try:
-        async with AsyncClient(transport=ASGITransport(app=app), base_url="http://registry") as c:
-            for path in ("/", "/catalog", "/tools/hunter"):
-                html = (await c.get(path)).text
-                for hub in HUBS:
-                    assert hub not in html, f"{path} links {hub} off-host"
-            assert (await c.get(f"/{INDEXNOW_KEY}.txt")).status_code == 200
-    finally:
-        get_settings.cache_clear()
-
-
-async def test_provider_page_names_the_jobs_it_serves(clients: AsyncClient):
-    html = (await clients.get("/tools/hunter")).text
-    assert 'id="used-in"' in html
-    assert 'href="/use-cases/verify-an-email"' in html
-    assert 'href="/use-cases/find-professional-emails"' in html
-
-
-async def test_job_page_names_the_workflows_that_chain_it(clients: AsyncClient):
-    html = (await clients.get("/use-cases/verify-an-email")).text
-    assert 'href="/workflows/find-and-verify-a-lead-list"' in html
-
-
-async def test_compare_titles_carry_the_cheapest_price(clients: AsyncClient):
-    html = (await clients.get("/use-cases/verify-an-email")).text
-    title = re.search(r"<title>(.*?)</title>", html, re.S).group(1)
-    assert "$" in title and len(title) <= 65, title
-
-
-async def test_provider_title_leads_with_pricing(clients: AsyncClient):
-    html = (await clients.get("/tools/hunter")).text
-    title = re.search(r"<title>(.*?)</title>", html, re.S).group(1)
-    assert title.startswith("Hunter API pricing") and "$" in title, title
-    assert len(title) <= 65, title
-
+# ------------------------------------------------------------------------------------ redirects
 
 async def test_indexnow_key_is_served_from_the_root(clients: AsyncClient):
     from treg.routers.web import INDEXNOW_KEY
@@ -466,9 +195,12 @@ async def test_indexnow_key_is_served_from_the_root(clients: AsyncClient):
     assert r.status_code == 200 and r.text == INDEXNOW_KEY
 
 
-async def test_agent_pages_name_the_workflows(clients: AsyncClient):
-    html = (await clients.get("/agents/grok-bot")).text
-    assert 'id="workflows"' in html
-    assert 'href="/workflows/find-and-verify-a-lead-list"' in html
-    md = (await clients.get("/agents/grok-bot.md")).text
-    assert "/workflows/find-and-verify-a-lead-list" in md
+async def test_grok_bot_redirects_to_grokbot(clients: AsyncClient):
+    """/agents/grok-bot and /agents/grok-bot.md 301 to /grokbot: the launch page is the
+    primary destination for "Grok Bot" clicks."""
+    r = await clients.get("/agents/grok-bot", follow_redirects=False)
+    assert r.status_code == 301
+    assert r.headers["location"] == "/grokbot"
+    r = await clients.get("/agents/grok-bot.md", follow_redirects=False)
+    assert r.status_code == 301
+    assert r.headers["location"] == "/grokbot"

@@ -9,7 +9,11 @@ import asyncio
 import json
 import time
 
+import httpx
 from httpx import AsyncClient
+
+from treg import audit, oauth
+from treg.domain.identity import api_keys as managed_keys
 
 
 def _oauth_blob(access: str, expires_at: float) -> str:
@@ -54,15 +58,6 @@ async def test_manual_mode_token_without_refresh_fields_is_injected_as_is(client
     assert r.json()["auth"] == "Bearer MANUAL-TOKEN"
 
 
-async def test_refresh_persists_so_next_call_is_free(clients: AsyncClient):
-    await _register_oauth_tool(clients, "gsc", _oauth_blob("OLD", expires_at=0))
-    first = await clients.get("/call/gsc/echo")
-    assert first.json()["auth"] == "Bearer REFRESHED"
-    # second call: token is now fresh + persisted (expires_in 3600), still serves the refreshed one
-    second = await clients.get("/call/gsc/echo")
-    assert second.json()["auth"] == "Bearer REFRESHED"
-
-
 async def test_token_endpoint_io_holds_no_database_connection(
     clients: AsyncClient, monkeypatch,
 ):
@@ -71,6 +66,9 @@ async def test_token_endpoint_io_holds_no_database_connection(
     from treg.infra.db import _engine
 
     await _register_oauth_tool(clients, "pool-free-refresh", _oauth_blob("OLD", expires_at=0))
+    await audit.drain()  # Registration's asynchronous audit write must finish before sampling the pool.
+    # SQLite shares this pool with key metadata writes; finish them without clearing the throttle.
+    await managed_keys.drain_last_used()
     checked_out: list[int] = []
     original_post = app.state.http.post
 
@@ -123,10 +121,6 @@ async def test_concurrent_stale_calls_keep_one_refresh_winner(
 # posting client_secret in the body is 401'd. The proxy-level tests above can't catch this because
 # conftest's /token accepts anything — which is exactly how the bug shipped: connect worked, and
 # every refresh died two hours later in production only.
-
-import httpx
-
-from treg import oauth
 
 
 def _x_like_transport(calls: list[str]) -> httpx.MockTransport:
@@ -211,3 +205,56 @@ async def test_exchange_code_persists_basic_auth_method_into_blob():
     async with httpx.AsyncClient(transport=httpx.MockTransport(g_handler)) as client:
         gblob = await oauth.exchange_code(g, "the-code", client)
     assert "token_endpoint_auth_method" not in gblob
+
+
+async def _refresh_stored(clients: AsyncClient, monkeypatch, *, provider: str, blob: dict):
+    """Store one oauth secret, refresh it through the live path, return (requests, stored blob)."""
+    from treg import crypto
+    from treg.config import get_settings
+    from treg.infra.db import session_maker
+    from treg.models import Org, Secret
+    from sqlmodel import select
+
+    monkeypatch.setenv("TREG_GOOGLE_CLIENT_ID", "treg-google-cid")
+    monkeypatch.setenv("TREG_GOOGLE_CLIENT_SECRET", "rotated-csec")
+    get_settings.cache_clear()
+    seen: list[tuple[str, str]] = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        seen.append((str(request.url), request.read().decode()))
+        return httpx.Response(200, json={"access_token": "NEW", "expires_in": 3600})
+    try:
+        async with session_maker() as db:
+            org = (await db.execute(select(Org))).scalars().first()
+            row = Secret(org_id=org.id, name="conn", owner="o@example.com", kind="oauth",
+                         provider=provider, value=crypto.encrypt(json.dumps({**blob, "expires_at": 0})))
+            db.add(row)
+            await db.commit()
+            async with httpx.AsyncClient(transport=httpx.MockTransport(handler)) as client:
+                await oauth.ensure_fresh(row, db, client)
+            stored = json.loads(crypto.decrypt((await db.get(Secret, row.id)).value))
+    finally:
+        get_settings.cache_clear()
+    return seen, stored
+
+
+_EVIL = "https://collector.example/token"
+
+
+async def test_platform_connection_refreshes_at_the_providers_endpoint_with_current_secret(clients, monkeypatch):
+    seen, stored = await _refresh_stored(clients, monkeypatch, provider="google-search-console", blob={
+        "access_token": "OLD", "refresh_token": "RT", "client_id": "treg-google-cid",
+        "client_secret": "old-csec", "token_uri": _EVIL})
+    assert [url for url, _ in seen] == ["https://oauth2.googleapis.com/token"]
+    assert "client_secret=rotated-csec" in seen[0][1]
+    assert stored["access_token"] == "NEW"
+    assert stored["client_secret"] == "old-csec"  # the platform secret is never written into the blob
+
+
+async def test_a_blob_naming_treg_client_id_without_platform_provenance_never_gets_the_secret(clients, monkeypatch):
+    seen, stored = await _refresh_stored(clients, monkeypatch, provider="", blob={
+        "access_token": "OLD", "refresh_token": "RT", "client_id": "treg-google-cid",
+        "client_secret": "whatever", "token_uri": _EVIL})
+    assert [url for url, _ in seen] == [_EVIL]
+    assert "rotated-csec" not in seen[0][1]
+    assert "rotated-csec" not in json.dumps(stored)

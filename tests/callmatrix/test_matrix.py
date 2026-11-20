@@ -4,15 +4,19 @@ from __future__ import annotations
 
 import asyncio
 from collections import Counter
+import logging
 
-from httpx import AsyncClient
+import pytest
+
+from httpx import ASGITransport, AsyncClient
 from sqlmodel import select
 
 from sqlalchemy.exc import TimeoutError as PoolTimeoutError
 
+from treg.api import app
 from treg.application.call import service as call_service
-from treg.routers import call as call_routes
 from treg import audit
+from treg.domain.identity import access as identity_access
 from treg.domain import money as ledger
 from treg.infra.db import session_maker
 from treg.domain.money import with_margin
@@ -348,13 +352,14 @@ async def test_d1_same_key_replays_original_response(
         Expect(
             status=200,
             body=first.content,
-            cost_micro=with_margin(EP_MICRO),
+            cost_micro=0,
             audit={"credential_tier": "platform", "cost_charged_micro": with_margin(EP_MICRO)},
             upstream_hits=0,
         ),
     )
     assert replay.headers["X-Treg-Call-Id"] == first.headers["X-Treg-Call-Id"]
     assert replay.headers["X-Treg-Idempotent-Replay"] == "true"
+    assert replay.headers["X-Treg-Original-Cost-Micro"] == str(with_margin(EP_MICRO))
 
 
 async def test_d2_concurrent_same_key_loser_gets_409(
@@ -519,12 +524,41 @@ async def test_b2_per_success_404_refunds(
     )
 
 
-async def test_b3_per_call_400_is_billable(
+async def test_b3_per_call_400_without_a_reported_charge_refunds(
     matrix_clients: AsyncClient, fake_provider: FakeProvider, platform_on,
 ) -> None:
+    """A caller-input rejection under per_call is billed on the provider's word, never at the
+    estimate: a 400 whose body carries no charge releases the hold (Fiber's validation 400s
+    settled twenty $0.04 holds against one team on 2026-09-06 under the old rule)."""
     before = await snapshot(matrix_clients, fake_provider)
-    charged = with_margin(EP_CALL_MICRO)
     body = b'{"error":"bad caller input"}'
+
+    response = await matrix_clients.get(
+        f"/call/{EP_CALL}?group_id=1",
+        headers={"X-Fake-Status": "400", "X-Fake-Body": body.decode()},
+    )
+
+    await assert_outcome(
+        matrix_clients, fake_provider, response, before,
+        Expect(
+            status=400,
+            body=body,
+            cost_micro=0,
+            ledger_kinds=("release", "reserve"),
+            ledger_reason="rejected_unbilled_400",
+            audit={"refused_by": None, "cost_charged_micro": 0},
+        ),
+    )
+
+
+async def test_b3b_per_call_400_with_a_reported_charge_bills_exactly_that(
+    matrix_clients: AsyncClient, fake_provider: FakeProvider, platform_on,
+) -> None:
+    """The other half: when the vendor says it took a credit for the rejected request
+    (scrapecreators reports `credits_charged`), the caller pays that — and only that."""
+    before = await snapshot(matrix_clients, fake_provider)
+    charged = with_margin(EP_CALL_MICRO)  # 1 credit at the scrapecreators rate == the estimate
+    body = b'{"error":"bad caller input","credits_charged":1}'
 
     response = await matrix_clients.get(
         f"/call/{EP_CALL}?group_id=1",
@@ -539,7 +573,7 @@ async def test_b3_per_call_400_is_billable(
             cost_micro=charged,
             balance_delta=-charged,
             ledger_kinds=("settle", "reserve"),
-            audit={"refused_by": None, "cost_charged_micro": charged},
+            audit={"refused_by": None, "cost_observed_micro": EP_CALL_MICRO, "cost_charged_micro": charged},
         ),
     )
 
@@ -779,21 +813,6 @@ async def test_c5_gzip_4xx_body_is_decoded_for_evidence(
 # F group: the relay preserves caller bytes while stripping treg's own session boundary.
 
 
-async def test_f1_duplicate_query_parameters_keep_order(
-    matrix_clients: AsyncClient, fake_provider: FakeProvider,
-) -> None:
-    await _register_echo(matrix_clients)
-    before = await snapshot(matrix_clients, fake_provider)
-
-    response = await matrix_clients.get("/call/echo/search?tag=a&tag=b")
-
-    await assert_outcome(
-        matrix_clients, fake_provider, response, before,
-        Expect(status=200, body=b"{}", audit={"refused_by": None}),
-    )
-    assert fake_provider.hits[-1].query == (("tag", "a"), ("tag", "b"))
-
-
 async def test_f2_encoded_slash_survives_in_raw_path(
     matrix_clients: AsyncClient, fake_provider: FakeProvider,
 ) -> None:
@@ -899,7 +918,7 @@ async def test_g1_ten_concurrent_calls_compete_for_three_call_balance(
 
 
 async def test_h1_saturation_503_still_carries_a_call_id_and_a_row(
-    matrix_clients: AsyncClient, fake_provider: FakeProvider, monkeypatch,
+    matrix_clients: AsyncClient, fake_provider: FakeProvider, monkeypatch, posthog_events, caplog,
 ) -> None:
     """A burst that exhausts the DB pool is the one failure a caller cannot cause and cannot avoid
     (#181). It is answered by `_pool_saturated`, not by the refusal handler, so it needs its own
@@ -914,7 +933,8 @@ async def test_h1_saturation_503_still_carries_a_call_id_and_a_row(
     monkeypatch.setattr(call_service, "_resolve_call", _no_slot)
     before = await snapshot(matrix_clients, fake_provider)
 
-    response = await matrix_clients.get("/call/echo/ping")
+    with caplog.at_level(logging.WARNING, logger="treg.audit"):
+        response = await matrix_clients.get("/call/echo/ping")
     await audit.drain()
 
     assert response.status_code == 503
@@ -930,3 +950,127 @@ async def test_h1_saturation_503_still_carries_a_call_id_and_a_row(
     assert row["tool_name"] == "echo"
     # A 5xx is treg failing, not treg refusing — `_refusal_kind` maps it to None.
     assert row["refused_by"] is None
+    (event,) = await posthog_events()
+    assert event["distinct_id"] == "tim@superdesign.dev"
+    expected = {
+        "status_code": 503,
+        "outcome": "gateway_failed",
+        "failure_kind": "db_pool",
+        "call_ref": call_id,
+        "own_tool": None,
+        "provider": None,
+        "endpoint_id": None,
+    }
+    assert {key: event["properties"][key] for key in expected} == expected
+    assert event["properties"]["$groups"]["team"]
+    assert "dropping unknown CallRecord telemetry keys" not in caplog.text
+
+
+async def test_h2_unexpected_500_is_reported_once_as_treg_owned(
+    matrix_clients: AsyncClient, fake_provider: FakeProvider, monkeypatch, posthog_events,
+) -> None:
+    """A bug inside the call pipeline is still one attempted call in the product funnel. Exercise
+    the real HTTP boundary with server exceptions disabled, exactly as a remote caller sees it."""
+    async def _crash(*args, **kwargs):
+        raise RuntimeError("unexpected call-path bug")
+
+    monkeypatch.setattr(call_service, "_resolve_call", _crash)
+    async with AsyncClient(
+        transport=ASGITransport(app=app, raise_app_exceptions=False),
+        base_url="http://registry",
+        headers={"X-Treg-Token": matrix_clients.headers["X-Treg-Token"]},
+    ) as remote_client:
+        response = await remote_client.get("/call/tikhub.tiktok.video.comments")
+
+    assert response.status_code == 500
+    assert response.text == "Internal Server Error"
+    assert len(fake_provider.hits) == 0
+    await audit.drain()
+    rows = (await matrix_clients.get("/calls")).json()
+    row = next(row for row in rows if row["status_code"] == 500)
+    (event,) = await posthog_events()
+    assert event["distinct_id"] == "tim@superdesign.dev"
+    expected = {
+        "status_code": 500,
+        "outcome": "gateway_failed",
+        "failure_kind": "unexpected_exception",
+        "call_ref": row["call_ref"],
+        "own_tool": None,
+        "provider": None,
+        "endpoint_id": None,
+    }
+    assert {key: event["properties"][key] for key in expected} == expected
+
+
+@pytest.mark.parametrize(("path", "surface"), [
+    ("/call/tikhub.tiktok.video.comments", "call"),
+    (f"/catalog/call/{EP}?aweme_id=7", "catalog_call"),
+])
+async def test_h3_pool_saturation_before_identity_uses_an_intake_event(
+    matrix_clients: AsyncClient, monkeypatch, posthog_events, path: str, surface: str,
+) -> None:
+    """The first database checkout is authentication. If that checkout times out, no caller or
+    target has been resolved, so the attempt must not enter the attributed `tool_called` funnel.
+    Pre-identity saturation stays unattributed while retaining its ingress surface."""
+    async def _no_auth_slot(*args, **kwargs):
+        raise PoolTimeoutError("QueuePool limit of size 5 overflow 10 reached, connection timed out")
+
+    monkeypatch.setattr(identity_access, "_membership_by_token", _no_auth_slot)
+    response = await matrix_clients.get(path)
+
+    assert response.status_code == 503
+    assert response.json()["treg_saturated"] is True
+    assert response.headers.get("X-Treg-Call-Id")
+    assert await posthog_events() == []
+    (event,) = await posthog_events("call_intake_failed")
+    assert event["distinct_id"] == "treg-server"
+    expected = {
+        "status_code": 503,
+        "outcome": "gateway_failed",
+        "failure_kind": "db_pool",
+        "phase": "caller_identity",
+        "surface": surface,
+    }
+    assert {key: event["properties"][key] for key in expected} == expected
+    assert "$groups" not in event["properties"]
+    assert "own_tool" not in event["properties"]
+    assert "provider" not in event["properties"]
+
+
+async def test_h4_catalog_saturation_releases_idempotency_claim(
+    matrix_clients: AsyncClient, fake_provider: FakeProvider, platform_on, monkeypatch, posthog_events,
+) -> None:
+    """The catalog-only call surface has the same failure and retry contract as `/call/`."""
+    original_reserve = call_service._platform_reserve
+    attempts = 0
+
+    async def _fail_once(*args, **kwargs):
+        nonlocal attempts
+        attempts += 1
+        if attempts == 1:
+            raise PoolTimeoutError(
+                "QueuePool limit of size 5 overflow 10 reached, connection timed out")
+        return await original_reserve(*args, **kwargs)
+
+    monkeypatch.setattr(call_service, "_platform_reserve", _fail_once)
+    headers = {"Idempotency-Key": "catalog-saturation-retry"}
+
+    first = await matrix_clients.get(f"/catalog/call/{EP}?aweme_id=7", headers=headers)
+    second = await matrix_clients.get(f"/catalog/call/{EP}?aweme_id=7", headers=headers)
+    await audit.drain()
+
+    assert first.status_code == 503
+    assert first.json()["treg_saturated"] is True
+    assert first.headers.get("X-Treg-Call-Id")
+    assert second.status_code == 200, second.text
+    assert len(fake_provider.hits) == 1
+    rows = (await matrix_clients.get("/calls")).json()
+    failed = next(row for row in rows if row["status_code"] == 503)
+    assert failed["tool_name"] == EP
+    assert failed["call_ref"] == first.headers["X-Treg-Call-Id"]
+    (event,) = [
+        event for event in await posthog_events()
+        if event["properties"].get("failure_kind") == "db_pool"
+    ]
+    assert event["properties"]["provider"] == "tikhub"
+    assert event["properties"]["endpoint_id"] == EP

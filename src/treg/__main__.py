@@ -9,10 +9,17 @@ import sys
 async def _prepare_serve() -> None:
     """Apply release maintenance, then provision this local box when single-user mode allows it."""
     # Both imports are deliberately lazy so `python -m treg keygen` stays on the light path.
-    from . import api, maintenance
-    from .infra.db import dispose_engine
+    import logging
 
-    await maintenance.upgrade()
+    from . import api, maintenance
+    from .infra.db import dispose_engine, stamped_newer_than_build
+
+    try:
+        await maintenance.upgrade()
+    except maintenance.SchemaNewerThanBuild as exc:
+        if not await stamped_newer_than_build():
+            raise
+        logging.getLogger("treg").warning("%s Serving anyway, as the ASGI entry does.", exc)
     await api._bootstrap_single_user()
     await dispose_engine()
 
@@ -44,8 +51,8 @@ def main() -> None:
 
     asyncio.run(_prepare_serve())
 
-    # Honor $PORT (Render/Heroku set it and route/health-check that port) — a hard-coded port makes
-    # the deploy unreachable. Falls back to the local dev port.
+    # Honor $PORT (hosting platforms set it and route/health-check that port) - a hard-coded port
+    # makes the deploy unreachable. Falls back to the local dev port.
     port = int(os.environ.get("PORT", "18790"))
     uvicorn.run("treg.api:app", host="0.0.0.0", port=port, reload="--reload" in sys.argv)
 

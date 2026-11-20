@@ -19,17 +19,47 @@
     {
       "exception": "sqlalchemy.exc.TimeoutError",
       "handler": "treg.api._pool_saturated"
+    },
+    {
+      "exception": "asyncpg.exceptions.TooManyConnectionsError",
+      "handler": "treg.api._pool_saturated"
+    },
+    {
+      "exception": "asyncpg.exceptions.CannotConnectNowError",
+      "handler": "treg.api._pool_saturated"
+    },
+    {
+      "exception": "sqlalchemy.exc.OperationalError",
+      "handler": "treg.api._db_error"
+    },
+    {
+      "exception": "sqlalchemy.exc.InterfaceError",
+      "handler": "treg.api._db_error"
+    },
+    {
+      "exception": "treg.infra.db.ReportBusy",
+      "handler": "treg.bootstrap_handlers._report_busy"
     }
   ],
   "middleware": [
     {
       "args": [],
-      "class": "treg.mcp.NormalizeDirectoryMCPPath",
+      "class": "treg.mcp.NormalizeMCPPath",
+      "kwargs": {}
+    },
+    {
+      "args": [],
+      "class": "treg.infra.org_traffic.RequestLogMiddleware",
       "kwargs": {}
     },
     {
       "args": [],
       "class": "treg.api._BodyDecodeMiddleware",
+      "kwargs": {}
+    },
+    {
+      "args": [],
+      "class": "treg.bootstrap_http._ClientNoticeMiddleware",
       "kwargs": {}
     },
     {

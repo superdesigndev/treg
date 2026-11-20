@@ -1,0 +1,32 @@
+{
+  "output": {
+    "data": {
+      "items": [
+        {
+          "description": "Fintech, a pioneering business solutions provider, has been dedicated to serving the beverage alcohol industry for over 35 years. Supported by TA Associates and General Atlantic, Fintech stands as a f… [232 chars]",
+          "followersText": "108K followers",
+          "handle": "fintech-net",
+          "id": "2785182",
+          "image": "https://media.licdn.com/dms/image/v2/D4D0BAQE405phR1bFjA/company-logo_100_100/B4DZcSS7ZzHMAQ-/0/1748358641755/fintech_net_logo?e=1791417600&v=beta&t=xny67NSX7rCxNy6H4kRY0KgqMQbhVh4gcmDJu7q6rBg",
+          "industry": "Financial Services",
+          "location": "Tampa, FL",
+          "name": "Fintech",
+          "url": "https://www.linkedin.com/company/fintech-net/"
+        },
+        "… 2 more item(s) truncated"
+      ]
+    },
+    "found": true
+  },
+  "provider": "AnyAPI",
+  "costUsd": 0.005,
+  "items": 3,
+  "replayed": false,
+  "source": {
+    "id": "anonymous-hedgehog-338ce087",
+    "name": "Hedgehog",
+    "kind": "anonymous",
+    "artworkKey": "hedgehog"
+  },
+  "resultId": "e8ea0792-87d9-4427-a88a-29e5324561a1"
+}

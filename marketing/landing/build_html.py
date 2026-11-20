@@ -16,7 +16,10 @@ document at the ad-kit heading and refuses to emit anything after it.
 Needs `markdown` (pip install markdown) — a build-time dependency only, never imported by
 the shipped package.
 """
-import re, sys, pathlib, html
+import re
+import pathlib
+import html
+import json as json_mod
 import markdown as md
 
 HERE = pathlib.Path(__file__).parent
@@ -231,22 +234,10 @@ def add_logos(tbl_html):
 # ---------------------------------------------------------------- sections
 
 
-def catalog_counts():
-    """The kicker's numbers, read from the live catalog at build time and floored to a bound
-    (F-01's convention: a static page states a rounded-DOWN claim that stays true as the catalog
-    grows — an exact number here would be false the day a provider lands). It shipped hand-typed
-    as 2,600+/40+ and could never tighten; now it re-floors on every build. Mirrors web._pub:
-    hidden kinds out, and the routed meta-rows out with them. Fails the build loudly rather than
-    emit a guessed number."""
-    sys.path.insert(0, str(HERE.parent.parent / "src"))
-    from treg.domain.catalog import store as cs
-    eps = [e for e in cs.load().endpoints
-           if e["kind"] not in cs.HIDDEN_KINDS and e.get("kind") != "routed"]
-    n, p = len(eps), len({e["provider"] for e in eps})
-    return n // 100 * 100, p // 5 * 5
-
-
-N_TOOLS, N_PROVIDERS = catalog_counts()
+# The catalog's size is never baked in: the pages carry `{ENDPOINTS}` / `{PROVIDERS}` and the route
+# fills them from the loaded catalog on every request (`routers/web.py` `_static_page`), so a page
+# built once stays true as the catalog grows.
+HEADLINE = "{ENDPOINTS} tools &middot; {PROVIDERS} providers"
 
 
 def render_hero(body, page_id):
@@ -279,7 +270,7 @@ def render_hero(body, page_id):
         elif not lede:
             lede = inline(s)
     return f"""<header class="hero"><div class="wrap">
-  <div class="kicker">{N_TOOLS:,}+ tools · {N_PROVIDERS}+ providers · one key</div>
+  <div class="kicker">{HEADLINE} &middot; one key</div>
   <h1>{html.escape(head)}</h1>
   <div class="lede">{lede}</div>
   {ctas}
@@ -455,8 +446,6 @@ def render_faq(title, body, label=None):
     return (f'<section><div class="wrap">{lab}<h2>{html.escape(title)}</h2>{inner}</div></section>')
 
 
-import json as json_mod
-
 
 def generate_jsonld(slug, h1, category):
     """Generate JSON-LD for BreadcrumbList and FAQPage."""
@@ -522,6 +511,10 @@ TEMPLATE = """<!doctype html>
 <meta property="og:url" content="{{BASE}}/use-cases/{slug}"/>
 <meta property="og:type" content="website"/>
 <meta name="twitter:card" content="summary_large_image"/>
+<meta property="og:image" content="{{BASE}}/media/og.png"/>
+<meta property="og:image:width" content="1200"/>
+<meta property="og:image:height" content="630"/>
+<meta name="twitter:image" content="{{BASE}}/media/og.png"/>
 <link rel="icon" type="image/svg+xml" href="/favicon.svg"/>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -532,7 +525,7 @@ TEMPLATE = """<!doctype html>
 <body data-page="{page_id}">
 
 <div class="navwrap"><nav class="nav">
-  <a class="brand" href="/"><span class="glyph">&#9626;</span> treg.to</a>
+  <a class="brand" href="/"><span class="glyph" aria-hidden="true"><svg viewBox="0 0 290 290"><rect width="140.5" height="140.5" rx="20"/><rect x="149.5" y="149.5" width="140.5" height="140.5" rx="20"/></svg></span> treg</a>
   <div class="links">
     <a class="hidem" href="/tutorial">docs</a>
     <a class="hidem" href="https://github.com/superdesigndev/treg" target="_blank" rel="noopener">repo</a>
@@ -544,7 +537,7 @@ TEMPLATE = """<!doctype html>
 
 <footer>
   <div class="foot-in">
-    <a class="brand" href="/"><span class="glyph">&#9626;</span> treg.to</a>
+    <a class="brand" href="/"><span class="glyph" aria-hidden="true"><svg viewBox="0 0 290 290"><rect width="140.5" height="140.5" rx="20"/><rect x="149.5" y="149.5" width="140.5" height="140.5" rx="20"/></svg></span> treg</a>
     <span class="note">100% open source</span>
     <span class="sp"></span>
     <a href="/resources">resources</a><a href="/tutorial">docs</a><a href="/llms.txt">llms.txt</a>
@@ -724,7 +717,7 @@ HUB = """<!doctype html>
 <body data-page="hub">
 
 <div class="navwrap"><nav class="nav">
-  <a class="brand" href="/"><span class="glyph">&#9626;</span> treg.to</a>
+  <a class="brand" href="/"><span class="glyph" aria-hidden="true"><svg viewBox="0 0 290 290"><rect width="140.5" height="140.5" rx="20"/><rect x="149.5" y="149.5" width="140.5" height="140.5" rx="20"/></svg></span> treg</a>
   <div class="links">
     <a class="hidem" href="/tutorial">docs</a>
     <a class="hidem" href="https://github.com/superdesigndev/treg" target="_blank" rel="noopener">repo</a>
@@ -733,7 +726,7 @@ HUB = """<!doctype html>
 </nav></div>
 
 <header class="hero"><div class="wrap">
-  <div class="kicker">2,600+ tools &middot; 40+ providers &middot; one key</div>
+  <div class="kicker">{ENDPOINTS} tools &middot; {PROVIDERS} providers &middot; one key</div>
   <h1>What your agent can do with treg.to</h1>
   <div class="lede"><p>Each of these is a job an agent can finish, a prompt you can copy, and what the
   run actually cost when we made it. Pick the one that matches your work.</p></div>
@@ -759,7 +752,7 @@ HUB = """<!doctype html>
 
 <footer>
   <div class="foot-in">
-    <a class="brand" href="/"><span class="glyph">&#9626;</span> treg.to</a>
+    <a class="brand" href="/"><span class="glyph" aria-hidden="true"><svg viewBox="0 0 290 290"><rect width="140.5" height="140.5" rx="20"/><rect x="149.5" y="149.5" width="140.5" height="140.5" rx="20"/></svg></span> treg</a>
     <span class="note">100% open source</span>
     <span class="sp"></span>
     <a href="/resources">resources</a><a href="/tutorial">docs</a><a href="/llms.txt">llms.txt</a>
@@ -781,9 +774,7 @@ def build_hub(rows):
         f'<p>{html.escape(blurb)}</p></a>'
         for slug, h1, blurb in rows)
     dest = WEB / "resources.html"
-    page = (HUB.replace("{cards}", cards)
-            .replace("2,600+ tools &middot; 40+ providers",
-                     f"{N_TOOLS:,}+ tools &middot; {N_PROVIDERS}+ providers"))
+    page = HUB.replace("{cards}", cards)
     dest.write_text(page)
     return dest, len(page)
 

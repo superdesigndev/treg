@@ -1,0 +1,19 @@
+{
+  "categories": [
+    {
+      "id": "69e178c3-14be-11ee-a9cb-614c6a0a867a",
+      "name": "Cappuccino",
+      "emoji": "☕",
+      "match": "exact"
+    },
+    {
+      "id": "69e178cb-14be-11ee-a9cb-614c6a0a867a",
+      "name": "Coffee",
+      "emoji": "☕",
+      "match": "keyword"
+    }
+  ],
+  "total": 2,
+  "doc_notes": "Best matches first. Pick one id per concept the user explicitly named; ids are stable.",
+  "call_id": "1b034e9d-30cc-4f66-9a11-94a9244aed22"
+}

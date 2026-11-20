@@ -1,0 +1,36 @@
+{
+  "reactions": [
+    {
+      "reactionType": "LIKE",
+      "post": {
+        "id": "urn:li:activity:7508688252292308992",
+        "shareUrn": "urn:li:ugcPost:7508560407276716032",
+        "content": "\"We are entering a golden age of Alzheimer's research.\" \n\nThat's how Bill Gates described it this summer, and our Executive Director Niranjan Bose couldn't agree more. In our latest newsletter, he reflects on the momentum coming out of AAIC in London, from new evidence that pTau-217 blood tests can predict Alzheimer's up to a decade before symptoms appear, to the researchers building on AD Workbench data every day. \n\nRead to learn what’s next for the Alzheimer's Trials Data Discovery Challenge, … [692 chars total]",
+        "date": "2026-09-24T00:46:24.028Z",
+        "reactionCount": 60,
+        "commentCount": 0,
+        "sharesCount": 2,
+        "imageUrl": null,
+        "videoUrl": null,
+        "carouselPdfUrl": null,
+        "profile": {
+          "urn": "",
+          "name": "Alzheimer's Disease Data Initiative",
+          "headline": "19,541 followers",
+          "url": "https://www.linkedin.com/company/alzheimersdata/posts",
+          "imageUrl": ""
+        },
+        "reactionsByType": {
+          "like": 54,
+          "appreciation": 2,
+          "empathy": 2,
+          "interest": 1,
+          "praise": 1
+        },
+        "shareUrl": "https://www.linkedin.com/posts/alzheimersdata_we-are-entering-a-golden-age-of-alzheimers-ugcPost-7508560407276716032-RPKe?utm_source=social_share_send&utm_medium=member_desktop_web&rcm=ACoAAGw6ZOQBgfnbvWh_TL8HIEmzqOnHF2T3qx8"
+      }
+    }
+  ],
+  "paginationToken": "dXJuOmxpOmFjdGl2aXR5Ojc1MDg2ODgyNTIyOTIzMDg5OTItMTc5MDIxMDc3Njk0Ng==",
+  "hasMore": true
+}

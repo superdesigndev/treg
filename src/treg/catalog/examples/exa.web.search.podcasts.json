@@ -1,0 +1,44 @@
+{
+  "requestId": "01adcefbb0c4965788ea6473bc029d08",
+  "resolvedSearchType": "",
+  "results": [
+    {
+      "id": "https://exa.ai/library/podcast/69mlcpk082b/episode/8msh8009k09",
+      "title": "Jensen Huang | Does AI Revenue Justify Capex, '27 AI Bottlenecks, Singularity, Open vs Closed & more",
+      "url": "https://exa.ai/library/podcast/69mlcpk082b/episode/8msh8009k09",
+      "publishedDate": "2026-10-15T10:00:00.000Z",
+      "highlights": [
+        "Um, and so let, let's unpack that. First, first of all, it's fair-fairly logical why the amount of compute that we're gonna need, uh, is a billion times more than where we were just recently, let's say, call it last year. And the reason for that is because thinking and problem-solving takes a lot more, you know, uh, inferences-\n\n...\n\nAnd so I, ... I, I think this is, there's a, there's a fairly insatiable demand for, for intelligence, and the more in- the, the smarter you are, the s- the m-"
+      ],
+      "image": "https://cdn.particle.pro/url/media/ae3b36cb-daa9-5a53-9216-0d518da60aec/7d5a6e13b71ebac7acf5e1ad74640bbc60aa6ebd8f0b6630cf0eef861979900c"
+    },
+    {
+      "id": "https://exa.ai/library/podcast/dklpnxbf21w/episode/t4swx00j9wg",
+      "title": "#494 – Jensen Huang: NVIDIA – The $4 Trillion Company & the AI Revolution",
+      "url": "https://exa.ai/library/podcast/dklpnxbf21w/episode/t4swx00j9wg",
+      "publishedDate": "2026-03-23T16:28:42.000Z",
+      "highlights": [
+        "So in the beginning, we were s- the first, the pre-s- pre-training scaling law. You know, people thought, uh, well, rightfully so, that the amount of data that we have, qu- high-quality data, data that we have, um, will limit the intelligence that we achieve, and that scaling law was an important, very important scaling law. The larger the model, the correspondingly more data, uh, c- results in a better, with a, results in a smarter AI. And so that was pre-training. And Ilya Sutskever, Ilya said… [4213 chars total]"
+      ],
+      "image": "https://cdn.particle.pro/url/media/7eeae9d1-141e-5133-9e8f-6c1da695e40c/3fac758981c5d88a69017c60f5e10467fb76a7939e6332ab7e71b6ad2cd49d6d"
+    },
+    "… 1 more item(s) truncated"
+  ],
+  "effectiveFilters": {
+    "includeDomains": [],
+    "excludeDomains": [],
+    "includeUrls": [
+      "exa.ai/library/podcast"
+    ],
+    "excludeUrls": [],
+    "includeText": [],
+    "excludeText": []
+  },
+  "searchTime": 500.7,
+  "costDollars": {
+    "total": 0.007,
+    "search": {
+      "neural": 0.007
+    }
+  }
+}

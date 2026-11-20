@@ -1,0 +1,52 @@
+{
+  "id": "resp_00000000-0000-4000-8000-000000000001",
+  "object": "response",
+  "status": "completed",
+  "model": "openai/gpt-6-luna",
+  "output": [
+    {
+      "content": [
+        {
+          "annotations": [],
+          "text": "example.com is reserved for use as an illustrative example in documentation, such as manuals and technical materials. [web:1]",
+          "type": "output_text"
+        }
+      ],
+      "id": "msg_9f1190fa-ab9a-4253-b600-61b249d1883e",
+      "role": "assistant",
+      "status": "completed",
+      "type": "message"
+    }
+  ],
+  "usage": {
+    "cost": {
+      "cache_creation_cost": 0.00032,
+      "cache_read_cost": 3e-05,
+      "currency": "USD",
+      "input_cost": 0,
+      "output_cost": 3e-05,
+      "tool_calls_cost": 0.0025,
+      "tool_calls_cost_details": {
+        "search_web": 0.0025
+      },
+      "total_cost": 0.00288
+    },
+    "input_tokens": 5372,
+    "input_tokens_details": {
+      "cache_creation_input_tokens": 2534,
+      "cache_read_input_tokens": 2832,
+      "cached_tokens": 2832
+    },
+    "output_tokens": 64,
+    "output_tokens_details": {
+      "reasoning_tokens": 0
+    },
+    "tool_calls_details": {
+      "search_web": {
+        "cost_usd": 0.0025,
+        "invocation": 1
+      }
+    },
+    "total_tokens": 5436
+  }
+}

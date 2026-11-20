@@ -1,0 +1,23 @@
+{
+  "output": {
+    "data": {
+      "items": [
+        "… {18 field(s) truncated}",
+        "… 9 more item(s) truncated"
+      ]
+    },
+    "found": true
+  },
+  "provider": "AnyAPI",
+  "costUsd": 0.005,
+  "items": 10,
+  "replayed": false,
+  "source": {
+    "id": "anonymous-hedgehog-338ce087",
+    "name": "Hedgehog",
+    "kind": "anonymous",
+    "artworkKey": "hedgehog"
+  },
+  "hint": "large_result: this response is ~28 KB. To keep future runs from flooding your context, re-run with `fields` (keep only the keys you need), `max_items` (cap rows), `summary=true` (outline only), or `jq… [309 chars]",
+  "resultId": "bebab27f-5ebf-471d-a5c7-47b97279b1ab"
+}

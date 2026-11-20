@@ -1,0 +1,84 @@
+{
+  "companies": [
+    {
+      "company_name": "Palantir Technologies",
+      "company_slug": "palantir-technologies",
+      "company_logo": "https://logos.hirebase.org/952e70aa-1562-4c5c-9e17-8edd72f761d0/palantir-technologies-320x320-q95.jpg",
+      "company_link": "palantir.com",
+      "linkedin_link": "https://www.linkedin.com/company/palantir-technologies",
+      "description_summary": "Palantir Technologies develops enterprise software that enables AI-driven decision making across government and commercial sectors. Its flagship platforms integrate data from disparate sources, provide advanced analytics, and enforce data protection and governance to ensure responsible AI use. Palantir’s solutions are deployed from manufacturing floors to defense operations, offering real-time insights and secure civilian protection capabilities. The company distinguishes itself by combining deep technical expertise in big-data engineering with a strong focus on ethical AI practices and mission-critical reliability.",
+      "culture_summary": "Palantir promotes a mission‑driven, data‑centric culture that prioritizes ethical AI, technical excellence, and high reliability in mission‑critical environments.",
+      "services": [
+        "Data Integration",
+        "Big Data",
+        "Enterprise Software",
+        "Data Analytics",
+        "Data Protection",
+        "Data Engineering",
+        "Artificial Intelligence",
+        "AI Platform"
+      ],
+      "industries": [
+        "Tech, Software & IT Services"
+      ],
+      "subindustries": [
+        "AI & ML",
+        "Data Management & Analytics",
+        "Enterprise Software & Solutions",
+        "Cybersecurity",
+        "Cloud Technologies"
+      ],
+      "size_range": {
+        "min": 1001,
+        "max": 5000
+      },
+      "clout": 5.78,
+      "headquarters": {
+        "city": "Miami",
+        "region": "Florida",
+        "country": "United States",
+        "address": "Miami, Miami-Dade County, Florida, United States",
+        "coordinates": {
+          "type": "Point",
+          "coordinates": [
+            -80.1935973,
+            25.7741566
+          ]
+        },
+        "bbox": [
+          25.7090517,
+          25.8557827,
+          -80.31976,
+          -80.139157
+        ]
+      },
+      "founded": null,
+      "stock_info": {
+        "stock_type": "Public",
+        "index": null,
+        "symbol": null
+      },
+      "funding_info": {
+        "type": "Post IPO equity",
+        "total_rounds": 28,
+        "last_funding_round": "Aug 31, 2023",
+        "total_funding": 2055048074.0
+      },
+      "type": "Enterprise",
+      "is_3rd_party_agency": false,
+      "is_recruiting_agency": false,
+      "mean_opinion_score": 9.0,
+      "aliases": [
+        "Palantir",
+        "PLTR"
+      ],
+      "parent_company": null,
+      "subsidiaries": null,
+      "score": 6.001028060913086
+    }
+  ],
+  "total_count": 1,
+  "page": 1,
+  "limit": 1,
+  "total_pages": 1
+}

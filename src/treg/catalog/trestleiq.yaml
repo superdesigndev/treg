@@ -1,0 +1,130 @@
+# Three synchronous, single-record products available on the assigned Trestle account. Reverse
+# lookup, telephony, risk, feedback, bulk upload and every paid add-on are deliberately omitted.
+# Trestle bills every HTTP 200 response, including negative and missing-input results; 4xx/5xx
+# responses are free. Required selectors and strict_query keep malformed or add-on calls local.
+provider: trestleiq
+source:
+  docs: https://docs.trestleiq.com/api-reference
+  openapi: https://raw.githubusercontent.com/TrestleIQ/docs/main/ai/API_CATALOG.json
+  curated: '2026-09-21'
+pricing_url: https://trestleiq.com/pricing/
+limits: Default self-serve limit is 10 requests per second. Monthly quota depends on the account.
+proposed_capabilities:
+  people.contact.verify: Verify that supplied contact details are consistent and reachable
+  people.address.verify: Validate and normalize a US postal address
+endpoints:
+  - id: trestleiq.people.phone.verify
+    domain: contacts
+    capability: people.phone.verify
+    platform: people
+    scope: any_account
+    method: GET
+    path: /3.0/phone_intel
+    name: Validate a phone number
+    summary: Validate one phone number and return carrier, line type, prepaid status, and activity score
+    strict_query: true
+    input:
+      queryParams:
+        phone: {type: string, required: true, example: '+13005550103', note: E.164 or national format.}
+        phone.country_hint: {type: string, required: false, example: US, note: ISO-3166 alpha-2 context for a national-format number.}
+      note: Numbering-plan validity and activity signals do not prove current ownership. The paid litigator_checks add-on is not exposed. Trestle returns a billable HTTP 200 Missing Input response when phone is absent, so treg requires it locally.
+    test_request: {queryParams: {phone: '+13005550100', is_sandbox: 'true'}}
+    cost:
+      type: per_call
+      value: 0.015
+      currency: USD
+      per: 1
+      unit: call
+      source: observed
+      source_url: https://trestleiq.com/pricing/
+      checked: '2026-09-21'
+      confidence: verified
+      note: Two consecutive billed sandbox responses increased Phone Validation usage by two and, after the delayed wallet refresh, reduced the provider balance by exactly $0.03 — $0.015 each. Trestle documents that every HTTP 200 is billable, including invalid numbers and no-match results; HTTP 4xx and 5xx responses are free.
+    verified: '2026-09-21'
+    added: '2026-09-21'
+    example_response: examples/trestleiq.people.phone.verify.json
+    docs_url: https://docs.trestleiq.com/api-reference/phone-validation-api
+
+  - id: trestleiq.people.contact.verify
+    domain: contacts
+    capability: people.contact.verify
+    platform: people
+    scope: any_account
+    method: GET
+    path: /2.0/real_contact
+    name: Verify contact details
+    summary: Grade whether a name, phone, email, address, and IP describe a consistent contact
+    strict_query: true
+    input:
+      queryParams:
+        name: {type: string, required: true, example: Jon Snow}
+        phone: {type: string, required: true, example: 300-555-0103}
+        email: {type: string, required: false, format: email}
+        address.street_line_1: {type: string, required: false}
+        address.city: {type: string, required: false}
+        address.state_code: {type: string, required: false}
+        address.postal_code: {type: string, required: false}
+        address.country_code: {type: string, required: false, example: US}
+        ip_address: {type: string, required: false}
+        business.name: {type: string, required: false}
+      note: The base product only. Litigator, email-deliverability, and email-age add-ons are not exposed because each changes the charge. Trestle returns a billable HTTP 200 Missing Input response when name and phone are absent, so treg requires them locally.
+    test_request:
+      queryParams:
+        name: Jon Snow
+        phone: 300-555-0103
+        email: jsnow@got.com
+        address.street_line_1: 103 Main Doors
+        address.city: Kings Landing
+        address.state_code: WA
+        address.postal_code: '98101'
+        is_sandbox: 'true'
+    cost:
+      type: per_call
+      value: 0.03
+      currency: USD
+      per: 1
+      unit: call
+      source: observed
+      source_url: https://trestleiq.com/pricing/
+      checked: '2026-09-21'
+      confidence: verified
+      note: A controlled live run made one billable missing-input call to each product. Together with Phone Validation's separately verified $0.015 price, the portal's rounded $0.06 wallet decrease matched the exact expected $0.055 total and confirmed the documented $0.03 Real Contact and $0.01 Address prices. Every HTTP 200 is billable; HTTP 4xx and 5xx responses are free.
+    verified: '2026-09-21'
+    added: '2026-09-21'
+    example_response: examples/trestleiq.people.contact.verify.json
+    docs_url: https://docs.trestleiq.com/api-reference/real-contact-api
+
+  - id: trestleiq.people.address.verify
+    domain: contacts
+    capability: people.address.verify
+    platform: people
+    scope: any_account
+    method: GET
+    path: /3.0/location_intel
+    name: Validate a US address
+    summary: Validate and USPS-normalize one US postal address
+    strict_query: true
+    input:
+      queryParams:
+        street_line_1: {type: string, required: true, example: 800 Bellevue Way NE}
+        street_line_2: {type: string, required: false}
+        city: {type: string, required: false, example: Bellevue}
+        state_code: {type: string, required: false, example: WA}
+        postal_code: {type: string, required: false, example: '98004'}
+      note: US addresses only. This validation product returns normalized address fields and coordinates, not Reverse Address residents. Trestle returns a billable HTTP 200 Missing Input response when street_line_1 is absent, so treg requires it locally.
+    test_request: {queryParams: {street_line_1: 1 This Address Does Not Exist, city: Seattle, state_code: WA, postal_code: '98101'}}
+    cost:
+      type: per_call
+      value: 0.01
+      currency: USD
+      per: 1
+      unit: call
+      source: observed
+      source_url: https://trestleiq.com/pricing/
+      checked: '2026-09-21'
+      confidence: verified
+      note: A controlled live run made one billable missing-input call to each product. Together with Phone Validation's separately verified $0.015 price, the portal's rounded $0.06 wallet decrease matched the exact expected $0.055 total and confirmed the documented $0.03 Real Contact and $0.01 Address prices. Every HTTP 200 is billable; HTTP 4xx and 5xx responses are free.
+    verified: '2026-09-21'
+    added: '2026-09-21'
+    example_response: examples/trestleiq.people.address.verify.json
+    docs_url: https://docs.trestleiq.com/api-reference/address-validation-api

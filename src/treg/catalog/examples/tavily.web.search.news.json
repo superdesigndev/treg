@@ -1,0 +1,22 @@
+{
+  "query": "AI policy",
+  "results": [
+    {
+      "url": "https://www.adn.com/alaska-news/education/2026/10/04/ai-policy-coming-to-university-of-alaska-as-student-misuse-increases",
+      "title": "AI policy coming to University of Alaska as student misuse increases - Anchorage Daily News",
+      "content": "The UA system does not have a single policy governing AI use across more than a dozen individual campuses. A section in the student handbook prohibits “utilizing devices not authorized by faculty members.”\n\nThe current guidance allows professors to tailor their syllabi to allow as much or as little AI usage in class as they like, but doesn’t address broader concerns about how and where the use is appropriate on campus. The UAA Faculty Senate specifically requested the current structure. [...] ADVERTISEMENT\n\nA growing number of U.S. universities have adopted AI policies that are being “dramatically outpaced” by use of the tools, according to Stephanie Erickson, a special projects lead who presented the draft language to regents in September alongside Chief Information Technology Officer Ben Shier.\n\n“We need to be deliberate with how we want to engage with AI instead of letting it just happen to us,” Erickson said. [...] Taaga serves on the the student government for UAA students. During a preliminary meeting where the AI policy draft was presented to students, Taaga said she pushed back against the language, claiming it didn’t go far enough.\n\nTaaga told the regent’s representative that when choosing what university to attend, she and other West Anchorage High School graduates were wary of schools with AI policies they felt were too weak.\n\n“Most of the younger generations are really against it,” Taaga said.",
+      "score": 0.685971,
+      "published_date": "Sun, 04 Oct 2026 17:00:00 GMT"
+    },
+    {
+      "url": "https://thehackernews.com/2026/10/china-aligned-ta419-targets-us-ai.html",
+      "title": "China-Aligned TA419 Targets U.S. AI Policy Experts With Microsoft AitM Phishing",
+      "content": "\"This activity likely supports wider Chinese intelligence objectives to better understand ongoing developments within the U.S. AI policy and regulatory landscape and occurs amid intense strategic competition, accusations of model distillation, and export controls involving the U.S. and China,\" Proofpoint said in an analysis published this week. [...] \"TA419 has consistently shown an interest in defense, national security, energy, international relations, and foreign policy targets, predominantly with a nexus to the U.S. and Japan,\" Proofpoint said. \"The targeting of AI policy experts represents an extension of that remit rather than a departure from it.\" [...] The Hacker News Logo\ncybersecurity\n\n# China-Aligned TA419 Targets U.S. AI Policy Experts With Microsoft AitM Phishing\n\nA new China-nexus cyber espionage group known as TA419 has been attributed to multiple credential phishing campaigns targeting artificial intelligence (AI) experts working for U.S. think tanks, universities, and legal sector organizations.",
+      "score": 0.6255073,
+      "published_date": "Sun, 04 Oct 2026 07:20:00 GMT"
+    }
+  ],
+  "usage": {
+    "credits": 1
+  }
+}

@@ -1,0 +1,1 @@
+{"inputs": {"company_domain": "stripe.com", "title": "marketing", "limit": 2}, "fields": ["people", "count", "valid", "risky", "units"]}

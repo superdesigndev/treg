@@ -1,0 +1,95 @@
+{
+  "meta": {
+    "blocked": [],
+    "elapsed_ms": 0,
+    "from_cache": true,
+    "llm_calls": 0,
+    "pages_fetched": 0,
+    "partial": false,
+    "warnings": []
+  },
+  "recipe": "tiktok-search",
+  "usage": {
+    "boxes": [
+      "gate"
+    ],
+    "cache": "hit",
+    "engine": "recipe",
+    "lines": [
+      {
+        "about": "the call",
+        "boxes": [
+          "gate"
+        ],
+        "cache": "miss",
+        "call": "recipes",
+        "engine": "gate",
+        "units": 1
+      }
+    ],
+    "remaining_before": {
+      "concurrent": 99,
+      "requests": 176,
+      "search": 3000
+    },
+    "units": 1
+  },
+  "version": 1,
+  "rows": [
+    {
+      "author": {
+        "followers": 83900,
+        "name": "⊹ ࣪ ˖ rant backgrounds 𝜗ৎ",
+        "username": "slimerantbackgrounds"
+      },
+      "cover": "https://p16-common-sign.tiktokcdn.com/tos-alisg-p-0037/oobUWDMLQDCQtBt98IAAQsLXfvaPeEEUTAejo9~tplv-tiktokx-origin.image?dr=14575&x-expires=1791867600&x-signature=S6BdWEMsaDdmPBpEvFJ%2BOzkQEyY%3D&t=4d5b0474&ps=13740610&shp=81f88b70&shcp=43f4a2f9&idc=my",
+      "created_at": "2026-06-13T15:43:24Z",
+      "description": "cooking lunch! feel free to use as rant backgrounds #rantbackgrounds #satisfying #cooking",
+      "duration_s": 42.0,
+      "hashtags": [
+        "rantbackgrounds",
+        "satisfying"
+      ],
+      "music": {
+        "author": "⊹ ࣪ ˖ rant backgrounds 𝜗ৎ",
+        "original": true,
+        "title": "original sound - ⊹ ࣪ ˖ rant backgrounds 𝜗ৎ"
+      },
+      "post_id": "7650906130071325959",
+      "stats": {
+        "comments": 945,
+        "likes": 118200,
+        "plays": 1800000,
+        "saves": 25800,
+        "shares": 18800
+      },
+      "url": "https://www.tiktok.com/@slimerantbackgrounds/video/7650906130071325959"
+    },
+    {
+      "author": {
+        "followers": 260000,
+        "name": "💕 Ava M Paloma 🕊️",
+        "username": "avaspalomas"
+      },
+      "cover": "https://p16-common-sign.tiktokcdn.com/tos-useast5-p-0068-tx/o8xI1KiBIAAWPXJVCqqpdIwEBfAqiBAZkBA17I~tplv-tiktokx-origin.image?dr=14575&x-expires=1791867600&x-signature=jHTGN1vzl0kZEXgXWEPtqukisbc%3D&t=4d5b0474&ps=13740610&shp=81f88b70&shcp=43f4a2f9&idc=my",
+      "created_at": "2026-07-15T11:56:04Z",
+      "description": "what we made for dinner living in our bus at campgrounds!!",
+      "duration_s": 25.0,
+      "hashtags": [],
+      "music": {
+        "author": "💕 Ava M Paloma 🕊️",
+        "original": true,
+        "title": "original sound"
+      },
+      "post_id": "7662721904679210253",
+      "stats": {
+        "comments": 290,
+        "likes": 21500,
+        "plays": 936900,
+        "saves": 3323,
+        "shares": 949
+      },
+      "url": "https://www.tiktok.com/@avaspalomas/video/7662721904679210253"
+    }
+  ]
+}

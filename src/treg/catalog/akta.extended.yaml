@@ -7,6 +7,7 @@ source:
   - https://docs.akta.pro/llms-full.txt
 endpoints:
 - id: akta.x.product-reviews
+  added: '2026-07-28'
   domain: other
   tier: extended
   platform: companies
@@ -23,6 +24,7 @@ endpoints:
         example: canva.com
       products:
         type: array
+        items: {type: string}
         required: false
         note: product_id values to fetch reviews for (repeat the param per id); omitted → returns the free product list only, no reviews
       limit:
@@ -53,6 +55,7 @@ endpoints:
   docs_url: https://docs.akta.pro/api-reference/alternative-data/product-reviews
   skipped: not called — $1.5000 would exceed this run's $0.12 budget
 - id: akta.x.jobs
+  added: '2026-07-28'
   domain: companies
   tier: extended
   platform: companies
@@ -96,6 +99,7 @@ endpoints:
   docs_url: https://docs.akta.pro/api-reference/alternative-data/job-posts
   skipped: not called — $4.0000 would exceed this run's $0.12 budget
 - id: akta.x.social-posts
+  added: '2026-07-28'
   domain: other
   tier: extended
   platform: companies
@@ -139,6 +143,7 @@ endpoints:
   docs_url: https://docs.akta.pro/api-reference/alternative-data/social-posts
   skipped: not called — $1.0000 would exceed this run's $0.12 budget
 - id: akta.x.website-traffic
+  added: '2026-07-28'
   domain: other
   tier: extended
   platform: companies
@@ -172,6 +177,7 @@ endpoints:
   docs_url: https://docs.akta.pro/api-reference/alternative-data/website-traffic
   skipped: not called — $1.5000 would exceed this run's $0.12 budget
 - id: akta.x.company-addition
+  added: '2026-07-28'
   kind: account
   tier: extended
   platform: companies
@@ -202,6 +208,8 @@ endpoints:
     note: documented free — does not consume credits
   docs_url: https://docs.akta.pro/api-reference/supporting-apis/company-addition-api
 - id: akta.x.request-status
+  added: '2026-07-28'
+  platform_blocked: "Shared-key request ownership is unavailable; connect your own Akta key."
   kind: utility
   tier: extended
   platform: companies

@@ -1,0 +1,27 @@
+{
+  "linkedin_internal_id": "example-id",
+  "job_description": "Example description.",
+  "apply_url": null,
+  "title": "example",
+  "location": {
+    "country": "US",
+    "region": "example",
+    "city": null,
+    "postal_code": null,
+    "latitude": null,
+    "longitude": null,
+    "street": null
+  },
+  "company": {
+    "name": "Example Person",
+    "url": "https://example.com/profile/example",
+    "logo": "https://example.com/profile/example"
+  },
+  "seniority_level": "example",
+  "industry": [
+    "example"
+  ],
+  "employment_type": "example",
+  "job_functions": [],
+  "total_applicants": 1
+}

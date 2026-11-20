@@ -1,0 +1,71 @@
+{
+  "meta": {
+    "blocked": [],
+    "elapsed_ms": 0,
+    "from_cache": true,
+    "llm_calls": 0,
+    "pages_fetched": 0,
+    "partial": false,
+    "warnings": []
+  },
+  "recipe": "facebook-profile",
+  "usage": {
+    "boxes": [
+      "gate"
+    ],
+    "cache": "hit",
+    "engine": "recipe",
+    "lines": [
+      {
+        "about": "the call",
+        "boxes": [
+          "gate"
+        ],
+        "cache": "miss",
+        "call": "recipes",
+        "engine": "gate",
+        "units": 1
+      }
+    ],
+    "remaining_before": {
+      "concurrent": 99,
+      "requests": 198,
+      "search": 3000
+    },
+    "units": 1
+  },
+  "version": 1,
+  "rows": [
+    {
+      "address": null,
+      "category": "Government organisation",
+      "checkins": null,
+      "cover_photo": "https://scontent.fkul15-1.fna.fbcdn.net/v/t39.99422-6/809146614_4484013928506139_3181913787670602881_n.png?stp=dst-jpg_tt6&cstp=mx2047x1487&ctp=s2047x1487&_nc_cat=110&_nc_map=urlgen_bucketless&ccb=1-7&_nc_sid=cc71e4&_nc_ohc=ZUc2xuirzz8Q7kNvwGxgqgw&_nc_oc=AdrpHQPYV5xV8PQy0NbmptAWm1FQ1lGTtANMcQcSB51nr…",
+      "details": [
+        "NATIONAL AERONAUTICS AND SPACE ADMINISTRATION is responsible for this Page"
+      ],
+      "email": "[email]",
+      "followers": 28716914,
+      "following": 52,
+      "intro": "Explore the universe and discover our home planet. \nThere's space for everybody. ✨",
+      "is_verified": true,
+      "location": null,
+      "name": "NASA - National Aeronautics and Space Administration",
+      "page_id": "54971236771",
+      "phone": null,
+      "price_range": null,
+      "profile_id": "100044561550831",
+      "profile_photo": "https://scontent.fkul15-1.fna.fbcdn.net/v/t39.30808-1/243095782_416661036495945_3843362260429099279_n.png?stp=dst-png&cstp=mx800x800&ctp=s480x480&_nc_cat=1&ccb=1-7&_nc_sid=2d3e12&_nc_ohc=4lGeUjpKYjEQ7kNvwGnK-L6&_nc_oc=Adq-itXt0pKctDeiWqKwGHX78GgdCsP3uEpAleXC34ye69WcuKxL_0l44Y27i_aHERY&_nc_zt=24&_nc_…",
+      "recommend_percent": null,
+      "review_count": null,
+      "talking_about": 96437,
+      "type": "page",
+      "url": "https://www.facebook.com/NASA",
+      "username": "NASA",
+      "websites": [
+        "https://www.nasa.gov/nasa-app/",
+        "https://www.nasa.gov/"
+      ]
+    }
+  ]
+}

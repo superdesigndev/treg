@@ -1,0 +1,41 @@
+{
+  "search_metadata": {
+    "id": "647dd8d70d1e7fab0ec065bc",
+    "status": "Success",
+    "json_endpoint": "https://api.litescrape.com/api/tripadvisor/place?place_id=18941405&tripadvisor_domain=www.tripadvisor.com&locale=en-US&currency=USD",
+    "created_at": "2026-09-29 13:58:51 UTC",
+    "processed_at": "2026-09-29 13:58:51 UTC",
+    "provider_url": "https://www.tripadvisor.com/data/graphql/ids",
+    "total_time_taken": 0.706
+  },
+  "search_parameters": {
+    "place_id": 18941405,
+    "tripadvisor_domain": "www.tripadvisor.com",
+    "locale": "en-US",
+    "currency": "USD"
+  },
+  "place_results": {
+    "place_id": "18941405",
+    "title": "Austin Proper Hotel",
+    "link": "https://www.tripadvisor.com/Hotel_Review-g30196-d18941405-Reviews-Austin_Proper_Hotel-Austin_Texas.html",
+    "type": "ACCOMMODATION",
+    "geo_id": 30196,
+    "gps_coordinates": {
+      "latitude": 30.266022,
+      "longitude": -97.750114
+    },
+    "rating": 4.6,
+    "max_rating": 5,
+    "reviews": 1021,
+    "thumbnail": "https://dynamic-media-cdn.tripadvisor.com/media/photo-o/34/59/bd/e5/outdoor-pool.jpg?w=640&h=-1&s=1",
+    "image": {
+      "thumbnail": "https://dynamic-media-cdn.tripadvisor.com/media/photo-o/34/59/bd/e5/outdoor-pool.jpg?w=640&h=-1&s=1",
+      "url_template": "https://dynamic-media-cdn.tripadvisor.com/media/photo-o/34/59/bd/e5/outdoor-pool.jpg?w={width}&h={height}&s=1",
+      "max_width": 4000,
+      "max_height": 2667
+    },
+    "place_api_link": "https://api.litescrape.com/api/tripadvisor/place?place_id=18941405&tripadvisor_domain=www.tripadvisor.com&locale=en-US",
+    "reviews_api_link": "https://api.litescrape.com/api/tripadvisor/reviews?place_id=18941405&tripadvisor_domain=www.tripadvisor.com&locale=en-US",
+    "description": "Located in Downtown Austin's vibrant Second Street District, Austin Proper Hotel and Residences brings together Kelly Wearstler's layered interiors, elevated we…"
+  }
+}

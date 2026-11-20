@@ -1,0 +1,38 @@
+{
+  "results": [
+    {
+      "url": "https://docs.context.dev/introduction",
+      "title": "Context.dev: the web data API - Context.dev",
+      "description": "Context.dev handles the scraping infrastructure so you can turn web pages into Markdown, structured JSON, screenshots, and more through one API.",
+      "relevance": "high",
+      "markdown": {
+        "markdown": null,
+        "code": "NOT_REQUESTED"
+      }
+    },
+    {
+      "url": "https://docs.context.dev/changelog",
+      "title": "Changelog",
+      "description": "Brand.dev is now Context.dev, reflecting the expansion from brand data into web scraping and extraction. Existing integrations remain compatible without code ...",
+      "relevance": "medium",
+      "markdown": {
+        "markdown": null,
+        "code": "NOT_REQUESTED"
+      }
+    },
+    {
+      "url": "https://docs.context.dev/install-cli",
+      "title": "CLI",
+      "description": "The context-dev CLI runs Context.dev operations from your terminal: brand lookups, crawls, web searches, batches, monitors, and more. The CLI is generated from ...",
+      "relevance": "medium",
+      "markdown": {
+        "markdown": null,
+        "code": "NOT_REQUESTED"
+      }
+    }
+  ],
+  "query": "site:docs.context.dev Context.dev API",
+  "key_metadata": {
+    "credits_consumed": 1
+  }
+}

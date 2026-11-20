@@ -1,0 +1,45 @@
+{
+  "element": {
+    "id": "1234567890",
+    "linkedinUrl": "https://example.com/synthetic-record",
+    "name": "Synthetic example",
+    "memberCount": 2999998,
+    "logo": {
+      "url": "https://example.com/synthetic-record",
+      "width": 92,
+      "height": 92
+    },
+    "heroImage": null,
+    "description": "Synthetic example",
+    "rules": "Synthetic example",
+    "createdAt": {
+      "date": "2008-03-06T14:50:04.000Z",
+      "timestamp": 1204815004000
+    },
+    "groupPlusStatusActive": false,
+    "postApprovalEnabled": true,
+    "invitationLevel": "Synthetic example",
+    "welcomeNote": null,
+    "automatedWelcomeNoteEnabled": true,
+    "publicVisibility": true,
+    "admins": {
+      "totalCount": 2,
+      "text": "Synthetic example",
+      "profiles": [
+        {
+          "id": "1234567890",
+          "linkedinUrl": "https://example.com/synthetic-record",
+          "firstName": "Alex",
+          "lastName": "Example",
+          "headline": "Synthetic example"
+        }
+      ]
+    }
+  },
+  "status": 200,
+  "retries": 0,
+  "payments": [
+    "linkedinGroup"
+  ],
+  "cost": 0.002
+}

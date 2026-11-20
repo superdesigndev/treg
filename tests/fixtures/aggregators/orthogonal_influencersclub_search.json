@@ -1,0 +1,52 @@
+{
+  "status": 200,
+  "body": {
+    "success": true,
+    "priceCents": 3,
+    "quotedPriceCents": 3,
+    "billing": {
+      "requestId": "hashed:f0f45c9493",
+      "parentRequestId": null,
+      "rootRequestId": "hashed:f0f45c9493",
+      "continuation": false,
+      "billable": true,
+      "quotedPriceCents": 3,
+      "chargedPriceCents": 3,
+      "aggregateChargedPriceCents": 3
+    },
+    "data": {
+      "total": 57,
+      "limit": 2,
+      "accounts": [
+        {
+          "user_id": "hashed:e6b1f226a1",
+          "profile": {
+            "full_name": "hashed:6b26b6335a",
+            "username": "hashed:f247b15817",
+            "picture": "hashed:694591d0ba",
+            "followers": 2314399,
+            "engagement_percent": 2.7200000286102295
+          }
+        },
+        {
+          "user_id": "hashed:993b647a91",
+          "profile": {
+            "full_name": "hashed:2bda887e4a",
+            "username": "hashed:5c31210466",
+            "picture": "hashed:7b3f76844f",
+            "followers": 1311466,
+            "engagement_percent": 9.279999732971191
+          }
+        }
+      ],
+      "credits_left": 2924,
+      "credits_cost": 0.02
+    },
+    "requestId": "hashed:f0f45c9493"
+  },
+  "expect": {
+    "upstream_status": 200,
+    "price": 3,
+    "ok": true
+  }
+}

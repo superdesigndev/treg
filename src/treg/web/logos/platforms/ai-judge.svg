@@ -1,0 +1,11 @@
+<svg viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="AI judgment">
+  <!-- Not a brand: a judgment weighed over evidence, drawn as the balance scale every verdict uses. -->
+  <g fill="#3F6FB5">
+    <rect x="11.1" y="3.6" width="1.8" height="15.4" rx=".9"/>
+    <rect x="2.6" y="5.4" width="18.8" height="1.8" rx=".9"/>
+    <rect x="6.8" y="18.6" width="10.4" height="2.2" rx="1.1"/>
+    <circle cx="12" cy="3.4" r="1.6"/>
+    <path d="M1.6 13.6h7.2a3.6 3.6 0 0 1-7.2 0zM15.2 13.6h7.2a3.6 3.6 0 0 1-7.2 0z"/>
+  </g>
+  <path fill="none" stroke="#3F6FB5" stroke-width="1" opacity=".55" d="M5.2 6.4l-3 7.2M5.2 6.4l3 7.2M18.8 6.4l-3 7.2M18.8 6.4l3 7.2"/>
+</svg>

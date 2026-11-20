@@ -1,0 +1,34 @@
+{
+  "output": {
+    "found": true,
+    "data": {
+      "items": [
+        {
+          "currency": "USD",
+          "originalPrice": 0,
+          "price": 1.99,
+          "productId": "1732403550898524635",
+          "rating": 4.8,
+          "sellerId": "7496261476157983195",
+          "shopName": "LumevoStore",
+          "soldCount": 276,
+          "title": "Phone Case, Stylish Shockproof Cover for iPhone 13-17 Series, TPU",
+          "url": "https://www.tiktok.com/shop/pdp/1732403550898524635"
+        },
+        "… 29 more item(s) truncated"
+      ]
+    }
+  },
+  "provider": "AnyAPI",
+  "costUsd": 0.0012,
+  "items": 30,
+  "replayed": false,
+  "source": {
+    "id": "anonymous-giraffe",
+    "name": "Giraffe",
+    "kind": "anonymous",
+    "artworkKey": "giraffe"
+  },
+  "hint": "large_result: this response is ~10 KB. To keep future runs from flooding your context, re-run with `fields` (keep only the keys you need), `max_items` (cap rows), `summary=true` (outline only), or `jq… [309 chars]",
+  "resultId": "5071b00a-ced8-482c-bed7-0d07f3e058e3"
+}

@@ -1,0 +1,12 @@
+{
+  "base_url": "https://docs.tavily.com",
+  "results": [
+    {
+      "url": "https://docs.tavily.com/",
+      "raw_content": "> ## Documentation Index\n>\n> Fetch the complete documentation index at:</llms.txt>\n>\n> Use this file to discover all available pages before exploring further.\n\n[Tavily Docs home page](https://tavily.com/)\n\n[Home](/welcome)[Agents](/agents)[Introduction](/documentation/about)[API …"
+    }
+  ],
+  "response_time": 0.08,
+  "usage": {"credits": 0},
+  "request_id": "redacted-live-request-id"
+}

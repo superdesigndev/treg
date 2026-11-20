@@ -1,0 +1,32 @@
+{
+  "elements": [
+    {
+      "id": "1234567890",
+      "advertiser": {
+        "name": "Synthetic example",
+        "imageUrl": "https://example.com/synthetic-record",
+        "headline": "Synthetic example"
+      },
+      "content": {
+        "headline": "Synthetic example",
+        "description": "Synthetic example",
+        "pageUrl": "https://example.com/synthetic-record",
+        "imageUrl": "https://example.com/synthetic-record"
+      },
+      "creativeType": "SPONSORED_VIDEO"
+    }
+  ],
+  "status": 200,
+  "retries": 0,
+  "payments": [
+    "linkedinAdSearch"
+  ],
+  "pagination": {
+    "pageSize": 24,
+    "totalElements": 27151,
+    "totalPages": 1132,
+    "pageNumber": null,
+    "previousElements": null
+  },
+  "cost": 0.0016
+}

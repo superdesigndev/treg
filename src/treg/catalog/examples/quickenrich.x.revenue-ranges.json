@@ -1,0 +1,19 @@
+{
+  "success": true,
+  "message": "Revenue ranges fetched",
+  "code": 200,
+  "data": [
+    "1 - 2.5 Million",
+    "10 - 20 Million",
+    "100 - 500 Million",
+    "2.5 - 5 Million",
+    "20 - 50 Million",
+    "5 - 10 Million",
+    "50 - 100 Million",
+    "500 Million - 1 Billion",
+    "500k - 1 Million",
+    "< 500k",
+    ">1 Billion",
+    "Not Available"
+  ]
+}

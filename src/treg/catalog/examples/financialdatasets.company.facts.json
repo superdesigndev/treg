@@ -1,0 +1,16 @@
+{
+  "company_facts": {
+    "ticker": "AAPL",
+    "name": "Apple Inc",
+    "cik": "0000320193",
+    "sector": "Information Technology",
+    "industry": "Technology Hardware, Storage & Peripherals",
+    "exchange": "NASDAQ",
+    "is_active": true,
+    "location": "California; U.S.A",
+    "sec_filings_url": "https://www.sec.gov/cgi-bin/browse-edgar?action=getcompany&CIK=0000320193",
+    "sic_code": "3571",
+    "sic_industry": "Electronic Computers",
+    "sic_sector": "Manufacturing"
+  }
+}

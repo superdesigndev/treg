@@ -5,14 +5,19 @@ from __future__ import annotations
 
 import json
 import os
-import re
+import sys
 import tempfile
 from pathlib import Path
 from typing import Any
 
 
 def _configure_test_environment() -> None:
-    """Match tests/conftest.py before importing treg, whose settings load at import time."""
+    """Match tests/conftest.py before importing treg, whose settings load at import time.
+
+    Imported by the test suite, treg is already loaded with conftest's environment; rewriting it
+    here would only leave the process's variables disagreeing with the engine it already built."""
+    if "treg" in sys.modules:
+        return
     worker = os.environ.get("PYTEST_XDIST_WORKER", "")
     db_dir = os.path.join(tempfile.gettempdir(), "treg-tests")
     os.makedirs(db_dir, exist_ok=True)
@@ -40,18 +45,21 @@ def _configure_test_environment() -> None:
         "TIKTOK_CLIENT_SECRET",
         "META_CLIENT_ID",
         "META_CLIENT_SECRET",
+        "POSTHOG_KEY",
+        "ADS_CONV_REFRESH_TOKEN",
         "PLATFORM_PROVIDERS",
         "PLATFORM_KEY_TIKHUB",
         "PLATFORM_KEY_DATAFORSEO",
         "PLATFORM_KEY_SCRAPECREATORS",
+        "PLATFORM_KEY_SEARCH1API",
     ):
         os.environ[f"TREG_{key}"] = ""
 
 
 _configure_test_environment()
 
-from fastapi.routing import APIRoute  # noqa: E402
 from treg.api import app  # noqa: E402
+from treg.bootstrap_http import _DevTitleMiddleware  # noqa: E402
 
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -97,9 +105,13 @@ def _composition_value(value: Any) -> Any:
 
 
 def _composition() -> dict[str, Any]:
-    """Capture ordered middleware and exception-handler registration."""
+    """Capture the deployment-independent middleware and exception handlers."""
     middleware = []
     for item in app.user_middleware:
+        # The local-only title marker is covered by test_dev_title.py. Including it here
+        # makes this snapshot depend on the caller's TREG_PUBLIC_URL.
+        if item.cls is _DevTitleMiddleware:
+            continue
         middleware.append(
             {
                 "args": [_composition_value(value) for value in item.args],
@@ -158,13 +170,7 @@ def _lifespan() -> dict[str, Any]:
 
 
 def _openapi() -> dict[str, Any]:
-    """Generate OpenAPI with FastAPI's default operation IDs made deterministic."""
-    for route in app.routes:
-        if not isinstance(route, APIRoute) or route.operation_id is not None:
-            continue
-        operation_id = re.sub(r"\W", "_", f"{route.name}{route.path_format}")
-        route.unique_id = f"{operation_id}_{sorted(route.methods)[0].lower()}"
-
+    """Generate OpenAPI; bootstrap gives every operation its own deterministic id."""
     # Another test may have populated the cache before this snapshot is collected.
     app.openapi_schema = None
     return app.openapi()

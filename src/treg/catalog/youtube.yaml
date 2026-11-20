@@ -45,6 +45,7 @@ endpoints:
     test_request:
       queryParams: {part: "snippet,statistics", id: "UCBR8-60-B28hp2BmDPdntcQ"}
     verified: 2026-07-28
+    added: '2026-07-28'
     example_response: examples/youtube.youtube.channel.profile.json
     docs_url: https://developers.google.com/youtube/v3/docs/channels/list
 
@@ -71,6 +72,7 @@ endpoints:
     test_request:
       queryParams: {part: "snippet", channelId: "UCBR8-60-B28hp2BmDPdntcQ", type: "video", maxResults: 2}
     verified: 2026-07-28
+    added: '2026-07-28'
     example_response: examples/youtube.youtube.channel.videos.json
     docs_url: https://developers.google.com/youtube/v3/docs/search/list
 
@@ -96,6 +98,7 @@ endpoints:
     test_request:
       queryParams: {part: "snippet", playlistId: "UUBR8-60-B28hp2BmDPdntcQ", maxResults: 2}
     verified: 2026-07-28
+    added: '2026-07-28'
     example_response: examples/youtube.youtube.channel.videos.uploads.json
     docs_url: https://developers.google.com/youtube/v3/docs/playlistItems/list
 
@@ -118,6 +121,7 @@ endpoints:
     test_request:
       queryParams: {part: "snippet,statistics", id: "dQw4w9WgXcQ"}
     verified: 2026-07-28
+    added: '2026-07-28'
     example_response: examples/youtube.youtube.video.detail.json
     docs_url: https://developers.google.com/youtube/v3/docs/videos/list
 
@@ -142,6 +146,7 @@ endpoints:
     test_request:
       queryParams: {part: "snippet", videoId: "dQw4w9WgXcQ", maxResults: 2}
     verified: 2026-07-28
+    added: '2026-07-28'
     example_response: examples/youtube.youtube.video.comments.json
     docs_url: https://developers.google.com/youtube/v3/docs/commentThreads/list
 
@@ -167,6 +172,7 @@ endpoints:
     test_request:
       queryParams: {part: "snippet", q: "design tutorial", type: "video", maxResults: 2}
     verified: 2026-07-28
+    added: '2026-07-28'
     example_response: examples/youtube.youtube.search.videos.json
     docs_url: https://developers.google.com/youtube/v3/docs/search/list
 
@@ -182,6 +188,7 @@ endpoints:
   # privacyStatus is set. That is not an error the response reports; the video simply stays
   # private. See the note on oauth_providers._YOUTUBE_READ.
   - id: youtube.youtube.video.upload
+    added: '2026-07-28'
     kind: action
     capability: youtube.video.upload
     platform: youtube
@@ -205,6 +212,7 @@ endpoints:
     docs_url: https://developers.google.com/youtube/v3/docs/videos/insert
 
   - id: youtube.youtube.video.thumbnail.set
+    added: '2026-07-28'
     kind: action
     capability: youtube.video.thumbnail.set
     platform: youtube

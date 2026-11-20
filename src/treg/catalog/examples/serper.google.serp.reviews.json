@@ -1,0 +1,47 @@
+{
+  "searchParameters": {
+    "hl": "en",
+    "type": "reviews",
+    "num": 10,
+    "page": 1,
+    "cid": "855637193957362546",
+    "engine": "google"
+  },
+  "reviews": [
+    {
+      "rating": 1,
+      "date": "a month ago",
+      "isoDate": "2026-08-04T08:19:52.168Z",
+      "snippet": "I am extremely disappointed with OpenAI’s customer support and billing practices.\n\nI accidentally ended up paying for two ChatGPT Plus subscriptions—one through Apple and one directly through OpenAI. I only intended to have one subscription.\n\nI contacted support because I wanted to keep my Apple subscription and have the OpenAI subscription canceled and refunded. Apple could not help because the duplicate charge was billed directly by OpenAI.\n\nThe biggest issue is that I never used the OpenAI su… [1433 chars total]",
+      "likes": 1,
+      "user": {
+        "name": "Riana Canedo",
+        "thumbnail": "https://lh3.googleusercontent.com/a/ACg8ocL6Foebon0aQTKXqoYMa0WzjulwbZQbgYAPRwyOdkrSidfGfg=s64-c-rp-mo-br100",
+        "link": "https://www.google.com/maps/contrib/105373003698556319930/reviews?hl=en-US",
+        "reviews": 9,
+        "photos": 0
+      },
+      "link": "https://www.google.com/maps/reviews/data=!4m8!14m7!1m6!2m5!1sCi9DQUlRQUNvZENodHljRjlvT2pVMFFXZHFPRkJ6YzI1Q1NucHdhMFJNTmxNelZVRRAB!2m1!1s0x0:0xbdfd57e9a70cb72!3m1!1s2@1:CAIQACodChtycF9oOjU0QWdqOFBzc25CSnpwa0RMNlMzVUE%7C%7C?hl=en-US",
+      "id": "Ci9DQUlRQUNvZENodHljRjlvT2pVMFFXZHFPRkJ6YzI1Q1NucHdhMFJNTmxNelZVRRAB"
+    },
+    {
+      "rating": 5,
+      "date": "a year ago",
+      "isoDate": "2025-08-27T16:09:13.700Z",
+      "snippet": "No other tech have helped me like ChatGPT. To my scientific career, my writing (fiction literature), my dislexia and more. Thanks OpenAI.",
+      "likes": 2,
+      "user": {
+        "name": "Camilo Fuentes Peña",
+        "thumbnail": "https://lh3.googleusercontent.com/a-/ALV-UjW9DmbFFplZc4MLPYDW7jidE6CTt-l7FNBkk-diiAoazhaON9Cmkg=s64-c-rp-mo-br100",
+        "link": "https://www.google.com/maps/contrib/104864466161250503504/reviews?hl=en-US",
+        "reviews": 4,
+        "photos": 0
+      },
+      "link": "https://www.google.com/maps/reviews/data=!4m8!14m7!1m6!2m5!1sCi9DQUlRQUNvZENodHljRjlvT2tGaGNIVkhVbXhYUWtoWmFUQldVbkkxVm00MFJIYxAB!2m1!1s0x0:0xbdfd57e9a70cb72!3m1!1s2@1:CAIQACodChtycF9oOkFhcHVHUmxXQkhZaTBWUnI1Vm40RHc%7C%7C?hl=en-US",
+      "id": "Ci9DQUlRQUNvZENodHljRjlvT2tGaGNIVkhVbXhYUWtoWmFUQldVbkkxVm00MFJIYxAB"
+    },
+    "… 15 more item(s) truncated"
+  ],
+  "nextPageToken": "",
+  "credits": 1
+}

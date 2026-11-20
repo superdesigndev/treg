@@ -9,8 +9,8 @@ SERVER-SIDE ONLY. The CLI must never import this (it pulls in pyyaml, which is a
 `treg catalog` is a thin client over the /catalog/* endpoints like every other CLI command.
 
 The data is read-only and changes only on deploy, so it is parsed once and cached in the process.
-A missing or half-written catalog dir degrades to an empty catalog rather than failing startup —
-serving no endpoints is a worse product, not a broken server.
+Every endpoint file is read through the strict models of `schema`: a file or row they reject, or a
+duplicate id, fails the load (CI validates the same models first). A missing catalog dir is empty.
 """
 
 from __future__ import annotations
@@ -19,14 +19,18 @@ import json
 import math
 import re
 import shlex
+from collections.abc import Callable
 from dataclasses import dataclass, field
+from datetime import UTC, date, datetime, timedelta
 from pathlib import Path
 
-import yaml
+from . import schema
+from .schema import CONFIDENCES, COST_SOURCES, COST_UNITS  # noqa: F401 - re-exported vocabulary
 
 # The YAML data ships at the package root (`src/treg/catalog/`), not next to this module.
 CATALOG_DIR = Path(__file__).resolve().parents[2] / "catalog"
 EXAMPLES_DIRNAME = "examples"
+EXAMPLE_MAX_BYTES = 10_000
 CAPABILITIES_FILE = "capabilities.yaml"
 FX_FILE = "fx.yaml"
 ALIASES_FILE = "aliases.yaml"
@@ -46,24 +50,30 @@ KINDS = ("data", "action", "account", "utility", "routed")
 DEFAULT_KIND = "data"
 HIDDEN_KINDS = frozenset({"account", "utility"})  # served, but never inflate the browse counts
 
-# How much the recorded PRICE is worth as evidence (cost.confidence). It is a claim about the
-# price, not about the endpoint: `verified: 2026-07-28` says the route answered, `confidence:
-# verified` says the money figure was confirmed against something re-checkable.
-#   verified   — observed in real billing, or read from the provider's own live rate card
-#   documented — transcribed from the provider's docs / pricing page (docs lie, and prices move)
-#   inferred   — derived from an adjacent price (a sibling route, a plan average)
-#   unknown    — no figure at all; `value` must be null and `note` must say why
-CONFIDENCES = ("verified", "documented", "inferred", "unknown")
-# Where the figure came from. `observed` is evidenced by the captured example + the provider's own
-# reported charge rather than a URL; every other source names one.
-COST_SOURCES = ("rate_card_api", "docs", "observed", "vendor_email", "inferred")
-# What `per` counts: "value currency per <per> <unit>". Under `currency: unit` the provider bills in
-# its own meter and `unit` names that meter (see `Catalog.cost_view`).
-COST_UNITS = ("call", "result", "row", "record", "keyword", "page", "character", "review",
-              "section", "employee", "GB", "ad", "month", "line", "target", "domain", "item",
-              "post", "user",
-              "api_unit", "analysis_unit", "retrieval_unit", "index_item_unit", "quota_row",
-              "verifier_credit")
+
+def browsable(ep: dict) -> bool:
+    """An endpoint the PUBLIC pages may count or list: hidden utility kinds out, and the
+    `kind: routed` meta-rows (PR #242) out with them - a routed row delegates to children that
+    are already on the page, so anywhere public it double-counts and surfaces a provider named
+    "treg", which the brand rules say must never appear as a vendor."""
+    return ep["kind"] not in HIDDEN_KINDS and ep.get("kind") != "routed"
+
+def _no_cache_providers() -> frozenset[str]:
+    from ...config import get_settings
+    return get_settings().no_cache_providers_set
+
+
+def paused_providers() -> frozenset[str]:
+    from ...config import get_settings
+    return get_settings().paused_providers_set
+
+
+def paused(ep: dict) -> bool:
+    """The endpoint's provider is paused on this deployment (TREG_PAUSED_PROVIDERS): out of every
+    search and find answer, while `by_id` keeps it so a direct lookup can say why."""
+    return ep.get("provider", "") in paused_providers()
+
+
 # A platform key spends OUR money on a caller's behalf, so it is allowed only where the price is
 # machine-computable and provenanced. `account`-kind routes are the provider's own bookkeeping —
 # never worth spending on — and `own_account` scope needs the caller's own credential by definition.
@@ -83,10 +93,11 @@ class Catalog:
     # this is. The rate itself still lives in `credit_rates` like any other — pricing machinery
     # neither knows nor cares that the rate is ours.
     shared_plans: dict[str, dict] = field(default_factory=dict)
-    # service -> calls/team/day for rates treg set to ZERO (fx.yaml `kind: treg_trial`): a capped
-    # free taste served on treg's own free-tier key. The allowance lives beside the zero because at
-    # $0 the price gives no brake — the cap is the only congestion control, so an entry without one
-    # is invalid (check_fx). api._enforce_trial_allowance reads this.
+    # service -> paid calls/team/day for rates treg set to ZERO (fx.yaml `kind: treg_trial`): a
+    # capped free taste served on treg's own free-tier key. Endpoints whose catalog cost is `free`
+    # do not consume it. The allowance lives beside the zero because at $0 the price gives no brake
+    # — the cap is the only per-team congestion control, so an entry without one is invalid
+    # (check_fx). application.call.reserve._enforce_trial_allowance reads this.
     trial_pools: dict[str, int] = field(default_factory=dict)
     # provider service -> meter name -> USD per one unit of that meter (fx.yaml `unit_rates_usd`).
     # Providers that bill in a proprietary meter (Semrush API units, Majestic's three pools, Moz's
@@ -95,24 +106,52 @@ class Catalog:
     unit_rates: dict[str, dict[str, float | None]] = field(default_factory=dict)
     platforms: dict[str, dict] = field(default_factory=dict)     # slug -> {label, category}
     capabilities: dict[str, str] = field(default_factory=dict)   # id -> description
+    # id -> a short title for people, where the description (written for agents too) runs long
+    capability_titles: dict[str, str] = field(default_factory=dict)
     endpoints: list[dict] = field(default_factory=list)          # normalized endpoint dicts
     # query word -> catalog words that mean the same thing (aliases.yaml) — search-time only
     aliases: dict[str, list[str]] = field(default_factory=dict)
     # lazy per-instance search index (see _search_fields) — never part of identity or repr
     _search_fields: list | None = field(default=None, init=False, repr=False, compare=False)
+    _compared: dict | None = field(default=None, init=False, repr=False, compare=False)  # see compared()
+    # lazy per-instance find index (see find_recall.index) — same pattern as _search_fields
+    _find_index: object | None = field(default=None, init=False, repr=False, compare=False)
+    _provider_phrases: list | None = field(default=None, init=False, repr=False, compare=False)  # see provider_phrases()
+    _provider_focus: dict | None = field(default=None, init=False, repr=False, compare=False)  # see _reaches()
     by_id: dict[str, dict] = field(default_factory=dict)
     provider_meta: dict[str, dict] = field(default_factory=dict)  # service -> {limits, pricing_url, docs}
+    # service -> {in, name, unit}: a caller ceiling forwarded as an upstream query param.
+    # Kept off provider_meta so catalog reads do not grow a new public field.
+    ceiling_params: dict[str, dict] = field(default_factory=dict)
+    client_headers: dict[str, str] = field(default_factory=dict)
     contracts: dict = field(default_factory=dict)   # capability -> routing.Contract
     adapters: dict = field(default_factory=dict)    # endpoint id -> routing.Adapter (verified flag set)
 
     def for_capability(self, capability: str) -> list[dict]:
-        return [e for e in self.endpoints if capability and e["capability"] == capability]
+        return [e for e in self.endpoints if capability and (
+            e["capability"] == capability or
+            (e["id"] in self.adapters and capability in self.adapters[e["id"]].verified_capabilities)
+        )]
 
     def for_platform(self, slug: str) -> list[dict]:
         return [e for e in self.endpoints if e["platform"] == slug]
 
     def for_provider(self, service: str) -> list[dict]:
         return [e for e in self.endpoints if e["provider"] == service]
+
+    def compared(self) -> dict[tuple[str, str], frozenset[str]]:
+        """The capabilities worth a comparison, (platform, capability) -> its providers: at least two
+        providers serve it on that platform, browsable endpoints only. The one rule behind a shelf's
+        comparison cards, the comparison pages and their sitemap entries, and a provider's
+        "compare" links."""
+        if self._compared is None:
+            sellers: dict[tuple[str, str], set[str]] = {}
+            for e in self.endpoints:
+                if e.get("capability") and browsable(e):
+                    sellers.setdefault((e["platform"], e["capability"]), set()).add(e["provider"])
+            object.__setattr__(self, "_compared", {k: frozenset(v) for k, v in sellers.items() if len(v) >= 2})
+        return self._compared
+
 
     def cost_view(self, cost, provider: str | None = None) -> dict | None:
         """A cost dict with a computed `usd` field — USD for ONE chargeable event (one call, or one
@@ -132,7 +171,11 @@ class Catalog:
         records `value: 2.0, per: 1000, unit: row` and prices out at $0.002 per row."""
         if not isinstance(cost, dict):
             return None
-        value, cur = cost.get("value"), cost.get("currency", "USD")
+        # A table's explicit fallback is its validated global upper bound.  It is therefore the
+        # one safe scalar to expose to eligibility and callers that cannot render the matrix.
+        fallback = cost.get("fallback") if isinstance(cost.get("fallback"), dict) else {}
+        value = cost.get("value", fallback.get("value"))
+        cur = cost.get("currency", "USD")
         per = cost.get("per") or 1
         if cur == "credit":
             rate = self.credit_rates.get(provider)
@@ -145,11 +188,61 @@ class Catalog:
         usd = (round(value * rate / per, 9)
                if isinstance(value, (int, float)) and rate is not None and per > 0 else None)
         out = {**cost, "usd": usd}
+        # Optional presentation metadata describes the charge unit without changing billing.
+        display = cost.get("display") or {}
+        if usd is not None and display:
+            grouped = display.get("grouped", False)
+            out["display_usd"] = round(usd * per, 9) if grouped else usd
+            if isinstance(display.get("value"), (int, float)):
+                # The price of one `unit` when it is not the reserve unit: a job held at its
+                # 500-page maximum but billed per page shows the page price. Billing reads `usd`.
+                out["display_usd"] = round(display["value"] * rate, 9)
+            unit = display["unit"]
+            if grouped and per == 1_000_000:
+                out["display_unit"] = f"1M {unit}"
+            else:
+                out["display_unit"] = f"{per:g} {unit}" if grouped else unit
+            if display.get("round_up"):
+                out["display_unit"] = "started " + out["display_unit"]
+            out["display_suffix"] = "+" if display.get("variable") else ""
+            out["display_prefix"] = "up to " if display.get("maximum") else ""
+        # A table prices out as a RANGE: `usd` stays the validated ceiling (what reserve and
+        # eligibility read), `usd_min` is the cheapest row so a display never shows only the
+        # worst case as "the price" (an H3 video is $0.25 typical against a $1.96 ceiling).
+        floor = cost.get("table_min")
+        if isinstance(floor, (int, float)) and rate is not None and per > 0 and usd is not None:
+            out["usd_min"] = min(usd, round(floor * rate / per, 9))
+        # A meter-priced table is advertised as a unit rate; `usd`/`usd_min` stay the reserve
+        # ceiling and floor for a whole call.
+        span = cost.get("table_rate")
+        rate_unit = cost.get("table_rate_unit")
+        if isinstance(span, list) and len(span) == 2 and isinstance(rate_unit, str) \
+                and rate_unit and rate is not None and per > 0 \
+                and usd is not None:
+            out["rate_usd_min"] = round(float(span[0]) * rate / per, 9)
+            out["rate_usd"] = round(float(span[1]) * rate / per, 9)
+            out["rate_unit"] = rate_unit
         # A $0 trial price travels with its allowance, so every surface showing the price can also
         # say how much of it a team gets — a bare $0.00 would read as unlimited.
         if provider in self.trial_pools and usd == 0:
             out["trial_calls_per_team_day"] = self.trial_pools[provider]
         return out
+
+    def advertised_usd(self, cost: dict | None) -> float | None:
+        """Dollar figure catalog_search / catalog_get should quote for one typical paid call.
+
+        `usd` is the reserve unit: for `per` > 1 it is the linear slice (Hunter Domain Search
+        → $0.00245/email). When `display.grouped` is set, `display_usd` is the chargeable
+        event — one search credit, one started block — which is what a live successful call
+        actually bills and what `usd_per_call` must say. Settlement still reads `usd`.
+        """
+        if not cost or cost.get("varies"):
+            return None  # a routed row whose children bill misses: the note carries the range
+        shown = cost.get("display_usd")
+        if isinstance(shown, (int, float)) and not isinstance(shown, bool):
+            return shown
+        usd = cost.get("usd")
+        return usd if isinstance(usd, (int, float)) and not isinstance(usd, bool) else None
 
     def platform_eligible(self, endpoint: dict) -> bool:
         """May treg serve this endpoint with a PLATFORM key, billed to the caller's balance?
@@ -157,7 +250,7 @@ class Catalog:
         One predicate, so the API, the validator and the proxy cannot drift apart. A missing or
         unknown price must read as "refuse", never as free (docs/context/architecture/catalog.md,
         Cost). Three things must hold: the USD cost is computable, the price provenance is at least
-        `documented` (2026-07-31 policy: a provider-published rate is billable — `verified` remains
+        `documented` (a provider-published rate is billable - `verified` remains
         the gold standard the drift reports police; `inferred`/`unknown` stay refused), and the
         route is not the caller's own account's business (`own_account` scope / `account` kind).
         The live-verified stamp is deliberately NOT required anymore: a broken route fails
@@ -178,19 +271,29 @@ class Catalog:
         cost = self.cost_view(endpoint.get("cost"), endpoint.get("provider"))
         if not cost or cost.get("usd") is None:
             return False
-        # A FREE route needs no price provenance: `confidence` exists to say how much we trust a
-        # NUMBER we are about to charge, and there is no number here. Requiring it anyway refused 61
-        # endpoints across 8 providers — 28 of Hunter's 35 — as though "costs nothing" were the same
-        # answer as "we don't know", which is the exact distinction the rest of this file is careful
-        # to keep apart.
+        # A FREE route needs no price provenance: `confidence` says how much we trust a NUMBER we
+        # are about to charge, and there is no number here.
         priced_or_free = (cost.get("type") == "free" and not cost.get("usd")) \
             or cost.get("confidence") in ("verified", "documented")
+        kind = endpoint.get("kind") or DEFAULT_KIND
+        managed = isinstance(endpoint.get("managed_resource"), dict)
         return bool(priced_or_free
                     and endpoint.get("scope") != "own_account"
-                    and (endpoint.get("kind") or DEFAULT_KIND) not in PLATFORM_INELIGIBLE_KINDS)
+                    and (kind not in PLATFORM_INELIGIBLE_KINDS or managed))
 
 
 _CACHE: Catalog | None = None
+
+def capability_key(platform: str, capability: str) -> str:
+    """A capability's URL segment on a platform: its id without the platform's prefix (`enrich` for
+    `companies.enrich` on companies), or the whole id when it is filed under another prefix."""
+    return capability.removeprefix(platform + ".")
+
+
+def compared_capability(cat: Catalog, platform: str, key: str) -> str | None:
+    """The compared capability a URL segment names on a platform, or None when there is none."""
+    compared = cat.compared()
+    return next((c for c in (f"{platform}.{key}", key) if (platform, c) in compared), None)
 
 
 def load(*, refresh: bool = False, directory: Path | None = None) -> Catalog:
@@ -203,12 +306,106 @@ def load(*, refresh: bool = False, directory: Path | None = None) -> Catalog:
     return _CACHE
 
 
+def _core_first(path: Path) -> tuple[str, bool]:
+    name = path.name.removesuffix(".yaml")
+    return (name.removesuffix(".extended"), name.endswith(".extended"))
+
+
 def _read_yaml(path: Path) -> dict:
-    try:
-        data = yaml.safe_load(path.read_text(encoding="utf-8"))
-    except (OSError, yaml.YAMLError):
+    """A shared catalog file (taxonomy, rates, aliases, routing): absent reads as empty, unparsable
+    fails the load."""
+    if not path.is_file():
         return {}
+    data = schema.read_yaml(path)
     return data if isinstance(data, dict) else {}
+
+
+def _with_query_params(input_schema: object, shared: dict) -> dict:
+    """`input` with the provider's shared query parameters added under names it does not declare.
+    Accepts the flat `{name: spec}` form and the `{properties: {...}}` form an endpoint may use."""
+    inp = dict(input_schema) if isinstance(input_schema, dict) else {}
+    own = inp.get("queryParams")
+    if isinstance(own, dict) and isinstance(own.get("properties"), dict):
+        inp["queryParams"] = {**own, "properties": {**shared, **own["properties"]}}
+    else:
+        inp["queryParams"] = {**shared, **(own if isinstance(own, dict) else {})}
+    return inp
+
+
+def effective_async_descriptor(default: object, override: object = None) -> object:
+    """The descriptor an endpoint actually follows: its own block, else the provider file's default.
+
+    An endpoint block REPLACES the provider default wholesale - a descriptor is one protocol, and
+    a protocol that differs in one axis (MiniMax v2 versus v1) differs in its poll target, status
+    vocabulary and result location together, so a field-wise merge only ever produced descriptors
+    nobody had written down. ``false`` is the explicit opt-out for utility and synchronous rows
+    sharing a file with async submissions; absence means inherit. Non-mapping values pass through
+    for the validator to reject."""
+    if override is False:
+        return None
+    if override is None:
+        return default
+    return override
+
+
+def _table_floor(cost: object, input_schema: object) -> float | None:
+    """The cheapest price a `cost.table` can produce, in the table's own currency: the smallest
+    row value, a `times` row taken at its field's declared minimum (or 1). Display only - reserve
+    and settle read the rows themselves."""
+    if not isinstance(cost, dict) or not isinstance(cost.get("table"), list):
+        return None
+    fields: dict[str, dict] = {}
+
+    def add(items: dict, prefix: str) -> None:  # nested objects (Replicate `input.*`) included
+        for name, spec in items.items():
+            if isinstance(spec, dict):
+                fields[f"{prefix}.{name}"] = spec
+                if isinstance(spec.get("properties"), dict):
+                    add(spec["properties"], f"{prefix}.{name}")
+
+    if isinstance(input_schema, dict):
+        for location in ("pathParams", "queryParams", "body"):
+            block = input_schema.get(location)
+            if isinstance(block, dict) and isinstance(block.get("properties"), dict):
+                block = block["properties"]
+            if isinstance(block, dict):
+                add(block, location)
+    floors = []
+    for row in cost["table"]:
+        if not isinstance(row, dict) or not isinstance(row.get("value"), (int, float)):
+            continue
+        value = float(row["value"])
+        if isinstance(row.get("times"), str):
+            low = row.get("times_min", fields.get(row["times"], {}).get("min"))
+            value *= float(low) if isinstance(low, (int, float)) and low > 0 else 1.0
+        floors.append(value)
+    return min(floors) if floors else None
+
+
+def _table_rate(cost: object) -> tuple[float, float, str] | None:
+    """Rate span for tables whose rows multiply one recognized request meter."""
+    if not isinstance(cost, dict) or not isinstance(cost.get("table"), list) or not cost["table"]:
+        return None
+    values = []
+    meter: str | None = None
+    for row in cost["table"]:
+        if not isinstance(row, dict) or not isinstance(row.get("value"), (int, float)):
+            return None
+        times = row.get("times")
+        if times is None and any(str(f).rsplit(".", 1)[-1] == "duration" for f in row.get("when") or {}):
+            # A flat row pinning the duration itself (`duration: -1`, the provider's auto mode)
+            # is a whole-clip reserve ceiling, not a rate; the per-second rows still quote the model.
+            continue
+        if not isinstance(times, str):
+            return None
+        unit = {"duration": "s", "max_steps": "step"}.get(times.rsplit(".", 1)[-1])
+        if unit is None or (meter is not None and meter != unit):
+            return None
+        meter = unit
+        values.append(float(row["value"]))
+    if not values or meter is None:
+        return None
+    return (min(values), max(values), meter)
 
 
 def _parse(directory: Path) -> Catalog:
@@ -226,13 +423,28 @@ def _parse(directory: Path) -> Catalog:
     endpoints: list[dict] = []
     by_id: dict[str, dict] = {}
     provider_meta: dict[str, dict] = {}
-    # Sorted so a rebuild is deterministic; `<service>.extended.yaml` sorts right after
-    # `<service>.yaml`, and both land under the same provider (curation splits a provider's
-    # core operations from the long tail across two files).
-    for path in sorted(directory.glob("*.yaml")):
-        if path.name in (CAPABILITIES_FILE, FX_FILE, ALIASES_FILE, CONTRACTS_FILE, ADAPTERS_FILE):
-            continue
-        doc = _read_yaml(path)
+    ceiling_params: dict[str, dict] = {}
+    client_headers: dict[str, str] = {}
+    # Sorted so a rebuild is deterministic; `<service>.yaml` is read right before
+    # `<service>.extended.yaml`, and both land under the same provider (curation splits a
+    # provider's core operations from the long tail across two files). Reading the core file first
+    # makes it authoritative: its header facts and its endpoint ids win over the extended file's.
+    docs = [schema.read_endpoint_file(path) for path in sorted(directory.glob("*.yaml"), key=_core_first)
+            if path.name not in (CAPABILITIES_FILE, FX_FILE, ALIASES_FILE, CONTRACTS_FILE, ADAPTERS_FILE)]
+    defaults = schema.provider_defaults(docs)
+    files = [(d.path, d.raw) for d in docs]
+    doc_tier = {d.path: d.tier for d in docs}
+    # Query parameters a provider takes on every call (AnyAPI's response-budget controls) are
+    # declared once at the file header and merged into each endpoint's `input.queryParams`; the
+    # endpoint's own declaration of a name wins. Resolved before any endpoint is read, so the core
+    # file's block also reaches the extended file's endpoints.
+    provider_query_params: dict[str, dict] = {}
+    for path, doc in files:
+        block = doc.get("queryParams")
+        provider = doc.get("provider") or path.name.split(".")[0]
+        if isinstance(block, dict) and block:
+            provider_query_params.setdefault(provider, block)
+    for path, doc in files:
         provider = doc.get("provider") or path.name.split(".")[0]
         # A capability a provider file proposes is not yet in the shared taxonomy, but it is
         # already the join key of its endpoints — carry its description so the API can label it.
@@ -250,23 +462,62 @@ def _parse(directory: Path) -> Catalog:
         # The provider's cache policy (docs/context/architecture/archive.md): one licence judgment
         # at the file header covers every endpoint below it; an endpoint's own `cache:` overrides.
         # Kept as the dict/provenance form, not stringified — archive.policy reads `mode` from it.
+        _validate_cache(doc.get("cache"), header=True)
         if doc.get("cache") and not meta.get("cache"):
             meta["cache"] = doc["cache"]
-        for raw in doc.get("endpoints") or []:
-            if not isinstance(raw, dict) or not raw.get("id"):
-                continue
+        # A provider that accepts a caller ceiling as a query param states it once.
+        rule = doc.get("ceiling_param")
+        if isinstance(rule, dict):
+            ceiling_params.setdefault(provider, rule)
+        # A provider that splits usage per customer names the header for treg's per-team code.
+        header = doc.get("client_header")
+        if isinstance(header, str) and header:
+            client_headers.setdefault(provider, header.lower())
+        for raw in doc["endpoints"]:
+            raw = schema.merge(raw, defaults.get(provider))
+            row = schema.parse_row(raw, path.name)
+            v2 = isinstance(row, schema.V2Row)
             if "cache" not in raw and meta.get("cache") is not None:
                 raw = {**raw, "cache": meta["cache"]}
+            if "response_retention" not in raw and doc.get("response_retention") is not None:
+                raw = {**raw, "response_retention": doc["response_retention"]}
             # Same inheritance for the provider's SUCCESS rule. A vendor's "HTTP 200 always, read
             # `code`" convention is one fact about the whole provider, and stating it per endpoint
-            # means an ingest that adds routes silently ships them without one — 33 of justoneapi's
-            # 260 were missing it, and settle.py bills the estimate when it cannot tell a failure
-            # from a hit.
+            # means an ingest that adds routes silently ships them without one, and settle.py bills
+            # the estimate when it cannot tell a failure from a hit.
             if "expect" not in raw and doc.get("expect") is not None:
+                if v2:
+                    raise schema.CatalogSchemaError(
+                        f"{path.name}:{raw['id']}: a v2 row cannot inherit the header's expect in "
+                        "today's spelling; declare its own or move the header's into defaults")
                 raw = {**raw, "expect": doc["expect"]}
-            ep = _normalize(raw, provider, directory)
-            if ep["id"] in by_id:  # first file wins; ids are unique by validator contract
-                continue
+            if provider in provider_query_params:
+                raw = {**raw, "input": _with_query_params(raw.get("input"), provider_query_params[provider])}
+            effective_async = effective_async_descriptor(
+                doc.get("async"), False if v2 and "async" in raw and raw["async"] is None else raw.get("async"))
+            if effective_async is not None:
+                raw = {**raw, "async": effective_async}
+            # A price table's floor rides with the cost so every price surface can show the honest
+            # range instead of the fallback ceiling alone (cost_view derives `usd_min` from it).
+            floor = _table_floor(raw.get("cost"), raw.get("input"))
+            if floor is not None:
+                raw = {**raw, "cost": {**raw["cost"], "table_min": floor}}
+            span = _table_rate(raw.get("cost"))
+            if span is not None:
+                raw = {**raw, "cost": {**raw["cost"], "table_rate": list(span[:2]),
+                                        "table_rate_unit": span[2]}}
+            if v2:
+                kept = {k: v for k, v in raw.items() if k not in schema.v2.RESOLVED_KEYS}
+                ep = {**_normalize(kept, provider, directory), "tier": doc_tier[path]}
+                ep.update(schema.served(row, ep["input"]))
+                if (floor := _table_floor(schema.v2.floor_rows(ep["price"], ep["input"]), ep["input"])) is not None:
+                    ep["cost"]["table_min"] = floor
+                if (span := _table_rate(ep["cost"])) is not None:
+                    ep["cost"].update(table_rate=list(span[:2]), table_rate_unit=span[2])
+            else:
+                ep = _normalize(raw, provider, directory)
+            if ep["id"] in by_id:
+                raise schema.CatalogSchemaError(f"{path.name}: duplicate endpoint id {ep['id']}")
             by_id[ep["id"]] = ep
             # Marked endpoints stay addressable by id so a caller holding yesterday's id gets the
             # provider's retirement story and replacement. Browse/search/census all read
@@ -309,12 +560,19 @@ def _parse(directory: Path) -> Catalog:
                        for meter, v in (meters or {}).items()}
         for service, meters in (fx_doc.get("unit_rates_usd") or {}).items()
     }
+    # A title renames a job for people only, so one naming no job is a typo: fail the load, loudly.
+    capability_titles = dict(taxonomy.get("capability_titles") or {})
+    if unknown := sorted(set(capability_titles) - set(capabilities)):
+        raise ValueError(f"capability_titles name no capability: {', '.join(unknown)}")
     cat = Catalog(fx=fx, credit_rates=credit_rates, unit_rates=unit_rates,
                   shared_plans=shared_plans, trial_pools=trial_pools, platforms=platforms,
-                  capabilities=capabilities, endpoints=endpoints, by_id=by_id,
-                  provider_meta=provider_meta, aliases=aliases, contracts=contracts, adapters=adapters)
+                  capabilities=capabilities, capability_titles=capability_titles, endpoints=endpoints, by_id=by_id,
+                  provider_meta=provider_meta, ceiling_params=ceiling_params, client_headers=client_headers, aliases=aliases,
+                  contracts=contracts, adapters=adapters)
     from .routing.synthetic import routed_endpoint
     for cap, contract in contracts.items():
+        if not contract.routed:  # admission-only contract: never a treg.<capability> row
+            continue
         row = routed_endpoint(contract, cat.for_capability(cap), adapters, cat.cost_view)
         if row is not None and row["id"] not in by_id:
             by_id[row["id"]] = row
@@ -326,19 +584,16 @@ def _load_routing(directory: Path, by_id: dict[str, dict]):
     from .routing.contracts import load_routing
 
     def _example(ep: dict):
-        name = ep.get("example_file")
+        # Async routing adapts the terminal poll document, not the submission acknowledgement.
+        # The ordinary example remains the public "what this endpoint returns immediately" body.
+        name = ep.get("terminal_example_file") if ep.get("async") else ep.get("example_file")
         if not name:
             return None
         try:
             return json.loads((directory / EXAMPLES_DIRNAME / name).read_text(encoding="utf-8"))
         except (OSError, ValueError):
             return None
-    try:
-        return load_routing(directory, by_id, _read_yaml, _example)
-    except Exception:  # noqa: BLE001 — a broken routing file must not take the catalog down
-        import logging
-        logging.getLogger("treg.catalog").warning("routing files failed to load", exc_info=True)
-        return {}, {}
+    return load_routing(directory, by_id, _read_yaml, _example)
 
 
 # The subject an endpoint is ABOUT, within its platform — the section a platform page files it
@@ -358,16 +613,13 @@ DOMAIN_KEYWORDS: tuple[tuple[str, str], ...] = (
     ("feed", "feed"), ("publish", "publishing"),
 )
 DOMAIN_OTHER = "other"
-# Path segments that say how a route is CALLED, not what it is about. DataForSEO ends every
-# synchronous route in `/live`, which read as a subject and filed 33 unrelated SEO endpoints under a
-# "live" heading — the same trap for a version prefix or a `/json` suffix.
+# Path segments that say how a route is CALLED, not what it is about: DataForSEO ends every
+# synchronous route in `/live`; the same trap for a version prefix or a `/json` suffix.
 DOMAIN_NOISE = {"live", "task_post", "task_get", "task_ready", "tasks_ready", "tasks_fixed",
                 "json", "html", "xml", "api", "rest", "open", "web", "app", "mobile", "desktop",
                 # provider BRAND/family segments: how the vendor organises its API, not what the
-                # route is about — reading them as a subject put a "dataforseo_labs" heading on the
-                # Google page. Filtered here so such routes classify by their function keywords.
-                # `web_vN` is the "web" delivery marker with a version glued on (TikHub's
-                # `/xiaohongshu/web_v3/…`); left in, it grew a "web_v3"/"web_v2" section per platform.
+                # route is about. `web_vN` is the "web" delivery marker with a version glued on
+                # (TikHub's `/xiaohongshu/web_v3/…`).
                 "dataforseo_labs", "appendix", "ai_optimization", "web_v2", "web_v3", "web_v4"}
 _VERSION_SEG = re.compile(r"v\d+(?:\.\d+)*")
 _WORD_SEG = re.compile(r"[a-z][a-z0-9_]*")
@@ -396,9 +648,8 @@ def _domain(raw: dict, capability: str, platform: str) -> str:
     # The PATH only, never the summary. Prose says "the Live SERP API…" and "your own post…" about
     # endpoints that are neither, and one false heading is worse than a row in `other`: a section a
     # visitor doesn't trust is a section they stop reading. Match keywords at WORD boundaries, not by
-    # raw substring: substring put an "ads" section on the People page (it lives inside `leads`) and a
-    # "user" one on abuse reports (inside `abuser`). A stem key (`keyword` → `keywords`) still matches
-    # by prefix; a short key (`ads`, `llm`) must hit a whole word, so `ads` ≠ `leads`/`adset`.
+    # raw substring. A stem key (`keyword` → `keywords`) still matches by prefix; a short key (`ads`,
+    # `llm`) must hit a whole word, so `ads` ≠ `leads`/`adset`.
     words = [w.lower() for seg in segments for w in _WORDS.findall(seg)]
     for key, domain in DOMAIN_KEYWORDS:
         stem = key.rstrip("_")  # `ad_` → `ad`: the singular still matches the `ad`/`adGroup` word
@@ -426,7 +677,8 @@ def _effective_cost(raw: dict):
     its evidence is the captured example response, not a page that might have moved since. Without
     a `verified` date there is no date to stand behind, and the price stays unprovenanced."""
     cost = raw.get("cost")
-    if isinstance(cost, dict) and (cost.get("value") is not None or cost.get("type") == "free"):
+    if isinstance(cost, dict) and (cost.get("value") is not None or cost.get("table") is not None
+                                   or cost.get("type") == "free"):
         return cost
     oc = raw.get("observed_cost")
     if oc is None:
@@ -440,10 +692,33 @@ def _effective_cost(raw: dict):
             "note": "price observed at live verification (provider-reported charge)"}
 
 
+_IGNORE_PATH = re.compile(r"(?:[A-Za-z0-9_][A-Za-z0-9_-]*|\[\*\])(?:\[\*\])*(?:\.[A-Za-z0-9_][A-Za-z0-9_-]*(?:\[\*\])*)*")
+
+
+def _validate_cache(cache, *, header: bool = False, scope: str = "") -> None:
+    if not isinstance(cache, dict):
+        return
+    if "sharing" in cache:
+        if header:
+            raise ValueError("cache.sharing is declared per endpoint, never on a provider header")
+        if cache["sharing"] != "public":
+            raise ValueError("cache.sharing accepts only 'public' (org and connection are the defaults)")
+        if scope == "own_account":
+            raise ValueError("cache.sharing: public is impossible on an own_account endpoint")
+    if "ignore_paths" not in cache:
+        return
+    paths = cache["ignore_paths"]
+    if (not isinstance(paths, list) or
+            any(not isinstance(path, str) or not _IGNORE_PATH.fullmatch(path) for path in paths)):
+        raise ValueError("cache.ignore_paths must be a list of dot paths with optional [*] array wildcards")
+
+
 def _normalize(raw: dict, provider: str, directory: Path) -> dict:
+    _validate_cache(raw.get("cache"), scope=str(raw.get("scope") or ""))
     capability = raw.get("capability") or ""
     platform = raw.get("platform") or (capability.split(".")[0] if capability else "other")
     verified = raw.get("verified")
+    keeps_nothing = provider.lower() in _no_cache_providers()
     return {
         "id": str(raw["id"]),
         "provider": provider,
@@ -451,55 +726,88 @@ def _normalize(raw: dict, provider: str, directory: Path) -> dict:
         "platform": platform,
         "domain": _domain(raw, capability, platform),
         "scope": raw.get("scope") or "",
-        # what the endpoint IS (see KINDS): default `data`, so every un-annotated route stays on the
-        # browse surface and only the deliberately-marked plumbing (account/utility) is tucked away.
         "kind": str(raw.get("kind") or DEFAULT_KIND).strip().lower() or DEFAULT_KIND,
         "method": (raw.get("method") or "GET").upper(),
         "path": raw.get("path") or "",
-        # optional short display title; `summary` stays the provider's own description, verbatim
+        # Optional alternate provider host. Resolution accepts it only when the provider registry
+        # maps this exact hostname to an approved HTTPS base URL and credential profile.
+        "host": str(raw.get("host") or "").strip().lower(),
         "name": str(raw.get("name") or "").strip(),
         "summary": raw.get("summary") or "",
+        **({"note": note} if (note := str(raw.get("note") or "").strip()) else {}),
         "input": raw.get("input") or {},
-        # Provider-owned OAuth routes can support more than one explicit grant. Keep this generic
-        # metadata on the normalized row so resolution and every client read the same contract.
         "authorization_method": str(raw.get("authorization_method") or ""),
         "authorization_methods": list(raw.get("authorization_methods") or []),
         "authorization_paths": dict(raw.get("authorization_paths") or {}),
         "required_scopes": list(raw.get("required_scopes") or []),
         "required_resource": str(raw.get("required_resource") or ""),
         "token_type": str(raw.get("token_type") or ""),
-        # the request the verifier actually made — a proven set of values, which is what makes
-        # `call_template` a paste-ready line rather than a shape with placeholders in it
         "test_request": raw.get("test_request") or {},
-        # The provider's OWN success rule ("HTTP 200 always; `code` 0 means it worked"). It was a
-        # verification-only field (scripts/catalog_verify.py); settle.py now reads it so a
-        # per_success endpoint with no routing adapter can still tell a vendor-side failure from a
-        # hit. Without it treg bills the estimate for a body the VENDOR gave away free.
+        # The provider's OWN success rule ("HTTP 200 always; `code` 0 means it worked"); settle.py
+        # reads it so a per_success endpoint with no routing adapter can still tell a vendor-side
+        # failure from a hit.
         "expect": raw.get("expect") or None,
+        "async": raw.get("async") or None,
+        # Opaque shared-account objects created/read by legacy async endpoint pairs. Resolution
+        # enforces `requires`; the buffered successful response persists every `produces` path.
+        "resource_ownership": raw.get("resource_ownership") or None,
+        # User-visible long-lived objects created on a shared provider account.
+        "managed_resource": raw.get("managed_resource") or None,
+        # A metered 2xx too large to buffer (inline media): read to disk and settled from the
+        # keys its usage terms read (application/call/settle.py `_spool_response`).
+        "spooled_response": raw.get("spooled_response") is True,
+        "platform_request": raw.get("platform_request") or None,
+        # Request fields that must carry the calling team's own label on treg's shared key, so
+        # objects a provider keeps per label (monitors, schedules, feeds) stay one team's.
+        "team_label": raw.get("team_label") or None,
+        # Request fields that, when sent, may only name the caller's own verified email on treg's
+        # shared key (an alert address), so a shared account never mails a stranger.
+        "caller_email": raw.get("caller_email") or None,
+        # How treg serves the catalog fallback after the team's own tool/credential ladder misses.
+        # Absent means the provider credential is required. `anonymous` means the verified public
+        # upstream route is called with no injected credential; catalog validation limits that
+        # mode to free, read-only endpoints.
+        "platform_auth": (
+            str(raw["platform_auth"]).strip().lower()
+            if raw.get("platform_auth") is not None else None
+        ),
+        "strict_query": raw.get("strict_query") is True,
+        "strict_body": raw.get("strict_body") is True,
+        "body_allowlist": raw.get("body_allowlist") is True,
         "cost": _effective_cost(raw),
         # Absent `tier` means core: the curated first wave predates the split, and treating an
         # unmarked endpoint as extended would hide it from the platform view entirely.
         "tier": raw.get("tier") or "core",
         # The archive's per-endpoint cache policy (absent ⇒ forbidden — see archive.policy);
         # inherited from the file header unless the endpoint declares its own.
-        "cache": raw.get("cache"),
+        # Generated media and its task/result utilities must never replay shared-account ids.
+        # Enforce this for core and generated extended rows without changing their public kind.
+        # A deployment's no-cache providers (TREG_NO_CACHE_PROVIDERS) keep nothing either.
+        "cache": "forbidden" if keeps_nothing or platform in {"image-gen", "video-gen", "voice-gen", "music-gen"} else raw.get("cache"),
+        "response_retention": "forbidden" if keeps_nothing else raw.get("response_retention"),
         "verified": str(verified) if verified else None,
+        "added": str(raw.get("added") or "") or None,
+        # The first UTC day whose observations describe the service as it is now; ranking and the
+        # published call figures drop the days before it (the provider replaced the service).
+        "observed_from": str(raw.get("observed_from") or "") or None,
         # {status, means} — a status the provider uses for "asked and answered: no result" (PDL
         # 404s a person it has no record of). Only endpoints with evidenced miss semantics carry
         # it; for everything else an error status means what it says.
         "miss": raw.get("miss") or None,
+        # {status, when?, means} — the provider's answer for "the target itself does not exist" (a
+        # scraped site's own 404): a routed call ends with it instead of asking the next provider.
+        "not_found": raw.get("not_found") or None,
         # A provider can retire/move a route after an agent has cached its id. Keep that id in
         # `by_id`, but remove it from discovery and return the migration story on direct lookup.
         "status": str(raw.get("status") or "").strip().lower(),
         "status_note": str(raw.get("status_note") or "").strip(),
-        # A route that WORKS upstream but that treg's own plan/subscription cannot serve (a
-        # provider tier the shared key lacks). Unlike `status` it stays in discovery — a team's
-        # own key may well serve it — but it is never a platform offer, and the reason rides on
-        # the row so an agent learns "bring your own key" BEFORE the 403, not from it.
+        # A route that WORKS upstream but that treg's own plan cannot serve. Unlike `status` it
+        # stays in discovery (a team's own key may serve it) but is never a platform offer.
         "platform_blocked": str(raw.get("platform_blocked") or "").strip(),
         "superseded_by": str(raw.get("superseded_by") or "").strip(),
         "docs_url": raw.get("docs_url") or "",
         "example_file": _example_file(raw, directory),
+        "terminal_example_file": _declared_example_file(raw.get("terminal_example_response"), directory),
     }
 
 
@@ -510,6 +818,12 @@ def _example_file(raw: dict, directory: Path) -> str | None:
     data file must never be able to point the server at an arbitrary path.
     """
     declared = raw.get("example_response") or f"{EXAMPLES_DIRNAME}/{raw['id']}.json"
+    return _declared_example_file(declared, directory)
+
+
+def _declared_example_file(declared: object, directory: Path) -> str | None:
+    if not declared:
+        return None
     name = Path(str(declared)).name
     if not name.endswith(".json"):
         return None
@@ -528,22 +842,69 @@ def example_path(endpoint_id: str) -> Path | None:
     return CATALOG_DIR / EXAMPLES_DIRNAME / ep["example_file"]
 
 
-# ---- shaping ---------------------------------------------------------------------------------
+_COST_EVIDENCE = frozenset({"note", "source", "source_url", "checked", "confidence"})
 
-def endpoint_view(ep: dict, provider_display: str, cat: Catalog | None = None) -> dict:
-    """The public JSON shape of one endpoint (the dashboard + CLI render this)."""
+
+def cost_row(ep: dict, cat: Catalog) -> dict | None:
+    """An endpoint's price as a comparison row shows it: the cost view without its evidence."""
+    cost = cat.cost_view(ep["cost"], ep["provider"])
+    return {k: v for k, v in cost.items() if k not in _COST_EVIDENCE} if cost else cost
+
+
+_QUOTE_COST = frozenset({"type", "value", "currency", "per", "unit", "usd", "usd_min", "varies", "display_usd",
+                         "display_unit", "display_prefix", "display_suffix", "rate_usd", "rate_usd_min", "rate_unit"})
+
+
+def quote_cost(cost: dict | None) -> dict | None:
+    """A cost as one line of a routed quote reads it: the price and its unit, not how it settles.
+    What every row would repeat is left out: `per` 1, a USD `value` (it is `usd`), and the `unit` of a
+    price per one of them (the `type` says it)."""
+    if not cost:
+        return cost
+    usd_native = cost.get("currency", "USD") == "USD" and cost.get("usd") is not None
+    per_one = (cost.get("per") or 1) == 1
+    return {k: v for k, v in cost.items() if k in _QUOTE_COST
+            and not (k == "per" and per_one)
+            and not (k in ("value", "currency") and usd_native)
+            and not (k == "unit" and per_one and cost.get("usd") is not None)}
+
+
+def sibling_view(ep: dict, provider_display: str, cat: Catalog) -> dict:
+    """One row of an endpoint's comparison with the other providers of its job; the full view is
+    that endpoint's own detail."""
     return {
         "id": ep["id"],
         "provider": ep["provider"],
         "provider_display": provider_display,
-        # short display title (may be ""); clients fall back to `summary` when absent
+        "name": ep.get("name") or "",
+        "scope": ep["scope"],
+        "kind": ep.get("kind") or DEFAULT_KIND,
+        "cost": cost_row(ep, cat),
+        "platform_eligible": cat.platform_eligible(ep),
+        "status": ep.get("status") or None,
+        "status_note": ep.get("status_note") or None,
+        "superseded_by": ep.get("superseded_by") or None,
+        "verified": ep["verified"],
+        "params": [k for where in ("pathParams", "queryParams", "body")
+                   if isinstance(params := (ep.get("input") or {}).get(where), dict) for k in params],
+    }
+
+
+def endpoint_view(ep: dict, provider_display: str, cat: Catalog | None = None, *,
+                  detail: bool = False) -> dict:
+    """The public JSON shape of one endpoint (the dashboard + CLI render this). `detail` is the
+    endpoint's own page, which alone carries the row's `note`: lists and search leave it out."""
+    return {
+        "id": ep["id"],
+        "provider": ep["provider"],
+        "provider_display": provider_display,
         "name": ep.get("name") or "",
         "summary": ep["summary"],
+        **({"note": ep["note"]} if detail and ep.get("note") else {}),
         "method": ep["method"],
         "path": ep["path"],
         "scope": ep["scope"],
         "tier": ep["tier"],
-        # data | action | account | utility — the front-end hides account/utility behind an expander
         "kind": ep.get("kind") or DEFAULT_KIND,
         **({
             "authorization_method": ep.get("authorization_method") or None,
@@ -553,43 +914,49 @@ def endpoint_view(ep: dict, provider_display: str, cat: Catalog | None = None) -
             "required_resource": ep.get("required_resource") or None,
             "token_type": ep.get("token_type") or None,
         } if ep.get("authorization_methods") or ep.get("authorization_method") else {}),
-        # the section of its platform page this row files under (see `_domain`)
         "domain": ep.get("domain") or DOMAIN_OTHER,
-        # the whole point of a row is the call it stands for, so the line that makes it is part of
-        # the row — not a second request away
         "call_template": call_template(ep),
         "cost": cat.cost_view(ep["cost"], ep["provider"]) if cat else ep["cost"],
-        # whether treg may serve this route with its OWN key, billed to the caller's balance —
-        # a fact about the row that decides whether the caller needs a credential at all, so it
-        # rides on the row rather than being re-derived per client (see `Catalog.platform_eligible`)
+        "async": ep.get("async"),
         "platform_eligible": cat.platform_eligible(ep) if cat else None,
-        # WHY the platform can't serve an otherwise-working route (plan/tier gap on treg's own
-        # subscription) — so "bring your own key" is said up front instead of discovered via a 403.
+        **({"platform_auth": "anonymous"} if ep.get("platform_auth") == "anonymous" else {}),
         "platform_blocked": ep.get("platform_blocked") or None,
-        # "no match" semantics, when the endpoint has them — an agent that reads `miss` stops
-        # treating an expected empty answer as a failed call (and stops retrying it).
-        "miss": ep.get("miss"),
+        "miss": ({k: v for k, v in ep["miss"].items() if k not in ("when", "plugin")}
+                 if isinstance(ep.get("miss"), dict) and "status" in ep["miss"] else None),
+        **({"not_found": {k: v for k, v in ep["not_found"].items() if k != "when"}} if isinstance(ep.get("not_found"), dict) else {}),
         # Only direct-id lookups can return a marked row; discovery surfaces never include one.
         "status": ep.get("status") or None,
         "status_note": ep.get("status_note") or None,
         "superseded_by": ep.get("superseded_by") or None,
         "verified": ep["verified"],
+        "added": ep.get("added") or None,
         "docs_url": ep["docs_url"],
         "has_example": bool(ep["example_file"]),
-        # the request schema, split by location (pathParams/queryParams/body + notes) — without it
-        # the dashboard can show what comes BACK (example_response) but not what to SEND
         "input": ep.get("input") or None,
-        # the exact request that live-verified this endpoint — the Try-it drawer prefills from it
-        # verbatim (it also carries the ground truth the input spec can't express: whether the
-        # body is a bare object or an ARRAY of tasks, which dataforseo requires)
+        **({"strict_query": True} if ep.get("strict_query") else {}),
+        **({"strict_body": True} if ep.get("strict_body") else {}),
+        **({"body_allowlist": True} if ep.get("body_allowlist") else {}),
+        # also carries what the input spec can't: a bare body vs an ARRAY of tasks (dataforseo)
         "test_request": ep.get("test_request") or None,
-        # A generated routed row (`treg.<capability>`) names the children it chooses among, so a
-        # discovery surface can draw the hierarchy without a second request.
         **({"routed_children": list(ep.get("routed_children") or [])} if ep.get("kind") == "routed" else {}),
     }
 
 
 MAX_ROUTED_CHILDREN = 5  # children shown under a routed parent in discovery; the rest are in `catalog get`
+
+
+def routed_discovery_on() -> bool:
+    """`TREG_ROUTED_DISCOVERY`: whether search leads a capability with its routed row (the one
+    switch every surface reads, see `group_routed`). Off, the agent-facing files stop teaching
+    routed ids too, or the docs and the catalog disagree and the agent trusts the docs."""
+    from ...config import get_settings
+    return str(get_settings().routed_discovery).strip().lower() not in ("off", "0", "false", "no")
+
+
+def routed_parent(cat: Catalog, capability: str | None) -> dict | None:
+    """The routed row (`treg.<capability>`) a job leads with, or None where the job has none."""
+    parent = cat.by_id.get(f"treg.{capability}") if capability else None
+    return parent if parent is not None and parent.get("kind") == "routed" else None
 
 
 def group_routed(rows: list[dict], key=lambda r: r, max_children: int | None = None) -> list[dict]:
@@ -599,21 +966,16 @@ def group_routed(rows: list[dict], key=lambda r: r, max_children: int | None = N
     where the group sits; within it, "let treg choose" leads and the specific providers follow.
 
     `max_children` caps each group: a search page is a list of JOBS, and one capability's 24
-    providers must not eat the whole result budget (`find leads`, 2026-08-28: people.search's
-    children pushed people.email.find to one line and people.enrich off the page). The children
-    kept are the best-ranked ones; the parent row is stamped `children_hidden` = how many were cut,
-    and the full ranked list is one `catalog get <parent>` away.
+    providers must not eat the whole result budget. The children kept are the best-ranked ones;
+    the parent row is stamped `children_hidden` = how many were cut, and the full ranked list is
+    one `catalog get <parent>` away.
 
     `TREG_ROUTED_DISCOVERY=off` turns the STEERING off and returns the rows untouched: routed
     endpoints stay callable, priced and reachable by id — search simply stops leading with them, as
     it did before routing shipped. Whether the router answers well and whether every agent should
     be pointed at it by default are different questions; this is the switch for the second one."""
-    from ...config import get_settings
-    if str(get_settings().routed_discovery).strip().lower() in ("off", "0", "false", "no"):
-        # Not merely "do not group": before routing shipped these rows did not exist, and a routed
-        # row still MATCHES a keyword search on its own summary, so leaving it in would keep
-        # steering by the back door. Off means search never surfaces one; `catalog get <id>` and
-        # `POST /call/<id>` are untouched.
+    if not routed_discovery_on():
+        # A routed row still matches keyword search on its own summary, so off drops it too.
         return [r for r in rows if key(r).get("kind") != "routed"]
     routed_caps = {key(r)["capability"] for r in rows if key(r).get("kind") == "routed"}
     if not routed_caps:
@@ -636,7 +998,9 @@ def group_routed(rows: list[dict], key=lambda r: r, max_children: int | None = N
     for r in ordered:
         v = key(r)
         cap = v["capability"]
-        if cap in routed_caps and v.get("kind") != "routed":
+        # An approved hub tool of this job stays in its group and is never cut: it is not one of
+        # the router's providers, and `catalog get <parent>` would not list it.
+        if cap in routed_caps and v.get("kind") not in ("routed", "hub"):
             if shown.get(cap, 0) >= max_children:
                 if cap in parents:
                     parents[cap]["children_hidden"] = parents[cap].get("children_hidden", 0) + 1
@@ -659,7 +1023,8 @@ def endpoint_context(ep: dict, cat: Catalog) -> dict:
     }
 
 
-def domain_rows(pairs: list[tuple[dict, dict]], capabilities: dict[str, str]) -> list[dict]:
+def domain_rows(pairs: list[tuple[dict, dict]], capabilities: dict[str, str],
+                titles: dict[str, str]) -> list[dict]:
     """One platform's `(endpoint, view)` pairs as the LEDGER the platform page renders: domain
     sections, each holding merged rows (a job several providers do) before single rows.
 
@@ -683,9 +1048,7 @@ def domain_rows(pairs: list[tuple[dict, dict]], capabilities: dict[str, str]) ->
     def _ep_rank(v: dict):
         # Within one capability: cheapest first (free counts as cheapest; unpriced last — an
         # unknown price must not lead a comparison), then the curated core route before ingested
-        # ones, then live-verified before unproven, then stable alpha. Before this existed the
-        # order was an accident of filename sorting ("tikhub.extended.yaml" < "tikhub.yaml"), which
-        # put the canonical core route at the BOTTOM of its own row.
+        # ones, then live-verified before unproven, then stable alpha.
         usd = (v.get("cost") or {}).get("usd")
         return (usd is None, usd if usd is not None else 0.0,
                 v.get("tier") != "core", not v.get("verified"),
@@ -699,8 +1062,13 @@ def domain_rows(pairs: list[tuple[dict, dict]], capabilities: dict[str, str]) ->
         # a provider's two takes on one job into a single row would show one route and the OTHER's
         # price. The capability id stays on every row either way; it is a join key, never a heading.
         if len({e["provider"] for e in eps}) > 1:
+            # The row files under the domain most of its providers give it, not the cheapest
+            # one's alone: one provider's odd `search` pulled a SERP job out of `serp`.
+            domains = [e["domain"] for e in eps]
+            # `title` is the short name a person scans; `description` stays whole for agents.
             rows.append({"kind": "merged", "capability": cap, "description": title,
-                         "domain": eps[0]["domain"], "endpoints": eps})
+                         "title": titles.get(cap),
+                         "domain": max(domains, key=domains.count), "endpoints": eps})
             continue
         rows += [{"kind": "single", "capability": cap, "description": e["name"] or e["summary"] or title,
                   "domain": e["domain"], "endpoints": [e]} for e in eps]
@@ -716,7 +1084,6 @@ def domain_rows(pairs: list[tuple[dict, dict]], capabilities: dict[str, str]) ->
     return [{"domain": d, "rows": sections[d]} for d in order]
 
 
-# ---- near misses -----------------------------------------------------------------------------
 def _id_shape(endpoint_id: str) -> tuple[str, list[str]]:
     """`(provider, comparable tokens)` for an endpoint id.
 
@@ -760,12 +1127,8 @@ def near_ids(endpoint_id: str, cat: Catalog, limit: int = 3) -> list[str]:
     # claim that the caller mistyped, and `apollo.people.email.find` is not a typo for
     # `hunter.people.email.find` — it is a different vendor, a different price and a different
     # credential. On a path that spends money, "did you mean <competitor>?" is provider routing
-    # wearing a spellcheck's clothes, which is exactly what the charter says treg does not do:
-    # treg compares providers side by side and the CALLER chooses. (The first cut of this scored
-    # cross-provider matches and merely preferred the same provider — via `r[2] != provider`, which
-    # compared a full id against a bare provider token and was therefore true every time, so even
-    # that preference never applied. `fake.companies-signals` confidently answered
-    # `lusha.x.companies-signals`.)
+    # wearing a spellcheck's clothes, which is exactly what treg does not do:
+    # treg compares providers side by side and the CALLER chooses.
     if provider not in cat.provider_meta:
         return []
     exact, scored = [], []
@@ -797,12 +1160,7 @@ def unknown_id_hint(endpoint_id: str, cat: Catalog) -> str:
     return f"search for it instead: treg catalog search {tail!r}"
 
 
-# ---- search ----------------------------------------------------------------------------------
-# Deliberately plain: token containment over a few weighted fields. The catalog is ~2k endpoints of
-# curated English, so an embedding index would add a dependency and a build step to beat "tiktok
-# comments" by nothing. Ranking has to be PREDICTABLE above all — an agent that can't guess why a row
-# won can't refine its query.
-_SPLIT = re.compile(r"[^a-z0-9]+")
+_SPLIT = re.compile(r"[^a-z0-9\u3400-\u9fff]+")
 
 # what a token hit is worth, by where it landed
 W_CAPABILITY = 3   # capability id/description + platform label/slug — the curated vocabulary
@@ -826,6 +1184,7 @@ def _haystacks(ep: dict, cat: Catalog) -> list[tuple[int, str]]:
     plat = cat.platforms.get(ep["platform"], {})
     return [
         (W_CAPABILITY, " ".join((ep["capability"], cat.capabilities.get(ep["capability"], ""),
+                                 cat.capability_titles.get(ep["capability"], ""),
                                  plat.get("label", ""), ep["platform"])).lower()),
         # `name` is OURS to word (summary stays the provider's, verbatim) — it is the one
         # per-endpoint field curation may write search vocabulary into, so it must be searched
@@ -834,40 +1193,90 @@ def _haystacks(ep: dict, cat: Catalog) -> list[tuple[int, str]]:
     ]
 
 
+_CJK = re.compile(r"[\u3400-\u9fff]")
+
+
+def _padded(text: str) -> str:
+    """A haystack as space-separated words between spaces, so a word can be matched at its start
+    or whole."""
+    return " " + _SPLIT.sub(" ", text.lower()).strip() + " "
+
+
+# A provider's name shorter than this matches whole (or with a plural "s"), never as the start of
+# a longer word: "exa" must not find "exact". Any other short word still matches a word's start,
+# so "web" finds "website" and "geo" "geolocation".
+WHOLE_WORD_BELOW = 4
+
+
+def _needles(variants: list[str], whole: bool = False) -> list[str]:
+    """Each variant as it must appear at the START of a word: " search" matches "search" and
+    "searches", never "research". With `whole` (the word is a short
+    provider name) the first variant matches only whole, or with a plural "s". CJK has no spaces
+    between words, so a CJK variant keeps matching anywhere."""
+    out: list[str] = []
+    for n, v in enumerate(variants):
+        if _CJK.search(v):
+            out.append(v)
+            continue
+        w = _SPLIT.sub(" ", v.lower()).strip()
+        if whole and n == 0:
+            out.extend((f" {w} ", f" {w}s "))
+        else:
+            out.append(" " + w)
+    return out
+
+
 def _search_fields(cat: Catalog) -> list[tuple[dict, list[tuple[int, str]]]]:
     """Every endpoint's weighted haystacks, built once per Catalog instance — search runs two
     passes (document frequency, then scoring) and rebuilding the joined strings per query per
-    pass was the only real cost in either."""
+    pass was the only real cost in either. Stored word-padded (`_padded`)."""
     cached = cat._search_fields
     if cached is None:
-        cached = [(ep, _haystacks(ep, cat)) for ep in cat.endpoints]
+        cached = [(ep, [(w, _padded(text)) for w, text in _haystacks(ep, cat)]) for ep in cat.endpoints]
         object.__setattr__(cat, "_search_fields", cached)  # frozen dataclass, deliberate
     return cached
 
 
 # A token matching more than this share of the catalog selects nothing — it may still add score
-# where it matches, but a row is never punished for missing it. Statistical stopwords: "data" (33%),
-# "api" (50%), "get" (40%) are corpus filler no hand list would keep up with, while "search" (22%)
-# and "tiktok" (19%) stay required. Measured 2026-08-20 over 2,791 endpoints.
+# where it matches, but a row is never punished for missing it. Statistical stopwords: "data",
+# "api", "get" are corpus filler no hand list would keep up with, while "search" and "tiktok" stay
+# required.
 SOFT_DF_SHARE = 0.25
 
 
-def _match(query: str, cat: Catalog):
+_SUFFIXES = ("ments", "ment", "ings", "ing", "ies", "es", "s", "ed", "y", "e")
+
+
+def _stem(tok: str) -> str:
+    """A word's stem for prefix matching: "companies" and "company" -> "compan", "enrichment" ->
+    "enrich". Never shorter than five letters, so it stays a word's start rather than a fragment."""
+    for suffix in _SUFFIXES:
+        if tok.endswith(suffix) and len(tok) - len(suffix) >= 5:
+            return tok[:-len(suffix)]
+    return tok
+
+
+def _match(query: str, cat: Catalog, stems: bool = False):
     """The shared matching pass behind `search` and `near_misses`: tokens, per-row best-field
-    weights, idf, and the admission gate (which tokens are required, and how many must hit)."""
+    weights, idf, and the admission gate (which tokens are required, and how many must hit).
+    `stems` lets each word also match as its stem's prefix (a provider-named search only)."""
     raw = _tokens(query)
-    # single letters can never select ("K&L" tokenizes to k + l, df 2,039 and 2,512) — they only
+    # single letters can never select ("K&L" tokenizes to k + l) - they only
     # inflated the number of matches a row needed elsewhere
     tokens = [t for t in raw if t not in _STOPWORDS and len(t) > 1] or raw
     if not tokens:
         return None
-    variants = [[tok, *cat.aliases.get(tok, ())] for tok in tokens]
+    short = _short_provider_names(cat)
+    variants = [_needles([tok, *((_stem(tok),) if stems else ()), *cat.aliases.get(tok, ())], whole=tok in short)
+                for tok in tokens]
     # A token that IS a platform slug ("tiktok", "linkedin") is the caller's hard filter, but idf
     # prices it low — half the catalog serves the big platforms — so rows matching a rarer facet
     # word ("followers") outranked rows matching the asked-for platform. Double the weight where a
     # platform token matches: same-pattern rows still sum identical floats, ties survive.
     boost = [2 if tok in cat.platforms else 1 for tok in tokens]
     rows = _search_fields(cat)
+    if hidden := paused_providers():
+        rows = [row for row in rows if row[0]["provider"] not in hidden]
     total = len(rows)
     best: list[list[int]] = []
     df = [0] * len(tokens)
@@ -885,7 +1294,9 @@ def _match(query: str, cat: Catalog):
     return tokens, rows, best, idf, required, need
 
 
-def search(query: str, cat: Catalog, limit: int = 25) -> tuple[list[tuple[dict, float]], int]:
+def search(query: str, cat: Catalog, limit: int = 25,
+           platform: str | None = None, keep: Callable[[dict], bool] | None = None,
+           ) -> tuple[list[tuple[dict, float]], int]:
     """`(ranked [(endpoint, score)], total_matches)` for a free-text query.
 
     MOST tokens must match — a query is a refinement, so "tiktok comments" must not return every
@@ -901,32 +1312,232 @@ def search(query: str, cat: Catalog, limit: int = 25) -> tuple[list[tuple[dict, 
     Rows matching the same tokens in the same fields still tie EXACTLY (same floats from the same
     sums), which `rank_band`'s tie sweep and the evidence rerank both depend on. Remaining ties
     break to core-before-extended, then verified-before-not, then id — total and stable.
+
+    `platform` keeps one shelf's rows only; the idf stays the whole catalog's, so a row scores the
+    same scoped or not. `keep` (the `added` window, `added_keep`) works the same way: it drops rows,
+    never rescores them, and a routed parent rides in only if it passes it too.
     """
+    focus = provider_focus(query, cat)
+    if focus is not None:
+        named, rest = focus
+        # No routed row: the caller chose the provider, and "let treg choose" is not that.
+        scored = [r for r in _scored(rest, cat, platform, keep, loose=named) if r[0].get("kind") != "routed"]
+        top = max((s for _, s in scored), default=0.0)
+        if any(ep["provider"] in named for ep, _ in scored):
+            # The named provider's rows first, each still in its own relevance order.
+            scored = [(ep, round(s + top + 1, 4)) if ep["provider"] in named else (ep, s) for ep, s in scored]
+            scored.sort(key=_search_order)
+            return scored[:max(limit, 0)], len(scored)
+    scored = _scored(query, cat, platform, keep)
+    scored = [r for r in with_routed_parents(scored, cat)
+              if (not platform or r[0]["platform"] == platform) and (keep is None or keep(r[0]))]
+    scored.sort(key=_search_order)
+    return scored[:max(limit, 0)], len(scored)
+
+
+def _search_order(row: tuple[dict, float]):
+    return (-row[1], row[0]["tier"] != "core", not row[0]["verified"], row[0]["id"])
+
+
+def _scored(query: str, cat: Catalog, platform: str | None, keep: Callable[[dict], bool] | None,
+            loose: set[str] = frozenset()) -> list[tuple[dict, float]]:
+    """Every row the admission gate lets in for `query`, with its score, unsorted. A row of a
+    provider in `loose` needs only one of the words, matched by stem too: the query named it, so
+    its few rows are already the shortlist. Every other row is admitted and scored as always."""
     m = _match(query, cat)
     if m is None:
-        return [], 0
+        return []
+    stemmed = _match(query, cat, stems=True) if loose else None
+    scored: list[tuple[dict, float]] = []
+    for n, (ep, _) in enumerate(m[1]):
+        if platform and ep["platform"] != platform:
+            continue
+        if keep is not None and not keep(ep):
+            continue
+        _, _, best, idf, required, need = stemmed if stemmed and ep["provider"] in loose else m
+        per_tok = best[n]
+        if sum(1 for i in required if per_tok[i]) < (1 if stemmed and ep["provider"] in loose else need):
+            continue
+        scored.append((ep, round(sum(w * idf[i] for i, w in enumerate(per_tok)), 4)))
+    return scored
+
+
+def _provider_label(provider: str) -> str:
+    return provider
+
+
+def provider_label(provider: str) -> str:
+    """A provider's display name ("pdl" -> "People Data Labs"), or its id when none is configured."""
+    return _provider_label(provider)
+
+
+def configure_provider_labels(label: Callable[[str], str]) -> None:
+    """Composition seam (`bootstrap`): a provider's display name ("pdl" -> "People Data Labs"),
+    read from the provider registry, which this domain does not import. Unconfigured, a provider is
+    named by its id alone."""
+    global _provider_label
+    _provider_label = label
+
+
+def provider_phrases(cat: Catalog) -> list[tuple[tuple[str, ...], str]]:
+    """Every way a query names a provider, as search tokens, longest first: its id ("pdl",
+    "brightdata") and its display name whole ("people data labs", "you com" for You.com, "context
+    dev" for Context.dev: the domain is part of the name, and "you" or "context" alone is a word). A
+    phrase that is a platform's name ("tiktok", "google ads") names the platform instead; one made
+    only of short or function words ("x", "you") names nothing."""
+    cached = cat._provider_phrases
+    if cached is not None:
+        return cached
+    platform_words = {tuple(_tokens(w)) for slug, p in cat.platforms.items()
+                      for w in (slug.replace("-", " "), p.get("label", ""))}
+    by_phrase: dict[tuple[str, ...], str] = {}
+    for prov in sorted({ep["provider"] for ep in cat.endpoints} - {"treg"}):
+        for name in (prov, _provider_label(prov)):
+            phrase = tuple(_tokens(name))
+            if (phrase and phrase not in platform_words
+                    and any(t not in _STOPWORDS and len(t) >= 3 for t in phrase)):
+                by_phrase.setdefault(phrase, prov)
+    cached = sorted(by_phrase.items(), key=lambda t: (-len(t[0]), t[0]))
+    object.__setattr__(cat, "_provider_phrases", cached)   # frozen dataclass, deliberate
+    return cached
+
+
+def provider_focus(query: str, cat: Catalog) -> tuple[set[str], str] | None:
+    """`(providers, the rest of the query)` when the query names a provider AND says what it
+    wants from it ("exa search", "people data labs company enrichment"); None for a bare name or
+    no name. The rest is the query without the name, so the name's own words ("people" in People
+    Data Labs) cannot pull the search toward another job. Names are matched before function words
+    are dropped, so "you.com" is still a name."""
+    tokens = _tokens(query)
+    named: set[str] = set()
+    covered: set[int] = set()
+    i = 0
+    while i < len(tokens):
+        for phrase, prov in provider_phrases(cat):
+            if tuple(tokens[i:i + len(phrase)]) == phrase:
+                named.add(prov)
+                covered.update(range(i, i + len(phrase)))
+                i += len(phrase)
+                break
+        else:
+            i += 1
+    rest = [t for j, t in enumerate(tokens) if j not in covered and t not in _STOPWORDS and len(t) > 1]
+    if not named or not rest:
+        return None
+    return _reaches(cat, frozenset(named), " ".join(rest))
+
+
+def _reaches(cat: Catalog, named: frozenset[str], rest: str) -> tuple[set[str], str] | None:
+    """The focus, where one of the named providers' rows matches a word of the rest (by stem too);
+    else None, and the query reads as typed: "does perplexity mention my brand" is about the AI
+    engine, and no Perplexity row says "brand". The one decision word search and the judged
+    answer share, cached per Catalog."""
+    cache = cat._provider_focus
+    if cache is None:
+        cache = {}
+        object.__setattr__(cat, "_provider_focus", cache)   # frozen dataclass, deliberate
+    key = (named, rest)
+    if key not in cache:
+        m = _match(rest, cat, stems=True)
+        hit = m is not None and any(ep["provider"] in named and any(per_tok)
+                                    for (ep, _), per_tok in zip(m[1], m[2]))
+        if len(cache) > 512:
+            cache.clear()
+        cache[key] = (set(named), rest) if hit else None
+    return cache[key]
+
+
+def led_by(query: str, cat: Catalog) -> frozenset[str]:
+    """The providers whose rows lead `query`'s word-search page (empty: an ordinary page). Their
+    scores carry the lead, so a page led by a provider shows no score: the number would rank them,
+    not measure them."""
+    focus = provider_focus(query, cat)
+    return frozenset(focus[0]) if focus else frozenset()
+
+
+def _short_provider_names(cat: Catalog) -> frozenset[str]:
+    """The one-word provider names under `WHOLE_WORD_BELOW` letters ("exa", "pdl", "moz")."""
+    return frozenset(phrase[0] for phrase, _ in provider_phrases(cat)
+                     if len(phrase) == 1 and len(phrase[0]) < WHOLE_WORD_BELOW)
+
+
+def with_routed_parents(scored: list[tuple[dict, float]], cat: Catalog) -> list[tuple[dict, float]]:
+    """A routed parent (`treg.<capability>`) rides in whenever one of its children is in `scored`, at
+    the best child's score: `find leads` matches `leadsforge.people.email.find` on the PROVIDER's
+    name, and the row an agent should see first for that job is the one where treg chooses among
+    every provider - which contains no word of that query. Shared by `search` and the
+    judged page (`candidates` deliberately holds no routed rows), so both pages steer alike."""
+    present = {ep["id"] for ep, _ in scored}
+    best_child: dict[str, tuple[dict, float]] = {}
+    for ep, score in scored:
+        parent = routed_parent(cat, ep.get("capability")) if ep.get("kind") != "routed" else None
+        if parent is not None and parent["id"] not in present:
+            best_child[parent["id"]] = (parent, max(best_child.get(parent["id"], (parent, 0.0))[1], score))
+    return [*scored, *best_child.values()]
+
+
+def candidates(query: str, cat: Catalog, limit: int = 30, platform: str | None = None) -> list[tuple[dict, float]]:
+    """Recall for a JUDGE, not an answer: every concrete endpoint that hits at least one required
+    token, best lexical score first, cut at `limit`.
+
+    `search` demands most of the rare words; that gate is what keeps a keyword page honest and it is
+    also what zeroes task-shaped queries — "apple stock closing prices for last year" carries three
+    words that are parameter VALUES (apple, last, year) and no catalog row will ever contain them.
+    A judge that reads the task can tell a value from a capability; the gate cannot. So this pass
+    admits on ONE hit and lets the judge decide, which is only safe because nothing here is shown
+    without the judge's answer. Routed parents are left out: the judge scores what an endpoint DOES,
+    and `with_routed_parents` puts the parent back over its children afterwards. `platform` scopes
+    the recall to one shelf, as in `search`.
+    """
+    m = _match(query, cat)
+    if m is None or limit <= 0:
+        return []
     tokens, rows, best, idf, required, need = m
     scored: list[tuple[dict, float]] = []
     for (ep, _), per_tok in zip(rows, best):
-        if sum(1 for i in required if per_tok[i]) < need:
+        if ep.get("kind") == "routed" or not any(per_tok[i] for i in required) or (platform and ep["platform"] != platform):
             continue
         scored.append((ep, round(sum(w * idf[i] for i, w in enumerate(per_tok)), 4)))
-    # A routed parent (`treg.<capability>`) rides in whenever one of its children matched, at the
-    # best child's score: `find leads` matches `leadsforge.people.email.find` on the PROVIDER's
-    # name, and the row an agent should see first for that job is the one where treg chooses among
-    # every provider — which contains no word of that query (2026-08-28).
-    present = {ep["id"] for ep, _ in scored}
-    best_child: dict[str, float] = {}
-    for ep, score in scored:
-        parent_id = f"treg.{ep.get('capability')}" if ep.get("capability") else None
-        if parent_id and parent_id not in present and ep.get("kind") != "routed":
-            best_child[parent_id] = max(best_child.get(parent_id, 0.0), score)
-    for parent_id, score in best_child.items():
-        parent = cat.by_id.get(parent_id)
-        if parent is not None and parent.get("kind") == "routed":
-            scored.append((parent, score))
     scored.sort(key=lambda row: (-row[1], row[0]["tier"] != "core", not row[0]["verified"], row[0]["id"]))
-    return scored[:max(limit, 0)], len(scored)
+    return scored[:limit]
+
+
+def score_extra(query: str, cat: Catalog,
+                extra: list[tuple[dict, list[tuple[int, str]]]]) -> list[tuple[dict, float]]:
+    """Score rows that are NOT in the catalog (a listed hub tool)
+    with the SAME tokens, aliases, platform boost, idf and admission gate as `search`, so they rank
+    by relevance beside catalog rows with no boost. `extra` is `[(row, haystacks)]` in the shape
+    `_haystacks` produces. The idf is the catalog's: one extra row cannot move it."""
+    m = _match(query, cat)
+    if m is None or not extra:
+        return []
+    tokens, _rows, _best, idf, required, need = m
+    short = _short_provider_names(cat)
+    variants = [_needles([tok, *cat.aliases.get(tok, ())], whole=tok in short) for tok in tokens]
+    boost = [2 if tok in cat.platforms else 1 for tok in tokens]
+    out: list[tuple[dict, float]] = []
+    for ep, fields in extra:
+        fields = [(w, _padded(text)) for w, text in fields]
+        per_tok = [b * max((w for w, text in fields if any(v in text for v in vs)), default=0)
+                   for vs, b in zip(variants, boost)]
+        if sum(1 for i in required if per_tok[i]) < need:
+            continue
+        out.append((ep, round(sum(w * idf[i] for i, w in enumerate(per_tok)), 4)))
+    return out
+
+
+def merge_by_score(primary: list[tuple[dict, float]], extra: list[tuple[dict, float]]) -> list[tuple[dict, float]]:
+    """Merge a second ranked list into the first by descending score. On a tie the primary (catalog)
+    rows stay first: a hub tool gets no boost."""
+    out = list(primary)
+    for ep, score in sorted(extra, key=lambda r: -r[1]):
+        at = len(out)
+        for j, (_, ps) in enumerate(out):
+            if ps < score:
+                at = j
+                break
+        out.insert(at, (ep, score))
+    return out
 
 
 def near_misses(query: str, cat: Catalog, limit: int = 3) -> list[dict]:
@@ -955,19 +1566,15 @@ def near_misses(query: str, cat: Catalog, limit: int = 3) -> list[dict]:
 
 
 # The ceiling on how many equal-scoring rows the evidence sort may consider. Scoring is token
-# containment over three fields, so ties are the NORM, not the exception: "ad library" scores every
-# one of its 24 matches a 6, and the answer to "which 8 do I show?" was then file order.
-#
-# Sized against the real catalog rather than guessed. The tie group straddling a default limit of 8
-# is 17 rows for "ad library", 24 for "email", 88 for "company", 127 for "backlinks" — but 523 for
-# the bare word "tiktok". Taking the whole group unconditionally would put a 523-id `IN` clause
-# behind every search on an OPEN, unauthenticated route, so the group is taken whole up to this
-# ceiling and the caller is TOLD when it was not (see `rank_band`) — a bounded cut that announces
-# itself, rather than the silent one this fix set out to remove.
+# containment over three fields, so ties are the NORM, not the exception. A bare platform word ties
+# hundreds of rows, and taking the whole group would put a huge `IN` clause behind every search on
+# an OPEN, unauthenticated route, so the group is taken whole up to this ceiling and the caller is
+# TOLD when it was not (see `rank_band`).
 RERANK_BAND = 250
 
 
-def rank_band(query: str, cat: Catalog, limit: int) -> tuple[list[tuple[dict, float]], int, bool]:
+def rank_band(query: str, cat: Catalog, limit: int, platform: str | None = None,
+              keep: Callable[[dict], bool] | None = None) -> tuple[list[tuple[dict, float]], int, bool]:
     """`(rows, total_matches, tie_truncated)` — the candidates the evidence sort gets to reorder.
 
     Takes `limit` rows, then keeps taking while the score stays equal to the last one kept: a cut
@@ -975,22 +1582,86 @@ def rank_band(query: str, cat: Catalog, limit: int) -> tuple[list[tuple[dict, fl
     already dropped the best-measured row cannot put it back. `tie_truncated` is true when the group
     ran past `RERANK_BAND` and the evidence therefore did not get to see all of it.
     """
-    rows, total = search(query, cat, max(limit, 0))
+    rows, total = search(query, cat, max(limit, 0), platform, keep)
     if not rows or len(rows) >= total:
         return rows, total, False
     # One row PAST the ceiling, so "was the group actually cut?" is observed rather than inferred.
-    # Inferring it from `len(kept) >= RERANK_BAND` cried truncation whenever the group happened to
-    # fill the ceiling exactly — telling the caller to narrow a query that had in fact been ranked
-    # in full.
     # The ceiling bounds the EXTRA rows the tie sweep pulls in; it must never return fewer than the
-    # caller asked for. (Shipped surfaces clamp to 100 and 25, so this was unreachable in
-    # production — but a helper that silently under-delivers is a trap for the next call site.)
+    # caller asked for.
     ceiling = max(limit, RERANK_BAND)
-    wider, _ = search(query, cat, ceiling + 1)
+    wider, _ = search(query, cat, ceiling + 1, platform, keep)
     edge = rows[-1][1]
     group = [r for r in wider if r[1] >= edge]
     kept = group[:ceiling]
     return kept, total, len(group) > len(kept)
+
+
+# Two optional search options, the same on every surface (catalog.md "`added`"): a window of the
+# last N days and a newest-first sort. Without them search is exactly what it was.
+ADDED_DAYS_MAX = 365        # a longer window is capped here and the answer says so
+SORTS = ("best", "newest")  # best match is the default sort
+
+
+class AddedOptionError(ValueError):
+    """A search option the caller must fix (a window below one day, an unknown sort)."""
+
+
+@dataclass(frozen=True)
+class AddedOptions:
+    days: int | None = None      # the window actually applied, after the cap
+    newest: bool = False
+    capped: bool = False         # the caller asked for more than ADDED_DAYS_MAX
+
+    @property
+    def active(self) -> bool:
+        return self.days is not None or self.newest
+
+
+def added_options(days: int | None, sort: str | None) -> AddedOptions:
+    """Read the two options. Below one day is the caller's error; above the maximum is capped."""
+    sort = (sort or "best").strip().lower()
+    if sort not in SORTS:
+        raise AddedOptionError(f"sort must be one of {', '.join(SORTS)}, not {sort!r}")
+    if days is not None and days < 1:
+        raise AddedOptionError("added_within_days must be at least 1")
+    capped = days is not None and days > ADDED_DAYS_MAX
+    return AddedOptions(days=min(days, ADDED_DAYS_MAX) if days is not None else None,
+                        newest=sort == "newest", capped=capped)
+
+
+def utc_today() -> date:
+    return datetime.now(UTC).date()
+
+
+def added_keep(opts: AddedOptions) -> Callable[[dict], bool] | None:
+    """The row filter for an active option set: a row with an `added` day inside the window (today,
+    UTC, and the N days before it). A routed row has no `added`: a `treg.<capability>` row is a
+    choice among tools, not a tool that arrived on a day, so new-tool lists hold concrete tools
+    only. None when no option is active, so the ranker runs exactly as before."""
+    if not opts.active:
+        return None
+    if opts.days is None:
+        return lambda ep: bool(ep.get("added"))
+    since = (utc_today() - timedelta(days=opts.days)).isoformat()
+    return lambda ep: bool(ep.get("added")) and str(ep["added"]) >= since
+
+
+def newest_first(rows: list[tuple[dict, float]]) -> list[tuple[dict, float]]:
+    """Newest `added` first; a stable sort, so one day's tools keep the order they came in."""
+    return sorted(rows, key=lambda row: str(row[0].get("added") or ""), reverse=True)
+
+
+def added_rows(query: str, cat: Catalog, opts: AddedOptions) -> tuple[list[tuple[dict, float]], int]:
+    """Every row an active option set admits, best match first (newest first with no words or
+    with `newest`): the whole match set, not a band, because a newest-first page must see the
+    newest match wherever it ranked."""
+    keep = added_keep(opts)
+    if query.strip():
+        rows, total = search(query, cat, len(cat.endpoints), keep=keep)
+    else:
+        rows = [(ep, 0.0) for ep in cat.endpoints if keep(ep) and not paused(ep)]
+        total = len(rows)
+    return (newest_first(rows) if opts.newest or not query.strip() else rows), total
 
 
 def rerank(rows: list[tuple[dict, float]], stats: dict[str, dict],
@@ -1011,11 +1682,8 @@ def rerank(rows: list[tuple[dict, float]], stats: dict[str, dict],
         rate = (stats.get(ep["id"]) or {}).get("ok_rate")
         if rate is None:
             return 1        # no evidence either way (or too few samples to publish one)
-        # `ok_rate` is computed from DECIDED samples only — 2xx against 5xx, with 4xx excluded as
-        # the caller's fault — so a 0 here means the provider failed every call that was its to
-        # answer. Reading "never worked" off anything wider (an earlier revision used a
-        # sample-count-based `any_ok`) demotes a healthy endpoint the moment one agent sends bad
-        # parameters, which is the failure `endpoint_stats`' 4xx rule exists to prevent.
+        # `ok_rate` is computed from DECIDED samples only (4xx excluded as the caller's fault), so a
+        # 0 here means the provider failed every call that was its to answer.
         if rate == 0:
             return 3
         return 0 if rate >= 0.9 else 2
@@ -1035,15 +1703,14 @@ def rerank(rows: list[tuple[dict, float]], stats: dict[str, dict],
         not row[0]["verified"], row[0]["id"]))
 
 
-# ---- call template ---------------------------------------------------------------------------
 def _placeholder(spec: dict):
     example = spec.get("example")
     if example not in (None, ""):
-        # Keep structured examples structured until the wire encoder sees them. Stringifying a
-        # list here produced Python repr (`['US']`) before the JSON/comma metadata had any chance
-        # to choose its representation; booleans likewise became capitalized Python `True`.
+        # Keep structured examples structured until the wire encoder sees them: str() here would
+        # give Python repr (`['US']`, `True`) before the JSON/comma metadata could choose.
         return example
-    return f"<{spec.get('type') or 'value'}>"
+    declared = spec.get("type")
+    return f"<{declared if isinstance(declared, str) and declared else 'value'}>"
 
 
 def wire_value(value) -> str:
@@ -1083,6 +1750,37 @@ def _required_examples(params, authorization_method: str = "") -> dict:
             if isinstance(v, dict) and v.get("required")
             and (not v.get("authorization_methods")
                  or authorization_method in v["authorization_methods"])}
+
+
+def unflatten_dotted(flat: dict) -> dict:
+    """Expand dotted catalog keys into nested JSON objects.
+
+    Schema fields like `params.domain` describe a nested wire body. When both a parent
+    key (`params`, typically an object placeholder) and dotted children exist, the
+    children win — the parent placeholder is not emitted. Query parameters keep their
+    literal dotted names; only JSON bodies go through this helper.
+    """
+    if not isinstance(flat, dict):
+        return flat
+    dotted = [(k, v) for k, v in flat.items() if isinstance(k, str) and "." in k]
+    if not dotted:
+        return flat
+    parents = {k.split(".", 1)[0] for k, _ in dotted}
+    nested = {
+        k: v for k, v in flat.items()
+        if k not in parents and not (isinstance(k, str) and "." in k)
+    }
+    for key, value in dotted:
+        cursor = nested
+        *heads, tail = key.split(".")
+        for part in heads:
+            nxt = cursor.get(part)
+            if not isinstance(nxt, dict):
+                nxt = {}
+                cursor[part] = nxt
+            cursor = nxt
+        cursor[tail] = value
+    return nested
 
 
 def call_template(ep: dict) -> str:
@@ -1127,7 +1825,16 @@ def call_template(ep: dict) -> str:
     # arguments but still requires a JSON body — and dropping `--data '{}'` from the line hands the
     # reader a command that differs from the one that was tested, on handlers that reject an empty
     # body outright.
-    if body is not None and (body or ep["method"] != "GET"):
+    # treg can faithfully relay a caller-supplied GET body, but generated shell commands never add
+    # one: too many clients/proxies silently discard it. The stored test request can still preserve
+    # the provider's unusual verification contract without printing a misleading paste-ready line.
+    if body is not None and ep["method"] != "GET":
+        # Catalog schemas flatten nested JSON as dotted keys (`params.domain`). MCP callers
+        # nest the object themselves; the paste-ready command must do the same expansion so
+        # `--data` is a valid wire body rather than a flat object Serpstat (and JSON-RPC)
+        # reject.
+        if isinstance(body, dict):
+            body = unflatten_dotted(body)
         parts += ["--data", shlex.quote(json.dumps(
             body, separators=(",", ":"), ensure_ascii=False))]
     return " ".join(parts)
@@ -1168,3 +1875,29 @@ def tool_examples(service: str) -> list[dict]:
             note = f"{note} [capability: {ep['capability']}]"
         out.append({"method": ep["method"], "path": ep["path"], "note": note})
     return out
+
+
+_HEADLINE: tuple[Catalog, tuple[str, int]] | None = None
+
+
+def headline_counts(cat: Catalog) -> tuple[str, int]:
+    """The two numbers every agent-facing surface quotes, taken from the loaded catalog instead of
+    typed by hand: direct (non-routed) endpoints rounded DOWN to the hundred with a trailing "+",
+    and the providers behind them. Six hand-written copies once disagreed with each other and the
+    smallest undersold the catalog by six hundred endpoints; generated, the number cannot drift."""
+    global _HEADLINE
+    if _HEADLINE is not None and _HEADLINE[0] is cat:
+        return _HEADLINE[1]
+    direct = [e for e in cat.by_id.values() if e.get("kind") != "routed"]
+    providers = {e.get("provider") for e in direct if e.get("provider")}
+    counts = f"{len(direct) // 100 * 100:,}+", len(providers)
+    _HEADLINE = cat, counts
+    return counts
+
+
+def empty_is_failure(endpoint_id: str) -> bool:
+    """True when this endpoint's capability contract counts an empty 2xx as a failure."""
+    cat = load()
+    cap = (cat.by_id.get(endpoint_id) or {}).get("capability")
+    contract = cat.contracts.get(cap) if cap else None
+    return bool(contract is not None and contract.empty_is_failure)

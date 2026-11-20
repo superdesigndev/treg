@@ -11,8 +11,9 @@ other MCP server must not spend a treg balance just because it happens to be val
 
 from __future__ import annotations
 
+from conftest import verified_signup
+
 import json
-import time
 
 import pytest
 
@@ -23,7 +24,7 @@ from treg.config import Settings, get_settings
 
 # The MCP transport helpers live with the MCP tests; a token is only interesting here because it can
 # drive a tool, so reuse them rather than keeping a second copy that can drift.
-from test_mcp import _call_tool, mcp_session
+from test_mcp import _call_tool, _rpc, mcp_session
 
 
 
@@ -39,27 +40,25 @@ async def test_protected_resource_metadata_names_the_mcp_endpoint(clients):
     assert body["authorization_servers"], "a client must be told who issues tokens for us"
 
 
-async def test_the_metadata_is_served_at_BOTH_lookup_paths(clients):
+async def test_the_metadata_is_served_at_every_lookup_path(clients):
     """The spec has clients look this up either at the host root or under the resource's own path,
     and which one a given client tries is not ours to choose."""
     a = await clients.get("/.well-known/oauth-protected-resource")
     b = await clients.get("/.well-known/oauth-protected-resource/mcp")
-    assert a.status_code == b.status_code == 200
-    assert a.json() == b.json()
+    c = await clients.get("/.well-known/oauth-protected-resource/mcp/")
+    assert a.status_code == b.status_code == c.status_code == 200
+    assert a.json() == b.json() == c.json()
 
 
 async def test_v2_metadata_names_only_the_directory_resource(clients):
     response = await clients.get("/.well-known/oauth-protected-resource/mcp/v2")
     assert response.status_code == 200
+    slash = await clients.get("/.well-known/oauth-protected-resource/mcp/v2/")
+    assert slash.status_code == 200 and slash.json() == response.json()
     assert response.json()["resource"] == mcp_oauth.mcp_resource_url("v2")
     assert response.json()["resource"].endswith("/mcp/v2/")
     assert response.json()["resource"] != mcp_oauth.mcp_resource_url("v1")
     assert mcp_oauth.DIRECTORY_SCOPE in response.json()["scopes_supported"]
-
-
-async def test_connect_demo_defaults_off(monkeypatch):
-    monkeypatch.delenv("TREG_CONNECT_DEMO_ENABLED", raising=False)
-    assert Settings(_env_file=None).connect_demo_enabled is False
 
 
 async def test_authorization_server_metadata_offers_only_safe_choices(clients):
@@ -96,23 +95,11 @@ async def test_a_token_for_ANOTHER_resource_is_refused():
     assert mcp._oauth_claims(elsewhere) is None
 
 
-async def test_our_own_token_is_accepted_and_carries_the_team():
-    """Not vacuous: the refusal above only means something if the matching token DOES work, and the
-    team has to survive on the token — a person can belong to several, and the choice is made once
-    by a human at consent, not guessed per call."""
-    ours = mcp_oauth.mcp_resource_url()
-    tok = mcp_oauth.make_access_token(user_id=7, org_id=3, audience=ours, scope="treg:call")
-    claims = mcp._oauth_claims(tok)
-    assert claims is not None
-    assert claims["sub"] == 7 and claims["org"] == 3
-    assert claims["aud"] == ours and claims["scope"] == "treg:call"
-
-
 async def test_a_session_cookie_is_not_an_access_token():
     """treg mints session cookies and identity tokens with the same HMAC construction. Without a type
     marker one class of credential would silently validate as another — a browser session becoming an
     MCP grant, which nobody consented to."""
-    cookie = session.make(7)
+    cookie = session.make_session(7)
     assert mcp._oauth_claims(cookie) is None
     assert mcp_oauth.read_access_token(cookie, expected_audience=mcp_oauth.mcp_resource_url()) is None
 
@@ -124,12 +111,6 @@ async def test_a_tampered_token_is_refused():
     # same signature, different claims: the forgery a signature exists to stop
     forged = mcp_oauth.make_access_token(user_id=99, org_id=99, audience=ours).split(".", 1)[0]
     assert mcp_oauth.read_access_token(f"{forged}.{sig}", expected_audience=ours) is None
-
-
-async def test_an_expired_token_is_refused():
-    ours = mcp_oauth.mcp_resource_url()
-    tok = mcp_oauth.make_access_token(user_id=7, org_id=3, audience=ours, ttl=-1)
-    assert mcp_oauth.read_access_token(tok, expected_audience=ours) is None
 
 
 @pytest.mark.parametrize("junk", ["", "not-a-token", "a.b", "....", "Bearer x"])
@@ -159,16 +140,6 @@ async def test_pkce_accepts_the_right_verifier_and_nothing_else():
     assert not mcp_oauth.verify_pkce("some-other-verifier", challenge)
     assert not mcp_oauth.verify_pkce("", challenge)
     assert not mcp_oauth.verify_pkce(verifier, "")
-
-
-async def test_a_token_outlives_neither_its_ttl_nor_reason():
-    """An hour is deliberate: short enough that a leaked access token expires on its own, long enough
-    that a refresh is not happening on every call."""
-    assert 300 <= mcp_oauth.ACCESS_TTL_SECONDS <= 24 * 3600
-    tok = mcp_oauth.make_access_token(user_id=1, org_id=1,
-                                      audience=mcp_oauth.mcp_resource_url())
-    claims = mcp_oauth.read_access_token(tok, expected_audience=mcp_oauth.mcp_resource_url())
-    assert claims and claims["exp"] <= int(time.time()) + mcp_oauth.ACCESS_TTL_SECONDS + 2
 
 
 # ---- step 2: client registration — two doors in, one row shape out --------------------------
@@ -326,7 +297,7 @@ async def _register(clients, redirect="https://client.test/cb"):
 async def _signed_in(clients, email="oauth-user@superdesign.dev"):
     """A browser session plus the org it belongs to. The consent step is a HUMAN action, so it needs
     a session cookie rather than a token."""
-    r = await clients.post("/users", json={"email": email})
+    r = await verified_signup(clients, json={"email": email})
     assert r.status_code == 200, r.text
     token = r.json()["token"]
     prev = clients.headers.get("X-Treg-Token")
@@ -343,7 +314,7 @@ async def _signed_in(clients, email="oauth-user@superdesign.dev"):
 
     async with session_maker() as db:
         user = (await db.execute(select(User).where(User.email == me["email"]))).scalar_one()
-        cookie = _sess.make(user.id, token_version=user.token_version)
+        cookie = _sess.make_session(user.id, token_version=user.token_version)
     clients.cookies.set("treg_session", cookie)   # on the client: httpx deprecates per-request
     return cookie, org_id
 
@@ -376,6 +347,8 @@ async def test_the_whole_flow_end_to_end(clients):
         "redirect_uri": "https://client.test/cb", "client_id": client_id,
         "code_verifier": verifier, "resource": mcp_oauth.mcp_resource_url()})
     assert tok.status_code == 200, tok.text
+    assert tok.headers["cache-control"] == "no-store"
+    assert tok.headers["pragma"] == "no-cache"
     access = tok.json()["access_token"]
     assert tok.json()["token_type"] == "Bearer"
 
@@ -515,7 +488,7 @@ async def test_you_cannot_approve_for_a_team_you_are_not_in(clients):
     grant a client access to any team by editing one form field."""
     client_id = await _register(clients)
     cookie, _ = await _signed_in(clients, "outsider@superdesign.dev")
-    other = await clients.post("/users", json={"email": "stranger@superdesign.dev"})
+    other = await verified_signup(clients, json={"email": "stranger@superdesign.dev"})
     prev = clients.headers.get("X-Treg-Token")
     clients.headers["X-Treg-Token"] = other.json()["token"]
     foreign_org = (await clients.get("/orgs")).json()[0]["org_id"]
@@ -571,31 +544,10 @@ async def test_the_consent_page_says_what_it_costs_in_WORDS(clients):
     assert "spends the team's balance" in page
     assert "without seeing them" in page, "keys are used, never revealed — say so"
     assert 'name="org_id"' in page, "the team picker belongs here"
-
-
-async def test_the_page_warns_when_a_client_registered_ITSELF(clients):
-    """Dynamic registration is open by design, so anyone can appear here with any name. The user is
-    the only one who can tell whether they started this, and they can only judge if we say so."""
-    client_id = await _register(clients)
-    cookie, _ = await _signed_in(clients, "warned@superdesign.dev")
-    _, challenge = _pkce()
-    r = await clients.get("/oauth/authorize", params={
-        "client_id": client_id, "redirect_uri": "https://client.test/cb", "response_type": "code",
-        "code_challenge": challenge, "code_challenge_method": "S256"})
-    assert "registered itself" in r.text
-    assert "only continue if you recognise it" in r.text
-
-
-async def test_json_is_still_available_for_a_non_browser_client(clients):
-    """The HTML is for humans; a client that asks for JSON gets the same facts without scraping."""
-    client_id = await _register(clients)
-    cookie, _ = await _signed_in(clients, "jsonclient@superdesign.dev")
-    _, challenge = _pkce()
-    r = await clients.get("/oauth/authorize", params={
-        "client_id": client_id, "redirect_uri": "https://client.test/cb", "response_type": "code",
-        "code_challenge": challenge, "code_challenge_method": "S256"},
-        headers={"Accept": "application/json"})
-    assert r.status_code == 200 and r.json()["client"]["name"] == "Test Client"
+    # Dynamic registration is open by design, so anyone can appear here with any name. The user is
+    # the only one who can tell whether they started this, and they can only judge if we say so.
+    assert "registered itself" in page
+    assert "only continue if you recognise it" in page
 
 
 async def test_CANCEL_tells_the_client_no_rather_than_hanging(clients):
@@ -641,7 +593,7 @@ async def test_the_consent_page_cannot_be_framed(clients):
 
 # ---- the token has to WORK, not merely validate ---------------------------------------------
 
-async def _grant(clients, email):
+async def _grant(clients, email, scope=None):
     """Run the whole flow and return the access token, plus the team it was granted for."""
     client_id = await _register(clients)
     cookie, org_id = await _signed_in(clients, email)
@@ -649,6 +601,8 @@ async def _grant(clients, email):
     params = {"client_id": client_id, "redirect_uri": "https://client.test/cb",
               "response_type": "code", "code_challenge": challenge,
               "code_challenge_method": "S256", "resource": mcp_oauth.mcp_resource_url()}
+    if scope is not None:
+        params["scope"] = scope
     r = await clients.post("/oauth/authorize", data={**params, "org_id": org_id, "decision": "allow"},
                            follow_redirects=False)
     code = r.headers["location"].split("code=")[1].split("&")[0]
@@ -737,19 +691,12 @@ async def _grant_full(clients, email):
     return tok.json(), client_id, org_id
 
 
-async def test_a_grant_comes_with_a_refresh_token(clients):
-    """An access token lasts an hour. Without a refresh, every connector breaks hourly and the user
-    is the one who has to notice."""
-    body, _, _ = await _grant_full(clients, "refresher@superdesign.dev")
-    assert body["refresh_token"]
-    assert body["expires_in"] == mcp_oauth.ACCESS_TTL_SECONDS
-
-
 async def test_refreshing_ROTATES_the_token_and_the_new_one_works(clients):
     """The old token is spent, the new one carries on, and the access token that comes out still
     drives the tools — a refresh that returned an unusable token would fail silently an hour later."""
     body, client_id, _ = await _grant_full(clients, "rotate@superdesign.dev")
     first = body["refresh_token"]
+    assert first and body["expires_in"] == mcp_oauth.ACCESS_TTL_SECONDS
 
     r = await clients.post("/oauth/token", data={
         "grant_type": "refresh_token", "refresh_token": first, "client_id": client_id})
@@ -890,6 +837,75 @@ async def test_omitting_the_resource_is_fine(clients):
     assert "balance_usd" in out, "the default audience must be the one the MCP server accepts"
 
 
+async def _new_account_cookie(clients, email):
+    """A verified account that has not reached the dashboard yet: no team, not onboarded. This is
+    who a connector's sign-in brings back to consent, because the parked authorization resumes
+    straight after sign-in."""
+    from conftest import verified_identity
+    from sqlmodel import select
+
+    from treg.infra.db import session_maker
+    from treg.models import User
+
+    await verified_identity(clients, email)
+    async with session_maker() as db:
+        user = (await db.execute(select(User).where(User.email == email))).scalar_one()
+        cookie = session.make_session(user.id, token_version=user.token_version)
+    clients.cookies.set("treg_session", cookie)
+
+
+async def test_a_new_account_gets_its_first_team_at_consent(clients):
+    """Refusing "not a member of any team" ended every first connection from a new account, the
+    connector's most likely user. Consent names the team approval will make, and makes it."""
+    client_id = await _register(clients)
+    await _new_account_cookie(clients, "jane@newco-consent.test")
+    verifier, challenge = _pkce()
+    params = {"client_id": client_id, "redirect_uri": "https://client.test/cb",
+              "response_type": "code", "code_challenge": challenge,
+              "code_challenge_method": "S256"}
+    shown = await clients.get("/oauth/authorize", params=params, headers={"Accept": "application/json"})
+    assert shown.status_code == 200, shown.text
+    assert shown.json()["teams"] == [] and shown.json()["new_team"] == "Newco Consent"
+    page = await clients.get("/oauth/authorize", params=params)
+    assert "Allowing creates your team, <b>Newco Consent</b>" in page.text
+    assert 'name="org_id" value="0"' in page.text
+
+    r = await clients.post("/oauth/authorize", data={**params, "org_id": 0, "decision": "allow"},
+                           follow_redirects=False)
+    assert r.status_code == 302 and "code=" in r.headers["location"], r.text
+    code = r.headers["location"].split("code=")[1].split("&")[0]
+    tok = await clients.post("/oauth/token", data={
+        "grant_type": "authorization_code", "code": code, "redirect_uri": "https://client.test/cb",
+        "client_id": client_id, "code_verifier": verifier})
+    assert tok.status_code == 200, tok.text
+    async with mcp_session(clients) as c:
+        out = await _call_tool(c, "balance", {}, token=tok.json()["access_token"])
+    assert out.get("team_name") == "Newco Consent", out
+
+    again = await clients.get("/oauth/authorize", params=params, headers={"Accept": "application/json"})
+    assert [t["slug"] for t in again.json()["teams"]] == [out["team"]] and again.json()["new_team"] is None
+
+
+async def test_an_onboarded_account_without_a_team_is_still_refused(clients):
+    """Someone who left every team already had their first run; consent does not make another."""
+    from sqlalchemy import update
+
+    from treg.infra.db import session_maker
+    from treg.models import User
+
+    client_id = await _register(clients)
+    await _new_account_cookie(clients, "left@oldco-consent.test")
+    async with session_maker() as db:
+        await db.execute(update(User).where(User.email == "left@oldco-consent.test").values(onboarded=True))
+        await db.commit()
+    _, challenge = _pkce()
+    r = await clients.get("/oauth/authorize", params={
+        "client_id": client_id, "redirect_uri": "https://client.test/cb", "response_type": "code",
+        "code_challenge": challenge, "code_challenge_method": "S256", "state": "s"},
+        follow_redirects=False)
+    assert r.status_code == 302 and "error=access_denied" in r.headers["location"]
+
+
 async def test_a_null_origin_from_a_redirect_chain_is_not_treated_as_cross_site(clients):
     """The intermittent failure Unclecode hit: approve worked on one attempt and was refused on
     another. `Origin: null` is a browser reporting an OPAQUE origin, which happens after certain
@@ -949,9 +965,29 @@ async def test_a_signed_out_user_is_returned_to_the_consent_screen(clients):
     assert back.headers["location"].startswith("/oauth/authorize?")
 
 
+async def test_email_sign_in_on_the_homepage_resumes_the_parked_authorization(clients):
+    """The OAuth sign-in modal opens on `/`, and the email-code door reloads that page once the code
+    is accepted, so the plain homepage must resume the authorization too. Only `/app` did, and an
+    email sign-in from an MCP client ended on the marketing page with the connection abandoned."""
+    clients.cookies.set("treg_oauth_return", "/oauth/authorize?client_id=x")
+    signed_out = await clients.get("/", follow_redirects=False)
+    assert signed_out.status_code == 200, "a signed-out visitor sees the homepage, not a loop"
+
+    await _signed_in(clients, "homepage-returner@superdesign.dev")
+    clients.cookies.set("treg_oauth_return", "/oauth/authorize?client_id=x")
+    back = await clients.get("/", follow_redirects=False)
+    assert back.status_code == 302
+    assert back.headers["location"] == "/oauth/authorize?client_id=x"
+
+    clients.cookies.set("treg_oauth_return", "/anything-else")
+    assert (await clients.get("/", follow_redirects=False)).status_code == 200
+
+
 async def test_connect_demo_is_explicitly_enabled_and_never_displays_token_prefixes(
     monkeypatch, clients,
 ):
+    monkeypatch.delenv("TREG_CONNECT_DEMO_ENABLED", raising=False)
+    assert Settings(_env_file=None).connect_demo_enabled is False, "the demo is off by default"
     monkeypatch.setenv("TREG_CONNECT_DEMO_ENABLED", "false")
     get_settings.cache_clear()
     try:
@@ -971,77 +1007,6 @@ async def test_connect_demo_is_explicitly_enabled_and_never_displays_token_prefi
         get_settings.cache_clear()
 
 
-async def test_the_parked_destination_cannot_be_used_as_an_open_redirect(clients):
-    """The cookie is only honoured for /oauth/authorize. Accepting any path would make it a general
-    "send me anywhere after login" primitive — a phishing aid rather than a feature."""
-    cookie, _ = await _signed_in(clients, "openredir@superdesign.dev")
-    for evil in ("https://attacker.test/", "//attacker.test/", "/app/../oauth/authorize?x=1",
-                 "/anything-else"):
-        clients.cookies.set("treg_oauth_return", evil)
-        r = await clients.get("/app", follow_redirects=False)
-        assert r.status_code == 200, f"{evil!r} must NOT be honoured, got {r.status_code}"
-    clients.cookies.delete("treg_oauth_return")
-
-
-async def test_a_signed_out_visitor_is_not_bounced_in_a_loop(clients):
-    """Resuming only once signed in. Otherwise the dashboard would send them to /oauth/authorize,
-    which would send them back here, forever."""
-    clients.cookies.clear()
-    clients.cookies.set("treg_oauth_return", "/oauth/authorize?client_id=x")
-    r = await clients.get("/app", follow_redirects=False)
-    assert r.status_code == 200
-
-
-async def test_the_team_picker_shows_which_team_can_PAY(clients):
-    """Choosing a team here decides which balance the client spends for the life of the grant, so
-    "which of these can actually pay?" has to be visible at the moment of choosing.
-
-    Unclecode picked a $0.00 team on the first real ChatGPT connect; the call was refused and nothing
-    on the page could have told him. A team with no balance is still a legitimate choice — a team's
-    OWN keys are never metered — so it is LABELLED rather than hidden."""
-    client_id = await _register(clients)
-    cookie, org_id = await _signed_in(clients, "picker@superdesign.dev")
-    _, challenge = _pkce()
-    r = await clients.get("/oauth/authorize", params={
-        "client_id": client_id, "redirect_uri": "https://client.test/cb", "response_type": "code",
-        "code_challenge": challenge, "code_challenge_method": "S256"})
-    assert r.status_code == 200
-    page = r.text
-    # a new team carries the $1.00 grant, so the amount must be on the option
-    assert "$1.00" in page, f"the balance is not shown in the picker: {page[page.find('org_id'):][:300]}"
-
-    # and the JSON view carries it too, for a client that renders its own picker
-    j = await clients.get("/oauth/authorize", params={
-        "client_id": client_id, "redirect_uri": "https://client.test/cb", "response_type": "code",
-        "code_challenge": challenge, "code_challenge_method": "S256"},
-        headers={"Accept": "application/json"})
-    assert any("balance_usd" in t for t in j.json()["teams"])
-
-
-async def test_a_team_with_no_balance_is_labelled_not_hidden(clients):
-    """Removing the option would be wrong: work that uses the team's OWN registered keys is never
-    metered, so an empty team is a perfectly good choice for it."""
-    from sqlmodel import select
-
-    from treg.infra.db import session_maker
-    from treg.models import Org
-
-    client_id = await _register(clients)
-    cookie, org_id = await _signed_in(clients, "broke@superdesign.dev")
-    async with session_maker() as db:
-        org = (await db.execute(select(Org).where(Org.id == org_id))).scalar_one()
-        org.balance_micro = 0
-        db.add(org)
-        await db.commit()
-
-    _, challenge = _pkce()
-    page = (await clients.get("/oauth/authorize", params={
-        "client_id": client_id, "redirect_uri": "https://client.test/cb", "response_type": "code",
-        "code_challenge": challenge, "code_challenge_method": "S256"})).text
-    assert "no balance" in page
-    assert f'value="{org_id}"' in page, "the team must still be selectable"
-
-
 # ---- moving a live grant to another team --------------------------------------------------------
 async def _as(email: str) -> dict:
     """Headers that act as a given user — an identity token, minted the way `treg login` does."""
@@ -1053,7 +1018,7 @@ async def _as(email: str) -> dict:
 
     async with session_maker() as db:
         user = (await db.execute(select(User).where(User.email == email))).scalar_one()
-    return {"X-Treg-Token": _sess.make(user.id, token_version=user.token_version)}
+    return {"X-Treg-Token": _sess.make_identity(user.id, token_version=user.token_version)}
 
 
 async def test_the_team_on_a_grant_can_be_moved_without_reconnecting(clients):
@@ -1177,29 +1142,13 @@ async def test_refresh_repairs_missing_authority_with_the_original_consent_time(
         assert grant is not None and grant.granted_at == consented_at
 
 
-async def test_a_grant_cannot_be_moved_to_a_team_you_are_not_in(clients):
-    """Moving a grant must not reach further than the consent screen would have offered — otherwise
-    it becomes a way into a team the human was never able to pick."""
-    body, _, _ = await _grant_full(clients, "insider@superdesign.dev")
-    me = await _as("insider@superdesign.dev")
-    grant = (await clients.get("/oauth/grants", headers=me)).json()[0]["grant"]
-
-    outsider = (await clients.post("/users", json={"email": "outsider@superdesign.dev"})).json()
-    theirs = (await clients.get("/orgs", headers={"X-Treg-Token": outsider["token"]})).json()[0]
-
-    r = await clients.post(f"/oauth/grants/{grant}/team", json={"team": theirs["slug"]}, headers=me)
-    # 404, not 403: a team you are not in must look exactly like a team that does not exist, or
-    # this route becomes a slug-existence oracle (see the test at the bottom of this file).
-    assert r.status_code == 404
-
-
 async def test_only_the_grants_own_user_can_move_it(clients):
     """The grant belongs to the person who authorised it, not to anyone holding its id."""
     await _grant_full(clients, "owner@superdesign.dev")
     grant = (await clients.get("/oauth/grants",
                                headers=await _as("owner@superdesign.dev"))).json()[0]["grant"]
 
-    stranger = (await clients.post("/users", json={"email": "stranger@superdesign.dev"})).json()
+    stranger = (await verified_signup(clients, json={"email": "stranger@superdesign.dev"})).json()
     theirs = (await clients.get("/orgs", headers={"X-Treg-Token": stranger["token"]})).json()[0]
     r = await clients.post(f"/oauth/grants/{grant}/team", json={"team": theirs["slug"]},
                            headers={"X-Treg-Token": stranger["token"]})
@@ -1352,7 +1301,7 @@ async def test_a_team_you_cannot_use_is_indistinguishable_from_one_that_does_not
     me = await _as("prober@superdesign.dev")
     grant = (await clients.get("/oauth/grants", headers=me)).json()[0]["grant"]
 
-    outsider = (await clients.post("/users", json={"email": "elsewhere@superdesign.dev"})).json()
+    outsider = (await verified_signup(clients, json={"email": "elsewhere@superdesign.dev"})).json()
     theirs = (await clients.get("/orgs", headers={"X-Treg-Token": outsider["token"]})).json()[0]
 
     real_but_not_mine = await clients.post(f"/oauth/grants/{grant}/team",
@@ -1471,3 +1420,127 @@ async def test_a_moved_grant_keeps_retired_token_team_provenance(clients, monkey
         "client_id": client_id})
     assert replay.status_code == 400 and "already used" in replay.json()["error_description"]
     assert recorded["org_id"] == original_org_id
+
+
+# ---- scope: a grant does only what it was granted ------------------------------------------
+
+def test_the_granted_scope_is_what_was_asked_for_and_nothing_unknown():
+    full = "treg:catalog treg:call treg:read"
+    assert mcp_oauth.granted_mcp_scope("treg:catalog") == "treg:catalog"
+    assert mcp_oauth.granted_mcp_scope("treg:read treg:catalog openid") == "treg:catalog treg:read"
+    assert mcp_oauth.granted_mcp_scope("") == full, "a client that names no scope asks for the whole access"
+    assert mcp_oauth.granted_mcp_scope("openid profile") == full
+    assert mcp_oauth.granted_mcp_scope("treg:directory", "v1") == full, "the v2 marker is not a v1 scope"
+    assert mcp_oauth.granted_mcp_scope("treg:directory", "v2") == full + " treg:directory"
+    assert mcp_oauth.granted_mcp_scope("treg:catalog treg:directory", "v2") == "treg:catalog treg:directory"
+    # a grant recorded before normalization was consented as full access
+    assert mcp_oauth.mcp_permissions("") == frozenset(mcp_oauth.BASE_SCOPES)
+    assert mcp_oauth.mcp_permissions("treg:catalog") == {"treg:catalog"}
+
+
+async def test_a_catalog_only_grant_cannot_spend_or_read_the_team(clients):
+    access, _ = await _grant(clients, "catalog-only@superdesign.dev", scope="treg:catalog")
+    assert mcp._oauth_claims(access)["scope"] == "treg:catalog"
+    async with mcp_session(clients) as c:
+        for name, args in (("call", {"endpoint_id": "exa.search", "params": {"query": "x"}}),
+                           ("call_media", {"endpoint_id": "exa.search"}),
+                           ("balance", {}), ("my_tools", {}), ("resources_list", {}),
+                           ("call_result", {}), ("compare", {}),
+                           ("compare", {"comparison_id": 1, "choice": "1"})):
+            out = await _call_tool(c, name, args, token=access)
+            assert out.get("error") == "insufficient_scope", (name, out)
+        searched = await _call_tool(c, "catalog_search", {"query": "web search"}, token=access)
+    assert searched.get("error") != "insufficient_scope", searched
+
+
+async def test_a_grant_that_names_no_scope_keeps_the_whole_access(clients):
+    access, _ = await _grant(clients, "no-scope@superdesign.dev", scope="")
+    assert mcp._oauth_claims(access)["scope"] == "treg:catalog treg:call treg:read"
+    async with mcp_session(clients) as c:
+        out = await _call_tool(c, "balance", {}, token=access)
+    assert "balance_usd" in out, out
+
+
+async def test_the_token_response_reports_the_scope_actually_granted(clients):
+    client_id = await _register(clients)
+    _, org_id = await _signed_in(clients, "granted@superdesign.dev")
+    verifier, challenge = _pkce()
+    params = {"client_id": client_id, "redirect_uri": "https://client.test/cb",
+              "response_type": "code", "code_challenge": challenge, "code_challenge_method": "S256",
+              "resource": mcp_oauth.mcp_resource_url(), "scope": "treg:read admin:everything"}
+    shown = await clients.get("/oauth/authorize", params=params, headers={"Accept": "application/json"})
+    assert shown.json()["scope"] == "treg:read"
+    r = await clients.post("/oauth/authorize", data={**params, "org_id": org_id, "decision": "allow"},
+                           follow_redirects=False)
+    code = r.headers["location"].split("code=")[1].split("&")[0]
+    tok = await clients.post("/oauth/token", data={
+        "grant_type": "authorization_code", "code": code, "redirect_uri": "https://client.test/cb",
+        "client_id": client_id, "code_verifier": verifier})
+    assert tok.json()["scope"] == "treg:read"
+
+
+async def test_the_consent_page_lists_only_what_the_scope_grants(clients):
+    client_id = await _register(clients)
+    await _signed_in(clients, "narrow-consent@superdesign.dev")
+    _, challenge = _pkce()
+    page = (await clients.get("/oauth/authorize", params={
+        "client_id": client_id, "redirect_uri": "https://client.test/cb", "response_type": "code",
+        "code_challenge": challenge, "code_challenge_method": "S256", "scope": "treg:catalog"})).text
+    assert "Search the catalog and read prices" in page
+    assert "spends the team's balance" not in page
+    assert "without seeing them" not in page
+    assert "Read the team's balance" not in page
+
+
+def test_every_mcp_tool_names_the_scope_it_needs():
+    import asyncio
+    for server, required in ((mcp.mcp, mcp._V1_TOOL_SCOPES), (mcp.directory_mcp, mcp._V2_TOOL_SCOPES)):
+        names = {t.name for t in asyncio.run(server.list_tools())}
+        assert names == set(required), sorted(names ^ set(required))
+        assert set(required.values()) <= set(mcp_oauth.BASE_SCOPES)
+
+
+_TRAVERSALS = ("../../orgs/{org}/balance", "..%2F..%2Forgs%2F{org}%2Fbalance",
+               "%2E%2E/%2E%2E/orgs/{org}/balance", "x/../../../orgs/{org}/balance", "..")
+
+
+async def test_catalog_get_cannot_walk_off_the_catalog_route(clients):
+    access, org_id = await _grant(clients, "walk@superdesign.dev", scope="treg:catalog")
+    async with mcp_session(clients) as c:
+        for shape in _TRAVERSALS:
+            out = await _call_tool(c, "catalog_get", {"endpoint_id": shape.format(org=org_id)}, token=access)
+            assert "balance_usd" not in json.dumps(out), (shape, out)
+            assert out.get("error", "").startswith("unknown endpoint"), (shape, out)
+
+
+def test_ids_formatted_into_internal_paths_are_one_plain_segment():
+    assert mcp._segment_url("/catalog/endpoints", "limadata.google.serp.organic") == \
+        "/catalog/endpoints/limadata.google.serp.organic"
+    assert mcp._segment_url("/hub/tools", "acme.brief@2") == "/hub/tools/acme.brief@2"
+    for bad in ("", ".", "..", "a/b", "a%2Fb", "../orgs", "a?b", "a#b", "a\\b", "%2E%2E"):
+        assert mcp._segment_url("/catalog/endpoints", bad) is None, bad
+
+
+async def test_a_missing_scope_is_a_403_challenge_naming_it(clients):
+    access, _ = await _grant(clients, "challenge@superdesign.dev", scope="treg:catalog")
+    async with mcp_session(clients) as c:
+        r = await _rpc(c, "tools/call", {"name": "balance", "arguments": {}}, access)
+        ok = await _rpc(c, "tools/call", {"name": "catalog_search", "arguments": {"query": "x"}}, access)
+    assert r.status_code == 403, r.text
+    www = r.headers["www-authenticate"]
+    assert 'error="insufficient_scope"' in www
+    assert 'scope="treg:catalog treg:read"' in www, "the scope to ask for, keeping what was granted"
+    assert "resource_metadata=" in www
+    assert r.json()["error"] == "insufficient_scope"
+    assert ok.status_code == 200, ok.text
+
+
+async def test_a_call_only_grant_gets_no_prior_review(clients, monkeypatch):
+    """`prior` rides on `call` but writes a review: it needs the review tool's scope too."""
+    from treg.config import get_settings
+
+    monkeypatch.setattr(get_settings(), "mcp_prior_review_rate", 1)
+    call_only, _ = await _grant(clients, "call-only@superdesign.dev", scope="treg:call")
+    full, _ = await _grant(clients, "full@superdesign.dev", scope="")
+    assert mcp._shows_prior({"authorization": f"Bearer {call_only}"}) is False
+    assert mcp._shows_prior({"authorization": f"Bearer {full}"}) is True

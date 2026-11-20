@@ -1,0 +1,15 @@
+{
+  "credits_charged": 1,
+  "email": "person@example.com",
+  "email_status": "valid",
+  "input": {
+    "domain": "example.com",
+    "full_name": "Example Person"
+  },
+  "mx_domain": "example.com",
+  "mx_host": "mail.example.com",
+  "person_company_name": null,
+  "person_full_name": "Example Person",
+  "person_job_title": null,
+  "valid_email": "person@example.com"
+}

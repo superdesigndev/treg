@@ -6,63 +6,64 @@ Small, focused fragments that mirror the codebase. Each declares the source file
 covers (frontmatter `sources:`). Regenerate this index with
 `python3 .claude/skills/tools-registry-context/scripts/build-map.py`.
 
-## Foundation
-
-| Fragment | Status | Covers |
-|---|---|---|
-| [Tools Registry — charter (what it is, why, the proxy model)](foundation/charter.md) | foundational | 2026-06-30-jason-tools-registry.md, README.md |
-
 ## Architecture (proxy, auth, data model)
 
 | Fragment | Status | Covers |
 |---|---|---|
-| [Google Ads conversion tracking — capture, outbox, upload](architecture/ads-conversions.md) | shipped | adsconv.py, signup.py, adtrack.js |
-| [Archive - every platform answer, kept and versioned (cache = the newest layer)](architecture/archive.md) | building | archive.py, 0002_archive_tables.py, 0003_callrecord_cached.py, 0004_archivekey_request_shape.py, … |
-| [Auth & secrets — injectors, encryption, OAuth freshness, health](architecture/auth-secrets.md) | shipped | injectors.py, ssrf.py, crypto.py, oauth.py, … |
-| [Endpoint catalog — what you can DO with a connected key, and which provider should do it](architecture/catalog.md) | shipped | contracts.yaml, adapters.yaml, findymail.search.business-profile.json, __init__.py, … |
-| [Application composition and deployment roles](architecture/composition.md) | shipped | bootstrap.py, bootstrap_handlers.py, bootstrap_http.py, connect.py, … |
-| [Data model — the registry tables, async DB, audit writer](architecture/data-model.md) | shipped | alembic.ini, env.py, 0001_baseline_current_schema.py, 0002_archive_tables.py, … |
-| [Enforced import boundaries](architecture/import-boundaries.md) | shipped | pyproject.toml, ci.yml, __init__.py, __init__.py, … |
-| [Instagram OAuth — direct Login and optional Facebook Page tools](architecture/instagram-oauth.md) | built; Meta configuration and live verification pending | catalog_ingest.py, access.py, resolve.py, service.py, … |
-| [Local proxy — catch a program's own outgoing calls (`treg <command>`)](architecture/local-proxy.md) | shipped | localproxy.py, server.js |
-| [Local CLI runs — run a vendor CLI as a dedicated user with a server-held credential (`treg run`)](architecture/local-run.md) | shipped | localrun.py, egress.py, fsjail.py |
-| [MCP — the front door for assistants, and treg as an OAuth authorization server](architecture/mcp-oauth.md) | shipped | auth.py, mcp.py, health.py, mcp_oauth.py, … |
-| [Money — prepaid balance, the ledger, Stripe, and the reports that check it](architecture/money.md) | shipped | __init__.py, models.py, billing.py, idempotency.py, … |
-| [Multi-tenancy — orgs, memberships, invites, per-org scoping](architecture/multi-tenancy.md) | shipped | models.py, api.py, caller_metadata.py, auth.py, … |
-| [The proxy — faithful credential-injecting relay + tool resolution](architecture/proxy-model.md) | shipped | relay.py, ssrf.py, api.py, authorize.py, … |
-| [Super-admin — cross-tenant read + control](architecture/super-admin.md) | shipped | api.py, admin.py, access.py, config.py |
+| [Google Ads conversion tracking - capture, outbox, upload](architecture/ads-conversions.md) | shipped | adsconv.py, signup.py, settle.py, adtrack.js, … |
+| [Agent payments — a keyless caller pays a catalog call with MPP or x402](architecture/agent-payments.md) | built, behind `agent_payments_enabled` (TREG_AGENT_PAYMENTS_ENABLED), off by default | agent_payments.py, __init__.py, tempo.py, x402.py, … |
+| [Archive - versioned history and cache admission](architecture/archive.md) | building | archive.py, hunter.yaml, results.py, 0031_archive_result_admission.py, … |
+| [Auth & secrets - injectors, encryption, OAuth freshness, health](architecture/auth-secrets.md) | shipped | injectors.py, ssrf.py, crypto.py, credential_cipher.py, … |
+| [Call events - one pseudonymous event per call, to an Iceberg table outside Postgres](architecture/call-events.md) | shipped | call_events.py, call_events.py, segments.py, contracts.py, … |
+| [Catalog schema - the strict models every catalog reader shares, in today's spelling and v2](architecture/catalog-schema.md) | building | __init__.py, base.py, paths.py, common.py, … |
+| [Endpoint catalog - what you can DO with a connected key, and which provider should do it](architecture/catalog.md) | shipped | __init__.py, store.py, stats.py, results.py, … |
+| [Application composition and deployment roles](architecture/composition.md) | shipped | bootstrap.py, bootstrap_handlers.py, bootstrap_http.py, worker.py, … |
+| [Data model — the registry tables, async DB, audit writer](architecture/data-model.md) | shipped | 0042_pinned_read_scope.py, alembic.ini, env.py, 0001_baseline_current_schema.py, … |
+| [Feedback - private intake for problems and suggestions](architecture/feedback.md) | shipped | feedback_contract.py, mark.go, __init__.py, reports.py, … |
+| [Find tools for a job - /catalog/find, the agent search experiment, recall by job and one judge request](architecture/find.md) | building | catalog_find.py, find_recall.py, find_index.py, embed.py, … |
+| [The tool hub - tools a maker publishes, made of other tools](architecture/hub.md) | shipped | __init__.py, manifest.py, refs.py, graph.py, … |
+| [Enforced import boundaries](architecture/import-boundaries.md) | shipped | pyproject.toml, __init__.py, ci.yml, __init__.py, … |
+| [Instagram OAuth - direct Login and optional Facebook Page tools](architecture/instagram-oauth.md) | built | catalog_ingest.py, access.py, resolve.py, service.py, … |
+| [Local proxy - catch a program's own outgoing calls (`treg <command>`)](architecture/local-proxy.md) | shipped | localproxy.py, server.js |
+| [Local CLI runs - run a vendor CLI as a dedicated user with a server-held credential (`treg run`)](architecture/local-run.md) | shipped | localrun.py, egress.py, fsjail.py |
+| [MCP - the front door for assistants, and treg as an OAuth authorization server](architecture/mcp-oauth.md) | shipped | auth.py, mcp.py, health.py, mcp_oauth.py, … |
+| [Media hosting - reference files a vendor can fetch (`treg host`)](architecture/media.md) | shipped | media.py, media.py, models.py, object_store.py, … |
+| [Money - prepaid balance, the ledger, Stripe, and the reports that check it](architecture/money.md) | shipped | policy.py, tavily.yaml, tinyfish.yaml, test_tinyfish.py, … |
+| [Multi-tenancy - orgs, memberships, invites, per-org scoping](architecture/multi-tenancy.md) | shipped | access.py, 0042_pinned_read_scope.py, test_pinned_read_scope.py, models.py, … |
+| [Exact organization and endpoint call allowances](architecture/org-endpoint-quota.md) | shipped | org_endpoint_quota.py, service.py, types.py, route.py, … |
+| [Org admission - published pause, rate and concurrency limits, with optional defaults](architecture/org-flow-control.md) | shipped | org_flow_control.py, org_concurrency.py, structured_logging.py, kv.py, … |
+| [Process-local organization traffic logs](architecture/org-traffic.md) | shipped | org_traffic.py, structured_logging.py, bootstrap.py, call.py, … |
+| [Policy extensions - decision points a private abuse policy can plug into](architecture/policy-extensions.md) | shipped | policy.py, bootstrap.py, signup.py, admission.py, … |
+| [The proxy - faithful credential-injecting relay + tool resolution](architecture/proxy-model.md) | shipped | relay.py, pathsegment.py, jsontext.py, ssrf.py, … |
+| [Replay - recorded exchanges re-run through one checkout's billing, outcome and routing code](architecture/replay.md) | shipped | __init__.py, __main__.py, records.py, engine.py, … |
+| [Route rules - a published provider order per segment of a routed capability](architecture/route-rules.md) | building | rules.py, route_rules.py, route.py, call_events.py, … |
+| [Shadow provider - a candidate asked the same question as served calls, after the fact, and compared](architecture/shadow.md) | building | shadow.py, shadow.py, 0086_shadow_pairs.py, test_shadow.py |
+| [Showcase leaderboard and pictures - applications, review, votes, avatars](architecture/showcase.md) | shipped | __init__.py, showcase.py, showcase.py, __init__.py, … |
+| [Super-admin - cross-tenant read + control](architecture/super-admin.md) | shipped | api.py, admin.py, evidence_retention.py, access.py, … |
+| [The table layer - one call, answered as rows and columns (`/table/`)](architecture/table.md) | shipped | __init__.py, table.py, table.py, call.py, … |
+| [Async tasks - `/tasks/{call_id}` follows the task an async call started](architecture/tasks.md) | building | tasks.py, tasks.py, asynctasks.py, 0098_call_task.py, … |
+| [Workbench table storage](architecture/workbench-storage.md) | foundational | models.py, 0077_workbench_table_metadata.py, teams.py, test_workbench_table_schema.py, … |
 
 ## Interfaces (API · CLI · skill)
 
 | Fragment | Status | Covers |
 |---|---|---|
-| [The API — the only brain (FastAPI)](interface/api.md) | shipped | sitetrack.js, api.py, bootstrap_handlers.py, bootstrap_http.py, … |
-| [Catalog browse review — categories, platform placement, and domain sections](interface/catalog-review-proposal.md) | reference | store.py, capabilities.yaml |
-| [The CLI (treg) + skill scaffolding](interface/cli.md) | shipped | cli.py, convert.py, agents.py |
-| [The web dashboard (Ledger, served from FastAPI)](interface/dashboard.md) | shipped | sitetrack.js, index.html, README.md, vue-3.5.41.global.prod.js, … |
-| [Import — scan a .env AND/OR a skills dir, auto-register as tools + bundles](interface/env-import.md) | in-progress | providers.py, skills.py |
-| [Landing sandbox backend - front-end entry removed](interface/landing-sandbox.md) | shipped | sandbox.py, sandbox_identity.py, pubfeed.py, sandbox.py, … |
-| [Onboarding — the first-run demo team (dashboard + CLI)](interface/onboarding.md) | shipped | auth.py, __init__.py, demo.py, cli.py, … |
-| [Search surfaces — robots, sitemap, the crawlable catalog, and the social card](interface/seo.md) | shipped | api.py, web.py, agent_pages.py, robots.txt, … |
-| [Shell mode (treg shell) — transparent CLI interception](interface/shell.md) | shipped | shell.py, cli.py |
-| [The shippable tools-registry skill (3 personas)](interface/skill.md) | shipped | skill.md, web.py, mcp_install.py, build_plugin.py, … |
+| [The API — the only brain (FastAPI)](interface/api.md) | shipped | key_spend.py, media.py, page_media.py, media-videos.json, … |
+| [The binary CLI (cli/, Go) - compatibility, releases, self-update and usage events](interface/cli-binary.md) | building | .goreleaser.yaml, main.go, agents.go, mcp.go, … |
+| [The CLI (treg) + skill scaffolding](interface/cli.md) | shipped | cli.py, __init__.py, toon.py, catalog.py, … |
+| [The web dashboard (served from FastAPI)](interface/dashboard.md) | shipped | App.vue, TeamShowcase.vue, TeamAvatar.vue, UserAvatarDialog.vue, … |
+| [Enrich Arena - paid comparisons, one-click feedback, and visible waterfalls](interface/enrich-arena.md) | shipped | arena.py, arena.py, arena.py, models.py, … |
+| [Import - scan a .env, a skills dir or the machine's CLIs and register them as tools](interface/env-import.md) | shipped | providers.py, skills.py |
+| [Onboarding - first run in the dashboard and `treg onboard`](interface/onboarding.md) | shipped | auth.py, __init__.py, demo.py, first_run.py, … |
+| [Search surfaces - robots, sitemap, the crawlable catalog, and the social card](interface/seo.md) | shipped | api.py, web.py, agent_pages.py, compare_pages.py, … |
+| [Shell mode (treg shell) - transparent CLI interception](interface/shell.md) | shipped | shell.py, cli.py |
+| [The shippable treg skill and its distribution doors](interface/skill.md) | shipped | skill.md, integrate.md, install.sh, SKILL.md, … |
+| [Web Arena - private comparisons and live provider observations](interface/web-arena.md) | gated | web_arena.py, web_arena_scores.py, web_arena.py, web_arena_quality.py, … |
 
 ## Ops (deploy, scale)
 
 | Fragment | Status | Covers |
 |---|---|---|
-| [Provider capacity — knowing what treg's own vendor accounts have left](ops/capacity.md) | shipped (steps B–F built; production rollout = the shadow week, then TREG_OVERFLOW_MODE=on) | __init__.py, collectors.py, policy.py, sweep.py, … |
-| [Running & deploying the server](ops/deploy.md) | shipped | pyproject.toml, __main__.py, maintenance.py, env.py, … |
-
-## Reference
-
-| Fragment | Status | Covers |
-|---|---|---|
-| [Glossary](reference/glossary.md) | reference | 2026-06-30-jason-tools-registry.md |
-
-## guides
-
-| Fragment | Status | Covers |
-|---|---|---|
-| [Expanding a catalog category — the add-a-provider playbook](guides/expanding-a-category.md) | guide | oauth_providers.py, authorization.py, oauth_flow.py, oauth_exchange.py, … |
+| [Provider capacity - knowing what treg's own vendor accounts have left](ops/capacity.md) | shipped | __init__.py, capacity_notice.py, test_capacity_notice.py, collectors.py, … |
+| [Running & deploying the server](ops/deploy.md) | shipped | pyproject.toml, hatch_build.py, build-dashboard.sh, build-web.sh, … |
 

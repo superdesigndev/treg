@@ -1,31 +1,44 @@
 {
-  "code": 200,
-  "request_id": "1ce5225b-6b75-4be3-9495-19e72594fede",
-  "message": "Request successful. This request will incur a charge.",
-  "message_zh": "请求成功，本次请求将被计费。",
-  "support": "Discord: https://discord.gg/aMEAS8Xsvz",
-  "time": "2026-07-27 23:32:42",
-  "time_stamp": 1785220362,
-  "time_zone": "America/Los_Angeles",
-  "docs": "https://api.tikhub.io/#/Instagram-V3-API/search_users_api_v1_instagram_v3_search_users_get",
-  "cache_message": "This response is cached and accessible via the URL below for 24 hours at no extra cost. The cache is for request tracing only — it doesn't affect the API's data freshness and won't be returned through… [215 chars]",
-  "cache_message_zh": "本次响应已缓存，可通过下方 URL 直接查看，有效期 24 小时，访问缓存链接无额外费用。缓存仅用于请求溯源，不影响接口数据的时效性，也不会再次通过接口返回。",
-  "cache_url": "https://cache.tikhub.io/api/v1/cache/public/1ce5225b-6b75-4be3-9495-19e72594fede?sign=1e2b2ddcb65160738f9110440d596bfceff307b028a766e814c3eede5064ad89",
-  "router": "/api/v1/instagram/v3/search_users",
-  "params": {
-    "query": "justin"
-  },
-  "data": {
-    "users": [
-      "… {7 field(s) truncated}",
-      "… 29 more item(s) truncated"
-    ],
-    "items": [
-      "… {7 field(s) truncated}",
-      "… 29 more item(s) truncated"
-    ],
-    "count": 30,
-    "rank_token": null,
-    "_backend": "igrapi"
-  }
+ "code": 200,
+ "request_id": "routing-fixture",
+ "message": "Request successful. This request will incur a charge.",
+ "message_zh": "请求成功，本次请求将被计费。",
+ "support": "Discord: https://discord.gg/aMEAS8Xsvz",
+ "time": "2026-11-07 00:00:00",
+ "time_stamp": 1794000000,
+ "time_zone": "America/Los_Angeles",
+ "docs": "https://api.tikhub.io/#/Instagram-V3-API/search_users_api_v1_instagram_v3_search_users_get",
+ "cache_message": "This response is cached and accessible via the URL below for 24 hours at no extra cost. The cache is for request tracing only — it doesn't affect the API's data freshness and won't be returned through the API again.",
+ "cache_message_zh": "本次响应已缓存，可通过下方 URL 直接查看，有效期 24 小时，访问缓存链接无额外费用。缓存仅用于请求溯源，不影响接口数据的时效性，也不会再次通过接口返回。",
+ "cache_url": "https://cache.example.com/routing-fixture",
+ "router": "/api/v1/instagram/v3/search_users",
+ "params": {
+  "query": "coffee"
+ },
+ "data": {
+  "users": [
+   {
+    "pk": "1000001",
+    "id": "1000001",
+    "username": "fixture_account_1",
+    "full_name": "Fixture Account 1",
+    "is_private": false,
+    "is_verified": true,
+    "profile_pic_url": "https://example.com/p.jpg"
+   },
+   {
+    "pk": "1000002",
+    "id": "1000002",
+    "username": "fixture_account_2",
+    "full_name": "Fixture Account 2",
+    "is_private": false,
+    "is_verified": false,
+    "profile_pic_url": "https://example.com/p.jpg"
+   }
+  ],
+  "items": [],
+  "count": 2,
+  "rank_token": null,
+  "_rid": "routing-fixture"
+ }
 }

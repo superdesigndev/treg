@@ -20,7 +20,6 @@ proposed_capabilities:
   companies.acquisitions: "List acquisitions made by a company"
   companies.investments: "List investments received by a company"
   companies.outbound_investments: "List investments made by a company"
-  people.contact.get: "Get a person's contact information"
 
 endpoints:
   - id: aviato.companies.enrich
@@ -43,12 +42,16 @@ endpoints:
         full: {type: boolean, required: false, note: "include funding rounds, investments, acquisitions, founders and funds"}
         rescrape: {type: boolean, required: false, note: "refresh stale data; use with maxDataAgeDays"}
         maxDataAgeDays: {type: integer, required: false}
-        require: {type: "array[string]", required: false, note: "repeat for fields that must be non-empty; a miss returns 404 without charge"}
+        require: {type: array, items: {type: string}, required: false, note: "repeat for fields that must be non-empty; a miss returns 404 without charge"}
       note: "supply at least one identifier. Start with preview=true to resolve the entity for free, then request the full record."
     test_request:
       queryParams: {website: "stripe.com", preview: true}
     verified: '2026-08-24'
+    added: '2026-08-25'
     example_response: examples/aviato.companies.enrich.json
+    miss:
+      status: 404
+      means: "Company not found or required fields unavailable; no credit charged."
     cost:
       type: per_success
       value: 15
@@ -78,14 +81,15 @@ endpoints:
     input:
       bodyType: json
       body:
-        lookups: {type: "array[object]", required: true, note: "1-100 lookup objects; each can use Aviato company identifiers such as website or linkedinURL", example: [{website: "stripe.com"}]}
+        lookups: {type: array, items: {type: object}, required: true, note: "1-100 lookup objects; each can use Aviato company identifiers such as website or linkedinURL", example: [{website: "stripe.com"}]}
         rescrape: {type: boolean, required: false, note: "refresh records older than maxDataAgeDays"}
         maxDataAgeDays: {type: integer, required: false, note: "stale-data threshold; requires rescrape=true"}
-        require: {type: "array[string]", required: false, note: "top-level fields that must be present; failed gates are not billed"}
+        require: {type: array, items: {type: string}, required: false, note: "top-level fields that must be present; failed gates are not billed"}
       note: "this is synchronous bulk enrichment. Each successful lookup returns the normal company object. Public docs do not offer company preview mode."
     test_request:
       body: {lookups: [{website: "stripe.com"}], require: ["name"]}
     verified: '2026-08-25'
+    added: '2026-08-25'
     example_response: examples/aviato.companies.enrich.bulk.json
     cost:
       type: per_success
@@ -116,11 +120,12 @@ endpoints:
       bodyType: json
       body:
         dsl: {type: object, required: true, note: "{filters,limit,offset,sort?,nameQuery?}; filters use {columnPath:{operation,value,quantifier?}} and support AND/OR groups", example: {filters: [{name: {operation: "fts", value: "Stripe"}}], limit: 1, offset: 0, sort: []}}
-      note: "DSL limit is at most 250 and offset at most 10,000. Use a one-row query while developing because the public docs do not publish search credit counts."
+      note: "Effective page size is at most 100 items. A `dsl.limit` above 100 is accepted but silently capped, and the response does not echo the effective page size. Page with `offset` stepped by `len(items)` (or at most 100), not by a requested limit above 100. Offset is at most 10,000. Use a one-row query while developing because the public docs do not publish search credit counts."
     test_request:
       body:
         dsl: {filters: [{name: {operation: "fts", value: "Stripe"}}], limit: 10, offset: 0, sort: []}
     verified: '2026-08-25'
+    added: '2026-08-25'
     example_response: examples/aviato.companies.search.json
     cost:
       type: per_success
@@ -156,6 +161,7 @@ endpoints:
     test_request:
       queryParams: {website: "stripe.com", perPage: 1, page: 0}
     verified: '2026-08-25'
+    added: '2026-08-25'
     example_response: examples/aviato.companies.employees.json
     cost:
       type: per_success
@@ -190,6 +196,7 @@ endpoints:
     test_request:
       queryParams: {website: "stripe.com", perPage: 1, page: 0}
     verified: '2026-08-25'
+    added: '2026-08-25'
     example_response: examples/aviato.companies.founders.json
     cost:
       type: per_success
@@ -224,6 +231,7 @@ endpoints:
     test_request:
       queryParams: {website: "stripe.com", perPage: 1, page: 0}
     verified: '2026-08-25'
+    added: '2026-08-25'
     example_response: examples/aviato.companies.funding_rounds.json
     cost:
       type: per_success
@@ -258,6 +266,7 @@ endpoints:
     test_request:
       queryParams: {website: "stripe.com", perPage: 1, page: 0}
     verified: '2026-08-25'
+    added: '2026-08-25'
     example_response: examples/aviato.companies.acquisitions.json
     cost:
       type: per_success
@@ -294,6 +303,7 @@ endpoints:
     test_request:
       queryParams: {website: "stripe.com", perPage: 1, page: 0}
     verified: '2026-08-25'
+    added: '2026-08-25'
     example_response: examples/aviato.companies.investments.json
     cost:
       type: per_success
@@ -329,6 +339,7 @@ endpoints:
     test_request:
       queryParams: {website: "stripe.com", perPage: 1, page: 0}
     verified: '2026-08-25'
+    added: '2026-08-25'
     example_response: examples/aviato.companies.outbound_investments.json
     cost:
       type: per_success
@@ -346,6 +357,9 @@ endpoints:
   - id: aviato.people.enrich
     domain: contacts
     capability: people.enrich
+    miss:
+      status: 404
+      means: "no person matched the identifier — an expected outcome and free (per_success); do not retry the same identifier"
     platform: people
     scope: any_account
     method: GET
@@ -363,11 +377,12 @@ endpoints:
         full: {type: boolean, required: false, note: "include company/fund investments and founded companies"}
         rescrape: {type: boolean, required: false, note: "refresh stale data; use with maxDataAgeDays"}
         maxDataAgeDays: {type: integer, required: false}
-        require: {type: "array[string]", required: false, note: "fields that must be present or a free 404 is returned"}
+        require: {type: array, items: {type: string}, required: false, note: "fields that must be present or a free 404 is returned"}
       note: "supply one identifier. Use preview=true to resolve the person without spending a credit."
     test_request:
       queryParams: {linkedinURL: "https://www.linkedin.com/in/satyanadella", preview: true}
     verified: '2026-08-24'
+    added: '2026-08-25'
     example_response: examples/aviato.people.enrich.json
     cost:
       type: per_success
@@ -399,15 +414,16 @@ endpoints:
     input:
       bodyType: json
       body:
-        lookups: {type: "array[object]", required: true, note: "1-20 lookup objects; each can use identifiers such as linkedinURL or email", example: [{linkedinURL: "https://www.linkedin.com/in/satyanadella"}]}
+        lookups: {type: array, items: {type: object}, required: true, note: "1-20 lookup objects; each can use identifiers such as linkedinURL or email", example: [{linkedinURL: "https://www.linkedin.com/in/satyanadella"}]}
         rescrape: {type: boolean, required: false, note: "refresh records older than maxDataAgeDays"}
         maxDataAgeDays: {type: integer, required: false, note: "stale-data threshold; requires rescrape=true"}
         preview: {type: boolean, required: false, note: "return minimal identification data without charging credits", example: true}
-        require: {type: "array[string]", required: false, note: "top-level fields required for billing; ignored in preview mode"}
+        require: {type: array, items: {type: string}, required: false, note: "top-level fields required for billing; ignored in preview mode"}
       note: "this is synchronous bulk enrichment. Use preview=true first for a free identifier check."
     test_request:
       body: {lookups: [{linkedinURL: "https://www.linkedin.com/in/satyanadella"}], preview: true}
     verified: '2026-08-25'
+    added: '2026-08-25'
     example_response: examples/aviato.people.enrich.bulk.json
     cost:
       type: per_success
@@ -453,6 +469,7 @@ endpoints:
     test_request:
       queryParams: {linkedinURL: "https://www.linkedin.com/in/satyanadella", type: "work"}
     verified: '2026-08-25'
+    added: '2026-08-25'
     example_response: examples/aviato.people.contact.get.json
     cost:
       type: per_success
@@ -493,6 +510,7 @@ endpoints:
     test_request:
       queryParams: {linkedinURL: "https://www.linkedin.com/in/satyanadella", type: "work"}
     verified: '2026-08-25'
+    added: '2026-08-25'
     example_response: examples/aviato.people.email.find.json
     cost:
       type: per_success
@@ -506,9 +524,47 @@ endpoints:
       note: "8 credits per successful call, confirmed from an 8-credit live balance delta on 2026-08-25. This route returns email values; /person/email-hash is a different privacy-safe hash operation. No numeric route limit is published."
     docs_url: https://docs.data.aviato.co/api-reference/person/get-email
 
+  - id: aviato.people.email.find.personal
+    domain: contacts
+    capability: people.email.find.personal
+    platform: people
+    scope: any_account
+    method: GET
+    path: /person/email
+    name: "Find a person's personal email"
+    summary: "Personal email addresses for a person from a LinkedIn URL or another profile identifier"
+    platform_request: {queryParams.type: personal}
+    input:
+      queryParams:
+        type: {type: string, required: true, note: "personal on treg's key"}
+        linkedinURL: {type: string, required: false, note: "public, Sales Navigator or Recruiter URL", example: "https://www.linkedin.com/in/satyanadella"}
+        id: {type: string, required: false, note: "Aviato person id"}
+        email: {type: string, required: false}
+      note: "supply one person identifier"
+    test_request:
+      queryParams: {linkedinURL: "https://www.linkedin.com/in/satyanadella", type: "personal"}
+    verified: '2026-10-17'
+    added: '2026-10-17'
+    example_response: examples/aviato.people.email.find.personal.json
+    untestable: "A real answer is a person's private address; the example is a structural fixture with reserved fake contact data."
+    cost:
+      type: per_success
+      value: 8
+      currency: credit
+      per: 1
+      unit: call
+      source: observed
+      checked: '2026-10-17'
+      confidence: verified
+      note: "8 credits on a hit, as for a work email; a personal miss answered 200 with no emails and was not charged."
+    docs_url: https://docs.data.aviato.co/api-reference/person/get-email
+
   - id: aviato.people.phone.find
     domain: contacts
     capability: people.phone.find
+    miss:
+      status: 404
+      means: "no person matched the identifier — an expected outcome and free (per_success); do not retry the same identifier"
     platform: people
     scope: any_account
     method: GET
@@ -531,6 +587,7 @@ endpoints:
     test_request:
       queryParams: {linkedinURL: "https://www.linkedin.com/in/williamhgates"}
     verified: '2026-08-25'
+    added: '2026-08-25'
     example_response: examples/aviato.people.phone.find.json
     cost:
       type: per_success
@@ -558,11 +615,12 @@ endpoints:
       bodyType: json
       body:
         dsl: {type: object, required: true, note: "{filters,limit,offset,sort?}; filter objects use column paths and {operation,value,quantifier?}", example: {filters: [{country: {operation: "eq", value: "United States"}}, {headline: {operation: "fts", value: "software engineer"}}], limit: 1, offset: 0}}
-      note: "DSL limit is at most 250 and offset at most 10,000."
+      note: "`fts` matches ANY word, unranked: AND words with one filter each; `textcontains` matches a phrase. `dsl.limit` is silently capped at 100; step `offset` (max 10,000) by `len(items)`."
     test_request:
       body:
         dsl: {filters: [{headline: {operation: "fts", value: "software engineer"}}], limit: 10, offset: 0, sort: []}
     verified: '2026-08-25'
+    added: '2026-08-25'
     example_response: examples/aviato.people.search.json
     cost:
       type: per_success
@@ -593,14 +651,15 @@ endpoints:
         enrich: {type: boolean, required: false, note: "when true, enriches and charges 1 person credit per result; false returns minimal rows", example: false}
         fullName: {type: string, required: false, note: "fuzzy name query", example: "Satya Nadella"}
         headline: {type: string, required: false, note: "headline keyword search"}
-        country: {type: "array[string]", required: false}
-        currentTitles: {type: "array[string]", required: false}
-        currentCompanyNames: {type: "array[string]", required: false}
-        skills: {type: "array[string]", required: false, note: "all specified skills must be present"}
+        country: {type: array, items: {type: string}, required: false, note: "country NAMES, not ISO codes — `Guatemala` matched 84,145 people and `GT` matched 0 (live 2026-09-04); a code is a silent empty answer, not an error", example: ["Guatemala"]}
+        currentTitles: {type: array, items: {type: string}, required: false}
+        currentCompanyNames: {type: array, items: {type: string}, required: false}
+        skills: {type: array, items: {type: string}, required: false, note: "all specified skills must be present"}
       note: "Use enrich=false for discovery. Aviato documents enrich=true at +1 credit/result, but repeat live probes returned id-only rows and charged only the base."
     test_request:
       queryParams: {page: 1, perPage: 1, enrich: false, fullName: "Satya Nadella"}
     verified: '2026-08-25'
+    added: '2026-08-25'
     example_response: examples/aviato.people.search.simple.json
     cost:
       type: per_success
@@ -618,6 +677,8 @@ endpoints:
     docs_url: https://docs.data.aviato.co/api-reference/person/simple-search
 
   - id: aviato.linkedin.company.posts
+    status: retired
+    status_note: "Aviato discontinued its LinkedIn social routes: every call answers 410 Gone, 'This endpoint has been discontinued and is no longer available.' (live 2026-10-04)."
     domain: posts
     capability: linkedin.company.posts
     platform: linkedin
@@ -636,6 +697,7 @@ endpoints:
     test_request:
       queryParams: {linkedinNumID: "2135371", page: 1, perPage: 1}
     verified: '2026-08-25'
+    added: '2026-08-25'
     example_response: examples/aviato.linkedin.company.posts.json
     cost:
       type: per_success
@@ -651,6 +713,8 @@ endpoints:
     docs_url: https://docs.data.aviato.co/api-reference/social/get-company-posts
 
   - id: aviato.linkedin.user.posts
+    status: retired
+    status_note: "Aviato discontinued its LinkedIn social routes: every call answers 410 Gone, 'This endpoint has been discontinued and is no longer available.' (live 2026-10-04)."
     domain: posts
     capability: linkedin.user.posts
     platform: linkedin
@@ -669,6 +733,7 @@ endpoints:
     test_request:
       queryParams: {linkedinID: "satyanadella", perPage: 1}
     verified: '2026-08-25'
+    added: '2026-08-25'
     example_response: examples/aviato.linkedin.user.posts.json
     cost:
       type: per_success
@@ -684,6 +749,8 @@ endpoints:
     docs_url: https://docs.data.aviato.co/api-reference/social/get-person-posts
 
   - id: aviato.linkedin.post.reactions
+    status: retired
+    status_note: "Aviato discontinued its LinkedIn social routes: every call answers 410 Gone, 'This endpoint has been discontinued and is no longer available.' (live 2026-10-04)."
     domain: engagement
     capability: linkedin.post.reactions
     platform: linkedin
@@ -703,6 +770,7 @@ endpoints:
       pathParams: {postUrn: "urn:li:ugcPost:7496332962049933312"}
       queryParams: {page: 1, perPage: 1}
     verified: '2026-08-25'
+    added: '2026-08-25'
     example_response: examples/aviato.linkedin.post.reactions.json
     cost:
       type: per_success
@@ -717,6 +785,8 @@ endpoints:
     docs_url: https://docs.data.aviato.co/api-reference/social/get-post-reactions
 
   - id: aviato.linkedin.post.reposts
+    status: retired
+    status_note: "Aviato discontinued its LinkedIn social routes: every call answers 410 Gone, 'This endpoint has been discontinued and is no longer available.' (live 2026-10-04)."
     domain: engagement
     capability: linkedin.post.reposts
     platform: linkedin
@@ -736,6 +806,7 @@ endpoints:
       pathParams: {postUrn: "urn:li:ugcPost:7496332962049933312"}
       queryParams: {page: 1, perPage: 1}
     verified: '2026-08-25'
+    added: '2026-08-25'
     example_response: examples/aviato.linkedin.post.reposts.json
     cost:
       type: per_success
@@ -750,6 +821,8 @@ endpoints:
     docs_url: https://docs.data.aviato.co/api-reference/social/get-post-reshares
 
   - id: aviato.linkedin.post.comments
+    status: retired
+    status_note: "Aviato discontinued its LinkedIn social routes: every call answers 410 Gone, 'This endpoint has been discontinued and is no longer available.' (live 2026-10-04)."
     domain: engagement
     capability: linkedin.post.comments
     platform: linkedin
@@ -770,6 +843,7 @@ endpoints:
       pathParams: {postUrn: "urn:li:ugcPost:7496332962049933312"}
       queryParams: {page: 1, perPage: 1, numReplies: 1, sortOrder: "CHRONOLOGICAL"}
     verified: '2026-08-25'
+    added: '2026-08-25'
     example_response: examples/aviato.linkedin.post.comments.json
     cost:
       type: per_success

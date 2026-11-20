@@ -4,6 +4,7 @@ on:
   push:
     branches: [main]
   pull_request:
+  merge_group:
 
 # A new push supersedes the running build of the same branch or PR: the outdated run is cancelled
 # instead of holding a runner and queueing the new one behind it (two overlapped runs were live
@@ -30,8 +31,8 @@ jobs:
       - name: Detect a docs-only push
         id: docs
         # Direct pushes that change only docs/ and *.md skip the suite — half of one week's runs
-        # bought nothing. PULL REQUESTS ALWAYS RUN: the branch-protection check must report, and a
-        # skipped required check would block the merge forever.
+        # bought nothing. PULL REQUESTS AND MERGE QUEUE BUILDS ALWAYS RUN: the branch-protection check
+        # must report, and a skipped required check would block the merge forever.
         run: |
           ONLY=false
           if [ "${{ github.event_name }}" = "push" ]; then
@@ -46,24 +47,62 @@ jobs:
         if: steps.docs.outputs.only != 'true'
         with:
           python-version: "3.13"
+      - uses: actions/setup-node@v4
+        if: steps.docs.outputs.only != 'true'
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+      - name: Build dashboard
+        if: steps.docs.outputs.only != 'true'
+        run: bash scripts/build-dashboard.sh
       - name: Install dependencies
         if: steps.docs.outputs.only != 'true'
-        run: uv sync --frozen
+        run: uv sync --locked
+      - name: Install disposable Redis test dependency
+        if: steps.docs.outputs.only != 'true'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y redis-server
+      - name: Verify pause context documentation
+        if: steps.docs.outputs.only != 'true'
+        run: |
+          python3 .agents/skills/tools-registry-context/scripts/build-map.py
+          git diff --exit-code -- docs/context/README.md .agents/skills/tools-registry-context/MAP.md
+          bash .agents/skills/tools-registry-context/scripts/drift.sh HEAD^..HEAD
       - name: Enforce import boundaries
         if: steps.docs.outputs.only != 'true'
-        run: uv run --frozen lint-imports
+        run: uv run --locked lint-imports
+      - name: Lint
+        if: steps.docs.outputs.only != 'true'
+        run: uv run --locked ruff check
+      - name: Lint CI shell scripts
+        if: steps.docs.outputs.only != 'true'
+        run: shellcheck .github/scripts/*.sh
+      - name: Validate the catalog
+        # The required unchanged check validates the full catalog on pull requests and merge groups.
+        if: github.event_name == 'push' && steps.docs.outputs.only != 'true'
+        run: uv run --locked python scripts/catalog_validate.py
       - name: Run tests
         if: steps.docs.outputs.only != 'true'
-        # -n auto: the suite is 1,700+ small independent tests — serial execution is what let a
+        # -n auto: the suite is 2,700+ small independent tests — serial execution is what let a
         # throttled runner turn minutes into tens of minutes. xdist arrives via --with rather than
-        # the lockfile on purpose: it is a CI-only concern, and the team's older uv rewrites
-        # uv.lock's whole format on any touch.
+        # the lockfile on purpose (local daily default uses the same --with).
         run: uv run --with pytest-xdist pytest -n auto -v -o faulthandler_timeout=300
 
   test-postgres:
     runs-on: ubuntu-latest
     timeout-minutes: 15
     services:
+      redis:
+        image: redis:7.4
+        ports:
+          - 6379:6379
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 5s
+          --health-timeout 3s
+          --health-retries 5
       postgres:
         image: postgres:16
         env:
@@ -79,30 +118,102 @@ jobs:
           --health-retries 5
     env:
       TREG_TEST_DB_URL: postgresql+asyncpg://treg:treg@127.0.0.1:5432/treg_test
+      TREG_TEST_KV_URL: redis://127.0.0.1:6379/15
       PYTHONUNBUFFERED: '1'
     steps:
       - uses: actions/checkout@v4
       - uses: astral-sh/setup-uv@v7
         with:
           python-version: "3.13"
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+      - name: Build dashboard
+        run: bash scripts/build-dashboard.sh
       - name: Install dependencies
-        run: uv sync --frozen
-      - name: Run Postgres tests serially
-        # Never add xdist here. Every worker would share this one database while reset_db() drops
-        # and recreates its tables, reproducing the 1,022-error cross-worker failure shape.
+        run: uv sync --locked
+      - name: Run Postgres tests
+        # Each xdist worker gets its own database (treg_test_gw0, ...; see tests/conftest.py), so
+        # reset_db() in one worker never empties another's tables.
         # -v + faulthandler: this job has twice been killed at its time limit with zero output on
-        # this runner while the identical list passes locally in 2 minutes. Per-test lines locate
-        # the stall; the fault handler dumps every thread's stack after 300s of one test.
+        # this runner while the identical list passes locally. Per-test lines locate the stall;
+        # the fault handler dumps every thread's stack after 300s of one test.
         run: >-
-          uv run --frozen python -m pytest -v -o faulthandler_timeout=300
+          uv run --frozen --with pytest-xdist python -m pytest -n auto -v -o faulthandler_timeout=300
           tests/callmatrix
+          tests/test_team_limit.py
           tests/test_ledger.py
           tests/test_ledger_claim_review.py
+          tests/test_money_lock_order.py
+          tests/test_money_allowance.py
+          tests/test_money_admission.py
+          tests/test_money_admission_application.py
+          tests/test_money_admission_postgres.py
+          tests/test_money_session_postgres.py
+          tests/test_money_admission_reporting.py
+          tests/test_money_bigint.py
+          tests/test_topup_reconcile.py
+          tests/test_kv.py
+          tests/test_kv_allowance.py
+          tests/test_auth_email_postgres.py
+          tests/test_kv_release_retry.py
+          tests/test_kv_lease_diagnostics.py
+          tests/test_org_concurrency.py
+          tests/test_org_concurrency_redis.py
+          tests/test_org_flow_control.py
+          tests/test_org_flow_control_reader.py
+          tests/test_org_flow_control_redis.py
+          tests/test_org_rate_limit_redis.py
+          tests/test_provider_concurrency_redis.py
+          tests/test_capacity_rate_observe.py
+          tests/test_money_trace.py
+          tests/test_money_trace_postgres.py
+          tests/test_money_trace_runner.py
+          tests/test_asynctasks.py
           tests/test_alembic_baseline.py
+          tests/test_maintenance.py
+          tests/test_org_flow_control_schema.py
+          tests/test_workbench_table_schema.py
+          tests/test_redundant_index_migration.py
+          tests/test_callrecord_call_ref_index_migration.py
+          tests/test_enrich_arena.py
+          tests/test_arena_insights.py
+          tests/test_arena_verification_insights.py
+          tests/test_feedback.py
           tests/test_archive.py
+          tests/test_archive_batch.py
+          tests/test_archive_batch_postgres.py
+          tests/test_cache_result_admission.py
+          tests/test_archive_r2.py
+          tests/test_archive_opt_out.py
           tests/test_call_cancellation.py
+          tests/test_idempotency_retention.py
           tests/test_call_pool_discipline.py
+          tests/test_catalog_stats_refresh.py
+          tests/test_catalog_stats_corrections.py
+          tests/test_catalog_stats_concurrency.py
+          tests/test_catalog_stats_hot_corrections.py
+          tests/test_catalog_stats_requeue.py
+          tests/test_catalog_stats_requeue_concurrency.py
+          tests/test_catalog_stat_dirty_audit.py
+          tests/test_catalog_observation_folds.py
+          tests/test_catalog_observation_concurrency.py
+          tests/test_catalog_observation_arena.py
+          tests/test_catalog_observation_cache.py
+          tests/test_endpoint_stats.py
+          tests/test_key_spend_rollup.py
+          tests/test_api_key_spend.py
+          tests/test_api_keys.py
+          tests/test_cli_pairing.py
+          tests/test_login_page.py
+          tests/test_auth.py
+          tests/test_turnstile.py
+          tests/test_signup_promo.py
           tests/test_postgres_reset.py
+          tests/test_read_replica.py
+          tests/test_admin_errors_replica.py
           tests/test_marketplace_call.py
           tests/test_capacity_overflow_spend.py
           tests/test_billing.py
@@ -111,6 +222,11 @@ jobs:
           tests/test_health.py
           tests/test_localrun.py
           tests/test_orgs.py
+          tests/test_orgs_isolation.py
+          tests/test_orgs_mgmt.py
+          tests/test_hub.py
+          tests/test_hub_sandbox.py
+          tests/test_mcp.py
       - name: Dump Postgres activity on failure
         # Three CI-only hangs at archive drains were undiagnosable from Python stacks alone; this
         # shows the DATABASE's view: every session, its state (idle in transaction = a leaked or
@@ -120,10 +236,57 @@ jobs:
         env:
           PGPASSWORD: treg
         run: |
-          psql -h 127.0.0.1 -U treg -d treg_test -x -c "select pid, state, wait_event_type, wait_event, xact_start, state_change, left(query,140) as query from pg_stat_activity where datname='treg_test' order by xact_start nulls last;" || true
+          psql -h 127.0.0.1 -U treg -d treg_test -x -c "select datname, pid, state, wait_event_type, wait_event, xact_start, state_change, left(query,140) as query from pg_stat_activity where datname like 'treg_test%' order by xact_start nulls last;" || true
           psql -h 127.0.0.1 -U treg -d treg_test -c "select l.pid, l.locktype, l.mode, l.granted, a.state, left(a.query,90) as query from pg_locks l join pg_stat_activity a using(pid) where not l.granted;" || true
-          tests/test_orgs_isolation.py
-          tests/test_orgs_mgmt.py
+
+  cli-go:
+    # The binary CLI: vet and unit tests on every platform it ships for, then the parity suite that
+    # runs it beside the Python CLI against a real local registry.
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 20
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest, windows-latest]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: cli/go.mod
+          cache-dependency-path: cli/go.sum
+      - name: Format
+        if: runner.os != 'Windows'
+        working-directory: cli
+        run: test -z "$(gofmt -l .)" || { gofmt -l .; exit 1; }
+      - name: Vet and unit tests
+        working-directory: cli
+        run: |
+          go vet ./...
+          go test ./...
+      - name: Modern Go
+        # The analyzer that rewrites code to the idioms go.mod's version allows; it reports any left.
+        if: runner.os == 'Linux'
+        working-directory: cli
+        run: go run golang.org/x/tools/go/analysis/passes/modernize/cmd/modernize@v0.52.0 -test ./...
+      - name: Build
+        working-directory: cli
+        run: go build -o treg-go ./cmd/treg
+      - uses: astral-sh/setup-uv@v7
+        if: runner.os == 'Linux'
+        with:
+          python-version: "3.13"
+      - uses: actions/setup-node@v4
+        if: runner.os == 'Linux'
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+      - name: Parity with the Python CLI
+        if: runner.os == 'Linux'
+        run: |
+          bash scripts/build-dashboard.sh
+          uv sync --locked
+          TREG_GO_BIN="$PWD/cli/treg-go" uv run --locked --with pytest-xdist pytest tests/cli_go -n auto -v
 
   # RESTORED 2026-08-24. This job is a REQUIRED check on main, and the CI rewrite in 528383d
   # dropped it while keeping the requirement — so for three weeks every pull request waited on a
@@ -147,4 +310,58 @@ jobs:
             | tar -xz gitleaks
           sudo mv gitleaks /usr/local/bin/
       - name: Scan for secrets
-        run: gitleaks detect --source . --config .gitleaks.toml --verbose --redact
+        # HEAD is the PR merge commit (both parents) or the pushed main commit. Scan all
+        # reachable history, including deleted secrets, without unrelated fetched branch tips.
+        run: gitleaks detect --source . --config .gitleaks.toml --log-opts="HEAD" --verbose --redact
+
+  frontend:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v7
+        with:
+          python-version: "3.13"
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+      - run: uv sync --locked
+      - run: bash scripts/build-dashboard.sh
+      - run: npm --prefix frontend test
+      - name: Install browser
+        working-directory: frontend
+        run: npx playwright install --with-deps chromium
+      - run: npm --prefix frontend run test:e2e
+      - name: Upload browser failure diagnostics
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: frontend-test-results
+          path: frontend/test-results/
+          retention-days: 7
+      - name: Check distributable assets
+        run: |
+          uv build
+          python - <<'PYCODE'
+          from pathlib import Path
+          from tarfile import open as open_tar
+          from zipfile import ZipFile
+          import re
+          with ZipFile(next(Path('dist').glob('*.whl'))) as wheel:
+              assert not [name for name in wheel.namelist() if name.endswith('.mp4')]
+              html = wheel.read('treg/web/dashboard/index.html').decode()
+              assets = re.findall(r'/app/ui/(assets/[^"\s]+)', html)
+              assert assets, 'Dashboard entry must reference compiled assets'
+              for asset in assets:
+                  assert wheel.read('treg/web/dashboard/' + asset)
+              assert not [name for name in wheel.namelist() if 'dashboard-legacy' in name]
+              arena = wheel.read('treg/web/enrich-arena.html').decode()
+              for asset in re.findall(r'src="(/vendor/vue-[^"\s]+)"', arena):
+                  assert wheel.read('treg/web' + asset)
+              assert wheel.read('treg/web/vendor/LICENSE')
+          with open_tar(next(Path('dist').glob('*.tar.gz'))) as source:
+              assert not [member.name for member in source.getmembers()
+                          if member.name.endswith('.mp4')]
+          PYCODE

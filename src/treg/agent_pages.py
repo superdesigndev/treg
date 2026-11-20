@@ -18,9 +18,6 @@ from __future__ import annotations
 
 # The rotating word in the hero: "ChatGPT for <role>". The first is what crawlers and no-JS
 # readers see, so it is the broadest.
-# One line per category for the overview cards on the agent page. "{agent}" is the client's name.
-# The rotating word in the hero: "ChatGPT for <role>". The first is what crawlers and no-JS
-# readers see, so it is the broadest.
 ROLES: tuple[str, ...] = (
     "SEO experts",
     "social media managers",
@@ -34,11 +31,8 @@ ROLES: tuple[str, ...] = (
 )
 
 # One axis, and only one: what the job is ABOUT. Never how you authenticate for it, never which
-# platform serves it. The earlier cut had nine categories on the domain axis and one ("Connect your
-# own accounts") on the access axis, and the mixed axis leaked: reviews appeared in two categories
-# split by whose account they were, Search Console was filed away from SEO, and one job existed
-# twice under two names with identical capabilities. Running on the team's own key is a PROPERTY,
-# rendered as the FREE badge, and gathered into a cross-cutting list on the agent pages.
+# platform serves it. Running on the team's own key is a PROPERTY, rendered as the FREE badge, and
+# gathered into a cross-cutting list on the agent pages.
 #
 # Enrichment is the killer use case and keeps ONE category with sub-headings (CATEGORY_GROUPS)
 # rather than five. Find / contacts / enrich are stages of one motion: as five cards they read as
@@ -121,7 +115,7 @@ USE_CASES: tuple[tuple[str, tuple[tuple[str, tuple[str, ...]], ...]], ...] = (
     ("Data enrichment", (
         # Find companies
         ("Build a company list by industry, size or tech", ("companies.search",)),
-        ("Find companies similar to your best customers", ("companies.similar", "companies.lookalike")),
+        ("Find companies similar to your best customers", ("companies.similar",)),
         ("Find companies that use a given technology", ("companies.tech_stack.users",)),
         ("Browse a VC or accelerator's portfolio", ("companies.investors.portfolio",)),
         ("Count the matches before you pay for rows", ("companies.search.count", "people.search.count")),
@@ -169,6 +163,7 @@ USE_CASES: tuple[tuple[str, tuple[tuple[str, tuple[str, ...]], ...]], ...] = (
         ("List backlinks and find link gaps", ("web.backlinks.list", "web.backlinks.intersect")),
         ("How AI answers mention your brand", ("ai-search.mentions.summary",
                                                 "ai-search.chatgpt.answer",
+                                                "ai-search.chatgpt.scrape",
                                                 "ai-search.perplexity.answer")),
         ("Search Console: clicks, impressions and top queries", ("search-console.performance",)),
         ("Is this page indexed, and why not", ("search-console.url_inspection",)),
@@ -233,7 +228,6 @@ USE_CASES: tuple[tuple[str, tuple[tuple[str, tuple[str, ...]], ...]], ...] = (
         ("Your Google Business Profile reviews, and reply to them", ("google-business.reviews",
                                                                      "google-business.review.reply")),
         ("Search terms that surfaced your listing on Maps", ("google-business.insights.keywords",)),
-        ("Hotel listing details", ("tripadvisor.hotel.detail",)),
     )),
     ("Finance & markets", (
         ("Current quote for a ticker", ("stocks.quote.live",)),
@@ -304,6 +298,21 @@ PROVIDER_DOMAINS: dict[str, str] = {
     "youtube": "youtube.com", "akta": "akta.pro",
 }
 
+# Decision steps. A workflow step whose capability is `decision` is a judgement on data the
+# earlier steps already fetched, not a fetch: jev reads the row and returns a probability. jev is
+# not a catalog capability (the run goes through the team's own TypeSafe key), so the step table
+# cannot price it from the catalog the way it prices every other step. This table is the one
+# place its rate lives; the receipt records what one dated run actually spent on it. A rate here
+# is the provider's published list price restated per row, never a number from a run.
+DECISION_STEPS: dict[str, dict] = {
+    "typesafe.jev": {
+        "provider": "typesafe", "provider_name": "Jev by TypeSafe", "domain": "typesafe.ai",
+        # $0.042 per million input tokens, output free; a company row with its criteria is about
+        # 500 input tokens, so one verdict is about two thousandths of a cent.
+        "usd": 0.00002, "unit": "verdict", "link": "/jev",
+    },
+}
+
 # Why go through treg.to at all: (lead, one short line). Same on every use-case page, except for
 # free own-key jobs where the metering/multi-account cards are misleading.
 WHY_TREG: tuple[tuple[str, str], ...] = (
@@ -323,8 +332,7 @@ WHY_TREG_OWN_KEY: tuple[tuple[str, str], ...] = (
     ("Nothing to integrate", "No SDK, no OAuth dance per vendor, no seats."),
 )
 
-# 301 redirects from old possessive slugs to clean slugs. These pages shipped before GSC indexing,
-# so redirect now while they are still largely unindexed. The old slugs are not in the sitemap
+# 301 redirects from old possessive slugs to clean slugs. The old slugs are not in the sitemap
 # (they are not keys of USE_CASE_PAGES) and the canonical is on the new slug.
 USE_CASE_REDIRECTS: dict[str, str] = {
     "get-a-video-s-transcript": "youtube-transcript-api",
@@ -365,7 +373,7 @@ AGENTS: dict[str, dict] = {
             "treg.to is a ChatGPT Connector (and MCP server) that gives ChatGPT {n} ready-to-call "
             "APIs across {p} platforms: SEO data, LinkedIn and people enrichment, Reddit, YouTube, "
             "ads and e-commerce. Calls run on treg.to's own keys and are metered from a prepaid "
-            "balance at the provider's rate with $0.000 markup. Every new team starts with $1.00 "
+            "balance at the provider's rate with $0.000 markup. Your first team starts with $1.00 "
             "free, and there are no provider accounts to open."),
         # Steps shown as numbered HTML list items. The setup line is the universal install.
         # {n} is interpolated from the catalog count at render time.
@@ -376,10 +384,10 @@ AGENTS: dict[str, dict] = {
             "calls the endpoint. You never hold a provider key.",
         ],
         # No install screenshot: the setup-line flow has none yet, and a page ships without the
-        # slot rather than with a broken image (the old Plugins-directory PNG shows a dead UI).
+        # slot rather than with a broken image.
         "faq": [
             ("Is treg.to free to use in ChatGPT?",
-             "Installing is free and every new team starts with $1.00 of calls. After that, each call "
+             "Installing is free and your first team starts with $1.00 of calls. After that, each call "
              "is metered from the team's prepaid balance at the provider's own rate, with no markup "
              "and no subscription. Calls on your team's own keys are free."),
             ("Do I need API keys from the providers?",
@@ -417,13 +425,12 @@ USE_CASE_PAGES: dict[str, dict] = {
         # The H1, in the buyer's words; the title is built from it plus live catalog numbers.
         # H1 and title carry the words people type ("email finder", "linkedin email finder", "api");
         # the buyer's-words label stays on the menu.
-        "sentence": "Email finder API: a work email from a name, company or LinkedIn URL",
-        "title": "Email finder API: {n} providers compared | treg.to",
+        "sentence": "LinkedIn email finder and email finder API: work email from a name or URL",
+        "title": "LinkedIn Email Finder API: {n} providers | treg.to",
         "lede": (
-            "Give your agent a name and a company domain, or a LinkedIn URL, and get back a "
-            "verified work address. {n} providers do this job. They differ in what they need as "
-            "input, what they charge for a miss, and how they bill. Every row below is callable "
-            "right now through one treg.to key, at the provider's rate with no markup."),
+            "LinkedIn email finder: give your agent a name and company domain, or a LinkedIn URL, "
+            "and get back a verified work address. {n} providers do this job. Pay per result, not "
+            "per seat. Every row below is callable through one treg.to key, at the provider's rate."),
         # What to type, per client. One URL, tabs on the page.
         # One prompt, the same in every client. Copy button on the page.
         "prompt": "Using treg, find the work email of the VP of Marketing at stripe.com. Show me "
@@ -440,8 +447,8 @@ USE_CASE_PAGES: dict[str, dict] = {
             ("Say what to do on a miss",
              "“If the first returns nothing, try the next cheapest.” That is a waterfall in one line."),
         ],
-        # Real questions from Reddit and X, quoted verbatim with a link. Gathered 2026-08-21 via
-        # agent-reach over ~180 posts; vendor-written posts were excluded.
+        # Real questions from Reddit and X, quoted verbatim with a link; vendor-written posts are
+        # excluded.
         "voices_intro": (
             "The hard part is not finding an address, it is finding one that will not bounce. From "
             "180 posts on Reddit and X in August 2026, these five come up more than anything else."),
@@ -630,7 +637,7 @@ AGENTS["claude"] = {
         "treg.to is an MCP server for Claude that gives it {n} ready-to-call APIs across {p} "
         "platforms: SEO data, LinkedIn and people enrichment, Reddit, YouTube, ads and e-commerce. "
         "Calls run on treg.to's own keys and are metered from a prepaid balance at the provider's "
-        "rate with $0.000 markup. Every new team starts with $1.00 free, and there are no provider "
+        "rate with $0.000 markup. Your first team starts with $1.00 free, and there are no provider "
         "accounts to open."),
     "install_steps": [
         "In Claude, send this in the chat: <code>set up treg &mdash; https://treg.to/llms.txt</code>",
@@ -643,7 +650,7 @@ AGENTS["claude"] = {
     "install_image": None,
         "faq": [
             ("Is treg.to free to use in Claude?",
-             "Installing is free and every new team starts with $1.00 of calls. After that each call "
+             "Installing is free and your first team starts with $1.00 of calls. After that each call "
              "is metered from the team's prepaid balance at the provider's own rate, with no markup, "
              "no subscription and no seats. Calls on your team's own keys are free."),
             ("Do I need API keys from the providers?",
@@ -661,45 +668,219 @@ AGENTS["claude"] = {
         ],
 }
 
+# The Claude Code page leads with lead enrichment (people search, finding and verifying work emails,
+# enriching a company) and shows the menu's other categories as a short index instead of reprinting
+# all of it. `focus` and `guide` are what make it its own page rather than a sibling with the name
+# swapped; the route renders both, and an agent without them keeps the full menu.
 AGENTS["claude-code"] = {
     "name": "Claude Code",
     "h1_noun": "MCP server",
-    "title": "Claude Code MCP server: {n} APIs, no keys | treg.to",
+    "h1": "Lead enrichment in Claude Code: people, emails and companies from {n} APIs",
+    "title": "Claude Code MCP: lead enrichment, {n} APIs | treg.to",
     "description": (
-        "treg.to gives Claude Code {n} ready-to-call APIs across {p} platforms: work emails, LinkedIn profiles, creators, keyword volumes, backlinks, competitor ads. Priced per call at the provider's own rate with no markup and no provider signup."),
+        "Find people, find and verify work emails, and enrich companies from Claude Code: treg.to is "
+        "an MCP server and CLI with {n} APIs across {p} platforms, one key, priced per call at the "
+        "provider's own rate with no markup."),
     "definition": (
-        "treg.to is an MCP server for Claude Code that gives it {n} ready-to-call APIs across {p} "
-        "platforms: SEO data, LinkedIn and people enrichment, Reddit, YouTube, ads and e-commerce. "
-        "One command registers it, calls run on treg.to's keys at the provider's rate with $0.000 "
-        "markup, and your own keys are never metered."),
+        "treg.to is an MCP server and CLI for Claude Code that gives it {n} ready-to-call APIs across "
+        "{p} platforms, built for lead enrichment: search people by company and title, find a work "
+        "email, verify it, enrich the company. Calls run on treg.to's "
+        "keys at the provider's rate with $0.000 markup, and your own keys are never metered."),
     "install_steps": [
         "In Claude Code, send this in the chat: <code>set up treg &mdash; https://treg.to/llms.txt</code>",
-        "It reads that page and registers treg.to as an MCP server for you. Prefer to do it "
-        "yourself? <code>curl -fsSL https://treg.to/install.sh | sh</code> then "
-        "<code>treg login</code> and <code>treg mcp install</code>.",
+        "It reads that page, installs the treg CLI and its skill, and opens the browser for you to "
+        "sign in. Prefer to do it yourself? <code>curl -fsSL https://treg.to/install.sh | sh</code> "
+        "then <code>treg login</code>.",
         "Your first team starts with $1.00 of free calls. No card, no subscription, no seats.",
-        "Ask for what you want done, or call an endpoint directly with "
-        "<code>treg call &lt;endpoint-id&gt;</code>. The price comes back before the spend.",
+        "Ask for what you want done, or run <code>treg catalog get &lt;endpoint-id&gt;</code> for "
+        "the price and parameters, then <code>treg call &lt;endpoint-id&gt;</code>.",
     ],
     "install_image": None,
-        "faq": [
-            ("Is treg.to free to use in Claude Code?",
-             "Installing is free and every new team starts with $1.00 of calls. After that each call "
-             "is metered from the team's prepaid balance at the provider's own rate, with no markup, "
-             "no subscription and no seats. Calls on your team's own keys are free."),
-            ("Do I need API keys from the providers?",
-             "No. treg.to makes the upstream request on its own key and relays the answer, so Claude Code "
-             "never holds a provider credential. If your team already pays for a provider, register "
-             "that key and those calls are never metered."),
-            ("What does a call cost?",
-             "It depends on the job and the provider: from well under a cent for a keyword lookup to "
-             "a few cents for a verified work email. treg.to adds $0.000 on top of the provider's "
-             "rate, and Claude Code tells you the price before it spends it."),
-            ("Does treg.to pick the provider for me?",
-             "No. Where several providers do one job they are shown side by side with prices and "
-             "measured reliability, and Claude Code picks, or you tell it how. treg.to does not route or "
-             "fail over between providers automatically."),
-        ],
+    "focus": ("Data enrichment", "Buying signals"),
+    "roles": ("GTM engineers", "SDRs", "founders doing outbound", "growth teams", "recruiters"),
+    "guide": [
+        {"id": "enrichment", "seclab": "The main job",
+         "h2": "Four calls that turn a company into a contact",
+         "html": (
+             "<p>Lead enrichment is one motion: who works there, what is their email, is it real, "
+             "and what is the company. Each step is a routed tool: "
+             "treg.to runs the providers for that job, your own keys first, then the cheapest per hit, "
+             "and the answer names the provider that served it. Claude Code can call them over MCP or "
+             "run them from its shell:</p>"
+             "<pre><code># 1. who: people at a company, by the function you sell to\n"
+             "treg call treg.people.search --method POST --data '{\"company_domain\":\"acme.com\",\"title\":\"marketing\"}'\n\n"
+             "# 2. their work email\n"
+             "treg call treg.people.email.find --method POST --data '{\"full_name\":\"Jane Doe\",\"domain\":\"acme.com\"}'\n\n"
+             "# 3. is it deliverable: a found email is a best match, not a checked one\n"
+             "treg call treg.people.email.verify --method POST --data '{\"email\":\"jane@acme.com\"}'\n\n"
+             "# 4. the company: size, industry, location, from a bare domain\n"
+             "treg call treg.companies.enrich --method POST --data '{\"domain\":\"acme.com\"}'</code></pre>"
+             "<p>Search for the buyer's function, not &ldquo;decision makers&rdquo;: in our 30 Sep run a "
+             "decision-makers list for five accounts held 45 senior people and not one marketing title, "
+             "while a title search for &ldquo;marketing&rdquo; found 20 people at all eight. Cap a whole "
+             "waterfall with the <code>X-Treg-Route-Max-Cost</code> header, and run step 3 on every "
+             "address before it goes into a sequence.</p>")},
+        {"id": "lead-list", "seclab": "A real run",
+         "h2": "A verified lead list from one prompt",
+         "html": (
+             "<p>Hand Claude Code the ICP and let it chain the four calls, dropping companies before "
+             "it pays for people:</p>"
+             "<pre><code>Using treg, build a list of US B2B software companies with 51-200 staff that "
+             "sell to marketing teams. Check each one against icp.md before any people lookup, find "
+             "the head of marketing or growth, find and verify their work email, and write the rows "
+             "to leads.csv with the provider that answered each step and what it cost.</code></pre>"
+             "<p>A related, broader run on 23 Sep took 50 companies (48 with a usable domain) to 27 "
+             "that passed the check and 20 verified deliverable contacts, for $2.33 metered "
+             "including news lookups and opener scoring: $0.12 per deliverable lead. The 21 "
+             "companies that failed the check never reached a paid lookup. The receipt is at "
+             "<a href=\"/workflows/find-and-verify-a-lead-list\">find and verify a lead list</a>, and "
+             "the whole method, from ICP to rollout, is the "
+             "<a href=\"/gtm-engineering\">GTM engineering playbook</a>.</p>")},
+        {"id": "mcp-or-cli", "seclab": "In Claude Code",
+         "h2": "MCP, CLI or skill: which to use",
+         "html": (
+             "<ul>"
+             "<li><b>MCP</b> for questions and small lookups. Claude Code sees "
+             "<code>catalog_search</code>, <code>catalog_get</code> and <code>call</code>, reads the "
+             "price before it spends, and the answer lands in the conversation.</li>"
+             "<li><b>CLI</b> for batches. A loop over 500 rows in Claude Code's shell writes each "
+             "answer to a file, so the rows never pass through the context window, and the CLI "
+             "prints what each call was charged.</li>"
+             "<li><b>The skill</b> is how Claude Code knows the flow. <code>install.sh</code> puts it "
+             "in <code>~/.claude/skills/treg/</code>; the same file is served at "
+             "<a href=\"/skill.md\">/skill.md</a>.</li>"
+             "</ul>")},
+        {"id": "cost", "seclab": "What it costs",
+         "h2": "Cost per correct work email, against the tools you would otherwise use",
+         "html": (
+             "<p>On the same 292 people (16 Sep 2026), cost per correct work email: treg.to "
+             "$0.0056, Clay $0.0395, Freckle $0.0427, Deepline $0.0924. Exact match: "
+             "90.4%, 89.7%, 90.1% and 86.6%. Each column is an aggregator, not one provider. "
+             "The method and every row are in the "
+             "<a href=\"/blog/work-email-finding-bench\">work email finding bench</a>.</p>")},
+    ],
+    "faq": [
+        ("Is treg.to free to use in Claude Code?",
+         "Installing is free and your first team starts with $1.00 of calls. After that each call "
+         "is metered from the team's prepaid balance at the provider's own rate, with no markup, "
+         "no subscription and no seats. Calls on your team's own keys are free."),
+        ("Do I need API keys from the providers?",
+         "No. treg.to makes the upstream request on its own key and relays the answer, so Claude Code "
+         "never holds a provider credential. If your team already pays for a provider, register "
+         "that key and those calls are never metered."),
+        ("Can Claude Code run a waterfall for work emails?",
+         "Yes, through the routed tools: treg.people.email.find tries its providers, your own keys "
+         "first and then the cheapest per hit, and stops at the first one that finds the address. "
+         "X-Treg-Route-Max-Cost caps the whole waterfall, and X-Treg-Route-Waterfall: 0 stops at the "
+         "first miss. Any other endpoint is exactly the provider you named."),
+        ("Is a found email safe to send to?",
+         "Not until it is verified. A finder returns its best match; run treg.people.email.verify on "
+         "every address, and treat catch-all and unknown as their own list rather than as valid."),
+        ("What does a call cost?",
+         "It depends on the job and the provider: from well under a cent for a keyword lookup to "
+         "a few cents for a verified work email. treg.to adds $0.000 on top of the provider's "
+         "rate, and Claude Code tells you the price before it spends it."),
+    ],
+}
+
+# Hermes Agent (Nous Research) connects to MCP servers from ~/.hermes/config.yaml. The light CLI has
+# no YAML writer, so `treg mcp install` detects Hermes and prints the block rather than writing it
+# (mcp_install.MANUAL_AGENTS); the page shows the same block. What Hermes adds that the other
+# clients do not is its own scheduler and messaging gateway, so its page leads with a recurring
+# check delivered to chat. treg.to answers the calls; the schedule and the delivery are Hermes's.
+AGENTS["hermes"] = {
+    "name": "Hermes Agent",
+    "h1_noun": "MCP server",
+    "h1": "Hermes Agent MCP server: {n} APIs for scheduled research",
+    "title": "Hermes Agent MCP server: {n} APIs, no keys | treg.to",
+    "description": (
+        "Add treg.to to Hermes Agent's config.yaml and it can call {n} APIs across {p} platforms: "
+        "people and company enrichment, hiring and funding signals, SEO, social. Run checks on "
+        "Hermes's schedule, delivered to Telegram or Slack, priced per call with no markup."),
+    "definition": (
+        "treg.to is an MCP server for Hermes Agent that gives it {n} ready-to-call APIs across {p} "
+        "platforms: people and company enrichment, hiring and funding signals, SEO data, social and "
+        "ads. Add one block to ~/.hermes/config.yaml; calls run on treg.to's keys at the provider's "
+        "rate with $0.000 markup, and your own keys are never metered."),
+    "install_steps": [
+        "Get your team token from the treg.to dashboard, or run <code>treg login</code>.",
+        "Add treg.to under <code>mcp_servers</code> in <code>~/.hermes/config.yaml</code> (the block "
+        "is below). <code>treg mcp install</code> detects Hermes and prints manual configuration "
+        "instructions rather than writing the file.",
+        "In Hermes, run <code>/reload-mcp</code>. The tools appear as "
+        "<code>mcp__treg__catalog_search</code>, <code>mcp__treg__catalog_get</code> and "
+        "<code>mcp__treg__call</code>.",
+        "Your first team starts with $1.00 of free calls. No card, no subscription, no seats.",
+    ],
+    "install_image": None,
+    "focus": ("Buying signals", "Data enrichment"),
+    "roles": ("GTM engineers", "founders", "SDRs", "market researchers", "recruiters"),
+    "guide": [
+        {"id": "config", "seclab": "The config",
+         "h2": "The block for ~/.hermes/config.yaml",
+         "html": (
+             "<pre><code>mcp_servers:\n"
+             "  treg:\n"
+             "    url: \"https://treg.to/mcp/\"\n"
+             "    headers:\n"
+             "      Authorization: \"Bearer &lt;your team token&gt;\"\n"
+             "    tools:\n"
+             "      include: [catalog_search, catalog_get, call]</code></pre>"
+             "<p>The <code>include</code> list is optional. It keeps the three tools a research job "
+             "needs and leaves out the rest (balance, my_tools, review, feedback and others), so "
+             "Hermes carries fewer tool definitions into every turn. Drop the list to load them "
+             "all.</p>")},
+        {"id": "schedule", "seclab": "On a schedule",
+         "h2": "A weekly buying-signal check, delivered to your chat",
+         "html": (
+             "<p>Hermes has its own scheduler and sends results to Telegram, Slack, Discord and other "
+             "chats through its gateway, once the gateway is running and a chat is connected. treg.to "
+             "does not schedule anything: it answers the calls each run makes. A scheduled job runs "
+             "in a fresh session, so give it absolute paths and a file to remember what it already "
+             "sent:</p>"
+             "<pre><code>Every Monday at 8am, use treg to check the companies in "
+             "/path/to/accounts.csv for open sales, marketing or growth roles posted in the last 7 "
+             "days, and any funding round announced in that time. Skip closed postings. Compare "
+             "against /path/to/seen-signals.csv (company + source link), send me only the new ones "
+             "in Telegram, one line per company with the link, then add them to that file."
+             "</code></pre>"
+             "<p>For scale: in a separate 30 Sep check of 27 accounts with a 60-day window, 16 had "
+             "open GTM roles posted or first seen in that period, 355 of the 675 postings returned "
+             "were already closed, and the jobs and funding checks together cost $1.35. Keep the "
+             "source link on every line: no link, no signal. The method is chapter 9 of the "
+             "<a href=\"/gtm-engineering\">GTM engineering playbook</a>.</p>")},
+        {"id": "enrichment", "seclab": "Then act on it",
+         "h2": "From a signal to a contact",
+         "html": (
+             "<p>When a check turns something up, the same session can go one step further: search "
+             "the company's people by the function you sell to, find a work email with "
+             "<code>treg.people.email.find</code>, and verify it with "
+             "<code>treg.people.email.verify</code> before anything is sent. The seen-signals "
+             "file is the job's memory between runs; treg.to keeps no list for you.</p>"
+             "<p>The receipts for each step are on "
+             "<a href=\"/workflows/find-and-verify-a-lead-list\">find and verify a lead list</a>.</p>")},
+    ],
+    "faq": [
+        ("Is treg.to free to use in Hermes Agent?",
+         "Adding it is free and your first team starts with $1.00 of calls. After that each call is "
+         "metered from the team's prepaid balance at the provider's own rate, with no markup, no "
+         "subscription and no seats. Calls on your team's own keys are free."),
+        ("Do I need API keys from the providers?",
+         "No. treg.to makes the upstream request on its own key and relays the answer, so Hermes "
+         "only holds your treg.to team token. If your team already pays for a provider, register "
+         "that key and those calls are never metered."),
+        ("Does treg.to run the schedule?",
+         "No. Hermes's own scheduler runs the job and its gateway delivers the result. treg.to "
+         "answers each call the run makes and charges for those calls only."),
+        ("Can I use a treg.to skill in Hermes instead of MCP?",
+         "Hermes reads skills in the open SKILL.md format, and treg.to's skill is served at "
+         "treg.to/skill.md. The MCP block above follows Hermes's documented MCP configuration; "
+         "it gives Hermes the catalog search, and catalog_get shows the price before a call."),
+        ("Does treg.to pick the provider for me?",
+         "Only when you call a routed tool such as treg.people.email.find, which tries its providers "
+         "your own keys first, then cheapest per hit. Everywhere else the providers for a job are "
+         "shown side by side with prices and measured reliability, and Hermes, or you, chooses."),
+    ],
 }
 
 AGENTS["cursor"] = {
@@ -724,7 +905,7 @@ AGENTS["cursor"] = {
     "install_image": None,
         "faq": [
             ("Is treg.to free to use in Cursor?",
-             "Installing is free and every new team starts with $1.00 of calls. After that each call "
+             "Installing is free and your first team starts with $1.00 of calls. After that each call "
              "is metered from the team's prepaid balance at the provider's own rate, with no markup, "
              "no subscription and no seats. Calls on your team's own keys are free."),
             ("Do I need API keys from the providers?",
@@ -926,13 +1107,11 @@ USE_CASE_PAGES["enrich-a-person"] = {
 
 USE_CASE_PAGES["people-search"] = {
     "label": "Find people by role, company or location",
-    "sentence": "People search API: find people by job title, company or location",
-    "title": "People search API: {n} providers compared | treg.to",
+    "sentence": "AI people search and LinkedIn email finder: contacts by title or company",
+    "title": "AI People Search and LinkedIn Email Finder | treg.to",
     "lede": (
-        "Search across companies for the people who match a role, a seniority, a location or a tech "
-        "stack, and get back a list your agent can work with. {n} providers do this through one "
-        "treg.to key. The trap is the billing unit: some charge per row returned, so an unbounded "
-        "search is an unbounded bill."),
+        "AI people search: find contacts by job title, seniority, company or location. LinkedIn email "
+        "finder included. {n} providers through one key. Pay per row, not per seat."),
     "prompt": "Using treg, find 25 heads of growth at US SaaS companies with 50 to 200 employees. "
               "Show me the price first, keep the result set small, and give me name, title, company and LinkedIn URL.",
     "prompt_why": [
@@ -1007,18 +1186,23 @@ USE_CASE_PAGES["people-search"] = {
          "are priced separately."),
     ],
     "related": ("Find professional emails", "Enrich a person from an email or LinkedIn URL",
-                "Build a company list by industry, size or tech", "Get a LinkedIn profile"),
+                "Find phone numbers", "Verify an email before you send"),
+    "extra_links": (
+        ("Run with your agent", "/people-search", "The people search launch page"),
+        ("Waterfall enrichment", "/use-cases/lead-enrichment-for-ai-agents", "Find, enrich and verify in one agent run"),
+        ("Multi-step verified lead list", "/workflows/find-and-verify-a-lead-list", "Build a list with the receipt from a real run"),
+    ),
 }
 
 USE_CASE_PAGES["enrich-a-company"] = {
     "label": "Enrich a company from its domain",
-    "sentence": "Company enrichment API: firmographics from a domain",
-    "title": "Company enrichment API: {n} providers compared | treg.to",
+    "sentence": "Company enrichment API: domain to firmographics, providers compared on price and fill",
+    "title": "Company Enrichment API: {n} Providers Compared | treg.to",
     "lede": (
-        "Give your agent a domain and get the company behind it: industry, headcount, location, "
-        "founding year, tech stack, funding, sometimes revenue. {n} providers do this through one "
-        "treg.to key. Resolution is a solved problem, so the useful comparison is which fields come "
-        "back filled, what a miss costs, and how fast."),
+        "Turn a domain into firmographics: industry, headcount, location, founding year, tech stack, "
+        "funding. {n} providers do this job through one treg.to key, from {cheapest} a call, with no "
+        "seat fee and no annual contract. Your agent compares them on price and measured fill rate, "
+        "picks one, and you pay only for the calls it makes."),
     "prompt": "Using treg, enrich these 30 domains into a table: company name, industry, headcount, "
               "country, founded year and tech stack. Show me the price first, and mark any field that came back empty.",
     "prompt_why": [
@@ -1074,6 +1258,29 @@ USE_CASE_PAGES["enrich-a-company"] = {
          "r/Data_Enrichment", "https://www.reddit.com/r/Data_Enrichment/comments/1vrl2q4/data_enrichment_pricing_2026_august_update/",
          "Which is why every price on this page is in dollars per call, converted from each "
          "provider's own unit at their published rate, with the date we last verified it."),
+        ("Seat pricing kills small teams",
+         "For a 5-person team, they quoted 15k-30k/year minimum. The pricing games are brutal.",
+         "r/coldemail", "https://www.reddit.com/r/coldemail/comments/1tplckc/what_are_you_actually_paying_for_zoominfo_vs/",
+         "Seat-based enrichment tools bill whether or not you pull a record. Every provider here "
+         "bills per call with no seat, so a quiet month costs nothing and a busy one scales."),
+    ],
+    "failure_modes": [
+        ("Inferred headcount is often wrong",
+         "Most providers model employee count from job postings, LinkedIn, and traffic signals. "
+         "Subsidiaries, international companies, and fast-growing teams are frequently misclassified. "
+         "Treat headcount as a range, not a fact, and validate any record that will drive routing."),
+        ("Empty vs guessed fields",
+         "Some providers return a blank when they have no data; others return an inferred value with "
+         "no flag. A confidently wrong industry or revenue estimate does more damage than a gap. Ask "
+         "the agent to surface blanks, and know which providers distinguish observed from modelled."),
+        ("Fuzzy name match returns the wrong company",
+         "A company name like 'Acme' matches dozens of records; the provider picks one and you pay. "
+         "A domain is deterministic: one input, one company, no ambiguity. Use the by-domain route "
+         "when you have it."),
+        ("Billing units differ wildly",
+         "One provider charges per section of the record you request; another per company found; "
+         "another only when name, size and location all return. Compare in dollars per call, not in "
+         "credits, because a credit means something different at every vendor."),
     ],
     "faq": [
         ("What do I send in?",
@@ -1093,6 +1300,11 @@ USE_CASE_PAGES["enrich-a-company"] = {
     ],
     "related": ("Build a company list by industry, size or tech", "Hiring, headcount and news signals",
                 "Find people by role, company or location", "A company's funding rounds"),
+    "extra_links": (
+        ("Pricing", "/pricing", "How treg.to pricing works"),
+        ("Verified lead list workflow", "/workflows/find-and-verify-a-lead-list", "Build a list with the receipt from a real run"),
+        ("People search", "/people-search", "Find and enrich people by role, company or location"),
+    ),
 }
 
 
@@ -1832,13 +2044,11 @@ USE_CASE_PAGES["your-own-campaign-performance"] = {
 
 USE_CASE_PAGES["amazon-product-detail-by-asin"] = {
     "label": "Amazon product detail by ASIN",
-    "sentence": "Amazon product API: any product's detail by ASIN",
-    "title": "Amazon product API: {n} providers from {cheapest} | treg.to",
+    "sentence": "Pull any Amazon product by ASIN",
+    "title": "Amazon Product by ASIN: from {cheapest} | treg.to",
     "lede": (
-        "Give your agent an ASIN and get the listing back as data: title, current price, images, "
-        "specifications and the review summary. {n} providers do this through one treg.to key, from "
-        "{cheapest} a product, with no Amazon programme to be approved for first. That last part is "
-        "most of the reason this job has a price at all."),
+        "Get the price, title, images, specs and reviews for any ASIN. {n} providers through one "
+        "treg.to key, from {cheapest} per lookup. No Amazon affiliate account required."),
     "prompt": "Using treg, get the Amazon product detail for ASIN B08N5WRWNW on amazon.com. Show me "
               "the price first, then give me the title, current price, rating and review count.",
     "prompt_why": [
@@ -2073,7 +2283,7 @@ USE_CASE_PAGES["find-local-businesses-by-keyword-and-location"] = {
          "business's own site and verifying what you find there, which is a separate job with its "
          "own failure rate rather than a field you can ask for here."),
     ],
-    "related": ("A business's reviews", "Hotel listing details", "Product reviews",
+    "related": ("A business's reviews", "Product reviews",
                 "Your Google Business Profile reviews, and reply to them"),
 }
 
@@ -2211,16 +2421,17 @@ USE_CASE_PAGES["how-ai-answers-mention-your-brand"] = {
     "lede": (
         "Every AI visibility tool sells the same loop: run a set of prompts through ChatGPT and "
         "Perplexity, note who gets named, repeat next week. Your agent can run that loop itself. "
-        "One provider serves it through treg.to, as live answers to a prompt and as aggregated "
-        "mention metrics for a keyword or domain, priced per call from {cheapest}, with no "
+        "Choose the live ChatGPT page, a ChatGPT or Perplexity model API answer, or aggregated "
+        "mention metrics for a keyword or domain. Prices start at {cheapest}, with no "
         "subscription and no dashboard to pay for."),
-    "prompt": "Using treg, run these 12 buyer prompts through ChatGPT and Perplexity, US, web search "
-              "on, and tell me for each one whether treg.to or any of Composio, Pipedream or Zapier "
-              "is named, and in what position. Show me the total price before you start.",
+    "prompt": "Using treg, run these 12 buyer prompts on the live ChatGPT page and through "
+              "Perplexity's Sonar API from the US. Tell me for each one whether treg.to or any of "
+              "Composio, Pipedream or Zapier is named, and in what position. Show me the estimated "
+              "cost before you start.",
     "prompt_why": [
         ("Fix the prompt set first", "The check is only comparable week to week if the prompts do not move."),
         ("Name the competitors", "Presence on its own says little; share of the answer against named rivals is the number."),
-        ("Ask for the price up front", "The two answer endpoints differ five times in price; the metrics call is dearer again."),
+        ("Ask for the price up front", "The ChatGPT website scrape and model API have different rates. Price the one you intend to use."),
         ("Run it more than once", "Answers vary run to run. Two passes on the same day show you the noise floor."),
     ],
     "result_noun": "answer",
@@ -2235,17 +2446,15 @@ USE_CASE_PAGES["how-ai-answers-mention-your-brand"] = {
         "charge a monthly subscription for running the prompts and charting the result; the "
         "underlying data is a call to the model and a count."),
     "notes": [
-        "There are two kinds of endpoint here and they answer different questions. The two live "
-        "answer endpoints send your prompt to ChatGPT or Perplexity, with web search on if you ask "
-        "for it and a country to search from, and return the answer as data for your agent to read: "
-        "that is the check. The two mention-metrics endpoints return aggregated counts of how often "
+        "There are two kinds of check here. For an individual answer, send your prompt to the live "
+        "ChatGPT page, the ChatGPT model API or Perplexity's Sonar API. Keep the source fixed "
+        "across runs so you can compare them. The mention-metrics tools return counts of how often "
         "a keyword or a domain appears across a platform's answers, which is the trend line. Run "
         "the first on your prompt set and the second on your domain.",
-        "The prices are not alike. On the catalog's verified rates a Perplexity answer is about "
-        "half a cent, a ChatGPT answer about three cents, and a mention-metrics call about a dime. "
-        "A weekly run of fifty prompts on both engines is therefore under two dollars, which is the "
-        "argument against a subscription; a daily run across many domains is where the metrics "
-        "call starts to matter.",
+        "At the catalog rates, a ChatGPT website answer through cloro or DataForSEO costs about "
+        "$0.003 to $0.004. The DataForSEO example using the ChatGPT model "
+        "API cost about $0.029. For the prompt above, estimate 12 website scrapes and 12 Perplexity "
+        "API calls at the rates for the tools you choose. Budget for any additional attempts.",
         "The answer is a sample, not a fact. The same prompt to the same model on the same day can "
         "name a different set of brands, and every engine changes what it cites without notice. "
         "Nothing on this page smooths that, and no tool that charts it can either. What the "
@@ -2254,9 +2463,10 @@ USE_CASE_PAGES["how-ai-answers-mention-your-brand"] = {
     ],
     "faq": [
         ("Is this a scrape of the ChatGPT website?",
-         "No. The provider calls the model's own API with web search enabled and returns the "
-         "answer as structured data. You choose the model name and the country to search from. "
-         "It is the same generated answer, without a browser."),
+         "The scrape returns what a user sees on the live ChatGPT page from the country you "
+         "choose, including any sources the answer cites. The ChatGPT model API lets you choose "
+         "a model. Web search is off by default. Enable it on a supported model to set a search "
+         "country."),
         ("Can it tell me how to get mentioned?",
          "No. It tells you whether you are named, in which answers, and how that count moves. "
          "Earning the mention is a content and citation problem, and the neighbouring pages on "
@@ -2300,8 +2510,7 @@ USE_CASE_PAGES["how-ai-answers-mention-your-brand"] = {
          "r/aeo", "https://www.reddit.com/r/aeo/comments/1vwuthp/i_ran_1564_real_chatgpt_answers_through_the/",
          "A self-built run with web search on, cut short at seven of ten categories when the "
          "per-call cost overran. That is the case for seeing the price before the run: the agent "
-         "shows the total for the prompt set first, and a thousand ChatGPT answers here is a known "
-         "figure, not an estimate."),
+         "can estimate the cost of a thousand prompts for the ChatGPT source you choose."),
     ],
     "related": ("Google results for a keyword", "Keywords a domain ranks for",
                 "Backlink profile of a domain", "Search Console: clicks, impressions and top queries"),
@@ -2485,7 +2694,7 @@ USE_CASE_PAGES["business-reviews"] = {
     ],
     "related": ("Find local businesses by keyword and location",
                 "Your Google Business Profile reviews, and reply to them",
-                "Product reviews", "Hotel listing details"),
+                "Product reviews"),
 }
 
 USE_CASE_PAGES["google-analytics-traffic-and-behaviour-reports"] = {
@@ -2693,7 +2902,7 @@ AGENTS["grok-bot"] = {
         "treg.to is an MCP server for Grok Bot that gives it {n} ready-to-call tools across {p} "
         "platforms: SEO data, LinkedIn and people enrichment, Reddit, YouTube, ads and e-commerce. "
         "Calls run on treg.to's own keys and are metered from a prepaid balance at the provider's "
-        "rate with $0.000 markup. Every new team starts with $1.00 free, and there are no provider "
+        "rate with $0.000 markup. Your first team starts with $1.00 free, and there are no provider "
         "accounts to open."),
     # {n} is interpolated from the catalog count at render time.
     "install_steps": [
@@ -2724,7 +2933,7 @@ AGENTS["grok-bot"] = {
          "There is no raw page-to-markdown scraper; website reading is a named-field extraction by "
          "domain. The catalog says what each tool covers on the page rather than pretending."),
         ("Is treg.to free to use in Grok Bot?",
-         "Adding it is free and every new team starts with $1.00 of calls. After that, each call is "
+         "Adding it is free and your first team starts with $1.00 of calls. After that, each call is "
          "metered from the team's prepaid balance at the provider's own rate, with no markup and no "
          "subscription. Calls on your team's own keys are free."),
         ("Do I need API keys from the providers?",
@@ -2744,14 +2953,11 @@ AGENTS["grok-bot"] = {
 
 USE_CASE_PAGES["tiktok-shop-products-and-reviews"] = {
     "label": "TikTok Shop products and reviews",
-    "sentence": "TikTok Shop API: search products by keyword and read a product's reviews, without a seller account",
-    "title": "TikTok Shop API: {n} providers compared, from {cheapest} | treg.to",
+    "sentence": "Search TikTok Shop products and reviews",
+    "title": "TikTok Shop Search: from {cheapest} | treg.to",
     "lede": (
-        "Give your agent a keyword and a region and get TikTok Shop's product results back as "
-        "rows: title, price, seller and product id, then the reviews on any of them by id or URL. "
-        "{n} providers read the public storefront through one treg.to key, from {cheapest} a call, "
-        "at the provider's own rate with no markup. None of them is the seller-side Partner API, "
-        "so there is no shop, no sandbox and no app review to get through first."),
+        "Search products by keyword, pull reviews by product. {n} providers through one treg.to "
+        "key, from {cheapest} per call. No TikTok seller account needed."),
     "prompt": "Using treg, search TikTok Shop US for \"matcha whisk\", show me the price per call "
               "first, then give me the top 20 products by sales with seller, price and rating, and "
               "pull the last 50 reviews on the best seller.",
@@ -3229,14 +3435,15 @@ USE_CASE_PAGES["news-for-a-ticker"] = {
 
 USE_CASE_PAGES["live-crypto-prices-and-history"] = {
     "label": "Live crypto prices and history",
-    "sentence": "CoinGecko API and Tiingo through one key: a crypto price API for live prices and history, per call",
+    "sentence": "CoinGecko API on your own key and Tiingo on treg.to's: a crypto price API for live prices and history, per call",
     "title": "CoinGecko API for {agent}: crypto prices and history | treg.to",
     "lede": (
         "Give your agent a coin and get its price back as data: the current price in any quote "
         "currency for a whole watchlist in one call, or the price, market cap and volume series "
-        "over a day, a month or the coin's whole life. CoinGecko and Tiingo answer through one "
-        "treg.to key, from {cheapest} at the provider's own rate with no markup, and there is no "
-        "CoinGecko key to paste into a spreadsheet, a dashboard or a device. What comes back is "
+        "over a day, a month or the coin's whole life. CoinGecko answers on your own CoinGecko "
+        "key, connected once to treg.to and never metered; Tiingo answers {cheapest}. "
+        "Either way there is no key to paste into a spreadsheet, a dashboard or a "
+        "device. What comes back is "
         "an aggregate price, not an order book, and it is polled, not streamed."),
     "prompt": "Using treg, get the current price and 24h change for bitcoin, ethereum and solana in "
               "USD in one call, then pull the last 30 days of daily prices for each and tell me "
@@ -3266,14 +3473,14 @@ USE_CASE_PAGES["live-crypto-prices-and-history"] = {
         "The rate is per request, not per coin. CoinGecko bills one credit for a successful "
         "call whatever the endpoint, and the current-price call takes a list of coin ids and a "
         "list of quote currencies, so the forum's \"it only returns 28 of my 131 coins\" is a "
-        "pagination problem on a different endpoint, not a ceiling here. On treg.to's own key "
-        "that credit is metered from your team's balance at the provider's rate; on your own "
-        "CoinGecko key nothing is metered and the plan's limits are between you and CoinGecko.",
+        "pagination problem on a different endpoint, not a ceiling here. treg.to serves "
+        "CoinGecko on your own key only: nothing is metered and the plan's limits are between "
+        "you and CoinGecko.",
         "History depth is CoinGecko's, and the page will not stretch it. The series call "
         "returns per-coin prices over 1, 7, 30, 365 or max days with granularity set by the "
         "window, and the snapshot call returns one coin's price, market cap and volume on a "
         "date. Neither is a total-market-cap history and neither is a top-N-by-day table; an "
-        "agent builds that by looping coins, one metered call each. Tiingo's bars are the "
+        "agent builds that by looping coins, one call each. Tiingo's bars are the "
         "exchange-style alternative, served free on treg.to's key at 20 calls a day per team, "
         "then on your own Tiingo key.",
         "The price is an aggregate and it passes through unchanged. CoinGecko's market cap and "
@@ -3285,10 +3492,9 @@ USE_CASE_PAGES["live-crypto-prices-and-history"] = {
     ],
     "faq": [
         ("Is the CoinGecko API free through treg.to?",
-         "Not free, cheap: one CoinGecko credit per successful call, metered from your team's "
-         "prepaid balance at CoinGecko's own rate with $0.000 added. Each new team gets $1.00 to "
-         "start, which is a lot of price calls. Register your own CoinGecko key and the calls "
-         "are never metered."),
+         "treg.to adds nothing to pay: CoinGecko is served on your own CoinGecko key only, and "
+         "those calls are never metered. Each successful call spends one credit of your own "
+         "CoinGecko plan. Tiingo's bars are free on treg.to's key up to a daily allowance."),
         ("How far back does the history go?",
          "As far as CoinGecko's series for that coin goes, with days set to max, at daily "
          "granularity. Sub-daily points come only inside the recent windows: five-minute under "
@@ -3313,19 +3519,19 @@ USE_CASE_PAGES["live-crypto-prices-and-history"] = {
          "There I ran into a problem with Rate limit from the Coingecko api itself.",
          "r/coingecko", "https://www.reddit.com/r/coingecko/comments/1cibixi/google_sheet_not_working_rate_limits/",
          "That poster was calling from Google Sheets, where every request leaves a shared "
-         "Google IP. Through treg.to the call is one metered request on a paid key, a whole "
+         "Google IP. Through treg.to the call is one request on your own paid key, a whole "
          "watchlist per call, and the sheet, the dashboard or the device holds no key at all."),
         ("Twelve months is where the free history stops",
          "CoinGecko only goes back 12 months, but I was hoping to go back further",
          "r/CryptoCurrency", "https://www.reddit.com/r/CryptoCurrency/comments/1kq99z1/historic_market_cap_data/",
          "Per coin, the series call with days set to max returns the daily history CoinGecko "
-         "holds, on the paid key treg.to serves it from. That poster wanted total market cap "
+         "holds, on the paid key you connect. That poster wanted total market cap "
          "history, which is not this endpoint, and the page will not pretend it is."),
         ("Free is for testing; what happens at scale is the question",
          "Free APIs are fine for testing but I want something that scales.",
          "r/ethdev, 6 points", "https://www.reddit.com/r/ethdev/comments/1rf4ehy/best_crypto_market_data_api_for_real_time/",
-         "Scale here means one credit a call, metered, with no plan tier to jump when the "
-         "dashboard grows. What it does not mean is streaming: the feed is polled, and a "
+         "Scale here means one credit of your own CoinGecko plan a call, a whole watchlist "
+         "per call. What it does not mean is streaming: the feed is polled, and a "
          "bot that needs every tick is on a different product."),
         ("Nobody's number agrees with anybody else's",
          "CoinGecko API shows wrongs market capital data for 700M !",
@@ -3336,8 +3542,8 @@ USE_CASE_PAGES["live-crypto-prices-and-history"] = {
         ("The agent wrote the rate limiter",
          "until I had ChatGPT incorporate rate-limiting given the 500 rate limit/min",
          "r/api_connector", "https://www.reddit.com/r/api_connector/comments/1dg1of5/coingecko_api_x_mixed_analytics_crypto_tracker/",
-         "The agent already does the plumbing. What it lacks is the key and the price, and one "
-         "setup line gives it both: the call, the rate shown before it spends, and no "
+         "The agent already does the plumbing. What it lacks is a safe place for the key, and "
+         "one setup line gives it that: your CoinGecko key connected once to treg.to, and no "
          "CoinGecko token in its context."),
     ],
     "related": ("Current quote for a ticker", "Daily price history",
@@ -4289,7 +4495,11 @@ USE_CASE_PAGES["find-phone-numbers"] = {
          "your own rows before you commit to any of them."),
     ],
     "related": ("Find professional emails", "Check a phone number is real",
-                "Enrich a person from an email or LinkedIn URL", "Get a LinkedIn profile"),
+                "Enrich a person from an email or LinkedIn URL", "Find people by role, company or location"),
+    "extra_links": (
+        ("Run with your agent", "/people-search", "The people search launch page"),
+        ("Multi-step verified lead list", "/workflows/find-and-verify-a-lead-list", "Build a list with the receipt from a real run"),
+    ),
 }
 
 
@@ -4430,29 +4640,41 @@ USE_CASE_PAGES["keyword-volume-cpc-and-competition"] = {
 WORKFLOWS: dict[str, dict] = {}
 
 WORKFLOWS["find-and-verify-a-lead-list"] = {
-    "sentence": "AI lead generation: build a verified lead list from one prompt",
-    "title": "AI lead generation: a verified lead list in {n} calls | treg.to",
+    # The title keeps the measured head term ("ai lead generation") and adds the phrasing people now
+    # use with an agent ("claude lead generation"), whose results page is held by small sites. Jev is
+    # two of the seven steps, so it lives in the lede, the steps and the FAQ rather than the title.
+    "sentence": "AI lead generation in Claude: a verified B2B lead list from one prompt",
+    "title": "AI lead generation in Claude: a verified B2B lead list | treg.to",
+    # Hand-written: the generated one runs past the snippet length.
+    "description": (
+        "A verified B2B lead list in Claude from one prompt, with Jev dropping poor fits first. "
+        "Recorded run: 50 companies, 20 verified contacts, $0.12 each."),
+    # The example agent on this page; the use-case pages keep agent_pages.DEFAULT_AGENT.
+    "agent": "claude-code",
     "lede": (
         "Give your agent one prompt and get back a lead list with a named person, a verified work "
-        "email and a reason to write, for every company that matched. {steps} steps, each a "
-        "metered call through one treg.to key, with the price printed before the agent spends it. "
-        "The numbers on this page come from running it, not from a rate card."),
+        "email and a scored reason to write, for every company that fits. {steps} steps through one "
+        "treg.to key: jev judges each company on the fields the list already returned, before the paid person, email and news lookups, "
+        "and scores the opener at the end. The price is printed before the agent spends it, and "
+        "the numbers on this page come from running it, not from a rate card. Once treg.to is connected, "
+        "the prompt adapts to Codex, Cursor, Hermes or OpenClaw."),
     "prompt": (
         "Using treg, build me a lead list: 50 US software companies with 51 to 200 staff that raised "
-        "a Series A. For each one find the VP or Head of Marketing, find their work email with the "
-        "cheapest provider that only bills on a hit, verify it, and pull the latest news so I have "
-        "an opener. Show me the total price before each step, and give me a CSV at the end with "
-        "the deliverable ones first."),
+        "a Series A. Before you find anyone, have jev judge each company against my ICP (B2B "
+        "software that sells to sales or marketing teams) from the list fields alone, and drop "
+        "anything under 50%. For the rest find the VP or Head of Marketing, find their work email "
+        "with the cheapest provider that only bills on a hit, verify it, and pull the latest news. "
+        "Have jev pick the event to lead with and score how usable it is as a first line. Show me "
+        "the total price before each step, and give me a CSV at the end, strongest opener first."),
     "prompt_why": [
         ("One list in, one CSV out", "The agent carries the domain from step to step. You never paste anything twice."),
-        ("Ask for the price before each step", "Every step is metered per call, so the agent can show the bill before it spends."),
+        ("Judge before you spend", "A jev verdict costs a fraction of the person step. Name the threshold and the agent only pays for rows that pass."),
         ("Only bill on a hit", "Most email finders' rate cards charge nothing for a miss. Say so and the agent picks one."),
-        ("Deliverable first", "Verification sorts the list into send, do not send, and unknown. Ask for that order."),
+        ("Ask for the price before each step", "Every step is metered per call, so the agent can show the bill before it spends."),
     ],
     # Steps whose endpoint is called ONCE per run rather than once per row. The list step is one
     # page for all 50 companies (Apollo bills per page); everything after it runs per row. The
-    # "at the rates above" total and the hub's per-row price both read this — without it the page
-    # charged 50 × the list price and blamed misses for a gap that was mostly its own arithmetic.
+    # "at the rates above" total and the hub's per-row price both read this.
     "once": ("apollo.companies.search",),
     # Each step: (name, capability id, the line the agent effectively asks, the endpoint the worked run used, one-line why)
     "steps": [
@@ -4460,14 +4682,19 @@ WORKFLOWS["find-and-verify-a-lead-list"] = {
          "50 US software companies, 51 to 200 staff, latest round Series A",
          "apollo.companies.search",
          "Apollo bills per page, not per company, so one page of 50 is one charge."),
+        ("Judge the fit with jev", "decision",
+         "does this company fit the ICP closely enough to pay for a person and an email; keep it at 50% or more",
+         "typesafe.jev",
+         "Apollo's list page carries the domain, NAICS and SIC codes, printed revenue and headcount growth for nothing extra. "
+         "jev reads those and returns a probability, so a company that fails never reaches the paid lookups."),
         ("Find the person", "people.search",
          "the VP or Head of Marketing, or Head of Growth, at each company",
          "findymail.search.employees",
-         "Findymail's rate card bills per contact returned. LeadMagic's role finder is the fallback, and it settled at $0.00 on every miss in the run."),
+         "Findymail's rate card bills per contact returned. LeadMagic's role finder is the fallback, and it found a person at every company Findymail missed."),
         ("Find the work email", "people.email.find",
          "their work email, cheapest provider that only bills on a hit",
          "tomba.people.email.find",
-         "Tomba is the cheapest per-success finder in the catalog. Hunter runs on Tomba's misses and settled at $0.00 on its own."),
+         "Tomba is the cheapest per-success finder in the catalog and was out of capacity on treg.to's key for this run, so Hunter served, and Kitt ran on Hunter's misses. A miss is free at all three."),
         ("Verify it", "people.email.verify",
          "drop anything not deliverable, keep the unknowns separate",
          "leadmagic.people.email.verify",
@@ -4475,70 +4702,608 @@ WORKFLOWS["find-and-verify-a-lead-list"] = {
         ("Find an opener", "companies.news",
          "the three most recent news events about each company",
          "predictleads.companies.news_events",
-         "PredictLeads bills $0.04 a call for classified events. Akta is a third of that per call but was out of credit on the day, so the run used PredictLeads."),
+         "PredictLeads bills per call for classified events. Akta is cheaper per call but was out of credit on the first run, so both runs used PredictLeads."),
+        ("Score the opener with jev", "decision",
+         "which of the events to lead with, and how usable it is as the first line of a cold email, on a four-level scale",
+         "typesafe.jev",
+         "The agent drafts nothing here. jev ranks the events PredictLeads returned and scores the best one, so the CSV sorts by opener strength and a weak one is flagged before anyone writes."),
     ],
     "run": {
-        "date": "2026-08-26",
+        "date": "2026-09-23",
         "rows_in": 50,
         "receipt": [
-            ("Companies matched", "746 on Apollo; the first page of 50 taken, one charge of $0.026"),
-            ("Rows with a usable domain", "47 of 50"),
-            ("A named marketing lead found", "40 of 47 (27 by Findymail, 13 by LeadMagic's role finder)"),
-            ("Work email found", "31 of 40 (22 by Tomba, 9 by Hunter on Tomba's misses)"),
-            ("Verified deliverable", "27 of 31; 4 invalid; 0 unknown or catch-all"),
-            ("A news event in the last year", "29 of 31 (PredictLeads; Akta refused every call, see below)"),
-            ("Wall clock, one call at a time", "about 21 minutes; Findymail and Tomba take 10 seconds a row"),
-            ("Total metered", "$3.62 for 50 companies, or $0.13 per deliverable lead"),
+            ("Companies matched", "958 on Apollo; the first page of 50 taken, one charge of $0.026"),
+            ("Rows with a usable domain", "48 of 50"),
+            ("Passed the jev gate", "27 of 48 at 50% or more; 21 dropped before any paid lookup; 14 would have passed at 60%"),
+            ("A named marketing lead found", "27 of 27 (20 by Findymail, 7 by LeadMagic's role finder)"),
+            ("Work email found", "21 of 27 (18 by Hunter, 3 by Kitt on Hunter's misses; Tomba out of capacity, see below)"),
+            ("Verified deliverable", "20 of 21; 1 unknown; 0 invalid"),
+            ("A news event in the last year", "19 of 21 (PredictLeads)"),
+            ("Opener scored by jev", "19 of 19; 4 scored decent or better on a 0 to 3 scale, mean 1.79"),
+            ("jev, both steps", "67 verdicts on 55,009 input tokens, $0.0023 at list price; the team's own key, so not metered"),
+            ("Wall clock, four calls in parallel", "about 5 minutes; the gate took 90 seconds for 48 companies"),
+            ("Total metered", "$2.33 for 50 companies, or $0.12 per deliverable lead; the 21 dropped rows would have cost about $1.79 more at this run's rate"),
         ],
-        "cost_usd": 3.62,
+        "cost_usd": 2.33,
         "csv": "/workflows/find-and-verify-a-lead-list.csv",
         "narrative": [
-            "Every number above is what treg.to's ledger settled on 2026-08-26 for this run, not a "
-            "rate-card estimate. The 50 rows cost $0.026 to list, $1.58 to name a person ($0.93 at "
-            "Findymail, $0.65 at LeadMagic), $0.58 to find emails, $0.19 to verify them and $1.24 for "
-            "news. The news step was the dearest per row because Akta, the cheapest provider for it, "
-            "answered every call with an insufficient-credits error on treg.to's own key and the run "
-            "fell back to PredictLeads at $0.04 a call. A miss on a per-success endpoint is free at "
-            "Hunter and LeadMagic, and both showed it: 9 of Hunter's 18 calls and 14 of the role "
-            "finder's 27 settled at $0.00. Findymail and Tomba list a free miss too, but treg.to "
-            "settled all 47 Findymail calls and all 40 Tomba calls at the list rate, misses included, "
-            "because neither provider reports the charge in its response. That is $0.56 of the $3.62, "
-            "and it is being fixed on treg.to's side.",
-            "Where the rows fell out: 3 Apollo rows had no domain (two were acquired companies). "
-            "Neither people provider had a marketing lead for 7 of the 47 companies; the ones "
-            "LeadMagic's role finder returned drift in seniority, so a request for Head of Marketing "
-            "came back as a Marketing Manager at four companies. Of the 40 named people, 9 had no "
-            "findable work email at either finder, and 4 of the 31 addresses found failed "
-            "verification. Nothing landed in the unknown bucket, which is unusual for a B2B list "
-            "and says more about this list of small software companies with plain mail setups than "
-            "about the verifier. Apollo's United States filter also let a handful of Indian and "
-            "Singaporean companies through; check the location column before you send.",
+            "Every number above is what treg.to's ledger settled on 2026-09-23 for this run, not a "
+            "rate-card estimate. The gate is the change from the first run of this workflow on "
+            "2026-08-26, which spent $3.62 on the same filter with no gate and delivered 27 leads, "
+            "$0.13 each. This run spent $2.33 and delivered 20, $0.12 each, with 21 of the 48 "
+            "companies never reaching a paid lookup. Whether those 21 held good leads is the one "
+            "thing the run cannot say, because nothing was spent on them; at this run's $0.085 per "
+            "passed row they would have added about $1.79 to the bill.",
+            "What jev had to read was thin. Apollo's list page carries the domain, NAICS and SIC "
+            "codes, printed revenue, founding year and headcount growth, and nothing about what a "
+            "company sells or to whom. On that, jev's probabilities ran from 15% to 67% and never "
+            "higher, so the 50% threshold is doing real work and 60% would have kept 14. The drops "
+            "read sensibly: a consumer social network, an education publisher, a consumer lender, "
+            "a robotics maker and a mobile-games studio all went. A third question, which title "
+            "buys lead data at this company, answered Head of Marketing for all 48, which is the "
+            "prior and not a judgement: a question the state cannot answer returns the prior, and "
+            "the page no longer asks it. Enriching each company first would sharpen the gate; it "
+            "would also cost more per row than the verdict it feeds, which is the trade this "
+            "workflow exists to show.",
+            "Where the money went after the gate: $0.53 to Findymail for 27 calls, of which 7 were "
+            "misses settled at the list rate because Findymail does not report the charge in its "
+            "response, and $0.35 to LeadMagic's role finder for the 7 it then found. Tomba, the "
+            "cheapest per-hit email finder, answered all 27 calls with a capacity error on treg.to's "
+            "own key at no charge, so Hunter served at $0.44 for 18 hits and 9 free misses, and Kitt "
+            "found 3 of those 9 for $0.015. Verification was $0.13, with the one unknown free. News "
+            "was the largest single provider bill again at $0.84, PredictLeads at $0.04 a call. jev's own bill for "
+            "67 verdicts was $0.0023 at its list price on the team's own key.",
+            "The opener scores are the honest part of the tail. Of the 19 companies with a news "
+            "event, jev rated 4 as a decent or strong first line, most of them a funding round or "
+            "an acquisition; the rest were product launches and partnership notices it scored as "
+            "generic congratulation. The CSV is sorted by that score, so the four worth writing to "
+            "first are at the top and nobody has to read 19 events to find them. The catch-all "
+            "field came back empty on every verified row, so the CSV carries no catch-all verdict "
+            "for this run.",
+        ],
+    },
+    # Extra hand-written sections, rendered after the receipt. Trusted static HTML.
+    "sections": [
+        {"id": "tested", "seclab": "Tested",
+         "h2": "What lead generation in Claude costs: recorded data costs",
+         "html": (
+             "<p>Two measured numbers, and what they do not cover. Both are the metered API and data calls; "
+             "your Claude plan is separate.</p>"
+             "<div class=\"tablewrap\"><table><thead><tr><th>What was measured</th><th>Result</th></tr></thead><tbody>"
+             "<tr><td>This workflow, 23 Sep 2026, 50 companies in</td><td><b>$0.12</b> per verified contact "
+             "($2.33 metered, 20 contacts)</td></tr>"
+             "<tr><td>The same filter without the jev gate, 26 Aug 2026</td><td>$0.13 per lead ($3.62, 27 leads)</td></tr>"
+             "</tbody></table></div>"
+             "<p>The email step on its own, 292 people on 16 Sep 2026, cost per correct work email:</p>"
+             "<div class=\"tablewrap\"><table><thead><tr><th>Tool</th><th>Per correct email</th><th>Exact match</th></tr></thead><tbody>"
+             "<tr><td><b>treg.to</b></td><td><b>$0.0056</b></td><td>90.4%</td></tr>"
+             "<tr><td>Clay</td><td>$0.0395</td><td>89.7%</td></tr>"
+             "<tr><td>Freckle</td><td>$0.0427</td><td>90.1%</td></tr>"
+             "<tr><td>Deepline</td><td>$0.0924</td><td>86.6%</td></tr>"
+             "</tbody></table></div>"
+             "<p>Not compared: the whole flow in another tool. The bench covers the email step only, and each "
+             "column is an aggregator rather than one provider. The method and every row are in the "
+             "<a href=\"/blog/work-email-finding-bench\">work email finding bench</a>.</p>")},
+    ],
+    "failure_modes": [
+        ("The gate has too little to read",
+         "jev judges what it is given. Apollo's list fields say nothing about what a company sells, so no probability in this run rose above 67% and a question about the buyer's title returned the same answer for all 48 companies. Ask only what the state can answer, set the threshold where the probabilities actually spread, and read the drops by name before you trust the gate on a new filter."),
+        ("The filter returns almost nothing",
+         "Icypeas' company search sized the same filter at 12 companies, Apollo at 958. Size the filter with a free count call before paying for a page, and expect the count to swing an order of magnitude between providers."),
+        ("A row with no domain",
+         "Two of the 50 Apollo rows carried no primary domain. Every later step keys on the domain, so those rows stop at step one. Keep them in the CSV with the reason rather than dropping them silently."),
+        ("The cheapest provider is out",
+         "Tomba answered all 27 email calls with a capacity error on treg.to's own key, at no charge, and the run went to Hunter at almost three times the price per hit. On the first run it was Akta, for news. A provider outage shows up as a price change, so ask the agent for the price before each step, not once at the start."),
+        ("A miss that is billed anyway",
+         "Findymail lists a free miss but does not report the charge in its response, so treg.to settled all 27 calls at the list rate, 7 misses included. Hunter, Kitt and LeadMagic report it, and their misses settled at $0.00. Prefer the finders that report the charge when the miss rate will be high."),
+        ("Catch-all domains",
+         "A verifier cannot resolve an address on a domain that accepts everything. Expect a fifth of a B2B list to land in that bucket. SMTP checks confirm that the domain accepts mail, not that a specific inbox exists, so decide once, per campaign, whether to send to it, and send in small batches. This run's verifier returned no catch-all flag at all, so the column is empty."),
+        ("Verification is a separate step, not a side effect of finding",
+         "Most email finders return addresses without verifying them. An address that passes SMTP can still be recycled, role-based, or stale. Verify as a distinct call at send time to catch addresses that would pass find but fail send."),
+    ],
+    "faq": [
+        ("Can Claude do lead generation?",
+         "Yes, once it has a data layer. On its own Claude cannot look up a company, a person or an email. Connected to treg.to, Claude Code (or Claude with the MCP connector) runs the prompt on this page: it builds the list, has jev judge each company, finds the person and their work email, verifies it and writes the CSV. Once treg.to is connected, the prompt adapts to Codex, Cursor, Hermes or OpenClaw."),
+        ("How much does lead generation with Claude cost?",
+         "The data is the bill, not the model: your Claude plan is separate. The 23 Sep run came to $2.33 metered for 50 companies, $0.12 per verified contact; news cost $0.84 and finding the people $0.88 including the fallback. The receipt on this page prints the real total for a 50-company run, next to the first run of the same filter without the gate. Per-call rates are the provider's own with $0.000 added by treg.to. A miss on a per-success step is free at the provider's rate card; the receipt shows where that held and where it did not."),
+        ("Do I need a jev key?",
+         "No. jev ran on the team's own TypeSafe key in this run and was not metered by treg.to. Without one, leave out the two judging steps: the first run of this workflow had no gate and cost $3.62 for 27 leads, $0.13 each, against $0.12 with it."),
+        ("What does jev decide, and what does it cost?",
+         "Two things. Before the paid lookups it reads each company's list fields and returns the probability that it fits your ICP; the agent keeps the rows at or above the threshold you name. After the news step it picks which event to lead with and scores how usable it is as a first line. jev is priced on input tokens only, and the two steps together cost a fraction of a cent for the whole run. You need a jev key of your own, or the agent can make the same judgements itself behind the same interface, slower and dearer, until you have one."),
+        ("Does treg.to pick the providers?",
+         "No. treg.to shows the agent every provider for each step with its price and measured success rate; the agent picks, or you tell it which one. There is no automatic failover. jev is the same kind of choice: it is the agent's judge, not treg.to's router."),
+        ("What comes back at the end?",
+         "A CSV with company, domain, person, title, email, which provider found it, the verifier's verdict, the catch-all flag, the event to lead with, jev's opener score and jev's fit probability, strongest opener first. The one from the run on this page is linked above with the person, title and email columns removed, because these are real people and a title at a named company is enough to identify one; the row-level outcomes are what the numbers on this page come from. Your own run returns every column."),
+    ],
+    "related": ("Find professional emails", "Verify an email before you send",
+                "Find people by role, company or location", "Enrich a person from an email or LinkedIn URL"),
+    "extra_links": (
+        ("Jev for GTM automation", "/jev", "Three recipes where treg.to builds the state and jev decides"),
+        ("Run with your agent", "/people-search", "The people search launch page"),
+        ("Waterfall enrichment", "/use-cases/lead-enrichment-for-ai-agents", "Find, enrich and verify in one agent run"),
+        ("Company enrichment", "/use-cases/enrich-a-company", "Turn a domain into firmographics"),
+        ("Pricing", "/pricing", "How treg.to pricing works"),
+    ),
+}
+
+
+WORKFLOWS["screen-instagram-creators-before-outreach"] = {
+    "sentence": "Instagram profile scraper: screen a creator list before outreach",
+    "title": "Instagram Profile Scraper: Screen Creators | treg.to",
+    "lede": (
+        "Give your agent a list of Instagram handles and get back a CSV with today's followers, "
+        "category, private flag, a 12-post engagement sample, and a keep or skip verdict, with any "
+        "public business email verified before you write to it. {steps} steps, each a metered call "
+        "through one treg.to key, with the price printed before the agent spends it."),
+    "prompt": (
+        "Using treg, screen these 20 Instagram creators for partnership fit: [list of handles]. For "
+        "each one pull the profile (followers, category, is_private, business_email) and the last "
+        "12 posts. Show me the price before each step. If a business email is public, verify it. "
+        "Give me a CSV with handle, followers, private, posts_sampled, avg_engagement_pct and a "
+        "keep or skip column: keep if over 10k followers, public, posting, and engagement above 1%."),
+    "prompt_why": [
+        ("List the handles upfront", "The agent runs one profile call and one posts call per handle. One batch beats twenty prompts."),
+        ("Ask for the price before each step", "Both TikHub routes bill per success at the rate in the table; the verify step is the one that costs, and only fires when an email exists."),
+        ("Define your keep criteria", "Follower floor, public account, recent posts, engagement floor. The agent filters; you set the rules."),
+        ("Request a CSV", "Structured output you can sort before spending time on outreach."),
+    ],
+    "steps": [
+        ("Pull the profile", "instagram.user.profile",
+         "followers, category, private flag and public business email, by handle",
+         "tikhub.instagram.user.profile",
+         "The cheapest profile route in the catalog. Returns the numeric user id the posts step needs."),
+        ("Sample recent posts", "instagram.user.posts",
+         "the last 12 posts with likes and comments, by numeric user id",
+         "tikhub.instagram.user.posts",
+         "Engagement is likes plus comments over followers, averaged across the sample. Private accounts skip this step."),
+        ("Verify the business email", "people.email.verify",
+         "is the public business email deliverable, before outreach",
+         "hunter.people.email.verify",
+         "Fires only for handles whose profile exposes an email, so the worst case in the total above rarely happens."),
+    ],
+    "run": {
+        "date": "2026-09-14",
+        "rows_in": 20,
+        "rows_noun": "creators",
+        "receipt": [
+            ("Creators screened", "20 handles from the creator-discovery run on this site"),
+            ("Profiles retrieved", "18 of 20 resolved; one call did not answer, one handle returned no user"),
+            ("Posts sampled", "17 post calls answered, 14 accounts had posts to count; median engagement 5.3%"),
+            ("Emails verified", "0: no profile exposed a public business email, so the verify step did not fire"),
+            ("Total metered", "$0.036: 19 profile calls and 17 post calls at $0.001 each"),
+        ],
+        "cost_usd": 0.036,
+        "csv": "/workflows/screen-instagram-creators-before-outreach.csv",
+        "narrative": [
+            "Thirty-six successful calls at the two TikHub rates, billed per success. Fourteen of the twenty made the keep list. None of these creators exposes a "
+            "business email in the profile, which is common: the email step is there for the lists "
+            "where they do, and it is the only step with a real price. One profile call did not answer "
+            "and was not billed; the retry policy is one line in the prompt. Handles are removed from the "
+            "published CSV because they identify real people; your own run returns them.",
         ],
     },
     "failure_modes": [
-        ("The filter returns almost nothing",
-         "Icypeas' company search sized the same filter at 12 companies, Apollo at 746. Size the filter with a free count call before paying for a page, and expect the count to swing an order of magnitude between providers."),
-        ("A row with no domain",
-         "Three of the 50 Apollo rows carried no primary domain (two were acquired companies). Every later step keys on the domain, so those rows stop at step one. Keep them in the CSV with the reason rather than dropping them silently."),
-        ("The people search times out, or nobody has the person",
-         "LeadMagic's people search answered \"query too broad\" for a single domain with six titles, at no charge. Findymail by title returned a person for 27 of 47 companies and LeadMagic's role finder for 13 of the remaining 20. Nobody's database has a marketing lead for every 100-person company; the miss rate is the workflow, not a bug."),
-        ("The cheapest provider is out of credit",
-         "Akta answered all 31 news calls with an insufficient-credits error on treg.to's own key, at no charge, and the run fell back to PredictLeads at four times the price. A provider outage shows up as a price change, so ask the agent for the price before each step, not once at the start."),
-        ("Catch-all domains",
-         "A verifier cannot resolve an address on a domain that accepts everything. Expect a fifth of a B2B list to land in that bucket, and decide once, per campaign, whether to send to it."),
+        ("Private account",
+         "The profile call returns followers, bio and the private flag; the posts call returns nothing. Decide keep or skip on the profile alone."),
+        ("No business email",
+         "Most creators do not expose one. The profile returns what is public; the verify step is skipped, not billed."),
+        ("Handle changed or deleted",
+         "A renamed handle returns no user. The miss is free on this route; fix the handle and rerun that row."),
+        ("Rate limits on bulk pulls",
+         "Spread a few hundred handles over minutes, or the profile route starts answering slowly."),
+        ("Ban risk if you scrape from your own login",
+         "Do not point a logged-in personal or brand Instagram session at bulk pulls. Use a public-data route that does not need your cookies. If a provider asks for a session, use a throwaway account you can lose."),
+        ("Follower count is not proof of reach",
+         "Bought followers and engagement pods still show up as healthy looking profiles. Sample recent posts and compute engagement before you put someone on an outreach list."),
+        ("Manual sheet workflows do not scale",
+         "Opening profiles one by one is the common starting point and it breaks past a few dozen handles. Batch the profile and posts calls, then decide keep or skip in the CSV."),
     ],
     "faq": [
-        ("How much does the whole workflow cost?",
-         "The receipt on this page prints the real total for a 50-company run. Per-call rates are the provider's own with $0.000 added by treg.to. A miss on a per-success step is free at the provider's rate card; the receipt shows where that held and where it did not."),
-        ("Can I change the filter or the title?",
-         "Yes. The prompt is plain text. Change the industry, headcount band, funding stage or the job title and the agent changes the calls. The prices per step do not change."),
-        ("Does treg.to pick the providers?",
-         "No. treg.to shows the agent every provider for each step with its price and measured success rate; the agent picks, or you tell it which one. There is no automatic failover."),
-        ("What comes back at the end?",
-         "A CSV with company, domain, person, title, email, which provider found it, the verifier's verdict, whether the domain is catch-all, and the latest news event. The one from the run on this page is linked above with the person, title and email columns removed, because these are real people and a title at a named company is enough to identify one; the row-level outcomes are what the numbers on this page come from. Your own run returns every column."),
+        ("What does a 20-creator screen cost?",
+         "The receipt above is one real run. Profiles and posts are the cheap steps; only the email verify step, when it fires, costs more."),
+        ("What if the account is private?",
+         "The profile call still returns followers, category and the private flag. Posts and engagement are unavailable."),
+        ("Can I screen TikTok creators the same way?",
+         "Yes. TikHub has TikTok profile and post routes at the same price; change the handles and the platform in the prompt."),
+        ("How is engagement calculated?",
+         "Likes plus comments on the sampled posts, divided by followers, averaged over the sample. Above 3% is generally good; this list's median was 5.3%."),
+        ("Will this get my Instagram account banned?",
+         "This workflow screens public profile and post fields through a metered catalog route. It is not a follow, unfollow, or DM bot. Do not paste your own Instagram session into a scraper."),
+        ("What if engagement looks high but the audience is fake?",
+         "Treat engagement as a filter, not a guarantee. Look at comment quality and sudden follower spikes before you pay for a placement."),
     ],
-    "related": ("Find professional emails", "Verify an email before you send",
-                "Find people by role, company or location", "Build a company list by industry, size or tech"),
+    "related": (
+        "Find creators by keyword",
+        "Search posts by keyword",
+        "Verify an email before you send",
+        "Find people by role, company or location",
+    ),
+}
+
+
+WORKFLOWS["discover-creators-in-a-niche"] = {
+    "sentence": "Influencer finder: discover creators by niche, followers and engagement",
+    "title": "Influencer Finder: Find Creators by Niche | treg.to",
+    "lede": (
+        "Give your agent a niche, a country and a follower range, and get back a list of "
+        "Instagram, TikTok or YouTube creators with engagement rates, then a fresh profile and a "
+        "post sample on each one. {steps} steps through one treg.to key, with the price printed "
+        "before each."),
+    "prompt": (
+        "Using treg, find 25 Instagram fitness creators in the US with 50k to 500k followers and "
+        "engagement above 3%. Show me the price first. Then pull each profile and its last 12 posts, "
+        "and give me a CSV with username, followers, engagement_percent, category, whether the "
+        "account is private, and likes and comments on the sample."),
+    "prompt_why": [
+        ("Specify the platform", "influencers.club searches Instagram, TikTok, YouTube, X and Twitch separately, and the filter set changes with the platform."),
+        ("Put the hard limits in filters", "Follower range, engagement floor and country are enforced server-side. A plain-language brief drops constraints it cannot map."),
+        ("Ask for the price first", "Discovery bills per creator returned, so the limit you set is the bill. The table below shows the live rate."),
+        ("Pull the profile after discovery", "The discovery row is a snapshot. A profile call returns today's follower count and the bio."),
+    ],
+    "steps": [
+        ("Search creators by niche", "creators.search",
+         "filtered search by bio keyword, follower range, engagement floor and country",
+         "influencersclub.creators.search",
+         "Structured discovery: exact follower, engagement and country filters. Billed per creator returned; a zero-match page costs nothing."),
+        ("Pull each profile", "instagram.user.profile",
+         "today's follower count, bio, category and private flag for one handle",
+         "tikhub.instagram.user.profile",
+         "The cheapest profile route in the catalog. Runs once per creator from the discovery list."),
+        ("Sample recent posts", "instagram.user.posts",
+         "the last 12 posts with likes and comments, by the numeric user id from the profile",
+         "tikhub.instagram.user.posts",
+         "Runs once per creator. Likes and comments over followers is the engagement check the discovery row cannot give you."),
+    ],
+    "once": ("influencersclub.creators.search",),
+    "run": {
+        "date": "2026-09-14",
+        "rows_in": 25,
+        "rows_noun": "creators",
+        "receipt": [
+            ("Creators matched", "153 US fitness creators, 50k to 500k followers, engagement above 3%"),
+            ("Creators returned", "25, one discovery call at limit=25 (0.25 credits)"),
+            ("Profiles pulled", "25 of 25 resolved, none private"),
+            ("Posts sampled", "24 of 25 post calls answered; 19 accounts had posts to count"),
+            ("Follower range on the day", "50,142 to 412,256; median engagement 4.96%"),
+            ("Total metered", "$0.20: $0.15 discovery, $0.025 profiles, $0.024 posts"),
+        ],
+        "cost_usd": 0.198,
+        "csv": "/workflows/discover-creators-in-a-niche.csv",
+        "narrative": [
+            "One discovery call matched 153 creators and returned the 25 requested, billed per creator "
+            "returned. Twenty-five profile pulls followed, one per handle, and every one resolved; the "
+            "post sample then answered for 24 of them, and 19 had posts to count. The CSV has the "
+            "discovery snapshot and the same-day profile count side by side, which is how you spot a "
+            "stale row. Usernames are removed from the published CSV because they identify real "
+            "people; your own run returns them.",
+        ],
+    },
+    "failure_modes": [
+        ("Filter too narrow",
+         "A combination that matches nobody returns zero rows and costs nothing. Widen one filter at a time."),
+        ("Brief drops a constraint",
+         "The plain-language brief maps what it can and silently drops the rest. Put every hard limit in filters and use the brief for the fuzzy part."),
+        ("Handle changed since discovery",
+         "The discovery index lags. A profile pull on a renamed handle misses; the miss is free on this route."),
+        ("Country is inferred",
+         "Creator location comes from language and hashtags. Verify before a geo-targeted campaign."),
+        ("Seat price hides the email cap",
+         "Many discovery products bill a monthly seat and then throttle how many contact emails you can open. Price the workflow on creators returned and emails verified, not on a seat."),
+        ("Database rows go stale or regional",
+         "A free trial can look empty or wrong for EU markets even when US coverage looks fine. Always re-pull the live profile before outreach."),
+        ("Authenticity is not in the discovery index",
+         "Follower count and tagged niche do not prove a real audience. Run an engagement sample before you negotiate."),
+    ],
+    "faq": [
+        ("What does discovery cost?",
+         "Per creator returned, at the live rate in the table above. The limit you pass is the bill; the total match count is free."),
+        ("Can I combine filters with a plain-language brief?",
+         "Yes. Exact filters go in the filters object and the niche description in nlp_search. The response says which parts of the brief were applied."),
+        ("What about TikTok or YouTube creators?",
+         "Set the platform in the same discovery call. Swap the profile step for the matching platform's profile route."),
+        ("Why pull the profile at all?",
+         "Discovery rows are a snapshot. The profile call returns today's follower count, the bio and whether the account went private."),
+        ("Why not just buy Modash or HypeAuditor?",
+         "Those products solve discovery plus a lot of campaign CRM. If you only need a niche list with live stats, a per-result discovery call is usually the cheaper shape."),
+        ("How do I avoid fake creators in the results?",
+         "Keep follower and engagement filters tight, then sample recent posts. Skip sudden spikes and empty comment threads."),
+    ],
+    "related": (
+        "Find creators by keyword",
+        "Search posts by keyword",
+        "Mine the comments",
+        "Find people by role, company or location",
+    ),
+}
+
+
+WORKFLOWS["keyword-demand-to-ad-budget"] = {
+    "sentence": "Keyword volume checker: expand a seed, price the demand, read the seasonality",
+    "title": "Keyword Volume Checker: Demand to Ad Budget | treg.to",
+    "lede": (
+        "Give your agent a seed keyword and get back the related terms, their monthly volume, CPC, "
+        "competition and a 12-month trend, plus a spend split by volume share. {steps} steps "
+        "through one treg.to key, with the price printed before each."),
+    "prompt": (
+        "Using treg, expand 'protein powder' into 50 related keywords, then get Google search "
+        "volume, CPC and competition for all of them in one batch, and the 12-month trend for the "
+        "top 5. Show me the price before each call. Give me a CSV with keyword, monthly_volume, "
+        "cpc_usd, competition, q4_vs_rest_pct and suggested_spend_pct by volume share."),
+    "prompt_why": [
+        ("Expand first, then price", "One ideas call turns a seed into a list; one volume call prices the whole list. Two calls, not fifty."),
+        ("Batch the volume lookup", "The volume route bills per request, not per keyword, so 50 keywords cost the same as one."),
+        ("Ask for the trend on the head terms only", "The trend route takes five keywords per call. Spend it on the terms that carry the volume."),
+        ("Own-asset note", "If you connect a Google Ads account, the same volume and ideas calls run on your own quota at no metered cost."),
+    ],
+    "steps": [
+        ("Expand the seed", "google.keywords.ideas",
+         "related keywords with volume, CPC and difficulty",
+         "dataforseo.google.keywords.ideas",
+         "Billed per request plus a small amount per keyword returned. Set the limit; the default is 100."),
+        ("Price the list in one batch", "google.keywords.volume",
+         "monthly volume, CPC, competition and 12 monthly figures per keyword",
+         "dataforseo.google.keywords.volume",
+         "One flat request covers up to 1,000 keywords. Never loop this route."),
+        ("Read the trend", "google.keywords.trends",
+         "interest over time for up to five keywords",
+         "dataforseo.x.keywords-data-dataforseo-trends-explore-live",
+         "The run asked treg's routed trends endpoint, which picks the cheapest provider with your own keys first; this is the child that served."),
+    ],
+    "once": ("dataforseo.google.keywords.ideas", "dataforseo.google.keywords.volume", "dataforseo.x.keywords-data-dataforseo-trends-explore-live"),
+    "run": {
+        "date": "2026-09-14",
+        "rows_in": 50,
+        "rows_noun": "keywords",
+        "receipt": [
+            ("Seed expanded", "'protein powder' to 50 related keywords, one call, depth 2"),
+            ("Volume priced", "50 of 50 keywords returned volume in one batch call"),
+            ("Demand found", "742,970 monthly searches across the list; the head term is 368,000"),
+            ("Trend read", "top 5 keywords, served by DataForSEO Trends"),
+            ("Total metered", "$0.11: $0.018 ideas, $0.09 volume, $0.0012 trend"),
+        ],
+        "cost_usd": 0.1092,
+        "csv": "/workflows/keyword-demand-to-ad-budget.csv",
+        "narrative": [
+            "Three calls, three receipts. The ideas call billed its request fee plus a fraction of a "
+            "cent per keyword returned; the volume call billed one flat fee for the whole batch, which "
+            "is why the table's per-row price is misleading for it; the trend call was routed and "
+            "settled at the child's rate. The head term's Q4 volume runs 29% below the rest of the "
+            "year, so the seasonality column matters for this niche.",
+        ],
+    },
+    "failure_modes": [
+        ("Keyword returns no volume",
+         "Google reports nothing for very low-volume terms. The batch is still billed as one request."),
+        ("CPC is missing for some keywords",
+         "2 of the 50 keywords in this run returned no CPC. The volume call still bills its flat fee."),
+        ("Bucketed volumes without ad spend",
+         "A connected Google Ads account with little spend sees bucketed ranges instead of exact numbers. That is Google's limit, not the API's."),
+        ("Trend call capped at five",
+         "The trend route takes at most five keywords per call. Send the head terms, not the list."),
+        ("CPC is a national average",
+         "Local or tightly targeted campaigns see different auction prices. The 48 keywords here that returned a CPC averaged $1.18; a tight geo will differ."),
+        ("Per-keyword billing traps",
+         "Some volume APIs bill per keyword, not per request. DataForSEO's batch route bills one flat fee for up to 1,000 keywords; calling a per-keyword endpoint 50 times costs 50 times as much."),
+        ("Suite pricing for a volume job",
+         "Paying a full Semrush or Ahrefs seat just to split a keyword list into ad budget buckets is a common mismatch. Prefer a flat per-request volume call for the list you already have."),
+        ("Providers disagree on the same keyword",
+         "Pull the same shortlist from two rows when the decision is expensive. Treat disagreement as the error bar, not as a bug in one provider."),
+        ("Minimum package surprise",
+         "Some keyword APIs effectively bill a large batch floor. Check whether your list length matches the billing unit before you send twenty keywords."),
+    ],
+    "faq": [
+        ("What does a 50-keyword run cost?",
+         "This run: $0.11 total. $0.018 for ideas, $0.09 for the volume batch, $0.0012 for the trend. The volume call is a flat fee per request, so the list length barely moves the bill."),
+        ("Can I use my own Google Ads account?",
+         "Yes. Connect it and the ideas and volume calls route through the Keyword Planner API on your own quota, which treg.to never meters."),
+        ("Why is per-request billing cheaper?",
+         "Agents that call a per-keyword endpoint 50 times pay 50 fees. The batch route here covers up to 1,000 keywords in one request for one fee. That is why treg.to shows the billing unit before each call."),
+        ("How current is the trend data?",
+         "The trend series is weekly for the past twelve months and reflects past demand, not a forecast."),
+        ("Do I need a Google Ads account for this workflow?",
+         "Only if you route through your own Keyword Planner connection. The paid volume rows run on treg.to's keys and do not need your developer token."),
+        ("Why does Semrush or Ahrefs show a different number?",
+         "Every vendor models demand differently. Rank keywords against each other inside one source, then validate winners in Search Console and in your own campaigns."),
+    ],
+    "related": (
+        "Keyword volume, CPC and competition",
+        "Keywords a domain ranks for",
+        "Keywords a domain bids on",
+        "Your own campaign performance",
+    ),
+}
+
+
+WORKFLOWS["mine-competitor-meta-ads-as-creative-pack"] = {
+    "sentence": "Facebook Ads Library API: pull a competitor's live ads and what they bid on in Google",
+    "title": "Facebook Ads Library API: Competitor Creative | treg.to",
+    "lede": (
+        "Give your agent a competitor's Facebook page and get back their live Meta ads with the "
+        "format, call to action and opening line of each, plus the same advertiser's ads in the "
+        "Google Ads Transparency Center. {steps} steps through one treg.to key, with the price "
+        "printed before each."),
+    "prompt": (
+        "Using treg, count the active Meta ads for Notion (facebook.com/notionhq), then pull the 20 "
+        "most recent. Show me the price first. Group them by format and call to action, and give me a CSV with "
+        "ad_archive_id, started, format, cta, title and hook. Then list what the same company is "
+        "running in the Google Ads Transparency Center."),
+    "prompt_why": [
+        ("Give a Page URL, not a keyword", "A Page URL returns that advertiser's ads. A keyword returns everyone bidding on the phrase."),
+        ("Count before you pull", "The Meta route bills per ad returned. The count probe is one result; it tells you what an uncapped pull would cost."),
+        ("Ask for format and CTA", "The agent groups on two fields Meta renders for every ad. Grouped output is faster to review than raw creative."),
+        ("Add the Google side", "One cheap call returns the advertiser's Google ads by domain. Two libraries, one prompt."),
+    ],
+    "steps": [
+        ("Count the ads first", "meta-ads.library.search",
+         "how many active ads the Page runs, as one cheap result row",
+         "apify.meta-ads.library.search",
+         "onlyTotal:true returns the count as a single billed result. Read it before you decide how many ads to pull."),
+        ("Pull the Meta ads", "meta-ads.library.search",
+         "active ads for a Page from the Meta Ad Library, with creative text and format",
+         "apify.meta-ads.library.search",
+         "Reads the Ad Library web UI. Billed per ad returned, so cap it with resultsLimit and maxItems."),
+        ("Pull the Google ads", "google.ads.transparency",
+         "the same advertiser's ads in the Google Ads Transparency Center, by domain",
+         "serpapi.google.ads.transparency",
+         "One flat call per domain, with format and first-shown dates per creative. Failed and empty searches are free."),
+    ],
+    # the Meta pull is one call billed per ad returned, which the once/per-row model cannot say; leaving
+    # it out of `once` makes the worst-case total count one result per row, which is what the bill is
+    "once": ("serpapi.google.ads.transparency",),
+    "run": {
+        "date": "2026-09-14",
+        "rows_in": 20,
+        "rows_noun": "ads",
+        "receipt": [
+            ("Ads counted", "113 active ads on the Page, one result row"),
+            ("Meta ads pulled", "20 active ads for Notion: 10 image, 6 dynamic creative, 4 video"),
+            ("Calls to action", "Sign up (13), Get offer (5), Apply now (2)"),
+            ("Google ads pulled", "17 creatives on notion.so: 9 text, 7 image, 1 video"),
+            ("Metered on treg's shared key", "$0.015 for the Google call"),
+            ("Not metered", "the two Meta calls ran on this team's own Apify key, which treg never meters; on the shared key they bill at the rate in the table, $0.105 for the probe and 20 ads"),
+        ],
+        "cost_usd": 0.015,
+        "csv": "/workflows/mine-competitor-meta-ads-as-creative-pack.csv",
+        "narrative": [
+            "The count probe came back as one result row, then twenty ads came back in one Meta call "
+            "and 17 in one Google call. The worst-case total above counts the count probe once per row "
+            "because it shares the pull's endpoint; in practice it is one result. Every Meta ad opened with "
+            "the same line and pointed at a sign-up; the variety is in format, not copy. The Google side "
+            "is mostly text ads. The Meta calls went out on the team's own Apify key, and a team's own key "
+            "is never metered, so the receipt shows the shared-key rate for them separately. A run on "
+            "treg's shared key bills them at the rate in the table.",
+        ],
+    },
+    "failure_modes": [
+        ("Advertiser not found",
+         "A wrong Page URL or an advertiser with no active ads returns zero results and costs nothing."),
+        ("Keyword vs Page confusion",
+         "A keyword query returns everyone bidding on the phrase. A Page URL returns that advertiser's ads. This run used a Page URL (facebook.com/notionhq) and got 20 Notion ads, not 20 ads from assorted bidders."),
+        ("Slow Meta pulls",
+         "The Meta route blocks until the scrape finishes and is cut at five minutes. Keep the limit small or use the asynchronous pair."),
+        ("Google domain mismatch",
+         "The Google side keys on the advertiser's verified domain. A marketing subdomain returns nothing; use the root domain."),
+        ("Count-before-pull billing",
+         "The count probe bills as one result; the full pull bills per ad. Notion's 113 active ads would cost $0.565 uncapped. The run capped at 20 ads ($0.105 on treg.to's shared key)."),
+        ("Creative fields shift",
+         "Both routes read the public library pages. Field availability tracks whatever Meta and Google currently render. 5 of this run's 6 DCO ads returned template placeholders, not final copy."),
+        ("Creative media URLs expire",
+         "Meta's public media links go stale within days. If you need a lasting creative pack, download the creative assets into your own storage on the same run, not later."),
+        ("Official Library API is the wrong product for ecommerce spy",
+         "ads_archive is built around transparency rules and identity checks. It will not mirror the full commercial Ad Library UI. Use a public-library scrape route when you want active brand creatives."),
+        ("Spy SaaS seat for a one-off pack",
+         "Paying a monthly ad-spy subscription only to export a competitor's current ads is a common overbuy. Cap the ad count and bill per ad returned."),
+    ],
+    "faq": [
+        ("What does a competitor pull cost?",
+         "It depends on how many ads they run. Notion had 113 active ads; pulling all of them would cost $0.565 on treg.to's shared key. This run capped at 20 ($0.105)."),
+        ("Is this Meta's official API?",
+         "No. It reads the public Ad Library. Meta's own ads_archive route is free but needs identity verification and returns less."),
+        ("Why did 5 ads return template placeholders?",
+         "Those are DCO (dynamic creative) ads. The library shows the template, not the rendered variants. This run's CSV has 10 IMAGE, 4 VIDEO, and 6 DCO; 5 of the DCO rows show placeholders and the sixth carried real copy."),
+        ("What about the landing pages?",
+         "18 of the 20 ads point at fb.me (a redirect); 2 point at notion.com. Ask the agent to scrape the final destinations as a follow-up step."),
+        ("Why did the image or video link die overnight?",
+         "Meta rotates public CDN URLs. Save the file during the pull if you want a durable swipe file."),
+    ],
+    "related": (
+        "Ads a competitor is running now",
+        "Keywords a domain bids on",
+        "Keyword volume, CPC and competition",
+        "Your own campaign performance",
+    ),
+}
+
+
+WORKFLOWS["category-content-intel-tiktok-xiaohongshu"] = {
+    "sentence": "Category content intel: what TikTok and Xiaohongshu are saying about a product category",
+    "title": "Category content intel: TikTok and Xiaohongshu | treg.to",
+    "lede": (
+        "Give your agent a category keyword and get back the top posts on TikTok and Xiaohongshu "
+        "(RedNote) with engagement, plus the follower counts of the creators behind the TikTok "
+        "hits. {steps} steps through one treg.to key. Low frequency, high decision value."),
+    "prompt": (
+        "Using treg, search TikTok for 'protein powder' sorted by likes and Xiaohongshu for "
+        "'蛋白粉' sorted by popularity. Show me the price first. Return a CSV with platform, likes, "
+        "comments, plays, caption and posted date, sorted by likes. Then pull the profiles of the "
+        "top 10 TikTok creators and add their follower counts."),
+    "prompt_why": [
+        ("Search both platforms", "TikTok shows Western demand, Xiaohongshu shows Chinese consumer behaviour. One prompt, two markets."),
+        ("Use the native language on Xiaohongshu", "Search the Chinese term. An English keyword returns a thin, unrepresentative page."),
+        ("Sort by engagement", "Both routes accept a sort. Likes-first surfaces what resonated, not what was posted last."),
+        ("Profile the creators behind the hits", "Follower count tells you whether a hit came from reach or from resonance."),
+    ],
+    "steps": [
+        ("Search TikTok", "tiktok.search.videos",
+         "keyword search with sort and publish-time filters, 20 videos per page",
+         "tikhub.tiktok.search.videos",
+         "One page per call. Region defaults to US."),
+        ("Search Xiaohongshu", "xiaohongshu.search.notes",
+         "keyword search with popularity sort and a publish-time window",
+         "justoneapi.x.xiaohongshu-search-note-v2",
+         "Billed only on success; errors are free. Returns 20 notes per page."),
+        ("Profile the top creators", "tiktok.user.profile",
+         "follower count and video count for one TikTok handle",
+         "tikhub.tiktok.user.profile",
+         "Runs once per creator you keep. Charged on 2xx only."),
+    ],
+    "once": ("tikhub.tiktok.search.videos", "justoneapi.x.xiaohongshu-search-note-v2"),
+    "run": {
+        "date": "2026-09-14",
+        "rows_in": 10,
+        "rows_noun": "creators",
+        "receipt": [
+            ("TikTok", "20 videos for 'protein powder', top post 719,160 likes"),
+            ("Xiaohongshu", "20 notes for '蛋白粉' in the last six months, top note 48,588 likes"),
+            ("Creators profiled", "10 of 10 TikTok creators, 11,500 to 11,000,000 followers"),
+            ("Total metered", "$0.032: $0.001 TikTok search, $0.022 Xiaohongshu search, $0.01 profiles"),
+        ],
+        "cost_usd": 0.03214,
+        "csv": "/workflows/category-content-intel-tiktok-xiaohongshu.csv",
+        "narrative": [
+            "Twelve calls. The two searches returned 40 posts; the ten profile pulls added follower "
+            "counts to the TikTok hits. The spread is the finding: the same category's top TikTok post "
+            "has fifteen times the likes of the top Xiaohongshu note, and the creators behind the TikTok "
+            "hits range from an 11k-follower account to an 11M one, so reach alone does not explain the "
+            "ranking. The Xiaohongshu search is the expensive call; everything else is TikHub's per-success rate.",
+        ],
+    },
+    "failure_modes": [
+        ("No results for a niche keyword",
+         "One platform may return nothing. Try a broader term or the category's native-language phrasing."),
+        ("Xiaohongshu is in Chinese",
+         "Captions come back in Chinese. The agent translates; check nuance with a native speaker before acting on it."),
+        ("Time window is approximate",
+         "Xiaohongshu's publish-time filter is documented as approximate and can include older notes."),
+        ("Region shapes the TikTok page",
+         "TikTok search is regional. Pass the region you sell in."),
+        ("Homegrown scrapers rot",
+         "TikTok and Xiaohongshu change signed endpoints often. A script that worked last month can return empty pages this week. Prefer a maintained catalog route over owning the signer."),
+        ("Xiaohongshu is not TikTok with Chinese text",
+         "There is no public developer API. Signed headers and captchas are normal. Expect thinner coverage and higher maintenance than TikTok on the same vendor."),
+        ("Hours of scrolling is the silent cost",
+         "Manual category research feels free until you count the hours. Batch keyword search on both platforms and keep the CSVs so you can diff week to week."),
+    ],
+    "faq": [
+        ("What does the dual-platform search cost?",
+         "The receipt above is one real run. The Xiaohongshu call is the expensive one; the TikHub calls are the cheap ones."),
+        ("Can I get transcripts?",
+         "Yes. The catalog has TikTok transcript routes; add them as a step for the posts you shortlist."),
+        ("What about Instagram or YouTube?",
+         "Add those searches to the prompt. The catalog has keyword search on both."),
+        ("How do I track this over time?",
+         "Run the same prompt weekly and keep the CSVs. The agent can diff the top posts between runs."),
+        ("Why did my DIY TikTok scraper die?",
+         "Endpoints and anti-bot checks move. That is expected. This workflow uses maintained providers so the maintenance sits with them."),
+        ("Can one scraper cover both TikTok and Xiaohongshu?",
+         "Often not well. Many social scrapers are TikTok-first and lag on RedNote. Treat them as separate steps with separate failure modes."),
+    ],
+    "related": (
+        "Search posts by keyword",
+        "Search videos and channels by keyword",
+        "Find creators by keyword",
+        "A channel's profile and lifetime stats",
+    ),
 }
 
 

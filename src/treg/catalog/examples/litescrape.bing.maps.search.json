@@ -1,0 +1,61 @@
+{
+  "search_metadata": {
+    "id": "b4a295edc0d2c9cf9af3f34f",
+    "status": "Success",
+    "json_endpoint": "https://api.litescrape.com/api/bing/maps?q=coffee+shops+Austin&first=0&count=30",
+    "created_at": "2026-09-29 13:58:45 UTC",
+    "processed_at": "2026-09-29 13:58:45 UTC",
+    "provider_url": "https://www.bing.com/maps/localoverlaybfpr?q=coffee+shops+Austin&filters=MapCardType%3A%22listing%22+direction_partner%3A%22maps%22&first=0&count=30",
+    "total_time_taken": 0.644
+  },
+  "search_parameters": {
+    "q": "coffee shops Austin",
+    "first": 0,
+    "count": 30
+  },
+  "local_results": [
+    {
+      "title": "coffee shops Austin",
+      "items": [
+        {
+          "position": 1,
+          "place_id": "YNDC222D0D9C80FD19",
+          "title": "Mozart's Coffee Roasters",
+          "link": "https://www.bing.com/maps?q=Mozart%27s+Coffee+Roasters&filters=local_ypid%3A%22YNDC222D0D9C80FD19%22",
+          "address": "3825 Lake Austin Blvd, Austin, TX 78703",
+          "gps_coordinates": {
+            "latitude": null,
+            "longitude": null
+          },
+          "phone": "(512) 477-2900",
+          "website": "https://mozartscoffee.com/",
+          "type": "Cafe",
+          "entry_type": "Business",
+          "thumbnail": "https://www.bing.com/th?id=OLC.ljpSTWdC+MIzIA480x360&pid=Local",
+          "rating": 4,
+          "reviews": 2153,
+          "rating_provider": "Yelp"
+        },
+        {
+          "position": 2,
+          "place_id": "YNC063B9761760EF2",
+          "title": "Bennu Coffee",
+          "link": "https://www.bing.com/maps?q=Bennu+Coffee&filters=local_ypid%3A%22YNC063B9761760EF2%22",
+          "address": "2001 E Martin Luther King Jr Blvd, Austin, TX 78702",
+          "gps_coordinates": {
+            "latitude": null,
+            "longitude": null
+          },
+          "phone": "(512) 478-4700",
+          "website": "http://www.bennucoffee.com/",
+          "type": "Cafe",
+          "entry_type": "Business",
+          "thumbnail": "https://www.bing.com/th?id=OLC.bLf+TsqXPy1VZg480x360&pid=Local",
+          "rating": 4,
+          "reviews": 813,
+          "rating_provider": "Yelp"
+        }
+      ]
+    }
+  ]
+}

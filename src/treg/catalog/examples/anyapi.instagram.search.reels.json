@@ -1,0 +1,51 @@
+{
+  "output": {
+    "data": {
+      "nextCursor": "8oelnyLDQmpwOMr00RW74sjrZ5X_ZkZBrtgbJX75QDu49FmtueI7vAWbxXS0NkWu7Ze7a3HpNwE1cQh5SNE3H2hGDAqMMiWS9DdooWCminwLSrQz23cSJontmueMKlioIYW-UHknEqNAKAM1Ef6znBdMZISpHDcGom0kopYvLq06HDbTSYbAgX54AQe4JKe8wtJMWZ9bP58AWiynohTivTPh4r4umdL12RkjQDRuJ4ztWKeYClHKQHxNI-Fpc0KtuetcdX4wWJSVVySE32kAhi3CQbqsEFLc8ywl8XwznYBBuey-0dfI2w8njDVzjBeCL2H9oDg79sD81VNm7RMndmN4VoIQpdkWZ9rEBLyqBEHHgm17LN_mNqlQ6UNwjH2KaMgc-yeUxPT2NMw",
+      "reels": [
+        {
+          "caption": "I FREAKED OUT… I thought this was a snake. 😭🐍\n\nTurns out… it was a tree trunk sitting underwater in Paisupok Lake, Banggai Kepulauan, Central Sulawesi, the submerged trunks as being hundreds of years old. \n\nAnd this is exactly what makes Paisupok so surreal: the water is incredibly clear, so you can see the lakebed, underwater vegetation, rocks and fallen trees from the surface. \n\n💧 Paisu means water and Pok means black in the local Banggai language, referring to the dark appearance of the lake … [1079 chars total]",
+          "comments": 288,
+          "createdUtc": 1787555001,
+          "durationSeconds": 9.006999969482422,
+          "likes": 516100,
+          "paidPartnership": false,
+          "shortcode": "DcaexEhoZWS",
+          "thumbnail": "https://scontent-arn2-1.cdninstagram.com/v/t51.82787-15/785993014_18173227516427968_6715687054570657030_n.jpg?stp=dst-jpg_e15_s640x640_tt6&_nc_cat=101&ig_cache_key=Mzk3MDYyMTMzNDk4OTQxMTczMDE4MTczMjI3NTEzNDI3OTY4.3-ccb7-5&ccb=7-5&_nc_sid=58cdad&efg=eyJ2ZW5jb2RlX3RhZyI6IkNMSVBTLnhwaWRzLjcyMC5zZHIudmlkZW9fdXNlcl9zZWxlY3RlZF90aHVtYm5haWwuQzMifQ%3D%3D&_nc_ohc=xuWz4ESup9YQ7kNvwGXdOaG&_nc_oc=Ado08MdK9RvVMRHMvJmjxgrguTgJPaQJyvrAWTtM501xg116_xSkJGPgZBpU9uqMOa4&_nc_ad=z-m&_nc_cid=0&_nc_zt=23&_nc_ht=scont… [636 chars total]",
+          "url": "https://www.instagram.com/reel/DcaexEhoZWS/",
+          "username": "plottwist20s",
+          "verified": false,
+          "views": 18635976
+        },
+        {
+          "caption": "Finally I can be free like a bird 🥹❤️‍🔥",
+          "comments": 9077,
+          "createdUtc": 1785585601,
+          "durationSeconds": 30.3700008392334,
+          "likes": 5396434,
+          "paidPartnership": false,
+          "shortcode": "DbfyNf4v60c",
+          "thumbnail": "https://scontent-arn2-1.cdninstagram.com/v/t51.82787-15/759751753_18633534655016262_7552815708900276530_n.jpg?stp=dst-jpg_e15_s640x640_tt6&_nc_cat=1&ig_cache_key=Mzk1NDA5OTgyNzc3MTQxOTkzMjE4NjMzNTM0NjUyMDE2MjYy.3-ccb7-5&ccb=7-5&_nc_sid=58cdad&efg=eyJ2ZW5jb2RlX3RhZyI6IkNMSVBTLnhwaWRzLjcyMC5zZHIudmlkZW9fZGVmYXVsdF9jb3Zlcl9mcmFtZS5DMyJ9&_nc_ohc=9X8R9RsrOe8Q7kNvwHoMQh6&_nc_oc=AdpPuGbhRvDMQJlMeadNs97SIysTX72mz_5l7f1OIt8pHeoN_-HEnwaW-Rb30WFSlWo&_nc_ad=z-m&_nc_cid=0&_nc_zt=23&_nc_ht=scontent-arn2-1.cdn… [622 chars total]",
+          "url": "https://www.instagram.com/reel/DbfyNf4v60c/",
+          "username": "iamfabreezy",
+          "verified": true,
+          "views": 91725707
+        },
+        "… 10 more item(s) truncated"
+      ]
+    },
+    "found": true
+  },
+  "provider": "AnyAPI",
+  "costUsd": 0.0015,
+  "items": 12,
+  "replayed": false,
+  "source": {
+    "id": "anonymous-lynx",
+    "name": "Lynx",
+    "kind": "anonymous",
+    "artworkKey": "lynx"
+  },
+  "hint": "large_result: this response is ~18 KB. To keep future runs from flooding your context, re-run with `fields` (keep only the keys you need), `max_items` (cap rows), `summary=true` (outline only), or `jq` for arbitrary reshaping (e.g. `jq=.data.markdown[:2000]`) — these trim the response only, never the charge.",
+  "resultId": "264a5aa9-2a3c-46b0-b420-111740750e6c"
+}

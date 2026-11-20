@@ -1,0 +1,30 @@
+{
+  "output": {
+    "found": true,
+    "data": {
+      "categoryId": "1658310421102081",
+      "creationTime": "2026-05-15T16:57:39.000Z",
+      "currency": "USD",
+      "description": "Was going to hang on to this one bc I absolutely love how it looks, but the 20” frame is just bit too large for me. Riders over 6’ would be comfy on this one. Currently in a 3x7, drop bar mtb set up w… [932 chars]",
+      "id": "1656586118821988",
+      "isLive": true,
+      "isSold": true,
+      "locationText": "Austin, TX",
+      "priceAmount": 220,
+      "priceFormatted": "$220",
+      "title": "‘95 Specialized Hardrock GSX - Super Clean Vintage Gravel Restomod - INCLUDES FREE TUNE UP",
+      "url": "https://www.facebook.com/marketplace/item/1656586118821988/"
+    }
+  },
+  "provider": "AnyAPI",
+  "costUsd": 0.0012,
+  "items": 0,
+  "replayed": false,
+  "source": {
+    "id": "anonymous-giraffe",
+    "name": "Giraffe",
+    "kind": "anonymous",
+    "artworkKey": "giraffe"
+  },
+  "resultId": "9c34a97b-1a3b-4240-b81f-443c6d7070d3"
+}

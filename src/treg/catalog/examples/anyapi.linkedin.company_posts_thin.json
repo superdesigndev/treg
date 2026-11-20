@@ -1,0 +1,27 @@
+{
+  "output": {
+    "found": true,
+    "data": {
+      "items": [
+        {
+          "createdUtc": 1789492459,
+          "id": "7505675379710500864",
+          "text": "New Stripe data shows fraudulent actors disproportionately targeting AI companies:\n\n• During sign-up, AI subscription companies saw a 40% increase in attempted multi-account abuse in a six-month perio… [351 chars]",
+          "url": "https://www.linkedin.com/posts/stripe_new-stripe-data-shows-fraudulent-actors-disproportionately-activity-7505675379710500864-iMiU"
+        },
+        "… 6 more item(s) truncated"
+      ]
+    }
+  },
+  "provider": "AnyAPI",
+  "costUsd": 0.0012,
+  "items": 7,
+  "replayed": false,
+  "source": {
+    "id": "anonymous-giraffe",
+    "name": "Giraffe",
+    "kind": "anonymous",
+    "artworkKey": "giraffe"
+  },
+  "resultId": "02c4a45c-c174-4341-9c8c-b9f26568f4e3"
+}

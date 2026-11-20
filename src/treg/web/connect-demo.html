@@ -8,39 +8,42 @@
 <link rel="icon" type="image/svg+xml" href="/favicon.svg"/>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link href="https://fonts.googleapis.com/css2?family=Instrument+Serif:ital@0;1&family=Geist+Pixel&family=DM+Mono:ital,wght@0,400;0,500;1,400&display=swap" rel="stylesheet">
+<link href="https://fonts.googleapis.com/css2?family=Geist+Pixel&family=DM+Mono:wght@400;500&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="/legal.css"/>
 <style>
 .demo{max-width:760px}
-.step{border:1px solid #2a2a2a;border-radius:10px;padding:14px 16px;margin:0 0 12px}
-.step h3{margin:0 0 4px;font-size:14px}
-.step p{margin:0;font-size:13px;color:var(--ink55,#8a8a8a);line-height:1.5}
-.state{font-size:12px;padding:2px 8px;border-radius:99px;border:1px solid #333;margin-left:8px}
-.state.on{background:#123a25;border-color:#1c5c3a;color:#7fdcae}
-.state.off{color:#8a8a8a}
-button{padding:9px 14px;border-radius:8px;font:inherit;font-size:13.5px;cursor:pointer;
-  border:1px solid #333;background:#1a1a1a;color:inherit;margin:8px 8px 0 0}
-button.primary{background:#e0703f;border-color:#e0703f;color:#161310;font-weight:600}
-button:disabled{opacity:.4;cursor:not-allowed}
-pre{background:#141414;border:1px solid #262626;border-radius:8px;padding:12px;overflow:auto;
-  font-size:12px;line-height:1.5;max-height:340px;margin:12px 0 0}
+.step{background:var(--surface);border-radius:16px;padding:16px 18px;margin:0 0 12px;box-shadow:var(--shadow-sm)}
+.step h3{margin:0 0 4px;font-size:15px}
+.step p{margin:0;font-size:13.5px;color:var(--muted);line-height:1.55}
+.state{font-family:var(--mono);font-size:12px;font-weight:400;padding:2px 9px;border-radius:99px;
+  background:var(--panel2);color:var(--muted);margin-left:8px}
+.state.on{background:color-mix(in srgb,var(--green) 12%,var(--surface));color:var(--green)}
+button{padding:9px 16px;border-radius:999px;font:inherit;font-size:13.5px;font-weight:500;cursor:pointer;
+  border:1px solid var(--line2);background:var(--surface);color:var(--ink);margin:10px 8px 0 0;
+  transition:border-color .12s var(--ease),opacity .12s var(--ease)}
+button:hover:not(:disabled){border-color:var(--muted)}
+button.primary{background:var(--inverse);border-color:var(--inverse);color:var(--inverse-ink)}
+button.primary:hover:not(:disabled){opacity:.88}
+button:disabled{opacity:.45;cursor:not-allowed}
+pre{font-family:var(--mono);background:var(--surface);border-radius:12px;padding:12px 14px;overflow:auto;
+  font-size:12px;line-height:1.55;max-height:340px;margin:12px 0 0;box-shadow:var(--shadow-sm)}
 .tools{display:flex;flex-wrap:wrap;gap:0}
 </style>
 </head>
 <body>
 
 <div class="topbar"><div class="in">
-  <a class="brand" href="/"><span class="glyph">▚</span> treg</a>
+  <a class="brand" href="/"><span class="glyph" aria-hidden="true"><svg viewBox="0 0 290 290"><rect width="140.5" height="140.5" rx="20"/><rect x="149.5" y="149.5" width="140.5" height="140.5" rx="20"/></svg></span> treg</a>
   <span class="sp"></span>
-  <a class="nav" href="/support">support</a>
-  <a class="nav" href="/tutorial">docs</a>
+  <a class="nav" href="/support">Support</a>
+  <a class="nav" href="/tutorial">Docs</a>
 </div></div>
 
 <div class="page"><div class="doc demo">
 
   <div class="eyebrow">Developer</div>
   <h1>Connect demo</h1>
-  <p style="color:var(--ink55,#8a8a8a);font-size:13.5px;line-height:1.6">
+  <p>
     This page pretends to be someone else's app. It does exactly what ChatGPT, Claude Code or any
     other MCP client does when it connects to treg — registers itself, sends you to treg to approve,
     gets a token back, and calls tools with it. Nothing here is privileged: it uses the same public
@@ -65,7 +68,7 @@ pre{background:#141414;border:1px solid #262626;border-radius:8px;padding:12px;o
 
   <div class="step">
     <h3>3. Call tools <span id="s3" class="state off">no token</span></h3>
-    <p>The same five tools any MCP client gets. All of them need the token you just granted — an
+    <p>Try a selection of tools from the team MCP interface. Each needs the token you just granted; an
     unauthenticated call is answered with a 401 telling the client where to authorize. <b>call</b> is
     the only one that spends the team's balance, so it does what treg asks an agent to do — reads the
     price first and asks before spending.</p>

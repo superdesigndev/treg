@@ -1,0 +1,24 @@
+{
+  "output": {
+    "found": true,
+    "data": {
+      "coverUrl": "https://scontent-bos5-1.cdninstagram.com/v/t51.71878-15/718648521_1211952567628335_6800572588539032748_n.jpg?stp=dst-jpg_s150x150_tt6&_nc_ht=scontent-bos5-1.cdninstagram.com&_nc_cat=103&_nc_oc=Q6cZ2gE… [432 chars]",
+      "createdUtc": 1780937715,
+      "id": "highlight:18201653992314974",
+      "mediaCount": 20,
+      "ownerHandle": "nasa",
+      "title": "Artemis III"
+    }
+  },
+  "provider": "AnyAPI",
+  "costUsd": 0.0012,
+  "items": 0,
+  "replayed": false,
+  "source": {
+    "id": "anonymous-giraffe",
+    "name": "Giraffe",
+    "kind": "anonymous",
+    "artworkKey": "giraffe"
+  },
+  "resultId": "e36b1bde-548a-426f-b69c-821919b50774"
+}

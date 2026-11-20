@@ -1,0 +1,22 @@
+{
+  "query": "Keenable API documentation",
+  "mode": "pro",
+  "results": [
+    {
+      "title": "API reference",
+      "url": "https://docs.keenable.ai/api-reference",
+      "description": "",
+      "snippet": "Authenticated requests use the X-API-Key header. The API exposes web search and page fetch.",
+      "published_at": "2026-08-25T08:01:12Z",
+      "acquired_at": "2026-09-13T02:13:34Z"
+    },
+    {
+      "title": "Quickstart",
+      "url": "https://docs.keenable.ai/",
+      "description": "",
+      "snippet": "Keenable provides web search and content access for AI agents through MCP, CLI, and REST.",
+      "published_at": "2026-08-25T08:01:12Z",
+      "acquired_at": "2026-09-21T02:45:47Z"
+    }
+  ]
+}

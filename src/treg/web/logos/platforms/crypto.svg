@@ -1,0 +1,6 @@
+<svg viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="Crypto market data">
+  <!-- Not a brand: crypto assets in general, drawn as two linked blocks (a chain), no one token's mark. -->
+  <rect x="1.8" y="3" width="11" height="11" rx="2.6" fill="#D4901A"/>
+  <rect x="11.2" y="10" width="11" height="11" rx="2.6" fill="#D4901A" opacity=".55"/>
+  <rect x="5.2" y="6.4" width="4.2" height="4.2" rx="1" fill="#fff"/>
+</svg>

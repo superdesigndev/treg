@@ -13,52 +13,186 @@ one thing everywhere. Pure functions over (provider, status, headers, body).
              exhausted, only recorded (so a chart can attribute it to a UA family)
   unrecorded - a 4xx no row matched whose body still names credits/quota/balance → NEVER exhausted,
              only logged/counted: the tripwire for a vendor whose out-of-credit answer is not in
-             the table yet (how Apollo's 422 went unseen for eleven hours, 2026-09-01)
+             the table yet
   None     — not a capacity signal at all (caller-caused 4xx, 5xx, success)
 """
 
 from __future__ import annotations
 
+import math
 import re
 from dataclasses import dataclass
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
+from email.utils import parsedate_to_datetime
 
 from ...timeutil import utcnow_naive
 
 BURST_MAX_RETRY_AFTER_S = 60
 
-# provider → (status, substring-regex on the body, kind). `*` = any provider. First match wins.
-_TABLE: list[tuple[str, int, str, str]] = [
-    ("findymail", 402, r"not enough credits", "balance"),
-    ("leadsforge", 402, r"insufficient_credits", "balance"),
-    ("leadmagic", 402, r"insufficient_credits", "balance"),
-    ("thecompaniesapi", 403, r"noCreditsRemaining", "balance"),
-    ("companyenrich", 402, r"payment required", "balance"),
-    ("akta", 402, r"insufficient credits", "balance"),
-    ("lusha", 400, r"reached your credit limit", "balance"),
-    ("predictleads", 402, r"exceeded the monthly request limit", "quota"),
-    ("lusha", 429, r"daily", "quota"),
-    ("hunter", 429, r"per billing period", "quota"),
-    ("apollo", 429, r"per (day|month)|daily|monthly", "quota"),
+_RESETS = {
+    "next_utc_midnight": lambda now: (now + timedelta(days=1)).replace(hour=0, minute=0, second=0, microsecond=0),
+}
+
+
+@dataclass(frozen=True)
+class Signature:
+    """`provider` "*" matches any provider; `body_regex` is searched case-insensitively. First
+    match wins. `resets` names when a quota with no wait header serves again; None leaves it to
+    the sweep's account call. `tripwire` marks a plain capacity phrase that arms the `unrecorded`
+    tripwire for every other vendor."""
+    provider: str
+    status: int
+    body_regex: str
+    kind: str
+    resets: str | None = None
+    tripwire: bool = False
+
+    def __post_init__(self):
+        if self.resets is not None and self.resets not in _RESETS:
+            raise ValueError(f"unknown resets {self.resets!r}")
+
+
+_TABLE: list[Signature] = [
+    Signature("enrow", 402, r"insufficient credits", "balance", tripwire=True),
+    Signature("filtrat", 402, r"INSUFFICIENT_CREDITS", "balance", tripwire=True),
+    Signature("filtrat-finder", 402, r"INSUFFICIENT_CREDITS", "balance", tripwire=True),
+    Signature("corpoapi", 402, r"free_tier_exhausted", "balance", tripwire=True),
+    Signature("corpoapi", 402, r"spend_cap_reached", "balance", tripwire=True),
+    Signature("anymailfinder", 402, r"not have enough credits", "balance", tripwire=True),
+    Signature("findymail", 402, r"not enough credits", "balance", tripwire=True),
+    Signature("leadsforge", 402, r"insufficient_credits", "balance"),
+    Signature("leadocean", 429, r"fair-use pace reached", "quota"),
+    # MobiusEngine.ai Jobs Data: an empty prepaid balance is a 402 {"error": {"code": "insufficient_balance", ...}}.
+    Signature("mobiusengine-jobs", 402, r"insufficient_balance", "balance", tripwire=True),
+    # Hirebase: a spent monthly meter is a 429 with `X-Billing-Code: limit_exceeded` and "You've reached your
+    # plan's included usage of N"; its rate-limit 429 says "Rate limit exceeded" with Retry-After. Meters are
+    # per operation (jobs, companies, insights, benchmarks), so lock the endpoint only. A request whose
+    # `limit` is larger than what is left ("... only M of your plan's included N remain") does not lock:
+    # a smaller request still runs.
+    Signature("hirebase", 429, r"only [1-9]\d* of your plan's included", "unknown"),
+    Signature("hirebase", 429, r"your plan's included usage|only 0 of your plan's included", "quota"),
+    Signature("leadmagic", 402, r"insufficient_credits", "balance"),
+    # JobsPipe (openapi ErrorResponse + auth.md + docs usage/rate-limits): spent credits are a 402
+    # {"error": "Monthly request quota exceeded", "message": ..., "upgrade_url": ...} with Retry-After
+    # to the next UTC month, also once the one-time free grant is gone. A plan-gated feature is a 402
+    # too ("Monitors need the Builder package or above"): no account signal. Its per-second and
+    # concurrency limits are a 429 "Rate limit exceeded" (Retry-After: 1, or retry_after_seconds: 2).
+    Signature("jobspipe", 402, r"monthly request quota exceeded", "balance", tripwire=True),
+    Signature("jobspipe", 402, r"need the \w+ package or above", "unknown"),
+    Signature("jobspipe", 429, r"rate limit exceeded", "burst"),
+    Signature("thecompaniesapi", 403, r"noCreditsRemaining", "balance", tripwire=True),
+    Signature("companyenrich", 402, r"payment required", "balance", tripwire=True),
+    Signature("akta", 402, r"insufficient credits", "balance"),
+    # AI Ark: an empty credit pool is a 402 {"error": "sorry, you don't have enough credit"}.
+    Signature("aiark", 402, r"don't have enough credit", "balance"),
+    Signature("lusha", 400, r"reached your credit limit", "balance", tripwire=True),
+    # Misses share the 400 status; only this error code means an empty account.
+    Signature("prospeo", 400, r'"error_code"\s*:\s*"insufficient_credits"', "balance"),
+    # Wiza: an empty credit pool is a 400 {"status": {"code": 400, "message": "Insufficient API
+    # credits. You need 2 credits for company enrichment."}}; its other 400s are bad input.
+    Signature("wiza", 400, r"insufficient api credits", "balance", tripwire=True),
+    # CoinGecko: a lapsed paid plan is a 401 "API subscription deactivated. Please reactivate your
+    # account via ..."; a wrong key is a 401 without this phrase.
+    Signature("coingecko", 401, r"api subscription deactivated", "balance", tripwire=True),
+    # Dropcontact: an empty credit pool is a 403 {"error": true, "reason": "You submitted 1 valid
+    # items but only have 0 credits left"}. A batch larger than a non-zero balance is not empty.
+    Signature("dropcontact", 403, r"only have 0 credits left", "balance", tripwire=True),
+    # Aviato: a balance below one call's price is a 400 {"message": "Insufficient credits. Need 15,
+    # have 1.25."}.
+    Signature("aviato", 400, r"insufficient credits\. need [\d.]+, have [\d.]+", "balance"),
+    # OrbiSearch: a balance below one call's price is a 403 {"detail": "Insufficient credits: 0
+    # available, 0.2 needed"}.
+    Signature("orbisearch", 403, r"insufficient credits: [\d.]+ available", "balance"),
+    Signature("predictleads", 402, r"exceeded the monthly request limit", "quota", tripwire=True),
+    # PDL meters operations separately: person_identify can run out while enrich still works.
+    Signature("pdl", 402, r"hit your account maximum for", "quota", tripwire=True),
+    Signature("lusha", 429, r"daily", "quota", resets="next_utc_midnight"),
+    Signature("hunter", 429, r"per billing period", "quota"),
+    # Hunter answers its per-minute limit with a 403 {"errors": [{"id": "too_many_requests"}]} and `RateLimit-Reset`.
+    Signature("hunter", 403, r"too_many_requests", "burst"),
+    Signature("apollo", 429, r"per (day|month)|daily|monthly", "quota"),
     # Apollo: an empty credit pool is a 422 {"error": "Insufficient credits. Please upgrade your
-    # plan."} (ops/capacity.md, 2026-09-01). A 422 without the phrase is the caller's validation error.
-    ("apollo", 422, r"insufficient credits", "balance"),
-    ("*", 402, r"", "balance"),
+    # plan."}. A 422 without the phrase is the caller's validation error.
+    Signature("apollo", 422, r"insufficient credits", "balance"),
+    # Moz: a spent row quota is a 403 {"error": "The account does not have enough quota remaining for
+    # current period.", "data": {"issue": "insufficient-quota"}} ("quota" alone is not a tripwire
+    # word). The period resets on Moz's billing day, which the answer does not name.
+    Signature("moz", 403, r"insufficient-quota", "quota", tripwire=True),
+    # Discovery's allowance is distinct from the shared credit pool.
+    # https://docs.influencers.club/guides/error-handling — ordinary burst 429s have Retry-After.
+    Signature("influencersclub", 429, r"Discovery API credit limit reached", "quota", tripwire=True),
+    # reAPI: an empty prepaid balance is a 402 {"error": {"code": 30001, "message": "Insufficient
+    # credits. Required: 13856", ...}} (seen with a request larger than the balance).
+    Signature("reapi", 402, r"insufficient credits", "balance"),
+    # AnyAPI: a spent wallet or per-key spend cap is a 402. A trial key
+    # driven past its cap answers {"error": "trial_cap_reached"}. The funded-wallet body is documented as
+    # "insufficient wallet balance" (openapi.json, 402) and not yet observed.
+    Signature("anyapi", 402, r"trial_cap_reached|insufficient|spend cap|balance", "balance"),
+    Signature("trykitt", 418, r"temporarily throttled", "burst"),
+    # A fair-use block is the whole account, lifted only through a support ticket: "Our system thinks
+    # your activity may be violating our fair use policy. (CASE 001) Please open a support ticket".
+    Signature("trykitt", 418, r"fair use policy", "balance", tripwire=True),
+    Signature("trykitt", 402, r"insufficient (?:credits?|funds|balance)|out of credits", "balance"),
+    # This API uses 402 for both funds and rate limits. The first matching row wins.
+    Signature("trykitt", 402, r"", "unknown"),
+    # ContactOut documents this 403 separately from "No access to endpoint".
+    # Independent pools: lock only the failed endpoint, never the entire provider.
+    # https://api.contactout.com/#errors
+    Signature("contactout", 403, r"you're out of credits", "quota", tripwire=True),
+    # cloro: a spent credit allowance is a 403 ForbiddenError with `error.code: "INSUFFICIENT_CREDITS"`
+    # (OpenAPI 3.1 spec; documented, not yet observed). Its 429s are CONCURRENT_LIMIT_EXCEEDED /
+    # RATE_LIMIT_EXCEEDED bursts with X-RateLimit-* headers, never a period quota; the plan
+    # allowance resets monthly at `cycleResetsAt` from GET /v1/credits.
+    Signature("cloro", 403, r"insufficient_credits", "balance"),
+    Signature("crawl4ai", 402, r"no_credit", "balance", tripwire=True),
+    Signature("crawl4ai", 402, r"spend_cap|plan_cap", "quota"),
+    # A plan's period cap is a 429 naming its window ({"metric": "search", "window_secs": 86400,
+    # "retry_after_s": ...}) with Retry-After to its reset; a concurrency cap says "window_secs": 0
+    # and a pace limit a short window (60), both bursts. Only the plan's own cap ("... for plan <name>")
+    # over a window of 1000 s or more is the account's period; a cap on one client is not.
+    Signature("crawl4ai", 429, r'for plan \w+.*"window_secs"\s*:\s*[1-9]\d{3,}', "quota"),
+    Signature("crawl4ai", 429, r"", "burst"),
+    # Tavily documents distinct custom statuses for the monthly plan allowance and the operator's
+    # PAYGO ceiling. Both are quotas: the first resets with the plan period; the second serves again
+    # when the operator raises its dashboard limit. Neither is a transient 429 burst.
+    Signature("tavily", 432, r"exceeds your plan's set usage limit", "quota", tripwire=True),
+    Signature("tavily", 433, r"exceeds the pay-as-you-go limit", "quota", tripwire=True),
+    # Icypeas answers an empty credit pool with a 200: {"validationErrors": [{"message":
+    # "insufficient_credits", "type": "InsufficientCredits", ...}], "success": false}, on every paid
+    # route. The only 2xx row: callers of `classify` that
+    # gate on >= 400 would never see it.
+    Signature("icypeas", 200, r'"message"\s*:\s*"insufficient_credits"', "balance"),
+    # HLR Lookup answers an empty account with a 200 whose `results[0].error` is
+    # INSUFFICIENT_CREDIT (its docs; the catalog row's `expect` already keeps it unbilled).
+    Signature("hlrlookup", 200, r'"error"\s*:\s*"insufficient_credit"', "balance"),
+    # DataForSEO answers HTTP 200 and puts its own code in `status_code`, on the envelope or on a
+    # task: 40200 payment required, 40203 the account's cost limit (a daily or per-minute money
+    # ceiling set in its dashboard), 40210 insufficient funds (docs, appendix/errors). All three are
+    # the whole account, so the lock is provider-wide; the probe lifts it on the first 2xx.
+    Signature("dataforseo", 200, r'"status_code"\s*:\s*402(?:00|03|10)\b', "balance"),
+    # Apify: the account's monthly spend ceiling blocks every Actor run, a 403 {"error": {"type":
+    # "platform-feature-disabled", "message": "You've reached your monthly usage limit of $N ..."}}.
+    Signature("apify", 403, r"reached your monthly usage limit", "balance", tripwire=True),
+    # Tomba: a route's spent allowance is a 429 "You have reached your usage limit", with no Retry-After.
+    Signature("tomba", 429, r"reached your usage limit", "quota", tripwire=True),
+    # Fish Audio: too many requests in flight is a 429 "exceeded your current concurrency limit", no Retry-After.
+    Signature("fishaudio", 429, r"concurrency limit", "burst"),
+    # Icypeas: its per-minute limit is a 429 "exceeded the max number of requests per minute", no Retry-After.
+    Signature("icypeas", 429, r"max number of requests per minute", "burst"),
+    Signature("*", 402, r"", "balance"),
 ]
 
-# The `unrecorded` tripwire's vocabulary, hand-kept: every capacity PHRASE the table records for
-# some vendor (recording one vendor's wording arms the tripwire for every other) plus the generic
-# nouns. Period words from the 429 rows ("daily", "monthly", "per day") are NOT capacity words and
-# stay out; a bare "insufficient", "quota" or "balance" would flag "insufficient parameters",
-# "quotation mark" and "unbalanced quotes" - a caller's error echoed back. The test
-# `test_every_recorded_phrase_arms_the_tripwire` keeps this list and the table in step.
-CAPACITY_PHRASES = (
-    r"not enough credits", r"insufficient[ _]credits", r"nocreditsremaining", r"payment required",
-    r"reached your credit limit", r"exceeded the monthly request limit",
-    r"insufficient (?:credits?|balance|funds)", r"out of credits?", r"credits? (?:exhausted|remaining|left)",
+# The `unrecorded` tripwire's vocabulary: generic capacity nouns plus every row's `tripwire`
+# phrase, so recording one vendor's wording arms the tripwire for every other. A row's regex
+# never joins by itself: anyapi's `insufficient|balance` would flag "insufficient parameters", a
+# caller's error echoed back, and the 429 rows carry period words like "daily".
+_GENERIC_PHRASES = (
+    r"insufficient[ _]credits?", r"insufficient (?:credits?|balance|funds)", r"out of credits?",
+    r"credits? (?:exhausted|remaining|left)",
     r"(?:account |api |credit )?(?:balance|quota)(?: (?:has been|is|was))? (?:exceeded|reached|exhausted|limit)",
-    r"upgrade your plan",
+    r"upgrade your plan", r"\w*(?:not|n['’]t) have enough (?:credits?|quota)",
 )
+CAPACITY_PHRASES = _GENERIC_PHRASES + tuple(sig.body_regex for sig in _TABLE if sig.tripwire)
 _UNRECORDED = re.compile(r"\b(?:" + "|".join(f"(?:{p})" for p in CAPACITY_PHRASES) + r")\b", re.IGNORECASE)
 
 
@@ -83,23 +217,56 @@ def _header(headers, name: str) -> str | None:
     return None
 
 
+_DURATION = re.compile(r"(?:(-?\d+) days?, *)?(\d+):([0-5]\d):([0-5]\d(?:\.\d+)?)")
+_MAX_WAIT_S = 366 * 86400
+
+
+def _seconds(value: str) -> float | None:
+    try:
+        n = float(value)
+    except ValueError:
+        return None
+    return n if math.isfinite(n) else None
+
+
+def _delay_or_date(value: str, now: datetime) -> float | None:
+    """`Retry-After`: delta seconds or an HTTP-date (RFC 9110), or a timedelta-style
+    `[D day(s), ]HH:MM:SS` duration."""
+    n = _seconds(value)
+    if n is not None:
+        return n
+    m = _DURATION.fullmatch(value.strip())
+    if m:
+        days, h, mi, sec = m.groups()
+        return int(days or 0) * 86400 + int(h) * 3600 + int(mi) * 60 + float(sec)
+    try:
+        when = parsedate_to_datetime(value)
+    except (TypeError, ValueError):
+        return None
+    if when.tzinfo is not None:
+        when = when.astimezone(timezone.utc).replace(tzinfo=None)
+    return (when - now).total_seconds()
+
+
+def _reset(value: str, now: datetime) -> float | None:
+    """`RateLimit-Reset` / `X-RateLimit-Reset`: anything over a year is an epoch, else seconds from now."""
+    n = _seconds(value)
+    if n is None:
+        return None
+    return n - now.replace(tzinfo=timezone.utc).timestamp() if n > 365 * 86400 else n
+
+
+_WAIT_HEADERS = (("retry-after", _delay_or_date), ("ratelimit-reset", _reset), ("x-ratelimit-reset", _reset))
+
+
 def _retry_after(headers, now: datetime) -> int | None:
-    ra = _header(headers, "retry-after")
-    if ra is not None:
-        try:
-            return max(0, int(float(ra)))
-        except ValueError:
-            pass
-    reset = _header(headers, "x-ratelimit-reset")
-    if reset is not None:
-        try:
-            n = float(reset)
-        except ValueError:
-            return None
-        # epoch seconds vs seconds-from-now: anything over a year is an epoch
-        if n > 365 * 86400:
-            return max(0, int(n - now.timestamp()))
-        return max(0, int(n))
+    """Seconds until the provider serves again, rounded up, from the first wait header that parses
+    to at most a year; past is 0."""
+    for name, parse in _WAIT_HEADERS:
+        value = _header(headers, name)
+        wait = None if value is None else parse(value, now)
+        if wait is not None and wait <= _MAX_WAIT_S:
+            return max(0, math.ceil(wait))
     return None
 
 
@@ -129,13 +296,13 @@ def classify(provider: str, status: int, headers=None, body: bytes | str = b"",
     provider = (provider or "").lower()
     if _edge_block(status, headers, text_l):  # before the table: a block page carries no vendor body to match
         return Signal("edge_block", None, None, detail=text[:120])
-    for prov, st, pattern, kind in _TABLE:
-        if st != status or prov not in ("*", provider):
+    for sig in _TABLE:
+        if sig.status != status or sig.provider not in ("*", provider):
             continue
-        if pattern and not re.search(pattern, text, re.IGNORECASE):
+        if sig.body_regex and not re.search(sig.body_regex, text, re.IGNORECASE):
             continue
-        resets = _quota_reset(provider, kind, headers, now)
-        return Signal(kind, resets, None, detail=text[:120])
+        return Signal(sig.kind, _quota_reset(sig, headers, now),
+                      _retry_after(headers, now) if sig.kind == "burst" else None, detail=text[:120])
     if status == 429:
         wait = _retry_after(headers, now)
         if wait is not None and wait <= BURST_MAX_RETRY_AFTER_S:
@@ -151,18 +318,21 @@ def classify(provider: str, status: int, headers=None, body: bytes | str = b"",
     return None
 
 
-def _quota_reset(provider: str, kind: str, headers, now: datetime) -> datetime | None:
-    if kind != "quota":
+def _quota_reset(sig: Signature, headers, now: datetime) -> datetime | None:
+    if sig.kind != "quota":
         return None
     wait = _retry_after(headers, now)
     if wait is not None:
         return now + timedelta(seconds=wait)
-    if provider == "lusha":  # "Daily … limit": resets at the next UTC midnight (plan §4.1)
-        return (now + timedelta(days=1)).replace(hour=0, minute=0, second=0, microsecond=0)
-    return None  # billing-period quotas: the sweep's account call carries the real reset date
+    if sig.resets is not None:
+        return _RESETS[sig.resets](now)
+    return None
+
+
+EXHAUSTING_KINDS = ("balance", "quota")
 
 
 def is_exhausting(signal: Signal | None) -> bool:
     """Does this signal mark the account exhausted? Only confirmed balance/quota signatures do;
     burst, unknown, edge_block and unrecorded never refuse a call (plan §4.1)."""
-    return signal is not None and signal.kind in ("balance", "quota")
+    return signal is not None and signal.kind in EXHAUSTING_KINDS

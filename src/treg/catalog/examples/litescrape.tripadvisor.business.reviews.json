@@ -1,0 +1,65 @@
+{
+  "search_metadata": {
+    "id": "7baf3efe4366b708f9809816",
+    "status": "Success",
+    "json_endpoint": "https://api.litescrape.com/api/tripadvisor/reviews?place_id=18941405&tripadvisor_domain=www.tripadvisor.com&locale=en-US&start=0&num=5&sort_by=recent&translate=False",
+    "created_at": "2026-09-29 13:58:52 UTC",
+    "processed_at": "2026-09-29 13:58:52 UTC",
+    "provider_url": "https://www.tripadvisor.com/data/graphql/ids",
+    "total_time_taken": 0.894
+  },
+  "search_parameters": {
+    "place_id": 18941405,
+    "tripadvisor_domain": "www.tripadvisor.com",
+    "locale": "en-US",
+    "start": 0,
+    "num": 5,
+    "sort_by": "recent",
+    "translate": false
+  },
+  "sort": {
+    "type": "DATE",
+    "by": "DATE"
+  },
+  "reviews": [
+    {
+      "position": 1,
+      "id": "1079068550",
+      "link": "https://www.tripadvisor.com/ShowUserReviews-g30196-d18941405-r1079068550-Austin_Proper_Hotel-Austin_Texas.html",
+      "status": "PUBLISHED",
+      "rating": 5,
+      "max_rating": 5,
+      "title": "Standout - Austin’s Finest",
+      "text": "Really standout experience. Without a doubt the nicest hotel in Austin right now. The F&B, amenities (gym), and team punch way above their weight/category. I ar…",
+      "created_date": "2026-09-23",
+      "published_date": "2026-09-23",
+      "language": "en",
+      "original_language": "en",
+      "platform": "OTHER",
+      "helpful_votes": 0
+    },
+    {
+      "position": 2,
+      "id": "1076805675",
+      "link": "https://www.tripadvisor.com/ShowUserReviews-g30196-d18941405-r1076805675-Austin_Proper_Hotel-Austin_Texas.html",
+      "status": "PUBLISHED",
+      "rating": 4,
+      "max_rating": 5,
+      "title": "Weekend in Austin",
+      "text": "Nice property and convenient location. Wouldn’t give it four stars due to some oddities. Other than a closet, there is no storage space. No drawers or shelves, …",
+      "created_date": "2026-09-07",
+      "published_date": "2026-09-07",
+      "language": "en",
+      "original_language": "en",
+      "platform": "OTHER",
+      "helpful_votes": 0
+    }
+  ],
+  "search_information": {
+    "total_results": 1021,
+    "results_on_page": 5
+  },
+  "pagination": {
+    "next": "https://api.litescrape.com/api/tripadvisor/reviews?place_id=18941405&tripadvisor_domain=www.tripadvisor.com&locale=en-US&start=5&num=5&sort_by=recent&translate=False"
+  }
+}

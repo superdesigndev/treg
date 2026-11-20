@@ -1,0 +1,28 @@
+{
+  "output": {
+    "found": true,
+    "data": {
+      "avatarUrl": "https://scontent-lga3-3.cdninstagram.com/v/t51.82787-19/550234512_18532404670058217_8758519395071163708_n.jpg?_nc_cat=1&ccb=7-5&_nc_sid=bf7eb4&efg=eyJ2ZW5jb2RlX3RhZyI6InByb2ZpbGVfcGljLnd3dy4xMDgwLkMzI… [471 chars]",
+      "bio": "I build stuff",
+      "displayName": "Mark Zuckerberg",
+      "externalUrl": "http://muse.ai/join",
+      "followers": 17183992,
+      "following": 623,
+      "handle": "zuck",
+      "private": false,
+      "userId": "314216",
+      "verified": true
+    }
+  },
+  "provider": "AnyAPI",
+  "costUsd": 0.0012,
+  "items": 0,
+  "replayed": false,
+  "source": {
+    "id": "anonymous-giraffe",
+    "name": "Giraffe",
+    "kind": "anonymous",
+    "artworkKey": "giraffe"
+  },
+  "resultId": "f984c035-b347-4de2-9c71-28b1f755a0f6"
+}

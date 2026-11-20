@@ -1,0 +1,34 @@
+{
+  "output": {
+    "data": {
+      "hasMore": 1,
+      "nextCursor": "GHuNO5Kuu1Yui0NoKqdk-phtIBRrfM4C5kmS1KMyX5haTJn3h3KCetav8sEOge0accZxQJkcLTelkHYZno1zeAOxAORkhzL-l9oplkGxIt1MbeTbao6hxAOGj9Woo4LIaDEDgokPEp1xRJDa-g",
+      "videos": [
+        {
+          "authorHandle": "sza",
+          "authorName": "SZA",
+          "commentCount": 1586,
+          "createTime": 1746917771,
+          "description": "THANK YOU KENDRICK FOR COMING TO YESTERDAY’S @NotBeauty POP UP !!!! 🪲⛺️🫶🏾 @American Dream ",
+          "likeCount": 226582,
+          "playCount": 2924247,
+          "shareCount": 4538,
+          "videoId": "7502954579814845726"
+        },
+        "… 12 more item(s) truncated"
+      ]
+    },
+    "found": true
+  },
+  "provider": "AnyAPI",
+  "costUsd": 0.0009,
+  "items": 13,
+  "replayed": false,
+  "source": {
+    "id": "anonymous-bison-cb2f8f3c",
+    "name": "Bison",
+    "kind": "anonymous",
+    "artworkKey": "bison"
+  },
+  "resultId": "1421f116-898f-42a9-92df-78dc2d874dee"
+}

@@ -18,7 +18,9 @@ from sqlmodel import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from . import crypto
-from ...domain.governance.teams import cascade_delete_org, drop_member_deny_rules
+from ...domain.governance.teams import cascade_delete_org, drop_member_deny_rules, require_owned_team_slot
+from ...domain.identity.access import lock_user
+from ...domain.identity import api_keys as managed_keys
 from .models import CallRecord, Membership, Org, Secret, Tool, User
 
 DEMO_DOMAIN = "demo.treg.local"      # fake teammates live here; api refuses login for this domain
@@ -64,32 +66,37 @@ async def existing_demo_org(db: AsyncSession, owner: User) -> Org | None:
 
 async def provision(db: AsyncSession, owner: User, team_name: str) -> dict:
     """Create + seed the demo team owned by `owner`. Idempotent: reuses an existing demo org.
-    Marks the owner `onboarded`. Caller need not commit — we commit here."""
+    Marks the owner `onboarded`. Caller commits."""
+    await lock_user(db, owner.id)
     existing = await existing_demo_org(db, owner)
     if existing is not None:
         owner.onboarded = True
-        await db.commit()
         return _view(existing, reused=True)
 
+    await require_owned_team_slot(db, owner.id)
     name = (team_name or "").strip() or "Acme Design"
     org = Org(name=name, slug=await _unique_slug(_slug(name), db), demo=True)
     db.add(org)
     await db.flush()
 
-    # owner membership (token minted but never surfaced — the human uses their session/identity token)
-    db.add(Membership(user_id=owner.id, org_id=org.id, role="owner",
-                      token_hash=crypto.hash_token(crypto.new_token())))
+    # The real owner uses the signed default credential. Do not create an unreachable legacy key.
+    owner_membership = Membership(
+        user_id=owner.id, org_id=org.id, role="owner",
+        token_hash="",
+    )
+    db.add(owner_membership)
+    await db.flush()
+    await managed_keys.ensure_default_key(db, owner_membership, owner)
 
     # fake teammates — reuse the same User row across demo orgs (email is unique)
-    for full_name, handle, role in TEAMMATES:
+    for _full_name, handle, role in TEAMMATES:
         email = f"{handle}@{DEMO_DOMAIN}"
         u = (await db.execute(select(User).where(User.email == email))).scalar_one_or_none()
         if u is None:
             u = User(email=email, demo=True, onboarded=True)
             db.add(u)
             await db.flush()
-        db.add(Membership(user_id=u.id, org_id=org.id, role=role,
-                          token_hash=crypto.hash_token(crypto.new_token())))
+        db.add(Membership(user_id=u.id, org_id=org.id, role=role, token_hash=""))
 
     # a working tool + its secret (echo → postman-echo, injected server-side)
     secret = Secret(org_id=org.id, name="echo-key", owner=owner.email, kind="env",
@@ -113,7 +120,6 @@ async def provision(db: AsyncSession, owner: User, team_name: str) -> dict:
                           created_at=now - timedelta(minutes=mins)))
 
     owner.onboarded = True
-    await db.commit()
     return _view(org, reused=False)
 
 
@@ -149,16 +155,16 @@ async def reset(db: AsyncSession, owner: User) -> dict:
     return {"removed": removed}
 
 
-# ---- dashboard narrative: user builds the team by hand; we seed the tool + auto-join one teammate ----
+# Dashboard narrative: the user builds the team by hand; we seed the tool + auto-join one teammate.
 GUIDED_TEAMMATE = {"name": "Alex Rivera", "email": f"alex@{DEMO_DOMAIN}", "role": "member"}
 
 
-async def seed_tool(db: AsyncSession, org: Org, owner_email: str) -> dict:
+async def seed_tool(db: AsyncSession, org: Org, owner_email: str, sealed_value: str) -> dict:
     """Pre-seed the working echo tool (+ its secret) into the user's own team, so the no-key call
-    works without tool-setup friction. Idempotent."""
+    works without tool-setup friction. Idempotent. `sealed_value` is the echo key, already sealed."""
     if (await db.execute(select(Tool).where(Tool.org_id == org.id, Tool.name == DEMO_TOOL))).scalar_one_or_none() is not None:
         return {"tool": DEMO_TOOL, "reused": True}
-    secret = Secret(org_id=org.id, name="echo-key", owner=owner_email, kind="env", value=crypto.encrypt(DEMO_SECRET_VALUE))
+    secret = Secret(org_id=org.id, name="echo-key", owner=owner_email, kind="env", value=sealed_value)
     db.add(secret)
     await db.flush()
     db.add(Tool(org_id=org.id, name=DEMO_TOOL, owner=owner_email, base_url=DEMO_BASE, host="postman-echo.com",
@@ -180,7 +186,7 @@ async def accept_demo_invite(db: AsyncSession, org_id: int, invite) -> dict:
         db.add(u)
         await db.flush()
     if (await db.execute(select(Membership).where(Membership.user_id == u.id, Membership.org_id == org_id))).scalar_one_or_none() is None:
-        db.add(Membership(user_id=u.id, org_id=org_id, role=invite.role, token_hash=crypto.hash_token(crypto.new_token())))
+        db.add(Membership(user_id=u.id, org_id=org_id, role=invite.role, token_hash=""))
     invite.status = "accepted"
     await db.commit()
     return {"email": email, "role": invite.role}

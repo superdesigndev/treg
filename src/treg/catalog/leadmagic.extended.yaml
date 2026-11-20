@@ -76,6 +76,7 @@ endpoints:
       confidence: verified
       note: "VERIFIED live 2026-08-16 by LeadMagic's own echo: a hit answered credits_consumed: 10 (charged $0.25 exactly), a miss credits_consumed: 0 (charged $0). The 'b2b overstatement' suspicion from the August sweep was checked and REFUTED for this endpoint — the over-billing it was blamed for was the settle bug fixed in d458ee5"
     verified: 2026-07-28
+    added: '2026-07-28'
     example_response: examples/leadmagic.x.b2b-profile.json
     docs_url: https://leadmagic.io/docs/api-reference/email-to-profile
     capability: people.identity.resolve
@@ -108,6 +109,7 @@ endpoints:
       confidence: verified
       note: "VERIFIED live 2026-08-16 by LeadMagic's own echo: credits_consumed: 5, charged $0.125 exactly. The August-sweep value was correct"
     verified: 2026-07-28
+    added: '2026-07-28'
     example_response: examples/leadmagic.x.b2b-profile-email.json
     docs_url: https://leadmagic.io/docs/api-reference/profile-to-email
 
@@ -118,7 +120,7 @@ endpoints:
     method: POST
     path: /v1/people/personal-email-finder
     name: "Find a personal email from a profile URL"
-    summary: "Locates personal email addresses associated with a professional profile URL, serving as a fallback when work email is unavailable or undeliverable"
+    summary: "Locates personal email addresses associated with a professional profile URL, serving as a fallback when work email is unavailable or undeliverable. ACCURACY WARNING: a 'found' answer is unverified and can belong to someone else entirely — live 2026-09-06, 3 of 5 hits on one team's batch were addresses whose local part did not match the person's name (e.g. a Dennis returned rajasingh…@gmail.com). Verify with people.email.verify before outreach, and do not re-call for the same profile_url: every hit bills 2 credits, including repeats."
     input:
       bodyType: json
       body:
@@ -138,9 +140,10 @@ endpoints:
       confidence: documented
       note: 2 credits if found; free if not found
     verified: 2026-07-28
+    added: '2026-07-28'
     example_response: examples/leadmagic.x.personal-email-finder.json
     docs_url: https://leadmagic.io/docs/api-reference/personal-email-finder
-    capability: people.email.find
+    capability: people.email.find.personal
 
   - id: leadmagic.x.role-finder
     domain: contacts
@@ -173,6 +176,7 @@ endpoints:
       confidence: documented
       note: 2 credits when found; free on no match
     verified: 2026-07-28
+    added: '2026-07-28'
     example_response: examples/leadmagic.x.role-finder.json
     docs_url: https://leadmagic.io/docs/reference/role-finder
 
@@ -207,6 +211,7 @@ endpoints:
       confidence: documented
       note: 0.05 credits per employee returned (20 employees = 1 credit); free if no results
     verified: 2026-07-28
+    added: '2026-07-28'
     example_response: examples/leadmagic.x.employee-finder.json
     docs_url: https://leadmagic.io/docs/api-reference/employee-finder
 
@@ -240,11 +245,13 @@ endpoints:
       confidence: documented
       note: 3 credits per call, regardless of outcome
     verified: 2026-07-28
+    added: '2026-07-28'
     example_response: examples/leadmagic.x.job-change-detector.json
     docs_url: https://leadmagic.io/docs/api-reference/job-change-detector
     capability: people.signals
 
   - id: leadmagic.x.competitors-search
+    added: '2026-07-28'
     domain: companies
     tier: extended
     platform: companies
@@ -305,6 +312,7 @@ endpoints:
       confidence: documented
       note: 4 credits if funding data is found; free if none found
     verified: 2026-07-28
+    added: '2026-07-28'
     example_response: examples/leadmagic.x.company-funding.json
     docs_url: https://leadmagic.io/docs/api-reference/company-funding
 
@@ -335,6 +343,7 @@ endpoints:
       confidence: documented
       note: 1 credit if technologies are detected; free if none found
     verified: 2026-07-28
+    added: '2026-07-28'
     example_response: examples/leadmagic.x.technographics.json
     docs_url: https://leadmagic.io/docs/api-reference/technographics
 
@@ -353,11 +362,11 @@ endpoints:
         company_domain: {type: string, required: false, note: "single-company lookup", example: "leadmagic.io"}
         company_name: {type: string, required: false}
         linkedin_url: {type: string, required: false}
-        industries: {type: "array[string]", required: false}
+        industries: {type: array, items: {type: string}, required: false}
         min_employees: {type: integer, required: false}
         max_employees: {type: integer, required: false}
-        country_codes: {type: "array[string]", required: false}
-        tech_stack: {type: "array[string]", required: false}
+        country_codes: {type: array, items: {type: string}, required: false}
+        tech_stack: {type: array, items: {type: string}, required: false}
         sort_by: {type: string, required: false, note: "linkedin_followers | total_funding | linkedin_employee_count | revenue_min | revenue_max | founded_year | total_contacts"}
         limit: {type: integer, required: false, note: "max 50", example: 1}
         cursor: {type: string, required: false, note: "opaque pagination token from a previous response"}
@@ -377,6 +386,7 @@ endpoints:
       confidence: documented
       note: 1 credit per company returned; free if zero matches. Rate limit 100 req/min, ~2 req/s burst
     verified: 2026-07-28
+    added: '2026-07-28'
     example_response: examples/leadmagic.x.companies-search-v3.json
     docs_url: https://leadmagic.io/docs/api-reference/company-search-v3
 
@@ -392,10 +402,10 @@ endpoints:
     input:
       bodyType: json
       body:
-        titles.include: {type: "array[string]", required: false, example: ["Software Engineer"]}
-        companies.include: {type: "array[string]", required: false, note: "company domains", example: ["leadmagic.io"]}
-        location.countries: {type: "array[string]", required: false, example: ["US"]}
-        seniority: {type: "array[string]", required: false}
+        titles.include: {type: array, items: {type: string}, required: false, example: ["Software Engineer"]}
+        companies.include: {type: array, items: {type: string}, required: false, note: "company domains", example: ["leadmagic.io"]}
+        location.countries: {type: array, items: {type: string}, required: false, example: ["US"]}
+        seniority: {type: array, items: {type: string}, required: false}
         hasRemote: {type: boolean, required: false}
         postedWithin: {type: integer, required: false, note: "days", example: 30}
         limit: {type: integer, required: false, example: 1}
@@ -417,6 +427,7 @@ endpoints:
       confidence: documented
       note: 1 credit per returned job/signal; free when no jobs are returned. Rate limit 300 req/min, ~5 req/s burst
     verified: 2026-07-28
+    added: '2026-07-28'
     example_response: examples/leadmagic.x.jobs-search-v3.json
     docs_url: https://leadmagic.io/docs/api-reference/job-search
 
@@ -457,10 +468,12 @@ endpoints:
       confidence: documented
       note: 1 credit per job returned; free if no jobs found
     verified: 2026-07-28
+    added: '2026-07-28'
     example_response: examples/leadmagic.x.jobs-finder.json
     docs_url: https://leadmagic.io/docs/api-reference/jobs-finder
 
   - id: leadmagic.x.google-ads-search
+    added: '2026-07-28'
     tier: extended
     platform: google-ads
     method: POST
@@ -491,6 +504,7 @@ endpoints:
     docs_url: https://leadmagic.io/docs/api-reference/google-ads-search
 
   - id: leadmagic.x.meta-ads-search
+    added: '2026-07-28'
     tier: extended
     platform: meta-ads
     method: POST
@@ -541,6 +555,7 @@ endpoints:
     # captured live 2026-08-14 (5 ads, 1.2 credits consumed — an exact fit to the verified
     # 0.2 x (ads+1) formula, a fourth confirmation of it), redaction-scanned, $0.03 charged.
     verified: 2026-08-14
+    added: '2026-07-28'
     example_response: examples/leadmagic.x.b2b-ads-search.json
     cost:
       type: per_call

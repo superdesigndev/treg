@@ -1,0 +1,32 @@
+{
+  "output": {
+    "data": {
+      "items": [
+        {
+          "actor": {
+            "id": "ACoAABbI-SEBIOzVffMer7sU52k0xBt67XbQxlQ",
+            "linkedinUrl": "https://www.linkedin.com/in/ACoAABbI-SEBIOzVffMer7sU52k0xBt67XbQxlQ",
+            "name": "Dr. Ahmed Hamdy Mhsb, PhD, EDiR",
+            "pictureUrl": "https://media.licdn.com/dms/image/v2/D4D03AQEHaY2QPIu4hg/profile-displayphoto-crop_800_800/B4DZye1l1qJkAI-/0/1772191380549?e=1791417600&v=beta&t=lDtijNrTmGtxhKZkF6RwwIeam8KHoa0gmHe7LBUrPnM",
+            "position": "Associate Professor and Consultant Radiologist | Healthcare Founder & CEO | Radiology Operations | Clinical AI Strategy"
+          },
+          "postId": "urn:li:ugcPost:7475945306178670592",
+          "reactionType": "LIKE"
+        },
+        "… 4 more item(s) truncated"
+      ]
+    },
+    "found": true
+  },
+  "provider": "AnyAPI",
+  "costUsd": 0.005,
+  "items": 5,
+  "replayed": false,
+  "source": {
+    "id": "anonymous-hedgehog-338ce087",
+    "name": "Hedgehog",
+    "kind": "anonymous",
+    "artworkKey": "hedgehog"
+  },
+  "resultId": "f265b830-329a-452d-b5c0-0046dc8c0810"
+}

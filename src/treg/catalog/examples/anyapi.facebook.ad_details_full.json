@@ -1,0 +1,18 @@
+{
+  "output": {
+    "found": false,
+    "data": null,
+    "reason": "not_found"
+  },
+  "provider": "AnyAPI",
+  "costUsd": 0.00462,
+  "items": 0,
+  "replayed": false,
+  "source": {
+    "id": "anonymous-octopus",
+    "name": "Octopus",
+    "kind": "anonymous",
+    "artworkKey": "octopus"
+  },
+  "resultId": "9094d817-78f1-400f-9c94-287c9d3feedb"
+}

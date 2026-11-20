@@ -7,8 +7,24 @@ writes and the user-global scope — a project-scoped MCP entry is a per-repo su
 from __future__ import annotations
 
 import json
+import os
+import stat
+import threading
+from concurrent.futures import ThreadPoolExecutor
+from contextlib import contextmanager
+
+import pytest
 
 from treg import mcp_install
+
+
+@contextmanager
+def _umask(mask):
+    old = os.umask(mask)
+    try:
+        yield
+    finally:
+        os.umask(old)
 
 
 def test_json_agents_write_user_global_header_config(tmp_path, monkeypatch):
@@ -40,6 +56,190 @@ def test_json_agents_write_user_global_header_config(tmp_path, monkeypatch):
     mcp_install.install_mcp(base_url="https://treg.to", token="TESTKEY", only=["cursor"])
     again = json.loads((cur / "mcp.json").read_text())
     assert list(again["mcpServers"].keys()) == ["other", "treg"]
+
+
+@pytest.mark.skipif(os.name == "nt", reason="Windows ACLs are not POSIX mode bits")
+@pytest.mark.parametrize(("existing_mode", "mask"), [
+    (None, 0o022),
+    (0o644, 0o022),
+    (0o600, 0o022),
+    (0o644, 0o077),
+    (0o600, 0o777),
+])
+def test_json_agent_config_is_0600_for_new_and_existing_files(
+        tmp_path, existing_mode, mask):
+    target = tmp_path / "opencode.json"
+    if existing_mode is not None:
+        target.write_text(json.dumps({"mcp": {"other": {"url": "https://other.example"}}}))
+        target.chmod(existing_mode)
+    meta = {
+        "path": lambda: target,
+        "root": "mcp",
+        "entry": lambda url, token: {"url": url, "token": token},
+    }
+
+    with _umask(mask):
+        status, _ = mcp_install._write_json_agent(
+            meta, "treg", "https://treg.example/mcp/", "synthetic-token")
+
+    assert status == "ok"
+    assert stat.S_IMODE(target.stat().st_mode) == 0o600
+    if existing_mode is not None:
+        assert json.loads(target.read_text())["mcp"]["other"] == {
+            "url": "https://other.example"
+        }
+
+
+@pytest.mark.skipif(os.name == "nt", reason="symlink behavior differs on Windows")
+def test_json_agent_ignores_the_old_fixed_tmp_symlink(tmp_path):
+    target = tmp_path / "opencode.json"
+    victim = tmp_path / "victim.json"
+    victim.write_text("do not overwrite")
+    old_tmp = tmp_path / "opencode.json.tmp"
+    old_tmp.symlink_to(victim)
+    meta = {
+        "path": lambda: target,
+        "root": "mcp",
+        "entry": lambda url, token: {"url": url, "token": token},
+    }
+
+    status, _ = mcp_install._write_json_agent(
+        meta, "treg", "https://treg.example/mcp/", "synthetic-token")
+
+    assert status == "ok"
+    assert old_tmp.is_symlink()
+    assert victim.read_text() == "do not overwrite"
+
+
+@pytest.mark.skipif(os.name == "nt", reason="Windows ACLs are not POSIX mode bits")
+def test_json_agent_creates_private_config_directory(tmp_path):
+    target = tmp_path / "agent" / "opencode.json"
+    meta = {
+        "path": lambda: target,
+        "root": "mcp",
+        "entry": lambda url, token: {"url": url, "token": token},
+    }
+
+    with _umask(0o000):
+        status, _ = mcp_install._write_json_agent(
+            meta, "treg", "https://treg.example/mcp/", "synthetic-token")
+
+    assert status == "ok"
+    assert stat.S_IMODE(target.parent.stat().st_mode) == 0o700
+    assert stat.S_IMODE(target.stat().st_mode) == 0o600
+
+
+def test_json_agent_failure_cleans_temp_and_preserves_original(tmp_path, monkeypatch):
+    target = tmp_path / "opencode.json"
+    original = json.dumps({"mcp": {"other": {"url": "https://other.example"}}})
+    target.write_text(original)
+    meta = {
+        "path": lambda: target,
+        "root": "mcp",
+        "entry": lambda url, token: {"url": url, "token": token},
+    }
+
+    def fail_replace(*_):
+        raise OSError("synthetic replace failure")
+
+    monkeypatch.setattr(mcp_install.os, "replace", fail_replace)
+
+    status, detail = mcp_install._write_json_agent(
+        meta, "treg", "https://treg.example/mcp/", "never-print-this-token")
+
+    assert status == "error"
+    assert "never-print-this-token" not in detail
+    assert target.read_text() == original
+    assert list(tmp_path.glob(".opencode.json.*.tmp")) == []
+
+
+def test_json_agent_concurrent_writers_use_distinct_tempfiles(tmp_path, monkeypatch):
+    target = tmp_path / "opencode.json"
+    target.write_text(json.dumps({"mcp": {"other": {"url": "https://other.example"}}}))
+    meta = {
+        "path": lambda: target,
+        "root": "mcp",
+        "entry": lambda url, token: {"url": url, "token": token},
+    }
+    real_mkstemp = mcp_install.tempfile.mkstemp
+    barrier = threading.Barrier(2)
+    temp_names = []
+
+    def synchronized_mkstemp(*args, **kwargs):
+        opened = real_mkstemp(*args, **kwargs)
+        temp_names.append(opened[1])
+        barrier.wait(timeout=5)
+        return opened
+
+    monkeypatch.setattr(mcp_install.tempfile, "mkstemp", synchronized_mkstemp)
+    with ThreadPoolExecutor(max_workers=2) as pool:
+        results = list(pool.map(
+            lambda token: mcp_install._write_json_agent(
+                meta, "treg", "https://treg.example/mcp/", token),
+            ["synthetic-token-one", "synthetic-token-two"],
+        ))
+
+    assert [status for status, _ in results] == ["ok", "ok"]
+    assert len(set(temp_names)) == 2
+    assert json.loads(target.read_text())["mcp"]["other"] == {
+        "url": "https://other.example"
+    }
+    assert list(tmp_path.glob(".opencode.json.*.tmp")) == []
+
+
+@pytest.mark.skipif(os.name == "nt", reason="Windows ACLs are not POSIX mode bits")
+def test_actual_mcp_install_cli_writes_restricted_config(tmp_path, monkeypatch):
+    """Exercise parsing, token validation, agent detection and the end-user install command."""
+    import httpx
+
+    from treg import cli, cli_analytics
+
+    class FakeClient:
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *args):
+            return False
+
+        def get(self, path):
+            assert path == "/auth/me"
+            return httpx.Response(200, json={"email": "synthetic@example.test"},
+                                  request=httpx.Request("GET", "https://treg.example/auth/me"))
+
+    def fail_external_command(*args, **kwargs):
+        raise AssertionError("the isolated CLI test must not run an external command")
+
+    config = tmp_path / "treg-config.json"
+    config.write_text(json.dumps({
+        "base_url": "https://treg.example",
+        "token": "synthetic-cli-token",
+    }))
+    opencode_dir = tmp_path / ".config" / "opencode"
+    opencode_dir.mkdir(parents=True)
+    target = opencode_dir / "opencode.json"
+    target.write_text(json.dumps({"mcp": {"other": {"url": "https://other.example"}}}))
+    target.chmod(0o600)
+    monkeypatch.setattr(cli, "CONFIG_PATH", config)
+    monkeypatch.setattr(cli, "_client", lambda cfg, **kwargs: FakeClient())
+    monkeypatch.setattr(cli_analytics, "track_command", lambda **kwargs: None)
+    monkeypatch.setattr(mcp_install, "HOME", tmp_path)
+    monkeypatch.setattr(mcp_install, "MCP_AGENTS", {
+        "opencode": mcp_install.MCP_AGENTS["opencode"],
+    })
+    monkeypatch.setattr(mcp_install, "MANUAL_AGENTS", {})
+    monkeypatch.setattr(mcp_install.subprocess, "run", fail_external_command)
+    monkeypatch.setenv("XDG_CONFIG_HOME", str(tmp_path / ".config"))
+    monkeypatch.delenv("TREG_TOKEN", raising=False)
+    monkeypatch.delenv("TREG_URL", raising=False)
+
+    with _umask(0o022):
+        cli.main(["mcp", "install"])
+
+    assert stat.S_IMODE(target.stat().st_mode) == 0o600
+    written = json.loads(target.read_text())
+    assert written["mcp"]["other"] == {"url": "https://other.example"}
+    assert written["mcp"]["treg"]["headers"]["Authorization"] == \
+        "Bearer synthetic-cli-token"
 
 
 def test_uninstalled_agents_are_skipped_not_written(tmp_path, monkeypatch):
@@ -169,3 +369,170 @@ def test_is_transient_network_error_detects_ssl_and_connection_errors():
     assert cli._is_transient_network_error(Exception("SSL: WRONG_VERSION_NUMBER"))
     assert not cli._is_transient_network_error(ValueError("bad value"))
     assert not cli._is_transient_network_error(KeyError("missing key"))
+
+
+# ---- Codex: TOML, inline header ------------------------------------------------------------------
+
+def _codex_install(tmp_path, monkeypatch, existing: str | None, token="TESTKEY"):
+    monkeypatch.setattr(mcp_install, "HOME", tmp_path)
+    monkeypatch.setenv("XDG_CONFIG_HOME", str(tmp_path / ".config"))
+    (tmp_path / ".codex").mkdir()
+    if existing is not None:
+        (tmp_path / ".codex" / "config.toml").write_text(existing)
+    out = mcp_install.install_mcp(base_url="https://treg.to", token=token, only=["codex"])
+    return out, (tmp_path / ".codex" / "config.toml")
+
+
+def test_codex_writes_inline_header_table_not_an_env_var(tmp_path, monkeypatch):
+    """The whole point: `http_headers` inline, never `bearer_token_env_var` — a token handed to Codex
+    by env-var reference vanishes on the next app restart and Codex silently drops every treg tool."""
+    import tomllib
+    out, cfg = _codex_install(tmp_path, monkeypatch, existing=None)
+    assert out["results"] == [("Codex", "ok", str(cfg))] and out["manual"] == [], out
+    data = tomllib.loads(cfg.read_text())
+    assert data["mcp_servers"]["treg"] == {
+        "url": "https://treg.to/mcp/", "http_headers": {"Authorization": "Bearer TESTKEY"}}
+    assert "bearer_token_env_var" not in cfg.read_text()
+    if os.name != "nt":
+        assert cfg.stat().st_mode & 0o777 == 0o600
+
+
+def test_codex_replaces_a_stale_env_var_table_and_keeps_the_rest(tmp_path, monkeypatch):
+    """A config an agent wrote from the OLD how-to (bearer_token_env_var) is replaced in place; every
+    other table — before and after ours, including the sub-table style — survives byte-for-byte."""
+    import tomllib
+    before = ('model = "gpt-5"\n\n[mcp_servers.figma]\nurl = "https://mcp.figma.com/mcp"\n\n'
+              '[mcp_servers.treg]\nurl = "https://treg.to/mcp/"\nbearer_token_env_var = "TREG_TOKEN"\n\n'
+              # a hand-wired twin under another name, token in the env-var-NAME field (seen in the wild)
+              '[mcp_servers.treg-to_mcp]\nurl = "https://treg.to/mcp/"\nbearer_token_env_var = "eyJ.x"\n\n'
+              '[mcp_servers.node_repl]\ncommand = "node_repl"\n\n[mcp_servers.node_repl.env]\nX = "1"\n')
+    out, cfg = _codex_install(tmp_path, monkeypatch, existing=before, token="NEWKEY")
+    assert out["results"][0][1] == "ok", out
+    data = tomllib.loads(cfg.read_text())
+    assert data["model"] == "gpt-5"
+    assert data["mcp_servers"]["figma"] == {"url": "https://mcp.figma.com/mcp"}
+    assert data["mcp_servers"]["node_repl"] == {"command": "node_repl", "env": {"X": "1"}}
+    assert data["mcp_servers"]["treg"] == {
+        "url": "https://treg.to/mcp/", "http_headers": {"Authorization": "Bearer NEWKEY"}}
+    assert cfg.read_text().count("[mcp_servers.treg]") == 1
+    assert "treg-to_mcp" not in cfg.read_text() and "eyJ.x" not in cfg.read_text()
+    # idempotent
+    mcp_install.install_mcp(base_url="https://treg.to", token="NEWKEY", only=["codex"])
+    assert cfg.read_text().count("[mcp_servers.treg]") == 1
+
+
+def test_codex_refuses_to_touch_a_config_it_cannot_prove_correct(tmp_path, monkeypatch):
+    """Unparseable TOML, or a hand-written `[mcp_servers.treg.http_headers]` sub-table that would
+    collide with our inline map: report an error and leave the file exactly as it was."""
+    broken = 'model = "gpt-5"\n[mcp_servers.treg\nurl = "x"\n'
+    out, cfg = _codex_install(tmp_path, monkeypatch, existing=broken)
+    assert out["results"][0][1] == "error" and cfg.read_text() == broken
+
+    subtable = ('[mcp_servers.treg]\nurl = "https://treg.to/mcp/"\n\n'
+                '[mcp_servers.treg.http_headers]\nAuthorization = "Bearer OLD"\n')
+    (tmp_path / ".codex" / "config.toml").write_text(subtable)
+    out = mcp_install.install_mcp(base_url="https://treg.to", token="NEW", only=["codex"])
+    assert out["results"][0][1] == "error", out
+    assert cfg.read_text() == subtable
+
+
+# ---- OAuth repair path (`treg mcp install --oauth`) ---------------------------------------------
+
+def test_oauth_rewrites_json_agents_without_authorization_headers(tmp_path, monkeypatch):
+    """Cursor + opencode: URL-only entries, no headers - so the client can fall through to OAuth.
+    A prior header-authed entry is replaced; unrelated servers survive."""
+    monkeypatch.setattr(mcp_install, "HOME", tmp_path)
+    monkeypatch.setenv("XDG_CONFIG_HOME", str(tmp_path / ".config"))
+    cur = tmp_path / ".cursor"; cur.mkdir()
+    (cur / "mcp.json").write_text(json.dumps({
+        "mcpServers": {
+            "other": {"url": "http://x"},
+            "treg": {"url": "https://treg.to/mcp/",
+                     "headers": {"Authorization": "Bearer DEAD"}},
+        }}))
+    oc_dir = tmp_path / ".config" / "opencode"; oc_dir.mkdir(parents=True)
+    (oc_dir / "opencode.json").write_text(json.dumps({
+        "mcp": {"treg": {"type": "remote", "url": "https://treg.to/mcp/", "enabled": True,
+                         "headers": {"Authorization": "Bearer DEAD"}}}}))
+
+    out = mcp_install.install_mcp(base_url="https://treg.to", token="", oauth=True,
+                                  only=["cursor", "opencode"])
+    assert all(s == "ok" for _, s, _ in out["results"]), out
+
+    cursor = json.loads((cur / "mcp.json").read_text())
+    assert cursor["mcpServers"]["other"] == {"url": "http://x"}
+    assert cursor["mcpServers"]["treg"] == {"url": "https://treg.to/mcp/"}
+
+    oc = json.loads((oc_dir / "opencode.json").read_text())
+    assert oc["mcp"]["treg"] == {"type": "remote", "url": "https://treg.to/mcp/", "enabled": True}
+
+
+def test_oauth_rewrites_codex_without_http_headers(tmp_path, monkeypatch):
+    """Codex TOML: URL only, no http_headers - so `codex mcp login` can authorize."""
+    import tomllib
+    monkeypatch.setattr(mcp_install, "HOME", tmp_path)
+    monkeypatch.setenv("XDG_CONFIG_HOME", str(tmp_path / ".config"))
+    (tmp_path / ".codex").mkdir()
+    (tmp_path / ".codex" / "config.toml").write_text(
+        '[mcp_servers.treg]\nurl = "https://treg.to/mcp/"\n'
+        'http_headers = { "Authorization" = "Bearer DEAD" }\n')
+    out = mcp_install.install_mcp(base_url="https://treg.to", token="", oauth=True, only=["codex"])
+    assert out["results"][0][1] == "ok", out
+    data = tomllib.loads((tmp_path / ".codex" / "config.toml").read_text())
+    assert data["mcp_servers"]["treg"] == {"url": "https://treg.to/mcp/"}
+    assert "Authorization" not in (tmp_path / ".codex" / "config.toml").read_text()
+
+
+def test_oauth_claude_add_omits_header(tmp_path, monkeypatch):
+    """Claude Code: `claude mcp add` without --header so OAuth fallback is not disabled."""
+    monkeypatch.setattr(mcp_install, "HOME", tmp_path)
+    monkeypatch.setenv("XDG_CONFIG_HOME", str(tmp_path / ".config"))
+    (tmp_path / ".claude").mkdir()
+    calls = []
+
+    def fake_which(name):
+        return "/usr/bin/claude" if name == "claude" else None
+
+    def fake_run(cmd, **kwargs):
+        calls.append(list(cmd))
+        class R:
+            returncode = 0
+            stdout = "ok"
+            stderr = ""
+        return R()
+
+    monkeypatch.setattr(mcp_install.shutil, "which", fake_which)
+    monkeypatch.setattr(mcp_install.subprocess, "run", fake_run)
+    out = mcp_install.install_mcp(base_url="https://treg.to", token="IGNORED", oauth=True,
+                                  only=["claude"])
+    assert out["results"][0][1] == "ok", out
+    add = next(c for c in calls if "add" in c)
+    assert "--header" not in add
+    assert "Authorization" not in " ".join(add)
+    assert add[-2:] == ["treg", "https://treg.to/mcp/"]
+
+
+def test_cmd_mcp_install_oauth_needs_no_token(tmp_path, monkeypatch, capsys):
+    """`--oauth` must not require login or hit /auth/me - the stored key is already dead."""
+    from types import SimpleNamespace
+
+    from treg import cli
+
+    monkeypatch.setattr(mcp_install, "HOME", tmp_path)
+    monkeypatch.setenv("XDG_CONFIG_HOME", str(tmp_path / ".config"))
+    (tmp_path / ".cursor").mkdir()
+    monkeypatch.setattr(mcp_install, "MCP_AGENTS", {"cursor": mcp_install.MCP_AGENTS["cursor"]})
+    monkeypatch.setattr(mcp_install, "MANUAL_AGENTS", {})
+    monkeypatch.delenv("TREG_TOKEN", raising=False)
+
+    def boom(*a, **k):
+        raise AssertionError("oauth repair must not verify a token")
+
+    monkeypatch.setattr(cli, "_client", boom)
+    cli.cmd_mcp_install(SimpleNamespace(name=None, oauth=True),
+                        {"base_url": "https://treg.to"})  # no token in cfg
+    written = json.loads((tmp_path / ".cursor" / "mcp.json").read_text())
+    assert written["mcpServers"]["treg"] == {"url": "https://treg.to/mcp/"}
+    out = capsys.readouterr().out
+    assert "OAuth" in out
+    assert "codex mcp login" in out

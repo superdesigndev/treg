@@ -4,10 +4,10 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Claude Fable 5.1 + treg — Run your GTM from the terminal</title>
-<meta name="description" content="One prompt in Claude Code. Fable 5.1 reads the market, plans, and runs outreach, SEO, social and ads as four agents. treg gives it 2,896 data & tools on one key — open source, no subscription, 0% markup.">
+<meta name="description" content="One prompt in Claude Code. Fable 5.1 reads the market, plans, and runs outreach, SEO, social and ads as four agents. treg gives it {ENDPOINTS} data & tools on one key — open source, no subscription, 0% markup.">
 <link rel="canonical" href="https://treg.to/fable"/>
 <meta property="og:title" content="Claude Fable 5.1 + treg — Run your GTM from the terminal"/>
-<meta property="og:description" content="One prompt. Fable 5.1 reads the market, plans, and runs outreach, SEO, social and ads as four agents. 2,896 data & tools on one key — open source, no subscription, 0% markup."/>
+<meta property="og:description" content="One prompt. Fable 5.1 reads the market, plans, and runs outreach, SEO, social and ads as four agents. {ENDPOINTS} data & tools on one key — open source, no subscription, 0% markup."/>
 <meta property="og:url" content="https://treg.to/fable"/>
 <meta property="og:type" content="website"/>
 <meta property="og:image" content="https://treg.to/media/fable/film-poster.jpg"/>
@@ -321,7 +321,8 @@
     .pgrid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
     .bill { flex-direction: column; gap: 30px; } .bill-divider { display: none; } .bill-left { min-width: 0; width: 100%; max-width: 360px; } .bill-right { align-items: center; text-align: center; }
     .cta-final { padding: 80px 0 30px; }
-      .term .think { flex-wrap: wrap; row-gap: 6px; }
+    .term .think { flex-wrap: wrap; row-gap: 6px; }
+    .srcs { flex-wrap: wrap; row-gap: 4px; margin-left: 0; }
     .vis .vis-row { grid-template-columns: 1fr; }
     .hero { padding-top: 56px; }
     .abody { overflow-x: auto; }
@@ -333,6 +334,7 @@
   @media (prefers-reduced-motion: reduce) { .b-row .strike { transform: scaleX(1); transition: none; } .bill-right .bb { opacity: 1; transform: none; transition: none; } }
 
 </style>
+<script src="/captcha.js" defer></script>
 </head>
 <body>
 
@@ -341,7 +343,7 @@
     <a class="brand" href="/" aria-label="treg home"><svg viewBox="0 0 512 512" aria-hidden="true"><rect width="512" height="512" rx="112" fill="#141413"/><rect x="111" y="111" width="140.5" height="140.5" rx="20" fill="#fff"/><rect x="260.5" y="260.5" width="140.5" height="140.5" rx="20" fill="#fff"/></svg> treg <span class="sl">/</span> <span class="sub">Fable 5.1</span></a>
     <div class="links">
       <a href="#story">How it works</a>
-      <a href="#tools">2,896 tools</a>
+      <a href="#tools">{ENDPOINTS} tools</a>
       <a href="#pricing">Pricing</a>
       <a href="https://github.com/superdesigndev/treg" target="_blank" rel="noopener"><svg width="15" height="15" viewBox="0 0 16 16" fill="currentColor" aria-hidden="true"><path d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27s1.36.09 2 .27c1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.01 8.01 0 0 0 16 8c0-4.42-3.58-8-8-8Z"/></svg> Open source</a>
       <a href="https://x.com/treg_ai" target="_blank" rel="noopener" aria-label="treg on X"><svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M18.244 2.25h3.308l-7.227 8.26 8.502 11.24H16.17l-5.214-6.817L4.99 21.75H1.68l7.73-8.835L1.254 2.25H8.08l4.713 6.231 5.451-6.231Zm-1.161 17.52h1.833L7.084 4.126H5.117l11.966 15.644Z"/></svg></a>
@@ -542,21 +544,21 @@
   </div>
 </section>
 
-<!-- ───────────── 04. ONE KEY — 2,896 DATA & TOOLS ───────────── -->
+<!-- ───────────── 04. ONE KEY — DATA & TOOLS ───────────── -->
 <section id="tools" class="centered">
   <div class="wrap">
     <div class="head">
       <div class="num">04</div>
-      <h2 class="tw-title">One key — <em>2,896</em> data &amp; tools.</h2>
+      <h2 class="tw-title">One key — <em>{ENDPOINTS}</em> data &amp; tools.</h2>
       <p class="lede">Every source the four agents used, and the rest of the catalog: the providers that actually hold the data, behind one token and one balance. Your own keys always win over treg's.</p>
     </div>
     <div class="catwrap">
       <div class="pgrid">
-      <div class="pcard"><span class="ph"><img src="media/people-search/exa.png" alt=""></span><span class="pt"><b>Find person by role</b><s>Exa · $0.010 / query</s></span></div>
+      <div class="pcard"><span class="ph"><img src="media/people-search/exa.png" alt=""></span><span class="pt"><b>Find person by role</b><s>Exa · $0.007 / query</s></span></div>
       <div class="pcard"><span class="ph"><img src="media/people-search/apollo.png" alt=""></span><span class="pt"><b>Match + work email</b><s>Apollo · $0.026 / contact</s></span></div>
-      <div class="pcard"><span class="ph"><img src="media/people-search/hunter.png" alt=""></span><span class="pt"><b>Email verify</b><s>Hunter · $0.003 / check</s></span></div>
-      <div class="pcard"><span class="ph"><img src="media/people-search/pdl.png" alt=""></span><span class="pt"><b>Person enrich</b><s>People Data Labs · $0.028</s></span></div>
-      <div class="pcard"><span class="ph"><img src="media/people-search/crustdata.png" alt=""></span><span class="pt"><b>Company &amp; headcount</b><s>Crustdata · $0.010 / co</s></span></div>
+      <div class="pcard"><span class="ph"><img src="media/people-search/hunter.png" alt=""></span><span class="pt"><b>Email verify</b><s>Hunter · $0.0123 / check</s></span></div>
+      <div class="pcard"><span class="ph"><img src="media/people-search/pdl.png" alt=""></span><span class="pt"><b>Person enrich</b><s>People Data Labs · $0.28</s></span></div>
+      <div class="pcard"><span class="ph"><img src="media/people-search/crustdata.png" alt=""></span><span class="pt"><b>Company &amp; headcount</b><s>Crustdata · $0.009 / co</s></span></div>
       <div class="pcard"><span class="ph"><img src="media/people-search/clay.png" alt=""></span><span class="pt"><b>Waterfall enrichment</b><s class="was">Clay · $149/mo</s></span></div>
       <div class="pcard"><span class="ph"><img src="logos/linkedin.svg" alt=""></span><span class="pt"><b>LinkedIn profiles</b><s>no official API</s></span></div>
       <div class="pcard"><span class="ph"><img src="logos/x.svg" alt=""></span><span class="pt"><b>X posts &amp; trends</b><s>X · pay per use</s></span></div>
@@ -565,7 +567,7 @@
       <div class="pcard"><span class="ph"><img src="logos/youtube.svg" alt=""></span><span class="pt"><b>YouTube videos &amp; stats</b><s>quota-capped</s></span></div>
       <div class="pcard"><span class="ph"><img src="media/fable/reddit-f5f9.png" alt=""></span><span class="pt"><b>Reddit threads</b><s>rate-limited</s></span></div>
       <div class="pcard"><span class="ph"><img src="media/fable/google-a5ed.png" alt=""></span><span class="pt"><b>Live SERP results</b><s class="was">SerpApi · $75/mo</s></span></div>
-      <div class="pcard"><span class="ph"><img src="media/people-search/dataforseo.png" alt=""></span><span class="pt"><b>Keyword volume</b><s>DataForSEO · $0.002</s></span></div>
+      <div class="pcard"><span class="ph"><img src="media/people-search/dataforseo.png" alt=""></span><span class="pt"><b>Keyword volume</b><s>DataForSEO · $0.09 / call</s></span></div>
       <div class="pcard"><span class="ph"><img src="logos/semrush.svg" alt=""></span><span class="pt"><b>Domain &amp; keyword gaps</b><s class="was">Semrush · $139/mo</s></span></div>
       <div class="pcard"><span class="ph"><img src="media/people-search/majestic.png" alt=""></span><span class="pt"><b>Backlinks &amp; anchors</b><s class="was">Majestic · $50/mo</s></span></div>
       <div class="pcard"><span class="ph"><img src="media/fable/google-ads.png" alt=""></span><span class="pt"><b>Ad research</b><s>Google Ads library</s></span></div>
@@ -575,7 +577,7 @@
       <div class="pcard"><span class="ph"><img src="media/people-search/apify.png" alt=""></span><span class="pt"><b>Web scraping</b><s>Apify actors</s></span></div>
       <div class="pcard"><span class="ph"><img src="media/people-search/brightdata.png" alt=""></span><span class="pt"><b>Proxy scraping</b><s>Bright Data</s></span></div>
       <div class="pcard"><span class="ph"><img src="media/people-search/crunchbase.png" alt=""></span><span class="pt"><b>Funding rounds</b><s class="was">Crunchbase · $99/mo</s></span></div>
-      <div class="pcard"><span class="ph"><img src="media/people-search/coresignal.png" alt=""></span><span class="pt"><b>Job postings</b><s>Coresignal · $0.020</s></span></div>
+      <div class="pcard"><span class="ph"><img src="logos/predictleads.svg" alt=""></span><span class="pt"><b>Job postings</b><s>PredictLeads · $0.04 / co</s></span></div>
       </div>
       <div class="morewrap" aria-hidden="true">
         <div class="pgrid">
@@ -593,7 +595,7 @@
       <div class="pcard"><span class="ph"><img src="logos/google-business-profile.svg" alt=""></span><span class="pt"><b>Business reviews</b><s>Google</s></span></div>
         </div>
       </div>
-      <div class="moreline">+ 2,860 more across 60 providers</div>
+      <div class="moreline">+ many more across {PROVIDERS} providers</div>
       <div class="ctas" style="display:flex;justify-content:center;margin-top:20px">
         <a class="btn dark" href="/catalog">Browse the catalog →</a>
       </div>
@@ -629,7 +631,7 @@
     </div>
     <p class="fineprint">Current catalog rates. New teams start with $1.00 free.</p>
     <div class="stats">
-      <div class="stat"><div class="n">Open source</div><div class="l">treg is AGPL on GitHub. Self-host it or use treg.to. Your keys stay yours.</div></div>
+      <div class="stat"><div class="n">Open source</div><div class="l">treg is Apache 2.0 on GitHub. Self-host it or use treg.to. Your keys stay yours.</div></div>
       <div class="stat"><div class="n">No subscription</div><div class="l">Prepaid balance. Per call. Misses free.</div></div>
       <div class="stat"><div class="n">0% markup</div><div class="l">The provider's own rate. Compared side by side; your agent picks.</div></div>
     </div>
@@ -661,7 +663,7 @@
     </div>
     <nav class="bf-cols" aria-label="Site">
       <div class="bf-col"><div class="lab">Explore</div>
-        <a href="/catalog">Catalog</a><a href="/use-cases">Use cases</a><a href="/workflows">Workflows</a><a href="/agents/claude-code">Agents</a></div>
+        <a href="/catalog">Catalog</a><a href="/use-cases">Use cases</a><a href="/workflows">Workflows</a><!--hosted--><a href="/showcase">Showcase</a><!--/hosted--><a href="/rankings">Rankings</a><!--hosted--><a href="/gtm-engineering">GTM engineering</a><!--/hosted--><a href="/agents/claude-code">Agents</a></div>
       <div class="bf-col"><div class="lab">Build</div>
         <a href="/tutorial">Docs</a><a href="/docs">API</a><a href="/llms.txt">llms.txt</a><a href="https://github.com/superdesigndev/treg" target="_blank" rel="noopener">GitHub ↗</a></div>
       <div class="bf-col"><div class="lab">Company</div>
@@ -681,7 +683,7 @@
     <a class="btn" href="/auth/google" style="text-decoration:none">Continue with Google</a>
     <div class="div">or email a code</div>
     <div id="em-step1">
-      <input id="em-input" type="email" placeholder="you@work.com"/>
+      <input id="em-input" type="email" data-captcha="email_start" placeholder="you@work.com"/>
       <button class="btn" id="em-btn1">Email me a sign-in code</button>
     </div>
     <div id="em-step2" style="display:none">
@@ -745,8 +747,8 @@
     var em = document.getElementById('em-input').value.trim();
     var err = document.getElementById('em-err');
     if (!em) { err.textContent = 'Enter your email address.'; return; }
-    document.getElementById('em-btn1').textContent = 'Sending…'; err.textContent = '';
-    fetch('/auth/email/start', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ email: em }) })
+    if (document.getElementById('em-btn1').disabled) return; document.getElementById('em-btn1').disabled = true; document.getElementById('em-btn1').textContent = 'Sending…'; err.textContent = '';
+    (window.tregCaptcha ? tregCaptcha.token('email_start') : Promise.resolve('')).then(function (t) { return fetch('/auth/email/start', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ email: em, captcha_token: t }) }); })
       .then(function (r) {
         return r.json().catch(function () { return {}; }).then(function (d) {
           if (!r.ok) throw new Error(d.detail || 'could not send the code');
@@ -760,7 +762,7 @@
         else { err.style.color = ''; }
         document.getElementById('em-code').focus();
       })
-      .catch(function (e2) { err.textContent = e2.message; document.getElementById('em-btn1').textContent = 'Email me a sign-in code'; });
+      .catch(function (e2) { err.textContent = e2.message; document.getElementById('em-btn1').disabled = false; document.getElementById('em-btn1').textContent = 'Email me a sign-in code'; });
   }
   function emailVerify() {
     var em = document.getElementById('em-input').value.trim();
@@ -786,6 +788,9 @@
   });
 })();
 </script>
-<script src="sitetrack.js"></script>
+<script src="/sitetrack.js"></script>
+<script src="/adtrack.js"></script>
+<script src="/gtag.js"></script>
+<script src="/media/signin-sso.js" defer></script>
 </body>
 </html>

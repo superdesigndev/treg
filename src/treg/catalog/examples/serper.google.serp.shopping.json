@@ -1,0 +1,37 @@
+{
+  "searchParameters": {
+    "q": "wireless headphones",
+    "gl": "us",
+    "hl": "en",
+    "type": "shopping",
+    "num": 40,
+    "page": 1,
+    "engine": "google"
+  },
+  "shopping": [
+    {
+      "title": "Sony Wireless Headphones Bluetooth On-Ear Headset with Microphone",
+      "source": "Best Buy",
+      "link": "https://www.google.com/search?ibp=oshop&q=wireless+headphones&prds=localAnnotatedOfferId:1,catalogid:2291804880107164084,pvo:2,pvt:hg,rds:PC_6027158597472037202%7CPROD_PC_6027158597472037202&gl=us&udm=28&pvorigin=2",
+      "price": "$68.00",
+      "imageUrl": "https://encrypted-tbn0.gstatic.com/shopping?q=tbn:ANd9GcR2wLm5ETrriyg0hdlRgbaUGGF_rkLOVTeApHaaiQKwm_MEizOQIgTrcvDFbP5vg-FLwwamf5f0fxT7eMEsLzQkP8zK1-ZL7RTLzMAY-NM",
+      "rating": 4.7,
+      "ratingCount": 4000,
+      "productId": "2291804880107164084",
+      "position": 1
+    },
+    {
+      "title": "Anker Soundcore Q20i Plus Hybrid Active Noise Cancelling Over-Ear Bluetooth Headphones",
+      "source": "Target",
+      "link": "https://www.google.com/search?ibp=oshop&q=wireless+headphones&prds=localAnnotatedOfferId:1,catalogid:11042121150666962217,pvo:2,pvt:hg,rds:PC_6027158597472037202%7CPROD_PC_6027158597472037202&gl=us&udm=28&pvorigin=2",
+      "price": "$41.99",
+      "imageUrl": "https://encrypted-tbn2.gstatic.com/shopping?q=tbn:ANd9GcQDWKIHqeCjI-G0klXoTtMVJl54xF7JHEdtOZ-aYs_ZKeXlmMR4XtJu3OKhhOfVdUJ3FwtLBCAkE-yzH3iS7vqbqWH9FMRY",
+      "rating": 4.5,
+      "ratingCount": 16,
+      "productId": "11042121150666962217",
+      "position": 2
+    },
+    "… 38 more item(s) truncated"
+  ],
+  "credits": 2
+}

@@ -68,8 +68,26 @@
       "GET",
       "HEAD"
     ],
+    "name": "catalog_provider",
+    "path": "/catalog/providers/{service}"
+  },
+  {
+    "kind": "APIRoute",
+    "methods": [
+      "GET",
+      "HEAD"
+    ],
     "name": "catalog_search",
     "path": "/catalog/search"
+  },
+  {
+    "kind": "APIRoute",
+    "methods": [
+      "GET",
+      "HEAD"
+    ],
+    "name": "catalog_find",
+    "path": "/catalog/find"
   },
   {
     "kind": "APIRoute",
@@ -104,8 +122,26 @@
       "GET",
       "HEAD"
     ],
+    "name": "search_page",
+    "path": "/search"
+  },
+  {
+    "kind": "APIRoute",
+    "methods": [
+      "GET",
+      "HEAD"
+    ],
     "name": "catalog_page",
     "path": "/catalog/{slug}"
+  },
+  {
+    "kind": "APIRoute",
+    "methods": [
+      "GET",
+      "HEAD"
+    ],
+    "name": "catalog_comparison_page",
+    "path": "/catalog/{slug:shelf}/{key}"
   },
   {
     "kind": "APIRoute",
@@ -230,6 +266,24 @@
       "GET",
       "HEAD"
     ],
+    "name": "hub_page",
+    "path": "/hub/{tool_id}"
+  },
+  {
+    "kind": "APIRoute",
+    "methods": [
+      "GET",
+      "HEAD"
+    ],
+    "name": "hub_page",
+    "path": "/hub/{tool_id}.md"
+  },
+  {
+    "kind": "APIRoute",
+    "methods": [
+      "GET",
+      "HEAD"
+    ],
     "name": "tools_provider",
     "path": "/tools/{service}"
   },
@@ -262,6 +316,245 @@
   {
     "kind": "APIRoute",
     "methods": [
+      "POST"
+    ],
+    "name": "submit_feedback",
+    "path": "/feedback"
+  },
+  {
+    "kind": "APIRoute",
+    "methods": [
+      "GET",
+      "HEAD"
+    ],
+    "name": "get_feedback",
+    "path": "/feedback/{feedback_id}"
+  },
+  {
+    "kind": "APIRoute",
+    "methods": [
+      "GET",
+      "HEAD"
+    ],
+    "name": "admin_feedback",
+    "path": "/admin/feedback"
+  },
+  {
+    "kind": "APIRoute",
+    "methods": [
+      "POST"
+    ],
+    "name": "submit_review",
+    "path": "/reviews"
+  },
+  {
+    "kind": "APIRoute",
+    "methods": [
+      "GET",
+      "HEAD"
+    ],
+    "name": "admin_reviews",
+    "path": "/admin/reviews"
+  },
+  {
+    "kind": "APIRoute",
+    "methods": [
+      "POST"
+    ],
+    "name": "submit_mark",
+    "path": "/marks"
+  },
+  {
+    "kind": "APIRoute",
+    "methods": [
+      "GET",
+      "HEAD"
+    ],
+    "name": "admin_marks",
+    "path": "/admin/marks"
+  },
+  {
+    "kind": "APIRoute",
+    "methods": [
+      "GET",
+      "HEAD"
+    ],
+    "name": "next_comparison",
+    "path": "/comparisons/next"
+  },
+  {
+    "kind": "APIRoute",
+    "methods": [
+      "POST"
+    ],
+    "name": "submit_comparison",
+    "path": "/comparisons"
+  },
+  {
+    "kind": "APIRoute",
+    "methods": [
+      "POST"
+    ],
+    "name": "cli_events",
+    "path": "/cli/events"
+  },
+  {
+    "kind": "APIRoute",
+    "methods": [
+      "GET",
+      "HEAD"
+    ],
+    "name": "cli_latest",
+    "path": "/cli/latest"
+  },
+  {
+    "kind": "APIRoute",
+    "methods": [
+      "GET",
+      "HEAD"
+    ],
+    "name": "cli_latest_download",
+    "path": "/cli/latest/{platform}"
+  },
+  {
+    "kind": "APIRoute",
+    "methods": [
+      "POST"
+    ],
+    "name": "publish_hub_tool",
+    "path": "/hub/tools"
+  },
+  {
+    "kind": "APIRoute",
+    "methods": [
+      "PUT"
+    ],
+    "name": "update_hub_tool",
+    "path": "/hub/tools/{tool_id}"
+  },
+  {
+    "kind": "APIRoute",
+    "methods": [
+      "GET",
+      "HEAD"
+    ],
+    "name": "my_hub_tools",
+    "path": "/hub/tools/mine"
+  },
+  {
+    "kind": "APIRoute",
+    "methods": [
+      "GET",
+      "HEAD"
+    ],
+    "name": "hub_run",
+    "path": "/hub/runs/{run_id}"
+  },
+  {
+    "kind": "APIRoute",
+    "methods": [
+      "GET",
+      "HEAD"
+    ],
+    "name": "get_hub_tool",
+    "path": "/hub/tools/{tool_id}"
+  },
+  {
+    "kind": "APIRoute",
+    "methods": [
+      "POST"
+    ],
+    "name": "run_hub_folder",
+    "path": "/hub/run"
+  },
+  {
+    "kind": "APIRoute",
+    "methods": [
+      "GET",
+      "HEAD"
+    ],
+    "name": "hub_tool_earnings",
+    "path": "/hub/tools/{tool_id}/earnings"
+  },
+  {
+    "kind": "APIRoute",
+    "methods": [
+      "DELETE"
+    ],
+    "name": "retire_hub_tool",
+    "path": "/hub/tools/{tool_id}"
+  },
+  {
+    "kind": "APIRoute",
+    "methods": [
+      "PATCH"
+    ],
+    "name": "set_hub_tool_price",
+    "path": "/hub/tools/{tool_id}"
+  },
+  {
+    "kind": "APIRoute",
+    "methods": [
+      "GET",
+      "HEAD"
+    ],
+    "name": "hub_tool_health",
+    "path": "/hub/tools/{tool_id}/health"
+  },
+  {
+    "kind": "APIRoute",
+    "methods": [
+      "GET",
+      "HEAD"
+    ],
+    "name": "admin_hub_listings",
+    "path": "/admin/hub/listings"
+  },
+  {
+    "kind": "APIRoute",
+    "methods": [
+      "POST"
+    ],
+    "name": "admin_hub_listing_decide",
+    "path": "/admin/hub/listings/{tool_id}"
+  },
+  {
+    "kind": "APIRoute",
+    "methods": [
+      "GET",
+      "HEAD"
+    ],
+    "name": "admin_hub_updates",
+    "path": "/admin/hub/updates"
+  },
+  {
+    "kind": "APIRoute",
+    "methods": [
+      "POST"
+    ],
+    "name": "admin_hub_update_decide",
+    "path": "/admin/hub/updates/{tool_id}"
+  },
+  {
+    "kind": "APIRoute",
+    "methods": [
+      "POST"
+    ],
+    "name": "host_media",
+    "path": "/media"
+  },
+  {
+    "kind": "APIRoute",
+    "methods": [
+      "GET",
+      "HEAD"
+    ],
+    "name": "serve_media",
+    "path": "/m/{token}"
+  },
+  {
+    "kind": "APIRoute",
+    "methods": [
       "GET",
       "HEAD"
     ],
@@ -276,6 +569,23 @@
     ],
     "name": "auth_github_callback",
     "path": "/auth/github/callback"
+  },
+  {
+    "kind": "APIRoute",
+    "methods": [
+      "GET",
+      "HEAD"
+    ],
+    "name": "auth_social_check_page",
+    "path": "/auth/social/check"
+  },
+  {
+    "kind": "APIRoute",
+    "methods": [
+      "POST"
+    ],
+    "name": "auth_social_check",
+    "path": "/auth/social/check"
   },
   {
     "kind": "APIRoute",
@@ -403,6 +713,15 @@
       "GET",
       "HEAD"
     ],
+    "name": "dashboard_asset",
+    "path": "/app/ui/assets/{name}"
+  },
+  {
+    "kind": "APIRoute",
+    "methods": [
+      "GET",
+      "HEAD"
+    ],
     "name": "dashboard",
     "path": "/app"
   },
@@ -432,6 +751,15 @@
     ],
     "name": "dashboard_tool_page",
     "path": "/app/tools/{name}"
+  },
+  {
+    "kind": "APIRoute",
+    "methods": [
+      "GET",
+      "HEAD"
+    ],
+    "name": "dashboard_run_page",
+    "path": "/app/runs/{run_id}"
   },
   {
     "kind": "APIRoute",
@@ -477,6 +805,32 @@
     ],
     "name": "install_sh",
     "path": "/install.sh"
+  },
+  {
+    "kind": "APIRoute",
+    "methods": [
+      "GET",
+      "HEAD"
+    ],
+    "name": "install_ps1",
+    "path": "/install.ps1"
+  },
+  {
+    "kind": "APIRoute",
+    "methods": [
+      "GET",
+      "HEAD"
+    ],
+    "name": "install_sh_linked",
+    "path": "/i/{code}"
+  },
+  {
+    "kind": "APIRoute",
+    "methods": [
+      "POST"
+    ],
+    "name": "ad_link_mint",
+    "path": "/i"
   },
   {
     "kind": "APIRoute",
@@ -565,6 +919,87 @@
       "GET",
       "HEAD"
     ],
+    "name": "make_ugc_skill_md",
+    "path": "/skills/ugc/SKILL.md"
+  },
+  {
+    "kind": "APIRoute",
+    "methods": [
+      "GET",
+      "HEAD"
+    ],
+    "name": "lead_signals_skill_md",
+    "path": "/skills/lead-signals/SKILL.md"
+  },
+  {
+    "kind": "APIRoute",
+    "methods": [
+      "GET",
+      "HEAD"
+    ],
+    "name": "web_access_skill_md",
+    "path": "/skills/web-access/SKILL.md"
+  },
+  {
+    "kind": "APIRoute",
+    "methods": [
+      "GET",
+      "HEAD"
+    ],
+    "name": "recruit_skill_md",
+    "path": "/skills/recruit/SKILL.md"
+  },
+  {
+    "kind": "APIRoute",
+    "methods": [
+      "GET",
+      "HEAD"
+    ],
+    "name": "doomscroll_skill_md",
+    "path": "/skills/doomscroll/SKILL.md"
+  },
+  {
+    "kind": "APIRoute",
+    "methods": [
+      "GET",
+      "HEAD"
+    ],
+    "name": "jev_memory_skill_md",
+    "path": "/skills/jev-memory/SKILL.md"
+  },
+  {
+    "kind": "APIRoute",
+    "methods": [
+      "GET",
+      "HEAD"
+    ],
+    "name": "rea_growth_skill_md",
+    "path": "/skills/rea-growth/SKILL.md"
+  },
+  {
+    "kind": "APIRoute",
+    "methods": [
+      "GET",
+      "HEAD"
+    ],
+    "name": "ai_ugc_video_skill_md",
+    "path": "/skills/ai-ugc-video/SKILL.md"
+  },
+  {
+    "kind": "APIRoute",
+    "methods": [
+      "GET",
+      "HEAD"
+    ],
+    "name": "feedback_md",
+    "path": "/feedback.md"
+  },
+  {
+    "kind": "APIRoute",
+    "methods": [
+      "GET",
+      "HEAD"
+    ],
     "name": "favicon",
     "path": "/favicon.ico"
   },
@@ -628,8 +1063,53 @@
       "GET",
       "HEAD"
     ],
+    "name": "claude_plugin_page",
+    "path": "/plugins/claude"
+  },
+  {
+    "kind": "APIRoute",
+    "methods": [
+      "GET",
+      "HEAD"
+    ],
+    "name": "sheets_page",
+    "path": "/sheets"
+  },
+  {
+    "kind": "APIRoute",
+    "methods": [
+      "GET",
+      "HEAD"
+    ],
+    "name": "agent_setup_js",
+    "path": "/agent-setup.js"
+  },
+  {
+    "kind": "APIRoute",
+    "methods": [
+      "GET",
+      "HEAD"
+    ],
     "name": "adtrack_js",
     "path": "/adtrack.js"
+  },
+  {
+    "kind": "APIRoute",
+    "methods": [
+      "GET",
+      "HEAD"
+    ],
+    "name": "captcha_js",
+    "path": "/captcha.js"
+  },
+  {
+    "kind": "APIRoute",
+    "methods": [
+      "GET",
+      "HEAD"
+    ],
+    "name": "gtag_js",
+    "path": "/gtag.js"
   },
   {
     "kind": "APIRoute",
@@ -664,8 +1144,232 @@
       "GET",
       "HEAD"
     ],
+    "name": "astra_page",
+    "path": "/astra"
+  },
+  {
+    "kind": "APIRoute",
+    "methods": [
+      "GET",
+      "HEAD"
+    ],
+    "name": "gpt6_page",
+    "path": "/gpt6"
+  },
+  {
+    "kind": "APIRoute",
+    "methods": [
+      "GET",
+      "HEAD"
+    ],
+    "name": "ugc_page",
+    "path": "/ugc"
+  },
+  {
+    "kind": "APIRoute",
+    "methods": [
+      "GET",
+      "HEAD"
+    ],
+    "name": "aigc_page",
+    "path": "/aigc"
+  },
+  {
+    "kind": "APIRoute",
+    "methods": [
+      "GET",
+      "HEAD"
+    ],
+    "name": "aeo_page",
+    "path": "/aeo"
+  },
+  {
+    "kind": "APIRoute",
+    "methods": [
+      "GET",
+      "HEAD"
+    ],
+    "name": "rea_growth_page",
+    "path": "/rea-growth"
+  },
+  {
+    "kind": "APIRoute",
+    "methods": [
+      "GET",
+      "HEAD"
+    ],
+    "name": "social_search_page",
+    "path": "/social"
+  },
+  {
+    "kind": "APIRoute",
+    "methods": [
+      "GET",
+      "HEAD"
+    ],
+    "name": "rea_growth_md",
+    "path": "/rea-growth.md"
+  },
+  {
+    "kind": "APIRoute",
+    "methods": [
+      "GET",
+      "HEAD"
+    ],
+    "name": "showcase_page",
+    "path": "/showcase"
+  },
+  {
+    "kind": "APIRoute",
+    "methods": [
+      "GET",
+      "HEAD"
+    ],
     "name": "people_search_page",
     "path": "/people-search"
+  },
+  {
+    "kind": "APIRoute",
+    "methods": [
+      "GET",
+      "HEAD"
+    ],
+    "name": "start_page",
+    "path": "/start"
+  },
+  {
+    "kind": "APIRoute",
+    "methods": [
+      "GET",
+      "HEAD"
+    ],
+    "name": "leads_signals_page",
+    "path": "/leads-signals"
+  },
+  {
+    "kind": "APIRoute",
+    "methods": [
+      "GET",
+      "HEAD"
+    ],
+    "name": "jobs_api_page",
+    "path": "/jobs-api"
+  },
+  {
+    "kind": "APIRoute",
+    "methods": [
+      "GET",
+      "HEAD"
+    ],
+    "name": "recruit_page",
+    "path": "/recruit"
+  },
+  {
+    "kind": "APIRoute",
+    "methods": [
+      "GET",
+      "HEAD"
+    ],
+    "name": "web_access_page",
+    "path": "/web-access"
+  },
+  {
+    "kind": "APIRoute",
+    "methods": [
+      "GET",
+      "HEAD"
+    ],
+    "name": "doomscroll_page",
+    "path": "/doomscroll"
+  },
+  {
+    "kind": "APIRoute",
+    "methods": [
+      "GET",
+      "HEAD"
+    ],
+    "name": "gtm_engineering_page",
+    "path": "/gtm-engineering"
+  },
+  {
+    "kind": "APIRoute",
+    "methods": [
+      "GET",
+      "HEAD"
+    ],
+    "name": "gtm_engineering_md",
+    "path": "/gtm-engineering.md"
+  },
+  {
+    "kind": "APIRoute",
+    "methods": [
+      "GET",
+      "HEAD"
+    ],
+    "name": "jev_page",
+    "path": "/jev"
+  },
+  {
+    "kind": "APIRoute",
+    "methods": [
+      "GET",
+      "HEAD"
+    ],
+    "name": "jev_xboost_json",
+    "path": "/jev/xboost.json"
+  },
+  {
+    "kind": "APIRoute",
+    "methods": [
+      "POST"
+    ],
+    "name": "jev_xboost_judge",
+    "path": "/jev/xboost/judge"
+  },
+  {
+    "kind": "APIRoute",
+    "methods": [
+      "GET",
+      "HEAD"
+    ],
+    "name": "blog_index",
+    "path": "/blog"
+  },
+  {
+    "kind": "APIRoute",
+    "methods": [
+      "GET",
+      "HEAD"
+    ],
+    "name": "blog_people_search_bench",
+    "path": "/blog/people-search-bench"
+  },
+  {
+    "kind": "APIRoute",
+    "methods": [
+      "GET",
+      "HEAD"
+    ],
+    "name": "blog_security_incident_2026_10_23",
+    "path": "/blog/security-incident-2026-10-23"
+  },
+  {
+    "kind": "APIRoute",
+    "methods": [
+      "GET",
+      "HEAD"
+    ],
+    "name": "blog_jobspipe_and_treg",
+    "path": "/blog/jobspipe-and-treg"
+  },
+  {
+    "kind": "APIRoute",
+    "methods": [
+      "GET",
+      "HEAD"
+    ],
+    "name": "blog_work_email_finding_bench",
+    "path": "/blog/work-email-finding-bench"
   },
   {
     "kind": "APIRoute",
@@ -733,6 +1437,15 @@
       "HEAD"
     ],
     "name": "oauth_protected_resource",
+    "path": "/.well-known/oauth-protected-resource/mcp/"
+  },
+  {
+    "kind": "APIRoute",
+    "methods": [
+      "GET",
+      "HEAD"
+    ],
+    "name": "oauth_protected_resource",
     "path": "/.well-known/oauth-protected-resource/mcp"
   },
   {
@@ -743,6 +1456,15 @@
     ],
     "name": "oauth_protected_resource",
     "path": "/.well-known/oauth-protected-resource"
+  },
+  {
+    "kind": "APIRoute",
+    "methods": [
+      "GET",
+      "HEAD"
+    ],
+    "name": "oauth_protected_resource_v2",
+    "path": "/.well-known/oauth-protected-resource/mcp/v2/"
   },
   {
     "kind": "APIRoute",
@@ -788,6 +1510,51 @@
     ],
     "name": "well_known_skill_md",
     "path": "/.well-known/skills/treg/SKILL.md"
+  },
+  {
+    "kind": "APIRoute",
+    "methods": [
+      "GET",
+      "HEAD"
+    ],
+    "name": "well_known_make_ugc_md",
+    "path": "/.well-known/skills/make-ugc/SKILL.md"
+  },
+  {
+    "kind": "APIRoute",
+    "methods": [
+      "GET",
+      "HEAD"
+    ],
+    "name": "well_known_lead_signals_md",
+    "path": "/.well-known/skills/lead-signals/SKILL.md"
+  },
+  {
+    "kind": "APIRoute",
+    "methods": [
+      "GET",
+      "HEAD"
+    ],
+    "name": "well_known_web_access_md",
+    "path": "/.well-known/skills/web-access/SKILL.md"
+  },
+  {
+    "kind": "APIRoute",
+    "methods": [
+      "GET",
+      "HEAD"
+    ],
+    "name": "well_known_recruit_md",
+    "path": "/.well-known/skills/recruit/SKILL.md"
+  },
+  {
+    "kind": "APIRoute",
+    "methods": [
+      "GET",
+      "HEAD"
+    ],
+    "name": "well_known_doomscroll_md",
+    "path": "/.well-known/skills/doomscroll/SKILL.md"
   },
   {
     "kind": "APIRoute",
@@ -889,14 +1656,6 @@
     "methods": [
       "POST"
     ],
-    "name": "register_user",
-    "path": "/users"
-  },
-  {
-    "kind": "APIRoute",
-    "methods": [
-      "POST"
-    ],
     "name": "create_org",
     "path": "/orgs"
   },
@@ -925,6 +1684,15 @@
     ],
     "name": "list_orgs",
     "path": "/orgs"
+  },
+  {
+    "kind": "APIRoute",
+    "methods": [
+      "GET",
+      "HEAD"
+    ],
+    "name": "home",
+    "path": "/home"
   },
   {
     "kind": "APIRoute",
@@ -980,6 +1748,14 @@
     "methods": [
       "POST"
     ],
+    "name": "onboard_team",
+    "path": "/onboard/team"
+  },
+  {
+    "kind": "APIRoute",
+    "methods": [
+      "POST"
+    ],
     "name": "demo_sandbox_mint",
     "path": "/demo/sandbox"
   },
@@ -995,46 +1771,11 @@
   {
     "kind": "APIRoute",
     "methods": [
-      "POST"
-    ],
-    "name": "stripe_webhook",
-    "path": "/stripe/webhook"
-  },
-  {
-    "kind": "APIRoute",
-    "methods": [
-      "GET",
-      "HEAD"
-    ],
-    "name": "landing_stripe_feed",
-    "path": "/landing/stripe-feed"
-  },
-  {
-    "kind": "APIRoute",
-    "methods": [
       "GET",
       "HEAD"
     ],
     "name": "demo_sandbox_skill",
     "path": "/demo/sandbox/skill"
-  },
-  {
-    "kind": "APIRoute",
-    "methods": [
-      "GET",
-      "HEAD"
-    ],
-    "name": "skill_samples",
-    "path": "/skills/samples"
-  },
-  {
-    "kind": "APIRoute",
-    "methods": [
-      "GET",
-      "HEAD"
-    ],
-    "name": "skill_install",
-    "path": "/skills/{name}/install.sh"
   },
   {
     "kind": "APIRoute",
@@ -1092,8 +1833,26 @@
       "GET",
       "HEAD"
     ],
+    "name": "list_admins",
+    "path": "/orgs/{org_id}/admins"
+  },
+  {
+    "kind": "APIRoute",
+    "methods": [
+      "GET",
+      "HEAD"
+    ],
     "name": "org_usage",
     "path": "/orgs/{org_id}/usage"
+  },
+  {
+    "kind": "APIRoute",
+    "methods": [
+      "GET",
+      "HEAD"
+    ],
+    "name": "usage_spend",
+    "path": "/orgs/{org_id}/usage/spend"
   },
   {
     "kind": "APIRoute",
@@ -1121,6 +1880,14 @@
     ],
     "name": "usage_by_tag",
     "path": "/orgs/{org_id}/usage/by-tag"
+  },
+  {
+    "kind": "APIRoute",
+    "methods": [
+      "PATCH"
+    ],
+    "name": "rename_org",
+    "path": "/orgs/{org_id}"
   },
   {
     "kind": "APIRoute",
@@ -1242,10 +2009,136 @@
   {
     "kind": "APIRoute",
     "methods": [
+      "GET",
+      "HEAD"
+    ],
+    "name": "sso_status",
+    "path": "/orgs/{org_id}/sso"
+  },
+  {
+    "kind": "APIRoute",
+    "methods": [
+      "GET",
+      "HEAD"
+    ],
+    "name": "sso_domains",
+    "path": "/orgs/{org_id}/sso/domains"
+  },
+  {
+    "kind": "APIRoute",
+    "methods": [
+      "GET",
+      "HEAD"
+    ],
+    "name": "sso_blocked_members",
+    "path": "/orgs/{org_id}/sso/blocked"
+  },
+  {
+    "kind": "APIRoute",
+    "methods": [
+      "POST"
+    ],
+    "name": "sso_restore_member",
+    "path": "/orgs/{org_id}/sso/blocked/{user_id}/restore"
+  },
+  {
+    "kind": "APIRoute",
+    "methods": [
+      "POST"
+    ],
+    "name": "sso_checkout",
+    "path": "/orgs/{org_id}/sso/checkout"
+  },
+  {
+    "kind": "APIRoute",
+    "methods": [
+      "POST"
+    ],
+    "name": "sso_setup",
+    "path": "/orgs/{org_id}/sso/setup/{intent}"
+  },
+  {
+    "kind": "APIRoute",
+    "methods": [
+      "POST"
+    ],
+    "name": "sso_invite_it",
+    "path": "/orgs/{org_id}/sso/invite-it"
+  },
+  {
+    "kind": "APIRoute",
+    "methods": [
+      "GET",
+      "HEAD"
+    ],
+    "name": "sso_idp_start",
+    "path": "/auth/sso/idp/start"
+  },
+  {
+    "kind": "APIRoute",
+    "methods": [
+      "GET",
+      "HEAD"
+    ],
+    "name": "sso_start",
+    "path": "/auth/sso/{org_slug}/start"
+  },
+  {
+    "kind": "APIRoute",
+    "methods": [
+      "POST"
+    ],
+    "name": "sso_discover",
+    "path": "/auth/sso/discover"
+  },
+  {
+    "kind": "APIRoute",
+    "methods": [
+      "GET",
+      "HEAD"
+    ],
+    "name": "sso_callback",
+    "path": "/auth/sso/callback"
+  },
+  {
+    "kind": "APIRoute",
+    "methods": [
+      "POST"
+    ],
+    "name": "sso_enforce",
+    "path": "/orgs/{org_id}/sso/enforce"
+  },
+  {
+    "kind": "APIRoute",
+    "methods": [
+      "POST"
+    ],
+    "name": "sso_cancel",
+    "path": "/orgs/{org_id}/sso/cancel"
+  },
+  {
+    "kind": "APIRoute",
+    "methods": [
+      "POST"
+    ],
+    "name": "sso_workos_webhook",
+    "path": "/auth/sso/workos/webhook"
+  },
+  {
+    "kind": "APIRoute",
+    "methods": [
       "PATCH"
     ],
     "name": "set_member_cap",
     "path": "/orgs/{org_id}/members/{user_id}/cap"
+  },
+  {
+    "kind": "APIRoute",
+    "methods": [
+      "PATCH"
+    ],
+    "name": "set_member_spend_cap",
+    "path": "/orgs/{org_id}/members/{user_id}/spend-cap"
   },
   {
     "kind": "APIRoute",
@@ -1332,6 +2225,24 @@
   {
     "kind": "APIRoute",
     "methods": [
+      "GET",
+      "HEAD"
+    ],
+    "name": "agent_connection",
+    "path": "/orgs/{org_id}/agents/{user_id}/connection"
+  },
+  {
+    "kind": "APIRoute",
+    "methods": [
+      "GET",
+      "HEAD"
+    ],
+    "name": "team_first_call",
+    "path": "/orgs/{org_id}/first-call"
+  },
+  {
+    "kind": "APIRoute",
+    "methods": [
       "POST"
     ],
     "name": "agent_checkin",
@@ -1353,6 +2264,98 @@
     ],
     "name": "revoke_agent",
     "path": "/orgs/{org_id}/agents/{user_id}"
+  },
+  {
+    "kind": "APIRoute",
+    "methods": [
+      "GET",
+      "HEAD"
+    ],
+    "name": "list_api_keys",
+    "path": "/orgs/{org_id}/api-keys"
+  },
+  {
+    "kind": "APIRoute",
+    "methods": [
+      "GET",
+      "HEAD"
+    ],
+    "name": "api_key_spend",
+    "path": "/orgs/{org_id}/api-keys/spend"
+  },
+  {
+    "kind": "APIRoute",
+    "methods": [
+      "POST"
+    ],
+    "name": "create_api_key",
+    "path": "/orgs/{org_id}/api-keys"
+  },
+  {
+    "kind": "APIRoute",
+    "methods": [
+      "PATCH"
+    ],
+    "name": "rename_api_key",
+    "path": "/orgs/{org_id}/api-keys/{key_id}"
+  },
+  {
+    "kind": "APIRoute",
+    "methods": [
+      "POST"
+    ],
+    "name": "disable_api_key",
+    "path": "/orgs/{org_id}/api-keys/{key_id}/disable"
+  },
+  {
+    "kind": "APIRoute",
+    "methods": [
+      "POST"
+    ],
+    "name": "enable_api_key",
+    "path": "/orgs/{org_id}/api-keys/{key_id}/enable"
+  },
+  {
+    "kind": "APIRoute",
+    "methods": [
+      "POST"
+    ],
+    "name": "revoke_api_key",
+    "path": "/orgs/{org_id}/api-keys/{key_id}/revoke"
+  },
+  {
+    "kind": "APIRoute",
+    "methods": [
+      "POST"
+    ],
+    "name": "rotate_api_key",
+    "path": "/orgs/{org_id}/api-keys/{key_id}/rotate"
+  },
+  {
+    "kind": "APIRoute",
+    "methods": [
+      "POST"
+    ],
+    "name": "hide_api_key",
+    "path": "/orgs/{org_id}/api-keys/{key_id}/hide"
+  },
+  {
+    "kind": "APIRoute",
+    "methods": [
+      "GET",
+      "HEAD"
+    ],
+    "name": "list_api_key_events",
+    "path": "/orgs/{org_id}/api-keys/{key_id}/events"
+  },
+  {
+    "kind": "APIRoute",
+    "methods": [
+      "GET",
+      "HEAD"
+    ],
+    "name": "list_provider_resources",
+    "path": "/orgs/{org_id}/provider-resources"
   },
   {
     "kind": "APIRoute",
@@ -1612,7 +2615,7 @@
       "HEAD"
     ],
     "name": "get_call_result",
-    "path": "/calls/{call_id:int}/result"
+    "path": "/calls/{call_id}/result"
   },
   {
     "kind": "APIRoute",
@@ -1703,6 +2706,14 @@
   {
     "kind": "APIRoute",
     "methods": [
+      "PATCH"
+    ],
+    "name": "rename_connection",
+    "path": "/connections/{secret_id}"
+  },
+  {
+    "kind": "APIRoute",
+    "methods": [
       "DELETE"
     ],
     "name": "revoke_connection",
@@ -1785,8 +2796,35 @@
       "GET",
       "HEAD"
     ],
+    "name": "admin_share",
+    "path": "/admin/share"
+  },
+  {
+    "kind": "APIRoute",
+    "methods": [
+      "GET",
+      "HEAD"
+    ],
+    "name": "admin_shadow",
+    "path": "/admin/shadow"
+  },
+  {
+    "kind": "APIRoute",
+    "methods": [
+      "GET",
+      "HEAD"
+    ],
     "name": "admin_calls",
     "path": "/admin/calls"
+  },
+  {
+    "kind": "APIRoute",
+    "methods": [
+      "GET",
+      "HEAD"
+    ],
+    "name": "admin_daily",
+    "path": "/admin/daily"
   },
   {
     "kind": "APIRoute",
@@ -1805,6 +2843,41 @@
     ],
     "name": "admin_health",
     "path": "/admin/health"
+  },
+  {
+    "kind": "APIRoute",
+    "methods": [
+      "GET",
+      "HEAD"
+    ],
+    "name": "admin_kv",
+    "path": "/admin/kv"
+  },
+  {
+    "kind": "APIRoute",
+    "methods": [
+      "GET",
+      "HEAD"
+    ],
+    "name": "admin_referral_user_by_email",
+    "path": "/admin/referrals/users"
+  },
+  {
+    "kind": "APIRoute",
+    "methods": [
+      "GET",
+      "HEAD"
+    ],
+    "name": "admin_referral_user",
+    "path": "/admin/referrals/users/{user_id}"
+  },
+  {
+    "kind": "APIRoute",
+    "methods": [
+      "PUT"
+    ],
+    "name": "admin_set_referral_affiliate",
+    "path": "/admin/referrals/users/{user_id}/affiliate"
   },
   {
     "kind": "APIRoute",
@@ -1887,6 +2960,15 @@
       "GET",
       "HEAD"
     ],
+    "name": "admin_reconcile_asynctasks",
+    "path": "/admin/reconcile/asynctasks"
+  },
+  {
+    "kind": "APIRoute",
+    "methods": [
+      "GET",
+      "HEAD"
+    ],
     "name": "admin_archive",
     "path": "/admin/archive"
   },
@@ -1952,6 +3034,15 @@
   {
     "kind": "APIRoute",
     "methods": [
+      "GET",
+      "HEAD"
+    ],
+    "name": "agent_payment_credit",
+    "path": "/agentpay/credit"
+  },
+  {
+    "kind": "APIRoute",
+    "methods": [
       "DELETE",
       "GET",
       "HEAD",
@@ -1962,6 +3053,574 @@
     ],
     "name": "call_catalog_endpoint",
     "path": "/catalog/call/{rest:path}"
+  },
+  {
+    "kind": "APIRoute",
+    "methods": [
+      "DELETE",
+      "GET",
+      "HEAD",
+      "OPTIONS",
+      "PATCH",
+      "POST",
+      "PUT"
+    ],
+    "name": "table_tool",
+    "path": "/table/{rest:path}"
+  },
+  {
+    "kind": "APIRoute",
+    "methods": [
+      "GET",
+      "HEAD"
+    ],
+    "name": "table_columns",
+    "path": "/table-columns/{tool_id:path}"
+  },
+  {
+    "kind": "APIRoute",
+    "methods": [
+      "GET",
+      "HEAD"
+    ],
+    "name": "table_account",
+    "path": "/table-account"
+  },
+  {
+    "kind": "APIRoute",
+    "methods": [
+      "POST"
+    ],
+    "name": "task_submission",
+    "path": "/tasks/{call_id}"
+  },
+  {
+    "kind": "APIRoute",
+    "methods": [
+      "GET",
+      "HEAD"
+    ],
+    "name": "task_look",
+    "path": "/tasks/{call_id}"
+  },
+  {
+    "kind": "APIRoute",
+    "methods": [
+      "GET",
+      "HEAD"
+    ],
+    "name": "activity_feed",
+    "path": "/activity"
+  },
+  {
+    "kind": "APIRoute",
+    "methods": [
+      "GET",
+      "HEAD"
+    ],
+    "name": "enrich_arena_page",
+    "path": "/enrich-arena"
+  },
+  {
+    "kind": "APIRoute",
+    "methods": [
+      "GET",
+      "HEAD"
+    ],
+    "name": "enrich_arena_page",
+    "path": "/enrich-arena/leaderboard"
+  },
+  {
+    "kind": "APIRoute",
+    "methods": [
+      "GET",
+      "HEAD"
+    ],
+    "name": "enrich_arena_page",
+    "path": "/enrich-arena/people-search-bench"
+  },
+  {
+    "kind": "APIRoute",
+    "methods": [
+      "GET",
+      "HEAD"
+    ],
+    "name": "enrich_arena_asset",
+    "path": "/enrich-arena/{asset}"
+  },
+  {
+    "kind": "APIRoute",
+    "methods": [
+      "GET",
+      "HEAD"
+    ],
+    "name": "arena_tasks",
+    "path": "/arena/tasks"
+  },
+  {
+    "kind": "APIRoute",
+    "methods": [
+      "GET",
+      "HEAD"
+    ],
+    "name": "arena_insights_data",
+    "path": "/arena/insights"
+  },
+  {
+    "kind": "APIRoute",
+    "methods": [
+      "POST"
+    ],
+    "name": "arena_plan",
+    "path": "/arena/plans"
+  },
+  {
+    "kind": "APIRoute",
+    "methods": [
+      "POST"
+    ],
+    "name": "arena_start",
+    "path": "/arena/runs/{run_id}/start"
+  },
+  {
+    "kind": "APIRoute",
+    "methods": [
+      "GET",
+      "HEAD"
+    ],
+    "name": "arena_history",
+    "path": "/arena/runs"
+  },
+  {
+    "kind": "APIRoute",
+    "methods": [
+      "GET",
+      "HEAD"
+    ],
+    "name": "arena_run",
+    "path": "/arena/runs/{run_id}"
+  },
+  {
+    "kind": "APIRoute",
+    "methods": [
+      "POST"
+    ],
+    "name": "arena_cancel",
+    "path": "/arena/runs/{run_id}/cancel"
+  },
+  {
+    "kind": "APIRoute",
+    "methods": [
+      "POST"
+    ],
+    "name": "arena_evaluate",
+    "path": "/arena/runs/{run_id}/evaluations"
+  },
+  {
+    "kind": "APIRoute",
+    "methods": [
+      "POST"
+    ],
+    "name": "arena_reveal",
+    "path": "/arena/runs/{run_id}/reveal"
+  },
+  {
+    "kind": "APIRoute",
+    "methods": [
+      "POST"
+    ],
+    "name": "arena_rate",
+    "path": "/arena/runs/{run_id}/attempts/{attempt_id}/rating"
+  },
+  {
+    "kind": "APIRoute",
+    "methods": [
+      "POST"
+    ],
+    "name": "arena_report",
+    "path": "/arena/runs/{run_id}/attempts/{attempt_id}/report"
+  },
+  {
+    "kind": "APIRoute",
+    "methods": [
+      "POST"
+    ],
+    "name": "arena_manual_plan",
+    "path": "/arena/runs/{run_id}/attempts/{attempt_id}/plan"
+  },
+  {
+    "kind": "APIRoute",
+    "methods": [
+      "POST"
+    ],
+    "name": "arena_manual_start",
+    "path": "/arena/runs/{run_id}/attempts/{attempt_id}/start"
+  },
+  {
+    "kind": "APIRoute",
+    "methods": [
+      "POST"
+    ],
+    "name": "arena_verification_plan",
+    "path": "/arena/runs/{run_id}/attempts/{attempt_id}/verification/plan"
+  },
+  {
+    "kind": "APIRoute",
+    "methods": [
+      "POST"
+    ],
+    "name": "arena_verification_start",
+    "path": "/arena/runs/{run_id}/attempts/{attempt_id}/verification/start"
+  },
+  {
+    "kind": "APIRoute",
+    "methods": [
+      "GET",
+      "HEAD"
+    ],
+    "name": "web_arena_page",
+    "path": "/web-arena"
+  },
+  {
+    "kind": "APIRoute",
+    "methods": [
+      "GET",
+      "HEAD"
+    ],
+    "name": "web_arena_old_leaderboard",
+    "path": "/web-arena/leaderboard"
+  },
+  {
+    "kind": "APIRoute",
+    "methods": [
+      "GET",
+      "HEAD"
+    ],
+    "name": "web_arena_asset",
+    "path": "/web-arena/{asset}"
+  },
+  {
+    "kind": "APIRoute",
+    "methods": [
+      "GET",
+      "HEAD"
+    ],
+    "name": "web_arena_tasks",
+    "path": "/web-arena/api/tasks"
+  },
+  {
+    "kind": "APIRoute",
+    "methods": [
+      "GET",
+      "HEAD"
+    ],
+    "name": "web_arena_leaderboard",
+    "path": "/web-arena/api/leaderboard"
+  },
+  {
+    "kind": "APIRoute",
+    "methods": [
+      "POST"
+    ],
+    "name": "web_arena_quote",
+    "path": "/web-arena/api/quotes"
+  },
+  {
+    "kind": "APIRoute",
+    "methods": [
+      "POST"
+    ],
+    "name": "web_arena_start",
+    "path": "/web-arena/api/runs/{run_id}/start"
+  },
+  {
+    "kind": "APIRoute",
+    "methods": [
+      "GET",
+      "HEAD"
+    ],
+    "name": "web_arena_history",
+    "path": "/web-arena/api/runs"
+  },
+  {
+    "kind": "APIRoute",
+    "methods": [
+      "GET",
+      "HEAD"
+    ],
+    "name": "web_arena_run",
+    "path": "/web-arena/api/runs/{run_id}"
+  },
+  {
+    "kind": "APIRoute",
+    "methods": [
+      "POST"
+    ],
+    "name": "web_arena_cancel",
+    "path": "/web-arena/api/runs/{run_id}/cancel"
+  },
+  {
+    "kind": "APIRoute",
+    "methods": [
+      "POST"
+    ],
+    "name": "web_arena_rating",
+    "path": "/web-arena/api/runs/{run_id}/attempts/{attempt_id}/rating"
+  },
+  {
+    "kind": "APIRoute",
+    "methods": [
+      "GET",
+      "HEAD"
+    ],
+    "name": "showcase_leaderboard",
+    "path": "/showcase/leaderboard"
+  },
+  {
+    "kind": "APIRoute",
+    "methods": [
+      "GET",
+      "HEAD"
+    ],
+    "name": "showcase_my_votes",
+    "path": "/showcase/votes/me"
+  },
+  {
+    "kind": "APIRoute",
+    "methods": [
+      "POST"
+    ],
+    "name": "showcase_vote",
+    "path": "/showcase/vote"
+  },
+  {
+    "kind": "APIRoute",
+    "methods": [
+      "GET",
+      "HEAD"
+    ],
+    "name": "showcase_my_teams",
+    "path": "/showcase/my-teams"
+  },
+  {
+    "kind": "APIRoute",
+    "methods": [
+      "GET",
+      "HEAD"
+    ],
+    "name": "showcase_team_apps",
+    "path": "/showcase/teams/{org_id}/apps"
+  },
+  {
+    "kind": "APIRoute",
+    "methods": [
+      "POST"
+    ],
+    "name": "showcase_apply",
+    "path": "/showcase/teams/{org_id}/apps"
+  },
+  {
+    "kind": "APIRoute",
+    "methods": [
+      "PATCH"
+    ],
+    "name": "showcase_edit",
+    "path": "/showcase/apps/{app_id}"
+  },
+  {
+    "kind": "APIRoute",
+    "methods": [
+      "DELETE"
+    ],
+    "name": "showcase_withdraw",
+    "path": "/showcase/apps/{app_id}"
+  },
+  {
+    "kind": "APIRoute",
+    "methods": [
+      "GET",
+      "HEAD"
+    ],
+    "name": "showcase_team_keys",
+    "path": "/showcase/teams/{org_id}/keys"
+  },
+  {
+    "kind": "APIRoute",
+    "methods": [
+      "PUT"
+    ],
+    "name": "showcase_set_usage",
+    "path": "/showcase/apps/{app_id}/usage"
+  },
+  {
+    "kind": "APIRoute",
+    "methods": [
+      "POST"
+    ],
+    "name": "showcase_remove",
+    "path": "/showcase/apps/{app_id}/remove"
+  },
+  {
+    "kind": "APIRoute",
+    "methods": [
+      "GET",
+      "HEAD"
+    ],
+    "name": "staff_queue",
+    "path": "/admin/showcase/apps"
+  },
+  {
+    "kind": "APIRoute",
+    "methods": [
+      "GET",
+      "HEAD"
+    ],
+    "name": "staff_app",
+    "path": "/admin/showcase/apps/{app_id}"
+  },
+  {
+    "kind": "APIRoute",
+    "methods": [
+      "POST"
+    ],
+    "name": "staff_approve",
+    "path": "/admin/showcase/apps/{app_id}/approve"
+  },
+  {
+    "kind": "APIRoute",
+    "methods": [
+      "POST"
+    ],
+    "name": "staff_reject",
+    "path": "/admin/showcase/apps/{app_id}/reject"
+  },
+  {
+    "kind": "APIRoute",
+    "methods": [
+      "POST"
+    ],
+    "name": "staff_hide",
+    "path": "/admin/showcase/apps/{app_id}/hide"
+  },
+  {
+    "kind": "APIRoute",
+    "methods": [
+      "PATCH"
+    ],
+    "name": "staff_edit",
+    "path": "/admin/showcase/apps/{app_id}"
+  },
+  {
+    "kind": "APIRoute",
+    "methods": [
+      "POST"
+    ],
+    "name": "staff_create",
+    "path": "/admin/showcase/teams/{org_id}/apps"
+  },
+  {
+    "kind": "APIRoute",
+    "methods": [
+      "GET",
+      "HEAD"
+    ],
+    "name": "staff_team",
+    "path": "/admin/showcase/teams/{org_id}"
+  },
+  {
+    "kind": "APIRoute",
+    "methods": [
+      "POST"
+    ],
+    "name": "staff_upload",
+    "path": "/admin/images/{kind}"
+  },
+  {
+    "kind": "APIRoute",
+    "methods": [
+      "GET",
+      "HEAD"
+    ],
+    "name": "staff_staged_image",
+    "path": "/admin/images/staging/{key:path}"
+  },
+  {
+    "kind": "APIRoute",
+    "methods": [
+      "GET",
+      "HEAD"
+    ],
+    "name": "rankings_page",
+    "path": "/rankings"
+  },
+  {
+    "kind": "APIRoute",
+    "methods": [
+      "GET",
+      "HEAD"
+    ],
+    "name": "rankings_board",
+    "path": "/rankings/data/{board}"
+  },
+  {
+    "kind": "APIRoute",
+    "methods": [
+      "GET",
+      "HEAD"
+    ],
+    "name": "compare_hub",
+    "path": "/compare"
+  },
+  {
+    "kind": "APIRoute",
+    "methods": [
+      "GET",
+      "HEAD"
+    ],
+    "name": "compare_page",
+    "path": "/compare/{slug}"
+  },
+  {
+    "kind": "APIRoute",
+    "methods": [
+      "POST"
+    ],
+    "name": "upload_image",
+    "path": "/images/{kind}"
+  },
+  {
+    "kind": "APIRoute",
+    "methods": [
+      "GET",
+      "HEAD"
+    ],
+    "name": "staged_image",
+    "path": "/images/staging/{key:path}"
+  },
+  {
+    "kind": "APIRoute",
+    "methods": [
+      "GET",
+      "HEAD"
+    ],
+    "name": "public_image",
+    "path": "/media-files/{key:path}"
+  },
+  {
+    "kind": "APIRoute",
+    "methods": [
+      "PUT"
+    ],
+    "name": "set_my_avatar",
+    "path": "/me/avatar"
+  },
+  {
+    "kind": "APIRoute",
+    "methods": [
+      "PUT"
+    ],
+    "name": "set_team_avatar",
+    "path": "/orgs/{org_id}/avatar"
   },
   {
     "kind": "APIRoute",

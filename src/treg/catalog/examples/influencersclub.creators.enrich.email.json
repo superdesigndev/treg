@@ -1,0 +1,12 @@
+{
+  "credits_cost": 0.05,
+  "result": {
+    "followers": 12345,
+    "fullname": "Example Creator",
+    "picture": "https://cdn.example.com/avatars/example-creator.jpg",
+    "platform": "instagram",
+    "url": "https://www.instagram.com/example.creator/",
+    "userId": "0000000000",
+    "username": "example.creator"
+  }
+}

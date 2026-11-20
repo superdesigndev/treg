@@ -1,0 +1,68 @@
+{
+  "output": {
+    "found": true,
+    "data": {
+      "audienceAge": [
+        {
+          "bucket": "25-34",
+          "sharePct": 27.65
+        },
+        "… 4 more item(s) truncated"
+      ],
+      "audienceGender": [
+        {
+          "gender": "male",
+          "sharePct": 33.36
+        },
+        "… 1 more item(s) truncated"
+      ],
+      "audienceLocations": [
+        {
+          "followers": 128500,
+          "state": "CALIFORNIA"
+        },
+        "… 4 more item(s) truncated"
+      ],
+      "avgCommissionRange": "",
+      "avgLiveLikes": 36852,
+      "avgLiveViews": 185579,
+      "avgVideoComments": 0,
+      "avgVideoLikes": 0,
+      "avgVideoViews": 277,
+      "bio": "Making Health Delicious and Simple✨\nVegan. Gluten-Free. Non-GMO.",
+      "brandCollaborations": 1,
+      "categories": [
+        {
+          "categoryId": "700645",
+          "name": "Health"
+        },
+        "… 1 more item(s) truncated"
+      ],
+      "followers": 584719,
+      "gmvRange": "$25K-$60K",
+      "gpm": 0,
+      "handle": "golinutrition",
+      "image": "https://p16-common-sign.tiktokcdn-us.com/tos-maliva-avt-0068/7380328189496819717~tplv-tiktokx-cropcenter:168:168.webp",
+      "liveCount": 26,
+      "liveEngagementRate": 579.43,
+      "nickname": "Goli® Nutrition",
+      "postRate": 59.67,
+      "promotedProducts": 51,
+      "rating": 0,
+      "region": "US",
+      "videoCount": 702,
+      "videoEngagementRate": 0.07
+    }
+  },
+  "provider": "AnyAPI",
+  "costUsd": 0.0055,
+  "items": 5,
+  "replayed": false,
+  "source": {
+    "id": "anonymous-octopus",
+    "name": "Octopus",
+    "kind": "anonymous",
+    "artworkKey": "octopus"
+  },
+  "resultId": "08f0dba2-e62c-4e00-9bb3-2227aa03212c"
+}

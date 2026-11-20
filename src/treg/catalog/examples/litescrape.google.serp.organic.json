@@ -1,0 +1,90 @@
+{
+  "search_metadata": {
+    "id": "11269993c1941a6f1d69440f",
+    "status": "Success",
+    "created_at": "2026-09-29 13:58:29 +00:00",
+    "processed_at": "2026-09-29 13:58:32 +00:00",
+    "total_time_taken": 3.54,
+    "google_url": "https://www.google.com/search?q=OpenAI%20API%20documentation&hl=en",
+    "google_ai_overview_url": "https://www.google.com/async/folsrch?hl=en&yv=3&cs=0&ei=BcS7atPgO5Sd3boPqeOE8AE&async=%2Fxjs%2F_%2Fjs%2Fk%253Dxjs.s.en_GB.WpbqGDKitjE.2023.O%2Fam%253DAAAAAAAAAA…",
+    "json_endpoint": "https://api.litescrape.com/api/google/search?device=desktop&google_domain=google.com&hl=en&q=OpenAI+API+documentation&start=0"
+  },
+  "search_parameters": {
+    "q": "OpenAI API documentation",
+    "device": "desktop",
+    "google_domain": "google.com",
+    "hl": "en",
+    "start": "0"
+  },
+  "organic_results": [
+    {
+      "title": "Hot topics - OpenAI Developer Community",
+      "link": "https://community.openai.com/hot?page=758",
+      "displayed_link": "https://community.openai.com › hot",
+      "source": "› hot",
+      "snippet": "Connect with other developers building with the OpenAI API Platform.",
+      "favicon": "[inline image omitted]",
+      "snippet_highlighted_words": [
+        "OpenAI API"
+      ],
+      "position": 1,
+      "position_absolute": 1
+    },
+    {
+      "title": "Building public GPTs for custom PDFs - API",
+      "link": "https://community.openai.com/t/building-public-gpts-for-custom-pdfs/496084",
+      "displayed_link": "https://community.openai.com › building-public-gpts-f...",
+      "source": "› building-public-gpts-f...",
+      "snippet": "12 Nov 2023 — OpenAI Platform. Explore developer resources, tutorials, API docs , and dynamic examples to get the most out of OpenAI's platform. databeings ... Read more",
+      "favicon": "[inline image omitted]",
+      "snippet_highlighted_words": [
+        "API docs"
+      ],
+      "position": 2,
+      "position_absolute": 2
+    }
+  ],
+  "related_searches": [
+    {
+      "query": "Openai api documentation pdf",
+      "link": "https://www.google.com/search?sca_esv=94c45538e1e3e219&hl=en&sxsrf=APpeQnsCSOmhTsBaR-6L_tT_hIXoyNSc2w:1790690309985&q=Openai+api+documentation+pdf&sa=X&ved=2ahUKEwiT99Ce-ZOXAxWUTlcBHakxAR4Q1QJ6BAguEAE",
+      "block_position": 0
+    },
+    {
+      "query": "Openai api documentation example",
+      "link": "https://www.google.com/search?sca_esv=94c45538e1e3e219&hl=en&sxsrf=APpeQnsCSOmhTsBaR-6L_tT_hIXoyNSc2w:1790690309985&q=Openai+api+documentation+example&sa=X&ved=2ahUKEwiT99Ce-ZOXAxWUTlcBHakxAR4Q1QJ6BAgvEAE",
+      "block_position": 1
+    }
+  ],
+  "related_questions": [
+    {
+      "question": "Is the OpenAI API free?"
+    },
+    {
+      "question": "Where can I find API documentation?"
+    }
+  ],
+  "pagination": {
+    "current": 1,
+    "next": "https://www.google.com/search?q=OpenAI+API+documentation&sca_esv=94c45538e1e3e219&hl=en&sxsrf=APpeQnsCSOmhTsBaR-6L_tT_hIXoyNSc2w:1790690309985&ei=BcS7atPgO5Sd3b…",
+    "other_pages": {
+      "2": "https://www.google.com/search?q=OpenAI+API+documentation&sca_esv=94c45538e1e3e219&hl=en&sxsrf=APpeQnsCSOmhTsBaR-6L_tT_hIXoyNSc2w:1790690309985&ei=BcS7atPgO5Sd3b…",
+      "3": "https://www.google.com/search?q=OpenAI+API+documentation&sca_esv=94c45538e1e3e219&hl=en&sxsrf=APpeQnsCSOmhTsBaR-6L_tT_hIXoyNSc2w:1790690309985&ei=BcS7atPgO5Sd3b…"
+    }
+  },
+  "ai_overview": {
+    "text_blocks": [
+      {
+        "type": "paragraph",
+        "snippet": "You can access the official OpenAI API Documentation directly on the OpenAI Platform .",
+        "snippet_highlighted_words": [
+          "directly on the OpenAI Platform"
+        ]
+      },
+      {
+        "type": "heading",
+        "snippet": "Key Resources in the Docs"
+      }
+    ]
+  }
+}

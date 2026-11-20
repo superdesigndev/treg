@@ -50,6 +50,7 @@ async def _make_non_refreshable(secret_id: int, expires_in_days: float) -> None:
         blob = json.loads(crypto.decrypt(s.value))
         blob.pop("refresh_token", None)
         s.value = crypto.encrypt(json.dumps(blob))
+        s.refreshable = False
         s.expires_at = datetime.now() + timedelta(days=expires_in_days)
         await db.commit()
 
@@ -121,6 +122,7 @@ async def test_a_failed_refresh_records_why(clients: AsyncClient, treg_google_ap
     async with session_maker() as db:
         s = (await db.execute(select(Secret).where(Secret.id == sid))).scalars().one()
         blob = json.loads(crypto.decrypt(s.value))
+        blob["client_id"] = "retired-cid"  # no longer treg's app, so its own token_uri is used
         blob["token_uri"] = "http://upstream/token-broken"  # upstream 404s → refresh raises
         blob["expires_at"] = 0  # force staleness
         s.value = crypto.encrypt(json.dumps(blob))
@@ -132,10 +134,22 @@ async def test_a_failed_refresh_records_why(clients: AsyncClient, treg_google_ap
     assert conns[sid]["last_error"], "the reason a renewal failed must be visible on the connection"
 
 
-def test_expiry_state_boundaries():
-    now = datetime(2026, 7, 21)
-    assert oauth.expiry_state(now + timedelta(days=oauth.EXPIRING_SOON_DAYS - 1), False, now) == "expiring"
-    assert oauth.expiry_state(now + timedelta(days=oauth.EXPIRING_SOON_DAYS + 1), False, now) == "fresh"
+_NOW = datetime(2026, 7, 21)
+
+
+@pytest.mark.parametrize(("expires_at", "refreshable", "state"), [
+    # The LinkedIn case: healthy right up until it silently dies.
+    (_NOW - timedelta(days=1), False, "expired"),
+    (_NOW + timedelta(days=3), False, "expiring"),
+    (_NOW + timedelta(days=oauth.EXPIRING_SOON_DAYS - 1), False, "expiring"),
+    (_NOW + timedelta(days=oauth.EXPIRING_SOON_DAYS + 1), False, "fresh"),
+    (_NOW + timedelta(days=30), False, "fresh"),
+    (None, False, "unknown"),
+    # treg mints a new access token on demand, so a past expiry is not the user's problem.
+    (_NOW - timedelta(days=1), True, "fresh"),
+])
+def test_expiry_state_boundaries(expires_at, refreshable, state):
+    assert oauth.expiry_state(expires_at, refreshable, _NOW) == state
 
 
 def test_needs_reconnect_ignores_non_oauth_secrets():

@@ -1,0 +1,17 @@
+{
+  "id": "sanitized-waterfall-id",
+  "status": "success",
+  "email": "dev@bounceban.com",
+  "result": "deliverable",
+  "score": 99,
+  "is_disposable": false,
+  "is_accept_all": false,
+  "is_role": true,
+  "is_free": false,
+  "mx_records": ["aspmx.l.google.com"],
+  "smtp_provider": "Google",
+  "mode": "regular",
+  "verify_at": "2026-09-16T00:00:00.000Z",
+  "credits_consumed": 1,
+  "credits_remaining": 9999
+}

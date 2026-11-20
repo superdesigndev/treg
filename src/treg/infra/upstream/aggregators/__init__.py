@@ -30,13 +30,20 @@ class AggregatorRequest:
 AGGREGATOR_SIDE = ("aggregator_auth", "aggregator_balance", "malformed")
 """The `failure` kinds that blame the aggregator (our key, its account, its host or envelope), never
 the route or the vendor: the call path marks the aggregator unhealthy on them, the verifier leaves
-the route as it is. `contract` is this route's fault; `pending` is nobody's yet."""
+the route as it is. `contract` is request-scoped (this route, this request) and never marks the
+aggregator; `pending` is nobody's yet."""
 
 VENDOR_DRY = "vendor_dry"
 """The aggregator relayed the vendor's own out-of-credit / quota answer (a 402, Apollo's 422, a
 period-cap 429): the AGGREGATOR'S account for THIS vendor is dry. Not the route's fault and not the
 whole aggregator's: the call path marks `overflow:<aggregator>:<provider>`, the verifier leaves
 the route as it is. Set by `with_vendor_verdict`, the one place a relayed body is read."""
+
+VENDOR_REFUSAL = "vendor_refusal"
+"""The aggregator successfully relayed a vendor-specific authentication or authorization refusal
+that is not a known capacity response. The call path temporarily marks only
+`overflow:<aggregator>:<provider>` so repeated calls do not hammer a dead vendor pool while every
+other provider through the aggregator remains available. The verifier leaves the route untouched."""
 
 
 def with_vendor_verdict(res: "AggregatorResult", provider: str) -> "AggregatorResult":
@@ -47,21 +54,27 @@ def with_vendor_verdict(res: "AggregatorResult", provider: str) -> "AggregatorRe
     if res.failure is not None or res.upstream_status is None:
         return res
     sig = signatures.classify(provider, res.upstream_status, None, res.upstream_body[:4096])
-    if not signatures.is_exhausting(sig):
-        return res
-    return replace(res, failure=VENDOR_DRY, detail=f"{sig.kind}: {sig.detail[:100]}")
+    if signatures.is_exhausting(sig):
+        return replace(res, failure=VENDOR_DRY, detail=f"{sig.kind}: {sig.detail[:100]}")
+    if res.upstream_status in (401, 403):
+        detail = res.upstream_body[:200].decode("utf-8", errors="replace")
+        return replace(res, failure=VENDOR_REFUSAL, detail=detail)
+    return res
 
 
 @dataclass(frozen=True)
 class AggregatorResult:
     """`failure` is None when the aggregator relayed the vendor's answer (whatever its status).
     Otherwise it names who to blame, which is what decides the next rung:
-      aggregator_auth    — our key was rejected → mark the aggregator unhealthy
-      aggregator_balance — the aggregator's own account is empty → unhealthy
-      contract           — the aggregator's stricter input schema refused the request → this
-                           route is wrong for this call; no vendor call happened
-      pending            — async run not finished; poll `poll_url`
-      malformed          — not the envelope we know
+      aggregator_auth    - our key was rejected → mark the aggregator unhealthy
+      aggregator_balance - the aggregator's own account is empty → unhealthy
+      contract           - the aggregator's own per-request refusal (its stricter input schema,
+                           a validation 4xx with no vendor data) → this route is wrong for this
+                           call; no vendor call happened, nothing is charged, nothing is struck
+      pending            - async run not finished; poll `poll_url`
+      malformed          - not an envelope at all: non-JSON, a 5xx, a transport error
+      vendor_dry         - this aggregator's account for one vendor is out of capacity
+      vendor_refusal     - one vendor pool rejected authentication or authorization
     `cost_micro` is the aggregator's in-band charge for this call (0 on a miss), the number the
     caller pays. None when the envelope carried no price."""
     upstream_status: int | None

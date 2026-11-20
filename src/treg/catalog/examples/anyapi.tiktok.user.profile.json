@@ -1,0 +1,30 @@
+{
+  "output": {
+    "found": true,
+    "data": {
+      "avatarUrl": "https://p16-common-sign.tiktokcdn-us.com/tos-alisg-avt-0068/smgf5f369c884044a8df770614bbfd64717~tplv-tiktokx-cropcenter:1080:1080.webp?dr=9640&refresh_token=e7dbcee0&x-expires=1789981200&x-signature=SbkMgYijyPqKlpoN8GE1oS5dDRA%3D&t=4d5b0474&ps=13740610&shp=a5d48078&shcp=2472a6c6&idc=useast8",
+      "bio": "Bringing a little more wonder into the world, 15 seconds at a time",
+      "displayName": "Zach King",
+      "externalUrl": "https://youtu.be/ulVscDewRPI?si=-65KnrnwSiGHDeT2",
+      "followers": 86887036,
+      "following": 182,
+      "handle": "zachking",
+      "likes": 1298863322,
+      "secUid": "MS4wLjABAAAANnzJ9pdfxtlf3m5Ku_M-rCXVitJC13w4GavqyUD3RE8h1cZ-7O9FT-uQ9rCJjU_E",
+      "userId": "68616495085350913",
+      "verified": true,
+      "videos": 615
+    }
+  },
+  "provider": "AnyAPI",
+  "costUsd": 0.00045,
+  "items": 0,
+  "replayed": false,
+  "source": {
+    "id": "anonymous-bison-cb2f8f3c",
+    "name": "Bison",
+    "kind": "anonymous",
+    "artworkKey": "bison"
+  },
+  "resultId": "beb41a95-ced4-4491-b8b0-6f0f0fc7f69e"
+}

@@ -1,0 +1,127 @@
+{
+  "meta": {
+    "blocked": [],
+    "elapsed_ms": 0,
+    "from_cache": true,
+    "llm_calls": 0,
+    "pages_fetched": 0,
+    "partial": false,
+    "warnings": [
+      "module: app-store-search: 'photo editor' · us · 9 apps"
+    ]
+  },
+  "recipe": "app-store-search",
+  "usage": {
+    "boxes": [
+      "gate"
+    ],
+    "cache": "hit",
+    "engine": "recipe",
+    "lines": [
+      {
+        "about": "the call",
+        "boxes": [
+          "gate"
+        ],
+        "cache": "miss",
+        "call": "recipes",
+        "engine": "gate",
+        "units": 1
+      }
+    ],
+    "remaining_before": {
+      "concurrent": 99,
+      "requests": 193,
+      "search": 3000
+    },
+    "units": 1
+  },
+  "version": 1,
+  "rows": [
+    {
+      "app_id": "587366035",
+      "bundle_id": "com.picsart.studio",
+      "categories": [
+        "Photo & Video",
+        "Graphics & Design"
+      ],
+      "category": "Photo & Video",
+      "content_advisories": [
+        "Infrequent/Mild Profanity or Crude Humor",
+        "Infrequent/Mild Alcohol, Tobacco, or Drug Use or References"
+      ],
+      "content_rating": "12+",
+      "currency": "USD",
+      "description": "Ignite your creative potential with Picsart — the all-in-one AI photo editor, AI video editor, and design studio that’s free and easy to use. From business designs to AI art, go from inspiration to creation fast. Create with an AI photo generator and AI video generator, edit with an AI image editor,…",
+      "developer": "PicsArt, Inc.",
+      "developer_id": "587366038",
+      "developer_url": "https://apps.apple.com/us/developer/picsart-inc/id587366038",
+      "developer_website": "https://picsart.com",
+      "icon": "https://is1-ssl.mzstatic.com/image/thumb/Purple221/v4/29/70/0f/29700f73-1932-2d9a-d03d-971142f9ea57/AppIcon-0-0-1x_U007emarketing-0-8-0-sRGB-85-220.png/512x512bb.jpg",
+      "languages": [
+        "SQ",
+        "AR"
+      ],
+      "minimum_os": "15.0",
+      "name": "Picsart AI Photo Editor, Video",
+      "price": 0.0,
+      "rating": 4.67,
+      "rating_count": 1195866,
+      "release_notes": "Most of what we build doesn't wait for an app update. While this one tidies up a few bugs, the real action happens behind the scenes-new features, fresh content, stickers, and templates dropping all the time. Stay close to our socials so you don't miss a thing.",
+      "released_at": "2013-01-02T22:14:40Z",
+      "screenshots_ipad": [
+        "https://is1-ssl.mzstatic.com/image/thumb/PurpleSource221/v4/6b/97/d4/6b97d4cf-aaca-cdbd-b7f0-d8b38e34a30a/072cbf42-fad7-40f4-b11e-015732e61666_1._Multiple_Use_Cases___iPhone_12.9_.png/576x768bb.png",
+        "https://is1-ssl.mzstatic.com/image/thumb/PurpleSource221/v4/51/86/5f/51865f06-bab0-e88d-6578-cd4112cf8cd9/c3a88056-d203-42c4-9fbd-56c9797d3eb7_2._Multiple_Use_Cases___iPhone_12.9_.png/576x768bb.png"
+      ],
+      "screenshots_iphone": [
+        "https://is1-ssl.mzstatic.com/image/thumb/PurpleSource221/v4/18/66/70/1866705a-8f24-0fe8-78e5-99cf0a4490cd/1.AI_Try-on.jpg/320x480bb.jpg",
+        "https://is1-ssl.mzstatic.com/image/thumb/PurpleSource221/v4/6a/0e/e8/6a0ee89d-c98f-8d6a-e34b-3bbe5a1cacad/2._Remove_background_Dark.jpg/320x480bb.jpg"
+      ],
+      "size_bytes": 270485504,
+      "url": "https://apps.apple.com/us/app/picsart-ai-photo-editor-video/id587366035",
+      "version": "30.9.2",
+      "version_released_at": "2026-10-06T04:02:28Z"
+    },
+    {
+      "app_id": "998411110",
+      "bundle_id": "com.magicv.AirBrush",
+      "categories": [
+        "Photo & Video",
+        "Graphics & Design"
+      ],
+      "category": "Photo & Video",
+      "content_advisories": [],
+      "content_rating": "12+",
+      "currency": "USD",
+      "description": "Master Your Selfie Game with Airbrush – The Ultimate Photo and Video Editor! With our easy-to-use features, you can master your selfie and photo with tools designed to enhance your natural beauty while maintaining authentic charm.\n\nMASTERFUL PORTRAITS WITH A TAP\n• AI Retouch: Unleash the power of ar…",
+      "developer": "PIXOCIAL TECHNOLOGY (SINGAPORE) PTE. LTD.",
+      "developer_id": "1533253001",
+      "developer_url": "https://apps.apple.com/us/developer/pixocial-technology-singapore-pte-ltd/id1533253001",
+      "developer_website": "http://appairbrush.com/",
+      "icon": "https://is1-ssl.mzstatic.com/image/thumb/Purple211/v4/84/13/99/84139961-ba84-c40c-3112-f50348bdfccc/AppIcon-0-0-1x_U007emarketing-0-11-0-85-220.png/512x512bb.jpg",
+      "languages": [
+        "AR",
+        "EN"
+      ],
+      "minimum_os": "13.0",
+      "name": "Airbrush: Face Photo Editor",
+      "price": 0.0,
+      "rating": 4.8,
+      "rating_count": 203337,
+      "release_notes": "We've done some minor bug fixes and light upgrades to make your Airbrush experience even better.\n\nHappy creating!",
+      "released_at": "2015-10-08T05:51:37Z",
+      "screenshots_ipad": [
+        "https://is1-ssl.mzstatic.com/image/thumb/Purple211/v4/67/13/5c/67135c36-5abc-e13b-6114-243ddd72a990/fc87fd68-51e0-40d7-8307-1c41a9b57d01_ios_ab_2048x2732_en_01.jpg/576x768bb.jpg",
+        "https://is1-ssl.mzstatic.com/image/thumb/Purple211/v4/7d/6f/45/7d6f456a-35e3-4aa2-f6a4-ab6f5ac2e402/65b411f5-e7dd-4353-8cc2-1884588ff8a6_ios_ab_2048x2732_en_02.jpg/576x768bb.jpg"
+      ],
+      "screenshots_iphone": [
+        "https://is1-ssl.mzstatic.com/image/thumb/PurpleSource211/v4/17/9d/72/179d72ac-25f8-7b79-9e16-e1549db59200/5510307b-a8f6-4de8-933b-1f215ec8afa3_AI_Retouch_2208.jpg/392x696bb.jpg",
+        "https://is1-ssl.mzstatic.com/image/thumb/PurpleSource211/v4/e5/ec/a9/e5eca914-4f2f-902e-a881-a7a482e05782/12dea73c-57f2-46b2-a9a3-95edb4373023_Reshape_2208.jpg/392x696bb.jpg"
+      ],
+      "size_bytes": 501131264,
+      "url": "https://apps.apple.com/us/app/airbrush-face-photo-editor/id998411110",
+      "version": "8.17.0",
+      "version_released_at": "2026-09-26T07:54:25Z"
+    }
+  ]
+}

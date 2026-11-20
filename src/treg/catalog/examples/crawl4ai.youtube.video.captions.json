@@ -1,0 +1,74 @@
+{
+  "meta": {
+    "blocked": [],
+    "elapsed_ms": 0,
+    "from_cache": true,
+    "llm_calls": 0,
+    "pages_fetched": 0,
+    "partial": false,
+    "warnings": [
+      "module: youtube-captions: dQw4w9WgXcQ: en captions (by a person), 61 lines"
+    ]
+  },
+  "recipe": "youtube-captions",
+  "usage": {
+    "boxes": [
+      "gate"
+    ],
+    "cache": "hit",
+    "engine": "recipe",
+    "lines": [
+      {
+        "about": "the call",
+        "boxes": [
+          "gate"
+        ],
+        "cache": "miss",
+        "call": "recipes",
+        "engine": "gate",
+        "units": 1
+      }
+    ],
+    "remaining_before": {
+      "concurrent": 99,
+      "requests": 153,
+      "search": 3000
+    },
+    "units": 1
+  },
+  "version": 1,
+  "rows": [
+    {
+      "available_languages": [
+        {
+          "auto": false,
+          "code": "en",
+          "name": "English"
+        },
+        {
+          "auto": true,
+          "code": "en",
+          "name": "English (auto-generated)"
+        }
+      ],
+      "is_auto_generated": false,
+      "language": "en",
+      "segments": [
+        {
+          "duration_s": 1.68,
+          "start_s": 1.36,
+          "text": "[♪♪♪]"
+        },
+        {
+          "duration_s": 3.24,
+          "start_s": 18.64,
+          "text": "♪ We're no strangers to love ♪"
+        }
+      ],
+      "text": "[♪♪♪] ♪ We're no strangers to love ♪ ♪ You know the rules and so do I ♪ ♪ A full commitment's what I'm thinking of ♪ ♪ You wouldn't get this from any other guy ♪ ♪ I just wanna tell you how I'm feeling ♪ ♪ Gotta make you understand ♪ ♪ Never gonna give you up ♪ ♪ Never gonna let you down ♪ ♪ Never g…",
+      "title": "Rick Astley - Never Gonna Give You Up (Official Video) (4K Remaster)",
+      "url": "https://www.youtube.com/watch?v=dQw4w9WgXcQ",
+      "video_id": "dQw4w9WgXcQ"
+    }
+  ]
+}

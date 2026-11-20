@@ -1,0 +1,23 @@
+[
+  {
+    "content": "iVBORw0KGgoAAAANSUhEUgAACgAAAATGCAYAAADq2v0sAABnCElEQVR4nOzde5BdVZk34BeMBRHkYggESiBRQQIUkKBEIqgQA-oHKjAMYJTrKIx3RRDQiHgrQRHQDCPIoCgoyHXGEUaYIhCQiEICZAYQ1ITbhCAm3BNQyDfv7jo93Z3uPvuc7g5ZneepOtXn7LP32mutvff5I_XLu0YsXrx4eQAAAAAAAAAAAABFWTMAAAAAAAAAAACA4ggAAgAAAAAAAAAAQIEEAAEAAAAAAAAAAKBAAoAAAAAAAAAAAABQIAFAAAAAAAAAAAAAKJAAIAAAAAAAAAAAABRIABAAAAAAAAAAAAAKJAAIAAAAAAAAAAAABRIABAAAAAAAAAAAgAIJAAIAAAAAAAAAAECBBAABAAAAAAAAAACgQAKAAAAAAAAAAAAAUCABQAAAAAAAAAAAACiQACAAAAAAAAAAAAAUSAAQAAAAAAAAAAAACiQACAAAAAAA… [35244 chars total]",
+    "costs": {
+      "ai_cost": 0.0,
+      "ai_cost_formatted": "0",
+      "bytes_transferred_cost": 4.801500000000001e-07,
+      "bytes_transferred_cost_formatted": "0.0000004801500000000000230024",
+      "compute_cost": 1.7916666666666667e-06,
+      "compute_cost_formatted": "0.0000017916666666666667545593",
+      "file_cost": 1.91205e-05,
+      "file_cost_formatted": "0.0000191204999999999999960032",
+      "total_cost": 2.139231666666667e-05,
+      "total_cost_formatted": "0.0000213923166666666667735650",
+      "transform_cost": 0.0,
+      "transform_cost_formatted": "0"
+    },
+    "duration_elasped_ms": 1076,
+    "error": null,
+    "status": 200,
+    "url": "https://example.com/"
+  }
+]

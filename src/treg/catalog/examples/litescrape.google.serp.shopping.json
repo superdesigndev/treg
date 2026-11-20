@@ -1,0 +1,186 @@
+{
+  "search_metadata": {
+    "id": "02246a37ba1e609b40a205f2",
+    "status": "Success",
+    "json_endpoint": "https://api.litescrape.com/api/google/shopping?q=coffee+maker&google_domain=google.com&hl=en&device=desktop&start=0",
+    "created_at": "2026-09-29 13:58:35 UTC",
+    "processed_at": "2026-09-29 13:58:35 UTC",
+    "total_time_taken": 2.28,
+    "google_shopping_url": "https://www.google.com/search?q=coffee+maker&udm=28&hl=en",
+    "transport_time_taken": 2.223
+  },
+  "search_parameters": {
+    "q": "coffee maker",
+    "google_domain": "google.com",
+    "hl": "en",
+    "device": "desktop"
+  },
+  "search_information": {
+    "query_displayed": "coffee maker",
+    "shopping_results_state": "Results for exact spelling"
+  },
+  "shopping_results": [
+    {
+      "title": "Mr. Coffee 12 Cup Programmable Coffee Maker with 3 Ways to Brew System",
+      "extracted_price": 39.99,
+      "price": "$39.99",
+      "extracted_old_price": 45,
+      "old_price": "Usually $45",
+      "source": "BJ's Wholesale Club",
+      "delivery": "Free delivery",
+      "multiple_sources": true,
+      "rating": 4,
+      "reviews": 1900,
+      "extensions": [
+        "365-day returns"
+      ],
+      "thumbnail": "https://encrypted-tbn1.gstatic.com/shopping?q=tbn:ANd9GcSG-iwUobZmMMiqpXuuG0ZwdpQv7tPjZjcKtEwTFeaxAQYFLvd5MRWKc7CzubunuBjOaaIPWvbjf7geyauWYsFs72890Jf1ZpCCI7lwiliryecyYDPLwizUis0",
+      "source_icon": "[inline image omitted]",
+      "position": 1
+    },
+    {
+      "title": "Mr. Coffee 12-Cup Programmable Coffee Maker",
+      "extracted_price": 34.99,
+      "price": "$34.99",
+      "source": "Target",
+      "delivery": "Free delivery on $35+",
+      "multiple_sources": true,
+      "rating": 4.3,
+      "reviews": 835,
+      "extensions": [
+        "90-day returns"
+      ],
+      "thumbnail": "https://encrypted-tbn2.gstatic.com/shopping?q=tbn:ANd9GcRI35b357rO0MLCHZ5mJwiw0Tk2Qcg98y4vwZpuAohlg4SA4C8gxapkB6DYR_XKFQQELhp7tMca1RxzVhIWSipzWPU2-v_KDQ",
+      "source_icon": "[inline image omitted]",
+      "position": 2,
+      "gpcid": "17856462871724676896",
+      "headline_offer_docid": "16445868056790990112"
+    }
+  ],
+  "categorized_shopping_results": [
+    {
+      "title": "Drip Coffee Makers",
+      "shopping_results": [
+        {
+          "gpcid": "2786756917538688235",
+          "headline_offer_docid": "5148952067814683768",
+          "image_docid": "1547610457861872483",
+          "product_id": "5120790537924650407",
+          "catalog_id": "2583203268761036702",
+          "title": "Hamilton Beach 12 Cup Programmable Coffee Maker 52580270 46290",
+          "extracted_price": 27.99,
+          "price": "$27.99",
+          "extracted_old_price": 2.33,
+          "old_price": "$2.33/ct",
+          "source": "Target",
+          "delivery": "Free delivery on $35+",
+          "multiple_sources": true,
+          "rating": 3.9
+        },
+        {
+          "gpcid": "17835927675901862158",
+          "headline_offer_docid": "210436492736739978",
+          "image_docid": "17878811135187599899",
+          "product_id": "13538125451472822864",
+          "catalog_id": "15139412649098037183",
+          "title": "Cuisinart 14 Cup Programmable",
+          "extracted_price": 119.95,
+          "price": "$119.95",
+          "source": "Cuisinart",
+          "delivery": "Free delivery",
+          "multiple_sources": true,
+          "rating": 4.4,
+          "reviews": 6100,
+          "extensions": [
+            null
+          ]
+        }
+      ]
+    },
+    {
+      "title": "Single-Serve Coffee Makers",
+      "shopping_results": [
+        {
+          "gpcid": "7750464678660674025",
+          "headline_offer_docid": "2734370384627721878",
+          "image_docid": "6888265630383584838",
+          "product_id": "5467250552804703539",
+          "catalog_id": "13340532695985105577",
+          "title": "Keurig K-Supreme Single Serve Coffee Maker",
+          "extracted_price": 99.99,
+          "price": "$99.99",
+          "extracted_old_price": 190,
+          "old_price": "$190",
+          "source": "Keurig",
+          "delivery": "Free delivery by Fri",
+          "multiple_sources": true,
+          "rating": 3.7
+        },
+        {
+          "gpcid": "2750484846741494450",
+          "headline_offer_docid": "6591915626958023449",
+          "product_id": "12133971411184776567",
+          "catalog_id": "18089380461521413097",
+          "title": "Nespresso Vertuo Pop+ Coffee and Espresso Longhi",
+          "extracted_price": 106.99,
+          "price": "$106.99",
+          "extracted_old_price": 129,
+          "old_price": "$129",
+          "source": "Best Buy",
+          "delivery": "Free delivery",
+          "tag": "17% OFF",
+          "multiple_sources": true,
+          "rating": 4.3
+        }
+      ]
+    }
+  ],
+  "filters": [
+    {
+      "type": "On sale",
+      "input_type": "link",
+      "options": [
+        {
+          "text": "On sale",
+          "shoprs": "CAESBEoCGAEYBioMY29mZmVlIG1ha2VyMhMIBhIHT24gc2FsZRgCIgRKAhgBWKPSIGAC",
+          "litescrape_link": "https://api.litescrape.com/api/google/shopping?google_domain=google.com&hl=en&device=desktop&shoprs=CAESBEoCGAEYBioMY29mZmVlIG1ha2VyMhMIBhIHT24gc2FsZRgCIgRKAhgBWKPSIGAC&q=coffee+maker+sale"
+        },
+        {
+          "text": "Get it by Thu",
+          "shoprs": "CAESDZoBCgoIEAI4AUAESAEYFCoMY29mZmVlIG1ha2VyMiYIFBINR2V0IGl0IGJ5IFRodSINmgEKCggQAjgBQARIASoEEAEYAWAC",
+          "litescrape_link": "https://api.litescrape.com/api/google/shopping?google_domain=google.com&hl=en&device=desktop&shoprs=CAESDZoBCgoIEAI4AUAESAEYFCoMY29mZmVlIG1ha2VyMiYIFBINR2V0IGl0IGJ5IFRodSINmgEKCggQAjgBQARIASoEEAEYAWAC&q=coffee+maker"
+        }
+      ]
+    },
+    {
+      "type": "Capacity",
+      "input_type": "link",
+      "options": [
+        {
+          "text": "Under 7 cup",
+          "shoprs": "CAESESoPCKr_YRIJEQAAAMDDe5JAGAEqDGNvZmZlZSBtYWtlcjIwCAESC1VuZGVyIDcgY3VwIhEqDwiq_2ESCREAAADAw3uSQCoCGAE6CAiq_2EQADAGWKPSIGAC",
+          "litescrape_link": "https://api.litescrape.com/api/google/shopping?google_domain=google.com&hl=en&device=desktop&shoprs=CAESESoPCKr_YRIJEQAAAMDDe5JAGAEqDGNvZmZlZSBtYWtlcjIwCAESC1VuZGVyIDcgY3VwIhEqDwiq_2ESCREAAADAw3uSQCoCGAE6CAiq_2EQADAGWKPSIGAC&q=under+7+cup+coffee+maker"
+        },
+        {
+          "text": "7 – 10 cup",
+          "shoprs": "CAESGioYCKr_YRISCQAAAMDDe5JAEQAAAOCjuZtAGAEqDGNvZmZlZSBtYWtlcjJLCAESDDcg4oCTIDEwIGN1cCIaKhgIqv9hEhIJAAAAwMN7kkARAAAA4KO5m0AqEwoPNyBjdXAgdG8gMTAgY3VwGAE6CAiq_2EQADAGWKPSIGAC",
+          "litescrape_link": "https://api.litescrape.com/api/google/shopping?google_domain=google.com&hl=en&device=desktop&shoprs=CAESGioYCKr_YRISCQAAAMDDe5JAEQAAAOCjuZtAGAEqDGNvZmZlZSBtYWtl…"
+        }
+      ]
+    }
+  ],
+  "carousel_filters": [
+    {
+      "text": "Nearby",
+      "shoprs": "CAEYAyoMY29mZmVlIG1ha2VyMg4IAxIGTmVhcmJ5GAJIAQ",
+      "input_type": "link",
+      "litescrape_link": "https://api.litescrape.com/api/google/shopping?google_domain=google.com&hl=en&device=desktop&shoprs=CAEYAyoMY29mZmVlIG1ha2VyMg4IAxIGTmVhcmJ5GAJIAQ&q=coffee+maker"
+    },
+    {
+      "text": "Deals",
+      "shoprs": "CAESBEoCGAEYBioMY29mZmVlIG1ha2VyMhUIBhIHT24gc2FsZRgCIgRKAhgBSAE",
+      "input_type": "link",
+      "litescrape_link": "https://api.litescrape.com/api/google/shopping?google_domain=google.com&hl=en&device=desktop&shoprs=CAESBEoCGAEYBioMY29mZmVlIG1ha2VyMhUIBhIHT24gc2FsZRgCIgRKAhgBSAE&q=coffee+maker"
+    }
+  ]
+}

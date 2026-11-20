@@ -1,0 +1,32 @@
+{
+ "data": {
+  "description": "Stripe powers online and in-person payment processing and financial solutions for businesses of all sizes.",
+  "domain": "stripe.com",
+  "emails": [
+   "[email]"
+  ],
+  "industry": "Technology, Information and Internet",
+  "lang": "en-gb",
+  "linkedin": "stripe",
+  "logo_url": "https://images.stripeassets.com/fzn2n1nzq965/1hgcBNd12BfT9VLgbId7By/01d91920114b124fb4cf6d448f9f06eb/favicon.svg",
+  "mail_provider": "google",
+  "name": "Stripe",
+  "people_count": 10199,
+  "phones": [],
+  "socials": {
+   "crunchbase": "https://www.crunchbase.com/organization/stripe",
+   "facebook": "https://www.facebook.com/StripeHQ",
+   "github": "https://github.com/stripe",
+   "instagram": "https://www.instagram.com/stripehq/",
+   "linkedin": "https://www.linkedin.com/company/stripe/",
+   "x": "https://twitter.com/stripe",
+   "youtube": "https://youtube.com/@stripe"
+  },
+  "tech": [
+   "nextjs"
+  ]
+ },
+ "meta": {
+  "took_ms": 1703
+ }
+}

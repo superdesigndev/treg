@@ -1,0 +1,56 @@
+{
+  "meta": {
+    "blocked": [],
+    "elapsed_ms": 0,
+    "from_cache": true,
+    "llm_calls": 0,
+    "pages_fetched": 0,
+    "partial": false,
+    "warnings": [
+      "module: google-news: 'rust programming' en-US/US · 25 headlines"
+    ]
+  },
+  "recipe": "google-news",
+  "usage": {
+    "boxes": [
+      "gate"
+    ],
+    "cache": "hit",
+    "engine": "recipe",
+    "lines": [
+      {
+        "about": "the call",
+        "boxes": [
+          "gate"
+        ],
+        "cache": "miss",
+        "call": "recipes",
+        "engine": "gate",
+        "units": 1
+      }
+    ],
+    "remaining_before": {
+      "concurrent": 99,
+      "requests": 188,
+      "search": 3000
+    },
+    "units": 1
+  },
+  "version": 1,
+  "rows": [
+    {
+      "published": "Mon, 05 Oct 2026 10:00:47 GMT",
+      "source": "https://www.railbusinessuk.com/",
+      "summary": "<a href=\"https://news.google.com/rss/articles/CBMirwFBVV95cUxPMGtFRndxVGVYSFhWMWlveTVLWEFtNXp5clNDZldmU3d3cXExZTdURUh3TVl2SE5xZTBURktxUm9ETm4xc0ltU19fZVdmTTQ2Ti1kVmlYSlJQRVZTN2ZJU0p4TnJ2aThaemU5T3NkZ2cwZW9DQmpQZ0U4T0EyRTJmUVhoUUlNZHZRZG5LbUFybUZZcVVDdFcyTXBCR2hwVWU2eGY0ckZ1V1F2MGpncDM0?oc=5\" target=…",
+      "title": "Agreement seeks to bring Rust programming language to rail",
+      "url": "https://news.google.com/rss/articles/CBMirwFBVV95cUxPMGtFRndxVGVYSFhWMWlveTVLWEFtNXp5clNDZldmU3d3cXExZTdURUh3TVl2SE5xZTBURktxUm9ETm4xc0ltU19fZVdmTTQ2Ti1kVmlYSlJQRVZTN2ZJU0p4TnJ2aThaemU5T3NkZ2cwZW9DQmpQZ0U4T0EyRTJmUVhoUUlNZHZRZG5LbUFybUZZcVVDdFcyTXBCR2hwVWU2eGY0ckZ1V1F2MGpncDM0?oc=5"
+    },
+    {
+      "published": "Wed, 07 Oct 2026 08:45:00 GMT",
+      "source": "The Register",
+      "summary": "<a href=\"https://news.google.com/rss/articles/CBMioAFBVV95cUxNZW5mTUgyaW5WZW02Mlh4LWJzcWlCTUh1SU9yYU1XUjA5N3NWX0dpVnZZXzNYVFh2ckVRS3c1cmFtcTBQbXlMVU5UT0I5a3FjNlVIM1dUdmhrRVdhbl9jaWpqUzVmNVlEODl2OUk2R2NXVkZZazV0cmIyTU1ralRZLVlxMzEwdGdKTGdVSmVlczgtUmY1bDdRUy1NUUNWNlhS?oc=5\" target=\"_blank\">Rails origi…",
+      "title": "Rails originator roasted over Rust boosterism",
+      "url": "https://news.google.com/rss/articles/CBMioAFBVV95cUxNZW5mTUgyaW5WZW02Mlh4LWJzcWlCTUh1SU9yYU1XUjA5N3NWX0dpVnZZXzNYVFh2ckVRS3c1cmFtcTBQbXlMVU5UT0I5a3FjNlVIM1dUdmhrRVdhbl9jaWpqUzVmNVlEODl2OUk2R2NXVkZZazV0cmIyTU1ralRZLVlxMzEwdGdKTGdVSmVlczgtUmY1bDdRUy1NUUNWNlhS?oc=5"
+    }
+  ]
+}

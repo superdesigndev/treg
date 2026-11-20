@@ -1,0 +1,5 @@
+{
+  "inputs": {"limit": 3},
+  "fields": ["rows", "count"],
+  "min_rows": 1
+}

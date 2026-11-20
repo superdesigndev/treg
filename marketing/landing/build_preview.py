@@ -12,7 +12,10 @@ Takes src/treg/web/usecase-<key>.html and makes it self-contained:
 
 What survives is the real page: same markup, same tokens, same copy, working copy-to-clipboard.
 """
-import re, sys, pathlib, base64
+import re
+import sys
+import pathlib
+import base64
 
 HERE = pathlib.Path(__file__).parent
 WEB = HERE.parent.parent / "src" / "treg" / "web"

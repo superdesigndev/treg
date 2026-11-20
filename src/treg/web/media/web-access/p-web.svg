@@ -1,0 +1,8 @@
+<svg viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="The web">
+  <!-- Generic globe: this "platform" is the open web, which has no brand of its own. -->
+  <g fill="none" stroke="#3E7CB1" stroke-width="1.7">
+    <circle cx="12" cy="12" r="9"/>
+    <ellipse cx="12" cy="12" rx="4" ry="9"/>
+    <path d="M3.2 9.2h17.6M3.2 14.8h17.6"/>
+  </g>
+</svg>

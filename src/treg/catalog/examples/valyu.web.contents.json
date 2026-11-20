@@ -1,0 +1,28 @@
+{
+  "success": true,
+  "error": null,
+  "urls_requested": 1,
+  "urls_processed": 1,
+  "urls_failed": 0,
+  "results": [
+    {
+      "title": "Example Domain",
+      "url": "https://example.com",
+      "content": "This domain is for use in documentation examples without needing permission. This is not a service; avoid relying on it for testing and monitoring purposes.",
+      "description": "",
+      "source": "web",
+      "price": 0.001,
+      "length": 156,
+      "data_type": "unstructured",
+      "source_type": "website",
+      "publication_date": "2026-10-09",
+      "crawl_date": "2026-10-09",
+      "id": "https://example.com",
+      "image_url": {},
+      "render_method": "http",
+      "status": "success"
+    }
+  ],
+  "total_cost_dollars": 0.001,
+  "total_characters": 156
+}

@@ -1,0 +1,19 @@
+{
+  "output": {
+    "found": true,
+    "data": {
+      "transcript": "How far is too far? There's only one way to find out."
+    }
+  },
+  "provider": "AnyAPI",
+  "costUsd": 0.0012,
+  "items": 0,
+  "replayed": false,
+  "source": {
+    "id": "anonymous-giraffe",
+    "name": "Giraffe",
+    "kind": "anonymous",
+    "artworkKey": "giraffe"
+  },
+  "resultId": "cd858994-1631-4339-8983-a558c8b1fefa"
+}

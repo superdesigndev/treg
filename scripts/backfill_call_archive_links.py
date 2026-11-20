@@ -11,15 +11,13 @@ directions: one snapshot ↔ one call. Anything else is counted and left alone �
 show a team someone else's answer, and "no result on file" is the honest fallback.
 
 Only metered platform 2xx rows that are not already linked are candidates (the archive never holds
-anything else). Served hits are skipped: prod recorded in `shadow`, so none exist.
+anything else). Served hits are skipped.
 
     python scripts/backfill_call_archive_links.py                # dry run: counts only
     python scripts/backfill_call_archive_links.py --apply        # write the links
     python scripts/backfill_call_archive_links.py --window 10    # ± seconds (default 10)
 
-Connects with `TREG_DATABASE_URL` / `--dsn` (a postgres:// DSN). With `--render`, reuses
-`scripts/usage_report.py`'s open-allowlist / connect / close-allowlist dance for the prod database
-(needs RENDER_API_KEY in the environment or the repo's .env).
+Connects with `TREG_DATABASE_URL` / `--dsn` (a postgres:// DSN).
 """
 from __future__ import annotations
 
@@ -27,9 +25,6 @@ import argparse
 import asyncio
 import os
 import sys
-from pathlib import Path
-
-REPO = Path(__file__).resolve().parent.parent
 
 # One statement finds every unambiguous pair. `snap_n` is how many calls a snapshot could be, and
 # `call_n` how many snapshots a call could be — a link is written only where both are exactly 1.
@@ -86,40 +81,19 @@ async def main() -> int:
     ap.add_argument("--apply", action="store_true", help="write the links (default: dry run)")
     ap.add_argument("--window", type=int, default=10, help="± seconds between call and fetch (default 10)")
     ap.add_argument("--dsn", default=os.environ.get("TREG_DATABASE_URL", ""), help="postgres DSN")
-    ap.add_argument("--render", action="store_true", help="open the prod allowlist via the Render API, like usage_report.py")
     args = ap.parse_args()
 
     import asyncpg
 
-    if args.render:
-        sys.path.insert(0, str(REPO / "scripts"))
-        import usage_report as ur  # the allowlist dance lives there; do not duplicate it
-
-        ip = ur.my_ip()
-        print(f"opening prod allowlist for {ip}/32 ...", file=sys.stderr)
-        ur.render_api("PATCH", f"/postgres/{ur.DB_ID}",
-                      {"ipAllowList": [{"cidrBlock": f"{ip}/32", "description": "backfill_call_archive_links.py"}]})
-        try:
-            dsn = ur.render_api("GET", f"/postgres/{ur.DB_ID}/connection-info")["externalConnectionString"]
-            await asyncio.sleep(3)
-            conn = await asyncpg.connect(dsn, ssl="require", timeout=45)
-            try:
-                report = await run(conn, window_s=args.window, apply=args.apply)
-            finally:
-                await conn.close()
-        finally:
-            ur.render_api("PATCH", f"/postgres/{ur.DB_ID}", {"ipAllowList": []})
-            print("prod allowlist closed", file=sys.stderr)
-    else:
-        if not args.dsn:
-            print("no DSN: pass --dsn, set TREG_DATABASE_URL, or use --render", file=sys.stderr)
-            return 2
-        dsn = args.dsn.replace("postgresql+asyncpg://", "postgresql://")
-        conn = await asyncpg.connect(dsn, timeout=45)
-        try:
-            report = await run(conn, window_s=args.window, apply=args.apply)
-        finally:
-            await conn.close()
+    if not args.dsn:
+        print("no DSN: pass --dsn, set TREG_DATABASE_URL", file=sys.stderr)
+        return 2
+    dsn = args.dsn.replace("postgresql+asyncpg://", "postgresql://")
+    conn = await asyncpg.connect(dsn, timeout=45)
+    try:
+        report = await run(conn, window_s=args.window, apply=args.apply)
+    finally:
+        await conn.close()
 
     mode = "APPLIED" if args.apply else "DRY RUN"
     print(f"[{mode}] snapshots={report['snapshots']} unlinked_platform_2xx_calls={report['unlinked_calls']} "

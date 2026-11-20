@@ -1,0 +1,77 @@
+{
+  "result": "verified",
+  "company": {
+    "id": "co_sea81b5ad3d15a050b79a96d8b",
+    "jurisdiction": "se",
+    "company_number": "5560295197",
+    "legal_name": "Volvo Business Services Aktiebolag",
+    "display_name": null,
+    "name_translit": "Volvo Business Services Corporation",
+    "legal_form": {
+      "code": "AB-ORGFO",
+      "elf_code": "se_aktiebolag",
+      "label": "Aktiebolag"
+    },
+    "status": "active",
+    "status_date": null,
+    "registration_date": "1930-11-24",
+    "dissolution_date": null,
+    "address": {
+      "line1": "ARSC, DC24000",
+      "city": "GÖTEBORG",
+      "postcode": "40508",
+      "region": null,
+      "country": "SE",
+      "raw": "ARSC, DC24000  GÖTEBORG 40508 SE-LAND"
+    },
+    "officers_availability": "gated",
+    "identifiers": [
+      {
+        "scheme": "SE-ORGNR",
+        "value": "5560295197",
+        "is_primary": true,
+        "valid_check": true
+      },
+      {
+        "scheme": "EU-VAT",
+        "value": "SE556029519701",
+        "is_primary": false,
+        "valid_check": true
+      }
+    ],
+    "other_names": [
+      {
+        "name": "Volvo Business Services Corporation",
+        "kind": "translated",
+        "start_date": "1998-02-12",
+        "end_date": null
+      }
+    ],
+    "activities": [
+      {
+        "scheme": "SNI-2025",
+        "code": "70200",
+        "description": null,
+        "is_primary": true
+      },
+      {
+        "scheme": "SNI-2025",
+        "code": "78100",
+        "description": null,
+        "is_primary": false
+      }
+    ],
+    "officers": []
+  },
+  "candidates": [],
+  "checks": [
+    {
+      "field": "legal_name",
+      "outcome": "match",
+      "expected": "Volvo Business Services Aktiebolag",
+      "actual": "Volvo Business Services Aktiebolag",
+      "score": 1.0
+    }
+  ],
+  "reference": null
+}

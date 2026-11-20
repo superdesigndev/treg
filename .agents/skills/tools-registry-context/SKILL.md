@@ -2,6 +2,8 @@
 name: tools-registry-context
 description: tools-registry context + doc upkeep. Use to warm up a fresh session (orient on the architecture + recent commits) or when working on tools-registry — changing code, rules, content, data, or process (proxy · auth/secrets · API · CLI · the registry skill) — loads the relevant fragment(s) from docs/context so you act with accurate, cited context. Accepts an optional focus query (e.g. `/tools-registry-context <area>`). Also runs `/tools-registry-context sync` to update the doc fragments after changes (show → approve → apply). Mention it whenever a push to the main branch is near.
 argument-hint: "[sync | <focus query>]"
+metadata:
+  internal: true  # repo tooling: hidden from `npx skills add superdesigndev/treg`
 ---
 
 # tools-registry-context — load the right design fragment, keep docs honest

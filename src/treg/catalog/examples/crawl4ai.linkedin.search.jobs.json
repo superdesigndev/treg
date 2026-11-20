@@ -1,0 +1,63 @@
+{
+  "meta": {
+    "blocked": [],
+    "elapsed_ms": 0,
+    "from_cache": true,
+    "llm_calls": 0,
+    "pages_fetched": 0,
+    "partial": false,
+    "warnings": [
+      "module: step module: 60 null fields across 60 items",
+      "module: linkedin-jobs: 'rust developer' in '' from 1 · 25 of 60 cards"
+    ]
+  },
+  "recipe": "linkedin-jobs",
+  "usage": {
+    "boxes": [
+      "gate"
+    ],
+    "cache": "hit",
+    "engine": "recipe",
+    "lines": [
+      {
+        "about": "the call",
+        "boxes": [
+          "gate"
+        ],
+        "cache": "miss",
+        "call": "recipes",
+        "engine": "gate",
+        "units": 1
+      }
+    ],
+    "remaining_before": {
+      "concurrent": 99,
+      "requests": 174,
+      "search": 3000
+    },
+    "units": 1
+  },
+  "version": 2,
+  "rows": [
+    {
+      "company": "Van Kaizen",
+      "job_id": "4468908584",
+      "location": "New York, NY",
+      "posted": "2 weeks ago",
+      "posted_on": "2026-09-22",
+      "salary": null,
+      "title": "Software Engineer, Backend (Rust) – Crypto Trading",
+      "url": "https://www.linkedin.com/jobs/view/software-engineer-backend-rust-%E2%80%93-crypto-trading-at-van-kaizen-4468908584"
+    },
+    {
+      "company": "Abacus Group, LLC",
+      "job_id": "4476771180",
+      "location": "San Francisco Bay Area",
+      "posted": "3 days ago",
+      "posted_on": "2026-10-07",
+      "salary": null,
+      "title": "Senior Backend Engineer (Rust) - Full Time SF",
+      "url": "https://www.linkedin.com/jobs/view/senior-backend-engineer-rust-full-time-sf-at-abacus-group-llc-4476771180"
+    }
+  ]
+}

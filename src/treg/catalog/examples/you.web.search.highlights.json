@@ -1,0 +1,22 @@
+{
+  "results": {
+    "web": [
+      {
+        "url": "http://example.com/",
+        "contents": {
+          "highlights": [
+            "This domain is for use in documentation examples without needing permission. This is not a service; avoid relying on it for testing and monitoring purposes."
+          ]
+        },
+        "title": "Example Domain",
+        "description": "",
+        "page_age": "2006-03-14T00:00:00",
+        "favicon_url": "https://you.com/favicon?domain=example.com&size=128"
+      }
+    ]
+  },
+  "metadata": {
+    "query": "site:example.com Example Domain",
+    "latency": 0.45844886964187026
+  }
+}

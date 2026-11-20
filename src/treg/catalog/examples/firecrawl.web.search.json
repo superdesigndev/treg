@@ -1,0 +1,15 @@
+{
+  "success": true,
+  "data": {
+    "web": [
+      {
+        "url": "https://docs.firecrawl.dev/introduction",
+        "title": "Introduction | Firecrawl",
+        "description": "Firecrawl API documentation",
+        "position": 1
+      }
+    ]
+  },
+  "creditsUsed": 2,
+  "id": "00000000-0000-4000-8000-000000000001"
+}

@@ -1,0 +1,26 @@
+{
+ "events": [
+  {
+   "cost_credits": 0.0,
+   "created_at": "2026-10-19T10:57:43Z",
+   "delivery": {},
+   "event": "health",
+   "health": "paused",
+   "id": 77277,
+   "message": "No budget for this agent label: add one with POST /monitors/agents/{label}/budget. The monitor is paused: no checks, no charges. It starts as soon as a budget is added.",
+   "monitor": "mon_7f3a20c1e9b04d55",
+   "url": "https://example.com/"
+  },
+  {
+   "cost_credits": 0.0,
+   "created_at": "2026-10-19T10:57:43Z",
+   "delivery": {},
+   "event": "health",
+   "health": "ok",
+   "id": 77278,
+   "message": "The credit limit allows checks again. Checks and alerts continue.",
+   "monitor": "mon_7f3a20c1e9b04d55",
+   "url": "https://example.com/"
+  }
+ ]
+}

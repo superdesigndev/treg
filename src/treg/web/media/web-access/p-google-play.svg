@@ -1,0 +1,7 @@
+<svg viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="Google Play">
+  <!-- Official 2016 Google Play triangle (four facets), scaled from Wikimedia Commons "Google Play 2016 icon.svg"; gradients flattened to Google's flat palette. -->
+  <path fill="#00A0FF" d="M1.66.37C1.39.66 1.23 1.1 1.23 1.68v20.63c0 .58.16 1.03.43 1.31l.07.06 11.56-11.56v-.26L1.73.31l-.07.06z"/>
+  <path fill="#FFBC00" d="M17.14 15.99l-3.85-3.86v-.27l3.86-3.86.08.05 4.56 2.59c1.31.74 1.31 1.95 0 2.7l-4.56 2.59-.09.06z"/>
+  <path fill="#FF3A44" d="M17.23 15.94L13.29 12 1.66 23.63c.42.46 1.14.51 1.94.06l13.63-7.75z"/>
+  <path fill="#00F076" d="M17.23 8.06L3.6.32C2.8-.14 2.08-.08 1.66.38l11.63 11.62 3.94-3.94z"/>
+</svg>

@@ -10,7 +10,7 @@ import pytest
 from httpx import ASGITransport, AsyncClient
 from sqlalchemy import select
 
-from conftest import make_upstream
+from conftest import make_upstream, verified_signup
 
 from treg.api import app
 from treg.infra.db import reset_db, session_maker
@@ -38,7 +38,7 @@ async def c(monkeypatch):
 
 
 async def _register(c: AsyncClient, email: str) -> str:
-    return (await c.post("/users", json={"email": email})).json()["token"]
+    return (await verified_signup(c, json={"email": email})).json()["token"]
 
 
 async def test_onboard_seeds_a_populated_team(c):
@@ -119,9 +119,9 @@ async def test_seed_tool_and_accept_teammate(c):
             user = User(email="builder@x.io")
             s.add(user)
             await s.commit()
-        tok = sess.make(user.id)
+        tok = sess.make_identity(user.id)
     org = (await c.post("/orgs", json={"name": "Acme"}, headers=_h(tok))).json()  # first team: identity token only, no org yet
-    oh = {**_h(tok), "X-Treg-Org": org["org"]}
+    oh = _h(org["token"])
     # seed the tool
     st = await c.post("/onboard/seed-tool", headers=oh)
     assert st.status_code == 200 and st.json()["tool"] == "echo"
@@ -164,9 +164,9 @@ async def test_reset_sweeps_deny_rules_naming_a_demo_teammate(c):
         user = User(email="builder@x.io")
         s.add(user)
         await s.commit()
-    tok = sess.make(user.id)
+    tok = sess.make_identity(user.id)
     org = (await c.post("/orgs", json={"name": "Acme"}, headers=_h(tok))).json()
-    oh = {**_h(tok), "X-Treg-Org": org["org"]}
+    oh = _h(org["token"])
     await c.post(f"/orgs/{org['org_id']}/invites", json={"email": "alex@demo.treg.local", "role": "member"}, headers=oh)
     assert (await c.post("/onboard/accept-teammate", json={"email": "alex@demo.treg.local"}, headers=oh)).status_code == 200
     async with session_maker() as s:

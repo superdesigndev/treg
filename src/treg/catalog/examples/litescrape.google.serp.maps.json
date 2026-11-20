@@ -1,0 +1,64 @@
+{
+  "search_metadata": {
+    "id": "5287cbd1924f634c3574a207",
+    "status": "Success",
+    "json_endpoint": "https://api.litescrape.com/api/google/maps?q=coffee+shops+in+Austin+TX&type=search&google_domain=google.com&hl=en",
+    "created_at": "2026-09-29 13:58:34 UTC",
+    "processed_at": "2026-09-29 13:58:37 UTC",
+    "total_time_taken": 2.923,
+    "google_maps_url": "https://www.google.com/maps/search/coffee%20shops%20in%20Austin%20TX/@40.7128,-74.006,50000m/?hl=en"
+  },
+  "search_parameters": {
+    "q": "coffee shops in Austin TX",
+    "type": "search",
+    "google_domain": "google.com",
+    "hl": "en"
+  },
+  "search_information": {
+    "local_results_state": "Results for exact spelling",
+    "query_displayed": "coffee shops in Austin TX"
+  },
+  "local_results": [
+    {
+      "position": 1,
+      "title": "Terrible Love",
+      "place_id": "ChIJP8p2kJC1RIYR2qrGoXZtZCk",
+      "data_id": "0x8644b5909076ca3f:0x29646d76a1c6aada",
+      "data_cid": "2982629209513831130",
+      "reviews_link": "https://api.litescrape.com/api/google/reviews?data_id=0x8644b5909076ca3f%3A0x29646d76a1c6aada&hl=en",
+      "photos_link": "https://www.google.com/maps/place/@30.3045132,-97.735632,17z/data=!4m2!3m1!1s0x8644b5909076ca3f%3A0x29646d76a1c6aada?entry=photos",
+      "gps_coordinates": {
+        "latitude": 30.3045132,
+        "longitude": -97.735632
+      },
+      "place_id_search": "https://api.litescrape.com/api/google/maps?place_id=ChIJP8p2kJC1RIYR2qrGoXZtZCk&google_domain=google.com&hl=en",
+      "provider_id": "/g/11ng70tdrd",
+      "rating": 4.9,
+      "reviews": 432,
+      "price": "$1–10",
+      "extracted_price": 1
+    },
+    {
+      "position": 2,
+      "title": "Flora Coffee & Culture",
+      "place_id": "ChIJK_G24QHrRIYRFsqJnuQaKv0",
+      "data_id": "0x8644eb01e1b6f12b:0xfd2a1ae49e89ca16",
+      "data_cid": "18242422809832311318",
+      "reviews_link": "https://api.litescrape.com/api/google/reviews?data_id=0x8644eb01e1b6f12b%3A0xfd2a1ae49e89ca16&hl=en",
+      "photos_link": "https://www.google.com/maps/place/@30.362347,-97.7421123,17z/data=!4m2!3m1!1s0x8644eb01e1b6f12b%3A0xfd2a1ae49e89ca16?entry=photos",
+      "gps_coordinates": {
+        "latitude": 30.362347,
+        "longitude": -97.7421123
+      },
+      "place_id_search": "https://api.litescrape.com/api/google/maps?place_id=ChIJK_G24QHrRIYRFsqJnuQaKv0&google_domain=google.com&hl=en",
+      "provider_id": "/g/11vrh3fl3l",
+      "rating": 4.9,
+      "reviews": 409,
+      "price": "$1–10",
+      "extracted_price": 1
+    }
+  ],
+  "pagination": {
+    "next": "https://api.litescrape.com/api/google/maps?q=coffee+shops+in+Austin+TX&type=search&google_domain=google.com&hl=en&start=20"
+  }
+}

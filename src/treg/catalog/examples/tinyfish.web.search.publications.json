@@ -1,0 +1,19 @@
+{
+  "query": "browser agent benchmark",
+  "results": [
+    {
+      "authors": ["P Yuan", "Y Yin", "Y Cai", "Z Wei"],
+      "cited_by_count": 2,
+      "pdf_url": "https://arxiv.org/pdf/2604.10988",
+      "position": 1,
+      "site_name": "arxiv.org",
+      "title": "Webforge: Breaking the realism-reproducibility-scalability trilemma in browser agent benchmark",
+      "url": "https://arxiv.org/abs/2604.10988",
+      "snippet": "A paper about realism, reproducibility, and scalability in browser-agent benchmarks.",
+      "venue": "arXiv preprint arXiv:2604.10988",
+      "year": 2026
+    }
+  ],
+  "total_results": 10,
+  "page": 0
+}

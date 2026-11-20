@@ -31,6 +31,7 @@ endpoints:
     test_request: {queryParams: {symbols: "AAPL", limit: "3"}}
     cost: {type: per_call, value: 1, currency: credit, per: 1, unit: call, source_url: "https://marketstack.com/product", checked: "2026-08-15", confidence: documented, note: "one request against the plan's 10,000/mo cap, whatever it returns"}
     verified: 2026-08-15
+    added: '2026-08-16'
     example_response: examples/marketstack.eod.json
     docs_url: https://marketstack.com/documentation_v1#eod
   - id: marketstack.eod.latest
@@ -48,6 +49,7 @@ endpoints:
     test_request: {queryParams: {symbols: "AAPL"}}
     cost: {type: per_call, value: 1, currency: credit, per: 1, unit: call, source_url: "https://marketstack.com/product", checked: "2026-08-15", confidence: documented}
     verified: 2026-08-15
+    added: '2026-08-16'
     example_response: examples/marketstack.eod.latest.json
     docs_url: https://marketstack.com/documentation_v1#eod
   - id: marketstack.intraday
@@ -69,6 +71,7 @@ endpoints:
     test_request: {queryParams: {symbols: "AAPL", limit: "3"}}
     cost: {type: per_call, value: 1, currency: credit, per: 1, unit: call, source_url: "https://marketstack.com/product", checked: "2026-08-15", confidence: documented}
     verified: 2026-08-15
+    added: '2026-08-16'
     example_response: examples/marketstack.intraday.json
     docs_url: https://marketstack.com/documentation_v1#intraday
   - id: marketstack.tickers
@@ -88,6 +91,7 @@ endpoints:
     test_request: {queryParams: {search: "apple", limit: "3"}}
     cost: {type: per_call, value: 1, currency: credit, per: 1, unit: call, source_url: "https://marketstack.com/product", checked: "2026-08-15", confidence: documented}
     verified: 2026-08-15
+    added: '2026-08-16'
     example_response: examples/marketstack.tickers.json
     docs_url: https://marketstack.com/documentation_v1#tickers
   - id: marketstack.exchanges
@@ -107,6 +111,7 @@ endpoints:
     test_request: {queryParams: {limit: "3"}}
     cost: {type: per_call, value: 1, currency: credit, per: 1, unit: call, source_url: "https://marketstack.com/product", checked: "2026-08-15", confidence: documented}
     verified: 2026-08-15
+    added: '2026-08-16'
     example_response: examples/marketstack.exchanges.json
     docs_url: https://marketstack.com/documentation_v1#exchanges
   - id: marketstack.splits
@@ -127,6 +132,7 @@ endpoints:
     test_request: {queryParams: {symbols: "AAPL", limit: "3"}}
     cost: {type: per_call, value: 1, currency: credit, per: 1, unit: call, source_url: "https://marketstack.com/product", checked: "2026-08-15", confidence: documented}
     verified: 2026-08-15
+    added: '2026-08-16'
     example_response: examples/marketstack.splits.json
     docs_url: https://marketstack.com/documentation_v1#splits
   - id: marketstack.dividends
@@ -147,5 +153,6 @@ endpoints:
     test_request: {queryParams: {symbols: "AAPL", limit: "3"}}
     cost: {type: per_call, value: 1, currency: credit, per: 1, unit: call, source_url: "https://marketstack.com/product", checked: "2026-08-15", confidence: documented}
     verified: 2026-08-15
+    added: '2026-08-16'
     example_response: examples/marketstack.dividends.json
     docs_url: https://marketstack.com/documentation_v1#dividends

@@ -1,0 +1,29 @@
+{
+ "agent": "team-0f1e2d3c4b5a6978",
+ "baseline": {
+  "status": "pending"
+ },
+ "conditions": {
+  "pending": true
+ },
+ "cost": {
+  "per_change_credits": 3.0,
+  "per_check_credits": 1.0
+ },
+ "created": true,
+ "created_at": "2026-10-19T10:57:43Z",
+ "every": "auto",
+ "expires_at": null,
+ "health": "paused",
+ "health_since": "2026-10-19T10:57:43Z",
+ "id": "mon_7f3a20c1e9b04d55",
+ "last_checked_at": null,
+ "name": "Competitor pricing",
+ "notify": {},
+ "paused": true,
+ "paused_by": "credit_limit",
+ "region": "sin",
+ "schema": null,
+ "url": "https://example.com/",
+ "watch": "any new text on the page"
+}

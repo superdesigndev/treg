@@ -16,8 +16,7 @@
       "result_count": 1,
       "path": [
         "v3",
-        "datafor…",
-        "… 3 mor…"
+        "… 2 more item(s) truncated"
       ],
       "data": {
         "api": "datafor…",
@@ -109,8 +108,7 @@
                   "high_top_of_page_bid": null,
                   "categories": [
                     10007,
-                    11493,
-                    "… 1 mor…"
+                    "… 2 more item(s) truncated"
                   ],
                   "monthly_searches": [
                     {
@@ -118,12 +116,7 @@
                       "month": 6,
                       "search_volume": 30
                     },
-                    {
-                      "year": 2026,
-                      "month": 5,
-                      "search_volume": 170
-                    },
-                    "… 10 mo…"
+                    "… 2 more item(s) truncated"
                   ],
                   "search_volume_trend": {
                     "monthly": -82,
@@ -147,8 +140,7 @@
                   "check_url": "https:/…",
                   "serp_item_types": [
                     "ai_over…",
-                    "organic",
-                    "… 2 mor…"
+                    "… 2 more item(s) truncated"
                   ],
                   "se_results_count": 2930000000,
                   "last_updated_time": "2026-05…",
@@ -227,8 +219,7 @@
                 "check_url": "https:/…",
                 "serp_item_types": [
                   "ai_over…",
-                  "organic",
-                  "… 2 mor…"
+                  "… 2 more item(s) truncated"
                 ],
                 "se_results_count": 2930000000,
                 "keyword_difficulty": 20,
@@ -237,152 +228,7 @@
                 "previous_updated_time": "2026-03…"
               }
             },
-            {
-              "se_type": "google",
-              "keyword_data": {
-                "se_type": "google",
-                "keyword": "100 bes…",
-                "location_code": 2840,
-                "language_code": "en",
-                "keyword_info": {
-                  "se_type": "google",
-                  "last_updated_time": "2026-07…",
-                  "competition": 0,
-                  "competition_level": "LOW",
-                  "cpc": null,
-                  "search_volume": 70,
-                  "low_top_of_page_bid": null,
-                  "high_top_of_page_bid": null,
-                  "categories": [
-                    10007,
-                    11493,
-                    "… 1 mor…"
-                  ],
-                  "monthly_searches": [
-                    {
-                      "year": 2026,
-                      "month": 6,
-                      "search_volume": 30
-                    },
-                    {
-                      "year": 2026,
-                      "month": 5,
-                      "search_volume": 170
-                    },
-                    "… 10 mo…"
-                  ],
-                  "search_volume_trend": {
-                    "monthly": -82,
-                    "quarterly": -57,
-                    "yearly": -82
-                  }
-                },
-                "keyword_info_normalized_with_bing": null,
-                "keyword_info_normalized_with_clickstream": null,
-                "clickstream_keyword_info": null,
-                "keyword_properties": {
-                  "se_type": "google",
-                  "core_keyword": null,
-                  "synonym_clustering_algorithm": "text_pr…",
-                  "keyword_difficulty": 37,
-                  "detected_language": "en",
-                  "is_another_language": false
-                },
-                "serp_info": {
-                  "se_type": "google",
-                  "check_url": "https:/…",
-                  "serp_item_types": [
-                    "ai_over…",
-                    "organic",
-                    "… 2 mor…"
-                  ],
-                  "se_results_count": 790000000,
-                  "last_updated_time": "2026-05…",
-                  "previous_updated_time": "2026-03…"
-                },
-                "avg_backlinks_info": {
-                  "se_type": "google",
-                  "backlinks": 5243,
-                  "dofollow": 3576.800048828125,
-                  "referring_pages": 4362.5,
-                  "referring_domains": 1015.5,
-                  "referring_main_domains": 952.4000244140625,
-                  "rank": 202.89999389648438,
-                  "main_domain_rank": 679.9000244140625,
-                  "last_updated_time": "2026-05…"
-                },
-                "search_intent_info": {
-                  "se_type": "google",
-                  "main_intent": "informa…",
-                  "foreign_intent": null,
-                  "last_updated_time": "2026-04…"
-                }
-              },
-              "ranked_serp_element": {
-                "se_type": "google",
-                "serp_item": {
-                  "se_type": "google",
-                  "type": "organic",
-                  "rank_group": 1,
-                  "rank_absolute": 1,
-                  "position": "left",
-                  "xpath": "/html[1…",
-                  "domain": "moz.com",
-                  "title": "Top 500…",
-                  "url": "https:/…",
-                  "breadcrumb": "https:/…",
-                  "website_name": "Moz",
-                  "is_image": false,
-                  "is_video": false,
-                  "is_featured_snippet": false,
-                  "is_malicious": false,
-                  "description": "We've l…",
-                  "pre_snippet": null,
-                  "extended_snippet": null,
-                  "amp_version": false,
-                  "rating": null,
-                  "highlighted": [
-                    "top 500…"
-                  ],
-                  "links": null,
-                  "about_this_result": null,
-                  "main_domain": "moz.com",
-                  "relative_url": "/top500",
-                  "etv": 21.280000686645508,
-                  "estimated_paid_traffic_cost": null,
-                  "clickstream_etv": null,
-                  "rank_changes": {
-                    "previous_rank_absolute": 2,
-                    "is_new": false,
-                    "is_up": true,
-                    "is_down": false
-                  },
-                  "backlinks_info": {
-                    "referring_domains": 612,
-                    "referring_main_domains": 578,
-                    "referring_pages": 1527,
-                    "dofollow": 974,
-                    "backlinks": 1751,
-                    "time_update": "2026-07…"
-                  },
-                  "rank_info": {
-                    "page_rank": 470,
-                    "main_domain_rank": 544
-                  }
-                },
-                "check_url": "https:/…",
-                "serp_item_types": [
-                  "ai_over…",
-                  "organic",
-                  "… 2 mor…"
-                ],
-                "se_results_count": 790000000,
-                "keyword_difficulty": 37,
-                "is_lost": false,
-                "last_updated_time": "2026-05…",
-                "previous_updated_time": "2026-03…"
-              }
-            }
+            "… 1 more item(s) truncated"
           ]
         }
       ]

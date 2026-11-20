@@ -26,6 +26,7 @@ async def raw_client(monkeypatch):
     """No auth, no upstream — routing behavior only. Host is set per-request. The test env's
     public_url is not production's; pin it so the Location assertions mean something."""
     monkeypatch.setenv("TREG_PUBLIC_URL", "https://treg.to")
+    monkeypatch.setenv("TREG_PUBLIC_HOST_ALIASES", '["treg.superdesign.dev","treg.to"]')
     get_settings.cache_clear()
     async with AsyncClient(transport=ASGITransport(app=app), base_url="http://registry") as c:
         yield c
@@ -102,7 +103,7 @@ async def test_canonical_host_is_untouched(raw_client):
     assert r.status_code == 200
 
 
-async def test_legacy_mcp_host_and_oauth_audience_stay_valid():
+async def test_legacy_mcp_host_and_oauth_audience_stay_valid(raw_client):
     # The transport allow-list and the token-audience set must both keep honouring the legacy name —
     # every pre-move .mcp.json and OAuth grant depends on it.
     from treg import mcp
@@ -146,6 +147,24 @@ async def test_canonical_and_legacy_resources_are_the_same_server(raw_client):
     assert _same_mcp_resource("https://evil.example/mcp/", "https://evil.example/mcp/")
 
 
+async def test_configured_alias_is_a_valid_mcp_origin_and_resource(monkeypatch):
+    from treg import mcp
+    from treg.config import get_settings
+    from treg.domain.identity import mcp_oauth
+
+    monkeypatch.setattr(get_settings(), "public_host_aliases",
+                        (*get_settings().public_host_aliases, "alias.example"))
+    assert mcp._allowed_hosts().count("alias.example:443") == 1
+    assert mcp._allowed_origins().count("https://alias.example") == 1
+    for version, path in (("v1", "mcp/"), ("v2", "mcp/v2/")):
+        resource = f"https://alias.example/{path}"
+        assert resource in mcp_oauth.mcp_resource_audiences(version)
+        assert mcp_oauth.mcp_resource_version(resource) == version
+    foreign = mcp_oauth.make_access_token(user_id=1, org_id=1, scope="treg:read", token_version=0,
+                                         audience="https://untrusted.example/mcp/")
+    assert mcp_oauth.read_access_token_any(foreign) is None
+
+
 async def test_login_round_trip_is_anchored_to_the_host_it_started_on(raw_client):
     # The provider compares the exchange's redirect_uri byte-for-byte with the authorization
     # request's. A login in flight across the cutover deploy lives entirely on the legacy host —
@@ -164,6 +183,24 @@ async def test_login_round_trip_is_anchored_to_the_host_it_started_on(raw_client
     assert _login_callback_base(req("anything.else")) == "https://treg.to"
 
 
+async def test_links_never_take_a_host_outside_this_deployment(raw_client):
+    from starlette.requests import Request as StarletteRequest
+
+    from treg.routers.auth_helpers import trusted_public_base
+    from treg.routers.billing import _return_base
+
+    def req(host: str) -> StarletteRequest:
+        return StarletteRequest({"type": "http", "method": "POST", "path": "/", "scheme": "http",
+                                 "headers": [(b"host", host.encode()), (b"x-forwarded-proto", b"https")],
+                                 "query_string": b""})
+
+    for build in (trusted_public_base, _return_base):
+        assert build(req("attacker.example")) == "https://treg.to"
+        assert build(req("treg.to.attacker.example")) == "https://treg.to"
+        assert build(req("")) == "https://treg.to"
+        assert build(req("treg.superdesign.dev")) == "https://treg.superdesign.dev"
+
+
 async def test_env_revert_is_a_complete_rollback(monkeypatch):
     """The staged-rollout contract: with TREG_PUBLIC_URL back on the OLD name, everything minted
     while treg.to was canonical keeps working (symmetric aliases), and no redirect can loop —
@@ -173,9 +210,9 @@ async def test_env_revert_is_a_complete_rollback(monkeypatch):
     from treg import mcp
     from treg.domain.identity import mcp_oauth
     from treg.api import app
-    from treg.routers.auth import _login_callback_base
 
     monkeypatch.setenv("TREG_PUBLIC_URL", "https://treg.superdesign.dev")
+    monkeypatch.setenv("TREG_PUBLIC_HOST_ALIASES", '["treg.superdesign.dev","treg.to"]')
     get_settings.cache_clear()
     try:
         # Recognition stays symmetric: treg.to tokens/hosts/origins remain valid.
@@ -190,5 +227,28 @@ async def test_env_revert_is_a_complete_rollback(monkeypatch):
             for host in ("treg.superdesign.dev", "treg.to"):
                 r = await c.get("/", headers={"host": host})
                 assert r.status_code == 200, host
+    finally:
+        get_settings.cache_clear()
+
+
+async def test_self_hosted_defaults_accept_only_the_configured_public_host(monkeypatch):
+    from treg import mcp
+    from treg.application.hub import treg_hosts
+    from treg.domain.identity import mcp_oauth
+    from treg.infra import turnstile
+
+    monkeypatch.delenv("TREG_PUBLIC_HOST_ALIASES", raising=False)
+    monkeypatch.setenv("TREG_PUBLIC_URL", "https://registry.example")
+    get_settings.cache_clear()
+    try:
+        assert get_settings().public_host_aliases == ()
+        assert mcp._allowed_hosts().count("registry.example") == 1
+        assert mcp._allowed_origins().count("https://registry.example") == 1
+        assert mcp_oauth.mcp_resource_audiences() == {"https://registry.example/mcp/"}
+        assert treg_hosts() == {"registry.example"}
+        assert turnstile.hostnames() == {"registry.example"}
+        for host in ("treg.to", "treg.superdesign.dev"):
+            assert mcp._allowed_hosts().count(host) == 0
+            assert mcp._allowed_origins().count(f"https://{host}") == 0
     finally:
         get_settings.cache_clear()

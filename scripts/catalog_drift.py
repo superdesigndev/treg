@@ -30,9 +30,9 @@ HTTP_METHODS = {"get", "post", "put", "patch", "delete", "head", "options", "tra
 # the truncation, and the ingester's shared salvage routine is the one parser already maintained for
 # that shape. Import it rather than growing a second almost-identical recovery algorithm.
 try:  # Running as a script puts `scripts/` on sys.path; importing in tests puts the repo root there.
-    from catalog_ingest import salvage_json_map  # type: ignore[import-not-found]  # noqa: E402
+    from catalog_ingest import salvage_json_map  # type: ignore[import-not-found]
 except ModuleNotFoundError:
-    from scripts.catalog_ingest import salvage_json_map  # noqa: E402
+    from scripts.catalog_ingest import salvage_json_map
 
 
 class UnsupportedSpec(ValueError):
@@ -68,9 +68,10 @@ def _github_raw(url: str) -> str:
 def discover_specs(catalog_dir: Path) -> dict[str, str]:
     """Find one public spec per provider from catalog source provenance."""
     found: dict[str, str] = {}
-    files = sorted(p for p in catalog_dir.glob("*.yaml")
-                   if p.name not in {"capabilities.yaml", "fx.yaml"})
-    # Core files sort before `.extended` and their explicit `source.openapi` is the curated choice.
+    # Core files come before `.extended` and their explicit `source.openapi` is the curated choice.
+    files = sorted((p for p in catalog_dir.glob("*.yaml")
+                    if p.name not in {"capabilities.yaml", "fx.yaml"}),
+                   key=lambda p: (p.stem.removesuffix(".extended"), p.stem.endswith(".extended")))
     for path in files:
         data = yaml.safe_load(path.read_text()) or {}
         if not isinstance(data, dict) or not data.get("provider"):

@@ -1,0 +1,8 @@
+{
+  "resource": "index_funds",
+  "tickers": [
+    "QQQ",
+    "SPY",
+    "VTI"
+  ]
+}

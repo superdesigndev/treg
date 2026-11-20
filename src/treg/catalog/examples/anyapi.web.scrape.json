@@ -1,0 +1,23 @@
+{
+  "output": {
+    "data": {
+      "description": "",
+      "html": "<!DOCTYPE html><html lang=\"en\"><head><meta http-equiv=\"Content-Type\" content=\"text/html; charset=windows-1252\"><style rel=\"stylesheet\" type=\"text/css\">@charset \"windows-1252\";\r\n\r\nbody { background: rg… [760 chars]",
+      "markdown": "# Example Domain\n\nThis domain is for use in documentation examples without needing permission. Avoid use in operations.\n\n[Learn more](https://iana.org/domains/example)",
+      "title": "Example Domain",
+      "url": "https://example.com"
+    },
+    "found": true
+  },
+  "provider": "AnyAPI",
+  "costUsd": 0.001,
+  "items": 0,
+  "replayed": false,
+  "source": {
+    "id": "anonymous-salamander",
+    "name": "Salamander",
+    "kind": "anonymous",
+    "artworkKey": "salamander"
+  },
+  "resultId": "e15525e0-cb40-4193-9e72-d1907e5a492d"
+}

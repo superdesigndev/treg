@@ -1,0 +1,16 @@
+{
+  "job": [
+    {
+      "company": "example",
+      "company_url": "https://example.com/profile/example",
+      "job_title": "example",
+      "job_url": "https://example.com/profile/example",
+      "list_date": "2026-01-01T00:00:00Z",
+      "location": "example"
+    }
+  ],
+  "next_page_no": 1,
+  "next_page_api_url": "https://example.com/profile/example",
+  "previous_page_no": null,
+  "previous_page_api_url": null
+}

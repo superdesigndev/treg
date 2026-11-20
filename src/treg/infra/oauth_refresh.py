@@ -6,7 +6,28 @@ import time
 
 import httpx
 
+from ..config import get_settings
 from ..domain.connections.refresh import _DEFAULT_TOKEN_URI
+from .upstream.ssrf import url_host_is_public
+
+
+# RFC 6749 section 5.2: the error codes a token endpoint answers with.
+_OAUTH_ERROR_CODES = frozenset({
+    "invalid_request", "invalid_client", "invalid_grant", "unauthorized_client",
+    "unsupported_grant_type", "invalid_scope",
+})
+
+
+def no_access_token_error(answer: object) -> ValueError:
+    code = answer.get("error") if isinstance(answer, dict) else None
+    if code in _OAUTH_ERROR_CODES:
+        return ValueError(f"token endpoint answer had no access_token: {code}")
+    return ValueError("token endpoint answer had no access_token")
+
+
+async def require_public_token_uri(url: str) -> None:
+    if get_settings().proxy_ssrf_check and not await url_host_is_public(url):
+        raise ValueError("token endpoint resolves to a non-public address")
 
 
 class HTTPXOAuthRefreshPort:
@@ -30,13 +51,12 @@ class HTTPXOAuthRefreshPort:
             data[cid_param] = cid
 
         # Client authentication must match what the provider demands, same as exchange_code: X and
-        # Pinterest REQUIRE HTTP Basic and reject a secret in the body. This bit the connect path first
-        # and was fixed there — then every X connection died ~2h later anyway, because the REFRESH
-        # still posted the secret in the body (the provider answered 401, surfaced to callers as
+        # Pinterest REQUIRE HTTP Basic and reject a secret in the body (a 401, surfaced to callers as
         # `502 oauth refresh failed`). The method is recorded in the blob at exchange time; blobs
         # minted before that field existed fall back to body auth, then RETRY once with Basic on a
         # 4xx — and stamp the method that worked so the next refresh skips the dance.
         method = blob.get("token_endpoint_auth_method")
+        await require_public_token_uri(token_uri)
 
         async def _post(basic: bool) -> httpx.Response:
             if (blob.get("refresh_method") or "POST").upper() == "GET":
@@ -55,8 +75,8 @@ class HTTPXOAuthRefreshPort:
         resp.raise_for_status()
         tok = resp.json()
         access = tok.get("access_token")
-        if not access:  # a 200 with an error-shaped body ({"error":"invalid_grant"}) — surface it clearly
-            raise ValueError(f"token endpoint returned no access_token: {tok.get('error') or tok}")
+        if not access:
+            raise no_access_token_error(tok)
         new = dict(blob)
         if tried_basic and method is None:  # learned by the retry — remember it for the next refresh
             new["token_endpoint_auth_method"] = "client_secret_basic"

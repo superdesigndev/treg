@@ -1,0 +1,34 @@
+{
+  "name": "treg-dashboard",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "build": "vue-tsc --noEmit && vite build && vite build -c vite.agent-setup.config.ts && node scripts/copy-runtime.mjs",
+    "test": "vitest run",
+    "check": "vue-tsc --noEmit",
+    "test:e2e": "playwright test",
+    "predev": "vite build -c vite.agent-setup.config.ts && node scripts/copy-runtime.mjs"
+  },
+  "dependencies": {
+    "@fontsource-variable/geist": "5.3.0",
+    "@fontsource/dm-mono": "5.3.0",
+    "@fontsource/geist-pixel": "5.3.0",
+    "@lobehub/icons-static-svg": "1.95.1",
+    "matter-js": "0.20.0",
+    "vue": "3.5.44"
+  },
+  "devDependencies": {
+    "@playwright/test": "1.63.0",
+    "@types/matter-js": "0.20.2",
+    "@types/node": "26.6.2",
+    "@vitejs/plugin-vue": "6.0.9",
+    "typescript": "5.9.3",
+    "vite": "8.3.5",
+    "vitest": "5.0.1",
+    "vue-tsc": "3.3.11"
+  },
+  "engines": {
+    "node": ">=22.12.0"
+  }
+}

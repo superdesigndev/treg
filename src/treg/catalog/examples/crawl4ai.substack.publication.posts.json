@@ -1,0 +1,64 @@
+{
+  "meta": {
+    "blocked": [],
+    "elapsed_ms": 0,
+    "from_cache": true,
+    "llm_calls": 0,
+    "pages_fetched": 0,
+    "partial": false,
+    "warnings": [
+      "module: substack-posts: lennysnewsletter.com · 12 posts"
+    ]
+  },
+  "recipe": "substack-posts",
+  "usage": {
+    "boxes": [
+      "gate"
+    ],
+    "cache": "hit",
+    "engine": "recipe",
+    "lines": [
+      {
+        "about": "the call",
+        "boxes": [
+          "gate"
+        ],
+        "cache": "miss",
+        "call": "recipes",
+        "engine": "gate",
+        "units": 1
+      }
+    ],
+    "remaining_before": {
+      "concurrent": 99,
+      "requests": 180,
+      "search": 3000
+    },
+    "units": 1
+  },
+  "version": 1,
+  "rows": [
+    {
+      "author": "Lenny Rachitsky",
+      "comments": 6,
+      "date": "2026-09-29T13:15:57.512Z",
+      "likes": 284,
+      "paywalled": false,
+      "subtitle": "Plus, some reflections and takeaways from the day",
+      "title": "All of the Lenny & Friends Summit talks are now online!",
+      "url": "https://www.lennysnewsletter.com/p/all-of-the-lenny-and-friends-summit",
+      "words": 1276
+    },
+    {
+      "author": "Hamel Husain",
+      "comments": 4,
+      "date": "2026-09-22T12:45:14.998Z",
+      "likes": 354,
+      "paywalled": true,
+      "subtitle": "Why you should never skip error discovery",
+      "title": "Advanced evals: How to find (and fix) hidden AI failures in your product",
+      "url": "https://www.lennysnewsletter.com/p/advanced-evals-how-to-find-and-fix",
+      "words": 3807
+    }
+  ]
+}

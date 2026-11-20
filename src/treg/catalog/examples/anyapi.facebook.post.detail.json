@@ -1,0 +1,24 @@
+{
+  "output": {
+    "found": true,
+    "data": {
+      "comments": 2521,
+      "id": "1393461115481927",
+      "likes": 8001,
+      "shares": 1100,
+      "text": "Leave your limits at the surface. #JustDoIt",
+      "views": 3440001
+    }
+  },
+  "provider": "AnyAPI",
+  "costUsd": 0.0012,
+  "items": 0,
+  "replayed": false,
+  "source": {
+    "id": "anonymous-giraffe",
+    "name": "Giraffe",
+    "kind": "anonymous",
+    "artworkKey": "giraffe"
+  },
+  "resultId": "8dc66761-5416-4487-9f30-f64924b37981"
+}

@@ -2,13 +2,19 @@
 title: The API — the only brain (FastAPI)
 status: shipped
 sources:
+  - src/treg/application/key_spend.py
+  - src/treg/routers/media.py
+  - src/treg/page_media.py
+  - src/treg/web/media-videos.json
   - src/treg/web/sitetrack.js
   - src/treg/api.py
   - src/treg/bootstrap_handlers.py
   - src/treg/bootstrap_http.py
+  - src/treg/call_surface.py
   - src/treg/caller_metadata.py
   - src/treg/client_identity.py
   - src/treg/application/auth.py
+  - src/treg/application/provider_resources.py
   - src/treg/application/call/access.py
   - src/treg/application/call/authorize.py
   - src/treg/application/call/idempotency.py
@@ -21,10 +27,12 @@ sources:
   - src/treg/application/call/types.py
   - src/treg/infra/upstream/relay.py
   - src/treg/application/connect.py
-  - src/treg/application/onboard.py
+  - src/treg/application/onboard/__init__.py
+  - src/treg/application/onboard/sandbox.py
   - src/treg/application/referrals.py
   - src/treg/application/signup.py
   - src/treg/routers/__init__.py
+  - src/treg/routers/activity.py
   - src/treg/routers/admin.py
   - src/treg/routers/auth.py
   - src/treg/routers/auth_helpers.py
@@ -34,23 +42,31 @@ sources:
   - src/treg/routers/connections.py
   - src/treg/routers/onboard.py
   - src/treg/routers/orgs.py
+  - src/treg/routers/provider_resources.py
+  - src/treg/routers/api_keys.py
   - src/treg/routers/resources.py
   - src/treg/routers/referrals.py
   - src/treg/routers/signup_cookies.py
+  - src/treg/routers/view.py
+  - src/treg/application/view_context.py
   - src/treg/routers/web.py
   - src/treg/domain/identity/access.py
+  - src/treg/domain/identity/api_keys.py
   - src/treg/domain/governance/teams.py
   - src/treg/domain/governance/access.py
   - src/treg/domain/governance/budgets.py
   - src/treg/domain/governance/publicdemo.py
+  - src/treg/domain/governance/sandbox.py
   - src/treg/domain/governance/usage.py
   - src/treg/domain/identity/mcp_oauth.py
   - src/treg/domain/identity/session.py
+  - src/treg/sandbox.py
+  - src/treg/sandbox_identity.py
   - src/treg/timeutil.py
   - src/treg/domain/catalog/store.py
   - src/treg/email.py
-  - src/treg/runner.py
   - src/treg/ratestore.py
+  - tests/test_cli_pairing.py
 related:
   - interface/cli.md
   - architecture/proxy-model.md
@@ -60,812 +76,453 @@ related:
 
 # The API
 
-## Instagram authorization strategy
+The route table, request and response models live in the running server's OpenAPI (`/openapi.json`,
+rendered at `/docs`; FastAPI's console is at `/docs/api`). This fragment keeps only the contracts
+and guards the schema cannot show. CLI usage is in `USAGE.md`.
 
-`POST /oauth/start` keeps the same request shape. `provider=instagram` defaults to direct
-Instagram Login. `capability=page-tools` selects the separate Facebook Page profile. The start
-response returns `state`, `consent_url`, `redirect_uri`, and `connect_guidance`. The guidance is the
-selected authorization method's registry description, so clients do not need provider-specific
-setup text. Connection rows now include `authorization_method`, its label, method-specific resource
-discovery metadata, and setup health.
-Catalog calls accept `X-Treg-Authorization-Method` to select one of an endpoint's declared methods;
-the header is an internal routing control and is stripped before the faithful upstream relay.
+## Composition
 
-Catalog calls can fail before relay with HTTP 428. Its `detail` object has a stable error code,
-provider, endpoint id, required method, capability and scopes, explanation, CLI command, and
-dashboard action. This distinguishes a missing grant, missing resource, missing scope, and expired
-grant. See [instagram-oauth](../architecture/instagram-oauth.md).
-
-`api.router` preserves public registration order while concern routers contribute ordered route blocks.
-`bootstrap.create_app()` assembles the combined route table into FastAPI roles.
-`api.app` remains the deployed, backward-compatible `all` role. Everything the CLI + skill do is one
-HTTP call over this. The factory lifespan runs read-only `verify_db()` and creates the shared keepalive
-`httpx.AsyncClient` at `app.state.http` (and `audit.drain()`s on shutdown). It also starts the Google Ads conversion uploader (`adsconv.worker`) as
-a background task, but only when `adsconv.enabled()` — see
-[ads-conversions](../architecture/ads-conversions.md).
-Content-driven provider companion backfills run in the explicit `python -m treg upgrade` release
-phase, outside every app role's lifespan. The default `python -m treg` entrypoint also provisions the
-guarded local single-user identity before Uvicorn starts.
-
-## WAF escape hatch — `X-Treg-Body-Encoding`
-Some hosting edges (Cloudflare, including Render's) 403 any request whose **body** matches an
-injection signature — a skill recipe or a proxied `call` that legitimately carries SQL/HTML. The
-pure-ASGI `_BodyDecodeMiddleware` (registered via `app.add_middleware`) lets a client smuggle such a
-body past the edge: send it base64/gzip-encoded and set `X-Treg-Body-Encoding: base64` (or
-`gzip`, or `base64+gzip`). The middleware calls `_decode_request_body()` to restore the real bytes,
-fixes `content-length`, and hands the decoded body to routing — so both the Pydantic JSON endpoints
-(e.g. `POST /skills`) and the `/call` proxy (which relays `request.body()` upstream) see plaintext. A
-malformed encoded body is a clean 400. No header ⇒ untouched. The CLI's `_RegistryClient` uses this
-automatically on a WAF 403 (see [cli](cli.md)), as does the local proxy for an intercepted call. Body
-replay does not imply connection closure: after delivering the decoded request,
-`_BodyDecodeMiddleware` delegates later `receive()` calls to the original ASGI channel and forwards
-only a real `http.disconnect`. If the client disconnects before the encoded body is complete, the
-middleware skips decoding and replays each consumed partial-body message followed by that real
-disconnect.
-
-## `503 provider_capacity_unavailable` — treg's own account is out
-
-A metered (tier-4) call whose provider treg's own account cannot serve right now (a confirmed
-balance/quota signal, or the capacity sweep) is refused **before any hold** with a typed 503:
-`{"detail": {"error": "provider_capacity_unavailable", "provider", "endpoint_id", "resets_at" | null,
-"alternatives": [...], "message"}}`, `X-Treg-Error: 1`, no `X-Treg-Cost-Micro`, `refused_by="capacity"`
-on the audit row. The caller's own key for the provider is never affected (tiers 1/2 win first), and
-treg does not call an alternative on the caller's behalf — it names them. A lock set by the call
-path lets one call a minute through as a probe and lifts on its 2xx, so the `message` says a retry
-in a minute may succeed; a lock from the sweep lasts until `resets_at`. Not the pool-saturation 503
-(`treg_saturated`), which is a different exit. See `architecture/proxy-model.md` § Platform capacity.
-
-## `X-Treg-Served-Via` — this answer came through an overflow relay
-
-`GET/PATCH /orgs/{id}/settings` carries `platform_overflow` (default `true`); `false` opts the team out —
-such calls get the `503 provider_capacity_unavailable` below instead of a relay.
-
-`overflow:<aggregator>` on a metered call that treg served through a treg-owned aggregator account
-because its own account for the provider was out. Same request, same vendor body shape (routes are
-verified for that), the caller paid the aggregator's real price (`X-Treg-Cost-Micro`), and
-`X-Treg-Call-Id` is the parent call's. Absent on every direct call. Off by default
-(`TREG_OVERFLOW_MODE`). See `architecture/proxy-model.md` § Overflow.
-
-## `X-Treg-Smoothed` — the call waited for treg's own rate limit
-
-On a metered (tier-4) call only: `wait=<ms>` when the call was spaced behind other callers on the
-same platform key, `retry=1` when a burst-429 with a short `retry-after` was re-sent once on the same
-hold (body-less GET/HEAD only). Informational; the status and body are the provider's. See
-`architecture/proxy-model.md` § Burst smoothing.
-
-## `X-Treg-Error` — whose refusal is this?
-`bootstrap_handlers._mark_treg_own_errors` tags treg's **own**
-refusals on `/call/` paths with `X-Treg-Error: 1`, then answers exactly as before — the status and body
-are untouched, and a client that ignores the header sees what it always saw. Without it a caller cannot
-tell treg's 404 ("no tool registered for that host") from the vendor's own 404: both are a status and
-some JSON. The [local proxy](../architecture/local-proxy.md) needs that distinction to explain a failure
-without ever rewriting a real vendor response. `application.call` failures carry a mechanism `kind`
-and separately mapped `blame`; the compatibility header remains the literal `1`.
-
-Resolution refusals are actionable: a named miss that resembles one of the caller's usable own tools
-returns a structured `detail` with `hint` and `did_you_mean`, including after a real catalog endpoint
-falls through and finds no usable marketplace credential. A genuine URL-passthrough tie returns 409
-with the names of the colliding usable tools and the explicit `/call/<name>/<path>` escape hatch.
+`api.router` preserves public registration order while concern routers contribute ordered route
+blocks; `bootstrap.create_app()` assembles them into FastAPI roles, and `api.app` stays the
+backward-compatible `all` role. The lifespan runs read-only `verify_db()`, owns the shared
+`httpx.AsyncClient` at `app.state.http`, starts the background workers, and drains audit on
+shutdown. Content-driven companion backfills run only in `python -m treg upgrade`, never in an app
+lifespan. `/docs` is a server-rendered reference built from `app.openapi()`; HEAD widening is
+explained in [seo](seo.md).
 
 ## Auth
-`require_member()` reads the `X-Treg-Token` header, hashes it
-(`crypto.hash_token`), looks up the
-`Membership` by `token_hash`, and returns a `Caller` (`membership, user, org` + `org_id`/`email`/`role`);
-401 on missing/invalid. Every scoped endpoint depends on it **except** `POST /users` + `POST
-/invites/accept` (open, self-registering) and `GET /oauth/callback` (browser-hit, protected by `state`).
-Each successful identity dependency commits its read-only transaction before the handler runs, so an
-application use case can open its own session without waiting behind the request's pool slot. The
-dependency-cached session remains usable because `session_maker` sets `expire_on_commit=False`.
-Authz = org scoping + a role gate: `_can_manage` lets admin/owner manage any org resource, a member only
-what they created; `_require_admin_of` gates the org-admin endpoints. See
+
+`require_member()` resolves a membership token, a team Default key, a legacy identity bearer plus
+`X-Treg-Org`, or a session cookie plus `X-Treg-Org`, and returns a `Caller`. A 401 keeps `detail`
+and adds a top-level `hint`, because scripts and older CLIs print it verbatim. Open by design:
+`GET /oauth/callback` (protected by `state`). `POST /invites/accept` requires the invitee's own
+identity: the code names the invite and the signed-in email must match it. Identity and
+session validation live in `domain.identity.session`, authorization in `domain.identity.access`;
+org scoping and roles are in [multi-tenancy](../architecture/multi-tenancy.md).
+
+- Each identity dependency commits its read-only transaction before the handler runs, so a use
+  case can open its own session without waiting behind the request's pool slot. This relies on
+  every session maker setting `expire_on_commit=False`.
+- Sandbox identities (the closed landing sandbox) are refused centrally in
+  `domain/identity/access.py` (`_refuse_sandbox_visitor`, 403); never re-add per-route exceptions.
+  `POST /demo/sandbox` answers 410.
+- **Public demo tokens** (`POST /orgs/{id}/public-token`, owner-only; re-POST rotates) are
+  viewer-role tokens on a can't-log-in identity. Lockdown is centralized in the auth deps: below
+  admin on a `public_demo` org, `require_member` allows only `/call/*` and GET/HEAD/OPTIONS, so
+  routes added later stay frozen, and `require_identity` refuses the token entirely. Its calls are
+  metered per client IP (`_enforce_public_demo_ip_cap`).
+- An agent token is refused by `require_identity` (so it cannot mint an org it owns), but
+  `GET /auth/me` returns its `org_id`/`org`/`role` so `/orgs/{id}/...` commands work for it.
+- Token audiences are not interchangeable: sessions carry `aud=session` and expiry, identity keys
+  `aud=identity`; bootstrap credentials add `scp=bootstrap` and a seven-day expiry and cannot reach
+  team resources even with `X-Treg-Org`; Default keys carry `scp=team`, an authoritative org and
+  a generation. MCP's internal exchange token is the deliberate 120-second identity exception.
+  `token_version` revokes permanent keys (missing `tv` means zero). See
+  [auth-secrets](../architecture/auth-secrets.md).
+- Every identity door (GitHub, Google, email OTP) reuses one first-proof
+  provisioning command and creates no automatic org. Suspended users and addresses on
+  `TREG_BLOCKED_EMAIL_DOMAINS` (subdomains included) are refused at every door with the same 403.
+  `expose_dev_code` permits OTP disclosure only on guarded local SQLite. `TREG_FIXED_LOGIN_CODES`
+  issues a configured code hash for an account with no inbox (a directory reviewer's demo
+  account); limits are unchanged. Email verify locks the code's `Ephemeral` row with the same
+  no-op update as CLI pairing before comparing, so parallel wrong guesses each spend one of
+  `MAX_OTP_ATTEMPTS`. The invite code is join-only and needs the invitee signed
+  in; the separate `email_token` in the emailed link only prefills the login (it authenticates no
+  one) and never appears in a JSON response.
+- `require_managed_cli`'s 426 update response carries `X-Treg-Error: 1` and `no-store`, and runs
+  before any login or team mutation.
+
+### CLI pairing
+
+`POST /auth/cli/start` mints a login id and a four-character code shown only in the terminal,
+never in a URL; the user types it on the `/login` page, which never reads a code from its link. `POST /auth/cli/approve` requires the session, the same-origin CSRF check, the
+matching code and membership in the chosen team; `GET /auth/cli/poll` hands over the Default key
+exactly once (only a seven-day bootstrap credential when no team was chosen).
+
+State lives in the database `Ephemeral` table so every worker and instance shares it. Approve
+locks the pairing row with a no-op update (works on PostgreSQL and SQLite), then commits the
+encrypted result and any Default-key creation together; wrong attempts commit their decrement
+without extending expiry and the final miss deletes the row. Poll consumes with `DELETE RETURNING`
+and returns credentials only after commit; a pending or unknown poll never writes. Consumption is
+at-most-once, not guaranteed delivery: a lost response means a new login. Store failures return a
+generic non-cacheable 503 with no local fallback. All workers need the same database and secrets.
+
+## Managed API keys
+
+A human membership has one signed, team-specific Default key; rotation bumps that row's signed
+generation, so only the prior token for that team stops. Default keys can be disabled but not
+revoked. Additional and Agent keys are random, hash-stored secrets; rotation creates a new row and
+keeps the hidden predecessor for audit. Revoking an Agent key removes its machine membership and
+all its keys; revoking a human key never removes the human membership. Only creation and permitted
+rotation return a secret, and every credential response is `Cache-Control: no-store`. Billing,
+balance and daily-cap checks always use the resolved membership, not the key.
+
+`GET /orgs/{id}/api-keys/spend` and `GET /orgs/{id}/usage/spend` read only the daily spend rollup
+([money](../architecture/money.md), "Spend per API key"); `ready` is false with no numbers until it
+has caught up once, and `charges` counts settle entries, not calls. A member sees only their own
+keys; the `unattributed` line is admin+.
+
+Agents (`POST /orgs/{id}/agents`): re-POSTing the same name rotates the token and leaves omitted
+fields as they are, so a rotation never changes limits. `connected` checks are one indexed
+existence query scoped to the live key, never a history scan; an old key's history cannot confirm
+a new key. Revoking an agent sweeps its deny rules and idempotent replay cache before deleting the
+membership.
+
+`GET /orgs/{id}/first-call` (any member, `no-store`) answers Getting started's progress:
+`connected` (any audited row for the team, or the caller's Default key used by a CLI or agent) and
+`first_call` (`{tool, at}` of the team's earliest successful call, read only once
+`Org.first_call_at` is set; `tool` is null when that audit row was shed). Each answer reads at most
+one indexed row.
+
+## Teams and governance
+
+- `POST /orgs` refuses when the caller already owns `teams.MAX_OWNED_TEAMS`.
+- `DELETE /orgs/{id}` requires `?confirm=<slug>` (422 without). It sits one path segment above
+  every other org route, so a client normalizing `..` turns `DELETE /orgs/{id}/<x>/..` into it
+  before the request leaves; server-side validation cannot see that. Keep user-supplied values out
+  of path segments for the same reason.
+- Deleting a project removes its id from every member's `project_access`, leaving `[]` (NULL would
+  mean every project).
+- An all-empty deny rule is refused (it would freeze the org); a full URL is reduced to its host.
+- **Daily call cap**: `governance/usage.enforce_daily_cap` runs in `/call/`'s authorization gate and
+  at the top of `grant_local_run`. It takes the slot with one conditional UPDATE
+  (`take_daily_slot`): the WHERE is the check and the SET is the count, so the cap is exact under
+  concurrency and refused events are not counted. `-1` skips it; a database error fails open (a
+  courtesy limit, not a money gate). `used_today` (the members list and `/usage/me`) reads the
+  usage rollup and the rows after its cursor; `set_member_cap` copies the journal count
+  (`count_today`) onto the counter when a member goes from unlimited to capped. Never put the
+  journal count in the gate or on a page: it scans the member's whole day.
+- Dashboard reports (`/usage`, `/usage/by-tag`, `/agents/observed`) run on the gated report
+  session and answer `429 {"report_busy": ...}` with `Retry-After: 2`, never `treg_saturated`
+  ([deploy](../ops/deploy.md#dashboard-reports)).
+
+## Own tools, secrets and runs
+
+- Secret values are never returned (`_secret_view`, `_tool_view`, `_bundle_view`), except through
+  the audited local-run grant. `delete_secret` and `delete_bundle` refuse a secret still referenced
+  by an HTTP binding or a `cli.inject` entry outside what is deleted.
+- **Owner-only binding**: binding or injecting a secret requires owning it
+  (`_require_secret_ownership`); only admin/owner may wire a teammate's secret, which stops a member
+  laundering a key into a tool they control and extracting it. `update_tool` grandfathers secrets
+  already on the tool, so only newly added bindings are checked. The skill importer runs the same
+  checks.
+- **No SSRF at registration**: `_require_public_base_url` rejects loopback, private, link-local and
+  metadata hosts including numeric IP encodings; the proxy re-resolves at call time anyway
+  ([proxy-model](../architecture/proxy-model.md)).
+- `POST /tools/{name}/grant`: returning a secret the caller does not own requires `X-Treg-Run-Proof`
+  matching `TREG_RUN_PROOF`, held only by the isolated runner; a refusal writes a `DENY` audit row.
+  See [local-run](../architecture/local-run.md).
+- `POST /run` returns 503 unconditionally (AGENTS.md); `_tool_view` reports
+  `server_runnable: false`.
+
+## Connections and OAuth
+
+`POST /oauth/start` runs BYO or registry mode. Registry mode refuses a pasted-secret provider (422
+`pasted_secret_provider`, naming `POST /connections/token`) and stashes every per-provider auth
+quirk on the `PendingOAuth` so the callback exchanges the code exactly as the consent URL was built.
+`redirect_uri` is pinned to treg's own callback (consent-phishing guard). `connection_id` targets
+one existing connection to reconnect or widen instead of adding an account. The callback
+auto-provisions the provider tool; its `examples` stamp only verified core endpoints, because an
+example promises the call works. `TREG_OAUTH_REVIEW_PENDING` and Instagram's strategies are in
+[instagram-oauth](../architecture/instagram-oauth.md); an unmet grant fails before relay with a
+typed 428 naming the required method, scopes and the CLI/dashboard action.
+`X-Treg-Authorization-Method` selects one of an endpoint's declared methods and is stripped before
+the relay.
+
+`POST /connections/token` verifies a pasted credential against the provider's probe before storing
+it ([auth-secrets](../architecture/auth-secrets.md)). `DELETE /connections/{id}` removes the
+auto-provisioned tool and drops the dead binding from user-built tools, leaving their other
+bindings. `PATCH /connections/{id}` renames the account, which is the tool name agents call: the
+secret, main and companion tools and `tool_access` lists move in one transaction, the old name
+stops resolving (no alias), and a taken name or a live hub recipe `uses` naming the old tool is a
+409 (a published version is never rewritten). `PATCH /secrets/{id}` refuses renaming a provider
+connection for the same reason.
+
+`GET /orgs/{id}/provider-resources?source=platform` returns only rows the org owns; the
+dashboard's Team resources tab uses it so BYOK account objects are never shown as treg-owned. With
+`source=auto` a team Fish credential relays Fish's own voice list, and `X-Treg-Resource-Source`
+says `byok` or `platform`. The raw `/call/fishaudio.voices.list` remains a faithful BYOK relay.
+
+## The call surface
+
+`* /call/{rest}` captures a framework-neutral `CallInput` for `application.call.service.execute_call`
+([proxy-model](../architecture/proxy-model.md)). `_execute_call` tries an own tool, a catalog
+endpoint (by id, or by vendor path `<provider>/<path>`), then only when both miss a hub tool (`<team-slug>.<name>`, 429 `hub_busy` over the
+per-team slot; [hub](../architecture/hub.md)). `* /catalog/call/{rest}` (hidden from public
+OpenAPI) requires an exact catalog id and skips own-tool resolution, so a same-named team tool
+cannot shadow the catalog endpoint; from the credential ladder on it is the same call.
+
+A pool with no slot within 5 s, or a database that refuses a new connection (`DB_BUSY_ERRORS`),
+answers `503 {"treg_saturated": true}` with `Retry-After: 2` (`_pool_saturated`), still captured as a `db_pool` fault and a `tool_called` event, and releases an
+acquired idempotency label so a retry is not a false 409. A `platform_auth: anonymous` endpoint
+relays through a virtual tool with no bindings when no team credential exists (a public provider has
+none: a same-named team secret is ignored): no platform key, no
+balance entry, caller headers preserved, so a caller-supplied provider key can still be charged by
+the provider.
+
+### Headers treg adds
+
+| Header | Meaning |
+|---|---|
+| `X-Treg-Call-Id` | On every relayed response and every refusal treg raises before the relay, including the saturation 503 (`_stamp_call_exit`); the audit row's join key. An unexpected fault is Starlette's bare 500 with no id, but the row and `tool_called` are still recorded. |
+| `X-Treg-Cost-Micro` | The metered charge; on an async submission the reservation; explicit `0` for a reserved call that failed before a provider answer (the balance can lag it if the release fails, [money](../architecture/money.md)) and for owned free polls. Absent on own-key and own-tool calls. |
+| `X-Treg-Error: 1` | treg's own refusal on `/call/`, `/catalog/call/`, `/table/`, so a caller can tell treg's 404 from the vendor's. Status and body untouched. |
+| `X-Treg-Async` | The effective async descriptor as compact JSON, attached before streaming; the router reads no provider bytes. |
+| `X-Treg-Served-Via` | `overflow:<aggregator>` when served through an overflow relay ([proxy-model](../architecture/proxy-model.md), Overflow); MCP results carry `served_via`. |
+| `X-Treg-Upstream-Failed` | `<json_path>=<value>` on a metered 2xx failing the endpoint's `expect` rule. Body untouched, settlement unchanged, never archived or counted found. |
+| `X-Treg-Review-Pending`, `X-Treg-Review-Pending-Text` | On a relayed 4xx whose body carries the provider's declared "app lacks this permission" code (`review_refusal`) while the connection holds scopes still in app review (`review_scopes` under `TREG_OAUTH_REVIEW_PENDING`): the scopes (only the endpoint's own `required_scopes` when declared), and one sentence saying the pending review may be the reason. Body untouched; MCP puts the sentence in `hint`, both CLIs on stderr. |
+| `X-Treg-Smoothed` | `wait=`, `retry=1` or `share_wait=` when treg spaced or re-sent a platform call ([capacity](../ops/capacity.md)). Informational. |
+| `X-Treg-Cache`, `X-Treg-Fetched-At`, `X-Treg-Age` | An archive hit ([archive](../architecture/archive.md)). |
+
+### Typed refusals
+
+| Status, `detail.error` | Contract |
+|---|---|
+| 503 `provider_capacity_unavailable` | treg's own account cannot serve now; refused before any hold, names `alternatives` and `resets_at`, never calls one for the caller. Also replaces, uncharged, a platform answer the capacity table reads as treg's account out (any status, a 2xx included) that overflow did not serve. Both carry `Retry-After`: the seconds until `resets_at` when known, else 60. A team's own key is unaffected. `platform_overflow: false` in team settings opts into this instead of an overflow relay. |
+| 503 `provider_paused` | `TREG_PAUSED_PROVIDERS` lists the provider; refused before any hold, token refresh or upstream request, on catalog ids, connection tools and URL passthrough alike. Discovery leaves its endpoints out, connect routes refuse, existing connections are never changed (listed with `paused: true`), and `GET /meta` carries `paused_providers`. |
+| 429 `org_traffic_paused`, `org_concurrency_limit`, `org_rate_limit` | Org flow-control refusals, from a published snapshot or the default limits (`config_version` 0) ([org-flow-control](../architecture/org-flow-control.md)); nothing sent, not charged, `Retry-After` and `retry_after_s` set. |
+| 429 `share_busy` | Waited too long for a fair-share place, or the team holds its ceiling of the account's places (its own message); not charged. |
+| 503 `upstream_busy` | No upstream connection was free within the pool wait, or the provider is at its in-flight cap on `TREG_UPSTREAM_INFLIGHT_MODE=enforce` ([capacity](../ops/capacity.md)); nothing sent, not charged, `Retry-After` set. |
+| 429 `provider_rate_limited` | On a bucket listed in `TREG_PROVIDER_RATE_ENFORCE`, the shared rate window is full ([capacity](../ops/capacity.md)); refused before it is sent, not charged, `detail` carries `provider`, `endpoint_id`, `retry_after_s`, with `Retry-After` the same. An enabled overflow route may serve it instead. A routed job skips the candidate without spending its error budget and answers this itself only when every candidate was skipped. |
+| 429 `money_admission_timeout` | Money admission exhausted its reserve wait; no hold, no upstream request, `Retry-After` jittered between `money_admission_retry_after_s` and twice that. Not stored under `Idempotency-Key`, so the same key can retry. |
+| 429 `member_spend_cap_reached` | The caller's own daily spend limit on treg's keys is reached ([money](../architecture/money.md)); refused before it is sent, not charged. `detail` carries `spent_today_micro`, `daily_spend_cap_micro`, `resets_at` (the next 00:00 UTC) and `retry_after_s`, with `Retry-After` the same. `member_spend_cap_unavailable` when the limit cannot be checked. |
+| 402 `free_credit_excludes_video` | The endpoint's platform is `purchased_credit_only` (no platform sets it today) and the team's purchased credit, less its open purchased-only holds, cannot cover the reserve; free credit (promotional, referral, bonus, earned) never pays for it. Refused before any upstream request, nothing held; `detail` carries `purchased_balance_micro`, `balance_micro`, `estimated_cost_micro`, `topup_url`. A routed job stops on it. |
+| 403 `funds_required`, `own_key_required` | An installed policy extension's `call_admission` point refused treg's money for this call ([policy extensions](../architecture/policy-extensions.md)); refused before any hold or provider request, never naming the rule. `funds_required` (a team that never bought credit) names `topup_url` and the own-key alternative, `own_key_required` only the own-key alternative. Not charged; `refused_by=policy`; MCP strips the top-up link. |
+| 402 `route_max_cost` | `X-Treg-Route-Max-Cost: <usd>` would be exceeded by the reserve with margin; no charge. No default on a direct call (unlike routed calls); non-numeric is 400. Where the catalog declares `ceiling_param`, treg forwards the remaining ceiling net of margin unless the caller sent that parameter (AGENTS.md non-negotiable 4). |
+| 502 `response_buffer_limit` | Response evidence passed the 8 MiB settlement buffer, or for `spooled_response` the per-body or per-process spool budget (the latter is temporary and worth retrying). Not charged; hold and idempotency claim released. Spooled answers are never stored for replay. |
+| 404/409 resolution | A named miss resembling a usable own tool returns `hint` and `did_you_mean`; a URL-passthrough tie is 409 naming the tools and the `/call/<name>/<path>` escape hatch; a vendor path matching several catalog rows is 409 `target_ambiguous` with `candidates`. |
+
+The MCP `call` result mirrors these as fields (`upstream_failed`, `whose_error`, `hint`,
+`retry_after`); only treg's own `insufficient_balance` is ever described as the team's balance.
+
+### `Idempotency-Key` on `/call/`
+
+```
+Idempotency-Key: <caller's label>        replay if this label was already answered
+X-Treg-Idempotent-Replay: true           on a replayed response
+X-Treg-Cost-Micro: 0                     a replay charges nothing
+X-Treg-Original-Cost-Micro: <charge>     what the first call cost (or reserved)
+```
+
+422 when a key is reused for a different request, 409 while the first call is in flight. The
+request is compared by method, path, query and body; a JSON body by its parsed value, so the same
+object with its keys in another order or other whitespace is the same request
+(`_canonical_json`, bodies up to `_CANONICAL_MAX_BYTES`). The 409 (`idempotency_in_progress`) carries `Retry-After` and names the first
+call in `detail.call_id`. Over MCP it is the `idempotency_key` argument and a replay carries
+`replayed: true`; `call_result` lists the team's recent calls and reads one's stored answer
+(`GET /calls`, `GET /calls/{id}/result`). Storage rules: [money](../architecture/money.md).
+
+### `X-Treg-Keep-Reported-Charge` on `/call/`
+
+```
+TREG_STRIP_REPORTED_CHARGE=true          deploy switch, off by default
+X-Treg-Keep-Reported-Charge: true        this call keeps the provider's charge (1, yes, on also)
+```
+
+With the switch on, a metered 2xx answer, live or an archive hit, reaches the caller without the
+member its row's settlement reads the provider's own charge from (`settle.reported.path`, or
+`cost.reported_charge.path` in today's spelling). Everything else is byte for byte as the provider
+sent it; error bodies, non-JSON answers, rows with no such path or a header-reported charge, own-key
+calls, streamed free fetches and spooled answers are relayed as before. The bill, the outcome and
+`X-Treg-Upstream-Failed` are decided first, on the provider's bytes; the archive keeps those bytes.
+An idempotent replay hands back what the first call received, whatever the retry sends. A routed
+child is an ordinary call (it inherits the header), so `raw` carries its answer as received.
+`GET /calls/{id}/result` returns a metered answer by the same rule, read from the request's own
+header. Mechanism: [proxy-model](../architecture/proxy-model.md), "The provider's reported charge".
+
+### Caller tags, budgets and isolation
+
+`X-Treg-Meta: customer=cust_8123, feature=email-finder` is set from the builder's backend, never
+by a model. Up to 5 pairs, keys `[a-z0-9_]{1,32}`, values up to 128 chars, header up to 512 bytes;
+values containing `@` are refused because tags land in an append-only ledger. Any violation is a
+422 before relay, so it costs nothing and does not burn an `Idempotency-Key`.
+
+`PUT /orgs/{id}/budgets/{dim}/{val}` is an upsert that leaves unsent fields alone. Tag refusals
+carry nothing about the team (no balance, slug or top-up link), because a builder shows them to
+its own users: `403 tag_blocked`, `429 tag_spend_cap_reached`, `429 tag_call_cap_reached`. Caps
+are advisory; the balance is the hard limit. `usage/by-tag` reconciles:
+`attributed_micro + unattributed_micro == total_micro`.
+
+A token minted with `--pin customer=cust_A` beats the header (mismatch is 403), and call history,
+archived results, call references, runs, async tasks and shared-provider async ownership require
+every pinned tag; foreign and unattributed ids answer 404. Tag for counting, token for control. See
 [multi-tenancy](../architecture/multi-tenancy.md).
 
-Cookie mechanics stay at the HTTP boundary because they interpret request cookies; the shared
-`_same_origin` CSRF check is available to every cookie-authenticated mutation.
+### Call inspection
 
-Email OTP and invite sign-in use cases own their sessions and every commit, including OTP rate, attempt,
-consumption, user provisioning, and invite-token consumption. They return framework-neutral results or
-semantic errors; the HTTP boundary maps them to responses and sets browser cookies. Every identity door
-reuses the same first-proof provisioning command.
+`GET /calls` excludes `kind=async_poll` in SQL before pagination; it is analytics, not an
+invoice. `/calls` never selects failure evidence, and `GET /calls/{call_ref}` defers those columns
+with lazy loading forbidden: failure evidence is admin-only. Async status and final charge come from
+`async_task_app.views_for`. `GET /calls/{id}/result` is described in
+[archive](../architecture/archive.md).
 
-The CLI pairing state machine prunes before creating a pending entry, pops a completed result exactly
-once, and preserves session lookup, attempt decrement, pending pop, and result publication order. Its
-team-selection sessions are read-only. The three short-lived dictionaries are process-local and shared
-by every pairing door.
+### Async tasks
 
-Social login builds each authorization request, exchanges the provider code, validates the proven
-email, provisions the user, and commits before publishing a CLI result. Provider callback state is
-validated before resolving the shared HTTP client. `/auth/logout` remains an HTTP-only cookie action.
+`POST /tasks/{call_id}` (body: the async call's answer as received) and `GET /tasks/{call_id}`
+follow the provider task an async call started, for the team and pin that made it: the first
+reads the submission without a provider call, the second makes one ordinary poll on the call
+road. Both answer one stable JSON shape (`state` pending, succeeded, failed or error, the
+terminal response, result or fetch command, resume line) with `Retry-After` from the
+descriptor's interval. Unknown and other teams' ids are 404 `task_not_found` with
+`X-Treg-Error: 1`. Mechanism and fields: [tasks](../architecture/tasks.md).
 
-## Endpoints
-- **Users / orgs:** `register_user` (`POST /users`, open, legacy — used by the test fixture) creates the
-  user + an org + owner membership and returns a token **once**; the dashboard/CLI login doors do NOT go
-  through it (they create the user only, no auto org). Both this door and `create_org` read the
-  first-party `treg_ad` cookie (`_ad_attribution_from`) and, when conversion tracking is enabled,
-  stamp `Org.ad_gclid`/`ad_click_id_type`/`ad_landing`/`ad_click_at` on the new org when present — see
-  [ads-conversions](../architecture/ads-conversions.md).
-  `create_org` (`POST /orgs`, `require_identity` so a
-  zero-org user can make their first team) + `list_orgs` (`GET /orgs`,
-  each org carries a `tool_count` — one grouped query — so the dashboard can land on the org with tools;
-  its `active` flag follows `require_member`'s precedence — per-org membership token, else `X-Treg-Org`,
-  else a team-pinned identity token's own `org` claim — so `treg login --token <pinned key>` lands on the
-  baked-in team instead of the caller's first membership);
-  invites via `create_invite` (`POST /orgs/{id}/invites`, admin+) → one-time code (**emailed** via
-  `email.send_invite`, best-effort, along with a separate inbox-only `email_token` sign-in link — the
-  token is never in the JSON response; see the invite sign-in link below), `accept_invite`
-  (`POST /invites/accept`, open) → registers/joins + mints a token. **Code-free invites:** an invite is
-  addressed to an email, so `my_invites` (`GET /invites/mine`, `require_identity`) lists every pending
-  invite for the caller's proven email and `accept_my_invite` (`POST /invites/{id}/accept`,
-  `require_identity`) accepts one with no code (403 if the invite's email ≠ yours). `list_members` /
-  `remove_member`
-  (`GET`/`DELETE /orgs/{id}/members[/{user}]`, admin+); `set_member_role` (`PATCH …/members/{user}`,
-  owner-only), `leave_org` (`POST /orgs/{id}/leave`), `delete_org` (`DELETE /orgs/{id}?confirm=<slug>`, owner-only
-  AND the slug is REQUIRED — see hardening — via
-  `cascade_delete_org` (in `domain/governance/teams.py`), which now also sweeps each org's `RunRecord` rows);
-  `list_invites` / `revoke_invite` (`GET`/`DELETE /orgs/{id}/invites[/{id}]`, admin+). Full behavior:
-  [multi-tenancy](../architecture/multi-tenancy.md).
-- **Agents (machine identities):** `create_agent` (`POST /orgs/{id}/agents`, admin+) mints/rotates a
-  member token for a machine caller — its own `daily_call_cap`, `tool_access` and audit trail, with no
-  new table; `list_agents` (`GET`, never returns a token) and `revoke_agent` (`DELETE …/{user_id}`,
-  which also sweeps the deny rules and idempotent replay cache owned by that agent before deleting its
-  membership; the schema cascades that cache as a backstop). An agent token is refused by
-  `require_identity` and can never be an owner. **Re-POSTing the same name ROTATES, and a field the
-  caller omits is left as it is** — a rotate changes the token, never the limits. `AgentIn` also takes
-  `project_access` (slugs or ids), so an agent can be project-scoped at mint time; `created_by` stamps
-  the minting admin. `GET /orgs/{id}/agents/observed` (admin+) lists the agents **detected in member
-  traffic** — one row per (member, runtime) from `CallRecord.client`/`RunRecord.client` over 30 days,
-  excluding plain-terminal (`''`/`cli`) and machine-identity traffic; attribution, never a gate. See
-  [multi-tenancy](../architecture/multi-tenancy.md).
-- **Projects (a sub-scope inside the org):** `create_project` / `list_projects` /
-  `delete_project` (`/orgs/{id}/projects`, admin+ to mutate) — deleting frees its tools to org-wide and
-  removes the id from every member's `project_access`, leaving an emptied list as `[]` (NULL would mean
-  *every* project). `POST /tools` and `PATCH /tools/{id}`
-  take `project` (slug or id; null = org-wide), and `set_member_access` / `create_invite` take
-  `project_access`. See [multi-tenancy](../architecture/multi-tenancy.md).
-- **Deny rules (org policy):** `create_deny_rule` (`POST /orgs/{id}/deny`, admin+) blocks a
-  host / path_prefix / method for the whole org, one member (`user_id`), and/or one project
-  (`project_id` — fires only on calls through that project's tools); an all-empty rule is
-  refused (it would freeze the org) and a full URL is reduced to its host. Plus `list_deny_rules`
-  (`GET`) and `delete_deny_rule` (`DELETE …/{rule_id}`, 404 across orgs). Enforced on the proxy and
-  both run tiers — see [proxy-model](../architecture/proxy-model.md). `GET /orgs/{id}/policy/cli-deny`
-  (admin+, read-only) reports each CLI tool's effective argv deny patterns with their source (skill
-  `treg.json` vs catalog) so the Policy screen shows every deny layer in one place.
-- **Usage metering + caps** (usage-metering v1, `docs/USAGE-METERING-PLAN.md`): `org_usage`
-  (`GET /orgs/{id}/usage?days=`, admin+) rolls up `CallRecord` + `RunRecord` since the window start into
-  **by-user** (with a `call`/`local_run`/`server_run` split), **by-tool**, **by-day**, and totals — pure
-  `GROUP BY`, **no request/response bodies** (they aren't stored). `set_member_cap`
-  (`PATCH /orgs/{id}/members/{user}/cap`, admin+) sets `Membership.daily_call_cap` (`-1` = unlimited,
-  rejects `< -1`). `my_usage` (`GET /usage/me`, any member) returns the caller's own `used_today` + `cap`.
-  `list_members` also returns each member's `daily_call_cap` + `used_today`. **Enforcement:**
-  `_enforce_daily_cap` runs at the top of `call_tool`, `run_tool_server`, and `grant_local_run` (so no
-  path dodges the cap); `count_today` = today's `CallRecord` + `RunRecord` for the user. `-1` (default)
-  skips the count entirely (zero overhead); the sandbox is exempt. **Soft by design** — it counts the
-  best-effort `CallRecord`, so under load it fails *open*, never closed.
-- **Super-admin (cross-tenant, `require_superadmin`):** `/admin/stats|orgs|orgs/{id}|users|tools|calls|
-  errors|health` (reads — `errors` is failed calls across every credential tier with captured,
-  admin-only request/response evidence, supports a `tier` filter, and runs the 14-day retention pass;
-  see [super-admin](../architecture/super-admin.md))
-  + `/admin/users/{id}/superadmin|suspend`, `DELETE /admin/users/{id}`,
-  `/admin/orgs/{id}/suspend`, `DELETE /admin/orgs/{id}` (Phase-2). See
-  [super-admin](../architecture/super-admin.md).
-- **Secrets:** `create_secret` / `list_secrets` / `update_secret` (re-encrypts on value change) /
-  `delete_secret` (409 if a tool binding references it). Values never returned (`_secret_view`).
-- **Tools:** `create_tool` (bindings via `body.bindings`, or `_flat_binding(body)` sugar, or `[]`;
-  validated by `_validate_bindings`; `host` derived by `_host_of`; optional `examples`; optional `cli`
-  local-run profile validated by `_validate_cli_profile`), `list_tools`, `update_tool` (re-derives host on
-  base_url change; `cli` set/clear here — this is how the local-run toggle flips `cli.enabled`),
-  `delete_tool`. View via `_tool_view` (now includes `cli`). `delete_secret` refuses a secret referenced by
-  a tool binding **or** a `cli.inject` entry.
-  - **Owner-only binding.** `_validate_bindings` (HTTP bindings) and `_validate_cli_secrets` (local-run
-    `cli.inject` entries) require the caller to **own** every secret they bind/inject, via
-    `_require_secret_ownership`; only an **admin/owner** may wire up a shared-key tool with a teammate's
-    secret. This stops a member laundering another member's key into a tool they control and then
-    extracting it (through the proxy's `base_url` or a `/grant`). `update_tool` **grandfathers** the
-    secrets already on the tool (it passes their ids as a `grandfather` set) — only a **newly-added**
-    binding/inject is ownership-checked, so re-saving a tool an admin wired with a shared key doesn't lock
-    its owner out on edit. The skill/folder importer runs the same checks.
-  - **No SSRF at registration.** `_require_public_base_url` (reusing `health.safe_webhook_url`) rejects a
-    `base_url` pointing at loopback / private / link-local / cloud-metadata hosts — including numeric IP
-    encodings (decimal/hex/octal/short forms) — on `create_tool`, `update_tool`, and each imported skill
-    tool, so a member can't turn `treg call` into a request to an internal address. The proxy also
-    **re-resolves** the host at call time (`health.host_is_public`) to defeat DNS rebinding — see
-    [proxy-model](../architecture/proxy-model.md).
-- **Local runs (`treg run --local`, see [local-run](../architecture/local-run.md)):** `grant_local_run`
-  (`POST /tools/{name}/grant`) is the one audited, owner-opt-in exception to "values are never returned" —
-  member+ only (a viewer may call but not extract a value). It matches the catalog profile
-  (`providers.match_skill`), server-side deny-checks the argv, renders the credential (oauth → leaf only),
-  and writes a synchronous `GRANT`/`DENY` audit row (argv redacted of key-shaped tokens by `_redact_argv`).
-  **Runner-proof gate:** returning a secret the caller does **not** own (a shared-key tool they may run but
-  not read) requires the header `X-Treg-Run-Proof` to equal `TREG_RUN_PROOF` — the value held only by the
-  isolated `treg-run` runner, which the member's own uid can't read. A caller who owns the injected secret
-  (or is an admin) skips the gate. On refusal a `DENY` audit row is written and the grant is 403'd, so a
-  direct member call can never read a teammate's key value. The grant response also carries
-  **`redact_output`** (true exactly when the caller doesn't own the key, i.e. the runner-proof case) — the
-  client then scrubs the injected value from the CLI's output (see [local-run](../architecture/local-run.md)).
-  `report_local_run` (`POST /tools/{name}/run-report`) takes the client's verdict enum (never raw output);
-  `credential_invalid` marks the injected secret(s) invalid via the health fields, skipping `param` kind.
-- **Server runs (`treg run --server`, Tier 0):** `POST /run` runs a **runnable bundle's** CLI on the
-  server via `runner.run_bundle` (secrets injected into a scrubbed child env, per-run temp `$HOME`, argv
-  array — no shell), returns `{stdout, stderr, exit_code, timed_out}` and writes a `RunRecord`. `GET /runs`
-  (`list_runs`) is now a **unified** execution log: it merges server `RunRecord`s with local-run `GRANT`
-  `CallRecord`s, each tagged `where` (`server`|`local`), ids prefixed `s`/`l`, newest first (a local
-  success has a null `exit_code`, since only failures report back). Bundle run-metadata (`runtime`/`package`/`entrypoint`/`runnable`) is set via
-  `PATCH /bundles/{id}` (CLI `skill runtime`). **Command allow-list:** the bundle's exec command
-  (`entrypoint`/`package`/name) must be a **catalog-known CLI** or an admin-listed one in
-  `TREG_RUN_ALLOWED_BINS` (`_allowed_server_bins`); naming `bash`/`python` to run arbitrary code as the
-  server user is 422'd (`--local` is the path for anything else). Run-metadata command names are also shape-
-  checked by `_validate_run_meta` (plain command name — no path separators, spaces, or shell characters).
-  The sandbox is excluded, and `/run` is member+ (executing argv server-side is a register-tier capability).
-  - **Resource-limit sandbox (`runner.py`, the DoS half of the server-run sandbox):** every server-run
-    child is spawned with POSIX rlimits via a `preexec_fn` (`_spawn_preexec`/`_rlimit_preexec`) — a
-    CPU-seconds cap, a max-file-size cap, and core dumps disabled (a core would spill the injected secret
-    to disk). Env-gated (`TREG_RUN_RLIMITS` on by default; `TREG_RUN_CPU_SECONDS`, `TREG_RUN_FSIZE_MB`),
-    a no-op where `resource` is unavailable. Deliberately **no** address-space or process-count cap — a
-    virtual-memory cap crashes Go CLIs (gh/stripe/doctl) and `RLIMIT_NPROC` is per-uid, shared with the
-    server. Full **filesystem/network** isolation needs a container deploy and is a planned follow-up.
-- **Meta:** `meta` (`GET /meta`, open) → `{public_url, github, google, app_version, treg_version,
-  posthog_key/posthog_host, intercom_app_id}` for the dashboard. The last three are the opt-in
-  third-party keys (analytics, support chat): empty on a deployment that didn't set them, so
-  self-hosted pages load neither PostHog nor the Intercom Messenger. `intercom_app_id` is paired
-  server-side with `intercom_secret`, which never leaves the server: `_intercom_user_hash` (HMAC-SHA256
-  of the email, keyed by the secret) is added to `GET /auth/me` as `intercom_user_hash` — Intercom
-  identity verification, so a third party who knows an email can't impersonate that user in chat.
-- **Provider catalog:** `providers_catalog` (`GET /providers.json`, open) → `{version, providers}` — the
-  catalog `treg upload` uses to detect env keys → tools; served so the CLI can refresh centrally. See
-  [env-import](env-import.md).
-- **Endpoint catalog** (open, and now **in** the OpenAPI schema — these four are the public read API,
-  so they are documented rather than hidden; read via `catalog_store`): the operations layer
-  — what a connected provider can DO. `catalog_platforms` (`GET /catalog/platforms`) → `{platforms:
-  [{slug, label, capabilities, endpoints, verified, providers[]}], generated_from: "catalog"}`, endpoint
-  count desc, platforms nobody implements omitted. `catalog_platform` (`GET /catalog/platforms/{slug}`,
-  404 unknown) → `{platform:{slug,label}, capabilities:[{id, description, endpoints[]}] (sorted by id),
-  extended:[…], domains:[…], providers:{…}}` where an endpoint is `{id, provider, provider_display,
-  summary, method, path, scope, tier, domain, call_template, cost, verified, docs_url, has_example,
-  input}` — grouping by capability is what makes two providers' take on one job comparable;
-  capability-less endpoints fall to `extended`. **Two axes, both served**: `capabilities`/`extended` is
-  the shape `treg catalog` renders; `domains` is the LEDGER the dashboard renders —
-  `[{domain, rows:[{kind:"merged"|"single", capability?, description, domain, endpoints[]}]}]`, sections
-  ordered `other`-last then busiest-first, merged rows (a job ≥2 providers do) before single rows within
-  a section, a single row described by its ENDPOINT's summary rather than the capability's. Ordering and
-  merging happen server-side (`catalog_store.domain_rows`) so every client shows the same page. Every
-  endpoint carries the `domain` that files it (`catalog_store._domain`: explicit `domain:` → the
-  capability id's middle segment → a path keyword → the path's grouping segment → `other`) and a
-  paste-ready `call_template`. `providers` maps service → `{service, display_name, limits?,
-  pricing_url?, docs?}`, once per provider, for an expanded row. `catalog_example`
-  (`GET /catalog/examples/{endpoint_id}`) streams the captured response JSON — the id is resolved
-  through the loaded catalog **before** any path is built, so caller input never reaches the filesystem
-  (404 otherwise). Consumed by the dashboard and `treg catalog`; see
-  [catalog](../architecture/catalog.md).
-- **Catalog discover → inspect** (open, same section): the two routes that complete the loop whose third
-  step is `treg call`. `catalog_search` (`GET /catalog/search?q=&limit=` , default 25, capped 100) →
-  `{query, count, total, results[], hints[]}`; a result is the endpoint view **plus** `{capability,
-  capability_description, platform, platform_label, score}`; a routed parent (`kind: routed`) rides in
-  whenever one of its children matched and carries `children_hidden` when its group was capped at 5
-  (`catalog_store.MAX_ROUTED_CHILDREN`; the full ranked list is `catalog_get`'s plan). Ranking is plain token containment
-  (`catalog_store.search`, no deps, no embeddings): **most** query tokens must match — a query may miss
-  one token in three, so a second word still narrows (1–2 words: all required) while an agent's
-  seven-word sentence survives its filler. Function words, single letters and tokens matching >25%
-  of the catalog are never REQUIRED (the last still score where they match), and a token also matches
-  through its `aliases.yaml` synonyms ("cryptocurrency" → "crypto"), at the same weight. A
-  zero-result answer carries `near` — the rows just under the gate and the exact unmatched words —
-  over MCP, the HTTP route, and as "almost:" lines in `treg catalog search`. Each matched
-  token scores its best field weight — capability id/description + platform label/slug (3) >
-  summary (2) > id/path/provider (1) — times its BM25 idf, so rare words decide the order (a
-  platform-slug token scores double where it matches — the platform is the caller's hard filter). Ties —
-  still the COMMON case, since rows matching the same tokens in the same fields sum identical
-  floats — are then settled by `catalog_store.rerank()` over
-  the band `rank_band()` returns (the whole equal-scoring group at the cut, capped at `RERANK_BAND`
-  with a hint when that cap bites), on **measured reliability, then core-before-extended, then price**, with
-  `verified` and id keeping the order total; each result carries the `observed` block that decided it.
-  Reliability is an optional endpoint-level process cache rather than a request DB dependency:
-  entries are fresh for five minutes, served stale while refreshing through thirty minutes, then
-  omitted. Cold-start and database-failure requests still answer 200 without reliability weighting;
-  one process-level refresh Task uses its own short session, so `/catalog/search` checks out zero DB
-  connections regardless of search concurrency.
-  See [catalog](../architecture/catalog.md#the-evidence-decides-the-order-not-just-the-detail-page).
-  `catalog_endpoint` (`GET /catalog/endpoints/{endpoint_id}`) answers everything in ONE round-trip:
-  `{endpoint, provider:{service, display_name, limits?, pricing_url?, docs?}, siblings[], call_template,
-  example_response, hints[]}` — `siblings` are the other providers implementing the same capability (so a
-  price/verification comparison needs no second call), `example_response` is inlined rather than left
-  behind `/catalog/examples`, and `call_template` is a paste-ready `treg call …` line built from the
-  endpoint's `test_request` (the request the verifier actually ran) falling back to documented examples.
-  `hints` on both routes carries the next command, since finding an endpoint is never the goal.
-  An unknown id 404s with `{error, hint, did_you_mean[]}` rather than a bare string: an id is not
-  free text, and one that misses by a segment (`lusha.companies-signals` for
-  `lusha.x.companies-signals` — what a model produces relaying an id through a summary) broke the
-  loop at its first step, whereupon the usual next move is to invent another id and fail again.
-  `catalog_store.near_ids()` matches on segment overlap ignoring the tier marker; no near miss means
-  an empty list and a search hint, never a confidently wrong suggestion. `/call/` answers the same
-  way for a dotted target that misses — the branch where money is on the line used to reply "no tool
-  … in this org", describing the wrong half of treg. A known endpoint marked `retired` or `broken`
-  remains inspectable here with `status_note` and optional `superseded_by`, but is absent from every
-  discovery list. Calling it—or asking `/catalog/endpoints/{id}/access` whether it is callable—returns
-  an actionable 410. The `/call/` refusal is recorded with `refused_by=retired` and never reaches a
-  provider credential or relay.
-  A row can also carry `platform_blocked` — the route works upstream but treg's own subscription
-  cannot serve it (Akta's alternative-data tier). Those rows STAY in discovery (a caller's own key
-  may serve them) but are never platform offers, and the reason string rides on the served row.
-  A zero-result search additionally points at **`POST /tool-requests`** (open, per-IP rate-limited,
-  fields capped): file what the catalog is missing — stored as a `ToolRequest` row (see
-  [data-model](../architecture/data-model.md)) with identity attached only when the caller happens
-  to be signed in (token, or same-origin session; a cross-origin cookie POST stores anonymously
-  rather than being rejected). The zero-result caller is exactly the demand signal the catalog team
-  wants, so no signup wall. The miss itself is also logged as a `SearchMiss` row (fire-and-forget
-  via `audit.record_search_miss`, from this route and from the MCP `catalog_search` tool alike) —
-  most missing agents never file a request, and the queries they leave behind are what
-  `scripts/usage_report.py` reports as un-served demand. MCP rows use `mcp` for the team MCP and
-  `claude-connector` for V2, so reports can separate the two surfaces.
-- **Auth — three identity doors** (all resolve to a user via the shared `_find_or_create_user`, so
-  first-proof = registration — the **user only, no auto personal org**; a brand-new user lands with zero
-  teams and names their first via the mandatory welcome / `treg org create`): **GitHub** — `auth_github` (`GET /auth/github`,
-  `?cli=<id>` for the CLI handshake), `auth_github_callback` (browser → signed cookie, CLI → stashes an
-  identity token), `auth_cli_poll` (`GET /auth/cli/poll?login_id=<id>` → the CLI collects its identity
-  token once; **carries no code** — nothing to brute-force). **The handshake starts server-side** —
-  `auth_cli_start` (`POST /auth/cli/start`, unauthenticated) mints BOTH the `login_id` and a short
-  **pairing code** (`_PAIR_ALPHABET`, 4 chars) held in `_cli_pending`; `treg login` shows the code only in
-  the terminal (never in the URL). **The universal sign-in page** — `login_page` (`GET /login?cli=<id>`, the page `treg login` opens; no
-  `cli` → redirect to `/`; the id is whitelist-validated by `_LOGIN_ID_RE`, which is also the XSS guard
-  since it's echoed into the page's JS): with a live session it shows a **team picker** (the JS
-  `loadOrgs` fetches `auth_cli_orgs` — `GET /auth/cli/orgs`, session-authed, `_orgs_brief` returns the
-  user's teams sorted **team-first, personal-last, most-tools-first**; one team → a single "Continue as"
-  button, many → a labelled list; **zero teams → an inline "name your team" input** (`createTeam` → `POST
-  /orgs` → approve with the new slug) so a brand-new CLI login never completes team-less), else every configured door (GitHub/Google buttons link to the `?cli=`
-  flows; the email form drives `auth_email_start`/`verify` then loads the picker — always present, so
-  login works with no OAuth app configured). `auth_cli_approve` (`POST /auth/cli/approve`,
-  session-cookie-authed) completes the handshake by stashing the identity token under the given
-  `login_id`, plus the **`org`** the user picked (validated to be one of their memberships) as
-  `active_org` in the poll result — so the CLI lands on the RIGHT team instead of guessing. It requires
-  the **pairing code** to be typed into the page (`#paircode`) and validates it against `_cli_pending`
-  server-side (`_norm_pair_code`, case-insensitive; `CLI_APPROVE_MAX_TRIES` wrong tries then the pending
-  login is discarded) — so a mistyped code fails immediately in the browser, and a **phished**
-  `/login?cli=<attacker-id>` link (whose code the victim doesn't have, or that was never `start`ed) can
-  never complete. Deliberately a POST guarded by `_same_origin` (Origin must be the configured
-  `public_url` **or** the request's own host — public_url alone broke localhost). The GitHub/Google
-  callbacks validate cookie/query state before resolving the shared HTTP client; `_finish_oauth_login`
-  sets the session cookie and bounces to `/login?cli=<id>` for the shared picker. `auth_logout`
-  uses the same `_same_origin` guard.
-  **Google** — `auth_google` / `auth_google_callback` (`GET /auth/google[/callback]`): the same
-  session + CLI-handshake plumbing as GitHub (token from `google_token_url`, email from
-  `google_userinfo_url`), gated on `google_client_id` and surfaced via `/meta`'s `google` flag. The
-  callback now **requires `email_verified`** on the Google profile (like the GitHub door) — identity is
-  keyed by email, so an unverified Google address equal to a victim's registered email would otherwise
-  resolve to the victim (account takeover).
-  **Email one-time code** — `auth_email_start` (`POST /auth/email/start`, mints a 6-digit code stored
-  **in the DB** — `ratestore` over the `Ephemeral` table, namespace `otp`; the `dev_code` is put in the
-  response + logged **only** when `get_settings().expose_dev_code` — true on a local sqlite box, never on
-  a real Postgres deploy — otherwise the code is **emailed via Resend** — `email.send_otp`, best-effort)
-  and `auth_email_verify` (`POST /auth/email/verify` → mints an identity token **and** sets the session
-  cookie, so the CLI and dashboard share one endpoint). A wrong code burns one of `MAX_OTP_ATTEMPTS`
-  before the code dies (brute-force cap). `/start` is **rate-limited** per-email AND per-IP
-  (`ratestore.rate_check` sliding window in namespace `otp_start`, `OTP_START_MAX_PER_EMAIL`/`_PER_IP`) so
-  it can't email-bomb an inbox or reset the attempt counter at will. **All this — the code, its attempt
-  counter, and the throttle windows — is DB-backed (backlog #3), so a restart can't reset the caps and
-  they stay correct across instances** (rows are swept by `expires_at` + `ratestore.sweep`; the landing
-  `/demo/sandbox` throttle shares the same table, namespace `sandbox_hit`). The one remaining in-process
-  piece is the short-lived CLI-login handshake (`_cli_pending`, self-heals on retry). A **suspended**
-  account is refused at every door. **Invite sign-in link** —
-  an invite carries TWO split secrets (`models.Invite`): the admin-visible `code` (returned from
-  `create_invite` for out-of-band relay — join-only, NEVER an auth factor, since the admin provably
-  holds it) and an inbox-only `email_token` (stored as `email_token_hash`, embedded ONLY in the email's
-  link — possession proves inbox access, the same bar as the emailed OTP). `auth_invite_signin`
-  (`GET /auth/invite-signin?t=<email_token>`, the email button): the GET renders a **confirm page**
-  only (mail scanners prefetch GETs; a one-time credential must survive that) — the page's button
-  POSTs the token back, and `auth_invite_signin_confirm` (`POST /auth/invite-signin`, urlencoded form
-  parsed by hand to avoid the python-multipart dep) re-validates, `_find_or_create_user`s, refuses the
-  suspended, **consumes the token** (`email_token_hash=None`, one-time) and mints the session cookie →
-  303 `/?invite_org=<org_id>` (the dashboard opens its multi-select accept modal on that org). The
-  invite itself stays `pending` — acceptance happens in the app so a multi-team invitee can accept
-  several at once. The **legacy `?code=` path stays**: it never mints a session — validate and 303 to
-  `/?invite=<email>` (a prefilled normal login; the invitee proves the email at a real door and the
-  invite auto-appears via `/invites/mine`, now **ordered newest-first + `created_at`**). Invalid/expired
-  either way → `/?invite_expired=1`. `auth_me`
-  (`GET /auth/me`) answers for a **token**
-  (`X-Treg-Token`) as well as a session cookie, so the dashboard's token door can learn its own email.
-  `auth_cli_token` (`GET /auth/cli-token`, `require_identity`) delegates token minting and optional team
-  pinning to `application.auth.issue_cli_token`; the dashboard embeds the fresh **identity token** in
-  copy-paste snippets and its "copy token" button. Signed sessions and identity tokens carry a **`tv`
-  (token_version)** claim bound to the user row (`sess.make`/`read_claims`, checked in `_user_from_session`
-  / `_user_from_identity_token`); `auth_revoke_tokens` (`POST /auth/revoke-tokens`, `require_identity`)
-  delegates to `application.auth.revoke_identity_tokens`, which bumps `User.token_version` and invalidates
-  every token that user holds at once; this kill switch keeps the account active and
-  affects only that user; it re-issues a fresh cookie + token so the caller stays signed in. A token with
-  no `tv` (minted before this shipped) reads as `tv=0`, so a plain deploy revokes nobody.
-  Plus `auth_me` (returns `onboarded`), `auth_logout`, and **onboarding** — `POST /onboard/demo|skip|reset`
-  (`require_identity`) seed/dismiss/remove a first-run demo team (see [onboarding](onboarding.md)). Triple resolution: `require_identity`/`require_member`/
-  `require_superadmin` accept a per-org **token**, a signed **identity token** (bearer, from `treg login`)
-  + `X-Treg-Org`, or the browser **session cookie** + `X-Treg-Org`. See [dashboard](dashboard.md) + [cli](cli.md).
-- **Static (dashboard + tutorials):** `dashboard` (`GET /`, `FileResponse` + `Cache-Control: no-cache`),
-  `tutorial_js` (`GET /tutorial.js` — shared `window.TREG_TUTORIAL` + `hl()`), `tutorial_page`
-  (`GET /tutorial` — standalone CLI tutorial). The **dashboard tour** is a `StaticFiles(html=True)` mount
-  at `/dashboard-tour/` (serves `web/tour/` — `tour.js`, the standalone `index.html`, and the WebP
-  `img/`). **Vendored front-end libraries** are an `_ImmutableStatic` mount at `/vendor/` (serves
-  `web/vendor/` — today just Vue, version-pinned in the filename, hence `Cache-Control: immutable`):
-  the dashboard must not depend on a CDN a visitor's network may not reach, see
-  [dashboard](dashboard.md). `favicon` (`GET /favicon.svg` + `/favicon.ico`). `llms_txt` (`GET /llms.txt`) serves
-  `web/llms.txt` as `text/plain` with `{BASE}` templated from `public_url` — the [llms.txt](https://llmstxt.org)
-  agent-onboarding file (call protocol + discovery + auth + CLI + skills + doc links). See [dashboard](dashboard.md).
-  `install_sh` (`GET /install.sh`, `{BASE}`-templated) serves the CLI installer (`web/install.sh`).
-  `sitetrack_js` (`GET /sitetrack.js`, no-cache) serves `web/sitetrack.js` with `{POSTHOG_KEY}` /
-  `{POSTHOG_HOST}` templated from settings: the always-on first-party `treg_utm` first-touch cookie
-  (utm_* + referring host, read by `_utm_attribution_from` / `_stamp_utm` in BOTH signup doors, `/users`
-  and `/orgs`) plus the PostHog bootstrap with pageviews ON. Loaded by every public page — landing,
-  use-case pages, resources, tutorial, and the SPA — so analytics sees the visitor's first hop rather
-  than the post-OAuth `/app` landing. Without a key the analytics half is inert (empty string).
-  `adtrack_js` (`GET /adtrack.js`, no-cache) serves the first-party ad-click capture script loaded by
-  `index.html`'s `<script src="/adtrack.js">`; it returns an empty script when conversion tracking is
-  disabled, so unconfigured deployments do not collect advertising cookies. See
-  [ads-conversions](../architecture/ads-conversions.md).
-  `well_known_skills_index` (`GET /.well-known/skills/index.json`) + `well_known_skill_md`
-  (`GET /.well-known/skills/treg/SKILL.md`) advertise treg's own skill under the agentskills.io
-  convention, making **this host** a skill source with no registry in between (Hermes reads it
-  directly). The index's `description` comes from the skill's frontmatter at request time via
-  `_skill_frontmatter()` — never a second copy — and the SKILL.md route is the same `_serve_md` as
-  `/skill.md`, so `{BASE}` templates to the **serving** host and a self-hosted registry advertises
-  itself. See [skill.md](skill.md) for the other three distribution doors.
-  `terms_page` (`GET /terms`) + `privacy_page` (`GET /privacy`) serve the hosted registry's legal pages
-  (`_legal_page`, no-cache) with `legal_css` (`GET /legal.css`) as the shared skin — `/privacy` is also
-  the URL given to OAuth providers at app-verification time, so don't rename it.
-  `resources_page` (`GET /resources`) is the hub for the outcome pages and the **only** thing linking to
-  them: the landing footer and each page's own footer carry one `resources` link rather than five that grow
-  with the cluster, and without the hub every `/use-cases/*` page is an orphan no crawler reaches.
-  `resources.html` is generated alongside them, so a new page appears on the hub automatically.
-  `use_case_page` (`GET /use-cases/{slug}`) serves the per-vertical **outcome landing pages** — the
-  destinations for search ads and the organic `/use-cases/` cluster — off the `_USE_CASES` slug map, with
-  `usecase_css` (`GET /usecase.css`) as their shared skin, the same split as the legal pages. Two
-  deliberate differences from `/`: an unknown slug is a **404 rather than a fall-through** to the SPA (a
-  typo in a live ad should be visible, not silently swallowed), and a signed-in visitor is **not**
-  redirected to `/app` — bouncing a returning user off the page an ad paid to reach would make the
-  campaign data unreadable. The HTML in `web/usecase-*.html` is **generated** from
-  `marketing/landing/*.md` by that directory's `build.py` + `build_html.py`; never hand-edit it, and note
-  the generator refuses to emit anything past the ad-kit heading so bid and negative keywords cannot
-  reach a public page. Provider brand marks are
-  mounted at `/logos` (`StaticFiles` over `web/logos/`, resolved by convention `logos/<service>.svg`).
-  `dashboard_marketplace` (`GET /app/marketplace/{service}`) serves the plain SPA (a connect page is only
-  meaningful to a signed-in member, so no OG meta).
-  `_serve_md` backs `quickstart_md` (`GET /quickstart.md`) + `tutorial_md` (`GET /tutorial.md`) —
-  `{BASE}`-templated markdown served as inline `text/plain` (so "open in new tab" shows it, not a
-  download); the docs pages' **Copy markdown** dropdowns (copy / open-in-tab) fetch these.
-  `vendor_listing_md` (`GET /vendor-listing`, alias `/vendor-listing.md`) serves the same way: the
-  instructions a VENDOR's own coding agent follows to raise a listing PR on the repo (the dashboard's
-  "List as vendor" modal hands vendors a prompt naming this URL; the repo-side counterpart is
-  `docs/VENDORS.md`).
-  Browser-facing auth pages (GitHub callback, OAuth-connect result) render via `_auth_page` (brand card).
-- **Landing sandbox + hosted skills:** `demo_sandbox_mint` (`POST /demo/sandbox`, open, per-IP
-  rate-limited) mints an anonymous throwaway team (its response now carries `live` = whether the seeded
-  stripe tool is a real wire); `demo_sandbox_skill` (`GET /demo/sandbox/skill`) exports what the visitor
-  built. `skill_samples` (`GET /skills/samples`, open) + `skill_install`
-  (`GET /skills/{name}/install.sh?token=`) host sample skills. `call_tool` short-circuits **sandbox**
-  orgs to `sandbox.synthesize` (real injection, no network). Caps via
-`domain.governance.sandbox.enforce_sandbox_cap`. Full
-  behavior: [landing-sandbox](landing-sandbox.md).
-  - **The one live wire (real Stripe demo).** When `demo_stripe_key` is set, a sandbox call to the exact
-    seeded `stripe` tool (fingerprint-matched by `demo_sandbox.is_live_tool`, GET/POST only) is relayed
-    for real to Stripe's test API via `_relay_live_demo` — a deliberately narrower relay: the auth header
-    is built from the env key (never from a sandbox secret, which doesn't hold it), the body is
-    form-encoded, and `metadata[visitor]` is overridden server-side. Metered per client IP
-    (`_enforce_public_demo_ip_cap`) since the wire is one shared credential. `demo_sandbox_live`
-    (`GET /demo/sandbox/live`) reports `live` + the visitor's feed name for an existing sandbox.
-    `_require_not_live_demo_tool`/`_require_not_live_demo_secret` freeze the seeded `stripe` tool and its
-    `STRIPE_KEY` against edit/delete so a visitor can't break their own live pane. The public payments
-    feed: `stripe_webhook` (`POST /stripe/webhook`, 404 when `demo_stripe_webhook_secret` unset, verifies
-    the signature via `pubfeed.verify_signature`, pushes a `charge.succeeded` into `pubfeed.push_charge`)
-    and `landing_stripe_feed` (`GET /landing/stripe-feed`, unauthenticated SSE via `pubfeed.stream`,
-    server-chosen fields only).
-- **Public demo token (publishable, call-only credential):** `create_public_token`
-  (`POST /orgs/{id}/public-token`, owner-only) flips the org to `public_demo` and mints a **viewer-role**
-  token bound to a dedicated can't-log-in identity (`pub-<slug>@public-demo.treg.local`) — safe to print
-  on a web page. Re-POSTing **rotates** (instant revocation of the old one); `delete_public_token`
-  (`DELETE …`) revokes and lifts the lockdown. **Lockdown is centralized in the auth deps:** when
-  `org.public_demo` and the role is below admin, `require_member` allows only `/call/*` + GET/HEAD/OPTIONS
-  (every mutation is frozen no matter what routes are added later), and `require_identity` refuses the
-  token entirely (it must never act as a user — mint identity tokens, create orgs, accept invites). Its
-  `/call` traffic is metered per client IP (`_enforce_public_demo_ip_cap`, `PUBLIC_DEMO_HIT_NS`,
-  ~10 calls/min/IP) since one token stands in for thousands of strangers. The limiter and its
-  constants share the `domain.governance.publicdemo` owner; the API commits its ratestore write before
-  translating a semantic exhaustion result to 429.
-- **Skills / bundles:** `register_skill` (`POST /skills`) composes a `Bundle` + its secrets + tools
-  atomically, resolving each binding's `secret` local-name to the created secret id; the shared core is
-  `_register_skill_bundle` (also used by the folder importer). `list_bundles`, `get_bundle`,
-  `delete_bundle` (cascades; it 409s if a bundle secret is referenced by a tool **outside** the bundle —
-  now guarding both an outside HTTP binding **and** an outside `cli.inject` entry, matching
-  `delete_secret`, so a local-run tool can't be left with a dangling secret_id), and `update_bundle`
-  (`PATCH /bundles/{id}`, creator/admin only) edits a recipe's SKILL.md text **and** the run-metadata
-  (`runtime`/`package`/`entrypoint`/`runnable`). `_bundle_view`. **Folder importer** (dashboard mirror of `treg upload skills`):
-  `analyze_skill_folder` (`POST /skills/analyze`) writes uploaded files to a temp dir and runs the CLI's
-  own `skills.scan_skills`/`_classify` to classify each (recipe-only / contract / generated) **without**
-  registering; `import_skill_folder` (`POST /skills/import`) scans + `build_payload`s + registers the
-  selected ones (`_materialize_skill_files` sandboxes the upload). `list_orgs` now carries `tool_count`.
-- **Audit:** `list_calls` (`GET /calls`, limit clamped 1–500; each row carries its `kind` —
-  `call`/`local_run` — for the Activity + Usage views, and `refused_by` — non-null = treg refused
-  pre-relay; see the data-model fragment — so `treg audit` can tell "the provider failed" from
-  "we said no"). It does **not** carry `error_request`/`error_response`, and defers them so they are
-  not even fetched: the captured evidence is admin-only in v1, and putting it on a team's own feed
-  has to be a deliberate edit in two places rather than a column appearing by accident.
-  Each row also carries `has_result` — true when the archive holds this call's answer — and
-  `get_call_result` (`GET /calls/{id}/result`, member, org-scoped by the row's `org_id`) returns
-  it: the vendor-facing request shape BEFORE credential injection (`ArchiveKey.req_*`) and the
-  stored answer (`ArchiveSnapshot`: status, media type, size, fetch time, `body_text`), resolved
-  through the row's `archive_key_hash` + `archive_content_hash` by `archive.resolve_result`. Only
-  a metered platform 2xx call ever has one; every other row answers `stored: false` with a `note`
-  naming the case (own-key/own-tool never stored · failed · recording off · expired · hash-only
-  because the licence or size cap kept the hash and not the bytes). The failure-evidence columns
-  are still never read here (see [archive](../architecture/archive.md)).
-- **OAuth connect + the provider marketplace:** `oauth_start` (`POST /oauth/start`) creates a
-  `PendingOAuth` and returns `consent_url` + `state` + `redirect_uri` + registry-owned
-  `connect_guidance`; `oauth_callback`
-  (`GET /oauth/callback`, open) exchanges the code and creates/updates the oauth secret; `oauth_status`
-  polls. **Two modes** (`OAuthStartIn`): **BYO** (supply `client_id`/`client_secret`/`auth_uri`/
-  `token_uri`/`scopes`) or **REGISTRY** (supply `provider` + optional `capability`) where treg fills
-  everything from **its own approved OAuth app** — the marketplace. `oauth_providers_list`
-  (`GET /oauth/providers`) lists the providers treg holds an app for, each flagged `configured` (false
-  when this deployment hasn't set that provider's client credentials) and `metered` (true when the
-  provider's upstream bills treg's app per use AND this deployment charges for it — then
-  `billed_rates` carries the default prices, so the UI can show them before consent; see
-  [auth-secrets](../architecture/auth-secrets.md) on `platform_billed`). In registry mode `oauth_start`
-  reads the provider from `oauth_providers.get`, resolves scopes via `scopes_for(capability)`, and
-  stashes every per-provider auth quirk on the `PendingOAuth` (PKCE `code_verifier`, `auth_params`,
-  `token_endpoint_auth_method`, `client_id_param`, `scope_separator`, `long_lived_exchange`) so the
-  callback exchanges the code exactly the way the consent URL was built. `connection_id` (BYO or
-  registry) targets ONE existing connection to **reconnect/widen** it — scoped to the caller's org and
-  matched to the provider, recorded as `replaces_secret_id` — instead of adding another account.
-  **Callback does the real work:** it either replaces the named connection (`replaces_secret_id`) or
-  adds a new one named by `_free_connection_name` (the first account for a provider keeps the bare
-  service name — `google-search-console` — later ones get `-2`/`-3`), normalizes `granted_scopes` to
-  space-joined, sets `expires_at` (`oauth.expiry_of`), then `_autoprovision_provider_tool` binds the
-  fresh credential to the provider's API as a callable tool (idempotent by (org, name); a token-kind
-  provider gets an `env` header binding, an oauth one gets a `Bearer {access_token}` binding; a provider
-  needing treg's own second credential — Google Ads' developer token — also gets a **platform binding**,
-  see [proxy-model](../architecture/proxy-model.md)) and `_record_connected_identity` best-effort asks
-  the provider who connected. `_upsert_provider_extra_tools` is shared by this connect path and the
-  startup backfill, so companions use the same `(org_id, name)` upsert and binding shape in both cases.
-  See [auth-secrets](../architecture/auth-secrets.md).
-  The tool's `examples` come from `_provider_tool_examples`: the registry's hand-written ones first,
-  then the endpoint catalog's **verified core** endpoints for that provider (`catalog_store.tool_examples`
-  → `{method, path, note}` where the note carries the summary, required params and capability),
-  de-duplicated by (method, path) and capped at `CATALOG_STAMP_CAP` (12). Unverified endpoints are never
-  stamped — an example is a promise the call works, and the `verified` date is the only evidence of that.
-  Search Console's hand-written example additionally documents that direct own-tool path substitution
-  takes a `site_url` encoded exactly once; catalog calls accept either raw values or existing `%HH`
-  escapes and prevent the latter from being encoded a second time.
-- **Connections (the marketplace's dashboard surface):** `list_connections` (`GET /connections`) returns
-  every OAuth/registry credential in the org — metadata only, no token material — with health, expiry,
-  and (for a known provider) `capabilities`/`missing_capabilities` + extra-credential notes. The filter
-  is `kind=="oauth" OR provider!=""` so a bring-your-own-token provider (a plain `env` string, e.g.
-  Slack) still lists. `connection_resources` (`GET /connections/{id}/resources`) **live-fetches** what a
-  connection can act on (GSC sites, GA properties, Ads accounts), enriching id-only rows with the
-  upstream's human name concurrently (`_enrich_resource_labels`) and recording the successful upstream
-  call as proof of health. For providers declaring `discover_extra_path` (the Meta pair) it also walks
-  the Business graph and merges Business-owned rows after the primary ones — deduped by id, id-less
-  rows dropped, and a failing walk swallowed rather than surfaced as a 502; `set_connection_resource` (`POST …/resource`) pins the chosen `resource_ref`
-  + `resource_name`. `connect_with_token` (`POST /connections/token`) connects any **pasted-secret**
-  provider — a bring-your-own bot token (Slack) or an **API key** (Apollo, Hunter, TikHub, Semrush, …) —
-  **verifying the credential against the provider's probe before storing** (a header- OR query-param probe,
-  an off-host `probe_url`, tolerating a CSV/text body or a 200-with-false-`token_verify_field` reply), then
-  auto-provisioning its tool with a header or query binding. Two probe subtleties the code handles
-  because upstreams don't cooperate: a `probe_path` may bake in a required `?query` (PDL, Akta,
-  JustOneAPI, SpyFu), and httpx **replaces** a URL's own query when `params=` is passed — so the path's
-  query is parsed out and **merged into params** (the credential wins a key collision) rather than
-  silently dropped; and the body is parsed as JSON **regardless of content-type**, because ScrapeCreators
-  serves real JSON under `text/plain` and gating on `application/json` left `token_verify_field` unread
-  (a genuinely non-JSON balance still throws → empty payload → the `ERROR`-text branch, unchanged). A
-  base64-encode provider (`token_encode`, DataForSEO/Moz) accepts EITHER a raw `login:password` OR the
-  dashboard's ready-made base64 blob — a blob is detected (strict-decodes to printable text with a `:`)
-  and kept as-is instead of being double-encoded. See
-  [auth-secrets](../architecture/auth-secrets.md). `set_extra_credential` (`POST /connections/{id}/extra-credential`) stores
-  the second credential a provider needs when treg does NOT hold it centrally (Tomba's `X-Tomba-Secret`)
-  and finishes the tool with BOTH bindings — the primary half built by `_provider_bindings`, so it
-  follows the provider's own auth shape (pasted key or OAuth) rather than assuming a bearer token. `revoke_connection` (`DELETE /connections/{id}`) deletes the credential and
-  cleans up: it removes the tool treg auto-provisioned for the provider and drops the dead binding from
-  any user-built tool, leaving that tool's other bindings intact. All `require_can_register`
-  (member+). Helpers: `_owned_connection`, `_dig` (dotted-path walk).
-- **Health:** `run_health` (`POST /health/run`) → `health.run_all`; `get_health` (`GET /health`) now
-  returns `health._view(s)` plus a `needs_reconnect` flag (`health.needs_reconnect`) so a credential treg
-  can't renew announces itself before it dies.
-- **The proxy:** `routers.call.call_tool` (`* /call/{rest:path}`) captures a framework-neutral
-  `CallInput` → `application.call.service.execute_call` → `application.call.resolve` → (on a dotted 404,
-  catalog lookup + retirement gate + credential ladder) → `application.call.authorize` (tool/project ACL,
-  deny, per-user cap, then public-demo rate cap) → load secrets
-  (+ `ensure_fresh`) → **`db.commit()` — the DB phase ends here; a call in flight holds no pooled
-  connection** → `relay()` → `audit.record_call`. A pool that has no slot within 5 s answers
-  `503 {"treg_saturated": true}` + `Retry-After: 2` (`_pool_saturated`, the handler for
-  `sqlalchemy.exc.TimeoutError`) rather than a 30 s wait and an anonymous 500. The adapter also calls
-  `analytics.capture_fault(component="db_pool")`: saturation is a handled, typed response for the caller
-  but remains an infrastructure fault for PostHog alerting. A **platform binding** carries no `secret_id`
-  (its value comes from settings at relay time), so secret-loading now skips `secret_id is None`. Detail
-  in [proxy-model](../architecture/proxy-model.md).
-  `call_catalog_endpoint` (`* /catalog/call/{rest:path}`, hidden from public OpenAPI) is the narrower
-  internal entrance used by catalog-only MCP surfaces: it requires an exact catalog id and skips
-  `_resolve_call`, so an exact same-named team tool cannot shadow the catalog endpoint. From the
-  credential ladder onward it delegates to `call_tool`, retaining provider/user credentials, ACLs,
-  deny rules, caps, metering, audit, idempotency and faithful relay.
+## `402 payment_required` - a keyless call that can pay (off by default)
 
-## Schemas
-Pydantic input models: `UserIn`, `OrgIn` / `InviteIn` / `AcceptIn`, `EmailStartIn` / `EmailVerifyIn`,
-`SecretIn` / `SecretUpdate`,
-`ToolIn` (flat single-binding sugar + optional `bindings` + `health_check` + `cli`) / `ToolUpdate` (incl.
-`cli`), `SkillIn` (`SkillSecretIn` + `SkillToolIn`, whose `cli` inject entries reference secrets by
-local_name), `GrantIn` (argv) / `RunReportIn` (audit_id + exit_code + verdict), `OAuthStartIn` (now
-BYO-or-registry: `provider` / `capability` / `connection_id` plus the BYO `client_id`/`secret`/URIs/
-`scopes`), and the connection models `ResourceRefIn`, `TokenConnectIn`, `ExtraCredentialIn`. Output
-helpers `_secret_view` / `_tool_view` / `_bundle_view` never leak secret values — `_tool_view` returns
-`health_check` + `examples` + `cli` (it once omitted `health_check`, so a tool's probe was stored but never
-surfaced by `GET /tools` / `/bundles/{id}`).
+With `TREG_AGENT_PAYMENTS_ENABLED`, a `/call/<catalog id>` request carrying no treg credential at
+all, for a tool treg's own key serves, answers 402 `{"detail": {"error": "payment_required",
+"reason", "endpoint_id", "amount_micro", "estimated_cost_micro", "minimum_payment_micro",
+"protocols", "message"}}` with
+`X-Treg-Error: 1`, `Cache-Control: no-store`, `WWW-Authenticate: Payment ...` (MPP; on the MPP
+realm's host the zero-amount proof challenges come first) and `PAYMENT-REQUIRED` (x402; on the
+public host it carries the `sign-in-with-x` extension). A wallet with credit answers the
+zero-amount challenge, or the SIWX one in a `SIGN-IN-WITH-X` header, with a proof and pays nothing; a proof whose credit
+does not cover the call answers 402 `reason: credit_insufficient` with the payment challenges only.
+The request sent again with a payment credential is answered as a normal call, its body unchanged; every such answer carries `X-Treg-Payment: paid|credit`,
+`X-Treg-Credit-Micro` (the credit left) and, when it paid, `X-Treg-Paid-Micro` and
+`X-Treg-Payment-Reference`, plus `Cache-Control: private` when the answer set none; a 2xx also
+carries `Payment-Receipt` or `PAYMENT-RESPONSE`. treg's own 402s (`insufficient_balance`,
+`route_max_cost`) answer 503 there, except that credit spent by another call between the check and
+the hold answers the `credit_insufficient` 402. A settlement treg cannot confirm answers 503
+`payment_outcome_unknown` with no call. A keyless body over 1 MiB is 413; too many requests from one
+address (with or without a payment), or too many payment checks across all clients, answer 429
+`rate_limited` with `Retry-After`. A wallet whose payer team or its member is suspended answers 403
+`payer_suspended` (`reason: org_suspended|account_suspended`) before any payment is taken. Every other keyless call
+is a 401 `{"detail": {"error": "not_authenticated", "reason", "message"}}`. A free poll or result fetch
+of an async tool is served to a wallet that already paid for a call on that network: its 402 has
+`reason: proof_required` and offers the MPP zero-amount proof, x402 SIWX, or an x402 payment that
+is checked and never settled. `GET /agentpay/credit` (404 while the feature is off) answers 402
+`proof_required` with the proof challenges, then, with a valid proof, `{"network", "address",
+"credit_micro", "recent": [{"at", "protocol", "amount_micro", "status", "reference"}]}`. While the feature is
+on, `/catalog/search` rows and `/catalog/endpoints/<id>` carry `wallet` (`payable`, and `reason`
+when it is not). See [agent payments](../architecture/agent-payments.md).
 
-## Cross-cutting hardening (bug-hunt)
-- **Legacy-host redirect:** `_LegacyHostRedirectMiddleware` 301s GET/HEAD marketing pages (`_REDIRECT_PATHS`)
-  from the legacy hosts (`config.LEGACY_PUBLIC_HOSTS`) to the canonical `public_url` host (`treg.to`)
-  — but only for **anonymous** visitors: a `treg_session` cookie is host-scoped, so a signed-in
-  browser (e.g. the invite flow landing on `/?invite_org=…`) is served in place. The auth entries
-  `/auth/github`, `/auth/google` and GET `/oauth/authorize` (`_REDIRECT_ALWAYS`) redirect
-  unconditionally and with a **302** (one-shot OAuth params must not be cached as permanent) —
-  each parks a host-scoped cookie (CSRF state / `treg_oauth_return`) that the flow's continuation
-  on `public_url` must be able to read. Everything else is served in
-  place on BOTH hosts, forever: installed CLIs/skills hold tokens pointed at the legacy host, HTTP
-  clients strip `Authorization` on a cross-host redirect, `/vendor-listing` is fetched by agents,
-  and `curl {BASE}/install.sh | sh` runs without `-L`. The legacy names also stay in MCP's
-  transport allow-lists (`mcp._allowed_hosts`/`_allowed_origins`) and in the OAuth token-audience
-  set (`mcp_oauth.mcp_resource_audiences()` — pre-move grants keep their old audience for life,
-  and refresh reissues it). Never remove the legacy domain from Render.
-- **Security headers:** pure-ASGI `_SecurityHeadersMiddleware` adds `X-Content-Type-Options: nosniff`, `X-Frame-Options:
-  DENY`, `Referrer-Policy: no-referrer`, and HSTS to every response (`setdefault`, so the `/call`
-  proxy's stricter CSP/nosniff wins).
-- **No 500 on bad ids/URLs:** an `OverflowError` handler turns an oversized all-digit id into a `404`
-  (SQLite's 64-bit INTEGER); `_host_of`/`_resolve_call` guard `urlsplit` `ValueError` (malformed
-  `base_url`/passthrough) into a `422`/`400`.
-- **CSRF/redirect:** `auth_logout` rejects a cross-`Origin` request (forced-logout CSRF); `oauth_start`
-  pins `redirect_uri` to treg's own `/oauth/callback` (consent-phishing guard).
-- **Destructive routes name their target:** `DELETE /orgs/{id}` requires `?confirm=<slug>` and 422s
-  without it. It is irreversible and sits one path segment above every other org route, so any client
-  that normalizes `..` turns `DELETE /orgs/{id}/<anything>/..` into it — `treg org unpin ..` really
-  did delete a team in testing, because httpx rewrites the path before the request is sent. Server-
-  side validation cannot see that, so the defence is the confirmation, plus keeping user-supplied
-  values out of path segments (the pin capability moved to a query parameter for the same reason).
-  The CLI and the dashboard already made a human type the slug; now the API insists too.
-- **A machine identity can learn its own org:** `GET /auth/me` returns `org_id`/`org`/`role` when the
-  caller authenticated with a token. `require_identity` refuses machine identities on `/orgs` by
-  design (`create_org` hangs off it, so an agent could otherwise mint an org it owns) — but its token
-  IS one membership, and without this every `/orgs/{id}/…` command died with "no active org" for
-  exactly the callers those commands serve.
-- **Config default:** returning the OTP in the response (`dev_code`) is now gated by a dedicated
-  `expose_dev_code` — true only on a local sqlite box, never on a real (Postgres) deploy — so a
-  misconfigured `email_dev_mode` can't leak the code and enable an unauth takeover in prod.
+## Request transport
 
-Full endpoint list + the running server's OpenAPI: `README.md` and `/docs`. CLI-level usage: `USAGE.md`.
+**`X-Treg-Body-Encoding`** (`base64`, `gzip`, `base64+gzip`): CDN WAFs 403 bodies that match
+injection signatures, which skill recipes and proxied calls legitimately carry. The pure-ASGI
+`_BodyDecodeMiddleware` restores the bytes and fixes `content-length` before routing, so both
+Pydantic routes and the relay see plaintext; malformed is a clean 400. After delivering the
+decoded body it delegates later `receive()` calls to the original channel and forwards only a
+real `http.disconnect`. The CLI and local proxy use it automatically on a WAF 403.
 
-`/docs` is **ours** — a server-rendered reference built from `app.openapi()`, not Swagger. FastAPI's
-console moved to `/docs/api` (ReDoc is off), and `/openapi.json` is unchanged. The `/catalog`,
-`/catalog/<slug>` and `/robots.txt` + `/sitemap.xml` surfaces live alongside it; see
-[seo](seo.md), which also explains why HEAD is widened onto every GET route after registration and
-why that widening must be kept out of the schema.
+**Legacy hosts** (`config.LEGACY_PUBLIC_HOSTS`): `_LegacyHostRedirectMiddleware` 301s GET/HEAD
+marketing pages to `public_url` only for anonymous visitors (`treg_session` is host-scoped). The
+auth entries in `_REDIRECT_ALWAYS` redirect unconditionally with a 302, because each parks a
+host-scoped cookie the continuation must read and one-shot OAuth parameters must not be cached.
+Everything else is served in place on both hosts forever: installed CLIs and skills point at the
+legacy host, HTTP clients strip `Authorization` on cross-host redirects, and
+`curl {BASE}/install.sh | sh` runs without `-L`. The legacy names also stay in MCP's transport
+allow-lists and the OAuth token-audience set (old grants keep their audience for life). Never
+retire the legacy host.
 
-## OAuth + MCP routes
+**Security headers**: `_SecurityHeadersMiddleware` uses `setdefault`, so the `/call` proxy's
+stricter CSP wins. An oversized all-digit id is a 404, not a 500; malformed URLs are 422/400.
+`auth_logout` rejects a cross-site `Origin`; `_same_origin` is the shared CSRF check for every
+cookie-authenticated mutation.
 
-treg is an OAuth authorization server for its own MCP endpoint. Detail in
-`architecture/mcp-oauth.md`; this is the surface.
+**Client notice**: `_ClientNoticeMiddleware` adds `X-Treg-Client-Notice` to any answer, `/call/`
+included, for a request whose `X-Treg-Client-Version` is behind the operator's CLI release
+([cli](cli.md), "Version notice"). It reads only that request header and never touches the body.
 
-    GET  /.well-known/oauth-protected-resource      what guards /mcp/ (served at BOTH v1 lookup paths)
-    GET  /.well-known/oauth-protected-resource/mcp/v2
-                                                    distinct metadata for /mcp/v2/
-    GET  /.well-known/oauth-authorization-server    endpoints, S256, DCR + CIMD support
-    POST /oauth/register                            dynamic client registration (RFC 7591)
-    GET  /oauth/authorize                           the consent screen (JSON with Accept: application/json)
-    POST /oauth/authorize                           the human's decision — approval is never a GET
-    POST /oauth/token                               authorization_code and refresh_token grants
-    POST /oauth/revoke                              RFC 7009; ends the whole refresh family, always 200
-    GET  /oauth/grants                              live (non-retired, non-expired) grant families
-    POST /oauth/grants/{family}/team                move family authority to another member team
-    POST /mcp/                                      the MCP transport itself
-    POST /mcp/v2/                                   catalog-only Claude directory transport
+## Views
 
-    GET  /connect-demo                              a page that pretends to be an MCP client
-    GET  /connect-demo/callback                     its OAuth callback
-    GET  /connectors/claude                         setup, scope, pricing, data flow and removal docs
+A route that has a view (`routers.view.renders`) answers a request carrying `X-Treg-View: 1` with
+`{"data": <its own body, byte for byte>, "text": <what the CLI prints>}`, its own status and
+headers, plus `X-Treg-View: 1`. Without the header, for a HEAD, for a non-JSON answer or on a
+route without a view, the answer is untouched. `bootstrap._include_routes` wraps each route's ASGI
+app (`view.wrap`), which captures the whole answer first, so a refusal raised before the handler
+runs (a rejected token) or by an exception handler is rendered too. Routes with views: `/home`,
+`/catalog/platforms`, `/catalog/platforms/{slug}`, `/catalog/search`, `/catalog/endpoints/{id}`,
+`POST /tool-requests`, `/orgs/{id}/balance`, `/feedback/{id}`.
 
-The V2 metadata and transport routes are available only when
-`TREG_CLAUDE_CONNECTOR_ENABLED=true`. The metadata route returns 404 when V2 is disabled. New V2
-OAuth grants and catalog-only calls are also refused.
+- The text comes from `routers/views/`, which the Python CLI also prints from. Open catalog routes
+  render for whoever the request names (`view.optional_caller`; an unresolvable token renders as
+  anonymous): `own_key` from the caller's connections, `access` from the endpoint access use case,
+  and a capability pin hides the providers it refuses in `catalog get`. Each is best-effort
+  (`view.quietly`), as the extra requests the CLI made for them were.
+- What the CLI asked for in a second request, a view asks the router for in process (`view.get`:
+  same headers, no view). `catalog get <job>` 404s as an endpoint; with the header it answers 200,
+  as the job's routed endpoint (that route's body is `data`) or as every provider of the job
+  (`data` is that view's JSON). `limit` on `/catalog/endpoints/{id}` is read only by its view.
+- `/home`'s text leaves out the client's own lines: `treg:` (version and path) and `registry:`.
+  `/feedback/{id}`'s refusal text never repeats the refusal body.
 
-`/call/` gained one thing for this: a metered response now carries `X-Treg-Cost-Micro`, so a caller
-can report what it spent instead of diffing the balance. Absent on an unmetered call — a team's own
-key is not ours to bill, and `0` would read as "free".
+## Public pages and agent files
 
-## `Idempotency-Key` on `/call/`
+- `/llms.txt`, `/skill.md`, `/quickstart.md`, `/tutorial.md`, `/vendor-listing` and
+  `/install.sh` are templated with `{BASE}` from the serving host, so a self-hosted registry
+  advertises itself. `/.well-known/skills/index.json` reads its `description` from the skill's
+  frontmatter at request time, never a second copy ([skill](skill.md)).
+- `/install.sh?channel=beta` and `/install.ps1` install the binary CLI; `/cli/latest` names its
+  release per channel and platform, `/cli/latest/<os>-<arch>` redirects to that archive, and `/cli/events` relays its anonymous usage events
+  ([cli-binary](cli-binary.md)).
+- `/privacy` is the URL given to OAuth providers at app verification; never rename it.
+- `/use-cases/{slug}`: an unknown slug is a 404, not the SPA, so a typo in a live ad is visible,
+  and a signed-in visitor is not redirected to `/app`. The HTML is generated from
+  `marketing/landing/*.md`; never hand-edit it. `/resources` is the only page linking them.
+- `/media` (page assets) serves unversioned scripts, styles and text as `no-cache` and images and
+  fonts with a one-day max-age; `/vendor/` serves npm-pinned runtimes as immutable. Page videos
+  are not in Git: `web/media-videos.json` maps each `/media/` path to a content-addressed copy
+  under `site/` in the public media bucket (`ugc/tutorial.<digest>.mp4`, cached immutable), and
+  the path answers a 302 (`max-age=300`) to that copy's public URL (the pictures' base, or
+  `/media-files/`). `scripts/publish_page_media.py` uploads a new or edited video and records it;
+  a test fails when a page names a video the manifest lacks.
+- `GET /meta` exposes only public configuration; empty third-party keys mean self-hosted pages
+  load neither PostHog nor Intercom. `intercom_secret` never leaves the server: `GET /auth/me`
+  carries its HMAC of the email as `intercom_user_hash`.
+- `/sitetrack.js` sets the first-party `treg_utm` first-touch cookie read at team creation;
+  `/adtrack.js` is empty when conversion tracking is off, so unconfigured deployments set no
+  advertising cookies ([ads-conversions](../architecture/ads-conversions.md)).
+- Feedback, media hosting, pictures and the showcase are owned by their fragments:
+  [feedback](../architecture/feedback.md), [media](../architecture/media.md),
+  [showcase](../architecture/showcase.md).
 
-A caller-supplied label that makes a retry free. Sent on `/call/`, honoured only when present, so a
-caller who omits it sees byte-identical behaviour to before the feature existed.
+## OAuth and MCP
 
-    Idempotency-Key: <caller's label>        → replay if we already answered this label
-    X-Treg-Idempotent-Replay: true           → on the response, when it came from store
-    X-Treg-Cost-Micro: <original charge>     → what the FIRST call cost, not a new charge
-
-Refusals: `422` when a key is reused for a different request (a caller bug, and answering it would
-hand them a response to a question they did not ask), `409` while the first call with that key is
-still in flight.
-
-Over MCP the same thing is the optional `idempotency_key` argument to the `call` tool, and a replayed
-result carries `replayed: true`.
-
-Reasoning, storage rules and the concurrency guard: `architecture/money.md`.
-
-## Caller tags, budgets and per-tag usage
-
-For a builder embedding treg in their own product and billing their own users. Design and rationale:
-[money](../architecture/money.md).
-
-**Tag a call.** Set the header from your backend — never from a model, which will eventually omit it:
-
-```
-X-Treg-Meta: customer=cust_8123, workspace=ws_9, feature=email-finder
-```
-
-Up to 5 pairs; keys `[a-z0-9_]{1,32}`, values ≤128 chars, whole header ≤512 bytes. Any violation is a
-**422 before anything is relayed** (so a malformed bag costs nothing and does not burn an
-`Idempotency-Key`). Values containing `@` are refused: tags land in an append-only ledger.
-
-Every relayed response carries **`X-Treg-Call-Id`**, and so does every refusal treg raises before the
-relay, plus the saturation 503 (`_stamp_call_exit` mints it for the exits that never reach
-`call_tool`'s own bookkeeping). The same id is written to the audit row, making it the join key for
-your own records. The one exit with no id is an **unexpected fault**: a bug that escapes `call_tool`
-is answered by Starlette itself as a bare 500 and leaves no row either.
-
-Metered responses also carry `X-Treg-Cost-Micro`; a reserved call that fails before a provider answer
-carries an explicit `0`. That `0` is what the call ends up costing, but the **balance can lag it**:
-if returning the hold itself fails, the money comes back when the hold is reaped rather than at once
-(see [money](../architecture/money.md)).
-
-| Route | Does |
-|---|---|
-| `GET /calls?days=&before_id=&limit=` | this team's calls, windowed and pageable. Analytics — **not** an invoice source |
-| `GET /calls/{id}/result` | what one call asked and what came back — the archive's copy; metered platform 2xx only, `stored: false` + `note` otherwise |
-| `GET /calls/{call_ref}` | one call by its `X-Treg-Call-Id`, plus the ledger entries for it |
-| `GET /orgs/{id}/usage/by-tag?key=&days=` | per-value spend for one tag key. **Money from the ledger**; admin+ |
-| `GET/PUT/DELETE /orgs/{id}/budgets[/{dim}/{val}]` | per-tag limits and blocking; admin+ |
-| `GET/PATCH /orgs/{id}/settings` | the team's daily spend cap, budget dimensions and primary dimension |
-
-`PUT /orgs/{id}/budgets/{dim}/{val}` is an upsert that leaves unsent fields alone — a PUT that only
-sets `status` does not wipe the caps. Body: `daily_cap_micro`, `monthly_cap_micro`, `calls_per_day`,
-`status` (`active`|`blocked`), `note`.
-
-**Refusals a builder may show their own user.** These deliberately carry nothing about your team — no
-balance, slug, platform cap or top-up link:
-
-- `403 {error: "tag_blocked", dim, val, message}`
-- `429 {error: "tag_spend_cap_reached", dim, val, spent_micro, cap_micro, period, estimated_cost_micro, message}`
-- `429 {error: "tag_call_cap_reached", dim, val, used_today, calls_per_day, message}`
-
-Caps are **advisory**: concurrent calls can overshoot slightly. Your balance is the hard limit.
-
-**`usage/by-tag` reconciles.** `attributed_micro + unattributed_micro == total_micro`, for every key.
-Untagged traffic shows up as `unattributed_micro` rather than being dropped.
-
-**Isolation.** `treg org agent-new <name> --pin customer=cust_A` mints a token pinned to one tag value;
-the pin beats the header and a mismatch is a 403. Rule of thumb: **tag for counting, token for control.**
+treg is the OAuth authorization server for its own MCP endpoint
+([mcp-oauth](../architecture/mcp-oauth.md)). `/mcp/v2/` and its protected-resource metadata exist
+only when `TREG_CLAUDE_CONNECTOR_ENABLED=true` (otherwise 404, and new V2 grants are refused).
+Approval at `/oauth/authorize` is a POST, never a GET.
 
 ## Referrals
 
-`GET /referrals` · `POST /referrals/code` · `GET /admin/referrals`. Policy lives in
-[money](../architecture/money.md); three API-shaped decisions live here.
+**`require_identity`, not `require_member`.** A referral belongs to a person
+(`User.referral_code`); the reward lands in the oldest org they own, so nothing here is scoped by
+`X-Treg-Org`.
 
-**`require_identity`, not `require_member`.** A referral belongs to a PERSON, not to one of their
-teams (`User.referral_code`). The reward does land in an org, but *which* org is our decision —
-the oldest one they own — so nothing on these routes is scoped by `X-Treg-Org`.
+`GET /referrals` reports `cap.affiliate`, the configured `cap.standard_limit`, and an effective
+`cap.limit` of `null` for an affiliate. Credit amounts, funding threshold and hold stay unchanged.
 
-**`GET /referrals` returns the referred person's full email**, which makes it the one route here
-where a scoping mistake leaks another user's data rather than merely miscounting. It is scoped in
-the query itself (`referrer_user_id == caller.id`), never filtered afterwards, and pinned by a test.
-`privacy.html` discloses the visibility.
+The existing `require_superadmin` gate protects `GET /admin/referrals/users?email=...` (exact email,
+normalized with trim/lowercase), `GET /admin/referrals/users/{user_id}`, and
+`PUT /admin/referrals/users/{user_id}/affiliate`. Reads have no payout or code-minting side effects and
+return identity, current flag/version, cap usage and at most the latest twenty operation events.
+The PUT requires a strict boolean `affiliate`, `expected_version`, nonblank bounded `reason` and
+UUID `operation_id`; unknown fields, including caller-supplied actor, are rejected. Stale versions
+or an operation id reused for another payload/principal return 409. A matching retry returns current
+state and the original `event` with `replayed: true`, without applying again. A new no-op operation
+is audited and advances the version. Authentication determines the event principal: a signed-in
+superadmin's email or `env-admin` for the shared credential. The shared credential cannot prove
+which individual approved an operation; the reason is context, not authenticated identity.
 
-**`/?ref=CODE` is the one query string the landing route serves.** `GET /` deliberately treats any
-query string as the SPA's and falls through to the dashboard — which for a referral link would send
-a stranger who has never heard of treg to an empty app shell instead of the pitch. So a *lone* `ref`
-counts as parameterless (anything alongside it still belongs to the SPA), and the code is parked in
-`treg_ref` — httponly, lax, 30 days, and revalidated on read exactly like `_take_oauth_return`,
-because a cookie is attacker-supplied and this value reaches a query.
+**`GET /referrals` returns the referred person's full email**, so it is scoped in the query itself
+(`referrer_user_id == caller.id`), never filtered afterwards, and pinned by a test. `privacy.html`
+discloses this.
 
-Redemption happens at **first team creation**, in both org-creating doors (`POST /orgs` and the
-legacy `POST /users`), immediately after `_grant_signup_promo` and with the same swallow-and-log
-posture: a referral is a marketing nicety and a signup is not. It must never be why someone cannot
-make a team. A failed grant recovers by rolling the session back, which expires every object it
-tracks - so both doors read their response fields *before* granting, and the redemption revives an
-expired `user`/`org` with `db.refresh` before touching them. The recovery path costs the team its
-credit, never the signup response or the referral attribution.
+**`/?ref=CODE` is the one query string the landing route serves.** `GET /` otherwise treats any
+query string as the SPA's. A `ref` alone or with only `utm_*` tags counts as parameterless, and the
+code is parked in `treg_ref` (httponly, lax, 30 days), revalidated on read because a cookie is
+attacker-supplied and reaches a query.
+
+Redemption happens at team creation, right after the signup credit grant and with the same
+swallow-and-log posture: a referral must never be why someone cannot make a team. A failed grant
+rolls the session back, expiring every tracked object, so team creation reads its response fields
+before granting and redemption refreshes `user`/`org` first.
+
+## Billing
+
+`GET /billing/history`: top-up amounts come from credited ledger entries, SSO amounts and invoice
+documents from Stripe; a Stripe document failure never removes ledger-backed rows.
+`POST /billing/topup` accepts `checkout_source`; it and the `treg_entry_surface` cookie are
+normalized to a fixed allowlist and reach only Stripe metadata, analytics and ledger provenance,
+never the amount or authorization.

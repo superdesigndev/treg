@@ -1,0 +1,20 @@
+{
+  "name": "treg",
+  "interface": {
+    "displayName": "treg"
+  },
+  "plugins": [
+    {
+      "name": "treg",
+      "source": {
+        "source": "local",
+        "path": "./plugin"
+      },
+      "policy": {
+        "installation": "AVAILABLE",
+        "authentication": "ON_INSTALL"
+      },
+      "category": "Developer Tools"
+    }
+  ]
+}

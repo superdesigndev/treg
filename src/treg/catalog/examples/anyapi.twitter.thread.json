@@ -1,0 +1,45 @@
+{
+  "output": {
+    "found": true,
+    "data": {
+      "author": {
+        "handle": "SpaceX",
+        "id": "34743251",
+        "name": "SpaceX"
+      },
+      "complete": true,
+      "conversationId": "1732824684683784516",
+      "threadLength": 1,
+      "tweets": [
+        {
+          "authorHandle": "SpaceX",
+          "authorId": "34743251",
+          "authorName": "SpaceX",
+          "conversationId": "1732824684683784516",
+          "id": "1732824684683784516",
+          "inReplyToId": null,
+          "media": [
+            {
+              "type": "video",
+              "url": "https://pbs.twimg.com/ext_tw_video_thumb/1732820284301058052/pu/img/A-6jgWgxmMJ43_YO.jpg",
+              "videoUrl": "https://video.twimg.com/ext_tw_video/1732820284301058052/pu/vid/avc1/1920x1080/K2NITCly19drRgED.mp4?tag=14"
+            }
+          ],
+          "text": "At dawn from the gateway to Mars, the launch of Starship’s second flight test https://t.co/ffKnsVKwG4",
+          "url": "https://x.com/i/web/status/1732824684683784516"
+        }
+      ]
+    }
+  },
+  "provider": "AnyAPI",
+  "costUsd": 0.005,
+  "items": 1,
+  "replayed": false,
+  "source": {
+    "id": "anonymous-capybara",
+    "name": "Capybara",
+    "kind": "anonymous",
+    "artworkKey": "capybara"
+  },
+  "resultId": "3260ebc7-cef3-4174-8329-6514636d97a2"
+}

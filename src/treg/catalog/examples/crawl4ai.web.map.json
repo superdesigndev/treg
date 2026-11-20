@@ -1,0 +1,122 @@
+{
+  "meta": {
+    "blocked": [],
+    "elapsed_ms": 2583,
+    "from_cache": false,
+    "llm_calls": 0,
+    "pages_fetched": 7,
+    "partial": false,
+    "warnings": [
+      "module: site-scan: commoncrawl 30 \u00b7 links 61 \u00b7 sitemap 89 \u00b7 union 99 \u00b7 cut to 5"
+    ]
+  },
+  "recipe": "site-scan",
+  "rows": [
+    {
+      "depth": 0,
+      "last_seen": "2026-10-05",
+      "sources": [
+        "sitemap",
+        "links",
+        "commoncrawl"
+      ],
+      "url": "https://docs.crawl4ai.com/"
+    },
+    {
+      "depth": 2,
+      "last_seen": "2026-10-05",
+      "sources": [
+        "sitemap",
+        "links",
+        "commoncrawl"
+      ],
+      "url": "https://docs.crawl4ai.com/advanced/advanced-features"
+    },
+    {
+      "depth": 2,
+      "last_seen": "2026-10-05",
+      "sources": [
+        "sitemap",
+        "links",
+        "commoncrawl"
+      ],
+      "url": "https://docs.crawl4ai.com/advanced/file-downloading"
+    }
+  ],
+  "usage": {
+    "boxes": [
+      "gate",
+      "crawl"
+    ],
+    "cache": "miss",
+    "engine": "recipe",
+    "lines": [
+      {
+        "about": "the call",
+        "boxes": [
+          "gate"
+        ],
+        "cache": "miss",
+        "call": "recipes",
+        "engine": "gate",
+        "units": 1
+      },
+      {
+        "cache": "miss",
+        "call": "scrape",
+        "engine": "http",
+        "units": 1,
+        "url": "https://docs.crawl4ai.com/robots.txt"
+      },
+      {
+        "cache": "archive",
+        "call": "scrape",
+        "engine": "archive",
+        "units": 1,
+        "url": "https://docs.crawl4ai.com/"
+      },
+      {
+        "cache": "archive",
+        "call": "scrape",
+        "engine": "archive",
+        "units": 1,
+        "url": "https://index.commoncrawl.org/collinfo.json"
+      },
+      {
+        "cache": "archive",
+        "call": "scrape",
+        "engine": "archive",
+        "units": 1,
+        "url": "https://docs.crawl4ai.com/sitemap.xml"
+      },
+      {
+        "cache": "miss",
+        "call": "scrape",
+        "engine": "http",
+        "units": 1,
+        "url": "https://docs.crawl4ai.com/sitemap_index.xml"
+      },
+      {
+        "cache": "archive",
+        "call": "scrape",
+        "engine": "archive",
+        "units": 1,
+        "url": "https://index.commoncrawl.org/CC-MAIN-2026-39-index?url=docs.crawl4ai.com/*&output=json&fl=url,timestamp,status&filter=status:200&collapse=urlkey&limit=50000"
+      },
+      {
+        "cache": "archive",
+        "call": "scrape",
+        "engine": "archive",
+        "units": 1,
+        "url": "https://index.commoncrawl.org/CC-MAIN-2026-34-index?url=docs.crawl4ai.com/*&output=json&fl=url,timestamp,status&filter=status:200&collapse=urlkey&limit=50000"
+      }
+    ],
+    "remaining_before": {
+      "concurrent": 99,
+      "requests": 199,
+      "search": 3000
+    },
+    "units": 8
+  },
+  "version": 1
+}

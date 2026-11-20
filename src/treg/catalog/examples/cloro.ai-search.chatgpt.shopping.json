@@ -1,0 +1,155 @@
+{
+  "success": true,
+  "result": {
+    "model": "gpt-5-6",
+    "text": "For fla…",
+    "sources": [
+      {
+        "position": 1,
+        "label": "The 8 B…",
+        "url": "https:/…",
+        "description": "",
+        "footnote": false,
+        "datePublished": "Aug 11,…"
+      },
+      {
+        "position": 2,
+        "label": "Best Ru…",
+        "url": "https:/…",
+        "description": "",
+        "footnote": false
+      },
+      "… 28 mo…"
+    ],
+    "entities": [
+      {
+        "type": "brand",
+        "name": "Brooks …"
+      },
+      {
+        "type": "product",
+        "name": "HOKA Ar…"
+      },
+      "… 3 mor…"
+    ],
+    "map": [],
+    "citationPills": [
+      {
+        "url": "https:/…",
+        "label": "The 8 B…",
+        "domain": "runners…",
+        "type": "grouped…",
+        "citationPillId": 0,
+        "position": 1
+      },
+      {
+        "url": "https:/…",
+        "label": "Best Ru…",
+        "domain": "fleetfe…",
+        "type": "grouped…",
+        "citationPillId": 0,
+        "position": 2
+      },
+      "… 9 mor…"
+    ],
+    "shoppingCards": [
+      {
+        "products": [
+          {
+            "id": "1986051…",
+            "title": "HOKA Ar…",
+            "url": "https:/…",
+            "price": "$120.00",
+            "merchants": "HOKA",
+            "description": null,
+            "specs": null,
+            "featured_tag": "",
+            "image_urls": [
+              "https:/…"
+            ],
+            "num_reviews": null,
+            "rating": null,
+            "cite": "turn0pr…",
+            "offers": [
+              {
+                "merchant_name": "HOKA",
+                "merchant_subtitle": "HOKA",
+                "marketplace_seller": null,
+                "seller_name": "HOKA",
+                "brand": "HOKA",
+                "product_name": "Arahi 8",
+                "url": "https:/…",
+                "price": "$120.00",
+                "details": "In stoc…",
+                "original_price": "$150.00",
+                "available": true,
+                "is_digital": null,
+                "tag": {
+                  "text": "Best pr…",
+                  "tooltip": null
+                },
+                "shop_id": null,
+                "provider": "p3",
+                "oppcref": null,
+                "…": "6 more field(s) truncated"
+              }
+            ],
+            "variants": null,
+            "query": "depreca…",
+            "provider": "depreca…",
+            "…": "17 more field(s) truncated"
+          },
+          {
+            "id": "gid://s…",
+            "title": "ASICS G…",
+            "url": "https:/…",
+            "price": "$170.00",
+            "merchants": "The Run…",
+            "description": null,
+            "specs": null,
+            "featured_tag": "",
+            "image_urls": [
+              "https:/…"
+            ],
+            "num_reviews": null,
+            "rating": null,
+            "cite": "turn0pr…",
+            "offers": [
+              {
+                "merchant_name": "The Run…",
+                "merchant_subtitle": "",
+                "marketplace_seller": null,
+                "seller_name": "The Run…",
+                "brand": "",
+                "product_name": "MEN'S G…",
+                "url": "https:/…",
+                "price": "$170.00",
+                "details": "In stoc…",
+                "original_price": null,
+                "available": true,
+                "is_digital": null,
+                "tag": {
+                  "text": "Best pr…",
+                  "tooltip": null
+                },
+                "shop_id": null,
+                "provider": "p3",
+                "oppcref": null,
+                "…": "6 more field(s) truncated"
+              }
+            ],
+            "variants": null,
+            "query": "depreca…",
+            "provider": "depreca…",
+            "…": "17 more field(s) truncated"
+          }
+        ],
+        "tags": []
+      }
+    ],
+    "inlineProducts": [],
+    "ads": [],
+    "markdown": "For **f…",
+    "html": "https:/…"
+  }
+}

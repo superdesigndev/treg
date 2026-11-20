@@ -37,6 +37,7 @@ source:
 pricing_url: https://majestic.com/plans-pricing
 endpoints:
   - id: majestic.web.url.metrics
+    added: '2026-07-28'
     capability: web.url.metrics
     platform: web
     scope: any_account
@@ -68,6 +69,7 @@ endpoints:
     docs_url: https://developer-support.majestic.com/api/commands/get-index-item-info.shtml
 
   - id: majestic.web.backlinks.summary
+    added: '2026-07-28'
     capability: web.backlinks.summary
     platform: web
     scope: any_account
@@ -101,6 +103,7 @@ endpoints:
     docs_url: https://developer-support.majestic.com/api/commands/get-index-item-info.shtml
 
   - id: majestic.web.backlinks.list
+    added: '2026-07-28'
     capability: web.backlinks.list
     platform: web
     scope: any_account
@@ -140,6 +143,7 @@ endpoints:
     docs_url: https://developer-support.majestic.com/api/commands/get-back-link-data.shtml
 
   - id: majestic.web.linking_domains.list
+    added: '2026-07-28'
     capability: web.linking_domains.list
     platform: web
     scope: any_account
@@ -173,6 +177,7 @@ endpoints:
     docs_url: https://developer-support.majestic.com/api/commands/get-ref-domains.shtml
 
   - id: majestic.web.anchors.list
+    added: '2026-07-28'
     capability: web.anchors.list
     platform: web
     scope: any_account
@@ -208,6 +213,7 @@ endpoints:
     docs_url: https://developer-support.majestic.com/api/commands/get-anchor-text.shtml
 
   - id: majestic.web.site.top_pages
+    added: '2026-07-28'
     capability: web.site.top_pages
     platform: web
     scope: any_account
@@ -238,6 +244,7 @@ endpoints:
     docs_url: https://developer-support.majestic.com/api/commands/get-top-pages.shtml
 
   - id: majestic.account.usage
+    added: '2026-07-28'
     kind: account
     capability: account.usage
     platform: account

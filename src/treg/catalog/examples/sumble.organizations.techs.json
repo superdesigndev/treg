@@ -1,0 +1,122 @@
+{
+  "id": "example-request-id",
+  "credits_used": 20,
+  "credits_remaining": 9000,
+  "organization_id": 1726684,
+  "organization_slug": "sumble",
+  "business_functions": [
+    {
+      "business_function": "Engineering & R&D",
+      "categories": [
+        {
+          "category_slug": "javascript",
+          "category_name": "JS Frameworks",
+          "category_name_full": "Javascript Frameworks",
+          "technologies": [
+            {
+              "name": "React",
+              "slug": "react",
+              "job_post_used_count": 3,
+              "domain": "https://react.dev/"
+            },
+            {
+              "name": "TypeScript",
+              "slug": "typescript",
+              "job_post_used_count": 3,
+              "domain": "https://www.typescriptlang.org/"
+            }
+          ],
+          "evidence": [
+            {
+              "name": "React",
+              "job_post_used_count": 3
+            },
+            {
+              "name": "TypeScript",
+              "job_post_used_count": 3
+            }
+          ]
+        },
+        {
+          "category_slug": "programming-languages-and-frameworks",
+          "category_name": "Languages",
+          "category_name_full": "Programming Languages and Frameworks",
+          "technologies": [
+            {
+              "name": "Python",
+              "slug": "python",
+              "job_post_used_count": 5,
+              "domain": "https://www.python.org/"
+            }
+          ],
+          "evidence": [
+            {
+              "name": "Python",
+              "job_post_used_count": 5
+            },
+            {
+              "name": "Microsoft C#",
+              "job_post_used_count": 1
+            }
+          ]
+        },
+        "… 2 more item(s) truncated"
+      ]
+    },
+    {
+      "business_function": "Data & Analytics",
+      "categories": [
+        {
+          "category_slug": "database-technologies",
+          "category_name": "Database",
+          "category_name_full": "Database Technologies",
+          "technologies": [
+            {
+              "name": "PostgreSQL",
+              "slug": "postgresql",
+              "job_post_used_count": 2,
+              "domain": "https://www.postgresql.org/"
+            },
+            {
+              "name": "AlloyDB",
+              "slug": "alloydb",
+              "job_post_used_count": 2,
+              "domain": "https://cloud.google.com/alloydb"
+            }
+          ],
+          "evidence": [
+            {
+              "name": "PostgreSQL",
+              "job_post_used_count": 2
+            },
+            {
+              "name": "AlloyDB",
+              "job_post_used_count": 2
+            }
+          ]
+        },
+        {
+          "category_slug": "cloud-data-warehouse",
+          "category_name": "Warehouse",
+          "category_name_full": "Cloud Data Warehouse",
+          "technologies": [
+            {
+              "name": "Databricks",
+              "slug": "databricks",
+              "job_post_used_count": 3,
+              "domain": "https://databricks.com/"
+            }
+          ],
+          "evidence": [
+            {
+              "name": "Databricks",
+              "job_post_used_count": 3
+            }
+          ]
+        },
+        "… 2 more item(s) truncated"
+      ]
+    },
+    "… 10 more item(s) truncated"
+  ]
+}

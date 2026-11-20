@@ -1,0 +1,23 @@
+{
+  "output": {
+    "found": true,
+    "data": {
+      "durationSeconds": 24,
+      "id": "7654638524729216287",
+      "image": "https://p16-common-sign.tiktokcdn-us.com/tos-useast8-p-0068-tx2/owAeXLqoAomjAGOlgQeIBFA4DwIIdUfqAAEqQs~tplv-tiktokx-cropcenter-q:300:400:q70.jpeg?dr=8596&refresh_token=fdffb2b1&x-expires=1789894800&x-… [343 chars]",
+      "videoUrl": "https://v16m.tiktokcdn-us.com/bd5e284d67dbc61c08b71f0ef3ec7420/6aaeb103/video/tos/useast8/tos-useast8-ve-0068c003-tx2/oEFveOEEIEAqHgOf6vFV6xMS5VzR7EAiDBrRQs/?a=1233&bti=OUBzOTg7QGo6OjZAL3AjLTAzYCMxNDN… [438 chars]",
+      "watermarkedUrl": "https://v16m.tiktokcdn-us.com/5b927ec138a8a397083c1e7fb577a202/6aaeb103/video/tos/useast8/tos-useast8-ve-0068c001-tx2/okE6FqrBiSzEE2FRgeEQxuAVRvAf5Hs6RkOIbD/?a=1233&bti=OUBzOTg7QGo6OjZAL3AjLTAzYCMxNDN… [438 chars]"
+    }
+  },
+  "provider": "AnyAPI",
+  "costUsd": 0.0009,
+  "items": 0,
+  "replayed": false,
+  "source": {
+    "id": "anonymous-bison-cb2f8f3c",
+    "name": "Bison",
+    "kind": "anonymous",
+    "artworkKey": "bison"
+  },
+  "resultId": "d974d009-2b21-4743-9689-b8548aac42ad"
+}

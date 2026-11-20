@@ -1,0 +1,56 @@
+{
+  "search_metadata": {
+    "id": "bfdfa89180b88c6258fd5413",
+    "status": "Success",
+    "json_endpoint": "https://api.litescrape.com/api/bing/search?q=coffee+shops+Austin&device=desktop&engine=bing",
+    "created_at": "2026-09-29 13:58:44 UTC",
+    "processed_at": "2026-09-29 13:58:45 UTC",
+    "total_time_taken": 1.031,
+    "bing_url": "https://www.bing.com/search?q=coffee+shops+Austin"
+  },
+  "search_parameters": {
+    "q": "coffee shops Austin",
+    "device": "desktop",
+    "engine": "bing"
+  },
+  "search_information": {
+    "total_results": 252000
+  },
+  "organic_results": [
+    {
+      "position": 1,
+      "title": "Vinyl Coffee",
+      "tracking_link": "https://www.bing.com/ck/a?!&&p=8d70a1fea43d6396229b443f514700a4f6a4326a795b1c9b86d83b53f4277666JmltdHM9MTc5MDY0MDAwMA&ptn=3&ver=2&hsh=4&fclid=0fc5bac9-ab97-6365-2205-ad2aaa09628d&u=a1aHR0cHM6Ly92aW55bGNvZmZlZS5jby8&ntb=1",
+      "link": "https://vinylcoffee.co/",
+      "displayed_link": "https://vinylcoffee.co",
+      "snippet": "Our coffee is crafted with a calculated intentionality and with feel and instinct; much like a good record. Our delicious coffees … Read more"
+    },
+    {
+      "position": 2,
+      "title": "Peet's Coffee | The Original Craft Coffee Since 1966",
+      "tracking_link": "https://www.bing.com/ck/a?!&&p=2795c5db8437f6ac63d656417386eb901437249d9590885f3c474f6999e385a3JmltdHM9MTc5MDY0MDAwMA&ptn=3&ver=2&hsh=4&fclid=0fc5bac9-ab97-6365-2205-ad2aaa09628d&u=a1aHR0cHM6Ly93d3cucGVldHMuY29tLw&ntb=1",
+      "link": "https://www.peets.com/",
+      "displayed_link": "https://www.peets.com",
+      "snippet": "Enjoy a medium drip coffee for just 25¢ at Peet’s coffeebars on Tuesday, 9/29. Fans of the original craft coffee deserve an original … Read more"
+    }
+  ],
+  "pagination": {
+    "current": 1,
+    "next": "https://www.bing.com/search?q=coffee+shops+Austin&FPIG=DACB1D17F2D445EAB54A0574CF3ADE56&first=11&FORM=PORE",
+    "other_pages": {
+      "2": "https://www.bing.com/search?q=coffee+shops+Austin&FPIG=DACB1D17F2D445EAB54A0574CF3ADE56&first=11&FORM=PERE",
+      "3": "https://www.bing.com/search?q=coffee+shops+Austin&FPIG=DACB1D17F2D445EAB54A0574CF3ADE56&first=21&FORM=PERE1",
+      "4": "https://www.bing.com/search?q=coffee+shops+Austin&FPIG=DACB1D17F2D445EAB54A0574CF3ADE56&first=31&FORM=PERE2"
+    }
+  },
+  "litescrape_pagination": {
+    "current": 1,
+    "next": "https://api.litescrape.com/api/bing/search?q=coffee+shops+Austin&first=11&device=desktop&engine=bing",
+    "next_link": "https://api.litescrape.com/api/bing/search?q=coffee+shops+Austin&first=11&device=desktop&engine=bing",
+    "other_pages": {
+      "2": "https://api.litescrape.com/api/bing/search?q=coffee+shops+Austin&first=11&device=desktop&engine=bing",
+      "3": "https://api.litescrape.com/api/bing/search?q=coffee+shops+Austin&first=21&device=desktop&engine=bing",
+      "4": "https://api.litescrape.com/api/bing/search?q=coffee+shops+Austin&first=31&device=desktop&engine=bing"
+    }
+  }
+}

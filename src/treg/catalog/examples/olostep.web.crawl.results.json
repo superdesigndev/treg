@@ -1,0 +1,1 @@
+{"id":"crawl_example","object":"crawl","status":"completed","pages_count":1,"pages":[{"id":"page_example","retrieve_id":"retrieve_example","url":"https://example.com/","is_external":false,"markdown_content":"# Example Domain\n\nThis domain is for use in illustrative examples."}],"cursor":null}

@@ -1,0 +1,77 @@
+{
+  "prices": [
+    {
+      "close": 325.13,
+      "high": 327.3,
+      "low": 314.73,
+      "open": 316.98,
+      "ticker": "AAPL",
+      "time": "2026-09-01",
+      "volume": 53167388
+    },
+    {
+      "close": 324.96,
+      "high": 328.4,
+      "low": 323.53,
+      "open": 326.87,
+      "ticker": "AAPL",
+      "time": "2026-09-02",
+      "volume": 33776370
+    },
+    {
+      "close": 328.21,
+      "high": 330.81,
+      "low": 324.11,
+      "open": 324.87,
+      "ticker": "AAPL",
+      "time": "2026-09-03",
+      "volume": 37225838
+    },
+    {
+      "close": 319.97,
+      "high": 328.93,
+      "low": 317.86,
+      "open": 328.31,
+      "ticker": "AAPL",
+      "time": "2026-09-04",
+      "volume": 39606884
+    },
+    {
+      "close": 316.22,
+      "high": 320.7,
+      "low": 314.9,
+      "open": 317.1,
+      "ticker": "AAPL",
+      "time": "2026-09-08",
+      "volume": 35477090
+    },
+    {
+      "close": 315.34,
+      "high": 319.15,
+      "low": 309.9,
+      "open": 315.49,
+      "ticker": "AAPL",
+      "time": "2026-09-09",
+      "volume": 65639962
+    },
+    {
+      "close": 326.57,
+      "high": 326.74,
+      "low": 316.51,
+      "open": 316.67,
+      "ticker": "AAPL",
+      "time": "2026-09-10",
+      "volume": 70011913
+    },
+    {
+      "close": 332.27,
+      "high": 336.22,
+      "low": 326.3,
+      "open": 327.45,
+      "ticker": "AAPL",
+      "time": "2026-09-11",
+      "volume": 50716865
+    }
+  ],
+  "ticker": "AAPL"
+}

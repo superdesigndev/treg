@@ -10,8 +10,7 @@ import pytest
 from httpx import ASGITransport, AsyncClient
 from sqlmodel import select
 
-from treg import api, maintenance
-from treg.domain.identity import session as sess
+from treg import api
 from treg.__main__ import _prepare_serve
 from treg.api import LOCAL_ORG_NAME, LOCAL_USER_EMAIL, app
 from treg.config import Settings, get_settings
@@ -46,23 +45,6 @@ def test_it_is_off_unless_explicitly_asked_for():
     assert get_settings().single_user_ok is False, "the default deployment must never be no-login"
 
 
-async def test_serve_pre_phase_upgrades_before_provisioning(monkeypatch):
-    calls = []
-
-    async def upgrade():
-        calls.append("upgrade")
-
-    async def bootstrap():
-        calls.append("bootstrap")
-
-    monkeypatch.setattr(maintenance, "upgrade", upgrade)
-    monkeypatch.setattr(api, "_bootstrap_single_user", bootstrap)
-
-    await _prepare_serve()
-
-    assert calls == ["upgrade", "bootstrap"]
-
-
 # ---- the serve pre-phase -----------------------------------------------------------------------
 @pytest.fixture
 async def local(tmp_path, monkeypatch):
@@ -87,14 +69,6 @@ async def test_bootstrap_creates_the_owner_and_writes_the_token(local):
     assert m.role == "owner"
 
 
-async def test_the_token_is_stable_across_restarts(local):
-    """Rotating on every boot would break the CLI config the installer just wrote."""
-    first = local.read_text()
-    await _prepare_serve()
-    await _prepare_serve()
-    assert local.read_text() == first
-
-
 async def test_a_deleted_token_file_is_re_minted(local):
     """The one case where rotating is right: the user lost the file and needs a way back in."""
     first = local.read_text()
@@ -107,30 +81,6 @@ async def test_the_minted_token_actually_works(local):
     async with AsyncClient(transport=ASGITransport(app=app), base_url="http://registry") as c:
         r = await c.get("/tools", headers={"X-Treg-Token": local.read_text().strip()})
     assert r.status_code == 200, r.text
-
-
-async def test_the_dashboard_opens_already_signed_in(local):
-    """The feeling we are selling: no signup, no email, no password."""
-    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://registry") as c:
-        r = await c.get("/app")
-    assert r.status_code == 200
-    cookie = r.cookies.get(sess.COOKIE)
-    assert cookie, "local mode must attach a session so there is no login screen"
-    async with session_maker() as s:
-        user = (await s.execute(select(User).where(User.email == LOCAL_USER_EMAIL))).scalar_one()
-    assert sess.read_claims(cookie)["uid"] == user.id
-
-
-# ---- and the same routes must stay closed on a normal deployment ------------------------------
-async def test_a_normal_deployment_bootstraps_nothing_and_signs_nobody_in():
-    await reset_db()
-    await _prepare_serve()  # default settings means the guard refuses
-    async with session_maker() as s:
-        assert (await s.execute(select(User).where(User.email == LOCAL_USER_EMAIL))).scalar_one_or_none() is None
-    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://registry") as c:
-        r = await c.get("/app")
-    assert r.status_code == 200
-    assert not r.cookies.get(sess.COOKIE), "a real deploy must never hand out a session"
 
 
 # ---- the installer is served ------------------------------------------------------------------

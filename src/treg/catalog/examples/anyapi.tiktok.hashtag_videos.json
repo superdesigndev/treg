@@ -1,0 +1,33 @@
+{
+  "output": {
+    "found": true,
+    "data": {
+      "items": [
+        {
+          "authorHandle": "cookingvideos020",
+          "commentCount": 6,
+          "createdUtc": 1788412829,
+          "id": "7681174433272237325",
+          "image": "https://p16-common-sign.tiktokcdn-eu.com/tos-useast5-p-0068-tx/o4EZIBB8IAUTAzB1oiWyfPRXjF3CViDwpcI5Ar~tplv-tiktokx-origin.image",
+          "likeCount": 651,
+          "playCount": 132800,
+          "shareCount": 192,
+          "text": "Cooking with kya #cookinwitkya  #cookingwithkya #cookingwithkaya ",
+          "url": "https://www.tiktok.com/@cookingvideos020/video/7681174433272237325"
+        },
+        "… 2 more item(s) truncated"
+      ]
+    }
+  },
+  "provider": "AnyAPI",
+  "costUsd": 0.0008,
+  "items": 3,
+  "replayed": false,
+  "source": {
+    "id": "anonymous-badger",
+    "name": "Badger",
+    "kind": "anonymous",
+    "artworkKey": "badger"
+  },
+  "resultId": "a83352df-d616-4c4d-b265-a06326db0f04"
+}

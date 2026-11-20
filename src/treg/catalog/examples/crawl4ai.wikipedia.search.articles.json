@@ -1,0 +1,60 @@
+{
+  "meta": {
+    "blocked": [],
+    "elapsed_ms": 0,
+    "from_cache": true,
+    "llm_calls": 0,
+    "pages_fetched": 0,
+    "partial": false,
+    "warnings": [
+      "module: wikipedia-search: 'rust programming language' on en.wikipedia.org · 10 of 2651 hits"
+    ]
+  },
+  "recipe": "wikipedia-search",
+  "usage": {
+    "boxes": [
+      "gate"
+    ],
+    "cache": "hit",
+    "engine": "recipe",
+    "lines": [
+      {
+        "about": "the call",
+        "boxes": [
+          "gate"
+        ],
+        "cache": "miss",
+        "call": "recipes",
+        "engine": "gate",
+        "units": 1
+      }
+    ],
+    "remaining_before": {
+      "concurrent": 99,
+      "requests": 163,
+      "search": 3000
+    },
+    "units": 1
+  },
+  "version": 1,
+  "rows": [
+    {
+      "pageid": 29414838,
+      "size": 119581,
+      "snippet": "Rust is a general-purpose programming language that emphasizes performance, type safety, concurrency, and memory safety. Rust supports multiple programming",
+      "title": "Rust (programming language)",
+      "updated": "2026-10-10T15:15:22Z",
+      "url": "https://en.wikipedia.org/wiki/Rust_%28programming_language%29",
+      "words": 10949
+    },
+    {
+      "pageid": 81297551,
+      "size": 16807,
+      "snippet": "topical guide to Rust: Rust is a multi-paradigm programming language emphasizing performance, memory safety, and concurrency. Rust was initially developed",
+      "title": "Outline of the Rust programming language",
+      "updated": "2026-05-27T12:01:42Z",
+      "url": "https://en.wikipedia.org/wiki/Outline_of_the_Rust_programming_language",
+      "words": 1080
+    }
+  ]
+}

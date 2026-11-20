@@ -1,0 +1,25 @@
+{
+  "query": "webinar",
+  "country_code": "US",
+  "continuation_token": "redacted-live-token",
+  "is_result_complete": false,
+  "number_of_ads": 22723,
+  "active_status": "active",
+  "results": [
+    [
+      {
+        "ad_archive_id": "redacted-live-id",
+        "page_id": "redacted-live-id",
+        "page_name": "Redacted live advertiser",
+        "is_active": true,
+        "publisher_platform": ["FACEBOOK"],
+        "snapshot": {
+          "caption": "example.com",
+          "cta_text": "Download",
+          "body": {"text": "Redacted live creative text."},
+          "link_url": "https://example.invalid/redacted"
+        }
+      }
+    ]
+  ]
+}

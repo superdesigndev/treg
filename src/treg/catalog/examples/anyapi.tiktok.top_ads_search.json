@@ -1,0 +1,41 @@
+{
+  "output": {
+    "found": true,
+    "data": {
+      "ads": [
+        {
+          "adId": "7231584422875676673",
+          "adTitle": "The best way to clean - 80% off, ends soon-634222",
+          "brandName": "متجر الخليج",
+          "cost": 2,
+          "ctr": 0.16,
+          "durationSeconds": 14.8,
+          "height": 1024,
+          "image": "https://p19-common-sign.tiktokcdn.com/tos-alisg-p-0037/oEBKAY2XAFC1PC2AIoEDhcfiQQ3tgHnXBUfK7V~tplv-noop.image?dr=18692&refresh_token=7c12fd46&x-expires=1789833464&x-signature=UA49NwQx8JzQP8BEO3B0keSa0… [303 chars]",
+          "industry": "label_18106000000",
+          "likes": 17219,
+          "objective": "campaign_objective_product_sales",
+          "videoUrl": "https://v16m-default.tiktokcdn.com/0a3bcc695f8bed3550c1f17238b58e38/6aaeb0f8/video/tos/alisg/tos-alisg-pve-0037/oUAiVFRybrAIFBwniQoV7a07MhEYzslvCA979/?a=0&bti=NTU4QDM1NGA%3D&&bt=1342&ft=cApXJCz7ThWHjX… [392 chars]",
+          "width": 576
+        },
+        "… 19 more item(s) truncated"
+      ],
+      "hasMore": true,
+      "page": 1,
+      "pageSize": 20,
+      "total": 300
+    }
+  },
+  "provider": "AnyAPI",
+  "costUsd": 0.0012,
+  "items": 20,
+  "replayed": false,
+  "source": {
+    "id": "anonymous-tiger",
+    "name": "Tiger",
+    "kind": "anonymous",
+    "artworkKey": "tiger"
+  },
+  "hint": "large_result: this response is ~22 KB. To keep future runs from flooding your context, re-run with `fields` (keep only the keys you need), `max_items` (cap rows), `summary=true` (outline only), or `jq… [309 chars]",
+  "resultId": "eb1e6388-b482-4470-afac-3ebd0c76bcfa"
+}

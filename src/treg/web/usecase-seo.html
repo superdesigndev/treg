@@ -3,26 +3,30 @@
 <head>
 <meta charset="utf-8"/>
 <meta name="viewport" content="width=device-width, initial-scale=1"/>
-<title>SEO Data: Google Results, Keywords and Backlinks | treg.to</title>
-<meta name="description" content="Give your agent live Google results, keyword volume and backlink data through one key. Pay per call, not per seat. $1.00 free to start."/>
+<title>Google Ranking Checker and Keyword Volume API | treg.to</title>
+<meta name="description" content="Google ranking checker and keyword volume API. Live SERP results, search volume, difficulty and backlinks. $0.0005/keyword, $0.002/SERP. {PROVIDERS} providers, $1.00 free credit."/>
 <link rel="canonical" href="{BASE}/use-cases/seo-data-for-ai-agents"/>
-<meta property="og:title" content="SEO Data: Google Results, Keywords and Backlinks | treg.to"/>
-<meta property="og:description" content="Give your agent live Google results, keyword volume and backlink data through one key. Pay per call, not per seat. $1.00 free to start."/>
+<meta property="og:title" content="Google Ranking Checker and Keyword Volume API | treg.to"/>
+<meta property="og:description" content="Google ranking checker and keyword volume API. Live SERP results, search volume, difficulty and backlinks. $0.0005/keyword, $0.002/SERP. {PROVIDERS} providers, $1.00 free credit."/>
 <meta property="og:url" content="{BASE}/use-cases/seo-data-for-ai-agents"/>
 <meta property="og:type" content="website"/>
 <meta name="twitter:card" content="summary_large_image"/>
+<meta property="og:image" content="{BASE}/media/og.png"/>
+<meta property="og:image:width" content="1200"/>
+<meta property="og:image:height" content="630"/>
+<meta name="twitter:image" content="{BASE}/media/og.png"/>
 <link rel="icon" type="image/svg+xml" href="/favicon.svg"/>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Geist+Pixel&family=Inter:wght@400;450;500;600;650;700&family=DM+Mono:ital,wght@0,400;0,500;1,400&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="/usecase.css"/>
-<script type="application/ld+json">{"@context":"https://schema.org","@type":"BreadcrumbList","itemListElement":[{"@type":"ListItem","position":1,"name":"treg.to","item":"{BASE}/"},{"@type":"ListItem","position":2,"name":"SEO Data","item":"{BASE}/use-cases"},{"@type":"ListItem","position":3,"name":"SEO Data: Google Results, Keywords and Backlinks","item":"{BASE}/use-cases/seo-data-for-ai-agents"}]}</script>
+<script type="application/ld+json">{"@context":"https://schema.org","@type":"BreadcrumbList","itemListElement":[{"@type":"ListItem","position":1,"name":"treg.to","item":"{BASE}/"},{"@type":"ListItem","position":2,"name":"SEO Data","item":"{BASE}/use-cases"},{"@type":"ListItem","position":3,"name":"SEO Data for AI Agents","item":"{BASE}/use-cases/seo-data-for-ai-agents"}]}</script>
 <script type="application/ld+json">{"@context":"https://schema.org","@type":"FAQPage","mainEntity":[{"@type":"Question","name":"Why not just call the providers directly?","acceptedAnswer":{"@type":"Answer","text":"For one provider you already pay for, do: connect that key and those calls route through it, unmetered.\nThe arithmetic changes at the second provider. This workflow touches keyword data, live results and\nbacklinks; buying that separately is three accounts, three contracts and three API shapes to learn, for\nresearch you might run twice a month. treg.to is closer to OpenRouter for agent tools than to a data\nvendor: one base URL, one token, many providers behind it."}},{"@type":"Question","name":"How are credentials handled?","acceptedAnswer":{"@type":"Answer","text":"The credential is injected on the server. Your agent makes the real upstream request through treg.to's\n/call/ endpoint; treg.to adds the key and relays the provider's answer back verbatim. No provider key\nis ever written to your machine, your repo or your agent's context. Every call is recorded and attributed\nto the token that made it."}},{"@type":"Question","name":"Can I choose a specific provider?","acceptedAnswer":{"@type":"Answer","text":"Yes. Every endpoint has an id, and calling it by id calls that provider. If you want the choice made once\nfor the whole team, treg org pin &lt;capability&gt; --provider &lt;provider&gt; refuses calls to any other provider\nof that capability.\n(Worth doing here. Keyword databases disagree, so if you have been reporting Semrush\nvolumes to a client for a year, pin Semrush and keep the series consistent.)"}},{"@type":"Question","name":"Can I use my existing provider key?","acceptedAnswer":{"@type":"Answer","text":"Yes, and it takes precedence. Register the key once and every call to that provider routes through it;\nthose calls are never metered against your treg.to balance. Your key always wins over treg.to's."}},{"@type":"Question","name":"What happens if a provider fails?","acceptedAnswer":{"@type":"Answer","text":"treg.to does not silently reroute you. That is deliberate: only you know which inputs you actually hold,\nso treg.to relays your request rather than rewriting it. Failed calls are not billed. If a call\nsucceeded upstream but the answer was lost coming back, an Idempotency-Key returns the stored result\nwithout paying twice."}},{"@type":"Question","name":"How much does a call cost?","acceptedAnswer":{"@type":"Answer","text":"Fractions of a cent for most SEO endpoints: Serpstat keyword volume at $0.0005 per keyword, DataForSEO\norganic results at $0.002 per call, Moz URL metrics at $0.006667, at the time of writing. The exact price\nis shown before the call, and treg.to adds no markup to what the provider charges. New teams start with\n$1.00 of free credit."}},{"@type":"Question","name":"Is there a DataForSEO MCP or a Serpstat MCP?","acceptedAnswer":{"@type":"Answer","text":"This is one. treg.to is a single MCP server that carries DataForSEO, Serpstat, SE Ranking, SerpApi and\nMajestic behind one token: add it once and the agent calls whichever fits the job."}},{"@type":"Question","name":"Is this a Semrush or Ahrefs alternative?","acceptedAnswer":{"@type":"Answer","text":"Not for the dashboards; it is the API half. Semrush's own data endpoints are in the catalog, priced in\nSemrush API units. Ahrefs is not in the catalog. What you replace is a stack of separate SEO API\nsubscriptions, not the suite you read reports in."}},{"@type":"Question","name":"Which agents does it work with?","acceptedAnswer":{"@type":"Answer","text":"The installer registers treg.to's MCP server into Claude Code, Cursor and opencode automatically. Any MCP\nclient that supports the authorization spec can connect with OAuth. Anything that can run a shell command,\nCodex included, can use the treg CLI or plain HTTP."}}]}</script>
 </head>
 <body data-page="p1">
 
 <div class="navwrap"><nav class="nav">
-  <a class="brand" href="/"><span class="glyph">&#9626;</span> treg.to</a>
+  <a class="brand" href="/"><span class="glyph" aria-hidden="true"><svg viewBox="0 0 290 290"><rect width="140.5" height="140.5" rx="20"/><rect x="149.5" y="149.5" width="140.5" height="140.5" rx="20"/></svg></span> treg</a>
   <div class="links">
     <a class="hidem" href="/tutorial">docs</a>
     <a class="hidem" href="https://github.com/superdesigndev/treg" target="_blank" rel="noopener">repo</a>
@@ -31,13 +35,13 @@
 </nav></div>
 
 <header class="hero"><div class="wrap">
-  <div class="kicker">2,600+ tools · 60+ providers · one key</div>
-  <h1>SEO Data: Google Results, Keywords and Backlinks</h1>
-  <div class="lede"><div class="promptbox"><div class="ph"><span>the prompt</span><button class="copybtn" data-copy="#heroprompt" data-ev="lp_copy_hero" data-page="p1">copy</button></div><pre id="heroprompt">Using treg, get keyword volume and difficulty for these 10 terms, then pull the
-top 10 organic results for the highest-volume one. Show me who ranks and why.</pre></div></div>
-  <div class="ctas"><a class="candy" href="/app?ref=p1" data-ev="lp_cta_primary" data-page="p1">Start Free</a><a class="ghostbtn" href="/llms.txt" data-ev="lp_cta_secondary" data-page="p1">Paste llms.txt</a></div>
-  <div class="trust">$1.00 of free credit on every new team. No provider signup, no credit card.</div>
-  <div class="subline"><p><strong>Keyword volume from $0.0005/keyword</strong> (Serpstat), <strong>organic results from $0.002/call</strong> (DataForSEO). No monthly minimum.</p></div>
+  <div class="kicker">20 keywords for $0.012 · <a href="#proof">from a real run</a></div>
+  <h1>Google Ranking Checker and Keyword Volume API</h1>
+  <div class="lede"><p>Live Google results, keyword search volume, difficulty and backlinks. One key, {PROVIDERS} providers. Pay per call: <strong>$0.0005/keyword</strong> (Serpstat), <strong>$0.002/SERP</strong> (DataForSEO).</p></div>
+  <div class="ctas"><a class="candy" href="/app?ref=p1" data-ev="lp_cta_primary" data-page="p1">Start Free</a></div>
+  <div class="trust">$1.00 of free credit once per new verified account. No provider signup, no credit card.</div>
+  <div class="promptbox" style="margin-top:28px"><div class="ph"><span>Using treg</span><button class="copybtn" data-copy="#heroprompt" data-ev="lp_copy_hero" data-page="p1">copy</button></div><pre id="heroprompt">Using treg, get keyword volume and difficulty for these 10 terms, then pull the top 10
+organic results for the highest-volume one. Show me who ranks and why.</pre></div>
   <div class="provstrip"><span class="pl">compared on this page</span><span class="ptiles"><span class="ptile"><img src="/logos/dataforseo.svg" alt="" loading="lazy" width="22" height="22"></span><span class="ptile"><img src="/logos/google-ads.svg" alt="" loading="lazy" width="22" height="22"></span><span class="ptile"><img src="/logos/scrapecreators.svg" alt="" loading="lazy" width="22" height="22"></span><span class="ptile"><img src="/logos/semrush.svg" alt="" loading="lazy" width="22" height="22"></span><span class="ptile"><img src="/logos/seranking.svg" alt="" loading="lazy" width="22" height="22"></span><span class="ptile"><img src="/logos/serpapi.svg" alt="" loading="lazy" width="22" height="22"></span><span class="ptile"><img src="/logos/serpstat.svg" alt="" loading="lazy" width="22" height="22"></span></span></div>
 </div></header>
 <section><div class="wrap"><div class="seclab">The economics</div><h2>The old way vs. the treg.to way</h2><div class="tablewrap"><table class="compare">
@@ -111,7 +115,7 @@ one bill.</p><p>The results endpoints are the most-used tools in the whole catal
 <tbody>
 <tr><td data-label="Result type"><strong>Organic</strong></td><td data-label="Provider"><img class="plogo" src="/logos/dataforseo.svg" alt="" loading="lazy" width="18" height="18">DataForSEO</td><td data-label="Cost">$0.002</td><td data-label="Success rate"><strong>100% (2,075 calls)</strong></td><td data-label="Median">5.5 s</td></tr>
 <tr><td></td><td data-label="Provider"><img class="plogo" src="/logos/scrapecreators.svg" alt="" loading="lazy" width="18" height="18">ScrapeCreators</td><td data-label="Cost">$0.00188</td><td data-label="Success rate">100% (343 calls)</td><td data-label="Median">1.6 s</td></tr>
-<tr><td></td><td data-label="Provider"><img class="plogo" src="/logos/serpstat.svg" alt="" loading="lazy" width="18" height="18">Serpstat</td><td data-label="Cost">$0.0005</td><td data-label="Success rate">100% (77 calls)</td><td data-label="Median">1.2 s</td></tr>
+<tr><td></td><td data-label="Provider"><img class="plogo" src="/logos/serpstat.svg" alt="" loading="lazy" width="18" height="18">Serpstat</td><td data-label="Cost">$0.0005 / row</td><td data-label="Success rate">100% (77 calls)</td><td data-label="Median">1.2 s</td></tr>
 <tr><td></td><td data-label="Provider"><img class="plogo" src="/logos/serpapi.svg" alt="" loading="lazy" width="18" height="18">SerpApi</td><td data-label="Cost">$0.015</td><td data-label="Success rate">:</td><td data-label="Median">:</td></tr>
 <tr><td data-label="Result type"><strong>Maps / local</strong></td><td data-label="Provider"><img class="plogo" src="/logos/dataforseo.svg" alt="" loading="lazy" width="18" height="18">DataForSEO</td><td data-label="Cost">$0.002</td><td data-label="Success rate"><strong>100% (2,646 calls)</strong></td><td data-label="Median">1.9 s</td></tr>
 <tr><td data-label="Result type"><strong>News</strong></td><td data-label="Provider"><img class="plogo" src="/logos/dataforseo.svg" alt="" loading="lazy" width="18" height="18">DataForSEO</td><td data-label="Cost">$0.002</td><td data-label="Success rate">100% (690 calls)</td><td data-label="Median">9.0 s</td></tr>
@@ -190,7 +194,7 @@ workflow exists to surface: but difficulty scores are a provider's model, not a 
 as data and the difficulty as an opinion you paid $0.0005 for.</p>
 </blockquote><hr /></div></section>
 <section><div class="wrap"><div class="seclab">Outcomes</div><h2>Three things you can do the day you sign up</h2><div class="cards"><div class="card"><h4>Price a content plan before you commit writers to it.</h4><p>Hand the agent 200 candidate titles. It returns real monthly volume, difficulty and intent for each, and
-flags where the current top three are weaker than you are. At $0.0005 a keyword that is a few cents, not a
+flags where the current top three are weaker than you are. At $0.0005 a keyword that is about ten cents, not a
 month of Semrush.</p></div><div class="card"><h4>Find out who actually earned the ranking.</h4><p>For any keyword, the agent pulls the live results, then pulls authority and referring-domain data for each
 page that ranks. You learn whether the leader is winning on links or on the page: which decides whether
 you write or go get links.</p></div><div class="card"><h4>Watch a competitor's index without buying a rank tracker.</h4><p>Run the same keyword set weekly. The agent keeps last week's positions and reports only what moved. You
@@ -221,20 +225,20 @@ subscriptions, not the suite you read reports in.</p></div></details><details da
 client that supports the authorization spec can connect with OAuth. Anything that can run a shell command,
 Codex included, can use the <code>treg</code> CLI or plain HTTP.</p>
 <hr /></div></details></div></section>
-<section class="related"><div class="wrap"><div class="seclab">Next steps</div><h2>Next steps</h2><ul class="related-list"><li><a href="/tools/google-search-console">Google Search Console</a></li><li><a href="/tools/dataforseo">DataForSEO</a></li><li><a href="/tools/serpstat">Serpstat</a></li><li><a href="/tools/moz">Moz</a></li><li><a href="/use-cases/keyword-volume-cpc-and-competition">Keyword Volume, CPC and Competition</a></li><li><a href="/use-cases/google-results-for-a-keyword">Google Results for a Keyword</a></li><li><a href="/use-cases/keywords-a-domain-ranks-for">Keywords a Domain Ranks For</a></li><li><a href="/use-cases/backlink-profile-of-a-domain">Backlink Profile of a Domain</a></li></ul></div></section>
+<section class="related"><div class="wrap"><div class="seclab">Next steps</div><h2>Next steps</h2><ul class="related-list"><!--hosted--><li><a href="/gtm-engineering">The GTM engineering playbook</a></li><!--/hosted--><li><a href="/tools/google-search-console">Google Search Console</a></li><li><a href="/tools/dataforseo">DataForSEO</a></li><li><a href="/tools/serpstat">Serpstat</a></li><li><a href="/tools/moz">Moz</a></li><li><a href="/use-cases/keyword-volume-cpc-and-competition">Keyword Volume, CPC and Competition</a></li><li><a href="/use-cases/google-results-for-a-keyword">Google Results for a Keyword</a></li><li><a href="/use-cases/keywords-a-domain-ranks-for">Keywords a Domain Ranks For</a></li><li><a href="/use-cases/backlink-profile-of-a-domain">Backlink Profile of a Domain</a></li></ul></div></section>
 <section class="final"><div class="wrap">
   <h2>Your next keyword plan can be built by the agent that is already open</h2>
   <div class="ctas"><a class="candy" href="/app?ref=p1" data-ev="lp_cta_primary" data-page="p1">Start Free</a></div>
-  <div class="trust"><p>$1.00 of free credit on every new team. No credit card, no provider signup. treg.to is open source
-(AGPL).</p></div>
+  <div class="trust"><p>$1.00 of free credit once per new verified account. No credit card, no provider signup. treg.to is open source
+(Apache 2.0).</p></div>
 </div></section>
 
 <footer>
   <div class="foot-in">
-    <a class="brand" href="/"><span class="glyph">&#9626;</span> treg.to</a>
+    <a class="brand" href="/"><span class="glyph" aria-hidden="true"><svg viewBox="0 0 290 290"><rect width="140.5" height="140.5" rx="20"/><rect x="149.5" y="149.5" width="140.5" height="140.5" rx="20"/></svg></span> treg</a>
     <span class="note">100% open source</span>
     <span class="sp"></span>
-    <a href="/resources">resources</a><a href="/tutorial">docs</a><a href="/llms.txt">llms.txt</a>
+    <a href="/resources">resources</a><a href="/blog">blog</a><a href="/tutorial">docs</a><a href="/llms.txt">llms.txt</a>
     <a href="https://github.com/superdesigndev/treg" target="_blank" rel="noopener">github &#8599;</a>
     <a href="/terms">terms</a><a href="/privacy">privacy</a>
   </div>
@@ -300,5 +304,6 @@ Codex included, can use the <code>treg</code> CLI or plain HTTP.</p>
 </script>
 <script src="/sitetrack.js"></script>
 <script src="/adtrack.js"></script>
+<script src="/gtag.js"></script>
 </body>
 </html>

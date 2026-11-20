@@ -17,17 +17,8 @@ seo_terms:
     - "reddit search api for agents"
     - "social listening api without subscription"
     - "creator data api per call"
-ad_keywords:
-  - "tiktok data api"
-  - "reddit api pricing"
-  - "social listening api"
-  - "x api alternative"
-  - "instagram data api"
 capabilities: [tiktok.*, reddit.search.posts, youtube.*, x.*, instagram.*]
-facts_used: [F-01, F-02, F-03, F-04, F-05, F-06, F-07, F-08, F-09, F-10, F-11, F-13, F-22, F-70, F-71, F-80, F-90, F-92, F-93]
-hypothesis: "Widest audience, weakest developer overlap. Predict a high Copy Prompt rate and a low install-completion rate. Telemetry 2026-08-17: X alone is 17.5% of all traffic and its search endpoint is the most-called tool on the platform: if this page converts, an X-specific page is likely the better ad destination."
-verify_after: 2026-08-31
-status: proof populated from real runs 2026-08-17 ($0.00588) · 4 of 4 platforms · ready for build · revised against 30-day telemetry 2026-08-17
+facts_used: [F-01, F-02, F-03, F-04, F-05, F-06, F-07, F-08, F-09, F-10, F-11, F-13, F-22, F-70, F-71, F-80, F-92, F-93]
 ---
 
 # Page 3: Social and creator trends
@@ -243,7 +234,7 @@ Yes. Instagram profiles, posts, hashtags and comments; TikTok profiles, videos, 
 All through the same treg.to MCP connection, no platform approval required.
 
 **What about Twitter MCP?**
-The catalog has both the official X API (requires your own $200/mo key) and independent providers
+The catalog has both the official X API ($0.005 a post on treg's key) and independent providers
 that answer the same queries at $0.001 per call. Connect via MCP and your agent sees both options.
 
 **Can I scrape Reddit or other platforms?**
@@ -280,49 +271,4 @@ paste the setup line from `/llms.txt` into Grok and it can use the treg.to catal
 
 # Ad and creator kit
 
-### Responsive search ad headlines
-| Headline | Chars |
-|---|---|
-| `Social Data, One API Key` | 24 |
-| `TikTok + Reddit + X Data` | 24 |
-| `No Platform API Approval` | 24 |
-
-### Search ad descriptions
-| Description | Chars |
-|---|---|
-| `Posts, creators and comments across platforms. One key, calls from $0.001. $1.00 free.` | 86 |
-| `No developer account, no app review, no invite. Your agent reads real posts today.` | 82 |
-
-### Creator video hooks
-1. "TikTok's API is invite-only. Here's how my agent read TikTok anyway, for a tenth of a cent."
-2. "I asked my agent what the internet said about my niche this week. It read four platforms."
-3. "X charges $200 a month for API access. My whole research run cost less than a dollar."
-
-### X post hook
-`Getting API access to TikTok, Instagram and LinkedIn as a small team ranges from "app review" to "no." Here's how I gave my agent read access to all of them this afternoon.`
-
-### High-intent keyword phrases
-`tiktok data api pay per call` · `reddit search api for agents` · `social listening api pricing` ·
-`instagram data api without app review` · `x api alternative for developers`
-
-### Negative keywords
-`free followers` · `bot` · `auto liker` · `download video` · `scheduler` · `hashtag generator` ·
-`buy views` · `login` · `deleted posts` · `private account`
-
-### Demonstration a creator can reproduce
-Ask the agent one question about the creator's own niche, live, and show the posts coming back with real
-view counts. Then show `treg balance` and let the number speak: the gap between "$200/mo X API" and this
-run is the whole video.
-
-### Measurable hypothesis
-Widest top-of-funnel and the weakest developer overlap of the five: predict a **high Copy Prompt rate and
-a low Copy-Prompt-to-first-call rate**, because a social strategist is less likely to have an agent
-installed than an SEO or a developer. If that gap shows up, the fix is a page-level change: a hosted
-"run it without installing anything" path: not more budget.
-
----
-
-## Numbers used on this page
-
-`F-01` `F-02` `F-03` `F-04` `F-05` `F-06` `F-07` `F-08` `F-09` `F-10` `F-11` `F-13` `F-22` `F-70` `F-71`
-`F-80`: defined in `_facts.md`, verified 2026-08-17.
+Campaign material is maintained in treg-internal.

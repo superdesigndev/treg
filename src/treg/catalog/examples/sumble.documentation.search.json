@@ -1,0 +1,10 @@
+{
+  "results": [
+    {
+      "path": "api/lookups.md",
+      "title": "ID & slug lookups",
+      "url": "https://docs.sumble.com/api/lookups",
+      "excerpt": "Resolve human-readable names to the canonical slugs and identifiers that the core data endpoints expect in their filters. Use these to turn a spreadsheet of names \u2014 technologies, projects, or job titles \u2014 into stable identifiers before querying."
+    }
+  ]
+}

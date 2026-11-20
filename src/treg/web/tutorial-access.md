@@ -15,10 +15,10 @@ We use the registry at `https://treg.to`.
     is restricted until you decide to be. Set it to an explicit **allow-list** of tool names and the member
     may use *only* those.
   - **Local execution** (`local_run_enabled`): may this member run a CLI **on their own machine**
-    (`treg run`, the default local tier)? On by default. Turn it **off** and they can still run on the
-    server (`treg run --server`), but never locally.
+    (`treg run`, the default local tier)? On by default. Turn it **off** to block local CLI execution;
+    permitted HTTP calls remain available. Server-side CLI execution is disabled for everyone.
 - **Access gates every way of using a tool.** A withheld tool is unreachable through *all* doors: the HTTP
-  proxy `treg call`, the server run `treg run --server`, and the local run `treg run`. There is no side path.
+  proxy `treg call` and the local run `treg run`. `treg run --server` always returns HTTP 503.
 - **The owner is never restricted.** An owner always has every tool and local runs — they are the team's
   authority. **Admins and members** can both be restricted (the dial is per person, not per role).
 - **It is an explicit allow-list.** A member on "all tools" automatically gains access to any *new* tool you
@@ -32,10 +32,10 @@ We use the registry at `https://treg.to`.
 
 | Situation | `treg call <tool>` | `treg run <tool>` (local) | `treg run --server <tool>` |
 |---|:--:|:--:|:--:|
-| tool **in** the member's access (or access = all) | ✅ | ✅ (if local on) | ✅ |
-| tool **not** in the member's access | ❌ blocked | ❌ blocked | ❌ blocked |
-| `local_run_enabled` = **off** | ✅ | ❌ blocked | ✅ |
-| the member is the **owner** | ✅ always | ✅ always | ✅ always |
+| tool **in** the member's access (or access = all) | ✅ | ✅ (if local on) | ❌ disabled (503) |
+| tool **not** in the member's access | ❌ blocked | ❌ blocked | ❌ disabled (503) |
+| `local_run_enabled` = **off** | ✅ | ❌ blocked | ❌ disabled (503) |
+| the member is the **owner** | ✅ always | ✅ always | ❌ disabled (503) |
 
 ---
 
@@ -79,8 +79,9 @@ HOME=~/.treg-personas/tom treg org invite sam@superdesign.dev --tools gh --local
 ```
 
 **Notice:** `--tools gh` is the allow-list (comma-separated for several, e.g. `--tools gh,stripe`);
-`--local-run off` means server-only. The invite prints a one-time code, but Sam can also accept it just by
-proving his email — see the main tutorial's "code-free" door.
+`--local-run off` blocks local CLI execution while permitted HTTP calls remain available. The invite
+prints a one-time code, but Sam can also accept it just by proving his email — see the main tutorial's
+"code-free" door.
 
 ## Step 2 — (Alternative) let treg ask
 
@@ -154,13 +155,13 @@ HOME=~/.treg-personas/sam treg call stripe v1/balance
 }
 ```
 
-**Notice:** the message tells Sam exactly how to get access. Because access gates *all* doors, `treg run
-stripe` and `treg run --server stripe` are refused the same way.
+**Notice:** the message tells Sam exactly how to get access. `treg run stripe` is also refused by tool
+access; `treg run --server stripe` returns HTTP 503 because server execution is disabled for everyone.
 
 ## Step 6 — Local execution is off
 
-`gh` is allowed, but Sam's `local_run_enabled` is **off**, so he cannot run it on his own machine. treg
-points him at the server tier instead.
+`gh` is allowed, but Sam's `local_run_enabled` is **off**, so he cannot run it on his own machine. He must
+ask an admin to enable local runs; server execution is disabled.
 
 ```bash
 HOME=~/.treg-personas/sam treg run gh -- --version
@@ -169,8 +170,8 @@ HOME=~/.treg-personas/sam treg run gh -- --version
 treg: local execution is disabled for you — run on the server instead (`treg run --server`), or ask an admin to enable local runs for your account
 ```
 
-**Notice:** this is the *local* wall, separate from tool access. `gh` is allowed — Sam just can't run it
-**locally**. `treg run --server gh …` runs on the registry (where the key stays) and is allowed.
+**Notice:** this is the *local* wall, separate from tool access. The legacy error text still suggests
+`--server`, but that option returns HTTP 503; ask an admin to enable local runs.
 
 ## Step 7 — A member can't manage the team
 

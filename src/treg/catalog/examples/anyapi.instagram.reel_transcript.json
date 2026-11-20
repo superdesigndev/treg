@@ -1,0 +1,32 @@
+{
+  "output": {
+    "found": true,
+    "data": {
+      "items": [
+        {
+          "id": "3869627756355626556",
+          "shortcode": "DWzrfE2kaY8",
+          "url": "https://www.instagram.com/reel/DWzrfE2kaY8/",
+          "text": "",
+          "mediaType": "XDTGraphVideo",
+          "ownerUsername": "luizaerundina",
+          "likeCount": 7841,
+          "durationSeconds": 50.229,
+          "thumbnailUrl": "https://instagram.fiev22-2.fna.fbcdn.net/v/t51.71878-15/659518550_880748474975974_6325858974241787694_n.jpg?stp=dst-jpg_e15_tt6&_nc_cat=101&_nc_map=urlgen_bucketless&ig_cache_key=Mzg2OTYyNzc1NjM1NTYyN… [610 chars]",
+          "segments": []
+        }
+      ]
+    }
+  },
+  "provider": "AnyAPI",
+  "costUsd": 0.0066,
+  "items": 1,
+  "replayed": false,
+  "source": {
+    "id": "anyapi",
+    "name": "AnyAPI",
+    "kind": "brand",
+    "artworkKey": "anyapi"
+  },
+  "resultId": "b6ff253f-b0bb-44c6-92c2-227a1aeb49f1"
+}
