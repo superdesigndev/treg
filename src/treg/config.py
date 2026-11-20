@@ -809,8 +809,8 @@ class Settings(BaseSettings):
     autotopup_default_amount_usd: int = 20
     # Hard guardrails on the off-session charge — the difference between "convenient" and "a runaway
     # agent bills a card all night". Cap is per calendar month, cooldown is between attempts, and
-    # max_attempts counts CONSECUTIVE failures before auto-top-up disables itself. The monthly cap's
-    # default is `billing.TOPUP_MAX_USD` (see money.md).
+    # max_attempts counts CONSECUTIVE failures before auto-top-up disables itself. The monthly cap
+    # is the team's own choice and has no default (see money.md).
     # The wait after a FAILED charge. After a successful one the wait is one hour divided by the
     # team's `autotopup_max_per_hour` (default below), so a team that spends more than its refill
     # per hour is not left empty for the rest of the hour.

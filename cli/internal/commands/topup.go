@@ -33,7 +33,7 @@ func topupCmd(env *Env) *cobra.Command {
 	fl.StringVar(&f.auto, "auto", "", "turn automatic top-ups on or off")
 	fl.StringVar(&f.threshold, "threshold", "", "with --auto on: refill when the balance drops below this many dollars")
 	fl.StringVar(&f.amount, "amount", "", "with --auto on: how many dollars to add on each automatic refill")
-	fl.StringVar(&f.cap, "cap", "", "with --auto on: the most auto top-up may charge in a calendar month (default 2000; 0 restores the default)")
+	fl.StringVar(&f.cap, "cap", "", "with --auto on: the most auto top-up may charge in a calendar month (default: no cap; 0 removes one)")
 	fl.StringVar(&f.perHour, "per-hour", "", "with --auto on: how many automatic refills may run in one hour (1-60, default 5)")
 	cmd.RunE = func(cmd *cobra.Command, args []string) error {
 		changed := cmd.Flags().Changed
@@ -208,7 +208,11 @@ func (e *Env) topupAuto(on bool, a topupAuto) error {
 	outf("\n  %sAuto top-up is on.%s Add %s whenever the balance drops below %s, at most %s times per hour.\n",
 		p.Green, p.Reset, usd(orZero(auto.Value("amount_micro"))), usd(orZero(auto.Value("threshold_micro"))),
 		ojson.Text(orDefault(auto.Value("per_hour"), "5")))
-	outf("  %sMonthly ceiling %s - we stop there, whatever happens.%s\n\n", p.Muted, usd(orZero(auto.Value("monthly_cap_micro"))), p.Reset)
+	if cap := auto.Value("monthly_cap_micro"); ojson.Truthy(cap) {
+		outf("  %sMonthly ceiling %s - we stop there, whatever happens.%s\n\n", p.Muted, usd(cap), p.Reset)
+	} else {
+		outf("  %sNo monthly ceiling. Set one with --cap.%s\n\n", p.Muted, p.Reset)
+	}
 	return nil
 }
 

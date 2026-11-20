@@ -506,10 +506,11 @@ async def _platform_reserve(mk: MarketplaceCall, caller: Caller, meta: CallMeta 
         # that already has it on needs to know it is the cooldown/cap holding, not a missing card —
         # otherwise the natural reading of "add funds" is that auto top-up is broken.
         if auto_on:
+            cap = prefs["monthly_cap_micro"]
+            monthly = f" and ${ledger.usd(cap):g}/month" if cap else ""
             auto_line = (f"  auto top-up:    on — adds ${ledger.usd(prefs['amount_micro']):g} when the balance "
                          f"drops below ${ledger.usd(prefs['threshold_micro']):g}, at most "
-                         f"{prefs['per_hour']} times per hour and "
-                         f"${ledger.usd(prefs['monthly_cap_micro']):g}/month. Raise the amount or the "
+                         f"{prefs['per_hour']} times per hour{monthly}. Raise the amount or the "
                          f"refills per hour if your burn outruns it: treg topup --auto on --amount 50 --per-hour 10")
         else:
             auto_line = "  auto top-up:    off — refill automatically instead: treg topup --auto on --threshold 5 --amount 20"
