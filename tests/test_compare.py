@@ -22,7 +22,7 @@ from treg.domain.catalog import store as catalog_store
 from treg.domain.catalog.routing.contracts import adapter_accepts, canonical_identity
 from treg.infra import kv
 from treg.infra.db import session_maker
-from treg.models import (ArchiveKey, ArchiveSnapshot, CallComparison, CallRecord, CapabilityPin,
+from treg.models import (ArchiveKey, ArchiveSnapshot, CallComparison, CallRecord, CallReview, CapabilityPin,
                          DenyRule, Membership, Org)
 from treg.timeutil import utcnow_naive
 
@@ -89,9 +89,18 @@ async def _org_id(clients) -> int:
 async def _routed_call(org_id: int, q: str, *, a: str = "tavily", answer: dict | None = None,
                        tier: str = "platform", minutes_ago: float = 5, archived: bool = True,
                        capability: str = "web.search", given: dict | None = None,
-                       marked: bool = True, cached: bool = False) -> str:
+                       marked: bool = True, cached: bool = False, reviewing: bool = True) -> str:
     """A routed parent and its served child, with the child's request and answer in the archive,
-    and the call path's eligibility marker, as a real sampled routed call leaves them."""
+    and the call path's eligibility marker, as a real sampled routed call leaves them. `reviewing`
+    gives the team one recent review, which a team needs to be compared at all."""
+    if reviewing:
+        async with session_maker() as db:
+            if not (await db.execute(
+                    select(CallReview).where(CallReview.org_id == org_id))).first():
+                db.add(CallReview(org_id=org_id, user_email="tim@superdesign.dev",
+                                  call_id=f"reviewed-{org_id}", endpoint_id="tavily.web.search",
+                                  usefulness="useful"))
+                await db.commit()
     cat = catalog_store.load()
     eid = next(e["id"] for e in cat.for_capability(capability)
                if e["provider"] == a and e["id"] in cat.adapters)
@@ -842,6 +851,16 @@ async def test_a_routed_call_is_marked_only_without_route_headers(clients, searc
         assert json.loads(marker) == {"q": "marked None"}
     else:
         assert marker is None
+
+
+async def test_a_team_that_never_reviews_is_not_compared(clients, search_on, monkeypatch):
+    """Its agents would leave the pair unjudged: no call is made and it is not counted eligible."""
+    _compare_on(monkeypatch)
+    sent = _relay_b(monkeypatch)
+    org_id = await _org_id(clients)
+    await _routed_call(org_id, "never reviews", reviewing=False)
+    result = await _collect()
+    assert (result["eligible"], result["called"], sent) == (0, 0, []), result
 
 
 async def test_a_page_continuation_gets_no_marker(monkeypatch):
