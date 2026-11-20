@@ -44,7 +44,7 @@ async def _upgrade_to(revision: str) -> None:
 
 
 def _autogenerate_diff(connection) -> list[Any]:
-    # `callrecord_partitioned` (alembic 0116) is staging for a later swap, and a month partition is
+    # `callrecord_partitioned` (alembic 0123) is staging for a later swap, and a month partition is
     # storage created by `application.call_record_partitions`; neither is a model table.
     partitions = set()
     if connection.dialect.name == "postgresql":
