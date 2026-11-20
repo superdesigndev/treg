@@ -502,6 +502,12 @@ class Store(Protocol):
     async def clear_flag(self, key: str) -> None:
         """Clear a flag. Best-effort: a fault leaves it to expire."""
 
+    async def set_text(self, key: str, value: str, ttl_s: int) -> bool:
+        """Keep a short text value for `ttl_s`; False when the store cannot answer."""
+
+    async def get_text(self, key: str) -> str | None:
+        """The text value, or None when it is missing, expired or the store cannot answer."""
+
     async def aclose(self) -> None: ...
 
 
@@ -512,6 +518,7 @@ class LocalStore:
         self._windows: dict[str, tuple[float, int]] = {}
         self._health: dict[tuple[str, int], tuple[float, list[int]]] = {}
         self._values: dict[str, tuple[float, int]] = {}
+        self._texts: dict[str, tuple[float, str]] = {}
 
     def _live_value(self, key: str) -> int | None:
         expires, value = self._values.get(key, (0.0, 0))
@@ -534,6 +541,19 @@ class LocalStore:
 
     async def clear_flag(self, key: str) -> None:
         self._values.pop(key, None)
+
+    async def set_text(self, key: str, value: str, ttl_s: int) -> bool:
+        now = time.monotonic()
+        if key not in self._texts and len(self._texts) >= _LOCAL_MAX_KEYS:
+            self._texts = {k: v for k, v in self._texts.items() if v[0] > now}
+            if len(self._texts) >= _LOCAL_MAX_KEYS:
+                self._texts.clear()
+        self._texts[key] = (now + ttl_s, value)
+        return True
+
+    async def get_text(self, key: str) -> str | None:
+        expires, value = self._texts.get(key, (0.0, ""))
+        return value if expires > time.monotonic() else None
 
     async def take(self, key: str, limit: int, ttl_s: int) -> bool:
         now = time.monotonic()
@@ -693,6 +713,26 @@ class RedisStore:
                 await self._client.delete(key)
         except Exception as exc:  # noqa: BLE001 - the flag expires on its own
             _note_fault(exc)
+
+    async def set_text(self, key: str, value: str, ttl_s: int) -> bool:
+        try:
+            async with asyncio.timeout(_OPTIONAL_TIMEOUT_S):
+                await self._client.set(key, value, ex=ttl_s)
+            return True
+        except Exception as exc:  # noqa: BLE001
+            _note_fault(exc)
+            return False
+
+    async def get_text(self, key: str) -> str | None:
+        try:
+            async with asyncio.timeout(_OPTIONAL_TIMEOUT_S):
+                value = await self._client.get(key)
+        except Exception as exc:  # noqa: BLE001 - an unread value is a missing one
+            _note_fault(exc)
+            return None
+        if value is None:
+            return None
+        return value.decode() if isinstance(value, bytes) else str(value)
 
     async def read_org_flow_control(self, org_id: int) -> FlowControlReadResult:
         if type(org_id) is not int or not 0 < org_id <= 2147483647:

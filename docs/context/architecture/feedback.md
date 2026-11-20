@@ -230,9 +230,9 @@ writes; a fault can only lose the header. Sampling rates default to 0.
   never retain exception messages, keys, owner tokens or store URLs.
 - Org admission and quotas: [org-flow-control](org-flow-control.md),
   [org-endpoint-quota](org-endpoint-quota.md).
-- Pairwise comparisons: a call's eligibility marker and the per-team ready flag (`set_flag`,
-  `has_flag`, `clear_flag`). Both fail closed: an unread marker compares nothing, an unread flag
-  invites nobody.
+- Pairwise comparisons: a call's eligibility marker, a short text holding the caller's input
+  (`set_text`, `get_text`), and the per-team ready flag (`set_flag`, `has_flag`, `clear_flag`).
+  Both fail closed: an unread marker compares nothing, an unread flag invites nobody.
 - Routed child health (`note_route_health`, `read_route_health`, and a `take` for the probe turn):
   best-effort time buckets that expire with their window; a fault loses a count or reads as no
   evidence ([catalog](catalog.md), "Child guards").
@@ -247,12 +247,15 @@ which serves it better. It separates vendors a usefulness score cannot, and the 
 Results are internal; nothing here is published or changes routing.
 
 **The marker, on the call path.** After a successful routed answer, `application.call.service`
-calls `compare.mark_eligible(call_ref, capability, raw_headers)`: when the feature is configured
-(`compare_pairs` set, `compare_max_per_day` above 0), the capability has a valid pair, the request
-carried no `X-Treg-Route-*` header (a caller that chose vendors or routing is left alone) and
-`hints.sampled_at("compare", call_ref, compare_rate)` samples it in, it sets
-`compare-ok:<call_ref>` in the shared store for two hours (`MARKER_TTL_S`), inside a short
-timeout. No database, no change to the answer, nothing raised: a lost marker only means the call is
+calls `compare.mark_eligible(call_ref, capability, raw_headers, given, archive_opted_out=...)`:
+when the feature is configured (`compare_pairs` set, `compare_max_per_day` above 0), the capability
+has a valid pair, the request carried no `X-Treg-Route-*` header (a caller that chose vendors or
+routing is left alone), the team keeps an archive and `hints.sampled_at("compare", call_ref,
+compare_rate)` samples it in, it writes `compare-ok:<call_ref>` in the shared store for two hours
+(`MARKER_TTL_S`), inside a short timeout. The value is the contract input the caller sent
+(`route_summary["identity"]`, the body minus a page cursor) as JSON, at most
+`MARKER_INPUT_MAX_BYTES`; a larger input writes no marker. A team opted out of the archive gets no
+marker, so its input never sits in the store. No database, no change to the answer, nothing raised: a lost marker only means the call is
 never compared. It is the only work on the call path.
 
 **The run.** `treg-worker compare collect` (`application.compare.collect`), meant for an hourly
@@ -279,13 +282,11 @@ the capability, and logs the rest. Each run:
    retention-allowed endpoint; its provider A on a pair, B the other side; the team under
    `compare_team_cap` comparisons of this capability and pair (either order) in
    `compare_window_days`, counting decided ones and pending or ready ones younger than three days.
-6. The contract input and A's answer come from the archive record of that child
-   (`arena_insights._evidence`): A's provider request read back through A's adapter `in` map
-   (`domain.catalog.shadow.request_identity`), canonicalized, then run forward through A's adapter;
-   only when that rebuilds exactly the archived request is the input whole. A field set by an
-   expression from something the request does not carry (a limit, a derived parameter) fails it,
-   and the call is skipped. A's answer is read through A's adapter (`route.child_outcome`); only a
-   hit goes on.
+6. The contract input is the marker's value, canonicalized (`canonical_identity`): exactly the
+   question the caller asked, so nothing is read back from A's provider request. A marker without
+   an input (an older one) is skipped. A's answer comes from the archive record of that child
+   (`arena_insights._evidence`), read through A's adapter (`route.child_outcome`); only a hit goes
+   on.
 7. B's target: an endpoint of the capability whose verified adapter takes and scopes the input
    (`route: true` is not needed), on a provider with a pasted-key credential shape, not paused,
    platform-eligible with every platform credential its bindings name, not exhausted on treg's

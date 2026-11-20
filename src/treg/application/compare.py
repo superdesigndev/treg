@@ -45,6 +45,7 @@ READY_TTL_S = 3 * 86400
 # A call's eligibility marker lives this long; a run never looks further back.
 MARKER_TTL_S = 2 * 3600
 MARKER_TIMEOUT_S = 0.2
+MARKER_INPUT_MAX_BYTES = 8192
 _ROUTE_HEADER_PREFIX = b"x-treg-route-"
 READY_DAYS = 3
 INPUT_MAX_BYTES = 2048
@@ -77,20 +78,27 @@ def configured() -> bool:
     return get_settings().compare_configured
 
 
-async def mark_eligible(call_ref: str, capability: str | None, raw_headers) -> None:
+async def mark_eligible(call_ref: str, capability: str | None, raw_headers,
+                        given: dict | None = None, *, archive_opted_out: bool = False) -> None:
     """On the call path, after a successful routed answer: mark the call for a comparison run when
-    it samples in, its capability is paired, and the caller sent no `X-Treg-Route-*` header (a
-    caller that chose vendors or routing is left alone). One short store write, no database,
-    nothing raised, nothing about the answer changed."""
+    it samples in, its capability is paired, the caller sent no `X-Treg-Route-*` header (a caller
+    that chose vendors or routing is left alone) and its team keeps an archive. The marker holds
+    the contract input the caller sent (`given`, at most `MARKER_INPUT_MAX_BYTES`), so the run asks
+    B exactly that question instead of reading it back from A's request. One short store write,
+    no database, nothing raised, nothing about the answer changed."""
     try:
         settings = get_settings()
-        if (not settings.compare_configured or capability not in pairs()
+        if (archive_opted_out or not isinstance(given, dict) or not settings.compare_configured
+                or capability not in pairs()
                 or any(bytes(name).lower().startswith(_ROUTE_HEADER_PREFIX) for name, _ in raw_headers)
                 or not hints.sampled_at("compare", call_ref, settings.compare_rate)):
             return
+        text = json.dumps(given, sort_keys=True, default=str)
+        if len(text.encode()) > MARKER_INPUT_MAX_BYTES:
+            return
         store = kv.store()
         async with asyncio.timeout(MARKER_TIMEOUT_S):
-            await store.set_flag(marker_key(call_ref), MARKER_TTL_S)
+            await store.set_text(marker_key(call_ref), text, MARKER_TTL_S)
     except Exception:  # noqa: BLE001 - a lost marker only means this call is never compared
         return
 
@@ -404,24 +412,6 @@ def _day() -> str:
     return f"{utcnow_naive():%Y%m%d}"
 
 
-def _same_request(adapter, identity: dict, query: dict, body) -> bool:
-    """A's adapter, run forward on the recovered input, builds exactly the archived request: the
-    input was read back whole, with nothing an expression set from a field it cannot see."""
-    from ..domain.catalog.routing.contracts import adapter_accepts
-
-    variant = adapter_accepts(adapter, identity)
-    if variant is None:
-        return False
-    try:
-        fwd_query, fwd_body = adapter.to_upstream(identity, variant)
-    except Exception:  # noqa: BLE001 - an adapter that cannot rebuild it: not the same request
-        return False
-    def norm_query(q):
-        return {str(k): str(v) for k, v in (q or {}).items()}
-    return (norm_query(fwd_query) == norm_query(query)
-            and json.loads(json.dumps(fwd_body or {})) == (body or {}))
-
-
 async def _remove_orphans(session_factory) -> int:
     """Comparisons whose team is gone: team deletion removes them, this catches any it missed."""
     async with session_factory() as db:
@@ -438,7 +428,6 @@ async def collect(*, max_seconds: float = 110.0, session_factory=session_maker,
     every run, the feature on or off."""
     from ..domain.capacity.view import view as capacity_view
     from ..domain.catalog.routing.contracts import canonical_identity
-    from ..domain.catalog.shadow import request_identity
     from .arena_insights import _evidence
 
     totals = {"read": 0, "eligible": 0, "called": 0, "ready": 0, "failed": 0, "skipped": 0,
@@ -472,7 +461,7 @@ async def collect(*, max_seconds: float = 110.0, session_factory=session_maker,
                 break
             try:
                 outcome = await _one(cand, cat, now, session_factory, client, store, totals,
-                                     canonical_identity, request_identity, _evidence)
+                                     canonical_identity, _evidence)
             except Exception:
                 log.warning("comparison for %s failed", cand.record.call_ref, exc_info=True)
                 outcome = "skipped:error"
@@ -490,15 +479,22 @@ async def collect(*, max_seconds: float = 110.0, session_factory=session_maker,
 
 
 async def _one(cand, cat, now, session_factory, client, store, totals,
-               canonical_identity, request_identity, _evidence) -> str:
+               canonical_identity, _evidence) -> str:
     """One candidate, to `ready`, `failed`, `skipped:<reason>` or `at_limit`. The reasons are
     counted in the run's output (`skip_reasons`), so an empty run says where candidates stopped."""
     settings = get_settings()
     parent = cand.record
     # The call path wrote this marker: the call sampled in, on a paired capability, with no
     # `X-Treg-Route-*` header. No marker, or a store that cannot say, is no comparison.
-    if not await store.has_flag(marker_key(parent.call_ref)):
+    marker = await store.get_text(marker_key(parent.call_ref))
+    if marker is None:
         return "skipped:no_marker"
+    try:
+        given = json.loads(marker)
+    except ValueError:
+        given = None
+    if not isinstance(given, dict):
+        return "skipped:marker_without_input"
     async with session_factory() as db:
         child = await _served_child(db, parent)
         a_ep = cat.by_id.get(child.endpoint_id or "") if child is not None else None
@@ -527,12 +523,11 @@ async def _one(cand, cat, now, session_factory, client, store, totals,
         return "skipped:a_answer_missing"
     if contract is None or a_adapter is None:
         return "skipped:no_contract_or_adapter"
-    query, body, answer = got
-    identity, variant = canonical_identity(contract, request_identity(a_adapter, query, body))
+    _query, _body, answer = got
+    # The question the caller asked, from the marker: no reading it back from A's request.
+    identity, variant = canonical_identity(contract, dict(given))
     if variant is None:
         return "skipped:input_not_recovered"
-    if not _same_request(a_adapter, identity, query, body):
-        return "skipped:input_not_whole"
     a_output = _output(a_ep, contract, a_adapter, 200, json.dumps(answer).encode(), identity)
     target = _b_target(contract, identity, b_provider)
     if a_output is None:

@@ -118,8 +118,9 @@ async def _routed_call(org_id: int, q: str, *, a: str = "tavily", answer: dict |
                                    body=json.dumps(answer or {"tavily": TAVILY_HIT, "exa": EXA_HIT}[a]).encode()))
             child.archive_key_hash, child.archive_content_hash = key.key_hash, f"body-{ref}"
         await db.commit()
-    if marked:
-        await kv.store().set_flag(compare.marker_key(ref), compare.MARKER_TTL_S)
+    if marked:  # the marker holds the input the caller sent, as the call path writes it
+        await kv.store().set_text(compare.marker_key(ref), json.dumps(given or {"q": q}),
+                                  compare.MARKER_TTL_S)
     return ref
 
 
@@ -216,8 +217,7 @@ async def test_a_recent_routed_call_gets_a_ready_pair(clients, search_on, monkey
 @pytest.mark.parametrize("case", ["opt_out", "demo", "deny_rule", "tool_acl", "pinned_member",
                                   "capability_pin", "not_in_pair", "own_key", "not_archived",
                                   "too_old", "no_marker", "store_down", "suspended", "paused",
-                                  "flow_unavailable", "flow_raises", "flow_invalid",
-                                  "expression_field"])
+                                  "flow_unavailable", "flow_raises", "flow_invalid"])
 async def test_calls_that_are_never_compared(clients, search_on, monkeypatch, case):
     _compare_on(monkeypatch, pairs={"web.search": [["tavily", "parallel"]]} if case == "not_in_pair" else PAIR)
     sent = _relay_b(monkeypatch)
@@ -241,8 +241,8 @@ async def test_calls_that_are_never_compared(clients, search_on, monkeypatch, ca
         await db.commit()
     if case == "store_down":
         async def unknown(key):
-            return False  # what `has_flag` answers when the store cannot
-        monkeypatch.setattr(kv.store(), "has_flag", unknown)
+            return None  # what `get_text` answers when the store cannot
+        monkeypatch.setattr(kv.store(), "get_text", unknown)
     late = ("suspended", "paused", "flow_unavailable", "flow_raises", "flow_invalid")
     if case in late:
         # Revoked after the run picked the call, before it is sent: checked again right then.
@@ -272,9 +272,7 @@ async def test_calls_that_are_never_compared(clients, search_on, monkeypatch, ca
             monkeypatch.setattr(kv.store(), "read_org_flow_control", read)
     await _routed_call(org_id, f"never {case}", tier="credential" if case == "own_key" else "platform",
                        archived=case != "not_archived", minutes_ago=600 if case == "too_old" else 5,
-                       marked=case != "no_marker",
-                       # `max_results` comes from `limit` by expression: a request it cannot be read back from
-                       given={"q": "never expression", "limit": 5} if case == "expression_field" else None)
+                       marked=case != "no_marker")
     result = await _collect()
     assert sent == [] and await _rows() == [], result
     # A candidate that reached `_one` is counted under the reason it stopped at.
@@ -283,7 +281,7 @@ async def test_calls_that_are_never_compared(clients, search_on, monkeypatch, ca
                 "store_down": "no_marker", "suspended": "team_no_longer_eligible",
                 "paused": "team_no_longer_eligible", "flow_unavailable": "team_no_longer_eligible",
                 "flow_raises": "team_no_longer_eligible", "flow_invalid": "team_no_longer_eligible",
-                "expression_field": "input_not_whole"}.get(case)
+                }.get(case)
     if expected:
         assert result["skip_reasons"] == {expected: 1}, result
     else:
@@ -706,8 +704,41 @@ async def test_a_routed_call_is_marked_only_without_route_headers(clients, searc
                                   headers={header: value} if header else {})
     assert response.status_code == 200, response.text
     assert "compare" not in response.text
-    marked = await kv.store().has_flag(compare.marker_key(response.headers["X-Treg-Call-Id"]))
-    assert marked is (header is None)
+    marker = await kv.store().get_text(compare.marker_key(response.headers["X-Treg-Call-Id"]))
+    if header is None:  # the marker holds the input the caller sent, nothing else
+        assert json.loads(marker) == {"q": "marked None"}
+    else:
+        assert marker is None
+
+
+async def test_an_archive_opted_out_team_gets_no_marker(clients, search_on, monkeypatch):
+    """Its input never sits in the store, even for the marker's two hours."""
+    from test_routing import _relay_by_provider
+
+    _compare_on(monkeypatch)
+    monkeypatch.setattr(call_service, "relay", _relay_by_provider(
+        {"tavily": [(200, TAVILY_HIT)] * 3, "exa": [(200, EXA_HIT)] * 3}, []))
+    org_id = await _org_id(clients)
+    async with session_maker() as db:
+        org = await db.get(Org, org_id)
+        org.archive_opt_out_at = utcnow_naive()
+        await db.commit()
+    response = await clients.post("/call/treg.web.search", json={"q": "opted out"})
+    assert response.status_code == 200, response.text
+    assert await kv.store().get_text(compare.marker_key(response.headers["X-Treg-Call-Id"])) is None
+
+
+async def test_an_input_set_by_expression_is_asked_whole(clients, search_on, monkeypatch):
+    """`max_results` comes from `limit` by expression, so A's request cannot be read back; the
+    marker carries the input, and B is asked the question the caller sent, `limit` included."""
+    _compare_on(monkeypatch)
+    sent = _relay_b(monkeypatch)
+    org_id = await _org_id(clients)
+    await _routed_call(org_id, "with a limit", given={"q": "with a limit", "limit": 5})
+    result = await _collect()
+    assert (result["called"], result["ready"]) == (1, 1), result
+    call, = sent
+    assert call["body"]["query"] == "with a limit" and call["body"].get("numResults") == 5, call["body"]
 
 
 async def test_the_marker_is_off_with_the_feature_and_follows_the_sample(clients, search_on, monkeypatch):
