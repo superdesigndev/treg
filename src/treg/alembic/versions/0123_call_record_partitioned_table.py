@@ -46,11 +46,8 @@ NEW = "callrecord_partitioned"
 
 # name suffix -> definition after "ON <table>"; the model's indexes at this revision.
 INDEXES: dict[str, str] = {
-    "budget_val": "(budget_val)",
     "cached_true": "(cached) WHERE cached",
     "call_ref": "(call_ref)",
-    "client": "(client)",
-    "endpoint_id": "(endpoint_id)",
     "endpoint_id_created_at": "(endpoint_id, created_at)",
     "endpoint_id_id": "(endpoint_id, id)",
     "org_id_created_at": "(org_id, created_at)",
@@ -58,9 +55,6 @@ INDEXES: dict[str, str] = {
     "org_id_user_email_created_at": "(org_id, user_email, created_at)",
     "org_key_id": "(org_id, api_key_id, id) WHERE api_key_id IS NOT NULL",
     "org_local_run": "(org_id, created_at, id) WHERE kind = 'local_run'",
-    "params_hash": "(params_hash)",
-    "provider": "(provider)",
-    "refused_by": "(refused_by)",
     "tool_name": "(tool_name)",
     "user_email": "(user_email)",
 }
