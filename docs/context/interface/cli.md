@@ -88,7 +88,8 @@ is self-teaching. This fragment holds only what the code and help cannot say. Th
   one can be wrong.
 - **Hints.** `X-Treg-Hint: review|feedback` (older `X-Treg-Review: requested`) prints one stderr line
   per kind. `X-Treg-Routed-Tool` on a provider endpoint's success prints a pointer to the routed
-  `treg.<capability>` tool (`_treg.routed_tool` under `--json`).
+  `treg.<capability>` tool (`_treg.routed_alternative` under `--json`). It names an alternative
+  for next time; the call itself was served by the endpoint it named.
 - **Headers sent.** `_client` sends `X-Treg-Client-Version` (recorded as `client_version` on
   `tool_called`, so output changes compare across releases) and, with telemetry on, `X-Treg-Session`
   and `X-Treg-Agent`. Like every `x-treg-*` header, none reaches the upstream.
