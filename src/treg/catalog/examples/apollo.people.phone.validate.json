@@ -1,0 +1,8 @@
+{
+  "request_id": "5139398567364803549",
+  "status": "accepted",
+  "total_submitted": 1,
+  "accepted_count": 1,
+  "rejected_count": 0,
+  "results": [{"status": "accepted", "record_id": "example-record-id", "errors": null}]
+}

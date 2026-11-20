@@ -692,6 +692,70 @@ async def test_apollo_platform_phone_no_task_releases_hold(clients: AsyncClient,
         get_settings.cache_clear()
 
 
+async def test_apollo_platform_phone_validation_reserves_plan_ceiling_and_settles_usage(
+    clients: AsyncClient, monkeypatch,
+):
+    monkeypatch.setenv("TREG_PLATFORM_KEY_APOLLO", "PLATFORM-APOLLO-KEY")
+    monkeypatch.setenv("TREG_PLATFORM_PROVIDERS", "apollo")
+    get_settings.cache_clear()
+    request_id = "5139398567364803549"
+    sent_upstream = 0
+    try:
+        async def submit(*args, **kwargs):
+            nonlocal sent_upstream
+            sent_upstream += 1
+            return _response(202, {
+                "request_id": request_id, "status": "accepted", "accepted_count": 1,
+                "results": [{"status": "accepted", "record_id": "record-1"}],
+            })
+
+        monkeypatch.setattr(call_service, "relay", submit)
+        body = {"action": "phone_verifier", "action_type": "tool",
+                "input_attributes": [{"phone_number": "+12025550143"}], "poll_only": True}
+        for invalid in (
+            {**body, "input_attributes": [{"phone_number": "+12025550143"},
+                                            {"phone_number": "+12025550144"}]},
+            {**body, "action": "email_verifier"},
+            {**body, "webhook_url": "https://example.invalid"},
+        ):
+            refused = await clients.post("/call/apollo.people.phone.validate", json=invalid)
+            assert refused.status_code == 400
+        assert sent_upstream == 0
+
+        submitted = await clients.post("/call/apollo.people.phone.validate", json=body)
+        assert submitted.status_code == 202, submitted.text
+        call_id = submitted.headers["X-Treg-Call-Id"]
+        async with session_maker() as db:
+            task = await db.get(AsyncTaskRecord, call_id)
+            assert task.status == "pending" and task.reserved_micro == 520_000
+            assert await db.get(Hold, call_id) is not None
+
+        async def poll(*args, **kwargs):
+            return _response(200, {
+                "request_id": request_id, "webhook_status": "skipped",
+                "webhook_result": {
+                    "status": "success", "credits_consumed": 8,
+                    "results": [{"id": "record-1", "phone": "+12025550143",
+                                 "validation_status": "not_validated", "validator": "trestle"}],
+                },
+            })
+
+        monkeypatch.setattr(call_service, "relay", poll)
+        wrong_tool = await clients.get(
+            f"/call/apollo.people.phone.result?request_id={request_id}")
+        assert wrong_tool.status_code == 403
+        result = await clients.get(
+            f"/call/apollo.people.phone.validate.result?request_id={request_id}")
+        assert result.status_code == 200, result.text
+        assert result.json()["webhook_result"]["results"][0]["validation_status"] == "not_validated"
+        async with session_maker() as db:
+            task = await db.get(AsyncTaskRecord, call_id)
+            assert task.status == "settled" and task.settled_micro == 208_000
+            assert await db.get(Hold, call_id) is None
+    finally:
+        get_settings.cache_clear()
+
+
 async def test_firecrawl_crawl_poll_settles_reported_credits_once(clients: AsyncClient, monkeypatch):
     monkeypatch.setenv("TREG_PLATFORM_KEY_FIRECRAWL", "PLATFORM-FIRECRAWL")
     monkeypatch.setenv("TREG_PLATFORM_PROVIDERS", "firecrawl")
