@@ -13,8 +13,14 @@ BASE="{BASE}"
 #
 # Only the treg skill installs by default. The registry's other skills are opt-in, named with
 #   curl -fsSL {BASE}/install.sh | sh -s -- --skills lead-signals,recruit      (or: --skills all)
+#
+# An affiliate partner's code is left for the first team made after the
+# next `treg login`:
+#   curl -fsSL {BASE}/install.sh | sh -s -- --ref <code>                     (or: TREG_REF=<code> … | sh)
+#     leaves an affiliate partner's code in ~/.treg/ref for the binary CLI's next team
 TOKEN="${TREG_TOKEN:-}"
 SKILLS=""
+REF="${TREG_REF:-}"
 # The code when fetched as {BASE}/i/<code>; empty on the plain URL.
 AD_LINK="{AD_LINK}"
 while [ $# -gt 0 ]; do
@@ -23,6 +29,8 @@ while [ $# -gt 0 ]; do
     --token=*) TOKEN="${1#--token=}"; shift ;;
     --skills) SKILLS="${2:-}"; [ $# -gt 1 ] && shift; shift ;;
     --skills=*) SKILLS="${1#--skills=}"; shift ;;
+    --ref) REF="${2:-}"; [ $# -gt 1 ] && shift; shift ;;
+    --ref=*) REF="${1#--ref=}"; shift ;;
     *) shift ;;
   esac
 done
@@ -97,6 +105,12 @@ leave_ad_link() {
     mkdir -p "$HOME/.treg" 2>/dev/null && printf '%s\n' "$AD_LINK" > "$HOME/.treg/ad-link" 2>/dev/null || true
   fi
 }
+leave_ref() {  # the same allowlist the CLI and the server apply; anything else is dropped
+  code=$(printf '%s' "$REF" | tr '[:upper:]' '[:lower:]')
+  if printf '%s' "$code" | grep -qE '^[a-z0-9][a-z0-9-]{2,31}$'; then
+    mkdir -p "$HOME/.treg" 2>/dev/null && printf '%s\n' "$code" > "$HOME/.treg/ref" 2>/dev/null || true
+  fi
+}
 install_binary() {  # install_binary [note]: the binary CLI's installer on its stable channel
   note="${1:-}"
   BINARY_TRIED=1
@@ -107,6 +121,7 @@ install_binary() {  # install_binary [note]: the binary CLI's installer on its s
   set -- --channel stable
   if [ -n "$TOKEN" ]; then set -- "$@" --token "$TOKEN"; fi
   if [ -n "$SKILLS" ]; then set -- "$@" --skills "$SKILLS"; fi
+  if [ -n "$REF" ]; then set -- "$@" --ref "$REF"; fi
   sh -c "$script" install-bin "$@"
 }
 fail() {  # fail <reason>
@@ -184,6 +199,7 @@ treg config --base-url "$BASE" >/dev/null 2>&1 || true
 
 # Fetched as {BASE}/i/<code>: leave the code for the next `treg login`.
 leave_ad_link
+leave_ref
 
 # install the official treg skill into every detected agent so it knows how to use treg.
 # `treg skill bootstrap` fans out across all supported agents (Claude Code, Cursor, Codex, Gemini,

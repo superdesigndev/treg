@@ -88,6 +88,7 @@ from .settle import (
     _note_capacity_recovery,
     _note_capacity_signal,
     _observed_cost_micro,
+    rejected_submission_charge_micro,
     _peek_stream_head,
     _platform_settle,
     _read_whole_if_small,
@@ -308,21 +309,29 @@ def _ceiling_query(mk: MarketplaceCall | None, query_items: tuple[tuple[str, str
     A caller who already sent the parameter keeps their value. The pair is absent from the
     inbound query, so it does not enter params_hash or the archive key.
     """
-    if mk is None or mk.max_cost_micro is None or mk.max_cost_micro < 0:
+    if mk is None:
+        return ()
+    return ceiling_query(mk.endpoint_id, mk.provider, mk.max_cost_micro, query_items)
+
+
+def ceiling_query(endpoint_id: str, provider: str | None, max_cost_micro: int | None,
+                  query_items: tuple[tuple[str, str], ...]) -> tuple[tuple[str, str], ...]:
+    """`_ceiling_query` for one endpoint and ceiling, without a resolved call."""
+    if max_cost_micro is None or max_cost_micro < 0:
         return ()
     cat = catalog_store.load()
-    ep = cat.by_id.get(mk.endpoint_id) or {}
+    ep = cat.by_id.get(endpoint_id) or {}
     cost = ep.get("cost") if isinstance(ep.get("cost"), dict) else {}
     rule = cost.get("ceiling_param")
     if not isinstance(rule, dict):
-        rule = cat.ceiling_params.get(str(ep.get("provider") or mk.provider or ""))
+        rule = cat.ceiling_params.get(str(ep.get("provider") or provider or ""))
     name = rule.get("name") if isinstance(rule, dict) else None
     if (not isinstance(rule, dict) or rule.get("in") != "query" or rule.get("unit") != "usd"
             or not isinstance(name, str) or not name):
         return ()
     if any(key == name for key, _ in query_items):
         return ()
-    return ((name, _format_ceiling_usd(_provider_ceiling_micro(mk.max_cost_micro))),)
+    return ((name, _format_ceiling_usd(_provider_ceiling_micro(max_cost_micro))),)
 
 
 def _client_name(request: _ApplicationRequest) -> str:
@@ -1098,7 +1107,10 @@ async def _execute_call(request: _ApplicationRequest, upstream_client: httpx.Asy
         if not routed_pending:
             _set_response_header(response, "X-Treg-Cost-Micro", str(charged))
             if 200 <= response.status < 300:
-                await compare_app.mark_eligible(call_ref, ep.get("capability"), request.context.input.raw_headers)
+                await compare_app.mark_eligible(
+                    call_ref, ep.get("capability"), request.context.input.raw_headers,
+                    request.context.route_summary,
+                    archive_opted_out=request.context.input.caller.org.archive_opt_out_at is not None)
         _set_response_header(response, "X-Treg-Call-Id", call_ref)
         return response
     if ep is not None:
@@ -2017,9 +2029,11 @@ async def _execute_call(request: _ApplicationRequest, upstream_client: httpx.Asy
             elif rejected:
                 # An async endpoint answered 2xx with no accepted task to track (an error
                 # envelope, a WAF page, a changed schema): nothing to poll. Closed now, not parked
-                # for 24 hours, at what the provider reported charging, else zero. A batch whose
-                # first task was refused can still carry accepted, billed tasks the caller owns.
-                reported = _observed_cost_micro(mk, body, httpx.Headers(response.raw_headers))
+                # for 24 hours, at what the provider reported charging or the row declares for
+                # a useful non-deferred answer, else zero. A batch whose first task was refused
+                # can still carry accepted, billed tasks the caller owns.
+                reported = rejected_submission_charge_micro(
+                    mk, body, httpx.Headers(response.raw_headers))
                 logging.getLogger("treg.asynctasks").warning(
                     "call %s on %s: 2xx but not an accepted submission (%s); settled at %s",
                     call_ref, mk.endpoint_id, rejected, reported or 0)

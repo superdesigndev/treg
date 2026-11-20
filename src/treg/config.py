@@ -809,8 +809,8 @@ class Settings(BaseSettings):
     autotopup_default_amount_usd: int = 20
     # Hard guardrails on the off-session charge — the difference between "convenient" and "a runaway
     # agent bills a card all night". Cap is per calendar month, cooldown is between attempts, and
-    # max_attempts counts CONSECUTIVE failures before auto-top-up disables itself. The monthly cap's
-    # default is `billing.TOPUP_MAX_USD` (see money.md).
+    # max_attempts counts CONSECUTIVE failures before auto-top-up disables itself. The monthly cap
+    # is the team's own choice and has no default (see money.md).
     # The wait after a FAILED charge. After a successful one the wait is one hour divided by the
     # team's `autotopup_max_per_hour` (default below), so a team that spends more than its refill
     # per hour is not left empty for the rest of the hour.
@@ -1226,6 +1226,22 @@ class Settings(BaseSettings):
     # the Ads account has accepted the Customer Data Terms and enabled Enhanced conversions for
     # leads; until then Google rejects the identifiers and the rows would dead-letter.
     ads_conv_user_data: bool = False
+
+    # Dub Partners, the affiliate program (docs/context/architecture/affiliates.md). The workspace API
+    # key: a `dub_test_` key from the staging workspace in test environments, a `dub_` key in
+    # production. Empty = the whole feature is OFF: no click cookie, no lead upload, no Stripe
+    # metadata, and the friend referral behaves as before.
+    dub_api_key: str = Field(default="", repr=False)
+    # The lead event name Dub records at team creation. Dub deduplicates leads on
+    # (customerExternalId, eventName), so changing it after launch re-opens every team to a lead.
+    dub_lead_event: str = "Sign up"
+    # The program's referral-link domain on Dub (the short-link host partners share). A partner code
+    # given with `treg login --ref`/`treg org create --ref` is the key of a link on this domain. Empty
+    # = code-only leads wait in the outbox, retrying, until it is set.
+    dub_link_domain: str = ""
+    # Dub requires a country on a lead created without a click. The request's `CF-IPCountry` is used
+    # when present; this is the fallback. It shapes Dub's partner analytics only, never money.
+    dub_default_country: str = "US"
 
     linkedin_client_id: str = ""
     linkedin_client_secret: str = ""

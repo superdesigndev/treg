@@ -30,7 +30,8 @@ POLL = "replicate.predictions.get"
 _BASE = {"id_from": "id", "poll": {"endpoint": POLL, "param": {"in": "pathParams", "name": "id"}},
          "status": {"path": "status", "success": ["succeeded"], "failure": ["failed", "canceled"],
                     "billed_failure": ["billed"], "progress": ["starting", "processing"]},
-         "result": {"path": "output"}, "interval": 0.2}
+         "result": {"path": "output"}, "interval": 0.2,
+         "pending_response": {"status": 404, "path": "error_code", "equals": "result_pending"}}
 DESCRIPTORS = {
     PATH_MODE: _BASE,
     FETCH_MODE: _BASE | {"result": {"fetch": POLL, "ttl_note": "1h",
@@ -61,6 +62,7 @@ SCENARIOS = {
     "gone": (PATH_MODE, None, [(404, JSON, {"detail": "not found"})], []),
     "flaky": (PATH_MODE, None, [(500, JSON, {"error": "busy"})], []),
     "recovers": (PATH_MODE, None, [(502, JSON, {}), (503, JSON, {}), _ok([])], []),
+    "pending_http": (PATH_MODE, None, [(404, JSON, {"error_code": "result_pending"}), _ok([])], []),
     "text": (PATH_MODE, None, [(200, "text/plain", "not json")], []),
     "slow": (SLOW, None, [PROCESSING], ["--timeout", "2.5"]),
     "rejected": (PATH_MODE, (200, JSON, {"oops": 1}), [], []),
@@ -155,7 +157,7 @@ def _assert_same(py, go):
 
 
 EXPECTED_CODES = {"ok": 0, "odd": 0, "unicode": 0, "fail": 2, "billed": 2, "fetched": 0, "nofile": 1,
-                  "gone": 3, "flaky": 3, "recovers": 0, "text": 3, "slow": 3, "rejected": 1,
+                  "gone": 3, "flaky": 3, "recovers": 0, "pending_http": 0, "text": 3, "slow": 3, "rejected": 1,
                   "garbage": 1, "instant": 0, "refused": 1}
 
 

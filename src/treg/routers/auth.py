@@ -33,7 +33,9 @@ from ..models import User
 from .auth_helpers import (
     _is_https, _remember_oauth_return, _same_origin, require_managed_cli, trusted_public_base,
 )
-from .signup_cookies import REFERRAL_COOKIE
+from .signup_cookies import (
+    REFERRAL_COOKIE, _client_country, _remember_partner_code, _take_affiliate_click, _take_partner_code,
+)
 
 app = APIRouter()
 email_router = app
@@ -569,12 +571,14 @@ async def auth_cli_approve(
 
 
 @app.get("/login", include_in_schema=False)
-async def login_page(request: Request, cli: str = "", ad: str = "", treg_session: str = Cookie(default="")):
+async def login_page(request: Request, cli: str = "", ad: str = "", ref: str = "",
+                     treg_session: str = Cookie(default="")):
     """The universal sign-in page `treg login` opens: reuses an existing dashboard session with one
     click ("Continue as …"), else offers every configured door — GitHub, Google, email one-time code.
     The email door is always present, so login works even with no OAuth app configured.
 
-    `ad` is the short install link's code (`architecture/ads-conversions.md`, "Capture")."""
+    `ad` is the short install link's code (`architecture/ads-conversions.md`, "Capture"). `ref` is
+    the partner code from `treg login --ref`, parked so the team made from this sign-in carries it."""
     if not cli:
         resp = RedirectResponse("/app" + ("?" + request.url.query if request.url.query else ""),
                                 status_code=302)  # preserve incoming attribution for the SPA
@@ -586,6 +590,7 @@ async def login_page(request: Request, cli: str = "", ad: str = "", treg_session
         resp = HTMLResponse(_login_page_html(
             cli, session_email=session_email,
             github=bool(s.github_client_id), google=bool(s.google_client_id)))
+    _remember_partner_code(resp, request, ref)
     restored, max_age = await signup.redeem_ad_link(ad)
     if restored and not request.cookies.get("treg_ad"):
         resp.set_cookie("treg_ad", restored, max_age=max_age, path="/", samesite="lax",
@@ -1177,6 +1182,8 @@ async def oauth_authorize_approve(
             ad_cookie=request.cookies.get("treg_ad") or "",
             utm_cookie=request.cookies.get("treg_utm") or "",
             referral_cookie=request.cookies.get(REFERRAL_COOKIE) or "",
+            affiliate_cookie=_take_affiliate_click(request),
+            ref_code=_take_partner_code(request), client_country=_client_country(request),
         )
     except auth_use_cases.OAuthServerError as exc:
         return _oauth_server_failure(exc, redirect_uri, state)

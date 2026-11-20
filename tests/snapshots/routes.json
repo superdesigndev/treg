@@ -982,6 +982,15 @@
       "GET",
       "HEAD"
     ],
+    "name": "rea_marketing_skill_md",
+    "path": "/skills/rea-marketing/SKILL.md"
+  },
+  {
+    "kind": "APIRoute",
+    "methods": [
+      "GET",
+      "HEAD"
+    ],
     "name": "ai_ugc_video_skill_md",
     "path": "/skills/ai-ugc-video/SKILL.md"
   },
@@ -1198,6 +1207,15 @@
       "GET",
       "HEAD"
     ],
+    "name": "rea_marketing_page",
+    "path": "/rea-marketing"
+  },
+  {
+    "kind": "APIRoute",
+    "methods": [
+      "GET",
+      "HEAD"
+    ],
     "name": "social_search_page",
     "path": "/social"
   },
@@ -1352,6 +1370,15 @@
     ],
     "name": "blog_security_incident_2026_10_23",
     "path": "/blog/security-incident-2026-10-23"
+  },
+  {
+    "kind": "APIRoute",
+    "methods": [
+      "GET",
+      "HEAD"
+    ],
+    "name": "blog_jobspipe_and_treg",
+    "path": "/blog/jobspipe-and-treg"
   },
   {
     "kind": "APIRoute",

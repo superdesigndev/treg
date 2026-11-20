@@ -21,7 +21,7 @@ from ..call import cost as call_cost
 from ..call.resolve import MarketplaceCall, QueryValues, _spool_evidence_paths, price_call
 from ..call.route import child_outcome
 from ..call.service import submission_state
-from ..call.settle import _observed_cost_micro, decide_settle
+from ..call.settle import decide_settle, rejected_submission_charge_micro
 from . import records
 
 GROUPS = ("reserve", "settle", "outcome", "adapter", "routing", "stats", "async")
@@ -99,8 +99,8 @@ def _settle(mk: MarketplaceCall, status: int, raw: bytes, headers: httpx.Headers
         return {"deferred": True}
     if rejected:
         # The call site's arguments for a 2xx that is not an accepted submission.
-        reported = _observed_cost_micro(mk, raw, headers)
-        decision = decide_settle(mk, status, raw, observed_override=reported or 0, reason=rejected)
+        reported = rejected_submission_charge_micro(mk, raw, headers)
+        decision = decide_settle(mk, status, raw, observed_override=reported, reason=rejected)
     else:
         decision = decide_settle(mk, status, raw, headers=headers,
                                  reason=f"provider_failed_{status}" if status >= 500 else "")

@@ -1,6 +1,7 @@
 package commands
 
 import (
+	"cmp"
 	"encoding/json/v2"
 	"fmt"
 	"os"
@@ -30,13 +31,26 @@ func orgCmd(env *Env) *cobra.Command {
 func orgCreateCmd(env *Env) *cobra.Command {
 	cmd := leaf("create <name>", "Create a team and become its owner.", `treg org create "Superdesign"`)
 	cmd.Args = cobra.ExactArgs(1)
-	cmd.RunE = func(_ *cobra.Command, args []string) error {
+	var ref string
+	cmd.Flags().StringVar(&ref, "ref", "", "an affiliate partner's code for this team; "+
+		"defaults to the code `treg login --ref` saved, then TREG_REF")
+	cmd.RunE = func(cmd *cobra.Command, args []string) error {
+		code, err := refFlag(ref, cmd.Flags().Changed("ref"))
+		if err != nil {
+			return err
+		}
+		code = cmp.Or(code, pendingRef())
+		body := ojson.Ordered("name", args[0])
+		if code != "" {
+			body = ojson.Ordered("name", args[0], "ref", code)
+		}
 		c := env.Client()
-		r, err := env.do(c, api.Request{Method: "POST", Path: "/orgs", Body: ojson.Compact(ojson.Ordered("name", args[0])), Header: jsonHeader})
+		r, err := env.do(c, api.Request{Method: "POST", Path: "/orgs", Body: ojson.Compact(body), Header: jsonHeader})
 		if err != nil {
 			return err
 		}
 		if r.Status == 200 {
+			forgetRef()
 			d := responseObject(r)
 			cfg := env.Cfg
 			cfg.Token, cfg.ActiveOrg, cfg.Identity = ojson.Text(d.Value("token")), ojson.Text(d.Value("org")), true

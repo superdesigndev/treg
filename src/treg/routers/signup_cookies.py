@@ -2,7 +2,9 @@
 
 from fastapi import Request
 
+from ..application import affiliates
 from ..domain import referrals
+from ..infra import dub
 from .auth_helpers import _is_https
 
 
@@ -37,3 +39,52 @@ def _take_referral(request: Request) -> str:
     allowlist, so anything odd becomes "" and the signup simply proceeds unreferred.
     """
     return referrals.normalize_code((request.cookies.get(REFERRAL_COOKIE) or "").strip('"'))
+
+
+AFFILIATE_COOKIE = "treg_dub"
+# Dub's own client script keeps the click for 90 days by default; the server-side cookie matches it.
+AFFILIATE_COOKIE_MAX_AGE = 90 * 24 * 3600
+
+
+def _remember_affiliate_click(resp, request: Request) -> None:
+    """Park Dub's `?dub_id=` click id until the visitor creates a team. Last click wins, as Dub's
+    default attribution model does."""
+    click_id = dub.valid_click_id(request.query_params.get("dub_id", ""))
+    if click_id and affiliates.enabled():
+        resp.set_cookie(AFFILIATE_COOKIE, click_id, httponly=True, samesite="lax",
+                        secure=_is_https(request), max_age=AFFILIATE_COOKIE_MAX_AGE)
+
+
+PARTNER_CODE_COOKIE = "treg_partner"
+
+
+def _remember_partner_code(resp, request: Request, code: str) -> None:
+    """Park the partner code `treg login --ref` carried into the browser sign-in, so the team made
+    from that sign-in is attributed to the partner. Never the friend-referral cookie: a typed code
+    is only ever a Dub partner's code."""
+    code = dub.valid_partner_code(code)
+    if code and affiliates.enabled():
+        resp.set_cookie(PARTNER_CODE_COOKIE, code, httponly=True, samesite="lax",
+                        secure=_is_https(request), max_age=AFFILIATE_COOKIE_MAX_AGE)
+
+
+def _take_partner_code(request: Request) -> str:
+    """The parked partner code, revalidated: a cookie is attacker-supplied."""
+    return dub.valid_partner_code((request.cookies.get(PARTNER_CODE_COOKIE) or "").strip('"'))
+
+
+def _forget_affiliate(resp) -> None:
+    """Drop the parked click and partner code once a team is made: a partner earns on the person
+    they brought, not on every team that browser makes in the next 90 days."""
+    resp.delete_cookie(AFFILIATE_COOKIE)
+    resp.delete_cookie(PARTNER_CODE_COOKIE)
+
+
+def _client_country(request: Request) -> str:
+    """Cloudflare's view of the caller's country, when the request came through it."""
+    return request.headers.get("cf-ipcountry", "")
+
+
+def _take_affiliate_click(request: Request) -> str:
+    """The parked click id, revalidated: a cookie is attacker-supplied."""
+    return dub.valid_click_id(request.cookies.get(AFFILIATE_COOKIE) or "")

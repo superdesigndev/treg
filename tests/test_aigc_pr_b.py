@@ -83,6 +83,27 @@ def test_async_wait_does_not_warn_for_declared_progress_status():
     assert not any("unknown async status" in event for event in clock.events)
 
 
+def test_async_wait_accepts_only_declared_pending_error_envelope():
+    descriptor = static_descriptor()
+    descriptor["pending_response"] = {"status": 404, "path": "error_code", "equals": "result_pending"}
+    replies = iter([
+        response(404, {"error_code": "result_pending"}),
+        response(200, {"task": {"status": "succeeded", "content": {"url": "asset"}}}),
+    ])
+    clock = FakeClock()
+    outcome = cli.await_async_task(
+        descriptor, response(202, {"task_id": "task-progress"}),
+        lambda target, params: next(replies), clock, 30,
+    )
+    assert outcome["code"] == 0 and clock.sleeps == [2, 2]
+
+    refused = cli.await_async_task(
+        descriptor, response(202, {"task_id": "task-progress"}),
+        lambda target, params: response(404, {"error_code": "other"}), FakeClock(), 30,
+    )
+    assert refused["code"] == 3 and refused["error"] == "polling returned HTTP 404"
+
+
 def test_async_wait_returns_terminal_failure_verbatim_to_caller():
     terminal = response(200, {"task": {"status": "failed", "error": "moderated"}})
     outcome = cli.await_async_task(

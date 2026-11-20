@@ -241,6 +241,15 @@ def poll_view(task: CallTask, upstream: UpstreamResponse, raw: bytes, too_large:
                 "call_id": poll_call_id, "cost_micro": int(cost) if cost.isdigit() else None}
     view["response"] = response
     if status >= 400:
+        try:
+            document = json.loads(decoded if decoded is not None else raw)
+        except ValueError:
+            document = None
+        if asynctasks.is_pending_response(task.descriptor or {}, status, document):
+            pending = str(task.descriptor["pending_response"]["equals"])
+            view["status"] = pending
+            view["status_shown"] = asynctasks.shown(pending)
+            return view
         return _error(view, "poll_failed", f"polling returned HTTP {status}", http_status=status,
                       retryable=status >= 500, by="provider")
     try:
