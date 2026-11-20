@@ -174,10 +174,11 @@ _DATAPLANE_DERIVED_WRITES = {
         (call_allowance._ChargeWriter._write_team, "archive.note_org_uses_in_transaction"),
     ),
     # A successful routed answer that samples in for a pairwise comparison leaves a short-lived
-    # marker in the shared store (one bounded write, no database); the hourly worker reads it.
+    # marker holding the caller's input in the shared store (one bounded write, no database); the
+    # hourly worker reads it.
     "comparison_marker": (
         (service._execute_call, "compare_app.mark_eligible"),
-        (compare_app.mark_eligible, "store.set_flag"),
+        (compare_app.mark_eligible, "store.set_text"),
     ),
 }
 _EXPECTED_DATAPLANE_WRITES = frozenset({
@@ -249,7 +250,7 @@ _DERIVED_WRITE_FILES = {
     },
     _SRC / "domain" / "capacity" / "rate_observe.py": {"provider_rate.admit", "provider_rate.release"},
     _SRC / "infra" / "provider_rate.py": {"store.rate_window", "store.release_slot"},
-    _SRC / "application" / "compare.py": {"store.set_flag"},
+    _SRC / "application" / "compare.py": {"store.set_flag", "store.set_text"},
     _SRC / "application" / "call" / "service.py": {
         "compare_app.mark_eligible",
         "org_endpoint_quota.admit",
@@ -274,7 +275,7 @@ _DERIVED_WRITE_FILES = {
 }
 _EXPECTED_DERIVED_WRITE_SITES = {
     ("application/call/service.py", "_execute_call", "compare_app.mark_eligible"),
-    ("application/compare.py", "mark_eligible", "store.set_flag"),
+    ("application/compare.py", "mark_eligible", "store.set_text"),
     # off the call path: the worker's ready flag, and the API's look after clearing it
     ("application/compare.py", "_one", "store.set_flag"),
     ("application/compare.py", "_flag_after_none", "store.set_flag"),
@@ -474,9 +475,11 @@ def test_catalog_access_router_only_translates_the_application_result() -> None:
 
 def test_startup_manifests_keep_dataplane_and_control_work_separate() -> None:
     assert bootstrap.ROLE_BACKGROUND_TASKS == {
-        "all": ("treg.adsconv.worker", "treg.application.allowance_sweep.worker"),
+        "all": ("treg.adsconv.worker", "treg.application.affiliates.worker",
+                "treg.application.allowance_sweep.worker"),
         "dataplane": (),
-        "control": ("treg.adsconv.worker", "treg.application.allowance_sweep.worker"),
+        "control": ("treg.adsconv.worker", "treg.application.affiliates.worker",
+                    "treg.application.allowance_sweep.worker"),
     }
     for checks in bootstrap.ROLE_STARTUP_CHECKS.values():
         assert "treg.api._backfill_provider_extra_tools" not in checks

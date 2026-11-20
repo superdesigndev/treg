@@ -383,9 +383,9 @@ def check_strict_query(ep: dict, where: str, errors: list[str]) -> None:
     inp = ep.get("input") or {}
     fields = inp.get("queryParams") or {}
     path_fields = inp.get("pathParams") or {}
-    if ep.get("method") != "GET" or not isinstance(fields, dict) or not isinstance(path_fields, dict) \
+    if ep.get("method") not in {"GET", "POST"} or not isinstance(fields, dict) or not isinstance(path_fields, dict) \
             or not (fields or path_fields):
-        fail(errors, where, "strict_query requires a GET with declared queryParams or pathParams")
+        fail(errors, where, "strict_query requires a GET or POST with declared queryParams or pathParams")
         return
     if inp.get("body"):
         fail(errors, where, "strict_query cannot use body inputs")
@@ -838,11 +838,21 @@ def check_async_descriptor(descriptor: object, where: str, provider: str,
         fail(errors, where, "async must be a mapping")
         return
     extra = set(descriptor) - {"id_from", "poll", "status", "result", "interval", "max_age",
-                               "terminal_on_submission"}
+                               "terminal_on_submission", "pending_response"}
     if extra:
         fail(errors, where, f"async has unknown keys: {sorted(extra)}")
     if not isinstance(descriptor.get("id_from"), str) or not JSON_PATH.fullmatch(descriptor["id_from"]):
         fail(errors, where, "async.id_from must be a dotted JSON path")
+    pending = descriptor.get("pending_response")
+    if pending is not None:
+        if not isinstance(pending, dict) or set(pending) != {"status", "path", "equals"}:
+            fail(errors, where, "async.pending_response requires exactly status, path, equals")
+        elif (not isinstance(pending["status"], int) or isinstance(pending["status"], bool)
+              or not 400 <= pending["status"] <= 599
+              or not isinstance(pending["path"], str) or not JSON_PATH.fullmatch(pending["path"])
+              or not isinstance(pending["equals"], (str, int)) or isinstance(pending["equals"], bool)
+              or not str(pending["equals"]).strip()):
+            fail(errors, where, "async.pending_response needs a 4xx/5xx status, JSON path, and value")
 
     def check_param(value: object, label: str, target: dict | None, *, fetch: bool = False) -> None:
         expected = {"in", "name", "value_from"} if fetch else {"in", "name"}

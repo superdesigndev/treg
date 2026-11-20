@@ -29,6 +29,7 @@ sources:
   - cli/internal/commands/connections.go
   - cli/internal/commands/env.go
   - cli/internal/commands/feedback.go
+  - cli/internal/commands/ref.go
   - cli/internal/commands/feedback_get.go
   - cli/internal/commands/health.go
   - cli/internal/commands/help.go
@@ -112,7 +113,14 @@ of new installs (no working `treg` on the machine) to the binary instead, bucket
 - **Config.** `config.Load` / `Save` read and write `config.json` in the Python layout (atomic
   write, `0600`, empty as `null`, a corrupt file reads as fresh, the legacy multi-org format
   migrates). Fields this version does not know are kept in their order, so a newer writer's
-  additions survive; `channel` and `auto_update` are the binary's own.
+  additions survive; `channel` and `auto_update` are the binary's own. `ad-link` beside it is the
+  Python CLI's file too.
+- **Affiliate partner code (binary only).** `treg login --ref`, `treg org create --ref`, `TREG_REF`
+  and the `ref` file beside the config (left by `install.sh --ref` or `install-bin.sh --ref`) exist
+  only in the binary; the frozen Python CLI has none of them. `commands/ref.go` validates the code,
+  the saved file wins over `TREG_REF` (an explicit `--ref` outranks an environment default), `treg org create` sends it as `ref` and removes the file once the team
+  exists, a sign-in that lands in a team removes it, and the browser sign-in carries it as `&ref=`.
+  `tests/cli_go` checks it against the binary alone.
 - **Requests.** `api/url.go` reproduces httpx's encoding, the only one the registry and every
   upstream behind `/call/` have seen: dot segments resolved after the path joins the base URL,
   existing `%XX` kept, everything outside httpx's `PATH_SAFE` percent-encoded; the query is

@@ -57,9 +57,13 @@ async def defer_submission(mk, body: bytes, org_id: int, *, tags: dict | None = 
 
     `submission_charge_micro` is what the provider reported charging for the submission itself
     (DataForSEO bills at task_post and its task_get answers report no cost). An `observed` basis
-    freezes it, so the terminal settle bills what the provider charged rather than the estimate."""
+    freezes it. A usage basis can instead freeze the catalog's charge for data returned with the
+    submission, which settlement adds to the terminal usage meter."""
     now = utcnow_naive()
     basis = call_cost.persisted(dict(mk.settlement_basis), mk.cost_terms)
+    submission = settlement.non_deferred_charge_micro(basis, json.loads(body))
+    if submission:
+        basis["submission_charge_micro"] = submission
     if ((basis.get("amount") or {}).get("kind") == "observed"
             and isinstance(submission_charge_micro, int)
             and not isinstance(submission_charge_micro, bool) and submission_charge_micro >= 0):
@@ -623,9 +627,13 @@ async def _process(call_id: str, client: httpx.AsyncClient, attempt: int, *,
         async with asyncio.timeout(POLL_TIMEOUT_S):
             status, body = await _poll(snapshot, client)
         if not 200 <= status < 300:
-            # Only a successful poll is evidence. A 404 or 401 body that happens to carry
-            # "status": "succeeded" is an error envelope, not a terminal state; the CLI treats
-            # every non-2xx the same way, and money must not depend on an error page's fields.
+            try:
+                pending_document = json.loads(body)
+            except (ValueError, TypeError):
+                pending_document = None
+            if asynctasks.is_pending_response(snapshot.descriptor, status, pending_document):
+                return await _finish(call_id, "progress", pending_document, utcnow_naive(),
+                                     expected_attempt=attempt)
             log.warning("async poll for call %s returned HTTP %s; backing off", call_id, status)
             return await _finish(call_id, "poll_error", None, utcnow_naive(), expected_attempt=attempt)
         document = json.loads(body)

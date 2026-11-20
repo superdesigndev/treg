@@ -534,3 +534,56 @@ def test_unreachable_registry(tmp_path, go_bin, argv):
         assert go.err.startswith("treg: could not reach http://127.0.0.1:9: "), go.err
     else:
         assert (as_json(py.out), py.err) == (as_json(go.out), go.err)
+
+
+
+# `--ref`, TREG_REF and the saved `ref` file are the binary's alone: the Python CLI is frozen without
+# them (cli-binary.md, "Compatibility with the Python CLI").
+_ORG_MADE = {"/orgs": [Canned(200, {}, json.dumps(
+    {"org": "new-team", "org_id": 12, "name": "New Team", "role": "owner", "token": "new-key"}).encode())]}
+GO_ONLY_REF = {
+    "flag": Case(["org", "create", "New Team", "--ref", "Jane-Doe"], _ORG_MADE),
+    "env": Case(["org", "create", "New Team"], _ORG_MADE, env={"TREG_REF": "jane-doe"}),
+    "saved": Case(["org", "create", "New Team"], _ORG_MADE, files={".treg/ref": b"jane-doe\n"}),
+}
+
+
+def test_a_saved_login_ref_beats_the_environment_default(fake, tmp_path, go_bin):
+    case = Case(["org", "create", "New Team"], _ORG_MADE, env={"TREG_REF": "alice"},
+                files={".treg/ref": b"bob\n"})
+    go, seen, _cfg, _ = _run(fake, tmp_path, "go", [str(go_bin)], case)
+    assert go.code == 0, go
+    assert as_json(seen[-1].body) == {"name": "New Team", "ref": "bob"}
+
+
+@pytest.mark.parametrize("name", sorted(GO_ONLY_REF))
+def test_the_binary_sends_a_partner_code_and_spends_it(fake, tmp_path, go_bin, name):
+    case = copy.copy(GO_ONLY_REF[name])
+    case.files = {".treg/ref": b"jane-doe\n"}
+    go, seen, cfg, _ = _run(fake, tmp_path, "go", [str(go_bin)], case)
+    assert go.code == 0, go
+    assert as_json(seen[-1].body) == {"name": "New Team", "ref": "jane-doe"}
+    assert cfg["active_org"] == "new-team"
+    assert not (tmp_path / "go" / ".treg" / "ref").exists(), "spent once the team exists"
+
+
+def test_the_binary_keeps_the_code_when_no_team_was_made(fake, tmp_path, go_bin):
+    case = Case(["org", "create", "admin"], {"/orgs": [Canned(400, {"X-Treg-Error": "1"},
+                b'{"detail": "that name is reserved"}')]}, files={".treg/ref": b"jane-doe\n"})
+    go, _, _, _ = _run(fake, tmp_path, "go", [str(go_bin)], case)
+    assert go.code != 0
+    assert (tmp_path / "go" / ".treg" / "ref").read_bytes() == b"jane-doe\n"
+
+
+def test_the_binary_refuses_a_malformed_code(fake, tmp_path, go_bin):
+    go, seen, _, _ = _run(fake, tmp_path, "go", [str(go_bin)], Case(["org", "create", "X", "--ref", "bad code"]))
+    assert go.code == 1 and "is not an affiliate partner code" in go.err
+    assert seen == []
+
+
+def test_the_binary_login_keeps_the_code_for_someone_without_a_team(fake, tmp_path, go_bin):
+    case = Case(["login", "--token", "tok-1", "--ref", "jane-doe"], {
+        "/auth/me": [Canned(200, {}, b'{"email": "a@b.c"}')], "/orgs": [Canned(200, {}, b"[]")]})
+    go, _, _, _ = _run(fake, tmp_path, "go", [str(go_bin)], case)
+    assert go.code == 0, go
+    assert (tmp_path / "go" / ".treg" / "ref").read_bytes() == b"jane-doe\n"

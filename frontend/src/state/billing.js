@@ -52,7 +52,7 @@ async loadBilling(){ if(!this.canAdmin || !this.activeOrgId){ this.billing=null;
         this.autoAmount=Math.round(this.billing.autotopup.amount_usd);
         this.autoThreshold=Math.round(this.billing.autotopup.threshold_usd);
         this.autoPerHour=this.billing.autotopup.per_hour||5;
-        this.autoMonthlyCap=Math.round(this.billing.autotopup.monthly_cap_usd);
+        this.autoMonthlyCap=Math.round(this.billing.autotopup.monthly_cap_usd)||'';
         if(this.bhistOrgId!==this.activeOrgId){
           this.bhistFilter='all'; this.bhistPage=0; this.bhistCursors=['']; this.bhistOrgId=this.activeOrgId; }
         this.loadBillingHistory(); }
@@ -193,9 +193,9 @@ tierBonus(usd){ const t=this.billing&&this.billing.topup.bonus_tiers; if(!t||!us
       const k=floors.find(k=>k>(usd||0)&&t[k]>pct);
       return k===undefined?null:{usd:k, pct:t[k]}; },
 // The cap goes to the server only when the user changed it: re-sending the loaded value would store
-// the default as the team's own choice. An emptied field means the default (0).
+// a value the team never chose. An emptied field means no limit (0).
 _autoCapChange(){ const v=this.autoMonthlyCap, loaded=Math.round(this.billing?.autotopup?.monthly_cap_usd);
-      if(v==='' || v==null) return 0;
+      if(v==='' || v==null) return loaded ? 0 : null;
       return v===loaded ? null : v; },
 async payTopup(){ const usd=this.topupUsd; if(!this.topupValid) return;
       // The mandate decision below reads this team's auto top-up state; billing from another team

@@ -1934,7 +1934,7 @@ def _enforce_platform_request(ep: dict, body: bytes, headers=None, query=None) -
                         },
                     )
 
-    if ep.get("id") == "apollo.people.enrich" and query is not None:
+    if ep.get("id") in {"apollo.people.enrich", "apollo.people.bulk_enrich"} and query is not None:
         # These answer later at the caller's webhook, outside the response settlement reads, and
         # the phone and waterfall reveals draw credits the 1-credit hold never covered.
         for name, raw in query.multi_items():

@@ -30,13 +30,14 @@ from sqlalchemy.exc import IntegrityError
 from sqlmodel import select
 
 from .. import hints, jsontext, oauth_providers
-from ..config import TREG_USER_AGENT, get_settings
+from ..config import get_settings
 from ..domain.catalog import store as catalog_store
 from ..domain.feedback import comparisons
 from ..infra import kv
 from ..infra.db import session_maker
 from ..infra.upstream.relay import relay
-from ..models import CallComparison, CallRecord, CapabilityPin, DenyRule, Membership, Org
+from ..models import (CallComparison, CallRecord, CallReview, CapabilityPin, DenyRule, Membership,
+                      Org)
 from ..timeutil import utcnow_naive
 
 log = logging.getLogger(__name__)
@@ -45,6 +46,7 @@ READY_TTL_S = 3 * 86400
 # A call's eligibility marker lives this long; a run never looks further back.
 MARKER_TTL_S = 2 * 3600
 MARKER_TIMEOUT_S = 0.2
+MARKER_INPUT_MAX_BYTES = 8192
 _ROUTE_HEADER_PREFIX = b"x-treg-route-"
 READY_DAYS = 3
 INPUT_MAX_BYTES = 2048
@@ -77,20 +79,31 @@ def configured() -> bool:
     return get_settings().compare_configured
 
 
-async def mark_eligible(call_ref: str, capability: str | None, raw_headers) -> None:
+async def mark_eligible(call_ref: str, capability: str | None, raw_headers,
+                        route_summary: dict | None = None, *, archive_opted_out: bool = False) -> None:
     """On the call path, after a successful routed answer: mark the call for a comparison run when
-    it samples in, its capability is paired, and the caller sent no `X-Treg-Route-*` header (a
-    caller that chose vendors or routing is left alone). One short store write, no database,
-    nothing raised, nothing about the answer changed."""
+    it samples in, its capability is paired, the caller sent no `X-Treg-Route-*` header (a caller
+    that chose vendors or routing is left alone) and its team keeps an archive. The marker holds
+    the contract input the caller sent (`route_summary["identity"]`, at most
+    `MARKER_INPUT_MAX_BYTES`), so the run asks B exactly that question instead of reading it back
+    from A's request. A page continuation (`cursor` in the summary) is no fresh question, since B
+    would be asked page one, so it is never marked. One short store write, no database, nothing
+    raised, nothing about the answer changed."""
     try:
         settings = get_settings()
-        if (not settings.compare_configured or capability not in pairs()
+        summary = route_summary or {}
+        given = None if "cursor" in summary else summary.get("identity")
+        if (archive_opted_out or not isinstance(given, dict) or not settings.compare_configured
+                or capability not in pairs()
                 or any(bytes(name).lower().startswith(_ROUTE_HEADER_PREFIX) for name, _ in raw_headers)
                 or not hints.sampled_at("compare", call_ref, settings.compare_rate)):
             return
+        text = json.dumps(given, sort_keys=True, default=str)
+        if len(text.encode()) > MARKER_INPUT_MAX_BYTES:
+            return
         store = kv.store()
         async with asyncio.timeout(MARKER_TIMEOUT_S):
-            await store.set_flag(marker_key(call_ref), MARKER_TTL_S)
+            await store.set_text(marker_key(call_ref), text, MARKER_TTL_S)
     except Exception:  # noqa: BLE001 - a lost marker only means this call is never compared
         return
 
@@ -169,7 +182,8 @@ def _truncate(text: str, limit: int) -> tuple[str, bool]:
 
 @dataclass(frozen=True)
 class Target:
-    """B's endpoint and the provider request its adapter builds from the contract input."""
+    """B's endpoint and the provider request its adapter builds from the contract input, as the
+    router's child call would send it: the adapter's own values, unformatted, and its JSON body."""
     ep: dict
     adapter: Any
     query: dict
@@ -178,17 +192,17 @@ class Target:
 
 
 def _b_target(contract, identity: dict, provider: str) -> Target | None:
-    """B's endpoint for this input when treg's own key can serve it: a verified adapter that takes
-    and scopes the identity (`route: true` is not needed), not paused, platform-eligible with a
+    """B's endpoint for this input when treg's own key can serve it: one the router would ask for
+    this input (`plan.candidates_for` and `build_plan`'s cap, declaration and scope checks; a
+    judge-only `route: false` adapter builds no request), not paused, platform-eligible with a
     key, not exhausted on treg's primary account, retention allowed, a computable price and no
     second host or path parameter to resolve."""
     from httpx import QueryParams
 
     from ..domain.capacity.marks import spends_balance
-    from ..domain.catalog.routing.contracts import adapter_accepts
-    from ..domain.catalog.routing.plan import unscoped
-    from .call import keyslots
-    from .call.resolve import _marketplace_pricing
+    from ..domain.catalog.routing.plan import candidates_for, unscoped
+    from .call import keyslots, route
+    from .call.resolve import _marketplace_pricing, param_check_refuses
 
     cat = catalog_store.load()
     settings = get_settings()
@@ -198,24 +212,24 @@ def _b_target(contract, identity: dict, provider: str) -> Target | None:
             or not all(settings.platform_credential(b["platform_setting"], b.get("account"))
                        for b in oauth_providers.platform_bindings(registered) if b.get("platform_setting"))):
         return None
-    for ep in cat.for_capability(contract.capability):
-        if (ep["provider"] != provider or ep.get("status") or ep.get("async") or ep.get("host")
-                or ep.get("platform_auth") == "anonymous" or "{" in str(ep.get("path") or "")):
+    mine = [ep for ep in cat.for_capability(contract.capability) if ep["provider"] == provider]
+    for ep, adapter, variant in candidates_for(contract, mine, cat.adapters, identity)[0]:
+        if (ep.get("async") or ep.get("host") or ep.get("platform_auth") == "anonymous"
+                or "{" in str(ep.get("path") or "")):
             continue
-        adapter = cat.adapters.get(ep["id"])
-        if adapter is None or not adapter.verified:
+        if any(route._above(identity.get(k), m) for k, m in (getattr(adapter, "filter_max", None) or {}).items()):
             continue
-        accepted = adapter_accepts(adapter, identity)
-        if accepted is None or unscoped(adapter, contract, identity):
+        if route._declaration_refusal(ep, adapter, identity, variant) and param_check_refuses():
+            continue
+        if unscoped(adapter, contract, identity):
             continue
         if catalog_store.paused(ep) or _retention_forbidden(ep["id"]) or not cat.platform_eligible(ep):
             continue
         if keyslots.exhausted(provider, ep["id"], None,
                               metered=spends_balance((ep.get("cost") or {}).get("type"))):
             continue
-        query, body = adapter.to_upstream(identity, accepted)
-        payload = (json.dumps(body).encode()
-                   if ep["method"] in ("POST", "PUT", "PATCH") and body is not None else b"")
+        query, body = adapter.to_upstream(identity, variant)
+        payload = route._child_body(ep, body)
         cost = cat.cost_view(ep.get("cost"), provider)
         if not cost or cost.get("usd") is None:
             continue
@@ -224,23 +238,33 @@ def _b_target(contract, identity: dict, provider: str) -> Target | None:
     return None
 
 
-async def _ask_b(target: Target, client: httpx.AsyncClient) -> tuple[int, bytes]:
+async def _ask_b(target: Target, client: httpx.AsyncClient, org_id: int) -> tuple[int, bytes]:
     """One request to B's endpoint on treg's primary key, through the relay alone: (status, body),
-    status 0 when no answer came."""
+    status 0 when no answer came. The request is the one the router's first child call sends for
+    the team's question on treg's key (`route._child_input`, then the call path's rewrites:
+    treg's `User-Agent`, the provider's client header, its ceiling parameter at the router's
+    default ceiling)."""
+    from ..infra.upstream.relay import identify_as_treg, tag_shared_client
     from ..models import Tool
+    from .call import route
     from .call.resolve import QueryValues, _marketplace_upstream
+    from .call.service import ceiling_query
     from .call.types import UpstreamRequest
     from .connect import _host_of
 
-    provider = oauth_providers.get(target.ep["provider"])
-    items = tuple((str(k), str(v)) for k, v in target.query.items())
-    upstream, consumed = _marketplace_upstream(target.ep, provider, QueryValues(items))
-    tool = Tool(org_id=None, name=target.ep["id"], owner="compare", base_url=provider.base_url,
+    ep = target.ep
+    provider = oauth_providers.get(ep["provider"])
+    items = tuple(target.query.items())
+    upstream, consumed = _marketplace_upstream(ep, provider, QueryValues(items))
+    tool = Tool(org_id=org_id, name=ep["id"], owner="compare", base_url=provider.base_url,
                 host=_host_of(provider.base_url), bindings=oauth_providers.platform_bindings(provider))
-    headers = [(b"user-agent", TREG_USER_AGENT.encode())]
+    headers = tag_shared_client(identify_as_treg(()),
+                                catalog_store.load().client_headers.get(ep["provider"]),
+                                ep["provider"], org_id)
     if target.body:
-        headers += [(b"content-type", b"application/json"),
-                    (b"content-length", str(len(target.body)).encode())]
+        headers += ((b"content-type", b"application/json"),
+                    (b"content-length", str(len(target.body)).encode()))
+    items += ceiling_query(ep["id"], ep["provider"], route.DEFAULT_MAX_COST_MICRO, items)
 
     async def body_stream():
         if target.body:
@@ -251,13 +275,13 @@ async def _ask_b(target: Target, client: httpx.AsyncClient) -> tuple[int, bytes]
 
     # `body_read`, as the call path offers it: a provider whose key goes in the JSON body
     # (`location: json`) is injected by reading the body whole.
-    request = UpstreamRequest(method=target.ep["method"], raw_headers=tuple(headers),
-                              query_items=tuple(i for i in items if i[0] not in consumed),
+    request = UpstreamRequest(method=ep["method"], raw_headers=headers, query_items=items,
                               body_stream=body_stream, has_body=bool(target.body),
                               body_read=body_read if target.body else None)
     try:
         async with asyncio.timeout(CALL_TIMEOUT_S):
-            response = await relay(request, upstream, tool, {}, client, force_identity=True)
+            response = await relay(request, upstream, tool, {}, client,
+                                   drop_params=consumed or None, force_identity=True)
             try:
                 chunks, size = [], 0
                 async for chunk in response.body_stream:
@@ -272,11 +296,17 @@ async def _ask_b(target: Target, client: httpx.AsyncClient) -> tuple[int, bytes]
     return response.status, b"".join(chunks)
 
 
-def _output(ep: dict, contract, adapter, status: int, raw: bytes, identity: dict):
-    """The contract output of one vendor's answer, read as the router reads a child; None unless a hit."""
+def _judged(ep: dict, contract, adapter, status: int, raw: bytes, identity: dict):
+    """One vendor's answer as the router judges a child on treg's key (`route.child_outcome`,
+    with the plan's canonical identity)."""
     from .call import route
 
-    outcome = route.child_outcome(ep, contract, adapter, status, raw, tier="platform", identity=identity)
+    return route.child_outcome(ep, contract, adapter, status, raw, tier="platform", identity=identity)
+
+
+def _output(ep: dict, contract, adapter, status: int, raw: bytes, identity: dict):
+    """The contract output of one vendor's answer, read as the router reads a child; None unless a hit."""
+    outcome = _judged(ep, contract, adapter, status, raw, identity)
     return outcome.core if outcome.kind == "hit" and outcome.core else None
 
 
@@ -305,16 +335,22 @@ async def _recent(session_factory, since: datetime) -> list[Candidate]:
     return out
 
 
-async def _eligible_teams(session_factory, org_ids: set[int], capabilities: set[str]) -> set[int]:
-    """Teams a comparison may run for: in the archive, not a demo, and holding no access policy at
-    all (no member or project tool ACL, no pin to a tag, no deny rule, no capability pin on a
-    paired capability), so B's call never needs the team's authorization emulated."""
+async def _eligible_teams(session_factory, org_ids: set[int], capabilities: set[str],
+                          since: datetime | None = None) -> set[int]:
+    """Teams a comparison may run for: in the archive, not a demo, that wrote at least one review
+    since `since` (a team whose agents never answer an invitation would leave its pairs unjudged,
+    and busy batch teams would take the whole budget), and holding no access policy at all (no
+    member or project tool ACL, no pin to a tag, no deny rule, no capability pin on a paired
+    capability), so B's call never needs the team's authorization emulated."""
     if not org_ids:
         return set()
     async with session_factory() as db:
         teams = set((await db.execute(select(Org.id).where(
             Org.id.in_(org_ids), Org.archive_opt_out_at.is_(None), Org.demo.is_(False),
             Org.public_demo.is_(False)))).scalars())
+        if teams and since is not None:
+            teams &= set((await db.execute(select(CallReview.org_id).where(
+                CallReview.org_id.in_(teams), CallReview.created_at >= since).distinct())).scalars())
         if not teams:
             return set()
         # JSON columns: an unset value may read back as JSON null, so they are judged here.
@@ -404,24 +440,6 @@ def _day() -> str:
     return f"{utcnow_naive():%Y%m%d}"
 
 
-def _same_request(adapter, identity: dict, query: dict, body) -> bool:
-    """A's adapter, run forward on the recovered input, builds exactly the archived request: the
-    input was read back whole, with nothing an expression set from a field it cannot see."""
-    from ..domain.catalog.routing.contracts import adapter_accepts
-
-    variant = adapter_accepts(adapter, identity)
-    if variant is None:
-        return False
-    try:
-        fwd_query, fwd_body = adapter.to_upstream(identity, variant)
-    except Exception:  # noqa: BLE001 - an adapter that cannot rebuild it: not the same request
-        return False
-    def norm_query(q):
-        return {str(k): str(v) for k, v in (q or {}).items()}
-    return (norm_query(fwd_query) == norm_query(query)
-            and json.loads(json.dumps(fwd_body or {})) == (body or {}))
-
-
 async def _remove_orphans(session_factory) -> int:
     """Comparisons whose team is gone: team deletion removes them, this catches any it missed."""
     async with session_factory() as db:
@@ -438,11 +456,11 @@ async def collect(*, max_seconds: float = 110.0, session_factory=session_maker,
     every run, the feature on or off."""
     from ..domain.capacity.view import view as capacity_view
     from ..domain.catalog.routing.contracts import canonical_identity
-    from ..domain.catalog.shadow import request_identity
     from .arena_insights import _evidence
 
     totals = {"read": 0, "eligible": 0, "called": 0, "ready": 0, "failed": 0, "skipped": 0,
-              "removed": await _remove_orphans(session_factory), "estimate_micro": 0}
+              "removed": await _remove_orphans(session_factory), "estimate_micro": 0,
+              "skip_reasons": {}}
     settings = get_settings()
     if not configured() or settings.compare_rate <= 0:
         return {"status": "off", **totals}
@@ -456,7 +474,8 @@ async def collect(*, max_seconds: float = 110.0, session_factory=session_maker,
     async with session_factory() as db:
         done = set((await db.execute(select(CallComparison.call_ref).where(
             CallComparison.call_ref.in_([c.record.call_ref for c in found])))).scalars()) if found else set()
-    teams = await _eligible_teams(session_factory, {c.record.org_id for c in found}, set(pairs()))
+    teams = await _eligible_teams(session_factory, {c.record.org_id for c in found}, set(pairs()),
+                                 since=now - timedelta(days=settings.compare_window_days))
     found = [c for c in found if c.record.org_id in teams and c.record.call_ref not in done]
     totals["eligible"] = len(found)
     cat = catalog_store.load()
@@ -471,13 +490,17 @@ async def collect(*, max_seconds: float = 110.0, session_factory=session_maker,
                 break
             try:
                 outcome = await _one(cand, cat, now, session_factory, client, store, totals,
-                                     canonical_identity, request_identity, _evidence)
+                                     canonical_identity, _evidence)
             except Exception:
                 log.warning("comparison for %s failed", cand.record.call_ref, exc_info=True)
-                outcome = "skipped"
+                outcome = "skipped:error"
             if outcome == "at_limit":
                 break
+            outcome, _, reason = outcome.partition(":")
             totals[outcome] += 1
+            if reason:
+                reasons = totals["skip_reasons"]
+                reasons[reason] = reasons.get(reason, 0) + 1
     finally:
         if own_client:
             await client.aclose()
@@ -485,14 +508,22 @@ async def collect(*, max_seconds: float = 110.0, session_factory=session_maker,
 
 
 async def _one(cand, cat, now, session_factory, client, store, totals,
-               canonical_identity, request_identity, _evidence) -> str:
-    """One candidate, to `ready`, `failed`, `skipped` or `at_limit`."""
+               canonical_identity, _evidence) -> str:
+    """One candidate, to `ready`, `failed`, `skipped:<reason>` or `at_limit`. The reasons are
+    counted in the run's output (`skip_reasons`), so an empty run says where candidates stopped."""
     settings = get_settings()
     parent = cand.record
     # The call path wrote this marker: the call sampled in, on a paired capability, with no
     # `X-Treg-Route-*` header. No marker, or a store that cannot say, is no comparison.
-    if not await store.has_flag(marker_key(parent.call_ref)):
-        return "skipped"
+    marker = await store.get_text(marker_key(parent.call_ref))
+    if marker is None:
+        return "skipped:no_marker"
+    try:
+        given = json.loads(marker)
+    except ValueError:
+        given = None
+    if not isinstance(given, dict):
+        return "skipped:marker_without_input"
     async with session_factory() as db:
         child = await _served_child(db, parent)
         a_ep = cat.by_id.get(child.endpoint_id or "") if child is not None else None
@@ -501,22 +532,39 @@ async def _one(cand, cat, now, session_factory, client, store, totals,
             db, parent.org_id, cand.capability, (a_ep["provider"], b_provider),
             since=now - timedelta(days=settings.compare_window_days),
             ready_since=now - timedelta(days=READY_DAYS)) if b_provider else 0
-    if (child is None or b_provider is None or child.credential_tier != "platform"
-            or not child.archive_key_hash or _retention_forbidden(child.endpoint_id)
-            or counted >= settings.compare_team_cap):
-        return "skipped"
+    if child is None:
+        return "skipped:no_served_child"
+    if b_provider is None:
+        return "skipped:a_not_on_a_pair"
+    if child.credential_tier != "platform":
+        return "skipped:a_not_on_treg_key"
+    if not child.archive_key_hash:
+        return "skipped:a_not_archived"
+    if _retention_forbidden(child.endpoint_id):
+        return "skipped:a_retention_forbidden"
+    if counted >= settings.compare_team_cap:
+        return "skipped:team_pair_cap"
     got = (await _evidence([child], session_factory)).get(child.id)
     contract, a_adapter = cat.contracts.get(cand.capability), cat.adapters.get(child.endpoint_id)
-    if got is None or got[2] is None or contract is None or a_adapter is None:
-        return "skipped"
-    query, body, answer = got
-    identity, variant = canonical_identity(contract, request_identity(a_adapter, query, body))
-    if variant is None or not _same_request(a_adapter, identity, query, body):
-        return "skipped"
+    if got is None:
+        return "skipped:a_archive_unreadable"
+    if got[2] is None:
+        return "skipped:a_answer_missing"
+    if contract is None or a_adapter is None:
+        return "skipped:no_contract_or_adapter"
+    _query, _body, answer = got
+    # The question the caller asked, from the marker: no reading it back from A's request.
+    identity, variant = canonical_identity(contract, dict(given))
+    if variant is None:
+        return "skipped:input_not_recovered"
     a_output = _output(a_ep, contract, a_adapter, 200, json.dumps(answer).encode(), identity)
     target = _b_target(contract, identity, b_provider)
-    if a_output is None or target is None or not await _still_eligible(session_factory, parent.org_id):
-        return "skipped"
+    if a_output is None:
+        return "skipped:a_output_unreadable"
+    if target is None:
+        return "skipped:b_unavailable"
+    if not await _still_eligible(session_factory, parent.org_id):
+        return "skipped:team_no_longer_eligible"
     claimed = await _claim(session_factory, dict(
         org_id=parent.org_id, user_email=parent.user_email, call_ref=parent.call_ref,
         capability=cand.capability, a_endpoint=child.endpoint_id, a_provider=a_ep["provider"],
@@ -527,19 +575,21 @@ async def _one(cand, cat, now, session_factory, client, store, totals,
     if claimed == "at_limit":
         return "at_limit"
     if claimed != "claimed":
-        return "skipped"
+        return f"skipped:claim_{claimed}"
     if totals["called"]:
         await asyncio.sleep(CALL_GAP_S)
     totals["called"] += 1
     totals["estimate_micro"] += target.price_micro
     try:
-        status, raw = await _ask_b(target, client)
+        status, raw = await _ask_b(target, client, parent.org_id)
     except Exception:
         log.warning("compare call %s for %s failed", target.ep["id"], parent.call_ref, exc_info=True)
         status, raw = 0, b""
-    log.info("compare call %s for %s: status %s, catalog price %s micro-USD",
-             target.ep["id"], parent.call_ref, status, target.price_micro)
-    b_output = _output(target.ep, contract, target.adapter, status, raw, identity) if status else None
+    judged = _judged(target.ep, contract, target.adapter, status, raw, identity) if status else None
+    log.info("compare call %s for %s: status %s, read as %s%s, catalog price %s micro-USD",
+             target.ep["id"], parent.call_ref, status, judged.kind if judged else "no answer",
+             f" ({', '.join(judged.why)})" if judged and judged.why else "", target.price_micro)
+    b_output = judged.core if judged is not None and judged.kind == "hit" and judged.core else None
     if b_output is None:
         values = {"status": comparisons.FAILED}
     else:
@@ -555,7 +605,7 @@ async def _one(cand, cat, now, session_factory, client, store, totals,
                       truncated=",".join(p for p, cut in (("input", input_cut), ("a", a_cut),
                                                           ("b", b_cut)) if cut))
     if not await _finish(session_factory, parent.org_id, parent.call_ref, values):
-        return "skipped"
+        return "skipped:team_deleted"
     if b_output is None:
         return "failed"
     await store.set_flag(ready_key(parent.org_id), READY_TTL_S)

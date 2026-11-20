@@ -230,9 +230,9 @@ writes; a fault can only lose the header. Sampling rates default to 0.
   never retain exception messages, keys, owner tokens or store URLs.
 - Org admission and quotas: [org-flow-control](org-flow-control.md),
   [org-endpoint-quota](org-endpoint-quota.md).
-- Pairwise comparisons: a call's eligibility marker and the per-team ready flag (`set_flag`,
-  `has_flag`, `clear_flag`). Both fail closed: an unread marker compares nothing, an unread flag
-  invites nobody.
+- Pairwise comparisons: a call's eligibility marker, a short text holding the caller's input
+  (`set_text`, `get_text`), and the per-team ready flag (`set_flag`, `has_flag`, `clear_flag`).
+  Both fail closed: an unread marker compares nothing, an unread flag invites nobody.
 - Routed child health (`note_route_health`, `read_route_health`, and a `take` for the probe turn):
   best-effort time buckets that expire with their window; a fault loses a count or reads as no
   evidence ([catalog](catalog.md), "Child guards").
@@ -247,12 +247,16 @@ which serves it better. It separates vendors a usefulness score cannot, and the 
 Results are internal; nothing here is published or changes routing.
 
 **The marker, on the call path.** After a successful routed answer, `application.call.service`
-calls `compare.mark_eligible(call_ref, capability, raw_headers)`: when the feature is configured
-(`compare_pairs` set, `compare_max_per_day` above 0), the capability has a valid pair, the request
-carried no `X-Treg-Route-*` header (a caller that chose vendors or routing is left alone) and
-`hints.sampled_at("compare", call_ref, compare_rate)` samples it in, it sets
-`compare-ok:<call_ref>` in the shared store for two hours (`MARKER_TTL_S`), inside a short
-timeout. No database, no change to the answer, nothing raised: a lost marker only means the call is
+calls `compare.mark_eligible(call_ref, capability, raw_headers, route_summary, archive_opted_out=...)`:
+when the feature is configured (`compare_pairs` set, `compare_max_per_day` above 0), the capability
+has a valid pair, the request carried no `X-Treg-Route-*` header (a caller that chose vendors or
+routing is left alone), the team keeps an archive and `hints.sampled_at("compare", call_ref,
+compare_rate)` samples it in, it writes `compare-ok:<call_ref>` in the shared store for two hours
+(`MARKER_TTL_S`), inside a short timeout. The value is the contract input the caller sent
+(`route_summary["identity"]`, the body minus a page cursor) as JSON, at most
+`MARKER_INPUT_MAX_BYTES`; a larger input writes no marker. A page continuation (a `cursor` in
+the summary) is never marked: B would be asked page one against A's later page. A team opted out of the archive gets no
+marker, so its input never sits in the store. No database, no change to the answer, nothing raised: a lost marker only means the call is
 never compared. It is the only work on the call path.
 
 **The run.** `treg-worker compare collect` (`application.compare.collect`), meant for an hourly
@@ -268,7 +272,9 @@ the capability, and logs the rest. Each run:
    `created_at` within `compare_lookback_hours` (at most two, the marker's life), newest first, at
    most `SCAN_PER_CAPABILITY` (one ordered range of the `(endpoint_id, created_at)` index each), 2xx
    and `credential_tier` routed; drops calls already compared.
-4. Keeps calls of eligible teams only: not opted out of the archive, not a demo, and holding no
+4. Keeps calls of eligible teams only: not opted out of the archive, not a demo, with at least one
+   review in `compare_window_days` (a team whose agents never answer an invitation would leave its
+   pairs unjudged, and busy batch teams would take the day's budget), and holding no
    access policy at all (a member or project tool ACL, a member pinned to tags, a deny rule, or a
    capability pin on a paired capability). A team with any is skipped, so the run never has to
    emulate a team's authorization.
@@ -279,18 +285,17 @@ the capability, and logs the rest. Each run:
    retention-allowed endpoint; its provider A on a pair, B the other side; the team under
    `compare_team_cap` comparisons of this capability and pair (either order) in
    `compare_window_days`, counting decided ones and pending or ready ones younger than three days.
-6. The contract input and A's answer come from the archive record of that child
-   (`arena_insights._evidence`): A's provider request read back through A's adapter `in` map
-   (`domain.catalog.shadow.request_identity`), canonicalized, then run forward through A's adapter;
-   only when that rebuilds exactly the archived request is the input whole. A field set by an
-   expression from something the request does not carry (a limit, a derived parameter) fails it,
-   and the call is skipped. A's answer is read through A's adapter (`route.child_outcome`); only a
-   hit goes on.
-7. B's target: an endpoint of the capability whose verified adapter takes and scopes the input
-   (`route: true` is not needed), on a provider with a pasted-key credential shape, not paused,
-   platform-eligible with every platform credential its bindings name, not exhausted on treg's
-   primary account, retention allowed, priced, with no second host or path parameter. B's adapter
-   builds the request (`to_upstream`).
+6. The contract input is the marker's value, canonicalized (`canonical_identity`): exactly the
+   question the caller asked, so nothing is read back from A's provider request. A marker without
+   an input (an older one) is skipped. A's answer comes from the archive record of that child
+   (`arena_insights._evidence`), read through A's adapter (`route.child_outcome`); only a hit goes
+   on.
+7. B's target: an endpoint the router itself would ask for this input (`plan.candidates_for`, so
+   a routing adapter: a judge-only `route: false` adapter builds no request; then `build_plan`'s
+   filter cap, declaration and scope checks), on a provider with a pasted-key credential shape, not
+   paused, platform-eligible with every platform credential its bindings name, not exhausted on
+   treg's primary account, retention allowed, priced, with no second host or path parameter. B's
+   adapter builds the request (`to_upstream`) with the router's variant.
 8. Right before sending, the team is read again: it still exists, is not suspended, has no active
    flow-control pause (`org_flow_control.confirmed_unpaused`: a fresh read; a read that fails, an
    invalid publication or a pause in force all skip, unlike admission, which allows on failure),
@@ -304,11 +309,19 @@ the capability, and logs the rest. Each run:
    concurrent or later). A crash after the claim leaves `pending`: it still counts and is never
    resent. The day's count is no team's row, so deleting a team gives no quota back.
 10. One request, through the relay alone (`infra.upstream.relay.relay`) on treg's primary key
-    (`platform_bindings`), with `body_read` as the call path offers it (a key that goes in the JSON
-    body is injected from it) and treg's User-Agent: no router, no fallback, no overflow, no hold,
-    no ledger entry, no archive record, no capacity mark. Calls are `CALL_GAP_S` apart. The catalog
-    price of the request is logged and stored as `b_cost_micro`.
-11. B's answer is read through B's adapter, so both are contract `output`. The row is settled to
+    (`platform_bindings`): the request the router's first child call on treg's key sends for the
+    team's question. The adapter's values go to the relay unformatted (a `false` reaches the vendor
+    as `false`), the body as `route._child_body`, path parameters dropped as the call path drops
+    them, with the call path's rewrites: treg's User-Agent, the provider's client header for the
+    team (`tag_shared_client`) and its ceiling parameter at the router's default ceiling
+    (`service.ceiling_query`). `body_read` is offered as the call path offers it (a key that goes in
+    the JSON body is injected from it). No router, no fallback, no overflow, no hold, no ledger
+    entry, no archive record, no capacity mark. Calls are `CALL_GAP_S` apart. The catalog price of
+    the request is logged and stored as `b_cost_micro`.
+11. B's answer is read through B's adapter as the router reads a child on treg's key
+    (`route.child_outcome` with the canonical identity: a `question_miss`, such as no row on a
+    `site:` the question names, is a miss), so both are contract `output`; the log line names the
+    outcome and its reasons, never the body. The row is settled to
     `ready` only on a hit; anything else (an error, no answer, a miss) settles it `failed`, with no
     bodies, and nothing else is called. If the team was deleted meanwhile, the row is taken back.
 

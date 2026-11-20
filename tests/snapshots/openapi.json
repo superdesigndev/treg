@@ -1047,10 +1047,26 @@
         "title": "OnboardIn",
         "type": "object"
       },
+      "OnboardTeamIn": {
+        "properties": {
+          "ref": {
+            "default": "",
+            "title": "Ref",
+            "type": "string"
+          }
+        },
+        "title": "OnboardTeamIn",
+        "type": "object"
+      },
       "OrgIn": {
         "properties": {
           "name": {
             "title": "Name",
+            "type": "string"
+          },
+          "ref": {
+            "default": "",
+            "title": "Ref",
             "type": "string"
           }
         },
@@ -10155,6 +10171,23 @@
             }
           }
         ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "anyOf": [
+                  {
+                    "$ref": "#/components/schemas/OnboardTeamIn"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "Body"
+              }
+            }
+          }
+        },
         "responses": {
           "200": {
             "content": {

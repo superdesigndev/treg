@@ -1,0 +1,19 @@
+{
+  "request_id": "1039995589705121900",
+  "webhook_status": "skipped",
+  "request_type": "phone",
+  "webhook_result": {
+    "status": "success",
+    "credits_consumed": 8,
+    "people": [{
+      "id": "example-person-id",
+      "status": "success",
+      "phone_numbers": [{
+        "raw_number": "+1 202-555-0116",
+        "sanitized_number": "+12025550116",
+        "type_cd": "mobile",
+        "status_cd": "valid_number"
+      }]
+    }]
+  }
+}

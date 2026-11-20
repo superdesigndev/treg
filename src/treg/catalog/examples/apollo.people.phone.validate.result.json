@@ -1,0 +1,19 @@
+{
+  "request_id": "5139398567364803549",
+  "webhook_status": "skipped",
+  "webhook_result": {
+    "action": "phone_verifier",
+    "action_type": "tool",
+    "status": "success",
+    "credits_consumed": 8,
+    "total_requested_enrichments": 1,
+    "total_failures": 0,
+    "results": [{
+      "id": "example-record-id",
+      "phone": "+12025550143",
+      "validation_status": "not_validated",
+      "validator": "trestle",
+      "data_sources": []
+    }]
+  }
+}

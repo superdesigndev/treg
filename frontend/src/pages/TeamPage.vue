@@ -619,7 +619,7 @@ export default {
                         </span>
                       </label>
                       <p class="sub" style="margin:8px 0 0">
-                        <template v-if="billing.autotopup.enabled">On - we add {{money(billing.autotopup.amount_micro)}}<span v-if="tierBonus(billing.autotopup.amount_micro/1e6)" style="color:var(--green)"> + {{money(tierBonus(billing.autotopup.amount_micro/1e6))}} bonus</span> whenever the balance drops below {{money(billing.autotopup.threshold_micro)}}, up to {{billing.autotopup.per_hour}} times per hour. This month: {{money(billing.autotopup.month_spend_micro)}} of the {{money(billing.autotopup.monthly_cap_micro)}} monthly limit.
+                        <template v-if="billing.autotopup.enabled">On - we add {{money(billing.autotopup.amount_micro)}}<span v-if="tierBonus(billing.autotopup.amount_micro/1e6)" style="color:var(--green)"> + {{money(tierBonus(billing.autotopup.amount_micro/1e6))}} bonus</span> whenever the balance drops below {{money(billing.autotopup.threshold_micro)}}, up to {{billing.autotopup.per_hour}} times per hour. This month: {{money(billing.autotopup.month_spend_micro)}}<template v-if="billing.autotopup.monthly_cap_micro"> of the {{money(billing.autotopup.monthly_cap_micro)}} monthly limit</template><template v-else>, no monthly limit</template>.
                           <a href="#" @click.prevent="autoOpen=!autoOpen;autoConsent=false">{{autoOpen?'Cancel':'Edit'}}</a></template>
                         <template v-else>Keep agents running without watching the balance. We charge your saved card only when it dips below your threshold.<template v-if="maxBonusPct"> Bigger refills earn bonus credit, up to +{{maxBonusPct}}% on every refill.</template></template>
                       </p>
@@ -641,8 +641,8 @@ export default {
                         </div>
                         <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-top:8px">
                           <span class="sub" style="margin:0">Monthly limit: $</span>
-                          <input class="msel" style="width:90px" type="number" min="0" v-model.number="autoMonthlyCap" placeholder="2000"/>
-                          <span class="sub" style="margin:0;color:var(--muted)">(0 = default ${{billing.topup.max_usd}})</span>
+                          <input class="msel" style="width:90px" type="number" min="0" v-model.number="autoMonthlyCap" placeholder="none"/>
+                          <span class="sub" style="margin:0;color:var(--muted)">(optional; empty or 0 = no limit)</span>
                         </div>
                         <p class="sub" style="margin:8px 0 0">
                           <template v-if="tierBonus(autoAmount)">Each refill adds <b>{{money(autoAmount*1e6+tierBonus(autoAmount))}}</b> ({{money(autoAmount*1e6)}} + <span style="color:var(--green)">{{money(tierBonus(autoAmount))}} bonus</span>).</template>

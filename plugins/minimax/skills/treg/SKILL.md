@@ -35,6 +35,7 @@ or the CLI is enough, and having both is fine.
    treg login                            # browser sign-in; tell the human the short code it prints, to type on that page
    treg login --email you@company.com    # an emailed 6-digit code
    treg login --token <team-token>       # non-interactive, for agents and CI
+   treg login --ref <code>               # binary CLI only: an affiliate partner's code the human gave you
    ```
 
 3. **Neither**: treg is not set up here. Run the installer only when the human asked you to set treg
