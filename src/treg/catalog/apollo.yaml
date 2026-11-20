@@ -115,14 +115,14 @@ endpoints:
       unit: call
       settle: usage
       usage: {path: webhook_result.credits_consumed, unit: credit}
-      non_deferred_charge: {path: person.id, value: 1}
+      non_deferred_charge: {path: person.email, value: 1}
       fallback: {value: 9, note: "The documented maximum is one demographic credit plus eight for a phone; missing terminal usage settles at this estimate for review."}
       worst_case: 9
       source: docs
       source_url: https://docs.apollo.io/docs/api-pricing
       checked: '2026-11-20'
       confidence: documented
-      note: "A matched 2xx answer without a pending phone job returns person data and settles one demographic credit. Pending phone jobs settle from Apollo's terminal credit meter."
+      note: "A submission carrying person.email adds one demographic credit to the terminal phone meter, or settles one credit immediately when no phone job starts. A non-pending no-email stub is free."
     verified: '2026-11-20'
     example_response: examples/apollo.people.phone.find.json
     terminal_example_response: examples/apollo.people.phone.result.json

@@ -244,7 +244,7 @@ def usage_evidence(basis: dict, evidence: dict[str, Any]) -> float | None:
 
 
 def non_deferred_charge_micro(basis: dict, document: object) -> int:
-    """A frozen charge for a useful 2xx answer that starts no trackable async task."""
+    """A frozen charge for data present in a submission, with or without a trackable task."""
     rule = (basis.get("amount") or {}).get("non_deferred_charge") or {}
     return int(rule.get("micro") or 0) if _path(document, str(rule.get("path") or "")) else 0
 
@@ -271,7 +271,7 @@ def settle(basis: dict, evidence: dict[str, Any]) -> int:
         # Bases frozen before `unit_micro` existed carry only `unit: usd`.
         per_unit = amount.get("unit_micro") or (1_000_000 if amount.get("unit") == "usd" else None)
         if value is not None and isinstance(per_unit, int) and per_unit > 0:
-            return _micro(float(value), per_unit)
+            return _micro(float(value), per_unit) + max(0, int(basis.get("submission_charge_micro") or 0))
         # A successful task whose terminal response no longer carries the usage field (or whose
         # meter has no frozen rate): the caller got their result, so they pay - the reserve (the
         # rate-card estimate), not the ceiling. The worker marks the row for review.

@@ -590,8 +590,12 @@ async def test_owned_terminal_poll_finalizes_original_task_before_response(
     assert (await task_app.settle_due()).claimed == 0
 
 
+@pytest.mark.parametrize(("email", "settled_micro"), [
+    ("person@example.com", 234_000),
+    (None, 208_000),
+])
 async def test_apollo_platform_phone_poll_is_owned_and_settles_reported_credits_once(
-    clients: AsyncClient, monkeypatch,
+    clients: AsyncClient, monkeypatch, email: str | None, settled_micro: int,
 ):
     monkeypatch.setenv("TREG_PLATFORM_KEY_APOLLO", "PLATFORM-APOLLO-KEY")
     monkeypatch.setenv("TREG_PLATFORM_PROVIDERS", "apollo")
@@ -600,7 +604,7 @@ async def test_apollo_platform_phone_poll_is_owned_and_settles_reported_credits_
     try:
         async def submit(*args, **kwargs):
             return _response(200, {
-                "person": {"id": "example-person-id"},
+                "person": {"id": "example-person-id", "email": email},
                 "phone_enrichment": {"status": "pending"},
                 "request_id_str": request_id,
             })
@@ -614,6 +618,7 @@ async def test_apollo_platform_phone_poll_is_owned_and_settles_reported_credits_
         async with session_maker() as db:
             task = await db.get(AsyncTaskRecord, call_id)
             assert task.status == "pending" and task.reserved_micro >= 234_000
+            assert task.settlement_basis.get("submission_charge_micro") == (26_000 if email else None)
             assert await db.get(Hold, call_id) is not None
 
         polled_count = 0
@@ -654,7 +659,7 @@ async def test_apollo_platform_phone_poll_is_owned_and_settles_reported_credits_
         assert polled_count == 2
         async with session_maker() as db:
             task = await db.get(AsyncTaskRecord, call_id)
-            assert task.status == "settled" and task.settled_micro == 208_000
+            assert task.status == "settled" and task.settled_micro == settled_micro
             assert await db.get(Hold, call_id) is None
         repeated = await clients.get(f"/call/apollo.people.phone.result?request_id={request_id}")
         assert repeated.status_code == 200
@@ -673,7 +678,7 @@ async def test_apollo_platform_phone_no_task_releases_hold(clients: AsyncClient,
     try:
         async def no_match(*args, **kwargs):
             return _response(200, {
-                "person": {"match_confidence": "none"},
+                "person": {"id": "unmatched-stub", "match_confidence": "none"},
                 "phone_enrichment": {"status": "not_attempted"},
                 "request_id_str": "1039995589705121900",
             })
@@ -701,7 +706,8 @@ async def test_apollo_platform_phone_matched_without_pending_job_charges_person_
     try:
         async def matched(*args, **kwargs):
             return _response(200, {
-                "person": {"id": "example-person-id", "match_confidence": "high"},
+                "person": {"id": "example-person-id", "email": "person@example.com",
+                           "match_confidence": "high"},
                 "phone_enrichment": {"status": "not_attempted"},
             })
 

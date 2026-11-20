@@ -2,6 +2,7 @@
   "person": {
     "id": "example-person-id",
     "name": "Example Person",
+    "email": "person@example.com",
     "organization": {"name": "Example Inc"}
   },
   "phone_enrichment": {"status": "pending", "request_id": "example-internal-id"},
