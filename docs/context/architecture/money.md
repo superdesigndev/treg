@@ -241,12 +241,14 @@ it, and an add that arrives in another run is refused as `"stale"`: the money st
 hold, and the next refill reads the debts again. A store that cannot report its run answers
 no operation, and calls take the hold path.
 
-A refill that finds no counter for its hold and can add nothing leaves the hold's deadline
-where it was. There is no counter to keep fresh, calls admitted earlier are covered by the
-stamp they were admitted under, and a deadline moved on by every failed attempt would keep
-the sweep from returning the money for as long as calls arrive. That is the team whose
-credit was all in its hold when the counter went: until the sweep closes the hold its calls
-see only the balance.
+A refill that leaves the counter with nothing to offer leaves the hold's deadline where it
+was: it added nothing, and the counter is gone or shows nothing. The deadline is until when
+calls may be admitted, and such a refill admits none; calls admitted earlier are covered by
+the stamp they were admitted under, and a deadline moved on by every failed attempt would
+keep the sweep from returning what is in the hold for as long as calls arrive. That is the
+team whose credit was all in its hold when the counter went, and it stays so after a refill
+that needed nothing (the one ahead of the deadline) has published an empty counter for the
+hold: until the sweep closes the hold its calls see only the balance.
 
 What this does not see is a server that goes back to older data without starting again: a
 reload in place, or one that kept running, took older data from another primary and became

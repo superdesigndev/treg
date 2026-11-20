@@ -290,7 +290,7 @@ async def _refill(org_id: int, need_micro: int, daily_cap_micro: int) -> bool:
             result = await allowance.refill_allowance_in_transaction(
                 db, org_id, max(0, target - available), daily_cap_micro=daily_cap_micro,
                 fold_limit=0, fold_all=seen_frozen != thawed,
-                counter_epoch=counter_epoch, fresh_add_micro=target,
+                counter_epoch=counter_epoch, fresh_add_micro=target, counter_micro=available,
                 current_daily_cap=functools.partial(_current_daily_cap, org_id))
             await db.commit()
     except money_admission.ReserveAdmissionTimeout:

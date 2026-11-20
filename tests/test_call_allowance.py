@@ -1009,6 +1009,7 @@ async def test_a_hold_no_refill_can_rebuild_a_counter_for_keeps_its_deadline(
     async with session_maker() as db:
         stamped = next(h for h in await ledger.open_holds_of(db, org_id) if h.allowance).heartbeat_at
     store.restart()
+    await runtime._refill(org_id, 0, 0)  # the refresh ahead of the deadline, which needs nothing
     for _ in range(3):
         monkeypatch.setattr(runtime, "_refused_until", {})
         assert await runtime.take(org_id, 600) is None
