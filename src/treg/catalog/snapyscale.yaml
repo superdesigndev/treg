@@ -1,0 +1,91 @@
+provider: snapyscale
+source:
+  docs: https://api.snapyscale.co/docs
+  openapi: https://api.snapyscale.co/openapi.json
+  curated: '2026-11-05'
+pricing_url: https://api.snapyscale.co/pricing
+limits: "Limited pilot with account-specific daily quotas, two simultaneous SMTP checks, one check per target domain, and two simultaneous finder requests. Busy requests return 429 with Retry-After. No throughput SLA."
+cache: forbidden
+response_retention: forbidden
+endpoints:
+  - id: snapyscale.people.email.verify
+    added: '2026-11-05'
+    domain: contacts
+    capability: people.email.verify
+    platform: people
+    scope: any_account
+    method: POST
+    path: /v1/email/verify
+    name: Verify an email address
+    summary: Check mailbox acceptance while keeping invalid, risky, and unknown results distinct.
+    platform_blocked: "Pilot supplier settlement and shared-key capacity require maintainer coordination."
+    input:
+      bodyType: json
+      headers:
+        Idempotency-Key: {type: string, required: false, note: "Replay the same body for 24 hours without another upstream ledger charge."}
+      body:
+        email: {type: string, required: true, example: test@example.com}
+      note: "Unsupported syntax returns 422 without a charge. Only valid and invalid results are billable; risky and unknown are free."
+    test_request: {body: {email: test@example.com}}
+    cost:
+      type: per_success
+      value: 0.00085
+      currency: USD
+      per: 1
+      unit: call
+      reported_charge: {path: billing.charge_usd, unit: usd}
+      source: rate_card_api
+      source_url: https://api.snapyscale.co/pricing
+      checked: '2026-11-05'
+      confidence: documented
+      note: "Pilot usage ledger; payment is arranged separately. Reported zero is authoritative. Original receipts replay without another upstream charge."
+    miss:
+      status: 200
+      when: "billing.units == 0"
+      means: "No billable result."
+    docs_url: https://api.snapyscale.co/docs
+    verified: '2026-11-05'
+    example_response: examples/snapyscale.people.email.verify.json
+    note: "Limited pilot. SMTP acceptance does not prove mailbox ownership or current employment."
+  - id: snapyscale.people.email.find
+    added: '2026-11-05'
+    domain: contacts
+    capability: people.email.find
+    platform: people
+    scope: any_account
+    method: POST
+    path: /v1/email/find
+    name: Find an email from a full name and domain
+    summary: Test full-name mailbox patterns and return an SMTP-verified candidate; ownership is not established.
+    platform_blocked: "Pilot supplier settlement and shared-key capacity require maintainer coordination."
+    input:
+      bodyType: json
+      headers:
+        Idempotency-Key: {type: string, required: false, note: "Replay the same body for 24 hours without another upstream ledger charge."}
+      body:
+        first_name: {type: string, required: false, example: Jane}
+        last_name: {type: string, required: false, example: Smith}
+        full_name: {type: string, required: false}
+        domain: {type: string, required: true, example: example.com}
+      note: "Supply first_name and last_name OR a two-part full_name. Six full-name patterns maximum; no first-name-only fallback. Catch-all domains are ambiguous, never a paid find."
+    test_request: {body: {first_name: Jane, last_name: Smith, domain: example.com}}
+    cost:
+      type: per_success
+      value: 0.005
+      currency: USD
+      per: 1
+      unit: call
+      reported_charge: {path: billing.charge_usd, unit: usd}
+      source: rate_card_api
+      source_url: https://api.snapyscale.co/pricing
+      checked: '2026-11-05'
+      confidence: documented
+      note: "Pilot usage ledger; payment is arranged separately. Reported zero is authoritative. Original receipts replay without another upstream charge."
+    miss:
+      status: 200
+      when: "billing.units == 0"
+      means: "No billable result."
+    docs_url: https://api.snapyscale.co/docs
+    verified: '2026-11-05'
+    example_response: examples/snapyscale.people.email.find.json
+    note: "Limited pilot. SMTP acceptance does not prove mailbox ownership or current employment."
