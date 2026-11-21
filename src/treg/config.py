@@ -207,6 +207,8 @@ class Settings(BaseSettings):
     # A team holding this many comparisons of one capability and pair in the window is not sampled.
     compare_team_cap: int = Field(default=10, ge=1)
     compare_window_days: int = Field(default=14, ge=1)
+    # A team is compared only if its agent answered a review invitation on the team MCP this recently.
+    compare_answer_days: int = Field(default=7, ge=1)
     compare_max_answer_bytes: int = Field(default=65536, ge=1024)
     # The shared key-value store (Redis protocol). Empty = an in-process fallback; see infra/kv.py.
     kv_url: str = ""

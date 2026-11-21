@@ -43,6 +43,9 @@ from ..timeutil import utcnow_naive
 log = logging.getLogger(__name__)
 
 READY_TTL_S = 3 * 86400
+# The `CallReview.client` of a review written on the team MCP: its review tool and a verdict
+# riding on the next call (`mcp.PRIOR_CLIENT`). Only that surface shows a compare invitation.
+INVITE_ANSWERING_CLIENTS = ("mcp", "mcp-prior")
 # A call's eligibility marker lives this long; a run never looks further back.
 MARKER_TTL_S = 2 * 3600
 MARKER_TIMEOUT_S = 0.2
@@ -337,9 +340,11 @@ async def _recent(session_factory, since: datetime) -> list[Candidate]:
 
 async def _eligible_teams(session_factory, org_ids: set[int], capabilities: set[str],
                           since: datetime | None = None) -> set[int]:
-    """Teams a comparison may run for: in the archive, not a demo, that wrote at least one review
-    since `since` (a team whose agents never answer an invitation would leave its pairs unjudged,
-    and busy batch teams would take the whole budget), and holding no access policy at all (no
+    """Teams a comparison may run for: in the archive, not a demo, whose agent answered at least one
+    review invitation on the team MCP since `since` (only that surface shows the compare
+    invitation, and a team whose agent never answers one there, such as a pipeline that calls
+    without reading hints, would leave its pairs unjudged and take the whole budget), and holding
+    no access policy at all (no
     member or project tool ACL, no pin to a tag, no deny rule, no capability pin on a paired
     capability), so B's call never needs the team's authorization emulated."""
     if not org_ids:
@@ -350,7 +355,9 @@ async def _eligible_teams(session_factory, org_ids: set[int], capabilities: set[
             Org.public_demo.is_(False)))).scalars())
         if teams and since is not None:
             teams &= set((await db.execute(select(CallReview.org_id).where(
-                CallReview.org_id.in_(teams), CallReview.created_at >= since).distinct())).scalars())
+                CallReview.org_id.in_(teams), CallReview.created_at >= since,
+                CallReview.invited.is_(True), CallReview.client.in_(INVITE_ANSWERING_CLIENTS),
+            ).distinct())).scalars())
         if not teams:
             return set()
         # JSON columns: an unset value may read back as JSON null, so they are judged here.
@@ -475,7 +482,7 @@ async def collect(*, max_seconds: float = 110.0, session_factory=session_maker,
         done = set((await db.execute(select(CallComparison.call_ref).where(
             CallComparison.call_ref.in_([c.record.call_ref for c in found])))).scalars()) if found else set()
     teams = await _eligible_teams(session_factory, {c.record.org_id for c in found}, set(pairs()),
-                                 since=now - timedelta(days=settings.compare_window_days))
+                                 since=now - timedelta(days=settings.compare_answer_days))
     found = [c for c in found if c.record.org_id in teams and c.record.call_ref not in done]
     totals["eligible"] = len(found)
     cat = catalog_store.load()
