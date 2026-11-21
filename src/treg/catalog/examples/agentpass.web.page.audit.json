@@ -1,0 +1,241 @@
+{
+  "url": "https://example.com",
+  "finalUrl": "https://example.com/",
+  "scannedAt": "2026-11-20T01:34:34.216Z",
+  "engine": "ARI-100",
+  "score": 38,
+  "core": 38,
+  "bonus": 0,
+  "bonusSignals": [],
+  "grade": "F",
+  "gradeLabel": "Unreadable",
+  "level": 0,
+  "accessScore": 100,
+  "accessCoverage": {
+    "tested": 21,
+    "of": 21
+  },
+  "a11yScore": 78,
+  "a11yReport": {
+    "score": 78,
+    "checks": {
+      "img-alt": {
+        "result": "not_applicable",
+        "note": "0/0 missing alt"
+      },
+      "form-label": {
+        "result": "not_applicable",
+        "note": "0 unlabelled"
+      },
+      "control-name": {
+        "result": "not_applicable",
+        "note": "see structure check"
+      },
+      "media-dims": {
+        "result": "not_applicable",
+        "note": "0 without dimensions"
+      },
+      "aria-refs": {
+        "result": "not_applicable",
+        "note": ""
+      },
+      "iframe-title": {
+        "result": "not_applicable",
+        "note": "0 iframes"
+      },
+      "heading-levels": {
+        "result": "not_applicable",
+        "note": "0 skipped"
+      },
+      "tabindex": {
+        "result": "pass",
+        "note": ""
+      },
+      "zoom": {
+        "result": "pass",
+        "note": ""
+      },
+      "doc-title": {
+        "result": "pass",
+        "note": ""
+      },
+      "label-in-name": {
+        "result": "pass",
+        "note": ""
+      },
+      "skip-link": {
+        "result": "fail",
+        "note": ""
+      },
+      "lang-valid": {
+        "result": "fail",
+        "note": ""
+      },
+      "aria-hidden-focus": {
+        "result": "pass",
+        "note": ""
+      },
+      "nested-interactive": {
+        "result": "pass",
+        "note": ""
+      },
+      "empty-heading": {
+        "result": "not_applicable",
+        "note": ""
+      },
+      "meta-refresh": {
+        "result": "pass",
+        "note": ""
+      },
+      "autocomplete": {
+        "result": "not_applicable",
+        "note": ""
+      },
+      "table-headers": {
+        "result": "not_applicable",
+        "note": ""
+      },
+      "svg-title": {
+        "result": "not_applicable",
+        "note": ""
+      },
+      "captions": {
+        "result": "not_applicable",
+        "note": ""
+      },
+      "list-structure": {
+        "result": "not_applicable",
+        "note": ""
+      },
+      "aria-valid": {
+        "result": "not_applicable",
+        "note": "0 invalid roles"
+      }
+    },
+    "applicable": 9,
+    "total": 23
+  },
+  "domains": [
+    {
+      "id": "access",
+      "name": "Reachability & Access",
+      "weight": 20,
+      "blurb": "A crawler that is turned away at the edge reads nothing you wrote.",
+      "score": 81.1,
+      "checks": 15,
+      "passed": 9,
+      "applicable": 15,
+      "total": 15
+    },
+    {
+      "id": "render",
+      "name": "Render & Delivery",
+      "weight": 10,
+      "blurb": "Text that only exists after JavaScript runs does not exist for most agents.",
+      "score": 78.8,
+      "checks": 10,
+      "passed": 8,
+      "applicable": 10,
+      "total": 11
+    },
+    "… 6 more item(s) truncated"
+  ],
+  "checks": [
+    {
+      "id": "robots-valid",
+      "domain": "access",
+      "weight": 3,
+      "tier": "essential",
+      "title": "robots.txt is reachable and valid",
+      "how": "GET /robots.txt returns 200, text/plain, and at least one User-agent group with parseable rules.",
+      "fix": "Fix robots.txt at {{origin}}/robots.txt: it must return HTTP 200 with Content-Type text/plain, contain at least one \"User-agent: *\" group, and contain no HTML. Current evidence: {{evidence}}.",
+      "result": "fail",
+      "evidence": "robots.txt HTTP 404, 0 groups",
+      "points": 0
+    },
+    {
+      "id": "ai-search-bots",
+      "domain": "access",
+      "weight": 5,
+      "tier": "essential",
+      "title": "AI search crawlers are allowed",
+      "how": "Live request as OAI-SearchBot, Claude-SearchBot and PerplexityBot all return 200 (not 403/challenge/empty).",
+      "fix": "Unblock the AI search crawlers on {{origin}}. In robots.txt add a group with User-agent lines for OAI-SearchBot, Claude-SearchBot, PerplexityBot and \"Allow: /\", then confirm the CDN/WAF does not challenge them. Current evidence: {{evidence}}.",
+      "result": "pass",
+      "evidence": "11/11 verifiable AI search crawlers allowed",
+      "points": 1
+    },
+    "… 118 more item(s) truncated"
+  ],
+  "crawlers": [
+    {
+      "ua": "OAI-SearchBot",
+      "platform": "ChatGPT search",
+      "role": "search",
+      "weight": 10,
+      "tier": 1,
+      "status": 200,
+      "bytes": 577,
+      "ms": 4,
+      "robotsAllowed": true,
+      "rule": null,
+      "blocked": false,
+      "challenged": false,
+      "verdict": "allowed"
+    },
+    {
+      "ua": "ChatGPT-User",
+      "platform": "ChatGPT",
+      "role": "user",
+      "weight": 9,
+      "tier": 1,
+      "status": 200,
+      "bytes": 577,
+      "ms": 4,
+      "robotsAllowed": true,
+      "rule": null,
+      "blocked": false,
+      "challenged": false,
+      "verdict": "allowed"
+    },
+    "… 30 more item(s) truncated"
+  ],
+  "fixes": [
+    {
+      "id": "ssr-home",
+      "domain": "render",
+      "title": "Homepage content is in the raw HTML",
+      "weight": 5,
+      "result": "fail",
+      "evidence": "171 chars of text, 0 H1 in raw HTML",
+      "recoverable": 5,
+      "prompt": "Server-render the homepage of https://example.com: ship at least 500 characters of real text and an H1 in the initial HTML response rather than after hydration (SSR/SSG, or prerender). Evidence: 171 chars of text, 0 H1 in raw HTML."
+    },
+    {
+      "id": "jsonld",
+      "domain": "data",
+      "title": "JSON-LD structured data is present",
+      "weight": 4,
+      "result": "fail",
+      "evidence": "no JSON-LD",
+      "recoverable": 4,
+      "prompt": "Add a JSON-LD block to https://example.com/ with @context https://schema.org and a @type that matches the page. Evidence: no JSON-LD."
+    },
+    "… 48 more item(s) truncated"
+  ],
+  "counts": {
+    "total": 120,
+    "applicable": 73,
+    "pass": 23,
+    "partial": 11,
+    "fail": 39,
+    "notApplicable": 47,
+    "inconclusive": 0
+  },
+  "durationMs": 80,
+  "cache": {
+    "hit": false,
+    "ageMs": 0,
+    "ttlMs": 21600000
+  }
+}

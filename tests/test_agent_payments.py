@@ -302,9 +302,12 @@ async def test_a_challenge_names_only_the_protocols_offered(anon: AsyncClient, p
 
 
 async def test_free_own_and_passthrough_calls_get_no_challenge(anon: AsyncClient, payments_on):
+    # A keyed provider's free row: a keyless provider's anonymous row has no pasted secret, so
+    # the payment path refuses it earlier, as needs_connection.
     free = next(ep["id"] for ep in catalog_store.load().by_id.values()
                 if (ep.get("cost") or {}).get("type") == "free"
-                and (ep.get("method") or "GET") == "GET")
+                and (ep.get("method") or "GET") == "GET"
+                and ep.get("platform_auth") != "anonymous")
     for path, reason in ((f"/call/{free}", "free"), ("/call/echo/anything", "not_a_catalog_tool"),
                          ("/call/https://api.tikhub.io/x", "not_a_catalog_tool"),
                          (f"/call/{EP}", "wrong_method")):
