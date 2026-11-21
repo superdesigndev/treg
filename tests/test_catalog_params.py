@@ -83,10 +83,15 @@ def test_enum_length_and_items():
     assert params.refusal(urls, ["a", "b", "a"]) == "must have at most 2 items"
     assert params.refusal(urls, ["a", 5]) == "item 1 must be a string"
     assert params.refusal(urls, ["a", "c"]) == "item 1 must be one of a, b"
+    assert params.refusal(urls, ["a", ""]) == "item 1 must be one of a, b"
     assert params.refusal(urls, ["a", None]) is None, "a null item is not sent"
     assert params.refusal(urls, "a,b", text=True) is None, "a comma list is relayed unread"
     assert params.refusal(urls, '["a","c"]', text=True) == "item 1 must be one of a, b"
     assert params.refusal(urls, ["a", "c"], text=True) == "item 1 must be one of a, b"
+    assert params.refusal({"type": "array", "items": {"type": "integer"}}, [1, ""]) == "item 1 must be a whole number"
+    assert params.refusal({"type": "array", "items": {"type": "string", "minLength": 2}}, ["aa", ""]) == \
+        "item 1 must be at least 2 characters"
+    assert params.refusal({"type": "array", "items": {"type": "string"}}, ["a", ""]) is None
     whole = {"type": "array", "items": {"type": "string"}, "enum": [["work_email"]]}
     assert params.refusal(whole, ["work_email"]) is None
     assert params.refusal(whole, ["work_email", "phone"]) == 'must be one of ["work_email"]'
