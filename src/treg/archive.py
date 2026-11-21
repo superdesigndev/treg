@@ -1585,8 +1585,8 @@ async def _lookup_key(kh: str, *, entry, endpoint_id: str, result_aware: bool,
         repeat = False
         if price_repeat and org_id is not None:
             repeat = (await s.execute(
-                select(ArchiveKeyOrg.id).where(ArchiveKeyOrg.org_id == org_id,
-                                               ArchiveKeyOrg.key_hash == kh)
+                select(ArchiveKeyOrg.key_hash).where(ArchiveKeyOrg.org_id == org_id,
+                                                     ArchiveKeyOrg.key_hash == kh)
                 .limit(1))).first() is not None
     body = await archive_bodies.read(pointer, "lookup", diagnostics=diagnostics)
     if body is None:
@@ -1616,8 +1616,6 @@ async def note_org_uses_in_transaction(db, uses: Iterable[tuple[int, str]]) -> N
     statement. All chunks lock in the same Org/key order and commit together with the money;
     errors other than the expected unique-key race must still fail the caller's transaction.
     """
-    from sqlalchemy import func, select
-
     from .models import ArchiveKeyOrg
 
     counts = Counter(uses)
@@ -1631,21 +1629,9 @@ async def note_org_uses_in_transaction(db, uses: Iterable[tuple[int, str]]) -> N
     else:
         raise RuntimeError(f"unsupported database dialect: {dialect}")
     now = _utcnow()
-    rows = []
-    for (org_id, key_hash), count in sorted(counts.items()):
-        row = dict(org_id=org_id, key_hash=key_hash, first_call_at=now, last_call_at=now,
-                   calls=count)
-        if dialect == "postgresql":
-            # A normal UPSERT consumes the serial sequence even for an existing key. Reuse its
-            # immutable id inside this statement; COALESCE allocates only when the snapshot has
-            # no row. Concurrent first inserts can still consume an id before ON CONFLICT wins.
-            row["id"] = func.coalesce(
-                select(ArchiveKeyOrg.id).where(
-                    ArchiveKeyOrg.org_id == org_id, ArchiveKeyOrg.key_hash == key_hash,
-                ).scalar_subquery(),
-                func.nextval(func.pg_get_serial_sequence("archivekeyorg", "id")),
-            )
-        rows.append(row)
+    rows = [dict(org_id=org_id, key_hash=key_hash, first_call_at=now, last_call_at=now,
+                 calls=count)
+            for (org_id, key_hash), count in sorted(counts.items())]
     for start in range(0, len(rows), _ORG_USE_CHUNK_SIZE):
         statement = insert(ArchiveKeyOrg).values(rows[start:start + _ORG_USE_CHUNK_SIZE])
         result = await db.execute(statement.on_conflict_do_update(

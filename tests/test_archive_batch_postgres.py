@@ -82,17 +82,28 @@ async def test_deferred_archive_marks_use_bounded_database_round_trips(postgres_
     assert len(archive_statements) <= 2, "paid marks should be batched, not add SQL per child"
 
 
-async def test_repeated_paid_marks_do_not_spend_new_row_ids(postgres_archive_batch):
-    """A repeat question updates its row; high-volume repeats must not exhaust SERIAL IDs."""
+async def test_paid_marks_take_no_sequence_number(postgres_archive_batch):
+    """First and repeat marks are keyed by (org, question): a settle never waits on a sequence."""
     org_id, _ = await _batch(1)
+    statements = []
+
+    def capture(conn, cursor, statement, parameters, context, executemany):
+        if "ARCHIVEKEYORG" in statement.upper():
+            statements.append(statement.lower())
+
+    event.listen(postgres_archive_batch.sync_engine, "before_cursor_execute", capture)
+    try:
+        async with session_maker() as db:
+            await archive.note_org_uses_in_transaction(db, [(org_id, "key-000")] * 3
+                                                       + [(org_id, "key-new")])
+            await db.commit()
+    finally:
+        event.remove(postgres_archive_batch.sync_engine, "before_cursor_execute", capture)
+    assert statements and not any("nextval" in s for s in statements)
     async with session_maker() as db:
-        before = (await db.execute(text("SELECT last_value FROM archivekeyorg_id_seq"))).scalar_one()
-        await archive.note_org_uses_in_transaction(db, [(org_id, "key-000")] * 3)
-        await db.commit()
-        after = (await db.execute(text("SELECT last_value FROM archivekeyorg_id_seq"))).scalar_one()
-        row = (await db.execute(select(ArchiveKeyOrg).where(ArchiveKeyOrg.org_id == org_id))).scalar_one()
-        assert row.calls == 4
-        assert after == before
+        rows = (await db.execute(select(ArchiveKeyOrg).where(ArchiveKeyOrg.org_id == org_id))).scalars()
+        assert {row.key_hash: (row.calls, row.id) for row in rows} == {
+            "key-000": (4, None), "key-new": (1, None)}
 
 
 @pytest.mark.parametrize("existing", [False, True])
