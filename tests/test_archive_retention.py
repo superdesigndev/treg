@@ -374,7 +374,7 @@ async def _run_revision(module) -> None:
 async def test_a_large_idempotentcall_is_refused_and_the_manual_build_finishes_it(clients: AsyncClient):
     if session_maker.kw["bind"].dialect.name != "postgresql":
         pytest.skip("the concurrent build is PostgreSQL's")
-    module = _revision("0121")
+    module = _revision("0123")
     async with session_maker() as s:
         await s.execute(text(f"DROP INDEX IF EXISTS {module.NAME}"))
         for i in range(3):

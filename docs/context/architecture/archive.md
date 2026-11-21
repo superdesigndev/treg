@@ -35,8 +35,8 @@ sources:
   - src/treg/alembic/versions/0067_org_archive_opt_out.py
   - tests/test_archive_opt_out.py
   - src/treg/application/archive_retention.py
-  - src/treg/alembic/versions/0120_archive_retention_cursor.py
-  - src/treg/alembic/versions/0121_idempotentcall_archive_key_hash.py
+  - src/treg/alembic/versions/0122_archive_retention_cursor.py
+  - src/treg/alembic/versions/0123_idempotentcall_archive_key_hash.py
   - tests/test_archive_retention.py
 related:
   - architecture/data-model.md
@@ -546,7 +546,7 @@ job. The mark delete repeats `last_call_at < cutoff` (a mark a team paid for aft
 stays, and its next call on the question is a repeat) and locks marks `FOR UPDATE SKIP LOCKED` in
 `(org_id, key_hash)` order, `MARK_CHUNK` (500) at a time, deleting only those: a mark a settle
 holds is left to it, never waited for. The "live retry" check reads the partial index
-`ix_idempotentcall_archive_key_hash` (Alembic 0121), an index probe per candidate instead of a
+`ix_idempotentcall_archive_key_hash` (Alembic 0123), an index probe per candidate instead of a
 scan of `idempotentcall`. A recorder that read a key unlocked and finds it deleted at the lock
 retries and records it as a new question.
 Batches sleep `TREG_ARCHIVE_RETENTION_PAUSE_S` (default 2 s) apart; a run stops at
