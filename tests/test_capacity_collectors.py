@@ -502,6 +502,27 @@ async def test_orbisearch_capacity_uses_free_credits_route(monkeypatch):
     assert row == {"value": 1250.5, "unit": "credits", "note": "prepaid credit balance"}
 
 
+async def test_texastaxapi_capacity_reads_the_balance_header_of_the_free_county_read():
+    def probe(request):
+        assert request.method == "GET"
+        assert request.url == "https://api.texastaxapi.com/v1/counties/48453"
+        assert request.headers["authorization"] == "Bearer test-key"
+        return httpx.Response(200, json={"fips": "48453"}, headers={"x-credits-remaining": "196"})
+
+    async with httpx.AsyncClient(transport=httpx.MockTransport(probe)) as client:
+        row = await collectors._texastaxapi(client, "test-key")
+    assert row == {"value": 196, "unit": "credits", "note": "prepaid credit balance; one credit a billed call"}
+
+
+@pytest.mark.parametrize("header", [{}, {"x-credits-remaining": "-1"}, {"x-credits-remaining": "lots"}])
+async def test_texastaxapi_capacity_rejects_a_missing_or_invalid_balance(header):
+    async with httpx.AsyncClient(transport=httpx.MockTransport(
+        lambda _request: httpx.Response(200, json={}, headers=header)
+    )) as client:
+        with pytest.raises(ValueError, match="no credit balance"):
+            await collectors._texastaxapi(client, "test-key")
+
+
 @pytest.mark.parametrize("balance", [None, True, -1, "12"])
 async def test_orbisearch_capacity_rejects_invalid_balance(balance, monkeypatch):
     async with httpx.AsyncClient(transport=httpx.MockTransport(

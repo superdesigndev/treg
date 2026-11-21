@@ -159,6 +159,7 @@ platforms:
   research: {label: "Academic literature", category: "Research & public data", summary: "Search scholarly papers and preprints across academic sources."}
   health: {label: "Health & biomedical", category: "Research & public data", summary: "Clinical studies, medicine labels and public health statistics."}
   economics: {label: "Economic indicators", category: "Research & public data", summary: "Official labor and development statistics."}
+  property: {label: "Property tax records", category: "Research & public data", summary: "Parcels, owners, appraised values and the taxing units a property pays, with their rates."}
 
 capabilities:
   # --- AI generation ---------------------------------------------------------------------------

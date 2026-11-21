@@ -23,6 +23,7 @@ _KNOWN: dict[str, tuple[str, str, str]] = {
     "theirstack": ("credits", "manual", "api"),
     "jobspipe": ("monthly_quota", "quota_reset", "api"),
     "hirebase": ("monthly_quota", "quota_reset", "api"),
+    "texastaxapi": ("credits", "manual", "api"),
     "enrichlayer": ("credits", "auto_recharge", "api"),
     "adyntel": ("credits", "manual", "manual"),
     "dropleads": ("credits", "manual", "api"),
@@ -135,6 +136,7 @@ _RATE_LIMITS: dict[str, dict] = {
     "theirstack": {"limit": 4, "window_s": 1, "source": "docs"},
     "jobspipe": {"limit": 10, "window_s": 1, "source": "docs"},  # Builder plan; RateLimit-* headers on every call
     "hirebase": {"limit": 100, "window_s": 60, "source": "docs"},  # per key; task reads have their own 600 per 60 s
+    "texastaxapi": {"limit": 100, "window_s": 10, "source": "docs"},  # per key once credits are bought; 10 on free credits
     "enrichlayer": {"limit": 300, "window_s": 60, "source": "docs"},
     # Agent's entry-tier limit is one request per second. Shared-key smoothing is provider-wide,
     # so Search also uses this conservative pace even though its own allowance is higher.
