@@ -2788,8 +2788,8 @@ endpoints:
       depth:
         type: integer
         required: false
-        note: 'parsing depth optional field number of apps to be returned from the App Store SERP; we strongly recommend setting the parsing depth in the multiples of 100, because our system processes 100 results in a row; default value: 100 maximum value: 1000 Your account will be billed per each SERP containing '
-        example: 200
+        note: 'parsing depth optional field number of apps to be returned from the App Store SERP; default value: 100 maximum value: 100 Your account will be billed per each SERP containing up to 100 results; The cost can be calculated on the Pricing page.'
+        example: 100
       app_category:
         type: string
         required: false
@@ -2817,7 +2817,7 @@ endpoints:
     - app_collection: top_free_ios
       location_code: 2840
       language_code: en
-      depth: 200
+      depth: 100
       app_category: games
     bodyType: json
   verified: '2026-07-28'
