@@ -1535,6 +1535,17 @@ async def test_a_missing_scope_is_a_403_challenge_naming_it(clients):
     assert ok.status_code == 200, ok.text
 
 
+async def test_a_call_only_grant_is_never_shown_a_comparison(clients):
+    """A comparison shows the team's past inputs and answers: riding on `call` must not give a
+    `treg:call` grant what the `compare` tool's `treg:read` refuses it."""
+    call_only, _ = await _grant(clients, "call-only-compare@superdesign.dev", scope="treg:call")
+    full, _ = await _grant(clients, "full-compare@superdesign.dev", scope="")
+    assert mcp._may_read_comparisons(call_only) is False
+    assert await mcp._inline_comparison(call_only) is None
+    assert mcp._may_read_comparisons(full) is True
+    assert mcp._may_read_comparisons("not-an-oauth-token") is True
+
+
 async def test_a_call_only_grant_gets_no_prior_review(clients, monkeypatch):
     """`prior` rides on `call` but writes a review: it needs the review tool's scope too."""
     from treg.config import get_settings
