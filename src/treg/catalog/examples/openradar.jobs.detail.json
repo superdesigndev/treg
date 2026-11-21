@@ -1,0 +1,78 @@
+{
+  "id": "cf69de36-7a4c-434a-b899-99986bb0aba4",
+  "type": "job",
+  "title": "Frontend Platform Engineer",
+  "text": "…truncated…",
+  "url": "https://jobs.lever.co/rover/f91fa5e0-fa7d-4463-9030-0a3045d6556f",
+  "canonicalUrl": "https://jobs.lever.co/rover/f91fa5e0-fa7d-4463-9030-0a3045d6556f",
+  "author": "Rover",
+  "city": "Barcelona",
+  "score": 96,
+  "budget": 62832,
+  "currency": "EUR",
+  "paymentPeriod": "monthly",
+  "rawSalary": "51837–62832 EUR per year",
+  "normalizedUsdMin": 4808,
+  "normalizedUsdMax": 5827,
+  "skills": [
+    "Claude",
+    "Python",
+    "JavaScript",
+    "React",
+    "Django",
+    "Next.js",
+    "Разработка"
+  ],
+  "isRemote": false,
+  "workplaceType": "hybrid",
+  "direction": "devops",
+  "publishedAt": "2026-11-18T07:13:18.505Z",
+  "createdAt": "2026-11-18T08:48:46.514Z",
+  "votes_up": 0,
+  "votes_down": 0,
+  "votes_scam": 0,
+  "votes_closed": 0,
+  "contacts": [],
+  "occupationCode": "2513",
+  "occupationLabel": "Web and multimedia developers",
+  "checks": [
+    {
+      "name": "score",
+      "pass": true,
+      "note": "оценка 96/100"
+    },
+    {
+      "name": "pay",
+      "pass": true,
+      "note": "оплата указана"
+    },
+    {
+      "name": "requirements",
+      "pass": true,
+      "note": "навыки: Claude, Python, JavaScript, React, Django, Next.js"
+    },
+    {
+      "name": "direction",
+      "pass": true,
+      "note": "направление: devops"
+    },
+    {
+      "name": "detail",
+      "pass": true,
+      "note": "подробное описание"
+    }
+  ],
+  "gates": [
+    {
+      "name": "live",
+      "pass": true,
+      "note": "вакансия активна"
+    },
+    {
+      "name": "real-offer",
+      "pass": true,
+      "note": "единое предложение работы"
+    }
+  ],
+  "verdict": "strong"
+}

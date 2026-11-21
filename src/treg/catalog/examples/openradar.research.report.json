@@ -1,0 +1,140 @@
+{
+  "version": 2,
+  "kind": "live",
+  "period": {
+    "from": "2026-10-19T20:21:31.164Z",
+    "to": "2026-11-18T20:21:31.164Z",
+    "label": "19 октября — 18 ноября",
+    "phrase": "за последние 30 дней"
+  },
+  "generatedAt": "2026-11-18T20:21:31.164Z",
+  "totals": {
+    "posts": 212389,
+    "jobs": 88365,
+    "gigs": 9473,
+    "jobsWithPay": 46394,
+    "intlJobs": 102150,
+    "intlGigs": 12401,
+    "foreignPayJobs": 984,
+    "gigsWithBudget": 5884,
+    "companies": 34093,
+    "platforms": [
+      {
+        "key": "hh.ru",
+        "n": 77842
+      },
+      {
+        "key": "himalayas.app",
+        "n": 33036
+      },
+      {
+        "key": "jobboard.agilefluent.ru",
+        "n": 21723
+      },
+      {
+        "key": "freelancer.com",
+        "n": 12368
+      },
+      {
+        "key": "jobs.ashbyhq.com",
+        "n": 11699
+      },
+      {
+        "key": "job-boards.greenhouse.io",
+        "n": 10559
+      },
+      {
+        "key": "arbeitnow.com",
+        "n": 9414
+      },
+      {
+        "key": "kwork.ru",
+        "n": 4011
+      },
+      {
+        "key": "telegram",
+        "n": 3698
+      },
+      {
+        "key": "justjoin.it",
+        "n": 2690
+      },
+      {
+        "key": "jobicy.com",
+        "n": 2548
+      },
+      {
+        "key": "career.habr.com",
+        "n": 1924
+      },
+      {
+        "key": "freelancehunt.com",
+        "n": 1861
+      },
+      {
+        "key": "fl.ru",
+        "n": 1803
+      },
+      {
+        "key": "getmatch.ru",
+        "n": 1633
+      },
+      {
+        "key": "jobs.lever.co",
+        "n": 1416
+      },
+      {
+        "key": "boards.greenhouse.io",
+        "n": 1146
+      },
+      {
+        "key": "rabota.sber.ru",
+        "n": 1067
+      },
+      {
+        "key": "job-boards.eu.greenhouse.io",
+        "n": 1025
+      },
+      {
+        "key": "remoteworker.co.uk",
+        "n": 715
+      }
+    ],
+    "payOrigins": {
+      "text": 59315,
+      "budget": 35631,
+      "page": 3260,
+      "model": 186
+    },
+    "excluded": 225
+  },
+  "jobs": {
+    "roles": [
+      {
+        "slug": "sales",
+        "label": "Продажи",
+        "plural": "менеджеры по продажам",
+        "n": 19669,
+        "withPay": 12958,
+        "pay": {
+          "n": 12958,
+          "median": 100000,
+          "ciLow": 100000,
+          "ciHigh": 100000,
+          "p25": 73000,
+          "p75": 150000
+        }
+      }
+    ]
+  },
+  "findings": [
+    {
+      "text": "Медианная зарплата в вакансиях с указанной оплатой — 98 000 ₽ в месяц.",
+      "quote": "По данным openradar, медианная зарплата в вакансиях с указанной оплатой составила 98 000 ₽ в месяц за последние 30 дней (выборка: 46394 вака…"
+    },
+    {
+      "text": "Зарплату указывают в 52,5% вакансий.",
+      "quote": "По данным openradar, зарплату указывают в 52,5% вакансий за последние 30 дней (выборка: 88365 вакансий)."
+    }
+  ]
+}

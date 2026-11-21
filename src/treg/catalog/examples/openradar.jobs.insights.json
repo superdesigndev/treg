@@ -1,0 +1,118 @@
+{
+  "window_days": 7,
+  "total_leads": 3000,
+  "it_leads": 1053,
+  "it_share_pct": 35.1,
+  "trending_skills": [
+    {
+      "name": "Python",
+      "count": 217,
+      "share_pct": 7.2
+    },
+    {
+      "name": "Excel",
+      "count": 201,
+      "share_pct": 6.7
+    },
+    {
+      "name": "SQL",
+      "count": 185,
+      "share_pct": 6.2
+    },
+    {
+      "name": "Azure",
+      "count": 138,
+      "share_pct": 4.6
+    },
+    {
+      "name": "AWS",
+      "count": 121,
+      "share_pct": 4
+    }
+  ],
+  "directions": [
+    {
+      "direction": "sales",
+      "count": 553,
+      "share_pct": 18.4
+    },
+    {
+      "direction": "backend",
+      "count": 209,
+      "share_pct": 7
+    },
+    {
+      "direction": "marketing",
+      "count": 190,
+      "share_pct": 6.3
+    },
+    {
+      "direction": "support",
+      "count": 117,
+      "share_pct": 3.9
+    },
+    {
+      "direction": "security",
+      "count": 111,
+      "share_pct": 3.7
+    }
+  ],
+  "occupations": [
+    {
+      "code": "2433",
+      "label": "Technical and medical sales professionals",
+      "count": 552,
+      "share_pct": 18.4
+    },
+    {
+      "code": "2512",
+      "label": "Software developers",
+      "count": 325,
+      "share_pct": 10.8
+    },
+    {
+      "code": "2431",
+      "label": "Advertising and marketing professionals",
+      "count": 213,
+      "share_pct": 7.1
+    }
+  ],
+  "workplace": {
+    "remote": 538,
+    "hybrid": 218,
+    "onsite": 2244,
+    "remote_share_pct": 17.9
+  },
+  "salary_percentiles": {
+    "job": {
+      "count": 1226,
+      "usd": {
+        "p25": 1241,
+        "median": 2234,
+        "p75": 7913
+      },
+      "rub": {
+        "p25": 100000,
+        "median": 180000,
+        "p75": 637000
+      }
+    },
+    "gig": {
+      "count": 253,
+      "usd": {
+        "p25": 17,
+        "median": 62,
+        "p75": 428
+      },
+      "rub": {
+        "p25": 1400,
+        "median": 5000,
+        "p75": 34000
+      }
+    }
+  },
+  "ai_exposure": {
+    "count": 83,
+    "share_pct": 2.8
+  }
+}

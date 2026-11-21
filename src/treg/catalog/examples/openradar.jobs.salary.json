@@ -1,0 +1,31 @@
+{
+  "basis": "similar",
+  "count": 34,
+  "type": "gig",
+  "period": "project",
+  "skills": [
+    "Разработка"
+  ],
+  "examples": [
+    {
+      "id": "3e0fb842-7937-4372-a91b-876b597f5261",
+      "title": "Go Backend & API Development",
+      "usd": 50
+    },
+    {
+      "id": "9f9d9881-01bc-431b-ad62-7ac6bbad544a",
+      "title": "Backend Developer for FinTech Platform",
+      "usd": 50
+    }
+  ],
+  "usd": {
+    "p25": 50,
+    "median": 147,
+    "p75": 391
+  },
+  "rub": {
+    "p25": 4000,
+    "median": 12000,
+    "p75": 31000
+  }
+}

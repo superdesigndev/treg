@@ -1,0 +1,33 @@
+{
+  "since": "2026-11-17T20:49:05.134Z",
+  "count": 2,
+  "items": [
+    {
+      "id": "8acd039e-d367-4aeb-9a92-0fd6521385dd",
+      "type": "job",
+      "title": "3D-дизайнер",
+      "text": "Вакансия компании: ONKRON\nСоздана: 18.11.2026\nРегион: Санкт-Петербург\nПредполагаемый уровень месячного дохода: от 100 000 до 130 000 ₽",
+      "url": "https://hh.ru/vacancy/139608005",
+      "budget": 130000,
+      "currency": "RUB",
+      "paymentPeriod": "monthly",
+      "normalizedUsdMin": 1241,
+      "normalizedUsdMax": 1614,
+      "city": "Санкт-Петербург",
+      "skills": [
+        "3D",
+        "Дизайн"
+      ],
+      "isRemote": false,
+      "score": 68,
+      "status": "delivered",
+      "votes": {
+        "up": 0,
+        "down": 0,
+        "scam": 0,
+        "closed": 0
+      },
+      "createdAt": "2026-11-18T08:49:03.378Z"
+    }
+  ]
+}

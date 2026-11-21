@@ -1,0 +1,186 @@
+provider: openradar
+source:
+  docs: https://openradar.fun/openapi.json
+  openapi: https://openradar.fun/openapi.json
+  curated: '2026-11-18'
+limits: "Keyless and free. Anonymous callers read the feed with a 12-hour delay (signed-in members see it after 3 hours) and never see contact details — every lead carries the URL of the original post. `sort=score` and `sort=budget` look at the last 7 days only. `limit` caps at 500 rows."
+pricing_url: https://openradar.fun/openapi.json
+proposed_capabilities:
+  companies.jobs.insights: "Aggregate job-market statistics over a period: trending skills, directions, workplace share, salary percentiles"
+  companies.jobs.delta: "Lead changes since a moment, for synchronising a local copy"
+  jobs.research.report: "The current citable job-market research report"
+  jobs.research.index: "The salary and direction index behind the report"
+
+# Every route answers GET without authentication, so every row is served anonymously
+# (no credential injected). A wrong lead id answers 404, a market title shorter than
+# three characters answers 400; everything else answers 200 with data.
+defaults:
+  provenance: {source: observed, source_url: 'https://openradar.fun/openapi.json', checked: '2026-11-18', confidence: verified}
+  price: {value: '0', currency: USD, unit: call, note: "OpenRadar's public API is free and keyless."}
+
+endpoints:
+  - id: openradar.jobs.search
+    platform_auth: anonymous
+    domain: jobs
+    capability: companies.jobs.search
+    platform: companies
+    scope: any_account
+    method: GET
+    path: /api/leads
+    name: "Search OpenRadar's live job and gig feed"
+    summary: "Search a live feed of job posts and freelance gigs harvested from Telegram channels, ATS job boards and freelance platforms: title, full text, posted pay, remote flags, skills, source and a quality score. Search queries rank by relevance; the default ranks by score."
+    input:
+      queryParams:
+        q: {type: string, required: false, example: backend, note: "free-text search over titles and bodies"}
+        type: {type: string, required: false, enum: [job, gig], example: job, note: "job = employment, gig = a one-off order"}
+        skill: {type: string, required: false, example: python, note: "dictionary skill, exact match"}
+        budget: {type: number, required: false, example: 100000, note: "minimum budget in roubles; converted to USD internally"}
+        language: {type: string, required: false, enum: [ru, en], example: ru, note: "title language"}
+        workplace: {type: string, required: false, enum: [remote, hybrid, onsite], example: remote}
+        direction: {type: string, required: false, example: backend, note: "role or trade direction: backend, frontend, qa, devops, design, ..."}
+        it: {type: string, required: false, enum: ['1'], example: '1', note: "IT and adjacent trades only"}
+        sort: {type: string, required: false, enum: [new, score, budget, relevance], example: relevance}
+        limit: {type: integer, required: false, example: 3, note: "1-500, default 50"}
+        page: {type: integer, required: false, example: 1}
+    test_request: {queryParams: {q: backend, limit: 3}}
+    verified: '2026-11-18'
+    added: '2026-11-18'
+    example_response: examples/openradar.jobs.search.json
+    docs_url: https://openradar.fun/openapi.json
+
+  - id: openradar.jobs.detail
+    platform_auth: anonymous
+    domain: jobs
+    capability: companies.jobs.detail
+    platform: companies
+    scope: any_account
+    method: GET
+    path: /api/leads/{id}
+    name: "One lead card"
+    summary: "Get one job post or gig by id with its full text, posted pay, skills, source channel and score."
+    input:
+      pathParams:
+        id: {type: string, required: true, example: cf69de36-7a4c-434a-b899-99986bb0aba4, note: "the lead's id from openradar.jobs.search"}
+    test_request: {pathParams: {id: cf69de36-7a4c-434a-b899-99986bb0aba4}}
+    miss: {status: [404], means: "No lead with this id, or not yet visible to anonymous callers."}
+    verified: '2026-11-18'
+    added: '2026-11-18'
+    example_response: examples/openradar.jobs.detail.json
+    docs_url: https://openradar.fun/openapi.json
+
+  - id: openradar.jobs.salary
+    platform_auth: anonymous
+    domain: jobs
+    capability: jobs.salary.benchmark
+    platform: jobs
+    scope: any_account
+    method: GET
+    path: /api/market
+    name: "Market pay estimate from posted pay"
+    summary: "Percentiles of pay for similar leads over the last 90 days: USD and RUB ranges, the basis used (similar leads, matching skills, or none), the sample count, and example leads with their pay."
+    input:
+      queryParams:
+        title: {type: string, required: true, example: backend developer, note: "what the client needs, 3-300 characters"}
+        type: {type: string, required: false, enum: [job, gig], example: gig}
+        skills: {type: string, required: false, example: 'python,postgresql', note: "comma-separated skills, up to 12"}
+    test_request: {queryParams: {title: backend developer}}
+    miss: {status: [400], means: "title shorter than 3 characters."}
+    verified: '2026-11-18'
+    added: '2026-11-18'
+    example_response: examples/openradar.jobs.salary.json
+    docs_url: https://openradar.fun/openapi.json
+
+  - id: openradar.jobs.insights
+    platform_auth: anonymous
+    domain: jobs
+    capability: companies.jobs.insights
+    platform: companies
+    scope: any_account
+    method: GET
+    path: /api/insights
+    name: "Aggregate market insights"
+    summary: "Job-market statistics over the guest-visible feed for a window: total and IT leads, trending skills, direction counts, workplace share, salary percentiles and AI-exposure estimates."
+    input:
+      queryParams:
+        type: {type: string, required: false, enum: [job, gig], example: job}
+        days: {type: integer, required: false, example: 7, note: "lookback window, 1-90, default 30"}
+    test_request: {queryParams: {days: 7}}
+    verified: '2026-11-18'
+    added: '2026-11-18'
+    example_response: examples/openradar.jobs.insights.json
+    docs_url: https://openradar.fun/openapi.json
+
+  - id: openradar.jobs.delta
+    platform_auth: anonymous
+    domain: jobs
+    capability: companies.jobs.delta
+    platform: companies
+    scope: any_account
+    method: GET
+    path: /api/delta
+    name: "Lead changes since a moment"
+    summary: "Lead changes since a timestamp, for synchronising tools: the changed leads with ids, titles and pay, plus the timestamp to send back next time. Supports JSON or NDJSON."
+    input:
+      queryParams:
+        since: {type: string, required: false, example: '2026-11-17T00:00:00Z', note: "ISO date-time; the reply names the moment to send back next"}
+        limit: {type: integer, required: false, example: 200, note: "up to 1000, default 200"}
+        format: {type: string, required: false, enum: [json, ndjson], example: ndjson}
+    test_request: {queryParams: {limit: 2}}
+    verified: '2026-11-18'
+    added: '2026-11-18'
+    example_response: examples/openradar.jobs.delta.json
+    docs_url: https://openradar.fun/openapi.json
+
+  - id: openradar.companies.suggest
+    platform_auth: anonymous
+    domain: jobs
+    capability: companies.autocomplete
+    platform: companies
+    scope: any_account
+    method: GET
+    path: /api/companies/suggest
+    name: "Suggest hiring employers by name prefix"
+    summary: "Match employers by name prefix or substring: each hit carries its active vacancy count, the time of its latest lead and its employer-page URL."
+    input:
+      queryParams:
+        q: {type: string, required: true, example: elevenlabs, note: "company name substring or prefix"}
+        limit: {type: integer, required: false, example: 2, note: "1-50, default 10"}
+    test_request: {queryParams: {q: elevenlabs, limit: 2}}
+    verified: '2026-11-18'
+    added: '2026-11-18'
+    example_response: examples/openradar.companies.suggest.json
+    docs_url: https://openradar.fun/openapi.json
+
+  - id: openradar.research.report
+    platform_auth: anonymous
+    domain: jobs
+    capability: jobs.research.report
+    platform: jobs
+    scope: any_account
+    method: GET
+    path: /research/report.json
+    name: "Current market research report"
+    summary: "The current citable job-market research report: totals, salary percentiles for jobs and gigs, and the findings, generated daily."
+    input: {}
+    test_request: {queryParams: {}}
+    verified: '2026-11-18'
+    added: '2026-11-18'
+    example_response: examples/openradar.research.report.json
+    docs_url: https://openradar.fun/research
+
+  - id: openradar.research.index
+    platform_auth: anonymous
+    domain: jobs
+    capability: jobs.research.index
+    platform: jobs
+    scope: any_account
+    method: GET
+    path: /research/index.json
+    name: "Salary and direction index"
+    summary: "The index behind the report: salary percentiles and direction counts per role over the last 90 days, regenerated daily."
+    input: {}
+    test_request: {queryParams: {}}
+    verified: '2026-11-18'
+    added: '2026-11-18'
+    example_response: examples/openradar.research.index.json
+    docs_url: https://openradar.fun/research
