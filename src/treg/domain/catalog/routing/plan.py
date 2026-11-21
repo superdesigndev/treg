@@ -133,10 +133,15 @@ def unscoped(adapter: Adapter, contract: Contract, identity: dict[str, Any]) -> 
         else:
             used |= {n for n in names if identity.get(n) is None or isinstance(identity[n], str)}
     # A stand-in this adapter sends carries the keys the contract says its text holds
-    # (`stand_in_carries`: `q` from title and company), each only as a string
+    # (`stand_in_carries`: `q` from title and company), each only as a string. A key the
+    # adapter declares soft still does not scope: it reaches the provider only as a hint,
+    # so a built `q` that mentions `company_domain` must not keep a `{company_domain, title}`
+    # child that would bill a semantic loose match as a structured hit. A `q` the caller
+    # wrote is not this path (`in_expr` already counted it above).
+    soft = set(getattr(adapter, "soft", None) or ())
     for k in stand_in:
         if k in used and k in standing:
-            used |= _carried(contract, k, identity)
+            used |= _carried(contract, k, identity) - soft
     # A free-text key the caller wrote rides only in the variant the adapter matched, or in a key
     # the contract says carries it (`carried_by`: q in title). One that answers {company_domain, q}
     # by {company_domain} alone, or {full_name, q} by the name, drops what q asked for.

@@ -157,8 +157,9 @@ class Contract:
     stand_in: dict[str, str] = field(default_factory=dict)
     # Stand-in key -> the caller's identity keys and filters its text carries (`q`: [title,
     # company_domain, country]). A provider sent the stand-in counts as sending these, so scoping
-    # keeps it and the filters are not ignored. A key the expression reads but this leaves out
-    # keeps its scoping guard.
+    # keeps it and the filters are not ignored, except a key the adapter declares soft: that is
+    # still only a hint, and `unscoped` drops the child when the caller sent it. A key the
+    # expression reads but this leaves out keeps its scoping guard.
     stand_in_carries: dict[str, tuple[str, ...]] = field(default_factory=dict)
     # Identity key -> what to put in it, shown to the caller beside the key (`q`: describe the
     # person in words). Without one a key reads only "identity", and an agent guesses its shape.
