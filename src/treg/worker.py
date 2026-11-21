@@ -785,16 +785,31 @@ async def _idempotency_prune(args) -> int:
         max_batches=args.max_batches, dry_run=args.dry_run,
     )
     out = asdict(result)
+
+    # If prune didn't get the lock (another run is active), exit 0 without trim
+    if not result.lock_held:
+        print(json.dumps(out, default=str, sort_keys=True))
+        return 0
+
     trim = None
     if not getattr(args, "skip_trim", False):
         # Live rows whose answer the archive holds byte for byte drop their own copy.
-        trim = await trim_archived_answers(
-            batch_size=args.batch_size, pause_s=args.pause_seconds,
-            max_batches=args.max_batches, dry_run=args.dry_run,
-        )
-        out["trim"] = asdict(trim)
+        # Trim failures (timeouts) are logged but do NOT fail the whole prune command:
+        # the prune of expired rows completing is what matters for correctness.
+        try:
+            trim = await trim_archived_answers(
+                batch_size=args.batch_size, pause_s=args.pause_seconds,
+                max_batches=args.max_batches, dry_run=args.dry_run,
+            )
+            out["trim"] = asdict(trim)
+        except Exception as exc:  # noqa: BLE001 - trim failure must not fail the prune
+            logging.getLogger("treg.idempotency").error("trim_archived_answers failed: %s", exc)
+            out["trim_error"] = str(exc)
+
     print(json.dumps(out, default=str, sort_keys=True))
-    return 0 if result.complete and (trim is None or trim.complete) else 1
+    # Exit 0 if prune completed successfully, even if trim had issues.
+    # Trim is an optimization (dedupe); prune is the correctness requirement.
+    return 0 if result.complete else 1
 
 
 async def _run_command(args) -> int:
