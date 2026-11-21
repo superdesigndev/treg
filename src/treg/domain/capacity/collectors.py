@@ -1102,6 +1102,13 @@ async def _crawl4ai(c, key):
             "note": f"plan {d.get('tier')}"}
 
 
+async def _realtyapi(c, key):
+    # GET /account checks the key without spending a credit and returns the account's pool.
+    d = await _get(c, "https://zillow.realtyapi.io/account", headers={"x-realtyapi-key": key})
+    return {"value": _balance(d.get("creditsRemaining"), "RealtyAPI"), "unit": "credits",
+            "note": f"of {d.get('creditsLimit')} this cycle"}
+
+
 async def _reapi(c, key):
     # GET /api/v1/balance does not consume credits; 1 credit = $0.001 (reapi.ai/docs/api/balance).
     d = await _get(c, "https://reapi.ai/api/v1/balance", headers={"Authorization": f"Bearer {key}"})
@@ -1157,6 +1164,7 @@ BALANCE_ROUTES = {
     "dataforseo": _dataforseo,
     "tikhub": _tikhub,
     "tinyfish": _tinyfish,
+    "realtyapi": _realtyapi,
     "fishaudio": _fishaudio,
     "tavily": _tavily,
     "search1api": _search1api,
