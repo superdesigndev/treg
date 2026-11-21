@@ -19,6 +19,7 @@ from alembic.script.revision import RevisionError
 from sqlalchemy import inspect, text
 from sqlalchemy.exc import DBAPIError
 
+from .application.call_record_partitions import ensure_for_release
 from .application.connect import _backfill_provider_extra_tools
 from .config import get_settings
 from .infra.db import _db_url, _engine
@@ -30,6 +31,7 @@ ReleaseTask = tuple[str, Callable[[], Awaitable[int]]]
 # new code serves traffic. Task bodies remain with their owning subsystem; this is orchestration.
 RELEASE_TASKS: tuple[ReleaseTask, ...] = (
     ("provider companion tools", _backfill_provider_extra_tools),
+    ("call record partitions", ensure_for_release),
 )
 
 # PostgreSQL shows another role's query as this text (or NULL) to a role without

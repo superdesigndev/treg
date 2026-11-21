@@ -925,6 +925,10 @@ class Settings(BaseSettings):
     # check-that-the-object-exists to commit window and its upload budget.
     archive_retention_object_grace_s: int = 900
 
+    # Call record retention (PostgreSQL, docs/context/architecture/data-model.md): month partitions
+    # of `callrecord` older than this many full months are dropped. 0 keeps every month.
+    callrecord_retention_months: int = 0
+
     # The tool hub (docs/context/architecture/hub.md): tools a maker publishes, made of other tools.
     hub_enabled: bool = False
     # Web Arena is shown only after reviewed tests exist for all live tasks.
