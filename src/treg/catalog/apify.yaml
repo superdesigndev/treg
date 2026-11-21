@@ -553,5 +553,205 @@ endpoints:
     example_response: examples/apify.weibo.post.comments.json
     docs_url: https://apify.com/herus13/weibo-scraper
 
+  # openclawai (Datapika) actors. Each prices platform usage into its events (no usage charge on
+  # top), bills one event per returned job, post, community or place, and charges after the row is
+  # saved. Ids carry the `.openclawai` suffix because other actors serve the same capabilities.
+  - id: apify.linkedin.search.jobs.openclawai
+    capability: linkedin.search.jobs
+    platform: linkedin
+    scope: any_account
+    method: POST
+    path: /actors/openclawai~linkedin-jobs-scraper/run-sync-get-dataset-items
+    name: "LinkedIn jobs by keyword and location"
+    summary: "Search LinkedIn's public job listings by keyword and location with no login: title, company, location, posting date and job link per job, plus description, salary range and seniority when descriptions are fetched"
+    input:
+      queryParams:
+        maxTotalChargeUsd: {type: number, required: false, note: "the spend cap Apify enforces on every event this run bills, in dollars. treg's key requires it, above 0 and at most 1, and holds it for the call; the run trims its jobs to fit it", example: 0.05}
+        memory: {type: integer, required: false, note: "MB of run memory. treg's key requires 1024, which fixes the actor-start charge; your own key sets any size from 256 to 2048", example: 1024}
+        timeout: {type: integer, required: false, note: "run timeout in seconds. treg's key requires 90 so the run and its rows arrive before any wait gives up; a larger pull should use your own key and the async web.scrape.job.* pair above", example: 90}
+      body:
+        searchTerm: {type: string, required: true, note: "job title, keyword or skill, as typed into LinkedIn's job search", example: "data analyst"}
+        location: {type: string, required: false, note: "city, state or country (Austin, TX / London / Remote); empty searches everywhere", example: "Austin, TX"}
+        maxResults: {type: integer, required: false, min: 1, max: 5000, note: "jobs to return, default 50; every job is billed. Within treg's 90-second timeout keep it at 100 or less, or at 10 or less with linkedinFetchDescription on", example: 25}
+        isRemote: {type: boolean, required: false, note: "only remote jobs", example: false}
+        jobType: {type: string, required: false, enum: [fulltime, parttime, contract, internship, temporary], example: "fulltime"}
+        hoursOld: {type: integer, required: false, min: 1, max: 8760, note: "only jobs posted in the last N hours (24 = past day, 168 = past week); when easyApply is also set, easyApply is ignored", example: 168}
+        distance: {type: integer, required: false, min: 0, max: 200, note: "search radius in miles around location, default 50; 0 for the exact place", example: 25}
+        offset: {type: integer, required: false, min: 0, note: "skip the first N jobs, to page past an earlier call", example: 0}
+        easyApply: {type: boolean, required: false, note: "only jobs with LinkedIn Easy Apply", example: false}
+        linkedinCompanyIds: {type: array, items: {type: string}, required: false, note: "numeric LinkedIn company ids (the f_C value in a LinkedIn job-search URL); restricts the search to those companies' openings", example: ["1441"]}
+        linkedinFetchDescription: {type: boolean, required: false, note: "open each job for its description, salary range, seniority, industry and direct apply link; adds about 6 seconds per job", example: false}
+        descriptionFormat: {type: string, required: false, enum: [markdown, html], note: "format of description when linkedinFetchDescription is on; default markdown", example: "markdown"}
+        enforceAnnualSalary: {type: boolean, required: false, note: "convert hourly and monthly pay to a yearly figure", example: false}
+      bodyType: json
+      note: "the response is the dataset items array directly — no run envelope, no polling. Each row carries id, title, company, company_url, location, date_posted, job_url, is_remote, site and search_term. When LinkedIn returns no jobs the answer is one row holding only `__hint` (the reason) and search_terms, which Apify bills as a $0.00001 dataset item and no job"
+    body_allowlist: true
+    platform_request: {queryParams.memory: 1024, queryParams.timeout: 90}
+    test_request:
+      queryParams: {maxTotalChargeUsd: 0.05, memory: 1024, timeout: 90}
+      body: {searchTerm: "data analyst", location: "Austin, TX", maxResults: 3}
+    cost: {type: per_result, value: 0.00141, call_fee: 0.00005, currency: USD, per: 1, unit: result, source: rate_card_api, source_url: 'https://api.apify.com/v2/acts/openclawai~linkedin-jobs-scraper', checked: '2026-11-21', confidence: documented, note: 'pay-per-event, FLAT (no plan tiers), platform usage included: each job bills one job-scraped event ($0.0014) and one apify-default-dataset-item event ($0.00001), $0.00141 per row. PLUS the apify-actor-start event, $0.00005 per GB of run memory (min 1 GB): one event at the pinned 1024 MB, the call_fee'}
+    added: '2026-11-21'
+    docs_url: https://apify.com/openclawai/linkedin-jobs-scraper
+
+  - id: apify.indeed.search.jobs.openclawai
+    capability: indeed.search.jobs
+    platform: indeed
+    scope: any_account
+    method: POST
+    path: /actors/openclawai~indeed-ziprecruiter-scraper/run-sync-get-dataset-items
+    name: "Indeed jobs by keyword and location"
+    summary: "Search Indeed job listings by keyword and location: title, company, location, posting date, job type, remote flag and job link per job, plus salary and the full description when asked"
+    input:
+      queryParams:
+        maxTotalChargeUsd: {type: number, required: false, note: "the spend cap Apify enforces on every event this run bills, in dollars. treg's key requires it, above 0 and at most 1, and holds it for the call. The two start events take $0.082 of it, so set it above 0.082 + maxJobsPerCompany x 0.0014 (0.1 covers 10 jobs)", example: 0.1}
+        memory: {type: integer, required: false, note: "MB of run memory. treg's key requires 2048, the actor's minimum, which fixes the actor-start charge; your own key sets any size from 2048 to 4096", example: 2048}
+        timeout: {type: integer, required: false, note: "run timeout in seconds. treg's key requires 90 so the run and its rows arrive before any wait gives up; a larger pull should use your own key and the async web.scrape.job.* pair above", example: 90}
+      body:
+        scanMode: {type: string, required: true, enum: [keywords], note: "must be `keywords` for this entry — it selects the mode", example: "keywords"}
+        keywords: {type: array, items: {type: string}, required: true, minItems: 1, maxItems: 1, note: "one search term per call; Indeed operators work (quoted phrases, -exclusions)", example: ["registered nurse"]}
+        sites: {type: array, items: {type: string, enum: [indeed]}, required: true, minItems: 1, maxItems: 1, note: "must be [\"indeed\"] for this entry", example: ["indeed"]}
+        location: {type: string, required: false, note: "city, state or country to search; default United States", example: "Austin, TX"}
+        countryIndeed: {type: string, required: false, note: "Indeed country site: usa, uk, canada and so on; default usa", example: "usa"}
+        recencyMode: {type: string, required: false, enum: [last48h, latest10], note: "last48h (default) keeps jobs posted within hoursOld, read by day; latest10 returns the 10 newest jobs whatever their age", example: "latest10"}
+        hoursOld: {type: integer, required: false, min: 1, max: 720, note: "the window recencyMode last48h keeps; default 48", example: 48}
+        maxJobsPerCompany: {type: integer, required: false, min: 1, max: 200, note: "the most jobs fetched for the keyword, default 50; every job returned is billed", example: 10}
+        includeDescription: {type: boolean, required: false, note: "attach the full description and the salary fields to each job", example: false}
+        descriptionFormat: {type: string, required: false, enum: [markdown, html], note: "format of description when includeDescription is on; default markdown", example: "markdown"}
+      bodyType: json
+      note: "the response is the dataset items array directly — no run envelope, no polling. The first row is a summary (record_type keyword: jobs_found, jobs_returned, sites_with_errors) that bills nothing; every other row is one job (record_type job) with title, company, location, date_posted, job_type, is_remote, job_url and site"
+    body_allowlist: true
+    platform_request: {queryParams.memory: 2048, queryParams.timeout: 90}
+    test_request:
+      queryParams: {maxTotalChargeUsd: 0.1, memory: 2048, timeout: 90}
+      body: {scanMode: "keywords", keywords: ["registered nurse"], sites: ["indeed"], location: "Austin, TX", recencyMode: "latest10", maxJobsPerCompany: 3}
+    cost: {type: per_result, value: 0.0014, call_fee: 0.0806, currency: USD, per: 1, unit: result, source: rate_card_api, source_url: 'https://api.apify.com/v2/acts/openclawai~indeed-ziprecruiter-scraper', checked: '2026-11-21', confidence: documented, note: 'pay-per-event, FLAT (no plan tiers), platform usage included: each job bills one result-scraped event, $0.0014. PLUS the apify-actor-start event, $0.041 per GB of run memory: two events at the pinned 2048 MB, $0.082. The free summary row is one of the returned rows, so the call_fee is $0.082 less one row price and a call costs $0.082 + jobs x $0.0014'}
+    added: '2026-11-21'
+    docs_url: https://apify.com/openclawai/indeed-ziprecruiter-scraper
+
+  - id: apify.reddit.search.posts.openclawai
+    capability: reddit.search.posts
+    platform: reddit
+    scope: any_account
+    method: POST
+    path: /actors/openclawai~reddit-scraper/run-sync-get-dataset-items
+    name: "Search Reddit posts by keyword"
+    summary: "Search Reddit posts by keyword across all of Reddit or inside one subreddit, with no login: title, body, author, subreddit, score, upvote ratio, comment count, flair, media links and timestamps per post"
+    input:
+      queryParams:
+        maxTotalChargeUsd: {type: number, required: false, note: "the spend cap Apify enforces on every event this run bills, in dollars. treg's key requires it, above 0 and at most 1, and holds it for the call; set it above maxItems x 0.002 per search", example: 0.1}
+        memory: {type: integer, required: false, note: "MB of run memory. treg's key requires 1024; your own key sets any size from 256 to 4096", example: 1024}
+        timeout: {type: integer, required: false, note: "run timeout in seconds. treg's key requires 90 so the run and its rows arrive before any wait gives up; a larger pull should use your own key and the async web.scrape.job.* pair above", example: 90}
+      body:
+        searches: {type: array, items: {type: string}, required: true, minItems: 1, note: "keywords or phrases, one search each; a post two searches find is returned and billed once", example: ["web scraping"]}
+        searchSubreddit: {type: string, required: false, note: "search inside this one subreddit (name without r/); empty searches all of Reddit", example: "programming"}
+        sort: {type: string, required: false, enum: [relevance, hot, top, new, comments], note: "default relevance", example: "top"}
+        time: {type: string, required: false, enum: [all, hour, day, week, month, year], note: "time window of the search; default all", example: "month"}
+        maxItems: {type: integer, required: false, min: 1, max: 10000, note: "posts per search, default 50; Reddit ends a search listing near 1,000 posts. Every post is billed", example: 25}
+        postedAfter: {type: string, required: false, note: "YYYY-MM-DD in UTC; keep only posts created on or after it", example: "2026-11-01"}
+        postedBefore: {type: string, required: false, note: "YYYY-MM-DD in UTC; keep only posts created on or before it", example: "2026-11-20"}
+        includeNSFW: {type: boolean, required: false, note: "default true; false drops posts marked 18+", example: false}
+      bodyType: json
+      note: "the response is the dataset items array directly — no run envelope, no polling. No login and no cookies needed from the caller. Each post row has dataType post. A search with no posts answers one row with dataType hint and a message, and a search Reddit refuses one with dataType error; neither bills an event"
+    body_allowlist: true
+    platform_request: {queryParams.memory: 1024, queryParams.timeout: 90}
+    test_request:
+      queryParams: {maxTotalChargeUsd: 0.05, memory: 1024, timeout: 90}
+      body: {searches: ["web scraping"], sort: "top", time: "month", maxItems: 3}
+    cost: {type: per_result, value: 0.002, currency: USD, per: 1, unit: post, source: rate_card_api, source_url: 'https://api.apify.com/v2/acts/openclawai~reddit-scraper', checked: '2026-11-21', confidence: documented, note: 'pay-per-event, FLAT (no plan tiers), platform usage included: each post bills one post-scraped event, $0.002. No actor-start event, so there is no call_fee'}
+    added: '2026-11-21'
+    docs_url: https://apify.com/openclawai/reddit-scraper
+
+  - id: apify.reddit.subreddit.posts.openclawai
+    capability: reddit.subreddit.posts
+    platform: reddit
+    scope: any_account
+    method: POST
+    path: /actors/openclawai~reddit-scraper/run-sync-get-dataset-items
+    name: "List a subreddit's posts"
+    summary: "List posts from one or more subreddits by hot, new, top, rising or controversial, with no login: title, body, author, score, upvote ratio, comment count, flair, media links and timestamps per post"
+    input:
+      queryParams:
+        maxTotalChargeUsd: {type: number, required: false, note: "the spend cap Apify enforces on every event this run bills, in dollars. treg's key requires it, above 0 and at most 1, and holds it for the call; set it above maxItems x 0.002 per subreddit", example: 0.1}
+        memory: {type: integer, required: false, note: "MB of run memory. treg's key requires 1024; your own key sets any size from 256 to 4096", example: 1024}
+        timeout: {type: integer, required: false, note: "run timeout in seconds. treg's key requires 90 so the run and its rows arrive before any wait gives up; a larger pull should use your own key and the async web.scrape.job.* pair above", example: 90}
+      body:
+        subreddits: {type: array, items: {type: string}, required: true, minItems: 1, note: "subreddit names without r/, one per entry", example: ["programming"]}
+        sort: {type: string, required: false, enum: [hot, new, top, rising, controversial], note: "default hot", example: "new"}
+        time: {type: string, required: false, enum: [all, hour, day, week, month, year], note: "time window for sort top or controversial; default all", example: "week"}
+        maxItems: {type: integer, required: false, min: 1, max: 10000, note: "posts per subreddit, default 50; Reddit ends a subreddit listing near 1,000 posts. Every post is billed", example: 25}
+        postedAfter: {type: string, required: false, note: "YYYY-MM-DD in UTC; keep only posts created on or after it. Pair it with sort new for a date window", example: "2026-11-01"}
+        postedBefore: {type: string, required: false, note: "YYYY-MM-DD in UTC; keep only posts created on or before it", example: "2026-11-20"}
+        includeNSFW: {type: boolean, required: false, note: "default true; false drops posts marked 18+", example: false}
+      bodyType: json
+      note: "the response is the dataset items array directly — no run envelope, no polling. No login and no cookies needed from the caller. Each post row has dataType post. A subreddit with no matching posts answers one row with dataType hint, and a banned, private or missing one a row with dataType error; neither bills an event"
+    body_allowlist: true
+    platform_request: {queryParams.memory: 1024, queryParams.timeout: 90}
+    test_request:
+      queryParams: {maxTotalChargeUsd: 0.05, memory: 1024, timeout: 90}
+      body: {subreddits: ["programming"], sort: "hot", maxItems: 3}
+    cost: {type: per_result, value: 0.002, currency: USD, per: 1, unit: post, source: rate_card_api, source_url: 'https://api.apify.com/v2/acts/openclawai~reddit-scraper', checked: '2026-11-21', confidence: documented, note: 'pay-per-event, FLAT (no plan tiers), platform usage included: each post bills one post-scraped event, $0.002. No actor-start event, so there is no call_fee'}
+    added: '2026-11-21'
+    docs_url: https://apify.com/openclawai/reddit-scraper
+
+  - id: apify.reddit.search.subreddits.openclawai
+    capability: reddit.search.subreddits
+    platform: reddit
+    scope: any_account
+    method: POST
+    path: /actors/openclawai~reddit-scraper/run-sync-get-dataset-items
+    name: "Search subreddits by keyword"
+    summary: "Find subreddits matching a keyword with no login: name, title, description, subscriber count, NSFW flag, creation date, icon and link per community"
+    input:
+      queryParams:
+        maxTotalChargeUsd: {type: number, required: false, note: "the spend cap Apify enforces on every event this run bills, in dollars. treg's key requires it, above 0 and at most 1, and holds it for the call; set it above maxItems x 0.002 per search", example: 0.1}
+        memory: {type: integer, required: false, note: "MB of run memory. treg's key requires 1024; your own key sets any size from 256 to 4096", example: 1024}
+        timeout: {type: integer, required: false, note: "run timeout in seconds. treg's key requires 90 so the run and its rows arrive before any wait gives up; a larger pull should use your own key and the async web.scrape.job.* pair above", example: 90}
+      body:
+        searches: {type: array, items: {type: string}, required: true, minItems: 1, note: "keywords to match against community names and descriptions, one search each", example: ["machine learning"]}
+        searchType: {type: string, required: true, enum: [communities], note: "must be `communities` for this entry — it selects the mode", example: "communities"}
+        maxItems: {type: integer, required: false, min: 1, max: 10000, note: "communities per search, default 50. Every community is billed", example: 10}
+        includeNSFW: {type: boolean, required: false, note: "default true; false drops communities marked 18+", example: false}
+      bodyType: json
+      note: "the response is the dataset items array directly — no run envelope, no polling. No login and no cookies needed from the caller. Each community row has dataType community. A search with no communities answers one row with dataType hint, which bills no event"
+    body_allowlist: true
+    platform_request: {queryParams.memory: 1024, queryParams.timeout: 90}
+    test_request:
+      queryParams: {maxTotalChargeUsd: 0.05, memory: 1024, timeout: 90}
+      body: {searches: ["machine learning"], searchType: "communities", maxItems: 3}
+    cost: {type: per_result, value: 0.002, currency: USD, per: 1, unit: result, source: rate_card_api, source_url: 'https://api.apify.com/v2/acts/openclawai~reddit-scraper', checked: '2026-11-21', confidence: documented, note: 'pay-per-event, FLAT (no plan tiers), platform usage included: each community bills one subreddit-found event, $0.002. No actor-start event, so there is no call_fee'}
+    added: '2026-11-21'
+    docs_url: https://apify.com/openclawai/reddit-scraper
+
+  - id: apify.google.serp.maps.openclawai
+    capability: google.serp.maps
+    platform: google
+    scope: any_account
+    method: POST
+    path: /actors/openclawai~google-maps-scraper/run-sync-get-dataset-items
+    name: "Google Maps places by search query"
+    summary: "Search Google Maps for places matching a query such as 'dentists in Chicago, IL': name, category, address, phone, website, rating, review count, coordinates, place_id and Maps link per place, plus top reviews when asked"
+    input:
+      queryParams:
+        maxTotalChargeUsd: {type: number, required: false, note: "the spend cap Apify enforces on every event this run bills, in dollars. treg's key requires it, above 0 and at most 1, and holds it for the call; the run stops opening places it cannot pay for", example: 0.1}
+        memory: {type: integer, required: false, note: "MB of run memory. treg's key requires 1024, which fixes the actor-start charge; your own key sets any size from 512 to 4096", example: 1024}
+        timeout: {type: integer, required: false, note: "run timeout in seconds. treg's key requires 90 so the run and its rows arrive before any wait gives up; a larger pull should use your own key and the async web.scrape.job.* pair above", example: 90}
+      body:
+        query: {type: string, required: true, note: "a business type and an area, as typed into Google Maps", example: "coffee shops in Austin, TX"}
+        maxResults: {type: integer, required: false, min: 1, max: 500, note: "places to return, default 20; Google Maps lists about 120 places per query. Every place is billed. The run stops starting places 25 seconds before its timeout and returns those it finished", example: 20}
+        concurrency: {type: integer, required: false, min: 1, max: 10, note: "places opened in parallel, default 5", example: 5}
+        scrapeReviews: {type: boolean, required: false, note: "attach each place's top reviews (reviewer, rating, date, text) in reviews, at the same price per place", example: false}
+      bodyType: json
+      note: "the response is the dataset items array directly — no run envelope, no polling. Each row carries title, category, address, phone, website, review_rating, review_count, latitude, longitude, place_id, cid, plus_code, status, timezone and link. A query with no places answers an empty array and bills only the start"
+    body_allowlist: true
+    platform_request: {queryParams.memory: 1024, queryParams.timeout: 90}
+    test_request:
+      queryParams: {maxTotalChargeUsd: 0.05, memory: 1024, timeout: 90}
+      body: {query: "coffee shops in Austin, TX", maxResults: 3}
+    cost: {type: per_result, value: 0.003, call_fee: 0.00005, currency: USD, per: 1, unit: result, source: rate_card_api, source_url: 'https://api.apify.com/v2/acts/openclawai~google-maps-scraper', checked: '2026-11-21', confidence: documented, note: 'pay-per-event, FLAT (no plan tiers), platform usage included: each place bills one place-scraped event, $0.003; reviews are included in that price. PLUS the apify-actor-start event, $0.00005 per GB of run memory (min 1 GB): one event at the pinned 1024 MB, the call_fee'}
+    added: '2026-11-21'
+    docs_url: https://apify.com/openclawai/google-maps-scraper
+
 proposed_capabilities:
   lazada.search.products: "Search Lazada products by keyword across Southeast Asia (SG, MY, VN, TH, PH, ID)"
+  indeed.search.jobs: "Indeed job search results"
