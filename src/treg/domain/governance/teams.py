@@ -602,9 +602,9 @@ async def cascade_delete_org(org: Org, db: AsyncSession) -> None:
     # the FK walk in the guard test never sees these rows; they are the team's all the same. A
     # deletion that should also clear the object store runs `archive_erasure.erase_org` first.
     await erase_archive_rows(db, org.id)
-    # While it exists, the partitioned table the backfill fills (alembic 0123) holds copies of the
+    # While it exists, the partitioned table the backfill fills (alembic 0125) holds copies of the
     # team's calls; it has no foreign key, so nothing else would remove them. After the swap
-    # (alembic 0124), until an operator drops it, the replaced table holds the team's older calls
+    # (alembic 0126), until an operator drops it, the replaced table holds the team's older calls
     # and a foreign key to this org row.
     if db.get_bind().dialect.name == "postgresql":
         for table in ("callrecord_partitioned", "callrecord_legacy"):
