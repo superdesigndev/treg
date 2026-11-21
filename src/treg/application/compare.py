@@ -82,6 +82,47 @@ def configured() -> bool:
     return get_settings().compare_configured
 
 
+# Why calls on the call path were or were not marked, by reason and client, logged as one line
+# every `MARK_LOG_EVERY_S` per process: counts only, never an input or a team.
+MARK_LOG_EVERY_S = 600
+_mark_counts: dict[str, int] = {}
+_mark_logged_at = time.monotonic()
+
+
+def _note_mark(reason: str, raw_headers) -> None:
+    global _mark_logged_at
+    client = next((bytes(v).decode("latin-1")[:32] for n, v in raw_headers
+                   if bytes(n).lower() == b"x-treg-client"), "") or "-"
+    key = f"{reason}/{client}"
+    _mark_counts[key] = _mark_counts.get(key, 0) + 1
+    now = time.monotonic()
+    if now - _mark_logged_at >= MARK_LOG_EVERY_S:
+        log.info("compare markers %s", json.dumps(_mark_counts, sort_keys=True))
+        _mark_counts.clear()
+        _mark_logged_at = now
+
+
+def _mark_reason(capability: str | None, raw_headers, summary: dict, archive_opted_out: bool,
+                 call_ref: str) -> str | None:
+    """Why this call gets no marker, or None when it does (checked in the order that decides)."""
+    settings = get_settings()
+    if not settings.compare_configured:
+        return "off"
+    if capability not in pairs():
+        return "not_paired"
+    if archive_opted_out:
+        return "archive_off"
+    if "cursor" in summary:
+        return "page_continuation"
+    if not isinstance(summary.get("identity"), dict):
+        return "no_input"
+    if any(bytes(name).lower().startswith(_ROUTE_HEADER_PREFIX) for name, _ in raw_headers):
+        return "route_header"
+    if not hints.sampled_at("compare", call_ref, settings.compare_rate):
+        return "not_sampled"
+    return None
+
+
 async def mark_eligible(call_ref: str, capability: str | None, raw_headers,
                         route_summary: dict | None = None, *, archive_opted_out: bool = False) -> None:
     """On the call path, after a successful routed answer: mark the call for a comparison run when
@@ -91,24 +132,30 @@ async def mark_eligible(call_ref: str, capability: str | None, raw_headers,
     `MARKER_INPUT_MAX_BYTES`), so the run asks B exactly that question instead of reading it back
     from A's request. A page continuation (`cursor` in the summary) is no fresh question, since B
     would be asked page one, so it is never marked. One short store write, no database, nothing
-    raised, nothing about the answer changed."""
+    raised, nothing about the answer changed. Every outcome is counted (`_note_mark`)."""
+    reason = "error"
     try:
-        settings = get_settings()
         summary = route_summary or {}
-        given = None if "cursor" in summary else summary.get("identity")
-        if (archive_opted_out or not isinstance(given, dict) or not settings.compare_configured
-                or capability not in pairs()
-                or any(bytes(name).lower().startswith(_ROUTE_HEADER_PREFIX) for name, _ in raw_headers)
-                or not hints.sampled_at("compare", call_ref, settings.compare_rate)):
+        reason = _mark_reason(capability, raw_headers, summary, archive_opted_out, call_ref) or ""
+        if reason:
             return
-        text = json.dumps(given, sort_keys=True, default=str)
+        text = json.dumps(summary["identity"], sort_keys=True, default=str)
         if len(text.encode()) > MARKER_INPUT_MAX_BYTES:
+            reason = "input_too_large"
             return
         store = kv.store()
+        reason = "store_failed"
         async with asyncio.timeout(MARKER_TIMEOUT_S):
-            await store.set_text(marker_key(call_ref), text, MARKER_TTL_S)
+            stored = await store.set_text(marker_key(call_ref), text, MARKER_TTL_S)
+        if stored:
+            reason = "marked"
     except Exception:  # noqa: BLE001 - a lost marker only means this call is never compared
         return
+    finally:
+        try:
+            _note_mark(reason, raw_headers)
+        except Exception:  # noqa: BLE001 - counting never affects the call
+            pass
 
 
 def pairs() -> dict[str, list[tuple[str, str]]]:
@@ -467,7 +514,7 @@ async def collect(*, max_seconds: float = 110.0, session_factory=session_maker,
 
     totals = {"read": 0, "eligible": 0, "called": 0, "ready": 0, "failed": 0, "skipped": 0,
               "removed": await _remove_orphans(session_factory), "estimate_micro": 0,
-              "skip_reasons": {}}
+              "skip_reasons": {}, "no_marker_by_client": {}}
     settings = get_settings()
     if not configured() or settings.compare_rate <= 0:
         return {"status": "off", **totals}
@@ -508,6 +555,10 @@ async def collect(*, max_seconds: float = 110.0, session_factory=session_maker,
             if reason:
                 reasons = totals["skip_reasons"]
                 reasons[reason] = reasons.get(reason, 0) + 1
+            if reason == "no_marker":  # which surface the unmarked calls came through
+                by_client = totals["no_marker_by_client"]
+                name = cand.record.client or "-"
+                by_client[name] = by_client.get(name, 0) + 1
     finally:
         if own_client:
             await client.aclose()
