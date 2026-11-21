@@ -2947,6 +2947,34 @@ SERPER = OAuthProvider(
     probe_path="/account",
 )
 
+
+SEARCHAPI = OAuthProvider(
+    service="searchapi",
+    display_name="SearchApi",
+    auth_kind="key",
+    token_label="API key",
+    token_placeholder="your SearchApi API key",
+    token_header="Authorization",
+    token_format="Bearer {secret}",
+    setup_url="https://www.searchapi.io/",
+    setup_action_label="Get your SearchApi API key",
+    setup_steps=(
+        "Sign in to SearchApi and open the dashboard.",
+        "Copy the API key shown there and paste it here.",
+    ),
+    setup_note=(
+        "Searches spend the plan's monthly allowance. treg checks the free Account endpoint "
+        "(GET /me) when you connect the key."
+    ),
+    auth_uri="", token_uri="", scopes={},
+    client_id_setting="", client_secret_setting="",
+    category="SEO",
+    summary="Search Google web, news and scholar results as structured JSON.",
+    base_url="https://www.searchapi.io/api/v1",
+    docs_url="https://www.searchapi.io/docs/google",
+    probe_path="/me",
+)
+
 BRAVESEARCH = OAuthProvider(
     service="bravesearch", display_name="Brave Search", auth_kind="key",
     token_label="Search API key", token_placeholder="your Brave Search API key",
@@ -4485,7 +4513,7 @@ REGISTRY: dict[str, OAuthProvider] = {
         SCRAPECREATORS,
         # SEO API-key providers
         DATAFORSEO, SERANKING, MOZ, MAJESTIC, SERPSTAT, EXA, SEARCH1API, TAVILY, OCTEN, LINKUP, PARALLEL, YOU, VALYU, KEENABLE, OLOSTEP, FIRECRAWL, CRAWL4AI, SPIDERCLOUD, PERPLEXITY,
-        SCRAPEGRAPHAI, SERPER, BRAVESEARCH, LITESCRAPE, CLORO, LOCALFALCON,
+        SCRAPEGRAPHAI, SERPER, SEARCHAPI, BRAVESEARCH, LITESCRAPE, CLORO, LOCALFALCON,
         # more Enrichment API-key providers
         LUSHA, CORESIGNAL, DIFFBOT, THECOMPANIESAPI, LEADMAGIC, ENRICHLAYER, FIBER_AI, CRUSTDATA, THEIRSTACK, JOBSPIPE, AVIATO,
         COMPANYENRICH, FUNDABLE, CORPOAPI, OCEANIO, ADYNTEL, TOMBA, TRESTLEIQ, HLRLOOKUP, PREDICTLEADS, FINDYMAIL, ANYMAILFINDER, ENROW, FILTRAT, FILTRAT_FINDER, DROPCONTACT, BRANDDEV, ICYPEAS, LEADSFORGE,

@@ -450,6 +450,7 @@ _UNRECORDED_SIGNATURE = {
     "google-ai",  # postpaid Cloud project: 429 RESOURCE_EXHAUSTED is a tier rate/spend cap, not a wallet
     "piapi",  # prepaid wallet exhaustion not observed ($50 funded 2026-09-14); no overflow route
     "serper",  # funded credits remain; no provider-specific empty-balance response was forced
+    "searchapi",  # plan searches remain; an exhausted-allowance response was not forced
     "litescrape",  # funded call balance remains; no empty-balance response was forced
     "tinyfish",  # funded wallet remains; no provider-specific empty-wallet response was forced
     "spidercloud",  # funded dollar balance remains; no empty-balance response was forced
