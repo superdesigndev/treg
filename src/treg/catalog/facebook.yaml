@@ -42,7 +42,7 @@ endpoints:
         limit: {type: integer, required: false, note: "default 25", example: 25}
         since: {type: string, required: false, note: "Unix timestamp or YYYY-MM-DD", example: "2026-07-01"}
         until: {type: string, required: false}
-      note: "needs the Page token, which treg injects once this Page is selected on the connection; with the user token Meta answers code 190 / subcode 2069032 ('A Page access token is required for this call'). page_id must be the selected Page. /feed is the wider edge (it also includes posts by visitors); /posts is the Page's own"
+      note: "needs the Page token, which treg injects once this Page is selected on the connection; with the user token Meta answers code 190 / subcode 2069032 ('A Page access token is required for this call'). page_id must be the selected Page. /feed is the wider edge (it also includes posts by visitors, but only with pages_read_user_content — manage tier); /posts is the Page's own"
     cost: {type: free, value: 0, currency: USD, unit: call, note: included with the connected account / platform rate limits apply}
     # unverified: failed live on 2026-07-28 with the user token (code 190 / subcode 2069032), before
     # treg injected the selected Page's token. Needs a live run with a selected Page.
