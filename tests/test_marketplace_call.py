@@ -4005,6 +4005,24 @@ def test_body_allowlist_requires_declared_fields_within_each_object():
         assert caught.value.kind == "catalog_parameter_invalid"
 
 
+@pytest.mark.parametrize(("body", "parameter", "rule"), [
+    (b'{"search":{"query":"q","count":101}}', "body.search.count", "range"),
+    (b'{"search":{"query":"q","count":"3"}}', "body.search.count", "type"),
+    (b'{"search":{"count":3}}', "body.search.query", "required"),
+    (b'{"search":{"query":"q","count":3,"enrichments":[]}}', "body.search.enrichments", "undeclared"),
+])
+def test_body_allowlist_holds_an_object_field_to_its_declared_properties(body, parameter, rule):
+    ep = {"id": "sample.list.build", "body_allowlist": True,
+          "input": {"body": {"search": {"type": "object", "required": True, "properties": {
+              "query": {"type": "string", "required": True},
+              "count": {"type": "integer", "required": True, "min": 1, "max": 100}}}}}}
+    call_resolution._enforce_catalog_body(ep, b'{"search":{"query":"q","count":100}}')
+    with pytest.raises(ResolutionFailed) as caught:
+        call_resolution._enforce_catalog_body(ep, body)
+    assert caught.value.kind == "catalog_parameter_invalid"
+    assert (caught.value.parameter, caught.value.rule) == (parameter, rule)
+
+
 async def test_an_answer_over_the_size_limit_is_not_kept_and_a_retry_never_runs_again(
         clients: AsyncClient, platform_on, monkeypatch):
     """Finding 5 (2026-09-21): retry rows kept every body whole for 24 h, up to 7.9 MB, while the

@@ -1,0 +1,45 @@
+{
+  "id": "webset_01m7r8etr5hktwkq5v5e3t5a2k",
+  "object": "webset",
+  "status": "running",
+  "externalId": null,
+  "title": null,
+  "searches": [
+    {
+      "id": "wsearch_01m7r8eva5767mn7fh7b709zxr",
+      "object": "webset_search",
+      "websetId": "webset_01m7r8etr5hktwkq5v5e3t5a2k",
+      "status": "running",
+      "query": "open source vector database companies headquartered in Europe",
+      "entity": {
+        "type": "company"
+      },
+      "criteria": [],
+      "count": 3,
+      "maxPeoplePerCompany": null,
+      "behavior": "override",
+      "exclude": [],
+      "scope": [],
+      "progress": {
+        "found": 0,
+        "analyzed": 0,
+        "completion": 0,
+        "timeLeft": null
+      },
+      "recall": null,
+      "metadata": {},
+      "canceledAt": null,
+      "canceledReason": null,
+      "createdAt": "2026-11-18T21:19:29.605Z",
+      "updatedAt": "2026-11-18T21:19:30.514Z"
+    }
+  ],
+  "imports": [],
+  "enrichments": [],
+  "monitors": [],
+  "excludes": [],
+  "metadata": {},
+  "dashboardUrl": "https://websets.exa.ai/websets/webset_01m7r8etr5hktwkq5v5e3t5a2k",
+  "createdAt": "2026-11-18T21:19:29.029Z",
+  "updatedAt": "2026-11-18T21:19:30.514Z"
+}
