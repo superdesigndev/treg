@@ -191,6 +191,46 @@ endpoints:
     example_response: examples/you.web.contents.json
     docs_url: https://you.com/docs/api-reference/contents
 
+  - id: you.web.extract
+    added: '2026-11-20'
+    capability: web.extract
+    platform: web
+    domain: extract
+    scope: any_account
+    method: POST
+    host: ydc-index.io
+    path: /v1/extract
+    body_allowlist: true
+    name: Extract a page or PDF
+    summary: Return clean Markdown or HTML for one public webpage or PDF URL.
+    input:
+      bodyType: json
+      body:
+        url: {type: string, format: url, required: true, example: "https://example.com"}
+        full_page:
+          type: object
+          required: false
+          properties:
+            extraction_formats: {type: array, items: {type: string, enum: [markdown, html]}, required: false, note: "Default [markdown]."}
+        extraction_source: {type: string, required: false, default: blend, enum: [blend, cache, fetch]}
+        timeout: {type: integer, required: false, default: 30, min: 2, max: 100, note: "Seconds for the whole request."}
+        parse_effort: {type: string, required: false, enum: [lite, standard], note: "PDF pages only; standard (the upstream default) adds $0.50 per 1,000 PDF pages."}
+      note: "One URL per call. Check for contents before reading it: a page with nothing to extract returns an object without it."
+    platform_request: {body.parse_effort: lite}
+    test_request: {body: {url: "https://example.com", parse_effort: lite}}
+    cost:
+      type: per_call
+      value: 0.0009
+      currency: USD
+      unit: call
+      source: docs
+      source_url: https://you.com/docs/administration/billing#extract-api
+      checked: '2026-11-20'
+      confidence: documented
+      note: "$0.90 per 1,000 URLs. PDFs at parse_effort standard add $0.50 per 1,000 pages; treg's key pins lite, so the shared-key price is the URL charge alone."
+    example_response: examples/you.web.extract.json
+    docs_url: https://you.com/docs/guides/extract
+
   - id: you.web.answer
     added: '2026-09-29'
     capability: web.answer

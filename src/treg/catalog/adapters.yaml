@@ -3322,6 +3322,13 @@ adapters:
     const: {body.formats: [markdown]}
     out: {pages: ".", count: "len(.)"}
     miss: "coalesce([0].markdown, [0].html, '') == ''"
+  you.web.extract:
+    accepts: [[url]]
+    in: {url: body.url}
+    test_identity: {url: "https://example.com"}
+    const: {body.parse_effort: lite}
+    out: {pages: "list(.)", count: "len(list(.))"}
+    miss: "coalesce(contents.full_page.markdown, contents.full_page.html, '') == ''"
   tinyfish.web.fetch:
     accepts: [[url]]
     in_expr: {body.urls: "list(url)"}
