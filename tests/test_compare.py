@@ -737,6 +737,27 @@ async def test_an_inline_pair_keeps_its_truncation_and_says_when_the_input_was_c
     assert "cut when stored" in hint
 
 
+async def test_an_identity_token_reads_its_pair_through_the_team_the_call_resolved(clients, monkeypatch):
+    """A `treg login` identity token names no team: the inline read and the compare tool carry the
+    team `_resolve_org` found, as the call itself does, or the API answers 400 and drops the pair."""
+    from conftest import verified_signup
+    from test_mcp import _call_tool, mcp_session
+
+    from treg import mcp as mcp_module
+
+    _compare_on(monkeypatch)
+    token = (await verified_signup(clients, json={"email": "identity-compare@superdesign.dev"})).json()["token"]
+    team = (await clients.get("/orgs", headers={"X-Treg-Token": token})).json()[0]
+    cid = await _seed(team["org_id"], first="a", call_ref="identity-pair")
+    assert (await mcp_module._inline_comparison(token, team["slug"]))["comparison_id"] == cid
+    # The slug is what the read asks with: a team this person is not in finds nothing.
+    assert await mcp_module._inline_comparison(token, "not-their-team") is None
+    async with mcp_session(clients) as c:
+        shown = await _call_tool(c, "compare", {}, token)
+        sent = await _call_tool(c, "compare", {"comparison_id": cid, "choice": "1"}, token)
+    assert shown["comparison_id"] == cid and sent["status"] == "received"
+
+
 async def test_a_slow_comparison_read_never_holds_the_call(clients, monkeypatch):
     """The call has answered and been charged: a hung read is dropped after its short limit."""
     import asyncio

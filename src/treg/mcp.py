@@ -1394,6 +1394,12 @@ async def compare(
     comparison_id: int | None = None, reason: str | None = None,
 ) -> CompareOut:
     async with _api(_bearer(ctx)) as client:
+        # An identity token names no team: resolve it as `call` does, or the API asks which team.
+        _, slug, problem = await _resolve_org(client)
+        if problem:
+            return {"status": "error", "detail": problem}
+        if slug:
+            client.headers["X-Treg-Org"] = slug
         if choice is None:
             response = await client.get("/comparisons/next")
             if response.status_code == 204:
@@ -1460,16 +1466,18 @@ def _may_read_comparisons(token: str) -> bool:
     return _V1_TOOL_SCOPES["compare"] in mcp_oauth.mcp_permissions(claims.get("scope", ""))
 
 
-async def _inline_comparison(token: str) -> dict[str, Any] | None:
+async def _inline_comparison(token: str, org_slug: str | None = None) -> dict[str, Any] | None:
     """The team's waiting comparison, compacted for a call result; None when this credential may
     not read it, none is waiting, or it is not read within `INLINE_READ_TIMEOUT_S` (the call result
-    then simply carries no invitation)."""
+    then simply carries no invitation). `org_slug`: the team the call itself resolved, which an
+    identity token needs again here (`require_member` asks which team otherwise)."""
     if not _may_read_comparisons(token):
         return None
     try:
         async with asyncio.timeout(INLINE_READ_TIMEOUT_S):
             async with _api(token) as client:
-                response = await client.get("/comparisons/next")
+                response = await client.get("/comparisons/next",
+                                            headers={"X-Treg-Org": org_slug} if org_slug else None)
     except Exception:  # an invitation is best-effort: the call it rides on never fails for it
         logging.getLogger("treg.mcp").info("comparison not attached", exc_info=True)
         return None
@@ -2043,7 +2051,7 @@ async def _call_impl(endpoint_id: str, params: dict | list | None = None,
         if kind == "review" and out.get("call_id"):
             out["hint"] = hints.review_hint(out["call_id"])
         elif kind == "compare":
-            if pair := await _inline_comparison(token):
+            if pair := await _inline_comparison(token, extra_headers.get("X-Treg-Org")):
                 out["compare"] = pair
                 out["hint"] = hints.compare_inline_hint(
                     pair["comparison_id"], input_cut="input" in pair.get("truncated_parts", []))
