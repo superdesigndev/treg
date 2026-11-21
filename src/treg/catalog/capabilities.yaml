@@ -36,6 +36,8 @@ platforms:
   image-gen: {label: "Image generation", category: "AI generation", summary: "Text-to-image and prompt-based image editing across models."}
   voice-gen: {label: "Voice generation", category: "AI generation", summary: "Text-to-speech across voice models, with prices side by side."}
   music-gen: {label: "Music generation", category: "AI generation", summary: "Songs and short music clips from a text prompt, with prices side by side."}
+  speech-to-text: {label: "Speech to text", category: "AI generation", summary: "Transcribe recorded audio across speech-to-text models, with prices side by side."}
+  voice-agents: {label: "Voice agents", category: "AI generation", summary: "AI voice agents that place phone calls, with the call's transcript and outcome afterwards."}
 
   # --- Social: global social & video -----------------------------------------------------------
   tiktok: {label: "TikTok", category: "Social", featured: 1, summary: "Profiles, videos, comments, hashtags and search — plus your own account via OAuth."}
