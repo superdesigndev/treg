@@ -342,21 +342,25 @@ adapters:
     accepts: [[hashtag]]
     in:  {hashtag: queryParams.keyword}
     out: {posts: data.data.items, count: data.data.count, next_cursor: data.pagination_token}
+    paging: {cursor: queryParams.pagination_token}
   scrapecreators.x.v1-instagram-search-hashtag:
     accepts: [[hashtag]]
     in:  {hashtag: queryParams.hashtag}
     out: {posts: posts, count: "len(posts)", next_cursor: cursor}
+    paging: {cursor: queryParams.cursor}
   justoneapi.x.instagram-search-hashtag-posts-v1:
     accepts: [[hashtag]]
     in:  {hashtag: queryParams.hashtag}
     out: {posts: data.data.hashtag.edge_hashtag_to_media.edges, count: data.data.hashtag.edge_hashtag_to_media.count,
           next_cursor: data.data.hashtag.edge_hashtag_to_media.page_info.end_cursor}
+    paging: {cursor: queryParams.endCursor}
 
   # ---- x.user.posts -------------------------------------------------------------------------
   tikhub.x.user.posts:
     accepts: [[username], [user_id]]
     in:  {username: queryParams.screen_name, user_id: queryParams.rest_id}
     out: {posts: data.timeline, next_cursor: data.next_cursor}
+    paging: {cursor: queryParams.cursor}
   scrapecreators.x.user.posts:
     accepts: [[username]]
     in:  {username: queryParams.handle}
@@ -365,6 +369,7 @@ adapters:
     accepts: [[user_id]]
     in:  {user_id: queryParams.restId}
     out: {posts: data.timeline, next_cursor: data.next_cursor}
+    paging: {cursor: queryParams.cursor}
 
   # ---- tiktok.user.profile ------------------------------------------------------------------
   tikhub.tiktok.user.profile:
@@ -796,14 +801,17 @@ adapters:
     accepts: [[user_id]]
     in:  {user_id: queryParams.user_id}
     out: {posts: data.items, next_cursor: data.next_max_id}
+    paging: {cursor: queryParams.max_id}
   scrapecreators.instagram.user.posts:
     accepts: [[username]]
     in:  {username: queryParams.handle}
     out: {posts: items, next_cursor: next_max_id}
+    paging: {cursor: queryParams.next_max_id}
   justoneapi.instagram.user.posts:
     accepts: [[username]]
     in:  {username: queryParams.username}
     out: {posts: data.data.items, next_cursor: data.data.next_page_token}
+    paging: {cursor: queryParams.paginationToken}
 
   # ---- instagram.post.detail ----------------------------------------------------------------
   tikhub.x.instagram-v1-fetch-post-by-id:
@@ -1944,17 +1952,19 @@ adapters:
   justoneapi.tiktok.search.videos:
     accepts: [[q]]
     in:  {q: queryParams.keyword}
-    const: {queryParams.offset: "0"}
     out: {videos: data.aweme_list, next_cursor: data.cursor, has_more: data.has_more}
+    paging: {cursor: queryParams.offset}
   scrapecreators.tiktok.search.videos:
     accepts: [[q]]
     in:  {q: queryParams.query}
     out: {videos: search_item_list, next_cursor: cursor, has_more: has_more}
+    paging: {cursor: queryParams.cursor}
   tikhub.tiktok.search.videos:
     accepts: [[q]]
     in:  {q: queryParams.keyword}
     in_expr: {queryParams.count: limit}
     out: {videos: data.search_item_list, next_cursor: data.cursor, has_more: data.has_more}
+    paging: {cursor: queryParams.offset}
 
   justoneapi.x.instagram-get-post-comments-v1:
     accepts: [[shortcode]]
@@ -2102,15 +2112,18 @@ adapters:
     in:  {user_id: queryParams.user_id}
     in_expr: {queryParams.count: limit}
     out: {reels: data.items, next_cursor: data.paging_info.max_id, has_more: data.paging_info.more_available}
+    paging: {cursor: queryParams.max_id}
   tikhub.x.instagram-v2-fetch-user-reels:
     accepts: [[username], [user_id]]
     in:  {username: queryParams.username, user_id: queryParams.user_id}
     out: {reels: data.data.items, next_cursor: data.pagination_token}
+    paging: {cursor: queryParams.pagination_token}
   tikhub.x.instagram-v3-get-user-reels:
     accepts: [[username]]
     in:  {username: queryParams.username}
     in_expr: {queryParams.page_size: limit}
     out: {reels: data.items, next_cursor: data.next_max_id}
+    paging: {cursor: queryParams.after}
 
   justoneapi.x.youtube-get-channel-videos-v1:
     accepts: [[channel_id]]
@@ -2967,14 +2980,17 @@ adapters:
     accepts: [[q]]
     in:  {q: body.query}
     out: {posts: output.data.items, next_cursor: output.data.nextCursor}
+    paging: {cursor: body.cursor}
   anyapi.x.user.posts:
     accepts: [[username]]
     in:  {username: body.handle}
     out: {posts: output.data.tweets, next_cursor: output.data.nextCursor}
+    paging: {cursor: body.cursor}
   anyapi.x.user.posts.timeline:
     accepts: [[username]]
     in:  {username: body.handle}
     out: {posts: output.data.tweets, next_cursor: output.data.nextCursor}
+    paging: {cursor: body.cursor}
   anyapi.x.user.profile:
     accepts: [[username]]
     in:  {username: body.handle}
@@ -2998,6 +3014,7 @@ adapters:
     accepts: [[q]]
     in:  {q: body.query}
     out: {videos: output.data.videos, next_cursor: output.data.nextCursor}
+    paging: {cursor: body.cursor}
   anyapi.tiktok.search.users:
     accepts: [[q]]
     in:  {q: body.query}
@@ -3010,10 +3027,12 @@ adapters:
     accepts: [[username]]
     in:  {username: body.handle}
     out: {posts: output.data.posts, next_cursor: output.data.nextCursor}
+    paging: {cursor: body.cursor}
   anyapi.instagram.user.reels:
     accepts: [[username]]
     in:  {username: body.handle}
     out: {reels: output.data.reels, next_cursor: output.data.nextCursor}
+    paging: {cursor: body.cursor}
   anyapi.instagram.post.detail:
     accepts: [[url]]
     in:  {url: body.url}
@@ -3027,6 +3046,7 @@ adapters:
     accepts: [[hashtag]]
     in:  {hashtag: body.hashtag}
     out: {posts: output.data.posts, next_cursor: output.data.nextCursor}
+    paging: {cursor: body.cursor}
   anyapi.instagram.search.reels:
     accepts: [[q]]
     in:  {q: body.query}
@@ -3494,6 +3514,7 @@ adapters:
     in: {linkedin_url: queryParams.profileUrlOrUrn, linkedin_handle: queryParams.profileUrlOrUrn}
     in_expr: {queryParams.count: limit}
     out: {posts: posts, next_cursor: paginationToken, has_more: hasMore}
+    paging: {cursor: queryParams.paginationToken}
     miss: "posts == []"
   fetchinio.linkedin.post.comments:
     accepts: [[post_urn], [post_id]]
@@ -3515,12 +3536,14 @@ adapters:
     in: {linkedin_handle: queryParams.linkedinID}
     in_expr: {queryParams.perPage: limit}
     out: {posts: results, next_cursor: paginationToken, has_more: hasMoreResults}
+    paging: {cursor: queryParams.paginationToken}
     miss: "results == []"
   harvestapi.linkedin.user.posts:
     accepts: [[linkedin_handle]]
     in: {linkedin_handle: queryParams.profilePublicIdentifier}
     const: {queryParams.page: "1"}
     out: {posts: elements, next_cursor: paginationToken}
+    paging: {cursor: queryParams.paginationToken}
     miss: "elements == []"
 
   # ---- influencers.club enrich tiers: cache result admission only (`routed: false` contracts) --
@@ -3814,11 +3837,13 @@ adapters:
     in: {page_id: body.pageId, company_name: body.companyName}
     out: {ads: output.data.ads, page_id: "output.data.ads[0].pageId", count: "len(output.data.ads)",
           next_cursor: output.data.nextCursor}
+    paging: {cursor: body.cursor}
   adyntel.meta-ads.library.advertiser:
     accepts: [[company_domain]]
     in: {company_domain: body.company_domain}
     out: {ads: results, page_id: "results[0].page_id", page_name: "results[0].page_name", count: "len(results)",
           next_cursor: continuation_token}
+    paging: {cursor: body.continuation_token}
     miss: "coalesce(results, []) == []"
   adyntel.google.ads.transparency:
     accepts: [[company_domain]]
@@ -3840,6 +3865,7 @@ adapters:
     in: {page_id: queryParams.pageId, company_name: queryParams.companyName}
     out: {ads: results, page_id: "results[0].page_id", page_name: "results[0].page_name", count: "len(results)",
           next_cursor: cursor}
+    paging: {cursor: queryParams.cursor}
   crawl4ai.facebook.user.posts:
     accepts: [[url]]
     in: {url: body.page}
