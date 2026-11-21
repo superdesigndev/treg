@@ -1,0 +1,391 @@
+provider: hoteluse
+source:
+  docs: https://www.hoteluse.dev/docs/
+  openapi: https://www.hoteluse.dev/v1/openapi.json
+  curated: '2026-11-18'
+limits: '60 hotel requests/minute, including 10 new live price calls; 1 concurrent new request per account. Self-serve
+  hotel information access: 10,000 distinct hotels.'
+pricing_url: https://www.hoteluse.dev/docs/pricing-and-limits.html
+proposed_capabilities:
+  places.hotels.search: Search hotels for a destination and compare stay prices
+  places.hotel.detail: Get a hotel’s address, facilities, photos and policies
+  places.hotel.rooms: Get available hotel room offers with stay prices and cancellation terms
+defaults:
+  provenance:
+    source: rate_card_api
+    source_url: https://www.hoteluse.dev/v1/capabilities
+    checked: '2026-11-18'
+    confidence: verified
+  settle:
+    reported:
+      path: response.usage.paid_usd
+      unit: usd
+  bill:
+    miss: charged
+  expect:
+    path: response.data
+    op: present
+endpoints:
+- id: hoteluse.places.hotels.search
+  added: '2026-11-18'
+  capability: places.hotels.search
+  platform: places
+  scope: any_account
+  method: POST
+  path: /v1/hotels/search
+  name: Search hotels and compare stay prices
+  summary: Search hotels near a destination and compare provider minimum stay prices.
+  input:
+    bodyType: json
+    body:
+      location:
+        type: object
+        required: false
+        properties:
+          country: {type: string, required: true}
+          city: {type: string, required: false}
+          region: {type: string, required: false}
+          latitude: {type: number, required: false, min: -90, max: 90, note: Search center latitude. Supply together
+              with longitude. Explicit coordinates take precedence over city/region.}
+          longitude: {type: number, required: false, min: -180, max: 180, note: Search center longitude. Supply together
+              with latitude.}
+        note: Country plus either city or latitude and longitude; coordinates take precedence over city and region.
+        example:
+          country: US
+          latitude: 47.6051
+          longitude: -122.1891
+      hotel_filters:
+        type: object
+        required: false
+        properties:
+          amenities: {type: array, required: false, maxItems: 20, note: 'Require all requested amenities; use wifi, parking,
+              pool, fitness or pet_friendly.'}
+          star_rating_min: {type: number, required: false, min: 0, max: 5, note: 'Minimum hotel star classification,
+              distinct from guest reviews.'}
+          star_rating_max: {type: number, required: false, min: 0, max: 5}
+          star_ratings: {type: array, required: false, minItems: 1, maxItems: 5, note: 'Accepted exact star classifications,
+              1–5; intersects with min/max filters.'}
+          review_score_min: {type: number, required: false, min: 0, max: 10, note: Minimum guest score normalized to
+              10 from the displayed review provider.}
+          review_count_min: {type: integer, required: false, min: 0, note: Minimum review count from that same review
+              provider.}
+          property_type: {type: string, required: false}
+          property_types: {type: array, required: false, minItems: 1, maxItems: 12, note: Accept any listed source property
+              type; use instead of property_type.}
+          name_contains: {type: string, required: false}
+          max_distance_km: {type: number, required: false, max: 20, note: Straight-line radius greater than 0 and at
+              most 20 km; fixes the radius without expansion.}
+        note: Hotel filters apply before live pricing. Property types and amenities use source values.
+        example:
+          name_contains: Hilton Bellevue
+          max_distance_km: 1
+      context:
+        type: object
+        required: false
+        properties:
+          check_in: {type: string, required: false, note: 'Hotel-local YYYY-MM-DD, today or later; supply check_out and
+              omit date_intent.'}
+          check_out: {type: string, required: false, note: Hotel-local YYYY-MM-DD after check_in.}
+          date_intent: {type: string, required: false, enum: [tonight], note: Use tonight without check_in/check_out
+              to resolve one night in the destination time zone.}
+          device: {type: string, required: false, enum: [desktop, mobile_web, mobile_app], default: desktop, note: Actual
+              booking channel; mobile_app requires an approved native-app integration. Keep the device unchanged for
+              the itinerary.}
+          currency: {type: string, required: false, default: USD}
+          locale: {type: string, required: false, note: BCP 47 language tag.}
+          time_zone: {type: string, required: false, note: Optional IANA traveler time zone; the hotel time zone determines
+              stay dates.}
+          market:
+            type: object
+            required: false
+            properties:
+              residency_country: {type: string, required: true}
+          rooms: {type: array, required: true, minItems: 1, maxItems: 8, note: 'Array of 1–8 objects with adults (1–8)
+              and children_ages (0–17, at most 6 children).'}
+        note: 'Use hotel-local check_in/check_out or date_intent: tonight, plus 1–8 rooms. Each room needs adults and
+          children_ages.'
+        example:
+          date_intent: tonight
+          rooms:
+          - adults: 2
+            children_ages: []
+          currency: USD
+          market:
+            residency_country: US
+      rate_filters:
+        type: object
+        required: false
+        properties:
+          refundable_only: {type: boolean, required: false, note: Require known refundable terms.}
+          breakfast_included: {type: boolean, required: false}
+          stay_total_min: {type: number, required: false, min: 0, max: 100000000, note: 'Minimum full-stay total for
+              all requested rooms, including mandatory taxes and fees.'}
+          stay_total_max: {type: number, required: false, min: 0, max: 100000000, note: 'Maximum full-stay total for
+              all requested rooms, including mandatory taxes and fees.'}
+        note: Filters apply to provider offers before minimum prices are selected; budgets are full-stay amounts in context.currency.
+        example:
+          refundable_only: true
+      providers:
+        type: array
+        required: false
+        minItems: 1
+        note: 'Provider IDs: expedia, booking, agoda, brek, trip, vio. Check /v1/capabilities for enabled providers.'
+        example:
+        - expedia
+      page_size:
+        type: integer
+        required: false
+        min: 1
+        max: 200
+        example: 1
+      billing:
+        type: object
+        required: false
+        properties:
+          max_units: {type: integer, required: true, min: 0}
+        note: 'Maximum new billable units authorized for this request; use max_units: 1 for a single operation.'
+        example:
+          max_units: 1
+      sort:
+        type: string
+        required: false
+        enum:
+        - distance_brek_savings_desc
+        - distance_price_asc
+        - stay_total_asc
+        - stay_total_desc
+        - distance_asc
+        - review_score_desc
+        default: distance_brek_savings_desc
+        note: Default uses nearest 5 km bands, then greatest Brek price advantage. distance_asc orders by exact straight-line
+          distance.
+        example: distance_asc
+      quote_session_id:
+        type: string
+        required: false
+        note: Copy the initial response value to read another page of that quote within 10 minutes.
+        example: copy-from-the-initial-response
+      cursor:
+        type: string
+        required: false
+        note: Copy next_cursor from the same quote session; continuation sends only quote_session_id and cursor.
+        example: copy-from-next_cursor
+    note: Initial call requires location, context. Free continuation requires quote_session_id and cursor instead.
+    headers:
+      Idempotency-Key: {type: string, required: false, note: Up to 128 characters. Keep the same value and request body
+          for retries within 24 hours.}
+  test_request:
+    body:
+      location:
+        country: US
+        latitude: 47.6051
+        longitude: -122.1891
+      hotel_filters:
+        name_contains: Hilton Bellevue
+        max_distance_km: 1
+      context:
+        date_intent: tonight
+        rooms:
+        - adults: 2
+          children_ages: []
+        currency: USD
+        market:
+          residency_country: US
+      providers:
+      - expedia
+      page_size: 1
+      billing:
+        max_units: 1
+  price:
+    currency: USD
+    per: 1
+    unit: call
+    note: Completed empty and partial results use one call. Signup credits and further pages of the same 10-minute quote
+      session are free.
+    table:
+    - when:
+      - path: body.quote_session_id
+        op: present
+      value: '0'
+    fallback:
+      value: '0.040'
+      note: One completed initial quote, before one-time signup credits.
+  docs_url: https://www.hoteluse.dev/docs/api/search-hotels.html
+  note: The usage receipt reports the actual USD charge; preserve an Idempotency-Key for retries for up to 24 hours.
+- id: hoteluse.places.hotel.detail
+  added: '2026-11-18'
+  capability: places.hotel.detail
+  platform: places
+  scope: any_account
+  method: POST
+  path: /v1/hotels/get
+  name: Get hotel information
+  summary: Get a hotel’s address, photos, facilities, policies and source metadata.
+  input:
+    bodyType: json
+    body:
+      hotel_id:
+        type: string
+        required: true
+        note: HotelUse hu_… ID returned by search_hotels; the example identifies Hilton Bellevue.
+        example: hu_69450c903d9c06226f1ce17b
+      billing:
+        type: object
+        required: false
+        properties:
+          max_units: {type: integer, required: true, min: 0}
+        note: 'Maximum new billable units authorized for this request; use max_units: 1 for a single operation.'
+        example:
+          max_units: 1
+      include:
+        type: array
+        required: false
+        note: 'Optional sections: provider_records, provenance.'
+        example:
+        - provenance
+    headers:
+      Idempotency-Key: {type: string, required: false, note: Up to 128 characters. Keep the same value and request body
+          for retries within 24 hours.}
+  test_request:
+    body:
+      hotel_id: hu_69450c903d9c06226f1ce17b
+      billing:
+        max_units: 1
+  price:
+    value: '0.005'
+    currency: USD
+    per: 1
+    unit: call
+    note: Per newly read hotel version; repeats of the same version are free. One-time signup credits apply.
+  docs_url: https://www.hoteluse.dev/docs/api/get-hotel.html
+  note: The usage receipt reports the actual USD charge; preserve an Idempotency-Key for retries for up to 24 hours.
+- id: hoteluse.places.hotel.rooms
+  added: '2026-11-18'
+  capability: places.hotel.rooms
+  platform: places
+  scope: any_account
+  method: POST
+  path: /v1/rates/rooms
+  name: Get available hotel rooms and stay prices
+  summary: Compare a hotel’s provider room offers with stay prices, fees and cancellation terms.
+  input:
+    bodyType: json
+    body:
+      hotel_id:
+        type: string
+        required: false
+        note: HotelUse hu_… ID returned by search_hotels; the example identifies Hilton Bellevue.
+        example: hu_69450c903d9c06226f1ce17b
+      context:
+        type: object
+        required: false
+        properties:
+          check_in: {type: string, required: false, note: 'Hotel-local YYYY-MM-DD, today or later; supply check_out and
+              omit date_intent.'}
+          check_out: {type: string, required: false, note: Hotel-local YYYY-MM-DD after check_in.}
+          date_intent: {type: string, required: false, enum: [tonight], note: Use tonight without check_in/check_out
+              to resolve one night in the destination time zone.}
+          device: {type: string, required: false, enum: [desktop, mobile_web, mobile_app], default: desktop, note: Actual
+              booking channel; mobile_app requires an approved native-app integration. Keep the device unchanged for
+              the itinerary.}
+          currency: {type: string, required: false, default: USD}
+          locale: {type: string, required: false, note: BCP 47 language tag.}
+          time_zone: {type: string, required: false, note: Optional IANA traveler time zone; the hotel time zone determines
+              stay dates.}
+          market:
+            type: object
+            required: false
+            properties:
+              residency_country: {type: string, required: true}
+          rooms: {type: array, required: true, minItems: 1, maxItems: 8, note: 'Array of 1–8 objects with adults (1–8)
+              and children_ages (0–17, at most 6 children).'}
+        note: 'Use hotel-local check_in/check_out or date_intent: tonight, plus 1–8 rooms. Each room needs adults and
+          children_ages.'
+        example:
+          date_intent: tonight
+          rooms:
+          - adults: 2
+            children_ages: []
+          currency: USD
+          market:
+            residency_country: US
+      rate_filters:
+        type: object
+        required: false
+        properties:
+          refundable_only: {type: boolean, required: false, note: Require known refundable terms.}
+          breakfast_included: {type: boolean, required: false}
+          stay_total_min: {type: number, required: false, min: 0, max: 100000000, note: 'Minimum full-stay total for
+              all requested rooms, including mandatory taxes and fees.'}
+          stay_total_max: {type: number, required: false, min: 0, max: 100000000, note: 'Maximum full-stay total for
+              all requested rooms, including mandatory taxes and fees.'}
+        note: Filters apply to provider offers before minimum prices are selected; budgets are full-stay amounts in context.currency.
+        example:
+          refundable_only: true
+      providers:
+        type: array
+        required: false
+        minItems: 1
+        note: 'Provider IDs: expedia, booking, agoda, brek, trip, vio. Check /v1/capabilities for enabled providers.'
+        example:
+        - expedia
+      page_size:
+        type: integer
+        required: false
+        min: 1
+        max: 200
+        example: 1
+      billing:
+        type: object
+        required: false
+        properties:
+          max_units: {type: integer, required: true, min: 0}
+        note: 'Maximum new billable units authorized for this request; use max_units: 1 for a single operation.'
+        example:
+          max_units: 1
+      quote_session_id:
+        type: string
+        required: false
+        note: Copy the initial response value to read another page of that quote within 10 minutes.
+        example: copy-from-the-initial-response
+      cursor:
+        type: string
+        required: false
+        note: Copy next_cursor from the same quote session; continuation sends only quote_session_id and cursor.
+        example: copy-from-next_cursor
+    note: Initial call requires hotel_id, context. Free continuation requires quote_session_id and cursor instead.
+    headers:
+      Idempotency-Key: {type: string, required: false, note: Up to 128 characters. Keep the same value and request body
+          for retries within 24 hours.}
+  test_request:
+    body:
+      hotel_id: hu_69450c903d9c06226f1ce17b
+      context:
+        date_intent: tonight
+        rooms:
+        - adults: 2
+          children_ages: []
+        currency: USD
+        market:
+          residency_country: US
+      providers:
+      - expedia
+      page_size: 1
+      billing:
+        max_units: 1
+  price:
+    currency: USD
+    per: 1
+    unit: call
+    note: Completed empty and partial results use one call. Signup credits and further pages of the same 10-minute quote
+      session are free.
+    table:
+    - when:
+      - path: body.quote_session_id
+        op: present
+      value: '0'
+    fallback:
+      value: '0.060'
+      note: One completed initial quote, before one-time signup credits.
+  docs_url: https://www.hoteluse.dev/docs/api/get-room-rates.html
+  note: The usage receipt reports the actual USD charge; preserve an Idempotency-Key for retries for up to 24 hours.
