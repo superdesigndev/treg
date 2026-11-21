@@ -94,7 +94,7 @@ endpoints:
         adv_biz_ids: {type: string, required: false, note: "advertiser business id, to pin the search to one advertiser instead of a keyword"}
         ad_id: {type: string, required: false, note: "fetch one specific ad"}
         region: {type: string, required: false, note: "ISO country code or 'all' (the default). TikTok's library is a DSA transparency database, so coverage is EU/EEA/UK-centric — and per the actor's own input schema it REJECTS region=US; pass 'all' to include US ads", example: "all"}
-        query_type: {type: string, required: false, note: "which field `search` is matched against: '1' = advertiser name (the actor's DEFAULT), '0' = keyword. A keyword passed without query_type:'0' is matched as an advertiser name and finds nothing", example: "1"}
+        query_type: {type: string, required: false, note: "'1' (the actor's DEFAULT) = advertiser-name search, matches keywords in advertiser name and ad text. '0' = legacy keyword mode, which often returns unrelated advertisers or the whole library unfiltered; avoid it", example: "1"}
         start_date: {type: string, required: false, note: "YYYY-MM-DD", example: "2026-06-01"}
         end_date: {type: string, required: false, note: "YYYY-MM-DD"}
         sort: {type: string, required: false}
