@@ -21,6 +21,8 @@ from .. import skills as _skills
 from ..application import connect as connect_use_cases
 from ..config import get_settings
 from ..domain.connections import refresh as connection_refresh
+from ..domain.connections.customers import is_visible, pinned_customer
+from ..domain.governance.budgets import _primary_dim_of
 from ..infra import credential_cipher
 from ..infra.db import get_session
 from ..domain.governance import access as access_policy
@@ -117,6 +119,8 @@ async def list_secrets(
     visible = await _visible_secret_ids(caller, db)
     if visible is not None:  # tool-restricted member: only the keys wired into their allowed tools
         rows = [s for s in rows if s.id in visible]
+    if (customer := pinned_customer(caller.membership.pinned_tags, _primary_dim_of(caller))) is not None:
+        rows = [s for s in rows if is_visible(s, customer)]
     return [_secret_view(s) for s in rows]
 
 

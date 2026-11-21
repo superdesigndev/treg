@@ -41,7 +41,9 @@ provider account and bypass this platform ownership table.
   be read by the new workers.
 - **Tenant isolation.** Every secret, tool, and record is scoped to an org; access is gated by role and,
   per member, by an explicit tool allow-list. Pinned agent tags additionally scope call/run history,
-  archived results and shared-provider async ownership; foreign and untagged records return 404.
+  archived results, shared-provider async ownership and the connections a team's customers made;
+  foreign and untagged records return 404. A customer's connection is used only by calls tagged with
+  that customer, which an unpinned token asserts freely.
   These scopes do not partition a team's BYOK account or authenticate public media URLs.
 - **SSRF guard.** A tool's upstream host is re-resolved at call time and internal/metadata addresses are
   refused (defeats DNS-rebinding). Health probes, owner webhooks and OAuth token requests are checked

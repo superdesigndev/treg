@@ -22,6 +22,15 @@ async def require_secret_ownership(secret: Secret, *, caller_email: str,
             "(ask an org admin to wire up a shared-key tool)")
 
 
+def _refuse_customer_connection(secret: Secret) -> None:
+    """A tool is callable by every token of the team, so it would hand a customer's connection to
+    calls for every other customer."""
+    if secret.customer is not None:
+        raise ToolConfigError(
+            f"secret {secret.id} is a customer's connection: only calls tagged with that customer "
+            "use it, so no tool may bind it")
+
+
 async def validate_bindings(bindings: list[dict], *, org_id: int, caller_email: str,
                             caller_is_admin: bool, known_injectors: frozenset,
                             db: AsyncSession, grandfather: frozenset = frozenset()) -> None:
@@ -53,6 +62,7 @@ async def validate_bindings(bindings: list[dict], *, org_id: int, caller_email: 
         secret = await db.get(Secret, sid) if sid is not None else None
         if secret is None or secret.org_id != org_id:
             raise ToolConfigError(f"binding secret_id {sid} not found")
+        _refuse_customer_connection(secret)
         if sid not in grandfather:  # a binding already on the tool is grandfathered (don't lock the owner out on edit)
             await require_secret_ownership(  # can't ADD a teammate's secret
                 secret, caller_email=caller_email, caller_is_admin=caller_is_admin)
@@ -96,6 +106,7 @@ async def validate_cli_secrets(cli: dict | None, *, org_id: int, caller_email: s
         secret = await db.get(Secret, sid)
         if secret is None or secret.org_id != org_id:
             raise ToolConfigError(f"cli.inject secret_id {sid} not found")
+        _refuse_customer_connection(secret)
         if sid not in grandfather:
             await require_secret_ownership(
                 secret, caller_email=caller_email, caller_is_admin=caller_is_admin)

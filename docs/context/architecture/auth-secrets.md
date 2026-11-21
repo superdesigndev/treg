@@ -12,6 +12,10 @@ sources:
   - src/treg/oauth.py
   - src/treg/domain/connections/__init__.py
   - src/treg/domain/connections/authorization.py
+  - src/treg/domain/connections/customers.py
+  - src/treg/domain/connections/return_link.py
+  - src/treg/alembic/versions/0119_customer_connections.py
+  - tests/test_customer_connections.py
   - src/treg/domain/connections/oauth_flow.py
   - src/treg/domain/connections/refresh.py
   - src/treg/infra/oauth_exchange.py
@@ -241,6 +245,46 @@ Google Ads developer token, Meta App Review), which treg has already cleared. Ea
   registry's base URL affects new connections and direct catalog calls only; a host migration must
   find provider-created tools through their connection binding and leave manually registered tools
   alone.
+
+### Connections a team's customers make
+
+A product built on treg can let its own customers connect their accounts through the product's
+team. `POST /oauth/start` takes an optional `customer`, a value of the team's primary tag dimension
+(`Org.primary_dim`, `customer` by default) checked by the same rule as an `X-Treg-Meta` value
+(`budgets._validate_tag_pair`). A token pinned on that dimension may start only for its own value
+(403 `customer_pin_mismatch` otherwise) and its pin is used when `customer` is omitted. The value is
+stored on `PendingOAuth.customer` and on the resulting `Secret.customer`; NULL is a connection of the
+whole team, as every connection made before revision `0119` is.
+
+- **No tool.** The callback provisions no tool for a customer's connection, and a hand-built tool
+  or local-run inject may not bind one (`domain/tools/bindings.py`): a tool is callable by name
+  from every token of the team. A customer's connection takes no second credential either
+  (`POST /connections/{id}/extra-credential` answers 422 `customer_connection`), since that path
+  builds a tool.
+- **Reconnects keep the owner.** `connection_id` reconnects in place and keeps the connection's
+  `customer`; a `customer` that differs is 422, and a token pinned to another customer gets 404 as
+  for an unknown id.
+- **Who sees it.** Calls use it only when their primary tag equals it ([proxy model](proxy-model.md#choosing-a-connection)).
+  A token pinned on the primary dimension lists and manages only the team's connections and its
+  own customer's (`GET /connections`, `/secrets`, `/health` and the `/connections/{id}` routes);
+  another customer's is 404. An unpinned member sees every connection, with its `customer`.
+- **Names stay team-wide.** `_free_connection_name` still gives `instagram`, `instagram-2`… across
+  the whole team, customers included, so a name picks exactly one connection.
+
+**Returning to the product.** `return_to` on `POST /oauth/start` must be an https URL, with no
+fragment or user name, whose exact origin is in `Org.oauth_return_origins`, a list owners and
+admins set with `PATCH /orgs/{id}` (`domain/connections/return_link.py`; at most 20 exact origins,
+normalised, no path). Plain `http` on a loopback host is accepted only on a local registry
+(`Settings.local_dev`: a local sqlite database behind a loopback `public_url`). Anything else is 400
+`return_to_not_allowed` before a `PendingOAuth` row exists. The callback then answers every outcome
+it can tie to the stored state with a 302 to `return_to`, with `treg_state=<state>` and
+`treg_status=done|error` set in its query (replacing any copies it carried) and nothing else: no
+token, connection id or error text. The product reads the rest from `GET /oauth/status/{state}` with
+its own token. An unknown state has no `return_to` and still gets treg's page, as does every
+connect without one.
+
+Pasted-token connections (`POST /connections/token`) and the CLIs take no `customer`: a customer's
+connection is made only by OAuth through `POST /oauth/start`.
 
 ### Pasted keys (`auth_kind` `token` or `key`)
 

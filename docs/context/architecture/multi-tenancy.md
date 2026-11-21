@@ -286,6 +286,12 @@ unattributed id is 404 like an unknown one. Matching is by pin, not current memb
 sharing a pin share the view, and changing a pin does not relabel earlier records. Untagged historical
 rows are readable by unpinned members only; attribution is never inferred from current membership.
 
+A connection a team's customer made (`Secret.customer`, [auth-secrets](auth-secrets.md#connections-a-teams-customers-make))
+is used only by calls whose primary tag names that customer. With a pin on the primary dimension that
+is a guarantee; with a header alone it is the builder's backend choosing, like every other tag. A
+token pinned on the primary dimension starts connects only for its own customer and lists and manages
+only the team's connections and its own customer's; another customer's is 404.
+
 Every audit writer stores the pin; async task and resource records snapshot submission tags in their
 own transaction, and resources found later inherit the task's tags. The reserve ledger entry freezes
 tags in `meta.tags`, so `/calls/{call_ref}` can serve ledger-only history when audit was shed. treg's

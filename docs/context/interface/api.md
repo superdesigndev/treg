@@ -229,6 +229,22 @@ typed 428 naming the required method, scopes and the CLI/dashboard action.
 `X-Treg-Authorization-Method` selects one of an endpoint's declared methods and is stripped before
 the relay.
 
+A product connects its own customers' accounts with `customer` on `POST /oauth/start` (a value of
+the team's primary tag dimension; a pinned token's own pin when omitted, 403
+`customer_pin_mismatch` for another, 422 `invalid_customer` for a value the tag rule refuses). The
+connection gets no tool, is used only by calls tagged with that customer, and keeps its customer on
+a reconnect. `return_to` brings the browser back: an https URL on one of the team's
+`oauth_return_origins` (owners and admins set them with `PATCH /orgs/{id}`; 400
+`return_to_not_allowed` otherwise), to which the callback answers 302 with `treg_state` and
+`treg_status=done|error` and nothing else. `GET /connections` and `/oauth/status/{state}` carry
+`customer`; a token pinned on the primary dimension lists and manages only the team's connections
+and its own customer's. Pasted-token connections and the CLIs take no `customer`. Rules:
+[auth-secrets](../architecture/auth-secrets.md#connections-a-teams-customers-make).
+
+`X-Treg-Connection: <name>` on a catalog call picks one connection by name: the team's own, or the
+call's customer's (MCP `call`: the `connection` argument). It is consumed by treg and never relayed.
+How a call chooses: [proxy-model](../architecture/proxy-model.md#choosing-a-connection).
+
 `POST /connections/token` verifies a pasted credential against the provider's probe before storing
 it ([auth-secrets](../architecture/auth-secrets.md)). `DELETE /connections/{id}` removes the
 auto-provisioned tool and drops the dead binding from user-built tools, leaving their other
@@ -290,6 +306,8 @@ the provider.
 | 403 `funds_required`, `own_key_required` | An installed policy extension's `call_admission` point refused treg's money for this call ([policy extensions](../architecture/policy-extensions.md)); refused before any hold or provider request, never naming the rule. `funds_required` (a team that never bought credit) names `topup_url` and the own-key alternative, `own_key_required` only the own-key alternative. Not charged; `refused_by=policy`; MCP strips the top-up link. |
 | 402 `route_max_cost` | `X-Treg-Route-Max-Cost: <usd>` would be exceeded by the reserve with margin; no charge. No default on a direct call (unlike routed calls); non-numeric is 400. Where the catalog declares `ceiling_param`, treg forwards the remaining ceiling net of margin unless the caller sent that parameter (AGENTS.md non-negotiable 4). |
 | 502 `response_buffer_limit` | Response evidence passed the 8 MiB settlement buffer, or for `spooled_response` the per-body or per-process spool budget (the latter is temporary and worth retrying). Not charged; hold and idempotency claim released. Spooled answers are never stored for replay. |
+| 409 `connection_ambiguous` | The call's customer has several connections that fit the endpoint and the call named none; `candidates` lists their names for `X-Treg-Connection`. Nothing sent, not charged. |
+| 404 `connection_not_found` | `X-Treg-Connection` names no connection this call may use for the endpoint's provider and grant methods: unknown, another customer's, or another provider's. Never falls back to another connection or treg's key. |
 | 404/409 resolution | A named miss resembling a usable own tool returns `hint` and `did_you_mean`; a URL-passthrough tie is 409 naming the tools and the `/call/<name>/<path>` escape hatch; a vendor path matching several catalog rows is 409 `target_ambiguous` with `candidates`. |
 
 The MCP `call` result mirrors these as fields (`upstream_failed`, `whose_error`, `hint`,
@@ -346,7 +364,8 @@ are advisory; the balance is the hard limit. `usage/by-tag` reconciles:
 A token minted with `--pin customer=cust_A` beats the header (mismatch is 403), and call history,
 archived results, call references, runs, async tasks and shared-provider async ownership require
 every pinned tag; foreign and unattributed ids answer 404. Tag for counting, token for control. See
-[multi-tenancy](../architecture/multi-tenancy.md).
+[multi-tenancy](../architecture/multi-tenancy.md). The primary tag also chooses which customer's
+connections a call may use, so a token handed to a customer's machine should be pinned.
 
 ### Call inspection
 

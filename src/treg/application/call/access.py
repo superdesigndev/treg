@@ -22,6 +22,7 @@ from .resolve import (
     _authorization_method,
     _anonymous_offer,
     _anonymous_refusal,
+    _chosen_connection,
     _enforce_catalog_status,
     _marketplace_pricing,
     _marketplace_secret,
@@ -32,14 +33,18 @@ from .resolve import (
     provider_paused,
     resolve_call_target,
 )
+from .intake import _parse_call_meta
 from .route import RouteOptions, build_plan
 from .types import CallFailure, ResolutionFailed
 
 
 async def catalog_endpoint_access(
     *, endpoint_id: str, authorization_method: str, caller: Caller, db: AsyncSession,
+    meta_header: str | None = None, connection: str = "",
 ) -> dict:
-    """Return the catalog service tier and authorization that can serve one endpoint."""
+    """Return the catalog service tier and authorization that can serve one endpoint, read with the
+    call's `X-Treg-Meta` and `X-Treg-Connection` as `/call/` reads them."""
+    customer = _parse_call_meta(meta_header, caller).primary_val
     catalog = catalog_store.load()
     endpoint = catalog.by_id.get(endpoint_id)
     if endpoint is None:
@@ -52,7 +57,7 @@ async def catalog_endpoint_access(
     if oauth_providers.is_paused(service):
         raise provider_paused(service, endpoint_id)
     if endpoint.get("kind") == "routed":
-        return await _routed_access(endpoint, caller, catalog)
+        return await _routed_access(endpoint, caller, catalog, customer)
 
     registry_provider = oauth_providers.get(service)
     if registry_provider is None or not registry_provider.base_url:
@@ -71,6 +76,12 @@ async def catalog_endpoint_access(
         if authorization_method.strip() and methods else registry_provider
     )
     billed_note = _billed_note(endpoint, provider, service, catalog)
+
+    chosen = await _chosen_connection(
+        service, methods, customer=customer, connection=connection, caller=caller, db=db)
+    if chosen is not None:
+        return _connection_access(endpoint, registry_provider, provider, methods, service,
+                                  chosen, billed_note)
 
     if methods:
         try:
@@ -153,6 +164,28 @@ async def catalog_endpoint_access(
     return _missing_access(endpoint, registry_provider, provider, methods, service, org=caller.org)
 
 
+def _connection_access(
+    endpoint: dict, registry_provider, provider, methods: tuple[str, ...], service: str,
+    chosen, billed_note: str,
+) -> dict:
+    tool, secret = chosen
+    method = _authorization_method(secret) if methods else ""
+    if methods:
+        specification = connection_authorization.method_spec(registry_provider, method)
+        required = connection_authorization.required_scopes(endpoint, specification)
+        if any(scope not in secret.granted_scopes.split() for scope in required):
+            return _missing_access(
+                endpoint, registry_provider, provider, (method,), service, existing=True,
+            )
+    return {
+        "tier": "tool" if tool is not None else "credential",
+        **({"authorization_method": method} if methods else {}),
+        "connection": secret.name,
+        "metered": bool(billed_note),
+        "detail": f"will use the {secret.name!r} connection{billed_note}",
+    }
+
+
 def _platform_access_estimate(endpoint: dict, service: str, cost: dict) -> int:
     """Estimate the catalog's runnable example, including provider-specific request pricing."""
     if schema.is_v2(endpoint):
@@ -169,16 +202,17 @@ def _platform_access_estimate(endpoint: dict, service: str, cost: dict) -> int:
     return estimate
 
 
-async def _routed_access(endpoint: dict, caller: Caller, catalog) -> dict:
+async def _routed_access(endpoint: dict, caller: Caller, catalog, customer: str = "") -> dict:
     options = RouteOptions.from_headers(lambda key: None)
     plan = await build_plan(
         endpoint, dict(endpoint.get("test_request", {}).get("body") or {}), caller, options,
+        customer=customer,
     )
     if not plan.candidates:
         contract = catalog.contracts.get(endpoint.get("capability") or "")
         for variant in (contract.identity if contract else []):
             trial = await build_plan(
-                endpoint, {key: "example" for key in variant}, caller, options,
+                endpoint, {key: "example" for key in variant}, caller, options, customer=customer,
             )
             if trial.candidates:
                 plan = trial
@@ -191,7 +225,7 @@ async def _routed_access(endpoint: dict, caller: Caller, catalog) -> dict:
             sample = dict(getattr(adapter, "test_identity", None) or {})
             if not sample:
                 continue
-            trial = await build_plan(endpoint, sample, caller, options)
+            trial = await build_plan(endpoint, sample, caller, options, customer=customer)
             if trial.candidates:
                 plan = trial
                 break

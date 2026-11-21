@@ -143,6 +143,7 @@ depend on who asked".
 |---|---|---|
 | treg's platform key | `public` | (never) |
 | the org's own credential (API key or OAuth token, metered or not) | `org`, or `public` only where the endpoint declares `cache.sharing: public` | `connection` |
+| one of the team's customers' connections | `connection` | `connection` |
 
 Sharing is enforced by the key, not by a read-time filter: `scope_tags` folds `org:<id>` or
 `conn:<id>:<sorted bound secret ids>` into `cache_key`, so a private history lives under a hash

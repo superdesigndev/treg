@@ -143,6 +143,7 @@ def connection_view(secret: Secret) -> dict:
         "last_refresh_at": secret.last_refresh_at.isoformat() if secret.last_refresh_at else None,
         "last_error": secret.last_error,
         "owner": secret.owner,
+        "customer": secret.customer,
         "created_at": secret.created_at.isoformat(),
     }
 

@@ -218,7 +218,47 @@ token for control.** Start everyone on tags and upgrade the few who need real se
 
 ---
 
-## 6. Before you ship
+## 6. Your customers' own accounts
+
+Your users can connect their own Instagram, Facebook Page or LinkedIn account through your team, and
+your calls act on it. Allow your app's origin once (owner or admin):
+
+```bash
+curl -X PATCH "{BASE}/orgs/1" \
+  -H "X-Treg-Token: $TREG_TOKEN" -H 'content-type: application/json' \
+  -d '{"oauth_return_origins": ["https://app.example.com"]}'
+```
+
+Then start each connect from your backend, naming the customer and where to come back to:
+
+```bash
+curl -X POST "{BASE}/oauth/start" \
+  -H "X-Treg-Token: $TREG_TOKEN" -H 'content-type: application/json' \
+  -d '{"provider": "instagram", "capability": "manage",
+       "customer": "cust_8123", "return_to": "https://app.example.com/connected"}'
+```
+
+Send your user to the `consent_url` it returns. When they finish, treg redirects them to
+`return_to?treg_state=<state>&treg_status=done` (or `error`); read the result with
+`GET /oauth/status/<state>` from your backend.
+
+- **Only that customer's calls use it.** A call tagged `X-Treg-Meta: customer=cust_8123` uses
+  `cust_8123`'s connection; an untagged call, or one tagged for another customer, never does.
+  Your team's own connection for the same provider still serves everyone else.
+- **Several accounts:** when `cust_8123` connected two Instagram accounts, a call must name one with
+  `X-Treg-Connection: <connection name>` (the `name` in `GET /connections`); otherwise it gets
+  `409 connection_ambiguous` listing the names. A name the call may not use is a `404`, never another
+  account.
+- **A customer's connection has no tool**, so call it by catalog id, not by connection name.
+- The tag is your backend's word. A token on your customer's machine should be pinned
+  (`--pin customer=cust_8123`): it then connects, lists and uses only its own customer's accounts
+  and your team's.
+
+Pasted API keys and the `treg` CLI do not take a customer.
+
+---
+
+## 7. Before you ship
 
 - [ ] One function wraps every treg call, and it sets `X-Treg-Meta` from request context.
 - [ ] `X-Treg-Call-Id` is stored on your usage rows.

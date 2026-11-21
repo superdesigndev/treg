@@ -928,7 +928,7 @@ async def test_the_routed_access_preview_tries_each_child_s_own_test_identity(mo
     sample = {"ats": "board-system", "board": "acme"}
     route = {"id": "treg.x", "capability": "x.y", "routed_children": ["board.list"], "test_request": {"body": {}}}
 
-    async def fake_plan(ep, identity, caller, options):
+    async def fake_plan(ep, identity, caller, options, **_):
         hit = identity == sample
         cand = SimpleNamespace(tier="anonymous", endpoint={"id": "board.list", "provider": "board"}, price_micro=0,
                                variant=("ats", "board"), view=lambda: {"endpoint_id": "board.list", "tier": "anonymous"})

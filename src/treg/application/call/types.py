@@ -31,6 +31,8 @@ FAILURE_KINDS: dict[str, tuple[Blame, str]] = {
     "hub_price_unaffordable": ("caller", "caller_balance_or_cap"),
     "unknown_endpoint": ("caller", "not_found"),
     "target_ambiguous": ("caller", "caller_input"),
+    "connection_ambiguous": ("caller", "caller_input"),
+    "connection_not_found": ("caller", "not_found"),
     "catalog_retired": ("caller", "treg_policy"),
     "catalog_parameter_invalid": ("caller", "caller_input"),
     "async_resource_not_owned": ("caller", "treg_policy"),

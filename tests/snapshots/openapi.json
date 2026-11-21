@@ -992,6 +992,17 @@
             ],
             "title": "Connection Id"
           },
+          "customer": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Customer"
+          },
           "name": {
             "default": "",
             "title": "Name",
@@ -1018,6 +1029,17 @@
               }
             ],
             "title": "Redirect Uri"
+          },
+          "return_to": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Return To"
           },
           "scopes": {
             "default": [],
@@ -1088,6 +1110,20 @@
               }
             ],
             "title": "Name"
+          },
+          "oauth_return_origins": {
+            "anyOf": [
+              {
+                "items": {
+                  "type": "string"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Oauth Return Origins"
           },
           "slug": {
             "anyOf": [
@@ -10432,7 +10468,7 @@
         "summary": "Delete Org"
       },
       "patch": {
-        "description": "Change the team's display name and/or slug. Admin+.\n\nThe old slug is kept as an alias (`Org.previous_slug`): copied keys, `~/.treg` and MCP pins\nthat name it keep working. Stripe metadata and the analytics group key are not rewritten.",
+        "description": "Change the team's display name, slug and/or OAuth return origins. Admin+.\n\nThe old slug is kept as an alias (`Org.previous_slug`): copied keys, `~/.treg` and MCP pins\nthat name it keep working. Stripe metadata and the analytics group key are not rewritten.",
         "operationId": "rename_org_orgs__org_id__patch",
         "parameters": [
           {
