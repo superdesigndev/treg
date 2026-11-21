@@ -359,7 +359,11 @@ next pair with an instruction line, or submits with `comparison_id` and `choice`
 as `compare: {comparison_id, capability, input, answer_1, answer_2}`, each answer cut to its first
 `INLINE_ROWS` list items, `INLINE_FIELD_CHARS` per string and `INLINE_ANSWER_CHARS` in all
 (`mcp._compact_answer`), with a hint naming the `comparison_id` to answer through the `compare`
-tool. With no pair waiting (the flag outlived it) the result carries neither. In a simulated test
+tool. A stored cut travels as `truncated_parts`, rows or text left out here as `shortened`, and
+an incomplete input changes the hint. The pair is attached only for a credential that may read it
+(an OAuth grant needs `treg:read`, the `compare` tool's scope, beyond `call`'s `treg:call`) and only
+when read within `INLINE_READ_TIMEOUT_S`, since the call has already answered and been charged.
+With no pair waiting (the flag outlived it) the result carries neither. In a simulated test
 (2026-11-21), agents that had to fetch the pair with the `compare` tool first almost never judged
 it, while agents that found both answers in the call result nearly always did.
 

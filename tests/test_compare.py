@@ -678,6 +678,7 @@ async def test_team_mcp_renders_the_compare_hint_and_the_directory_never_asks(cl
         assert team["compare"] == {"comparison_id": cid, "capability": "web.search", "input": '{"q":"x"}',
                                    "answer_1": '"answer B"', "answer_2": '"answer A"'}
         assert team["hint"] == hints.compare_inline_hint(cid)
+        assert "cut when stored" not in team["hint"]
         assert "hint" not in directory and "compare" not in directory
     finally:
         get_settings.cache_clear()
@@ -709,13 +710,50 @@ def test_an_inline_answer_keeps_its_first_rows_and_cuts_long_text():
     from treg import mcp as mcp_module
 
     rows = [{"title": f"t{i}", "snippet": "s" * 1000} for i in range(12)]
-    shown = json.loads(mcp_module._compact_answer(json.dumps({"results": rows, "total": 12})))
+    text, cut = mcp_module._compact_answer(json.dumps({"results": rows, "total": 12}))
+    shown = json.loads(text)
+    assert cut is True
     assert [r["title"] for r in shown["results"]] == ["t0", "t1", "t2", "t3", "t4"]
     assert len(shown["results"][0]["snippet"]) == mcp_module.INLINE_FIELD_CHARS + 1
     assert shown["total"] == 12
-    assert mcp_module._compact_answer("not json " * 1000) == ("not json " * 1000)[:mcp_module.INLINE_ANSWER_CHARS]
-    assert len(mcp_module._compact_answer(json.dumps(["x" * 299] * 5))) <= mcp_module.INLINE_ANSWER_CHARS
-    assert mcp_module._compact_answer(None) == ""
+    assert mcp_module._compact_answer('{"results": [{"title": "short"}]}') == ('{"results":[{"title":"short"}]}', False)
+    long_text = "not json " * 1000
+    assert mcp_module._compact_answer(long_text) == (long_text[:mcp_module.INLINE_ANSWER_CHARS], True)
+    assert mcp_module._compact_answer(None) == ("", False)
+
+
+async def test_an_inline_pair_keeps_its_truncation_and_says_when_the_input_was_cut(clients, monkeypatch):
+    """A stored cut (`truncated_parts`) travels with the pair, and an incomplete input changes the
+    hint, so the agent does not judge a filter it cannot see."""
+    from treg import mcp as mcp_module
+
+    _compare_on(monkeypatch)
+    org_id = await _org_id(clients)
+    cid = await _seed(org_id, first="a", call_ref="cut-pair", truncated="input,b")
+    pair = await mcp_module._inline_comparison(clients.headers["X-Treg-Token"])
+    assert pair["comparison_id"] == cid
+    assert sorted(pair["truncated_parts"]) == ["answer_2", "input"]
+    hint = hints.compare_inline_hint(cid, input_cut="input" in pair["truncated_parts"])
+    assert "cut when stored" in hint
+
+
+async def test_a_slow_comparison_read_never_holds_the_call(clients, monkeypatch):
+    """The call has answered and been charged: a hung read is dropped after its short limit."""
+    import asyncio
+
+    from treg import mcp as mcp_module
+
+    monkeypatch.setattr(mcp_module, "INLINE_READ_TIMEOUT_S", 0.05)
+
+    async def hang(*_a, **_k):
+        await asyncio.sleep(10)
+
+    monkeypatch.setattr(compare, "next_for", hang)
+    _compare_on(monkeypatch)
+    await _seed(await _org_id(clients), first="a", call_ref="slow-pair")
+    started = asyncio.get_running_loop().time()
+    assert await mcp_module._inline_comparison(clients.headers["X-Treg-Token"]) is None
+    assert asyncio.get_running_loop().time() - started < 1
 
 
 # The API and the MCP tool
