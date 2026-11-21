@@ -1,0 +1,206 @@
+provider: pixverse
+source:
+  docs: https://github.com/PixVerseAI/enterprise/blob/main/docs/cli.md
+  openapi: null
+  curated: 2026-11-19
+pricing_url: https://docs.platform.pixverse.ai/pixverse-api-pricing-2394995m0
+proposed_capabilities:
+  video-gen.pixverse.from_text: Generate a PixVerse video from a text prompt
+  video-gen.pixverse.from_image: Animate an uploaded image with PixVerse
+  video-gen.pixverse.from_reference: Generate a PixVerse video guided by image or video references
+  video-gen.pixverse.image.upload: Upload an image for PixVerse video generation
+  video-gen.pixverse.media.upload: Upload audio or video media for PixVerse generation
+  video-gen.pixverse.mv.generate: Generate a music video from uploaded audio with PixVerse
+defaults:
+  platform_blocked: "Shared-key trace headers, asset isolation, task polling and settlement need verification."
+async:
+  id_from: Resp.video_id
+  poll:
+    endpoint: pixverse.video-gen.task.status
+    param: {in: pathParams, name: video_id}
+  status:
+    path: Resp.status
+    success: ['1', succeeded]
+    failure: ['7', '8', failed, canceled, cancelled]
+  result: {path: Resp.url}
+  interval: 5
+endpoints:
+  - id: pixverse.video-gen.from_text
+    capability: video-gen.pixverse.from_text
+    platform: video-gen
+    domain: models
+    scope: any_account
+    method: POST
+    path: /openapi/v2/video/text/generate
+    name: "PixVerse: V6 (text-to-video)"
+    summary: "Generate a video from a text prompt with PixVerse V6."
+    input:
+      headers: &trace_header
+        Ai-trace-id: {type: string, required: true, note: "Use a new UUID for each request."}
+      bodyType: json
+      body:
+        model: {type: string, required: true, enum: [v6]}
+        prompt: {type: string, required: true, example: "A paper boat drifts across a quiet pond at sunrise."}
+        quality: {type: string, required: true, enum: [720p]}
+        duration: {type: integer, required: true, enum: [5]}
+        aspect_ratio: {type: string, required: true, enum: ['16:9']}
+        generate_audio_switch: {type: boolean, required: false, example: false, note: "Omit to use the upstream default."}
+    expect: &accepted {json_path: ErrCode, equals: 0}
+    cost: &pending_generation_cost
+      type: per_success
+      value: null
+      currency: USD
+      unit: call
+      confidence: unknown
+      note: "The upstream rate card is linked. Platform pricing and settlement need review."
+    added: '2026-11-19'
+    docs_url: https://docs.platform.pixverse.ai/text-to-video-13016634e0
+
+  - id: pixverse.video-gen.from_image
+    capability: video-gen.pixverse.from_image
+    platform: video-gen
+    domain: models
+    scope: any_account
+    method: POST
+    path: /openapi/v2/video/img/generate
+    name: "PixVerse: V6 (image-to-video)"
+    summary: "Animate an uploaded image with PixVerse V6."
+    input:
+      headers: *trace_header
+      bodyType: json
+      body:
+        model: {type: string, required: true, enum: [v6]}
+        img_id: {type: integer, required: true, note: "Use the ID returned from uploading the image."}
+        prompt: {type: string, required: false, example: "The camera slowly pulls back."}
+        quality: {type: string, required: true, enum: [720p]}
+        duration: {type: integer, required: true, enum: [5]}
+        generate_audio_switch: {type: boolean, required: false, example: false, note: "Omit to use the upstream default."}
+    expect: *accepted
+    cost: *pending_generation_cost
+    added: '2026-11-19'
+    docs_url: https://docs.platform.pixverse.ai/image-to-video-generation-13016633e0
+
+  - id: pixverse.video-gen.from_reference
+    capability: video-gen.pixverse.from_reference
+    platform: video-gen
+    domain: models
+    scope: any_account
+    method: POST
+    path: /openapi/v2/video/fusion/generate
+    name: "PixVerse: V6 Fusion (image reference)"
+    summary: "Generate a video guided by one or more uploaded reference images."
+    input:
+      headers: *trace_header
+      bodyType: json
+      body:
+        model: {type: string, required: true, enum: [v6]}
+        image_references: {type: array, required: true, note: "Provide img_id and optional type and ref_name for each image. Use @ref_name in the prompt to refer to a named image."}
+        prompt: {type: string, required: true, example: "@subject walks past a garden wall at sunrise."}
+        quality: {type: string, required: true, enum: [720p]}
+        duration: {type: integer, required: true, enum: [5]}
+        aspect_ratio: {type: string, required: true, enum: ['16:9']}
+      note: "This draft models image references. Video references use a separate mode and billing rule."
+    expect: *accepted
+    cost: *pending_generation_cost
+    added: '2026-11-19'
+    docs_url: https://docs.platform.pixverse.ai/reference-to-video-fusion-43051214e0
+
+  - id: pixverse.video-gen.image.upload
+    capability: video-gen.pixverse.image.upload
+    platform: video-gen
+    kind: utility
+    scope: any_account
+    method: POST
+    path: /openapi/v2/image/upload
+    name: "Upload a PixVerse reference image"
+    summary: "Upload an image and return the image ID for a generation request."
+    async: false
+    input:
+      headers: *trace_header
+      bodyType: multipart
+      body:
+        image: {type: file, required: false, note: "Use a JPEG, PNG, or WebP file below 20 MB."}
+        image_url: {type: string, required: false, note: "Use a fetchable HTTPS URL on port 443, without user info or a fragment."}
+      note: "Supply exactly one of image or image_url. Keep the returned img_id in the same region and account."
+    expect: *accepted
+    cost: {type: per_call, value: null, currency: USD, unit: call, confidence: unknown, note: "Confirm account-level upload pricing before enabling platform calls."}
+    added: '2026-11-19'
+    docs_url: https://docs.platform.pixverse.ai/upload-image-13016631e0
+
+  - id: pixverse.video-gen.media.upload
+    capability: video-gen.pixverse.media.upload
+    platform: video-gen
+    kind: utility
+    scope: any_account
+    method: POST
+    path: /openapi/v2/media/upload
+    name: "Upload PixVerse audio or video"
+    summary: "Upload audio or video and return a media ID for the same PixVerse account."
+    async: false
+    input:
+      headers: *trace_header
+      bodyType: multipart
+      body:
+        file: {type: file, required: false, note: "Supply the audio or video file as this field."}
+        file_url: {type: string, required: false, note: "Use a fetchable HTTPS URL on port 443, without user info or a fragment."}
+      note: "Supply exactly one of file or file_url."
+    expect: *accepted
+    cost: {type: per_call, value: null, currency: USD, unit: call, confidence: unknown, note: "Confirm the shared-account upload rate before enabling platform calls."}
+    added: '2026-11-19'
+    docs_url: https://docs.platform.pixverse.ai/upload-media-video-and-audio-43051206e0
+
+  - id: pixverse.video-gen.mv.generate
+    capability: video-gen.pixverse.mv.generate
+    platform: video-gen
+    domain: models
+    scope: any_account
+    method: POST
+    path: /openapi/v2/video/music_mv_agent/generate
+    name: "PixVerse: OneClick MV"
+    summary: "Generate a music video from uploaded audio. PixVerse validates the audio asynchronously."
+    input:
+      headers: *trace_header
+      bodyType: json
+      body:
+        mv_agent_type: {type: string, required: true, enum: [vibe_mv_v3_custom]}
+        audio_media_id: {type: integer, required: true, note: "Supply the uploaded audio media_id from the same account."}
+        quality: {type: string, required: true, enum: [720p, 1080p]}
+        aspect_ratio: {type: string, required: true, enum: ['16:9', '9:16', '4:3', '3:4', '1:1']}
+        mv_style: {type: string, required: false, example: Custom}
+        music_style: {type: string, required: false}
+        mv_prompt: {type: string, required: false}
+        image_references: {type: array, required: false, note: "At most one character image object with img_id."}
+        style_img_references: {type: array, required: false, note: "At most one style image object with img_id. Custom only."}
+        lyric_text: {type: string, required: false}
+        lyric_timestamp: {type: object, required: false, note: "An object with a words array of start, end and word entries."}
+        caption_switch: {type: boolean, required: false}
+        lip_sync_switch: {type: boolean, required: false}
+        preserve_outfit: {type: boolean, required: false}
+        seed: {type: integer, required: false}
+        webhook_id: {type: string, required: false, note: "Supply a positive decimal ID from the same account."}
+      note: "Custom style requires a character image or a style image. Poll the returned video_id to track audio validation and generation."
+    expect: *accepted
+    cost: *pending_generation_cost
+    added: '2026-11-19'
+    docs_url: https://github.com/PixVerseAI/enterprise/blob/main/docs/cli.md#ecommerce-and-music-videos
+
+  - id: pixverse.video-gen.task.status
+    capability: video-gen.task.status
+    platform: video-gen
+    kind: utility
+    scope: any_account
+    method: GET
+    path: /openapi/v2/video/result/{video_id}
+    name: "Check a PixVerse video task"
+    summary: "Read the current task status and the video URL on success."
+    resource_ownership:
+      requires: {kind: "poll:pixverse.video-gen.task.status", param: video_id}
+    async: false
+    input:
+      headers: *trace_header
+      pathParams:
+        video_id: {type: string, required: true, note: "Use the ID from the generation response."}
+    expect: *accepted
+    cost: {type: free, value: 0, currency: USD, unit: call}
+    added: '2026-11-19'
+    docs_url: https://docs.platform.pixverse.ai/query-task-status-43051212e0
