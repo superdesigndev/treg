@@ -408,6 +408,28 @@ async def test_hlrlookup_capacity_rejects_uncertain_balances(payload, monkeypatc
         _refused(await _balance(monkeypatch, "hlrlookup", client, "test"), "HLR Lookup balance")
 
 
+async def test_fraudnova_capacity_reads_the_free_balance_route(monkeypatch):
+    def probe(request):
+        assert request.method == "GET"
+        assert request.url == "https://fraudnova.com/api/v1/balance"
+        assert request.headers["authorization"] == "Bearer test"
+        return httpx.Response(200, json={"success": True, "credits_remaining": 4994})
+
+    async with httpx.AsyncClient(transport=httpx.MockTransport(probe)) as client:
+        row = await _balance(monkeypatch, "fraudnova", client, "test")
+    assert row == {"value": 4994, "unit": "credits", "note": "prepaid credit balance"}
+
+
+@pytest.mark.parametrize("payload", [
+    {"success": True, "credits_remaining": True}, {"success": True, "credits_remaining": -1},
+    {"success": True}, {"success": False, "message": "Invalid or revoked API token."},
+])
+async def test_fraudnova_capacity_rejects_uncertain_balances(payload, monkeypatch):
+    async with httpx.AsyncClient(transport=httpx.MockTransport(
+            lambda _: httpx.Response(200, json=payload))) as client:
+        _refused(await _balance(monkeypatch, "fraudnova", client, "test"), "FraudNova balance")
+
+
 async def test_serper_capacity_uses_free_account_balance(monkeypatch):
     def probe(request):
         assert request.method == "GET"
