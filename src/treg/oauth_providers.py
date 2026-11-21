@@ -3755,6 +3755,36 @@ ICYPEAS = OAuthProvider(
 )
 
 
+MAPSDATA = OAuthProvider(
+    service="mapsdata",
+    display_name="MapsData",
+    auth_kind="key",
+    token_label="API key",
+    token_placeholder="mdk_live_…",
+    token_header="Authorization",
+    token_format="Bearer {secret}",
+    setup_url="https://mapsdata.ai/settings/api-keys",
+    setup_action_label="Get your MapsData API key",
+    setup_steps=(
+        "Sign in to MapsData and open Settings, then API keys.",
+        "Create a key and copy it. It is shown once.",
+    ),
+    setup_note=(
+        "A scrape spends one Scraping Credit per lead delivered with an email; leads without one "
+        "are free. Category, region, usage and job reads are free, and so is connection "
+        "verification. API access comes with every paid plan, including the trial."
+    ),
+    auth_uri="", token_uri="",
+    scopes={},
+    client_id_setting="", client_secret_setting="",
+    category="Enrichment",
+    summary="Build lists of local businesses from Google Maps, with each one's email, phone, website and rating.",
+    base_url="https://mapsdata.ai/api/v1",
+    docs_url="https://mapsdata.ai/api",
+    probe_path="/usage",  # free; a bogus Bearer key answers 401 {"error": {"code": "invalid_api_key"}}
+)
+
+
 LEADSFORGE = OAuthProvider(
     service="leadsforge",
     display_name="LeadsForge",
@@ -4488,7 +4518,7 @@ REGISTRY: dict[str, OAuthProvider] = {
         SCRAPEGRAPHAI, SERPER, BRAVESEARCH, LITESCRAPE, CLORO, LOCALFALCON,
         # more Enrichment API-key providers
         LUSHA, CORESIGNAL, DIFFBOT, THECOMPANIESAPI, LEADMAGIC, ENRICHLAYER, FIBER_AI, CRUSTDATA, THEIRSTACK, JOBSPIPE, AVIATO,
-        COMPANYENRICH, FUNDABLE, CORPOAPI, OCEANIO, ADYNTEL, TOMBA, TRESTLEIQ, HLRLOOKUP, PREDICTLEADS, FINDYMAIL, ANYMAILFINDER, ENROW, FILTRAT, FILTRAT_FINDER, DROPCONTACT, BRANDDEV, ICYPEAS, LEADSFORGE,
+        COMPANYENRICH, FUNDABLE, CORPOAPI, OCEANIO, ADYNTEL, TOMBA, TRESTLEIQ, HLRLOOKUP, PREDICTLEADS, FINDYMAIL, ANYMAILFINDER, ENROW, FILTRAT, FILTRAT_FINDER, DROPCONTACT, BRANDDEV, ICYPEAS, LEADSFORGE, MAPSDATA,
         INFLUENCERSCLUB, VILLAGE,
         # Places: intent-scored local search
         ATLY,

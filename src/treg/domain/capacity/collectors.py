@@ -1038,6 +1038,19 @@ async def _jobspipe(c, key):
     return {"value": credits, "unit": "credits", "note": "spendable credits from the free export estimate"}
 
 
+async def _mapsdata(c, key):
+    # GET /usage is MapsData's free registry probe. `scraping_credits` is the spendable balance and
+    # null means the account has no credit cap; `can_submit` goes false once it reaches zero.
+    d = await _get(c, "https://mapsdata.ai/api/v1/usage", headers={"Authorization": f"Bearer {key}"})
+    credits = d.get("scraping_credits") if isinstance(d, dict) else None
+    if credits is not None and (type(credits) is not int or credits < 0):
+        raise ValueError("MapsData returned no valid credit balance")
+    state = "allowed" if d.get("can_submit") is True else "blocked" if d.get("can_submit") is False else "unknown"
+    cap = "no credit cap" if credits is None else "spendable Scraping Credits"
+    return {"value": credits, "unit": "credits",
+            "note": f"{cap}; plan {d.get('plan_tier') or 'unknown'}; submissions {state}"}
+
+
 async def _enrichlayer(c, key):
     d = await _get(c, "https://enrichlayer.com/api/v2/credit-balance",
                    headers={"Authorization": f"Bearer {key}"})
@@ -1123,6 +1136,7 @@ BALANCE_ROUTES = {
     "dropcontact": _dropcontact,
     "theirstack": _theirstack,
     "jobspipe": _jobspipe,
+    "mapsdata": _mapsdata,
     "anyapi": _anyapi,
     "cloro": _cloro,
     "openrouter": _openrouter,
