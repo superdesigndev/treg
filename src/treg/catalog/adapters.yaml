@@ -2089,6 +2089,13 @@ adapters:
     const: {queryParams.engine: bing}
     out: {results: organic_results, count: search_information.total_results}
     miss: "organic_results == []"
+  cloro.bing.serp.organic:
+    route: false
+    accepts: [[q]]
+    in: {q: body.query}
+    in_expr: {body.country: "upper(country)"}
+    out: {results: result.organicResults, count: "len(result.organicResults)"}
+    miss: "coalesce(result.organicResults, []) == []"
   # x.user.following, x.post.detail, youtube.video.captions, google.domain.competitors, xiaohongshu.search.notes:
   # one vendor with a usable fixture each (X's own API is an OAuth tool) — no waterfall yet.
 

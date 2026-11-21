@@ -544,6 +544,45 @@ endpoints:
     docs_url: https://cloro.dev/docs/api-reference/endpoint/google/resolve-goto
 
   # --- Bing -------------------------------------------------------------------------------------
+  - id: cloro.bing.serp.organic
+    domain: serp
+    capability: bing.serp.organic
+    platform: bing
+    scope: any_account
+    method: POST
+    path: /v1/monitor/bing
+    name: "Bing SERP — organic results, AI Overview"
+    summary: "Returns parsed Bing organic results for a keyword from a chosen country and, on request, Bing's AI summary as an AI Overview with its cited sources."
+    input:
+      body:
+        query: {type: string, required: true, note: "at most 3,500 characters after URL encoding, so fewer for non-Latin scripts", example: "how to remove rust from cast iron"}
+        country: {type: string, required: true, note: "ISO 3166-1 alpha-2; it sets the Bing market. CN, KR and RU are refused; use cloro.account.coverage.countries for the current list.", example: "US"}
+        include:
+          type: object
+          required: false
+          note: "any of html, aioverview. html is free; aioverview (true, or {markdown: true}) adds 2 credits."
+      bodyType: json
+    test_request:
+      body:
+        query: "how to remove rust from cast iron"
+        country: "US"
+        include: {aioverview: {markdown: true}}
+      bodyType: json
+    added: '2026-11-21'
+    example_response: examples/cloro.bing.serp.organic.json
+    cost:
+      type: per_success
+      value: 5
+      currency: credit
+      per: 1
+      unit: call
+      source: docs
+      source_url: 'https://cloro.dev/docs/guides/providers'
+      checked: '2026-11-21'
+      confidence: documented
+      note: "5 = 3 base + the 2-credit sync surcharge. include.aioverview adds 2, which the X-Credits-Charged header bills. html is free. One call is one results page. A failed extraction is not charged."
+    docs_url: https://cloro.dev/docs/api-reference/endpoint/monitor-bing
+
   - id: cloro.bing.serp.ai_mode
     domain: serp
     capability: bing.serp.ai_mode
