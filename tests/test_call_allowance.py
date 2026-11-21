@@ -42,6 +42,7 @@ class FakeStore:
         self.until_ms = 0
         self.lease_answer: str | None = None
         self.run = "run1"
+        self.paces = 0
 
     def restart(self) -> None:
         """The store's server starts again: every counter built before is gone."""
@@ -79,6 +80,8 @@ class FakeStore:
             return 0
         taken = min(counter["avail"], amount)
         counter["avail"] -= taken
+        if taken:
+            counter.pop("filled", None)
         return taken
 
     async def allowance_give_back(self, org_id, epoch, amount):
@@ -104,6 +107,7 @@ class FakeStore:
         if counter.setdefault("thawed", 0) < seen_frozen <= counter["frozen"]:
             counter["thawed"] = seen_frozen
         self.until_ms = max(self.until_ms, until_ms)
+        counter["filled"] = (counter["avail"], time.time() * 1000)
         return counter["avail"]
 
     async def allowance_state(self, org_id):
@@ -111,12 +115,26 @@ class FakeStore:
         return (counter.get("avail", 0), counter.get("frozen", 0), counter.get("thawed", 0),
                 counter.get("epoch", 0), self.run)
 
+    async def allowance_pace(self, org_id):
+        self.paces += 1
+        counter = self.counters.get(org_id, {})
+        if "filled" not in counter or "epoch" not in counter:
+            return 0, 0
+        filled, at = counter["filled"]
+        return max(0, filled - counter["avail"]), max(0, int(time.time() * 1000 - at))
+
+    def age_pace(self, org_id: int, seconds: float) -> None:
+        """Move the counter's last add `seconds` into the past."""
+        filled, at = self.counters[org_id]["filled"]
+        self.counters[org_id]["filled"] = (filled, at - seconds * 1000)
+
     async def allowance_drop(self, org_id, epoch):
         counter = self.counters.get(org_id)
         if counter is None or "avail" not in counter or counter.get("epoch") != epoch:
             return 0
         left, counter["avail"] = counter["avail"], 0
         counter["frozen"] = counter.get("frozen", 0) + 1
+        counter.pop("filled", None)
         return left
 
     async def allowance_freeze(self, org_id, *, ttl_ms=0):
@@ -2243,3 +2261,69 @@ async def test_a_refill_that_fails_does_not_take_a_kept_ask_down_with_it(
     go.set()
     await runtime._refreshing[org_id]
     assert len(calls) == 2 and runtime.refills(org_id) == 2 and store.leases == {}
+
+
+# ---- a refill sized to the team's spend --------------------------------------------------------
+@pytest.fixture
+def paced(monkeypatch):
+    settings = get_settings()
+    monkeypatch.setattr(settings, "money_allowance_refill_window_s", 30)
+    monkeypatch.setattr(settings, "money_allowance_refill_max_micro", 50_000_000)
+    monkeypatch.setattr(settings, "money_allowance_refill_balance_percent", 50)
+
+
+async def test_a_busy_team_is_refilled_to_what_it_spent_over_the_window(org_id, store, paced):
+    """600_000 of the first chunk went in two seconds: 9 USD over the window, of which the
+    counter may hold half the balance."""
+    assert await runtime.take(org_id, 600_000), "no reading yet: a chunk, as before"
+    assert store.counters[org_id]["avail"] == CHUNK - 600_000
+    store.age_pace(org_id, 2)
+    assert await runtime.take(org_id, 500_000), "the counter is short: this call refills in line"
+    assert store.counters[org_id]["avail"] == 2_000_000 - 500_000
+    assert await _state(org_id) == (GRANT - CHUNK - 1_600_000, CHUNK + 1_600_000)
+
+
+async def test_with_the_window_off_a_refill_reads_no_pace_and_tops_up_to_the_chunk(org_id, store):
+    assert await runtime.take(org_id, 600_000)
+    store.age_pace(org_id, 2)
+    assert await runtime.take(org_id, 500_000)
+    assert store.paces == 0, "the store is asked nothing it was not asked before"
+    assert store.counters[org_id]["avail"] == CHUNK - 500_000
+    assert await _state(org_id) == (GRANT - CHUNK - 600_000, CHUNK + 600_000)
+
+
+async def test_a_pace_the_store_cannot_read_leaves_that_refill_at_the_chunk(
+        org_id, store, paced, monkeypatch):
+    """Nothing is kept from the failure: the next refill reads the pace again."""
+    assert await runtime.take(org_id, 600_000)
+    store.age_pace(org_id, 2)
+    pace = store.allowance_pace
+
+    async def unavailable(org_id):
+        return None
+
+    monkeypatch.setattr(store, "allowance_pace", unavailable)
+    assert await runtime.take(org_id, 500_000)
+    assert store.counters[org_id]["avail"] == CHUNK - 500_000
+    monkeypatch.setattr(store, "allowance_pace", pace)
+    store.age_pace(org_id, 2)
+    assert await runtime.take(org_id, 600_000)
+    assert store.counters[org_id]["avail"] > CHUNK, "sized again"
+
+
+async def test_a_team_that_stopped_calling_is_refilled_to_the_chunk_again(org_id, store, paced):
+    assert await runtime.take(org_id, 600_000)
+    store.age_pace(org_id, 3_600)
+    assert await runtime.take(org_id, 500_000)
+    assert store.counters[org_id]["avail"] == CHUNK - 500_000
+
+
+async def test_a_refill_ahead_of_the_deadline_is_sized_to_the_pace_too(
+        org_id, store, paced, monkeypatch):
+    assert await runtime.take(org_id, 600_000)
+    store.age_pace(org_id, 2)
+    monkeypatch.setattr(runtime, "_ahead", lambda: {"ahead_ms": 3_600_000, "low_micro": 0})
+    assert await runtime.take(org_id, 100_000), "served; it asks for a refill beside itself"
+    await runtime._refreshing[org_id]
+    assert store.counters[org_id]["avail"] == 2_000_000
+    assert await _state(org_id) == (GRANT - CHUNK - 1_700_000, CHUNK + 1_700_000)
