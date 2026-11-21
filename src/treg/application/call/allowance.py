@@ -417,6 +417,8 @@ class _ChargeWriter:
     freeze have the charge in front of it, and a call cancelled while it waited changes nothing.
     """
 
+    _frozen: set[int] = set()
+
     def __init__(self) -> None:
         self._pending: list[tuple[allowance.Charge, tuple[int, str] | None, asyncio.Future]] = []
         self._unconfirmed: list[tuple[allowance.Charge, tuple[int, str] | None]] = []
@@ -519,9 +521,10 @@ class _ChargeWriter:
         """The rows are in the database and their teams' freezes with the store: count the rows
         as written."""
         self.owed = max(0, self.owed - len(rows))
+        self._frozen.difference_update(row[0].org_id for row in rows)
 
-    @staticmethod
-    async def _write(rows: list, *, again: bool = False) -> set[int]:
+    @classmethod
+    async def _write(cls, rows: list, *, again: bool = False) -> set[int]:
         """Write the rows, one transaction per team, and freeze each team's counter as soon as
         its own rows are committed.
 
@@ -533,7 +536,7 @@ class _ChargeWriter:
         Returns the teams with a charge that took from the balance. Raises `_Unwritten`, after
         every team was tried, naming the teams whose write failed or whose freeze did not reach
         the store. Their rows are then gone through again, which writes nothing twice and sends
-        the freeze again."""
+        the freeze again, skipping only teams whose earlier attempt already delivered the freeze."""
         store = kv.store()
         by_team: dict[int, list] = {}
         for row in rows:
@@ -544,15 +547,19 @@ class _ChargeWriter:
             # One team's failure is not another's: every team's rows are tried, so a store
             # that does not take one team's freeze keeps no other team's charge in memory.
             try:
-                if await _ChargeWriter._write_team(org_id, by_team[org_id], again):
+                needs_freeze = await _ChargeWriter._write_team(org_id, by_team[org_id], again)
+                if needs_freeze and not (again and org_id in cls._frozen):
                     if (await store.allowance_freeze(org_id, ttl_ms=_COUNTER_TTL_MS) is None
                             and kv.configured()):
                         raise ConnectionError("the store did not take a freeze")
+                    cls._frozen.add(org_id)
+                if needs_freeze:
                     drew.add(org_id)
             except Exception as exc:  # noqa: BLE001 - reported once every team was tried
                 failed[org_id] = exc
         if failed:
             raise _Unwritten(failed, drew) from next(iter(failed.values()))
+        cls._frozen.difference_update(by_team)
         return drew
 
     @staticmethod

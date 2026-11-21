@@ -156,7 +156,10 @@ just queued whose call already has a `settle` entry (`drop_settled_charges`): th
 committed before that insert could succeed, and the new row is the rewrite's own until it
 commits (its insert waits for a fold of the first row that is still in progress). So a settled
 call is never left queued: a fold applies every row it claims, and the readers of the queue
-(`committed_today`, `_queued_unbacked`) count every row, with no lookup in the ledger. That
+(`committed_today`, `_queued_unbacked`) count every row, with no lookup in the ledger. When an
+unconfirmed attempt already delivered a team's freeze to the store, the rewrite skips sending
+it again so a counter thawed by a fold in between is not frozen twice; but if the freeze did not
+reach the store, the rewrite delivers it. That
 lookup was one index probe per queued row on random call ids, the larger share of a fold's
 time. A row left queued by a build whose rewrite did not do this is removed by the upgrade
 (revision 0114); deploy.md states what an upgrade from such a build needs. The daily counter moves as it does at `settle`: consumed goes in, and
