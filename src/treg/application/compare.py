@@ -369,9 +369,8 @@ class Candidate:
 async def _recent(session_factory, since: datetime, org_ids: set[int]) -> list[Candidate]:
     """Recent successful routed parents of the paired capabilities from `org_ids` only, newest
     first, at most `SCAN_PER_CAPABILITY` each: one ordered range of (endpoint_id, created_at) per
-    capability. Reading only eligible teams matters: a busy capability takes thousands of calls an
-    hour from other teams, and a newest-N read over all of them saw only the last minutes of the
-    lookback, so markers written earlier were never read."""
+    capability. Reading only eligible teams matters: other teams' calls can fill a newest-N
+    window read over every team, leaving eligible teams' earlier marked calls unread."""
     cat = catalog_store.load()
     out: list[Candidate] = []
     if not org_ids:

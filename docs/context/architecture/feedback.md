@@ -283,9 +283,9 @@ the capability, and logs the rest. Each run:
    treg.<capability>`, `org_id` among the eligible teams and `created_at` within
    `compare_lookback_hours` (at most two, the marker's life), newest first, at most
    `SCAN_PER_CAPABILITY` (one ordered range of the `(endpoint_id, created_at)` index each), 2xx and
-   `credential_tier` routed; drops calls already compared. Teams come first because a paired
-   capability takes thousands of calls an hour from other teams: a newest-N read over all of them
-   covered only the last minutes of the lookback, and earlier markers were never read.
+   `credential_tier` routed; drops calls already compared. Teams come first because other teams'
+   calls can fill a newest-N window read over every team, leaving eligible teams' earlier marked
+   calls unread until their markers expire.
 5. Per call, until `compare_max_per_run` or `--max-seconds`, one at a time, any error ending only
    that call: the marker must exist (none, or a store that cannot say, skips it; the marker holds
    the sample, so the run does not sample again); the credited child (the latest successful
