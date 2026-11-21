@@ -1,0 +1,60 @@
+{
+  "url": "https://example.com/",
+  "html": {
+    "requested": false,
+    "success": null,
+    "data": null
+  },
+  "markdown": {
+    "requested": true,
+    "success": true,
+    "data": "Example Domain\n\nThis domain is for use in documentation examples without needing permission. This is not a service; avoid relying on it for testing and monitoring purposes.\n\nهذا النطاق مُخصص للاستخدام في أمثلة التوثيق دون الحاجة إلى إذن. هذه ليست خدمة، يُرجى تجنب الاعتماد عليها لأغراض الاختبار والمراقبة.\n\n该域名仅用于文档示例，无需获得许可。这并非一项服务，请勿将其用于测试和监控目的。\n\nL’usage de ce domaine est réservé à des exemples de documentation, sans autorisation préalable. Il ne s’agit pas d’un service ; son utilisation à des f… [974 chars total]"
+  },
+  "screenshot": {
+    "requested": false,
+    "success": null,
+    "data": null
+  },
+  "images": {
+    "requested": false,
+    "success": null,
+    "data": null
+  },
+  "bytes": {
+    "requested": false,
+    "success": null,
+    "data": null
+  },
+  "parsed": {
+    "requested": false,
+    "success": null,
+    "data": null,
+    "type": "custom"
+  },
+  "highlights": {
+    "requested": false,
+    "success": null,
+    "data": null
+  },
+  "json": {
+    "requested": false,
+    "success": null,
+    "data": null
+  },
+  "product": {
+    "requested": false,
+    "success": null,
+    "data": null
+  },
+  "profile": null,
+  "metadata": {
+    "title": "Example Domain",
+    "language": "en"
+  },
+  "request_id": "c5c18311-8f03-4a97-81dc-aff2af1e7b34",
+  "cache_metadata": {
+    "status": "hit",
+    "age_ms": 307309
+  },
+  "isPartial": false
+}

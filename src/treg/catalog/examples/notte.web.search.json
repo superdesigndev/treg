@@ -1,0 +1,19 @@
+{
+  "results": [
+    {
+      "name": "Notte API — Docs, OpenAPI &amp; Kin Score | APIs.io",
+      "url": "https://apis.io/providers/notte/",
+      "content": "# Notte  \nNotte is web browser and agent infrastructure for AI. The REST API at api.notte.cc provisions cloud browser sessions, runs autonomous web agents from natural-language tasks, observes and acts on pages, scrapes structured data, and manages personas, vaults, profiles, and serverless functions. The core framework is open source (SSPL-1.0) on GitHub under nottelabs.  \nNotte publishes 7 API contracts indexed on the [APIs.io](https://apis.io/) network, including Agents API, Health API, Page … [1179 chars total]",
+      "favicon": "https://favicons.linkup.so?domain=apis.io",
+      "type": "text"
+    },
+    {
+      "name": "Notte - Browser Platform for AI",
+      "url": "https://www.notte.cc",
+      "content": "## Built for developers  \nThe complete stack for developers to quickly automate the web.  \n```\n1from notte_sdk import NotteClient\n2\n3client = NotteClient()\n4\n5with client.Session() as session:\n6    p = session.page\n7    p.goto(\"https://notte.cc\")\n```\n## Loved by builders.  \nWhat the community is saying\nabout Notte.  \n“wow I'm testing this right now, got really high hopes for it”  \nJohn Rush  \n@johnrushx  \n“build and deploy fast web agents with headless browser sessions and LLM automation”  \nTom … [1355 chars total]",
+      "favicon": "https://favicons.linkup.so?domain=www.notte.cc",
+      "type": "text"
+    },
+    "… 18 more item(s) truncated"
+  ]
+}

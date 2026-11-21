@@ -1,0 +1,452 @@
+provider: notte
+source:
+  docs: https://docs.notte.cc
+  openapi: https://api.notte.cc/openapi.json
+  curated: '2026-11-17'
+# OWN-KEY-ONLY: treg serves Notte on the caller's own Notte API key, never on a shared one.
+# Notte bills each call to the key's account by what it used (browser time, proxy traffic, LLM
+# tokens), with no fixed per-call price, so notte's fx credit rate is null: usd stays null and
+# platform_eligible is false by construction. A team that connects its own Notte key gets every
+# endpoint below and in notte.extended.yaml, unmetered by treg.
+# Sessions, profiles, personas, vaults and functions are resources of the caller's own Notte
+# account, which is why none of them can ride a shared key.
+pricing_url: https://www.notte.cc/pricing
+limits: >-
+  Each call is billed to the Notte account that owns the key, by the browser time, proxy traffic
+  and LLM tokens it used. Session lifetime is bounded by idle_timeout_minutes and
+  max_duration_minutes; a session closes on its own once either runs out.
+proposed_capabilities:
+  web.styleguide: "Read a website's colors, fonts and logos"
+  web.product.extract: "Extract a product's name, price, variants and images from its page"
+  browser.session.start: "Start a cloud browser session"
+  browser.session.status: "Check a cloud browser session's state"
+  browser.session.stop: "Close a cloud browser session"
+  browser.page.act: "Run one action in a browser session: go to a URL, click, type, scroll"
+  browser.page.observe: "List the actions available on a browser session's current page"
+  browser.page.scrape: "Read a browser session's current page as Markdown or typed JSON"
+  browser.page.screenshot: "Capture a browser session's current page as an image"
+  browser.profile.create: "Create a browser profile that keeps logins and cookies"
+  browser.persona.create: "Create a disposable identity with its own email inbox"
+  browser.persona.emails: "Read the emails a persona's inbox received"
+defaults:
+  bill: {miss: charged, error: charged}
+  price:
+    value: '1'
+    currency: credit
+    per: 1
+    unit: call
+    note: Billed to your own Notte account by the browser time, proxy traffic and LLM tokens the call used.
+  provenance: {source: docs, source_url: 'https://www.notte.cc/pricing', checked: '2026-11-17', confidence: inferred}
+
+endpoints:
+  # --- Data APIs: one call, one answer -----------------------------------------------------------
+  - id: notte.web.fetch
+    capability: web.extract
+    platform: web
+    domain: extract
+    scope: any_account
+    method: POST
+    path: /data/web/fetch
+    name: Fetch a web page
+    summary: Fetch one page as Markdown, HTML, parsed fields or product data, rendered in a real browser.
+    input:
+      bodyType: json
+      body:
+        url: {type: string, required: true, example: "https://example.com"}
+        formats: {type: object, required: true, note: "Booleans html, markdown, parse and product; set at least one to true.", example: {markdown: true}}
+        maxAgeMs: {type: integer, required: false, min: 0, note: "Oldest cached answer to accept, in milliseconds; 0 forces a fresh fetch."}
+        timeoutOpts: {type: object, required: false}
+    test_request: {body: {url: "https://example.com", formats: {markdown: true}}}
+    verified: '2026-11-17'
+    added: '2026-11-17'
+    docs_url: https://docs.notte.cc/data-apis/fetch
+    example_response: examples/notte.web.fetch.json
+
+  - id: notte.web.styleguide
+    capability: web.styleguide
+    platform: web
+    domain: extract
+    scope: any_account
+    method: GET
+    path: /data/web/styleguide
+    name: Read a website's styleguide
+    summary: Read a site's color palette, typography, logos and light or dark mode from its domain.
+    input:
+      queryParams:
+        domain: {type: string, required: false, note: "Site to read; send domain or directUrl.", example: "stripe.com"}
+        directUrl: {type: string, required: false, note: "One page to read instead of the site's home page."}
+        colorScheme: {type: string, required: false, enum: [light, dark]}
+        maxAgeMs: {type: integer, required: false, min: 0}
+    test_request: {queryParams: {domain: "stripe.com"}}
+    verified: '2026-11-17'
+    added: '2026-11-17'
+    docs_url: https://docs.notte.cc/data-apis/styleguide
+    example_response: examples/notte.web.styleguide.json
+
+  - id: notte.web.product.extract
+    capability: web.product.extract
+    platform: web
+    domain: extract
+    scope: any_account
+    method: POST
+    path: /data/products/extract
+    name: Extract a product page
+    summary: Extract a product's name, description, price, variants, images and availability from its page URL.
+    input:
+      bodyType: json
+      body:
+        url: {type: string, required: true, example: "https://www.allbirds.com/products/mens-tree-runners"}
+        productParams: {type: object, required: false}
+    test_request: {body: {url: "https://www.allbirds.com/products/mens-tree-runners"}}
+    verified: '2026-11-17'
+    added: '2026-11-17'
+    docs_url: https://docs.notte.cc/data-apis/products
+    example_response: examples/notte.web.product.extract.json
+
+  - id: notte.companies.enrich
+    capability: companies.enrich
+    platform: companies
+    domain: enrich
+    scope: any_account
+    method: POST
+    path: /data/brand/retrieve
+    name: Enrich a company
+    summary: Get a company's name, description, logos, colors, socials and address from its domain, name, email, ticker or a card transaction.
+    input:
+      bodyType: json
+      body:
+        type: {type: string, required: true, enum: [by_domain, by_name, by_email, by_ticker, by_direct_url, by_transaction], example: by_domain}
+        domain: {type: string, required: false, note: "With type by_domain.", example: "stripe.com"}
+        name: {type: string, required: false, note: "With type by_name."}
+        email: {type: string, required: false, note: "With type by_email: the company behind a work address."}
+        ticker: {type: string, required: false, note: "With type by_ticker."}
+        direct_url: {type: string, required: false, note: "With type by_direct_url."}
+        transaction_info: {type: object, required: false, note: "With type by_transaction: the merchant descriptor from a card statement, resolved to the merchant."}
+    test_request: {body: {type: by_domain, domain: "stripe.com"}}
+    verified: '2026-11-17'
+    added: '2026-11-17'
+    docs_url: https://docs.notte.cc/data-apis/company-enrichment
+    example_response: examples/notte.companies.enrich.json
+
+  - id: notte.google.maps.search
+    capability: google.serp.maps
+    platform: google
+    domain: maps
+    scope: any_account
+    method: POST
+    path: /data/maps/search
+    name: Search Google Maps businesses
+    summary: Search Google Maps for businesses and get each one's name, rating, address, hours, phone and website.
+    input:
+      bodyType: json
+      body:
+        search: {type: string, required: false, note: "Plain-language query; send search or url.", example: "coffee shops in San Francisco"}
+        url: {type: string, required: false, note: "A Google Maps search URL."}
+    test_request: {body: {search: "coffee shops in San Francisco"}}
+    verified: '2026-11-17'
+    added: '2026-11-17'
+    docs_url: https://docs.notte.cc/data-apis/maps
+    example_response: examples/notte.google.maps.search.json
+
+  - id: notte.people.enrich
+    capability: people.enrich
+    platform: people
+    domain: enrich
+    scope: any_account
+    method: POST
+    path: /data/people/enrich
+    name: Enrich a person
+    summary: Match a person from a social profile URL, name, email or employer and get their bio, roles, education and location with a match score.
+    input:
+      bodyType: json
+      body:
+        social_urls: {type: "array[string]", required: false, maxItems: 20, example: ["https://www.linkedin.com/in/williamhgates"]}
+        name: {type: object, required: false, note: "Name clues, for example {full: \"Bill Gates\"}."}
+        email: {type: string, required: false}
+        company: {type: object, required: false, note: "Employer clues, for example {name: \"Microsoft\"}."}
+        location: {type: object, required: false}
+      note: "Send at least one clue. The answer's match.status and match.score say how sure the match is."
+    test_request: {body: {social_urls: ["https://www.linkedin.com/in/williamhgates"]}}
+    verified: '2026-11-17'
+    added: '2026-11-17'
+    docs_url: https://docs.notte.cc/data-apis/people
+    example_response: examples/notte.people.enrich.json
+
+  - id: notte.companies.news
+    capability: companies.news
+    platform: companies
+    domain: news
+    scope: any_account
+    method: POST
+    path: /data/news/search
+    name: Search company news
+    summary: Find recent news articles about a company by name, domain, ticker or ISIN, with source, date and summary.
+    input:
+      bodyType: json
+      body:
+        searchBy: {type: object, required: true, note: "{type: entity, entity: {type: domain|name|ticker|isin, <that key>: value}}.", example: {type: entity, entity: {type: domain, domain: "stripe.com"}}}
+        filterBy: {type: object, required: false}
+        sortBy: {type: object, required: false}
+        limit: {type: integer, required: false, default: 10, min: 1, example: 2}
+        cursor: {type: string, required: false, note: "The previous answer's cursor, for the next page."}
+    test_request: {body: {searchBy: {type: entity, entity: {type: domain, domain: "stripe.com"}}, limit: 2}}
+    verified: '2026-11-17'
+    added: '2026-11-17'
+    docs_url: https://docs.notte.cc/data-apis/news
+    example_response: examples/notte.companies.news.json
+
+  - id: notte.youtube.extract
+    capability: youtube.video.detail
+    platform: youtube
+    domain: video
+    scope: any_account
+    method: POST
+    path: /data/youtube/extract
+    name: Extract a YouTube video
+    summary: Read a YouTube video's title, channel, duration, views, publish date and description as Markdown and JSON.
+    input:
+      bodyType: json
+      body:
+        url: {type: string, required: true, example: "https://www.youtube.com/watch?v=jNQXAC9IVRw"}
+        includeImages: {type: boolean, required: false, default: false}
+    test_request: {body: {url: "https://www.youtube.com/watch?v=jNQXAC9IVRw"}}
+    verified: '2026-11-17'
+    added: '2026-11-17'
+    docs_url: https://docs.notte.cc/data-apis/youtube
+    example_response: examples/notte.youtube.extract.json
+
+  - id: notte.web.search
+    capability: web.search
+    platform: web
+    domain: search
+    scope: any_account
+    method: POST
+    path: /search
+    name: Search the web
+    summary: Search the web and get ranked results with page content, a sourced answer or structured output.
+    input:
+      bodyType: json
+      body:
+        q: {type: string, required: true, example: "notte browser api"}
+        depth: {type: string, required: false, enum: [fast, standard, deep], default: standard}
+        outputType: {type: string, required: false, enum: [searchResults, sourcedAnswer, structured], default: searchResults}
+    test_request: {body: {q: "notte browser api"}}
+    verified: '2026-11-17'
+    added: '2026-11-17'
+    docs_url: https://docs.notte.cc/concepts/search
+    example_response: examples/notte.web.search.json
+
+  # --- Browser sessions: start one, act on its page, close it ----------------------------------
+  - id: notte.browser.session.start
+    capability: browser.session.start
+    platform: browser
+    domain: session
+    scope: own_account
+    method: POST
+    path: /sessions/start
+    name: Start a browser session
+    summary: Start a cloud browser and get its session id, CDP URL for Playwright or Puppeteer, and a live viewer URL.
+    input:
+      bodyType: json
+      body:
+        idle_timeout_minutes: {type: integer, required: false, default: 3, min: 1, example: 1}
+        max_duration_minutes: {type: integer, required: false, default: 15, min: 1, example: 5}
+        proxies: {type: boolean, required: false, default: true, note: "true uses Notte's residential proxies; false connects directly."}
+        solve_captchas: {type: boolean, required: false, default: true}
+        browser_type: {type: string, required: false, enum: [chromium, chrome, firefox], default: chromium}
+        profile: {type: object, required: false, note: "{id: <profile_id>, persist: true} restores a saved profile and saves it back on close."}
+        vault_id: {type: string, required: false, note: "A vault whose credentials the session fills in on login forms."}
+        viewport_width: {type: integer, required: false, min: 500}
+        viewport_height: {type: integer, required: false, min: 500}
+      note: "The session runs, and bills, until notte.browser.session.stop or a timeout closes it."
+    test_request: {body: {idle_timeout_minutes: 1, max_duration_minutes: 5}}
+    verified: '2026-11-17'
+    added: '2026-11-17'
+    docs_url: https://docs.notte.cc/features/sessions/configuration
+    example_response: examples/notte.browser.session.start.json
+
+  - id: notte.browser.session.status
+    capability: browser.session.status
+    platform: browser
+    domain: session
+    scope: own_account
+    method: GET
+    path: /sessions/{session_id}
+    name: Check a browser session
+    summary: Read a session's status, timeouts, steps taken and network usage.
+    input:
+      pathParams:
+        session_id: {type: string, required: true, example: "f071f991-6dc1-4294-a466-a38e835a9507"}
+    test_request: {pathParams: {session_id: "f071f991-6dc1-4294-a466-a38e835a9507"}}
+    verified: '2026-11-17'
+    added: '2026-11-17'
+    docs_url: https://docs.notte.cc/features/sessions/lifecycle
+    example_response: examples/notte.browser.session.status.json
+
+  - id: notte.browser.session.stop
+    capability: browser.session.stop
+    platform: browser
+    domain: session
+    scope: own_account
+    method: DELETE
+    path: /sessions/{session_id}/stop
+    name: Stop a browser session
+    summary: Close a browser session and stop its billing.
+    input:
+      pathParams:
+        session_id: {type: string, required: true, example: "f071f991-6dc1-4294-a466-a38e835a9507"}
+    test_request: {pathParams: {session_id: "f071f991-6dc1-4294-a466-a38e835a9507"}}
+    verified: '2026-11-17'
+    added: '2026-11-17'
+    docs_url: https://docs.notte.cc/features/sessions/lifecycle
+    example_response: examples/notte.browser.session.stop.json
+
+  - id: notte.browser.page.execute
+    capability: browser.page.act
+    platform: browser
+    domain: page
+    scope: own_account
+    method: POST
+    path: /sessions/{session_id}/page/execute
+    name: Run a page action
+    summary: Run one browser action in a session (go to a URL, click, fill, type, scroll, press a key, switch tab) and get its result.
+    input:
+      pathParams:
+        session_id: {type: string, required: true, example: "f071f991-6dc1-4294-a466-a38e835a9507"}
+      bodyType: json
+      body:
+        type: {type: string, required: true, note: "The action: goto, click, fill, form_fill, press_key, scroll_down, scroll_up, go_back, reload, wait, goto_new_tab, switch_tab, close_tab.", example: goto}
+        url: {type: string, required: false, note: "With goto and goto_new_tab.", example: "https://example.com"}
+        id: {type: string, required: false, note: "The element id from notte.browser.page.observe, with click and fill."}
+        selector: {type: string, required: false, note: "A Playwright selector, in place of id."}
+        value: {type: string, required: false, note: "The text, with fill."}
+    test_request: {pathParams: {session_id: "f071f991-6dc1-4294-a466-a38e835a9507"}, body: {type: goto, url: "https://example.com"}}
+    verified: '2026-11-17'
+    added: '2026-11-17'
+    docs_url: https://docs.notte.cc/features/sessions/browser-controls
+    example_response: examples/notte.browser.page.execute.json
+
+  - id: notte.browser.page.observe
+    capability: browser.page.observe
+    platform: browser
+    domain: page
+    scope: own_account
+    method: POST
+    path: /sessions/{session_id}/page/observe
+    name: Observe a page
+    summary: List the current page's interactive elements with their ids, plus its title, URL and scroll position.
+    input:
+      pathParams:
+        session_id: {type: string, required: true, example: "f071f991-6dc1-4294-a466-a38e835a9507"}
+      bodyType: json
+      body:
+        max_nb_actions: {type: integer, required: false, default: 100, min: 1, example: 5}
+    test_request: {pathParams: {session_id: "f071f991-6dc1-4294-a466-a38e835a9507"}, body: {max_nb_actions: 5}}
+    verified: '2026-11-17'
+    added: '2026-11-17'
+    docs_url: https://docs.notte.cc/features/sessions/browser-controls
+    example_response: examples/notte.browser.page.observe.json
+
+  - id: notte.browser.page.scrape
+    capability: browser.page.scrape
+    platform: browser
+    domain: page
+    scope: own_account
+    method: POST
+    path: /sessions/{session_id}/page/scrape
+    name: Scrape the current page
+    summary: Read the session's current page as Markdown, or extract typed JSON from it with instructions and a schema.
+    input:
+      pathParams:
+        session_id: {type: string, required: true, example: "f071f991-6dc1-4294-a466-a38e835a9507"}
+      bodyType: json
+      body:
+        only_main_content: {type: boolean, required: false, default: false}
+        selector: {type: string, required: false, note: "A Playwright selector to scope the scrape to."}
+        scrape_links: {type: boolean, required: false, default: true}
+        instructions: {type: string, required: false, note: "What to extract, for structured output."}
+        response_format: {type: object, required: false, note: "A JSON Schema the extracted data must match."}
+    test_request: {pathParams: {session_id: "f071f991-6dc1-4294-a466-a38e835a9507"}, body: {only_main_content: true}}
+    verified: '2026-11-17'
+    added: '2026-11-17'
+    docs_url: https://docs.notte.cc/concepts/scraping
+    example_response: examples/notte.browser.page.scrape.json
+
+  - id: notte.browser.page.screenshot
+    capability: browser.page.screenshot
+    platform: browser
+    domain: page
+    scope: own_account
+    method: POST
+    path: /sessions/{session_id}/page/screenshot
+    name: Screenshot the current page
+    summary: Capture the session's current page as a JPEG image.
+    input:
+      pathParams:
+        session_id: {type: string, required: true, example: "f071f991-6dc1-4294-a466-a38e835a9507"}
+      bodyType: json
+      body: {}
+    test_request: {pathParams: {session_id: "f071f991-6dc1-4294-a466-a38e835a9507"}, body: {}}
+    verified: '2026-11-17'
+    added: '2026-11-17'
+    docs_url: https://docs.notte.cc/features/sessions/browser-controls
+    example_response: examples/notte.browser.page.screenshot.json
+
+  # --- Profiles and personas: state and identities a session uses -------------------------------
+  - id: notte.browser.profile.create
+    capability: browser.profile.create
+    platform: browser
+    domain: profile
+    scope: own_account
+    method: POST
+    path: /profiles/create
+    name: Create a browser profile
+    summary: Create a browser profile that keeps cookies and logins between sessions, and get its profile id.
+    input:
+      bodyType: json
+      body:
+        name: {type: string, required: false, example: "treg-catalog-probe"}
+    test_request: {body: {name: "treg-catalog-probe"}}
+    verified: '2026-11-17'
+    added: '2026-11-17'
+    docs_url: https://docs.notte.cc/features/sessions/browser-profiles
+    example_response: examples/notte.browser.profile.create.json
+
+  - id: notte.browser.persona.create
+    capability: browser.persona.create
+    platform: browser
+    domain: persona
+    scope: own_account
+    method: POST
+    path: /personas/create
+    name: Create a persona
+    summary: Create a disposable identity with a name and a working email inbox, optionally with a phone number and a vault.
+    input:
+      bodyType: json
+      body:
+        name: {type: string, required: false}
+        create_phone_number: {type: boolean, required: false, default: false}
+        create_vault: {type: boolean, required: false, default: false}
+    test_request: {body: {}}
+    verified: '2026-11-17'
+    added: '2026-11-17'
+    docs_url: https://docs.notte.cc/concepts/personas
+    example_response: examples/notte.browser.persona.create.json
+
+  - id: notte.browser.persona.emails
+    capability: browser.persona.emails
+    platform: browser
+    domain: persona
+    scope: own_account
+    method: GET
+    path: /personas/{persona_id}/emails
+    name: Read a persona's emails
+    summary: List the emails a persona's inbox received, newest first, for sign-up codes and confirmation links.
+    input:
+      pathParams:
+        persona_id: {type: string, required: true, example: "6af7fd98-9b13-4784-af21-28ae17dd3748"}
+    test_request: {pathParams: {persona_id: "6af7fd98-9b13-4784-af21-28ae17dd3748"}}
+    verified: '2026-11-17'
+    added: '2026-11-17'
+    docs_url: https://docs.notte.cc/concepts/personas
+    example_response: examples/notte.browser.persona.emails.json

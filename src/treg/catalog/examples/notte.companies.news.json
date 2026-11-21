@@ -1,0 +1,56 @@
+{
+  "data": [
+    {
+      "id": "59a2a2b022898353547631c59f6eb09f",
+      "story_id": "88d3b5ceb2ca4b0cea76c3af4ec4a38c",
+      "url": "https://finance.yahoo.com/technology/ai/articles/stripe-just-built-full-stack-111702369.html",
+      "title": "Stripe Just Built the Full-Stack Agent Commerce Infrastructure in One Day",
+      "description": "The 288-Launch Play At Stripe Sessions on April 29, 2026, the company unveiled 288 new products and features. The number itself is not the story. The story i...",
+      "language": "en",
+      "authors": [
+        "Tessa Vaughn"
+      ],
+      "image_url": "https://s.yimg.com/lo/mysterio/api/150afeec82b96c8edfb05d7e98a23e7e5f1e6917dc328e2c1a7c8ecc4d4736fe/lightyear_networkapi/resizefill_w1200%3Bquality_80%3Bformat_webp/https%3A%2F%2Fs.yimg.com%2Fcv%2Fapiv2%2Fsocial%2Fimages%2Fyahoo_default_logo-1200x1200.png",
+      "published_at": "2026-09-23T11:17:02Z",
+      "type": "editorial",
+      "source": {
+        "name": "Yahoo! Finance",
+        "domain": "finance.yahoo.com",
+        "direct": false
+      },
+      "match": {
+        "level": "primary",
+        "confidence": null
+      }
+    },
+    {
+      "id": "8f683554f1ce79808c4034cfefb3f220",
+      "story_id": "eb49e56d92b4977c13df77c7b8835489",
+      "url": "https://fxnewsgroup.com/forex-news/payments/stripe-presses-ahead-with-building-economic-infrastructure-for-ai-unveils-288-new-products-and-features/",
+      "title": "Stripe presses ahead with building economic infrastructure for AI, unveils 288 new products and features",
+      "description": "Stripe today announced 288 new products and features at Stripe Sessions, its annual customer conference, as the company builds the economic infrastructure for AI.",
+      "language": "en",
+      "authors": [
+        "Maria Nikolova"
+      ],
+      "image_url": "https://fxnewsgroup.com/wp-content/uploads/2026/04/stripe-scaled.jpeg",
+      "published_at": "2026-04-29T18:47:22Z",
+      "type": "editorial",
+      "source": {
+        "name": "FX News Group",
+        "domain": "fxnewsgroup.com",
+        "direct": false
+      },
+      "match": {
+        "level": "primary",
+        "confidence": null
+      }
+    }
+  ],
+  "has_more": true,
+  "next_cursor": "Mjo5ODY4YzA1YjZhNmJlNjZhYTgzMjk5NmU6MjoxNzk0OTM4NjQwOjVkMzYzMDMzNmUyYTAzMzg4YWViMDE2Njk1ZWIwNDc4ZTU5MDBjNDE4Njg2NDc5ODozMzMwYjJhMDczN2I0ODg5OGU3NGFkZDJkZGY2ZGJhNjU4OTYyNTMwZGZmMzhiYmZjMTA3M2E3NjljYzc1Zjhh",
+  "meta": {
+    "count": 2
+  },
+  "request_id": "88bb5627-23d8-40d2-8899-31afa5db7d10"
+}

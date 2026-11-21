@@ -145,6 +145,7 @@ platforms:
   hackernews: {label: "Hacker News", category: "Community", summary: "Stories, search and who-is-hiring posts from Hacker News."}
   producthunt: {label: "Product Hunt", category: "Community", summary: "Products and daily launches from Product Hunt."}
   stackoverflow: {label: "Stack Overflow", category: "Developer", summary: "Questions by tag from Stack Overflow."}
+  browser: {label: "Cloud browsers", category: "Developer", summary: "Cloud browser sessions an agent drives: open pages, act on them, read and screenshot them, with saved profiles, personas and vaults."}
   packages: {label: "Package registries", category: "Developer", summary: "Package facts from npm, PyPI and crates.io."}
   medium: {label: "Medium", category: "Research & public data", summary: "Posts of a Medium tag, author or publication."}
   substack: {label: "Substack", category: "Research & public data", summary: "Latest posts of a Substack publication."}

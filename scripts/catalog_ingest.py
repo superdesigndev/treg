@@ -2767,6 +2767,168 @@ def ingest_meta(service: str, refresh: bool) -> tuple[Path, dict]:
     ), endpoints, notes), {"scope_gaps": gaps}
 
 
+# Notte publishes one OpenAPI document for its whole API. The core file (notte.yaml) curates the
+# routes an agent reaches for first; this lists the rest of the agreed surface: the session and
+# page controls, profiles, personas, vaults, functions and data monitors. Account-wide reads
+# (analytics, cache, audit, usage), agents, scripts and OAuth connection flows are left out.
+# Every route acts on the caller's own Notte account, and notte's fx credit rate is null, so
+# the price default in notte.yaml keeps every entry own-key only.
+NOTTE_OPENAPI = "https://api.notte.cc/openapi.json"
+# Bumped by hand when the route list is re-read, so a re-run is byte-identical.
+NOTTE_CHECKED = "2026-11-17"
+# (method, path) -> platform. Only these are listed.
+NOTTE_ROUTES: dict[tuple[str, str], str] = {
+    **{r: "browser" for r in [
+        ("POST", "/sessions/{session_id}/pause"), ("POST", "/sessions/{session_id}/resume"),
+        ("POST", "/sessions/{session_id}/page/act"), ("POST", "/sessions/{session_id}/page/choose"),
+        ("POST", "/sessions/{session_id}/page/check"), ("POST", "/sessions/{session_id}/page/document"),
+        ("POST", "/sessions/{session_id}/page/execute/file"),
+        ("GET", "/sessions/{session_id}/cookies"), ("POST", "/sessions/{session_id}/cookies"),
+        ("GET", "/sessions/{session_id}/auth"), ("POST", "/sessions/{session_id}/profile/save"),
+        ("GET", "/sessions/{session_id}/profile-preview"),
+        ("POST", "/sessions/{session_id}/files"), ("GET", "/sessions/{session_id}/files"),
+        ("GET", "/sessions/{session_id}/files/{file_id}"), ("DELETE", "/sessions/{session_id}/files/{file_id}"),
+        ("GET", "/profiles"), ("GET", "/profiles/{profile_id}"), ("DELETE", "/profiles/{profile_id}"),
+        ("POST", "/profiles/{profile_id}/duplicate"), ("GET", "/profiles/{profile_id}/cookies"),
+        ("POST", "/profiles/{profile_id}/cookies"), ("POST", "/profiles/{profile_id}/state"),
+        ("GET", "/personas"), ("GET", "/personas/{persona_id}"), ("PATCH", "/personas/{persona_id}"),
+        ("DELETE", "/personas/{persona_id}"), ("GET", "/personas/{persona_id}/sms"),
+        ("POST", "/vaults/create"), ("GET", "/vaults"), ("GET", "/vaults/{vault_id}"),
+        ("PATCH", "/vaults/{vault_id}"), ("DELETE", "/vaults/{vault_id}"),
+        ("POST", "/vaults/{vault_id}/credentials"), ("GET", "/vaults/{vault_id}/credentials"),
+        ("DELETE", "/vaults/{vault_id}/credentials"), ("POST", "/vaults/{vault_id}/card"),
+        ("GET", "/vaults/{vault_id}/card"), ("DELETE", "/vaults/{vault_id}/card"),
+        ("POST", "/functions"), ("POST", "/functions/{function_id}"), ("PATCH", "/functions/{function_id}"),
+        ("GET", "/functions/{function_id}"), ("DELETE", "/functions/{function_id}"),
+        ("POST", "/functions/{function_id}/fork"), ("POST", "/functions/{function_id}/rollback"),
+        ("POST", "/functions/{function_id}/rollback/conditional"),
+        ("POST", "/functions/{function_id}/schedules"), ("GET", "/functions/{function_id}/schedules"),
+        ("PATCH", "/functions/{function_id}/schedules/{schedule_id}"),
+        ("DELETE", "/functions/{function_id}/schedules/{schedule_id}"),
+        ("POST", "/functions/{function_id}/schedules/resume"),
+        ("POST", "/functions/{function_id}/runs/start"), ("GET", "/functions/{function_id}/runs"),
+        ("GET", "/functions/{function_id}/runs/{run_id}"), ("PATCH", "/functions/{function_id}/runs/{run_id}"),
+        ("DELETE", "/functions/{function_id}/runs/{run_id}"),
+        ("GET", "/functions/{function_id}/runs/{run_id}/payloads/{field}"),
+    ]},
+    **{r: "web" for r in [
+        ("POST", "/data/monitors"), ("GET", "/data/monitors"), ("GET", "/data/monitors/limits"),
+        ("GET", "/data/monitors/credit-usage"), ("GET", "/data/monitors/{monitor_id}"),
+        ("PATCH", "/data/monitors/{monitor_id}"), ("DELETE", "/data/monitors/{monitor_id}"),
+        ("POST", "/data/monitors/{monitor_id}/run"), ("GET", "/data/monitors/{monitor_id}/runs"),
+        ("GET", "/data/monitors/{monitor_id}/runs/{run_id}"), ("GET", "/data/monitors/{monitor_id}/changes"),
+        ("GET", "/data/monitors/{monitor_id}/changes/{change_id}"),
+        ("GET", "/data/webhooks/deliveries/{delivery_id}"),
+        ("GET", "/data/webhooks/deliveries/{delivery_id}/attempts"),
+        ("POST", "/data/webhooks/deliveries/{delivery_id}/retry"),
+    ]},
+}
+_NOTTE_TYPES = {"string": "string", "integer": "integer", "number": "number", "boolean": "boolean",
+                "object": "object", "array": "array[string]"}
+
+
+def _notte_schema(spec: dict, node: dict) -> dict:
+    """Follow a $ref and drop the nullable arm of an Optional, so a field reads as its real type."""
+    seen = 0
+    while isinstance(node, dict) and seen < 8:
+        seen += 1
+        if "$ref" in node:
+            node = spec["components"]["schemas"][node["$ref"].rsplit("/", 1)[1]]
+        elif "anyOf" in node:
+            arms = [a for a in node["anyOf"] if a.get("type") != "null"]
+            node = {**arms[0], **{k: v for k, v in node.items() if k in ("description", "default")}} \
+                if len(arms) == 1 else {"type": "object", **{k: v for k, v in node.items() if k == "description"}}
+        elif "allOf" in node and len(node["allOf"]) == 1:
+            node = node["allOf"][0]
+        else:
+            break
+    return node if isinstance(node, dict) else {}
+
+
+def _notte_field(spec: dict, raw: dict, required: bool) -> dict:
+    node = _notte_schema(spec, raw)
+    kind = node.get("type") or ("object" if "oneOf" in node or "properties" in node else "string")
+    field: dict = {"type": _NOTTE_TYPES.get(kind, "string"), "required": required}
+    if kind == "array":
+        item = _notte_schema(spec, node.get("items") or {})
+        if item.get("type") in ("object", None) and "enum" not in item:
+            field["type"] = "array[object]"
+    if isinstance(node.get("enum"), list) and kind == "string":
+        field["enum"] = node["enum"]
+    if "default" in node and node["default"] is not None and not isinstance(node["default"], (dict, list)):
+        field["default"] = node["default"]
+    note = clean(str(raw.get("description") or node.get("description") or ""))
+    if note:
+        field["note"] = note[:300]
+    return field
+
+
+def ingest_notte(refresh: bool) -> tuple[Path, dict]:
+    provider = "notte"
+    spec = json.loads(fetch(NOTTE_OPENAPI, "notte_openapi.json", refresh=refresh, headers=_JSON_HDR))
+    skip = core_route_keys(provider)
+    endpoints, missing = [], []
+    for (method, path), platform in NOTTE_ROUTES.items():
+        op = ((spec.get("paths") or {}).get(path) or {}).get(method.lower())
+        if not op:
+            missing.append(f"{method} {path}")
+            continue
+        if _route_key(method, path) in skip:
+            continue
+        slug = re.sub(r"[^a-z0-9]+", "-", str(op.get("operationId") or f"{method}-{path}").lower()).strip("-")
+        summary = clean(op.get("summary") or "") or slug
+        # The data-monitor operations carry bare names ("Create", "Retrieve"); name their family.
+        family = next((f for f in ("monitor", "webhook") if path.startswith(f"/data/{f}s")), "")
+        if family and not slug.startswith(family):
+            slug, summary = f"{family}-{slug}", f"{family.capitalize()} {summary[:1].lower()}{summary[1:]}"
+        description = clean(op.get("description") or "")
+        entry: dict = {
+            "id": f"{provider}.x.{slug}",
+            "platform": platform,
+            "method": method,
+            "path": path,
+            "name": summary[:60],
+            "summary": (description or summary)[:400],
+            "scope": "own_account",
+            "docs_url": "https://docs.notte.cc",
+        }
+        params: dict = {}
+        for prm in op.get("parameters") or []:
+            if prm.get("in") not in ("path", "query") or not prm.get("name"):
+                continue
+            field = _notte_field(spec, {**(prm.get("schema") or {}), "description": prm.get("description")},
+                                 bool(prm.get("required")))
+            params.setdefault("pathParams" if prm["in"] == "path" else "queryParams", {})[prm["name"]] = field
+        inp: dict = dict(params)
+        body = (((op.get("requestBody") or {}).get("content") or {}).get("application/json") or {}).get("schema")
+        if body:
+            node = _notte_schema(spec, body)
+            props = node.get("properties") or {}
+            required = set(node.get("required") or [])
+            inp["bodyType"] = "json"
+            inp["body"] = ({name: _notte_field(spec, raw, name in required) for name, raw in props.items()
+                            if not (_notte_schema(spec, raw).get("deprecated") or raw.get("deprecated"))}
+                           if props else {})
+            if not props:
+                inp["note"] = "JSON body; see the operation's reference for its fields."
+        if inp:
+            entry["input"] = inp
+        endpoints.append(entry)
+    if missing:
+        raise SystemExit("notte: routes absent from the OpenAPI document: " + ", ".join(missing))
+    notes = [
+        "",
+        "Source: Notte's own OpenAPI document (api.notte.cc/openapi.json). Every path is relative to",
+        "OAuthProvider.base_url. NOTTE_ROUTES in scripts/catalog_ingest.py is the list of routes kept.",
+        "",
+        "OWN-KEY ONLY: every route acts on the caller's own Notte account (its sessions, profiles,",
+        "personas, vaults, functions and monitors), and Notte bills by use with no fixed per-call",
+        "price, so the price default in notte.yaml names a credit rate that fx.yaml leaves null.",
+    ]
+    return write_extended(provider, {"method": "official openapi", "ingested": NOTTE_CHECKED,
+                                     "spec_urls": [NOTTE_OPENAPI]}, endpoints, notes), {}
+
+
 INGESTERS.update({
     "google-search-console": ingest_google_search_console,
     "google-analytics": ingest_google_analytics,
@@ -2775,6 +2937,7 @@ INGESTERS.update({
     "youtube": ingest_youtube,
     "google-ads": ingest_google_ads,
     "x": ingest_x,
+    "notte": ingest_notte,
     "facebook": lambda refresh: ingest_meta("facebook", refresh),
     "instagram": lambda refresh: ingest_meta("instagram", refresh),
     "meta-ads": lambda refresh: ingest_meta("meta-ads", refresh),
