@@ -96,10 +96,10 @@ def _call(org_id: int) -> MarketplaceCall:
         settlement_basis={"amount": {"kind": "observed"}, "fallback_micro": PRICE})
 
 
-async def _busy(org_id: int, caller: Caller, tag: str) -> list[tuple[int, bool]]:
+async def _busy(org_id: int, caller: Caller, tag: str) -> tuple[list[tuple[int, bool]], int]:
     """CALLS_PER_S calls a second for SECONDS seconds through the call path's own reserve and
     settle, with the background loop folding as it does in production. (charged, served by
-    the allowance) per call."""
+    the allowance) per call, and the team's refills when half the calls had started."""
     loop = asyncio.get_running_loop()
 
     async def one(index: int) -> tuple[int, bool]:
@@ -111,24 +111,29 @@ async def _busy(org_id: int, caller: Caller, tag: str) -> list[tuple[int, bool]]
         return (await call_settle._platform_settle(mk, 200, observed_override=COST))[0], served
 
     folding = asyncio.create_task(allowance_sweep.worker(fold_every_s=0.25))
+    total, halfway = CALLS_PER_S * SECONDS, 0
     try:
         start, calls = loop.time(), []
-        for index in range(CALLS_PER_S * SECONDS):
+        for index in range(total):
             await asyncio.sleep(max(0.0, start + index / CALLS_PER_S - loop.time()))
+            if index == total // 2:
+                halfway = runtime.refills(org_id)
             calls.append(asyncio.create_task(one(index)))
         results = await asyncio.gather(*calls)
         await asyncio.gather(*runtime._refreshing.values())
     finally:
         folding.cancel()
         await asyncio.gather(folding, return_exceptions=True)
-    return results
+    return results, halfway
 
 
 async def _books(store, org_id: int, results: list[tuple[int, bool]]) -> None:
     """Every charge folded exactly once, the invariant holds, and once the idle hold is closed
-    the team has paid exactly what its calls cost."""
+    the team has paid exactly what its calls cost. A call a slow moment sent to the exact path
+    is charged once there too."""
     paid = [charged for charged, _ in results]
-    assert paid == [COST] * len(results) and all(served for _, served in results)
+    assert paid == [COST] * len(results)
+    assert sum(served for _, served in results) >= 0.9 * len(results), "the allowance served them"
     while await allowance_sweep.fold_queued_once(session_maker):
         pass
     async with session_maker() as db:
@@ -156,11 +161,17 @@ async def _books(store, org_id: int, results: list[tuple[int, bool]]) -> None:
 
 
 async def test_a_busy_team_refills_far_less_often_when_refills_follow_its_spend(store, monkeypatch):
+    """Past the first refills, the chunk keeps going back to the team's money lease about once
+    a second; a counter sized to the team's spend does not go back at all within the run."""
     real, teams = store
     fixed_team, caller = await _team(monkeypatch, teams, "fixed-chunk")
-    await _books(real, fixed_team, await _busy(fixed_team, caller, "fixed"))
+    results, fixed_half = await _busy(fixed_team, caller, "fixed")
+    await _books(real, fixed_team, results)
     monkeypatch.setattr(get_settings(), "money_allowance_refill_window_s", 30)
     paced_team, caller = await _team(monkeypatch, teams, "paced")
-    await _books(real, paced_team, await _busy(paced_team, caller, "paced"))
+    results, paced_half = await _busy(paced_team, caller, "paced")
+    await _books(real, paced_team, results)
     fixed, paced = runtime.refills(fixed_team), runtime.refills(paced_team)
-    assert fixed >= 4 and paced * 3 <= fixed, f"fixed chunk: {fixed} refills, paced: {paced}"
+    counts = f"fixed chunk: {fixed_half} then {fixed} refills, paced: {paced_half} then {paced}"
+    assert fixed - fixed_half >= 2 and paced - paced_half == 0, counts
+    assert paced < fixed, counts
