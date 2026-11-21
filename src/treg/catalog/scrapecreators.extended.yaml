@@ -3067,6 +3067,8 @@ endpoints:
   name: "Search Threads posts by keyword"
   summary: Searches Threads for posts matching a keyword, returning up to 10 results with caption text, like_count, reshare_count, direct_reply_count, user info, and image_versions2.
   price: {value: '1', currency: credit, per: 1, unit: call}
+  error: {when: {any: [{path: response.error, op: present}, {path: response.errors, op: present}]}}
+  miss: {when: [{path: response.posts, op: present}, {path: response.posts, op: empty}]}
   docs_url: https://docs.scrapecreators.com/threads/search
   input:
     queryParams:
@@ -3092,8 +3094,9 @@ endpoints:
         example: 'false'
   test_request:
     queryParams:
-      query: basketball
-  skipped: not called — $1.0000 would exceed this run's $45.00 budget
+      query: bitcoin
+  verified: '2026-11-12'
+  example_response: examples/scrapecreators.x.v1-threads-search.json
 - id: scrapecreators.x.v1-threads-search-users
   added: '2026-07-28'
   platform: threads
