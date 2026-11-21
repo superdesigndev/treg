@@ -48,6 +48,14 @@ def test_bearer_vs_header_auth_shapes(tmp_path):
     assert d["ANTHROPIC_API_KEY"].auth == {"shape": "api_key_header", "header": "x-api-key"}
 
 
+def test_nace_and_drex_keys_map_to_nace(tmp_path):
+    env = _write_env(tmp_path, "NACE_API_KEY=x\nDREX_API_KEY=x\nDREXEL_API_KEY=x\n")
+    d = _by_var(prov.scan_env(env))
+    assert d["NACE_API_KEY"].provider == d["DREX_API_KEY"].provider == "Nace"
+    assert d["DREX_API_KEY"].auth == {"shape": "bearer"}
+    assert d["DREXEL_API_KEY"].provider != "Nace"
+
+
 def test_app_prefix_is_transparent(tmp_path):
     # A TREG_/APP_ prefix must not hide the provider token.
     env = _write_env(tmp_path, "TREG_RESEND_API_KEY=x\n")
