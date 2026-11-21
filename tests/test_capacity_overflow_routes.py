@@ -272,6 +272,15 @@ def test_jobspipe_spent_credits_lock_but_a_plan_gate_and_a_rate_limit_do_not():
         assert burst.kind == "burst" and not S.is_exhausting(burst)
 
 
+def test_besthumanizer_locks_on_a_spent_word_balance_but_not_on_a_draft_too_long_for_what_is_left():
+    spent = S.classify("besthumanizer", 402, {}, b'{"error":"insufficient words","need":210,"have":0,'
+                                                 b'"draft_words":210,"plan":"pro","words_remaining":0}')
+    assert spent.kind == "balance" and S.is_exhausting(spent)
+    short = S.classify("besthumanizer", 402, {}, b'{"error":"insufficient words","need":210,"have":146,'
+                                                 b'"draft_words":210,"plan":"free","words_remaining":146}')
+    assert short.kind == "unknown" and not S.is_exhausting(short)
+
+
 def test_a_dropcontact_batch_larger_than_a_funded_balance_never_locks():
     sig = S.classify("dropcontact", 403, {}, b'{"error":true,"reason":"You submitted 5 valid items but only have 2 credits left"}')
     assert not S.is_exhausting(sig)

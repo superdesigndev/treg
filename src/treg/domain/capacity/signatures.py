@@ -80,6 +80,11 @@ _TABLE: list[Signature] = [
     Signature("jobspipe", 402, r"monthly request quota exceeded", "balance", tripwire=True),
     Signature("jobspipe", 402, r"need the \w+ package or above", "unknown"),
     Signature("jobspipe", 429, r"rate limit exceeded", "burst"),
+    # BestHumanizer: a rewrite larger than the month's words left is a 402 {"error": "insufficient words",
+    # "need": N, "have": M, ...} (observed 2026-11-19); nothing is debited. Only "have": 0 is a spent
+    # balance; with words left a shorter draft still runs, so that 402 does not lock.
+    Signature("besthumanizer", 402, r'insufficient words.*"have"\s*:\s*0\s*[,}]', "balance"),
+    Signature("besthumanizer", 402, r"insufficient words", "unknown"),
     Signature("thecompaniesapi", 403, r"noCreditsRemaining", "balance", tripwire=True),
     Signature("companyenrich", 402, r"payment required", "balance", tripwire=True),
     Signature("akta", 402, r"insufficient credits", "balance"),
