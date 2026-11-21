@@ -716,6 +716,13 @@ async def trim_archived_answers(*, batch_size: int = 200, pause_s: float = 0.25,
                                            .where(IdempotentCall.id.in_(wanted)))).all()
                 same = [(b.id, len(b.response_body)) for b in bodies
                         if b.response_body is not None and archive.content_hash(b.response_body) == wanted[b.id][1]]
+                if same and not dry_run:
+                    # Hold the keys only for the updates below, after the bodies are read and
+                    # hashed, so row retention cannot delete an answer between the check above and
+                    # the trim, and a recorder (which locks the key) waits for the updates only. A
+                    # key retention holds is left for the next trim.
+                    held = await archive.lock_keys_for_share(db, {wanted[i][0] for i, _ in same})
+                    same = [(i, size) for i, size in same if wanted[i][0] in held]
                 for row_id, size in same:
                     if dry_run:
                         trimmed, freed = trimmed + 1, freed + size
@@ -724,6 +731,7 @@ async def trim_archived_answers(*, batch_size: int = 200, pause_s: float = 0.25,
                     done = (await db.execute(update(IdempotentCall).where(
                         IdempotentCall.id == row_id, IdempotentCall.status == "done",
                         IdempotentCall.response_body.is_not(None), IdempotentCall.archive_content_hash.is_(None),
+                        archive.answer_on_file(key_hash, body_hash),
                     ).values(response_body=None, archive_key_hash=key_hash, archive_content_hash=body_hash)
                     .execution_options(synchronize_session=False))).rowcount
                     trimmed, freed = trimmed + done, freed + (size if done else 0)
