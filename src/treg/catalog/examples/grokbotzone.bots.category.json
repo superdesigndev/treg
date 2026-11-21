@@ -1,0 +1,31 @@
+{
+  "slug": "coding-software",
+  "label": "Coding & Software",
+  "count": 588,
+  "bots": [
+    {
+      "i": "coding-software-f2l8kouzon-xkchozq4pj",
+      "n": "Captain William Diego",
+      "a": "Tilen",
+      "d": "CEO hub bot for a multi-agent freelance company: filters specialist updates into short digests, delegates code/DevOps/sales/content, and keeps…",
+      "r": 1000000,
+      "c": "coding-software"
+    },
+    {
+      "i": "coding-software-nVEtqw1Ur_B-AOimvLcTV",
+      "n": "+",
+      "a": "Joe",
+      "d": "Templates you add from other people don't update themselves.",
+      "r": 1000000,
+      "c": "coding-software"
+    },
+    {
+      "i": "coding-software-kLxot1Z2YZG6Kfb9oQLcJ",
+      "n": "A-Share Desk / A股盯盘台",
+      "a": "Alison",
+      "d": "Watch A-share holdings and watchlist: premarket briefs, session alerts, close reviews, and short-term 题材+动量 idea cards with code/price/size.",
+      "r": 1000000,
+      "c": "coding-software"
+    }
+  ]
+}

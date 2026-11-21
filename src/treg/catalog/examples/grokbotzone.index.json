@@ -1,0 +1,17 @@
+{
+  "name": "GrokBot Zone read API",
+  "description": "A static, read-only JSON catalog of public Grok bot listings. Documentation: https://grokbot.zone/api/",
+  "asOf": "2026-10-28",
+  "totalBots": 8214,
+  "endpoints": {
+    "categories": "/api/v1/categories.json",
+    "category": "/api/v1/categories/{slug}.json",
+    "trending": "/api/v1/trending.json",
+    "recent": "/api/v1/recent.json",
+    "bot": "/api/v1/bots/{id}.json",
+    "codes": "/api/v1/codes.json",
+    "feedAtom": "/feed.xml",
+    "feedJson": "/feed.json",
+    "health": "/api/health"
+  }
+}

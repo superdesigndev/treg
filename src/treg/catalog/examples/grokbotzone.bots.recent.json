@@ -1,0 +1,225 @@
+{
+  "asOf": "2026-11-19",
+  "basis": "live bots, newest additions first",
+  "categories": [
+    {
+      "slug": "research-news-briefings",
+      "label": "Research, News & Briefings",
+      "count": 739,
+      "asOf": "2026-10-28"
+    },
+    {
+      "slug": "video-images-audio-design",
+      "label": "Video, Images, Audio & Design",
+      "count": 627,
+      "asOf": "2026-10-28"
+    },
+    {
+      "slug": "coding-software",
+      "label": "Coding & Software",
+      "count": 593,
+      "asOf": "2026-10-28"
+    },
+    {
+      "slug": "grok-bot-helpers-bots-that-build-or-manage-bots",
+      "label": "Grok Bot Helpers (Bots That Build or Manage Bots)",
+      "count": 583,
+      "asOf": "2026-10-28"
+    },
+    {
+      "slug": "productivity-personal-assistant",
+      "label": "Productivity & Personal Assistant",
+      "count": 543,
+      "asOf": "2026-10-28"
+    },
+    {
+      "slug": "trading-crypto-investing",
+      "label": "Trading, Crypto & Investing",
+      "count": 395,
+      "asOf": "2026-10-28"
+    },
+    {
+      "slug": "family-kids-learning",
+      "label": "Family, Kids & Learning",
+      "count": 389,
+      "asOf": "2026-10-28"
+    },
+    {
+      "slug": "business-operations",
+      "label": "Business & Operations",
+      "count": 362,
+      "asOf": "2026-10-28"
+    },
+    {
+      "slug": "money-personal-finance",
+      "label": "Money & Personal Finance",
+      "count": 361,
+      "asOf": "2026-10-28"
+    },
+    {
+      "slug": "writing-publishing",
+      "label": "Writing & Publishing",
+      "count": 328,
+      "asOf": "2026-10-28"
+    },
+    {
+      "slug": "email-inbox",
+      "label": "Email & Inbox",
+      "count": 312,
+      "asOf": "2026-10-28"
+    },
+    {
+      "slug": "x-twitter-social-media",
+      "label": "X (Twitter) & Social Media",
+      "count": 311,
+      "asOf": "2026-10-28"
+    },
+    {
+      "slug": "home-garden-pets",
+      "label": "Home, Garden & Pets",
+      "count": 290,
+      "asOf": "2026-10-28"
+    },
+    {
+      "slug": "shopping-deals",
+      "label": "Shopping & Deals",
+      "count": 280,
+      "asOf": "2026-10-28"
+    },
+    {
+      "slug": "privacy-security-scam-protection",
+      "label": "Privacy, Security & Scam Protection",
+      "count": 270,
+      "asOf": "2026-10-28"
+    },
+    {
+      "slug": "sales-lead-generation",
+      "label": "Sales & Lead Generation",
+      "count": 268,
+      "asOf": "2026-10-28"
+    },
+    {
+      "slug": "marketing-seo-ads",
+      "label": "Marketing, SEO & Ads",
+      "count": 265,
+      "asOf": "2026-10-28"
+    },
+    {
+      "slug": "jobs-careers",
+      "label": "Jobs & Careers",
+      "count": 262,
+      "asOf": "2026-10-28"
+    },
+    {
+      "slug": "health-fitness-wellness",
+      "label": "Health, Fitness & Wellness",
+      "count": 213,
+      "asOf": "2026-10-28"
+    },
+    {
+      "slug": "food-recipes-dining",
+      "label": "Food, Recipes & Dining",
+      "count": 190,
+      "asOf": "2026-10-28"
+    },
+    {
+      "slug": "legal-tax-paperwork",
+      "label": "Legal, Tax & Paperwork",
+      "count": 178,
+      "asOf": "2026-10-28"
+    },
+    {
+      "slug": "fun-games-hobbies",
+      "label": "Fun, Games & Hobbies",
+      "count": 168,
+      "asOf": "2026-10-28"
+    },
+    {
+      "slug": "travel",
+      "label": "Travel",
+      "count": 142,
+      "asOf": "2026-10-28"
+    },
+    {
+      "slug": "calendar-meetings-scheduling",
+      "label": "Calendar, Meetings & Scheduling",
+      "count": 138,
+      "asOf": "2026-10-28"
+    },
+    {
+      "slug": "real-estate",
+      "label": "Real Estate",
+      "count": 84,
+      "asOf": "2026-10-28"
+    },
+    {
+      "slug": "everything-else",
+      "label": "Everything Else",
+      "count": 70,
+      "asOf": "2026-10-28"
+    }
+  ],
+  "bots": [
+    "grok-bot-helpers-bots-that-build-or-manage-bots-SjTK9SoaPKcIw-FVoThhe",
+    "writing-publishing-qo6I06UQedAASOFpqEtLc",
+    "trading-crypto-investing-Km6otVGuP76zXReai1iNP",
+    "uncategorized-EtXBSv57CQo1dxFghmslA",
+    "travel-3h5B5CYESw1Phr51K9Isx",
+    "privacy-security-scam-protection--6byQcFlQaT89nRYbPwkk",
+    "coding-software--pvtsS-vNtsCnB7qfALq5",
+    "marketing-seo-ads-0IzcVGP4FtY9zVuOf9ECC",
+    "x-twitter-social-media-2N6kxsfRQlP_gEqvYhxIM",
+    "writing-publishing-2ZbjxQAxHPOBnKO94a0YL",
+    "uncategorized-3NyjtdIRmgx38jmpzwgok",
+    "shopping-deals-655ab6yqLkZd3Yt1R139B",
+    "uncategorized-6CBsINJvglOhUtvd9LkAG",
+    "grok-bot-helpers-bots-that-build-or-manage-bots-7zwfNAfwtPvEkxLPMXLWK",
+    "uncategorized-9BI5Olk-sHxLnUhlBIZ38",
+    "grok-bot-helpers-bots-that-build-or-manage-bots-_ewvvzuxxsrz_kanwZoDC",
+    "writing-publishing-_RX4F6T9uXOLFf2cDs3gJ",
+    "marketing-seo-ads-A9PR4APmjoosYN1LAWZ_L",
+    "grok-bot-helpers-bots-that-build-or-manage-bots-a_7jq2bwGGKWTBqaGQRqM",
+    "legal-tax-paperwork-aSGymuyF71CJHDvcpaZfG",
+    "uncategorized-ATjq7bRMgiCavvZGsMqOn",
+    "uncategorized-AWIn34bEoBZF5EE9kkHxl",
+    "grok-bot-helpers-bots-that-build-or-manage-bots-B82ZGqnqYRYk8hVGvrHyW",
+    "uncategorized-BfJSlxG9eRuKVL4jEYse9",
+    "uncategorized-d9ZUeMEuY14IS4izBWtXX",
+    "legal-tax-paperwork-dJkudgT1xfPF-1SbIkm23",
+    "video-images-audio-design-Dky0PJsMVdTE6h_6cN6kq",
+    "family-kids-learning-DVF0NIE0ktoF5qgz7-ECa",
+    "uncategorized-ECaGV3Qi7xh6ztui_iVpl",
+    "money-personal-finance-EYgMB4G4YlGfCfDBegFH7",
+    "uncategorized-Eyq2_3_2eIs2mXpFJsso8",
+    "food-recipes-dining-F0skXyX7J2DtsFPBxzbs3",
+    "grok-bot-helpers-bots-that-build-or-manage-bots-ffy9_7mBUraesvnoSouFC",
+    "uncategorized-fHUfj7QKrEt6_QHBDbRwX",
+    "uncategorized-fJCklr7BGXas0RA0b9imH",
+    "uncategorized-fP6JPcQrkApF4ajxIYM-X",
+    "home-garden-pets-G1ZOTtpS9XPPcAlUenBk1",
+    "money-personal-finance-h-pgCvgC_rqX0rTkktpFe",
+    "shopping-deals-h8RK6V_lNMKW_w_qrgeDl",
+    "uncategorized-HdP5C0zOBXXRQaUAugAnS",
+    "calendar-meetings-scheduling-hUttoVQ9xM6Xu-TB_Jo6x",
+    "uncategorized-I5XoF4H0buRMi0OAfQJZt",
+    "travel-iGiD-76C2lv6MB1otClec",
+    "jobs-careers-ImiQvcR_7HnEJ6thNUHAN",
+    "uncategorized-iND3jNLfzk84Qs3qvUv0A",
+    "video-images-audio-design-IT-UOFV-dyjKiLBj9C6PY",
+    "uncategorized-jhJ_YXyW7fK0r47PYgW1b",
+    "uncategorized-k4rBSQV28iL-9Hh1748R2",
+    "family-kids-learning-kW_TG3B0lCCryQrRfYDMF",
+    "home-garden-pets-KWkMaZUFZmvpp-_xbAVTI",
+    "uncategorized-KXS8-NWpwI0YgR3N__Q-u",
+    "uncategorized-LbkRAC0ma_LJ7lE_Gy5oh",
+    "real-estate-lEXSEF7RBIr8fHjFKEJQa",
+    "uncategorized-LG655EEzjQKvr4SFfOTRp",
+    "uncategorized-lKwSCv0omtvWsNHvCJQQS",
+    "grok-bot-helpers-bots-that-build-or-manage-bots-lnjB2Oq1lQo6ptthV6yC3",
+    "uncategorized-LtV1nNOz3yPYwe8bRQwxe",
+    "uncategorized-m6tmgTZ2-05pAQTZlxo4N",
+    "video-images-audio-design-meTDwFI6Jtm-uTyQtyrbb",
+    "coding-software-n0XcRjm9wtwl_UKU4azBE"
+  ],
+  "generatedAt": "2026-11-19T16:00:33.941Z"
+}
