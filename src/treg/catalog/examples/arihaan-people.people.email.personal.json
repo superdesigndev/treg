@@ -1,0 +1,20 @@
+{
+  "found": true,
+  "id": "example-0003",
+  "linkedin_url": "https://www.linkedin.com/in/alex-example",
+  "personal_emails": [
+    {
+      "email": "alex.example@example.com",
+      "mailbox_checked_on": "2026-11-02",
+      "status": "mailbox_found"
+    }
+  ],
+  "billing": {
+    "card": "treg",
+    "charge_usd": 0.038,
+    "charge_micro": 38000,
+    "events": {
+      "hit_personal_email": 1
+    }
+  }
+}

@@ -72,6 +72,8 @@ _TABLE: list[Signature] = [
     Signature("hirebase", 429, r"only [1-9]\d* of your plan's included", "unknown"),
     Signature("hirebase", 429, r"your plan's included usage|only 0 of your plan's included", "quota"),
     Signature("leadmagic", 402, r"insufficient_credits", "balance"),
+    # Arihaan People API: an empty prepaid balance is a 402 {"error": {"code": "insufficient_balance", ...}}.
+    Signature("arihaan-people", 402, r"insufficient_balance", "balance", tripwire=True),
     # JobsPipe (openapi ErrorResponse + auth.md + docs usage/rate-limits): spent credits are a 402
     # {"error": "Monthly request quota exceeded", "message": ..., "upgrade_url": ...} with Retry-After
     # to the next UTC month, also once the one-time free grant is gone. A plan-gated feature is a 402

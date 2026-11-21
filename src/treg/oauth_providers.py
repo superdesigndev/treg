@@ -1362,6 +1362,33 @@ HUNTER = OAuthProvider(
     probe_path="/account",  # free — consumes no search/verification/enrichment credits
 )
 
+ARIHAAN_PEOPLE = OAuthProvider(
+    service="arihaan-people",
+    display_name="Arihaan People API",
+    auth_kind="key",
+    token_label="API key",
+    token_placeholder="your Arihaan People API key",
+    token_header="Authorization",
+    token_format="Bearer {secret}",
+    setup_url="https://people.arihaan.ai/lists#keys",
+    setup_action_label="Get your Arihaan People API key",
+    setup_steps=(
+        "Open people.arihaan.ai/lists and sign in with Google.",
+        "Add your LinkedIn profile URL and where you heard about us (asked once; required before any call).",
+        "Create a key under API keys and copy it.",
+        "Add funds to the prepaid balance: calls are charged from it.",
+    ),
+    setup_note="Billed per call from a prepaid balance. The balance, usage, meta and rates routes are free.",
+    auth_uri="", token_uri="",
+    scopes={},
+    client_id_setting="", client_secret_setting="",
+    category="People data",
+    summary="Personal emails and fuller LinkedIn profiles from a LinkedIn URL, B2B lead search with work emails by role, company and location, reverse lookup by email or phone, and phone numbers. Pay per call.",
+    base_url="https://people-api.arihaan.ai",
+    docs_url="https://people.arihaan.ai/docs",
+    probe_path="/v2/balance",  # free; a bad or missing key gets HTTP 401
+)
+
 DANSUGC = OAuthProvider(
     service="dansugc",
     display_name="DansUGC",
@@ -4475,6 +4502,7 @@ REGISTRY: dict[str, OAuthProvider] = {
         GOOGLE_ADS, YOUTUBE,
         LINKEDIN, SLACK, X, TIKTOK, FACEBOOK, INSTAGRAM, META_ADS,
         # API-key providers
+        ARIHAAN_PEOPLE,
         ANYAPI, APOLLO, PDL, AKTA, HUNTER, MOBIUSENGINE_JOBS, GREENHOUSE, SUMBLE, MOLTSETS, OPENMART, HARVESTAPI, FETCHINIO, SIXTYFOUR, LEADOCEAN, BLITZAPI, DROPLEADS, ASHBY, WORKABLE, SMARTRECRUITERS, HIREBASE, LEVER,
         QUICKENRICH, PROSPEO, AIARK, WIZA, LIMADATA, GETLEADSIO, SCRUBBY, ZEROBOUNCE, DATAGMA,
         TRYKITT, CONTACTOUT, MILLIONVERIFIER, ORBISEARCH, BOUNCEBAN, CRUNCHBASE, MINIMAX, FISHAUDIO,

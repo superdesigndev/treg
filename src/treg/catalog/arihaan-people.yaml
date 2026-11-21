@@ -1,0 +1,363 @@
+provider: arihaan-people
+source:
+  docs: https://people.arihaan.ai/docs
+  openapi: https://people-api.arihaan.ai/v2/openapi.json
+  curated: 2026-11-17
+# Prepaid pay-per-use balance, no subscription. Each call reserves the price in `cost.value`, the most that call can be
+# charged on treg's rate card, and settles on the exact figure the response carries at `billing.charge_usd`. treg's key
+# is on the `treg` card of the public rate card (GET /v2/rates, no key needed): every hit price is 5% under the
+# cheapest paid provider in the same treg capability as read on 2026-11-17. Every call covers what it costs us:
+#   - a lookup, personal email or profile that finds nothing is charged the $0.0003 miss fee (the cost of the read);
+#   - a search pays its scan units ($0.005 each, one for a narrow search) even when it finds nobody;
+#   - a fetch or phone call pays at least $0.001;
+#   - a call whose real BigQuery cost is above its price is topped up to that cost (billing.events.cost_floor).
+# Errors, refusals (too broad, over a limit, no balance) and the free routes (/v2/meta, /v2/rates, /v2/balance,
+# /v2/usage, /v2/openapi.json, /v2/people/estimate) are not charged. Every 2xx carries the `billing` block and the
+# X-Cost-USD and X-Balance-USD headers.
+# City, state and country on a search or lookup person are the company's headquarters, not where the person lives.
+# Personal emails: an address that bounced, was reported, unsubscribed or failed its check is never returned, and
+# people in the EU/EEA, the UK and Switzerland are not covered. Reverse lookup by email matches work emails only.
+# Use is under the Terms and Fair Use Policy: https://people.arihaan.ai/terms and https://people.arihaan.ai/fair-use
+# Probe: GET /v2/balance is free; a bad or missing key answers 401.
+limits: "100 people per search page; 100 ids per fetch or phone call; one key per lookup row here; a search that would read more than the scan cap is refused with HTTP 400 and nothing is charged; HTTP 402 when the prepaid balance is below the reserve; HTTP 403 profile_required until the account owner adds a LinkedIn profile URL and where they heard about us; HTTP 429 with resets_at past the per-key caps (treg's key gets 20x the usual: 1,200 calls a minute, 200 at once, 1,000,000 people and 40,000 personal emails a day)"
+pricing_url: https://people.arihaan.ai/docs#pricing
+endpoints:
+  - id: arihaan-people.people.email.personal
+    added: '2026-11-17'
+    example_response: examples/arihaan-people.people.email.personal.json
+    domain: people
+    capability: people.email.find.personal
+    platform: people
+    scope: any_account
+    method: POST
+    path: /v2/people/personal-email
+    body_allowlist: true
+    name: "Personal email from a LinkedIn URL"
+    summary: "The personal email (Gmail, Outlook, iCloud and similar) behind a LinkedIn profile URL or a person id, each address with the date its mailbox was last checked and what the check said. Not the work address."
+    input:
+      bodyType: json
+      body:
+        linkedin_url: {type: string, required: false, note: "the person's LinkedIn profile URL; send this or id", example: "https://www.linkedin.com/in/example"}
+        id: {type: string, required: false, note: "a person id from a search or lookup; send this or linkedin_url"}
+    test_request: {body: {linkedin_url: "https://www.linkedin.com/in/example-person-zz9"}}
+    cost:
+      type: per_call
+      value: 0.038
+      currency: USD
+      reported_charge: {path: billing.charge_usd, unit: usd}
+      source: rate_card_api
+      source_url: https://people-api.arihaan.ai/v2/rates
+      checked: '2026-11-17'
+      confidence: documented
+      note: "$0.038 when at least one personal address is returned (5% under the cheapest paid personal email provider on treg, Fiber AI at $0.04). A miss is charged $0.0003, the cost of the read, so a miss never costs us money."
+    docs_url: https://people.arihaan.ai/docs
+
+  - id: arihaan-people.people.profile
+    added: '2026-11-17'
+    example_response: examples/arihaan-people.people.profile.json
+    domain: people
+    capability: linkedin.user.profile
+    platform: linkedin
+    scope: any_account
+    method: POST
+    path: /v2/people/profile
+    body_allowlist: true
+    name: "Fuller LinkedIn profile from a LinkedIn URL"
+    summary: "Headline, title, seniority, function, employer (name, website, industry, size), where the person is, the start date of the current role and connections, for a LinkedIn profile URL or a person id. From our stored profiles, not a live scrape."
+    input:
+      bodyType: json
+      body:
+        linkedin_url: {type: string, required: false, note: "the person's LinkedIn profile URL; send this or id", example: "https://www.linkedin.com/in/example"}
+        id: {type: string, required: false, note: "a person id from a search or lookup; send this or linkedin_url"}
+    test_request: {body: {linkedin_url: "https://www.linkedin.com/in/example-person-zz9"}}
+    cost:
+      type: per_call
+      value: 0.00114
+      currency: USD
+      reported_charge: {path: billing.charge_usd, unit: usd}
+      source: rate_card_api
+      source_url: https://people-api.arihaan.ai/v2/rates
+      checked: '2026-11-17'
+      confidence: documented
+      note: "$0.00114 when the profile is found (5% under the cheapest paid LinkedIn profile provider on treg, anyapi at $0.0012). A miss is charged $0.0003, the cost of the read, so a miss never costs us money."
+    docs_url: https://people.arihaan.ai/docs
+
+  - id: arihaan-people.people.search
+    added: '2026-10-28'
+    example_response: examples/arihaan-people.people.search.json
+    domain: people
+    capability: people.search
+    platform: people
+    scope: any_account
+    method: POST
+    path: /v2/people/search
+    body_allowlist: true
+    name: "Search people by role, company and location"
+    summary: "Find business contacts by title, department, seniority, company, industry, size, revenue and company location, or only people we hold a personal email for. Each person has name, title, department, level, company, company location, work email when on file and LinkedIn URL. Cursor paging."
+    input:
+      bodyType: json
+      body:
+        title: {type: "array[string]", required: false, max: 50, note: "job title keywords; a person matches if the title contains ANY of them", example: ["head of sales"]}
+        title_exclude: {type: "array[string]", required: false, max: 50, note: "drop people whose title contains ANY of these", example: ["assistant"]}
+        title_whole_words: {type: boolean, required: false, note: "match title and title_exclude as whole words"}
+        company: {type: "array[string]", required: false, max: 50, note: "company name contains ANY of these", example: ["stripe"]}
+        company_exact: {type: boolean, required: false, note: "match company names exactly instead of 'contains'"}
+        exclude_company: {type: "array[string]", required: false, max: 50, note: "drop people at companies whose name contains ANY of these"}
+        department: {type: "array[string]", required: false, max: 50, note: "job family; accepted values are listed by GET /v2/meta", example: ["Sales"]}
+        level: {type: "array[string]", required: false, max: 50, note: "seniority; accepted values are listed by GET /v2/meta", example: ["C-suite", "VP"]}
+        industry: {type: "array[string]", required: false, max: 50, note: "the company's industry contains ANY of these", example: ["software"]}
+        company_size: {type: "array[string]", required: false, max: 50, note: "company headcount bucket; accepted values are listed by GET /v2/meta"}
+        revenue: {type: "array[string]", required: false, max: 50, note: "company annual revenue range; accepted values are listed by GET /v2/meta", example: ["$10-50M"]}
+        countries: {type: "array[string]", required: false, max: 50, note: "ISO-3166 alpha-2 codes of the COMPANY's headquarters country", example: ["US"]}
+        states: {type: "array[string]", required: false, max: 50, note: "state or province codes of the COMPANY's headquarters", example: ["TX"]}
+        city: {type: "array[string]", required: false, max: 50, note: "company headquarters city contains ANY of these", example: ["austin"]}
+        has_email: {type: boolean, required: false, note: "only people with a work email on file"}
+        has_personal_email: {type: boolean, required: false, note: "only people we hold a personal email for (bought per person on /v2/people/personal-email)"}
+        personal_email_checked: {type: boolean, required: false, note: "only people whose personal email's mailbox we have checked"}
+        open_to_work: {type: boolean, required: false, note: "only people whose LinkedIn profile showed the Open to Work badge when we last read it"}
+        has_phone: {type: boolean, required: false, note: "only people with a phone number on file"}
+        has_linkedin: {type: boolean, required: false, note: "only people with a LinkedIn profile on file"}
+        has_company_phone: {type: boolean, required: false, note: "only people whose company has a main phone number on file"}
+        limit: {type: integer, required: false, default: 25, min: 1, max: 100, note: "people per page", example: 1}
+        cursor: {type: string, required: false, note: "next_cursor from the previous page; null means the last page"}
+    test_request: {body: {title: ["head of sales"], countries: ["US"], has_email: true, limit: 1}}
+    cost:
+      type: per_call
+      value: 0.0861
+      currency: USD
+      reported_charge: {path: billing.charge_usd, unit: usd}
+      source: rate_card_api
+      source_url: https://people-api.arihaan.ai/v2/rates
+      checked: '2026-11-17'
+      confidence: documented
+      note: "Reserves the most one page can be charged: up to 10 scan units at $0.005 plus up to 100 people at $0.000361 (5% under the cheapest paid per-person search on treg, icypeas at $0.00038). Settles on billing.charge_usd: one scan unit for a narrow search ($0.005) plus $0.000361 per person returned. A search that finds nobody still pays its scan units, which is what it costs us to run. A refusal as too broad, and every 4xx, is not charged. POST /v2/people/estimate (free) returns the scan units before you run it."
+    docs_url: https://people.arihaan.ai/docs
+
+  - id: arihaan-people.people.count
+    added: '2026-10-28'
+    example_response: examples/arihaan-people.people.count.json
+    domain: people
+    capability: people.search.count
+    platform: people
+    scope: any_account
+    method: POST
+    path: /v2/people/count
+    body_allowlist: true
+    name: "Count the people a search would return"
+    summary: "How many people match these filters, and how many of them have a work email, a personal email, a phone and a LinkedIn URL, optionally grouped by department, level, industry, country, state, company size, revenue, company or title. Use it before a large pull to size it."
+    input:
+      bodyType: json
+      body:
+        title: {type: "array[string]", required: false, max: 50, note: "job title keywords; a person matches if the title contains ANY of them", example: ["head of sales"]}
+        title_exclude: {type: "array[string]", required: false, max: 50, note: "drop people whose title contains ANY of these", example: ["assistant"]}
+        title_whole_words: {type: boolean, required: false, note: "match title and title_exclude as whole words"}
+        company: {type: "array[string]", required: false, max: 50, note: "company name contains ANY of these", example: ["stripe"]}
+        company_exact: {type: boolean, required: false, note: "match company names exactly instead of 'contains'"}
+        exclude_company: {type: "array[string]", required: false, max: 50, note: "drop people at companies whose name contains ANY of these"}
+        department: {type: "array[string]", required: false, max: 50, note: "job family; accepted values are listed by GET /v2/meta", example: ["Sales"]}
+        level: {type: "array[string]", required: false, max: 50, note: "seniority; accepted values are listed by GET /v2/meta", example: ["C-suite", "VP"]}
+        industry: {type: "array[string]", required: false, max: 50, note: "the company's industry contains ANY of these", example: ["software"]}
+        company_size: {type: "array[string]", required: false, max: 50, note: "company headcount bucket; accepted values are listed by GET /v2/meta"}
+        revenue: {type: "array[string]", required: false, max: 50, note: "company annual revenue range; accepted values are listed by GET /v2/meta", example: ["$10-50M"]}
+        countries: {type: "array[string]", required: false, max: 50, note: "ISO-3166 alpha-2 codes of the COMPANY's headquarters country", example: ["US"]}
+        states: {type: "array[string]", required: false, max: 50, note: "state or province codes of the COMPANY's headquarters", example: ["TX"]}
+        city: {type: "array[string]", required: false, max: 50, note: "company headquarters city contains ANY of these", example: ["austin"]}
+        has_email: {type: boolean, required: false, note: "only people with a work email on file"}
+        has_personal_email: {type: boolean, required: false, note: "only people we hold a personal email for (bought per person on /v2/people/personal-email)"}
+        personal_email_checked: {type: boolean, required: false, note: "only people whose personal email's mailbox we have checked"}
+        open_to_work: {type: boolean, required: false, note: "only people whose LinkedIn profile showed the Open to Work badge when we last read it"}
+        has_phone: {type: boolean, required: false, note: "only people with a phone number on file"}
+        has_linkedin: {type: boolean, required: false, note: "only people with a LinkedIn profile on file"}
+        has_company_phone: {type: boolean, required: false, note: "only people whose company has a main phone number on file"}
+        group_by: {type: string, required: false, enum: [department, level, industry, country, state, company_size, revenue, company, title], note: "break the count down by one field"}
+    test_request: {body: {title: ["head of sales"], countries: ["US"]}}
+    cost:
+      type: per_call
+      value: 0.05
+      currency: USD
+      reported_charge: {path: billing.charge_usd, unit: usd}
+      source: rate_card_api
+      source_url: https://people-api.arihaan.ai/v2/rates
+      checked: '2026-11-17'
+      confidence: documented
+      note: "Reserves the most one count can be charged: up to 25 count units at $0.002. Settles on billing.charge_usd: one count unit for a narrow count ($0.002), more for very broad filters; this is what the count costs us to run. Not charged when refused as too broad."
+    docs_url: https://people.arihaan.ai/docs
+
+  - id: arihaan-people.people.lookup.linkedin
+    added: '2026-10-28'
+    example_response: examples/arihaan-people.people.lookup.linkedin.json
+    domain: people
+    capability: people.enrich
+    platform: people
+    scope: any_account
+    method: POST
+    path: /v2/people/lookup
+    body_allowlist: true
+    name: "Work email and person from a LinkedIn URL"
+    summary: "The person behind a LinkedIn profile URL: name, title, department, level, employer, company location and work email when on file. A key can match up to 5 people, all returned for the one hit price. Keys are normalised before matching."
+    input:
+      bodyType: json
+      body:
+        linkedin_url: {type: string, required: true, note: "a LinkedIn profile URL", example: "https://www.linkedin.com/in/example"}
+    test_request: {body: {linkedin_url: "https://www.linkedin.com/in/example-person-zz9"}}
+    cost:
+      type: per_call
+      value: 0.000902
+      currency: USD
+      reported_charge: {path: billing.charge_usd, unit: usd}
+      source: rate_card_api
+      source_url: https://people-api.arihaan.ai/v2/rates
+      checked: '2026-11-17'
+      confidence: documented
+      note: "$0.000902 when the key matched (5% under the cheapest paid people.enrich provider on treg, crawl4ai at $0.00095; up to 5 people returned at no extra charge). A miss is charged $0.0003, the cost of the read, so a miss never costs us money."
+    docs_url: https://people.arihaan.ai/docs
+
+  - id: arihaan-people.people.lookup.email
+    added: '2026-10-28'
+    example_response: examples/arihaan-people.people.lookup.email.json
+    domain: people
+    capability: people.identity.resolve
+    platform: people
+    scope: any_account
+    method: POST
+    path: /v2/people/lookup
+    body_allowlist: true
+    name: "Reverse email lookup: LinkedIn profile from a work email"
+    summary: "Find the person behind a work email address: their LinkedIn URL, name, title and employer. Work emails only: a personal mailbox is not looked up. A key can match up to 5 people, all returned for the one hit price."
+    input:
+      bodyType: json
+      body:
+        email: {type: string, required: true, note: "a work email address", example: "name@example.com"}
+    test_request: {body: {email: "nobody-zz9@example.com"}}
+    cost:
+      type: per_call
+      value: 0.01881
+      currency: USD
+      reported_charge: {path: billing.charge_usd, unit: usd}
+      source: rate_card_api
+      source_url: https://people-api.arihaan.ai/v2/rates
+      checked: '2026-11-17'
+      confidence: documented
+      note: "$0.01881 when the key matched (5% under the cheapest paid people.identity.resolve provider on treg, Findymail at $0.0198; up to 5 people returned at no extra charge). A miss is charged $0.0003, the cost of the read, so a miss never costs us money."
+    docs_url: https://people.arihaan.ai/docs
+
+  - id: arihaan-people.people.lookup.phone
+    added: '2026-10-28'
+    example_response: examples/arihaan-people.people.lookup.phone.json
+    domain: people
+    capability: people.profile.from_phone
+    platform: people
+    scope: any_account
+    method: POST
+    path: /v2/people/lookup
+    body_allowlist: true
+    name: "Reverse phone lookup: LinkedIn profile from a phone"
+    summary: "Find the person behind a phone number: their LinkedIn URL, name, title and employer. A key can match up to 5 people, all returned for the one hit price. Keys are normalised before matching."
+    input:
+      bodyType: json
+      body:
+        phone: {type: string, required: true, note: "a phone number, ideally E.164", example: "+14155550100"}
+    test_request: {body: {phone: "+15550100100"}}
+    cost:
+      type: per_call
+      value: 0.285
+      currency: USD
+      reported_charge: {path: billing.charge_usd, unit: usd}
+      source: rate_card_api
+      source_url: https://people-api.arihaan.ai/v2/rates
+      checked: '2026-11-17'
+      confidence: documented
+      note: "$0.285 when the key matched (5% under the cheapest paid people.profile.from_phone provider on treg, Enrichlayer at $0.30; up to 5 people returned at no extra charge). A miss is charged $0.0003, the cost of the read, so a miss never costs us money."
+    docs_url: https://people.arihaan.ai/docs
+
+  - id: arihaan-people.people.batch
+    added: '2026-10-28'
+    example_response: examples/arihaan-people.people.batch.json
+    domain: people
+    capability: people.enrich
+    platform: people
+    scope: any_account
+    method: POST
+    path: /v2/people/batch
+    body_allowlist: true
+    name: "Fetch up to 100 people by id"
+    summary: "The people for up to 100 ids a search or lookup returned, with the same fields as a search."
+    input:
+      bodyType: json
+      body:
+        ids: {type: "array[string]", required: true, min: 1, max: 100, note: "1 to 100 person ids from a search or lookup", example: ["example-id"]}
+    untestable: "needs ids that a search returned; none is published as a fixed example"
+    cost:
+      type: per_call
+      value: 0.0361
+      currency: USD
+      reported_charge: {path: billing.charge_usd, unit: usd}
+      source: rate_card_api
+      source_url: https://people-api.arihaan.ai/v2/rates
+      checked: '2026-11-17'
+      confidence: documented
+      note: "Reserves 100 people at $0.000361. Settles on billing.charge_usd: $0.000361 per person returned with a minimum of $0.001 per call, the cost of the read."
+    docs_url: https://people.arihaan.ai/docs
+
+  - id: arihaan-people.people.phones
+    added: '2026-10-28'
+    example_response: examples/arihaan-people.people.phones.json
+    domain: people
+    capability: people.phone.find
+    platform: people
+    scope: any_account
+    method: POST
+    path: /v2/people/phones
+    body_allowlist: true
+    name: "Get phone numbers for up to 100 people"
+    summary: "The phone number and phone type for each of up to 100 person ids that has one. People without a phone are left out."
+    input:
+      bodyType: json
+      body:
+        ids: {type: "array[string]", required: true, min: 1, max: 100, note: "1 to 100 person ids from a search or lookup", example: ["example-id"]}
+    untestable: "needs ids that a search returned; none is published as a fixed example"
+    cost:
+      type: per_call
+      value: 0.095
+      currency: USD
+      reported_charge: {path: billing.charge_usd, unit: usd}
+      source: rate_card_api
+      source_url: https://people-api.arihaan.ai/v2/rates
+      checked: '2026-11-17'
+      confidence: documented
+      note: "Reserves 100 phones at $0.00095 (5% under the cheapest paid people.phone.find provider on treg, BlitzAPI at $0.001). Settles on billing.charge_usd: $0.00095 per person who has a phone, with a minimum of $0.001 per call, the cost of the read."
+    docs_url: https://people.arihaan.ai/docs
+
+  - id: arihaan-people.meta
+    added: '2026-10-28'
+    example_response: examples/arihaan-people.meta.json
+    domain: people
+    capability: people.search.filters
+    platform: people
+    scope: any_account
+    method: GET
+    path: /v2/meta
+    name: "List the accepted filter values"
+    summary: "The values the department, level, industry, company size, revenue and country filters accept, plus your rate card and limits."
+    input:
+      note: "no parameters"
+    test_request: {queryParams: {}}
+    cost: {type: free, value: 0, currency: USD, unit: call, note: "free"}
+    docs_url: https://people.arihaan.ai/docs
+
+  - id: arihaan-people.account.balance
+    added: '2026-10-28'
+    example_response: examples/arihaan-people.account.balance.json
+    kind: account
+    capability: account.usage
+    platform: account
+    scope: own_account
+    method: GET
+    path: /v2/balance
+    name: "Get your prepaid balance"
+    summary: "Your pay-per-use balance in dollars and the latest ledger lines (free). This is the registry's health probe."
+    input:
+      note: "no parameters; the key rides in the Authorization header"
+    test_request: {queryParams: {}}
+    cost: {type: free, value: 0, currency: USD, unit: call, note: "free; a bad or missing key gets HTTP 401"}
+    docs_url: https://people.arihaan.ai/docs

@@ -1,0 +1,13 @@
+{
+  "mode": "wallet",
+  "card": "payg",
+  "billing": {
+    "card": "payg",
+    "charge_usd": 0.0,
+    "charge_micro": 0,
+    "events": {}
+  },
+  "balance_usd": 5.0,
+  "balance_micro": 5000000,
+  "ledger": []
+}

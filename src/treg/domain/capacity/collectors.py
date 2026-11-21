@@ -462,6 +462,17 @@ async def _blitzapi(c, key):
                     f"per-endpoint limit {rps if type(rps) is int else 'unknown'} requests/s"}
 
 
+async def _arihaan_people(c, key):
+    # Free: GET /v2/balance spends nothing and answers 401 for a bad key. A wallet account answers its prepaid
+    # dollars; any other account mode is not a usable slot.
+    d = await _get(c, "https://people-api.arihaan.ai/v2/balance", headers={"Authorization": f"Bearer {key}"})
+    left = _finite(d.get("balance_usd")) if isinstance(d, dict) and d.get("mode") == "wallet" else None
+    if left is None or left < 0:
+        raise ValueError("Arihaan People API returned no pay-per-use balance")
+    return {"value": left, "unit": "USD left",
+            "note": "prepaid pay-per-use balance; HTTP 402 insufficient_balance at zero"}
+
+
 async def _hirebase(c, key):
     # Free: GET /v2/billing/usage/summary spends nothing and answers 401 for a bad key. The jobs meter
     # backs the jobs routes only: companies, insights and benchmarks have their own meters. So the count
@@ -1178,6 +1189,7 @@ BALANCE_ROUTES = {
     "sixtyfour": _sixtyfour,
     "leadocean": _leadocean,
     "blitzapi": _blitzapi,
+    "arihaan_people": _arihaan_people,
     "mobiusengine_jobs": _mobiusengine_jobs,
     "hirebase": _hirebase,
     "prospeo": _prospeo,

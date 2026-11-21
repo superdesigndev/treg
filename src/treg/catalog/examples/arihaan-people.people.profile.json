@@ -1,0 +1,33 @@
+{
+  "found": true,
+  "id": "example-0003",
+  "linkedin_url": "https://www.linkedin.com/in/alex-example",
+  "profile": {
+    "name": "Alex Example",
+    "headline": "Head of Sales Development at Example Corp",
+    "title": "Head of Sales Development",
+    "seniority": "Director / Head",
+    "function": "Sales",
+    "company": {
+      "name": "Example Corp",
+      "website": "https://www.example.com",
+      "industry": "Financial Services",
+      "size": "20-99"
+    },
+    "location": {
+      "city": "Dallas",
+      "state": "TX",
+      "country": "US"
+    },
+    "role_start_date": "2024-03-01",
+    "connections": 500
+  },
+  "billing": {
+    "card": "treg",
+    "charge_usd": 0.00114,
+    "charge_micro": 1140,
+    "events": {
+      "hit_profile": 1
+    }
+  }
+}

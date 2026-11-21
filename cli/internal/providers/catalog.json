@@ -1,5 +1,5 @@
 {
- "version": 28,
+ "version": 29,
  "providers": [
   {
    "provider": "Google Ads",
@@ -1105,6 +1105,17 @@
     "header": "x-api-key"
    },
    "probe": "v2/account/key-info"
+  },
+  {
+   "provider": "Arihaan People API",
+   "tokens": [
+    "ARIHAAN_PEOPLE"
+   ],
+   "base_url": "https://people-api.arihaan.ai",
+   "auth": {
+    "shape": "bearer"
+   },
+   "probe": "v2/balance"
   },
   {
    "provider": "MobiusEngine.ai Jobs Data",
