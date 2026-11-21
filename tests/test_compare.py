@@ -765,16 +765,21 @@ async def test_a_slow_comparison_read_never_holds_the_call(clients, monkeypatch)
     from treg import mcp as mcp_module
 
     monkeypatch.setattr(mcp_module, "INLINE_READ_TIMEOUT_S", 0.05)
+    cancelled = []
 
     async def hang(*_a, **_k):
-        await asyncio.sleep(10)
+        try:
+            await asyncio.sleep(60)
+        except asyncio.CancelledError:
+            cancelled.append(True)
+            raise
 
     monkeypatch.setattr(compare, "next_for", hang)
     _compare_on(monkeypatch)
     await _seed(await _org_id(clients), first="a", call_ref="slow-pair")
-    started = asyncio.get_running_loop().time()
-    assert await mcp_module._inline_comparison(clients.headers["X-Treg-Token"]) is None
-    assert asyncio.get_running_loop().time() - started < 1
+    # A wall-clock bound flakes on a slow runner; the hung read being cancelled is the behavior.
+    assert await asyncio.wait_for(mcp_module._inline_comparison(clients.headers["X-Treg-Token"]), 30) is None
+    assert cancelled == [True]
 
 
 # The API and the MCP tool
