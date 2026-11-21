@@ -1,0 +1,183 @@
+provider: boomerang
+source:
+  docs: https://app.theboomerang.co/docs/api
+  openapi: https://app.theboomerang.co/api/v1/openapi.json
+  curated: '2026-11-20'
+# Boomerang: LinkedIn profile and company enrichment, work-email and mobile-number lookups, billed per
+# record FOUND (a miss settles at zero). Prices are published live, in USD per record, by the
+# unauthenticated rate card GET /api/v1/pricing, read from the same catalog Boomerang charges from.
+#
+# EVERY ROW IS SUBMIT + POLL. POST /requests/single answers 201 {id, status: "In queue"} at once;
+# GET /requests/{id} answers {status: "In queue" | "Completed" | "Issue", found, outputJson, ...}.
+# Boomerang also offers a held response ("wait": true, up to 300 s), but Email Finder lookups run past
+# treg's 180 s call timeout (p50 81 s, p90 about 19 min on 2026-11-19), so the listing uses the
+# async protocol for every row. Profiles and Mobile Finder usually finish in 15-30 s.
+#
+# MISS SHAPE (observed on completed single lookups, 2026-11-20): status "Completed" with found: 0 and
+# creditsUsed: 0. The record count is `found`, top level, on every service.
+#
+# RATE LIMITS: 30 requests/minute and 300/hour per key, counted on submits AND status polls; Email
+# Finder submits have their own 30/minute and 1,800/hour bucket. The poll intervals below keep a
+# typical lookup at 3-4 calls.
+#
+# One request type per job: `type` and the `options` that select a job are pinned with single-value
+# enums (the Apollo pattern), so an agent sends exactly the body Boomerang prices.
+pricing_url: https://app.theboomerang.co/api/v1/pricing
+limits: "30 requests/minute and 300/hour per key, submits and status polls together; Email Finder submits have a separate 30/minute and 1,800/hour bucket."
+defaults:
+  provenance: {source: rate_card_api, source_url: 'https://app.theboomerang.co/api/v1/pricing', checked: '2026-11-20', confidence: documented}
+  expect: {path: response.id, op: present}
+  miss: {when: {path: response.found, op: equals, value: 0}}
+endpoints:
+  - id: boomerang.linkedin.user.profile
+    added: '2026-11-20'
+    capability: linkedin.user.profile
+    platform: linkedin
+    scope: any_account
+    method: POST
+    path: /requests/single
+    name: Enrich a LinkedIn member profile
+    summary: Get a LinkedIn member's full profile from their profile URL - name, headline, location, current and past positions, education, skills and follower count.
+    body_allowlist: true
+    input:
+      bodyType: json
+      body:
+        type: {type: string, required: true, enum: [enrichment.profiles.single], example: enrichment.profiles.single}
+        input: {type: string, format: url, required: true, note: "a linkedin.com/in/ profile URL", example: "https://www.linkedin.com/in/williamhgates"}
+        options.entity: {type: string, required: true, enum: [profiles], example: profiles}
+    test_request: {body: {type: enrichment.profiles.single, input: "https://www.linkedin.com/in/williamhgates", options: {entity: profiles}}}
+    price: {value: '0.005', currency: USD, per: 1, unit: call, note: "Charged only when a profile is found."}
+    provenance: {source: observed, source_url: 'https://app.theboomerang.co/api/v1/pricing', checked: '2026-11-20', confidence: verified}
+    async: &profile_async
+      id_from: id
+      poll: {endpoint: boomerang.requests.get, param: {in: pathParams, name: id}}
+      status: {path: status, progress: [In queue], success: [Completed], failure: [Issue]}
+      result: {path: outputJson}
+      interval: 10
+      max_age: 1800
+    docs_url: https://app.theboomerang.co/docs/api#tag/profiles
+
+  - id: boomerang.linkedin.company.profile
+    added: '2026-11-20'
+    capability: linkedin.company.profile
+    platform: linkedin
+    scope: any_account
+    method: POST
+    path: /requests/single
+    name: Enrich a LinkedIn company page
+    summary: Get a company's LinkedIn profile from its company page URL - name, website and domain, size, industry, headquarters, founding year, specialties and follower count.
+    body_allowlist: true
+    input:
+      bodyType: json
+      body:
+        type: {type: string, required: true, enum: [enrichment.profiles.single], example: enrichment.profiles.single}
+        input: {type: string, format: url, required: true, note: "a linkedin.com/company/ page URL; a numeric company id URL works too", example: "https://www.linkedin.com/company/stripe"}
+        options.entity: {type: string, required: true, enum: [profiles], example: profiles}
+        options.profilesUrlKind: {type: string, required: true, enum: [companies], example: companies}
+    test_request: {body: {type: enrichment.profiles.single, input: "https://www.linkedin.com/company/stripe", options: {entity: profiles, profilesUrlKind: companies}}}
+    price: {value: '0.005', currency: USD, per: 1, unit: call, note: "Charged only when the company is found."}
+    provenance: {source: observed, source_url: 'https://app.theboomerang.co/api/v1/pricing', checked: '2026-11-20', confidence: verified}
+    async: *profile_async
+    docs_url: https://app.theboomerang.co/docs/api#tag/profiles
+
+  - id: boomerang.people.email.find
+    added: '2026-11-20'
+    capability: people.email.find
+    domain: contacts
+    platform: people
+    scope: any_account
+    method: POST
+    path: /requests/single
+    name: Find a work email from a name and company domain
+    summary: Find a person's work email from their first name, last name and company domain.
+    body_allowlist: true
+    input:
+      bodyType: json
+      body:
+        type: {type: string, required: true, enum: [enrichment.email-finder.single], example: enrichment.email-finder.single}
+        firstName: {type: string, required: true, example: Satya}
+        lastName: {type: string, required: true, note: "credentials after a comma are dropped: 'Smith, CPA' is looked up as 'Smith'", example: Nadella}
+        domain: {type: string, required: true, note: "a bare domain; a full URL is reduced to its host", example: microsoft.com}
+        options.tier: {type: string, required: true, enum: [essential], example: essential}
+    test_request: {body: {type: enrichment.email-finder.single, firstName: Satya, lastName: Nadella, domain: microsoft.com, options: {tier: essential}}}
+    price: {value: '0.005', currency: USD, per: 1, unit: call, note: "Charged only when an email is found."}
+    provenance: {source: observed, source_url: 'https://app.theboomerang.co/api/v1/pricing', checked: '2026-11-20', confidence: verified}
+    async: &email_async
+      id_from: id
+      poll: {endpoint: boomerang.requests.get, param: {in: pathParams, name: id}}
+      status: {path: status, progress: [In queue], success: [Completed], failure: [Issue]}
+      result: {path: outputJson}
+      interval: 30
+      max_age: 3600
+    docs_url: https://app.theboomerang.co/docs/api#tag/email-finder
+
+  - id: boomerang.people.email.find.linkedin
+    added: '2026-11-20'
+    capability: people.email.find
+    domain: contacts
+    platform: people
+    scope: any_account
+    method: POST
+    path: /requests/single
+    name: Find a work email from a LinkedIn profile URL
+    summary: Find a person's work email from their LinkedIn profile URL.
+    body_allowlist: true
+    input:
+      bodyType: json
+      body:
+        type: {type: string, required: true, enum: [enrichment.email-finder.single], example: enrichment.email-finder.single}
+        input: {type: string, format: url, required: true, note: "a linkedin.com/in/ profile URL", example: "https://www.linkedin.com/in/satyanadella"}
+        options.tier: {type: string, required: true, enum: [essential], example: essential}
+        options.inputKind: {type: string, required: true, enum: [linkedin-url], example: linkedin-url}
+    test_request: {body: {type: enrichment.email-finder.single, input: "https://www.linkedin.com/in/satyanadella", options: {tier: essential, inputKind: linkedin-url}}}
+    price: {value: '0.01', currency: USD, per: 1, unit: call, note: "Charged only when an email is found."}
+    provenance: {source: observed, source_url: 'https://app.theboomerang.co/api/v1/pricing', checked: '2026-11-20', confidence: verified}
+    async: *email_async
+    docs_url: https://app.theboomerang.co/docs/api#tag/email-finder
+
+  - id: boomerang.people.phone.find
+    added: '2026-11-20'
+    capability: people.phone.find
+    domain: contacts
+    platform: people
+    scope: any_account
+    method: POST
+    path: /requests/single
+    name: Find a mobile number from a LinkedIn profile URL
+    summary: Find a person's mobile phone number from their LinkedIn profile URL.
+    body_allowlist: true
+    input:
+      bodyType: json
+      body:
+        type: {type: string, required: true, enum: [enrichment.mobile-finder.single], example: enrichment.mobile-finder.single}
+        input: {type: string, format: url, required: true, note: "a linkedin.com/in/ profile URL; a name, email or company URL is refused with 400", example: "https://www.linkedin.com/in/example-person"}
+        options.region: {type: string, required: true, enum: [include, exclude], note: "include or exclude US and UK numbers", example: include}
+    # Deliberate miss: a profile that does not exist. The hit price stays documented; observing it means
+    # buying a real person's mobile number, which the catalog's PII policy forbids capturing.
+    test_request: {body: {type: enrichment.mobile-finder.single, input: "https://www.linkedin.com/in/treg-verify-nonexistent-0000", options: {region: include}}}
+    price: {value: '0.1', currency: USD, per: 1, unit: call, note: "Charged only when a number is found."}
+    async: *profile_async
+    docs_url: https://app.theboomerang.co/docs/api#tag/mobile-finder
+
+  - id: boomerang.requests.get
+    added: '2026-11-20'
+    kind: utility
+    # Utility rows are hidden from browse; the capability names the job most polls serve.
+    capability: people.enrich
+    platform: people
+    scope: any_account
+    method: GET
+    path: /requests/{id}
+    name: Check a Boomerang lookup
+    summary: Read a submitted lookup's status (In queue, Completed, Issue) and, once completed, its records in outputJson and the found count.
+    resource_ownership:
+      requires: {kind: 'poll:boomerang.requests.get', param: id}
+    input:
+      pathParams:
+        id: {type: string, required: true, note: "the id POST /requests/single answered"}
+    untestable: Requires a request id created by the connected account.
+    price: {value: '0', currency: USD, unit: call, note: "Reading a lookup is free."}
+    expect: null
+    miss: null
+    not_found: {status: [404], means: "no request with this id on this account"}
+    docs_url: https://app.theboomerang.co/docs/api#tag/requests
