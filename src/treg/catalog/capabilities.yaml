@@ -159,6 +159,7 @@ platforms:
   research: {label: "Academic literature", category: "Research & public data", summary: "Search scholarly papers and preprints across academic sources."}
   health: {label: "Health & biomedical", category: "Research & public data", summary: "Clinical studies, medicine labels and public health statistics."}
   economics: {label: "Economic indicators", category: "Research & public data", summary: "Official labor and development statistics."}
+  privacy: {label: "Data-broker removal", category: "Research & public data", summary: "Data-broker opt-out channels, and a household's removal cases, deadlines and ledger."}
 
 capabilities:
   # --- AI generation ---------------------------------------------------------------------------
@@ -1310,6 +1311,13 @@ capabilities:
   stocks.fundamentals.metrics: "Fundamental metrics and ratios for a ticker"
   stocks.market.status: "Is the market open right now"
 
+  # --- Privacy: data-broker removal -------------------------------------------------------------
+  privacy.brokers.list: "List data brokers with their official opt-out URL, channel and captcha"
+  privacy.removal.pricing: "Read a removal service's plan price, trial length and broker coverage"
+  privacy.removal.board: "Read your removal cases with status, filing date, deadline and last check"
+  privacy.removal.export: "Export your removal ledger as CSV, Markdown or JSON"
+  privacy.removal.queue: "List the removal requests that are due to be filed next"
+
 # Short titles people scan on a platform shelf, only where a compared job's description runs long.
 # The description above stays whole: agents read it, and search ranks on it.
 capability_titles:
@@ -1355,3 +1363,8 @@ capability_titles:
   video-gen.result.retrieve: "Download a finished video"
   tripadvisor.search.general: "Search places, hotels and restaurants"
   stocks.quote.live: "Current quote for a ticker"
+  privacy.brokers.list: "List data brokers and their opt-outs"
+  privacy.removal.pricing: "Get removal-service pricing"
+  privacy.removal.board: "Read your removal cases"
+  privacy.removal.export: "Export your removal ledger"
+  privacy.removal.queue: "List removals due to be filed"

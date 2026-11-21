@@ -4468,6 +4468,42 @@ LEVER = OAuthProvider(
     docs_url="https://github.com/lever/postings-api",
 )
 
+UNLISTEDCLICK = OAuthProvider(
+    service="unlistedclick",
+    display_name="unlisted.click",
+    auth_kind="key",
+    token_label="API token",
+    token_placeholder="ul_…",
+    # The account token rides as `Authorization: Bearer ul_…`. The broker catalogue and the pricing
+    # config are public and ignore it; every account route answers 401 problem+json without it.
+    token_header="Authorization",
+    token_format="Bearer {secret}",
+    setup_url="https://unlisted.click/auth.md",
+    setup_action_label="Get your unlisted.click API token",
+    setup_steps=(
+        "Create an account with POST https://unlisted.click/api/auth/signup "
+        "(email, password, agree: true) or sign up at https://unlisted.click/.",
+        "Copy account.api_token from the signup answer (it starts with ul_), or issue it again "
+        "with POST /api/auth/token.",
+    ),
+    setup_note=(
+        "One household plan, $9/month or $79/year, with a 14-day trial and no card. Reads and "
+        "exports keep working after the trial lapses; the connection check reads your ledger "
+        "board and is free."
+    ),
+    auth_uri="", token_uri="",
+    scopes={},
+    client_id_setting="", client_secret_setting="",
+    category="Research & public data",
+    summary=(
+        "Data-broker removal ledger: the opt-out catalogue of 33 brokers, plus your household's "
+        "removal cases, deadlines and an exportable ledger."
+    ),
+    base_url="https://unlisted.click",
+    docs_url="https://unlisted.click/openapi.json",
+    probe_path="/api/board",  # free read; a bad or missing token gets 401 problem+json here
+)
+
 REGISTRY: dict[str, OAuthProvider] = {
     p.service: p
     for p in (
@@ -4495,6 +4531,8 @@ REGISTRY: dict[str, OAuthProvider] = {
         # Market data API-key providers
         COINGECKO, POLYGON, FINNHUB, TWELVEDATA, FMP, EODHD, MARKETSTACK, TIINGO,
         FINANCIALDATASETS,
+        # Privacy: data-broker removal ledger
+        UNLISTEDCLICK,
         # Advertising: API-key ad intelligence + unconfigured OAuth ad platforms
         SPYFU, APIFY, META_AD_LIBRARY, SERPAPI, DANSUGC,
         MICROSOFT_ADS, SNAPCHAT_ADS, TIKTOK_ADS, PINTEREST_ADS,
