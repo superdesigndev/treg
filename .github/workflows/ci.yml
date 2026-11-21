@@ -179,6 +179,7 @@ jobs:
           tests/test_redundant_index_migration.py
           tests/test_callrecord_call_ref_index_migration.py
           tests/test_call_record_partitions.py
+          tests/test_call_record_swap.py
           tests/test_enrich_arena.py
           tests/test_arena_insights.py
           tests/test_arena_verification_insights.py

@@ -30,6 +30,7 @@ import time
 from datetime import date, datetime, timedelta
 
 from sqlalchemy import text
+from sqlalchemy.exc import DBAPIError
 
 from ..config import get_settings
 from ..infra.db import session_maker
@@ -37,6 +38,9 @@ from ..timeutil import utcnow_naive
 
 TABLE = "callrecord"
 STAGED = "callrecord_partitioned"   # the partitioned table alembic 0125 builds, filled by `backfill`
+LEGACY = "callrecord_legacy"        # the plain table after alembic 0126
+DROP_LEGACY_LOCK_TIMEOUT = "1s"
+DROP_LEGACY_ATTEMPTS = 10
 MONTHS_AHEAD = 3
 LOCK_TIMEOUT = "3s"
 DETACH_TIMEOUT = "60s"
@@ -174,9 +178,33 @@ async def maintain(*, session_factory=session_maker) -> dict:
     created = await ensure(session_factory=session_factory)
     dropped = await drop_expired(get_settings().callrecord_retention_months,
                                  session_factory=session_factory)
-    if created or dropped:
-        log.info("callrecord partitions: created %s, dropped %s", created, dropped)
-    return {"created": created, "dropped": dropped}
+    analyzed = await analyze_if_stale(session_factory=session_factory)
+    if created or dropped or analyzed:
+        log.info("callrecord partitions: created %s, dropped %s, analyzed %s", created, dropped, analyzed)
+    return {"created": created, "dropped": dropped, "analyzed": analyzed}
+
+
+async def analyze_if_stale(*, session_factory=session_maker) -> list[str]:
+    """ANALYZE the partitioned `callrecord` when its own row estimate is below 90 % of its
+    partitions' -> the tables analyzed. Autovacuum analyzes each partition but never the
+    partitioned parent, whose statistics the planner uses for queries over all months. The staged
+    table before the swap is analyzed by the swap itself (alembic 0126), not here."""
+    analyzed = []
+    async with session_factory() as db:
+        for table in (TABLE,):
+            if await _relkind(db, table) != "p":
+                continue
+            own, parts = (await db.execute(text("""
+                SELECT (SELECT reltuples FROM pg_class WHERE oid = to_regclass(:name)),
+                       (SELECT COALESCE(SUM(GREATEST(c.reltuples, 0)), 0) FROM pg_class c
+                        JOIN pg_inherits i ON i.inhrelid = c.oid
+                        WHERE i.inhparent = to_regclass(:name))"""), {"name": table})).one()
+            await db.commit()
+            if parts > 0 and (own or 0) < 0.9 * parts:
+                await db.execute(text(f"ANALYZE {table}"))
+                await db.commit()
+                analyzed.append(table)
+    return analyzed
 
 
 async def ensure_for_release() -> int:
@@ -243,15 +271,18 @@ async def replica_lag_seconds() -> float:
     return max(float(lag or 0), 0.0)
 
 
-async def delete_rows_of_deleted_teams(*, table: str = STAGED, batch: int = DELETED_TEAM_BATCH,
+async def delete_rows_of_deleted_teams(*, table: str | None = None, batch: int = DELETED_TEAM_BATCH,
                                        between_batches=None, session_factory=session_maker) -> int:
-    """Delete from a partitioned `table` the rows of teams that no longer exist, `batch` rows per
-    committed transaction -> rows deleted. A team deleted while a backfill batch was copying its
+    """Delete from a partitioned `table` (default: `callrecord` once it is partitioned, else
+    `callrecord_partitioned`) the rows of teams that no longer exist, `batch` rows per committed
+    transaction -> rows deleted. A team deleted while a backfill batch was copying its
     rows can leave copies behind. Postgres cannot skip through an index, so the distinct teams
     are walked one `(org_id, id)` probe each, and each kept only `NOT EXISTS` in `org`; an
     anti-join against `org` would read every row."""
     deleted = 0
     async with session_factory() as db:
+        if table is None:
+            table = TABLE if await _relkind(db, TABLE) == "p" else STAGED
         if await _relkind(db, table) != "p":
             return 0
         gone = (await db.execute(text(f"""
@@ -282,16 +313,20 @@ async def delete_rows_of_deleted_teams(*, table: str = STAGED, batch: int = DELE
 async def backfill(days: int, *, batch_rows: int = BACKFILL_BATCH_ROWS, max_seconds: float | None = None,
                    pause: float = BACKFILL_PAUSE_SECONDS, max_replica_lag: float | None = None,
                    session_factory=session_maker) -> dict:
-    """Copy the last `days` days of call records from the plain `callrecord` into
-    `callrecord_partitioned`, which nothing reads yet
+    """Copy the last `days` days of call records into the partitioned table
     -> {phase, copied, batches, reached, done, deleted_orphans, replica_waits, resynced}, with
-    `busy: True` and nothing done when another backfill holds the lock
-    (`phase: "before_swap"`, or None when there is nothing to copy into).
+    `busy: True` and nothing done when another backfill holds the lock.
+
+    Before the swap (alembic at 0125, `phase: "before_swap"`) the source is `callrecord` and the
+    target is `callrecord_partitioned`, which nothing reads yet; 0126 refuses to swap a large
+    table until this has run, and again when this last ran long ago. After the swap
+    (`phase: "after_swap"`) the source is `callrecord_legacy` and the target is `callrecord`, for
+    history older than was copied first; the orphan sweep and the resync are before-swap steps.
 
     Rows keep their ids. Each batch is one transaction over a bounded id range, and no batch
     takes a lock a reader or a writer waits for. A run first copies what was written since the
-    last one, then continues below the lowest id the target holds, newest first, until the rows
-    are older than `days`. A run that stops (`max_seconds`, a failure) is resumed by running it
+    last one (before the swap only), then continues below the lowest id the target holds, newest
+    first, until the rows are older than `days`. A run that stops (`max_seconds`, a failure) is resumed by running it
     again; `done` is true when the cutoff or the first row was reached.
 
     Each run first deletes the copied rows of teams deleted since (`delete_rows_of_deleted_teams`),
@@ -348,19 +383,23 @@ async def _backfill(out: dict, *, cutoff, run_started, batch_rows: int, pause: f
             await asyncio.sleep(REPLICA_LAG_POLL_SECONDS)
 
     async with session_factory() as db:
-        if await _relkind(db, TABLE) == "r" and await _relkind(db, STAGED) == "p":
+        if await _relkind(db, TABLE) == "p" and await _relkind(db, LEGACY) == "r":
+            source, target, out["phase"] = LEGACY, TABLE, "after_swap"
+        elif await _relkind(db, TABLE) == "r" and await _relkind(db, STAGED) == "p":
             source, target, out["phase"] = TABLE, STAGED, "before_swap"
         else:
             return out
+        before_swap = out["phase"] == "before_swap"
         oldest_copied, newest_copied = (await db.execute(text(
             f"SELECT min(id), max(id) FROM {target}"))).one()
         await db.commit()
-        await _note_first_run(db)
-        out["deleted_orphans"] = await delete_rows_of_deleted_teams(
-            table=target, between_batches=between_batches, session_factory=session_factory)
+        if before_swap:
+            await _note_first_run(db)
+            out["deleted_orphans"] = await delete_rows_of_deleted_teams(
+                table=target, between_batches=between_batches, session_factory=session_factory)
 
         async def copy() -> bool:
-            if newest_copied is not None:
+            if before_swap and newest_copied is not None:
                 top = (await db.execute(text(f"SELECT max(id) FROM {source}"))).scalar() or 0
                 for first in range(max(newest_copied - COMMIT_MARGIN, oldest_copied), top + 1,
                                    batch_rows):
@@ -388,8 +427,9 @@ async def _backfill(out: dict, *, cutoff, run_started, batch_rows: int, pause: f
 
         if not await copy():
             return {**out, "done": False}
-        if not await _resync_late_verdicts(db, out, run_started=run_started, batch_rows=batch_rows,
-                                           spent=spent, between_batches=between_batches):
+        if before_swap and not await _resync_late_verdicts(
+                db, out, run_started=run_started, batch_rows=batch_rows, spent=spent,
+                between_batches=between_batches):
             return {**out, "done": False}
         return out
 
@@ -471,3 +511,105 @@ async def _resync_late_verdicts(db, out: dict, *, run_started: datetime, batch_r
     note[NOTE_RESYNCED_UPTO], note[NOTE_RESYNCED_AT] = after, began
     await _write_note(db, note)
     return True
+
+
+# The foreign key drop locks `org`, which every call reads: like the swap's lock, it waits for
+# quiet without queuing, then tries with a short lock timeout, within a bounded window.
+_QUIET_STATEMENT_S = 0.5
+_QUIET_POLL_S = 0.1
+_LOCK_TRY = "50ms"
+FK_DROP_WINDOW_S = 120.0
+
+_LONG_HOLDERS = text("""
+    SELECT DISTINCT a.pid
+    FROM pg_locks l JOIN pg_stat_activity a ON a.pid = l.pid
+    WHERE l.relation = to_regclass(:name) AND l.granted AND a.pid <> pg_backend_pid()
+      AND ((a.state = 'active' AND clock_timestamp() - a.query_start > make_interval(secs => :limit))
+        OR (a.state LIKE 'idle in transaction%'
+            AND clock_timestamp() - a.state_change > make_interval(secs => :limit))
+        OR clock_timestamp() - a.xact_start > make_interval(secs => :limit))
+""")
+
+
+def _is_lock_timeout(exc: DBAPIError) -> bool:
+    origin = exc.orig
+    return "lock timeout" in str(origin or exc) or (
+        origin is not None and "LockNotAvailableError" in type(origin).__name__)
+
+
+async def _wait_until_quiet(db, table: str, deadline: float) -> bool:
+    """Wait until no visible session holds `table` through a statement or a transaction older
+    than `_QUIET_STATEMENT_S` -> False when `deadline` passed first. Each poll is its own
+    transaction and clears the activity snapshot, so it sees sessions as they are now."""
+    while True:
+        await db.execute(text("SELECT pg_stat_clear_snapshot()"))
+        busy = (await db.execute(_LONG_HOLDERS, {"name": table, "limit": _QUIET_STATEMENT_S})).first()
+        await db.commit()
+        if busy is None:
+            return True
+        if time.monotonic() >= deadline:
+            return False
+        await asyncio.sleep(_QUIET_POLL_S)
+
+
+async def _drop_legacy_foreign_keys(db, *, window_s: float = FK_DROP_WINDOW_S) -> None:
+    """Drop the legacy table's foreign keys (to `org`) in one short transaction, so the drop of
+    the table that follows never holds a lock on `org` while its files are deleted. It waits for
+    quiet on `org`, then tries with a `_LOCK_TRY` lock timeout inside a savepoint and starts over
+    on a timeout, so an `org` read never queues behind it for longer than that; it raises a lock
+    timeout once `window_s` has passed."""
+    names = (await db.execute(text(
+        "SELECT conname FROM pg_constraint WHERE conrelid = to_regclass(:name) AND contype = 'f'"),
+        {"name": LEGACY})).scalars().all()
+    await db.commit()
+    if not names:
+        return
+    deadline = time.monotonic() + window_s
+    while True:
+        if await _wait_until_quiet(db, "org", deadline):
+            try:
+                async with db.begin_nested():
+                    await db.execute(text(f"SET LOCAL lock_timeout = '{_LOCK_TRY}'"))
+                    for name in names:
+                        await db.execute(text(f'ALTER TABLE {LEGACY} DROP CONSTRAINT "{name}"'))
+                await db.commit()
+                return
+            except DBAPIError as exc:
+                if not _is_lock_timeout(exc):
+                    raise
+                await db.rollback()
+        if time.monotonic() >= deadline:
+            raise TimeoutError(f"the foreign key on {LEGACY} was not dropped within {window_s:.0f} s")
+        await asyncio.sleep(0.05)
+
+
+async def drop_legacy(*, window_s: float = FK_DROP_WINDOW_S, session_factory=session_maker) -> dict:
+    """Remove the rows of teams deleted during the copy, then drop `callrecord_legacy`
+    -> {dropped, deleted_rows, error}.
+
+    The legacy table still holds its foreign key to `org`. That key is dropped first, on its own
+    (`_drop_legacy_foreign_keys`: quiet first, then 50 ms lock attempts), which is the only moment
+    `org` is locked; the table and its files go after, with no lock on `org`.
+    """
+    deleted = await delete_rows_of_deleted_teams(table=TABLE, session_factory=session_factory)
+    async with session_factory() as db:
+        if await _relkind(db, LEGACY) is None:
+            return {"dropped": False, "deleted_rows": deleted, "error": None}
+        await db.commit()
+        try:
+            await _drop_legacy_foreign_keys(db, window_s=window_s)
+        except TimeoutError as exc:
+            return {"dropped": False, "deleted_rows": deleted, "error": str(exc)}
+    for attempt in range(1, DROP_LEGACY_ATTEMPTS + 1):
+        async with session_factory() as db:
+            try:
+                await db.execute(text(f"SET LOCAL lock_timeout = '{DROP_LEGACY_LOCK_TIMEOUT}'"))
+                await db.execute(text(f"DROP TABLE IF EXISTS {LEGACY}"))
+                await db.commit()
+                return {"dropped": True, "deleted_rows": deleted, "error": None}
+            except DBAPIError as exc:
+                await db.rollback()
+                if attempt == DROP_LEGACY_ATTEMPTS:
+                    return {"dropped": False, "deleted_rows": deleted, "error": str(exc.orig or exc)}
+        await asyncio.sleep(2)
+    return {"dropped": False, "deleted_rows": deleted, "error": None}

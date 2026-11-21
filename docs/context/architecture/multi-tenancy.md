@@ -225,8 +225,9 @@ name, so nothing gates on it. Scoping a detected agent means minting it a token.
   or a private copy. One named exception: it first deletes every `HubRun` whose `caller_org_id` is the
   team, because a run belongs to its caller, and a maker's deletion leaves callers' history intact.
   Workbench `TableDoc` rows go before their `TeamDatabase` ([workbench-storage](workbench-storage.md)).
-  While `callrecord_partitioned` exists (the table the backfill fills), the team's rows there go too
-  ([data-model](data-model.md), "preparing monthly partitions and a 64-bit id").
+  While `callrecord_partitioned` (the table the backfill fills) or `callrecord_legacy` (the table
+  `callrecord` replaced) exists, the team's rows there go too
+  ([data-model](data-model.md), "monthly partitions and a 64-bit id").
 - **Invites** are one-time and expire after `INVITE_TTL_DAYS` (410). Inviting an existing member is
   409; a new invite supersedes the prior pending one for that email. Suspended users and orgs can
   neither view nor accept.
