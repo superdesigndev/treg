@@ -553,5 +553,360 @@ endpoints:
     example_response: examples/apify.weibo.post.comments.json
     docs_url: https://apify.com/herus13/weibo-scraper
 
+
+  # --------------------------------------------------------------------------
+  # Ad Libraries & Intelligence (azzouzana)
+  # --------------------------------------------------------------------------
+  - id: apify.linkedin.search.ads
+    capability: linkedin.search.ads
+    platform: linkedin
+    scope: any_account
+    method: POST
+    path: /actors/azzouzana~linkedin-ads-library-scraper/run-sync-get-dataset-items
+    name: "Scrape LinkedIn Ad Library"
+    summary: "Export B2B ad creatives, headlines, CTAs, advertisers, and EU Transparency details from LinkedIn Ad Library search or company URLs"
+    input:
+      queryParams:
+        maxItems: {type: integer, required: false, note: "optional row cap; maxTotalChargeUsd is the spend limit", example: 50}
+        maxTotalChargeUsd: {type: number, required: false, note: "spend cap enforced by Apify in USD", example: 0.5}
+        timeout: {type: integer, required: false, note: "seconds before synchronous run terminates (1-90s)", example: 90}
+      body:
+        startUrl: {type: string, required: true, note: "LinkedIn Ad Library search URL or company page URL", example: "https://www.linkedin.com/ad-library/search?payer=iCareerSolutions"}
+        maxItems: {type: integer, required: false, note: "Maximum ads to scrape (5 to 5000)", example: 50}
+        extractDetails: {type: boolean, required: false, note: "Fetch deep detail per ad (headline, CTA, payer, EU transparency fields)", example: false}
+      bodyType: json
+    added: '2026-11-17'
+    docs_url: https://apify.com/azzouzana/linkedin-ads-library-scraper
+
+  - id: apify.meta-ads.library.advertiser
+    capability: meta-ads.library.advertiser
+    platform: meta-ads
+    scope: any_account
+    method: POST
+    path: /actors/azzouzana~meta-facebook-instagram-ads-library/run-sync-get-dataset-items
+    name: "Scrape Facebook & Instagram Ad Library"
+    summary: "Scrape active Facebook & Instagram ads with creative assets, copy, and optional reach/spend metrics"
+    input:
+      queryParams:
+        maxItems: {type: integer, required: false, note: "optional row cap; maxTotalChargeUsd is the spend limit", example: 50}
+        maxTotalChargeUsd: {type: number, required: false, note: "spend cap enforced by Apify in USD", example: 0.5}
+        timeout: {type: integer, required: false, note: "seconds before synchronous run terminates (1-90s)", example: 90}
+      body:
+        startUrl: {type: string, required: true, note: "Meta Ad Library search URL, Facebook Page URL, or Instagram profile URL", example: "https://www.facebook.com/ads/library/?active_status=active&ad_type=all&country=US&q=software"}
+        maxAds: {type: integer, required: false, note: "Maximum number of ads to scrape", example: 50}
+        extractDetails: {type: boolean, required: false, note: "Fetch deep ad metrics (reach, spend, impressions)", example: false}
+      bodyType: json
+    added: '2026-11-17'
+    docs_url: https://apify.com/azzouzana/meta-facebook-instagram-ads-library
+
+  # --------------------------------------------------------------------------
+  # Employer & Business Reviews (azzouzana)
+  # --------------------------------------------------------------------------
+  - id: apify.companies.reviews
+    capability: companies.reviews
+    platform: companies
+    scope: any_account
+    method: POST
+    path: /actors/azzouzana~glassdoor-scraper/run-sync-get-dataset-items
+    name: "Scrape Glassdoor employer reviews"
+    summary: "Scrape Glassdoor company reviews including ratings, pros, cons, advice to management, job title, and location"
+    input:
+      queryParams:
+        maxItems: {type: integer, required: false, note: "optional row cap; maxTotalChargeUsd is the spend limit", example: 50}
+        maxTotalChargeUsd: {type: number, required: false, note: "spend cap enforced by Apify in USD", example: 0.5}
+        timeout: {type: integer, required: false, note: "seconds before synchronous run terminates (1-90s)", example: 90}
+      body:
+        company: {type: string, required: true, note: "Glassdoor reviews URL or company name (e.g. Google)", example: "https://www.glassdoor.com/Reviews/Google-Reviews-E9079.htm"}
+        maxReviews: {type: integer, required: false, note: "Maximum reviews to collect (min 20)", example: 50}
+        sort: {type: string, required: false, note: "Order: DATE | DATE_ASC | RELEVANCE | RATING", example: "DATE"}
+      bodyType: json
+    added: '2026-11-17'
+    docs_url: https://apify.com/azzouzana/glassdoor-scraper
+
+  - id: apify.tripadvisor.business.reviews
+    capability: tripadvisor.business.reviews
+    platform: tripadvisor
+    scope: any_account
+    method: POST
+    path: /actors/azzouzana~tripadvisor-scraper/run-sync-get-dataset-items
+    name: "Scrape TripAdvisor reviews"
+    summary: "Scrape guest feedback, ratings, travel dates, and reviews from TripAdvisor hotels and restaurants"
+    input:
+      queryParams:
+        maxItems: {type: integer, required: false, example: 50}
+        maxTotalChargeUsd: {type: number, required: false, example: 0.5}
+        timeout: {type: integer, required: false, example: 90}
+      body:
+        startUrl: {type: string, required: true, note: "TripAdvisor hotel or restaurant URL", example: "https://www.tripadvisor.com/Hotel_Review-g60763-d93438-Reviews-The_Plaza-New_York_City_New_York.html"}
+        maxItems: {type: integer, required: false, example: 50}
+        sortBy: {type: string, required: false, example: "SERVER_DETERMINED"}
+      bodyType: json
+    added: '2026-11-17'
+    docs_url: https://apify.com/azzouzana/tripadvisor-scraper
+
+  - id: apify.yelp.business.reviews
+    capability: yelp.business.reviews
+    platform: yelp
+    scope: any_account
+    method: POST
+    path: /actors/azzouzana~yelp-scraper/run-sync-get-dataset-items
+    name: "Scrape Yelp business reviews"
+    summary: "Scrape Yelp star ratings, review texts, author profiles, and photos from business pages"
+    input:
+      queryParams:
+        maxItems: {type: integer, required: false, example: 50}
+        maxTotalChargeUsd: {type: number, required: false, example: 0.5}
+        timeout: {type: integer, required: false, example: 90}
+      body:
+        startUrl: {type: string, required: true, note: "Yelp business page URL", example: "https://www.yelp.com/biz/gary-danko-san-francisco"}
+        maxItems: {type: integer, required: false, example: 50}
+      bodyType: json
+    added: '2026-11-17'
+    docs_url: https://apify.com/azzouzana/yelp-scraper
+
+  # --------------------------------------------------------------------------
+  # Social Media Comments (azzouzana)
+  # --------------------------------------------------------------------------
+  - id: apify.facebook.post.comments
+    capability: facebook.post.comments
+    platform: facebook
+    scope: any_account
+    method: POST
+    path: /actors/azzouzana~facebook-comments-scraper/run-sync-get-dataset-items
+    name: "Scrape Facebook post comments"
+    summary: "Extract public comments, replies, reactions, and commenter metadata from Facebook posts or video URLs without login"
+    input:
+      queryParams:
+        maxItems: {type: integer, required: false, example: 50}
+        maxTotalChargeUsd: {type: number, required: false, example: 0.5}
+        timeout: {type: integer, required: false, example: 90}
+      body:
+        startUrls: {type: array, required: true, note: "Public Facebook post or video URLs", example: [{"url": "https://www.facebook.com/zuck/posts/10114389025114881"}]}
+        maxItems: {type: integer, required: false, example: 50}
+        includeReplies: {type: boolean, required: false, example: false}
+      bodyType: json
+    added: '2026-11-17'
+    docs_url: https://apify.com/azzouzana/facebook-comments-scraper
+
+  - id: apify.instagram.post.comments
+    capability: instagram.post.comments
+    platform: instagram
+    scope: any_account
+    method: POST
+    path: /actors/azzouzana~instagram-comments-scraper/run-sync-get-dataset-items
+    name: "Scrape Instagram comments"
+    summary: "Scrape comments, replies, timestamps, and usernames from Instagram posts and Reels without cookies or login"
+    input:
+      queryParams:
+        maxItems: {type: integer, required: false, example: 50}
+        maxTotalChargeUsd: {type: number, required: false, example: 0.5}
+        timeout: {type: integer, required: false, example: 90}
+      body:
+        startUrls: {type: array, required: true, note: "Instagram post or reel URL", example: [{"url": "https://www.instagram.com/p/C-xyz123/"}]}
+        maxItems: {type: integer, required: false, example: 50}
+        includeReplies: {type: boolean, required: false, example: false}
+      bodyType: json
+    added: '2026-11-17'
+    docs_url: https://apify.com/azzouzana/instagram-comments-scraper
+
+  - id: apify.tiktok.video.comments
+    capability: tiktok.video.comments
+    platform: tiktok
+    scope: any_account
+    method: POST
+    path: /actors/azzouzana~tiktok-comments-scraper/run-sync-get-dataset-items
+    name: "Scrape TikTok video comments"
+    summary: "Extract top comments, nested replies, author info, and like counts from TikTok videos"
+    input:
+      queryParams:
+        maxItems: {type: integer, required: false, example: 50}
+        maxTotalChargeUsd: {type: number, required: false, example: 0.5}
+        timeout: {type: integer, required: false, example: 90}
+      body:
+        startUrls: {type: array, required: true, note: "TikTok video URL", example: [{"url": "https://www.tiktok.com/@tiktok/video/7123456789"}]}
+        maxItems: {type: integer, required: false, example: 50}
+        includeReplies: {type: boolean, required: false, example: false}
+      bodyType: json
+    added: '2026-11-17'
+    docs_url: https://apify.com/azzouzana/tiktok-comments-scraper
+
+  - id: apify.youtube.video.comments
+    capability: youtube.video.comments
+    platform: youtube
+    scope: any_account
+    method: POST
+    path: /actors/azzouzana~youtube-comments-scraper/run-sync-get-dataset-items
+    name: "Scrape YouTube video comments"
+    summary: "Scrape comments, replies, author handles, like counts, and channel badges from YouTube videos"
+    input:
+      queryParams:
+        maxItems: {type: integer, required: false, example: 50}
+        maxTotalChargeUsd: {type: number, required: false, example: 0.5}
+        timeout: {type: integer, required: false, example: 90}
+      body:
+        startUrl: {type: string, required: true, note: "YouTube video URL", example: "https://www.youtube.com/watch?v=dQw4w9WgXcQ"}
+        maxItems: {type: integer, required: false, example: 50}
+        commentsSortBy: {type: string, required: false, example: "TOP_COMMENTS"}
+        includeReplies: {type: boolean, required: false, example: false}
+      bodyType: json
+    added: '2026-11-17'
+    docs_url: https://apify.com/azzouzana/youtube-comments-scraper
+
+
+  # --------------------------------------------------------------------------
+  # E-Commerce & Retail Marketplaces (azzouzana)
+  # --------------------------------------------------------------------------
+  - id: apify.ebay.search.products
+    capability: ebay.search.products
+    platform: ebay
+    scope: any_account
+    method: POST
+    path: /actors/azzouzana~ebay-scraper/run-sync-get-dataset-items
+    name: "Search eBay products"
+    summary: "Search active eBay product listings with prices, shipping, seller info, and sold comps"
+    input:
+      queryParams:
+        maxItems: {type: integer, required: false, example: 50}
+        maxTotalChargeUsd: {type: number, required: false, example: 0.5}
+        timeout: {type: integer, required: false, example: 90}
+      body:
+        target: {type: string, required: true, note: "Search keyword, category URL, or store link", example: "vintage leather jacket"}
+        maxItems: {type: integer, required: false, example: 50}
+        marketplace: {type: string, required: false, note: "EBAY_US, EBAY_GB, EBAY_DE, etc.", example: "EBAY_US"}
+      bodyType: json
+    added: '2026-11-17'
+    docs_url: https://apify.com/azzouzana/ebay-scraper
+
+  - id: apify.walmart.product.reviews
+    capability: walmart.product.reviews
+    platform: walmart
+    scope: any_account
+    method: POST
+    path: /actors/azzouzana~walmart-scraper/run-sync-get-dataset-items
+    name: "Scrape Walmart product reviews"
+    summary: "Scrape customer reviews, star ratings, reviewer badges, and verified buyer feedback from Walmart product pages"
+    input:
+      queryParams:
+        maxItems: {type: integer, required: false, example: 50}
+        maxTotalChargeUsd: {type: number, required: false, example: 0.5}
+        timeout: {type: integer, required: false, example: 90}
+      body:
+        startUrls: {type: array, required: true, note: "Walmart product page URLs", example: [{"url": "https://www.walmart.com/ip/12345678"}]}
+        extractionMode: {type: string, required: true, note: "PRODUCT_REVIEWS or SELLER_REVIEWS", example: "PRODUCT_REVIEWS"}
+        maxItems: {type: integer, required: false, example: 50}
+      bodyType: json
+    added: '2026-11-17'
+    docs_url: https://apify.com/azzouzana/walmart-scraper
+
+  # --------------------------------------------------------------------------
+  # Trust & App Marketplaces (azzouzana)
+  # --------------------------------------------------------------------------
+  - id: apify.trustpilot.business.reviews
+    capability: trustpilot.business.reviews
+    platform: trustpilot
+    scope: any_account
+    method: POST
+    path: /actors/azzouzana~trustpilot-scraper/run-sync-get-dataset-items
+    name: "Scrape Trustpilot company reviews"
+    summary: "Scrape consumer reviews, star ratings, dates, and TrustScores for any domain or company on Trustpilot"
+    input:
+      queryParams:
+        maxItems: {type: integer, required: false, example: 50}
+        maxTotalChargeUsd: {type: number, required: false, example: 0.5}
+        timeout: {type: integer, required: false, example: 90}
+      body:
+        company: {type: string, required: true, note: "Domain name (e.g. 'stripe.com') or full Trustpilot review URL", example: "stripe.com"}
+        maxItems: {type: integer, required: false, example: 50}
+        sortBy: {type: string, required: false, example: "recency"}
+      bodyType: json
+    added: '2026-11-17'
+    docs_url: https://apify.com/azzouzana/trustpilot-scraper
+
+  - id: apify.app-store.search.apps
+    capability: app-store.search.apps
+    platform: app-store
+    scope: any_account
+    method: POST
+    path: /actors/azzouzana~apple-app-store-scraper/run-sync-get-dataset-items
+    name: "Search Apple App Store apps"
+    summary: "Search iOS and Mac apps with developer, rating, pricing, in-app purchases, and ranking metadata"
+    input:
+      queryParams:
+        maxItems: {type: integer, required: false, example: 50}
+        maxTotalChargeUsd: {type: number, required: false, example: 0.5}
+        timeout: {type: integer, required: false, example: 90}
+      body:
+        startUrl: {type: string, required: true, note: "Search keyword or Apple App Store URL", example: "crypto wallet"}
+        country: {type: string, required: false, example: "us"}
+        maxItems: {type: integer, required: false, example: 50}
+      bodyType: json
+    added: '2026-11-17'
+    docs_url: https://apify.com/azzouzana/apple-app-store-scraper
+
+  - id: apify.google-play.search.apps
+    capability: google-play.search.apps
+    platform: google-play
+    scope: any_account
+    method: POST
+    path: /actors/azzouzana~google-play-scraper/run-sync-get-dataset-items
+    name: "Search Google Play apps"
+    summary: "Search Android apps with install counts, developer details, ratings, content rating, and APK version details"
+    input:
+      queryParams:
+        maxItems: {type: integer, required: false, example: 50}
+        maxTotalChargeUsd: {type: number, required: false, example: 0.5}
+        timeout: {type: integer, required: false, example: 90}
+      body:
+        startUrl: {type: string, required: true, note: "Search keyword or Google Play store URL", example: "podcast player"}
+        country: {type: string, required: false, example: "us"}
+        maxItems: {type: integer, required: false, example: 50}
+      bodyType: json
+    added: '2026-11-17'
+    docs_url: https://apify.com/azzouzana/google-play-scraper
+
+  # --------------------------------------------------------------------------
+  # Jobs & Local Places (azzouzana)
+  # --------------------------------------------------------------------------
+  - id: apify.companies.jobs.search
+    capability: companies.jobs.search
+    platform: companies
+    scope: any_account
+    method: POST
+    path: /actors/azzouzana~glassdoor-jobs-scraper/run-sync-get-dataset-items
+    name: "Search Glassdoor job postings"
+    summary: "Search open jobs and employer listings from Glassdoor with salary estimates, job requirements, and locations"
+    input:
+      queryParams:
+        maxItems: {type: integer, required: false, example: 50}
+        maxTotalChargeUsd: {type: number, required: false, example: 0.5}
+        timeout: {type: integer, required: false, example: 90}
+      body:
+        target: {type: string, required: true, note: "Job title, keywords, or Glassdoor job search URL", example: "Full Stack Engineer"}
+        maxJobs: {type: integer, required: false, example: 50}
+        postedWithinDays: {type: integer, required: false, example: 30}
+      bodyType: json
+    added: '2026-11-17'
+    docs_url: https://apify.com/azzouzana/glassdoor-jobs-scraper
+
+  - id: apify.google.maps.reviews
+    capability: google.maps.reviews
+    platform: google
+    scope: any_account
+    method: POST
+    path: /actors/azzouzana~google-maps-reviews-scraper/run-sync-get-dataset-items
+    name: "Scrape Google Maps reviews"
+    summary: "Extract place reviews, star ratings, text, photos, reviewer profiles, and owner replies from Google Maps places"
+    input:
+      queryParams:
+        maxItems: {type: integer, required: false, example: 50}
+        maxTotalChargeUsd: {type: number, required: false, example: 0.5}
+        timeout: {type: integer, required: false, example: 90}
+      body:
+        startUrls: {type: array, required: true, note: "Google Maps place URLs", example: [{"url": "https://maps.google.com/?cid=10281119596374193554"}]}
+        maxItems: {type: integer, required: false, example: 50}
+      bodyType: json
+    added: '2026-11-17'
+    docs_url: https://apify.com/azzouzana/google-maps-reviews-scraper
+
 proposed_capabilities:
   lazada.search.products: "Search Lazada products by keyword across Southeast Asia (SG, MY, VN, TH, PH, ID)"
