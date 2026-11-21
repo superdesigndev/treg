@@ -1183,6 +1183,34 @@ async def test_dataforseo_cost_limit_200_is_never_billed_and_strikes_the_breaker
     get_settings.cache_clear()
 
 
+async def test_serpstat_limits_exceeded_200_is_never_billed_and_strikes_the_breaker(
+        clients: AsyncClient, monkeypatch):
+    """Serpstat's exhausted credit pool is HTTP 200 with JSON-RPC error 32012. Treg's account,
+    not the caller's: released, and a strike on the breaker. The caller gets the typed 503,
+    never the 200 envelope."""
+    from treg.domain.capacity import signatures as S
+    out = b'{"id":"1","error":{"code":32012,"message":"Limits exceeded","data":null}}'
+    assert S.is_exhausting(S.classify("serpstat", 200, None, out))
+    monkeypatch.setenv("TREG_PLATFORM_KEY_SERPSTAT", "PLATFORM-SERPSTAT")
+    monkeypatch.setenv("TREG_PLATFORM_PROVIDERS", "serpstat")
+    get_settings.cache_clear()
+    monkeypatch.setattr(call_service, "relay", _fake_relay(200, out))
+    before = await _balance(clients)
+    r = await clients.post(
+        "/call/serpstat.google.keywords.volume",
+        json={"method": "SerpstatKeywordProcedure.getKeywordsInfo", "id": "1",
+              "params": {"keywords": ["seo"], "se": "g_us"}})
+    assert r.status_code == 503 and r.json()["detail"]["error"] == "provider_capacity_unavailable", r.text
+    assert "32012" not in r.text and "Limits exceeded" not in r.text
+    assert await _balance(clients) == before and await _holds() == []
+    release = next(e for e in await _rows(LedgerEntry) if e.kind == "release")
+    assert release.meta.get("reason") == "capacity_balance"
+    async with session_maker() as db:
+        lock = Lock.from_json(await ratestore.kv_get(db, LOCK_NS, "serpstat"))
+    assert lock.strikes == 1
+    get_settings.cache_clear()
+
+
 async def test_icypeas_out_of_credits_200_overflows_through_orthogonal(
         clients: AsyncClient, overflow_on, monkeypatch):
     monkeypatch.setenv("TREG_PLATFORM_KEY_ICYPEAS", "PLATFORM-ICYPEAS")
