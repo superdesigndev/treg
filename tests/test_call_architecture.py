@@ -317,6 +317,8 @@ _EXPECTED_DERIVED_WRITE_SITES = {
     ("application/call/allowance.py", "_give_back", "money_admission.admit"),
     ("application/call/allowance.py", "_give_back", "store.allowance_drop"),
     ("application/call/allowance.py", "_give_back", "allowance.close_allowance_in_transaction"),
+    # a release that fails after the drop puts the money back on the frozen counter
+    ("application/call/allowance.py", "_give_back", "store.allowance_give_back"),
     ("application/call/reserve.py", "_platform_reserve",
      "allowance_runtime.give_back_for_exact_path"),
     ("application/call/reserve.py", "_platform_reserve", "allowance_runtime.take"),

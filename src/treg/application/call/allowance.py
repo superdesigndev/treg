@@ -446,7 +446,10 @@ async def _give_back(org_id: int, epoch: int) -> int:
     waits for a refill and refusing rather than falling back, so a call short of money never
     queues behind a long admission, and until the counter is emptied nothing has changed: a
     timeout or a cancel before then leaves it as it was. The counter is frozen by the drop, so
-    the next call on the allowance refills it from the balance, the whole queue folded first."""
+    the next call on the allowance refills it from the balance, the whole queue folded first.
+    A release that fails after the drop gives the money back to that frozen counter. A commit
+    that fails proves nothing about whether it landed, so then the money stays in the hold,
+    for the idle sweep to return."""
     store = kv.store()
     async with (
         money_lock(org_id),
@@ -458,8 +461,15 @@ async def _give_back(org_id: int, epoch: int) -> int:
         left = await store.allowance_drop(org_id, epoch)
         if not left:
             return 0
-        await allowance.close_allowance_in_transaction(
-            db, org_id, reason="exact_path_short", release_micro=left, epoch=epoch)
+        try:
+            await allowance.close_allowance_in_transaction(
+                db, org_id, reason="exact_path_short", release_micro=left, epoch=epoch)
+        except BaseException:
+            # Nothing is committed and the hold still has it: back on the counter it came from,
+            # whatever stopped the release. The drop froze the counter, so no call spends it
+            # before a refill has read the balance again.
+            await asyncio.shield(store.allowance_give_back(org_id, epoch, left))
+            raise
         await db.commit()
     return left
 

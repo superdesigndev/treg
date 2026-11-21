@@ -430,9 +430,13 @@ money moved, the purchased-credit gate.
   takes the team's money admission first, for no longer than a call waits for a refill and
   refusing rather than falling back, and only then empties the counter and returns what it
   held, in that same transaction: a timeout or a cancel before then leaves the counter as it
-  was. The call then tries once more; the counter is frozen by the drop, so the next call on
+  was. After the drop, a release that fails (no connection in time, a cancel, a statement that
+  errs) has committed nothing, so the money goes back on the counter it came from, which the
+  drop froze, and no call spends it before a refill has read the balance again; a commit that
+  fails proves nothing about whether it landed, so then the money stays in the hold for the
+  idle sweep. The call then tries once more; the counter is frozen by the drop, so the next call on
   the allowance refills it from the balance, the queue folded first (the refill's own drain,
-  `_drain`, is unchanged). Auto top-up reads the balance too, so for a team with sized refills it
+  `_drain`, keeps its order). Auto top-up reads the balance too, so for a team with sized refills it
   fires while the hold still carries up to that share of the team's money. A counter lost with
   the store leaves its money in the hold while the team keeps calling, out of every call's
   reach (the growth limits count it, so refills stay at the chunk while it is past them), and
@@ -477,7 +481,8 @@ money moved, the purchased-credit gate.
   charge too comes out of the balance. It learns which in the transaction that writes the
   rows, reading the teams' hold rows under a key-share lock first (`allowance.holds_behind`), so
   a close that deletes the hold waits for the write and applies the charge to its own hold, or
-  is done and the charge is known to owe the balance. A fold and a refill only update the row
+  is done and the charge is known to owe the balance. A fold, a refill and a close that keeps
+  the hold (a drain, a give-back) only update the row
   and take the lock an update takes (NO KEY UPDATE), which that key-share lock does not
   conflict with: PostgreSQL lets a later sharer pass a waiting exclusive lock, so a fold asking
   for the full row lock under a steady stream of charge writes would wait for a gap between

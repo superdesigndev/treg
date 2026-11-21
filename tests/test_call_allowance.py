@@ -601,6 +601,22 @@ async def test_a_close_that_deletes_the_hold_waits_for_a_charge_write_in_progres
         assert await db.get(Hold, allowance.allowance_id(org_id)) is None
 
 
+@pytest.mark.skipif(infra_db._is_sqlite, reason="needs row locks")
+async def test_a_release_that_keeps_the_hold_does_not_wait_for_a_charge_write_in_progress(
+        org_id, store):
+    """A drain or a give-back returns part of the hold and keeps the row, as a fold and a refill
+    do: the charge the write found its hold for is still applied to that hold."""
+    epoch = await runtime.take(org_id, 600)
+    async with session_maker() as writer:
+        assert await allowance.holds_behind(writer, [org_id]) == {org_id: epoch}
+        async with session_maker() as db:
+            closed = await asyncio.wait_for(allowance.close_allowance_in_transaction(
+                db, org_id, reason="test", release_micro=300, epoch=epoch), 5)
+            await db.commit()
+        assert (closed.released_micro, closed.remaining_micro) == (300, CHUNK - 300)
+    assert await _state(org_id) == (GRANT - CHUNK + 300, CHUNK - 300)
+
+
 async def test_deleting_a_team_locks_its_allowance_hold_before_its_queued_charges(org_id, store):
     """The order the charge writer uses. The other way round, a writer holding the hold while it
     writes a charge again and a deletion that has deleted that charge wait on each other."""
@@ -2432,6 +2448,39 @@ async def test_a_give_back_is_not_kept_waiting_by_a_refill_that_holds_the_lease(
     assert time.monotonic() - began < 0.1, "asked once, not waited for"
     assert noted.names == ["allowance_state", "acquire_lease"]
     assert store.counters[org_id] == before
+
+
+@pytest.mark.parametrize("stops", ["error", "cancel"])
+async def test_a_release_that_fails_after_the_drop_puts_the_money_back_on_the_frozen_counter(
+        org_id, store, paced, monkeypatch, stops):
+    """The drop has emptied and frozen the counter, and then the release does not commit: no
+    connection in time, a cancel, a statement that errs. The money goes back on that counter,
+    which stays frozen, so no call spends it before a refill has read the balance again; the
+    next call on the allowance has that refill, and is served."""
+    before = await _counter_of(org_id, store)
+    close, releasing = allowance.close_allowance_in_transaction, asyncio.Event()
+
+    async def fails(*args, **kwargs):
+        releasing.set()
+        if stops == "error":
+            raise ConnectionError("no connection in time")
+        await asyncio.Event().wait()
+
+    monkeypatch.setattr(allowance, "close_allowance_in_transaction", fails)
+    giving = asyncio.create_task(runtime.give_back_for_exact_path(org_id, 500_000))
+    await releasing.wait()
+    if stops == "cancel":
+        giving.cancel()
+        with pytest.raises(asyncio.CancelledError):
+            await giving
+    else:
+        assert await giving is False
+    counter = store.counters[org_id]
+    assert counter["avail"] == before["avail"] and counter["frozen"] != counter["thawed"]
+    assert await _given_back(org_id) == [] and store.leases == {}
+    assert await _state(org_id) == (GRANT - CHUNK, CHUNK), "the hold still has it"
+    monkeypatch.setattr(allowance, "close_allowance_in_transaction", close)
+    assert await runtime.take(org_id, 100_000), "a refill read the balance, and thawed it"
 
 
 @pytest.mark.parametrize("failing", ["allowance_state", "acquire_lease"])
