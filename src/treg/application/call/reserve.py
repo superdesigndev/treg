@@ -504,7 +504,8 @@ async def _platform_reserve(mk: MarketplaceCall, caller: Caller, meta: CallMeta 
     except ledger.InsufficientBalance as exc:
         if refused_org is not None:
             billing.maybe_schedule_autotopup(refused_org)
-        if retry_short and await allowance_runtime.give_back_for_exact_path(caller.org_id):
+        if retry_short and await allowance_runtime.give_back_for_exact_path(
+                caller.org_id, exc.required_micro - exc.balance_micro):
             return await _platform_reserve(
                 mk, caller, meta, call_ref, allow_holdless=allow_holdless, retry_short=False)
         wallet, alt = wallet_and_alternative(mk)

@@ -403,7 +403,8 @@ from its counter over that many seconds instead (at most twice what it took sinc
 refill), never below the chunk; the allowance hold then carries at most
 `TREG_MONEY_ALLOWANCE_REFILL_MAX_MICRO`, at most `TREG_MONEY_ALLOWANCE_REFILL_BALANCE_PERCENT` of
 the team's balance and at most that share of what its daily cap has left, and a call on the
-exact path that the balance alone cannot pay for gets the counter back first. A window longer
+exact path that the balance alone cannot pay for gets the counter back first when it holds
+enough to make up the difference. A window longer
 than `TREG_MONEY_ALLOWANCE_FRESH_S` buys nothing more. Processes started with it back at `0`
 refill to the chunk again, with nothing else to undo, and processes of different settings can
 run side by side. Removing an id

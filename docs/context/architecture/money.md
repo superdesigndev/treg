@@ -421,11 +421,18 @@ money moved, the purchased-credit gate.
   money the team does not have.
 
   Money set aside this way is out of the balance's sight. A call on the exact path that the
-  balance alone cannot pay for (`reserve_in_transaction` refuses it) therefore has the team's
-  counter given back first (`give_back_for_exact_path`: under the team's lease, waited for as
-  long as a call waits for a refill, the existing drain) and tries once more; the counter is
-  frozen by the drain, so the next call on the allowance refills it from the balance, the
-  queue folded first. Auto top-up reads the balance too, so for a team with sized refills it
+  balance alone cannot pay for (`reserve_in_transaction` refuses it) therefore asks for the
+  team's counter back (`give_back_for_exact_path`, handed what the call is short of), at as
+  little cost to a refusal as it can. It reads the counter first, without the team's lease,
+  and leaves it alone unless it holds at least the shortfall, so a team out of money that keeps
+  calling costs the store one read per refusal. It asks for the team's lease once: a refill or
+  a fold holding it means the call is refused as before, not kept waiting. Then `_give_back`
+  takes the team's money admission first, for no longer than a call waits for a refill and
+  refusing rather than falling back, and only then empties the counter and returns what it
+  held, in that same transaction: a timeout or a cancel before then leaves the counter as it
+  was. The call then tries once more; the counter is frozen by the drop, so the next call on
+  the allowance refills it from the balance, the queue folded first (the refill's own drain,
+  `_drain`, is unchanged). Auto top-up reads the balance too, so for a team with sized refills it
   fires while the hold still carries up to that share of the team's money. A counter lost with
   the store leaves its money in the hold while the team keeps calling, out of every call's
   reach (the growth limits count it, so refills stay at the chunk while it is past them), and

@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import asyncio
+import contextlib
 import os
 import time
 from datetime import datetime, timedelta
@@ -2390,6 +2391,104 @@ async def test_an_exact_path_call_the_balance_alone_cannot_pay_for_gets_the_coun
         await call_reserve._platform_reserve(
             _call(org_id, estimate=1_500_000), caller, call_ref="exact-2")
     assert refused.value.status_code == 402, "nothing left to give back: refused as before"
+
+
+async def _counter_of(org_id: int, store, paced_spend: int = 0) -> dict:
+    """A counter of 1_000_000 built by a refill, less `paced_spend`; what it holds now."""
+    assert await runtime._refill(org_id, 0, 0)
+    if paced_spend:
+        assert await runtime.take(org_id, paced_spend)
+    return dict(store.counters[org_id])
+
+
+async def _given_back(org_id: int) -> list[int]:
+    async with session_maker() as db:
+        return [entry.amount_micro for entry in await ledger.entries_of(db, org_id, limit=100)
+                if entry.kind == "release" and entry.meta.get("allowance")]
+
+
+@pytest.mark.parametrize("held", [None, 100_000])
+async def test_a_refusal_the_counter_cannot_make_up_reads_it_once_and_asks_for_no_lease(
+        org_id, store, paced, monkeypatch, held):
+    """No counter, or one holding less than the call is short of: one read, then the call is
+    refused as before. A team out of money that keeps calling costs the store nothing more."""
+    if held is not None:
+        await _counter_of(org_id, store, paced_spend=CHUNK - held)
+    noted = _Asked(store)
+    monkeypatch.setattr(kv, "store", lambda: noted)
+    assert await runtime.give_back_for_exact_path(org_id, 500_000) is False
+    assert noted.names == ["allowance_state"]
+    assert store.counters.get(org_id, {}).get("avail", 0) == (held or 0)
+
+
+async def test_a_give_back_is_not_kept_waiting_by_a_refill_that_holds_the_lease(
+        org_id, store, paced, monkeypatch):
+    before = await _counter_of(org_id, store)
+    store.leases[runtime.money_key(org_id)] = "a refill"
+    noted = _Asked(store)
+    monkeypatch.setattr(kv, "store", lambda: noted)
+    began = time.monotonic()
+    assert await runtime.give_back_for_exact_path(org_id, 500_000) is False
+    assert time.monotonic() - began < 0.1, "asked once, not waited for"
+    assert noted.names == ["allowance_state", "acquire_lease"]
+    assert store.counters[org_id] == before
+
+
+@pytest.mark.parametrize("failing", ["allowance_state", "acquire_lease"])
+async def test_a_store_that_fails_a_give_back_leaves_the_call_refused_as_before(
+        org_id, store, paced, monkeypatch, failing):
+    """A refusal is never turned into an error of the give-back's own."""
+    caller = await _caller(org_id)
+    before = await _counter_of(org_id, store)
+
+    async def broken(*args, **kwargs):
+        raise ConnectionError("the store went away")
+
+    monkeypatch.setattr(store, failing, broken)
+    with pytest.raises(ReservationFailed) as refused:
+        await call_reserve._platform_reserve(
+            _call(org_id, estimate=4_200_000), caller, call_ref="short")
+    assert refused.value.status_code == 402
+    assert store.counters[org_id] == before and store.leases == {}
+
+
+def _admission(gate):
+    @contextlib.asynccontextmanager
+    async def admit(org_ids, **named):
+        await gate()
+        yield
+    return admit
+
+
+async def test_a_give_back_that_does_not_get_the_teams_admission_in_time_changes_nothing(
+        org_id, store, paced, monkeypatch):
+    before = await _counter_of(org_id, store)
+
+    async def waited_out():
+        raise runtime.money_admission.AdmissionTimeout("wait_timeout")
+
+    monkeypatch.setattr(runtime.money_admission, "admit", _admission(waited_out))
+    assert await runtime.give_back_for_exact_path(org_id, 500_000) is False
+    assert store.counters[org_id] == before and store.leases == {}
+    assert await _given_back(org_id) == []
+
+
+async def test_a_give_back_cancelled_before_the_counter_is_emptied_changes_nothing(
+        org_id, store, paced, monkeypatch):
+    before, waiting = await _counter_of(org_id, store), asyncio.Event()
+
+    async def forever():
+        waiting.set()
+        await asyncio.Event().wait()
+
+    monkeypatch.setattr(runtime.money_admission, "admit", _admission(forever))
+    giving = asyncio.create_task(runtime.give_back_for_exact_path(org_id, 500_000))
+    await waiting.wait()
+    giving.cancel()
+    with pytest.raises(asyncio.CancelledError):
+        await giving
+    assert store.counters[org_id] == before and store.leases == {}
+    assert await _given_back(org_id) == []
 
 
 async def test_with_the_window_off_an_exact_path_call_short_of_money_is_refused_as_before(

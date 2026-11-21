@@ -9,7 +9,9 @@ Opt in with TREG_TEST_DB_URL and TREG_TEST_KV_URL naming disposable local instan
 from __future__ import annotations
 
 import asyncio
+import contextvars
 import os
+import time
 from datetime import timedelta
 from urllib.parse import urlsplit
 from uuid import uuid4
@@ -22,6 +24,7 @@ from treg.application.call import allowance as runtime
 from treg.application.call import reserve as call_reserve
 from treg.application.call import settle as call_settle
 from treg.application.call.resolve import MarketplaceCall
+from treg.application.call.types import ReservationFailed
 from treg.config import get_settings
 from treg.domain import money as ledger
 from treg.domain.identity.access import Caller
@@ -64,12 +67,13 @@ async def store(monkeypatch):
     await real.aclose()
 
 
-async def _team(monkeypatch, teams: list[int], name: str) -> tuple[int, Caller]:
+async def _team(monkeypatch, teams: list[int], name: str,
+                grant: int = GRANT) -> tuple[int, Caller]:
     async with session_maker() as db:
         org = Org(id=int(uuid4().hex[:7], 16) + 1, name=name, slug=f"{name}-{uuid4().hex}")
         db.add(org)
         await db.flush()
-        await ledger.grant(db, org.id, amount_micro=GRANT)
+        await ledger.grant(db, org.id, amount_micro=grant)
         user = User(email=f"{uuid4().hex}@example.invalid")
         db.add(user)
         await db.flush()
@@ -211,3 +215,95 @@ async def test_a_refill_whose_read_stalls_holds_nothing_up_once_the_store_answer
     assert [started for started, _, served in results if started >= 6.5 and not served] == []
     assert any(not served for _, _, served in results), "the calls that needed a refill left"
     await _books(real, team, results, served_at_least=0.5)
+
+
+class _Process:
+    """One process's store: its own client, noting what each give-back asks of it."""
+
+    def __init__(self, url: str, noting: contextvars.ContextVar) -> None:
+        self.client, self._noting = kv.RedisStore(url), noting
+
+    def __getattr__(self, name):
+        operation = getattr(self.client, name)
+        if not callable(operation):
+            return operation
+
+        async def noted(*args, **kwargs):
+            if (names := self._noting.get()) is not None:
+                names.append(name)
+            return await operation(*args, **kwargs)
+        return noted
+
+
+async def test_refusals_of_a_team_out_of_money_cost_one_store_read_each(store, monkeypatch):
+    """A team that has run out of money keeps calling from three processes at once, on the
+    exact path and on its allowance, which keeps asking for a refill it cannot have. Each
+    refusal reads the team's counter once, asks for no lease and waits for nothing: a refusal
+    costs what it did before, plus one read."""
+    real, teams = store
+    monkeypatch.setattr(get_settings(), "money_allowance_refill_window_s", 30)
+    team, caller = await _team(monkeypatch, teams, "broke", grant=50_000)
+    process, noting = contextvars.ContextVar("process", default=0), contextvars.ContextVar(
+        "noting", default=None)
+    processes = [_Process(os.environ["TREG_TEST_KV_URL"], noting) for _ in range(3)]
+    monkeypatch.setattr(kv, "store", lambda: processes[process.get()])
+    give_back, asked = runtime.give_back_for_exact_path, []
+
+    async def timed(org_id, short_micro):
+        names, began = [], time.monotonic()
+        token = noting.set(names)
+        try:
+            return await give_back(org_id, short_micro)
+        finally:
+            noting.reset(token)
+            asked.append((names, time.monotonic() - began))
+
+    monkeypatch.setattr(runtime, "give_back_for_exact_path", timed)
+
+    async def calls(index: int) -> None:
+        process.set(index)
+        for n in range(20):
+            with pytest.raises(ReservationFailed) as refused:
+                await call_reserve._platform_reserve(
+                    _call(team), caller, call_ref=f"broke-{index}-{n}",
+                    allow_allowance=n % 2 == 0)
+            assert refused.value.status_code == 402
+            await asyncio.sleep(0.005)
+
+    try:
+        await asyncio.gather(*(calls(index) for index in range(3)))
+    finally:
+        for each in processes:
+            await each.client.aclose()
+    assert len(asked) == 60 and {tuple(names) for names, _ in asked} == {("allowance_state",)}
+    assert max(waited for _, waited in asked) < 0.25, "no lease waited for"
+    async with session_maker() as db:
+        assert await ledger.balance_of(db, team) == 50_000
+        assert await ledger.open_holds_of(db, team) == []
+
+
+async def test_a_give_back_that_cannot_have_the_teams_admission_in_time_changes_nothing(
+        store, monkeypatch):
+    """Another process holds the team's money admission. The give-back waits for it no longer
+    than a call waits for a refill, and the counter, which it empties only once admitted, still
+    offers what it held."""
+    real, teams = store
+    monkeypatch.setattr(get_settings(), "money_allowance_refill_window_s", 30)
+    team, _ = await _team(monkeypatch, teams, "admission", grant=5_000_000)
+    assert await runtime._refill(team, 0, 0)
+    before = await real.allowance_state(team)
+    admission = f"money-admission:org:{team}"
+    assert await real.acquire_lease(admission, "another process", 10_000) == "acquired"
+    try:
+        began = time.monotonic()
+        assert await runtime.give_back_for_exact_path(team, 500_000) is False
+        assert time.monotonic() - began < runtime._REFILL_WAIT_S + 0.5
+    finally:
+        await real.release_lease(admission, "another process")
+    assert await real.allowance_state(team) == before
+    assert await real.acquire_lease(runtime.money_key(team), "probe", 1_000) == "acquired"
+    await real.release_lease(runtime.money_key(team), "probe")
+    async with session_maker() as db:
+        released = [entry for entry in await ledger.entries_of(db, team, limit=100)
+                    if entry.kind == "release"]
+    assert released == []

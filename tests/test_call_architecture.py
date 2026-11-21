@@ -168,7 +168,8 @@ _DATAPLANE_DERIVED_WRITES = {
         (call_allowance._refill, "allowance.refill_allowance_in_transaction"),
         (call_allowance._drain, "allowance.close_allowance_in_transaction"),
         (call_allowance._fold_backlog, "allowance.fold_charges_in_transaction"),
-        (call_allowance.give_back_for_exact_path, "_drain"),
+        (call_allowance.give_back_for_exact_path, "_give_back"),
+        (call_allowance._give_back, "allowance.close_allowance_in_transaction"),
         (reserve._platform_reserve, "allowance_runtime.give_back_for_exact_path"),
     ),
     # What a call spent from the allowance is queued as a `callcharge` row, a batch per insert,
@@ -309,9 +310,13 @@ _EXPECTED_DERIVED_WRITE_SITES = {
     ("application/call/allowance.py", "_take", "store.acquire_lease"),
     ("application/call/allowance.py", "_take", "store.allowance_take"),
     ("application/call/allowance.py", "_take", "store.release_lease"),
-    # an exact-path call the balance alone cannot pay for gets the sized counter back first
+    # an exact-path call the balance alone cannot pay for gets the sized counter back first:
+    # the team's lease asked for once, then admission, the drop and the release in one session
     ("application/call/allowance.py", "give_back_for_exact_path", "store.acquire_lease"),
     ("application/call/allowance.py", "give_back_for_exact_path", "store.release_lease"),
+    ("application/call/allowance.py", "_give_back", "money_admission.admit"),
+    ("application/call/allowance.py", "_give_back", "store.allowance_drop"),
+    ("application/call/allowance.py", "_give_back", "allowance.close_allowance_in_transaction"),
     ("application/call/reserve.py", "_platform_reserve",
      "allowance_runtime.give_back_for_exact_path"),
     ("application/call/reserve.py", "_platform_reserve", "allowance_runtime.take"),

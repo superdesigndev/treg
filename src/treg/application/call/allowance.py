@@ -383,15 +383,15 @@ async def _fold_backlog(org_id: int) -> None:
         log.error("folding the queued charges of org %s failed", org_id, exc_info=True)
 
 
-async def _drain(org_id: int, epoch: int, reason: str) -> int:
-    """Empty the counter and return what it held to the balance; what it held, 0 for nothing.
-    The hold stays, with what calls already admitted may still charge. Both steps name the hold
-    by its epoch: between them the hold can be closed and another opened, and what one counter
-    held is not the other's to return."""
+async def _drain(org_id: int, epoch: int, reason: str) -> None:
+    """Empty the counter and return what it held to the balance. The hold stays, with what calls
+    already admitted may still charge. Both steps name the hold by its epoch: between them the
+    hold can be closed and another opened, and what one counter held is not the other's to
+    return."""
     store = kv.store()
     left = await store.allowance_drop(org_id, epoch)
     if not left:
-        return 0
+        return
     async with (
         money_lock(org_id),
         money_admission.admit(money_admission.require_balance_orgs([org_id]), operation="release"),
@@ -400,40 +400,68 @@ async def _drain(org_id: int, epoch: int, reason: str) -> int:
         await allowance.close_allowance_in_transaction(
             db, org_id, reason=reason, release_micro=left, epoch=epoch)
         await db.commit()
-    return left
 
 
-async def give_back_for_exact_path(org_id: int) -> bool:
+async def give_back_for_exact_path(org_id: int, short_micro: int) -> bool:
     """Return what a team's counter holds to its balance, for a call on the exact path that the
-    balance alone could not pay for: money set aside for the allowance is out of that balance's
-    sight. True when money went back, and the call may try once more. Only while refills are
-    sized to the team's spend, which can set aside much more than a chunk.
+    balance alone could not pay for, by `short_micro`: money set aside for the allowance is out
+    of that balance's sight. True when that much went back, and the call may try once more.
+    Only while refills are sized to the team's spend, which can set aside much more than a
+    chunk.
 
-    Under the team's lease, like every allowance money session, waited for as long as a call
-    waits for a refill. The counter is frozen by the drain, so the next call on the allowance
-    refills it from the balance, the whole queue folded first."""
+    It costs a refusal as little as it can. The counter is read first, without the team's
+    lease, and a counter that cannot make up the difference is left alone. The team's lease is
+    asked for once: held by a refill or a fold, the call is refused as before, not kept
+    waiting. Then `_give_back`."""
     if not (_sizing() and enabled_for(org_id)):
         return False
     store, key, token = kv.store(), money_key(org_id), uuid.uuid4().hex
-    deadline = time.monotonic() + _REFILL_WAIT_S
-    while (acquired := await store.acquire_lease(key, token, _REFILL_LEASE_MS)) != "acquired":
-        if acquired == "unavailable" or time.monotonic() > deadline:
-            return False
-        await asyncio.sleep(0.01 + random.random() * 0.02)
+    leased = False
+    # Whatever fails here, the call is refused as it would have been: never an error of its own.
     try:
         state = await store.allowance_state(org_id)
-        if state is None or not state[0] or not state[3]:
+        if state is None or not state[3] or state[0] < max(1, short_micro):
             return False
-        returned = await _drain(org_id, state[3], "exact_path_short")
+        leased = await store.acquire_lease(key, token, _REFILL_LEASE_MS) == "acquired"
+        if not leased:
+            return False
+        returned = await _give_back(org_id, state[3])
+    except money_admission.AdmissionTimeout:
+        return False
     except Exception:
         log.error("returning the allowance of org %s for the exact path failed", org_id,
                   exc_info=True)
         return False
     finally:
-        await store.release_lease(key, token)
+        if leased:
+            await store.release_lease(key, token)
     if returned:
         log.info("allowance_given_back org_id=%s returned=%s", org_id, returned)
-    return returned > 0
+    return returned >= max(1, short_micro)
+
+
+async def _give_back(org_id: int, epoch: int) -> int:
+    """Empty the counter of `epoch` and return what it held to the balance, in one money
+    session; what it held. The team's money admission is taken first, for no longer than a call
+    waits for a refill and refusing rather than falling back, so a call short of money never
+    queues behind a long admission, and until the counter is emptied nothing has changed: a
+    timeout or a cancel before then leaves it as it was. The counter is frozen by the drop, so
+    the next call on the allowance refills it from the balance, the whole queue folded first."""
+    store = kv.store()
+    async with (
+        money_lock(org_id),
+        money_admission.admit(
+            money_admission.require_balance_orgs([org_id]), operation="release",
+            max_wait_s=_REFILL_WAIT_S, refuse_on_timeout=True),
+        money_session(session_maker()) as db,
+    ):
+        left = await store.allowance_drop(org_id, epoch)
+        if not left:
+            return 0
+        await allowance.close_allowance_in_transaction(
+            db, org_id, reason="exact_path_short", release_micro=left, epoch=epoch)
+        await db.commit()
+    return left
 
 
 class _Written(NamedTuple):
