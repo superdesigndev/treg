@@ -7,8 +7,8 @@ source:
 # Prepaid pay-per-job balance, billed by what comes back: a job without its description, a job with a 300 character
 # description preview (separate routes, so each endpoint has one price), a count. Every response, an empty page and a
 # 4xx included, carries the exact charge in X-Cost-USD; treg settles on it. Full descriptions are on the rate card but
-# answer 403 outside_plan on pay-per-job keys, as do company lookups, counts grouped by company and description
-# searches, so none of them is listed. Probe: GET /v1/balance is free; a bad or missing key answers 401.
+# answer 403 outside_plan on pay-per-job keys, as do counts grouped by company and description searches, so none of
+# them is listed. A salary benchmark and a skills breakdown are one price a call; a company profile is priced per company found. Probe: GET /v1/balance is free; a bad or missing key answers 401.
 limits: "Up to 100 jobs per call and 10 title keywords per search; a search stops at 20 s. A funded account may run 30 calls at once (vendor docs). An unfunded key on the sign-up credit is held to 2 calls at once and 10 a minute until money is added (HTTP 429 limit_reached with Retry-After). HTTP 402 insufficient_balance when the prepaid balance is empty; a page the balance can only partly pay for is trimmed to fit."
 pricing_url: https://jobs.mobiusengine.ai/?utm_source=treg&utm_medium=pricing#pricing
 defaults:
@@ -406,6 +406,133 @@ endpoints:
         include_internships: {"type": "boolean", "required": false, "note": "Internships and co-ops are included by default; false leaves them out"}
     test_request: {body: {title: ["software engineer"], countries: ["US"]}}
     price: {value: '0.0036', currency: USD, unit: call, note: "$0.0036 a call however many jobs match."}
+    docs_url: https://jobs.mobiusengine.ai/docs?utm_source=treg&utm_medium=listing
+
+  - id: mobiusengine-jobs.jobs.salary.benchmark
+    verified: '2026-11-16'
+    added: '2026-11-16'
+    example_response: examples/mobiusengine-jobs.jobs.salary.benchmark.json
+    domain: jobs
+    capability: jobs.salary.benchmark
+    platform: jobs
+    scope: any_account
+    method: GET
+    path: /v1/jobs/salary
+    name: "Salary benchmark for a job search, from posted pay"
+    summary: "Posted-pay percentiles (p10 to p90 of each job's annual range midpoint) and the typical posted floor and ceiling, per currency, over every open posting that matches and states pay, with the sample size and a confidence tier. Estimates are never used."
+    note: "company is a substring match on the company name or board key, not an exact company: 'ramp' also returns LiveRamp and OnRamp jobs. Add exclude_company for the near-namesakes. Pay with no stated currency is left out. confidence is high from 200 jobs with pay, medium from 30, else low. Takes the same filters as a job search."
+    input:
+      queryParams:
+        title: {"type": "array[string]", "required": false, "note": "title has ANY of these as words, case and punctuation ignored; the last word also finds longer words ('Product Lead' finds 'Product Leader'); up to 10", "example": "Product Manager"}
+        title_exclude: {"type": "array[string]", "required": false, "note": "Drop jobs whose title contains ANY of these", "example": "Director"}
+        title_whole_words: {"type": "boolean", "required": false, "note": "Match title and title_exclude as whole words only: the last word is not continued ('Lead' does not find 'Leader'). Words are always whole: 'CTO' never finds 'Director', excluding 'IT' keeps 'Security Analyst'"}
+        company: {"type": "array[string]", "required": false, "note": "company name or job-board key CONTAINS any of these (substring, case-insensitive): 'ramp' also finds LiveRamp and OnRamp, 'nationwide' also finds Nationwide Children's Hospital. Pair it with exclude_company to drop near-namesakes", "example": "Stripe"}
+        exclude_company: {"type": "array[string]", "required": false, "note": "drop companies whose name or board key contains any of these (substring); the fix for near-namesakes a company filter catches", "example": "Amazon"}
+        sources: {"type": "array[string]", "enum": ["workday", "greenhouse", "lever", "ashby", "smartrecruiters", "oraclecloud", "successfactors", "icims", "workable", "bamboohr", "teamtailor", "paylocity", "adp", "paycom", "ukg", "jazzhr", "dayforce", "recruitee", "breezy", "personio", "jobvite", "pinpoint", "rippling", "applicantpro", "peopleadmin", "isolvedhire", "usajobs", "gem", "governmentjobs", "schooljobs", "taleo", "manatal", "jsonld_sitemap", "zohorecruit", "comeet", "jobscore", "ycombinator"], "required": false, "note": "Only jobs from these applicant-tracking systems"}
+        exclude_sources: {"type": "array[string]", "required": false, "note": "Drop jobs from these applicant-tracking systems, e.g. ['manatal'] (its boards are mostly recruiting agencies)", "example": "manatal"}
+        industry: {"type": "array[string]", "required": false, "note": "Company industry contains ANY (LinkedIn industry names)", "example": "Software Development"}
+        exclude_industry: {"type": "array[string]", "required": false, "note": "Drop companies whose industry contains ANY of these. Jobs whose industry is unknown are kept", "example": "Staffing and Recruiting"}
+        skills: {"type": "array[string]", "required": false, "note": "The job lists ANY of these skills (whole skill, case-insensitive)", "example": "Python"}
+        company_size: {"type": "array[string]", "enum": ["1", "2-10", "11-50", "51-200", "201-500", "501-1000", "1001-5000", "5001-10000", "10000+"], "required": false, "note": "Company headcount bucket(s). Unknown size is excluded"}
+        exclude_agencies: {"type": "boolean", "required": false, "note": "Drop staffing and recruiting agencies"}
+        sector: {"type": "array[string]", "enum": ["AGRICULTURE", "CONSTRUCTION_AND_REAL_ESTATE", "CONSUMER_GOODS", "EDUCATION", "ENERGY", "FINANCIAL_SERVICES", "GOVERNMENT", "HARDWARE_AND_ELECTRONICS", "HEALTHCARE", "HOSPITALITY", "INSURANCE", "MANUFACTURING", "MEDIA_AND_ENTERTAINMENT", "NONPROFIT", "OTHER", "PHARMA_AND_BIOTECH", "PROFESSIONAL_SERVICES", "RETAIL", "SOFTWARE", "STAFFING", "TELECOMMUNICATIONS", "TRANSPORTATION_AND_LOGISTICS"], "required": false, "note": "Company sector(s), from MobiusEngine's company profile; a job whose company has no profile has none", "example": "SOFTWARE"}
+        company_kind: {"type": "array[string]", "enum": ["CONSULTING", "EDUCATION", "GOVERNMENT", "HEALTH_PROVIDER", "NONPROFIT", "OPERATING_COMPANY", "STAFFING_AGENCY"], "required": false, "note": "Kind of employer: OPERATING_COMPANY, CONSULTING, STAFFING_AGENCY …", "example": "OPERATING_COMPANY"}
+        customer: {"type": "array[string]", "enum": ["B2B", "B2C", "B2G", "BOTH"], "required": false, "note": "Who the company sells to", "example": "B2B"}
+        ownership: {"type": "array[string]", "enum": ["EDUCATION", "GOVERNMENT", "NONPROFIT", "PRIVATE", "PUBLIC"], "required": false, "note": "PUBLIC, PRIVATE, NONPROFIT … Companies with unknown ownership are excluded", "example": "PUBLIC"}
+        work_mode: {"type": "array[string]", "enum": ["On-site", "Hybrid", "Remote OK", "Remote Solely"], "required": false, "note": "ANY of: On-site (the posting never mentions remote, hybrid or work from home, or its text says the job is on site), Remote OK (it mentions remote anywhere and its text does not say the job is hybrid or on site), Remote Solely (title or location says remote, same exception), Hybrid (title or location says hybrid, or its text does). All four = no filter"}
+        exclude_work_mode: {"type": "array[string]", "enum": ["On-site", "Hybrid", "Remote OK", "Remote Solely"], "required": false, "note": "Drop jobs matching ANY of these work modes (same rules as work_mode). ['Remote Solely'] keeps every job someone could go in to"}
+        taxonomies: {"type": "array[string]", "enum": ["Technology", "Healthcare", "Management & Leadership", "Finance & Accounting", "Human Resources", "Sales", "Marketing", "Customer Service & Support", "Education", "Legal", "Engineering", "Science & Research", "Trades", "Construction", "Manufacturing", "Logistics", "Creative & Media", "Hospitality", "Retail", "Data & Analytics", "Software", "Energy", "Agriculture", "Government & Public Sector", "Art & Design", "Transportation", "Consulting"], "required": false, "note": "job category; any one of the job's function, its company's sector or title words is enough", "example": "Data & Analytics"}
+        education: {"type": "array[string]", "enum": ["high school", "associate degree", "bachelor degree", "professional certificate", "postgraduate degree"], "required": false, "note": "The job's requirements ask for ANY of these", "example": "bachelor degree"}
+        visa: {"type": "string", "enum": ["only", "exclude"], "required": false, "note": "only = the job offers visa sponsorship; exclude = it does not"}
+        remote_friendly: {"type": "boolean", "required": false, "note": "true = the posting mentions remote/hybrid/WFH anywhere; false = it does not. Prefer work_mode"}
+        countries: {"type": "array[string]", "required": false, "note": "ISO-3166 alpha-2 country codes", "example": "US"}
+        locations: {"type": "array[string]", "required": false, "note": "ANY of these places. Each is 'City, State', 'State' or 'City'; every comma part must match. US states in full or as postal codes", "example": "Chicago, Illinois"}
+        exclude_locations: {"type": "array[string]", "required": false, "note": "Drop jobs in ANY of these places (same rules as locations)", "example": "New York"}
+        experience: {"type": "array[string]", "enum": ["0-2", "2-5", "5-10", "10+"], "required": false, "note": "Years of experience asked for. Postings that do not say are kept"}
+        employment_type: {"type": "array[string]", "enum": ["FULL_TIME", "PART_TIME", "CONTRACTOR", "TEMPORARY", "INTERN"], "required": false, "note": "Employment type. Postings that do not say are kept"}
+        min_salary_annual: {"type": "number", "required": false, "min": 0, "note": "Published annual pay at least this much. Postings that publish no pay are kept; add has_salary=true to drop them. Estimates never count", "example": 120000}
+        has_salary: {"type": "boolean", "required": false, "note": "Only jobs whose posting states pay"}
+        posted_within_days: {"type": "integer", "required": false, "min": 1, "max": 365, "note": "Posted (or first seen) in the last N days, today included", "example": 7}
+        posted_since: {"type": "string", "required": false, "note": "Posted (or first seen) on or after this date, YYYY-MM-DD"}
+        posted_before: {"type": "string", "required": false, "note": "Posted (or first seen) before this date, YYYY-MM-DD"}
+        include_internships: {"type": "boolean", "required": false, "note": "Internships and co-ops are included by default; false leaves them out"}
+    test_request: {queryParams: {title: "data engineer", countries: "US"}}
+    price: {value: '0.0053', currency: USD, unit: call, note: "$0.0053 a call, an answer with no posted pay included; errors are free."}
+    miss: {when: {path: response.salaries, op: empty}}
+    docs_url: https://jobs.mobiusengine.ai/docs?utm_source=treg&utm_medium=listing
+
+  - id: mobiusengine-jobs.companies.tech_stack
+    verified: '2026-11-16'
+    added: '2026-11-16'
+    example_response: examples/mobiusengine-jobs.companies.tech_stack.json
+    domain: jobs
+    capability: companies.tech_stack
+    platform: companies
+    scope: any_account
+    method: GET
+    path: /v1/jobs/skills
+    name: "Skills and technologies a company's job postings name"
+    summary: "The skills and technologies named across a company's open job postings (company=...), or across any job search, most named first, each with how many postings name it."
+    note: "company is a substring match on the company name or board key, not an exact company: 'ramp' also returns LiveRamp and OnRamp jobs. Add exclude_company for the near-namesakes. One count per posting, case ignored; jobs_with_skills is how many matching postings name any skill."
+    input:
+      queryParams:
+        title: {"type": "array[string]", "required": false, "note": "title has ANY of these as words, case and punctuation ignored; the last word also finds longer words ('Product Lead' finds 'Product Leader'); up to 10", "example": "Product Manager"}
+        title_exclude: {"type": "array[string]", "required": false, "note": "Drop jobs whose title contains ANY of these", "example": "Director"}
+        title_whole_words: {"type": "boolean", "required": false, "note": "Match title and title_exclude as whole words only: the last word is not continued ('Lead' does not find 'Leader'). Words are always whole: 'CTO' never finds 'Director', excluding 'IT' keeps 'Security Analyst'"}
+        company: {"type": "array[string]", "required": false, "note": "company name or job-board key CONTAINS any of these (substring, case-insensitive): 'ramp' also finds LiveRamp and OnRamp, 'nationwide' also finds Nationwide Children's Hospital. Pair it with exclude_company to drop near-namesakes", "example": "Stripe"}
+        exclude_company: {"type": "array[string]", "required": false, "note": "drop companies whose name or board key contains any of these (substring); the fix for near-namesakes a company filter catches", "example": "Amazon"}
+        sources: {"type": "array[string]", "enum": ["workday", "greenhouse", "lever", "ashby", "smartrecruiters", "oraclecloud", "successfactors", "icims", "workable", "bamboohr", "teamtailor", "paylocity", "adp", "paycom", "ukg", "jazzhr", "dayforce", "recruitee", "breezy", "personio", "jobvite", "pinpoint", "rippling", "applicantpro", "peopleadmin", "isolvedhire", "usajobs", "gem", "governmentjobs", "schooljobs", "taleo", "manatal", "jsonld_sitemap", "zohorecruit", "comeet", "jobscore", "ycombinator"], "required": false, "note": "Only jobs from these applicant-tracking systems"}
+        exclude_sources: {"type": "array[string]", "required": false, "note": "Drop jobs from these applicant-tracking systems, e.g. ['manatal'] (its boards are mostly recruiting agencies)", "example": "manatal"}
+        industry: {"type": "array[string]", "required": false, "note": "Company industry contains ANY (LinkedIn industry names)", "example": "Software Development"}
+        exclude_industry: {"type": "array[string]", "required": false, "note": "Drop companies whose industry contains ANY of these. Jobs whose industry is unknown are kept", "example": "Staffing and Recruiting"}
+        skills: {"type": "array[string]", "required": false, "note": "The job lists ANY of these skills (whole skill, case-insensitive)", "example": "Python"}
+        company_size: {"type": "array[string]", "enum": ["1", "2-10", "11-50", "51-200", "201-500", "501-1000", "1001-5000", "5001-10000", "10000+"], "required": false, "note": "Company headcount bucket(s). Unknown size is excluded"}
+        exclude_agencies: {"type": "boolean", "required": false, "note": "Drop staffing and recruiting agencies"}
+        sector: {"type": "array[string]", "enum": ["AGRICULTURE", "CONSTRUCTION_AND_REAL_ESTATE", "CONSUMER_GOODS", "EDUCATION", "ENERGY", "FINANCIAL_SERVICES", "GOVERNMENT", "HARDWARE_AND_ELECTRONICS", "HEALTHCARE", "HOSPITALITY", "INSURANCE", "MANUFACTURING", "MEDIA_AND_ENTERTAINMENT", "NONPROFIT", "OTHER", "PHARMA_AND_BIOTECH", "PROFESSIONAL_SERVICES", "RETAIL", "SOFTWARE", "STAFFING", "TELECOMMUNICATIONS", "TRANSPORTATION_AND_LOGISTICS"], "required": false, "note": "Company sector(s), from MobiusEngine's company profile; a job whose company has no profile has none", "example": "SOFTWARE"}
+        company_kind: {"type": "array[string]", "enum": ["CONSULTING", "EDUCATION", "GOVERNMENT", "HEALTH_PROVIDER", "NONPROFIT", "OPERATING_COMPANY", "STAFFING_AGENCY"], "required": false, "note": "Kind of employer: OPERATING_COMPANY, CONSULTING, STAFFING_AGENCY …", "example": "OPERATING_COMPANY"}
+        customer: {"type": "array[string]", "enum": ["B2B", "B2C", "B2G", "BOTH"], "required": false, "note": "Who the company sells to", "example": "B2B"}
+        ownership: {"type": "array[string]", "enum": ["EDUCATION", "GOVERNMENT", "NONPROFIT", "PRIVATE", "PUBLIC"], "required": false, "note": "PUBLIC, PRIVATE, NONPROFIT … Companies with unknown ownership are excluded", "example": "PUBLIC"}
+        work_mode: {"type": "array[string]", "enum": ["On-site", "Hybrid", "Remote OK", "Remote Solely"], "required": false, "note": "ANY of: On-site (the posting never mentions remote, hybrid or work from home, or its text says the job is on site), Remote OK (it mentions remote anywhere and its text does not say the job is hybrid or on site), Remote Solely (title or location says remote, same exception), Hybrid (title or location says hybrid, or its text does). All four = no filter"}
+        exclude_work_mode: {"type": "array[string]", "enum": ["On-site", "Hybrid", "Remote OK", "Remote Solely"], "required": false, "note": "Drop jobs matching ANY of these work modes (same rules as work_mode). ['Remote Solely'] keeps every job someone could go in to"}
+        taxonomies: {"type": "array[string]", "enum": ["Technology", "Healthcare", "Management & Leadership", "Finance & Accounting", "Human Resources", "Sales", "Marketing", "Customer Service & Support", "Education", "Legal", "Engineering", "Science & Research", "Trades", "Construction", "Manufacturing", "Logistics", "Creative & Media", "Hospitality", "Retail", "Data & Analytics", "Software", "Energy", "Agriculture", "Government & Public Sector", "Art & Design", "Transportation", "Consulting"], "required": false, "note": "job category; any one of the job's function, its company's sector or title words is enough", "example": "Data & Analytics"}
+        education: {"type": "array[string]", "enum": ["high school", "associate degree", "bachelor degree", "professional certificate", "postgraduate degree"], "required": false, "note": "The job's requirements ask for ANY of these", "example": "bachelor degree"}
+        visa: {"type": "string", "enum": ["only", "exclude"], "required": false, "note": "only = the job offers visa sponsorship; exclude = it does not"}
+        remote_friendly: {"type": "boolean", "required": false, "note": "true = the posting mentions remote/hybrid/WFH anywhere; false = it does not. Prefer work_mode"}
+        countries: {"type": "array[string]", "required": false, "note": "ISO-3166 alpha-2 country codes", "example": "US"}
+        locations: {"type": "array[string]", "required": false, "note": "ANY of these places. Each is 'City, State', 'State' or 'City'; every comma part must match. US states in full or as postal codes", "example": "Chicago, Illinois"}
+        exclude_locations: {"type": "array[string]", "required": false, "note": "Drop jobs in ANY of these places (same rules as locations)", "example": "New York"}
+        experience: {"type": "array[string]", "enum": ["0-2", "2-5", "5-10", "10+"], "required": false, "note": "Years of experience asked for. Postings that do not say are kept"}
+        employment_type: {"type": "array[string]", "enum": ["FULL_TIME", "PART_TIME", "CONTRACTOR", "TEMPORARY", "INTERN"], "required": false, "note": "Employment type. Postings that do not say are kept"}
+        min_salary_annual: {"type": "number", "required": false, "min": 0, "note": "Published annual pay at least this much. Postings that publish no pay are kept; add has_salary=true to drop them. Estimates never count", "example": 120000}
+        has_salary: {"type": "boolean", "required": false, "note": "Only jobs whose posting states pay"}
+        posted_within_days: {"type": "integer", "required": false, "min": 1, "max": 365, "note": "Posted (or first seen) in the last N days, today included", "example": 7}
+        posted_since: {"type": "string", "required": false, "note": "Posted (or first seen) on or after this date, YYYY-MM-DD"}
+        posted_before: {"type": "string", "required": false, "note": "Posted (or first seen) before this date, YYYY-MM-DD"}
+        include_internships: {"type": "boolean", "required": false, "note": "Internships and co-ops are included by default; false leaves them out"}
+        limit: {"type": "integer", "required": false, "min": 1, "max": 100, "default": 25, "note": "how many skills to return, most named first", "example": 10}
+    test_request: {queryParams: {company: "Stripe", limit: 10}}
+    price: {value: '0.0053', currency: USD, unit: call, note: "$0.0053 a call, an empty answer included; errors are free."}
+    miss: {when: {path: response.skills, op: empty}}
+    docs_url: https://jobs.mobiusengine.ai/docs?utm_source=treg&utm_medium=listing
+
+  - id: mobiusengine-jobs.companies.enrich
+    verified: '2026-11-16'
+    added: '2026-11-16'
+    example_response: examples/mobiusengine-jobs.companies.enrich.json
+    domain: companies
+    capability: companies.enrich
+    platform: companies
+    scope: any_account
+    method: GET
+    path: /v1/companies/{key}
+    name: "Company profile and live hiring by domain, LinkedIn or name"
+    summary: "A company's profile (domain, website, LinkedIn, industry, size, headcount, headquarters, founded, type, revenue range) and its hiring right now (open jobs, newest posting, top titles, countries and job systems)."
+    input:
+      pathParams:
+        key: {"type": "string", "required": true, "note": "website domain (stripe.com), LinkedIn company URL or slug, or company name. A domain or LinkedIn URL that matches nothing answers 404 and is never guessed from a name", "example": "stripe.com"}
+    test_request: {pathParams: {key: "stripe.com"}}
+    price: {value: '0.0009', currency: USD, unit: call, note: "$0.0009 per company found; a 404 (no match) is free."}
+    miss: {status: [404], means: "no company on record for this domain, LinkedIn page or name; free, do not retry the same key"}
     docs_url: https://jobs.mobiusengine.ai/docs?utm_source=treg&utm_medium=listing
 
   - id: mobiusengine-jobs.account.balance
