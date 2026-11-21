@@ -23,8 +23,8 @@ sources:
   - src/treg/application/call/service.py
   - src/treg/application/call/settle.py
   - src/treg/alembic/versions/0039_archive_own_key_and_repeat_pricing.py
-  - src/treg/alembic/versions/0118_archivekeyorg_natural_key_index.py
-  - src/treg/alembic/versions/0119_archivekeyorg_natural_primary_key.py
+  - src/treg/alembic/versions/0120_archivekeyorg_natural_key_index.py
+  - src/treg/alembic/versions/0121_archivekeyorg_natural_primary_key.py
   - tests/test_archivekeyorg_natural_key_migration.py
   - scripts/backfill_call_archive_links.py
   - src/treg/api.py
@@ -255,12 +255,12 @@ bills like a live call"; 0 makes repeats free.
 The mark is keyed by `(org_id, key_hash)` and nothing else, so writing one takes no number from
 a sequence: a counter that can run out would make every first-time settle roll back, and a routed
 call, which marks all its children in one transaction, would go unpaid whole. `id` is the retired
-serial key (revisions 0118 and 0119 moved the primary key without rewriting the table): it is
-nullable, has no default and is read by nothing; only code older than 0119 still assigns it, from
+serial key (revisions 0120 and 0121 moved the primary key without rewriting the table): it is
+nullable, has no default and is read by nothing; only code older than 0121 still assigns it, from
 its sequence, during a rolling deploy. Dropping the column and its sequence is a later contract
 revision.
 
-0119 attaches a unique index on `(org_id, key_hash)` that 0118 makes sure exists. 0118 builds it
+0121 attaches a unique index on `(org_id, key_hash)` that 0120 makes sure exists. 0120 builds it
 itself only on a small table (at most `BUILD_IN_MIGRATION_MAX_ROWS` rows, a bounded count); on a
 larger one it refuses at once and prints the `CREATE UNIQUE INDEX CONCURRENTLY` statements to run
 by hand before the deploy, because a concurrent build of a large table can outlast a deploy's

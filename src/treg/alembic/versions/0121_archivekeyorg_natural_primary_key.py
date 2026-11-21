@@ -1,7 +1,7 @@
 """archivekeyorg: (org_id, key_hash) becomes the primary key; the serial id retires
 
-Revision ID: 0119
-Revises: 0118
+Revision ID: 0121
+Revises: 0120
 Create Date: 2026-11-18
 
 A team's first paid call on a question writes its `archivekeyorg` mark inside the settle
@@ -13,7 +13,7 @@ keeps unique. This revision makes those two columns the primary key and stops `i
 assigned, so a mark needs no sequence at all.
 
 PostgreSQL, one ALTER TABLE in this revision's transaction: drop the `id` primary key, drop the
-`id` default and NOT NULL, drop `uq_archive_key_org`, and attach 0118's unique index as the new
+`id` default and NOT NULL, drop `uq_archive_key_org`, and attach 0120's unique index as the new
 primary key (`ADD PRIMARY KEY USING INDEX`, which renames the index and scans nothing because both
 columns are already NOT NULL). Every step changes the catalog only; the table is not rewritten.
 It holds an ACCESS EXCLUSIVE lock until the revision commits, and the commit deletes the files of
@@ -47,13 +47,13 @@ from collections.abc import Sequence
 import sqlalchemy as sa
 from alembic import op
 
-revision: str = "0119"
-down_revision: str | Sequence[str] | None = "0118"
+revision: str = "0121"
+down_revision: str | Sequence[str] | None = "0120"
 branch_labels: str | Sequence[str] | None = None
 depends_on: str | Sequence[str] | None = None
 contract = True  # changes the primary key; see the rollback floor note
 
-_INDEX = "ix_archivekeyorg_org_key_unique"   # built by 0118
+_INDEX = "ix_archivekeyorg_org_key_unique"   # built by 0120
 
 _PRIMARY_KEY = sa.text("""
     SELECT c.conname AS name,
@@ -111,7 +111,7 @@ def upgrade() -> None:
         "JOIN pg_namespace n ON n.oid = i.relnamespace "
         "WHERE n.nspname = current_schema() AND i.relname = :name"), {"name": _INDEX}).scalar()
     if valid is not True:
-        raise RuntimeError(f"Refusing primary key migration: {_INDEX} from 0118 is missing or invalid")
+        raise RuntimeError(f"Refusing primary key migration: {_INDEX} from 0120 is missing or invalid")
     drop_primary = f"DROP CONSTRAINT {primary['name']}, " if primary is not None else ""
     op.execute(
         "ALTER TABLE archivekeyorg "

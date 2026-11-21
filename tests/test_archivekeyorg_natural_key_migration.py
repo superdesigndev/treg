@@ -1,4 +1,4 @@
-"""0118/0119: a paid mark is keyed by (org, question), so settles survive an exhausted id sequence."""
+"""0120/0121: a paid mark is keyed by (org, question), so settles survive an exhausted id sequence."""
 import asyncio
 import importlib.util
 from importlib.resources import files
@@ -21,7 +21,7 @@ from tests.test_alembic_baseline import _drop_everything, _insert_org_at_revisio
 
 INT4_MAX = 2_147_483_647
 
-# The mark statement code older than 0119 sends: it assigns `id` from the serial sequence.
+# The mark statement code older than 0121 sends: it assigns `id` from the serial sequence.
 LEGACY_MARK = sa.text("""
     INSERT INTO archivekeyorg (id, org_id, key_hash, first_call_at, last_call_at, calls)
     VALUES (COALESCE((SELECT id FROM archivekeyorg WHERE org_id = :org AND key_hash = :key),
@@ -33,12 +33,12 @@ LEGACY_PROBE = sa.text("SELECT id FROM archivekeyorg WHERE org_id = :org AND key
 
 
 @pytest.fixture
-async def at_0117(monkeypatch):
+async def at_0119(monkeypatch):
     monkeypatch.setattr(get_settings(), "platform_margin", 0)
     await audit.drain()
     await _drop_everything()
     try:
-        await _upgrade_to("0117")
+        await _upgrade_to("0119")
         yield db._engine.dialect.name
     finally:
         await _drop_everything()
@@ -85,9 +85,9 @@ async def _assert_billed_once(org_id: int, calls: int) -> None:
         assert len(settled) == len({e.call_id for e in settled}) == calls
 
 
-async def test_first_time_settles_bill_once_after_the_id_sequence_is_exhausted(at_0117):
+async def test_first_time_settles_bill_once_after_the_id_sequence_is_exhausted(at_0119):
     org_id = await _org_with_marks("old-a", "old-b")
-    if at_0117 == "postgresql":
+    if at_0119 == "postgresql":
         await _scalar(f"SELECT setval(pg_get_serial_sequence('archivekeyorg', 'id'), {INT4_MAX})")
         async with db._engine.connect() as connection:
             with pytest.raises(DBAPIError, match="reached maximum value"):
@@ -97,7 +97,7 @@ async def test_first_time_settles_bill_once_after_the_id_sequence_is_exhausted(a
     await _upgrade_to("head")
 
     assert await _primary_key() == ["org_id", "key_hash"]
-    if at_0117 == "postgresql":
+    if at_0119 == "postgresql":
         assert await _scalar("SELECT relfilenode FROM pg_class WHERE relname = 'archivekeyorg'") == heap
         assert await _scalar("SELECT count(*) FROM pg_constraint WHERE conname = 'uq_archive_key_org'") == 0
     async with session_maker() as s:
@@ -105,7 +105,7 @@ async def test_first_time_settles_bill_once_after_the_id_sequence_is_exhausted(a
         await s.commit()
     # A routed call: three children, every question new to the team, marked in one transaction.
     assert await _settle(org_id, ["new-1", "new-2", "new-3"]) == 210
-    # A direct call: one first-time question, and one repeat of a question marked before 0119.
+    # A direct call: one first-time question, and one repeat of a question marked before 0121.
     assert await _settle(org_id, ["new-4"]) == 70
     assert await _settle(org_id, ["old-a"]) == 70
     await _assert_billed_once(org_id, 5)
@@ -115,8 +115,8 @@ async def test_first_time_settles_bill_once_after_the_id_sequence_is_exhausted(a
     assert marks == {"old-a": 2, "old-b": 1, "new-1": 1, "new-2": 1, "new-3": 1, "new-4": 1}
 
 
-async def test_code_older_than_0119_still_marks_during_a_rolling_deploy(at_0117):
-    if at_0117 != "postgresql":
+async def test_code_older_than_0121_still_marks_during_a_rolling_deploy(at_0119):
+    if at_0119 != "postgresql":
         pytest.skip("the legacy statement is the PostgreSQL one")
     org_id = await _org_with_marks("old")
     await _upgrade_to("head")
@@ -134,14 +134,14 @@ async def test_code_older_than_0119_still_marks_during_a_rolling_deploy(at_0117)
     assert marks == {"old": 2, "new": 2, "legacy-new": 1}
 
 
-async def test_downgrade_numbers_new_marks_and_restores_the_serial_key(at_0117):
+async def test_downgrade_numbers_new_marks_and_restores_the_serial_key(at_0119):
     org_id = await _org_with_marks("old")
     await _upgrade_to("head")
     async with session_maker() as s:
         await archive.note_org_uses_in_transaction(s, [(org_id, "new-1"), (org_id, "new-2")])
         await s.commit()
     await db._engine.dispose()
-    await asyncio.to_thread(command.downgrade, _alembic_config(), "0117")
+    await asyncio.to_thread(command.downgrade, _alembic_config(), "0119")
 
     assert await _primary_key() == ["id"]
     async with db._engine.connect() as connection:
@@ -151,9 +151,9 @@ async def test_downgrade_numbers_new_marks_and_restores_the_serial_key(at_0117):
     assert await _primary_key() == ["org_id", "key_hash"]
 
 
-def _revision_0118():
-    path = next(files("treg").joinpath("alembic", "versions").glob("0118_*.py"))
-    spec = importlib.util.spec_from_file_location("revision_0118_under_test", path)
+def _revision_0120():
+    path = next(files("treg").joinpath("alembic", "versions").glob("0120_*.py"))
+    spec = importlib.util.spec_from_file_location("revision_0120_under_test", path)
     module = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(module)
     return module
@@ -178,11 +178,11 @@ async def _index_state():
         "WHERE c.relname = 'ix_archivekeyorg_org_key_unique'")
 
 
-async def test_a_large_table_is_refused_fast_and_the_manual_build_lets_the_upgrade_finish(at_0117):
-    if at_0117 != "postgresql":
+async def test_a_large_table_is_refused_fast_and_the_manual_build_lets_the_upgrade_finish(at_0119):
+    if at_0119 != "postgresql":
         pytest.skip("the index is PostgreSQL's")
     org_id = await _org_with_marks("a", "b", "c")
-    module = _revision_0118()
+    module = _revision_0120()
     module.BUILD_IN_MIGRATION_MAX_ROWS = 2
 
     with pytest.raises(RuntimeError, match="CREATE UNIQUE INDEX CONCURRENTLY") as refused:
@@ -204,11 +204,11 @@ async def test_a_large_table_is_refused_fast_and_the_manual_build_lets_the_upgra
     assert await _scalar("SELECT count(*) FROM archivekeyorg WHERE org_id = :org", org=org_id) == 3
 
 
-async def test_a_lock_timeout_in_the_small_build_is_not_retried(at_0117):
-    if at_0117 != "postgresql":
+async def test_a_lock_timeout_in_the_small_build_is_not_retried(at_0119):
+    if at_0119 != "postgresql":
         pytest.skip("the index is PostgreSQL's")
     await _org_with_marks("a")
-    module = _revision_0118()
+    module = _revision_0120()
     module.BUILD_LOCK_TIMEOUT = "300ms"
     async with db._engine.connect() as old_snapshot:
         old_snapshot = await old_snapshot.execution_options(isolation_level="REPEATABLE READ")
