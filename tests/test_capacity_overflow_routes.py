@@ -473,7 +473,7 @@ _UNRECORDED_SIGNATURE = {
     "enrichlayer",  # PAYG auto top-up remains funded; the docs name 403 but not its response body
     "theirstack",  # funded API credits remain; the documented 402 body was not observed
 
-    "serpapi", "serpstat", "spyfu", "tiingo", "tikhub", "twelvedata",
+    "serpapi", "spyfu", "tiingo", "tikhub", "twelvedata",
 }
 
 
