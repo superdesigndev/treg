@@ -99,7 +99,7 @@ async def _routed_call(org_id: int, q: str, *, a: str = "tavily", answer: dict |
                     select(CallReview).where(CallReview.org_id == org_id))).first():
                 db.add(CallReview(org_id=org_id, user_email="tim@superdesign.dev",
                                   call_id=f"reviewed-{org_id}", endpoint_id="tavily.web.search",
-                                  usefulness="useful"))
+                                  usefulness="useful", invited=True, client="mcp"))
                 await db.commit()
     cat = catalog_store.load()
     eid = next(e["id"] for e in cat.for_capability(capability)
@@ -861,6 +861,31 @@ async def test_a_team_that_never_reviews_is_not_compared(clients, search_on, mon
     await _routed_call(org_id, "never reviews", reviewing=False)
     result = await _collect()
     assert (result["eligible"], result["called"], sent) == (0, 0, []), result
+
+
+@pytest.mark.parametrize("client,invited,days_ago,compared", [
+    ("mcp", True, 1, True),         # answered an invitation on the team MCP
+    ("mcp-prior", True, 1, True),   # a verdict riding on the next MCP call
+    ("mcp", False, 1, False),       # reviewed unasked: says nothing about reading hints
+    ("cli", True, 1, False),        # the CLI never shows a compare invitation
+    ("mcp", True, 10, False),       # answered, but not in the last week
+])
+async def test_only_a_team_answering_mcp_invitations_is_compared(clients, search_on, monkeypatch,
+                                                                 client, invited, days_ago, compared):
+    """Only the team MCP shows a compare invitation, so a team is compared only when its agent
+    answered a review invitation there recently; a pipeline that never reads hints is skipped."""
+    _compare_on(monkeypatch)
+    sent = _relay_b(monkeypatch)
+    org_id = await _org_id(clients)
+    async with session_maker() as db:
+        db.add(CallReview(org_id=org_id, user_email="tim@superdesign.dev", call_id="reviewed",
+                          endpoint_id="tavily.web.search", usefulness="useful", invited=invited,
+                          client=client, created_at=utcnow_naive() - timedelta(days=days_ago)))
+        await db.commit()
+    await _routed_call(org_id, "answers invitations", reviewing=False)
+    result = await _collect()
+    assert result["eligible"] == (1 if compared else 0), result
+    assert bool(sent) is compared
 
 
 async def test_a_page_continuation_gets_no_marker(monkeypatch):

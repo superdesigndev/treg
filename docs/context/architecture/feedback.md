@@ -272,9 +272,11 @@ the capability, and logs the rest. Each run:
    `created_at` within `compare_lookback_hours` (at most two, the marker's life), newest first, at
    most `SCAN_PER_CAPABILITY` (one ordered range of the `(endpoint_id, created_at)` index each), 2xx
    and `credential_tier` routed; drops calls already compared.
-4. Keeps calls of eligible teams only: not opted out of the archive, not a demo, with at least one
-   review in `compare_window_days` (a team whose agents never answer an invitation would leave its
-   pairs unjudged, and busy batch teams would take the day's budget), and holding no
+4. Keeps calls of eligible teams only: not opted out of the archive, not a demo, whose agent answered
+   at least one review invitation on the team MCP (`CallReview.invited`, client `mcp` or
+   `mcp-prior`) in `compare_answer_days` (only that surface shows the compare invitation; a team
+   whose agents never answer one there, such as a pipeline calling without reading hints, would
+   leave its pairs unjudged and take the day's budget), and holding no
    access policy at all (a member or project tool ACL, a member pinned to tags, a deny rule, or a
    capability pin on a paired capability). A team with any is skipped, so the run never has to
    emulate a team's authorization.
@@ -356,7 +358,7 @@ next pair with an instruction line, or submits with `comparison_id` and `choice`
 pairs, e.g. `{"web.search": [["provider-a", "provider-b"]]}`), `TREG_COMPARE_RATE`,
 `TREG_COMPARE_MAX_PER_RUN`, `TREG_COMPARE_MAX_PER_DAY`, `TREG_COMPARE_LOOKBACK_HOURS`,
 `TREG_COMPARE_BUDGET_PER_HOUR` (compare invitations per team per hour), `TREG_COMPARE_TEAM_CAP`,
-`TREG_COMPARE_WINDOW_DAYS`, `TREG_COMPARE_MAX_ANSWER_BYTES`. Rollback: `TREG_COMPARE_MAX_PER_DAY=0` with the cron kept:
+`TREG_COMPARE_WINDOW_DAYS`, `TREG_COMPARE_ANSWER_DAYS`, `TREG_COMPARE_MAX_ANSWER_BYTES`. Rollback: `TREG_COMPARE_MAX_PER_DAY=0` with the cron kept:
 no marker is written and no vendor is called, while each run still removes orphaned rows (removing
 the cron stops that cleanup too). Stored comparisons stay and waiting ones are still offered until
 they age out.
