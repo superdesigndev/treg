@@ -103,6 +103,7 @@ _KNOWN: dict[str, tuple[str, str, str]] = {
     "twelvedata": ("requests", "subscription", "api"),
     "financialdatasets": ("credits", "auto_recharge", "manual"),
     "fishaudio": ("cash", "manual", "api"),
+    "agentline": ("cash", "manual", "api"),
     "bounceban": ("credits", "manual", "api"),
     # The free API reports only the current balance, not whether vendor Auto-Pay is enabled.
     # Treat replenishment as manual until that account setting is explicitly verified.

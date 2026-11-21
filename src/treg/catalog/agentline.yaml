@@ -1,0 +1,537 @@
+provider: agentline
+# Telephony rows (numbers, calls, text messages) are BYOK-only. AgentLine bills a call by its
+# duration after it ends, keeps charging a number every calendar month, and bills inbound calls and
+# texts to the number's account; none of that is known when treg settles the call that started it.
+# On treg's key only the free agent-setup rows run, each agent owned by the team that created it.
+source:
+  docs: https://api.agentline.cloud/docs
+  openapi: https://api.agentline.cloud/openapi.json
+  curated: '2026-11-20'
+pricing_url: https://agentline.cloud/pricing
+limits: "US and Canadian numbers only. One number per agent. 250 outbound texts per account per UTC day. A number in a call cannot be released. On treg's key only agent setup, knowledge and contacts run; connect your own AgentLine key to buy numbers, call and text."
+proposed_capabilities:
+  phone.agents.create: "Create an AI voice agent that answers and places phone calls"
+  phone.agents.list: "List your AI voice agents"
+  phone.agents.get: "Get one AI voice agent's prompt, greeting and voice"
+  phone.agents.update: "Change an AI voice agent's prompt, greeting or voice"
+  phone.agents.delete: "Delete an AI voice agent"
+  phone.numbers.buy: "Buy a US or Canadian phone number for an AI agent"
+  phone.numbers.list: "List the phone numbers on your account"
+  phone.numbers.release: "Release a phone number you no longer need"
+  phone.calls.create: "Have an AI agent phone someone"
+  phone.calls.get: "Check a phone call's status, duration and transcript"
+  phone.calls.transcript: "Read the transcript of a phone call"
+  phone.calls.list: "List your phone calls, newest first"
+  phone.calls.hangup: "End a phone call in progress"
+  phone.sms.send: "Send a text message from an AI agent's phone number"
+  phone.sms.list: "List text messages sent and received"
+  phone.knowledge.remember: "Teach an AI phone agent a fact it can tell callers"
+  phone.knowledge.search: "Ask what an AI phone agent knows about a question"
+  phone.knowledge.list: "List the facts an AI phone agent knows"
+  phone.contacts.create: "Save a contact for an AI phone agent"
+  phone.contacts.list: "Find an AI phone agent's contacts, or identify a caller by number"
+  phone.contact_facts.set: "Remember a detail about one caller for an AI phone agent"
+
+defaults:
+  provenance: {source: docs, source_url: 'https://agentline.cloud/pricing', checked: '2026-11-20', confidence: documented}
+
+endpoints:
+  - id: agentline.voices.list
+    added: '2026-11-20'
+    kind: utility
+    capability: voice-gen.voices.list
+    platform: voice-gen
+    scope: any_account
+    method: GET
+    path: /v1/voices
+    name: "List AI phone agent voices and languages"
+    summary: "List the voices an AgentLine agent can speak with; pass an item's voice_id when creating or updating an agent, or on one call."
+    input:
+      note: "No parameters."
+    test_request: {queryParams: {}}
+    price: {value: '0', currency: USD, unit: call}
+    docs_url: https://api.agentline.cloud/docs#/default/get_available_voices_v1_voices_get
+
+  - id: agentline.agents.create
+    added: '2026-11-20'
+    kind: action
+    capability: phone.agents.create
+    platform: phone
+    scope: any_account
+    method: POST
+    path: /v1/agents
+    name: "Create an AI phone agent with prompt, greeting and voice"
+    summary: "Create an AI voice agent: its instructions, opening line, voice and language for every call it places or answers. Returns the agent id (agt_…)."
+    input:
+      bodyType: json
+      body:
+        name: {type: string, required: true, minLength: 1, example: "Reception desk"}
+        system_prompt: {type: string, required: false, note: "Instructions for every call, inbound and outbound; one call can override it."}
+        initial_greeting: {type: string, required: false, note: "The first sentence the agent says on every call."}
+        voice_id: {type: string, required: false, note: "A voice_id from agentline.voices.list; omit for the default voice."}
+        speech_language: {type: string, required: false, note: "BCP-47 locale such as en-US or hi-IN; omit or send auto for automatic detection."}
+        speaking_speed: {type: number, required: false, min: 0.6, max: 1.5, default: 1}
+        owner_phone: {type: string, required: false, note: "The owner's number in E.164. Calls from it reach the agent in task mode, and it is the only number a live call can be transferred to."}
+        transfer_number: {type: string, required: false, note: "Must equal owner_phone; setting owner_phone fills it in."}
+        voicemail_message: {type: string, required: false, note: "Message left when an outbound call reaches voicemail; omit and each call writes one from its prompt."}
+    managed_resource:
+      operation: create
+      kind: agent
+      id: {in: response, path: id}
+      name_from: {in: body, path: name}
+      cleanup_endpoint: agentline.agents.delete
+    test_request:
+      body: {name: "treg verification agent", system_prompt: "You are a test agent. Say goodbye and end the call."}
+    price: {value: '0', currency: USD, unit: call}
+    docs_url: https://api.agentline.cloud/docs#/default/create_agent_v1_agents_post
+
+  - id: agentline.agents.list
+    added: '2026-11-20'
+    kind: account
+    capability: phone.agents.list
+    platform: phone
+    scope: own_account
+    method: GET
+    path: /v1/agents
+    name: "List your AI phone agents"
+    summary: "List every AI voice agent on the connected AgentLine account with its prompt, greeting and voice."
+    input:
+      note: "No parameters."
+    test_request: {queryParams: {}}
+    price: {value: '0', currency: USD, unit: call}
+    docs_url: https://api.agentline.cloud/docs#/default/list_agents_v1_agents_get
+
+  - id: agentline.agents.get
+    added: '2026-11-20'
+    untestable: "Needs the id of an agent on the calling account; create one with agentline.agents.create first."
+    kind: account
+    capability: phone.agents.get
+    platform: phone
+    scope: any_account
+    method: GET
+    path: /v1/agents/{agent_id}
+    name: "Get an AI phone agent by id"
+    summary: "Read one AI voice agent's prompt, greeting, voice, language and owner phone."
+    input:
+      pathParams:
+        agent_id: {type: string, required: true, example: "agt_abc123"}
+    managed_resource: {operation: read, kind: agent, id: {in: pathParams, name: agent_id}}
+    price: {value: '0', currency: USD, unit: call}
+    docs_url: https://api.agentline.cloud/docs#/default/get_agent_v1_agents__agent_id__get
+
+  - id: agentline.agents.update
+    added: '2026-11-20'
+    untestable: "Needs the id of an agent on the calling account; create one with agentline.agents.create first."
+    kind: action
+    capability: phone.agents.update
+    platform: phone
+    scope: any_account
+    method: PATCH
+    path: /v1/agents/{agent_id}
+    name: "Update an AI phone agent's prompt, greeting or voice"
+    summary: "Change an AI voice agent's instructions, greeting, voice, language or owner phone for every later call."
+    input:
+      pathParams:
+        agent_id: {type: string, required: true, example: "agt_abc123"}
+      bodyType: json
+      body:
+        name: {type: string, required: false, minLength: 1}
+        system_prompt: {type: string, required: false}
+        initial_greeting: {type: string, required: false}
+        voice_id: {type: string, required: false, note: "A voice_id from agentline.voices.list."}
+        speech_language: {type: string, required: false, note: "BCP-47 locale; null returns to automatic detection."}
+        speaking_speed: {type: number, required: false, min: 0.6, max: 1.5, note: "null returns to 1.0."}
+        owner_phone: {type: string, required: false, note: "E.164; also becomes the only transfer destination."}
+        transfer_number: {type: string, required: false, note: "Must equal owner_phone."}
+        voicemail_message: {type: string, required: false}
+      note: "Send at least one field. A call already in progress keeps its settings; an agent on a live call answers 409."
+    managed_resource:
+      operation: update
+      kind: agent
+      id: {in: pathParams, name: agent_id}
+      name_from: {in: body, path: name}
+    price: {value: '0', currency: USD, unit: call}
+    docs_url: https://api.agentline.cloud/docs#/default/update_agent_v1_agents__agent_id__patch
+
+  - id: agentline.agents.delete
+    added: '2026-11-20'
+    untestable: "Deletes an agent; run it only on one made by agentline.agents.create."
+    kind: action
+    capability: phone.agents.delete
+    platform: phone
+    scope: any_account
+    method: DELETE
+    path: /v1/agents/{agent_id}
+    name: "Delete an AI phone agent"
+    summary: "Delete an AI voice agent with its calls, messages, contacts and webhook; its phone number stays on the account, unassigned."
+    input:
+      pathParams:
+        agent_id: {type: string, required: true, example: "agt_abc123"}
+    managed_resource: {operation: delete, kind: agent, id: {in: pathParams, name: agent_id}}
+    price: {value: '0', currency: USD, unit: call}
+    docs_url: https://api.agentline.cloud/docs#/default/delete_agent_v1_agents__agent_id__delete
+
+  - id: agentline.numbers.buy
+    added: '2026-11-20'
+    untestable: "Buys a phone number: a real, recurring charge."
+    kind: action
+    capability: phone.numbers.buy
+    platform: phone
+    scope: any_account
+    method: POST
+    path: /v1/numbers
+    name: "Buy a US or Canadian phone number for an AI agent"
+    summary: "Buy a local or toll-free US or Canadian number and assign it to an agent, which then answers calls to it and calls and texts from it."
+    platform_blocked: "A number keeps billing its account every month and for every inbound call and text, which treg cannot charge back to the team; connect your own AgentLine key."
+    input:
+      bodyType: json
+      body:
+        agent_id: {type: string, required: true, example: "agt_abc123"}
+        country: {type: string, required: false, enum: [US, CA], default: US}
+        number_type: {type: string, required: false, enum: [local, tollfree], default: local}
+        area_code: {type: string, required: false, note: "Three digits, such as 212 or 416, for a local number; a toll-free prefix such as 800. Omit for any available number."}
+        pattern: {type: string, required: false, note: "Digits a local number must contain; used only without area_code."}
+      note: "One number per agent: an agent that already has one answers 409. Each request buys a new number, so do not retry one that timed out before checking agentline.numbers.list."
+    price: {value: '3', currency: USD, unit: month, note: "$3 at purchase, which covers the month bought in, then $3 each calendar month while the number is kept. The first local number of a free-trial account is free. An empty balance answers 402."}
+    docs_url: https://api.agentline.cloud/docs#/default/provision_v1_numbers_post
+
+  - id: agentline.numbers.list
+    added: '2026-11-20'
+    kind: account
+    capability: phone.numbers.list
+    platform: phone
+    scope: own_account
+    method: GET
+    path: /v1/numbers
+    name: "List your phone numbers and their agents"
+    summary: "List the phone numbers on the connected AgentLine account with the agent each is assigned to and its status."
+    input:
+      note: "No parameters."
+    test_request: {queryParams: {}}
+    price: {value: '0', currency: USD, unit: call}
+    docs_url: https://api.agentline.cloud/docs#/default/list_numbers_v1_numbers_get
+
+  - id: agentline.numbers.release
+    added: '2026-11-20'
+    untestable: "Gives up a phone number for good."
+    kind: action
+    capability: phone.numbers.release
+    platform: phone
+    scope: any_account
+    method: POST
+    path: /v1/numbers/{number_id}/release
+    name: "Release a phone number by number id"
+    summary: "Give a phone number back to the carrier so it stops billing; the number cannot be recovered afterwards."
+    platform_blocked: "Numbers are bought only with your own AgentLine key; connect it to release one."
+    input:
+      pathParams:
+        number_id: {type: string, required: true, example: "num_abc123", note: "The num_… id from agentline.numbers.list, not the phone number."}
+      note: "A number on a call, leased, or given free with a trial answers 409."
+    price: {value: '0', currency: USD, unit: call}
+    docs_url: https://api.agentline.cloud/docs#/default/release_phone_number_v1_numbers__number_id__release_post
+
+  - id: agentline.calls.create
+    added: '2026-11-20'
+    untestable: "Needs an agent that has a phone number; then to_number +15555550100 is the free test line."
+    kind: action
+    capability: phone.calls.create
+    platform: phone
+    scope: any_account
+    method: POST
+    path: /v1/calls
+    name: "Phone someone with an AI agent, prompt and greeting"
+    summary: "Have an AI agent call a phone number and hold the conversation; returns the call id at once while the call runs. Poll agentline.calls.get for the outcome and transcript."
+    platform_blocked: "AgentLine bills a call by its length after it ends and takes no duration cap, so treg cannot hold or settle it; connect your own AgentLine key."
+    input:
+      bodyType: json
+      body:
+        agent_id: {type: string, required: true, example: "agt_abc123", note: "The agent must have a phone number (agentline.numbers.buy)."}
+        to_number: {type: string, required: true, example: "+15555550100", note: "E.164. Any +1 555 number is AgentLine's test line: it is not dialled or billed."}
+        system_prompt: {type: string, required: false, note: "Replaces the agent's prompt for this call only; put the call's goal and facts here."}
+        initial_greeting: {type: string, required: false, note: "Replaces the agent's greeting for this call only."}
+        voice_id: {type: string, required: false, note: "Replaces the agent's voice for this call only."}
+        from_number_id: {type: string, required: false, note: "A num_… id to call from; defaults to the agent's number."}
+      note: "Each request dials a new call, so do not retry one that timed out before checking agentline.calls.list. Voicemail and phone menus are handled by AgentLine."
+    async:
+      id_from: id
+      poll:
+        endpoint: agentline.calls.get
+        param: {in: pathParams, name: call_id}
+      status:
+        path: status
+        progress: [initiated, ringing, in-progress]
+        success: [completed]
+        failure: [failed, busy, no-answer, canceled]
+      result: {path: transcript}
+      interval: 10
+      max_age: 7200
+    price: {value: '0.12', currency: USD, unit: minute, note: "Billed after the call ends: the first minute in full, then by the second. Unanswered calls are free. Dialling needs $0.50 of balance or plan minutes; less answers 402."}
+    docs_url: https://api.agentline.cloud/docs#/default/create_call_v1_calls_post
+
+  - id: agentline.calls.get
+    added: '2026-11-20'
+    untestable: "Needs the id of a call on the calling account."
+    kind: utility
+    capability: phone.calls.get
+    platform: phone
+    scope: any_account
+    method: GET
+    path: /v1/calls/{call_id}
+    name: "Get a phone call's status, duration and transcript"
+    summary: "Read one call's status, direction, numbers, duration, start and end times and transcript."
+    platform_blocked: "Calls are placed only with your own AgentLine key; connect it to read them."
+    input:
+      pathParams:
+        call_id: {type: string, required: true, example: "call_abc123"}
+    note: "status stays initiated or in-progress until the call ends, then reads completed, failed, busy, no-answer or canceled; transcript fills in as the call runs."
+    price: {value: '0', currency: USD, unit: call}
+    docs_url: https://api.agentline.cloud/docs#/default/get_call_v1_calls__call_id__get
+
+  - id: agentline.calls.transcript
+    added: '2026-11-20'
+    untestable: "Needs the id of a call on the calling account."
+    capability: phone.calls.transcript
+    platform: phone
+    scope: any_account
+    method: GET
+    path: /v1/calls/{call_id}/transcript
+    name: "Get a phone call transcript by call id"
+    summary: "Read what each side said on a call, turn by turn, with the speaker role and time of each line."
+    platform_blocked: "Calls are placed only with your own AgentLine key; connect it to read them."
+    input:
+      pathParams:
+        call_id: {type: string, required: true, example: "call_abc123"}
+    price: {value: '0', currency: USD, unit: call}
+    docs_url: https://api.agentline.cloud/docs#/default/get_transcript_v1_calls__call_id__transcript_get
+
+  - id: agentline.calls.list
+    added: '2026-11-20'
+    capability: phone.calls.list
+    platform: phone
+    scope: own_account
+    method: GET
+    path: /v1/calls
+    name: "List phone calls by agent and status"
+    summary: "List the account's inbound and outbound calls, newest first, with status, numbers and duration."
+    input:
+      queryParams:
+        agent_id: {type: string, required: false, note: "Only this agent's calls."}
+        status: {type: string, required: false, enum: [initiated, in-progress, completed, failed, busy, no-answer, canceled]}
+        limit: {type: integer, required: false, min: 1, max: 200, default: 50}
+        offset: {type: integer, required: false, min: 0, default: 0}
+    test_request: {queryParams: {limit: 1}}
+    price: {value: '0', currency: USD, unit: call}
+    docs_url: https://api.agentline.cloud/docs#/default/list_calls_v1_calls_get
+
+  - id: agentline.calls.hangup
+    added: '2026-11-20'
+    untestable: "Needs a call in progress."
+    kind: action
+    capability: phone.calls.hangup
+    platform: phone
+    scope: any_account
+    method: POST
+    path: /v1/calls/{call_id}/hangup
+    name: "Hang up a phone call in progress"
+    summary: "End a call that is ringing or in progress; the call is billed for the time it ran."
+    platform_blocked: "Calls are placed only with your own AgentLine key; connect it to end one."
+    input:
+      pathParams:
+        call_id: {type: string, required: true, example: "call_abc123"}
+    price: {value: '0', currency: USD, unit: call}
+    docs_url: https://api.agentline.cloud/docs#/default/hangup_call_v1_calls__call_id__hangup_post
+
+  - id: agentline.messages.send
+    added: '2026-11-20'
+    untestable: "Needs an agent that has a phone number; then to_number +15555550100 is the free test line."
+    kind: action
+    capability: phone.sms.send
+    platform: phone
+    scope: any_account
+    method: POST
+    path: /v1/messages
+    name: "Send a text message from an AI agent's number"
+    summary: "Send an SMS, or an MMS with a media URL, from an agent's phone number to any US or Canadian mobile number."
+    platform_blocked: "Replies to a text are billed to the number's account and a number keeps billing monthly; connect your own AgentLine key."
+    input:
+      bodyType: json
+      body:
+        agent_id: {type: string, required: true, example: "agt_abc123", note: "The agent must have a phone number."}
+        to_number: {type: string, required: true, example: "+15555550100", note: "E.164. Any +1 555 number is AgentLine's test line: not sent or billed, and it texts back once."}
+        body: {type: string, required: true, minLength: 1, example: "Your appointment is confirmed for 10 AM."}
+        media_url: {type: string, required: false, format: url, note: "A public media URL to send as MMS."}
+        from_number_id: {type: string, required: false, note: "A num_… id to send from; defaults to the agent's number."}
+      note: "Each request sends a new message, so do not retry one that timed out before checking agentline.messages.list."
+    price: {value: '0.02', currency: USD, unit: message, note: "Per message, inbound replies included. A free-trial account sends 10 texts, then answers 402. Past 250 texts in a UTC day the account answers 429."}
+    docs_url: https://api.agentline.cloud/docs#/default/send_message_v1_messages_post
+
+  - id: agentline.messages.list
+    added: '2026-11-20'
+    capability: phone.sms.list
+    platform: phone
+    scope: own_account
+    method: GET
+    path: /v1/messages
+    name: "List text messages by agent or conversation"
+    summary: "List the account's sent and received text messages, newest first, with numbers, body and status."
+    input:
+      queryParams:
+        agent_id: {type: string, required: false, note: "Only this agent's messages."}
+        conversation_id: {type: string, required: false, note: "Only one thread; take it from an earlier result."}
+        limit: {type: integer, required: false, min: 1, max: 200, default: 50}
+        offset: {type: integer, required: false, min: 0, default: 0}
+    test_request: {queryParams: {limit: 1}}
+    price: {value: '0', currency: USD, unit: call}
+    docs_url: https://api.agentline.cloud/docs#/default/list_messages_v1_messages_get
+
+  - id: agentline.knowledge.remember
+    added: '2026-11-20'
+    untestable: "Needs the id of an agent on the calling account; create one with agentline.agents.create first."
+    kind: action
+    capability: phone.knowledge.remember
+    platform: phone
+    scope: any_account
+    method: POST
+    path: /v1/agents/{agent_id}/knowledge
+    name: "Teach an AI phone agent a fact for callers"
+    summary: "Store one fact an AI phone agent can tell any caller, such as opening hours, a price or a policy; a fact saying nearly the same thing is replaced."
+    input:
+      pathParams:
+        agent_id: {type: string, required: true, example: "agt_abc123"}
+      bodyType: json
+      body:
+        text: {type: string, required: true, minLength: 1, maxLength: 1000, example: "We are open 9 AM to 6 PM, Monday to Friday."}
+        kind: {type: string, required: false, enum: [static, changing], default: changing, note: "static stays true until changed; changing (stock, prices) expires after ttl_seconds."}
+        ttl_seconds: {type: integer, required: false, min: 1, max: 31622400, note: "Omit: about a day for changing facts, about a month for static ones."}
+        question: {type: string, required: false, maxLength: 300, note: "A question the fact answers, as a caller would ask it; improves matching and is not spoken."}
+        key: {type: string, required: false, note: "Name one exact fact to replace; omit to let a similar fact be replaced."}
+      note: "The agent tells any caller a stored fact: store details about one person with agentline.contact_facts.set."
+    managed_resource: {operation: use, kind: agent, id: {in: pathParams, name: agent_id}}
+    price: {value: '0', currency: USD, unit: call}
+    docs_url: https://api.agentline.cloud/docs#/default/remember_fact_v1_agents__agent_id__knowledge_post
+
+  - id: agentline.knowledge.search
+    added: '2026-11-20'
+    untestable: "Needs the id of an agent on the calling account; create one with agentline.agents.create first."
+    capability: phone.knowledge.search
+    platform: phone
+    scope: any_account
+    method: GET
+    path: /v1/agents/{agent_id}/knowledge/search
+    name: "Search an AI phone agent's knowledge by question"
+    summary: "Find the facts an AI phone agent would use to answer a caller's question, best match first."
+    input:
+      pathParams:
+        agent_id: {type: string, required: true, example: "agt_abc123"}
+      queryParams:
+        q: {type: string, required: true, minLength: 2, maxLength: 500, example: "When are you open?"}
+    managed_resource: {operation: use, kind: agent, id: {in: pathParams, name: agent_id}}
+    price: {value: '0', currency: USD, unit: call}
+    docs_url: https://api.agentline.cloud/docs#/default/search_knowledge_facts_v1_agents__agent_id__knowledge_search_get
+
+  - id: agentline.knowledge.list
+    added: '2026-11-20'
+    untestable: "Needs the id of an agent on the calling account; create one with agentline.agents.create first."
+    kind: account
+    capability: phone.knowledge.list
+    platform: phone
+    scope: any_account
+    method: GET
+    path: /v1/agents/{agent_id}/knowledge
+    name: "List an AI phone agent's facts"
+    summary: "List every fact an AI phone agent can tell callers, with its key, kind and expiry."
+    input:
+      pathParams:
+        agent_id: {type: string, required: true, example: "agt_abc123"}
+      queryParams:
+        limit: {type: integer, required: false, min: 1, max: 200, default: 100}
+        offset: {type: integer, required: false, min: 0, default: 0}
+    managed_resource: {operation: use, kind: agent, id: {in: pathParams, name: agent_id}}
+    price: {value: '0', currency: USD, unit: call}
+    docs_url: https://api.agentline.cloud/docs#/default/list_knowledge_facts_v1_agents__agent_id__knowledge_get
+
+  - id: agentline.contacts.create
+    added: '2026-11-20'
+    untestable: "Needs the id of an agent on the calling account; create one with agentline.agents.create first."
+    kind: action
+    capability: phone.contacts.create
+    platform: phone
+    scope: any_account
+    method: POST
+    path: /v1/agents/{agent_id}/contacts
+    name: "Save a contact for an AI phone agent"
+    summary: "Add a named contact with a phone number and label to an AI phone agent's contact list, so it knows who is calling."
+    input:
+      pathParams:
+        agent_id: {type: string, required: true, example: "agt_abc123"}
+      bodyType: json
+      body:
+        name: {type: string, required: true, minLength: 1, maxLength: 120, example: "Front desk"}
+        phone_number: {type: string, required: true, example: "+15555550100", note: "With + and country code; spaces, dashes, dots and parentheses are removed."}
+        label: {type: string, required: false, maxLength: 64, note: "Why the agent deals with this person, such as customer or landlord."}
+    managed_resource: {operation: use, kind: agent, id: {in: pathParams, name: agent_id}}
+    price: {value: '0', currency: USD, unit: call}
+    docs_url: https://api.agentline.cloud/docs#/default/create_contact_v1_agents__agent_id__contacts_post
+
+  - id: agentline.contacts.list
+    added: '2026-11-20'
+    untestable: "Needs the id of an agent on the calling account; create one with agentline.agents.create first."
+    capability: phone.contacts.list
+    platform: phone
+    scope: any_account
+    method: GET
+    path: /v1/agents/{agent_id}/contacts
+    name: "Find an AI phone agent's contacts by name or number"
+    summary: "Search an AI phone agent's contacts by name, label or number; pass a caller's number to find who is calling."
+    input:
+      pathParams:
+        agent_id: {type: string, required: true, example: "agt_abc123"}
+      queryParams:
+        q: {type: string, required: false, maxLength: 120, note: "Substring of the name, label or number."}
+        label: {type: string, required: false, maxLength: 64}
+        phone_number: {type: string, required: false, note: "E.164; returns only the contact with this number."}
+        limit: {type: integer, required: false, min: 1, max: 500, default: 100}
+        offset: {type: integer, required: false, min: 0, default: 0}
+    managed_resource: {operation: use, kind: agent, id: {in: pathParams, name: agent_id}}
+    price: {value: '0', currency: USD, unit: call}
+    docs_url: https://api.agentline.cloud/docs#/default/list_contacts_v1_agents__agent_id__contacts_get
+
+  - id: agentline.contact_facts.set
+    added: '2026-11-20'
+    untestable: "Needs the id of an agent on the calling account; create one with agentline.agents.create first."
+    kind: action
+    capability: phone.contact_facts.set
+    platform: phone
+    scope: any_account
+    method: PUT
+    path: /v1/agents/{agent_id}/contact-facts
+    name: "Remember a detail about one caller by phone number"
+    summary: "Store a detail an AI phone agent uses only on calls with one phone number, such as that caller's appointment or last order."
+    input:
+      pathParams:
+        agent_id: {type: string, required: true, example: "agt_abc123"}
+      bodyType: json
+      body:
+        phone_number: {type: string, required: true, example: "+15555550100", note: "E.164."}
+        key: {type: string, required: true, example: "appointment", note: "Lowercase letters, digits, dot, colon, dash and underscore; the same key for the same number replaces the detail."}
+        value: {type: string, required: true, minLength: 1, maxLength: 400, example: "Tuesday 10:00 AM"}
+        ttl_seconds: {type: integer, required: false, min: 1, max: 31622400, note: "Omit to keep the detail until it is changed."}
+    managed_resource: {operation: use, kind: agent, id: {in: pathParams, name: agent_id}}
+    price: {value: '0', currency: USD, unit: call}
+    docs_url: https://api.agentline.cloud/docs#/default/set_contact_fact_v1_agents__agent_id__contact_facts_put
+
+  - id: agentline.account.balance
+    added: '2026-11-20'
+    kind: account
+    capability: account.usage
+    platform: account
+    scope: own_account
+    method: GET
+    path: /v1/billing/balance
+    name: "Get AgentLine balance, rates and trial allowance"
+    summary: "The connected account's USD balance, the call-minute, number and text rates, how many of each the balance buys, and any free-trial allowance left."
+    input:
+      note: "No parameters."
+    test_request: {queryParams: {}}
+    price: {value: '0', currency: USD, unit: call, note: "Free; this is the registry's key check."}
+    docs_url: https://api.agentline.cloud/docs#/default/get_balance_v1_billing_balance_get
