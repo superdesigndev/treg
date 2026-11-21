@@ -1,0 +1,255 @@
+# Groundbox sandboxes: a Linux VM (Firecracker) per agent, driven over REST. Curated 2026-11-19 from
+# https://groundbox.dev/docs/sandboxes and https://groundbox.dev/docs/api; every row was called live
+# that day (create, exec, background command, file list and read, status, delete).
+#
+# There is no one-call "run code" route. A run is create -> exec (repeat) -> delete, and a sandbox's
+# id is the thread through it, so every row that takes one is owned by the team that created it
+# (resource_ownership) when treg's key serves it.
+#
+# PRICING. Groundbox bills a running sandbox $0.04 per vCPU-hour by the second, memory included, and
+# nothing per exec, file or status call. A sandbox stops billing when it is deleted or reaches
+# `timeout_minutes`, and with on_timeout left at its default the timeout deletes it. treg sees
+# only the create call, so the create row is the whole charge: cpus x timeout_minutes at that rate,
+# the most the sandbox can cost. Deleting early does not refund it on treg's key; a team's own key
+# is billed by Groundbox for the seconds used. The create body is an allowlist so a caller cannot
+# ask for what this price does not cover (another on_timeout, an idle pause, volumes).
+provider: groundbox
+source:
+  docs: https://groundbox.dev/docs/sandboxes
+  openapi: null
+  curated: '2026-11-19'
+pricing_url: https://groundbox.dev/pricing
+limits: "Sandboxes running at once are capped per team; past the cap a create answers 429 concurrency_limit."
+# A replayed create or exec would hand one caller another's sandbox or output.
+cache: forbidden
+response_retention: forbidden
+
+proposed_capabilities:
+  sandbox.create: "Start a Linux sandbox VM to run code in"
+  sandbox.status: "Check a sandbox's status, size and timeout"
+  sandbox.exec: "Run a command in a sandbox and get its output and exit code"
+  sandbox.command.start: "Start a long-running command in a sandbox in the background"
+  sandbox.command.output: "Read what a background command in a sandbox has printed"
+  sandbox.files.list: "List a folder in a sandbox"
+  sandbox.files.read: "Read a file from a sandbox"
+  sandbox.delete: "Delete a sandbox and stop its billing"
+
+defaults:
+  provenance: {source: docs, source_url: 'https://groundbox.dev/pricing', checked: '2026-11-19', confidence: documented}
+
+endpoints:
+  - id: groundbox.sandbox.create
+    kind: action
+    capability: sandbox.create
+    platform: sandbox
+    scope: any_account
+    method: POST
+    path: /sandboxes
+    body_allowlist: true
+    name: Start a Linux sandbox VM to run code
+    summary: Start a Linux VM with its own vCPUs and get back the id that commands, files and delete take.
+    resource_ownership:
+      produces:
+        - {kind: sandbox, path: id}
+    input:
+      bodyType: json
+      body:
+        cpus: {type: integer, required: false, default: 2, min: 1, max: 16, example: 1}
+        memory_gb: {type: integer, required: false, min: 1, max: 64, note: "Total memory; at most 4 GB per vCPU. Default 2 GB per vCPU."}
+        disk_gb: {type: integer, required: false, min: 1, note: "A minimum; the disk is never smaller than its image's. Default 20."}
+        timeout_minutes: {type: integer, required: true, min: 1, max: 60, example: 5, note: "The sandbox is deleted at this mark, and the call is priced for all of it: ask for the time the work needs."}
+        image: {type: string, required: false, example: "python:3.12-slim", note: "A public Docker image (linux/amd64). The first sandbox from a new image stays queued while it is turned into a disk; poll groundbox.sandbox.get until running."}
+        template: {type: string, required: false, note: "A template id from your Groundbox account; not with image."}
+        env: {type: object, required: false, example: {"MODE": "test"}, note: "Environment variables for every command."}
+        allow_hosts: {type: array, items: {type: string}, required: false, example: ["pypi.org", "files.pythonhosted.org"], note: "The only hosts, wildcards or IPv4 ranges the sandbox reaches; everything else is blocked."}
+        deny_hosts: {type: array, items: {type: string}, required: false, note: "Hosts the sandbox is blocked from reaching."}
+        metadata: {type: object, required: false, example: {"project": "demo"}, note: "String pairs to tag the sandbox."}
+      note: "With the default image the answer's status is running. From a new image it is queued until the image is ready (see image)."
+    # Replaying this starts a real 1 vCPU sandbox that Groundbox deletes after one minute.
+    test_request: {body: {cpus: 1, timeout_minutes: 1}}
+    reserve: {rows: {param: body.timeout_minutes, max: 60}}
+    price:
+      table:
+        - {when: [{path: body.cpus, op: equals, value: 1}], value: '0.04'}
+        - {when: [{path: body.cpus, op: equals, value: 2}], value: '0.08'}
+        - {when: [{path: body.cpus, op: equals, value: 3}], value: '0.12'}
+        - {when: [{path: body.cpus, op: equals, value: 4}], value: '0.16'}
+        - {when: [{path: body.cpus, op: equals, value: 5}], value: '0.20'}
+        - {when: [{path: body.cpus, op: equals, value: 6}], value: '0.24'}
+        - {when: [{path: body.cpus, op: equals, value: 7}], value: '0.28'}
+        - {when: [{path: body.cpus, op: equals, value: 8}], value: '0.32'}
+        - {when: [{path: body.cpus, op: equals, value: 9}], value: '0.36'}
+        - {when: [{path: body.cpus, op: equals, value: 10}], value: '0.40'}
+        - {when: [{path: body.cpus, op: equals, value: 11}], value: '0.44'}
+        - {when: [{path: body.cpus, op: equals, value: 12}], value: '0.48'}
+        - {when: [{path: body.cpus, op: equals, value: 13}], value: '0.52'}
+        - {when: [{path: body.cpus, op: equals, value: 14}], value: '0.56'}
+        - {when: [{path: body.cpus, op: equals, value: 15}], value: '0.60'}
+        - {when: [{path: body.cpus, op: equals, value: 16}], value: '0.64'}
+      fallback: {value: '0.64', note: "The largest sandbox, 16 vCPUs."}
+      currency: USD
+      per: 60
+      unit: minute
+      note: "$0.04 per vCPU-hour for every minute of timeout_minutes, charged when the sandbox starts. Deleting it early does not refund the rest."
+    added: '2026-11-19'
+    docs_url: https://groundbox.dev/docs/sandboxes
+
+  - id: groundbox.sandbox.get
+    kind: utility
+    capability: sandbox.status
+    platform: sandbox
+    scope: any_account
+    method: GET
+    path: /sandboxes/{id}
+    name: Check a sandbox's status by sandbox id
+    summary: Read a sandbox's status, size, image build state and the time it expires.
+    resource_ownership:
+      requires: {kind: sandbox, param: id}
+    input:
+      pathParams:
+        id: {type: string, required: true, note: "The sbx_ id from groundbox.sandbox.create.", example: "sbx_rq9qunp7bs2aj9sx"}
+      note: "status is queued, running, paused, stopped or failed; a failed sandbox says why in error. A deleted sandbox still answers, with status stopped and stop_reason deleted."
+    untestable: needs the id of a sandbox the same team created with groundbox.sandbox.create
+    price: {value: '0', currency: USD, unit: call, note: "Free; the sandbox's running time is charged at create."}
+    added: '2026-11-19'
+    docs_url: https://groundbox.dev/docs/sandboxes
+
+  - id: groundbox.sandbox.exec
+    kind: action
+    capability: sandbox.exec
+    platform: sandbox
+    scope: any_account
+    method: POST
+    path: /sandboxes/{id}/exec
+    name: Run a command in a sandbox - stdout, stderr, exit code
+    summary: Run a shell line or a program in a sandbox, wait for it, and get its stdout, stderr and exit code.
+    resource_ownership:
+      requires: {kind: sandbox, param: id}
+    input:
+      pathParams:
+        id: {type: string, required: true, note: "The sbx_ id from groundbox.sandbox.create.", example: "sbx_rq9qunp7bs2aj9sx"}
+      bodyType: json
+      body:
+        cmd: {type: string, required: false, example: "python3 -c 'print(6*7)'", note: "A shell line, run with sh -c. Send cmd or args."}
+        args: {type: array, items: {type: string}, required: false, example: ["python3", "-"], note: "A program and its arguments, run with no shell."}
+        stdin: {type: string, required: false, example: "print(6 * 7)\n", note: "Text the command reads before end-of-file: a script for python3 - or sh -s."}
+        stdin_base64: {type: string, required: false}
+        encoding: {type: string, required: false, enum: [utf8, base64], note: "base64 returns stdout and stderr byte for byte."}
+        cwd: {type: string, required: false, note: "Default: the home folder."}
+        env: {type: object, required: false}
+        timeout_s: {type: integer, required: false, min: 1, example: 60, note: "The command is killed at this mark and the answer says timed_out. Work longer than a couple of minutes belongs in groundbox.sandbox.command.start."}
+    untestable: needs a running sandbox the same team created with groundbox.sandbox.create
+    price: {value: '0', currency: USD, unit: call, note: "Free; the sandbox's running time is charged at create."}
+    added: '2026-11-19'
+    docs_url: https://groundbox.dev/docs/sandboxes
+
+  - id: groundbox.sandbox.command.start
+    kind: action
+    capability: sandbox.command.start
+    platform: sandbox
+    scope: any_account
+    method: POST
+    path: /sandboxes/{id}/commands
+    name: Start a background command in a sandbox
+    summary: Start a long-running command in a sandbox and get its ex_ id at once; it keeps running with nobody connected.
+    resource_ownership:
+      requires: {kind: sandbox, param: id}
+    input:
+      pathParams:
+        id: {type: string, required: true, note: "The sbx_ id from groundbox.sandbox.create.", example: "sbx_rq9qunp7bs2aj9sx"}
+      bodyType: json
+      body:
+        cmd: {type: string, required: false, example: "pip install -q requests && python3 job.py", note: "A shell line, run with sh -c. Send cmd or args."}
+        args: {type: array, items: {type: string}, required: false}
+        cwd: {type: string, required: false}
+        env: {type: object, required: false}
+        timeout_s: {type: integer, required: false, min: 1}
+    untestable: needs a running sandbox the same team created with groundbox.sandbox.create
+    price: {value: '0', currency: USD, unit: call, note: "Free; the sandbox's running time is charged at create."}
+    added: '2026-11-19'
+    docs_url: https://groundbox.dev/docs/sandboxes
+
+  - id: groundbox.sandbox.command.output
+    kind: utility
+    capability: sandbox.command.output
+    platform: sandbox
+    scope: any_account
+    method: GET
+    path: /sandboxes/{id}/commands/{exec_id}/output
+    name: Read a background command's output by command id
+    summary: Read what a background command has printed so far, whether it is done, and its exit code.
+    resource_ownership:
+      requires: {kind: sandbox, param: id}
+    input:
+      pathParams:
+        id: {type: string, required: true, note: "The sbx_ id from groundbox.sandbox.create.", example: "sbx_rq9qunp7bs2aj9sx"}
+        exec_id: {type: string, required: true, note: "The ex_ id from groundbox.sandbox.command.start.", example: "ex_173dd6d6aa98bd09d5b8"}
+      queryParams:
+        seq: {type: integer, required: false, min: 0, default: 0, note: "Read on from here: pass the seq of the previous answer."}
+      note: "done is true once the command ended; exit_code is set then."
+    untestable: needs a command started in a sandbox the same team created with groundbox.sandbox.create
+    price: {value: '0', currency: USD, unit: call, note: "Free; the sandbox's running time is charged at create."}
+    added: '2026-11-19'
+    docs_url: https://groundbox.dev/docs/sandboxes
+
+  - id: groundbox.sandbox.files.list
+    kind: data
+    capability: sandbox.files.list
+    platform: sandbox
+    scope: any_account
+    method: GET
+    path: /sandboxes/{id}/files
+    name: List a folder in a sandbox by path
+    summary: List the files and folders in one folder of a sandbox, with type, size and modified time.
+    resource_ownership:
+      requires: {kind: sandbox, param: id}
+    input:
+      pathParams:
+        id: {type: string, required: true, note: "The sbx_ id from groundbox.sandbox.create.", example: "sbx_rq9qunp7bs2aj9sx"}
+      queryParams:
+        dir: {type: string, required: true, example: "/root", note: "An absolute path."}
+    untestable: needs a running sandbox the same team created with groundbox.sandbox.create
+    price: {value: '0', currency: USD, unit: call, note: "Free; the sandbox's running time is charged at create."}
+    added: '2026-11-19'
+    docs_url: https://groundbox.dev/docs/sandboxes
+
+  - id: groundbox.sandbox.files.read
+    kind: data
+    capability: sandbox.files.read
+    platform: sandbox
+    scope: any_account
+    method: GET
+    path: /sandboxes/{id}/files
+    name: Read a file from a sandbox by path
+    summary: Download one file from a sandbox, byte for byte.
+    resource_ownership:
+      requires: {kind: sandbox, param: id}
+    input:
+      pathParams:
+        id: {type: string, required: true, note: "The sbx_ id from groundbox.sandbox.create.", example: "sbx_rq9qunp7bs2aj9sx"}
+      queryParams:
+        path: {type: string, required: true, example: "/root/out.json", note: "An absolute path."}
+    untestable: needs a running sandbox the same team created with groundbox.sandbox.create
+    price: {value: '0', currency: USD, unit: call, note: "Free; the sandbox's running time is charged at create."}
+    added: '2026-11-19'
+    docs_url: https://groundbox.dev/docs/sandboxes
+
+  - id: groundbox.sandbox.delete
+    kind: utility
+    capability: sandbox.delete
+    platform: sandbox
+    scope: any_account
+    method: DELETE
+    path: /sandboxes/{id}
+    name: Delete a sandbox by sandbox id
+    summary: Delete a sandbox and its disk; Groundbox stops billing it at once.
+    resource_ownership:
+      requires: {kind: sandbox, param: id}
+    input:
+      pathParams:
+        id: {type: string, required: true, note: "The sbx_ id from groundbox.sandbox.create.", example: "sbx_rq9qunp7bs2aj9sx"}
+      note: "Deleting again is safe and answers 200."
+    untestable: needs the id of a sandbox the same team created with groundbox.sandbox.create
+    price: {value: '0', currency: USD, unit: call, note: "Free. On treg's key the create charge already covered the whole timeout."}
+    added: '2026-11-19'
+    docs_url: https://groundbox.dev/docs/sandboxes

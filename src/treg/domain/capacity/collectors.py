@@ -389,6 +389,17 @@ async def _fundable(c: httpx.AsyncClient, key: str) -> dict[str, object]:
     return {"value": balance, "unit": "credits", "note": "API credit balance"}
 
 
+async def _groundbox(c: httpx.AsyncClient, key: str) -> dict[str, object]:
+    # GET /account is free and needs the key's account:read scope; money is integer micro-dollars.
+    d = await _get(c, "https://api.groundbox.dev/v1/account",
+                   headers={"Authorization": f"Bearer {key}"})
+    balance = d.get("balance") if isinstance(d, dict) else None
+    micros = balance.get("total_micros") if isinstance(balance, dict) else None
+    if type(micros) is not int or micros < 0:
+        raise ValueError("Groundbox returned no valid balance")
+    return {"value": micros / 1_000_000, "unit": "USD",
+            "note": "plan usage left plus prepaid wallet credit"}
+
 async def _harvestapi(c, key):
     d = await _get(c, "https://api.harvestapi.io/users/my-api-user",
                    headers={"X-API-Key": key})
@@ -1188,6 +1199,7 @@ BALANCE_ROUTES = {
     "moltsets": _moltsets,
     "openmart": _openmart,
     "fundable": _fundable,
+    "groundbox": _groundbox,
     "trykitt": _trykitt,
     "contactout": _contactout,
     "millionverifier": _millionverifier,
