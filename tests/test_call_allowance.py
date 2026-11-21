@@ -115,13 +115,14 @@ class FakeStore:
         return (counter.get("avail", 0), counter.get("frozen", 0), counter.get("thawed", 0),
                 counter.get("epoch", 0), self.run)
 
-    async def allowance_pace(self, org_id):
+    async def allowance_state_and_pace(self, org_id):
         self.paces += 1
+        state = await self.allowance_state(org_id)
         counter = self.counters.get(org_id, {})
         if "filled" not in counter or "epoch" not in counter:
-            return 0, 0
+            return (*state, 0, 0)
         filled, at = counter["filled"]
-        return max(0, filled - counter["avail"]), max(0, int(time.time() * 1000 - at))
+        return (*state, max(0, filled - counter["avail"]), max(0, int(time.time() * 1000 - at)))
 
     def age_pace(self, org_id: int, seconds: float) -> None:
         """Move the counter's last add `seconds` into the past."""
@@ -2273,14 +2274,44 @@ def paced(monkeypatch):
 
 
 async def test_a_busy_team_is_refilled_to_what_it_spent_over_the_window(org_id, store, paced):
-    """600_000 of the first chunk went in two seconds: 9 USD over the window, of which the
-    counter may hold half the balance."""
+    """600_000 of the first chunk went in two seconds: a reading shorter than half the window
+    counts as half of it, so the counter is brought up to twice what it spent."""
     assert await runtime.take(org_id, 600_000), "no reading yet: a chunk, as before"
     assert store.counters[org_id]["avail"] == CHUNK - 600_000
     store.age_pace(org_id, 2)
     assert await runtime.take(org_id, 500_000), "the counter is short: this call refills in line"
-    assert store.counters[org_id]["avail"] == 2_000_000 - 500_000
-    assert await _state(org_id) == (GRANT - CHUNK - 1_600_000, CHUNK + 1_600_000)
+    assert store.counters[org_id]["avail"] == 1_200_000 - 500_000
+    assert await _state(org_id) == (GRANT - CHUNK - 800_000, CHUNK + 800_000)
+
+
+class _Asked:
+    """The store, noting each operation asked of it."""
+
+    def __init__(self, real) -> None:
+        self._real, self.names = real, []
+
+    def __getattr__(self, name):
+        operation = getattr(self._real, name)
+
+        async def asked(*args, **kwargs):
+            self.names.append(name)
+            return await operation(*args, **kwargs)
+        return asked
+
+
+async def test_a_sized_refill_asks_the_store_nothing_a_refill_to_the_chunk_does_not(
+        org_id, store, monkeypatch):
+    """The pace comes with the state, in the one read a refill makes before its transaction:
+    there is no read of its own that could stall while the refill holds the team's lease."""
+    asked = []
+    for window in (0, 30):
+        monkeypatch.setattr(get_settings(), "money_allowance_refill_window_s", window)
+        noted = _Asked(store)
+        monkeypatch.setattr(kv, "store", lambda noted=noted: noted)
+        assert await runtime._refill(org_id, 0, 0)
+        asked.append(noted.names)
+    assert asked == [["allowance_state", "allowance_add"],
+                     ["allowance_state_and_pace", "allowance_add"]]
 
 
 async def test_with_the_window_off_a_refill_reads_no_pace_and_tops_up_to_the_chunk(org_id, store):
@@ -2292,23 +2323,84 @@ async def test_with_the_window_off_a_refill_reads_no_pace_and_tops_up_to_the_chu
     assert await _state(org_id) == (GRANT - CHUNK - 600_000, CHUNK + 600_000)
 
 
-async def test_a_pace_the_store_cannot_read_leaves_that_refill_at_the_chunk(
+async def test_a_refill_whose_read_fails_fails_as_a_refill_to_the_chunk_does(
         org_id, store, paced, monkeypatch):
-    """Nothing is kept from the failure: the next refill reads the pace again."""
+    """The call takes the exact path, as it would on a failed read of the state alone, and
+    nothing is kept from the failure: the next refill reads the pace again."""
     assert await runtime.take(org_id, 600_000)
     store.age_pace(org_id, 2)
-    pace = store.allowance_pace
+    read = store.allowance_state_and_pace
 
     async def unavailable(org_id):
         return None
 
-    monkeypatch.setattr(store, "allowance_pace", unavailable)
+    monkeypatch.setattr(store, "allowance_state_and_pace", unavailable)
+    assert await runtime.take(org_id, 500_000) is None, "the exact path"
+    monkeypatch.setattr(store, "allowance_state_and_pace", read)
     assert await runtime.take(org_id, 500_000)
-    assert store.counters[org_id]["avail"] == CHUNK - 500_000
-    monkeypatch.setattr(store, "allowance_pace", pace)
-    store.age_pace(org_id, 2)
+    assert store.counters[org_id]["avail"] == 1_200_000 - 500_000, "sized on the next refill"
+
+
+async def test_a_sized_refill_leaves_most_of_the_days_room_to_the_exact_path(
+        org_id, store, paced, monkeypatch):
+    """The exact path's cap check counts all of the allowance hold as spent. A team whose pace
+    asks for far more than its daily cap has left gets a quarter of that room, and a call on
+    the exact path still fits in the rest."""
+    caller = await _caller(org_id)
+    async with session_maker() as db:
+        await ledger.grant(db, org_id, amount_micro=95_000_000, once=False)
+        await db.execute(update(Org).where(Org.id == org_id).values(daily_cap_micro=10_000_000))
+        await db.commit()
+    caller.org.daily_cap_micro = 10_000_000
+    monkeypatch.setattr(get_settings(), "money_allowance_refill_balance_percent", 25)
+    assert await runtime._refill(org_id, 0, 10_000_000)
+    for _ in range(9):
+        assert await runtime.take(org_id, 100_000)
+    monkeypatch.setattr(runtime, "_sized_target", lambda *args: 27_000_000)
+    assert await runtime._refill(org_id, 0, 10_000_000)
+    assert (await _state(org_id))[1] == 2_250_000, "a quarter of the 9 USD the day had left"
+    async with session_maker() as db:
+        await call_reserve._enforce_platform_daily_cap(caller, 2_000_000, db)
+
+
+async def test_an_exact_path_call_the_balance_alone_cannot_pay_for_gets_the_counter_back(
+        org_id, store, paced, monkeypatch):
+    """Sized refills can set aside a share of the balance that a call on the exact path does
+    not see. Short of it, that call has the counter returned to the balance and tries once
+    more; the counter is frozen, so the next call on the allowance refills it first."""
+    caller = await _caller(org_id)
     assert await runtime.take(org_id, 600_000)
-    assert store.counters[org_id]["avail"] > CHUNK, "sized again"
+    store.age_pace(org_id, 2)
+    monkeypatch.setattr(runtime, "_ahead", lambda: {"ahead_ms": 3_600_000, "low_micro": 0})
+    assert await runtime.take(org_id, 100_000)
+    await runtime._refreshing[org_id]
+    assert await _state(org_id) == (3_000_000, 2_000_000), "1_300_000 of it on the counter"
+    mk = _call(org_id, estimate=3_500_000)
+    await call_reserve._platform_reserve(mk, caller, call_ref="exact-1")
+    assert mk.call_id == "exact-1" and await _per_call_holds(org_id) == ["exact-1"]
+    assert await _state(org_id) == (4_300_000 - 3_500_000, 700_000), "what the takes stand on"
+    counter = store.counters[org_id]
+    assert counter["avail"] == 0 and counter["frozen"] != counter["thawed"]
+    async with session_maker() as db:
+        returned = [entry for entry in await ledger.entries_of(db, org_id, limit=100)
+                    if entry.kind == "release" and entry.meta.get("allowance")]
+    assert [(entry.amount_micro, entry.meta["reason"]) for entry in returned] == [
+        (1_300_000, "exact_path_short")]
+    with pytest.raises(ReservationFailed) as refused:
+        await call_reserve._platform_reserve(
+            _call(org_id, estimate=1_500_000), caller, call_ref="exact-2")
+    assert refused.value.status_code == 402, "nothing left to give back: refused as before"
+
+
+async def test_with_the_window_off_an_exact_path_call_short_of_money_is_refused_as_before(
+        org_id, store):
+    caller = await _caller(org_id)
+    assert await runtime.take(org_id, 600_000)
+    with pytest.raises(ReservationFailed) as refused:
+        await call_reserve._platform_reserve(
+            _call(org_id, estimate=4_200_000), caller, call_ref="exact-1")
+    assert refused.value.status_code == 402
+    assert store.counters[org_id]["avail"] == CHUNK - 600_000, "the counter is left alone"
 
 
 async def test_a_team_that_stopped_calling_is_refilled_to_the_chunk_again(org_id, store, paced):
@@ -2325,5 +2417,7 @@ async def test_a_refill_ahead_of_the_deadline_is_sized_to_the_pace_too(
     monkeypatch.setattr(runtime, "_ahead", lambda: {"ahead_ms": 3_600_000, "low_micro": 0})
     assert await runtime.take(org_id, 100_000), "served; it asks for a refill beside itself"
     await runtime._refreshing[org_id]
-    assert store.counters[org_id]["avail"] == 2_000_000
-    assert await _state(org_id) == (GRANT - CHUNK - 1_700_000, CHUNK + 1_700_000)
+    # Twice the 700_000 it spent would be 1_400_000 on the counter; the hold, 1_000_000 before,
+    # may carry half of the 4_000_000 balance, so the counter is brought up to 1_300_000.
+    assert store.counters[org_id]["avail"] == 1_300_000
+    assert await _state(org_id) == (GRANT - CHUNK - 1_000_000, CHUNK + 1_000_000)

@@ -328,10 +328,13 @@ def test_a_refill_with_no_reading_or_no_window_brings_the_counter_to_the_floor()
                                   ceiling_micro=50_000_000) == 1_000_000
 
 
-def test_a_reading_over_less_than_a_second_counts_as_one_second():
-    """A refill moments after the last has seen a handful of calls: no measure of the pace."""
-    assert _paced(500_000, 100) == 15_000_000
-    assert _paced(500_000, 1_000) == 15_000_000
+def test_a_reading_shorter_than_half_the_window_counts_as_half_the_window():
+    """A burst: 3 USD in one second would read as 90 USD over the window. Counted as half the
+    window, it brings the counter up to twice the burst, not to the ceiling."""
+    assert _paced(3_000_000, 1_000) == 6_000_000
+    assert _paced(3_000_000, 15_000) == 6_000_000, "half the window: the same"
+    assert _paced(3_000_000, 20_000) == 4_500_000, "longer than half: the pace itself"
+    assert _paced(400_000, 100) == 1_000_000, "twice what was spent is below the floor"
 
 
 def test_the_pace_of_a_team_that_stopped_calling_falls_back_to_the_floor():
@@ -351,12 +354,16 @@ def _team(org_id: int, *, cap: int = 0):
 
 async def _sized(org_id: int, add: int, grow_to: int, *, percent: int = 100, cap: int = 0,
                  shown: int | None = None, fold_limit: int = allowance.FOLD_BATCH,
-                 team_cap: int = 0) -> allowance.Allowance:
+                 team_cap: int = 0, ceiling: int | None = None,
+                 lost_counter: bool = False) -> allowance.Allowance:
+    """A sized refill. `lost_counter`: the store lost the counter, so the refill rebuilds it
+    with `add` (a counter of epoch 0 names no hold)."""
+    rebuild = {"counter_epoch": 0, "fresh_add_micro": add} if lost_counter else {}
     async with session_maker() as db:
         result = await allowance.refill_allowance_in_transaction(
             db, org_id, add, daily_cap_micro=cap, counter_micro=shown, fold_limit=fold_limit,
-            grow_to_micro=grow_to, balance_percent=percent,
-            current_team=_team(org_id, cap=team_cap))
+            grow_to_micro=grow_to, balance_percent=percent, ceiling_micro=ceiling,
+            current_team=_team(org_id, cap=team_cap), **rebuild)
         await db.commit()
     return result
 
@@ -367,23 +374,40 @@ async def test_a_sized_refill_grows_the_counter_only_to_its_share_of_the_balance
     assert await _invariant(org_id) == GRANT - 250_000
     assert [entry.amount_micro for entry in await _entries(org_id, "reserve")] == [-250_000]
     assert await _daily_counter_agrees(org_id) == 250_000
-    # The counter still shows 200_000 and the balance is 750_000: a quarter of it is already there.
+    # The hold carries 250_000 and a quarter of the 750_000 balance is less: no growth.
     assert (await _sized(org_id, 0, 900_000, percent=25, shown=200_000)).added_micro == 0
     floor = await _sized(org_id, 600_000, 900_000, percent=25, shown=0)
     assert floor.added_micro == 600_000, "what is asked for without it, whatever the share"
     assert await _invariant(org_id) == GRANT - 850_000
 
 
-async def test_a_sized_refill_keeps_the_day_within_the_cap(org_id):
-    grown = await _sized(org_id, 100_000, 900_000, cap=400_000)
-    assert grown.added_micro == 400_000, "as far as the cap has room"
-    assert (await _sized(org_id, 100_000, 900_000, cap=400_000)).added_micro == 0, (
-        "no room for what is asked for without it: nothing, as before")
-    assert (await _sized(org_id, 10_000, 900_000, team_cap=450_000)).added_micro == 50_000, (
+async def test_a_sized_refill_leaves_most_of_the_days_room_to_the_exact_path(org_id):
+    """The exact path's cap check counts all of the hold as spent. The growth stops where the
+    hold would carry more than a share of what the day had left, so the exact path keeps the
+    rest; what is asked for without it is judged as before."""
+    first = await _sized(org_id, 100_000, 900_000, percent=25, cap=800_000)
+    assert first.added_micro == 200_000, "a quarter of the 800_000 the day had left"
+    second = await _sized(org_id, 50_000, 900_000, percent=25, cap=800_000)
+    assert second.added_micro == 50_000, "the hold already carries its share: the floor alone"
+    assert (await _sized(org_id, 600_000, 900_000, cap=800_000)).added_micro == 0, (
+        "no room for the floor: nothing, as before")
+    assert (await _sized(org_id, 10_000, 900_000, team_cap=255_000)).added_micro == 0, (
         "the cap the team's row has now")
     async with session_maker() as db:
-        assert await allowance.committed_today(db, org_id) == 450_000
-    assert await _invariant(org_id) == GRANT - 450_000
+        assert await allowance.committed_today(db, org_id) == 250_000
+    assert await _invariant(org_id) == GRANT - 250_000
+
+
+async def test_a_sized_refill_counts_what_a_lost_counter_left_in_the_hold(org_id):
+    """The store lost the counter: its money is still in the hold, out of every call's reach,
+    and a refill rebuilds the counter beside it. The growth is measured against the whole
+    hold, so the two together stay within the ceiling; past it only the floor is added."""
+    await _open(org_id, 450_000)
+    rebuilt = await _sized(org_id, 10_000, 300_000, ceiling=500_000, lost_counter=True)
+    assert (rebuilt.added_micro, rebuilt.amount_micro) == (50_000, 500_000)
+    again = await _sized(org_id, 10_000, 300_000, ceiling=500_000, lost_counter=True)
+    assert (again.added_micro, again.amount_micro) == (10_000, 510_000)
+    assert await _invariant(org_id) == GRANT - 510_000
 
 
 async def test_growth_the_queue_already_owes_is_given_back_and_the_rest_stays(org_id):

@@ -35,9 +35,6 @@ from . import (
 )
 
 FOLD_BATCH = 500
-# A pace read over less than this counts as read over this long: a refill moments after the
-# last one has seen too few calls to say how fast the team spends.
-_MIN_PACE_MS = 1000
 log = logging.getLogger("treg.ledger")
 
 
@@ -323,12 +320,17 @@ def paced_target(spent_micro: int, over_ms: int, *, window_s: int, floor_micro: 
     down by over the last `over_ms`, scaled to `window_s`, never below `floor_micro` and never
     above `ceiling_micro` unless the floor already is.
 
+    A reading shorter than half the window counts as half the window, so a refill at most
+    doubles what the counter went down by: a burst raises the target by twice its size at the
+    most, and only spend kept up over half a window or more reaches the window.
+
     The reading runs from the last refill, so it is always recent: while calls come the counter
     is refilled at least every half lifetime, and a team that stopped calling has a reading
     that grows longer while what it spent stays the same, down to the floor."""
     if window_s <= 0 or spent_micro <= 0 or over_ms <= 0:
         return floor_micro
-    paced = spent_micro * window_s * 1000 // max(over_ms, _MIN_PACE_MS)
+    window_ms = window_s * 1000
+    paced = spent_micro * window_ms // max(over_ms, window_ms // 2)
     return max(floor_micro, min(paced, ceiling_micro))
 
 
@@ -377,6 +379,7 @@ async def refill_allowance_in_transaction(
     counter_micro: int | None = None,
     current_team: Callable[[AsyncSession], Awaitable[TeamNow]] | None = None,
     grow_to_micro: int | None = None, balance_percent: int = 100,
+    ceiling_micro: int | None = None,
 ) -> Allowance:
     """Fold a batch of queued charges, then move `add_micro` from the balance into the team's
     allowance hold, opening the hold if there is none. In the caller's transaction, before any
@@ -408,11 +411,14 @@ async def refill_allowance_in_transaction(
 
     `grow_to_micro` asks for more: the counter brought up to that figure (`paced_target`), as
     far as the team's money allows, where `add` is all that is asked for otherwise. Only the
-    part beyond `add` is limited, so a refill never adds less than it would without it: the
-    counter after it holds at most `balance_percent` of the balance `current_team` read, the
-    day stays within the cap, and a balance the queue's claims leave short of the growth gives
-    that part back first. It needs `current_team`, whose read of the row is where the balance
-    comes from.
+    part beyond `add` is limited, so a refill never adds less than it would without it. The
+    limits are on the hold after the refill, read under its lock: it carries what the counter
+    shows, what calls in flight took, and what a counter lost with the store left behind, which
+    no call can reach. It holds at most `balance_percent` of the balance `current_team` read,
+    at most `ceiling_micro`, and at most `balance_percent` of what the daily cap has left, so
+    calls on the exact path, whose cap check counts all of the hold as spent, keep the rest. A
+    balance the queue's claims leave short of the growth gives that part back first. It needs
+    `current_team`, whose read of the row is where the balance comes from.
     """
     if grow_to_micro is not None and current_team is None:
         raise ValueError("a refill sized to the team's spend reads the balance with current_team")
@@ -451,17 +457,21 @@ async def refill_allowance_in_transaction(
     folded = (await _apply_charges(db, org_id, hold, await _claim_all_charges(db, org_id))
               if fold_all else await _fold(db, org_id, hold, fold_limit))
     over_cap = False
+    held = hold.amount_micro if hold is not None else 0
     if current_team is not None:
         team = await current_team(db)
         daily_cap_micro = min(
             (cap for cap in (daily_cap_micro, team.daily_cap_micro) if cap > 0), default=0)
-        grow = min(grow, max(0, team.balance_micro * balance_percent // 100 - shown - add))
+        grow = min(grow, max(0, team.balance_micro * balance_percent // 100 - held - add))
+    if ceiling_micro is not None:
+        grow = min(grow, max(0, ceiling_micro - held - add))
     if daily_cap_micro > 0:
         exposed = await committed_today(db, org_id)
         over_cap = exposed > daily_cap_micro
         if exposed + add > daily_cap_micro:
             add = grow = 0
-        grow = min(grow, max(0, daily_cap_micro - exposed - add))
+        grow = min(grow, max(
+            0, (daily_cap_micro - exposed) * balance_percent // 100 - held - add))
     add += grow
     debited, counted = False, {}
     if hold is not None and add:

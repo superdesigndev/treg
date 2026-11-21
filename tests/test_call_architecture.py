@@ -160,12 +160,16 @@ _DATAPLANE_DERIVED_WRITES = {
         (settle._platform_settle, "allowance_runtime.finish"),
     ),
     # The counter is refilled from the balance into the team's one allowance hold, under the
-    # same money admission lease as a reserve, by whichever call found the counter short.
+    # same money admission lease as a reserve, by whichever call found the counter short. While
+    # refills are sized to the team's spend, a call on the exact path that the balance alone
+    # cannot pay for gives the counter back to the balance first, under the team's lease.
     "allowance_hold_refill": (
         (call_allowance._refill, "money_admission.admit"),
         (call_allowance._refill, "allowance.refill_allowance_in_transaction"),
         (call_allowance._drain, "allowance.close_allowance_in_transaction"),
         (call_allowance._fold_backlog, "allowance.fold_charges_in_transaction"),
+        (call_allowance.give_back_for_exact_path, "_drain"),
+        (reserve._platform_reserve, "allowance_runtime.give_back_for_exact_path"),
     ),
     # What a call spent from the allowance is queued as a `callcharge` row, a batch per insert,
     # committed before the call answers; a refill applies the queue to the blocks and the ledger.
@@ -221,6 +225,7 @@ _DERIVED_WRITE_FILES = {
     _SRC / "application" / "call" / "reserve.py": {
         "billing.maybe_schedule_autotopup", "money_admission.admit", "reserve_admission",
         "ledger.reap_stale_holds", "allowance_runtime.take",
+        "allowance_runtime.give_back_for_exact_path",
     },
     _SRC / "application" / "call" / "allowance.py": {
         "money_admission.admit", "ledger.reap_stale_holds",
@@ -304,6 +309,11 @@ _EXPECTED_DERIVED_WRITE_SITES = {
     ("application/call/allowance.py", "_take", "store.acquire_lease"),
     ("application/call/allowance.py", "_take", "store.allowance_take"),
     ("application/call/allowance.py", "_take", "store.release_lease"),
+    # an exact-path call the balance alone cannot pay for gets the sized counter back first
+    ("application/call/allowance.py", "give_back_for_exact_path", "store.acquire_lease"),
+    ("application/call/allowance.py", "give_back_for_exact_path", "store.release_lease"),
+    ("application/call/reserve.py", "_platform_reserve",
+     "allowance_runtime.give_back_for_exact_path"),
     ("application/call/reserve.py", "_platform_reserve", "allowance_runtime.take"),
     ("application/call/reserve.py", "_schedule_autotopup_after", "billing.maybe_schedule_autotopup"),
     ("application/call/settle.py", "_cleanup", "allowance_runtime.finish"),
