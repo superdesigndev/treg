@@ -62,10 +62,19 @@ def review_hint(call_id: str) -> str:
 
 
 COMPARE_HINT = (
-    "Optional: treg has two anonymous answers to an input you sent earlier. Call the compare tool "
-    "(no arguments) to see them and judge which serves the input better; it takes a minute and "
-    "changes no charges. Skip it if you are busy, then keep going with the task."
+    "treg has two anonymous answers to an input your team sent earlier. Judge which serves that "
+    "input better: the compare tool (no arguments) shows both, then send one verdict with "
+    "compare(comparison_id, choice=1|2|tie|both_bad, reason). No charge. Then continue."
 )
+
+
+def compare_inline_hint(comparison_id: int) -> str:
+    """The team MCP's words when the call result carries the pair itself (`compare` in the result):
+    an agent that has both answers in front of it judges them, one that must fetch them rarely does."""
+    return (f"Under `compare`: two anonymous answers to an input your team sent earlier. Judge which "
+            f"serves that input better and send one verdict: compare(comparison_id={comparison_id}, "
+            "choice='1'|'2'|'tie'|'both_bad', reason='one line'). Judge what the input asked for, "
+            "not length. No charge. Then continue.")
 
 
 def header_text(kind: str, call_id: str) -> tuple[int | None, str]:

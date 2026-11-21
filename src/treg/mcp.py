@@ -622,6 +622,7 @@ class CallOut(TypedDict, total=False):
                                     # the call at ITS price (X-Treg-Served-Via); absent on a direct call
     whose_error: str | None         # "treg" or "provider" — who to blame, and whether to retry
     hint: str | None
+    compare: dict[str, Any] | None  # two anonymous answers to judge, when `hint` invites a comparison
     did_you_mean: list[str] | None  # real ids close to one that missed
     routed_tool: str | None
     suggestion: str | None
@@ -1411,6 +1412,52 @@ async def compare(
     return _body(response)
 
 
+# What a call result carries of a comparison: a few rows of each answer, never the whole body, so
+# the invitation costs the agent little context. The `compare` tool still shows the stored answers.
+INLINE_ROWS = 5
+INLINE_FIELD_CHARS = 300
+INLINE_ANSWER_CHARS = 3000
+
+
+def _compact_answer(text: str | None) -> str:
+    """One answer as the call result shows it: its first rows, long strings cut, then a size cap.
+    Lists anywhere in the answer keep their first `INLINE_ROWS` items."""
+    if not text:
+        return ""
+    try:
+        value = json.loads(text)
+    except ValueError:
+        return text[:INLINE_ANSWER_CHARS]
+
+    def cut(v: Any) -> Any:
+        if isinstance(v, list):
+            return [cut(x) for x in v[:INLINE_ROWS]]
+        if isinstance(v, dict):
+            return {k: cut(x) for k, x in v.items()}
+        if isinstance(v, str) and len(v) > INLINE_FIELD_CHARS:
+            return v[:INLINE_FIELD_CHARS] + "…"
+        return v
+
+    return json.dumps(cut(value), ensure_ascii=False, separators=(",", ":"))[:INLINE_ANSWER_CHARS]
+
+
+async def _inline_comparison(token: str) -> dict[str, Any] | None:
+    """The team's waiting comparison, compacted for a call result; None when there is none or it
+    cannot be read (the call result then simply carries no invitation)."""
+    try:
+        async with _api(token) as client:
+            response = await client.get("/comparisons/next")
+    except Exception:  # an invitation is best-effort: the call it rides on never fails for it
+        logging.getLogger("treg.mcp").info("comparison not attached", exc_info=True)
+        return None
+    if response.status_code != 200:
+        return None
+    pair = response.json()
+    return {"comparison_id": pair["comparison_id"], "capability": pair.get("capability"),
+            "input": pair.get("input"), "answer_1": _compact_answer(pair.get("answer_1")),
+            "answer_2": _compact_answer(pair.get("answer_2"))}
+
+
 async def _review_impl(
     call_id: str, usefulness: ReviewUsefulness, ctx: Context, reason: str | None,
     *, surface: _SurfacePolicy, rows: list["MarkItemIn"] | None = None,
@@ -1964,7 +2011,11 @@ async def _call_impl(endpoint_id: str, params: dict | list | None = None,
         kind = r.headers.get("X-Treg-Hint")
         if kind == "review" and out.get("call_id"):
             out["hint"] = hints.review_hint(out["call_id"])
-        elif kind in ("mark", "compare") and r.headers.get("X-Treg-Hint-Text"):
+        elif kind == "compare":
+            if pair := await _inline_comparison(token):
+                out["compare"] = pair
+                out["hint"] = hints.compare_inline_hint(pair["comparison_id"])
+        elif kind == "mark" and r.headers.get("X-Treg-Hint-Text"):
             out["hint"] = r.headers["X-Treg-Hint-Text"]
         elif kind == "feedback":
             out["hint"] = hints.HINT

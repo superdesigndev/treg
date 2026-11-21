@@ -354,6 +354,15 @@ and answers none. The team `/mcp/` `compare` tool (scope `treg:read`, like `call
 shows the team's past inputs and answers; hidden from OpenAI's clients like `review`) fetches the
 next pair with an instruction line, or submits with `comparison_id` and `choice`.
 
+**The invitation carries the pair.** When `/call/` answers a team `/mcp/` call with
+`X-Treg-Hint: compare`, the MCP reads `GET /comparisons/next` and puts the pair in the call result
+as `compare: {comparison_id, capability, input, answer_1, answer_2}`, each answer cut to its first
+`INLINE_ROWS` list items, `INLINE_FIELD_CHARS` per string and `INLINE_ANSWER_CHARS` in all
+(`mcp._compact_answer`), with a hint naming the `comparison_id` to answer through the `compare`
+tool. With no pair waiting (the flag outlived it) the result carries neither. In a simulated test
+(2026-11-21), agents that had to fetch the pair with the `compare` tool first almost never judged
+it, while agents that found both answers in the call result nearly always did.
+
 **Settings** (all off by default): `TREG_COMPARE_PAIRS` (JSON, capability to unordered provider
 pairs, e.g. `{"web.search": [["provider-a", "provider-b"]]}`), `TREG_COMPARE_RATE`,
 `TREG_COMPARE_MAX_PER_RUN`, `TREG_COMPARE_MAX_PER_DAY`, `TREG_COMPARE_LOOKBACK_HOURS`,

@@ -665,17 +665,57 @@ async def test_team_mcp_renders_the_compare_hint_and_the_directory_never_asks(cl
         _compare_on(monkeypatch)
         monkeypatch.setattr(hints, "sampled", lambda kind, ref: False)
         monkeypatch.setattr(call_service, "relay", _fake_relay(200, b'{"data":{"items":[]}}'))
-        await kv.store().set_flag(compare.ready_key(await _org_id(clients)), 60)
+        org_id = await _org_id(clients)
+        await kv.store().set_flag(compare.ready_key(org_id), 60)
+        cid = await _seed(org_id, first="b", call_ref="inline-pair")
         args = {"endpoint_id": "tikhub.tiktok.video.comments", "params": {"aweme_id": "7"}}
         async with paired_mcp_session() as client:
             team = await _call_tool(client, "call", {**args, "idempotency_key": "compare-team"},
                                     clients.headers["X-Treg-Token"], path="/mcp/")
             directory = await _call_tool(client, "catalog_call_read", {**args, "idempotency_key": "compare-v2"},
                                          clients.headers["X-Treg-Token"])
-        assert team["hint"] == hints.COMPARE_HINT
-        assert "hint" not in directory
+        # The team MCP carries the pair itself, blinded, and names the comparison to answer.
+        assert team["compare"] == {"comparison_id": cid, "capability": "web.search", "input": '{"q":"x"}',
+                                   "answer_1": '"answer B"', "answer_2": '"answer A"'}
+        assert team["hint"] == hints.compare_inline_hint(cid)
+        assert "hint" not in directory and "compare" not in directory
     finally:
         get_settings.cache_clear()
+
+
+async def test_team_mcp_without_a_waiting_pair_carries_no_invitation(clients, monkeypatch):
+    """The flag can outlive its pair (decided elsewhere, or aged out): then no hint and no pair."""
+    from test_marketplace_call import _fake_relay
+    from test_mcp_directory import _call_tool, paired_mcp_session
+
+    monkeypatch.setenv("TREG_PLATFORM_KEY_TIKHUB", "SYNTHETIC-PLATFORM-KEY")
+    monkeypatch.setenv("TREG_PLATFORM_PROVIDERS", "tikhub")
+    get_settings.cache_clear()
+    try:
+        _compare_on(monkeypatch)
+        monkeypatch.setattr(hints, "sampled", lambda kind, ref: False)
+        monkeypatch.setattr(call_service, "relay", _fake_relay(200, b'{"data":{"items":[]}}'))
+        await kv.store().set_flag(compare.ready_key(await _org_id(clients)), 60)
+        args = {"endpoint_id": "tikhub.tiktok.video.comments", "params": {"aweme_id": "7"},
+                "idempotency_key": "compare-none"}
+        async with paired_mcp_session() as client:
+            team = await _call_tool(client, "call", args, clients.headers["X-Treg-Token"], path="/mcp/")
+        assert "compare" not in team and "hint" not in team
+    finally:
+        get_settings.cache_clear()
+
+
+def test_an_inline_answer_keeps_its_first_rows_and_cuts_long_text():
+    from treg import mcp as mcp_module
+
+    rows = [{"title": f"t{i}", "snippet": "s" * 1000} for i in range(12)]
+    shown = json.loads(mcp_module._compact_answer(json.dumps({"results": rows, "total": 12})))
+    assert [r["title"] for r in shown["results"]] == ["t0", "t1", "t2", "t3", "t4"]
+    assert len(shown["results"][0]["snippet"]) == mcp_module.INLINE_FIELD_CHARS + 1
+    assert shown["total"] == 12
+    assert mcp_module._compact_answer("not json " * 1000) == ("not json " * 1000)[:mcp_module.INLINE_ANSWER_CHARS]
+    assert len(mcp_module._compact_answer(json.dumps(["x" * 299] * 5))) <= mcp_module.INLINE_ANSWER_CHARS
+    assert mcp_module._compact_answer(None) == ""
 
 
 # The API and the MCP tool
