@@ -992,6 +992,41 @@ async def test_only_a_team_answering_mcp_invitations_is_compared(clients, search
     assert bool(sent) is compared
 
 
+async def test_every_marker_decision_is_counted_by_reason_and_client(monkeypatch, caplog):
+    """The call path says why calls were or were not marked, by client, in one periodic line."""
+    import logging
+
+    _compare_on(monkeypatch)
+    monkeypatch.setattr(compare, "_mark_counts", {})
+    monkeypatch.setattr(compare, "MARK_LOG_EVERY_S", 3600)
+    monkeypatch.setattr(hints, "sampled_at", lambda *_: True)
+    mcp = [(b"x-treg-client", b"mcp")]
+    await compare.mark_eligible("m1", "web.search", mcp, {"identity": {"q": "a"}})
+    await compare.mark_eligible("m2", "web.search", mcp + [(b"X-Treg-Route-Max-Cost", b"1")],
+                                {"identity": {"q": "b"}})
+    await compare.mark_eligible("m3", "web.search", [], {"identity": {"q": "c"}, "cursor": "p2"})
+    await compare.mark_eligible("m4", "people.email.find", mcp, {"identity": {"q": "d"}})
+    await compare.mark_eligible("m5", "web.search", mcp, {"identity": {"q": "e"}}, archive_opted_out=True)
+    assert compare._mark_counts == {"marked/mcp": 1, "route_header/mcp": 1, "page_continuation/-": 1,
+                                    "not_paired/mcp": 1, "archive_off/mcp": 1}
+    monkeypatch.setattr(compare, "MARK_LOG_EVERY_S", 0)
+    with caplog.at_level(logging.INFO, logger=compare.__name__):
+        await compare.mark_eligible("m6", "web.search", mcp, {"identity": {"q": "f"}})
+    line = next(r.getMessage() for r in caplog.records if r.getMessage().startswith("compare markers"))
+    assert '"marked/mcp": 2' in line and "q" not in line.replace("compare markers", "")
+    assert compare._mark_counts == {}
+
+
+async def test_a_run_names_the_client_of_each_unmarked_call(clients, search_on, monkeypatch):
+    _compare_on(monkeypatch)
+    _relay_b(monkeypatch)
+    org_id = await _org_id(clients)
+    await _routed_call(org_id, "never marked", marked=False)
+    result = await _collect()
+    assert result["skip_reasons"] == {"no_marker": 1}
+    assert sum(result["no_marker_by_client"].values()) == 1
+
+
 async def test_a_page_continuation_gets_no_marker(monkeypatch):
     """A continuation resumes a later page; B would be asked page one, so it is never marked."""
     _compare_on(monkeypatch)

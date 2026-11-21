@@ -258,6 +258,9 @@ compare_rate)` samples it in, it writes `compare-ok:<call_ref>` in the shared st
 the summary) is never marked: B would be asked page one against A's later page. A team opted out of the archive gets no
 marker, so its input never sits in the store. No database, no change to the answer, nothing raised: a lost marker only means the call is
 never compared. It is the only work on the call path.
+Every decision is counted by reason and `X-Treg-Client` (`marked`, `not_sampled`, `route_header`,
+`page_continuation`, `not_paired`, ...) and logged per process every `MARK_LOG_EVERY_S` as one
+`compare markers {...}` line of counts; a run reports its `no_marker` calls by client too.
 
 **The run.** `treg-worker compare collect` (`application.compare.collect`), meant for an hourly
 cron. `compare.pairs()` keeps a configured pair only when both providers have a verified adapter for
