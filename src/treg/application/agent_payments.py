@@ -37,6 +37,7 @@ from ..infra import stripe as stripe_api
 from ..infra.agent_payments import (
     Offer, PaymentRail, PaymentRejected, Settlement, Unconfirmed, Verified)
 from ..infra.agent_payments.tempo import CONSUMED_HEADERS as MPP_HEADERS
+from ..infra.agent_payments.nano import CONSUMED_HEADERS as NANO_HEADERS
 from ..infra.agent_payments.x402 import CONSUMED_HEADERS as X402_HEADERS
 from ..infra.db import session_maker
 from ..models import AgentPayer, AgentPayment, Membership, Org, User, _now
@@ -72,7 +73,7 @@ CENT_MICRO = 10_000
 BPS = 10_000
 # The rails give the chain this long past `expires_at` before calling a payment absent.
 CREDIT_PROOF_GRACE = timedelta(seconds=90)
-PAYMENT_HEADERS = frozenset(MPP_HEADERS + X402_HEADERS)
+PAYMENT_HEADERS = frozenset(MPP_HEADERS + X402_HEADERS + NANO_HEADERS)
 
 
 def enabled() -> bool:
@@ -272,7 +273,8 @@ def wallet_view(ep: dict) -> dict | None:
                     "back as money)." + _fee_note()}
 
 
-_HOW_TO_PAY = {"mpp": "MPP (WWW-Authenticate: Payment)", "x402": "x402 (PAYMENT-REQUIRED)"}
+_HOW_TO_PAY = {"mpp": "MPP (WWW-Authenticate: Payment)", "x402": "x402 (PAYMENT-REQUIRED)",
+               "nano": "Nano (X-NANO-PAYMENT-REQUIRED)"}
 
 
 async def _headers(rails, make) -> list[tuple[str, str]]:
