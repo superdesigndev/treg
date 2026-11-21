@@ -397,7 +397,16 @@ an id restores the hold path for that org's new calls; no migration is needed.
 a standing allowance instead of one hold per call ([money](../architecture/money.md), "Allowance");
 it needs `TREG_KV_URL` and PostgreSQL, and is ignored on SQLite. `TREG_MONEY_ALLOWANCE_CHUNK_MICRO` is what a refill brings the counter up
 to, `TREG_MONEY_ALLOWANCE_FRESH_S` how long a refill keeps admitting calls, and
-`TREG_MONEY_ALLOWANCE_LINGER_MS` how long finished calls wait to share one insert. Removing an id
+`TREG_MONEY_ALLOWANCE_LINGER_MS` how long finished calls wait to share one insert.
+`TREG_MONEY_ALLOWANCE_REFILL_WINDOW_S` (default `0`, off) sizes a refill to what the team took
+from its counter over that many seconds instead (at most twice what it took since the last
+refill), never below the chunk; the allowance hold then carries at most
+`TREG_MONEY_ALLOWANCE_REFILL_MAX_MICRO`, at most `TREG_MONEY_ALLOWANCE_REFILL_BALANCE_PERCENT` of
+the team's balance and at most that share of what its daily cap has left, and a call on the
+exact path that the balance alone cannot pay for gets the counter back first. A window longer
+than `TREG_MONEY_ALLOWANCE_FRESH_S` buys nothing more. Processes started with it back at `0`
+refill to the chunk again, with nothing else to undo, and processes of different settings can
+run side by side. Removing an id
 returns that org's new calls to the hold path at once; no migration is needed. The allowance's
 background loop (`application/allowance_sweep.py`) applies queued charges to the ledger and
 closes idle allowances. It runs in the `all` and `control` roles and is one more consumer of

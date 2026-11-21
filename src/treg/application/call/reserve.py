@@ -381,7 +381,7 @@ def wallet_and_alternative(mk: MarketplaceCall) -> tuple[str, str]:
 
 async def _platform_reserve(mk: MarketplaceCall, caller: Caller, meta: CallMeta = _NO_META,
                             call_ref: str | None = None, *, allow_holdless: bool = False,
-                            allow_allowance: bool = False) -> None:
+                            allow_allowance: bool = False, retry_short: bool = True) -> None:
     """Withhold this call's estimated cost BEFORE a byte goes upstream, and record the hold on `mk`.
     Insufficient balance is a 402 whose body an agent can act on without reading prose.
 
@@ -398,6 +398,9 @@ async def _platform_reserve(mk: MarketplaceCall, caller: Caller, meta: CallMeta 
     `allow_allowance` lets an eligible call (`_allowance_eligible`) of a team listed in
     `money_allowance_org_ids` reserve from the team's allowance counter instead: no hold, no
     balance row. Whenever the allowance cannot serve it, the call takes its own hold below.
+    A hold the balance cannot cover is tried once more (`retry_short`) when the team's
+    allowance counter held money and gave it back to the balance
+    (`allowance_runtime.give_back_for_exact_path`).
 
     The hold is the estimate, or the row's declared worst case when that is higher: a settle that
     reads the provider's figure may exceed the estimate, and calls in flight together all passed
@@ -501,6 +504,9 @@ async def _platform_reserve(mk: MarketplaceCall, caller: Caller, meta: CallMeta 
     except ledger.InsufficientBalance as exc:
         if refused_org is not None:
             billing.maybe_schedule_autotopup(refused_org)
+        if retry_short and await allowance_runtime.give_back_for_exact_path(caller.org_id):
+            return await _platform_reserve(
+                mk, caller, meta, call_ref, allow_holdless=allow_holdless, retry_short=False)
         wallet, alt = wallet_and_alternative(mk)
         # A team that keeps hitting this by hand is the one that should hear about auto top-up; a team
         # that already has it on needs to know it is the cooldown/cap holding, not a missing card —

@@ -16,6 +16,7 @@ sources:
   - src/treg/application/call/allowance.py
   - src/treg/application/allowance_sweep.py
   - tests/test_call_allowance.py
+  - tests/test_allowance_sized_refill_postgres.py
   - src/treg/domain/asynctasks/__init__.py
   - src/treg/models.py
   - src/treg/application/billing.py
@@ -170,7 +171,9 @@ A team's allowance is one `Hold` row (`allowance:<org id>`, `allowance` true; re
 invariant below counts it like any other hold. `allowance.refill_allowance_in_transaction` folds
 what its caller asks for (`fold_limit`, or the whole queue with `fold_all`), then moves an amount from the balance into that row with `reserve`'s conditional UPDATE and
 a `reserve` entry, opening the row when there is none (an insert that ignores a conflict decides
-between two openers). A balance that cannot cover the amount adds nothing and raises nothing: the
+between two openers). With `grow_to_micro` it may move more, within the limits the Allowance
+section gives (`balance_percent`, `ceiling_micro`, measured against the hold); that takes
+`current_team`, the caller's locked read of the team's cap and balance. A balance that cannot cover the amount adds nothing and raises nothing: the
 fold stands and the caller reads `added_micro == 0`. The row keeps its `created_at` for life, and
 the refill returns it as the `epoch` an outside counter must carry. A hold opened on an earlier
 UTC day is not in today's counter, so its top-ups stay out too and its folds add what they
@@ -190,8 +193,9 @@ keeps it;
 
 The hold is the authority; the shared store (`infra/kv.py`) only mirrors what of it is still
 unspent, as one hash per team: `avail`, the hold's `epoch`, the instant `until` which takes are
-admitted, two counts, `frozen` and `thawed`, and `run`, the run of the store's server that
-built the hash. The operations are atomic scripts:
+admitted, two counts, `frozen` and `thawed`, `run`, the run of the store's server that
+built the hash, and `filled` and `filled_at`, what the counter held right after the last add
+and when, by the store's clock. The operations are atomic scripts:
 
 - `allowance_take` subtracts an amount and returns the epoch, when the counter holds that much, is
   not frozen (`frozen == thawed`) and the store's clock is not past `until`.
@@ -207,7 +211,15 @@ built the hash. The operations are atomic scripts:
   and only when that count lies between the hash's own two counts. The counts of a new hash
   start at a random number, not at zero: the store can lose a hash and build it again under
   the same epoch, and a count read from the lost one is then not a count of the new one, so it
-  neither thaws a freeze of the new hash nor leaves it frozen for good. No clock is involved.
+  neither thaws a freeze of the new hash nor leaves it frozen for good. No clock is involved
+  in that. Each add, of any amount, also writes `filled` and `filled_at`.
+- `allowance_state_and_pace` is `allowance_state` read in the same atomic step as what the
+  counter is down by since the last add (`filled` less `avail`: takes net of give-backs) and
+  how many ms ago that add was, by the store's clock; both 0 when either note or the `epoch`
+  is missing. A refill sized to the team's spend reads it in place of `allowance_state`, so it
+  asks the store nothing a refill to the chunk does not; nothing on a call's way reads it.
+  `allowance_drop` and `allowance_take_up_to` remove money nobody spent, so they delete the
+  note; the hash a restart strips loses it with `avail`.
 - `allowance_freeze` raises the freeze count: what the counter holds is kept, but no call is
   admitted until an add whose caller read the count after this. A freeze that finds no hash
   leaves one holding only the count: a refill may have committed and not yet published, and
@@ -353,7 +365,8 @@ money moved, the purchased-credit gate.
   left for the exact path, and the refill then queued behind them on the money admission lease:
   the exact path serves one call at a time, so the team stayed there.
 - **refill.** Under the money admission lease, like a reserve: reap stale holds, then
-  `refill_allowance_in_transaction` brings the counter up to `money_allowance_chunk_micro`;
+  `refill_allowance_in_transaction` brings the counter up to `money_allowance_chunk_micro`
+  (or further, for a team that spends faster: the next bullet);
   after the commit, `store.allowance_add`. A refill does not fold: calls wait on it, and the
   queue is the background loop's. Only a frozen counter's refill folds, and then the whole
   queue, so the balance it reads is the true one. What a refill may add is judged as an exact
@@ -375,6 +388,51 @@ money moved, the purchased-credit gate.
   the call (balance or cap), or the worst case already exceeds the cap, the counter is emptied and that amount released back to the balance,
   the call takes the exact path, and the team is not tried again for a few seconds. A team with
   less than a chunk left is therefore served by the exact path.
+- **A busy team's refill is sized to its spend.** With a fixed chunk, a team whose calls set
+  aside a large amount, or that calls often, empties the counter within a second or two and
+  is back on its money lease with a refill each time. Off by default:
+  `money_allowance_refill_window_s` at 0 keeps the chunk, and nothing else changes. Above 0,
+  the refill reads the counter with `store.allowance_state_and_pace` (the same one round trip,
+  under the same store timeout, as the state alone), and `allowance.paced_target` scales what
+  the counter went down by to the window. The reading runs from the last add, and one shorter
+  than half the window counts as half the window: a refill at most doubles what the counter
+  went down by, so a burst raises the target by twice its size at the most, and only spend
+  kept up over half a window or more reaches the window (a team starting from the chunk
+  doubles its counter a few times, a few seconds apart, before refills settle at about one per
+  half lifetime). The target is never below the floor (the chunk, or what the waiting call
+  needs) and never above `money_allowance_refill_max_micro`. The reading is always recent:
+  while calls come the counter is refilled at least every half lifetime, and a team that
+  stopped calling is read over a time that includes the pause, which brings it back to the
+  floor. A window longer than `money_allowance_fresh_s` buys nothing more, and one at least
+  that long lets the deadline, half a lifetime ahead, ask for the next refill rather than the
+  low mark (still a quarter of a chunk).
+
+  Only the growth beyond what the floor adds is limited, so a refill never adds less than it
+  would with the chunk. The limits are on the allowance hold after the refill, read under its
+  lock: it carries what the counter shows, what calls in flight took, and what a counter lost
+  with the store left behind. The growth stops where the hold would carry more than
+  `money_allowance_refill_max_micro`, more than `money_allowance_refill_balance_percent` of the
+  balance (read from the team's row in the same locked statement that reads its daily cap: no
+  extra statement), or more than that same share of what the daily cap has left, so calls on
+  the exact path, whose cap check counts all of the hold as spent, keep the rest of the day.
+  When the queue's claims leave the balance short of the growth (`free` below zero after the
+  debit), the undo gives back the growth alone if that leaves the rest covered. The
+  conditional debit and the `free` check are unchanged, so a refill still never sets aside
+  money the team does not have.
+
+  Money set aside this way is out of the balance's sight. A call on the exact path that the
+  balance alone cannot pay for (`reserve_in_transaction` refuses it) therefore has the team's
+  counter given back first (`give_back_for_exact_path`: under the team's lease, waited for as
+  long as a call waits for a refill, the existing drain) and tries once more; the counter is
+  frozen by the drain, so the next call on the allowance refills it from the balance, the
+  queue folded first. Auto top-up reads the balance too, so for a team with sized refills it
+  fires while the hold still carries up to that share of the team's money. A counter lost with
+  the store leaves its money in the hold while the team keeps calling, out of every call's
+  reach (the growth limits count it, so refills stay at the chunk while it is past them), and
+  the idle sweep returns it once the team stops: with the default settings about five to six
+  minutes after its last refill (that refill's deadline, `money_allowance_fresh_s` on, plus
+  `hold_ttl_s()` and the clocks' margin, at the next pass of the sweep). A team that stops
+  calling leaves what its counter held there for the same time.
 - **finish.** `_platform_settle` and the cancel cleanup end a take exactly once (`mk.allowance_epoch`
   is cleared first). A billable call queues its charge, then gives back what it did not use; a
   call that is not billable gives everything back and writes nothing. Charges of calls finishing
@@ -516,8 +574,8 @@ window. The sweep closes each
 such hold in full (`close_stale_allowance_in_transaction`, under the release lease), then retires
 its counter so a late writer is refused. A charge recorded after that still finds no hold and
 comes out of the balance. While a team keeps calling, its hold is never idle and what a crash left
-in it stays there; the team's balance is lower by up to a chunk plus that, and the hold is in
-`/balance`.
+in it stays there; the team's balance is lower by up to a refill's target (a chunk, unless
+refills are sized to the team's spend) plus that, and the hold is in `/balance`.
 
 ## The six operations (`domain/money`)
 

@@ -291,6 +291,13 @@ class Settings(BaseSettings):
     money_allowance_org_ids: list[PositiveInt] = Field(default_factory=list)
     # What a refill brings the allowance counter up to, in micro-USD.
     money_allowance_chunk_micro: int = Field(default=1_000_000, ge=1, le=1_000_000_000)
+    # Above 0: a refill brings the counter up to what the team took from it over this many
+    # seconds instead, never below the chunk (money.md "Allowance"). 0 = always the chunk.
+    money_allowance_refill_window_s: int = Field(default=0, ge=0, le=3600)
+    # The most a refill sized to the team's spend brings the counter up to, in micro-USD.
+    money_allowance_refill_max_micro: int = Field(default=50_000_000, ge=1, le=1_000_000_000)
+    # And never more than this share of the team's balance, in percent.
+    money_allowance_refill_balance_percent: int = Field(default=25, ge=1, le=100)
     # How long after a refill the counter admits calls. A hold not refilled for this long plus
     # the hold lifetime has nobody spending from it and is closed.
     money_allowance_fresh_s: int = Field(default=30, ge=1, le=3600)
