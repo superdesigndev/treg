@@ -185,6 +185,7 @@ jobs:
           tests/test_archive.py
           tests/test_archive_batch.py
           tests/test_archive_batch_postgres.py
+          tests/test_archivekeyorg_natural_key_migration.py
           tests/test_cache_result_admission.py
           tests/test_archive_r2.py
           tests/test_archive_opt_out.py

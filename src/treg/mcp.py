@@ -622,6 +622,7 @@ class CallOut(TypedDict, total=False):
                                     # the call at ITS price (X-Treg-Served-Via); absent on a direct call
     whose_error: str | None         # "treg" or "provider" — who to blame, and whether to retry
     hint: str | None
+    compare: dict[str, Any] | None  # two anonymous answers to judge, when `hint` invites a comparison
     did_you_mean: list[str] | None  # real ids close to one that missed
     routed_tool: str | None
     suggestion: str | None
@@ -1393,6 +1394,12 @@ async def compare(
     comparison_id: int | None = None, reason: str | None = None,
 ) -> CompareOut:
     async with _api(_bearer(ctx)) as client:
+        # An identity token names no team: resolve it as `call` does, or the API asks which team.
+        _, slug, problem = await _resolve_org(client)
+        if problem:
+            return {"status": "error", "detail": problem}
+        if slug:
+            client.headers["X-Treg-Org"] = slug
         if choice is None:
             response = await client.get("/comparisons/next")
             if response.status_code == 204:
@@ -1409,6 +1416,85 @@ async def compare(
             body["reason"] = reason
         response = await client.post("/comparisons", json=body)
     return _body(response)
+
+
+# What a call result carries of a comparison: a few rows of each answer, never the whole body, so
+# the invitation costs the agent little context. The `compare` tool still shows the stored answers.
+INLINE_ROWS = 5
+INLINE_FIELD_CHARS = 300
+INLINE_ANSWER_CHARS = 3000
+# The pair is read after the call has answered and been charged: it may delay that answer this long
+# at most, then the result goes back without it. In-process requests ignore the client's timeout.
+INLINE_READ_TIMEOUT_S = 1.0
+
+
+def _compact_answer(text: str | None) -> tuple[str, bool]:
+    """(one answer as the call result shows it, whether anything was left out): its first rows,
+    long strings cut, then a size cap. Lists anywhere in the answer keep their first `INLINE_ROWS`."""
+    if not text:
+        return "", False
+    try:
+        value = json.loads(text)
+    except ValueError:
+        return text[:INLINE_ANSWER_CHARS], len(text) > INLINE_ANSWER_CHARS
+    cut_any = False
+
+    def cut(v: Any) -> Any:
+        nonlocal cut_any
+        if isinstance(v, list):
+            cut_any |= len(v) > INLINE_ROWS
+            return [cut(x) for x in v[:INLINE_ROWS]]
+        if isinstance(v, dict):
+            return {k: cut(x) for k, x in v.items()}
+        if isinstance(v, str) and len(v) > INLINE_FIELD_CHARS:
+            cut_any = True
+            return v[:INLINE_FIELD_CHARS] + "…"
+        return v
+
+    shown = json.dumps(cut(value), ensure_ascii=False, separators=(",", ":"))
+    return shown[:INLINE_ANSWER_CHARS], cut_any or len(shown) > INLINE_ANSWER_CHARS
+
+
+def _may_read_comparisons(token: str) -> bool:
+    """Whether this credential may see a comparison: an OAuth grant needs the `compare` tool's
+    scope (`treg:read`, the team's past inputs and answers), which `call`'s own scope does not
+    include. Team and identity tokens carry no scopes and read what the team reads."""
+    claims = _oauth_claims(token)
+    if claims is None:
+        return True
+    from .domain.identity import mcp_oauth
+    return _V1_TOOL_SCOPES["compare"] in mcp_oauth.mcp_permissions(claims.get("scope", ""))
+
+
+async def _inline_comparison(token: str, org_slug: str | None = None) -> dict[str, Any] | None:
+    """The team's waiting comparison, compacted for a call result; None when this credential may
+    not read it, none is waiting, or it is not read within `INLINE_READ_TIMEOUT_S` (the call result
+    then simply carries no invitation). `org_slug`: the team the call itself resolved, which an
+    identity token needs again here (`require_member` asks which team otherwise)."""
+    if not _may_read_comparisons(token):
+        return None
+    try:
+        async with asyncio.timeout(INLINE_READ_TIMEOUT_S):
+            async with _api(token) as client:
+                response = await client.get("/comparisons/next",
+                                            headers={"X-Treg-Org": org_slug} if org_slug else None)
+    except Exception:  # an invitation is best-effort: the call it rides on never fails for it
+        logging.getLogger("treg.mcp").info("comparison not attached", exc_info=True)
+        return None
+    if response.status_code != 200:
+        return None
+    pair = response.json()
+    one, one_cut = _compact_answer(pair.get("answer_1"))
+    two, two_cut = _compact_answer(pair.get("answer_2"))
+    out = {"comparison_id": pair["comparison_id"], "capability": pair.get("capability"),
+           "input": pair.get("input"), "answer_1": one, "answer_2": two}
+    # Cut when stored (`truncated_parts`), and rows or text left out here (`shortened`): the agent
+    # judges what is shown, and knows when the input itself is incomplete.
+    if pair.get("truncated"):
+        out["truncated_parts"] = pair.get("truncated_parts") or []
+    if shortened := [name for name, cut in (("answer_1", one_cut), ("answer_2", two_cut)) if cut]:
+        out["shortened"] = shortened
+    return out
 
 
 async def _review_impl(
@@ -1964,7 +2050,12 @@ async def _call_impl(endpoint_id: str, params: dict | list | None = None,
         kind = r.headers.get("X-Treg-Hint")
         if kind == "review" and out.get("call_id"):
             out["hint"] = hints.review_hint(out["call_id"])
-        elif kind in ("mark", "compare") and r.headers.get("X-Treg-Hint-Text"):
+        elif kind == "compare":
+            if pair := await _inline_comparison(token, extra_headers.get("X-Treg-Org")):
+                out["compare"] = pair
+                out["hint"] = hints.compare_inline_hint(
+                    pair["comparison_id"], input_cut="input" in pair.get("truncated_parts", []))
+        elif kind == "mark" and r.headers.get("X-Treg-Hint-Text"):
             out["hint"] = r.headers["X-Treg-Hint-Text"]
         elif kind == "feedback":
             out["hint"] = hints.HINT

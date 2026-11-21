@@ -43,6 +43,9 @@ from ..timeutil import utcnow_naive
 log = logging.getLogger(__name__)
 
 READY_TTL_S = 3 * 86400
+# The `CallReview.client` of a review written on the team MCP: its review tool and a verdict
+# riding on the next call (`mcp.PRIOR_CLIENT`). Only that surface shows a compare invitation.
+INVITE_ANSWERING_CLIENTS = ("mcp", "mcp-prior")
 # A call's eligibility marker lives this long; a run never looks further back.
 MARKER_TTL_S = 2 * 3600
 MARKER_TIMEOUT_S = 0.2
@@ -79,6 +82,47 @@ def configured() -> bool:
     return get_settings().compare_configured
 
 
+# Why calls on the call path were or were not marked, by reason and client, logged as one line
+# every `MARK_LOG_EVERY_S` per process: counts only, never an input or a team.
+MARK_LOG_EVERY_S = 600
+_mark_counts: dict[str, int] = {}
+_mark_logged_at = time.monotonic()
+
+
+def _note_mark(reason: str, raw_headers) -> None:
+    global _mark_logged_at
+    client = next((bytes(v).decode("latin-1")[:32] for n, v in raw_headers
+                   if bytes(n).lower() == b"x-treg-client"), "") or "-"
+    key = f"{reason}/{client}"
+    _mark_counts[key] = _mark_counts.get(key, 0) + 1
+    now = time.monotonic()
+    if now - _mark_logged_at >= MARK_LOG_EVERY_S:
+        log.info("compare markers %s", json.dumps(_mark_counts, sort_keys=True))
+        _mark_counts.clear()
+        _mark_logged_at = now
+
+
+def _mark_reason(capability: str | None, raw_headers, summary: dict, archive_opted_out: bool,
+                 call_ref: str) -> str | None:
+    """Why this call gets no marker, or None when it does (checked in the order that decides)."""
+    settings = get_settings()
+    if not settings.compare_configured:
+        return "off"
+    if capability not in pairs():
+        return "not_paired"
+    if archive_opted_out:
+        return "archive_off"
+    if "cursor" in summary:
+        return "page_continuation"
+    if not isinstance(summary.get("identity"), dict):
+        return "no_input"
+    if any(bytes(name).lower().startswith(_ROUTE_HEADER_PREFIX) for name, _ in raw_headers):
+        return "route_header"
+    if not hints.sampled_at("compare", call_ref, settings.compare_rate):
+        return "not_sampled"
+    return None
+
+
 async def mark_eligible(call_ref: str, capability: str | None, raw_headers,
                         route_summary: dict | None = None, *, archive_opted_out: bool = False) -> None:
     """On the call path, after a successful routed answer: mark the call for a comparison run when
@@ -88,24 +132,30 @@ async def mark_eligible(call_ref: str, capability: str | None, raw_headers,
     `MARKER_INPUT_MAX_BYTES`), so the run asks B exactly that question instead of reading it back
     from A's request. A page continuation (`cursor` in the summary) is no fresh question, since B
     would be asked page one, so it is never marked. One short store write, no database, nothing
-    raised, nothing about the answer changed."""
+    raised, nothing about the answer changed. Every outcome is counted (`_note_mark`)."""
+    reason = "error"
     try:
-        settings = get_settings()
         summary = route_summary or {}
-        given = None if "cursor" in summary else summary.get("identity")
-        if (archive_opted_out or not isinstance(given, dict) or not settings.compare_configured
-                or capability not in pairs()
-                or any(bytes(name).lower().startswith(_ROUTE_HEADER_PREFIX) for name, _ in raw_headers)
-                or not hints.sampled_at("compare", call_ref, settings.compare_rate)):
+        reason = _mark_reason(capability, raw_headers, summary, archive_opted_out, call_ref) or ""
+        if reason:
             return
-        text = json.dumps(given, sort_keys=True, default=str)
+        text = json.dumps(summary["identity"], sort_keys=True, default=str)
         if len(text.encode()) > MARKER_INPUT_MAX_BYTES:
+            reason = "input_too_large"
             return
         store = kv.store()
+        reason = "store_failed"
         async with asyncio.timeout(MARKER_TIMEOUT_S):
-            await store.set_text(marker_key(call_ref), text, MARKER_TTL_S)
+            stored = await store.set_text(marker_key(call_ref), text, MARKER_TTL_S)
+        if stored:
+            reason = "marked"
     except Exception:  # noqa: BLE001 - a lost marker only means this call is never compared
         return
+    finally:
+        try:
+            _note_mark(reason, raw_headers)
+        except Exception:  # noqa: BLE001 - counting never affects the call
+            pass
 
 
 def pairs() -> dict[str, list[tuple[str, str]]]:
@@ -316,11 +366,15 @@ class Candidate:
     capability: str
 
 
-async def _recent(session_factory, since: datetime) -> list[Candidate]:
-    """Recent successful routed parents of the paired capabilities, newest first, at most
-    `SCAN_PER_CAPABILITY` each: one ordered range of (endpoint_id, created_at) per capability."""
+async def _recent(session_factory, since: datetime, org_ids: set[int]) -> list[Candidate]:
+    """Recent successful routed parents of the paired capabilities from `org_ids` only, newest
+    first, at most `SCAN_PER_CAPABILITY` each: one ordered range of (endpoint_id, created_at) per
+    capability. Reading only eligible teams matters: other teams' calls can fill a newest-N
+    window read over every team, leaving eligible teams' earlier marked calls unread."""
     cat = catalog_store.load()
     out: list[Candidate] = []
+    if not org_ids:
+        return out
     async with session_factory() as db:
         for capability in pairs():
             parent = f"treg.{capability}"
@@ -328,6 +382,7 @@ async def _recent(session_factory, since: datetime) -> list[Candidate]:
                 continue
             rows = (await db.execute(select(CallRecord).where(
                 CallRecord.endpoint_id == parent, CallRecord.created_at >= since,
+                CallRecord.org_id.in_(org_ids),
             ).order_by(CallRecord.created_at.desc()).limit(SCAN_PER_CAPABILITY))).scalars().all()
             out += [Candidate(r, capability) for r in rows
                     if r.org_id is not None and r.credential_tier == "routed" and r.call_ref
@@ -335,11 +390,24 @@ async def _recent(session_factory, since: datetime) -> list[Candidate]:
     return out
 
 
+async def _answering_teams(session_factory, since: datetime) -> set[int]:
+    """Teams whose agent answered a review invitation on the team MCP since `since`: the only
+    teams a comparison can run for (`_eligible_teams`), read before any call so the scan covers
+    their calls alone."""
+    async with session_factory() as db:
+        return set((await db.execute(select(CallReview.org_id).where(
+            CallReview.created_at >= since, CallReview.invited.is_(True),
+            CallReview.client.in_(INVITE_ANSWERING_CLIENTS),
+        ).distinct())).scalars())
+
+
 async def _eligible_teams(session_factory, org_ids: set[int], capabilities: set[str],
                           since: datetime | None = None) -> set[int]:
-    """Teams a comparison may run for: in the archive, not a demo, that wrote at least one review
-    since `since` (a team whose agents never answer an invitation would leave its pairs unjudged,
-    and busy batch teams would take the whole budget), and holding no access policy at all (no
+    """Teams a comparison may run for: in the archive, not a demo, whose agent answered at least one
+    review invitation on the team MCP since `since` (only that surface shows the compare
+    invitation, and a team whose agent never answers one there, such as a pipeline that calls
+    without reading hints, would leave its pairs unjudged and take the whole budget), and holding
+    no access policy at all (no
     member or project tool ACL, no pin to a tag, no deny rule, no capability pin on a paired
     capability), so B's call never needs the team's authorization emulated."""
     if not org_ids:
@@ -350,7 +418,9 @@ async def _eligible_teams(session_factory, org_ids: set[int], capabilities: set[
             Org.public_demo.is_(False)))).scalars())
         if teams and since is not None:
             teams &= set((await db.execute(select(CallReview.org_id).where(
-                CallReview.org_id.in_(teams), CallReview.created_at >= since).distinct())).scalars())
+                CallReview.org_id.in_(teams), CallReview.created_at >= since,
+                CallReview.invited.is_(True), CallReview.client.in_(INVITE_ANSWERING_CLIENTS),
+            ).distinct())).scalars())
         if not teams:
             return set()
         # JSON columns: an unset value may read back as JSON null, so they are judged here.
@@ -460,7 +530,7 @@ async def collect(*, max_seconds: float = 110.0, session_factory=session_maker,
 
     totals = {"read": 0, "eligible": 0, "called": 0, "ready": 0, "failed": 0, "skipped": 0,
               "removed": await _remove_orphans(session_factory), "estimate_micro": 0,
-              "skip_reasons": {}}
+              "skip_reasons": {}, "no_marker_by_client": {}}
     settings = get_settings()
     if not configured() or settings.compare_rate <= 0:
         return {"status": "off", **totals}
@@ -469,14 +539,15 @@ async def collect(*, max_seconds: float = 110.0, session_factory=session_maker,
             return {"status": "at_limit", **totals}
     now = utcnow_naive()
     lookback = timedelta(hours=min(settings.compare_lookback_hours, MARKER_TTL_S // 3600))
-    found = await _recent(session_factory, now - lookback)
+    answered = now - timedelta(days=settings.compare_answer_days)
+    teams = await _eligible_teams(session_factory, await _answering_teams(session_factory, answered),
+                                  set(pairs()), since=answered)
+    found = await _recent(session_factory, now - lookback, teams)
     totals["read"] = len(found)
     async with session_factory() as db:
         done = set((await db.execute(select(CallComparison.call_ref).where(
             CallComparison.call_ref.in_([c.record.call_ref for c in found])))).scalars()) if found else set()
-    teams = await _eligible_teams(session_factory, {c.record.org_id for c in found}, set(pairs()),
-                                 since=now - timedelta(days=settings.compare_window_days))
-    found = [c for c in found if c.record.org_id in teams and c.record.call_ref not in done]
+    found = [c for c in found if c.record.call_ref not in done]
     totals["eligible"] = len(found)
     cat = catalog_store.load()
     await capacity_view.load()
@@ -501,6 +572,10 @@ async def collect(*, max_seconds: float = 110.0, session_factory=session_maker,
             if reason:
                 reasons = totals["skip_reasons"]
                 reasons[reason] = reasons.get(reason, 0) + 1
+            if reason == "no_marker":  # which surface the unmarked calls came through
+                by_client = totals["no_marker_by_client"]
+                name = cand.record.client or "-"
+                by_client[name] = by_client.get(name, 0) + 1
     finally:
         if own_client:
             await client.aclose()

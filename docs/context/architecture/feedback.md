@@ -258,6 +258,9 @@ compare_rate)` samples it in, it writes `compare-ok:<call_ref>` in the shared st
 the summary) is never marked: B would be asked page one against A's later page. A team opted out of the archive gets no
 marker, so its input never sits in the store. No database, no change to the answer, nothing raised: a lost marker only means the call is
 never compared. It is the only work on the call path.
+Every decision is counted by reason and `X-Treg-Client` (`marked`, `not_sampled`, `route_header`,
+`page_continuation`, `not_paired`, ...) and logged per process every `MARK_LOG_EVERY_S` as one
+`compare markers {...}` line of counts; a run reports its `no_marker` calls by client too.
 
 **The run.** `treg-worker compare collect` (`application.compare.collect`), meant for an hourly
 cron. `compare.pairs()` keeps a configured pair only when both providers have a verified adapter for
@@ -268,16 +271,21 @@ the capability, and logs the rest. Each run:
    while the team was being deleted, within one run.
 2. Stops when off (no pairs, `compare_max_per_day` 0 or `compare_rate` 0) or when the UTC day's
    attempts (`compareattemptday`) have reached `compare_max_per_day`.
-3. Reads recent routed parents per paired capability: `endpoint_id = treg.<capability>` and
-   `created_at` within `compare_lookback_hours` (at most two, the marker's life), newest first, at
-   most `SCAN_PER_CAPABILITY` (one ordered range of the `(endpoint_id, created_at)` index each), 2xx
-   and `credential_tier` routed; drops calls already compared.
-4. Keeps calls of eligible teams only: not opted out of the archive, not a demo, with at least one
-   review in `compare_window_days` (a team whose agents never answer an invitation would leave its
-   pairs unjudged, and busy batch teams would take the day's budget), and holding no
+3. Chooses eligible teams first: not opted out of the archive, not a demo, whose agent answered
+   at least one review invitation on the team MCP (`CallReview.invited`, client `mcp` or
+   `mcp-prior`) in `compare_answer_days` (only that surface shows the compare invitation; a team
+   whose agents never answer one there, such as a pipeline calling without reading hints, would
+   leave its pairs unjudged and take the day's budget), and holding no
    access policy at all (a member or project tool ACL, a member pinned to tags, a deny rule, or a
    capability pin on a paired capability). A team with any is skipped, so the run never has to
    emulate a team's authorization.
+4. Reads those teams' recent routed parents per paired capability: `endpoint_id =
+   treg.<capability>`, `org_id` among the eligible teams and `created_at` within
+   `compare_lookback_hours` (at most two, the marker's life), newest first, at most
+   `SCAN_PER_CAPABILITY` (one ordered range of the `(endpoint_id, created_at)` index each), 2xx and
+   `credential_tier` routed; drops calls already compared. Teams come first because other teams'
+   calls can fill a newest-N window read over every team, leaving eligible teams' earlier marked
+   calls unread until their markers expire.
 5. Per call, until `compare_max_per_run` or `--max-seconds`, one at a time, any error ending only
    that call: the marker must exist (none, or a store that cannot say, skips it; the marker holds
    the sample, so the run does not sample again); the credited child (the latest successful
@@ -352,11 +360,24 @@ and answers none. The team `/mcp/` `compare` tool (scope `treg:read`, like `call
 shows the team's past inputs and answers; hidden from OpenAI's clients like `review`) fetches the
 next pair with an instruction line, or submits with `comparison_id` and `choice`.
 
+**The invitation carries the pair.** When `/call/` answers a team `/mcp/` call with
+`X-Treg-Hint: compare`, the MCP reads `GET /comparisons/next` and puts the pair in the call result
+as `compare: {comparison_id, capability, input, answer_1, answer_2}`, each answer cut to its first
+`INLINE_ROWS` list items, `INLINE_FIELD_CHARS` per string and `INLINE_ANSWER_CHARS` in all
+(`mcp._compact_answer`), with a hint naming the `comparison_id` to answer through the `compare`
+tool. A stored cut travels as `truncated_parts`, rows or text left out here as `shortened`, and
+an incomplete input changes the hint. The pair is attached only for a credential that may read it
+(an OAuth grant needs `treg:read`, the `compare` tool's scope, beyond `call`'s `treg:call`) and only
+when read within `INLINE_READ_TIMEOUT_S`, since the call has already answered and been charged.
+With no pair waiting (the flag outlived it) the result carries neither. In a simulated test
+(2026-11-21), agents that had to fetch the pair with the `compare` tool first almost never judged
+it, while agents that found both answers in the call result nearly always did.
+
 **Settings** (all off by default): `TREG_COMPARE_PAIRS` (JSON, capability to unordered provider
 pairs, e.g. `{"web.search": [["provider-a", "provider-b"]]}`), `TREG_COMPARE_RATE`,
 `TREG_COMPARE_MAX_PER_RUN`, `TREG_COMPARE_MAX_PER_DAY`, `TREG_COMPARE_LOOKBACK_HOURS`,
 `TREG_COMPARE_BUDGET_PER_HOUR` (compare invitations per team per hour), `TREG_COMPARE_TEAM_CAP`,
-`TREG_COMPARE_WINDOW_DAYS`, `TREG_COMPARE_MAX_ANSWER_BYTES`. Rollback: `TREG_COMPARE_MAX_PER_DAY=0` with the cron kept:
+`TREG_COMPARE_WINDOW_DAYS`, `TREG_COMPARE_ANSWER_DAYS`, `TREG_COMPARE_MAX_ANSWER_BYTES`. Rollback: `TREG_COMPARE_MAX_PER_DAY=0` with the cron kept:
 no marker is written and no vendor is called, while each run still removes orphaned rows (removing
 the cron stops that cleanup too). Stored comparisons stay and waiting ones are still offered until
 they age out.

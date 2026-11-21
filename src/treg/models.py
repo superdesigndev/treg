@@ -2357,13 +2357,15 @@ class ArchiveKeyOrg(SQLModel, table=True):
     `archive_hit_repeat_price_percent` of the live price (`archive.md`, "Pricing a hit"). Keyed by
     `key_hash` rather than `ArchiveKey.id` because the hash is known on the call path before the
     background recorder has created the key row. Written only by `archive`.
+
+    The primary key is (org, key_hash), so a mark takes no number from a sequence. `id` is the
+    retired surrogate key: nullable, without a default, written only by code older than revision
+    0121 during a rolling deploy, and read by nothing (`archive.md`, "Pricing a hit").
     """
 
-    __table_args__ = (UniqueConstraint("org_id", "key_hash", name="uq_archive_key_org"),)
-
-    id: int | None = Field(default=None, primary_key=True)
-    org_id: int
-    key_hash: str = Field(index=True)
+    id: int | None = Field(default=None)
+    org_id: int = Field(primary_key=True)
+    key_hash: str = Field(primary_key=True, index=True)
     first_call_at: NaiveUTC = Field(default_factory=_now)
     last_call_at: NaiveUTC = Field(default_factory=_now)
     calls: int = Field(default=1)
