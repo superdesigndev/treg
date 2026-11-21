@@ -1017,6 +1017,22 @@ async def test_every_marker_decision_is_counted_by_reason_and_client(monkeypatch
     assert compare._mark_counts == {}
 
 
+async def test_a_rejected_marker_write_is_counted_as_store_failed(monkeypatch):
+    """The store answers False when it cannot write; that call is never counted as marked."""
+    _compare_on(monkeypatch)
+    monkeypatch.setattr(compare, "_mark_counts", {})
+    monkeypatch.setattr(compare, "MARK_LOG_EVERY_S", 3600)
+    monkeypatch.setattr(hints, "sampled_at", lambda *_: True)
+
+    async def refuse(*_):
+        return False
+
+    monkeypatch.setattr(kv.store(), "set_text", refuse)
+    await compare.mark_eligible("lost", "web.search", [(b"x-treg-client", b"mcp")],
+                                {"identity": {"q": "a"}})
+    assert compare._mark_counts == {"store_failed/mcp": 1}
+
+
 async def test_a_run_names_the_client_of_each_unmarked_call(clients, search_on, monkeypatch):
     _compare_on(monkeypatch)
     _relay_b(monkeypatch)

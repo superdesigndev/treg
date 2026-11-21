@@ -146,8 +146,9 @@ async def mark_eligible(call_ref: str, capability: str | None, raw_headers,
         store = kv.store()
         reason = "store_failed"
         async with asyncio.timeout(MARKER_TIMEOUT_S):
-            await store.set_text(marker_key(call_ref), text, MARKER_TTL_S)
-        reason = "marked"
+            stored = await store.set_text(marker_key(call_ref), text, MARKER_TTL_S)
+        if stored:
+            reason = "marked"
     except Exception:  # noqa: BLE001 - a lost marker only means this call is never compared
         return
     finally:
