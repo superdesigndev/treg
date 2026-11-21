@@ -107,10 +107,12 @@ logger = logging.getLogger("treg.maintenance")
 
 def _alembic_config() -> Config:
     """The one Config both the deploy path and the tests build: the packaged script directory,
-    pointed at the same URL the engine uses (%-escaped for configparser interpolation)."""
+    pointed at `migration_database_url`, else the URL the engine uses (%-escaped for configparser
+    interpolation)."""
     config = Config()
     config.set_main_option("script_location", str(files("treg").joinpath("alembic")))
-    config.set_main_option("sqlalchemy.url", _db_url.replace("%", "%%"))
+    url = get_settings().migration_database_url or _db_url
+    config.set_main_option("sqlalchemy.url", url.replace("%", "%%"))
     return config
 
 

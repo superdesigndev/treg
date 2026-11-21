@@ -176,10 +176,16 @@ def _new_engine(name: str, url: str | None = None):
             pool_pre_ping=True, pool_recycle=300, pool_timeout=5,
             pool_size=spec["pool_size"], max_overflow=spec["max_overflow"],
         )
+    connect_args: dict = {}
     if name == "read" and not is_sqlite:
         # A guard against accidental writes, including when the URL points at a writable server.
         # Use a replica/read-only database role as the access boundary, not this session default.
-        kwargs["connect_args"] = {"server_settings": {"default_transaction_read_only": "on"}}
+        connect_args["server_settings"] = {"default_transaction_read_only": "on"}
+    if not is_sqlite and not get_settings().db_statement_cache:
+        # asyncpg's own cache and the SQLAlchemy dialect's; both must be 0 for unnamed statements.
+        connect_args.update(statement_cache_size=0, prepared_statement_cache_size=0)
+    if connect_args:
+        kwargs["connect_args"] = connect_args
     engine = create_async_engine(db_url, **kwargs)
     money_trace.install_engine(engine.sync_engine, pool_name=name)
     if name == "read" and is_sqlite:
