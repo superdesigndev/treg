@@ -992,6 +992,27 @@ async def test_only_a_team_answering_mcp_invitations_is_compared(clients, search
     assert bool(sent) is compared
 
 
+async def test_a_busy_team_elsewhere_never_hides_an_eligible_teams_call(clients, search_on,
+                                                                       monkeypatch):
+    """The scan reads eligible teams' calls only: newer calls from a team that is never compared,
+    however many, cannot push an eligible team's marked call out of the per-capability read."""
+    _compare_on(monkeypatch)
+    sent = _relay_b(monkeypatch)
+    monkeypatch.setattr(compare, "SCAN_PER_CAPABILITY", 2)
+    org_id = await _org_id(clients)
+    await _routed_call(org_id, "earlier and marked", minutes_ago=50)
+    async with session_maker() as db:
+        for i in range(5):
+            db.add(CallRecord(org_id=org_id + 1000, user_email="pipeline@example.com",
+                              tool_name="treg.web.search", method="POST", path="/x", status_code=200,
+                              endpoint_id="treg.web.search", provider="treg", credential_tier="routed",
+                              call_ref=f"busy-{i}", created_at=utcnow_naive() - timedelta(minutes=i)))
+        await db.commit()
+    result = await _collect()
+    assert (result["read"], result["eligible"]) == (1, 1), result
+    assert len(sent) == 1
+
+
 async def test_every_marker_decision_is_counted_by_reason_and_client(monkeypatch, caplog):
     """The call path says why calls were or were not marked, by client, in one periodic line."""
     import logging

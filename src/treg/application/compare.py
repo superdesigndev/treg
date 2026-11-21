@@ -366,11 +366,15 @@ class Candidate:
     capability: str
 
 
-async def _recent(session_factory, since: datetime) -> list[Candidate]:
-    """Recent successful routed parents of the paired capabilities, newest first, at most
-    `SCAN_PER_CAPABILITY` each: one ordered range of (endpoint_id, created_at) per capability."""
+async def _recent(session_factory, since: datetime, org_ids: set[int]) -> list[Candidate]:
+    """Recent successful routed parents of the paired capabilities from `org_ids` only, newest
+    first, at most `SCAN_PER_CAPABILITY` each: one ordered range of (endpoint_id, created_at) per
+    capability. Reading only eligible teams matters: other teams' calls can fill a newest-N
+    window read over every team, leaving eligible teams' earlier marked calls unread."""
     cat = catalog_store.load()
     out: list[Candidate] = []
+    if not org_ids:
+        return out
     async with session_factory() as db:
         for capability in pairs():
             parent = f"treg.{capability}"
@@ -378,11 +382,23 @@ async def _recent(session_factory, since: datetime) -> list[Candidate]:
                 continue
             rows = (await db.execute(select(CallRecord).where(
                 CallRecord.endpoint_id == parent, CallRecord.created_at >= since,
+                CallRecord.org_id.in_(org_ids),
             ).order_by(CallRecord.created_at.desc()).limit(SCAN_PER_CAPABILITY))).scalars().all()
             out += [Candidate(r, capability) for r in rows
                     if r.org_id is not None and r.credential_tier == "routed" and r.call_ref
                     and 200 <= (r.status_code or 0) < 300]
     return out
+
+
+async def _answering_teams(session_factory, since: datetime) -> set[int]:
+    """Teams whose agent answered a review invitation on the team MCP since `since`: the only
+    teams a comparison can run for (`_eligible_teams`), read before any call so the scan covers
+    their calls alone."""
+    async with session_factory() as db:
+        return set((await db.execute(select(CallReview.org_id).where(
+            CallReview.created_at >= since, CallReview.invited.is_(True),
+            CallReview.client.in_(INVITE_ANSWERING_CLIENTS),
+        ).distinct())).scalars())
 
 
 async def _eligible_teams(session_factory, org_ids: set[int], capabilities: set[str],
@@ -523,14 +539,15 @@ async def collect(*, max_seconds: float = 110.0, session_factory=session_maker,
             return {"status": "at_limit", **totals}
     now = utcnow_naive()
     lookback = timedelta(hours=min(settings.compare_lookback_hours, MARKER_TTL_S // 3600))
-    found = await _recent(session_factory, now - lookback)
+    answered = now - timedelta(days=settings.compare_answer_days)
+    teams = await _eligible_teams(session_factory, await _answering_teams(session_factory, answered),
+                                  set(pairs()), since=answered)
+    found = await _recent(session_factory, now - lookback, teams)
     totals["read"] = len(found)
     async with session_factory() as db:
         done = set((await db.execute(select(CallComparison.call_ref).where(
             CallComparison.call_ref.in_([c.record.call_ref for c in found])))).scalars()) if found else set()
-    teams = await _eligible_teams(session_factory, {c.record.org_id for c in found}, set(pairs()),
-                                 since=now - timedelta(days=settings.compare_answer_days))
-    found = [c for c in found if c.record.org_id in teams and c.record.call_ref not in done]
+    found = [c for c in found if c.record.call_ref not in done]
     totals["eligible"] = len(found)
     cat = catalog_store.load()
     await capacity_view.load()

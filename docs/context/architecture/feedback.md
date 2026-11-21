@@ -271,11 +271,7 @@ the capability, and logs the rest. Each run:
    while the team was being deleted, within one run.
 2. Stops when off (no pairs, `compare_max_per_day` 0 or `compare_rate` 0) or when the UTC day's
    attempts (`compareattemptday`) have reached `compare_max_per_day`.
-3. Reads recent routed parents per paired capability: `endpoint_id = treg.<capability>` and
-   `created_at` within `compare_lookback_hours` (at most two, the marker's life), newest first, at
-   most `SCAN_PER_CAPABILITY` (one ordered range of the `(endpoint_id, created_at)` index each), 2xx
-   and `credential_tier` routed; drops calls already compared.
-4. Keeps calls of eligible teams only: not opted out of the archive, not a demo, whose agent answered
+3. Chooses eligible teams first: not opted out of the archive, not a demo, whose agent answered
    at least one review invitation on the team MCP (`CallReview.invited`, client `mcp` or
    `mcp-prior`) in `compare_answer_days` (only that surface shows the compare invitation; a team
    whose agents never answer one there, such as a pipeline calling without reading hints, would
@@ -283,6 +279,13 @@ the capability, and logs the rest. Each run:
    access policy at all (a member or project tool ACL, a member pinned to tags, a deny rule, or a
    capability pin on a paired capability). A team with any is skipped, so the run never has to
    emulate a team's authorization.
+4. Reads those teams' recent routed parents per paired capability: `endpoint_id =
+   treg.<capability>`, `org_id` among the eligible teams and `created_at` within
+   `compare_lookback_hours` (at most two, the marker's life), newest first, at most
+   `SCAN_PER_CAPABILITY` (one ordered range of the `(endpoint_id, created_at)` index each), 2xx and
+   `credential_tier` routed; drops calls already compared. Teams come first because other teams'
+   calls can fill a newest-N window read over every team, leaving eligible teams' earlier marked
+   calls unread until their markers expire.
 5. Per call, until `compare_max_per_run` or `--max-seconds`, one at a time, any error ending only
    that call: the marker must exist (none, or a store that cannot say, skips it; the marker holds
    the sample, so the run does not sample again); the credited child (the latest successful
