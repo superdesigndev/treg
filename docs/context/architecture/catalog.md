@@ -35,6 +35,7 @@ sources:
   - src/treg/catalog/capabilities.yaml
   - src/treg/catalog/aliases.yaml
   - src/treg/catalog/fx.yaml
+  - src/treg/catalog/shapers.yaml
   - src/treg/catalog/contracts.yaml
   - src/treg/catalog/adapters.yaml
   - scripts/catalog_added.py
@@ -328,6 +329,8 @@ failed `per_success` generation is not charged), not the display unit.
 it converts with `credit_rates_usd[<provider>]`, which is why `cost_view(cost, provider)` takes the
 provider. `currency: unit` is a provider meter (Semrush API units, Majestic's independent
 allowances) priced by `unit_rates_usd[provider][unit]`, one row per meter.
+
+Shapers bills workspace-key calls in company credits. Its public `GET /tools/listing` also publishes USDC prices for direct x402 calls. Use the workspace credit rate when estimating a call with a Shapers key.
 
 Each `credit_rates_usd` / `unit_rates_usd` entry carries `usd` plus `basis`/`source`/`checked`: the
 cheapest PUBLICLY listed tier, so the figure is an upper bound on real spend. `usd: null` is

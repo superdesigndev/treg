@@ -4131,3 +4131,17 @@ async def test_treg_s_key_refuses_a_row_it_has_no_rate_for_and_an_own_key_serves
         assert len(relayed) == 1 and await _balance(clients) == 1_000_000
     finally:
         get_settings.cache_clear()
+
+
+def test_shapers_paid_catalog_is_platform_priced():
+    """The three paid Shapers tools convert via fx.yaml; the free rate-card route is own-shelf plumbing."""
+    cat = A.catalog_store.load()
+    rows = cat.for_provider("shapers")
+    paid = [ep for ep in rows if ep.get("kind") != "account"]
+    assert {ep["id"] for ep in paid} == {
+        "shapers.people.search",
+        "shapers.github.user.profile",
+        "shapers.github.repos.similar",
+    }
+    assert all(cat.platform_eligible(ep) for ep in paid)
+    assert all(cat.cost_view(ep["cost"], "shapers")["usd"] > 0 for ep in paid)
