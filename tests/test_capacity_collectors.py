@@ -321,6 +321,31 @@ async def test_fundable_rejects_malformed_or_negative_balances(
     _refused(await _serve_json(monkeypatch, "fundable", payload), "no valid credit balance")
 
 
+async def test_filingdelta_balance_uses_free_buy_balance_route_and_accepts_zero(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    def probe(request: httpx.Request) -> httpx.Response:
+        assert request.method == "GET"
+        assert str(request.url) == "https://filingdelta.xyz/buy/balance"
+        assert request.headers["x-api-key"] == "test-key"
+        return httpx.Response(200, json={"credits_remaining": 0})
+
+    async with httpx.AsyncClient(transport=httpx.MockTransport(probe)) as client:
+        row = await _balance(monkeypatch, "filingdelta", client, "test-key")
+    assert row == {"value": 0, "unit": "credits",
+                   "note": "prepaid credit pack; 1 credit = one paid card"}
+    assert collectors.BALANCE_ROUTES["filingdelta"] is collectors._filingdelta
+    assert "filingdelta" not in collectors.NO_BALANCE_API
+    assert policy.default_policy("filingdelta", has_key=True).capacity_type == "credits"
+
+
+@pytest.mark.parametrize("remaining", [None, True, -1, "78"])
+async def test_filingdelta_balance_rejects_invalid_values(remaining, monkeypatch):
+    async with httpx.AsyncClient(transport=httpx.MockTransport(
+            lambda _: httpx.Response(200, json={"credits_remaining": remaining}))) as client:
+        _refused(await _balance(monkeypatch, "filingdelta", client, "test-key"),
+                 "no valid remaining-credit balance")
+
 
 async def test_tavily_capacity_uses_key_credit_remainder(monkeypatch):
     def probe(request):
