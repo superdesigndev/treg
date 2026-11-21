@@ -358,6 +358,15 @@ def test_hlrlookup_says_out_of_credit_with_a_200():
     assert S.classify("hlrlookup", 200, None, b'{"results":[{"error":"TOO_MANY_REQUESTS"}]}') is None
 
 
+def test_serpstat_says_limits_exceeded_with_a_200():
+    out = b'{"id":"1","error":{"code":32012,"message":"Limits exceeded","data":null}}'
+    sig = S.classify("serpstat", 200, None, out)
+    assert sig.kind == "balance" and S.is_exhausting(sig) and sig.resets_at is None
+    assert S.classify("serpstat", 200, None, b'{"id":"1","result":{"data":[{"keyword":"seo"}]}}') is None
+    assert S.classify("serpstat", 200, None, b'{"id":"1","error":{"code":-32601,"message":"Method not found"}}') is None
+    assert S.classify("hunter", 200, None, out) is None, "a 2xx is only ever read per provider"
+
+
 def test_each_tripwire_row_arms_the_tripwire_whole():
     rows = [sig for sig in S._TABLE if sig.tripwire]
     assert rows
