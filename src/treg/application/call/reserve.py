@@ -455,9 +455,9 @@ async def _platform_reserve(mk: MarketplaceCall, caller: Caller, meta: CallMeta 
                 # The builder's own per-tag ceilings first: a refusal that belongs to ONE of their users
                 # must not surface as the team-wide balance error, which names the builder's private numbers.
                 with timing.phase("preflight"), money_stage(db, "preflight"):
-                    await _enforce_tag_budgets(caller, meta, db, add_micro=held)
+                    await _enforce_tag_budgets(caller, meta, db, add_micro=charged)
                     member_id = await _enforce_member_spend_cap(caller, charged, db)
-                    await _enforce_platform_daily_cap(caller, held, db)
+                    await _enforce_platform_daily_cap(caller, charged, db)
                     await _enforce_trial_allowance(caller, mk.provider, mk.endpoint_id, db)
                 try:
                     with timing.phase("ledger"):
