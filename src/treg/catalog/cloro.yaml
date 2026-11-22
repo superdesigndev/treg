@@ -552,11 +552,13 @@ endpoints:
     method: POST
     path: /v1/monitor/bing
     name: "Bing SERP — organic results, AI Overview"
-    summary: "Returns parsed Bing organic results for a keyword from a chosen country and, on request, Bing's AI summary as an AI Overview with its cited sources."
+    summary: "Returns a parsed Bing SERP for a keyword from a chosen country: organic results, sponsored ads (text ads and shopping cards) and, on request, Bing's AI summary as an AI Overview with its cited sources."
     input:
       body:
         query: {type: string, required: true, note: "at most 3,500 characters after URL encoding, so fewer for non-Latin scripts", example: "how to remove rust from cast iron"}
         country: {type: string, required: true, note: "ISO 3166-1 alpha-2; it sets the Bing market. CN, KR and RU are refused; use cloro.account.coverage.countries for the current list.", example: "US"}
+        pages: {type: integer, required: false, note: "1-10, default 1. Each page past the first adds 2 credits.", example: 1}
+        first: {type: integer, required: false, note: "the result to start at, from 1, default 1. Bing shows its AI summary only on its first page, so there is no AI Overview above 1.", example: 1}
         include:
           type: object
           required: false
@@ -580,7 +582,7 @@ endpoints:
       source_url: 'https://cloro.dev/docs/guides/providers'
       checked: '2026-11-21'
       confidence: documented
-      note: "5 = 3 base + the 2-credit sync surcharge. include.aioverview adds 2, which the X-Credits-Charged header bills. html is free. One call is one results page. A failed extraction is not charged."
+      note: "5 = 3 base + the 2-credit sync surcharge, for one page. include.aioverview adds 2, which the X-Credits-Charged header bills. html is free. Ads cost nothing extra. Each page past the first adds 2, and `pages` is capped at 10, so the ceiling is 23, or 25 with the AI Overview. A failed extraction is not charged."
     docs_url: https://cloro.dev/docs/api-reference/endpoint/monitor-bing
 
   - id: cloro.bing.serp.ai_mode
