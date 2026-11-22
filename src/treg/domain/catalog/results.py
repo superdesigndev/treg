@@ -183,7 +183,9 @@ def judged_outcome(endpoint_id: str, status: int, body: bytes) -> str | None:
     return None if judged.state == "error" and judged.cause == "status" else judged.state
 
 
-def classify(endpoint_id: str, status: int, body: bytes) -> Result:
+def classify(endpoint_id: str, status: int, body: bytes, *, terminal: bool = False) -> Result:
+    """`terminal`: the body is an async task's terminal poll answer, which the row's `expect`
+    (a rule about the submission) does not describe."""
     if not 200 <= status < 300:
         # A declared miss is an answer ("nobody has it"), not a failure: without this every miss
         # of a provider that errors its misses stayed undecided, and its hit rate read 100%.
@@ -201,7 +203,7 @@ def classify(endpoint_id: str, status: int, body: bytes) -> Result:
     endpoint = load().by_id.get(endpoint_id) or {}
     if is_v2(endpoint):
         return _judged(endpoint, status, body, doc)
-    if _expect_failure(endpoint_id, doc) is not None:
+    if not terminal and _expect_failure(endpoint_id, doc) is not None:
         # The provider's own success rule failed: whatever the adapter reads off the remains, this
         # is not an answer to the question, found or empty. Neither cached nor counted.
         return Result("error", "expect_failed")

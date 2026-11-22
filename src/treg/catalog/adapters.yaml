@@ -483,6 +483,17 @@ adapters:
     out: {phone: "coalesce(data.mobile_phone, data.phone_number, data.phones[0].number)",
           line_type: "data.phones[0].type"}
     miss: "coalesce(data.mobile_phone, data.phone_number, data.phones[0].number) == null"
+  # Not a router candidate until a provider-admission run; the adapter judges hit/miss on the
+  # terminal poll answer.
+  apollo.people.phone.find:
+    route: false
+    accepts: [[linkedin_url], [email], [full_name, domain]]
+    in: {linkedin_url: queryParams.linkedin_url, email: queryParams.email,
+         full_name: queryParams.name, domain: queryParams.domain}
+    const: {queryParams.reveal_phone_number: true, queryParams.poll_only: true}
+    out: {phone: "coalesce(webhook_result.people[0].phone_numbers[0].sanitized_number, webhook_result.people[0].phone_numbers[0].raw_number)",
+          line_type: "webhook_result.people[0].phone_numbers[0].type_cd"}
+    miss: "coalesce(webhook_result.people[0].phone_numbers[0].sanitized_number, webhook_result.people[0].phone_numbers[0].raw_number) == null"
   sixtyfour.people.phone.find:
     accepts: [[linkedin_url], [email], [full_name, domain], [first_name, last_name, domain]]
     in: {linkedin_url: body.lead.linkedin_url, email: body.lead.email,

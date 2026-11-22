@@ -549,7 +549,7 @@ def terminal_judgement(endpoint_id: str, outcome: str, status_code: int,
     checkout's catalog."""
     # A confirmed terminal failure produced no contact for this attempt. Count it in
     # routing's P(hit); pending and timed-out jobs still have no known verdict.
-    hit = (classify(endpoint_id, status_code, body).hit if outcome == "success" else
+    hit = (classify(endpoint_id, status_code, body, terminal=True).hit if outcome == "success" else
            False if has_result_rules(endpoint_id) else None)
     # Only a finished answer carries a verdict word; a failure has nothing to judge.
     word = verdict(endpoint_id, status_code, body) if outcome == "success" else None

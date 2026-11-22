@@ -829,6 +829,23 @@ async def test_apollo_skipped_phone_submission_names_no_task_to_follow(
         get_settings.cache_clear()
 
 
+def test_apollo_phone_terminal_answer_records_hit_or_miss():
+    """The row's `expect` reads the submission (`phone_enrichment.status`); the terminal poll
+    answer is judged by the adapter instead, so a found number is a hit and none is a miss."""
+    found = json.loads((catalog_store.CATALOG_DIR / catalog_store.EXAMPLES_DIRNAME
+                        / "apollo.people.phone.result.json").read_text())
+    empty = json.loads(json.dumps(found))
+    empty["webhook_result"]["people"][0]["phone_numbers"] = []
+    nobody = json.loads(json.dumps(found))
+    nobody["webhook_result"]["people"] = []
+    ep = "apollo.people.phone.find"
+    assert catalog_store.load().adapters[ep].verified
+    assert task_app.terminal_judgement(ep, "success", 200, json.dumps(found).encode())[0] is True
+    assert task_app.terminal_judgement(ep, "success", 200, json.dumps(empty).encode())[0] is False
+    assert task_app.terminal_judgement(ep, "success", 200, json.dumps(nobody).encode())[0] is False
+    assert task_app.terminal_judgement(ep, "failure", 200, b"{}")[0] is False
+
+
 async def test_firecrawl_crawl_poll_settles_reported_credits_once(clients: AsyncClient, monkeypatch):
     monkeypatch.setenv("TREG_PLATFORM_KEY_FIRECRAWL", "PLATFORM-FIRECRAWL")
     monkeypatch.setenv("TREG_PLATFORM_PROVIDERS", "firecrawl")

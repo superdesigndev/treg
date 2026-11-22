@@ -1329,7 +1329,8 @@ an invalid extra never disables the primary.
     the child may still charge, and the async worker owns settlement.
 - **Hit rate.** `CallRecord.hit` is the adapter's verdict on a completed result (a judged 2xx, or a
   declared `miss:` status); other errors stay NULL. An async submission leaves it NULL; the terminal
-  finalizer classifies the finished body and queues an audit update for the originating row
+  finalizer classifies the finished body (the row's `expect` describes the submission and is not
+  applied to it) and queues an audit update for the originating row
   (`AsyncTaskRecord.hit` keeps it if polling wins the race). A confirmed terminal failure is a miss.
   `stats.publish` publishes `hit_rate`/`hit_samples` above its floor; synchronous per-success
   endpoints also read historical rows (a 2xx with `cost_observed_micro == 0` is a miss), while async
