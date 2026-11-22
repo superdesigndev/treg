@@ -208,7 +208,9 @@ class Settings(BaseSettings):
     compare_team_cap: int = Field(default=10, ge=1)
     compare_window_days: int = Field(default=14, ge=1)
     # A team is compared only if its agent answered a review invitation this recently, on a surface
-    # that shows a compare invitation (application/compare._answering_teams).
+    # that shows a compare invitation (application/compare._answering_teams). Shortening it acts at
+    # once; lengthening it reaches CLI answers noted in the last `ANSWERING_NOTE_DAYS` (30), and
+    # beyond that only answers made after the change.
     compare_answer_days: int = Field(default=7, ge=1)
     compare_max_answer_bytes: int = Field(default=65536, ge=1024)
     # The shared key-value store (Redis protocol). Empty = an in-process fallback; see infra/kv.py.

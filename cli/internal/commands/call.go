@@ -109,6 +109,11 @@ func (e *Env) call(target, path string, f callFlags) error {
 		if name == "" {
 			return output.Fail("--header needs a name before the colon, got: %s", quote(kv))
 		}
+		if strings.EqualFold(name, "X-Treg-Hints") {
+			// One declaration, the last one typed, whatever its spelling.
+			header = replaceHintsHeader(header, strings.TrimSpace(value))
+			continue
+		}
 		header = setHeader(header, name, strings.TrimSpace(value))
 	}
 	rest := strings.TrimRight(target, "/")
@@ -173,7 +178,7 @@ func withoutCompare(h [][2]string) string {
 		}
 	}
 	var kept []string
-	for _, kind := range strings.Split(declared, ",") {
+	for kind := range strings.SplitSeq(declared, ",") {
 		if k := strings.TrimSpace(kind); k != "" && !strings.EqualFold(k, "compare") {
 			kept = append(kept, k)
 		}

@@ -87,9 +87,13 @@ def answering_key(org_id: int) -> str:
     return f"compare-answering:{org_id}"
 
 
+# How long the note is kept, at least: a window lengthened up to this reaches reviews already noted.
+ANSWERING_NOTE_DAYS = 30
+
+
 async def note_answering(org_id: int) -> None:
-    await kv.store().set_text(answering_key(org_id), utcnow_naive().isoformat(),
-                              get_settings().compare_answer_days * 86400)
+    days = max(ANSWERING_NOTE_DAYS, get_settings().compare_answer_days)
+    await kv.store().set_text(answering_key(org_id), utcnow_naive().isoformat(), days * 86400)
 
 
 def _answered_since(value: str | None, since: datetime) -> bool:

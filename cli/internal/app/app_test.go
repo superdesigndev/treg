@@ -229,3 +229,17 @@ func TestACallThatCannotShowAComparisonDoesNotAskForOne(t *testing.T) {
 		}
 	}
 }
+
+func TestRepeatedHintsHeadersBecomeTheLastOneTyped(t *testing.T) {
+	for _, argv := range [][]string{
+		{"call", "example.search", "--await", "-H", "X-Treg-Hints: review", "-H", "x-treg-hints: mark", "-H", "X-Treg-Hints: feedback"},
+		{"call", "example.search", "-H", "X-Treg-Hints: review", "-H", "x-treg-hints: mark", "-H", "X-Treg-Hints: feedback"},
+	} {
+		srv, calls, _ := compareRegistry(t)
+		t.Setenv("TREG_TOKEN", "tok-a")
+		queuedEvent(t, srv.URL, 0, argv...)
+		if got := (*calls)[0].Values("X-Treg-Hints"); len(got) != 1 || got[0] != "feedback" {
+			t.Errorf("%v declared %q", argv, got)
+		}
+	}
+}
