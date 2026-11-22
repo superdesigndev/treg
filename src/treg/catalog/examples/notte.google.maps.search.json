@@ -1,0 +1,73 @@
+{
+  "results": [
+    {
+      "place_id": "ChIJoTMb3PKAhYARsXkQt469sBw",
+      "name": "The Coffee Movement",
+      "rating": 4.7,
+      "number_of_reviews": 0,
+      "website": null,
+      "google_maps_url": "https://www.google.com/maps/place/The+Coffee+Movement/data=!4m7!3m6!1s0x808580f2dc1b33a1:0x1cb0bd8eb71079b1!8m2!3d37.7947671!4d-122.4102942!16s%2Fg%2F11gdvqtpvr!19sChIJoTMb3PKAhYARsXkQt469sBw?authuser=0&hl=en&g_ep=EgoyMDI2MTExMC4wIJJjKgBIAVAD&rclk=1",
+      "about": null,
+      "cid": "2067360649617373617",
+      "google_category": [
+        "Coffee shop"
+      ],
+      "google_description": "Snug, minimalist cafe for artisan brews",
+      "google_hours": null,
+      "google_image": null,
+      "google_phone": null,
+      "google_price_range_dollar_sign": null,
+      "google_reviews_url": "https://www.google.com/maps/place/The+Coffee+Movement/data=!4m7!3m6!1s0x808580f2dc1b33a1:0x1cb0bd8eb71079b1!8m2!3d37.7947671!4d-122.4102942!16s%2Fg%2F11gdvqtpvr!19sChIJoTMb3PKAhYARsXkQt469sBw?authuser=0&hl=en&g_ep=EgoyMDI2MTExMC4wIJJjKgBIAVAD&rclk=1",
+      "claimed": false,
+      "latitude": 37.7947671,
+      "longitude": -122.4102942,
+      "google_orders_urls": [],
+      "order_online_url": null,
+      "borough": null,
+      "street_addr": null,
+      "street_addr_supplement": null,
+      "city": null,
+      "postal_code": null,
+      "state": null,
+      "country": null,
+      "address": "1030 Washington St",
+      "primary_tags": [],
+      "open_status": null
+    },
+    {
+      "place_id": "ChIJC2jb8DWBhYARo4AAX78U50c",
+      "name": "The Coffee Berry SF",
+      "rating": 4.9,
+      "number_of_reviews": 0,
+      "website": null,
+      "google_maps_url": "https://www.google.com/maps/place/The+Coffee+Berry+SF/data=!4m7!3m6!1s0x80858135f0db680b:0x47e714bf5f0080a3!8m2!3d37.8014124!4d-122.4249979!16s%2Fg%2F11svr3g498!19sChIJC2jb8DWBhYARo4AAX78U50c?authuser=0&hl=en&g_ep=EgoyMDI2MTExMC4wIJJjKgBIAVAD&rclk=1",
+      "about": null,
+      "cid": "5181132708478222499",
+      "google_category": [
+        "Coffee shop"
+      ],
+      "google_description": null,
+      "google_hours": null,
+      "google_image": null,
+      "google_phone": null,
+      "google_price_range_dollar_sign": null,
+      "google_reviews_url": "https://www.google.com/maps/place/The+Coffee+Berry+SF/data=!4m7!3m6!1s0x80858135f0db680b:0x47e714bf5f0080a3!8m2!3d37.8014124!4d-122.4249979!16s%2Fg%2F11svr3g498!19sChIJC2jb8DWBhYARo4AAX78U50c?authuser=0&hl=en&g_ep=EgoyMDI2MTExMC4wIJJjKgBIAVAD&rclk=1",
+      "claimed": false,
+      "latitude": 37.8014124,
+      "longitude": -122.4249979,
+      "google_orders_urls": [],
+      "order_online_url": null,
+      "borough": null,
+      "street_addr": null,
+      "street_addr_supplement": null,
+      "city": null,
+      "postal_code": null,
+      "state": null,
+      "country": null,
+      "address": "1410 Lombard St",
+      "primary_tags": [],
+      "open_status": null
+    },
+    "… 12 more item(s) truncated"
+  ]
+}

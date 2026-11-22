@@ -1,0 +1,50 @@
+{
+  "session_id": "f071f991-6dc1-4294-a466-a38e835a9507",
+  "idle_timeout_minutes": 1,
+  "max_duration_minutes": 5,
+  "created_at": "2026-11-17T18:09:48.656712Z",
+  "closed_at": null,
+  "last_accessed_at": "2026-11-17T18:09:50.549261Z",
+  "duration": "PT1.892584S",
+  "status": "active",
+  "close_reason": null,
+  "steps": [
+    {
+      "type": "execution_result",
+      "value": {
+        "code": null,
+        "data": null,
+        "action": {
+          "url": "https://example.com",
+          "type": "goto"
+        },
+        "captcha": null,
+        "message": "Navigated to 'https://example.com' in current tab",
+        "success": true,
+        "ended_at": "2026-11-17 18:09:50.234616+00:00",
+        "exception": null,
+        "started_at": "2026-11-17 18:09:49.087778+00:00",
+        "action_executed": null,
+        "exception_detail": null,
+        "failed_navigation_url": null
+      }
+    }
+  ],
+  "error": null,
+  "proxies": true,
+  "browser_type": "chromium",
+  "network_request_bytes": 0,
+  "network_response_bytes": 0,
+  "user_agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/147.0.0.0 Safari/537.36",
+  "viewport_width": null,
+  "viewport_height": null,
+  "solve_captchas": true,
+  "cdp_url": "wss://us-prod-cdp.notte.cc/s/<redacted-token>",
+  "playwright_url": "wss://us-prod-cdp.notte.cc/s/<redacted-token>/playwright",
+  "viewer_url": "https://console.notte.cc/static/viewer?ws=wss://us-prod.notte.cc/sessions/f071f991-6dc1-4294-a466-a38e835a9507/debug/recording?router_cdp=wss%253A%252F%252Fus-prod-cdp.notte.cc%252Fs%252F<redacted-token>%26router_recording=wss%253A%252F%252Fus-prod-cdp.notte.cc%252Fs%252F<redacted-token>%252Frecording%26router_actions=wss%253A%252F%252Fus-prod-cdp.notte.cc%252Fs%252F<redacted-token>%252Factions&jwt=<redacted-token>",
+  "web_bot_auth": false,
+  "auth_ids": [],
+  "system_hidden": false,
+  "headless": true,
+  "timeout_minutes": 1
+}

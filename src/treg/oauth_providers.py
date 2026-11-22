@@ -3950,6 +3950,36 @@ POLYGON = OAuthProvider(
     probe_path="/v3/reference/tickers?limit=1",
 )
 
+NOTTE = OAuthProvider(
+    service="notte",
+    display_name="Notte",
+    auth_kind="key",
+    token_label="API key",
+    token_placeholder="sk-notte-…",
+    token_header="Authorization",
+    token_format="Bearer {secret}",
+    setup_url="https://console.notte.cc",
+    setup_action_label="Get your Notte API key",
+    setup_steps=(
+        "Sign in to the Notte console and open API Keys.",
+        "Create a key and copy it.",
+    ),
+    setup_note=(
+        "Calls are billed to your own Notte account by the browser time, proxy traffic and LLM "
+        "tokens they use. Connecting checks the free usage endpoint."
+    ),
+    auth_uri="", token_uri="",
+    scopes={},
+    client_id_setting="", client_secret_setting="",
+    category="SEO",
+    summary="Cloud browser sessions, web search and data APIs: fetch pages, enrich companies and people, run functions.",
+    base_url="https://api.notte.cc",
+    docs_url="https://docs.notte.cc",
+    # Free: reads the account's usage for the month. A bogus key answers 401, so the default
+    # reject-on-status works.
+    probe_path="/usage",
+)
+
 FINNHUB = OAuthProvider(
     service="finnhub",
     display_name="Finnhub",
@@ -4484,7 +4514,7 @@ REGISTRY: dict[str, OAuthProvider] = {
         TIKHUB, BRIGHTDATA, SEMRUSH, JUSTONEAPI,
         SCRAPECREATORS,
         # SEO API-key providers
-        DATAFORSEO, SERANKING, MOZ, MAJESTIC, SERPSTAT, EXA, SEARCH1API, TAVILY, OCTEN, LINKUP, PARALLEL, YOU, VALYU, KEENABLE, OLOSTEP, FIRECRAWL, CRAWL4AI, SPIDERCLOUD, PERPLEXITY,
+        DATAFORSEO, SERANKING, MOZ, MAJESTIC, SERPSTAT, EXA, SEARCH1API, TAVILY, OCTEN, LINKUP, PARALLEL, YOU, VALYU, KEENABLE, OLOSTEP, FIRECRAWL, CRAWL4AI, SPIDERCLOUD, PERPLEXITY, NOTTE,
         SCRAPEGRAPHAI, SERPER, BRAVESEARCH, LITESCRAPE, CLORO, LOCALFALCON,
         # more Enrichment API-key providers
         LUSHA, CORESIGNAL, DIFFBOT, THECOMPANIESAPI, LEADMAGIC, ENRICHLAYER, FIBER_AI, CRUSTDATA, THEIRSTACK, JOBSPIPE, AVIATO,
