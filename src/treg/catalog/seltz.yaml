@@ -1,0 +1,346 @@
+provider: seltz
+# Left out of this file: Monitor (a create starts a recurring schedule billed per check, not per
+# HTTP call), chat completions (documented, absent from the OpenAPI spec, no published price),
+# agent list and cancel, and gRPC record streaming (no REST form).
+source:
+  docs: https://docs.seltz.ai
+  openapi: https://docs.seltz.ai/api-reference/openapi.json
+  curated: '2026-11-17'
+pricing_url: https://docs.seltz.ai/pricing
+limits: "HTTP 429 is RATE_LIMITED. The pricing page does not publish a numeric cap."
+defaults:
+  provenance: {source: docs, source_url: 'https://docs.seltz.ai/pricing', checked: '2026-11-17', confidence: documented}
+  error: {when: {path: response.error, op: present}}
+proposed_capabilities:
+  wikipedia.search.articles: Wikipedia articles matching a query
+  stocks.filings.search: Search SEC filings
+
+endpoints:
+  - id: seltz.web.search
+    capability: web.search
+    platform: web
+    domain: search
+    scope: any_account
+    method: POST
+    path: /v1/search
+    body_allowlist: true
+    name: Search the web
+    summary: Search the web and return ranked pages with their text.
+    input:
+      bodyType: json
+      body:
+        query: {type: string, required: true, example: "example.com"}
+        scope: {type: string, required: true, enum: [web], example: web, note: "The general web crawl, including Wikipedia. This scope is in beta."}
+        tier: {type: string, required: false, enum: [base, pro], example: base, note: "base is the latency tier. An omitted tier is pro. Matching ignores case and surrounding spaces. An unknown name is a 400."}
+        max_results: {type: integer, required: false, min: 0, example: 1, note: "Defaults to 10. A larger value is served as 1000."}
+        include_domains: {type: "array[string]", required: false}
+        exclude_domains: {type: "array[string]", required: false}
+        from_date: {type: string, required: false, note: "UTC date, datetime, or now-<count><unit>. A date is the start of that day. Units are s, m, h, d, w, M and y."}
+        to_date: {type: string, required: false, note: "Same forms as from_date. A date covers that whole day."}
+        fields: {type: object, required: false, note: "content and snippets take true, false, or ceilings such as max_characters_per_result. properties takes true, false, or dotted paths. Omitting fields returns content."}
+      note: "Each document has url, content when requested, and published_date when known. An empty documents list is still a completed search."
+    test_request:
+      body:
+        query: "example.com"
+        scope: web
+        tier: base
+        max_results: 1
+        fields: {content: {max_characters_per_result: 500}}
+    added: '2026-11-17'
+    example_response: examples/seltz.web.search.json
+    price: &search_price
+      table:
+        - {when: [{path: body.tier, op: equals, value: base}], value: '0.003'}
+        - {when: [{path: body.tier, op: equals, value: pro}], value: '0.005'}
+      fallback: {value: '0.005', note: "Pro, the price of an omitted tier and the higher published search price."}
+      currency: USD
+      unit: call
+      note: "Base is $3 per 1,000 searches and pro is $5 per 1,000, for any document count. An omitted tier is pro. An unrecognized tier is rejected."
+    bill: &search_bill {miss: charged}
+    miss: &search_miss
+      when: {any: [{path: response.documents, op: absent}, {path: response.documents, op: empty}]}
+    docs_url: https://docs.seltz.ai/api-reference/search
+
+  - id: seltz.web.search.news
+    capability: web.search.news
+    platform: web
+    domain: search
+    scope: any_account
+    method: POST
+    path: /v1/search
+    body_allowlist: true
+    name: Search news
+    summary: Search news articles and return ranked pages with their text.
+    input:
+      bodyType: json
+      body:
+        query: {type: string, required: true, example: "Federal Reserve"}
+        scope: {type: string, required: true, enum: [news], example: news}
+        tier: {type: string, required: false, enum: [base, pro], example: base, note: "base is the latency tier. An omitted tier is pro. An unknown name is a 400."}
+        max_results: {type: integer, required: false, min: 0, example: 1, note: "Defaults to 10. A larger value is served as 1000."}
+        include_domains: {type: "array[string]", required: false}
+        exclude_domains: {type: "array[string]", required: false}
+        from_date: {type: string, required: false, note: "UTC date, datetime, or now-<count><unit>. A date is the start of that day."}
+        to_date: {type: string, required: false, note: "Same forms as from_date. A date covers that whole day."}
+        fields: {type: object, required: false, note: "content and snippets take true, false, or ceilings such as max_characters_per_result. Omitting fields returns content."}
+      note: "News covers journalism, current and historical. An empty documents list is still a completed search."
+    test_request:
+      body: {query: "Federal Reserve", scope: news, tier: base, max_results: 1, fields: {content: {max_characters_per_result: 500}}}
+    added: '2026-11-17'
+    price: *search_price
+    bill: *search_bill
+    miss: *search_miss
+    docs_url: https://docs.seltz.ai/api-reference/search
+
+  - id: seltz.people.search
+    capability: people.search
+    platform: people
+    domain: people
+    scope: any_account
+    method: POST
+    path: /v1/search
+    body_allowlist: true
+    name: Search people
+    summary: Return public professional profiles matching a name, title or employer.
+    input:
+      bodyType: json
+      body:
+        query: {type: string, required: true, example: "chief executive officer of Stripe"}
+        scope: {type: string, required: true, enum: [people], example: people}
+        tier: {type: string, required: false, enum: [base, pro], example: base, note: "base is the latency tier. An omitted tier is pro. An unknown name is a 400."}
+        max_results: {type: integer, required: false, min: 0, example: 1, note: "Defaults to 10. A larger value is served as 1000."}
+        include_domains: {type: "array[string]", required: false}
+        exclude_domains: {type: "array[string]", required: false}
+        fields: {type: object, required: false, note: "properties.person carries name, headline, location, experience and education. Omitting fields returns content and properties."}
+      note: "Results are public profiles, with a profile URL and structured person fields. They do not include private contact details."
+    test_request:
+      body: {query: "chief executive officer of Stripe", scope: people, tier: base, max_results: 1, fields: {content: {max_characters_per_result: 500}}}
+    added: '2026-11-17'
+    price: *search_price
+    bill: *search_bill
+    miss: *search_miss
+    docs_url: https://docs.seltz.ai/api-reference/search
+
+  - id: seltz.companies.search
+    capability: companies.search
+    platform: companies
+    domain: companies
+    scope: any_account
+    method: POST
+    path: /v1/search
+    body_allowlist: true
+    name: Search companies
+    summary: Return company profiles matching a name, industry or description.
+    input:
+      bodyType: json
+      body:
+        query: {type: string, required: true, example: "Stripe"}
+        scope: {type: string, required: true, enum: [companies], example: companies}
+        tier: {type: string, required: false, enum: [base, pro], example: base, note: "base is the latency tier. An omitted tier is pro. An unknown name is a 400."}
+        max_results: {type: integer, required: false, min: 0, example: 1, note: "Defaults to 10. A larger value is served as 1000."}
+        include_domains: {type: "array[string]", required: false}
+        exclude_domains: {type: "array[string]", required: false}
+        fields: {type: object, required: false, note: "properties.company carries name, industry, headquarters, employee count and funding rounds. Omitting fields returns content and properties."}
+      note: "Each result is one company profile, with a URL and structured company fields."
+    test_request:
+      body: {query: "Stripe", scope: companies, tier: base, max_results: 1, fields: {content: {max_characters_per_result: 500}}}
+    added: '2026-11-17'
+    price: *search_price
+    bill: *search_bill
+    miss: *search_miss
+    docs_url: https://docs.seltz.ai/api-reference/search
+
+  - id: seltz.wikipedia.search
+    capability: wikipedia.search.articles
+    platform: wikipedia
+    domain: search
+    scope: any_account
+    method: POST
+    path: /v1/search
+    body_allowlist: true
+    name: Search Wikipedia
+    summary: Search Wikipedia articles and return the matching pages.
+    input:
+      bodyType: json
+      body:
+        query: {type: string, required: true, example: "Python programming language"}
+        scope: {type: string, required: true, enum: [wikipedia], example: wikipedia}
+        tier: {type: string, required: false, enum: [base, pro], example: base, note: "base is the latency tier. An omitted tier is pro. An unknown name is a 400."}
+        max_results: {type: integer, required: false, min: 0, example: 1, note: "Defaults to 10. A larger value is served as 1000."}
+        from_date: {type: string, required: false, note: "UTC date, datetime, or now-<count><unit>."}
+        to_date: {type: string, required: false, note: "Same forms as from_date. A date covers that whole day."}
+        fields: {type: object, required: false, note: "Omitting fields returns article content."}
+      note: "An empty documents list is still a completed search."
+    test_request:
+      body: {query: "Python programming language", scope: wikipedia, tier: base, max_results: 1, fields: {content: {max_characters_per_result: 500}}}
+    added: '2026-11-17'
+    price: *search_price
+    bill: *search_bill
+    miss: *search_miss
+    docs_url: https://docs.seltz.ai/api-reference/search
+
+  - id: seltz.stocks.filings.search
+    capability: stocks.filings.search
+    platform: stocks
+    domain: filings
+    scope: any_account
+    method: POST
+    path: /v1/search
+    body_allowlist: true
+    name: Search SEC filings
+    summary: Search SEC filing text and return the matching chunks.
+    input:
+      bodyType: json
+      body:
+        query: {type: string, required: true, example: "Apple Inc. revenue"}
+        scope: {type: string, required: true, enum: [financial-reports], example: financial-reports}
+        tier: {type: string, required: false, enum: [base, pro], example: base, note: "base is the latency tier. An omitted tier is pro. An unknown name is a 400."}
+        max_results: {type: integer, required: false, min: 0, example: 1, note: "Defaults to 10. A larger value is served as 1000."}
+        from_date: {type: string, required: false, note: "UTC date, datetime, or now-<count><unit>, applied to the filing date."}
+        to_date: {type: string, required: false, note: "Same forms as from_date. A date covers that whole day."}
+        fields: {type: object, required: false, note: "Omitting fields returns the chunk text."}
+      note: "Each document is a chunk of an SEC filing, not the whole filing. The chunk text starts with the issuer, form type and filing date."
+    test_request:
+      body: {query: "Apple Inc. revenue", scope: financial-reports, tier: base, max_results: 1, fields: {content: {max_characters_per_result: 500}}}
+    added: '2026-11-17'
+    price: *search_price
+    bill: *search_bill
+    miss: *search_miss
+    docs_url: https://docs.seltz.ai/api-reference/search
+
+  - id: seltz.web.answer
+    capability: web.answer
+    platform: web
+    domain: answer
+    scope: any_account
+    method: POST
+    path: /v1/answer
+    body_allowlist: true
+    name: Answer from the web
+    summary: Answer a question from one grounding search, with citations.
+    input:
+      bodyType: json
+      body:
+        query: {type: string, required: true, example: "What is example.com used for?", note: "At most 8 KiB of UTF-8, shared with system_prompt."}
+        model: {type: string, required: true, enum: [seltz-base, seltz-pro], example: seltz-base, note: "seltz-base runs one grounding search. seltz-pro chooses the search itself. An omitted or unrecognized model on the raw API is seltz-base."}
+        scope: {type: string, required: false, enum: [web, news, wikipedia, people, companies, financial-reports], example: web, note: "Grounding scope. Omitted searches web, which is in beta."}
+        include_content: {type: boolean, required: false, default: false, note: "When true, each citation includes the source text."}
+        system_prompt: {type: string, required: false, note: "Tone and format. Grounding and citations stay in force. At most 8 KiB of UTF-8, shared with query."}
+        response_format: {type: object, required: false, note: "An OpenAI response_format. A malformed value is a 400 before billing. Structured output leaves citations on the response and drops them from the answer text."}
+      note: "The buffered body is answer, citations and request_id. query and system_prompt together stay within 8 KiB."
+    test_request:
+      body: {query: "What is example.com used for?", model: seltz-base, scope: web}
+    added: '2026-11-17'
+    price:
+      table:
+        - {when: [{path: body.model, op: equals, value: seltz-base}], value: '0.006'}
+        - {when: [{path: body.model, op: equals, value: seltz-pro}], value: '0.007'}
+      fallback: {value: '0.007', note: "The pro answer price, the higher published rate."}
+      currency: USD
+      unit: call
+      note: "seltz-base is $6 per 1,000 and seltz-pro is $7 per 1,000. On the raw API an omitted or unrecognized model is seltz-base."
+    bill: {miss: charged}
+    miss:
+      when: {any: [{path: response.answer, op: absent}, {path: response.answer, op: empty}]}
+    docs_url: https://docs.seltz.ai/api-reference/answer
+
+  - id: seltz.web.fetch
+    capability: web.extract
+    platform: web
+    domain: extract
+    scope: any_account
+    method: POST
+    path: /v1/fetch
+    body_allowlist: true
+    name: Fetch web pages
+    summary: Fetch up to 20 public URLs as Markdown.
+    input:
+      bodyType: json
+      body:
+        urls: {type: "array[string]", required: true, minItems: 1, maxItems: 20, example: ["https://example.com"], note: "Absolute http or https URLs, no duplicates, each at most 2048 bytes."}
+        formats: {type: "array[string]", required: false, example: ["markdown"], note: "markdown is the documented format. An omitted or empty list means markdown."}
+        tier: {type: string, required: false, enum: [pro], example: pro, note: "The Fetch reference accepts pro only. An omitted tier is pro. An unrecognized value is rejected."}
+        timeout_ms: {type: integer, required: false, note: "Per URL, not the batch. Unset is 75000, which is also the maximum. A value below 1000 is served as 1000."}
+      note: "One result per URL, matched on requested_url. A page that fails is status error inside the 200 and is not billed. The call is refused up front unless the balance covers every URL."
+    test_request:
+      body: {urls: ["https://example.com"], tier: pro, formats: ["markdown"]}
+    added: '2026-11-17'
+    example_response: examples/seltz.web.fetch.json
+    price:
+      value: '0.01'
+      currency: USD
+      unit: result
+      note: "Pro is $10 per 1,000 URLs that return status ok. A URL with status error is not billed."
+    reserve: {entities: {from: body.urls, max: 20}}
+    settle: {count: {path: "response.results[status=ok]"}}
+    miss:
+      when:
+        any:
+          - {path: response.results, op: absent}
+          - {path: response.results, op: empty}
+          - {path: "response.results[status=ok]", op: absent}
+    docs_url: https://docs.seltz.ai/api-reference/fetch
+
+  - id: seltz.web.research
+    capability: web.answer.research
+    platform: web
+    domain: answer
+    scope: any_account
+    method: POST
+    path: /v1/agent/runs
+    body_allowlist: true
+    name: Start web research
+    summary: Start a multi-step research run and return its id.
+    input:
+      bodyType: json
+      body:
+        query: {type: string, required: true, example: "What is example.com used for?"}
+        effort: {type: string, required: true, enum: [low, medium, high, max], example: low, note: "Sets the price ceiling. An omitted effort on the raw API is medium."}
+        output_schema: {type: object, required: false, note: "An OpenAI response_format. A structured type adds output.structured beside the cited text."}
+      note: "The create response is the run in pending. Poll it until status is completed, failed or cancelled. low is about 1 to 5 minutes; max is 30 minutes or longer."
+    test_request:
+      body: {query: "What is example.com used for?", effort: low}
+    async:
+      id_from: id
+      poll: {endpoint: seltz.web.research.status, param: {in: pathParams, name: id}}
+      status: {path: status, progress: [pending, running], success: [completed], billed_failure: [failed, cancelled]}
+      result: {path: output}
+      interval: 10
+      max_age: 7200
+    added: '2026-11-17'
+    price:
+      table:
+        - {when: [{path: body.effort, op: equals, value: low}], value: '0.25'}
+        - {when: [{path: body.effort, op: equals, value: medium}], value: '0.50'}
+        - {when: [{path: body.effort, op: equals, value: high}], value: '1.00'}
+        - {when: [{path: body.effort, op: equals, value: max}], value: '2.00'}
+      fallback: {value: '2.00', note: "Max effort, the highest published run price."}
+      currency: USD
+      unit: call
+      note: "Low is $0.25, medium $0.50, high $1 and max $2 per run. On the raw API an omitted effort is medium."
+    miss: {when: {path: response.id, op: absent}}
+    docs_url: https://docs.seltz.ai/api-reference/agent/start-run
+
+  - id: seltz.web.research.status
+    capability: web.answer.status
+    platform: web
+    domain: answer
+    scope: any_account
+    kind: utility
+    method: GET
+    path: /v1/agent/runs/{id}
+    name: Read a research run
+    summary: Read one research run started with this key.
+    input:
+      pathParams:
+        id: {type: string, required: true}
+    resource_ownership:
+      requires: {kind: "poll:seltz.web.research.status", param: id}
+    added: '2026-11-17'
+    unverified: "A read needs a run id from a create. The pricing page does not price a read."
+    price:
+      value: '0'
+      currency: USD
+      unit: call
+      note: "The pricing page prices a run, not a read of one."
+    docs_url: https://docs.seltz.ai/api-reference/agent/get-run

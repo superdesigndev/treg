@@ -1,0 +1,10 @@
+{
+  "request_id": "example",
+  "results": [
+    {
+      "requested_url": "https://example.invalid",
+      "status": "error",
+      "error": {"code": "invalid_url", "message": "Not a parseable absolute URL."}
+    }
+  ]
+}
