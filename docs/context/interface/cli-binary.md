@@ -166,9 +166,11 @@ of new installs (no working `treg` on the machine) to the binary instead, bucket
   from the controlling terminal, the auto top-up consent. Without a terminal the access is every
   tool, a pasted-key connect needs `--key-stdin`, and the consent is no, even for a `y` piped in;
   no command reads an agent's idle pipe.
-- **Commands only the binary has.** `treg mark` and `treg review --rows`
-  ([feedback](../architecture/feedback.md), "Call marks"). The binary sends
-  `X-Treg-Hints: review,mark,feedback`, so it is offered mark invitations; the Python CLI sends
+- **Commands only the binary has.** `treg mark`, `treg review --rows` and `treg compare`
+  ([feedback](../architecture/feedback.md), "Call marks" and "Compare"). The binary sends
+  `X-Treg-Hints: review,mark,feedback,compare`, so it is offered mark and compare invitations; on a
+  compare invitation it prints the waiting pair (`GET /comparisons/next?compact=true`) before the
+  words; the Python CLI sends
   none and gets review and feedback only. For every invitation the binary prints the registry's
   `X-Treg-Hint-Text` when sent (under `--json`, `_treg.hint_text`), and its built-in line, the
   Python CLI's, when not. The Python CLI is frozen and always prints its own lines.

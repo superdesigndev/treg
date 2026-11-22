@@ -6,6 +6,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query, Request, Response
 from pydantic import BaseModel, ConfigDict, Field, StringConstraints, field_validator, model_validator
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from .. import hints
 from ..application import compare as compare_app
 from ..application import feedback as feedback_app
 from ..domain import feedback
@@ -197,12 +198,19 @@ async def admin_marks(
 
 
 @app.get("/comparisons/next")
-async def next_comparison(caller: Caller = Depends(require_member)):
-    """The team's oldest comparison waiting for a verdict, blinded: answer 1 and 2, no vendor."""
+async def next_comparison(caller: Caller = Depends(require_member), compact: bool = False):
+    """The team's oldest comparison waiting for a verdict, blinded: answer 1 and 2, no vendor.
+    `compact`: the pair as a CLI prints it beside a call (`compare_app.compact_pair`), with the
+    words that ask for the verdict (`how_to_vote`), so they change without a CLI release."""
     pair = await compare_app.next_for(caller.org_id, pinned=caller.membership.pinned_tags is not None)
     if pair is None:
         return Response(status_code=204)
-    return pair
+    if not compact:
+        return pair
+    shown = compare_app.compact_pair(pair)
+    shown["how_to_vote"] = hints.compare_cli_hint(
+        shown["comparison_id"], input_cut="input" in shown.get("truncated_parts", []))
+    return shown
 
 
 class ComparisonIn(BaseModel):

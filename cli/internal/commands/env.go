@@ -8,6 +8,7 @@ import (
 	"net"
 	"net/url"
 	"os"
+	"time"
 
 	"github.com/superdesigndev/treg/cli/internal/api"
 	"github.com/superdesigndev/treg/cli/internal/config"
@@ -26,7 +27,22 @@ type Env struct {
 }
 
 func NewEnv(cfg *config.Config, json bool, org string) *Env {
-	return &Env{Cfg: cfg, JSON: json, OrgOverride: org, Out: output.NewPrinter(json, org), Telemetry: map[string]string{}}
+	e := &Env{Cfg: cfg, JSON: json, OrgOverride: org, Out: output.NewPrinter(json, org), Telemetry: map[string]string{}}
+	e.Out.Comparison = e.waitingComparison
+	return e
+}
+
+// comparisonReadTimeout bounds the read of a waiting comparison after a call has answered: the
+// pair is an extra, and the call's own output never waits longer for it.
+const comparisonReadTimeout = 2 * time.Second
+
+func (e *Env) waitingComparison() *api.Response {
+	r, err := e.Client().Do(api.Request{Path: "/comparisons/next", Query: [][2]string{{"compact", "true"}},
+		Timeout: comparisonReadTimeout})
+	if err != nil {
+		return nil
+	}
+	return r
 }
 
 // EffectiveOrg is --org, else TREG_ORG, else the stored active team.

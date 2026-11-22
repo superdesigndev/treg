@@ -4,6 +4,7 @@ package api
 
 import (
 	"bytes"
+	"context"
 	"encoding/base64"
 	"fmt"
 	"io"
@@ -36,6 +37,9 @@ type Request struct {
 	Cookies []*http.Cookie
 	// NoAuth sends no token: the registry's login routes and the installer.
 	NoAuth bool
+	// Timeout bounds this request alone (0: the client's own limits), for a best-effort read
+	// such as the comparison printed beside a call.
+	Timeout time.Duration
 }
 
 // Response is a whole registry answer; the CLI never prints a partial body.
@@ -152,6 +156,11 @@ func (c *Client) send(r Request, encoded bool) (*Response, error) {
 	if body == nil {
 		req.Body, req.ContentLength = http.NoBody, 0
 	}
+	if r.Timeout > 0 {
+		ctx, cancel := context.WithTimeout(req.Context(), r.Timeout)
+		defer cancel()
+		req = req.WithContext(ctx)
+	}
 	c.setHeaders(req, r, encoded)
 	for _, ck := range r.Cookies {
 		req.AddCookie(ck)
@@ -176,7 +185,7 @@ func (c *Client) setHeaders(req *http.Request, r Request, encoded bool) {
 	h.Set("X-Treg-Client", Runtime())
 	h.Set("X-Treg-Client-Version", buildinfo.Version)
 	// The invitations this binary shows (output.hintLine); the registry offers no other kind.
-	h.Set("X-Treg-Hints", "review,mark,feedback")
+	h.Set("X-Treg-Hints", "review,mark,feedback,compare")
 	h.Set("X-Treg-Key-Protocol", "1")
 	if telemetry.Enabled() {
 		s := session.Current(config.Path())

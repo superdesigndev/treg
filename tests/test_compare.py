@@ -637,7 +637,7 @@ async def test_a_waiting_pair_invites_a_client_that_shows_compare(clients, monke
     await kv.store().set_flag(compare.ready_key(org_id), 60)
     shown = await clients.get("/call/example.search", headers={"X-Treg-Hints": "review,mark,feedback,compare"})
     assert shown.headers["X-Treg-Hint"] == "compare"
-    assert shown.headers["X-Treg-Hint-Text"] == hints.COMPARE_HINT
+    assert shown.headers["X-Treg-Hint-Text"] == hints.COMPARE_CLI_HINT
     # A CLI says nothing (legacy kinds) or names its kinds without compare: never invited.
     assert (await clients.get("/call/example.search")).headers.get("X-Treg-Hint") is None
     assert (await clients.get("/call/example.search", headers={"X-Treg-Hints": "review,mark,feedback"})
@@ -707,19 +707,18 @@ async def test_team_mcp_without_a_waiting_pair_carries_no_invitation(clients, mo
 
 
 def test_an_inline_answer_keeps_its_first_rows_and_cuts_long_text():
-    from treg import mcp as mcp_module
 
     rows = [{"title": f"t{i}", "snippet": "s" * 1000} for i in range(12)]
-    text, cut = mcp_module._compact_answer(json.dumps({"results": rows, "total": 12}))
+    text, cut = compare.compact_answer(json.dumps({"results": rows, "total": 12}))
     shown = json.loads(text)
     assert cut is True
     assert [r["title"] for r in shown["results"]] == ["t0", "t1", "t2", "t3", "t4"]
-    assert len(shown["results"][0]["snippet"]) == mcp_module.INLINE_FIELD_CHARS + 1
+    assert len(shown["results"][0]["snippet"]) == compare.INLINE_FIELD_CHARS + 1
     assert shown["total"] == 12
-    assert mcp_module._compact_answer('{"results": [{"title": "short"}]}') == ('{"results":[{"title":"short"}]}', False)
+    assert compare.compact_answer('{"results": [{"title": "short"}]}') == ('{"results":[{"title":"short"}]}', False)
     long_text = "not json " * 1000
-    assert mcp_module._compact_answer(long_text) == (long_text[:mcp_module.INLINE_ANSWER_CHARS], True)
-    assert mcp_module._compact_answer(None) == ("", False)
+    assert compare.compact_answer(long_text) == (long_text[:compare.INLINE_ANSWER_CHARS], True)
+    assert compare.compact_answer(None) == ("", False)
 
 
 async def test_an_inline_pair_keeps_its_truncation_and_says_when_the_input_was_cut(clients, monkeypatch):
@@ -967,11 +966,41 @@ async def test_a_team_that_never_reviews_is_not_compared(clients, search_on, mon
     assert (result["eligible"], result["called"], sent) == (0, 0, []), result
 
 
+async def test_a_listed_cli_client_answering_invitations_is_compared(clients, search_on, monkeypatch):
+    """Once a CLI release shows compare, its agents' clients are listed and their teams compared."""
+    _compare_on(monkeypatch, compare_answering_clients="mcp,mcp-prior,claude-code")
+    sent = _relay_b(monkeypatch)
+    org_id = await _org_id(clients)
+    async with session_maker() as db:
+        db.add(CallReview(org_id=org_id, user_email="tim@superdesign.dev", call_id="reviewed",
+                          endpoint_id="tavily.web.search", usefulness="useful", invited=True,
+                          client="claude-code"))
+        await db.commit()
+    await _routed_call(org_id, "answers on the CLI", reviewing=False)
+    assert (await _collect())["eligible"] == 1
+    assert len(sent) == 1
+
+
+async def test_a_compact_pair_carries_the_cli_words(clients, monkeypatch):
+    """What a CLI prints beside a call: the compacted pair and the words asking for its verdict."""
+    _compare_on(monkeypatch)
+    org_id = await _org_id(clients)
+    cid = await _seed(org_id, first="a", call_ref="cli-pair")
+    got = await clients.get("/comparisons/next", params={"compact": "true"})
+    assert got.status_code == 200, got.text
+    body = got.json()
+    assert body["comparison_id"] == cid and body["answer_1"] == '"answer A"'
+    assert body["how_to_vote"] == hints.compare_cli_hint(cid)
+    assert f"treg compare {cid} 1|2|tie|both_bad" in body["how_to_vote"]
+    assert "provider" not in got.text and "truncated" not in body
+    assert "how_to_vote" not in (await clients.get("/comparisons/next")).json()
+
+
 @pytest.mark.parametrize("client,invited,days_ago,compared", [
     ("mcp", True, 1, True),         # answered an invitation on the team MCP
     ("mcp-prior", True, 1, True),   # a verdict riding on the next MCP call
     ("mcp", False, 1, False),       # reviewed unasked: says nothing about reading hints
-    ("cli", True, 1, False),        # the CLI never shows a compare invitation
+    ("claude-code", True, 1, False),  # a CLI client not yet listed in compare_answering_clients
     ("mcp", True, 10, False),       # answered, but not in the last week
 ])
 async def test_only_a_team_answering_mcp_invitations_is_compared(clients, search_on, monkeypatch,

@@ -43,9 +43,11 @@ from ..timeutil import utcnow_naive
 log = logging.getLogger(__name__)
 
 READY_TTL_S = 3 * 86400
-# The `CallReview.client` of a review written on the team MCP: its review tool and a verdict
-# riding on the next call (`mcp.PRIOR_CLIENT`). Only that surface shows a compare invitation.
-INVITE_ANSWERING_CLIENTS = ("mcp", "mcp-prior")
+# A comparison shown inside a call result (team MCP) or printed beside one (CLI): each answer's
+# first rows, long strings cut, then a size cap.
+INLINE_ROWS = 5
+INLINE_FIELD_CHARS = 300
+INLINE_ANSWER_CHARS = 3000
 # A call's eligibility marker lives this long; a run never looks further back.
 MARKER_TTL_S = 2 * 3600
 MARKER_TIMEOUT_S = 0.2
@@ -397,7 +399,7 @@ async def _answering_teams(session_factory, since: datetime) -> set[int]:
     async with session_factory() as db:
         return set((await db.execute(select(CallReview.org_id).where(
             CallReview.created_at >= since, CallReview.invited.is_(True),
-            CallReview.client.in_(INVITE_ANSWERING_CLIENTS),
+            CallReview.client.in_(answering_clients()),
         ).distinct())).scalars())
 
 
@@ -419,7 +421,7 @@ async def _eligible_teams(session_factory, org_ids: set[int], capabilities: set[
         if teams and since is not None:
             teams &= set((await db.execute(select(CallReview.org_id).where(
                 CallReview.org_id.in_(teams), CallReview.created_at >= since,
-                CallReview.invited.is_(True), CallReview.client.in_(INVITE_ANSWERING_CLIENTS),
+                CallReview.invited.is_(True), CallReview.client.in_(answering_clients()),
             ).distinct())).scalars())
         if not teams:
             return set()
@@ -717,6 +719,54 @@ def _shown_cut(row) -> list[str]:
     first, second = ("a", "b") if row.first == "a" else ("b", "a")
     return [name for name, part in (("input", "input"), ("answer_1", first), ("answer_2", second))
             if part in cut]
+
+
+def answering_clients() -> tuple[str, ...]:
+    """The `CallReview.client` values of surfaces that show a compare invitation
+    (`compare_answering_clients`)."""
+    return tuple(c.strip() for c in get_settings().compare_answering_clients.split(",") if c.strip())
+
+
+def compact_answer(text: str | None) -> tuple[str, bool]:
+    """(one answer as an invitation shows it, whether anything was left out): its first rows, long
+    strings cut, then a size cap. Lists anywhere in the answer keep their first `INLINE_ROWS`."""
+    if not text:
+        return "", False
+    try:
+        value = json.loads(text)
+    except ValueError:
+        return text[:INLINE_ANSWER_CHARS], len(text) > INLINE_ANSWER_CHARS
+    cut_any = False
+
+    def cut(v: Any) -> Any:
+        nonlocal cut_any
+        if isinstance(v, list):
+            cut_any |= len(v) > INLINE_ROWS
+            return [cut(x) for x in v[:INLINE_ROWS]]
+        if isinstance(v, dict):
+            return {k: cut(x) for k, x in v.items()}
+        if isinstance(v, str) and len(v) > INLINE_FIELD_CHARS:
+            cut_any = True
+            return v[:INLINE_FIELD_CHARS] + "…"
+        return v
+
+    shown = json.dumps(cut(value), ensure_ascii=False, separators=(",", ":"))
+    return shown[:INLINE_ANSWER_CHARS], cut_any or len(shown) > INLINE_ANSWER_CHARS
+
+
+def compact_pair(pair: dict) -> dict:
+    """A waiting pair (`next_for`) compacted for an invitation. Cut when stored (`truncated_parts`),
+    and rows or text left out here (`shortened`): the agent judges what is shown, and knows when
+    the input itself is incomplete."""
+    one, one_cut = compact_answer(pair.get("answer_1"))
+    two, two_cut = compact_answer(pair.get("answer_2"))
+    out = {"comparison_id": pair["comparison_id"], "capability": pair.get("capability"),
+           "input": pair.get("input"), "answer_1": one, "answer_2": two}
+    if pair.get("truncated"):
+        out["truncated_parts"] = pair.get("truncated_parts") or []
+    if shortened := [name for name, cut in (("answer_1", one_cut), ("answer_2", two_cut)) if cut]:
+        out["shortened"] = shortened
+    return out
 
 
 async def next_for(org_id: int, *, pinned: bool) -> dict | None:

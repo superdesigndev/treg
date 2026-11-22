@@ -67,3 +67,55 @@ func TestEveryInvitationPrintsTheRegistryTextWhenSent(t *testing.T) {
 		}
 	}
 }
+
+func compareHeaders() http.Header {
+	h := http.Header{}
+	h.Set("X-Treg-Call-Id", "c_1")
+	h.Set("X-Treg-Hint", "compare")
+	h.Set("X-Treg-Hint-Text", "treg compare shows both")
+	return h
+}
+
+func waiting(status int, body string) func() *api.Response {
+	return func() *api.Response { return &api.Response{Status: status, Body: []byte(body)} }
+}
+
+func TestACompareInvitationPrintsThePairAndTheRegistryWords(t *testing.T) {
+	var errOut bytes.Buffer
+	p := &Printer{Err: &errOut, Comparison: waiting(200,
+		`{"comparison_id":7,"answer_1":"a","answer_2":"b","how_to_vote":"judge: treg compare 7 1|2|tie|both_bad"}`)}
+	p.hintLine(&api.Response{Status: 200, Header: compareHeaders()})
+	want := "treg: comparison waiting: {\"answer_1\":\"a\",\"answer_2\":\"b\",\"comparison_id\":7}\n" +
+		"treg: judge: treg compare 7 1|2|tie|both_bad\n"
+	if got := errOut.String(); got != want {
+		t.Errorf("got %q, want %q", got, want)
+	}
+}
+
+func TestACompareInvitationFallsBackToTheWordsWhenNoPairIsRead(t *testing.T) {
+	for _, fetch := range []func() *api.Response{nil, waiting(204, ""), waiting(500, "{}"),
+		func() *api.Response { return nil }} {
+		var errOut bytes.Buffer
+		(&Printer{Err: &errOut, Comparison: fetch}).hintLine(&api.Response{Status: 200, Header: compareHeaders()})
+		if got := errOut.String(); got != "treg: treg compare shows both\n" {
+			t.Errorf("got %q", got)
+		}
+	}
+}
+
+func TestTheJSONEnvelopeCarriesTheWaitingPair(t *testing.T) {
+	var out bytes.Buffer
+	h := compareHeaders()
+	h.Set("Content-Type", "application/json")
+	p := &Printer{Out: &out, Err: &bytes.Buffer{}, JSON: true,
+		Comparison: waiting(200, `{"comparison_id":7,"answer_1":"a","answer_2":"b","how_to_vote":"vote 7"}`)}
+	if err := p.ShowCall(&api.Response{Status: 200, Header: h, Body: []byte(`{"ok":true}`), Path: "/call/x"}); err != nil {
+		t.Fatal(err)
+	}
+	got := out.String()
+	for _, part := range []string{`"compare":{"answer_1":"a","answer_2":"b","comparison_id":7}`, `"hint_text":"vote 7"`} {
+		if !bytes.Contains([]byte(got), []byte(part)) {
+			t.Errorf("envelope %s lacks %s", got, part)
+		}
+	}
+}
