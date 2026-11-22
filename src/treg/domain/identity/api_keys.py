@@ -97,13 +97,14 @@ async def ensure_default_key(
         created_by=created_by or user.email,
         created_at=membership.created_at,
     )
+    # Held open until the caller's commit, as in money.topup: releasing a savepoint that is the
+    # transaction's first write commits it on SQLite (the driver defers BEGIN).
+    nested = await db.begin_nested()
     try:
-        # A savepoint keeps the caller's transaction alive when a concurrent request inserted the
-        # membership's default key first (unique index uq_apikey_default_membership).
-        async with db.begin_nested():
-            db.add(row)
-            await db.flush()
+        db.add(row)
+        await db.flush()
     except IntegrityError:
+        await nested.rollback()
         winner = (await db.execute(existing)).scalar_one_or_none()
         if winner is None:
             raise
