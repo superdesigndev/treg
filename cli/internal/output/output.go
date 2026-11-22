@@ -37,6 +37,9 @@ type Printer struct {
 	JSON   bool
 	// OrgOverride is the global --org, named when the registry refuses the team.
 	OrgOverride string
+	// Comparison reads the team's waiting comparison (GET /comparisons/next?compact=true) when a
+	// call carries a compare invitation; nil, or a failed read, prints the registry's words alone.
+	Comparison func() *api.Response
 }
 
 func NewPrinter(json bool, org string) *Printer {

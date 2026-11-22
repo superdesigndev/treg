@@ -7387,9 +7387,19 @@
     },
     "/comparisons/next": {
       "get": {
-        "description": "The team's oldest comparison waiting for a verdict, blinded: answer 1 and 2, no vendor.",
+        "description": "The team's oldest comparison waiting for a verdict, blinded: answer 1 and 2, no vendor.\n`compact`: the pair as a CLI prints it beside a call (`compare_app.compact_pair`), with the\nwords that ask for the verdict (`how_to_vote`), so they change without a CLI release.",
         "operationId": "next_comparison_comparisons_next_get",
         "parameters": [
+          {
+            "in": "query",
+            "name": "compact",
+            "required": false,
+            "schema": {
+              "default": false,
+              "title": "Compact",
+              "type": "boolean"
+            }
+          },
           {
             "in": "header",
             "name": "x-treg-token",
