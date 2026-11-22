@@ -211,9 +211,10 @@ so for them `hint_attached` counts an invitation the agent never saw.
   `hints.compare_cli_hint`) within two seconds and prints it on stderr, or under `--json`
   as `_treg.compare`. A failed read prints `X-Treg-Hint-Text` (`hints.COMPARE_CLI_HINT`) alone.
   `treg compare` shows the pair and `treg compare ID 1|2|tie|both_bad --reason` records the verdict.
-  Which teams are compared at all follows the clients that answered invitations
-  (`compare_answering_clients`, see "Pairwise comparisons"): the CLI reports the agent it runs
-  under (`claude-code`, `codex`, ...), listed once a release that shows compare is in use.
+  The binary does not ask for compare when it could not show the pair or route the vote: under
+  `--await` (it prints only the task's result) and when a `--header` sets `X-Treg-Token`,
+  `X-Treg-Org` or `Authorization` (the pair and the vote would go to the CLI's own team). It reads
+  the pair with the call's own client, and a one-off `--org` is kept in the vote's words.
 - **Feedback**: any other successful, non-replayed, non-cached call that samples in at
   `feedback_hint_rate`, own tools included. It asks for nothing, so it has no budget.
 
@@ -281,11 +282,13 @@ the capability, and logs the rest. Each run:
 2. Stops when off (no pairs, `compare_max_per_day` 0 or `compare_rate` 0) or when the UTC day's
    attempts (`compareattemptday`) have reached `compare_max_per_day`.
 3. Chooses eligible teams first: not opted out of the archive, not a demo, whose agent answered
-   at least one review invitation on a surface that shows a compare invitation (`CallReview.invited`,
-   client in `compare_answering_clients`, default `mcp` and `mcp-prior`) in `compare_answer_days`
-   (a team whose agents never answer one there, such as a pipeline calling without reading hints,
-   or one on a CLI release that does not show compare, would leave its pairs unjudged and take the
-   day's budget), and holding no
+   at least one review invitation in `compare_answer_days` on a surface that shows a compare
+   invitation (`CallReview.invited`): the team MCP (client `mcp` or `mcp-prior`), or a client that
+   declared `compare` in `X-Treg-Hints` on the review itself (`compare-answering:<org_id>`, kept
+   `compare_answer_days`; a CLI reports only the agent it runs under, so an old and a new release
+   look alike in `CallReview.client`). A team whose agents never answer one there, such as a
+   pipeline calling without reading hints, or one on a CLI that does not show compare, would leave
+   its pairs unjudged and take the day's budget. And holding no
    access policy at all (a member or project tool ACL, a member pinned to tags, a deny rule, or a
    capability pin on a paired capability). A team with any is skipped, so the run never has to
    emulate a team's authorization.

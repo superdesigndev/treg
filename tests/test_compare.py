@@ -966,19 +966,29 @@ async def test_a_team_that_never_reviews_is_not_compared(clients, search_on, mon
     assert (result["eligible"], result["called"], sent) == (0, 0, []), result
 
 
-async def test_a_listed_cli_client_answering_invitations_is_compared(clients, search_on, monkeypatch):
-    """Once a CLI release shows compare, its agents' clients are listed and their teams compared."""
-    _compare_on(monkeypatch, compare_answering_clients="mcp,mcp-prior,claude-code")
+@pytest.mark.parametrize("hints_sent,compared", [
+    ("review,mark,feedback,compare", True),   # a release that shows compare
+    ("review,mark,feedback", False),          # an older release under the same agent name
+    (None, False),                            # the Python CLI
+])
+async def test_a_cli_team_is_compared_only_once_a_client_showing_compare_answered(
+        clients, search_on, monkeypatch, hints_sent, compared):
+    """A CLI reports only the agent it runs under, so what counts is whether the client that
+    answered the invitation declared it shows compare."""
+    from treg.application import review_targets
+
+    _compare_on(monkeypatch)
     sent = _relay_b(monkeypatch)
+    monkeypatch.setattr(review_targets, "sampled", lambda *_: True)
     org_id = await _org_id(clients)
-    async with session_maker() as db:
-        db.add(CallReview(org_id=org_id, user_email="tim@superdesign.dev", call_id="reviewed",
-                          endpoint_id="tavily.web.search", usefulness="useful", invited=True,
-                          client="claude-code"))
-        await db.commit()
+    reviewed = await _routed_call(org_id, "reviewed on the CLI", reviewing=False, marked=False)
+    headers = {"X-Treg-Client": "claude-code", **({"X-Treg-Hints": hints_sent} if hints_sent else {})}
+    got = await clients.post("/reviews", json={"call_id": reviewed, "usefulness": "useful"}, headers=headers)
+    assert got.status_code == 201, got.text
     await _routed_call(org_id, "answers on the CLI", reviewing=False)
-    assert (await _collect())["eligible"] == 1
-    assert len(sent) == 1
+    result = await _collect()
+    assert result["called"] == (1 if compared else 0), result
+    assert bool(sent) is compared
 
 
 async def test_a_compact_pair_carries_the_cli_words(clients, monkeypatch):
@@ -1000,7 +1010,7 @@ async def test_a_compact_pair_carries_the_cli_words(clients, monkeypatch):
     ("mcp", True, 1, True),         # answered an invitation on the team MCP
     ("mcp-prior", True, 1, True),   # a verdict riding on the next MCP call
     ("mcp", False, 1, False),       # reviewed unasked: says nothing about reading hints
-    ("claude-code", True, 1, False),  # a CLI client not yet listed in compare_answering_clients
+    ("claude-code", True, 1, False),  # a CLI answer that never declared it shows compare
     ("mcp", True, 10, False),       # answered, but not in the last week
 ])
 async def test_only_a_team_answering_mcp_invitations_is_compared(clients, search_on, monkeypatch,

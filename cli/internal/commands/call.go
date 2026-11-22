@@ -12,6 +12,7 @@ import (
 	"path/filepath"
 	"regexp"
 	"strings"
+	"time"
 
 	"github.com/spf13/cobra"
 
@@ -128,6 +129,14 @@ func (e *Env) call(target, path string, f callFlags) error {
 		}
 	}
 	c := e.Client()
+	if f.await || identityOverridden(header) {
+		// A compare invitation is not shown here, so the call does not ask for one: --await prints
+		// only the task's result, and a call under another --header identity would read, and be
+		// told to vote on, the comparison of the CLI's own team instead.
+		header = setHeader(header, "X-Treg-Hints", api.HintsWithoutCompare)
+	} else {
+		e.Out.Comparison = func() *api.Response { return waitingComparison(c) }
+	}
 	resp, err := e.do(c, api.Request{Method: method, Path: "/call/" + rest, Query: params, Body: body, Header: header})
 	if err != nil {
 		return err
@@ -137,6 +146,32 @@ func (e *Env) call(target, path string, f callFlags) error {
 		return e.awaitTask(c, resp, f.timeout)
 	}
 	return e.Out.ShowCall(resp)
+}
+
+// comparisonReadTimeout bounds the read of a waiting comparison after a call has answered: the
+// pair is an extra, and the call's own output never waits longer for it.
+const comparisonReadTimeout = 2 * time.Second
+
+// waitingComparison reads the team's waiting pair with the client the call itself used, so it
+// is the same team (--org included) the invitation came from.
+func waitingComparison(c *api.Client) *api.Response {
+	r, err := c.Do(api.Request{Path: "/comparisons/next", Query: [][2]string{{"compact", "true"}},
+		Timeout: comparisonReadTimeout})
+	if err != nil {
+		return nil
+	}
+	return r
+}
+
+// identityOverridden: a --header that chooses the credential or the team for this call alone.
+func identityOverridden(h [][2]string) bool {
+	for _, kv := range h {
+		switch strings.ToLower(kv[0]) {
+		case "x-treg-token", "x-treg-org", "authorization":
+			return true
+		}
+	}
+	return false
 }
 
 // setHeader replaces a header of the same name (case-insensitively), as a Python dict keyed by

@@ -27,6 +27,13 @@ import (
 
 const NoticeHeader = "X-Treg-Client-Notice"
 
+// Hints are the invitations this binary shows (output.hintLine); the registry offers no other
+// kind. A call that cannot show a comparison sends HintsWithoutCompare instead.
+const (
+	Hints               = "review,mark,feedback,compare"
+	HintsWithoutCompare = "review,mark,feedback"
+)
+
 // Request is one registry request. Path is relative to the registry, e.g. "/call/stripe/v1/charges".
 type Request struct {
 	Method  string
@@ -185,7 +192,7 @@ func (c *Client) setHeaders(req *http.Request, r Request, encoded bool) {
 	h.Set("X-Treg-Client", Runtime())
 	h.Set("X-Treg-Client-Version", buildinfo.Version)
 	// The invitations this binary shows (output.hintLine); the registry offers no other kind.
-	h.Set("X-Treg-Hints", "review,mark,feedback,compare")
+	h.Set("X-Treg-Hints", Hints)
 	h.Set("X-Treg-Key-Protocol", "1")
 	if telemetry.Enabled() {
 		s := session.Current(config.Path())

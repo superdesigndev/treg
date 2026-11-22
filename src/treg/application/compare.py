@@ -43,6 +43,9 @@ from ..timeutil import utcnow_naive
 log = logging.getLogger(__name__)
 
 READY_TTL_S = 3 * 86400
+# The `CallReview.client` of a review written on the team MCP: its review tool and a verdict
+# riding on the next call (`mcp.PRIOR_CLIENT`). That surface shows a compare invitation.
+MCP_ANSWERING_CLIENTS = ("mcp", "mcp-prior")
 # A comparison shown inside a call result (team MCP) or printed beside one (CLI): each answer's
 # first rows, long strings cut, then a size cap.
 INLINE_ROWS = 5
@@ -74,6 +77,17 @@ def ready_key(org_id: int) -> str:
 
 def hint_budget_key(org_id: int) -> str:
     return f"compare-hint-budget:{org_id}"
+
+
+def answering_key(org_id: int) -> str:
+    """Set when the team's agent answers a review invitation from a client that declared it shows
+    compare (`X-Treg-Hints`), for `compare_answer_days`: a CLI reports only the agent it runs
+    under, so an old and a new release look alike in `CallReview.client`."""
+    return f"compare-answering:{org_id}"
+
+
+async def note_answering(org_id: int) -> None:
+    await kv.store().set_flag(answering_key(org_id), get_settings().compare_answer_days * 86400)
 
 
 def marker_key(call_ref: str) -> str:
@@ -393,23 +407,27 @@ async def _recent(session_factory, since: datetime, org_ids: set[int]) -> list[C
 
 
 async def _answering_teams(session_factory, since: datetime) -> set[int]:
-    """Teams whose agent answered a review invitation on the team MCP since `since`: the only
-    teams a comparison can run for (`_eligible_teams`), read before any call so the scan covers
-    their calls alone."""
+    """Teams whose agent answered a review invitation since `since` on a surface that shows a
+    compare invitation: the team MCP (`MCP_ANSWERING_CLIENTS`), or any client that declared
+    `compare` when it answered (`answering_key`). The only teams a comparison can run for
+    (`_eligible_teams`), read before any call so the scan covers their calls alone."""
     async with session_factory() as db:
-        return set((await db.execute(select(CallReview.org_id).where(
+        rows = (await db.execute(select(CallReview.org_id, CallReview.client).where(
             CallReview.created_at >= since, CallReview.invited.is_(True),
-            CallReview.client.in_(answering_clients()),
-        ).distinct())).scalars())
+        ).distinct())).all()
+    teams = {org for org, client in rows if client in MCP_ANSWERING_CLIENTS}
+    store = kv.store()
+    for org in {org for org, _ in rows} - teams:
+        if await store.has_flag(answering_key(org)):
+            teams.add(org)
+    return teams
 
 
-async def _eligible_teams(session_factory, org_ids: set[int], capabilities: set[str],
-                          since: datetime | None = None) -> set[int]:
-    """Teams a comparison may run for: in the archive, not a demo, whose agent answered at least one
-    review invitation on the team MCP since `since` (only that surface shows the compare
-    invitation, and a team whose agent never answers one there, such as a pipeline that calls
-    without reading hints, would leave its pairs unjudged and take the whole budget), and holding
-    no access policy at all (no
+async def _eligible_teams(session_factory, org_ids: set[int], capabilities: set[str]) -> set[int]:
+    """Of `org_ids` (for a run, `_answering_teams`: a team whose agent never answers an invitation
+    on a surface that shows compare, such as a pipeline that calls without reading hints, would
+    leave its pairs unjudged and take the whole budget), the teams a comparison may run for: in
+    the archive, not a demo, and holding no access policy at all (no
     member or project tool ACL, no pin to a tag, no deny rule, no capability pin on a paired
     capability), so B's call never needs the team's authorization emulated."""
     if not org_ids:
@@ -418,11 +436,6 @@ async def _eligible_teams(session_factory, org_ids: set[int], capabilities: set[
         teams = set((await db.execute(select(Org.id).where(
             Org.id.in_(org_ids), Org.archive_opt_out_at.is_(None), Org.demo.is_(False),
             Org.public_demo.is_(False)))).scalars())
-        if teams and since is not None:
-            teams &= set((await db.execute(select(CallReview.org_id).where(
-                CallReview.org_id.in_(teams), CallReview.created_at >= since,
-                CallReview.invited.is_(True), CallReview.client.in_(answering_clients()),
-            ).distinct())).scalars())
         if not teams:
             return set()
         # JSON columns: an unset value may read back as JSON null, so they are judged here.
@@ -543,7 +556,7 @@ async def collect(*, max_seconds: float = 110.0, session_factory=session_maker,
     lookback = timedelta(hours=min(settings.compare_lookback_hours, MARKER_TTL_S // 3600))
     answered = now - timedelta(days=settings.compare_answer_days)
     teams = await _eligible_teams(session_factory, await _answering_teams(session_factory, answered),
-                                  set(pairs()), since=answered)
+                                  set(pairs()))
     found = await _recent(session_factory, now - lookback, teams)
     totals["read"] = len(found)
     async with session_factory() as db:
@@ -719,12 +732,6 @@ def _shown_cut(row) -> list[str]:
     first, second = ("a", "b") if row.first == "a" else ("b", "a")
     return [name for name, part in (("input", "input"), ("answer_1", first), ("answer_2", second))
             if part in cut]
-
-
-def answering_clients() -> tuple[str, ...]:
-    """The `CallReview.client` values of surfaces that show a compare invitation
-    (`compare_answering_clients`)."""
-    return tuple(c.strip() for c in get_settings().compare_answering_clients.split(",") if c.strip())
 
 
 def compact_answer(text: str | None) -> tuple[str, bool]:

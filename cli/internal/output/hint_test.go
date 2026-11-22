@@ -119,3 +119,13 @@ func TestTheJSONEnvelopeCarriesTheWaitingPair(t *testing.T) {
 		}
 	}
 }
+
+func TestAVoteKeepsTheOneOffOrgTheCallUsed(t *testing.T) {
+	var errOut bytes.Buffer
+	p := &Printer{Err: &errOut, OrgOverride: "team-b",
+		Comparison: waiting(200, `{"comparison_id":7,"how_to_vote":"send treg compare 7 1|2|tie|both_bad"}`)}
+	p.hintLine(&api.Response{Status: 200, Header: compareHeaders()})
+	if !bytes.Contains(errOut.Bytes(), []byte("send treg --org team-b compare 7 1|2|tie|both_bad")) {
+		t.Errorf("got %q", errOut.String())
+	}
+}

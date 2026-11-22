@@ -274,6 +274,10 @@ func (p *Printer) comparison() ([]byte, string) {
 		return nil, ""
 	}
 	delete(pair, "how_to_vote")
+	// A one-off --org chose the team this pair belongs to; the vote must go to the same team.
+	if p.OrgOverride != "" {
+		words = strings.ReplaceAll(words, "treg compare ", "treg --org "+p.OrgOverride+" compare ")
+	}
 	line, err := json.Marshal(pair, json.Deterministic(true))
 	if err != nil {
 		return nil, ""
