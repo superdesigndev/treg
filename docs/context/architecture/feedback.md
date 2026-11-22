@@ -213,8 +213,10 @@ so for them `hint_attached` counts an invitation the agent never saw.
   `treg compare` shows the pair and `treg compare ID 1|2|tie|both_bad --reason` records the verdict.
   The binary does not ask for compare when it could not show the pair or route the vote: under
   `--await` (it prints only the task's result) and when a `--header` sets `X-Treg-Token`,
-  `X-Treg-Org` or `Authorization` (the pair and the vote would go to the CLI's own team). It reads
-  the pair with the call's own client, and a one-off `--org` is kept in the vote's words.
+  `X-Treg-Org` or `Authorization` (the pair and the vote would go to the CLI's own team). It then
+  drops only `compare` from what the call declares, a `--header X-Treg-Hints` included. It reads
+  the pair with the call's own client, and a one-off `--org` is kept in the vote's words, the
+  fallback words included.
 - **Feedback**: any other successful, non-replayed, non-cached call that samples in at
   `feedback_hint_rate`, own tools included. It asks for nothing, so it has no budget.
 
@@ -284,8 +286,8 @@ the capability, and logs the rest. Each run:
 3. Chooses eligible teams first: not opted out of the archive, not a demo, whose agent answered
    at least one review invitation in `compare_answer_days` on a surface that shows a compare
    invitation (`CallReview.invited`): the team MCP (client `mcp` or `mcp-prior`), or a client that
-   declared `compare` in `X-Treg-Hints` on the review itself (`compare-answering:<org_id>`, kept
-   `compare_answer_days`; a CLI reports only the agent it runs under, so an old and a new release
+   declared `compare` in `X-Treg-Hints` on the review itself (`compare-answering:<org_id>`, the
+   time of the latest such review, read against the current window in one `MGET` for all teams; a CLI reports only the agent it runs under, so an old and a new release
    look alike in `CallReview.client`). A team whose agents never answer one there, such as a
    pipeline calling without reading hints, or one on a CLI that does not show compare, would leave
    its pairs unjudged and take the day's budget. And holding no

@@ -28,11 +28,8 @@ import (
 const NoticeHeader = "X-Treg-Client-Notice"
 
 // Hints are the invitations this binary shows (output.hintLine); the registry offers no other
-// kind. A call that cannot show a comparison sends HintsWithoutCompare instead.
-const (
-	Hints               = "review,mark,feedback,compare"
-	HintsWithoutCompare = "review,mark,feedback"
-)
+// kind. A call that cannot show a comparison drops compare (commands.withoutCompare).
+const Hints = "review,mark,feedback,compare"
 
 // Request is one registry request. Path is relative to the registry, e.g. "/call/stripe/v1/charges".
 type Request struct {

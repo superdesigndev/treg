@@ -206,16 +206,23 @@ func TestAComparisonIsReadAsTheTeamTheCallUsed(t *testing.T) {
 }
 
 func TestACallThatCannotShowAComparisonDoesNotAskForOne(t *testing.T) {
-	for _, argv := range [][]string{
-		{"call", "example.search", "--header", "X-Treg-Token: tok-b"},
-		{"call", "example.search", "--header", "x-treg-org: team-b"},
-		{"call", "example.search", "--await"},
+	for _, c := range []struct {
+		argv []string
+		want string
+	}{
+		{[]string{"call", "example.search", "--header", "X-Treg-Token: tok-b"}, "review,mark,feedback"},
+		{[]string{"call", "example.search", "--header", "x-treg-org: team-b"}, "review,mark,feedback"},
+		{[]string{"call", "example.search", "--await"}, "review,mark,feedback"},
+		// A caller's own declaration is kept, less compare, whatever its spelling.
+		{[]string{"call", "example.search", "--await", "--header", "x-treg-hints: feedback"}, "feedback"},
+		{[]string{"call", "example.search", "--await", "--header", "X-Treg-Hints: Compare,review"}, "review"},
 	} {
+		argv := c.argv
 		srv, calls, reads := compareRegistry(t)
 		t.Setenv("TREG_TOKEN", "tok-a")
 		queuedEvent(t, srv.URL, 0, argv...)
-		if got := (*calls)[0].Get("X-Treg-Hints"); got != "review,mark,feedback" {
-			t.Errorf("%v declared %q", argv, got)
+		if got := (*calls)[0].Values("X-Treg-Hints"); len(got) != 1 || got[0] != c.want {
+			t.Errorf("%v declared %q, want %q", argv, got, c.want)
 		}
 		if len(*reads) != 0 {
 			t.Errorf("%v read a comparison", argv)

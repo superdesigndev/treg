@@ -129,3 +129,22 @@ func TestAVoteKeepsTheOneOffOrgTheCallUsed(t *testing.T) {
 		t.Errorf("got %q", errOut.String())
 	}
 }
+
+func TestAFailedReadStillKeepsTheOneOffOrg(t *testing.T) {
+	var errOut bytes.Buffer
+	(&Printer{Err: &errOut, OrgOverride: "team-b", Comparison: waiting(503, "{}")}).
+		hintLine(&api.Response{Status: 200, Header: compareHeaders()})
+	if got := errOut.String(); got != "treg: treg --org team-b compare shows both\n" {
+		t.Errorf("got %q", got)
+	}
+	var out bytes.Buffer
+	h := compareHeaders()
+	h.Set("Content-Type", "application/json")
+	p := &Printer{Out: &out, Err: &bytes.Buffer{}, JSON: true, OrgOverride: "team-b", Comparison: waiting(503, "{}")}
+	if err := p.ShowCall(&api.Response{Status: 200, Header: h, Body: []byte(`{}`), Path: "/call/x"}); err != nil {
+		t.Fatal(err)
+	}
+	if !bytes.Contains(out.Bytes(), []byte(`"hint_text":"treg --org team-b compare shows both"`)) {
+		t.Errorf("envelope %s", out.String())
+	}
+}

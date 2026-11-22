@@ -991,6 +991,24 @@ async def test_a_cli_team_is_compared_only_once_a_client_showing_compare_answere
     assert bool(sent) is compared
 
 
+async def test_a_declared_answer_counts_only_inside_the_current_window(clients, search_on, monkeypatch):
+    """The note holds when a client that shows compare last answered, so shortening
+    `compare_answer_days` drops a team whose only such answer is older than the new window."""
+    _compare_on(monkeypatch, compare_answer_days=1)
+    sent = _relay_b(monkeypatch)
+    org_id = await _org_id(clients)
+    async with session_maker() as db:
+        db.add(CallReview(org_id=org_id, user_email="tim@superdesign.dev", call_id="reviewed",
+                          endpoint_id="tavily.web.search", usefulness="useful", invited=True,
+                          client="claude-code"))  # today, from an older CLI
+        await db.commit()
+    await kv.store().set_text(compare.answering_key(org_id),
+                              (utcnow_naive() - timedelta(days=4)).isoformat(), 7 * 86400)
+    await _routed_call(org_id, "answers on an old CLI", reviewing=False)
+    assert (await _collect())["eligible"] == 0
+    assert sent == []
+
+
 async def test_a_compact_pair_carries_the_cli_words(clients, monkeypatch):
     """What a CLI prints beside a call: the compacted pair and the words asking for its verdict."""
     _compare_on(monkeypatch)

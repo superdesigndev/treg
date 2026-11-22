@@ -80,14 +80,23 @@ def hint_budget_key(org_id: int) -> str:
 
 
 def answering_key(org_id: int) -> str:
-    """Set when the team's agent answers a review invitation from a client that declared it shows
-    compare (`X-Treg-Hints`), for `compare_answer_days`: a CLI reports only the agent it runs
-    under, so an old and a new release look alike in `CallReview.client`."""
+    """When the team's agent last answered a review invitation from a client that declared it
+    shows compare (`X-Treg-Hints`), an ISO time: a CLI reports only the agent it runs under, so an
+    old and a new release look alike in `CallReview.client`. Read against the current window, so
+    a shorter `compare_answer_days` takes effect at once."""
     return f"compare-answering:{org_id}"
 
 
 async def note_answering(org_id: int) -> None:
-    await kv.store().set_flag(answering_key(org_id), get_settings().compare_answer_days * 86400)
+    await kv.store().set_text(answering_key(org_id), utcnow_naive().isoformat(),
+                              get_settings().compare_answer_days * 86400)
+
+
+def _answered_since(value: str | None, since: datetime) -> bool:
+    try:
+        return value is not None and datetime.fromisoformat(value) >= since
+    except ValueError:
+        return False
 
 
 def marker_key(call_ref: str) -> str:
@@ -416,11 +425,10 @@ async def _answering_teams(session_factory, since: datetime) -> set[int]:
             CallReview.created_at >= since, CallReview.invited.is_(True),
         ).distinct())).all()
     teams = {org for org, client in rows if client in MCP_ANSWERING_CLIENTS}
-    store = kv.store()
-    for org in {org for org, _ in rows} - teams:
-        if await store.has_flag(answering_key(org)):
-            teams.add(org)
-    return teams
+    others = sorted({org for org, _ in rows} - teams)
+    # One round trip for every other team (an unreadable store reads as none of them).
+    noted = await kv.store().get_texts([answering_key(org) for org in others])
+    return teams | {org for org, value in zip(others, noted) if _answered_since(value, since)}
 
 
 async def _eligible_teams(session_factory, org_ids: set[int], capabilities: set[str]) -> set[int]:
@@ -543,6 +551,8 @@ async def collect(*, max_seconds: float = 110.0, session_factory=session_maker,
     from ..domain.catalog.routing.contracts import canonical_identity
     from .arena_insights import _evidence
 
+    # The budget covers the whole run, choosing the teams and reading their calls included.
+    deadline = time.monotonic() + max_seconds
     totals = {"read": 0, "eligible": 0, "called": 0, "ready": 0, "failed": 0, "skipped": 0,
               "removed": await _remove_orphans(session_factory), "estimate_micro": 0,
               "skip_reasons": {}, "no_marker_by_client": {}}
@@ -566,7 +576,6 @@ async def collect(*, max_seconds: float = 110.0, session_factory=session_maker,
     totals["eligible"] = len(found)
     cat = catalog_store.load()
     await capacity_view.load()
-    deadline = time.monotonic() + max_seconds
     own_client = client is None
     client = client or httpx.AsyncClient(timeout=CALL_TIMEOUT_S)
     store = kv.store()

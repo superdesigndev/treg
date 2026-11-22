@@ -133,7 +133,7 @@ func (e *Env) call(target, path string, f callFlags) error {
 		// A compare invitation is not shown here, so the call does not ask for one: --await prints
 		// only the task's result, and a call under another --header identity would read, and be
 		// told to vote on, the comparison of the CLI's own team instead.
-		header = setHeader(header, "X-Treg-Hints", api.HintsWithoutCompare)
+		header = replaceHintsHeader(header, withoutCompare(header))
 	} else {
 		e.Out.Comparison = func() *api.Response { return waitingComparison(c) }
 	}
@@ -161,6 +161,36 @@ func waitingComparison(c *api.Client) *api.Response {
 		return nil
 	}
 	return r
+}
+
+// withoutCompare is the call's declared invitations less compare: a --header X-Treg-Hints as
+// typed (any case), else this binary's own.
+func withoutCompare(h [][2]string) string {
+	declared := api.Hints
+	for _, kv := range h {
+		if strings.EqualFold(kv[0], "X-Treg-Hints") {
+			declared = kv[1]
+		}
+	}
+	var kept []string
+	for _, kind := range strings.Split(declared, ",") {
+		if k := strings.TrimSpace(kind); k != "" && !strings.EqualFold(k, "compare") {
+			kept = append(kept, k)
+		}
+	}
+	return strings.Join(kept, ",")
+}
+
+// replaceHintsHeader sets X-Treg-Hints once, replacing a --header of any spelling, so the
+// registry never receives two declarations.
+func replaceHintsHeader(h [][2]string, value string) [][2]string {
+	out := h[:0:0]
+	for _, kv := range h {
+		if !strings.EqualFold(kv[0], "X-Treg-Hints") {
+			out = append(out, kv)
+		}
+	}
+	return append(out, [2]string{"X-Treg-Hints", value})
 }
 
 // identityOverridden: a --header that chooses the credential or the team for this call alone.

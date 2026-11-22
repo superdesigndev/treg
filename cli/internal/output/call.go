@@ -34,6 +34,8 @@ func (p *Printer) ShowCall(r *api.Response) error {
 			if pair, words := p.comparison(); pair != nil {
 				e.Treg.Set("compare", jsontext.Value(pair))
 				e.Treg.Set("hint_text", words)
+			} else if t := r.Header.Get("X-Treg-Hint-Text"); t != "" {
+				e.Treg.Set("hint_text", p.withOrg(t))
 			}
 		}
 		data, err := json.Marshal(e, jsontext.AllowInvalidUTF8(true), jsontext.AllowDuplicateNames(true))
@@ -243,6 +245,9 @@ func (p *Printer) hintLine(r *api.Response) {
 	// The registry writes the words (X-Treg-Hint-Text), so they change without a CLI release; the
 	// built-in lines below are for a registry that sends none, and match the Python CLI's.
 	if text := h.Get("X-Treg-Hint-Text"); text != "" && kind != "" {
+		if kind == "compare" {
+			text = p.withOrg(text)
+		}
 		fmt.Fprintf(p.Err, "treg: %s\n", text)
 		return
 	}
@@ -274,15 +279,21 @@ func (p *Printer) comparison() ([]byte, string) {
 		return nil, ""
 	}
 	delete(pair, "how_to_vote")
-	// A one-off --org chose the team this pair belongs to; the vote must go to the same team.
-	if p.OrgOverride != "" {
-		words = strings.ReplaceAll(words, "treg compare ", "treg --org "+p.OrgOverride+" compare ")
-	}
+	words = p.withOrg(words)
 	line, err := json.Marshal(pair, json.Deterministic(true))
 	if err != nil {
 		return nil, ""
 	}
 	return line, words
+}
+
+// withOrg keeps a one-off --org in a compare command the registry's words name: it chose the
+// team the pair belongs to, so the read and the vote must go to the same team.
+func (p *Printer) withOrg(words string) string {
+	if p.OrgOverride == "" {
+		return words
+	}
+	return strings.ReplaceAll(words, "treg compare", "treg --org "+p.OrgOverride+" compare")
 }
 
 // saturated is treg's own 503 when its database pool is exhausted, typed by `treg_saturated`.
