@@ -2305,6 +2305,32 @@ SCRAPECREATORS = OAuthProvider(
     token_verify_field="creditCount",
 )
 
+CAPTAPI = OAuthProvider(
+    service="captapi",
+    display_name="CaptAPI",
+    auth_kind="key",
+    token_label="API key",
+    token_placeholder="capt_live_…",
+    # Bearer header; the API also accepts X-API-Key, never a query-param key.
+    token_header="Authorization",
+    token_format="Bearer {secret}",
+    setup_url="https://captapi.com/dashboard/api-keys",
+    setup_action_label="Get your CaptAPI key",
+    setup_steps=(
+        "Sign up at captapi.com and open Dashboard → API Keys.",
+        "Create a key (it starts with capt_live_) and copy it.",
+    ),
+    setup_note="Failed calls (4xx/5xx) cost 0 credits and cached results are free; the balance check is free.",
+    auth_uri="", token_uri="",
+    scopes={},
+    client_id_setting="", client_secret_setting="",
+    category="Social media",
+    summary="Read public profiles, posts, comments, transcripts and ad libraries across TikTok, Instagram, YouTube and more.",
+    base_url="https://api.captapi.com",
+    docs_url="https://captapi.com/docs",
+    probe_path="/v1/account/balance",  # free — a bad key gets a 401 here
+)
+
 
 DATAFORSEO = OAuthProvider(
     service="dataforseo",
@@ -4483,6 +4509,7 @@ REGISTRY: dict[str, OAuthProvider] = {
         REAPI, PIAPI, GOOGLE_AI, TINYFISH,
         TIKHUB, BRIGHTDATA, SEMRUSH, JUSTONEAPI,
         SCRAPECREATORS,
+        CAPTAPI,
         # SEO API-key providers
         DATAFORSEO, SERANKING, MOZ, MAJESTIC, SERPSTAT, EXA, SEARCH1API, TAVILY, OCTEN, LINKUP, PARALLEL, YOU, VALYU, KEENABLE, OLOSTEP, FIRECRAWL, CRAWL4AI, SPIDERCLOUD, PERPLEXITY,
         SCRAPEGRAPHAI, SERPER, BRAVESEARCH, LITESCRAPE, CLORO, LOCALFALCON,
