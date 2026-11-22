@@ -601,22 +601,6 @@ async def test_a_close_that_deletes_the_hold_waits_for_a_charge_write_in_progres
         assert await db.get(Hold, allowance.allowance_id(org_id)) is None
 
 
-@pytest.mark.skipif(infra_db._is_sqlite, reason="needs row locks")
-async def test_a_release_that_keeps_the_hold_does_not_wait_for_a_charge_write_in_progress(
-        org_id, store):
-    """A drain or a give-back returns part of the hold and keeps the row, as a fold and a refill
-    do: the charge the write found its hold for is still applied to that hold."""
-    epoch = await runtime.take(org_id, 600)
-    async with session_maker() as writer:
-        assert await allowance.holds_behind(writer, [org_id]) == {org_id: epoch}
-        async with session_maker() as db:
-            closed = await asyncio.wait_for(allowance.close_allowance_in_transaction(
-                db, org_id, reason="test", release_micro=300, epoch=epoch), 5)
-            await db.commit()
-        assert (closed.released_micro, closed.remaining_micro) == (300, CHUNK - 300)
-    assert await _state(org_id) == (GRANT - CHUNK + 300, CHUNK - 300)
-
-
 async def test_deleting_a_team_locks_its_allowance_hold_before_its_queued_charges(org_id, store):
     """The order the charge writer uses. The other way round, a writer holding the hold while it
     writes a charge again and a deletion that has deleted that charge wait on each other."""

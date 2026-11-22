@@ -481,8 +481,7 @@ money moved, the purchased-credit gate.
   charge too comes out of the balance. It learns which in the transaction that writes the
   rows, reading the teams' hold rows under a key-share lock first (`allowance.holds_behind`), so
   a close that deletes the hold waits for the write and applies the charge to its own hold, or
-  is done and the charge is known to owe the balance. A fold, a refill and a close that keeps
-  the hold (a drain, a give-back) only update the row
+  is done and the charge is known to owe the balance. A fold and a refill only update the row
   and take the lock an update takes (NO KEY UPDATE), which that key-share lock does not
   conflict with: PostgreSQL lets a later sharer pass a waiting exclusive lock, so a fold asking
   for the full row lock under a steady stream of charge writes would wait for a gap between

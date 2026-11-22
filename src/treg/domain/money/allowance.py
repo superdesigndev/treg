@@ -548,12 +548,10 @@ async def close_allowance_in_transaction(
     `release_micro=None` returns all of it and deletes the hold. Charges recorded after that find
     no hold and come straight out of the balance, so use it only once no call can still be
     spending from the allowance. A number returns at most that much and keeps the hold: the
-    way to stop new spending while calls already admitted finish against what is left. Keeping
-    the row, it takes the lock an update takes, as a fold and a refill do, and does not wait for
-    a charge write in progress (`_lock_allowance`); only deleting the row waits for those.
+    way to stop new spending while calls already admitted finish against what is left.
     """
     mark_money(db, "close_allowance", org_id=org_id)
-    hold = await _lock_allowance(db, org_id, keeps=release_micro is not None)
+    hold = await _lock_allowance(db, org_id)
     if epoch is not None and hold is not None and _epoch(hold) != epoch:
         release_micro = 0
     return await _close(db, org_id, hold, reason, release_micro)
