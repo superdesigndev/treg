@@ -181,6 +181,10 @@ def submission_view(task: CallTask, body: bytes) -> dict:
         return _error(view, "submission_rejected", str(exc))
     if asynctasks.finished_on_submission(task.descriptor, document):
         return _terminal(task, document, response)
+    if not pollable(task):
+        view["response"] = response
+        return _error(view, "submission_rejected",
+                      "the provider did not accept the submission as a task")
     return view
 
 

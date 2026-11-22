@@ -792,6 +792,43 @@ async def test_apollo_platform_phone_validation_reserves_plan_ceiling_and_settle
         get_settings.cache_clear()
 
 
+async def test_apollo_skipped_phone_submission_names_no_task_to_follow(
+    clients: AsyncClient, monkeypatch,
+):
+    """Apollo answers `skipped` or `not_attempted` with a `request_id_str` but starts no job; treg
+    records no ownership for it, so `--await` must not be sent to poll it into a 403."""
+    monkeypatch.setenv("TREG_PLATFORM_KEY_APOLLO", "PLATFORM-APOLLO-KEY")
+    monkeypatch.setenv("TREG_PLATFORM_PROVIDERS", "apollo")
+    get_settings.cache_clear()
+    relayed = []
+    try:
+        async def skipped(*args, **kwargs):
+            relayed.append(args)
+            return _response(200, {
+                "person": {"id": "example-person-id"},
+                "phone_enrichment": {"status": "skipped"},
+                "request_id_str": "-1244312954650123767",
+            })
+
+        monkeypatch.setattr(call_service, "relay", skipped)
+        sent = await clients.post(
+            "/call/apollo.people.phone.find?linkedin_url=https%3A%2F%2Fwww.linkedin.com%2Fin%2Fexample"
+            "&reveal_phone_number=true&poll_only=true")
+        assert sent.status_code == 200, sent.text
+        assert sent.headers["X-Treg-Cost-Micro"] == "0"
+        call_id = sent.headers["X-Treg-Call-Id"]
+        view = (await clients.post(f"/tasks/{call_id}", content=sent.content)).json()
+        assert view["state"] == "error" and view["error"]["kind"] == "submission_rejected"
+        assert view["task_id"] is None and view["resume"] is None
+        assert view["response"]["body"] == sent.text
+        unpollable = await clients.get(f"/tasks/{call_id}")
+        assert unpollable.status_code == 409, unpollable.text
+        assert unpollable.json()["detail"]["error"] == "task_not_pollable"
+        assert len(relayed) == 1
+    finally:
+        get_settings.cache_clear()
+
+
 async def test_firecrawl_crawl_poll_settles_reported_credits_once(clients: AsyncClient, monkeypatch):
     monkeypatch.setenv("TREG_PLATFORM_KEY_FIRECRAWL", "PLATFORM-FIRECRAWL")
     monkeypatch.setenv("TREG_PLATFORM_PROVIDERS", "firecrawl")

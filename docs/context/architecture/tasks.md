@@ -45,7 +45,7 @@ after the answer is read whole, so no connection is held while the provider is t
 
 A row keeps the team, the caller's tags (the pin snapshot), the endpoint, the descriptor frozen as
 it was, the task id and poll URL as `extract_submission` reads them (none when the answer names no
-task), the SHA-256 of the bytes relayed, and the time. A failed write is logged; the answer goes
+task or fails the row's `expect`), the SHA-256 of the bytes relayed, and the time. A failed write is logged; the answer goes
 out either way and `/tasks/` will not find it. Team deletion deletes the rows; nothing else does.
 
 ## Reading it
@@ -86,8 +86,9 @@ Every key is always present (`null` when it does not apply), so the shape is sta
 | `retry_after`, `max_wait` | seconds before the next look is worth making (the descriptor's `interval`), and the most a waiter waits (`max_age`) |
 | `error` | `kind`, `message`, `http_status`, `retryable`, `by` (`provider` or `treg`) |
 
-Error kinds: `submission_not_json`, `submission_rejected` (no task id, or a poll URL off the
-allow-list), `result_not_retrievable` (a fetch-mode success without the value to fetch by),
+Error kinds: `submission_not_json`, `submission_rejected` (no task id, a poll URL off the
+allow-list, or an id beside an answer that fails the row's `expect`: Apollo's `skipped` phone
+lookup names a `request_id_str` but starts no job, and treg recorded no ownership to poll it by), `result_not_retrievable` (a fetch-mode success without the value to fetch by),
 `poll_failed`, `poll_not_json`, `poll_too_large`, `expired`. `Retry-After` (whole seconds) is set
 on `pending` and on a `retryable` poll failure (a 5xx); answers are `Cache-Control: no-store`.
 
