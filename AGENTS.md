@@ -76,6 +76,10 @@ Everything else in this file is guidance; these are the contract, and they win o
    call reads each child's answer up to the same 8 MiB; a larger one is that child's unbilled error. With
    `X-Treg-Route-Verify`, an email or phone find makes one more linked child call (the check), with its own
    hold and charge, and reports it in `_treg.verification`; the find's answer is not altered. With
+   `X-Treg-Route-Verify-Fallthrough`, a hit whose check returns a definite invalid verdict (`invalid`
+   or `dead`) is treated as a miss for routing and the waterfall continues, each attempt and check
+   billed at its own price inside `X-Treg-Route-Max-Cost`, with `_treg.tried` recording each check
+   verdict. With
    `X-Treg-Route-Confirm`, an email find keeps asking providers after a hit until another returns the
    same address, each attempt billed as usual, and reports it in `_treg.confirmation`; the answer
    returned is the first provider's, unaltered. With `X-Treg-Route-Decisive`, an email check keeps

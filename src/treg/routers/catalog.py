@@ -740,6 +740,12 @@ async def catalog_endpoint(
                                                    "running also pending, call_id and async (task_id + poll) — "
                                                    "cost_micro is then a hold settled later (GET /calls/{{call_id}})"}
                            if contract and contract.check else {}),
+                        **({"X-Treg-Route-Verify-Fallthrough": "true = when the check returns "
+                                                               + " or ".join(contract.check.fallthrough_verdicts)
+                                                               + ", treat that hit as a miss and keep trying providers, "
+                                                               "each attempt and check billed at its own price inside "
+                                                               "X-Treg-Route-Max-Cost; _treg.tried records each check verdict"}
+                           if contract and contract.check and contract.check.fallthrough_verdicts else {}),
                         **({"X-Treg-Route-Domain-Match": "strict (or true) = when you sent a domain, an email hit at another domain does not "
                                                          "end the call: the waterfall goes on (at most two more such hits), each "
                                                          "attempt at its own price, inside X-Treg-Route-Max-Cost; the first "

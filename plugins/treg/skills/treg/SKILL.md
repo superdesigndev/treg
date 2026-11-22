@@ -164,7 +164,9 @@ match; `_treg.advice` says when it still needs checking. Verify before anyone se
 re-send the same find: every hit is billed, repeats included.
 
 - Send `X-Treg-Route-Verify: true` on `treg.people.email.find`, `treg.people.email.find.personal` or
-  `treg.people.phone.find` to check each hit in the same call, as its own small charge. Read
+  `treg.people.phone.find` to check each hit in the same call, as its own small charge. Add
+  `X-Treg-Route-Verify-Fallthrough: true` to treat an `invalid` (or `dead`) verdict as a miss and
+  keep trying later providers within `X-Treg-Route-Max-Cost` (`_treg.tried` records each verdict). Read
   `_treg.verification.verdict` (it wins over the provider's own `output.verified`) and follow
   `_treg.advice`. A live phone line does not prove the number is this person's.
 - **Verify every address before it is sent to**, including rows from a company or domain search

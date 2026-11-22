@@ -988,7 +988,13 @@ returned and never documented as stable. An output field may say where it lands 
   is never altered. A check's `when` and `skip_reason` skip a hit before any call (a phone not in
   international form is `not_international`, because HLR reads national digits as a country code),
   and its `skip_advice` replaces the find's advice. The header on a contract without `check` is a
-  422 before planning.
+  422 before planning. With `X-Treg-Route-Verify-Fallthrough` (opt-in, on a contract whose `check`
+  declares `fallthrough_verdicts` and with the waterfall on; refused with 422 otherwise), each hit is
+  checked inside the waterfall (`:r<n>:v`), and a completed verdict in `fallthrough_verdicts`
+  (`invalid` on email finds, `dead` on phone finds; never `catch_all`, `risky`, `unknown`, pending,
+  or a failed/skipped check) marks that attempt a `miss` with its `verification` on `_treg.tried`
+  and continues to the next provider within `X-Treg-Route-Max-Cost`; if no later hit succeeds, the
+  call returns `outcome: miss` with `last_verification` and settles every find and check that ran.
 - `confirm` (opt-in via `X-Treg-Route-Confirm`) names the field two DIFFERENT providers must agree on
   (trimmed, case-folded); two endpoints of one provider never confirm each other. The earlier hit is
   the answer; with no agreement before candidates or ceiling run out, the first hit returns marked

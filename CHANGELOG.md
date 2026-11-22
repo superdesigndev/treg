@@ -10,6 +10,13 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
 
 ### Added
 
+- **`X-Treg-Route-Verify-Fallthrough` on routed finds (`treg.people.email.find`,
+  `treg.people.email.find.personal`, `treg.people.phone.find`).** An opt-in header: when a hit's
+  `X-Treg-Route-Verify` check returns a definite invalid verdict (`invalid` for email, `dead` for
+  phone), the router treats that hit as a miss and continues the waterfall within
+  `X-Treg-Route-Max-Cost`, recording each check verdict in `_treg.tried`. `catch_all`, `risky`,
+  `unknown`, pending and failed checks do not fall through; without the header nothing changes.
+
 - **Agent payments (off by default).** With `TREG_AGENT_PAYMENTS_ENABLED`, an agent with no treg
   account can pay for a catalog call from a crypto wallet, with MPP on Tempo or x402 on Base. treg
   charges only the real price after the call; the rest stays as that wallet's credit on that

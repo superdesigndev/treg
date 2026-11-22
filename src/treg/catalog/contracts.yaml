@@ -55,6 +55,7 @@ contracts:
       endpoint: treg.people.email.verify
       field: email
       prefer: [bounceban]
+      fallthrough_verdicts: [invalid]
       disagree_advice: "The provider marked this address verified, but treg's check did not confirm it: read _treg.verification.verdict, which wins over output.verified. Do not send to an invalid address, and treat catch_all, risky or unknown as unconfirmed."
     # `X-Treg-Route-Confirm`: a hit counts only once a second provider returns the same address.
     # Finders that guess from the same name patterns can still agree on a wrong one.
@@ -82,6 +83,7 @@ contracts:
       endpoint: treg.people.email.verify
       field: email
       prefer: [bounceban]
+      fallthrough_verdicts: [invalid]
       disagree_advice: "The provider marked this address verified, but treg's check did not confirm it: read _treg.verification.verdict, which wins over output.verified. Do not send to an invalid address, and treat catch_all, risky or unknown as unconfirmed."
 
   # ---- batch 1: social lookups (2026-08-28) ---------------------------------------------------
@@ -177,6 +179,7 @@ contracts:
     advice_unverified: "This number was found, not confirmed live. Send X-Treg-Route-Verify: true and treg checks the line with a live network lookup (hlrlookup.people.phone.verify) in the same call. For a US number, trestleiq.people.contact.verify also checks that it belongs to this person."
     # `X-Treg-Route-Verify`: HLR's live check; a national-form number would be read as another country's.
     check: {endpoint: hlrlookup.people.phone.verify, field: phone, when: "e164_digits(phone) != null", skip_reason: not_international,
+            fallthrough_verdicts: [dead],
             skip_advice: "This number has no country code, so it was not checked: a live lookup would read its first digits as a country code. Add the country code (+ and the digits), or call hlrlookup.people.phone.verify with input_format set to the ISO3 country code (for example USA)."}
 
   people.phone.live:

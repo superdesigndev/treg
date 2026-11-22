@@ -304,6 +304,14 @@ find plus check. The answer adds `_treg.verification: {verdict, checked, served_
 (`no_hit`, `over_cost_limit`, `checker_failed`, `no_checker`, `not_allowed`, `spend_limit`) mean
 no check ran and it cost nothing. A miss is never checked: its reason is `no_hit`. Other routed tools refuse the header (422, unbilled).
 
+`X-Treg-Route-Verify-Fallthrough: true` (opt-in) treats a hit whose check returns a definite
+invalid verdict (`invalid` for emails, `dead` for phones) as a miss for routing and keeps trying
+providers inside `X-Treg-Route-Max-Cost`. `catch_all`, `risky`, `unknown`, pending checks and failed
+checks do not trigger fallthrough. Each attempt's check verdict is recorded in `_treg.tried`; every
+finder hit and check that ran is billed at its own price, while misses on per-success providers stay
+free. If no later provider returns a usable hit, the call returns `outcome: miss` (never the
+invalid address). Needs the waterfall (`X-Treg-Route-Waterfall: 0` is refused 422, unbilled).
+
 `X-Treg-Route-Confirm: true` on `treg.people.email.find` counts a hit only once a second provider
 returns the same address. The waterfall goes on after the first hit, each attempt at its own price
 inside `X-Treg-Route-Max-Cost`, so a confirmed answer usually costs two finds. The first address is
