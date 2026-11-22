@@ -61,11 +61,21 @@ def review_hint(call_id: str) -> str:
     )
 
 
-COMPARE_HINT = (
+COMPARE_CLI_HINT = (
     "treg has two anonymous answers to an input your team sent earlier. Judge which serves that "
-    "input better: the compare tool (no arguments) shows both, then send one verdict with "
-    "compare(comparison_id, choice=1|2|tie|both_bad, reason). No charge. Then continue."
+    "input better: treg compare shows both, then send one verdict with treg compare COMPARISON_ID "
+    "1|2|tie|both_bad --reason \"one line\". No charge. Then continue."
 )
+
+
+def compare_cli_hint(comparison_id: int, *, input_cut: bool = False) -> str:
+    """A CLI's words beside the pair it printed (`GET /comparisons/next?compact=true`)."""
+    cut = (" The input was cut when stored: judge only on what it shows, and say tie when the missing "
+           "part could decide it." if input_cut else "")
+    return (f"Above: two anonymous answers to an input your team sent earlier. Judge which serves "
+            f"that input better and send one verdict: treg compare {comparison_id} "
+            "1|2|tie|both_bad --reason \"one line\". Judge what the input asked for, not length; "
+            f"`shortened` answers show only their first rows.{cut} No charge. Then continue.")
 
 
 def compare_inline_hint(comparison_id: int, *, input_cut: bool = False) -> str:
@@ -85,8 +95,8 @@ def header_text(kind: str, call_id: str) -> tuple[int | None, str]:
     change on the server, not in a client release. A mark has configured variants."""
     if kind == "mark":
         return mark_hint(call_id)
-    if kind == "compare":
-        return None, COMPARE_HINT
+    if kind == "compare":  # a CLI's words; the team MCP writes its own (mcp.py)
+        return None, COMPARE_CLI_HINT
     if kind == "review":
         text = (f"After using this result, rate it: treg review {call_id} "
                 "<useful|partly|not_useful|not_sure> [--reason \"...\"]; when partly or not_useful "

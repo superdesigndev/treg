@@ -508,6 +508,9 @@ class Store(Protocol):
     async def get_text(self, key: str) -> str | None:
         """The text value, or None when it is missing, expired or the store cannot answer."""
 
+    async def get_texts(self, keys: list[str]) -> list[str | None]:
+        """`get_text` of each key, in one round trip; all None when the store cannot answer."""
+
     async def aclose(self) -> None: ...
 
 
@@ -554,6 +557,9 @@ class LocalStore:
     async def get_text(self, key: str) -> str | None:
         expires, value = self._texts.get(key, (0.0, ""))
         return value if expires > time.monotonic() else None
+
+    async def get_texts(self, keys: list[str]) -> list[str | None]:
+        return [await self.get_text(key) for key in keys]
 
     async def take(self, key: str, limit: int, ttl_s: int) -> bool:
         now = time.monotonic()
@@ -733,6 +739,17 @@ class RedisStore:
         if value is None:
             return None
         return value.decode() if isinstance(value, bytes) else str(value)
+
+    async def get_texts(self, keys: list[str]) -> list[str | None]:
+        if not keys:
+            return []
+        try:
+            async with asyncio.timeout(_OPTIONAL_TIMEOUT_S):
+                values = await self._client.mget(keys)
+        except Exception as exc:  # noqa: BLE001 - unread values are missing ones
+            _note_fault(exc)
+            return [None] * len(keys)
+        return [None if v is None else v.decode() if isinstance(v, bytes) else str(v) for v in values]
 
     async def read_org_flow_control(self, org_id: int) -> FlowControlReadResult:
         if type(org_id) is not int or not 0 < org_id <= 2147483647:

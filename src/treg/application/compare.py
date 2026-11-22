@@ -44,8 +44,13 @@ log = logging.getLogger(__name__)
 
 READY_TTL_S = 3 * 86400
 # The `CallReview.client` of a review written on the team MCP: its review tool and a verdict
-# riding on the next call (`mcp.PRIOR_CLIENT`). Only that surface shows a compare invitation.
-INVITE_ANSWERING_CLIENTS = ("mcp", "mcp-prior")
+# riding on the next call (`mcp.PRIOR_CLIENT`). That surface shows a compare invitation.
+MCP_ANSWERING_CLIENTS = ("mcp", "mcp-prior")
+# A comparison shown inside a call result (team MCP) or printed beside one (CLI): each answer's
+# first rows, long strings cut, then a size cap.
+INLINE_ROWS = 5
+INLINE_FIELD_CHARS = 300
+INLINE_ANSWER_CHARS = 3000
 # A call's eligibility marker lives this long; a run never looks further back.
 MARKER_TTL_S = 2 * 3600
 MARKER_TIMEOUT_S = 0.2
@@ -72,6 +77,30 @@ def ready_key(org_id: int) -> str:
 
 def hint_budget_key(org_id: int) -> str:
     return f"compare-hint-budget:{org_id}"
+
+
+def answering_key(org_id: int) -> str:
+    """When the team's agent last answered a review invitation from a client that declared it
+    shows compare (`X-Treg-Hints`), an ISO time: a CLI reports only the agent it runs under, so an
+    old and a new release look alike in `CallReview.client`. Read against the current window, so
+    a shorter `compare_answer_days` takes effect at once."""
+    return f"compare-answering:{org_id}"
+
+
+# How long the note is kept, at least: a window lengthened up to this reaches reviews already noted.
+ANSWERING_NOTE_DAYS = 30
+
+
+async def note_answering(org_id: int) -> None:
+    days = max(ANSWERING_NOTE_DAYS, get_settings().compare_answer_days)
+    await kv.store().set_text(answering_key(org_id), utcnow_naive().isoformat(), days * 86400)
+
+
+def _answered_since(value: str | None, since: datetime) -> bool:
+    try:
+        return value is not None and datetime.fromisoformat(value) >= since
+    except ValueError:
+        return False
 
 
 def marker_key(call_ref: str) -> str:
@@ -391,23 +420,26 @@ async def _recent(session_factory, since: datetime, org_ids: set[int]) -> list[C
 
 
 async def _answering_teams(session_factory, since: datetime) -> set[int]:
-    """Teams whose agent answered a review invitation on the team MCP since `since`: the only
-    teams a comparison can run for (`_eligible_teams`), read before any call so the scan covers
-    their calls alone."""
+    """Teams whose agent answered a review invitation since `since` on a surface that shows a
+    compare invitation: the team MCP (`MCP_ANSWERING_CLIENTS`), or any client that declared
+    `compare` when it answered (`answering_key`). The only teams a comparison can run for
+    (`_eligible_teams`), read before any call so the scan covers their calls alone."""
     async with session_factory() as db:
-        return set((await db.execute(select(CallReview.org_id).where(
+        rows = (await db.execute(select(CallReview.org_id, CallReview.client).where(
             CallReview.created_at >= since, CallReview.invited.is_(True),
-            CallReview.client.in_(INVITE_ANSWERING_CLIENTS),
-        ).distinct())).scalars())
+        ).distinct())).all()
+    teams = {org for org, client in rows if client in MCP_ANSWERING_CLIENTS}
+    others = sorted({org for org, _ in rows} - teams)
+    # One round trip for every other team (an unreadable store reads as none of them).
+    noted = await kv.store().get_texts([answering_key(org) for org in others])
+    return teams | {org for org, value in zip(others, noted) if _answered_since(value, since)}
 
 
-async def _eligible_teams(session_factory, org_ids: set[int], capabilities: set[str],
-                          since: datetime | None = None) -> set[int]:
-    """Teams a comparison may run for: in the archive, not a demo, whose agent answered at least one
-    review invitation on the team MCP since `since` (only that surface shows the compare
-    invitation, and a team whose agent never answers one there, such as a pipeline that calls
-    without reading hints, would leave its pairs unjudged and take the whole budget), and holding
-    no access policy at all (no
+async def _eligible_teams(session_factory, org_ids: set[int], capabilities: set[str]) -> set[int]:
+    """Of `org_ids` (for a run, `_answering_teams`: a team whose agent never answers an invitation
+    on a surface that shows compare, such as a pipeline that calls without reading hints, would
+    leave its pairs unjudged and take the whole budget), the teams a comparison may run for: in
+    the archive, not a demo, and holding no access policy at all (no
     member or project tool ACL, no pin to a tag, no deny rule, no capability pin on a paired
     capability), so B's call never needs the team's authorization emulated."""
     if not org_ids:
@@ -416,11 +448,6 @@ async def _eligible_teams(session_factory, org_ids: set[int], capabilities: set[
         teams = set((await db.execute(select(Org.id).where(
             Org.id.in_(org_ids), Org.archive_opt_out_at.is_(None), Org.demo.is_(False),
             Org.public_demo.is_(False)))).scalars())
-        if teams and since is not None:
-            teams &= set((await db.execute(select(CallReview.org_id).where(
-                CallReview.org_id.in_(teams), CallReview.created_at >= since,
-                CallReview.invited.is_(True), CallReview.client.in_(INVITE_ANSWERING_CLIENTS),
-            ).distinct())).scalars())
         if not teams:
             return set()
         # JSON columns: an unset value may read back as JSON null, so they are judged here.
@@ -528,6 +555,8 @@ async def collect(*, max_seconds: float = 110.0, session_factory=session_maker,
     from ..domain.catalog.routing.contracts import canonical_identity
     from .arena_insights import _evidence
 
+    # The budget covers the whole run, choosing the teams and reading their calls included.
+    deadline = time.monotonic() + max_seconds
     totals = {"read": 0, "eligible": 0, "called": 0, "ready": 0, "failed": 0, "skipped": 0,
               "removed": await _remove_orphans(session_factory), "estimate_micro": 0,
               "skip_reasons": {}, "no_marker_by_client": {}}
@@ -541,7 +570,7 @@ async def collect(*, max_seconds: float = 110.0, session_factory=session_maker,
     lookback = timedelta(hours=min(settings.compare_lookback_hours, MARKER_TTL_S // 3600))
     answered = now - timedelta(days=settings.compare_answer_days)
     teams = await _eligible_teams(session_factory, await _answering_teams(session_factory, answered),
-                                  set(pairs()), since=answered)
+                                  set(pairs()))
     found = await _recent(session_factory, now - lookback, teams)
     totals["read"] = len(found)
     async with session_factory() as db:
@@ -551,7 +580,6 @@ async def collect(*, max_seconds: float = 110.0, session_factory=session_maker,
     totals["eligible"] = len(found)
     cat = catalog_store.load()
     await capacity_view.load()
-    deadline = time.monotonic() + max_seconds
     own_client = client is None
     client = client or httpx.AsyncClient(timeout=CALL_TIMEOUT_S)
     store = kv.store()
@@ -717,6 +745,48 @@ def _shown_cut(row) -> list[str]:
     first, second = ("a", "b") if row.first == "a" else ("b", "a")
     return [name for name, part in (("input", "input"), ("answer_1", first), ("answer_2", second))
             if part in cut]
+
+
+def compact_answer(text: str | None) -> tuple[str, bool]:
+    """(one answer as an invitation shows it, whether anything was left out): its first rows, long
+    strings cut, then a size cap. Lists anywhere in the answer keep their first `INLINE_ROWS`."""
+    if not text:
+        return "", False
+    try:
+        value = json.loads(text)
+    except ValueError:
+        return text[:INLINE_ANSWER_CHARS], len(text) > INLINE_ANSWER_CHARS
+    cut_any = False
+
+    def cut(v: Any) -> Any:
+        nonlocal cut_any
+        if isinstance(v, list):
+            cut_any |= len(v) > INLINE_ROWS
+            return [cut(x) for x in v[:INLINE_ROWS]]
+        if isinstance(v, dict):
+            return {k: cut(x) for k, x in v.items()}
+        if isinstance(v, str) and len(v) > INLINE_FIELD_CHARS:
+            cut_any = True
+            return v[:INLINE_FIELD_CHARS] + "…"
+        return v
+
+    shown = json.dumps(cut(value), ensure_ascii=False, separators=(",", ":"))
+    return shown[:INLINE_ANSWER_CHARS], cut_any or len(shown) > INLINE_ANSWER_CHARS
+
+
+def compact_pair(pair: dict) -> dict:
+    """A waiting pair (`next_for`) compacted for an invitation. Cut when stored (`truncated_parts`),
+    and rows or text left out here (`shortened`): the agent judges what is shown, and knows when
+    the input itself is incomplete."""
+    one, one_cut = compact_answer(pair.get("answer_1"))
+    two, two_cut = compact_answer(pair.get("answer_2"))
+    out = {"comparison_id": pair["comparison_id"], "capability": pair.get("capability"),
+           "input": pair.get("input"), "answer_1": one, "answer_2": two}
+    if pair.get("truncated"):
+        out["truncated_parts"] = pair.get("truncated_parts") or []
+    if shortened := [name for name, cut in (("answer_1", one_cut), ("answer_2", two_cut)) if cut]:
+        out["shortened"] = shortened
+    return out
 
 
 async def next_for(org_id: int, *, pinned: bool) -> dict | None:
