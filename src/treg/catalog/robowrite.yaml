@@ -32,7 +32,7 @@ endpoints:
     method: GET
     path: /account
     name: Check workspace allowances
-    summary: Read the workspace identity, available brands and remaining monthly allowances.
+    summary: Check how much content allowance the workspace has left this month, alongside its brands and plan.
     test_request: {queryParams: {}}
     docs_url: https://www.robowrite.ai/api/reference
 
@@ -62,7 +62,7 @@ endpoints:
     method: GET
     path: /properties
     name: List publishing properties
-    summary: Find the workspace’s publishing destinations by channel type or verification status.
+    summary: Find the websites, newsletters and social channels connected as publishing destinations. Filter by channel or verification status.
     input:
       queryParams:
         channel_type: {type: "string", required: false, enum: ["blog", "linkedin", "twitter", "newsletter", "youtube", "podcast"]}
@@ -81,7 +81,7 @@ endpoints:
     method: GET
     path: /briefs
     name: Find editorial briefs
-    summary: Filter editorial briefs by brand, keyword, status or creation date.
+    summary: Find editorial briefs that are ready for writers or already approved. Filter by brand, keyword, status or date.
     input:
       queryParams:
         brand_id: {type: "string", required: false, note: "Workspace resource UUID."}
@@ -107,7 +107,7 @@ endpoints:
     method: GET
     path: /content
     name: Find drafts and saved content
-    summary: Find content items with their latest version, brief and publication references.
+    summary: Pick up a saved blog post or newsletter draft. Find it by title, keyword or date and get its latest version and brief references.
     input:
       queryParams:
         brand_id: {type: "string", required: false, note: "Workspace resource UUID."}
@@ -135,7 +135,7 @@ endpoints:
     method: GET
     path: /documents
     name: Search brand reference documents
-    summary: Search the workspace document library for reference material by name, category or status.
+    summary: Find source material for a brand in the workspace document library. Search reference documents by name, category or status.
     input:
       queryParams:
         category: {type: "string", required: false, enum: ["brand_guidelines", "product_service", "customer_persona", "marketing_material", "case_study", "technical_spec", "other"]}
@@ -189,7 +189,7 @@ endpoints:
     method: GET
     path: /jobs
     name: Find recent content jobs
-    summary: Recover job IDs and status for existing content, briefs or brands.
+    summary: Check whether a queued article or brief job is running, completed or failed. Find the job ID for follow-up.
     input:
       queryParams:
         job_type: {type: "string", required: false}
