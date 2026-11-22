@@ -132,6 +132,36 @@ async def test_real_redis_window():
         await store.aclose()
 
 
+@pytest.mark.skipif(not os.environ.get('TREG_TEST_KV_URL'), reason='set TREG_TEST_KV_URL to a scratch Redis')
+async def test_real_redis_reads_many_texts_in_one_round_trip():
+    store = kv.RedisStore(os.environ['TREG_TEST_KV_URL'])
+    base = f'treg-test:texts:{time.time_ns()}'
+    sent = []
+    mget = store._client.mget
+
+    async def counted(keys):
+        sent.append(list(keys))
+        return await mget(keys)
+
+    store._client.mget = counted
+    try:
+        assert await store.set_text(f'{base}:a', 'one', 30)
+        assert await store.set_text(f'{base}:b', 'two', 30)
+        keys = [f'{base}:b', f'{base}:missing', f'{base}:a', f'{base}:b']
+        assert await store.get_texts(keys) == ['two', None, 'one', 'two']
+        assert await store.get_texts([]) == []
+        assert len(sent) == 1
+    finally:
+        await store._client.delete(f'{base}:a', f'{base}:b')
+        await store.aclose()
+
+
+async def test_local_texts_read_in_order():
+    store = kv.LocalStore()
+    await store.set_text('a', 'one', 30)
+    assert await store.get_texts(['missing', 'a']) == [None, 'one']
+
+
 async def test_local_counters_do_not_claim_distributed_lease_support():
     store = kv.LocalStore()
     assert await store.acquire_lease('lease', 'owner', 1000) == 'unavailable'
