@@ -4380,7 +4380,7 @@ async def jev_xboost_judge(request: Request, db: AsyncSession = Depends(get_sess
         db, _JEV_JUDGE_NS, [*ratestore.ip_limit(ip, 5, key=f"ip:{ip}"), ("all", 60)], window_s=3600)
     await db.commit()
     if not ok:
-        raise HTTPException(status_code=429, detail="that is enough for this hour; the daily run continues")
+        raise HTTPException(status_code=429, detail="that is enough for this hour; try again later")
     try:
         judged = await jev_xboost.judge_url(request.app.state.http, url)
     except jev_xboost.XboostError as exc:
