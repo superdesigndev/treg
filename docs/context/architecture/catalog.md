@@ -32,6 +32,7 @@ sources:
   - src/treg/mcp.py
   - src/treg/alembic/versions/0038_endpoint_day_stats.py
   - src/treg/alembic/versions/0066_endpointdaystat_verdicts.py
+  - src/treg/alembic/versions/0122_callrecord_routed_fallback.py
   - src/treg/catalog/capabilities.yaml
   - src/treg/catalog/aliases.yaml
   - src/treg/catalog/fx.yaml
@@ -878,10 +879,16 @@ bill when treg's own account is out.
   method is stale and counts against the endpoint.
 - **A treg refusal is not evidence**: rows with `refused_by` never reached the provider and are
   excluded even from `samples`.
+- **Router fallback attempts do not depress `ok_rate`**: `ok_rate` and `decided` (in catalog
+  observations and the `/rankings` reliability boards) count **first-choice calls** only — direct
+  calls plus the first non-skipped attempt of each routed call (`CallRecord.routed_fallback` is
+  `False`, or `NULL` without a `:r<n>` fallback suffix for `n >= 1`). `EndpointDayStat.fallback_ok`
+  and `fallback_bad` subtract fallback attempts without altering total `samples` or `ok` volume.
 - **Below `MIN_SAMPLES` decided calls we publish the count and nothing else**, not even a yes/no:
-  the floor counts decided calls (2xx + provider faults), so caller 4xxs cannot lift a rate into
-  view, and on a quiet endpoint a rate could expose one org's outcome. Latency has its own floor of
-  successful calls. "Never worked" is read off `ok_rate == 0` over decided samples only.
+  the floor counts decided first-choice calls (2xx + provider faults), so caller 4xxs and router
+  fallback attempts cannot lift a rate into view, and on a quiet endpoint a rate could expose one
+  org's outcome. Latency has its own floor of successful calls. "Never worked" is read off
+  `ok_rate == 0` over decided samples only.
 - **Sample size is always visible**, so `100% (8)` cannot beat `99% (121)` by looking rounder.
 - **`last_ok` means the last SUCCESS**, and a `verified:` stamp shown in its place is marked as a
   claim (`✓` age), never dressed as a measurement.

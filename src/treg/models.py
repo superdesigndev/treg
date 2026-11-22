@@ -688,6 +688,10 @@ class CallRecord(SQLModel, table=True):
     # NULL = a row in today's spelling, an async submission, a non-2xx the declaration does not
     # decide, or a row written before the column existed; those keep the status rule.
     outcome: str | None = Field(default=None)
+    # True when this row was a router fallback attempt (after an earlier non-skipped candidate
+    # in the same routed plan); False for direct calls and the first non-skipped candidate
+    # asked. NULL on rows written before 0122: those infer fallback from `:r<n>` (`n >= 1`).
+    routed_fallback: bool | None = Field(default=None)
 
 
 class RunRecord(SQLModel, table=True):
@@ -2552,6 +2556,12 @@ class EndpointDayStat(SQLModel, table=True):
     n: int = Field(default=0)              # rows the provider actually saw (refused_by IS NULL)
     ok: int = Field(default=0)             # 2xx
     bad: int = Field(default=0)            # 5xx, plus 405 (a stale catalog contract, see stats)
+    # Subset of `ok` / `bad` from router fallback attempts (`routed_fallback`), so `ok_rate`
+    # reflects first-choice calls while `ok` still counts every answered call.
+    fallback_ok: int = Field(
+        default=0, sa_column=Column(Integer, nullable=False, server_default=text("0")))
+    fallback_bad: int = Field(
+        default=0, sa_column=Column(Integer, nullable=False, server_default=text("0")))
     last_ok_at: NaiveUTC | None = Field(default=None)
     hits: int = Field(default=0)
     hit_decided: int = Field(default=0)

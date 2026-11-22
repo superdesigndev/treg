@@ -1386,7 +1386,8 @@ async def _run_routed(parent: CallContext, ep: dict, body_bytes: bytes, get_head
         child = CallContext(input=_child_input(parent, cand.endpoint, query, body, remaining), call_ref=f"{parent.call_ref}:r{n}",
                             meta=parent.meta, deferred_settles=pending,
                             quota_admissions=parent.quota_admissions,
-                            quota_pending=parent.quota_pending)
+                            quota_pending=parent.quota_pending,
+                            routed_fallback=any(t.outcome != "skipped" for t in tried))
         bound_s, cancel_s = _child_bound_s(cand), _child_timeout_s(cand)
         loop = asyncio.get_running_loop()
         started = loop.time()

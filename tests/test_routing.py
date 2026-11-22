@@ -5063,3 +5063,136 @@ async def test_a_host_the_provider_does_not_approve_does_not_move_the_router_s_t
                                        call_route.RouteOptions.from_headers(lambda key: None))
     tiers = {c.endpoint["id"]: c.tier for c in plan.candidates}
     assert tiers.get("financialdatasets.prices.snapshot") == "tool", (tiers, plan.dropped)
+
+
+async def test_routed_fallback_attempts_do_not_depress_endpoint_ok_rate(
+    clients: AsyncClient, enrichment_on, monkeypatch,
+):
+    """End-to-end: a routed plan's first-choice attempt records `routed_fallback=False`,
+    subsequent waterfall attempts record `routed_fallback=True`, and fallback failures do not
+    depress the fallback endpoint's published `ok_rate` or `decided` count."""
+    from treg.domain.catalog import stats as endpoint_stats
+
+    monkeypatch.setenv("TREG_PLATFORM_PROVIDERS", "tomba,findymail")
+    get_settings.cache_clear()
+    first_ep = "tomba.people.email.find"
+    second_ep = "findymail.search.name"
+    seen: list = []
+    # Five direct/first-choice successes for second_ep establish its baseline 100% ok_rate.
+    monkeypatch.setattr(call_service, "relay", _relay_by_provider({
+        "findymail": [(200, {"contact": {"name": "Ada", "email": f"ada{i}@example.com"}}) for i in range(5)],
+    }, seen))
+    for i in range(5):
+        direct = await clients.post(
+            f"/call/{second_ep}",
+            json={"name": f"Ada {i}", "domain": f"example{i}.com"},
+        )
+        assert direct.status_code == 200, direct.text
+
+    # Five routed calls where tomba (first choice) misses and findymail (fallback) fails 502.
+    monkeypatch.setattr(call_service, "relay", _relay_by_provider({
+        "tomba": [(200, {"data": {"email": None}})] * 5,
+        "findymail": [(502, {"error": "upstream down"})] * 5,
+    }, seen))
+    routed_refs: list[str] = []
+    for i in range(5):
+        r = await clients.post(
+            f"/call/{ROUTED}",
+            json={"full_name": f"Ada {i}", "domain": f"miss{i}.com"},
+            headers={"X-Treg-Route-Prefer": "tomba,findymail"},
+        )
+        assert r.status_code == 200, r.text
+        routed_refs.append(r.headers["X-Treg-Call-Id"])
+
+    await audit.drain()
+    async with session_maker() as db:
+        rows = (await db.execute(
+            select(CallRecord).where(CallRecord.call_ref.in_(
+                [f"{ref}:r0" for ref in routed_refs] + [f"{ref}:r1" for ref in routed_refs]
+            ))
+        )).scalars().all()
+        by_ref = {row.call_ref: row for row in rows}
+        for ref in routed_refs:
+            assert by_ref[f"{ref}:r0"].endpoint_id == first_ep
+            assert by_ref[f"{ref}:r0"].routed_fallback is False
+            assert by_ref[f"{ref}:r1"].endpoint_id == second_ep
+            assert by_ref[f"{ref}:r1"].routed_fallback is True
+        live = await endpoint_stats.observed(db, [first_ep, second_ep])
+
+    assert (await catalog_stats.refresh(session_maker, now=utcnow_naive() + timedelta(minutes=2)))["caught_up"]
+    from treg.infra.catalog_observations import PostgresEndpointObservationReader
+    folded = await PostgresEndpointObservationReader(session_maker).get_many([first_ep, second_ep])
+    assert folded == live
+    assert live[first_ep]["samples"] == 5 and live[first_ep]["decided"] == 5 and live[first_ep]["ok_rate"] == 1.0
+    assert live[second_ep]["samples"] == 10 and live[second_ep]["decided"] == 5 and live[second_ep]["ok_rate"] == 1.0
+
+
+async def test_routed_first_non_skipped_attempt_is_not_a_fallback_under_quality_or_skip(
+    clients: AsyncClient, enrichment_on, monkeypatch,
+):
+    """When quality reordering or a cost skip changes which candidate runs first, the first
+    non-skipped candidate records `routed_fallback=False` and later candidates record `True`."""
+    from test_route_quality_upgrade import _Reader, _rated
+
+    monkeypatch.setenv("TREG_PLATFORM_PROVIDERS", "tomba,findymail")
+    get_settings.cache_clear()
+    seen: list = []
+    # Case 1: X-Treg-Route-Quality puts findymail (plan index 1) ahead of tomba (plan index 0).
+    snap = _rated({
+        "findymail.search.name": (0.9, 0.99),
+        "tomba.people.email.find": (0.5, 0.5),
+    }, "domain+full_name")
+    monkeypatch.setattr(call_route, "_route_quality_reader", _Reader(snap))
+    monkeypatch.setattr(call_service, "relay", _relay_by_provider({
+        "findymail": [(502, {"error": "down"})],
+        "tomba": [(200, {"data": {"email": "ada@example.com"}})],
+    }, seen))
+    r1 = await clients.post(
+        f"/call/{ROUTED}",
+        json={"full_name": "Ada Example", "domain": "example.com"},
+        headers={"X-Treg-Route-Prefer": "", "X-Treg-Route-Quality": "1"},
+    )
+    assert r1.status_code == 200, r1.text
+    ref1 = r1.headers["X-Treg-Call-Id"]
+
+    # Case 2: max_cost skips pricier candidate 0 so cheaper candidate 1 (:r1) runs first.
+    plan = await call_route.build_plan(
+        catalog_store.load().by_id[ROUTED],
+        {"full_name": "Ada Example", "domain": "example.com"},
+        SimpleNamespace(org_id=1, org=SimpleNamespace(id=1, platform_overflow_disabled=False)),
+        call_route.RouteOptions.from_headers(lambda k: None),
+    )
+    cheaper, pricier = sorted(plan.candidates, key=lambda c: c.price_micro)[:2]
+    assert pricier.price_micro > cheaper.price_micro
+    prefer = f"{pricier.endpoint['provider']},{cheaper.endpoint['provider']}"
+    answers_by_prov = {
+        "findymail": [(200, {"contact": {"name": "Ada", "email": "ada@example.com"}})],
+        "tomba": [(200, {"data": {"email": "ada@example.com"}})],
+    }
+    monkeypatch.setattr(call_service, "relay", _relay_by_provider({
+        cheaper.endpoint["provider"]: answers_by_prov[cheaper.endpoint["provider"]],
+    }, seen))
+    r2 = await clients.post(
+        f"/call/{ROUTED}",
+        json={"full_name": "Ada Example", "domain": "example.com"},
+        headers={
+            "X-Treg-Route-Prefer": prefer,
+            "X-Treg-Route-Max-Cost": f"{cheaper.price_micro / 1_000_000:.6f}",
+        },
+    )
+    assert r2.status_code == 200, r2.text
+    ref2 = r2.headers["X-Treg-Call-Id"]
+
+    await audit.drain()
+    async with session_maker() as db:
+        rows = (await db.execute(
+            select(CallRecord).where(
+                CallRecord.call_ref.like(f"{ref1}:r%") | CallRecord.call_ref.like(f"{ref2}:r%")
+            )
+        )).scalars().all()
+        by_ep_ref1 = {r.endpoint_id: r for r in rows if r.call_ref.startswith(f"{ref1}:r")}
+        by_ep_ref2 = {r.endpoint_id: r for r in rows if r.call_ref.startswith(f"{ref2}:r")}
+        assert by_ep_ref1["findymail.search.name"].routed_fallback is False
+        assert by_ep_ref1["tomba.people.email.find"].routed_fallback is True
+        assert by_ep_ref2[cheaper.endpoint["id"]].call_ref == f"{ref2}:r1"
+        assert by_ep_ref2[cheaper.endpoint["id"]].routed_fallback is False

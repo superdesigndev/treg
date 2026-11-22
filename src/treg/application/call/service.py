@@ -1290,6 +1290,7 @@ async def _execute_call(request: _ApplicationRequest, upstream_client: httpx.Asy
                 **({"hit": hit} if hit is not None else {}),
                 **({"verdict": verdict} if verdict is not None else {}),
                 **({"outcome": outcome} if outcome is not None else {}),
+                "routed_fallback": request.context.routed_fallback,
                 **({"archive_key_hash": archive_key_hash,
                     "archive_content_hash": archive_content_hash} if archive_key_hash else {}),
             }

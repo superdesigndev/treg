@@ -25,11 +25,13 @@ def _now():
 
 
 async def _record(endpoint_id: str, status: int, ms: int = 100, *, days_ago: int = 0, org_id: int = 1,
-                  refused_by: str | None = None):
+                  refused_by: str | None = None, call_ref: str = "",
+                  routed_fallback: bool | None = None):
     async with session_maker() as db:
         db.add(CallRecord(org_id=org_id, user_email="a@b.c", tool_name=endpoint_id, method="GET",
                           path="/x", status_code=status, endpoint_id=endpoint_id,
                           duration_ms=None if refused_by else ms, refused_by=refused_by,
+                          call_ref=call_ref, routed_fallback=routed_fallback,
                           created_at=_now() - timedelta(days=days_ago)))
         await db.commit()
 
@@ -321,3 +323,32 @@ async def test_a_platform_shelf_carries_each_endpoints_calls(clients: AsyncClien
     eps = {e["id"]: e for d in body["domains"] for r in d["rows"] for e in r["endpoints"]}
     assert eps[used]["observed"]["samples"] == 3
     assert all("observed" in e for e in eps.values())
+
+
+async def test_ok_rate_excludes_router_fallbacks_and_counts_first_choice_only(clients: AsyncClient):
+    """Fallback attempts (:r1+) receive requests earlier providers failed on, so pooling them
+    with direct and first-choice (:r0) calls makes fallback providers look broken."""
+    for i in range(4):
+        await _record(EP, 200, call_ref=f"d{i}")
+    await _record(EP, 200, call_ref="p0:r0")
+    await _record(EP, 500, call_ref="p1:r0")
+    # Ten fallback failures (both explicit routed_fallback and legacy :r<n> call_ref) + a poll.
+    for i in range(5):
+        await _record(EP, 502, call_ref=f"fb{i}:r1")
+        await _record(EP, 502, call_ref=f"fbx{i}:r4", routed_fallback=True)
+    # Quality-reordered / skip-recovered first choice (:r2 with routed_fallback=False) counts.
+    await _record(EP, 200, call_ref="q1:r2", routed_fallback=False)
+    # An async poll under a fallback (:r1:p1) is a direct poll, not a waterfall fallback.
+    await _record(EP, 200, call_ref="p2:r1:p1")
+    # A fallback-only endpoint with no first-choice floor stays unmeasured (ok_rate None).
+    for i in range(8):
+        await _record("fallback.only", 500, call_ref=f"only{i}:r2")
+
+    got = (await _observed([EP, "fallback.only"]))
+    ep = got[EP]
+    assert ep["samples"] == 18
+    assert ep["decided"] == 8
+    assert ep["ok_rate"] == round(7 / 8, 4)
+    assert got["fallback.only"]["samples"] == 8
+    assert got["fallback.only"]["decided"] == 0
+    assert got["fallback.only"]["ok_rate"] is None

@@ -349,6 +349,8 @@ class CallContext:
     # archived answer was served.
     # A routed parent attributes its order only to children that did (route.py `_note_call`).
     reached_provider: bool = False
+    # True when a routed child runs after at least one non-skipped candidate already tried.
+    routed_fallback: bool = False
 
 
 @dataclass(frozen=True)

@@ -36,12 +36,14 @@ def _now() -> datetime:
 
 async def _record(endpoint_id: str | None, status: int, ms: int | None = 100, *, ago: timedelta,
                   refused_by: str | None = None, hit: bool | None = None, cost: int | None = None,
-                  verdict: str | None = None, outcome: str | None = None) -> int:
+                  verdict: str | None = None, outcome: str | None = None,
+                  call_ref: str = "", routed_fallback: bool | None = None) -> int:
     async with session_maker() as db:
         row = CallRecord(org_id=1, user_email="a@b.c", tool_name=endpoint_id or "plain", method="GET",
                          path="/x", status_code=status, endpoint_id=endpoint_id, duration_ms=ms,
                          refused_by=refused_by, hit=hit, cost_observed_micro=cost, verdict=verdict,
-                         outcome=outcome, created_at=_now() - ago)
+                         outcome=outcome, call_ref=call_ref, routed_fallback=routed_fallback,
+                         created_at=_now() - ago)
         db.add(row)
         await db.commit()
         return row.id
@@ -579,3 +581,29 @@ def test_every_strict_capability_tool_on_treg_key_has_a_verified_empty_rule():
         if adapter is None or not adapter.verified or not (adapter.miss.strip() or outcome.declares_miss(ep)):
             unjudged.append(ep["id"])
     assert unjudged == [], f"add a verified adapter (route: false if it must not route) for {unjudged}"
+
+
+async def test_fold_and_live_agree_on_first_choice_vs_fallback_calls(clients):
+    """Both `Tally.fold` -> `EndpointDayStat` and live `stats.observed` exclude fallbacks from
+    `ok_rate` and `decided` while preserving total `samples` and `ok`."""
+    old = timedelta(days=2)
+    for i in range(4):
+        await _record(EP, 200, 120, ago=old, call_ref=f"d{i}")
+    await _record(EP, 500, 120, ago=old, call_ref="r0a:r0")
+    await _record(EP, 200, 120, ago=old, call_ref="q1:r2", routed_fallback=False)
+    await _record(EP, 502, 120, ago=old, call_ref="r0b:r0", routed_fallback=True)
+    for i in range(5):
+        await _record(EP, 502, 120, ago=old, call_ref=f"fb{i}:r1")
+    await _record(EP, 200, 120, ago=old, call_ref="fb_ok:r3")
+    await _record(EP, 200, 120, ago=old, call_ref="poll:r1:p1")
+
+    assert (await catalog_stats.refresh(session_maker, now=_now()))["caught_up"]
+    live = await _live([EP])
+    folded = await PostgresEndpointObservationReader(session_maker).get_many([EP])
+    assert folded[EP] == live[EP]
+    assert live[EP]["samples"] == 14
+    assert live[EP]["decided"] == 7
+    assert live[EP]["ok_rate"] == round(6 / 7, 4)
+    bucket = await _bucket(EP)
+    assert bucket.ok == 7 and bucket.fallback_ok == 1
+    assert bucket.bad == 7 and bucket.fallback_bad == 6

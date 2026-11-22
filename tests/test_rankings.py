@@ -338,3 +338,19 @@ def test_a_decision_model_is_its_own_type_and_counts_in_all():
     board = rankings.build(_rows(jev["id"], {0: 50}), store.load(), LAST)["ai_models"]["7d"]
     (model,) = board["models"]
     assert model["type"] == "Decision" and model["calls"] == 50
+
+
+def test_reliability_boards_exclude_fallback_attempts_while_keeping_call_volume():
+    """Fallback failures must not drag down `reliable` or `head_to_head` `ok_rate`, while total
+    answered `calls` on usage boards still include fallback answers."""
+    a, b = _sync_endpoints(2)
+    rows = [
+        rankings.DayRow(endpoint_id=a["id"], day=_day(0), ok=120, bad=100, fallback_ok=20, fallback_bad=100),
+        rankings.DayRow(endpoint_id=b["id"], day=_day(0), ok=100, bad=10, fallback_ok=0, fallback_bad=0),
+    ]
+    out = rankings.build(rows, store.load(), LAST)
+    assert [(r["provider"], r["ok_rate"], r["decided"]) for r in out["reliable"]] == [
+        (a["provider"], 100.0, 100),
+        (b["provider"], 90.91, 110),
+    ]
+    assert {r["provider"]: r["calls"] for r in out["tools"]["7d"]} == {a["provider"]: 120, b["provider"]: 100}
