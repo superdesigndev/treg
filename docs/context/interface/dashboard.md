@@ -8,6 +8,7 @@ sources:
   - frontend/src/dialogs/UserAvatarDialog.vue
   - frontend/src/components/ui/Avatar.vue
   - frontend/src/images.ts
+  - frontend/src/modelLogo.ts
   - frontend/src/views.ts
   - frontend/src/state/controller.js
   - frontend/src/state/agents.js
@@ -73,7 +74,7 @@ so a reload or shared URL does not replay them.
 |---|---|---|
 | Getting started (default) | `/app#start` | `GettingStartedPage.vue` |
 | Catalog; a platform or comparison | `#catalog`, `#platform/<slug>[/<key>]`; public `/catalog[/<slug>[/<key>]]` | `CatalogPage.vue`, `PlatformPage.vue` |
-| Connections; a provider | `#connections`; `/app/marketplace/<service>` | `ConnectionsPage.vue`, `ProviderPage.vue` |
+| Connections; a provider | `#connections`; `/app/marketplace/<service>` | `ConnectionsPage.vue`, `ProviderPage.vue` (OpenRouter's model cards carry the model's mark from `modelLogo.ts`; its other tools carry none) |
 | Your own tools | `#tools`, `#secrets`, `#resources` | `ToolsPage.vue`, `SecretsPage.vue`, `TeamResourcesPage.vue` |
 | A shared skill or tool | `/app/skills/<name>`, `/app/tools/<name>` | `DetailPage.vue` |
 | Activity, Team, Hub, Referrals, Admin; find a tool | `#activity`, `#orgs`, `#hub`, `#referrals`, `#admin`; public `/search` | the matching page, `SearchPage.vue` |

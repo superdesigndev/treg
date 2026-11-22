@@ -3,7 +3,8 @@ import { useDashboard } from '../state/context'
 import ToolDrawer from '../components/ToolDrawer.vue'
 import ProviderLogo from '../components/ProviderLogo.vue'
 import ConnectionCard from '../components/ConnectionCard.vue'
-export default { components: { ToolDrawer, ProviderLogo, ConnectionCard }, setup: useDashboard }
+import { modelLogo } from '../modelLogo'
+export default { components: { ToolDrawer, ProviderLogo, ConnectionCard }, setup: useDashboard, methods: { modelLogo } }
 </script>
 
 <template>
@@ -70,6 +71,7 @@ export default { components: { ToolDrawer, ProviderLogo, ConnectionCard }, setup
               <div class="pl-grid pl-grid-t">
                 <div v-for="t in p.tools" :key="t.id" class="pl-card pl-tool" :class="{on:drawerTool===t.id}" role="button" tabindex="0"
                      @click="openTool(t.id)" @keydown.enter="openTool(t.id)">
+                  <ProviderLogo v-if="modelLogo(t.e)" class="pv-model" :service="mkService" :src="modelLogo(t.e)" />
                   <span class="pl-tool-b"><b>{{t.title}}</b>
                     <span class="pl-meta">{{toolPrice(t.e)}}<template v-if="t.compare"> · <a class="pv-cmp"
                       :href="platUrl(p.slug, t.compare.key)" @click.stop.prevent="openComparisonOn(p.slug, t.compare.key)" :title="t.compare.description">compare with {{t.compare.providers-1}} other{{t.compare.providers>2?'s':''}}</a></template></span></span>
