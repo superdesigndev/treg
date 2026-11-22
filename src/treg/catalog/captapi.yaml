@@ -8,8 +8,8 @@ pricing_url: https://captapi.com/pricing
 
 # Prices are in CaptAPI credits. Each operation's credit cost is published in the OpenAPI document
 # (`x-credit-cost`), and every response states what the call was charged in the `X-Captapi-Credits`
-# header, so the header settles the call. A call that fails, finds nothing, or is served from the
-# response cache (`cache=true`) is charged 0 credits.
+# header, so the header settles the call. Failed calls (4xx/5xx) cost 0 credits and cached results
+# are free; the balance check is free.
 defaults:
   settle: {reported: {header: X-Captapi-Credits, unit: credit}}
   provenance:
