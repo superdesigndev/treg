@@ -175,6 +175,8 @@ def test_every_workflow_step_capability_and_endpoint_exist():
                 # a judgement step is priced from DECISION_STEPS, the one table that carries its rate
                 dec = agent_pages.DECISION_STEPS[ep_id]
                 assert dec["usd"] and dec["unit"] and dec["link"].startswith("/"), (key, name, ep_id)
+                # the .md twin prints this id as a tool, so an agent reading it will try to call it
+                assert cat.by_id.get(ep_id), (key, name, ep_id)
                 continue
             # the same filter the page applies: a routed meta-row would render as provider "treg"
             # with no price and drop out of the live total

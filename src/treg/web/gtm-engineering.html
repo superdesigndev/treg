@@ -575,7 +575,7 @@ more than 3x, tell me which filter is likely wrong before we pay for anything.</
       </div>
       <div class="vcap">Out of 48 companies in the 23 Sep run. Ten points on the threshold roughly halves the list.</div>
     </div>
-    <div class="ws"><div class="rh"><span>worksheet · rules.md</span><button data-copy="#w3" data-ev="gtm_copy_worksheet" data-q="rules">copy</button></div><pre id="w3">icp_check      pass if fit >= 0.5, judged on the fields the row already has (one cheap enrichment first if it has too few)
+    <div class="ws"><div class="rh"><span>worksheet · rules.md</span><button data-copy="#w3" data-ev="gtm_copy_worksheet" data-q="rules">copy</button></div><pre id="w3">icp_check      pass if fit >= 0.5, judged by jev (openrouter.ai-judge.decide) on the fields the row already has (one cheap enrichment first if it has too few)
 people, email and news steps   only on rows that passed icp_check
 drops          log every dropped row with its reason
 email          send only to verifier = deliverable; unknown and catch-all go to a separate list
@@ -605,7 +605,8 @@ owner          &lt;name&gt; can pause every sequence with one command</pre></div
       <li>Enrich once, cheaply, so there are fields to judge; then enforce your size filter and run the same check as any other list.</li>
     </ol>
     <div class="runit"><div class="rh"><span><img src="/media/people-search/claude-code.png" alt="">prompt</span><button data-copy="#p4" data-ev="gtm_copy_prompt" data-q="4">copy</button></div><pre id="p4">Using treg, find 25 lookalikes for each of these customer domains, same country and
-same size band. Enrich each lookalike, then run my ICP check from rules.md on it.
+same size band. Enrich each lookalike, then run my ICP check from rules.md on it with jev
+(openrouter.ai-judge.decide).
 Return only the ones that pass, with the reason each failed one was dropped.</pre></div>
     <div class="rule"><b>The rule</b>A lookalike goes through the same size filter and ICP check as any other row.</div>
       <p class="deeper"><b>Go deeper</b><a href="/use-cases/enrich-a-company">Company enrichment compared</a><a href="/tools/findymail">Findymail</a></p>
@@ -632,8 +633,9 @@ Return only the ones that pass, with the reason each failed one was dropped.</pr
       <li>Run finders, verifiers and news only on what passed; use your own provider keys where you already pay.</li>
     </ol>
     <div class="runit"><div class="rh"><span><img src="/media/people-search/claude-code.png" alt="">prompt</span><button data-copy="#p5" data-ev="gtm_copy_prompt" data-q="5">copy</button></div><pre id="p5">Using treg, list 50 US software companies with 51 to 200 staff that raised a Series A.
-Before you find anyone, judge each company against my ICP from the list fields alone,
-drop anything below 50%, and show me the price of every paid step before you run it.</pre></div>
+Before you find anyone, have jev (openrouter.ai-judge.decide) judge each company
+against my ICP from the list fields alone, drop anything below 50%, and show me the
+price of every paid step before you run it.</pre></div>
     <div class="rule"><b>The rule</b>No expensive lookup (people, emails, news) runs on a row that has not passed the check. If a row lacks the fields to judge, one cheap enrichment comes first.</div>
     <div class="fit-line"><div class="yes"><b>treg does</b>Prices every step before it runs, meters per call, and puts your own keys first, unmetered.</div><div><b>You decide</b>What the check is. The agent applies it; it cannot invent your ICP.</div></div>
       <p class="deeper"><b>Go deeper</b><a href="/workflows/find-and-verify-a-lead-list">The full lead-list run</a><a href="/use-cases/lead-enrichment-for-ai-agents">Lead enrichment</a><a href="/tools/apollo">Apollo</a></p>
@@ -1119,7 +1121,7 @@ separate them by more than 15 points. Show the cost before you start.</pre></div
       bdRows = document.getElementById('bdRows'), bdBadge = document.getElementById('bdBadge');
   var BOARDS = {
     list: { name: 'companies.search', sub: 'priced before it runs', badge: '958 matched · first page of 50 · $0.026', rows: [['apollo', 'Apollo', '$0.026 / page', 'hit']] },
-    gate: { name: 'typesafe.jev', sub: 'ICP check on the free list fields', badge: '21 dropped · own key, not metered', rows: [['/logos/jev.png', 'jev · 50% bar', '27 of 48 kept', 'hit']] },
+    gate: { name: 'jev', sub: 'ICP check on the free list fields', badge: '21 dropped · own key, not metered', rows: [['/logos/jev.png', 'jev · 50% bar', '27 of 48 kept', 'hit']] },
     find: { name: 'find → verify', sub: 'kept rows only', badge: '20 deliverable · 1 unknown · 0 invalid',
       rows: [['/logos/findymail.svg', 'Findymail', '20 leads named', 'hit'], ['/logos/leadmagic.svg', 'LeadMagic', '7 leads named', 'hit'], ['hunter', 'Hunter', '18 emails', 'hit'], ['/logos/trykitt.svg', 'Kitt', '3 on Hunter misses', 'hit'], ['tomba', 'Tomba', 'out of capacity', 'miss']] }
   };
