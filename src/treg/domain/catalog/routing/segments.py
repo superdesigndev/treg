@@ -252,7 +252,7 @@ _REGION_CODES: dict[str, frozenset[str]] = {
         "va", "wv", "wi", "wy", "dc")},
     **{c: frozenset({"CA"}) for c in ("on", "qc", "bc", "ab", "mb", "sk", "ns", "nb", "nl", "pe",
                                       "yt", "nu")},
-    **{c: frozenset({"AU"}) for c in ("nsw", "vic", "qld", "tas", "act")},
+    **{c: frozenset({"AU"}) for c in ("nsw", "vic", "qld", "tas", "act", "sa")},
     "wa": frozenset({"US", "AU"}), "nt": frozenset({"CA", "AU"}),
 }
 # Cities that are also a large city or capital elsewhere (San José, Costa Rica; Hyderabad,
@@ -328,20 +328,24 @@ def location_country(value: Any) -> str | None:
     decides: `London, ON` is Canada, `Paris, TX` the United States, and `Vancouver, WA` (Washington
     or Western Australia) none. A part we do not know (`Hyderabad, Sindh`) leaves it None.
 
-    A two-letter part that is a country code and no state or province abbreviation is the
-    provider's own country (`Vancouver, US` -> `US`), as adapters write `place(city, country)`;
-    one that is both (`CA`, `DE`, `IN`) is read either way and the city decides."""
+    A last part that is a country code and no state or province abbreviation is the provider's
+    own country (`Vancouver, US` -> `US`), as adapters write `place(city, country)`. One that is
+    both (`CA`, `DE`, `IN`, `SA`) cannot be told apart once joined into text (`Durham, CA` is
+    Durham, Ontario from a provider's country code, or a place in California), so a location
+    holding one names no country unless a part spells the country out."""
     parts = [p.strip() for p in _text(value).split(",") if p.strip()]
     for part in reversed(parts):
         if (code := _part_country(part)) is not None:
             return code
-        if len(part) == 2 and part not in _REGION_CODES and (code := iso2(part)) is not None:
-            return code
+    if parts and len(last := parts[-1]) == 2 and last not in _REGION_CODES and (code := iso2(last)):
+        return code
     within: list[frozenset[str]] = []
     places = qualified = 0
     for part in parts:
         if part in _REGION_CODES:
-            within.append(_REGION_CODES[part] | {c for c in (iso2(part),) if c})
+            if iso2(part) is not None:
+                return None
+            within.append(_REGION_CODES[part])
         elif (code := _place_country(part)) is not None:
             within.append(frozenset({code}))
             places += 1

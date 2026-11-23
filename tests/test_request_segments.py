@@ -202,7 +202,7 @@ def test_answer_counts_judge_rows_against_the_question():
     assert S.people_search_answer(asked, {"people": _ROWS}) == {
         "rows": "5", "rows_with_profile_url": "2", "rows_dup": "2", "rows_company_match": "3",
         "rows_company_known": "5", "rows_title_match": "3", "rows_title_known": "5",
-        "rows_country_match": "2", "rows_country_known": "3"}
+        "rows_country_match": "1", "rows_country_known": "2"}
     # a leader asked: a row matches when it is a leader too
     assert S.people_search_answer({"title": "Founder"}, {"people": [
         {"title": "Co-founder & CEO"}, {"title": "CTO"}, {"title": "Geschäftsführer"}]})["rows_title_match"] == "2"
@@ -218,14 +218,19 @@ def test_answer_counts_judge_rows_against_the_question():
     ("Austin, Texas, United States", "US"), ("Austin, Texas", "US"), ("Berlin, Germany", "DE"),
     ("London, UK", "GB"), ("", None), (None, None),
     # a two-letter part is never a country code: the city before it decides, or nothing does
-    ("San Francisco, CA", "US"), ("Birmingham, AL", None),
+    ("Birmingham, AL", None),
     # a state or province abbreviation beside a city: where they disagree, the abbreviation decides
     ("Austin, TX", "US"), ("Toronto, ON", "CA"), ("Sydney, NSW", "AU"), ("Perth, WA", "AU"),
+    ("San Francisco, California", "US"),
     ("London, ON", "CA"), ("Paris, TX", "US"), ("Vancouver, WA", None),
     # a code that is a country and no state or province is the provider's own country
     ("Vancouver, US", "US"), ("US", "US"), ("Austin, TX, US", "US"), ("Paris, FR", "FR"),
-    # a code that is both reads either way, and the city decides
-    ("Berlin, DE", "DE"), ("Toronto, CA", "CA"), ("Mumbai, IN", "IN"), ("CA", None),
+    # a code that is both a country and a state or province cannot be told apart once joined into
+    # text: the provider's country code (Durham, Ontario) or a US state (California)
+    ("Durham, CA", None), ("San Francisco, CA", None), ("Berlin, DE", None), ("Mumbai, IN", None),
+    ("Adelaide, SA", None), ("CA", None), ("Durham, CA, Canada", "CA"),
+    # only the last part is read as the provider's country code
+    ("Mumbai, MH, IN", None), ("Majuro, MH", "MH"),
     # a part we do not know leaves a city unread
     ("Hyderabad, Sindh", None), ("Mumbai, Remote", None),
     # a country or US state in any part wins over a city of the same name elsewhere
@@ -246,8 +251,8 @@ def test_a_row_location_names_its_country_by_name_never_by_a_two_letter_part(loc
     # nothing known, or a name that is a large place in two countries
     ("Remote", None), ("Greater Victoria Area", None), ("Valencia", None),
     # a city that is a large city elsewhere too needs a part that agrees with it
-    ("San Jose", None), ("Hyderabad", None), ("San Jose, CA", "US"), ("Hyderabad, IN", "IN"),
-    ("San Jose, ON", None),
+    ("San Jose", None), ("Hyderabad", None), ("San Jose, California", "US"),
+    ("Hyderabad, Telangana", None), ("San Jose, TX", "US"), ("San Jose, ON", None),
     # a metro area across a border names no one country
     ("San Diego–Tijuana Metropolitan Area", None), ("San Diego-Tijuana Metropolitan Area", None),
     ("Raleigh-Durham-Chapel Hill Area", "US"), ("Miami-Fort Lauderdale Area", "US"),
