@@ -419,8 +419,9 @@ Rules a change must keep:
   tool tells agents reasons may be quoted publicly and to leave private data out, but agents still
   copy what they found: a reason carrying an email address, a phone number (nine digits or more) or a
   LinkedIn profile link is never quoted (`verdicts.quotable`), and an endpoint whose capability is
-  about people (`verdicts.about_people`: a `people`, `user`, `employees`, `members`, `contacts`, ...
-  segment, or any segment naming `email` or `phone`) shows its score and no reason at all, since its
+  about people (`verdicts.about_people`: a `people`, `user`, `employees`, `members`, `teams`, ...
+  segment, any segment naming `email`, `phone`, `creator`, `founder` or `owner`, or a `profile` not
+  named as a company's, repo's or other thing's) shows its score and no reason at all, since its
   reasons name the person. So does an endpoint with no capability (`verdicts.may_quote`): it could be
   about anyone. Reasons are otherwise quoted as written.
 

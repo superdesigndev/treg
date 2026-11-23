@@ -96,10 +96,15 @@ def test_an_endpoint_about_people_shows_its_score_and_no_reason():
 def test_capabilities_about_people():
     for capability in ("people.search", "people.phone.find", "companies.employees.list",
                        "instagram.user.profile", "linkedin.profile.from_email", "x.list.members",
-                       "creators.enrich.by_email", "phone.validate"):
+                       "creators.enrich.by_email", "phone.validate", "companies.founders",
+                       "companies.owners", "companies.ownership.graph", "companies.teams.search",
+                       "creators.search", "qq-huxuan.channels_creator.profile", "douyin.douplus.talents",
+                       "linkedin.profile.search", "linkedin.profile.picture", "threads.search.profiles",
+                       "youtube.channel.profile", "spotify.artist.detail"):
         assert about_people(capability), capability
     for capability in ("web.search", "google.serp.organic", "companies.profile.url",
-                       "google.keywords.volume", None, ""):
+                       "linkedin.company.profile", "github.repo.profile", "yelp.business.profile",
+                       "linkedin.job.profile", "google.keywords.volume", None, ""):
         assert not about_people(capability), capability
 
 

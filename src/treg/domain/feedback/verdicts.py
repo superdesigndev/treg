@@ -68,9 +68,16 @@ _PROFILE = re.compile(r"linkedin\.com/in/", re.IGNORECASE)
 # Capability segments whose results are about a person: their reasons name the person, so they
 # are never quoted, whatever a pattern can catch.
 PERSON_SEGMENTS = frozenset({"people", "person", "persons", "contact", "contacts", "employee",
-                             "employees", "user", "users", "member", "members", "followers"})
-# Any segment naming these (`phone`, `by_email`, `from_email`, `phones`) is about a person's contact.
-PERSON_FRAGMENTS = ("email", "phone")
+                             "employees", "user", "users", "member", "members", "followers", "teams",
+                             "artist", "artists"})
+# Any segment naming these (`phone`, `by_email`, `channels_creator`, `founders`, `ownership`,
+# `talents`) is about a person.
+PERSON_FRAGMENTS = ("email", "phone", "creator", "founder", "owner", "talent")
+# A profile is a person's (`linkedin.profile.search`, `threads.search.profiles`,
+# `youtube.channel.profile`) unless the capability names what else it is the profile of.
+PROFILE_SEGMENTS = frozenset({"profile", "profiles"})
+NOT_A_PERSON = frozenset({"company", "companies", "business", "businesses", "repo", "school", "coin",
+                          "crypto", "stocks", "seller", "app", "job", "jobs"})
 
 
 def carries_contact_data(reason: str) -> bool:
@@ -81,8 +88,9 @@ def carries_contact_data(reason: str) -> bool:
 def about_people(capability: str | None) -> bool:
     """Whether a capability's results are about people (`people.search`, `phone.validate`,
     `instagram.user.profile`, `companies.employees`, ...)."""
-    segments = (capability or "").lower().split(".")
-    return bool(capability) and (not PERSON_SEGMENTS.isdisjoint(segments) or any(
+    segments = set((capability or "").lower().split("."))
+    profile = not PROFILE_SEGMENTS.isdisjoint(segments) and NOT_A_PERSON.isdisjoint(segments)
+    return bool(capability) and (profile or not PERSON_SEGMENTS.isdisjoint(segments) or any(
         f in s for s in segments for f in PERSON_FRAGMENTS))
 
 
