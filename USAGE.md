@@ -343,7 +343,9 @@ makes the header a no-op).
 On `treg.people.phone.find` the same header checks the line with HLR Lookup's live network lookup
 (`hlrlookup.people.phone.verify`): your own HLR key first, `usa_status` only for `+1` numbers, no
 cache reads. The verdict is `live` / `dead` / `unknown`; a live line is not proof the number is
-this person's (`trestleiq.people.contact.verify` checks a US name). A number not written
+this person's. To check that, call `millionphones.people.contact.verify` with their LinkedIn profile
+(`social_url`) and the `phone_number`, or `trestleiq.people.contact.verify` (`phone`, `name`) for a
+US number. A number not written
 internationally is never sent, because HLR would read its first digits as a country code: reason
 `not_international`, nothing charged.
 

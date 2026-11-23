@@ -42,6 +42,21 @@ async def test_anymailfinder_key_uses_free_account_probe(clients, monkeypatch):
     assert rejected.status_code == 422 and "rejected" in rejected.text
 
 
+async def test_descovo_key_uses_free_credits_probe(clients, monkeypatch):
+    def probe(request):
+        assert (request.method, request.url.path) == ("GET", "/v1/credits")
+        if request.headers["authorization"] != "Bearer own-key":
+            return httpx.Response(403, json={"error": {"code": "forbidden", "message": "Invalid API key provided!"}})
+        return httpx.Response(200, json={"data": {"available": 0, "used": 500, "limit": 500}})
+
+    async with AsyncClient(transport=httpx.MockTransport(probe)) as upstream:
+        monkeypatch.setattr(app.state, "http", upstream)
+        bad = await clients.post("/connections/token", json={"provider": "descovo", "token": "bad-key"})
+        assert bad.status_code == 422 and "rejected" in bad.text
+        good = await clients.post("/connections/token", json={"provider": "descovo", "token": "own-key"})
+        assert good.status_code == 200, good.text
+
+
 async def test_millionphones_key_uses_free_credits_probe(clients, monkeypatch):
     """A good key on an account with 0 credits left still connects: the free routes work."""
     def probe(request):

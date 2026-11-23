@@ -617,6 +617,7 @@ class Settings(BaseSettings):
     platform_key_trestleiq: str = ""       # raw key; exact lowercase x-api-key header
     platform_key_hlrlookup: str = ""         # JSON body api_key; prepaid lookup credits, 1 per mobile lookup
     platform_key_hlrlookup_secret: str = ""  # JSON body api_secret paired with it — BOTH must be set
+    platform_key_descovo: str = ""  # Bearer key; monthly plan credits, free balance on /v1/credits
     platform_key_millionphones: str = ""  # x-api-key header; plan credits, free balance on /v1/credits
     platform_key_forager: str = ""          # X-API-KEY header; monthly plan credits, free balance on /api/users/current/
     platform_key_forager_account: str = ""  # the account id bound to that key, filled into every path — BOTH must be set

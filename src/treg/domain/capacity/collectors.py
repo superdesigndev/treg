@@ -883,6 +883,16 @@ async def _anymailfinder(c, key):
     return {"value": credits, "unit": "credits", "note": ""}
 
 
+async def _descovo(c, key):
+    # Free: GET /v1/credits never charges; the plan's monthly credits reset on resetsOn.
+    d = await _get(c, "https://api.descovo.com/v1/credits", headers={"Authorization": f"Bearer {key}"})
+    data = d.get("data") if isinstance(d, dict) else None
+    credits = _finite(data.get("available")) if isinstance(data, dict) else None
+    if credits is None:
+        raise ValueError("Descovo returned no credit balance")
+    return {"value": credits, "unit": "credits", "note": f"resets {data.get('resetsOn') or '?'}"}
+
+
 async def _millionphones(c, key):
     # Free: GET /v1/credits never charges and reports what is left to spend now.
     d = await _get(c, "https://millionphones.com/v1/credits", headers={"x-api-key": key})
@@ -1196,6 +1206,7 @@ BALANCE_ROUTES = {
     "hlrlookup": _hlrlookup,
     "forager": _forager,
     "millionphones": _millionphones,
+    "descovo": _descovo,
     "dataforseo": _dataforseo,
     "tikhub": _tikhub,
     "tinyfish": _tinyfish,

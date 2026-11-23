@@ -1,0 +1,272 @@
+{
+  "data": {
+    "data": [
+      {
+        "articles": [
+          {
+            "id": "32487706",
+            "title": "10 change-makers who inspired me in 2018",
+            "date_published": "2018-12-18T00:00:00.000Z"
+          },
+          {
+            "id": "60614646",
+            "title": "Delivering 3 trusted platforms for the AI age",
+            "date_published": "2024-11-20T00:00:00.000Z"
+          },
+          "… 48 more item(s) truncated"
+        ],
+        "certifications": null,
+        "connection_count": 833,
+        "courses": null,
+        "dob": null,
+        "education": [
+          {
+            "school_id": "8398",
+            "school_name": "The University of Chicago Booth School of Business",
+            "field_of_study_id": null,
+            "field_of_study_name": null,
+            "degree": null,
+            "grade": null,
+            "start_date": "1994-01-01T00:00:00.000Z",
+            "end_date": "1996-12-31T00:00:00.000Z",
+            "activities": null,
+            "notes": null
+          },
+          {
+            "school_id": "577550",
+            "school_name": "Manipal Institute of Technology",
+            "field_of_study_id": null,
+            "field_of_study_name": "Electrical Engineering",
+            "degree": "Bachelor’s Degree",
+            "grade": null,
+            "start_date": null,
+            "end_date": null,
+            "activities": null,
+            "notes": null
+          },
+          "… 1 more item(s) truncated"
+        ],
+        "experiences": [
+          {
+            "linkedin_company_id": "3881",
+            "is_current": true,
+            "company_name": "University of Chicago",
+            "locality": null,
+            "start_date": "2018-01-01T00:00:00.000Z",
+            "end_date": null,
+            "start_date_precision": "year",
+            "end_date_precision": null,
+            "summary": null,
+            "title": "Member Board Of Trustees",
+            "seniority": "Executive",
+            "job_function": [
+              "Consulting"
+            ],
+            "job_function_v2": "Consulting",
+            "job_specialty": "Advisors & Board Advisory",
+            "employment_type": null,
+            "academic_qualification": null,
+            "company_start_date": "2018-01-01T00:00:00.000Z",
+            "company_end_date": null,
+            "company_org_id": "3881",
+            "company_linkedin_ids": [
+              "-1922252",
+              "3881"
+            ],
+            "industry": "Higher Education",
+            "cleaned_title": "Member, Board of Trustees"
+          },
+          {
+            "linkedin_company_id": "1035",
+            "is_current": true,
+            "company_name": "Microsoft",
+            "locality": "Greater Seattle Area",
+            "start_date": "2014-02-01T00:00:00.000Z",
+            "end_date": null,
+            "start_date_precision": "month",
+            "end_date_precision": null,
+            "summary": null,
+            "title": "Chairman and CEO",
+            "seniority": "Executive",
+            "job_function": [
+              "Management"
+            ],
+            "job_function_v2": "Operations",
+            "job_specialty": "Executive & General Management",
+            "employment_type": null,
+            "academic_qualification": null,
+            "company_start_date": "2014-02-01T00:00:00.000Z",
+            "company_end_date": null,
+            "company_org_id": "1035",
+            "company_linkedin_ids": [
+              "1035"
+            ],
+            "industry": "Software Development",
+            "cleaned_title": "Chairman and Chief Executive Officer"
+          },
+          "… 3 more item(s) truncated"
+        ],
+        "first_name": "Satya",
+        "follower_count": 12336820,
+        "headline": "Chairman and CEO at Microsoft",
+        "inferred_location": {
+          "street_address": null,
+          "neighborhood": null,
+          "city": "Redmond",
+          "state_name": "Washington",
+          "state_code": "US-WA",
+          "county": "King County",
+          "postal_code": null,
+          "country_code": "USA",
+          "country_name": "United States",
+          "coordinates": {
+            "lat": 47.673904,
+            "lon": -122.12153
+          },
+          "timezone": "America/Los_Angeles",
+          "full_address": "Redmond, Washington, United States",
+          "formatted_address": "Redmond"
+        },
+        "interests": null,
+        "last_name": "Nadella",
+        "locality": "Redmond, Washington, United States",
+        "name": "Satya Nadella",
+        "patents": [
+          {
+            "id": "3646694",
+            "title": "Computational Systems And Methods For Regulating Information Flow During Interactions",
+            "country": null,
+            "number": "US 9690853",
+            "description": "Methods, apparatuses, computer program products, devices and systems are described that carry out accepting at least one indi…",
+            "url": null,
+            "date": "2017-06-27T00:00:00.000Z"
+          },
+          {
+            "id": "1108449",
+            "title": "Computational Systems And Methods For Encrypting Data For Anonymous Storage",
+            "country": null,
+            "number": "US 9491146",
+            "description": "Methods, apparatuses, computer program products, devices and systems are described that carry out accepting from a user ident…",
+            "url": null,
+            "date": "2016-11-08T00:00:00.000Z"
+          },
+          "… 7 more item(s) truncated"
+        ],
+        "profile_pic": "https://api.descovo.com/v1/profile-pic/gt_7dddba168be8e7f44549e0b1813e4077.jpeg",
+        "projects": null,
+        "publications": null,
+        "skills": null,
+        "primary_slug": "satyanadella",
+        "slugs": [
+          "satya-nadella-3145136",
+          "satyanadella"
+        ],
+        "summary": "As chairman and CEO of Microsoft, I define my mission and that of my company as empowering every person and every organizatio…",
+        "url": "https://www.linkedin.com/in/satyanadella",
+        "user_id": "19186432",
+        "volunteering": null,
+        "tenures": [
+          {
+            "linkedin_company_id": "1035",
+            "company_name": "Microsoft",
+            "date_range": {
+              "gte": "2014-02-01T00:00:00.000Z",
+              "lte": null
+            },
+            "range_length_days": null,
+            "titles": [
+              "Chairman and CEO"
+            ],
+            "localities": [
+              "Greater Seattle Area"
+            ]
+          },
+          {
+            "linkedin_company_id": "3881",
+            "company_name": "University of Chicago",
+            "date_range": {
+              "gte": "2018-01-01T00:00:00.000Z",
+              "lte": null
+            },
+            "range_length_days": null,
+            "titles": [
+              "Member Board Of Trustees"
+            ],
+            "localities": []
+          },
+          "… 3 more item(s) truncated"
+        ],
+        "career_began_at": "2014-02-01T00:00:00.000Z",
+        "tags": [
+          "major-tech-company-experience",
+          "c-suite",
+          "… 6 more item(s) truncated"
+        ],
+        "entity_urn": "ACoAAAEkwwAB9KEc2TrQgOLEQ-vzRyZeCDyc6DQ",
+        "open_to_work": false,
+        "premium": true,
+        "influencer": true,
+        "organizations": null,
+        "entity_urns": [
+          "ACoAAAEkwwAB9KEc2TrQgOLEQ-vzRyZeCDyc6DQ"
+        ],
+        "is_hiring": false,
+        "websites": [
+          "https://snscratchpad.com"
+        ],
+        "is_verified": true,
+        "verifications": {
+          "is_verified": true,
+          "joined_date": null,
+          "verification_types": null
+        },
+        "is_top_voice": false,
+        "current_job": {
+          "linkedin_company_id": "3881",
+          "is_current": true,
+          "company_name": "University of Chicago",
+          "locality": null,
+          "start_date": "2018-01-01T00:00:00.000Z",
+          "end_date": null,
+          "start_date_precision": "year",
+          "end_date_precision": null,
+          "summary": null,
+          "title": "Member Board Of Trustees",
+          "seniority": "Executive",
+          "job_function": [
+            "Consulting"
+          ],
+          "job_function_v2": "Consulting",
+          "job_specialty": "Advisors & Board Advisory",
+          "employment_type": null,
+          "academic_qualification": null,
+          "company_start_date": "2018-01-01T00:00:00.000Z",
+          "company_end_date": null,
+          "company_org_id": "3881",
+          "company_linkedin_ids": [
+            "-1922252",
+            "3881"
+          ],
+          "industry": "Higher Education",
+          "cleaned_title": "Member, Board of Trustees"
+        },
+        "custom_data": null,
+        "relevance_score": null,
+        "last_sort_key": null,
+        "industry_name": "Computer Software",
+        "last_updated_at": "2026-11-23T08:05:30.646Z",
+        "languages": null,
+        "has_any_email_on_file": true,
+        "has_work_email_on_file": true,
+        "has_personal_email_on_file": true,
+        "has_phone_on_file": true,
+        "detailed_education": null,
+        "detailed_work_experiences": null
+      }
+    ]
+  },
+  "credits": {
+    "charged": 2,
+    "available": null
+  }
+}

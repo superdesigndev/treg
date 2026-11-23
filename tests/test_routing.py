@@ -3102,18 +3102,20 @@ async def test_a_declared_miss_status_is_a_miss_not_a_caller_fault(clients: Asyn
          "tomba": [(200, {"data": {"e164_format": None}})],
          "leadmagic": [(200, {"mobile_number": None, "credits_consumed": 0})],
          "findymail": [(200, {"phone": None})],
-         "leadsforge": [(200, {"phoneNumber": None})]}, seen))
+         "leadsforge": [(200, {"phoneNumber": None})],
+         "fiber": [(404, {"message": "Profile not found."})]}, seen))
     before = await _balance(clients)
     r = await clients.post(f"/call/{routed}", json={"linkedin_url": "https://www.linkedin.com/in/nobody-here"})
     assert r.status_code == 200, r.text
     assert r.headers["X-Treg-Route-Outcome"] == "miss" and r.json()["_treg"]["served_by"] is None
     outcomes = {t["endpoint_id"]: t["outcome"] for t in r.json()["_treg"]["tried"]}
-    assert outcomes["aviato.people.phone.find"] == "miss" and len(seen) == 5, "the 404 is a miss; every provider was still asked"
+    assert outcomes["aviato.people.phone.find"] == "miss" and outcomes["fiber-ai.people.phone.find"] == "miss"
+    assert len(seen) == 6, "each 404 is a miss; every provider was still asked"
     assert await _balance(clients) == before, "nobody found anything, nothing was charged"
     # an UNDECLARED 4xx keeps its meaning: a vendor rejecting the request is still the caller's fault
     seen.clear()
     monkeypatch.setattr(call_service, "relay", _relay_by_provider(
-        {"aviato": [(422, {"message": "bad identifier"})], "*": [(422, {"message": "bad"})] * 4}, seen))
+        {"aviato": [(422, {"message": "bad identifier"})], "*": [(422, {"message": "bad"})] * 5}, seen))
     r = await clients.post(f"/call/{routed}", json={"linkedin_url": "https://www.linkedin.com/in/nobody-here"},
                            headers={"X-Treg-Route-Prefer": "aviato"})
     assert r.status_code == 422 and r.json()["detail"]["error"] == "route_caller_fault", r.text
