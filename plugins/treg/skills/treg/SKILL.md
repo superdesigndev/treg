@@ -87,9 +87,10 @@ Gmail dots) share it.
 - what is new → `catalog_search` with `added_within_days` (30 is a good default) or
   `sort: "newest"`; `query` may then be empty.
 - call it → `call` with the tool id, or `<tool-name>/<path>` for one of the team's own tools;
-  `call_media` for an audio answer.
-- a call whose answer you never received (a timeout) → `call_result` lists the team's latest
-  calls and reads a finished one's answer; check it before calling again.
+  `call_media` for native raster images and audio up to 1 MiB.
+- a timeout or a large answer → `call_result` lists recent calls and reads archived answers.
+  Pass `response.next_offset` as `offset` for the next page until it is null. Check the archive
+  before calling again.
 - the team's own tools → `my_tools`; durable provider objects such as cloned voices →
   `resources_list`; the balance → `balance`; feedback → `feedback`; a review → `review`; a result
   you later found wrong or confirmed → `mark`; a comparison a call result invites (optional) →
@@ -371,8 +372,8 @@ treg call minimax.video-gen.h3.generate --await --timeout 900 --data @body.json
 - **Reference media** (a face, a voice clip, a first frame) must be at a public URL the vendor can
   fetch. Paste hosts fail vendor probes at random; `treg host face.jpg` prints a public URL (30 MB,
   7 days, free) to put in `image_urls` or `audio_urls`.
-- **Binary answers** (speech from some providers): redirect stdout to a file, or use MCP
-  `call_media`. Provider objects the team created, such as cloned voices, are listed by
+- **Binary answers:** use MCP `call_media` for raster images and audio up to 1 MiB, or redirect
+  CLI stdout to a file. Provider objects the team created, such as cloned voices, are listed by
   `treg resources list --provider <provider>` (MCP `resources_list`).
 - A tool whose answer inlines media as base64 (Google AI's images, speech and Lyria music) may answer
   up to 64 MiB and is charged from the provider's reported usage. Its answer is never replayed: an

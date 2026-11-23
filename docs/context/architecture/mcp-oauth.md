@@ -134,6 +134,9 @@ carrying the caller's address as `_bearer` resolved it (`client_ip.py`, never cl
 `"claude-connector"`) and runs the [discovery experiment](find.md) with the caller's
 `Context`; the anonymous HTTP route is not part of that experiment.
 
+The [MCP output limits and archived-text pages](../interface/api.md) apply to the team
+surface. `/mcp/v2/` retains its frozen tool and response contract for directory review.
+
 **Provider authorization remediation.** Provider OAuth stays a human browser action. A catalog-call
 preflight can return a structured 428 body naming the missing grant, capability, scopes, CLI command
 and dashboard action; `call`, `catalog_call_read` and `catalog_call_write` preserve it so the agent

@@ -392,6 +392,25 @@ async def test_only_the_team_surface_shows_a_rows_note(clients):
     assert directory["endpoint"]["id"] == ep["id"] and "note" not in directory["endpoint"]
 
 
+async def test_only_the_team_call_budgets_large_responses(clients, monkeypatch):
+    from test_marketplace_call import EP, _fake_relay
+    from treg import mcp_output
+    from treg.application.call import service
+
+    body = {"data": "x" * mcp_output.ENVELOPE_BYTES}
+    monkeypatch.setattr(service, "relay", _fake_relay(200, json.dumps(body).encode()))
+    await clients.post("/secrets", json={"name": "tikhub", "value": "test-key"})
+    assert (await clients.get(f"/call/{EP}?aweme_id=7")).json() == body
+
+    token = clients.headers["X-Treg-Token"]
+    args = {"endpoint_id": EP, "query": {"aweme_id": "7"}}
+    async with paired_mcp_session() as client:
+        team = await _call_tool(client, "call", args, token, path="/mcp/")
+        directory = await _call_tool(client, "catalog_call_read", args, token)
+    assert team["body"]["omitted"]
+    assert directory["status"] == 200 and directory["body"] == body
+
+
 async def test_team_and_directory_catalog_call_results_match_except_attribution(clients):
     from treg import audit
 

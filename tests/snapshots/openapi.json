@@ -6763,6 +6763,35 @@
             }
           },
           {
+            "in": "query",
+            "name": "offset",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "minimum": 0,
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Offset"
+            }
+          },
+          {
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "default": 8192,
+              "maximum": 16384,
+              "minimum": 1,
+              "title": "Limit",
+              "type": "integer"
+            }
+          },
+          {
             "in": "header",
             "name": "x-treg-token",
             "required": false,

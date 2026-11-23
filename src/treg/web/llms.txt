@@ -96,9 +96,11 @@ for `https://api.dataforseo.com/v3/serp/...`), runs the catalog tool on that pat
 would; a path no catalog tool lists is a 404 with `X-Treg-Error: 1`, never relayed.
 
 The MCP server at `{BASE}/mcp/` takes a bearer header or OAuth, and offers `catalog_search`,
-`catalog_get`, `call`, `call_media` (audio), `call_result`, `resources_list`, `balance`,
+`catalog_get`, `call`, `call_media` (native raster images and audio up to 1 MiB), `call_result`, `resources_list`, `balance`,
 `my_tools`, `catalog_request`, `feedback`, `review`, `mark` and `compare` (two anonymous answers
 to an input you sent, when a call result invites a comparison; optional).
+Use `call_result` to check recent calls and page archived answers. Pass
+`response.next_offset` for the next page until it is null.
 <!--hub-->
 Publishing a hub tool adds `hub_create`, `hub_update` and `hub_mine`.
 <!--/hub-->

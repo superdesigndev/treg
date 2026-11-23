@@ -58,10 +58,10 @@ from mcp.server.context import CallNext, HandlerResult, ServerRequestContext
 from mcp.server.mcpserver import Context
 from mcp.server.transport_security import TransportSecuritySettings
 from mcp.shared.exceptions import MCPError
-from mcp.types import AudioContent, CallToolResult, METHOD_NOT_FOUND, TextContent, ToolAnnotations
+from mcp.types import AudioContent, CallToolResult, ImageContent, METHOD_NOT_FOUND, TextContent, ToolAnnotations
 from starlette.responses import JSONResponse
 
-from . import analytics, client_ip, hints, jsontext, oauth_providers
+from . import analytics, client_ip, hints, jsontext, mcp_output, oauth_providers
 from .application import catalog_find as find_app
 from .application import catalog_search as search_app
 from .application import search_experiment
@@ -649,7 +649,7 @@ class CallResultOut(TypedDict, total=False):
 
 
 class MediaOut(CallOut, total=False):
-    """Structured metadata paired with native MCP audio content."""
+    """Structured metadata paired with native MCP image or audio content."""
 
 
 class BalanceOut(TypedDict, total=False):
@@ -870,7 +870,8 @@ async def _api(token: str, *, client_name: str = "mcp"):
     host = {k: v for k, v in (("X-Treg-Mcp-Client", host_name),
                               ("X-Treg-Mcp-User-Agent", host_user_agent)) if v}
     async with httpx.AsyncClient(
-        transport=httpx.ASGITransport(app=app),
+        transport=httpx.ASGITransport(app=mcp_output.BoundedCallResponse(app)
+                                      if client_name == _TEAM_SURFACE.client_name else app),
         base_url=_INTERNAL_BASE,
         timeout=_TIMEOUT,
         # X-Treg-Client is attribution, not auth: without it every MCP-originated call lands
@@ -941,7 +942,7 @@ def _segment_url(route: str, value: str) -> str | None:
 def _body(r: httpx.Response) -> Any:
     try:
         body = r.json()
-    except ValueError:
+    except (ValueError, RecursionError):
         return r.text
     # A lone surrogate parsed out of an upstream's JSON makes the SDK's pydantic dump raise, and the
     # agent gets "Error serializing to JSON" with no body, call_id or cost for a call it paid for.
@@ -1663,8 +1664,9 @@ async def _catalog_get_impl(
         "'render/v1/services' — or a HUB tool by its id '<team-slug>.<name>' (a maker's tool made of "
         "tools; `params` are its inputs, see catalog_get for them). treg injects the credential "
         "server-side and relays the provider's "
-        "response unchanged, so you never hold an API key. Catalog calls on treg's key are metered "
-        "from the team's prepaid balance; a team's own tool is never metered. Tell the human the "
+        "answer. Large responses return a bounded receipt; call_result can page archived text. "
+        "Raster images and audio up to 1 MiB use native media content. Catalog calls on treg's key "
+        "are metered from the team's prepaid balance; a team's own tool is never metered. Tell the human the "
         "price (from catalog_get) before calling anything that costs more than a cent.\n\n"
         "`idempotency_key`: pass the SAME key when you are repeating a call whose answer you did "
         "not receive — a timeout, a dropped connection, an error on your side after the request "
@@ -1699,7 +1701,7 @@ async def call(endpoint_id: str, params: dict | list | None = None,
                form: dict | None = None, uploads: list[dict] | None = None,
                authorization_method: str | None = None,
                prior: Annotated[Any, Field(description=PRIOR_DESCRIPTION)] = None,
-               ctx: Context = None) -> CallOut:  # type: ignore[assignment]
+               ctx: Context = None) -> Annotated[CallToolResult, CallOut]:  # type: ignore[assignment]
     # `prior` takes any value and is parsed here, so a malformed one (a string, a list, a bad
     # field) is dropped rather than failing argument validation for the call it rides on.
     if prior is not None and _shows_prior(ctx.headers if ctx else None):
@@ -1709,13 +1711,14 @@ async def call(endpoint_id: str, params: dict | list | None = None,
             parsed = None
         if parsed is not None:
             _start_prior(parsed, _bearer(ctx))
-    return await _call_impl(
+    out = await _call_impl(
         endpoint_id, params=params, method=method, idempotency_key=idempotency_key,
         query=query, body=body, headers=headers, content_type=content_type,
         form=form, uploads=uploads,
         authorization_method=authorization_method, ctx=ctx,
         catalog_only=False, surface=_TEAM_SURFACE, allowed_methods=None,
     )
+    return out if isinstance(out, CallToolResult) else _team_result(out)
 
 
 PRIOR_CLIENT = "mcp-prior"  # the review's `client`: tells these reviews from the review tool's
@@ -1777,7 +1780,7 @@ async def _call_impl(endpoint_id: str, params: dict | list | None = None,
                      authorization_method: str | None = None,
                      ctx: Context = None, *, catalog_only: bool,
                      allowed_methods: frozenset[str] | None,
-                     surface: _SurfacePolicy) -> CallOut:
+                     surface: _SurfacePolicy) -> CallOut | CallToolResult:
     token = _bearer(ctx) if ctx else ""
     if not token:
         return _need_token()
@@ -1968,7 +1971,10 @@ async def _call_impl(endpoint_id: str, params: dict | list | None = None,
         route = "/catalog/call" if catalog_only else "/call"
         r = await client.request(method, _call_url(route, endpoint_id), **kw)
 
-    out: dict[str, Any] = {"status": r.status_code, "endpoint_id": endpoint_id, "body": _body(r)}
+    media = _native_media(r) if surface is _TEAM_SURFACE else None
+    out: dict[str, Any] = {"status": r.status_code, "endpoint_id": endpoint_id}
+    if media is None:
+        out["body"] = _team_body(r) if surface is _TEAM_SURFACE else _body(r)
     if retry_after := r.headers.get("Retry-After"):
         out["retry_after"] = retry_after
     if call_id := r.headers.get("X-Treg-Call-Id"):
@@ -2046,7 +2052,81 @@ async def _call_impl(endpoint_id: str, params: dict | list | None = None,
         out["body"] = _without_purchase_pointers(out.get("body"))
         if is_balance_refusal(r.headers, out.get("body")):
             out["hint"] = surface.balance_hint
+    if media is not None:
+        return _team_result(out, media=media)
     return out
+
+
+def _team_body(response: httpx.Response) -> Any:
+    raw = response.content
+    if len(raw) <= mcp_output.TEXT_CAPTURE_BYTES:
+        try:
+            body = _body(response)
+            size = len(jsontext.dumps_bytes(body, separators=(",", ":"), allow_nan=False))
+        except (ValueError, RecursionError):
+            body = response.text
+            size = len(jsontext.dumps_bytes(body, separators=(",", ":")))
+        if size <= mcp_output.BODY_BYTES:
+            return body
+    return mcp_output.omitted_body(
+        size=len(raw), mime=mcp_output.content_mime(response.headers.get("content-type", "")),
+        status=response.status_code, path="/call/", head=raw[:mcp_output.PREVIEW_BYTES],
+        tail=raw[-mcp_output.PREVIEW_BYTES:], location=response.headers.get("content-location", ""),
+    )
+
+
+def _native_media(response: httpx.Response) -> ImageContent | AudioContent | None:
+    mime = mcp_output.content_mime(response.headers.get("content-type", ""))
+    if not response.is_success or not mcp_output.is_native_media(mime):
+        return None
+    data = base64.b64encode(response.content).decode("ascii")
+    if mime in mcp_output.NATIVE_IMAGE_TYPES:
+        return ImageContent(type="image", data=data, mimeType=mime)
+    return AudioContent(type="audio", data=data, mimeType=mime)
+
+
+def _team_json(out: dict) -> bytes:
+    return jsontext.dumps_bytes(out, separators=(",", ":"))
+
+
+def _team_result(out: dict, *, media: ImageContent | AudioContent | None = None,
+                 error: bool = False) -> CallToolResult:
+    encoded = _team_json(out)
+    budget = mcp_output.ENVELOPE_BYTES
+    if len(encoded) > budget:
+        out = out.copy()
+        for key in ("compare", "suggestion", "routed_tool", "hint"):
+            if len(encoded) <= budget:
+                break
+            if key in out:
+                del out[key]
+                if key == "compare":
+                    # The inline compare hint names the omitted compare payload.
+                    out.pop("hint", None)
+                encoded = _team_json(out)
+    if len(encoded) > budget and "body" in out:
+        raw = jsontext.dumps_bytes(out["body"], separators=(",", ":"))
+        out["body"] = mcp_output.omitted_body(
+            size=len(raw), mime="application/json", status=out.get("status") or 200,
+            path="/call/", head=raw[:mcp_output.PREVIEW_BYTES], tail=raw[-mcp_output.PREVIEW_BYTES:],
+        )
+        encoded = _team_json(out)
+    if len(encoded) > budget and isinstance(out.get("calls"), list):
+        calls = out["calls"] = out["calls"].copy()
+        out["detail"] = "Showing the newest calls that fit the MCP budget; pass a smaller limit."
+        while calls and len(encoded) > budget:
+            calls.pop()
+            encoded = _team_json(out)
+    if len(encoded) > budget:
+        receipt_keys = ("status", "call_id", "endpoint_id", "cost_usd", "reserved_usd", "replayed",
+                        "whose_error", "retry_after", "served_via", "upstream_failed", "error")
+        receipt = {key: out[key] for key in receipt_keys if key in out and len(str(out[key])) <= 256}
+        if "task" in out and len(jsontext.dumps_bytes(out["task"], separators=(",", ":"))) <= 2048:
+            receipt["task"] = out["task"]
+        out = receipt | {"detail": "Result exceeds the MCP output budget."}
+        encoded = _team_json(out)
+    content = [media] if media is not None else [TextContent(type="text", text=encoded.decode("utf-8"))]
+    return CallToolResult(content=content, structuredContent=out, isError=error)
 
 
 @org_traffic.mcp_adapter("call_media")
@@ -2055,20 +2135,12 @@ async def _call_media_impl(
     idempotency_key: str | None, ctx: Context, catalog_only: bool,
     surface: _SurfacePolicy,
 ) -> Annotated[CallToolResult, MediaOut]:
-    """Call one media-producing endpoint and preserve its bytes as native MCP audio."""
+    """Call a media-producing endpoint and keep native image or audio content."""
     token = _bearer(ctx)
     if not token:
-        problem = _need_token()
-        return CallToolResult(
-            content=[TextContent(type="text", text=json.dumps(problem))],
-            structuredContent=problem, isError=True,
-        )
+        return _team_result(_need_token(), error=True)
     if _leaves_route(endpoint_id):
-        problem = _UNSAFE_ID_ERROR | {"endpoint_id": endpoint_id}
-        return CallToolResult(
-            content=[TextContent(type="text", text=json.dumps(problem))],
-            structuredContent=problem, isError=True,
-        )
+        return _team_result(_UNSAFE_ID_ERROR | {"endpoint_id": endpoint_id}, error=True)
     extra_headers = {k: str(v) for k, v in (headers or {}).items()
                      if k.lower() not in ("x-treg-token", "x-treg-org", "authorization",
                                           "idempotency-key", "x-treg-meta")}
@@ -2077,10 +2149,7 @@ async def _call_media_impl(
     async with api_context as client:
         _, slug, problem = await _resolve_org(client)
         if problem:
-            return CallToolResult(
-                content=[TextContent(type="text", text=json.dumps(problem))],
-                structuredContent=problem, isError=True,
-            )
+            return _team_result(problem, error=True)
         if slug:
             extra_headers["X-Treg-Org"] = slug
         inbound_meta = (ctx.headers or {}).get("x-treg-meta") or (ctx.headers or {}).get("X-Treg-Meta")
@@ -2107,27 +2176,19 @@ async def _call_media_impl(
             metadata["cost_usd"] = round(int(spent) / 1_000_000, 6)
         except ValueError:
             pass
-    mime = response.headers.get("content-type", "").split(";", 1)[0].strip().lower()
-    if 200 <= response.status_code < 300 and mime.startswith("audio/"):
-        return CallToolResult(
-            content=[AudioContent(type="audio", data=base64.b64encode(response.content).decode(),
-                                  mimeType=mime)],
-            structuredContent=metadata,
-        )
-    metadata["body"] = _body(response)
+    if media := _native_media(response):
+        return _team_result(metadata, media=media)
+    metadata["body"] = _team_body(response)
     if response.status_code == 402 or (
             response.status_code == 403 and is_admission_refusal(response.headers, metadata["body"])):
         metadata["body"] = _without_purchase_pointers(metadata["body"])  # as `call` does: no payment link
-    return CallToolResult(
-        content=[TextContent(type="text", text=json.dumps(metadata, ensure_ascii=False, default=str))],
-        structuredContent=metadata, isError=response.status_code >= 400,
-    )
+    return _team_result(metadata, error=response.status_code >= 400)
 
 
 @mcp.tool(
-    description=("Call an audio-producing endpoint through the same treg proxy as `call`, returning "
-                 "the successful binary response as native MCP AudioContent. Use this for Fish "
-                 "Audio TTS; use `call` for JSON endpoints."),
+    description=("Call a media-producing endpoint through the same treg proxy as `call`, returning "
+                 "raster images and audio up to 1 MiB as native MCP content. Use this for "
+                 "generated images and Fish Audio TTS; use `call` for JSON endpoints."),
     annotations=_CALLS,
 )
 async def call_media(
@@ -2182,7 +2243,7 @@ _RECENT_CALL_FIELDS = ("call_ref", "endpoint_id", "status_code", "cost_charged_m
                        "created_at", "async_task")
 
 
-async def _call_result_impl(call_id: str, limit: int, ctx: Context) -> CallResultOut:
+async def _call_result_impl(call_id: str, limit: int, ctx: Context, offset: int = 0) -> CallResultOut:
     token = _bearer(ctx)
     if not token:
         return _need_token()
@@ -2195,7 +2256,7 @@ async def _call_result_impl(call_id: str, limit: int, ctx: Context) -> CallResul
             return problem
         headers = {"X-Treg-Org": slug or ""}
         if url is not None:
-            r = await client.get(f"{url}/result", headers=headers)
+            r = await client.get(f"{url}/result", params={"offset": offset}, headers=headers)
         else:
             r = await client.get("/calls", params={"limit": max(1, min(limit, 50))}, headers=headers)
     body = _body(r)
@@ -2203,7 +2264,13 @@ async def _call_result_impl(call_id: str, limit: int, ctx: Context) -> CallResul
         return {"error": "could not read the call" if call_id else "could not list recent calls",
                 "detail": body}
     if url is not None:
-        return {"team": slug, "result": body}
+        out = {"team": slug, "result": body}
+        if isinstance(body, dict) and (page := body.get("response")):
+            text = page.get("body_text")
+            while text and len(text) > 1 and len(_team_json(out)) > mcp_output.ENVELOPE_BYTES:
+                text = text[:len(text) // 2]
+                page.update(body_text=text, next_offset=offset + len(text))
+        return out
     rows = body if isinstance(body, list) else []
     return {"team": slug, "calls": [
         {"call_id": c.get("call_ref"), **{k: c.get(k) for k in _RECENT_CALL_FIELDS if k != "call_ref"}}
@@ -2215,14 +2282,17 @@ async def _call_result_impl(call_id: str, limit: int, ctx: Context) -> CallResul
         "Recover a call you already made, typically one whose answer never reached you (your client "
         "timed out or the connection dropped while treg finished it). Without `call_id`: this team's "
         "latest calls, newest first, each with its call_id, endpoint, status, charge and whether an "
-        "answer is stored (`has_result`). With `call_id`: what that call asked and what came back. "
+        "answer is stored (`has_result`). With `call_id`: read a stored answer in pages. "
+        "response.total_chars is the length of the caller-visible text. Pass response.next_offset "
+        "as offset until it is null. "
         "Reading costs nothing; check here before calling again, so a finished call is not paid twice."
     ),
     annotations=_READS,
     structured_output=True
 )
-async def call_result(ctx: Context, call_id: str = "", limit: int = 10) -> CallResultOut:
-    return await _call_result_impl(call_id, limit, ctx)
+async def call_result(ctx: Context, call_id: str = "", limit: int = 10,
+                      offset: Annotated[int, Field(ge=0)] = 0) -> Annotated[CallToolResult, CallResultOut]:
+    return _team_result(await _call_result_impl(call_id, limit, ctx, offset))
 
 
 @mcp.tool(

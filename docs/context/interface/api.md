@@ -8,6 +8,7 @@ sources:
   - src/treg/web/media-videos.json
   - src/treg/web/sitetrack.js
   - src/treg/api.py
+  - src/treg/mcp_output.py
   - src/treg/bootstrap_handlers.py
   - src/treg/bootstrap_http.py
   - src/treg/call_surface.py
@@ -311,6 +312,26 @@ object with its keys in another order or other whitespace is the same request
 call in `detail.call_id`. Over MCP it is the `idempotency_key` argument and a replay carries
 `replayed: true`; `call_result` lists the team's recent calls and reads one's stored answer
 (`GET /calls`, `GET /calls/{id}/result`). Storage rules: [money](../architecture/money.md).
+
+On the team MCP surface, `call` and `call_media` show up to 20 KiB of text or compact JSON
+in a 28 KiB JSON envelope that includes call and charge metadata. The same JSON appears in the
+text block and `structuredContent`. The in-process relay captures up to 64 KiB of text so
+pretty-printed JSON can fit after compaction. A successful textual async submission can retain
+up to 8 MiB internally for the task endpoint's digest check. Oversized text returns a bounded
+head and tail when available, with the call receipt. A call id can look up whether an answer was
+archived, subject to the archive's size, licence and retention rules.
+
+Successful PNG, JPEG, GIF, WebP and audio responses up to 1 MiB use native MCP content, with
+metadata in `structuredContent`. SVG is text. Other binary results carry download guidance and
+the provider's HTTP(S) content location when supplied.
+
+`call_result(call_id, offset)` pages stored response text starting at character `offset` (zero by
+default). `response.total_chars` gives the length of the caller-visible text. Pass
+`response.next_offset` for the next page, until it is null. The default page is 8,192 characters.
+MCP can return a shorter page to fit the 28 KiB envelope. `GET /calls/{id}/result` accepts
+`offset` and a `limit` of 1 to 16,384 characters (default 8,192). The first page includes
+up to 2,048 characters of request text. Later pages return `request: null`. HTTP reads without
+`offset` return the full archive view.
 
 ### `X-Treg-Keep-Reported-Charge` on `/call/`
 

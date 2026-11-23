@@ -1786,3 +1786,172 @@ async def test_tool_called_names_the_mcp_host(clients, monkeypatch, posthog_even
     assert old["client"] == "mcp" and old["user_agent"].startswith("python-httpx/")
     assert old["mcp_user_agent"] == "claude-code/2.1.0 (cli)" and old["mcp_client"] is None
     assert new["mcp_user_agent"] == "claude-code/2.1.0 (cli)" and new["mcp_client"] == "test"
+
+
+@pytest.mark.parametrize("tool", ["call", "call_media"])
+@pytest.mark.parametrize("mime", ["image/png", "image/svg+xml"])
+async def test_team_calls_use_native_content_only_for_raster_images(clients, monkeypatch, tool, mime):
+    import base64
+
+    import jsonschema
+
+    from treg.application.call import service
+    from treg.application.call.types import UpstreamResponse
+
+    data = (base64.b64decode("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8"
+                             "/x8AAwMCAO+/lrkAAAAASUVORK5CYII=")
+            if mime == "image/png" else b'<svg xmlns="http://www.w3.org/2000/svg"/>')
+
+    async def image(*args, **kwargs):
+        async def stream():
+            yield data
+
+        async def close():
+            pass
+
+        return UpstreamResponse(200, ((b"content-type", mime.encode()),), stream(), close)
+
+    monkeypatch.setattr(service, "relay", image)
+    token = await _register_echo(clients)
+    async with mcp_session(clients) as client:
+        await _rpc(client, "initialize", {"protocolVersion": "2025-06-18", "capabilities": {},
+                                         "clientInfo": {"name": "media", "version": "1"}}, token)
+        listed = await _rpc(client, "tools/list", token=token)
+        schema = next(t["outputSchema"] for t in listed.json()["result"]["tools"] if t["name"] == tool)
+        r = await _rpc(client, "tools/call", {"name": tool, "arguments": {
+            "endpoint_id": "echo/image", "body": {}}}, token)
+
+    result = r.json()["result"]
+    structured = result["structuredContent"]
+    jsonschema.validate(structured, schema)
+    assert structured["call_id"]
+    if mime == "image/png":
+        assert result["content"] == [{"type": "image", "mimeType": mime,
+                                      "data": base64.b64encode(data).decode()}]
+        assert "body" not in structured
+    else:
+        assert result["content"][0]["type"] == "text"
+        assert json.loads(result["content"][0]["text"]) == structured
+        assert structured["body"] == data.decode()
+
+
+@pytest.mark.parametrize(("size", "pretty", "with_compare"), [
+    (19 * 1024, True, False),
+    (18 * 1024, False, True),
+    (22 * 1024, False, False),
+])
+async def test_paid_call_body_and_metadata_share_one_mcp_envelope(
+    clients, monkeypatch, platform_on, size, pretty, with_compare,
+):
+    import jsonschema
+
+    from test_marketplace_call import EP, EP_MICRO, _fake_relay
+    from treg import hints, mcp, mcp_output
+    from treg.application.call import service
+    from treg.routers import call as call_routes
+
+    body = {"omitted": True, "data": ["x" * 32] * (size // 35)}
+    raw = json.dumps(body, indent=32 if pretty else None, separators=(",", ":")).encode()
+    if pretty:
+        assert mcp_output.BODY_BYTES < len(raw) < mcp_output.TEXT_CAPTURE_BYTES
+    monkeypatch.setattr(service, "relay", _fake_relay(200, raw))
+
+    async def invitation(*args, **kwargs):
+        return "compare" if with_compare else "feedback"
+
+    async def comparison(*args, **kwargs):
+        return {"comparison_id": 123, "answer_1": "b" * (16 * 1024)}
+
+    monkeypatch.setattr(call_routes, "invitation", invitation)
+    monkeypatch.setattr(mcp, "_inline_comparison", comparison)
+    token = clients.headers["X-Treg-Token"]
+    async with mcp_session(clients) as client:
+        await _rpc(client, "initialize", {"protocolVersion": "2025-06-18", "capabilities": {},
+                                         "clientInfo": {"name": "budget", "version": "1"}}, token)
+        listed = await _rpc(client, "tools/list", token=token)
+        schema = next(t["outputSchema"] for t in listed.json()["result"]["tools"] if t["name"] == "call")
+        r = await _rpc(client, "tools/call", {"name": "call", "arguments": {
+            "endpoint_id": EP, "query": {"aweme_id": "7"}}}, token)
+
+    result = r.json()["result"]
+    text = result["content"][0]["text"]
+    out = result["structuredContent"]
+    jsonschema.validate(out, schema)
+    assert json.loads(text) == out and len(text.encode()) <= mcp_output.ENVELOPE_BYTES
+    assert out["endpoint_id"] == EP and out["call_id"] and out["cost_usd"] == EP_MICRO / 1_000_000
+    if size <= mcp_output.BODY_BYTES:
+        assert out["body"] == body
+        assert "compare" not in out
+        if with_compare:
+            assert "hint" not in out
+        else:
+            assert out["hint"] == hints.HINT
+    else:
+        receipt = out["body"]
+        assert receipt["omitted"] and receipt["size_bytes"] == len(raw)
+        assert receipt["head"] == raw[:mcp_output.PREVIEW_BYTES].decode()
+        assert receipt["tail"] == raw[-mcp_output.PREVIEW_BYTES:].decode()
+        assert "call_result" in receipt["note"]
+
+
+@pytest.mark.parametrize("wide_projection", [False, True])
+async def test_mcp_history_budgets_the_projected_rows_newest_first(clients, monkeypatch, wide_projection):
+    import jsonschema
+
+    from treg import mcp_output
+    from treg.infra.db import session_maker
+    from treg.models import CallRecord
+    from treg.routers import activity
+
+    org_id = (await clients.get("/orgs")).json()[0]["org_id"]
+    async with session_maker() as db:
+        db.add_all([
+            CallRecord(org_id=org_id, user_email="tester@example.invalid", tool_name="test",
+                       method="GET", path="/" + "p" * 900, status_code=200, call_ref=f"call-{n}")
+            for n in range(50)
+        ])
+        await db.commit()
+    if wide_projection:
+        call_row = activity.call_row
+
+        def wide_row(row, task):
+            return call_row(row, task) | {"async_task": {"detail": "x" * 1200}}
+
+        monkeypatch.setattr(activity, "call_row", wide_row)
+    history = await clients.get("/calls", params={"limit": 50})
+    rows = history.json()
+    assert len(rows) == 50 and len(history.content) > 32 * 1024
+    token = clients.headers["X-Treg-Token"]
+    async with mcp_session(clients) as client:
+        await _rpc(client, "initialize", {"protocolVersion": "2025-06-18", "capabilities": {},
+                                         "clientInfo": {"name": "history", "version": "1"}}, token)
+        listed = await _rpc(client, "tools/list", token=token)
+        schema = next(t["outputSchema"] for t in listed.json()["result"]["tools"] if t["name"] == "call_result")
+        r = await _rpc(client, "tools/call", {"name": "call_result", "arguments": {"limit": 50}}, token)
+    result = r.json()["result"]
+    text = result["content"][0]["text"]
+    out = result["structuredContent"]
+    jsonschema.validate(out, schema)
+    assert json.loads(text) == out and len(text.encode()) <= mcp_output.ENVELOPE_BYTES
+    if wide_projection:
+        assert 0 < len(out["calls"]) < 50 and "pass a smaller limit" in out["detail"]
+    else:
+        assert len(out["calls"]) == 50 and "detail" not in out
+    assert [c["call_id"] for c in out["calls"]] == [c["call_ref"] for c in rows[:len(out["calls"])]]
+
+
+def test_envelope_fallbacks_keep_receipt_and_small_task():
+    from treg import mcp, mcp_output
+
+    receipt = {"status": 200, "call_id": "call-1", "endpoint_id": "test.run", "cost_usd": 0.01,
+               "reserved_usd": 0.02, "task": {"kind": "async"}, "replayed": False,
+               "served_via": "overflow:test", "upstream_failed": "reported", "retry_after": "5"}
+    raw_body = {"data": "x" * mcp_output.ENVELOPE_BYTES}
+    out = receipt | {"body": raw_body}
+    trimmed = mcp._team_result(out).structured_content
+    assert trimmed["body"]["omitted"] and trimmed["body"]["head"].startswith('{"data":"')
+    assert {k: trimmed[k] for k in receipt} == receipt and out["body"] == raw_body
+
+    large = out | {"detail": "d" * mcp_output.ENVELOPE_BYTES}
+    fallback = mcp._team_result(large).structured_content
+    assert fallback == receipt | {"detail": "Result exceeds the MCP output budget."}
