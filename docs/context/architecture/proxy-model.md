@@ -512,7 +512,8 @@ account's lock lifts at expiry or through its own probe.
 Platform-tier request guards (`_enforce_platform_request`, catalog `platform_request`) run after a
 platform offer is selected and before reserve. They bound treg's exposure on its shared accounts:
 explicit bounded record counts, exact pricing selectors (a singleton-enum body field that picks a
-table price row must equal its value; duplicate JSON keys are rejected so validation and upstream
+table price row must equal its value, or be absent when its declared default is that value, as the
+table prices an absent field; duplicate JSON keys are rejected so validation and upstream
 cannot disagree), the path values a row prices (a `pathParams` pin lists the models treg's key may
 run), and outright refusal of options whose charge or result arrives later at a
 caller's webhook, outside settlement's reads. Own keys are unaffected: the provider, not treg,

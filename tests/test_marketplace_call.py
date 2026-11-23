@@ -1086,6 +1086,27 @@ def test_a_null_platform_request_query_value_must_be_absent_on_treg_key():
     assert "discover_new" not in json.dumps(exc.value.detail)
 
 
+@pytest.mark.parametrize(("body", "declared_default", "valid"), [
+    ({}, True, True),
+    ({"dry_run": False}, True, True),
+    ({"dry_run": True}, True, False),
+    ({"dry_run": None}, True, False),
+    ({}, False, False),
+])
+def test_a_table_pin_may_be_absent_on_treg_key_only_when_its_default_is_the_pin(
+        body, declared_default, valid):
+    ep = catalog_store.load().by_id["mapsdata.web.scrape.job.start"]
+    if not declared_default:
+        dry_run = {k: v for k, v in ep["input"]["body"]["dry_run"].items() if k != "default"}
+        ep = {**ep, "input": {**ep["input"], "body": {**ep["input"]["body"], "dry_run": dry_run}}}
+    if valid:
+        call_resolution._enforce_platform_request(ep, json.dumps(body).encode())
+    else:
+        with pytest.raises(ResolutionFailed) as exc:
+            call_resolution._enforce_platform_request(ep, json.dumps(body).encode())
+        assert exc.value.detail["parameter"] == "body.dry_run"
+
+
 async def test_leadocean_direct_search_requires_a_bounded_shared_key_page(clients, monkeypatch):
     monkeypatch.setenv("TREG_PLATFORM_KEY_LEADOCEAN", "PLATFORM-LEADOCEAN")
     monkeypatch.setenv("TREG_PLATFORM_PROVIDERS", "leadocean")
