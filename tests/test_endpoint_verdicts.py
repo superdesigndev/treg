@@ -68,6 +68,9 @@ def test_one_quote_per_team_its_latest():
 def test_quotable():
     assert quotable(LONG)
     assert quotable(LONG + " Ran on 2026-11-22 for $0.0025, 120 rows.")  # dates and prices are fine
+    assert quotable(LONG + " Ran at 2026-11-22 14:00 UTC.")
+    assert quotable(LONG + " Covered 2026-11-01 - 2026-11-22.")
+    assert quotable(LONG + " Ran at 2026-11-22T14:00:05 and 09:30.")
     assert not quotable("   too short   ")
     assert not quotable(None)
 
