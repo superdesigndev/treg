@@ -435,8 +435,8 @@ Jev's judgements are written to the review row by `treg-worker reviews judge`, a
 Each answer is validated on its own (a Noul must be a number in [0, 1], a Choice one of the codes);
 a failed request or an unreadable answer leaves that review unjudged for the next run, and one pass
 failing never stops the other. A judgement is written only onto a review still unjudged, or coded
-under an older codebook version (`domain.feedback.reviews`), and an advisory lock keeps to one run
-at a time, so overlapping runs never replace or downgrade an answer.
+under an older codebook version (`domain.feedback.reviews`), so overlapping runs never replace or
+downgrade an answer; no database connection is held across a Jev request.
 
 Without `typesafe_api_key`, or with the cron suspended, nothing new is judged: new reasons are not
 quoted, but reasons already judged clean keep being quoted. To stop quoting those too, revert the

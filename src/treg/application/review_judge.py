@@ -21,9 +21,7 @@ import logging
 import time
 from datetime import timedelta
 
-from contextlib import asynccontextmanager
-
-from sqlalchemy import or_, text
+from sqlalchemy import or_
 from sqlmodel import select
 
 from ..config import get_settings
@@ -37,10 +35,6 @@ from ..timeutil import utcnow_naive
 log = logging.getLogger("treg.review_judge")
 
 NEGATIVE = ("partly", "not_useful")
-# One run at a time (pg_try_advisory_lock), so overlapping runs never pay Jev twice for a review;
-# any constant no other advisory lock uses. The conditional writes in `domain.feedback.reviews`
-# keep the first answer even without it.
-RUN_LOCK_KEY = 0x72766A67
 
 
 def configured() -> bool:
@@ -75,24 +69,6 @@ async def _write_codes(values: dict[int, tuple[str, str | None]]) -> int:
                                                   review_codes.CODEBOOK_VERSION, now)
         await db.commit()
     return written
-
-
-@asynccontextmanager
-async def _only_run():
-    """Whether this run holds the run lock, on a connection of its own. SQLite: always."""
-    async with session_maker.kw["bind"].connect() as connection:
-        if connection.dialect.name != "postgresql":
-            yield True
-            return
-        got = bool((await connection.execute(text("SELECT pg_try_advisory_lock(:key)"),
-                                             {"key": RUN_LOCK_KEY})).scalar_one())
-        await connection.commit()
-        try:
-            yield got
-        finally:
-            if got:
-                await connection.execute(text("SELECT pg_advisory_unlock(:key)"), {"key": RUN_LOCK_KEY})
-                await connection.commit()
 
 
 async def judge_privacy(*, deadline: float) -> dict:
@@ -175,21 +151,22 @@ async def judge_codes(*, deadline: float) -> dict:
 
 async def run(*, max_seconds: float) -> dict:
     """Both passes, sharing `max_seconds`: privacy first (it gates what the catalog may quote), then
-    attribution with whatever time is left. Off (`{"skipped": "no_judge_key"}`) without a key, and
-    `{"skipped": "another_run"}` while another run holds the lock."""
+    attribution with whatever time is left. Off (`{"skipped": "no_judge_key"}`) without a key.
+
+    No lock: no connection is held across a Jev request (each pass reads its rows in a session it
+    closes before asking, and each batch writes in a session of its own), and the writes in `domain.feedback.reviews` keep the first answer. An
+    hourly cron capped well under the hour does not overlap itself; a hand-run backfill that does
+    only asks Jev twice about some reviews."""
     if not configured():
         return {"skipped": "no_judge_key"}
     deadline = time.monotonic() + max_seconds
     out = {}
-    async with _only_run() as got:
-        if not got:
-            return {"skipped": "another_run"}
-        for name, judge_pass in (("privacy", judge_privacy), ("codes", judge_codes)):
-            try:
-                out[name] = await judge_pass(deadline=deadline)
-            except Exception as exc:  # one pass failing never stops the other
-                log.exception("review %s pass failed", name)
-                out[name] = {"error": type(exc).__name__}
+    for name, judge_pass in (("privacy", judge_privacy), ("codes", judge_codes)):
+        try:
+            out[name] = await judge_pass(deadline=deadline)
+        except Exception as exc:  # one pass failing never stops the other
+            log.exception("review %s pass failed", name)
+            out[name] = {"error": type(exc).__name__}
     return out
 
 
