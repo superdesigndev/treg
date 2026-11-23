@@ -1876,6 +1876,7 @@ async def _refresh_call(client, key) -> bool:
     settings exactly as the relay does it."""
     try:
         from . import oauth_providers
+        from .infra.upstream import pathsegment
 
         provider = oauth_providers.get(key.provider)
         secret_value = get_settings().platform_key_for(key.provider)
@@ -1883,6 +1884,7 @@ async def _refresh_call(client, key) -> bool:
             return False  # key withdrawn or provider de-listed — quietly not refreshable
         headers: dict[str, str] = dict(key.req_headers or {})  # replay what keyed the question
         params: list = []
+        path_values: dict[str, str] = {}
         for binding in oauth_providers.platform_bindings(provider):
             value = get_settings().platform_credential(
                 binding.get("platform_setting", ""), binding.get("account"))
@@ -1890,9 +1892,12 @@ async def _refresh_call(client, key) -> bool:
             rendered = fmt.replace("{secret}", value) if value else fmt
             if binding.get("location") == "query":
                 params.append((binding.get("name"), rendered))
+            elif binding.get("location") == "path":
+                path_values[binding.get("name", "")] = rendered
             else:
                 headers[binding.get("name", "")] = rendered
-        resp = await client.request(key.req_method or "GET", key.req_url, params=params or None,
+        url = pathsegment.fill(key.req_url, path_values)
+        resp = await client.request(key.req_method or "GET", url, params=params or None,
                                     headers=headers, content=key.req_body or None)
         body = resp.content
         if not (200 <= resp.status_code < 300):

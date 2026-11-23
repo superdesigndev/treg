@@ -80,9 +80,21 @@ The proxy calls `inject(headers, params, binding, secret, json_body=...)`, which
 `binding["injector"]` through the `INJECTORS` registry. Two mechanics: place a string
 (`env_injector`, `cli_auth_injector`) or pull a token from a JSON blob first (`secret_file_injector`,
 `oauth_injector`, default field `access_token`), then `_place()` renders `binding["format"]` into a
-header, query parameter or top-level JSON field. The injected credential overwrites a same-named
-caller value. Binding validation accepts only `header`, `query` and `json` and rejects duplicate
-target names per location. Adding a shape is one function; the proxy never changes.
+header, query parameter, top-level JSON field or path placeholder. The injected credential
+overwrites a same-named caller value. Binding validation accepts only `header`, `query`, `json` and
+`path` and rejects duplicate target names per location. Adding a shape is one function; the proxy
+never changes.
+
+A `location: path` binding is the half of a credential that a provider reads from the URL path:
+Forager binds each key to one account id that every paid route carries (`/api/{account_id}/…`).
+`relay()` replaces only a whole `{name}` path segment (literal or percent-encoded), encoded as one
+segment; the query and other segments are untouched, a path without the placeholder is relayed as
+sent, and a `.`/`..` value fails closed. A provider declares it as its extra credential
+(`extra_credential_location="path"`); `OAuthProvider.credential_path_params` tells
+`_marketplace_upstream` to leave that placeholder for the relay and drop a caller value for it. On
+treg's key the value is a platform setting (`platform_extra_setting`), so callers never see it in
+the catalog. The archive keys the pre-injection URL, so one question is one key across accounts,
+and its refresh fills the placeholder the same way.
 
 A `location: json` binding requires a JSON object body, overwrites only the named top-level fields,
 rejects duplicate object keys and recalculates Content-Length. It reserializes the body, so it must

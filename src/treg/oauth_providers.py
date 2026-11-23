@@ -218,15 +218,16 @@ class OAuthProvider:
     extra_credential_note: str = ""
     extra_credential_label: str = ""  # what to call it in the UI, e.g. "Developer token"
     extra_credential_header: str = ""  # the header it's injected as, e.g. "developer-token"
-    extra_credential_location: str = "header"  # "header" | "query" | "json"
-    extra_credential_param: str = ""  # query/JSON name; header remains the compatibility default
+    extra_credential_location: str = "header"  # "header" | "query" | "json" | "path"
+    # query/JSON name, or the `{placeholder}` a path credential fills; header remains the default
+    extra_credential_param: str = ""
     # Settings attribute holding TREG's own value for it. When set, users supply nothing and the
     # tool is provisioned with a platform binding; the per-user prompt is only the fallback.
     extra_credential_setting: str = ""
     # TIER 4 ONLY: settings attribute holding treg's own second credential for platform-served
     # calls, when the extra credential is PER-USER (extra_credential_setting stays empty so a
     # user's connect never rides treg's half of the pair — Tomba rejects a mismatched key/secret).
-    # `platform_bindings` appends it as a second header binding; user connections are untouched.
+    # `platform_bindings` appends it as a second binding; user connections are untouched.
     platform_extra_setting: str = ""
 
     # Some providers bill the OWNER OF THE APP per use, whoever's token made the call - X bills
@@ -248,6 +249,13 @@ class OAuthProvider:
     @property
     def extra_credential_name(self) -> str:
         return self.extra_credential_param or self.extra_credential_header
+
+    @property
+    def credential_path_params(self) -> frozenset[str]:
+        """Catalog path placeholders the credential fills, never the caller."""
+        if self.needs_extra_credential and self.extra_credential_location == "path":
+            return frozenset({self.extra_credential_name})
+        return frozenset()
 
     @property
     def platform_extra_credential(self) -> str:
