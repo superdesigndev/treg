@@ -146,7 +146,10 @@ re-send the same find: every hit is billed, repeats included.
 - Send `X-Treg-Route-Verify: true` on `treg.people.email.find`, `treg.people.email.find.personal` or
   `treg.people.phone.find` to check each hit in the same call, as its own small charge. Read
   `_treg.verification.verdict` (it wins over the provider's own `output.verified`) and follow
-  `_treg.advice`. A live phone line does not prove the number is this person's.
+  `_treg.advice`. For a phone, that check is a live-line lookup: it does not show whose number
+  it is. To check a number belongs to the person, call `millionphones.people.contact.verify`
+  (`social_url` = their LinkedIn profile, `phone_number`) or, for a US number,
+  `trestleiq.people.contact.verify` (`phone` and `name`).
 - **Verify every address before it is sent to**, including rows from a company or domain search
   (`treg.people.search` and the like): those are directory listings, unconfirmed
   unless the row's `email_status` says the provider verified it. `invalid` is dead, `accept_all` is risky,
