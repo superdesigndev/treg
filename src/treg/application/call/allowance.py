@@ -191,9 +191,10 @@ async def _refresh(org_id: int, daily_cap_micro: int, after_refill) -> None:
     """Refill a counter that still admits calls, so none of them finds it lapsed. Nobody waits
     on this, so it waits for the lease far longer than a call does.
 
-    It asks for no amount of its own: the counter goes back up to a chunk, and a balance that
-    cannot pay for that leaves the counter with what it has. The call that started this was
-    served; what the next one needs is for its own refill to decide.
+    It asks for no amount of its own: the counter goes back up to a chunk (or to the team's
+    pace, `_sized_target`), and a balance that cannot pay for that leaves the counter with what
+    it has. The call that started this was served; what the next one needs is for its own
+    refill to decide.
 
     The store asks one caller, once. An ask that reaches this process while a refill is still
     on its way out is kept and gets a refill of its own, or nobody would act on it."""
@@ -244,39 +245,62 @@ async def _after_refill(org_id: int, after_refill) -> None:
         log.error("the step after an allowance refill failed for org %s", org_id, exc_info=True)
 
 
-async def _current_daily_cap(org_id: int, db) -> int:
-    """The team's daily cap as its row has it now, with the row locked. A refill can run long
-    after the call that asked for it read the team. A plain read would still miss a cap whose
-    change is open in another transaction: the refill's balance update then waits for that
-    change to commit, and checks only the balance. Locked, the read waits instead, and what the
-    refill reads of the day's spend afterwards is under the same lock. The team's row is the
-    last lock a money transaction takes, and the refill takes none after it.
+async def _current_team(org_id: int, db) -> allowance.TeamNow:
+    """The team's daily cap and balance as its row has them now, with the row locked. A refill
+    can run long after the call that asked for it read the team. A plain read would still miss
+    a cap whose change is open in another transaction: the refill's balance update then waits
+    for that change to commit, and checks only the balance. Locked, the read waits instead, and
+    what the refill reads of the day's spend afterwards is under the same lock. The team's row
+    is the last lock a money transaction takes, and the refill takes none after it. The balance
+    read here is the one the refill's debit then meets: nothing else can move it meanwhile.
 
     The lock is the one an update of the row takes (NO KEY UPDATE), no stronger. By now the
     fold may have updated the row, and a top-up inserting a credit block holds a KEY SHARE on
     it from the foreign key check while it waits to update the balance. Asking for the full
     row lock here would wait for that top-up, which is waiting for this transaction."""
-    return budget_policy._effective_daily_cap((await db.execute(
-        select(Org.daily_cap_micro).where(Org.id == org_id)
-        .with_for_update(key_share=True))).one_or_none())
+    row = (await db.execute(
+        select(Org.daily_cap_micro, Org.balance_micro).where(Org.id == org_id)
+        .with_for_update(key_share=True))).one_or_none()
+    return allowance.TeamNow(budget_policy._effective_daily_cap(row),
+                             int(row.balance_micro) if row is not None else 0)
+
+
+def _sizing() -> bool:
+    return get_settings().money_allowance_refill_window_s > 0
+
+
+def _sized_target(spent_micro: int, over_ms: int, floor_micro: int) -> int | None:
+    """What this refill asks to bring the counter up to when the team spends faster than the
+    floor lasts (`allowance.paced_target`); the transaction keeps it within the team's money.
+    None when the reading asks for no more than the floor."""
+    settings = get_settings()
+    target = allowance.paced_target(
+        spent_micro, over_ms, window_s=settings.money_allowance_refill_window_s,
+        floor_micro=floor_micro, ceiling_micro=settings.money_allowance_refill_max_micro)
+    return target if target > floor_micro else None
 
 
 async def _refill(org_id: int, need_micro: int, daily_cap_micro: int) -> bool:
-    """Bring the counter up to a chunk. False when the counter still cannot cover `need_micro`;
+    """Bring the counter up to a chunk, or to what the team spends over the refill window when
+    that is more (`_sized_target`). False when the counter still cannot cover `need_micro`;
     the allowance is then drained back to the balance so the exact path sees all of the team's
     money.
 
     Queued charges are the background loop's to fold (`allowance_sweep`), not a refill's: calls
     wait on a refill. The one exception is a frozen counter, where the whole queue is folded
     here so the balance read after it is the true one."""
-    store, settings = kv.store(), get_settings()
-    state = await store.allowance_state(org_id)
+    store, settings, sizing = kv.store(), get_settings(), _sizing()
+    # Sized to the team's spend, the refill reads the pace in the same script as the state: it
+    # asks the store nothing a refill to the chunk does not.
+    state = await (store.allowance_state_and_pace(org_id) if sizing
+                   else store.allowance_state(org_id))
     if state is None:
         return False
     # Read BEFORE the transaction: the add below may thaw only the freezes counted here. One
     # that lands later was raised by a charge this transaction may not have folded.
-    available, seen_frozen, thawed, counter_epoch, run = state
+    available, seen_frozen, thawed, counter_epoch, run = state[:5]
     target = max(settings.money_allowance_chunk_micro, need_micro)
+    grow_to = _sized_target(state[5], state[6], target) if sizing else None
     try:
         async with (
             money_lock(org_id),
@@ -291,7 +315,9 @@ async def _refill(org_id: int, need_micro: int, daily_cap_micro: int) -> bool:
                 db, org_id, max(0, target - available), daily_cap_micro=daily_cap_micro,
                 fold_limit=0, fold_all=seen_frozen != thawed,
                 counter_epoch=counter_epoch, fresh_add_micro=target, counter_micro=available,
-                current_daily_cap=functools.partial(_current_daily_cap, org_id))
+                current_team=functools.partial(_current_team, org_id), grow_to_micro=grow_to,
+                balance_percent=settings.money_allowance_refill_balance_percent,
+                ceiling_micro=settings.money_allowance_refill_max_micro)
             await db.commit()
     except money_admission.ReserveAdmissionTimeout:
         return False
@@ -300,8 +326,9 @@ async def _refill(org_id: int, need_micro: int, daily_cap_micro: int) -> bool:
         # what it showed goes with it.
         available = 0
     _refills[org_id] = _refills.get(org_id, 0) + 1
-    log.info("allowance_refill org_id=%s added=%s hold=%s counter_before=%s folded=%s",
-             org_id, result.added_micro, result.amount_micro, available, result.folded.calls)
+    log.info("allowance_refill org_id=%s added=%s hold=%s counter_before=%s folded=%s "
+             "target=%s", org_id, result.added_micro, result.amount_micro, available,
+             result.folded.calls, grow_to or target)
     if (result.epoch is None or result.over_cap or result.overdrawn or result.retired
             or available + result.added_micro < need_micro):
         _refused_until[org_id] = time.monotonic() + _REFUSAL_COOLDOWN_S
@@ -373,6 +400,78 @@ async def _drain(org_id: int, epoch: int, reason: str) -> None:
         await allowance.close_allowance_in_transaction(
             db, org_id, reason=reason, release_micro=left, epoch=epoch)
         await db.commit()
+
+
+async def give_back_for_exact_path(org_id: int, short_micro: int) -> bool:
+    """Return what a team's counter holds to its balance, for a call on the exact path that the
+    balance alone could not pay for, by `short_micro`: money set aside for the allowance is out
+    of that balance's sight. True when that much went back, and the call may try once more.
+    Only while refills are sized to the team's spend, which can set aside much more than a
+    chunk.
+
+    It costs a refusal as little as it can. The counter is read first, without the team's
+    lease, and a counter that cannot make up the difference is left alone. The team's lease is
+    asked for once: held by a refill or a fold, the call is refused as before, not kept
+    waiting. Then `_give_back`."""
+    if not (_sizing() and enabled_for(org_id)):
+        return False
+    store, key, token = kv.store(), money_key(org_id), uuid.uuid4().hex
+    leased = False
+    # Whatever fails here, the call is refused as it would have been: never an error of its own.
+    try:
+        state = await store.allowance_state(org_id)
+        if state is None or not state[3] or state[0] < max(1, short_micro):
+            return False
+        leased = await store.acquire_lease(key, token, _REFILL_LEASE_MS) == "acquired"
+        if not leased:
+            return False
+        returned = await _give_back(org_id, state[3])
+    except money_admission.AdmissionTimeout:
+        return False
+    except Exception:
+        log.error("returning the allowance of org %s for the exact path failed", org_id,
+                  exc_info=True)
+        return False
+    finally:
+        if leased:
+            await store.release_lease(key, token)
+    if returned:
+        log.info("allowance_given_back org_id=%s returned=%s", org_id, returned)
+    return returned >= max(1, short_micro)
+
+
+async def _give_back(org_id: int, epoch: int) -> int:
+    """Empty the counter of `epoch` and return what it held to the balance, in one money
+    session; what it held. The team's money admission is taken first, for no longer than a call
+    waits for a refill and refusing rather than falling back, so a call short of money never
+    queues behind a long admission, and until the counter is emptied nothing has changed: a
+    timeout or a cancel before then leaves it as it was. The counter is frozen by the drop, so
+    the next call on the allowance refills it from the balance, the whole queue folded first.
+    A release that fails after the drop gives the money back to that frozen counter. A commit
+    that fails proves nothing about whether it landed, so then the money stays in the hold,
+    for the idle sweep to return."""
+    store = kv.store()
+    async with (
+        money_lock(org_id),
+        money_admission.admit(
+            money_admission.require_balance_orgs([org_id]), operation="release",
+            max_wait_s=_REFILL_WAIT_S, refuse_on_timeout=True),
+        money_session(session_maker()) as db,
+    ):
+        left = await store.allowance_drop(org_id, epoch)
+        if not left:
+            return 0
+        try:
+            await allowance.close_allowance_in_transaction(
+                db, org_id, reason="exact_path_short", release_micro=left, epoch=epoch)
+        except BaseException:
+            # Nothing is committed and the hold still has it: back on the counter it came from,
+            # whatever stopped the release. The drop froze the counter, so no call spends it
+            # before a refill has read the balance again.
+            await asyncio.shield(store.allowance_give_back(org_id, epoch, left))
+            raise
+        await db.commit()
+    return left
 
 
 class _Written(NamedTuple):
