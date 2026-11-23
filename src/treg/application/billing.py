@@ -1494,6 +1494,10 @@ async def attempt_auto_topup(db: AsyncSession, org_id: int) -> dict:
             select(CreditBlock.id).where(CreditBlock.stripe_payment_intent == pi["id"])
         )).first() is not None
         await ledger.topup(db, org_id, credited, pi["id"], meta={"auto": True, "source": "stripe"})
+        if not already:
+            # Staged with this credit, as `_credit` does: the webhook's later delivery finds the
+            # payment credited and stages nothing. The worker reads the card from Stripe.
+            await affiliate_bonus.queue(db, org_id=org_id, payment_intent=pi["id"], amount_micro=credited)
         org = await db.get(Org, org_id)
         org.autotopup_failures = 0
         # A pause recorded while this attempt was paying is resolved by this payment. Blanking the

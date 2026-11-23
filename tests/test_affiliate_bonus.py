@@ -358,3 +358,20 @@ async def test_deleting_a_team_never_frees_its_card_for_the_fixed_offer(c, monke
     second = await _team(c, "carl@superdesign.dev")
     await _topup(c, monkeypatch, second, "pi_2")
     assert await _decide() == {"bonus_card_already_used": 1}
+
+
+async def test_an_inline_automatic_top_up_is_staged_too(c, monkeypatch):
+    """An auto top-up credits on treg's own request to Stripe, before any webhook; its later delivery
+    finds the payment credited. The row is staged with that inline credit, so a recurring percentage
+    offer still pays on automatic top-ups."""
+    from test_billing import _armed, _invoice_sdk
+    org_id = await _team(c, "bob@superdesign.dev")
+    await _armed(org_id)
+    monkeypatch.setattr(billing, "_sdk", _invoice_sdk())
+    async with session_maker() as db:
+        assert (await billing.attempt_auto_topup(db, org_id))["ok"] is True
+    rows = await _rows()
+    assert [(r.payment_intent, r.fingerprint) for r in rows] == [("pi_auto_1", None)]
+    offer = {"id": "disc_4", "type": "percentage", "amount": 20, "maxDuration": None}
+    assert await _decide(offer) == {"bonus_granted": 1}
+    assert [b.amount_micro for b in await _bonus_blocks(org_id)] == [2_000_000]

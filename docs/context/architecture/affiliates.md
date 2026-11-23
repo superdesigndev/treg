@@ -143,8 +143,10 @@ Stripe price for it: it pays a `bonus` credit block through `ledger.grant`.
 
 - `billing._credit` stages one `AffiliateBonus` row per new paid top-up of a team with a lead that
   is not dead-lettered (`affiliate_bonus.queue`), in the credit's own transaction: a crash or a
-  failed staging leaves neither, and Stripe's redelivery stages both. The unique `payment_intent`
-  makes it once per payment. Nothing reaches Dub from the webhook.
+  failed staging leaves neither, and Stripe's redelivery stages both. An automatic top-up that
+  `billing.attempt_auto_topup` credits inline, before its webhook, is staged in that credit's
+  transaction the same way. The unique `payment_intent` makes it once per payment. Nothing reaches
+  Dub from the webhook.
 - `affiliates.drain_once` then runs `affiliate_bonus.drain_once`: rows are claimed with a conditional
   update, the offer of each verified team is read from Dub with no session open, and each row is
   decided in its own transaction under an advisory lock per team and per card (Postgres), so the
