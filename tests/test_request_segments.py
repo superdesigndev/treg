@@ -264,6 +264,8 @@ def test_a_row_location_names_its_country_by_name_never_by_a_two_letter_part(loc
     # a metro area across a border names no one country
     ("San Diego–Tijuana Metropolitan Area", None), ("San Diego-Tijuana Metropolitan Area", None),
     ("Raleigh-Durham-Chapel Hill Area", "US"), ("Miami-Fort Lauderdale Area", "US"),
+    # what is left once a word is dropped is never read as a country: Canada Bay is in Australia
+    ("Canada Bay", None), ("Greater Jordan Area", None),
 ])
 def test_a_city_or_metro_area_names_its_country(location, code):
     assert S.location_country(location) == code

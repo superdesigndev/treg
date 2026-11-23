@@ -308,17 +308,25 @@ def _named_country(name: str) -> str | None:
     return _part_country(name) or _PLACE_COUNTRY.get(name)
 
 
+def _listed_place(name: str) -> str | None:
+    return "US" if name in _US_STATES else _PLACE_COUNTRY.get(name)
+
+
 def _place_country(part: str) -> str | None:
     """A city, metro area or one-country region's country: `greater phoenix area`, `san francisco
     bay area`, `dallas-fort worth metroplex`. A hyphenated name gives a country only when every
-    place in it is known and in that country: `san diego-tijuana` spans two, so it gives none."""
+    place in it is known and in that country: `san diego-tijuana` spans two, so it gives none.
+    Once a word is dropped, what is left is looked up only among the cities, regions and US
+    states we list, never as a country: `canada bay` is in Australia, not Canada."""
+    if code := _named_country(part):
+        return code
     core = re.sub(r"\s+", " ", _METRO_WORDS.sub(" ", part)).strip()
-    for name in (part, core, core.removesuffix(" bay")):
-        if code := _named_country(name):
+    for name in (core, core.removesuffix(" bay")):
+        if code := _listed_place(name):
             return code
     pieces = re.split(r"\s*[-–/]\s*", core.removesuffix(" bay"))
     if len(pieces) > 1:
-        codes = {_named_country(p) for p in pieces}
+        codes = {_listed_place(p) for p in pieces}
         if len(codes) == 1 and None not in codes:
             return codes.pop()
     return None
