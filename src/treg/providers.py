@@ -27,7 +27,7 @@ from dataclasses import dataclass, field
 # `auth` is the provider's DEFAULT shape; a per-variable form (CLIENT_ID/SECRET → oauth2) can override
 # it. Served at GET /providers.json so the CLI can refresh centrally (bundled copy = offline fallback);
 # bump CATALOG_VERSION whenever entries change so a cache can tell it's stale.
-CATALOG_VERSION = 28  # v28: JobsPipe and Hirebase
+CATALOG_VERSION = 29  # v29: Groundbox
 # `skills` (optional) matches a SKILL FOLDER name for file-credential skills that have no env var to
 # key on (OAuth token files etc.) — see `match_skill`. Such providers carry `tokens: []` so the env
 # scanner never mis-detects them as a simple bearer key (their real auth is OAuth + extra headers).
@@ -161,6 +161,8 @@ CATALOG: list[dict] = [
      "auth": {"shape": "bearer"}, "probe": "v1/account"},
     {"provider": "Hirebase", "tokens": ["HIREBASE"], "base_url": "https://api.hirebase.org/v2",
      "auth": {"shape": "api_key_header", "header": "x-api-key"}, "probe": "billing/usage/summary"},
+    {"provider": "Groundbox", "tokens": ["GROUNDBOX"], "base_url": "https://api.groundbox.dev/v1",
+     "auth": {"shape": "bearer"}, "probe": "sandboxes?limit=1"},
     {"provider": "Aviato", "tokens": ["AVIATO"], "base_url": "https://data.api.aviato.co",
      "auth": {"shape": "bearer"}, "probe": "billing/balance"},
     {"provider": "Enrichlayer", "tokens": ["ENRICHLAYER"], "base_url": "https://enrichlayer.com",

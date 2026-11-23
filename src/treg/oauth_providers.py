@@ -3311,6 +3311,33 @@ FUNDABLE = OAuthProvider(
 )
 
 
+GROUNDBOX = OAuthProvider(
+    service="groundbox",
+    display_name="Groundbox",
+    auth_kind="key",
+    token_label="API key",
+    token_placeholder="gbx_...",
+    token_header="Authorization",
+    token_format="Bearer {secret}",
+    setup_url="https://app.groundbox.dev/keys",
+    setup_action_label="Get your Groundbox API key",
+    setup_steps=(
+        "Sign in to Groundbox and open API keys.",
+        "Create a key with the sandboxes:read and sandboxes:write scopes.",
+        "Copy the key (it starts with gbx_) and paste it here.",
+    ),
+    setup_note="A running sandbox is billed per vCPU-hour by the second; commands, files and status calls are free.",
+    auth_uri="", token_uri="",
+    scopes={},
+    client_id_setting="", client_secret_setting="",
+    category="Developer",
+    summary="Start Linux sandbox VMs, run commands and code in them, read their files and delete them.",
+    base_url="https://api.groundbox.dev/v1",
+    docs_url="https://groundbox.dev/docs/sandboxes",
+    # Free; a bogus key gets HTTP 401 {"error": {"code": "unauthorized", ...}}.
+    probe_path="/sandboxes?limit=1",
+)
+
 OCEANIO = OAuthProvider(
     service="oceanio",
     display_name="Ocean.io",
@@ -4520,6 +4547,8 @@ REGISTRY: dict[str, OAuthProvider] = {
         LUSHA, CORESIGNAL, DIFFBOT, THECOMPANIESAPI, LEADMAGIC, ENRICHLAYER, FIBER_AI, CRUSTDATA, THEIRSTACK, JOBSPIPE, AVIATO,
         COMPANYENRICH, FUNDABLE, CORPOAPI, OCEANIO, ADYNTEL, TOMBA, TRESTLEIQ, HLRLOOKUP, PREDICTLEADS, FINDYMAIL, ANYMAILFINDER, ENROW, FILTRAT, FILTRAT_FINDER, DROPCONTACT, BRANDDEV, ICYPEAS, LEADSFORGE, MAPSDATA,
         INFLUENCERSCLUB, VILLAGE,
+        # Developer: code sandboxes
+        GROUNDBOX,
         # Places: intent-scored local search
         ATLY,
         # Market data API-key providers
@@ -4536,7 +4565,8 @@ DEFAULT_CAPABILITY = "read"
 # Shelf order in the marketplace. Anything carrying a category not named here sorts last, so a
 # provider added without one is visible rather than lost between the shelves.
 CATEGORY_ORDER = ("AI generation", "SEO", "Advertising", "Social media", "Enrichment",
-                  "Market data", "Research & public data", "Jobs data", "Community", "Other")
+                  "Market data", "Research & public data", "Jobs data", "Developer", "Community",
+                  "Other")
 
 
 def get(service: str) -> OAuthProvider | None:
