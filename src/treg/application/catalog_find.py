@@ -115,6 +115,7 @@ def _row(ep: dict, cat: catalog_store.Catalog, provider_display, p: float | None
         "provider_display": provider_display(ep["provider"]),
         **catalog_store.endpoint_context(ep, cat),
         "cost": cat.cost_view(ep.get("cost"), ep.get("provider")),
+        "platform_eligible": cat.platform_eligible(ep),
         "p": None if p is None else round(float(p), 3),
     }
 

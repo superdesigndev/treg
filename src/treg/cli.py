@@ -2940,7 +2940,7 @@ def cmd_call(args, cfg) -> None:
             if recovery:
                 print(f"resume: {recovery}", file=sys.stderr)
         if reserved := submission.headers.get("X-Treg-Cost-Micro"):
-            print(f"generation reservation: ${int(reserved) / 1_000_000:g}", file=sys.stderr)
+            print(f"async task reservation: ${int(reserved) / 1_000_000:g}", file=sys.stderr)
         try:
             outcome = await_async_task(
                 descriptor, submission, call_fn, _CliAwaitClock(), getattr(args, "timeout", None)

@@ -142,6 +142,38 @@ def _parse_compare_pairs(raw: str) -> dict[str, list[tuple[str, str]]]:
     return out
 
 
+RANKING_TIERS = ("good", "bad")
+
+
+def _parse_ranking_tiers(raw: str) -> dict[str, dict[str, str]]:
+    if not raw.strip():
+        return {}
+    try:
+        parsed = json.loads(raw)
+    except ValueError:
+        raise ValueError("ranking_tiers must be a JSON object") from None
+    message = ("ranking_tiers must map capabilities to {\"good\": [...], \"bad\": [...]} lists of "
+               'lowercase providers, each provider in one list, e.g. {"web.extract": {"good": ["a"], "bad": ["b"]}}')
+    if not isinstance(parsed, dict):
+        raise ValueError(message)
+    out: dict[str, dict[str, str]] = {}
+    for capability, tiers in parsed.items():
+        if not (isinstance(capability, str) and _CAPABILITY_NAME.fullmatch(capability)
+                and isinstance(tiers, dict) and set(tiers) <= set(RANKING_TIERS)):
+            raise ValueError(message)
+        named: dict[str, str] = {}
+        for tier, providers in tiers.items():
+            if not (isinstance(providers, list)
+                    and all(isinstance(p, str) and _PROVIDER_NAME.fullmatch(p) for p in providers)):
+                raise ValueError(message)
+            for p in providers:
+                if p in named:
+                    raise ValueError(message)
+                named[p] = tier
+        out[capability] = named
+    return out
+
+
 class Settings(BaseSettings):
     # Most of these values are credentials: a validation error names the field, never the value.
     model_config = SettingsConfigDict(env_file=".env", env_prefix="TREG_", extra="ignore",
@@ -188,6 +220,7 @@ class Settings(BaseSettings):
     mark_hint_capabilities: list[str] = Field(default_factory=list)
     mark_hint_per_hour: int = Field(default=3, ge=1)
     mark_hint_texts: list[str] = Field(default_factory=list)
+    ranking_tiers: str = ""
     # Pairwise comparisons (application/compare.py, docs feedback.md "Pairwise comparisons"): the
     # hourly `treg-worker compare collect` run asks the other vendor of a configured pair the input
     # of a recent routed call the call path marked as sampled, on treg's key, and the team's agent is later invited to judge
@@ -1400,6 +1433,16 @@ class Settings(BaseSettings):
     def _compare_pairs_shape(cls, v: str) -> str:
         _parse_compare_pairs(v)  # raises ValueError on a malformed value
         return v
+
+    @field_validator("ranking_tiers")
+    @classmethod
+    def _ranking_tiers_shape(cls, v: str) -> str:
+        _parse_ranking_tiers(v)
+        return v
+
+    @property
+    def ranking_tier_map(self) -> dict[str, dict[str, str]]:
+        return _parse_ranking_tiers(self.ranking_tiers)
 
     @property
     def compare_pair_map(self) -> dict[str, list[tuple[str, str]]]:
