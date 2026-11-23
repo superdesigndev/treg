@@ -63,12 +63,16 @@ def team_band(n: int) -> int:
 # profile link is never published.
 _EMAIL = re.compile(r"[\w.%+-]+@[\w-]+(?:\.[\w-]+)+")
 # Separators include every Unicode dash (non-breaking hyphen, en dash, minus sign, ...).
-_PHONE = re.compile(r"\+?\d[\d\s().\-\u2010-\u2015\u2212\uFE58\uFE63\uFF0D]{6,}\d")
+_PHONE = re.compile(r"\+?\d[\d\s().:\-\u2010-\u2015\u2212\uFE58\uFE63\uFF0D]{6,}\d")
 _PHONE_DIGITS = 9
-# Dates and clock times are taken out before looking for a phone number: `2026-11-22 14:00` and
-# `2026-11-01 - 2026-11-22` run nine digits together without being one.
-_DATETIME = re.compile(r"\b\d{4}[-/.]\d{1,2}[-/.]\d{1,2}(?:T\d{1,2}:\d{2}(?::\d{2})?)?\b"
-                       r"|\b\d{1,2}:\d{2}(?::\d{2})?\b")
+# A run of digits that is wholly real dates and clock times (`2026-11-22 14:00`,
+# `01.11.2026 – 22.11.2026`) is not a phone number. A run with any digit left over is judged whole,
+# so a number grouped like a date (`2012.03.04.56`) is still a phone.
+_MONTH, _DAY = r"(?:0?[1-9]|1[0-2])", r"(?:0?[1-9]|[12]\d|3[01])"
+_DATETIME = re.compile(
+    rf"(?<!\d)(?:(?:19|20)\d\d([-/.]){_MONTH}\1{_DAY}"
+    rf"|{_DAY}([-/.]){_DAY}\2(?:19|20)\d\d"
+    r"|(?:[01]?\d|2[0-3]):[0-5]\d(?::[0-5]\d)?)(?!\d)")
 # A person's LinkedIn page: public profile, old public profile, Sales Navigator lead or Recruiter.
 _PROFILE = re.compile(r"linkedin\.com/(?:in|pub|sales/lead|sales/people|talent/profile)/", re.IGNORECASE)
 # Capability segments whose results are about a person: their reasons name the person, so they
@@ -88,8 +92,13 @@ NOT_A_PERSON = frozenset({"company", "companies", "business", "businesses", "rep
 
 def carries_contact_data(reason: str) -> bool:
     return bool(_EMAIL.search(reason) or _PROFILE.search(reason) or any(
-        sum(c.isdigit() for c in m.group()) >= _PHONE_DIGITS
-        for m in _PHONE.finditer(_DATETIME.sub(" ", reason))))
+        _is_phone(m.group()) for m in _PHONE.finditer(reason)))
+
+
+def _is_phone(run: str) -> bool:
+    if not any(c.isdigit() for c in _DATETIME.sub("", run)):
+        return False
+    return sum(c.isdigit() for c in run) >= _PHONE_DIGITS
 
 
 def about_people(capability: str | None) -> bool:
