@@ -320,8 +320,9 @@ def _place_country(part: str) -> str | None:
 
 def location_country(value: Any) -> str | None:
     """The ISO2 country a free-text location names (`Berlin, Germany` -> `DE`, `Austin, Texas` ->
-    `US`), from its comma parts, last first. A two-letter part is never read as a country code:
-    `San Francisco, CA` names a state, not Canada. With no country or US state in any part, a city,
+    `US`), from its comma parts: a country name, a US state, or a last part that is a provider's
+    country code (below). Parts that name different countries name none (`Lebanon, US`, a US city;
+    `Washington, GB`, a British town). With no country or US state in any part, a city,
     metro area or one-country region gives its country (`Austin, TX`, `Greater Phoenix Area`,
     `San Francisco Bay Area` -> `US`) when every part is a place we know or a state or province
     abbreviation (`Austin, TX`). Where they disagree, the part further right, the wider place,
@@ -334,11 +335,11 @@ def location_country(value: Any) -> str | None:
     Durham, Ontario from a provider's country code, or a place in California), so a location
     holding one names no country unless a part spells the country out."""
     parts = [p.strip() for p in _text(value).split(",") if p.strip()]
-    for part in reversed(parts):
-        if (code := _part_country(part)) is not None:
-            return code
+    named = {code for part in parts if (code := _part_country(part)) is not None}
     if parts and len(last := parts[-1]) == 2 and last not in _REGION_CODES and (code := iso2(last)):
-        return code
+        named.add(code)
+    if named:
+        return next(iter(named)) if len(named) == 1 else None
     within: list[frozenset[str]] = []
     places = qualified = 0
     for part in parts:
