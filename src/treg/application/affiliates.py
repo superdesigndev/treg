@@ -22,6 +22,7 @@ from ..config import get_settings
 from ..domain.identity.access import _is_machine_email
 from ..domain.identity.promotions import promo_inbox
 from ..infra import dub
+from . import affiliate_bonus
 from ..infra import stripe as stripe_adapter
 from ..infra.db import background_session_maker
 from ..models import AffiliateClaim, AffiliateLead, Membership, Org, User
@@ -372,8 +373,9 @@ async def _sync_stripe(*, session_factory, stripe_call) -> dict:
 
 
 async def drain_once(client, *, session_factory, stripe_call=stripe_adapter.call) -> dict:
-    """Upload the due leads and resolve their partner check, then sync Stripe. No database connection
-    is held while Dub or Stripe is being called.
+    """Upload the due leads and resolve their partner check, sync Stripe, then decide the partner
+    offer on paid top-ups (`affiliate_bonus`). No database connection is held while Dub or Stripe is
+    being called.
 
     A lead whose partner is the team's own creator or owner is dead-lettered as `self_referral`, so
     the team's Stripe customer is never tagged (and untagged if it ever was). A recorded lead whose
@@ -389,7 +391,9 @@ async def drain_once(client, *, session_factory, stripe_call=stripe_adapter.call
             counts = await _record(db, results, utcnow_naive())
             await db.commit()
     synced = await _sync_stripe(session_factory=session_factory, stripe_call=stripe_call)
-    return {**counts, **synced}
+    bonuses = await affiliate_bonus.drain_once(client, session_factory=session_factory,
+                                               stripe_call=stripe_call)
+    return {**counts, **synced, **bonuses}
 
 
 async def worker(client) -> None:

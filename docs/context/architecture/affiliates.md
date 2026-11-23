@@ -3,9 +3,11 @@ title: Affiliate program on Dub Partners - click or code, lead outbox, Stripe ta
 status: shipped
 sources:
   - src/treg/application/affiliates.py
+  - src/treg/application/affiliate_bonus.py
   - src/treg/infra/dub.py
   - src/treg/routers/signup_cookies.py
   - src/treg/alembic/versions/0118_affiliate_lead.py
+  - src/treg/alembic/versions/0125_affiliate_bonus.py
 related:
   - architecture/money.md
   - architecture/ads-conversions.md
@@ -129,6 +131,43 @@ no affiliate brought carries no Dub key. Team deletion removes its `AffiliateLea
 The reward's 6-month window is Dub's: it starts at the customer's first sale of any kind, an
 enterprise SSO payment on the same Customer included, so `/terms` counts it from the first payment.
 Commissions Dub records on SSO payments are cancelled in Dub's review.
+
+## Partner offer
+
+The team a partner brings can get bonus credit on its paid top-ups (`affiliate_bonus`). The offer is
+set in Dub, not in treg: a discount with the Custom provider (no Stripe coupon) on the program's
+default group, another group, one partner or one link. Dub resolves which one a customer gets (link,
+then partner, then group) and returns it on the customer record (`GET /customers?externalId=` with
+`includeExpandedFields`, read by `dub.customer_partner` into `dub.Discount`). treg never changes a
+Stripe price for it: it pays a `bonus` credit block through `ledger.grant`.
+
+- `billing._credit` stages one `AffiliateBonus` row per new paid top-up of a team with a lead that
+  is not dead-lettered (`affiliate_bonus.queue`), in the credit's own transaction: a crash or a
+  failed staging leaves neither, and Stripe's redelivery stages both. An automatic top-up that
+  `billing.attempt_auto_topup` credits inline, before its webhook, is staged in that credit's
+  transaction the same way. The unique `payment_intent` makes it once per payment. Nothing reaches
+  Dub from the webhook.
+- `affiliates.drain_once` then runs `affiliate_bonus.drain_once`: rows are claimed with a conditional
+  update, the offer of each verified team is read from Dub with no session open, and each row is
+  decided in its own transaction under an advisory lock per team and per card (Postgres), so the
+  grant and the row's `outcome` commit together. A row whose lead is not verified yet, or a Dub
+  error, retries with backoff; after `GIVE_UP_AFTER` (7 days) it is decided `expired`.
+- A flat offer (`amount` in cents) is paid once per team, when its paid top-ups, net of refunds,
+  first reach `referral_min_topup_micro`, and once per card fingerprint across teams: the grant
+  stages an `AffiliateCardClaim`, which has no team and outlives team deletion, like
+  `AffiliateClaim`. Its duration is ignored. A payment credited from `payment_intent.succeeded` before its Checkout completion is
+  staged with no card, so the worker reads it from Stripe (`PaymentIntent.retrieve`, no session
+  open) before deciding; a failed lookup retries.
+- A percentage offer is paid on each top-up of at least that minimum, for `maxDuration` months from
+  the team's first paid top-up: 0 is the first such top-up only, none is every one.
+- One grant never exceeds `affiliate_bonus_max_micro`. No offer, a team the friend referral
+  rewards (a pending, qualified or paid `Referral`), a payment already refunded and a dead-lettered
+  lead earn nothing; `outcome` says which.
+- The grant's meta carries the `payment_intent`, so `billing.revoke_refunded` revokes it in
+  proportion with the payment, like the top-up bonus. The decision row-locks the payment's purchased
+  block before it reads the payment's refunds, the lock a refund takes too: either the decision sees
+  the refund, or the refund runs after the grant commits and revokes it. The billing page's top-up history shows only
+  the top-up bonus.
 
 ## Not built
 

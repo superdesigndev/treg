@@ -1009,7 +1009,9 @@ never a Stripe coupon.
 purchased block stays exactly what the card paid: purchased credit is a refundable liability, the
 bonus is marketing spend. The billing page shows the bonus each refill earns and the next tier up.
 The grant's meta carries `payment_intent`, `pct` and `topup_block_id`, which `topup_history` joins
-to show `bonus_micro`.
+to show `bonus_micro`. The partner offer of the affiliate program is another `bonus` grant naming its
+payment (`source: affiliate_bonus`, [affiliates](affiliates.md) "Partner offer"), so a refund revokes
+it the same way; `topup_history` does not show it.
 
 `_grant_topup_bonus` grants per payment, not per first delivery: every delivery, and the inline
 auto-top-up credit, grants when no `topup_bonus` entry names the PaymentIntent. A lock on the
