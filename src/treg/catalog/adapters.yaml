@@ -1587,7 +1587,8 @@ adapters:
     # Billed per keyword sent, and an empty answer settles at the whole hold.
     cost_units: "len(list(keywords))"
     out: {rows: "."}
-    miss: ". == []"
+    # A miss when the body is a list and no row has is_data_found: true.
+    miss: "choose(. == list(.), flagged(., 'is_data_found') == null, false)"
   dataforseo.x.keywords-data-dataforseo-trends-explore-live:
     accepts: [[keywords]]
     in:  {keywords: body.keywords}
