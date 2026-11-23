@@ -72,7 +72,7 @@ _PHONE_DIGITS = 9
 _MONTH, _DAY = r"(?:0?[1-9]|1[0-2])", r"(?:0?[1-9]|[12]\d|3[01])"
 _DATETIME = re.compile(
     rf"(?<!\d)(?:(?:19|20)\d\d([-/.]){_MONTH}\1{_DAY}"
-    rf"|{_DAY}([-/.]){_DAY}\2(?:19|20)\d\d"
+    rf"|{_DAY}([-/.]){_MONTH}\2(?:19|20)\d\d|{_MONTH}([-/.]){_DAY}\3(?:19|20)\d\d"
     r"|(?:[01]?\d|2[0-3]):[0-5]\d(?::[0-5]\d(?:\.\d{1,6})?)?)(?!\d)")
 # A person's LinkedIn page: public profile, old public profile, Sales Navigator lead or Recruiter.
 _PROFILE = re.compile(r"linkedin\.com/(?:in|pub|sales/lead|sales/people|talent/profile)/", re.IGNORECASE)

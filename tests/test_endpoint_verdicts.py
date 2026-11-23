@@ -75,6 +75,10 @@ def test_quotable():
     assert quotable(LONG + " Covered 11/01/2026 - 11/22/2026 at 14:00.")
     assert quotable(LONG + " Ran at 2026-11-22T14:00:05.123Z.")
     assert quotable(LONG + " Ran at 11/22/2026 14:00:05.")
+    # Year-last dates need a real month in one of the first two places: 19.19.2026 is not a date,
+    # so its run is counted whole.
+    assert quotable(LONG + " Ran at 31.12.2026 14:00 and 12/31/2026 14:00.")
+    assert not quotable(LONG + " Ran at 19.19.2026 14:00.")
     assert not quotable("   too short   ")
     assert not quotable(None)
 
