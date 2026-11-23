@@ -135,7 +135,8 @@ defaults and type coercion. A usage meter is one value: no `*` and no root filte
 `domain/catalog/outcome.py` judges one answer to a v2 row from its one declaration: a non-2xx is a
 miss when a `miss` rule lists its status and its `when` or `plugin` holds, else an error; a 2xx is
 an error when `expect` does not hold or `error` holds, a miss when it is a 204 or a status-less
-`miss` rule holds, else a hit. Billing reads it in the settlement order; `results.judged_outcome`
+`miss` rule holds, or the `ok_when` beside a rule's `status` holds (a provider that answers one miss
+with a 404 and another with an empty 2xx), else a hit. Billing reads it in the settlement order; `results.judged_outcome`
 records it on each call with `not_found` ahead of it, and reliability counts that word before the
 status ([catalog](catalog.md)); `results.classify` (the hit verdict, cache admission) reads it for a
 row that declares a `miss` rule, for a 2xx or a 4xx status, beside a verified adapter, in today's
