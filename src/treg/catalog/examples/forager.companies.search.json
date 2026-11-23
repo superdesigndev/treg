@@ -1,0 +1,78 @@
+{
+  "search_results": [
+    {
+      "id": 1043439,
+      "name": "Stripe",
+      "legal_name": "Stripe",
+      "website": "https://stripe.com/",
+      "domain": "stripe.com",
+      "domain_rank": 287,
+      "logo": "https://media.licdn.com/dms/image/v2/D560BAQE2ZfJyfn-VCg/company-logo_100_100/B56ZlyKwpUKIAQ-/0/1758557047806/stripe_logo?e=1788393600&t=3-dTljuy3u3iM9ach3hQeyRdWXlZ9cZosDN4PsVplWU&v=beta",
+      "description": "Stripe builds programmable financial services. Millions of companies—from the world’s largest enterprises to the most ambitious startups—use Stripe to accept payments, grow their revenue, and accelerate new business opportunities. Headquartered in San Francisco and Dublin, the company aims to increase the GDP of the internet.",
+      "founded_date": "2010-01-01",
+      "operating_status": null,
+      "employees_range": "5001 - 10000",
+      "employees_amount": 17103,
+      "keywords": [
+        {
+          "id": 9295787,
+          "name": "Bankwesen/E-Payment"
+        }
+      ],
+      "location": {
+        "id": 4660,
+        "name": "san francisco, california, united states",
+        "osm_locations": [
+          {
+            "id": 10,
+            "name": "United States",
+            "place_type": "country"
+          },
+          {
+            "id": 275,
+            "name": "California, United States",
+            "place_type": "state"
+          },
+          "… 2 more item(s) truncated"
+        ]
+      },
+      "finance_info": {
+        "revenue": 14400000000
+      },
+      "linkedin_info": {
+        "public_identifier": "stripe",
+        "industry": {
+          "id": 25,
+          "name": "Computer Software"
+        },
+        "public_profile_url": "https://www.linkedin.com/company/stripe/"
+      },
+      "addresses": [
+        {
+          "street_number": null,
+          "street_name": "510 Townsend St",
+          "city": "San Francisco",
+          "state": "California",
+          "postcode": "94103",
+          "country": "US",
+          "summary": "510 Townsend St, San Francisco, California, 94103, US"
+        },
+        {
+          "street_number": null,
+          "street_name": "1 Grand Canal Street Lower",
+          "city": "Dublin",
+          "state": "County Dublin",
+          "postcode": null,
+          "country": "IE",
+          "summary": "1 Grand Canal Street Lower, Dublin, County Dublin, IE"
+        },
+        "… 16 more item(s) truncated"
+      ],
+      "date_updated": "2026-08-12T08:39:54.222466Z",
+      "found_simple_events": [],
+      "found_funding_events": [],
+      "found_job_post_events": []
+    }
+  ],
+  "total_search_results": 1
+}

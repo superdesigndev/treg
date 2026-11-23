@@ -1,0 +1,495 @@
+provider: forager
+source:
+  docs: https://docs.forager.ai/
+  openapi: https://docs.forager.ai/_bundle/openapi.yaml
+  curated: '2026-11-23'
+# Every data route carries the account id bound to the key (/api/{account_id}/...). The id is the
+# second half of the credential: treg fills {account_id} from the connection or from treg's own
+# account, so callers leave it as written. A lookup or search charges plan credits only when it
+# returns data; a 404 or an empty answer is free. No answer reports its charge, so a hit settles
+# at the listed price. Counts, autocomplete and the work-email poll are free.
+limits: "About 10 requests a second per key; past that HTTP 429 with Retry-After: 1. Search pages hold 10 results."
+pricing_url: https://docs.forager.ai/api-overview/credit-pricing
+
+proposed_capabilities:
+  companies.keywords.autocomplete: "Autocomplete company-description keywords"
+  companies.technologies.autocomplete: "Autocomplete technology-stack names"
+  companies.location.resolve: "Map location names to filter values"
+
+defaults:
+  provenance: {source: observed, source_url: 'https://docs.forager.ai/api-overview/credit-pricing', checked: '2026-11-23', confidence: verified}
+  docs_url: https://docs.forager.ai/openapi.md
+
+endpoints:
+  - id: forager.people.enrich
+    added: '2026-11-23'
+    verified: '2026-11-23'
+    example_response: examples/forager.people.enrich.json
+    domain: contacts
+    capability: people.enrich
+    platform: people
+    scope: any_account
+    method: POST
+    path: /api/{account_id}/datastorage/person_detail_lookup/
+    name: Get a person's full profile by LinkedIn or Forager ID
+    summary: Get a person's profile from a LinkedIn handle or Forager person ID, with headline, location, skills, every role and employer, education, certifications, languages, patents and projects.
+    input:
+      bodyType: json
+      body:
+        linkedin_public_identifier: {type: string, required: false, note: "the slug in linkedin.com/in/<slug>/", example: williamhgates}
+        person_id: {type: integer, required: false, note: "id from a Forager search or lookup"}
+      note: "Send one of linkedin_public_identifier or person_id."
+    test_request:
+      body: {linkedin_public_identifier: williamhgates}
+    price: {value: '1', currency: credit, per: 1, unit: call, note: "One credit for a found person; a 404 is free."}
+    miss: {status: [404], means: "No person matches; live probes spent no credit."}
+
+  - id: forager.people.enrich.by_email
+    added: '2026-11-23'
+    example_response: examples/forager.people.enrich.by_email.json
+    domain: contacts
+    capability: people.enrich
+    platform: people
+    scope: any_account
+    method: POST
+    path: /api/{account_id}/datastorage/person_detail_reverse_lookup/by_email/
+    name: Find a person's profile by email
+    summary: Find the person behind an email address and get their full profile, with roles, employers, education and skills.
+    input:
+      bodyType: json
+      body:
+        email: {type: string, format: email, required: true}
+    untestable: "Its only input is a real person's email address; the example is the profile of a public figure."
+    price: {value: '5', currency: credit, per: 1, unit: call, note: "Five credits for a found person; a 404 is free."}
+    miss: {status: [404], means: "No person matches the email; live probes spent no credit."}
+
+  - id: forager.people.profile.from_phone
+    added: '2026-11-23'
+    example_response: examples/forager.people.profile.from_phone.json
+    domain: contacts
+    capability: people.profile.from_phone
+    platform: people
+    scope: any_account
+    method: POST
+    path: /api/{account_id}/datastorage/person_detail_reverse_lookup/by_phone_number/
+    name: Find a person's profile by phone number
+    summary: Find the person behind a phone number and get their full profile, with LinkedIn, roles, employers, education and skills.
+    input:
+      bodyType: json
+      body:
+        phone_number: {type: string, required: true, note: "E.164, e.g. +14155552671"}
+      note: "A number listed on someone's record matches them, a reserved test number included."
+    untestable: "Its only input is a real person's phone number; the example is the profile of a public figure."
+    price: {value: '15', currency: credit, per: 1, unit: call, note: "Fifteen credits for a found person; a 404 is free."}
+    miss: {status: [404], means: "No person matches the number; live probes spent no credit."}
+
+  - id: forager.people.phone.find
+    added: '2026-11-23'
+    example_response: examples/forager.people.phone.find.json
+    domain: contacts
+    capability: people.phone.find
+    platform: people
+    scope: any_account
+    method: POST
+    path: /api/{account_id}/datastorage/person_contacts_lookup/phone_numbers/
+    name: Find a person's phone numbers by LinkedIn or Forager ID
+    summary: Find the verified phone numbers on file for a person from a LinkedIn handle or Forager person ID.
+    input:
+      bodyType: json
+      body:
+        linkedin_public_identifier: {type: string, required: false, note: "the slug in linkedin.com/in/<slug>/"}
+        person_id: {type: integer, required: false, note: "id from a Forager search or lookup"}
+        quality_tier: {type: string, required: false, enum: [highest_quality, most_coverage], note: "highest_quality (the default) returns only numbers that passed the strictest check; most_coverage returns every verified number, those included, and costs less"}
+      note: "Send one of linkedin_public_identifier or person_id. An empty list means no number is on file."
+    untestable: "A real answer is a person's private phone number; the example is a fixture with a reserved fake number."
+    price:
+      table:
+        - {when: [{path: body.quality_tier, op: equals, value: most_coverage}], value: '9'}
+      fallback: {value: '15', note: "highest_quality, also when quality_tier is absent or null"}
+      currency: credit
+      per: 1
+      unit: call
+      note: "Charged once per lookup that returns a number, however many come back: 15 credits for highest_quality, 9 for most_coverage. An empty list is free."
+    miss: {when: {path: response, op: empty}}
+
+  - id: forager.people.email.find.personal
+    added: '2026-11-23'
+    example_response: examples/forager.people.email.find.personal.json
+    domain: contacts
+    capability: people.email.find.personal
+    platform: people
+    scope: any_account
+    method: POST
+    path: /api/{account_id}/datastorage/person_contacts_lookup/personal_emails/
+    name: Find a person's personal emails by LinkedIn or Forager ID
+    summary: Find a person's personal email addresses from a LinkedIn handle or Forager person ID, each with its validation status.
+    input:
+      bodyType: json
+      body:
+        linkedin_public_identifier: {type: string, required: false, note: "the slug in linkedin.com/in/<slug>/"}
+        person_id: {type: integer, required: false, note: "id from a Forager search or lookup"}
+        include_all_emails: {type: boolean, required: false, default: false, note: "false returns only consumer webmail (Gmail, Outlook, Yahoo, iCloud, Proton); true adds corporate, school and custom domains"}
+      note: "Send one of linkedin_public_identifier or person_id."
+    untestable: "A real answer is a person's private email address; the example is a fixture with a reserved fake address."
+    price: {value: '5', currency: credit, per: 1, unit: call, note: "Five credits for a lookup that returns an address; an empty list is free."}
+    miss: {when: {path: response, op: empty}}
+
+  - id: forager.people.email.find
+    added: '2026-11-23'
+    example_response: examples/forager.people.email.find.submit.json
+    terminal_example_response: examples/forager.people.email.find.result.json
+    domain: contacts
+    capability: people.email.find
+    platform: people
+    scope: any_account
+    method: POST
+    path: /api/v2/{account_id}/datastorage/person_contacts_lookup/work_emails/
+    name: Find a person's work email by name and domain, or LinkedIn
+    summary: Find and verify a person's work email from a first name, last name and company domain, or from a LinkedIn handle.
+    body_allowlist: true
+    input:
+      bodyType: json
+      body:
+        first_name: {type: string, required: false, example: Patrick}
+        last_name: {type: string, required: false, example: Collison}
+        domain: {type: string, required: false, note: "company domain; a full URL is cut to its domain", example: stripe.com}
+        linkedin_public_identifier: {type: string, required: false, note: "the slug in linkedin.com/in/<slug>/; the name and current employer come from Forager's data"}
+      note: "Answers 202 with a job id; poll forager.people.email.find.get until status is completed or failed. A miss takes about 20 seconds."
+    untestable: "A real answer is a named person's work email; the examples are fixtures with a reserved fake address."
+    price: {value: '5', currency: credit, per: 1, unit: call, note: "Five credits once the job finds an address; not_found, a failed job and every poll are free."}
+    expect: {path: response.job_id, op: present}
+    miss: {when: {any: [{path: response.result, op: equals, value: not_found}, {path: response.status, op: equals, value: failed}]}}
+    async:
+      id_from: job_id
+      poll: {endpoint: forager.people.email.find.get, param: {in: pathParams, name: job_id}}
+      status: {path: status, progress: [queued, running, awaiting_provider], success: [completed], failure: [failed]}
+      result: {path: emails}
+      interval: 5
+      max_age: 1800
+
+  - id: forager.people.email.find.get
+    added: '2026-11-23'
+    kind: utility
+    domain: contacts
+    capability: people.email.find
+    platform: people
+    scope: any_account
+    method: GET
+    path: /api/v2/{account_id}/datastorage/person_contacts_lookup/work_emails/{job_id}/
+    name: Get a work email search's result
+    summary: Read a work email search's status and, once completed, whether an address was found and each address with its validation status.
+    resource_ownership:
+      requires: {kind: 'poll:forager.people.email.find.get', param: job_id}
+    input:
+      pathParams:
+        job_id: {type: string, required: true, note: "the job_id forager.people.email.find returned"}
+      note: "status is queued, running, awaiting_provider, completed or failed; result is found or not_found once completed. A Retry-After header suggests when to poll again."
+    untestable: "Requires a job id created by the connected account."
+    price: {value: '0', currency: USD, unit: call, note: "Free."}
+
+  - id: forager.people.search
+    added: '2026-11-23'
+    verified: '2026-11-23'
+    example_response: examples/forager.people.search.json
+    domain: contacts
+    capability: people.search
+    platform: people
+    scope: any_account
+    method: POST
+    path: /api/{account_id}/datastorage/person_role_search/
+    name: Search people by role, title, company, place or skills
+    summary: Search people by role title or description, current role, dates, name, headline, skills, place, industry and the employer's size, funding, keywords or technologies, ten per page with each person's role and employer.
+    input:
+      bodyType: json
+      body:
+        role_title: {type: string, required: false, note: "boolean text search, e.g. CEO OR founder"}
+        role_is_current: {type: boolean, required: false}
+        person_name: {type: string, required: false}
+        person_linkedin_public_identifiers: {type: array, items: {type: string}, required: false, example: [williamhgates]}
+        person_locations: {type: array, items: {type: integer}, required: false, note: "ids from forager.locations.autocomplete"}
+        person_skills: {type: array, items: {type: integer}, required: false, note: "ids from forager.skills.autocomplete"}
+        organizations: {type: array, items: {type: integer}, required: false, note: "ids from forager.companies.autocomplete"}
+        organization_domains: {type: array, items: {type: string}, required: false}
+        organization_industries: {type: array, items: {type: integer}, required: false, note: "ids from forager.industries.autocomplete"}
+        page: {type: integer, required: false, default: 0, min: 0, note: "zero-based; ten results a page"}
+      note: "The upstream takes more filters (role description and dates, headline, employer size, revenue, funding, keywords, technologies, job posts); send them in the JSON body. total_search_results marks a position, not a count: use forager.people.search.count."
+    test_request:
+      body: {person_linkedin_public_identifiers: [williamhgates], role_is_current: true}
+    price: {value: '1', currency: credit, per: 1, unit: call, note: "One credit a page that returns people, whether it holds one or ten; an empty page is free."}
+    miss: {when: {path: response.search_results, op: empty}}
+
+  - id: forager.people.search.count
+    added: '2026-11-23'
+    verified: '2026-11-23'
+    example_response: examples/forager.people.search.count.json
+    domain: contacts
+    capability: people.search.count
+    platform: people
+    scope: any_account
+    method: POST
+    path: /api/{account_id}/datastorage/person_role_search/totals/
+    name: Count people a search would return
+    summary: Count the roles, people and companies that match a people search's filters, free, before paying for pages.
+    input:
+      bodyType: json
+      body:
+        role_title: {type: string, required: false}
+        role_is_current: {type: boolean, required: false}
+        organizations: {type: array, items: {type: integer}, required: false, example: [1043439]}
+        person_locations: {type: array, items: {type: integer}, required: false}
+      note: "Takes every forager.people.search filter."
+    test_request:
+      body: {organizations: [1043439], role_is_current: true}
+    price: {value: '0', currency: USD, unit: call, note: "Free."}
+
+  - id: forager.companies.search
+    added: '2026-11-23'
+    verified: '2026-11-23'
+    example_response: examples/forager.companies.search.json
+    domain: companies
+    capability: companies.search
+    platform: companies
+    scope: any_account
+    method: POST
+    path: /api/{account_id}/datastorage/organization_search/
+    name: Search companies by industry, size, place, tech or funding
+    summary: Search companies by industry, place, keywords, technologies, headcount, revenue, founding date, web traffic, funding or open jobs, ten per page with domain, size, industry and location.
+    input:
+      bodyType: json
+      body:
+        organization_ids: {type: array, items: {type: integer}, required: false, note: "ids from forager.companies.autocomplete", example: [1043439]}
+        domains: {type: array, items: {type: string}, required: false}
+        industries: {type: array, items: {type: integer}, required: false, note: "ids from forager.industries.autocomplete"}
+        locations: {type: array, items: {type: integer}, required: false, note: "ids from forager.locations.autocomplete"}
+        keywords: {type: array, items: {type: integer}, required: false, note: "ids from forager.companies.keywords.autocomplete"}
+        web_technologies: {type: array, items: {type: integer}, required: false, note: "ids from forager.technologies.autocomplete"}
+        employees_start: {type: integer, required: false}
+        employees_end: {type: integer, required: false}
+        page: {type: integer, required: false, default: 0, min: 0, note: "zero-based; ten results a page"}
+      note: "The upstream takes more filters (description, revenue, founding date, domain rank and traffic, funding, job posts, news events); send them in the JSON body. total_search_results marks a position, not a count: use forager.companies.search.count."
+    test_request:
+      body: {organization_ids: [1043439]}
+    price: {value: '1', currency: credit, per: 1, unit: call, note: "One credit a page that returns companies; an empty page is free."}
+    miss: {when: {path: response.search_results, op: empty}}
+
+  - id: forager.companies.search.count
+    added: '2026-11-23'
+    verified: '2026-11-23'
+    example_response: examples/forager.companies.search.count.json
+    domain: companies
+    capability: companies.search.count
+    platform: companies
+    scope: any_account
+    method: POST
+    path: /api/{account_id}/datastorage/organization_search/totals/
+    name: Count companies a search would return
+    summary: Count the companies that match a company search's filters, free, before paying for pages.
+    input:
+      bodyType: json
+      body:
+        industries: {type: array, items: {type: integer}, required: false, example: [25]}
+        locations: {type: array, items: {type: integer}, required: false, example: [7746]}
+      note: "Takes every forager.companies.search filter."
+    test_request:
+      body: {industries: [25], locations: [7746]}
+    price: {value: '0', currency: USD, unit: call, note: "Free."}
+
+  - id: forager.jobs.search
+    added: '2026-11-23'
+    verified: '2026-11-23'
+    example_response: examples/forager.jobs.search.json
+    domain: jobs
+    capability: companies.jobs.search
+    platform: companies
+    scope: any_account
+    method: POST
+    path: /api/{account_id}/datastorage/job_search/
+    name: Search job posts by title, company, place or remote
+    summary: Search job posts by title, description, company, place, remote and active status, ten per page with the posting, its dates and the company.
+    input:
+      bodyType: json
+      body:
+        title: {type: string, required: false, note: "boolean text search"}
+        description: {type: string, required: false, note: "boolean text search"}
+        organization_ids: {type: array, items: {type: integer}, required: false, note: "ids from forager.companies.autocomplete", example: [1043439]}
+        locations: {type: array, items: {type: integer}, required: false, note: "ids from forager.locations.autocomplete"}
+        is_remote: {type: boolean, required: false}
+        is_active: {type: boolean, required: false, example: true}
+        page: {type: integer, required: false, default: 0, min: 0, note: "zero-based; ten results a page"}
+      note: "The upstream also filters by job source, excluded places and featured dates. total_search_results marks a position, not a count: use forager.jobs.search.count."
+    test_request:
+      body: {organization_ids: [1043439], is_active: true}
+    price: {value: '2', currency: credit, per: 1, unit: call, note: "Two credits a page that returns job posts; an empty page is free."}
+    miss: {when: {path: response.search_results, op: empty}}
+
+  - id: forager.jobs.search.count
+    added: '2026-11-23'
+    verified: '2026-11-23'
+    example_response: examples/forager.jobs.search.count.json
+    domain: jobs
+    capability: companies.jobs.search.count
+    platform: companies
+    scope: any_account
+    method: POST
+    path: /api/{account_id}/datastorage/job_search/totals/
+    name: Count job posts a search would return
+    summary: Count the job posts that match a job search's filters, free, before paying for pages.
+    input:
+      bodyType: json
+      body:
+        organization_ids: {type: array, items: {type: integer}, required: false, example: [1043439]}
+        is_active: {type: boolean, required: false, example: true}
+      note: "Takes every forager.jobs.search filter."
+    test_request:
+      body: {organization_ids: [1043439], is_active: true}
+    price: {value: '0', currency: USD, unit: call, note: "Free."}
+
+  - id: forager.companies.tech_stack
+    added: '2026-11-23'
+    verified: '2026-11-23'
+    example_response: examples/forager.companies.tech_stack.json
+    domain: companies
+    capability: companies.tech_stack
+    platform: companies
+    scope: any_account
+    method: POST
+    path: /api/{account_id}/datastorage/website_detail_lookup/
+    name: Get a website's tech stack and traffic rank
+    summary: Get the technologies detected on a company's website, with its traffic and rank.
+    input:
+      bodyType: json
+      body:
+        domain: {type: string, required: false, example: stripe.com}
+        organization_id: {type: integer, required: false}
+        organization_linkedin_public_identifier: {type: string, required: false, note: "the slug in linkedin.com/company/<slug>/"}
+      note: "Send one of domain, organization_id or organization_linkedin_public_identifier."
+    test_request:
+      body: {domain: stripe.com}
+    price: {value: '1', currency: credit, per: 1, unit: call, note: "One credit for a found website; a 404 is free."}
+    miss: {status: [404], means: "Forager holds no record of the website; live probes spent no credit."}
+
+  - id: forager.industries.autocomplete
+    added: '2026-11-23'
+    verified: '2026-11-23'
+    example_response: examples/forager.industries.autocomplete.json
+    kind: utility
+    domain: companies
+    capability: companies.industry.resolve
+    platform: companies
+    scope: any_account
+    method: GET
+    path: /api/{account_id}/datastorage/autocomplete/industries/
+    name: Look up industry IDs by name
+    summary: Turn an industry name into the IDs Forager's people and company searches filter by.
+    input:
+      queryParams:
+        q: {type: string, required: false, example: software}
+        page: {type: integer, required: false}
+    test_request:
+      queryParams: {q: software}
+    price: {value: '0', currency: USD, unit: call, note: "Free."}
+
+  - id: forager.companies.autocomplete
+    added: '2026-11-23'
+    verified: '2026-11-23'
+    example_response: examples/forager.companies.autocomplete.json
+    kind: utility
+    domain: companies
+    capability: companies.autocomplete
+    platform: companies
+    scope: any_account
+    method: GET
+    path: /api/{account_id}/datastorage/autocomplete/organizations/
+    name: Look up company IDs by name or domain
+    summary: Turn a company name or domain into the IDs Forager's searches filter by.
+    input:
+      queryParams:
+        q: {type: string, required: false, example: stripe}
+        page: {type: integer, required: false}
+    test_request:
+      queryParams: {q: stripe}
+    price: {value: '0', currency: USD, unit: call, note: "Free."}
+
+  - id: forager.companies.keywords.autocomplete
+    added: '2026-11-23'
+    verified: '2026-11-23'
+    example_response: examples/forager.companies.keywords.autocomplete.json
+    kind: utility
+    domain: companies
+    capability: companies.keywords.autocomplete
+    platform: companies
+    scope: any_account
+    method: GET
+    path: /api/{account_id}/datastorage/autocomplete/organization_keywords/
+    name: Look up company keyword IDs
+    summary: Turn a word into the company keyword IDs Forager's searches filter by.
+    input:
+      queryParams:
+        q: {type: string, required: false, example: payments}
+        page: {type: integer, required: false}
+    test_request:
+      queryParams: {q: payments}
+    price: {value: '0', currency: USD, unit: call, note: "Free."}
+
+  - id: forager.locations.autocomplete
+    added: '2026-11-23'
+    verified: '2026-11-23'
+    example_response: examples/forager.locations.autocomplete.json
+    kind: utility
+    domain: companies
+    capability: companies.location.resolve
+    platform: companies
+    scope: any_account
+    method: GET
+    path: /api/{account_id}/datastorage/autocomplete/locations/
+    name: Look up location IDs by place name
+    summary: Turn a city, county, state or country name into the location IDs Forager's searches filter by.
+    input:
+      queryParams:
+        q: {type: string, required: false, example: san francisco}
+        page: {type: integer, required: false}
+    test_request:
+      queryParams: {q: san francisco}
+    price: {value: '0', currency: USD, unit: call, note: "Free."}
+
+  - id: forager.skills.autocomplete
+    added: '2026-11-23'
+    verified: '2026-11-23'
+    example_response: examples/forager.skills.autocomplete.json
+    kind: utility
+    domain: contacts
+    capability: people.search.filters
+    platform: people
+    scope: any_account
+    method: GET
+    path: /api/{account_id}/datastorage/autocomplete/person_skills/
+    name: Look up skill IDs by name
+    summary: Turn a skill name into the IDs Forager's people search filters by.
+    input:
+      queryParams:
+        q: {type: string, required: false, example: python}
+        page: {type: integer, required: false}
+    test_request:
+      queryParams: {q: python}
+    price: {value: '0', currency: USD, unit: call, note: "Free."}
+
+  - id: forager.technologies.autocomplete
+    added: '2026-11-23'
+    verified: '2026-11-23'
+    example_response: examples/forager.technologies.autocomplete.json
+    kind: utility
+    domain: companies
+    capability: companies.technologies.autocomplete
+    platform: companies
+    scope: any_account
+    method: GET
+    path: /api/{account_id}/datastorage/autocomplete/web_technologies/
+    name: Look up web technology IDs by name
+    summary: Turn a technology name into the IDs Forager's company and people searches filter by.
+    input:
+      queryParams:
+        q: {type: string, required: false, example: react}
+        page: {type: integer, required: false}
+    test_request:
+      queryParams: {q: react}
+    price: {value: '0', currency: USD, unit: call, note: "Free."}

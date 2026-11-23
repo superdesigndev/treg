@@ -397,7 +397,17 @@ an id restores the hold path for that org's new calls; no migration is needed.
 a standing allowance instead of one hold per call ([money](../architecture/money.md), "Allowance");
 it needs `TREG_KV_URL` and PostgreSQL, and is ignored on SQLite. `TREG_MONEY_ALLOWANCE_CHUNK_MICRO` is what a refill brings the counter up
 to, `TREG_MONEY_ALLOWANCE_FRESH_S` how long a refill keeps admitting calls, and
-`TREG_MONEY_ALLOWANCE_LINGER_MS` how long finished calls wait to share one insert. Removing an id
+`TREG_MONEY_ALLOWANCE_LINGER_MS` how long finished calls wait to share one insert.
+`TREG_MONEY_ALLOWANCE_REFILL_WINDOW_S` (default `0`, off) sizes a refill to what the team took
+from its counter over that many seconds instead (at most twice what it took since the last
+refill), never below the chunk; the allowance hold then carries at most
+`TREG_MONEY_ALLOWANCE_REFILL_MAX_MICRO`, at most `TREG_MONEY_ALLOWANCE_REFILL_BALANCE_PERCENT` of
+the team's balance and at most that share of what its daily cap has left, and a call on the
+exact path that the balance alone cannot pay for gets the counter back first when it holds
+enough to make up the difference. A window longer
+than `TREG_MONEY_ALLOWANCE_FRESH_S` buys nothing more. Processes started with it back at `0`
+refill to the chunk again, with nothing else to undo, and processes of different settings can
+run side by side. Removing an id
 returns that org's new calls to the hold path at once; no migration is needed. The allowance's
 background loop (`application/allowance_sweep.py`) applies queued charges to the ledger and
 closes idle allowances. It runs in the `all` and `control` roles and is one more consumer of
@@ -594,6 +604,14 @@ job's credentials. `treg-worker --help` lists them; what follows is what a sched
 - **`idempotency prune`**: hourly. Deletes expired retry answers for every team and drops a live
   row's copy of an answer the archive holds (`--skip-trim` keeps copies). Exits nonzero on an
   incomplete run; run one instance at a time.
+- **`archive retain`**: does nothing until `TREG_ARCHIVE_RETENTION_ENABLED=true`; `--dry-run` counts
+  what it would delete either way. Each run stops at `TREG_ARCHIVE_RETENTION_MAX_SECONDS` and the
+  next resumes from its cursor (also after `TREG_ARCHIVE_RETENTION_MAX_KEYS` deletions); a second
+  instance answers `busy` and does nothing (a session advisory lock: connect the worker to
+  PostgreSQL directly, not through a transaction-mode pooler); run one at a time, with the archive object-store settings
+  when R2 writes are on. Objects of deleted rows go in a later run, once
+  `TREG_ARCHIVE_RETENTION_OBJECT_GRACE_S` (900 s) has passed ([archive](../architecture/archive.md),
+  "Row retention").
 - **`admin purge-evidence`** and **`admin purge-ad-clicks`**: daily. Without them expired rows stop
   being shown or read but stay in the database.
 - **`hub check`** runs each live [hub](../architecture/hub.md) tool's `check.json` as its maker

@@ -6,7 +6,7 @@ import sys
 from collections.abc import Sequence
 from datetime import datetime, timedelta
 
-from sqlalchemy import delete, exists, func, update
+from sqlalchemy import delete, exists, func, tuple_, update
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import aliased
 from sqlmodel import select
@@ -436,6 +436,40 @@ async def erase_archive_rows(db: AsyncSession, org_id: int, key_ids: list[int] |
     if key_ids is None:
         key_ids = await private_archive_key_ids(db, org_id)
     return await erase_archive_keys(db, key_ids)
+
+
+# Marks per locking read and delete in `erase_archive_marks`.
+MARK_CHUNK = 500
+
+
+async def erase_archive_marks(db: AsyncSession, key_hashes: list[str], *,
+                              unpaid_since: datetime) -> int:
+    """Delete every team's `ArchiveKeyOrg` mark on the given questions not paid for since
+    `unpaid_since`, in `db` (no commit) -> marks deleted. Only for keys deleted in the same
+    transaction (archive row retention): a mark outliving its key would price a re-recorded
+    question as a repeat, except a mark a team paid for meanwhile, which that team did pay for.
+
+    Marks are locked `FOR UPDATE SKIP LOCKED` in (org_id, key_hash) order, the order settles lock
+    them in, `MARK_CHUNK` at a time, and only those are deleted: a mark a settle holds is left to
+    that settle instead of waited for."""
+    deleted = 0
+    for start in range(0, len(key_hashes), MARK_CHUNK):
+        chunk = key_hashes[start:start + MARK_CHUNK]
+        while True:
+            pairs = (await db.execute(
+                select(ArchiveKeyOrg.org_id, ArchiveKeyOrg.key_hash)
+                .where(ArchiveKeyOrg.key_hash.in_(chunk), ArchiveKeyOrg.last_call_at < unpaid_since)
+                .order_by(ArchiveKeyOrg.org_id, ArchiveKeyOrg.key_hash)
+                .limit(MARK_CHUNK)
+                .with_for_update(skip_locked=True))).all()
+            if not pairs:
+                break
+            result = await db.execute(delete(ArchiveKeyOrg).where(
+                tuple_(ArchiveKeyOrg.org_id, ArchiveKeyOrg.key_hash).in_([tuple(p) for p in pairs])))
+            deleted += int(result.rowcount or 0)
+            if len(pairs) < MARK_CHUNK:
+                break
+    return deleted
 
 
 async def erase_archive_keys(db: AsyncSession, key_ids: list[int]) -> int:

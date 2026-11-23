@@ -1400,7 +1400,7 @@ async def test_search_survives_missing_a_few_words_of_an_agent_sentence(clients)
     rows, total = cs.search("K&L Gates company lookup", cat, 8)
     # Person-by-company lookup also matches this sentence. Keep a company lookup in the first
     # three while rejecting the broad single-letter noise that caused the original miss.
-    assert 0 < total < 40
+    assert 0 < total < 45
     assert any(ep["capability"].startswith("companies.") for ep, _ in rows[:3])
     # the jobs rows must survive an industry qualifier the catalog never says ("law firm"), via
     # the openings->postings and firm->company aliases (logged miss, 2026-08-20)

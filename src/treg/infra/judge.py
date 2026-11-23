@@ -159,30 +159,50 @@ async def judge(query: str, candidates: list[dict], *, api_key: str, model: str,
     questions = {f"c{i}": _question(i, job_criteria if kind == "job" else criteria, kind)
                  for i, kind in enumerate(kinds)}
     questions.update({f"x_{k}": q for k, q in (extra or {}).items()})
-    body = {
-        "state": {"task": query, "candidates": [{"i": i, **c} for i, c in enumerate(candidates)]},
-        "model": model,
-        "questions": questions,
-    }
+    state = {"task": query, "candidates": [{"i": i, **c} for i, c in enumerate(candidates)]}
+    reply = await ask(state, questions, api_key=api_key, model=model, url=url,
+                      timeout_s=timeout_s, transport=transport)
+    if reply.answers is None:
+        return Judgement(probs=None, ms=reply.ms, error=reply.error)
+    try:
+        probs = [float(reply.answers[f"c{i}"]["noul"]) for i in range(len(candidates))]
+        extras = {k: _extra_answer(reply.answers[f"x_{k}"]) for k in (extra or {})}
+    except Exception as exc:  # noqa: BLE001 — an abstaining judge, never a failed search
+        log.warning("relevance judge failed: %s", exc)
+        return Judgement(probs=None, ms=reply.ms, error=type(exc).__name__)
+    _cache_put(key, (probs, extras))
+    return Judgement(probs=probs, ms=reply.ms, tokens_in=reply.tokens_in, tokens_out=reply.tokens_out,
+                     extra=extras)
+
+
+@dataclass(frozen=True)
+class Reply:
+    answers: dict | None            # question id -> the API's answer object; None = no answer
+    ms: int
+    tokens_in: int | None = None
+    tokens_out: int | None = None
+    error: str | None = None        # timeout | http_<status> | <ExceptionType>; None when answered
+
+
+async def ask(state: dict, questions: dict[str, dict], *, api_key: str, model: str, url: str,
+              timeout_s: float, transport: httpx.AsyncBaseTransport | None = None) -> Reply:
+    """One System One request: any `state`, any questions about it. Never raises; uncached.
+    The caller reads and validates each answer it asked for."""
     t0 = time.perf_counter()
     try:
         async with httpx.AsyncClient(timeout=timeout_s, transport=transport) as client:
-            r = await client.post(url, json=body, headers={"Authorization": f"Bearer {api_key}"})
+            r = await client.post(url, json={"state": state, "model": model, "questions": questions},
+                                  headers={"Authorization": f"Bearer {api_key}"})
         ms = int((time.perf_counter() - t0) * 1000)
         if r.status_code != 200:
             _note_outage(r.status_code)
-            return Judgement(probs=None, ms=ms, error=f"http_{r.status_code}")
+            return Reply(answers=None, ms=ms, error=f"http_{r.status_code}")
         data = r.json()
-        answers = data.get("answers") or {}
-        probs = [float(answers[f"c{i}"]["noul"]) for i in range(len(candidates))]
-        extras = {k: _extra_answer(answers[f"x_{k}"]) for k in (extra or {})}
         usage = data.get("usage") or {}
-        _cache_put(key, (probs, extras))
-        return Judgement(probs=probs, ms=ms, tokens_in=usage.get("input_tokens"),
-                         tokens_out=usage.get("output_tokens"), extra=extras)
+        return Reply(answers=data.get("answers") or {}, ms=ms, tokens_in=usage.get("input_tokens"),
+                     tokens_out=usage.get("output_tokens"))
     except httpx.TimeoutException:
-        return Judgement(probs=None, ms=int((time.perf_counter() - t0) * 1000), error="timeout")
-    except Exception as exc:  # noqa: BLE001 — an abstaining judge, never a failed search
-        log.warning("relevance judge failed: %s", exc)
-        return Judgement(probs=None, ms=int((time.perf_counter() - t0) * 1000),
-                         error=type(exc).__name__)
+        return Reply(answers=None, ms=int((time.perf_counter() - t0) * 1000), error="timeout")
+    except Exception as exc:  # noqa: BLE001 — an abstaining judge
+        log.warning("judge request failed: %s", exc)
+        return Reply(answers=None, ms=int((time.perf_counter() - t0) * 1000), error=type(exc).__name__)

@@ -198,7 +198,7 @@ so it records none rather than "none sent". The same function serves the event a
 a routed segment cannot disagree; the patterns are module constants, so an offline analysis can
 import them instead of keeping its own copy.
 
-`people_search` (version 2, which added `company_given`), each key always present unless noted:
+`people_search` (version 3: 2 added `company_given`, 3 the `rows_<check>_known` counts and city and metro-area locations), each key always present unless noted:
 
 | Key | Vocabulary | From |
 | --- | --- | --- |
@@ -233,8 +233,16 @@ gives nothing to judge by is absent, not zero; a request that cannot be read bac
 | `rows_with_profile_url` | rows with an `http(s)` profile URL on a dotted host | always with `rows` |
 | `rows_dup` | rows repeating an earlier row's person (same LinkedIn handle or URL, else same name and company) | always with `rows` |
 | `rows_company_match` | rows whose company domain is the asked `company_domain` (or a subdomain of it); a row with no domain, when its name minus a legal form (`Inc`, `GmbH`) is exactly the domain's first label (`MetaMask` is not meta.com) | `company_domain` was asked |
+| `rows_company_known` | rows with a company domain or name to judge | with `rows_company_match` |
 | `rows_title_match` | rows whose title has the asked title's `title_function` (a leader asked: an `executive` row) | the asked title has a function other than `other` |
-| `rows_country_match` | rows whose location names the asked country (by name, a US state, never a two-letter part) | the asked country is an ISO code or name |
+| `rows_title_known` | rows with a title | with `rows_title_match` |
+| `rows_country_match` | rows whose location names the asked country, read conservatively: every clue in it must point at one country, else it names none. A country name or US state in any part (`Paris, Texas`), with a last-part country code and any state code agreeing (`Lebanon, US`, `Washington, GB`, `Cuba, NY`, `Lebanon, PA` name none); otherwise a city, metro area or one-country region (`Greater Phoenix Area`), with every other part a known place, a state code (`Austin, TX`, `Bengaluru, KA`) or, last, a country code (`Paris, FR`) in that country. `London, ON`, `Mexico City, DF`, `Geneva, GE`, `Vancouver, US`, a code alone, a part we do not know (`Hyderabad, Sindh`) and a metro area across a border (`San Diego-Tijuana`) name none, and a place left after dropping a word is never read as a country (`Canada Bay` is in Australia). A code that is both a country and a US, Canadian, Australian, Indian or Brazilian state code (`CA`, `DE`, `SA`, `MH`, `RS`) names none unless a part spells the country out: once joined into text a provider's country code (`Durham, CA`) cannot be told from a state | the asked country is an ISO code or name |
+| `rows_country_known` | rows whose location names any country by the same reading | with `rows_country_match` |
+
+A row with nothing to judge (no company, no title, a location that is empty, `Remote` or a place
+the reading does not know) is unknown, not a mismatch: read a check as `match / known`, and
+`known / rows` as how much of the answer it could judge. Before version 3 only `match` was
+recorded and city or metro-area locations read as no country.
 
 Where an output field goes is declared on the contract (`contracts.yaml`), default `skip`:
 
