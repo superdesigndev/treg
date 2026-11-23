@@ -197,7 +197,7 @@ _PLACE_COUNTRY: dict[str, str] = {
     **dict.fromkeys((
         "new york", "new york city", "nyc", "los angeles", "chicago", "houston", "phoenix",
         "philadelphia", "san antonio", "san diego", "dallas", "fort worth", "dfw", "austin",
-        "san jose", "san francisco", "seattle", "denver", "boston", "atlanta", "miami", "nashville",
+        "san francisco", "seattle", "denver", "boston", "atlanta", "miami", "nashville",
         "portland", "las vegas", "detroit", "minneapolis", "charlotte", "raleigh", "durham",
         "salt lake city", "pittsburgh", "baltimore", "washington dc", "washington d.c.", "tampa",
         "orlando", "st. louis", "saint louis", "kansas city", "cincinnati", "cleveland", "columbus",
@@ -255,6 +255,9 @@ _REGION_CODES: dict[str, frozenset[str]] = {
     **{c: frozenset({"AU"}) for c in ("nsw", "vic", "qld", "tas", "act")},
     "wa": frozenset({"US", "AU"}), "nt": frozenset({"CA", "AU"}),
 }
+# Cities that are also a large city or capital elsewhere (San José, Costa Rica; Hyderabad,
+# Pakistan): their country only beside a part that agrees with it (`San Jose, CA`, `Hyderabad, IN`).
+_PLACE_COUNTRY_WITH_REGION: dict[str, str] = {"san jose": "US", "hyderabad": "IN"}
 _METRO_WORDS = re.compile(r"\b(?:greater|metropolitan|metroplex|metro|area|region)\b")
 # Country names that are also common given names: a q naming a person must not read as a place.
 _NOT_PLACES = frozenset({"chad", "jordan"})
@@ -335,18 +338,23 @@ def location_country(value: Any) -> str | None:
         if len(part) == 2 and part not in _REGION_CODES and (code := iso2(part)) is not None:
             return code
     within: list[frozenset[str]] = []
-    places = 0
+    places = qualified = 0
     for part in parts:
         if part in _REGION_CODES:
             within.append(_REGION_CODES[part] | {c for c in (iso2(part),) if c})
         elif (code := _place_country(part)) is not None:
             within.append(frozenset({code}))
             places += 1
+        elif (code := _PLACE_COUNTRY_WITH_REGION.get(part)) is not None:
+            within.append(frozenset({code}))
+            qualified += 1
         else:
             return None
-    if not places:
+    if not places and not (qualified and len(within) > qualified):
         return None
     common = frozenset.intersection(*within)
+    if qualified and len(common) != 1:
+        return None
     widest = common if common else within[-1]
     return next(iter(widest)) if len(widest) == 1 else None
 

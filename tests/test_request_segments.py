@@ -244,7 +244,10 @@ def test_a_row_location_names_its_country_by_name_never_by_a_two_letter_part(loc
     ("Berlin Metropolitan Area", "DE"), ("Greater Toronto Area", "CA"), ("Amsterdam Area", "NL"),
     ("Greater Madrid Metropolitan Area", "ES"), ("Mumbai Metropolitan Region", "IN"),
     # nothing known, or a name that is a large place in two countries
-    ("Remote", None), ("Greater Victoria Area", None), ("Valencia", None), ("Hyderabad", None),
+    ("Remote", None), ("Greater Victoria Area", None), ("Valencia", None),
+    # a city that is a large city elsewhere too needs a part that agrees with it
+    ("San Jose", None), ("Hyderabad", None), ("San Jose, CA", "US"), ("Hyderabad, IN", "IN"),
+    ("San Jose, ON", None),
     # a metro area across a border names no one country
     ("San Diego–Tijuana Metropolitan Area", None), ("San Diego-Tijuana Metropolitan Area", None),
     ("Raleigh-Durham-Chapel Hill Area", "US"), ("Miami-Fort Lauderdale Area", "US"),
