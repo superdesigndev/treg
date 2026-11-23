@@ -4410,7 +4410,7 @@ SELTZ = OAuthProvider(
     # the gRPC carrier; the header takes precedence on HTTP.
     token_header="x-api-key",
     token_format="{secret}",
-    setup_url="https://console.seltz.ai",
+    setup_url="https://console.seltz.ai?utm_source=treg&utm_medium=integration&utm_campaign=marketplace",
     setup_action_label="Get your Seltz API key",
     setup_steps=(
         "Sign in to the Seltz Console.",
@@ -4426,7 +4426,7 @@ SELTZ = OAuthProvider(
     category="SEO",
     summary="Search the web, news, people, companies and filings, fetch pages, and get cited answers.",
     base_url="https://api.seltz.ai",
-    docs_url="https://docs.seltz.ai",
+    docs_url="https://docs.seltz.ai?utm_source=treg&utm_medium=integration&utm_campaign=marketplace",
     # No priced account route. A garbage key on this list is 401 UNAUTHENTICATED.
     probe_path="/v1/monitors",
 )

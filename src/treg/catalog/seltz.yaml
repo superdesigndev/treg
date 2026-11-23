@@ -3,13 +3,13 @@ provider: seltz
 # HTTP call), chat completions (documented, absent from the OpenAPI spec, no published price),
 # agent list and cancel, and gRPC record streaming (no REST form).
 source:
-  docs: https://docs.seltz.ai
+  docs: https://docs.seltz.ai?utm_source=treg&utm_medium=integration&utm_campaign=marketplace
   openapi: https://docs.seltz.ai/api-reference/openapi.json
   curated: '2026-11-17'
-pricing_url: https://docs.seltz.ai/pricing
+pricing_url: https://docs.seltz.ai/pricing?utm_source=treg&utm_medium=integration&utm_campaign=marketplace
 limits: "HTTP 429 is RATE_LIMITED. The pricing page does not publish a numeric cap."
 defaults:
-  provenance: {source: docs, source_url: 'https://docs.seltz.ai/pricing', checked: '2026-11-17', confidence: documented}
+  provenance: {source: docs, source_url: 'https://docs.seltz.ai/pricing?utm_source=treg&utm_medium=integration&utm_campaign=marketplace', checked: '2026-11-17', confidence: documented}
   error: {when: {path: response.error, op: present}}
 proposed_capabilities:
   wikipedia.search.articles: Wikipedia articles matching a query
@@ -59,7 +59,7 @@ endpoints:
     bill: &search_bill {miss: charged}
     miss: &search_miss
       when: {any: [{path: response.documents, op: absent}, {path: response.documents, op: empty}]}
-    docs_url: https://docs.seltz.ai/api-reference/search
+    docs_url: https://docs.seltz.ai/api-reference/search?utm_source=treg&utm_medium=integration&utm_campaign=marketplace
 
   - id: seltz.web.search.news
     capability: web.search.news
@@ -90,7 +90,7 @@ endpoints:
     price: *search_price
     bill: *search_bill
     miss: *search_miss
-    docs_url: https://docs.seltz.ai/api-reference/search
+    docs_url: https://docs.seltz.ai/api-reference/search?utm_source=treg&utm_medium=integration&utm_campaign=marketplace
 
   - id: seltz.people.search
     capability: people.search
@@ -119,7 +119,7 @@ endpoints:
     price: *search_price
     bill: *search_bill
     miss: *search_miss
-    docs_url: https://docs.seltz.ai/api-reference/search
+    docs_url: https://docs.seltz.ai/api-reference/search?utm_source=treg&utm_medium=integration&utm_campaign=marketplace
 
   - id: seltz.companies.search
     capability: companies.search
@@ -148,7 +148,7 @@ endpoints:
     price: *search_price
     bill: *search_bill
     miss: *search_miss
-    docs_url: https://docs.seltz.ai/api-reference/search
+    docs_url: https://docs.seltz.ai/api-reference/search?utm_source=treg&utm_medium=integration&utm_campaign=marketplace
 
   - id: seltz.wikipedia.search
     capability: wikipedia.search.articles
@@ -177,7 +177,7 @@ endpoints:
     price: *search_price
     bill: *search_bill
     miss: *search_miss
-    docs_url: https://docs.seltz.ai/api-reference/search
+    docs_url: https://docs.seltz.ai/api-reference/search?utm_source=treg&utm_medium=integration&utm_campaign=marketplace
 
   - id: seltz.stocks.filings.search
     capability: stocks.filings.search
@@ -206,7 +206,7 @@ endpoints:
     price: *search_price
     bill: *search_bill
     miss: *search_miss
-    docs_url: https://docs.seltz.ai/api-reference/search
+    docs_url: https://docs.seltz.ai/api-reference/search?utm_source=treg&utm_medium=integration&utm_campaign=marketplace
 
   - id: seltz.web.answer
     capability: web.answer
@@ -242,7 +242,7 @@ endpoints:
     bill: {miss: charged}
     miss:
       when: {any: [{path: response.answer, op: absent}, {path: response.answer, op: empty}]}
-    docs_url: https://docs.seltz.ai/api-reference/answer
+    docs_url: https://docs.seltz.ai/api-reference/answer?utm_source=treg&utm_medium=integration&utm_campaign=marketplace
 
   - id: seltz.web.fetch
     capability: web.extract
@@ -279,7 +279,7 @@ endpoints:
           - {path: response.results, op: absent}
           - {path: response.results, op: empty}
           - {path: "response.results[status=ok]", op: absent}
-    docs_url: https://docs.seltz.ai/api-reference/fetch
+    docs_url: https://docs.seltz.ai/api-reference/fetch?utm_source=treg&utm_medium=integration&utm_campaign=marketplace
 
   - id: seltz.web.research
     capability: web.answer.research
@@ -319,7 +319,7 @@ endpoints:
       unit: call
       note: "Low is $0.25, medium $0.50, high $1 and max $2 per run. On the raw API an omitted effort is medium."
     miss: {when: {path: response.id, op: absent}}
-    docs_url: https://docs.seltz.ai/api-reference/agent/start-run
+    docs_url: https://docs.seltz.ai/api-reference/agent/start-run?utm_source=treg&utm_medium=integration&utm_campaign=marketplace
 
   - id: seltz.web.research.status
     capability: web.answer.status
@@ -343,4 +343,4 @@ endpoints:
       currency: USD
       unit: call
       note: "The pricing page prices a run, not a read of one."
-    docs_url: https://docs.seltz.ai/api-reference/agent/get-run
+    docs_url: https://docs.seltz.ai/api-reference/agent/get-run?utm_source=treg&utm_medium=integration&utm_campaign=marketplace
