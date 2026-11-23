@@ -186,6 +186,11 @@ async def _evaluate(db: AsyncSession, row: AffiliateBonus, discount: dub.Discoun
     block = await ledger.block_for_payment(db, row.payment_intent)
     if block is None or block.kind != "purchased":
         return "no_payment", 0
+    # Row-lock the payment's block before reading its refunds, as billing's top-up bonus does: a
+    # refund (`billing.revoke_refunded`) locks the same row, so either this sees the refund or the
+    # refund runs after the grant commits and revokes it with the payment.
+    await db.execute(update(CreditBlock).where(CreditBlock.id == block.id).values(id=CreditBlock.id)
+                     .execution_options(synchronize_session=False))
     if await _refunded(db, block.id):
         return "refunded", 0
     friend = (await db.execute(select(Referral.id).where(

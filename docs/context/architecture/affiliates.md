@@ -141,9 +141,10 @@ then partner, then group) and returns it on the customer record (`GET /customers
 `includeExpandedFields`, read by `dub.customer_partner` into `dub.Discount`). treg never changes a
 Stripe price for it: it pays a `bonus` credit block through `ledger.grant`.
 
-- `billing._credit` stages one `AffiliateBonus` row per fresh paid top-up of a team with a lead that
-  is not dead-lettered (`affiliate_bonus.queue`); the unique `payment_intent` makes it once per
-  payment. Nothing reaches Dub from the webhook.
+- `billing._credit` stages one `AffiliateBonus` row per new paid top-up of a team with a lead that
+  is not dead-lettered (`affiliate_bonus.queue`), in the credit's own transaction: a crash or a
+  failed staging leaves neither, and Stripe's redelivery stages both. The unique `payment_intent`
+  makes it once per payment. Nothing reaches Dub from the webhook.
 - `affiliates.drain_once` then runs `affiliate_bonus.drain_once`: rows are claimed with a conditional
   update, the offer of each verified team is read from Dub with no session open, and each row is
   decided in its own transaction under an advisory lock per team and per card (Postgres), so the
@@ -157,7 +158,9 @@ Stripe price for it: it pays a `bonus` credit block through `ledger.grant`.
   rewards (a pending, qualified or paid `Referral`), a payment already refunded and a dead-lettered
   lead earn nothing; `outcome` says which.
 - The grant's meta carries the `payment_intent`, so `billing.revoke_refunded` revokes it in
-  proportion with the payment, like the top-up bonus. The billing page's top-up history shows only
+  proportion with the payment, like the top-up bonus. The decision row-locks the payment's purchased
+  block before it reads the payment's refunds, the lock a refund takes too: either the decision sees
+  the refund, or the refund runs after the grant commits and revokes it. The billing page's top-up history shows only
   the top-up bonus.
 
 ## Not built

@@ -287,3 +287,26 @@ async def test_the_affiliate_drain_decides_the_offer(c, monkeypatch):
     async with _dub(FLAT_5_ONCE) as client:
         result = await affiliates.drain_once(client, session_factory=session_maker, stripe_call=stripe_call)
     assert result["bonus_granted"] == 1
+
+
+async def test_the_bonus_row_commits_with_the_credit_or_not_at_all(c, monkeypatch):
+    """The outbox row is staged in the credit's own transaction: a staging failure leaves no credit
+    either, so Stripe's redelivery credits and stages both, and no paid top-up loses its bonus."""
+    org_id = await _team(c, "bob@superdesign.dev")
+    real_queue = affiliate_bonus.queue
+
+    async def broken(*a, **kw):
+        raise RuntimeError("database hiccup")
+    monkeypatch.setattr(affiliate_bonus, "queue", broken)
+    monkeypatch.setattr(billing, "_sdk", _fake_sdk("fp_card_A"))
+    r = await _deliver(c, _checkout_event(org_id, pi="pi_1"))
+    assert r.status_code >= 500, "a failed delivery makes Stripe redeliver"
+    async with session_maker() as db:
+        assert (await db.execute(select(CreditBlock).where(CreditBlock.org_id == org_id,
+                                                           CreditBlock.kind == "purchased"))).first() is None
+    assert await _rows() == []
+    monkeypatch.setattr(affiliate_bonus, "queue", real_queue)
+    await _topup(c, monkeypatch, org_id, "pi_1")
+    assert [r.payment_intent for r in await _rows()] == ["pi_1"]
+    await _topup(c, monkeypatch, org_id, "pi_1")
+    assert len(await _rows()) == 1, "a redelivery stages nothing more"

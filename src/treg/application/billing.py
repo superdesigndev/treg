@@ -1724,6 +1724,12 @@ async def _credit(db: AsyncSession, org_id: int, amount_micro: int, pi_id: str, 
     )).first() is not None
     block = await ledger.topup(db, org_id, amount_micro, pi_id,
                               meta={"auto": auto, "source": "stripe", **attribution})
+    if not already:
+        # The partner offer's outbox row commits with the credit, so a crash after this commit
+        # cannot lose it (a redelivery is not `fresh` and stages nothing). The affiliate worker
+        # decides it later from Dub; this webhook never waits on Dub.
+        await affiliate_bonus.queue(db, org_id=org_id, payment_intent=pi_id,
+                                    amount_micro=amount_micro, fingerprint=fingerprint)
     block_id = block.id  # captured now: a later rollback (the ad-conversion except below) expires
                         # every object this session is tracking, `block` included, and reading an
                         # expired attribute outside an awaited call raises MissingGreenlet.
@@ -1789,15 +1795,6 @@ async def _credit(db: AsyncSession, org_id: int, amount_micro: int, pi_id: str, 
         except Exception as e:  # noqa: BLE001
             await db.rollback()
             log.warning("billing: referral qualification failed for org %s: %s", org_id, e)
-        # The partner offer is decided later by the affiliate worker, which reads it from Dub; here
-        # the payment is only staged, so this webhook never waits on Dub. Swallowed like the above.
-        try:
-            if await affiliate_bonus.queue(db, org_id=org_id, payment_intent=pi_id,
-                                           amount_micro=amount_micro, fingerprint=fingerprint):
-                await db.commit()
-        except Exception as e:  # noqa: BLE001
-            await db.rollback()
-            log.warning("billing: partner offer staging failed for org %s: %s", org_id, e)
     # Pay out whatever has cleared its hold. Lazy and caller-paid, exactly like ledger's stale-hold
     # reaper: there is no scheduler in treg, and every top-up anywhere is a fine clock to advance a
     # queue this small. `sweep` never raises, but the belt stays on — this is a money webhook.
