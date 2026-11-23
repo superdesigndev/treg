@@ -1,0 +1,203 @@
+provider: millionphones
+source:
+  docs: https://millionphones.com/docs
+  openapi: https://millionphones.com/v1/openapi.json
+  curated: '2026-11-23'
+# Credits are spent only when something is returned: a miss, a repeat of a person or company the
+# account already received, an unknown verdict, a count and the filter list are free. Most answers
+# report their own charge in credits_charged; a LinkedIn phone hit, an email find and a phone check
+# do not, so a hit there settles at the listed price. Every miss is a 200.
+limits: "300 requests a minute on the Pro plan (100 on Free), across all routes; RateLimit-* headers on every answer, 429 above it."
+pricing_url: https://millionphones.com/pricing
+
+proposed_capabilities:
+  people.contact.verify: Verify that supplied contact details are consistent and reachable
+
+defaults:
+  provenance: {source: observed, source_url: 'https://millionphones.com/docs', checked: '2026-11-23', confidence: verified}
+  docs_url: https://millionphones.com/docs
+
+endpoints:
+  - id: millionphones.people.phone.find
+    added: '2026-11-23'
+    example_response: examples/millionphones.people.phone.find.json
+    domain: contacts
+    capability: people.phone.find
+    platform: people
+    scope: any_account
+    method: GET
+    path: /phone
+    name: Find a person's mobile number
+    summary: Find a person's mobile phone numbers from a LinkedIn profile, or from their name and company domain.
+    input:
+      queryParams:
+        social_url: {type: string, required: false, note: "LinkedIn profile URL or slug; Sales Navigator and profile-ID URLs work exactly as copied (case-sensitive). When sent, it alone identifies the person.", example: williamhgates}
+        first_name: {type: string, required: false, note: "with last_name and company_domain, when there is no profile URL"}
+        last_name: {type: string, required: false}
+        company_domain: {type: string, required: false, note: "matches by website or email domain", example: gatesfoundation.org}
+        person_id: {type: string, required: false, note: "a candidate's person_id from an earlier answer; send it alone"}
+        verifiedOnly: {type: string, required: false, enum: ['true', 'false'], default: 'false', note: "'true' returns only first-party verified numbers (lower coverage); the default adds community-tier numbers, marked by tier"}
+        existing_phone: {type: string, required: false, note: "a number you already hold; the lookup looks for a different one and adds existing_phone_status (confirmed and not_found are free)"}
+      note: "Send social_url, or first_name + last_name + company_domain, or person_id. Several matches by name return up to 5 free candidates and no number: call again with the chosen person_id."
+    untestable: "A real answer is a person's private phone number; the example is a fixture with a reserved fake number."
+    price: {value: '10', currency: credit, per: 1, unit: call, note: "10 credits for a lookup that returns a number; a repeat for the same person is free. A miss and a list of candidates are free; a person matched by name with no number found is 0.1 credits."}
+    settle: {reported: {path: response.credits_charged, unit: credit}}
+    miss: {when: {any: [{path: response.phone_numbers, op: absent}, {path: response.phone_numbers, op: empty}]}}
+
+  - id: millionphones.people.contact.get
+    added: '2026-11-23'
+    example_response: examples/millionphones.people.contact.get.json
+    domain: contacts
+    capability: people.contact.get
+    platform: people
+    scope: any_account
+    method: GET
+    path: /person
+    name: Get a person's mobile number and work email in one call
+    summary: Identify a person by LinkedIn, name and company, or person ID, and get their mobile number and work email together.
+    input:
+      queryParams:
+        linkedin_url: {type: string, required: false, note: "LinkedIn profile URL or slug; when sent, it alone identifies the person", example: williamhgates}
+        person_id: {type: string, required: false, note: "from an earlier answer; send it alone"}
+        first_name: {type: string, required: false, note: "with last_name and a company"}
+        last_name: {type: string, required: false}
+        company_domain: {type: string, required: false}
+        company: {type: string, required: false, note: "company name, when there is no domain"}
+        phone: {type: string, required: false, enum: ['true', 'false'], default: 'true', note: "'false' skips the phone"}
+        email: {type: string, required: false, enum: ['true', 'false'], default: 'true', note: "'false' skips the email"}
+        verified_only: {type: string, required: false, enum: ['true', 'false'], default: 'false', note: "phone from verified data only (lower coverage)"}
+      note: "Several matches return up to 5 free candidates with total_matches and no contact data: call again with the chosen person_id. A last name given as an initial always returns candidates."
+    untestable: "A real answer is a person's private phone and email; the example is a fixture with reserved fake contact data."
+    price: {value: '10', currency: credit, per: 1, unit: call, note: "A found phone is 10 credits and the email comes free with it; an email alone is 1 credit; a matched person with neither is 0.1. Repeats, candidates and no match are free."}
+    settle: {reported: {path: response.credits_charged, unit: credit}}
+    miss: {when: {any: [{path: response.person, op: absent}, {path: response.person, op: empty}]}}
+    note: "A fresh lookup took about 8 seconds; repeats and misses answer in under a second."
+
+  - id: millionphones.people.email.find
+    added: '2026-11-23'
+    example_response: examples/millionphones.people.email.find.json
+    domain: contacts
+    capability: people.email.find
+    platform: people
+    scope: any_account
+    method: GET
+    path: /email
+    name: Find a person's work email by LinkedIn
+    summary: Find a person's work email from their LinkedIn profile, with a deliverability status and a match confidence.
+    input:
+      queryParams:
+        social_url: {type: string, required: true, note: "LinkedIn profile URL or slug; Sales Navigator and profile-ID URLs work exactly as copied (case-sensitive)", example: williamhgates}
+      note: "status is verified (will not bounce), risky (could bounce) or none; match_confidence (0-1) is how sure the address is this person's."
+    untestable: "A real answer is a person's work email; the example is a fixture with a reserved fake address."
+    price: {value: '1', currency: credit, per: 1, unit: call, note: "1 credit for a found email; free when the account already unlocked this person's phone, and on a repeat. found=false is free."}
+    miss: {when: {path: response.found, op: equals, value: false}}
+
+  - id: millionphones.people.contact.verify
+    added: '2026-11-23'
+    verified: '2026-11-23'
+    example_response: examples/millionphones.people.contact.verify.json
+    domain: contacts
+    capability: people.contact.verify
+    platform: people
+    scope: any_account
+    method: GET
+    path: /verifyPhone
+    name: Check a phone number belongs to a LinkedIn profile
+    summary: Check a phone number against a LinkedIn profile's verified records - verified when it matches, invalid when it does not, unknown when there is no data.
+    input:
+      queryParams:
+        social_url: {type: string, required: true, note: "LinkedIn profile URL or slug", example: williamhgates}
+        phone_number: {type: string, required: true, note: "any formatting, e.g. +1-555-123-4567", example: '+15555550100'}
+      note: "Only first-party verified records answer verified or invalid; a person known only from community-tier data answers unknown."
+    test_request:
+      queryParams: {social_url: williamhgates, phone_number: '+15555550100'}
+    price: {value: '1', currency: credit, per: 1, unit: call, note: "1 credit for a verified or invalid answer; unknown and a repeat for the same profile are free."}
+    provenance: {source: docs, source_url: 'https://millionphones.com/docs', checked: '2026-11-23', confidence: documented}
+    miss: {when: {path: response.status, op: equals, value: unknown}}
+    note: "A person known only from community-tier data answers unknown; the 1-credit verdict price is the documented one."
+
+  - id: millionphones.people.email.verify
+    added: '2026-11-23'
+    verified: '2026-11-23'
+    example_response: examples/millionphones.people.email.verify.json
+    domain: contacts
+    capability: people.email.verify
+    platform: people
+    scope: any_account
+    method: GET
+    path: /verifyEmail
+    name: Verify an email address
+    summary: Check whether an email address accepts mail - valid, invalid, catch_all or unknown.
+    input:
+      queryParams:
+        email: {type: string, format: email, required: true, example: jane.doe@example.com}
+    test_request:
+      queryParams: {email: jane.doe@example.com}
+    price: {value: '1', currency: credit, per: 1, unit: call, note: "0.1 credits per valid, invalid or catch_all verdict, billed as 1 credit when a call opens a new block of 10; unknown and re-checks are free. credits_charged reports the debit."}
+    settle: {reported: {path: response.credits_charged, unit: credit}}
+    miss: {when: {path: response.result, op: absent}}
+
+  - id: millionphones.people.search.count
+    added: '2026-11-23'
+    verified: '2026-11-23'
+    example_response: examples/millionphones.people.search.count.json
+    domain: people
+    capability: people.search.count
+    platform: people
+    scope: any_account
+    method: GET
+    path: /search/count
+    name: Count a people search
+    summary: Count the people matching a company domain, industry, seniority, department, country or company size.
+    input:
+      queryParams:
+        company_domains: {type: [string, array], items: {type: string}, required: false, example: stripe.com}
+        industry: {type: [string, array], items: {type: string}, required: false}
+        seniority: {type: [string, array], items: {type: string}, required: false, example: C-Level}
+        department: {type: [string, array], items: {type: string}, required: false}
+        country: {type: [string, array], items: {type: string}, required: false}
+        size: {type: [string, array], items: {type: string}, required: false}
+      note: "A person with several current roles counts once per role."
+    test_request:
+      queryParams: {company_domains: stripe.com, seniority: C-Level}
+    price: {value: '0', currency: USD, unit: call, note: "Free."}
+
+  - id: millionphones.people.search.filters
+    added: '2026-11-23'
+    verified: '2026-11-23'
+    example_response: examples/millionphones.people.search.filters.json
+    domain: people
+    capability: people.search.filters
+    platform: people
+    scope: any_account
+    method: GET
+    path: /search/filters
+    name: List the people-search filter values
+    summary: List the accepted industry, seniority, department, country and company-size values for the people count.
+    input:
+      note: "No parameters."
+    test_request: {queryParams: {}}
+    price: {value: '0', currency: USD, unit: call, note: "Free."}
+
+  - id: millionphones.companies.search
+    added: '2026-11-23'
+    verified: '2026-11-23'
+    example_response: examples/millionphones.companies.search.json
+    domain: companies
+    capability: companies.search
+    platform: companies
+    scope: any_account
+    method: GET
+    path: /company
+    name: Find companies by name or website domain
+    summary: Find the companies behind a name or website domain - up to 10 each, largest first, with domain, LinkedIn, industry, size and location.
+    input:
+      queryParams:
+        name: {type: [string, array], items: {type: string}, required: false, note: "full company name, case and legal suffix ignored; repeat for up to 25", example: Stripe}
+        domain: {type: [string, array], items: {type: string}, required: false, note: "website or email domain, URLs are fine; repeat or comma-separate for up to 100", example: stripe.com}
+      note: "Send name, domain or both. A candidate's domain fits company_domains on millionphones.people.search.count."
+    test_request:
+      queryParams: {domain: stripe.com}
+    reserve: {entities: {from: [query.name, query.domain], max: 125}}
+    price: {value: '1', currency: credit, per: 1, unit: target, note: "0.1 credits per company the account has not received before, billed as 1 credit per 10; each name or domain returns at most 10, so the hold is 1 credit for each. Companies already received and no match are free."}
+    settle: {reported: {path: response.credits_charged, unit: credit}}

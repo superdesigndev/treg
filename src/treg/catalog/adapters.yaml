@@ -44,6 +44,11 @@ adapters:
     out: {email: email, first_name: info.firstname, last_name: info.lastname,
           verified: "qualification == 'valid'"}
     miss: "email == null"
+  millionphones.people.email.find:
+    accepts: [[linkedin_url]]
+    in: {linkedin_url: queryParams.social_url}
+    test_identity: {linkedin_url: "https://www.linkedin.com/in/jane-doe-example"}
+    out: {email: email, verified: "status == 'verified'", confidence: match_confidence}
   forager.people.email.find:
     accepts: [[first_name, last_name, domain], [linkedin_handle]]
     in: {first_name: body.first_name, last_name: body.last_name, domain: body.domain,
@@ -460,6 +465,12 @@ adapters:
     in:  {linkedin_url: queryParams.linkedinURL, email: queryParams.email}
     out: {phone: "phones[0].phoneNumber"}
     miss: "phones == []"
+  millionphones.people.phone.find:
+    accepts: [[linkedin_url], [first_name, last_name, domain]]
+    in: {linkedin_url: queryParams.social_url, first_name: queryParams.first_name,
+         last_name: queryParams.last_name, domain: queryParams.company_domain}
+    test_identity: {linkedin_url: "https://www.linkedin.com/in/jane-doe-example"}
+    out: {phone: "phone_numbers[0]"}
   forager.people.phone.find:
     # most_coverage returns every verified number, the highest_quality ones included, for fewer credits.
     accepts: [[linkedin_handle]]
@@ -616,6 +627,10 @@ adapters:
     out: {valid: "result == 'Valid'", status: result}
     # Invalid, Risky and Unknown are useful verdicts. Only a missing verdict is a miss.
     miss: "result == null"
+  millionphones.people.email.verify:
+    accepts: [[email]]
+    in: {email: queryParams.email}
+    out: {valid: "result == 'valid'", status: result}
   zerobounce.people.email.verify:
     accepts: [[email]]
     in: {email: queryParams.email}
