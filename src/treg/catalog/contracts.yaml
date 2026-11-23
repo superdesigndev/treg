@@ -174,7 +174,7 @@ contracts:
     idempotent: true
     one_subject: true           # every variant names one person: cost per hit ranks first
     # No phone provider reports a line check, so every hit carries this.
-    advice_unverified: "This number was found, not confirmed live. Send X-Treg-Route-Verify: true and treg checks the line with a live network lookup (hlrlookup.people.phone.verify) in the same call. For a US number, trestleiq.people.contact.verify also checks that it belongs to this person."
+    advice_unverified: "This number was found, not confirmed. A live line and the right person are two checks. X-Treg-Route-Verify: true checks the line is live (hlrlookup.people.phone.verify) in the same call; it does not show whose number it is. To check it is this person's: with their LinkedIn profile, call millionphones.people.contact.verify with social_url and phone_number; for a US number, trestleiq.people.contact.verify with phone and name."
     # `X-Treg-Route-Verify`: HLR's live check; a national-form number would be read as another country's.
     check: {endpoint: hlrlookup.people.phone.verify, field: phone, when: "e164_digits(phone) != null", skip_reason: not_international,
             skip_advice: "This number has no country code, so it was not checked: a live lookup would read its first digits as a country code. Add the country code (+ and the digits), or call hlrlookup.people.phone.verify with input_format set to the ISO3 country code (for example USA)."}

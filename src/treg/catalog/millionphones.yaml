@@ -103,7 +103,7 @@ endpoints:
     method: GET
     path: /verifyPhone
     name: Check a phone number belongs to a LinkedIn profile
-    summary: Check a phone number against a LinkedIn profile's verified records - verified when it matches, invalid when it does not, unknown when there is no data.
+    summary: Check whether a phone number belongs to the person on a LinkedIn profile - verified when it matches their records, invalid when it does not, unknown when there is no data.
     input:
       queryParams:
         social_url: {type: string, required: true, note: "LinkedIn profile URL or slug", example: williamhgates}
