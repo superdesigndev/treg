@@ -667,11 +667,40 @@ def _declaration_refusal(e: dict, adapter, identity: dict, variant) -> tuple[str
     return _query_refusal(e, QueryValues(tuple(query.items()))) or _body_refusal(e, _child_body(e, body))
 
 
+def _when_paths(when) -> set[str]:
+    if isinstance(when, list):
+        return {p for w in when for p in _when_paths(w)}
+    if isinstance(when, dict):
+        return _when_paths(when["any"]) if "any" in when else {when.get("path")}
+    return {None}
+
+
+def _const_table_price(cat, ep: dict, adapter, identity: dict, variant) -> int | None:
+    """What the child's hold will be for a v2 price table whose every condition reads a parameter
+    the adapter fixes (`const`): the routed request always picks the same row, so the plan ranks it
+    at that row, not at the fallback ceiling. A table a caller's value can pick keeps its ceiling."""
+    table = (ep.get("price") or {}).get("table")
+    if not isinstance(table, list) or any(row.get("times") for row in table):
+        return None
+    fixed = {path.replace("queryParams.", "query.", 1).replace("pathParams.", "query.", 1)
+             for path in (adapter.const or {})}
+    read = _when_paths([row.get("when") for row in table])
+    if not read or not read <= fixed:
+        return None
+    try:
+        query, body = adapter.to_upstream(identity, variant)
+        return call_cost.price(ep, cat, {"queryParams": query, "body": body})[0]
+    except Exception:  # noqa: BLE001 - the walk records the adapter's failure; the price falls back
+        return None
+
+
 def _table_price(cat, ep: dict, adapter, identity: dict, variant) -> int | None:
     """What the child's hold will be for a v1 price table, priced from the upstream request this
     adapter sends; the table's fallback ceiling would price every size alike. None for any other row."""
+    if is_v2(ep):
+        return _const_table_price(cat, ep, adapter, identity, variant)
     raw = ep.get("cost") or {}
-    if not isinstance(raw.get("table"), list) or is_v2(ep):
+    if not isinstance(raw.get("table"), list):
         return None
     # Only a table that multiplies the field this adapter fills from `limit`: the hold grows with
     # the rows asked for. Other tables keep their ceiling price, and their routing order.
