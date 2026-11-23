@@ -883,6 +883,15 @@ async def _anymailfinder(c, key):
     return {"value": credits, "unit": "credits", "note": ""}
 
 
+async def _millionphones(c, key):
+    # Free: GET /v1/credits never charges and reports what is left to spend now.
+    d = await _get(c, "https://millionphones.com/v1/credits", headers={"x-api-key": key})
+    credits = _finite(d.get("remaining")) if isinstance(d, dict) else None
+    if credits is None:
+        raise ValueError("MillionPhones returned no credit balance")
+    return {"value": credits, "unit": "credits", "note": f"plan {d.get('plan') or '?'}"}
+
+
 async def _enrow(c, key):
     d = await _get(c, "https://api.enrow.io/account/info", headers={"x-api-key": key})
     credits = _finite(d.get("credits")) if isinstance(d, dict) else None
@@ -1186,6 +1195,7 @@ BALANCE_ROUTES = {
     "tomba": _tomba,
     "hlrlookup": _hlrlookup,
     "forager": _forager,
+    "millionphones": _millionphones,
     "dataforseo": _dataforseo,
     "tikhub": _tikhub,
     "tinyfish": _tinyfish,
