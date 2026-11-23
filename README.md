@@ -504,8 +504,10 @@ Loopni merge.
 
 ## License
 
-Apache 2.0 with additional terms ([`LICENSE`](LICENSE)): use it freely — including commercially,
-inside your own organization (self-hosting your own registry is encouraged). The restriction: don't
+Apache 2.0 with additional terms ([`LICENSE`](LICENSE)): use it freely, including commercially,
+inside your own organization (self-hosting your own registry is encouraged). This is not a
+proprietary license; `pyproject.toml` and PyPI use the Apache Software License classifier to match
+this file and the public source. The restriction: don't
 redistribute the code to third parties as a competing hosted/managed registry service without written
 permission (`jason@superdesign.dev`). **Using the hosted treg.to API** inside your own product —
 with pass-through billing via `X-Treg-Meta` and `usage/by-tag` — is allowed without permission;
