@@ -343,3 +343,18 @@ async def test_a_refunded_purchase_never_counts_toward_the_minimum(c, monkeypatc
     await _topup(c, monkeypatch, org_id, "pi_2", cents=500)
     assert await _decide() == {"bonus_refunded": 1, "bonus_below_minimum": 1}
     assert await _bonus_blocks(org_id) == []
+
+
+async def test_deleting_a_team_never_frees_its_card_for_the_fixed_offer(c, monkeypatch):
+    from treg.models import AffiliateCardClaim
+    first = await _team(c, "bob@superdesign.dev")
+    await _topup(c, monkeypatch, first, "pi_1")
+    assert await _decide() == {"bonus_granted": 1}
+    async with session_maker() as db:
+        for row in (await db.execute(select(AffiliateBonus))).scalars().all():
+            await db.delete(row)
+        await db.commit()
+        assert len((await db.execute(select(AffiliateCardClaim))).scalars().all()) == 1
+    second = await _team(c, "carl@superdesign.dev")
+    await _topup(c, monkeypatch, second, "pi_2")
+    assert await _decide() == {"bonus_card_already_used": 1}

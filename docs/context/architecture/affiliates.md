@@ -151,8 +151,9 @@ Stripe price for it: it pays a `bonus` credit block through `ledger.grant`.
   grant and the row's `outcome` commit together. A row whose lead is not verified yet, or a Dub
   error, retries with backoff; after `GIVE_UP_AFTER` (7 days) it is decided `expired`.
 - A flat offer (`amount` in cents) is paid once per team, when its paid top-ups, net of refunds,
-  first reach `referral_min_topup_micro`, and once per card fingerprint across teams; its duration
-  is ignored. A payment credited from `payment_intent.succeeded` before its Checkout completion is
+  first reach `referral_min_topup_micro`, and once per card fingerprint across teams: the grant
+  stages an `AffiliateCardClaim`, which has no team and outlives team deletion, like
+  `AffiliateClaim`. Its duration is ignored. A payment credited from `payment_intent.succeeded` before its Checkout completion is
   staged with no card, so the worker reads it from Stripe (`PaymentIntent.retrieve`, no session
   open) before deciding; a failed lookup retries.
 - A percentage offer is paid on each top-up of at least that minimum, for `maxDuration` months from

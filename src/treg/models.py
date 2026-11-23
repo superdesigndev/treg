@@ -958,6 +958,18 @@ class AffiliateBonus(SQLModel, table=True):
     error: str = Field(default="")
 
 
+class AffiliateCardClaim(SQLModel, table=True):
+    """A card (Stripe's opaque per-card `fingerprint`) that already earned a fixed partner offer. Like
+    `AffiliateClaim` it has no `org_id` and outlives the team: deleting a team that spent its bonus
+    never lets the same card earn it again. Unique, so a card earns it once."""
+
+    __table_args__ = (UniqueConstraint("fingerprint", name="uq_affiliatecardclaim_fingerprint"),)
+
+    id: int | None = Field(default=None, primary_key=True)
+    fingerprint: str
+    created_at: NaiveUTC = Field(default_factory=_now)
+
+
 class AffiliateClaim(SQLModel, table=True):
     """A person a partner already brought, by inbox (`promotions.promo_inbox`): a partner earns on
     the person, once. Staged with the team's `AffiliateLead`; it has no `org_id` and outlives the

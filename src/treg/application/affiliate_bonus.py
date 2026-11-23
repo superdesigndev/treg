@@ -36,7 +36,7 @@ from ..config import get_settings
 from ..domain import money as ledger
 from ..infra import dub
 from ..infra import stripe as stripe_adapter
-from ..models import AffiliateBonus, AffiliateLead, CreditBlock, LedgerEntry, Referral
+from ..models import AffiliateBonus, AffiliateCardClaim, AffiliateLead, CreditBlock, LedgerEntry, Referral
 from ..timeutil import utcnow_naive
 
 log = logging.getLogger("treg")
@@ -207,6 +207,8 @@ async def _settle(db: AsyncSession, d: _Due, offer: dub.Outcome | None, now,
                                          "offer": row.offer, "discount_id": discount.id if discount else ""})
         row.block_id = block.id if block is not None else None
         row.bonus_micro = block.amount_micro if block is not None else 0
+        if discount is not None and discount.kind == "flat" and row.fingerprint:
+            db.add(AffiliateCardClaim(fingerprint=row.fingerprint))
     row.outcome, row.decided_at, row.next_attempt_at, row.error = outcome, now, None, ""
     row.attempts += 1
     db.add(row)
@@ -238,7 +240,7 @@ async def _evaluate(db: AsyncSession, row: AffiliateBonus, discount: dub.Discoun
             return "already_granted", 0
         if await _paid_net_of_refunds(db, row.org_id) < minimum:
             return "below_minimum", 0
-        if row.fingerprint and await _card_used(db, row.fingerprint, row.org_id):
+        if row.fingerprint and await _card_used(db, row.fingerprint):
             return "card_already_used", 0
         bonus = int(Decimal(str(discount.amount)) * 10_000)  # cents to micro-USD
     else:
@@ -293,10 +295,10 @@ async def _granted(db: AsyncSession, *, org_id: int, kind: str) -> bool:
     return row is not None
 
 
-async def _card_used(db: AsyncSession, fingerprint: str, org_id: int) -> bool:
-    row = (await db.execute(select(AffiliateBonus.id).where(
-        AffiliateBonus.fingerprint == fingerprint, AffiliateBonus.org_id != org_id,
-        AffiliateBonus.outcome == GRANTED, AffiliateBonus.offer.startswith("flat:")).limit(1))).first()
+async def _card_used(db: AsyncSession, fingerprint: str) -> bool:
+    """The card already earned a fixed offer, on any team, deleted ones included."""
+    row = (await db.execute(select(AffiliateCardClaim.id).where(
+        AffiliateCardClaim.fingerprint == fingerprint).limit(1))).first()
     return row is not None
 
 
