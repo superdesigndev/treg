@@ -229,8 +229,10 @@ def test_answer_counts_judge_rows_against_the_question():
     # text: the provider's country code (Durham, Ontario) or a US state (California)
     ("Durham, CA", None), ("San Francisco, CA", None), ("Berlin, DE", None), ("Mumbai, IN", None),
     ("Adelaide, SA", None), ("CA", None), ("Durham, CA, Canada", "CA"),
-    # only the last part is read as the provider's country code
-    ("Mumbai, MH, IN", None), ("Majuro, MH", "MH"),
+    # Indian and Brazilian state codes too: `MH` is Maharashtra or the Marshall Islands, `RS` Rio
+    # Grande do Sul or Serbia; one that is no country code places the city
+    ("Mumbai, MH", None), ("Mumbai, MH, IN", None), ("Porto Alegre, RS", None),
+    ("Bengaluru, KA", "IN"), ("São Paulo, SP", "BR"), ("Belgrade, RS, Serbia", "RS"),
     # parts that name different countries name none: a US city named after a country, a British
     # town named after a state
     ("Lebanon, US", None), ("Washington, GB", None), ("Paris, France, US", None),

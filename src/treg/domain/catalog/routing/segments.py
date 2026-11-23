@@ -242,19 +242,25 @@ _PLACE_COUNTRY: dict[str, str] = {
                      "western australia", "south australia", "tasmania"), "AU"),
     "auckland": "NZ", "wellington": "NZ",
 }
-# State and province abbreviations after a city (`Vancouver, WA`, `London, ON`): never a country
-# code, but the countries the city must be in. `WA` and `NT` name a region in two countries.
-_REGION_CODES: dict[str, frozenset[str]] = {
-    **{c: frozenset({"US"}) for c in (
-        "al", "ak", "az", "ar", "ca", "co", "ct", "de", "fl", "ga", "hi", "id", "il", "in", "ia",
-        "ks", "ky", "la", "me", "md", "ma", "mi", "mn", "ms", "mo", "mt", "ne", "nv", "nh", "nj",
-        "nm", "ny", "nc", "nd", "oh", "ok", "or", "pa", "ri", "sc", "sd", "tn", "tx", "ut", "vt",
-        "va", "wv", "wi", "wy", "dc")},
-    **{c: frozenset({"CA"}) for c in ("on", "qc", "bc", "ab", "mb", "sk", "ns", "nb", "nl", "pe",
-                                      "yt", "nu")},
-    **{c: frozenset({"AU"}) for c in ("nsw", "vic", "qld", "tas", "act", "sa")},
-    "wa": frozenset({"US", "AU"}), "nt": frozenset({"CA", "AU"}),
+# State and province abbreviations after a city (`Vancouver, WA`, `London, ON`, `Mumbai, MH`):
+# never a country code, but the countries the city must be in. Indian state codes leave out `UK`
+# (Uttarakhand), which reads as Britain.
+_SUBDIVISION_CODES: dict[str, tuple[str, ...]] = {
+    "US": ("al", "ak", "az", "ar", "ca", "co", "ct", "de", "fl", "ga", "hi", "id", "il", "in", "ia",
+           "ks", "ky", "la", "me", "md", "ma", "mi", "mn", "ms", "mo", "mt", "ne", "nv", "nh", "nj",
+           "nm", "ny", "nc", "nd", "oh", "ok", "or", "pa", "ri", "sc", "sd", "tn", "tx", "ut", "vt",
+           "va", "wa", "wv", "wi", "wy", "dc"),
+    "CA": ("on", "qc", "bc", "ab", "mb", "sk", "ns", "nb", "nl", "pe", "yt", "nt", "nu"),
+    "AU": ("nsw", "vic", "qld", "wa", "sa", "tas", "act", "nt"),
+    "IN": ("ap", "ar", "as", "br", "cg", "ct", "ga", "gj", "hr", "hp", "jk", "jh", "ka", "kl", "mp",
+           "mh", "mn", "ml", "mz", "nl", "od", "or", "pb", "rj", "sk", "tn", "ts", "tg", "tr", "up",
+           "ut", "wb", "dl"),
+    "BR": ("ac", "al", "ap", "am", "ba", "ce", "df", "es", "go", "ma", "mt", "ms", "mg", "pa", "pb",
+           "pr", "pe", "pi", "rj", "rn", "rs", "ro", "rr", "sc", "sp", "se", "to"),
 }
+_REGION_CODES: dict[str, frozenset[str]] = {
+    code: frozenset(k for k, codes in _SUBDIVISION_CODES.items() if code in codes)
+    for codes in _SUBDIVISION_CODES.values() for code in codes}
 # Cities that are also a large city or capital elsewhere (San José, Costa Rica; Hyderabad,
 # Pakistan): their country only beside a part that agrees with it (`San Jose, CA`, `Hyderabad, IN`).
 _PLACE_COUNTRY_WITH_REGION: dict[str, str] = {"san jose": "US", "hyderabad": "IN"}
