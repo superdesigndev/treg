@@ -131,6 +131,12 @@ treg skill bootstrap --skills all                         # the installer's set,
 The workflow skills run on treg, so set it up first (the Quickstart above, or point your agent at
 [treg.to/llms.txt](https://treg.to/llms.txt)).
 
+### Cline
+
+Connect Cline to the hosted MCP server at `https://treg.to/mcp/`. The
+[Cline installation guide](llms-install.md) covers browser sign-in, setup with
+a team key, and a free catalog lookup to verify the connection.
+
 ### Claude.ai connector
 
 The Claude Connectors Directory surface is `https://treg.to/mcp/v2/`. It exposes only curated
