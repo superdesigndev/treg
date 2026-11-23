@@ -3651,6 +3651,33 @@ FINDYMAIL = OAuthProvider(
     token_verify_field="email",
 )
 
+DESCOVO = OAuthProvider(
+    service="descovo", display_name="Descovo", auth_kind="key",
+    token_label="API key", token_placeholder="your Descovo API key",
+    token_header="Authorization", token_format="Bearer {secret}",
+    setup_url="https://descovo.com/app/keys",
+    setup_action_label="Get your Descovo API key",
+    setup_steps=("Sign in to Descovo (new accounts start with 500 credits) and open API keys.",
+                 "Create a key and copy it."),
+    setup_note=(
+        "Search is 1 credit per person, company or job returned; counts are free. A reveal is "
+        "charged only for the fields it finds: 2 credits for a work email, 3 for a direct phone. "
+        "A match or live profile is 2. Misses and the balance check are free."
+    ),
+    auth_uri="", token_uri="", scopes={}, client_id_setting="", client_secret_setting="",
+    category="Enrichment",
+    summary=(
+        "Search people, companies and job posts, reveal a person's work email, personal email or "
+        "phone from LinkedIn, match and live-refresh profiles, and verify emails."
+    ),
+    base_url="https://api.descovo.com/v1",
+    docs_url="https://descovo.com/docs/rest",
+    # Free: 200 {"data": {"available", "used", "limit", "resetsOn"}} for a good key; 403
+    # {"error": {"code": "forbidden"}} for a bad one.
+    probe_path="/credits",
+)
+
+
 MILLIONPHONES = OAuthProvider(
     service="millionphones", display_name="MillionPhones", auth_kind="key",
     token_label="API key", token_placeholder="mp_live_...",
@@ -4598,7 +4625,7 @@ REGISTRY: dict[str, OAuthProvider] = {
         SCRAPEGRAPHAI, SERPER, BRAVESEARCH, LITESCRAPE, CLORO, LOCALFALCON,
         # more Enrichment API-key providers
         LUSHA, CORESIGNAL, DIFFBOT, THECOMPANIESAPI, LEADMAGIC, ENRICHLAYER, FIBER_AI, CRUSTDATA, THEIRSTACK, JOBSPIPE, AVIATO,
-        COMPANYENRICH, FUNDABLE, CORPOAPI, OCEANIO, ADYNTEL, TOMBA, TRESTLEIQ, HLRLOOKUP, FORAGER, PREDICTLEADS, FINDYMAIL, MILLIONPHONES, ANYMAILFINDER, ENROW, FILTRAT, FILTRAT_FINDER, DROPCONTACT, BRANDDEV, ICYPEAS, LEADSFORGE, MAPSDATA,
+        COMPANYENRICH, FUNDABLE, CORPOAPI, OCEANIO, ADYNTEL, TOMBA, TRESTLEIQ, HLRLOOKUP, FORAGER, PREDICTLEADS, FINDYMAIL, MILLIONPHONES, DESCOVO, ANYMAILFINDER, ENROW, FILTRAT, FILTRAT_FINDER, DROPCONTACT, BRANDDEV, ICYPEAS, LEADSFORGE, MAPSDATA,
         INFLUENCERSCLUB, VILLAGE,
         # Places: intent-scored local search
         ATLY,
