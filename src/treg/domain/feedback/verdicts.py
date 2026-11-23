@@ -62,8 +62,9 @@ def team_band(n: int) -> int:
 # private data out; a reason that still carries an email address, a phone number or a personal
 # profile link is never published.
 _EMAIL = re.compile(r"[\w.%+-]+@[\w-]+(?:\.[\w-]+)+")
-# Separators include every Unicode dash (non-breaking hyphen, en dash, minus sign, ...).
-_PHONE = re.compile(r"\+?\d[\d\s().:\-\u2010-\u2015\u2212\uFE58\uFE63\uFF0D]{6,}\d")
+# Separators include every Unicode dash (non-breaking hyphen, en dash, minus sign, ...), slashes and
+# colons, so a date-time stays one run for `_DATETIME` to judge whole.
+_PHONE = re.compile(r"\+?\d[\d\s().:/\-\u2010-\u2015\u2212\uFE58\uFE63\uFF0D]{6,}\d")
 _PHONE_DIGITS = 9
 # A run of digits that is wholly real dates and clock times (`2026-11-22 14:00`,
 # `01.11.2026 – 22.11.2026`) is not a phone number. A run with any digit left over is judged whole,
@@ -72,7 +73,7 @@ _MONTH, _DAY = r"(?:0?[1-9]|1[0-2])", r"(?:0?[1-9]|[12]\d|3[01])"
 _DATETIME = re.compile(
     rf"(?<!\d)(?:(?:19|20)\d\d([-/.]){_MONTH}\1{_DAY}"
     rf"|{_DAY}([-/.]){_DAY}\2(?:19|20)\d\d"
-    r"|(?:[01]?\d|2[0-3]):[0-5]\d(?::[0-5]\d)?)(?!\d)")
+    r"|(?:[01]?\d|2[0-3]):[0-5]\d(?::[0-5]\d(?:\.\d{1,6})?)?)(?!\d)")
 # A person's LinkedIn page: public profile, old public profile, Sales Navigator lead or Recruiter.
 _PROFILE = re.compile(r"linkedin\.com/(?:in|pub|sales/lead|sales/people|talent/profile)/", re.IGNORECASE)
 # Capability segments whose results are about a person: their reasons name the person, so they

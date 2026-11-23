@@ -73,6 +73,8 @@ def test_quotable():
     assert quotable(LONG + " Ran at 2026-11-22T14:00:05 and 09:30.")
     assert quotable(LONG + " Covered 01.11.2026 \u2013 22.11.2026.")
     assert quotable(LONG + " Covered 11/01/2026 - 11/22/2026 at 14:00.")
+    assert quotable(LONG + " Ran at 2026-11-22T14:00:05.123Z.")
+    assert quotable(LONG + " Ran at 11/22/2026 14:00:05.")
     assert not quotable("   too short   ")
     assert not quotable(None)
 
@@ -87,6 +89,7 @@ def test_a_reason_carrying_contact_data_is_never_quoted():
                    " Confirmed 0612.34.56.78 as a live mobile line.",
                    " Confirmed 2012-03-04-56 as a live mobile line.",
                    " Confirmed 2026-11-22 732 433 0667 as a live mobile line.",
+                   " Confirmed 11/22/2026 732/433/0667 as a live mobile line.",
                    " Matched https://www.LinkedIn.com/in/someone as the person."):
         assert not quotable(LONG + leaked), leaked
     rows = [review(org, reason=LONG + " Reach them at 732-433-0667.", day=org) for org in range(4)]
