@@ -1,7 +1,7 @@
 {
-  "text": "Stakeholders benefit from the framework, which facilitates efficiency; teams collaborate effectively with it; the framework does this. Efficiency is achieved because the framework streamlines collaboration across teams and has robust tooling, enables teams to work effectively, it delivers value to stakeholders and teams. They work well together using it. The framework is efficient.",
+  "text": "Teams work together; efficiency is facilitated. Stakeholders benefit from robust tooling, the framework is designed to make work easier for them and teams, it streamlines collaboration across teams and delivers value by doing this.",
   "scoreBefore": 21,
-  "scoreAfter": 65,
+  "scoreAfter": 68,
   "bandBefore": "reads like one-pass model prose",
   "bandAfter": "reads human",
   "labelBefore": "reads like one-pass model prose",
@@ -15,10 +15,9 @@
   "retries": 4,
   "pieces": 1,
   "short_input": true,
-  "budget_ms": 20000,
+  "budget_ms": 30000,
   "diag": [
-    "fluency: fragment-list 6 of 6 sentences have no verb",
-    "fluency: fragment-list 4 of 6 sentences have no verb"
+    "esc:stop band=reads human"
   ],
   "fallback": false,
   "fallback_reason": "",

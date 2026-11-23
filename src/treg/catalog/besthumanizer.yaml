@@ -9,7 +9,11 @@ source:
 # keyless: the two GETs are served anonymously, the POST rides the key and costs nothing. A rewrite
 # (POST /api/humanize) draws the pasted words from the account's monthly balance (three per word for
 # a premium rewrite on Free and Pro) and reports the draw in words_debited, which settles the call;
-# 402 means the balance is too low. A key comes from POST /api/agent/keys with no browser; a bad key
+# 402 means the balance is too low. A rewrite that does not clear the band is not charged at all:
+# words_debited is 0 and not_billed is true on a flagged result. fallback_reason is empty on a
+# real rewrite and names the failure otherwise; accepted_draws counts the model rewrites that made
+# it into the shipped text. A key comes from
+# POST /api/agent/keys with no browser; a bad key
 # answers 401 {"error":"invalid api key"} (no key at all: 401 "not signed in"). The X scorer reads X
 # timelines: a malformed handle answers 400 invalid handle and an account that does not exist 404;
 # only X throttling or an upstream failure answers 503 x_unavailable with retry_after_s, which is
@@ -75,7 +79,7 @@ endpoints:
     path: /api/humanize
     name: "Rewrite text to read human"
     summary: "Rewrite prose so it reads less machine-written and return the rewrite with the style score and band before and after."
-    note: "A rewrite takes up to about 30 seconds. Text under five sentences is still rewritten and charged, but its before and after scores carry no band. fallback_reason says whether a real rewrite happened (''), only the filler swap ('mechanical-only'), the filler swap plus a sentence split ('mechanical-plus-surgery') or a rewrite that still reads like model prose ('below-band'); accepted_draws counts the model rewrites that made it into the shipped text."
+    note: "A rewrite takes up to about 30 seconds. Text under five sentences is still rewritten and charged, but its before and after scores carry no band. fallback_reason is empty on a real rewrite and names the failure otherwise ('mechanical-only', 'mechanical-plus-surgery', 'below-band', 'no-ai-binding'). A rewrite that does not clear the band is not charged: words_debited is 0 and not_billed is true."
     input:
       bodyType: json
       body:
