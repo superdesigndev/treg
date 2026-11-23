@@ -43,11 +43,12 @@ async def test_anymailfinder_key_uses_free_account_probe(clients, monkeypatch):
 
 
 async def test_millionphones_key_uses_free_credits_probe(clients, monkeypatch):
+    """A good key on an account with 0 credits left still connects: the free routes work."""
     def probe(request):
         assert (request.method, request.url.path) == ("GET", "/v1/credits")
         if request.headers["x-api-key"] != "own-key":
             return httpx.Response(401, json={"error": "Invalid API key."})
-        return httpx.Response(200, json={"remaining": 50, "used": 0, "plan": "free"})
+        return httpx.Response(200, json={"remaining": 0, "used": 50, "plan": "free"})
 
     async with AsyncClient(transport=httpx.MockTransport(probe)) as upstream:
         monkeypatch.setattr(app.state, "http", upstream)

@@ -3672,9 +3672,9 @@ MILLIONPHONES = OAuthProvider(
     ),
     base_url="https://millionphones.com/v1",
     docs_url="https://millionphones.com/docs",
-    # Free: 200 {"remaining", "used", "plan"} for a good key, 401 {"error": "Invalid API key."}
-    # for a bad one.
-    probe_path="/credits", token_verify_field="remaining",
+    # Free: 200 {"remaining", "used", "plan"} for a good key, even one with 0 credits left;
+    # 401 {"error": "Invalid API key."} for a bad one.
+    probe_path="/credits",
 )
 
 
