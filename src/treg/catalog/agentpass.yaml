@@ -1,0 +1,64 @@
+provider: agentpass
+source:
+  docs: https://agentpass.page/api
+  openapi: https://agentpass.page/openapi.json
+  curated: '2026-11-19'
+# AgentPass scores a website for agent readiness (ARI-100): whether AI crawlers are let in, whether
+# the content is in the raw HTML, and whether the site publishes the files and interfaces agents
+# read (llms.txt, OpenAPI, MCP card). The scan and report routes are free and answer 200 to an
+# anonymous GET, so the rows relay anonymously and are metered at zero. The service also issues
+# self-serve bearer keys, but these routes ignore the key, so there is no credential to inject.
+limits: "600 requests a minute, stated in the RateLimit-* headers of every answer. Reports are cached for six hours."
+pricing_url: https://agentpass.page/pricing
+proposed_capabilities:
+  # web.page.audit runs an audit; nothing in the taxonomy reads back an audit that already ran.
+  web.page.audit.report: "Read a host's most recent page audit report, running the audit only when none is cached"
+
+defaults:
+  provenance: {source: observed, source_url: 'https://agentpass.page/pricing', checked: '2026-11-19', confidence: verified}
+
+endpoints:
+  - id: agentpass.web.page.audit
+    added: '2026-11-19'
+    platform_auth: anonymous
+    domain: other
+    capability: web.page.audit
+    platform: web
+    scope: any_account
+    method: GET
+    path: /api/scan
+    name: "Agent-readiness scan of a URL"
+    summary: "Scan a URL for agent readiness: a 0-100 score with grade and level, per-domain scores, reachability for 32 AI crawlers, every check with its evidence, and paste-ready fix prompts ordered by points recovered."
+    input:
+      queryParams:
+        url: {type: string, required: true, note: "Absolute http or https URL of the page to scan.", example: "https://example.com"}
+        refresh: {type: boolean, required: false, default: false, note: "Scan again instead of returning a report under six hours old.", example: false}
+    note: "A report under six hours old is returned as is; `cache.hit` and `scannedAt` say how fresh it is. A site whose homepage does not answer gives HTTP 502, and its problem+json detail names the status the homepage returned."
+    test_request:
+      queryParams: {url: "https://example.com"}
+    price: {value: '0', currency: USD, unit: call}
+    verified: '2026-11-19'
+    example_response: examples/agentpass.web.page.audit.json
+    docs_url: https://agentpass.page/api
+
+  - id: agentpass.web.page.audit.report
+    added: '2026-11-19'
+    platform_auth: anonymous
+    domain: other
+    capability: web.page.audit.report
+    platform: web
+    scope: any_account
+    method: GET
+    path: /report/{host}.json
+    name: "Agent-readiness report for a host"
+    summary: "The latest agent-readiness report for a host: the same score, grade, crawler matrix, checks and fix prompts as a scan, read from the six-hour cache."
+    input:
+      pathParams:
+        host: {type: string, required: true, note: "Bare hostname, optionally with a port, without scheme or path.", example: "example.com"}
+    note: "A host with no cached report is scanned on the spot, so the first read can take a few seconds."
+    test_request: {pathParams: {host: "example.com"}}
+    price: {value: '0', currency: USD, unit: call}
+    miss: {status: [404], means: "No report is cached for that host and a fresh scan of it did not complete; the problem+json body says to call the scan first."}
+    verified: '2026-11-19'
+    example_response: examples/agentpass.web.page.audit.report.json
+    docs_url: https://agentpass.page/api
