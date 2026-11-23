@@ -211,7 +211,9 @@ it.
 - **`catalog.css` is stamped `?v=<mtime>`**; it has a real `max-age`.
 - **Counts are never typed.** Headline numbers come from `catalog_store.headline_counts` through
   `_fill_headline` (`{ENDPOINTS}`/`{PROVIDERS}`); `marketing/landing/build_html.py` emits the
-  placeholders. Untemplated copy (`tutorial.js` and mirrors, `README.md`, the CLI) states no count.
+  placeholders. The skill quotes `{PROVIDERS_FLOOR}`, the provider count rounded down to the ten
+  (`catalog_store.providers_floor`), so a listing does not rewrite every published copy of it.
+  Untemplated copy (`tutorial.js` and mirrors, `README.md`, the CLI) states no count.
   `test_no_page_types_the_catalog_size` holds this.
   Catalog tiles count only their browse surface (`catalog_store.HIDDEN_KINDS`).
 - **Routed rows and a vendor named "treg" never appear publicly.** Every public projection filters

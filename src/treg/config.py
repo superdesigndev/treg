@@ -510,6 +510,7 @@ class Settings(BaseSettings):
     platform_key_scrapecreators: str = ""
     platform_key_brightdata: str = ""
     platform_key_justoneapi: str = ""
+    platform_key_keepa: str = ""       # ?key= query param; a plan buys tokens per minute
     platform_key_serpapi: str = ""
     platform_key_moz: str = ""          # base64 of "access_id:secret_key" (HTTP Basic)
     platform_key_seranking: str = ""

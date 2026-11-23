@@ -63,6 +63,7 @@ import json
 import re
 import logging
 import unicodedata
+import zlib
 from dataclasses import dataclass, field
 from urllib.parse import urlencode
 
@@ -1073,7 +1074,27 @@ async def _read(response: UpstreamResponse) -> bytes:
             chunks.append(chunk)
     finally:
         await response.close()
-    return b"".join(chunks)
+    return _identity(b"".join(chunks), (_header(response, "content-encoding") or "").strip().lower())
+
+
+def _identity(raw: bytes, encoding: str) -> bytes:
+    """The child's answer as identity bytes. A routed child asks for `identity`, but a provider may
+    gzip anyway (Keepa always does): gzip and deflate are undone here, within `ROUTED_BODY_MAX`, so
+    a small compressed answer cannot inflate past the cap. Any other encoding, or a body that does
+    not decode, stays as it came and reads as a non-JSON answer."""
+    if encoding not in ("gzip", "x-gzip", "deflate"):
+        return raw
+    # 32+MAX_WBITS reads a gzip or zlib header; raw deflate is the other "deflate" in the wild.
+    for wbits in (32 + zlib.MAX_WBITS, -zlib.MAX_WBITS):
+        inflater = zlib.decompressobj(wbits)
+        try:
+            out = inflater.decompress(raw, ROUTED_BODY_MAX + 1)
+        except zlib.error:
+            continue
+        if len(out) > ROUTED_BODY_MAX or inflater.unconsumed_tail:
+            raise _ChildTooLarge(f"answer is over treg's {ROUTED_BODY_MAX >> 20} MiB routed read")
+        return out
+    return raw
 
 
 def _finished_on_submission(descriptor: dict, raw: bytes) -> bool:

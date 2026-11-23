@@ -1,0 +1,15 @@
+{
+  "asinList": [
+    "B000QSRO1Y",
+    "B0CTD7ZJBX",
+    "… 48 more item(s) truncated"
+  ],
+  "processingTimeInMs": 65,
+  "refillIn": 53045,
+  "refillRate": 20,
+  "timestamp": 1795429737803,
+  "tokenFlowReduction": 0.0,
+  "tokensConsumed": 11,
+  "tokensLeft": 1115,
+  "totalResults": 16000
+}

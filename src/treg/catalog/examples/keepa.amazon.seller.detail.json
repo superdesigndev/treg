@@ -1,0 +1,109 @@
+{
+  "processingTimeInMs": 0,
+  "refillIn": 54087,
+  "refillRate": 20,
+  "sellers": {
+    "A2L77EE7U53NWQ": {
+      "address": [
+        "410 Terry Avenue North",
+        "Seattle",
+        "… 3 more item(s) truncated"
+      ],
+      "avgBuyBoxCompetitors": 1.2142929,
+      "businessName": "Amazon.com Services LLC",
+      "buyBoxNewOwnershipRate": 0,
+      "buyBoxUsedOwnershipRate": 79,
+      "competitors": [
+        {
+          "percent": 32,
+          "sellerId": "ATVPDKIKX0DER"
+        },
+        {
+          "percent": 1,
+          "sellerId": "AH1YFAUS3NHX2"
+        },
+        "… 7 more item(s) truncated"
+      ],
+      "csv": [
+        [
+          6242216,
+          0
+        ],
+        [
+          6242216,
+          0
+        ]
+      ],
+      "currentRating": 0,
+      "currentRatingCount": 0,
+      "domainId": 1,
+      "hasFBA": true,
+      "lastRatingUpdate": 8344510,
+      "lastUpdate": 8359828,
+      "negativeRating": [
+        0,
+        0,
+        "… 2 more item(s) truncated"
+      ],
+      "neutralRating": [
+        0,
+        0,
+        "… 2 more item(s) truncated"
+      ],
+      "positiveRating": [
+        0,
+        0,
+        "… 2 more item(s) truncated"
+      ],
+      "ratingCount": [
+        0,
+        0,
+        "… 2 more item(s) truncated"
+      ],
+      "ratingsLast30Days": 0,
+      "recentFeedback": [],
+      "sellerBrandStatistics": [
+        {
+          "avg30SalesRank": 1091794,
+          "brand": "a-premium",
+          "productCount": 6925,
+          "productCountWithAmazonOffer": 0
+        },
+        {
+          "avg30SalesRank": 386411,
+          "brand": "adidas",
+          "productCount": 5068,
+          "productCountWithAmazonOffer": 3885
+        },
+        "… 8 more item(s) truncated"
+      ],
+      "sellerCategoryStatistics": [
+        {
+          "avg30SalesRank": 526394,
+          "catId": 7141123011,
+          "productCount": 175296,
+          "productCountWithAmazonOffer": 77288
+        },
+        {
+          "avg30SalesRank": 474377,
+          "catId": 1055398,
+          "productCount": 170321,
+          "productCountWithAmazonOffer": 42512
+        },
+        "… 8 more item(s) truncated"
+      ],
+      "sellerId": "A2L77EE7U53NWQ",
+      "sellerName": "Amazon Resale",
+      "shipsFromChina": false,
+      "totalStorefrontAsins": [
+        7966054,
+        276376
+      ],
+      "trackedSince": 3773740
+    }
+  },
+  "timestamp": 1795429736826,
+  "tokenFlowReduction": 0.0,
+  "tokensConsumed": 1,
+  "tokensLeft": 1132
+}

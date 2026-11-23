@@ -1,0 +1,20 @@
+{
+  "bestSellersList": {
+    "asinList": [
+      "B0FQFB8FMG",
+      "B0DXXYS4BJ",
+      "… 499998 more item(s) truncated"
+    ],
+    "categoryId": 172282,
+    "domainId": 1,
+    "lastUpdate": 8359818
+  },
+  "bestSellersUpdate": 8359826,
+  "processingTimeInMs": 19,
+  "refillIn": 55922,
+  "refillRate": 20,
+  "timestamp": 1795429734972,
+  "tokenFlowReduction": 0.0,
+  "tokensConsumed": 50,
+  "tokensLeft": 1133
+}

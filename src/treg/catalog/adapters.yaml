@@ -2043,6 +2043,16 @@ adapters:
     in:  {asin: queryParams.asin}
     in_expr: {queryParams.country: "upper(country)"}
     out: {product: data}
+  # Keepa answers from its own database (refreshed when older than an hour), in its own units:
+  # prices in cents, -1 for none. The contract's country becomes Keepa's numeric marketplace id;
+  # a country Keepa does not cover maps to domain 0, which Keepa refuses with a free 400, and the
+  # route goes on to the providers that are free on failure.
+  keepa.amazon.product.detail:
+    accepts: [[asin]]
+    in:  {asin: queryParams.asin}
+    in_expr: {queryParams.domain: "coalesce(key(obj('us', 1, 'gb', 2, 'uk', 2, 'de', 3, 'fr', 4, 'jp', 5, 'ca', 6, 'it', 8, 'es', 9, 'in', 10, 'mx', 11, 'br', 12), lower(country)), 0)"}
+    const: {queryParams.stats: '1', queryParams.history: 0}
+    out: {product: "products[0]"}
 
   fiber-ai.linkedin.company.profile:
     accepts: [[linkedin_handle]]

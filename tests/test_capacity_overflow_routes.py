@@ -209,6 +209,15 @@ def test_signature_table_classifies_balance_quota_and_burst():
     assert S.is_exhausting(S.classify("findymail", 402, {}, b"x")) and not S.is_exhausting(None)
 
 
+def test_keepa_reads_a_lapsed_plan_as_empty_and_a_dry_token_bucket_as_a_pace():
+    lapsed = S.classify("keepa", 402, {}, b'{"error":{"message":"Operation unauthorized. No active API '
+                        b'plan found.","type":"unauthorized"},"refillIn":0,"tokensLeft":0}')
+    assert lapsed.kind == "balance" and S.is_exhausting(lapsed)
+    dry = S.classify("keepa", 429, {}, b'{"error":{"type":"tooManyRequests"},"refillIn":12844,'
+                     b'"refillRate":5,"tokensLeft":-3}')
+    assert dry.kind == "burst" and not S.is_exhausting(dry)
+
+
 _OUT_OF_CREDITS = [
     ("wiza", 400, b'{"status":{"code":400,"message":"Insufficient API credits. You need 2 credits for company enrichment."}}',
      b'{"status":{"code":400,"message":"company_domain is invalid"}}'),

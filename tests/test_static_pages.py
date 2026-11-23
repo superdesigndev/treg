@@ -154,3 +154,18 @@ def test_no_page_types_the_catalog_size():
             for rx in (_TYPED_ENDPOINTS, _TYPED_PROVIDERS):
                 hits += [f"{path.relative_to(ROOT)}:{n}: {m.group(0)}" for m in rx.finditer(plain)]
     assert not hits, "\n".join(hits)
+
+
+def test_the_skill_quotes_the_provider_count_rounded_down_to_the_ten():
+    """Every listing changed the skill's exact provider count and rewrote every published copy of
+    the skill with it; the description quotes the count rounded down to the ten instead."""
+    from treg.domain.catalog import store as catalog_store
+    from treg.routers.web import _fill_headline
+
+    assert [catalog_store.providers_floor(n) for n in (130, 138, 140)] == ["130+", "130+", "140+"]
+    template = (WEB / "skill.md").read_text(encoding="utf-8")
+    assert "{PROVIDERS_FLOOR} providers" in template and "{PROVIDERS}" not in template
+    _, providers = catalog_store.headline_counts(catalog_store.load())
+    served = _fill_headline(template)
+    assert f"{catalog_store.providers_floor(providers)} providers" in served
+    assert f" {providers} providers" not in served

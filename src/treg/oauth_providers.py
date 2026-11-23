@@ -2276,6 +2276,35 @@ JUSTONEAPI = OAuthProvider(
     probe_path="/api/tiktok/get-user-detail/v1?uniqueId=tiktok",
 )
 
+KEEPA = OAuthProvider(
+    service="keepa",
+    display_name="Keepa",
+    auth_kind="key",
+    token_label="API access key",
+    token_placeholder="your Keepa API access key",
+    token_location="query",  # the key rides as ?key=…; Keepa takes no header form
+    token_param="key",
+    token_format="{secret}",
+    setup_url="https://keepa.com/#!api",
+    setup_action_label="Get your Keepa API key",
+    setup_steps=(
+        "Sign in to Keepa and subscribe to an API plan on the API page.",
+        "Copy the private API access key shown there.",
+    ),
+    setup_note="Plans are a token bucket: a fixed number of tokens per minute, unused tokens expire after 60 minutes.",
+    auth_uri="", token_uri="",
+    scopes={},
+    client_id_setting="", client_secret_setting="",
+    category="Research & public data",
+    summary="Amazon product, price and sales-rank history, deals, best sellers and sellers across 11 marketplaces.",
+    base_url="https://api.keepa.com",
+    docs_url="https://keepa.com/api-docs/",
+    # /token returns the token bucket and consumes nothing. A well-formed key with no plan answers
+    # HTTP 402 {"error": {"type": "unauthorized", "message": "Operation unauthorized. No active API
+    # plan found."}} and a malformed one 400 invalidParameter; the standard status check rejects both.
+    probe_path="/token",
+)
+
 SCRAPECREATORS = OAuthProvider(
     service="scrapecreators",
     display_name="ScrapeCreators",
@@ -4511,7 +4540,7 @@ REGISTRY: dict[str, OAuthProvider] = {
         OPENROUTER,
         REPLICATE,
         REAPI, PIAPI, GOOGLE_AI, TINYFISH,
-        TIKHUB, BRIGHTDATA, SEMRUSH, JUSTONEAPI,
+        TIKHUB, BRIGHTDATA, SEMRUSH, JUSTONEAPI, KEEPA,
         SCRAPECREATORS,
         # SEO API-key providers
         DATAFORSEO, SERANKING, MOZ, MAJESTIC, SERPSTAT, EXA, SEARCH1API, TAVILY, OCTEN, LINKUP, PARALLEL, YOU, VALYU, KEENABLE, OLOSTEP, FIRECRAWL, CRAWL4AI, SPIDERCLOUD, PERPLEXITY,

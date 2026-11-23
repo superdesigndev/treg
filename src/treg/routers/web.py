@@ -3797,9 +3797,11 @@ def _keep_block(text: str, name: str, keep: bool) -> str:
 def _fill_headline(text: str) -> str:
     """`{ENDPOINTS}` and `{PROVIDERS}` in a served document come from the loaded catalog, like
     `{BASE}` comes from settings: the front-door files quote the catalog's size and a typed number
-    was always stale (see `catalog_store.headline_counts`)."""
+    was always stale (see `catalog_store.headline_counts`). `{PROVIDERS_FLOOR}` is the provider count
+    rounded down to the ten, for the skill (`catalog_store.providers_floor`)."""
     endpoints, providers = catalog_store.headline_counts(catalog_store.load())
-    return text.replace("{ENDPOINTS}", endpoints).replace("{PROVIDERS}", str(providers))
+    return (text.replace("{ENDPOINTS}", endpoints).replace("{PROVIDERS_FLOOR}", catalog_store.providers_floor(providers))
+            .replace("{PROVIDERS}", str(providers)))
 
 
 def _strip_hosted(text: str) -> str:

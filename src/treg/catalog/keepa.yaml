@@ -1,0 +1,293 @@
+# Keepa tracks Amazon products, prices, sellers and deals across 11 marketplaces. What it adds to
+# the Amazon rows already in the catalog is time: every product carries its price, Buy Box,
+# sales-rank, rating and offer-count history, a `stats` block of current, average, minimum and
+# maximum values over a chosen window, and the minute its data was last refreshed. It also lists
+# deals (recent price drops), best sellers per category, seller profiles and categories, and runs
+# a product finder over its whole product database.
+#
+# Keepa answers from its own database and refreshes a product when its data is older than the
+# request's `update` hours (default 1). Its product search is a query of that database, not
+# Amazon's live result page: no sponsored rows, no result count, and the order is Keepa's own.
+#
+# Billing is a token bucket: a plan generates a fixed number of tokens per minute, unused tokens
+# expire after 60 minutes, and every answer reports `tokensConsumed` and `tokensLeft`. A request
+# runs while the balance is positive, so `tokensLeft` can go negative; a request made with no
+# tokens left answers 429. Failed requests (400 invalidParameter, 405 out of range) consume
+# nothing. Prices below are in Keepa tokens; the token's USD rate is in fx.yaml (keepa).
+#
+# Answer conventions every row shares: prices are integers in the marketplace's smallest currency
+# unit (cents), -1 means no offer or no data, ratings are tenths of a star (45 = 4.5), and times
+# are "Keepa minutes" (minutes since 2011-01-01 UTC: unix seconds = (keepa + 21564000) * 60).
+#
+# Auth: the key rides as the `key` query parameter.
+provider: keepa
+source:
+  docs: https://keepa.com/api-docs/
+  openapi: null   # no OpenAPI; https://keepa.com/api-docs/quick-reference.md lists every endpoint
+  curated: '2026-11-23'
+pricing_url: https://keepa.com/#!api
+limits: "Token bucket: a plan's per-minute token rate, bucket capacity 60 minutes of tokens. 429 when the bucket is empty."
+proposed_capabilities:
+  amazon.product.price_history: Get a product's price, Buy Box, sales-rank and rating history by ASIN
+  amazon.deals.list: List recent Amazon price drops and deals matching filters
+  amazon.seller.detail: Get a marketplace seller's profile, ratings and storefront by seller ID
+  amazon.category.search: Find Amazon categories by name
+  amazon.category.detail: Get an Amazon category and its parent tree by category ID
+  amazon.products.query: Find Amazon products by price, rank, rating, brand and other product fields
+defaults:
+  provenance: {source: docs, source_url: 'https://keepa.com/api-docs/plans-tokens.md', checked: '2026-11-23', confidence: documented}
+  error: {when: {path: response.error, op: present}}
+  # Keepa consumes tokens for a lookup that finds nothing (an unknown ASIN costs its 1 token).
+  bill: {miss: charged}
+
+
+endpoints:
+  - id: keepa.amazon.product.detail
+    added: '2026-11-23'
+    capability: amazon.product.detail
+    platform: amazon
+    scope: any_account
+    method: GET
+    path: /product
+    name: "Amazon product by ASIN or UPC/EAN, with price statistics"
+    summary: "Get Amazon products by ASIN or UPC/EAN code, up to 100 per call, with current prices, sales rank, rating and their statistics"
+    input:
+      queryParams:
+        domain: &domain {type: integer, required: true, default: 1, enum: [1, 2, 3, 4, 5, 6, 8, 9, 10, 11, 12], note: "Amazon marketplace: 1 com, 2 co.uk, 3 de, 4 fr, 5 co.jp, 6 ca, 8 it, 9 es, 10 in, 11 com.mx, 12 com.br", example: 1}
+        asin: {type: string, required: false, note: "one ASIN or up to 100 comma-separated", example: "B002DYIZH6"}
+        code: {type: string, required: false, note: "UPC, EAN, GTIN or ISBN-13, or up to 100 comma-separated; one code can match several ASINs"}
+        code-limit: {type: integer, required: false, min: 1, note: "most products returned per code"}
+        stats: {type: string, required: false, note: "days of statistics (`180`) or a range of two comma-separated ISO dates; adds the `stats` block with current, average, min and max values; free", example: "1"}
+        history: {type: integer, required: false, enum: [0, 1], note: "0 drops the `csv` history arrays; free, and much smaller answers", example: 0}
+        days: {type: integer, required: false, min: 1, note: "limit history to the last N days"}
+        update: {type: integer, required: false, min: 0, note: "refresh when Keepa's data is older than N hours (default 1); 0 always refreshes, and costs 1 more token per product whose data is under an hour old"}
+        rating: {type: integer, required: false, enum: [0, 1], note: "include rating and review-count history; up to 1 more token per product"}
+        buybox: {type: integer, required: false, enum: [0, 1], note: "include Buy Box price and seller data; 2 more tokens per product"}
+      note: "Send asin or code. Prices are in cents and -1 means none; `stats.current` is indexed by Keepa's price types (0 Amazon, 1 new, 3 sales rank, 16 rating x10, 17 review count, 18 Buy Box)."
+    test_request: {queryParams: {domain: 1, asin: "B002DYIZH6", stats: "1", history: 0}}
+    price: {value: '1', currency: credit, per: 1, unit: item, note: "1 token per product; rating, buybox and update=0 add tokens per product. The answer's tokensConsumed is the exact charge."}
+    reserve: {entities: {from: [query.asin, query.code], max: 100}}
+    miss: {when: {path: response.products.0.title, op: absent}, means: "no product: an unknown ASIN answers a product with no title (productType 4); an unknown code answers no product"}
+    verified: '2026-11-23'
+    example_response: examples/keepa.amazon.product.detail.json
+    docs_url: https://keepa.com/api-docs/product.html
+
+  - id: keepa.amazon.product.price-history
+    added: '2026-11-23'
+    capability: amazon.product.price_history
+    platform: amazon
+    scope: any_account
+    method: GET
+    path: /product
+    name: "Amazon price, Buy Box and sales-rank history by ASIN"
+    summary: "Get the price, sales-rank, offer-count and rating history of Amazon products by ASIN, up to 100 per call"
+    input:
+      queryParams:
+        domain: *domain
+        asin: {type: string, required: true, note: "one ASIN or up to 100 comma-separated", example: "B002DYIZH6"}
+        days: {type: integer, required: false, min: 1, note: "limit history to the last N days; omit for the full history", example: 30}
+        stats: {type: string, required: false, note: "days of statistics or a date range; free"}
+        rating: {type: integer, required: false, enum: [0, 1], note: "add rating and review-count history; up to 1 more token per product"}
+        buybox: {type: integer, required: false, enum: [0, 1], note: "add Buy Box price history; 2 more tokens per product"}
+      note: "History is in `products[].csv`: one array per price type, flat pairs of [Keepa minute, value, Keepa minute, value, ...], values in cents (-1 = no offer). csv[0] is the Amazon price, csv[1] the lowest new price, csv[3] the sales rank, csv[18] the Buy Box price."
+    test_request: {queryParams: {domain: 1, asin: "B002DYIZH6", days: 30}}
+    price: {value: '1', currency: credit, per: 1, unit: item, note: "1 token per product; rating and buybox add tokens per product. The answer's tokensConsumed is the exact charge."}
+    reserve: {entities: {from: query.asin, max: 100}}
+    miss: {when: {path: response.products.0.title, op: absent}, means: "unknown ASIN: a product with no title (productType 4)"}
+    verified: '2026-11-23'
+    example_response: examples/keepa.amazon.product.price-history.json
+    docs_url: https://keepa.com/api-docs/product-object.html
+
+  - id: keepa.amazon.product.sellers
+    added: '2026-11-23'
+    capability: amazon.product.sellers
+    platform: amazon
+    scope: any_account
+    method: GET
+    path: /product
+    name: "Live marketplace offers and sellers of an Amazon product"
+    summary: "List the live marketplace offers of Amazon products by ASIN, with seller, condition, price, shipping, Prime and FBA flags"
+    input:
+      queryParams:
+        domain: *domain
+        asin: {type: string, required: true, note: "one ASIN or up to 100 comma-separated", example: "B002DYIZH6"}
+        offers: {type: integer, required: true, min: 20, max: 100, note: "most offers to retrieve; billed per offer page found, not per offer requested", example: 20}
+        only-live-offers: {type: integer, required: false, enum: [0, 1], note: "1 keeps only the live offers", example: 1}
+        history: {type: integer, required: false, enum: [0, 1], note: "0 drops the price history arrays", example: 0}
+        stock: {type: integer, required: false, enum: [0, 1], note: "add stock counts to the offers; 2 more tokens per product"}
+      note: "Offers are in `products[].offers`, the live ones indexed by `products[].liveOffersOrder`. Not available for digital products, rentals, bundles, Amazon Fresh, luxury stores and Pantry."
+    test_request: {queryParams: {domain: 1, asin: "B002DYIZH6", offers: 20, only-live-offers: 1, history: 0}}
+    price: {value: '6', currency: credit, per: 1, unit: page, note: "6 tokens per offer page found (up to 10 offers a page) per product, instead of the 1-token product price. 5 tokens in all when Keepa answers from offers refreshed within `update` hours, when the product has no offers, or when it is gone from Amazon."}
+    miss: {when: {path: response.products.0.offers, op: empty}, means: "the product has no marketplace offers or is gone from Amazon (5 tokens)"}
+    verified: '2026-11-23'
+    example_response: examples/keepa.amazon.product.sellers.json
+    docs_url: https://keepa.com/api-docs/product.html#param-offers
+
+  - id: keepa.amazon.search.products
+    added: '2026-11-23'
+    capability: amazon.search.products
+    platform: amazon
+    scope: any_account
+    method: GET
+    path: /search
+    name: "Amazon products by keyword, from Keepa's product database"
+    summary: "Search Keepa's Amazon product database by keyword and get up to 20 full product objects per page"
+    input:
+      queryParams:
+        domain: *domain
+        type: {type: string, required: true, enum: [product], default: product, example: product}
+        term: {type: string, required: true, note: "keywords; every word must match the title", example: "whey protein"}
+        page: {type: integer, required: false, min: 0, max: 9, note: "0-based page of 20 results"}
+        stats: {type: string, required: false, note: "days of statistics or a date range; free"}
+        history: {type: integer, required: false, enum: [0, 1], note: "0 drops the history arrays", example: 0}
+        asins-only: {type: integer, required: false, enum: [0, 1], note: "1 returns ASINs only"}
+      note: "This searches Keepa's database, not Amazon's live result page: no sponsored rows, no total count, and the order is Keepa's own. Variations of one product (sizes, colors) can appear as separate rows."
+    test_request: {queryParams: {domain: 1, type: product, term: "whey protein", history: 0}}
+    price: {value: '10', currency: credit, per: 1, unit: call}
+    miss: {when: {path: response.products, op: empty}, means: "no product matched the keywords"}
+    verified: '2026-11-23'
+    example_response: examples/keepa.amazon.search.products.json
+    docs_url: https://keepa.com/api-docs/product-search.html
+
+  - id: keepa.amazon.bestsellers.list
+    added: '2026-11-23'
+    capability: amazon.bestsellers.list
+    platform: amazon
+    scope: any_account
+    method: GET
+    path: /bestsellers
+    name: "Amazon best sellers of a category, by sales rank"
+    summary: "List the ASINs of an Amazon category's best sellers in sales-rank order, current or averaged over 30, 90 or 180 days"
+    input:
+      queryParams:
+        domain: *domain
+        category: {type: string, required: true, note: "category node ID (from keepa.amazon.category.search) or a product group name such as `Beauty`", example: "172282"}
+        range: {type: integer, required: false, enum: [0, 30, 90, 180], note: "rank by the average sales rank over these days instead of the current rank"}
+        month: {type: integer, required: false, min: 1, max: 12, note: "with `year`, the list of a past month; not with `range`"}
+        year: {type: integer, required: false, min: 2015, note: "with `month`"}
+        variations: {type: integer, required: false, enum: [0, 1], note: "1 lists every variation instead of one per product"}
+        sublist: {type: integer, required: false, enum: [0, 1], note: "1 ranks by the sub-category sales rank"}
+      note: "`bestSellersList.asinList` holds the ASINs in rank order and can be very long for a root category; look the products up with keepa.amazon.product.detail."
+    test_request: {queryParams: {domain: 1, category: "172282"}}
+    price: {value: '50', currency: credit, per: 1, unit: call, note: "a category Keepa has no list for answers empty and consumes nothing"}
+    bill: null
+    miss: {when: {path: response.bestSellersList.asinList, op: empty}, means: "no best-seller list for this category and marketplace; free"}
+    verified: '2026-11-23'
+    example_response: examples/keepa.amazon.bestsellers.list.json
+    docs_url: https://keepa.com/api-docs/best-sellers.html
+
+  - id: keepa.amazon.deals.list
+    added: '2026-11-23'
+    capability: amazon.deals.list
+    platform: amazon
+    scope: any_account
+    method: GET
+    path: /deal
+    name: "Recent Amazon price drops and deals"
+    summary: "List up to 150 Amazon products per page whose price recently dropped, filtered by price type, category, rating, price range and title keywords"
+    input:
+      queryParams:
+        selection:
+          type: object
+          required: true
+          note: "JSON query. Required: `domainId` and `priceTypes` (one entry: 0 Amazon, 1 new, 2 used, 3 sales rank, 18 Buy Box ...). Common: `page` (0-based, 150 a page), `dateRange` (0 day, 1 week, 2 month, 3 three months), `titleSearch`, `includeCategories`, `minRating` (0-50), `isLowest`, `isRangeEnabled` with `currentRange`/`deltaPercentRange`, `sortType`."
+          example: {page: 0, domainId: 1, priceTypes: [0], dateRange: 0}
+      note: "Deals are in `deals.dr`, each with current prices and its price change over the date ranges."
+    test_request: {queryParams: {selection: '{"page":0,"domainId":1,"priceTypes":[0],"dateRange":0}'}}
+    price: {value: '5', currency: credit, per: 1, unit: call}
+    miss: {when: {path: response.deals.dr, op: empty}, means: "no deal matched the query"}
+    verified: '2026-11-23'
+    example_response: examples/keepa.amazon.deals.list.json
+    docs_url: https://keepa.com/api-docs/deals.html
+
+  - id: keepa.amazon.seller.detail
+    added: '2026-11-23'
+    capability: amazon.seller.detail
+    platform: amazon
+    scope: any_account
+    method: GET
+    path: /seller
+    name: "Amazon marketplace seller profile by seller ID"
+    summary: "Get Amazon marketplace sellers by seller ID, up to 100 per call: name, business details, rating history, brand and category mix, optionally the storefront ASINs"
+    input:
+      queryParams:
+        domain: *domain
+        seller: {type: string, required: true, note: "seller ID, or up to 100 comma-separated; it is in a product's offers and in Amazon's seller page URL", example: "A2L77EE7U53NWQ"}
+        storefront: {type: integer, required: false, enum: [0, 1], note: "1 adds the ASINs the seller lists; 9 more tokens"}
+        update: {type: integer, required: false, min: 1, note: "with storefront, refresh when older than N hours"}
+      note: "Sellers are in the `sellers` map keyed by seller ID."
+    test_request: {queryParams: {domain: 1, seller: "A2L77EE7U53NWQ"}}
+    price: {value: '1', currency: credit, per: 1, unit: item, note: "1 token per seller; storefront adds 9"}
+    reserve: {entities: {from: query.seller, max: 100}}
+    miss: {when: {path: response.sellers, op: empty}, means: "no seller with this ID"}
+    verified: '2026-11-23'
+    example_response: examples/keepa.amazon.seller.detail.json
+    docs_url: https://keepa.com/api-docs/seller.html
+
+  - id: keepa.amazon.category.search
+    added: '2026-11-23'
+    capability: amazon.category.search
+    platform: amazon
+    scope: any_account
+    method: GET
+    path: /search
+    name: "Amazon categories by name"
+    summary: "Find up to 50 Amazon categories whose name matches the keywords, with their IDs and product counts"
+    input:
+      queryParams:
+        domain: *domain
+        type: {type: string, required: true, enum: [category], default: category, example: category}
+        term: {type: string, required: true, note: "keywords of at least 3 letters; every one must match", example: "coffee"}
+      note: "Categories are in the `categories` map keyed by category ID; the ID feeds keepa.amazon.bestsellers.list and the deal and finder filters."
+    test_request: {queryParams: {domain: 1, type: category, term: "coffee"}}
+    price: {value: '1', currency: credit, per: 1, unit: call}
+    miss: {when: {path: response.categories, op: empty}, means: "no category name matched"}
+    verified: '2026-11-23'
+    example_response: examples/keepa.amazon.category.search.json
+    docs_url: https://keepa.com/api-docs/category-search.html
+
+  - id: keepa.amazon.category.detail
+    added: '2026-11-23'
+    capability: amazon.category.detail
+    platform: amazon
+    scope: any_account
+    method: GET
+    path: /category
+    name: "Amazon category and its parent tree by ID"
+    summary: "Get up to 10 Amazon categories by ID with their children, product count and optional parent tree"
+    input:
+      queryParams:
+        domain: *domain
+        category: {type: string, required: true, note: "category ID or up to 10 comma-separated; 0 lists the root categories", example: "172282"}
+        parents: {type: integer, required: true, enum: [0, 1], note: "1 adds each category's parent tree", example: 1}
+    test_request: {queryParams: {domain: 1, category: "172282", parents: 1}}
+    price: {value: '1', currency: credit, per: 1, unit: call}
+    miss: {when: {path: response.categories, op: empty}, means: "no category with this ID"}
+    verified: '2026-11-23'
+    example_response: examples/keepa.amazon.category.detail.json
+    docs_url: https://keepa.com/api-docs/category-lookup.html
+
+  - id: keepa.amazon.products.query
+    added: '2026-11-23'
+    capability: amazon.products.query
+    platform: amazon
+    scope: any_account
+    method: GET
+    path: /query
+    name: "Amazon product finder over Keepa's product database"
+    summary: "Find Amazon ASINs by nearly any product field: price and sales-rank ranges, rating, review count, brand, category, title keywords, monthly sales"
+    input:
+      queryParams:
+        domain: *domain
+        selection:
+          type: object
+          required: true
+          note: "JSON query of product-field filters, most with `_gte`/`_lte` bounds (`current_SALES_gte`, `current_AMAZON_lte`, `brand`, `rootCategory`, `title`, `monthlySold_gte` ...) plus `page` (0-based) and `perPage` (50 to 10,000). Field list: https://keepa.com/api-docs/product-finder.html"
+          example: {title: "whey protein", perPage: 50, page: 0}
+      note: "Answers `asinList` (one page of ASINs) and `totalResults`; look the products up with keepa.amazon.product.detail."
+    test_request: {queryParams: {domain: 1, selection: '{"title":"whey protein","perPage":50,"page":0}'}}
+    price: {value: '11', currency: credit, per: 1, unit: call, note: "10 tokens plus 1 per 100 ASINs returned (rounded up), so 11 for a page of 50; a page of 10,000 costs 110"}
+    miss: {when: {path: response.asinList, op: empty}, means: "no product matched the filters"}
+    verified: '2026-11-23'
+    example_response: examples/keepa.amazon.products.query.json
+    docs_url: https://keepa.com/api-docs/product-finder.html
