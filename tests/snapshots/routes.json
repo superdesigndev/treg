@@ -1700,6 +1700,15 @@
       "GET",
       "HEAD"
     ],
+    "name": "vendor_console_me",
+    "path": "/vendor-console/me"
+  },
+  {
+    "kind": "APIRoute",
+    "methods": [
+      "GET",
+      "HEAD"
+    ],
     "name": "list_orgs",
     "path": "/orgs"
   },

@@ -109,7 +109,8 @@ Inside `relay()`:
 4. **Query pairs consumed into catalog path placeholders** (`drop_params`) are not also sent as
    query.
 5. **The injected credential(s).** Each binding overwrites only its target header, query parameter
-   or top-level JSON field. A JSON binding is the only case that buffers and reserializes the body:
+   or top-level JSON field, or fills only its own `{name}` path segment (a key-bound account id,
+   [auth and secrets](auth-secrets.md)). A JSON binding is the only case that buffers and reserializes the body:
    formatting changes, non-ASCII is emitted as UTF-8, duplicate keys fail closed, and it must never
    be used where the upstream signs or hashes the raw body. On a connection to treg's own Meta app
    the credential also carries `appsecret_proof`, replacing any caller value
@@ -319,7 +320,9 @@ property id does not become `%253A` and an encoded `/`, `?` or `#` stays escaped
 literal: it is legal in a path segment and some email-path APIs reject `%40`. Slashes, query and
 fragment delimiters and invalid `%` are escaped. A value that decodes to `.` or `..` is refused
 with `catalog_parameter_invalid` (400) before any hold, since URL normalization would remove it as
-a dot segment. The overflow road fills Orthogonal's `path` with the same `pathsegment.encode`. A catalog `host` on a provider that opted into
+a dot segment. A placeholder the provider's credential fills (`credential_path_params`) is left
+for the relay, which fills it with `pathsegment.fill` ([auth and secrets](auth-secrets.md)). The
+overflow road fills Orthogonal's `path` with the same `pathsegment.encode`. A catalog `host` on a provider that opted into
 `catalog_targets` must resolve through `OAuthProvider.profile_for_catalog_host` to an exact
 approved HTTPS base URL, which keeps its path prefix and supplies the binding; anything else is a
 treg 502 before reserve, so catalog data cannot redirect an injected credential.
@@ -512,7 +515,8 @@ account's lock lifts at expiry or through its own probe.
 Platform-tier request guards (`_enforce_platform_request`, catalog `platform_request`) run after a
 platform offer is selected and before reserve. They bound treg's exposure on its shared accounts:
 explicit bounded record counts, exact pricing selectors (a singleton-enum body field that picks a
-table price row must equal its value; duplicate JSON keys are rejected so validation and upstream
+table price row must equal its value, or be absent when its declared default is that value, as the
+table prices an absent field; duplicate JSON keys are rejected so validation and upstream
 cannot disagree), the path values a row prices (a `pathParams` pin lists the models treg's key may
 run), and outright refusal of options whose charge or result arrives later at a
 caller's webhook, outside settlement's reads. Own keys are unaffected: the provider, not treg,

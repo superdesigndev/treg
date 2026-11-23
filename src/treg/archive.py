@@ -686,7 +686,7 @@ async def _store(
     deduplicate: the new version row points at the row carrying the bytes (`body_of`) — and when
     an identical answer arrives at a key whose bytes were never kept (policy or cap changed), the
     bytes are stored now, so a policy upgrade heals the store forward without a backfill."""
-    from sqlalchemy.exc import IntegrityError
+    from sqlalchemy.exc import IntegrityError, NoResultFound
 
     observation = observation or archive_bodies.StorageReport()
     stored, reason = None, "record_failed"
@@ -729,7 +729,8 @@ async def _store(
                 # Wall time includes pool checkout, packing, SQL/commit and integrity retries.
                 with observation.measure("record_db"):
                     # Postgres row locking handles other processes. A retry also covers the narrow
-                    # first-key race and multi-process SQLite, where SELECT FOR UPDATE is ignored.
+                    # first-key race, multi-process SQLite, where SELECT FOR UPDATE is ignored, and
+                    # a key row retention deleted between the unlocked read and the lock.
                     for attempt in range(4):
                         try:
                             change = await _store_locked(
@@ -740,7 +741,7 @@ async def _store(
                                 initial_results=initial_results, origin_org_id=origin_org_id, scope=scope)
                             stored, reason = plan.storage, plan.reason
                             break
-                        except IntegrityError:
+                        except (IntegrityError, NoResultFound):
                             if attempt == 3:
                                 raise
                             await asyncio.sleep(0.01 * (attempt + 1))
@@ -1086,6 +1087,8 @@ async def _store_locked(
         new_key = newest is None            # first version ⇒ this recording created the key
         seen_before = (key.stable_seen, key.change_seen)
 
+        if plan.storage in ("r2", "both") and await _object_may_be_gone(s, ch):
+            plan = archive_bodies.WritePlan("db", reason="object_delete_pending")
         stored, enc = _pack(body) if plan.keep_db else (None, None)
         snap = ArchiveSnapshot(
             key_id=key.id, version=1 if newest is None else newest.version + 1,
@@ -1358,6 +1361,36 @@ async def bytes_on_file(session, pairs: set[tuple[str, str]]) -> set[tuple[str, 
                or_(ArchiveSnapshot.body_storage.in_(("r2", "both")), ArchiveSnapshot.body.is_not(None),
                    ArchiveSnapshot.body_of.is_not(None))))).all()
     return {(k, c) for k, c in rows} & pairs
+
+
+def answer_on_file(key_hash: str, body_hash: str):
+    """A SQL condition: the answer `(key_hash, body_hash)` still carries its bytes (as in
+    `bytes_on_file`), for a statement that must re-check it as it writes."""
+    from sqlalchemy import exists, or_
+
+    from .models import ArchiveKey, ArchiveSnapshot
+
+    return exists().where(
+        ArchiveSnapshot.key_id == ArchiveKey.id, ArchiveKey.key_hash == key_hash,
+        ArchiveSnapshot.content_hash == body_hash,
+        or_(ArchiveSnapshot.body_storage.in_(("r2", "both")), ArchiveSnapshot.body.is_not(None),
+            ArchiveSnapshot.body_of.is_not(None)))
+
+
+async def lock_keys_for_share(session, key_hashes: set[str]) -> set[str]:
+    """Lock the given keys `FOR SHARE SKIP LOCKED` in the caller's transaction -> the hashes
+    locked. Row retention deletes a key only under `FOR UPDATE SKIP LOCKED`, so a key held here
+    stays until the caller commits; a key retention holds (or has deleted) is not returned."""
+    from sqlalchemy import select
+
+    from .models import ArchiveKey
+
+    if not key_hashes:
+        return set()
+    return set((await session.execute(
+        select(ArchiveKey.key_hash).where(ArchiveKey.key_hash.in_(key_hashes))
+        .order_by(ArchiveKey.id)
+        .with_for_update(read=True, skip_locked=True))).scalars().all())
 
 
 async def answer_bytes(key_hash: str, body_hash: str) -> bytes | None:
@@ -1648,6 +1681,22 @@ async def note_org_use_in_transaction(db, org_id: int, key_hash: str) -> None:
     await note_org_uses_in_transaction(db, [(org_id, key_hash)])
 
 
+async def _object_may_be_gone(s, content_hash: str) -> bool:
+    """In the recording transaction: whether row retention has started deleting this body's
+    object (application/archive_retention.py). The pending row is read `FOR SHARE`, so a delete
+    that has not marked it yet waits for this transaction and then finds the new snapshot; one
+    that marked it already may have taken the object, so the snapshot keeps the bytes itself."""
+    from sqlalchemy import select
+
+    from .models import ArchiveObjectPending
+
+    deleting = (await s.execute(
+        select(ArchiveObjectPending.deleting)
+        .where(ArchiveObjectPending.content_hash == content_hash)
+        .with_for_update(read=True))).scalar()
+    return bool(deleting)
+
+
 _TOUCH_EVERY_S = 60.0
 _MAX_TOUCHED = 4096
 _touched: dict[str, float] = {}
@@ -1827,6 +1876,7 @@ async def _refresh_call(client, key) -> bool:
     settings exactly as the relay does it."""
     try:
         from . import oauth_providers
+        from .infra.upstream import pathsegment
 
         provider = oauth_providers.get(key.provider)
         secret_value = get_settings().platform_key_for(key.provider)
@@ -1834,6 +1884,7 @@ async def _refresh_call(client, key) -> bool:
             return False  # key withdrawn or provider de-listed — quietly not refreshable
         headers: dict[str, str] = dict(key.req_headers or {})  # replay what keyed the question
         params: list = []
+        path_values: dict[str, str] = {}
         for binding in oauth_providers.platform_bindings(provider):
             value = get_settings().platform_credential(
                 binding.get("platform_setting", ""), binding.get("account"))
@@ -1841,9 +1892,12 @@ async def _refresh_call(client, key) -> bool:
             rendered = fmt.replace("{secret}", value) if value else fmt
             if binding.get("location") == "query":
                 params.append((binding.get("name"), rendered))
+            elif binding.get("location") == "path":
+                path_values[binding.get("name", "")] = rendered
             else:
                 headers[binding.get("name", "")] = rendered
-        resp = await client.request(key.req_method or "GET", key.req_url, params=params or None,
+        url = pathsegment.fill(key.req_url, path_values)
+        resp = await client.request(key.req_method or "GET", url, params=params or None,
                                     headers=headers, content=key.req_body or None)
         body = resp.content
         if not (200 <= resp.status_code < 300):

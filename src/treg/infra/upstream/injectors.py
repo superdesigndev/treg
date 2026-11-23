@@ -1,7 +1,7 @@
 """The injector contract — the seam that keeps the proxy core dumb.
 
 A tool carries a LIST of bindings; the proxy applies each. A binding is a plain dict:
-    {secret_id, injector, location: "header"|"query"|"json", name, format, secret_field, token_encode}
+    {secret_id, injector, location: "header"|"query"|"json"|"path", name, format, secret_field, token_encode}
 The proxy never branches on auth shape — it calls INJECTORS[binding["injector"]] per binding.
 Underneath there are two mechanics: place a string (env, cli_auth) or pull a field from a
 JSON blob (secret_file, oauth). Acquisition (CLI keychain / OAuth handshake / token file) is
@@ -9,6 +9,9 @@ onboarding's job. Adding a shape never touches the proxy.
 
 A `location: "json"` binding is semantic JSON injection, not byte-faithful relay: the relay parses
 and reserializes the object. Never use it for an upstream that signs or hashes the raw request body.
+
+A `location: "path"` binding is a value the provider binds to the credential but reads from the URL
+path (an account id). It fills the `{name}` placeholder of the upstream path and nothing else.
 """
 
 from __future__ import annotations
@@ -17,8 +20,9 @@ import base64
 import json
 from collections.abc import Callable
 
-# An injector places one decrypted secret into the outgoing (headers, params) per its binding.
-Injector = Callable[[dict[str, str], list, dict[str, object] | None, dict, str], None]
+# An injector places one decrypted secret into the outgoing (headers, params, JSON body, path
+# values) per its binding.
+Injector = Callable[[dict[str, str], list, dict[str, object] | None, dict, str, dict[str, str] | None], None]
 
 INJECTORS: dict[str, Injector] = {}
 
@@ -52,11 +56,12 @@ def ensure_base64(value: str) -> str:
 
 
 def _place(headers, params: list, json_body: dict[str, object] | None,
-           binding: dict, value: str) -> None:
+           binding: dict, value: str, path_values: dict[str, str] | None = None) -> None:
     """Put `value` where the binding declares. `headers` is a mapping that overwrites by name
     (dict or httpx.Headers); `params` is a list of (k, v) pairs (preserves duplicate caller
     params). For a query binding we drop any caller param of the same name so the injected
-    credential wins, then append it."""
+    credential wins, then append it. A path binding records the value under its placeholder name;
+    the relay fills the upstream path from `path_values`."""
     # A pasted credential often carries the paste's trailing newline (echo/pbpaste both add one).
     # A newline is ILLEGAL in a header value, so httpx dies with an opaque 502 at call time —
     # sometimes months after the paste. Surrounding whitespace is never part of a real credential.
@@ -76,6 +81,10 @@ def _place(headers, params: list, json_body: dict[str, object] | None,
         if json_body is None:
             raise ValueError("JSON credential injection requires a JSON object request body")
         json_body[name] = rendered
+    elif location == "path":
+        if path_values is None:
+            raise ValueError("path credential injection requires the upstream path")
+        path_values[name] = rendered
     else:
         headers[name] = rendered
 
@@ -98,42 +107,47 @@ def _token_from_json(blob: str, field: str) -> str:
 
 @register("env")
 def env_injector(headers: dict[str, str], params: list, json_body: dict[str, object] | None,
-                 binding: dict, secret: str) -> None:
+                 binding: dict, secret: str,
+                 path_values: dict[str, str] | None = None) -> None:
     """Plain-string credential (ENV-style)."""
-    _place(headers, params, json_body, binding, secret)
+    _place(headers, params, json_body, binding, secret, path_values)
 
 
 @register("cli_auth")
 def cli_auth_injector(headers: dict[str, str], params: list, json_body: dict[str, object] | None,
-                      binding: dict, secret: str) -> None:
+                      binding: dict, secret: str,
+                 path_values: dict[str, str] | None = None) -> None:
     """Material lifted from a CLI's own config/keychain (e.g. stripe/gh). Placed like a string;
     the CLI-specific *extraction* happens during onboarding, not here."""
-    _place(headers, params, json_body, binding, secret)
+    _place(headers, params, json_body, binding, secret, path_values)
 
 
 @register("secret_file")
 def secret_file_injector(headers: dict[str, str], params: list, json_body: dict[str, object] | None,
-                         binding: dict, secret: str) -> None:
+                         binding: dict, secret: str,
+                 path_values: dict[str, str] | None = None) -> None:
     """A `.secret/` token file (GCP, Google Ads, GSC): pull the field and place it."""
     _place(headers, params, json_body, binding,
-           _token_from_json(secret, binding.get("secret_field", "access_token")))
+           _token_from_json(secret, binding.get("secret_field", "access_token")), path_values)
 
 
 @register("oauth")
 def oauth_injector(headers: dict[str, str], params: list, json_body: dict[str, object] | None,
-                   binding: dict, secret: str) -> None:
+                   binding: dict, secret: str,
+                 path_values: dict[str, str] | None = None) -> None:
     """A stored OAuth token JSON: inject the access token.
 
     Auto-refresh on expiry is intentionally NOT here — refreshing is network + persistence,
     which belongs to the OAuth connect flow (Step 5), not to the hot injection path.
     """
     _place(headers, params, json_body, binding,
-           _token_from_json(secret, binding.get("secret_field", "access_token")))
+           _token_from_json(secret, binding.get("secret_field", "access_token")), path_values)
 
 
 def inject(headers: dict[str, str], params: list, binding: dict, secret: str,
-           *, json_body: dict[str, object] | None = None) -> None:
+           *, json_body: dict[str, object] | None = None,
+           path_values: dict[str, str] | None = None) -> None:
     injector = INJECTORS.get(binding.get("injector", "env"))
     if injector is None:
         raise ValueError(f"unknown injector: {binding.get('injector')!r}")
-    injector(headers, params, json_body, binding, secret)
+    injector(headers, params, json_body, binding, secret, path_values)

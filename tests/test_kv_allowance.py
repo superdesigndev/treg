@@ -137,6 +137,50 @@ async def test_take_up_to_takes_what_is_there_from_its_own_epoch_only(counter):
     assert (await store.allowance_state(org_id))[0] == 0
 
 
+async def _pace(store, org_id):
+    """(what the counter is down by, ms since the last add), read with the state."""
+    state = await store.allowance_state_and_pace(org_id)
+    assert state[:5] == await store.allowance_state(org_id), "the state it reads with it"
+    return state[5:]
+
+
+@real_redis
+async def test_the_pace_is_what_the_counter_went_down_by_since_the_last_add(counter):
+    store, org_id = counter
+    assert await _pace(store, org_id) == (0, 0), "no counter, no reading"
+    await _add(store, org_id, 7, 1_000, until_ms=_soon(), ttl_ms=60_000, seen_frozen=0)
+    assert await store.allowance_take(org_id, 300) == 7
+    assert await store.allowance_give_back(org_id, 7, 100) is True
+    await asyncio.sleep(0.05)
+    spent, since_ms = await _pace(store, org_id)
+    assert spent == 200 and 50 <= since_ms < 5_000, "net of what calls gave back"
+    await _add(store, org_id, 7, 200, until_ms=_soon(), ttl_ms=60_000, seen_frozen=0)
+    spent, since_ms = await _pace(store, org_id)
+    assert spent == 0 and since_ms < 50, "each add starts a new reading"
+    assert await store.allowance_take(org_id, 1_000) == 7
+    await asyncio.sleep(0.05)
+    assert await store.allowance_take(org_id, 1) == 0
+    spent, later_ms = await _pace(store, org_id)
+    assert spent == 1_000 and later_ms >= 50, "what was spent stays; how long ago grows"
+
+
+@real_redis
+async def test_money_nobody_spent_leaves_no_reading(counter):
+    """A take-back corrects a counter above its hold, and a drain returns what a counter held
+    to the balance: neither is spending, so the next refill reads nothing rather than a pace."""
+    store, org_id = counter
+    await _add(store, org_id, 7, 1_000, until_ms=_soon(), ttl_ms=60_000, seen_frozen=0)
+    assert await store.allowance_take_up_to(org_id, 7, 100) == 100
+    assert await _pace(store, org_id) == (0, 0)
+    await _add(store, org_id, 7, 0, until_ms=_soon(), ttl_ms=60_000, seen_frozen=0)
+    assert await store.allowance_take(org_id, 100) == 7
+    assert (await _pace(store, org_id))[0] == 100
+    assert await store.allowance_drop(org_id, 7) == 800
+    assert await _pace(store, org_id) == (0, 0)
+    await store.allowance_retire(org_id, 7, 60_000)
+    assert await _pace(store, org_id) == (0, 0)
+
+
 @real_redis
 async def test_concurrent_takes_from_two_clients_never_overspend(counter):
     store, org_id = counter
@@ -318,6 +362,7 @@ async def _restart(store, org_id):
     (lambda store, org_id: store.allowance_give_back(org_id, 7, 50), False),
     (lambda store, org_id: store.allowance_take_up_to(org_id, 7, 50), 0),
     (lambda store, org_id: store.allowance_drop(org_id, 7), 0),
+    (lambda store, org_id: _pace(store, org_id), (0, 0)),
     (lambda store, org_id: store.allowance_state(org_id), None),
 ])
 async def test_a_counter_built_before_the_store_restarted_offers_nothing(counter, touch, answer):
@@ -430,9 +475,10 @@ async def test_a_store_fault_reads_as_unavailable_and_takes_nothing(monkeypatch)
     assert await store.allowance_drop(5, 7) is None
     assert await store.allowance_retire(5, 7, 1000) is None
     assert await store.allowance_state(5) is None
+    assert await store.allowance_state_and_pace(5) is None
     assert await store.allowance_take_up_to(5, 7, 100) is None
     assert await store.allowance_freeze(5) is None
-    assert len(faults) == 8
+    assert len(faults) == 9
 
 
 async def test_arguments_that_are_not_plain_amounts_never_reach_the_script():
@@ -464,5 +510,6 @@ async def test_a_local_store_never_claims_to_be_the_shared_counter():
     assert await store.allowance_drop(5, 7) is None
     assert await store.allowance_retire(5, 7, 1000) is None
     assert await store.allowance_state(5) is None
+    assert await store.allowance_state_and_pace(5) is None
     assert await store.allowance_take_up_to(5, 7, 100) is None
     assert await store.allowance_freeze(5) is None
