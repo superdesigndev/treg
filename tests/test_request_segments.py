@@ -219,10 +219,10 @@ def test_answer_counts_judge_rows_against_the_question():
     ("London, UK", "GB"), ("", None), (None, None),
     # a two-letter part is never a country code: the city before it decides, or nothing does
     ("Birmingham, AL", None),
-    # a state or province abbreviation beside a city: where they disagree, the abbreviation decides
+    # a state or province abbreviation beside a city must agree with it, else the row is unknown
     ("Austin, TX", "US"), ("Toronto, ON", "CA"), ("Sydney, NSW", "AU"), ("Perth, WA", "AU"),
-    ("San Francisco, California", "US"),
-    ("London, ON", "CA"), ("Paris, TX", "US"), ("Vancouver, WA", None),
+    ("San Francisco, California", "US"), ("Paris, Texas", "US"), ("London, Ontario", None),
+    ("London, ON", None), ("Paris, TX", None), ("Vancouver, WA", None), ("Mexico City, DF", None),
     # a code that is a country and no state or province is the provider's own country
     ("Vancouver, US", "US"), ("US", "US"), ("Austin, TX, US", "US"), ("Paris, FR", "FR"),
     # a code that is both a country and a state or province cannot be told apart once joined into
@@ -240,7 +240,7 @@ def test_answer_counts_judge_rows_against_the_question():
     # a part we do not know leaves a city unread
     ("Hyderabad, Sindh", None), ("Mumbai, Remote", None),
     # a country or US state in any part wins over a city of the same name elsewhere
-    ("Paris, Texas", "US"), ("London, Ontario", "CA"), ("Birmingham, Alabama", "US"),
+    ("Birmingham, Alabama", "US"),
 ])
 def test_a_row_location_names_its_country_by_name_never_by_a_two_letter_part(location, code):
     assert S.location_country(location) == code

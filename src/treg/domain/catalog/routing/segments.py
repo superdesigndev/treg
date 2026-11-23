@@ -331,9 +331,9 @@ def location_country(value: Any) -> str | None:
     `Washington, GB`, a British town). With no country or US state in any part, a city,
     metro area or one-country region gives its country (`Austin, TX`, `Greater Phoenix Area`,
     `San Francisco Bay Area` -> `US`) when every part is a place we know or a state or province
-    abbreviation (`Austin, TX`). Where they disagree, the part further right, the wider place,
-    decides: `London, ON` is Canada, `Paris, TX` the United States, and `Vancouver, WA` (Washington
-    or Western Australia) none. A part we do not know (`Hyderabad, Sindh`) leaves it None.
+    abbreviation (`Austin, TX`, `Perth, WA`), and all of them point at one country: `London, ON`,
+    `Paris, TX`, `Mexico City, DF` and `Vancouver, WA` (Washington or Western Australia) name
+    none. A part we do not know (`Hyderabad, Sindh`) leaves it None.
 
     A last part that is a country code and no state or province abbreviation is the provider's
     own country (`Vancouver, US` -> `US`), as adapters write `place(city, country)`. One that is
@@ -363,11 +363,10 @@ def location_country(value: Any) -> str | None:
             return None
     if not places and not (qualified and len(within) > qualified):
         return None
+    # A city and a state code beside it must agree: `Mexico City, DF` (Mexico's old Distrito
+    # Federal, or Brazil's) and `London, ON` name no one country.
     common = frozenset.intersection(*within)
-    if qualified and len(common) != 1:
-        return None
-    widest = common if common else within[-1]
-    return next(iter(widest)) if len(widest) == 1 else None
+    return next(iter(common)) if len(common) == 1 else None
 
 
 def _is_iso2(value: str) -> bool:
