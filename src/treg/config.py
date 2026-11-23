@@ -1312,6 +1312,10 @@ class Settings(BaseSettings):
     # Dub requires a country on a lead created without a click. The request's `CF-IPCountry` is used
     # when present; this is the fallback. It shapes Dub's partner analytics only, never money.
     dub_default_country: str = "US"
+    # The most bonus credit one paid top-up can earn from a partner offer set in Dub, whatever the
+    # offer says. A typo in Dub ($500 for $5, 200% for 20%) is then a bounded mistake, not a free
+    # balance. The offer's minimum top-up is the friend referral's (`referral_min_topup_micro`).
+    affiliate_bonus_max_micro: int = 50_000_000  # $50
 
     linkedin_client_id: str = ""
     linkedin_client_secret: str = ""

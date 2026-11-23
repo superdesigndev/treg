@@ -58,7 +58,7 @@ from ..config import get_settings
 from ..infra import stripe as stripe_adapter
 from ..models import CreditBlock, EnterpriseSSO, EnterpriseSSOIdentity, EnterpriseDirectoryUser, LedgerEntry, Membership, Org, User
 from ..infra.db import session_maker
-from . import affiliates, enterprise_sso
+from . import affiliate_bonus, affiliates, enterprise_sso
 
 
 
@@ -1789,6 +1789,15 @@ async def _credit(db: AsyncSession, org_id: int, amount_micro: int, pi_id: str, 
         except Exception as e:  # noqa: BLE001
             await db.rollback()
             log.warning("billing: referral qualification failed for org %s: %s", org_id, e)
+        # The partner offer is decided later by the affiliate worker, which reads it from Dub; here
+        # the payment is only staged, so this webhook never waits on Dub. Swallowed like the above.
+        try:
+            if await affiliate_bonus.queue(db, org_id=org_id, payment_intent=pi_id,
+                                           amount_micro=amount_micro, fingerprint=fingerprint):
+                await db.commit()
+        except Exception as e:  # noqa: BLE001
+            await db.rollback()
+            log.warning("billing: partner offer staging failed for org %s: %s", org_id, e)
     # Pay out whatever has cleared its hold. Lazy and caller-paid, exactly like ledger's stale-hold
     # reaper: there is no scheduler in treg, and every top-up anywhere is a fine clock to advance a
     # queue this small. `sweep` never raises, but the belt stays on — this is a money webhook.
