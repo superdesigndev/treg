@@ -326,8 +326,8 @@ def _place_country(part: str) -> str | None:
 
 def location_country(value: Any) -> str | None:
     """The ISO2 country a free-text location names (`Berlin, Germany` -> `DE`, `Austin, Texas` ->
-    `US`), from its comma parts: a country name, a US state, or a last part that is a provider's
-    country code (below). Parts that name different countries name none (`Lebanon, US`, a US city;
+    `US`), from its comma parts: a country name or a US state, with a last part that is a
+    provider's country code (below) agreeing. Parts that name different countries name none (`Lebanon, US`, a US city;
     `Washington, GB`, a British town). With no country or US state in any part, a city,
     metro area or one-country region gives its country (`Austin, TX`, `Greater Phoenix Area`,
     `San Francisco Bay Area` -> `US`) when every part is a place we know or a state or province
@@ -336,20 +336,28 @@ def location_country(value: Any) -> str | None:
     none. A part we do not know (`Hyderabad, Sindh`) leaves it None.
 
     A last part that is a country code and no state or province abbreviation is the provider's
-    own country (`Vancouver, US` -> `US`), as adapters write `place(city, country)`. One that is
+    own country as adapters write `place(city, country)`, but only beside a place in that country
+    or a country name (`Paris, FR`, `Austin, Texas, US`): `Geneva, GE` (canton Geneva, not
+    Georgia), `Vancouver, US` and a city we do not know with a code are None. One that is
     both (`CA`, `DE`, `IN`, `SA`) cannot be told apart once joined into text (`Durham, CA` is
     Durham, Ontario from a provider's country code, or a place in California), so a location
     holding one names no country unless a part spells the country out."""
     parts = [p.strip() for p in _text(value).split(",") if p.strip()]
     named = {code for part in parts if (code := _part_country(part)) is not None}
-    if parts and len(last := parts[-1]) == 2 and last not in _REGION_CODES and (code := iso2(last)):
-        named.add(code)
+    tail = None
+    if parts and len(last := parts[-1]) == 2 and last not in _REGION_CODES:
+        tail = iso2(last)
     if named:
+        named |= {tail} if tail else set()
         return next(iter(named)) if len(named) == 1 else None
     within: list[frozenset[str]] = []
     places = qualified = 0
-    for part in parts:
-        if part in _REGION_CODES:
+    for i, part in enumerate(parts):
+        if tail and i == len(parts) - 1:
+            # Alone, a country code may be a region's code elsewhere (`Geneva, GE`: canton
+            # Geneva, not Georgia): it counts only beside a place in that country.
+            within.append(frozenset({tail}))
+        elif part in _REGION_CODES:
             if iso2(part) is not None:
                 return None
             within.append(_REGION_CODES[part])

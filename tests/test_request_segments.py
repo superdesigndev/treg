@@ -223,8 +223,10 @@ def test_answer_counts_judge_rows_against_the_question():
     ("Austin, TX", "US"), ("Toronto, ON", "CA"), ("Sydney, NSW", "AU"), ("Perth, WA", "AU"),
     ("San Francisco, California", "US"), ("Paris, Texas", "US"), ("London, Ontario", None),
     ("London, ON", None), ("Paris, TX", None), ("Vancouver, WA", None), ("Mexico City, DF", None),
-    # a code that is a country and no state or province is the provider's own country
-    ("Vancouver, US", "US"), ("US", "US"), ("Austin, TX, US", "US"), ("Paris, FR", "FR"),
+    # a code that is a country and no state or province is the provider's country only beside a
+    # place in that country or a country name: alone it may be a region's code elsewhere
+    ("Paris, FR", "FR"), ("Austin, TX, US", "US"), ("Austin, Texas, US", "US"),
+    ("Geneva, GE", None), ("Vancouver, US", None), ("Springfield, US", None), ("US", None),
     # a code that is both a country and a state or province cannot be told apart once joined into
     # text: the provider's country code (Durham, Ontario) or a US state (California)
     ("Durham, CA", None), ("San Francisco, CA", None), ("Berlin, DE", None), ("Mumbai, IN", None),
