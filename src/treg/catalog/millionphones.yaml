@@ -199,5 +199,5 @@ endpoints:
     test_request:
       queryParams: {domain: stripe.com}
     reserve: {entities: {from: [query.name, query.domain], max: 125}}
-    price: {value: '0.1', currency: credit, per: 1, unit: result, note: "0.1 credits per company the account has not received before, billed as 1 credit per 10, so the hold is at least 1 credit. Companies already received and no match are free."}
-    settle: {reported: {path: response.credits_charged, unit: credit}, worst_case: '1'}
+    price: {value: '1', currency: credit, per: 1, unit: target, note: "The price shown is the most one name or domain can cost: each returns up to 10 companies at 0.1 credits (about $0.0038) per company the account has not received before, billed as 1 credit per 10. Companies already received and no match are free; credits_charged settles the call."}
+    settle: {reported: {path: response.credits_charged, unit: credit}}
