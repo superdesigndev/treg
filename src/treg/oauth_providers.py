@@ -4498,6 +4498,36 @@ LEVER = OAuthProvider(
     docs_url="https://github.com/lever/postings-api",
 )
 
+HOTELUSE = OAuthProvider(
+    service="hoteluse",
+    display_name="HotelUse",
+    auth_kind="key",
+    token_label="API key",
+    token_placeholder="your HotelUse API key",
+    token_header="Authorization",
+    token_format="Bearer {secret}",
+    setup_url="https://www.hoteluse.dev/#dashboard",
+    setup_action_label="Get your HotelUse API key",
+    setup_steps=(
+        "Sign in to HotelUse with Google or an emailed code.",
+        "In Dashboard → API keys, enter a label and create a key.",
+        "Copy the key; it is displayed once.",
+    ),
+    setup_note="The connection check reads one hotel version ($0.005 after one-time signup credits); "
+               "repeat reads of the same version are free.",
+    auth_uri="", token_uri="",
+    scopes={},
+    client_id_setting="", client_secret_setting="",
+    category="Other",
+    summary="Search hotels, compare provider stay prices and room offers, and read hotel information.",
+    base_url="https://www.hoteluse.dev",
+    docs_url="https://www.hoteluse.dev/docs/",
+    probe_path="/v1/hotels/get",
+    probe_method="POST",
+    probe_json={"hotel_id": "hu_69450c903d9c06226f1ce17b", "billing": {"max_units": 1}},
+    probe_cost_micro=5_000,
+)
+
 REGISTRY: dict[str, OAuthProvider] = {
     p.service: p
     for p in (
@@ -4521,7 +4551,7 @@ REGISTRY: dict[str, OAuthProvider] = {
         COMPANYENRICH, FUNDABLE, CORPOAPI, OCEANIO, ADYNTEL, TOMBA, TRESTLEIQ, HLRLOOKUP, PREDICTLEADS, FINDYMAIL, ANYMAILFINDER, ENROW, FILTRAT, FILTRAT_FINDER, DROPCONTACT, BRANDDEV, ICYPEAS, LEADSFORGE, MAPSDATA,
         INFLUENCERSCLUB, VILLAGE,
         # Places: intent-scored local search
-        ATLY,
+        ATLY, HOTELUSE,
         # Market data API-key providers
         COINGECKO, POLYGON, FINNHUB, TWELVEDATA, FMP, EODHD, MARKETSTACK, TIINGO,
         FINANCIALDATASETS,
