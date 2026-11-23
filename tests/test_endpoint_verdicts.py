@@ -83,6 +83,10 @@ def test_a_reason_carrying_contact_data_is_never_quoted():
         assert not quotable(LONG + leaked), leaked
     rows = [review(org, reason=LONG + " Reach them at 732-433-0667.", day=org) for org in range(4)]
     assert summarize(rows) == {}
+    # A general web search whose reason links a Sales Navigator lead is not quoted either.
+    lead = LONG + " Top hit was linkedin.com/sales/lead/ACwAAA for the founder."
+    assert summarize([review(org, reason=lead, endpoint="exa.search") for org in range(4)],
+                     quotes_allowed=lambda _: True) == {}
 
 
 def test_an_endpoint_about_people_shows_its_score_and_no_reason():
