@@ -76,6 +76,9 @@ def test_a_reason_carrying_contact_data_is_never_quoted():
     for leaked in (" Found jane@acme.io at https://acme.io, as asked.",
                    " Confirmed 732-433-0667 as a live mobile line.",
                    " Confirmed +44 20 7946 0958 as the direct line.",
+                   " Confirmed 732\u2011433\u20110667 as a live mobile line.",
+                   " Confirmed 732\u2013433\u20130667 as a live mobile line.",
+                   " Confirmed (732)\u00a0433\u22120667 as a live mobile line.",
                    " Matched https://www.LinkedIn.com/in/someone as the person."):
         assert not quotable(LONG + leaked), leaked
     rows = [review(org, reason=LONG + " Reach them at 732-433-0667.", day=org) for org in range(4)]

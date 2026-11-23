@@ -62,7 +62,8 @@ def team_band(n: int) -> int:
 # private data out; a reason that still carries an email address, a phone number or a personal
 # profile link is never published.
 _EMAIL = re.compile(r"[\w.%+-]+@[\w-]+(?:\.[\w-]+)+")
-_PHONE = re.compile(r"\+?\d[\d\s().-]{6,}\d")
+# Separators include every Unicode dash (non-breaking hyphen, en dash, minus sign, ...).
+_PHONE = re.compile(r"\+?\d[\d\s().\-\u2010-\u2015\u2212\uFE58\uFE63\uFF0D]{6,}\d")
 _PHONE_DIGITS = 9
 _PROFILE = re.compile(r"linkedin\.com/in/", re.IGNORECASE)
 # Capability segments whose results are about a person: their reasons name the person, so they
