@@ -297,6 +297,6 @@ def test_the_registry_overloaded_is_retried_then_recoverable(fake, tmp_path, go_
     go = _go_alone(fake, tmp_path, go_bin, ["call", "x.submit", "--await"])
     assert go.code == 3
     assert go.err.splitlines() == [
-        "async task submitted: t1", "resume: treg call x.poll -p id=t1", "generation reservation: $0.25",
+        "async task submitted: t1", "resume: treg call x.poll -p id=t1", "async task reservation: $0.25",
         *[f"async poll retry {n}/5 after HTTP 503" for n in range(1, 6)],
         "treg: polling returned 503 five consecutive times"]

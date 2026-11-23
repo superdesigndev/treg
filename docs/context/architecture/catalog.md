@@ -936,12 +936,22 @@ replays labeled agent queries; run it before and after a scoring change.
 ### The evidence decides the ORDER
 
 Token scores tie by the dozen; `catalog_store.rerank()` breaks ties over `rank_band()` on buckets,
-not a blended formula: **relevance, then measured (good / unknown / poor / never worked, from
-`ok_rate` alone), then core before extended, then price.** Evidence outranks curation (a core row
-that never answered is not better); curation outranks price (a tenth of a cent must not promote the
-bulk-ingested tail); unmeasured sits above measured-poor. `rank_band()` takes a tie group whole,
-bounded at `RERANK_BAND` on this open route, and **says when it truncated** (`ranking_note` on MCP,
-an HTTP hint).
+not a blended formula: **relevance, then callable on treg's key, then the operator's quality tier,
+then measured reliability, then core before extended, then price.**
+
+- **Callable.** A row only a team's own key can serve (`platform_eligible` false) stays listed,
+  after every row any caller can run; `/search` folds such vendors into one line.
+- **Quality tier** (`TREG_RANKING_TIERS`, JSON capability -> `{"good": [...], "bad": [...]}`) is
+  an operator's judgement from evidence kept outside this repo, so its values never belong here. It
+  outranks the measured rate because a 2xx is not a useful answer. Unnamed means mid; empty leaves the
+  measured order. Only the order reveals a tier.
+- **Reliability** reads `ok_rate` with its sample size (`reliability_band`): a few early
+  successes rank with the unmeasured, not above a long record.
+
+Evidence outranks curation (a core row that never answered is not better); curation outranks price
+(a tenth of a cent must not promote the bulk-ingested tail); unmeasured sits above measured-poor.
+`rank_band()` takes a tie group whole, bounded at `RERANK_BAND` on this open route, and **says when
+it truncated** (`ranking_note` on MCP, an HTTP hint).
 
 `CapabilityPin` ([data-model](data-model.md)) fixes a capability to one provider, enforced in
 `_resolve_marketplace_call` before reserve. A pin gates the catalog id, the only route to treg's key;

@@ -116,3 +116,17 @@ test('a result opened from the Catalog page leads to its job, and Back returns t
   await expect(box(page)).toHaveValue('find a work email')
   await expect(page.locator('.fa .ui-tbody .ui-tr')).toHaveCount(1)                 // the answer is still there
 })
+
+test('the search page gives cards to vendors any agent can call and folds own-key-only vendors into one line', async ({ page }) => {
+  const extract = (id: string, eligible: boolean) => ({ ...row(id, 0.91), platform: 'web',
+    platform_label: 'Open web & SEO data', capability: 'web.extract',
+    capability_description: 'Extract clean content from web pages', platform_eligible: eligible })
+  await page.route('**/catalog/find?**', route => route.fulfill({ status: 200, contentType: 'application/x-ndjson',
+    body: JSON.stringify({ event: 'candidates', candidates: [] }) + '\n'
+        + JSON.stringify({ event: 'judged', verdict: 'strong', named: '', read: 3, high: 0.7, rows: [
+          extract('vendor-a.web.scrape', true), extract('vendor-b.web.scrape', false),
+          extract('vendor-c.web.extract', false), extract('vendor-d.web.fetch', true)] }) + '\n' }))
+  await page.goto('/search?q=scraping')
+  await expect(page.locator('.sp-card .sp-vendor')).toHaveText(['vendor-a', 'vendor-d'])
+  await expect(page.locator('.sp-folded')).toHaveText(/2 more providers need your own API key\.\s*See them all/)
+})
