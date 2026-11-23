@@ -10,7 +10,7 @@ from pathlib import Path
 import pytest
 
 from treg import archive, archive_bodies, bootstrap
-from treg.application import billing, asynctasks as task_app
+from treg.application import billing, asynctasks as task_app, compare as compare_app
 from treg.application.hub import runner as hub_runner
 from treg.application.call import allowance as call_allowance
 from treg.application.call import authorize, overflow, reserve, route, service, settle
@@ -160,18 +160,30 @@ _DATAPLANE_DERIVED_WRITES = {
         (settle._platform_settle, "allowance_runtime.finish"),
     ),
     # The counter is refilled from the balance into the team's one allowance hold, under the
-    # same money admission lease as a reserve, by whichever call found the counter short.
+    # same money admission lease as a reserve, by whichever call found the counter short. While
+    # refills are sized to the team's spend, a call on the exact path that the balance alone
+    # cannot pay for gives the counter back to the balance first, under the team's lease.
     "allowance_hold_refill": (
         (call_allowance._refill, "money_admission.admit"),
         (call_allowance._refill, "allowance.refill_allowance_in_transaction"),
         (call_allowance._drain, "allowance.close_allowance_in_transaction"),
         (call_allowance._fold_backlog, "allowance.fold_charges_in_transaction"),
+        (call_allowance.give_back_for_exact_path, "_give_back"),
+        (call_allowance._give_back, "allowance.close_allowance_in_transaction"),
+        (reserve._platform_reserve, "allowance_runtime.give_back_for_exact_path"),
     ),
     # What a call spent from the allowance is queued as a `callcharge` row, a batch per insert,
     # committed before the call answers; a refill applies the queue to the blocks and the ledger.
     "allowance_call_charge": (
         (call_allowance._ChargeWriter._write_team, "allowance.record_charges"),
         (call_allowance._ChargeWriter._write_team, "archive.note_org_uses_in_transaction"),
+    ),
+    # A successful routed answer that samples in for a pairwise comparison leaves a short-lived
+    # marker holding the caller's input in the shared store (one bounded write, no database); the
+    # hourly worker reads it.
+    "comparison_marker": (
+        (service._execute_call, "compare_app.mark_eligible"),
+        (compare_app.mark_eligible, "store.set_text"),
     ),
 }
 _EXPECTED_DATAPLANE_WRITES = frozenset({
@@ -198,6 +210,7 @@ _EXPECTED_DATAPLANE_WRITES = frozenset({
     "allowance_counter",
     "allowance_hold_refill",
     "allowance_call_charge",
+    "comparison_marker",
 })
 _DERIVED_WRITE_FILES = {
     _SRC / "application" / "asynctasks.py": {"money_admission.admit"},
@@ -213,6 +226,7 @@ _DERIVED_WRITE_FILES = {
     _SRC / "application" / "call" / "reserve.py": {
         "billing.maybe_schedule_autotopup", "money_admission.admit", "reserve_admission",
         "ledger.reap_stale_holds", "allowance_runtime.take",
+        "allowance_runtime.give_back_for_exact_path",
     },
     _SRC / "application" / "call" / "allowance.py": {
         "money_admission.admit", "ledger.reap_stale_holds",
@@ -242,7 +256,9 @@ _DERIVED_WRITE_FILES = {
     },
     _SRC / "domain" / "capacity" / "rate_observe.py": {"provider_rate.admit", "provider_rate.release"},
     _SRC / "infra" / "provider_rate.py": {"store.rate_window", "store.release_slot"},
+    _SRC / "application" / "compare.py": {"store.set_flag", "store.set_text"},
     _SRC / "application" / "call" / "service.py": {
+        "compare_app.mark_eligible",
         "org_endpoint_quota.admit",
         "fair_share.acquire",
         "rate_observe.observe",
@@ -264,6 +280,11 @@ _DERIVED_WRITE_FILES = {
     _SRC / "domain" / "money" / "__init__.py": {"reap_stale_holds", "release", "MemberSpend"},
 }
 _EXPECTED_DERIVED_WRITE_SITES = {
+    ("application/call/service.py", "_execute_call", "compare_app.mark_eligible"),
+    ("application/compare.py", "mark_eligible", "store.set_text"),
+    # off the call path: the worker's ready flag, and the API's look after clearing it
+    ("application/compare.py", "_one", "store.set_flag"),
+    ("application/compare.py", "_flag_after_none", "store.set_flag"),
     ("application/call/allowance.py", "_drain", "allowance.close_allowance_in_transaction"),
     ("application/call/allowance.py", "_drain", "money_admission.admit"),
     ("application/call/allowance.py", "_drain", "store.allowance_drop"),
@@ -289,6 +310,17 @@ _EXPECTED_DERIVED_WRITE_SITES = {
     ("application/call/allowance.py", "_take", "store.acquire_lease"),
     ("application/call/allowance.py", "_take", "store.allowance_take"),
     ("application/call/allowance.py", "_take", "store.release_lease"),
+    # an exact-path call the balance alone cannot pay for gets the sized counter back first:
+    # the team's lease asked for once, then admission, the drop and the release in one session
+    ("application/call/allowance.py", "give_back_for_exact_path", "store.acquire_lease"),
+    ("application/call/allowance.py", "give_back_for_exact_path", "store.release_lease"),
+    ("application/call/allowance.py", "_give_back", "money_admission.admit"),
+    ("application/call/allowance.py", "_give_back", "store.allowance_drop"),
+    ("application/call/allowance.py", "_give_back", "allowance.close_allowance_in_transaction"),
+    # a release that fails after the drop puts the money back on the frozen counter
+    ("application/call/allowance.py", "_give_back", "store.allowance_give_back"),
+    ("application/call/reserve.py", "_platform_reserve",
+     "allowance_runtime.give_back_for_exact_path"),
     ("application/call/reserve.py", "_platform_reserve", "allowance_runtime.take"),
     ("application/call/reserve.py", "_schedule_autotopup_after", "billing.maybe_schedule_autotopup"),
     ("application/call/settle.py", "_cleanup", "allowance_runtime.finish"),
@@ -353,6 +385,7 @@ _EXPECTED_DERIVED_WRITE_SITES = {
      "provider_resources.tombstone"),
     ("application/call/service.py", "_execute_call", "fair_share.acquire"),
     ("domain/capacity/fair_share.py", "_ask", "provider_concurrency.try_acquire"),
+    ("domain/capacity/fair_share.py", "_team_place", "provider_concurrency.try_acquire"),
     ("infra/provider_concurrency.py", "try_acquire", "store.acquire_slot"),
     ("infra/provider_concurrency.py", "_renew", "self.store.renew_slot"),
     ("infra/provider_concurrency.py", "_release", "self.store.release_slot"),
@@ -459,9 +492,11 @@ def test_catalog_access_router_only_translates_the_application_result() -> None:
 
 def test_startup_manifests_keep_dataplane_and_control_work_separate() -> None:
     assert bootstrap.ROLE_BACKGROUND_TASKS == {
-        "all": ("treg.adsconv.worker", "treg.application.allowance_sweep.worker"),
+        "all": ("treg.adsconv.worker", "treg.application.affiliates.worker",
+                "treg.application.allowance_sweep.worker"),
         "dataplane": (),
-        "control": ("treg.adsconv.worker", "treg.application.allowance_sweep.worker"),
+        "control": ("treg.adsconv.worker", "treg.application.affiliates.worker",
+                    "treg.application.allowance_sweep.worker"),
     }
     for checks in bootstrap.ROLE_STARTUP_CHECKS.values():
         assert "treg.api._backfill_provider_extra_tools" not in checks

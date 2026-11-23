@@ -30,7 +30,7 @@ endpoints:
     input:
       bodyType: json
       body:
-        data: {type: 'array[object]', required: true, minItems: 1, maxItems: 1, item_required_any: [first_name, last_name, full_name], note: 'One person with first_name + last_name or full_name, plus company, website, or company_linkedin.'}
+        data: {type: array, items: {type: object}, required: true, minItems: 1, maxItems: 1, item_required_any: [first_name, last_name, full_name], note: 'One person with first_name + last_name or full_name, plus company, website, or company_linkedin.'}
         language: {type: string, required: false, enum: [en, fr]}
         siren: {type: boolean, required: false}
       note: Needs a name and company name, domain, or website; this is not a people search. Dropcontact says its real-time process uses no stored contact database and describes a CNIL audit (https://www.dropcontact.com/help/gdpr-compliance). A found verified email costs one credit, and no-email results are refunded. Poll dropcontact.jobs.get with the request_id.
@@ -69,7 +69,7 @@ endpoints:
     input:
       bodyType: json
       body:
-        data: {type: 'array[object]', required: true, minItems: 1, maxItems: 1, item_required_all: [linkedin], note: 'One object containing a public person-profile URL in linkedin.'}
+        data: {type: array, items: {type: object}, required: true, minItems: 1, maxItems: 1, item_required_all: [linkedin], note: 'One object containing a public person-profile URL in linkedin.'}
         language: {type: string, required: false, enum: [en, fr]}
       note: A valid LinkedIn profile can find a contact without a company field; Sales Navigator URLs are not documented. Dropcontact says it does not use a stored contact database (https://www.dropcontact.com/help/gdpr-compliance).
     test_request: {body: {data: [{linkedin: 'https://www.linkedin.com/in/example'}]}}
@@ -95,7 +95,7 @@ endpoints:
     input:
       bodyType: json
       body:
-        data: {type: 'array[object]', required: true, minItems: 1, maxItems: 1, item_required_all: [email], note: 'One object containing an email field.'}
+        data: {type: array, items: {type: object}, required: true, minItems: 1, maxItems: 1, item_required_all: [email], note: 'One object containing an email field.'}
         language: {type: string, required: false, enum: [en, fr]}
       note: Dropcontact says its catch-all checks may disagree with other verifiers (https://www.dropcontact.com/help/types-of-email-addresses). It may identify or correct a wrong address; inspect the returned email and qualification. A completed result can have an empty email, an invalide@pro qualification, or no qualification. A supplied email costs one credit even when invalid or unknown.
     test_request: {body: {data: [{email: support@dropcontact.com}]}}
@@ -131,7 +131,7 @@ endpoints:
     input:
       bodyType: json
       body:
-        data: {type: 'array[object]', required: true, minItems: 1, maxItems: 1, item_required_any: [first_name, last_name, full_name, linkedin, email], note: 'One person with a documented contact and company identifier, or a LinkedIn profile URL.'}
+        data: {type: array, items: {type: object}, required: true, minItems: 1, maxItems: 1, item_required_any: [first_name, last_name, full_name, linkedin, email], note: 'One person with a documented contact and company identifier, or a LinkedIn profile URL.'}
         language: {type: string, required: false, enum: [en, fr]}
         siren: {type: boolean, required: false}
       note: Growth may return job, job_level, job_function, industry, employee_count, website, and legal fields; fields depend on the input and match. Supplied emails are verified; Dropcontact may correct an invalid one. Dropcontact says it uses no stored contact database and describes a CNIL audit (https://www.dropcontact.com/help/gdpr-compliance).
@@ -154,7 +154,7 @@ endpoints:
     input:
       bodyType: json
       body:
-        data: {type: 'array[object]', required: true, minItems: 1, maxItems: 250}
+        data: {type: array, items: {type: object}, required: true, minItems: 1, maxItems: 250}
         language: {type: string, required: false, enum: [en, fr]}
         siren: {type: boolean, required: false}
         custom_callback_url: {type: string, required: false}

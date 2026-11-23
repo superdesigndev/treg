@@ -21,7 +21,9 @@
 
 adapters:
   # ---- people.email.find --------------------------------------------------------------------
+  # Not a router candidate: every miss is billed and its hit rate is low on both identity variants.
   orbisearch.people.email.find:
+    route: false
     accepts: [[first_name, last_name, domain], [linkedin_url]]
     in: {first_name: body.first_name, last_name: body.last_name,
          domain: body.domain, linkedin_url: body.linkedin_url}
@@ -42,6 +44,17 @@ adapters:
     out: {email: email, first_name: info.firstname, last_name: info.lastname,
           verified: "qualification == 'valid'"}
     miss: "email == null"
+  millionphones.people.email.find:
+    accepts: [[linkedin_url]]
+    in: {linkedin_url: queryParams.social_url}
+    test_identity: {linkedin_url: "https://www.linkedin.com/in/jane-doe-example"}
+    out: {email: email, verified: "status == 'verified'", confidence: match_confidence}
+  forager.people.email.find:
+    accepts: [[first_name, last_name, domain], [linkedin_handle]]
+    in: {first_name: body.first_name, last_name: body.last_name, domain: body.domain,
+         linkedin_handle: body.linkedin_public_identifier}
+    test_identity: {first_name: Jane, last_name: Doe, domain: example.com}
+    out: {email: "emails[0].email", verified: "emails[0].validation_status == 'valid'"}
   filtrat-finder.people.email.find:
     accepts: [[first_name, last_name, domain]]
     in: {first_name: body.first_name, last_name: body.last_name, domain: body.domain}
@@ -452,6 +465,19 @@ adapters:
     in:  {linkedin_url: queryParams.linkedinURL, email: queryParams.email}
     out: {phone: "phones[0].phoneNumber"}
     miss: "phones == []"
+  millionphones.people.phone.find:
+    accepts: [[linkedin_url], [first_name, last_name, domain]]
+    in: {linkedin_url: queryParams.social_url, first_name: queryParams.first_name,
+         last_name: queryParams.last_name, domain: queryParams.company_domain}
+    test_identity: {linkedin_url: "https://www.linkedin.com/in/jane-doe-example"}
+    out: {phone: "phone_numbers[0]"}
+  forager.people.phone.find:
+    # most_coverage returns every verified number, the highest_quality ones included, for fewer credits.
+    accepts: [[linkedin_handle]]
+    in: {linkedin_handle: body.linkedin_public_identifier}
+    const: {body.quality_tier: most_coverage}
+    test_identity: {linkedin_handle: routing-fixture}
+    out: {phone: "[0].phone_number"}
   limadata.people.phone.find:
     accepts: [[linkedin_url], [full_name, domain], [first_name, last_name, domain]]
     in: {linkedin_url: body.linkedin_url, full_name: body.name, domain: body.company_domain}
@@ -601,6 +627,10 @@ adapters:
     out: {valid: "result == 'Valid'", status: result}
     # Invalid, Risky and Unknown are useful verdicts. Only a missing verdict is a miss.
     miss: "result == null"
+  millionphones.people.email.verify:
+    accepts: [[email]]
+    in: {email: queryParams.email}
+    out: {valid: "result == 'valid'", status: result}
   zerobounce.people.email.verify:
     accepts: [[email]]
     in: {email: queryParams.email}
@@ -707,6 +737,19 @@ adapters:
           title: profile.title, company: company.summary.name, company_domain: company.link.domain,
           linkedin_url: link.linkedin, location: location.default}
     miss: "profile.full_name == null"
+  forager.people.enrich:
+    accepts: [[linkedin_handle]]
+    in: {linkedin_handle: body.linkedin_public_identifier}
+    out: &forager-person {full_name: full_name, first_name: first_name, last_name: last_name,
+          title: "get(flagged(roles, 'is_current'), 'role_title')",
+          company: "get(flagged(roles, 'is_current'), 'organization.name')",
+          company_domain: "get(flagged(roles, 'is_current'), 'organization.domain')",
+          linkedin_url: linkedin_info.public_profile_url, location: location.name}
+  forager.people.enrich.by_email:
+    accepts: [[email]]
+    in: {email: body.email}
+    test_identity: {email: jane.doe@example.com}
+    out: *forager-person
   tomba.people.enrich:
     accepts: [[email]]
     in:  {email: queryParams.email}
@@ -1413,6 +1456,7 @@ adapters:
   hunter.x.discover-companies:
     accepts: [[q]]
     in:  {q: body.query}
+    in_expr: {body.limit: "at_most(limit, 100)"}
     out: {companies: data, count: meta.results}
   aviato.companies.search:
     accepts: [[name]]
@@ -1584,7 +1628,8 @@ adapters:
     # Billed per keyword sent, and an empty answer settles at the whole hold.
     cost_units: "len(list(keywords))"
     out: {rows: "."}
-    miss: ". == []"
+    # A miss when the body is a list and no row has is_data_found: true.
+    miss: "choose(. == list(.), flagged(., 'is_data_found') == null, false)"
   dataforseo.x.keywords-data-dataforseo-trends-explore-live:
     accepts: [[keywords]]
     in:  {keywords: body.keywords}
@@ -2919,7 +2964,9 @@ adapters:
           followers: element.followerCount, connections: element.connectionsCount, about: element.about,
           linkedin_url: element.linkedinUrl}
     miss: "element.id == null"
+  # Not a router candidate: every lookup is billed, a miss included.
   harvestapi.linkedin.user.profile.email:
+    route: false
     accepts: [[linkedin_handle]]
     in: {linkedin_handle: queryParams.publicIdentifier}
     const: {queryParams.findEmail: "true"}
@@ -2941,9 +2988,13 @@ adapters:
     miss: "element.id == null"
   # Lead search is the only Harvest people search whose rows carry names and profile URLs:
   # profile-search hides out-of-network members (no name, no URL), so it stays unrouted.
+  # NOTE: HarvestAPI's currentCompanies expects LinkedIn company URLs or numeric IDs (e.g.
+  # https://www.linkedin.com/company/google), NOT bare domains. Bare domains return empty results
+  # but are still billed. So this adapter accepts title-only queries; callers with a LinkedIn
+  # company URL can call harvestapi.linkedin.leads.search directly by id.
   harvestapi.linkedin.leads.search:
-    accepts: [[company_domain, title], [company_domain], [title]]
-    in: {company_domain: queryParams.currentCompanies, title: queryParams.currentJobTitles}
+    accepts: [[title]]
+    in: {title: queryParams.currentJobTitles}
     in_expr: {queryParams.locations: "coalesce(location, country_name(country))", queryParams.search: "csv(keywords)"}
     out: {people: elements, count: pagination.totalElements}
     miss: "coalesce(elements, []) == []"
@@ -3140,6 +3191,39 @@ adapters:
     body_array: true
     out: {answer: "tasks[0].result[0].items[0].sections[0].text",
           sources: "tasks[0].result[0].items[0].sections[0].annotations", source_kind: "'model_api'"}
+  # ---- ai-search.chatgpt.scrape and ai-search.gemini.scrape: the live answer page ------------
+  # cloro gives Markdown only when include.markdown is set (free). DataForSEO gives no plain text.
+  cloro.ai-search.chatgpt.scrape:
+    accepts: [[q]]
+    in: {q: body.prompt}
+    in_expr: {body.country: "upper(country_code(coalesce(country, 'US')))"}
+    const: {body.include.markdown: true}
+    out: {answer: "coalesce(result.text, result.markdown)", markdown: result.markdown, sources: result.sources}
+    miss: "coalesce(result.text, result.markdown, null) == null"
+  dataforseo.x.ai-optimization-chat-gpt-llm-scraper-live-advanced:
+    accepts: [[q]]
+    in_expr: {body.keyword: "dfs_keyword(q)", body.location_code: "dfs_location(country)", body.language_code: language}
+    in_read: {q: "dfs_keyword_text(body.keyword)", country: "dfs_country(body.location_code, body.location_name)"}
+    test_identity: {q: albert einstein}
+    const: {body.force_web_search: true}
+    body_array: true
+    out: {answer: "tasks[0].result[0].markdown", markdown: "tasks[0].result[0].markdown",
+          sources: "tasks[0].result[0].sources"}
+  cloro.ai-search.gemini.scrape:
+    accepts: [[q]]
+    in: {q: body.prompt}
+    in_expr: {body.country: "upper(country_code(coalesce(country, 'US')))"}
+    const: {body.include.markdown: true}
+    out: {answer: "coalesce(result.text, result.markdown)", markdown: result.markdown, sources: result.sources}
+    miss: "coalesce(result.text, result.markdown, null) == null"
+  dataforseo.x.ai-optimization-gemini-llm-scraper-live-advanced:
+    accepts: [[q]]
+    in_expr: {body.keyword: "dfs_keyword(q)", body.location_code: "dfs_location(country)", body.language_code: language}
+    in_read: {q: "dfs_keyword_text(body.keyword)", country: "dfs_country(body.location_code, body.location_name)"}
+    test_identity: {q: albert einstein}
+    body_array: true
+    out: {answer: "tasks[0].result[0].markdown", markdown: "tasks[0].result[0].markdown",
+          sources: "tasks[0].result[0].sources"}
   perplexity.web.search.fast:
     accepts: [[q]]
     in: {q: body.query}
@@ -3386,7 +3470,6 @@ adapters:
     in: {url: body.url}
     const: {body.formats: {markdown: true}}
     out: {pages: "list(.)", count: "len(list(.))"}
-    miss: "choose(wall_page(markdown.data), true, coalesce(markdown.data, '') == '')"
 
   search1api.web.sitemap:
     accepts: [[url]]
@@ -3453,6 +3536,10 @@ adapters:
     accepts: [[linkedin_url], [linkedin_handle]]
     in: {linkedin_url: queryParams.profileUrlOrUrn, linkedin_handle: queryParams.profileUrlOrUrn}
     in_expr: {queryParams.count: limit}
+    # Fetchin omits plain reposts and collaborative posts unless includeReposts=true (its default
+    # is false). The routed activity feed always asks for them; Fetchin does not change the price.
+    # Originals-only callers use this child directly and omit the flag, or pass false.
+    const: {queryParams.includeReposts: "true"}
     out: {posts: posts, next_cursor: paginationToken, has_more: hasMore}
     miss: "posts == []"
   fetchinio.linkedin.post.comments:
@@ -4075,26 +4162,12 @@ adapters:
     miss: "coalesce(reconstructed_markdown, text_blocks, null) == null"
 
   # ---- ai-search.chatgpt.scrape (call events only) ----
-  cloro.ai-search.chatgpt.scrape:
-    route: false
-    accepts: [[q]]
-    in: {q: body.prompt, country: body.country}
-    out: {answer: "coalesce(result.markdown, result.text)", sources: result.sources}
-    miss: "coalesce(result.markdown, result.text, null) == null"
   crawl4ai.ai-search.chatgpt.scrape:
     route: false
     accepts: [[q]]
     in: {q: body.prompt, country: body.country}
     out: {answer: "coalesce(rows[0].answer, rows[0].answer_text)", sources: "rows[0].sources"}
     miss: "coalesce(rows[0].answer, rows[0].answer_text, null) == null"
-
-  # ---- ai-search.gemini.scrape (call events only) ----
-  cloro.ai-search.gemini.scrape:
-    route: false
-    accepts: [[q]]
-    in: {q: body.prompt, country: body.country}
-    out: {answer: "coalesce(result.markdown, result.text)", sources: result.sources}
-    miss: "coalesce(result.markdown, result.text, null) == null"
 
   # ---- web.answer (call events only) ----
   crawl4ai.web.answer:

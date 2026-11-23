@@ -290,6 +290,44 @@ async def test_litescrape_platform_and_own_key_ladder(clients, monkeypatch):
         get_settings.cache_clear()
 
 
+async def test_forager_platform_key_fills_the_account_id_and_prices_the_phone_tier(clients, monkeypatch):
+    """Every Forager data path carries the account id bound to the key. On treg's key the relay
+    fills it from the account slot, whatever the caller sent; the phone hold follows quality_tier
+    and an empty answer is free."""
+    cat = catalog_store.load()
+    rows = [ep for ep in cat.endpoints if ep["provider"] == "forager"]
+    assert rows and all(cat.platform_eligible(ep) for ep in rows)
+    monkeypatch.setenv("TREG_PLATFORM_KEY_FORAGER", "PLATFORM-FORAGER")
+    monkeypatch.setenv("TREG_PLATFORM_KEY_FORAGER_ACCOUNT", "1234")
+    monkeypatch.setenv("TREG_PLATFORM_PROVIDERS", "forager")
+    get_settings.cache_clear()
+    seen = []
+
+    def upstream(request):
+        body = json.loads(request.content)
+        seen.append((request.url.path, request.headers["x-api-key"], body.get("quality_tier")))
+        numbers = [] if body.get("person_id") == 0 else [{"phone_number": "+15555550100"}]
+        return _dropleads_response(200, numbers)
+
+    try:
+        async with AsyncClient(transport=httpx.MockTransport(upstream)) as vendor:
+            monkeypatch.setattr(A.app.state, "http", vendor)
+            charged = []
+            for body in ({"person_id": 7, "quality_tier": "most_coverage"}, {"person_id": 7},
+                         {"person_id": 0}):
+                before = await _balance(clients)
+                ok = await clients.post("/call/forager.people.phone.find", json=body,
+                                        params={"account_id": "9999"})
+                assert ok.status_code == 200, ok.text
+                charged.append(before - await _balance(clients))
+            assert charged == [119_970, 199_950, 0]
+            path = "/api/1234/datastorage/person_contacts_lookup/phone_numbers/"
+            assert seen == [(path, "PLATFORM-FORAGER", "most_coverage"), (path, "PLATFORM-FORAGER", None),
+                            (path, "PLATFORM-FORAGER", None)]
+    finally:
+        get_settings.cache_clear()
+
+
 async def test_localfalcon_scan_is_priced_by_grid_size_and_cannot_be_reshaped(clients, monkeypatch):
     """The scan's price reads query.grid_size, so treg's key must refuse every request whose
     upstream grid could differ from the priced one: a POST (a form body overrides the query), a
@@ -1084,6 +1122,27 @@ def test_a_null_platform_request_query_value_must_be_absent_on_treg_key():
             ep, b"[]", query=call_resolution.QueryValues((("type", "discover_new"),)))
     assert exc.value.detail["parameter"] == "queryParams.type"
     assert "discover_new" not in json.dumps(exc.value.detail)
+
+
+@pytest.mark.parametrize(("body", "declared_default", "valid"), [
+    ({}, True, True),
+    ({"dry_run": False}, True, True),
+    ({"dry_run": True}, True, False),
+    ({"dry_run": None}, True, False),
+    ({}, False, False),
+])
+def test_a_table_pin_may_be_absent_on_treg_key_only_when_its_default_is_the_pin(
+        body, declared_default, valid):
+    ep = catalog_store.load().by_id["mapsdata.web.scrape.job.start"]
+    if not declared_default:
+        dry_run = {k: v for k, v in ep["input"]["body"]["dry_run"].items() if k != "default"}
+        ep = {**ep, "input": {**ep["input"], "body": {**ep["input"]["body"], "dry_run": dry_run}}}
+    if valid:
+        call_resolution._enforce_platform_request(ep, json.dumps(body).encode())
+    else:
+        with pytest.raises(ResolutionFailed) as exc:
+            call_resolution._enforce_platform_request(ep, json.dumps(body).encode())
+        assert exc.value.detail["parameter"] == "body.dry_run"
 
 
 async def test_leadocean_direct_search_requires_a_bounded_shared_key_page(clients, monkeypatch):
@@ -2960,14 +3019,31 @@ def test_oceanio_platform_person_enrich_refuses_separately_billed_reveals(field)
       for v in ('true', '1', 'False', '')],
     ('webhook_url', 'https://hooks.example/apollo'), ('webhook_url', 'false'),
 ])
-def test_apollo_platform_person_enrich_refuses_webhook_channels(name, value):
-    ep = catalog_store.load().by_id['apollo.people.enrich']
+@pytest.mark.parametrize('endpoint', ['apollo.people.enrich', 'apollo.people.bulk_enrich'])
+def test_apollo_platform_person_enrich_refuses_webhook_channels(endpoint, name, value):
+    ep = catalog_store.load().by_id[endpoint]
     call_resolution._enforce_platform_request(
         ep, b'', query=call_resolution.QueryValues((('email', 'a@stripe.com'), ('reveal_personal_emails', 'true'))))
     with pytest.raises(ResolutionFailed) as exc:
         call_resolution._enforce_platform_request(
             ep, b'', query=call_resolution.QueryValues((('email', 'a@stripe.com'), (name, value))))
     assert exc.value.detail['parameter'] == f'queryParams.{name}'
+
+
+def test_apollo_phone_tool_accepts_only_the_priced_poll_only_request():
+    ep = catalog_store.load().by_id['apollo.people.phone.find']
+    assert catalog_store.load().platform_eligible(ep)
+    valid = (('name', 'Example Person'), ('domain', 'example.com'),
+             ('reveal_phone_number', 'true'), ('poll_only', 'true'))
+    call_resolution._enforce_catalog_query(ep, call_resolution.QueryValues(valid), False)
+    for additions in ((('run_waterfall_phone', 'true'),), (('webhook_url', 'https://example.com'),),
+                      (('poll_only', 'false'),), (('reveal_phone_number', 'false'),)):
+        pairs = valid + additions if additions[0][0] not in {'poll_only', 'reveal_phone_number'} else (
+            tuple((k, v) for k, v in valid if k != additions[0][0]) + additions)
+        with pytest.raises(ResolutionFailed):
+            call_resolution._enforce_catalog_query(ep, call_resolution.QueryValues(pairs), False)
+    with pytest.raises(ResolutionFailed):
+        call_resolution._enforce_catalog_query(ep, call_resolution.QueryValues(valid), True)
 
 
 @pytest.mark.parametrize('name', ['reveal_phone_number', 'poll_only',
@@ -3976,7 +4052,7 @@ def test_strict_query_accepts_only_declared_path_parameters():
 
 def test_body_allowlist_requires_declared_fields_within_each_object():
     ep = {"id": "sample.people.find", "body_allowlist": True,
-          "input": {"body": {"data": {"type": "array[object]", "required": True,
+          "input": {"body": {"data": {"type": "array", "items": {"type": "object"}, "required": True,
                                       "minItems": 1, "maxItems": 1,
                                       "item_required_any": ["full_name", "linkedin"],
                                       "item_required_all": ["company"]}}}}

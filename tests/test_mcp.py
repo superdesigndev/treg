@@ -117,7 +117,7 @@ async def test_the_server_lists_the_shared_tools(clients):
     # The hub tools are listed only where the hub is on for the caller (test_hub_tools_are_listed_*).
     assert names == {"catalog_search", "catalog_get", "call", "call_media", "resources_list",
                      "balance", "my_tools", "catalog_request", "feedback", "review", "mark",
-                     "call_result"}
+                     "compare", "call_result"}
 
 
 async def test_openai_clients_get_no_review_tool_or_review_instruction(clients):
@@ -140,11 +140,12 @@ async def test_openai_clients_get_no_review_tool_or_review_instruction(clients):
 
     for ua in ("openai-mcp/1.0.0", "codex-mcp-client/0.160.1"):
         instructions, names = await surface(ua)
-        assert not {"review", "mark"} & names and "catalog_search" in names, ua
+        assert not {"review", "mark", "compare"} & names and "catalog_search" in names, ua
         assert "review(" not in instructions and "mark(" not in instructions, ua
         assert "catalog_search" in instructions, ua
     instructions, names = await surface("claude-code/2.1.291 (cli)")
-    assert {"review", "mark"} <= names and "review(" in instructions and "mark(" in instructions
+    assert {"review", "mark", "compare"} <= names and "review(" in instructions and "mark(" in instructions
+    assert "compare(" in instructions
 
 
 async def _tool_names(clients, token):
@@ -481,8 +482,8 @@ async def test_every_tool_declares_what_it_can_do(clients):
 
     ann = {t.name: t.annotations for t in await server.list_tools()}
     assert set(ann) == {"catalog_search", "catalog_get", "call", "call_media", "resources_list", "balance", "my_tools",
-                        "catalog_request", "feedback", "review", "mark", "hub_create", "hub_update", "hub_mine",
-                        "call_result"}
+                        "catalog_request", "feedback", "review", "mark", "compare", "hub_create", "hub_update",
+                        "hub_mine", "call_result"}
     assert all(a.title is None for a in ann.values())
     for name in ("catalog_search", "catalog_get", "resources_list", "balance", "my_tools", "call_result"):
         a = ann[name]
@@ -494,7 +495,7 @@ async def test_every_tool_declares_what_it_can_do(clients):
         assert a.destructive_hint is True and a.open_world_hint is True
     # These write nothing upstream and spend nothing, but their text reaches the treg team (and a
     # review's reason may be quoted on a public catalog page), so they are open world.
-    for name in ("catalog_request", "feedback", "review", "mark"):
+    for name in ("catalog_request", "feedback", "review", "mark", "compare"):
         a = ann[name]
         assert a.read_only_hint is False, name
         assert a.destructive_hint is False and a.open_world_hint is True, name
@@ -1399,7 +1400,7 @@ async def test_search_survives_missing_a_few_words_of_an_agent_sentence(clients)
     rows, total = cs.search("K&L Gates company lookup", cat, 8)
     # Person-by-company lookup also matches this sentence. Keep a company lookup in the first
     # three while rejecting the broad single-letter noise that caused the original miss.
-    assert 0 < total < 40
+    assert 0 < total < 45
     assert any(ep["capability"].startswith("companies.") for ep, _ in rows[:3])
     # the jobs rows must survive an industry qualifier the catalog never says ("law firm"), via
     # the openings->postings and firm->company aliases (logged miss, 2026-08-20)

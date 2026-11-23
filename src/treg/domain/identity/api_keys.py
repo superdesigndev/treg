@@ -12,7 +12,7 @@ from collections import OrderedDict
 from datetime import datetime, timedelta
 
 from sqlalchemy import or_, update
-from sqlalchemy.exc import OperationalError
+from sqlalchemy.exc import IntegrityError, OperationalError
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlmodel import select
 
@@ -80,10 +80,11 @@ async def ensure_default_key(
     """Create the stable signed-key control for a real human membership if it is absent."""
     if user.demo or is_machine_email(user.email):
         return None
-    row = (await db.execute(select(ApiKey).where(
+    existing = select(ApiKey).where(
         ApiKey.membership_id == membership.id,
         ApiKey.kind == DEFAULT_KIND,
-    ))).scalar_one_or_none()
+    )
+    row = (await db.execute(existing)).scalar_one_or_none()
     if row is not None:
         return row
     row = ApiKey(
@@ -96,8 +97,18 @@ async def ensure_default_key(
         created_by=created_by or user.email,
         created_at=membership.created_at,
     )
-    db.add(row)
-    await db.flush()
+    # Held open until the caller's commit, as in money.topup: releasing a savepoint that is the
+    # transaction's first write commits it on SQLite (the driver defers BEGIN).
+    nested = await db.begin_nested()
+    try:
+        db.add(row)
+        await db.flush()
+    except IntegrityError:
+        await nested.rollback()
+        winner = (await db.execute(existing)).scalar_one_or_none()
+        if winner is None:
+            raise
+        return winner
     return row
 
 

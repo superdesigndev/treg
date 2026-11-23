@@ -1,0 +1,995 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>REA for Marketing — Reverse Engineer a Brand's Black Friday | treg</title>
+<meta name="description" content="Name a brand and a season. Your agent pulls its ads, creator posts, own social, offers and prices through treg, week by week, estimates spend and sales, grades whether it worked, and hands you the plays to copy.">
+<link rel="canonical" href="{BASE}/rea-marketing"/>
+<meta property="og:title" content="REA for Marketing — Reverse Engineer a Brand's Black Friday | treg"/>
+<meta property="og:description" content="Name a brand. Your agent takes its Black Friday campaign apart, channel by channel, and hands you the plays to copy."/>
+<meta property="og:url" content="{BASE}/rea-marketing"/>
+<meta property="og:type" content="website"/>
+<meta name="twitter:card" content="summary"/>
+<link rel="icon" href="favicon.svg">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter+Tight:wght@400;500;600;800&family=Inter:wght@400;500;600&family=Geist+Mono:wght@400;500&family=Geist+Pixel&display=swap">
+<style>
+  :root { --glass: rgba(255,255,255,.05); --display: "Inter Tight", "Inter", ui-sans-serif, system-ui, sans-serif; --text: "Inter", ui-sans-serif, system-ui, sans-serif; --mono: "Geist Mono", ui-monospace, "SF Mono", Menlo, monospace; --pixel: "Geist Pixel", "Geist Mono", ui-monospace, monospace; color-scheme: dark; }
+  * { box-sizing: border-box; }
+  html { scroll-behavior: smooth; }
+  body { margin: 0; font-family: var(--text); font-size: 16px; line-height: 1.55; -webkit-font-smoothing: antialiased; }
+  ::selection { background: color-mix(in oklab, var(--s2) 30%, transparent); }
+  a { color: inherit; }
+  .pill { display: inline-flex; align-items: center; gap: 8px; font-weight: 500; font-size: 14px; padding: 10px 20px; border-radius: 999px; border: 1px solid var(--line); text-decoration: none; cursor: pointer; font-family: var(--text); }
+  
+  .pill.dark { background: var(--ink); color: var(--bg); border-color: var(--ink); }
+  .pill.dark:hover { background: rgba(255,255,255,.85); }
+  a:focus-visible, button:focus-visible { outline: 2px solid var(--green); outline-offset: 2px; }
+
+  /* nav */
+  .nav { position: fixed; inset: 0 0 auto 0; z-index: 90; display: flex; align-items: center; justify-content: space-between; padding: 14px 28px; background: transparent; border-bottom: 1px solid transparent; }
+  
+  .wordmark { display: flex; align-items: center; gap: 10px; font-family: var(--display); font-weight: 600; font-size: 15px; }
+  .wordmark svg { width: 22px; height: 22px; border-radius: 6px; }
+  .nav-links { display: flex; gap: 22px; align-items: center; margin-right: 10px; }
+  .nav-links a { display: inline-flex; align-items: center; gap: 7px; font-size: 14px; font-weight: 500; text-decoration: none; }
+  
+  @media (max-width: 900px) { .nav-links { display: none; } }
+  .ctas { display: flex; gap: 10px; flex-wrap: wrap; justify-content: center; }
+  
+  /* sections fade up as they enter */
+  .rv { opacity: 0; transform: translateY(22px); transition: opacity .7s ease, transform .7s cubic-bezier(.2,.8,.2,1); }
+  .rv.in { opacity: 1; transform: none; }
+  @media (prefers-reduced-motion: reduce) { .rv { opacity: 1; transform: none; transition: none; } }
+
+  /* code card */
+  
+  .section { padding: 124px 24px 0; }
+  .section h2 { font-family: var(--display); font-weight: 500; letter-spacing: -.025em; line-height: 1.12; text-align: center; margin: 0 0 14px; text-wrap: balance; }
+  @keyframes hlDrift { to { background-position: 300% 0; } }
+  /* the AEO page's oil-painting colour field, dimmed for the dark page */
+  .field { position: relative; isolation: isolate; overflow: hidden; }
+  .field > .paint { position: absolute; inset: -30%; z-index: -1; background: url(media/aeo/field.jpg) center / cover no-repeat; filter: blur(48px) saturate(1.5) brightness(.86); transform: scale(1.08); pointer-events: none; }
+
+  .final-in > .paint { opacity: .5; filter: blur(60px) saturate(1.4) brightness(.5); }
+  @media (prefers-reduced-motion: reduce) { .field > .paint { animation: none; } }
+  .fineprint { text-align: center; color: var(--muted); font-size: 12.5px; margin-top: 34px; }
+  /* final CTA */
+  .final { max-width: 1048px; margin: 124px auto 0; padding: 0 24px; }
+  .final-in { background: var(--glass); border: 1px solid var(--line); color: #fff; border-radius: 24px; display: flex; flex-direction: column; align-items: center; text-align: center; }
+  .final h2 { font-family: var(--display); font-weight: 500; letter-spacing: -.03em; font-size: clamp(32px, 4.6vw, 52px); line-height: 1.08; margin: 0; }
+  .final .pill { border-color: rgba(255,255,255,.2); background: transparent; color: #fff; }
+  .final .pill.light { background: rgba(255,255,255,.08); color: var(--bg); border-color: #fff; }
+  .final .pill.light:hover { background: rgba(255,255,255,.85); }
+  @media (max-width: 860px) { .final-in { padding: 40px 22px; } }
+
+  /* footer */
+  .bigfoot { border-top: 1px solid var(--line); padding: 46px 24px 40px; }
+  .bigfoot-in { max-width: 1000px; margin: 0 auto; display: flex; gap: 44px; justify-content: space-between; flex-wrap: wrap; }
+  .bf-brand .bfb { display: inline-flex; align-items: center; gap: 9px; font-family: var(--display); font-weight: 600; font-size: 16px; }
+  .bf-brand .bfb svg { width: 20px; height: 20px; border-radius: 5px; }
+  .bf-brand .note { font-size: 13px; color: var(--muted); margin-top: 8px; }
+  .bf-cols { display: flex; gap: 48px; flex-wrap: wrap; }
+  .bf-col { display: flex; flex-direction: column; gap: 8px; }
+  .bf-col .lab { font-family: var(--mono); font-size: 11px; letter-spacing: .06em; color: var(--muted); margin-bottom: 4px; }
+  .bf-col a { color: var(--ink); text-decoration: none; font-size: 13.5px; }
+  .bf-col a:hover { text-decoration: underline; text-underline-offset: 3px; }
+  .bf-tag { max-width: 1020px; margin: 36px auto 0; padding-top: 22px; border-top: 1px solid var(--line); color: var(--muted); font-size: 12px; }
+
+  @media (prefers-reduced-motion: reduce) { html { scroll-behavior: auto; } }
+
+  .note { min-height: 92px; margin: 34px auto 26px; max-width: 520px; }
+
+  /* how it works: three cards */
+
+  /* the path: one row per stage */
+
+  /* one colour per section, in the launch film's spectrum */
+
+  #example { --sc: var(--s4); }
+  #plays { --sc: var(--s5); }
+  #prompt { --sc: var(--s6); }
+  .bigfoot { --sc: var(--s1); }
+  .section, .final, .bigfoot { position: relative; isolation: isolate; overflow-x: clip; }
+  .section::before, .final::before, .bigfoot::before { content: ""; position: absolute; z-index: -1; left: 50%; top: 40px; width: min(1100px, 100%); height: 520px; transform: translateX(-50%); background: radial-gradient(50% 50% at 50% 50%, color-mix(in oklab, var(--sc) 16%, transparent), transparent 70%); filter: blur(30px); pointer-events: none; }
+  .section h2::after, .final h2::after { content: ""; width: 44px; height: 3px; margin: 16px auto 0; border-radius: 3px; background: var(--sc); }
+  #example { --f: var(--s2); --o: rgba(255,255,255,.22); --tx2: var(--tx); }
+
+  #example .two { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; }
+  @media (max-width: 860px) {  #example .two { grid-template-columns: 1fr; } }
+
+  .pls { position: relative; overflow: hidden; }
+  .pl { position: relative; border-top: 1px solid var(--line); }
+  .pl:first-child { border-top: 0; }
+  .pl::before { content: ""; position: absolute; left: 34px; top: 0; bottom: 0; width: 1px; background: var(--line); }
+  .pl:first-child::before { top: 34px; }
+  .pl:last-child::before { bottom: auto; height: 34px; }
+  .pl header { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+  .pl .pn { position: absolute; left: 20px; top: 20px; z-index: 1; width: 29px; height: 29px; border-radius: 50%; display: grid; place-items: center; border: 1px solid var(--line); font: 600 11.5px var(--mono); color: var(--f); }
+  .pl h4 { margin: 0; font-weight: 500; font-size: 19px; margin-right: auto; }
+  .pl .st2 { font: 11px var(--mono); letter-spacing: .06em; color: var(--muted); }
+  .pl p { margin: 10px 0 0; font-size: 14px; color: var(--tx2); }
+  .pl .meta3 b { margin-bottom: 2px; }
+  .pl .meta3 { grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 10px; }
+  @media (max-width: 640px) { .pl .meta3 { grid-template-columns: 1fr; } .pl { padding-left: 54px; } .pl .pn { left: 12px; } .pl::before { left: 26px; } }
+  .pl .ask { display: none; }
+  .pl { padding: 16px 22px 16px 66px; }
+  .pl .st2, .pl .eff { display: inline-flex; align-items: center; gap: 6px; padding: 4px 10px; border-radius: 999px; font: 600 12px var(--text); letter-spacing: 0; color: var(--ink); background: color-mix(in oklab, var(--c, var(--muted)) 16%, transparent); }
+  .pl .st2::before { content: ""; width: 7px; height: 7px; background: var(--c, var(--muted)); }
+  .pl .st2[data-st="get-noticed"] { --c: var(--s5); }
+  .pl .st2[data-st="sign-up"] { --c: var(--s4); }
+  .pl .st2[data-st="pay"] { --c: var(--s3); }
+  .pl .st2[data-st="share"] { --c: var(--s1); }
+  .pl .eff { background: transparent; color: var(--muted); padding-right: 0; }
+  .pl .eff::before { content: "◷"; font-size: 14px; }
+  .pl .eff b { display: none; }
+  .pl > p { margin-top: 8px; }
+  .pl .meta3 { display: block; margin-top: 8px; font-size: 13px; color: var(--muted); }
+  .pl .meta3 b { display: inline; font: 600 13px var(--text); letter-spacing: 0; color: var(--ink); margin-right: 6px; }
+  .pl .meta3 b::before { content: "→ "; }
+  /* closing receipt: what the run cost, printed like a lab ticket */
+
+  #tip { position: fixed; z-index: 300; pointer-events: none; max-width: 340px; border: 1px solid rgba(255,255,255,.12); -webkit-backdrop-filter: blur(30px) saturate(1.4); backdrop-filter: blur(30px) saturate(1.4); font-size: 12.5px; line-height: 1.45; padding: 8px 10px; border-radius: 8px; opacity: 0; transition: opacity .12s; }
+  #tip.on { opacity: 1; }
+  #tip.rich { max-width: 300px; padding: 11px 13px 10px; border-radius: 10px; }
+  /* the meta prompt */
+  .prompt-d { width: min(640px, 100%); }
+  .prompt-d.open { width: min(820px, 100%); }
+
+  /* liquid glass layer: a dim painted field behind the whole page, frosted panels over it */
+  :root { --gl-bg: linear-gradient(160deg, rgba(255,255,255,.09), rgba(255,255,255,.025) 46%, rgba(255,255,255,.05)); --gl-bd: rgba(255,255,255,.13); --gl-hi: inset 0 1px 0 rgba(255,255,255,.22), inset 0 -1px 0 rgba(255,255,255,.04); --gl-sh: 0 30px 80px -30px rgba(0,0,0,.75); --gl-blur: blur(28px) saturate(1.7); --ui: -apple-system, BlinkMacSystemFont, "SF Pro Display", "Inter Tight", "Inter", system-ui, sans-serif; }
+  body { --display: var(--ui); }
+  body::after { content: ""; position: fixed; inset: 0; z-index: -1; pointer-events: none; background: radial-gradient(120% 80% at 50% 0%, transparent 30%, rgba(5,4,7,.7) 100%); }
+  .section::before, .final::before, .bigfoot::before { opacity: .55; }
+  .section h2::after, .final h2::after { display: none; }
+  /* panels */
+  .pls, .final-in {
+    background: var(--gl-bg); border: 1px solid var(--gl-bd); -webkit-backdrop-filter: var(--gl-blur); backdrop-filter: var(--gl-blur); }
+
+  /* flat: content sits on the page, a hairline above each group instead of a panel */
+  .pls {
+    background: none; border: 0; border-top: 1px solid rgba(255,255,255,.12); border-radius: 0; -webkit-backdrop-filter: none; backdrop-filter: none; padding-left: 0; padding-right: 0; }
+  
+  /* nav: a floating capsule */
+  
+  .nav-links a { color: rgba(255,255,255,.66); transition: color .2s; }
+  .nav-links a:hover { color: #fff; }
+  /* buttons */
+  .pill { border-color: var(--gl-bd); background: rgba(255,255,255,.06); color: #fff; -webkit-backdrop-filter: blur(16px) saturate(1.5); backdrop-filter: blur(16px) saturate(1.5); transition: background .2s, transform .2s, box-shadow .3s; }
+  .pill:hover { background: rgba(255,255,255,.12); }
+  .pill.dark, .final .pill.light { background: rgba(255,255,255,.08); color: #0A090C; border-color: rgba(255,255,255,.9); }
+  .pill.dark:hover, .final .pill.light:hover { background: rgba(255,255,255,.08); transform: translateY(-1px); }
+  
+  /* type: luminous headings */
+  .section h2, .final h2 { font-family: var(--ui); font-weight: 600; letter-spacing: -.045em; -webkit-background-clip: text; background-clip: text; }
+  
+  /* hero: the AEO page's hero (eyebrow, pixel headline, highlighted hook, two CTAs), dark */
+
+  .section h2 { font-size: clamp(32px, 4.8vw, 52px); }
+  .section h2, .final h2 { background: none; color: #fff; -webkit-text-fill-color: #fff; }
+  .pl h4 { font-family: var(--ui); letter-spacing: -.02em; }
+
+  .pl .pn { background: rgba(20,18,24,.7); border-color: var(--gl-bd); }
+  
+  #tip { background: rgba(255,255,255,.62); border-color: rgba(255,255,255,.85); color: #fff; }
+/* headline stats: an open grid split by hairlines, no boxes */
+
+  /* no outlines anywhere: shapes are told apart by fill and space, never by a stroke */
+  body *, body *::before, body *::after { border-color: transparent !important; }
+  .pill:not(.dark):not(.light), .pl .pn { background-color: rgba(255,255,255,.08); }
+/* hero headline: the last words cycle */
+
+  /* no glows or paint layers: the page is flat */
+  body::after, .section::before, .final::before, .bigfoot::before, .field > .paint { display: none; }
+  .final-in.field { background: var(--glass); }
+  
+  /* final box: a white card with a switch between the agent prompt and the website */
+  .final .final-in, .final .final-in.field { background: linear-gradient(160deg, rgba(255,255,255,.12), rgba(255,255,255,.04)); color: #fff; -webkit-backdrop-filter: blur(28px) saturate(1.4); backdrop-filter: blur(28px) saturate(1.4); }
+  .final .final-in h2 { color: #fff; -webkit-text-fill-color: #fff; }
+  .final .final-in .pill { background: rgba(255,255,255,.08); color: #fff; }
+  .final .final-in .pill.light { background: rgba(255,255,255,.08); color: #fff; }
+  .final .final-in .pill.light:hover { background: rgba(255,255,255,.85); transform: none; }
+
+  /* copy button at the right end of the tab row, shown while the row is hovered */
+  /* hero: AEO layout, dark */
+
+  /* the Lovable teardown reads as a light document: white page, black text */
+
+  #example .pill:not(.dark):not(.light), #example .pl .pn { background-color: rgba(255,255,255,.05); color: #fff; }
+
+  #example .pill.dark { background: rgba(0,0,0,.42); color: #fff; }
+  #example .pls { -webkit-backdrop-filter: none; backdrop-filter: none; }
+  .nav { transition: border-color .3s, background .3s, color .3s; }
+  .nav.light { --muted: rgba(16,16,16,.5); color: #fff; background: rgba(255,255,255,.78); border-bottom-color: rgba(16,16,16,.08); }
+  .nav.light .nav-links a { color: rgba(16,16,16,.66); }
+  .nav.light .nav-links a:hover { color: #fff; }
+  .nav.light .pill.dark { background: rgba(0,0,0,.42); color: #fff; border-color: rgba(255,255,255,.8); }
+  /* growth chart on the white section */
+
+  #plays { padding-top: 64px; }
+  .section h2 { margin-bottom: 16px; }
+
+  #example { padding-top: 128px; padding-bottom: 128px; }
+  .final { margin-top: 128px; }
+  .final-in { padding: 64px 40px; gap: 24px; }
+  .bigfoot { margin-top: 128px; }
+  @media (max-width: 760px) {
+
+    .final, .bigfoot { margin-top: 96px; }
+    .final-in { padding: 40px 24px; }
+    
+  }
+
+  /* the closing prompt section: AEO's dark card on a white page */
+  #prompt.final { max-width: none; margin: 0; padding: 0 24px 124px; background: rgba(255,255,255,.08); }
+  #prompt + .bigfoot { margin-top: 0; }
+  .bigfoot { background: rgba(255,255,255,.08); color: #fff; border-top-color: rgba(16,16,16,.08); -webkit-backdrop-filter: none; backdrop-filter: none; }
+  .bigfoot .bf-col a { color: #fff; }
+  .bigfoot .bf-col .lab, .bigfoot .bf-brand .note, .bigfoot .bf-tag { color: rgba(255,255,255,.55); }
+  .bigfoot .bf-tag { border-top-color: rgba(16,16,16,.08); }
+  #prompt .final-in, #prompt .final-in.field { max-width: 1032px; margin: 0 auto; color: #fff; border-radius: 24px; padding: 60px 40px; gap: 26px; }
+  #prompt .final-in h2 { font-family: var(--display); font-weight: 500; letter-spacing: -.035em; text-wrap: balance; font-size: clamp(32px, 3.7vw, 50px); line-height: 1.08; color: #fff; -webkit-text-fill-color: #fff; }
+
+  #prompt .copybox { border: 1px solid rgba(255,255,255,.12); border-radius: 16px; padding: 16px 18px; font-family: var(--mono); font-size: 13px; color: #D6D6D2; text-align: left; }
+  #prompt .copybox .h { color: #9A9A9A; font-size: 10.5px; letter-spacing: .08em; text-transform: uppercase; margin-bottom: 10px; }
+  #prompt .copybox .line { display: flex; gap: 10px; align-items: center; justify-content: space-between; }
+  #prompt .copybox .line span { color: #45E39E; word-break: break-all; }
+  #prompt .copybox .then { margin-top: 12px; color: #B5B5B0; }
+  #prompt .copybox .then a { color: #8FD4F2; text-decoration: none; word-break: break-all; }
+  
+  @media (max-width: 860px) { #prompt .final-in, #prompt .final-in.field { padding: 40px 22px; } }
+  
+  #prompt .final-in > .paint { opacity: .6; filter: blur(60px) saturate(1.4) brightness(.5); }
+  
+  #prompt .final-in > .paint { display: none; }
+  #prompt .copybox { -webkit-backdrop-filter: none; backdrop-filter: none; width: min(560px, 100%); box-sizing: border-box; }
+  /* moves vs growth */
+
+  /* sign-in modal, as on /aeo */
+  .scrim { position: fixed; inset: 0; background: rgba(26,26,26,.55); display: none; place-items: center; z-index: 200; padding: 20px; backdrop-filter: blur(6px); }
+  .scrim.open { display: grid; }
+  .smodal { --bg: #FFFFFF; --ink: #101010; --muted: #6E6A62; --line: #E9E7E2; --card: #F5F4F1; color: var(--ink); width: min(400px, 94vw); background: #fff; border-radius: 20px; padding: 30px 28px; text-align: center; position: relative; }
+  .smodal .cls { position: absolute; top: 12px; right: 15px; background: none; border: 0; color: var(--muted); font-size: 16px; cursor: pointer; }
+  .smodal h3 { font-family: var(--display); font-weight: 600; font-size: 22px; margin: 4px 0 6px; letter-spacing: -.015em; }
+  .smodal p { font-family: var(--mono); font-size: 12px; color: var(--muted); margin: 0 0 18px; }
+  .smodal .pill { width: 100%; justify-content: center; margin-top: 9px; }
+  .smodal .div { display: flex; align-items: center; gap: 10px; margin: 16px 0 6px; color: var(--muted); font-size: 10.5px; letter-spacing: .12em; text-transform: uppercase; }
+  .smodal .div::before, .smodal .div::after { content: ""; flex: 1; height: 1px; background: var(--line); }
+  .smodal input { width: 100%; margin-top: 9px; background: var(--card); border: 1px solid var(--line); color: var(--ink); border-radius: 10px; padding: 11px 13px; font-family: var(--mono); font-size: 13px; outline: none; }
+  .smodal input:focus { border-color: var(--ink); }
+  .smodal .pill { background: #fff !important; color: #101010 !important; border: 0 !important; }
+  .smodal .pill.dark { background: #101010 !important; color: #fff !important; border-color: #101010 !important; }
+  .smodal .err { color: var(--red); font-size: 11.5px; margin-top: 10px; min-height: 14px; }
+  /* one white page */
+  #plays { padding-bottom: 24px; }
+
+  @keyframes rdblink { 50% { opacity: 0; } }
+
+  @keyframes rdin { from { opacity: 0; transform: translateY(6px); } }
+
+  /* REA-Growth hero: the growth curve is the hero; moves pinned on it as it draws */
+  .xr { --mint: #45E39E; position: relative; isolation: isolate; overflow: hidden; box-sizing: border-box; color: var(--ink); }
+  
+  @keyframes xrdraw { to { transform: none; } }
+  @keyframes xrfade { to { opacity: 1; } }
+  @keyframes xrpop { to { transform: scale(1); } }
+  @keyframes xrstem { to { transform: scaleY(1); } }
+  @keyframes xrping { 0% { transform: scale(.6); opacity: .9; } 100% { transform: scale(2.6); opacity: 0; } }
+  .xr-in { position: relative; z-index: 4; text-align: center; padding-top: 5vh; }
+  .xr-eye { display: inline-flex; align-items: center; gap: .3em; margin: 0 0 .2em; font: 400 clamp(34px, 5vw, 76px)/1 var(--pixel); letter-spacing: -.01em; color: var(--ink); opacity: 0; animation: xrfade .6s ease .1s forwards; }
+  .xr-eye .ag { display: inline-flex; gap: .12em; }
+  .xr-eye .ag img { width: 1.2em; height: 1.2em; border-radius: .26em; object-fit: contain; transition: transform .3s cubic-bezier(.3,1.6,.5,1); }
+  .xr-eye .ag img:hover { transform: translateY(-3px) rotate(-6deg); }
+  .xr-t { margin: 0 auto; max-width: 1100px; font: 600 clamp(40px, 5.6vw, 84px)/1.02 "Inter Tight", var(--ui); white-space: nowrap; color: var(--ink); -webkit-text-fill-color: var(--ink); background: none; text-wrap: balance; }
+  .xr-t .w { display: inline-block; overflow: hidden; vertical-align: top; padding: 0 .1em .3em; margin: 0 -.1em -.3em; }
+  .xr-t .w > span { display: inline-block; transform: translateY(105%); animation: xrrise .9s cubic-bezier(.2,.9,.1,1) .15s forwards; }
+  
+  @keyframes xrrise { to { transform: none; } }
+
+  .xr-cta { display: flex; gap: 10px; justify-content: center; align-items: center; margin-top: 34px; opacity: 0; animation: xrfade .6s ease .6s forwards; }
+  .xr-btn { display: inline-flex; align-items: center; gap: 10px; padding: 13px 22px; border-radius: 999px; text-decoration: none; font: 500 15px var(--text, var(--ui)); transition: transform .25s, box-shadow .25s; }
+  .xr-btn span { display: inline-block; transition: transform .25s; }
+  .xr-btn:hover { transform: translateY(-1px); }
+  .xr-btn:hover span { transform: translateX(4px); }
+  .xr-link { font: 500 15px var(--text, var(--ui)); text-decoration: none; padding: 12px 20px; border-radius: 999px; transition: background .2s; }
+  
+  @media (prefers-reduced-motion: reduce) {
+    .xr *, .xr *::before, .xr *::after { animation-duration: .01s !important; animation-delay: 0s !important; animation-iteration-count: 1 !important; }
+  }
+  @media (max-width: 760px) {
+     .xr-eye { font-size: 6.4vw; white-space: nowrap; }
+    
+  }
+
+  /* the run: the /people-search demo card, curve in treg green */
+
+  /* the three steps: each card shows its step */
+  #plays .st3 { max-width: 1080px; margin: 0 auto; display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 56px; }
+  .st3 article { background: rgba(255,255,255,.05); border-radius: 22px; padding: 8px; display: flex; flex-direction: column; transition: transform .35s cubic-bezier(.2,.8,.2,1); }
+  .st3 article { position: relative; }
+  .st3 article:not(:last-child)::after { content: "→"; position: absolute; z-index: 2; top: calc(50% - 17px); right: -45px; width: 34px; height: 34px; border-radius: 50%; display: grid; place-items: center; background: var(--lg, rgba(255,255,255,.1)); color: #fff; font: 600 17px/1 var(--ui); -webkit-backdrop-filter: blur(24px) saturate(1.3); backdrop-filter: blur(24px) saturate(1.3); }
+  .st3 article:hover { transform: translateY(-3px); }
+  .st-v { position: relative; height: 220px; border-radius: 16px; overflow: hidden; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 14px; padding: 18px; box-sizing: border-box; }
+  .st-t { padding: 18px 14px 14px; text-align: left; }
+  .st-t .n { display: block; font: 800 44px/1 var(--ui); letter-spacing: -.04em; color: #fff; }
+  .st-t h3 { margin: 6px 0 4px; font: 600 21px/1.2 "Inter Tight", var(--ui); letter-spacing: -.03em; color: #fff; }
+  .st-t p { margin: 0; font-size: 14.5px; color: rgba(255,255,255,.55); }
+  .v1 .fld { display: flex; align-items: center; gap: 10px; width: 100%; max-width: 250px; flex-wrap: wrap; row-gap: 4px; padding: 12px 14px; border-radius: 12px; background: rgba(255,255,255,.08); font: 500 15px var(--mono); color: #fff; box-sizing: border-box; }
+  
+  .v1 .sk { flex-basis: 100%; font-weight: 500; color: #FF94B2; }
+  .v1 .ty { display: inline-block; width: 0; overflow: hidden; white-space: nowrap; }
+  .v1 .car { width: 2px; height: 18px; background: #F24455; animation: rdblink 1s steps(1) infinite; }
+  #plays.in .v1 .ty { animation: sttype 1.2s steps(16) .5s forwards; }
+  @keyframes sttype { to { width: 16ch; } }
+  @keyframes stup { to { opacity: 1; transform: none; } }
+  .st-v { background: none; }
+  .st-net { width: 100%; height: 100%; overflow: visible; }
+  .st-net .ln line { stroke: rgba(255,255,255,.7); stroke-width: 1.2; stroke-dasharray: 2 6; stroke-linecap: round; }
+  #plays.in .st-net .ln line { animation: stflow 1.1s linear infinite; }
+  @keyframes stflow { to { stroke-dashoffset: -16; } }
+  .st-net .nd circle { fill: #fff; }
+  .st-net .nd { opacity: 0; transform-box: fill-box; transform-origin: center; transform: scale(.4); transition: opacity .4s, transform .5s cubic-bezier(.3,1.6,.5,1); transition-delay: calc(var(--i) * 70ms); }
+  #plays.in .st-net .nd { opacity: 1; transform: none; }
+  
+  .st-net .pulse { fill: none; stroke: #F24455; stroke-width: 2; transform-box: fill-box; transform-origin: center; opacity: 0; }
+  #plays.in .st-net .pulse { animation: stping 2s ease-out .8s infinite; }
+  @keyframes stping { 0% { transform: scale(.9); opacity: .7; } 100% { transform: scale(2.2); opacity: 0; } }
+  .v3 { justify-content: flex-start; align-items: stretch; gap: 10px; }
+  .v3 .bp-h { display: flex; align-items: center; gap: 7px; font: 500 11.5px var(--mono); color: #fff; }
+  
+  .st-mini { width: 100%; height: 58px; overflow: visible; }
+  .st-mini .ar { fill: rgba(17,132,83,.08); }
+  .st-mini .cv { fill: none; stroke: #F24455; stroke-width: 2.5; stroke-dasharray: 1; stroke-dashoffset: 1; }
+  .st-mini circle { fill: #FF94B2; opacity: 0; }
+  #plays.in .st-mini .cv { animation: stdraw 1.4s cubic-bezier(.45,0,.35,1) .4s forwards; }
+  #plays.in .st-mini circle { animation: stup .3s ease forwards; } #plays.in .st-mini circle:nth-of-type(1) { animation-delay: .8s; } #plays.in .st-mini circle:nth-of-type(2) { animation-delay: 1s; } #plays.in .st-mini circle:nth-of-type(3) { animation-delay: 1.4s; }
+  @keyframes stdraw { to { stroke-dashoffset: 0; } }
+  .v3 ul { list-style: none; margin: 0; padding: 0; display: grid; gap: 5px; }
+  .v3 li { display: flex; align-items: center; gap: 8px; padding: 6px 9px; border-radius: 8px; background: rgba(255,255,255,.08); font: 500 12.5px var(--ui); color: #fff; opacity: 0; transform: translateY(6px); }
+  .v3 li b { color: #FF94B2; font-weight: 600; }
+  .v3 li em { margin-left: auto; font: 500 10.5px var(--mono); font-style: normal; color: rgba(255,255,255,.55); }
+  #plays.in .v3 li { animation: stup .4s ease forwards; } #plays.in .v3 li:nth-child(1) { animation-delay: 1.7s; } #plays.in .v3 li:nth-child(2) { animation-delay: 1.9s; } #plays.in .v3 li:nth-child(3) { animation-delay: 2.1s; }
+  @media (max-width: 860px) { #plays .st3 { grid-template-columns: 1fr; max-width: 420px; } .st3 article:not(:last-child)::after { content: "↓"; top: auto; right: auto; bottom: -45px; left: calc(50% - 17px); } }
+  @media (prefers-reduced-motion: reduce) {
+    .st3 *, .st3 *::before { animation: none !important; transition: none !important; }
+    .v1 .ty { width: 16ch; } .st-net .nd, .st-mini circle, .v3 li { opacity: 1; transform: none; } .st-mini .cv { stroke-dashoffset: 0; }
+  }
+
+  /* the output: Lovable's growth blueprint */
+  #example .bp { max-width: 1100px; margin: 0 auto; }
+  .bp-hd { text-align: center; margin-bottom: 26px; }
+  .bp-k { margin: 0 0 8px; font: 500 12px var(--mono); letter-spacing: .1em; text-transform: uppercase; color: #FF94B2; }
+  #example .bp-hd h2 { margin: 0; font: 600 clamp(34px, 4.6vw, 56px)/1.04 "Inter Tight", var(--ui); letter-spacing: -.045em; }
+  #example .bp-hd h2::after { display: none; }
+  .bp-sub { margin: 10px 0 0; font-size: 16px; color: rgba(255,255,255,.55); }
+  
+  .bp-card { background: rgba(255,255,255,.08); border-radius: 20px; padding: 22px 22px 26px; }
+
+  .bp-tabs { display: flex; justify-content: center; gap: 6px; margin: 34px auto 22px; padding: 5px; width: max-content; max-width: 100%; box-sizing: border-box; border-radius: 999px; background: rgba(255,255,255,.05); }
+  .bp-tabs button { display: inline-flex; align-items: center; gap: 8px; border: 0; background: none; padding: 10px 18px; border-radius: 999px; font: 500 15px var(--ui); cursor: pointer; transition: background .2s, color .2s; }
+  
+  .bp-tabs .lg { display: inline-flex; } .bp-tabs .lg img { width: 18px; height: 18px; object-fit: contain; } .bp-tabs .lg img + img { margin-left: 3px; }
+  
+  .tks { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 16px; }
+  @media (min-width: 901px) { .tks:has(> .tk:nth-child(2):last-child) { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+  .tk { background: rgba(255,255,255,.05); border-radius: 20px; padding: 8px; display: flex; flex-direction: column; animation: stup .45s ease both; }
+  .tk:nth-child(2) { animation-delay: .06s; } .tk:nth-child(3) { animation-delay: .12s; }
+  .tk-ev { height: 250px; border-radius: 14px; background: rgba(255,255,255,.08); overflow: hidden; position: relative; }
+  .tk-tx { padding: 16px 12px 10px; }
+  .tk-n { font: 500 12px var(--mono); color: #FF94B2; }
+  #example .tk-tx h4 { margin: 5px 0 6px; font: 600 20px/1.2 "Inter Tight", var(--ui); letter-spacing: -.03em; color: #fff; }
+  .tk-tx p { margin: 0; font-size: 14.5px; color: rgba(255,255,255,.55); }
+  .tk-tx p b { color: #fff; font-weight: 600; }
+  .tk-tx small { display: block; margin-top: 10px; font: 500 10.5px var(--mono); letter-spacing: .04em; color: rgba(255,255,255,.55); text-transform: uppercase; }
+  .tk code { font: 500 .9em var(--mono); background: rgba(255,255,255,.08); padding: 1px 5px; border-radius: 5px; }
+
+  .ev-aff { list-style: none; margin: 0; padding: 18px 16px; display: grid; gap: 8px; }
+  .ev-aff li { display: flex; align-items: center; gap: 8px; padding: 8px 10px; border-radius: 10px; background: rgba(255,255,255,.05); font: 500 12.5px var(--mono); color: #fff; white-space: nowrap; overflow: hidden; }
+   .ev-aff code { margin-left: auto; background: none; padding: 0; color: rgba(255,255,255,.55); } .ev-aff code b { color: #FF94B2; font-weight: 600; }
+
+  .ev-ads { display: grid; grid-template-columns: repeat(3, 1fr); gap: 6px; padding: 8px; height: 100%; box-sizing: border-box; }
+  .ev-ads.two { grid-template-columns: repeat(2, 1fr); }
+  .ev-ads img { width: 100%; height: 100%; object-fit: cover; border-radius: 8px; display: block; min-height: 0; }
+  .ev-ads figure { margin: 0; position: relative; min-height: 0; } .ev-ads figcaption { position: absolute; left: 6px; right: 6px; bottom: 6px; padding: 4px 7px; border-radius: 6px; background: rgba(16,16,16,.78); color: #fff; font: 500 11px var(--ui); }
+
+  .bp-plays { margin-top: 56px; }
+  .bp-ph { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-bottom: 14px; }
+  #example .bp-ph h3 { margin: 0; font: 600 28px "Inter Tight", var(--ui); letter-spacing: -.04em; color: #fff; }
+  #example .bp-plays .pls { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 16px; }
+  .bp-more { margin-top: 14px; } 
+  .bp-more summary { list-style: none; cursor: pointer; width: max-content; max-width: 100%; box-sizing: border-box; margin: 0 auto; padding: 11px 20px; border-radius: 999px; background: rgba(255,255,255,.05); font: 500 14.5px var(--ui); color: #fff; }
+  .bp-more summary::-webkit-details-marker { display: none; }
+  .bp-more summary:hover { background: rgba(255,255,255,.12); }
+    
+  #example .bp-plays .pl .ev { display: none; }
+  @media (max-width: 760px) { .bp-card { padding: 16px 12px 18px; }   }
+  @media (max-width: 900px) { .tks, #example .bp-plays .pls { grid-template-columns: minmax(0, 1fr); } .tk-ev { height: 260px; } .bp-tabs button { padding: 9px 12px; font-size: 14px; } .bp-tabs .lg { display: none; } }
+
+  /* phones */
+  
+  @media (max-width: 760px) {
+    .xr { min-height: 600px; }
+
+    #plays { padding-top: 40px; padding-bottom: 24px; }
+    #example { padding-top: 56px; padding-bottom: 64px; }
+    
+    .bp-tabs { margin-top: 26px; }
+    .bp-plays { margin-top: 40px; }
+    #example .bp-ph h3 { font-size: 24px; } .bp-ph .pill { padding: 9px 14px; font-size: 13.5px; white-space: nowrap; }
+    
+    #prompt.final { padding-bottom: 64px; }
+  }
+  @media (max-width: 360px) { .nav { padding: 12px 16px; } .wordmark { white-space: nowrap; font-size: 14px; gap: 8px; } .nav .pill { white-space: nowrap; padding: 9px 14px; font-size: 13px; } .xr-cta { gap: 8px; } .xr-btn, .xr-link { white-space: nowrap; padding: 12px 16px; font-size: 14px; } }
+  /* over the hero the bar is see-through, so the hero's gradient runs to the top; it frosts once the page scrolls */
+  .nav.light:not(.scrolled) { background: transparent; border-bottom-color: transparent; -webkit-backdrop-filter: none; backdrop-filter: none; }
+  .nav.light.scrolled { background: rgba(253,252,251,.82); -webkit-backdrop-filter: blur(14px) saturate(1.4); backdrop-filter: blur(14px) saturate(1.4); border-bottom-color: rgba(16,16,16,.06); }
+
+  /* /rea-marketing additions, in the blueprint's language */
+  .xr-t { font-size: clamp(30px, 4.4vw, 64px); }
+  .st-net .hub { fill: #000; stroke: rgba(255,255,255,.2); stroke-width: 1; filter: drop-shadow(0 6px 14px rgba(0,0,0,.5)); }
+  .xr-t { font-family: var(--pixel); font-weight: 400; letter-spacing: -.01em; }
+  .xr-t .hl { font-style: normal; color: var(--hot); -webkit-text-fill-color: var(--hot); }
+  @media (max-width: 760px) { .xr-t { font-size: 8.6vw; white-space: normal; } }
+   
+  .bp-kpis { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 12px; margin: 0 0 18px; }
+  .bp-kpis div { background: rgba(255,255,255,.05); border-radius: 18px; padding: 16px 18px; }
+  .bp-kpis b { display: block; font: 500 30px/1.1 var(--display); letter-spacing: -.02em; color: #fff; }
+  .bp-kpis span { display: block; margin-top: 6px; font-size: 13px; line-height: 1.4; color: var(--muted); }
+  @media (max-width: 760px) { .bp-kpis { grid-template-columns: 1fr 1fr; } .bp-kpis b { font-size: 24px; } }
+  .ev-wk { display: flex; flex-direction: column; height: 100%; padding: 14px 14px 10px; box-sizing: border-box; }
+  .ev-wk p { margin: 0 0 8px; font: 500 11px var(--mono); letter-spacing: .04em; color: rgba(255,255,255,.55); }
+  .ev-wk .cols { flex: 1; display: flex; align-items: flex-end; gap: 5px; min-height: 0; }
+  .ev-wk .cols div { flex: 1; height: 100%; display: flex; flex-direction: column; justify-content: flex-end; align-items: center; font: 10px var(--mono); color: rgba(255,255,255,.55); }
+  .ev-wk .cols i { display: block; width: 100%; border-radius: 4px 4px 0 0; background: rgba(255,255,255,.12); margin: 3px 0 4px; }
+  .ev-wk .cols b { font-weight: 500; color: rgba(255,255,255,.55); } .ev-wk .cols .pk i { background: #F24455; } .ev-wk .cols .pk b { color: #FF94B2; font-weight: 600; }
+  .ev-gad { padding: 20px 18px; display: flex; flex-direction: column; gap: 10px; height: 100%; box-sizing: border-box; }
+  .ev-gad .sp { font: 12px var(--ui); color: rgba(255,255,255,.55); } .ev-gad .sp b { font-weight: 600; color: #fff; }
+  .ev-gad h5 { margin: 0; font: 500 19px/1.3 var(--ui); }
+  .ev-gad mark { background: rgba(255,148,178,.14); color: #FF94B2; border-radius: 4px; padding: 0 3px; }
+  .ev-gad p { margin: 0; font-size: 13px; color: rgba(255,255,255,.55); }
+  .ev-gad .kw { margin-top: auto; display: flex; flex-wrap: wrap; gap: 6px; }
+  .ev-gad .kw span { padding: 5px 9px; border-radius: 999px; background: rgba(255,255,255,.05); font: 500 11.5px var(--mono); color: #fff; }
+  .ev-split { display: grid; grid-template-columns: 42% 1fr; gap: 10px; height: 100%; padding: 8px; box-sizing: border-box; }
+  .ev-split img { width: 100%; height: 100%; object-fit: cover; border-radius: 8px; min-height: 0; }
+  .ev-split ul { list-style: none; margin: 0; padding: 4px 4px 4px 0; display: flex; flex-direction: column; justify-content: center; gap: 12px; }
+  .ev-split li span { display: block; font: 500 11px var(--mono); color: rgba(255,255,255,.55); }
+  .ev-split li b { font: 500 24px/1.15 var(--display); color: #fff; } .ev-split li:first-child b { color: #FF94B2; }
+  .ev-split li small { display: block; font-size: 11.5px; color: rgba(255,255,255,.55); }
+  .ev-vs { display: grid; grid-template-rows: 1fr 1fr; gap: 8px; height: 100%; padding: 8px; box-sizing: border-box; }
+  .ev-vs div { border-radius: 10px; background: rgba(255,255,255,.05); padding: 14px 16px; display: flex; flex-direction: column; justify-content: center; }
+  .ev-vs span { font: 500 11px var(--mono); color: rgba(255,255,255,.55); } .ev-vs b { font: 500 22px/1.2 var(--display); color: #fff; margin: 4px 0 2px; }
+  .ev-vs small { font-size: 12px; color: rgba(255,255,255,.55); } .ev-vs .hot { background: rgba(255,148,178,.14); } .ev-vs .hot b { color: #FF94B2; }
+  .ev-ads.stack { grid-template-columns: 1fr; grid-template-rows: 1fr 1fr; } .ev-ads.stack img { object-position: left top; }
+  .ev-price li span { color: #fff; } .ev-price li.lo { background: rgba(255,148,178,.14); } .ev-price li.lo code b { color: #FF94B2; }
+  .ev-price li code b { color: #fff; }
+  .ev-share { padding: 18px 16px; display: flex; flex-direction: column; gap: 12px; height: 100%; box-sizing: border-box; }
+  .ev-share p { margin: 0; font: 500 11px var(--mono); color: rgba(255,255,255,.55); }
+  .ev-share .bar { display: flex; height: 26px; border-radius: 8px; overflow: hidden; background: rgba(255,255,255,.12); }
+  .ev-share .bar i { background: #F24455; min-width: 6px; }
+  .ev-share ul { list-style: none; margin: 0; padding: 0; display: grid; gap: 8px; font-size: 12.5px; color: rgba(255,255,255,.55); }
+  .ev-share li b { display: block; font: 500 22px/1.1 var(--display); color: #fff; } .ev-share li.me b { color: #FF94B2; }
+  .ev-share .top { margin-top: auto; font: 12px var(--ui); color: rgba(255,255,255,.55); } .ev-share .top b { color: #fff; }
+  .ev-amz { display: grid; grid-template-columns: 84px 1fr; gap: 12px; align-items: center; height: 100%; padding: 14px; box-sizing: border-box; }
+  .ev-amz img { width: 84px; height: 84px; object-fit: contain; border-radius: 10px; background: rgba(255,255,255,.08); }
+  .ev-amz ul { list-style: none; margin: 0; padding: 0; display: grid; gap: 6px; }
+  .ev-amz li { display: flex; justify-content: space-between; gap: 8px; padding: 7px 9px; border-radius: 8px; background: rgba(255,255,255,.05); font: 12px var(--ui); color: rgba(255,255,255,.55); }
+  .ev-amz li b { font: 600 12px var(--mono); color: #fff; white-space: nowrap; } .ev-amz li:first-child b { color: #FF94B2; }
+  .wk-card { margin-top: 28px; background: rgba(255,255,255,.08); border-radius: 20px; padding: 22px 22px 18px; }
+  .wk-card h3 { margin: 0 0 4px; font: 600 18px var(--ui); letter-spacing: -.01em; } .wk-card > p { margin: 0 0 10px; color: var(--muted); font-size: 13.5px; }
+  .wk-svg { display: block; width: 100%; height: auto; font-family: var(--ui); font-variant-numeric: tabular-nums; }
+  .wk-svg .h { font-size: 11.5px; font-weight: 600; fill: #fff; } .wk-svg .m { font-size: 10.5px; fill: rgba(255,255,255,.55); } .wk-svg .n { font-size: 10.5px; font-weight: 600; fill: #fff; }
+  .wk-svg .g { stroke: rgba(255,255,255,.12); } .wk-svg .g.d { stroke-dasharray: 2 4; }
+  .wk-svg .col { transition: opacity .15s; } .wk-svg .hit { fill: #fff; opacity: 0; cursor: default; } .wk-svg .col:hover .hit { opacity: .04; }
+  .wk-svg.hw .col:not(:hover) { opacity: .35; }
+  .wk-svg [data-c] { transition: opacity .15s; } .wk-svg.hc [data-c]:not(.on) { opacity: .12; }
+  .wk-leg { display: flex; flex-wrap: wrap; gap: 6px 14px; margin-top: 10px; font: 12px var(--ui); color: rgba(255,255,255,.55); }
+  .wk-leg b { color: #fff; font-weight: 600; } .wk-leg span { display: inline-flex; align-items: center; gap: 6px; } .wk-leg span[data-c] { cursor: pointer; }
+  .wk-leg i { width: 10px; height: 10px; border-radius: 2px; display: inline-block; } .wk-leg i.ln { width: 16px; height: 3px; border-radius: 2px; } .wk-leg i.dl { width: 16px; height: 2px; border-radius: 0; background: repeating-linear-gradient(90deg, #8A8885 0 5px, transparent 5px 8px); }
+  .wk-leg .br { flex-basis: 100%; height: 0; }
+  .wkt b { display: block; margin-bottom: 4px; } .wkt div { display: flex; justify-content: space-between; gap: 14px; } .wkt i { display: inline-block; width: 8px; height: 8px; border-radius: 2px; margin-right: 6px; } .wkt hr { border: 0; border-top: 1px solid rgba(16,16,16,.12); margin: 5px 0; }
+  @media (max-width: 760px) { .wk-card { padding: 16px 12px 14px; } .wk-tl { overflow-x: auto; } .wk-svg { min-width: 720px; } }
+  .vd { margin-top: 28px; border-radius: 24px; background: rgba(255,255,255,.05); padding: 26px 26px 18px; }
+  .vd-hd { display: flex; justify-content: space-between; gap: 24px; flex-wrap: wrap; }
+  .vd .k { font: 500 11px var(--mono); letter-spacing: .06em; text-transform: uppercase; color: rgba(255,255,255,.55); }
+  .vd h3 { margin: 6px 0 4px; font: 500 34px/1.1 var(--display); letter-spacing: -.02em; }
+  .vd-hd p { margin: 0; color: var(--muted); font-size: 14px; }
+  .vd-n { display: flex; gap: 12px; } .vd-n div { background: rgba(255,255,255,.08); border-radius: 16px; padding: 12px 16px; }
+  .vd-n span { display: block; font: 500 11px var(--mono); color: rgba(255,255,255,.55); } .vd-n b { display: block; font: 500 26px/1.2 var(--display); }
+  .vd-n small { font: 11.5px var(--mono); color: rgba(255,255,255,.55); }
+  .vd-t { list-style: none; margin: 20px 0 0; padding: 0; display: grid; gap: 6px; }
+  .vd-t li { display: grid; grid-template-columns: 150px 1fr auto; gap: 14px; align-items: center; padding: 10px 14px; border-radius: 12px; background: rgba(255,255,255,.08); font-size: 14px; color: var(--tx2); }
+  .vd-t li b { color: #fff; font-weight: 600; }
+  .vd-t .g { font: 600 12px var(--text); font-style: normal; padding: 4px 10px; border-radius: 999px; white-space: nowrap; }
+
+  @media (max-width: 640px) { .vd { padding: 20px 16px 14px; } .vd-t li { grid-template-columns: 1fr auto; } .vd-t li span { grid-column: 1 / -1; grid-row: 2; } }
+  .skip { list-style: none; margin: 14px auto 0; padding: 0; display: grid; gap: 8px; max-width: 760px; }
+  .skip li { padding: 12px 16px; border-radius: 14px; background: rgba(255,255,255,.05); font-size: 14px; color: var(--tx2); }
+  .skip li b { display: block; color: #fff; }
+  #example .pl .meta3 span { display: block; }
+
+  /* /rea-marketing in the launch video's look: maroon ground, strawberry channels, frosted glass */
+  :root { --maroon: #2B0013; --s1: #FF94B2; --s2: #F24455; --s3: #FFDBE8; --s4: #E5203A; --s5: #FF94B2; --s6: #FFDBE8; --bg: #2B0013; --card: rgba(255,255,255,.06); --ink: #fff; --muted: rgba(255,255,255,.55); --line: rgba(255,255,255,.12); --tx: rgba(255,255,255,.72); --tx2: rgba(255,255,255,.72); --green: #FF94B2; --green-soft: rgba(255,148,178,.14); --red: #F24455; --pink: #FF94B2; --pink-soft: rgba(255,148,178,.14); }
+  body { background: #120204; color: #fff; }
+  body::before { content: ""; position: fixed; inset: 0; z-index: -2; pointer-events: none; background: radial-gradient(ellipse 80% 70% at 50% 30%, #3A0B10 0%, #2B0013 55%, #120204 100%); }
+  #example, #plays, #prompt, .section { background: transparent; color: #fff; --ink: #fff; --muted: rgba(255,255,255,.55); --tx: rgba(255,255,255,.72); --tx2: rgba(255,255,255,.72); --line: rgba(255,255,255,.12); }
+  #example h2, #prompt h2 { background: none; color: #fff; -webkit-text-fill-color: #fff; }
+  .st3 article, .bp-card, .wk-card, .vd, .tk, .bp-kpis div, .bp-tabs { background: var(--lg); -webkit-backdrop-filter: blur(24px) saturate(1.3); backdrop-filter: blur(24px) saturate(1.3); }
+  .st-v, .tk-ev { background: rgba(0,0,0,.22); }
+  .bp-tabs button { color: rgba(255,255,255,.66); }
+  .sc { margin-top: 8px; border-radius: 28px; padding: 22px 24px 20px; background: var(--lg); -webkit-backdrop-filter: blur(24px) saturate(1.3); backdrop-filter: blur(24px) saturate(1.3); }
+  .sc .sc-tabs { margin: 0 auto 22px; background: rgba(255,255,255,.05); -webkit-backdrop-filter: none; backdrop-filter: none; }
+  .sc .tk { background: none; -webkit-backdrop-filter: none; backdrop-filter: none; padding: 0; }
+  .sc .wk-card, .sc .bp-card, .sc .vd { margin: 0; padding: 0; border-radius: 0; background: none; -webkit-backdrop-filter: none; backdrop-filter: none; }
+  .sc .bp-plays { margin-top: 0; } .sc .fineprint { margin: 22px 0 0; }
+  @media (max-width: 760px) { .sc { padding: 14px 12px 16px; border-radius: 22px; } .sc .sc-tabs { width: auto; overflow-x: auto; justify-content: flex-start; } .sc .sc-tabs button { flex: none; } }
+  .bp-tabs button[aria-selected="true"] { background: #fff; color: var(--maroon); }
+
+  .bp-k, .k { color: #FF94B2; }
+  .vd-t .pass { background: rgba(255,148,178,.16); color: #FF94B2; } .vd-t .fail { background: rgba(229,32,58,.22); color: #FF8A98; }
+  .vd-t .mixed { background: rgba(255,219,232,.14); color: #FFDBE8; } .vd-t .wait { background: rgba(255,255,255,.08); color: rgba(255,255,255,.66); }
+  .wkt { background: #1A0109; color: #fff; }
+.pill.dark, .nav .pill.dark { background: #fff; color: var(--maroon); border-color: #fff; }
+  .nav.scrolled { background: rgba(43,0,19,.72); -webkit-backdrop-filter: blur(14px) saturate(1.4); backdrop-filter: blur(14px) saturate(1.4); border-bottom-color: rgba(255,255,255,.08); }
+
+  #prompt.final, .bigfoot { background: transparent; border-top-color: rgba(255,255,255,.08); }
+  #prompt .final-in, #prompt .final-in.field { background: var(--lg); -webkit-backdrop-filter: blur(24px) saturate(1.3); backdrop-filter: blur(24px) saturate(1.3); }
+  #prompt .copybox { background: rgba(0,0,0,.3); }
+  #prompt .copybox .line, #prompt .copybox .line span { color: #FF94B2; }
+  #prompt .final-in .ctas .pill.light:hover { background: rgba(255,255,255,.16); }
+  .ev-gad h5 { color: #8AB4F8; }
+  .bp-tabs img { background: #fff; border-radius: 4px; padding: 1px; box-sizing: border-box; }
+
+  .xr { --paper: transparent; --ink: #fff; --hot: #FF94B2; --line: rgba(255,255,255,.14); --muted: rgba(255,255,255,.6); background: transparent; min-height: 0; padding: 128px 24px 96px; }
+  .xr-btn { background: #fff; color: var(--maroon); }
+.xr-link { color: #fff; background: rgba(255,255,255,.08); }
+  .xr-link:hover { background: rgba(255,255,255,.14); }
+  @media (max-width: 760px) {
+    .xr { padding: 104px 16px 40px; }
+  }
+
+  /* flat: no block carries a border, a shadow or an inner shadow; glass is one flat tint */
+  :root { --lg: rgba(255,255,255,.1); }
+  .st-net .hub, .xr-eye .ag img { filter: none; }
+  .xr-eye .ag img[alt="Hermes"] { filter: invert(1); }
+  .st3 article, .bp-card, .wk-card, .vd, .tk, .tk-ev, .st-v, .bp-kpis div, .bp-tabs, .bp-tabs button, .pill, .xr-link, .xr-btn, .wkt, .copybox, .final-in, .bp-more summary, .ev-ads figure, .skip li, .vd-n div, .vd-t li, .st-net .hub { border: 0 !important; stroke: none; -webkit-backdrop-filter: none !important; backdrop-filter: none !important; }
+  .nav, .nav.scrolled { border-bottom-color: transparent; }
+  /* hover card: frosted white, no border, dark text */
+  #tip, #tip.rich { border: 0 !important; color: #2B0013; background: linear-gradient(160deg, rgba(255,255,255,.86), rgba(255,255,255,.66)); -webkit-backdrop-filter: blur(22px) saturate(1.6); backdrop-filter: blur(22px) saturate(1.6); }
+  #tip .wkt, #tip .wkt * { background-color: transparent; color: inherit; }
+  #tip .wkt i { outline: 1px solid rgba(43,0,19,.18); outline-offset: -1px; }
+  #tip .wkt hr { border-top-color: rgba(43,0,19,.14); }
+  /* bigger hover targets: a transparent edge around each square and spend segment catches the pointer */
+  .wk-svg rect[data-u] { stroke: transparent; stroke-width: 2; }
+  .wk-svg rect[data-k] { stroke: transparent; stroke-width: 6; }
+  /* buttons: the main one solid white, the others a white outline (as on /rea-growth); the outline
+     needs !important to beat the page-wide transparent border */
+  #prompt #copySkill { background: #fff; color: #2B0013; }
+  #prompt #copySkill:hover { background: rgba(255,255,255,.88); }
+  #top .xr-cta .xr-link, #prompt #agentCtas a.pill { background: transparent; color: #fff; border: 1px solid rgba(255,255,255,.85) !important; }
+  #top .xr-cta .xr-link:hover, #prompt #agentCtas a.pill:hover { background: rgba(255,255,255,.08); }
+</style>
+<script src="/captcha.js" defer></script>
+</head>
+<body>
+
+<nav class="nav" id="nav">
+  <span class="wordmark"><a href="/" style="display:inline-flex;align-items:center;gap:10px;color:inherit;text-decoration:none" aria-label="treg home"><svg viewBox="0 0 512 512" aria-hidden="true"><rect width="512" height="512" rx="112" fill="#101010"/><rect x="111" y="111" width="140.5" height="140.5" rx="20" fill="#fff"/><rect x="260.5" y="260.5" width="140.5" height="140.5" rx="20" fill="#fff"/></svg> treg</a> <span style="color:var(--muted);font-weight:400">/</span> <span style="font-weight:500">REA marketing</span></span>
+  <span style="display:flex;gap:8px">
+    <span class="nav-links"><a href="#example">REA DJI Black Friday</a><a href="#prompt">The skill</a><a href="https://github.com/superdesigndev/treg" target="_blank" rel="noopener"><svg width="15" height="15" viewBox="0 0 16 16" fill="currentColor" aria-hidden="true"><path d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27s1.36.09 2 .27c1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.01 8.01 0 0 0 16 8c0-4.42-3.58-8-8-8Z"/></svg> Open source</a></span>
+    <a class="pill dark" href="/app?ref=rea-marketing" id="ctaNav">Set up treg</a>
+  </span>
+</nav>
+
+<header class="xr" id="top">
+  <div class="xr-in">
+    <p class="xr-eye"><span>/REA-marketing with</span><span class="ag"><img src="media/people-search/claude-code.png" alt="Claude Code" title="Claude Code"><img src="media/growth-rea/codex.svg" alt="Codex" title="Codex"><img src="media/people-search/hermes.png" alt="Hermes" title="Hermes"></span></p>
+    <h1 class="xr-t"><span class="w"><span>Reverse Engineer <em class="hl">Any Marketing</em></span></span></h1>
+    <div class="xr-cta"><a class="xr-btn" href="/app?ref=rea-marketing" id="ctaHero">Set up treg <span>→</span></a><a class="xr-link" href="#prompt" id="ctaCopy">Copy skill ↓</a></div>
+  </div>
+</header>
+
+<section class="section rv" id="plays">
+  <div class="st3">
+    <article>
+      <div class="st-v v1" aria-hidden="true">
+        <div class="fld"><b class="sk">/rea-marketing</b><span class="ty">DJI Black Friday</span><i class="car"></i></div>
+      </div>
+      <div class="st-t"><span class="n">Step 1</span><h3>Brand + season in</h3><p>Any brand, any sales moment.</p></div>
+    </article>
+    <article>
+      <div class="st-v v2"><svg class="st-net" viewBox="0 0 320 200" aria-hidden="true"><g class="ln"><line x1="200.8" y1="27.7" x2="160" y2="100" style="--i:0"/><line x1="266.8" y1="55.3" x2="160" y2="100" style="--i:1"/><line x1="292.0" y1="100.0" x2="160" y2="100" style="--i:2"/><line x1="266.8" y1="144.7" x2="160" y2="100" style="--i:3"/><line x1="200.8" y1="172.3" x2="160" y2="100" style="--i:4"/><line x1="119.2" y1="172.3" x2="160" y2="100" style="--i:5"/><line x1="53.2" y1="144.7" x2="160" y2="100" style="--i:6"/><line x1="28.0" y1="100.0" x2="160" y2="100" style="--i:7"/><line x1="53.2" y1="55.3" x2="160" y2="100" style="--i:8"/><line x1="119.2" y1="27.7" x2="160" y2="100" style="--i:9"/></g><g class="nd" style="--i:0"><circle cx="200.8" cy="27.7" r="16"/><image href="logos/dataforseo.svg" x="191.8" y="18.7" width="18" height="18"/></g><g class="nd" style="--i:1"><circle cx="266.8" cy="55.3" r="16"/><image href="logos/spyfu.svg" x="257.8" y="46.3" width="18" height="18"/></g><g class="nd" style="--i:2"><circle cx="292.0" cy="100.0" r="16"/><image href="logos/tiktok.svg" x="283.0" y="91.0" width="18" height="18"/></g><g class="nd" style="--i:3"><circle cx="266.8" cy="144.7" r="16"/><image href="logos/meta-ad-library.svg" x="257.8" y="135.7" width="18" height="18"/></g><g class="nd" style="--i:4"><circle cx="200.8" cy="172.3" r="16"/><image href="logos/google-ads.svg" x="191.8" y="163.3" width="18" height="18"/></g><g class="nd" style="--i:5"><circle cx="119.2" cy="172.3" r="16"/><image href="media/aeo/logos/google.svg" x="110.2" y="163.3" width="18" height="18"/></g><g class="nd" style="--i:6"><circle cx="53.2" cy="144.7" r="16"/><image href="logos/instagram.svg" x="44.2" y="135.7" width="18" height="18"/></g><g class="nd" style="--i:7"><circle cx="28.0" cy="100.0" r="16"/><image href="logos/platforms/amazon.svg" x="19.0" y="91.0" width="18" height="18"/></g><g class="nd" style="--i:8"><circle cx="53.2" cy="55.3" r="16"/><image href="logos/platforms/walmart.svg" x="44.2" y="46.3" width="18" height="18"/></g><g class="nd" style="--i:9"><circle cx="119.2" cy="27.7" r="16"/><image href="logos/tinyfish.svg" x="110.2" y="18.7" width="18" height="18"/></g><circle class="pulse" cx="160" cy="100" r="24"/><rect class="hub" x="136" y="76" width="48" height="48" rx="10.5"/><rect x="146.4" y="86.4" width="13.2" height="13.2" rx="1.9" fill="#fff"/><rect x="160.4" y="100.4" width="13.2" height="13.2" rx="1.9" fill="#fff"/></svg></div>
+      <div class="st-t"><span class="n">Step 2</span><h3>treg pulls every channel</h3><p>Ads, creator posts, own social, offers, prices, search.</p></div>
+    </article>
+    <article>
+      <div class="st-v v3" aria-hidden="true">
+        <div class="bp-h">DJI · Black Friday teardown</div>
+        <svg class="st-mini" viewBox="0 0 280 74" aria-hidden="true"><path class="ar" d="M0,70 C40,69 80,68 120,64 C160,60 190,52 215,44 C240,34 260,14 280,6 L280,74 L0,74 Z"/><path class="cv" pathLength="1" d="M0,70 C40,69 80,68 120,64 C160,60 190,52 215,44 C240,34 260,14 280,6"/><circle cx="40" cy="69" r="6"/><circle cx="215" cy="44" r="6"/><circle cx="262" cy="13" r="6"/></svg>
+        <ul><li><b>✓</b>Affiliates on TikTok Shop<em>Collabs</em></li><li><b>✓</b>Emails for early prices<em>Owned</em></li><li><b>✓</b>Creator clips as ads<em>Paid</em></li></ul>
+      </div>
+      <div class="st-t"><span class="n">Step 3</span><h3>Teardown + verdict out</h3><p>What ran, when, what it cost, whether it worked.</p></div>
+    </article>
+  </div>
+</section>
+
+<section class="section" id="example">
+  <div class="bp">
+    <header class="bp-hd">
+      <p class="bp-k">The showcase</p>
+      <h2>REA DJI’s Black Friday</h2>
+      <p class="bp-sub">Sep 1 → Nov 17, 2026 · US · public data only, pulled through treg</p>
+    </header>
+    <div class="sc">
+    <div class="bp-tabs sc-tabs" role="tablist"><button type="button" role="tab" data-sc="weeks" aria-selected="true">Week by week</button><button type="button" role="tab" data-sc="channels" aria-selected="false">Each channel</button><button type="button" role="tab" data-sc="verdict" aria-selected="false">Verdict</button><button type="button" role="tab" data-sc="plays" aria-selected="false">Plays to copy</button></div>
+    <div class="sc-p" data-sc="weeks" role="tabpanel">
+    <div class="wk-card" id="weeks">
+      <h3>What DJI ran, and spent, week by week</h3>
+      <p>Each square is one ad or post found live that week. Hover a week for its numbers, a legend item to pick out one channel.</p>
+      <div class="wk-tl"><svg class="wk-svg" id="wkChart" viewBox="0 0 1100 560" role="img" aria-label="DJI, 12 weeks before Black Friday 2026: estimated spend per week by channel, campaign units live per week, search demand versus normal and visible views"></svg></div>
+      <div class="wk-leg" id="wkLeg"></div>
+    </div>
+    </div>
+    <div class="sc-p" data-sc="channels" role="tabpanel" hidden>
+    <div class="bp-card">
+    <div class="bp-kpis">
+      <div><b>218</b><span>Meta ads this season, vs 46 in the same weeks last year</span></div>
+      <div><b>135 / 173</b><span>creator posts sell through a TikTok Shop cart</span></div>
+      <div><b>40 / 87</b><span>Black Friday collab posts name last year’s Pocket 3</span></div>
+      <div><b>2%</b><span>of units in Pocket 3 searches on TikTok Shop go to DJI</span></div>
+    </div>
+    <div class="bp-tabs" role="tablist"><button type="button" role="tab" data-t="paid" aria-selected="true"><span class="lg"><img src="logos/meta-ads.svg" alt=""><img src="logos/google-ads.svg" alt=""></span>Paid ads</button><button type="button" role="tab" data-t="collab" aria-selected="false"><span class="lg"><img src="logos/tiktok.svg" alt=""></span>Collabs</button><button type="button" role="tab" data-t="own" aria-selected="false"><span class="lg"><img src="logos/tiktok.svg" alt=""></span>Own social &amp; site</button><button type="button" role="tab" data-t="retail" aria-selected="false"><span class="lg"><img src="logos/platforms/amazon.svg" alt=""><img src="logos/platforms/walmart.svg" alt=""></span>Retail &amp; price</button></div>
+    <div class="bp-panel" data-p="paid" role="tabpanel"><div class="tks"><article class="tk"><div class="tk-ev"><div class="ev-ads two"><figure><img src="media/rea-marketing/ad-rs5.jpg" alt="" loading="lazy"><figcaption>#DJIRS5 shot · no price</figcaption></figure><figure><img src="media/rea-marketing/ad-pov.jpg" alt="" loading="lazy"><figcaption>“POV: that one friend…” · no price</figcaption></figure></div></div><div class="tk-tx"><span class="tk-n">01</span><h4>Run creator clips as ads, no price</h4><p><b>218 Meta ads</b> since Sep 1, against 46 in the same weeks last year.</p><small>Meta Ad Library · US · Nov 17</small></div></article><article class="tk"><div class="tk-ev"><div class="ev-gad"><div class="sp"><b>Sponsored</b> · DJI</div><h5>Subscribe for an extra <mark>5% off</mark> + preview Black Friday prices</h5><p>The offer lives in search ads, not in the Meta ads.</p><div class="kw"><span>mini 5 pro black friday</span><span>+ model names: Mini 5 Pro, Pocket 4P</span></div></div></div><div class="tk-tx"><span class="tk-n">02</span><h4>Put the offer in search ads</h4><p>Google ads trade <b>5% off</b> for an email, bidding on model names + “black friday”.</p><small>Google ad history · SpyFu · Nov 2026</small></div></article></div></div><div class="bp-panel" data-p="collab" role="tabpanel" hidden><div class="tks"><article class="tk"><div class="tk-ev"><div class="ev-ads"><figure><img src="media/rea-marketing/hook-finally.jpg" alt="" loading="lazy"><figcaption>“Finally on TikTok Shop” · 771K</figcaption></figure><figure><img src="media/rea-marketing/hook-bf-price.jpg" alt="" loading="lazy"><figcaption>“Limited-time BF deal” · 186K</figcaption></figure><figure><img src="media/rea-marketing/hook-search-code.jpg" alt="" loading="lazy"><figcaption>“Search Osmo Mobile” · 155K</figcaption></figure></div></div><div class="tk-tx"><span class="tk-n">01</span><h4>Let affiliates do the selling</h4><p><b>135 of 173</b> real collab posts carry a TikTok Shop cart or commission tag.</p><small>19 TikTok searches · US · last 3 months</small></div></article><article class="tk"><div class="tk-ev"><div class="ev-split"><img src="media/rea-marketing/collab-lenda.jpg" alt="" loading="lazy"><ul><li><span>Paid · 28 posts</span><b>2.68M</b><small>views · ~22 per $</small></li><li><span>Affiliate · 135 posts</span><b>2.26M</b><small>views · ~8 per $</small></li><li><span>Gifted · 10 posts</span><b>0.06M</b><small>views</small></li></ul></div></div><div class="tk-tx"><span class="tk-n">02</span><h4>Pay a few big creators for reach</h4><p>28 paid posts out-viewed 135 affiliate posts; the top one, <b>1.69M views</b>.</p><small>TikTok · spend estimated by follower count</small></div></article><article class="tk"><div class="tk-ev"><div class="ev-wk"><p>Collab posts found per week, weeks before Black Friday</p><div class="cols"><div><b>2</b><i style="height:3%"></i><span>12w</span></div><div><b>5</b><i style="height:7%"></i><span>11w</span></div><div><b>3</b><i style="height:4%"></i><span>10w</span></div><div><b>2</b><i style="height:3%"></i><span>9w</span></div><div><b>4</b><i style="height:6%"></i><span>8w</span></div><div><b>8</b><i style="height:11%"></i><span>7w</span></div><div><b>17</b><i style="height:24%"></i><span>6w</span></div><div><b>13</b><i style="height:18%"></i><span>5w</span></div><div><b>12</b><i style="height:17%"></i><span>4w</span></div><div><b>36</b><i style="height:51%"></i><span>3w</span></div><div class=pk><b>71</b><i style="height:100%"></i><span>2w</span></div></div></div></div><div class="tk-tx"><span class="tk-n">03</span><h4>Pile on in the last three weeks</h4><p>From 8-17 posts a week in October to <b>36, then 71</b>.</p><small>TikTok · posts found, not a census</small></div></article></div></div><div class="bp-panel" data-p="own" role="tabpanel" hidden><div class="tks"><article class="tk"><div class="tk-ev"><div class="ev-ads two"><figure><img src="media/rea-marketing/own-pocket4p.jpg" alt="" loading="lazy"><figcaption>Osmo Pocket 4P · 2.7M</figcaption></figure><figure><img src="media/rea-marketing/own-o4.jpg" alt="" loading="lazy"><figcaption>O4 Air Unit Pro · 5.9M</figcaption></figure></div></div><div class="tk-tx"><span class="tk-n">01</span><h4>Keep the brand account on new models</h4><p><b>100 posts, 38.8M plays</b>, and not one Black Friday price post.</p><small>DJI's TikTok · Oct 14 → Nov 17</small></div></article><article class="tk"><div class="tk-ev"><div class="ev-vs"><div><span>On DJI’s own social</span><b>New models</b><small>full price · Pocket 4P, Osmo 360, Mavic 4 Pro</small></div><div class="hot"><span>In Black Friday collab posts</span><b>Last year’s Pocket 3</b><small>on sale · named in 40 of 87</small></div></div></div><div class="tk-tx"><span class="tk-n">02</span><h4>Discount last year’s model</h4><p><b>40 of 87</b> Black Friday collab posts name the Pocket 3, not the new 4P.</p><small>TikTok · brand vs collab posts</small></div></article><article class="tk"><div class="tk-ev"><div class="ev-ads stack"><figure><img src="media/rea-marketing/store-action6.jpg" alt="" loading="lazy"><figcaption>Osmo Action 6 combo · $479, was $536</figcaption></figure><figure><img src="media/rea-marketing/store-pocket3.jpg" alt="" loading="lazy"><figcaption>Osmo Pocket 3 · $439, list price</figcaption></figure></div></div><div class="tk-tx"><span class="tk-n">03</span><h4>Hold the sitewide sale back</h4><p>Ten days out, DJI’s store discounts <b>3 of 26</b> variants, 11-19% off.</p><small>us.store.dji.com · screenshots Nov 17</small></div></article></div></div><div class="bp-panel" data-p="retail" role="tabpanel" hidden><div class="tks"><article class="tk"><div class="tk-ev"><ul class="ev-aff ev-price"><li><span>DJI store</span><code><b>$439</b></code></li><li><span>Amazon</span><code><b>$439</b></code></li><li><span>Best Buy</span><code><b>$439</b></code></li><li><span>Walmart · DJI store, combo</span><code><b>$499.99</b></code></li><li class="lo"><span>Marketplace sellers</span><code><b>$359–389</b></code></li></ul></div><div class="tk-tx"><span class="tk-n">01</span><h4>Watch who undercuts you</h4><p>Marketplace sellers sell the Pocket 3 <b>$50-80 under</b> DJI’s own price.</p><small>Google Shopping · Nov 16-17</small></div></article><article class="tk"><div class="tk-ev"><div class="ev-share"><p>Units sold in 4 Pocket 3 searches on TikTok Shop</p><div class="bar"><i style="width:2.3%"></i><u></u></div><ul><li class="me"><b>2,516</b>DJI’s Pocket 3 listings, new + pre-owned</li><li><b>104,819</b>other brands’ pocket and vlog cameras</li></ul><p class="top">Top listing: a <b>$35</b> handheld vlog camera, 42,512 sold</p></div></div><div class="tk-tx"><span class="tk-n">02</span><h4>Lose the search to cheaper cameras</h4><p>DJI holds about <b>2%</b> of units in its own product’s searches.</p><small>TikTok Shop · lifetime units · Nov 17</small></div></article><article class="tk"><div class="tk-ev"><div class="ev-amz"><img src="media/rea-marketing/amz-creator-combo.jpg" alt="" loading="lazy"><ul><li><span>Pocket 3 Creator Combo · $549</span><b>2,000+</b></li><li><span>Osmo Pocket 3 · $439</span><b>1,000+</b></li><li><span>Pocket 3 Vlog Bundle · $450</span><b>500+</b></li><li><span>7 more listings</span><b>950+</b></li></ul></div></div><div class="tk-tx"><span class="tk-n">03</span><h4>Bundles sell on Amazon</h4><p><b>4,450+</b> Pocket 3 units bought in a month; the $549 combo leads.</p><small>Amazon “bought in past month” badges · Nov 17</small></div></article></div></div>
+    </div>
+    </div>
+    <div class="sc-p" data-sc="verdict" role="tabpanel" hidden>
+    <div class="vd"><div class="vd-hd"><div><span class="k">Verdict so far · 11 days before Black Friday</span><h3>Too early to call</h3><p>Final call due Dec 11, after a second sales snapshot.</p></div><div class="vd-n"><div><span>Est. spend, 11 weeks</span><b>~$724K</b><small>$220K – $1.8M</small></div><div><span>Est. sales, per month</span><b>~$7.5M</b><small>$4.4M – $12.3M</small></div></div></div><ol class="vd-t"><li><b>Demand rose</b><span>Search 1.1× normal two weeks out; last year 1.27× at the same point.</span><em class="g mixed">Mixed</em></li><li><b>Reach was cheap</b><span>Paid posts ~22 views per $, affiliate ~8; Meta ad views aren’t public.</span><em class="g mixed">Mixed</em></li><li><b>Sales rose</b><span>One snapshot so far; the change needs a second one after Black Friday.</span><em class="g wait">Can’t tell yet</em></li><li><b>Spend paid back</b><span>~$7.5M a month in sales on ~$286K a month of marketing, about 26×.</span><em class="g pass">Pass</em></li><li><b>Price held</b><span>3 of 26 store variants discounted, but marketplaces sell the Pocket 3 $50-80 under.</span><em class="g mixed">Mixed</em></li><li><b>Demand was kept</b><span>Other brands sell ~98% of units in Pocket 3 searches on TikTok Shop.</span><em class="g fail">Fail</em></li></ol></div>
+    </div>
+    <div class="sc-p" data-sc="plays" role="tabpanel" hidden>
+    <div class="bp-plays" id="dji-plays">
+      <div class="bp-ph"><h3>Copy these plays</h3><button type="button" class="pill dark" id="copyPlaybook">Copy the playbook</button></div>
+      <div class="pls"><article class="pl">
+  <header><span class="pn">01</span><h4>New models on social, old models on sale</h4><span class="st2" data-st="share">Product lines</span><span class="eff"><b>Effort</b>A week</span></header>
+  <p class="ev">DJI’s brand account pushes the Pocket 4P (2.7M views) while Black Friday creator videos sell last year’s Pocket 3.</p>
+  <div class="meta3"><span><b>Start</b>3 weeks before Black Friday</span><span><b>Watch</b>Old-model Black Friday sales vs whether new-model prices held</span></div>
+  <div class="ask"><b>Prompt</b><p>Using treg, list the products we launched in the last 12 months and the older models they replace, with each one’s current price on our store and Amazon. Recommend which older models take the Black Friday discount and which new ones stay at full price, and draft 3 brand posts for the new ones with no price in them.</p></div>
+</article><article class="pl">
+  <header><span class="pn">02</span><h4>Flood TikTok Shop with affiliates</h4><span class="st2" data-st="get-noticed">Collabs</span><span class="eff"><b>Effort</b>Two weeks</span></header>
+  <p class="ev">135 of DJI’s 173 real collab posts carry a TikTok Shop cart; 28 are paid partnerships.</p>
+  <div class="meta3"><span><b>Start</b>3 weeks before Black Friday</span><span><b>Watch</b>Affiliate video count and GMV</span></div>
+  <div class="ask"><b>Prompt</b><p>Using treg, search TikTok for creators who posted TikTok Shop videos about [my category] in the last 3 months. Keep US accounts with 10k-500k followers, list the 30 with the highest views per follower (handle, followers, top video link, views), and draft a one-paragraph affiliate invite for each tier.</p></div>
+</article><article class="pl">
+  <header><span class="pn">03</span><h4>Collect emails with early prices</h4><span class="st2" data-st="sign-up">Owned</span><span class="eff"><b>Effort</b>A day</span></header>
+  <p class="ev">Before Black Friday DJI pushes “subscribe for an extra 5% off + preview Black Friday prices”, with model names in its ad keywords.</p>
+  <div class="meta3"><span><b>Start</b>2-3 weeks before Black Friday</span><span><b>Watch</b>New subscribers and open rate during Black Friday</span></div>
+  <div class="ask"><b>Prompt</b><p>Using treg, pull this month’s US search volume for each of [my top 10 products] + “black friday”. Pick the 10 keywords to bid on, and write the signup offer for them: one line for the site banner and one for the search ad, an extra discount for an email plus early access to Black Friday prices.</p></div>
+</article><article class="pl">
+  <header><span class="pn">04</span><h4>Run creator clips as Meta ads</h4><span class="st2" data-st="pay">Paid</span><span class="eff"><b>Effort</b>A week</span></header>
+  <p class="ev">DJI’s Meta ads are creator clips credited to the creator, with no price; two run from creator pages as partnership ads.</p>
+  <div class="meta3"><span><b>Start</b>4 weeks before Black Friday</span><span><b>Watch</b>Cost per view and saves on creator-clip ads vs brand-made ads</span></div>
+  <div class="ask"><b>Prompt</b><p>Using treg, search TikTok and Instagram for videos that show [my product] in use, posted in the last 6 months. List the 10 with the most views (creator, link, views, hook in the first 3 seconds), then write ad copy for each in this shape: one line on what the shot is, a question, the creator credit, 3 hashtags. No price.</p></div>
+</article><article class="pl">
+  <header><span class="pn">05</span><h4>Answer the dupe searches</h4><span class="st2" data-st="get-noticed">Search · Social</span><span class="eff"><b>Effort</b>A week</span></header>
+  <p class="ev">15 collab posts sell a “DJI dupe” (1.28M views); other brands sold about 105K units in Pocket 3 searches on TikTok Shop vs 2.5K for DJI.</p>
+  <div class="meta3"><span><b>Start</b>2 weeks before Black Friday</span><span><b>Watch</b>Share of “[brand] dupe” search results that are ours</span></div>
+  <div class="ask"><b>Prompt</b><p>Using treg, search TikTok, TikTok Shop and Google Shopping for “[my brand] dupe”. List the top 10 results on each (title, seller, price, units sold or views), work out what share of units go to dupes, and outline 3 short videos that show what the real product does that the top dupe can’t.</p></div>
+</article><article class="pl">
+  <header><span class="pn">06</span><h4>Put the Black Friday price where buyers finish</h4><span class="st2" data-st="pay">Retail</span><span class="eff"><b>Effort</b>A day</span></header>
+  <p class="ev">The Pocket 3 is $439 at DJI’s store, Amazon and Best Buy, but $359-389 from marketplace sellers on Walmart and TikTok Shop.</p>
+  <div class="meta3"><span><b>Start</b>1 week before Black Friday</span><span><b>Watch</b>Amazon units and rank during Black Friday week</span></div>
+  <div class="ask"><b>Prompt</b><p>Using treg, pull today’s price for [my top 5 products] on our own store, Amazon, Walmart, Best Buy and TikTok Shop, with the seller name for each listing. Show a table of price by seller, flag every seller below our own price, and repeat it daily until Black Friday + 7.</p></div>
+</article></div>
+      <details class="bp-more"><summary>3 things to skip, and why</summary><ul class="skip"><li><b>Promo posts on the brand account</b><span>DJI’s own TikTok posts no promos; the price is left to affiliates and ads.</span></li><li><b>Sitewide discounts</b><span>Ten days out DJI’s store discounts 3 of 26 variants; the Pocket 3 is at list price.</span></li><li><b>Starting on Black Friday itself</b><span>Last year search rose 11 days before Black Friday; starting on the day hands that demand to rivals.</span></li></ul></details>
+    </div>
+    </div>
+    <p class="fineprint">Counts of ads, posts and moves are everything found, never scaled. Spend and sales are estimates at market rates, with a range. Snapshots Nov 16-17, 2026. treg is not affiliated with DJI.</p>
+    </div>
+  </div>
+</section>
+
+<section class="rv final" id="prompt">
+  <div class="final-in field"><div class="paint" aria-hidden="true"></div>
+    <h2>REA any brand’s marketing</h2>
+    <div class="prompt-d" id="metaPrompt">
+    <div class="copybox">
+      <div class="h">paste this into your agent</div>
+      <div class="line"><span id="llmsUrl">{BASE}/llms.txt</span></div>
+      <div class="then">then: "Follow <a href="/skills/rea-marketing/SKILL.md" target="_blank" rel="noopener">treg.to/skills/rea-marketing/SKILL.md</a> to reverse engineer [brand]'s holiday marketing."</div>
+    </div>
+    </div>
+    <div class="ctas" id="agentCtas">
+      <button type="button" class="pill light" id="copySkill">Copy skill</button>
+      <a class="pill" href="https://github.com/superdesigndev/treg" target="_blank" rel="noopener">Open source</a>
+    </div>
+  </div>
+</section>
+
+<footer class="bigfoot">
+  <div class="bigfoot-in">
+    <div class="bf-brand">
+      <span class="bfb"><svg viewBox="0 0 512 512" aria-hidden="true"><rect width="512" height="512" rx="112" fill="#101010"/><rect x="111" y="111" width="140.5" height="140.5" rx="20" fill="#fff"/><rect x="260.5" y="260.5" width="140.5" height="140.5" rx="20" fill="#fff"/></svg> treg</span>
+      <div class="note">100% open source</div>
+    </div>
+    <nav class="bf-cols" aria-label="Site">
+      <div class="bf-col"><div class="lab">Explore</div>
+        <a href="/catalog">Catalog</a><a href="/use-cases">Use cases</a><a href="/blog">Launches</a><!--hosted--><a href="/showcase">Showcase</a><!--/hosted--><a href="/agents/claude-code">Agents</a></div>
+      <div class="bf-col"><div class="lab">Build</div>
+        <a href="/tutorial">Docs</a><a href="/docs">API</a><a href="/llms.txt">llms.txt</a><a href="https://github.com/superdesigndev/treg" target="_blank" rel="noopener">GitHub ↗</a></div>
+      <div class="bf-col"><div class="lab">Company</div>
+        <a href="/resources">Resources</a><a href="/support">Support</a><a href="/terms">Terms</a><a href="/privacy">Privacy</a></div>
+    </nav>
+  </div>
+  <div class="bf-tag">© 2026 treg — OpenRouter for agent tools.</div>
+</footer>
+
+<div class="scrim" id="signin-scrim">
+  <div class="smodal" role="dialog" aria-label="Sign in">
+    <button class="cls" id="signinClose" aria-label="Close">✕</button>
+    <h3>Sign in to treg</h3>
+    <p>first sign-in creates your account</p>
+    <a class="pill dark" href="/auth/github" style="text-decoration:none">Continue with GitHub</a>
+    <a class="pill" href="/auth/google" style="text-decoration:none">Continue with Google</a>
+    <div class="div">or email a code</div>
+    <div id="em-step1">
+      <input id="em-input" type="email" data-captcha="email_start" placeholder="you@work.com"/>
+      <button class="pill" id="em-btn1">Email me a sign-in code</button>
+    </div>
+    <div id="em-step2" style="display:none">
+      <input id="em-code" inputmode="numeric" placeholder="6-digit code"/>
+      <button class="pill dark" id="em-btn2">Sign in</button>
+    </div>
+    <div class="err" id="em-err"></div>
+  </div>
+</div>
+
+<script>
+(function () {
+  'use strict';
+  function $(id) { return document.getElementById(id); }
+  var reduced = matchMedia('(prefers-reduced-motion: reduce)').matches;
+  /* in-page links scroll without writing #id into the address bar */
+  document.addEventListener('click', function (ev) {
+    var a = ev.target.closest && ev.target.closest('a[href^="#"]'), t = a && a.getAttribute('href').length > 1 && $(a.getAttribute('href').slice(1));
+    if (!t) return;
+    ev.preventDefault(); t.scrollIntoView();
+  });
+
+
+  /* reveal on scroll */
+  if ('IntersectionObserver' in window && !reduced) {
+    var ro = new IntersectionObserver(function (es) { es.forEach(function (e) { if (e.isIntersecting) { e.target.classList.add('in'); ro.unobserve(e.target); } }); }, { rootMargin: '0px 0px -10% 0px' });
+    document.querySelectorAll('.rv').forEach(function (el) { ro.observe(el); });
+  } else { document.querySelectorAll('.rv').forEach(function (el) { el.classList.add('in'); }); }
+
+  var nav = $('nav');
+  var lights = [];
+  function navState() {
+    nav.classList.toggle('scrolled', scrollY > 8);
+    var y = nav.offsetHeight / 2;
+    nav.classList.toggle('light', lights.some(function (el) { var r = el.getBoundingClientRect(); return r.top <= y && r.bottom > y; }));
+  }
+  addEventListener('scroll', navState, { passive: true });
+  navState();
+
+  /* copy button: the meta prompt */
+  function copy(btn, txt, label) {
+    function done() { btn.textContent = 'Copied'; setTimeout(function () { btn.textContent = label; }, 1600); }
+    (navigator.clipboard ? navigator.clipboard.writeText(txt) : Promise.reject()).then(done, function () {
+      var ta = document.createElement('textarea'); ta.value = txt; document.body.appendChild(ta);
+      ta.select(); var ok = false; try { ok = document.execCommand('copy'); } catch (e) {} document.body.removeChild(ta);
+      if (ok) done(); else { btn.textContent = 'Copy failed'; setTimeout(function () { btn.textContent = label; }, 1600); }
+    });
+  }
+  /* the showcase folds into tabs: one panel open at a time */
+  (function () {
+    var bar = document.querySelector('.sc-tabs'); if (!bar) return;
+    bar.addEventListener('click', function (e) {
+      var b = e.target.closest('button'); if (!b) return;
+      bar.querySelectorAll('button').forEach(function (x) { x.setAttribute('aria-selected', x === b ? 'true' : 'false'); });
+      document.querySelectorAll('.sc-p').forEach(function (p) { p.hidden = p.getAttribute('data-sc') !== b.getAttribute('data-sc'); });
+    });
+  })();
+  /* the blueprint's channel tabs */
+  (function () {
+    var bar = document.querySelector('.bp-card .bp-tabs'); if (!bar) return;
+    bar.addEventListener('click', function (e) {
+      var b = e.target.closest('button'); if (!b) return;
+      bar.querySelectorAll('button').forEach(function (x) { x.setAttribute('aria-selected', x === b ? 'true' : 'false'); });
+      document.querySelectorAll('.bp-panel').forEach(function (p) { p.hidden = p.getAttribute('data-p') !== b.getAttribute('data-t'); });
+    });
+  })();
+  /* week-by-week chart: spend bars on top, one square per ad or post below, search and views as lines */
+  (function () {
+    var svg = $('wkChart'); if (!svg) return;
+    /* [week, date, units by channel (paid, collab, owned, retail), visible views, search vs normal, est. spend mid by kind (SPK order), spend range] */
+    var WK = [[-12,'09-04',[43,2,0,0],96299,null,[0,36300,8000,440,0,0],[17540,109240]],[-11,'09-11',[39,5,0,0],1766777,null,[0,34950,3150,0,9576,0],[14232,124589]],[-10,'09-18',[31,3,0,0],98988,0.94,[0,19050,0,0,11773,0],[7657,83479]],[-9,'09-25',[14,2,0,0],129065,0.99,[1052,11400,0,0,14509,0],[6556,73220]],[-8,'10-02',[15,4,0,0],394040,0.98,[7361,14700,0,0,43371,0],[17462,173153]],[-7,'10-09',[27,8,0,0],471206,1.1,[7361,24150,11000,440,48114,0],[28090,229144]],[-6,'10-16',[43,17,1,0],619381,0.95,[7361,37650,22900,0,24374,1000],[35803,210004]],[-5,'10-23',[54,13,0,0],190317,1,[7361,28200,9900,0,7806,0],[22097,115739]],[-4,'10-30',[20,12,5,0],2219284,1.02,[2103,12900,5250,440,25736,5000],[12675,132492]],[-3,'11-06',[36,36,3,0],740616,0.95,[0,30300,23900,1760,60905,3000],[30183,306435]],[-2,'11-13',[22,71,2,1],346069,1.1,[0,8250,36150,1320,51464,2000],[27333,201693]],[-1,'11-20'],[0,'11-27'],[1,'12-04'],[2,'12-11']];
+    var UC = [['paid', 'Paid ads (Meta)', '#FF94B2'], ['collab', 'Creator collabs', '#E5203A'], ['owned', 'Owned social', '#FFFFFF'], ['retail', 'Retail & price', '#F24455']];
+    var SPK = [['google', 'Google search ads', '#FFDBE8', 'paid'], ['meta', 'Meta ads', '#FF94B2', 'paid'], ['cpaid', 'Paid creator posts', '#E5203A', 'collab'], ['gift', 'Gifted products', '#F24455', 'collab'], ['aff', 'Affiliate commission + samples', '#8F1028', 'collab'], ['own', 'Making owned posts', '#FFFFFF', 'owned']];
+    var NS = 'http://www.w3.org/2000/svg', W = 1100, L = 56, R = 56, N = WK.length, cw = (W - L - R) / N;
+    var sp0 = 44, sph = 120, top0 = sp0 + sph + 52, base = 516, per = 6, bs = 8, gp = 2;
+    var money = function (v) { return v >= 1e3 ? '$' + Math.round(v / 1e3) + 'k' : '$' + Math.round(v); };
+    var sum = function (a) { return (a || []).reduce(function (x, y) { return x + y; }, 0); };
+    var xw = function (i) { return L + i * cw; }, cx = function (i) { return xw(i) + cw / 2; };
+    function el(tag, at, parent, text) { var e = document.createElementNS(NS, tag); for (var k in at) e.setAttribute(k, at[k]); if (text != null) e.textContent = text; (parent || svg).appendChild(e); return e; }
+    var smax = 120000, umax = 100, vmax = Math.max.apply(null, WK.map(function (w) { return w[3] || 0; }));
+    var ys = function (v) { return base - v / 1.25 * (base - top0); }, yv = function (v) { return base - v / vmax * (base - top0) * .95; };
+    var bf = WK.findIndex(function (w) { return w[0] === 0; }), ramp = bf - 4;
+    el('rect', { x: xw(ramp), y: 16, width: cw * 4, height: base - 16, rx: 8, fill: 'rgba(255,255,255,.05)' });
+    el('text', { x: xw(ramp) + 8, y: 31, class: 'm' }, null, 'Ramp, 4 weeks before');
+    el('rect', { x: xw(bf - 1) + 2, y: 40, width: cw * (N - bf + 1) - 4, height: base - 40, rx: 6, fill: 'url(#wkHatch)' });
+    var df = el('defs'), pt = el('pattern', { id: 'wkHatch', width: 6, height: 6, patternUnits: 'userSpaceOnUse', patternTransform: 'rotate(45)' }, df);
+    el('line', { x1: 0, y1: 0, x2: 0, y2: 6, stroke: 'rgba(255,255,255,.07)', 'stroke-width': 3 }, pt);
+    el('line', { x1: xw(bf), x2: xw(bf), y1: 16, y2: base, stroke: '#fff' });
+    el('text', { x: xw(bf) + 5, y: 31, class: 'n' }, null, 'Black Friday');
+    el('text', { x: xw(bf - 1) + 8, y: 54, class: 'm' }, null, 'Not run yet');
+    el('text', { x: L, y: sp0 - 12, class: 'h' }, null, 'Estimated spend per week (US$, bars)');
+    [0, .5, 1].forEach(function (f) { var y = sp0 + sph - f * sph; el('line', { x1: L, x2: W - R, y1: y, y2: y, class: f ? 'g d' : 'g' }); el('text', { x: L - 8, y: y + 4, 'text-anchor': 'end', class: 'm' }, null, money(smax * f)); });
+    el('text', { x: L, y: top0 - 10, class: 'h' }, null, 'Campaign units live per week (count, squares · left axis)');
+    el('text', { x: W - R + 40, y: top0 - 10, 'text-anchor': 'end', class: 'h', fill: '#FFFFFF', style: 'fill:#FFFFFF' }, null, 'Search vs normal (line · right axis)');
+    [25, 50, 75, 100].forEach(function (u) { var y = base - u / per * (bs + gp); el('line', { x1: L, x2: W - R, y1: y, y2: y, class: 'g d' }); el('text', { x: L - 8, y: y + 4, 'text-anchor': 'end', class: 'm' }, null, u); });
+    el('text', { x: L - 8, y: base + 4, 'text-anchor': 'end', class: 'm' }, null, '0');
+    [.5, 1].forEach(function (v) { el('text', { x: W - R + 8, y: ys(v) + 4, class: 'm' }, null, v + '×'); });
+    el('line', { x1: L, x2: W - R, y1: ys(1), y2: ys(1), stroke: 'rgba(255,255,255,.45)', 'stroke-dasharray': '3 4', opacity: .6 });
+    el('line', { x1: L, x2: W - R, y1: base, y2: base, class: 'g' });
+    /* one hover card: a bold heading, then label / value rows with an optional colour swatch */
+    function card(head) {
+      var d = document.createElement('div'), hb = document.createElement('b'); d.className = 'wkt'; hb.textContent = head; d.appendChild(hb);
+      return {
+        el: d,
+        row: function (col, label, val) { var r = document.createElement('div'), a = document.createElement('span'), b = document.createElement('span'); if (col) { var ic = document.createElement('i'); ic.style.background = col; a.appendChild(ic); } a.appendChild(document.createTextNode(label)); b.textContent = val; r.append(a, b); d.appendChild(r); },
+        hr: function () { d.appendChild(document.createElement('hr')); }
+      };
+    }
+    WK.forEach(function (w, i) {
+      var g = el('g', { class: 'col' });
+      g.dataset.i = i;
+      el('rect', { class: 'hit', x: xw(i) + 2, y: 16, width: cw - 4, height: base - 16, rx: 6 }, g);
+      el('text', { x: cx(i), y: base + 18, 'text-anchor': 'middle', class: 'm' }, g, w[0] === 0 ? 'BF' : (w[0] < 0 ? w[0] + 'w' : '+' + w[0] + 'w'));
+      el('text', { x: cx(i), y: base + 31, 'text-anchor': 'middle', class: 'm', style: 'font-size:9.5px' }, g, w[1]);
+      if (!w[2]) return;
+      var y0 = sp0 + sph;
+      SPK.forEach(function (k, j) { var v = w[5][j]; if (!v) return; var h = v / smax * sph; y0 -= h; el('rect', { x: xw(i) + cw * .2, y: y0, width: cw * .6, height: Math.max(h, 1), rx: 2, fill: k[2], 'data-c': k[3], 'data-k': j }, g); });
+      el('text', { x: cx(i), y: y0 - 5, 'text-anchor': 'middle', class: 'm' }, g, money(sum(w[5])));
+      var n = 0, x0 = xw(i) + (cw - per * (bs + gp)) / 2;
+      UC.forEach(function (c, j) { for (var k = 0; k < w[2][j]; k++, n++) el('rect', { x: x0 + (n % per) * (bs + gp), y: base - (Math.floor(n / per) + 1) * (bs + gp), width: bs, height: bs, rx: 1.5, fill: c[2], 'data-c': c[0], 'data-u': j }, g); });
+      el('text', { x: cx(i), y: base - Math.ceil(n / per) * (bs + gp) - 6, 'text-anchor': 'middle', class: 'n' }, g, n);
+      g.classList.add('tip');
+      g._tip = function (t) {
+        var c = card('Week of ' + w[1] + ' · ' + (-w[0]) + ' weeks before Black Friday'), row = c.row;
+        var u = t && t.getAttribute('data-u'), k = t && t.getAttribute('data-k'), units = sum(w[2]), spend = sum(w[5]);
+        if (u != null) { var uc = UC[+u]; row(uc[2], uc[1], w[2][+u]); row(null, 'Share of the week', Math.round(w[2][+u] / units * 100) + '% of ' + units); row(null, 'One square', 'one ad or post live'); return c.el; }
+        if (k != null) { var sk = SPK[+k]; row(sk[2], sk[1], '~' + money(w[5][+k])); row(null, 'Share of the week', Math.round(w[5][+k] / spend * 100) + '% of ~' + money(spend)); row(null, 'Kind', 'estimate at market rates'); return c.el; }
+        UC.forEach(function (uc, j) { if (w[2][j]) row(uc[2], uc[1], w[2][j]); });
+        c.hr();
+        SPK.forEach(function (sk, j) { if (w[5][j]) row(sk[2], sk[1], '~' + money(w[5][j])); });
+        row(null, 'Est. spend', '~' + money(spend) + ' (' + money(w[6][0]) + ' – ' + money(w[6][1]) + ')');
+        c.hr();
+        row(null, 'Search vs normal', w[4] == null ? 'not measured' : w[4] + '×');
+        row(null, 'Visible views', w[3].toLocaleString());
+        return c.el;
+      };
+    });
+    var past = WK.filter(function (w) { return w[2]; });
+    el('polyline', { fill: 'none', stroke: 'rgba(255,255,255,.45)', 'stroke-width': 1.6, 'stroke-dasharray': '5 4', 'pointer-events': 'none', points: past.map(function (w) { return cx(WK.indexOf(w)) + ',' + yv(w[3]); }).join(' ') });
+    var sv = past.filter(function (w) { return w[4] != null; });
+    el('polyline', { fill: 'none', stroke: '#FFFFFF', 'stroke-width': 2.6, 'stroke-linejoin': 'round', 'pointer-events': 'none', points: sv.map(function (w) { return cx(WK.indexOf(w)) + ',' + ys(w[4]); }).join(' ') });
+    sv.forEach(function (w) { el('circle', { cx: cx(WK.indexOf(w)), cy: ys(w[4]), r: 4, fill: '#FFFFFF', stroke: '#2B0013', 'stroke-width': 1.5, 'pointer-events': 'none' }); });
+    /* the lines answer for themselves: a wide invisible stroke over each, read at the nearest week */
+    function lineTip(rows, get, head, val) {
+      var hit = el('polyline', { class: 'tip', fill: 'none', stroke: 'transparent', 'stroke-width': 24, 'stroke-linecap': 'round', 'stroke-linejoin': 'round', points: rows.map(function (w) { return cx(WK.indexOf(w)) + ',' + get(w); }).join(' ') });
+      hit._tip = function (t, ev) {
+        // a square or spend segment under the line's wide hover band wins: the band is a convenience, not a target
+        var under = ev && document.elementsFromPoint(ev.clientX, ev.clientY).filter(function (e) { return e.hasAttribute('data-u') || e.hasAttribute('data-k'); })[0];
+        if (under) return under.closest('.col')._tip(under);
+        var m = svg.getScreenCTM(), x = ev && m ? (ev.clientX - m.e) / m.a : 0, w = rows.reduce(function (b, r) { return Math.abs(cx(WK.indexOf(r)) - x) < Math.abs(cx(WK.indexOf(b)) - x) ? r : b; });
+        var c = card('Week of ' + w[1] + ' · ' + head);
+        val(w).forEach(function (p) { c.row(null, p[0], p[1]); });
+        return c.el;
+      };
+    }
+    lineTip(past, function (w) { return yv(w[3]); }, 'visible views', function (w) { return [['Views on posts found that week', w[3].toLocaleString()], ['Line', 'dashed, own scale']]; });
+    lineTip(sv, function (w) { return ys(w[4]); }, 'search', function (w) { return [['Search vs normal', w[4] + '×'], ['1×', 'DJI’s usual weekly search']]; });
+    var leg = $('wkLeg'), tot = UC.map(function (c, j) { return sum(past.map(function (w) { return w[2][j]; })); });
+    function item(c, sw, label) { var s = document.createElement('span'); if (c) s.dataset.c = c; var i = document.createElement('i'); if (sw.charAt(0) === '#') i.style.background = sw; else i.className = sw; s.append(i, label); leg.appendChild(s); }
+    function head(t) { var b = document.createElement('b'); b.textContent = t; leg.appendChild(b); }
+    head('Squares'); UC.forEach(function (c, j) { item(c[0], c[2], c[1] + ' ' + tot[j]); });
+    item(null, 'ln', 'Search vs normal'); leg.lastChild.firstChild.style.background = '#FFFFFF'; item(null, 'dl', 'Visible views');
+    var br = document.createElement('span'); br.className = 'br'; leg.appendChild(br);
+    head('Spend'); SPK.forEach(function (k) { item(k[3], k[2], k[1]); });
+    svg.addEventListener('mouseover', function (e) { svg.classList.toggle('hw', !!e.target.closest('.col.tip')); });
+    svg.addEventListener('mouseleave', function () { svg.classList.remove('hw'); });
+    leg.querySelectorAll('[data-c]').forEach(function (s) {
+      s.addEventListener('mouseenter', function () { svg.classList.add('hc'); svg.querySelectorAll('[data-c="' + s.dataset.c + '"]').forEach(function (r) { r.classList.add('on'); }); });
+      s.addEventListener('mouseleave', function () { svg.classList.remove('hc'); svg.querySelectorAll('[data-c].on').forEach(function (r) { r.classList.remove('on'); }); });
+    });
+  })();
+  /* chart tooltips: any .tip carries its numbers in data-tip */
+  var tip = document.createElement('div'); tip.id = 'tip'; tip.setAttribute('role', 'tooltip'); document.body.appendChild(tip);
+  document.addEventListener('mousemove', function (ev) {
+    var t = ev.target.closest && ev.target.closest('.tip');
+    if (!t) { tip.classList.remove('on'); return; }
+    if (t._tip) tip.replaceChildren(t._tip(ev.target, ev)); else tip.textContent = t.getAttribute('data-tip');
+    tip.classList.toggle('rich', !!t._tip); tip.classList.add('on');
+    var x = Math.min(ev.clientX + 14, innerWidth - tip.offsetWidth - 8), y = ev.clientY + 16;
+    if (y + tip.offsetHeight > innerHeight - 8) y = ev.clientY - tip.offsetHeight - 12;
+    tip.style.left = x + 'px'; tip.style.top = y + 'px';
+  });
+  /* one button copies the whole playbook as plain text, a prompt under each play */
+  function copyPlaybook() {
+    var out = ["DJI's Black Friday 2026 playbook, reverse engineered with treg"];
+    document.querySelectorAll('#dji-plays .pl').forEach(function (pl) {
+      var h = pl.querySelector('header'), lines = [];
+      lines.push(h.querySelector('.pn').textContent + '. ' + h.querySelector('h4').textContent + ' (' + h.querySelector('.st2').textContent + ')');
+      pl.querySelectorAll('header .eff, :scope > p, .meta3 > span').forEach(function (x) {
+        var b = x.querySelector('b'); lines.push(b ? b.textContent + ': ' + x.textContent.slice(b.textContent.length).trim() : x.textContent.trim());
+      });
+      lines.push('Prompt for your agent: ' + pl.querySelector('.ask p').textContent);
+      out.push(lines.join('\n'));
+    });
+    copy(this, out.join('\n\n'), 'Copy the playbook');
+  }
+  $('copyPlaybook').addEventListener('click', copyPlaybook);
+  function promptText() {
+    return 'I approve you setup treg following ' + $('llmsUrl').textContent + '\n\n' + document.querySelector('#prompt .copybox .then').textContent;
+  }
+  $('copySkill').addEventListener('click', function () { copy(this, promptText(), 'Copy skill'); });
+  /* nav: copy the whole SKILL.md; fetched up front so the copy runs inside the click */
+  /* hero: copies the same prompt, then shows it at the bottom */
+  $('ctaCopy').addEventListener('click', function (e) {
+    e.preventDefault();
+    copy(this, promptText(), 'Copy skill ↓');
+    $('prompt').scrollIntoView({ behavior: reduced ? 'auto' : 'smooth', block: 'center' });
+  });
+  /* Setup CTAs: signed in → the app; signed out → the sign-in modal */
+  var APP = '/app?ref=rea-marketing'; /* the CTAs' href; boot.js keeps the ref through sign-in */
+  var scrim = $('signin-scrim');
+  function openSignin() { scrim.classList.add('open'); $('em-input').focus(); }
+  function closeSignin() { scrim.classList.remove('open'); }
+  $('signinClose').addEventListener('click', closeSignin);
+  scrim.addEventListener('click', function (e) { if (e.target === scrim) closeSignin(); });
+  addEventListener('keydown', function (e) { if (e.key === 'Escape') closeSignin(); });
+  ['ctaNav', 'ctaHero', 'ctaFinal'].forEach(function (id) {
+    var el = $(id);
+    if (!el) return;
+    el.addEventListener('click', function (e) {
+      if (e.metaKey || e.ctrlKey || e.shiftKey || e.button === 1) return;
+      e.preventDefault();
+      fetch('/auth/me', { credentials: 'same-origin' }).then(function (r) {
+        if (r.ok) location.href = APP; else openSignin();
+      }).catch(openSignin);
+    });
+  });
+  $('em-btn1').addEventListener('click', emailStart);
+  $('em-input').addEventListener('keyup', function (e) { if (e.key === 'Enter') emailStart(); });
+  $('em-btn2').addEventListener('click', emailVerify);
+  $('em-code').addEventListener('keyup', function (e) { if (e.key === 'Enter') emailVerify(); });
+  function emailStart() {
+    var em = $('em-input').value.trim(), err = $('em-err');
+    if (!em) { err.textContent = 'Enter your email address.'; return; }
+    if ($('em-btn1').disabled) return; $('em-btn1').disabled = true; $('em-btn1').textContent = 'Sending…'; err.textContent = '';
+    (window.tregCaptcha ? tregCaptcha.token('email_start') : Promise.resolve('')).then(function (t) { return fetch('/auth/email/start', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ email: em, captcha_token: t }) }); })
+      .then(function (r) { return r.json().catch(function () { return {}; }).then(function (d) { if (!r.ok) throw new Error(d.detail || 'could not send the code'); return d; }); })
+      .then(function (d) {
+        $('em-step1').style.display = 'none'; $('em-step2').style.display = 'block';
+        if (d.dev_code) { $('em-code').value = d.dev_code; err.style.color = 'var(--green)'; err.textContent = 'dev mode — your code: ' + d.dev_code; }
+        else { err.style.color = ''; }
+        $('em-code').focus();
+      })
+      .catch(function (e2) { err.textContent = e2.message; $('em-btn1').disabled = false; $('em-btn1').textContent = 'Email me a sign-in code'; });
+  }
+  function emailVerify() {
+    var em = $('em-input').value.trim(), code = $('em-code').value.trim(), err = $('em-err');
+    if (!code || $('em-btn2').disabled) return;
+    $('em-btn2').disabled = true; $('em-btn2').textContent = 'Verifying…'; err.textContent = '';
+    fetch('/auth/email/verify', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ email: em, code: code }) })
+      .then(function (r) { if (!r.ok) return r.json().catch(function () { return {}; }).then(function (d) { throw new Error(d.detail || "that code didn't work"); }); location.href = APP; })
+      .catch(function (e2) { err.textContent = e2.message; $('em-btn2').disabled = false; $('em-btn2').textContent = 'Sign in'; });
+  }
+
+})();
+</script>
+<script src="/media/signin-sso.js" defer></script>
+<script src="/sitetrack.js"></script>
+<script src="/adtrack.js"></script>
+<script src="/gtag.js"></script>
+</body>

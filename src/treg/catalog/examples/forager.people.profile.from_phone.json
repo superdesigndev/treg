@@ -1,0 +1,145 @@
+{
+  "id": 292334,
+  "full_name": "Bill Gates",
+  "first_name": "Bill",
+  "last_name": "Gates",
+  "photo": "https://media.licdn.com/dms/image/v2/D5603AQF-RYZP55jmXA/profile-displayphoto-shrink_800_800/B56ZRi8g.aGsAc-/0/1736826818808?e=1795046400&t=vjlWDhSquN3IE4WjUEIKTJrzCrKe3O8jGgYhBd69uZs&v=beta",
+  "gender": null,
+  "headline": "Chair, Gates Foundation and Founder, Breakthrough Energy",
+  "description": "Chair of the Gates Foundation. Founder of Breakthrough Energy. Co-founder of Microsoft. Voracious reader. Avid traveler. Active blogger.",
+  "skills": [],
+  "location": {
+    "id": 6560,
+    "name": "seattle, washington, united states",
+    "osm_locations": [
+      {
+        "id": 10,
+        "name": "United States",
+        "place_type": "country"
+      },
+      {
+        "id": 194,
+        "name": "Washington, United States",
+        "place_type": "state"
+      },
+      "… 3 more item(s) truncated"
+    ]
+  },
+  "linkedin_info": {
+    "public_identifier": "williamhgates",
+    "industry": {
+      "id": 106,
+      "name": "Philanthropy"
+    },
+    "public_profile_url": "https://www.linkedin.com/in/williamhgates/"
+  },
+  "roles": [
+    {
+      "id": 532155341,
+      "role_title": "Founder",
+      "start_date": "2015-01-01",
+      "end_date": null,
+      "duration": null,
+      "description": null,
+      "is_current": true,
+      "organization": {
+        "id": 14330451,
+        "name": "Breakthrough Energy",
+        "domain": "breakthroughenergy.org",
+        "linkedin_info": {
+          "public_identifier": "breakthrough-energy",
+          "industry": {
+            "id": 81,
+            "name": "Management Consulting"
+          },
+          "public_profile_url": "https://www.linkedin.com/company/breakthrough-energy/"
+        }
+      },
+      "organization_name": "Breakthrough Energy"
+    },
+    {
+      "id": 137189404,
+      "role_title": "Co-chair",
+      "start_date": "2000-01-01",
+      "end_date": null,
+      "duration": null,
+      "description": null,
+      "is_current": true,
+      "organization": {
+        "id": 5907,
+        "name": "Gates Foundation",
+        "domain": "gatesfoundation.org",
+        "linkedin_info": {
+          "public_identifier": "duplicate__8736_gates-foundation",
+          "industry": {
+            "id": 97,
+            "name": "Non-Profit Organization Management"
+          },
+          "public_profile_url": "https://www.linkedin.com/company/duplicate__8736_gates-foundation/"
+        }
+      },
+      "organization_name": "Gates Foundation"
+    },
+    "… 1 more item(s) truncated"
+  ],
+  "educations": [
+    {
+      "id": 19012827,
+      "school_name": "Lakeside School",
+      "organization": {
+        "id": 24605,
+        "name": "Lakeside School",
+        "domain": "lakesideschool.org",
+        "linkedin_info": {
+          "public_identifier": "lakeside-school",
+          "industry": {
+            "id": 110,
+            "name": "Primary/Secondary Education"
+          },
+          "public_profile_url": "https://www.linkedin.com/company/lakeside-school/"
+        }
+      },
+      "description": null,
+      "grade": null,
+      "degree": null,
+      "activities": null,
+      "field_of_study": null,
+      "start_date": null,
+      "end_date": null
+    },
+    {
+      "id": 19012830,
+      "school_name": "Harvard University",
+      "organization": {
+        "id": 430,
+        "name": "Harvard University",
+        "domain": "harvard.edu",
+        "linkedin_info": {
+          "public_identifier": "harvard-university",
+          "industry": {
+            "id": 56,
+            "name": "Higher Education"
+          },
+          "public_profile_url": "https://www.linkedin.com/company/harvard-university/"
+        }
+      },
+      "description": null,
+      "grade": null,
+      "degree": null,
+      "activities": null,
+      "field_of_study": null,
+      "start_date": "1973-01-01",
+      "end_date": "1975-01-01"
+    }
+  ],
+  "certifications": [],
+  "courses": [],
+  "honors": [],
+  "languages": [],
+  "organizations": [],
+  "patents": [],
+  "publications": [],
+  "test_scores": [],
+  "projects": [],
+  "volunteering": []
+}

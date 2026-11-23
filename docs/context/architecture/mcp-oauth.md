@@ -17,6 +17,7 @@ sources:
   - tests/test_mcp.py
   - tests/test_mcp_oauth.py
   - tests/test_m365_oauth.py
+  - tests/test_vendor_console_oauth.py
   - tests/test_mcp_directory.py
   - tests/test_marketplace_call.py
 related:
@@ -109,10 +110,13 @@ shadowed by a same-named team tool. A change is incomplete if only one MCP test 
 - `call_media`, `resources_list` and `call_result` exist only on `/mcp/`. `call_result` (scope
   `treg:read`) is the recovery road for a call whose answer never reached the agent: the team's
   latest calls from `GET /calls`, or one call's stored answer from `GET /calls/{id}/result`.
-- `feedback` and `review` exist only on `/mcp/`, so V2 never renders the invitation `/call/` decided
-  on (`_SurfacePolicy.invites`); `/call/` still decides and records it ([feedback](feedback.md)).
+- `feedback`, `review`, `mark` and `compare` exist only on `/mcp/`, so V2 never renders the invitation
+  `/call/` decided on (`_SurfacePolicy.invites`); `/call/` still decides and records it
+  ([feedback](feedback.md)). Only the team surface lists `compare` in `X-Treg-Hints`, so `/call/`
+  never decides a comparison invitation for V2. `compare` needs `treg:read`: it shows the team's
+  past inputs and answers, as `call_result` does.
 - **OpenAI clients** (`openai-mcp/` for ChatGPT and its plugin reviewer, `codex-mcp-client/` for Codex,
-  by User-Agent) are not offered `review`: `_OpenAIClientGate` drops it from `tools/list` and the
+  by User-Agent) are not offered `review`, `mark` or `compare`: `_OpenAIClientGate` drops them from `tools/list` and the
   instructions, and their call results carry no invitation, because that review reads
   agent-initiated rating as analytics collection.
 
@@ -343,6 +347,26 @@ takes the V1 default. Public clients are unchanged: PKCE binds their code, and a
 ignored. Because only treg's registration holds the secret, the consent screen names the client
 without the self-registration warning. `token_endpoint_auth_methods_supported` still advertises
 `none` alone: DCR issues only public clients, and the confidential one is configured out of band.
+
+## An identity-only client: the vendor console
+
+API vendors apply to be listed in a separate service, the vendor console, and sign in there with
+their treg account. Its client, `treg-vendor-console`, is first-party and confidential like the
+Microsoft one, and exists only while both `vendor_console_client_secret` and
+`vendor_console_redirect_uri` are set (`_vendor_console_client`). It asks for nothing but who
+signed in:
+
+- Its resource is `<public_url>/vendor-console` and its scope `treg:identity`. It gets that resource
+  and nothing else, and no other client may ask for it (`_client_resource`).
+- Consent has no team picker, like Sheets: the token names the person, with their first team as
+  the default, and the vendor picks the team inside the console. A brand-new account gets its
+  first team at consent, as with any other non-Sheets client.
+- The code exchange authenticates the secret and returns an access token **without a refresh
+  token**: the console reads the identity once and keeps its own session, so no grant stays in the
+  person's list of connections.
+- The token is accepted only by `GET /vendor-console/me`, which answers the address, whether it is
+  verified, and every team the person may use there (not suspended, not a demo, allowed by the
+  sign-in's SSO) with the person's role. Every other route, MCP included, refuses it by audience.
 
 ## The consent screen is the security boundary
 

@@ -36,7 +36,7 @@ from .catalog import (_endpoint_observation_reader, _observed_or_empty, _platfor
                       _platforms_payload)
 from ..domain.identity.access import _user_from_session
 from .auth_helpers import OAUTH_RETURN_COOKIE, _is_https, _same_origin, _take_oauth_return
-from .signup_cookies import _remember_referral
+from .signup_cookies import _remember_affiliate_click, _remember_referral
 
 
 def _dashboard_index() -> Path:
@@ -1598,8 +1598,15 @@ async def use_case_job_page(request: Request, job: str,
                       '<h2>What people actually struggle with</h2>'
                       f'<p>{_esc_html(spec.get("voices_intro", ""))}</p>{voices_html}</div></section>'
                       if spec.get("voices") else "")
-    notes = "".join(f'<h4>{_esc_html(x.split(".")[0])}.</h4><p>{_esc_html(x.split(".", 1)[1].strip())}</p>'
-                    if "." in x else f"<p>{_esc_html(x)}</p>" for x in spec["notes"])
+    note_blocks = []
+    for note in spec["notes"]:
+        first, *rest = re.split(r"(?<=\.)\s+", note, maxsplit=1)
+        tag = "h4" if first.endswith(".") else "p"
+        note_blocks.append(f"<{tag}>{_esc_html(first)}</{tag}>")
+        if rest and rest[0]:
+            note_blocks.append(f"<p>{_esc_html(rest[0])}</p>")
+    notes = "".join(note_blocks)
+
     def _related_card(lbl: str) -> str:
         href, owner = _related_link(lbl, agent_slug)
         return (f'<a class="card" href="{href}"><h4>{_esc_html(lbl)}</h4>'
@@ -3335,6 +3342,9 @@ def _resume_parked_authorization(request: Request) -> RedirectResponse | None:
     return resume
 
 
+_SHARE_LINK_PARAMS = frozenset({"ref", "via", "dub_id", "gclid", "gbraid", "wbraid", "fbclid", "msclkid"})
+
+
 @app.get("/", include_in_schema=False)
 async def landing(request: Request, treg_session: str = Cookie(default=""),
                   db: AsyncSession = Depends(get_session)):
@@ -3345,13 +3355,15 @@ async def landing(request: Request, treg_session: str = Cookie(default=""),
     """
     page = _WEB_DIR / "landing.html"
     ref = referrals.normalize_code(request.query_params.get("ref", ""))
-    # An influencer's short link appends utm_* to the ref; those must not push it to the SPA, which
-    # never parks the code.
-    ref_only = all(k == "ref" or k.startswith("utm_") for k in request.query_params.keys())
+    dub_click = bool(request.query_params.get("dub_id"))
+    # Share links carry tracking-only parameters the SPA never reads: an influencer's short link
+    # appends utm_* to the ref, and Dub's partner redirect appends `via` (the partner's link key)
+    # and `dub_id` (the click), plus any ad-click ids the original link carried.
+    ref_only = all(k in _SHARE_LINK_PARAMS or k.startswith("utm_") for k in request.query_params.keys())
     sso_error = request.query_params.get("sso_error", "")
     sso_result = (sso_error in {"domain", "failed", "expired", "link"} and
                   set(request.query_params.keys()) <= {"sso_error", "team"})
-    if page.exists() and (not request.query_params or (ref and ref_only) or sso_result):
+    if page.exists() and (not request.query_params or ((ref or dub_click) and ref_only) or sso_result):
         signed_in = bool(treg_session and await _user_from_session(treg_session, db))
         # The email-code door signs in on the page that opened it and reloads there, and the
         # OAuth sign-in modal opens on `/`, so a parked authorization must resume here as well.
@@ -3370,6 +3382,7 @@ async def landing(request: Request, treg_session: str = Cookie(default=""),
         resp = HTMLResponse(html, headers={"Cache-Control": "private, no-store", "Vary": "Cookie"})
         if ref:
             _remember_referral(resp, request, ref)
+        _remember_affiliate_click(resp, request)
         return resp
     return await dashboard(request, treg_session, db)
 
@@ -3417,6 +3430,7 @@ async def dashboard(
     if not index.exists():
         raise HTTPException(503, "Dashboard not bundled")
     resp = HTMLResponse(_dashboard_document(index), headers={"Cache-Control": "private, no-store", "Vary": "Cookie"})
+    _remember_affiliate_click(resp, request)
     if owner is not None:
         resp.set_cookie(sess.COOKIE, sess.make_session(owner.id, token_version=owner.token_version),
                         httponly=True, samesite="lax",
@@ -3543,6 +3557,7 @@ _SITEMAP_PAGES: tuple[tuple[str, str, str], ...] = (
     ("/resources", "resources.html", "0.8"),
     ("/blog", "", "0.7"),
     ("/blog/work-email-finding-bench", "", "0.6"),
+    ("/blog/jobspipe-and-treg", "", "0.6"),
     ("/blog/people-search-bench", "", "0.6"),
     ("/blog/security-incident-2026-10-23", "", "0.6"),
     ("/vendor-listing", "vendor-listing.md", "0.5"),
@@ -3555,6 +3570,7 @@ _SITEMAP_PAGES: tuple[tuple[str, str, str], ...] = (
     ("/jobs-api", "jobs-api.html", "0.8"),
     ("/recruit", "recruit.html", "0.8"),
     ("/web-access", "web-access.html", "0.8"),
+    ("/doomscroll", "doomscroll.html", "0.8"),
     ("/grokbot", "grokbot.html", "0.8"),
     ("/fable", "fable-gtm.html", "0.8"),
     ("/gpt6", "astra.html", "0.8"),
@@ -3563,6 +3579,7 @@ _SITEMAP_PAGES: tuple[tuple[str, str, str], ...] = (
     ("/aeo", "aeo.html", "0.8"),
     ("/rankings", "rankings.html", "0.8"),
     ("/rea-growth", "rea-growth.html", "0.8"),
+    ("/rea-marketing", "rea-marketing.html", "0.8"),
     ("/social", "social-search.html", "0.8"),
     ("/jev", "jev.html", "0.8"),
     ("/terms", "terms.html", "0.2"),
@@ -3893,6 +3910,13 @@ async def recruit_skill_md():
     return _serve_md("skills/recruit/SKILL.md")
 
 
+@app.get("/skills/doomscroll/SKILL.md", include_in_schema=False)
+async def doomscroll_skill_md():
+    """The doomscroll skill: a topic and a window in, the posts worth seeing across platforms out,
+    grouped into stories, with its merge script inline. Bundled like lead-signals."""
+    return _serve_md("skills/doomscroll/SKILL.md")
+
+
 @app.get("/skills/jev-memory/SKILL.md", include_in_schema=False)
 async def jev_memory_skill_md():
     """The jev-memory skill: install (or build) the Claude Code mod in
@@ -3908,6 +3932,15 @@ async def rea_growth_skill_md():
     the plays to copy) as a file an agent can follow. Opt-in like jev-memory: kept out of the
     well-known index, so `treg skill bootstrap` (install.sh) never installs it unasked."""
     return _serve_md("skills/rea-growth/SKILL.md")
+
+
+@app.get("/skills/rea-marketing/SKILL.md", include_in_schema=False)
+async def rea_marketing_skill_md():
+    """The rea-marketing skill: the /rea-marketing flow (a brand's holiday marketing per channel and
+    week, estimated spend and sales, a verdict, the plays to copy) as a file an agent can follow.
+    Opt-in like rea-growth: kept out of the well-known index, so `treg skill bootstrap` (install.sh)
+    never installs it unasked."""
+    return _serve_md("skills/rea-marketing/SKILL.md")
 
 
 @app.get("/skills/ai-ugc-video/SKILL.md", include_in_schema=False)
@@ -4157,6 +4190,15 @@ async def rea_growth_page(request: Request):
     return _static_page("rea-growth.html", request)
 
 
+@app.get("/rea-marketing", include_in_schema=False)
+async def rea_marketing_page(request: Request):
+    """REA for marketing: take apart a brand's seasonal campaign. The agent pulls its ads, creator
+    posts, own social, offers and prices through treg week by week, estimates spend and sales,
+    grades whether it worked and returns plays to copy; DJI's Black Friday is the example. Served
+    like /rea-growth: canonical, in the sitemap, no-cache, relative asset paths."""
+    return _static_page("rea-marketing.html", request)
+
+
 @app.get("/social", include_in_schema=False)
 async def social_search_page(request: Request):
     """Social media on autopilot: the agent spots viral posts, tracks their creators, decodes the
@@ -4235,6 +4277,13 @@ async def web_access_page(request: Request):
     """Landing page for the web-access launch ("Free WebAccess for agents"). Served like /leads-signals;
     its benchmark and price comparison read /web-arena/api/leaderboard and fall back to a bundled snapshot."""
     return _static_page("web-access.html", request)
+
+
+@app.get("/doomscroll", include_in_schema=False)
+async def doomscroll_page(request: Request):
+    """Landing page for the doomscroll skill ("Let Your Agent Doomscroll for You"). Served like /leads-signals;
+    its demo rows are real posts bundled in the page."""
+    return _static_page("doomscroll.html", request)
 
 
 @app.get("/gtm-engineering", include_in_schema=False)
@@ -4348,6 +4397,8 @@ async def jev_xboost_judge(request: Request, db: AsyncSession = Depends(get_sess
 # chronological (newest first), not alphabetical.
 _BLOG_LAUNCHES: list[tuple[str, str, str, str]] = [
     # (slug, title, date, one-line blurb)
+    ("/doomscroll", "Let Your Agent Doomscroll for You", "2026-11-19",
+     "Name a topic and a time window; your agent reads six platforms and hands back the posts worth seeing."),
     ("/aigc", "AI Video Generation for Your Agent", "2026-11-11",
      "Seedance, Veo, Wan, Hailuo and Kling with one token; pay per finished clip."),
     ("/social", "Put Your Social Media on Autopilot", "2026-11-04",
@@ -4386,6 +4437,9 @@ _BLOG_LAUNCHES: list[tuple[str, str, str, str]] = [
 # have their own top-level routes), but they sit prominently on the /blog index above launches.
 _BLOG_POSTS: list[tuple[str, str, str, str]] = [
     # (slug under /blog/, title, date, one-line blurb)
+    ("jobspipe-and-treg", "JobsPipe and treg: hiring signals, people search and job data in one agent",
+     "2026-11-20",
+     "Hiring signals from JobsPipe, people and work emails from treg. Prompts and costs for sales, recruiting and job search."),
     ("security-incident-2026-10-23", "23 Oct 2026 Treg security incident report", "2026-10-25",
      "What happened, what may be affected, and what to rotate. Investigation ongoing."),
     ("work-email-finding-bench", "Work Email Finding: a 292 Person Receipt", "2026-09-16",
@@ -4536,6 +4590,27 @@ async def blog_security_incident_2026_10_23():
     return _page(f"{title} | treg.to",
                  "On October 23, 2026 we confirmed unauthorized access to part of treg's production "
                  "systems. What may be affected, what we have done, and what you need to do.",
+                 f"/blog/{slug}", body, ld)
+
+
+@app.get("/blog/jobspipe-and-treg", include_in_schema=False)
+async def blog_jobspipe_and_treg():
+    """Partner post with JobsPipe: job data from JobsPipe, people and emails from treg. The body is
+    its own HTML file, like the incident report, so copy can change without touching route code."""
+    if not _hosted():
+        raise HTTPException(status_code=404, detail="not found")
+    base = get_settings().public_url.rstrip("/")
+    slug = "jobspipe-and-treg"
+    title = next(p[1] for p in _BLOG_POSTS if p[0] == slug)
+    body = (_WEB_DIR / f"blog-{slug}.html").read_text(encoding="utf-8")
+    ld = [_blog_posting_ld(slug, base),
+          {"@context": "https://schema.org", "@type": "BreadcrumbList", "itemListElement": [
+        {"@type": "ListItem", "position": 1, "name": "treg.to", "item": base + "/"},
+        {"@type": "ListItem", "position": 2, "name": "Blog", "item": base + "/blog"},
+        {"@type": "ListItem", "position": 3, "name": title, "item": f"{base}/blog/{slug}"}]}]
+    return _page(f"{title} | treg.to",
+                 "Hiring signals from JobsPipe and people search, emails and company data from treg. "
+                 "Prompts for sales, recruiting and job search, with what each run costs.",
                  f"/blog/{slug}", body, ld)
 
 
@@ -4723,7 +4798,8 @@ async def well_known_skills_index():
     entries = []
     for name, path in (("treg", "skill.md"), ("make-ugc", "skills/make-ugc/SKILL.md"),
                        ("lead-signals", "skills/lead-signals/SKILL.md"),
-                       ("web-access", "skills/web-access/SKILL.md"), ("recruit", "skills/recruit/SKILL.md")):
+                       ("web-access", "skills/web-access/SKILL.md"), ("recruit", "skills/recruit/SKILL.md"),
+                       ("doomscroll", "skills/doomscroll/SKILL.md")):
         fm = _skill_frontmatter(path)
         entry = {"name": fm.get("name", name), "description": fm.get("description", ""), "files": ["SKILL.md"]}
         if summary := (fm.get("metadata") or {}).get("summary"):
@@ -4763,6 +4839,12 @@ async def well_known_web_access_md():
 async def well_known_recruit_md():
     """The fifth entry `index.json` promises; the same file as /skills/recruit/SKILL.md."""
     return _serve_md("skills/recruit/SKILL.md")
+
+
+@app.get("/.well-known/skills/doomscroll/SKILL.md", include_in_schema=False)
+async def well_known_doomscroll_md():
+    """The sixth entry `index.json` promises; the same file as /skills/doomscroll/SKILL.md."""
+    return _serve_md("skills/doomscroll/SKILL.md")
 
 
 @app.get("/connect-demo", include_in_schema=False)

@@ -113,7 +113,7 @@ raises: anything it cannot shape is `raw`. `application.table.table_answer` choo
 columns (`column_source`):
 
 - **contract**: a routed job. Columns follow the capability contract's `output` order, then
-  `served_by`; a miss has no row. A contract with a required `list` field is one row per item; the
+  `served_by`; a miss has no row. A contract with a required `array` field is one row per item; the
   items are the contract's row shape (people.search `row`), or the provider's own objects where an
   adapter has no row map, so `LIST_MAPS` (data) maps common names to fixed columns first and every
   other field follows under its own name. The free preview runs a child's saved example rows

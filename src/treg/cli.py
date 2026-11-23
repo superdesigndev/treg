@@ -2554,6 +2554,7 @@ from .domain.asynctasks import classify_terminal as _classify_terminal  # noqa: 
 from .domain.asynctasks import finished_on_submission as _finished_on_submission  # noqa: E402
 from .domain.asynctasks import max_age as _async_max_age  # noqa: E402
 from .domain.asynctasks import json_path as _json_path  # noqa: E402
+from .domain.asynctasks import is_pending_response as _is_pending_response  # noqa: E402
 
 
 def _async_param(rule: dict) -> tuple[str, str]:
@@ -2629,6 +2630,17 @@ def await_async_task(descriptor: dict, submission: httpx.Response, call_fn, cloc
                     return {"code": 3, "task_id": str(task_id), "recovery": recovery,
                             "error": f"polling failed five consecutive times: {exc}"}
                 continue
+            if response.status_code >= 400:
+                try:
+                    pending_document = response.json()
+                except ValueError:
+                    pending_document = None
+                if _is_pending_response(descriptor, response.status_code, pending_document):
+                    failures = 0
+                    _clock_report(clock, f"async task {_shown(task_id)}: "
+                                         f"{_shown(descriptor['pending_response']['equals'])} "
+                                         f"({int(clock.monotonic() - start)}s elapsed)")
+                    continue
             if response.status_code >= 500:
                 failures += 1
                 _clock_report(clock, f"async poll retry {failures}/5 after HTTP {response.status_code}")
@@ -2716,7 +2728,7 @@ def _call_envelope(response: httpx.Response, content_type: str) -> dict:
     if kind := headers.get("X-Treg-Hint"):
         meta["hint"] = kind
     if routed := headers.get("X-Treg-Routed-Tool"):
-        meta["routed_tool"] = routed
+        meta["routed_alternative"] = routed
     return {"result": result, "_treg": meta}
 
 
@@ -2928,7 +2940,7 @@ def cmd_call(args, cfg) -> None:
             if recovery:
                 print(f"resume: {recovery}", file=sys.stderr)
         if reserved := submission.headers.get("X-Treg-Cost-Micro"):
-            print(f"generation reservation: ${int(reserved) / 1_000_000:g}", file=sys.stderr)
+            print(f"async task reservation: ${int(reserved) / 1_000_000:g}", file=sys.stderr)
         try:
             outcome = await_async_task(
                 descriptor, submission, call_fn, _CliAwaitClock(), getattr(args, "timeout", None)
@@ -4473,8 +4485,9 @@ def cmd_balance(args, cfg) -> None:
     # failing — so it gets said even though it costs a second request.
     auto = _billing_autotopup(cfg)
     if auto and auto.get("enabled"):
+        cap = f"cap {_usd(auto['monthly_cap_micro'])}/mo" if auto.get("monthly_cap_micro") else "no monthly cap"
         print(f"  {_M}auto top-up{_R}  on — add {_usd(auto['amount_micro'])} when it drops "
-              f"below {_usd(auto['threshold_micro'])}  {_M}(cap {_usd(auto['monthly_cap_micro'])}/mo, "
+              f"below {_usd(auto['threshold_micro'])}  {_M}({cap}, "
               f"{_usd(auto['month_spend_micro'])} used){_R}")
     elif auto and auto.get("disabled_reason"):
         print(f"  {_AM}auto top-up off — {auto['disabled_reason']}. Run `treg topup --auto on` after "
@@ -4605,8 +4618,11 @@ def _topup_auto(args, cfg) -> None:
     print(f"\n  {_G}Auto top-up is on.{_R} Add {_usd(auto.get('amount_micro') or 0)} whenever the "
           f"balance drops below {_usd(auto.get('threshold_micro') or 0)}, at most "
           f"{auto.get('per_hour') or 5} times per hour.")
-    print(f"  {_M}Monthly ceiling {_usd(auto.get('monthly_cap_micro') or 0)} — we stop there, "
-          f"whatever happens.{_R}\n")
+    if auto.get("monthly_cap_micro"):
+        print(f"  {_M}Monthly ceiling {_usd(auto['monthly_cap_micro'])} — we stop there, "
+              f"whatever happens.{_R}\n")
+    else:
+        print(f"  {_M}No monthly ceiling. Set one with --cap.{_R}\n")
 
 
 def _confirm_consent() -> bool:
@@ -7018,7 +7034,7 @@ def build_parser() -> argparse.ArgumentParser:
                     help="with --auto on: how many dollars to add on each automatic refill")
     tu.add_argument("--cap", dest="auto_cap", type=float, default=None,
                     help="with --auto on: the most auto top-up may charge in a calendar month "
-                         "(default 2000; 0 restores the default)")
+                         "(default: no cap; 0 removes one)")
     tu.add_argument("--per-hour", dest="auto_per_hour", type=int, default=None,
                     help="with --auto on: how many automatic refills may run in one hour (1-60, default 5)")
     tu.set_defaults(fn=cmd_topup)

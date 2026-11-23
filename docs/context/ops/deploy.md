@@ -86,7 +86,16 @@ tasks. If `TREG_SECRET_KEY` is empty on a non-SQLite database, `verify_db()` rai
   state. `0078` drops `onboardingprofile`; code older than it touches that table only while a
   `TREG_ONBOARDING_V2*` setting is on, so keep those off on any rollback past it. `0106` rebuilds
   `agentpayer` with a per-network key; code older than it writes that table only while
-  `TREG_AGENT_PAYMENTS_ENABLED` is on, so keep it off on any rollback past it.
+  `TREG_AGENT_PAYMENTS_ENABLED` is on, so keep it off on any rollback past it. `0114` removes
+  queued call charges whose call is already settled, because a fold now applies every row it
+  claims. With the database at `0114`, code may go back no further than the build whose charge
+  writer takes back a re-queued settled call; that build and later ones run unchanged on what
+  is left. An earlier writer can queue such a row again, and `0114`, already recorded, does not
+  run on the next upgrade. If an earlier writer has run, then before a build with the new fold
+  starts: stop writes, let transactions in flight end, and run the revision's statement by hand
+  (`DELETE FROM callcharge WHERE EXISTS (SELECT 1 FROM ledgerentry WHERE ledgerentry.call_id =
+  callcharge.call_id AND ledgerentry.org_id = callcharge.org_id AND ledgerentry.kind =
+  'settle')`).
 - **Revision-only schema.** An autogenerate drift guard requires Alembic head and
   `SQLModel.metadata` to match exactly. `reset_db()` uses `create_all` only to build a missing test
   schema and stamps it at head.
@@ -293,6 +302,10 @@ meaning is not obvious from the field:
   `TREG_FIND_ENGINE` ([find](../architecture/find.md)) are their own kill switches.
 - `TREG_REQUIRED_EXTENSIONS` names installed [policy extensions](../architecture/policy-extensions.md)
   so a build that lost one fails to start instead of serving without it.
+- `TREG_PARAM_CHECK` is `log` (the default; any value but `refuse` reads as it) or `refuse`. Log
+  mode relays a catalog request that breaks a declared type, enum or range as before and logs a
+  `catalog_parameter_would_refuse` line; read those lines before turning on `refuse`, which answers
+  them 400 ([proxy model](../architecture/proxy-model.md#catalog-request-checks)).
 
 Credentials stay in the deployment secret store.
 
@@ -317,6 +330,22 @@ security test or a probe that must not be throttled, list its addresses in
 **Call events** ([call-events](../architecture/call-events.md)) need `TREG_CALL_EVENTS_URL` and
 `TREG_CALL_EVENTS_HMAC_SECRET` on every process that serves calls or settles async tasks. Keep the
 secret stable: changing it breaks every join across the change.
+
+**Pairwise comparisons** ([feedback](../architecture/feedback.md), "Pairwise comparisons") run as
+`treg-worker compare collect`, meant for an hourly cron job with the archive and platform-key
+settings of the web service; every run also removes rows a team deletion missed, so that latency is
+one run. Sampling is off unless `TREG_COMPARE_PAIRS` is set and `TREG_COMPARE_MAX_PER_DAY` is above
+0; the call path then marks sampled calls (`TREG_COMPARE_RATE`) in `TREG_KV_URL`'s store, which the
+job and the web service must share. `TREG_COMPARE_LOOKBACK_HOURS` is at most 2, the marker's life,
+so the job must run at least that often. Each run makes at most `TREG_COMPARE_MAX_PER_RUN` calls on
+treg's key, sequentially; a day's spend is at most `TREG_COMPARE_MAX_PER_DAY` times the paired
+vendors' price per call only where that price is the request's maximum cost. The calls bypass the
+shared provider limiter: check each pilot vendor's price and capacity before enabling a pair.
+Each run prints one JSON line; `skip_reasons` counts, per reason, the candidates that stopped
+before a call (`no_marker`, `a_not_archived`, `b_unavailable`, ...), so a run
+that calls nobody says where its candidates stopped.
+Rollback is `TREG_COMPARE_MAX_PER_DAY=0` with the cron kept: it then calls nobody and only
+removes orphaned rows, which removing the cron would stop.
 
 **Provider client codes.** A provider file's `client_header` is filled only once
 `TREG_CLIENT_ID_SECRET` is set on the processes that relay calls. Turn it on after the provider is
@@ -368,15 +397,54 @@ an id restores the hold path for that org's new calls; no migration is needed.
 a standing allowance instead of one hold per call ([money](../architecture/money.md), "Allowance");
 it needs `TREG_KV_URL` and PostgreSQL, and is ignored on SQLite. `TREG_MONEY_ALLOWANCE_CHUNK_MICRO` is what a refill brings the counter up
 to, `TREG_MONEY_ALLOWANCE_FRESH_S` how long a refill keeps admitting calls, and
-`TREG_MONEY_ALLOWANCE_LINGER_MS` how long finished calls wait to share one insert. Removing an id
-returns that org's new calls to the hold path at once; no migration is needed. The idle sweep
-(`application/allowance_sweep.py`) runs in the `all` and `control` roles and is one more
-consumer of the `background` pool, which is one connection larger per process for it. The
-allowance trusts the store to keep the writes it acknowledged. A store that can go back to an
-earlier state (a restore from an older snapshot, a replica promoted before it caught up) can
-admit the same money twice, with no bound on amount or time while the allowance stays on, and
-what a team's credit cannot cover is the platform's cost. After such an event, empty the
-list, and list a team again only when all of these can be seen:
+`TREG_MONEY_ALLOWANCE_LINGER_MS` how long finished calls wait to share one insert.
+`TREG_MONEY_ALLOWANCE_REFILL_WINDOW_S` (default `0`, off) sizes a refill to what the team took
+from its counter over that many seconds instead (at most twice what it took since the last
+refill), never below the chunk; the allowance hold then carries at most
+`TREG_MONEY_ALLOWANCE_REFILL_MAX_MICRO`, at most `TREG_MONEY_ALLOWANCE_REFILL_BALANCE_PERCENT` of
+the team's balance and at most that share of what its daily cap has left, and a call on the
+exact path that the balance alone cannot pay for gets the counter back first when it holds
+enough to make up the difference. A window longer
+than `TREG_MONEY_ALLOWANCE_FRESH_S` buys nothing more. Processes started with it back at `0`
+refill to the chunk again, with nothing else to undo, and processes of different settings can
+run side by side. Removing an id
+returns that org's new calls to the hold path at once; no migration is needed. The allowance's
+background loop (`application/allowance_sweep.py`) applies queued charges to the ledger and
+closes idle allowances. It runs in the `all` and `control` roles and is one more consumer of
+the `background` pool, which is one connection larger per process for it; request processes do
+not fold, so a deployment that turns the allowance on must run at least one process in one of
+those roles. A queued charge is applied as it stands: a fold does not ask the ledger whether
+its call was settled before. What makes that true is the charge writer, which takes back a
+charge it re-queued for a settled call, so an upgrade to this behaviour from a build whose
+writer did not do that is done in this order: stop every process of the earlier build and let
+its transactions in flight end; run `python -m treg upgrade` (revision `0114` removes any such
+row left queued); start the new build. The order matters: an earlier process still serving
+calls after `0114` has run can queue another such row, the revision does not run a second
+time, and the new build's fold would charge that call twice. Where every process already runs
+a build with the writer's cleanup, no such row can be queued any more and the upgrade needs no
+stop. The
+allowance trusts the store to keep the writes it acknowledged for as long as the server
+runs. A server that starts again (a restart that dropped its last writes, a restore from a
+snapshot, a promoted replica) is recognised by its `run_id`: every counter built before is
+discarded and rebuilt by the next refill. Nothing needs doing then, on two conditions.
+Every process that serves calls runs a build with this check: an earlier one does not look
+at the run and spends from a counter that went back until a newer process touches it. And
+the store runs the counter's scripts, which call `INFO`: it must permit `INFO` inside a
+script (some managed offerings refuse it there whatever the ACL grants) and allow it to the
+store's user (ACL category `@dangerous`); where it does not, no counter operation answers
+and every call takes the hold path. After a restart a team whose credit was all in its hold
+is refused until the idle close returns it, since no refill can add the chunk a new counter
+is built from. While processes of an earlier build share the store with newer ones, a
+counter an earlier process builds is discarded by the next newer one that touches it: each
+time, a chunk waits in the hold for the idle close. A freeze an earlier process wrote is
+kept.
+
+Not recognised: a server that goes back to older data WITHOUT starting again (a reload in
+place; a server that kept running, took older data from another primary and became primary
+again), and a restart while processes of an earlier build still serve calls. Either can
+admit the same money twice, with no bound on amount or time while the allowance stays on,
+and what a team's credit cannot cover is the platform's cost. After such an event, empty
+the list, and list a team again only when all of these can be seen:
 
 - every process that serves calls has restarted on the empty list (the list is read per
   process, so one still running the old value keeps admitting from the counter);
@@ -536,6 +604,14 @@ job's credentials. `treg-worker --help` lists them; what follows is what a sched
 - **`idempotency prune`**: hourly. Deletes expired retry answers for every team and drops a live
   row's copy of an answer the archive holds (`--skip-trim` keeps copies). Exits nonzero on an
   incomplete run; run one instance at a time.
+- **`archive retain`**: does nothing until `TREG_ARCHIVE_RETENTION_ENABLED=true`; `--dry-run` counts
+  what it would delete either way. Each run stops at `TREG_ARCHIVE_RETENTION_MAX_SECONDS` and the
+  next resumes from its cursor (also after `TREG_ARCHIVE_RETENTION_MAX_KEYS` deletions); a second
+  instance answers `busy` and does nothing (a session advisory lock: connect the worker to
+  PostgreSQL directly, not through a transaction-mode pooler); run one at a time, with the archive object-store settings
+  when R2 writes are on. Objects of deleted rows go in a later run, once
+  `TREG_ARCHIVE_RETENTION_OBJECT_GRACE_S` (900 s) has passed ([archive](../architecture/archive.md),
+  "Row retention").
 - **`admin purge-evidence`** and **`admin purge-ad-clicks`**: daily. Without them expired rows stop
   being shown or read but stay in the database.
 - **`hub check`** runs each live [hub](../architecture/hub.md) tool's `check.json` as its maker

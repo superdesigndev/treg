@@ -1,0 +1,17 @@
+{
+ "person": {
+  "person_id": "1000000000000000001",
+  "linkedin_url": "https://www.linkedin.com/in/jane-doe-example",
+  "first_name": "Jane",
+  "last_name": "Doe",
+  "title": "Head of Operations",
+  "company_name": "Example Inc",
+  "company_domain": "example.com"
+ },
+ "phone_numbers": ["+15555550100"],
+ "phones": [{"number": "+15555550100"}],
+ "tier": "community",
+ "email": "jane.doe@example.com",
+ "email_status": "verified",
+ "credits_charged": 10
+}

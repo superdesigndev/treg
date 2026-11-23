@@ -97,9 +97,12 @@ async def _attributable_call(db, *, org_id: int, call_id: str, pinned_tags: dict
 async def submit_review(
     *, org_id: int, user_email: str, call_id: str, usefulness: ReviewUsefulness,
     reason: str | None = None, client: str = "", pinned_tags: dict | None = None,
-    rows: list[dict] | None = None, basis: MarkBasis = "impression",
+    rows: list[dict] | None = None, basis: MarkBasis = "impression", shows_compare: bool = False,
 ) -> tuple[int, bool, int | None]:
     """Return (review_id, inserted, mark_id); attribution never comes from the caller.
+
+    `shows_compare`: the client that sent it declared it shows a compare invitation; an invited
+    review from one makes its team one a comparison can run for (`compare.note_answering`).
 
     `rows` (the rows the reviewer judged, mark items) become one mark tied to the review in the
     same transaction and spend the team's mark allowance; a repeated review of the same call keeps
@@ -127,7 +130,7 @@ async def submit_review(
                 targeted = endpoint_id
         invited = (200 <= record.status_code < 300 and not record.cached
                    and record.credential_tier in ("platform", "routed")
-                   and review_targets.sampled(call_id, targeted))
+                   and review_targets.sampled(call_id, targeted, org_id))
         existing = await reviews.get(db, call_id, org_id)
         if existing is not None:
             return existing.id, False, await marks.of_review(
@@ -173,7 +176,13 @@ async def submit_review(
             await db.flush()
             mark_id = mark.id
         await db.commit()
-        return review_id, True, mark_id
+    if invited and shows_compare:
+        from . import compare
+        try:
+            await compare.note_answering(org_id)
+        except Exception:  # noqa: BLE001 - a lost note only delays the team's first comparison
+            pass
+    return review_id, True, mark_id
 
 
 

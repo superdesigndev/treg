@@ -21,6 +21,7 @@
     "web-data",
     "oauth"
   ],
+  "category": "research",
   "logo": "assets/logo.svg",
   "skills": "./skills/",
   "mcpServers": "./mcp.json"

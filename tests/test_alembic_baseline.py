@@ -17,7 +17,7 @@ from treg import audit
 from treg import crypto
 from treg.infra import db
 from treg.maintenance import _alembic_config
-from treg.models import ApiKey, Membership, Org, User
+from treg.models import ApiKey, CallCharge, LedgerEntry, Membership, Org, User
 
 
 def _drop_present(connection) -> None:
@@ -117,6 +117,42 @@ async def test_managed_key_migration_backfills_human_and_agent_hashes():
             ("human@example.dev", "default_human", None),
             ("human@example.dev", "legacy_human", human_hash),
         ]
+    finally:
+        await _drop_everything()
+        await db.reset_db()
+
+
+async def test_upgrade_removes_queued_charges_whose_call_is_already_settled():
+    """A fold no longer drops a queued charge whose call has a settle entry, so a row left from
+    before would be charged again. The upgrade removes it and leaves every other row queued:
+    one with no ledger entry, one with only a reserve, one settled for another team."""
+    await audit.drain()
+    await _drop_everything()
+    try:
+        await _upgrade_to("0113")
+        async with db.session_maker() as session:
+            org_id = await _insert_org_at_revision(session, name="Queued", slug="queued")
+            other = await _insert_org_at_revision(session, name="Other", slug="other")
+            # Both tables are at their current shape: 0114 moves data only.
+            session.add_all([
+                CallCharge(call_id=call_id, org_id=team, endpoint_id="e", amount_micro=400)
+                for team, call_id in ((org_id, "settled"), (org_id, "waiting"),
+                                      (org_id, "unseen"), (other, "elsewhere"))])
+            session.add_all([
+                LedgerEntry(id="entry-settled", org_id=org_id, kind="settle", amount_micro=-400,
+                            call_id="settled"),
+                # Another team's settle entry and another kind of entry settle nothing here.
+                LedgerEntry(id="entry-elsewhere", org_id=org_id, kind="settle", amount_micro=-400,
+                            call_id="elsewhere"),
+                LedgerEntry(id="entry-waiting", org_id=org_id, kind="reserve", amount_micro=-400,
+                            call_id="waiting")])
+            await session.commit()
+
+        await _upgrade_to("head")
+        async with db.session_maker() as session:
+            queued = (await session.execute(
+                select(CallCharge.call_id).order_by(CallCharge.call_id))).scalars().all()
+        assert queued == ["elsewhere", "unseen", "waiting"]
     finally:
         await _drop_everything()
         await db.reset_db()

@@ -92,7 +92,7 @@ treg login</pre></div>
               <template v-if="epTryBodyType==='multipart'">
                 <div class="field" v-for="p in epTryMultipart" :key="p.name" style="max-width:520px">
                   <label class="mono" style="min-width:140px">{{p.name}}<span v-if="p.required" style="color:var(--accent)"> *</span></label>
-                  <input v-if="String(p.type).includes('file')" type="file" :multiple="String(p.type).startsWith('array')" @change="setEpTryFiles(p.name,$event)"/>
+                  <input v-if="p.file" type="file" :multiple="String(p.type).startsWith('array')" @change="setEpTryFiles(p.name,$event)"/>
                   <input v-else v-model="p.value" :placeholder="p.required?'required':'optional'"/>
                 </div>
               </template>

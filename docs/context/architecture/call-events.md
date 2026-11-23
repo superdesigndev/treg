@@ -116,7 +116,7 @@ The stream has no map type; they travel as JSON objects (`json` columns):
   `page` or `offset`, kept in its route summary. A page number or an offset counts only as a
   whole number. No page, `page` 1, `page0` 0, `offset` 0 and an empty or `0` cursor are the
   first page and leave `input_id` as it was.
-  On an admission-only contract, an identity field typed `list` (a count over several companies)
+  On an admission-only contract, an identity field typed `array` (a count over several companies)
   is its values' set, each normalized, sorted and joined, so the same companies in another order
   hash the same and other companies do not.
 - `input_keys`: `{field: hmac}` for every identity field present after derivation.
@@ -132,7 +132,7 @@ The stream has no map type; they travel as JSON objects (`json` columns):
   (capped length), exactly as the adapter produced them, plus `<field>_calling_code` beside every
   keyed phone (`phone_calling_code`), so a number's country is known when its provider names none.
   A direct call's answer is read as the Arena reads it (`safe_output`), except that a recorded
-  field the contract types `bool`, `int` or `float` keeps its value (`name_match`, `ported`).
+  field the contract types `boolean`, `integer` or `number` keeps its value (`name_match`, `ported`).
   A contract with a segment set that judges answers adds its row counts here (`rows`,
   `rows_company_match`, below) with `segments_version`.
 - `answer_flags`: derived from email-shaped keys: `is_role`, `free_mail`, and `domain_match`
@@ -156,8 +156,11 @@ hash the same:
 | Searches (`linkedin.search.*`, `reddit.search.posts`, `meta-ads.library.search`) | the query (`q`), or a person's name | at least one result row |
 | Lists about one subject (`companies.emails.list`, `people.decision_makers`, `reddit.post.comments`) | the domain, or the post (`post_id`, derived from its URL) | at least one row |
 | One object (`x.post.detail`, `linkedin.job.detail`) | its id, derived from its URL (`x_post_id`, `linkedin_job_id`) | the object is returned |
-| Answers (`web.answer`, `google.serp.ai_mode`, `ai-search.*.scrape`) | the question or prompt (`q`) | answer text is returned |
+| Answers (`web.answer`, `google.serp.ai_mode`) | the question or prompt (`q`) | answer text is returned |
 | Counts (`people.search.count`) | company domain and title | a count above zero |
+
+When a capability gains a routed endpoint, keep its existing identity first so direct and routed
+calls for the same question continue to produce the same `input_id`.
 
 Scoping filters (country, date window, sort, location) stay out of `input_id`; the ones declared
 `analytics: value` go to `input_meta`, so analysis can split by them. A status poll
@@ -173,7 +176,8 @@ and returns categories, each a word from the set's fixed vocabulary; `segment` a
 `input_meta` with `segments_version`, the set's version, which moves whenever a rule or a
 vocabulary changes. No title, query, name, place or domain is recorded, only the category it falls
 in. A filter already recorded as a value (`country`) keeps its own spelling; the set only adds
-keys. A direct or child call's request is read back through its adapter (`vendor_identity`).
+keys. A direct or child call's request is read back through its adapter (`vendor_identity`). A
+filter whose provider representation needs decoding can declare an `in_read` expression.
 Besides the `in` map, every field an `in_expr` sends where it can be found is read back
 (`field_paths`): each expression is run on placeholder values, and a field is read from the
 place its placeholder lands whole, provided it lands there alone, no other field's placeholder
@@ -194,7 +198,7 @@ so it records none rather than "none sent". The same function serves the event a
 a routed segment cannot disagree; the patterns are module constants, so an offline analysis can
 import them instead of keeping its own copy.
 
-`people_search` (version 2, which added `company_given`), each key always present unless noted:
+`people_search` (version 3: 2 added `company_given`, 3 the `rows_<check>_known` counts and city and metro-area locations), each key always present unless noted:
 
 | Key | Vocabulary | From |
 | --- | --- | --- |
@@ -229,15 +233,23 @@ gives nothing to judge by is absent, not zero; a request that cannot be read bac
 | `rows_with_profile_url` | rows with an `http(s)` profile URL on a dotted host | always with `rows` |
 | `rows_dup` | rows repeating an earlier row's person (same LinkedIn handle or URL, else same name and company) | always with `rows` |
 | `rows_company_match` | rows whose company domain is the asked `company_domain` (or a subdomain of it); a row with no domain, when its name minus a legal form (`Inc`, `GmbH`) is exactly the domain's first label (`MetaMask` is not meta.com) | `company_domain` was asked |
+| `rows_company_known` | rows with a company domain or name to judge | with `rows_company_match` |
 | `rows_title_match` | rows whose title has the asked title's `title_function` (a leader asked: an `executive` row) | the asked title has a function other than `other` |
-| `rows_country_match` | rows whose location names the asked country (by name, a US state, never a two-letter part) | the asked country is an ISO code or name |
+| `rows_title_known` | rows with a title | with `rows_title_match` |
+| `rows_country_match` | rows whose location names the asked country, read conservatively: every clue in it must point at one country, else it names none. A country name or US state in any part (`Paris, Texas`), with a last-part country code and any state code agreeing (`Lebanon, US`, `Washington, GB`, `Cuba, NY`, `Lebanon, PA` name none); otherwise a city, metro area or one-country region (`Greater Phoenix Area`), with every other part a known place, a state code (`Austin, TX`, `Bengaluru, KA`) or, last, a country code (`Paris, FR`) in that country. `London, ON`, `Mexico City, DF`, `Geneva, GE`, `Vancouver, US`, a code alone, a part we do not know (`Hyderabad, Sindh`) and a metro area across a border (`San Diego-Tijuana`) name none, and a place left after dropping a word is never read as a country (`Canada Bay` is in Australia). A code that is both a country and a US, Canadian, Australian, Indian or Brazilian state code (`CA`, `DE`, `SA`, `MH`, `RS`) names none unless a part spells the country out: once joined into text a provider's country code (`Durham, CA`) cannot be told from a state | the asked country is an ISO code or name |
+| `rows_country_known` | rows whose location names any country by the same reading | with `rows_country_match` |
+
+A row with nothing to judge (no company, no title, a location that is empty, `Remote` or a place
+the reading does not know) is unknown, not a mismatch: read a check as `match / known`, and
+`known / rows` as how much of the answer it could judge. Before version 3 only `match` was
+recorded and city or metro-area locations read as no country.
 
 Where an output field goes is declared on the contract (`contracts.yaml`), default `skip`:
 
 ```yaml
 output:
-  email: {type: str, required: true, analytics: key}
-  verified: {type: bool, analytics: value}
+  email: {type: string, required: true, analytics: key}
+  verified: {type: boolean, analytics: value}
 ```
 
 The parser refuses any other word, and a filter can never be a `key`. The public catalog contract
@@ -273,7 +285,7 @@ a child. It is a log line, not a column.
 | `caller_side` | `true` for `caller_auth`, `caller_balance_or_cap`, `caller_policy`, `caller_provider_account` and `payment_required` |
 | `kind` | the failure kind treg raised, or its internal `log_kind` when it has one |
 | `signal` | the provider's documented error read from its answer, per `domain/capacity/signatures.py` |
-| `parameter`, `rule` | for treg's own refusal of a request: the field (`queryParams.limit`, `body.urls.0`, or `undeclared`) and the rule it broke (`required`, `type`, `enum`, `range`, `repeat`, `undeclared`, `json`, `fixed`, `platform`, `authorization_method`, `unsupported`) |
+| `parameter`, `rule` | for treg's own refusal of a request: the field (`queryParams.limit`, `body.urls.0`, or `undeclared`) and the rule it broke (`required`, `type`, `enum`, `range`, `repeat`, `undeclared`, `json`, `fixed`, `platform`, `authorization_method`, `unsupported`, and the parameter check's `length`, `array_length` and `items:<rule>` when it refuses) |
 
 `call_errors.classify` reads the class from the failure kind (`types.FAILURE_KINDS`), else
 `refused_by`, else the provider's documented error, else the status; `tests/test_call_errors.py`

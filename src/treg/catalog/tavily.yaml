@@ -28,7 +28,7 @@ endpoints:
         topic: {type: string, required: true, enum: [news]}
         max_results: {type: integer, required: false, min: 1, max: 20}
         search_depth: {type: string, required: false, enum: [basic]}
-        include_usage: {type: boolean, required: false, enum: [true]}
+        include_usage: {type: boolean, required: false}
     platform_request: {body.include_usage: true}
     test_request: {body: {query: "AI policy", topic: news, max_results: 10, search_depth: basic, include_usage: true}}
     verified: '2026-10-05'
@@ -61,20 +61,20 @@ endpoints:
         end_date: {type: string, required: false, note: "YYYY-MM-DD; must follow start_date."}
         include_published_date: {type: boolean, required: false, default: false}
         filter_by_published_date: {type: boolean, required: false, default: false}
-        include_answer: {type: "boolean|string", required: false, default: false, note: "false, true, basic, or advanced"}
-        include_raw_content: {type: "boolean|string", required: false, default: false, note: "false, true, markdown, or text"}
+        include_answer: {type: [boolean, string], required: false, default: false, note: "false, true, basic, or advanced"}
+        include_raw_content: {type: [boolean, string], required: false, default: false, note: "false, true, markdown, or text"}
         include_images: {type: boolean, required: false, default: false}
         include_image_descriptions: {type: boolean, required: false, default: false}
         include_favicon: {type: boolean, required: false, default: false}
-        include_domains: {type: "array[string]", required: false, maxItems: 300}
-        exclude_domains: {type: "array[string]", required: false, maxItems: 150}
+        include_domains: {type: array, items: {type: string}, required: false, maxItems: 300}
+        exclude_domains: {type: array, items: {type: string}, required: false, maxItems: 150}
         include_domains_mode: {type: string, required: false, enum: [restrict, prefer]}
         country: {type: string, required: false, note: "Country name accepted by Tavily; available for general search."}
         language: {type: string, required: false, default: en}
         filter_by_language: {type: boolean, required: false, default: false}
         auto_parameters: {type: boolean, required: false, default: false}
         exact_match: {type: boolean, required: false, default: false}
-        include_usage: {type: boolean, required: false, enum: [true], example: true, note: "Optional with your own key; platform Search requires true so treg can settle from this request's reported usage."}
+        include_usage: {type: boolean, required: false, example: true, note: "Optional with your own key; platform Search requires true so treg can settle from this request's reported usage."}
         safe_search: {type: boolean, required: false, default: false}
       note: "Results are ranked web pages with title, URL, content, score and optional raw content, publication date, favicon and images. HTTP 432 is the plan cap; 433 is the PAYGO cap."
     platform_request: {body.include_usage: true}
@@ -112,7 +112,7 @@ endpoints:
     input:
       bodyType: json
       body:
-        urls: {type: "array[string]", required: true, minItems: 1, maxItems: 20, example: ["https://example.com"]}
+        urls: {type: array, items: {type: string}, required: true, minItems: 1, maxItems: 20, example: ["https://example.com"]}
         query: {type: string, required: false, note: "Rerank extracted chunks for this query."}
         chunks_per_source: {type: integer, required: false, default: 3, min: 1, max: 5}
         extract_depth: {type: string, required: false, default: basic, enum: [basic, advanced], example: basic}
@@ -155,10 +155,10 @@ endpoints:
         max_depth: {type: integer, required: false, default: 1, min: 1, max: 5}
         max_breadth: {type: integer, required: false, default: 20, min: 1, max: 500}
         limit: {type: integer, required: false, min: 1, max: 20, example: 10, note: "A whole number from 1 to 20, required on treg's key. Tavily's own default is 50."}
-        select_paths: {type: "array[string]", required: false}
-        select_domains: {type: "array[string]", required: false}
-        exclude_paths: {type: "array[string]", required: false}
-        exclude_domains: {type: "array[string]", required: false}
+        select_paths: {type: array, items: {type: string}, required: false}
+        select_domains: {type: array, items: {type: string}, required: false}
+        exclude_paths: {type: array, items: {type: string}, required: false}
+        exclude_domains: {type: array, items: {type: string}, required: false}
         allow_external: {type: boolean, required: false, default: true}
         timeout: {type: number, required: false, default: 150, min: 10, max: 150}
       note: "A failed map is free. Each successful returned page is allocated 0.1 credit, or 0.2 when the caller supplies nonempty instructions. Platform settlement ignores grouped usage.credits."
@@ -197,10 +197,10 @@ endpoints:
         max_depth: {type: integer, required: false, default: 1, min: 1, max: 5}
         max_breadth: {type: integer, required: false, default: 20, min: 1, max: 500}
         limit: {type: integer, required: false, min: 1, max: 20, example: 10, note: "A whole number from 1 to 20, required on treg's key. Tavily's own default is 50."}
-        select_paths: {type: "array[string]", required: false}
-        select_domains: {type: "array[string]", required: false}
-        exclude_paths: {type: "array[string]", required: false}
-        exclude_domains: {type: "array[string]", required: false}
+        select_paths: {type: array, items: {type: string}, required: false}
+        select_domains: {type: array, items: {type: string}, required: false}
+        exclude_paths: {type: array, items: {type: string}, required: false}
+        exclude_domains: {type: array, items: {type: string}, required: false}
         allow_external: {type: boolean, required: false, default: true}
         include_images: {type: boolean, required: false, default: false}
         extract_depth: {type: string, required: false, default: basic, enum: [basic, advanced], example: basic}

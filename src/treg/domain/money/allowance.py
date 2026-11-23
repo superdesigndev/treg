@@ -29,6 +29,7 @@ from . import (
     _entry,
     _lock_blocks,
     _now,
+    _queued_unbacked,
     _spent_today_values,
     with_margin,
 )
@@ -102,27 +103,33 @@ async def record_charges(db: AsyncSession, charges: Sequence[Charge]) -> set[str
 
 class Folded(NamedTuple):
     """One fold: `calls` settle entries written for `charged_micro`, `consumed_micro` of it drawn
-    from blocks, `duplicates` charges dropped because their call was already settled, and
-    `orphaned` charges dropped because the team they were admitted for is gone."""
+    from blocks, and `orphaned` charges dropped because the team they were admitted for is
+    gone."""
 
     calls: int = 0
     charged_micro: int = 0
     consumed_micro: int = 0
-    duplicates: int = 0
     orphaned: int = 0
 
     @property
     def claimed(self) -> int:
         """How many queue rows this fold took: a full batch means more may be queued."""
-        return self.calls + self.duplicates + self.orphaned
+        return self.calls + self.orphaned
 
 
-async def _lock_allowance(db: AsyncSession, org_id: int) -> Hold | None:
-    # The first lock every allowance operation takes, before blocks and the org row: the order
-    # settle uses, and what makes two folds of one team run one after the other.
+async def _lock_allowance(db: AsyncSession, org_id: int, *, keeps: bool = False) -> Hold | None:
+    """The first lock every allowance operation takes, before blocks and the org row: the order
+    settle uses, and what makes two folds of one team run one after the other.
+
+    `keeps` is for an operation that only updates the row (a fold, a refill): it asks for the
+    lock an update takes (NO KEY UPDATE), which the charge writer's key-share lock does not
+    conflict with. PostgreSQL lets a later sharer pass a waiting exclusive lock, so under a
+    steady stream of charge writes a fold asking for the full row lock would wait for a gap
+    between them, holding its connection. An operation that may delete the row asks for the
+    full lock and waits for the writes in progress."""
     with money_stage(db, "lock_allowance"):
         return (await db.execute(
-            select(Hold).where(Hold.id == allowance_id(org_id)).with_for_update()
+            select(Hold).where(Hold.id == allowance_id(org_id)).with_for_update(key_share=keeps)
             .execution_options(populate_existing=True))).scalar_one_or_none()
 
 
@@ -137,7 +144,7 @@ async def fold_charges_in_transaction(db: AsyncSession, org_id: int, *,
     once per transaction: a second fold would lock the blocks again (see `_apply_charges`).
     """
     mark_money(db, "fold", org_id=org_id)
-    return await _fold(db, org_id, await _lock_allowance(db, org_id), limit)
+    return await _fold(db, org_id, await _lock_allowance(db, org_id, keeps=True), limit)
 
 
 async def _claim_charges(db: AsyncSession, org_id: int, limit: int) -> list:
@@ -160,6 +167,8 @@ async def _claim_all_charges(db: AsyncSession, org_id: int) -> list:
 
 
 async def _fold(db: AsyncSession, org_id: int, hold: Hold | None, limit: int) -> Folded:
+    if limit <= 0:
+        return Folded()
     return await _apply_charges(db, org_id, hold, await _claim_charges(db, org_id, limit))
 
 
@@ -172,21 +181,10 @@ async def _apply_charges(db: AsyncSession, org_id: int, hold: Hold | None, claim
     """
     if not claimed:
         return Folded()
-    # A queue row is gone once folded, so its primary key no longer stops the same call being
-    # recorded again. The call's settle entry is the lasting record that it was charged.
-    settled: set[str] = set()
-    ids = [row.call_id for row in claimed]
-    with money_stage(db, "settled_charges"):
-        for start in range(0, len(ids), FOLD_BATCH):
-            settled.update((await db.execute(select(LedgerEntry.call_id).where(
-                LedgerEntry.call_id.in_(ids[start:start + FOLD_BATCH]),
-                LedgerEntry.org_id == org_id, LedgerEntry.kind == "settle"))).scalars())
-    charges = sorted((row for row in claimed if row.call_id not in settled),
-                     key=lambda row: (row.created_at, row.call_id))
-    duplicates = len(claimed) - len(charges)
+    charges = sorted(claimed, key=lambda row: (row.created_at, row.call_id))
     if charges and not await team_exists(db, org_id):
         charges = []
-    orphaned = len(claimed) - duplicates - len(charges)
+    orphaned = len(claimed) - len(charges)
     if orphaned:
         log.error("allowance_charges_orphaned org_id=%s dropped=%s: the team they were admitted "
                   "for has been deleted", org_id, orphaned)
@@ -217,7 +215,7 @@ async def _apply_charges(db: AsyncSession, org_id: int, hold: Hold | None, claim
     counted = covered if hold is not None and hold.created_at >= _day_start() else 0
     if covered != consumed or consumed != counted:
         await _add_balance(db, org_id, covered - consumed, spent_delta_micro=consumed - counted)
-    return Folded(len(charges), charged, consumed, duplicates, orphaned)
+    return Folded(len(charges), charged, consumed, orphaned)
 
 
 async def team_exists(db: AsyncSession, org_id: int) -> bool:
@@ -232,16 +230,18 @@ def hold_created_at(epoch: int | None) -> datetime | None:
 
 
 async def holds_behind(db: AsyncSession, org_ids: Sequence[int]) -> dict[int, int]:
-    """The epoch of each team's allowance hold, for teams that have one, under a shared lock on
-    the hold rows. For the transaction that queues charges: a close of the hold waits for it,
-    so a charge found to have its own hold here is still applied to that hold, and one found
-    without it is known to owe the balance."""
+    """The epoch of each team's allowance hold, for teams that have one, under a key-share lock
+    on the hold rows. For the transaction that queues charges: a close that deletes the hold
+    waits for it, so a charge found to have its own hold here is still applied to that hold,
+    and one found without it is known to owe the balance. A fold or a refill only updates the
+    row and neither waits for this lock nor is waited for: the epoch read here is the row's
+    creation instant, which no update changes."""
     if not org_ids:
         return {}
     with money_stage(db, "lock_allowance"):
         rows = (await db.execute(
             select(Hold).where(Hold.id.in_([allowance_id(org_id) for org_id in org_ids]))
-            .order_by(Hold.id).with_for_update(read=True))).scalars().all()
+            .order_by(Hold.id).with_for_update(read=True, key_share=True))).scalars().all()
     return {hold.org_id: _epoch(hold) for hold in rows}
 
 
@@ -253,12 +253,24 @@ async def has_allowance(db: AsyncSession, org_id: int) -> bool:
         select(Hold.id).where(Hold.id == allowance_id(org_id)))).first() is not None
 
 
-async def settled_calls(db: AsyncSession, call_ids: Sequence[str]) -> set[str]:
-    """Which of these calls already have a `settle` entry."""
+async def drop_settled_charges(db: AsyncSession, call_ids: Sequence[str]) -> set[str]:
+    """Of the calls a rewrite has just queued, the ones that already have a `settle` entry: the
+    first attempt's row was committed and has been folded since. Their new rows are taken out
+    of the queue again, in the transaction that put them there, so a rewrite never leaves a
+    settled call queued: a fold applies every row it claims, and the queue's readers count
+    every row, without looking any of them up in the ledger. Returns those calls.
+
+    Only a rewrite can queue a call twice, and a row it has just inserted is its own until it
+    commits. The insert waits for a fold of the first row that is still in progress, so the
+    settle entry, if there is one, was committed before the insert succeeded.
+    """
     if not call_ids:
         return set()
-    return set((await db.execute(select(LedgerEntry.call_id).where(
+    settled = set((await db.execute(select(LedgerEntry.call_id).where(
         LedgerEntry.call_id.in_(list(call_ids)), LedgerEntry.kind == "settle"))).scalars())
+    if settled:
+        await db.execute(delete(CallCharge).where(CallCharge.call_id.in_(sorted(settled))))
+    return settled
 
 
 async def settled_micro(db: AsyncSession, org_id: int, call_id: str) -> int | None:
@@ -294,6 +306,34 @@ class Allowance(NamedTuple):
     retired: bool = False
 
 
+class TeamNow(NamedTuple):
+    """The team's row as a refill reads it, under the lock an update of it takes: its daily cap
+    (0 = none) and its balance."""
+
+    daily_cap_micro: int
+    balance_micro: int
+
+
+def paced_target(spent_micro: int, over_ms: int, *, window_s: int, floor_micro: int,
+                 ceiling_micro: int) -> int:
+    """What a refill sized to the team's spend brings the counter up to: what the counter went
+    down by over the last `over_ms`, scaled to `window_s`, never below `floor_micro` and never
+    above `ceiling_micro` unless the floor already is.
+
+    A reading shorter than half the window counts as half the window, so a refill at most
+    doubles what the counter went down by: a burst raises the target by twice its size at the
+    most, and only spend kept up over half a window or more reaches the window.
+
+    The reading runs from the last refill, so it is always recent: while calls come the counter
+    is refilled at least every half lifetime, and a team that stopped calling has a reading
+    that grows longer while what it spent stays the same, down to the floor."""
+    if window_s <= 0 or spent_micro <= 0 or over_ms <= 0:
+        return floor_micro
+    window_ms = window_s * 1000
+    paced = spent_micro * window_ms // max(over_ms, window_ms // 2)
+    return max(floor_micro, min(paced, ceiling_micro))
+
+
 def _epoch(hold: Hold) -> int:
     return _epoch_of(hold.created_at)
 
@@ -311,14 +351,12 @@ async def committed_today(db: AsyncSession, org_id: int) -> int:
     earlier day, all of it; what queued charges owe the balance outright (their overruns, and
     all of a charge whose own hold is gone); and what queued charges may take from the hold
     beyond what it has left. All are read from the rows themselves, so the figure is right whether or not the
-    team's allowance is switched on. A queued charge whose call already has a `settle` entry is
-    left out, as a fold will drop it.
+    team's allowance is switched on. Every queued row is a charge still to be applied: a
+    rewrite never leaves a settled call queued (`drop_settled_charges`).
     """
     hold_id = allowance_id(org_id)
     from_hold, outright = _charge_parts(org_id)
-    unsettled = (CallCharge.org_id == org_id, ~select(LedgerEntry.id).where(
-        LedgerEntry.call_id == CallCharge.call_id, LedgerEntry.org_id == org_id,
-        LedgerEntry.kind == "settle").exists())
+    unsettled = (CallCharge.org_id == org_id,)
     row = (await db.execute(select(
         Org.spent_today_micro, Org.spent_today_day,
         select(Hold.amount_micro).where(Hold.id == hold_id).scalar_subquery(),
@@ -338,7 +376,10 @@ async def refill_allowance_in_transaction(
     db: AsyncSession, org_id: int, add_micro: int, *, daily_cap_micro: int = 0,
     fold_limit: int = FOLD_BATCH, fold_all: bool = False,
     counter_epoch: int | None = None, fresh_add_micro: int | None = None,
-    current_daily_cap: Callable[[AsyncSession], Awaitable[int]] | None = None,
+    counter_micro: int | None = None,
+    current_team: Callable[[AsyncSession], Awaitable[TeamNow]] | None = None,
+    grow_to_micro: int | None = None, balance_percent: int = 100,
+    ceiling_micro: int | None = None,
 ) -> Allowance:
     """Fold a batch of queued charges, then move `add_micro` from the balance into the team's
     allowance hold, opening the hold if there is none. In the caller's transaction, before any
@@ -348,7 +389,9 @@ async def refill_allowance_in_transaction(
     cannot cover it adds nothing and raises nothing: the fold still stands, and `added_micro`
     of 0 tells the caller to stop spending from the allowance. `add_micro` is money, not a
     provider cost: no margin is applied. Writes on the hold (`heartbeat_at`) the instant until
-    which calls may be admitted against it: now plus `money_allowance_fresh_s`.
+    which calls may be admitted against it: now plus `money_allowance_fresh_s`. A refill
+    that leaves the hold's counter with nothing to offer leaves that instant where it was: it
+    added nothing, and the counter is gone or shows nothing (`counter_micro`, what it shows).
 
     `add_micro` is what the caller's counter is short of, and a counter speaks only for the
     hold it was built for. With `fresh_add_micro`, a hold whose epoch is not `counter_epoch` (a
@@ -363,12 +406,25 @@ async def refill_allowance_in_transaction(
     worst case (`committed_today`) is read AFTER the fold, under the hold's lock, and the amount
     asked for is added to it. `over_cap` reports that it exceeds the cap before adding anything.
     `daily_cap_micro` is the cap its caller saw, which can be some time ago for a refill that
-    waited its turn. `current_daily_cap` reads the team's cap at that same point, in this
+    waited its turn. `current_team` reads the team's cap at that same point, in this
     transaction, and the stricter of the two applies: a cap the team has just lowered holds.
+
+    `grow_to_micro` asks for more: the counter brought up to that figure (`paced_target`), as
+    far as the team's money allows, where `add` is all that is asked for otherwise. Only the
+    part beyond `add` is limited, so a refill never adds less than it would without it. The
+    limits are on the hold after the refill, read under its lock: it carries what the counter
+    shows, what calls in flight took, and what a counter lost with the store left behind, which
+    no call can reach. It holds at most `balance_percent` of the balance `current_team` read,
+    at most `ceiling_micro`, and at most `balance_percent` of what the daily cap has left, so
+    calls on the exact path, whose cap check counts all of the hold as spent, keep the rest. A
+    balance the queue's claims leave short of the growth gives that part back first. It needs
+    `current_team`, whose read of the row is where the balance comes from.
     """
+    if grow_to_micro is not None and current_team is None:
+        raise ValueError("a refill sized to the team's spend reads the balance with current_team")
     mark_money(db, "refill", org_id=org_id)
     add = max(0, int(add_micro))
-    hold = await _lock_allowance(db, org_id)
+    hold = await _lock_allowance(db, org_id, keeps=True)
     if hold is not None and counter_epoch is not None and counter_epoch > _epoch(hold):
         # The store's counter names a later epoch than the hold: the hold's counter was retired
         # (by a deletion of the team that did not commit) and nothing can be published for it
@@ -380,8 +436,13 @@ async def refill_allowance_in_transaction(
                   if fold_all else await _fold(db, org_id, hold, fold_limit))
         return Allowance(_epoch(hold), hold.amount_micro, 0, folded,
                          admit_until=hold.heartbeat_at, retired=True)
-    if fresh_add_micro is not None and (hold is None or _epoch(hold) != counter_epoch):
+    rebuilding = fresh_add_micro is not None and (hold is None or _epoch(hold) != counter_epoch)
+    if rebuilding:
         add = max(0, int(fresh_add_micro))
+    # What the counter shows that will still be there after this refill: nothing, when its add
+    # replaces the counter.
+    shown = 0 if rebuilding else max(0, int(counter_micro or 0))
+    grow = 0 if grow_to_micro is None else max(0, int(grow_to_micro) - shown - add)
     opened = False
     if hold is None and add:
         # Two callers can both find no row. The insert decides which one opens it, and the
@@ -392,40 +453,68 @@ async def refill_allowance_in_transaction(
             id=allowance_id(org_id), org_id=org_id, endpoint_id="", amount_micro=0,
             created_at=now, purchased_only=False, allowance=True, heartbeat_at=now,
         ).on_conflict_do_nothing(index_elements=[Hold.id]))).rowcount == 1
-        hold = await _lock_allowance(db, org_id)
+        hold = await _lock_allowance(db, org_id, keeps=True)
     folded = (await _apply_charges(db, org_id, hold, await _claim_all_charges(db, org_id))
               if fold_all else await _fold(db, org_id, hold, fold_limit))
     over_cap = False
-    if current_daily_cap is not None:
+    held = hold.amount_micro if hold is not None else 0
+    if current_team is not None:
+        team = await current_team(db)
         daily_cap_micro = min(
-            (cap for cap in (daily_cap_micro, await current_daily_cap(db)) if cap > 0), default=0)
+            (cap for cap in (daily_cap_micro, team.daily_cap_micro) if cap > 0), default=0)
+        grow = min(grow, max(0, team.balance_micro * balance_percent // 100 - held - add))
+    if ceiling_micro is not None:
+        grow = min(grow, max(0, ceiling_micro - held - add))
     if daily_cap_micro > 0:
         exposed = await committed_today(db, org_id)
         over_cap = exposed > daily_cap_micro
         if exposed + add > daily_cap_micro:
-            add = 0
-    balance = (await db.execute(select(Org.balance_micro).where(Org.id == org_id))).scalar() or 0
-    overdrawn = balance < 0
-    if overdrawn:
-        add = 0
+            add = grow = 0
+        grow = min(grow, max(
+            0, (daily_cap_micro - exposed) * balance_percent // 100 - held - add))
+    add += grow
+    debited, counted = False, {}
+    if hold is not None and add:
+        counted = _spent_today_values(add) if hold.created_at >= _day_start() else {}
+        with money_stage(db, "reserve_balance"):
+            debited = (await db.execute(
+                update(Org).where(Org.id == org_id, Org.balance_micro >= add)
+                .values(balance_micro=Org.balance_micro - add, **counted))).rowcount == 1
+    # What the balance has free of the queue's claims, read after the debit as `reserve` does:
+    # the debit holds the team's row, so the two belong to one moment. A charge queued for more
+    # than its call set aside is owed by the balance from the moment it is queued, folded or not.
+    with money_stage(db, "reserve_queue"):
+        free = int((await db.execute(
+            select(Org.balance_micro - _queued_unbacked(org_id)).where(Org.id == org_id)
+        )).scalar() or 0)
+    if debited and free < 0:
+        # Undo the debit as it was made: the growth alone when that leaves the rest covered,
+        # all of it otherwise. The day's counter is taken back from the day the debit counted
+        # it on, whatever the clock says now: a midnight between the two must not open the new
+        # day below zero.
+        back = grow if 0 < grow and free + grow >= 0 else add
+        uncounted = {"spent_today_micro": Org.spent_today_micro - back} if counted else {}
+        with money_stage(db, "update_balance"):
+            await db.execute(update(Org).where(Org.id == org_id).values(
+                balance_micro=Org.balance_micro + back, **uncounted))
+        free, add = free + back, add - back
+        debited = add > 0
+    overdrawn = free < 0
     if hold is None:
         return Allowance(None, 0, 0, folded, over_cap, overdrawn)
     added = 0
-    if add:
-        counted = _spent_today_values(add) if hold.created_at >= _day_start() else {}
-        with money_stage(db, "reserve_balance"):
-            result = await db.execute(
-                update(Org).where(Org.id == org_id, Org.balance_micro >= add)
-                .values(balance_micro=Org.balance_micro - add, **counted))
-        if result.rowcount == 1:
-            added = add
-            hold.amount_micro += add
-            await _entry(db, org_id=org_id, kind="reserve", amount_micro=-add, call_id=hold.id,
-                         meta={"allowance": True, "charged_micro": add,
-                               "hold_micro": hold.amount_micro})
+    if debited:
+        added = add
+        hold.amount_micro += add
+        await _entry(db, org_id=org_id, kind="reserve", amount_micro=-add, call_id=hold.id,
+                     meta={"allowance": True, "charged_micro": add,
+                           "hold_micro": hold.amount_micro})
     if opened and not added:
         await db.delete(hold)
         return Allowance(None, 0, 0, folded, over_cap, overdrawn)
+    if not added and (rebuilding or counter_micro == 0):
+        return Allowance(_epoch(hold), hold.amount_micro, 0, folded, over_cap, overdrawn,
+                         hold.heartbeat_at)
     # Never earlier than one already published: the store keeps the latest too, and a sweep
     # must be able to trust this row whatever freshness the process that wrote it was running.
     admit_until = _now() + timedelta(seconds=get_settings().money_allowance_fresh_s)
@@ -485,21 +574,24 @@ async def close_stale_allowance_in_transaction(
 
 
 async def stale_allowance_orgs(db: AsyncSession, stale_before: datetime, *,
-                               limit: int = 50) -> list[int]:
-    """Teams whose allowance hold stopped admitting calls before `stale_before`. A read; the
+                               after: int = 0, limit: int = 50) -> list[int]:
+    """Teams whose allowance hold stopped admitting calls before `stale_before`, in the order of
+    their numbers, a page at a time: `after` is the last team of the page before. A read; the
     close re-checks under the lock."""
     return list((await db.execute(
         select(Hold.org_id).where(
-            Hold.allowance.is_(True),
+            Hold.allowance.is_(True), Hold.org_id > after,
             func.coalesce(Hold.heartbeat_at, Hold.created_at) < stale_before)
         .order_by(Hold.org_id).limit(limit))).scalars())
 
 
 async def orgs_with_queued_charges(db: AsyncSession, queued_before: datetime, *,
-                                   limit: int = 50) -> list[int]:
-    """Teams with a charge queued since before `queued_before`: a queue nothing is folding."""
+                                   after: int = 0, limit: int = 50) -> list[int]:
+    """Teams with a charge queued before `queued_before`, in the order of their numbers, a page
+    at a time: `after` is the last team of the page before."""
     return list((await db.execute(
-        select(CallCharge.org_id).where(CallCharge.created_at < queued_before)
+        select(CallCharge.org_id)
+        .where(CallCharge.created_at < queued_before, CallCharge.org_id > after)
         .distinct().order_by(CallCharge.org_id).limit(limit))).scalars())
 
 

@@ -1,12 +1,15 @@
 """Feedback intake and private reads; all writes use the application transaction."""
 
-from typing import Annotated
+from typing import Annotated, Literal
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request, Response
 from pydantic import BaseModel, ConfigDict, Field, StringConstraints, field_validator, model_validator
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from .. import hints
+from ..application import compare as compare_app
 from ..application import feedback as feedback_app
+from ..application.call.invite import accepted_kinds
 from ..domain import feedback
 from ..domain.feedback import marks, reviews
 from ..domain.governance.access import pinned_tag_predicates
@@ -114,6 +117,7 @@ async def submit_review(
         review_id, inserted, mark_id = await feedback_app.submit_review(
             org_id=caller.org_id, user_email=caller.email,
             client=request.headers.get("X-Treg-Client", ""),
+            shows_compare="compare" in accepted_kinds(request.headers.get("X-Treg-Hints")),
             pinned_tags=caller.membership.pinned_tags, **values,
         )
     except feedback_app.ReviewCallNotFound:
@@ -193,3 +197,44 @@ async def admin_marks(
     rows = await marks.recent(db, limit=limit, before=before, endpoint_id=endpoint_id)
     return {"items": [row.model_dump() for row in rows],
             "next_before": rows[-1].id if len(rows) == limit else None}
+
+
+@app.get("/comparisons/next")
+async def next_comparison(caller: Caller = Depends(require_member), compact: bool = False):
+    """The team's oldest comparison waiting for a verdict, blinded: answer 1 and 2, no vendor.
+    `compact`: the pair as a CLI prints it beside a call (`compare_app.compact_pair`), with the
+    words that ask for the verdict (`how_to_vote`), so they change without a CLI release."""
+    pair = await compare_app.next_for(caller.org_id, pinned=caller.membership.pinned_tags is not None)
+    if pair is None:
+        return Response(status_code=204)
+    if not compact:
+        return pair
+    shown = compare_app.compact_pair(pair)
+    shown["how_to_vote"] = hints.compare_cli_hint(
+        shown["comparison_id"], input_cut="input" in shown.get("truncated_parts", []))
+    return shown
+
+
+class ComparisonIn(BaseModel):
+    model_config = ConfigDict(extra="forbid", str_strip_whitespace=True)
+
+    comparison_id: int = Field(ge=1)
+    choice: Literal["1", "2", "tie", "both_bad"]
+    reason: str | None = Field(default=None, min_length=1, max_length=300)
+
+
+@app.post("/comparisons", status_code=201)
+async def submit_comparison(
+    body: ComparisonIn, request: Request, response: Response,
+    caller: Caller = Depends(require_member),
+) -> dict:
+    try:
+        choice, inserted = await compare_app.submit(
+            caller.org_id, pinned=caller.membership.pinned_tags is not None,
+            comparison_id=body.comparison_id, choice=body.choice, reason=body.reason,
+            client=request.headers.get("X-Treg-Client", ""))
+    except compare_app.ComparisonNotFound:
+        raise HTTPException(404, "Comparison not found in this team.") from None
+    response.status_code = 201 if inserted else 200
+    return {"comparison_id": body.comparison_id, "choice": choice,
+            "status": "received" if inserted else "already_received"}

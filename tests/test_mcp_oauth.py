@@ -1445,7 +1445,8 @@ async def test_a_catalog_only_grant_cannot_spend_or_read_the_team(clients):
         for name, args in (("call", {"endpoint_id": "exa.search", "params": {"query": "x"}}),
                            ("call_media", {"endpoint_id": "exa.search"}),
                            ("balance", {}), ("my_tools", {}), ("resources_list", {}),
-                           ("call_result", {})):
+                           ("call_result", {}), ("compare", {}),
+                           ("compare", {"comparison_id": 1, "choice": "1"})):
             out = await _call_tool(c, name, args, token=access)
             assert out.get("error") == "insufficient_scope", (name, out)
         searched = await _call_tool(c, "catalog_search", {"query": "web search"}, token=access)
@@ -1532,6 +1533,17 @@ async def test_a_missing_scope_is_a_403_challenge_naming_it(clients):
     assert "resource_metadata=" in www
     assert r.json()["error"] == "insufficient_scope"
     assert ok.status_code == 200, ok.text
+
+
+async def test_a_call_only_grant_is_never_shown_a_comparison(clients):
+    """A comparison shows the team's past inputs and answers: riding on `call` must not give a
+    `treg:call` grant what the `compare` tool's `treg:read` refuses it."""
+    call_only, _ = await _grant(clients, "call-only-compare@superdesign.dev", scope="treg:call")
+    full, _ = await _grant(clients, "full-compare@superdesign.dev", scope="")
+    assert mcp._may_read_comparisons(call_only) is False
+    assert await mcp._inline_comparison(call_only) is None
+    assert mcp._may_read_comparisons(full) is True
+    assert mcp._may_read_comparisons("not-an-oauth-token") is True
 
 
 async def test_a_call_only_grant_gets_no_prior_review(clients, monkeypatch):

@@ -4,6 +4,7 @@
     treg-worker overflow sync [--live]          # seed (+ live aggregator catalogs) → overflow_route
     treg-worker overflow verify [--all] [--max-usd 0.02]   # weekly re-verify of enabled routes
     treg-worker idempotency prune [--dry-run]       # expired completed replay answers
+    treg-worker archive retain [--dry-run]           # delete archive questions no one asked for in N days
     treg-worker asynctasks settle [--limit 50]       # complete deferred metered-call holds
     treg-worker agentpay reconcile [--limit 50]      # resolve agent payments whose settlement went unanswered
     treg-worker agentpay stripe-address --network tempo|base   # one-time setup for settlement `stripe`
@@ -16,11 +17,13 @@
     treg-worker showcase activity                    # add new calls to the /showcase activity rows (hourly)
     treg-worker rankings refresh                     # rebuild the public /rankings boards from the day stats (hourly)
     treg-worker media sweep                          # delete public pictures nothing uses any more (daily)
+    treg-worker reviews judge [--max-seconds 600]    # Jev: new review reasons' privacy and codes (hourly)
     treg-worker jev xboost [--posts 60] [--min-likes 150]   # the /jev launch-radar demo: X posts <24h -> jev
     treg-worker admin purge-evidence [--batch-size 5000]  # blank expired error evidence past 14-day retention
     treg-worker admin purge-ad-clicks                      # delete email-to-click stash rows past 90 days
     treg-worker admin erase-archive --org <id>             # erase what an opted-out team stored in the archive
     treg-worker admin revoke-refund <payment_intent>       # revoke a refunded top-up's unspent credit now
+    treg-worker admin card-sync --org <id> [--org <id>] [--apply]  # adopt a newer portal card treg missed
     treg-worker admin reencrypt-credentials [--dry-run]    # re-seal stored Fernet credentials under KMS
     treg-worker admin rotate-fernet [--dry-run]            # re-encrypt Fernet payloads under the first key
     treg-worker admin erase-archive --org <id> --dry-run   # count what that would remove; delete nothing
@@ -385,6 +388,27 @@ async def _shadow_collect(args) -> int:
     return 0
 
 
+async def _reviews_judge(args) -> int:
+    from .infra.db import verify_db
+    from .application import review_judge
+
+    await verify_db()
+    print(review_judge.dumps(await review_judge.run(max_seconds=args.max_seconds)))
+    return 0
+
+
+async def _compare_collect(args) -> int:
+    from .infra.db import verify_db
+    from .application import compare
+    from .bootstrap import archive_object_store
+
+    async with archive_object_store():
+        await verify_db()
+        result = await compare.collect(max_seconds=args.max_seconds)
+    print(compare.dumps(result))
+    return 0
+
+
 async def _shadow_report(args) -> int:
     from .infra.db import verify_db
     from .application import shadow
@@ -621,6 +645,29 @@ async def _admin_rotate_fernet(args) -> int:
     return 1 if result.get("error") else 0
 
 
+async def _archive_retain(args) -> int:
+    """Delete archive questions no one asked for (application/archive_retention). Does nothing
+    unless TREG_ARCHIVE_RETENTION_ENABLED; `--dry-run` counts what would go either way."""
+    from . import bootstrap
+    from .application import archive_retention
+    from .infra.db import verify_db
+
+    await verify_db()
+    from .infra.db import read_session_maker
+
+    options = dict(dry_run=args.dry_run, days=args.days, batch=args.batch_size,
+                   pause_s=args.pause_seconds, max_seconds=args.max_seconds,
+                   max_keys=args.max_keys, after=args.after)
+    if args.dry_run:
+        # A dry run only reads: on the replica when one is configured, never the primary's load.
+        result = await archive_retention.run(**options, session_factory=read_session_maker)
+    else:
+        async with bootstrap.archive_object_store():
+            result = await archive_retention.run(**options)
+    print(json.dumps(result, sort_keys=True))
+    return 1 if result["stopped"] in ("error", "failures") else 0
+
+
 async def _admin_revoke_refund(args) -> int:
     """Revoke a refunded top-up's unspent credit from the refunded total Stripe reports now: for a
     missed `charge.refunded` webhook, or a shortfall that calls in flight held at the time."""
@@ -630,6 +677,24 @@ async def _admin_revoke_refund(args) -> int:
     await verify_db()
     print(json.dumps(await billing.revoke_refunded_payment(args.payment_intent), sort_keys=True))
     return 0
+
+
+async def _admin_card_sync(args) -> int:
+    """Adopt each team's newer Stripe default card that treg never heard of. Reports only unless
+    `--apply`; one JSON line per team."""
+    from .application import billing
+    from .infra.db import verify_db
+
+    await verify_db()
+    failed = 0
+    for org_id in args.org:
+        try:
+            result = await billing.sync_card_from_stripe(org_id, apply=args.apply)
+        except Exception as e:  # noqa: BLE001 — one team's Stripe error must not stop the rest
+            failed += 1
+            result = {"org_id": org_id, "action": "error", "error": type(e).__name__}
+        print(json.dumps(result, sort_keys=True))
+    return 1 if failed else 0
 
 
 async def _enterprise_reconcile(args) -> int:
@@ -858,6 +923,19 @@ def main(argv: list[str] | None = None) -> int:
     shr = shsub.add_parser("report", help="print the comparison report as JSON")
     shr.add_argument("--days", type=int, default=1)
     shr.set_defaults(fn=_shadow_report)
+    cmp = sub.add_parser("compare", help="pairwise comparisons (off unless compare_pairs and "
+                         "compare_max_per_day are set)")
+    cmpsub = cmp.add_subparsers(dest="cmd", required=True)
+    cmpc = cmpsub.add_parser("collect", help="ask the other vendor of a pair the input of sampled "
+                             "recent routed calls")
+    cmpc.add_argument("--max-seconds", type=float, default=600.0)
+    cmpc.set_defaults(fn=_compare_collect)
+    reviews = sub.add_parser("reviews", help="agent reviews of call results")
+    revsub = reviews.add_subparsers(dest="cmd", required=True)
+    revj = revsub.add_parser("judge", help="ask Jev whether new review reasons name a person and what "
+                             "negative ones blame (off without typesafe_api_key)")
+    revj.add_argument("--max-seconds", type=float, default=600.0)
+    revj.set_defaults(fn=_reviews_judge)
     web_arena = sub.add_parser("web-arena", help="Web Arena saved leaderboard totals")
     websub = web_arena.add_subparsers(dest="cmd", required=True)
     totals = websub.add_parser("totals", help="publish content-free Web provider totals")
@@ -958,6 +1036,12 @@ def main(argv: list[str] | None = None) -> int:
     revoke = adminsub.add_parser("revoke-refund", help="revoke a refunded top-up's unspent credit")
     revoke.add_argument("payment_intent", help="the refunded top-up's Stripe PaymentIntent id (pi_...)")
     revoke.set_defaults(fn=_admin_revoke_refund)
+    cardsync = adminsub.add_parser("card-sync",
+                                   help="adopt a team's newer Stripe default card that treg missed")
+    cardsync.add_argument("--org", type=_positive_int, action="append", required=True,
+                          help="team id; repeat for several")
+    cardsync.add_argument("--apply", action="store_true", help="write the change (default: report only)")
+    cardsync.set_defaults(fn=_admin_card_sync)
     enterprise = sub.add_parser("enterprise", help="enterprise identity maintenance")
     enterprisesub = enterprise.add_subparsers(dest="cmd", required=True)
     reconcile = enterprisesub.add_parser("reconcile", help="repair missed WorkOS Directory Sync changes")
@@ -969,6 +1053,20 @@ def main(argv: list[str] | None = None) -> int:
     purge_audit = enterprisesub.add_parser("purge-audit", help="delete expired enterprise access evidence")
     purge_audit.add_argument("--days", type=_positive_int, default=400)
     purge_audit.set_defaults(fn=_enterprise_purge_audit)
+    arch = sub.add_parser("archive", help="archive row maintenance")
+    archsub = arch.add_subparsers(dest="cmd", required=True)
+    retain = archsub.add_parser("retain", help="delete archive questions no one asked for in N days")
+    retain.add_argument("--dry-run", action="store_true",
+                        help="count the keys, snapshots, marks and objects that would go; delete nothing")
+    retain.add_argument("--days", type=_positive_int, help="default TREG_ARCHIVE_RETENTION_DAYS (30)")
+    retain.add_argument("--batch-size", type=_positive_int,
+                        help="key ids per batch, at most 10000; default TREG_ARCHIVE_RETENTION_BATCH (1000)")
+    retain.add_argument("--pause-seconds", type=float, help="sleep between batches")
+    retain.add_argument("--max-seconds", type=float, help="time budget for this run")
+    retain.add_argument("--max-keys", type=_positive_int,
+                        help="keys deleted per run at most; default TREG_ARCHIVE_RETENTION_MAX_KEYS (200000)")
+    retain.add_argument("--after", type=int, help="start after this key id instead of the saved cursor")
+    retain.set_defaults(fn=_archive_retain)
     idem = sub.add_parser("idempotency", help="expired replay-cache maintenance")
     idemsub = idem.add_subparsers(dest="cmd", required=True)
     prune = idemsub.add_parser("prune", help="delete completed answers past their 24-hour window")

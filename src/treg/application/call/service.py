@@ -13,6 +13,7 @@ from urllib.parse import parse_qsl, quote, urlencode, urlsplit
 import httpx
 
 from ... import analytics, archive, audit, jsontext, oauth, oauth_providers
+from ...application import compare as compare_app
 from ...application import hub as hub_app
 from ...application.hub import runner as hub_runner
 from ...application.hub import limits as hub_limits
@@ -87,6 +88,7 @@ from .settle import (
     _note_capacity_recovery,
     _note_capacity_signal,
     _observed_cost_micro,
+    rejected_submission_charge_micro,
     _peek_stream_head,
     _platform_settle,
     _read_whole_if_small,
@@ -307,21 +309,29 @@ def _ceiling_query(mk: MarketplaceCall | None, query_items: tuple[tuple[str, str
     A caller who already sent the parameter keeps their value. The pair is absent from the
     inbound query, so it does not enter params_hash or the archive key.
     """
-    if mk is None or mk.max_cost_micro is None or mk.max_cost_micro < 0:
+    if mk is None:
+        return ()
+    return ceiling_query(mk.endpoint_id, mk.provider, mk.max_cost_micro, query_items)
+
+
+def ceiling_query(endpoint_id: str, provider: str | None, max_cost_micro: int | None,
+                  query_items: tuple[tuple[str, str], ...]) -> tuple[tuple[str, str], ...]:
+    """`_ceiling_query` for one endpoint and ceiling, without a resolved call."""
+    if max_cost_micro is None or max_cost_micro < 0:
         return ()
     cat = catalog_store.load()
-    ep = cat.by_id.get(mk.endpoint_id) or {}
+    ep = cat.by_id.get(endpoint_id) or {}
     cost = ep.get("cost") if isinstance(ep.get("cost"), dict) else {}
     rule = cost.get("ceiling_param")
     if not isinstance(rule, dict):
-        rule = cat.ceiling_params.get(str(ep.get("provider") or mk.provider or ""))
+        rule = cat.ceiling_params.get(str(ep.get("provider") or provider or ""))
     name = rule.get("name") if isinstance(rule, dict) else None
     if (not isinstance(rule, dict) or rule.get("in") != "query" or rule.get("unit") != "usd"
             or not isinstance(name, str) or not name):
         return ()
     if any(key == name for key, _ in query_items):
         return ()
-    return ((name, _format_ceiling_usd(_provider_ceiling_micro(mk.max_cost_micro))),)
+    return ((name, _format_ceiling_usd(_provider_ceiling_micro(max_cost_micro))),)
 
 
 def _client_name(request: _ApplicationRequest) -> str:
@@ -1096,6 +1106,11 @@ async def _execute_call(request: _ApplicationRequest, upstream_client: httpx.Asy
             request.state.idem_claim = None
         if not routed_pending:
             _set_response_header(response, "X-Treg-Cost-Micro", str(charged))
+            if 200 <= response.status < 300:
+                await compare_app.mark_eligible(
+                    call_ref, ep.get("capability"), request.context.input.raw_headers,
+                    request.context.route_summary,
+                    archive_opted_out=request.context.input.caller.org.archive_opt_out_at is not None)
         _set_response_header(response, "X-Treg-Call-Id", call_ref)
         return response
     if ep is not None:
@@ -1110,6 +1125,7 @@ async def _execute_call(request: _ApplicationRequest, upstream_client: httpx.Asy
                 resolve_call=_resolve_call,
                 request_headers=request.headers,
                 authorization_method=request.headers.get(AUTHORIZATION_METHOD_HEADER, ""),
+                log_would_refuse=not request.context.input.routed_child,
             ), request, call_ref)
         except CallFailure as mkexc:
             # Catalog resolution is allowed to fall through from a named miss, but its own 404 must
@@ -1236,6 +1252,7 @@ async def _execute_call(request: _ApplicationRequest, upstream_client: httpx.Asy
     def _audit(status_code: int, *, observed_micro: int | None = None, charged_micro: int | None = None,
                duration_ms: int | None = None, response_bytes: int | None = None,
                refused_by: str | None = None, hit: bool | None = None, verdict: str | None = None,
+               outcome: str | None = None,
                error_request: str | None = None, error_response: str | None = None,
                capacity_signal: str | None = None, answered: bool = True,
                defer_analytics: bool = False, async_submission: bool = False,
@@ -1272,6 +1289,7 @@ async def _execute_call(request: _ApplicationRequest, upstream_client: httpx.Asy
                 "params_hash": mk.params_hash,
                 **({"hit": hit} if hit is not None else {}),
                 **({"verdict": verdict} if verdict is not None else {}),
+                **({"outcome": outcome} if outcome is not None else {}),
                 **({"archive_key_hash": archive_key_hash,
                     "archive_content_hash": archive_content_hash} if archive_key_hash else {}),
             }
@@ -1700,15 +1718,21 @@ async def _execute_call(request: _ApplicationRequest, upstream_client: httpx.Asy
                         # Each of treg's accounts has its own places (`keyslots.capacity_key`).
                         share_slot = await fair_share.acquire(
                             keyslots.capacity_key(share_pool, mk.key_slot), caller.org_id, cap,
-                            max_wait_s=wait_s)
+                            max_wait_s=wait_s,
+                            team_ceiling_percent=get_settings().fair_share_team_ceiling_percent)
                     except ShareBusy as busy:
                         raise GatewayFailed("share_busy", status_code=429, detail={
                             "error": "share_busy", "provider": mk.provider,
                             "endpoint_id": mk.endpoint_id, "active": busy.active,
                             "retry_after_s": RETRY_AFTER_SHARE_S,
-                            "message": f"{mk.provider} is fully used and your team already has "
-                                       f"{busy.active} calls in progress on it; not charged, "
-                                       f"try again in {RETRY_AFTER_SHARE_S} s"}) from None
+                            "message": (
+                                f"your team holds its largest share of {mk.provider}'s places; "
+                                f"not charged, try again shortly" if busy.reason == "team_ceiling"
+                                else f"{mk.provider} is fully used"
+                                + (f" and your team already has {busy.active} calls in "
+                                   f"progress on it" if busy.active else "")
+                                + f"; not charged, try again in {RETRY_AFTER_SHARE_S} s")},
+                            retry_after_s=RETRY_AFTER_SHARE_S) from None
                     if share_slot.waited_ms:
                         smoothed.append(f"share_wait={share_slot.waited_ms}")
                 if mk is not None:
@@ -2005,9 +2029,11 @@ async def _execute_call(request: _ApplicationRequest, upstream_client: httpx.Asy
             elif rejected:
                 # An async endpoint answered 2xx with no accepted task to track (an error
                 # envelope, a WAF page, a changed schema): nothing to poll. Closed now, not parked
-                # for 24 hours, at what the provider reported charging, else zero. A batch whose
-                # first task was refused can still carry accepted, billed tasks the caller owns.
-                reported = _observed_cost_micro(mk, body, httpx.Headers(response.raw_headers))
+                # for 24 hours, at what the provider reported charging or the row declares for
+                # a useful non-deferred answer, else zero. A batch whose first task was refused
+                # can still carry accepted, billed tasks the caller owns.
+                reported = rejected_submission_charge_micro(
+                    mk, body, httpx.Headers(response.raw_headers))
                 logging.getLogger("treg.asynctasks").warning(
                     "call %s on %s: 2xx but not an accepted submission (%s); settled at %s",
                     call_ref, mk.endpoint_id, rejected, reported or 0)
@@ -2074,11 +2100,16 @@ async def _execute_call(request: _ApplicationRequest, upstream_client: httpx.Asy
                 err_response = _error_response_evidence(
                     response.raw_headers, body, _renderings)
         may_overflow = (response.status >= 400 or account_out_2xx) and mk.tier == "platform"
-        from ...domain.catalog.results import classify, has_result_rules, verdict
+        from ...domain.catalog.results import classify, has_result_rules, judged_outcome, verdict
 
         # The submission is only a task ticket. Its contact verdict is learned from the
         # terminal poll and copied onto this same CallRecord by the async finalizer.
         result = classify(mk.endpoint_id, response.status, body) if not deferred else None
+        # A declaration judges a whole answer only: a spooled 2xx keeps only its usage evidence
+        # here and a free result streams unread.
+        partial = 200 <= response.status < 300 and (spooled_bytes is not None or streaming_free_result)
+        judged = (judged_outcome(mk.endpoint_id, response.status, body)
+                  if not deferred and not partial else None)
         result_aware = has_result_rules(mk.endpoint_id)
         result_state = result.state if result else "unknown"
         cache_diagnostics.update(
@@ -2094,6 +2125,7 @@ async def _execute_call(request: _ApplicationRequest, upstream_client: httpx.Asy
                                          if spooled_bytes is not None else len(body)),
                          hit=result.hit if result else None,
                          verdict=verdict(mk.endpoint_id, response.status, body) if not deferred else None,
+                         outcome=judged,
                          capacity_signal=capacity_signal, error_request=err_request, error_response=err_response,
                          defer_analytics=may_overflow, async_submission=deferred,
                          answer_body=None if deferred or spooled_bytes is not None else body,

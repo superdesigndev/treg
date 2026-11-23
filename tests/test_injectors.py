@@ -132,3 +132,15 @@ def test_base64_encode_query_param():
     inject({}, p, binding, "login:pw")
     expected = "Basic " + base64.b64encode(b"login:pw").decode()
     assert p == [("auth", expected)]
+
+
+def test_path_binding_records_its_placeholder_value():
+    values: dict[str, str] = {}
+    inject({}, [], _b(location="path", name="account_id", format="{secret}"), " 1234\n",
+           path_values=values)
+    assert values == {"account_id": "1234"}
+
+
+def test_path_binding_without_a_path_fails_closed():
+    with pytest.raises(ValueError, match="path credential injection"):
+        inject({}, [], _b(location="path", name="account_id", format="{secret}"), "1234")

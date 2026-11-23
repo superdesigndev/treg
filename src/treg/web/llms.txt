@@ -43,7 +43,8 @@ holds those accounts and bills a fraction of a cent per call.
 
   Handed a token? `curl -fsSL {BASE}/install.sh | sh -s -- --token <token>` does all of it without a
   browser. `treg login --email you@company.com` signs in with an emailed code; an invited person runs
-  `treg accept`. Asked to share the human's own keys and skills with the team? `treg scan` shows what
+  `treg accept`. Given an affiliate partner's code, the binary CLI takes `--ref <code>` on `treg login` (or
+  `sh -s -- --ref <code>` on the installer) so the new team is credited to that partner; the Python CLI has no `--ref`. Asked to share the human's own keys and skills with the team? `treg scan` shows what
   would be registered and sends nothing; register only what they approve with
   `treg upload --select <names>`.
 - **Sandboxed agent** (a cloud container with restricted egress): try the installer. If `{BASE}` is
@@ -96,7 +97,8 @@ would; a path no catalog tool lists is a 404 with `X-Treg-Error: 1`, never relay
 
 The MCP server at `{BASE}/mcp/` takes a bearer header or OAuth, and offers `catalog_search`,
 `catalog_get`, `call`, `call_media` (audio), `call_result`, `resources_list`, `balance`,
-`my_tools`, `catalog_request`, `feedback`, `review` and `mark`.
+`my_tools`, `catalog_request`, `feedback`, `review`, `mark` and `compare` (two anonymous answers
+to an input you sent, when a call result invites a comparison; optional).
 <!--hub-->
 Publishing a hub tool adds `hub_create`, `hub_update` and `hub_mine`.
 <!--/hub-->

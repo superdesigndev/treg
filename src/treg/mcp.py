@@ -47,7 +47,7 @@ import re
 from contextlib import asynccontextmanager
 from contextvars import ContextVar
 from dataclasses import asdict, dataclass, replace
-from typing import Annotated, Any, TypedDict
+from typing import Annotated, Any, Literal, TypedDict
 
 from pydantic import BaseModel, ConfigDict, Field, ValidationError
 from urllib.parse import parse_qsl, quote, unquote, urlencode, urlsplit
@@ -260,6 +260,8 @@ _V1_TOOL_SCOPES = {
     "call": "treg:call", "call_media": "treg:call", "hub_create": "treg:call", "hub_update": "treg:call",
     "balance": "treg:read", "my_tools": "treg:read", "resources_list": "treg:read", "hub_mine": "treg:read",
     "call_result": "treg:read",
+    # Shows the team's past inputs and answers, like `call_result`, whether it reads or votes.
+    "compare": "treg:read",
 }
 _V2_TOOL_SCOPES = {
     "catalog_search": "treg:catalog", "catalog_get": "treg:catalog", "catalog_request": "treg:catalog",
@@ -276,7 +278,7 @@ _HUB_TOOL_NAMES = frozenset({"hub_create", "hub_update", "hub_mine"})
 # results, as collecting behavioral data for analytics. Those clients get neither; every other client
 # keeps both. `/call/` still decides and records an invitation, this surface just does not show it.
 _OPENAI_UA_PREFIXES = ("openai-mcp/", "codex-mcp-client/")
-_OPENAI_HIDDEN_TOOLS = frozenset({"review", "mark"})
+_OPENAI_HIDDEN_TOOLS = frozenset({"review", "mark", "compare"})
 
 
 def _is_openai_client(headers: Any) -> bool:
@@ -286,8 +288,8 @@ def _is_openai_client(headers: Any) -> bool:
 
 
 class _OpenAIClientGate:
-    """For OpenAI's clients only: no `review` or `mark` tool and no sentence about them in the
-    instructions."""
+    """For OpenAI's clients only: no `review`, `mark` or `compare` tool and no sentence about them
+    in the instructions."""
 
     async def __call__(
         self, ctx: ServerRequestContext[Any, Any], call_next: CallNext
@@ -415,7 +417,8 @@ _BASE_INSTRUCTIONS = (
 _REVIEW_INSTRUCTION = (
     "If a call result invites a review, rate that one call with review(call_id, usefulness, "
     "reason?) after using it, then continue. If you later learn a result was wrong (a bounce, "
-    "another source, the user's correction), mark(call_id, basis, items) says which rows."
+    "another source, the user's correction), mark(call_id, basis, items) says which rows. If one "
+    "invites a comparison, compare() shows two anonymous answers to judge; it is optional."
 )
 
 mcp = MCPServer(
@@ -619,6 +622,7 @@ class CallOut(TypedDict, total=False):
                                     # the call at ITS price (X-Treg-Served-Via); absent on a direct call
     whose_error: str | None         # "treg" or "provider" — who to blame, and whether to retry
     hint: str | None
+    compare: dict[str, Any] | None  # two anonymous answers to judge, when `hint` invites a comparison
     did_you_mean: list[str] | None  # real ids close to one that missed
     routed_tool: str | None
     suggestion: str | None
@@ -871,9 +875,11 @@ async def _api(token: str, *, client_name: str = "mcp"):
         timeout=_TIMEOUT,
         # X-Treg-Client is attribution, not auth: without it every MCP-originated call lands
         # in the audit trail as client="", indistinguishable from unreported CLI traffic.
-        # Every invitation kind: this surface renders each into the hint slot (`_call_impl`).
+        # Every invitation kind this surface renders into the hint slot (`_call_impl`); only the
+        # team surface has the `compare` tool that answers a comparison invitation.
         headers={**await _internal_auth(token), "X-Treg-Client": client_name,
-                 "X-Treg-Hints": "review,mark,feedback", **host,
+                 "X-Treg-Hints": ("review,mark,feedback,compare" if client_name == _TEAM_SURFACE.client_name
+                                  else "review,mark,feedback"), **host,
                  **client_ip.forwarding_headers(_caller_ip.get())},
     ) as client:
         yield client
@@ -1348,6 +1354,107 @@ async def mark(
     async with _api(_bearer(ctx)) as client:
         response = await client.post("/marks", json=body)
     return _body(response)
+
+
+COMPARE_DESCRIPTION = (
+    "Judge two anonymous answers to an input your team sent earlier, when a call result invites a "
+    "comparison. Optional, changes no charges. Without choice: returns the next pair (input, "
+    "answer_1, answer_2). Then call again with comparison_id and choice='1', '2', 'tie' or "
+    "'both_bad' (both fail the input) and a one-line reason. Judge what the input asked for, not "
+    "length or style. Private to treg."
+)
+COMPARE_INSTRUCTION = (
+    "Judge which answer better serves the input; reply with compare(comparison_id, "
+    "choice='1'|'2'|'tie'|'both_bad', reason='...')"
+)
+
+
+class CompareOut(TypedDict, total=False):
+    comparison_id: int | None
+    capability: str | None
+    input: str | None
+    answer_1: str | None
+    answer_2: str | None
+    truncated: bool | None            # true when the input or an answer was cut to its stored size
+    truncated_parts: list[str] | None  # which: input, answer_1, answer_2
+    instruction: str | None
+    choice: str | None
+    status: str | None
+    detail: Any
+
+
+@mcp.tool(
+    description=COMPARE_DESCRIPTION,
+    annotations=ToolAnnotations(read_only_hint=False, destructive_hint=False, open_world_hint=True,
+                                idempotent_hint=True),
+    structured_output=True,
+)
+async def compare(
+    ctx: Context, choice: Literal["1", "2", "tie", "both_bad"] | None = None,
+    comparison_id: int | None = None, reason: str | None = None,
+) -> CompareOut:
+    async with _api(_bearer(ctx)) as client:
+        # An identity token names no team: resolve it as `call` does, or the API asks which team.
+        _, slug, problem = await _resolve_org(client)
+        if problem:
+            return {"status": "error", "detail": problem}
+        if slug:
+            client.headers["X-Treg-Org"] = slug
+        if choice is None:
+            response = await client.get("/comparisons/next")
+            if response.status_code == 204:
+                return {"status": "none", "detail": "no comparison is waiting; keep going with the task"}
+            out = _body(response)
+            if response.status_code == 200 and isinstance(out, dict):
+                out["instruction"] = COMPARE_INSTRUCTION
+            return out
+        if comparison_id is None:
+            return {"status": "error",
+                    "detail": "comparison_id is required with choice; call compare() first to get one"}
+        body = {"comparison_id": comparison_id, "choice": choice}
+        if reason:
+            body["reason"] = reason
+        response = await client.post("/comparisons", json=body)
+    return _body(response)
+
+
+# What a call result carries of a comparison: a few rows of each answer, never the whole body, so
+# the invitation costs the agent little context. The `compare` tool still shows the stored answers.
+# The pair is read after the call has answered and been charged: it may delay that answer this long
+# at most, then the result goes back without it. In-process requests ignore the client's timeout.
+INLINE_READ_TIMEOUT_S = 1.0
+
+
+def _may_read_comparisons(token: str) -> bool:
+    """Whether this credential may see a comparison: an OAuth grant needs the `compare` tool's
+    scope (`treg:read`, the team's past inputs and answers), which `call`'s own scope does not
+    include. Team and identity tokens carry no scopes and read what the team reads."""
+    claims = _oauth_claims(token)
+    if claims is None:
+        return True
+    from .domain.identity import mcp_oauth
+    return _V1_TOOL_SCOPES["compare"] in mcp_oauth.mcp_permissions(claims.get("scope", ""))
+
+
+async def _inline_comparison(token: str, org_slug: str | None = None) -> dict[str, Any] | None:
+    """The team's waiting comparison, compacted for a call result; None when this credential may
+    not read it, none is waiting, or it is not read within `INLINE_READ_TIMEOUT_S` (the call result
+    then simply carries no invitation). `org_slug`: the team the call itself resolved, which an
+    identity token needs again here (`require_member` asks which team otherwise)."""
+    if not _may_read_comparisons(token):
+        return None
+    try:
+        async with asyncio.timeout(INLINE_READ_TIMEOUT_S):
+            async with _api(token) as client:
+                response = await client.get("/comparisons/next",
+                                            headers={"X-Treg-Org": org_slug} if org_slug else None)
+    except Exception:  # an invitation is best-effort: the call it rides on never fails for it
+        logging.getLogger("treg.mcp").info("comparison not attached", exc_info=True)
+        return None
+    if response.status_code != 200:
+        return None
+    from .application import compare as compare_app
+    return compare_app.compact_pair(response.json())
 
 
 async def _review_impl(
@@ -1903,6 +2010,11 @@ async def _call_impl(endpoint_id: str, params: dict | list | None = None,
         kind = r.headers.get("X-Treg-Hint")
         if kind == "review" and out.get("call_id"):
             out["hint"] = hints.review_hint(out["call_id"])
+        elif kind == "compare":
+            if pair := await _inline_comparison(token, extra_headers.get("X-Treg-Org")):
+                out["compare"] = pair
+                out["hint"] = hints.compare_inline_hint(
+                    pair["comparison_id"], input_cut="input" in pair.get("truncated_parts", []))
         elif kind == "mark" and r.headers.get("X-Treg-Hint-Text"):
             out["hint"] = r.headers["X-Treg-Hint-Text"]
         elif kind == "feedback":

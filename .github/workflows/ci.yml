@@ -80,8 +80,8 @@ jobs:
         if: steps.docs.outputs.only != 'true'
         run: shellcheck .github/scripts/*.sh
       - name: Validate the catalog
-        if: steps.docs.outputs.only != 'true'
-        # The whole catalog, not the slices the tests exercise: a catalog data PR is gated here.
+        # The required unchanged check validates the full catalog on pull requests and merge groups.
+        if: github.event_name == 'push' && steps.docs.outputs.only != 'true'
         run: uv run --locked python scripts/catalog_validate.py
       - name: Run tests
         if: steps.docs.outputs.only != 'true'
@@ -147,6 +147,8 @@ jobs:
           tests/test_ledger.py
           tests/test_ledger_claim_review.py
           tests/test_money_lock_order.py
+          tests/test_money_allowance.py
+          tests/test_allowance_sized_refill_postgres.py
           tests/test_money_admission.py
           tests/test_money_admission_application.py
           tests/test_money_admission_postgres.py
@@ -155,7 +157,9 @@ jobs:
           tests/test_money_bigint.py
           tests/test_topup_reconcile.py
           tests/test_kv.py
+          tests/test_kv_allowance.py
           tests/test_auth_email_postgres.py
+          tests/test_default_key_postgres.py
           tests/test_kv_release_retry.py
           tests/test_kv_lease_diagnostics.py
           tests/test_org_concurrency.py
@@ -183,9 +187,11 @@ jobs:
           tests/test_archive.py
           tests/test_archive_batch.py
           tests/test_archive_batch_postgres.py
+          tests/test_archivekeyorg_natural_key_migration.py
           tests/test_cache_result_admission.py
           tests/test_archive_r2.py
           tests/test_archive_opt_out.py
+          tests/test_archive_retention.py
           tests/test_call_cancellation.py
           tests/test_idempotency_retention.py
           tests/test_call_pool_discipline.py

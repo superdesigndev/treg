@@ -25,8 +25,8 @@ endpoints:
         search_type: {type: string, required: true, enum: [web], example: web}
         max_results: {type: integer, required: false, default: 10, min: 1, max: 20, example: 1}
         country: {type: string, required: false, example: US}
-        search_domain_filter: {type: "array[string]", required: false, maxItems: 20}
-        search_language_filter: {type: "array[string]", required: false, maxItems: 10}
+        search_domain_filter: {type: array, items: {type: string}, required: false, maxItems: 20}
+        search_language_filter: {type: array, items: {type: string}, required: false, maxItems: 10}
         search_context_size: {type: string, required: false, enum: [low, medium, high]}
       note: "One successful request costs $0.005, including a no-result response. This row accepts one query; a raw own-key tool can use the full upstream API."
     test_request: {body: {query: "IANA reserved example domains", search_type: web, max_results: 3}}
@@ -62,8 +62,8 @@ endpoints:
         search_type: {type: string, required: true, enum: [fast], example: fast}
         max_results: {type: integer, required: false, default: 10, min: 1, max: 20, example: 1}
         country: {type: string, required: false, example: US}
-        search_domain_filter: {type: "array[string]", required: false, maxItems: 20}
-        search_language_filter: {type: "array[string]", required: false, maxItems: 10}
+        search_domain_filter: {type: array, items: {type: string}, required: false, maxItems: 20}
+        search_language_filter: {type: array, items: {type: string}, required: false, maxItems: 10}
         search_context_size: {type: string, required: false, enum: [low, medium, high]}
       note: "Use standard Search for rare, difficult or ambiguous questions. Fast Search has the same response shape and costs $0.001 per successful request."
     test_request: {body: {query: "IANA reserved example domains", search_type: fast, max_results: 3}}

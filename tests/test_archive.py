@@ -729,6 +729,87 @@ async def test_archive_hit_never_invites_review(clients: AsyncClient, serve, mon
     assert (await clients.get("/calls")).json()[0]["cached"] is True
 
 
+async def test_a_burst_of_hits_on_one_question_writes_its_demand_once(monkeypatch):
+    """Every hit on one key writes the same row. One write per interval is the demand signal;
+    one per hit is a queue on that row's lock."""
+    written: list[str] = []
+
+    async def write(key_hash: str) -> None:
+        written.append(key_hash)
+
+    clock = [1_000.0]
+    monkeypatch.setattr(archive, "_touch_write", write)
+    monkeypatch.setattr(archive, "_touched", {})
+    monkeypatch.setattr(archive, "_clock", lambda: clock[0])
+    for _ in range(50):
+        archive._touch("one-question")
+    archive._touch("another")
+    clock[0] += archive._TOUCH_EVERY_S - 0.001
+    archive._touch("one-question")
+    await archive.drain()
+    assert written == ["one-question", "another"], "still inside the interval"
+    clock[0] += 0.001
+    archive._touch("one-question")
+    await archive.drain()
+    assert written == ["one-question", "another", "one-question"], "and again once it is over"
+
+
+async def test_a_touch_that_timed_out_is_tried_again_by_the_next_hit(monkeypatch):
+    """The write is bounded by a timeout, which cancels it. Its key must not stay marked as
+    written, or its demand goes unrecorded for the rest of the interval."""
+    import asyncio
+    from contextlib import asynccontextmanager
+
+    from treg.infra import db as infra_db
+
+    attempts: list[str] = []
+
+    class Stuck:
+        async def execute(self, *args, **kwargs):
+            attempts.append("write")
+            await asyncio.sleep(3600)
+
+    @asynccontextmanager
+    async def stuck_session():
+        yield Stuck()
+
+    monkeypatch.setattr(archive, "_touched", {})
+    monkeypatch.setattr(archive, "_STORE_TIMEOUT_S", 0.01)
+    monkeypatch.setattr(infra_db, "background_session_maker", stuck_session)
+    for tries in (1, 2):
+        archive._touch("slow")
+        await asyncio.gather(*list(archive._pending), return_exceptions=True)
+        assert attempts == ["write"] * tries and "slow" not in archive._touched
+
+
+async def test_a_full_set_of_marks_gives_up_one_key_not_all_of_them(monkeypatch):
+    """More keys than marks: the marks of keys still inside their interval are kept, so their
+    hits go on writing nothing."""
+    written: list[str] = []
+
+    async def write(key_hash: str) -> None:
+        written.append(key_hash)
+
+    clock = [1_000.0]
+    monkeypatch.setattr(archive, "_touch_write", write)
+    monkeypatch.setattr(archive, "_touched", {})
+    monkeypatch.setattr(archive, "_clock", lambda: clock[0])
+    monkeypatch.setattr(archive, "_MAX_TOUCHED", 3)
+    for key in ("a", "b", "c"):
+        archive._touch(key)
+        clock[0] += 1
+    archive._touch("d")
+    assert list(archive._touched) == ["b", "c", "d"], "the oldest mark made room"
+    for key in ("b", "c", "d"):
+        archive._touch(key)
+    await archive.drain()
+    assert written == ["a", "b", "c", "d"]
+    clock[0] += archive._TOUCH_EVERY_S
+    archive._touch("e")
+    assert list(archive._touched) == ["e"], "marks whose interval is over are dropped first"
+    await archive.drain()
+
+
 async def test_a_hit_is_not_a_new_observation(clients: AsyncClient, serve):
     await clients.get(f"/call/{EP}?aweme_id=7")
     await archive.drain()
@@ -2067,6 +2148,19 @@ async def test_a_direct_call_names_the_routed_tool_for_its_job(clients: AsyncCli
     live = await clients.get(f"/call/{EP}?aweme_id=7&count=5")
     assert live.status_code == 200
     assert live.headers["X-Treg-Routed-Tool"] == "treg.tiktok.video.comments"
+
+
+async def test_a_direct_call_the_route_cannot_pick_names_no_routed_tool(clients: AsyncClient, serve,
+                                                                        monkeypatch):
+    """An endpoint of the job the route does not pick is only listed beside it; naming the route
+    would send the agent away from the provider it chose."""
+    from treg.domain.catalog import store as catalog_store
+    route = catalog_store.load().by_id["treg.tiktok.video.comments"]
+    monkeypatch.setitem(route, "routed_children",
+                        [c for c in route.get("routed_children") or [] if c != EP])
+    live = await clients.get(f"/call/{EP}?aweme_id=7&count=5")
+    assert live.status_code == 200
+    assert "X-Treg-Routed-Tool" not in live.headers
 
 
 async def test_pruner_keeps_an_answer_a_live_retry_row_points_to(clients: AsyncClient, shadow, monkeypatch):

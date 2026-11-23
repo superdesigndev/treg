@@ -1,0 +1,41 @@
+{
+  "industries": [
+    "Abrasives and Nonmetallic Minerals Manufacturing",
+    "Accessible Architecture and Design",
+    "… 492 more item(s) truncated"
+  ],
+  "seniorities": [
+    "Intern",
+    "Entry",
+    "… 10 more item(s) truncated"
+  ],
+  "departments": [
+    "Administrative",
+    "Communications / PR",
+    "… 17 more item(s) truncated"
+  ],
+  "countries": [
+    {
+      "name": "Afghanistan",
+      "iso2": "AF"
+    },
+    {
+      "name": "Åland Islands",
+      "iso2": "AX"
+    },
+    "… 257 more item(s) truncated"
+  ],
+  "size_buckets": [
+    {
+      "label": "1-10",
+      "min_employees": 1,
+      "max_employees": 10
+    },
+    {
+      "label": "11-50",
+      "min_employees": 11,
+      "max_employees": 50
+    },
+    "… 5 more item(s) truncated"
+  ]
+}

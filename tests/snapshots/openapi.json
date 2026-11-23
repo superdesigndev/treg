@@ -388,6 +388,45 @@
         "title": "CliApproveIn",
         "type": "object"
       },
+      "ComparisonIn": {
+        "additionalProperties": false,
+        "properties": {
+          "choice": {
+            "enum": [
+              "1",
+              "2",
+              "tie",
+              "both_bad"
+            ],
+            "title": "Choice",
+            "type": "string"
+          },
+          "comparison_id": {
+            "minimum": 1.0,
+            "title": "Comparison Id",
+            "type": "integer"
+          },
+          "reason": {
+            "anyOf": [
+              {
+                "maxLength": 300,
+                "minLength": 1,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Reason"
+          }
+        },
+        "required": [
+          "comparison_id",
+          "choice"
+        ],
+        "title": "ComparisonIn",
+        "type": "object"
+      },
       "ConnectionRenameIn": {
         "properties": {
           "name": {
@@ -1008,10 +1047,26 @@
         "title": "OnboardIn",
         "type": "object"
       },
+      "OnboardTeamIn": {
+        "properties": {
+          "ref": {
+            "default": "",
+            "title": "Ref",
+            "type": "string"
+          }
+        },
+        "title": "OnboardTeamIn",
+        "type": "object"
+      },
       "OrgIn": {
         "properties": {
           "name": {
             "title": "Name",
+            "type": "string"
+          },
+          "ref": {
+            "default": "",
+            "title": "Ref",
             "type": "string"
           }
         },
@@ -7258,6 +7313,147 @@
         "summary": "Cli Latest Download"
       }
     },
+    "/comparisons": {
+      "post": {
+        "operationId": "submit_comparison_comparisons_post",
+        "parameters": [
+          {
+            "in": "header",
+            "name": "x-treg-token",
+            "required": false,
+            "schema": {
+              "default": "",
+              "title": "X-Treg-Token",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "x-treg-org",
+            "required": false,
+            "schema": {
+              "default": "",
+              "title": "X-Treg-Org",
+              "type": "string"
+            }
+          },
+          {
+            "in": "cookie",
+            "name": "treg_session",
+            "required": false,
+            "schema": {
+              "default": "",
+              "title": "Treg Session",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ComparisonIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response Submit Comparison Comparisons Post",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Submit Comparison"
+      }
+    },
+    "/comparisons/next": {
+      "get": {
+        "description": "The team's oldest comparison waiting for a verdict, blinded: answer 1 and 2, no vendor.\n`compact`: the pair as a CLI prints it beside a call (`compare_app.compact_pair`), with the\nwords that ask for the verdict (`how_to_vote`), so they change without a CLI release.",
+        "operationId": "next_comparison_comparisons_next_get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "compact",
+            "required": false,
+            "schema": {
+              "default": false,
+              "title": "Compact",
+              "type": "boolean"
+            }
+          },
+          {
+            "in": "header",
+            "name": "x-treg-token",
+            "required": false,
+            "schema": {
+              "default": "",
+              "title": "X-Treg-Token",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "x-treg-org",
+            "required": false,
+            "schema": {
+              "default": "",
+              "title": "X-Treg-Org",
+              "type": "string"
+            }
+          },
+          {
+            "in": "cookie",
+            "name": "treg_session",
+            "required": false,
+            "schema": {
+              "default": "",
+              "title": "Treg Session",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Next Comparison"
+      }
+    },
     "/connections": {
       "get": {
         "description": "Every OAuth credential in the org, with health AND expiry. Metadata only — no token material.",
@@ -9985,6 +10181,23 @@
             }
           }
         ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "anyOf": [
+                  {
+                    "$ref": "#/components/schemas/OnboardTeamIn"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "Body"
+              }
+            }
+          }
+        },
         "responses": {
           "200": {
             "content": {

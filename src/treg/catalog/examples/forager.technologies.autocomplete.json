@@ -1,0 +1,18 @@
+{
+  "results": [
+    {
+      "id": "478",
+      "text": "React",
+      "selected_text": "React"
+    },
+    {
+      "id": "2816",
+      "text": "React Redux",
+      "selected_text": "React Redux"
+    },
+    "… 8 more item(s) truncated"
+  ],
+  "pagination": {
+    "more": true
+  }
+}
