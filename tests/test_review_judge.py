@@ -214,3 +214,11 @@ async def test_the_worker_command(clients, monkeypatch, capsys):
     assert await worker._reviews_judge(argparse.Namespace(max_seconds=60)) == 0
     out = json.loads(capsys.readouterr().out)
     assert out["privacy"]["judged"] == 1 and out["codes"]["judged"] == 1
+
+
+def test_the_codebook_sends_quota_on_treg_s_account_to_treg_and_caller_scope_to_context():
+    # A choice is decided mostly by its criteria, so the rules live there, not only in the instructions.
+    assert "treg's own account" in review_codes.CODES["TREG"]
+    assert "which is TREG" in review_codes.CODES["ERROR"]
+    assert "unfiltered" in review_codes.CODES["CONTEXT"] and "target segment" in review_codes.CODES["CONTEXT"]
+    assert review_codes.CODES["RISKY"].startswith("The vendor's own output")

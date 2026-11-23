@@ -9,15 +9,15 @@ from __future__ import annotations
 
 import math
 
-CODEBOOK_VERSION = "2026-11-20"
+CODEBOOK_VERSION = "2026-11-23"
 
 CODES = {
     "ACCURACY": "The data returned is wrong: wrong email/phone/value, wrong verdict (valid vs invalid), metrics "
                 "that contradict other sources, hallucinated or mismatched fields.",
     "STALE": "Data is out of date: person left the company, old title, outdated listing/posts/counts.",
-    "RISKY": "Result cannot be confirmed or is low confidence: guessed or pattern-generated email, catch-all / "
-             "accept-all domain, 'unknown' or 'risky' verdict, low confidence score, needs separate "
-             "verification before use.",
+    "RISKY": "The vendor's own output signals low confidence: a risky, unknown or catch-all / accept-all "
+             "verdict, a guessed or pattern-generated email, a low confidence score. Not the agent's routine "
+             "follow-up verification of results that look correct (that is CONTEXT).",
     "WRONG": "Wrong entity or off-target: different person/company/place, results unrelated to the query, "
              "irrelevant hits.",
     "PARAM": "The vendor ignored request parameters: site:, location/country/language, date range, filters, "
@@ -27,16 +27,22 @@ CODES = {
     "FORMAT": "Response shape problems: noisy/unstructured/hard-to-parse output, raw HTML, wrong field types, "
               "inconsistent schema.",
     "JS": "Page content missing because it needs JavaScript rendering (SPA shell, empty body).",
-    "ERROR": "Errors, timeouts, rate limits, 5xx, failed job.",
+    "ERROR": "Errors, timeouts, rate limits, 5xx, failed job, except quota or credit exhaustion on treg's "
+             "account with the vendor, which is TREG.",
     "BLOCK": "Blocked by anti-bot, captcha, login wall, 403 from target site.",
     "EMPTY": "No result at all for this input (empty list, not found, null).",
     "COVER": "Coverage gaps inside a batch or dataset: many keywords with no volume, missing metrics for part "
              "of the request, thin index for a region/niche (data exists elsewhere but this vendor lacks it).",
     "PRICE": "Complaint is about cost / credits.",
-    "CONTEXT": "Not the vendor's fault: the agent's own input or goal, a mismatch with what the agent needed "
-               "that any vendor would have, or the agent says the result was fine but not useful for its task.",
+    "CONTEXT": "Not the vendor's fault: the agent's own input or goal, including its own broad or unfiltered "
+               "query or an ambiguous term (a brand name that is a common word); results that match the query "
+               "but not the agent's target segment; the agent's routine follow-up verification of correct "
+               "results; a mismatch with what the agent needed that any vendor would have; or the agent says "
+               "the result was fine but not useful for its task.",
     "TREG": "treg-side problem: routing, normalization, wrong capability mapping, treg parameter handling, "
-            "billing display.",
+            "billing display, including a vendor error saying treg's own account or key is out of quota, "
+            "credits or limits (e.g. 'Limits exceeded' 32012, 402 'temporarily unavailable on treg's side', a "
+            "shared account's daily money limit), even when it looks like an ordinary error.",
     "NOREASON": "Reason is empty or too vague to classify.",
 }
 
