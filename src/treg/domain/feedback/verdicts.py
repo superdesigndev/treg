@@ -86,6 +86,12 @@ def about_people(capability: str | None) -> bool:
         f in s for s in segments for f in PERSON_FRAGMENTS))
 
 
+def may_quote(capability: str | None) -> bool:
+    """Whether an endpoint's reasons may be quoted at all: only when its capability is known and
+    not about people. An endpoint with no capability could be about anyone, so it shows none."""
+    return bool(capability) and not about_people(capability)
+
+
 def quotable(reason: str | None) -> bool:
     """A reason long enough to say something about the endpoint, and carrying no contact data.
     Quoted as written: the review tool tells agents reasons may be quoted without naming the team,

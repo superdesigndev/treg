@@ -421,7 +421,8 @@ Rules a change must keep:
   LinkedIn profile link is never quoted (`verdicts.quotable`), and an endpoint whose capability is
   about people (`verdicts.about_people`: a `people`, `user`, `employees`, `members`, `contacts`, ...
   segment, or any segment naming `email` or `phone`) shows its score and no reason at all, since its
-  reasons name the person. Reasons are otherwise quoted as written.
+  reasons name the person. So does an endpoint with no capability (`verdicts.may_quote`): it could be
+  about anyone. Reasons are otherwise quoted as written.
 
 `application.feedback.endpoint_verdicts` caches the fold per process; only the first fold is awaited,
 later refreshes run in the background and a failed refresh keeps the previous fold. With no fold the

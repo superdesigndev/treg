@@ -265,7 +265,7 @@ async def _fold_verdicts() -> dict[str, dict]:
     by_id = catalog_store.load().by_id
 
     def quotes_allowed(endpoint_id: str) -> bool:
-        return not verdicts.about_people((by_id.get(endpoint_id) or {}).get("capability"))
+        return verdicts.may_quote((by_id.get(endpoint_id) or {}).get("capability"))
 
     return verdicts.summarize(rows, quotes_allowed=quotes_allowed)
 

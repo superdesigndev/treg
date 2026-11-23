@@ -2,7 +2,7 @@
 from datetime import datetime, timedelta
 
 from treg.application import feedback
-from treg.domain.feedback.verdicts import Review, about_people, quotable, summarize
+from treg.domain.feedback.verdicts import Review, about_people, may_quote, quotable, summarize
 from treg.infra.db import session_maker
 from treg.models import CallReview
 
@@ -101,6 +101,12 @@ def test_capabilities_about_people():
     for capability in ("web.search", "google.serp.organic", "companies.profile.url",
                        "google.keywords.volume", None, ""):
         assert not about_people(capability), capability
+
+
+def test_an_endpoint_without_a_capability_is_never_quoted():
+    assert may_quote("web.search")
+    for capability in (None, "", "people.search"):
+        assert not may_quote(capability), capability
 
 
 async def test_platform_payload_carries_verdicts_past_the_threshold(clients):
