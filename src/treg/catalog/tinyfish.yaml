@@ -58,7 +58,7 @@ endpoints:
         include_thumbnail: {type: boolean, required: false, default: false}
         fetch: {type: object, required: false, note: "JSON object in the query string; {} attaches each result's fetched page content. A boolean is rejected (400 INVALID_INPUT).", example: {}}
     test_request: {queryParams: {query: "TinyFish API documentation", domain_type: web}}
-    cost: {type: free, value: 0, currency: USD, unit: call, source: docs, source_url: "https://www.tinyfish.ai/pricing", checked: '2026-09-23', confidence: verified, note: "TinyFish lists Search at $0.00 per request; a live call left the wallet unchanged."}
+    cost: {type: per_call, value: 0.001, currency: USD, unit: call, source: vendor_email, source_url: "https://www.tinyfish.ai/pricing", checked: '2026-11-24', confidence: documented, note: "treg charges $1 per 1,000 Search requests ($0.001 each)."}
     verified: '2026-09-23'
     added: '2026-09-23'
     example_response: examples/tinyfish.web.search.json
@@ -92,7 +92,7 @@ endpoints:
         include_thumbnail: {type: boolean, required: false, default: false}
         fetch: {type: object, required: false, note: "JSON object in the query string; {} attaches each result's fetched page content. A boolean is rejected (400 INVALID_INPUT).", example: {}}
     test_request: {queryParams: {query: "AI browser agents", domain_type: news}}
-    cost: {type: free, value: 0, currency: USD, unit: call, source: docs, source_url: "https://www.tinyfish.ai/pricing", checked: '2026-09-23', confidence: verified, note: "TinyFish lists Search at $0.00 per request; the news index uses the same free endpoint."}
+    cost: {type: per_call, value: 0.001, currency: USD, unit: call, source: vendor_email, source_url: "https://www.tinyfish.ai/pricing", checked: '2026-11-24', confidence: documented, note: "treg charges $1 per 1,000 Search requests ($0.001 each); the news index uses the same endpoint."}
     verified: '2026-09-23'
     added: '2026-09-23'
     example_response: examples/tinyfish.web.search.news.json
@@ -126,7 +126,7 @@ endpoints:
         include_thumbnail: {type: boolean, required: false, default: false}
         fetch: {type: object, required: false, note: "JSON object in the query string; {} attaches each result's fetched page content. A boolean is rejected (400 INVALID_INPUT).", example: {}}
     test_request: {queryParams: {query: "browser agent benchmark", domain_type: research_paper, pub_year_min: 2024}}
-    cost: {type: free, value: 0, currency: USD, unit: call, source: docs, source_url: "https://www.tinyfish.ai/pricing", checked: '2026-09-23', confidence: verified, note: "TinyFish lists Search at $0.00 per request; the research-paper index uses the same free endpoint."}
+    cost: {type: per_call, value: 0.001, currency: USD, unit: call, source: vendor_email, source_url: "https://www.tinyfish.ai/pricing", checked: '2026-11-24', confidence: documented, note: "treg charges $1 per 1,000 Search requests ($0.001 each); the research-paper index uses the same endpoint."}
     verified: '2026-09-23'
     added: '2026-09-23'
     example_response: examples/tinyfish.web.search.publications.json
@@ -147,7 +147,7 @@ endpoints:
     input:
       bodyType: json
       body:
-        urls: {type: array, items: {type: string}, required: true, minItems: 1, example: ["https://example.com"]}
+        urls: {type: array, items: {type: string}, required: true, minItems: 1, maxItems: 10, example: ["https://example.com"]}
         purpose: {type: string, required: false}
         format: {type: string, required: false, default: markdown, note: "markdown (default) for LLM consumption; html returns cleaned semantic HTML, not the page source — head scripts (including application/ld+json), forms, mailto targets and many attributes are removed; json returns a structured document tree. TinyFish has no raw/source-HTML format on this route; for HTML as the browser received it (head and scripts intact), use anyapi.web.scrape with formats including html."}
         links: {type: boolean, required: false, default: false}
@@ -161,7 +161,7 @@ endpoints:
         include_selectors: {type: array, items: {type: string}, required: false}
         exclude_selectors: {type: array, items: {type: string}, required: false}
     test_request: {body: {urls: ["https://example.com"], format: markdown, links: true, ttl: 0}}
-    cost: {type: free, value: 0, currency: USD, unit: call, source: docs, source_url: "https://www.tinyfish.ai/pricing", checked: '2026-09-23', confidence: verified, note: "TinyFish lists Fetch at $0.00 per URL; a live fetch left the wallet unchanged."}
+    cost: {type: per_result, value: 0.001, currency: USD, unit: page, reserve: {entities: {}}, source: vendor_email, source_url: "https://www.tinyfish.ai/pricing", checked: '2026-11-24', confidence: documented, note: "treg charges $1 per 1,000 URLs ($0.001 each), counted from the request's urls (at most 10)."}
     verified: '2026-09-23'
     added: '2026-09-23'
     example_response: examples/tinyfish.web.fetch.json
