@@ -3517,6 +3517,51 @@ HLRLOOKUP = OAuthProvider(
 )
 
 
+FORAGER = OAuthProvider(
+    service="forager",
+    display_name="Forager",
+    auth_kind="key",
+    token_label="API key",
+    token_placeholder="your Forager API key",
+    token_header="X-API-KEY",
+    token_format="{secret}",
+    # Every paid route carries the account id the key belongs to: /api/{account_id}/datastorage/...
+    # A wrong id answers 403, so the id is the second half of the credential and fills the path.
+    extra_credential_label="Account ID",
+    extra_credential_location="path",
+    extra_credential_param="account_id",
+    platform_extra_setting="platform_key_forager_account",
+    extra_credential_note=(
+        "Forager puts your account ID in the address of every data call. Add it after the key "
+        "(My Account page, or accounts[0].id from GET /api/users/current/); treg fills it in "
+        "wherever a path says {account_id}."
+    ),
+    setup_url="https://app.forager.ai/keys",
+    setup_action_label="Get your Forager API key and account ID",
+    setup_steps=(
+        "Sign up at app.forager.ai and open API to create and copy a key.",
+        "Copy your Account ID from the My Account page. Paste the key here, then add the ID.",
+    ),
+    setup_note=(
+        "Lookups and searches spend plan credits only when they return data: a person or company "
+        "search page is 1 credit, a job search page 2, a personal or work email 5, a phone number "
+        "15 (9 with most_coverage). Counts, autocomplete and the balance check are free."
+    ),
+    auth_uri="", token_uri="", scopes={}, client_id_setting="", client_secret_setting="",
+    category="Enrichment",
+    summary=(
+        "Find people, companies and job posts, look up a person by LinkedIn, email or phone, and "
+        "get their phone numbers, personal and work emails, and a website's tech stack."
+    ),
+    base_url="https://api-v2.forager.ai",
+    docs_url="https://docs.forager.ai/",
+    # Free, and needs no account id: 200 with the user and its accounts for a good key, 403
+    # {"detail": "Authentication credentials were not provided."} for a bad or missing one.
+    probe_path="/api/users/current/",
+    probe_reject_statuses=(401, 403),
+)
+
+
 PREDICTLEADS = OAuthProvider(
     service="predictleads",
     display_name="PredictLeads",
@@ -4526,7 +4571,7 @@ REGISTRY: dict[str, OAuthProvider] = {
         SCRAPEGRAPHAI, SERPER, BRAVESEARCH, LITESCRAPE, CLORO, LOCALFALCON,
         # more Enrichment API-key providers
         LUSHA, CORESIGNAL, DIFFBOT, THECOMPANIESAPI, LEADMAGIC, ENRICHLAYER, FIBER_AI, CRUSTDATA, THEIRSTACK, JOBSPIPE, AVIATO,
-        COMPANYENRICH, FUNDABLE, CORPOAPI, OCEANIO, ADYNTEL, TOMBA, TRESTLEIQ, HLRLOOKUP, PREDICTLEADS, FINDYMAIL, ANYMAILFINDER, ENROW, FILTRAT, FILTRAT_FINDER, DROPCONTACT, BRANDDEV, ICYPEAS, LEADSFORGE, MAPSDATA,
+        COMPANYENRICH, FUNDABLE, CORPOAPI, OCEANIO, ADYNTEL, TOMBA, TRESTLEIQ, HLRLOOKUP, FORAGER, PREDICTLEADS, FINDYMAIL, ANYMAILFINDER, ENROW, FILTRAT, FILTRAT_FINDER, DROPCONTACT, BRANDDEV, ICYPEAS, LEADSFORGE, MAPSDATA,
         INFLUENCERSCLUB, VILLAGE,
         # Places: intent-scored local search
         ATLY,
