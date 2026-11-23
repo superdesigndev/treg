@@ -1284,7 +1284,8 @@ def _marketplace_upstream(
     ep: dict, provider, query_params, authorization_method: str = "",
 ) -> tuple[str, set[str]]:
     """The full upstream URL for an endpoint-id call, with `{placeholder}` path params filled from
-    the caller's query params (they are consumed — dropped from the relayed query). Missing
+    the caller's query params (they are consumed — dropped from the relayed query). A placeholder
+    the provider's credential fills (`credential_path_params`) stays for the relay. Missing
     required params fail HERE, before a credential is touched or money spent."""
     path = (ep.get("authorization_paths") or {}).get(authorization_method) or ep["path"] or "/"
     inp = ep.get("input") or {}
@@ -1299,7 +1300,11 @@ def _marketplace_upstream(
                         f"{ep['id']} does not accept {name} with {authorization_method}; "
                         f"choose {', '.join(allowed)} or remove {name}"))
     consumed = set()
+    credential_filled = getattr(provider, "credential_path_params", frozenset())
     for name in re.findall(r"{(\w+)}", path):
+        if name in credential_filled:
+            consumed.add(name)  # the relay fills it from the credential; a caller value is dropped
+            continue
         value = query_params.get(name)
         if value is None:
             raise ResolutionFailed(

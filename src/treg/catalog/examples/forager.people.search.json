@@ -1,0 +1,256 @@
+{
+  "search_results": [
+    {
+      "id": 137189404,
+      "role_title": "Co-chair",
+      "start_date": "2000-01-01",
+      "end_date": null,
+      "duration": null,
+      "description": null,
+      "is_current": true,
+      "organization": {
+        "id": 5907,
+        "name": "Gates Foundation",
+        "legal_name": "Gates Foundation",
+        "website": "https://gatesfoundation.org/about/careers",
+        "domain": "gatesfoundation.org",
+        "domain_rank": 11188,
+        "logo": "https://media.licdn.com/dms/image/v2/D560BAQEgMqqFTd40Tg/company-logo_400_400/company-logo_400_400/0/1736784969376/bill__melinda_gates_foundation_logo?e=1788393600&t=HqFzWuWAmBIGX4G7MaS3PE6fHZFdNTt_Fhy2xFUIoiU&v=beta",
+        "description": "Guided by the belief that every life has equal value, the Gates Foundation works to help all people lead healthy, productive lives. In developing countries, we work with partners to create impactful solutions so that people can take charge of their futures and achieve their full potential. In the United States, we aim to ensure that everyone—especially those with the fewest resources—has access to the opportunities needed to succeed in school and life. Based in Seattle, Washington, the foundatio… [587 chars total]",
+        "founded_date": "2000-01-01",
+        "operating_status": null,
+        "employees_range": "1001 - 5000",
+        "employees_amount": 4216,
+        "keywords": [
+          {
+            "id": 846,
+            "name": "Nutrition"
+          },
+          {
+            "id": 1391,
+            "name": "Global Health"
+          },
+          "… 14 more item(s) truncated"
+        ],
+        "location": {
+          "id": 212006,
+          "name": "seattle, wa, united states",
+          "osm_locations": [
+            {
+              "id": 10,
+              "name": "United States",
+              "place_type": "country"
+            },
+            {
+              "id": 194,
+              "name": "Washington, United States",
+              "place_type": "state"
+            },
+            "… 3 more item(s) truncated"
+          ]
+        },
+        "finance_info": {
+          "revenue": 7007000000
+        },
+        "linkedin_info": {
+          "public_identifier": "duplicate__8736_gates-foundation",
+          "industry": {
+            "id": 97,
+            "name": "Non-Profit Organization Management"
+          },
+          "public_profile_url": "https://www.linkedin.com/company/duplicate__8736_gates-foundation/"
+        },
+        "addresses": [
+          {
+            "street_number": null,
+            "street_name": null,
+            "city": "London",
+            "state": null,
+            "postcode": null,
+            "country": "GB",
+            "summary": "London, GB"
+          },
+          {
+            "street_number": null,
+            "street_name": null,
+            "city": "Addis Ababa",
+            "state": null,
+            "postcode": null,
+            "country": "ET",
+            "summary": "Addis Ababa, ET"
+          },
+          "… 8 more item(s) truncated"
+        ],
+        "date_updated": "2026-08-14T06:39:59.683191Z",
+        "found_simple_events": [],
+        "found_funding_events": [],
+        "found_job_post_events": []
+      },
+      "person": {
+        "id": 292334,
+        "full_name": "Bill Gates",
+        "first_name": "Bill",
+        "last_name": "Gates",
+        "photo": "https://media.licdn.com/dms/image/v2/D5603AQF-RYZP55jmXA/profile-displayphoto-shrink_800_800/B56ZRi8g.aGsAc-/0/1736826818808?e=1795046400&t=vjlWDhSquN3IE4WjUEIKTJrzCrKe3O8jGgYhBd69uZs&v=beta",
+        "gender": null,
+        "headline": "Chair, Gates Foundation and Founder, Breakthrough Energy",
+        "description": "Chair of the Gates Foundation. Founder of Breakthrough Energy. Co-founder of Microsoft. Voracious reader. Avid traveler. Active blogger.",
+        "skills": [],
+        "location": {
+          "id": 6560,
+          "name": "seattle, washington, united states",
+          "osm_locations": [
+            {
+              "id": 10,
+              "name": "United States",
+              "place_type": "country"
+            },
+            {
+              "id": 194,
+              "name": "Washington, United States",
+              "place_type": "state"
+            },
+            "… 3 more item(s) truncated"
+          ]
+        },
+        "linkedin_info": {
+          "public_identifier": "williamhgates",
+          "industry": {
+            "id": 106,
+            "name": "Philanthropy"
+          },
+          "public_profile_url": "https://www.linkedin.com/in/williamhgates/"
+        },
+        "date_updated": "2026-10-29T07:31:35.923565Z"
+      },
+      "date_updated": "2026-10-29T07:31:36.248535Z"
+    },
+    {
+      "id": 137189420,
+      "role_title": "Co-founder",
+      "start_date": "1975-01-01",
+      "end_date": null,
+      "duration": null,
+      "description": null,
+      "is_current": true,
+      "organization": {
+        "id": 25,
+        "name": "Microsoft",
+        "legal_name": "Microsoft",
+        "website": "https://microsoft.com/",
+        "domain": "microsoft.com",
+        "domain_rank": null,
+        "logo": "https://media.licdn.com/dms/image/v2/D560BAQH32RJQCl3dDQ/company-logo_400_400/B56ZYQ0mrGGoAc-/0/1744038948046/microsoft_logo?e=1788393600&t=eriofk1LQ-SSOJD7uR8-6ajq3GhbEynm84YI7PEZjXM&v=beta",
+        "description": "Every company has a mission. What's ours? To empower every person and every organization to achieve more. We believe technology can and should be a force for good and that meaningful innovation contributes to a brighter world in the future and today. Our culture doesn’t just encourage curiosity; it embraces it. Each day we make progress together by showing up as our authentic selves. We show up with a learn-it-all mentality. We show up cheering on others, knowing their success doesn't diminish o… [747 chars total]",
+        "founded_date": "1975-01-01",
+        "operating_status": null,
+        "employees_range": "10001 - +",
+        "employees_amount": 233200,
+        "keywords": [
+          {
+            "id": 117,
+            "name": "Business Software"
+          },
+          {
+            "id": 118,
+            "name": "Developer Tools"
+          },
+          "… 26 more item(s) truncated"
+        ],
+        "location": {
+          "id": 12346,
+          "name": "redmond, washington, united states",
+          "osm_locations": [
+            {
+              "id": 10,
+              "name": "United States",
+              "place_type": "country"
+            },
+            {
+              "id": 194,
+              "name": "Washington, United States",
+              "place_type": "state"
+            },
+            "… 3 more item(s) truncated"
+          ]
+        },
+        "finance_info": {
+          "revenue": 236584000000
+        },
+        "linkedin_info": {
+          "public_identifier": "microsoft",
+          "industry": {
+            "id": 25,
+            "name": "Computer Software"
+          },
+          "public_profile_url": "https://www.linkedin.com/company/microsoft/"
+        },
+        "addresses": [
+          {
+            "street_number": null,
+            "street_name": "1106 Federal Capital",
+            "city": "Buenos Aires",
+            "state": null,
+            "postcode": null,
+            "country": "AR",
+            "summary": "1106 Federal Capital, Buenos Aires, AR"
+          },
+          {
+            "street_number": null,
+            "street_name": "Dronning Eufemia gate 71",
+            "city": "Oslo",
+            "state": null,
+            "postcode": "0194",
+            "country": "NO",
+            "summary": "Dronning Eufemia gate 71, Oslo, 0194, NO"
+          },
+          "… 43 more item(s) truncated"
+        ],
+        "date_updated": "2026-08-14T03:25:05.792438Z",
+        "found_simple_events": [],
+        "found_funding_events": [],
+        "found_job_post_events": []
+      },
+      "person": {
+        "id": 292334,
+        "full_name": "Bill Gates",
+        "first_name": "Bill",
+        "last_name": "Gates",
+        "photo": "https://media.licdn.com/dms/image/v2/D5603AQF-RYZP55jmXA/profile-displayphoto-shrink_800_800/B56ZRi8g.aGsAc-/0/1736826818808?e=1795046400&t=vjlWDhSquN3IE4WjUEIKTJrzCrKe3O8jGgYhBd69uZs&v=beta",
+        "gender": null,
+        "headline": "Chair, Gates Foundation and Founder, Breakthrough Energy",
+        "description": "Chair of the Gates Foundation. Founder of Breakthrough Energy. Co-founder of Microsoft. Voracious reader. Avid traveler. Active blogger.",
+        "skills": [],
+        "location": {
+          "id": 6560,
+          "name": "seattle, washington, united states",
+          "osm_locations": [
+            {
+              "id": 10,
+              "name": "United States",
+              "place_type": "country"
+            },
+            {
+              "id": 194,
+              "name": "Washington, United States",
+              "place_type": "state"
+            },
+            "… 3 more item(s) truncated"
+          ]
+        },
+        "linkedin_info": {
+          "public_identifier": "williamhgates",
+          "industry": {
+            "id": 106,
+            "name": "Philanthropy"
+          },
+          "public_profile_url": "https://www.linkedin.com/in/williamhgates/"
+        },
+        "date_updated": "2026-10-29T07:31:35.923565Z"
+      },
+      "date_updated": "2026-10-29T07:31:36.414881Z"
+    },
+    "… 1 more item(s) truncated"
+  ],
+  "total_search_results": 3
+}

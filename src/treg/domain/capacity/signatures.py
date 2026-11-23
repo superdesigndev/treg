@@ -85,6 +85,9 @@ _TABLE: list[Signature] = [
     Signature("jobspipe", 402, r"monthly request quota exceeded", "balance", tripwire=True),
     Signature("jobspipe", 402, r"need the \w+ package or above", "unknown"),
     Signature("jobspipe", 429, r"rate limit exceeded", "burst"),
+    # Forager: its per-key throttle is a 429 {"detail": "Request was throttled. Expected available in 1
+    # second."} with Retry-After.
+    Signature("forager", 429, r"request was throttled", "burst"),
     Signature("thecompaniesapi", 403, r"noCreditsRemaining", "balance", tripwire=True),
     Signature("companyenrich", 402, r"payment required", "balance", tripwire=True),
     Signature("akta", 402, r"insufficient credits", "balance"),

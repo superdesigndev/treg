@@ -44,6 +44,12 @@ adapters:
     out: {email: email, first_name: info.firstname, last_name: info.lastname,
           verified: "qualification == 'valid'"}
     miss: "email == null"
+  forager.people.email.find:
+    accepts: [[first_name, last_name, domain], [linkedin_handle]]
+    in: {first_name: body.first_name, last_name: body.last_name, domain: body.domain,
+         linkedin_handle: body.linkedin_public_identifier}
+    test_identity: {first_name: Jane, last_name: Doe, domain: example.com}
+    out: {email: "emails[0].email", verified: "emails[0].validation_status == 'valid'"}
   filtrat-finder.people.email.find:
     accepts: [[first_name, last_name, domain]]
     in: {first_name: body.first_name, last_name: body.last_name, domain: body.domain}
@@ -454,6 +460,13 @@ adapters:
     in:  {linkedin_url: queryParams.linkedinURL, email: queryParams.email}
     out: {phone: "phones[0].phoneNumber"}
     miss: "phones == []"
+  forager.people.phone.find:
+    # most_coverage returns every verified number, the highest_quality ones included, for fewer credits.
+    accepts: [[linkedin_handle]]
+    in: {linkedin_handle: body.linkedin_public_identifier}
+    const: {body.quality_tier: most_coverage}
+    test_identity: {linkedin_handle: routing-fixture}
+    out: {phone: "[0].phone_number"}
   limadata.people.phone.find:
     accepts: [[linkedin_url], [full_name, domain], [first_name, last_name, domain]]
     in: {linkedin_url: body.linkedin_url, full_name: body.name, domain: body.company_domain}
@@ -709,6 +722,19 @@ adapters:
           title: profile.title, company: company.summary.name, company_domain: company.link.domain,
           linkedin_url: link.linkedin, location: location.default}
     miss: "profile.full_name == null"
+  forager.people.enrich:
+    accepts: [[linkedin_handle]]
+    in: {linkedin_handle: body.linkedin_public_identifier}
+    out: &forager-person {full_name: full_name, first_name: first_name, last_name: last_name,
+          title: "get(flagged(roles, 'is_current'), 'role_title')",
+          company: "get(flagged(roles, 'is_current'), 'organization.name')",
+          company_domain: "get(flagged(roles, 'is_current'), 'organization.domain')",
+          linkedin_url: linkedin_info.public_profile_url, location: location.name}
+  forager.people.enrich.by_email:
+    accepts: [[email]]
+    in: {email: body.email}
+    test_identity: {email: jane.doe@example.com}
+    out: *forager-person
   tomba.people.enrich:
     accepts: [[email]]
     in:  {email: queryParams.email}

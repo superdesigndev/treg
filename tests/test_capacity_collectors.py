@@ -1208,3 +1208,19 @@ async def test_openrouter_without_a_management_key_is_no_api_and_skips_request(p
         row = await collectors.provider_balance("openrouter", client)
     snap = sweep.snapshot_from("openrouter", row)
     assert snap.error == "no_balance_api" and snap.remaining is None
+
+
+async def test_forager_balance_reads_the_free_current_user():
+    def probe(request):
+        assert str(request.url) == "https://api-v2.forager.ai/api/users/current/"
+        assert request.headers["x-api-key"] == "test-key"
+        return httpx.Response(200, json={"accounts": [{"id": 1, "subscription": {
+            "is_active": True, "credits_balance": "1502.00", "subscription_tier": {"name": "Starter"}}}]})
+
+    async with httpx.AsyncClient(transport=httpx.MockTransport(probe)) as client:
+        row = await collectors._forager(client, "test-key")
+    assert row["value"] == 1502.0 and row["unit"] == "credits"
+    async with httpx.AsyncClient(transport=httpx.MockTransport(
+            lambda _: httpx.Response(200, json={"accounts": []}))) as client:
+        with pytest.raises(ValueError, match="no credit balance"):
+            await collectors._forager(client, "test-key")

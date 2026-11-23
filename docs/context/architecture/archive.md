@@ -365,7 +365,7 @@ absent from the ledger.
 The call replays the stored request shape including the keying headers (`req_headers`; without
 them the recording lands under a different key), with injection from the one authoritative
 builder `oauth_providers.platform_bindings` (outside `api.py`, which this worker must not import),
-and records through the same `_store`.
+a path binding filling its placeholder in the stored URL, and records through the same `_store`.
 
 ## The recorder
 

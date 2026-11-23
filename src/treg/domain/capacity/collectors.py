@@ -839,6 +839,23 @@ async def _hlrlookup(c, key):
     return {"value": float(balance), "unit": "credits", "note": ""}
 
 
+async def _forager(c, key):
+    # Free: GET /api/users/current/ spends nothing, needs no account id in the path and answers 403
+    # for a bad key. The key's one account carries the plan's credit balance.
+    d = await _get(c, "https://api-v2.forager.ai/api/users/current/", headers={"X-API-KEY": key})
+    accounts = d.get("accounts") if isinstance(d, dict) else None
+    sub = (accounts[0] or {}).get("subscription") if isinstance(accounts, list) and accounts else None
+    try:
+        balance = Decimal(str(sub.get("credits_balance"))) if isinstance(sub, dict) else None
+    except (InvalidOperation, ValueError):
+        balance = None
+    if balance is None or not balance.is_finite():
+        raise ValueError("Forager returned no credit balance")
+    tier = (sub.get("subscription_tier") or {}).get("name", "?")
+    return {"value": float(balance), "unit": "credits",
+            "note": f"plan {tier}, subscription {'active' if sub.get('is_active') else 'inactive'}"}
+
+
 async def _predictleads(c, key):
     # The platform slot holds base64("api_key:api_token") for HTTP Basic — pass it straight through.
     d = await _get(c, "https://predictleads.com/api/v3/api_subscription",
@@ -1168,6 +1185,7 @@ BALANCE_ROUTES = {
     "predictleads": _predictleads,
     "tomba": _tomba,
     "hlrlookup": _hlrlookup,
+    "forager": _forager,
     "dataforseo": _dataforseo,
     "tikhub": _tikhub,
     "tinyfish": _tinyfish,
@@ -1280,7 +1298,7 @@ NO_BALANCE_API = {
 
 # platform_key_* slots that are the SECOND half of a provider's credential pair, not a provider of
 # their own (see OAuthProvider.platform_extra_setting) — they must not become report rows.
-AUX_SLOTS = {"tomba_secret", "hlrlookup_secret"}
+AUX_SLOTS = {"tomba_secret", "hlrlookup_secret", "forager_account"}
 
 # Vendors that keep answering calls past a zero balance and bill the overage. A reading below
 # `EMPTY_BELOW` from one of them is `_overdrawn`, never exact: exact, it would refuse calls the

@@ -4,6 +4,8 @@
 Usage (credential comes ONLY from the environment — never from a file or argv):
     TREG_CATALOG_CRED='<secret>' uv run python scripts/catalog_verify.py <service> [--id <endpoint-id>] [--write]
     TREG_CATALOG_CRED='<secret>' uv run python scripts/catalog_verify.py <service> --extended [--id …]
+A provider whose credential has a second half (Tomba's secret, Forager's path account id) reads
+that half from TREG_CATALOG_CRED_EXTRA.
 
 For each endpoint in src/treg/catalog/<service>.yaml it sends `test_request` to base_url+path with
 the provider's auth shape and required protocol headers (taken from treg.oauth_providers —
@@ -45,6 +47,7 @@ CATALOG = ROOT / "src" / "treg" / "catalog"
 sys.path.insert(0, str(ROOT / "src"))
 from treg.domain.catalog import outcome, schema, store  # noqa: E402
 from treg.domain.catalog.store import EXAMPLE_MAX_BYTES as MAX_BYTES  # noqa: E402
+from treg.infra.upstream import pathsegment  # noqa: E402
 MAX_STR = 500
 MAX_LIST = 2
 
@@ -154,6 +157,15 @@ def main() -> int:
         else:
             headers[prov.token_header or "Authorization"] = (prov.token_format or "Bearer {secret}").format(secret=secret)
         headers.update(dict(prov.required_headers))
+    extra = os.environ.get("TREG_CATALOG_CRED_EXTRA", "")
+    path_values: dict[str, str] = {}
+    if extra and prov.needs_extra_credential and not args.via_treg:
+        if prov.extra_credential_location == "path":
+            path_values[prov.extra_credential_name] = extra
+        elif prov.extra_credential_location == "query":
+            base_query[prov.extra_credential_name] = extra
+        elif prov.extra_credential_location == "header":
+            headers[prov.extra_credential_name] = extra
 
     failures = 0
     today = date.today().isoformat()
@@ -175,7 +187,7 @@ def main() -> int:
             prefix = urlsplit(base).path.rstrip("/")
             if prefix and path.startswith(prefix + "/"):
                 path = path[len(prefix):]
-            url = base + path
+            url = pathsegment.fill(base + path, path_values)
             params = {**base_query, **(treq.get("queryParams") or {})}
             body = treq.get("body")
             form = body if treq.get("bodyType") == "form" else None

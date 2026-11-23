@@ -301,6 +301,41 @@ def test_hlrlookup_platform_bindings_match_the_byok_pair():
     ]
 
 
+async def test_forager_connect_checks_the_key_then_binds_the_account_id_to_the_path(clients, monkeypatch):
+    def probe(request):
+        assert (request.method, request.url.path) == ("GET", "/api/users/current/")
+        if request.headers["x-api-key"] != "own-key":
+            return httpx.Response(403, json={"detail": "Authentication credentials were not provided."})
+        return httpx.Response(200, json={"id": 1, "accounts": [{"id": 1234, "subscription": {}}]})
+
+    async with AsyncClient(transport=httpx.MockTransport(probe)) as upstream:
+        monkeypatch.setattr(app.state, "http", upstream)
+        bad = await clients.post("/connections/token", json={"provider": "forager", "token": "bad-key"})
+        assert bad.status_code == 422, bad.text
+        first = await clients.post("/connections/token", json={"provider": "forager", "token": "own-key"})
+        assert first.status_code == 200, first.text
+        ready = await clients.post(
+            f"/connections/{first.json()['id']}/extra-credential", json={"value": "1234"},
+        )
+        assert ready.status_code == 200, ready.text
+
+    tool = next(t for t in (await clients.get("/tools")).json() if t["name"] == "forager")
+    assert [(b["location"], b["name"]) for b in tool["bindings"]] == [
+        ("header", "X-API-KEY"), ("path", "account_id"),
+    ]
+
+
+def test_forager_platform_bindings_match_the_byok_pair():
+    provider = P.get("forager")
+    assert provider is not None and provider.credential_path_params == {"account_id"}
+    assert P.platform_bindings(provider) == [
+        {"platform_setting": "platform_key_forager", "injector": "env",
+         "location": "header", "name": "X-API-KEY", "format": "{secret}"},
+        {"platform_setting": "platform_key_forager_account", "injector": "env",
+         "location": "path", "name": "account_id", "format": "{secret}"},
+    ]
+
+
 def test_paid_key_verification_probe_is_typed_and_unique():
     assert all(isinstance(p.probe_cost_micro, int) and p.probe_cost_micro >= 0
                for p in P.REGISTRY.values())
