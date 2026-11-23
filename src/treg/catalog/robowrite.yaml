@@ -1,0 +1,206 @@
+provider: robowrite
+source:
+  docs: https://www.robowrite.ai/api
+  openapi: https://www.robowrite.ai/openapi.json
+  curated: '2026-11-20'
+pricing_url: https://www.robowrite.ai/pricing
+limits: "120 requests per 60 seconds per organization, shared across its keys. Honor Retry-After on HTTP 429."
+# The catalog uses the customer's own credential for private workspace data.
+cache: forbidden
+response_retention: forbidden
+defaults:
+  price: {value: '0', currency: USD, per: 1, unit: call}
+  # The five usage counters were unchanged after each tested GET. Workspace subscription fees are separate.
+  provenance: {source: observed, source_url: 'https://www.robowrite.ai/api', checked: '2026-11-20', confidence: verified}
+proposed_capabilities:
+  editorial.brands.list: "List the brands managed in a workspace"
+  editorial.properties.list: "List publishing destinations configured for a workspace"
+  editorial.briefs.list: "Find editorial briefs in a workspace"
+  editorial.content.list: "Find saved editorial content in a workspace"
+  editorial.documents.list: "Find editorial source documents in a workspace"
+  editorial.article_templates.list: "List editorial article templates"
+  editorial.article_templates.get: "Read an editorial article template"
+  account.jobs.list: "List every background job on your account"
+
+endpoints:
+  - id: robowrite.account.usage
+    added: '2026-11-20'
+    capability: account.usage
+    platform: account
+    scope: own_account
+    kind: account
+    method: GET
+    path: /account
+    name: Check workspace allowances
+    summary: Check how much content allowance the workspace has left this month, alongside its brands and plan.
+    test_request: {queryParams: {}}
+    docs_url: https://www.robowrite.ai/api/reference
+
+  - id: robowrite.editorial.brands.list
+    added: '2026-11-20'
+    capability: editorial.brands.list
+    platform: editorial
+    scope: own_account
+    kind: data
+    method: GET
+    path: /brands
+    name: List workspace brands
+    summary: Find brand IDs and names to filter a workspace’s editorial work.
+    input:
+      queryParams:
+        limit: {type: "integer", required: false, min: 1, max: 200, default: 100, example: 1}
+        offset: {type: "integer", required: false, min: 0, default: 0}
+    test_request: {queryParams: {limit: 1}}
+    docs_url: https://www.robowrite.ai/api/reference
+
+  - id: robowrite.editorial.properties.list
+    added: '2026-11-20'
+    capability: editorial.properties.list
+    platform: editorial
+    scope: own_account
+    kind: data
+    method: GET
+    path: /properties
+    name: List publishing properties
+    summary: Find the websites, newsletters and social channels connected as publishing destinations. Filter by channel or verification status.
+    input:
+      queryParams:
+        channel_type: {type: "string", required: false, enum: ["blog", "linkedin", "twitter", "newsletter", "youtube", "podcast"]}
+        verified_only: {type: "boolean", required: false, default: false}
+        limit: {type: "integer", required: false, min: 1, max: 200, default: 50, example: 1}
+        offset: {type: "integer", required: false, min: 0, default: 0}
+    test_request: {queryParams: {limit: 1}}
+    docs_url: https://www.robowrite.ai/api/reference
+
+  - id: robowrite.editorial.briefs.list
+    added: '2026-11-20'
+    capability: editorial.briefs.list
+    platform: editorial
+    scope: own_account
+    kind: data
+    method: GET
+    path: /briefs
+    name: Find editorial briefs
+    summary: Find editorial briefs that are ready for writers or already approved. Filter by brand, keyword, status or date.
+    input:
+      queryParams:
+        brand_id: {type: "string", required: false, note: "Workspace resource UUID."}
+        property_id: {type: "string", required: false, note: "Workspace resource UUID."}
+        status: {type: "string", required: false, enum: ["planned", "ready", "generating", "draft", "in_review", "approved", "published", "cancelled"]}
+        format: {type: "string", required: false, enum: ["blog_post", "landing_page", "linkedin_post", "linkedin_article", "twitter_post", "twitter_thread", "newsletter", "video_script", "podcast_outline", "case_study", "whitepaper", "ebook", "infographic", "webinar", "email_sequence"]}
+        pillar_id: {type: "string", required: false, note: "Workspace resource UUID."}
+        created_from: {type: "string", required: false, note: "RFC 3339 timestamp."}
+        created_before: {type: "string", required: false, note: "RFC 3339 timestamp."}
+        q: {type: "string", required: false, example: "guide"}
+        keyword: {type: "string", required: false, example: "content planning"}
+        limit: {type: "integer", required: false, min: 1, max: 200, default: 50, example: 1}
+        offset: {type: "integer", required: false, min: 0, default: 0}
+    test_request: {queryParams: {limit: 1}}
+    docs_url: https://www.robowrite.ai/api/reference
+
+  - id: robowrite.editorial.content.list
+    added: '2026-11-20'
+    capability: editorial.content.list
+    platform: editorial
+    scope: own_account
+    kind: data
+    method: GET
+    path: /content
+    name: Find drafts and saved content
+    summary: Pick up a saved blog post or newsletter draft. Find it by title, keyword or date and get its latest version and brief references.
+    input:
+      queryParams:
+        brand_id: {type: "string", required: false, note: "Workspace resource UUID."}
+        property_id: {type: "string", required: false, note: "Workspace resource UUID."}
+        status: {type: "string", required: false, enum: ["planned", "ready", "generating", "draft", "in_review", "approved", "published", "cancelled"]}
+        format: {type: "string", required: false, enum: ["blog_post", "landing_page", "linkedin_post", "linkedin_article", "twitter_post", "twitter_thread", "newsletter", "video_script", "podcast_outline", "case_study", "whitepaper", "ebook", "infographic", "webinar", "email_sequence"]}
+        pillar_id: {type: "string", required: false, note: "Workspace resource UUID."}
+        created_from: {type: "string", required: false, note: "RFC 3339 timestamp."}
+        created_before: {type: "string", required: false, note: "RFC 3339 timestamp."}
+        q: {type: "string", required: false, example: "guide"}
+        keyword: {type: "string", required: false, example: "content planning"}
+        limit: {type: "integer", required: false, min: 1, max: 200, default: 50, example: 1}
+        offset: {type: "integer", required: false, min: 0, default: 0}
+        content_type: {type: "string", required: false, enum: ["blog_post", "landing_page", "linkedin_post", "linkedin_article", "twitter_post", "twitter_thread", "newsletter", "video_script", "podcast_outline", "case_study", "whitepaper", "ebook", "infographic", "webinar", "email_sequence"]}
+        brief_id: {type: "string", required: false, note: "Workspace resource UUID."}
+    test_request: {queryParams: {limit: 1}}
+    docs_url: https://www.robowrite.ai/api/reference
+
+  - id: robowrite.editorial.documents.list
+    added: '2026-11-20'
+    capability: editorial.documents.list
+    platform: editorial
+    scope: own_account
+    kind: data
+    method: GET
+    path: /documents
+    name: Search brand reference documents
+    summary: Find source material for a brand in the workspace document library. Search reference documents by name, category or status.
+    input:
+      queryParams:
+        category: {type: "string", required: false, enum: ["brand_guidelines", "product_service", "customer_persona", "marketing_material", "case_study", "technical_spec", "other"]}
+        status: {type: "string", required: false, enum: ["uploaded", "extracting", "summarizing", "ready", "failed", "archived"]}
+        q: {type: "string", required: false, example: "guide"}
+        limit: {type: "integer", required: false, min: 1, max: 200, default: 50, example: 1}
+        offset: {type: "integer", required: false, min: 0, default: 0}
+    test_request: {queryParams: {limit: 1}}
+    docs_url: https://www.robowrite.ai/api/reference
+
+  - id: robowrite.editorial.article_templates.list
+    added: '2026-11-20'
+    capability: editorial.article_templates.list
+    platform: editorial
+    scope: own_account
+    kind: data
+    method: GET
+    path: /article-templates
+    name: Browse article templates
+    summary: List built-in article structures and custom workspace templates for planning a brief.
+    input:
+      queryParams:
+        include_archived: {type: "boolean", required: false, default: false}
+        offset: {type: "integer", required: false, min: 0, default: 0}
+        limit: {type: "integer", required: false, min: 1, max: 200, default: 50, example: 1}
+    test_request: {queryParams: {limit: 1}}
+    docs_url: https://www.robowrite.ai/api/reference
+
+  - id: robowrite.editorial.article_templates.get
+    added: '2026-11-20'
+    capability: editorial.article_templates.get
+    platform: editorial
+    scope: own_account
+    kind: data
+    method: GET
+    path: /article-templates/{template_id}
+    name: Read an article template
+    summary: Read a built-in article structure by key or a workspace template by ID.
+    input:
+      pathParams:
+        template_id: {type: "string", required: true, note: "Built-in key (standard, listicle, how_to, comparison) or workspace template UUID.", example: "standard"}
+    test_request: {pathParams: {template_id: standard}}
+    docs_url: https://www.robowrite.ai/api/reference
+
+  - id: robowrite.account.jobs.list
+    added: '2026-11-20'
+    capability: account.jobs.list
+    platform: account
+    scope: own_account
+    kind: utility
+    method: GET
+    path: /jobs
+    name: Find recent content jobs
+    summary: Check whether a queued article or brief job is running, completed or failed. Find the job ID for follow-up.
+    input:
+      queryParams:
+        job_type: {type: "string", required: false}
+        status: {type: "string", required: false, enum: ["pending", "queued", "running", "awaiting_review", "completed", "completed_with_errors", "failed", "cancelled"]}
+        created_from: {type: "string", required: false, note: "RFC 3339 timestamp."}
+        created_before: {type: "string", required: false, note: "RFC 3339 timestamp."}
+        brand_id: {type: "string", required: false, note: "Workspace resource UUID."}
+        property_id: {type: "string", required: false, note: "Workspace resource UUID."}
+        brief_id: {type: "string", required: false, note: "Workspace resource UUID."}
+        content_item_id: {type: "string", required: false, note: "Workspace resource UUID."}
+        limit: {type: "integer", required: false, min: 1, max: 200, default: 50, example: 1}
+        offset: {type: "integer", required: false, min: 0, default: 0}
+    test_request: {queryParams: {limit: 1}}
+    docs_url: https://www.robowrite.ai/api/reference

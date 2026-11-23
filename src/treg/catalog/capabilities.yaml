@@ -15,6 +15,7 @@ platforms:
   web: {label: "Open web & SEO data", category: "SEO/AEO", featured: 2, summary: "Search, extract and crawl the open web, plus backlinks, referring domains and authority metrics."}
   search-console: {label: "Google Search Console", category: "SEO/AEO", featured: 3, summary: "Your site's Google Search clicks, impressions, top queries and indexing."}
   google-analytics: {label: "Google Analytics (GA4)", category: "SEO/AEO", featured: 4, summary: "Traffic and behavior reports from your own GA4 properties, including realtime visitors."}
+  editorial: {label: "Editorial workspaces", category: "SEO/AEO", summary: "Find briefs, saved drafts, brand reference documents and article templates in your connected workspace."}
   bing: {label: "Bing Keyword Data", category: "SEO/AEO", summary: "Organic results and rankings from Bing."}
   google-business: {label: "Google Business Profile", category: "SEO/AEO", featured: 5, summary: "Your Google Business Profile locations and reviews — read them and reply to them."}
   yahoo: {label: "Yahoo Search Results (SERP)", category: "SEO/AEO", summary: "Organic results and rankings from Yahoo."}
