@@ -418,12 +418,23 @@ Rules a change must keep:
   tone, with verdict, month (never day) and `client`; no team, user or call is identified. The review
   tool tells agents reasons may be quoted publicly and to leave private data out, but agents still
   copy what they found: a reason carrying an email address, a phone number (nine digits or more) or a
-  LinkedIn profile link is never quoted (`verdicts.quotable`), and an endpoint whose capability is
-  about people (`verdicts.about_people`: a `people`, `user`, `employees`, `members`, `teams`, ...
-  segment, any segment naming `email`, `phone`, `creator`, `founder` or `owner`, or a `profile` not
-  named as a company's, repo's or other thing's) shows its score and no reason at all, since its
-  reasons name the person. So does an endpoint with no capability (`verdicts.may_quote`): it could be
-  about anyone. Reasons are otherwise quoted as written.
+  LinkedIn profile link (public, Sales Navigator or Recruiter) is never quoted (`verdicts.quotable`).
+  Patterns cannot catch a name, so a reason is quoted only after Jev has judged it unlikely to name or
+  identify a person (`person_p` below `verdicts.PERSON_P_MAX`, `verdicts.cleared`); a reason not yet
+  judged is not quoted. Reasons are otherwise quoted as written.
+
+Jev's judgements are written to the review row by `treg-worker reviews judge`, an hourly cron
+(`application.review_judge`), once per review and in two independent passes over the window:
+
+- Privacy: each quotable reason gets `person_p` and `privacy_judged_at`.
+- Attribution: each `partly` or `not_useful` review gets `primary_code`, an optional `secondary_code`
+  and `codebook_version` (`domain.feedback.review_codes`, a fixed codebook the vendor report cards
+  aggregate per endpoint). A review with no reason is `NOREASON` without asking. A new codebook
+  version re-judges only reviews coded under an older one.
+
+A failed request or an unreadable answer leaves the review unjudged for the next run, and one pass
+failing never stops the other. Without `typesafe_api_key` the command does nothing and the catalog
+quotes no reason.
 
 `application.feedback.endpoint_verdicts` caches the fold per process; only the first fold is awaited,
 later refreshes run in the background and a failed refresh keeps the previous fold. With no fold the

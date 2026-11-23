@@ -16,7 +16,6 @@ never rolled up per provider.
 from __future__ import annotations
 
 import re
-from collections.abc import Callable
 from dataclasses import dataclass
 from datetime import datetime
 
@@ -44,12 +43,13 @@ class Review:
     reason: str | None
     client: str
     created_at: datetime
+    person_p: float | None = None   # Jev's probability the reason names a person; None = not judged
 
 
 async def since(db: AsyncSession, start: datetime) -> list[Review]:
     rows = await db.execute(select(
         CallReview.endpoint_id, CallReview.org_id, CallReview.usefulness, CallReview.reason,
-        CallReview.client, CallReview.created_at,
+        CallReview.client, CallReview.created_at, CallReview.person_p,
     ).where(CallReview.created_at >= start, CallReview.usefulness.in_(VERDICTS)))
     return [Review(*row) for row in rows]
 
@@ -66,6 +66,9 @@ _EMAIL = re.compile(r"[\w.%+-]+@[\w-]+(?:\.[\w-]+)+")
 # colons, so a date-time stays one run for `_DATETIME` to judge whole.
 _PHONE = re.compile(r"\+?\d[\d\s().:/\-\u2010-\u2015\u2212\uFE58\uFE63\uFF0D]{6,}\d")
 _PHONE_DIGITS = 9
+# A reason is quoted only once Jev (`application.review_judge`) has judged it this unlikely to name
+# or identify a person. Patterns catch contact data; only a reader catches a name.
+PERSON_P_MAX = 0.1
 # A run of digits that is wholly real dates and clock times (`2026-11-22 14:00`,
 # `01.11.2026 – 22.11.2026`) is not a phone number. A run with any digit left over is judged whole,
 # so a number grouped like a date (`2012.03.04.56`) is still a phone.
@@ -76,21 +79,6 @@ _DATETIME = re.compile(
     r"|(?:[01]?\d|2[0-3]):[0-5]\d(?::[0-5]\d(?:\.\d{1,6})?)?)(?!\d)")
 # A person's LinkedIn page: public profile, old public profile, Sales Navigator lead or Recruiter.
 _PROFILE = re.compile(r"linkedin\.com/(?:in|pub|sales/lead|sales/people|talent/profile)/", re.IGNORECASE)
-# Capability segments whose results are about a person: their reasons name the person, so they
-# are never quoted, whatever a pattern can catch.
-PERSON_SEGMENTS = frozenset({"people", "person", "persons", "contact", "contacts", "employee",
-                             "employees", "user", "users", "member", "members", "followers", "teams",
-                             "artist", "artists"})
-# Any segment naming these (`phone`, `by_email`, `channels_creator`, `founders`, `ownership`,
-# `talents`) is about a person.
-PERSON_FRAGMENTS = ("email", "phone", "creator", "founder", "owner", "talent")
-# A profile is a person's (`linkedin.profile.search`, `threads.search.profiles`,
-# `youtube.channel.profile`) unless the capability names what else it is the profile of.
-PROFILE_SEGMENTS = frozenset({"profile", "profiles"})
-NOT_A_PERSON = frozenset({"company", "companies", "business", "businesses", "repo", "school", "coin",
-                          "crypto", "stocks", "seller", "app", "job", "jobs"})
-
-
 def carries_contact_data(reason: str) -> bool:
     return bool(_EMAIL.search(reason) or _PROFILE.search(reason) or any(
         _is_phone(m.group()) for m in _PHONE.finditer(reason)))
@@ -100,21 +88,6 @@ def _is_phone(run: str) -> bool:
     if not any(c.isdigit() for c in _DATETIME.sub("", run)):
         return False
     return sum(c.isdigit() for c in run) >= _PHONE_DIGITS
-
-
-def about_people(capability: str | None) -> bool:
-    """Whether a capability's results are about people (`people.search`, `phone.validate`,
-    `instagram.user.profile`, `companies.employees`, ...)."""
-    segments = set((capability or "").lower().split("."))
-    profile = not PROFILE_SEGMENTS.isdisjoint(segments) and NOT_A_PERSON.isdisjoint(segments)
-    return bool(capability) and (profile or not PERSON_SEGMENTS.isdisjoint(segments) or any(
-        f in s for s in segments for f in PERSON_FRAGMENTS))
-
-
-def may_quote(capability: str | None) -> bool:
-    """Whether an endpoint's reasons may be quoted at all: only when its capability is known and
-    not about people. An endpoint with no capability could be about anyone, so it shows none."""
-    return bool(capability) and not about_people(capability)
 
 
 def quotable(reason: str | None) -> bool:
@@ -153,12 +126,15 @@ def _quote(r: Review) -> dict:
             "month": r.created_at.strftime("%Y-%m")}
 
 
-def summarize(reviews: list[Review], *, min_teams: int = MIN_TEAMS, samples: int = SAMPLES,
-              quotes_allowed: Callable[[str], bool] = lambda _endpoint_id: True) -> dict[str, dict]:
+def cleared(r: Review) -> bool:
+    """Quotable, and judged not to name a person. An unjudged reason waits for its judgement."""
+    return quotable(r.reason) and r.person_p is not None and r.person_p < PERSON_P_MAX
+
+
+def summarize(reviews: list[Review], *, min_teams: int = MIN_TEAMS, samples: int = SAMPLES) -> dict[str, dict]:
     """Per endpoint id: `{teams, share, samples}` from `min_teams` teams, `teams` banded. Below
     that the `share` is withheld (`teams` is then the band below the first, 0) and the row exists
-    only when there is a quotable reason to show. An endpoint `quotes_allowed` refuses (one whose
-    results are about people) shows no reason at all."""
+    only when there is a reason `cleared` to quote."""
     by_endpoint: dict[str, dict[int, list[Review]]] = {}
     for r in reviews:
         by_endpoint.setdefault(r.endpoint_id, {}).setdefault(r.org_id, []).append(r)
@@ -169,13 +145,12 @@ def summarize(reviews: list[Review], *, min_teams: int = MIN_TEAMS, samples: int
         for rows in teams.values():
             for r in rows:
                 votes[r.usefulness] += 1 / len(rows)
-            quoted = [r for r in rows if quotable(r.reason)]
+            quoted = [r for r in rows if cleared(r)]
             if quoted:  # one quote per team at most: its latest
                 candidates.append(max(quoted, key=lambda r: r.created_at))
         share = {v: votes[v] / len(teams) for v in VERDICTS}
         scored = len(teams) >= min_teams
-        quotes = ([_quote(r) for r in _samples(candidates, share, samples)]
-                  if quotes_allowed(endpoint_id) else [])
+        quotes = [_quote(r) for r in _samples(candidates, share, samples)]
         if scored or quotes:
             out[endpoint_id] = {"teams": team_band(len(teams)), "samples": quotes}
         if scored:

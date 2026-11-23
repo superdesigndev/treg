@@ -258,16 +258,9 @@ _verdicts_refresh: asyncio.Task | None = None
 
 
 async def _fold_verdicts() -> dict[str, dict]:
-    from ..domain.catalog import store as catalog_store
-
     async with session_maker() as db:
         rows = await verdicts.since(db, utcnow_naive() - timedelta(days=verdicts.WINDOW_DAYS))
-    by_id = catalog_store.load().by_id
-
-    def quotes_allowed(endpoint_id: str) -> bool:
-        return verdicts.may_quote((by_id.get(endpoint_id) or {}).get("capability"))
-
-    return verdicts.summarize(rows, quotes_allowed=quotes_allowed)
+    return verdicts.summarize(rows)
 
 
 async def _refresh_verdicts() -> None:

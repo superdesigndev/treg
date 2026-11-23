@@ -2,7 +2,7 @@
 from datetime import datetime, timedelta
 
 from treg.application import feedback
-from treg.domain.feedback.verdicts import Review, about_people, may_quote, quotable, summarize
+from treg.domain.feedback.verdicts import Review, quotable, summarize
 from treg.infra.db import session_maker
 from treg.models import CallReview
 
@@ -10,8 +10,8 @@ T0 = datetime(2026, 9, 1)
 LONG = "Returned the requested records with the fields the task needed, nothing missing."
 
 
-def review(org, usefulness="useful", reason=LONG, endpoint="a.b.c", day=0):
-    return Review(endpoint, org, usefulness, reason, "codex", T0 + timedelta(days=day))
+def review(org, usefulness="useful", reason=LONG, endpoint="a.b.c", day=0, person_p=0.01):
+    return Review(endpoint, org, usefulness, reason, "codex", T0 + timedelta(days=day), person_p)
 
 
 def test_endpoint_below_threshold_publishes_early_quotes_and_no_score():
@@ -98,42 +98,18 @@ def test_a_reason_carrying_contact_data_is_never_quoted():
         assert not quotable(LONG + leaked), leaked
     rows = [review(org, reason=LONG + " Reach them at 732-433-0667.", day=org) for org in range(4)]
     assert summarize(rows) == {}
-    # A general web search whose reason links a Sales Navigator lead is not quoted either.
+    # A general web search whose reason links a Sales Navigator lead is not quoted, whatever Jev said.
     lead = LONG + " Top hit was linkedin.com/sales/lead/ACwAAA for the founder."
-    assert summarize([review(org, reason=lead, endpoint="exa.search") for org in range(4)],
-                     quotes_allowed=lambda _: True) == {}
+    assert summarize([review(org, reason=lead, endpoint="exa.search") for org in range(4)]) == {}
 
 
-def test_an_endpoint_about_people_shows_its_score_and_no_reason():
-    rows = [review(org, endpoint="p.people.search") for org in range(5)] + [review(org) for org in range(5)]
-    out = summarize(rows, quotes_allowed=lambda endpoint_id: endpoint_id != "p.people.search")
-    assert out["p.people.search"]["share"]["useful"] == 1.0
-    assert out["p.people.search"]["samples"] == []
-    assert len(out["a.b.c"]["samples"]) == 3
-    # Below the threshold it has nothing to show at all.
-    early = [review(org, endpoint="p.people.search") for org in range(4)]
-    assert summarize(early, quotes_allowed=lambda _: False) == {}
-
-
-def test_capabilities_about_people():
-    for capability in ("people.search", "people.phone.find", "companies.employees.list",
-                       "instagram.user.profile", "linkedin.profile.from_email", "x.list.members",
-                       "creators.enrich.by_email", "phone.validate", "companies.founders",
-                       "companies.owners", "companies.ownership.graph", "companies.teams.search",
-                       "creators.search", "qq-huxuan.channels_creator.profile", "douyin.douplus.talents",
-                       "linkedin.profile.search", "linkedin.profile.picture", "threads.search.profiles",
-                       "youtube.channel.profile", "spotify.artist.detail"):
-        assert about_people(capability), capability
-    for capability in ("web.search", "google.serp.organic", "companies.profile.url",
-                       "linkedin.company.profile", "github.repo.profile", "yelp.business.profile",
-                       "linkedin.job.profile", "google.keywords.volume", None, ""):
-        assert not about_people(capability), capability
-
-
-def test_an_endpoint_without_a_capability_is_never_quoted():
-    assert may_quote("web.search")
-    for capability in (None, "", "people.search"):
-        assert not may_quote(capability), capability
+def test_a_reason_naming_a_person_or_not_yet_judged_is_never_quoted():
+    for person_p in (None, 0.1, 0.97):
+        rows = [review(org, person_p=person_p) for org in range(5)]
+        out = summarize(rows)["a.b.c"]
+        assert out["share"]["useful"] == 1.0 and out["samples"] == [], person_p
+        assert summarize(rows[:4]) == {}, person_p
+    assert len(summarize([review(org, person_p=0.09) for org in range(4)])["a.b.c"]["samples"]) == 3
 
 
 async def test_platform_payload_carries_verdicts_past_the_threshold(clients):
@@ -147,12 +123,12 @@ async def test_platform_payload_carries_verdicts_past_the_threshold(clients):
         for i, org in enumerate(orgs):
             db.add(CallReview(org_id=org, user_email="agent@example.dev", call_id=f"v-{i}",
                               endpoint_id=target, client="claude-code",
-                              usefulness="useful" if i else "not_useful", reason=LONG))
+                              usefulness="useful" if i else "not_useful", reason=LONG, person_p=0.0))
         for i, org in enumerate(orgs[:4]):
             db.add(CallReview(org_id=org, user_email="agent@example.dev", call_id=f"w-{i}",
-                              endpoint_id=other, usefulness="useful", reason=LONG))
+                              endpoint_id=other, usefulness="useful", reason=LONG, person_p=0.0))
         db.add(CallReview(org_id=orgs[4], user_email="agent@example.dev", call_id="w-4",
-                          endpoint_id=other, usefulness="not_sure", reason=LONG))
+                          endpoint_id=other, usefulness="not_sure", reason=LONG, person_p=0.0))
         await db.commit()
     feedback.forget_endpoint_verdicts()
 
@@ -180,30 +156,31 @@ async def test_a_failed_fold_never_takes_the_catalog_down(clients, monkeypatch):
     assert (await clients.get("/catalog/platforms/tiktok")).status_code == 200
 
 
-async def _review(org_ids, endpoint_id, reason=LONG):
+async def _review(org_ids, endpoint_id, person_p, reason=LONG):
     async with session_maker() as db:
         for org in org_ids:
             db.add(CallReview(org_id=org, user_email="agent@example.dev", call_id=f"{endpoint_id}-{org}",
                               endpoint_id=endpoint_id, client="claude-code", usefulness="useful",
-                              reason=reason))
+                              reason=reason, person_p=person_p))
         await db.commit()
     feedback.forget_endpoint_verdicts()
 
 
-async def test_public_detail_never_quotes_an_endpoint_about_people_or_without_a_capability(clients):
-    """The real catalog's classification, through the public detail `catalog_get` relays: one team
-    publishes nothing, five teams publish the score and no quote."""
+async def test_public_detail_quotes_only_reasons_judged_to_name_no_one(clients):
+    """Through the public detail `catalog_get` relays: a people endpoint's clean reasons are quoted
+    like any other's; a reason judged to name someone, or not judged yet, is never quoted (one team
+    then publishes nothing, five teams publish the score alone)."""
     orgs = [(await clients.post("/orgs", json={"name": f"People {i}"})).json()["org_id"] for i in range(5)]
-    hidden = ("apollo.people.search", "aviato.companies.founders", "anyapi.facebook.followers")
-    for endpoint_id in hidden:
-        await _review(orgs[:1], endpoint_id)
-    for endpoint_id in hidden:
-        detail = (await clients.get(f"/catalog/endpoints/{endpoint_id}")).json()
-        assert "reviews" not in detail["endpoint"], endpoint_id
+    cases = {"apollo.people.search": 0.02, "aviato.companies.founders": 0.9, "anyapi.facebook.followers": None}
+    for endpoint_id, person_p in cases.items():
+        await _review(orgs[:1], endpoint_id, person_p)
+    for endpoint_id, person_p in cases.items():
+        endpoint = (await clients.get(f"/catalog/endpoints/{endpoint_id}")).json()["endpoint"]
+        assert ("reviews" in endpoint) == (person_p == 0.02), endpoint_id
 
-    for endpoint_id in hidden:
-        await _review(orgs[1:], endpoint_id)
-    for endpoint_id in hidden:
+    for endpoint_id, person_p in cases.items():
+        await _review(orgs[1:], endpoint_id, person_p)
+    for endpoint_id, person_p in cases.items():
         reviews = (await clients.get(f"/catalog/endpoints/{endpoint_id}")).json()["endpoint"]["reviews"]
         assert reviews["teams"] == 5 and reviews["share"]["useful"] == 1.0, endpoint_id
-        assert reviews["samples"] == [], endpoint_id
+        assert bool(reviews["samples"]) == (person_p == 0.02), endpoint_id
