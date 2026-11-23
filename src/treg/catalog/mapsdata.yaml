@@ -1,0 +1,276 @@
+# MapsData builds lead lists from Google Maps: every business of a category in a country, a set of
+# states or a list of cities, each with the emails found on its own website, phone, website, address
+# and rating. A scrape is an asynchronous job (POST /jobs answers 202 with a queued job; it runs for
+# minutes to hours), so the job rows follow the web.scrape.job.* start / status / results shape.
+#
+# Billing: subscription plans grant monthly Scraping Credits that roll over. A scrape spends one
+# credit per lead row delivered WITH an email, settled when the job finishes; rows without an email
+# are delivered free, a job that finds no emails costs nothing, and errors cost nothing. Every other
+# route is free, including the dry-run pre-flight. Only a job that ends completed or cancelled is
+# billed (a cancelled one for the leads it delivered first); a failed job is free. The submission's
+# 202 carries no charge: the finished job's `email_count` is exactly what it spent (the delivered
+# list is trimmed to total_limit), and GET /usage `leads_used` is the account meter.
+#
+# treg's own key: MapsData licenses treg to serve these routes to its teams from one treg-held
+# MapsData account. The scrape is metered like an async job: the hold is total_limit credits, and
+# the terminal status's email_count settles it. The two account routes stay own-key only.
+#
+# Auth: `Authorization: Bearer <key>`. A bogus key answers 401 with error.code invalid_api_key on
+# every route; GET /usage is the registry probe.
+provider: mapsdata
+source:
+  docs: https://mapsdata.ai/api
+  openapi: https://mapsdata.ai/api/v1/openapi.json
+  curated: '2026-11-17'
+limits: "120 requests a minute per key and 300 per organization; at most 10 scrape submissions a minute. A 429 carries Retry-After."
+pricing_url: https://mapsdata.ai/pricing
+
+proposed_capabilities:
+  # Atly proposes places.categories and places.areas for the same jobs (atly.places.categories,
+  # atly.places.areas); the ids and wording here are Atly's, so both attach to one capability.
+  places.categories: "Turn words like 'dog friendly' into the intent categories a place search takes"
+  places.areas: "Find the covered city or neighborhood id for a place name"
+  web.scrape.job.validate: "Check a scraping job would be accepted, and what it would cover, before paying for it"
+  web.scrape.job.cancel: "Cancel a queued or running scraping job"
+  # Proposed by CompanyEnrich (companyenrich.account.jobs.list) with this wording.
+  account.jobs.list: "List every background job on your account"
+
+defaults:
+  provenance: {source: docs, source_url: 'https://mapsdata.ai/pricing', checked: '2026-11-17', confidence: documented}
+  docs_url: https://mapsdata.ai/api
+
+endpoints:
+  - id: mapsdata.places.categories.search
+    added: '2026-11-17'
+    kind: utility
+    capability: places.categories
+    platform: places
+    scope: any_account
+    method: GET
+    path: /categories
+    name: "Search Google Maps business categories"
+    summary: "Search the Google Maps category list for the exact category names a scrape takes"
+    input:
+      queryParams:
+        q: {type: string, required: false, note: "substring to match, up to 120 characters", example: "plumb"}
+        limit: {type: integer, required: false, default: 20, min: 1, max: 100, example: 3}
+        country: {type: string, required: false, enum: [us, ca, uk, au], note: "ranks the categories Google uses in this country first and sets rare_in_country on each", example: "us"}
+    test_request: {queryParams: {q: "plumb", limit: 3, country: "us"}}
+    price: {value: '0', currency: USD, unit: call, note: "Free."}
+
+  - id: mapsdata.places.categories.validate
+    added: '2026-11-17'
+    kind: utility
+    capability: places.categories
+    platform: places
+    scope: any_account
+    method: GET
+    path: /categories/validate
+    name: "Check a word is a scrapable Google Maps category"
+    summary: "Resolve a business type to the exact Google Maps category spelling, or get close matches"
+    input:
+      queryParams:
+        name: {type: string, required: true, note: "the business type to check, up to 120 characters", example: "plumber"}
+        country: {type: string, required: false, enum: [us, ca, uk, au], note: "also reports whether Google rarely uses the category there, with local_alternatives to search instead", example: "us"}
+      note: "Submit `canonical` verbatim as a scrape's query: casing matters. When `valid` is false, `suggestions` holds the close matches."
+    test_request: {queryParams: {name: "plumber", country: "us"}}
+    price: {value: '0', currency: USD, unit: call, note: "Free."}
+
+  - id: mapsdata.places.areas
+    added: '2026-11-17'
+    kind: utility
+    capability: places.areas
+    platform: places
+    scope: any_account
+    method: GET
+    path: /regions
+    name: "List the regions a scrape accepts for a country"
+    summary: "List the exact state, province or region names a scrape accepts for a country"
+    input:
+      queryParams:
+        country: {type: string, required: false, default: us, enum: [us, ca, uk, au], example: "ca"}
+      note: "Submit these names verbatim in a scrape's states or cities; abbreviations such as TX are refused."
+    test_request: {queryParams: {country: "ca"}}
+    price: {value: '0', currency: USD, unit: call, note: "Free."}
+
+  - id: mapsdata.account.usage
+    added: '2026-11-17'
+    kind: account
+    capability: account.usage
+    platform: account
+    scope: own_account
+    method: GET
+    path: /usage
+    name: "Scraping Credits left and this month's usage"
+    summary: "Show your plan, the Scraping Credits you can spend now, this month's usage and the per-scrape ceiling"
+    input:
+      note: "scraping_credits is the spendable balance (null means unlimited); can_submit is false once it reaches zero. max_leads_per_scrape caps a scrape's total_limit."
+    test_request: {queryParams: {}}
+    price: {value: '0', currency: USD, unit: call, note: "Free; this is also the registry's probe."}
+
+  - id: mapsdata.web.scrape.job.validate
+    added: '2026-11-17'
+    kind: utility
+    capability: web.scrape.job.validate
+    platform: web
+    scope: any_account
+    method: POST
+    path: /jobs
+    name: "Dry-run a Google Maps lead scrape"
+    summary: "Check a Google Maps lead scrape would be accepted and see the categories, regions and lead count it would run with, without starting it"
+    input:
+      bodyType: json
+      body:
+        dry_run: {type: boolean, required: true, enum: [true], note: "pinned true: the request runs every submission check, quota included, and creates nothing", example: true}
+        query: {type: string, required: true, note: "one to three comma-separated Google Maps categories, spelled as mapsdata.places.categories.validate returns them", example: "Plumber"}
+        country: {type: string, required: false, default: us, enum: [us, ca, uk, au], example: "us"}
+        states: {type: array, items: {type: string}, required: false, maxItems: 200, note: "full region names from mapsdata.places.areas; leave out when passing cities"}
+        cities: {type: array, items: {type: object}, required: false, maxItems: 50, note: "objects of {city, state}, the state spelled in full", example: [{city: "Austin", state: "Texas"}]}
+        total_limit: {type: integer, required: true, min: 1, note: "leads to scrape, counted in the unit limit_basis sets", example: 25}
+        limit_basis: {type: string, required: false, enum: [emails, rows]}
+        max_emails_per_company: {type: integer, required: false, min: 1}
+        include_variants: {type: boolean, required: false, default: true}
+      note: "Answers 200 with the resolved query_terms, regions and total_limit; clamped_to_allowance is true when the scrape would be cut to the credits left. A submission the real call would refuse is refused here with the same 4xx error code."
+    test_request:
+      body: {dry_run: true, query: "Plumber", country: "us", cities: [{city: "Austin", state: "Texas"}], total_limit: 25}
+    price: {value: '0', currency: USD, unit: call, note: "Free; a dry run creates no job and spends no credits."}
+
+  - id: mapsdata.web.scrape.job.start
+    added: '2026-11-17'
+    capability: web.scrape.job.start
+    platform: web
+    scope: any_account
+    method: POST
+    path: /jobs
+    name: "Start a Google Maps lead scrape with emails"
+    summary: "Start a scrape of every Google Maps business of a category in a country, states or cities, delivered with emails, phones, websites, addresses and ratings"
+    resource_ownership:
+      produces:
+        - {kind: job, path: id}
+    input:
+      bodyType: json
+      headers:
+        Idempotency-Key: {type: string, required: false, note: "replaying the same key with the same body returns the original job instead of starting a second one"}
+      body:
+        query: {type: string, required: true, note: "one to three comma-separated Google Maps categories, spelled as mapsdata.places.categories.validate returns them", example: "Plumber"}
+        country: {type: string, required: false, default: us, enum: [us, ca, uk, au], example: "us"}
+        states: {type: array, items: {type: string}, required: false, maxItems: 200, note: "full region names from mapsdata.places.areas, e.g. Texas; leave out when passing cities. With neither, the whole country is scraped"}
+        cities: {type: array, items: {type: object}, required: false, maxItems: 50, note: "objects of {city, state}, the state spelled in full", example: [{city: "Austin", state: "Texas"}]}
+        total_limit: {type: integer, required: true, min: 1, max: 100000, note: "leads to scrape, counted in the unit limit_basis sets; also capped by the account's max_leads_per_scrape (50,000 on Starter and Pro, 100,000 on Scale and Max)", example: 1}
+        limit_basis: {type: string, required: false, enum: [emails, rows], note: "emails: stop once total_limit leads with an email are found. rows: stop at total_limit leads, with or without one. Defaults to the organization's setting, emails for new organizations", example: "emails"}
+        max_emails_per_company: {type: integer, required: false, default: 5, min: 1, note: "emails kept per business; each kept email is its own billed lead row", example: 1}
+        min_reviews: {type: integer, required: false, default: 0, min: 0}
+        max_reviews: {type: integer, required: false, min: 0}
+        list_name: {type: string, required: false, note: "label for the list; defaults to the query"}
+        client_id: {type: string, required: false, note: "workspace to file the scrape under; needed only when the organization has several"}
+        include_variants: {type: boolean, required: false, default: true, note: "with a single category, also search up to four closely related categories", example: false}
+        dry_run: {type: boolean, required: false, default: false, enum: [false], note: "mapsdata.web.scrape.job.validate is the dry run"}
+      note: "Answers 202 with a queued job; poll mapsdata.web.scrape.job.status every minute or so, then fetch mapsdata.web.scrape.job.results. warnings is set when Google rarely uses the category in that country, so most results would be nearby trades."
+    test_request:
+      body: {query: "Plumber", country: "us", cities: [{city: "Austin", state: "Texas"}], total_limit: 1, limit_basis: "emails", max_emails_per_company: 1, include_variants: false}
+    price:
+      table:
+        - {when: [{path: body.dry_run, op: equals, value: false}], value: '1', times: body.total_limit}
+      fallback: {value: '100000', note: "The largest scrape the API accepts, 100,000 leads with an email."}
+      currency: credit
+      unit: call
+      display: {unit: lead, value: '1'}
+      note: "One Scraping Credit per lead row delivered with an email, charged when the job finishes; rows without an email are delivered free. The hold is total_limit credits, and the finished job's email_count settles it, never more than total_limit. Cancelling a running scrape bills the leads already delivered; a failed scrape is free."
+    expect: {path: response.id, op: present}
+    settle: {usage: {path: response.email_count, unit: credit}}
+    async:
+      id_from: id
+      poll:
+        endpoint: mapsdata.web.scrape.job.status
+        param: {in: pathParams, name: job_id}
+      status:
+        path: status
+        progress: [queued, running, cancelling]
+        success: [completed]
+        failure: [failed]
+        billed_failure: [cancelled]
+      result:
+        fetch: mapsdata.web.scrape.job.results
+        fetch_param: {in: pathParams, name: job_id, value_from: id}
+      interval: 60
+      max_age: 86400
+
+  - id: mapsdata.web.scrape.job.status
+    added: '2026-11-17'
+    kind: utility
+    capability: web.scrape.job.status
+    platform: web
+    scope: any_account
+    method: GET
+    path: /jobs/{job_id}
+    name: "Check a Google Maps lead scrape"
+    summary: "Check a lead scrape's status, progress, lead and email counts, and why it stopped"
+    resource_ownership:
+      requires: {kind: job, param: job_id}
+    input:
+      pathParams:
+        job_id: {type: string, required: true, note: "the id mapsdata.web.scrape.job.start returned", example: "30f7ada6-f1b0-4ffc-a2d2-837b1805018d"}
+      note: "status is queued, running, cancelling, cancelled, completed or failed; results can be fetched once it is completed. On a completed or cancelled job, email_count is the number of credits it spent; a failed job spent none."
+    test_request:
+      pathParams: {job_id: "30f7ada6-f1b0-4ffc-a2d2-837b1805018d"}
+    price: {value: '0', currency: USD, unit: call, note: "Free."}
+
+  - id: mapsdata.web.scrape.job.results
+    added: '2026-11-17'
+    kind: utility
+    capability: web.scrape.job.results
+    platform: web
+    scope: any_account
+    method: GET
+    path: /jobs/{job_id}/download
+    name: "Get a finished lead scrape's file"
+    summary: "Get a signed link to a finished scrape's leads as CSV or Excel"
+    resource_ownership:
+      requires: {kind: job, param: job_id}
+    input:
+      pathParams:
+        job_id: {type: string, required: true, note: "the id mapsdata.web.scrape.job.start returned", example: "30f7ada6-f1b0-4ffc-a2d2-837b1805018d"}
+      queryParams:
+        format: {type: string, required: false, default: csv, enum: [csv, xlsx], example: "csv"}
+        scope: {type: string, required: false, default: emails, enum: [emails, all, filtered], note: "emails: leads with an email. all: every lead scraped. filtered: the output of a filter already run on the list in the MapsData app", example: "emails"}
+      note: "Answers a JSON {url, expires_at, filename}; fetch the url without the Authorization header within 15 minutes, and ask again rather than reusing an expired one."
+    test_request:
+      pathParams: {job_id: "30f7ada6-f1b0-4ffc-a2d2-837b1805018d"}
+      queryParams: {format: "csv", scope: "emails"}
+    price: {value: '0', currency: USD, unit: call, note: "Free; the job's leads were charged when it finished."}
+
+  - id: mapsdata.web.scrape.job.cancel
+    added: '2026-11-17'
+    kind: action
+    capability: web.scrape.job.cancel
+    platform: web
+    scope: any_account
+    method: POST
+    path: /jobs/{job_id}/cancel
+    name: "Cancel a Google Maps lead scrape"
+    summary: "Cancel a queued or running lead scrape"
+    resource_ownership:
+      requires: {kind: job, param: job_id}
+    input:
+      pathParams:
+        job_id: {type: string, required: true, note: "the id mapsdata.web.scrape.job.start returned", example: "30f7ada6-f1b0-4ffc-a2d2-837b1805018d"}
+      note: "A finished job answers 409 job_not_cancellable."
+    price: {value: '0', currency: USD, unit: call, note: "Free; cancelling a queued scrape costs nothing, and a running one keeps the charge for the leads already delivered."}
+
+  - id: mapsdata.account.jobs.list
+    added: '2026-11-17'
+    kind: account
+    capability: account.jobs.list
+    platform: account
+    scope: own_account
+    method: GET
+    path: /jobs
+    name: "List your Google Maps lead scrapes"
+    summary: "List your organization's scrapes, newest first, with status and lead counts"
+    input:
+      queryParams:
+        limit: {type: integer, required: false, default: 25, min: 1, max: 100, example: 1}
+        cursor: {type: string, required: false, note: "next_cursor from the previous page"}
+        status: {type: string, required: false, enum: [queued, running, cancelling, cancelled, completed, failed]}
+    test_request: {queryParams: {limit: 1}}
+    price: {value: '0', currency: USD, unit: call, note: "Free."}

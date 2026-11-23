@@ -61,6 +61,11 @@ _TABLE: list[Signature] = [
     Signature("anymailfinder", 402, r"not have enough credits", "balance", tripwire=True),
     Signature("findymail", 402, r"not enough credits", "balance", tripwire=True),
     Signature("leadsforge", 402, r"insufficient_credits", "balance"),
+    # MapsData (dashboard API error codes): a scrape submitted with no Scraping Credits left is a 402
+    # {"error": {"code": "lead_limit_reached", ...}}; an unpaid renewal pauses submissions with a
+    # 402 org_past_due until it is paid.
+    Signature("mapsdata", 402, r"lead_limit_reached", "balance", tripwire=True),
+    Signature("mapsdata", 402, r"org_past_due", "balance", tripwire=True),
     Signature("leadocean", 429, r"fair-use pace reached", "quota"),
     # MobiusEngine.ai Jobs Data: an empty prepaid balance is a 402 {"error": {"code": "insufficient_balance", ...}}.
     Signature("mobiusengine-jobs", 402, r"insufficient_balance", "balance", tripwire=True),
