@@ -21,12 +21,14 @@ import logging
 import time
 from datetime import timedelta
 
-from sqlalchemy import or_, update
+from contextlib import asynccontextmanager
+
+from sqlalchemy import or_, text
 from sqlmodel import select
 
 from ..config import get_settings
 from ..domain.catalog import store as catalog_store
-from ..domain.feedback import review_codes, verdicts
+from ..domain.feedback import review_codes, reviews, verdicts
 from ..infra import judge
 from ..infra.db import session_maker
 from ..models import CallReview
@@ -35,6 +37,10 @@ from ..timeutil import utcnow_naive
 log = logging.getLogger("treg.review_judge")
 
 NEGATIVE = ("partly", "not_useful")
+# One run at a time (pg_try_advisory_lock), so overlapping runs never pay Jev twice for a review;
+# any constant no other advisory lock uses. The conditional writes in `domain.feedback.reviews`
+# keep the first answer even without it.
+RUN_LOCK_KEY = 0x72766A67
 
 
 def configured() -> bool:
@@ -52,13 +58,41 @@ def _batches(rows: list, size: int):
         yield rows[i:i + size]
 
 
-async def _write(values: dict[int, dict]) -> None:
-    if not values:
-        return
+async def _write_privacy(values: dict[int, float]) -> int:
+    now, written = utcnow_naive(), 0
     async with session_maker() as db:
-        for review_id, fields in values.items():
-            await db.execute(update(CallReview).where(CallReview.id == review_id).values(**fields))
+        for review_id, person_p in values.items():
+            written += await reviews.record_privacy(db, review_id, person_p, now)
         await db.commit()
+    return written
+
+
+async def _write_codes(values: dict[int, tuple[str, str | None]]) -> int:
+    now, written = utcnow_naive(), 0
+    async with session_maker() as db:
+        for review_id, (primary, secondary) in values.items():
+            written += await reviews.record_codes(db, review_id, primary, secondary,
+                                                  review_codes.CODEBOOK_VERSION, now)
+        await db.commit()
+    return written
+
+
+@asynccontextmanager
+async def _only_run():
+    """Whether this run holds the run lock, on a connection of its own. SQLite: always."""
+    async with session_maker.kw["bind"].connect() as connection:
+        if connection.dialect.name != "postgresql":
+            yield True
+            return
+        got = bool((await connection.execute(text("SELECT pg_try_advisory_lock(:key)"),
+                                             {"key": RUN_LOCK_KEY})).scalar_one())
+        await connection.commit()
+        try:
+            yield got
+        finally:
+            if got:
+                await connection.execute(text("SELECT pg_advisory_unlock(:key)"), {"key": RUN_LOCK_KEY})
+                await connection.commit()
 
 
 async def judge_privacy(*, deadline: float) -> dict:
@@ -70,7 +104,8 @@ async def judge_privacy(*, deadline: float) -> dict:
                    CallReview.reason.is_not(None))
             .order_by(CallReview.created_at.desc()))).all()
     rows = [r for r in rows if verdicts.quotable(r.reason)]
-    out = {"pending": len(rows), "judged": 0, "failed_requests": 0, "unreadable": 0, "tokens_in": 0}
+    out = {"pending": len(rows), "judged": 0, "already_judged": 0, "failed_requests": 0, "unreadable": 0,
+           "tokens_in": 0}
     for batch in _batches(rows, get_settings().review_judge_batch):
         if time.monotonic() >= deadline:
             break
@@ -81,7 +116,7 @@ async def judge_privacy(*, deadline: float) -> dict:
             log.warning("review privacy judge abstained: %s", reply.error)
             continue
         out["tokens_in"] += reply.tokens_in or 0
-        now, values = utcnow_naive(), {}
+        values = {}
         for i, r in enumerate(batch):
             try:
                 p = float(reply.answers[f"p{i}"]["noul"])
@@ -89,11 +124,12 @@ async def judge_privacy(*, deadline: float) -> dict:
                 out["unreadable"] += 1
                 continue
             if 0.0 <= p <= 1.0:
-                values[r.id] = {"person_p": p, "privacy_judged_at": now}
+                values[r.id] = p
             else:
                 out["unreadable"] += 1
-        await _write(values)
-        out["judged"] += len(values)
+        written = await _write_privacy(values)
+        out["judged"] += written
+        out["already_judged"] += len(values) - written
     return out
 
 
@@ -105,15 +141,13 @@ async def judge_codes(*, deadline: float) -> dict:
             select(CallReview.id, CallReview.reason, CallReview.usefulness, CallReview.endpoint_id,
                    CallReview.routed_via)
             .where(CallReview.created_at >= since, CallReview.usefulness.in_(NEGATIVE),
-                   or_(CallReview.codebook_version.is_(None), CallReview.codebook_version != version))
+                   or_(CallReview.codebook_version.is_(None), CallReview.codebook_version < version))
             .order_by(CallReview.created_at.desc()))).all()
-    out = {"pending": len(rows), "judged": 0, "no_reason": 0, "failed_requests": 0, "unreadable": 0,
-           "tokens_in": 0}
-    now = utcnow_naive()
-    blank = {r.id: {"primary_code": "NOREASON", "secondary_code": None, "codebook_version": version,
-                    "code_judged_at": now} for r in rows if not (r.reason or "").strip()}
-    await _write(blank)
-    out["no_reason"] = len(blank)
+    out = {"pending": len(rows), "judged": 0, "no_reason": 0, "already_judged": 0, "failed_requests": 0,
+           "unreadable": 0, "tokens_in": 0}
+    blank = {r.id: ("NOREASON", None) for r in rows if not (r.reason or "").strip()}
+    out["no_reason"] = await _write_codes(blank)
+    out["already_judged"] += len(blank) - out["no_reason"]
     rows = [r for r in rows if r.id not in blank]
     by_id = catalog_store.load().by_id
     for batch in _batches(rows, get_settings().review_judge_batch):
@@ -130,32 +164,36 @@ async def judge_codes(*, deadline: float) -> dict:
             log.warning("review code judge abstained: %s", reply.error)
             continue
         out["tokens_in"] += reply.tokens_in or 0
-        now, values = utcnow_naive(), {}
+        values = {}
         for i, r in enumerate(batch):
             codes = review_codes.codes_from(reply.answers.get(f"a{i}") or {})
             if codes is None:
                 out["unreadable"] += 1
                 continue
-            values[r.id] = {"primary_code": codes[0], "secondary_code": codes[1],
-                            "codebook_version": version, "code_judged_at": now}
-        await _write(values)
-        out["judged"] += len(values)
+            values[r.id] = codes
+        written = await _write_codes(values)
+        out["judged"] += written
+        out["already_judged"] += len(values) - written
     return out
 
 
 async def run(*, max_seconds: float) -> dict:
     """Both passes, sharing `max_seconds`: privacy first (it gates what the catalog may quote), then
-    attribution with whatever time is left. Off (`{"skipped": "no_judge_key"}`) without a key."""
+    attribution with whatever time is left. Off (`{"skipped": "no_judge_key"}`) without a key, and
+    `{"skipped": "another_run"}` while another run holds the lock."""
     if not configured():
         return {"skipped": "no_judge_key"}
     deadline = time.monotonic() + max_seconds
     out = {}
-    for name, judge_pass in (("privacy", judge_privacy), ("codes", judge_codes)):
-        try:
-            out[name] = await judge_pass(deadline=deadline)
-        except Exception as exc:  # one pass failing never stops the other
-            log.exception("review %s pass failed", name)
-            out[name] = {"error": type(exc).__name__}
+    async with _only_run() as got:
+        if not got:
+            return {"skipped": "another_run"}
+        for name, judge_pass in (("privacy", judge_privacy), ("codes", judge_codes)):
+            try:
+                out[name] = await judge_pass(deadline=deadline)
+            except Exception as exc:  # one pass failing never stops the other
+                log.exception("review %s pass failed", name)
+                out[name] = {"error": type(exc).__name__}
     return out
 
 

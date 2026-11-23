@@ -90,8 +90,8 @@ async def test_codes_judge_negative_reviews_with_their_context(clients, monkeypa
         return {"choice": "SOMETHING_ELSE"}
     seen = _fake(monkeypatch, answer)
     out = await review_judge.judge_codes(deadline=float("inf"))
-    assert out == {"pending": 3, "judged": 1, "no_reason": 1, "failed_requests": 0, "unreadable": 1,
-                   "tokens_in": 10}
+    assert out == {"pending": 3, "judged": 1, "no_reason": 1, "already_judged": 0, "failed_requests": 0,
+                   "unreadable": 1, "tokens_in": 10}
     assert set(seen[0][1]["a0"]["criteria"]) == set(review_codes.CODES)
     rows = await _all()
     assert (rows["j-0"].primary_code, rows["j-0"].secondary_code) == ("ACCURACY", "RISKY")
@@ -110,6 +110,41 @@ async def test_a_new_codebook_version_judges_old_codes_again(clients, monkeypatc
     out = await review_judge.judge_codes(deadline=float("inf"))
     assert out["pending"] == 1 and out["judged"] == 1
     assert (await _all())["j-0"].codebook_version == review_codes.CODEBOOK_VERSION
+
+
+async def _set(call_id, **values):
+    from sqlalchemy import update
+    async with session_maker() as db:
+        await db.execute(update(CallReview).where(CallReview.call_id == call_id).values(**values))
+        await db.commit()
+
+
+async def test_an_overlapping_run_never_replaces_the_first_privacy_answer(clients, monkeypatch):
+    await _reviews(clients, [("useful", LONG, {})])
+
+    async def ask(state, questions):
+        # Another run judged the review while this one waited for Jev.
+        await _set("j-0", person_p=0.02, privacy_judged_at=utcnow_naive())
+        return Reply(answers={q: {"noul": 0.9} for q in questions}, ms=1)
+    monkeypatch.setattr(review_judge, "_ask", ask)
+    out = await review_judge.judge_privacy(deadline=float("inf"))
+    assert out["judged"] == 0 and out["already_judged"] == 1
+    assert (await _all())["j-0"].person_p == 0.02
+
+
+async def test_an_older_build_never_downgrades_a_newer_codebook(clients, monkeypatch):
+    newer = {"primary_code": "COVER", "codebook_version": "2099-01-01", "code_judged_at": utcnow_naive()}
+    await _reviews(clients, [("partly", "Nothing came back for this domain at all, empty list.", newer),
+                             ("partly", "Nothing came back for that domain at all, empty list.", {})])
+
+    async def ask(state, questions):
+        await _set("j-1", primary_code="COVER", codebook_version="2099-01-01")
+        return Reply(answers={q: {"choice": "EMPTY", "probabilities": {"EMPTY": 1.0}} for q in questions}, ms=1)
+    monkeypatch.setattr(review_judge, "_ask", ask)
+    out = await review_judge.judge_codes(deadline=float("inf"))
+    assert out["pending"] == 1 and out["judged"] == 0 and out["already_judged"] == 1
+    rows = await _all()
+    assert [(rows[k].primary_code, rows[k].codebook_version) for k in ("j-0", "j-1")] == [("COVER", "2099-01-01")] * 2
 
 
 async def test_reviews_outside_the_window_are_left_alone(clients, monkeypatch):
