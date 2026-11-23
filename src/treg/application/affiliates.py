@@ -391,7 +391,8 @@ async def drain_once(client, *, session_factory, stripe_call=stripe_adapter.call
             counts = await _record(db, results, utcnow_naive())
             await db.commit()
     synced = await _sync_stripe(session_factory=session_factory, stripe_call=stripe_call)
-    bonuses = await affiliate_bonus.drain_once(client, session_factory=session_factory)
+    bonuses = await affiliate_bonus.drain_once(client, session_factory=session_factory,
+                                               stripe_call=stripe_call)
     return {**counts, **synced, **bonuses}
 
 

@@ -88,9 +88,14 @@ async def _topup(c: AsyncClient, monkeypatch, org_id: int, pi: str, cents: int =
     assert r.status_code == 200, r.text
 
 
-async def _decide(discount: dict | None = FLAT_5_ONCE, **kw) -> dict:
+async def _decide(discount: dict | None = FLAT_5_ONCE, *, card: str | None = "fp_card_A",
+                  stripe_down: bool = False, **kw) -> dict:
+    async def stripe_call(op, **params):
+        if stripe_down:
+            raise RuntimeError("stripe down")
+        return {"id": params.get("id"), "payment_method": {"id": "pm_1", "card": {"fingerprint": card}}}
     async with _dub(discount, **kw) as client:
-        return await affiliate_bonus.drain_once(client, session_factory=session_maker)
+        return await affiliate_bonus.drain_once(client, session_factory=session_maker, stripe_call=stripe_call)
 
 
 async def _rows() -> list[AffiliateBonus]:
@@ -310,3 +315,31 @@ async def test_the_bonus_row_commits_with_the_credit_or_not_at_all(c, monkeypatc
     assert [r.payment_intent for r in await _rows()] == ["pi_1"]
     await _topup(c, monkeypatch, org_id, "pi_1")
     assert len(await _rows()) == 1, "a redelivery stages nothing more"
+
+
+async def test_a_payment_staged_without_its_card_reads_it_from_stripe(c, monkeypatch):
+    """`payment_intent.succeeded` can credit before the Checkout completion, with no card: the
+    per-card rule still holds, because the worker reads the card from Stripe."""
+    first = await _team(c, "bob@superdesign.dev")
+    second = await _team(c, "carl@superdesign.dev")
+    await _topup(c, monkeypatch, first, "pi_1", fingerprint=None)
+    await _topup(c, monkeypatch, second, "pi_2", fingerprint=None)
+    assert await _decide(card="fp_card_A") == {"bonus_granted": 1, "bonus_card_already_used": 1}
+    assert [r.fingerprint for r in await _rows()] == ["fp_card_A", "fp_card_A"]
+
+
+async def test_a_card_stripe_cannot_read_retries(c, monkeypatch):
+    org_id = await _team(c, "bob@superdesign.dev")
+    await _topup(c, monkeypatch, org_id, "pi_1", fingerprint=None)
+    assert await _decide(stripe_down=True) == {"bonus_retried": 1}
+    assert await _bonus_blocks(org_id) == []
+
+
+async def test_a_refunded_purchase_never_counts_toward_the_minimum(c, monkeypatch):
+    org_id = await _team(c, "bob@superdesign.dev")
+    await _topup(c, monkeypatch, org_id, "pi_1")
+    async with session_maker() as db:
+        await billing.revoke_refunded(db, "pi_1", 10_000_000, source="test")
+    await _topup(c, monkeypatch, org_id, "pi_2", cents=500)
+    assert await _decide() == {"bonus_refunded": 1, "bonus_below_minimum": 1}
+    assert await _bonus_blocks(org_id) == []

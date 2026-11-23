@@ -35,6 +35,7 @@ from sqlmodel.ext.asyncio.session import AsyncSession
 from ..config import get_settings
 from ..domain import money as ledger
 from ..infra import dub
+from ..infra import stripe as stripe_adapter
 from ..models import AffiliateBonus, AffiliateLead, CreditBlock, LedgerEntry, Referral
 from ..timeutil import utcnow_naive
 
@@ -79,6 +80,8 @@ class _Due:
     created_at: datetime
     verified: bool
     attributed: bool  # a lead exists and is not dead-lettered
+    payment_intent: str
+    fingerprint: str | None
 
 
 def _open(now):
@@ -96,25 +99,27 @@ async def _claim(db: AsyncSession, now) -> list[_Due]:
     Commits."""
     rows = (await db.execute(
         select(AffiliateBonus.id, AffiliateBonus.org_id, AffiliateBonus.created_at,
-               AffiliateLead.verified_at, AffiliateLead.failed_at, AffiliateLead.id)
+               AffiliateLead.verified_at, AffiliateLead.failed_at, AffiliateLead.id,
+               AffiliateBonus.payment_intent, AffiliateBonus.fingerprint)
         .join(AffiliateLead, AffiliateLead.org_id == AffiliateBonus.org_id, isouter=True)
         .where(*_open(now))
         .order_by(AffiliateBonus.id)
         .limit(_BATCH))).all()
     claimed = []
-    for bonus_id, org_id, created_at, verified_at, failed_at, lead_id in rows:
+    for bonus_id, org_id, created_at, verified_at, failed_at, lead_id, payment_intent, fingerprint in rows:
         won = await db.execute(update(AffiliateBonus).where(AffiliateBonus.id == bonus_id, *_open(now))
                                .values(next_attempt_at=now + timedelta(seconds=_CLAIM_S)))
         if won.rowcount == 1:
             claimed.append(_Due(bonus_id, org_id, created_at, verified_at is not None and failed_at is None,
-                                lead_id is not None and failed_at is None))
+                                lead_id is not None and failed_at is None, payment_intent, fingerprint))
     await db.commit()
     return claimed
 
 
-async def drain_once(client, *, session_factory) -> dict:
-    """Decide the due payments: read each verified team's offer from Dub, then grant or record why
-    not. No database connection is held while Dub is called."""
+async def drain_once(client, *, session_factory, stripe_call=stripe_adapter.call) -> dict:
+    """Decide the due payments: read each verified team's offer from Dub, and the paying card of a
+    payment staged without one, then grant or record why not. No database connection is held while
+    Dub or Stripe is called."""
     if not enabled():
         return {}
     async with session_factory() as db:
@@ -127,11 +132,17 @@ async def drain_once(client, *, session_factory) -> dict:
         if d.verified and d.org_id not in offers:
             offers[d.org_id] = await dub.customer_partner(client, api_key=key,
                                                           customer_external_id=str(d.org_id))
+    # A payment credited from `payment_intent.succeeded` before its Checkout completion carries no
+    # card, and the later delivery stages nothing more: the per-card rule reads it from Stripe here.
+    cards: dict[int, tuple[bool, str | None]] = {}
+    for d in due:
+        if d.verified and not d.fingerprint:
+            cards[d.id] = await _card_of(d.payment_intent, stripe_call)
     counts: dict[str, int] = {}
     for d in due:
         async with session_factory() as db:
             try:
-                result = await _settle(db, d, offers.get(d.org_id), utcnow_naive())
+                result = await _settle(db, d, offers.get(d.org_id), utcnow_naive(), cards.get(d.id))
             except Exception as exc:  # noqa: BLE001 - one bad payment must not stop the rest
                 await db.rollback()
                 log.warning("affiliate bonus for payment row %s failed: %s", d.id, exc)
@@ -140,7 +151,26 @@ async def drain_once(client, *, session_factory) -> dict:
     return counts
 
 
-async def _settle(db: AsyncSession, d: _Due, offer: dub.Outcome | None, now) -> str:
+async def _card_of(payment_intent: str, stripe_call) -> tuple[bool, str | None]:
+    """`(answered, fingerprint)` of the card that paid. A Stripe failure is not an answer; a payment
+    that was not made by card answers None."""
+    key = get_settings().stripe_secret_key
+    if not key:
+        return True, None
+    try:
+        pi = await stripe_call(stripe_adapter.PAYMENT_INTENT_RETRIEVE, api_key=key, id=payment_intent,
+                               expand=["payment_method"])
+    except Exception as exc:  # noqa: BLE001 - retried with the row
+        log.warning("affiliate bonus: could not read the card of %s: %s", payment_intent, exc)
+        return False, None
+    pm = (pi or {}).get("payment_method") if isinstance(pi, dict) else None
+    if not isinstance(pm, dict):
+        return True, None
+    return True, ((pm.get("card") or {}).get("fingerprint")) or None
+
+
+async def _settle(db: AsyncSession, d: _Due, offer: dub.Outcome | None, now,
+                  card: tuple[bool, str | None] | None = None) -> str:
     """Decide one payment and record it; grants in the same transaction. Commits. Returns a count key."""
     if not d.attributed:
         return await _decide(db, d.id, "not_attributed", now)
@@ -154,12 +184,18 @@ async def _settle(db: AsyncSession, d: _Due, offer: dub.Outcome | None, now) -> 
         if waited_out or (offer is not None and not offer.retry):
             return await _decide(db, d.id, "expired", now, error=detail)
         return await _later(db, d.id, now, detail)
+    if card is not None and not card[0]:
+        if waited_out:
+            return await _decide(db, d.id, "expired", now, error="card lookup failed")
+        return await _later(db, d.id, now, "card lookup failed")
     await _lock(db, f"affiliate-bonus-org:{d.org_id}")
     row = (await db.execute(select(AffiliateBonus).where(AffiliateBonus.id == d.id)
                             .execution_options(populate_existing=True))).scalar_one_or_none()
     if row is None or row.decided_at is not None:
         await db.commit()
         return "bonus_skipped"
+    if not row.fingerprint and card is not None and card[1]:
+        row.fingerprint = card[1]
     if row.fingerprint:
         await _lock(db, f"affiliate-bonus-card:{row.fingerprint}")
     discount = offer.discount
@@ -200,9 +236,7 @@ async def _evaluate(db: AsyncSession, row: AffiliateBonus, discount: dub.Discoun
     if discount.kind == "flat":
         if await _granted(db, org_id=row.org_id, kind="flat"):
             return "already_granted", 0
-        paid = (await db.execute(select(func.coalesce(func.sum(CreditBlock.amount_micro), 0)).where(
-            CreditBlock.org_id == row.org_id, CreditBlock.kind == "purchased"))).scalar_one()
-        if int(paid) < minimum:
+        if await _paid_net_of_refunds(db, row.org_id) < minimum:
             return "below_minimum", 0
         if row.fingerprint and await _card_used(db, row.fingerprint, row.org_id):
             return "card_already_used", 0
@@ -264,6 +298,21 @@ async def _card_used(db: AsyncSession, fingerprint: str, org_id: int) -> bool:
         AffiliateBonus.fingerprint == fingerprint, AffiliateBonus.org_id != org_id,
         AffiliateBonus.outcome == GRANTED, AffiliateBonus.offer.startswith("flat:")).limit(1))).first()
     return row is not None
+
+
+async def _paid_net_of_refunds(db: AsyncSession, org_id: int) -> int:
+    """What the team's paid top-ups still hold after refunds: a refunded purchase never counts toward
+    the minimum of another payment's fixed offer, which its refund could not claw back."""
+    blocks = dict((await db.execute(select(CreditBlock.id, CreditBlock.amount_micro).where(
+        CreditBlock.org_id == org_id, CreditBlock.kind == "purchased"))).all())
+    if not blocks:
+        return 0
+    refunded: dict[str, int] = {}
+    for block_id, meta in (await db.execute(select(LedgerEntry.block_id, LedgerEntry.meta).where(
+            LedgerEntry.kind == "revoke", LedgerEntry.block_id.in_(blocks)))).all():
+        target = int((meta or {}).get("target_micro") or 0) if isinstance(meta, dict) else 0
+        refunded[block_id] = max(refunded.get(block_id, 0), target)
+    return sum(int(amount) - min(refunded.get(block_id, 0), int(amount)) for block_id, amount in blocks.items())
 
 
 async def _refunded(db: AsyncSession, block_id: str) -> bool:
