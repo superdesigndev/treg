@@ -277,10 +277,13 @@ def render(variant: str) -> str:
     #    keeps only while agent payments are on. A plugin user signs in, and a static copy could
     #    outlive the switch, so the plugin never carries it; a keyless agent reads /skill.md.
     out = re.sub(r"<!--agentpay-->.*?<!--/agentpay-->\n?", "", out, flags=re.S)
-    # `{ENDPOINTS}` / `{PROVIDERS}`: the server fills these per request from the loaded catalog; a
-    # static plugin copy gets the numbers as of generation, refreshed with every release.
+    # `{ENDPOINTS}` / `{PROVIDERS_FLOOR}` / `{PROVIDERS}`: the server fills these per request from the
+    # loaded catalog; a static plugin copy gets the numbers as of generation, refreshed with every
+    # release. The skill quotes the rounded provider count, so a listing does not rewrite its copies.
     endpoints, providers = catalog_store.headline_counts(catalog_store.load())
-    out = out.replace("{ENDPOINTS}", endpoints).replace("{PROVIDERS}", str(providers))
+    out = (out.replace("{ENDPOINTS}", endpoints)
+           .replace("{PROVIDERS_FLOOR}", catalog_store.providers_floor(providers))
+           .replace("{PROVIDERS}", str(providers)))
     return out.replace("{BASE}", PUBLIC_BASE)
 
 

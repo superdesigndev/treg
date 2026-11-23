@@ -1895,6 +1895,13 @@ def headline_counts(cat: Catalog) -> tuple[str, int]:
     return counts
 
 
+def providers_floor(providers: int) -> str:
+    """The provider count rounded DOWN to the ten with a trailing "+" (`138` -> `130+`), for the
+    skill's description: an exact count changes with every listing and rewrote every published copy
+    of the skill each time; rounded, it moves only when the catalog crosses a ten."""
+    return f"{providers // 10 * 10}+"
+
+
 def empty_is_failure(endpoint_id: str) -> bool:
     """True when this endpoint's capability contract counts an empty 2xx as a failure."""
     cat = load()
