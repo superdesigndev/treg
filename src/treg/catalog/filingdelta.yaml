@@ -1,0 +1,271 @@
+# Facts from live https://filingdelta.xyz/docs, /catalog and /openapi.json on 2026-11-18.
+# Shape checked against merged listings fundable.yaml (#1600) and localfalcon.yaml (#1676):
+# price: {value, currency, per, unit}, defaults.provenance, proposed_capabilities, pathParams,
+# no `cost:` block. Do not stamp verified: or example_response (maintainers add those).
+
+provider: filingdelta
+source:
+  docs: https://filingdelta.xyz/docs
+  openapi: https://filingdelta.xyz/openapi.json
+  curated: '2026-11-18'
+limits: "Unknown ids return 404 and are not charged. A credit pack is a prepaid credit balance; credits do not expire (https://filingdelta.xyz/buy)."
+pricing_url: https://filingdelta.xyz/docs
+# Machine-readable rate card: https://filingdelta.xyz/catalog (JSON object `prices`).
+# Credit packs (how a key is issued): $5 for 100 cards, or $20 for 450 cards (includes 50 bonus cards), at /buy.
+
+# No existing capability covers SEC filing-change cards, central-bank decisions,
+# or these macro/CPI cards (stocks.* is prices, profiles and news). Reviewers
+# attach these on merge, as with Fundable's proposed_capabilities in #1600.
+proposed_capabilities:
+  stocks.filings.material_changes: "Get the material changes in a company's latest SEC filing, with citations"
+  stocks.filings.guidance_changes: "Get what a company changed in its guidance, cited to the SEC filing"
+  stocks.filings.insider_trades: "Get cited SEC Form 4 trades for a ticker"
+  stocks.filings.insider_window: "Get Form 4 trades in the window around a company's latest 10-Q"
+  stocks.filings.guidance_vs_actual: "Compare prior guided figures with the next 10-Q, marked delivered or missed"
+  stocks.filings.catalog: "List FilingDelta coverage, prices and content hashes"
+  markets.policy.rate_decision: "Get a central bank's latest policy-rate decision, with a link to the bank's statement"
+  markets.macro.release: "Get the latest official US macro release figures (NFP, GDP or CPI) and the next date"
+  markets.cpi.latest: "Get a consumer-price inflation card with official figures and the next release date"
+
+defaults:
+  provenance:
+    source: docs
+    source_url: https://filingdelta.xyz/catalog
+    checked: '2026-11-18'
+    confidence: documented
+  # Misses and errors are free unless a bill block says otherwise (VENDORS.md default).
+  # FilingDelta documents that unknown ids return 404 and are not charged.
+
+endpoints:
+  - id: filingdelta.account.balance
+    added: '2026-11-18'
+    kind: account
+    capability: account.usage
+    platform: account
+    scope: own_account
+    method: GET
+    path: /buy/balance
+    name: Credit-pack balance
+    summary: Return credits_remaining for a valid X-API-Key, or HTTP 401 for an invalid key.
+    test_request: {}
+    price: {value: '0', currency: USD, per: 1, unit: call}
+    docs_url: https://filingdelta.xyz/docs
+    # Live 2026-11-18: garbage X-API-Key -> HTTP 401 {"error":"unauthorized",...}. Valid-key 200 not replayed here.
+
+  - id: filingdelta.catalog.list
+    added: '2026-11-18'
+    capability: stocks.filings.catalog
+    platform: stocks
+    scope: any_account
+    method: GET
+    path: /catalog
+    name: Catalog and rate card
+    summary: List covered ids, prices and content_hash values so an agent can see when a card changed before paying.
+    test_request: {}
+    price: {value: '0', currency: USD, per: 1, unit: call}
+    docs_url: https://filingdelta.xyz/catalog
+
+  - id: filingdelta.sample.filing
+    added: '2026-11-18'
+    capability: stocks.filings.material_changes
+    platform: stocks
+    scope: any_account
+    method: GET
+    path: /sample/{ticker}
+    name: Free SEC filing-change sample
+    summary: Free sample of a SEC filing-change card for a covered ticker.
+    input:
+      pathParams:
+        ticker: {type: string, required: true, example: "AMD", note: "Uppercase ticker, for example AMD."}
+    test_request:
+      pathParams: {ticker: "AMD"}
+    price: {value: '0', currency: USD, per: 1, unit: call}
+    docs_url: https://filingdelta.xyz/docs
+
+  - id: filingdelta.sample.policy
+    added: '2026-11-18'
+    capability: markets.policy.rate_decision
+    platform: markets
+    scope: any_account
+    method: GET
+    path: /sample/policy/{id}
+    name: Free central-bank decision sample
+    summary: Free sample of a central-bank rate-decision card.
+    input:
+      pathParams:
+        id: {type: string, required: true, example: "BOE", note: "Uppercase bank id, for example BOE."}
+    test_request:
+      pathParams: {id: "BOE"}
+    price: {value: '0', currency: USD, per: 1, unit: call}
+    docs_url: https://filingdelta.xyz/docs
+
+  - id: filingdelta.sample.macro
+    added: '2026-11-18'
+    capability: markets.macro.release
+    platform: markets
+    scope: any_account
+    method: GET
+    path: /sample/macro/{id}
+    name: Free US macro sample
+    summary: Free sample of a US macro release card (NFP, GDP or CPI).
+    input:
+      pathParams:
+        id: {type: string, required: true, example: "NFP", note: "One of NFP, GDP, CPI."}
+    test_request:
+      pathParams: {id: "NFP"}
+    price: {value: '0', currency: USD, per: 1, unit: call}
+    docs_url: https://filingdelta.xyz/docs
+
+  - id: filingdelta.sample.cpi
+    added: '2026-11-18'
+    capability: markets.cpi.latest
+    platform: markets
+    scope: any_account
+    method: GET
+    path: /sample/cpi/{id}
+    name: Free CPI sample
+    summary: Free sample of a consumer-price inflation card.
+    input:
+      pathParams:
+        id: {type: string, required: true, example: "US", note: "One of US, UK, EA, JP."}
+    test_request:
+      pathParams: {id: "US"}
+    price: {value: '0', currency: USD, per: 1, unit: call}
+    docs_url: https://filingdelta.xyz/docs
+
+  - id: filingdelta.filings.delta
+    added: '2026-11-18'
+    capability: stocks.filings.material_changes
+    platform: stocks
+    scope: any_account
+    method: GET
+    path: /delta/{ticker}
+    name: SEC filing material changes
+    summary: Material changes in a company's latest 10-Q, 10-K, 20-F or 6-K, plus newer 8-K items that matter, each with a materiality rating, why it matters and an EDGAR citation.
+    input:
+      pathParams:
+        ticker: {type: string, required: true, example: "AMD", note: "Uppercase ticker from /catalog."}
+    test_request:
+      pathParams: {ticker: "AMD"}
+    price: {value: '0.05', currency: USD, per: 1, unit: call}
+    docs_url: https://filingdelta.xyz/docs
+    # 1 credit from a credit pack. Unknown ticker: 404, not charged (documented on /docs).
+
+  - id: filingdelta.policy.decision
+    added: '2026-11-18'
+    capability: markets.policy.rate_decision
+    platform: markets
+    scope: any_account
+    method: GET
+    path: /policy/{id}
+    name: Central-bank rate decision
+    summary: Hike, hold or cut, the policy rate, change in basis points, vote and dissent where published, next decision date, and a link to the bank's statement.
+    input:
+      pathParams:
+        id: {type: string, required: true, example: "BOE", note: "Uppercase bank id from /catalog, for example BOE or FED."}
+    test_request:
+      pathParams: {id: "BOE"}
+    price: {value: '0.05', currency: USD, per: 1, unit: call}
+    docs_url: https://filingdelta.xyz/docs
+
+  - id: filingdelta.macro.release
+    added: '2026-11-18'
+    capability: markets.macro.release
+    platform: markets
+    scope: any_account
+    method: GET
+    path: /macro/{id}
+    name: US macro release
+    summary: "Latest nonfarm payrolls, GDP or CPI release: official figures and the next release date."
+    input:
+      pathParams:
+        id: {type: string, required: true, example: "NFP", note: "One of NFP, GDP, CPI."}
+    test_request:
+      pathParams: {id: "NFP"}
+    price: {value: '0.05', currency: USD, per: 1, unit: call}
+    docs_url: https://filingdelta.xyz/docs
+
+  - id: filingdelta.cpi.release
+    added: '2026-11-18'
+    capability: markets.cpi.latest
+    platform: markets
+    scope: any_account
+    method: GET
+    path: /cpi/{id}
+    name: CPI inflation card
+    summary: Consumer-price inflation card for US, UK, euro area HICP or Japan, with official figures and the next release.
+    input:
+      pathParams:
+        id: {type: string, required: true, example: "US", note: "One of US, UK, EA, JP."}
+    test_request:
+      pathParams: {id: "US"}
+    price: {value: '0.05', currency: USD, per: 1, unit: call}
+    docs_url: https://filingdelta.xyz/docs
+
+  - id: filingdelta.filings.guidance
+    added: '2026-11-18'
+    capability: stocks.filings.guidance_changes
+    platform: stocks
+    scope: any_account
+    method: GET
+    path: /guidance/{ticker}
+    name: Guidance changes
+    summary: What a company changed in its guidance, cited to the SEC filing.
+    input:
+      pathParams:
+        ticker: {type: string, required: true, example: "NFLX", note: "Catalog lists NFLX."}
+    test_request:
+      pathParams: {ticker: "NFLX"}
+    price: {value: '0.05', currency: USD, per: 1, unit: call}
+    docs_url: https://filingdelta.xyz/docs
+
+  - id: filingdelta.filings.insider
+    added: '2026-11-18'
+    capability: stocks.filings.insider_trades
+    platform: stocks
+    scope: any_account
+    method: GET
+    path: /insider/{ticker}
+    name: Form 4 insider trades
+    summary: SEC Form 4 and 4/A trades, graded by FilingDelta house rules, each with an EDGAR citation.
+    input:
+      pathParams:
+        ticker: {type: string, required: true, example: "NVDA", note: "Catalog lists NVDA."}
+    test_request:
+      pathParams: {ticker: "NVDA"}
+    price: {value: '0.05', currency: USD, per: 1, unit: call}
+    docs_url: https://filingdelta.xyz/docs
+
+  - id: filingdelta.filings.window
+    added: '2026-11-18'
+    capability: stocks.filings.insider_window
+    platform: stocks
+    scope: any_account
+    method: GET
+    path: /window/{ticker}
+    name: Form 4 window around the latest 10-Q
+    summary: Form 4 trades in the 30 days either side of the latest 10-Q, graded by house rules, with EDGAR citations.
+    input:
+      pathParams:
+        ticker: {type: string, required: true, example: "NVDA", note: "Catalog lists NVDA, AMD and INTC."}
+    test_request:
+      pathParams: {ticker: "NVDA"}
+    price: {value: '0.05', currency: USD, per: 1, unit: call}
+    docs_url: https://filingdelta.xyz/docs
+
+  - id: filingdelta.filings.saydo
+    added: '2026-11-18'
+    capability: stocks.filings.guidance_vs_actual
+    platform: stocks
+    scope: any_account
+    method: GET
+    path: /saydo/{ticker}
+    name: Guidance versus later 10-Q
+    summary: Each figure guided in the prior earnings release, compared with the next 10-Q and marked delivered or missed.
+    input:
+      pathParams:
+        ticker: {type: string, required: true, example: "NVDA", note: "Catalog lists NVDA, AMD and INTC."}
+    test_request:
+      pathParams: {ticker: "NVDA"}
+    price: {value: '0.05', currency: USD, per: 1, unit: call}
+    docs_url: https://filingdelta.xyz/docs

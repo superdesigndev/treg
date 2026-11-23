@@ -389,6 +389,17 @@ async def _fundable(c: httpx.AsyncClient, key: str) -> dict[str, object]:
     return {"value": balance, "unit": "credits", "note": "API credit balance"}
 
 
+async def _filingdelta(c, key):
+    # GET /buy/balance is free (observed 2026-11-18); 401 for an invalid key.
+    d = await _get(c, "https://filingdelta.xyz/buy/balance",
+                   headers={"X-API-Key": key})
+    remaining = _finite(d.get("credits_remaining")) if isinstance(d, dict) else None
+    if remaining is None or remaining < 0:
+        raise ValueError("FilingDelta returned no valid remaining-credit balance")
+    return {"value": remaining, "unit": "credits",
+            "note": "prepaid credit pack; 1 credit = one paid card"}
+
+
 async def _harvestapi(c, key):
     d = await _get(c, "https://api.harvestapi.io/users/my-api-user",
                    headers={"X-API-Key": key})
@@ -1202,6 +1213,7 @@ BALANCE_ROUTES = {
     "moltsets": _moltsets,
     "openmart": _openmart,
     "fundable": _fundable,
+    "filingdelta": _filingdelta,
     "trykitt": _trykitt,
     "contactout": _contactout,
     "millionverifier": _millionverifier,
