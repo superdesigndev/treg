@@ -39,7 +39,7 @@ endpoints:
         enrichmentType:
           type: object
           required: false
-          note: "Which fields to look for; each one defaults to true, so leave out what you do not need"
+          note: "Which fields to look for. Each one defaults to true, so set every field you do not want to false: {getWorkEmails: true, getPersonalEmails: false, getPhoneNumbers: false} is the 2-credit work-email lookup"
           properties:
             getWorkEmails: {type: boolean, required: false}
             getPersonalEmails: {type: boolean, required: false}
