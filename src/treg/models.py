@@ -1911,6 +1911,15 @@ class CallReview(SQLModel, table=True):
     usefulness: str
     reason: str | None = Field(default=None)
     created_at: NaiveUTC = Field(default_factory=_now)
+    # Jev's judgements of `reason` (`application.review_judge`), each written once and on its own:
+    # the probability it names or identifies a person (gates public quotes), and for a `partly` or
+    # `not_useful` review the codebook codes for what it blames.
+    person_p: float | None = Field(default=None)
+    privacy_judged_at: NaiveUTC | None = Field(default=None)
+    primary_code: str | None = Field(default=None)
+    secondary_code: str | None = Field(default=None)
+    codebook_version: str | None = Field(default=None)
+    code_judged_at: NaiveUTC | None = Field(default=None)
 
 
 class CallMark(SQLModel, table=True):
