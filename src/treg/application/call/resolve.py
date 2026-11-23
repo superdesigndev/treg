@@ -1404,6 +1404,15 @@ def _document_value(document: object, dotted: str) -> object:
     return current
 
 
+def _document_has(document: object, dotted: str) -> bool:
+    current = document
+    for part in dotted.split("."):
+        if not isinstance(current, dict) or part not in current:
+            return False
+        current = current[part]
+    return True
+
+
 def _enforce_catalog_query(ep: dict, query: QueryValues, has_body: bool) -> None:
     """Opt-in catalog contract on every credential tier; raw own-tool relays are unaffected.
 
@@ -1863,8 +1872,9 @@ def _enforce_platform_request(ep: dict, body: bytes, headers=None, query=None) -
 
     Catalog tables may price several rows on one upstream path. A table condition whose body field
     has a singleton enum is the row identity, not caller choice: accepting another value lets a cheap
-    row reserve for an expensive model. These pins never apply to a team's own key, which meets only
-    the declarations every tier is held to.
+    row reserve for an expensive model. An absent field whose declared default is that value passes,
+    since the table prices it at the default. These pins never apply to a team's own key, which meets
+    only the declarations every tier is held to.
     """
     if ep.get("id") == "leadocean.people.search":
         limits = [value for name, value in query.multi_items() if name == "limit"] if query is not None else []
@@ -2061,6 +2071,8 @@ def _enforce_platform_request(ep: dict, body: bytes, headers=None, query=None) -
         path.removeprefix("body."): value
         for path, value in rules.items() if str(path).startswith("body.")
     }
+    pinned = set(selectors)
+    defaulted: set[str] = set()
     for row in (ep.get("cost") or {}).get("table") or []:
         for path in (row.get("when") or {}):
             if not str(path).startswith("body."):
@@ -2070,10 +2082,15 @@ def _enforce_platform_request(ep: dict, body: bytes, headers=None, query=None) -
             allowed = spec.get("enum") if spec else None
             if isinstance(allowed, list) and len(allowed) == 1:
                 selectors[relative] = allowed[0]
+                if (relative not in pinned and "default" in spec
+                        and type(spec["default"]) is type(allowed[0]) and spec["default"] == allowed[0]):
+                    defaulted.add(relative)
     if not selectors:
         return
     document = _request_body_document(ep, body, headers)
     for path, expected in sorted(selectors.items()):
+        if path in defaulted and not _document_has(document, path):
+            continue
         actual = _document_value(document, path)
         if actual != expected or (isinstance(expected, bool) and type(actual) is not bool):
             raise ResolutionFailed(
