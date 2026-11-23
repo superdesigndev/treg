@@ -335,7 +335,7 @@ def _place_country(part: str) -> str | None:
 def location_country(value: Any) -> str | None:
     """The ISO2 country a free-text location names (`Berlin, Germany` -> `DE`, `Austin, Texas` ->
     `US`), from its comma parts: a country name or a US state, with a last part that is a
-    provider's country code (below) agreeing. Parts that name different countries name none (`Lebanon, US`, a US city;
+    provider's country code (below) and any state code agreeing (`Cuba, NY` names none). Parts that name different countries name none (`Lebanon, US`, a US city;
     `Washington, GB`, a British town). With no country or US state in any part, a city,
     metro area or one-country region gives its country (`Austin, TX`, `Greater Phoenix Area`,
     `San Francisco Bay Area` -> `US`) when every part is a place we know or a state or province
@@ -357,6 +357,10 @@ def location_country(value: Any) -> str | None:
         tail = iso2(last)
     if named:
         named |= {tail} if tail else set()
+        # A state code that is no country code must agree too: `Cuba, NY` is a town in New York.
+        for part in parts:
+            if part in _REGION_CODES and iso2(part) is None and not named & _REGION_CODES[part]:
+                return None
         return next(iter(named)) if len(named) == 1 else None
     within: list[frozenset[str]] = []
     places = qualified = 0

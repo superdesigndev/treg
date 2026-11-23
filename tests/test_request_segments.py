@@ -238,6 +238,7 @@ def test_answer_counts_judge_rows_against_the_question():
     # parts that name different countries name none: a US city named after a country, a British
     # town named after a state
     ("Lebanon, US", None), ("Washington, GB", None), ("Paris, France, US", None),
+    ("Cuba, NY", None), ("Havana, Cuba", "CU"),
     ("Washington, District of Columbia, United States", "US"),
     # a part we do not know leaves a city unread
     ("Hyderabad, Sindh", None), ("Mumbai, Remote", None),
