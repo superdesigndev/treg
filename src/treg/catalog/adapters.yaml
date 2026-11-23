@@ -44,6 +44,14 @@ adapters:
     out: {email: email, first_name: info.firstname, last_name: info.lastname,
           verified: "qualification == 'valid'"}
     miss: "email == null"
+  descovo.people.email.find:
+    # Standard mode, work email only: the 2-credit row of the reveal's price table.
+    accepts: [[linkedin_url]]
+    in: {linkedin_url: body.linkedinUrl}
+    const: {body.mode: standard, body.enrichmentType.getWorkEmails: true,
+            body.enrichmentType.getPersonalEmails: false, body.enrichmentType.getPhoneNumbers: false}
+    test_identity: {linkedin_url: "https://www.linkedin.com/in/jane-doe-example"}
+    out: {email: "data.profile.emails[0].email", verified: "data.profile.emails[0].status == 'valid'"}
   millionphones.people.email.find:
     accepts: [[linkedin_url]]
     in: {linkedin_url: queryParams.social_url}
@@ -465,6 +473,20 @@ adapters:
     in:  {linkedin_url: queryParams.linkedinURL, email: queryParams.email}
     out: {phone: "phones[0].phoneNumber"}
     miss: "phones == []"
+  descovo.people.phone.find:
+    # Standard mode, phone only: the 3-credit row of the reveal's price table.
+    accepts: [[linkedin_url]]
+    in: {linkedin_url: body.linkedinUrl}
+    const: {body.mode: standard, body.enrichmentType.getWorkEmails: false,
+            body.enrichmentType.getPersonalEmails: false, body.enrichmentType.getPhoneNumbers: true}
+    test_identity: {linkedin_url: "https://www.linkedin.com/in/jane-doe-example"}
+    out: {phone: "data.profile.phoneNumbers[0].number"}
+  fiber-ai.people.phone.find:
+    accepts: [[linkedin_url]]
+    in:  {linkedin_url: body.linkedinUrl}
+    const: {body.enrichmentType: {getWorkEmails: false, getPersonalEmails: false, getPhoneNumbers: true}}
+    out: {phone: "output.profile.phoneNumbers[0].number"}
+    miss: "coalesce(output.profile.phoneNumbers, []) == []"
   millionphones.people.phone.find:
     accepts: [[linkedin_url], [first_name, last_name, domain]]
     in: {linkedin_url: queryParams.social_url, first_name: queryParams.first_name,
@@ -627,6 +649,11 @@ adapters:
     out: {valid: "result == 'Valid'", status: result}
     # Invalid, Risky and Unknown are useful verdicts. Only a missing verdict is a miss.
     miss: "result == null"
+  descovo.people.email.verify:
+    accepts: [[email]]
+    in: {email: body.email}
+    out: {valid: "data.verdict == 'ok'", status: data.verdict}
+    verdicts: {ok: valid, undeliverable: invalid, inconclusive: unknown}
   millionphones.people.email.verify:
     accepts: [[email]]
     in: {email: queryParams.email}
@@ -737,6 +764,12 @@ adapters:
           title: profile.title, company: company.summary.name, company_domain: company.link.domain,
           linkedin_url: link.linkedin, location: location.default}
     miss: "profile.full_name == null"
+  descovo.people.enrich:
+    accepts: [[linkedin_handle]]
+    in: {linkedin_handle: body.identifier}
+    out: {full_name: data.profile.name, first_name: data.profile.first_name, last_name: data.profile.last_name,
+          title: data.profile.current_job.title, company: data.profile.current_job.company_name,
+          linkedin_url: data.profile.url, location: data.profile.locality}
   forager.people.enrich:
     accepts: [[linkedin_handle]]
     in: {linkedin_handle: body.linkedin_public_identifier}

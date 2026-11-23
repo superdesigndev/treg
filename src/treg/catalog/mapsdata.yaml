@@ -116,6 +116,7 @@ endpoints:
     scope: any_account
     method: POST
     path: /jobs
+    platform_request: {body.dry_run: true}
     name: "Dry-run a Google Maps lead scrape"
     summary: "Check a Google Maps lead scrape would be accepted and see the categories, regions and lead count it would run with, without starting it"
     input:
